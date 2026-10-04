@@ -62,6 +62,8 @@ import type {
   RestaurantesAuditLogRow,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
+  StorefrontMarca,
+  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
   StorefrontOrderTracking,
@@ -482,19 +484,45 @@ function esErrorBaseSinMigrarProgramados(err: unknown): boolean {
   return code === "42883" || code === "42P01" || code === "42703";
 }
 
+interface StorefrontMarcaRow {
+  titular: string | null;
+  eslogan: string | null;
+  about: string | null;
+  portada_url: string | null;
+  logo_url: string | null;
+  instagram_url: string | null;
+  facebook_url: string | null;
+  tiktok_url: string | null;
+  updated_at: Date | string | null;
+}
+
+function mapStorefrontMarca(r: StorefrontMarcaRow): StorefrontMarca {
+  return {
+    titular: r.titular,
+    eslogan: r.eslogan,
+    about: r.about,
+    portadaUrl: r.portada_url,
+    logoUrl: r.logo_url,
+    instagramUrl: r.instagram_url,
+    facebookUrl: r.facebook_url,
+    tiktokUrl: r.tiktok_url,
+    updatedAt: r.updated_at === null ? null : new Date(r.updated_at).toISOString(),
+  };
+}
+
 function esErrorCompatibilidadConfigBaseSinMigrar(err: unknown): boolean {
   const code = (err as { code?: string } | null)?.code;
   return code === "42501" || code === "42883" || code === "42P01" || code === "42703";
 }
 
 const configEscrituraAdvertida = new Set<string>();
-function advertirConfigEscrituraNoDisponible(tabla: string, err: unknown): void {
+function advertirConfigEscrituraNoDisponible(tabla: string, err: unknown, migracion = "021_restaurantes_config_editable_y_search_path_fix.sql"): void {
   if (configEscrituraAdvertida.has(tabla)) return;
   configEscrituraAdvertida.add(tabla);
   console.warn(
     `PostgresRestaurantesRepository: la escritura sobre restaurantes.${tabla} todavía no está habilitada en esta base ` +
       "(SQLSTATE 42501/42883/42P01/42703) -- aplica " +
-      "packages/domain-restaurantes/migrations/021_restaurantes_config_editable_y_search_path_fix.sql (o su espejo en " +
+      `packages/domain-restaurantes/migrations/${migracion} (o su espejo en ` +
       "supabase/migrations/) para habilitarla.",
     err,
   );
@@ -915,16 +943,31 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
-    const { rows } = await this.db.query<{ id: string; resolved: boolean; created_at: string }>(
-      `insert into restaurantes.callback_requests (organization_id, property_id, customer_name, customer_phone, reason, message, source)
-       values ($1, $2, $3, $4, $5, $6, $7)
-       returning id, resolved, created_at;`,
-      [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source],
-    );
+    const params = [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source];
+    type Fila = { id: string; resolved: boolean; created_at: string };
+    // `restaurantes.callback_registrar` (migracion 062): la sesion de la API corre como `authenticated`, que NO tiene INSERT sobre
+    // callback_requests (001), asi que el INSERT directo falla con 42501 contra una base migrada. Sin la funcion (42883, base sin 062)
+    // se cae al INSERT anterior dentro de un SAVEPOINT, que es exactamente la conducta de antes.
+    const rows = await runWithSavepointFallback<Fila[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_callback_registrar",
+      primary: async () => (await this.db.query<Fila>(`select id, resolved, created_at from restaurantes.callback_registrar($1, $2, $3, $4, $5, $6, $7);`, params)).rows,
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42883",
+      fallback: async () =>
+        (
+          await this.db.query<Fila>(
+            `insert into restaurantes.callback_requests (organization_id, property_id, customer_name, customer_phone, reason, message, source)
+             values ($1, $2, $3, $4, $5, $6, $7)
+             returning id, resolved, created_at;`,
+            params,
+          )
+        ).rows,
+    });
     const row = rows[0]!;
     // Notificacion in-app (`restaurantes.callback.pendiente`): un contacto que el agente (voz o WhatsApp) dejo para devolver la
     // llamada. Uno por solicitud (clave = id), sin PII (ni nombre ni telefono viajan en el aviso). SAVEPOINT en emitirNotificacion.
-    await emitirNotificacion(this.db, { evento: "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
+    // R-43: una solicitud de evento/catering del storefront (reason = 'evento') avisa con su propio evento del catalogo, no con el generico.
+    await emitirNotificacion(this.db, { evento: input.reason === "evento" ? "restaurantes.evento.solicitud" : "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
     return { ...input, id: row.id, resolved: row.resolved, createdAt: row.created_at };
   }
 
@@ -2391,6 +2434,49 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       if ((err as { code?: string } | null)?.code === "23505") throw new WhatsappNumberInUseError();
       throw err;
     }
+  }
+
+  async findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null> {
+    // Base sin la migracion 062 (42P01/42703) o sin permiso (42501): sin marca, nunca un 500. SAVEPOINT: la sesion es una sola
+    // transaccion por request y un error de Postgres la dejaria abortada.
+    return runWithSavepointFallback<StorefrontMarca | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_storefront_marca_read",
+      primary: async () => {
+        const { rows } = await this.db.query<StorefrontMarcaRow>(
+          `select titular, eslogan, about, portada_url, logo_url, instagram_url, facebook_url, tiktok_url, updated_at
+             from restaurantes.storefront_marca where organization_id = $1;`,
+          [organizationId],
+        );
+        return rows[0] ? mapStorefrontMarca(rows[0]) : null;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => null,
+    });
+  }
+
+  async upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca> {
+    return runWithSavepointFallback<StorefrontMarca>({
+      session: this.db,
+      savepointName: "sp_restaurantes_storefront_marca_write",
+      primary: async () => {
+        const { rows } = await this.db.query<StorefrontMarcaRow>(
+          `insert into restaurantes.storefront_marca (organization_id, titular, eslogan, about, portada_url, logo_url, instagram_url, facebook_url, tiktok_url)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           on conflict (organization_id) do update set
+             titular = excluded.titular, eslogan = excluded.eslogan, about = excluded.about, portada_url = excluded.portada_url,
+             logo_url = excluded.logo_url, instagram_url = excluded.instagram_url, facebook_url = excluded.facebook_url, tiktok_url = excluded.tiktok_url
+           returning titular, eslogan, about, portada_url, logo_url, instagram_url, facebook_url, tiktok_url, updated_at;`,
+          [organizationId, input.titular, input.eslogan, input.about, input.portadaUrl, input.logoUrl, input.instagramUrl, input.facebookUrl, input.tiktokUrl],
+        );
+        return mapStorefrontMarca(rows[0]!);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirConfigEscrituraNoDisponible("storefront_marca", err, "062_storefront_marca.sql");
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
   }
 
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {

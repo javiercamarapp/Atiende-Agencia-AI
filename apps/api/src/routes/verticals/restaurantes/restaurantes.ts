@@ -27,6 +27,7 @@ import { restaurantesExportacionesRoutes } from "./exportaciones.ts";
 import { restaurantesRepartidorLicenciasInternoRoutes } from "./repartidor-licencias-interno.ts";
 import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
+import { restaurantesAdminSitioPublicoRoutes } from "./admin-sitio-publico.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
 import { restaurantesAdminOnboardingRoutes } from "./admin-onboarding.ts";
 import { restaurantesVozAdminRoutes } from "./voz-admin.ts";
@@ -84,6 +85,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // FASE 3 (producto) — configuración editable del panel (WhatsApp/zonas
   // conocidas), owner/admin -- ver el comentario de cabecera de admin-config.ts.
   app.route("/", restaurantesAdminConfigRoutes(deps));
+  // R-38 (migración 062): marca del storefront público ("Sitio público"), owner/admin.
+  app.route("/", restaurantesAdminSitioPublicoRoutes(deps));
   // Modelo PM (migración 023) — política/cobertura/WhatsApp por sucursal y marcas no_domicilio.
   app.route("/", restaurantesAdminModeloPmRoutes(deps));
   // R-33: checklist de onboarding calculado con datos reales (solo lectura, owner/admin).
