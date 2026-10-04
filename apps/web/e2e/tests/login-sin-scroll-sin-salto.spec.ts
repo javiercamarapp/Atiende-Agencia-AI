@@ -40,6 +40,11 @@ async function abrir(page: Page, ruta: string, tema: (typeof TEMAS)[number], vie
   });
   await page.goto(ruta);
   await expect(page.locator("main")).toHaveCount(1);
+  // Las tipografias vienen de Google Fonts (login.css las importa): el CSS y luego cada archivo llegan DESPUES de que
+  // `document.fonts.ready` ya resolvio (aun no habia caras registradas), y su cambio (swap) mueve el texto ~1 px y suma
+  // CLS en mitad de la prueba. Se espera a que la red quede en reposo (sin Google Fonts accesible, las peticiones
+  // fallan rapido y el reposo llega igual) y solo entonces a `fonts.ready`.
+  await page.waitForLoadState("networkidle");
   await page.evaluate(() => document.fonts.ready);
   // La carga de tipografias puede mover el texto UNA vez al abrir; el CLS que se exige es el de los cambios de estado.
   await page.evaluate(() => ((window as unknown as { __cls: number }).__cls = 0));
