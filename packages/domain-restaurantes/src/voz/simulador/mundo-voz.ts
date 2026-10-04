@@ -38,6 +38,9 @@ export function crearMundoVoz(): MundoVoz {
   repo.seedKnownZone({ organizationId, name: "Centro", lat: 21.02, lng: -89.65 });
   repo.seedKnownZone({ organizationId, name: "Altabrisa", lat: 21.001, lng: -89.572 });
   for (const p of [propertyId, propertyAltabrisa]) repo.seedBranchPolicy(p, { pedidoMinimoDomicilio: 200 });
+  // Perfil del agente de PM (el mismo que siembra el seed real): activa las reglas duras del servidor propias de PM, como el pedido grande.
+  // El repositorio en memoria guarda de forma sincrona, por eso no se espera la promesa.
+  void repo.upsertWhatsAppAgentConfig(organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: "Los Taquitos de PM", toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
 
   const catTacos = randomUUID();
   const catBebidas = randomUUID();

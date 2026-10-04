@@ -218,7 +218,7 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
     try {
       await cliente.confirmar(branchSlug, sessionId.current, cotizacion?.quote_hash ?? null);
       const propina = form.propina.trim() && puedePropina ? Number(form.propina) : undefined;
-      const creado = await cliente.crearPedido(branchSlug, datosPedido(), { nombre: form.nombre, telefono: form.telefono, correo: form.correo, direccion: form.direccion, notas: form.notas, propina }, cotizacion?.quote_hash ?? null);
+      const creado = await cliente.crearPedido(branchSlug, datosPedido(), { nombre: form.nombre, telefono: form.telefono, correo: form.correo, direccion: form.direccion, notas: form.notas, propina, aceptaAviso: form.acepta }, cotizacion?.quote_hash ?? null);
       limpiarSesion();
       notify.success(creado.ya_registrado ? "Tu pedido ya estaba registrado." : "¡Pedido recibido!");
       navigate(`/pedir/${orgSlug}/pedido/${encodeURIComponent(creado.rastreo_token)}`);
