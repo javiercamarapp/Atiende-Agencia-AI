@@ -340,3 +340,5 @@ export { emitirAlertasProveedor, evaluarSaludProveedor, GRAPH_CODIGO_TOKEN_INVAL
 export type { DiagnosticoProveedorOrg, ItemDespachoOrg, ResultadoAlertasProveedor } from "./alertas-duenio/proveedor.ts";
 
 export * from "./conocimiento/index.ts";
+export { cargaDeRepartidor, sugerirRepartidor } from "./repartidor-sugerido.ts";
+export type { CandidatoRepartidor, CargaRepartidor, SugerenciaRepartidor } from "./repartidor-sugerido.ts";
