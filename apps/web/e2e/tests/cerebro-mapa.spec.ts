@@ -196,6 +196,20 @@ test.describe("Cerebro de ventas: mapa y ficha @cerebro", () => {
     vigilante.verificar();
   });
 
+  test("sin bitacora en el despliegue (registrada:false) el archivo NO se exporta: falla cerrado y se explica", async ({ page, iniciarSesion, mock, vigilante }) => {
+    await abrirMapa(page, iniciarSesion);
+    await mock.inyectarFalla({ metodo: "POST", ruta: "/superadmin/cerebro/exportaciones", status: 200, cuerpo: { registrada: false } });
+    let descargo = false;
+    page.on("download", () => {
+      descargo = true;
+    });
+    await page.getByRole("button", { name: /^Filtros/ }).click();
+    await page.getByRole("button", { name: /Exportar CSV/ }).click();
+    await expect(page.getByText(/Exportación no disponible aún: requiere la bitácora de exportaciones/)).toBeVisible();
+    expect(descargo).toBe(false);
+    vigilante.verificar();
+  });
+
   test("supresion y base de licitud: el boton no existe y la tarjeta dice por que", async ({ page, iniciarSesion, vigilante }) => {
     await abrirMapa(page, iniciarSesion);
     // Jalisco: cp-11 tiene el telefono en la lista de supresion; cp-08 si es contactable.
@@ -204,7 +218,11 @@ test.describe("Cerebro de ventas: mapa y ficha @cerebro", () => {
     const suprimido = panel.getByTestId("cerebro-tarjeta").filter({ hasText: "Despacho Contable Ficticio" });
     await expect(suprimido.getByTestId("cerebro-whatsapp")).toHaveCount(0);
     await expect(suprimido.getByTestId("cerebro-whatsapp-bloqueado")).toHaveAttribute("title", /lista de supresión/);
+    // El correo de ESE prospecto no esta suprimido (solo el telefono): conserva su mailto. El telefono suprimido es texto plano, sin tel:.
     await expect(suprimido.getByTestId("cerebro-correo")).toHaveAttribute("href", /^mailto:diana@example\.test\?body=/);
+    await expect(suprimido.locator('a[href^="tel:"]')).toHaveCount(0);
+    await expect(suprimido.getByTestId("cerebro-dato-sin-enlace")).toHaveCount(1);
+    await expect(panel.getByTestId("cerebro-tarjeta").filter({ hasText: "Villas del Mar" }).locator('a[href^="tel:"]')).toHaveCount(1);
     await expect(panel.getByTestId("cerebro-tarjeta").filter({ hasText: "Villas del Mar" }).getByTestId("cerebro-whatsapp")).toBeVisible();
     // Contacto legado (Guanajuato): sin base de licitud no se contacta; la ficha lo explica.
     await page.goto("/superadmin/mapa-prospectos/cp-10");
