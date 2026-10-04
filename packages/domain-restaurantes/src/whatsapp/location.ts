@@ -73,6 +73,13 @@ const COORD_PATRONES: readonly RegExp[] = [
   /!3d(-?\d{1,2}(?:\.\d+)?)!4d(-?\d{1,3}(?:\.\d+)?)/,
 ];
 
+/** Quita la puntuacion que el cliente pego al final del enlace (sin regex con backtracking). */
+function sinPuntuacionFinal(texto: string): string {
+  let fin = texto.length;
+  while (fin > 0 && ".,;:!?".includes(texto[fin - 1]!)) fin -= 1;
+  return texto.slice(0, fin);
+}
+
 function esLinkDeMaps(url: URL): boolean {
   if (url.protocol !== "https:" && url.protocol !== "http:") return false;
   if (!MAPS_HOSTS.has(url.hostname.toLowerCase())) return false;
@@ -87,7 +94,7 @@ export function parseMapsLink(texto: string): UbicacionEntrega | null {
   for (const candidato of texto.match(URL_RE) ?? []) {
     let url: URL;
     try {
-      url = new URL(candidato.replace(/[.,;:!?]+$/, ""));
+      url = new URL(sinPuntuacionFinal(candidato));
     } catch {
       continue;
     }
@@ -123,7 +130,7 @@ export function latestDeliveryPin(messages: readonly { readonly role: string; re
 
 const NOTA_PIN_RE = /^Ubicación de entrega \(pin de WhatsApp\): lat=(-?\d{1,2}(?:\.\d+)?) lng=(-?\d{1,3}(?:\.\d+)?)\.$/m;
 const NOTA_LINK_RE = /^Ubicación de entrega \(enlace de Maps\): lat=(-?\d{1,2}(?:\.\d+)?) lng=(-?\d{1,3}(?:\.\d+)?)\.$/m;
-const NOTA_CORTO_RE = /^Ubicación de entrega \(enlace corto de Maps\): (https:\/\/(?:maps\.app\.goo\.gl|goo\.gl)\/\S+?)\.?(?:\s|$)/m;
+const NOTA_CORTO_RE = /^Ubicación de entrega \(enlace corto de Maps\): (https:\/\/(?:maps\.app\.goo\.gl|goo\.gl)\/\S+)/m;
 
 /** Linea de la comanda/notas del pedido que lleva el destino al repartidor. */
 export function formatUbicacionEntregaNota(u: UbicacionEntrega): string {
@@ -140,6 +147,6 @@ export function parseUbicacionEntregaNota(notes: string | null | undefined): Ubi
   const link = NOTA_LINK_RE.exec(notes);
   if (link && isValidCoordinate(Number(link[1]), Number(link[2]))) return { fuente: "link", lat: Number(link[1]), lng: Number(link[2]) };
   const corto = NOTA_CORTO_RE.exec(notes);
-  if (corto) return { fuente: "link_corto", url: corto[1]! };
+  if (corto) return { fuente: "link_corto", url: sinPuntuacionFinal(corto[1]!) };
   return null;
 }

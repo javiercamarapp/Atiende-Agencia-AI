@@ -139,13 +139,14 @@ const RE_CANAL = /^Canal:\s*(.+?)\.?$/i;
 const RE_PROPINA = /^Propina:\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i;
 const RE_COMPLEMENTOS_INCLUIDOS = /^Complementos incluidos:\s*(.+?)\.?$/i;
 const RE_COMPLEMENTOS_SOLICITADOS = /^Complementos solicitados:\s*(.+?)\.?$/i;
-const RE_COMPLEMENTOS_BASICAS = /^B[aá]sicas:\s*(.+?)\.?$/i;
-const RE_COMPLEMENTOS_PEDIDAS = /^Pedidas(?:\s*\(sin costo\))?:\s*(.+?)\.?$/i;
+const PREFIJO_BASICAS = /^B[aá]sicas: /i;
+const PREFIJO_PEDIDAS = /^Pedidas(?: \(sin costo\))?: /i;
 const RE_UBICACION_COORD = /^Ubicaci[oó]n de entrega \((?:pin de WhatsApp|enlace de Maps)\):\s*lat=(-?\d{1,2}(?:\.\d+)?)\s+lng=(-?\d{1,3}(?:\.\d+)?)\.?$/i;
 const RE_UBICACION_CORTA = /^Ubicaci[oó]n de entrega \(enlace corto de Maps\):\s*(https:\/\/(?:maps\.app\.goo\.gl|goo\.gl)\/\S+)$/i;
-const RE_PAGA_CON = /^Paga con:\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)(?:\s*\(cambio:\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\))?\.?$/i;
+// Formato EXACTO que escribe el servidor («Paga con: $500.00 (cambio: $410.00).»): sin cuantificadores que se solapen (defensa contra ReDoS).
+const RE_PAGA_CON = /^Paga con: \$([0-9][0-9,]*(?:\.[0-9]{1,2})?)(?: \(cambio: \$([0-9][0-9,]*(?:\.[0-9]{1,2})?)\))?\.?$/i;
 const RE_LLEVAR_TERMINAL = /^Llevar terminal\.?$/i;
-const RE_ACCESO = /^Indicaciones de acceso:\s*(.+?)\.?$/i;
+const PREFIJO_ACCESO = /^Indicaciones de acceso: /i;
 const RE_TEL_ALTERNO = /^Tel[eé]fono alterno:\s*(\d{10})\.?$/i;
 const RE_SIN_COMPLEMENTOS = /^No enviar complementos de cortes[ií]a\.?$/i;
 
@@ -160,6 +161,12 @@ interface NotasSeparadas {
   llevarTerminal: boolean;
   acceso: string | null;
   telefonoAlterno: string | null;
+}
+
+/** Valor de una línea «Etiqueta: valor.» sin el punto final (sin regex con backtracking sobre texto del cliente). */
+function valorSinPunto(valor: string): string {
+  const limpio = valor.trim();
+  return limpio.endsWith(".") ? limpio.slice(0, -1) : limpio;
 }
 
 /** Separa de `orders.notes` las líneas estructuradas (canal, propina, complementos) de la
@@ -199,9 +206,9 @@ export function separarNotas(notes: string | null): NotasSeparadas {
       out.llevarTerminal = true;
       continue;
     }
-    const acceso = RE_ACCESO.exec(linea);
+    const acceso = PREFIJO_ACCESO.exec(linea);
     if (acceso) {
-      out.acceso = acceso[1] ?? null;
+      out.acceso = valorSinPunto(linea.slice(acceso[0].length));
       continue;
     }
     const alterno = RE_TEL_ALTERNO.exec(linea);
@@ -209,14 +216,14 @@ export function separarNotas(notes: string | null): NotasSeparadas {
       out.telefonoAlterno = alterno[1] ?? null;
       continue;
     }
-    const basicas = RE_COMPLEMENTOS_BASICAS.exec(linea);
+    const basicas = PREFIJO_BASICAS.exec(linea);
     if (basicas) {
-      out.salsas.push(`Básicas: ${basicas[1]}`);
+      out.salsas.push(`Básicas: ${valorSinPunto(linea.slice(basicas[0].length))}`);
       continue;
     }
-    const pedidas = RE_COMPLEMENTOS_PEDIDAS.exec(linea);
+    const pedidas = PREFIJO_PEDIDAS.exec(linea);
     if (pedidas) {
-      out.salsas.push(`PEDIDAS (sin costo): ${pedidas[1]}`);
+      out.salsas.push(`PEDIDAS (sin costo): ${valorSinPunto(linea.slice(pedidas[0].length))}`);
       continue;
     }
     const coord = RE_UBICACION_COORD.exec(linea);
