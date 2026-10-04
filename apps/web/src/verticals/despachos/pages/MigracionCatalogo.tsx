@@ -16,8 +16,7 @@
 // "descubre": el usuario lo pega como JSON (export típico de un ERP/ver ETL externo)
 // y la página solo llama al clasificador ya construido con lo que recibe.
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
-import { Check, CheckCircle2, FolderInput, Pencil, X } from "lucide-react";
+import { Check, FolderInput, Pencil, X } from "lucide-react";
 import {
   Button,
   Callout,
@@ -27,10 +26,11 @@ import {
   EstadoError,
   EstadoVacio,
   FormDialog,
+  FormField,
   Input,
-  Label,
   NativeSelect,
   PageContainer,
+  PageHeader,
   StatusBadge,
   statusTone,
   Table,
@@ -40,6 +40,7 @@ import {
   TableHeader,
   TableRow,
   Textarea,
+  useConfirm,
 } from "@atiende/ui";
 import {
   aprobarMapeoMigracion,
@@ -119,6 +120,7 @@ function parseCatalogoJson(raw: string, etiqueta: string): readonly CuentaCatalo
 }
 
 export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: DespachosShellContext) {
+  const { confirmar, dialogo } = useConfirm();
   const [mapeos, setMapeos] = useState<readonly MapeoMigracionCuenta[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -155,8 +157,7 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
     // eslint-plugin-react-hooks configurado.
   }, [apiBaseUrl, token, propertyId, filtroEstado]);
 
-  async function handleClasificar(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleClasificar() {
     setClasificarError(null);
     setClasificarResultado(null);
     let catalogoOrigen: readonly CuentaCatalogoInput[];
@@ -196,6 +197,12 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
 
   async function handleAprobar(m: MapeoMigracionCuenta) {
     const draft = draftDe(m.id);
+    const ok = await confirmar({
+      titulo: "Aprobar mapeo",
+      descripcion: `${m.origenCuentaId} → ${m.destinoCuentaId ?? "—"}. La decisión queda registrada y no se puede deshacer.`,
+      confirmar: "Aprobar",
+    });
+    if (!ok) return;
     setRowState(m.id, { loading: true, message: null, isError: false });
     try {
       await aprobarMapeoMigracion(fetch, apiBaseUrl, token, propertyId, m.id, {
@@ -215,6 +222,13 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
       setRowState(m.id, { loading: false, message: "Rechazar requiere una nota con el motivo.", isError: true });
       return;
     }
+    const ok = await confirmar({
+      titulo: "Rechazar mapeo",
+      descripcion: `${m.origenCuentaId} → ${m.destinoCuentaId ?? "—"}. La decisión queda registrada y no se puede deshacer.`,
+      tono: "danger",
+      confirmar: "Rechazar",
+    });
+    if (!ok) return;
     setRowState(m.id, { loading: true, message: null, isError: false });
     try {
       await rechazarMapeoMigracion(fetch, apiBaseUrl, token, propertyId, m.id, { nota: draft.nota.trim() });
@@ -235,6 +249,12 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
       setRowState(m.id, { loading: false, message: "Editar requiere una nota con el motivo de la corrección.", isError: true });
       return;
     }
+    const ok = await confirmar({
+      titulo: "Editar mapeo",
+      descripcion: `${m.origenCuentaId} pasará a la cuenta destino ${draft.destinoCuentaId.trim()}. La decisión queda registrada y no se puede deshacer.`,
+      confirmar: "Editar",
+    });
+    if (!ok) return;
     setRowState(m.id, { loading: true, message: null, isError: false });
     try {
       await editarMapeoMigracion(fetch, apiBaseUrl, token, propertyId, m.id, {
@@ -250,100 +270,58 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
   }
 
   return (
-    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold text-foreground">Migración de catálogo contable</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Clasifica el catálogo origen contra el destino (match exacto/alerta de riesgo/aproximado) y decide cada mapeo propuesto -- el match exacto queda auto-aprobado, el resto espera revisión humana.
-          </p>
-        </div>
-        {puedeGestionar && (
-          <Button variant={showClasificarForm ? "outline" : "default"} size="sm" onClick={() => setShowClasificarForm((v) => !v)}>
-            <FolderInput />
-            {showClasificarForm ? "Cancelar" : "Clasificar catálogo"}
-          </Button>
-        )}
-      </header>
-
-      {/* El formulario de clasificación (dos JSON grandes pegados a mano) pasó al
-          `FormDialog` compartido: es exactamente la forma
-          "formulario ancho en riel lateral" para la que existe ese shell, y
-          además deja de empujar la tabla de mapeos hacia abajo. El estado
-          `showClasificarForm` y `handleClasificar` son los mismos de antes. */}
-      {showClasificarForm && (
-        <FormDialog
-          open
-          onOpenChange={(abierto) => {
-            if (!abierto) setShowClasificarForm(false);
-          }}
-          titulo="Clasificar catálogo"
-          subtitulo="El catálogo del cliente vive en su propia base, fuera de este panel -- pega aquí el JSON ya exportado (arreglo de cuentas: id, codigo, nombre y opcionalmente nivel/naturaleza/tipoAgregado/cuentaPadreCodigo)."
-          footer={
-            <Button type="submit" form="migracion-clasificar" disabled={clasificando} className="rounded-full px-6">
-              {clasificando ? "Clasificando…" : "Clasificar"}
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader
+        titulo="Migración de catálogo contable"
+        descripcion="Clasifica el catálogo origen contra el destino y decide cada mapeo propuesto: el match exacto queda auto-aprobado, el resto espera revisión humana."
+        acciones={
+          puedeGestionar ? (
+            <Button size="sm" onClick={() => setShowClasificarForm(true)}>
+              <FolderInput />
+              Clasificar catálogo
             </Button>
-          }
-        >
-          <form id="migracion-clasificar" onSubmit={handleClasificar} className="flex flex-col gap-3">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <Label htmlFor="catalogo-origen">Catálogo origen (JSON) *</Label>
-                <Textarea
-                  id="catalogo-origen"
-                  value={catalogoOrigenText}
-                  onChange={(e) => setCatalogoOrigenText(e.target.value)}
-                  rows={8}
-                  required className="font-mono text-xs" />
-              </div>
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <Label htmlFor="catalogo-destino">Catálogo destino (JSON) *</Label>
-                <Textarea
-                  id="catalogo-destino"
-                  value={catalogoDestinoText}
-                  onChange={(e) => setCatalogoDestinoText(e.target.value)}
-                  rows={8}
-                  required className="font-mono text-xs" />
-              </div>
-            </div>
-            {clasificarError && (
-              <p role="alert" className="text-destructive text-sm">
-                {clasificarError}
-              </p>
-            )}
-          </form>
-        </FormDialog>
-      )}
+          ) : undefined
+        }
+      />
 
-      {clasificarResultado && (
-        <Callout tone="success">
-          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-          {clasificarResultado}
-        </Callout>
-      )}
+      <FormDialog
+        open={showClasificarForm}
+        onOpenChange={(abierto) => {
+          if (!abierto && !clasificando) setShowClasificarForm(false);
+        }}
+        titulo="Clasificar catálogo"
+        subtitulo="El catálogo del cliente vive en su propia base, fuera de este panel -- pega aquí el JSON ya exportado (arreglo de cuentas: id, codigo, nombre y opcionalmente nivel/naturaleza/tipoAgregado/cuentaPadreCodigo)."
+        onGuardar={() => void handleClasificar()}
+        guardando={clasificando}
+        textoBotonGuardar="Clasificar"
+        bloquearCierre={clasificando}
+      >
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-3 md:grid-cols-2">
+            <FormField label="Catálogo origen (JSON)" required className="min-w-0">
+              <Textarea id="catalogo-origen" value={catalogoOrigenText} onChange={(e) => setCatalogoOrigenText(e.target.value)} rows={8} className="font-mono text-xs" />
+            </FormField>
+            <FormField label="Catálogo destino (JSON)" required className="min-w-0">
+              <Textarea id="catalogo-destino" value={catalogoDestinoText} onChange={(e) => setCatalogoDestinoText(e.target.value)} rows={8} className="font-mono text-xs" />
+            </FormField>
+          </div>
+          {clasificarError && <Callout tone="danger">{clasificarError}</Callout>}
+        </div>
+      </FormDialog>
+
+      {clasificarResultado && <Callout tone="success">{clasificarResultado}</Callout>}
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <Label htmlFor="migracion-filtro-estado" className="text-sm text-foreground">
-            Filtrar por estado
-          </Label>
-          <NativeSelect
-            id="migracion-filtro-estado"
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value as EstadoMapeoMigracion | "")}
-            size="sm"
-            wrapperClassName="w-auto min-w-44"
-          >
-            {ESTADO_FILTROS.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
-      </div>
+      <FormField label="Filtrar por estado" className="w-fit">
+        <NativeSelect id="migracion-filtro-estado" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value as EstadoMapeoMigracion | "")} wrapperClassName="w-auto min-w-44">
+          {ESTADO_FILTROS.map((f) => (
+            <option key={f.value} value={f.value}>
+              {f.label}
+            </option>
+          ))}
+        </NativeSelect>
+      </FormField>
 
       {loading && !mapeos && <EstadoCargando etiqueta="Cargando mapeos de migración…" />}
 
@@ -393,58 +371,30 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
                         <TableCell>
                           {esPendiente ? (
                             <div className="flex min-w-64 flex-col gap-1.5">
-                              <Label htmlFor={`migracion-destino-${m.id}`} className="sr-only">
-                                Cuenta destino corregida
-                              </Label>
-                              <Input
-                                id={`migracion-destino-${m.id}`}
-                                type="text"
-                                placeholder="Cuenta destino corregida (solo para editar)"
-                                value={draft.destinoCuentaId}
-                                onChange={(e) => setDraft(m.id, { destinoCuentaId: e.target.value })}
-                                className="h-9 text-xs"
-                              />
-                              <Label htmlFor={`migracion-nota-${m.id}`} className="sr-only">
-                                Nota del motivo
-                              </Label>
-                              <Input
-                                id={`migracion-nota-${m.id}`}
-                                type="text"
-                                placeholder="Nota (motivo, obligatoria para rechazar/editar)"
-                                value={draft.nota}
-                                onChange={(e) => setDraft(m.id, { nota: e.target.value })}
-                                className="h-9 text-xs"
-                              />
-                              <Label htmlFor={`migracion-estrategia-${m.id}`} className="sr-only">
-                                Estrategia de conciliación
-                              </Label>
-                              <Input
-                                id={`migracion-estrategia-${m.id}`}
-                                type="text"
-                                placeholder="Estrategia de conciliación (solo si hay N:1)"
-                                value={draft.estrategiaConciliacionSaldos}
-                                onChange={(e) => setDraft(m.id, { estrategiaConciliacionSaldos: e.target.value })}
-                                className="h-9 text-xs"
-                              />
+                              <FormField label="Cuenta destino corregida (solo para editar)">
+                                <Input id={`migracion-destino-${m.id}`} type="text" placeholder="Id de la cuenta destino" value={draft.destinoCuentaId} onChange={(e) => setDraft(m.id, { destinoCuentaId: e.target.value })} />
+                              </FormField>
+                              <FormField label="Nota del motivo (obligatoria para rechazar o editar)">
+                                <Input id={`migracion-nota-${m.id}`} type="text" placeholder="Motivo" value={draft.nota} onChange={(e) => setDraft(m.id, { nota: e.target.value })} />
+                              </FormField>
+                              <FormField label="Estrategia de conciliación (solo si hay N:1)">
+                                <Input id={`migracion-estrategia-${m.id}`} type="text" placeholder="Estrategia" value={draft.estrategiaConciliacionSaldos} onChange={(e) => setDraft(m.id, { estrategiaConciliacionSaldos: e.target.value })} />
+                              </FormField>
                               <div className="flex flex-wrap gap-1.5">
-                                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleAprobar(m)} disabled={rowState?.loading}>
+                                <Button type="button" variant="outline" onClick={() => void handleAprobar(m)} disabled={rowState?.loading}>
                                   <Check />
-                                  {rowState?.loading ? "…" : "Aprobar"}
+                                  Aprobar
                                 </Button>
-                                <Button type="button" variant="outline" size="sm" className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive" onClick={() => void handleRechazar(m)} disabled={rowState?.loading}>
+                                <Button type="button" variant="destructive" onClick={() => void handleRechazar(m)} disabled={rowState?.loading}>
                                   <X />
                                   Rechazar
                                 </Button>
-                                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEditar(m)} disabled={rowState?.loading}>
+                                <Button type="button" variant="outline" onClick={() => void handleEditar(m)} disabled={rowState?.loading}>
                                   <Pencil />
                                   Editar
                                 </Button>
                               </div>
-                              {rowState?.message && (
-                                <span className={`text-xs ${rowState.isError ? "text-destructive" : "text-success"}`} role={rowState.isError ? "alert" : undefined}>
-                                  {rowState.message}
-                                </span>
-                              )}
+                              {rowState?.message && <Callout tone={rowState.isError ? "danger" : "success"}>{rowState.message}</Callout>}
                             </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">Ya decidido.</span>
@@ -459,6 +409,7 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
           </CardContent>
         </Card>
       )}
+      {dialogo}
     </PageContainer>
   );
 }

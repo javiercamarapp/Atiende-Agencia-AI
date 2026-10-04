@@ -128,7 +128,7 @@ describe("CierreMensualPage (despachos)", () => {
     changeValue(document.body.querySelector("#cierre-mes") as HTMLInputElement, "9");
     current = [{ ...PERIODO, id: "per-nuevo", month: 9 }];
 
-    const form = document.body.querySelector('[role="dialog"] form')!;
+    const form = document.body.querySelector<HTMLFormElement>('[role="dialog"] form')!;
     await submitForm(form);
     await esperarCarga();
 
@@ -150,7 +150,7 @@ describe("CierreMensualPage (despachos)", () => {
     changeValue(document.body.querySelector("#cierre-mes") as HTMLInputElement, "13");
 
     const callsAntes = fetchMock.mock.calls.length;
-    await submitForm(document.body.querySelector('[role="dialog"] form')!);
+    await submitForm(document.body.querySelector<HTMLFormElement>('[role="dialog"] form')!);
 
     expect(document.body.textContent).toContain("Mes inválido (1-12).");
     expect(fetchMock.mock.calls.length).toBe(callsAntes);
