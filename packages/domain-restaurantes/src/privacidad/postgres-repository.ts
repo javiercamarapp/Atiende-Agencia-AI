@@ -7,6 +7,7 @@
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { PRIVACY_CONFIG_POR_DEFECTO } from "./aviso.ts";
+import { seudonimosDeTelefono } from "./telefono-hash.ts";
 import type { PrivacyConfig, PrivacyConfigEntrada } from "./aviso.ts";
 import type {
   ConfirmDataRightsOutcome,
@@ -202,6 +203,52 @@ export class PostgresPrivacidadRepository implements PrivacidadRepository {
   }
 
   async purgeExpiredPrivacyData(limit: number): Promise<PurgeOutcome> {
+    // Camino de la migracion 041: la purga cubre mas tablas y recibe los seudonimos de voz de los titulares con solicitud ARCO
+    // abierta (la base no conoce la llave del servidor). Contra una base con la 030 pero sin la 041 (42883) cae al camino anterior.
+    return runWithSavepointFallback<PurgeOutcome>({
+      session: this.db,
+      savepointName: "sp_privacy_purge_041",
+      primary: async () => {
+        // Tope de telefonos: la base ademas calcula por si misma los sha256 planos de TODAS las solicitudes abiertas.
+        const { rows: abiertas } = await this.db.query<{ out_customer_phone: string }>(`select out_customer_phone from restaurantes.system_list_open_arco_phones($1);`, [2000]);
+        const protegidos = [...new Set(abiertas.flatMap((r) => seudonimosDeTelefono(r.out_customer_phone)))];
+        const { rows } = await this.db.query<{
+          out_conversations_cleared: number;
+          out_voice_turns_deleted: number;
+          out_voice_calls_anonymized: number;
+          out_callbacks_anonymized: number;
+          out_outbox_scrubbed: number;
+          out_notes_deleted: number;
+          out_audit_deleted: number;
+          out_pendiente: boolean;
+        }>(
+          `select out_conversations_cleared, out_voice_turns_deleted, out_voice_calls_anonymized, out_callbacks_anonymized, out_outbox_scrubbed,
+                  out_notes_deleted, out_audit_deleted, out_pendiente
+             from restaurantes.system_purge_expired_privacy_data($1, $2::text[]);`,
+          [limit, protegidos],
+        );
+        const row = rows[0];
+        return {
+          disponible: true,
+          conversationsCleared: Number(row?.out_conversations_cleared ?? 0),
+          voiceTurnsDeleted: Number(row?.out_voice_turns_deleted ?? 0),
+          voiceCallsAnonymized: Number(row?.out_voice_calls_anonymized ?? 0),
+          callbacksAnonymized: Number(row?.out_callbacks_anonymized ?? 0),
+          outboxScrubbed: Number(row?.out_outbox_scrubbed ?? 0),
+          notesDeleted: Number(row?.out_notes_deleted ?? 0),
+          auditDeleted: Number(row?.out_audit_deleted ?? 0),
+          pendiente: row?.out_pendiente === true,
+        };
+      },
+      isRecoverable: (err) =>
+        isMigrationPendingError(err, "restaurantes.system_purge_expired_privacy_data") || isMigrationPendingError(err, "restaurantes.system_list_open_arco_phones"),
+      fallback: () => this.purgeExpiredPrivacyDataLegacy(limit),
+    });
+  }
+
+  /** Camino de la migracion 030 (sin la 041): solo conversaciones de WhatsApp y llamadas de voz. */
+  private async purgeExpiredPrivacyDataLegacy(limit: number): Promise<PurgeOutcome> {
+    const sinNuevos = { callbacksAnonymized: 0, outboxScrubbed: 0, notesDeleted: 0, auditDeleted: 0 };
     return runWithSavepointFallback<PurgeOutcome>({
       session: this.db,
       savepointName: "sp_privacy_purge",
@@ -211,17 +258,21 @@ export class PostgresPrivacidadRepository implements PrivacidadRepository {
           [limit],
         );
         const row = rows[0];
+        const conversationsCleared = Number(row?.out_conversations_cleared ?? 0);
+        const voiceCallsAnonymized = Number(row?.out_voice_calls_anonymized ?? 0);
         return {
           disponible: true,
-          conversationsCleared: Number(row?.out_conversations_cleared ?? 0),
+          conversationsCleared,
           voiceTurnsDeleted: Number(row?.out_voice_turns_deleted ?? 0),
-          voiceCallsAnonymized: Number(row?.out_voice_calls_anonymized ?? 0),
+          voiceCallsAnonymized,
+          ...sinNuevos,
+          pendiente: conversationsCleared >= limit || voiceCallsAnonymized >= limit,
         };
       },
       isRecoverable: (err) => isMigrationPendingError(err, "restaurantes.system_purge_expired_privacy_data"),
       fallback: (err) => {
         advertirNoDisponible("purgeExpiredPrivacyData", err);
-        return Promise.resolve({ disponible: false, conversationsCleared: 0, voiceTurnsDeleted: 0, voiceCallsAnonymized: 0 });
+        return Promise.resolve({ disponible: false, conversationsCleared: 0, voiceTurnsDeleted: 0, voiceCallsAnonymized: 0, ...sinNuevos, pendiente: false });
       },
     });
   }
@@ -307,6 +358,54 @@ export class PostgresPrivacidadRepository implements PrivacidadRepository {
   }
 
   async updateDataRightsRequestStatus(organizationId: string, requestId: string, status: DataRightStaffTargetStatus, note: string | null): Promise<UpdateDataRightsStatusResult> {
+    // Una cancelacion que pasa a `bloqueada`/`resuelta` EJECUTA el bloqueo o la supresion de los datos del titular en la misma
+    // transaccion (migracion 041, QA R1 seguridad-06). Los demas casos siguen el camino de la 030.
+    if (status !== "bloqueada" && status !== "resuelta") return this.updateDataRightsRequestStatusLegacy(organizationId, requestId, status, note);
+    let esCancelacion = false;
+    return runWithSavepointFallback<UpdateDataRightsStatusResult>({
+      session: this.db,
+      savepointName: "sp_privacy_arco_update_cancelacion",
+      primary: async () => {
+        // Lectura del derecho y del telefono (policy de owner/admin) para calcular los seudonimos de voz del titular.
+        const { rows: req } = await this.db.query<{ right_type: DataRightType; customer_phone: string }>(
+          `select right_type, customer_phone from restaurantes.data_rights_requests where id = $1 and organization_id = $2;`,
+          [requestId, organizationId],
+        );
+        esCancelacion = req[0]?.right_type === "cancelacion";
+        const hashes = esCancelacion && req[0] ? seudonimosDeTelefono(req[0].customer_phone) : [];
+        const { rows } = await this.db.query<{ out_id: string; out_status: DataRightStatus }>(
+          `select out_id, out_status from restaurantes.update_data_rights_request_status($1, $2, $3, $4, $5::text[]);`,
+          [organizationId, requestId, status, note, hashes],
+        );
+        const row = rows[0];
+        if (!row) return { outcome: "not_found" };
+        return { outcome: "updated", id: row.out_id, status: row.out_status };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "restaurantes.update_data_rights_request_status") || ["P0002", "55000", "22023", "42501"].includes(sqlState(err) ?? ""),
+      fallback: (err) => {
+        switch (sqlState(err)) {
+          case "P0002":
+            return Promise.resolve({ outcome: "not_found" });
+          case "55000":
+            return Promise.resolve({ outcome: "invalid_transition" });
+          case "22023":
+            return Promise.resolve({ outcome: "invalid_input" });
+          case "42501":
+            return Promise.resolve({ outcome: "forbidden" });
+          default:
+            // Falta la 041 (o la 030). Una cancelacion NO se cierra sin ejecutar el bloqueo/supresion: seria prometer al titular
+            // algo que no ocurre. Los demas derechos no ejecutan nada y siguen por el camino de la 030.
+            if (esCancelacion) {
+              advertirNoDisponible("updateDataRightsRequestStatus", err);
+              return Promise.resolve({ outcome: "unavailable" });
+            }
+            return this.updateDataRightsRequestStatusLegacy(organizationId, requestId, status, note);
+        }
+      },
+    });
+  }
+
+  private async updateDataRightsRequestStatusLegacy(organizationId: string, requestId: string, status: DataRightStaffTargetStatus, note: string | null): Promise<UpdateDataRightsStatusResult> {
     return runWithSavepointFallback<UpdateDataRightsStatusResult>({
       session: this.db,
       savepointName: "sp_privacy_arco_update",

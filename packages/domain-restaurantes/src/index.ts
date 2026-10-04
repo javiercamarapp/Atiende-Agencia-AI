@@ -168,7 +168,7 @@ export type { NearestBranchResult } from "./nearest-branch.ts";
 export { assignBranch, rankBranchesByKm, FUERA_DE_ZONA_MENSAJE } from "./branch-assignment.ts";
 export type { AssignBranchInput, BranchAssignment, BranchAssignmentVia, RankedBranch } from "./branch-assignment.ts";
 
-export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
+export { actorHash, legacyActorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
 export { extractMetaInboundMessages, extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";

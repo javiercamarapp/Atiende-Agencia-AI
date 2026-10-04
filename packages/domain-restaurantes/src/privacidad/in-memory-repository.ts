@@ -146,11 +146,16 @@ export class InMemoryPrivacidadRepository implements PrivacidadRepository {
     return { outcome: "set", consent };
   }
 
-  purgeResult: PurgeOutcome = { disponible: true, conversationsCleared: 0, voiceTurnsDeleted: 0, voiceCallsAnonymized: 0 };
+  purgeResult: PurgeOutcome = { disponible: true, conversationsCleared: 0, voiceTurnsDeleted: 0, voiceCallsAnonymized: 0, callbacksAnonymized: 0, outboxScrubbed: 0, notesDeleted: 0, auditDeleted: 0, pendiente: false };
   async purgeExpiredPrivacyData(_limit: number): Promise<PurgeOutcome> {
-    if (!this.migrada) return { disponible: false, conversationsCleared: 0, voiceTurnsDeleted: 0, voiceCallsAnonymized: 0 };
+    if (!this.migrada) return { disponible: false, conversationsCleared: 0, voiceTurnsDeleted: 0, voiceCallsAnonymized: 0, callbacksAnonymized: 0, outboxScrubbed: 0, notesDeleted: 0, auditDeleted: 0, pendiente: false };
     return this.purgeResult;
   }
+
+  /** Cancelaciones ARCO cuya ejecucion real (bloqueo o supresion de datos) se pidio al llegar a `bloqueada`/`resuelta`. */
+  readonly cancelacionesEjecutadas: { readonly requestId: string; readonly modo: "bloqueo" | "supresion" }[] = [];
+  /** `false` simula una base con la 030 pero SIN la 041: la cancelacion no se puede ejecutar. */
+  migrada041 = true;
 
   async listDataRightsRequests(organizationId: string, filtro: DataRightsRequestsFiltro, paginacion: DataRightsPaginacion): Promise<DataRightsRequestsPage> {
     if (!this.migrada) return { disponible: false, items: [], total: 0, nextOffset: null };
@@ -180,6 +185,9 @@ export class InMemoryPrivacidadRepository implements PrivacidadRepository {
       (from === "en_proceso" && ["bloqueada", "resuelta", "rechazada"].includes(status)) ||
       (from === "bloqueada" && ["resuelta", "rechazada"].includes(status));
     if (!ok || (status === "bloqueada" && req.rightType !== "cancelacion")) return { outcome: "invalid_transition" };
+    const ejecutaCancelacion = req.rightType === "cancelacion" && (status === "bloqueada" || status === "resuelta");
+    if (ejecutaCancelacion && !this.migrada041) return { outcome: "unavailable" };
+    if (ejecutaCancelacion) this.cancelacionesEjecutadas.push({ requestId: req.id, modo: status === "resuelta" ? "supresion" : "bloqueo" });
     const terminal = status === "resuelta" || status === "rechazada";
     const next = this.replace(req.id, {
       status,

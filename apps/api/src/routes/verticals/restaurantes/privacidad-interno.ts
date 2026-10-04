@@ -20,9 +20,9 @@
 // Cada operacion corre en una sesion de sistema (`userId: null`); las funciones SQL exigen
 // `auth.uid() is null`. Contra una base sin migrar todo responde "no disponible" sin abortar la
 // transaccion (SAVEPOINT en el repositorio) ni lanzar 500.
-import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import {
+  actorHash,
   VOICE_CONSENT_DENIED_REPLY,
   VOICE_CONSENT_GRANTED_REPLY,
   VOICE_CONSENT_REPEAT_REPLY,
@@ -70,7 +70,12 @@ export function restaurantesPrivacidadInternoRoutes(deps: AppDeps): Hono {
       let conversaciones = 0;
       let turnosVoz = 0;
       let llamadasAnonimizadas = 0;
+      let contactosAnonimizados = 0;
+      let colaVaciada = 0;
+      let notasBorradas = 0;
+      let bitacoraVozBorrada = 0;
       let lotes = 0;
+      let pendiente = false;
       // Una transaccion POR lote: un lote con datos raros no revierte los ya purgados.
       for (let i = 0; i < PURGE_MAX_BATCHES; i++) {
         const outcome = await deps.engine.withAppSession({ userId: null }, (db) => repoDe(db).purgeExpiredPrivacyData(PURGE_BATCH));
@@ -82,10 +87,29 @@ export function restaurantesPrivacidadInternoRoutes(deps: AppDeps): Hono {
         conversaciones += outcome.conversationsCleared;
         turnosVoz += outcome.voiceTurnsDeleted;
         llamadasAnonimizadas += outcome.voiceCallsAnonymized;
-        // El lote se acota por tabla: si ninguna lleno su tope, ya no queda nada vencido.
-        if (outcome.conversationsCleared < PURGE_BATCH && outcome.voiceCallsAnonymized < PURGE_BATCH) break;
+        contactosAnonimizados += outcome.callbacksAnonymized;
+        colaVaciada += outcome.outboxScrubbed;
+        notasBorradas += outcome.notesDeleted;
+        bitacoraVozBorrada += outcome.auditDeleted;
+        // QA R1 seguridad-14: el repositorio dice si algun lote se lleno (la base cuenta las llamadas sin caller_hash, que el
+        // contador de llamadas anonimizadas no suma). Se sigue mientras quede trabajo vencido, y se avisa si el tope de lotes
+        // se agota antes para que el siguiente barrido diario lo retome.
+        pendiente = outcome.pendiente;
+        if (!pendiente) break;
       }
-      return c.json({ ok: true, disponible, lotes, conversacionesVaciadas: conversaciones, turnosDeVozBorrados: turnosVoz, llamadasAnonimizadas });
+      return c.json({
+        ok: true,
+        disponible,
+        lotes,
+        pendiente,
+        conversacionesVaciadas: conversaciones,
+        turnosDeVozBorrados: turnosVoz,
+        llamadasAnonimizadas,
+        solicitudesDeContactoAnonimizadas: contactosAnonimizados,
+        colaDeMensajesVaciada: colaVaciada,
+        notasBorradas,
+        bitacoraDeVozBorrada: bitacoraVozBorrada,
+      });
     })();
   });
 
@@ -100,7 +124,7 @@ export function restaurantesPrivacidadInternoRoutes(deps: AppDeps): Hono {
       const config = await repo.getPrivacyConfig(organizationId);
       let avisoEntregadoAhora: boolean | null = null;
       if (callerPhone) {
-        const phoneHash = createHash("sha256").update(callerPhone.replace(/\D/g, "")).digest("hex");
+        const phoneHash = actorHash(callerPhone.replace(/\D/g, ""));
         avisoEntregadoAhora = await repo.claimPrivacyNotice(organizationId, phoneHash, "voice", config.noticeVersion);
       }
       return c.json({
