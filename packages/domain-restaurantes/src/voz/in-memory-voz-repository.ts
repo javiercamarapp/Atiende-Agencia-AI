@@ -66,7 +66,7 @@ export class InMemoryVozRepository implements VozRepository {
   async upsertConfig(organizationId: string, propertyId: string, config: VozConfigEntrada): Promise<VozConfig> {
     this.exigirMigrada();
     if (this.propiedades.get(propertyId) !== organizationId) throw new VozRechazadaError();
-    const guardada = { ...config, configurada: true, organizationId };
+    const guardada = { ...config, mensajeInicialInterrumpible: config.mensajeInicialInterrumpible !== false, configurada: true, organizationId };
     this.configs.set(propertyId, guardada);
     const { organizationId: _o, ...out } = guardada;
     return out;
