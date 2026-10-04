@@ -23,6 +23,8 @@ export interface EntradaComportamientoVoz {
   readonly salsasTexto?: string | null;
   readonly promosTexto?: string | null;
   readonly motivosDesactivados?: readonly string[];
+  /** Horario para tomar pedidos generado del horario cargado (ver `whatsapp/horario-prompt.ts`); sin valor, el del codigo. */
+  readonly horarioPedidosTexto?: string | null;
 }
 
 /** Texto FIJO que se siembra en `branch_voice_config.comportamiento`. No sabe la hora ni la sucursal de entrada (es el mismo
@@ -42,6 +44,7 @@ export function comportamientoVozPm(e: EntradaComportamientoVoz): string {
       salsasTexto: e.salsasTexto ?? null,
       promosTexto: e.promosTexto ?? null,
       motivosDesactivados: e.motivosDesactivados ?? [],
+      horarioPedidosTexto: e.horarioPedidosTexto ?? null,
     }) + APENDICE_VOZ;
   if (texto.length > COMPORTAMIENTO_VOZ_MAX) {
     throw new RangeError(`El comportamiento de voz mide ${texto.length} caracteres; el maximo de branch_voice_config.comportamiento es ${COMPORTAMIENTO_VOZ_MAX} (migracion 025).`);

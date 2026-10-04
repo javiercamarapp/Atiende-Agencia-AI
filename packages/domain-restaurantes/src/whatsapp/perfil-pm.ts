@@ -38,6 +38,9 @@ export interface PerfilPmContexto {
   readonly motivosDesactivados?: readonly string[];
   /** Umbral de pedido grande en texto corto (editable por organizacion); sin valor, `PM_PEDIDO_GRANDE_POR_OMISION`. */
   readonly pedidoGrandeTexto?: string | null;
+  /** Horario para tomar pedidos GENERADO del horario real de cada sucursal (`branch_policy.horario` + puentes), ver
+   * `whatsapp/horario-prompt.ts`. Sin valor (o vacio) se usa `PM_HORARIO_PRUDENTE`, el valor por omision de antes. */
+  readonly horarioPedidosTexto?: string | null;
 }
 
 // El saludo por hora es una regla compartida de la voz: vive en @atiende/voice-core y aqui se conserva la ruta historica.
@@ -144,7 +147,7 @@ const PM_SUCURSALES_MAPA = [
 
 /** Horario PRUDENTE por sucursal (cerebro 2.1, P1): solo las horas en que el dueno y la web coinciden. Manda sobre la franja
  * 12:00-01:00 que la plataforma trae cargada para todas. */
-const PM_HORARIO_PRUDENTE = [
+export const PM_HORARIO_PRUDENTE = [
   "Francisco de Montejo: lunes a viernes de 6 pm a 12 am; sábado y domingo de 12 pm a 12 am",
   "Prolongación Montejo: lunes a jueves de 6 pm a 1 am; viernes a domingo de 12 pm a 1 am",
   "Pensiones: todos los días de 6 pm a 12 am",
@@ -152,6 +155,12 @@ const PM_HORARIO_PRUDENTE = [
   "Galerías: no toma pedidos por este medio",
   "Playa (Chicxulub): solo en Semana Santa y julio-agosto, de 6 pm a 1 am, solo para recoger; cerrada el resto del año",
 ] as const;
+
+/** Linea de "HORARIO PARA TOMAR PEDIDOS": el horario real del negocio cuando se conoce; si no, el valor por omision del codigo. */
+function horarioPedidosLinea(ctx: PerfilPmContexto): string {
+  const generado = ctx.horarioPedidosTexto?.trim();
+  return generado ? `${generado}.` : `${PM_HORARIO_PRUDENTE.join("; ")}.`;
+}
 
 export function buildPmSystemPrompt(ctx: PerfilPmContexto): string {
   const voz = ctx.canal === "voz";
@@ -261,7 +270,7 @@ ${w(`- El aviso de privacidad (y que habla con un asistente virtual) lo antepone
 
   const datos = `# DATOS DEL NEGOCIO (no afirme nada que no esté aquí)
 - Sucursales (el horario y el precio de cada una los da la herramienta de la sucursal, consultar_sucursal y buscar_producto): ${PM_SUCURSALES_MAPA.join("; ")}.
-- HORARIO PARA TOMAR PEDIDOS (prudente, H16): ${PM_HORARIO_PRUDENTE.join("; ")}.
+- HORARIO PARA TOMAR PEDIDOS (H16${ctx.horarioPedidosTexto?.trim() ? ", el que tiene cargado el negocio" : ", prudente"}): ${horarioPedidosLinea(ctx)}
 - Menú grande (con comida regional: papadzules, codzitos, sopa de lima, cochinita) en Prolongación Montejo, García Lavín y Altabrisa; menú chico (sin regional) en las demás: lo que buscar_producto no devuelve en una sucursal no se vende ahí. Si piden regional en una sucursal chica: para recoger ofrezca una grande; a domicilio ofrezca otro platillo (las zonas son fijas).
 - Presentaciones: el taco al pastor, de rajas y de champiñón se vende por pieza. Gringas y mestizas, órdenes de 2. Alambres, tacos suizos y papadzules, órdenes de 5. Codzitos y cochinita, órdenes de 4. Bistec, chorizo, pechuga, chuleta, costilla, arrachera y poc-chuc, órdenes de 3. Media orden solo de nachos y frijoles charros. Si dicen "una orden de pastor", pregunte cuántos tacos. Cortesía de totopos y salsa mexicana: solo en comedor, no en pedidos por WhatsApp; ofrezca el frijol con tostadas. Quesadillas de maíz o harina, en órdenes de 3. Carnes por peso (pastor, bistec, chuleta, pechuga, poc-chuc, arrachera, costilla): 1/4, 1/2, 3/4, 1, 1.5 y 2 kg al precio proporcional del kilo; el precio lo da buscar_producto.
 - Nombres: "un agua" sin más es ambiguo (agua fresca, purificada o mineral): pregunte cuál. "Chela" o "cheve" es cerveza: pregunte cuál. "Bitek" es bistec. "Gringa" o "suizo" sin carne: pregunte la carne.
@@ -360,7 +369,7 @@ Avise al cliente que consulta al gerente; llame escalar_a_humano una vez (resume
 
 # DATOS DEL NEGOCIO (no afirme nada que no esté aquí)
 - Sucursales (horario y precio: por herramienta): ${PM_SUCURSALES_MAPA.join("; ")}.
-- HORARIO PARA TOMAR PEDIDOS: ${PM_HORARIO_PRUDENTE.join("; ")}.
+- HORARIO PARA TOMAR PEDIDOS: ${horarioPedidosLinea(ctx)}
 - Regional (papadzules, codzitos, sopa de lima, cochinita): solo Prolongación Montejo, García Lavín y Altabrisa.
 - Por pieza: pastor, rajas y champiñón; lo demás va en órdenes (bistec, quesadillas y otras carnes de 3, gringas y mestizas de 2, codzitos y cochinita de 4, alambres, suizos y papadzules de 5). Carnes por peso: 1/4 a 2 kg, precio proporcional. "Frijol": ¿tostadas o charros? "Una orden de pastor": pregunte cuántos. "Un agua" o "chela": pregunte cuál. Precio viejo: "El precio vigente es de $X"; no iguale.
 - Pago: efectivo y tarjeta. Las salsas de H11 van sin costo; la doble porción cuesta extra. Alcohol: solo en sucursal.
