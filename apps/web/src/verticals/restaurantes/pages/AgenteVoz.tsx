@@ -28,6 +28,7 @@ import { formatoCostoUsd, formatoDuracion } from "../voz/formato-voz.ts";
 import { PestanaConversaciones } from "../voz/PestanaConversaciones.tsx";
 import { PestanaIndicadores } from "../voz/PestanaIndicadores.tsx";
 import { SelectorVoz } from "../voz/SelectorVoz.tsx";
+import { ConocimientoNegocio } from "../components/ConocimientoNegocio.tsx";
 import type { MuestraAudio } from "../voz/SelectorVoz.tsx";
 import { useSesionVoz } from "../../../lib/voz/useSesionVoz.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -69,7 +70,7 @@ export interface AgenteVozPageProps extends RestaurantesShellContext {
   readonly entornoVoz?: EntornoVoz;
 }
 
-export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entornoVoz }: AgenteVozPageProps) {
+export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, crearAudio, entornoVoz }: AgenteVozPageProps) {
   const [pestana, setPestana] = useState<PestanaId>("resumen");
   const [config, setConfig] = useState<Carga<VozConfig | null>>({ estado: "cargando" });
   const [conversaciones, setConversaciones] = useState<Carga<readonly ConversacionVoz[]>>({ estado: "cargando" });
@@ -212,11 +213,15 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
             </div>
           ) : null}
 
-          {pestana === "conocimiento" && config.estado !== "cargando" ? (
+          {pestana === "conocimiento" ? (
             <div className="space-y-4">
-              <p role="note" data-testid="aviso-conocimiento" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                Las notas de conocimiento libres todavía no se guardan en el servicio de voz. Mientras tanto, escribe horarios, políticas y preguntas frecuentes en la pestaña Comportamiento: el agente las recibe como parte de sus instrucciones.
-              </p>
+              {role === "owner" || role === "admin" ? (
+                <ConocimientoNegocio apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} canal="voz" />
+              ) : (
+                <p role="note" data-testid="aviso-conocimiento" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  El conocimiento del negocio (políticas, preguntas frecuentes y avisos) lo administran el dueño o un administrador.
+                </p>
+              )}
               <div>
                 <p className="text-sm font-medium text-foreground mb-1.5 flex items-center gap-1.5">
                   <BookOpen className="h-4 w-4" strokeWidth={1.75} />

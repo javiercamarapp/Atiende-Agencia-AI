@@ -55,6 +55,8 @@ interface Rutas {
   conversaciones?: Respuesta;
   detalle?: Respuesta;
   put?: (body: Record<string, unknown>) => Respuesta;
+  conocimiento?: Respuesta;
+  conocimientoPost?: (body: Record<string, unknown>) => Respuesta;
 }
 
 function res(r: Respuesta): Response {
@@ -72,6 +74,11 @@ function stub(rutas: Rutas) {
     }
     if (url.startsWith("https://api.test/v1/restaurantes/prop-1/admin/voz/conversaciones/")) return res(rutas.detalle ?? { status: 200, body: DETALLE_C1 });
     if (url.startsWith("https://api.test/v1/restaurantes/prop-1/admin/voz/conversaciones")) return res(rutas.conversaciones ?? { status: 200, body: CONVERSACIONES });
+    if (url === "https://api.test/v1/restaurantes/prop-1/admin/sucursales") return res({ status: 200, body: { branches: [{ propertyId: "prop-1", name: "Prolongación Montejo", slug: "montejo", status: "active", phone: null, address: null, lat: null, lng: null }] } });
+    if (url === "https://api.test/v1/restaurantes/prop-1/admin/conocimiento") {
+      if (method === "POST") return res(rutas.conocimientoPost ? rutas.conocimientoPost(JSON.parse(init!.body as string)) : { status: 500 });
+      return res(rutas.conocimiento ?? { status: 200, body: { disponible: true, topeCaracteres: 6000, entradas: [] } });
+    }
     throw new Error(`fetch inesperado: ${method} ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -246,11 +253,48 @@ describe("Comportamiento, Conocimiento y Mensaje inicial", () => {
     expect(JSON.parse((put[1] as RequestInit).body as string)).toEqual({ habilitado: false, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "Sé breve.", mensajeInicial: CONFIG.mensajeInicial });
   });
 
-  it("Conocimiento dice honestamente que las notas libres aún no se guardan", async () => {
-    await pintar();
+  const ENTRADA = { id: "k1", sucursalId: null, reemplazaId: null, titulo: "Estacionamiento", texto: "Hay estacionamiento gratuito para clientes.", tipo: "faq", prioridad: 50, vigenteDesde: null, vigenteHasta: null, activo: true, estado: "publicado", origen: "manual", version: 1, actualizadoEn: "2026-10-04T12:00:00Z" };
+
+  it("Conocimiento (owner): lista las entradas reales de la API, con su uso del tope y sin el aviso viejo de 'no se guardan'", async () => {
+    await pintar({ conocimiento: { status: 200, body: { disponible: true, topeCaracteres: 6000, entradas: [ENTRADA, { ...ENTRADA, id: "k2", titulo: "Borrador de importar", estado: "borrador", origen: "importado" }] } } });
     await irA("Conocimiento");
-    expect(rendered!.container.querySelector('[data-testid="aviso-conocimiento"]')!.textContent).toContain("todavía no se guardan");
-    expect(rendered!.container.querySelector("#voz-conocimiento")).toBeNull();
+    expect(rendered!.container.querySelector('[data-testid="aviso-conocimiento"]')).toBeNull();
+    expect(rendered!.container.querySelector('[data-entrada="k1"]')!.textContent).toContain("Hay estacionamiento gratuito");
+    expect(rendered!.container.querySelector('[data-entrada="k2"]')!.textContent).toContain("Borrador por aprobar");
+    expect(rendered!.container.querySelector('[data-testid="conocimiento-uso"]')!.textContent).toContain("de 6,000");
+    expect(texto()).toContain("Datos que consulta en vivo");
+  });
+
+  it("Conocimiento: crea una entrada con el cuerpo exacto de la API y recarga la lista; el rechazo del servidor (precio) se muestra tal cual", async () => {
+    await pintar({ conocimientoPost: () => ({ status: 400, body: { error: "validation_error", message: "No incluya precios: el agente los toma siempre del menú real." } }) });
+    await irA("Conocimiento");
+    click(boton("Agregar entrada")!);
+    await settle();
+    const form = rendered!.container.querySelector('section[aria-label="Nueva entrada"]')!;
+    changeValue(form.querySelector<HTMLInputElement>('input[placeholder="Estacionamiento"]')!, "Pastor");
+    changeValue(form.querySelector<HTMLTextAreaElement>("textarea")!, "El pastor cuesta $10.");
+    click(boton("Guardar entrada")!);
+    await settle();
+    const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST")!;
+    expect(JSON.parse((post[1] as RequestInit).body as string)).toEqual({ titulo: "Pastor", texto: "El pastor cuesta $10.", tipo: "faq", prioridad: 50, vigenteDesde: null, vigenteHasta: null, reemplazaId: null, sucursalId: null });
+    expect(rendered!.container.querySelector('[role="alert"]')!.textContent).toContain("No incluya precios");
+  });
+
+  it("Conocimiento: base sin migrar (disponible: false) dice 'No disponible aún' y no ofrece guardar", async () => {
+    await pintar({ conocimiento: { status: 200, body: { disponible: false, topeCaracteres: 6000, entradas: [] } } });
+    await irA("Conocimiento");
+    expect(rendered!.container.querySelector('[data-testid="conocimiento-no-disponible"]')!.textContent).toContain("migración 053");
+    expect(boton("Agregar entrada")).toBeUndefined();
+  });
+
+  it("Conocimiento: quien no es owner/admin no ve el editor (el servidor lo rechazaría) y el aviso lo explica", async () => {
+    stub({});
+    rendered = renderComponent(<AgenteVozPage {...CTX} role="staff" />);
+    await settle();
+    await irA("Conocimiento");
+    expect(rendered!.container.querySelector('[data-testid="conocimiento-negocio"]')).toBeNull();
+    expect(rendered!.container.querySelector('[data-testid="aviso-conocimiento"]')!.textContent).toContain("dueño o un administrador");
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/admin/conocimiento"))).toBe(false);
   });
 
   it("sin configuración guardada no se puede guardar hasta elegir una voz", async () => {
