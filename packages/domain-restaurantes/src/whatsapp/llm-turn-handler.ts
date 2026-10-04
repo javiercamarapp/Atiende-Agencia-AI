@@ -31,6 +31,7 @@ import type { ConversationMessage, RestaurantesRepository } from "../repository.
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
+import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS } from "./inbound.ts";
 import { latestSharedLocation } from "./location.ts";
 import { branchAlreadyKnown, classifyHighRiskIntent, enforcePendingQuestion, enforceQuotedTotal } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
@@ -374,8 +375,10 @@ export interface WhatsAppLlmAgentOptions {
   readonly escalatedRole: string;
   /** Bound del loop de tool-use por turno — 4 en el origen. */
   readonly maxToolUseTurns?: number;
-  /** Tope de tiempo de pared para todo el turno (todas las llamadas al
-   * gateway + ejecución de tools) — 45s en el origen. */
+  /** Tope de tiempo de pared para todo el turno (todas las llamadas al gateway + ejecución de tools). Por omisión
+   * cabe con margen en la vida de la funcion del webhook (`FUNCION_MAX_MS` = 30 s de `maxDuration`): 45 s (el valor
+   * del origen) dejaba que Vercel matara la funcion a mitad del turno y Meta reintentara el lote. Si el llamador
+   * pasa `finTurnoMs` (el webhook lo hace), manda el menor de los dos. */
   readonly turnBudgetMs?: number;
   /** Inyectable solo para tests deterministas del saludo por hora. */
   readonly now?: () => Date;
@@ -412,6 +415,9 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
   return messages.map((m) => (m.role === "user" ? { role: "user" as const, content: m.content } : { role: "assistant" as const, content: m.content }));
 }
 
+/** 30 s de funcion menos el margen de cierre menos ~6 s para la ultima llamada al LLM que arranque antes del tope. */
+export const TURN_BUDGET_POR_OMISION_MS = FUNCION_MAX_MS - MARGEN_CIERRE_TURNO_MS - 6_000;
+
 /**
  * Crea la implementación real de `WhatsAppTurnHandler` — reemplaza
  * `acknowledgeOnlyTurnHandler` (Fase 1) sin tocar `whatsapp/inbound.ts` ni la
@@ -419,12 +425,14 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
  * turn-handler.ts.
  */
 export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gateway: LlmGateway, options: WhatsAppLlmAgentOptions): WhatsAppTurnHandler {
-  const turnBudgetMs = options.turnBudgetMs ?? 45_000;
+  const turnBudgetMs = options.turnBudgetMs ?? TURN_BUDGET_POR_OMISION_MS;
   const now = options.now ?? (() => new Date());
 
   return {
-    async handleInboundMessage({ organizationId, phone, messages, customer, propertyId: entryPropertyId }) {
-      const deadline = Date.now() + turnBudgetMs;
+    async handleInboundMessage({ organizationId, phone, messages, customer, propertyId: entryPropertyId, finTurnoMs }) {
+      // Una llamada al LLM que ARRANCA justo antes del tope todavia tarda lo suyo: el presupuesto por omision deja
+      // `MARGEN_CIERRE_TURNO_MS` + una llamada lenta de holgura bajo los 30 s de la funcion.
+      const deadline = Math.min(Date.now() + turnBudgetMs, finTurnoMs ?? Number.POSITIVE_INFINITY);
       const config = await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
       // El flujo de PM encadena mas llamadas por turno (cliente, zona, un producto por renglon, cotizar).
