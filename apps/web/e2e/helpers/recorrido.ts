@@ -31,6 +31,7 @@ export const DESTINOS: readonly Destino[] = [
   { sub: "/sucursales", nombre: "Sucursales", soloGestion: false },
   { sub: "/agente-voz", nombre: "Agente de voz", soloGestion: true },
   { sub: "/agente-whatsapp", nombre: "Agente de WhatsApp", soloGestion: true },
+  { sub: "/agente-ajustes", nombre: "Ajustes del agente", soloGestion: true },
   { sub: "/primeros-pasos", nombre: "Primeros pasos", soloGestion: true },
   { sub: "/configuracion", nombre: "Configuración", soloGestion: true },
   { sub: "/staff", nombre: "Staff", soloGestion: true },
