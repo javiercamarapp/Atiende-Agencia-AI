@@ -8,9 +8,10 @@
 // que Convocatorias.tsx/licitaciones: cerrar el gap de LECTURA real primero.
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, FileStack, FileUp, ShieldAlert, Upload, X } from "lucide-react";
+import { Check, FileStack, ShieldAlert, Upload, X } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   CardHeader,
@@ -20,11 +21,14 @@ import {
   EstadoCargando,
   EstadoError,
   EstadoVacio,
+  FormField,
   Input,
-  Label,
   NativeSelect,
+  notify,
   PageContainer,
+  PageHeader,
   StatusBadge,
+  useConfirm,
 } from "@atiende/ui";
 import { fetchInvoices, importarCfdiXml } from "../lib/cfdi-client.ts";
 import type { DireccionCfdi, InvoiceSummary } from "../lib/cfdi-client.ts";
@@ -54,6 +58,7 @@ function ValidoBadge({ valido }: { valido: boolean }) {
 }
 
 export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: DespachosShellContext) {
+  const { confirmar, dialogo } = useConfirm();
   const [invoices, setInvoices] = useState<readonly InvoiceSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,6 +128,15 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
   }, [apiBaseUrl, token, propertyId]);
 
   async function handleResolver(reviewId: string, decision: "aprobar" | "rechazar") {
+    if (decision === "rechazar") {
+      const ok = await confirmar({
+        titulo: "Rechazar CFDI",
+        descripcion: "El CFDI queda rechazado en la cola de revisión humana. Esta decisión no se puede deshacer.",
+        tono: "danger",
+        confirmar: "Rechazar",
+      });
+      if (!ok) return;
+    }
     setResolveError(null);
     setResolvingId(reviewId);
     try {
@@ -134,6 +148,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
         delete next[reviewId];
         return next;
       });
+      notify.success(decision === "aprobar" ? "Revisión aprobada." : "CFDI rechazado.");
       await Promise.all([loadRevisiones(), load()]);
     } catch (err) {
       setResolveError(err instanceof Error ? err.message : "No se pudo resolver la revisión.");
@@ -167,49 +182,47 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
   const invoicesById = new Map((invoices ?? []).map((inv) => [inv.id, inv] as const));
 
   return (
-    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold text-foreground">CFDI</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Comprobantes ingestados y validados contra las reglas fiscales del SAT.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Label htmlFor="cfdi-filtro-direccion" className="text-xs text-muted-foreground">
-              Sentido
-            </Label>
-            <NativeSelect id="cfdi-filtro-direccion" size="sm" value={direccion} onChange={(e) => setDireccion(e.target.value as "" | DireccionCfdi)} wrapperClassName="w-auto">
-              <option value="">Todos</option>
-              <option value="emitido">Emitidos</option>
-              <option value="recibido">Recibidos</option>
-              <option value="indeterminado">Sin clasificar</option>
-            </NativeSelect>
-          </div>
-          <Checkbox checked={soloRevision} onChange={(e) => setSoloRevision(e.target.checked)} label="Solo con revisión humana pendiente" />
-          {INGESTA_ROLES.has(role) && (
-            <>
-              <input
-                ref={xmlInputRef}
-                type="file"
-                accept=".xml,text/xml,application/xml"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleImportarXml(file);
-                }}
-              />
-              <Button type="button" size="sm" onClick={() => xmlInputRef.current?.click()} disabled={importando}>
-                <Upload />
-                {importando ? "Importando…" : "Cargar XML de CFDI"}
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setLoteAbierto(true)}>
-                <FileStack />
-                Importar ZIP o varios XML
-              </Button>
-            </>
-          )}
-        </div>
-      </header>
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader
+        titulo="CFDI"
+        descripcion="Comprobantes ingestados y validados contra las reglas fiscales del SAT."
+        acciones={
+          <>
+            <FormField label="Sentido" className="[&>label]:sr-only">
+              <NativeSelect id="cfdi-filtro-direccion" value={direccion} onChange={(e) => setDireccion(e.target.value as "" | DireccionCfdi)} wrapperClassName="w-auto">
+                <option value="">Todos</option>
+                <option value="emitido">Emitidos</option>
+                <option value="recibido">Recibidos</option>
+                <option value="indeterminado">Sin clasificar</option>
+              </NativeSelect>
+            </FormField>
+            <Checkbox checked={soloRevision} onChange={(e) => setSoloRevision(e.target.checked)} label="Solo con revisión humana pendiente" />
+            {INGESTA_ROLES.has(role) && (
+              <>
+                <input
+                  ref={xmlInputRef}
+                  type="file"
+                  accept=".xml,text/xml,application/xml"
+                  className="hidden"
+                  aria-label="Archivo XML del CFDI"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void handleImportarXml(file);
+                  }}
+                />
+                <Button type="button" size="sm" onClick={() => xmlInputRef.current?.click()} loading={importando}>
+                  <Upload />
+                  Cargar XML de CFDI
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setLoteAbierto(true)}>
+                  <FileStack />
+                  Importar ZIP o varios XML
+                </Button>
+              </>
+            )}
+          </>
+        }
+      />
 
       <ImportarLoteDialog
         open={loteAbierto}
@@ -221,37 +234,20 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
       />
 
       {/* Avisos de la importación: banderas inline (persisten hasta la siguiente importación; un toast se iría solo). */}
-      {importError && (
-        <p role="alert" className="text-destructive text-sm">
-          {importError}
-        </p>
-      )}
-      {importOk && !importError && (
-        <p className="flex items-center gap-1.5 text-sm text-success">
-          <FileUp className="h-4 w-4 shrink-0" strokeWidth={1.75} />
-          {importOk}
-        </p>
-      )}
+      {importError && <Callout tone="danger">{importError}</Callout>}
+      {importOk && !importError && <Callout tone="success">{importOk}</Callout>}
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 pb-3">
-          <CardTitle className="flex items-center gap-1.5 text-sm">
+        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+          <CardTitle className="flex items-center gap-1.5">
             <ShieldAlert className="h-4 w-4" strokeWidth={1.75} />
             Lista 69-B del SAT (EFOS)
           </CardTitle>
           {efos?.lista.periodo && <span className="text-xs text-muted-foreground">Edición {efos.lista.periodo}</span>}
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {efosError && (
-            <p role="alert" className="text-destructive text-sm">
-              {efosError}
-            </p>
-          )}
-          {efos && (
-            <p role="status" className={resumenEfos(efos).tono === "alerta" ? "text-sm font-medium text-destructive" : "text-sm text-muted-foreground"}>
-              {resumenEfos(efos).mensaje}
-            </p>
-          )}
+          {efosError && <Callout tone="danger">{efosError}</Callout>}
+          {efos && <Callout tone={resumenEfos(efos).tono === "alerta" ? "danger" : "neutral"}>{resumenEfos(efos).mensaje}</Callout>}
           {efos && efos.alertas.length > 0 && (
             <ul className="flex flex-col gap-1.5">
               {efos.alertas.map((a) => (
@@ -272,36 +268,22 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
       </Card>
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 pb-3">
-          <CardTitle className="text-sm">Cola de revisión humana</CardTitle>
+        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+          <CardTitle>Cola de revisión humana</CardTitle>
           {revisiones && <span className="text-xs text-muted-foreground">{revisiones.length} pendiente(s)</span>}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {resolveError && (
-            <p role="alert" className="text-destructive text-sm">
-              {resolveError}
-            </p>
-          )}
-          {revisionesError && (
-            <p role="alert" className="text-destructive text-sm">
-              {revisionesError}
-            </p>
-          )}
-                    {revisionesLoading && !revisiones && (
-            <EstadoCargando etiqueta="Cargando cola de revisión…" lineas={2} />
-          )}
-          {revisiones && revisiones.length === 0 && !revisionesLoading && (
-            <p role="status" className="text-sm text-muted-foreground">
-              No hay CFDI pendientes de revisión humana.
-            </p>
-          )}
+          {resolveError && <Callout tone="danger">{resolveError}</Callout>}
+          {revisionesError && <Callout tone="danger">{revisionesError}</Callout>}
+          {revisionesLoading && !revisiones && <EstadoCargando etiqueta="Cargando cola de revisión…" lineas={2} />}
+          {revisiones && revisiones.length === 0 && !revisionesLoading && <EstadoVacio compacto mensaje="No hay CFDI pendientes de revisión humana." />}
 
           {revisiones && revisiones.length > 0 && (
             <div className="flex flex-col gap-2">
               {revisiones.map((r) => {
                 const inv = invoicesById.get(r.invoiceId);
                 return (
-                  <div key={r.id} className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
+                  <div key={r.id} className="flex flex-col gap-2 rounded-lg border border-border bg-canvas p-3">
                     <div className="flex flex-wrap justify-between gap-3">
                       <div>
                         <Link to={`/despachos/${orgSlug}/cfdi/${r.invoiceId}`} className="text-sm font-semibold text-foreground hover:underline underline-offset-2">
@@ -313,24 +295,22 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
                     </div>
                     {RESOLVER_ROLES.has(role) ? (
                       <div className="flex flex-wrap items-center gap-2">
-                        <Label htmlFor={`revision-nota-${r.id}`} className="sr-only">
-                          Nota de la revisión
-                        </Label>
-                        <Input
-                          id={`revision-nota-${r.id}`}
-                          type="text"
-                          placeholder="Nota (opcional)"
-                          value={notaDrafts[r.id] ?? ""}
-                          onChange={(e) => setNotaDrafts((prev) => ({ ...prev, [r.id]: e.target.value }))}
-                          className="h-9 min-w-40 flex-1 text-xs"
-                        />
-                        <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => handleResolver(r.id, "aprobar")} disabled={resolvingId === r.id}>
+                        <FormField label="Nota de la revisión (opcional)" className="min-w-40 flex-1">
+                          <Input
+                            id={`revision-nota-${r.id}`}
+                            type="text"
+                            placeholder="Nota (opcional)"
+                            value={notaDrafts[r.id] ?? ""}
+                            onChange={(e) => setNotaDrafts((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                          />
+                        </FormField>
+                        <Button type="button" variant="outline" onClick={() => handleResolver(r.id, "aprobar")} loading={resolvingId === r.id}>
                           <Check />
-                          {resolvingId === r.id ? "…" : "Aprobar"}
+                          Aprobar
                         </Button>
-                        <Button type="button" variant="destructive" size="sm" className="h-9" onClick={() => handleResolver(r.id, "rechazar")} disabled={resolvingId === r.id}>
+                        <Button type="button" variant="destructive" onClick={() => handleResolver(r.id, "rechazar")} disabled={resolvingId === r.id}>
                           <X />
-                          {resolvingId === r.id ? "…" : "Rechazar"}
+                          Rechazar
                         </Button>
                       </div>
                     ) : (
@@ -388,6 +368,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
           ]}
         />
       )}
+      {dialogo}
     </PageContainer>
   );
 }
