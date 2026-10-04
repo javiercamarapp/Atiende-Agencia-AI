@@ -240,16 +240,20 @@ function Mundo({ respuesta, generadoEn, recientes, apiBaseUrl, token }: {
     setExportando(true);
     setAvisoExport(null);
     try {
-      // El rastro se registra ANTES de armar el archivo (con el total y la FORMA de los filtros, nunca datos de prospectos). Si registrar
-      // FALLA, no se exporta: una descarga con telefonos y correos sin huella es lo que esta bitacora existe para evitar.
+      // El rastro se registra ANTES de armar el archivo (con el total y la FORMA de los filtros, nunca datos de prospectos). FALLA CERRADO:
+      // si el registro falla, o el API responde registrada:false (base sin 0034), NO se exporta: una descarga con telefonos y correos sin
+      // huella es lo que esta bitacora existe para evitar.
       const r = await registrarExportacion(apiBaseUrl, token, lista.length, filtrosParaBitacora(filtros));
+      if (!r.registrada) {
+        setAvisoExport("Exportación no disponible aún: requiere la bitácora de exportaciones (migración 0034) en este despliegue. No se descargó nada.");
+        return;
+      }
       const blob = new Blob([csvDe(lista)], { type: "text/csv;charset=utf-8" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = `cerebro-prospectos-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(a.href);
-      if (!r.registrada) setAvisoExport("Se exportó, pero la bitácora de exportaciones no está disponible en este despliegue: no quedó rastro de esta descarga.");
     } catch {
       setAvisoExport("No se exportó: no se pudo registrar la exportación en la bitácora. Inténtalo de nuevo.");
     } finally {
