@@ -165,21 +165,21 @@ function formatDueDate(iso: string | null, timezone: string): string | null {
 // ---------------------------------------------------------------------------
 
 export const ARCO_MENU_REPLY =
-  "Puedes ejercer tus derechos sobre los datos personales asociados a este número (derechos ARCO):\n" +
-  "• Acceso: conocer qué datos tuyos tenemos.\n" +
+  "Puede ejercer sus derechos sobre los datos personales asociados a este número (derechos ARCO):\n" +
+  "• Acceso: conocer qué datos suyos tenemos.\n" +
   "• Rectificación: corregir datos incorrectos.\n" +
-  "• Cancelación: pedir que se supriman tus datos.\n" +
-  "• Oposición: oponerte a cierto uso de tus datos.\n" +
-  "Dime cuál quieres, por ejemplo: \"quiero acceso a mis datos personales\". Solo atiendo solicitudes sobre los datos de quien escribe desde este número.";
+  "• Cancelación: pedir que se supriman sus datos.\n" +
+  "• Oposición: oponerse a cierto uso de sus datos.\n" +
+  "Dígame cuál desea, por ejemplo: \"quiero acceso a mis datos personales\". Solo atiendo solicitudes sobre los datos de quien escribe desde este número.";
 
 export const ARCO_THIRD_PARTY_REPLY =
   "Por seguridad solo puedo recibir solicitudes sobre los datos personales asociados a este mismo número, hechas por su titular. " +
-  "Si necesitas ejercer derechos sobre los datos de otra persona, ella debe escribir desde su propio número o contactar directamente al restaurante. No puedo compartir información de otras personas.";
+  "Si necesita ejercer derechos sobre los datos de otra persona, ella debe escribir desde su propio número o contactar directamente al restaurante. No puedo compartir información de otras personas.";
 
 export function arcoPendingConfirmationReply(rightType: DataRightType, id: string): string {
   return (
-    `Recibí tu solicitud de ${DATA_RIGHT_LABEL[rightType]} sobre los datos personales asociados a este número (folio ${dataRightsFolio(id)}). ` +
-    "Para confirmar que la haces tú, responde CONFIRMO. Si no la hiciste tú o quieres retirarla, responde CANCELAR SOLICITUD. " +
+    `Recibí su solicitud de ${DATA_RIGHT_LABEL[rightType]} sobre los datos personales asociados a este número (folio ${dataRightsFolio(id)}). ` +
+    "Para confirmar que la hace usted, responda CONFIRMO. Si no la hizo usted o desea retirarla, responda CANCELAR SOLICITUD. " +
     "La confirmación vale por 24 horas."
   );
 }
@@ -188,30 +188,30 @@ export function arcoConfirmedReply(rightType: DataRightType, id: string, respons
   const responseDate = formatDueDate(responseDueAt, timezone);
   const executionDate = formatDueDate(executionDueAt, timezone);
   const plazos = responseDate
-    ? `El restaurante debe responderte a más tardar el ${responseDate} (${DATA_RIGHTS_RESPONSE_DAYS} días)${executionDate ? ` y, si procede, hacerla efectiva a más tardar el ${executionDate} (${DATA_RIGHTS_EXECUTION_DAYS} días más)` : ""}. `
-    : `El restaurante debe responderte en un máximo de ${DATA_RIGHTS_RESPONSE_DAYS} días y, si procede, hacerla efectiva en los ${DATA_RIGHTS_EXECUTION_DAYS} días siguientes. `;
+    ? `El restaurante debe responderle a más tardar el ${responseDate} (${DATA_RIGHTS_RESPONSE_DAYS} días)${executionDate ? ` y, si procede, hacerla efectiva a más tardar el ${executionDate} (${DATA_RIGHTS_EXECUTION_DAYS} días más)` : ""}. `
+    : `El restaurante debe responderle en un máximo de ${DATA_RIGHTS_RESPONSE_DAYS} días y, si procede, hacerla efectiva en los ${DATA_RIGHTS_EXECUTION_DAYS} días siguientes. `;
   const extra =
     rightType === "cancelacion"
-      ? "En cancelación, tus datos se bloquean primero y se suprimen después, salvo que exista una obligación de conservarlos. "
+      ? "En cancelación, sus datos se bloquean primero y se suprimen después, salvo que exista una obligación de conservarlos. "
       : "";
   return (
-    `Listo, tu solicitud de ${DATA_RIGHT_LABEL[rightType]} quedó registrada (folio ${dataRightsFolio(id)}). ` +
+    `Listo, su solicitud de ${DATA_RIGHT_LABEL[rightType]} quedó registrada (folio ${dataRightsFolio(id)}). ` +
     plazos +
     extra +
-    "Por seguridad no envío datos personales por este chat: el equipo te contactará por este mismo número tras verificar tu identidad."
+    "Por seguridad no envío datos personales por este chat: el equipo lo contactará por este mismo número tras verificar su identidad."
   );
 }
 
 export function arcoWithdrawnReply(rightType: DataRightType, id: string): string {
-  return `Listo, retiré tu solicitud de ${DATA_RIGHT_LABEL[rightType]} (folio ${dataRightsFolio(id)}). Si necesitas algo más, aquí estoy.`;
+  return `Listo, retiré su solicitud de ${DATA_RIGHT_LABEL[rightType]} (folio ${dataRightsFolio(id)}). Si necesita algo más, aquí estoy.`;
 }
 
 export function arcoAlreadyOpenReply(rightType: DataRightType, id: string, status: DataRightStatus, responseDueAt: string | null, timezone: string): string {
   if (status === "pendiente_confirmacion") return arcoPendingConfirmationReply(rightType, id);
   const date = formatDueDate(responseDueAt, timezone);
   return (
-    `Ya tienes una solicitud de ${DATA_RIGHT_LABEL[rightType]} abierta (folio ${dataRightsFolio(id)}). ` +
-    (date ? `El restaurante debe responderte a más tardar el ${date}. ` : "") +
-    "No hace falta repetirla; te contactarán por este mismo número."
+    `Ya tiene una solicitud de ${DATA_RIGHT_LABEL[rightType]} abierta (folio ${dataRightsFolio(id)}). ` +
+    (date ? `El restaurante debe responderle a más tardar el ${date}. ` : "") +
+    "No hace falta repetirla; lo contactarán por este mismo número."
   );
 }

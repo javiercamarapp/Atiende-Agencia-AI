@@ -265,8 +265,9 @@ describe("CfdiPage (hoteles)", () => {
     });
 
     cfdisActuales = [{ ...CFDI_HOSPEDAJE_PPD, estado: "cancelado" }];
-    const confirmForm = [...rendered.container.querySelectorAll("form")].find((f) => f.textContent?.includes("Confirmar cancelación"))!;
-    await submitForm(confirmForm);
+    const dialogo = document.body.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialogo.textContent).toContain("Confirmar cancelación");
+    await submitForm(dialogo.querySelector("form")!);
     await esperarCarga();
 
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/hoteles/prop-1/cfdi/cfdi-1/cancelar" && init?.method === "POST");
