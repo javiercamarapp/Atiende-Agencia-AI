@@ -28,6 +28,14 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
   `no_disponible`, ambos dentro de un `SAVEPOINT` (la transacción del request no queda abortada). Una emisión nunca
   rompe el flujo de negocio que la invoca.
 
+## Preferencias por persona (R-16, migración 043)
+
+Cada persona puede apagar un tipo de aviso (`core.notification_preference`: organización + usuario + tipo, sin fila = encendido).
+`core.emit_notification` conserva su firma y su autorización; solo omite al destinatario que apagó ese `tipo`, así que los productores
+de las 6 verticales no cambian. La lectura y la escritura pasan por `core.list_notification_preferences` / `core.set_notification_preference`
+(cada quien edita las suyas; owner/admin las de su equipo, un admin no las de un owner). Hoy la pantalla Avisos de restaurantes
+(`/restaurantes/{orgSlug}/avisos`) es la única que las edita; el `tipo` debe empezar por el vertical de la organización.
+
 ## Cómo agregar un evento
 
 1. Agregarlo a `CATALOGO_NOTIFICACIONES` (`packages/db/src/notificaciones/catalogo.ts`).
@@ -47,6 +55,9 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `restaurantes.voz.llamada_escalada` | agentes | atencion | owner/admin, staff | PhoneCall | `/restaurantes/{orgSlug}/agente-voz` | una por llamada | 3 d | conectado: `apps/api/src/routes/verticals/restaurantes/voz-interno.ts` |
 | `restaurantes.voz.proveedor_con_fallas` | salud | atencion | owner/admin | TriangleAlert | `/restaurantes/{orgSlug}/agente-voz` | una por sucursal por hora | 2 d | conectado: `apps/api/src/routes/verticals/restaurantes/voz-interno.ts` |
 | `restaurantes.callback.pendiente` | agentes | atencion | owner/admin, staff | PhoneCall | `/restaurantes/{orgSlug}/conversaciones` | una por solicitud de contacto (clave = id) | 3 d | conectado: `packages/domain-restaurantes/src/postgres-repository.ts` |
+| `restaurantes.pedido.entrega_tardia` | operacion | atencion | owner/admin, staff | Clock | `/restaurantes/{orgSlug}/pedidos` | una por pedido (clave = id del pedido) | 2 d | conectado: `packages/domain-restaurantes/src/avisos-operativos.ts` (sale en el tick /internal/restaurantes/promover-programados (cada 5 min); la hora prometida es estimated_delivery_at, la hora de recogida o la creacion/hora programada mas el umbral de la sucursal (45 min por defecto)) |
+| `restaurantes.pedido.programado_por_vencer` | operacion | atencion | owner/admin, staff | CalendarClock | `/restaurantes/{orgSlug}/pedidos` | una por pedido (clave = id del pedido) | 2 d | conectado: `packages/domain-restaurantes/src/avisos-operativos.ts` (sale en el tick /internal/restaurantes/promover-programados (cada 5 min)) |
+| `restaurantes.pedido.incidencia_repartidor` | operacion | atencion | owner/admin, staff | Truck | `/restaurantes/{orgSlug}/pedidos` | una por incidencia (clave = id del pedido + minuto UTC del reporte) | 3 d | conectado: `apps/api/src/routes/verticals/restaurantes/repartidor-orders.ts` |
 | `restaurantes.proveedor.falla` | salud | critica | owner/admin | TriangleAlert | `/restaurantes/{orgSlug}/configuracion` | una por proveedor por dia | 7 d | pendiente: requiere el estado de salud por proveedor del gateway (PR de OpenRouter/gateway) |
 | `restaurantes.demo.tope_diario_alcanzado` | cierres | atencion | owner/admin | Gauge | `/restaurantes/{orgSlug}/configuracion` | una por dia | 2 d | conectado: `apps/api/src/routes/verticals/restaurantes/demo-widget.ts` (el chat público de la demo llegó al tope diario de mensajes de la organización: tope de costo) |
 | `restaurantes.voz.tope_notas_alcanzado` | cierres | atencion | owner/admin | Gauge | `/restaurantes/{orgSlug}/configuracion` | una por dia | 2 d | conectado: `apps/api/src/routes/verticals/restaurantes/whatsapp.ts` (tope de costo de transcripcion por organizacion (R-32)) |

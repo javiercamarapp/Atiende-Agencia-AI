@@ -58,6 +58,8 @@ export const ALL_VERTICALS: readonly Vertical[] = [
 // generaría falsos positivos costosos y confusos.
 // ============================================================================
 
+import { CRISIS_ETIQUETAS, detectarSenalCrisis } from "./crisis-detector.ts";
+
 const CRISIS_GUARDRAIL_VERTICALS: ReadonlySet<Vertical> = new Set<Vertical>(["medico", "dental", "psicologo", "veterinaria"]);
 
 export function requiresCrisisGuardrail(rubro: string): boolean {
@@ -77,46 +79,38 @@ export function normalizeForCrisisCheck(text: string): string {
 }
 
 /**
- * Lista real portada de validate.ts (CAPA 3: protocolo de crisis) — ya normalizada
- * (sin acentos, minúsculas) para compararse contra el mensaje del cliente pasado
- * por `normalizeForCrisisCheck`.
+ * Etiquetas fijas de las familias de señal de crisis (ver crisis-detector.ts): es lo que se guarda en la escalación y lo que la voz acepta
+ * de vuelta. Antes era una lista de subcadenas exactas que no cubría "me quiero morir" ni toleraba espacios dobles.
  */
-export const CRISIS_KEYWORDS: readonly string[] = [
-  "quiero morirme",
-  "no quiero vivir",
-  "suicidarme",
-  "suicidio",
-  "me quiero matar",
-  "matarme",
-  "no le veo sentido",
-  "me corto",
-  "me lastimo",
-  "hacerme dano",
-  "me hago dano",
-  "quiero hacerme dano",
-  "estarian mejor sin mi",
-  "ya no puedo mas",
-  "ya no aguanto",
-  "pensando en morir",
-  "terminar con todo",
-  "acabar con mi vida",
-];
+export const CRISIS_KEYWORDS: readonly string[] = CRISIS_ETIQUETAS;
 
-/** Devuelve la palabra clave real que matcheó, o null si el mensaje no trae ninguna. */
+/** Devuelve la etiqueta de la familia de señal que coincidió (ideación, autolesión, desesperanza, despedida, plan o medios), o null. */
 export function detectCrisisKeyword(message: string): string | null {
-  const normalized = normalizeForCrisisCheck(message);
-  return CRISIS_KEYWORDS.find((word) => normalized.includes(word)) ?? null;
+  return detectarSenalCrisis(message);
 }
 
-// Mismo mensaje real de atiende.ai/src/lib/guardrails/validate.ts (CRISIS_MESSAGE)
-// — líneas de ayuda reales mexicanas (Línea de la Vida, SAPTEL) + 911. Se agrega
-// una línea final propia de este motor de citas (la escalación humana YA se
-// disparó del lado del servidor, no es una promesa vacía).
+/**
+ * La guardia corre en los rubros de salud Y cuando el negocio no configuró su rubro (sin fila en tenant_config o el default 'otro'): un negocio de
+ * salud que olvidó elegirlo no debe quedar sin guardia. Un rubro explícito que no es de salud (barbería, gimnasio...) sigue sin ella.
+ */
+export function crisisGuardActivaPara(rubro: string | null | undefined): boolean {
+  return !rubro || rubro === "otro" || requiresCrisisGuardrail(rubro);
+}
+
+// Líneas de ayuda reales mexicanas (Línea de la Vida, SAPTEL) + 911. La escalación humana YA se disparó del lado del servidor, no es una
+// promesa vacía. Se conserva "avisé a nuestro equipo" (los evals del agente lo exigen).
 export const CRISIS_ESCALATION_MESSAGE =
-  "Entiendo que estás pasando por un momento muy difícil. Tu vida importa. " +
-  "Por favor contacta la Línea de la Vida: 800 911 2000 (24/7) o SAPTEL: 55 5259 8121. " +
-  "Si es una emergencia, llama al 911. " +
-  "Ya avisé a nuestro equipo para que te contacten. No estás solo/a.";
+  "Entiendo que estás pasando por un momento muy difícil, y tu vida importa. " +
+  "Puedes llamar ahora a la Línea de la Vida: 800 911 2000 (24 horas, gratuita) o a SAPTEL: 55 5259 8121. " +
+  "Si estás en peligro o en una emergencia, llama al 911. " +
+  "Ya avisé a nuestro equipo para que te contacten. No estás solo ni sola.";
+
+/** Versión para VOZ: trato de usted y sin barras ni paréntesis que el TTS leería literalmente. */
+export const CRISIS_VOICE_MESSAGE =
+  "Entiendo que está pasando por un momento muy difícil, y su vida importa. " +
+  "Puede llamar ahora a la Línea de la Vida, al 800 911 2000. Atienden las veinticuatro horas y es gratuita. " +
+  "Si está en peligro o es una emergencia, llame al 911. " +
+  "Ya avisé a nuestro equipo para que se comuniquen con usted. No está solo ni sola.";
 
 // ============================================================================
 // FAQs canónicas por rubro — grounding real que se agrega al prompt del agente

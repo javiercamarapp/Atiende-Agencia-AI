@@ -5,7 +5,7 @@ import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import type { CatalogoMensajes } from "@atiende/voice-core";
 import { zonedDateStr } from "../availability.ts";
 import type { CitasRepository } from "../repository.ts";
-import { requiresCrisisGuardrail } from "../vertical-config.ts";
+import { crisisGuardActivaPara } from "../vertical-config.ts";
 import { instruccionVozCita, mensajesPregrabadosCita } from "./perfil-voz.ts";
 
 export interface ContextoLlamadaVoz {
@@ -40,7 +40,7 @@ export async function obtenerContextoLlamadaVoz(repo: CitasRepository, org: { re
     hoy: zonedDateStr(ahora, timezone),
     horaLocal,
     rubro,
-    guardiaCrisis: rubro !== null && requiresCrisisGuardrail(rubro),
+    guardiaCrisis: crisisGuardActivaPara(rubro),
     instruccion: instruccionVozCita({ businessName: org.name, agente, rubro, ahora, timezone, horaLocal }),
     pregrabados: mensajesPregrabadosCita(org.name),
   };
