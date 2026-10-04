@@ -351,7 +351,7 @@ export function ColaCobranzaPage({ apiBaseUrl, token, propertyId, role }: Despac
             {consentimientos.lista.length === 0 ? (
               <EstadoVacio mensaje="Ningún cliente tiene consentimiento registrado todavía." />
             ) : (
-<DataTable etiqueta="Consentimientos de WhatsApp por cliente" columnas={columnasConsentimientos} filas={consentimientos.lista} obtenerId={(c) => c.rfcReceptor} />
+              <DataTable etiqueta="Consentimientos de WhatsApp por cliente" columnas={columnasConsentimientos} filas={consentimientos.lista} obtenerId={(c) => c.rfcReceptor} />
             )}
             {puedeGestionar && (
               <div className="flex flex-col gap-3 border-t border-border pt-3">
