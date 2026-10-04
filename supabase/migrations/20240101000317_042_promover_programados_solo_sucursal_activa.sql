@@ -1,5 +1,5 @@
 -- Promocion de pedidos programados: una sucursal DESACTIVADA ya no manda sus programados a cocina.
--- Prefijo de supabase/migrations: 20240101000317 (interno restaurantes 041).
+-- Prefijo de supabase/migrations: 20240101000317 (interno restaurantes 042).
 -- Requiere: 034 (restaurantes.promover_pedidos_programados y orders.programado_para) y 001 (core.property.status).
 --
 -- Defecto (QA R1 caos-17, disponibilidad): entre la creacion de un pedido programado y su hora la sucursal puede darse de
@@ -59,7 +59,7 @@ begin
       and (p_organization_id is null or o.organization_id = p_organization_id)
       and (p_property_ids is null or o.property_id = any (p_property_ids))
       and o.programado_para <= v_now + make_interval(mins => v_anticipacion)
-      -- 041: una sucursal desactivada no manda pedidos a cocina; el programado se queda para que el equipo lo atienda.
+      -- 042: una sucursal desactivada no manda pedidos a cocina; el programado se queda para que el equipo lo atienda.
       and exists (select 1 from core.property p where p.id = o.property_id and p.status = 'active')
     order by o.programado_para
     limit 1000

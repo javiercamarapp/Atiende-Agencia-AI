@@ -103,7 +103,7 @@ El checkout exige aceptar el aviso de privacidad en la interfaz; el servidor **n
    (o `cancelado`/`problema`). Cada transición notifica al comensal por WhatsApp (outbox + dispatcher).
 4. **Pedido programado**: queda en `programado` y no va a cocina ni al POS; al faltar 30 min lo promueve el cron
    (`/internal/restaurantes/promover-programados`, 5 min) o el panel al consultar, y en ese momento su comanda se
-   encola al POS. Una sucursal desactivada NO promueve sus programados (migración 041 y filtro en el panel): se quedan en
+   encola al POS. Una sucursal desactivada NO promueve sus programados (migración 042 y filtro en el panel): se quedan en
    `programado`, visibles en la lista de programados, para que el equipo los atienda.
 
 ## 5. Repartidor

@@ -311,7 +311,7 @@ select count(*)::int as programados_visibles_cross_tenant_deberia_ser_0 from res
 rollback;
 
 -- ===========================================================================
--- D. Sucursal desactivada (041): sus programados no se promueven en silencio
+-- D. Sucursal desactivada (042): sus programados no se promueven en silencio
 -- ===========================================================================
 \echo '=== D1. SUCURSAL DESACTIVADA: el barrido de sistema no promueve los programados de A (sucursal A1 inactiva); solo el de B (1) ==='
 begin;
@@ -354,7 +354,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0014
 select jsonb_array_length(restaurantes.promover_pedidos_programados('00000000-0000-0000-0000-0000000e0002', null, 30)) as promovidos_deberia_ser_1;
 rollback;
 
-\echo '=== D6. RECHAZADO (debe fallar): anon sigue sin poder ejecutar la funcion tras 041 ==='
+\echo '=== D6. RECHAZADO (debe fallar): anon sigue sin poder ejecutar la funcion tras 042 ==='
 begin;
 set local role anon;
 select restaurantes.promover_pedidos_programados('00000000-0000-0000-0000-0000000e0001', null, 30) as should_fail;
