@@ -417,8 +417,27 @@ export type { PapelTrabajoDevolucionIva } from "./devolucion-iva/workpaper.ts";
 // ---- Bookkeeping / auto-clasificador de pólizas (Fase 6) ----
 export { CATALOGO_CUENTAS_SAT, DEFAULT_MAPPINGS, mappingKey } from "./bookkeeping/catalogo.ts";
 export { getMapping, getAccountName, validateAccount, generatePoliza, getAllCategories, generateAdjustment, generateDepreciationEntry, generateProvisionEntry, validatePoliza } from "./bookkeeping/rules-engine.ts";
-export { SYNTHETIC_PATTERNS, clasificarPorReglas, sugerirCategoria, predecirCategoria, necesitaRevisionHumana } from "./bookkeeping/clasificador.ts";
+export { SYNTHETIC_PATTERNS, normalizarTexto, contienePalabra, confianzaDeEmpate, clasificarPorReglas, sugerirCategoria, predecirCategoria, necesitaRevisionHumana } from "./bookkeeping/clasificador.ts";
 export { CONFIDENCE_FLOOR, CONFIDENCE_MEDIUM, CONFIDENCE_HIGH, DEFAULT_CONFIDENCE_THRESHOLD } from "./bookkeeping/confianza.ts";
+export {
+  CATEGORIAS_CONTABLES,
+  CATEGORIAS_GRUESAS,
+  COTA_CONFIANZA_CORRECCION,
+  CP_A_CATEGORIA,
+  buscarCorreccion,
+  clasificarCfdi,
+  evaluarCompuertaClasificacion,
+  validarUmbralConfianza,
+} from "./bookkeeping/clasificacion-cfdi.ts";
+export type {
+  MetodoClasificacion,
+  CorreccionClasificacion,
+  ConceptoClasificable,
+  EntradaClasificacionCfdi,
+  ResultadoClasificacionCfdi,
+  OpcionesCompuerta,
+  ResultadoCompuerta,
+} from "./bookkeeping/clasificacion-cfdi.ts";
 export { getRfcCategoryFeedback, getAllRfcFeedback, getSuggestionsForRetraining } from "./bookkeeping/overrides.ts";
 export type { TipoCfdiBookkeeping, PolizaType, LineaTipo, CfdiClassification, LineaPoliza, PolizaContable, AccountMapping, OverrideRecord, SuggestionRetraining } from "./bookkeeping/types.ts";
 export type { MapeosCustom, EntradaManual, ActivoDepreciacion } from "./bookkeeping/rules-engine.ts";
