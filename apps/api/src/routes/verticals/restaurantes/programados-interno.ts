@@ -20,6 +20,8 @@ import { logEvent } from "../../../logger.ts";
 import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
+import { barrerAutopilotoTick } from "./autopiloto-tick.ts";
+import type { ResumenTickAutopiloto } from "./autopiloto-tick.ts";
 
 export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
   const app = new Hono();
@@ -50,6 +52,14 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         avisos = { ...avisos, errores: 1 };
       }
       logEvent(c, "info", "restaurantes_avisos_operativos", { ...avisos });
+      // Autopiloto (migracion 050): escalado de aprobaciones sin respuesta, estados sin clic, avance desde el POS, regreso de handoffs y agotados
+      // por hoy. Cada paso en su propia sesion de sistema; sin la migracion cada uno responde `disponible: false` (sin error).
+      let autopiloto: ResumenTickAutopiloto | null = null;
+      try {
+        autopiloto = await barrerAutopilotoTick(deps, c, new Date());
+      } catch (err) {
+        logEvent(c, "error", "restaurantes_autopiloto_tick_fallido", { error: err instanceof Error ? err.message : String(err) });
+      }
       return c.json({
         ok: true,
         status: resultado.disponible ? "ok" : "not_available",
@@ -57,6 +67,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         orderIds: resultado.promovidos.map((o) => o.id),
         comandas,
         avisos,
+        autopiloto,
       });
     })();
   });
