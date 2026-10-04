@@ -11,6 +11,7 @@
 // Defensa en profundidad: las reglas duras (minimo de $200 a domicilio, alcohol a domicilio, zona, horario,
 // multiplos de "orden de N", propina solo con tarjeta, cotizar antes de confirmar) las aplican las
 // HERRAMIENTAS en el servidor; este prompt es la primera linea, nunca la unica.
+import { lineasCliente360 } from "../cliente-360/prompt.ts";
 import type { BranchSummary, CustomerLookupResult } from "../types.ts";
 
 export interface PerfilPmContexto {
@@ -108,6 +109,7 @@ export function pmCustomerContextBlock(customer: CustomerLookupResult): string {
   if (customer.addresses.length > 0) {
     lines.push("Tiene una dirección guardada: nunca la lea completa; pregunte si es la misma de siempre o si es otra.");
   }
+  lines.push(...lineasCliente360(customer));
   const pedido = customer.pedidoReciente;
   if (pedido) {
     const canal = pedido.canal === "domicilio" ? "a domicilio" : pedido.canal === "recoger" ? "para recoger" : "";
