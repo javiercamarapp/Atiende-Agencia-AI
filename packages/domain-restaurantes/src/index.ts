@@ -9,6 +9,7 @@ export type {
   BranchTimezoneConfig,
   CallbackRequest,
   CallbackRequestInput,
+  CallbackRegistro,
   CanalPedido,
   Category,
   CategoryPatch,
@@ -220,6 +221,7 @@ export {
   isStatsPeriod,
   buildTrendBuckets,
   buildComparisonPeriods,
+  horasAbiertasHoy,
   periodLabel,
   getSalesKpis,
   getSalesTrendKpis,
@@ -229,7 +231,7 @@ export {
   getCustomerKpis,
   computeCustomerKpis,
 } from "./kpis.ts";
-export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
+export type { OpcionesTramos, StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";
@@ -311,7 +313,7 @@ export {
   validarVentanaProgramacion,
 } from "./pedidos-programados.ts";
 export type { PromocionProgramados } from "./pedidos-programados.ts";
-export { avisarProgramadosPromovidos } from "./pedidos-programados-avisos.ts";
+export { ATRASO_PROGRAMADO_MIN, avisarProgramadosPromovidos, emitirAvisoProgramadoEnCocina, esPromocionAtrasada } from "./pedidos-programados-avisos.ts";
 export type { ResumenAvisosProgramados } from "./pedidos-programados-avisos.ts";
 export { etiquetaHoraLocal } from "./horarios.ts";
 export type { OrderScheduleInfo } from "./types.ts";

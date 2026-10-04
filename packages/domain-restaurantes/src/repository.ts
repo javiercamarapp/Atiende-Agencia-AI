@@ -8,6 +8,7 @@
 // todas pasan por aquí, así que el mismo código de negocio corre igual en tests y
 // en producción.
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
+import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type {
@@ -232,6 +233,9 @@ export interface RestaurantesRepository {
   consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean>;
 
   resolveOrganizationByPhoneNumberId(phoneNumberId: string): Promise<string | null>;
+  /** Contadores DETERMINISTAS del agente por conversacion de WhatsApp ("no entiendo" y "colonia no reconocida" seguidos, migracion 047). Devuelve el
+   * contador resultante, o `null` si no hay donde llevarlo (base sin migrar o conversacion inexistente): el llamador degrada, nunca falla. */
+  contadorAgenteWhatsApp(organizationId: string, phone: string, clave: ClaveContadorAgente, accion: "incrementar" | "reiniciar"): Promise<number | null>;
   claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean>;
   claimWhatsAppConversation(organizationId: string, phoneHash: string, messageId: string, leaseSeconds: number): Promise<boolean>;
   appendWhatsAppUserMessageOnce(organizationId: string, phone: string, message: ConversationMessage): Promise<readonly ConversationMessage[]>;
@@ -651,6 +655,11 @@ export interface RestaurantesRepository {
     organizationId: string | null,
     options: { readonly now: Date; readonly anticipacionMin: number; readonly propertyIds?: readonly string[] | null },
   ): Promise<PromotedScheduledOrdersResult>;
+  /** Pedidos ya promovidos a cocina en las ultimas `hours` horas (estado `pending` o `preparando`) cuya
+   * comanda no esta en el outbox del POS, de organizaciones con SoftRestaurant en sombra/activo (QA-restaurantes-R1-
+   * automatizacion-02). Solo sesion de sistema. `[]` contra la base sin migrar (la 046). El repositorio en memoria no
+   * conoce el outbox del POS: devuelve todos los promovidos recientes (reencolar es idempotente). */
+  listPromotedOrdersWithoutComanda(options: { readonly hours: number; readonly limit: number }): Promise<readonly Order[]>;
   /** Reemplaza la politica completa de la sucursal (upsert por property_id). */
   upsertBranchPolicy(organizationId: string, propertyId: string, policy: BranchPolicy): Promise<BranchPolicy>;
   /** Ids de `known_zone` que cubre la sucursal para entregas; [] = sin cobertura

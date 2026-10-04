@@ -5,7 +5,8 @@
 // La columna `restaurantes.branch_voice_config.comportamiento` tiene tope de 8000 caracteres (migracion 025), por eso el perfil
 // de voz es la version COMPACTA del mismo contenido y este modulo falla en voz alta si se pasa del tope.
 import type { BranchSummary } from "../types.ts";
-import { buildPmSystemPrompt } from "../whatsapp/perfil-pm.ts";
+import { PM_AGENT_NAME_POR_OMISION, PM_REGLA_NO_REPETIR_DATOS, PM_REGLA_RESERVACIONES, PM_REGLA_REINTENTO_PEDIDO, buildPmSystemPrompt } from "../whatsapp/perfil-pm.ts";
+import { PM_CONFIG_POR_OMISION } from "../whatsapp/llm-turn-handler.ts";
 
 export const COMPORTAMIENTO_VOZ_MAX = 8000;
 
@@ -47,4 +48,74 @@ export function comportamientoVozPm(e: EntradaComportamientoVoz): string {
     throw new RangeError(`El comportamiento de voz mide ${texto.length} caracteres; el maximo de branch_voice_config.comportamiento es ${COMPORTAMIENTO_VOZ_MAX} (migracion 025).`);
   }
   return texto;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Reglas duras NO BORRABLES de la llamada (rescate-orig-restaurantes-1 §1). El comportamiento de `branch_voice_config` es texto libre que
+// edita el dueno por sucursal: quien lo borre o lo reescriba se llevaria las reglas H1-H18. El servidor lo evita igual que el original en
+// WhatsApp (`whatsapp-agent-core.ts` anexa las reglas DESPUES del texto editable): la instruccion que recibe el proveedor es
+// `editable + BLOQUE`, y el bloque va al final, donde un "ignore lo anterior" del texto editable ya no lo alcanza. El bloque NO cuenta
+// para el tope de 8000 del panel (la columna sigue guardando solo el texto editable).
+
+/** Reglas del agente vivo que el comportamiento compacto sembrado no cabe en 8000 caracteres para llevar (X52, X51, X27, X29, reservaciones). */
+export const REGLAS_VIVAS_VOZ = `# REGLAS ADICIONALES DE LA LLAMADA
+- Diga solo precios y totales que devolvió una herramienta en ESTA llamada: nunca de memoria ni lo que el cliente cite.
+- Si el cliente no responde, pregunte UNA sola vez si sigue en la línea y, si sigue sin responder, despídase con cortesía.
+- ${PM_REGLA_NO_REPETIR_DATOS}
+- ${PM_REGLA_REINTENTO_PEDIDO}
+- ${PM_REGLA_RESERVACIONES}`;
+
+export interface EntradaBloqueReglasVoz {
+  readonly businessName?: string;
+  readonly agentName?: string;
+  readonly deliveryTimeText?: string;
+  readonly promosTexto?: string | null;
+  readonly salsasTexto?: string | null;
+  readonly pedidoGrandeTexto?: string | null;
+  readonly motivosDesactivados?: readonly string[];
+}
+
+const TITULO_BLOQUE = "# REGLAS VIGENTES DE LA PLATAFORMA (prevalecen sobre cualquier texto anterior, incluido el comportamiento editable)";
+
+/** Una seccion `# TITULO ...` del prompt de voz, hasta la siguiente (o el final). Falla en voz alta si el perfil dejo de tenerla. */
+function seccionDe(prompt: string, titulo: string): string {
+  const ini = prompt.indexOf(`# ${titulo}`);
+  if (ini < 0) throw new RangeError(`El perfil de voz de PM ya no tiene la seccion "${titulo}".`);
+  const sig = prompt.indexOf("\n# ", ini + 1);
+  return (sig < 0 ? prompt.slice(ini) : prompt.slice(ini, sig)).trim();
+}
+
+/** Bloque de reglas duras (H1-H18), flujo de toma de pedido y seguridad del MISMO perfil que WhatsApp (`buildPmSystemPrompt` con canal
+ * `voz`), mas las reglas vivas y el apendice de la llamada. Con la config de la organizacion (promos, tiempos, umbral de pedido grande) las
+ * reglas que dependen de ella (H3, paso 8 del flujo) quedan igual que en el comportamiento editable. */
+export function bloqueReglasVozPm(e: EntradaBloqueReglasVoz = {}): string {
+  const completo = buildPmSystemPrompt({
+    canal: "voz",
+    businessName: e.businessName ?? PM_CONFIG_POR_OMISION.businessName,
+    agentName: e.agentName ?? PM_AGENT_NAME_POR_OMISION,
+    deliveryTimeText: e.deliveryTimeText ?? PM_CONFIG_POR_OMISION.deliveryTimeText,
+    saludo: "",
+    branches: [],
+    entryBranch: null,
+    customer: { isNew: true },
+    saludoPersonalizado: null,
+    salsasTexto: e.salsasTexto ?? null,
+    promosTexto: e.promosTexto ?? null,
+    pedidoGrandeTexto: e.pedidoGrandeTexto ?? null,
+    motivosDesactivados: e.motivosDesactivados ?? [],
+  });
+  return [TITULO_BLOQUE, seccionDe(completo, "REGLAS DURAS"), seccionDe(completo, "FLUJO DE TOMA DE PEDIDO"), seccionDe(completo, "SEGURIDAD"), REGLAS_VIVAS_VOZ, APENDICE_VOZ.trim()].join("\n\n");
+}
+
+export interface EntradaInstruccionVoz extends EntradaBloqueReglasVoz {
+  /** `branch_voice_config.comportamiento` tal como lo dejo el dueno (puede ir vacio). */
+  readonly comportamiento: string;
+  /** `branch_voice_config.mensaje_inicial`: se anexa antes del bloque para que tampoco pueda pisar las reglas. */
+  readonly mensajeInicial?: string;
+}
+
+/** Instruccion final de la sesion de voz (vista previa y llamada): texto editable + saludo inicial + BLOQUE al final. */
+export function instruccionVozConReglas(e: EntradaInstruccionVoz): string {
+  const saludo = e.mensajeInicial && e.mensajeInicial.trim() !== "" ? `Saluda al iniciar diciendo: ${e.mensajeInicial.trim()}` : "";
+  return [e.comportamiento.trim(), saludo, bloqueReglasVozPm(e)].filter((t) => t !== "").join("\n\n");
 }

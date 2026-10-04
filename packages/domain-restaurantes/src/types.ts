@@ -502,7 +502,14 @@ export interface CallbackRequestInput {
   readonly reason?: string;
   readonly message?: string;
   readonly source: "voice" | "whatsapp" | "web" | "admin";
+  /** Id opaco del evento que origino el aviso (id del mensaje de Meta o de la llamada, mas el motivo): el mismo evento nunca crea dos
+   * avisos (migracion 047). Solo lo usan los avisos del agente (`voice`/`whatsapp`). */
+  readonly sourceEventId?: string | null;
 }
+
+/** Que paso con un aviso del agente: `nuevo` = se creo; `evento_repetido` = el mismo evento ya estaba registrado (no se hizo nada);
+ * `nota_agregada` = habia un aviso abierto del mismo canal, telefono y motivo y se le agrego una nota. */
+export type CallbackRegistro = "nuevo" | "evento_repetido" | "nota_agregada";
 
 // ---- R-38 (migracion 062): marca publica del storefront por organizacion. Todos los campos son opcionales (null = sin valor). ----
 export interface StorefrontMarcaInput {
@@ -539,6 +546,7 @@ export interface CallbackRequest extends CallbackRequestInput {
   readonly id: string;
   readonly resolved: boolean;
   readonly createdAt: string;
+  readonly registro?: CallbackRegistro;
 }
 
 // ---- Fase 11 — promociones/marketing: motor real de código de descuento (ver
