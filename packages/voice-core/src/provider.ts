@@ -16,6 +16,8 @@ export interface VozSesionPreviewEntrada {
   /** Comportamiento/prompt guardado de la sucursal (puede ser ''). */
   readonly comportamiento: string;
   readonly mensajeInicial: string;
+  /** `temperature` de voz de la organizacion (0..1); null/ausente = la del proveedor. */
+  readonly temperatura?: number | null;
   readonly ttlSegundos: number;
 }
 

@@ -51,6 +51,7 @@ export function mensajeSetup(model: string, apertura: AperturaLlamada) {
       model: `models/${model}`,
       generationConfig: {
         responseModalities: ["AUDIO"],
+        ...(typeof apertura.temperatura === "number" ? { temperature: apertura.temperatura } : {}),
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: apertura.voiceId } } },
       },
       systemInstruction: { parts: [{ text: apertura.instruccion }] },
