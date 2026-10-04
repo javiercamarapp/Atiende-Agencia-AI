@@ -151,6 +151,14 @@ export function withHeartbeat(deps: AppDeps, cronName: string, handler: () => Pr
     try {
       const response = await handler();
       const finishedAt = new Date();
+      // QA-restaurantes-R1-automatizacion-09: un cron fail-closed sin credencial/adaptador (softrestaurant-dispatch,
+      // whatsapp-dispatch) responde 503 en cada corrida. No es un fallo del cron (no hay nada que correr): el latido
+      // queda 'ok' CON NOTA visible en /superadmin/salud (como la pausa por interruptor) y no se registra corrida (no
+      // corrio nada), en vez de aparentar una corrida sana sin nota. Los demas 5xx no cambian.
+      if (response.status === 503) {
+        await registrarLatidoBestEffort(deps, cronName, "ok", "no configurado: la ruta responde 503 (falta credencial o adaptador); no se ejecuto nada", startedAt, finishedAt);
+        return response;
+      }
       await registrarLatidoBestEffort(deps, cronName, "ok", null, startedAt, finishedAt);
       await registrarCorridaBestEffort(deps, { agente: cronName, vertical: verticalDeCron(cronName), disparo: "cron", estado: "ok", iniciadoEn: startedAt, terminadoEn: finishedAt });
       return response;
