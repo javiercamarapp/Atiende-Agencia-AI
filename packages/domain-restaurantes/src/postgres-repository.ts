@@ -171,6 +171,7 @@ function mapCustomer(row: CustomerRow): Customer {
 }
 
 interface OrderRow {
+  readonly created_at_cursor?: string;
   readonly id: string;
   readonly organization_id: string;
   readonly property_id: string;
@@ -2047,7 +2048,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
     params.push(filter.limit + 1);
     const { rows } = await this.db.query<OrderRow>(
-      `select ${ORDER_COLUMNS}
+      // QA-restaurantes-R1-features-01: `pg` entrega created_at como Date (milisegundos). El cursor usa
+      // la representacion TEXTO de Postgres (microsegundos exactos) para no saltar pedidos del mismo ms.
+      `select ${ORDER_COLUMNS}, created_at::text as created_at_cursor
        from restaurantes.orders
        where ${conditions.join(" and ")}
        order by created_at desc, id desc
@@ -2056,8 +2059,10 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     );
 
     const hasMore = rows.length > filter.limit;
-    const page = rows.slice(0, filter.limit).map(mapOrder);
-    const nextCursor = hasMore ? encodeCursor(page[page.length - 1]!) : null;
+    const pageRows = rows.slice(0, filter.limit);
+    const page = pageRows.map(mapOrder);
+    const last = pageRows[pageRows.length - 1];
+    const nextCursor = hasMore && last ? encodeCursor(last.created_at_cursor ?? toIsoText(last.created_at), last.id) : null;
     return { orders: page, nextCursor };
   }
 
@@ -2169,10 +2174,12 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
     const search = filter.search?.trim();
     if (search) {
-      params.push(`%${search}%`);
+      // QA-restaurantes-R1-features-06b: % _ \ del texto buscado son literales, no comodines.
+      params.push(`%${search.replace(/[\\%_]/g, "\\$&")}%`);
       conditions.push(`(name ilike $${params.length} or phone ilike $${params.length})`);
     }
-    if (filter.cursor) {
+    // QA-restaurantes-R1-features-06a: un cursor que no es uuid se ignora (antes: 22P02 -> 500).
+    if (filter.cursor && UUID_TEXT.test(filter.cursor)) {
       params.push(filter.cursor);
       conditions.push(`id > $${params.length}`);
     }
@@ -3286,9 +3293,16 @@ interface OrderCursorBoundary {
   readonly id: string;
 }
 
-function encodeCursor(order: Order): string {
-  return Buffer.from(`${order.createdAt}|${order.id}`, "utf8").toString("base64url");
+function toIsoText(value: unknown): string {
+  return value instanceof Date ? value.toISOString() : String(value);
 }
+
+function encodeCursor(createdAt: string, id: string): string {
+  return Buffer.from(`${createdAt}|${id}`, "utf8").toString("base64url");
+}
+
+const CURSOR_TIMESTAMP = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)?$/;
+const UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function decodeCursor(cursor: string | undefined): OrderCursorBoundary | null {
   if (!cursor) return null;
@@ -3296,7 +3310,11 @@ function decodeCursor(cursor: string | undefined): OrderCursorBoundary | null {
     const decoded = Buffer.from(cursor, "base64url").toString("utf8");
     const separatorIndex = decoded.lastIndexOf("|");
     if (separatorIndex === -1) return null;
-    return { createdAt: decoded.slice(0, separatorIndex), id: decoded.slice(separatorIndex + 1) };
+    const createdAt = decoded.slice(0, separatorIndex);
+    const id = decoded.slice(separatorIndex + 1);
+    // Cursor manipulado o viejo (p. ej. Date.toString()): se ignora en vez de llegar a Postgres como 22007/22P02.
+    if (!CURSOR_TIMESTAMP.test(createdAt) || !UUID_TEXT.test(id)) return null;
+    return { createdAt, id };
   } catch {
     return null;
   }
