@@ -10,6 +10,7 @@
 // llamada REAL de prueba con Gemini Live por token efímero (voz/adaptador-gemini-live.ts);
 // sin credencial en el servidor dice "no disponible: falta GEMINI_API_KEY" en vez de simular.
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { BookOpen, CheckCircle2, Circle, Mic, Wrench } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada, StatusBadge } from "@atiende/ui";
 import { VozNoDisponibleError, crearSesionPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
@@ -136,6 +137,21 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
     }
   }
 
+  // Patron ARIA de pestanas: flechas (con vuelta), Inicio y Fin mueven el foco y activan la pestana; solo la activa entra por Tab.
+  function alTeclearPestanas(e: KeyboardEvent<HTMLDivElement>) {
+    const i = PESTANAS.findIndex((p) => p.id === pestana);
+    let destino = -1;
+    if (e.key === "ArrowRight") destino = (i + 1) % PESTANAS.length;
+    else if (e.key === "ArrowLeft") destino = (i - 1 + PESTANAS.length) % PESTANAS.length;
+    else if (e.key === "Home") destino = 0;
+    else if (e.key === "End") destino = PESTANAS.length - 1;
+    if (destino < 0) return;
+    e.preventDefault();
+    const siguiente = PESTANAS[destino]!;
+    setPestana(siguiente.id);
+    document.getElementById(`pestana-${siguiente.id}`)?.focus();
+  }
+
   const ejecuciones = useMemo(() => contarEjecuciones(conversaciones.estado === "listo" ? conversaciones.datos : null), [conversaciones]);
 
   return (
@@ -152,7 +168,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
           </Button>
         </div>
 
-        <div role="tablist" aria-label="Secciones del agente de voz" className="flex flex-wrap gap-1.5 border-b border-border pb-2">
+        <div role="tablist" aria-label="Secciones del agente de voz" onKeyDown={alTeclearPestanas} className="flex flex-wrap gap-1.5 border-b border-border pb-2">
           {PESTANAS.map((p) => (
             <button
               key={p.id}
@@ -161,6 +177,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
               id={`pestana-${p.id}`}
               aria-selected={pestana === p.id}
               aria-controls={`panel-${p.id}`}
+              tabIndex={pestana === p.id ? 0 : -1}
               onClick={() => setPestana(p.id)}
               className={`h-8 px-3 rounded-lg text-xs font-medium border transition-colors ${pestana === p.id ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
             >
