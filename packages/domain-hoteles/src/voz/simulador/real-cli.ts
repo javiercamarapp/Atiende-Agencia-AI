@@ -1,11 +1,11 @@
 // CLI manual de la prueba ciega de voz de hoteles. Ver `real.ts` para las variables de entorno y el tope de gasto.
 //   --falso  corre con el proveedor falso (sin credenciales ni costo) y deja el reporte de referencia.
-// Escribe el reporte JSON y markdown en `docs/evals/hoteles/` (o en EVALS_REPORT_DIR).
+// Escribe el reporte JSON y markdown en `docs/evals/hoteles/` (o en la carpeta de `--dir=<ruta>`).
 import { fileURLToPath } from "node:url";
 import { ejecutarPruebaCiegaFalsa, ejecutarPruebaCiegaReal, opcionesRealVozDesdeEntorno, reporteDeCorridaReal } from "./real.ts";
 import { escribirReporte } from "./reporte.ts";
 
-const dirReporte = process.env.EVALS_REPORT_DIR || fileURLToPath(new URL("../../../../../docs/evals/hoteles/", import.meta.url));
+const dirReporte = process.argv.find((a) => a.startsWith("--dir="))?.slice(6) || fileURLToPath(new URL("../../../../../docs/evals/hoteles/", import.meta.url));
 const imprimir = (r: { resultados: readonly { ok: boolean; id: string; error?: string; graders: readonly { ok: boolean; grader: string; detalle?: string }[] }[] }): void => {
   for (const x of r.resultados) {
     const fallos = x.graders.filter((g) => !g.ok).map((g) => `${g.grader}: ${g.detalle}`).join(" | ");

@@ -11,7 +11,7 @@ Reportes de las corridas de evals de los agentes de hoteles. Cada corrida deja u
 - Real, contra Gemini Live (manual; nunca corre en CI ni en `npm test`; cuesta dinero):
   `VOZ_EVALS_REAL=1 GEMINI_API_KEY=... VOZ_EVALS_MAX_USD=1 npm run evals:hoteles:voz:real -w @atiende/domain-hoteles`
   - `VOZ_EVALS_MAX_USD`: tope de gasto estimado (por omision 1, techo duro 5). Se corta al alcanzarlo y lista lo que no corrio.
-  - `VOZ_EVALS_USD_POR_MIN`: estimacion por minuto de pared (0.04). `GEMINI_LIVE_MODEL`: modelo. `VOZ_EVALS_GUIONES=H01,H14`: solo esos (por prefijo de id). `EVALS_REPORT_DIR`: carpeta del reporte.
+  - `VOZ_EVALS_USD_POR_MIN`: estimacion por minuto de pared (0.04). `GEMINI_LIVE_MODEL`: modelo. `VOZ_EVALS_GUIONES=H01,H14`: solo esos (por prefijo de id). `--dir=<ruta>` (argumento del CLI): carpeta del reporte.
 
 ## Pendiente de conectar
 

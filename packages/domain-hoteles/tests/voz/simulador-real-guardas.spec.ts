@@ -117,7 +117,7 @@ describe("reporte", () => {
     fecha: new Date("2031-06-01T18:00:00Z"),
     resultados: [
       { id: "A", ok: true, graders: [{ grader: "G1", ok: true, detalle: "" }, { grader: "G2", ok: true, detalle: "" }], latenciaMs: 100 },
-      { id: "B", ok: false, graders: [{ grader: "G1", ok: true, detalle: "" }, { grader: "G2", ok: false, detalle: "dijo | algo\nmalo" }], latenciaMs: 300 },
+      { id: "B", ok: false, graders: [{ grader: "G1", ok: true, detalle: "" }, { grader: "G2", ok: false, detalle: "dijo | algo\\ malo\nfin" }], latenciaMs: 300 },
       { id: "C", ok: false, graders: [], error: "conexion cerrada", latenciaMs: 200 },
     ],
     omitidos: [{ id: "D", motivo: "tope_de_gasto" as const }],
@@ -152,7 +152,7 @@ describe("reporte", () => {
     expect(md).toContain("Aprobacion global: 33.3 % (1/3)");
     expect(md).toContain("p50 200 ms, p95 300 ms");
     expect(md).toContain("| G2 | 50.0 % (1/2) |");
-    expect(md).toContain("G2: dijo \\| algo malo");
+    expect(md).toContain("G2: dijo \\| algo\\\\ malo fin");
     expect(md).toContain("conexion cerrada");
     expect(md).toContain("- D: tope_de_gasto");
   });

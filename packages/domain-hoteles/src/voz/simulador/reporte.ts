@@ -89,7 +89,7 @@ export function construirReporte(e: EntradaReporteEvals): ReporteEvals {
 }
 
 const pct = (t: TasaAprobacion): string => `${(t.tasa * 100).toFixed(1)} % (${t.aprobados}/${t.total})`;
-const celda = (s: string): string => s.replace(/\|/g, "\\|").replace(/\s+/g, " ");
+const celda = (s: string): string => s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\s+/g, " ");
 
 export function reporteMarkdown(r: ReporteEvals): string {
   const l: string[] = [];
