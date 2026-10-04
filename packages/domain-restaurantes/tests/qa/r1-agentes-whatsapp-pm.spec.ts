@@ -292,15 +292,41 @@ describe("rafagas (espera de mensajes): el clasificador solo mira el ULTIMO mens
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 describe("modo sin IA: kill switch / presupuesto agotado / proveedor caido", () => {
   // QA-restaurantes-R1-agentes-03
-  it.fails("03 con el interruptor de plataforma encendido, el cliente que quiere pedir queda en 'problema tecnico' sin que nadie del restaurante se entere", async () => {
+  it("03 con el interruptor de plataforma encendido, el pedido NO se pierde en silencio: aviso falla_sistema (con la sucursal) y toma de handoff", async () => {
     const b = await banco({ killSwitch: true });
     const tel = "+5219990000005";
     const r1 = await b.enviar(tel, "hola quiero pedir 10 tacos de pastor a domicilio");
+    expect(r1.reply).toMatch(/avis[ée] al equipo/);
+    expect(r1.escalated).toBe(true);
+    const cb = b.callbacks().find((c) => c.reason === "escalada:falla_sistema");
+    expect(cb?.propertyId).toBe(b.t7);
+    expect(b.conversaciones.handoffs).toHaveLength(1);
+    // la persona ya tiene la toma: el agente (caido) no vuelve a contestar 'problema tecnico' ni genera otro aviso
     const r2 = await b.enviar(tel, "hola??");
-    expect(r1.reply).toMatch(/problema técnico/);
-    expect(r2.reply).toMatch(/problema técnico/);
-    // Esperado: el equipo se entera (callback/handoff falla_sistema) para tomar el pedido a mano.
-    expect(b.callbacks().length + b.conversaciones.handoffs.length).toBeGreaterThan(0);
+    expect(r2.reply).toBeUndefined();
+    expect(b.callbacks().filter((c) => c.reason === "escalada:falla_sistema")).toHaveLength(1);
+  });
+
+  it("03b proveedor caido (la escalera de modelos lanza): mismo aviso al equipo y handoff, no 'problema tecnico' a secas", async () => {
+    const b = await banco({ proveedorCae: true });
+    const r = await b.enviar("+5219990000105", "quiero 4 de pastor para recoger");
+    expect(r.escalated).toBe(true);
+    expect(r.reply).toMatch(/avis[ée] al equipo/);
+    expect(b.callbacks().some((c) => c.reason === "escalada:falla_sistema" && c.propertyId === b.t7)).toBe(true);
+  });
+
+  it("03c si el pedido YA se creo y despues cae el proveedor, el cliente sigue leyendo la confirmacion (no se escala ni se pierde)", async () => {
+    const b = await banco();
+    const pastor = b.pid("Taco Al Pastor (individual)");
+    const items = [item(pastor, "Taco Al Pastor (individual)", 3, "maiz")];
+    const tel = "+5219990000106";
+    b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items }), say("Total: $126.00. ¿Confirma?")]);
+    await b.enviar(tel, "3 pastor maiz pa recoger");
+    b.setGuion([call("confirmar_resumen", {}), call("crear_pedido", { branch_slug: "garcia-lavin", canal: "recoger", customer_name: "X", payment_method: "efectivo", items }), () => { throw new Error("proveedor caido (simulado)"); }]);
+    const r = await b.enviar(tel, "si efectivo");
+    expect(r.orderId).toBeTruthy();
+    expect(r.escalated).toBe(false);
+    expect(r.reply).toMatch(/registrado/);
   });
 
   it("el kill switch NO bloquea el clasificador determinista: una queja sigue llegando al equipo sin LLM", async () => {
@@ -409,7 +435,7 @@ describe("reglas duras que hoy solo viven en el prompt", () => {
   });
 
   // QA-restaurantes-R1-agentes-11: escalar_a_humano desde el loop del LLM pierde la sucursal de entrada.
-  it.fails("11 el agente escala (pedido_grande) en el chat de T7: el aviso queda SIN sucursal (el clasificador si la pone)", async () => {
+  it("11 el agente escala (pedido_grande) en el chat de T7: el aviso queda SIN sucursal (el clasificador si la pone)", async () => {
     const b = await banco();
     b.setGuion([call("escalar_a_humano", { customer_name: "Evento", motivo: "pedido_grande", resumen: "80 tacos para el sabado" }), say("Ya avisé al equipo de la sucursal.")]);
     await b.enviar("+5219990000014", "necesito 80 tacos de pastor para el sabado");
@@ -639,7 +665,7 @@ describe("buscar_producto con jerga, abreviaturas y errores de dedo (catalogo de
 describe("costo: un rechazo CORRECTO del servidor no debe subir al modelo caro", () => {
   // QA-restaurantes-R1-agentes-26 (P3): cualquier `{error}` de crear_pedido marca "fallo de herramienta" y el resto del turno usa el
   // rol escalado (modelo caro), incluso cuando el servidor rechazo un DUPLICADO a proposito (pedido_ya_creado).
-  it.fails("26 tras 'pedido_ya_creado' la respuesta sigue con el modelo barato", async () => {
+  it("26 tras 'pedido_ya_creado' la respuesta sigue con el modelo barato", async () => {
     const b = await banco();
     const pastor = b.pid("Taco Al Pastor (individual)");
     const items = [item(pastor, "Taco Al Pastor (individual)", 3, "maiz")];

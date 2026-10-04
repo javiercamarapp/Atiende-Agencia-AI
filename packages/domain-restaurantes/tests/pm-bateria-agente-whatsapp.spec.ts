@@ -301,8 +301,10 @@ describe("E.11 fallas del proveedor LLM", () => {
     const f = dosSucursales();
     const handler = createLlmWhatsAppTurnHandler(f.repo, gatewayDe([new FakeLlmProvider({ id: "a", failWith: () => new Error("500") }), new FakeLlmProvider({ id: "b", failWith: () => new Error("500") })]), { defaultRole: "default", escalatedRole: "escalated" });
     const turn = await handler.handleInboundMessage(entrada(f.organizationId, "hola"));
-    expect(turn.reply).toBe(providerFailureReply(null));
-    expect(turn.reply).toContain("inténtelo");
+    // Sin pedido creado el cliente no se queda con "inténtelo luego": el equipo recibe el aviso falla_sistema y se abre la toma de handoff (QA R1 agentes-03).
+    expect(turn.reply).toContain("problema técnico");
+    expect(turn.reply).toContain("avisé al equipo");
+    expect((turn as { escalacion?: { motivo: string } }).escalacion).toEqual({ motivo: "falla_sistema" });
     expect(turn.orderId).toBeNull();
   });
 
@@ -330,7 +332,8 @@ describe("E.11 fallas del proveedor LLM", () => {
     const provider = new FakeLlmProvider({ id: "lento", script: () => texto("no debe llamarse") });
     const handler = createLlmWhatsAppTurnHandler(f.repo, gatewayDe([provider]), { defaultRole: "default", escalatedRole: "escalated", turnBudgetMs: -1 });
     const turn = await handler.handleInboundMessage(entrada(f.organizationId, "hola"));
-    expect(turn.reply).toBe(providerFailureReply(null));
+    expect(turn.reply).toContain("problema técnico");
+    expect((turn as { escalacion?: { motivo: string } }).escalacion).toEqual({ motivo: "falla_sistema" });
     expect(provider.callCount).toBe(0);
   });
 
