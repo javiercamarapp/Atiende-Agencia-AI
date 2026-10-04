@@ -234,3 +234,19 @@ documentados aquí mismo:
 - Base sin migrar: `disponible: false` en la lectura, 503 honesto en la escritura y `status: "not_available"` en el barrido (SAVEPOINT en el repositorio;
   `packages/domain-restaurantes/tests/repartidor-perfil.spec.ts`). SQL y permisos en `scripts/verify-restaurantes-repartidor-perfil/`. Pruebas HTTP:
   `apps/api/tests/restaurantes-repartidor-perfil.spec.ts`.
+
+## Exportar Historial y Clientes (R-17)
+
+- `exportaciones.ts` (solo owner/admin: el archivo lleva teléfonos COMPLETOS de clientes, más angosto que las pantallas, que son de `MANAGER_ROLES`):
+  `GET /v1/restaurantes/:propertyId/admin/exportar/historial?formato=csv|pdf&status=&dateFrom=&dateTo=&branchId=` y
+  `GET .../admin/exportar/clientes?formato=csv|pdf&search=`. Se generan en el servidor con la sesión RLS del propio usuario (mismo `listOrders` / `listCustomers`
+  de las pantallas, paginando de 500 en 500). Tope de filas: 20 000 en CSV y 2 000 en PDF; pasado el tope responde 413 pidiendo acotar el rango (nunca un
+  archivo truncado en silencio). Sin streaming: la sesión de base de datos es la del request y se cierra al responder.
+- CSV (Excel): UTF-8 con BOM, separador coma, CRLF, fechas `AAAA-MM-DD HH:mm` en la zona horaria de CADA sucursal, dinero con dos decimales sin símbolo ni miles, y las
+  celdas de texto que empiezan con `=`, `+`, `-`, `@`, tabulador o retorno de carro llevan un apóstrofo delante (los nombres los escribe un tercero: defensa contra
+  inyección de fórmulas). No hay dependencia `xlsx` en el repo (no se agregó ninguna): el CSV con BOM abre directo en Excel.
+- PDF (`exportar-pdf.ts`, pdf-lib): A4 horizontal, encabezado repetido en cada hoja y pie en CADA página con fecha de generación, zona horaria, alcance y "Página i de n".
+  No reutiliza `despachos/reporte-pdf.ts` porque ese está atado al modelo de reporte fiscal (contribuyente/RFC).
+- Bitácora (tipo `exportacion`, migración 042 amplía el CHECK de `audit_log.entity_type`): `historial.exportado` / `clientes.exportado` con formato y número de filas,
+  nunca nombres, teléfonos ni el texto de búsqueda. Contra una base sin la 042 la fila de bitácora se omite (con aviso en el log) y la exportación funciona igual.
+- PII: teléfonos completos solo para owner/admin; el staff de piso y el repartidor reciben 403.

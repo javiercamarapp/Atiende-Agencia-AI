@@ -5,6 +5,9 @@ import { buildApp } from "../src/app.ts";
 import { totalizarEntregas } from "../src/routes/verticals/restaurantes/repartidor-historial.ts";
 import { authedGet, buildRestaurantesKpiTestContext, makeOrder } from "./restaurantes-admin-kpis-fixtures.ts";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Json = any;
+
 afterEach(() => vi.useRealTimers());
 // 2026-10-03 18:00Z = 12:00 en Mexico (UTC-6): hoy local = 2026-10-03.
 function ahora(iso = "2026-10-03T18:00:00Z") {
@@ -44,7 +47,7 @@ describe("GET .../repartidor/historial-dia", () => {
     ctx.restaurantesRepo.seedOrder(makeOrder({ ...base, organizationId: ctx.otherOrganizationId, propertyId: ctx.otherPropertyId, total: 555, paymentMethod: "efectivo", assignedRepartidorId: yo, deliveredAt: "2026-10-03T17:00:00Z" }));
     const res = await buildApp(ctx.deps).request(`/v1/restaurantes/${ctx.propertyIdA}/repartidor/historial-dia`, authedGet(ctx.staff.repartidor.token));
     expect(res.status).toBe(200);
-    const r = await res.json();
+    const r: Json = await res.json();
     expect(r).toMatchObject({ fecha: "2026-10-03", zonaHoraria: "America/Mexico_City" });
     expect(r.totales).toEqual({ pedidos: 3, totalCentavos: 28050, efectivoCentavos: 15000, efectivoPedidos: 1, tarjetaCentavos: 9050, sinMetodoPedidos: 1 });
     expect(r.entregas.map((e: { total: number }) => e.total)).toEqual([90.5, 40, 150]);
@@ -54,7 +57,7 @@ describe("GET .../repartidor/historial-dia", () => {
   it("sin entregas hoy: lista vacia y totales en cero (vacio honesto)", async () => {
     ahora();
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
-    const r = await (await buildApp(ctx.deps).request(`/v1/restaurantes/${ctx.propertyIdA}/repartidor/historial-dia`, authedGet(ctx.staff.repartidor.token))).json();
+    const r: Json = await (await buildApp(ctx.deps).request(`/v1/restaurantes/${ctx.propertyIdA}/repartidor/historial-dia`, authedGet(ctx.staff.repartidor.token))).json();
     expect(r.entregas).toEqual([]);
     expect(r.totales.pedidos).toBe(0);
   });
@@ -81,7 +84,7 @@ describe("GET .../repartidor/historial-dia", () => {
       body: JSON.stringify({ status: "entregado" }),
     });
     expect(patch.status).toBe(200);
-    const r = await (await app.request(`/v1/restaurantes/${ctx.propertyIdA}/repartidor/historial-dia`, authedGet(ctx.staff.repartidor.token))).json();
+    const r: Json = await (await app.request(`/v1/restaurantes/${ctx.propertyIdA}/repartidor/historial-dia`, authedGet(ctx.staff.repartidor.token))).json();
     expect(r.totales).toMatchObject({ pedidos: 1, efectivoCentavos: 12000 });
   });
 });
