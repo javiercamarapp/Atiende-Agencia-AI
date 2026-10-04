@@ -481,7 +481,11 @@ begin
   end if;
 
   update restaurantes.solicitud_aprobacion s set
-    estado = 'resuelta', decision = p_decision, motivo_resolucion = v_motivo, codigo_descuento = v_codigo,
+    estado = 'resuelta', decision = p_decision,
+    -- Seguridad (defensa en profundidad de datos personales): el motivo solo se conserva si pertenece a la lista cerrada; un texto libre del staff
+    -- (que podria incluir nombres o telefonos) en aprobar/mantener/sin_compensacion/etc. NO se guarda. Cancelar y rechazar ya lo exigen de la lista.
+    motivo_resolucion = case when v_motivo in ('cliente_desistio', 'sin_producto', 'fuera_de_zona', 'duplicado', 'error_agente', 'otro') then v_motivo else null end,
+    codigo_descuento = v_codigo,
     reposicion_order_id = v_repo, resuelta_at = now(), resuelta_por = v_uid
   where s.id = v_s.id;
   return query select true, 'resuelta'::text, p_decision, v_s.tipo, v_s.order_id, v_s.property_id, v_o.status, v_codigo, v_repo;
