@@ -136,3 +136,31 @@ describe("restaurantes.callback.pendiente", () => {
     await expect(session.query("select 1 as siguiente;")).resolves.toEqual({ rows: [{ ok: true }] });
   });
 });
+
+describe("restaurantes.evento.solicitud (R-43)", () => {
+  const EVENTO = { organizationId: ORG, propertyId: PROP, customerName: "Ana Perez", customerPhone: "9991234567", reason: "evento", message: "Fecha del evento: 2026-11-15\nPersonas: 40", source: "web" as const };
+
+  it("una solicitud de evento emite el aviso PROPIO (no el generico de callback) con la clave de la solicitud y sin PII", async () => {
+    const { session, vistos } = conRegistro([
+      { match: INSERT_CALLBACK, respond: () => [{ id: CALLBACK_ID, resolved: false, created_at: "2026-10-01T10:00:00.000Z" }] },
+      { match: EMITIR, respond: () => [{ emit_notification: 1 }] },
+    ]);
+    await new PostgresRestaurantesRepository(session).createCallbackRequest(EVENTO);
+    expect(vistos).toHaveLength(1);
+    expect(vistos[0]![2]).toBe("restaurantes.evento.solicitud");
+    expect(vistos[0]![10]).toBe(`restaurantes.evento.solicitud:${CALLBACK_ID}`);
+    expect(vistos[0]![7]).toBe("/restaurantes/{orgSlug}/conversaciones");
+    expect(JSON.stringify(vistos[0])).not.toMatch(/Ana|9991234567|2026-11-15|Personas/);
+  });
+
+  it("base sin migrar (42883): la solicitud queda registrada y la sesion sigue viva", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: INSERT_CALLBACK, respond: () => [{ id: CALLBACK_ID, resolved: false, created_at: "2026-10-01T10:00:00.000Z" }] },
+      { match: EMITIR, respond: () => pgError("42883", "function core.emit_notification does not exist") },
+      SIGUIENTE,
+    ]);
+    const r = await new PostgresRestaurantesRepository(session).createCallbackRequest(EVENTO);
+    expect(r.id).toBe(CALLBACK_ID);
+    await expect(session.query("select 1 as siguiente;")).resolves.toEqual({ rows: [{ ok: true }] });
+  });
+});

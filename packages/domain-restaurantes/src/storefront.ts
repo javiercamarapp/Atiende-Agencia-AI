@@ -11,6 +11,7 @@ import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError, PromotionError } from "./errors.ts";
 import { estaAbiertoAhora } from "./horarios.ts";
 import { canonicalizeMexicanPhone } from "./phone.ts";
+import { enlaceWhatsapp } from "./storefront-marca.ts";
 import { extraerPackSize, requiresAdultConfirmation, requiresTortillaChoice } from "./product-search.ts";
 import { applyPromotionToOrder, normalizePromotionCode } from "./promotions.ts";
 import type { RestaurantesRepository } from "./repository.ts";
@@ -21,6 +22,8 @@ export interface StorefrontBranchView {
   readonly name: string;
   readonly address: string | null;
   readonly phone: string | null;
+  /** wa.me de la sucursal con texto prellenado (R-38); null si la sucursal no tiene un numero valido. */
+  readonly whatsappUrl: string | null;
   /** null = la sucursal no tiene horario configurado (no se afirma ni abierto ni cerrado). */
   readonly abiertoAhora: boolean | null;
   readonly cierraA: string | null;
@@ -55,6 +58,7 @@ async function vistaDeSucursal(repo: RestaurantesRepository, branch: Branch, now
     name: branch.name,
     address: branch.address,
     phone: branch.phone,
+    whatsappUrl: enlaceWhatsapp(branch.phone, `Hola, quiero información de ${branch.name}.`),
     abiertoAhora,
     cierraA,
     proximaApertura,

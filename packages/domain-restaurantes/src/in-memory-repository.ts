@@ -60,6 +60,8 @@ import type {
   RestaurantesAuditLogRow,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
+  StorefrontMarca,
+  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
   StorefrontTrackingResult,
@@ -284,6 +286,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly addresses = new Map<string, CustomerAddress[]>();
   private readonly orders: StoredOrder[] = [];
   private readonly knownZones: StoredKnownZone[] = [];
+  private readonly storefrontMarcas = new Map<string, StorefrontMarca>();
   private readonly callbackRequests: CallbackRequest[] = [];
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
   private readonly phoneNumberIdToOrg = new Map<string, string>();
@@ -871,6 +874,11 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       }
       return created;
     });
+  }
+
+  /** Solo para pruebas: las solicitudes de contacto registradas (en orden de creacion). */
+  peekCallbackRequests(): readonly CallbackRequest[] {
+    return this.callbackRequests;
   }
 
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
@@ -1642,6 +1650,16 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     }
     this.phoneNumberIdToOrg.set(phoneNumberId, organizationId);
     return { phoneNumberId };
+  }
+
+  async findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null> {
+    return this.storefrontMarcas.get(organizationId) ?? null;
+  }
+
+  async upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca> {
+    const guardada: StorefrontMarca = { ...input, updatedAt: new Date().toISOString() };
+    this.storefrontMarcas.set(organizationId, guardada);
+    return guardada;
   }
 
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {
