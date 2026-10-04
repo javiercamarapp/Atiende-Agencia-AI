@@ -341,6 +341,16 @@ describe("QA R1 citas · WhatsApp · DEFECTOS confirmados", () => {
     expect(await t.citas()).toHaveLength(0);
   });
 
+  // QA-citas-R1-agentes-18 (P1): la lista de espera no tiene puerta de entrada. El optimizador ofrece los huecos liberados a
+  // `citas.appointment_waitlist`, pero ningun canal inscribe a nadie: el agente (WhatsApp y voz) no tiene herramienta, la API solo LEE la lista y
+  // dispara avisos, y el unico INSERT del repo es el seed de la demo. "Si se libera algo me avisan" no tiene efecto real.
+  it.fails("18 'apuntenme en la lista de espera para el lunes' inscribe al paciente (herramienta del agente o puerto del repositorio)", async () => {
+    const t = montarConsultorio();
+    const herramienta = TOOLS.some((tool) => /espera|waitlist/.test(tool.name));
+    const puerto = Object.getOwnPropertyNames(Object.getPrototypeOf(t.repo)).some((m) => /^(insert|add|create|join|registrar|inscribir)\w*waitlist/i.test(m));
+    expect(herramienta || puerto).toBe(true);
+  });
+
   // QA-citas-R1-agentes-14 (P3): inyeccion de prompt desde DATOS: el nombre que el propio paciente dicto (crear_cita.customer_name, hasta 160
   // caracteres) se pega TAL CUAL en el SYSTEM prompt de las conversaciones siguientes ("Cliente conocido: <nombre>").
   it.fails("14 un nombre con instrucciones no entra crudo al system prompt", async () => {
