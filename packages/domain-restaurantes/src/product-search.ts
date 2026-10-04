@@ -90,6 +90,14 @@ const FRASES_DE_PESO: ReadonlyArray<readonly [RegExp, number]> = [
   [/\b1\s*(?:kg|kilo)\b|\bun\s+kilo\b|\bkilos?\b|\bkg\b/g, 1000],
 ];
 
+/** Escrituras comunes de una misma palabra ("bisteck", "bistek", "biftec") que el catalogo escribe "bistec". Se aplica al token ya singular. */
+const ALIAS_DE_ESCRITURA: Readonly<Record<string, string>> = { bisteck: "bistec", bistek: "bistec", bisteak: "bistec", biftec: "bistec", biftek: "bistec" };
+
+/** "kgs", "kgr", "kgrs" y "kilogramos" son "kg": sin esto "2 kgs de pastor" no se reconoce como peso y la busqueda devuelve vacio. */
+function normalizarUnidadesDeKilo(texto: string): string {
+  return texto.replace(/\b(?:kgrs?|kgs|kilogramos?)\b/g, "kg");
+}
+
 /** Convierte las frases de peso de una consulta en tokens `peso:<gramos>` (uno por frase). Lo que no es peso queda igual. */
 export function normalizarPesosEnConsulta(textoSinAcentos: string): string {
   let texto = textoSinAcentos;
@@ -117,7 +125,7 @@ export function pesoDeProductoEnGramos(nombre: string): number | null {
  */
 export function tokenizeForProductSearch(query: string): string[] {
   const normalizada = normalizarPesosEnConsulta(
-    sinAcentos(query).replace(/\bcero\s+punto\s+cero\b/g, "0.0"),
+    normalizarUnidadesDeKilo(sinAcentos(query)).replace(/\bcero\s+punto\s+cero\b/g, "0.0"),
   ).replace(/\bmedia\s+orden\b/g, "1/2");
 
   const raw = normalizada.split(/\s+/).filter((t) => t.length > 1 && !STOPWORDS_BUSQUEDA.has(t));
@@ -128,7 +136,8 @@ export function tokenizeForProductSearch(query: string): string[] {
       tokens.push(t);
       continue;
     }
-    tokens.push(t.length > 4 && t.endsWith("s") ? t.slice(0, -1) : t);
+    const singular = t.length > 4 && t.endsWith("s") ? t.slice(0, -1) : t;
+    tokens.push(ALIAS_DE_ESCRITURA[singular] ?? singular);
   }
   return tokens.length > 0 ? tokens : [sinAcentos(query)];
 }
@@ -142,10 +151,12 @@ export function matchesProductSearch(
 ): boolean {
   const textoPlano = sinAcentos([fields.name, fields.description, fields.categoryName].filter(Boolean).join(" "));
   const alias = fields.searchKeywords.map(sinAcentos);
+  // "cocacola" (junto) debe encontrar "Coca-Cola": una palabra larga tambien se compara contra el texto sin guiones ni espacios.
+  const textoCompacto = textoPlano.replace(/[\s-]/g, "");
   const pesoProducto = pesoDeProductoEnGramos(fields.name);
   return tokens.every((t) => {
     if (t.startsWith("peso:")) return pesoProducto !== null && pesoProducto === Number(t.slice(5));
-    return textoPlano.includes(t) || alias.some((a) => a.includes(t));
+    return textoPlano.includes(t) || alias.some((a) => a.includes(t)) || (t.length >= 6 && textoCompacto.includes(t));
   });
 }
 

@@ -36,6 +36,7 @@ import {
   type OrderFlowRef,
   type OrderFlowSnapshot,
   type OrderFlowState,
+  type OrderFlowViolationCode,
 } from "./order-flow.ts";
 import type {
   CanalPedido,
@@ -85,6 +86,9 @@ export interface AgentToolContext {
   readonly phone: string | null;
   /** Sucursal fijada por el contexto (token de llamada / numero de WhatsApp de sucursal). */
   readonly lockedPropertyId?: string | null;
+  /** Sucursal del numero de WhatsApp por el que entro el chat. NO fija la sucursal del pedido (el cliente puede pedir en otra): solo
+   * identifica a quien le toca el aviso de `escalar_a_humano` / `registrar_contacto` (el callback queda con `property_id`, no solo para la org). */
+  readonly entryPropertyId?: string | null;
   /** Maquina de estados del pedido (order-flow.ts). Ausente = sin exigir cotizacion/confirmacion
    * (camino legado: voz con secreto global sin token de llamada). */
   readonly flow?: OrderFlowRef;
@@ -103,6 +107,8 @@ export interface AgentToolOutcome {
   readonly propertyId: string | null;
   /** Huella de la cotizacion vigente (solo cotizar_pedido con maquina de estados activa). */
   readonly quoteHash?: string;
+  /** Codigo de la violacion de la maquina de estados que el SERVIDOR rechazo a proposito (solo `executeAgentToolSafely`, con `{error}`). */
+  readonly rechazoDelFlujo?: OrderFlowViolationCode;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -766,7 +772,7 @@ async function dispatchTool(
       const esEscalada = def.name === "escalar_a_humano";
       await registerCallbackRequest(repo, {
         organizationId,
-        propertyId: ctx.lockedPropertyId ?? null,
+        propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
         customerName: String(input.customer_name ?? "Cliente"),
         customerPhone: ctx.phone,
         reason: esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined,
@@ -828,6 +834,11 @@ export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: 
   try {
     return await repo.runWithRowSavepoint(() => invokeAgentTool(repo, ctx, name, input));
   } catch (err) {
-    return { result: { error: err instanceof OrderValidationError ? err.message : "Error interno al ejecutar la herramienta" }, orderId: null, propertyId: null };
+    return {
+      result: { error: err instanceof OrderValidationError ? err.message : "Error interno al ejecutar la herramienta" },
+      orderId: null,
+      propertyId: null,
+      ...(err instanceof OrderFlowViolationError ? { rechazoDelFlujo: err.code } : {}),
+    };
   }
 }

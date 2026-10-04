@@ -77,6 +77,7 @@ const PM_MOTIVOS_ESCALACION_PROMPT: readonly string[] = [
 export const PM_COPY = {
   pedidoRegistrado: "Su pedido ya quedó registrado y se mandó a cocina.",
   problemaTecnico: "En este momento tenemos un problema técnico. Por favor, inténtelo de nuevo en unos minutos.",
+  sinAsistenteAvisoEquipo: "En este momento tenemos un problema técnico. Ya avisé al equipo de la sucursal para que una persona tome su pedido lo antes posible.",
   repetirPedido: "¿Me puede repetir su pedido, por favor?",
   turnoComplicado: "Se me complicó procesar su pedido. Un momento, por favor.",
   /** El turno agoto sus vueltas sin pedido y el aviso al equipo quedo registrado: se dice solo lo que es cierto. */

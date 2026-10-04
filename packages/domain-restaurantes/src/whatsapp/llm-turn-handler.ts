@@ -33,7 +33,7 @@ import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestSharedLocation } from "./location.ts";
-import { branchAlreadyKnown, classifyHighRiskIntentInMessages, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote } from "./guards.ts";
+import { branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
@@ -346,6 +346,9 @@ export function enforceBistecPackNotice(reply: string, messages: readonly LlmMes
   return reply.trim() ? `${notice}\n\n${reply.trim()}` : notice;
 }
 
+/** Aviso al cliente cuando el asistente no puede responder y el equipo ya fue avisado (perfil generico). */
+export const PROVEEDOR_CAIDO_REPLY_GENERICO = "Ahorita tenemos un problema técnico. Ya avisé al equipo del restaurante para que una persona lo contacte lo antes posible.";
+
 export function providerFailureReply(orderId: string | null, perfil: PerfilAgenteWhatsApp = "generico"): string {
   if (perfil === "taqueria_pm") return orderId ? PM_COPY.pedidoRegistrado : PM_COPY.problemaTecnico;
   return orderId
@@ -421,8 +424,29 @@ async function encolarComandaDelTurno(
   }
 }
 
+/** Tope de lo que se le manda al modelo de una conversacion: la fila de WhatsApp es UNA por (organizacion, telefono) y solo crece, asi que un cliente
+ * frecuente acumula semanas de chats. Sin tope cada turno manda TODO (costo y latencia sin limite; con suficiente historial revienta el contexto). */
+export const HISTORIAL_MAX_MENSAJES = 40;
+export const HISTORIAL_MAX_CARACTERES = 24_000;
+
+/** Ventana de la conversacion que ve el modelo: los ultimos mensajes dentro de ambos topes, empezando siempre en un mensaje del cliente (un
+ * "assistant" suelto al inicio confunde a los proveedores) y conservando SIEMPRE el ultimo mensaje del cliente. El resto del turno (marcador de
+ * turno de la maquina del pedido, ubicacion compartida) sigue leyendo el historial completo. */
+export function ventanaDeHistorial(messages: readonly ConversationMessage[]): readonly ConversationMessage[] {
+  let inicio = messages.length;
+  let caracteres = 0;
+  while (inicio > 0 && messages.length - inicio < HISTORIAL_MAX_MENSAJES) {
+    const siguiente = messages[inicio - 1]!;
+    if (caracteres + siguiente.content.length > HISTORIAL_MAX_CARACTERES && inicio < messages.length) break;
+    caracteres += siguiente.content.length;
+    inicio -= 1;
+  }
+  while (inicio < messages.length - 1 && messages[inicio]!.role !== "user") inicio += 1;
+  return inicio === 0 ? messages : messages.slice(inicio);
+}
+
 function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
-  return messages.map((m) => (m.role === "user" ? { role: "user" as const, content: m.content } : { role: "assistant" as const, content: m.content }));
+  return ventanaDeHistorial(messages).map((m) => (m.role === "user" ? { role: "user" as const, content: m.content } : { role: "assistant" as const, content: m.content }));
 }
 
 /** 30 s de funcion menos el margen de cierre menos ~6 s para la ultima llamada al LLM que arranque antes del tope. */
@@ -478,12 +502,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // en el primero ("me cobraron dos veces") seguido de un "hola??". Sin rafaga el unico pendiente es el mensaje nuevo (igual que antes).
       // Solo los ultimos 5: una cola larga sin respuesta (p. ej. mensajes de una toma humana ya devuelta) no revive escalaciones viejas.
       const pendientes = mensajesSinResponder(messages).slice(-5);
-      const riesgo = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content));
+      const riesgo = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), contextoDeCliente(customer));
       if (riesgo) {
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const aviso = await executeAgentToolSafely(
           repo,
-          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null },
+          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null },
           "escalar_a_humano",
           { customer_name: nombre, motivo: riesgo.motivo, resumen: riesgo.text.slice(0, 500) },
         );
@@ -505,9 +529,27 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         lastQuoteAmounts = flowVigente.quotedAmounts;
       }
 
+      // Modo sin IA (interruptor de plataforma, tope de gasto agotado, proveedor caido o turno sin tiempo): si NO hay pedido creado, "problema
+      // tecnico" a secas pierde el pedido sin que nadie del restaurante se entere. Se deja el aviso `falla_sistema` (con la sucursal de entrada)
+      // y la toma de handoff para que una persona tome el pedido, como ya hace la voz. Solo se promete el aviso si quedo registrado de verdad.
+      const fallaDelSistema = async (): Promise<{ readonly reply: string; readonly orderId: string | null; readonly propertyId: string | null; readonly escalacion?: { readonly motivo: string } }> => {
+        if (orderId) return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
+        const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
+        const ultimo = [...messages].reverse().find((m) => m.role === "user");
+        const aviso = await executeAgentToolSafely(
+          repo,
+          { organizationId, channel: "whatsapp", phone, entryPropertyId: activeEntryBranch?.propertyId ?? null },
+          "escalar_a_humano",
+          { customer_name: nombre, motivo: "falla_sistema", resumen: `El asistente no pudo responder (falla del sistema). Ultimo mensaje del cliente: ${(ultimo?.content ?? "").slice(0, 400)}` },
+        );
+        if (isToolErrorResult(aviso.result)) return done({ reply: providerFailureReply(null, perfil), orderId: null, propertyId });
+        escalarMotivo = "falla_sistema";
+        return done({ reply: perfil === "taqueria_pm" ? PM_COPY.sinAsistenteAvisoEquipo : PROVEEDOR_CAIDO_REPLY_GENERICO, orderId: null, propertyId });
+      };
+
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
         if (Date.now() >= deadline) {
-          return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
+          return fallaDelSistema();
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
 
@@ -525,7 +567,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // residencia bloqueado — nunca se propaga un 500 crudo al cliente
           // de WhatsApp; si ya hay un orderId real, se lo confirmamos con
           // éxito en vez de sonar a error (bug real corregido en el origen).
-          return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
+          return fallaDelSistema();
         }
 
         const toolCalls = completion.toolCalls ?? [];
@@ -551,14 +593,16 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         for (const call of toolCalls) {
           let input: Record<string, unknown> = {};
           let result: unknown;
+          let rechazoDelFlujo: string | undefined;
           try {
             input = JSON.parse(call.argumentsJson || "{}") as Record<string, unknown>;
           } catch {
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, entryPropertyId: activeEntryBranch?.propertyId ?? null }, call.name, input);
             result = executed.result;
+            rechazoDelFlujo = executed.rechazoDelFlujo;
             anyToolCalled = true;
             const quoted = (result as { quote?: Parameters<typeof knownAmountsOfQuote>[0]; order?: { total?: unknown; items?: readonly { price?: unknown; quantity?: unknown }[] } } | null) ?? null;
             if (call.name === "cotizar_pedido" && typeof quoted?.quote?.total === "number") {
@@ -586,7 +630,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           }
           // Pedido grande retenido por el servidor: el aviso ya quedo registrado; solo se abre la toma de handoff (R-21).
           if (call.name === "crear_pedido" && (result as { pedido_grande?: unknown } | null)?.pedido_grande === true) escalarMotivo = "pedido_grande";
-          if (call.name === "crear_pedido" && isToolErrorResult(result)) {
+          // El rechazo de un duplicado (`pedido_ya_creado`) o de un reintento simultaneo (`pedido_en_proceso`) es el servidor haciendo su trabajo,
+          // no un fallo del modelo barato: no justifica pagar el escalon caro.
+          if (call.name === "crear_pedido" && isToolErrorResult(result) && rechazoDelFlujo !== "pedido_ya_creado" && rechazoDelFlujo !== "pedido_en_proceso") {
             huboFalloDeHerramienta = true;
           }
           working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
