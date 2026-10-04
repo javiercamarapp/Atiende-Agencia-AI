@@ -14,8 +14,6 @@
 import { formatCell } from "./format.js";
 import type { DataChatToolResult } from "./types.js";
 
-const NUMBER_RE = /\d[\d,]*(?:\.\d+)?/g;
-
 /** Posiciones/conteos que se aceptan sin estar en los datos ("top 3", "2 de 5"): 0..POSITION_CAP y el total de filas. */
 const POSITION_CAP = 10;
 
