@@ -7,16 +7,15 @@ import { createHmac, randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { buildTestDeps, jsonRequestInit, TEST_ENV } from "./fixtures.ts";
-import { evaluarUmbral, percentil, resumir, type Muestra } from "../../../scripts/load-test-horario-pico/metricas.ts";
+import { configuracionDeCarga, evaluarUmbral, percentil, resumir, type Muestra } from "../../../scripts/load-test-horario-pico/metricas.ts";
 
-const CLIENTES = Number(process.env.CARGA_CLIENTES ?? 60);
-const MENSAJES_META = Number(process.env.CARGA_MENSAJES_META ?? 40);
+const { clientes: CLIENTES, mensajesMeta: MENSAJES_META, reportar: REPORTAR } = configuracionDeCarga();
 const UMBRAL = { p95MsMax: 1500, errores5xxMax: 0 };
 const BASE = "/v1/restaurantes/los-taquitos-de-pm/storefront";
 const ip = (i: number) => `10.${(i >> 16) & 255}.${(i >> 8) & 255}.${i & 255}`;
 
 const reportar = (nombre: string, r: ReturnType<typeof resumir>) => {
-  if (process.env.CARGA_REPORTE) console.log(`${nombre.padEnd(28)} n=${r.total} ok=${r.ok} 429=${r.limitadas429} 5xx=${r.errores5xx} p50=${r.p50.toFixed(0)}ms p95=${r.p95.toFixed(0)}ms p99=${r.p99.toFixed(0)}ms max=${r.max.toFixed(0)}ms rss=${(process.memoryUsage().rss / 1048576).toFixed(0)}MiB`);
+  if (REPORTAR) console.log(`${nombre.padEnd(28)} n=${r.total} ok=${r.ok} 429=${r.limitadas429} 5xx=${r.errores5xx} p50=${r.p50.toFixed(0)}ms p95=${r.p95.toFixed(0)}ms p99=${r.p99.toFixed(0)}ms max=${r.max.toFixed(0)}ms rss=${(process.memoryUsage().rss / 1048576).toFixed(0)}MiB`);
 };
 
 async function medido(f: () => Response | Promise<Response>) {

@@ -34,3 +34,10 @@ export function evaluarUmbral(nombre: string, r: Resumen, u: Umbral): string[] {
   if (r.errores5xx > u.errores5xxMax) m.push(`${nombre}: ${r.errores5xx} respuestas 5xx (max ${u.errores5xxMax})`);
   return m;
 }
+
+/** Tamano de la corrida. Vive aqui (y no en el spec) porque el inventario de credenciales
+ * (apps/api/tests/env-inventory-guard.spec.ts) exige registrar toda variable leida bajo apps/ y packages/, y estas tres
+ * son perillas de prueba, no credenciales. Valores por defecto: carga chica para el gate normal. */
+export function configuracionDeCarga(env: NodeJS.ProcessEnv = process.env): { clientes: number; mensajesMeta: number; reportar: boolean } {
+  return { clientes: Number(env.CARGA_CLIENTES ?? 60), mensajesMeta: Number(env.CARGA_MENSAJES_META ?? 40), reportar: Boolean(env.CARGA_REPORTE) };
+}
