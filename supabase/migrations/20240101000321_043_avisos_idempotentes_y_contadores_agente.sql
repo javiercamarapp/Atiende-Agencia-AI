@@ -4,7 +4,8 @@
 --
 -- Parte B (§3, P11/P32): contadores DETERMINISTAS por conversacion de WhatsApp (`whatsapp_conversations.agent_counters` y la funcion de solo
 -- sistema `whatsapp_contador_agente`): "no entiendo" y "colonia no reconocida" seguidos. Al llegar a 2 el servidor escala por su cuenta (antes
--- dependia de que el modelo siguiera el prompt). Ver el final de este archivo.
+-- dependia de que el modelo siguiera el prompt). La tercera clave, `ubicacion_solicitada`, lleva la cuenta de la solicitud del pin con el boton
+-- nativo de WhatsApp (§5: una sola vez por pedido). Ver el final de este archivo.
 --
 -- PARTE A -- avisos idempotentes
 -- Diseno (todo ADITIVO; nada existente cambia ni se renombra):
@@ -134,9 +135,9 @@ grant execute on function restaurantes.callback_registrar_agente(uuid, uuid, tex
 --
 -- Justificacion de seguridad:
 --  * `whatsapp_conversations.agent_counters` (jsonb, por defecto `{}`): SIN GRANT nuevo. La tabla ya solo la ve el staff de la organizacion
---    (policy de 001) y solo la escribe el sistema; el contenido son dos enteros con su fecha, nunca texto del cliente ni PII.
+--    (policy de 001) y solo la escribe el sistema; el contenido son enteros con su fecha, nunca texto del cliente ni PII.
 --  * whatsapp_contador_agente -- `security definer`, `set search_path` fijo, SOLO SISTEMA (`auth.uid() is null`; un staff recibe 42501), `revoke
---    ... from public, anon`, EXECUTE a `authenticated`/`service_role` como `whatsapp_append_turn` (013). Solo acepta dos claves y dos acciones
+--    ... from public, anon`, EXECUTE a `authenticated`/`service_role` como `whatsapp_append_turn` (013). Solo acepta tres claves y dos acciones
 --    (22023 si no). Opera sobre la fila (organizacion, telefono) con `for update` y nunca cruza organizaciones: una conversacion de otra
 --    organizacion no existe para quien la llama (devuelve null, no sondea). Un contador mas viejo de 2 h cuenta como 0 (no arrastra un caso
 --    de la semana pasada).
@@ -160,7 +161,7 @@ begin
   if auth.uid() is not null then
     raise exception 'whatsapp_contador_agente es solo de sistema' using errcode = '42501';
   end if;
-  if p_clave is null or p_clave not in ('colonia_no_reconocida', 'no_entiende') then
+  if p_clave is null or p_clave not in ('colonia_no_reconocida', 'no_entiende', 'ubicacion_solicitada') then
     raise exception 'whatsapp_contador_agente: clave invalida' using errcode = '22023';
   end if;
   if p_accion is null or p_accion not in ('incrementar', 'reiniciar') then

@@ -28,6 +28,9 @@ export interface WhatsAppTurnHandler {
     readonly propertyId: string | null;
     /** R-21: el agente pidio un humano (`escalar_a_humano`); el webhook abre la toma de handoff. */
     readonly escalacion?: { readonly motivo: string };
+    /** El agente pide la ubicacion del cliente con el boton nativo de WhatsApp (una sola vez por pedido): el webhook encola, ademas del
+     * texto, un mensaje interactivo `location_request_message` (dentro de la ventana de 24 h del cliente). */
+    readonly pedirUbicacion?: true;
   }>;
 }
 

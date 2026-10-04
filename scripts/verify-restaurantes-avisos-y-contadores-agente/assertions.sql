@@ -286,6 +286,19 @@ begin
 end $$;
 rollback;
 
+\echo '=== K2b. La clave ubicacion_solicitada: la 1.a vez devuelve 1 (se pide), la 2.a ya 2 (no se repite) y reiniciar la libera para el siguiente pedido ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+do $$
+begin
+  if restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'ubicacion_solicitada', 'incrementar') <> 1 then raise exception 'K2b: la primera vez debe devolver 1'; end if;
+  if restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'ubicacion_solicitada', 'incrementar') <> 2 then raise exception 'K2b: la segunda ya no es 1'; end if;
+  perform restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'ubicacion_solicitada', 'reiniciar');
+  if restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'ubicacion_solicitada', 'incrementar') <> 1 then raise exception 'K2b: tras reiniciar vuelve a 1'; end if;
+end $$;
+rollback;
+
 \echo '=== K3. NEGATIVO: un contador de mas de 2 h cuenta como 0 ==='
 begin;
 update restaurantes.whatsapp_conversations set agent_counters = jsonb_build_object('no_entiende', jsonb_build_object('n', 5, 'at', now() - interval '3 hours'))
