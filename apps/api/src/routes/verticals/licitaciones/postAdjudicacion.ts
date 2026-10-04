@@ -103,12 +103,13 @@ export function licitacionesPostAdjudicacionRoutes(deps: AppDeps): Hono<CoreAuth
     const organizationId = c.get("organizationId");
     const hoy = hoyIso();
     const calendario = await resolveCalendarioFor(deps, c, contract.tenderId);
-    const [plazos, garantias, hitos, convenios] = await Promise.all([
-      repo.getPlazos(organizationId, contract.id),
-      repo.listGarantias(organizationId, contract.id),
-      repo.listHitos(organizationId, contract.id),
-      repo.listConvenios(organizationId, contract.id),
-    ]);
+    // En SECUENCIA, no en Promise.all: las 4 lecturas comparten la MISMA sesion transaccional y cada una
+    // abre su SAVEPOINT (runWithSavepointFallback). Concurrentes, la cola SAVEPOINT a,b,c,d ... RELEASE a
+    // destruye b..d y la transaccion termina abortada (3B001 / 25P02 -> ROLLBACK).
+    const plazos = await repo.getPlazos(organizationId, contract.id);
+    const garantias = await repo.listGarantias(organizationId, contract.id);
+    const hitos = await repo.listHitos(organizationId, contract.id);
+    const convenios = await repo.listConvenios(organizationId, contract.id);
     const calculados = calcularPlazos(plazos, calendario, hoy);
     const avisos = [calculados.fechaLimiteFirma, calculados.fechaLimiteEntregaGarantia].flatMap((f) => (f && plazos ? calendarioAvisos(calendario, plazos.falloNotificadoEn ?? plazos.firmadoEn ?? f, f) : []));
     return {

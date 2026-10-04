@@ -100,6 +100,40 @@ describe("post-adjudicacion: acceso y vacio honesto", () => {
   });
 });
 
+describe("post-adjudicacion: el GET base no concurre sobre la sesion transaccional", () => {
+  it("las lecturas del resumen corren en SECUENCIA (SAVEPOINT concurrentes sobre una sesion destruyen la pila: 3B001/25P02)", async () => {
+    const inner = new InMemoryPostAdjudicacionRepository();
+    let enVuelo = 0;
+    let maxEnVuelo = 0;
+    const llamadas: string[] = [];
+    // Proxy: cada metodo de lectura cede el turno (macrotarea) para que Promise.all, si volviera, se solape.
+    const repo = new Proxy(inner, {
+      get(target, prop, receiver) {
+        const v = Reflect.get(target, prop, receiver);
+        if (typeof v !== "function" || !/^(get|list)/.test(String(prop))) return typeof v === "function" ? v.bind(target) : v;
+        return async (...args: unknown[]) => {
+          enVuelo += 1;
+          maxEnVuelo = Math.max(maxEnVuelo, enVuelo);
+          llamadas.push(String(prop));
+          try {
+            await new Promise((r) => setTimeout(r, 5));
+            return await (v as (...a: unknown[]) => Promise<unknown>).apply(target, args);
+          } finally {
+            enVuelo -= 1;
+          }
+        };
+      },
+    });
+    const s = await setup({ deps: (d) => ({ ...d, licitacionesPostAdjudicacionRepo: () => repo }) });
+    inner.linkContract(s.contract.id, s.ctx.tenderId);
+    llamadas.length = 0;
+    const r = await s.call("GET", "", "viewer");
+    expect(r.status).toBe(200);
+    expect(llamadas).toEqual(expect.arrayContaining(["getPlazos", "listGarantias", "listHitos", "listConvenios"]));
+    expect(maxEnVuelo).toBe(1);
+  });
+});
+
 describe("post-adjudicacion: plazos en dias habiles", () => {
   it("el plazo de firma SALTA los dias inhabiles del calendario efectivo y la entrega de garantia cuenta desde la firma", async () => {
     const s = await setup();
