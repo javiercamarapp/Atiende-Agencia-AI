@@ -254,3 +254,9 @@ documentados aquí mismo:
 - Bitácora (tipo `exportacion`, migración 044 amplía el CHECK de `audit_log.entity_type`): `historial.exportado` / `clientes.exportado` con formato y número de filas,
   nunca nombres, teléfonos ni el texto de búsqueda. Contra una base sin la 044 la fila de bitácora se omite (con aviso en el log) y la exportación funciona igual.
 - PII: teléfonos completos solo para owner/admin; el staff de piso y el repartidor reciben 403.
+
+- Autopiloto (`autopiloto.ts`, migración 050; staff con alcance a la sucursal): `GET .../admin/autopiloto/solicitudes?estado=pendiente|resuelta` (aprobaciones «Por aprobar»),
+  `POST .../admin/autopiloto/solicitudes/:id/resolver` `{ decision, motivo?, valor?, indices? }` (aprobar/rechazar/cancelar/mantener/compensar con un clic; idempotente; 400 motivo fuera de la lista
+  cerrada; 403 sin alcance; 503 base sin migrar), `GET|PUT .../admin/autopiloto/config` (PUT solo owner/admin), `POST .../admin/autopiloto/agotado` (agotado hasta mañana),
+  `GET .../admin/autopiloto/tiempo?canal=` (tiempo prometido hoy) y `GET .../admin/autopiloto/pedidos/:orderId/historial`. `PATCH .../admin/orders/:id/status` exige `motivo` (lista cerrada) al cancelar
+  y rechaza mover un pedido `por_aprobar` (409). El tick `autopiloto-tick.ts` corre dentro de `/internal/restaurantes/promover-programados`.

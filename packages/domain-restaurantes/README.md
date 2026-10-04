@@ -122,3 +122,24 @@ organización y se muestra aparte. Solo alertas internas (panel + `restaurantes.
 `InMemoryCierreRepository` (pruebas) y `barrerCierresSucursal` (barrido idempotente por sucursal que avisa solo al CREAR un cierre). Las definiciones de cada
 cifra (venta, ticket, cancelación, tiempo de entrega, comparativo, fecha de negocio) viven en el encabezado de `migrations/041_cierre_dia_resumen_semanal.sql`;
 el cálculo es SQL y lo prueba `scripts/verify-restaurantes-cierre-dia/` contra Postgres real.
+
+## Autopiloto del ciclo del pedido (migración 050)
+
+`src/autopiloto/`: el sistema prepara y pide **una aprobación con un clic**; lo que mueve dinero, cancela algo ya en cocina o es un pedido grande **nunca se
+automatiza sin humano** (y nada se autoaprueba: sin respuesta solo se escala el aviso al owner). Piezas:
+
+- Estado `por_aprobar` (pedido grande retenido sin comanda ni cocina) y `solicitud_aprobacion` (pedido grande, cancelación pedida por el cliente, compensación
+  de una queja). Resolver es idempotente y atómico (bloqueo de fila): dos clics = un efecto. Aprobar encola la comanda al POS (post-commit, sesión de sistema) y
+  manda el WhatsApp «confirmado»; rechazar pide un motivo de lista cerrada, avisa con texto honesto y deja un callback.
+- Cancelación pedida por el cliente (`solicitarCancelacion`): automática solo si la sucursal lo activó (por omisión **no**), el pedido sigue en `pending`/`programado` y no
+  tiene comanda; en cualquier otro caso crea una solicitud. El pedido sale del teléfono del contexto, nunca de un id del modelo.
+- Queja con compensación (`registrarQuejaConPedido`): «Sin compensación», «Reponer producto» (pedido de $0 a cocina) o «Descuento en el próximo pedido» (código de un solo uso,
+  con tope por sucursal). El dinero solo se registra, nunca se ejecuta.
+- Tick (dentro de `/internal/restaurantes/promover-programados`, sin cron nuevo): escalado, `entregado -> completado`, `listo_para_recoger -> no_recogido`, aceptación automática,
+  avance desde el POS (solo con adaptador real), regreso de handoffs sin respuesta humana y reposición de «agotado hasta mañana» al cambiar el día de la sucursal.
+- Historial append-only de transiciones (`order_status_events`, trigger en `orders`), taxonomía cerrada de quejas y cancelaciones, tiempo prometido aprendido (mediana de la
+  franja, nunca menos que el piso del dueño) y confirmación «Recibimos su pedido» para voz y web (solo con plantilla aprobada).
+- Base sin migrar: todo degrada a «no disponible» con SAVEPOINT (`tests/autopiloto-savepoint.spec.ts`). SQL y permisos: `scripts/verify-restaurantes-autopiloto/` (Postgres real, incluye
+  la prueba de concurrencia con dos conexiones en `run.sh`).
+- **Pendiente de B1/B2 (#424/#421)**: el cableado del agente (`crear_pedido` que llama `retenerPedidoGrande` al detectar un pedido grande, la herramienta `solicitar_cancelacion`
+  detrás de una bandera por organización y la liga queja-pedido) se hace sobre `pedido-grande.ts` y el clasificador cuando esos PRs se fusionen.
