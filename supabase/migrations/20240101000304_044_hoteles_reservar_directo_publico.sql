@@ -345,6 +345,8 @@ returns hoteles.booking_hold language plpgsql security definer set search_path =
 declare
   v_now timestamptz := hoteles.agent_clock(p_now);
   h hoteles.booking_hold;
+  r hoteles.reservation;
+  v_night date;
   cp hoteles.cancellation_policy;
   v_hours numeric;
   v_pct numeric := 0;
@@ -375,9 +377,18 @@ begin
     raise exception 'estado_no_cancelable: la reserva esta en estado %', h.status using errcode = '55000';
   end if;
 
+  -- La reserva confirmada puede haber cambiado despues del hold (hoteles.change_reservation_dates mueve fechas de una reserva
+  -- 'confirmada'): se bloquea la fila y se usan SUS fechas y tipo VIGENTES, no los del hold, para (1) liberar exactamente las noches
+  -- que la reserva retiene hoy (nunca las que el staff ya libero, ni dejar retenidas las nuevas) y (2) medir la penalidad contra la
+  -- llegada vigente. Mismo orden de locks que el cambio de fechas: reserva primero, inventario por noche ascendente.
+  select * into r from hoteles.reservation where id = h.reservation_id and property_id = h.property_id for update;
+  if not found or r.status <> 'confirmada' then
+    raise exception 'estado_no_cancelable: la reserva ya no admite cancelacion en linea' using errcode = '55000';
+  end if;
+
   select * into cp from hoteles.cancellation_policy where property_id = h.property_id;
   if found then
-    v_hours := extract(epoch from ((h.check_in_date::timestamp at time zone 'UTC') - v_now)) / 3600.0;
+    v_hours := extract(epoch from ((r.check_in_date::timestamp at time zone 'UTC') - v_now)) / 3600.0;
     if v_hours < cp.free_until_hours then
       v_pct := cp.penalty_pct;
     end if;
@@ -393,7 +404,9 @@ begin
   if v_claimed is null then
     raise exception 'estado_no_cancelable: la reserva ya no admite cancelacion en linea' using errcode = '55000';
   end if;
-  perform hoteles.booking_hold_release_inventory(h);
+  for v_night in select d::date from generate_series(r.check_in_date::timestamp, (r.check_out_date - 1)::timestamp, interval '1 day') d order by 1 loop
+    perform hoteles.release_availability(r.property_id, r.room_type_id, v_night, 1);
+  end loop;
   update hoteles.booking_hold set canceled_at = v_now, cancel_penalty_cents = v_penalty, refund_cents = v_refund,
          refund_status = case when v_refund > 0 then 'solicitado' else 'no_aplica' end
    where id = h.id returning * into h;

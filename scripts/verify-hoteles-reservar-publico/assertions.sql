@@ -561,4 +561,34 @@ select count(*) as kpi_deberia_ser_1 from (
 ) k where directas = 2 and total = 3;
 rollback;
 
+\echo '=== 29. el staff mueve las fechas de la reserva web confirmada (12-14 -> 20-22) y el huesped cancela: se liberan las noches VIGENTES (20 y 21), las viejas (12 y 13, ya ocupadas por otra reserva) no se tocan, y la penalidad se mide contra la llegada vigente ==='
+begin;
+select public.verify_su();
+insert into hoteles.cancellation_policy (property_id, organization_id, free_until_hours, penalty_pct) values ('00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-00000000a001', 24, 0.5);
+insert into hoteles.availability (organization_id, property_id, room_type_id, date, total_rooms)
+select '00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-0000000d0001', d::date, 2
+  from generate_series('2031-06-20'::date, '2031-06-22'::date, interval '1 day') d on conflict do nothing;
+select public.verify_web_enable(0.3);
+select public.verify_web_hold('web-mueve-000001');
+select hoteles.web_booking_record_payment('00000000-0000-0000-0000-0000000a1a01', public.verify_hid_of('web-mueve-000001'), 'capturado', 'pi_mv_1', '2031-06-01T12:05:00Z');
+-- Staff (owner) mueve la reserva del 12-14 al 20-22: libera 12 y 13, reserva 20 y 21.
+select public.verify_as('00000000-0000-0000-0000-0000000a0a01');
+select public.verify_assert((select out_noches_liberadas = 2 and out_noches_reservadas = 2 from hoteles.change_reservation_dates(
+  (select id from hoteles.reservation where channel = 'directo_web'), '2031-06-12', '2031-06-14', '2031-06-20', '2031-06-22', 3570.00, 0, 'cambio de fechas del huesped')), 'staff movio las fechas');
+select public.verify_su();
+-- Otra reserva ocupa ahora la noche 12 y 13 (una unidad de las 2): el cancelar de la web NO debe liberarla.
+select public.verify_assert(public.verify_booked('00000000-0000-0000-0000-0000000d0001', '2031-06-12') = 0 and public.verify_booked('00000000-0000-0000-0000-0000000d0001', '2031-06-20') = 1, 'estado tras el cambio');
+update hoteles.availability set booked_rooms = 1 where room_type_id = '00000000-0000-0000-0000-0000000d0001' and date in ('2031-06-12', '2031-06-13');
+select public.verify_as('');
+-- Cancela el huesped el 19-jun (llegada vigente 20-jun: 24 h exactas o mas = fuera de ventana; con la llegada vieja del 12 seria <24 h imposible, ya pasada).
+select public.verify_assert((select cancel_penalty_cents = 0 and refund_cents = 107100 and refund_status = 'solicitado' from hoteles.web_booking_cancel('00000000-0000-0000-0000-0000000a1a01', public.verify_hid_of('web-mueve-000001'), '2031-06-10T00:00:00Z')), 'penalidad contra la llegada vigente (sin penalidad: faltan 10 dias)');
+select public.verify_su();
+select public.verify_assert(public.verify_booked('00000000-0000-0000-0000-0000000d0001', '2031-06-12') = 1 and public.verify_booked('00000000-0000-0000-0000-0000000d0001', '2031-06-13') = 1, 'noches viejas intactas (no se libero dos veces)');
+select public.verify_assert(public.verify_booked('00000000-0000-0000-0000-0000000d0001', '2031-06-20') = 0 and public.verify_booked('00000000-0000-0000-0000-0000000d0001', '2031-06-21') = 0, 'noches vigentes liberadas (sin inventario fantasma)');
+select public.verify_as('');
+select public.verify_assert((select refund_cents from hoteles.web_booking_cancel('00000000-0000-0000-0000-0000000a1a01', public.verify_hid_of('web-mueve-000001'), '2031-06-10T01:00:00Z')) = 107100, 'repetir no libera de nuevo');
+select public.verify_su();
+select count(*) as noches_viejas_y_nuevas_deberia_ser_4 from hoteles.availability where room_type_id = '00000000-0000-0000-0000-0000000d0001' and date in ('2031-06-12', '2031-06-13', '2031-06-20', '2031-06-21') and booked_rooms = case when date < '2031-06-20' then 1 else 0 end;
+rollback;
+
 \echo '=== listo: los escenarios con alias deberia_ser_N deben devolver N; los demas deben terminar sin error (verify_expect_error/verify_assert fallan con excepcion) ==='
