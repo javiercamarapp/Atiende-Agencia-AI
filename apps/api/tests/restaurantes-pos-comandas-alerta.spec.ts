@@ -86,7 +86,7 @@ describe("alerta de comanda esperando captura manual (tick de softrestaurant-dis
     // Con 5 minutos vuelve a vencer; si se captura a mano deja de avisar.
     await t.app.request(`${t.base}/umbral-captura-manual`, authedJson(t.ctx.staff.owner.token, { branchId: t.ctx.propertyIdA, minutos: 5 }, "PUT"));
     const otra = await t.sembrarCapturaManual(t.ctx.propertyIdB);
-    await t.store.marcarCapturada(t.ctx.organizationId, otra.comandaId, t.ctx.staff.owner.userId ?? "u", null);
+    await t.store.marcarCapturada(t.ctx.organizationId, otra.comandaId, "u-staff", null);
     await t.tick();
     expect(t.emisiones).toHaveLength(1);
     expect(t.emisiones[0]!.propertyId).toBe(t.ctx.propertyIdA);
