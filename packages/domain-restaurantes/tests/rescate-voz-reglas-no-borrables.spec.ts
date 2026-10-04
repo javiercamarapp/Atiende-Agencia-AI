@@ -110,10 +110,10 @@ describe("perfil PM: piezas del original que faltaban", () => {
     expect(PM_REGLA_RESERVACIONES).toMatch(/No dé celulares personales/);
   });
 
-  it("WhatsApp: el prompt SIEMPRE pide el pin por texto y no asegura que el boton ya se envio (sin contador en base sin migrar no sale)", () => {
+  it("WhatsApp: el prompt ofrece el pin (opcional) por texto y no asegura que el boton ya se envio (sin contador en base sin migrar no sale)", () => {
     const wa = buildPmSystemPrompt(ctx({ isNew: true }));
-    expect(wa).toMatch(/PIN A REPARTO: pida el pin .*UNA SOLA VEZ/);
-    expect(wa).toMatch(/pídalo usted por texto/);
+    expect(wa).toMatch(/PIN A REPARTO \(ayuda opcional, no requisito\): ofrézcalo UNA SOLA VEZ/);
+    expect(wa).toMatch(/NUNCA condicione el pedido al pin/);
     expect(wa).toMatch(/no siempre lo envía/);
     expect(wa).not.toMatch(/ya le envía aparte el botón|no repita esa petición/);
   });
