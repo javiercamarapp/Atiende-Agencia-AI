@@ -110,6 +110,14 @@ describe("perfil PM: piezas del original que faltaban", () => {
     expect(PM_REGLA_RESERVACIONES).toMatch(/No dé celulares personales/);
   });
 
+  it("WhatsApp: el prompt SIEMPRE pide el pin por texto y no asegura que el boton ya se envio (sin contador en base sin migrar no sale)", () => {
+    const wa = buildPmSystemPrompt(ctx({ isNew: true }));
+    expect(wa).toMatch(/PIN A REPARTO: pida el pin .*UNA SOLA VEZ/);
+    expect(wa).toMatch(/pídalo usted por texto/);
+    expect(wa).toMatch(/no siempre lo envía/);
+    expect(wa).not.toMatch(/ya le envía aparte el botón|no repita esa petición/);
+  });
+
   it("voz: las mismas reglas llegan por el bloque no borrable, aunque el comportamiento editable las haya perdido", () => {
     const instruccion = instruccionVozConReglas({ comportamiento: "" });
     for (const regla of [PM_REGLA_NO_REPETIR_DATOS, PM_REGLA_REINTENTO_PEDIDO, PM_REGLA_RESERVACIONES]) expect(instruccion).toContain(regla);
