@@ -141,5 +141,8 @@ automatiza sin humano** (y nada se autoaprueba: sin respuesta solo se escala el 
   franja, nunca menos que el piso del dueño) y confirmación «Recibimos su pedido» para voz y web (solo con plantilla aprobada).
 - Base sin migrar: todo degrada a «no disponible» con SAVEPOINT (`tests/autopiloto-savepoint.spec.ts`). SQL y permisos: `scripts/verify-restaurantes-autopiloto/` (Postgres real, incluye
   la prueba de concurrencia con dos conexiones en `run.sh`).
-- **Pendiente de B1/B2 (#424/#421)**: el cableado del agente (`crear_pedido` que llama `retenerPedidoGrande` al detectar un pedido grande, la herramienta `solicitar_cancelacion`
-  detrás de una bandera por organización y la liga queja-pedido) se hace sobre `pedido-grande.ts` y el clasificador cuando esos PRs se fusionen.
+- Agente de WhatsApp (`src/whatsapp/autopiloto-turno.ts`, opción `autopiloto` del turno): **detrás de la bandera por organización `autopiloto_org_config.cancelacion_agente` (apagada por
+  omisión)**, una cancelación detectada por el clasificador (que NO cambia) con pedido activo crea la solicitud de aprobación, o cancela sola si la sucursal lo permitió y no hay comanda; con la
+  bandera apagada, sin pedido activo, con la base sin migrar o ante un error, el turno sigue por el camino de siempre. Una queja se liga al último pedido (solicitud de compensación), su
+  subtipo (`MOTIVOS_QUEJA`) viaja en el aviso al equipo y la respuesta al cliente no cambia.
+- **Pendiente de B2 (#421)**: `crear_pedido` que llame a `retenerPedidoGrande` al detectar el pedido grande; y el cableado de la voz (cancelación y queja).
