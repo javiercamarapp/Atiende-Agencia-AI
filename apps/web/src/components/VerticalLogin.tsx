@@ -6,10 +6,11 @@
 //
 // Los metodos son props: una vertical que no ofrece Google o magic link (o que
 // agregue contrasena el dia de manana) los enciende/apaga sin copiar la pantalla.
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AtiendeMark, AtiendeWordmark, FormField, GoogleIcon } from "@atiende/ui";
+import { EtiquetaBoton } from "./EtiquetaBoton.tsx";
 import { OlvidoContrasena } from "../shell/cuenta/OlvidoContrasena.tsx";
 import { esVerticalCuenta } from "../shell/cuenta/cuenta-client.ts";
 import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../lib/google-auth.ts";
@@ -56,6 +57,8 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
   const [enviadoA, setEnviadoA] = useState<string | null>(null);
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
+  const idCorreo = useId();
+  const idEstado = `${idCorreo}-estado`;
   const [googleConfigurado, setGoogleConfigurado] = useState(false);
   const [comprobandoGoogle, setComprobandoGoogle] = useState(conGoogle);
 
@@ -92,6 +95,7 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
     }
     setErrorCorreo(null);
     setErrorEnvio(null);
+    setEnviadoA(null);
     setEnviando(true);
     try {
       const resultado = await iniciarMagicLink(apiBaseUrl, correo.trim(), vertical);
@@ -105,7 +109,13 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
     }
   }
 
-  const alerta = errorEnvio ?? (googleError ? mensajeGoogleError(googleError) : magicLinkError ? mensajeMagicLinkError(magicLinkError) : null);
+  const alertaExterna = googleError ? mensajeGoogleError(googleError) : magicLinkError ? mensajeMagicLinkError(magicLinkError) : null;
+  // UN SOLO mensaje a la vez en la ranura de altura fija `.login-estado`: error de correo, error del servidor, aviso de
+  // "enviado" o error que llega por la URL. Antes "enviado" se insertaba ENCIMA del formulario y los errores empujaban todo:
+  // cada cambio de estado movia el formulario y hacia aparecer el scroll.
+  const avisoEnviado = conMagicLink && enviadoA && !modoOlvido ? enviadoA : null;
+  const alerta = errorCorreo ?? errorEnvio ?? (avisoEnviado ? null : alertaExterna);
+  const idAlerta = `${idEstado}-alerta`;
 
   // Composición de ~/likida/src/app/login/page.tsx:283-441 (UNI-9). Medidas citadas por línea de Likida:
   // columna `max-w-[392px]` centrada en la mitad (:292), logo h-6 (:296), bloque centrado en vertical `py-12` (:299),
@@ -113,69 +123,69 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
   // hairline `mt-9` (:365), Google `mt-8` (:373), separador `my-6` (:389), formulario `gap-3` (:405), píldora `mt-1` (:431),
   // pie `mt-7` 14 px (:438), error inline 14 px (:455), legales `mt-10` 12 px (:464) y lámina `p-9` (:512).
   return (
-    <main className="login min-h-screen lg:grid lg:grid-cols-2">
-      <section className="flex min-h-screen flex-col px-6 py-7 sm:px-10 lg:px-14 lg:py-10">
+    <main className="login login-pantalla lg:grid lg:grid-cols-2">
+      <section className="login-seccion flex flex-col px-6 sm:px-10 lg:px-14">
         <div className="mx-auto flex w-full max-w-[392px] flex-1 flex-col">
           <header className="login-entra flex items-center">
             <AtiendeWordmark markClassName="h-6 w-auto" className="[&>span]:text-xl [&>span]:leading-6" />
           </header>
 
-          <div className="flex flex-1 items-center py-12">
+          <div className="login-contenido flex flex-1 items-center">
             <div className="w-full">
               <p className="login-entra [--retraso:40ms] login-kicker">{kicker}</p>
               <h1 className="login-entra [--retraso:90ms] login-serif login-titulo mt-5 text-foreground">Bienvenido a atiende {nombre}</h1>
-              <p className="login-entra [--retraso:140ms] login-cuerpo mt-4 text-muted-foreground">{descripcion}</p>
+              {/* En "olvidé mi contraseña" el panel ya explica la pantalla: se omite la bajada para que esa vista tampoco pase del alto de la ventana. */}
+              {!modoOlvido && <p className="login-entra [--retraso:140ms] login-cuerpo login-descripcion mt-4 text-muted-foreground">{descripcion}</p>}
 
-              {conMagicLink && enviadoA && !modoOlvido && (
-                <div role="status" className="login-entra [--retraso:190ms] mt-9 rounded-[18px] border border-border bg-muted p-5">
-                  <p className="login-cuerpo font-semibold text-foreground">Te mandamos un enlace a tu correo.</p>
-                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                    Lo enviamos a <span className="font-semibold text-foreground">{enviadoA}</span>. Ábrelo desde este mismo dispositivo; expira en 15 minutos.
-                  </p>
-                  <p className="mt-1.5 text-ui leading-relaxed text-faint">¿No llega o te equivocaste de correo? Vuelve a escribirlo abajo.</p>
-                </div>
-              )}
-
-              <div className="login-entra [--retraso:180ms] mt-9 h-px bg-border" />
+              <div className="login-entra [--retraso:180ms] login-regla mt-9 h-px bg-border" />
 
               {modoOlvido && esVerticalCuenta(vertical) ? (
                 <OlvidoContrasena apiBaseUrl={apiBaseUrl} vertical={vertical} correoInicial={correo} onVolver={() => setModoOlvido(false)} />
               ) : (
                 <>
                   {conGoogle && (
-                    <>
+                    <div className="login-entra [--retraso:220ms] login-bloque-google relative mt-8">
                       <button
                         type="button"
                         onClick={irAGoogle}
                         disabled={!googleHabilitado}
                         title={!googleHabilitado ? avisoGoogle : undefined}
-                        className="login-entra [--retraso:220ms] mt-8 login-btn login-btn-borde"
+                        className="login-btn login-btn-borde"
                       >
                         <GoogleIcon />
                         Continuar con Google
                       </button>
-                      {!googleHabilitado && <p className="login-entra [--retraso:230ms] mt-2 text-xs leading-relaxed text-muted-foreground">{avisoGoogle}</p>}
-                    </>
+                      {/* Sin separador (solo Google) el aviso va absoluto bajo el boton, sin ocupar lugar. */}
+                      {!googleHabilitado && !conMagicLink && <p className="login-aviso-google absolute inset-x-0 top-full mt-1 text-xs leading-none text-muted-foreground">{avisoGoogle}</p>}
+                    </div>
                   )}
 
                   {conGoogle && conMagicLink && (
-                    <div className="login-entra [--retraso:250ms] my-6 flex items-center gap-4">
+                    <div className="login-entra [--retraso:250ms] login-separador relative my-6 flex items-center gap-4">
                       <span className="h-px flex-1 bg-border" />
                       <span className="text-ui lowercase text-faint">o</span>
                       <span className="h-px flex-1 bg-border" />
+                      {/* El aviso "Google pendiente / comprobando" se pinta SOBRE el separador (absoluto, con el fondo de la pagina): aparece y desaparece al cargar sin empujar nada. */}
+                      {!googleHabilitado && (
+                        <p className="login-aviso-google absolute inset-0 flex items-center justify-center">
+                          <span className="bg-background px-2 text-xs leading-none text-muted-foreground">{avisoGoogle}</span>
+                        </p>
+                      )}
                     </div>
                   )}
 
                   {conMagicLink && (
                     <form onSubmit={enviarMagicLink} className={`login-entra [--retraso:280ms] flex flex-col gap-3 ${conGoogle ? "" : "mt-8"}`} noValidate>
-                      <FormField label={<span className="sr-only">Tu correo</span>} error={errorCorreo ?? undefined}>
+                      <FormField id={idCorreo} label={<span className="sr-only">Tu correo</span>}>
                         {(campo) => (
                           <input
                             {...campo}
                             type="email"
                             placeholder={placeholderCorreo}
                             autoComplete="email"
-                        aria-required="true"
+                            aria-required="true"
+                            aria-invalid={errorCorreo ? true : undefined}
+                            aria-describedby={errorCorreo ? idAlerta : undefined}
                             value={correo}
                             onChange={(e) => setCorreo(e.target.value)}
                             className="login-campo"
@@ -186,20 +196,38 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
                         <span aria-hidden className="login-glifo">
                           <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
                         </span>
-                        <span>{enviando ? "Enviando…" : "Continuar con correo"}</span>
+                        <EtiquetaBoton ocupado={enviando} reposo="Continuar con correo" enCurso="Enviando…" />
                       </button>
                     </form>
                   )}
 
+                  {/* Ranura de ALTURA FIJA para el resultado: idle, enviando, enviado, error y reenviar ocupan el mismo espacio (CLS 0). */}
+                  <div className="login-estado" data-estado={avisoEnviado ? "enviado" : alerta ? "error" : "reposo"}>
+                    {avisoEnviado && (
+                      <div role="status">
+                        <p className="login-cuerpo font-semibold text-foreground">Te mandamos un enlace a tu correo.</p>
+                        <p className="truncate text-sm text-muted-foreground">
+                          Enviado a <span className="font-semibold text-foreground">{avisoEnviado}</span>
+                        </p>
+                        <p className="truncate text-ui text-faint">Ábrelo en este dispositivo · expira en 15 minutos.</p>
+                      </div>
+                    )}
+                    {alerta && (
+                      <p id={idAlerta} role="alert" className="line-clamp-3 text-sm text-destructive">
+                        {alerta}
+                      </p>
+                    )}
+                  </div>
+
                   {conOlvido && (
-                    <button type="button" onClick={() => setModoOlvido(true)} className="login-entra [--retraso:300ms] mt-4 text-sm underline underline-offset-2 text-foreground transition-opacity hover:opacity-70">
+                    <button type="button" onClick={() => setModoOlvido(true)} className="login-entra [--retraso:300ms] mt-2 text-sm underline underline-offset-2 text-foreground transition-opacity hover:opacity-70">
                       ¿Olvidaste tu contraseña?
                     </button>
                   )}
                 </>
               )}
 
-              <p className="login-entra [--retraso:320ms] mt-7 text-pretty text-sm leading-relaxed text-muted-foreground">
+              <p className="login-entra [--retraso:320ms] login-pie mt-5 text-pretty text-sm leading-relaxed text-muted-foreground">
                 {pie ?? (
                   <>
                     ¿Tu correo no tiene acceso? <span className="font-semibold text-foreground">Pídele a tu negocio que te dé de alta.</span>
@@ -207,13 +235,7 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
                 )}
               </p>
 
-              {alerta && (
-                <p role="alert" className="mt-5 text-sm text-destructive">
-                  {alerta}
-                </p>
-              )}
-
-              <p className="login-entra [--retraso:360ms] mt-10 text-pretty text-xs leading-[1.7] text-faint">
+              <p className="login-entra [--retraso:360ms] login-legales mt-6 text-pretty text-xs leading-[1.7] text-faint">
                 Al continuar, aceptas los{" "}
                 <a href="/terminos" className="underline underline-offset-2 text-foreground transition-opacity hover:opacity-70">
                   Términos de Servicio
@@ -230,7 +252,7 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
       </section>
 
       {/* Lámina: `hidden lg:flex` como Likida (:496): por debajo de 1024 px no se pinta ni se descarga. */}
-      <aside className="hidden lg:flex lg:flex-col lg:py-10 lg:pl-6 lg:pr-10">
+      <aside className="login-aside hidden lg:flex lg:flex-col lg:pl-6 lg:pr-10">
         <figure className="login-lamina min-h-0 flex-1">
           <img src={`${import.meta.env.BASE_URL}${hero.imagen}`} alt={hero.alt} className="login-foto" />
           <div className="login-velo" />
