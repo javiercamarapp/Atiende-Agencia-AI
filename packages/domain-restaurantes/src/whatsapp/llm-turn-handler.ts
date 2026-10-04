@@ -530,7 +530,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (toolCalls.length === 0) {
           const base = completion.text || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
           if (noEntiendeActivo) {
-            if (pideRepetir(base)) {
+            // Solo el texto del modelo cuenta: el respaldo por respuesta vacia (PM_COPY.repetirPedido) no es un 'no entiendo' del agente.
+            if (completion.text && pideRepetir(completion.text)) {
               const n = (await contarAgente(repo, organizationId, phone, "no_entiende", "incrementar")) ?? (noEntiendeEnTurno += 1);
               if (n >= CONTADOR_AGENTE_UMBRAL) return escalarPorContador("no_entiende", `El agente no logró entender al cliente ${CONTADOR_AGENTE_UMBRAL} veces seguidas. Último mensaje: ${(latestUserMessage?.content ?? "").slice(0, 300)}`);
             } else {

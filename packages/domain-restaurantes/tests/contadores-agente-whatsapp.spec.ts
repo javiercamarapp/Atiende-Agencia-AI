@@ -137,6 +137,17 @@ describe("'no entiendo' dos veces seguidas -> escala no_entiende", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  it("respuestas VACIAS del modelo (texto de respaldo 'repetir su pedido') NO cuentan como 'no entiendo' ni escalan", async () => {
+    const { f, preparar, turno } = armar(() => texto(""));
+    await preparar();
+    const spy = vi.spyOn(f.repo, "createCallbackRequest");
+    await turno("a");
+    const t2 = await turno("b");
+    expect(t2.reply).not.toBe(COPY_ESCALACION_CONTADOR.no_entiende);
+    expect((t2 as { escalacion?: unknown }).escalacion).toBeUndefined();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it("motivo desactivado por el negocio (escalationReasonsOff): no cuenta ni escala", async () => {
     const { f, preparar, turno } = armar(() => texto(pideRepetirTexto));
     await preparar();
