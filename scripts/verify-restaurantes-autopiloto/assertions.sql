@@ -883,4 +883,70 @@ end $$;
 select 1 as transaccion_recuperada_deberia_ser_1;
 rollback;
 
+\echo '=== J1. cancelacion automatica con la politica APAGADA (por omision): no cancela ==='
+begin;
+set local role authenticated;
+select aplicado::int as cancela_con_politica_apagada_deberia_ser_0 from restaurantes.pedido_cancelar_cliente('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50d1', 'cliente_desistio');
+rollback;
+
+\echo '=== J2. cancelacion automatica con la politica encendida y sin comanda: cancela con actor agente y motivo ==='
+begin;
+insert into restaurantes.autopiloto_config (property_id, organization_id, cancelacion_auto) values ('00000000-0000-0000-0000-0000000e50a1', '00000000-0000-0000-0000-0000000e5001', true) on conflict (property_id) do update set cancelacion_auto = true;
+set local role authenticated;
+select aplicado from restaurantes.pedido_cancelar_cliente('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50d1', 'cliente_desistio');
+reset role;
+select count(*) as evento_cancelacion_deberia_ser_1 from restaurantes.order_status_events where order_id = '00000000-0000-0000-0000-0000000e50d1' and to_status = 'cancelado' and actor = 'agente' and motivo = 'cliente_desistio';
+rollback;
+
+\echo '=== J3. cancelacion automatica: doble llamada cancela una sola vez ==='
+begin;
+insert into restaurantes.autopiloto_config (property_id, organization_id, cancelacion_auto) values ('00000000-0000-0000-0000-0000000e50a1', '00000000-0000-0000-0000-0000000e5001', true) on conflict (property_id) do update set cancelacion_auto = true;
+set local role authenticated;
+select aplicado from restaurantes.pedido_cancelar_cliente('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50d1', 'cliente_desistio');
+select aplicado::int as segunda_deberia_ser_0 from restaurantes.pedido_cancelar_cliente('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50d1', 'cliente_desistio');
+rollback;
+
+\echo '=== J4. cancelacion automatica: un pedido con comanda en el POS NO se cancela solo ==='
+begin;
+insert into restaurantes.autopiloto_config (property_id, organization_id, cancelacion_auto) values ('00000000-0000-0000-0000-0000000e50a1', '00000000-0000-0000-0000-0000000e5001', true) on conflict (property_id) do update set cancelacion_auto = true;
+set local role authenticated;
+select aplicado::int as cancela_con_comanda_deberia_ser_0 from restaurantes.pedido_cancelar_cliente('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50d8', 'cliente_desistio');
+rollback;
+
+\echo '=== J5. cancelacion automatica: un pedido en preparacion NO se cancela solo ==='
+begin;
+insert into restaurantes.autopiloto_config (property_id, organization_id, cancelacion_auto) values ('00000000-0000-0000-0000-0000000e50a1', '00000000-0000-0000-0000-0000000e5001', true) on conflict (property_id) do update set cancelacion_auto = true;
+set local role authenticated;
+select aplicado::int as cancela_en_cocina_deberia_ser_0 from restaurantes.pedido_cancelar_cliente('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50d3', 'cliente_desistio');
+rollback;
+
+\echo '=== J6. cancelacion automatica: un pedido programado sin comanda si se cancela ==='
+begin;
+insert into restaurantes.autopiloto_config (property_id, organization_id, cancelacion_auto) values ('00000000-0000-0000-0000-0000000e50a1', '00000000-0000-0000-0000-0000000e5001', true) on conflict (property_id) do update set cancelacion_auto = true;
+set local role authenticated;
+select aplicado::int as cancela_programado_deberia_ser_1 from restaurantes.pedido_cancelar_cliente('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50d9', 'duplicado');
+rollback;
+
+\echo '=== J7. RECHAZADO: un usuario no usa la cancelacion de sistema -> 42501 ==='
+begin;
+insert into restaurantes.autopiloto_config (property_id, organization_id, cancelacion_auto) values ('00000000-0000-0000-0000-0000000e50a1', '00000000-0000-0000-0000-0000000e5001', true) on conflict (property_id) do update set cancelacion_auto = true;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5011', true);
+select public.t_esperar_error($q$select * from restaurantes.pedido_cancelar_cliente('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50d1', 'otro')$q$, '42501');
+rollback;
+
+\echo '=== J8. RECHAZADO: motivo fuera de la lista cerrada -> 22023 ==='
+begin;
+insert into restaurantes.autopiloto_config (property_id, organization_id, cancelacion_auto) values ('00000000-0000-0000-0000-0000000e50a1', '00000000-0000-0000-0000-0000000e5001', true) on conflict (property_id) do update set cancelacion_auto = true;
+set local role authenticated;
+select public.t_esperar_error($q$select * from restaurantes.pedido_cancelar_cliente('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50d1', 'no quiero')$q$, '22023');
+rollback;
+
+\echo '=== J9. RECHAZADO: pedido de otra organizacion -> 42501 ==='
+begin;
+insert into restaurantes.autopiloto_config (property_id, organization_id, cancelacion_auto) values ('00000000-0000-0000-0000-0000000e50a1', '00000000-0000-0000-0000-0000000e5001', true) on conflict (property_id) do update set cancelacion_auto = true;
+set local role authenticated;
+select public.t_esperar_error($q$select * from restaurantes.pedido_cancelar_cliente('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50e1', 'otro')$q$, '42501');
+rollback;
+
 \echo 'Todos los escenarios terminan con la expectativa del propio archivo: RECHAZADO = sin ERROR dentro de t_esperar_error (el helper exige el SQLSTATE exacto); alias deberia_ser_N = valor exacto.'

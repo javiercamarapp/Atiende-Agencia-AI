@@ -50,6 +50,8 @@
 --    (de, a) y compare-and-set; fija el actor en el historial. Nunca toca por_aprobar ni cancela.
 --  * handoffs_devolver_vencidos -- SOLO sistema; FOR UPDATE SKIP LOCKED (dos ticks no devuelven la misma toma); no devuelve conversaciones
 --    con un pedido por aprobar; el texto fijo solo sale si el cliente escribio dentro de las ultimas 24 h.
+--  * pedido_cancelar_cliente -- SOLO sistema; cancela un pedido pending/programado SOLO si la bandera de la sucursal esta encendida (por omision apagada) y
+--    no hay comanda en el outbox del POS; compare-and-set con bloqueo de fila; motivo de lista cerrada; actor `agente` en el historial.
 --  * agotado_marcar -- definer; staff con alcance a la sucursal. agotados_reponer -- SOLO sistema, usa la zona horaria de la sucursal.
 --  * tiempo_entrega_muestras -- lectura sin PII (solo minutos y conteos); sistema con sucursal de su organizacion, o staff con alcance.
 --  Todas: `revoke ... from public, anon`; `grant execute ... to authenticated` (la sesion de sistema corre con ese rol sin usuario);
@@ -822,6 +824,51 @@ begin
 end;
 $$;
 
+-- Cancelacion automatica pedida por el cliente (solo sistema): SOLO si la bandera de la sucursal esta encendida (por omision apagada, la
+-- decide PM), el pedido sigue en pending/programado y NO tiene comanda en el outbox del POS (no hay nada en cocina que cancelar).
+create or replace function restaurantes.pedido_cancelar_cliente(p_organization_id uuid, p_order_id uuid, p_motivo text)
+returns table (aplicado boolean, estado text)
+language plpgsql
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+#variable_conflict use_column
+declare
+  v_o restaurantes.orders;
+  v_auto boolean;
+begin
+  if auth.uid() is not null then
+    raise exception 'pedido_cancelar_cliente: solo la sesion de sistema' using errcode = '42501';
+  end if;
+  if p_motivo is null or p_motivo not in ('cliente_desistio', 'sin_producto', 'fuera_de_zona', 'duplicado', 'error_agente', 'otro') then
+    raise exception 'pedido_cancelar_cliente: motivo fuera de la lista cerrada' using errcode = '22023';
+  end if;
+  select * into v_o from restaurantes.orders o where o.id = p_order_id and o.organization_id = p_organization_id for update;
+  if not found then
+    raise exception 'pedido_cancelar_cliente: pedido inexistente o ajeno' using errcode = '42501';
+  end if;
+  select c.cancelacion_auto into v_auto from restaurantes.autopiloto_config c where c.property_id = v_o.property_id and c.organization_id = p_organization_id;
+  if coalesce(v_auto, false) is not true then
+    return query select false, 'politica_apagada'::text;
+    return;
+  end if;
+  if v_o.status not in ('pending', 'programado') then
+    return query select false, v_o.status;
+    return;
+  end if;
+  if exists (select 1 from restaurantes.pos_comanda_outbox pc where pc.order_id = v_o.id and pc.organization_id = p_organization_id) then
+    return query select false, 'ya_en_cocina'::text;
+    return;
+  end if;
+  perform set_config('app.actor', 'agente', true);
+  perform set_config('app.motivo', p_motivo, true);
+  update restaurantes.orders set status = 'cancelado' where orders.id = v_o.id and orders.status in ('pending', 'programado');
+  perform set_config('app.actor', '', true);
+  perform set_config('app.motivo', '', true);
+  return query select true, 'cancelado'::text;
+end;
+$$;
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Permisos de ejecucion de todas las funciones publicas de esta migracion
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -835,6 +882,7 @@ revoke all on function restaurantes.autopiloto_candidatos_estados(timestamptz, i
 revoke all on function restaurantes.autopiloto_aplicar_transicion(uuid, uuid, text, text, text, text) from public, anon;
 revoke all on function restaurantes.autopiloto_comandas_para_avance(integer) from public, anon;
 revoke all on function restaurantes.handoffs_devolver_vencidos(timestamptz, integer) from public, anon;
+revoke all on function restaurantes.pedido_cancelar_cliente(uuid, uuid, text) from public, anon;
 revoke all on function restaurantes.agotado_marcar(uuid, uuid, uuid, date) from public, anon;
 revoke all on function restaurantes.agotados_reponer(timestamptz) from public, anon;
 revoke all on function restaurantes.tiempo_entrega_muestras(uuid, uuid, text, timestamptz, integer) from public, anon;
@@ -849,6 +897,7 @@ grant execute on function restaurantes.autopiloto_candidatos_estados(timestamptz
 grant execute on function restaurantes.autopiloto_aplicar_transicion(uuid, uuid, text, text, text, text) to authenticated;
 grant execute on function restaurantes.autopiloto_comandas_para_avance(integer) to authenticated;
 grant execute on function restaurantes.handoffs_devolver_vencidos(timestamptz, integer) to authenticated;
+grant execute on function restaurantes.pedido_cancelar_cliente(uuid, uuid, text) to authenticated;
 grant execute on function restaurantes.agotado_marcar(uuid, uuid, uuid, date) to authenticated;
 grant execute on function restaurantes.agotados_reponer(timestamptz) to authenticated;
 grant execute on function restaurantes.tiempo_entrega_muestras(uuid, uuid, text, timestamptz, integer) to authenticated;
