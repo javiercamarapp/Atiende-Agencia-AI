@@ -27,6 +27,7 @@ import {
   LineChart,
   ListChecks,
   Lock,
+  MapPinned,
   MessageCircle,
   Newspaper,
   Plug,
@@ -70,6 +71,8 @@ export const AGENTES: readonly RutaSuperadmin[] = [
 export const NEGOCIO: readonly RutaSuperadmin[] = [
   { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
   { to: "/superadmin/cerebro", label: "Cerebro de ventas", icon: Brain },
+  // SA-L-42/43: el mundo virtual del Cerebro (mapa) y la ficha del prospecto, con el mismo nombre de ruta que Likida.
+  { to: "/superadmin/mapa-prospectos", label: "Mapa de prospectos", icon: MapPinned },
   { to: "/superadmin/organizaciones", label: "Organizaciones", icon: Building2 },
   // SA-L-21/22/24: en Likida Costos & Facturacion, Consumo de IA y Ejecutivo / Board son UNA entrada cada uno. Las rutas viejas
   // (facturacion, costos-margen, pyl, contratos, gasto-api, cfo) siguen vivas como redireccion (REDIRECCIONES_SUPERADMIN).

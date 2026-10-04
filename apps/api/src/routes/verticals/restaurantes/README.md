@@ -200,3 +200,20 @@ documentados aquí mismo:
   "not_available", promoted, orderIds }`.
 - Pendiente conocido: la comanda al POS (SoftRestaurant) no se encola al promover (hoy se omite al crear un
   programado); la captura manual de la comanda sigue disponible.
+
+## Cierre del día y resumen semanal (R-42, migración 041)
+
+- Panel (owner/admin, `cierres.ts`): `GET /v1/restaurantes/:propertyId/admin/cierres?tipo=dia|semana&limite=N` devuelve los cierres ya
+  generados y los periodos terminados que aún no tienen cierre (`pendientes`); `POST .../admin/cierres/generar` `{ tipo, fecha }` genera el
+  de un periodo TERMINADO (dia = día calendario en la zona horaria de la sucursal; semana = lunes a domingo, se manda el lunes). Hoy y la
+  semana en curso se rechazan (400). Idempotente por fecha de negocio: repetir devuelve el mismo cierre (`estado: "existente"`, 200); uno
+  nuevo es 201, deja rastro en la bitácora (`cierre.dia_generado` / `cierre.semana_generada`) y avisa en la campana
+  (`restaurantes.cierre.dia_listo` / `semana_lista`, sin PII). Un cierre generado NO se recalcula.
+- Interno (`cierres-interno.ts`): `GET|POST /internal/restaurantes/cierres-dia?dias=N` (1..14, por defecto 3; secreto interno o
+  `Authorization: Bearer <CRON_SECRET>`) asegura el cierre de los últimos N días cerrados (y, por cada domingo cerrado, la semana) de TODAS las
+  sucursales de organizaciones reales; omite los periodos sin pedidos; una transacción por sucursal (una que falle se reporta en `fallos` y no frena
+  a las demás). NO está en `vercel.json` (decisión de costo: sin crons nuevos): agendarlo es una decisión de despliegue; mientras tanto el
+  botón del panel genera los cierres. Respuesta: `{ ok, status: "ok" | "not_available", sucursales, creados, existentes, sinActividad, avisos, fallos }`.
+- Base sin migrar: la lectura responde `disponible: false` con listas vacías, la escritura 503 y el barrido `not_available` (SAVEPOINT en el
+  repositorio; `packages/domain-restaurantes/tests/cierres-savepoint.spec.ts`). SQL y permisos verificados contra Postgres real en
+  `scripts/verify-restaurantes-cierre-dia/`. Pruebas HTTP: `apps/api/tests/restaurantes-cierres.spec.ts`.

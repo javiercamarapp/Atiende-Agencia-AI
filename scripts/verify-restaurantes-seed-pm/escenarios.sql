@@ -4,14 +4,15 @@
 --
 --   A. Resultado: 7 sucursales (T1, T3 y T7 activas; T4 sin catalogo; T2 y T8 con catalogo provisional pero inactivas; T5 inactiva
 --      con el suyo), 279 productos (237 + 40 fracciones de kilo + Extra Salsa y Extra Pina), 42 de alcohol no_domicilio,
---      1610 precios por sucursal (T1 278 + T2 263 + T3 251 + T5 262 + T7 278 + T8 278), cada sucursal con el precio de su
---      lista, fracciones de kilo a precio proporcional (redondeo $0.50).
+--      1628 precios por sucursal (T1 278 + T2 265 + T3 265 + T5 264 + T7 278 + T8 278), TODAS con la lista T1-2026 (T5 con el
+--      precio de su menu impreso), fracciones de kilo a precio proporcional (redondeo $0.50).
 --   B. Reglas del modelo: politica (horario 12:00-01:00, minimo $200, propina solo tarjeta), promocion
---      2x1 del lunes solo recoger y con alcance por sucursal (T2, T3 y T4), voz deshabilitada, zonas de sucursales con coordenadas, asignacion
+--      2x1 del lunes y combo de cortesia del martes (nachos de pastor + 2 aguas), ambos solo recoger y en todas las sucursales, voz deshabilitada, zonas de sucursales con coordenadas, asignacion
 --      por colonia con la funcion SQL real.
 --   C. Idempotencia: ejecutar dos veces no duplica nada; no reactiva la voz ni reinicia usos de la
 --      promocion; reparar un precio alterado; renombrar por slug estable una sucursal sembrada por la version anterior;
---      unir los alias de busqueda (PM-C4) con los que el dueño ya agrego.
+--      unir los alias de busqueda (PM-C4) con los que el dueño ya agrego; RECONCILIAR: lo que el plan ya no vende en una
+--      sucursal se borra de branch_products sin tocar lo que el dueño agrego por su cuenta.
 --   D. Aislamiento: otra organizacion con nombres iguales queda intacta; un slug de otra vertical
 --      aborta; staff de otra organizacion y anon no leen lo sembrado.
 --   E. Agente de WhatsApp (perfil taqueria_pm con los datos del dueño), carga como DEMO (marca
@@ -66,10 +67,10 @@ select public.seed_pm_demo();
 select count(*)::int as productos_deberia_ser_279 from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm';
 rollback;
 
-\echo '=== A5. 1610 precios por sucursal: T1 278 + T2 263 + T3 251 + T5 262 + T7 278 + T8 278 ==='
+\echo '=== A5. 1628 precios por sucursal: T1 278 + T2 265 + T3 265 + T5 264 + T7 278 + T8 278 ==='
 begin;
 select public.seed_pm_demo();
-select count(*)::int as precios_deberia_ser_1610 from restaurantes.branch_products bp join core.property p on p.id = bp.property_id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm';
+select count(*)::int as precios_deberia_ser_1628 from restaurantes.branch_products bp join core.property p on p.id = bp.property_id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm';
 select bd.slug, count(*)::int as precios from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join core.organization o on o.id = bd.organization_id where o.slug = 'los-taquitos-de-pm' group by bd.slug order by bd.slug;
 rollback;
 
@@ -93,37 +94,55 @@ select count(*)::int as codzitos_fuera_de_t1_t7_t8_deberia_ser_0
   where pr.name = 'Codzitos (orden de 4)' and bd.slug not in ('prol-montejo', 'garcia-lavin', 'altabrisa');
 rollback;
 
-\echo '=== A8. Taco al pastor: $42 en T1, $36 en T3 y $42 en T5 (precio de SU menu impreso); products.price es el de referencia T1 ==='
+\echo '=== A8. Taco al pastor: $42 en T1, T3 y T5 (T3 ya no lleva el $36 de la lista 2025); products.price es el de referencia T1 ==='
 begin;
 select public.seed_pm_demo();
 select (
   (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Taco Al Pastor (individual)' and bd.slug = 'prol-montejo') = 42
-  and (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Taco Al Pastor (individual)' and bd.slug = 'pensiones') = 36
+  and (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Taco Al Pastor (individual)' and bd.slug = 'pensiones') = 42
   and (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Taco Al Pastor (individual)' and bd.slug = 'playa') = 42
   and (select pr.price from restaurantes.products pr join core.organization o on o.id = pr.organization_id where pr.name = 'Taco Al Pastor (individual)' and o.slug = 'los-taquitos-de-pm') = 42
 )::int as precio_por_sucursal_correcto_deberia_ser_1;
 rollback;
 
-\echo '=== A9. Heineken Silver solo en T5 y T2; Sprite no en T5; Ensalada y Quesobich no en T3; fracciones de kilo proporcionales ==='
+\echo '=== A9. Heineken Silver solo en T5; Sprite no en T5; T3 y T2 si venden Ensalada de PM (y T3 la pizza Quesobich); Extra Salsa y Extra Pina en las 6 sucursales con catalogo; fracciones de kilo proporcionales ==='
 begin;
 select public.seed_pm_demo();
 select (
-  (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Heineken Silver' and bd.slug not in ('playa', 'fco-montejo')) = 0
-  and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Heineken Silver' and bd.slug in ('playa', 'fco-montejo')) = 2
+  (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Heineken Silver' and bd.slug <> 'playa') = 0
+  and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Heineken Silver' and bd.slug = 'playa') = 1
   and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name in ('Sprite', 'Sprite Cero') and bd.slug = 'playa') = 0
-  and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Ensalada de PM' and bd.slug = 'pensiones') = 0
-  and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id join restaurantes.categories c on c.id = pr.category_id where c.name = 'Pizza Quesobich' and bd.slug = 'pensiones') = 0
+  and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name in ('Ensalada de PM', 'Jericallas', 'Café') and bd.slug in ('pensiones', 'fco-montejo')) = 6
+  and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id join restaurantes.categories c on c.id = pr.category_id where c.name = 'Pizza Quesobich' and bd.slug = 'pensiones') = 8
+  and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name in ('Extra Salsa', 'Extra Piña') and bp.price = 19) = 12
 )::int as exclusiones_por_sucursal_correctas_deberia_ser_1;
 select count(*)::int as fracciones_de_kilo_en_t7_deberia_ser_40
   from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id
   where bd.slug = 'garcia-lavin' and bp.is_available and (pr.name like '% — 250 g' or pr.name like '% — 500 g' or pr.name like '% — 750 g' or pr.name like '% — 1.5 kg' or pr.name like '% — 2 kg');
 select (
   (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Bistec de Res — 750 g' and bd.slug = 'garcia-lavin') = 825
-  and (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Bistec de Res — 750 g' and bd.slug = 'pensiones') = 712.50
-  and (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Bistec de Res — 250 g' and bd.slug = 'garcia-lavin') = 275
-  and (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Extra Salsa' and bd.slug = 'garcia-lavin') = 19
-  and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Extra Salsa' and bd.slug in ('pensiones', 'playa')) = 0
-)::int as precios_proporcionales_y_extras_deberia_ser_1;
+  and (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Bistec de Res — 750 g' and bd.slug = 'pensiones') = 825
+  and (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Bistec de Res — 250 g' and bd.slug = 'pensiones') = 275
+  and (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Pastor — 250 g' and bd.slug = 'pensiones') = 225
+)::int as precios_proporcionales_deberia_ser_1;
+rollback;
+
+\echo '=== A10. CR01: T2, T3, T7 y T8 venden TODO lo que tienen al MISMO precio que T1 (lista T1-2026): ninguna diferencia ==='
+begin;
+select public.seed_pm_demo();
+select count(*)::int as precios_distintos_a_t1_en_t2_t3_t7_t8_deberia_ser_0
+  from restaurantes.branch_products bp
+  join restaurantes.branch_detail bd on bd.property_id = bp.property_id
+  join core.organization o on o.id = bd.organization_id and o.slug = 'los-taquitos-de-pm'
+  join restaurantes.branch_detail bd1 on bd1.organization_id = o.id and bd1.slug = 'prol-montejo'
+  join restaurantes.branch_products t1 on t1.property_id = bd1.property_id and t1.product_id = bp.product_id
+  where bd.slug in ('fco-montejo', 'pensiones', 'garcia-lavin', 'altabrisa') and bp.price <> t1.price;
+select count(*)::int as productos_de_t2_t3_sin_precio_en_t1_deberia_ser_0
+  from restaurantes.branch_products bp
+  join restaurantes.branch_detail bd on bd.property_id = bp.property_id
+  join core.organization o on o.id = bd.organization_id and o.slug = 'los-taquitos-de-pm'
+  where bd.slug in ('fco-montejo', 'pensiones')
+    and not exists (select 1 from restaurantes.branch_products t1 join restaurantes.branch_detail bd1 on bd1.property_id = t1.property_id where bd1.organization_id = o.id and bd1.slug = 'prol-montejo' and t1.product_id = bp.product_id);
 rollback;
 
 \echo '=== B1. Politica en las 7 sucursales: franja 12:00-01:00 todos los dias, minimo a domicilio $200, propina solo con tarjeta ==='
@@ -150,13 +169,24 @@ select public.seed_pm_demo();
 select count(*)::int as promos_auto_apply_deberia_ser_1 from restaurantes.promotions p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and p.code = 'LUNES2X1PM' and p.auto_apply;
 rollback;
 
-\echo '=== B2c. PM-C2: el 2x1 queda con ALCANCE por sucursal (property_ids): exactamente T2 Francisco de Montejo, T3 Pensiones y T4 Galerias; T1, T7 y T8 quedan fuera ==='
+\echo '=== B2c. CR07/CR08: el 2x1 queda SIN alcance por sucursal (property_ids null = todas): la restriccion a T2, T3 y T4 era del menu impreso de 2025 ==='
 begin;
 select public.seed_pm_demo();
-select count(*)::int as alcance_2x1_solo_t2_t3_t4_deberia_ser_1
+select count(*)::int as alcance_2x1_todas_las_sucursales_deberia_ser_1
   from restaurantes.promotions pm join core.organization o on o.id = pm.organization_id
-  where o.slug = 'los-taquitos-de-pm' and pm.code = 'LUNES2X1PM' and cardinality(pm.property_ids) = 3
-    and (select array_agg(bd.slug order by bd.slug) from restaurantes.branch_detail bd where bd.property_id = any(pm.property_ids)) = array['fco-montejo', 'galerias', 'pensiones']::text[];
+  where o.slug = 'los-taquitos-de-pm' and pm.code = 'LUNES2X1PM' and pm.property_ids is null;
+rollback;
+
+\echo '=== B2d. CR09: el combo del martes se carga como cortesia automatica, solo recoger, todas las sucursales: nachos de pastor (orden completa) dispara 2 aguas de Jamaica, Horchata o Te ==='
+begin;
+select public.seed_pm_demo();
+select count(*)::int as combo_martes_correcto_deberia_ser_1
+  from restaurantes.promotions pm join core.organization o on o.id = pm.organization_id
+  where o.slug = 'los-taquitos-de-pm' and pm.code = 'MARTESNACHOSPM' and pm.type = 'cortesia' and pm.value = 1 and pm.auto_apply and pm.is_active
+    and pm.channels = array['recoger']::text[] and pm.days_of_week = array[2]::smallint[] and pm.property_ids is null
+    and pm.courtesy_quantity = 2
+    and (select array_agg(pr.name order by pr.name) from restaurantes.products pr where pr.id = any(pm.product_ids)) = array['Nachos de Pastor']::text[]
+    and (select array_agg(pr.name order by pr.name) from restaurantes.products pr where pr.id = any(pm.courtesy_product_ids)) = array['Agua de Jamaica', 'Horchata', 'Té']::text[];
 rollback;
 
 \echo '=== B3. La voz se carga DESHABILITADA (sin gasto de proveedores) en las sucursales activas ==='
@@ -188,15 +218,15 @@ select (
 )::int as asigna_activa_mas_cercana_y_no_la_inactiva_deberia_ser_1;
 rollback;
 
-\echo '=== B7. La voz sembrada sale del perfil de WhatsApp: trae FLUJO y ESCALACION, cabe en el tope de 8000 (check de la migracion 025), no promete el combo del martes y no nombra herramientas inexistentes ==='
+\echo '=== B7. La voz sembrada sale del perfil de WhatsApp: trae FLUJO y ESCALACION, cabe en el tope de 8000 (check de la migracion 025), dice que el combo del martes lo aplica cotizar_pedido (ya cargado) y no nombra herramientas inexistentes ==='
 begin;
 select public.seed_pm_demo();
 select (
   (select count(*) from restaurantes.branch_voice_config vc join core.organization o on o.id = vc.organization_id where o.slug = 'los-taquitos-de-pm'
      and vc.comportamiento like '%# FLUJO DE TOMA DE PEDIDO%' and vc.comportamiento like '%# ESCALACIÓN A HUMANO%'
-     and vc.comportamiento like '%la confirma la sucursal al recoger%' and char_length(vc.comportamiento) <= 8000) = 3
+     and vc.comportamiento like '%Combo del martes%lo aplica cotizar_pedido%' and char_length(vc.comportamiento) <= 8000) = 3
   and (select count(*) from restaurantes.branch_voice_config vc join core.organization o on o.id = vc.organization_id where o.slug = 'los-taquitos-de-pm'
-     and (vc.comportamiento ~* '2 aguas de cortes|elige dos aguas|asignar_sucursal|crear_comanda|consultar_menu|\{\{')) = 0
+     and (vc.comportamiento ~* 'la confirma la sucursal al recoger|no lo prometa ni lo aplique|asignar_sucursal|crear_comanda|consultar_menu|\{\{')) = 0
 )::int as voz_del_perfil_deberia_ser_1;
 rollback;
 
@@ -209,11 +239,11 @@ select (
   and (select count(*) from restaurantes.branch_detail bd join core.organization o on o.id = bd.organization_id where o.slug = 'los-taquitos-de-pm') = 7
   and (select count(*) from restaurantes.categories c join core.organization o on o.id = c.organization_id where o.slug = 'los-taquitos-de-pm') = 25
   and (select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm') = 279
-  and (select count(*) from restaurantes.branch_products bp join core.property p on p.id = bp.property_id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm') = 1610
+  and (select count(*) from restaurantes.branch_products bp join core.property p on p.id = bp.property_id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm') = 1628
   and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm') = 4
   and (select count(*) from restaurantes.branch_policy bp join core.organization o on o.id = bp.organization_id where o.slug = 'los-taquitos-de-pm') = 7
   and (select count(*) from restaurantes.branch_voice_config vc join core.organization o on o.id = vc.organization_id where o.slug = 'los-taquitos-de-pm') = 3
-  and (select count(*) from restaurantes.promotions pm join core.organization o on o.id = pm.organization_id where o.slug = 'los-taquitos-de-pm') = 1
+  and (select count(*) from restaurantes.promotions pm join core.organization o on o.id = pm.organization_id where o.slug = 'los-taquitos-de-pm') = 2
   and (select count(*) from core.organization where slug = 'los-taquitos-de-pm') = 1
 )::int as conteos_estables_tras_dos_corridas_deberia_ser_1;
 rollback;
@@ -249,7 +279,8 @@ select public.seed_pm_demo();
 update core.property set name = 'T4 (pendiente de datos)' where name = 'Galerías' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
 update restaurantes.branch_detail set slug = 't4-pendiente' where slug = 'galerias' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
 update core.property set name = 'Victory Platz (García Lavín)' where name = 'García Lavín (Victory Platz)' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
-update restaurantes.promotions set property_ids = null where code = 'LUNES2X1PM' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
+-- version anterior del seed: el 2x1 con alcance a T2, T3 y T4 (migracion 038); el seed actual lo deja sin alcance (todas las sucursales).
+update restaurantes.promotions set property_ids = (select array_agg(bd.property_id) from restaurantes.branch_detail bd where bd.slug in ('fco-montejo', 'pensiones', 'galerias') and bd.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm')) where code = 'LUNES2X1PM' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
 select public.seed_pm_demo();
 select (
   (select count(*) from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm') = 7
@@ -257,7 +288,7 @@ select (
   and (select count(*) from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and p.name in ('Galerías', 'García Lavín (Victory Platz)')) = 2
   and (select count(*) from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and p.name in ('T4 (pendiente de datos)', 'Victory Platz (García Lavín)')) = 0
   and (select count(*) from restaurantes.branch_detail bd join core.organization o on o.id = bd.organization_id where o.slug = 'los-taquitos-de-pm' and bd.slug in ('t4-pendiente')) = 0
-  and (select cardinality(property_ids) from restaurantes.promotions where code = 'LUNES2X1PM' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm')) = 3
+  and (select property_ids is null from restaurantes.promotions where code = 'LUNES2X1PM' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm'))
 )::int as seed_renombra_por_slug_y_repara_alcance_deberia_ser_1;
 rollback;
 
@@ -273,6 +304,42 @@ select (
   and (select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm' and 'chela' = any(pr.search_keywords)) = (select count(*) from restaurantes.products pr join restaurantes.categories c on c.id = pr.category_id join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm' and c.name = 'Cervezas')
   and (select search_keywords from restaurantes.products where id = '00000000-0000-0000-0000-0000000e00c1') = '{}'::text[]
 )::int as alias_unidos_sin_pisar_al_dueno_ni_a_otra_org_deberia_ser_1;
+rollback;
+
+\echo '=== C6. CR reconciliacion: re-aplicar el seed BORRA de branch_products lo que el plan ya no vende en una sucursal (Heineken Silver en T2 de la version anterior), repara el precio de lo que si vende y NO toca lo que el dueño agrego ni otra organizacion ==='
+begin;
+select public.seed_pm_demo();
+-- Version anterior del seed: T2 vendia Heineken Silver y T3 el taco al pastor a $36 (lista 2025).
+insert into restaurantes.branch_products (property_id, product_id, price, is_available)
+  select bd.property_id, pr.id, 90, true
+  from restaurantes.branch_detail bd join restaurantes.products pr on pr.organization_id = bd.organization_id
+  where bd.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and bd.slug = 'fco-montejo' and pr.name = 'Heineken Silver';
+update restaurantes.branch_products bp set price = 36
+  from restaurantes.branch_detail bd, restaurantes.products pr
+  where bd.property_id = bp.property_id and pr.id = bp.product_id and bd.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and bd.slug = 'pensiones' and pr.name = 'Taco Al Pastor (individual)';
+-- Lo que el dueño agrego por su cuenta: un producto que el seed NO conoce, con fila en T2 y en T3.
+insert into restaurantes.products (id, organization_id, name, price) values ('00000000-0000-0000-0000-0000000e00d1', (select id from core.organization where slug = 'los-taquitos-de-pm'), 'Producto agregado por el dueno', 55);
+insert into restaurantes.branch_products (property_id, product_id, price, is_available)
+  select bd.property_id, '00000000-0000-0000-0000-0000000e00d1', 55, true from restaurantes.branch_detail bd where bd.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and bd.slug in ('fco-montejo', 'pensiones');
+select public.seed_pm_demo();
+select (
+  (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where bd.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and bd.slug = 'fco-montejo' and pr.name = 'Heineken Silver') = 0
+  and (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where bd.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and bd.slug = 'pensiones' and pr.name = 'Taco Al Pastor (individual)') = 42
+  and (select count(*) from restaurantes.branch_products where product_id = '00000000-0000-0000-0000-0000000e00d1') = 2
+  and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id where bd.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and bd.slug = 'fco-montejo' and bp.product_id <> '00000000-0000-0000-0000-0000000e00d1') = 265
+  and (select count(*) from restaurantes.branch_products where property_id = '00000000-0000-0000-0000-0000000e00b1') = 0
+)::int as reconciliacion_acotada_deberia_ser_1;
+rollback;
+
+\echo '=== C7. Reconciliacion: un producto que vuelve al plan despues de haberse quitado se reinserta DISPONIBLE (no queda una fila apagada que nadie vuelve a prender) ==='
+begin;
+select public.seed_pm_demo();
+delete from restaurantes.branch_products bp using restaurantes.branch_detail bd, restaurantes.products pr
+  where bd.property_id = bp.property_id and pr.id = bp.product_id and bd.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and bd.slug = 'pensiones' and pr.name = 'Ensalada de PM';
+select public.seed_pm_demo();
+select count(*)::int as producto_reinsertado_disponible_deberia_ser_1
+  from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id
+  where bd.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and bd.slug = 'pensiones' and pr.name = 'Ensalada de PM' and bp.is_available and bp.price = 206;
 rollback;
 
 \echo '=== D1. AISLAMIENTO: la otra organizacion (mismo nombre de producto y de sucursal) queda intacta ==='
@@ -310,22 +377,23 @@ set local role anon;
 select count(*)::int as should_fail from restaurantes.branch_policy;
 rollback;
 
-\echo '=== E1. El agente de WhatsApp queda configurado: perfil taqueria_pm, tono formal, sin nombre inventado, sin promesa del combo del martes ==='
+\echo '=== E1. El agente de WhatsApp queda configurado: perfil taqueria_pm, tono formal, sin nombre inventado, promociones cargadas (lunes y martes), tiempo de entrega del dueño y espera de rafagas de 6 s ==='
 begin;
 select public.seed_pm_demo();
 select (
   select count(*) from restaurantes.whatsapp_agent_config c join core.organization o on o.id = c.organization_id
   where o.slug = 'los-taquitos-de-pm' and c.property_id is null and c.perfil = 'taqueria_pm' and c.tone_style = 'formal_directo'
     and c.business_name = 'Los Taquitos de PM' and c.agent_name is null and c.enabled
-    and c.escalation_reasons_off = '{}' and c.delivery_time_text like 'a domicilio de 60 a 75 min%'
-    and c.promos_text not ilike '%martes%' and c.promos_text ilike '%lunes 2x1%' and c.salsas_text ilike '%guacamolera%'
+    and c.escalation_reasons_off = '{}' and c.delivery_time_text = 'de 40 a 50 minutos para recoger y a domicilio; más en hora pico'
+    and c.promos_text ilike '%lunes 2x1%' and c.promos_text ilike '%martes nachos de pastor con 2 aguas%' and c.promos_text ilike '%todas las sucursales%'
+    and c.salsas_text ilike '%guacamolera%' and c.reply_debounce_seconds = 6
 )::int as config_agente_deberia_ser_1;
 rollback;
 
 \echo '=== E2. Re-ejecutar el seed NO pisa lo que el dueño cambio en el editor del agente ==='
 begin;
 select public.seed_pm_demo();
-update restaurantes.whatsapp_agent_config set tone_style = 'calido_cercano', agent_name = 'Lupita' where perfil = 'taqueria_pm';
+update restaurantes.whatsapp_agent_config set tone_style = 'calido_cercano', agent_name = 'Lupita' where perfil = 'taqueria_pm' and property_id is null;
 select public.seed_pm_demo();
 select count(*)::int as decision_del_dueno_intacta_deberia_ser_1 from restaurantes.whatsapp_agent_config where tone_style = 'calido_cercano' and agent_name = 'Lupita';
 rollback;
@@ -335,7 +403,7 @@ begin;
 select public.seed_pm_demo_marcado();
 select (
   select count(*) from restaurantes.demo_organization d join core.organization o on o.id = d.organization_id
-  where o.slug = 'los-taquitos-de-pm-demo' and o.name = 'Los Taquitos de PM (demo)' and d.activo and d.seed_version = '2026-10-01'
+  where o.slug = 'los-taquitos-de-pm-demo' and o.name = 'Los Taquitos de PM (demo)' and d.activo and d.seed_version = '2026-10-03'
 )::int as organizacion_demo_marcada_deberia_ser_1;
 rollback;
 
@@ -378,4 +446,49 @@ begin;
 select public.seed_pm_demo_marcado();
 set local role anon;
 select count(*)::int as should_fail from restaurantes.demo_organization;
+rollback;
+
+\echo '=== E9. CR14/CR15: T7 tiene su fila propia de agente con los tiempos medidos en sus chats (copia de la fila de la organizacion salvo delivery_time_text) y la organizacion lleva el dato del dueño ==='
+begin;
+select public.seed_pm_demo();
+select (
+  (select count(*) from restaurantes.whatsapp_agent_config c where c.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and c.property_id is not null) = 1
+  and (select count(*) from restaurantes.whatsapp_agent_config c join restaurantes.branch_detail bd on bd.property_id = c.property_id
+       join restaurantes.whatsapp_agent_config o on o.organization_id = c.organization_id and o.property_id is null
+       where c.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and bd.slug = 'garcia-lavin' and c.perfil = 'taqueria_pm' and c.enabled
+         and c.delivery_time_text = 'a domicilio de 60 a 75 min (pico: 75 a 90); para recoger de 25 a 35 min (pico: 45 a 60)'
+         and c.promos_text = o.promos_text and c.salsas_text = o.salsas_text and c.tone_style = o.tone_style and c.business_name = o.business_name
+         and c.reply_debounce_seconds = 6) = 1
+)::int as fila_propia_de_t7_deberia_ser_1;
+rollback;
+
+\echo '=== E10. Re-ejecutar NO pisa lo que el dueño edito en NINGUNA de las dos filas (tiempo de entrega, promociones, espera de rafagas, tiempo propio de T7) ==='
+begin;
+select public.seed_pm_demo();
+update restaurantes.whatsapp_agent_config set delivery_time_text = 'texto del dueno', promos_text = 'promo del dueno', reply_debounce_seconds = 3 where organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and property_id is null;
+update restaurantes.whatsapp_agent_config set delivery_time_text = 'tiempo de T7 del dueno' where organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and property_id is not null;
+select public.seed_pm_demo();
+select (
+  (select count(*) from restaurantes.whatsapp_agent_config where organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and property_id is null and delivery_time_text = 'texto del dueno' and promos_text = 'promo del dueno' and reply_debounce_seconds = 3) = 1
+  and (select count(*) from restaurantes.whatsapp_agent_config where organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and property_id is not null and delivery_time_text = 'tiempo de T7 del dueno') = 1
+  and (select count(*) from restaurantes.whatsapp_agent_config where organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm')) = 2
+)::int as ediciones_del_dueno_intactas_deberia_ser_1;
+rollback;
+
+\echo '=== E11. La cuenta real YA sembrada por la version anterior recibe la correccion: si la fila conserva EXACTAMENTE los textos que sembro el seed viejo (y no tiene espera de rafagas), se actualizan; el resto de la fila no cambia ==='
+begin;
+select public.seed_pm_demo();
+update restaurantes.whatsapp_agent_config
+  set delivery_time_text = 'a domicilio de 60 a 75 min (pico: 75 a 90); para recoger de 25 a 35 min (pico: 45 a 60)',
+      promos_text = 'lunes 2x1 en tacos al pastor, solo para recoger, en Francisco de Montejo, Pensiones y Galerías',
+      reply_debounce_seconds = null, agent_name = 'Lupita'
+  where organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and property_id is null;
+delete from restaurantes.whatsapp_agent_config where organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and property_id is not null;
+select public.seed_pm_demo();
+select (
+  (select count(*) from restaurantes.whatsapp_agent_config where organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and property_id is null
+     and delivery_time_text = 'de 40 a 50 minutos para recoger y a domicilio; más en hora pico'
+     and promos_text like 'lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas%' and reply_debounce_seconds = 6 and agent_name = 'Lupita') = 1
+  and (select count(*) from restaurantes.whatsapp_agent_config where organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm') and property_id is not null) = 1
+)::int as correccion_aplicada_sin_pisar_el_resto_deberia_ser_1;
 rollback;

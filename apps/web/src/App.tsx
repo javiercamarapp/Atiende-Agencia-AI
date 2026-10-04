@@ -19,6 +19,7 @@ import { AuditoriaPage as RestaurantesAuditoriaPage } from "./verticals/restaura
 import { ConfiguracionPage as RestaurantesConfiguracionPage } from "./verticals/restaurantes/pages/Configuracion.tsx";
 import { AgenteVozPage as RestaurantesAgenteVozPage } from "./verticals/restaurantes/pages/AgenteVoz.tsx";
 import { IndicadoresWhatsappPage as RestaurantesIndicadoresWhatsappPage } from "./verticals/restaurantes/pages/IndicadoresWhatsapp.tsx";
+import { CierresPage as RestaurantesCierresPage } from "./verticals/restaurantes/pages/Cierres.tsx";
 import { PrivacidadPage as RestaurantesPrivacidadPage } from "./verticals/restaurantes/pages/Privacidad.tsx";
 import { ConversacionesPage as RestaurantesConversacionesPage } from "./verticals/restaurantes/pages/Conversaciones.tsx";
 import { TurnosPage as RestaurantesTurnosPage } from "./verticals/restaurantes/pages/Turnos.tsx";
@@ -34,6 +35,8 @@ import { SuperAdminOrganizacionesPage } from "./superadmin/pages/Organizaciones.
 import { SuperAdminOrganizacionFichaPage } from "./superadmin/pages/OrganizacionFicha.tsx";
 import { SuperAdminProspectosPage } from "./superadmin/pages/Prospectos.tsx";
 import { SuperAdminTaxonomiaPage } from "./superadmin/pages/Taxonomia.tsx";
+import { SuperAdminCerebroMapaPage } from "./superadmin/cerebro/CerebroMapa.tsx";
+import { SuperAdminFichaProspectoPage } from "./superadmin/cerebro/FichaProspecto.tsx";
 import { SuperAdminPanelesPage } from "./superadmin/pages/Paneles.tsx";
 import { SuperAdminConsumoIaPage } from "./superadmin/pages/ConsumoIa.tsx";
 import { SuperAdminBreakGlassPage } from "./superadmin/pages/BreakGlass.tsx";
@@ -282,6 +285,7 @@ const RestaurantesConfiguracionRoute = shellRoute(RestaurantesShell, "/restauran
 const RestaurantesAgenteVozRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAgenteVozPage {...ctx} />);
 // R-31: indicadores del agente de WhatsApp (owner/admin).
 const RestaurantesIndicadoresWhatsappRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesIndicadoresWhatsappPage {...ctx} />);
+const RestaurantesCierresRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCierresPage {...ctx} />);
 // PM PR-9 -- privacidad (solicitudes ARCO + aviso/retención/grabación), owner/admin.
 const RestaurantesPrivacidadRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrivacidadPage {...ctx} />);
 // PL-13 -- privacidad de la organizacion (ARCO de todos los verticales, retencion, bloqueo de purga, aviso versionado).
@@ -408,6 +412,26 @@ function SuperAdminProspectosRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminProspectosPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+/** SA-L-42: el mapa del Cerebro de ventas (el mundo virtual de la cartera). */
+function SuperAdminCerebroMapaRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminCerebroMapaPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+/** SA-L-43: la ficha de un prospecto del Cerebro. */
+function SuperAdminFichaProspectoRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminFichaProspectoPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -1105,6 +1129,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/configuracion" element={<RestaurantesConfiguracionRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-voz" element={<RestaurantesAgenteVozRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-whatsapp" element={<RestaurantesIndicadoresWhatsappRoute />} />
+        <Route path="/restaurantes/:orgSlug/cierres" element={<RestaurantesCierresRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad" element={<RestaurantesPrivacidadRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad-organizacion" element={<RestaurantesPrivacidadOrganizacionRoute />} />
         <Route path="/restaurantes/:orgSlug/conversaciones" element={<RestaurantesConversacionesRoute />} />
@@ -1129,6 +1154,8 @@ export function App() {
         <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />
         <Route path="/superadmin/cerebro" element={<SuperAdminProspectosRoute />} />
         <Route path="/superadmin/cerebro/taxonomia" element={<SuperAdminTaxonomiaRoute />} />
+        <Route path="/superadmin/mapa-prospectos" element={<SuperAdminCerebroMapaRoute />} />
+        <Route path="/superadmin/mapa-prospectos/:id" element={<SuperAdminFichaProspectoRoute />} />
         <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
         <Route path="/superadmin/consumo-ia" element={<SuperAdminConsumoIaRoute />} />
         <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
