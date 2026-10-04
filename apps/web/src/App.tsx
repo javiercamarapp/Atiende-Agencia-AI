@@ -22,6 +22,7 @@ import { IndicadoresWhatsappPage as RestaurantesIndicadoresWhatsappPage } from "
 import { PrivacidadPage as RestaurantesPrivacidadPage } from "./verticals/restaurantes/pages/Privacidad.tsx";
 import { ConversacionesPage as RestaurantesConversacionesPage } from "./verticals/restaurantes/pages/Conversaciones.tsx";
 import { TurnosPage as RestaurantesTurnosPage } from "./verticals/restaurantes/pages/Turnos.tsx";
+import { AvisosStaffPage as RestaurantesAvisosPage } from "./verticals/restaurantes/pages/AvisosStaff.tsx";
 import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
 import { SeleccionarVerticalPage } from "./shell/SeleccionarVertical.tsx";
 import { GoogleCallbackPage } from "./shell/GoogleCallback.tsx";
@@ -288,6 +289,8 @@ const RestaurantesPrivacidadOrganizacionRoute = shellRoute(RestaurantesShell, "/
 const RestaurantesConversacionesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConversacionesPage {...ctx} />);
 const RestaurantesPrimerosPasosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrimerosPasosPage {...ctx} />);
 const RestaurantesTurnosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesTurnosPage {...ctx} />);
+// R-16: avisos del staff (Mis avisos para todos; matriz del equipo y umbral de entrega tardia para owner/admin).
+const RestaurantesAvisosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAvisosPage {...ctx} />);
 // CHAT-08 -- Copiloto ("Pregunta a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de restaurantes.
 const RestaurantesCopilotoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCopilotoPage {...ctx} />);
 
@@ -1098,6 +1101,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/privacidad-organizacion" element={<RestaurantesPrivacidadOrganizacionRoute />} />
         <Route path="/restaurantes/:orgSlug/conversaciones" element={<RestaurantesConversacionesRoute />} />
         <Route path="/restaurantes/:orgSlug/turnos" element={<RestaurantesTurnosRoute />} />
+        <Route path="/restaurantes/:orgSlug/avisos" element={<RestaurantesAvisosRoute />} />
         <Route path="/restaurantes/:orgSlug/copiloto" element={<RestaurantesCopilotoRoute />} />
         <Route path="/restaurantes/:orgSlug/primeros-pasos" element={<RestaurantesPrimerosPasosRoute />} />
         <Route path="/restaurantes/:orgSlug/notificaciones" element={<RestaurantesNotificacionesRoute />} />
