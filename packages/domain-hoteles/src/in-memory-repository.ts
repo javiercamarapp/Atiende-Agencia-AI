@@ -2408,6 +2408,12 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     );
   }
 
+  async listApprovedRateRecommendationsAsSystem(propertyId: string, todayIso: string): Promise<readonly RateRecommendationRecord[]> {
+    return [...this.rateRecommendations.values()]
+      .filter((r) => r.propertyId === propertyId && r.estado === "aprobada" && r.fecha >= todayIso)
+      .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.roomTypeId.localeCompare(b.roomTypeId) || a.id.localeCompare(b.id));
+  }
+
   async expireRateRecommendationAsSystem(id: string): Promise<RateRecommendationRecord> {
     const existing = this.mustFindRateRecommendation(id);
     const updated: RateRecommendationRecord = { ...existing, estado: "expirada", updatedAt: new Date().toISOString() };

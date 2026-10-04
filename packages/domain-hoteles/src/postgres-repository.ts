@@ -2867,6 +2867,29 @@ export class PostgresHotelesRepository implements HotelesRepository {
     });
   }
 
+  async listApprovedRateRecommendationsAsSystem(propertyId: string, todayIso: string): Promise<readonly RateRecommendationRecord[]> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<RateRecommendationRow>(
+          `select ${this.RATE_RECOMMENDATION_COLUMNS} from hoteles.rate_recommendation
+           where property_id = $1 and estado = 'aprobada' and fecha >= $2::date
+           order by fecha asc, room_type_id asc, id asc;`,
+          [propertyId, todayIso],
+        );
+        return rows.map((r) => this.toRateRecommendationRecord(r));
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        console.warn(
+          "listApprovedRateRecommendationsAsSystem: hoteles.rate_recommendation no existe todavía (migración 029 pendiente) -- degradando a lista vacía:",
+          err instanceof Error ? err.message : err,
+        );
+        return Promise.resolve([] as readonly RateRecommendationRecord[]);
+      },
+    });
+  }
+
   async applyRateRecommendationAsSystem(id: string): Promise<RateRecommendationRecord> {
     return runWithSavepointFallback({
       session: this.db,
