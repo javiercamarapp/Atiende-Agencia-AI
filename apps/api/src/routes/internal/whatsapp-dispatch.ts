@@ -100,7 +100,7 @@ import type { HotelesRepository } from "@atiende/domain-hoteles";
 import { createRestaurantesMessagingOutboxPort } from "@atiende/domain-restaurantes";
 import type { RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { createLicitacionesMessagingOutboxPort } from "@atiende/domain-licitaciones";
-import type { DispatchSummary, MessagingOutboxPort } from "@atiende/whatsapp-gateway";
+import type { DispatchItemResult, DispatchSummary, MessagingOutboxItem, MessagingOutboxPort } from "@atiende/whatsapp-gateway";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
@@ -122,10 +122,15 @@ const MAX_LIMIT = 200;
 const INLINE_LIMIT = 5;
 
 export type WhatsAppMessagingVertical = "citas" | "hoteles" | "restaurantes" | "licitaciones";
-export type WhatsAppVerticalDispatchResult = DispatchSummary | { readonly ok: false; readonly error: string };
+export type WhatsAppVerticalDispatchResult = (DispatchSummary & { readonly errores?: number; readonly ultimoError?: string | null }) | { readonly ok: false; readonly error: string };
 
 function isFailureResult(result: WhatsAppVerticalDispatchResult): result is { readonly ok: false; readonly error: string } {
   return "ok" in result && result.ok === false;
+}
+
+/** Corrida con mensajes cuya sesion fallo a mitad (quedan `processing` hasta que venza su lease). */
+function hasSessionErrors(result: WhatsAppVerticalDispatchResult): boolean {
+  return !isFailureResult(result) && (result.errores ?? 0) > 0;
 }
 
 /**
@@ -150,21 +155,70 @@ export async function dispatchWhatsAppVertical(deps: AppDeps, vertical: WhatsApp
     return { label: "licitaciones", claimed: 0, sent: 0, retried: 0, dead: 0, skipped: 0, items: [] };
   }
 
-  try {
-    return await deps.engine.withAppSession({ userId: null }, async (db) => {
-      const port =
-        vertical === "citas"
-          ? createCitasMessagingOutboxPort(deps.citasRepo(db))
-          : vertical === "hoteles"
-            ? createHotelesMessagingOutboxPort(deps.hotelesRepo(db))
-            : vertical === "licitaciones"
-              ? createLicitacionesMessagingOutboxPort(licitacionesRepoFactory!(db), licitacionesPhoneNumberId!)
-              : createRestaurantesMessagingOutboxPort(deps.restaurantesRepo(db));
-      return dispatcher.dispatchPending(port, { limit, suppression: crearGuardTelefono(db), medidor: crearMedidorMensajes(db, vertical), plantillas: crearCatalogoPlantillas(db) });
-    });
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  // QA-restaurantes-R1-automatizacion-01: UN mensaje por transaccion corta, nunca una transaccion por lote. Graph API no
+  // tiene llave de idempotencia: si el claim, el envio y el `markSent` de todo el lote vivieran en una sola transaccion,
+  // un error SQL (o la muerte de la funcion serverless) a mitad de lote haria ROLLBACK de `sent` ya entregados y la
+  // siguiente corrida los mandaria otra vez. Aqui cada paso confirma antes del siguiente:
+  //   1. sesion A: reclama 1 mensaje (queda `processing` con lease; COMMIT);
+  //   2. sesion B: lo envia y lo cierra (`sent`/reintento/`dead`; COMMIT).
+  // Un fallo de B solo afecta a ESE mensaje (su lease vencido lo reabre); lo ya cerrado queda cerrado. Hueco residual
+  // honesto: una caida entre el 2xx de Meta y el COMMIT de B todavia puede duplicar UNA respuesta.
+  const construirPuerto = (db: TenantDbSession): MessagingOutboxPort =>
+    vertical === "citas"
+      ? createCitasMessagingOutboxPort(deps.citasRepo(db))
+      : vertical === "hoteles"
+        ? createHotelesMessagingOutboxPort(deps.hotelesRepo(db))
+        : vertical === "licitaciones"
+          ? createLicitacionesMessagingOutboxPort(licitacionesRepoFactory!(db), licitacionesPhoneNumberId!)
+          : createRestaurantesMessagingOutboxPort(deps.restaurantesRepo(db));
+
+  const total = { label: vertical as string, claimed: 0, sent: 0, retried: 0, dead: 0, skipped: 0, suppressed: 0, omitidosCuota: 0 };
+  const items: DispatchItemResult[] = [];
+  let errores = 0;
+  let ultimoError: string | null = null;
+  for (let i = 0; i < limit; i++) {
+    let reclamados: readonly MessagingOutboxItem[];
+    try {
+      reclamados = await deps.engine.withAppSession({ userId: null }, async (db) => construirPuerto(db).claimBatch(1, dispatcher.claimLeaseSeconds));
+    } catch (err) {
+      // Sin poder reclamar no hay nada mas que hacer en esta corrida (BD caida, funcion sin migrar).
+      if (total.claimed === 0 && errores === 0) return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      errores++;
+      ultimoError = err instanceof Error ? err.message : String(err);
+      break;
+    }
+    if (reclamados.length === 0) break;
+    try {
+      const r = await deps.engine.withAppSession({ userId: null }, async (db) =>
+        dispatcher.dispatchClaimed(construirPuerto(db), reclamados, { suppression: crearGuardTelefono(db), medidor: crearMedidorMensajes(db, vertical), plantillas: crearCatalogoPlantillas(db) }),
+      );
+      total.claimed += r.claimed;
+      total.sent += r.sent;
+      total.retried += r.retried;
+      total.dead += r.dead;
+      total.skipped += r.skipped;
+      total.suppressed += r.suppressed ?? 0;
+      total.omitidosCuota += r.omitidosCuota ?? 0;
+      items.push(...r.items);
+    } catch (err) {
+      // Este mensaje queda `processing`: su lease vencido lo reabre. Los anteriores ya hicieron COMMIT.
+      total.claimed += reclamados.length;
+      errores++;
+      ultimoError = err instanceof Error ? err.message : String(err);
+    }
   }
+  return {
+    label: total.label,
+    claimed: total.claimed,
+    sent: total.sent,
+    retried: total.retried,
+    dead: total.dead,
+    skipped: total.skipped,
+    ...(total.suppressed > 0 ? { suppressed: total.suppressed } : {}),
+    ...(total.omitidosCuota > 0 ? { omitidosCuota: total.omitidosCuota } : {}),
+    items,
+    ...(errores > 0 ? { errores, ultimoError } : {}),
+  };
 }
 
 const SAVEPOINT_NAME = "sp_inline_whatsapp_dispatch";
@@ -265,7 +319,7 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
       for (const vertical of ["citas", "hoteles", "restaurantes", "licitaciones"] as const) {
         const result = await dispatchWhatsAppVertical(deps, vertical, limit);
         results[vertical] = result;
-        if (isFailureResult(result)) {
+        if (isFailureResult(result) || hasSessionErrors(result)) {
           anyFailure = true;
           failedVerticals.push(vertical);
         } else if (result.dead > 0) {

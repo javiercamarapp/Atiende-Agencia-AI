@@ -66,20 +66,17 @@ describe("QA-restaurantes-R1-automatizacion-01 (ROJO hasta el fix): el cron de W
   //
   // Motor fake con la semantica de Postgres que importa: foto del outbox al abrir la transaccion, ROLLBACK si el
   // callback lanza, y sesion ABORTADA (25P02) tras el primer error SQL.
-  function montar(fallarMarkSentEnCorrida: number | null) {
+  function montar(fallarEnMarkSentNumero: number | null) {
     const repo = new InMemoryRestaurantesRepository();
     const orgId = randomUUID();
     repo.seedOrganization({ id: orgId, slug: "qa-wa", name: "QA WA" });
     const graph = new FakeWhatsAppGraphClient();
-    let corrida = 0;
+    let markSentsGlobal = 0; // cuenta los markSent de TODAS las sesiones (el fix abre una sesion por mensaje)
     const outboxDe = (r: InMemoryRestaurantesRepository) => (r as unknown as { outbox: Map<string, Record<string, unknown>> }).outbox;
     const engine = {
       async withAppSession<T>(_ctx: unknown, fn: (db: TenantDbSession) => Promise<T>): Promise<T> {
-        corrida += 1;
-        const esta = corrida;
         const foto = new Map([...outboxDe(repo)].map(([k, v]) => [k, structuredClone(v)]));
         let abortada = false;
-        let markSents = 0;
         const sqlFalla = (code: string) => Object.assign(new Error(code === "25P02" ? "current transaction is aborted" : "canceling statement due to statement timeout"), { code });
         const db = {
           async exec() {
@@ -96,7 +93,7 @@ describe("QA-restaurantes-R1-automatizacion-01 (ROJO hasta el fix): el cron de W
             if (typeof v !== "function") return v;
             return async (...args: unknown[]) => {
               if (abortada) throw sqlFalla("25P02");
-              if (prop === "markMessagingOutboxSent" && esta === fallarMarkSentEnCorrida && ++markSents === 2) {
+              if (prop === "markMessagingOutboxSent" && fallarEnMarkSentNumero !== null && ++markSentsGlobal === fallarEnMarkSentNumero) {
                 abortada = true;
                 throw sqlFalla("57014");
               }
@@ -140,10 +137,10 @@ describe("QA-restaurantes-R1-automatizacion-01 (ROJO hasta el fix): el cron de W
   });
 
   it("un error de BD al marcar el 2.o mensaje NO debe provocar que el 1.o (ya entregado) se mande otra vez", async () => {
-    const { repo, orgId, graph, deps } = montar(1);
+    const { repo, orgId, graph, deps } = montar(2);
     await encolar(repo, orgId, 3);
     const primera = await dispatchWhatsAppVertical(deps, "restaurantes", 25);
-    expect(primera).toMatchObject({ ok: false });
+    expect(primera, "el fallo de sesion del 2.o mensaje se reporta (errores), sin tumbar lo ya cerrado").toMatchObject({ errores: 1, sent: 2 });
     await dispatchWhatsAppVertical(deps, "restaurantes", 25); // siguiente corrida del cron (*/5)
     const enviosDelPrimero = graph.sent.filter((m) => m.body === "mensaje 1").length;
     expect(enviosDelPrimero, "el cliente recibio el mismo WhatsApp mas de una vez").toBe(1);
