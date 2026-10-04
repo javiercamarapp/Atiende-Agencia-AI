@@ -74,6 +74,46 @@ const TEXTO_VENTAS = "En los últimos 7 días vendiste $18,450 MXN en 96 pedidos
 const FUENTE_VENTAS = { tool: "ventas_por_dia", source: "Pedidos completados", periodLabel: "últimos 7 días", scopeLabel: "todas tus sucursales" };
 const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("rest.copiloto.conversaciones", () => []);
 
+
+// ---- Comandas al POS (captura asistida) y cartera de clientes: estado mutable por escenario --------------------------------------------------
+// Solo existe en la API simulada de e2e. La comanda de ord-1001 empieza en "captura_manual" (el POS aun no esta conectado).
+interface ComandaMock { id: string; propertyId: string; orderId: string; estado: string; intentos: number; maxIntentos: number; folio: string | null; ultimoError: string | null; notaCaptura: string | null; capturadoEn: string | null; creadoEn: string; totalPedido: number | null; comanda: unknown }
+const comandasMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) =>
+  p.estado.obtener<ComandaMock[]>("rest.comandas", () => [
+    {
+      id: "cmd-3001", propertyId: PROP.id, orderId: "ord-1001", estado: "captura_manual", intentos: 5, maxIntentos: 5, folio: null, ultimoError: "rechazada:producto_sin_codigo_pos", notaCaptura: null, capturadoEn: null,
+      creadoEn: new Date(Date.now() - 12 * 60_000).toISOString(), totalPedido: 286,
+      comanda: { sucursal: "T1", tipo: "domicilio", cliente: { nombre: "Marisol Pech", telefono: "9995550101" }, direccion: { texto: "Calle 60 #412, Centro" }, formaPago: "efectivo", items: [{ codigo: "TAQ-PASTOR", cantidad: 2, nombre: "Tacos al pastor (orden)", modificadores: [] }, { codigo: "BEB-HORCHATA", cantidad: 2, nombre: "Horchata", modificadores: [] }] },
+    },
+  ]);
+const DIA_MS = 86_400_000;
+interface ClienteMock { id: string; name: string | null; phone: string; orderCount: number; tier: string | null; lastOrderAt: string | null }
+const clientesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) =>
+  p.estado.obtener<ClienteMock[]>("rest.clientes", () => [
+    { id: "cli-1", name: "Marisol Pech", phone: "+529995550101", orderCount: 9, tier: "BLACK", lastOrderAt: new Date(Date.now() - 2 * DIA_MS).toISOString() },
+    { id: "cli-2", name: "Jorge Canul", phone: "+529995550102", orderCount: 3, tier: "BLUE", lastOrderAt: new Date(Date.now() - 5 * DIA_MS).toISOString() },
+  ]);
+/** Misma regla que el servidor (canonicalizeMexicanPhone): 10 digitos; +52 y 521 se aceptan; 11 digitos se rechaza. */
+function telefonoMock(crudo: unknown): string | null {
+  const d = String(crudo ?? "").replace(/\D/g, "");
+  if (d.length === 10) return d;
+  if (d.length === 12 && d.startsWith("52")) return d.slice(2);
+  if (d.length === 13 && d.startsWith("521")) return d.slice(3);
+  return null;
+}
+type FilaImportMock = { telefono?: unknown; nombre?: unknown };
+function prepararImportMock(filas: readonly FilaImportMock[]) {
+  const validas: Array<{ phone: string; name: string | null }> = [];
+  const errores: Array<{ renglon: number; motivo: string }> = [];
+  filas.forEach((f, i) => {
+    const phone = telefonoMock(f.telefono);
+    if (phone === null) errores.push({ renglon: i + 1, motivo: "Telefono invalido: se esperan 10 digitos (se acepta +52 o 521 al inicio)." });
+    else validas.push({ phone, name: String(f.nombre ?? "").trim() || null });
+  });
+  return { validas, errores };
+}
+const enmascarar = (tel: string) => `${"*".repeat(Math.max(0, tel.length - 4))}${tel.slice(-4)}`;
+
 export const rutasRestaurantes: readonly Ruta[] = [
   { metodo: "GET", patron: `${B}/chat-datos/pins`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ disponible: true, pins: [] }) },
   { metodo: "GET", patron: `${B}/chat-datos/estado`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }) },
@@ -144,7 +184,75 @@ export const rutasRestaurantes: readonly Ruta[] = [
       { id: "p-1", categoryId: "cat-1", categoryName: "Tacos", name: "Tacos al pastor (orden)", description: "Cinco tacos con pina y cilantro", price: 95, imageUrl: null, isPopular: true, isAvailable: true, displayOrder: 1, searchKeywords: ["pastor"], branch: { propertyId: PROP.id, productId: "p-1", price: 95, isAvailable: true } },
       { id: "p-2", categoryId: "cat-2", categoryName: "Bebidas", name: "Horchata", description: null, price: 48, imageUrl: null, isPopular: false, isAvailable: true, displayOrder: 2, searchKeywords: [], branch: { propertyId: PROP.id, productId: "p-2", price: 48, isAvailable: true } },
     ] }) },
-  { metodo: "GET", patron: `${B}/customers`, manejador: () => ({ customers: [{ id: "cli-1", name: "Marisol Pech", phone: "+529995550101", orderCount: 9 }, { id: "cli-2", name: "Jorge Canul", phone: "+529995550102", orderCount: 3 }], nextCursor: null }) },
+  { metodo: "GET", patron: `${B}/customers`, manejador: (p) => {
+      const nivel = p.query.get("nivel");
+      const frecuencia = p.query.get("frecuencia");
+      const dias = Number(p.query.get("inactivoDias") ?? 0);
+      const buscar = (p.query.get("search") ?? "").toLowerCase();
+      const customers = clientesMock(p).filter((c) => {
+        if (nivel && c.tier !== nivel) return false;
+        if (frecuencia === "una_vez" && c.orderCount !== 1) return false;
+        if (frecuencia === "recurrentes" && c.orderCount < 2) return false;
+        if (dias > 0 && c.lastOrderAt !== null && Date.parse(c.lastOrderAt) >= Date.now() - dias * DIA_MS) return false;
+        if (buscar && !`${c.name ?? ""} ${c.phone}`.toLowerCase().includes(buscar)) return false;
+        return true;
+      });
+      return { customers, nextCursor: null, filtrosDisponibles: true };
+    } },
+  { metodo: "GET", patron: `${B}/customers/kpis`, manejador: (p) => {
+      const todos = clientesMock(p);
+      return { disponible: true, total: todos.length, recurrentes: todos.filter((c) => c.orderCount >= 2).length, ticketPromedio: 192.2, masFrecuente: { nombre: "Marisol Pech", telefonoEnmascarado: "********0101", pedidos: 9, diasDesdeUltimoPedido: 2 } };
+    } },
+  { metodo: "POST", patron: `${B}/customers/import/preview`, roles: ["owner", "admin", "staff"], manejador: (p) => {
+      const { filas } = (p.cuerpo ?? {}) as { filas?: FilaImportMock[] };
+      const { validas, errores } = prepararImportMock(filas ?? []);
+      return { total: (filas ?? []).length, validos: validas.length, duplicadosEnArchivo: 0, totalErrores: errores.length, errores, muestra: validas.slice(0, 5).map((v) => ({ nombre: v.name, telefonoEnmascarado: enmascarar(v.phone), direccion: null, notas: null })) };
+    } },
+  { metodo: "POST", patron: `${B}/customers/import`, roles: ["owner", "admin", "staff"], manejador: (p) => {
+      const { huella, filas } = (p.cuerpo ?? {}) as { huella?: string; filas?: FilaImportMock[] };
+      const hechas = p.estado.obtener<Record<string, unknown>>("rest.importaciones", () => ({}));
+      const clave = String(huella);
+      if (hechas[clave]) return { resultado: { ...(hechas[clave] as object), yaImportado: true } };
+      const { validas, errores } = prepararImportMock(filas ?? []);
+      const clientes = clientesMock(p);
+      let creados = 0;
+      let sinCambios = 0;
+      for (const v of validas) {
+        if (clientes.some((c) => c.phone.endsWith(v.phone))) {
+          sinCambios += 1;
+          continue;
+        }
+        clientes.push({ id: `cli-imp-${clientes.length + 1}`, name: v.name, phone: v.phone, orderCount: 0, tier: null, lastOrderAt: null });
+        creados += 1;
+      }
+      const resultado = { yaImportado: false, total: (filas ?? []).length, creados, actualizados: 0, sinCambios, rechazados: errores.length, errores };
+      hechas[clave] = resultado;
+      return { resultado };
+    } },
+  { metodo: "GET", patron: `${B}/softrestaurant/config`, manejador: () => ({ modo: "apagado", disponible: true, adaptador: { nombre: "no-configurado", esReal: false }, umbralCapturaManual: { porOmisionMin: 5, minimo: 1, maximo: 240, disponible: true, porSucursal: {} } }) },
+  { metodo: "GET", patron: `${B}/softrestaurant/comandas`, manejador: (p) => {
+      const estados = (p.query.get("estado") ?? "captura_manual,fallida,pendiente,enviada").split(",");
+      const todas = comandasMock(p);
+      const resumen: Record<string, number> = { pendiente: 0, enviada: 0, confirmada: 0, fallida: 0, captura_manual: 0, capturada_manual: 0 };
+      for (const c of todas) resumen[c.estado] = (resumen[c.estado] ?? 0) + 1;
+      return { disponible: true, comandas: todas.filter((c) => estados.includes(c.estado)), resumen, requierenAtencion: (resumen["captura_manual"] ?? 0) + (resumen["fallida"] ?? 0) };
+    } },
+  { metodo: "POST", patron: `${B}/softrestaurant/comandas/:comandaId/capturada`, roles: ["owner", "admin", "staff"], manejador: (p) => {
+      const c = comandasMock(p).find((x) => x.id === p.params["comandaId"]);
+      if (!c) return fallo(404, "Comanda no encontrada.");
+      if (!["pendiente", "fallida", "captura_manual"].includes(c.estado)) return fallo(409, `La comanda esta en estado '${c.estado}' y ya no admite captura manual.`);
+      c.estado = "capturada_manual";
+      c.notaCaptura = String(((p.cuerpo ?? {}) as { nota?: string }).nota ?? "") || null;
+      c.capturadoEn = new Date().toISOString();
+      return { comanda: c };
+    } },
+  { metodo: "GET", patron: `${B}/softrestaurant/estados`, manejador: (p) => {
+      const ids = new Set((p.query.get("orderIds") ?? "").split(",").filter(Boolean));
+      const estados: Record<string, string> = {};
+      for (const c of comandasMock(p)) if (ids.has(c.orderId)) estados[c.orderId] = c.estado;
+      return { disponible: true, estados };
+    } },
+  { metodo: "PUT", patron: `${B}/softrestaurant/umbral-captura-manual`, roles: ["owner", "admin"], manejador: (p) => ({ branchId: (p.cuerpo as { branchId?: string } | undefined)?.branchId, minutos: (p.cuerpo as { minutos?: number } | undefined)?.minutos }) },
   { metodo: "GET", patron: `${B}/sucursales`, manejador: () => ({ branches: [{ propertyId: PROP.id, name: PROP.nombre, slug: "centro", status: "active", phone: "+529995550100", address: "Calle 60 #400, Centro, Merida", lat: 20.9674, lng: -89.6237 }] }) },
 
   // Staff: gestion solo owner/admin (el servidor es la autoridad; la SPA solo oculta controles).
