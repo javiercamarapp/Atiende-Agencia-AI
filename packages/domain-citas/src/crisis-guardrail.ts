@@ -68,7 +68,7 @@ export interface EntradaEscalacionCrisis {
   readonly customerPhone: string;
   readonly channel: "whatsapp" | "voice";
   readonly keyword: string;
-  /** Fragmento del mensaje (WhatsApp). En voz va vacío: no se guarda la transcripción. */
+  /** Siempre vacío en ambos canales: no se guarda texto del paciente (dato de salud); la columna admite cadena vacía. */
   readonly excerpt: string;
 }
 
@@ -119,7 +119,7 @@ export async function runCrisisGuardrail(repo: CitasRepository, organizationId: 
     repo,
     organizationId,
     tenantConfig?.ownerNotificationPhone ?? null,
-    { customerPhone, channel: "whatsapp", keyword, excerpt: (customerMessage ?? "").slice(0, 300) },
+    { customerPhone, channel: "whatsapp", keyword, excerpt: "" },
     handoffGate,
   );
 

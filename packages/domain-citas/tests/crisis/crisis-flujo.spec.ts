@@ -33,12 +33,14 @@ describe("WhatsApp: crisis (rubro psicologo)", () => {
     });
   }
 
-  it("la escalación guarda la etiqueta de la familia, nunca la frase del paciente", async () => {
+  it("la escalación guarda la etiqueta de la familia y el extracto vacío: nunca la frase del paciente", async () => {
     const fixture = buildCitasFixture();
     fixture.repo.seedTenantConfig({ organizationId: fixture.organizationId, rubro: "psicologo", ownerNotificationPhone: "5599998888" });
     await escribe(fixture, llmSpy().handler, "Me quiero morir porque mi diagnóstico es depresión mayor");
     const [esc] = fixture.repo.getEmergencyEscalations();
     expect(esc!.keywordMatched).toBe("ideación suicida");
+    expect(esc!.messageExcerpt).toBe("");
+    expect(JSON.stringify(esc)).not.toContain("depresi");
     const aviso = fixture.repo.getOutbox().find((o) => o.eventType === "crisis.escalated");
     expect(JSON.stringify(aviso?.payload)).not.toContain("depresi");
   });

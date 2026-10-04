@@ -69,7 +69,7 @@ del corte y cuyas instrucciones no se tocaron desde antes del corte; cada borrad
 `rentas.acceso_instruccion_bitacora`. Ambas corren en simulación salvo `ejecutar=1` y se registran en `core.purge_run_log`.
 
 **Hueco conocido: citas no tiene clase de retención ni purga.** El historial de conversaciones de WhatsApp (`citas.whatsapp_conversations.messages`),
-las escalaciones de crisis (`citas.emergency_escalations`: teléfono, canal y etiqueta de la señal; el extracto del mensaje solo en WhatsApp) y las notas
+las escalaciones de crisis (`citas.emergency_escalations`: teléfono, canal y etiqueta de la señal; el extracto del mensaje se guarda vacío en ambos canales) y las notas
 de conversación (`citas.conversation_note`) se conservan hasta que alguien los borre: no hay fila de citas en `core.retention_class` y ningún cron los
 purga. Son datos de salud: el plazo debe decidirse con el asesor jurídico y requiere una clase de retención con su purga programada y su `scripts/verify-*`
 contra Postgres real (trabajo con migración, fuera de este cambio). Mientras tanto, la solicitud ARCO de cancelación es la vía para borrar a una persona.
