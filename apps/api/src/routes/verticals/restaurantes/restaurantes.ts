@@ -19,6 +19,7 @@ import { restaurantesProgramadosInternoRoutes } from "./programados-interno.ts";
 import { restaurantesCierresRoutes } from "./cierres.ts";
 import { restaurantesCierresInternoRoutes } from "./cierres-interno.ts";
 import { restaurantesRepartidorPerfilRoutes } from "./repartidor-perfil.ts";
+import { restaurantesRepartidorHistorialRoutes } from "./repartidor-historial.ts";
 import { restaurantesRepartidorLicenciasInternoRoutes } from "./repartidor-licencias-interno.ts";
 import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
@@ -63,6 +64,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesCierresRoutes(deps));
   // R-15 (migración 042): perfil operativo del repartidor + barrido interno de licencias por vencer.
   app.route("/", restaurantesRepartidorPerfilRoutes(deps));
+  app.route("/", restaurantesRepartidorHistorialRoutes(deps));
   app.route("/", restaurantesRepartidorLicenciasInternoRoutes(deps));
   // FASE 3 (producto) — bitácora de auditoría del staff (ver
   // packages/domain-restaurantes/migrations/019_restaurantes_audit_log.sql).

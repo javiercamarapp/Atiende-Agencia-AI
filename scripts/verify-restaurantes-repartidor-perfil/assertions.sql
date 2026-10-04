@@ -11,6 +11,7 @@
 --   F. Retencion: al eliminar la membresia se borran ambas filas (FK en cascada).
 --   G. Barrido de licencias por vencer: solo sistema, ids y dias sin PII, excluye lo que vence despues del umbral.
 --   H. Bitacora: entity_type 'exportacion' admitido; un valor desconocido sigue rechazado.
+--   J. historial del dia del repartidor: el rango [00:00, 24:00) del dia LOCAL de la sucursal (zona horaria) y solo sus pedidos.
 --   I. base SIN migrar: la funcion eliminada da 42883 y un bloque con subtransaccion recupera la transaccion.
 --
 -- Convenciones del gate (run-gate.mjs): cada escenario es `begin; ... rollback;`; los alias con sufijo deberia_ser_N marcan el
@@ -532,6 +533,19 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5011', true);
 select public.t_esperar_error($q$select restaurantes.record_audit_log('00000000-0000-0000-0000-0000000e5001', 'x', 'inventado', null, null, null, null)$q$, '23514');
+rollback;
+
+\echo '=== J1. entregas del dia local en la zona de la sucursal: 00:30 y 23:59 locales cuentan; 23:30 del dia anterior y 00:00 del siguiente NO; otro repartidor NO ==='
+begin;
+insert into core.property (id, organization_id, name) values ('00000000-0000-0000-0000-0000000e5a01', '00000000-0000-0000-0000-0000000e5001', 'Sucursal J') on conflict do nothing;
+insert into restaurantes.orders (organization_id, property_id, customer_name, customer_phone, total, status, items, source, created_at, delivered_at, assigned_repartidor_id) values ('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5a01', 'C0', '+52 550000000', 10, 'entregado', '[]', 'web', '2026-10-01 12:00:00+00', '2026-10-03 06:30:00+00', '00000000-0000-0000-0000-0000000e5014');
+insert into restaurantes.orders (organization_id, property_id, customer_name, customer_phone, total, status, items, source, created_at, delivered_at, assigned_repartidor_id) values ('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5a01', 'C1', '+52 550000001', 10, 'entregado', '[]', 'web', '2026-10-01 12:00:00+00', '2026-10-03 05:30:00+00', '00000000-0000-0000-0000-0000000e5014');
+insert into restaurantes.orders (organization_id, property_id, customer_name, customer_phone, total, status, items, source, created_at, delivered_at, assigned_repartidor_id) values ('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5a01', 'C2', '+52 550000002', 10, 'entregado', '[]', 'web', '2026-10-01 12:00:00+00', '2026-10-04 05:59:00+00', '00000000-0000-0000-0000-0000000e5014');
+insert into restaurantes.orders (organization_id, property_id, customer_name, customer_phone, total, status, items, source, created_at, delivered_at, assigned_repartidor_id) values ('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5a01', 'C3', '+52 550000003', 10, 'entregado', '[]', 'web', '2026-10-01 12:00:00+00', '2026-10-04 06:00:00+00', '00000000-0000-0000-0000-0000000e5014');
+insert into restaurantes.orders (organization_id, property_id, customer_name, customer_phone, total, status, items, source, created_at, delivered_at, assigned_repartidor_id) values ('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5a01', 'C4', '+52 550000004', 10, 'entregado', '[]', 'web', '2026-10-01 12:00:00+00', '2026-10-03 17:00:00+00', '00000000-0000-0000-0000-0000000e5015');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5014', true);
+select count(*) as entregas_deberia_ser_2 from restaurantes.orders where organization_id = '00000000-0000-0000-0000-0000000e5001' and assigned_repartidor_id = '00000000-0000-0000-0000-0000000e5014' and delivered_at is not null and delivered_at >= ('2026-10-03'::date)::timestamp at time zone 'America/Mexico_City' and delivered_at < (('2026-10-03'::date + 1))::timestamp at time zone 'America/Mexico_City';
 rollback;
 
 \echo '=== I1. base SIN migrar: la funcion eliminada da 42883 y la transaccion se recupera con subtransaccion ==='
