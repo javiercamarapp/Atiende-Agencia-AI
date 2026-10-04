@@ -1839,6 +1839,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
           o.status === "programado" &&
           (organizationId === null || o.organizationId === organizationId) &&
           (scope === null || scope.has(o.propertyId)) &&
+          // Espejo de la migracion 041: una sucursal desactivada no manda sus programados a cocina.
+          this.branches.get(o.propertyId)?.status === "active" &&
           o.programadoPara !== undefined &&
           o.programadoPara !== null &&
           Date.parse(o.programadoPara) <= limitMs,
