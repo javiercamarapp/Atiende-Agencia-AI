@@ -21,6 +21,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -195,6 +196,35 @@ async function conCompatibilidad<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Alcance por sucursal de la promocion (migracion 038) frente a la membresia de quien la escribe (QA R1 seguridad-04). Una membresia
+ * acotada a ciertas sucursales (`scope` distinto de null) solo puede crear o cambiar promociones que valgan EXCLUSIVAMENTE en
+ * sucursales de ese alcance; una promocion de toda la organizacion (`propertyIds` null) es de una membresia sin acotar. La base
+ * aplica la misma regla en RLS (migracion 041): esta validacion devuelve un 403 claro antes de llegar al error de la policy.
+ */
+async function optionalNullablePropertyIds(
+  value: unknown,
+  repo: RestaurantesRepository,
+  organizationId: string,
+): Promise<readonly string[] | null | undefined> {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!Array.isArray(value) || value.length === 0 || value.length > 50 || value.some((v) => typeof v !== "string" || !UUID_PATTERN.test(v))) {
+    throw Errors.validation("propertyIds: se esperaba un arreglo de 1 a 50 ids de sucursal (UUID) o null (todas las sucursales).");
+  }
+  const ids = [...new Set(value as string[])];
+  const branches = await repo.listBranchesForOrganization(organizationId);
+  for (const id of ids) {
+    if (!branches.some((b) => b.propertyId === id)) throw Errors.validation(`propertyIds: la sucursal ${id} no pertenece a esta organización (o no está activa).`);
+  }
+  return ids;
+}
+
+function dentroDelAlcance(scope: readonly string[] | null, propertyIds: readonly string[] | null | undefined): boolean {
+  if (scope === null) return true;
+  return propertyIds != null && propertyIds.length > 0 && propertyIds.every((id) => scope.includes(id));
+}
+
 function serializePromotion(p: Promotion) {
   return {
     id: p.id,
@@ -217,6 +247,7 @@ function serializePromotion(p: Promotion) {
     autoApply: p.autoApply,
     courtesyProductIds: p.courtesyProductIds,
     courtesyQuantity: p.courtesyQuantity,
+    propertyIds: p.propertyIds ?? null,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
   };
@@ -241,6 +272,7 @@ interface PromotionBody {
   readonly autoApply?: unknown;
   readonly courtesyProductIds?: unknown;
   readonly courtesyQuantity?: unknown;
+  readonly propertyIds?: unknown;
 }
 
 function optionalBoolean(value: unknown, field: string): boolean | undefined {
@@ -286,6 +318,14 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
     const autoApply = optionalBoolean(raw.autoApply, "autoApply");
     const courtesyProductIds = await optionalNullableProductIds(raw.courtesyProductIds, repo, c.get("organizationId"), "courtesyProductIds");
     const courtesyQuantity = optionalCourtesyQuantity(raw.courtesyQuantity);
+    // QA R1 seguridad-04: una membresia acotada a sucursales no crea promociones de toda la organizacion. Si no manda
+    // `propertyIds`, la promocion queda acotada a SU alcance; si los manda, deben ser un subconjunto de ese alcance.
+    const scope = await resolveEffectivePropertyIds(deps, c, c.get("organizationId"), null);
+    const requestedPropertyIds = await optionalNullablePropertyIds(raw.propertyIds, repo, c.get("organizationId"));
+    const propertyIds = scope !== null && requestedPropertyIds === undefined ? [...scope] : requestedPropertyIds;
+    if (!dentroDelAlcance(scope, propertyIds)) {
+      throw Errors.forbidden("Tu acceso está limitado a ciertas sucursales: solo puedes crear promociones que valgan en ellas.");
+    }
     assertPromotionShape({
       type,
       autoApply: autoApply ?? false,
@@ -319,6 +359,7 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
       ...(autoApply !== undefined ? { autoApply } : {}),
       ...(courtesyProductIds !== undefined ? { courtesyProductIds } : {}),
       ...(courtesyQuantity !== undefined ? { courtesyQuantity } : {}),
+      ...(propertyIds !== undefined ? { propertyIds } : {}),
     }));
     logEvent(c, "info", "restaurantes_admin_promocion_creada", { actorUserId: c.get("userId"), organizationId: c.get("organizationId"), promotionId: created.id, code });
 
@@ -348,6 +389,16 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
 
     const existing = await repo.findPromotion(organizationId, promotionId);
     if (!existing) throw Errors.notFound("Promoción no encontrada.");
+    // QA R1 seguridad-04: una membresia acotada solo cambia (o desactiva) promociones que ya valen unicamente en sus sucursales,
+    // y no las puede ensanchar a otras ni a toda la organizacion.
+    const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+    if (!dentroDelAlcance(scope, existing.propertyIds ?? null)) {
+      throw Errors.forbidden("Esta promoción vale fuera de las sucursales a las que tienes acceso.");
+    }
+    const propertyIds = await optionalNullablePropertyIds(raw.propertyIds, repo, organizationId);
+    if (propertyIds !== undefined && !dentroDelAlcance(scope, propertyIds)) {
+      throw Errors.forbidden("Tu acceso está limitado a ciertas sucursales: la promoción solo puede valer en ellas.");
+    }
 
     const code = raw.code !== undefined ? requireCode(raw.code) : undefined;
     if (code !== undefined && code !== existing.code) {
@@ -404,6 +455,7 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
       autoApply,
       courtesyProductIds,
       courtesyQuantity,
+      propertyIds,
     };
     const updated = await conCompatibilidad(() => repo.updatePromotion(organizationId, promotionId, patch));
     if (!updated) throw Errors.notFound("Promoción no encontrada.");
