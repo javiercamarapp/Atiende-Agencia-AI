@@ -10,9 +10,9 @@
 import type { Context } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
-import { cargarOnboarding } from "@atiende/domain-restaurantes";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
+import { cargarOnboardingDeOrganizacion } from "./onboarding-carga.ts";
 
 async function checklistCompleto(deps: AppDeps, c: Context<CoreAuthHonoEnv>, organizationId: string): Promise<boolean | null> {
   return runWithSavepointFallback<boolean | null>({
@@ -20,7 +20,7 @@ async function checklistCompleto(deps: AppDeps, c: Context<CoreAuthHonoEnv>, org
     primary: async () => {
       // El checklist es de TODA la organizacion: un staff acotado a algunas sucursales vería un subconjunto y daria un falso "listo".
       if ((await resolveEffectivePropertyIds(deps, c, organizationId, null)) !== null) return null;
-      return (await cargarOnboarding(deps.restaurantesRepo(c.get("db")), organizationId)).listoParaOperar;
+      return (await cargarOnboardingDeOrganizacion(deps, c, organizationId)).listoParaOperar;
     },
     isRecoverable: () => true,
     fallback: async () => null,
