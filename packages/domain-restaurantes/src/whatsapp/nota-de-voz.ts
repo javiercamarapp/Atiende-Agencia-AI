@@ -72,7 +72,7 @@ export interface TranscripcionDeEntrada {
   readonly puerto: PuertoNotasDeVoz;
 }
 
-function registrarMotivo(motivo: MotivoSinTranscripcion, organizationId: string): void {
+export function registrarMotivo(motivo: MotivoSinTranscripcion, organizationId: string): void {
   // Sin PII: ni telefono, ni id de media, ni URL, ni audio.
   console.warn(JSON.stringify({ level: "warn", event: "nota_de_voz_sin_transcribir", motivo, organizationId }));
 }

@@ -182,6 +182,7 @@ export {
   PREFIJO_NOTA_DE_VOZ,
   TRANSCRIPCION_MAX_CARACTERES,
   formatearNotaDeVoz,
+  registrarMotivo as registrarMotivoNotaDeVoz,
   resolverCuerpoConNotaDeVoz,
   transcribirNotaDeVoz,
 } from "./whatsapp/nota-de-voz.ts";

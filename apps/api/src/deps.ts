@@ -25,7 +25,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { ConversacionesRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository } from "@atiende/domain-restaurantes";
+import type { ConversacionesRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
@@ -581,6 +581,10 @@ export interface AppDeps {
    *  (apps/api/tests/whatsapp-dispatch.spec.ts) y en producción real
    *  (production/deps.ts, cuando `WHATSAPP_ACCESS_TOKEN` está presente). */
   readonly whatsAppDispatcher?: WhatsAppOutboundDispatcher;
+  /** R-32: transcripcion de notas de voz de WhatsApp de restaurantes (descarga de media de Meta + rol `restaurantes:transcripcion` del gateway LLM).
+   *  `undefined` sin `WHATSAPP_ACCESS_TOKEN` o sin gateway LLM: el webhook conserva el comportamiento anterior (pedir al cliente que escriba, con el
+   *  motivo en un log sin PII). Opcional (`?:`) para no tocar los fixtures existentes. */
+  readonly notasDeVoz?: PuertoNotasDeVoz;
   /** Suscripción SaaS propia de Atiende a sus organizaciones clientes (auditoría
    * de 22 rubros, hallazgo P1 #6) -- `@atiende/billing::StripeClient` real
    * (Checkout Sessions per-seat, ver `production/saas-billing-stripe-port.ts`

@@ -11,7 +11,7 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
+import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, registrarMotivoNotaDeVoz, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
@@ -114,6 +114,10 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
         const phoneNumberIdOfBatch = batch.phoneNumberId;
 
         for (const message of incomingMessages) {
+          // R-32: nota de voz. Con el puerto (token de Meta + gateway LLM) se transcribe DESPUES de reclamar el mensaje (ver domain-restaurantes
+          // whatsapp/nota-de-voz.ts); sin puerto se conserva la nota que pide escribir y se registra el motivo (sin PII).
+          if (message.audio && !deps.notasDeVoz) registrarMotivoNotaDeVoz("no_configurado", organizationId);
+          const transcripcion = message.audio && deps.notasDeVoz ? { audio: message.audio, puerto: deps.notasDeVoz } : undefined;
           // SA-L-46: BAJA / STOP -> lista de supresion de plataforma + UNA confirmacion; PL-32: ALTA la reactiva. No pasa al agente.
           const atendida = await procesarBajaOAlta(db, {
             telefono: `+${message.from}`,
@@ -132,7 +136,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
             .runWithRowSavepoint(async () => (await resolveAgentConfig(repo, organizationId, channel?.propertyId ?? null)).replyDebounceSeconds ?? 0)
             .catch(() => 0);
           if (esperaSegundos > 0) {
-            const recepcion = await recibirMensajeConEspera(repo, { organizationId, messageId: message.id, phone: `+${message.from}`, body: message.body });
+            const recepcion = await recibirMensajeConEspera(repo, { organizationId, messageId: message.id, phone: `+${message.from}`, body: message.body, ...(transcripcion ? { transcripcion } : {}) });
             if (recepcion.estado === "responder") {
               diferidos.push({ organizationId, messageId: message.id, phone: `+${message.from}`, phoneNumberId: phoneNumberIdOfBatch, propertyId: channel?.propertyId ?? null, esperaSegundos });
             } else if (recepcion.estado === "fallo") {
@@ -145,6 +149,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
             messageId: message.id,
             phone: `+${message.from}`,
             body: message.body,
+            ...(transcripcion ? { transcripcion } : {}),
             phoneNumberId: phoneNumberIdOfBatch,
             propertyId: channel?.propertyId ?? null,
             // PM PR-9: aviso de privacidad en el primer mensaje + fast-path ARCO (opcional en tests).
