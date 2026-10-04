@@ -246,7 +246,14 @@ const ESTADOS_ACTIVOS: readonly OrderStatus[] = ["por_aprobar", "pending", "prog
  */
 export async function solicitarCancelacion(
   deps: AutopilotoServicioDeps,
-  input: { readonly organizationId: string; readonly customerPhone: string; readonly desdeIso: string; readonly motivo?: MotivoCancelacion },
+  input: {
+    readonly organizationId: string;
+    readonly customerPhone: string;
+    readonly desdeIso: string;
+    readonly motivo?: MotivoCancelacion;
+    /** `false` cuando quien llama ya confirma por su cuenta (p. ej. la respuesta del agente en el chat): evita un segundo mensaje de "cancelado". Por omision `true`. */
+    readonly avisarCliente?: boolean;
+  },
 ): Promise<ResultadoSolicitarCancelacion> {
   const order = await deps.repo.findLatestOrderByPhone(input.organizationId, input.customerPhone, input.desdeIso);
   if (!order || !ESTADOS_ACTIVOS.includes(order.status)) return { resultado: "sin_pedido_activo", mensaje: "No encuentro un pedido activo de este número. Si desea, pásele el caso a una persona." };
@@ -259,7 +266,7 @@ export async function solicitarCancelacion(
   if ((order.status === "pending" || order.status === "programado") && cfg.cancelacionAuto) {
     const r = await deps.auto.cancelarPorCliente(input.organizationId, order.id, motivo);
     if (r?.aplicado) {
-      await deps.repo.runWithRowSavepoint(async () => notifyCustomerOnOrderStatusChangeCore(deps.repo, { ...order, status: "cancelado" }));
+      if (input.avisarCliente !== false) await deps.repo.runWithRowSavepoint(async () => notifyCustomerOnOrderStatusChangeCore(deps.repo, { ...order, status: "cancelado" }));
       await emitirNotificacion(deps.db, { evento: "restaurantes.pedido.cancelado_por_cliente", organizationId: input.organizationId, propertyId: order.propertyId, clave: order.id, entidadTipo: "order", entidadId: order.id });
       return { resultado: "cancelado", mensaje: "Listo, su pedido quedó cancelado." };
     }

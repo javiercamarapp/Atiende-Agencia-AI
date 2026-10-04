@@ -7,7 +7,7 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { CanalPedido, OrderStatus } from "../types.ts";
 import { AutopilotoAccesoError, AutopilotoValidacionError, AUTOPILOTO_CONFIG_POR_OMISION } from "./tipos.ts";
 import type {
-  AgotadoRepuesto, AutopilotoConfig, AutopilotoRepository, CandidatoEstado, ComandaParaAvance, EventoEstadoPedido, FiltroSolicitudes, HandoffDevuelto, Lectura,
+  AgotadoRepuesto, AutopilotoConfig, AutopilotoOrgConfig, AutopilotoRepository, CandidatoEstado, ComandaParaAvance, EventoEstadoPedido, FiltroSolicitudes, HandoffDevuelto, Lectura,
   MuestrasTiempo, OpcionesResolver, ResultadoCancelarCliente, ResultadoCrearSolicitud, ResultadoResolver, ResultadoRetener, SolicitudDecision, SolicitudPorEscalar,
   SolicitudTipo, SolicitudVista,
 } from "./tipos.ts";
@@ -84,6 +84,21 @@ export class PostgresAutopilotoRepository implements AutopilotoRepository {
           [organizationId, propertyId, c.cancelacionAuto, c.aceptacionAuto, c.aprobacionMinutos, c.handoffRegresoMinutos, c.noRecogidoMinutos, c.completadoHoras, c.compensacionTopePct, c.saturacionUmbral1, c.saturacionUmbral2, c.saturacionExtraMinutos],
         )
         .catch(traducir);
+      return true;
+    });
+    return { disponible: r.disponible };
+  }
+
+  async leerConfigOrg(organizationId: string): Promise<Lectura<AutopilotoOrgConfig>> {
+    return this.lectura<AutopilotoOrgConfig>("config_org_leer", { cancelacionAgente: false }, async () => {
+      const { rows } = await this.db.query<{ v: boolean | null }>("select restaurantes.autopiloto_org_config_leer($1::uuid) as v;", [organizationId]).catch(traducir);
+      return { cancelacionAgente: rows[0]?.v === true };
+    });
+  }
+
+  async guardarConfigOrg(organizationId: string, config: AutopilotoOrgConfig): Promise<{ readonly disponible: boolean }> {
+    const r = await this.lectura("config_org_guardar", false, async () => {
+      await this.db.query("select restaurantes.autopiloto_org_config_guardar($1::uuid, $2);", [organizationId, config.cancelacionAgente]).catch(traducir);
       return true;
     });
     return { disponible: r.disponible };

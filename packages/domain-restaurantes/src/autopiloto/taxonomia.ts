@@ -42,3 +42,17 @@ export function precisionAgente(input: { readonly pedidosAgente: number; readonl
   const errores = Math.max(0, input.cancelacionesErrorAgente) + Math.max(0, input.quejasEquivocado);
   return Math.min(1, Math.max(0, 1 - errores / input.pedidosAgente));
 }
+
+/**
+ * Subtipo de una queja a partir de lo que escribio el cliente (lista cerrada `MOTIVOS_QUEJA`). Deterministico: no usa el modelo. Lo ambiguo cae en
+ * `otro`; el subtipo solo ordena la bandeja y alimenta la precision del agente, nunca decide una compensacion.
+ */
+export function subtipoQueja(texto: string): MotivoQueja {
+  const t = texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/equivocad|mal armad|no era lo que pedi|me mandaron otr|no es lo que pedi|cambiaron mi pedido/.test(t)) return "equivocado";
+  if (/\bfalt(?:o|aron|a|ante|antes)\b|incompleto|no llego (?:la|el|los|las)|sin (?:la|el|los|las) \w+ que pedi/.test(t)) return "faltante";
+  if (/\bfri[oa]s?\b|helad[oa]/.test(t)) return "frio";
+  if (/llego tarde|tardo|tardaron|demor|mucho tiempo|una hora/.test(t)) return "tarde";
+  if (/grosero|mal trato|maltrat|me trataron|descortes|pesimo servicio|mala atencion/.test(t)) return "trato";
+  return "otro";
+}

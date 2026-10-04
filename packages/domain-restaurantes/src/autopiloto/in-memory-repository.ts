@@ -7,7 +7,7 @@ import type { CanalPedido, OrderStatus } from "../types.ts";
 import { MOTIVOS_CANCELACION } from "./taxonomia.ts";
 import { AutopilotoAccesoError, AutopilotoValidacionError, AUTOPILOTO_CONFIG_POR_OMISION, DECISIONES_POR_TIPO } from "./tipos.ts";
 import type {
-  AgotadoRepuesto, AutopilotoConfig, AutopilotoRepository, CandidatoEstado, ComandaParaAvance, EventoEstadoPedido, FiltroSolicitudes, HandoffDevuelto, Lectura,
+  AgotadoRepuesto, AutopilotoConfig, AutopilotoOrgConfig, AutopilotoRepository, CandidatoEstado, ComandaParaAvance, EventoEstadoPedido, FiltroSolicitudes, HandoffDevuelto, Lectura,
   MuestrasTiempo, OpcionesResolver, ResultadoCancelarCliente, ResultadoCrearSolicitud, ResultadoResolver, ResultadoRetener, SolicitudDecision, SolicitudPorEscalar,
   SolicitudTipo, SolicitudVista,
 } from "./tipos.ts";
@@ -108,6 +108,19 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
     if (!this.actorConAlcance) throw new AutopilotoAccesoError("requiere owner/admin");
     if (c.aprobacionMinutos < 1 || c.aprobacionMinutos > 240) throw new AutopilotoValidacionError("valor fuera de rango");
     this.configs.set(propertyId, { ...c, configurada: true });
+    return { disponible: true };
+  }
+
+  readonly configsOrg = new Map<string, AutopilotoOrgConfig>();
+
+  async leerConfigOrg(organizationId: string): Promise<Lectura<AutopilotoOrgConfig>> {
+    return this.lec(this.configsOrg.get(organizationId) ?? { cancelacionAgente: false });
+  }
+
+  async guardarConfigOrg(organizationId: string, config: AutopilotoOrgConfig): Promise<{ readonly disponible: boolean }> {
+    if (!this.disponible) return { disponible: false };
+    if (!this.actorConAlcance) throw new AutopilotoAccesoError("requiere owner/admin de toda la organizacion");
+    this.configsOrg.set(organizationId, config);
     return { disponible: true };
   }
 

@@ -171,9 +171,18 @@ export interface EventoEstadoPedido {
 
 export type ResultadoCancelarCliente = { readonly aplicado: boolean; readonly estado: string } | null;
 
+/** Reglas de TODA la organizacion (no por sucursal). */
+export interface AutopilotoOrgConfig {
+  /** El agente de WhatsApp gestiona las cancelaciones que pide el cliente (crea la solicitud o cancela solo si la sucursal lo permite). Apagada por omision. */
+  readonly cancelacionAgente: boolean;
+}
+
 export interface AutopilotoRepository {
   leerConfig(organizationId: string, propertyId: string): Promise<Lectura<AutopilotoConfig>>;
   guardarConfig(organizationId: string, propertyId: string, config: Omit<AutopilotoConfig, "configurada">): Promise<{ readonly disponible: boolean }>;
+  leerConfigOrg(organizationId: string): Promise<Lectura<AutopilotoOrgConfig>>;
+  /** Solo owner/admin de alcance organizacional (lo exige la base). */
+  guardarConfigOrg(organizationId: string, config: AutopilotoOrgConfig): Promise<{ readonly disponible: boolean }>;
   /** Solo sistema: convierte un pedido recien creado en `por_aprobar` y crea su solicitud (una sola transaccion, idempotente). */
   retenerPedidoGrande(organizationId: string, orderId: string, detalle: Readonly<Record<string, unknown>>): Promise<ResultadoRetener>;
   crearSolicitud(organizationId: string, propertyId: string, tipo: Exclude<SolicitudTipo, "pedido_grande">, orderId: string | null, detalle: Readonly<Record<string, unknown>>): Promise<ResultadoCrearSolicitud>;

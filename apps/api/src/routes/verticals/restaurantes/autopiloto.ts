@@ -54,6 +54,8 @@ interface ConfigBody {
   readonly saturacionUmbral1?: unknown;
   readonly saturacionUmbral2?: unknown;
   readonly saturacionExtraMinutos?: unknown;
+  /** Regla de TODA la organizacion (no de la sucursal): el agente de WhatsApp gestiona las cancelaciones. Ausente = no se toca. */
+  readonly cancelacionAgente?: unknown;
 }
 
 function entero(valor: unknown, campo: string, min: number, max: number): number {
@@ -171,11 +173,13 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const propertyId = c.req.param("propertyId") ?? "";
     await resolveEffectivePropertyIds(deps, c, organizationId, propertyId);
     const r = await repoAuto(c).leerConfig(organizationId, propertyId);
+    const org = await repoAuto(c).leerConfigOrg(organizationId);
     const aprobadas = new Set(deps.env.whatsappApprovedTemplates ?? []);
     const plantillas = Object.values(PLANTILLAS_AUTOPILOTO).map((p) => ({ nombre: p.name, aprobada: aprobadas.has(p.name) }));
     return c.json({
       disponible: r.disponible,
       config: r.valor,
+      org: org.valor,
       // Estados honestos: sin plantilla aprobada el aviso solo sale dentro de la ventana de 24 h; sin POS real no hay avance desde el POS.
       plantillas,
       posReal: softRestaurantPortFor(deps).esReal,
@@ -207,12 +211,26 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       const antes = await repoAuto(c).leerConfig(organizationId, propertyId);
       const r = await repoAuto(c).guardarConfig(organizationId, propertyId, config);
       if (!r.disponible) throw Errors.serviceUnavailable("El autopiloto todavía no está disponible en esta base de datos (falta aplicar la migración 050).");
+      let org = (await repoAuto(c).leerConfigOrg(organizationId)).valor;
+      if (raw.cancelacionAgente !== undefined) {
+        const cancelacionAgente = booleano(raw.cancelacionAgente, "cancelacionAgente");
+        if (cancelacionAgente !== org.cancelacionAgente) {
+          // Regla de toda la organizacion: la base exige owner/admin sin restriccion de sucursales (42501 -> 403).
+          const g = await repoAuto(c).guardarConfigOrg(organizationId, { cancelacionAgente });
+          if (!g.disponible) throw Errors.serviceUnavailable("El autopiloto todavía no está disponible en esta base de datos (falta aplicar la migración 050).");
+          await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
+            organizationId, actorUserId: c.get("userId"), action: "autopiloto.cancelacion_agente_actualizada", entityType: "configuracion", entityId: organizationId,
+            campo: "cancelacion_agente", antes: String(org.cancelacionAgente), despues: String(cancelacionAgente),
+          });
+          org = { cancelacionAgente };
+        }
+      }
       await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
         organizationId, actorUserId: c.get("userId"), action: "autopiloto.config_actualizada", entityType: "configuracion", entityId: propertyId,
         campo: "autopiloto", antes: JSON.stringify(antes.valor).slice(0, 480), despues: JSON.stringify(config).slice(0, 480),
       });
       logEvent(c, "info", "restaurantes_autopiloto_config_guardada", { actorUserId: c.get("userId"), organizationId, propertyId });
-      return c.json({ ok: true, config: { ...config, configurada: true } });
+      return c.json({ ok: true, config: { ...config, configurada: true }, org });
     } catch (err) {
       return traducir(err);
     }
