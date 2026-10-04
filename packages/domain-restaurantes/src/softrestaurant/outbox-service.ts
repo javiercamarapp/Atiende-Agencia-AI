@@ -282,8 +282,8 @@ export const NOTA_COMANDA_CORTADA_POR_CANCELACION = "Pedido cancelado antes de l
  * nadie va a recoger. Aqui se corta con la MISMA operacion que ya usa el staff para cerrar una comanda a mano (`marcarCapturada`:
  * pasa a `capturada_manual`, estado terminal que corta los reintentos y no cuenta como "requiere atencion").
  *
- * Solo toca filas `pendiente`/`fallida` de ESE pedido; una `enviada` (en vuelo) o `confirmada` (ya en el POS) no se modifica:
- * esas ya estan en cocina y el POS no expone una cancelacion (limite documentado en docs/CICLO-PUNTA-A-PUNTA-RESTAURANTES.md).
+ * Solo toca filas `pendiente`/`fallida`/`captura_manual` de ESE pedido (lectura filtrada por order_id); una `enviada` (en vuelo) o `confirmada`
+ * (ya en el POS) no se modifica: esas ya estan en cocina y el POS no expone una cancelacion (limite documentado en docs/CICLO-PUNTA-A-PUNTA-RESTAURANTES.md).
  * Best-effort: nunca lanza ni revierte la cancelacion. Corre en sesion de STAFF (la funcion SQL exige un actor autenticado).
  * Base sin la migracion 024: `listar` responde `disponible: false` y no hace nada.
  */
@@ -294,13 +294,13 @@ export async function cortarComandaDePedidoCancelado(
   actorUserId: string,
 ): Promise<{ readonly cortadas: number }> {
   try {
-    const lectura = await store.listar(organizationId, { propertyIds: [order.propertyId], estados: ["pendiente", "fallida"], limite: 200, offset: 0 });
+    const lectura = await store.listar(organizationId, { propertyIds: [order.propertyId], orderId: order.id, estados: ["pendiente", "fallida", "captura_manual"], limite: 50, offset: 0 });
     if (!lectura.disponible) return { cortadas: 0 };
     let cortadas = 0;
     for (const fila of lectura.filas) {
-      if (fila.orderId !== order.id) continue;
       const r = await store.marcarCapturada(organizationId, fila.id, actorUserId, NOTA_COMANDA_CORTADA_POR_CANCELACION);
       if (r.resultado === "ok") cortadas += 1;
+      else console.warn(`softrestaurant: no se pudo cortar la comanda ${fila.id} del pedido cancelado ${order.id} (resultado: ${r.resultado}); puede seguir su curso hacia el POS`);
     }
     return { cortadas };
   } catch (err) {
