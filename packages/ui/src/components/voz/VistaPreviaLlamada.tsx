@@ -1,5 +1,6 @@
 import { Mic, MicOff, PlayCircle, XCircle } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef } from "react";
+import type { KeyboardEvent as TecladoReact, ReactNode } from "react";
 import { CampoPixeles } from "./CampoPixeles.js";
 import { OrbeAgente } from "./OrbeAgente.js";
 import { TranscripcionEnVivo } from "./TranscripcionEnVivo.js";
@@ -33,6 +34,8 @@ const ETIQUETA_CHIP: Readonly<Record<ModoOrb, string>> = {
   error: "Error",
 };
 
+const ENFOCABLES = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /**
  * Layout de la vista previa de llamada (pantalla completa): orbe sobre el campo de
  * píxeles a la izquierda, transcripción y botón Iniciar/Terminar a la derecha.
@@ -44,6 +47,44 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
   const activa = sesionActiva(estado.modo);
   const conectando = estado.modo === "conectando";
   const bloqueada = Boolean(motivoNoDisponible) && !activa;
+  const panel = useRef<HTMLDivElement>(null);
+  // Se comporta como un dialogo: el foco entra al panel al abrirse, Tab no sale de el, Escape lo cierra (igual que "‹ Atrás") y al cerrarse
+  // el foco vuelve al control que lo abrio (QA-restaurantes-R1-botones-09).
+  const alCerrar = useRef(onCerrar);
+  alCerrar.current = onCerrar;
+  useEffect(() => {
+    const previo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    panel.current?.focus();
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        alCerrar.current();
+      }
+    };
+    document.addEventListener("keydown", alTeclear);
+    return () => {
+      document.removeEventListener("keydown", alTeclear);
+      previo?.focus?.();
+    };
+  }, []);
+  const atraparTab = (e: TecladoReact<HTMLDivElement>) => {
+    if (e.key !== "Tab" || !panel.current) return;
+    const items = Array.from(panel.current.querySelectorAll<HTMLElement>(ENFOCABLES));
+    if (items.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    const primero = items[0]!;
+    const ultimo = items[items.length - 1]!;
+    const dentro = panel.current.contains(document.activeElement);
+    if (e.shiftKey && (document.activeElement === primero || document.activeElement === panel.current || !dentro)) {
+      e.preventDefault();
+      ultimo.focus();
+    } else if (!e.shiftKey && (document.activeElement === ultimo || !dentro)) {
+      e.preventDefault();
+      primero.focus();
+    }
+  };
 
   const alternar = () => {
     if (conectando || bloqueada) return;
@@ -51,7 +92,16 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
   };
 
   return (
-    <div className="voz-aparece absolute inset-0 z-30 bg-background flex flex-col" data-modo={estado.modo}>
+    <div
+      ref={panel}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Vista previa de llamada: ${nombreAgente}`}
+      tabIndex={-1}
+      onKeyDown={atraparTab}
+      className="voz-aparece absolute inset-0 z-30 bg-background flex flex-col outline-none"
+      data-modo={estado.modo}
+    >
       <header className="h-12 shrink-0 border-b border-border flex items-center justify-between px-4">
         <div className="flex items-center gap-3 min-w-0">
           <button type="button" onClick={onCerrar} className="text-[13px] text-muted-foreground hover:text-foreground transition-colors shrink-0">

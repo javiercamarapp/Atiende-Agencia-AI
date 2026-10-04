@@ -68,6 +68,12 @@ export class ClienteMock {
     if (!res.ok) throw new Error(`mock-api: emitir notificacion fallo (${res.status})`);
   }
 
+  /** Agrega un elemento a una lista del estado del escenario (p. ej. `rest.ordenes`): simula un evento externo, como un pedido nuevo. */
+  async agregarAEstado(clave: string, agregar: unknown): Promise<void> {
+    const res = await fetch(this.ruta("estado"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clave, agregar }) });
+    if (!res.ok) throw new Error(`mock-api: agregar al estado fallo (${res.status})`);
+  }
+
   async reiniciar(): Promise<void> {
     await fetch(this.ruta("reiniciar"), { method: "POST" });
   }
