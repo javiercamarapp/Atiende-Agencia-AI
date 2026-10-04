@@ -135,11 +135,9 @@ export const rutasRestaurantes: readonly Ruta[] = [
   { metodo: "GET", patron: `${B}/scheduled-orders`, manejador: () => ({ disponible: true, orders: [], promovidos: [], serverNow: "2026-09-30T19:00:00.000Z" }) },
 
   { metodo: "GET", patron: `${B}/customers`, manejador: () => ({ customers: [{ id: "cli-1", name: "Marisol Pech", phone: "+529995550101", orderCount: 9 }, { id: "cli-2", name: "Jorge Canul", phone: "+529995550102", orderCount: 3 }], nextCursor: null }) },
-  { metodo: "GET", patron: `${B}/sucursales`, manejador: () => ({ branches: [{ propertyId: PROP.id, name: PROP.nombre, slug: "centro", status: "active", phone: "+529995550100", address: "Calle 60 #400, Centro, Merida", lat: 20.9674, lng: -89.6237 }] }) },
 
   // Staff: gestion solo owner/admin (el servidor es la autoridad; la SPA solo oculta controles).
   { metodo: "GET", patron: `${B}/staff/repartidores`, manejador: () => ({ repartidores: [{ id: "usr-2", email: "ramon.uc@example.test", fullName: "Ramon Uc" }] }) },
-  { metodo: "GET", patron: `${B}/staff/invitaciones`, roles: ["owner", "admin"], manejador: () => ({ invitations: [] }) },
   { metodo: "GET", patron: `${B}/staff/miembros`, roles: ["owner", "admin"], manejador: (p) => ({ miembros: p.estado.obtener("rest.miembros", () => structuredClone(MIEMBROS_SEMILLA)) }) },
   { metodo: "DELETE", patron: `${B}/staff/miembros/:userId`, roles: ["owner", "admin"], manejador: (p) => {
       const miembros = p.estado.obtener("rest.miembros", () => structuredClone(MIEMBROS_SEMILLA));

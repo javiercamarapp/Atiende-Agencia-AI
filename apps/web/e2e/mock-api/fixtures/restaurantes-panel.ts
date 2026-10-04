@@ -80,6 +80,10 @@ function lista<T>(p: { estado: { obtener<T2>(k: string, s: () => T2): T2 } }, cl
   return p.estado.obtener<T[]>(clave, () => structuredClone([...semilla]));
 }
 
+function sucursal(p: { estado: { obtener<T>(k: string, s: () => T): T } }) {
+  return p.estado.obtener("rest.sucursal", () => ({ propertyId: PROP.id, name: PROP.nombre, slug: "centro", status: "active" as "active" | "inactive", phone: "+529995550100" as string | null, address: "Calle 60 #400, Centro, Merida" as string | null, lat: 20.9674 as number | null, lng: -89.6237 as number | null }));
+}
+
 export const rutasRestaurantesPanel: readonly Ruta[] = [
   // ---------- Pedidos (estado compartido con el repartidor y el Historial) ----------
   {
@@ -233,8 +237,9 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   },
 
   // ---------- Sucursales ----------
-  { metodo: "PATCH", patron: `${B}/sucursales/:branchId`, manejador: (p) => ({ branch: { propertyId: PROP.id, name: PROP.nombre, slug: "centro", status: "active", phone: "+529995550100", address: "Calle 60 #400, Centro, Merida", lat: 20.9674, lng: -89.6237, ...((p.cuerpo ?? {}) as object) } }) },
-  { metodo: "GET", patron: `${B}/sucursales/:branchId`, manejador: () => ({ branch: { propertyId: PROP.id, name: PROP.nombre, slug: "centro", status: "active", phone: "+529995550100", address: "Calle 60 #400, Centro, Merida", lat: 20.9674, lng: -89.6237 } }) },
+  { metodo: "GET", patron: `${B}/sucursales`, manejador: (p) => ({ branches: [sucursal(p)] }) },
+  { metodo: "PATCH", patron: `${B}/sucursales/:branchId`, manejador: (p) => { Object.assign(sucursal(p), p.cuerpo ?? {}); return { branch: sucursal(p) }; } },
+  { metodo: "GET", patron: `${B}/sucursales/:branchId`, manejador: (p) => ({ branch: sucursal(p) }) },
   { metodo: "GET", patron: `${B}/config/sucursales/:branchId/politica`, manejador: (p) => p.estado.obtener("rest.politica", () => ({ horario: [{ dias: [1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "01:00" }], pedidoMinimoDomicilio: 120, pedidoMinimoRecoger: null, propinaPolitica: "solo_tarjeta" })) },
   { metodo: "PUT", patron: `${B}/config/sucursales/:branchId/politica`, manejador: (p) => { p.estado.guardar("rest.politica", p.cuerpo); return p.cuerpo; } },
   { metodo: "GET", patron: `${B}/config/sucursales/:branchId/zonas-reparto`, manejador: (p) => ({ zoneIds: p.estado.obtener("rest.zonasreparto", () => [] as string[]) }) },
@@ -245,6 +250,7 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   { metodo: "GET", patron: `${B}/config/puentes`, manejador: (p) => ({ puentes: lista(p, "rest.puentes", []) }) },
 
   // ---------- Staff: invitaciones ----------
+  { metodo: "GET", patron: `${B}/staff/invitaciones`, roles: ["owner", "admin"], manejador: (p) => ({ invitations: lista<Record<string, unknown>>(p, "rest.invitaciones", []) }) },
   {
     metodo: "POST",
     patron: `${B}/staff/invitaciones`,
