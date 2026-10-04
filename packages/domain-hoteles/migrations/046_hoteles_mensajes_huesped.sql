@@ -283,7 +283,7 @@ $$;
 revoke all on function hoteles.sistema_candidatos_mensajes_huesped(timestamptz, integer, uuid, uuid) from public, anon;
 grant execute on function hoteles.sistema_candidatos_mensajes_huesped(timestamptz, integer, uuid, uuid) to authenticated;
 
--- Emite: toma la marca de idempotencia y, si hay canal, encola el mensaje en messaging_outbox, TODO en la misma transaccion. Devuelve el
+-- Emite: toma la marca de idempotencia y, si hay canal y payload, encola el mensaje en messaging_outbox, TODO en la misma transaccion. Devuelve el
 -- id de la marca, o NULL si la referencia ya tenia marca para ese evento (otra corrida o instancia gano). Una instancia concurrente que
 -- intente el mismo (referencia, evento) espera a que la primera confirme y entonces recibe NULL: nunca hay dos envios.
 create or replace function hoteles.sistema_emitir_mensaje_huesped(
@@ -306,9 +306,18 @@ begin
   if (p_canal is null) = (p_motivo is null) then
     raise exception 'sistema_emitir_mensaje_huesped: se exige exactamente uno de canal o motivo' using errcode = '22023';
   end if;
-  if p_canal is not null and (p_canal not in ('whatsapp', 'email') or p_payload is null or jsonb_typeof(p_payload) <> 'object'
-     or pg_catalog.octet_length(p_payload::text) > 16384 or p_event_type is null or p_dedupe_key is null) then
-    raise exception 'sistema_emitir_mensaje_huesped: canal o payload invalidos' using errcode = '22023';
+  if p_canal is not null then
+    if p_canal not in ('whatsapp', 'email') then
+      raise exception 'sistema_emitir_mensaje_huesped: canal invalido' using errcode = '22023';
+    end if;
+    if p_payload is null then
+      -- Unica excepcion: el correo de reserva.confirmada lo cubre el correo transaccional de la propia reserva (se marca, no se encola otro).
+      if p_canal <> 'email' or p_evento <> 'reserva.confirmada' then
+        raise exception 'sistema_emitir_mensaje_huesped: payload requerido' using errcode = '22023';
+      end if;
+    elsif jsonb_typeof(p_payload) <> 'object' or pg_catalog.octet_length(p_payload::text) > 16384 or p_event_type is null or p_dedupe_key is null then
+      raise exception 'sistema_emitir_mensaje_huesped: payload invalido' using errcode = '22023';
+    end if;
   end if;
   select p.organization_id into v_org from core.property p where p.id = p_property_id;
   if v_org is null then
@@ -323,7 +332,7 @@ begin
     return null;
   end if;
 
-  if p_canal is not null then
+  if p_canal is not null and p_payload is not null then
     v_outbox := hoteles.enqueue_messaging_outbox(p_property_id, v_org, p_canal, p_event_type, p_dedupe_key, p_payload);
     update hoteles.mensaje_huesped_envio set outbox_id = v_outbox where id = v_id;
   end if;

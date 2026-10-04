@@ -282,6 +282,18 @@ select public.verify_assert(public.verify_cand('hold.rechazado') = 0, 'ya no es 
 select 1 as ok_no_enviado;
 rollback;
 
+\echo '=== 9b. reserva.confirmada por correo: se marca SIN encolar (la cubre el correo transaccional de la reserva) ==='
+begin;
+select public.verify_as('');
+select public.verify_assert(hoteles.sistema_emitir_mensaje_huesped('00000000-0000-0000-0000-0000000a1a01', 'reserva.confirmada', 'reserva', '00000000-0000-0000-0000-0000000e0001', 'email', null, null, null, null) is not null, 'marca con canal email y sin payload');
+select public.verify_su();
+select public.verify_assert((select e.estado = 'encolado' and e.canal = 'email' and e.outbox_id is null from hoteles.mensaje_huesped_envio e where e.ref_id = '00000000-0000-0000-0000-0000000e0001'), 'estado encolado, canal email, sin outbox');
+select public.verify_assert(public.verify_outbox_mh_n('00000000-0000-0000-0000-0000000a1a01') = 0, 'nada en el outbox');
+select public.verify_as('');
+select public.verify_assert(public.verify_cand('reserva.confirmada') = 0, 'cierra el candidato');
+select 1 as ok_correo_cubierto;
+rollback;
+
 \echo '=== 10. emitir valida: canal y motivo a la vez, evento invalido, payload invalido (22023); y los CHECK de la bitacora (23514) ==='
 begin;
 select public.verify_as('');
@@ -293,6 +305,7 @@ select public.verify_expect_error($q$select hoteles.sistema_emitir_mensaje_huesp
 select public.verify_expect_error($q$select hoteles.sistema_emitir_mensaje_huesped('00000000-0000-0000-0000-0000000a1a01', 'hold.aprobado', 'hold', '00000000-0000-0000-0000-0000000f1001', 'whatsapp', null, 'x', 'k', '[]'::jsonb)$q$, '22023');
 select public.verify_expect_error($q$select hoteles.sistema_emitir_mensaje_huesped('00000000-0000-0000-0000-0000000a1a01', 'hold.aprobado', 'hold', '00000000-0000-0000-0000-0000000f1001', null, 'motivo_inventado', null, null, null)$q$, '23514');
 select public.verify_assert(hoteles.sistema_emitir_mensaje_huesped('00000000-0000-0000-0000-00000000dead', 'hold.aprobado', 'hold', '00000000-0000-0000-0000-0000000f1001', null, 'sin_contacto', null, null, null) is null, 'una propiedad inexistente no escribe nada');
+select public.verify_expect_error($q$select hoteles.sistema_emitir_mensaje_huesped('00000000-0000-0000-0000-0000000a1a01', 'hold.aprobado', 'hold', '00000000-0000-0000-0000-0000000f1001', 'email', null, null, null, null)$q$, '22023');
 select 1 as ok_validaciones;
 rollback;
 
