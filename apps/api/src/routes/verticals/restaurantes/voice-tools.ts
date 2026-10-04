@@ -55,7 +55,7 @@ export function voiceToolContext(orgId: string, caller: VoiceCaller): AgentToolC
     lockedPropertyId: caller.propertyId,
     // Maquina de estados del pedido: solo con llamada identificada (token). Sin token (camino legado)
     // no hay callId confiable sobre el que llevar estado.
-    ...(caller.callId ? { flow: { key: `call:${caller.callId}`, turn: null } } : {}),
+    ...(caller.callId ? { flow: { key: `call:${caller.callId}`, turn: null }, sourceEventId: `call:${caller.callId}` } : {}),
   };
 }
 

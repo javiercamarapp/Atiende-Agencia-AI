@@ -271,6 +271,9 @@ interface InMemoryOutboxRow {
   lastErrorClass: string | null;
 }
 
+/** Ventana en que un aviso abierto del mismo canal, telefono y motivo absorbe al siguiente (misma que `callback_registrar_agente`: 2 h). */
+const CALLBACK_VENTANA_AGRUPAR_MS = 120 * 60_000;
+
 export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly organizations = new Map<string, StoredOrganization>();
   private readonly organizationIdBySlug = new Map<string, string>();
@@ -285,6 +288,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly orders: StoredOrder[] = [];
   private readonly knownZones: StoredKnownZone[] = [];
   private readonly callbackRequests: CallbackRequest[] = [];
+  /** Ids de evento agregados como nota a un aviso (migracion 043, `eventos_agrupados`). */
+  private readonly callbackEventosAgrupados = new Map<string, string[]>();
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
   private readonly phoneNumberIdToOrg = new Map<string, string>();
   private readonly whatsappEvents = new Map<string, StoredWhatsAppEvent>();
@@ -873,10 +878,37 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
+  /** Solo pruebas: los avisos (callbacks) de la organizacion, tal como quedaron (con las notas agregadas en `message`). */
+  listCallbackRequests(organizationId: string): readonly CallbackRequest[] {
+    return this.callbackRequests.filter((c) => c.organizationId === organizationId);
+  }
+
+  /** Mismas reglas que `restaurantes.callback_registrar_agente` (migracion 043) para los avisos del agente (`voice`/`whatsapp`): el mismo
+   * evento no se repite y un aviso abierto del mismo canal, telefono y motivo recibe una nota en vez de crear otro. */
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
+    if (input.source === "voice" || input.source === "whatsapp") {
+      const evento = input.sourceEventId ?? null;
+      const delTelefono = this.callbackRequests.filter((c) => c.organizationId === input.organizationId && c.customerPhone === input.customerPhone);
+      if (evento) {
+        const previo = delTelefono.find((c) => c.sourceEventId === evento || (this.callbackEventosAgrupados.get(c.id) ?? []).includes(evento));
+        if (previo) return { ...previo, registro: "evento_repetido" };
+      }
+      const ahora = Date.now();
+      const abierto = [...delTelefono]
+        .reverse()
+        .find((c) => c.source === input.source && (c.reason ?? null) === (input.reason ?? null) && !c.resolved && ahora - Date.parse(c.createdAt) < CALLBACK_VENTANA_AGRUPAR_MS);
+      if (abierto) {
+        const nota = `\n— Aviso repetido: ${(input.message ?? "").trim().slice(0, 500) || "sin detalle"}`;
+        const actual = abierto.message ?? "";
+        const actualizado: CallbackRequest = { ...abierto, message: actual.length + nota.length <= 4000 ? actual + nota : abierto.message };
+        this.callbackRequests[this.callbackRequests.indexOf(abierto)] = actualizado;
+        if (evento) this.callbackEventosAgrupados.set(abierto.id, [...(this.callbackEventosAgrupados.get(abierto.id) ?? []), evento]);
+        return { ...actualizado, registro: "nota_agregada" };
+      }
+    }
     const created: CallbackRequest = { ...input, id: randomUUID(), resolved: false, createdAt: new Date().toISOString() };
     this.callbackRequests.push(created);
-    return created;
+    return { ...created, registro: "nuevo" };
   }
 
   async consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean> {

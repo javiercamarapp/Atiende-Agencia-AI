@@ -126,6 +126,7 @@ export async function handleInboundWhatsAppMessage(
             messages: messagesAfterUser,
             customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
             propertyId: propertyId ?? null,
+            messageId,
           });
 
       // PM PR-9 -- aviso de privacidad simplificado + "asistente virtual" en el PRIMER mensaje de
@@ -356,6 +357,7 @@ export async function responderTrasEspera(
               messages: historial,
               customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
               propertyId: propertyId ?? null,
+              messageId,
             });
         let reply = turn.reply;
         if (privacy) {

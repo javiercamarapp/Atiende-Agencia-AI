@@ -20,6 +20,8 @@ export interface WhatsAppTurnHandler {
     /** Sucursal dueña del número de WhatsApp que recibió el mensaje (modelo PM: un número
      * por sucursal). `null`/ausente = número por defecto de la organización. */
     readonly propertyId?: string | null;
+    /** Id del mensaje de Meta que dispara este turno: hace idempotente el aviso al equipo ante reenvios y reintentos. */
+    readonly messageId?: string;
   }): Promise<{
     readonly reply: string;
     readonly orderId: string | null;

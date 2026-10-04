@@ -423,7 +423,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
   const now = options.now ?? (() => new Date());
 
   return {
-    async handleInboundMessage({ organizationId, phone, messages, customer, propertyId: entryPropertyId }) {
+    async handleInboundMessage({ organizationId, phone, messages, customer, propertyId: entryPropertyId, messageId }) {
       const deadline = Date.now() + turnBudgetMs;
       const config = await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
@@ -461,7 +461,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const aviso = await executeAgentToolSafely(
           repo,
-          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null },
+          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null },
           "escalar_a_humano",
           { customer_name: nombre, motivo: riesgo.motivo, resumen: latestUserMessage!.content.slice(0, 500) },
         );
@@ -527,7 +527,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, sourceEventId: messageId ?? null }, call.name, input);
             result = executed.result;
             anyToolCalled = true;
             const quoted = (result as { quote?: { total?: unknown }; order?: { total?: unknown } } | null) ?? null;

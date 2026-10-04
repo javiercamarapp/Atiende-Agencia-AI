@@ -86,6 +86,9 @@ export interface AgentToolContext {
   /** Ultima ubicacion que el cliente COMPARTIO por WhatsApp (lat/lng reales del mensaje, no inventadas
    * por el modelo). Alimenta `buscar_sucursal_cercana` cuando el modelo no manda coordenadas. */
   readonly sharedLocation?: { readonly lat: number; readonly lng: number } | null;
+  /** Id del evento que origina las llamadas a herramientas (WhatsApp: id del mensaje de Meta; voz: id de la llamada). Hace idempotente
+   * el aviso al equipo (`escalar_a_humano` / `registrar_contacto`, migracion 043): el mismo evento y motivo nunca crean dos avisos. */
+  readonly sourceEventId?: string | null;
 }
 
 export interface AgentToolOutcome {
@@ -711,12 +714,14 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
     case "escalar_a_humano": {
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede dejar aviso.");
       const esEscalada = def.name === "escalar_a_humano";
+      const reason = esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined;
       await registerCallbackRequest(repo, {
         organizationId,
         propertyId: ctx.lockedPropertyId ?? null,
         customerName: String(input.customer_name ?? "Cliente"),
         customerPhone: ctx.phone,
-        reason: esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined,
+        reason,
+        sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:${reason ?? ""}`.slice(0, 255) : null,
         message: esEscalada ? (typeof input.resumen === "string" ? input.resumen : undefined) : typeof input.message === "string" ? input.message : undefined,
         source: ctx.channel === "voz" ? "voice" : "whatsapp",
       });
