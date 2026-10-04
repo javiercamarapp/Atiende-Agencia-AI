@@ -64,6 +64,10 @@ describe("calcularVencimientosDelPeriodo (D-26: día hábil y plazos por obligac
       ["IVA", "2026-07-17"],
       ["DIOT", "2026-07-31"],
       ["Nómina", "2026-07-17"],
+      ["Retenciones", "2026-07-17"],
+      ["IMSS", "2026-07-17"],
+      ["IMSS-bimestral", "2026-07-17"],
+      ["ISN", "2026-07-17"],
       ["Balanza", "2026-08-03"],
     ]);
     expect(v.every((x) => x.periodo === "2026-06")).toBe(true);

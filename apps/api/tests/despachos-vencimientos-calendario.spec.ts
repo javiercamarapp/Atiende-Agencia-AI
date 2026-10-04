@@ -44,7 +44,7 @@ describe("POST .../vencimientos/calcular — día hábil, plazos y régimen", ()
 
   it("régimen 626 no genera balanza; régimen 605 solo la anual en diciembre; régimen inventado -> 422/400", async () => {
     const resico = (await (await calcular({ year: 2026, month: 3, regimenFiscal: "626" })).json()) as Fila[];
-    expect(resico.map((f) => f.tipo)).toEqual(["ISR", "IVA", "DIOT", "Nómina"]);
+    expect(resico.map((f) => f.tipo)).toEqual(["ISR", "IVA", "DIOT", "Nómina", "Retenciones", "IMSS", "ISN"]);
     const sueldos = (await (await calcular({ year: 2026, month: 12, regimenFiscal: "605" })).json()) as Fila[];
     expect(sueldos.map((f) => `${f.tipo}:${f.fechaLimite}`)).toEqual(["Anual:2027-04-30"]);
     const malo = await calcular({ year: 2026, month: 3, regimenFiscal: "999" });

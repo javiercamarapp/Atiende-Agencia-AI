@@ -19,7 +19,7 @@ export function esCheckViolation(err: unknown): boolean {
 
 export interface ResultadoCrearVencimientos {
   readonly creados: readonly FiscalDeadlineRecord[];
-  /** Tipos que la base aún no admite (falta la migración 019): no se crearon, no se finge lo contrario. */
+  /** Tipos que la base aún no admite (falta la migración 019 o 024 según el tipo): no se crearon, no se finge lo contrario. */
   readonly omitidos: readonly TipoVencimiento[];
 }
 

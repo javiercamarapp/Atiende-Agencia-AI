@@ -34,15 +34,18 @@ function fila(tipo: string, periodo: string, fecha: string) {
   };
 }
 
-/** Sesión que acepta los 4 tipos originales y rechaza Balanza/Anual con 23514 (base sin migrar). */
-function sesionBaseSinMigrar(nuevos: readonly { tipo: string; periodo: string; fechaLimite: string }[]) {
+const TIPOS_019 = ["Balanza", "Anual"];
+const TIPOS_024 = ["Retenciones", "IMSS", "IMSS-bimestral", "ISN", "Informativa"];
+
+/** Sesión que acepta los 4 tipos originales y rechaza con 23514 los que el CHECK de la base aún no admite (por defecto, los de 019 y los de 024). */
+function sesionBaseSinMigrar(nuevos: readonly { tipo: string; periodo: string; fechaLimite: string }[], rechazados: readonly string[] = [...TIPOS_019, ...TIPOS_024]) {
   let i = 0;
   return new AbortAwareFakeSession([
     {
       match: /on conflict \(property_id, tipo, periodo\) do nothing/i,
       respond: () => {
         const n = nuevos[i++]!;
-        if (n.tipo === "Balanza" || n.tipo === "Anual") return pgError("23514", 'new row for relation "fiscal_deadline" violates check constraint "fiscal_deadline_tipo_check"');
+        if (rechazados.includes(n.tipo)) return pgError("23514", 'new row for relation "fiscal_deadline" violates check constraint "fiscal_deadline_tipo_check"');
         return [fila(n.tipo, n.periodo, n.fechaLimite)];
       },
     },
@@ -50,8 +53,8 @@ function sesionBaseSinMigrar(nuevos: readonly { tipo: string; periodo: string; f
   ]);
 }
 
-describe("crearVencimientosDelPeriodo contra la base SIN migrar (23514 en Balanza/Anual)", () => {
-  it("omite Balanza, conserva ISR/IVA/DIOT/Nómina y deja la sesión utilizable (sin 25P02 ni ROLLBACK silencioso)", async () => {
+describe("crearVencimientosDelPeriodo contra la base SIN migrar (23514 en los tipos de las migraciones 019 y 024)", () => {
+  it("omite Balanza y los 5 tipos de la 024, conserva ISR/IVA/DIOT/Nómina y deja la sesión utilizable (sin 25P02 ni ROLLBACK silencioso)", async () => {
     const nuevos = calcularVencimientosDelPeriodo(2026, 6, "2026-06-01");
     const session = sesionBaseSinMigrar(nuevos);
     const repo = new PostgresDespachosRepository(session);
@@ -59,18 +62,37 @@ describe("crearVencimientosDelPeriodo contra la base SIN migrar (23514 en Balanz
     const r = await crearVencimientosDelPeriodo(repo, session, { organizationId: ORG, propertyId: PROP }, nuevos);
 
     expect(r.creados.map((d) => d.tipo)).toEqual(["ISR", "IVA", "DIOT", "Nómina"]);
-    expect(r.omitidos).toEqual(["Balanza"]);
+    expect(r.omitidos).toEqual(["Retenciones", "IMSS", "IMSS-bimestral", "ISN", "Balanza"]);
     expect(session.calls).toContain("rollback to savepoint sp_calcular_vencimiento_tipo_nuevo");
     // El COMMIT real del request sigue siendo posible: la sesión no quedó abortada.
     await expect(session.query("select 1;")).resolves.toEqual({ rows: [] });
   });
 
-  it("en diciembre omite Balanza Y Anual", async () => {
+  it("D-P3-33: base con la 019 pero sin la 024: crea Balanza y omite solo los 5 tipos nuevos", async () => {
+    const nuevos = calcularVencimientosDelPeriodo(2026, 6, "2026-06-01");
+    const session = sesionBaseSinMigrar(nuevos, TIPOS_024);
+    const repo = new PostgresDespachosRepository(session);
+    const r = await crearVencimientosDelPeriodo(repo, session, { organizationId: ORG, propertyId: PROP }, nuevos);
+    expect(r.creados.map((d) => d.tipo)).toEqual(["ISR", "IVA", "DIOT", "Nómina", "Balanza"]);
+    expect(r.omitidos).toEqual(["Retenciones", "IMSS", "IMSS-bimestral", "ISN"]);
+    await expect(session.query("select 1;")).resolves.toEqual({ rows: [] });
+  });
+
+  it("D-P3-33: con ambas migraciones aplicadas se crean los 11 tipos de diciembre sin omitir ninguno", async () => {
+    const nuevos = calcularVencimientosDelPeriodo(2026, 12, "2026-12-01");
+    const session = sesionBaseSinMigrar(nuevos, []);
+    const repo = new PostgresDespachosRepository(session);
+    const r = await crearVencimientosDelPeriodo(repo, session, { organizationId: ORG, propertyId: PROP }, nuevos);
+    expect(r.omitidos).toEqual([]);
+    expect(r.creados.map((d) => d.tipo)).toEqual(["ISR", "IVA", "DIOT", "Nómina", "Retenciones", "IMSS", "IMSS-bimestral", "ISN", "Balanza", "Informativa", "Anual"]);
+  });
+
+  it("en diciembre omite Balanza, Anual y los de la 024", async () => {
     const nuevos = calcularVencimientosDelPeriodo(2026, 12, "2026-12-01");
     const session = sesionBaseSinMigrar(nuevos);
     const repo = new PostgresDespachosRepository(session);
     const r = await crearVencimientosDelPeriodo(repo, session, { organizationId: ORG, propertyId: PROP }, nuevos);
-    expect(r.omitidos).toEqual(["Balanza", "Anual"]);
+    expect(r.omitidos).toEqual(["Retenciones", "IMSS", "IMSS-bimestral", "ISN", "Balanza", "Informativa", "Anual"]);
     expect(r.creados).toHaveLength(4);
   });
 

@@ -9,7 +9,7 @@
 // este cliente solo transporta lo que la ruta ya serializa vía `serializeDeadline`.
 import { fetchJson, postJson } from "./admin-client.ts";
 
-export type TipoVencimiento = "ISR" | "IVA" | "DIOT" | "Nómina" | "Balanza" | "Anual";
+export type TipoVencimiento = "ISR" | "IVA" | "DIOT" | "Nómina" | "Balanza" | "Anual" | "Retenciones" | "IMSS" | "IMSS-bimestral" | "ISN" | "Informativa";
 export type PrioridadVencimiento = "critica" | "alta" | "media" | "baja";
 export type EstadoVencimiento = "pendiente" | "en_proceso" | "completado" | "vencido" | "escalado";
 
