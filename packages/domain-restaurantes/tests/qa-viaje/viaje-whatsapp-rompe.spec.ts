@@ -200,7 +200,7 @@ describe("viaje WhatsApp PM: cliente recurrente (historial)", () => {
   // whatsapp_conversations tiene UNA fila por (organizacion, telefono) y `whatsapp_append_turn` solo concatena: un cliente que
   // pide todos los dias acumula semanas de mensajes y el turno manda TODO el historial al modelo en cada mensaje (costo y
   // latencia que solo crecen; con suficiente historial el turno revienta el contexto y el cliente frecuente ya no puede pedir).
-  it.fails("QA-restaurantes-R1-viaje-06: el turno de un cliente con 30 dias de chats no le manda al modelo todo el historial", async () => {
+  it("QA-restaurantes-R1-viaje-06: el turno de un cliente con 30 dias de chats no le manda al modelo todo el historial", async () => {
     const v = await nuevoViaje();
     const viejos = Array.from({ length: 600 }, (_, i) => ({ role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant", content: `mensaje viejo ${i}` }));
     v.world.repo.seedWhatsAppConversation(v.world.organizationId, TEL_CLIENTE, { messages: viejos, status: "completed", orderId: null, propertyId: v.t7 });
