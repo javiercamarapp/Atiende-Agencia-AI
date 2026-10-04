@@ -67,7 +67,7 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     id: "voice-tool-secret",
     nombre: "Server Tools de voz (secreto propio)",
     habilita:
-      "Autentica llamadas ENTRANTES a las herramientas de voz (header x-atiende-tool-secret) de citas (Server Tools de ElevenLabs, aún sin migrar al esqueleto de voz) y de restaurantes (camino de compatibilidad y emisión del token por llamada). Hoteles NO lo usa: su secreto es por property (hoteles.voice_agent_config). No requiere ninguna API key de ElevenLabs (ver nota en docs/CREDENCIALES.md). Sin esto, loadApiEnv() lanza y la API entera no arranca.",
+      "Autentica llamadas ENTRANTES a las herramientas de voz (header x-atiende-tool-secret) de citas (el worker de `voice-core` ejecuta las herramientas contra /v1/citas/:orgSlug/voz/:herramienta) y de restaurantes (camino de compatibilidad y emisión del token por llamada). Hoteles NO lo usa: su secreto es por property (hoteles.voice_agent_config). Ninguna vertical requiere ya una API key de ElevenLabs (ver docs/CREDENCIALES.md). Sin esto, loadApiEnv() lanza y la API entera no arranca.",
     variables: ["VOICE_TOOL_SECRET"],
   },
   {

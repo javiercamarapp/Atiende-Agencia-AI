@@ -2,15 +2,16 @@
 // horarios, coordenadas, cobertura, WhatsApp, agente, pedidos). Los pendientes del dueño o de terceros se ven tal cual (con su
 // responsable y el enlace a la pantalla donde se cierran): nada se marca como hecho a mano ni se inventa.
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, PageContainer, StatusBadge } from "@atiende/ui";
-import { ESTADO_LABEL, RESPONSABLE_LABEL, fetchOnboarding, type OnboardingChecklist, type OnboardingEstado } from "../lib/onboarding-client.ts";
+import { ESTADO_LABEL, RESPONSABLE_LABEL, fetchOnboarding, omitirGate, type OnboardingChecklist, type OnboardingEstado } from "../lib/onboarding-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const TONO: Record<OnboardingEstado, "success" | "warning" | "danger" | "info"> = { hecho: "success", parcial: "warning", pendiente: "danger", externo: "info" };
 
 export function RestaurantesPrimerosPasosPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
+  const navigate = useNavigate();
   const [estado, setEstado] = useState<OnboardingChecklist | "cargando" | { error: string }>("cargando");
 
   const cargar = useCallback(() => {
@@ -38,9 +39,27 @@ export function RestaurantesPrimerosPasosPage({ apiBaseUrl, token, propertyId, o
 
       {checklist && (
         <>
-          <Callout tone={checklist.listoParaOperar ? "success" : "warning"} titulo={checklist.listoParaOperar ? "Listo para operar" : "Faltan puntos obligatorios"}>
+          <Callout
+            tone={checklist.listoParaOperar ? "success" : "warning"}
+            titulo={checklist.listoParaOperar ? "Listo para operar" : "Faltan puntos obligatorios"}
+            accion={
+              checklist.gate.bloquea ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    omitirGate(orgSlug);
+                    navigate(`/restaurantes/${orgSlug}`);
+                  }}
+                >
+                  Ir al panel de todos modos
+                </Button>
+              ) : undefined
+            }
+          >
             {checklist.resumen.hechos} de {checklist.resumen.total} puntos listos
-            {checklist.resumen.obligatoriosPendientes > 0 ? ` · ${checklist.resumen.obligatoriosPendientes} obligatorio(s) pendiente(s).` : "."} El estado se calcula con los datos reales de su negocio.
+            {checklist.resumen.obligatoriosPendientes > 0 ? ` · ${checklist.resumen.obligatoriosPendientes} obligatorio(s) pendiente(s).` : "."} El estado se calcula con los datos reales de su negocio.{checklist.gate.operaConPedidos && checklist.resumen.obligatoriosPendientes > 0 ? " Su negocio ya opera con pedidos: esto no bloquea el panel." : ""}
           </Callout>
           <ul className="flex flex-col gap-2">
             {checklist.items.map((item) => (
