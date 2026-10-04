@@ -1,5 +1,5 @@
 // QA R1 viaje-14: una toma de handoff pendiente que nadie atiende no deja al cliente sin respuesta por horas. El tiempo y la unicidad los decide el gate
-// (aqui el de memoria, que reproduce la funcion de la migracion 044); el agente solo manda el acuse fijo y honesto.
+// (aqui el de memoria, que reproduce la funcion de la migracion 045); el agente solo manda el acuse fijo y honesto.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACUSE_HANDOFF_PENDIENTE } from "../../src/whatsapp/inbound.ts";
 import { MARTES_14H, nuevoViaje, type Viaje } from "./arnes-viaje.ts";

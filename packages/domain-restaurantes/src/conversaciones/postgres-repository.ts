@@ -422,7 +422,7 @@ export class PostgresHandoffAgentGate implements HandoffAgentGate {
     });
   }
 
-  /** Acuse al cliente de una toma pendiente (migracion 044). Base sin migrar (42883/42P01/42703) -> false con SAVEPOINT: el agente sigue callando. */
+  /** Acuse al cliente de una toma pendiente (migracion 045). Base sin migrar (42883/42P01/42703) -> false con SAVEPOINT: el agente sigue callando. */
   async acusePendiente(organizationId: string, phone: string, esperaMin: number, repetirMin: number): Promise<boolean> {
     return runWithSavepointFallback<boolean>({
       session: this.db,

@@ -1,5 +1,5 @@
 -- Handoff de WhatsApp: (1) la respuesta humana respeta la ventana de 24 h de Meta y (2) una toma pendiente que nadie atiende
--- le da al cliente un acuse honesto. Prefijo de supabase/migrations: 20240101000320 (interno restaurantes 044).
+-- le da al cliente un acuse honesto. Prefijo de supabase/migrations: 20240101000320 (interno restaurantes 045).
 -- Requiere: 028 (restaurantes.conversation_handoff, handoff_responder_whatsapp, handoff_whatsapp_estado, whatsapp_conversations).
 --
 -- Defectos (QA R1, disponibilidad de la atencion al cliente):

@@ -212,7 +212,7 @@ export const MAX_PASADAS_RAFAGA = 3;
 export const LEASE_RAFAGA_SEGUNDOS = 45;
 /** Una toma de handoff `pendiente` que nadie atiende: el agente calla (R-21), pero el cliente no puede quedarse horas sin NINGUNA respuesta. Pasados
  * `ACUSE_PENDIENTE_ESPERA_MIN` minutos sin que nadie la tome, el siguiente mensaje del cliente recibe UN acuse honesto (sin prometer una hora) y luego otro
- * cada `ACUSE_PENDIENTE_REPETIR_MIN`. El tiempo y la unicidad los decide la base (migracion 044); sin ella el agente sigue callando como antes. */
+ * cada `ACUSE_PENDIENTE_REPETIR_MIN`. El tiempo y la unicidad los decide la base (migracion 045); sin ella el agente sigue callando como antes. */
 export const ACUSE_PENDIENTE_ESPERA_MIN = 15;
 export const ACUSE_PENDIENTE_REPETIR_MIN = 60;
 export const ACUSE_HANDOFF_PENDIENTE =

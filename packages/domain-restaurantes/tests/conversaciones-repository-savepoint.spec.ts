@@ -103,7 +103,7 @@ describe("escrituras contra la base sin migrar: ConversacionesNoDisponibleError 
     await sesionSigueViva(s);
   });
 
-  it("55W24 (ventana de 24 h de WhatsApp cerrada, migracion 044) -> VentanaWhatsappCerradaError y la sesion sigue viva", async () => {
+  it("55W24 (ventana de 24 h de WhatsApp cerrada, migracion 045) -> VentanaWhatsappCerradaError y la sesion sigue viva", async () => {
     const s = new AbortAwareFakeSession([{ match: /handoff_responder_whatsapp/i, respond: () => pgError("55W24", "pasaron mas de 24 horas") }, SIGUIENTE]);
     await expect(new PostgresConversacionesRepository(s).responderWhatsapp(ORG, PROP, ID, "hola")).rejects.toBeInstanceOf(VentanaWhatsappCerradaError);
     await sesionSigueViva(s);
@@ -163,7 +163,7 @@ describe("gate del agente de WhatsApp contra la base sin migrar: el agente sigue
   });
 });
 
-describe("gate del agente: acuse de una toma pendiente (migracion 044)", () => {
+describe("gate del agente: acuse de una toma pendiente (migracion 045)", () => {
   it("true cuando la base dice que toca avisar", async () => {
     const s = new AbortAwareFakeSession([{ match: /handoff_whatsapp_acuse_pendiente/i, respond: () => [{ acuse: true }] }]);
     expect(await new PostgresHandoffAgentGate(s).acusePendiente(ORG, "+5219990000001", 15, 60)).toBe(true);

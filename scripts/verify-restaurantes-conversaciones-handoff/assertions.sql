@@ -13,8 +13,8 @@
 --   G. Callbacks: intento, resolucion, sucursal nula, cross-tenant.
 --   H. Base SIN migrar: el SQL real que emite el repositorio falla con 42P01/42883 y el
 --      SAVEPOINT/ROLLBACK TO SAVEPOINT recupera la transaccion.
---   K. Ventana de 24 h de la respuesta humana (migracion 044): dentro, fuera, ancla del agente, el staff no la reabre, autorizacion intacta.
---   L. Acuse al cliente de una toma pendiente (044): temporizado, una vez por intervalo, solo-sistema, cross-tenant, anon, sin DML directo.
+--   K. Ventana de 24 h de la respuesta humana (migracion 045): dentro, fuera, ancla del agente, el staff no la reabre, autorizacion intacta.
+--   L. Acuse al cliente de una toma pendiente (045): temporizado, una vez por intervalo, solo-sistema, cross-tenant, anon, sin DML directo.
 --
 -- Los rechazos se afirman con un bloque DO que exige el SQLSTATE EXACTO (un error por otra causa
 -- hace fallar el escenario: no hay "falsos verdes" por un fallo distinto al esperado).
@@ -1415,7 +1415,7 @@ do $$ begin
 exception when sqlstate '42501' then null; end $$;
 rollback;
 
-\echo '=== L9. BASE SIN MIGRAR: sin la 044 el acuse falla con 42883 y el SAVEPOINT recupera la transaccion ==='
+\echo '=== L9. BASE SIN MIGRAR: sin la 045 el acuse falla con 42883 y el SAVEPOINT recupera la transaccion ==='
 begin;
 drop function restaurantes.handoff_whatsapp_acuse_pendiente(uuid, text, integer, integer);
 savepoint sp_verify_handoff;

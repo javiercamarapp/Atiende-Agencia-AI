@@ -45,7 +45,7 @@ interface HandoffRow {
   motivo: string | null;
   solicitadaAt: string;
   ultimoClienteAt: string | null;
-  /** Ultimo acuse al cliente de una toma pendiente (migracion 044). */
+  /** Ultimo acuse al cliente de una toma pendiente (migracion 045). */
   acuseClienteAt?: string | null;
   tomadaPor: string | null;
   tomadaAt: string | null;
@@ -209,7 +209,7 @@ export class InMemoryConversacionesRepository implements ConversacionesRepositor
     const conv = this.conversaciones.find((c) => c.id === h.conversationId);
     if (!conv?.telefono) throw new ConversacionesRechazadaError();
     if (!this.numeroPorSucursal.has(propertyId)) throw new SinNumeroWhatsappError();
-    // Ventana de 24 h (migracion 044): el ultimo mensaje del CLIENTE (o el ping del agente mientras la toma estaba abierta) fija el ancla.
+    // Ventana de 24 h (migracion 045): el ultimo mensaje del CLIENTE (o el ping del agente mientras la toma estaba abierta) fija el ancla.
     const ultimoMensajeCliente = [...conv.mensajes].reverse().find((m) => m.rol === "cliente")?.createdAt ?? null;
     const ancla = [h.ultimoClienteAt, ultimoMensajeCliente, h.solicitadoPor === "agente" ? h.solicitadaAt : null, conv.actividadAt].filter((x): x is string => Boolean(x)).map((x) => Date.parse(x)).reduce((a, b) => Math.max(a, b), Number.NEGATIVE_INFINITY);
     if (this.now().getTime() - ancla > VENTANA_WHATSAPP_HORAS * 3_600_000) throw new VentanaWhatsappCerradaError();
