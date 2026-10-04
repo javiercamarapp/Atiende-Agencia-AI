@@ -26,7 +26,8 @@ import { createOrder, quoteOrder, searchProducts, type PreparedOrder, type Quote
 import { assertCantidadesWeb, assertWebOrderRules } from "../storefront.ts";
 import { evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import { normalizePhone } from "../phone.ts";
-import type { RestaurantesRepository } from "../repository.ts";
+import { RestaurantesConfigUnavailableError, type RestaurantesRepository } from "../repository.ts";
+import { parsearProgramadoPara } from "../pedidos-programados.ts";
 import {
   assertCanConfirm,
   assertCanCreate,
@@ -230,6 +231,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega que dio el cliente (solo a domicilio); la herramienta verifica que esté dentro de la zona de reparto de la sucursal." },
         payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida, solo para saber si corresponde preguntar propina." },
         doble_salsas: DOBLE_SALSAS_SCHEMA,
+        programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después: fecha y hora ISO 8601 con zona (por ejemplo 2026-10-03T14:00:00-06:00), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar." },
       },
       required: ["branch_slug", "items"],
     },
@@ -269,6 +271,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         indicaciones_acceso: { type: "string", description: "Solo domicilio, una línea corta (máx. 200 caracteres): cómo llegar o avisar ('timbre del depto 6', 'avísenme al llegar'). No pongas aquí la ubicación: el pin ya se guarda solo." },
         telefono_alterno: { type: "string", description: "Segundo teléfono de contacto, 10 dígitos, si el cliente lo da." },
         hora_recogida: { type: "string", description: "Solo canal 'recoger': hora a la que el cliente pasará, en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00)." },
+        programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después: fecha y hora ISO 8601 con zona (por ejemplo 2026-10-03T14:00:00-06:00), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar." },
       },
       required: ["branch_slug", "customer_name", "items", "payment_method"],
     },
@@ -415,6 +418,7 @@ export function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo> & Parti
     ...(quote.canal ? { canal: quote.canal } : {}),
     ...(quote.pedidoMinimo !== undefined && quote.pedidoMinimo !== null ? { pedido_minimo: quote.pedidoMinimo } : {}),
     ...(quote.propinaPolitica ? { propina_politica: quote.propinaPolitica, preguntar_propina: quote.preguntarPropina === true } : {}),
+    ...(quote.programadoPara ? { programado_para: quote.programadoPara } : {}),
     ...(quote.abiertoAhora !== undefined && quote.abiertoAhora !== null ? { abierto_ahora: quote.abiertoAhora, cierra_a: quote.cierraA ?? null } : {}),
   };
 }
@@ -423,6 +427,14 @@ export function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo> & Parti
 function toDoubleSalsas(raw: unknown): readonly DoubleSalsa[] | undefined {
   return Array.isArray(raw) ? (raw as readonly DoubleSalsa[]) : undefined;
 }
+
+/** `undefined` si no vino; si vino, se valida y normaliza a ISO UTC (lanza `OrderValidationError`) para que la huella
+ * de cotizar y la de crear comparen el mismo instante aunque el modelo cambie el offset. */
+function toProgramadoPara(raw: unknown): string | undefined {
+  return raw === undefined || raw === null ? undefined : parsearProgramadoPara(raw);
+}
+
+const PROGRAMADOS_NO_DISPONIBLES = "Los pedidos programados todavía no están disponibles en este restaurante. Ofrece un pedido normal o pasa la conversación a una persona.";
 
 function toCanal(raw: unknown): CanalPedido | undefined {
   return typeof raw === "string" ? (raw as CanalPedido) : undefined;
@@ -500,6 +512,7 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     colonia: str(input.colonia_entrega),
     propina: typeof input.propina === "number" ? input.propina : undefined,
     horaRecogida: str(input.hora_recogida),
+    programadoPara: str(input.programado_para),
   };
   if (lenient) return base;
   // Campos que solo trae el canal de voz/checkout (correo, transcripcion, promo, idempotencia, nombre de sucursal).
@@ -578,6 +591,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       adultConfirmed: input.adult_confirmed === true,
       items: toRequestedItems(input.items, lenient),
       doubleSalsas: toDoubleSalsas(input.doble_salsas),
+      programadoPara: toProgramadoPara(input.programado_para),
     });
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
@@ -620,6 +634,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     adultConfirmed: input.adult_confirmed === true,
     items: toRequestedItems(input.items, lenient),
     doubleSalsas: toDoubleSalsas(input.doble_salsas),
+    programadoPara: toProgramadoPara(input.programado_para),
   });
   let claimed: { version: number; context: OrderFlowContext } | null = null;
   for (let attempt = 0; attempt < 3 && !claimed; attempt++) {
@@ -749,6 +764,9 @@ async function dispatchTool(
         colonia: typeof input.colonia_entrega === "string" ? input.colonia_entrega : undefined,
         paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
         doubleSalsas: toDoubleSalsas(input.doble_salsas),
+        programadoPara: toProgramadoPara(input.programado_para),
+      }).catch((err: unknown) => {
+        throw err instanceof RestaurantesConfigUnavailableError ? new OrderValidationError(PROGRAMADOS_NO_DISPONIBLES) : err;
       });
       return { result: { quote: quoteToWire(quote) }, raw: quote, orderId: null, propertyId: null };
     }
@@ -781,6 +799,10 @@ async function dispatchTool(
         });
       } catch (err) {
         if (err instanceof PedidoGrandeRetenidoError) return retenerPedidoGrande(repo, ctx, createInput, err);
+        // R-11: contra una base sin la migracion 034 el agente recibe un mensaje de negocio, no un error interno.
+        if (err instanceof RestaurantesConfigUnavailableError && createInput.programadoPara) {
+          throw new OrderValidationError(PROGRAMADOS_NO_DISPONIBLES);
+        }
         throw err;
       }
       return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
