@@ -2,7 +2,6 @@
 // sin telefono en claro (equivalente a `observability.test.ts` del original atiende-restaurantes).
 import { describe, expect, it } from "vitest";
 import { FakeLlmProvider } from "@atiende/agent-core";
-import type { LlmCompletionResult } from "@atiende/agent-core";
 import { createLlmWhatsAppTurnHandler } from "../../src/whatsapp/llm-turn-handler.ts";
 import { hashTelefonoParaLogs } from "../../src/whatsapp/observabilidad-turno.ts";
 import type { EventoObservabilidadWhatsApp, EventoTurnoWhatsApp, ObservabilidadTurno } from "../../src/whatsapp/observabilidad-turno.ts";
