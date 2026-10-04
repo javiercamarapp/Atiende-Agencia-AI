@@ -193,7 +193,7 @@ describe("checkout completo", () => {
     await act(async () => click(botonPorTexto("Confirmar pedido", document.body)!));
     await esperar();
     const orden = llamadas.find((l) => l.url.endsWith("/orders"))!;
-    expect(orden.body).toMatchObject({ customer_name: "Ana Pérez", customer_phone: "999 123 4567", quote_hash: "a".repeat(32) });
+    expect(orden.body).toMatchObject({ customer_name: "Ana Pérez", customer_phone: "999 123 4567", quote_hash: "a".repeat(32), acepta_aviso_privacidad: true });
     expect(llamadas.map((l) => l.url.split("/").pop())).toEqual(expect.arrayContaining(["quote", "confirm", "orders"]));
     expect(window.location.pathname).toBe("/pedir/demo/pedido/t1.abc.def");
     expect(window.location.href).not.toMatch(/Ana|9991234567|999/);

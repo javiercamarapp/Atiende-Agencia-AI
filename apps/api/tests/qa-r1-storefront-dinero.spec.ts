@@ -23,7 +23,7 @@ async function setup() {
   const session = `caos-${randomUUID().replace(/-/g, "").slice(0, 20)}`;
   const coca = { product_id: t.products.cocaCola, requested_quantity: 2 };
   const tacos = { product_id: t.products.tacosPastor, requested_quantity: 3, tortilla: "maiz" };
-  const cliente = { customer_name: "Ana Pérez", customer_phone: "999 123 4567", customer_address: "Calle 10 #200, Centro" };
+  const cliente = { acepta_aviso_privacidad: true, customer_name: "Ana Pérez", customer_phone: "999 123 4567", customer_address: "Calle 10 #200, Centro" };
   const pedidos = async () => (await t.restaurantesRepo.listOrders(t.organizationId, { propertyIds: null, limit: 100 })).orders;
   /** Lo que hace SucursalPage al pulsar "Revisar pedido" y luego "Confirmar pedido". */
   const ciclo = async (body: Record<string, unknown>, extraCrear: Record<string, unknown> = {}) => {

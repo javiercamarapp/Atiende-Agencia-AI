@@ -208,6 +208,15 @@ describe("fuera de zona (cobertura de entrega por sucursal)", () => {
     expect(matchKnownZone(zonas, "vivo en colonia norte alto")?.id).toBe("2");
     expect(matchKnownZone(zonas, "   ")).toBeNull();
   });
+
+  it("QA-restaurantes-R1-features-03: una colonia de 1 a 3 letras no empareja con ninguna zona", () => {
+    const zonas: KnownZone[] = [{ id: "1", organizationId: "o", name: "Garcia Gineres", lat: 0, lng: 0, createdAt: "" }];
+    for (const basura of ["a", "ar", "gin", "x y"]) expect(matchKnownZone(zonas, basura)).toBeNull();
+    // Un fragmento real (>= 4 letras) y la colonia completa siguen emparejando, tambien con texto alrededor.
+    expect(matchKnownZone(zonas, "gineres")?.id).toBe("1");
+    expect(matchKnownZone(zonas, "Garcia Gineres")?.id).toBe("1");
+    expect(matchKnownZone(zonas, "por la colonia garcia gineres norte")?.id).toBe("1");
+  });
 });
 
 describe("propina solo con tarjeta", () => {

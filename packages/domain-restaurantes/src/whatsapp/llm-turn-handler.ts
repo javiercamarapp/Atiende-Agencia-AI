@@ -464,11 +464,17 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
   const now = options.now ?? (() => new Date());
 
   return {
-    async handleInboundMessage({ organizationId, phone, messages, customer, propertyId: entryPropertyId, messageId, finTurnoMs }) {
+    async handleInboundMessage({ organizationId, phone, messages, customer, propertyId: entryPropertyId, messageId, finTurnoMs, modo, previewCustomerId, configBorrador }) {
       // Una llamada al LLM que ARRANCA justo antes del tope todavia tarda lo suyo: el presupuesto por omision deja
       // `MARGEN_CIERRE_TURNO_MS` + una llamada lenta de holgura bajo los 30 s de la funcion.
       const deadline = Math.min(Date.now() + turnBudgetMs, finTurnoMs ?? Number.POSITIVE_INFINITY);
-      const config = await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
+      // `modo` y `configBorrador` solo los fija la ruta de preview del panel (servidor); el modelo nunca los ve.
+      const preview = modo === "preview";
+      const config = preview && configBorrador ? aplicarFilaAConfig(configBorrador, organizationId) : await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
+      // Preview sin efectos: los contadores del agente viven en la conversacion real de la base, asi que en preview no se leen ni se escriben
+      // (devuelven `null` = "no hay donde contar" y se usa la cuenta local del turno).
+      const contar: typeof contarAgente = async (...a) => (preview ? null : contarAgente(...a));
+      const modoCtx = preview ? { modo: "preview" as const, previewCustomerId: previewCustomerId ?? null } : {};
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
       // El flujo de PM encadena mas llamadas por turno (cliente, zona, un producto por renglon, cotizar).
       const maxToolUseTurns = options.maxToolUseTurns ?? (perfil === "taqueria_pm" ? 8 : 4);
@@ -491,6 +497,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let lastQuoteTotal: number | null = null;
       let lastQuoteAmounts: readonly number[] | undefined;
       let anyToolCalled = false;
+      // Preview: el pedido SIMULADO de `crear_pedido` (para la tarjeta del panel).
+      let pedidoSimulado: unknown;
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
       const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(reply, working), lastQuoteTotal, lastQuoteAmounts);
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
@@ -498,9 +506,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // §5: pin con el boton nativo de WhatsApp. Se pide una sola vez por pedido (contador `ubicacion_solicitada`, se reinicia al crear el pedido)
       // y solo si el cliente aun no compartio su ubicacion y el turno no termino en una escalacion.
       let pedirUbicacionEnTurno = false;
-      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedirUbicacion?: true } => ({
+      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedirUbicacion?: true; readonly pedidoSimulado?: unknown } => ({
         ...r,
         ...(escalarMotivo ? { escalacion: { motivo: escalarMotivo } } : {}),
+        ...(pedidoSimulado !== undefined ? { pedidoSimulado } : {}),
         ...(pedirUbicacionEnTurno && !escalarMotivo ? { pedirUbicacion: true as const } : {}),
       });
       // Contadores deterministas (§3): "no entiendo" y "colonia no reconocida" seguidos. Cuenta el SERVIDOR entre turnos (migracion 047); sin donde
@@ -511,7 +520,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const aviso = await executeAgentToolSafely(
           repo,
-          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null },
+          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
           "escalar_a_humano",
           { customer_name: nombre, motivo, resumen },
         );
@@ -519,7 +528,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           return done({ reply: "Lamento el inconveniente: no pude avisar al equipo en este momento. Por favor inténtelo de nuevo en unos minutos.", orderId, propertyId });
         }
         escalarMotivo = motivo;
-        await contarAgente(repo, organizationId, phone, motivo === "zona_no_reconocida" ? "colonia_no_reconocida" : "no_entiende", "reiniciar");
+        await contar(repo, organizationId, phone, motivo === "zona_no_reconocida" ? "colonia_no_reconocida" : "no_entiende", "reiniciar");
         return done({ reply: COPY_ESCALACION_CONTADOR[motivo], orderId, propertyId });
       };
       const noEntiendeActivo = perfil === "taqueria_pm" && !(config.motivosDesactivados ?? []).includes("no_entiende");
@@ -535,7 +544,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const aviso = await executeAgentToolSafely(
           repo,
-          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null },
+          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
           "escalar_a_humano",
           { customer_name: nombre, motivo: riesgo.motivo, resumen: riesgo.text.slice(0, 500) },
         );
@@ -566,7 +575,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const ultimo = [...messages].reverse().find((m) => m.role === "user");
         const aviso = await executeAgentToolSafely(
           repo,
-          { organizationId, channel: "whatsapp", phone, entryPropertyId: activeEntryBranch?.propertyId ?? null },
+          { organizationId, channel: "whatsapp", phone, entryPropertyId: activeEntryBranch?.propertyId ?? null, ...modoCtx },
           "escalar_a_humano",
           { customer_name: nombre, motivo: "falla_sistema", resumen: `El asistente no pudo responder (falla del sistema). Ultimo mensaje del cliente: ${(ultimo?.content ?? "").slice(0, 400)}` },
         );
@@ -604,10 +613,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (noEntiendeActivo) {
             // Solo el texto del modelo cuenta: el respaldo por respuesta vacia (PM_COPY.repetirPedido) no es un 'no entiendo' del agente.
             if (completion.text && pideRepetir(completion.text)) {
-              const n = (await contarAgente(repo, organizationId, phone, "no_entiende", "incrementar")) ?? (noEntiendeEnTurno += 1);
+              const n = (await contar(repo, organizationId, phone, "no_entiende", "incrementar")) ?? (noEntiendeEnTurno += 1);
               if (n >= CONTADOR_AGENTE_UMBRAL) return escalarPorContador("no_entiende", `El agente no logró entender al cliente ${CONTADOR_AGENTE_UMBRAL} veces seguidas. Último mensaje: ${(mensajesSinResponder(messages).slice(-1)[0]?.content ?? "").slice(0, 300)}`);
             } else {
-              await contarAgente(repo, organizationId, phone, "no_entiende", "reiniciar");
+              await contar(repo, organizationId, phone, "no_entiende", "reiniciar");
             }
           }
           // Un turno sin herramienta ni pregunta deja al cliente esperando: se anexa la pregunta del paso pendiente.
@@ -637,7 +646,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx }, call.name, input);
             result = executed.result;
             rechazoDelFlujo = executed.rechazoDelFlujo;
             anyToolCalled = true;
@@ -653,6 +662,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
                 lines: (quoted.order.items ?? []).map((i) => ({ price: i.price, line_total: typeof i.price === "number" && typeof i.quantity === "number" ? Math.round(i.price * i.quantity * 100) / 100 : undefined })),
               });
             }
+            if (executed.simulated && call.name === "crear_pedido" && !isToolErrorResult(result)) pedidoSimulado = executed.raw;
             if (executed.orderId) {
               orderId = executed.orderId;
               propertyId = executed.propertyId;
@@ -669,18 +679,18 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (call.name === "crear_pedido" && (result as { pedido_grande?: unknown } | null)?.pedido_grande === true) escalarMotivo = "pedido_grande";
           const esDomicilio = call.name === "buscar_sucursal_cercana" || (call.name === "cotizar_pedido" && input.canal === "domicilio");
           if (perfil === "taqueria_pm" && esDomicilio && !isToolErrorResult(result) && !sharedLocation && !pedirUbicacionEnTurno) {
-            if ((await contarAgente(repo, organizationId, phone, "ubicacion_solicitada", "incrementar")) === 1) pedirUbicacionEnTurno = true;
+            if ((await contar(repo, organizationId, phone, "ubicacion_solicitada", "incrementar")) === 1) pedirUbicacionEnTurno = true;
           }
           if (perfil === "taqueria_pm" && call.name === "crear_pedido" && !isToolErrorResult(result)) {
-            await contarAgente(repo, organizationId, phone, "ubicacion_solicitada", "reiniciar");
+            await contar(repo, organizationId, phone, "ubicacion_solicitada", "reiniciar");
           }
           if (perfil === "taqueria_pm" && call.name === "buscar_sucursal_cercana" && !isToolErrorResult(result)) {
             const estado = (result as { estado?: unknown } | null)?.estado;
             if (estado === "no_reconocida") {
-              const n = (await contarAgente(repo, organizationId, phone, "colonia_no_reconocida", "incrementar")) ?? (coloniaFallosEnTurno += 1);
+              const n = (await contar(repo, organizationId, phone, "colonia_no_reconocida", "incrementar")) ?? (coloniaFallosEnTurno += 1);
               if (n >= CONTADOR_AGENTE_UMBRAL) return escalarPorContador("zona_no_reconocida", `La colonia no se reconoció ${CONTADOR_AGENTE_UMBRAL} veces seguidas. Último mensaje: ${(mensajesSinResponder(messages).slice(-1)[0]?.content ?? "").slice(0, 300)}`);
             } else if (estado === "asignada" || estado === "fuera_de_zona") {
-              await contarAgente(repo, organizationId, phone, "colonia_no_reconocida", "reiniciar");
+              await contar(repo, organizationId, phone, "colonia_no_reconocida", "reiniciar");
             }
           }
           // El rechazo de un duplicado (`pedido_ya_creado`) o de un reintento simultaneo (`pedido_en_proceso`) es el servidor haciendo su trabajo,
@@ -700,7 +710,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const ultimoCliente = [...messages].reverse().find((m) => m.role === "user");
       const aviso = await executeAgentToolSafely(
         repo,
-        { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null },
+        { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, ...modoCtx },
         "escalar_a_humano",
         { customer_name: !customer.isNew && customer.name ? customer.name : "Cliente", motivo: "no_puedo_resolver", resumen: `El agente agoto sus vueltas sin completar el pedido. Ultimo mensaje del cliente: ${ultimoCliente?.content.slice(0, 400) ?? ""}` },
       );
