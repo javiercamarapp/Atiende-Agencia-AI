@@ -138,6 +138,12 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
     return () => clearInterval(t);
   }, [cargarMenu]);
 
+  // R-37: al abrir la confirmación se precarga el chunk de rastreo (a donde navega el pedido). Así el paso final no
+  // espera una descarga en 3G ni depende de que el chunk siga existiendo si entra un despliegue a mitad del pedido.
+  useEffect(() => {
+    if (dialogoAbierto) void import("./RastreoPage.tsx").catch(() => undefined);
+  }, [dialogoAbierto]);
+
   useEffect(() => {
     if (!carritoHidratado.current) return;
     try {
