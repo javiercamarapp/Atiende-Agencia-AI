@@ -102,7 +102,7 @@ Este PR no arregla nada de producción salvo los eventos de observabilidad por t
 | X47 | Placeholders de variables dinámicas | `T/pm-bateria-agente-whatsapp.spec.ts::T-FP12` | N/A (sin ElevenLabs; el saludo lo calcula el servidor) |
 | X48 | Vista previa no crea pedidos reales | `R/historial-turno-y-pedidos.spec.ts::X48 / e1ccae0`; `T/voz-catalogo-y-token.spec.ts::token efimero de preview` | verde |
 | X49 | "Lo de siempre" sin cancelados | `R/casos-b1.spec.ts::X49: 'lo de siempre'` | verde |
-| X50 | Tier VIP usado | `R/casos-b1.spec.ts::X50: el prompt GENERICO`; `R/casos-b1.spec.ts::X50 / [lote R1]` | verde (genérico); perfil PM: it.fails (R1) |
+| X50 | Tier VIP usado | `R/casos-b1.spec.ts::X50: el prompt GENERICO`; `R/casos-b1.spec.ts::X50 / [lote R1]` | verde (genérico y perfil PM) |
 | X51 | Un solo "¿sigue ahí?" y colgar | `R/casos-b1.spec.ts::X51 / [lote R1]` | it.fails (R1) |
 | X52 | Precios solo de la tool en esta llamada | `R/casos-b1.spec.ts::X52 / [lote C, agentes-13]` | verde |
 | X53 | Releer el prompt tras cada cambio | `R/historial-turno-y-pedidos.spec.ts::X53 / 609c3d6: tras guardar` | verde (runbook: `docs/runbooks/RESTAURANTES-AGENTE.md`) |

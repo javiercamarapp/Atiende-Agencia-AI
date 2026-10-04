@@ -54,6 +54,8 @@ interface ValidWhatsAppOutboxPayload {
   readonly transaccional: boolean;
   /** PL-16: aviso proactivo que el plan nunca debe omitir por tope de mensajes (p. ej. un aviso de seguridad). */
   readonly critico: boolean;
+  /** Mensaje interactivo de solicitud de ubicacion (`location_request_message`); `body` es el texto que lo acompana. */
+  readonly solicitar_ubicacion: boolean;
 }
 
 /** R-27: valida la plantilla HSM opcional del payload. Una plantilla mal formada es un error de ENCOLADO (el
@@ -104,7 +106,10 @@ function parseWhatsAppOutboxPayload(payload: unknown): ValidWhatsAppOutboxPayloa
     throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "buttons" inválido (debe ser string[] o {id,title}[])');
   }
   const template = p.template === undefined || p.template === null ? undefined : parseTemplate(p.template);
-  return { to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined, template, transaccional: p.transaccional === true, critico: p.critico === true };
+  if (p.solicitar_ubicacion !== undefined && typeof p.solicitar_ubicacion !== "boolean") {
+    throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "solicitar_ubicacion" invalido (debe ser booleano)');
+  }
+  return { to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined, template, transaccional: p.transaccional === true, critico: p.critico === true, solicitar_ubicacion: p.solicitar_ubicacion === true };
 }
 
 export interface WhatsAppOutboundDispatcherOptions {
@@ -336,7 +341,7 @@ export class WhatsAppOutboundDispatcher {
     }
 
     try {
-      await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}), ...(templateApproved ? { templateApproved: true } : {}) });
+      await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}), ...(templateApproved ? { templateApproved: true } : {}), ...(payload.solicitar_ubicacion ? { solicitarUbicacion: true } : {}) });
       await this.breaker?.reportSuccess(payload.phone_number_id);
       await port.markSent(item.id);
       if (medidor && medicion) {

@@ -14,6 +14,7 @@ import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/a
 import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
+import { PM_COPY } from "./perfil-pm.ts";
 import { resolverCuerpoConNotaDeVoz, type TranscripcionDeEntrada } from "./nota-de-voz.ts";
 
 // Hallazgo real de la auditoría adversarial del origen (3-sep-2026): el agente le
@@ -207,6 +208,7 @@ export async function handleInboundWhatsAppMessage(
                 messages: messagesAfterUser,
                 customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
                 propertyId: propertyId ?? null,
+                messageId,
               });
 
       // PM PR-9 -- aviso de privacidad simplificado + "asistente virtual" en el PRIMER mensaje de
@@ -239,6 +241,7 @@ export async function handleInboundWhatsAppMessage(
           body: reply,
           transaccional: true, // SA-L-46: respuesta/confirmacion que el cliente pidio; la lista de supresion no la bloquea.
         });
+        if (turn.pedirUbicacion) await encolarSolicitudUbicacion(repo, organizationId, `inbound-ubicacion:${messageId}`, phone, phoneNumberId);
       }
 
       await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
@@ -249,6 +252,19 @@ export async function handleInboundWhatsAppMessage(
     await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "failed", errorClass);
     return { ok: false, retryable: true };
   }
+}
+
+/** §5: encola, ademas de la respuesta de texto, el mensaje interactivo `location_request_message` (el cliente comparte su ubicacion con un toque).
+ * Va en el mismo outbox y con el mismo `phone_number_id`: se envia dentro de la ventana de 24 h abierta por el mensaje del cliente. La llave de
+ * idempotencia deriva del id del mensaje de Meta, asi un reintento del turno no la duplica. */
+async function encolarSolicitudUbicacion(repo: RestaurantesRepository, organizationId: string, key: string, phone: string, phoneNumberId: string): Promise<void> {
+  await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", key, {
+    to: phone,
+    phone_number_id: phoneNumberId,
+    body: PM_COPY.pedirUbicacion,
+    solicitar_ubicacion: true,
+    transaccional: true,
+  });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -467,6 +483,7 @@ export async function responderTrasEspera(
                 messages: historial,
                 customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
                 propertyId: propertyId ?? null,
+                messageId,
                 ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
               });
         let reply = turn.reply;
@@ -488,6 +505,7 @@ export async function responderTrasEspera(
             body: reply,
             transaccional: true, // SA-L-46: respuesta que el cliente pidio; la lista de supresion no la bloquea.
           });
+          if (turn.pedirUbicacion) await encolarSolicitudUbicacion(repo, organizationId, pasada === 1 ? `inbound-ubicacion:${messageId}` : `inbound-ubicacion:${messageId}:p${pasada}`, phone, phoneNumberId);
         }
         return { salida: { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate) }, silencio: false };
       });
