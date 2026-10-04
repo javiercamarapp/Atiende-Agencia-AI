@@ -11,6 +11,7 @@ import type {
   PylRepository,
   CfoZoneRepository,
   ConsolaRepository,
+  OrgEquipoRepository,
   OrgFichaRepository,
   FichasAgenteRepository,
   ContratosRepository,
@@ -668,6 +669,11 @@ export interface AppDeps {
    *  sesion; cada fuente corre bajo su propio SAVEPOINT. El aviso 'organizacion lista' es SOLO-SISTEMA (cron de mantenimiento, sesion propia).
    *  OPCIONAL: ausente o migracion sin aplicar -> `disponible: false` (200) o campos null con su razon, nunca un 500. */
   readonly orgFichaRepo?: (db: TenantDbSession) => OrgFichaRepository;
+  /** Alta del equipo inicial de una organizacion por un superadmin: invitar, reenviar, revocar y leer miembros/invitaciones (SA-L-26 minimo;
+   *  ver packages/db/migrations/0053_superadmin_alta_equipo.sql y routes/superadmin-organizaciones-equipo.ts). Fabrica por sesion del caller;
+   *  `aceptacionParaSistema` es SOLO-SISTEMA (sesion propia en POST /auth/accept-invite). OPCIONAL: ausente o migracion sin aplicar -> la
+   *  lectura responde `disponible: false` y las mutaciones 503 honesto, nunca un 500. */
+  readonly orgEquipoRepo?: (db: TenantDbSession) => OrgEquipoRepository;
   /** Fichas de agente y Model Ops de la consola (SA-L-09/SA-L-10; ver packages/db/migrations/0049_superadmin_fichas_agente.sql y
    *  routes/superadmin-agentes-fichas.ts). Fabrica por sesion del caller; cada fuente corre bajo su propio SAVEPOINT. OPCIONAL:
    *  ausente o migracion sin aplicar -> los campos salen `null` con su razon y `disponible: false` (200), nunca un 500. */

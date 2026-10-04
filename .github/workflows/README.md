@@ -182,6 +182,9 @@ aplica RLS ni GRANT. Este job:
    - `scripts/verify-restaurantes-sql/` (RPC/reglas SQL que el repositorio
      Postgres real de restaurantes usa, incluida la zona conocida sin
      GRANT/policy que esta verificación encontró).
+   - `scripts/verify-restaurantes-canales-escritura/` (el rol y la sesion exactos de
+     produccion -- `authenticated`, `auth.uid()` NULL -- crean cliente, direccion, aviso y
+     pedido por cada canal; el INSERT/UPDATE directo sigue denegado; migracion 048).
    - `scripts/verify-superadmin-salud/` (latidos de crons, salud de colas
      `messaging_outbox`, última corrida por fuente de licitaciones).
    - `scripts/verify-superadmin-mfa-switches-orgs/` (MFA TOTP del superadmin con

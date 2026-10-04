@@ -61,6 +61,8 @@ import type {
   RestaurantesAuditLogRow,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
+  StorefrontMarca,
+  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
   StorefrontTrackingResult,
@@ -285,6 +287,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly addresses = new Map<string, CustomerAddress[]>();
   private readonly orders: StoredOrder[] = [];
   private readonly knownZones: StoredKnownZone[] = [];
+  private readonly storefrontMarcas = new Map<string, StorefrontMarca>();
   private readonly callbackRequests: CallbackRequest[] = [];
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
   private readonly phoneNumberIdToOrg = new Map<string, string>();
@@ -596,7 +599,10 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
-  async addCustomerAddressIfNew(customerId: string, address: string): Promise<void> {
+  async addCustomerAddressIfNew(customerId: string, address: string, organizationId: string): Promise<void> {
+    // Mismo guard cross-tenant que la funcion SQL (`add_customer_address_if_new`, migracion 048).
+    const dueno = this.customers.get(customerId);
+    if (!dueno || dueno.organizationId !== organizationId) throw new Error("el cliente no pertenece a la organización");
     const list = this.addresses.get(customerId) ?? [];
     if (list.some((a) => a.address === address)) return; // onConflict ignoreDuplicates
     list.push({ address, label: null, isDefault: list.length === 0 });
@@ -873,6 +879,11 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       }
       return created;
     });
+  }
+
+  /** Solo para pruebas: las solicitudes de contacto registradas (en orden de creacion). */
+  peekCallbackRequests(): readonly CallbackRequest[] {
+    return this.callbackRequests;
   }
 
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
@@ -1656,6 +1667,16 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     }
     this.phoneNumberIdToOrg.set(phoneNumberId, organizationId);
     return { phoneNumberId };
+  }
+
+  async findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null> {
+    return this.storefrontMarcas.get(organizationId) ?? null;
+  }
+
+  async upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca> {
+    const guardada: StorefrontMarca = { ...input, updatedAt: new Date().toISOString() };
+    this.storefrontMarcas.set(organizationId, guardada);
+    return guardada;
   }
 
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {

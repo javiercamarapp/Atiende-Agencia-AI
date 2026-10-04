@@ -27,6 +27,13 @@ const PEDIDO_DE_CASOS_SIN_COMANDA: Readonly<Record<string, { producto: string; p
 
 const ALCOHOL_RE = /cerveza|ceiba|pi[ñn]a colada|michelada|alcohol|tequila/i;
 
+/** `hora_recogida` como la manda el agente real: ISO 8601 con la zona de Merida (-06:00), a `minutos` de la hora local del caso. */
+function isoHoraRecogida(horaLocal: string, minutos: number): string {
+  const [h, m] = horaLocal.split(":").map(Number);
+  const total = ((h! * 60 + m! + minutos) % 1440 + 1440) % 1440;
+  return `2026-10-03T${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}:00-06:00`;
+}
+
 function saludoHora(horaLocal: string): string {
   const h = Number(horaLocal.split(":")[0]);
   if (h >= 5 && h < 12) return "Buenos días";
@@ -201,7 +208,8 @@ async function flujoComanda(mundo: Mundo, opts: OpcionesFlujo): Promise<void> {
 
   // Confirmacion y creacion
   mundo.cliente("Sí, es correcto.");
-  const notas = [...opts.ajustes, opts.canal === "recoger" ? `Recoge en ${opts.hora ?? 30} minutos` : ""].filter(Boolean).join(", ");
+  const notas = opts.ajustes.join(", ");
+  const horaRecogida = opts.canal === "recoger" ? isoHoraRecogida(mundo.caso.contexto.hora_local, opts.hora ?? 30) : null;
   mundo.ejecutar("confirmar_resumen", {});
   const crear = () =>
     mundo.ejecutar("crear_pedido", {
@@ -212,6 +220,7 @@ async function flujoComanda(mundo: Mundo, opts: OpcionesFlujo): Promise<void> {
       payment_method: opts.pago,
       ...(opts.canal === "domicilio" ? { customer_address: (datos.direccion ?? "").split(/\. [A-ZÁÉÍÓÚ]{4,}/)[0], colonia_entrega: colonia ?? "" } : {}),
       ...(notas ? { notes: notas } : {}),
+      ...(horaRecogida ? { hora_recogida: horaRecogida } : {}),
       ...(opts.cortesias.length > 0 ? { cortesias: opts.cortesias } : {}),
     }) as { error?: string };
   let creado = crear();
