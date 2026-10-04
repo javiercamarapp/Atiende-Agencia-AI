@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Copy, Download, Link2 } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label, NativeSelect, PageContainer, StatusBadge, Textarea } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, Input, Label, NativeSelect, PageContainer, StatusBadge, Textarea } from "@atiende/ui";
 import {
   aceptarPortalDocumento,
   crearPortalEnlace,
@@ -19,6 +19,7 @@ import {
   rechazarPortalDocumento,
   revocarPortalEnlace,
 } from "../lib/portal-cliente-client.ts";
+import type { DataTableColumna } from "@atiende/ui";
 import type { PortalDocumentoStaff, PortalEnlaceStaff, PortalMensajeStaff } from "../lib/portal-cliente-client.ts";
 import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
@@ -137,6 +138,78 @@ export function PortalClientePage({ apiBaseUrl, token, propertyId, role }: Despa
     });
   }
 
+  const columnasEnlaces: DataTableColumna<PortalEnlaceStaff>[] = [
+    { id: "etiqueta", encabezado: "Para quién", principal: true, valorOrden: (e) => e.etiqueta, celda: (e) => <span className="font-medium text-foreground">{e.etiqueta}</span> },
+    { id: "expira", encabezado: "Expira", valorOrden: (e) => e.expiraEn, celda: (e) => formatFechaSolo(e.expiraEn.slice(0, 10)) },
+    { id: "ultimoUso", encabezado: "Último acceso", valorOrden: (e) => e.ultimoUsoEn, celda: (e) => fechaHora(e.ultimoUsoEn) },
+    {
+      id: "estado",
+      encabezado: "Estado",
+      valorOrden: (e) => estadoEnlace(e).etiqueta,
+      celda: (e) => {
+        const est = estadoEnlace(e);
+        return <StatusBadge tone={est.tono}>{est.etiqueta}</StatusBadge>;
+      },
+    },
+    {
+      id: "acciones",
+      encabezado: "Acciones",
+      alinear: "right",
+      celda: (e) =>
+        puedeGestionar && estadoEnlace(e).etiqueta === "Vigente" ? (
+          <Button size="sm" variant="outline" disabled={ocupado} onClick={() => void accion(async () => { await revocarPortalEnlace(fetch, apiBaseUrl, token, propertyId, e.id); return "Enlace revocado."; })}>Revocar</Button>
+        ) : null,
+    },
+  ];
+
+  const columnasDocumentos: DataTableColumna<PortalDocumentoStaff>[] = [
+    {
+      id: "archivo",
+      encabezado: "Archivo",
+      principal: true,
+      valorOrden: (d) => d.nombreArchivo,
+      celda: (d) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium text-foreground">{d.nombreArchivo}</p>
+          {d.resumen.folio_fiscal ? <p className="text-xs text-muted-foreground">UUID {d.resumen.folio_fiscal.slice(0, 8)}… · total ${d.resumen.total ?? ""}</p> : null}
+        </div>
+      ),
+    },
+    { id: "tipo", encabezado: "Tipo", valorOrden: (d) => TIPO_ETIQUETA[d.tipo], celda: (d) => TIPO_ETIQUETA[d.tipo] },
+    { id: "tamano", encabezado: "Tamaño", alinear: "right", valorOrden: (d) => d.tamanoBytes, celda: (d) => `${Math.max(1, Math.round(d.tamanoBytes / 1024))} KB` },
+    { id: "recibido", encabezado: "Recibido", valorOrden: (d) => d.creadoEn, celda: (d) => fechaHora(d.creadoEn) },
+    {
+      id: "estado",
+      encabezado: "Estado",
+      valorOrden: (d) => estadoDocumento(d.estado).etiqueta,
+      celda: (d) => {
+        const est = estadoDocumento(d.estado);
+        return (
+          <div className="flex flex-col items-start gap-1">
+            <StatusBadge tone={est.tono}>{est.etiqueta}</StatusBadge>
+            {d.estado === "rechazado" && d.motivo ? <p className="text-xs text-muted-foreground">Motivo: {d.motivo}</p> : null}
+          </div>
+        );
+      },
+    },
+    {
+      id: "acciones",
+      encabezado: "Acciones",
+      alinear: "right",
+      celda: (d) => (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => void descargar(d)}><Download className="mr-1.5 size-4" aria-hidden="true" /> Descargar</Button>
+          {puedeGestionar && d.estado === "recibido" && (
+            <>
+              <Button size="sm" disabled={ocupado} onClick={() => void accion(async () => { const r = await aceptarPortalDocumento(fetch, apiBaseUrl, token, propertyId, d.id); return r.invoiceId ? "CFDI ingresado. Revisa su validación en CFDI." : "Documento aceptado."; })}>Aceptar</Button>
+              <Button size="sm" variant="outline" disabled={ocupado} onClick={() => void rechazar(d)}>Rechazar</Button>
+            </>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   if (cargando) return <PageContainer><EstadoCargando /></PageContainer>;
   if (error) return <PageContainer><EstadoError mensaje={error} onReintentar={() => void cargar()} /></PageContainer>;
 
@@ -187,27 +260,13 @@ export function PortalClientePage({ apiBaseUrl, token, propertyId, role }: Despa
                 <Button type="submit" disabled={ocupado || etiqueta.trim().length === 0}>Crear enlace</Button>
               </form>
             )}
-            {enlaces.length === 0 ? <p className="text-sm text-muted-foreground">Aún no has creado enlaces para este cliente.</p> : (
-              <ul className="flex flex-col divide-y divide-border">
-                {enlaces.map((e) => {
-                  const est = estadoEnlace(e);
-                  return (
-                    <li key={e.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">{e.etiqueta}</p>
-                        <p className="text-xs text-muted-foreground">Expira el {formatFechaSolo(e.expiraEn.slice(0, 10))} · último acceso: {fechaHora(e.ultimoUsoEn)}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <StatusBadge tone={est.tono}>{est.etiqueta}</StatusBadge>
-                        {puedeGestionar && est.etiqueta === "Vigente" && (
-                          <Button size="sm" variant="outline" disabled={ocupado} onClick={() => void accion(async () => { await revocarPortalEnlace(fetch, apiBaseUrl, token, propertyId, e.id); return "Enlace revocado."; })}>Revocar</Button>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+            <DataTable
+              etiqueta="Enlaces del cliente"
+              columnas={columnasEnlaces}
+              filas={enlaces}
+              obtenerId={(e) => e.id}
+              vacio={{ mensaje: "Aún no has creado enlaces para este cliente." }}
+            />
           </CardContent>
         </Card>
 
@@ -217,37 +276,13 @@ export function PortalClientePage({ apiBaseUrl, token, propertyId, role }: Despa
             <CardDescription>Aceptar un CFDI lo ingresa al flujo normal de CFDI (validación, lista 69-B del SAT y revisión).</CardDescription>
           </CardHeader>
           <CardContent>
-            {documentos.length === 0 ? <p className="text-sm text-muted-foreground">No hay documentos recibidos.</p> : (
-              <ul className="flex flex-col divide-y divide-border">
-                {documentos.map((d) => {
-                  const est = estadoDocumento(d.estado);
-                  return (
-                    <li key={d.id} className="flex flex-col gap-2 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-foreground">{d.nombreArchivo}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {TIPO_ETIQUETA[d.tipo]} · {Math.max(1, Math.round(d.tamanoBytes / 1024))} KB · {fechaHora(d.creadoEn)}
-                            {d.resumen.folio_fiscal ? ` · UUID ${d.resumen.folio_fiscal.slice(0, 8)}… · total $${d.resumen.total ?? ""}` : ""}
-                          </p>
-                        </div>
-                        <StatusBadge tone={est.tono}>{est.etiqueta}</StatusBadge>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" onClick={() => void descargar(d)}><Download className="mr-1.5 size-4" aria-hidden="true" /> Descargar</Button>
-                        {puedeGestionar && d.estado === "recibido" && (
-                          <>
-                            <Button size="sm" disabled={ocupado} onClick={() => void accion(async () => { const r = await aceptarPortalDocumento(fetch, apiBaseUrl, token, propertyId, d.id); return r.invoiceId ? "CFDI ingresado. Revisa su validación en CFDI." : "Documento aceptado."; })}>Aceptar</Button>
-                            <Button size="sm" variant="outline" disabled={ocupado} onClick={() => void rechazar(d)}>Rechazar</Button>
-                          </>
-                        )}
-                      </div>
-                      {d.estado === "rechazado" && d.motivo && <p className="text-xs text-muted-foreground">Motivo: {d.motivo}</p>}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+            <DataTable
+              etiqueta="Documentos recibidos"
+              columnas={columnasDocumentos}
+              filas={documentos}
+              obtenerId={(d) => d.id}
+              vacio={{ mensaje: "No hay documentos recibidos." }}
+            />
           </CardContent>
         </Card>
 

@@ -55,6 +55,24 @@ async function pedidosYClientes(f: ReturnType<typeof buildRestaurantFixture>) {
 }
 
 describe("modo preview del registro de tools", () => {
+  it("pedido grande de PM: el preview muestra la retencion del servidor sin crear pedido, sin aviso y sin escrituras", async () => {
+    const s = setup();
+    await s.f.repo.upsertWhatsAppAgentConfig(s.f.organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: "Los Taquitos de PM", toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
+    const items = [{ product_id: s.f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 100 }];
+    const base = { branch_slug: "fco-montejo", items, canal: "recoger" };
+    await s.run("cotizar_pedido", base);
+    s.nextTurn();
+    await s.run("confirmar_resumen", {});
+    s.nextTurn();
+    const antes = await pedidosYClientes(s.f);
+    const creado = await s.run("crear_pedido", { ...base, customer_name: "Evento", payment_method: "efectivo" });
+    expect(creado.orderId).toBeNull();
+    expect(creado.result).toMatchObject({ pedido_grande: true, estado: "por_confirmar_por_la_sucursal", simulado: true });
+    expect((creado.result as { order?: unknown }).order).toBeUndefined();
+    expect(await pedidosYClientes(s.f)).toEqual(antes);
+    expect(s.escrituras).toEqual([]);
+  });
+
   it("cotizar -> confirmar -> crear deja cero filas en orders, customers, outbox y avisos, y devuelve un folio PRUEBA con el total del servidor", async () => {
     const s = setup();
     const antes = await pedidosYClientes(s.f);
