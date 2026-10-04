@@ -310,7 +310,7 @@ describe("GET /reservar/estado/:token y cancelacion", () => {
     expect((await cancelar(s.app, r.rastreoToken, { total: 0 })).status).toBe(400);
     expect((await cancelar(s.app, r.rastreoToken, {}, { ...idem(), origin: "https://evil.example" })).status).toBe(403);
     expect((await cancelar(s.app, `${r.rastreoToken}x`)).status).toBe(404);
-    expect((await estado(s.app, r.rastreoToken).then((x) => x.json()) as any).estado).toBe("confirmada");
+    expect(((await (await estado(s.app, r.rastreoToken)).json()) as any).estado).toBe("confirmada");
   });
   it("cancelar un hold pendiente de pago libera el inventario sin cobro ni reembolso", async () => {
     const s = await setup();
