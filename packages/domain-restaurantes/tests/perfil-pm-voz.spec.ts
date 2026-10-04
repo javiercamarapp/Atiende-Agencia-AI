@@ -1,6 +1,7 @@
 // PM-C3 -- WhatsApp y voz comparten UNA fuente (`whatsapp/perfil-pm.ts`). El comportamiento de voz es su version compacta (tope de 8000
 // caracteres de la migracion 025): estas pruebas atan que la version compacta no pierda ninguna regla, motivo ni dato de la completa, que
 // solo nombre herramientas que existen y que el simulador y el seed produzcan el mismo texto base.
+import { componerHorarioPedidosTexto } from "../src/whatsapp/horario-prompt.ts";
 import { describe, expect, it } from "vitest";
 import { AGENT_TOOL_DEFINITIONS } from "../src/agent-tools/registry.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
@@ -145,8 +146,14 @@ describe("seed: el comportamiento sembrado sale del perfil, no de un archivo apa
       salsasTexto: data.agente_whatsapp.salsas,
       promosTexto: data.agente_whatsapp.promociones,
       motivosDesactivados: data.agente_whatsapp.motivos_escalacion_apagados,
+      // CR10: el horario del prompt es el que se siembra en branch_policy (12:00-01:00 todos los dias), no la constante vieja.
+      horarioPedidosTexto: componerHorarioPedidosTexto(
+        data.sucursales.filter((b) => b.activa).map((b) => ({ nombre: b.nombre, slug: b.slug, horario: [{ dias: [...data.horario_general.dias], abre: data.horario_general.abre, cierra: data.horario_general.cierra }], puentes: [] })),
+      ),
     });
     expect(plan.voice.comportamiento).toBe(esperado);
+    expect(plan.voice.comportamiento).toContain("Pensiones: todos los días de 12 pm a 1 am");
+    expect(plan.voice.comportamiento).not.toContain("Pensiones: todos los días de 6 pm a 12 am");
   });
 
   it("con P5 aprobado (5 sucursales activas) sigue cabiendo en 8000 y trae sus slugs", () => {
