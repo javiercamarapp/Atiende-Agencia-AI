@@ -72,7 +72,7 @@ export function restaurantesAdminAvisosRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     assertVerticalRole(c, MANAGER_ROLES);
     const organizationId = c.get("organizationId");
     const userId = c.get("userId");
-    const esAdmin = (STAFF_INVITE_ROLES as readonly string[]).includes(c.get("verticalRole"));
+    const esAdmin = (STAFF_INVITE_ROLES as readonly string[]).includes(c.get("verticalRole") ?? "");
     const db = c.get("db");
     c.header("Cache-Control", "no-store");
 

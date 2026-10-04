@@ -35,7 +35,7 @@ export interface ResultadoBarridoAvisos {
 const SIN_BARRIDO: ResultadoBarridoAvisos = { disponible: false, candidatos: 0, emitidas: 0, sinNuevas: 0, errores: 0 };
 
 export async function listarCandidatosAvisos(session: TenantDbSession, now?: Date): Promise<{ readonly disponible: boolean; readonly candidatos: readonly CandidatoAviso[] }> {
-  return runWithSavepointFallback({
+  return runWithSavepointFallback<{ readonly disponible: boolean; readonly candidatos: readonly CandidatoAviso[] }>({
     session,
     primary: async () => {
       const { rows } = await session.query<{ tipo: TipoAvisoOperativo; order_id: string; organization_id: string; property_id: string; order_number: string | number }>(

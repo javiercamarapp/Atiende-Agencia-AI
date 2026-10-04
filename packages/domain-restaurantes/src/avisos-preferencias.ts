@@ -93,7 +93,7 @@ export async function listarPreferenciasAvisos(
   options: { readonly todos?: boolean } = {},
 ): Promise<{ readonly disponible: boolean; readonly filas: readonly PreferenciaAviso[] }> {
   try {
-    return await runWithSavepointFallback({
+    return await runWithSavepointFallback<{ readonly disponible: boolean; readonly filas: readonly PreferenciaAviso[] }>({
       session,
       primary: async () => {
         const { rows } = await session.query<{ user_id: string; tipo: string; enabled: boolean; sonido: boolean }>(
@@ -148,7 +148,7 @@ export async function listarUmbralesEntrega(
   organizationId: string,
 ): Promise<{ readonly disponible: boolean; readonly sucursales: readonly UmbralSucursal[] }> {
   try {
-    return await runWithSavepointFallback({
+    return await runWithSavepointFallback<{ readonly disponible: boolean; readonly sucursales: readonly UmbralSucursal[] }>({
       session,
       primary: async () => {
         const { rows } = await session.query<{ property_id: string; name: string; entrega_tardia_min: number | null }>(
