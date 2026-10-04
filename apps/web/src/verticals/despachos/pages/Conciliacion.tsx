@@ -446,7 +446,7 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
         </Button>
       </header>
 
-      <SesionesConciliacion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeGestionar />
+      <SesionesConciliacion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeGestionar esAdmin={role === "admin"} />
 
       <Card>
         <CardHeader className="pb-3">
