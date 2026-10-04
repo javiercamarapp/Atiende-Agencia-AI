@@ -1,4 +1,4 @@
-// R-41 (migracion 041): encuesta post-entrega por HTTP. Cada caso afirma el EFECTO (que se guardo, que se encolo, que NO se devuelve), no
+// R-41 (migracion 061): encuesta post-entrega por HTTP. Cada caso afirma el EFECTO (que se guardo, que se encolo, que NO se devuelve), no
 // solo el status. El SQL real (RLS, alcance, zona horaria) lo prueba scripts/verify-restaurantes-encuesta-entrega/ contra Postgres real.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryEncuestaRepository } from "@atiende/domain-restaurantes";

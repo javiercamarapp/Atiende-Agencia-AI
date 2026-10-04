@@ -1,5 +1,5 @@
-// Encuesta post-entrega (R-41, migracion 041). Tipos, validaciones y calculos puros. Las definiciones de cada cifra viven en el
-// encabezado de packages/domain-restaurantes/migrations/041_encuesta_post_entrega.sql y los rotulos de la pantalla las repiten.
+// Encuesta post-entrega (R-41, migracion 061). Tipos, validaciones y calculos puros. Las definiciones de cada cifra viven en el
+// encabezado de packages/domain-restaurantes/migrations/061_encuesta_post_entrega.sql y los rotulos de la pantalla las repiten.
 // Un dato que no existe es `null`, jamas 0 (promedio sin respuestas, tasa de respuesta sin envios).
 import { porcentaje } from "../whatsapp-kpi/kpi.ts";
 
@@ -21,10 +21,10 @@ export class EncuestaValidationError extends Error {
   }
 }
 
-/** La base todavia no tiene la migracion 041: una escritura explicita (guardar la configuracion) no puede fingir exito. */
+/** La base todavia no tiene la migracion 061: una escritura explicita (guardar la configuracion) no puede fingir exito. */
 export class EncuestaNoDisponibleError extends Error {
   constructor() {
-    super("La encuesta post-entrega todavía no está disponible en esta base de datos (requiere la migración 041).");
+    super("La encuesta post-entrega todavía no está disponible en esta base de datos (requiere la migración 061).");
     this.name = "EncuestaNoDisponibleError";
   }
 }
@@ -141,7 +141,7 @@ export function tasaRespuestaPct(p: EncuestaPromedio): number | null {
   return porcentaje(p.respondidas, p.enviadas);
 }
 
-/** Lectura con estado honesto: `disponible: false` = la base todavia no tiene la migracion 041 (nunca se confunde con "no hay datos"). */
+/** Lectura con estado honesto: `disponible: false` = la base todavia no tiene la migracion 061 (nunca se confunde con "no hay datos"). */
 export interface EncuestaLectura<T> {
   readonly disponible: boolean;
   readonly valor: T;

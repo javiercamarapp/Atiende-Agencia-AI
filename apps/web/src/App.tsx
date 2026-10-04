@@ -20,9 +20,11 @@ import { ConfiguracionPage as RestaurantesConfiguracionPage } from "./verticals/
 import { AgenteVozPage as RestaurantesAgenteVozPage } from "./verticals/restaurantes/pages/AgenteVoz.tsx";
 import { IndicadoresWhatsappPage as RestaurantesIndicadoresWhatsappPage } from "./verticals/restaurantes/pages/IndicadoresWhatsapp.tsx";
 import { EncuestasPage as RestaurantesEncuestasPage } from "./verticals/restaurantes/pages/Encuestas.tsx";
+import { CierresPage as RestaurantesCierresPage } from "./verticals/restaurantes/pages/Cierres.tsx";
 import { PrivacidadPage as RestaurantesPrivacidadPage } from "./verticals/restaurantes/pages/Privacidad.tsx";
 import { ConversacionesPage as RestaurantesConversacionesPage } from "./verticals/restaurantes/pages/Conversaciones.tsx";
 import { TurnosPage as RestaurantesTurnosPage } from "./verticals/restaurantes/pages/Turnos.tsx";
+import { AvisosStaffPage as RestaurantesAvisosPage } from "./verticals/restaurantes/pages/AvisosStaff.tsx";
 import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
 import { SeleccionarVerticalPage } from "./shell/SeleccionarVertical.tsx";
 import { GoogleCallbackPage } from "./shell/GoogleCallback.tsx";
@@ -35,6 +37,8 @@ import { SuperAdminOrganizacionesPage } from "./superadmin/pages/Organizaciones.
 import { SuperAdminOrganizacionFichaPage } from "./superadmin/pages/OrganizacionFicha.tsx";
 import { SuperAdminProspectosPage } from "./superadmin/pages/Prospectos.tsx";
 import { SuperAdminTaxonomiaPage } from "./superadmin/pages/Taxonomia.tsx";
+import { SuperAdminCerebroMapaPage } from "./superadmin/cerebro/CerebroMapa.tsx";
+import { SuperAdminFichaProspectoPage } from "./superadmin/cerebro/FichaProspecto.tsx";
 import { SuperAdminPanelesPage } from "./superadmin/pages/Paneles.tsx";
 import { SuperAdminConsumoIaPage } from "./superadmin/pages/ConsumoIa.tsx";
 import { SuperAdminBreakGlassPage } from "./superadmin/pages/BreakGlass.tsx";
@@ -265,6 +269,16 @@ function RestaurantesClienteFichaRoute() {
   );
 }
 
+/** 404 DENTRO del shell de restaurantes (QA-restaurantes-R1-botones-11): una ruta desconocida bajo `/restaurantes/:orgSlug/` conserva el
+ * menu y ofrece volver al resumen (mismo patron que `CitasNoEncontradoRoute`). Los prefijos que no son un negocio
+ * (`/restaurantes/login/...`, enlaces de correo) caen al 404 global. */
+const RestaurantesNoEncontradoShellRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <VerticalNoEncontrado volverA={`/restaurantes/${ctx.orgSlug}`} volverEtiqueta="Volver al resumen" />);
+const PREFIJOS_RESTAURANTES_QUE_NO_SON_NEGOCIO: ReadonlySet<string> = new Set(["login", "restablecer-contrasena", "verificar-correo"]);
+function RestaurantesNoEncontradoRoute() {
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug || PREFIJOS_RESTAURANTES_QUE_NO_SON_NEGOCIO.has(orgSlug)) return <NotFoundPage />;
+  return <RestaurantesNoEncontradoShellRoute />;
+}
 const RestaurantesStaffRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <StaffPage {...ctx} />);
 
 // Fase 11 — hallazgo de auditoría (severidad ALTA, "Promociones/códigos de
@@ -284,6 +298,7 @@ const RestaurantesAgenteVozRoute = shellRoute(RestaurantesShell, "/restaurantes/
 const RestaurantesIndicadoresWhatsappRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesIndicadoresWhatsappPage {...ctx} />);
 // R-41: encuestas post-entrega (satisfacción por sucursal y repartidor, configuración, envío de pendientes), owner/admin.
 const RestaurantesEncuestasRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesEncuestasPage {...ctx} />);
+const RestaurantesCierresRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCierresPage {...ctx} />);
 // PM PR-9 -- privacidad (solicitudes ARCO + aviso/retención/grabación), owner/admin.
 const RestaurantesPrivacidadRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrivacidadPage {...ctx} />);
 // PL-13 -- privacidad de la organizacion (ARCO de todos los verticales, retencion, bloqueo de purga, aviso versionado).
@@ -292,6 +307,8 @@ const RestaurantesPrivacidadOrganizacionRoute = shellRoute(RestaurantesShell, "/
 const RestaurantesConversacionesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConversacionesPage {...ctx} />);
 const RestaurantesPrimerosPasosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrimerosPasosPage {...ctx} />);
 const RestaurantesTurnosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesTurnosPage {...ctx} />);
+// R-16: avisos del staff (Mis avisos para todos; matriz del equipo y umbral de entrega tardia para owner/admin).
+const RestaurantesAvisosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAvisosPage {...ctx} />);
 // CHAT-08 -- Copiloto ("Pregunta a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de restaurantes.
 const RestaurantesCopilotoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCopilotoPage {...ctx} />);
 
@@ -406,6 +423,26 @@ function SuperAdminProspectosRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminProspectosPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+/** SA-L-42: el mapa del Cerebro de ventas (el mundo virtual de la cartera). */
+function SuperAdminCerebroMapaRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminCerebroMapaPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+/** SA-L-43: la ficha de un prospecto del Cerebro. */
+function SuperAdminFichaProspectoRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminFichaProspectoPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -1104,15 +1141,18 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/agente-voz" element={<RestaurantesAgenteVozRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-whatsapp" element={<RestaurantesIndicadoresWhatsappRoute />} />
         <Route path="/restaurantes/:orgSlug/encuestas" element={<RestaurantesEncuestasRoute />} />
+        <Route path="/restaurantes/:orgSlug/cierres" element={<RestaurantesCierresRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad" element={<RestaurantesPrivacidadRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad-organizacion" element={<RestaurantesPrivacidadOrganizacionRoute />} />
         <Route path="/restaurantes/:orgSlug/conversaciones" element={<RestaurantesConversacionesRoute />} />
         <Route path="/restaurantes/:orgSlug/turnos" element={<RestaurantesTurnosRoute />} />
+        <Route path="/restaurantes/:orgSlug/avisos" element={<RestaurantesAvisosRoute />} />
         <Route path="/restaurantes/:orgSlug/copiloto" element={<RestaurantesCopilotoRoute />} />
         <Route path="/restaurantes/:orgSlug/primeros-pasos" element={<RestaurantesPrimerosPasosRoute />} />
         <Route path="/restaurantes/:orgSlug/notificaciones" element={<RestaurantesNotificacionesRoute />} />
         <Route path="/restaurantes/:orgSlug/plan" element={<RestaurantesPlanRoute />} />
         <Route path="/restaurantes/:orgSlug/seguridad" element={<RestaurantesSeguridadRoute />} />
+        <Route path="/restaurantes/:orgSlug/*" element={<RestaurantesNoEncontradoRoute />} />
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
@@ -1129,6 +1169,8 @@ export function App() {
         <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />
         <Route path="/superadmin/cerebro" element={<SuperAdminProspectosRoute />} />
         <Route path="/superadmin/cerebro/taxonomia" element={<SuperAdminTaxonomiaRoute />} />
+        <Route path="/superadmin/mapa-prospectos" element={<SuperAdminCerebroMapaRoute />} />
+        <Route path="/superadmin/mapa-prospectos/:id" element={<SuperAdminFichaProspectoRoute />} />
         <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
         <Route path="/superadmin/consumo-ia" element={<SuperAdminConsumoIaRoute />} />
         <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />

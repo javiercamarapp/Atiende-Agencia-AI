@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL real -- mismo patrón que
 # scripts/verify-restaurantes-audit-log/run.sh. Prueba, con RLS/GRANT/auth.uid() reales, las tablas y funciones de
-# packages/domain-restaurantes/migrations/041_encuesta_post_entrega.sql (encuesta post-entrega).
+# packages/domain-restaurantes/migrations/061_encuesta_post_entrega.sql (encuesta post-entrega).
 #
 # Requiere `initdb`/`pg_ctl`/`psql` en PATH (Postgres instalado localmente — en este
 # entorno vienen con `brew install postgresql`). Si no están disponibles, este
@@ -44,7 +44,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 041_encuesta_post_entrega.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 061_encuesta_post_entrega.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

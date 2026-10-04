@@ -46,7 +46,7 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/superadmin/mantenimiento` | `5 15 * * *` | Mantenimiento de plataforma |
 | `/internal/superadmin/alertas-cfo` | `15 15 * * *` | Alertas del CFO |
 | `/internal/hoteles/revenue-recommendations` | `10 15 * * *` | Barrido de recomendaciones de revenue |
-| `/internal/restaurantes/promover-programados` | `*/5 * * * *` | Promueve a pending los pedidos programados dentro de su anticipación (SQL solo actualiza filas en estado programado) |
+| `/internal/restaurantes/promover-programados` | `*/5 * * * *` | Promueve a pending los pedidos programados dentro de su anticipación (SQL solo actualiza filas en estado programado). R-16: el mismo tick barre, en una sesión de sistema independiente, las alertas in-app `restaurantes.pedido.entrega_tardia` y `restaurantes.pedido.programado_por_vencer` (una por pedido, sin cron nuevo) |
 | `/internal/restaurantes/softrestaurant-dispatch` | `*/5 * * * *` | Drena el outbox de comandas a SoftRestaurant (503 sin adaptador real, no reclama nada) |
 | `/internal/hoteles/tickets-sla` | `*/10 * * * *` | Escala tickets con SLA vencido y avisa al 75 % del SLA (idempotente en SQL) |
 | `/internal/hoteles/aprobaciones-expiracion` | `20 * * * *` | Marca como expiradas las aprobaciones humanas vencidas (idempotente en SQL) |

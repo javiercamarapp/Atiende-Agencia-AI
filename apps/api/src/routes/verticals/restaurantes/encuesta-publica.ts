@@ -1,4 +1,4 @@
-// Encuesta post-entrega, lado PUBLICO del cliente (R-41, migracion 041). Sin login: la liga que recibio por WhatsApp lleva un token firmado
+// Encuesta post-entrega, lado PUBLICO del cliente (R-41, migracion 061). Sin login: la liga que recibio por WhatsApp lleva un token firmado
 // (organizacion + pedido, vence a los 14 dias) y nada personal.
 //   GET  /v1/restaurantes/:orgSlug/encuesta/:token   estado de la encuesta: sucursal, si ya respondio, liga de resenas si aplica
 //   POST /v1/restaurantes/:orgSlug/encuesta/:token   { calificacion 1-5, comentario? } -> la PRIMERA respuesta gana (reintento = ya_respondida)

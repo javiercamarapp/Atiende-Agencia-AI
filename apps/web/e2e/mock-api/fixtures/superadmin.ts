@@ -2,6 +2,7 @@
 import { fallo } from "../respuestas.ts";
 import { orgDe } from "../personas.ts";
 import type { Ruta, Vertical } from "../tipos.ts";
+import { rutasCerebro } from "./cerebro.ts";
 
 const VERTICALES: readonly Vertical[] = ["restaurantes", "hoteles", "rentas", "despachos", "licitaciones", "citas"];
 
@@ -325,9 +326,8 @@ export const rutasSuperadmin: readonly Ruta[] = [
   { metodo: "GET", patron: "/superadmin/organizaciones/acciones", manejador: () => ({ disponible: true, acciones: [] }) },
   { metodo: "GET", patron: "/superadmin/organizaciones/:id/ficha", manejador: (p) => fichaOrg(String(p.params["id"])) ?? fallo(404, "Organización no encontrada.") },
   { metodo: "GET", patron: "/superadmin/prospectos", manejador: (p) => ({ prospectos: p.estado.obtener("sa.prospectos", () => structuredClone(PROSPECTOS)) }) },
-  // Cerebro de ventas (SA-L-37/38/41): la API simulada se comporta como una base SIN la migracion 0051 (disponible:false), la misma
-  // respuesta honesta que da el API real; la lista sigue saliendo de los prospectos de siempre.
-  { metodo: "GET", patron: "/superadmin/cerebro/prospectos", manejador: (p) => ({ disponible: false, mensaje: "Requiere aplicar la migración 0051_cerebro_ventas_base.", prospectos: p.estado.obtener("sa.prospectos", () => structuredClone(PROSPECTOS)), taxonomias: [] }) },
+  // Cerebro de ventas (SA-L-37/38/41/42/43): lista con ubicacion, scores y supresion, detalle y rastro de exportaciones (fixtures/cerebro.ts).
+  ...rutasCerebro,
   { metodo: "GET", patron: "/superadmin/cerebro/taxonomia", manejador: () => ({
       disponible: true,
       verticales: ["restaurantes"],

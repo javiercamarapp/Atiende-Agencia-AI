@@ -1,5 +1,5 @@
 -- R-41 (restaurantes): encuesta post-entrega (calificacion 1-5 + comentario), satisfaccion por sucursal y por repartidor,
--- y liga a resenas. Prefijo de supabase/migrations: 20240101000314 (interno restaurantes 041).
+-- y liga a resenas. Prefijo de supabase/migrations: 20240101000314 (interno restaurantes 061).
 -- Requiere: 001 (orders, customers), 008 (orders.assigned_repartidor_id), 019 (audit_log), 022 (branch_detail.zona_horaria),
 -- 035 (voz_zona_horaria), 028 (handoff_actor_en_sucursal).
 --

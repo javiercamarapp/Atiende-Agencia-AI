@@ -1,5 +1,5 @@
 -- Fixtures + escenarios contra Postgres REAL (RLS + GRANT + auth.uid() reales, nunca el repositorio en memoria) de
--- packages/domain-restaurantes/migrations/041_encuesta_post_entrega.sql: encuesta post-entrega (R-41).
+-- packages/domain-restaurantes/migrations/061_encuesta_post_entrega.sql: encuesta post-entrega (R-41).
 --
 --   A. Configuracion por sucursal (leer/guardar, validaciones, bitacora solo si algo cambio).
 --   B. Barrido: encuesta_candidatas (activa, espera, ventana de 48 h, demo, otro tenant) y encuesta_registrar_envio (idempotente).

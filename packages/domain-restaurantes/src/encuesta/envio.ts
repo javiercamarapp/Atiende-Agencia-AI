@@ -26,7 +26,7 @@ export interface EnvioEncuestasDeps {
 }
 
 export interface EnvioEncuestasResultado {
-  /** false = la base todavia no tiene la migracion 041 (honesto: no se hizo nada). */
+  /** false = la base todavia no tiene la migracion 061 (honesto: no se hizo nada). */
   readonly disponible: boolean;
   readonly candidatas: number;
   readonly encoladas: number;

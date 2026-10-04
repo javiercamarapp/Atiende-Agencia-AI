@@ -111,6 +111,10 @@ function alternarProducto(elegidos: readonly string[], id: string, marcado: bool
 export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
   const [promotions, setPromotions] = useState<readonly Promotion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Los errores de crear/editar se pintan DENTRO de su dialogo (QA-restaurantes-R1-botones-17): el estado de la pagina queda
+  // detras del overlay y el boton parecia muerto.
+  const [errorCrear, setErrorCrear] = useState<string | null>(null);
+  const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
@@ -153,15 +157,15 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
     if (!form.code.trim() || !form.name.trim() || !Number.isFinite(value) || value <= 0) return;
     // Mismas reglas que el servidor (que re-valida): automatica exige canal; cortesia exige listas y cantidad.
     if (form.autoApply && form.canal === "") {
-      setError("Una promoción automática necesita un canal (por ejemplo, solo recoger).");
+      setErrorCrear("Una promoción automática necesita un canal (por ejemplo, solo recoger).");
       return;
     }
     if (form.type === "cortesia" && (form.productIds.length === 0 || form.courtesyProductIds.length === 0 || !(Number(form.courtesyQuantity) >= 1))) {
-      setError("El combo de cortesía necesita los productos que lo disparan, los productos de cortesía y las piezas por producto.");
+      setErrorCrear("El combo de cortesía necesita los productos que lo disparan, los productos de cortesía y las piezas por producto.");
       return;
     }
     setCreating(true);
-    setError(null);
+    setErrorCrear(null);
     try {
       const minOrderTotal = form.minOrderTotal.trim() === "" ? undefined : Number(form.minOrderTotal);
       const maxUses = form.maxUses.trim() === "" ? undefined : Number(form.maxUses);
@@ -184,13 +188,14 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
       setModalCrearAbierto(false);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear la promoción.");
+      setErrorCrear(err instanceof Error ? err.message : "No se pudo crear la promoción.");
     } finally {
       setCreating(false);
     }
   }
 
   function startEdit(p: Promotion) {
+    setErrorEdicion(null);
     setEditingId(p.id);
     setEditStartsAt(formatDateInput(p.startsAt));
     setEditEndsAt(formatDateInput(p.endsAt));
@@ -198,7 +203,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
 
   async function handleSaveEdit(promotionId: string) {
     setSavingEdit(true);
-    setError(null);
+    setErrorEdicion(null);
     try {
       await updatePromotion(fetch, apiBaseUrl, token, propertyId, promotionId, {
         startsAt: dateInputToIso(editStartsAt, false),
@@ -207,7 +212,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
       setEditingId(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo actualizar la vigencia.");
+      setErrorEdicion(err instanceof Error ? err.message : "No se pudo actualizar la vigencia.");
     } finally {
       setSavingEdit(false);
     }
@@ -232,7 +237,13 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
     <PageContainer padding="none">
       <header className="flex flex-wrap items-center justify-end gap-3">
         <h1 className="sr-only">Promociones</h1>
-        <Button type="button" onClick={() => setModalCrearAbierto(true)}>
+        <Button
+          type="button"
+          onClick={() => {
+            setErrorCrear(null);
+            setModalCrearAbierto(true);
+          }}
+        >
           <Plus />
           Crear un código nuevo
         </Button>
@@ -307,6 +318,11 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
         }
       >
         <form id="restaurantes-promocion-nueva" onSubmit={handleCreate} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {errorCrear && (
+            <div className="sm:col-span-2">
+              <EstadoError titulo="No se pudo crear el código" mensaje={errorCrear} compacto />
+            </div>
+          )}
           <FormField label="Código">
             <Input
               id="promocion-codigo"
@@ -466,6 +482,11 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
         }}
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {errorEdicion && (
+            <div className="sm:col-span-2">
+              <EstadoError titulo="No se pudo actualizar la vigencia" mensaje={errorEdicion} compacto />
+            </div>
+          )}
           <FormField label="Vigente desde">
             <Input id="promocion-edit-desde" type="date" value={editStartsAt} onChange={(e) => setEditStartsAt(e.target.value)} />
           </FormField>

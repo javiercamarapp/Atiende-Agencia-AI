@@ -1,4 +1,4 @@
-// REGLA DURA de compatibilidad con la base SIN migrar (migracion 041, encuesta post-entrega), a nivel HTTP: el request corre dentro de UNA
+// REGLA DURA de compatibilidad con la base SIN migrar (migracion 061, encuesta post-entrega), a nivel HTTP: el request corre dentro de UNA
 // transaccion (`withAppSession`); con el repositorio Postgres REAL y una sesion que reproduce el estado ABORTADO de Postgres (25P02), cada
 // ruta debe degradar a "no disponible" (nunca un 500) y dejar la MISMA sesion utilizable (`ROLLBACK TO SAVEPOINT`).
 import { describe, expect, it } from "vitest";

@@ -1,5 +1,5 @@
-// Adaptador Postgres de `EncuestaRepository` (migracion 041). REGLA DURA de compatibilidad con la base SIN migrar: mergear despliega el
-// codigo al instante y la 041 no se aplica sola. Cada consulta corre dentro de la transaccion UNICA del request (`withAppSession`): un error
+// Adaptador Postgres de `EncuestaRepository` (migracion 061). REGLA DURA de compatibilidad con la base SIN migrar: mergear despliega el
+// codigo al instante y la 061 no se aplica sola. Cada consulta corre dentro de la transaccion UNICA del request (`withAppSession`): un error
 // de Postgres la deja abortada (25P02), por eso usa `runWithSavepointFallback` y degrada a `disponible: false` (42883 funcion inexistente,
 // 42P01 tabla, 42703 columna). `registrarEnvio` NO degrada: solo se llama tras `candidatas` (que ya confirmo la migracion) y dentro del
 // savepoint por fila del barrido.
@@ -39,7 +39,7 @@ function advertirNoDisponible(err: unknown): void {
   advertido = true;
   console.warn(
     "PostgresEncuestaRepository: las funciones restaurantes.encuesta_* todavia no existen en esta base (SQLSTATE 42P01/42703/42883) -- " +
-      "aplica packages/domain-restaurantes/migrations/041_encuesta_post_entrega.sql (o su espejo en supabase/migrations/).",
+      "aplica packages/domain-restaurantes/migrations/061_encuesta_post_entrega.sql (o su espejo en supabase/migrations/).",
     err,
   );
 }

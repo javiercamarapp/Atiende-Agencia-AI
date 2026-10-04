@@ -13,9 +13,16 @@ import { restaurantesAdminBranchesRoutes } from "./admin-branches.ts";
 import { restaurantesAdminOrdersRoutes } from "./admin-orders.ts";
 import { restaurantesAdminCustomersRoutes } from "./admin-customers.ts";
 import { restaurantesAdminStaffRoutes } from "./admin-staff.ts";
+import { restaurantesAdminAvisosRoutes } from "./admin-avisos.ts";
 import { restaurantesRepartidorOrdersRoutes } from "./repartidor-orders.ts";
 import { restaurantesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { restaurantesProgramadosInternoRoutes } from "./programados-interno.ts";
+import { restaurantesCierresRoutes } from "./cierres.ts";
+import { restaurantesCierresInternoRoutes } from "./cierres-interno.ts";
+import { restaurantesRepartidorPerfilRoutes } from "./repartidor-perfil.ts";
+import { restaurantesRepartidorHistorialRoutes } from "./repartidor-historial.ts";
+import { restaurantesExportacionesRoutes } from "./exportaciones.ts";
+import { restaurantesRepartidorLicenciasInternoRoutes } from "./repartidor-licencias-interno.ts";
 import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
@@ -53,11 +60,21 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fase 10 — alta/gestión de cuentas de staff (invitar/listar/revocar), ver el
   // comentario de cabecera de admin-staff.ts para la decisión de diseño completa.
   app.route("/", restaurantesAdminStaffRoutes(deps));
+  // R-16 (migración 043): preferencias de avisos por persona y umbral de entrega tardía (ver admin-avisos.ts).
+  app.route("/", restaurantesAdminAvisosRoutes(deps));
   // Hallazgo de auditoría — dispatcher real del canal de correo (channel='email'
   // del outbox), mismo patrón exacto que citasEmailDispatchRoutes.
   app.route("/", restaurantesEmailDispatchRoutes(deps));
   // R-11 (migración 034): promoción de pedidos programados por endpoint interno (sin cron, ver el archivo).
   app.route("/", restaurantesProgramadosInternoRoutes(deps));
+  app.route("/", restaurantesCierresInternoRoutes(deps));
+  app.route("/", restaurantesCierresRoutes(deps));
+  // R-15 (migración 044): perfil operativo del repartidor + barrido interno de licencias por vencer.
+  app.route("/", restaurantesRepartidorPerfilRoutes(deps));
+  app.route("/", restaurantesRepartidorHistorialRoutes(deps));
+  // R-17: exportar Historial y Clientes a CSV/PDF (owner/admin).
+  app.route("/", restaurantesExportacionesRoutes(deps));
+  app.route("/", restaurantesRepartidorLicenciasInternoRoutes(deps));
   // FASE 3 (producto) — bitácora de auditoría del staff (ver
   // packages/domain-restaurantes/migrations/019_restaurantes_audit_log.sql).
   app.route("/", restaurantesAuditoriaRoutes(deps));
@@ -75,7 +92,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // R-13 (migración 035): KPI de voz, costo por día y alertas operativas internas (panel + bitácora).
   app.route("/", restaurantesVozKpiRoutes(deps));
   app.route("/", restaurantesWhatsappKpiRoutes(deps));
-  // R-41 (migración 041): encuesta post-entrega -- panel (config, resumen, enviar pendientes), página pública del cliente por token firmado
+  // R-41 (migración 061): encuesta post-entrega -- panel (config, resumen, enviar pendientes), página pública del cliente por token firmado
   // y barrido interno idempotente (sin cron, ver encuesta-interno.ts).
   app.route("/", restaurantesEncuestaAdminRoutes(deps));
   app.route("/", restaurantesEncuestaPublicaRoutes(deps));

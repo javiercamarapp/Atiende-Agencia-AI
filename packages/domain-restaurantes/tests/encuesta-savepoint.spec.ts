@@ -1,4 +1,4 @@
-// REGLA DURA de compatibilidad con la base SIN migrar (migracion 041, encuesta post-entrega): el repositorio Postgres corre dentro de la
+// REGLA DURA de compatibilidad con la base SIN migrar (migracion 061, encuesta post-entrega): el repositorio Postgres corre dentro de la
 // transaccion UNICA del request. Con una sesion que reproduce el estado ABORTADO de Postgres (25P02) cada lectura degrada a "no disponible" y
 // deja la MISMA sesion utilizable (ROLLBACK TO SAVEPOINT); la escritura explicita de la configuracion no finge exito.
 import { describe, expect, it } from "vitest";

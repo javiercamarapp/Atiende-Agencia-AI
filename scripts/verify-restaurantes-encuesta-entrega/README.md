@@ -1,7 +1,7 @@
 # verify-restaurantes-encuesta-entrega
 
-Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/041_encuesta_post_entrega.sql`
-(espejo: `supabase/migrations/20240101000314_041_encuesta_post_entrega.sql`): encuesta post-entrega (R-41).
+Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/061_encuesta_post_entrega.sql`
+(espejo: `supabase/migrations/20240101000314_061_encuesta_post_entrega.sql`): encuesta post-entrega (R-41).
 
 Cubre: configuracion por sucursal (apagada por defecto, validacion de la liga de resenas https, rangos, bitacora solo si algo cambia),
 barrido (`encuesta_candidatas`: sucursal activa, espera, ventana de 48 h, trafico demo, pedido no entregado, otro tenant, limite) y

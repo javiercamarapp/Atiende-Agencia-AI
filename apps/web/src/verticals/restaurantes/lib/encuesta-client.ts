@@ -1,4 +1,4 @@
-// Cliente HTTP tipado de la encuesta post-entrega, lado PANEL (R-41, migracion 041). Mismo criterio que voz-kpi-client.ts: 404/503 o
+// Cliente HTTP tipado de la encuesta post-entrega, lado PANEL (R-41, migracion 061). Mismo criterio que voz-kpi-client.ts: 404/503 o
 // `disponible: false` (base sin migrar) = VozNoDisponibleError y la pantalla muestra un estado honesto; nunca inventa cifras.
 import { pedir, VozNoDisponibleError } from "./voz-client.ts";
 
@@ -69,7 +69,7 @@ export async function fetchEncuestaConfig(fetchImpl: typeof fetch, apiBaseUrl: s
   return r.config;
 }
 
-/** 503 = base sin la migracion 041: se propaga como VozNoDisponibleError (la pantalla dice que aun no esta disponible). */
+/** 503 = base sin la migracion 061: se propaga como VozNoDisponibleError (la pantalla dice que aun no esta disponible). */
 export async function guardarEncuestaConfig(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, config: EncuestaConfig): Promise<EncuestaConfig> {
   const r = await pedir<{ config: EncuestaConfig }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/config`, token, { method: "PUT", body: config });
   return r.config;

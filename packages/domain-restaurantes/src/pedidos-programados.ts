@@ -12,7 +12,7 @@
 //    cruces de medianoche incluidos). Sin horario configurado no se restringe, igual que un pedido normal.
 //  - Promocion: sin crons (decision de costo). Corre cuando el panel consulta los pedidos y por el endpoint
 //    interno /internal/restaurantes/promover-programados. Idempotente por construccion (la promocion solo
-//    toca filas en `programado`); un pedido cancelado nunca se promueve.
+//    toca filas en `programado`); un pedido cancelado nunca se promueve, ni uno de una sucursal desactivada.
 import { OrderValidationError } from "./errors.ts";
 import { etiquetaHoraLocal, mensajeProgramadoFueraDeHorario } from "./horarios.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
@@ -75,10 +75,15 @@ export async function promoverProgramadosVencidos(
   organizationId: string,
   options: { readonly propertyIds?: readonly string[] | null; readonly now?: Date; readonly anticipacionMin?: number } = {},
 ): Promise<PromocionProgramados> {
+  // Solo sucursales ACTIVAS: un programado de una sucursal dada de baja se queda en `programado` (visible en el panel)
+  // en vez de entrar en silencio a cocina. La migracion 041 hace lo mismo en SQL; este filtro protege tambien contra
+  // una base que todavia no la tiene (camino del panel, acotado a una organizacion).
+  const activas = new Set((await repo.listBranchesForOrganization(organizationId)).map((b) => b.propertyId));
+  const propertyIds = [...(options.propertyIds ?? activas)].filter((id) => activas.has(id));
   const result = await repo.promoteDueScheduledOrders(organizationId, {
     now: options.now ?? new Date(),
     anticipacionMin: options.anticipacionMin ?? ANTICIPACION_PROMOCION_MIN,
-    propertyIds: options.propertyIds ?? null,
+    propertyIds,
   });
   return { disponible: result.disponible, promovidos: result.promoted };
 }

@@ -1,4 +1,4 @@
-// Encuesta post-entrega, lado PANEL (R-41, migracion 041). Solo owner/admin (las funciones SQL exigen lo mismo):
+// Encuesta post-entrega, lado PANEL (R-41, migracion 061). Solo owner/admin (las funciones SQL exigen lo mismo):
 //   GET  /v1/restaurantes/:propertyId/admin/encuestas/config           configuracion de la sucursal (apagada por defecto)
 //   PUT  /v1/restaurantes/:propertyId/admin/encuestas/config           { activa, esperaMin, resenasUrl, umbralResena } (bitacora si cambia algo)
 //   GET  /v1/restaurantes/:propertyId/admin/encuestas/resumen          satisfaccion global, por sucursal y por repartidor + comentarios recientes
@@ -81,7 +81,7 @@ export function restaurantesEncuestaAdminRoutes(deps: AppDeps): Hono<CoreAuthHon
       return c.json({ disponible: true, config });
     } catch (err) {
       if (err instanceof EncuestaValidationError) throw Errors.validation(err.message);
-      if (err instanceof EncuestaNoDisponibleError) throw Errors.serviceUnavailable("La encuesta post-entrega aún no está disponible: requiere la actualización de base de datos pendiente (migración 041).");
+      if (err instanceof EncuestaNoDisponibleError) throw Errors.serviceUnavailable("La encuesta post-entrega aún no está disponible: requiere la actualización de base de datos pendiente (migración 061).");
       throw err;
     }
   });
