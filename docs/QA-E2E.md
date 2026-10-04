@@ -76,7 +76,7 @@ Servidor Node sin dependencias (`node --experimental-strip-types e2e/mock-api/ma
   await mock.buscar({ metodo: "DELETE", ruta: "/staff/miembros/" });
   ```
 
-Lo que **no** simula todavia (huecos conocidos): el storefront publico `/pedir/*`, SSE/Realtime de la agenda, el portal de
+Lo que **no** simula todavia (huecos conocidos): SSE/Realtime de la agenda, el portal de
 propietarios de rentas y el portal de cliente de despachos, y la mayor parte de las pantallas secundarias (ver
 `E2E_LISTAR_SIN_FIXTURE=1` por vertical).
 
@@ -108,6 +108,62 @@ Plantillas: `tests/humo-restaurantes.spec.ts` (menu completo por rol + confirm d
 `tests/humo-citas.spec.ts` (cancelar cita), `tests/humo-despachos.spec.ts` (cierre mensual irreversible con texto de
 confirmacion y rol `admin`), `tests/humo-superadmin.spec.ts` (dialogo con motivo),
 `tests/errores-y-latencia.spec.ts` (fallas e inyeccion).
+
+## Recorrido completo de restaurantes (qa-e2e-restaurantes)
+
+Base del protocolo de cierre por vertical. Archivos en `apps/web/e2e/tests/restaurantes/` (helpers en `helpers/recorrido.ts`):
+
+| Archivo | Que demuestra |
+|---|---|
+| `recorrido-restaurantes-roles.spec.ts` | owner y admin ven los 19 destinos del menu, staff solo los de operacion, el repartidor aterriza en Mis entregas; un staff que fuerza `/staff` o `/auditoria` ve la restriccion sin pedir datos ni escribir; un 403 del servidor es un estado de error manejado; sin sesion se manda al login |
+| `recorrido-restaurantes-controles.spec.ts` | camino feliz de los controles principales: cada uno hace la peticion exacta al mock (metodo, ruta, cuerpo) y la pantalla refleja el estado nuevo |
+| `recorrido-restaurantes-dialogos.spec.ts` | confirmaciones y formularios: Cancelar/Volver/Cerrar y Escape NO hacen ninguna escritura (vigilante de red); confirmar hace exactamente una |
+| `recorrido-restaurantes-errores.spec.ts` | 16 pantallas con 503 inyectado: EstadoError con Reintentar y recuperacion; sesion vencida manda al login; latencia alta muestra "Cargando" |
+| `recorrido-restaurantes-resumen-copiloto.spec.ts` | Resumen: 7 KPIs en orden, "—" sin dato (no un 0), pildoras con su destino; Copiloto: pregunta libre, abort con Detener, rol con acceso |
+| `viaje-restaurantes-pedido.spec.ts` | viaje encadenado con DOS sesiones: Primeros pasos, crear producto, pedido nuevo a preparando, asignar repartidor, el repartidor (otra sesion) lo marca en camino y entregado, el owner lo ve en Historial, Copiloto, cerrar sesion |
+| `matriz-restaurantes-visual.spec.ts` | las 19 paginas en claro, oscuro, escritorio y movil (los 4 proyectos): sin desborde horizontal, sin errores de consola ni 5xx, un solo `<main>`, a lo mucho un `<h1>` |
+| `storefront-restaurantes.spec.ts` | `/pedir/*` publico: sucursales, menu, carrito con tortilla obligatoria, validacion local, cotizacion, Seguir editando y Escape sin pedido, un solo pedido al confirmar, rastreo, minimo a domicilio, promocion invalida, error con Reintentar |
+
+La API simulada de restaurantes vive en `mock-api/fixtures/restaurantes.ts` (humo, Copiloto, repartidor), `restaurantes-panel.ts` (panel con
+estado y escrituras: un POST/PATCH se refleja en el GET siguiente) y `restaurantes-storefront.ts` (publico, escenario `anon`). El control
+`POST /__mock/escenarios/:id/estado` (`mock.agregarAEstado`) siembra un dato nuevo (p. ej. un pedido que "llega" mientras se mira el panel).
+
+### Cobertura de controles (honesta)
+
+El inventario `docs/diseno-ux-recorrido-botones-restaurantes.md` lista 184 sitios JSX por pantalla, no por identificador, asi que la cobertura se
+mide por pantalla. **No se alcanza el 95 % pedido**: queda en deuda lo marcado "Pendiente".
+
+| Pantalla | Cubierto por spec | Pendiente |
+|---|---|---|
+| Resumen | periodo, Actualizar, KPIs, pildoras, error | tarjetas de agentes y sparklines (solo se afirma que pintan) |
+| Pedidos | tabs, Actualizar ahora, Marcar Preparando, Cancelado (confirm), repartidor, Vista previa | auto-impresion, Imprimir/Reimprimir, Avisar al cliente, Marcar En camino/Entregado desde el panel |
+| Historial | filtro por estado, error | filtros de fecha, Cargar mas |
+| Productos | Nueva categoria, Nuevo producto, precio por sucursal, Disponible, Popular, error | casillas "no a domicilio" |
+| Promociones | crear, Editar vigencia, Activar/Desactivar | tipo/canal/dias/productos del formulario |
+| Clientes | busqueda, ficha, error (BUG-E2E-REST-002) | Volver a clientes |
+| Sucursales | Editar/Guardar/Cancelar | Reglas de pedido (turnos, minimos, propina, zonas, puentes, numero) |
+| Staff | Invitar, Revocar (confirm), rol, Dar de baja (confirm) | — |
+| Configuracion | WhatsApp, zona horaria, Agregar/Quitar zona (confirm), Volver al perfil por defecto (confirm) | el resto de la seccion del agente de WhatsApp |
+| Conversaciones | Tomar | Devolver, Resolver, Enviar respuesta, Agregar nota, callbacks |
+| Turnos | Guardar turnos | Agregar/Quitar turno, doble turno |
+| Auditoria | filtro por tipo | fechas, Cargar mas |
+| Privacidad | Guardar configuracion, error (BUG-E2E-REST-003) | panel ARCO |
+| Agente de voz | pinta sano (matriz) | todos los controles |
+| Repartidor | Marcar en camino/entregado (viaje), incidencia (spec previa), tema (BUG-E2E-REST-004) | Mapa y Llamar |
+| Copiloto | pregunta, abort, historial, Borrar chat (confirm) | Fijar, renombrar |
+| Storefront | recorrido completo | — |
+
+### Defectos encontrados (sin corregir; cada uno es un `test.fail` que avisa cuando se corrija)
+
+| ID | Pantalla | Sintoma | Donde | Spec |
+|---|---|---|---|---|
+| BUG-E2E-001 (previo) | confirmaciones y formularios | el foco cae en `<body>` al cerrar el dialogo | `packages/ui` (`useConfirm` sin Trigger) | humo-restaurantes y dialogos |
+| BUG-E2E-REST-001 | /repartidor | sin landmark `<main>` ni "Saltar al contenido" (queda fuera del shell) | `pages/Repartidor.tsx` | roles |
+| BUG-E2E-REST-002 | Clientes | la falla de carga se pinta como EstadoError SIN boton Reintentar | `pages/Clientes.tsx:68` y `:121` | errores |
+| BUG-E2E-REST-003 | Privacidad | la falla de carga de la configuracion es texto suelto, sin EstadoError ni Reintentar | `pages/Privacidad.tsx:119` | errores |
+| BUG-E2E-REST-004 | /repartidor | ignora el modo oscuro del sistema (`<html>` sin clase `dark`; el tema lo aplica solo el shell) | ruta `/repartidor` | matriz visual |
+
+Notas de la matriz visual: el movil usa el Pixel 7 de la config (375x812); el 390x844 del encargo no se agrego como proyecto para no tocar la config compartida.
 
 ## Convenciones
 

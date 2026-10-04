@@ -75,7 +75,10 @@ test.describe("restaurantes: viaje completo de un pedido @viaje", () => {
     await expect(page.getByText("En los últimos 7 días vendiste")).toBeVisible();
 
     // 7. Cierra sesion y vuelve al login de restaurantes.
-    await page.getByRole("button", { name: /Cerrar sesión|Salir/ }).first().click();
+    // En movil el menu de cuenta es una hoja que se abre con el boton de usuario.
+    const cuenta = page.getByRole("button", { name: "Abrir menú de cuenta" });
+    if (await cuenta.isVisible()) await cuenta.click();
+    await page.getByRole("button", { name: "Cerrar sesión" }).click();
     await expect(page).toHaveURL(/\/restaurantes\/login/);
     vigilante.verificar();
   });
