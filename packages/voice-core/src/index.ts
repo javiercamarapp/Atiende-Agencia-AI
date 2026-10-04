@@ -37,7 +37,7 @@ export { costoTotalMicroUsd, eventosCostoLlamada } from "./costo.ts";
 export type { EntradaEventosCosto, EventoCostoUso, TramoLlamada } from "./costo.ts";
 export { crearEscaleraLlamada } from "./escalera.ts";
 export type { EscalonLlamada, EscaleraLlamada, OpcionesEscalera } from "./escalera.ts";
-export { crearProveedorCascadaLlamada, energiaRms, pcm16AWav } from "./llamada/cascada-openrouter.ts";
+export { crearProveedorCascadaLlamada, energiaRms, pcm16AWav, pistaVocabulario } from "./llamada/cascada-openrouter.ts";
 export type { CascadaOpenRouterOpciones, MensajeLlmVoz, PeticionLlmVoz, ProveedorCascadaLlamada, PuertoLlmVoz, RespuestaLlmVoz, ToolCallLlmVoz } from "./llamada/cascada-openrouter.ts";
 export { crearEscalonesPlataforma, crearEscaleraPlataforma, estadoEscalera } from "./plataforma.ts";
 export type { CredencialesVoz, DepsPlataformaVoz, EstadoEscaleraVoz, EstadoEscalonVoz } from "./plataforma.ts";
