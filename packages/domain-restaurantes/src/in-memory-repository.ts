@@ -608,7 +608,10 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
-  async addCustomerAddressIfNew(customerId: string, address: string): Promise<void> {
+  async addCustomerAddressIfNew(customerId: string, address: string, organizationId: string): Promise<void> {
+    // Mismo guard cross-tenant que la funcion SQL (`add_customer_address_if_new`, migracion 048).
+    const dueno = this.customers.get(customerId);
+    if (!dueno || dueno.organizationId !== organizationId) throw new Error("el cliente no pertenece a la organización");
     const list = this.addresses.get(customerId) ?? [];
     if (list.some((a) => a.address === address)) return; // onConflict ignoreDuplicates
     list.push({ address, label: null, isDefault: list.length === 0 });
