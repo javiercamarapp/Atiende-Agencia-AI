@@ -1,7 +1,7 @@
 // Tenant sintetico del simulador: 1 organizacion + 1 property de 40 habitaciones en 4 tipos, tarifas (por la API real), politicas,
 // staff por rol con correos @example.test y el canal de WhatsApp. Lo que NO tiene endpoint (organizacion, membresias, inventario por
 // noche, impuestos, politica de cancelacion, zona horaria, canal) se siembra por SQL como lo haria el alta de un cliente.
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { Client } from "pg";
 import { hashPassword } from "@atiende/db";
 
@@ -12,7 +12,8 @@ export function uuidDe(clave: string): string {
 
 export const ZONA = "America/Cancun";
 export const PHONE_NUMBER_ID = "5550001001";
-export const PASSWORD = "simulacion-hoteles-correcta-123";
+// Password del staff sintetico: se genera por corrida (solo vive en este proceso y en el Postgres efimero).
+export const PASSWORD = `Sim-${randomBytes(18).toString("hex")}`;
 export const RFC_EMISOR = "HSA0101019A1";
 
 export type RolStaff = "owner" | "gm" | "frontdesk" | "frontdesk2" | "reservations" | "housekeeping" | "maintenance" | "fnb" | "accountant";
@@ -57,7 +58,7 @@ export interface Mundo {
 export const correoDe = (rol: RolStaff) => `${rol}@hotel-sintetico.example.test`;
 
 /** Siembra por SQL lo que no tiene endpoint. Los tipos de habitacion y habitaciones se crean por la API (ver main.ts) para ejercitarla. */
-export async function sembrarBase(db: Client, desde: string, hasta: string): Promise<Pick<Mundo, "organizationId" | "propertyId" | "slug" | "staff">> {
+export async function sembrarBase(db: Client): Promise<Pick<Mundo, "organizationId" | "propertyId" | "slug" | "staff">> {
   const organizationId = uuidDe("org");
   const propertyId = uuidDe("property");
   const slug = "hotel-sintetico";
@@ -76,8 +77,6 @@ export async function sembrarBase(db: Client, desde: string, hasta: string): Pro
   await db.query(`insert into hoteles.tax_config (property_id, organization_id, iva_rate, ish_rate, discount_threshold, dsa_per_night, rfc_emisor) values ($1, $2, 0.16, 0.03, 500, 0, $3)`, [propertyId, organizationId, RFC_EMISOR]);
   await db.query(`insert into hoteles.cancellation_policy (property_id, organization_id, free_until_hours, penalty_pct) values ($1, $2, 48, 0.5)`, [propertyId, organizationId]);
   await db.query(`insert into hoteles.whatsapp_channel_config (property_id, organization_id, phone_number_id, enabled) values ($1, $2, $3, true)`, [propertyId, organizationId, PHONE_NUMBER_ID]);
-  void desde;
-  void hasta;
   return { organizationId, propertyId, slug, staff: staff as Mundo["staff"] };
 }
 

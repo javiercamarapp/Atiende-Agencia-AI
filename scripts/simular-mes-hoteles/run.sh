@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Simulacion de un mes de un hotel sintetico contra un Postgres EFIMERO (initdb + pg_ctl locales; se destruye al salir).
 # Patron de scripts/eval-copiloto/run.sh. NUNCA toca la base real, Vercel, secretos ni llamadas pagadas: el unico Postgres es el
-# efimero, WhatsApp/PAC/pagos/LLM son dobles locales y cualquier fetch a un host que no sea local falla (ver main.ts).
+# efimero, WhatsApp/PAC/pagos/LLM son dobles locales y cualquier fetch a un host sin doble falla (la guarda cubre solo globalThis.fetch) (ver main.ts).
 #
 # Uso:
 #   scripts/simular-mes-hoteles/run.sh            # modo corto: 3 dias (el de CI, job opcional)
@@ -45,7 +45,7 @@ migrar() {
   psql -d postgres -v ON_ERROR_STOP=1 -q -c "create database ${base};"
   local PSQL=(psql -d "$base" -v ON_ERROR_STOP=1 -q)
   echo "==> bootstrap de plataforma (auth.uid()/roles)"
-  "${PSQL[@]}" -f "$HERE/sql/bootstrap.sql" >/dev/null 2>&1
+  "${PSQL[@]}" -f "$HERE/sql/bootstrap.sql" >/dev/null
   echo "==> TODAS las migraciones reales de supabase/migrations/"
   for f in "$REPO_ROOT"/supabase/migrations/*.sql; do "${PSQL[@]}" -f "$f" >/dev/null; done
   echo "==> GRANT USAGE de schemas (lo que en Supabase hace la plataforma)"

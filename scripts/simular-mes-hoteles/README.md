@@ -26,7 +26,7 @@ ya migrada entre corridas; sin esa variable todo es efimero.
 | WhatsApp saliente | `WhatsAppOutboundDispatcher` real + `FakeWhatsAppGraphClient` |
 | PAC (CFDI) | `DualPacCfdiPort(FakeFinkokAdapter, FakeSwSapienAdapter)` |
 | Pagos con tarjeta | `InMemoryPaymentsPort` |
-| Cualquier otro host | **Bloqueado y contado** (`guarda-red.ts`): el assert `cero-llamadas-externas` falla si algo intenta salir (Meta, PAC, Stripe, OpenRouter real, Resend) |
+| Cualquier otro host (via `fetch`) | **Bloqueado y contado** (`guarda-red.ts`): el assert `cero-llamadas-externas` falla si algo intenta salir (Meta, PAC, Stripe, OpenRouter real, Resend) |
 
 ## Dia tipo (`dia.ts`)
 

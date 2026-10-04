@@ -93,7 +93,6 @@ export async function atenderLoDelAgente(ctx: Contexto): Promise<void> {
       }
     }
   }
-  void cron;
 }
 
 /** Tickets de huesped (quejas) por la API de staff, con su ciclo y el barrido de SLA. */

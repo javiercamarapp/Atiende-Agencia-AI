@@ -1,4 +1,6 @@
-// Guarda de red del simulador: NINGUNA llamada saliente real. Todo `fetch` a un host que no sea local se rechaza y se registra
+// Guarda de red del simulador: sustituye `globalThis.fetch`; todo `fetch` a un host que no tenga doble (incluido localhost) se rechaza y se registra.
+// Alcance: solo `fetch`; una salida por http/https de Node, net o un SDK que no use fetch NO se intercepta ni se cuenta.
+// Objetivo: NINGUNA llamada saliente real por fetch.
 // (si algo del codigo bajo prueba intentara hablar con Meta, un PAC, Stripe, OpenRouter o Resend, el assert "cero llamadas externas"
 // lo expone en vez de gastar o enviar nada). Excepcion declarada: los HOSTS DOBLADOS (`dobles`), cuyas respuestas fabrica el propio
 // simulador en proceso; se cuentan aparte para que el ledger muestre que el doble se uso y no hubo red.

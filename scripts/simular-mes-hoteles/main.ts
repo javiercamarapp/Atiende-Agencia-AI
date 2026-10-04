@@ -55,7 +55,7 @@ await db.connect();
 reloj.instalar();
 let codigoSalida = 0;
 try {
-  const base = await mundoMod.sembrarBase(db, sumarDias(INICIO, -1), sumarDias(INICIO, DIAS + 60));
+  const base = await mundoMod.sembrarBase(db);
   // Dobles locales SOLO en los bordes de red (pagos, PAC, WhatsApp saliente): el resto de las dependencias son las de produccion.
   const { InMemoryPaymentsPort } = await import("@atiende/domain-hoteles");
   const { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } = await import("@atiende/mcp-cfdi");
@@ -145,7 +145,7 @@ try {
     if (usoLlm.llamadas > 0) eventos.push({ tipo: "llm.resumen_del_dia", actor: "agente", ok: true, status: null, detalle: { llamadas: usoLlm.llamadas, herramientas: JSON.stringify(herramientas) } });
     ultimaCerrada = [...ctx.cerradas].sort().at(-1) ?? null;
     const asserts = [
-      { id: "cero-5xx", descripcion: "Ninguna respuesta 5xx del dia", ok: http.cincoXX === 0, detalle: `${http.cincoXX} de ${http.total}` },
+      { id: "cero-5xx", descripcion: "Ninguna respuesta 5xx del dia en la app con dobles (el sondeo sin credenciales no cuenta; su 503 esperado se lista aparte)", ok: http.cincoXX === 0, detalle: `${http.cincoXX} de ${http.total}` },
       ...(await asertsMod.assertsDeDatos(db, propertyId, ultimaCerrada, ctx.ultimoBarridoSlaMs === null ? null : new Date(ctx.ultimoBarridoSlaMs))),
     ];
     totalLlm.costoUsd += lineas.find((l) => l.concepto === "llm")?.costoUsd ?? 0;
