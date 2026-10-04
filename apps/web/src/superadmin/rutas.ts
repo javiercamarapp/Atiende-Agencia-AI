@@ -22,7 +22,6 @@ import {
   Cpu,
   DollarSign,
   FileSearch,
-  FileSignature,
   KeyRound,
   LayoutGrid,
   LineChart,
@@ -32,8 +31,6 @@ import {
   Newspaper,
   Plug,
   Power,
-  Receipt,
-  ReceiptText,
   Scale,
   ShieldAlert,
   ShieldCheck,
@@ -74,12 +71,11 @@ export const NEGOCIO: readonly RutaSuperadmin[] = [
   { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
   { to: "/superadmin/cerebro", label: "Cerebro de ventas", icon: Brain },
   { to: "/superadmin/organizaciones", label: "Organizaciones", icon: Building2 },
-  { to: "/superadmin/costos-margen", label: "Costos y margen", icon: Coins },
-  { to: "/superadmin/pyl", label: "P&L por vertical", icon: ReceiptText },
-  { to: "/superadmin/contratos", label: "Contratos por cliente", icon: FileSignature },
-  { to: "/superadmin/facturacion", label: "Facturación", icon: Receipt },
-  { to: "/superadmin/gasto-api", label: "Gasto de API de LLM", icon: DollarSign },
-  { to: "/superadmin/cfo", label: "Dashboard CFO", icon: LineChart },
+  // SA-L-21/22/24: en Likida Costos & Facturacion, Consumo de IA y Ejecutivo / Board son UNA entrada cada uno. Las rutas viejas
+  // (facturacion, costos-margen, pyl, contratos, gasto-api, cfo) siguen vivas como redireccion (REDIRECCIONES_SUPERADMIN).
+  { to: "/superadmin/costos-facturacion", label: "Costos y facturación", icon: Coins },
+  { to: "/superadmin/consumo-ia", label: "Consumo de IA", icon: DollarSign },
+  { to: "/superadmin/ejecutivo", label: "Ejecutivo / Board", icon: LineChart },
 ];
 
 export const PLATAFORMA: readonly RutaSuperadmin[] = [{ to: "/superadmin/integraciones", label: "Integraciones", icon: Plug }];
@@ -113,11 +109,11 @@ export const SECCIONES: readonly SeccionSuperadmin[] = [
 export const TODAS_LAS_RUTAS: readonly RutaSuperadmin[] = [RESUMEN, ...SECCIONES.flatMap((s) => s.items)];
 
 /**
- * Pie fijo del sidebar. Cada pildora lleva a una pagina real: "Costos de IA" abre el gasto real de LLM
- * (`Gasto de API de LLM`) y "Ver los otros paneles" el selector de paneles (`Paneles.tsx`).
+ * Pie fijo del sidebar. Cada pildora lleva a una pagina real: "Costos de IA" abre Costos y facturacion
+ * (gasto historico de IA y costo por operacion) y "Ver los otros paneles" el selector de paneles (`Paneles.tsx`).
  */
 export const PIE_SUPERADMIN = [
-  { label: "Costos de IA", to: "/superadmin/gasto-api" },
+  { label: "Costos de IA", to: "/superadmin/costos-facturacion" },
   { label: "Ver los otros paneles", to: "/superadmin/paneles", icon: ArrowLeftRight },
 ] as const;
 
@@ -138,6 +134,14 @@ export const RUTAS_SIN_MENU: readonly string[] = [PARTE_DIARIO, "/superadmin/not
 /** Rutas web que cambiaron de lugar: la vieja redirige a la nueva (sin 404). */
 export const REDIRECCIONES_SUPERADMIN: Readonly<Record<string, string>> = {
   "/superadmin/resumen": "/superadmin",
+  // SA-L-21: las cuatro paginas de costos son pestanas de una sola (la pestana activa va en `?tab=`).
+  "/superadmin/facturacion": "/superadmin/costos-facturacion?tab=facturacion",
+  "/superadmin/costos-margen": "/superadmin/costos-facturacion?tab=costos",
+  "/superadmin/pyl": "/superadmin/costos-facturacion?tab=pyl",
+  "/superadmin/contratos": "/superadmin/costos-facturacion?tab=contratos",
+  // SA-L-22 y SA-L-24: renombradas como en Likida.
+  "/superadmin/gasto-api": "/superadmin/consumo-ia",
+  "/superadmin/cfo": "/superadmin/ejecutivo",
   // SA-L-20: la gestion de organizaciones es la pestana "Gestion" de Organizaciones (sin 404 en enlaces y notificaciones viejas).
   "/superadmin/gestion-organizaciones": "/superadmin/organizaciones?tab=gestion",
   // Prospectos pasa a "Cerebro de ventas" (SA-L-37): la ruta vieja redirige a la nueva.

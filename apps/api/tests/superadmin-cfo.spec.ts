@@ -238,7 +238,7 @@ describe("cron /internal/superadmin/alertas-cfo", () => {
     const margen = notificar.mock.calls[1]![0];
     expect(margen.titulo).toBe("Clientes con margen bajo el 30 %: 1");
     expect(margen.detalle).toBe("Org c (margen 12.4 % (umbral 30 %))");
-    expect(margen.href).toBe("/superadmin/cfo");
+    expect(margen.href).toBe("/superadmin/ejecutivo");
   });
 
   it("sin alertas que dar (todo sano) no notifica nada pero si toma la foto", async () => {
@@ -298,7 +298,7 @@ describe("cron /internal/superadmin/alertas-cfo -- notificacion in-app (campana)
     ]);
     for (const e of t.emisiones) {
       expect(e.organizationId).toBeNull();
-      expect(e.enlace).toBe("/superadmin/cfo");
+      expect(e.enlace).toBe("/superadmin/ejecutivo");
       expect(`${e.titulo} ${e.cuerpo}`).not.toMatch(/Org [a-e]|@/);
     }
     expect(t.emisiones[1]!.cuerpo).toBe("Regla: margen_bajo. Organizaciones afectadas: 1.");
