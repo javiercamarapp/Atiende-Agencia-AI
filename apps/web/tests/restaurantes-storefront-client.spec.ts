@@ -37,21 +37,30 @@ describe("crearClienteStorefront", () => {
   it("crearPedido: direccion solo a domicilio, propina solo si es mayor a 0, correo vacio no se manda", async () => {
     const f = vi.fn().mockResolvedValue(res({ rastreo_token: "t1.x.y" }));
     const c = crearClienteStorefront("https://api.test", "demo", f as unknown as typeof fetch);
-    await c.crearPedido("centro", DATOS, { nombre: "Ana", telefono: "9991234567", correo: " ", direccion: "Calle 1", propina: 0 }, "a".repeat(32));
+    await c.crearPedido("centro", DATOS, { nombre: "Ana", telefono: "9991234567", correo: " ", direccion: "Calle 1", propina: 0, aceptaAviso: true }, "a".repeat(32));
     const body = JSON.parse((f.mock.calls[0]![1] as RequestInit).body as string);
     expect(body.customer_address).toBeUndefined();
     expect(body.propina).toBeUndefined();
     expect(body.customer_email).toBeUndefined();
     expect(body.quote_hash).toBe("a".repeat(32));
-    await c.crearPedido("centro", { ...DATOS, canal: "domicilio" }, { nombre: "Ana", telefono: "9991234567", direccion: "Calle 1", propina: 20 }, null);
+    // La casilla del aviso de privacidad viaja al servidor (que la exige y guarda la evidencia).
+    expect(body.acepta_aviso_privacidad).toBe(true);
+    await c.crearPedido("centro", { ...DATOS, canal: "domicilio" }, { nombre: "Ana", telefono: "9991234567", direccion: "Calle 1", propina: 20, aceptaAviso: true }, null);
     const b2 = JSON.parse((f.mock.calls[1]![1] as RequestInit).body as string);
     expect(b2).toMatchObject({ customer_address: "Calle 1", propina: 20 });
+  });
+
+  it("crearPedido sin la casilla marcada manda false (el servidor responde 400 y no crea el pedido)", async () => {
+    const f = vi.fn().mockResolvedValue(res({ rastreo_token: "t" }));
+    const c = crearClienteStorefront("https://api.test", "demo", f as unknown as typeof fetch);
+    await c.crearPedido("centro", DATOS, { nombre: "Ana", telefono: "9991234567", aceptaAviso: false }, null);
+    expect(JSON.parse((f.mock.calls[0]![1] as RequestInit).body as string).acepta_aviso_privacidad).toBe(false);
   });
 
   it("propaga el mensaje real del servidor y el motivo de la maquina de estados", async () => {
     const f = vi.fn().mockResolvedValue(res({ code: "validation_error", message: "La cotización ya venció.", motivo: "cotizacion_vencida" }, 400));
     const c = crearClienteStorefront("https://api.test", "demo", f as unknown as typeof fetch);
-    await expect(c.crearPedido("centro", DATOS, { nombre: "A", telefono: "1" }, null)).rejects.toMatchObject({ message: "La cotización ya venció.", status: 400, motivo: "cotizacion_vencida" });
+    await expect(c.crearPedido("centro", DATOS, { nombre: "A", telefono: "1", aceptaAviso: true }, null)).rejects.toMatchObject({ message: "La cotización ya venció.", status: 400, motivo: "cotizacion_vencida" });
   });
 
   it("429 muestra un mensaje de espera; cuerpo no JSON usa el mensaje generico", async () => {

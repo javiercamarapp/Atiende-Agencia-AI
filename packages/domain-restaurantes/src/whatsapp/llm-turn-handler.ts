@@ -34,9 +34,9 @@ import type { ConversationMessage, RestaurantesRepository } from "../repository.
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
-import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS } from "./inbound.ts";
+import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestSharedLocation } from "./location.ts";
-import { branchAlreadyKnown, classifyHighRiskIntent, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal } from "./guards.ts";
+import { branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
@@ -493,17 +493,21 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let propertyId: string | null = activeEntryBranch?.propertyId ?? null;
       let huboFalloDeHerramienta = false;
       let lastQuoteTotal: number | null = null;
+      let lastQuoteAmounts: readonly number[] | undefined;
       let anyToolCalled = false;
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
-      const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(reply, working), lastQuoteTotal);
+      const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(reply, working), lastQuoteTotal, lastQuoteAmounts);
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
       const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string } } => (escalarMotivo ? { ...r, escalacion: { motivo: escalarMotivo } } : r);
 
       // Motivos de alto riesgo (cancelacion, cobro, ARCO, alergia, transferencia, queja, "quiero una
       // persona"): no se dejan al criterio del modelo. Se avisa al equipo ANTES del LLM y se responde fijo.
-      const latestUserMessage = [...messages].reverse().find((m) => m.role === "user");
-      const riesgo = latestUserMessage ? classifyHighRiskIntent(latestUserMessage.content, contextoDeCliente(customer)) : null;
+      // En una rafaga (espera de mensajes) se revisan TODOS los mensajes del cliente sin responder, no solo el ultimo: el riesgo puede venir
+      // en el primero ("me cobraron dos veces") seguido de un "hola??". Sin rafaga el unico pendiente es el mensaje nuevo (igual que antes).
+      // Solo los ultimos 5: una cola larga sin respuesta (p. ej. mensajes de una toma humana ya devuelta) no revive escalaciones viejas.
+      const pendientes = mensajesSinResponder(messages).slice(-5);
+      const riesgo = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), contextoDeCliente(customer));
       if (riesgo) {
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         // Autopiloto: con la bandera de la organizacion encendida, una cancelacion con pedido activo se resuelve con una solicitud de aprobacion (o la
@@ -513,12 +517,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (resuelta) return { reply: resuelta.reply, orderId: null, propertyId };
         }
         // El subtipo de la queja viaja en el resumen del aviso al equipo (lista cerrada).
-        const subtipoDeQueja = riesgo.motivo === "queja" && options.autopiloto ? subtipoQueja(latestUserMessage!.content) : null;
+        const subtipoDeQueja = riesgo.motivo === "queja" && options.autopiloto ? subtipoQueja(riesgo.text) : null;
         const aviso = await executeAgentToolSafely(
           repo,
           { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null },
           "escalar_a_humano",
-          { customer_name: nombre, motivo: riesgo.motivo, resumen: `${subtipoDeQueja ? `[queja:${subtipoDeQueja}] ` : ""}${latestUserMessage!.content}`.slice(0, 500) },
+          { customer_name: nombre, motivo: riesgo.motivo, resumen: `${subtipoDeQueja ? `[queja:${subtipoDeQueja}] ` : ""}${riesgo.text}`.slice(0, 500) },
         );
         // Honestidad: solo se dice "ya avisé al equipo" si el aviso quedó registrado de verdad.
         if (isToolErrorResult(aviso.result)) {
@@ -529,9 +533,17 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         escalarMotivo = riesgo.motivo;
         // Autopiloto: la queja queda ligada al ultimo pedido del telefono (solicitud de compensacion, decide una persona); no cambia la respuesta.
         if (riesgo.motivo === "queja" && options.autopiloto) {
-          await registrarQuejaConAutopiloto(repo, options.autopiloto, { organizationId, phone, texto: latestUserMessage!.content, ahora: now() });
+          await registrarQuejaConAutopiloto(repo, options.autopiloto, { organizationId, phone, texto: riesgo.text, ahora: now() });
         }
         return done({ reply: riesgo.reply, orderId: null, propertyId });
+      }
+
+      // La cotizacion vigente vive en la maquina de estados del servidor (no en una variable del turno): un turno posterior
+      // sin herramientas ("¿cuanto era?") sigue corrigiendo un total alucinado. Base sin migrar -> null: solo el turno que cotiza.
+      const flowVigente = (await repo.readOrderFlow(organizationId, `wa:${phone}`))?.context ?? null;
+      if (flowVigente && typeof flowVigente.quotedTotal === "number" && Number.isFinite(flowVigente.quotedTotal)) {
+        lastQuoteTotal = flowVigente.quotedTotal;
+        lastQuoteAmounts = flowVigente.quotedAmounts;
       }
 
       // Modo sin IA (interruptor de plataforma, tope de gasto agotado, proveedor caido o turno sin tiempo): si NO hay pedido creado, "problema
@@ -609,9 +621,18 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = executed.result;
             rechazoDelFlujo = executed.rechazoDelFlujo;
             anyToolCalled = true;
-            const quoted = (result as { quote?: { total?: unknown }; order?: { total?: unknown } } | null) ?? null;
-            if (call.name === "cotizar_pedido" && typeof quoted?.quote?.total === "number") lastQuoteTotal = quoted.quote.total;
-            if (call.name === "crear_pedido" && typeof quoted?.order?.total === "number") lastQuoteTotal = quoted.order.total;
+            const quoted = (result as { quote?: Parameters<typeof knownAmountsOfQuote>[0]; order?: { total?: unknown; items?: readonly { price?: unknown; quantity?: unknown }[] } } | null) ?? null;
+            if (call.name === "cotizar_pedido" && typeof quoted?.quote?.total === "number") {
+              lastQuoteTotal = quoted.quote.total;
+              lastQuoteAmounts = knownAmountsOfQuote(quoted.quote);
+            }
+            if (call.name === "crear_pedido" && typeof quoted?.order?.total === "number") {
+              lastQuoteTotal = quoted.order.total;
+              lastQuoteAmounts = knownAmountsOfQuote({
+                total: quoted.order.total,
+                lines: (quoted.order.items ?? []).map((i) => ({ price: i.price, line_total: typeof i.price === "number" && typeof i.quantity === "number" ? Math.round(i.price * i.quantity * 100) / 100 : undefined })),
+              });
+            }
             if (executed.orderId) {
               orderId = executed.orderId;
               propertyId = executed.propertyId;
@@ -624,6 +645,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (call.name === "escalar_a_humano" && !isToolErrorResult(result)) {
             escalarMotivo = typeof input.motivo === "string" ? input.motivo : "otro";
           }
+          // Pedido grande retenido por el servidor: el aviso ya quedo registrado; solo se abre la toma de handoff (R-21).
+          if (call.name === "crear_pedido" && (result as { pedido_grande?: unknown } | null)?.pedido_grande === true) escalarMotivo = "pedido_grande";
           // El rechazo de un duplicado (`pedido_ya_creado`) o de un reintento simultaneo (`pedido_en_proceso`) es el servidor haciendo su trabajo,
           // no un fallo del modelo barato: no justifica pagar el escalon caro.
           if (call.name === "crear_pedido" && isToolErrorResult(result) && rechazoDelFlujo !== "pedido_ya_creado" && rechazoDelFlujo !== "pedido_en_proceso") {
@@ -636,7 +659,20 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       if (orderId) {
         return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
       }
-      return done({ reply: perfil === "taqueria_pm" ? PM_COPY.turnoComplicado : "Se me complicó procesar su pedido, un momento por favor.", orderId, propertyId });
+      // El loop agoto sus vueltas sin pedido: "un momento, por favor" dejaba al cliente esperando algo que nunca llegaba. Se avisa al equipo
+      // (motivo no_puedo_resolver, que abre la toma de handoff) y solo se dice "ya avise" si el aviso quedo registrado; si no, una pregunta concreta.
+      const ultimoCliente = [...messages].reverse().find((m) => m.role === "user");
+      const aviso = await executeAgentToolSafely(
+        repo,
+        { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null },
+        "escalar_a_humano",
+        { customer_name: !customer.isNew && customer.name ? customer.name : "Cliente", motivo: "no_puedo_resolver", resumen: `El agente agoto sus vueltas sin completar el pedido. Ultimo mensaje del cliente: ${ultimoCliente?.content.slice(0, 400) ?? ""}` },
+      );
+      if (isToolErrorResult(aviso.result)) {
+        return done({ reply: perfil === "taqueria_pm" ? PM_COPY.turnoAgotadoSinAviso : "Se me complicó procesar su solicitud. ¿Me puede decir en una sola frase qué le gustaría pedir, por favor?", orderId, propertyId });
+      }
+      escalarMotivo = "no_puedo_resolver";
+      return done({ reply: perfil === "taqueria_pm" ? PM_COPY.turnoAgotadoConAviso : "Se me complicó procesar su solicitud por este medio. Ya avisé al equipo para que lo contacte directamente.", orderId, propertyId });
     },
   };
 }

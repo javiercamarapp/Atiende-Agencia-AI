@@ -41,6 +41,48 @@ describe("e2e WhatsApp: casos de negocio", () => {
     expect(await repo.listCustomerAddresses(c!.id)).toHaveLength(1); // misma direccion: no se duplica
   });
 
+  it("PROGRAMADO por el agente: cotiza con la hora, el cliente confirma en un mensaje POSTERIOR y el pedido queda `programado` (sin cocina ni POS hasta promoverlo)", async () => {
+    stack = await startCicloStack();
+    stack.ctx.restaurantesRepo.setScheduledOrdersSupported(true);
+    const seen: unknown[] = [];
+    const items = [coca(stack, 4)];
+    // "Ahora" es martes 13:00 de Merida; el miercoles 14:00 es 20:00Z.
+    const programado_para = "2026-10-07T14:00:00-06:00";
+    stack.setScript([
+      call("cotizar_pedido", { branch_slug: "fco-montejo", canal: "recoger", items, programado_para }),
+      sayObserving(seen, "Son $180 para manana a las 2 de la tarde. Confirma?"),
+      call("confirmar_resumen", {}),
+      call("crear_pedido", { branch_slug: "fco-montejo", canal: "recoger", customer_name: "Paty Programada", payment_method: "efectivo", items, programado_para }),
+      say("Listo, quedo programado."),
+    ]);
+    await stack.sim.deliverText("5219991230090", "Quiero 4 cocas para manana a las 2 de la tarde, para recoger");
+    expect(JSON.stringify(seen[0])).toContain("2026-10-07T20:00:00.000Z");
+    // Todavia no hay pedido: falta la confirmacion del cliente en un mensaje posterior.
+    expect((await stack.ctx.restaurantesRepo.listOrders(stack.ctx.organizationId, { propertyIds: null, limit: 5 } as never)).orders).toHaveLength(0);
+    await stack.sim.deliverText("5219991230090", "Si, confirmo");
+    const programados = await stack.ctx.restaurantesRepo.listScheduledOrders(stack.ctx.organizationId, { propertyIds: null, limit: 5 });
+    expect(programados.orders).toHaveLength(1);
+    expect(programados.orders[0]).toMatchObject({ status: "programado", programadoPara: "2026-10-07T20:00:00.000Z" });
+    expect(stack.pos.comandas).toHaveLength(0); // fuera de cocina y del POS
+  });
+
+  it("PROGRAMADO por el agente: cambiar la hora despues de confirmar se rechaza y NO crea pedido", async () => {
+    stack = await startCicloStack();
+    stack.ctx.restaurantesRepo.setScheduledOrdersSupported(true);
+    const items = [coca(stack, 4)];
+    stack.setScript([
+      call("cotizar_pedido", { branch_slug: "fco-montejo", canal: "recoger", items, programado_para: "2026-10-07T14:00:00-06:00" }),
+      say("Son $180 para manana a las 2. Confirma?"),
+      call("confirmar_resumen", {}),
+      call("crear_pedido", { branch_slug: "fco-montejo", canal: "recoger", customer_name: "Paty Programada", payment_method: "efectivo", items, programado_para: "2026-10-07T18:00:00-06:00" }),
+      say("No pude registrarlo."),
+    ]);
+    await stack.sim.deliverText("5219991230091", "4 cocas para manana a las 2, para recoger");
+    await stack.sim.deliverText("5219991230091", "Si");
+    expect((await stack.ctx.restaurantesRepo.listOrders(stack.ctx.organizationId, { propertyIds: null, limit: 5 } as never)).orders).toHaveLength(0);
+    expect((await stack.ctx.restaurantesRepo.listScheduledOrders(stack.ctx.organizationId, { propertyIds: null, limit: 5 })).orders).toHaveLength(0);
+  });
+
   it("producto AGOTADO: buscar_producto no lo ofrece y cotizar_pedido lo rechaza (el modelo no puede venderlo)", async () => {
     stack = await startCicloStack();
     const seen: unknown[] = [];

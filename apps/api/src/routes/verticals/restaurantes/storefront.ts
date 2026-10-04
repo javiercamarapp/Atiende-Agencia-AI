@@ -12,6 +12,9 @@
 // Compatibilidad con la base sin migrar: el menu, la politica y el flujo degradan con SAVEPOINT en el
 // repositorio; el rastreo (migracion 032) responde `disponible: false` si la funcion aun no existe. Nada
 // de esto devuelve 500 por una base vieja.
+//
+// Consentimiento: el POST de pedido exige `acepta_aviso_privacidad: true` (400 `aviso_privacidad_requerido` si falta) y, ya creado
+// el pedido, guarda la evidencia (version del aviso, fecha, canal) con `PrivacidadRepository.recordOrderPrivacyConsent` (migracion 063).
 import { Hono } from "hono";
 import type { Context } from "hono";
 import {
@@ -62,6 +65,8 @@ interface StorefrontBody {
   readonly customer_address?: unknown;
   readonly notes?: unknown;
   readonly propina?: unknown;
+  /** Aceptacion del aviso de privacidad (casilla del checkout): sin `true` el servidor no crea el pedido. */
+  readonly acepta_aviso_privacidad?: unknown;
   readonly programado_para?: unknown;
 }
 
@@ -133,6 +138,16 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
     if (secondary) {
       const bySession = await consumeRateLimit(repo, `${scope}-session`, requestActor(c.req.raw, `${organizationId}:${secondary}`), max, 60);
       if (!bySession.allowed) throw Errors.tooManyRequests();
+    }
+  }
+
+  async function registrarConsentimiento(db: Parameters<typeof deps.restaurantesRepo>[0], repo: RestaurantesRepository, organizationId: string, orderId: string): Promise<void> {
+    const privacidad = deps.privacidadRepo?.(db);
+    if (!privacidad) return;
+    try {
+      await repo.runWithRowSavepoint(() => privacidad.recordOrderPrivacyConsent(organizationId, orderId, "web"));
+    } catch (err) {
+      console.error("storefront: no se pudo guardar el consentimiento del aviso de privacidad (el pedido ya existe):", err instanceof Error ? err.message : err);
     }
   }
 
@@ -256,6 +271,11 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
     const sessionId = sessionIdOf(body);
     rejectProgramado(body);
     const items = cleanItems(body.items);
+    // El checkout web exige la aceptacion del aviso de privacidad EN EL SERVIDOR (la casilla de la interfaz no basta):
+    // sin ella no se toca la base ni se crea nada. Debe ser el booleano `true`, no un texto ni un numero.
+    if (body.acepta_aviso_privacidad !== true) {
+      return c.json({ code: "validation_error", message: "Para hacer tu pedido debes aceptar el aviso de privacidad.", motivo: "aviso_privacidad_requerido" }, 400);
+    }
     const cliente = {
       nombre: strOrReject(body.customer_name, 160, "El nombre"),
       telefono: strOrReject(body.customer_phone, 64, "El teléfono"),
@@ -296,6 +316,9 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
           }),
         );
         const order = outcome.raw as Order;
+        // Evidencia del consentimiento (version del aviso vigente, fecha, canal `web`; sin PII). Best-effort con SAVEPOINT: base sin la
+        // migracion 063 -> "no_disponible"; cualquier otro fallo se registra y NUNCA tumba un pedido ya creado.
+        await registrarConsentimiento(db, repo, org.id, order.id);
         const encolada = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), {
           order,
           tipo: canal === "recoger" ? "recoger" : "domicilio",

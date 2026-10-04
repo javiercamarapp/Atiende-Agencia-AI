@@ -173,6 +173,12 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
           // Cluster #3 (CRÍTICO) de la auditoría final — `createOrder` ya encoló internamente
           // (best-effort) la confirmación por correo al cliente si dejó correo; disparo inline del
           // drenado, mismo `repo`/transacción, en vez de esperar al cron diario.
+          // Pedido grande (decision de PM): el servidor NO lo creo, dejo el aviso `pedido_grande` para que la sucursal lo
+          // confirme. No hay pedido que correo-notificar ni comanda que encolar; el agente de voz recibe el resultado tal cual.
+          if (outcome.orderId === null) {
+            await auditVoice(repo, org, caller, "crear_pedido", "ok", "pedido_grande_retenido");
+            return c.json(outcome.result);
+          }
           await triggerRestaurantesEmailDispatchInline(deps, db, repo);
           await auditVoice(repo, org, caller, "crear_pedido", "ok", null);
           // SoftRestaurant (POS): los pedidos de voz tambien encolan su comanda (igual que antes de
