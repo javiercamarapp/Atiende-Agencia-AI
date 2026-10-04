@@ -51,7 +51,7 @@ const connectOriginal = (pg.Pool.prototype as unknown as { connect: (...a: unkno
 // OpenRouter SIMULADO: respuesta fija tras `LLM_MS`. Cualquier otro destino pasa al fetch real (solo el Graph local).
 let llamadasLlm = 0;
 const fetchReal = globalThis.fetch;
-globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   if (!url.includes("openrouter.ai")) return fetchReal(input, init);
   llamadasLlm += 1;
@@ -143,10 +143,11 @@ for (const n of NIVELES) {
   const PRODUCTO = "00000000-0000-4000-8000-0000000e0d01";
   const WEB = { origin: "http://localhost:5173", "content-type": "application/json" };
   const VOZ = { "x-atiende-tool-secret": process.env.VOICE_TOOL_SECRET ?? "", "content-type": "application/json" };
-  const pedir = async (headers: Record<string, string>, body: Record<string, unknown>): Promise<{ status: number; json: Record<string, any> }> => {
+  const pedir = async (headers: Record<string, string>, body: Record<string, unknown>): Promise<{ status: number; json: RespuestaPedido }> => {
     const r = await app.fetch(new Request(`http://local/v1/restaurantes/${ORG_SLUG}/orders`, { method: "POST", headers, body: JSON.stringify({ branch_slug: "sucursal-carga", items: [{ product_id: PRODUCTO, requested_quantity: 2 }], ...body }) }));
-    return { status: r.status, json: (await r.json().catch(() => ({}))) as Record<string, any> };
+    return { status: r.status, json: (await r.json().catch(() => ({}))) as RespuestaPedido };
   };
+  interface RespuestaPedido { readonly order?: { readonly id?: string } }
   const telWeb = `99${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
   const telVoz = `99${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
 

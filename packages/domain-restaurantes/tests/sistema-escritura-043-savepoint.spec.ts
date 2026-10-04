@@ -72,7 +72,7 @@ describe("addCustomerAddressIfNew (043)", () => {
 });
 
 describe("createCallbackRequest (043)", () => {
-  const ENTRADA = { organizationId: ORG, propertyId: PROP, customerName: "Ana", customerPhone: "+529991234567", reason: "queja", message: null, source: "whatsapp" as const };
+  const ENTRADA = { organizationId: ORG, propertyId: PROP, customerName: "Ana", customerPhone: "+529991234567", reason: "queja", message: undefined, source: "whatsapp" as const };
   const CREADO = { id: "00000000-0000-4000-8000-0000000000d1", resolved: false, created_at: "2026-10-03T12:00:00.000Z" };
   // La notificacion in-app (best-effort, con su propio SAVEPOINT) se absorbe con un handler generico.
   const NOTIFICACION: FakeSessionHandler = { match: /notificacion|core\.notif|emitir/i, respond: () => [] };
