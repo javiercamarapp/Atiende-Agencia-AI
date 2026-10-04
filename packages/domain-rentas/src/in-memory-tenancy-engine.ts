@@ -32,6 +32,8 @@ export interface SeedTenancyMembership {
   readonly propertyIds: readonly string[] | null;
   readonly platformRole: PlatformRole;
   readonly verticalRole: string;
+  /** `core.staff_user.full_name`, solo para `rentas.listar_asignables_limpieza`; sin el, se usa el id. */
+  readonly fullName?: string;
 }
 
 interface MembershipQueryRow {
@@ -353,6 +355,46 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
         if (n.startsWith("update rentas.tarea_operativa set estado = 'cancelada'")) {
           const [tareaId] = params as [string];
           store.cancelarTareaOperativa(tareaId);
+          return { rows: [] as R[] };
+        }
+
+        // ---- migracion 033: validacion del asignado, lista de asignables y cola de avisos in-app ----
+        // `rentas.puede_operar_limpieza(propiedad, usuario)`: quien pregunta debe tener acceso a la propiedad y la persona debe ser miembro
+        // operativo de ella (espejo de la funcion definer; el verify de Postgres real prueba la version SQL).
+        if (n.startsWith("select rentas.puede_operar_limpieza")) {
+          const [propertyId, userId] = params as [string, string];
+          const property = this.properties.get(propertyId);
+          const quienPregunta = claims.userId === null ? undefined : this.memberships.find((m) => m.userId === claims.userId && property && m.organizationId === property.organizationId && (m.propertyIds === null || m.propertyIds.includes(propertyId)));
+          const ok =
+            property !== undefined &&
+            quienPregunta !== undefined &&
+            this.memberships.some((m) => m.userId === userId && m.organizationId === property.organizationId && ROLES_OPERATIVOS_LIMPIEZA.includes(m.verticalRole) && (m.propertyIds === null || m.propertyIds.includes(propertyId)));
+          return { rows: [{ ok }] as unknown as R[] };
+        }
+        if (n.startsWith("select user_id, full_name, vertical_role from rentas.listar_asignables_limpieza")) {
+          const [propertyId] = params as [string];
+          const property = this.properties.get(propertyId);
+          const yo = claims.userId === null || !property ? undefined : this.memberships.find((m) => m.userId === claims.userId && m.organizationId === property.organizationId && (m.propertyIds === null || m.propertyIds.includes(propertyId)));
+          if (!property || !yo || !["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"].includes(yo.verticalRole)) {
+            throw Object.assign(new Error("rentas.listar_asignables_limpieza: sin permiso para esta propiedad."), { code: "42501" });
+          }
+          const rows = this.memberships
+            .filter((m) => m.organizationId === property.organizationId && ROLES_OPERATIVOS_LIMPIEZA.includes(m.verticalRole) && (m.propertyIds === null || m.propertyIds.includes(propertyId)))
+            .map((m) => ({ user_id: m.userId, full_name: m.fullName ?? m.userId, vertical_role: m.verticalRole }));
+          return { rows: rows as unknown as R[] };
+        }
+        if (n.startsWith("select n.id as aviso_id, t.id as tarea_id")) {
+          const [limite] = params as [number];
+          return { rows: store.listAvisosAsignacionPendientes(limite) as unknown as R[] };
+        }
+        if (n.startsWith("update rentas.notificacion_tarea set notificada_in_app_en = now() where id = any")) {
+          const [ids] = params as [string[]];
+          store.marcarAvisosNotificados(ids);
+          return { rows: [] as R[] };
+        }
+        if (n.startsWith("update rentas.notificacion_tarea set notificada_in_app_en = now() where tarea_id")) {
+          const [tareaId] = params as [string];
+          store.marcarAvisosDeTareaNotificados(tareaId);
           return { rows: [] as R[] };
         }
 

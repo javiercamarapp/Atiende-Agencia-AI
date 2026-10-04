@@ -194,6 +194,9 @@ export interface StoredNotificacionTarea {
   id: string;
   tareaId: string;
   evento: "asignada" | "completada";
+  creadoEn: string;
+  /** `rentas.notificacion_tarea.notificada_in_app_en` (migracion 033): `null` = aviso in-app pendiente. */
+  notificadaInAppEn: string | null;
 }
 
 /** Serializa operaciones por clave — equivalente en memoria de
@@ -895,7 +898,32 @@ export class InMemoryRentasCalendarStore {
 
   insertNotificacionTarea(tareaId: string, evento: "asignada" | "completada"): void {
     const id = randomUUID();
-    this.notificacionesTarea.set(id, { id, tareaId, evento });
+    this.notificacionesTarea.set(id, { id, tareaId, evento, creadoEn: new Date().toISOString(), notificadaInAppEn: null });
+  }
+
+  /** Cola de avisos de asignacion pendientes (`notificada_in_app_en is null`), las mas antiguas primero, unidas a su tarea. */
+  listAvisosAsignacionPendientes(limite: number): { aviso_id: string; tarea_id: string; organization_id: string; property_id: string; asignado_a: string | null; estado: string }[] {
+    return [...this.notificacionesTarea.values()]
+      .filter((n) => n.evento === "asignada" && n.notificadaInAppEn === null && this.tareas.has(n.tareaId))
+      .sort((a, b) => (a.creadoEn < b.creadoEn ? -1 : a.creadoEn > b.creadoEn ? 1 : a.id < b.id ? -1 : 1))
+      .slice(0, limite)
+      .map((n) => {
+        const t = this.tareas.get(n.tareaId)!;
+        return { aviso_id: n.id, tarea_id: t.id, organization_id: t.organizationId, property_id: t.propertyId, asignado_a: t.asignadoA, estado: t.estado };
+      });
+  }
+
+  marcarAvisosNotificados(ids: readonly string[]): void {
+    for (const id of ids) {
+      const fila = this.notificacionesTarea.get(id);
+      if (fila && fila.notificadaInAppEn === null) fila.notificadaInAppEn = new Date().toISOString();
+    }
+  }
+
+  marcarAvisosDeTareaNotificados(tareaId: string): void {
+    for (const fila of this.notificacionesTarea.values()) {
+      if (fila.tareaId === tareaId && fila.evento === "asignada" && fila.notificadaInAppEn === null) fila.notificadaInAppEn = new Date().toISOString();
+    }
   }
 
   completarChecklistItemTarea(checklistItemId: string, completadoPor: string): { id: string } | null {
