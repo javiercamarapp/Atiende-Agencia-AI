@@ -47,7 +47,7 @@ insert into despachos.libro_cuenta (property_id, organization_id, codigo, descri
 on conflict do nothing;
 -- CFDI ficticios de A1 (centavos: 100000 + 16000 de IVA = 116000). d01 recibido clasificado y limpio; d02 recibido con revisión pendiente; d03 cancelado;
 -- d04 con revisión ya rechazada; d05 recibido sin clasificar; d06 emitido de tipo E; d07 recibido del periodo cerrado; d08 recibido ya contabilizado;
--- d09 indeterminado cuyo emisor es el RFC de la ficha; d10 indeterminado ajeno; d11 de A2 (sin ficha); d12 de B1.
+-- d09 indeterminado cuyo emisor es el RFC de la ficha; d10 indeterminado ajeno; d11 de A2 (sin ficha); d12 de B1; d13 con clasificación 'otros' 0.30, d14 con 0.65, d15 corregida por una persona, d16 con empate.
 insert into despachos.invoice (id, organization_id, property_id, folio_fiscal, tipo, rfc_emisor, rfc_receptor, subtotal, total, iva, valido, fecha,
                                direccion, metodo_pago, forma_pago, uso_cfdi, moneda, subtotal_centavos, total_centavos, iva_trasladado_centavos, estado_sat) values
   ('00000000-0000-0000-0000-000000d26d01', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', '00000000-0000-0000-0000-000000d26e01', 'I', 'PPP010101PP1', 'CCC010101CC1', 1000, 1160, 160, true, '2026-07-10', 'recibido', 'PUE', '03', 'G03', 'MXN', 100000, 116000, 16000, 'vigente'),
@@ -61,6 +61,10 @@ insert into despachos.invoice (id, organization_id, property_id, folio_fiscal, t
   ('00000000-0000-0000-0000-000000d26d09', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', '00000000-0000-0000-0000-000000d26e09', 'I', 'CCC010101CC1', 'RRR010101RR1', 1000, 1160, 160, true, '2026-07-17', 'indeterminado', 'PUE', '03', 'G03', 'MXN', 100000, 116000, 16000, 'vigente'),
   ('00000000-0000-0000-0000-000000d26d10', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', '00000000-0000-0000-0000-000000d26e10', 'I', 'XXX010101XX1', 'RRR010101RR1', 1000, 1160, 160, true, '2026-07-18', 'indeterminado', 'PUE', '03', 'G03', 'MXN', 100000, 116000, 16000, 'vigente'),
   ('00000000-0000-0000-0000-000000d26d11', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b2', '00000000-0000-0000-0000-000000d26e11', 'I', 'PPP010101PP1', 'RRR010101RR1', 1000, 1160, 160, true, '2026-07-19', 'indeterminado', 'PUE', '03', 'G03', 'MXN', 100000, 116000, 16000, 'vigente'),
+  ('00000000-0000-0000-0000-000000d26d13', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', '00000000-0000-0000-0000-000000d26e13', 'I', 'PPP010101PP1', 'CCC010101CC1', 1000, 1160, 160, true, '2026-07-21', 'recibido', 'PUE', '03', 'G03', 'MXN', 100000, 116000, 16000, 'vigente'),
+  ('00000000-0000-0000-0000-000000d26d14', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', '00000000-0000-0000-0000-000000d26e14', 'I', 'PPP010101PP1', 'CCC010101CC1', 1000, 1160, 160, true, '2026-07-22', 'recibido', 'PUE', '03', 'G03', 'MXN', 100000, 116000, 16000, 'vigente'),
+  ('00000000-0000-0000-0000-000000d26d15', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', '00000000-0000-0000-0000-000000d26e15', 'I', 'PPP010101PP1', 'CCC010101CC1', 1000, 1160, 160, true, '2026-07-23', 'recibido', 'PUE', '03', 'G03', 'MXN', 100000, 116000, 16000, 'vigente'),
+  ('00000000-0000-0000-0000-000000d26d16', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', '00000000-0000-0000-0000-000000d26e16', 'I', 'PPP010101PP1', 'CCC010101CC1', 1000, 1160, 160, true, '2026-07-24', 'recibido', 'PUE', '03', 'G03', 'MXN', 100000, 116000, 16000, 'vigente'),
   ('00000000-0000-0000-0000-000000d26d12', '00000000-0000-0000-0000-0000000d26a2', '00000000-0000-0000-0000-0000000d26b3', '00000000-0000-0000-0000-000000d26e12', 'I', 'PPP010101PP1', 'DDD010101DD1', 1000, 1160, 160, true, '2026-07-20', 'recibido', 'PUE', '03', 'G03', 'MXN', 100000, 116000, 16000, 'vigente')
 on conflict do nothing;
 insert into despachos.invoice_review (id, organization_id, property_id, invoice_id, reason, status, resolved_by, resolved_at) values
@@ -77,7 +81,12 @@ insert into despachos.invoice_classification (invoice_id, organization_id, prope
   ('00000000-0000-0000-0000-000000d26d04', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', 'servicios_profesionales', 0.800, 'reglas', null, now()),
   ('00000000-0000-0000-0000-000000d26d06', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', 'servicios_profesionales', 0.800, 'reglas', null, now()),
   ('00000000-0000-0000-0000-000000d26d07', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', 'servicios_profesionales', 0.800, 'reglas', null, now()),
-  ('00000000-0000-0000-0000-000000d26d08', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', 'servicios_profesionales', 0.800, 'reglas', null, now());
+  ('00000000-0000-0000-0000-000000d26d08', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', 'servicios_profesionales', 0.800, 'reglas', null, now()),
+  ('00000000-0000-0000-0000-000000d26d13', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', 'otros', 0.300, 'reglas', null, now()),
+  ('00000000-0000-0000-0000-000000d26d14', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', 'servicios_profesionales', 0.650, 'reglas', null, now()),
+  ('00000000-0000-0000-0000-000000d26d15', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', 'seguros', 1.000, 'manual', null, now()),
+  ('00000000-0000-0000-0000-000000d26d16', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', 'servicios_profesionales', 0.450, 'reglas', 'Empate', now());
+update despachos.invoice_classification set empate = true where invoice_id = '00000000-0000-0000-0000-000000d26d16';
 update despachos.invoice set excluido_por_revision = true where id = '00000000-0000-0000-0000-000000d26d04';
 insert into despachos.periodo_cierre (property_id, organization_id, anio, mes, status) values ('00000000-0000-0000-0000-0000000d26b1', '00000000-0000-0000-0000-0000000d26a1', 2026, 5, 'closed') on conflict do nothing;
 -- Portal: enlaces vigente de A1 y A2, uno expirado de A1; documentos recibidos.
@@ -711,11 +720,11 @@ rollback;
 
 \echo '=== pólizas del periodo (sistema) ==='
 
-\echo '75. candidatos: d01 y d08 (recibidos, clasificados, limpios, sin póliza); el resto queda fuera'
+\echo '75. candidatos: d01, d08 (clasificados con 0.80) y d15 (corregido por una persona); el resto queda fuera'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select count(*) as candidatos_deberia_ser_2 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100);
+select count(*) as candidatos_deberia_ser_3 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100);
 rollback;
 
 \echo '76. el candidato es d01 y trae su última clasificación (servicios_profesionales)'
@@ -729,7 +738,7 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select count(*) as no_candidatos_deberia_ser_0 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100) where out_invoice_id in ('00000000-0000-0000-0000-000000d26d02', '00000000-0000-0000-0000-000000d26d03', '00000000-0000-0000-0000-000000d26d04', '00000000-0000-0000-0000-000000d26d05', '00000000-0000-0000-0000-000000d26d06', '00000000-0000-0000-0000-000000d26d07', '00000000-0000-0000-0000-000000d26d09', '00000000-0000-0000-0000-000000d26d10', '00000000-0000-0000-0000-000000d26d11', '00000000-0000-0000-0000-000000d26d12');
+select count(*) as no_candidatos_deberia_ser_0 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100) where out_invoice_id in ('00000000-0000-0000-0000-000000d26d02', '00000000-0000-0000-0000-000000d26d03', '00000000-0000-0000-0000-000000d26d04', '00000000-0000-0000-0000-000000d26d05', '00000000-0000-0000-0000-000000d26d06', '00000000-0000-0000-0000-000000d26d07', '00000000-0000-0000-0000-000000d26d09', '00000000-0000-0000-0000-000000d26d10', '00000000-0000-0000-0000-000000d26d11', '00000000-0000-0000-0000-000000d26d12', '00000000-0000-0000-0000-000000d26d13', '00000000-0000-0000-0000-000000d26d14', '00000000-0000-0000-0000-000000d26d16');
 rollback;
 
 \echo '78. un CFDI con póliza vigente deja de ser candidato (d08 con póliza) y uno reversado vuelve'
@@ -740,7 +749,36 @@ reset role;
 insert into despachos.libro_poliza (organization_id, property_id, ejercicio, mes, tipo, folio, fecha, concepto, origen, invoice_id, total_centavos) values ('00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', 2026, 7, 'egreso', 1, '2026-07-16', 'x', 'cfdi', '00000000-0000-0000-0000-000000d26d08', 116000);
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select count(*) as con_poliza_fuera_deberia_ser_1 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100);
+select count(*) as con_poliza_fuera_deberia_ser_2 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100);
+rollback;
+
+\echo '78b. el umbral del cliente cuenta: con umbral 0.6 el CFDI con 0.65 pasa a candidato; el de 0.30 y el empate siguen fuera'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+reset role;
+insert into despachos.property_config (property_id, organization_id, clasificacion_umbral_confianza) values ('00000000-0000-0000-0000-0000000d26b1', '00000000-0000-0000-0000-0000000d26a1', 0.6);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as umbral_cliente_deberia_ser_1 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100) where out_invoice_id = '00000000-0000-0000-0000-000000d26d14';
+rollback;
+
+\echo '78c. con el umbral por omisión (0.7) el CFDI con 0.65 NO es candidato, y el de 0.30 ('otros') ni el empate tampoco'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as dudosos_fuera_deberia_ser_0 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100) where out_invoice_id in ('00000000-0000-0000-0000-000000d26d13', '00000000-0000-0000-0000-000000d26d14', '00000000-0000-0000-0000-000000d26d16');
+rollback;
+
+\echo '78d. una clasificación hecha por una persona (manual) es candidato aunque el umbral sea 1'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+reset role;
+insert into despachos.property_config (property_id, organization_id, clasificacion_umbral_confianza) values ('00000000-0000-0000-0000-0000000d26b1', '00000000-0000-0000-0000-0000000d26a1', 1);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as manual_con_umbral_uno_deberia_ser_1 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100) where out_invoice_id = '00000000-0000-0000-0000-000000d26d15';
 rollback;
 
 \echo '79. el staff autenticado NO puede listar candidatos'
@@ -908,11 +946,11 @@ rollback;
 
 \echo '=== portal: CFDI del cliente y autoaceptado ==='
 
-\echo '101. el cliente (token de A1) ve los CFDI de A1: 11 (d01..d10 + el de A1 sin ver A2/B1)'
+\echo '101. el cliente (token de A1) ve los 14 CFDI de A1 (sin los de A2 ni B1)'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select jsonb_array_length(despachos.portal_cliente_cfdi_listar(repeat('a', 64))) as cfdi_a1_deberia_ser_10;
+select jsonb_array_length(despachos.portal_cliente_cfdi_listar(repeat('a', 64))) as cfdi_a1_deberia_ser_14;
 rollback;
 
 \echo '102. NO ve CFDI de otra property: ninguno de A2 ni de B1 aparece'

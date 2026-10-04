@@ -19,6 +19,28 @@ export const CATEGORIAS_CONTABLES: readonly string[] = [...new Set([...SYNTHETIC
 /** Categorías gruesas históricas de `invoice.categoria` / `invoice_classification.categoria` (migración 001). */
 export const CATEGORIAS_GRUESAS: readonly string[] = ["gasto_operativo", "activo_fijo", "inversion", "honorarios", "nomina", "sin_clasificar"];
 
+/** Nombre legible de cada categoría contable (pantallas del panel y exportes); la clave es la de `CATEGORIAS_CONTABLES`. */
+export const NOMBRE_CATEGORIA: Readonly<Record<string, string>> = {
+  servicios_profesionales: "Servicios profesionales",
+  renta_oficina: "Renta de oficina o local",
+  materia_prima: "Materia prima e insumos",
+  publicidad: "Publicidad y mercadotecnia",
+  honorarios_legales: "Honorarios legales y notariales",
+  comision_bancaria: "Comisiones bancarias",
+  intereses_bancarios: "Intereses y rendimientos",
+  nomina: "Nómina",
+  arrendamiento: "Arrendamiento de equipo o vehículos",
+  seguros: "Seguros",
+  telefonia: "Teléfono e internet",
+  transporte: "Transporte y paquetería",
+  equipo_computo: "Equipo de cómputo",
+  mantenimiento: "Mantenimiento y limpieza",
+  papeleria: "Papelería y artículos de oficina",
+  venta_servicios: "Venta de servicios",
+  venta_mercancia: "Venta de mercancía",
+  otros: "Otros gastos",
+};
+
 export const COTA_CONFIANZA_CORRECCION = 0.95;
 
 /** Prefijos de ClaveProdServ (catálogo SAT c_ClaveProdServ, familia/clase de 6 dígitos) -> categoría contable fina. Solo lo que el

@@ -410,7 +410,7 @@ end;
 $$;
 revoke all on function despachos.libro_poliza_insertar(uuid, uuid, text, date, text, text, uuid, uuid, jsonb) from public, anon, authenticated;
 
--- Solo sistema: CFDI del periodo que SÍ se pueden contabilizar solos: clasificados, sin revisión pendiente, no cancelados ni excluidos, sin póliza
+-- Solo sistema: CFDI del periodo que SÍ se pueden contabilizar solos: clasificados con confianza suficiente (o por una persona), sin revisión pendiente, no cancelados ni excluidos, sin póliza
 -- vigente, con sentido emitido/recibido y de una property activa con periodo no cerrado. Devuelve lo necesario para armar la póliza en TypeScript
 -- (sin nombres ni RFC de terceros). Tope duro de 500 por llamada.
 create or replace function despachos.system_polizas_periodo_candidatos(p_desde date, p_hasta date, p_limit integer)
@@ -453,9 +453,15 @@ begin
     from despachos.invoice i
     join core.property p on p.id = i.property_id and p.status = 'active' and p.vertical = 'despachos'
     join lateral (
-      select ic.categoria, ic.cuenta from despachos.invoice_classification ic where ic.invoice_id = i.id order by ic.created_at desc, ic.id desc limit 1
+      select ic.categoria, ic.cuenta, ic.confianza, ic.method, ic.empate
+      from despachos.invoice_classification ic where ic.invoice_id = i.id order by ic.created_at desc, ic.id desc limit 1
     ) c on true
     where i.fecha between p_desde and p_hasta
+      -- Solo lo que pasa la compuerta de la clasificación (la misma de la ingesta): hecha por una persona (manual/corrección), o sin empate y con
+      -- confianza >= max(piso 0.5, umbral del cliente). Una clasificación dudosa nunca se contabiliza sola.
+      and not c.empate
+      and (c.method in ('manual', 'correccion')
+           or c.confianza >= greatest(0.5, coalesce((select pc.clasificacion_umbral_confianza from despachos.property_config pc where pc.property_id = i.property_id), 0.7)))
       and i.tipo = 'I'
       and i.direccion in ('emitido', 'recibido')
       and i.estado_sat <> 'cancelado'

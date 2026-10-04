@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CATEGORIAS_CONTABLES,
+  NOMBRE_CATEGORIA,
   buscarCorreccion,
   clasificarCfdi,
   evaluarCompuertaClasificacion,
@@ -69,6 +70,13 @@ describe("clasificarCfdi", () => {
     for (const cat of CATEGORIAS_CONTABLES) {
       expect(DEFAULT_MAPPINGS[`I|${cat}`] ?? DEFAULT_MAPPINGS[`E|${cat}`], cat).toBeDefined();
     }
+  });
+});
+
+describe("NOMBRE_CATEGORIA", () => {
+  it("toda categoría contable tiene su nombre legible", () => {
+    for (const c of CATEGORIAS_CONTABLES) expect(NOMBRE_CATEGORIA[c], c).toBeTruthy();
+    expect(Object.keys(NOMBRE_CATEGORIA).sort()).toEqual([...CATEGORIAS_CONTABLES].sort());
   });
 });
 
