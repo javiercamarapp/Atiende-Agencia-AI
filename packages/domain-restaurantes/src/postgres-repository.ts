@@ -64,6 +64,8 @@ import type {
   RestaurantesAuditLogRow,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
+  StorefrontMarca,
+  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
   StorefrontOrderTracking,
@@ -173,6 +175,7 @@ function mapCustomer(row: CustomerRow): Customer {
 }
 
 interface OrderRow {
+  readonly created_at_cursor?: string;
   readonly id: string;
   readonly organization_id: string;
   readonly property_id: string;
@@ -480,19 +483,45 @@ function esErrorBaseSinMigrarProgramados(err: unknown): boolean {
   return code === "42883" || code === "42P01" || code === "42703";
 }
 
+interface StorefrontMarcaRow {
+  titular: string | null;
+  eslogan: string | null;
+  about: string | null;
+  portada_url: string | null;
+  logo_url: string | null;
+  instagram_url: string | null;
+  facebook_url: string | null;
+  tiktok_url: string | null;
+  updated_at: Date | string | null;
+}
+
+function mapStorefrontMarca(r: StorefrontMarcaRow): StorefrontMarca {
+  return {
+    titular: r.titular,
+    eslogan: r.eslogan,
+    about: r.about,
+    portadaUrl: r.portada_url,
+    logoUrl: r.logo_url,
+    instagramUrl: r.instagram_url,
+    facebookUrl: r.facebook_url,
+    tiktokUrl: r.tiktok_url,
+    updatedAt: r.updated_at === null ? null : new Date(r.updated_at).toISOString(),
+  };
+}
+
 function esErrorCompatibilidadConfigBaseSinMigrar(err: unknown): boolean {
   const code = (err as { code?: string } | null)?.code;
   return code === "42501" || code === "42883" || code === "42P01" || code === "42703";
 }
 
 const configEscrituraAdvertida = new Set<string>();
-function advertirConfigEscrituraNoDisponible(tabla: string, err: unknown): void {
+function advertirConfigEscrituraNoDisponible(tabla: string, err: unknown, migracion = "021_restaurantes_config_editable_y_search_path_fix.sql"): void {
   if (configEscrituraAdvertida.has(tabla)) return;
   configEscrituraAdvertida.add(tabla);
   console.warn(
     `PostgresRestaurantesRepository: la escritura sobre restaurantes.${tabla} todavía no está habilitada en esta base ` +
       "(SQLSTATE 42501/42883/42P01/42703) -- aplica " +
-      "packages/domain-restaurantes/migrations/021_restaurantes_config_editable_y_search_path_fix.sql (o su espejo en " +
+      `packages/domain-restaurantes/migrations/${migracion} (o su espejo en ` +
       "supabase/migrations/) para habilitarla.",
     err,
   );
@@ -951,16 +980,31 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
-    const { rows } = await this.db.query<{ id: string; resolved: boolean; created_at: string }>(
-      `insert into restaurantes.callback_requests (organization_id, property_id, customer_name, customer_phone, reason, message, source)
-       values ($1, $2, $3, $4, $5, $6, $7)
-       returning id, resolved, created_at;`,
-      [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source],
-    );
+    const params = [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source];
+    type Fila = { id: string; resolved: boolean; created_at: string };
+    // `restaurantes.callback_registrar` (migracion 062): la sesion de la API corre como `authenticated`, que NO tiene INSERT sobre
+    // callback_requests (001), asi que el INSERT directo falla con 42501 contra una base migrada. Sin la funcion (42883, base sin 062)
+    // se cae al INSERT anterior dentro de un SAVEPOINT, que es exactamente la conducta de antes.
+    const rows = await runWithSavepointFallback<Fila[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_callback_registrar",
+      primary: async () => (await this.db.query<Fila>(`select id, resolved, created_at from restaurantes.callback_registrar($1, $2, $3, $4, $5, $6, $7);`, params)).rows,
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42883",
+      fallback: async () =>
+        (
+          await this.db.query<Fila>(
+            `insert into restaurantes.callback_requests (organization_id, property_id, customer_name, customer_phone, reason, message, source)
+             values ($1, $2, $3, $4, $5, $6, $7)
+             returning id, resolved, created_at;`,
+            params,
+          )
+        ).rows,
+    });
     const row = rows[0]!;
     // Notificacion in-app (`restaurantes.callback.pendiente`): un contacto que el agente (voz o WhatsApp) dejo para devolver la
     // llamada. Uno por solicitud (clave = id), sin PII (ni nombre ni telefono viajan en el aviso). SAVEPOINT en emitirNotificacion.
-    await emitirNotificacion(this.db, { evento: "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
+    // R-43: una solicitud de evento/catering del storefront (reason = 'evento') avisa con su propio evento del catalogo, no con el generico.
+    await emitirNotificacion(this.db, { evento: input.reason === "evento" ? "restaurantes.evento.solicitud" : "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
     return { ...input, id: row.id, resolved: row.resolved, createdAt: row.created_at };
   }
 
@@ -1295,7 +1339,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     }));
   }
 
-  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string): Promise<StaffOrderNotificationRecord> {
+  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string, propertyIds?: readonly string[] | null): Promise<StaffOrderNotificationRecord> {
     const { rows } = await this.db.query<{
       property_id: string;
       order_id: string;
@@ -1306,9 +1350,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       acknowledged_by: string | null;
     }>(
       `update restaurantes.staff_order_notification set acknowledged_at = now(), acknowledged_by = $1
-       where organization_id = $2 and id = $3
+       where organization_id = $2 and id = $3${propertyIds ? " and property_id = any($4::uuid[])" : ""}
        returning property_id, order_id, event_type, message, created_at::text as created_at, acknowledged_at::text as acknowledged_at, acknowledged_by;`,
-      [actorId, organizationId, notificationId],
+      propertyIds ? [actorId, organizationId, notificationId, [...propertyIds]] : [actorId, organizationId, notificationId],
     );
     const row = rows[0];
     if (!row) throw new Error(`Notificación "${notificationId}" no encontrada para la organización "${organizationId}".`);
@@ -1330,8 +1374,20 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   async getSalesBucketedStats(organizationId: string, propertyIds: readonly string[] | null, buckets: readonly KpiDateRange[]): Promise<readonly SalesBucketRow[]> {
     if (buckets.length === 0) return [];
     const { rows } = await this.db.query<{ idx: number; revenue: string; order_count: string; customer_count: string }>(
-      `select idx, revenue, order_count, customer_count
-       from restaurantes.orders_bucketed_stats($1, $2::uuid[], $3::timestamptz[], $4::timestamptz[]);`,
+      // QA R1 viaje-09: consulta directa (no la funcion `orders_bucketed_stats`, cuya definicion en la base solo
+      // excluye cancelados y no puede cambiar sin migracion). Misma forma y alcance (RLS del usuario, organizacion
+      // y sucursales); una venta NO es un pedido cancelado, `no_recogido` (no se cobro) ni `programado` (aun no es
+      // venta). Funciona igual contra la base sin migrar: solo lee `restaurantes.orders`.
+      `select b.idx, coalesce(sum(o.total), 0) as revenue, count(o.id) as order_count, count(distinct o.customer_id) as customer_count
+       from unnest($3::timestamptz[], $4::timestamptz[]) with ordinality as b(bucket_start, bucket_end, idx)
+       left join restaurantes.orders o
+         on o.organization_id = $1
+         and o.status not in ('cancelado', 'no_recogido', 'programado')
+         and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
+         and o.created_at >= b.bucket_start
+         and o.created_at < b.bucket_end
+       group by b.idx
+       order by b.idx;`,
       [organizationId, propertyIds ? [...propertyIds] : null, buckets.map((b) => b.start.toISOString()), buckets.map((b) => b.end.toISOString())],
     );
     const byIdx = new Map(rows.map((row) => [Number(row.idx), { revenue: Number(row.revenue), orderCount: Number(row.order_count), customerCount: Number(row.customer_count) }]));
@@ -2087,7 +2143,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
     params.push(filter.limit + 1);
     const { rows } = await this.db.query<OrderRow>(
-      `select ${ORDER_COLUMNS}
+      // QA-restaurantes-R1-features-01: `pg` entrega created_at como Date (milisegundos). El cursor usa
+      // la representacion TEXTO de Postgres (microsegundos exactos) para no saltar pedidos del mismo ms.
+      `select ${ORDER_COLUMNS}, created_at::text as created_at_cursor
        from restaurantes.orders
        where ${conditions.join(" and ")}
        order by created_at desc, id desc
@@ -2096,12 +2154,14 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     );
 
     const hasMore = rows.length > filter.limit;
-    const page = rows.slice(0, filter.limit).map(mapOrder);
-    const nextCursor = hasMore ? encodeCursor(page[page.length - 1]!) : null;
+    const pageRows = rows.slice(0, filter.limit);
+    const page = pageRows.map(mapOrder);
+    const last = pageRows[pageRows.length - 1];
+    const nextCursor = hasMore && last ? encodeCursor(last.created_at_cursor ?? toIsoText(last.created_at), last.id) : null;
     return { orders: page, nextCursor };
   }
 
-  async updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus): Promise<Order | null> {
+  async updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus, incidentNote?: string | null): Promise<Order | null> {
     // Fix hallazgo auditoría (rubro 3, "máquina de estados de pedidos sin guarda
     // TOCTOU") — `and status = $4` es la guarda real: sin ella, el UPDATE aplica
     // ciegamente sobre CUALQUIER estado actual, incluso uno distinto al que
@@ -2111,10 +2171,11 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     const run = async () => {
       const { rows } = await this.db.query<OrderRow>(
         `update restaurantes.orders
-         set status = $3, delivered_at = case when $3 = 'entregado' then now() else delivered_at end
+         set status = $3, delivered_at = case when $3 = 'entregado' then now() else delivered_at end,
+             incident_note = case when $3 = 'problema' and $5::text is not null then $5::text else incident_note end
          where id = $1 and organization_id = $2 and status = $4
          returning ${ORDER_COLUMNS};`,
-        [orderId, organizationId, toStatus, fromStatus],
+        [orderId, organizationId, toStatus, fromStatus, toStatus === "problema" ? (incidentNote ?? null) : null],
       );
       return rows[0] ? mapOrder(rows[0]) : null;
     };
@@ -2163,6 +2224,22 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows.map(mapOrder);
   }
 
+  async listDeliveredOrdersForRepartidor(organizationId: string, repartidorId: string, fechaLocal: string, zonaHoraria: string): Promise<readonly Order[]> {
+    // `delivered_at` es de la migracion 001: no hace falta fallback contra la base sin migrar. El dia local se convierte a un rango de
+    // instantes en la zona de la sucursal: [00:00 local del dia, 00:00 local del dia siguiente).
+    const { rows } = await this.db.query<OrderRow & { delivered_at: string | Date | null }>(
+      `select ${ORDER_COLUMNS}, delivered_at
+       from restaurantes.orders
+       where organization_id = $1 and assigned_repartidor_id = $2 and delivered_at is not null
+         and delivered_at >= ($3::date)::timestamp at time zone $4
+         and delivered_at < (($3::date + 1))::timestamp at time zone $4
+       order by delivered_at desc
+       limit 200;`,
+      [organizationId, repartidorId, fechaLocal, zonaHoraria],
+    );
+    return rows.map((r) => ({ ...mapOrder(r), deliveredAt: r.delivered_at === null ? null : r.delivered_at instanceof Date ? r.delivered_at.toISOString() : String(r.delivered_at) }));
+  }
+
   async findAssignedOrderById(organizationId: string, repartidorId: string, orderId: string): Promise<Order | null> {
     const { rows } = await this.db.query<OrderRow>(
       `select ${ORDER_COLUMNS}
@@ -2209,10 +2286,12 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
     const search = filter.search?.trim();
     if (search) {
-      params.push(`%${search}%`);
+      // QA-restaurantes-R1-features-06b: % _ \ del texto buscado son literales, no comodines.
+      params.push(`%${search.replace(/[\\%_]/g, "\\$&")}%`);
       conditions.push(`(name ilike $${params.length} or phone ilike $${params.length})`);
     }
-    if (filter.cursor) {
+    // QA-restaurantes-R1-features-06a: un cursor que no es uuid se ignora (antes: 22P02 -> 500).
+    if (filter.cursor && UUID_TEXT.test(filter.cursor)) {
       params.push(filter.cursor);
       conditions.push(`id > $${params.length}`);
     }
@@ -2392,6 +2471,49 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       if ((err as { code?: string } | null)?.code === "23505") throw new WhatsappNumberInUseError();
       throw err;
     }
+  }
+
+  async findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null> {
+    // Base sin la migracion 062 (42P01/42703) o sin permiso (42501): sin marca, nunca un 500. SAVEPOINT: la sesion es una sola
+    // transaccion por request y un error de Postgres la dejaria abortada.
+    return runWithSavepointFallback<StorefrontMarca | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_storefront_marca_read",
+      primary: async () => {
+        const { rows } = await this.db.query<StorefrontMarcaRow>(
+          `select titular, eslogan, about, portada_url, logo_url, instagram_url, facebook_url, tiktok_url, updated_at
+             from restaurantes.storefront_marca where organization_id = $1;`,
+          [organizationId],
+        );
+        return rows[0] ? mapStorefrontMarca(rows[0]) : null;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => null,
+    });
+  }
+
+  async upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca> {
+    return runWithSavepointFallback<StorefrontMarca>({
+      session: this.db,
+      savepointName: "sp_restaurantes_storefront_marca_write",
+      primary: async () => {
+        const { rows } = await this.db.query<StorefrontMarcaRow>(
+          `insert into restaurantes.storefront_marca (organization_id, titular, eslogan, about, portada_url, logo_url, instagram_url, facebook_url, tiktok_url)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           on conflict (organization_id) do update set
+             titular = excluded.titular, eslogan = excluded.eslogan, about = excluded.about, portada_url = excluded.portada_url,
+             logo_url = excluded.logo_url, instagram_url = excluded.instagram_url, facebook_url = excluded.facebook_url, tiktok_url = excluded.tiktok_url
+           returning titular, eslogan, about, portada_url, logo_url, instagram_url, facebook_url, tiktok_url, updated_at;`,
+          [organizationId, input.titular, input.eslogan, input.about, input.portadaUrl, input.logoUrl, input.instagramUrl, input.facebookUrl, input.tiktokUrl],
+        );
+        return mapStorefrontMarca(rows[0]!);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirConfigEscrituraNoDisponible("storefront_marca", err, "062_storefront_marca.sql");
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
   }
 
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {
@@ -3326,9 +3448,16 @@ interface OrderCursorBoundary {
   readonly id: string;
 }
 
-function encodeCursor(order: Order): string {
-  return Buffer.from(`${order.createdAt}|${order.id}`, "utf8").toString("base64url");
+function toIsoText(value: unknown): string {
+  return value instanceof Date ? value.toISOString() : String(value);
 }
+
+function encodeCursor(createdAt: string, id: string): string {
+  return Buffer.from(`${createdAt}|${id}`, "utf8").toString("base64url");
+}
+
+const CURSOR_TIMESTAMP = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)?$/;
+const UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function decodeCursor(cursor: string | undefined): OrderCursorBoundary | null {
   if (!cursor) return null;
@@ -3336,7 +3465,11 @@ function decodeCursor(cursor: string | undefined): OrderCursorBoundary | null {
     const decoded = Buffer.from(cursor, "base64url").toString("utf8");
     const separatorIndex = decoded.lastIndexOf("|");
     if (separatorIndex === -1) return null;
-    return { createdAt: decoded.slice(0, separatorIndex), id: decoded.slice(separatorIndex + 1) };
+    const createdAt = decoded.slice(0, separatorIndex);
+    const id = decoded.slice(separatorIndex + 1);
+    // Cursor manipulado o viejo (p. ej. Date.toString()): se ignora en vez de llegar a Postgres como 22007/22P02.
+    if (!CURSOR_TIMESTAMP.test(createdAt) || !UUID_TEXT.test(id)) return null;
+    return { createdAt, id };
   } catch {
     return null;
   }

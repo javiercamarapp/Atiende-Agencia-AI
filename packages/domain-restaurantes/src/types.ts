@@ -364,6 +364,8 @@ export interface Order {
    * seleccionan (la base puede no estar migrada) -- `repo.listOrderScheduleInfo` las lee aparte. */
   readonly programadoPara?: string | null;
   readonly promovidoAt?: string | null;
+  /** Solo la trae `listDeliveredOrdersForRepartidor` (columna `delivered_at` de la 001, que se fija al pasar a `entregado`). */
+  readonly deliveredAt?: string | null;
 }
 
 /** Datos de programacion de un pedido (migracion 034): hora para la que se pidio y cuando se promovio a `pending`. */
@@ -524,6 +526,37 @@ export interface CallbackRequestInput {
   readonly source: "voice" | "whatsapp" | "web" | "admin";
 }
 
+// ---- R-38 (migracion 062): marca publica del storefront por organizacion. Todos los campos son opcionales (null = sin valor). ----
+export interface StorefrontMarcaInput {
+  readonly titular: string | null;
+  readonly eslogan: string | null;
+  /** Descripcion corta ("about") de la portada. */
+  readonly about: string | null;
+  /** URL https de la imagen de portada. */
+  readonly portadaUrl: string | null;
+  readonly logoUrl: string | null;
+  readonly instagramUrl: string | null;
+  readonly facebookUrl: string | null;
+  readonly tiktokUrl: string | null;
+}
+
+export interface StorefrontMarca extends StorefrontMarcaInput {
+  /** null = nunca se guardo (o la base aun no tiene la migracion 062). */
+  readonly updatedAt: string | null;
+}
+
+/** R-43: solicitud publica de evento/catering ya validada (ver storefront-marca.ts::validarSolicitudEvento). */
+export interface SolicitudEventoInput {
+  readonly nombre: string;
+  /** 10 digitos nacionales. */
+  readonly telefono: string;
+  /** YYYY-MM-DD. */
+  readonly fechaEvento: string;
+  readonly personas: number;
+  readonly sucursalSlug: string;
+  readonly comentario: string | null;
+}
+
 export interface CallbackRequest extends CallbackRequestInput {
   readonly id: string;
   readonly resolved: boolean;
@@ -655,7 +688,7 @@ export interface PromotionPatch {
 // en el schema base para ninguno de los dos — ver el comentario de cabecera de
 // esa migración).
 // ---------------------------------------------------------------------------
-export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion";
+export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion" | "exportacion";
 
 export interface RegistrarAuditoriaInput {
   readonly organizationId: string;

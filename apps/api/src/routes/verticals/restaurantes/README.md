@@ -5,16 +5,10 @@ Fase 1 construida: `public.ts` (`POST /v1/restaurantes/:orgSlug/orders`,
 públicos/de sistema, ver diseño Fase 1 §3) y `whatsapp.ts`
 (`GET|POST /v1/restaurantes/whatsapp/webhook`, verificación HMAC sobre bytes crudos).
 
-**Problema conocido (verificado contra Postgres real, 19-sep-2026, arreglo en
-curso en otra rama — ver `scripts/verify-restaurantes-sql/README.md`):** la
-policy de SELECT de `core.property` nunca contempló la sesión de sistema
-(`auth.uid()` NULL) que usan estas rutas públicas — `findBranch()`
-(`postgres-repository.ts`, usada por `orders.ts::prepareCreateOrder`) hace
-JOIN contra `core.property` y devuelve `null` siempre bajo esa sesión. Efecto
-real: `POST /v1/restaurantes/:orgSlug/orders` (web, voz y WhatsApp por igual)
-falla con "Sucursal no encontrada" contra Postgres real, para cualquier
-organización. Invisible para los tests de este repo (corren contra el
-repositorio en memoria, que nunca aplica RLS real).
+**Sesión de sistema (verificado contra Postgres real, 4-oct-2026).** Estas rutas públicas corren con `withAppSession({userId: null})`. La policy de
+`core.property` no contemplaba esa sesión y `findBranch()` devolvía `null`; lo corrige `packages/db/migrations/0015_core_rls_sesion_sistema.sql`. El recorrido
+público completo (sucursal más cercana -> pedido idempotente) se verifica con `scripts/verify-restaurantes-sql` (24/24) y `scripts/verify-restaurantes-storefront`
+(14/14), ambos en el gate de CI. Los tests de este directorio corren contra el repositorio en memoria (no aplican RLS): el SQL real lo cubren los `scripts/verify-restaurantes-*`.
 
 Fase 3 agregó las primeras rutas de staff autenticado: `admin-kpis.ts` (dashboards de
 KPIs — ver `restaurantes-admin-kpis.spec.ts`).
@@ -195,11 +189,26 @@ documentados aquí mismo:
   de la anticipación (30 min) o ya pasó. Idempotente; un pedido cancelado nunca se promueve. Un fallo al
   promover se registra y no rompe el listado. Base sin migrar: `disponible:false` y lista vacía.
 - Interno: `GET|POST /internal/restaurantes/promover-programados` (secreto interno o `Authorization: Bearer
-  <CRON_SECRET>`) barre TODAS las organizaciones. NO está en `vercel.json` (decisión de costo: sin crons nuevos);
-  programarlo desde un scheduler externo es una decisión de despliegue. Respuesta: `{ ok, status: "ok" |
-  "not_available", promoted, orderIds }`.
-- Pendiente conocido: la comanda al POS (SoftRestaurant) no se encola al promover (hoy se omite al crear un
-  programado); la captura manual de la comanda sigue disponible.
+  <CRON_SECRET>`) barre TODAS las organizaciones (cron `*/5 * * * *` de `vercel.json`, ver docs/CRONS.md). R-16: en el mismo tick,
+  como unidad independiente, barre las alertas `restaurantes.pedido.entrega_tardia` y
+  `restaurantes.pedido.programado_por_vencer`. Respuesta: `{ ok, status: "ok" | "not_available", promoted, orderIds,
+  comandas, avisosCocina, avisos: { disponible, candidatos, emitidas, sinNuevas, errores } }` (`avisosCocina` = avisos de programados que entraron a cocina).
+- R-16 (migración 043), `admin-avisos.ts`: `GET .../admin/avisos` (Mis avisos; owner/admin ven además la matriz del equipo
+  y los umbrales), `PUT .../admin/avisos/preferencias` (propia, u owner/admin la de su equipo, con bitácora) y
+  `PUT .../admin/avisos/umbral` (owner/admin, minutos de gracia de la entrega tardía por sucursal, 10 a 240).
+- Al promover (cron y panel): se encola la comanda al POS con su hora, **propina y canal** (R-29, `encolarComandasDePromovidos`) y se avisa al staff
+  (`avisarProgramadosPromovidos`): bandeja `order.programado_promovido` y campana `restaurantes.pedido.programado_en_cocina`, un aviso por pedido, sin
+  PII en la campana. Ambos van en su propia sesión de sistema tras el commit de la promoción y nunca la revierten. Un pedido programado **no** encola
+  comanda al crearse por ningún canal (`encolarComandaParaPedido` lo omite).
+- Los agentes de WhatsApp y voz también pueden programar: `cotizar_pedido`/`crear_pedido` aceptan `programado_para` (mismas reglas; ver
+  `docs/restaurantes/agente-system-prompt.md`).
+
+## Consentimiento del aviso de privacidad del checkout (migración 063)
+
+`POST /v1/restaurantes/:orgSlug/storefront/:sucursal/orders` exige `acepta_aviso_privacidad: true` (400 `aviso_privacidad_requerido` si falta, antes de
+tocar la base) y, creado el pedido, guarda la evidencia con `PrivacidadRepository.recordOrderPrivacyConsent` (versión del aviso vigente que decide la base, fecha,
+canal `web`; sin teléfono ni nombre) en `restaurantes.order_privacy_consent` (la ven owner y admin). Best-effort con SAVEPOINT: base sin la 063 el pedido se
+crea igual; un fallo real se registra y no tumba un pedido ya creado. SQL verificado en `scripts/verify-restaurantes-consentimiento-aviso/`.
 
 ## Cierre del día y resumen semanal (R-42, migración 041)
 
@@ -229,3 +238,36 @@ documentados aquí mismo:
 - Voz (`voice-tools.ts`, exigen token de llamada: el teléfono sale del token): `POST /v1/restaurantes/:orgSlug/customers/orders`
   (`historial_pedidos`) y `POST .../orders/repeat` (`repetir_pedido`).
 - Pruebas: `apps/api/tests/restaurantes-admin-ficha-cliente.spec.ts`.
+
+## Perfil operativo del repartidor (R-15, migración 044)
+
+- Propio (`repartidor-perfil.ts`, solo rol `repartidor`): `GET|PUT /v1/restaurantes/:propertyId/repartidor/perfil` lee y corrige SU perfil
+  (tipo de vehículo, placas, disponibilidad, turno, licencia con vigencia y contacto de emergencia nombre + teléfono). PUT es reemplazo completo;
+  el teléfono se valida con `phone.ts` y se guarda en 10 dígitos. La respuesta trae `licenciaEstado` (`sin_licencia | vigente | por_vencer | vencida`)
+  y `licenciaDias`, calculados con la fecha de hoy en la zona de la sucursal (alerta visual con menos de 30 días).
+- Gestión (solo owner/admin): `GET|PUT|DELETE /v1/restaurantes/:propertyId/admin/staff/:userId/perfil-repartidor`. El objetivo debe ser repartidor de
+  la misma organización (404 uniforme si no). DELETE es el derecho de cancelación (ARCO): borra el perfil operativo y el personal. El staff de piso no
+  tiene acceso a ninguna de las dos rutas (ni licencia ni contacto de emergencia). La bitácora (`repartidor.perfil_actualizado` / `perfil_suprimido`)
+  guarda QUÉ campos cambiaron, nunca los valores; la corrección del propio repartidor solo se registra en el log de la API.
+- Aviso a la campana de owner/admin (sin PII, dedupe mensual por repartidor): `restaurantes.repartidor.licencia_por_vencer` / `licencia_vencida`, al guardar
+  un perfil con licencia a menos de 30 días y en `GET|POST /internal/restaurantes/repartidor-licencias` (secreto interno o `Bearer <CRON_SECRET>`, una
+  transacción por repartidor). NO está en `vercel.json` (decisión de costo: sin crons nuevos): agendarlo es una decisión de despliegue.
+- Base sin migrar: `disponible: false` en la lectura, 503 honesto en la escritura y `status: "not_available"` en el barrido (SAVEPOINT en el repositorio;
+  `packages/domain-restaurantes/tests/repartidor-perfil.spec.ts`). SQL y permisos en `scripts/verify-restaurantes-repartidor-perfil/`. Pruebas HTTP:
+  `apps/api/tests/restaurantes-repartidor-perfil.spec.ts`.
+
+## Exportar Historial y Clientes (R-17)
+
+- `exportaciones.ts` (solo owner/admin: el archivo lleva teléfonos COMPLETOS de clientes, más angosto que las pantallas, que son de `MANAGER_ROLES`):
+  `GET /v1/restaurantes/:propertyId/admin/exportar/historial?formato=csv|pdf&status=&dateFrom=&dateTo=&branchId=` y
+  `GET .../admin/exportar/clientes?formato=csv|pdf&search=`. Se generan en el servidor con la sesión RLS del propio usuario (mismo `listOrders` / `listCustomers`
+  de las pantallas, paginando de 500 en 500). Tope de filas: 20 000 en CSV y 2 000 en PDF; pasado el tope responde 413 pidiendo acotar el rango (nunca un
+  archivo truncado en silencio). Sin streaming: la sesión de base de datos es la del request y se cierra al responder.
+- CSV (Excel): UTF-8 con BOM, separador coma, CRLF, fechas `AAAA-MM-DD HH:mm` en la zona horaria de CADA sucursal, dinero con dos decimales sin símbolo ni miles, y las
+  celdas de texto que empiezan con `=`, `+`, `-`, `@`, tabulador o retorno de carro llevan un apóstrofo delante (los nombres los escribe un tercero: defensa contra
+  inyección de fórmulas). No hay dependencia `xlsx` en el repo (no se agregó ninguna): el CSV con BOM abre directo en Excel.
+- PDF (`exportar-pdf.ts`, pdf-lib): A4 horizontal, encabezado repetido en cada hoja y pie en CADA página con fecha de generación, zona horaria, alcance y "Página i de n".
+  No reutiliza `despachos/reporte-pdf.ts` porque ese está atado al modelo de reporte fiscal (contribuyente/RFC).
+- Bitácora (tipo `exportacion`, migración 044 amplía el CHECK de `audit_log.entity_type`): `historial.exportado` / `clientes.exportado` con formato y número de filas,
+  nunca nombres, teléfonos ni el texto de búsqueda. Contra una base sin la 044 la fila de bitácora se omite (con aviso en el log) y la exportación funciona igual.
+- PII: teléfonos completos solo para owner/admin; el staff de piso y el repartidor reciben 403.

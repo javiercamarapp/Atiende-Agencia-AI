@@ -5,7 +5,7 @@
 // teléfono corrompan el historial), append atómico (whatsapp_append_turn), y
 // redacción de datos sensibles ANTES de guardar cualquier mensaje real del cliente.
 import { redactarDatosDePago } from "@atiende/core-pii";
-import { actorHash } from "../rate-limit.ts";
+import { actorHash, consumeRateLimit } from "../rate-limit.ts";
 import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
@@ -44,6 +44,25 @@ export interface InboundMessageOutcome {
  * liberar el lease. Cualquier fallo se marca explícitamente como reintentable o no,
  * nunca se pierde en silencio — mismo contrato que el origen.
  */
+/** Turnos del agente que un mismo telefono puede consumir por ventana antes de que se le deje de contestar con el modelo. Un pedido normal usa unos 6-12. */
+export const REMITENTE_MAX_TURNOS = 20;
+export const REMITENTE_VENTANA_SEGUNDOS = 600;
+export const REMITENTE_EXCEDIDO_TEXTO = "Hemos recibido muchos mensajes seguidos suyos. Para atenderle bien, espere unos minutos y escríbanos de nuevo, o llame directamente a la sucursal.";
+
+/** `null` = dentro del tope; `avisar` = primer mensaje fuera del tope de la ventana (se le avisa con un texto fijo, sin modelo); `callar` = los siguientes. Si el
+ * contador no esta disponible (base sin migrar, error) NO se limita: nunca se deja sin respuesta a un cliente por un fallo del limitador. */
+async function limiteDeRemitente(repo: RestaurantesRepository, organizationId: string, phone: string): Promise<"avisar" | "callar" | null> {
+  try {
+    const actor = `${organizationId}:${phone}`;
+    const dentro = await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-turno-remitente", actor, REMITENTE_MAX_TURNOS, REMITENTE_VENTANA_SEGUNDOS));
+    if (dentro.allowed) return null;
+    const primeraVez = await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-turno-remitente-aviso", actor, 1, REMITENTE_VENTANA_SEGUNDOS));
+    return primeraVez.allowed ? "avisar" : "callar";
+  } catch {
+    return null;
+  }
+}
+
 export async function handleInboundWhatsAppMessage(
   repo: RestaurantesRepository,
   turnHandler: WhatsAppTurnHandler,
@@ -118,20 +137,43 @@ export async function handleInboundWhatsAppMessage(
       if (handoffGate && !arco) {
         const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
         if (handoff) {
+          const acuse = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
+          if (acuse) {
+            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: ACUSE_HANDOFF_PENDIENTE }], null, null, null);
+            if (deliverReply) {
+              await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
+                to: phone,
+                phone_number_id: phoneNumberId,
+                body: ACUSE_HANDOFF_PENDIENTE,
+                transaccional: true,
+              });
+            }
+          }
           await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
-          return { ok: true, retryable: false };
+          return acuse ? { ok: true, retryable: false, reply: ACUSE_HANDOFF_PENDIENTE, orderId: null, escalated: false } : { ok: true, retryable: false };
         }
+      }
+
+      // Tope por REMITENTE antes del LLM: cada mensaje de un mismo telefono es un turno pagado, y el unico tope del webhook es por NUMERO de la
+      // sucursal (compartido por todos sus clientes). Pasado el tope no se llama al modelo: se avisa UNA vez por ventana y despues se calla (el
+      // mensaje ya quedo en el historial para quien atienda). El ARCO (obligacion legal) no se limita.
+      const limite = arco ? null : await limiteDeRemitente(repo, organizationId, phone);
+      if (limite === "callar") {
+        await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+        return { ok: true, retryable: false };
       }
 
       const turn = arco
         ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
-        : await turnHandler.handleInboundMessage({
-            organizationId,
-            phone,
-            messages: messagesAfterUser,
-            customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
-            propertyId: propertyId ?? null,
-          });
+        : limite === "avisar"
+          ? { reply: REMITENTE_EXCEDIDO_TEXTO, orderId: null, propertyId: propertyId ?? null }
+          : await turnHandler.handleInboundMessage({
+              organizationId,
+              phone,
+              messages: messagesAfterUser,
+              customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
+              propertyId: propertyId ?? null,
+            });
 
       // PM PR-9 -- aviso de privacidad simplificado + "asistente virtual" en el PRIMER mensaje de
       // cada telefono (y de nuevo cuando se sube la version del aviso). La entrega queda registrada
@@ -198,6 +240,14 @@ export const MAX_PASADAS_RAFAGA = 3;
  * mensajes del telefono se absorben sin respuesta. 45 s cubre la vida maxima de la funcion (30 s) y, si el dueno muere, se libera pronto: el siguiente mensaje
  * del cliente toma el turno y contesta TODO lo pendiente (el historial ya tiene los mensajes absorbidos). Tope del SQL: 300. */
 export const LEASE_RAFAGA_SEGUNDOS = 45;
+/** Una toma de handoff `pendiente` que nadie atiende: el agente calla (R-21), pero el cliente no puede quedarse horas sin NINGUNA respuesta. Pasados
+ * `ACUSE_PENDIENTE_ESPERA_MIN` minutos sin que nadie la tome, el siguiente mensaje del cliente recibe UN acuse honesto (sin prometer una hora) y luego otro
+ * cada `ACUSE_PENDIENTE_REPETIR_MIN`. El tiempo y la unicidad los decide la base (migracion 045); sin ella el agente sigue callando como antes. */
+export const ACUSE_PENDIENTE_ESPERA_MIN = 15;
+export const ACUSE_PENDIENTE_REPETIR_MIN = 60;
+export const ACUSE_HANDOFF_PENDIENTE =
+  "Seguimos esperando a que una persona del equipo tome su conversación; su aviso ya está registrado y no se perdió. Si lo prefiere, puede dejar aquí los detalles de su pedido para que los vean en cuanto la atiendan.";
+
 /** Vida maxima de la funcion del webhook (`maxDuration` de vercel.json). */
 export const FUNCION_MAX_MS = 30_000;
 /** Tiempo que se le deja a la fase B (hasta 3 turnos del agente + envio) DESPUES de esperar. */
@@ -355,7 +405,20 @@ export async function responderTrasEspera(
         const arco = privacy && !matchesHighRiskOtherThan(textoPendiente, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, textoPendiente, "whatsapp") : null;
         if (handoffGate && !arco) {
           const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
-          if (handoff) return { salida: { ok: true, retryable: false }, silencio: true };
+          if (handoff) {
+            const acuse = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
+            if (!acuse) return { salida: { ok: true, retryable: false }, silencio: true };
+            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: ACUSE_HANDOFF_PENDIENTE }], null, null, null);
+            if (deliverReply) {
+              await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", pasada === 1 ? `inbound-reply:${messageId}` : `inbound-reply:${messageId}:p${pasada}`, {
+                to: phone,
+                phone_number_id: phoneNumberId,
+                body: ACUSE_HANDOFF_PENDIENTE,
+                transaccional: true,
+              });
+            }
+            return { salida: { ok: true, retryable: false, reply: ACUSE_HANDOFF_PENDIENTE, orderId: null, escalated: false }, silencio: true };
+          }
         }
         const turn = arco
           ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }

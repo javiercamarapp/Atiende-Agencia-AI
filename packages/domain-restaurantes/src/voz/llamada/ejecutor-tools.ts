@@ -6,7 +6,7 @@ import {
   sanearArgumentos,
   transporteHttp as transporteHttpCore,
 } from "@atiende/voice-core";
-import type { EjecutorTools as EjecutorCore, RegistroToolsVoz, ResultadoTool as ResultadoCore, TransporteTools as TransporteCore } from "@atiende/voice-core";
+import type { ContextoEjecucionTool, EjecutorTools as EjecutorCore, RegistroToolsVoz, ResultadoTool as ResultadoCore, TransporteTools as TransporteCore } from "@atiende/voice-core";
 import { executeAgentToolSafely, toolDefinitionsForChannel, VOICE_TOOL_HTTP_PATHS } from "../../agent-tools/registry.ts";
 import type { AgentToolContext, AgentToolDefinition, AgentToolName } from "../../agent-tools/registry.ts";
 import type { RestaurantesRepository } from "../../repository.ts";
@@ -24,7 +24,7 @@ export interface ResultadoTool {
 }
 
 /** Como se ejecuta de verdad una tool: en proceso (simulador/pruebas) o por HTTP contra la API (worker). */
-export type TransporteTools = (nombre: AgentToolName, args: Readonly<Record<string, unknown>>, senal: AbortSignal) => Promise<{ readonly resultado: unknown; readonly orderId: string | null }>;
+export type TransporteTools = (nombre: AgentToolName, args: Readonly<Record<string, unknown>>, senal: AbortSignal, contexto?: ContextoEjecucionTool) => Promise<{ readonly resultado: unknown; readonly orderId: string | null }>;
 
 export interface EjecutorToolsOpciones {
   readonly transporte: TransporteTools;
@@ -34,7 +34,7 @@ export interface EjecutorToolsOpciones {
 
 export interface EjecutorTools {
   definiciones(): readonly AgentToolDefinition[];
-  ejecutar(nombre: string, args: unknown): Promise<ResultadoTool>;
+  ejecutar(nombre: string, args: unknown, contexto?: ContextoEjecucionTool): Promise<ResultadoTool>;
 }
 
 /** Registro de tools de voz de restaurantes: solo las del registro unico para el canal `voz`; `crear_pedido` que expira queda incierto. */
@@ -49,15 +49,15 @@ export function crearEjecutorTools(opts: EjecutorToolsOpciones): EjecutorTools {
     registro: REGISTRO_TOOLS_PM,
     timeoutMs: opts.timeoutMs,
     ...(opts.ahora ? { ahora: opts.ahora } : {}),
-    transporte: async (nombre, args, senal) => {
-      const salida = await opts.transporte(nombre as AgentToolName, args, senal);
+    transporte: async (nombre, args, senal, contexto) => {
+      const salida = await opts.transporte(nombre as AgentToolName, args, senal, contexto);
       return { resultado: salida.resultado, entidadId: salida.orderId };
     },
   });
   return {
     definiciones: () => core.definiciones() as readonly AgentToolDefinition[],
-    async ejecutar(nombre, args) {
-      const r = await core.ejecutar(nombre, args);
+    async ejecutar(nombre, args, contexto) {
+      const r = await core.ejecutar(nombre, args, contexto);
       return aResultadoPm(r);
     },
   };
@@ -71,8 +71,8 @@ function aResultadoPm(r: ResultadoCore): ResultadoTool {
 export function comoEjecutorCore(e: EjecutorTools): EjecutorCore {
   return {
     definiciones: () => e.definiciones(),
-    async ejecutar(nombre, args) {
-      const r = await e.ejecutar(nombre, args);
+    async ejecutar(nombre, args, contexto) {
+      const r = await e.ejecutar(nombre, args, contexto);
       return { resultado: r.resultado, ok: r.ok, timeout: r.timeout, entidadId: r.orderId, latenciaMs: r.latenciaMs };
     },
   };
@@ -80,8 +80,11 @@ export function comoEjecutorCore(e: EjecutorTools): EjecutorCore {
 
 /** Transporte EN PROCESO: llama al registro unico sobre un repositorio (simulador y pruebas; nunca produccion). */
 export function transporteEnProceso(repo: RestaurantesRepository, ctx: AgentToolContext): TransporteTools {
-  return async (nombre, args) => {
-    const salida = await executeAgentToolSafely(repo, ctx, nombre, args as Record<string, unknown>);
+  return async (nombre, args, _senal, contexto) => {
+    // El turno del cliente lo pone el controlador de la llamada (no el modelo): con el, la maquina del pedido exige que la
+    // confirmacion llegue en un turno posterior a la cotizacion, igual que en WhatsApp.
+    const flow = ctx.flow && contexto?.turno != null ? { ...ctx.flow, turn: String(contexto.turno) } : ctx.flow;
+    const salida = await executeAgentToolSafely(repo, { ...ctx, ...(flow ? { flow } : {}) }, nombre, args as Record<string, unknown>);
     return { resultado: salida.result, orderId: salida.orderId };
   };
 }
@@ -105,8 +108,8 @@ export function transporteHttp(opts: TransporteHttpOpciones): TransporteTools {
     entidadId: (nombre, cuerpo) => (nombre === "crear_pedido" && typeof cuerpo === "object" && cuerpo !== null ? (((cuerpo as { order?: { id?: unknown } }).order?.id as string | undefined) ?? null) : null),
     ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}),
   });
-  return async (nombre, args, senal) => {
-    const salida = await core(nombre, args, senal);
+  return async (nombre, args, senal, contexto) => {
+    const salida = await core(nombre, args, senal, contexto);
     return { resultado: salida.resultado, orderId: salida.entidadId };
   };
 }

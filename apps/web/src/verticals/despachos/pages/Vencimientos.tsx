@@ -18,6 +18,7 @@ import {
   Button,
   Card,
   CardContent,
+  DataTable,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -30,12 +31,6 @@ import {
   PageContainer,
   StatusBadge,
   statusTone,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
 } from "@atiende/ui";
 import {
   barrerVencimientos,
@@ -44,6 +39,7 @@ import {
   escalarVencimiento,
   fetchVencimientos,
 } from "../lib/vencimientos-client.ts";
+import type { DataTableColumna } from "@atiende/ui";
 import type { EstadoVencimiento, FiscalDeadline } from "../lib/vencimientos-client.ts";
 import { formatEstadoVencimiento, formatPrioridadVencimiento } from "../lib/format.ts";
 import { VENCIMIENTO_PRIORIDAD_TONES, VENCIMIENTO_ESTADO_TONES } from "../lib/status-tones.ts";
@@ -218,6 +214,112 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
     }
   }
 
+  const columnasVencimientos: DataTableColumna<FiscalDeadline>[] = [
+    {
+      id: "tipo",
+      encabezado: "Tipo",
+      principal: true,
+      valorOrden: (d) => d.tipo,
+      celda: (d) => (
+        <div className="font-semibold text-foreground">
+          {d.tipo}
+          <div className="max-w-56 text-xs font-normal text-muted-foreground">{d.fundamento}</div>
+          {d.validarConFiscalista && (
+            <div className="mt-1 inline-flex items-center gap-1 text-xs font-normal text-warning">
+              <TriangleAlert className="h-3 w-3" strokeWidth={1.75} />
+              Validar con fiscalista
+            </div>
+          )}
+        </div>
+      ),
+    },
+    { id: "periodo", encabezado: "Periodo", valorOrden: (d) => d.periodo, celda: (d) => <span className="text-muted-foreground">{d.periodo}</span> },
+    {
+      id: "fechaLimite",
+      encabezado: "Fecha límite",
+      valorOrden: (d) => d.fechaLimite,
+      celda: (d) => (
+        <div className="text-muted-foreground">
+          {/* `fechaLimite`/`fechaPresentacion` son columnas `date` (solo día, 001_despachos_schema.sql): `formatFechaSolo`
+              evita que se pinten un día antes en America/Mexico_City (ver apps/web/src/lib/formato-fecha.ts). */}
+          {formatFechaSolo(d.fechaLimite)}
+          <div className="text-xs text-muted-foreground">{d.diasRestantes < 0 ? `${-d.diasRestantes} día(s) de atraso` : d.diasRestantes === 0 ? "vence hoy" : `vence en ${d.diasRestantes} día(s)`}</div>
+        </div>
+      ),
+    },
+    { id: "prioridad", encabezado: "Prioridad", valorOrden: (d) => d.diasRestantes, celda: (d) => <PrioridadBadge prioridad={d.prioridad} /> },
+    {
+      id: "estado",
+      encabezado: "Estado",
+      valorOrden: (d) => d.estado,
+      celda: (d) => {
+        const finalizado = d.estado === "completado";
+        return (
+          <>
+            <EstadoBadge estado={d.estado} />
+            {finalizado && d.fechaPresentacion && <div className="mt-1 text-xs text-muted-foreground">Presentado {formatFechaSolo(d.fechaPresentacion)}</div>}
+            {finalizado && d.comprobanteUrl && (
+              <div className="mt-0.5 text-xs">
+                <a href={d.comprobanteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline underline-offset-2">
+                  Ver comprobante
+                  <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
+                </a>
+              </div>
+            )}
+          </>
+        );
+      },
+    },
+    ...(puedeGestionar
+      ? [
+          {
+            id: "acciones",
+            encabezado: "Acciones",
+            celda: (d: FiscalDeadline) => {
+              const rowState = rowActions[d.id];
+              const finalizado = d.estado === "completado";
+              return (
+                <>
+                  {!finalizado && (
+                        <div className="flex min-w-56 flex-col gap-1.5">
+                          <Label htmlFor={`venc-comprobante-${d.id}`} className="sr-only">
+                            URL de comprobante
+                          </Label>
+                          <Input
+                            id={`venc-comprobante-${d.id}`}
+                            type="text"
+                            placeholder="URL de comprobante (opcional)"
+                            value={comprobanteDrafts[d.id] ?? ""}
+                            onChange={(e) => setComprobanteDrafts((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                            className="h-9 text-xs"
+                          />
+                          <div className="flex gap-1.5">
+                            <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleCompletar(d)} disabled={rowState?.loading}>
+                              <CheckCircle2 />
+                              {rowState?.loading ? "…" : "Marcar completado"}
+                            </Button>
+                            {d.estado !== "escalado" && (
+                              <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEscalar(d)} disabled={rowState?.loading}>
+                                <TrendingUp />
+                                Escalar
+                              </Button>
+                            )}
+                          </div>
+                          {rowState?.message && (
+                            <span className={`text-xs ${rowState.isError ? "text-destructive" : "text-success"}`} role={rowState.isError ? "alert" : undefined}>
+                              {rowState.message}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                </>
+              );
+            },
+          } satisfies DataTableColumna<FiscalDeadline>,
+        ]
+      : []),
+  ];
+
   return (
     <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -324,102 +426,7 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
       )}
 
       {vencimientos && vencimientos.length > 0 && (
-        <Card>
-          <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Periodo</TableHead>
-                  <TableHead>Fecha límite</TableHead>
-                  <TableHead>Prioridad</TableHead>
-                  <TableHead>Estado</TableHead>
-                  {puedeGestionar && <TableHead>Acciones</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {vencimientos.map((d) => {
-                  const rowState = rowActions[d.id];
-                  const finalizado = d.estado === "completado";
-                  return (
-                    <TableRow key={d.id} className="align-top">
-                      <TableCell className="font-semibold text-foreground">
-                        {d.tipo}
-                        <div className="max-w-56 text-xs font-normal text-muted-foreground">{d.fundamento}</div>
-                        {d.validarConFiscalista && (
-                          <div className="mt-1 inline-flex items-center gap-1 text-xs font-normal text-warning">
-                            <TriangleAlert className="h-3 w-3" strokeWidth={1.75} />
-                            Validar con fiscalista
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{d.periodo}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {/* `fechaLimite`/`fechaPresentacion` son columnas `date` (solo día,
-                            001_despachos_schema.sql) -- `formatFechaSolo` evita que se
-                            pinten un día antes en America/Mexico_City (mismo bug real
-                            corregido en Cobranza.tsx, ver apps/web/src/lib/formato-fecha.ts). */}
-                        {formatFechaSolo(d.fechaLimite)}
-                        <div className="text-xs text-muted-foreground">{d.diasRestantes < 0 ? `${-d.diasRestantes} día(s) de atraso` : d.diasRestantes === 0 ? "vence hoy" : `vence en ${d.diasRestantes} día(s)`}</div>
-                      </TableCell>
-                      <TableCell>
-                        <PrioridadBadge prioridad={d.prioridad} />
-                      </TableCell>
-                      <TableCell>
-                        <EstadoBadge estado={d.estado} />
-                        {finalizado && d.fechaPresentacion && <div className="mt-1 text-xs text-muted-foreground">Presentado {formatFechaSolo(d.fechaPresentacion)}</div>}
-                        {finalizado && d.comprobanteUrl && (
-                          <div className="mt-0.5 text-xs">
-                            <a href={d.comprobanteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline underline-offset-2">
-                              Ver comprobante
-                              <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
-                            </a>
-                          </div>
-                        )}
-                      </TableCell>
-                      {puedeGestionar && (
-                        <TableCell>
-                          {!finalizado && (
-                            <div className="flex min-w-56 flex-col gap-1.5">
-                              <Label htmlFor={`venc-comprobante-${d.id}`} className="sr-only">
-                                URL de comprobante
-                              </Label>
-                              <Input
-                                id={`venc-comprobante-${d.id}`}
-                                type="text"
-                                placeholder="URL de comprobante (opcional)"
-                                value={comprobanteDrafts[d.id] ?? ""}
-                                onChange={(e) => setComprobanteDrafts((prev) => ({ ...prev, [d.id]: e.target.value }))}
-                                className="h-9 text-xs"
-                              />
-                              <div className="flex gap-1.5">
-                                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleCompletar(d)} disabled={rowState?.loading}>
-                                  <CheckCircle2 />
-                                  {rowState?.loading ? "…" : "Marcar completado"}
-                                </Button>
-                                {d.estado !== "escalado" && (
-                                  <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEscalar(d)} disabled={rowState?.loading}>
-                                    <TrendingUp />
-                                    Escalar
-                                  </Button>
-                                )}
-                              </div>
-                              {rowState?.message && (
-                                <span className={`text-xs ${rowState.isError ? "text-destructive" : "text-success"}`} role={rowState.isError ? "alert" : undefined}>
-                                  {rowState.message}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <DataTable etiqueta="Vencimientos fiscales" columnas={columnasVencimientos} filas={vencimientos} obtenerId={(d) => d.id} atributosFila={(d) => ({ "data-vencimiento-id": d.id })} />
       )}
     </PageContainer>
   );

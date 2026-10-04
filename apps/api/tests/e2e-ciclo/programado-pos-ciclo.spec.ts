@@ -30,7 +30,69 @@ describe("e2e programado + POS", () => {
     return (await res.json()) as Json;
   }
 
-  it("programado: queda fuera de cocina y del POS; al promoverlo por el cron la comanda llega al POS UNA vez", async () => {
+  /** El motor en memoria no tiene `core.emit_notification` (eso lo prueban scripts/verify-*): se intercepta SOLO esa consulta
+   * para comprobar QUE se emite a la campana (evento del catalogo, clave por pedido). El resto pasa intacto. */
+  function espiarCampana(): Array<{ evento: unknown; clave: unknown; enlace: unknown; titulo: unknown }> {
+    const emisiones: Array<{ evento: unknown; clave: unknown; enlace: unknown; titulo: unknown }> = [];
+    const engine = stack.ctx.deps.engine as unknown as { withAppSession: (claims: { userId: string | null }, fn: (db: any) => Promise<any>) => Promise<any> }; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const original = engine.withAppSession.bind(engine);
+    engine.withAppSession = (claims, fn) =>
+      original(claims, (db: any) => // eslint-disable-line @typescript-eslint/no-explicit-any
+        fn({
+          ...db,
+          query: async (sql: string, params: unknown[] = []) => {
+            if (/core\.emit_notification/.test(sql)) {
+              emisiones.push({ evento: params[2], clave: params[10], enlace: params[7], titulo: params[5] });
+              return { rows: [{ emit_notification: 1 }] };
+            }
+            return db.query(sql, params);
+          },
+        }),
+      );
+    return emisiones;
+  }
+
+  it("programado: al promoverlo el staff recibe UN aviso en la bandeja y en la campana (sin PII), una sola vez", async () => {
+    stack = await startCicloStack();
+    const campana = espiarCampana();
+    const { order } = await crearProgramado();
+    const cron = () => fetch(stack.url("/internal/restaurantes/promover-programados"), { method: "POST", headers: { "x-atiende-internal-secret": E2E_SECRETS.internalSecret } });
+    // Aun falta mucho: nada que avisar.
+    expect(((await (await cron()).json()) as Json).avisosCocina).toMatchObject({ intentados: 0 });
+    expect(campana.filter((e) => String(e.evento).includes("programado_en_cocina"))).toHaveLength(0);
+
+    vi.setSystemTime(new Date("2026-10-06T21:40:00.000Z"));
+    const promovido = (await (await cron()).json()) as Json;
+    expect(promovido.avisosCocina).toEqual({ intentados: 1, bandeja: 1, errores: 0 });
+    // Campana: evento del catalogo con la clave = id del pedido y el enlace a Pedidos; el titulo no lleva PII.
+    const emitidas = campana.filter((e) => e.evento === "restaurantes.pedido.programado_en_cocina");
+    expect(emitidas).toHaveLength(1);
+    expect(emitidas[0]).toMatchObject({ clave: `restaurantes.pedido.programado_en_cocina:${order.id}`, enlace: "/restaurantes/{orgSlug}/pedidos" });
+    expect(JSON.stringify(emitidas[0])).not.toMatch(/Paco|9991230060/);
+    // Bandeja del panel: el evento nuevo, UNA vez, con la hora local y el nombre del cliente (la bandeja es interna del staff).
+    const login = await fetch(stack.url("/auth/login"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: stack.ctx.staff.owner.email, password: stack.ctx.staff.owner.password }) });
+    const { token } = (await login.json()) as { token: string };
+    const lista = (await (await fetch(stack.url(`/v1/restaurantes/${stack.propertyId}/admin/order-notifications`), authedGet(token))).json()) as Json;
+    const avisos = (lista.notifications as Json[]).filter((n) => n.eventType === "order.programado_promovido");
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0]!.orderId).toBe(order.id);
+    expect(avisos[0]!.message).toContain("entró a cocina");
+    // El cron otra vez no repite nada (ya no hay programados por promover).
+    expect(((await (await cron()).json()) as Json).avisosCocina).toMatchObject({ intentados: 0 });
+  });
+
+  it("programado: al promoverlo el staff recibe el aviso tambien cuando lo promueve el panel al consultar", async () => {
+    stack = await startCicloStack();
+    const campana = espiarCampana();
+    await crearProgramado();
+    vi.setSystemTime(new Date("2026-10-06T21:40:00.000Z"));
+    const login = await fetch(stack.url("/auth/login"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: stack.ctx.staff.owner.email, password: stack.ctx.staff.owner.password }) });
+    const { token } = (await login.json()) as { token: string };
+    await fetch(stack.url(`/v1/restaurantes/${stack.propertyId}/admin/orders?status=pending`), authedGet(token));
+    await vi.waitFor(() => expect(campana.filter((e) => e.evento === "restaurantes.pedido.programado_en_cocina")).toHaveLength(1));
+  });
+
+  it("programado: al promoverlo por el cron la comanda llega al POS UNA vez", async () => {
     stack = await startCicloStack();
     const { order } = await crearProgramado();
     expect(order.status).toBe("programado");
@@ -83,7 +145,7 @@ describe("e2e programado + POS", () => {
     const base = { session_id: "sesion-e2e-0123456789abcdef", items: [{ product_id: stack.products.coca, requested_quantity: 5 }], canal: "recoger" };
     const q = (await (await post("/fco-montejo/quote", base)).json()) as Json;
     await post("/fco-montejo/confirm", { session_id: base.session_id, quote_hash: q.quote_hash });
-    const created = (await (await post("/fco-montejo/orders", { ...base, customer_name: "Pos Caido", customer_phone: "9991230061", payment_method: "efectivo", quote_hash: q.quote_hash })).json()) as Json;
+    const created = (await (await post("/fco-montejo/orders", { ...base, acepta_aviso_privacidad: true, customer_name: "Pos Caido", customer_phone: "9991230061", payment_method: "efectivo", quote_hash: q.quote_hash })).json()) as Json;
     expect(created.estado).toBe("pending");
     expect(created.comanda).toMatchObject({ estado: "pendiente_de_confirmar", folio: null });
     expect(stack.pos.comandas).toHaveLength(0);

@@ -49,8 +49,17 @@ export interface ResultadoTool {
   readonly latenciaMs: number;
 }
 
+/** Lo que el controlador de la llamada sabe y el modelo no puede decidir: el turno del CLIENTE en que se invoca la tool (numero de
+ * habla inteligible del cliente en esta llamada). Permite al servidor exigir que la confirmacion llegue en un turno posterior a la cotizacion. */
+export interface ContextoEjecucionTool {
+  readonly turno: number | null;
+}
+
+/** Cabecera con la que el transporte HTTP informa el turno del cliente al servidor (la pone el worker, nunca el modelo). */
+export const CABECERA_TURNO_LLAMADA = "x-atiende-call-turn";
+
 /** Como se ejecuta de verdad una tool: en proceso (simulador/pruebas) o por HTTP contra la API (worker). */
-export type TransporteTools = (nombre: string, args: Readonly<Record<string, unknown>>, senal: AbortSignal) => Promise<{ readonly resultado: unknown; readonly entidadId: string | null }>;
+export type TransporteTools = (nombre: string, args: Readonly<Record<string, unknown>>, senal: AbortSignal, contexto?: ContextoEjecucionTool) => Promise<{ readonly resultado: unknown; readonly entidadId: string | null }>;
 
 const CLAVES_TELEFONO_RE = /^(phone|telefono|tel|celular|customer_?phone|caller_?(id|phone))$/i;
 
@@ -70,7 +79,7 @@ export interface EjecutorToolsOpciones {
 
 export interface EjecutorTools {
   definiciones(): readonly ToolDefinicion[];
-  ejecutar(nombre: string, args: unknown): Promise<ResultadoTool>;
+  ejecutar(nombre: string, args: unknown, contexto?: ContextoEjecucionTool): Promise<ResultadoTool>;
 }
 
 export function crearEjecutorTools(opts: EjecutorToolsOpciones): EjecutorTools {
@@ -79,7 +88,7 @@ export function crearEjecutorTools(opts: EjecutorToolsOpciones): EjecutorTools {
   const inciertas = new Set<string>(opts.registro.herramientasInciertas);
   return {
     definiciones: () => opts.registro.definiciones(),
-    async ejecutar(nombre, args) {
+    async ejecutar(nombre, args, contexto) {
       const t0 = ahora();
       if (!permitidas.has(nombre)) {
         return { resultado: { error: `Herramienta desconocida: ${nombre}` }, ok: false, timeout: false, entidadId: null, latenciaMs: 0 };
@@ -96,7 +105,7 @@ export function crearEjecutorTools(opts: EjecutorToolsOpciones): EjecutorTools {
         }, opts.timeoutMs);
       });
       try {
-        const salida = await Promise.race([opts.transporte(nombre, limpios, control.signal), expira]);
+        const salida = await Promise.race([opts.transporte(nombre, limpios, control.signal, contexto), expira]);
         const latenciaMs = Math.max(0, ahora() - t0);
         if (salida === "timeout") {
           const incierto = inciertas.has(nombre);
@@ -144,10 +153,10 @@ export function transporteHttp(opts: TransporteHttpOpciones): TransporteTools {
   const fetchFn = opts.fetchFn ?? fetch;
   let raiz = opts.raiz;
   while (raiz.endsWith("/")) raiz = raiz.slice(0, -1);
-  return async (nombre, args, senal) => {
+  return async (nombre, args, senal, contexto) => {
     const respuesta = await fetchFn(`${raiz}${opts.ruta(nombre)}`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...opts.cabeceras },
+      headers: { "content-type": "application/json", ...opts.cabeceras, ...(contexto?.turno != null ? { [CABECERA_TURNO_LLAMADA]: String(contexto.turno) } : {}) },
       body: JSON.stringify(args),
       signal: senal,
     });

@@ -12,7 +12,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, assertOrderCanBeDispatched, avisarProgramadosPromovidos, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
 import type { Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
@@ -118,6 +118,8 @@ interface StatusBody {
   readonly status?: unknown;
   /** `false` = no avisar por WhatsApp al cliente de este cambio (aviso opcional de "listo para recoger"). */
   readonly notifyCustomer?: unknown;
+  /** Nota de la incidencia (solo con `status: "problema"`; 1-2000 caracteres). */
+  readonly incidentNote?: unknown;
 }
 
 interface AssignRepartidorBody {
@@ -199,6 +201,12 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
           );
           logEvent(c, "info", "restaurantes_programados_comanda_encolada", { organizationId, ...resumen });
         });
+        // Aviso al staff (bandeja + campana) de que el programado entro a cocina, tambien tras el commit y en su propia
+        // sesion de sistema: un fallo aqui no afecta la respuesta ni la comanda (tarea aparte).
+        c.get("postCommitTasks").push(async () => {
+          const resumen = await deps.engine.withAppSession({ userId: null }, (db) => avisarProgramadosPromovidos(deps.restaurantesRepo(db), db, promovidos));
+          logEvent(c, "info", "restaurantes_programados_aviso_staff", { organizationId, ...resumen });
+        });
       }
       return r.promovidos;
     } catch (err) {
@@ -247,7 +255,14 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       // SAVEPOINT.
       // `notifyCustomer: false` salta el aviso por WhatsApp al cliente (aviso OPCIONAL de "listo para recoger").
       if (raw.notifyCustomer !== undefined && typeof raw.notifyCustomer !== "boolean") throw Errors.validation("notifyCustomer: se esperaba true o false.");
-      const updated = await changeOrderStatus(repo, organizationId, order, raw.status, c.get("db"), raw.notifyCustomer === false ? { avisarCliente: false } : {});
+      if (raw.incidentNote !== undefined && raw.incidentNote !== null) {
+        if (typeof raw.incidentNote !== "string" || raw.incidentNote.trim().length < 1 || raw.incidentNote.trim().length > 2000) throw Errors.validation("incidentNote: se esperaba un texto de 1 a 2000 caracteres.");
+        if (raw.status !== "problema") throw Errors.validation('incidentNote solo aplica cuando status es "problema".');
+      }
+      const updated = await changeOrderStatus(repo, organizationId, order, raw.status, c.get("db"), {
+        ...(raw.notifyCustomer === false ? { avisarCliente: false } : {}),
+        ...(typeof raw.incidentNote === "string" ? { incidentNote: raw.incidentNote } : {}),
+      });
       // Cluster #3 (CRÍTICO) de la auditoría final — `changeOrderStatus` ya
       // encoló internamente (best-effort) el WhatsApp al cliente si el nuevo
       // status aplica (tryNotifyCustomerOnOrderStatusChange, ver
@@ -367,6 +382,13 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       throw Errors.validation("repartidorId no corresponde a un repartidor de esta organización.");
     }
 
+    try {
+      await assertOrderCanBeDispatched(repo, organizationId, order);
+    } catch (err) {
+      if (err instanceof OrderStatusTransitionError) throw Errors.conflict(err.message);
+      throw err;
+    }
+
     const updated = await repo.assignRepartidorToOrder(organizationId, orderId, raw.repartidorId, estimatedDeliveryAt);
     if (!updated) throw Errors.notFound("Pedido no encontrado.");
     // Fase 9 — "pedido listo para repartidor" del gap original (ver
@@ -421,19 +443,12 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     const organizationId = c.get("organizationId");
     const actorId = c.get("userId");
     const notificationId = c.req.param("notificationId");
-    // Mismo criterio de defensa en profundidad que el resto de rutas admin de este
-    // archivo (findOrderById + scope check, ver arriba): un staff con membership
-    // restringida a ciertas sucursales nunca debe poder reconocer la notificación de
-    // una sucursal fuera de su alcance solo por adivinar el uuid. Se verifica ANTES
-    // de escribir nada (nunca reconoce y luego rechaza) consultando el mismo listado
-    // ya acotado por scope que usa el GET de arriba.
+    // Defensa en profundidad: un staff acotado a ciertas sucursales nunca reconoce la notificacion de otra.
+    // El alcance viaja DENTRO de la escritura (property_id = any(scope)); un listado acotado a las N mas
+    // recientes dejaba sin poder reconocer las pendientes viejas (QA-restaurantes-R1-features-08).
     const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
-    if (scope !== null) {
-      const visible = await repo.listStaffOrderNotifications(organizationId, scope, { limit: 500 });
-      if (!visible.some((n) => n.id === notificationId)) throw Errors.notFound("Notificación no encontrada.");
-    }
     try {
-      const notification = await repo.acknowledgeStaffOrderNotification(organizationId, notificationId, actorId);
+      const notification = await repo.acknowledgeStaffOrderNotification(organizationId, notificationId, actorId, scope);
       logEvent(c, "info", "restaurantes_admin_notificacion_reconocida", { actorUserId: actorId, organizationId, notificationId });
       return c.json({ notification: serializeStaffNotification(notification) });
     } catch {

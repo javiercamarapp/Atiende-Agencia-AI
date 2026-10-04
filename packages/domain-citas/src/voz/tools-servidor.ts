@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { registrarEscalacionCrisis } from "../crisis-guardrail.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
 import type { CitasRepository } from "../repository.ts";
-import { CRISIS_KEYWORDS, requiresCrisisGuardrail } from "../vertical-config.ts";
+import { CRISIS_KEYWORDS, crisisGuardActivaPara } from "../vertical-config.ts";
 import { executeToolCall } from "../whatsapp/llm-turn-handler.ts";
 import { MOTIVO_CRISIS_VOZ, PREFIJO_PALABRA_CLAVE } from "./guardia-crisis.ts";
 
@@ -79,7 +79,7 @@ export async function derivarAHumanoVoz(ctx: CitasVozContexto, entrada: { readon
   const telefono = ctx.telefono || "anonimo";
   const tenant = await ctx.repo.findTenantConfig(ctx.organizationId);
 
-  if (motivo === MOTIVO_CRISIS_VOZ && tenant && requiresCrisisGuardrail(tenant.rubro)) {
+  if (motivo === MOTIVO_CRISIS_VOZ && crisisGuardActivaPara(tenant?.rubro)) {
     // Solo una palabra de la lista FIJA (la que puso la guardia determinista) llega a la base y al aviso del dueño: el texto libre que mande el
     // modelo (o lo que haya dicho el cliente) se descarta y se guarda el texto fijo.
     const candidata = resumen.startsWith(PREFIJO_PALABRA_CLAVE) ? resumen.slice(PREFIJO_PALABRA_CLAVE.length).trim() : "";
@@ -87,11 +87,11 @@ export async function derivarAHumanoVoz(ctx: CitasVozContexto, entrada: { readon
     await registrarEscalacionCrisis(
       ctx.repo,
       ctx.organizationId,
-      tenant.ownerNotificationPhone,
+      tenant?.ownerNotificationPhone ?? null,
       { customerPhone: telefono, channel: "voice", keyword: palabra || "señal de crisis en la llamada", excerpt: "" },
       ctx.handoffGate,
     );
-    return { ok: true, derivado: true, aviso_enviado: tenant.ownerNotificationPhone !== null, crisis: true, mensaje: "Una persona del equipo se pondrá en contacto." };
+    return { ok: true, derivado: true, aviso_enviado: (tenant?.ownerNotificationPhone ?? null) !== null, crisis: true, mensaje: "Una persona del equipo se pondrá en contacto." };
   }
 
   let avisoEnviado = false;
