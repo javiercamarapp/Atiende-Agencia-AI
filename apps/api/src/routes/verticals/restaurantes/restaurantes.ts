@@ -16,6 +16,7 @@ import { restaurantesAdminStaffRoutes } from "./admin-staff.ts";
 import { restaurantesRepartidorOrdersRoutes } from "./repartidor-orders.ts";
 import { restaurantesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { restaurantesProgramadosInternoRoutes } from "./programados-interno.ts";
+import { restaurantesVozHuerfanasRoutes } from "./voz-huerfanas.ts";
 import { restaurantesCierresRoutes } from "./cierres.ts";
 import { restaurantesCierresInternoRoutes } from "./cierres-interno.ts";
 import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
@@ -57,6 +58,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesEmailDispatchRoutes(deps));
   // R-11 (migración 034): promoción de pedidos programados por endpoint interno (sin cron, ver el archivo).
   app.route("/", restaurantesProgramadosInternoRoutes(deps));
+  // QA R1 (migración 042): barrido cron de llamadas de voz sin cierre.
+  app.route("/", restaurantesVozHuerfanasRoutes(deps));
   app.route("/", restaurantesCierresInternoRoutes(deps));
   app.route("/", restaurantesCierresRoutes(deps));
   // FASE 3 (producto) — bitácora de auditoría del staff (ver

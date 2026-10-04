@@ -26,6 +26,8 @@ export type { DecisionInicio, EntradaInicioLlamada } from "./llamada/inicio.ts";
 export { extraerTelefonoSipFrom } from "./llamada/sip.ts";
 export { eventoSinPII, redactarPII, referenciaLlamada } from "./llamada/log-sin-pii.ts";
 export type { SumideroLog } from "./llamada/log-sin-pii.ts";
+export { HUERFANAS_INACTIVAS_MIN, HUERFANAS_LOTE, cerrarLlamadasHuerfanas } from "./huerfanas.ts";
+export type { BarridoHuerfanas } from "./huerfanas.ts";
 export { MOTIVO_PERSONA_VOZ, TEXTO_PERSONA_VOZ, crearGuardiaPersonaVoz, evaluarPersonaVoz } from "./guardia-persona.ts";
 export { crearEjecutorTools, sanearArgumentos, transporteEnProceso, transporteHttp } from "./llamada/ejecutor-tools.ts";
 export type { EjecutorTools, ResultadoTool, TransporteTools } from "./llamada/ejecutor-tools.ts";
