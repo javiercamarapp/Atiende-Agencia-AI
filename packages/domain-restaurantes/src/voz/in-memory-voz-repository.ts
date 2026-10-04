@@ -161,6 +161,28 @@ export class InMemoryVozRepository implements VozRepository {
     return true;
   }
 
+  async cerrarHuerfanas(opciones: { inactivasMinutos: number; limite: number }): Promise<number> {
+    this.exigirMigrada();
+    const corte = this.reloj() - opciones.inactivasMinutos * 60_000;
+    let cerradas = 0;
+    const abiertas = [...this.conversaciones.values()].filter((c) => c.endedAt === null && c.resultado === null && new Date(c.startedAt).getTime() < corte).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+    for (const c of abiertas.slice(0, opciones.limite)) {
+      const turnos = this.turnos.get(c.id) ?? [];
+      const ultimo = turnos.length === 0 ? new Date(c.startedAt).getTime() : Math.max(new Date(c.startedAt).getTime(), ...turnos.map((t) => new Date(t.createdAt).getTime()));
+      const latencias = turnos.map((t) => t.latenciaMs).filter((l): l is number => l !== null).sort((a, b) => a - b);
+      this.conversaciones.set(c.id, {
+        ...c,
+        endedAt: new Date(ultimo).toISOString(),
+        resultado: "abandonado",
+        durationS: Math.max(0, Math.floor((ultimo - new Date(c.startedAt).getTime()) / 1000)),
+        costoEstimadoMicroUsd: turnos.reduce((s, t) => s + t.costoEstimadoMicroUsd, 0),
+        latenciaP95Ms: latencias.length === 0 ? null : latencias[Math.max(0, Math.ceil(0.95 * latencias.length) - 1)]!,
+      });
+      cerradas += 1;
+    }
+    return cerradas;
+  }
+
   async consumirPreview(input: { sessionId: string; organizationId: string; propertyId: string }): Promise<boolean> {
     this.exigirMigrada();
     const s = this.previews.get(input.sessionId);

@@ -33,6 +33,10 @@ export function debePreguntarPropina(politica: PropinaPolitica | null, paymentMe
 
 /** Mismo emparejamiento que `restaurantes.nearest_branch_by_colonia` (migracion 005): texto
  * normalizado de ambos lados, la zona mas especifica (nombre mas largo) gana. */
+/** Largo minimo (texto normalizado, sin espacios) para que un fragmento cuente como colonia: una o dos letras ("a", "co") son
+ * subcadena de casi cualquier zona y harian pasar un domicilio sin colonia real. */
+export const LARGO_MIN_COLONIA = 4;
+
 export function matchKnownZone(zones: readonly KnownZone[], colonia: string): KnownZone | null {
   const input = normalizeZoneText(colonia);
   if (!input) return null;
@@ -40,7 +44,8 @@ export function matchKnownZone(zones: readonly KnownZone[], colonia: string): Kn
   for (const zone of zones) {
     const name = normalizeZoneText(zone.name);
     if (!name) continue;
-    if (input.includes(name) || name.includes(input)) {
+    // La colonia escrita contiene la zona conocida (zona >= 3 letras), o la zona contiene lo escrito (fragmento >= LARGO_MIN_COLONIA).
+    if ((name.length >= 3 && input.includes(name)) || (input.length >= LARGO_MIN_COLONIA && name.includes(input))) {
       if (!best || zone.name.length > best.name.length) best = zone;
     }
   }

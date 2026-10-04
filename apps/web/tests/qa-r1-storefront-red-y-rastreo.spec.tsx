@@ -14,7 +14,7 @@ let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
 
 const DATOS = { sessionId: "sesion-web-0001-abcdef", items: [{ product_id: "p1", requested_quantity: 2 }], canal: "recoger" as const, metodoPago: "efectivo" as const };
-const CLIENTE = { nombre: "Ana", telefono: "9991234567" };
+const CLIENTE = { nombre: "Ana", telefono: "9991234567", aceptaAviso: true };
 
 function json(body: unknown, status = 200): Response {
   return { ok: status < 400, status, json: async () => body } as unknown as Response;

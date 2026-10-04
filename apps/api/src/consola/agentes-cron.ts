@@ -24,6 +24,7 @@ export const AGENTES_CRON: Readonly<Record<string, CronAgente>> = {
   "/internal/restaurantes/email-dispatch": { vertical: "restaurantes", nombre: "Despacho de correo de restaurantes" },
   "/internal/restaurantes/promover-programados": { vertical: "restaurantes", nombre: "Promoción de pedidos programados" },
   "/internal/restaurantes/softrestaurant-dispatch": { vertical: "restaurantes", nombre: "Envío a SoftRestaurant" },
+  "/internal/restaurantes/voz-huerfanas": { vertical: "restaurantes", nombre: "Cierre de llamadas de voz sin cierre" },
   "/internal/restaurantes/privacidad-retencion": { vertical: "restaurantes", nombre: "Retención de privacidad de restaurantes" },
   "/internal/despachos/cobranza-reminders": { vertical: "despachos", nombre: "Recordatorios de cobranza" },
   "/internal/despachos/email-dispatch": { vertical: "despachos", nombre: "Despacho de correo de despachos" },
