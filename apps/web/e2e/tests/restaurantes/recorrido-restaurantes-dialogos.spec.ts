@@ -70,6 +70,32 @@ test.describe("restaurantes: dialogos, Cancelar y Escape nunca ejecutan @recorri
     vigilante.verificar();
   });
 
+  test("Configuracion > Volver al perfil por defecto del agente: confirmar hace exactamente un POST /restablecer", async ({ page, mock, vigilante }) => {
+    await ir(page, "/configuracion");
+    await page.getByRole("button", { name: "Volver al perfil por defecto" }).click();
+    await mock.limpiarRegistro();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Volver al perfil por defecto" }).click();
+    const posts = await esperarEscrituras(mock, { metodo: "POST", ruta: "/config/agente-whatsapp/restablecer" });
+    expect(posts).toHaveLength(1);
+    await expect(page.getByText("Se restableció el perfil por defecto.")).toBeVisible();
+    expect(await mock.escrituras()).toHaveLength(1);
+    vigilante.verificar();
+  });
+
+  test("Promociones > Editar vigencia: guardar hace exactamente un PATCH con las fechas", async ({ page, mock, vigilante }) => {
+    await ir(page, "/promociones");
+    await main(page).getByRole("button", { name: "Editar vigencia" }).click();
+    const d = dialogo(page, "Editar vigencia");
+    await d.getByLabel("Vigente hasta").fill("2028-01-31");
+    await mock.limpiarRegistro();
+    await d.getByRole("button", { name: "Guardar" }).click();
+    const patches = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/promotions/promo-1" });
+    expect(patches).toHaveLength(1);
+    expect(cuerpoDe(patches[0])).toHaveProperty("endsAt");
+    await expect(d).toBeHidden();
+    vigilante.verificar();
+  });
+
   test("Copiloto > Borrar chat: Cancelar y Escape no borran; confirmar hace un DELETE", async ({ page, mock, vigilante }) => {
     await ir(page, "/copiloto");
     await page.getByRole("button", { name: "¿Cuánto vendí esta semana?" }).click();
