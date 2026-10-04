@@ -33,6 +33,7 @@
 import { validarCfdi } from "@atiende/billing";
 import type { ConceptoCfdi, DatosCfdi, HallazgoCfdi } from "@atiende/billing";
 import type { DiotTipoOperacion } from "../declaraciones/types.ts";
+import { avisosCfdi } from "./avisos-cfdi.ts";
 
 export const TOLERANCIA = 0.02;
 // Tolerancia de retenciones: $1.00 (referencial — la tasa de 10%/2-3 es solo un
@@ -253,9 +254,17 @@ export function validarCfdiDespachos(datos: DatosCfdiDespachos): ResultadoValida
 
   // ---- Retenciones: warnings de desviación (validator.py líneas 283-302... 8) ----
   if (datos.retencionIsr != null && datos.subtotal) {
-    const esperado = r2(datos.subtotal * 0.1);
+    // D-P3-31: un emisor RESICO persona fisica (regimen 626) sufre una retencion de ISR del 1.25 % (art. 113-J LISR), no la de
+    // honorarios del 10 %: contra el 10 % el aviso salia siempre en falso. Para 626 se compara contra el 1.25 %.
+    const esResicoPf = datos.regimenFiscalEmisor === "626";
+    const tasa = esResicoPf ? 0.0125 : 0.1;
+    const esperado = r2(datos.subtotal * tasa);
     if (Math.abs(datos.retencionIsr - esperado) > TOLERANCIA_RETENCION) {
-      warnings.push(`Retención ISR ${money(datos.retencionIsr)} no coincide con 10% referencial (${money(esperado)}); revisar caso.`);
+      warnings.push(
+        esResicoPf
+          ? `Retención ISR ${money(datos.retencionIsr)} no coincide con 1.25% de RESICO persona física (${money(esperado)}); revisar caso.`
+          : `Retención ISR ${money(datos.retencionIsr)} no coincide con 10% referencial (${money(esperado)}); revisar caso.`,
+      );
     }
   }
   if (datos.retencionIva != null && iva) {
@@ -264,6 +273,9 @@ export function validarCfdiDespachos(datos: DatosCfdiDespachos): ResultadoValida
       warnings.push(`Retención IVA ${money(datos.retencionIva)} no coincide con 2/3 del IVA (${money(esperado)}); revisar caso.`);
     }
   }
+
+  // ---- D-P3-31: avisos adicionales (IVA por concepto, MetodoPago/FormaPago, UsoCFDI vs regimen del receptor); ver avisos-cfdi.ts ----
+  warnings.push(...avisosCfdi(datos));
 
   // ---- IEPS (warning) ----
   if (datos.ieps != null && datos.ieps > 0) {

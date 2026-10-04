@@ -2,6 +2,7 @@ export {
   validarCfdiDespachos,
   TOLERANCIA,
 } from "./cfdi/reglas-fiscales-avanzadas.ts";
+export { avisosCfdi, REGIMENES_RECEPTOR_POR_USO } from "./cfdi/avisos-cfdi.ts";
 export type { DatosCfdiDespachos, ResultadoValidacionCfdiDespachos, DiotResult, ProveedorReportableDiot, NominaCfdi } from "./cfdi/reglas-fiscales-avanzadas.ts";
 
 // ---- Declaraciones ISR/IVA/RESICO + DIOT (Fase 2) ----
@@ -90,7 +91,7 @@ export type {
   NuevoVencimiento,
 } from "./vencimientos/engine.ts";
 
-export { RepRfcAjenoError, analizarComplementoPago, proporcionCentavos } from "./cfdi/rep.ts";
+export { RepRfcAjenoError, analizarComplementoPago, avisosPagoRep, proporcionCentavos } from "./cfdi/rep.ts";
 export type { AnalisisDocumentoRep, AnalisisRep, FacturaLigable, FlujoRep, FuenteIvaRep } from "./cfdi/rep.ts";
 
 export {
