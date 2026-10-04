@@ -116,11 +116,11 @@ function AsientosEditor({ filas, setFilas }: { filas: readonly AsientoFila[]; se
         <Table className="min-w-[560px] text-xs">
           <TableHeader>
             <TableRow>
-              <TableHead className="h-9">Cuenta *</TableHead>
-              <TableHead className="h-9">Debe</TableHead>
-              <TableHead className="h-9">Haber</TableHead>
-              <TableHead className="h-9">Fecha</TableHead>
-              <TableHead className="h-9" />
+              <TableHead>Cuenta *</TableHead>
+              <TableHead>Debe</TableHead>
+              <TableHead>Haber</TableHead>
+              <TableHead>Fecha</TableHead>
+              <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -370,12 +370,12 @@ export function ContabilidadElectronicaPage({ apiBaseUrl, token, propertyId, rol
                 <Table className="text-xs">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="h-9">Cuenta</TableHead>
-                      <TableHead className="h-9">Descripción</TableHead>
-                      <TableHead className="h-9">Saldo inicial</TableHead>
-                      <TableHead className="h-9">Debe</TableHead>
-                      <TableHead className="h-9">Haber</TableHead>
-                      <TableHead className="h-9">Saldo final</TableHead>
+                      <TableHead>Cuenta</TableHead>
+                      <TableHead>Descripción</TableHead>
+                      <TableHead>Saldo inicial</TableHead>
+                      <TableHead>Debe</TableHead>
+                      <TableHead>Haber</TableHead>
+                      <TableHead>Saldo final</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

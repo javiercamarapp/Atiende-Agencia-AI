@@ -237,7 +237,7 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
             <FormField label="Cuenta (opcional)">
               <Input id="sesion-cuenta" value={cuenta} onChange={(e) => setCuenta(e.target.value)} placeholder="CLABE o número" className="w-56" />
             </FormField>
-            <Button type="button" loading={guardando} loadingText="Guardando…" iconLeft={<Save />} onClick={() => void crear()}>
+            <Button type="button" loading={guardando} iconLeft={<Save />} onClick={() => void crear()}>
               Guardar como sesión
             </Button>
           </div>

@@ -42,6 +42,9 @@ export function cargarFuentes(raiz: string): Fuente[] {
 
 const PALETA = "green|amber|red|yellow|blue|emerald|orange|slate|gray|zinc|sky|rose|stone|neutral|purple|indigo|teal|cyan|lime|pink|fuchsia|violet|white|black";
 
+/** Todo despachos salvo Resumen (UNI-RES) y el portal publico (lote D2). */
+const ALCANCE_DESPACHOS = /^verticals\/despachos\/(?!pages\/Dashboard\.tsx|portal\/)/;
+
 export const REGLAS: ReadonlyArray<ReglaGuard> = [
   { nombre: "window.confirm (usar useConfirm)", patron: /\bwindow\.confirm\s*\(|(^|[^.\w])confirm\s*\(\s*[`"']/m },
   { nombre: "tamano de texto arbitrario text-[Npx] (usar la escala text-2xs/xs/sm/base)", patron: /text-\[[0-9.]+px\]/ },
@@ -63,6 +66,14 @@ export const REGLAS: ReadonlyArray<ReglaGuard> = [
   { nombre: "Table a mano en restaurantes (usar DataTable)", patron: /<Table[\s>]/, alcance: /^verticals\/restaurantes\// },
   { nombre: "AlertDialog local en restaurantes (usar useConfirm o useConfirm().pedirTexto)", patron: /\bAlertDialog\b/, alcance: /^verticals\/restaurantes\// },
   { nombre: "Guardando a mano en restaurantes (usar Button loading)", patron: /Guardando(…|\.\.\.)/, alcance: /^verticals\/restaurantes\// },
+  // Trinquete UNI-C (despachos): estructura y formularios. Alcance: todo despachos salvo Resumen (UNI-RES) y el portal publico (lote D2).
+  { nombre: "h1 suelto en despachos (usar PageHeader)", patron: /<h1[\s>]/, alcance: ALCANCE_DESPACHOS },
+  { nombre: "Guardando a mano en despachos (usar Button loading)", patron: /Guardando(…|\.\.\.)/, alcance: ALCANCE_DESPACHOS },
+  { nombre: "window.prompt en despachos (usar useConfirm().pedirTexto)", patron: /\bwindow\.prompt\s*\(/, alcance: ALCANCE_DESPACHOS },
+  { nombre: "toLocale a mano en despachos (usar formatMoney o el formateador de fechas comun)", patron: /\.toLocale(Date|Time)?String\(/, alcance: /^verticals\/despachos\/(?!pages\/Dashboard\.tsx|portal\/|lib\/format\.ts)/ },
+  { nombre: "Button con h-9 o rounded-full en despachos (usar el tamano por defecto)", patron: /<Button\b[^>]*?className="[^"]*\b(h-9|rounded-full)\b/, alcance: ALCANCE_DESPACHOS },
+  { nombre: "CardTitle con clase de tamano en despachos (el CardTitle ya es de 14 px)", patron: /<CardTitle\b[^>]*?className="[^"]*\btext-(xs|sm|base|lg|xl|2xl|3xl)\b/, alcance: ALCANCE_DESPACHOS },
+  { nombre: "PageContainer con max-w en despachos (el contenido ocupa todo el ancho)", patron: /<PageContainer\b[^>]*?className="[^"]*\bmax-w-/, alcance: ALCANCE_DESPACHOS },
 ];
 
 const esPagina = (f: Fuente): boolean => /(^|\/)pages\//.test(f.ruta);

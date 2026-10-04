@@ -35,6 +35,14 @@ const CASOS: ReadonlyArray<{ regla: string; viola: string; limpio: string; ruta?
   { regla: "Table a mano en restaurantes", viola: "<Table><TableBody /></Table>", limpio: "<DataTable />", ruta: "verticals/restaurantes/pages/Y.tsx" },
   { regla: "AlertDialog local en restaurantes", viola: "<AlertDialog open>x</AlertDialog>", limpio: "const { confirmar, dialogo } = useConfirm();", ruta: "verticals/restaurantes/pages/Y.tsx" },
   { regla: "Guardando a mano en restaurantes", viola: '<Button>{saving ? "Guardando…" : "Guardar"}</Button>', limpio: "<Button loading={saving}>Guardar</Button>", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "h1 suelto en despachos", viola: '<h1 className="x">Titulo</h1>', limpio: '<PageHeader titulo="Titulo" />', ruta: "verticals/despachos/pages/Y.tsx" },
+  { regla: "Guardando a mano en despachos", viola: '<Button>{saving ? "Guardando…" : "Guardar"}</Button>', limpio: "<Button loading={saving}>Guardar</Button>", ruta: "verticals/despachos/pages/Y.tsx" },
+  { regla: "window.prompt en despachos", viola: 'const m = window.prompt("Motivo");', limpio: "const m = await pedirTexto({ titulo: 'Motivo' });", ruta: "verticals/despachos/pages/Y.tsx" },
+  { regla: "toLocale a mano en despachos", viola: 'new Date(x).toLocaleString("es-MX")', limpio: "formatDateTime(x)", ruta: "verticals/despachos/pages/Y.tsx" },
+  { regla: "Button con h-9 o rounded-full en despachos", viola: '<Button size="sm" className="h-9 px-3">a</Button>', limpio: '<Button variant="outline">a</Button>', ruta: "verticals/despachos/pages/Y.tsx" },
+  { regla: "Button con h-9 o rounded-full en despachos", viola: '<Button className="rounded-full px-6">a</Button>', limpio: '<Button className="w-full">a</Button>', ruta: "verticals/despachos/pages/Y.tsx" },
+  { regla: "CardTitle con clase de tamano en despachos", viola: '<CardTitle className="text-base">a</CardTitle>', limpio: '<CardTitle className="flex items-center gap-2">a</CardTitle>', ruta: "verticals/despachos/pages/Y.tsx" },
+  { regla: "PageContainer con max-w en despachos", viola: '<PageContainer className="max-w-3xl">a</PageContainer>', limpio: '<PageContainer className="[&>*]:min-w-0">a</PageContainer>', ruta: "verticals/despachos/pages/Y.tsx" },
 ];
 
 const porRegla = (prefijo: string) => {
@@ -62,6 +70,17 @@ describe("guard DS v2 — sanidad por regla (cada regla falla ante su violacion)
     for (const prefijo of ["Table a mano en restaurantes", "AlertDialog local en restaurantes", "Guardando a mano en restaurantes"]) {
       expect(infractores([fuente("<Table /> <AlertDialog /> {'Guardando…'}", "verticals/hoteles/pages/Y.tsx")], porRegla(prefijo))).toEqual([]);
     }
+  });
+
+  it("las reglas de trinquete de despachos no aplican a otras zonas ni al Resumen (UNI-RES) ni al portal publico (D2)", () => {
+    const prefijos = ["h1 suelto en despachos", "Guardando a mano en despachos", "window.prompt en despachos", "toLocale a mano en despachos", "Button con h-9 o rounded-full en despachos", "CardTitle con clase de tamano en despachos", "PageContainer con max-w en despachos"];
+    const codigo = '<h1>x</h1> {"Guardando…"} window.prompt("x") d.toLocaleString() <Button className="h-9" /> <CardTitle className="text-base" /> <PageContainer className="max-w-3xl" />';
+    for (const prefijo of prefijos) {
+      for (const ruta of ["verticals/hoteles/pages/Y.tsx", "verticals/despachos/pages/Dashboard.tsx", "verticals/despachos/portal/PortalClientePage.tsx"]) {
+        expect(infractores([fuente(codigo, ruta)], porRegla(prefijo))).toEqual([]);
+      }
+    }
+    expect(infractores([fuente('d.toLocaleString("es-MX")', "verticals/despachos/lib/format.ts")], porRegla("toLocale a mano en despachos"))).toEqual([]);
   });
 
   it("las reglas soloPaginas ignoran archivos fuera de pages/", () => {
