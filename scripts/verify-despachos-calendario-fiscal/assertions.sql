@@ -83,4 +83,75 @@ set local role anon;
 select count(*) as filas_anon from despachos.fiscal_deadline;
 rollback;
 
+-- ---------------------------------------------------------------------------------------------------------------
+-- Migracion 024 (paridad3-despachos-fiscal-correcciones, D-P3-33): 5 tipos nuevos en el CHECK + ventana del barrido.
+-- ---------------------------------------------------------------------------------------------------------------
+\echo '8. (024) staff de A inserta los 5 tipos nuevos (Retenciones/IMSS/IMSS-bimestral/ISN/Informativa) en su propia property'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d26c01', true);
+insert into despachos.fiscal_deadline (organization_id, property_id, tipo, periodo, fecha_limite, prioridad) values
+  ('00000000-0000-0000-0000-000000d26a01', '00000000-0000-0000-0000-000000d26b01', 'Retenciones', '2026-06', '2026-07-17', 'baja'),
+  ('00000000-0000-0000-0000-000000d26a01', '00000000-0000-0000-0000-000000d26b01', 'IMSS', '2026-06', '2026-07-17', 'baja'),
+  ('00000000-0000-0000-0000-000000d26a01', '00000000-0000-0000-0000-000000d26b01', 'IMSS-bimestral', '2026-06', '2026-07-17', 'baja'),
+  ('00000000-0000-0000-0000-000000d26a01', '00000000-0000-0000-0000-000000d26b01', 'ISN', '2026-06', '2026-07-17', 'baja'),
+  ('00000000-0000-0000-0000-000000d26a01', '00000000-0000-0000-0000-000000d26b01', 'Informativa', '2026-12', '2027-02-15', 'baja');
+select count(*) as cinco_tipos_nuevos_deberia_ser_5
+  from despachos.fiscal_deadline where property_id = '00000000-0000-0000-0000-000000d26b01' and tipo in ('Retenciones', 'IMSS', 'IMSS-bimestral', 'ISN', 'Informativa');
+rollback;
+
+\echo '9. (024) la lista sigue cerrada: un tipo parecido pero inventado (IMSS-mensual) se rechaza'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d26c01', true);
+insert into despachos.fiscal_deadline (organization_id, property_id, tipo, periodo, fecha_limite, prioridad) values
+  ('00000000-0000-0000-0000-000000d26a01', '00000000-0000-0000-0000-000000d26b01', 'IMSS-mensual', '2026-06', '2026-07-17', 'baja') returning 1 as should_fail;
+rollback;
+
+\echo '10. (024) cross-tenant: staff de B NO puede insertar un ISN en la property de A'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d26c02', true);
+insert into despachos.fiscal_deadline (organization_id, property_id, tipo, periodo, fecha_limite, prioridad) values
+  ('00000000-0000-0000-0000-000000d26a01', '00000000-0000-0000-0000-000000d26b01', 'ISN', '2026-06', '2026-07-17', 'baja') returning 1 as should_fail;
+rollback;
+
+\echo '11. (024) cross-tenant (lectura): staff de B no ve un Retenciones de A'
+begin;
+insert into despachos.fiscal_deadline (organization_id, property_id, tipo, periodo, fecha_limite, prioridad) values
+  ('00000000-0000-0000-0000-000000d26a01', '00000000-0000-0000-0000-000000d26b01', 'Retenciones', '2026-06', '2026-07-17', 'baja');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d26c02', true);
+select count(*) as filas_ajenas_nuevos_tipos_deberia_ser_0 from despachos.fiscal_deadline where property_id = '00000000-0000-0000-0000-000000d26b01';
+rollback;
+
+\echo '12. (024) anon no puede insertar un tipo nuevo'
+begin;
+set local role anon;
+insert into despachos.fiscal_deadline (organization_id, property_id, tipo, periodo, fecha_limite, prioridad) values
+  ('00000000-0000-0000-0000-000000d26a01', '00000000-0000-0000-0000-000000d26b01', 'IMSS', '2026-06', '2026-07-17', 'baja') returning 1 as should_fail;
+rollback;
+
+\echo '13. (024) un staff autenticado NO puede invocar system_vencimientos_por_escalar (solo sistema, 42501)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d26c01', true);
+select * from despachos.system_vencimientos_por_escalar('00000000-0000-0000-0000-000000d26b01', '2026-07-01') as should_fail;
+rollback;
+
+\echo '14. (024) anon no puede invocar system_vencimientos_por_escalar (sin EXECUTE)'
+begin;
+set local role anon;
+select * from despachos.system_vencimientos_por_escalar('00000000-0000-0000-0000-000000d26b01', '2026-07-01') as should_fail;
+rollback;
+
+\echo '15. (024) la sesion de sistema ve vencimientos a 14 dias naturales (7 dias habiles) y NO uno a 30 dias'
+begin;
+insert into despachos.fiscal_deadline (organization_id, property_id, tipo, periodo, fecha_limite, prioridad) values
+  ('00000000-0000-0000-0000-000000d26a01', '00000000-0000-0000-0000-000000d26b01', 'IVA', '2026-06', '2026-07-15', 'baja'),
+  ('00000000-0000-0000-0000-000000d26a01', '00000000-0000-0000-0000-000000d26b01', 'ISR', '2026-06', '2026-07-31', 'baja');
+set local role authenticated;
+select count(*) as ventana_21_dias_deberia_ser_1 from despachos.system_vencimientos_por_escalar('00000000-0000-0000-0000-000000d26b01', '2026-07-01');
+rollback;
+
 -- Lista explicita para scripts/verify-real-postgres-ci/run-gate.mjs: los escenarios 2/3/4/6/7 deben terminar en ERROR.
