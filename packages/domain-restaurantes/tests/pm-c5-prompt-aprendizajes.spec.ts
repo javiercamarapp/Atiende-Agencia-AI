@@ -260,4 +260,8 @@ describe("8. P2 del eval real: escalacion, hora de recogida, nombre y promocione
   it("las presentaciones del prompt son una guia: manda el pack_size de la herramienta", () => {
     expect(p).toMatch(/Presentaciones \(guía: si buscar_producto trae otro pack_size/);
   });
+  it("producto agotado: alternativa primero y se espera la respuesta; escalar_a_humano una sola vez por conversacion", () => {
+    expect(p).toMatch(/ofrezca una alternativa y ESPERE su respuesta: no escale antes de que conteste ni si la acepta/);
+    expect(p).toMatch(/UNA SOLA VEZ por conversación \(si el cliente insiste después, repita con calma que la sucursal ya fue avisada\)/);
+  });
 });
