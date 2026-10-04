@@ -1,11 +1,12 @@
 // Aviso de privacidad, consentimientos y ventana de bloqueo (H-02). UNI-C gestion: la publicacion del aviso pasa a FormDialog,
 // los consentimientos a DataTable y el motivo de revocacion a useConfirm (Cancelar/Escape no revocan). Mismas llamadas.
 import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
-import { Button, Card, CardContent, DataTable, EstadoCargando, EstadoError, FormDialog, FormField, Input, StatusBadge, Textarea, notify, useConfirm } from "@atiende/ui";
+import { FileText, Plus } from "lucide-react";
+import { Button, Callout, Card, CardContent, DataTable, EstadoCargando, EstadoError, FormDialog, FormField, Input, StatusBadge, Textarea, notify, useConfirm } from "@atiende/ui";
 import type { DataTableColumna } from "@atiende/ui";
 import { fetchAvisos, fetchConfiguracion, fetchConsentimientos, publishAviso, revokeConsentimiento, saveVentanaBloqueo } from "../../lib/privacidad-client.ts";
 import type { AvisoSummary, ConfiguracionPrivacidad, ConsentimientoSummary, Lista } from "../../lib/privacidad-client.ts";
+import { ETIQUETA_REVISION_LEGAL, plantillaBaseAviso } from "../../lib/aviso-plantilla-base.ts";
 import { NoDisponible, errorMessage, validarNota10 } from "./comun.tsx";
 import type { PrivacidadSectionProps } from "./comun.tsx";
 
@@ -26,6 +27,7 @@ export function AvisoSection({ apiBaseUrl, token, propertyId, isAdmin }: Privaci
   const [url, setUrl] = useState("");
   const [dias, setDias] = useState("");
   const [saving, setSaving] = useState(false);
+  const [plantillaBaseUsada, setPlantillaBaseUsada] = useState(false);
   const [savingVentana, setSavingVentana] = useState(false);
   const { pedirTexto, dialogo } = useConfirm();
 
@@ -49,6 +51,15 @@ export function AvisoSection({ apiBaseUrl, token, propertyId, isAdmin }: Privaci
     void load();
   }, [apiBaseUrl, token, propertyId, isAdmin]);
 
+  /** "Usar plantilla base": SOLO llena el formulario (nada se publica); el hotel la revisa, la ajusta y la publica con el boton de siempre. */
+  function usarPlantillaBase() {
+    const base = plantillaBaseAviso();
+    setTexto(base.textoSimplificado);
+    setObligatorias(base.finalidadesObligatorias.join("\n"));
+    setOpcionales(base.finalidadesOpcionales.join("\n"));
+    setPlantillaBaseUsada(true);
+  }
+
   async function handlePublish() {
     setSaving(true);
     try {
@@ -65,6 +76,7 @@ export function AvisoSection({ apiBaseUrl, token, propertyId, isAdmin }: Privaci
       setObligatorias("");
       setOpcionales("");
       setUrl("");
+      setPlantillaBaseUsada(false);
       setPublicando(false);
       await load();
     } catch (err) {
@@ -152,7 +164,10 @@ export function AvisoSection({ apiBaseUrl, token, propertyId, isAdmin }: Privaci
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <h2 className="text-sm font-medium text-foreground">Aviso vigente</h2>
               {isAdmin && (
-                <Button type="button" size="sm" iconLeft={<Plus className="size-3.5" strokeWidth={1.75} />} onClick={() => setPublicando(true)}>
+                <Button type="button" size="sm" iconLeft={<Plus className="size-3.5" strokeWidth={1.75} />} onClick={() => {
+                    setPlantillaBaseUsada(false);
+                    setPublicando(true);
+                  }}>
                   Publicar versión nueva
                 </Button>
               )}
@@ -218,6 +233,14 @@ export function AvisoSection({ apiBaseUrl, token, propertyId, isAdmin }: Privaci
         guardarDeshabilitado={version.trim() === "" || texto.trim().length < 20 || lines(obligatorias).length === 0}
         bloquearCierre={saving}
       >
+        <div className="flex items-center gap-2 flex-wrap mb-3">
+          <Button type="button" size="sm" variant="outline" iconLeft={<FileText className="size-3.5" strokeWidth={1.75} />} onClick={usarPlantillaBase}>
+            Usar plantilla base
+          </Button>
+          <StatusBadge tone="warning">{ETIQUETA_REVISION_LEGAL}</StatusBadge>
+          <p className="text-xs text-muted-foreground">Declara encargados y transferencias (OpenRouter, Meta/WhatsApp, Google/LiveKit, PAC, Stripe y Resend). No se publica sola.</p>
+        </div>
+        {plantillaBaseUsada && <Callout tone="warning">La plantilla base es un punto de partida: {ETIQUETA_REVISION_LEGAL.toLowerCase()}. Revísala con tu asesor y ajústala antes de publicar.</Callout>}
         <div className="grid gap-3 sm:grid-cols-2">
           <FormField label="Versión nueva" required>
             <Input id="aviso-version" value={version} onChange={(e) => setVersion(e.target.value)} maxLength={40} />
