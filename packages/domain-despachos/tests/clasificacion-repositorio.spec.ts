@@ -38,7 +38,7 @@ describe("PostgresClasificacionRepository", () => {
 
   it("REGLA DURA: registrar contra la base sin migrar (42883) devuelve false y el SAVEPOINT deja la sesión utilizable", async () => {
     const session = new AbortAwareFakeSession([
-      { match: /despachos\.invoice_clasificar/, respond: () => pgError("42883", "function despachos.invoice_clasificar does not exist") },
+      { match: /despachos\.invoice_clasificar/, respond: () => pgError("42883", "function despachos.invoice_clasificar(unknown, unknown) does not exist") },
       { match: /select 1/, respond: () => [] },
     ]);
     expect(await new PostgresClasificacionRepository(session).registrar(P, I, RESULTADO)).toBe(false);
