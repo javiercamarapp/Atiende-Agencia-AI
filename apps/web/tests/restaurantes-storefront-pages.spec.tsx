@@ -202,9 +202,9 @@ describe("checkout completo", () => {
     expect(window.location.pathname).toBe("/pedir/demo/pedido/t1.abc.def");
     expect(window.location.href).not.toMatch(/Ana|9991234567|999/);
     await esperar();
-    await esperarHasta(() => (rendered.container.textContent ?? "").includes("Preparando tu pedido"), "la pantalla de seguimiento (chunk lazy)");
-    expect(rendered.container.textContent).toContain("Preparando tu pedido");
-    expect(rendered.container.textContent).not.toContain("Ana");
+    await esperarHasta(() => (rendered!.container.textContent ?? "").includes("Preparando tu pedido"), "la pantalla de seguimiento (chunk lazy)");
+    expect(rendered!.container.textContent).toContain("Preparando tu pedido");
+    expect(rendered!.container.textContent).not.toContain("Ana");
     // el carrito guardado se limpio
     expect(globalThis.sessionStorage.getItem("atiende.storefront.carrito.demo.centro")).toBeNull();
   });
