@@ -40,7 +40,7 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/rentas/email-dispatch` | `*/15 * * * *` | Drena el outbox de correo |
 | `/internal/rentas/checkin-recordatorio` | `40 14 * * *` | Recordatorio de check-in |
 | `/internal/rentas/ical-sync` | `*/15 * * * *` | Sincroniza feeds iCal (lease por feed, piso de 10 min, backoff) |
-| `/internal/rentas/checkout-sweep` | `50 14 * * *` | Barrido de check-out |
+| `/internal/rentas/checkout-sweep` | `*/15 * * * *` | Barrido de limpieza por propiedad (red de seguridad de la tarea que nace al confirmar la reserva: crea las faltantes, buffer del día del checkout, cancela/reprograma desfasadas) y avisos in-app de asignación y de mañana sin responsable |
 | `/internal/whatsapp/dispatch` | `*/5 * * * *` | Drena el outbox de WhatsApp de citas/hoteles/restaurantes/licitaciones (503 sin WHATSAPP_ACCESS_TOKEN) |
 | `/internal/superadmin/resumen-diario` | `0 15 * * *` | Resumen diario al superadmin |
 | `/internal/superadmin/mantenimiento` | `5 15 * * *` | Mantenimiento de plataforma |
