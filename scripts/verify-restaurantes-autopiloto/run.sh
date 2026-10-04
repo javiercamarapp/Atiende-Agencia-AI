@@ -66,7 +66,7 @@ conexion() {
   "${PSQL_DB[@]}" -At -v ON_ERROR_STOP=1 <<SQL
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '$STF', true)
+select set_config('request.jwt.claim.sub', '$STF', true);
 select aplicado from restaurantes.solicitud_resolver('$ORG', '$SOL', 'aprobar', null);
 select pg_sleep($1);
 commit;

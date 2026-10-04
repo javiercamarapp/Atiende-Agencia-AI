@@ -343,6 +343,14 @@ select decision from restaurantes.solicitud_resolver('00000000-0000-0000-0000-00
 select count(*) as pending_deberia_ser_1 from restaurantes.orders where id = '00000000-0000-0000-0000-0000000e5da1' and status = 'pending';
 rollback;
 
+\echo '=== D2b. el motivo de texto libre al aprobar NO se guarda (solo la lista cerrada) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
+select decision from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5101', 'aprobar', 'llamo Juan al 5512345678') r;
+select count(*) as motivo_libre_guardado_deberia_ser_0 from restaurantes.solicitud_aprobacion where id = '00000000-0000-0000-0000-0000000e5101' and motivo_resolucion is not null;
+rollback;
+
 \echo '=== D3. doble clic: el segundo no aplica y el pedido sigue en pending ==='
 begin;
 set local role authenticated;
