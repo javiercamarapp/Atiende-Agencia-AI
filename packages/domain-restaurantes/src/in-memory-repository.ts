@@ -13,7 +13,7 @@ import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
-import { Cliente360Store, newMemAddress, type MemAddress } from "./cliente-360/in-memory.ts";
+import { ahoraEstricto, Cliente360Store, newMemAddress, type MemAddress } from "./cliente-360/in-memory.ts";
 import type { ClosureObservation, CustomerAddressChanges, CustomerAddressDetail, CustomerFicha, CustomerMemory, CustomerPolicy, CustomerPreference, CustomerProfilePatch, OrderClosureInput, PastOrder, PreferenceAction } from "./cliente-360/types.ts";
 import { isPreferenceKind, POLITICA_POR_OMISION } from "./cliente-360/types.ts";
 import type {
@@ -720,7 +720,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
 
     if (input.address) {
       const list = this.addresses.get(customerId) ?? [];
-      const now = new Date().toISOString();
+      const now = ahoraEstricto();
       const validProperty = input.address.propertyId && [...this.branches.values()].some((b) => b.propertyId === input.address!.propertyId && b.organizationId === input.organizationId) ? input.address.propertyId : null;
       const existing = list.find((a) => a.address === input.address!.address);
       if (existing) {
@@ -745,7 +745,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     }
 
     const prefs = this.cliente360.preferences.get(customerId) ?? [];
-    const now = new Date().toISOString();
+    const now = ahoraEstricto();
     for (const obs of input.observations.slice(0, 20) as readonly ClosureObservation[]) {
       const value = obs.value.trim().slice(0, 120);
       if (!value || !isPreferenceKind(obs.kind)) continue;

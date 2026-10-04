@@ -20,6 +20,14 @@ export function newMemAddress(address: string, isDefault: boolean): MemAddress {
   return { id: randomUUID(), address, label: null, isDefault, accessNotes: null, mapsUrl: null, colonia: null, propertyId: null, lastUsedAt: null, timesUsed: 0, createdAt: new Date().toISOString() };
 }
 
+let ultimoInstante = 0;
+/** Marca de tiempo ISO estrictamente creciente: dos escrituras en el mismo milisegundo no empatan (en Postgres `now()` de
+ * transacciones distintas ya difiere; aqui se simula el mismo orden). */
+export function ahoraEstricto(): string {
+  ultimoInstante = Math.max(Date.now(), ultimoInstante + 1);
+  return new Date(ultimoInstante).toISOString();
+}
+
 export class Cliente360Store {
   /** `false` simula la base SIN la migracion 044. */
   supported = true;
