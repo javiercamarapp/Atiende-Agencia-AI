@@ -1,5 +1,5 @@
 // check-bundle-budget.ts (R-37) — presupuesto de bundle por ruta.
-// Lee dist/.vite/manifest.json (vite `build.manifest: true`), calcula para cada ruta del presupuesto el JS que el
+// Lee apps/web/bundle-manifest.json (vite `build.manifest`, fuera de dist para que no se publique), calcula para cada ruta del presupuesto el JS que el
 // navegador descarga antes de pintarla (chunk de la ruta + cierre transitivo de `imports` estaticos, sin los
 // `dynamicImports`, que son otras rutas) en bytes gzip, y falla si alguna supera su tope. No modifica nada.
 //
@@ -47,7 +47,7 @@ function main(): number {
   const aqui = dirname(fileURLToPath(import.meta.url));
   const dist = resolve(process.argv[2] ?? join(aqui, "../../apps/web/dist"));
   const presupuestoPath = resolve(process.argv[3] ?? join(aqui, "budget.json"));
-  const manifestPath = join(dist, ".vite", "manifest.json");
+  const manifestPath = resolve(process.argv[4] ?? join(dist, "..", "bundle-manifest.json"));
   if (!existsSync(manifestPath)) {
     console.error(`FALLA: no existe ${manifestPath}. Corre antes: npm run build --workspace apps/web`);
     return 2;
