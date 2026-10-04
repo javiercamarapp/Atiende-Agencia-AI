@@ -67,6 +67,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         promoted: resultado.promovidos.length,
         orderIds: resultado.promovidos.map((o) => o.id),
         comandas,
+        avisosCocina,
         avisos,
       });
     })();

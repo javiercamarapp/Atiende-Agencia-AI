@@ -58,12 +58,12 @@ describe("e2e programado + POS", () => {
     const { order } = await crearProgramado();
     const cron = () => fetch(stack.url("/internal/restaurantes/promover-programados"), { method: "POST", headers: { "x-atiende-internal-secret": E2E_SECRETS.internalSecret } });
     // Aun falta mucho: nada que avisar.
-    expect(((await (await cron()).json()) as Json).avisos).toMatchObject({ intentados: 0 });
+    expect(((await (await cron()).json()) as Json).avisosCocina).toMatchObject({ intentados: 0 });
     expect(campana.filter((e) => String(e.evento).includes("programado_en_cocina"))).toHaveLength(0);
 
     vi.setSystemTime(new Date("2026-10-06T21:40:00.000Z"));
     const promovido = (await (await cron()).json()) as Json;
-    expect(promovido.avisos).toEqual({ intentados: 1, bandeja: 1, errores: 0 });
+    expect(promovido.avisosCocina).toEqual({ intentados: 1, bandeja: 1, errores: 0 });
     // Campana: evento del catalogo con la clave = id del pedido y el enlace a Pedidos; el titulo no lleva PII.
     const emitidas = campana.filter((e) => e.evento === "restaurantes.pedido.programado_en_cocina");
     expect(emitidas).toHaveLength(1);
@@ -78,7 +78,7 @@ describe("e2e programado + POS", () => {
     expect(avisos[0]!.orderId).toBe(order.id);
     expect(avisos[0]!.message).toContain("entró a cocina");
     // El cron otra vez no repite nada (ya no hay programados por promover).
-    expect(((await (await cron()).json()) as Json).avisos).toMatchObject({ intentados: 0 });
+    expect(((await (await cron()).json()) as Json).avisosCocina).toMatchObject({ intentados: 0 });
   });
 
   it("programado: al promoverlo el staff recibe el aviso tambien cuando lo promueve el panel al consultar", async () => {
