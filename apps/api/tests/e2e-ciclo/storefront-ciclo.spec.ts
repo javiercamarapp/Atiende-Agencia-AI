@@ -33,13 +33,22 @@ describe("e2e storefront web", () => {
     const quote = (await (await post("/fco-montejo/quote", { session_id: SESSION, items, canal: "domicilio", colonia_entrega: "Francisco de Montejo" })).json()) as Json;
     expect(quote.quote.total).toBe(284);
     // Crear sin confirmar: rechazado por la maquina de estados.
-    const orderBody = { session_id: SESSION, items, canal: "domicilio", colonia_entrega: "Francisco de Montejo", customer_name: "Marta Web", customer_phone: "999 123 0050", customer_email: "marta@example.test", customer_address: "Calle 21 #310, Francisco de Montejo", payment_method: "efectivo", quote_hash: quote.quote_hash };
+    const orderBody = { acepta_aviso_privacidad: true, session_id: SESSION, items, canal: "domicilio", colonia_entrega: "Francisco de Montejo", customer_name: "Marta Web", customer_phone: "999 123 0050", customer_email: "marta@example.test", customer_address: "Calle 21 #310, Francisco de Montejo", payment_method: "efectivo", quote_hash: quote.quote_hash };
     expect((await post("/fco-montejo/orders", orderBody)).status).toBe(400);
     expect((await post("/fco-montejo/confirm", { session_id: SESSION, quote_hash: quote.quote_hash })).status).toBe(200);
+    // El servidor exige el aviso de privacidad: sin la casilla marcada no hay pedido (400 claro, motivo estable).
+    const sinAviso = await post("/fco-montejo/orders", { ...orderBody, acepta_aviso_privacidad: false });
+    expect(sinAviso.status).toBe(400);
+    expect(await sinAviso.json()).toMatchObject({ motivo: "aviso_privacidad_requerido" });
+    expect(stack.privacidad.pedidoConsents.size).toBe(0);
     const created = await post("/fco-montejo/orders", orderBody);
     expect(created.status).toBe(200);
     const body = (await created.json()) as Json;
     expect(body).toMatchObject({ total: 284, estado: "pending", canal: "domicilio", comanda: { estado: "confirmada" } });
+    // Evidencia del consentimiento: una fila para ESTE pedido, canal web, sin datos personales.
+    const [pedido] = (await stack.ctx.restaurantesRepo.listOrders(stack.ctx.organizationId, { propertyIds: null, limit: 10 } as never)).orders;
+    expect(stack.privacidad.pedidoConsents.get(pedido!.id)).toMatchObject({ organizationId: stack.ctx.organizationId, channel: "web", noticeVersion: "v1" });
+    expect(JSON.stringify([...stack.privacidad.pedidoConsents.values()])).not.toMatch(/Marta|9991230050|marta@/);
     // Doble clic: el mismo envio no duplica pedido ni comanda.
     const dup = (await (await post("/fco-montejo/orders", orderBody)).json()) as Json;
     expect(dup.ya_registrado === true || dup.rastreo_token).toBeTruthy();
@@ -93,7 +102,7 @@ describe("e2e storefront web", () => {
     const base = { session_id: SESSION, items: [{ product_id: stack.products.coca, requested_quantity: 5 }], canal: "recoger" };
     const q = (await (await post("/fco-montejo/quote", base)).json()) as Json;
     await post("/fco-montejo/confirm", { session_id: SESSION, quote_hash: q.quote_hash });
-    const created = await post("/fco-montejo/orders", { ...base, customer_name: "Correo Reintento", customer_phone: "9991230070", customer_email: "reintento@example.test", payment_method: "efectivo", quote_hash: q.quote_hash });
+    const created = await post("/fco-montejo/orders", { ...base, acepta_aviso_privacidad: true, customer_name: "Correo Reintento", customer_phone: "9991230070", customer_email: "reintento@example.test", payment_method: "efectivo", quote_hash: q.quote_hash });
     expect(created.status).toBe(200); // un fallo del proveedor de correo nunca tumba el pedido
     expect(stack.sink.emailsTo("reintento@example.test")).toHaveLength(0);
     expect(stack.sink.rejectedCount.value).toBe(1);
@@ -102,5 +111,41 @@ describe("e2e storefront web", () => {
     expect(stack.sink.emailsTo("reintento@example.test")).toHaveLength(1);
     await stack.dispatchEmail();
     expect(stack.sink.emailsTo("reintento@example.test")).toHaveLength(1);
+  });
+
+  it("R-38 + R-43: el panel guarda la marca, el storefront la publica con su sitemap y el cliente envia una solicitud de evento que el restaurante recibe", async () => {
+    stack = await startCicloStack();
+    const owner = stack.ctx.staff.owner.token;
+    // Panel: owner guarda la marca; el staff de sucursal no puede.
+    const marca = { titular: "Tacos con historia", eslogan: "Desde 1980", about: "Somos de Mérida", portadaUrl: "https://cdn.example.com/p.jpg", logoUrl: null, instagramUrl: "https://instagram.com/lostaquitos", facebookUrl: null, tiktokUrl: null };
+    const url = stack.url(`/v1/restaurantes/${stack.propertyId}/admin/config/sitio-publico`);
+    expect((await fetch(url, authedJson(stack.ctx.staff.staffSucursalA.token, marca, "PUT"))).status).toBe(403);
+    expect((await fetch(url, authedJson(owner, marca, "PUT"))).status).toBe(200);
+    // Storefront publico: portada de marca y boton de WhatsApp de la sucursal (telefono de la sucursal -> wa.me).
+    const sf = (await (await fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}/storefront`))).json()) as Json;
+    expect(sf.marca).toMatchObject({ titular: "Tacos con historia", instagramUrl: "https://instagram.com/lostaquitos" });
+    expect(sf.sucursales.find((b: Json) => b.slug === "fco-montejo").whatsappUrl).toMatch(/^https:\/\/wa\.me\/529991234567\?text=/);
+    // Sitemap: inicio, eventos y la sucursal; nunca rastreo.
+    const xml = await (await fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}/storefront/sitemap.xml`))).text();
+    expect(xml).toContain(`/pedir/${ORG_SLUG}/eventos`);
+    expect(xml).toContain(`/pedir/${ORG_SLUG}/fco-montejo`);
+    expect(xml).not.toMatch(/pedido|rastreo/);
+    // Cliente: solicitud de evento. Un bot (honeypot) no crea nada; la persona si.
+    const futuro = new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
+    const evento = { nombre: "Ana Pérez", telefono: "999 123 0099", fechaEvento: futuro, personas: 60, sucursal: "fco-montejo", comentario: "Boda en jardin", aceptaAviso: true };
+    expect((await post("/eventos", { ...evento, sitio_web: "http://spam.example" })).status).toBe(200);
+    expect(stack.ctx.restaurantesRepo.peekCallbackRequests()).toHaveLength(0);
+    expect((await post("/eventos", { ...evento, aceptaAviso: false })).status).toBe(400);
+    const ok = await post("/eventos", evento);
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as Json).recibido).toBe(true);
+    const [cb] = stack.ctx.restaurantesRepo.peekCallbackRequests();
+    expect(cb).toMatchObject({ organizationId: stack.ctx.organizationId, propertyId: stack.propertyId, reason: "evento", source: "web", customerPhone: "9991230099" });
+    expect(cb!.message).toMatch(/Personas: 60/);
+    expect(cb!.message).toMatch(/Boda en jardin/);
+    // Mismo telefono: tope de 3 por hora aunque cambie la IP.
+    expect((await post("/eventos", evento)).status).toBe(200);
+    expect((await post("/eventos", evento)).status).toBe(200);
+    expect((await post("/eventos", evento)).status).toBe(429);
   });
 });

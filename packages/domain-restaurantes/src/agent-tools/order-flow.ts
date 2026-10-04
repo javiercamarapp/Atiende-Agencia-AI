@@ -36,6 +36,11 @@ export interface OrderFlowContext {
    * confirmo si el catalogo cambia entre confirmar y crear. Ausente en filas guardadas antes de este campo.
    */
   readonly quotedPrices?: string;
+  /** Total a pagar de la cotizacion vigente y cifras legitimas que el cliente vio (precios, importes, subtotal, descuento).
+   * Lo lee el agente de WhatsApp en el turno SIGUIENTE para que su guardia de cifras siga corrigiendo un total alucinado
+   * aunque ese turno no llame ninguna herramienta. Ausente en filas guardadas antes de este campo (guardia entonces solo en el turno que cotiza). */
+  readonly quotedTotal?: number;
+  readonly quotedAmounts?: readonly number[];
   readonly confirmedAtMs?: number;
   readonly claimedAtMs?: number;
   readonly orderId?: string;
@@ -88,6 +93,8 @@ export function fingerprintOrder(input: {
   readonly items: readonly RequestedOrderItemInput[];
   /** Doble porcion de salsas: cambia el total, asi que forma parte de la huella (solo si hay alguna). */
   readonly doubleSalsas?: readonly string[];
+  /** R-11: hora programada normalizada (ISO UTC). Cambiarla tras confirmar obliga a re-cotizar; solo entra a la huella si existe. */
+  readonly programadoPara?: string;
 }): string {
   const items = input.items
     .map((i) => ({
@@ -96,7 +103,7 @@ export function fingerprintOrder(input: {
       t: i.tortilla ?? null,
     }))
     .sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : a.q - b.q));
-  const canonical = JSON.stringify({ b: input.branchSlug.trim(), c: input.canal === "recoger" ? "recoger" : "domicilio", a: input.adultConfirmed === true, i: items, ...(input.doubleSalsas && input.doubleSalsas.length > 0 ? { d: [...new Set(input.doubleSalsas)].sort() } : {}) });
+  const canonical = JSON.stringify({ b: input.branchSlug.trim(), c: input.canal === "recoger" ? "recoger" : "domicilio", a: input.adultConfirmed === true, i: items, ...(input.doubleSalsas && input.doubleSalsas.length > 0 ? { d: [...new Set(input.doubleSalsas)].sort() } : {}), ...(input.programadoPara ? { p: input.programadoPara } : {}) });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
 

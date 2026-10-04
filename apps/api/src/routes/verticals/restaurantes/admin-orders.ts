@@ -12,16 +12,16 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, assertOrderCanBeDispatched, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, assertOrderCanBeDispatched, avisarProgramadosPromovidos, changeOrderStatus, emitirAvisoProgramadoEnCocina, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
 import type { Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
-import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
+import { cortarComandaDePedidoCancelado, encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import { dispatchWhatsAppVertical, triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
-import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
+import { softRestaurantComandaDeps, softRestaurantStoreFor } from "./softrestaurant-wiring.ts";
 
 /** Canal, propina y hora de recogida (migracion 031). `null` en los tres cuando la base aun no esta migrada o
  * el pedido es anterior: los listados no seleccionan esas columnas, se leen aparte con SAVEPOINT. */
@@ -201,6 +201,12 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
           );
           logEvent(c, "info", "restaurantes_programados_comanda_encolada", { organizationId, ...resumen });
         });
+        // Aviso al staff (bandeja + campana) de que el programado entro a cocina, tambien tras el commit y en su propia
+        // sesion de sistema: un fallo aqui no afecta la respuesta ni la comanda (tarea aparte).
+        c.get("postCommitTasks").push(async () => {
+          const resumen = await deps.engine.withAppSession({ userId: null }, (db) => avisarProgramadosPromovidos(deps.restaurantesRepo(db), db, promovidos));
+          logEvent(c, "info", "restaurantes_programados_aviso_staff", { organizationId, ...resumen });
+        });
       }
       return r.promovidos;
     } catch (err) {
@@ -288,6 +294,12 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       if (order.status === "programado" && updated.status === "pending") {
         const adelantado: Order = { ...updated, programadoPara: updated.programadoPara ?? order.programadoPara };
         c.get("postCommitTasks").push(async () => {
+          // Campana (entra a cocina, o atrasado): el adelanto manual solo emite la campana (la bandeja del staff es de la promocion automatica).
+          try {
+            await deps.engine.withAppSession({ userId: null }, (db) => emitirAvisoProgramadoEnCocina(db, adelantado));
+          } catch (err) {
+            logEvent(c, "warn", "restaurantes_programados_aviso_adelanto_fallido", { organizationId, error: err instanceof Error ? err.message : String(err) });
+          }
           await deps.engine.withAppSession({ userId: null }, (db) =>
             encolarComandasDePromovidos(softRestaurantComandaDeps(deps, db, deps.restaurantesRepo(db)), [adelantado]),
           );
@@ -314,6 +326,9 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
           antes: order.status,
           despues: "cancelado",
         });
+        // Un pedido cancelado antes de llegar al POS no debe llegar a cocina despues (POS lento/caido + reintento del despachador).
+        const corte = await cortarComandaDePedidoCancelado(softRestaurantStoreFor(deps, c.get("db")), organizationId, updated, c.get("userId"));
+        if (corte.cortadas > 0) logEvent(c, "info", "restaurantes_comanda_cortada_por_cancelacion", { actorUserId: c.get("userId"), organizationId, orderId, cortadas: corte.cortadas });
       }
 
       return c.json({ order: (await serializeOrders(repo, organizationId, [updated]))[0] });

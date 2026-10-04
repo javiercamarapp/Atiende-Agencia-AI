@@ -17,7 +17,7 @@ import {
 } from "@atiende/agent-core/data-chat";
 import { DataChatUnavailableError, type DataChatWindow, type RestaurantesDataChatReader, type SalesGranularity, type VisibleBranch } from "./reader.ts";
 
-const SOURCE_ORDERS = "Pedidos de restaurantes (sin cancelados)";
+const SOURCE_ORDERS = "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)";
 const UNAVAILABLE_MESSAGE = "Esa información todavía no está disponible para tu cuenta (falta activar una actualización). Tus tableros siguen funcionando.";
 
 const BRANCH_PARAM: ParamsSpec = {
@@ -295,7 +295,7 @@ export function buildRestaurantesDataChatTools(reader: RestaurantesDataChatReade
       const r = await reader.recurringCustomers(p.window);
       return {
         status: r.customers === 0 ? "empty" : "ok",
-        ...base(p, "Pedidos de restaurantes (sin cancelados); cliente = por identificador o teléfono, sin mostrar datos personales"),
+        ...base(p, "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cliente = por identificador o teléfono, sin mostrar datos personales"),
         columns: [
           { key: "clientes", label: "Clientes", kind: "integer" },
           { key: "recurrentes", label: "Recurrentes", kind: "integer" },

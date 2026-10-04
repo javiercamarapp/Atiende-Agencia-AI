@@ -23,7 +23,7 @@ import type {
   RegisterDataRightsOutcome,
   UpdateDataRightsStatusResult,
 } from "./data-rights.ts";
-import type { PrivacidadRepository, PurgeOutcome, RecordingConsent, SetRecordingConsentResult, UpdatePrivacyConfigResult } from "./repository.ts";
+import type { PrivacidadRepository, PurgeOutcome, RecordOrderPrivacyConsentResult, RecordingConsent, SetRecordingConsentResult, UpdatePrivacyConfigResult } from "./repository.ts";
 
 let advertido = false;
 function advertirNoDisponible(operacion: string, err: unknown): void {
@@ -135,6 +135,23 @@ export class PostgresPrivacidadRepository implements PrivacidadRepository {
     });
   }
 
+  async recordOrderPrivacyConsent(organizationId: string, orderId: string, channel: "web"): Promise<RecordOrderPrivacyConsentResult> {
+    return runWithSavepointFallback<RecordOrderPrivacyConsentResult>({
+      session: this.db,
+      savepointName: "sp_order_privacy_consent",
+      primary: async () => {
+        const { rows } = await this.db.query<{ version: string | null }>(`select restaurantes.system_record_order_privacy_consent($1, $2, $3) as version;`, [organizationId, orderId, channel]);
+        const version = rows[0]?.version;
+        return version ? { outcome: "registrado", noticeVersion: version } : { outcome: "ya_registrado" };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "restaurantes.system_record_order_privacy_consent"),
+      fallback: (err) => {
+        advertirNoDisponible("recordOrderPrivacyConsent", err);
+        return Promise.resolve({ outcome: "no_disponible" });
+      },
+    });
+  }
+
   async registerDataRightsRequestAsSystem(input: {
     readonly organizationId: string;
     readonly customerPhone: string;
@@ -206,16 +223,24 @@ export class PostgresPrivacidadRepository implements PrivacidadRepository {
       session: this.db,
       savepointName: "sp_privacy_purge",
       primary: async () => {
-        const { rows } = await this.db.query<{ out_conversations_cleared: number; out_voice_turns_deleted: number; out_voice_calls_anonymized: number }>(
-          `select out_conversations_cleared, out_voice_turns_deleted, out_voice_calls_anonymized from restaurantes.system_purge_expired_privacy_data($1);`,
-          [limit],
-        );
+        // `select *`: contra la base con la 030 pero sin la 046 la funcion solo trae 3 columnas; las nuevas llegan como undefined.
+        const { rows } = await this.db.query<{
+          out_conversations_cleared: number;
+          out_voice_turns_deleted: number;
+          out_voice_calls_anonymized: number;
+          out_orders_voice_cleared?: number;
+          out_outbox_payloads_erased?: number;
+          out_staff_notifications_erased?: number;
+        }>(`select * from restaurantes.system_purge_expired_privacy_data($1);`, [limit]);
         const row = rows[0];
         return {
           disponible: true,
           conversationsCleared: Number(row?.out_conversations_cleared ?? 0),
           voiceTurnsDeleted: Number(row?.out_voice_turns_deleted ?? 0),
           voiceCallsAnonymized: Number(row?.out_voice_calls_anonymized ?? 0),
+          ordersVoiceCleared: Number(row?.out_orders_voice_cleared ?? 0),
+          outboxPayloadsErased: Number(row?.out_outbox_payloads_erased ?? 0),
+          staffNotificationsErased: Number(row?.out_staff_notifications_erased ?? 0),
         };
       },
       isRecoverable: (err) => isMigrationPendingError(err, "restaurantes.system_purge_expired_privacy_data"),

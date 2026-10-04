@@ -8,11 +8,14 @@
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
+import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
 import { diaLocalSucursal } from "./voz/kpi.ts";
+import { InMemoryConocimientoStore } from "./conocimiento/in-memory.ts";
+import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
 import type {
   CanalPedido,
@@ -61,6 +64,8 @@ import type {
   RestaurantesAuditLogRow,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
+  StorefrontMarca,
+  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
   StorefrontTrackingResult,
@@ -272,6 +277,11 @@ interface InMemoryOutboxRow {
   lastErrorClass: string | null;
 }
 
+/** Ventana en que un aviso abierto del mismo canal, telefono y motivo absorbe al siguiente (misma que `callback_registrar_agente`: 2 h). */
+const CALLBACK_VENTANA_AGRUPAR_MS = 120 * 60_000;
+/** Vigencia de un contador del agente (misma que la funcion SQL: 2 h). */
+const CONTADOR_AGENTE_VIGENCIA_MS = 120 * 60_000;
+
 export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly organizations = new Map<string, StoredOrganization>();
   private readonly organizationIdBySlug = new Map<string, string>();
@@ -285,7 +295,11 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly addresses = new Map<string, CustomerAddress[]>();
   private readonly orders: StoredOrder[] = [];
   private readonly knownZones: StoredKnownZone[] = [];
+  private readonly storefrontMarcas = new Map<string, StorefrontMarca>();
   private readonly callbackRequests: CallbackRequest[] = [];
+  private readonly contadoresAgente = new Map<string, { n: number; at: number }>();
+  /** Ids de evento agregados como nota a un aviso (migracion 047, `eventos_agrupados`). */
+  private readonly callbackEventosAgrupados = new Map<string, string[]>();
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
   private readonly phoneNumberIdToOrg = new Map<string, string>();
   private readonly whatsappEvents = new Map<string, StoredWhatsAppEvent>();
@@ -302,6 +316,11 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   // Modelo PM (migracion 023), espejo en memoria de branch_policy / branch_delivery_zone /
   // whatsapp_branch_channel / no_domicilio.
   private readonly branchPolicies = new Map<string, BranchPolicy>();
+  /** Conocimiento del negocio e interruptor del agente de WhatsApp (migracion 053); `conocimiento.noDisponible = true` simula la base sin migrar. */
+  readonly conocimiento = new InMemoryConocimientoStore(
+    () => new Date(),
+    (organizationId, propertyId) => this.branches.get(propertyId)?.organizationId === organizationId,
+  );
   private readonly branchHoursExceptions: BranchHoursException[] = [];
   private readonly orderPickupInfo = new Map<string, { canal: CanalPedido | null; propina: number | null; horaRecogida: string | null }>();
   // R-11 (migracion 034): `false` simula la base SIN migrar (los pedidos programados no estan disponibles).
@@ -596,7 +615,10 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
-  async addCustomerAddressIfNew(customerId: string, address: string): Promise<void> {
+  async addCustomerAddressIfNew(customerId: string, address: string, organizationId: string): Promise<void> {
+    // Mismo guard cross-tenant que la funcion SQL (`add_customer_address_if_new`, migracion 048).
+    const dueno = this.customers.get(customerId);
+    if (!dueno || dueno.organizationId !== organizationId) throw new Error("el cliente no pertenece a la organización");
     const list = this.addresses.get(customerId) ?? [];
     if (list.some((a) => a.address === address)) return; // onConflict ignoreDuplicates
     list.push({ address, label: null, isDefault: list.length === 0 });
@@ -657,7 +679,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       const enRango = this.orders.filter((o) => {
         if (o.organizationId !== organizationId) return false;
         if (scope !== null && !scope.has(o.propertyId)) return false;
-        if (o.status === "cancelado") return false; // R-30: ventas netas, espejo de la migracion 036
+        // R-30 + QA R1 viaje-09: ventas netas; un pedido cancelado, no recogido (no se cobro) o programado (aun no es venta) no cuenta.
+        if (o.status === "cancelado" || o.status === "no_recogido" || o.status === "programado") return false;
         const createdMs = Date.parse(o.createdAt);
         return createdMs >= startMs && createdMs < endMs;
       });
@@ -874,10 +897,42 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
+  /** Solo pruebas: los avisos (callbacks) de la organizacion, tal como quedaron (con las notas agregadas en `message`). */
+  listCallbackRequests(organizationId: string): readonly CallbackRequest[] {
+    return this.callbackRequests.filter((c) => c.organizationId === organizationId);
+  }
+
+  /** Solo para pruebas: las solicitudes de contacto registradas (en orden de creacion). */
+  peekCallbackRequests(): readonly CallbackRequest[] {
+    return this.callbackRequests;
+  }
+
+  /** Mismas reglas que `restaurantes.callback_registrar_agente` (migracion 047) para los avisos del agente (`voice`/`whatsapp`): el mismo
+   * evento no se repite y un aviso abierto del mismo canal, telefono y motivo recibe una nota en vez de crear otro. */
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
+    if (input.source === "voice" || input.source === "whatsapp") {
+      const evento = input.sourceEventId ?? null;
+      const delTelefono = this.callbackRequests.filter((c) => c.organizationId === input.organizationId && c.customerPhone === input.customerPhone);
+      if (evento) {
+        const previo = delTelefono.find((c) => c.sourceEventId === evento || (this.callbackEventosAgrupados.get(c.id) ?? []).includes(evento));
+        if (previo) return { ...previo, registro: "evento_repetido" };
+      }
+      const ahora = Date.now();
+      const abierto = [...delTelefono]
+        .reverse()
+        .find((c) => c.source === input.source && (c.reason ?? null) === (input.reason ?? null) && !c.resolved && ahora - Date.parse(c.createdAt) < CALLBACK_VENTANA_AGRUPAR_MS);
+      if (abierto) {
+        const nota = `\n— Aviso repetido: ${(input.message ?? "").trim().slice(0, 500) || "sin detalle"}`;
+        const actual = abierto.message ?? "";
+        const actualizado: CallbackRequest = { ...abierto, message: actual.length + nota.length <= 4000 ? actual + nota : abierto.message };
+        this.callbackRequests[this.callbackRequests.indexOf(abierto)] = actualizado;
+        if (evento) this.callbackEventosAgrupados.set(abierto.id, [...(this.callbackEventosAgrupados.get(abierto.id) ?? []), evento]);
+        return { ...actualizado, registro: "nota_agregada" };
+      }
+    }
     const created: CallbackRequest = { ...input, id: randomUUID(), resolved: false, createdAt: new Date().toISOString() };
     this.callbackRequests.push(created);
-    return created;
+    return { ...created, registro: "nuevo" };
   }
 
   async consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean> {
@@ -912,6 +967,19 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       if (orgId === organizationId) return phoneNumberId;
     }
     return null;
+  }
+
+  /** Misma regla que `restaurantes.whatsapp_contador_agente` (migracion 047): un contador de mas de 2 h cuenta como 0. */
+  async contadorAgenteWhatsApp(organizationId: string, phone: string, clave: ClaveContadorAgente, accion: "incrementar" | "reiniciar"): Promise<number | null> {
+    const llave = `${organizationId}|${phone}|${clave}`;
+    if (accion === "reiniciar") {
+      this.contadoresAgente.delete(llave);
+      return 0;
+    }
+    const previo = this.contadoresAgente.get(llave);
+    const n = (previo && Date.now() - previo.at < CONTADOR_AGENTE_VIGENCIA_MS ? previo.n : 0) + 1;
+    this.contadoresAgente.set(llave, { n, at: Date.now() });
+    return n;
   }
 
   async claimWhatsAppMessage(organizationId: string, messageId: string, _phoneHash: string): Promise<boolean> {
@@ -1657,6 +1725,16 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return { phoneNumberId };
   }
 
+  async findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null> {
+    return this.storefrontMarcas.get(organizationId) ?? null;
+  }
+
+  async upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca> {
+    const guardada: StorefrontMarca = { ...input, updatedAt: new Date().toISOString() };
+    this.storefrontMarcas.set(organizationId, guardada);
+    return guardada;
+  }
+
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {
     return this.knownZones
       .filter((z) => z.organizationId === organizationId)
@@ -1761,6 +1839,38 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   }
 
   // ---- Modelo PM (migracion 023) ----
+  async listarConocimiento(organizationId: string): Promise<ConocimientoLectura> {
+    return this.conocimiento.listar(organizationId);
+  }
+
+  async listarConocimientoPublicado(organizationId: string, propertyId: string | null): Promise<readonly ConocimientoEntrada[]> {
+    return this.conocimiento.listarPublicado(organizationId, propertyId);
+  }
+
+  async crearConocimiento(organizationId: string, actorId: string, input: NuevaConocimientoEntrada): Promise<ConocimientoEntrada> {
+    return this.conocimiento.crear(organizationId, actorId, input);
+  }
+
+  async actualizarConocimiento(organizationId: string, actorId: string, id: string, patch: ConocimientoPatch): Promise<ConocimientoEntrada | null> {
+    return this.conocimiento.actualizar(organizationId, actorId, id, patch);
+  }
+
+  async borrarConocimiento(organizationId: string, id: string): Promise<boolean> {
+    return this.conocimiento.borrar(organizationId, id);
+  }
+
+  async findAgenteWhatsappActivo(propertyId: string): Promise<boolean> {
+    return this.conocimiento.agenteActivo(propertyId);
+  }
+
+  async listarAgentesWhatsappApagados(organizationId: string): Promise<{ readonly disponible: boolean; readonly propertyIdsApagados: readonly string[] }> {
+    return this.conocimiento.agentesApagadosDe(organizationId);
+  }
+
+  async fijarAgenteWhatsappActivo(organizationId: string, propertyId: string, _actorId: string, activo: boolean): Promise<void> {
+    this.conocimiento.fijarAgenteActivo(organizationId, propertyId, activo);
+  }
+
   async findBranchPolicy(propertyId: string): Promise<BranchPolicy> {
     return this.branchPolicies.get(propertyId) ?? EMPTY_BRANCH_POLICY;
   }
@@ -1863,6 +1973,14 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       promoted.push(updated);
     }
     return { disponible: true, promoted };
+  }
+
+  async listPromotedOrdersWithoutComanda(options: { readonly hours: number; readonly limit: number }): Promise<readonly Order[]> {
+    const desde = Date.now() - options.hours * 3_600_000;
+    return this.orders
+      .filter((o) => o.promovidoAt && Date.parse(o.promovidoAt) >= desde && (o.status === "pending" || o.status === "preparando"))
+      .sort((a, b) => (a.promovidoAt ?? "").localeCompare(b.promovidoAt ?? ""))
+      .slice(0, options.limit);
   }
 
   async listBranchDeliveryZoneIds(propertyId: string): Promise<readonly string[]> {

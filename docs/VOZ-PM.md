@@ -1,8 +1,8 @@
-# Voz de Los Taquitos de PM (restaurantes): LiveKit + Gemini Live, sin ElevenLabs
+# Voz de Los Taquitos de PM (restaurantes): LiveKit + Gemini Live
 
-Decisión de Javier (1-oct-2026): la voz de PM corre con **Gemini 3.8 Live** sobre telefonía **LiveKit SIP + Twilio**, sin ElevenLabs. La
-escalera de degradación es **Gemini 3.8 Live -> gpt-live-1 -> persona / buzón con callback**. Los verticales hoteles y citas conservan sus
-Server Tools de ElevenLabs; este documento es solo de restaurantes.
+Decisión de Javier (1-oct-2026): la voz de PM corre con **Gemini 3.8 Live** sobre telefonía **LiveKit SIP + Twilio**. La
+escalera de degradación es **Gemini 3.8 Live -> gpt-live-1 -> persona / buzón con callback**. Este documento es solo de restaurantes
+(hoteles y citas tienen su propio agente sobre `packages/voice-core`).
 
 > Honestidad primero: este runbook separa lo que **ya está en el repo y probado** de lo que **falta para recibir la primera llamada real**.
 
@@ -25,12 +25,12 @@ Server Tools de ElevenLabs; este documento es solo de restaurantes.
 Hasta que exista el worker, el agente de voz **no atiende llamadas telefónicas**. Lo que sí se puede hacer hoy: configurar la voz y el
 comportamiento, hacer la llamada de prueba desde el panel y correr la prueba ciega.
 
-## 2. Qué cambió respecto a ElevenLabs en PM
+## 2. Proveedor de voz de PM: qué cambió
 
-- `VozProveedorId` queda `gemini-3.8-live | gpt-live-1`. La API rechaza `elevenlabs-agents`; una fila histórica con ese valor se lee como
+- `VozProveedorId` queda `gemini-3.8-live | gpt-live-1`. La API rechaza el valor histórico `elevenlabs-agents`; una fila antigua con ese valor se lee como
   Gemini (`proveedorDeFila`). La migración 025 conserva el valor en sus CHECK solo por filas históricas (no se tocó SQL).
-- Los KPI de voz ya no exponen ni muestran "ElevenLabs"; los errores de proveedor se desglosan en Twilio y "Gemini y otros". La columna
-  `errores_elevenlabs` de la migración 035 queda sin leer.
+- Los errores de proveedor de los KPI de voz se desglosan en Twilio y "Gemini y otros". La columna histórica `errores_elevenlabs` de la
+  migración 035 queda sin leer.
 - La vista previa del panel ya no es una simulación: es una llamada real de prueba, o dice "No disponible: <motivo>".
 - Reparto A/B `pct_trafico_ab`: **no existía en main**, no hay nada que retirar.
 - El otro proyecto (`okvxavwijqacomgtyyou`) no se tocó.
@@ -61,7 +61,7 @@ en el teléfono del token firmado; un llamante anónimo no tiene teléfono y por
 |---|---|---|
 | Duración máxima | 8 min (aviso a los 7) | Pregrabado + callback a una persona (`no_puedo_resolver`) y cuelga; con pedido ya creado solo se despide |
 | Costo máximo por llamada | US$0.10 (100 000 micro-USD) | Igual que la duración |
-| Silencio del cliente | 7 s, 2 re-preguntas | A la tercera se despide (resultado `abandonado`) |
+| Silencio del cliente | 7 s, 1 re-pregunta (`LIMITES_VOZ_PM`; voice-core deja 2 para las otras verticales) | Al segundo silencio se despide (resultado `abandonado`) |
 | Ruido | 3 eventos sin habla inteligible = 1 malentendido | Pide repetir |
 | Malentendidos seguidos | 2 | Pasa a una persona (`no_entiende`) |
 | DTMF | `0` = persona, `*` = repetir | |
@@ -71,6 +71,24 @@ en el teléfono del token firmado; un llamante anónimo no tiene teléfono y por
 
 Logs sin PII: solo una lista cerrada de campos (ids opacos, estados, conteos, duraciones); la transcripción se guarda aparte, con PAN y CVV
 redactados.
+
+### Instruccion y parametros del agente (rescate-orig-restaurantes-1)
+
+- **Reglas duras no borrables.** `branch_voice_config.comportamiento` es texto libre editable por sucursal (tope 8000). La instruccion que recibe el
+  proveedor la arma el servidor con `instruccionVozConReglas` (`voz/perfil-voz-pm.ts`): texto editable + saludo inicial + **bloque al final** con las
+  reglas H1-H18, el flujo y la seguridad del mismo perfil que WhatsApp, las reglas vivas del agente (precios solo de herramientas de ESTA llamada, un
+  solo "¿sigue ahi?", no repetir datos, reintento honesto de `crear_pedido`, reservaciones) y el apendice de la llamada. El bloque no cuenta para el tope
+  del panel. Hoy lo usa la vista previa del panel (solo organizaciones con perfil `taqueria_pm`; las demas conservan su texto tal cual). **El worker de
+  telefonia debe llamar a la misma funcion al abrir la llamada** (pendiente: el worker no existe).
+- **Temperatura 0** (`VOZ_PLATAFORMA.gemini.temperatura` y `.cascada.temperatura`): va en `generationConfig` del setup de Gemini Live y en la peticion del
+  LLM de la cascada (`PeticionLlmVoz.temperatura`; el puerto que la implemente debe respetarla).
+- **Idioma:** `speechConfig.languageCode = "es-US"` (`VOZ_PLATAFORMA.gemini.idioma`; `null` lo omite). **No verificado contra la API real**: si Gemini rechaza el
+  campo con el modelo configurado, la primera corrida real (prueba ciega B) falla al abrir; poner `idioma: null` en un solo lugar lo quita.
+- **Herramientas en serie** (equivale a `parallel_tool_calls: false` del agente vivo): `gemini-live-sesion.ts` ejecuta los `functionCalls` de un turno uno tras
+  otro, en el orden pedido (antes `Promise.all`), igual que la cascada. Lo fija `packages/voice-core/tests/parametros-voz.spec.ts`.
+- **Vocabulario para el STT de la cascada:** `AperturaLlamada.vocabulario` (nombres y apodos del menu, sin repetidos, hasta
+  `VOZ_PLATAFORMA.cascada.vocabularioMax` = 200) viaja como `prompt` de `/audio/transcriptions`. **No probado contra OpenRouter real**; el worker debe llenar el
+  campo con el menu de la sucursal.
 
 ### Mensajes pregrabados
 

@@ -73,6 +73,21 @@ function buildTemplateBody(to: string, template: OutboundTemplate): Record<strin
 }
 
 function buildRequestBody(message: OutboundWhatsAppMessagePayload, approvedTemplates: ReadonlySet<string>): Record<string, unknown> {
+  if (message.solicitarUbicacion === true) {
+    if ((message.buttons && message.buttons.length > 0) || message.template) {
+      throw new WhatsAppInvalidPayloadError("la solicitud de ubicacion no se combina con botones ni plantilla");
+    }
+    if (message.body.length === 0 || message.body.length > 1024) {
+      throw new WhatsAppInvalidPayloadError("el texto de la solicitud de ubicacion debe medir de 1 a 1024 caracteres");
+    }
+    return {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: message.to,
+      type: "interactive",
+      interactive: { type: "location_request_message", body: { text: message.body }, action: { name: "send_location" } },
+    };
+  }
   if (message.template && (message.templateApproved === true || approvedTemplates.has(message.template.name))) {
     return buildTemplateBody(message.to, message.template);
   }

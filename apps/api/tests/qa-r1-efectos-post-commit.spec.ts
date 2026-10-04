@@ -90,7 +90,7 @@ describe("caos-20: correo y comanda al POS despues del COMMIT del pedido", () =>
     const q = (await (await post("/quote", body)).json()) as { quote_hash: string };
     await post("/confirm", { session_id: sesion, quote_hash: q.quote_hash });
     t.eventos.length = 0;
-    const res = await post("/orders", { ...body, quote_hash: q.quote_hash, customer_name: "Ana", customer_phone: "9991234567" });
+    const res = await post("/orders", { ...body, quote_hash: q.quote_hash, acepta_aviso_privacidad: true, customer_name: "Ana", customer_phone: "9991234567" });
     expect(res.status).toBe(200);
     const cuerpo = (await res.json()) as { comanda: { estado: string; folio: string } | null };
     expect(cuerpo.comanda).toMatchObject({ estado: "confirmada" });
@@ -107,7 +107,7 @@ describe("caos-20: correo y comanda al POS despues del COMMIT del pedido", () =>
     const post = (path: string, b: object) => t.app.request(`/v1/restaurantes/${ORG}/storefront/fco-montejo${path}`, jsonRequestInit(b, { ...ORIGIN, "x-forwarded-for": "10.9.9.8" }));
     const q = (await (await post("/quote", body)).json()) as { quote_hash: string };
     await post("/confirm", { session_id: sesion, quote_hash: q.quote_hash });
-    const res = await post("/orders", { ...body, quote_hash: q.quote_hash, customer_name: "Ana", customer_phone: "9991234567" });
+    const res = await post("/orders", { ...body, quote_hash: q.quote_hash, acepta_aviso_privacidad: true, customer_name: "Ana", customer_phone: "9991234567" });
     expect(res.status).toBeGreaterThanOrEqual(500);
     expect(t.fake.llamadasCrear).toHaveLength(0);
     expect(t.eventos).not.toContain("pos");
