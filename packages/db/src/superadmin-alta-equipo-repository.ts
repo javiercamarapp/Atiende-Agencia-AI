@@ -245,7 +245,15 @@ export class PostgresOrgEquipoRepository implements OrgEquipoRepository {
 // scripts/verify-superadmin-alta-equipo/, aqui solo se necesita el mismo contrato para probar el cableado HTTP).
 // ---------------------------------------------------------------------------------------------------------------------------------
 const ROLES_RESTAURANTES: Readonly<Record<string, string>> = { owner: "owner", admin: "admin", staff: "member", repartidor: "member" };
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Forma minima de correo sin expresion regular de backtracking (el doble solo necesita rechazar lo obviamente invalido; la base valida el regex real). */
+function correoValido(email: string): boolean {
+  if (email.length > 254 || /\s/.test(email)) return false;
+  const partes = email.split("@");
+  if (partes.length !== 2) return false;
+  const [local, dominio] = partes as [string, string];
+  const punto = dominio.lastIndexOf(".");
+  return local.length > 0 && punto > 0 && punto < dominio.length - 1;
+}
 const SIETE_DIAS_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function enmascararCorreo(email: string): string {
@@ -342,7 +350,7 @@ export class InMemoryOrgEquipoRepository implements OrgEquipoRepository {
     this.exigirSuperadmin(callerId);
     this.motivoValido(input.motivo);
     const email = input.email.trim().toLowerCase();
-    if (!EMAIL_RE.test(email)) throw new EquipoInvitacionError("validation", "correo invalido");
+    if (!correoValido(email)) throw new EquipoInvitacionError("validation", "correo invalido");
     const org = this.orgs.get(input.organizationId);
     if (!org) throw new EquipoInvitacionError("not_found", "organizacion no encontrada");
     if (org.vertical !== "restaurantes") throw new EquipoInvitacionError("validation", `el alta de equipo aun no esta disponible para la vertical ${org.vertical}`);
