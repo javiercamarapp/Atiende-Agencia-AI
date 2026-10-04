@@ -386,9 +386,6 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   { metodo: "PUT", patron: `${B}/config/whatsapp`, roles: ["owner", "admin"], manejador: (p) => { const v = String(((p.cuerpo ?? {}) as { phoneNumberId?: string }).phoneNumberId ?? ""); p.estado.guardar("rest.wa", v); return { phoneNumberId: v }; } },
   { metodo: "GET", patron: `${B}/config/zona-horaria`, roles: ["owner", "admin"], manejador: (p) => ({ zonaHoraria: p.estado.obtener<string | null>("rest.tz", () => "America/Merida") }) },
   { metodo: "PATCH", patron: `${B}/config/zona-horaria`, roles: ["owner", "admin"], manejador: (p) => { const v = ((p.cuerpo ?? {}) as { zona_horaria?: string | null }).zona_horaria ?? null; p.estado.guardar("rest.tz", v); return { zonaHoraria: v }; } },
-  // Sitio publico (R-38): GET trae la marca vacia (nunca guardada); PUT la guarda. Sin esto, /configuracion pinta un segundo EstadoError en el e2e.
-  { metodo: "GET", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: (p) => p.estado.obtener("rest.sitio", () => ({ marca: { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null }, guardada: false })) },
-  { metodo: "PUT", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: (p) => { const r = { marca: p.cuerpo ?? {}, guardada: true }; p.estado.guardar("rest.sitio", r); return r; } },
   { metodo: "GET", patron: `${B}/config/zonas`, roles: ["owner", "admin"], manejador: (p) => ({ zonas: lista(p, "rest.zonas", ZONAS_SEMILLA) }) },
   {
     metodo: "POST",
@@ -451,8 +448,45 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   { metodo: "GET", patron: `${B}/turnos`, manejador: (p) => ({ disponible: true, turnos: p.estado.obtener("rest.turnos", () => [{ id: "turno-1", nombre: "Comida", dias: [1, 2, 3, 4, 5, 6], inicia: "12:00", termina: "01:00", miembros: [{ userId: "usr-1", nombre: "Lucia Xool", orden: 1 }] }]), cobertura: COBERTURA }) },
   { metodo: "PUT", patron: `${B}/turnos`, manejador: (p) => { const t = ((p.cuerpo ?? {}) as { turnos?: unknown[] }).turnos ?? []; p.estado.guardar("rest.turnos", t); return { disponible: true }; } },
 
+  // ---------- Sitio publico (R-38): la seccion de Configuracion la lee al montar; sin esta fixture la pagina mostraba un EstadoError ajeno a lo que se prueba ----------
+  { metodo: "GET", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: (p) => p.estado.obtener("rest.sitio-publico", () => ({ marca: { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null }, guardada: false })) },
+  { metodo: "PUT", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: (p) => { const v = { marca: { ...((p.cuerpo ?? {}) as object) }, guardada: true }; p.estado.guardar("rest.sitio-publico", v); return v; } },
+
+  // ---------- Conocimiento del negocio e interruptor del agente de WhatsApp (053; solo owner/admin como la API real) ----------
+  // Replica del servidor lo que la SPA debe ver: el validador rechaza precios (`$` + numero) con el mismo mensaje y una entrada nueva nace publicada.
+  { metodo: "GET", patron: `${B}/conocimiento`, roles: ["owner", "admin"], manejador: (p) => ({ disponible: true, topeCaracteres: 6000, entradas: p.estado.obtener("rest.conocimiento", () => [] as unknown[]) }) },
+  { metodo: "POST", patron: `${B}/conocimiento`, roles: ["owner", "admin"], manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { titulo?: string; texto?: string; tipo?: string; sucursalId?: string | null; reemplazaId?: string | null; prioridad?: number; vigenteDesde?: string | null; vigenteHasta?: string | null };
+      if (/\$\s*\d/.test(`${c.titulo ?? ""} ${c.texto ?? ""}`)) return fallo(400, "No incluya precios: el agente los toma siempre del menú real con la cotización, y un precio escrito aquí se quedaría desactualizado.");
+      const lista = p.estado.obtener("rest.conocimiento", () => [] as unknown[]);
+      const entrada = { id: `cono-${lista.length + 1}`, sucursalId: c.sucursalId ?? null, reemplazaId: c.reemplazaId ?? null, titulo: c.titulo ?? "", texto: c.texto ?? "", tipo: c.tipo ?? "faq", prioridad: c.prioridad ?? 50, vigenteDesde: c.vigenteDesde ?? null, vigenteHasta: c.vigenteHasta ?? null, activo: true, estado: "publicado", origen: "manual", version: 1, actualizadoEn: new Date().toISOString() };
+      lista.push(entrada);
+      return conStatus(201, entrada);
+    } },
+  { metodo: "PATCH", patron: `${B}/conocimiento/:entradaId`, roles: ["owner", "admin"], manejador: (p) => {
+      const lista = p.estado.obtener("rest.conocimiento", () => [] as Record<string, unknown>[]);
+      const e = lista.find((x) => x["id"] === p.params["entradaId"]);
+      if (!e) return fallo(404, "Entrada de conocimiento no encontrada.");
+      Object.assign(e, p.cuerpo ?? {}, { version: Number(e["version"]) + 1 });
+      return e;
+    } },
+  { metodo: "DELETE", patron: `${B}/conocimiento/:entradaId`, roles: ["owner", "admin"], manejador: (p) => {
+      const lista = p.estado.obtener("rest.conocimiento", () => [] as Record<string, unknown>[]);
+      const i = lista.findIndex((x) => x["id"] === p.params["entradaId"]);
+      if (i < 0) return fallo(404, "Entrada de conocimiento no encontrada.");
+      lista.splice(i, 1);
+      return { ok: true };
+    } },
+  { metodo: "GET", patron: `${B}/config/sucursales/:branchId/agente-whatsapp`, roles: ["owner", "admin"], manejador: (p) => ({ disponible: true, agenteActivo: p.estado.obtener("rest.agente-wa-activo", () => true) }) },
+  { metodo: "PUT", patron: `${B}/config/sucursales/:branchId/agente-whatsapp`, roles: ["owner", "admin"], manejador: (p) => {
+      const activo = ((p.cuerpo ?? {}) as { activo?: unknown }).activo;
+      if (typeof activo !== "boolean") return fallo(400, "activo: se esperaba true o false.");
+      p.estado.guardar("rest.agente-wa-activo", activo);
+      return { disponible: true, agenteActivo: activo };
+    } },
+
   // ---------- Agente de voz ----------
-  { metodo: "GET", patron: `${B}/voz/config`, roles: ["owner", "admin"], manejador: (p) => p.estado.obtener("rest.voz", () => ({ disponible: true, configurada: true, habilitado: true, voiceId: "voz-1", comportamiento: "Atiende pedidos por telefono.", mensajeInicial: "Taqueria El Faro, en que le ayudo?" })) },
+  { metodo: "GET", patron: `${B}/voz/config`, roles: ["owner", "admin"], manejador: (p) => p.estado.obtener("rest.voz", () => ({ disponible: true, configurada: true, habilitado: true, voiceId: "voz-1", comportamiento: "Atiende pedidos por telefono.", mensajeInicial: "Taqueria El Faro, en que le ayudo?", mensajeInicialInterrumpible: true })) },
   { metodo: "PUT", patron: `${B}/voz/config`, roles: ["owner", "admin"], manejador: (p) => { const c = { disponible: true, configurada: true, ...((p.cuerpo ?? {}) as object) }; p.estado.guardar("rest.voz", c); return c; } },
   { metodo: "GET", patron: `${B}/voz/catalogo`, roles: ["owner", "admin"], manejador: () => ({ salud: { ok: true, detalle: "Servicio de voz operativo." } }) },
   { metodo: "GET", patron: `${B}/voz/conversaciones`, roles: ["owner", "admin"], manejador: () => ({ disponible: true, items: [{ id: "voz-conv-1", iniciadaEn: "2026-09-30T18:30:00.000Z", duracionS: 84, costoEstimadoMicroUsd: 120000, resultado: "pedido_creado" }] }) },

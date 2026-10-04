@@ -440,3 +440,48 @@ describe("registrador de sistema /internal/restaurantes/voz/*", () => {
     });
   });
 });
+
+// Migracion 053: saludo no interrumpible y conocimiento del negocio en la instruccion de voz.
+describe("saludo no interrumpible — bandera mensajeInicialInterrumpible en .../admin/voz/config", () => {
+  it("sin guardar es interrumpible (como siempre); PUT con false se persiste, se lee y queda en el resumen de la bitacora", async () => {
+    const { ctx, app, base } = await construir();
+    expect(await (await app.request(`${base}/config`, authedGet(ctx.staff.owner.token))).json()).toMatchObject({ mensajeInicialInterrumpible: true });
+    const put = await app.request(`${base}/config`, authedJson(ctx.staff.owner.token, { ...CONFIG_OK, mensajeInicialInterrumpible: false }, "PUT"));
+    expect(put.status).toBe(200);
+    expect(await put.json()).toMatchObject({ mensajeInicialInterrumpible: false });
+    expect(await (await app.request(`${base}/config`, authedGet(ctx.staff.admin.token))).json()).toMatchObject({ mensajeInicialInterrumpible: false });
+    const entrada = ctx.restaurantesRepo.auditLog.find((r) => r.action === "configuracion.voz_actualizada");
+    expect(JSON.parse(entrada?.despues ?? "{}")).toMatchObject({ saludoInterrumpible: false });
+  });
+
+  it("un cliente anterior a la bandera (PUT sin el campo) NO la pisa: se conserva lo guardado", async () => {
+    const { ctx, app, base } = await construir();
+    await app.request(`${base}/config`, authedJson(ctx.staff.owner.token, { ...CONFIG_OK, mensajeInicialInterrumpible: false }, "PUT"));
+    const put = await app.request(`${base}/config`, authedJson(ctx.staff.owner.token, { ...CONFIG_OK, comportamiento: "Otro prompt." }, "PUT"));
+    expect(await put.json()).toMatchObject({ comportamiento: "Otro prompt.", mensajeInicialInterrumpible: false });
+  });
+
+  it("400 si la bandera no es booleana", async () => {
+    const { ctx, app, base } = await construir();
+    expect((await app.request(`${base}/config`, authedJson(ctx.staff.owner.token, { ...CONFIG_OK, mensajeInicialInterrumpible: "no" }, "PUT"))).status).toBe(400);
+  });
+});
+
+describe("conocimiento del negocio en la instruccion de la llamada de prueba", () => {
+  it("el bloque vigente va ANTES del comportamiento guardado (las reglas duras quedan al final); sin entradas la instruccion es la guardada", async () => {
+    const { ctx, app, base, provider } = await construir();
+    await app.request(`${base}/config`, authedJson(ctx.staff.owner.token, CONFIG_OK, "PUT"));
+    await app.request(`${base}/preview/sesion`, authedJson(ctx.staff.owner.token, {}));
+    expect(provider?.emitidas.at(-1)?.comportamiento).toBe(CONFIG_OK.comportamiento);
+
+    await ctx.restaurantesRepo.crearConocimiento(ctx.organizationId, ctx.staff.owner.id, { titulo: "Estacionamiento", texto: "Hay estacionamiento gratuito para clientes.", tipo: "faq" });
+    await ctx.restaurantesRepo.crearConocimiento(ctx.organizationId, ctx.staff.owner.id, { titulo: "Borrador", texto: "No debe llegar.", tipo: "faq", estado: "borrador", origen: "importado" });
+    await app.request(`${base}/preview/sesion`, authedJson(ctx.staff.owner.token, {}));
+    const instruccion = provider?.emitidas.at(-1)?.comportamiento ?? "";
+    expect(instruccion).toContain("CONOCIMIENTO DEL NEGOCIO");
+    expect(instruccion).toContain("[Pregunta frecuente] Estacionamiento: Hay estacionamiento gratuito para clientes.");
+    expect(instruccion).not.toContain("No debe llegar.");
+    expect(instruccion.endsWith(CONFIG_OK.comportamiento)).toBe(true);
+    expect(instruccion.indexOf("CONOCIMIENTO DEL NEGOCIO")).toBeLessThan(instruccion.indexOf(CONFIG_OK.comportamiento));
+  });
+});
