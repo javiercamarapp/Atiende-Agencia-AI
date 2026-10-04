@@ -126,3 +126,17 @@ export function marcarAgotadoHastaManana(fetchImpl: typeof fetch, apiBaseUrl: st
 export function minutosEsperando(solicitadaAt: string, ahoraMs: number): number {
   return Math.max(0, Math.floor((ahoraMs - Date.parse(solicitadaAt)) / 60_000));
 }
+
+export interface TiempoPrometido {
+  /** `aprendido` = mediana de las ultimas entregas de la franja (con el piso del dueno); `texto_fijo` = lo que fijo el dueno (menos de 20 muestras). */
+  readonly origen: "aprendido" | "texto_fijo";
+  readonly rango: { readonly minimo: number; readonly maximo: number } | null;
+  readonly texto: string;
+  readonly saturacion: "normal" | "alargado" | "proponer_pausa";
+  readonly muestras: number;
+}
+
+export async function fetchTiempoPrometido(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, canal: OrderCanal): Promise<TiempoPrometido> {
+  const body = await fetchJson<{ tiempo: TiempoPrometido }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/autopiloto/tiempo?canal=${canal}`, token);
+  return body.tiempo;
+}

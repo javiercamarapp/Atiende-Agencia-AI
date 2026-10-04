@@ -36,8 +36,8 @@ import {
 import type { TicketCocina } from "@atiende/ui";
 import { AlertTriangle, Clock, Printer, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { fetchAvisos, sonidoPedidoNuevoPermitido } from "../lib/avisos-client.ts";
-import { fetchAutopilotoConfig, fetchSolicitudes } from "../lib/autopiloto-client.ts";
-import type { AutopilotoConfigRespuesta, MotivoCancelacion, SolicitudesRespuesta } from "../lib/autopiloto-client.ts";
+import { fetchAutopilotoConfig, fetchSolicitudes, fetchTiempoPrometido } from "../lib/autopiloto-client.ts";
+import type { AutopilotoConfigRespuesta, MotivoCancelacion, SolicitudesRespuesta, TiempoPrometido } from "../lib/autopiloto-client.ts";
 import { assignRepartidor, fetchOrders, fetchScheduledOrders, nextStatusesForCanal, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
 import { guardarSonido, idsNuevos, leerSonido, etiquetaActualizado, reproducirAviso, SONDEO_BASE_MS } from "../lib/sondeo-pedidos.ts";
@@ -81,6 +81,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
   const [aprobaciones, setAprobaciones] = useState<SolicitudesRespuesta | null>(null);
   const [autoConfig, setAutoConfig] = useState<AutopilotoConfigRespuesta | null>(null);
   const [reglasAbiertas, setReglasAbiertas] = useState(false);
+  // Tiempo prometido hoy por canal (aprendido de las entregas de la franja, nunca menos que el piso del dueno). Un fallo solo oculta la linea.
+  const [tiempos, setTiempos] = useState<{ readonly domicilio: TiempoPrometido; readonly recoger: TiempoPrometido } | null>(null);
   // Cancelar un pedido exige un motivo de la lista cerrada (taxonomia de cancelacion): el dialogo guarda el pedido a cancelar.
   const [cancelando, setCancelando] = useState<OrderSummary | null>(null);
   const [errorCancelar, setErrorCancelar] = useState<string | null>(null);
@@ -216,6 +218,18 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
     }
   }
 
+  async function loadTiempos() {
+    try {
+      const [domicilio, recoger] = await Promise.all([
+        fetchTiempoPrometido(fetch, apiBaseUrl, token, propertyId, "domicilio"),
+        fetchTiempoPrometido(fetch, apiBaseUrl, token, propertyId, "recoger"),
+      ]);
+      setTiempos({ domicilio, recoger });
+    } catch {
+      setTiempos(null);
+    }
+  }
+
   async function loadAutoConfig() {
     try {
       setAutoConfig(await fetchAutopilotoConfig(fetch, apiBaseUrl, token, propertyId));
@@ -254,6 +268,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
 
   useEffect(() => {
     void loadAutoConfig();
+    void loadTiempos();
   }, [apiBaseUrl, token, propertyId]);
 
   // Al cambiar de sucursal u organizacion se recarga la preferencia de sonido y se reinicia la linea base de
@@ -439,6 +454,14 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
           wrapperClassName="text-xs text-foreground"
         />
       </div>
+
+      {tiempos && (
+        <p className="m-0 text-xs text-muted-foreground" data-testid="tiempo-prometido">
+          Tiempo prometido hoy: domicilio {tiempos.domicilio.texto}; recoger {tiempos.recoger.texto}
+          {tiempos.domicilio.origen === "aprendido" || tiempos.recoger.origen === "aprendido" ? " (aprendido de las entregas recientes; nunca menos que el tiempo que fijó el dueño)" : " (el tiempo que fijó el dueño; aún no hay entregas suficientes para aprender)"}
+          {tiempos.domicilio.saturacion !== "normal" || tiempos.recoger.saturacion !== "normal" ? ". Hay alta carga: se está alargando el tiempo prometido." : "."}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-foreground">
         <Checkbox

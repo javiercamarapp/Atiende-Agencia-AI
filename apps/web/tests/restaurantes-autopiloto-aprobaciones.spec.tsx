@@ -46,6 +46,7 @@ interface Estado {
   disponible: boolean;
   fallaResolver?: string;
   config?: Record<string, unknown>;
+  saturado?: boolean;
 }
 
 function stub(estado: Estado) {
@@ -69,6 +70,9 @@ function stub(estado: Estado) {
       });
     }
     if (method === "PUT" && url === `${BASE}/autopiloto/config`) return json({ ok: true, config: {} });
+    if (method === "GET" && url.startsWith(`${BASE}/autopiloto/tiempo`)) {
+      return json({ tiempo: url.endsWith("domicilio") ? { origen: "aprendido", rango: { minimo: 40, maximo: 50 }, texto: "de 40 a 50 minutos", saturacion: estado.saturado ? "alargado" : "normal", muestras: 24 } : { origen: "texto_fijo", rango: null, texto: "Recoger 15-25 minutos", saturacion: "normal", muestras: 3 } });
+    }
     if (url.includes("/admin/staff/repartidores")) return json({ repartidores: [] });
     if (method === "GET" && url.includes("/admin/orders")) return json({ orders: [], nextCursor: null });
     if (method === "GET" && url.includes("/admin/scheduled-orders")) return json({ disponible: true, orders: [], promovidos: [], serverNow: new Date().toISOString() });
@@ -203,6 +207,19 @@ describe("Pedidos: pestana Por aprobar", () => {
     await abrirPorAprobar();
     expect(document.body.textContent).toContain("No hay nada por aprobar");
     expect(document.body.querySelector('[data-testid="insignia-por-aprobar"]')).toBeNull();
+  });
+});
+
+describe("Tiempo prometido hoy", () => {
+  it("muestra el tiempo por canal (aprendido o fijo del dueno) y avisa la alta carga", async () => {
+    stub({ solicitudes: [], disponible: true, saturado: true });
+    rendered = renderComponent(<PedidosPage {...ctx("owner")} />);
+    await esperar();
+    const linea = document.body.querySelector('[data-testid="tiempo-prometido"]')!.textContent!;
+    expect(linea).toContain("domicilio de 40 a 50 minutos");
+    expect(linea).toContain("recoger Recoger 15-25 minutos");
+    expect(linea).toContain("nunca menos que el tiempo que fijó el dueño");
+    expect(linea).toContain("alta carga");
   });
 });
 
