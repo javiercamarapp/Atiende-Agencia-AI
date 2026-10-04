@@ -153,6 +153,10 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
 
   async function handleCalcular() {
     setCalcError(null);
+    if (!Number.isInteger(calcAnio) || calcAnio < 2000) {
+      setCalcError("Año inválido.");
+      return;
+    }
     if (!Number.isInteger(calcMes) || calcMes < 1 || calcMes > 12) {
       setCalcError("Mes inválido.");
       return;
