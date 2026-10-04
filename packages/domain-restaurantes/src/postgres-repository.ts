@@ -42,6 +42,7 @@ import type {
   BranchSummary,
   BranchTimezoneConfig,
   CallbackRequest,
+  CallbackRegistro,
   CallbackRequestInput,
   Category,
   CategoryPatch,
@@ -80,6 +81,7 @@ import type {
   StorefrontOrderTracking,
   StorefrontTrackingResult,
 } from "./types.ts";
+import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import { EMPTY_BRANCH_POLICY, MOTIVOS_ESCALACION_DESACTIVABLES, TONOS_AGENTE_WHATSAPP, type TonoAgenteWhatsApp } from "./types.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { leerHorarioPersistido } from "./horarios.ts";
@@ -991,6 +993,33 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
+    // Avisos del AGENTE (voz y WhatsApp): idempotentes por evento y por motivo (migracion 047, `callback_registrar_agente`). Corre dentro
+    // de la transaccion unica del request/turno: contra una base SIN migrar la funcion no existe (42883) y el respaldo al INSERT de
+    // siempre EXIGE SAVEPOINT (un try/catch simple dejaria la transaccion abortada, 25P02). Solo 42883 degrada: un 42501 es un rechazo real.
+    if (input.source === "voice" || input.source === "whatsapp") {
+      const agente = await runWithSavepointFallback<CallbackRequest | null>({
+        session: this.db,
+        savepointName: "sp_restaurantes_callback_agente",
+        primary: async () => {
+          const { rows } = await this.db.query<{ callback_id: string; resuelto: boolean; creado_at: string; registro: CallbackRegistro }>(
+            `select callback_id, resuelto, creado_at, registro
+             from restaurantes.callback_registrar_agente($1, $2, $3, $4, $5, $6, $7, $8);`,
+            [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source, input.sourceEventId ?? null],
+          );
+          const fila = rows[0]!;
+          return { ...input, id: fila.callback_id, resolved: fila.resuelto, createdAt: fila.creado_at, registro: fila.registro };
+        },
+        isRecoverable: (err) => (err as { code?: string } | null)?.code === "42883",
+        fallback: async () => null,
+      });
+      if (agente) {
+        // Notificacion in-app (`restaurantes.callback.pendiente`) solo cuando el aviso es NUEVO: un reenvio o una nota agregada no vuelven a avisar.
+        if (agente.registro === "nuevo") {
+          await emitirNotificacion(this.db, { evento: "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: agente.id, entidadTipo: "callback_request", entidadId: agente.id });
+        }
+        return agente;
+      }
+    }
     const params = [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source];
     // Migracion 048 (ver `upsertCustomer`): funcion solo-sistema; sin ella (42883) cae al INSERT directo anterior.
     const row = await runWithSavepointFallback<{ id: string; resolved: boolean; created_at: string }>({
@@ -1031,7 +1060,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     // llamada. Uno por solicitud (clave = id), sin PII (ni nombre ni telefono viajan en el aviso). SAVEPOINT en emitirNotificacion.
     // R-43: una solicitud de evento/catering del storefront (reason = 'evento') avisa con su propio evento del catalogo, no con el generico.
     await emitirNotificacion(this.db, { evento: input.reason === "evento" ? "restaurantes.evento.solicitud" : "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
-    return { ...input, id: row.id, resolved: row.resolved, createdAt: row.created_at };
+    return { ...input, id: row.id, resolved: row.resolved, createdAt: row.created_at, registro: "nuevo" };
   }
 
   async consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean> {
@@ -1048,6 +1077,21 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       [phoneNumberId],
     );
     return rows[0]?.organization_id ?? null;
+  }
+
+  async contadorAgenteWhatsApp(organizationId: string, phone: string, clave: ClaveContadorAgente, accion: "incrementar" | "reiniciar"): Promise<number | null> {
+    // Base SIN migrar: la funcion (42883) o la columna (42703) no existen. Corre dentro de la transaccion del turno: respaldo con SAVEPOINT
+    // (un try/catch simple la dejaria abortada, 25P02). Sin contador el agente sigue como antes (solo cuenta dentro del turno).
+    return runWithSavepointFallback<number | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_contador_agente",
+      primary: async () => {
+        const { rows } = await this.db.query<{ n: number | null }>(`select restaurantes.whatsapp_contador_agente($1, $2, $3, $4) as n;`, [organizationId, phone, clave, accion]);
+        return rows[0]?.n ?? null;
+      },
+      isRecoverable: (err) => ["42883", "42703", "42P01"].includes((err as { code?: string } | null)?.code ?? ""),
+      fallback: async () => null,
+    });
   }
 
   async claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean> {
