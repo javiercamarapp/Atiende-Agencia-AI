@@ -162,6 +162,11 @@ const CHECKS: Record<string, () => Promise<void> | void> = {
     const borrado = meta({ type: "unsupported", errors: [{ code: 131051 }] });
     expect(borrado).toMatch(/pregúntele qué quería antes de aplicarlo/);
   },
+  K15() {
+    expect(prompt()).toMatch(/MÁS TARDE EL MISMO DÍA[^\n]*programado_para[^\n]*MISMA en cotizar_pedido y en crear_pedido/);
+    const out = mapCreateOrderToolInput({ organizationId: "o", phone: PHONE, channel: "whatsapp" }, { programado_para: "2026-10-04T20:30:00-06:00" }, true);
+    expect(out.programadoPara).toBe("2026-10-04T20:30:00-06:00");
+  },
   K16() {
     expect(prompt()).toContain(`más unos ${PM_MARGEN_LLUVIA_MINUTOS} minutos`);
     expect(prompt()).not.toMatch(/1 hora a 1 hora 20/);
