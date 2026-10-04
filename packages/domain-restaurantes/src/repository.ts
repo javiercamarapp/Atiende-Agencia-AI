@@ -209,7 +209,7 @@ export interface RestaurantesRepository {
    * incluida la recuperación de la carrera de INSERT concurrente real, UNIQUE
    * (organization_id, phone)). */
   upsertCustomer(organizationId: string, phone: string, name: string): Promise<Customer>;
-  /** `organizationId` es obligatorio: la escritura real (funcion solo-sistema de la migracion 045) exige que el cliente pertenezca a esa organizacion. */
+  /** `organizationId` es obligatorio: la escritura real (funcion solo-sistema de la migracion 048) exige que el cliente pertenezca a esa organizacion. */
   addCustomerAddressIfNew(customerId: string, address: string, organizationId: string): Promise<void>;
   listCustomerAddresses(customerId: string): Promise<readonly CustomerAddress[]>;
   /** Historial de pedidos ELEGIBLES para memoria/recomendación (pending/preparando/
@@ -355,7 +355,9 @@ export interface RestaurantesRepository {
   /** Más reciente primero. `propertyIds` null = organización completa (mismo
    * contrato que el resto de rutas admin de este vertical, ver admin-scope.ts). */
   listStaffOrderNotifications(organizationId: string, propertyIds: readonly string[] | null, options?: { readonly unacknowledgedOnly?: boolean; readonly limit?: number }): Promise<readonly StaffOrderNotificationRecord[]>;
-  acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string): Promise<StaffOrderNotificationRecord>;
+  /** `propertyIds` (opcional) acota el reconocimiento a las sucursales visibles del staff DENTRO de la propia escritura
+   * (QA-restaurantes-R1-features-08: antes se verificaba con un listado de 500 filas, que dejaba fuera las viejas). */
+  acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string, propertyIds?: readonly string[] | null): Promise<StaffOrderNotificationRecord>;
 
   // ---- Fase 5 — back-office CORE (ver diseño §1) ----
 
@@ -423,7 +425,9 @@ export interface RestaurantesRepository {
    * real ya NO es `fromStatus` (alguien más lo cambió primero) — el dominio
    * distingue ambos casos con un `findOrderById` de más SOLO en ese camino de
    * error, nunca en el camino feliz. */
-  updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus): Promise<Order | null>;
+  /** `incidentNote` (opcional): nota libre de la incidencia; solo se guarda cuando `toStatus === "problema"`
+   * (columna `incident_note`, migracion 008: no requiere SQL nuevo). */
+  updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus, incidentNote?: string | null): Promise<Order | null>;
 
   findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
   listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;
@@ -446,6 +450,9 @@ export interface RestaurantesRepository {
    * lo asignado a una sola persona); un límite fijo generoso evita igual un fetch
    * accidentalmente ilimitado. */
   listOrdersForRepartidor(organizationId: string, repartidorId: string): Promise<readonly Order[]>;
+  /** R-15: pedidos de ESTE repartidor entregados el dia local `fechaLocal` (YYYY-MM-DD) en `zonaHoraria` (IANA), por `delivered_at` (columna de la
+   * 001, existe en cualquier base), mas recientes primero, con `deliveredAt` poblado. Tope 200. Nunca los de otro repartidor. */
+  listDeliveredOrdersForRepartidor(organizationId: string, repartidorId: string, fechaLocal: string, zonaHoraria: string): Promise<readonly Order[]>;
   /** Ficha de un pedido — null si no existe, no es de esta organización, O no está
    * asignado a ESTE repartidor (un repartidor NUNCA puede leer el pedido de otro,
    * a diferencia de `findOrderById`, que solo acota por organización/property). */

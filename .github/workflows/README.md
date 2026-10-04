@@ -184,7 +184,7 @@ aplica RLS ni GRANT. Este job:
      GRANT/policy que esta verificación encontró).
    - `scripts/verify-restaurantes-canales-escritura/` (el rol y la sesion exactos de
      produccion -- `authenticated`, `auth.uid()` NULL -- crean cliente, direccion, aviso y
-     pedido por cada canal; el INSERT/UPDATE directo sigue denegado; migracion 045).
+     pedido por cada canal; el INSERT/UPDATE directo sigue denegado; migracion 048).
    - `scripts/verify-superadmin-salud/` (latidos de crons, salud de colas
      `messaging_outbox`, última corrida por fuente de licitaciones).
    - `scripts/verify-superadmin-mfa-switches-orgs/` (MFA TOTP del superadmin con

@@ -1,5 +1,5 @@
 -- Fixtures + assertions contra Postgres REAL para
--- packages/domain-restaurantes/migrations/045_sistema_escritura_clientes_avisos_y_eventos.sql
+-- packages/domain-restaurantes/migrations/048_sistema_escritura_clientes_avisos_y_eventos.sql
 -- (P0 de la cuenta real de PM: la sesion de sistema no podia crear clientes, direcciones ni avisos de contacto).
 --
 -- ROL Y SESION EXACTOS DE PRODUCCION: `set local role authenticated` + `request.jwt.claim.sub = ''` (auth.uid() NULL),

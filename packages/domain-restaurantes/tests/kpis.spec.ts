@@ -153,6 +153,21 @@ describe("getSalesKpis — 'Tus ventas' agregado real, con % de cambio", () => {
     expect(summary.averageOrder).toBe(75);
   });
 
+  it("QA R1 viaje-09: 'ventas de hoy' no suman un pedido no_recogido ni uno programado para manana", async () => {
+    const fixture = buildRestaurantFixture();
+    const base = { organizationId: fixture.organizationId, propertyId: fixture.propertyId, total: 450 };
+    const now = new Date(2026, 9, 13, 14, 0, 0);
+    const hoy = new Date(2026, 9, 13, 12, 0, 0).toISOString();
+    fixture.repo.seedOrder(makeOrder({ ...base, customerId: "c1", status: "entregado", createdAt: hoy }));
+    fixture.repo.seedOrder(makeOrder({ ...base, customerId: "c2", status: "no_recogido", createdAt: hoy }));
+    fixture.repo.seedOrder(makeOrder({ ...base, customerId: "c3", status: "programado", createdAt: hoy }));
+
+    const summary = await getSalesKpis(fixture.repo, fixture.organizationId, null, "today", now);
+    expect(summary.revenue).toBe(450);
+    expect(summary.orders).toBe(1);
+    expect(summary.customers).toBe(1);
+  });
+
   it("periodo previo en $0 -> % es 100 si el actual tiene ventas, 0 si tampoco (nunca división por cero real)", async () => {
     const fixture = buildRestaurantFixture();
     const now = new Date(2026, 8, 10, 12, 0, 0);

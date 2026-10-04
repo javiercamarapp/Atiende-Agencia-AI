@@ -171,6 +171,7 @@ function mapCustomer(row: CustomerRow): Customer {
 }
 
 interface OrderRow {
+  readonly created_at_cursor?: string;
   readonly id: string;
   readonly organization_id: string;
   readonly property_id: string;
@@ -423,10 +424,10 @@ function esErrorSinPedidoRecienteDisponible(err: unknown): boolean {
   return code === "42501" || code === "42883" || code === "42P01" || code === "42703";
 }
 
-// Compatibilidad con la base SIN migrar para la migracion 045 (escrituras de la sesion de sistema por funcion):
+// Compatibilidad con la base SIN migrar para la migracion 048 (escrituras de la sesion de sistema por funcion):
 // solo la funcion inexistente (42883) degrada al camino directo anterior. Un 42501 de la propia funcion (sesion
 // con auth.uid() no nulo) o cualquier otro error se propaga tal cual: nunca se enmascara un fallo real.
-function esFuncionSistema045NoDisponible(err: unknown): boolean {
+function esFuncionSistema048NoDisponible(err: unknown): boolean {
   return (err as { code?: string } | null)?.code === "42883";
 }
 
@@ -747,7 +748,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async upsertCustomer(organizationId: string, phone: string, name: string): Promise<Customer> {
-    // Migracion 045: el rol de produccion (authenticated, auth.uid() NULL) no tiene INSERT/UPDATE sobre
+    // Migracion 048: el rol de produccion (authenticated, auth.uid() NULL) no tiene INSERT/UPDATE sobre
     // restaurantes.customers; la escritura va por la funcion solo-sistema (atomica por UNIQUE(organizacion, telefono)).
     // Contra una base sin esa migracion (42883) cae al camino directo anterior, dentro de un SAVEPOINT.
     return runWithSavepointFallback<Customer>({
@@ -759,12 +760,12 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
         if (!row) throw new Error("upsert_customer no devolvió el cliente");
         return mapCustomer(row);
       },
-      isRecoverable: esFuncionSistema045NoDisponible,
+      isRecoverable: esFuncionSistema048NoDisponible,
       fallback: () => this.upsertCustomerDirecto(organizationId, phone, name),
     });
   }
 
-  /** Camino anterior a la migracion 045 (INSERT/UPDATE directos). Solo funciona con un rol que tenga esos GRANT. */
+  /** Camino anterior a la migracion 048 (INSERT/UPDATE directos). Solo funciona con un rol que tenga esos GRANT. */
   private async upsertCustomerDirecto(organizationId: string, phone: string, name: string): Promise<Customer> {
     // Port literal de upsertCustomer() del origen: intenta insertar, y si pierde la
     // carrera del UNIQUE(organization_id, phone) real (23505), relee y actualiza en
@@ -828,19 +829,19 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async addCustomerAddressIfNew(customerId: string, address: string, organizationId: string): Promise<void> {
-    // Migracion 045 (ver `upsertCustomer`): funcion solo-sistema que ademas exige que el cliente sea de la organizacion.
+    // Migracion 048 (ver `upsertCustomer`): funcion solo-sistema que ademas exige que el cliente sea de la organizacion.
     await runWithSavepointFallback<void>({
       session: this.db,
       savepointName: "sp_restaurantes_add_address_fn",
       primary: async () => {
         await this.db.query(`select restaurantes.add_customer_address_if_new($1, $2, $3);`, [organizationId, customerId, address]);
       },
-      isRecoverable: esFuncionSistema045NoDisponible,
+      isRecoverable: esFuncionSistema048NoDisponible,
       fallback: () => this.addCustomerAddressDirecto(customerId, address),
     });
   }
 
-  /** Camino anterior a la migracion 045 (INSERT directo). */
+  /** Camino anterior a la migracion 048 (INSERT directo). */
   private async addCustomerAddressDirecto(customerId: string, address: string): Promise<void> {
     const { rows: countRows } = await this.db.query<{ count: string }>(
       `select count(*)::text as count from restaurantes.customer_addresses where customer_id = $1;`,
@@ -952,7 +953,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
     const params = [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source];
-    // Migracion 045 (ver `upsertCustomer`): funcion solo-sistema; sin ella (42883) cae al INSERT directo anterior.
+    // Migracion 048 (ver `upsertCustomer`): funcion solo-sistema; sin ella (42883) cae al INSERT directo anterior.
     const row = await runWithSavepointFallback<{ id: string; resolved: boolean; created_at: string }>({
       session: this.db,
       savepointName: "sp_restaurantes_callback_fn",
@@ -965,7 +966,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
         if (!creado) throw new Error("create_callback_request no devolvió el aviso");
         return creado;
       },
-      isRecoverable: esFuncionSistema045NoDisponible,
+      isRecoverable: esFuncionSistema048NoDisponible,
       fallback: async () => {
         const { rows } = await this.db.query<{ id: string; resolved: boolean; created_at: string }>(
           `insert into restaurantes.callback_requests (organization_id, property_id, customer_name, customer_phone, reason, message, source)
@@ -1042,7 +1043,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async markInboundEventFailed(organizationId: string, messageId: string, errorClass: string): Promise<void> {
-    // Migracion 045: el rol de produccion no tiene GRANT sobre whatsapp_inbound_events; la escritura va por la
+    // Migracion 048: el rol de produccion no tiene GRANT sobre whatsapp_inbound_events; la escritura va por la
     // funcion solo-sistema. Sin ella (42883) cae al UPDATE directo anterior.
     await runWithSavepointFallback<void>({
       session: this.db,
@@ -1050,7 +1051,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       primary: async () => {
         await this.db.query(`select restaurantes.mark_whatsapp_inbound_failed($1, $2, $3);`, [organizationId, messageId, errorClass]);
       },
-      isRecoverable: esFuncionSistema045NoDisponible,
+      isRecoverable: esFuncionSistema048NoDisponible,
       fallback: async () => {
         await this.db.query(
           `update restaurantes.whatsapp_inbound_events set status = 'failed', last_error_class = $3
@@ -1325,7 +1326,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     }));
   }
 
-  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string): Promise<StaffOrderNotificationRecord> {
+  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string, propertyIds?: readonly string[] | null): Promise<StaffOrderNotificationRecord> {
     const { rows } = await this.db.query<{
       property_id: string;
       order_id: string;
@@ -1336,9 +1337,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       acknowledged_by: string | null;
     }>(
       `update restaurantes.staff_order_notification set acknowledged_at = now(), acknowledged_by = $1
-       where organization_id = $2 and id = $3
+       where organization_id = $2 and id = $3${propertyIds ? " and property_id = any($4::uuid[])" : ""}
        returning property_id, order_id, event_type, message, created_at::text as created_at, acknowledged_at::text as acknowledged_at, acknowledged_by;`,
-      [actorId, organizationId, notificationId],
+      propertyIds ? [actorId, organizationId, notificationId, [...propertyIds]] : [actorId, organizationId, notificationId],
     );
     const row = rows[0];
     if (!row) throw new Error(`Notificación "${notificationId}" no encontrada para la organización "${organizationId}".`);
@@ -1360,8 +1361,20 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   async getSalesBucketedStats(organizationId: string, propertyIds: readonly string[] | null, buckets: readonly KpiDateRange[]): Promise<readonly SalesBucketRow[]> {
     if (buckets.length === 0) return [];
     const { rows } = await this.db.query<{ idx: number; revenue: string; order_count: string; customer_count: string }>(
-      `select idx, revenue, order_count, customer_count
-       from restaurantes.orders_bucketed_stats($1, $2::uuid[], $3::timestamptz[], $4::timestamptz[]);`,
+      // QA R1 viaje-09: consulta directa (no la funcion `orders_bucketed_stats`, cuya definicion en la base solo
+      // excluye cancelados y no puede cambiar sin migracion). Misma forma y alcance (RLS del usuario, organizacion
+      // y sucursales); una venta NO es un pedido cancelado, `no_recogido` (no se cobro) ni `programado` (aun no es
+      // venta). Funciona igual contra la base sin migrar: solo lee `restaurantes.orders`.
+      `select b.idx, coalesce(sum(o.total), 0) as revenue, count(o.id) as order_count, count(distinct o.customer_id) as customer_count
+       from unnest($3::timestamptz[], $4::timestamptz[]) with ordinality as b(bucket_start, bucket_end, idx)
+       left join restaurantes.orders o
+         on o.organization_id = $1
+         and o.status not in ('cancelado', 'no_recogido', 'programado')
+         and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
+         and o.created_at >= b.bucket_start
+         and o.created_at < b.bucket_end
+       group by b.idx
+       order by b.idx;`,
       [organizationId, propertyIds ? [...propertyIds] : null, buckets.map((b) => b.start.toISOString()), buckets.map((b) => b.end.toISOString())],
     );
     const byIdx = new Map(rows.map((row) => [Number(row.idx), { revenue: Number(row.revenue), orderCount: Number(row.order_count), customerCount: Number(row.customer_count) }]));
@@ -2117,7 +2130,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
     params.push(filter.limit + 1);
     const { rows } = await this.db.query<OrderRow>(
-      `select ${ORDER_COLUMNS}
+      // QA-restaurantes-R1-features-01: `pg` entrega created_at como Date (milisegundos). El cursor usa
+      // la representacion TEXTO de Postgres (microsegundos exactos) para no saltar pedidos del mismo ms.
+      `select ${ORDER_COLUMNS}, created_at::text as created_at_cursor
        from restaurantes.orders
        where ${conditions.join(" and ")}
        order by created_at desc, id desc
@@ -2126,12 +2141,14 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     );
 
     const hasMore = rows.length > filter.limit;
-    const page = rows.slice(0, filter.limit).map(mapOrder);
-    const nextCursor = hasMore ? encodeCursor(page[page.length - 1]!) : null;
+    const pageRows = rows.slice(0, filter.limit);
+    const page = pageRows.map(mapOrder);
+    const last = pageRows[pageRows.length - 1];
+    const nextCursor = hasMore && last ? encodeCursor(last.created_at_cursor ?? toIsoText(last.created_at), last.id) : null;
     return { orders: page, nextCursor };
   }
 
-  async updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus): Promise<Order | null> {
+  async updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus, incidentNote?: string | null): Promise<Order | null> {
     // Fix hallazgo auditoría (rubro 3, "máquina de estados de pedidos sin guarda
     // TOCTOU") — `and status = $4` es la guarda real: sin ella, el UPDATE aplica
     // ciegamente sobre CUALQUIER estado actual, incluso uno distinto al que
@@ -2141,10 +2158,11 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     const run = async () => {
       const { rows } = await this.db.query<OrderRow>(
         `update restaurantes.orders
-         set status = $3, delivered_at = case when $3 = 'entregado' then now() else delivered_at end
+         set status = $3, delivered_at = case when $3 = 'entregado' then now() else delivered_at end,
+             incident_note = case when $3 = 'problema' and $5::text is not null then $5::text else incident_note end
          where id = $1 and organization_id = $2 and status = $4
          returning ${ORDER_COLUMNS};`,
-        [orderId, organizationId, toStatus, fromStatus],
+        [orderId, organizationId, toStatus, fromStatus, toStatus === "problema" ? (incidentNote ?? null) : null],
       );
       return rows[0] ? mapOrder(rows[0]) : null;
     };
@@ -2193,6 +2211,22 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows.map(mapOrder);
   }
 
+  async listDeliveredOrdersForRepartidor(organizationId: string, repartidorId: string, fechaLocal: string, zonaHoraria: string): Promise<readonly Order[]> {
+    // `delivered_at` es de la migracion 001: no hace falta fallback contra la base sin migrar. El dia local se convierte a un rango de
+    // instantes en la zona de la sucursal: [00:00 local del dia, 00:00 local del dia siguiente).
+    const { rows } = await this.db.query<OrderRow & { delivered_at: string | Date | null }>(
+      `select ${ORDER_COLUMNS}, delivered_at
+       from restaurantes.orders
+       where organization_id = $1 and assigned_repartidor_id = $2 and delivered_at is not null
+         and delivered_at >= ($3::date)::timestamp at time zone $4
+         and delivered_at < (($3::date + 1))::timestamp at time zone $4
+       order by delivered_at desc
+       limit 200;`,
+      [organizationId, repartidorId, fechaLocal, zonaHoraria],
+    );
+    return rows.map((r) => ({ ...mapOrder(r), deliveredAt: r.delivered_at === null ? null : r.delivered_at instanceof Date ? r.delivered_at.toISOString() : String(r.delivered_at) }));
+  }
+
   async findAssignedOrderById(organizationId: string, repartidorId: string, orderId: string): Promise<Order | null> {
     const { rows } = await this.db.query<OrderRow>(
       `select ${ORDER_COLUMNS}
@@ -2239,10 +2273,12 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
     const search = filter.search?.trim();
     if (search) {
-      params.push(`%${search}%`);
+      // QA-restaurantes-R1-features-06b: % _ \ del texto buscado son literales, no comodines.
+      params.push(`%${search.replace(/[\\%_]/g, "\\$&")}%`);
       conditions.push(`(name ilike $${params.length} or phone ilike $${params.length})`);
     }
-    if (filter.cursor) {
+    // QA-restaurantes-R1-features-06a: un cursor que no es uuid se ignora (antes: 22P02 -> 500).
+    if (filter.cursor && UUID_TEXT.test(filter.cursor)) {
       params.push(filter.cursor);
       conditions.push(`id > $${params.length}`);
     }
@@ -3356,9 +3392,16 @@ interface OrderCursorBoundary {
   readonly id: string;
 }
 
-function encodeCursor(order: Order): string {
-  return Buffer.from(`${order.createdAt}|${order.id}`, "utf8").toString("base64url");
+function toIsoText(value: unknown): string {
+  return value instanceof Date ? value.toISOString() : String(value);
 }
+
+function encodeCursor(createdAt: string, id: string): string {
+  return Buffer.from(`${createdAt}|${id}`, "utf8").toString("base64url");
+}
+
+const CURSOR_TIMESTAMP = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)?$/;
+const UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function decodeCursor(cursor: string | undefined): OrderCursorBoundary | null {
   if (!cursor) return null;
@@ -3366,7 +3409,11 @@ function decodeCursor(cursor: string | undefined): OrderCursorBoundary | null {
     const decoded = Buffer.from(cursor, "base64url").toString("utf8");
     const separatorIndex = decoded.lastIndexOf("|");
     if (separatorIndex === -1) return null;
-    return { createdAt: decoded.slice(0, separatorIndex), id: decoded.slice(separatorIndex + 1) };
+    const createdAt = decoded.slice(0, separatorIndex);
+    const id = decoded.slice(separatorIndex + 1);
+    // Cursor manipulado o viejo (p. ej. Date.toString()): se ignora en vez de llegar a Postgres como 22007/22P02.
+    if (!CURSOR_TIMESTAMP.test(createdAt) || !UUID_TEXT.test(id)) return null;
+    return { createdAt, id };
   } catch {
     return null;
   }

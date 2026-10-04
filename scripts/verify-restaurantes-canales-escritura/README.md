@@ -1,7 +1,7 @@
 # verify-restaurantes-canales-escritura
 
 Verificación, contra un Postgres **real**, de
-`packages/domain-restaurantes/migrations/045_sistema_escritura_clientes_avisos_y_eventos.sql`
+`packages/domain-restaurantes/migrations/048_sistema_escritura_clientes_avisos_y_eventos.sql`
 (P0 de la cuenta real de PM: la sesión de sistema no podía crear clientes, direcciones ni avisos de contacto,
 y por tanto ningún pedido nuevo por ningún canal). El repositorio en memoria nunca aplica RLS ni GRANT, así que
 no podía detectar este hueco.
