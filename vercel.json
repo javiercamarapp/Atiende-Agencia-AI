@@ -82,7 +82,7 @@
     { "path": "/internal/rentas/email-dispatch", "schedule": "*/15 * * * *" },
     { "path": "/internal/rentas/checkin-recordatorio", "schedule": "40 14 * * *" },
     { "path": "/internal/rentas/ical-sync", "schedule": "*/15 * * * *" },
-    { "path": "/internal/rentas/checkout-sweep", "schedule": "50 14 * * *" },
+    { "path": "/internal/rentas/checkout-sweep", "schedule": "*/15 * * * *" },
     { "path": "/internal/whatsapp/dispatch", "schedule": "*/5 * * * *" },
     { "path": "/internal/superadmin/resumen-diario", "schedule": "0 15 * * *" },
     { "path": "/internal/superadmin/mantenimiento", "schedule": "5 15 * * *" },
