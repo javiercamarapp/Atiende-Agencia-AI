@@ -8,6 +8,7 @@
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
+import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
@@ -273,6 +274,8 @@ interface InMemoryOutboxRow {
 
 /** Ventana en que un aviso abierto del mismo canal, telefono y motivo absorbe al siguiente (misma que `callback_registrar_agente`: 2 h). */
 const CALLBACK_VENTANA_AGRUPAR_MS = 120 * 60_000;
+/** Vigencia de un contador del agente (misma que la funcion SQL: 2 h). */
+const CONTADOR_AGENTE_VIGENCIA_MS = 120 * 60_000;
 
 export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly organizations = new Map<string, StoredOrganization>();
@@ -288,6 +291,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly orders: StoredOrder[] = [];
   private readonly knownZones: StoredKnownZone[] = [];
   private readonly callbackRequests: CallbackRequest[] = [];
+  private readonly contadoresAgente = new Map<string, { n: number; at: number }>();
   /** Ids de evento agregados como nota a un aviso (migracion 043, `eventos_agrupados`). */
   private readonly callbackEventosAgrupados = new Map<string, string[]>();
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
@@ -943,6 +947,19 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       if (orgId === organizationId) return phoneNumberId;
     }
     return null;
+  }
+
+  /** Misma regla que `restaurantes.whatsapp_contador_agente` (migracion 043): un contador de mas de 2 h cuenta como 0. */
+  async contadorAgenteWhatsApp(organizationId: string, phone: string, clave: ClaveContadorAgente, accion: "incrementar" | "reiniciar"): Promise<number | null> {
+    const llave = `${organizationId}|${phone}|${clave}`;
+    if (accion === "reiniciar") {
+      this.contadoresAgente.delete(llave);
+      return 0;
+    }
+    const previo = this.contadoresAgente.get(llave);
+    const n = (previo && Date.now() - previo.at < CONTADOR_AGENTE_VIGENCIA_MS ? previo.n : 0) + 1;
+    this.contadoresAgente.set(llave, { n, at: Date.now() });
+    return n;
   }
 
   async claimWhatsAppMessage(organizationId: string, messageId: string, _phoneHash: string): Promise<boolean> {

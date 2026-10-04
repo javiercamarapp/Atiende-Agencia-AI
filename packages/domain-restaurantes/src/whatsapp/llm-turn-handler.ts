@@ -27,6 +27,7 @@ import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@at
 import { vipNote } from "../customers.ts";
 import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
+import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
@@ -452,6 +453,26 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
       const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string } } => (escalarMotivo ? { ...r, escalacion: { motivo: escalarMotivo } } : r);
+      // Contadores deterministas (§3): "no entiendo" y "colonia no reconocida" seguidos. Cuenta el SERVIDOR entre turnos (migracion 043); sin donde
+      // contar (base sin migrar) se cuenta solo dentro del turno. Al llegar al umbral escala por su cuenta con un texto fijo.
+      let coloniaFallosEnTurno = 0;
+      let noEntiendeEnTurno = 0;
+      const escalarPorContador = async (motivo: "zona_no_reconocida" | "no_entiende", resumen: string) => {
+        const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
+        const aviso = await executeAgentToolSafely(
+          repo,
+          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null },
+          "escalar_a_humano",
+          { customer_name: nombre, motivo, resumen },
+        );
+        if (isToolErrorResult(aviso.result)) {
+          return done({ reply: "Lamento el inconveniente: no pude avisar al equipo en este momento. Por favor inténtelo de nuevo en unos minutos.", orderId, propertyId });
+        }
+        escalarMotivo = motivo;
+        await contarAgente(repo, organizationId, phone, motivo === "zona_no_reconocida" ? "colonia_no_reconocida" : "no_entiende", "reiniciar");
+        return done({ reply: COPY_ESCALACION_CONTADOR[motivo], orderId, propertyId });
+      };
+      const noEntiendeActivo = perfil === "taqueria_pm" && !(config.motivosDesactivados ?? []).includes("no_entiende");
 
       // Motivos de alto riesgo (cancelacion, cobro, ARCO, alergia, transferencia, queja, "quiero una
       // persona"): no se dejan al criterio del modelo. Se avisa al equipo ANTES del LLM y se responde fijo.
@@ -501,6 +522,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
           const base = completion.text || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
+          if (noEntiendeActivo) {
+            if (pideRepetir(base)) {
+              const n = (await contarAgente(repo, organizationId, phone, "no_entiende", "incrementar")) ?? (noEntiendeEnTurno += 1);
+              if (n >= CONTADOR_AGENTE_UMBRAL) return escalarPorContador("no_entiende", `El agente no logró entender al cliente ${CONTADOR_AGENTE_UMBRAL} veces seguidas. Último mensaje: ${(latestUserMessage?.content ?? "").slice(0, 300)}`);
+            } else {
+              await contarAgente(repo, organizationId, phone, "no_entiende", "reiniciar");
+            }
+          }
           // Un turno sin herramienta ni pregunta deja al cliente esperando: se anexa la pregunta del paso pendiente.
           const conPregunta = anyToolCalled
             ? base
@@ -544,6 +573,15 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           }
           if (call.name === "escalar_a_humano" && !isToolErrorResult(result)) {
             escalarMotivo = typeof input.motivo === "string" ? input.motivo : "otro";
+          }
+          if (perfil === "taqueria_pm" && call.name === "buscar_sucursal_cercana" && !isToolErrorResult(result)) {
+            const estado = (result as { estado?: unknown } | null)?.estado;
+            if (estado === "no_reconocida") {
+              const n = (await contarAgente(repo, organizationId, phone, "colonia_no_reconocida", "incrementar")) ?? (coloniaFallosEnTurno += 1);
+              if (n >= CONTADOR_AGENTE_UMBRAL) return escalarPorContador("zona_no_reconocida", `La colonia no se reconoció ${CONTADOR_AGENTE_UMBRAL} veces seguidas. Último mensaje: ${(latestUserMessage?.content ?? "").slice(0, 300)}`);
+            } else if (estado === "asignada" || estado === "fuera_de_zona") {
+              await contarAgente(repo, organizationId, phone, "colonia_no_reconocida", "reiniciar");
+            }
           }
           if (call.name === "crear_pedido" && isToolErrorResult(result)) {
             huboFalloDeHerramienta = true;

@@ -68,6 +68,7 @@ import type {
   StorefrontOrderTracking,
   StorefrontTrackingResult,
 } from "./types.ts";
+import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import { EMPTY_BRANCH_POLICY, MOTIVOS_ESCALACION_DESACTIVABLES, TONOS_AGENTE_WHATSAPP, type TonoAgenteWhatsApp } from "./types.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { leerHorarioPersistido } from "./horarios.ts";
@@ -966,6 +967,21 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       [phoneNumberId],
     );
     return rows[0]?.organization_id ?? null;
+  }
+
+  async contadorAgenteWhatsApp(organizationId: string, phone: string, clave: ClaveContadorAgente, accion: "incrementar" | "reiniciar"): Promise<number | null> {
+    // Base SIN migrar: la funcion (42883) o la columna (42703) no existen. Corre dentro de la transaccion del turno: respaldo con SAVEPOINT
+    // (un try/catch simple la dejaria abortada, 25P02). Sin contador el agente sigue como antes (solo cuenta dentro del turno).
+    return runWithSavepointFallback<number | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_contador_agente",
+      primary: async () => {
+        const { rows } = await this.db.query<{ n: number | null }>(`select restaurantes.whatsapp_contador_agente($1, $2, $3, $4) as n;`, [organizationId, phone, clave, accion]);
+        return rows[0]?.n ?? null;
+      },
+      isRecoverable: (err) => ["42883", "42703", "42P01"].includes((err as { code?: string } | null)?.code ?? ""),
+      fallback: async () => null,
+    });
   }
 
   async claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean> {
