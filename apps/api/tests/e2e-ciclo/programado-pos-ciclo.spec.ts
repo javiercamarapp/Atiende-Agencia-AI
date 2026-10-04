@@ -145,7 +145,7 @@ describe("e2e programado + POS", () => {
     const base = { session_id: "sesion-e2e-0123456789abcdef", items: [{ product_id: stack.products.coca, requested_quantity: 5 }], canal: "recoger" };
     const q = (await (await post("/fco-montejo/quote", base)).json()) as Json;
     await post("/fco-montejo/confirm", { session_id: base.session_id, quote_hash: q.quote_hash });
-    const created = (await (await post("/fco-montejo/orders", { ...base, customer_name: "Pos Caido", customer_phone: "9991230061", payment_method: "efectivo", quote_hash: q.quote_hash })).json()) as Json;
+    const created = (await (await post("/fco-montejo/orders", { ...base, acepta_aviso_privacidad: true, customer_name: "Pos Caido", customer_phone: "9991230061", payment_method: "efectivo", quote_hash: q.quote_hash })).json()) as Json;
     expect(created.estado).toBe("pending");
     expect(created.comanda).toMatchObject({ estado: "pendiente_de_confirmar", folio: null });
     expect(stack.pos.comandas).toHaveLength(0);
