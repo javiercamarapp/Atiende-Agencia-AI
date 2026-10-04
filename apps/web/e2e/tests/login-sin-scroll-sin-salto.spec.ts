@@ -18,7 +18,8 @@ const VIEWPORTS = [
 const TEMAS = ["light", "dark"] as const;
 
 // Las pruebas fijan su propio viewport y tema: basta un proyecto (los 4 de la matriz solo las repetirian).
-test.beforeEach(async ({}, info) => {
+// eslint-disable-next-line no-empty-pattern -- Playwright exige la forma desestructurada aunque no se use ninguna fixture
+test.beforeEach(({}, info) => {
   test.skip(info.project.name !== "escritorio-claro", "fija viewport y tema por prueba; corre una sola vez");
 });
 
