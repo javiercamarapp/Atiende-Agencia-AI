@@ -37,6 +37,7 @@ import {
   Landmark,
   Link2,
   LayoutDashboard,
+  ReceiptText,
   Settings,
   Sparkles,
   Undo2,
@@ -106,6 +107,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "cartera", label: "Cartera de clientes" },
   { to: "cfdi", label: "CFDI" },
   { to: "cobranza", label: "Cobranza" },
+  { to: "honorarios", label: "Honorarios" },
   { to: "cola-cobranza", label: "Cola de cobranza" },
   { to: "vencimientos", label: "Vencimientos" },
   { to: "declaraciones", label: "Declaraciones" },
@@ -144,6 +146,7 @@ function buildSidebarSections(orgSlug: string, conCopiloto: boolean): SidebarSec
       title: "Facturación",
       items: [
         { ...item("cfdi"), icon: FileText },
+        { ...item("honorarios"), icon: ReceiptText },
         { ...item("cobranza"), icon: HandCoins },
         { ...item("cola-cobranza"), icon: ClipboardList },
         { ...item("vencimientos"), icon: CalendarClock },
