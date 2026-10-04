@@ -386,7 +386,7 @@ export async function ingestarXmlCfdiDespachos(
  * RFC ni el nombre del emisor viajan en el aviso). Dentro de un SAVEPOINT (emitirNotificacion): contra la base sin migrar no aborta la
  * transaccion que acaba de ingerir el CFDI.
  */
-async function avisarEmisorEfos(db: TenantDbSession, organizationId: string, propertyId: string, invoice: InvoiceRecord, efos: EfosIngesta): Promise<void> {
+export async function avisarEmisorEfos(db: TenantDbSession, organizationId: string, propertyId: string, invoice: InvoiceRecord, efos: EfosIngesta): Promise<void> {
   if (efos.situacion !== "presunto" && efos.situacion !== "definitivo") return;
   await emitirNotificacion(db, { evento: "despachos.efos.alerta", organizationId, propertyId, clave: invoice.id, entidadTipo: "invoice", entidadId: invoice.id });
 }
