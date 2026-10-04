@@ -11,19 +11,17 @@ import {
   Callout,
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   Checkbox,
   DataTable,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
   FormDialog,
+  FormField,
   Input,
-  Label,
   NativeSelect,
   PageContainer,
+  PageHeader,
   StatusBadge,
 } from "@atiende/ui";
 import {
@@ -74,25 +72,21 @@ export function FormularioCliente({ inicial, alta, rfcBloqueado, miembros, guard
     if (Object.keys(errores).length > 0 || guardando) return;
     onGuardar(f);
   }
-  const verError = (campo: string) =>
-    intento && errores[campo] ? (
-      <p role="alert" className="text-xs text-destructive">
-        {errores[campo]}
-      </p>
-    ) : null;
+  const err = (campo: string) => (intento ? errores[campo] : undefined);
 
   return (
     <form id={idFormulario} onSubmit={enviar} className="flex flex-col gap-4" noValidate>
       {alta && (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${idFormulario}-nombre`}>Nombre del cliente</Label>
+        <FormField label="Nombre del cliente" error={err("nombre")}>
           <Input id={`${idFormulario}-nombre`} value={f.nombre} maxLength={120} onChange={(e) => set("nombre", e.target.value)} placeholder="Como lo identifica tu despacho" />
-          {verError("nombre")}
-        </div>
+        </FormField>
       )}
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${idFormulario}-rfc`}>RFC</Label>
+        <FormField
+          label="RFC"
+          error={err("rfc")}
+          hint={rfcBloqueado ? "El RFC de un cliente registrado no se modifica." : tipo ? etiquetaTipoPersona(tipo) : f.rfc.trim() !== "" && mensajeRfc(f.rfc) ? mensajeRfc(f.rfc) : "12 caracteres (persona moral) o 13 (persona física)."}
+        >
           <Input
             id={`${idFormulario}-rfc`}
             value={f.rfc}
@@ -102,24 +96,15 @@ export function FormularioCliente({ inicial, alta, rfcBloqueado, miembros, guard
             spellCheck={false}
             className="font-mono uppercase"
             onChange={(e) => set("rfc", e.target.value.toUpperCase())}
-            aria-describedby={`${idFormulario}-rfc-ayuda`}
           />
-          <p id={`${idFormulario}-rfc-ayuda`} className="text-xs text-muted-foreground">
-            {rfcBloqueado ? "El RFC de un cliente registrado no se modifica." : tipo ? etiquetaTipoPersona(tipo) : f.rfc.trim() !== "" && mensajeRfc(f.rfc) ? mensajeRfc(f.rfc) : "12 caracteres (persona moral) o 13 (persona física)."}
-          </p>
-          {verError("rfc")}
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${idFormulario}-cp`}>Código postal fiscal</Label>
+        </FormField>
+        <FormField label="Código postal fiscal" error={err("cpFiscal")}>
           <Input id={`${idFormulario}-cp`} value={f.cpFiscal} inputMode="numeric" maxLength={5} className="font-mono" onChange={(e) => set("cpFiscal", e.target.value.replace(/\D/g, ""))} />
-          {verError("cpFiscal")}
-        </div>
+        </FormField>
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${idFormulario}-razon`}>Razón social</Label>
+      <FormField label="Razón social" error={err("razonSocial")}>
         <Input id={`${idFormulario}-razon`} value={f.razonSocial} maxLength={250} onChange={(e) => set("razonSocial", e.target.value)} placeholder="Tal como aparece en su constancia de situación fiscal" />
-        {verError("razonSocial")}
-      </div>
+      </FormField>
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-medium text-foreground">Régimen(es) fiscal(es)</legend>
         <p className="text-xs text-muted-foreground">Claves del catálogo del SAT (c_RegimenFiscal). Puede tener más de uno.</p>
@@ -133,11 +118,14 @@ export function FormularioCliente({ inicial, alta, rfcBloqueado, miembros, guard
             />
           ))}
         </div>
-        {verError("regimenesFiscales")}
+        {err("regimenesFiscales") && (
+          <p role="alert" className="text-xs font-medium text-destructive">
+            {err("regimenesFiscales")}
+          </p>
+        )}
       </fieldset>
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${idFormulario}-periodicidad`}>Periodicidad de pagos provisionales</Label>
+        <FormField label="Periodicidad de pagos provisionales">
           <NativeSelect id={`${idFormulario}-periodicidad`} value={f.periodicidad} onChange={(e) => set("periodicidad", e.target.value as PeriodicidadPagos)}>
             {(Object.keys(PERIODICIDAD_ETIQUETAS) as PeriodicidadPagos[]).map((p) => (
               <option key={p} value={p}>
@@ -145,10 +133,9 @@ export function FormularioCliente({ inicial, alta, rfcBloqueado, miembros, guard
               </option>
             ))}
           </NativeSelect>
-        </div>
+        </FormField>
         {miembros && miembros.length > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${idFormulario}-responsable`}>Responsable en el despacho</Label>
+          <FormField label="Responsable en el despacho">
             <NativeSelect id={`${idFormulario}-responsable`} value={f.responsableId} onChange={(e) => set("responsableId", e.target.value)}>
               <option value="">Sin asignar</option>
               {miembros.map((m) => (
@@ -157,14 +144,10 @@ export function FormularioCliente({ inicial, alta, rfcBloqueado, miembros, guard
                 </option>
               ))}
             </NativeSelect>
-          </div>
+          </FormField>
         )}
       </div>
-      {errorServidor && (
-        <p role="alert" className="text-sm text-destructive">
-          {errorServidor}
-        </p>
-      )}
+      {errorServidor && <Callout tone="danger">{errorServidor}</Callout>}
     </form>
   );
 }
@@ -231,32 +214,32 @@ export function CarteraPage({ apiBaseUrl, token, propertyId, orgSlug, role }: De
   const esAlta = editando === "nuevo";
 
   return (
-    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold text-foreground">Cartera de clientes</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Ficha fiscal de cada contribuyente que atiende tu despacho.</p>
-        </div>
-        {puedeAlta && (
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => {
-              setErrorGuardar(null);
-              setAviso(null);
-              setEditando("nuevo");
-            }}
-          >
-            <Plus />
-            Nuevo cliente
-          </Button>
-        )}
-      </header>
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader
+        titulo="Cartera de clientes"
+        descripcion="Ficha fiscal de cada contribuyente que atiende tu despacho."
+        acciones={
+          puedeAlta ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setErrorGuardar(null);
+                setAviso(null);
+                setEditando("nuevo");
+              }}
+            >
+              <Plus />
+              Nuevo cliente
+            </Button>
+          ) : undefined
+        }
+      />
 
       {aviso && (
-        <p role="status" className="text-sm text-success">
+        <Callout tone="success" onDismiss={() => setAviso(null)}>
           {aviso}
-        </p>
+        </Callout>
       )}
       {error && <EstadoError mensaje={error} onReintentar={() => void cargar()} />}
       {cargando && !cartera && <EstadoCargando etiqueta="Cargando cartera…" />}
@@ -345,11 +328,11 @@ export function CarteraPage({ apiBaseUrl, token, propertyId, orgSlug, role }: De
         bloquearCierre={guardando}
         footer={
           <>
-            <Button type="button" variant="outline" className="rounded-full px-6" onClick={() => setEditando(null)} disabled={guardando}>
+            <Button type="button" variant="outline" onClick={() => setEditando(null)} disabled={guardando}>
               Cancelar
             </Button>
-            <Button type="submit" form="form-cartera" className="rounded-full px-6" disabled={guardando}>
-              {guardando ? "Guardando…" : esAlta ? "Dar de alta" : "Guardar ficha"}
+            <Button type="submit" form="form-cartera" loading={guardando}>
+              {esAlta ? "Dar de alta" : "Guardar ficha"}
             </Button>
           </>
         }
@@ -392,20 +375,19 @@ export function AltaPrimerCliente({ apiBaseUrl, token, orgSlug, onCreado }: { re
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-3xl">
-        <CardHeader>
-          <CardTitle>Da de alta tu primer cliente</CardTitle>
-          <CardDescription>Este despacho todavía no tiene ningún contribuyente. Captura su ficha fiscal para empezar a ingestar sus CFDI.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <FormularioCliente idFormulario="form-primer-cliente" inicial={FORMULARIO_VACIO} alta rfcBloqueado={false} miembros={null} guardando={guardando} errorServidor={error} onGuardar={(f) => void guardar(f)} />
-          <div className="flex justify-end">
-            <Button type="submit" form="form-primer-cliente" disabled={guardando}>
-              {guardando ? "Guardando…" : "Dar de alta"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid w-full max-w-3xl gap-2.5">
+        <PageHeader titulo="Da de alta tu primer cliente" descripcion="Este despacho todavía no tiene ningún contribuyente. Captura su ficha fiscal para empezar a ingestar sus CFDI." />
+        <Card>
+          <CardContent className="flex flex-col gap-4 p-4">
+            <FormularioCliente idFormulario="form-primer-cliente" inicial={FORMULARIO_VACIO} alta rfcBloqueado={false} miembros={null} guardando={guardando} errorServidor={error} onGuardar={(f) => void guardar(f)} />
+            <div className="flex justify-end">
+              <Button type="submit" form="form-primer-cliente" loading={guardando}>
+                Dar de alta
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
