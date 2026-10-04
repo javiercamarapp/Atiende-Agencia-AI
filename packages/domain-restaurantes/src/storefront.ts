@@ -35,6 +35,8 @@ export interface StorefrontBranchView {
   readonly aceptaDomicilio: boolean;
   /** Dias (0 = domingo .. 6) en que reparte; null = todos. */
   readonly diasDomicilio: readonly number[] | null;
+  /** "Domicilio vie-dom" cuando reparte solo algunos dias; null si reparte todos los dias o es solo recoger. */
+  readonly domicilioTexto: string | null;
 }
 
 async function vistaDeSucursal(repo: RestaurantesRepository, branch: Branch, now: Date): Promise<StorefrontBranchView> {
@@ -69,6 +71,7 @@ async function vistaDeSucursal(repo: RestaurantesRepository, branch: Branch, now
     zonasReparto,
     aceptaDomicilio: policy.aceptaDomicilio !== false,
     diasDomicilio: policy.diasDomicilio ?? null,
+    domicilioTexto: policy.aceptaDomicilio === false ? null : insigniaDomicilio(policy),
   };
 }
 
