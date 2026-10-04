@@ -19,15 +19,15 @@ import type { AperturaLlamada, ManejadoresSesion, PeticionLlmVoz, PuertoLlmVoz }
 const BASE: AperturaLlamada = { instruccion: "Eres el agente.", voiceId: "Kore", herramientas: [] };
 
 describe("temperatura de voz hacia Gemini Live", () => {
-  it("sin temperatura el setup queda igual que antes (no manda el campo)", () => {
+  it("sin temperatura el setup manda 0 (el agente de voz no improvisa importes ni datos)", () => {
     const g = mensajeSetup("gemini-3.8-live", BASE).setup.generationConfig as Record<string, unknown>;
-    expect("temperature" in g).toBe(false);
+    expect(g.temperature).toBe(0);
   });
 
   it("con temperatura la manda en generationConfig; 0 tambien se manda", () => {
     expect((mensajeSetup("m", { ...BASE, temperatura: 0.4 }).setup.generationConfig as Record<string, unknown>).temperature).toBe(0.4);
     expect((mensajeSetup("m", { ...BASE, temperatura: 0 }).setup.generationConfig as Record<string, unknown>).temperature).toBe(0);
-    expect("temperature" in (mensajeSetup("m", { ...BASE, temperatura: null }).setup.generationConfig as Record<string, unknown>)).toBe(false);
+    expect((mensajeSetup("m", { ...BASE, temperatura: null }).setup.generationConfig as Record<string, unknown>).temperature).toBe(0);
   });
 
   it("la sesion de preview manda la temperatura al token efimero", async () => {

@@ -4,6 +4,7 @@
 import { correrGuionConAdaptador, proveedorFalsoGuionado as proveedorFalsoCore } from "@atiende/voice-core/simulador";
 import type { AdaptadorSimulador, ProveedorSimulable } from "@atiende/voice-core/simulador";
 import { canonicalizeMexicanPhone } from "../../phone.ts";
+import { evaluarPersonaVoz } from "../guardia-persona.ts";
 import { REGISTRO_TOOLS_PM, transporteEnProceso } from "../llamada/ejecutor-tools.ts";
 import { REGLAS_CIERRE_PM } from "../llamada/maquina.ts";
 import { crearMundoVoz, SIP_FROM_LLAMANTE } from "./mundo-voz.ts";
@@ -24,6 +25,8 @@ export const ADAPTADOR_SIMULADOR_PM: AdaptadorSimulador<"pedido_creado", Memoria
   reglas: REGLAS_CIERRE_PM,
   registro: REGISTRO_TOOLS_PM,
   construirEscalacion: (motivo, resumen) => ({ nombre: "escalar_a_humano", args: { customer_name: "Cliente", motivo, resumen } }),
+  // Misma guardia que produccion: pedir a una persona de viva voz escala sin depender del modelo.
+  guardiaCliente: () => ({ evaluar: evaluarPersonaVoz }),
   canonicalizarTelefono: canonicalizeMexicanPhone,
   sipFromPorDefecto: SIP_FROM_LLAMANTE,
   crearMundo: crearMundoVoz,
@@ -36,8 +39,8 @@ export const ADAPTADOR_SIMULADOR_PM: AdaptadorSimulador<"pedido_creado", Memoria
       lockedPropertyId: mundo.propertyId,
       flow: { key: `call:${callId}`, turn: null },
     });
-    return async (nombre, args, senal) => {
-      const salida = await base(nombre as never, args, senal);
+    return async (nombre, args, senal, contexto) => {
+      const salida = await base(nombre as never, args, senal, contexto);
       return { resultado: salida.resultado, entidadId: salida.orderId };
     };
   },

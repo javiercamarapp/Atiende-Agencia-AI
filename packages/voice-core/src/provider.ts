@@ -21,6 +21,16 @@ export interface VozSesionPreviewEntrada {
   readonly ttlSegundos: number;
   /** Vertical que emite la sesion. Los decoradores que aplican ajustes propios de una vertical (restaurantes) solo actuan si coincide; ausente = no aplican. */
   readonly vertical?: string;
+  /** Declaraciones de herramientas (nombre, descripcion y esquema JSON) que el token efimero fija para la sesion. Ausente =
+   * la sesion no puede llamar herramientas (comportamiento historico). Las ejecuta el servidor en modo preview, no el proveedor. */
+  readonly herramientas?: readonly VozHerramientaDeclaracion[];
+}
+
+/** Declaracion de una herramienta que el agente de voz puede invocar durante la llamada de prueba. */
+export interface VozHerramientaDeclaracion {
+  readonly name: string;
+  readonly description: string;
+  readonly parameters: { readonly type: "object"; readonly properties: Readonly<Record<string, unknown>>; readonly required?: readonly string[] };
 }
 
 /** Lo que el navegador necesita para hablar con el proveedor durante el preview. */
