@@ -177,9 +177,11 @@ export function buildRentasSeedPlan(fixturesIcs: Readonly<Record<string, string>
     if (cal.eventos.length === 0) fail(`el fixture de ${f.unidad}/${f.canal} no trae eventos`);
     for (const e of cal.eventos) {
       if (e.status === "CANCELLED") fail(`${e.uid}: un evento cancelado no es una reserva demo`);
-      if (e.dtstart.tipo !== "DATE" || e.dtend.tipo !== "DATE") fail(`${e.uid}: el fixture debe usar fechas de dia completo (VALUE=DATE)`);
-      const desde = diasEntre(ANCLA_FIXTURES_ICS, e.dtstart.fecha);
-      const noches = diasEntre(e.dtstart.fecha, e.dtend.fecha);
+      const ini = e.dtstart;
+      const fin = e.dtend;
+      if (ini.tipo !== "DATE" || fin.tipo !== "DATE") throw new RentasSeedError(`${e.uid}: el fixture debe usar fechas de dia completo (VALUE=DATE)`);
+      const desde = diasEntre(ANCLA_FIXTURES_ICS, ini.fecha);
+      const noches = diasEntre(ini.fecha, fin.fecha);
       if (noches < 1) fail(`${e.uid}: rango invalido`);
       if (claves.has(e.uid)) fail(`UID repetido: ${e.uid}`);
       claves.add(e.uid);
@@ -313,7 +315,7 @@ export function renderRentasSchemaPreflightSql(): string {
 export function renderRentasSeedPlpgsql(plan: RentasSeedPlan, options: { readonly ownerEmail: string }): string {
   const email = options.ownerEmail.trim().toLowerCase();
   if (!/^[^\s@'$]+@[^\s@'$]+\.[^\s@'$]+$/.test(email)) fail("ownerEmail invalido.");
-  const json = JSON.stringify({ seedVersion: plan.seedVersion, ...plan, summary: undefined });
+  const json = JSON.stringify({ ...plan, summary: undefined });
   if (json.includes("$rd$")) fail("los datos del seed contienen el delimitador $rd$");
   return `declare
   v jsonb := $rd$${json}$rd$::jsonb;

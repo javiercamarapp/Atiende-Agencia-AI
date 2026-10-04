@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { hashPassword } from "@atiende/db";
+import type { InMemoryCoreRepository } from "@atiende/db";
 import { DATOS_ONBOARDING_VACIOS, InMemoryRentasOnboardingChecklistRepository } from "@atiende/domain-rentas";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildRentasTestContext } from "./rentas-fixtures.ts";
@@ -96,8 +97,9 @@ describe("GET /v1/rentas/:propertyId/admin/onboarding", () => {
     const id = randomUUID();
     const email = "admin-acotado@rentas-de-prueba.mx";
     const password = "correcto-caballo-batería";
-    t.ctx.deps.coreRepo.addStaff({ id, email, fullName: "acotado", passwordHash: await hashPassword(password), createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
-    t.ctx.deps.coreRepo.addMembership({ userId: id, organizationId: t.ctx.organizationId, platformRole: "owner", verticalRole: "admin_gestora", propertyIds: [t.ctx.propertyId] });
+    const coreRepo = t.ctx.deps.coreRepo as InMemoryCoreRepository;
+    coreRepo.addStaff({ id, email, fullName: "acotado", passwordHash: await hashPassword(password), createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
+    coreRepo.addMembership({ userId: id, organizationId: t.ctx.organizationId, platformRole: "owner", verticalRole: "admin_gestora", propertyIds: [t.ctx.propertyId] });
     t.ctx.engine.seedMembership({ userId: id, organizationId: t.ctx.organizationId, platformRole: "owner", verticalRole: "admin_gestora", propertyIds: [t.ctx.propertyId] });
     const login = await t.app.request("/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password }) });
     expect(login.status).toBe(200);
