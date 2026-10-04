@@ -2,10 +2,11 @@
 //
 // VistaPreviaLlamada: layout desacoplado del proveedor. Se prueba contra un
 // controlador falso (contrato neutro VoiceSessionController).
+import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ESTADO_SESION_INICIAL, VistaPreviaLlamada } from "@atiende/ui";
 import type { VoiceSessionController, VoiceSessionState } from "@atiende/ui";
-import { click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, keydown, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 
@@ -142,5 +143,47 @@ describe("<VistaPreviaLlamada />", () => {
   it("etiqueta visible de simulación cuando se le pasa", () => {
     pintar(controlador(), { etiquetaSimulacion: "Simulación" });
     expect(rendered!.container.textContent).toContain("Simulación");
+  });
+});
+
+describe("<VistaPreviaLlamada /> como dialogo (QA-restaurantes-R1-botones-09)", () => {
+  it("es un dialogo modal con nombre, el foco entra al panel al abrirse y Escape la cierra", () => {
+    const c = controlador();
+    const { onCerrar } = pintar(c);
+    const dialogo = rendered!.container.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialogo.getAttribute("aria-modal")).toBe("true");
+    expect(dialogo.getAttribute("aria-label")).toContain("Agente Los Taquitos");
+    expect(document.activeElement).toBe(dialogo);
+    keydown(document.body, "Escape");
+    expect(onCerrar).toHaveBeenCalledTimes(1);
+  });
+
+  it("Tab no sale del panel (da la vuelta del ultimo al primero y con Shift del primero al ultimo)", () => {
+    pintar(controlador());
+    const dialogo = rendered!.container.querySelector<HTMLElement>('[role="dialog"]')!;
+    const items = Array.from(dialogo.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    const primero = items[0]!;
+    const ultimo = items[items.length - 1]!;
+    ultimo.focus();
+    act(() => {
+      ultimo.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+    });
+    expect(document.activeElement).toBe(primero);
+    act(() => {
+      primero.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }));
+    });
+    expect(document.activeElement).toBe(ultimo);
+  });
+
+  it("al cerrarse devuelve el foco al control que la abrio", () => {
+    const abre = document.createElement("button");
+    document.body.appendChild(abre);
+    abre.focus();
+    pintar(controlador());
+    expect(document.activeElement).not.toBe(abre);
+    rendered!.unmount();
+    rendered = undefined;
+    expect(document.activeElement).toBe(abre);
+    abre.remove();
   });
 });

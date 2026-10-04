@@ -46,8 +46,17 @@ async function resolveOrganizationOrNotFound(repo: RestaurantesRepository, orgSl
   return org;
 }
 
-/** Contexto del registro unico para una llamada de voz: telefono y sucursal salen del TOKEN. */
-export function voiceToolContext(orgId: string, caller: VoiceCaller): AgentToolContext {
+/** Cabecera con el turno del CLIENTE que pone el worker de la llamada (no el modelo): numero de hablas inteligibles hasta ese momento. */
+export const VOICE_TURN_HEADER = "x-atiende-call-turn";
+
+/** Turno del cliente informado por el worker; `null` si falta o no es un entero corto (se conserva el comportamiento sin turno). */
+export function voiceTurnFromRequest(c: Context): string | null {
+  const raw = c.req.header(VOICE_TURN_HEADER);
+  return raw !== undefined && /^\d{1,6}$/.test(raw) ? String(Number(raw)) : null;
+}
+
+/** Contexto del registro unico para una llamada de voz: telefono y sucursal salen del TOKEN; el turno, de la cabecera del worker. */
+export function voiceToolContext(orgId: string, caller: VoiceCaller, turn: string | null = null): AgentToolContext {
   return {
     organizationId: orgId,
     channel: "voz",
@@ -55,7 +64,7 @@ export function voiceToolContext(orgId: string, caller: VoiceCaller): AgentToolC
     lockedPropertyId: caller.propertyId,
     // Maquina de estados del pedido: solo con llamada identificada (token). Sin token (camino legado)
     // no hay callId confiable sobre el que llevar estado.
-    ...(caller.callId ? { flow: { key: `call:${caller.callId}`, turn: null } } : {}),
+    ...(caller.callId ? { flow: { key: `call:${caller.callId}`, turn } } : {}),
   };
 }
 
@@ -95,7 +104,7 @@ export async function runVoiceToolRoute(
     }
 
     try {
-      const response = await repo.runWithRowSavepoint(() => exec({ repo, org, caller, toolCtx: voiceToolContext(org.id, caller) }));
+      const response = await repo.runWithRowSavepoint(() => exec({ repo, org, caller, toolCtx: voiceToolContext(org.id, caller, voiceTurnFromRequest(c)) }));
       await auditVoice(repo, org, caller, options.tool, "ok", null);
       return response;
     } catch (err) {
