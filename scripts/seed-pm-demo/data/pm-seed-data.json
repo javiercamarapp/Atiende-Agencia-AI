@@ -2567,8 +2567,12 @@
       "alias": [
         "frijoles",
         "frijolito",
-        "botanero"
-      ]
+        "botanero",
+        "totopos"
+      ],
+      "alias_piloto": {
+        "totopos": "chats_c3"
+      }
     },
     {
       "nombre": "Guacamole",
@@ -2649,6 +2653,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "cebollitas"
+      ],
+      "alias_piloto": {
+        "cebollitas": "chats_c3"
       }
     },
     {
@@ -2787,6 +2797,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "medios"
+      ],
+      "alias_piloto": {
+        "medios": "chats_c3"
       }
     },
     {
@@ -2841,6 +2857,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "medios"
+      ],
+      "alias_piloto": {
+        "medios": "chats_c3"
       }
     },
     {
@@ -2895,6 +2917,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "medios"
+      ],
+      "alias_piloto": {
+        "medios": "chats_c3"
       }
     },
     {
@@ -3177,6 +3205,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "grandes"
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
       }
     },
     {
@@ -3233,11 +3267,15 @@
         "T2": "provisional_P5"
       },
       "alias": [
-        "champi"
+        "champi",
+        "grandes"
       ],
       "alias_provisional_P24": [
         "champi"
-      ]
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
+      }
     },
     {
       "nombre": "Nachos de Champiñón (1/2 orden)",
@@ -3301,13 +3339,17 @@
       "alias": [
         "bitek",
         "bistek",
-        "bisté"
+        "bisté",
+        "grandes"
       ],
       "alias_provisional_P24": [
         "bitek",
         "bistek",
         "bisté"
-      ]
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
+      }
     },
     {
       "nombre": "Nachos de Bistec (1/2 orden)",
@@ -3371,6 +3413,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "grandes"
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
       }
     },
     {
@@ -3425,6 +3473,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "grandes"
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
       }
     },
     {
@@ -3479,6 +3533,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "grandes"
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
       }
     },
     {
@@ -3533,6 +3593,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "grandes"
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
       }
     },
     {
@@ -5812,6 +5878,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "regular"
+      ],
+      "alias_piloto": {
+        "regular": "chats_c3+cuestionario_pm"
       }
     },
     {
@@ -5866,6 +5938,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "zero"
+      ],
+      "alias_piloto": {
+        "zero": "chats_c3"
       }
     },
     {
@@ -10994,5 +11072,9 @@
     "fuente": "colonias.json exportado el 3-oct-2026 de la base de conocimiento de ElevenLabs del agente viejo (solo lectura; no Supabase). Sin lat/lng: solo nombre, sucursal mas cercana y km segun el piloto.",
     "regla_asignacion": "Reparten T1, T2, T3, T7 y T8 (el dueño: 5 con domicilio; Galerias T4 y Playa T5 no). Orden: (1) chats_t7 manda (lista parcial de T7 de pendientes_dueno.P7, Los Pinos a T8, Mexico a T1); (2) colonia propia de la direccion de una sucursal que reparte (direccion_sucursal); (3) sin asignar si las dos sucursales mas cercanas del piloto difieren menos de 1 km, si el piloto da sucursales distintas para variantes del mismo nombre, o si cae en Playa; (4) las que el piloto mando a Galerias pasan a la segunda sucursal si reparte y esta a 8 km o menos (reasignada_desde_galerias); (5) el resto, la sucursal mas cercana del piloto. Las distancias del piloto pueden tener errores (coordenadas viejas); el reporte de colonias ambiguas las marca para revisar y manda el mapa de zonas del dueño (A4).",
     "asignaciones_son_propuesta": true
+  },
+  "alias_piloto_meta": {
+    "fuente": "sinonimos.json exportado el 3-oct-2026 (PROPUESTA derivada de nombres y de la tabla de vocabulario de los chats; la base vieja no trae search_keywords reales)",
+    "criterio": "solo origenes chats_c3, derivado_nombre y cuestionario_pm; los sentido_comun_a_validar y cuestionario_web quedan fuera hasta que Javier los apruebe; solo los que la busqueda actual aun no encuentra (68 de 202 ya los encuentra la tokenizacion); las faltas de escritura bisctec y pok se normalizan en codigo (product-search.ts); las salsas y ajustes no son productos"
   }
 }

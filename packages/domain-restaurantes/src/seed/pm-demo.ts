@@ -89,6 +89,8 @@ export interface PmSeedProduct {
   /** Nombres con los que la gente pide el producto ("bitek", "chela"...): se cargan en `products.search_keywords` (PM-C4). Una
    * palabra por alias, minusculas: la busqueda compara por token, sin acentos. */
   readonly alias?: readonly string[];
+  /** Alias que vienen de la propuesta del piloto original (alias -> origen: chats_c3, derivado_nombre o cuestionario_pm); subconjunto de `alias`. */
+  readonly alias_piloto?: Readonly<Record<string, string>>;
   /** Subconjunto de `alias` que es PROVISIONAL: propuesto en el cerebro §5.4 y pendiente del OK de Javier (P24). */
   readonly alias_provisional_P24?: readonly string[];
 }
@@ -490,6 +492,10 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       if (!/^[a-záéíóúüñ0-9][a-záéíóúüñ0-9.-]{0,38}$/.test(alias)) fail(`Producto "${p.nombre}": alias invalido "${alias}" (una palabra en minusculas, sin espacios).`);
     }
     if (new Set(searchKeywords).size !== searchKeywords.length) fail(`Producto "${p.nombre}": alias duplicados.`);
+    for (const [alias, origen] of Object.entries(p.alias_piloto ?? {})) {
+      if (!searchKeywords.includes(alias)) fail(`Producto "${p.nombre}": alias del piloto "${alias}" no esta en alias.`);
+      if (!/^(chats_c3|derivado_nombre|cuestionario_pm)/.test(origen)) fail(`Producto "${p.nombre}": el alias "${alias}" viene de un origen no aprobado (${origen}); solo chats_c3, derivado_nombre y cuestionario_pm.`);
+    }
     for (const provisional of p.alias_provisional_P24 ?? []) {
       if (!searchKeywords.includes(provisional)) fail(`Producto "${p.nombre}": alias provisional "${provisional}" no esta en alias.`);
     }

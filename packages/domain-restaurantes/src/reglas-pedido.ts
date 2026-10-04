@@ -150,7 +150,7 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
         // por confirmar. No se rechaza como si el cliente estuviera lejos: se ofrece recoger o se pasa a una persona.
         if (!(await algunaSucursalCubre(repo, branch.organizationId, match.id))) {
           throw new OrderValidationError(
-            `${match.name} todavía no tiene una sucursal de reparto asignada: no puedo confirmar el domicilio a esa colonia. ` +
+            `${match.name} está fuera de la zona de reparto de ${branch.name}: todavía no tiene una sucursal de reparto asignada, así que no puedo confirmar el domicilio a esa colonia. ` +
               `Ofrezca recoger en sucursal o pase el pedido con una persona del negocio para que confirme la zona.`,
           );
         }
