@@ -69,6 +69,9 @@ interface ParametrosCapturados {
   perdidasPendientesCentavos?: number | null;
   ajustePagosPreviosCentavos?: number | null;
   saldoFavorAnteriorCentavos?: number | null;
+  /** D-P3-06: actos gravados y exentos del mes (centavos) para la proporcion del IVA acreditable (LIVA 5-V). */
+  actosGravadosCentavos?: number | null;
+  actosExentosCentavos?: number | null;
 }
 
 function centavosOpcional(valor: unknown, campo: string): number | null {
@@ -90,6 +93,10 @@ function leerParametros(raw: Record<string, unknown>): ParametrosCapturados {
   if (ajuste !== null) out.ajustePagosPreviosCentavos = ajuste;
   const saldo = centavosOpcional(raw.saldoFavorAnteriorCentavos, "saldoFavorAnteriorCentavos");
   if (saldo !== null) out.saldoFavorAnteriorCentavos = saldo;
+  const gravados = centavosOpcional(raw.actosGravadosCentavos, "actosGravadosCentavos");
+  if (gravados !== null) out.actosGravadosCentavos = gravados;
+  const exentos = centavosOpcional(raw.actosExentosCentavos, "actosExentosCentavos");
+  if (exentos !== null) out.actosExentosCentavos = exentos;
   return out;
 }
 
@@ -103,6 +110,8 @@ function parametrosGuardados(papeles: readonly PapelGuardado[], mes: number): Pa
   if (typeof isr.perdidasPendientesCentavos === "number") out.perdidasPendientesCentavos = isr.perdidasPendientesCentavos;
   if (typeof isr.ajustePagosPreviosCentavos === "number") out.ajustePagosPreviosCentavos = isr.ajustePagosPreviosCentavos;
   if (typeof iva.saldoFavorAnteriorCentavos === "number") out.saldoFavorAnteriorCentavos = iva.saldoFavorAnteriorCentavos;
+  if (typeof iva.actosGravadosCentavos === "number") out.actosGravadosCentavos = iva.actosGravadosCentavos;
+  if (typeof iva.actosExentosCentavos === "number") out.actosExentosCentavos = iva.actosExentosCentavos;
   return out;
 }
 
@@ -241,7 +250,7 @@ export function despachosPagosProvisionalesRoutes(deps: AppDeps): Hono<CoreAuthH
       pagos: base.pagos,
       pagosDisponibles: base.pagosDisponibles,
       isr: { coeficienteUtilidad: parametros.coeficienteUtilidad ?? null, perdidasPendientesCentavos: parametros.perdidasPendientesCentavos ?? null, ajustePagosPreviosCentavos: parametros.ajustePagosPreviosCentavos ?? null },
-      iva: { saldoFavorAnteriorCentavos: parametros.saldoFavorAnteriorCentavos ?? null },
+      iva: { saldoFavorAnteriorCentavos: parametros.saldoFavorAnteriorCentavos ?? null, actosGravadosCentavos: parametros.actosGravadosCentavos ?? null, actosExentosCentavos: parametros.actosExentosCentavos ?? null },
       pagosPreviosIsrPresentadosCentavos: pagosPrevios,
       saldoFavorIvaMesAnteriorCentavos: ivaAnterior ? ivaAnterior.aFavorCentavos : null,
     });
@@ -299,7 +308,7 @@ export function despachosPagosProvisionalesRoutes(deps: AppDeps): Hono<CoreAuthH
         ejercicio, mes, impuesto: "IVA", regimen: x.regimen,
         baseCentavos: x.papel.iva.baseCentavos, determinadoCentavos: x.papel.iva.determinadoCentavos, acreditableCentavos: x.papel.iva.acreditableCentavos,
         aCargoCentavos: x.papel.iva.aCargoCentavos, aFavorCentavos: x.papel.iva.aFavorCentavos,
-        parametros: { saldoFavorAnteriorCentavos: x.parametros.saldoFavorAnteriorCentavos ?? 0 },
+        parametros: { saldoFavorAnteriorCentavos: x.parametros.saldoFavorAnteriorCentavos ?? 0, actosGravadosCentavos: x.parametros.actosGravadosCentavos ?? 0, actosExentosCentavos: x.parametros.actosExentosCentavos ?? 0 },
         advertencias: x.papel.advertencias.length,
       });
       guardado.iva = true;

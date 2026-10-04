@@ -59,6 +59,10 @@ export interface ParametrosPapelIsr {
 export interface ParametrosPapelIva {
   /** Saldo a favor de IVA de meses anteriores que no sale de un papel presentado en Atiende (centavos). */
   readonly saldoFavorAnteriorCentavos?: number | null;
+  /** D-P3-06: valor de los actos o actividades GRAVADOS (16 % y 0 %) del mes, en centavos. Si se omite y hay exentos, se toma la base de los CFDI emitidos del mes. */
+  readonly actosGravadosCentavos?: number | null;
+  /** D-P3-06: valor de los actos o actividades EXENTOS del mes (centavos). Sin este dato (null/0) el IVA se acredita al 100 % y el papel lo advierte. */
+  readonly actosExentosCentavos?: number | null;
 }
 
 export interface EntradaPapel {
