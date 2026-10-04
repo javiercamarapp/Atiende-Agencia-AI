@@ -17,6 +17,7 @@ import {
   CardTitle,
   Checkbox,
   DataTable,
+  type DataTableColumna,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -29,7 +30,7 @@ import {
 import { fetchInvoices, importarCfdiXml } from "../lib/cfdi-client.ts";
 import type { DireccionCfdi, InvoiceSummary } from "../lib/cfdi-client.ts";
 import { fetchEfosAlertas, resumenEfos } from "../lib/efos-client.ts";
-import type { EfosAlertasRespuesta } from "../lib/efos-client.ts";
+import type { EfosAlerta, EfosAlertasRespuesta } from "../lib/efos-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
 import type { RevisionCfdi } from "../lib/revisiones-client.ts";
 import { formatDate, formatDireccionCfdi, formatEstadoSat, formatMoney, tonoEstadoSat } from "../lib/format.ts";
@@ -163,6 +164,28 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
 
   const invoicesById = new Map((invoices ?? []).map((inv) => [inv.id, inv] as const));
 
+  const columnasEfos: DataTableColumna<EfosAlerta>[] = [
+    {
+      id: "emisor",
+      encabezado: "Emisor",
+      principal: true,
+      valorOrden: (a) => a.emisorNombre ?? a.rfcEmisor,
+      celda: (a) => (
+        <Link to={`/despachos/${orgSlug}/cfdi/${a.invoiceId}`} className="font-semibold text-foreground hover:underline underline-offset-2">
+          {a.emisorNombre ?? a.rfcEmisor}
+        </Link>
+      ),
+    },
+    { id: "rfc", encabezado: "RFC", celda: (a) => <span className="font-mono text-xs text-muted-foreground">{a.rfcEmisor}</span> },
+    { id: "total", encabezado: "Total", alinear: "right", valorOrden: (a) => a.total, celda: (a) => <span className="tabular-nums">{formatMoney(a.total)}</span> },
+    {
+      id: "situacion",
+      encabezado: "Situación",
+      valorOrden: (a) => a.situacion,
+      celda: (a) => <StatusBadge tone={a.situacion === "definitivo" ? "danger" : "warning"}>{a.situacion === "definitivo" ? "Definitivo" : "Presunto"}</StatusBadge>,
+    },
+  ];
+
   return (
     <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -237,20 +260,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
             </p>
           )}
           {efos && efos.alertas.length > 0 && (
-            <ul className="flex flex-col gap-1.5">
-              {efos.alertas.map((a) => (
-                <li key={a.invoiceId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-                  <span>
-                    <Link to={`/despachos/${orgSlug}/cfdi/${a.invoiceId}`} className="font-semibold text-foreground hover:underline underline-offset-2">
-                      {a.emisorNombre ?? a.rfcEmisor}
-                    </Link>
-                    <span className="ml-2 font-mono text-xs text-muted-foreground">{a.rfcEmisor}</span>
-                    <span className="ml-2 tabular-nums text-muted-foreground">{formatMoney(a.total)}</span>
-                  </span>
-                  <StatusBadge tone={a.situacion === "definitivo" ? "danger" : "warning"}>{a.situacion === "definitivo" ? "Definitivo" : "Presunto"}</StatusBadge>
-                </li>
-              ))}
-            </ul>
+<DataTable etiqueta="Alertas EFOS 69-B" columnas={columnasEfos} filas={efos.alertas} obtenerId={(a) => a.invoiceId} />
           )}
         </CardContent>
       </Card>

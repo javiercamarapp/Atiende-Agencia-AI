@@ -205,6 +205,17 @@ export function ColaCobranzaPage({ apiBaseUrl, token, propertyId, role }: Despac
 
   const colaNoDisponible = cola !== null && !cola.disponible;
 
+  const columnasConsentimientos: DataTableColumna<ConsentimientoWhatsApp>[] = [
+    { id: "rfc", encabezado: "Cliente (RFC)", principal: true, valorOrden: (c) => c.rfcReceptor, celda: (c) => <span className="font-mono text-xs">{c.rfcReceptor}</span> },
+    { id: "telefono", encabezado: "Teléfono", celda: (c) => <span className="tabular-nums">{c.telefono}</span> },
+    {
+      id: "estado",
+      encabezado: "Consentimiento",
+      valorOrden: (c) => c.estado,
+      celda: (c) => <StatusBadge tone={c.estado === "opt_in" ? "success" : "neutral"}>{c.estado === "opt_in" ? "Opt-in" : "Opt-out"}</StatusBadge>,
+    },
+  ];
+
   const columnasCola: DataTableColumna<ItemCola>[] = [
     {
       id: "urgencia",
@@ -340,15 +351,7 @@ export function ColaCobranzaPage({ apiBaseUrl, token, propertyId, role }: Despac
             {consentimientos.lista.length === 0 ? (
               <EstadoVacio mensaje="Ningún cliente tiene consentimiento registrado todavía." />
             ) : (
-              <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
-                {consentimientos.lista.map((c) => (
-                  <li key={c.rfcReceptor} className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs">{c.rfcReceptor}</span>
-                    <span className="tabular-nums">{c.telefono}</span>
-                    <StatusBadge tone={c.estado === "opt_in" ? "success" : "neutral"}>{c.estado === "opt_in" ? "Opt-in" : "Opt-out"}</StatusBadge>
-                  </li>
-                ))}
-              </ul>
+<DataTable etiqueta="Consentimientos de WhatsApp por cliente" columnas={columnasConsentimientos} filas={consentimientos.lista} obtenerId={(c) => c.rfcReceptor} />
             )}
             {puedeGestionar && (
               <div className="flex flex-col gap-3 border-t border-border pt-3">
