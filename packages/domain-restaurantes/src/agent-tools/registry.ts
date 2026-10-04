@@ -20,7 +20,7 @@ import { OrderValidationError } from "../errors.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
-import type { UbicacionEntrega } from "../whatsapp/location.ts";
+import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
 import { createOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { assertCantidadesWeb, assertWebOrderRules } from "../storefront.ts";
@@ -277,7 +277,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "registrar_contacto",
     description:
-      "Registra nombre/motivo de un mensaje que NO es para hacer un pedido, para que alguien del restaurante le regrese la llamada. Nunca usar para pedidos normales. Caso especial: reason 'cliente_llego' cuando quien tiene un pedido para RECOGER avisa que ya llegó ('ya llegué, estoy afuera en un auto gris'): avisa de inmediato a la sucursal y devuelve el mensaje fijo que debes dar al cliente; en message va solo cómo identificarlo (auto, ropa, lugar).",
+      "Registra nombre/motivo de un mensaje que NO es para hacer un pedido, para que alguien del restaurante le regrese la llamada. Nunca usar para pedidos normales. Caso especial: reason 'cliente_llego' cuando quien tiene un pedido para RECOGER avisa que ya llegó ('ya llegué, estoy afuera en un auto gris'): avisa de inmediato a la sucursal y devuelve el mensaje fijo que debes dar al cliente; en message va solo cómo identificarlo (auto, ropa, lugar). Caso especial 2: reason 'pedido_telefonico' cuando el cliente ya hizo su pedido POR TELÉFONO con la sucursal y solo quiere pasarle su ubicación o una nota (no crea pedido): deja el aviso con la nota y la ubicación que mandó.",
     parameters: {
       type: "object",
       properties: { customer_name: { type: "string" }, reason: { type: "string" }, message: { type: "string" } },
@@ -790,6 +790,7 @@ async function dispatchTool(
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede dejar aviso.");
       const esEscalada = def.name === "escalar_a_humano";
       if (!esEscalada && input.reason === "cliente_llego") return avisarLlegadaDelCliente(repo, ctx, input);
+      if (!esEscalada && input.reason === "pedido_telefonico") return pasarNotaDePedidoTelefonico(repo, ctx, input);
       await registerCallbackRequest(repo, {
         organizationId,
         propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
@@ -807,6 +808,29 @@ async function dispatchTool(
 /** Texto fijo que se le da al cliente tras el aviso de llegada (no se improvisa ni se prometen minutos). */
 export const MENSAJE_LLEGADA_REGISTRADA = "Ya avisé a la sucursal que usted llegó; en un momento le entregan su pedido.";
 const MENSAJE_LLEGADA_SIN_PEDIDO = "No encuentro un pedido para recoger a nombre de este número. No avise a la sucursal; pregúntele por su pedido o escale si insiste (otro).";
+
+export const MENSAJE_PEDIDO_TELEFONICO_REGISTRADO = "Listo, ya le pasé ese dato a la sucursal para su pedido.";
+
+/** `registrar_contacto` con `reason: pedido_telefonico`: el pedido NO se creo aqui (lo tomo la sucursal por telefono); solo se le pasa a la sucursal la nota y el
+ * pin/link de Maps que el cliente mando por WhatsApp. No crea pedido ni toca el catalogo. */
+async function pasarNotaDePedidoTelefonico(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>): Promise<AgentToolOutcome> {
+  const nota = typeof input.message === "string" ? sanitizeInlineText(input.message, 300) : "";
+  const pin = ctx.ubicacionEntrega ? formatUbicacionEntregaNota(ctx.ubicacionEntrega) : "";
+  const mensaje = [nota, pin].filter(Boolean).join(" | ");
+  if (!mensaje) {
+    return { result: { ok: false, instruccion: "No hay nada que pasar: pida al cliente la nota o su ubicación (pin de WhatsApp o link de Maps)." }, raw: { ok: false }, orderId: null, propertyId: null };
+  }
+  await registerCallbackRequest(repo, {
+    organizationId: ctx.organizationId,
+    propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
+    customerName: String(input.customer_name ?? "Cliente"),
+    customerPhone: ctx.phone as string,
+    reason: "pedido_telefonico",
+    message: mensaje,
+    source: ctx.channel === "voz" ? "voice" : "whatsapp",
+  });
+  return { result: { ok: true, mensaje_al_cliente: MENSAJE_PEDIDO_TELEFONICO_REGISTRADO }, raw: { ok: true }, orderId: null, propertyId: null };
+}
 
 /** `registrar_contacto` con `reason: cliente_llego`: solo procede si el cliente tiene un pedido vigente para RECOGER confirmado hace poco (la llegada
  * se valida contra el pedido real, nunca contra lo que diga el modelo). Deja el aviso con la sucursal del pedido y una nota de como identificarlo. */

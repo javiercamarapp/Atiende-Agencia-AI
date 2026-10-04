@@ -61,4 +61,16 @@ describe("prompt PM: lo que enseñan los chats de T7", () => {
     expect(prompt({ urlFacturacion: "javascript:alert(1)" })).toMatch(/No tiene el enlace de facturación/);
     expect(prompt({ urlFacturacion: "http://inseguro.test" })).toMatch(/No tiene el enlace de facturación/);
   });
+
+  it("llegada para recoger y pedido hecho por teléfono usan registrar_contacto con su motivo y el mensaje fijo", () => {
+    const p = prompt();
+    expect(p).toMatch(/LLEGADA PARA RECOGER[^\n]*reason "cliente_llego"[^\n]*SOLO el "mensaje_al_cliente"/);
+    expect(p).toMatch(/PEDIDO HECHO POR TELÉFONO[^\n]*reason "pedido_telefonico"[^\n]*NO cree pedido/);
+  });
+
+  it("escalación: no promete «en un momento»; de madrugada dice cuándo responde el equipo", () => {
+    const p = prompt();
+    expect(p).not.toMatch(/en un momento le responden/);
+    expect(p).toMatch(/entre la 1 am y las 12 del día[^\n]*a partir de las 12 del día/);
+  });
 });

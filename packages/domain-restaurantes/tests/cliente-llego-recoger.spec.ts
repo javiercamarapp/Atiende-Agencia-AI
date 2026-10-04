@@ -1,7 +1,7 @@
 // «Ya llegué, estoy afuera»: aviso urgente a la sucursal, validado contra un pedido real para recoger.
 import { describe, expect, it } from "vitest";
 import { createOrder } from "../src/orders.ts";
-import { MENSAJE_LLEGADA_REGISTRADA, invokeAgentTool } from "../src/agent-tools/registry.ts";
+import { MENSAJE_LLEGADA_REGISTRADA, MENSAJE_PEDIDO_TELEFONICO_REGISTRADO, invokeAgentTool } from "../src/agent-tools/registry.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 
 const PHONE = "5219991234567";
@@ -48,5 +48,29 @@ describe("registrar_contacto con reason cliente_llego", () => {
     const f = buildRestaurantFixture();
     const out = await invokeAgentTool(f.repo, ctx(f), "registrar_contacto", { customer_name: "Ana", reason: "empleo", message: "busca trabajo" });
     expect(out.result).toEqual({ ok: true });
+  });
+});
+
+describe("registrar_contacto con reason pedido_telefonico", () => {
+  it("pasa la nota y el pin a la sucursal sin crear pedido", async () => {
+    const f = buildRestaurantFixture();
+    const out = await invokeAgentTool(
+      f.repo,
+      { ...ctx(f), entryPropertyId: f.propertyId, ubicacionEntrega: { fuente: "pin", lat: 21.01, lng: -89.6 } },
+      "registrar_contacto",
+      { customer_name: "Ana", reason: "pedido_telefonico", message: "es el depto 6" },
+    );
+    expect(out.result).toEqual({ ok: true, mensaje_al_cliente: MENSAJE_PEDIDO_TELEFONICO_REGISTRADO });
+    expect(out.orderId).toBeNull();
+    const cb = callbacks(f).find((c) => c.reason === "pedido_telefonico");
+    expect(cb?.propertyId).toBe(f.propertyId);
+    expect(cb?.message).toBe("es el depto 6 | Ubicación de entrega (pin de WhatsApp): lat=21.010000 lng=-89.600000.");
+  });
+
+  it("sin nota ni ubicación no registra nada", async () => {
+    const f = buildRestaurantFixture();
+    const out = await invokeAgentTool(f.repo, ctx(f), "registrar_contacto", { customer_name: "Ana", reason: "pedido_telefonico" });
+    expect(out.result).toMatchObject({ ok: false });
+    expect(callbacks(f).filter((c) => c.reason === "pedido_telefonico")).toHaveLength(0);
   });
 });
