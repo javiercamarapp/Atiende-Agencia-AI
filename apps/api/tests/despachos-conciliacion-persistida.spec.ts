@@ -613,6 +613,8 @@ describe("adaptador Postgres sobre UNA transaccion compartida (SAVEPOINT/RELEASE
     const sesionId = randomUUID();
     const session = new SavepointModelSession([
       { match: /from despachos\.conciliacion_sesion where property_id/i, rows: [{ id: sesionId, property_id: ctx.propertyId, periodo: "2026-01", cuenta: null, estado: "abierta", creada_por: null, creada_en: new Date().toISOString(), cerrada_en: null }] },
+      { match: /select propuestas from despachos\.conciliacion_sesion/i, rows: [] },
+      { match: /from despachos\.invoice where/i, rows: [] },
       { match: /from despachos\.estado_cuenta_movimiento/i, rows: [] },
       { match: /from despachos\.conciliacion_match/i, rows: [] },
       { match: /from despachos\.conciliacion_sugerencia/i, rows: [] },
