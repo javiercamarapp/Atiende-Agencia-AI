@@ -20,7 +20,8 @@ const mutable = (d: PmSeedData = data) => clone(d) as unknown as Mutable;
 const producto = (d: Mutable, nombre: string) => d.productos.find((p) => p.nombre === nombre)!;
 
 // ---- Menus impresos: la unica fuente de los precios -------------------------------------------------------
-const MENUS_IMPRESOS: Readonly<Record<string, string>> = { T1: "T1-2026.json", T5: "T5-2026.json", T3: "T3-2025.json" };
+// T3-2025 es la lista VIEJA (solo referencia de nombres): T3 vende con la lista T1-2026 (cuestionario: "precios iguales en todas").
+const MENUS_IMPRESOS: Readonly<Record<string, string>> = { T1: "T1-2026.json", T5: "T5-2026.json" };
 interface MenuImpreso {
   categorias: Array<{ nombre: string; items: Array<{ nombre: string; precio_mxn: number }> }>;
 }
@@ -44,7 +45,7 @@ for (const [sucursal, archivo] of Object.entries(MENUS_IMPRESOS)) {
 }
 
 describe("cada precio sale de un menu impreso y una prueba lo ata", () => {
-  it("todo precio `impreso` del seed coincide EXACTAMENTE con el item impreso de su sucursal (T1-2026, T5-2026, T3-2025)", () => {
+  it("todo precio `impreso` del seed coincide EXACTAMENTE con el item impreso de su sucursal (T1-2026, T5-2026)", () => {
     const discrepancias: string[] = [];
     let comprobados = 0;
     for (const p of data.productos) {
@@ -57,7 +58,7 @@ describe("cada precio sale de un menu impreso y una prueba lo ata", () => {
       }
     }
     expect(discrepancias).toEqual([]);
-    expect(comprobados).toBe(236 + 222 + 211);
+    expect(comprobados).toBe(236 + 222);
   });
 
   it("al reves: todo item impreso esta en el seed con su precio (el seed no se deja nada ni agrega precios sin fuente)", () => {
@@ -72,10 +73,14 @@ describe("cada precio sale de un menu impreso y una prueba lo ata", () => {
     }
   });
 
-  it("ningun precio de T1, T3 ni T5 es provisional; T7 = lista T1-2026 (mismo precio que T1) y T2 y T8 son provisionales hasta confirmar su catalogo", () => {
+  it("ningun precio de T1, T3 ni T5 es provisional; T3 = lista T1-2026 (mismo precio que T1), T7 tambien, y T2 y T8 son provisionales hasta confirmar su catalogo", () => {
     for (const p of data.productos) {
       for (const [id, fuente] of Object.entries(p.fuente_precio)) {
-        if (["T1", "T3", "T5"].includes(id)) expect(["impreso", "proporcional_kilo", "decision_2oct"], `${p.nombre} ${id}`).toContain(fuente);
+        if (["T1", "T5"].includes(id)) expect(["impreso", "proporcional_kilo", "decision_2oct"], `${p.nombre} ${id}`).toContain(fuente);
+        if (id === "T3") {
+          expect(["lista_t1_2026_cuestionario", "proporcional_kilo", "decision_2oct"], `${p.nombre} T3`).toContain(fuente);
+          expect(p.precios_por_sucursal.T3, `${p.nombre} T3`).toBe(p.precios_por_sucursal.T1);
+        }
         if (id === "T7" && !p.fraccion_kg && fuente !== "decision_2oct") expect(fuente, `${p.nombre} T7`).toBe("lista_t1_2026");
         if (id === "T7") expect(p.precios_por_sucursal.T7, `${p.nombre} T7`).toBe(p.precios_por_sucursal.T1);
         if ((id === "T2" || id === "T8") && !p.fraccion_kg && fuente !== "decision_2oct") expect(fuente, `${p.nombre} ${id}`).toBe("provisional_P5");
@@ -98,19 +103,20 @@ describe("precio y catalogo por sucursal en el motor de pedidos", () => {
     return orden.total;
   }
 
-  it("T3 cotiza nachos de pastor a $278 y T1 a $328", async () => {
-    expect(await cotizar("pensiones", "Nachos de Pastor")).toBe(278);
+  it("T3 cotiza nachos de pastor a $328, igual que T1 (lista T1-2026 en todas las sucursales)", async () => {
+    expect(await cotizar("pensiones", "Nachos de Pastor")).toBe(328);
     expect(await cotizar("prol-montejo", "Nachos de Pastor")).toBe(328);
   });
 
-  it("taco al pastor: $42 en T1, $36 en T3 y $42 en T5; el precio base del producto es el de T1", () => {
+  it("taco al pastor: $42 en TODAS las sucursales (T3 ya no lleva el $36 de la lista 2025); el precio base del producto es el de T1", () => {
     const pastor = plan.products.find((p) => p.name === "Taco Al Pastor (individual)")!;
-    expect(pastor.branchPrices).toEqual({ T1: 42, T5: 42, T3: 36, T7: 42, T8: 42, T2: 42 });
+    expect(pastor.branchPrices).toEqual({ T1: 42, T5: 42, T3: 42, T7: 42, T8: 42, T2: 42 });
     expect(pastor.price).toBe(42);
   });
 
-  it("una sucursal sin llave de precio no vende el producto: T3 no cotiza la Ensalada de PM aunque exista en el catalogo", async () => {
-    await expect(cotizar("pensiones", "Ensalada de PM")).rejects.toThrow();
+  it("una sucursal sin llave de precio no vende el producto: T3 no cotiza las flautas (solo T1, T7 y T8, pregunta P10) pero si la Ensalada de PM a $206", async () => {
+    await expect(cotizar("pensiones", "Flauta de Pastor")).rejects.toThrow();
+    expect(await cotizar("pensiones", "Ensalada de PM")).toBe(206);
     expect(await cotizar("prol-montejo", "Ensalada de PM")).toBe(206);
   });
 
@@ -121,22 +127,23 @@ describe("precio y catalogo por sucursal en el motor de pedidos", () => {
     expect(plan.branches.filter((b) => b.status === "active").map((b) => b.id)).toEqual(["T1", "T3", "T7"]);
   });
 
-  it("T2 no encuentra codzitos ni ensalada de PM; T7 si encuentra codzitos y flautas; T2 vende Heineken Silver a $90", async () => {
+  it("T2 no encuentra codzitos ni flautas pero si Ensalada de PM, Jericallas y Cafe; T7 si encuentra codzitos y flautas; Heineken Silver solo existe en T5", async () => {
     const { repo, propertyBySlug } = await buildInMemoryPmWorld(plan);
     const nombres = async (slug: string) => (await repo.listAvailableProductsForBranch(propertyBySlug.get(slug)!)).map((p) => p.name);
     const t2 = await nombres("fco-montejo");
     const t7 = await nombres("garcia-lavin");
     expect(t2).not.toContain("Codzitos (orden de 4)");
-    expect(t2).not.toContain("Ensalada de PM");
-    expect(t2).not.toContain("Jericallas");
-    expect(t2).not.toContain("Café");
-    expect(t2).toContain("Heineken Silver");
+    expect(t2).not.toContain("Flauta de Pastor");
+    expect(t2).toContain("Ensalada de PM");
+    expect(t2).toContain("Jericallas");
+    expect(t2).toContain("Café");
+    expect(t2).not.toContain("Heineken Silver");
     expect(t7).toContain("Codzitos (orden de 4)");
     expect(t7).toContain("Flauta de Pastor");
-    expect(plan.products.find((p) => p.name === "Heineken Silver")!.branchPrices).toEqual({ T5: 90, T2: 90 });
+    expect(plan.products.find((p) => p.name === "Heineken Silver")!.branchPrices).toEqual({ T5: 90 });
   });
 
-  it("T5 no encuentra Sprite ni comida regional ni flautas, y si vende Heineken Silver; T3 no la vende", async () => {
+  it("T5 no encuentra Sprite ni comida regional ni flautas, y si vende Heineken Silver; T3 vende la pizza Quesobich pero no Silver ni flautas", async () => {
     const { repo, propertyBySlug } = await buildInMemoryPmWorld(plan);
     const t5 = (await repo.listAvailableProductsForBranch(propertyBySlug.get("playa")!)).map((p) => p.name);
     const t3 = (await repo.listAvailableProductsForBranch(propertyBySlug.get("pensiones")!)).map((p) => p.name);
@@ -146,7 +153,10 @@ describe("precio y catalogo por sucursal en el motor de pedidos", () => {
     expect(t5).not.toContain("Flauta de Pastor");
     expect(t5).toContain("Heineken Silver");
     expect(t3).not.toContain("Heineken Silver");
-    expect(t3).not.toContain("Quesobich de Queso");
+    expect(t3).toContain("Quesobich de Queso");
+    expect(t3).toContain("Heineken 0.0");
+    expect(t3).not.toContain("Flauta de Pastor");
+    expect(t3).not.toContain("Sopa de Lima");
     expect(t3).toContain("Vino Tinto Selección (copa)");
   });
 
@@ -154,11 +164,11 @@ describe("precio y catalogo por sucursal en el motor de pedidos", () => {
     const world = await buildInMemoryPmWorld(plan);
     expect(plan.products.filter((p) => p.name.endsWith(" — 1 kg"))).toHaveLength(8);
     expect(plan.products.filter((p) => / — (250 g|500 g|750 g|1\.5 kg|2 kg)$/.test(p.name))).toHaveLength(40);
-    expect(plan.products.find((p) => p.name === "Pastor — 1 kg")!.branchPrices).toEqual({ T1: 900, T5: 900, T3: 750, T7: 900, T8: 900, T2: 900 });
+    expect(plan.products.find((p) => p.name === "Pastor — 1 kg")!.branchPrices).toEqual({ T1: 900, T5: 900, T3: 900, T7: 900, T8: 900, T2: 900 });
     // Casos del anexo del analisis: 3/4 de bistec de res = $825 en 2026 y $712.50 en 2025; 1/4 = $275; 1/2 kg de pastor = $450; 1.5 kg de pastor = $1,350.
-    expect(plan.products.find((p) => p.name === "Bistec de Res — 750 g")!.branchPrices).toMatchObject({ T1: 1100 * 0.75, T3: 712.5, T7: 825 });
-    expect(plan.products.find((p) => p.name === "Bistec de Res — 250 g")!.branchPrices).toMatchObject({ T1: 275, T3: 237.5 });
-    expect(plan.products.find((p) => p.name === "Pastor — 500 g")!.branchPrices).toMatchObject({ T1: 450, T3: 375 });
+    expect(plan.products.find((p) => p.name === "Bistec de Res — 750 g")!.branchPrices).toMatchObject({ T1: 1100 * 0.75, T3: 825, T7: 825 });
+    expect(plan.products.find((p) => p.name === "Bistec de Res — 250 g")!.branchPrices).toMatchObject({ T1: 275, T3: 275 });
+    expect(plan.products.find((p) => p.name === "Pastor — 500 g")!.branchPrices).toMatchObject({ T1: 450, T3: 450 });
     expect(plan.products.find((p) => p.name === "Pastor — 1.5 kg")!.branchPrices).toMatchObject({ T1: 1350, T7: 1350 });
     for (const [slug, propertyId] of world.propertyBySlug) {
       const nombres = (await world.repo.listAvailableProductsForBranch(propertyId)).map((p) => p.name);
@@ -171,19 +181,15 @@ describe("precio y catalogo por sucursal en el motor de pedidos", () => {
   it("T7 cotiza 1/4 kg de bistec a $275, ni un peso mas: el motor cobra el precio proporcional del catalogo", async () => {
     expect(await cotizar("garcia-lavin", "Bistec de Res — 250 g")).toBe(275);
     expect(await cotizar("garcia-lavin", "Bistec de Res — 750 g")).toBe(825);
-    expect(await cotizar("pensiones", "Bistec de Res — 750 g")).toBe(712.5);
+    expect(await cotizar("pensiones", "Bistec de Res — 750 g")).toBe(825);
   });
 
-  it("T7 vende Extra Salsa y Extra Piña a $19 (T3 y T5 no los traen)", async () => {
+  it("Extra Salsa y Extra Piña a $19 en las 6 sucursales con catalogo (T1, T2, T3, T5, T7 y T8)", async () => {
     const world = await buildInMemoryPmWorld(plan);
-    for (const slug of ["garcia-lavin", "prol-montejo", "fco-montejo", "altabrisa"]) {
+    for (const slug of ["garcia-lavin", "prol-montejo", "fco-montejo", "altabrisa", "pensiones", "playa"]) {
       const productos = await world.repo.listAvailableProductsForBranch(world.propertyBySlug.get(slug)!);
       expect(productos.find((p) => p.name === "Extra Salsa")?.price, slug).toBe(19);
       expect(productos.find((p) => p.name === "Extra Piña")?.price, slug).toBe(19);
-    }
-    for (const slug of ["pensiones", "playa"]) {
-      const nombres = (await world.repo.listAvailableProductsForBranch(world.propertyBySlug.get(slug)!)).map((p) => p.name);
-      expect(nombres, slug).not.toContain("Extra Salsa");
     }
   });
 });
@@ -205,11 +211,16 @@ describe("validaciones del seed por sucursal", () => {
     ["provisional_P5 en una sucursal con menu impreso", (d) => { producto(d, "Flan").fuente_precio.T1 = "provisional_P5"; }, /provisional_P5 solo aplica a T2, T7 y T8/],
     ["lista_t1_2026 fuera de T7", (d) => { producto(d, "Flan").fuente_precio.T1 = "lista_t1_2026"; }, /lista_t1_2026 solo aplica a T7/],
     ["producto en Galerias (T4)", (d) => { const p = producto(d, "Flan"); p.precios_por_sucursal.T4 = 83; p.fuente_precio.T4 = "impreso"; }, /T4/],
-    ["codzitos en T3", (d) => { const p = producto(d, "Codzitos (orden de 4)"); p.precios_por_sucursal.T3 = 131; p.fuente_precio.T3 = "impreso"; }, /T3 no lo vende/],
+    ["codzitos en T3", (d) => { const p = producto(d, "Codzitos (orden de 4)"); p.precios_por_sucursal.T3 = p.precios_por_sucursal.T1!; p.fuente_precio.T3 = "lista_t1_2026_cuestionario"; }, /T3 no lo vende/],
+    ["flautas en T3 (pregunta P10 abierta)", (d) => { const p = producto(d, "Flauta de Pastor"); p.precios_por_sucursal.T3 = p.precios_por_sucursal.T1!; p.fuente_precio.T3 = "lista_t1_2026_cuestionario"; }, /T3 no lo vende/],
+    ["flautas en T2 (pregunta P10 abierta)", (d) => { const p = producto(d, "Flauta de Pastor"); p.precios_por_sucursal.T2 = p.precios_por_sucursal.T1!; p.fuente_precio.T2 = "provisional_P5"; }, /T2 no lo vende/],
+    ["Heineken Silver en T2 (solo existe impresa en T5)", (d) => { const p = producto(d, "Heineken Silver"); p.precios_por_sucursal.T2 = 90; p.fuente_precio.T2 = "provisional_P5"; }, /T2 no lo vende/],
+    ["Heineken Silver en T3", (d) => { const p = producto(d, "Heineken Silver"); p.precios_por_sucursal.T3 = 90; p.fuente_precio.T3 = "decision_2oct"; }, /decision_2oct solo vale|T3 no lo vende/],
+    ["T3 con un precio de la lista 2025 impresa", (d) => { const p = producto(d, "Taco Al Pastor (individual)"); p.precios_por_sucursal.T3 = 36; p.fuente_precio.T3 = "impreso"; }, /T3 usa la lista T1-2026/],
+    ["lista_t1_2026_cuestionario con un precio distinto al de T1", (d) => { producto(d, "Taco Al Pastor (individual)").precios_por_sucursal.T3 = 36; }, /MISMO precio que T1/],
+    ["lista_t1_2026_cuestionario fuera de T3", (d) => { producto(d, "Taco Al Pastor (individual)").fuente_precio.T5 = "lista_t1_2026_cuestionario"; }, /solo aplica a T3/],
     ["flautas en T5", (d) => { const p = producto(d, "Flauta de Pastor"); p.precios_por_sucursal.T5 = 276; p.fuente_precio.T5 = "impreso"; }, /T5 no lo vende/],
     ["sprite en T5", (d) => { const p = producto(d, "Sprite"); p.precios_por_sucursal.T5 = 53; p.fuente_precio.T5 = "impreso"; }, /T5 no lo vende/],
-    ["ensalada de PM en T3", (d) => { const p = producto(d, "Ensalada de PM"); p.precios_por_sucursal.T3 = 206; p.fuente_precio.T3 = "impreso"; }, /T3 no lo vende/],
-    ["quesobich en T3", (d) => { const p = producto(d, "Quesobich de Queso"); p.precios_por_sucursal.T3 = 206; p.fuente_precio.T3 = "impreso"; }, /T3 no lo vende/],
   ];
   it.each(casos)("rechaza %s", (_nombre, mutar, mensaje) => {
     const copia = mutable();
@@ -218,8 +229,8 @@ describe("validaciones del seed por sucursal", () => {
     expect(() => buildPmSeedPlan(copia as unknown as PmSeedData, agent)).toThrow(mensaje);
   });
 
-  it("T2 con el OK de P5 NO puede vender ensalada, jericallas ni cafe (el menu web de T2 no los trae)", () => {
-    for (const nombre of ["Ensalada de PM", "Jericallas", "Café", "Sopa de Lima"]) {
+  it("T2 con el OK de P5 NO puede vender comida regional, flautas ni Heineken Silver (cuestionario l.76; P10)", () => {
+    for (const nombre of ["Sopa de Lima", "Flauta de Pastor", "Heineken Silver"]) {
       const copia = mutable(dataConP5Aprobado(data));
       const p = producto(copia, nombre);
       p.precios_por_sucursal.T2 = 100;
@@ -271,7 +282,7 @@ describe("pendientes del dueño y SQL del catalogo por sucursal", () => {
 });
 
 describe("menu-pm.json del arnes de evaluacion (regenerado desde el seed)", () => {
-  it("tiene exactamente los productos del seed, con su precio de referencia y marca de alcohol; regional = lo que T2 y T3 no venden", () => {
+  it("tiene exactamente los productos del seed, con su precio de referencia y marca de alcohol; regional = comida regional y flautas (lo que T2 y T3 no venden)", () => {
     const menu = cargarMenu();
     const plan = buildPmSeedPlan(data, agent);
     expect(menu.map((p) => p.nombre)).toEqual(plan.products.map((p) => p.name));
@@ -280,7 +291,7 @@ describe("menu-pm.json del arnes de evaluacion (regenerado desde el seed)", () =
       const delSeed = plan.products.find((x) => x.name === p.nombre)!;
       expect(p.precio_mxn, p.nombre).toBe(delSeed.price);
       expect(p.es_alcohol, p.nombre).toBe(delSeed.noDomicilio);
-      const regional = ["Comida Regional", "Flautas de PM"].includes(categoriaPorSlug.get(p.nombre)!) || ["Ensalada de PM", "Jericallas", "Café"].includes(p.nombre);
+      const regional = ["Comida Regional", "Flautas de PM"].includes(categoriaPorSlug.get(p.nombre)!);
       expect(p.regional, p.nombre).toBe(regional);
     }
     expect(menu.filter((p) => / — (250 g|500 g|750 g|1\.5 kg|2 kg)$/.test(p.nombre))).toHaveLength(40);

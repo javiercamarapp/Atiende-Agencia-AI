@@ -115,3 +115,10 @@ organización y se muestra aparte. Solo alertas internas (panel + `restaurantes.
   `tests/voz-kpi-repository-savepoint.spec.ts` y `apps/api/tests/restaurantes-voz-kpi-savepoint.spec.ts`.
 - SQL y permisos: `migrations/035_voz_kpi_alertas_costo.sql`, verificado contra Postgres real en
   `scripts/verify-restaurantes-voz-kpi/`.
+
+## Cierre del día y resumen semanal (R-42)
+
+`src/cierres/`: tipos y fechas de negocio puras (`cierre.ts`), `PostgresCierreRepository` (migración 041; SAVEPOINT + degradación a "no disponible"),
+`InMemoryCierreRepository` (pruebas) y `barrerCierresSucursal` (barrido idempotente por sucursal que avisa solo al CREAR un cierre). Las definiciones de cada
+cifra (venta, ticket, cancelación, tiempo de entrega, comparativo, fecha de negocio) viven en el encabezado de `migrations/041_cierre_dia_resumen_semanal.sql`;
+el cálculo es SQL y lo prueba `scripts/verify-restaurantes-cierre-dia/` contra Postgres real.
