@@ -80,7 +80,7 @@ describe("<ConocimientoNegocio />", () => {
     expect(seccionBorradores.querySelector('[data-entrada="k3"]')).not.toBeNull();
     expect(seccionBorradores.querySelector('[data-entrada="k1"]')).toBeNull();
     const uso = GENERAL.titulo.length + GENERAL.texto.length + AVISO.titulo.length + AVISO.texto.length;
-    expect(rendered!.container.querySelector('[data-testid="conocimiento-uso"]')!.textContent).toContain(`En uso: ${uso.toLocaleString("es-MX")} de 6,000`);
+    expect(rendered!.container.querySelector('[data-testid="conocimiento-uso"]')!.textContent).toContain(`En uso: ${uso} de 6,000`);
   });
 
   it("aprobar un borrador manda PATCH {estado:'publicado'} y recarga", async () => {

@@ -5,7 +5,7 @@
 // documento llegan como BORRADOR y no entran al agente hasta que una persona las aprueba una por una. Contrato: lib/conocimiento-client.ts.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, NativeSelect, StatusBadge, Textarea, useConfirm } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, NativeSelect, StatusBadge, Textarea, resolverFormato, useConfirm } from "@atiende/ui";
 import { fetchAdminBranches } from "../lib/branches-client.ts";
 import type { BranchDetail } from "../lib/branches-client.ts";
 import { TEXTO_MAX, TIPO_CONOCIMIENTO_LABEL, TITULO_MAX, actualizarConocimiento, borrarConocimiento, crearConocimiento, fetchConocimiento } from "../lib/conocimiento-client.ts";
@@ -47,6 +47,8 @@ function formDe(e: EntradaConocimiento): Formulario {
     vigenteHasta: e.vigenteHasta ?? "",
   };
 }
+
+const entero = resolverFormato("entero");
 
 function mensaje(err: unknown, porDefecto: string): string {
   return err instanceof Error ? err.message : porDefecto;
@@ -249,7 +251,7 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="m-0 text-sm font-semibold">Entradas</h3>
                 <span data-testid="conocimiento-uso" className="text-xs text-muted-foreground">
-                  En uso: {caracteres.toLocaleString("es-MX")} de {lista.topeCaracteres.toLocaleString("es-MX")} caracteres que caben en el agente
+                  En uso: {entero(caracteres)} de {entero(lista.topeCaracteres)} caracteres que caben en el agente
                 </span>
               </div>
               {publicadas.length === 0 ? (
