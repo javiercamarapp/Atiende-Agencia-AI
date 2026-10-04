@@ -1,4 +1,4 @@
-// Consentimiento del aviso de privacidad del checkout (migracion 042): el adaptador Postgres degrada a 'no_disponible' contra una base
+// Consentimiento del aviso de privacidad del checkout (migracion 043): el adaptador Postgres degrada a 'no_disponible' contra una base
 // sin migrar SIN abortar la transaccion compartida (AbortAwareFakeSession reproduce 25P02) y propaga cualquier otro error.
 import { describe, expect, it } from "vitest";
 import { InMemoryPrivacidadRepository, PostgresPrivacidadRepository } from "../src/privacidad/index.ts";

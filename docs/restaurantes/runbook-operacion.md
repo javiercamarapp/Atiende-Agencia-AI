@@ -73,7 +73,7 @@ El cierre del día (`/internal/restaurantes/cierres-dia`) **no** está agendado 
 ### Checkout web o aviso de privacidad
 
 - El checkout exige aceptar el aviso de privacidad **en el servidor** (400 `aviso_privacidad_requerido`); la evidencia (versión del aviso, fecha, canal `web`) se
-  guarda por pedido y la ven owner y admin. Si la base no tiene la migración 042 el pedido se crea igual y no se guarda la evidencia (declarado como hueco hasta aplicarla).
+  guarda por pedido y la ven owner y admin. Si la base no tiene la migración 043 el pedido se crea igual y no se guarda la evidencia (declarado como hueco hasta aplicarla).
 - Derechos ARCO: el cliente escribe "mis datos personales"; el panel *Privacidad* lleva la solicitud con sus plazos.
 
 ### Voz

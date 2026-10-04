@@ -46,7 +46,7 @@ export class InMemoryPrivacidadRepository implements PrivacidadRepository {
   readonly notices = new Set<string>();
   readonly configs = new Map<string, PrivacyConfig>();
   readonly consents = new Map<string, RecordingConsent>();
-  /** `false` simula una base sin la migracion 042 (consentimiento del checkout). */
+  /** `false` simula una base sin la migracion 043 (consentimiento del checkout). */
   consentimientoPedidosMigrado = true;
   /** Evidencia de consentimiento del checkout, por pedido. */
   readonly pedidoConsents = new Map<string, { organizationId: string; noticeVersion: string; channel: "web"; acceptedAtMs: number }>();

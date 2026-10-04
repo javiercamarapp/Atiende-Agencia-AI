@@ -134,7 +134,7 @@ describe("POST /v1/restaurantes/:orgSlug/orders con programado_para", () => {
     const res = await app.request(
       "/v1/restaurantes/los-taquitos-de-pm/orders",
       jsonRequestInit(
-        { branch_slug: "fco-montejo", customer_name: "Cliente Programado", customer_phone: "9991112222", items: [{ product_id: products.cocaCola, requested_quantity: 1 }], source: "web", programado_para: programado },
+        { branch_slug: "fco-montejo", customer_name: "Cliente Programado", customer_phone: "9991112222", items: [{ product_id: products.cocaCola, requested_quantity: 1 }], source: "web", canal: "recoger", payment_method: "efectivo", programado_para: programado },
         { origin: "http://localhost:5173" },
       ),
     );

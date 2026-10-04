@@ -198,11 +198,11 @@ documentados aquí mismo:
 - Los agentes de WhatsApp y voz también pueden programar: `cotizar_pedido`/`crear_pedido` aceptan `programado_para` (mismas reglas; ver
   `docs/restaurantes/agente-system-prompt.md`).
 
-## Consentimiento del aviso de privacidad del checkout (migración 042)
+## Consentimiento del aviso de privacidad del checkout (migración 043)
 
 `POST /v1/restaurantes/:orgSlug/storefront/:sucursal/orders` exige `acepta_aviso_privacidad: true` (400 `aviso_privacidad_requerido` si falta, antes de
 tocar la base) y, creado el pedido, guarda la evidencia con `PrivacidadRepository.recordOrderPrivacyConsent` (versión del aviso vigente que decide la base, fecha,
-canal `web`; sin teléfono ni nombre) en `restaurantes.order_privacy_consent` (la ven owner y admin). Best-effort con SAVEPOINT: base sin la 042 el pedido se
+canal `web`; sin teléfono ni nombre) en `restaurantes.order_privacy_consent` (la ven owner y admin). Best-effort con SAVEPOINT: base sin la 043 el pedido se
 crea igual; un fallo real se registra y no tumba un pedido ya creado. SQL verificado en `scripts/verify-restaurantes-consentimiento-aviso/`.
 
 ## Cierre del día y resumen semanal (R-42, migración 041)

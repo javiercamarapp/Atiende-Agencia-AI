@@ -184,10 +184,28 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
       setCotizacion(c);
       setDialogoAbierto(true);
     } catch (err) {
+      // La sesion ya tiene un pedido registrado (respuesta perdida en un intento anterior): se muestra ese pedido.
+      if (err instanceof StorefrontError && err.rastreoToken) return irAlPedidoRegistrado(err.rastreoToken);
       setErrorServidor(err instanceof Error ? err.message : "No pudimos cotizar tu pedido.");
     } finally {
       setCotizando(false);
     }
+  }
+
+  function limpiarSesion() {
+    try {
+      almacen()?.removeItem(claveCarrito);
+      almacen()?.removeItem(claveSesion);
+    } catch {
+      // ignorado
+    }
+  }
+
+  function irAlPedidoRegistrado(rastreoToken: string) {
+    limpiarSesion();
+    setDialogoAbierto(false);
+    notify.success("Tu pedido ya estaba registrado.");
+    navigate(`/pedir/${orgSlug}/pedido/${encodeURIComponent(rastreoToken)}`);
   }
 
   async function confirmarPedido() {
@@ -195,15 +213,11 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
       await cliente.confirmar(branchSlug, sessionId.current, cotizacion?.quote_hash ?? null);
       const propina = form.propina.trim() && puedePropina ? Number(form.propina) : undefined;
       const creado = await cliente.crearPedido(branchSlug, datosPedido(), { nombre: form.nombre, telefono: form.telefono, correo: form.correo, direccion: form.direccion, notas: form.notas, propina, aceptaAviso: form.acepta }, cotizacion?.quote_hash ?? null);
-      try {
-        almacen()?.removeItem(claveCarrito);
-        almacen()?.removeItem(claveSesion);
-      } catch {
-        // ignorado
-      }
+      limpiarSesion();
       notify.success(creado.ya_registrado ? "Tu pedido ya estaba registrado." : "¡Pedido recibido!");
       navigate(`/pedir/${orgSlug}/pedido/${encodeURIComponent(creado.rastreo_token)}`);
     } catch (err) {
+      if (err instanceof StorefrontError && err.rastreoToken) return irAlPedidoRegistrado(err.rastreoToken);
       const mensaje = err instanceof Error ? err.message : "No pudimos registrar tu pedido.";
       notify.error(mensaje);
       setErrorServidor(mensaje);

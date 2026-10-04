@@ -1,7 +1,7 @@
 # verify-restaurantes-consentimiento-aviso
 
-Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/042_consentimiento_checkout_aviso_programado.sql`
-(espejo: `supabase/migrations/20240101000312_042_consentimiento_checkout_aviso_programado.sql`): consentimiento del aviso de privacidad
+Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/043_consentimiento_checkout_aviso_programado.sql`
+(espejo: `supabase/migrations/20240101000312_043_consentimiento_checkout_aviso_programado.sql`): consentimiento del aviso de privacidad
 del checkout web (`restaurantes.order_privacy_consent`, `system_record_order_privacy_consent`) y el aviso al staff cuando un pedido
 programado entra a cocina (evento `order.programado_promovido` en `staff_order_notification`, `enqueue_staff_order_notification`).
 

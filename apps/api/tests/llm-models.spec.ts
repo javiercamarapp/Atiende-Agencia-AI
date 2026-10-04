@@ -212,3 +212,15 @@ describe("parseLlmModelsJson", () => {
     expect(parseLlmModelsJson("[]").errors.length).toBe(1);
   });
 });
+
+describe("R-32: rol de transcripcion de notas de voz", () => {
+  it("tiene ruta propia con modelos que aceptan audio, proveedores de EE.UU. y privacidad forzada", async () => {
+    const { RESTAURANTES_TRANSCRIPCION_ROLE } = await import("../src/production/llm-models.ts");
+    const route = resolveRoleRoute(RESTAURANTES_TRANSCRIPCION_ROLE, undefined);
+    expect(route).not.toBe(DEFAULT_ROUTE);
+    expect(route.models.map((m) => m.model)).toEqual(["google/gemini-2.5-flash-lite", "google/gemini-3.5-flash-lite"]);
+    for (const rung of route.models) {
+      expect(routingForModel(route, rung.model, false)).toMatchObject({ only: ["google-ai-studio", "google-vertex"], dataCollection: "deny", requireParameters: true });
+    }
+  });
+});
