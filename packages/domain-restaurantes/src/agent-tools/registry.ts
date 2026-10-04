@@ -18,8 +18,11 @@ import { OrderValidationError } from "../errors.ts";
 import { DEFAULT_COMPLEMENTS, isTortillaChoice } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
-import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
-import { assertWebOrderRules } from "../storefront.ts";
+import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
+import { createOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
+import { assertCantidadesWeb, assertWebOrderRules } from "../storefront.ts";
+import { evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
+import { normalizePhone } from "../phone.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import {
   assertCanConfirm,
@@ -345,13 +348,19 @@ interface RawItemInput {
   readonly tortilla?: unknown;
 }
 
-/** `lenient`: WhatsApp historicamente convierte una cantidad ausente/invalida en 1; voz deja pasar NaN
- * para que la validacion de dominio lo rechace. */
+/** Mensaje al modelo cuando una cantidad no es un entero positivo: accionable y en usted (el cliente lo lee parafraseado). */
+export const CANTIDAD_NO_NUMERICA_MENSAJE =
+  "Indique la cantidad con un número entero de piezas (por ejemplo 2). Para medio kilo o una fracción de kilo use el renglón de esa fracción (por ejemplo 'Pastor — 500 g'), no una cantidad decimal ni escrita con letras.";
+
+/** `lenient` (WhatsApp): una cantidad escrita como numero ("2") se acepta, pero una que no es un entero positivo ('medio', 'dos', 0, 1.5, ausente)
+ * se RECHAZA con un error accionable. Antes se convertia en silencio a 1 (`Number(x) || 1`): 'medio' kilo se cotizaba como 1 kg. Voz y web dejan
+ * pasar el valor para que la validacion de dominio lo rechace. */
 export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrderItemInput[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((entry) => {
     const item = (entry ?? {}) as RawItemInput;
-    const qty = typeof item.requested_quantity === "number" ? item.requested_quantity : lenient ? Number(item.requested_quantity) || 1 : Number(item.requested_quantity);
+    const qty = typeof item.requested_quantity === "number" ? item.requested_quantity : Number(item.requested_quantity);
+    if (lenient && (!Number.isInteger(qty) || qty < 1)) throw new OrderValidationError(CANTIDAD_NO_NUMERICA_MENSAJE);
     return {
       productId: typeof item.product_id === "string" ? item.product_id : undefined,
       productName: typeof item.product_name === "string" ? item.product_name : undefined,
@@ -542,7 +551,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       }
     }
     const outcome = await dispatchTool(repo, ctx, name, input);
-    const quotedPrices = priceSignature((outcome.raw as { lines: readonly { productId: string; price: number; quantity: number }[] }).lines);
+    const quotedQuote = outcome.raw as OrderQuote & Partial<QuotePromotionInfo>;
+    const quotedPrices = priceSignature(quotedQuote.lines);
     const quoteHash = fingerprintOrder({
       branchSlug: String(input.branch_slug ?? ""),
       canal: canalOf(input.canal),
@@ -553,7 +563,14 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
       if (snap === null) return outcome; // base sin migrar: camino anterior
-      const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", { quoteHash, quotedAtMs: flowNow(flow), quotedTurn: flow.turn, quotedPrices });
+      const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", {
+        quoteHash,
+        quotedAtMs: flowNow(flow),
+        quotedTurn: flow.turn,
+        quotedPrices,
+        quotedTotal: quotedQuote.total,
+        quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
+      });
       if (res === "written") return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash }, quoteHash };
       if (res === "unavailable") return outcome;
     }
@@ -703,6 +720,7 @@ async function dispatchTool(
     case "cotizar_pedido": {
       const branchSlug = String(input.branch_slug ?? "");
       await assertBranchAllowed(repo, ctx, branchSlug);
+      if (ctx.channel === "web") assertCantidadesWeb(toRequestedItems(input.items, lenient).map((i) => i.requestedQuantity));
       const quote = await quoteOrder(repo, {
         organizationId,
         branchSlug,
@@ -729,15 +747,23 @@ async function dispatchTool(
       } else if (ctx.lockedPropertyId) {
         throw new OrderValidationError("Esta llamada está fijada a una sucursal; indica branch_slug.");
       }
-      const order = await createOrder(repo, createInput, {
-        beforePersist: (prepared) => {
-          // El precio lo fija SIEMPRE el catalogo vigente, pero el cliente solo acepto los precios que vio: si
-          // cambiaron entre confirmar y crear, se pide re-cotizar en vez de cobrar un total distinto.
-          if (expectedPrices && priceSignature(prepared.orderItems) !== expectedPrices) {
-            throw new OrderFlowViolationError("precio_cambio", "Los precios del menú cambiaron después de que confirmaste. Vuelve a revisar tu pedido para ver el total actualizado.");
-          }
-        },
-      });
+      let order: Order;
+      try {
+        order = await createOrder(repo, createInput, {
+          beforePersist: async (prepared) => {
+            // El precio lo fija SIEMPRE el catalogo vigente, pero el cliente solo acepto los precios que vio: si
+            // cambiaron entre confirmar y crear, se pide re-cotizar en vez de cobrar un total distinto.
+            if (expectedPrices && priceSignature(prepared.orderItems) !== expectedPrices) {
+              throw new OrderFlowViolationError("precio_cambio", "Los precios del menú cambiaron después de que confirmaste. Vuelve a revisar tu pedido para ver el total actualizado.");
+            }
+            // Pedido grande (decision de PM, 2-oct): lo hace cumplir el SERVIDOR aunque el modelo olvide escalar.
+            if (ctx.channel !== "web") await assertNoEsPedidoGrande(repo, prepared);
+          },
+        });
+      } catch (err) {
+        if (err instanceof PedidoGrandeRetenidoError) return retenerPedidoGrande(repo, ctx, createInput, err);
+        throw err;
+      }
       return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
     }
     case "registrar_contacto":
@@ -756,6 +782,47 @@ async function dispatchTool(
       return { result: { ok: true }, raw: { ok: true }, orderId: null, propertyId: null };
     }
   }
+}
+
+/** Lanza `PedidoGrandeRetenidoError` si el pedido ya cotizado supera el umbral de pedido grande de PM. Solo organizaciones con
+ * perfil `taqueria_pm` y con el motivo `pedido_grande` encendido; sin configuracion (base sin migrar) no aplica. */
+async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: PreparedOrder): Promise<void> {
+  const config = await repo.findWhatsAppAgentConfig(prepared.payload.organizationId, prepared.branch.propertyId);
+  if (!config || config.perfil !== "taqueria_pm" || (config.escalationReasonsOff ?? []).includes("pedido_grande")) return;
+  const pesoKg = pesoTotalKg(prepared.orderItems);
+  const cliente = await repo.findCustomerByPhone(prepared.payload.organizationId, normalizePhone(prepared.payload.customerPhone));
+  const motivo = evaluarPedidoGrande({
+    total: prepared.total,
+    pesoKg,
+    pagaEfectivo: prepared.payload.paymentMethod === "efectivo",
+    sinHistorial: !cliente || cliente.orderCount === 0,
+  });
+  if (!motivo) return;
+  const resumen = resumenPedidoGrande({ motivo, total: prepared.total, pesoKg, items: prepared.orderItems, canal: prepared.payload.canal, paymentMethod: prepared.payload.paymentMethod });
+  throw new PedidoGrandeRetenidoError(motivo, prepared.total, pesoKg, resumen);
+}
+
+/** En vez de crear el pedido: deja el aviso `escalada:pedido_grande` (con el resumen) para que la sucursal lo confirme y contacte al
+ * cliente. El resultado al modelo NO es un error: no marca fallo de herramienta ni sube al modelo caro. */
+async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolContext, input: CreateOrderInput, retenido: PedidoGrandeRetenidoError): Promise<AgentToolOutcome> {
+  const branch = await repo.findBranch(ctx.organizationId, { slug: input.branchSlug, name: input.branchName });
+  await registerCallbackRequest(repo, {
+    organizationId: ctx.organizationId,
+    propertyId: ctx.lockedPropertyId ?? branch?.propertyId ?? null,
+    customerName: input.customerName,
+    customerPhone: input.customerPhone,
+    reason: "escalada:pedido_grande",
+    message: retenido.resumen,
+    source: ctx.channel === "voz" ? "voice" : "whatsapp",
+  });
+  const result = {
+    pedido_grande: true,
+    escalado: true,
+    estado: "por_confirmar_por_la_sucursal",
+    mensaje:
+      "Este pedido supera el umbral de pedido grande, así que NO se mandó a cocina todavía: ya se avisó a la sucursal con el resumen para que lo confirme y contacte al cliente. Dígale al cliente, de usted, que la sucursal lo contactará para confirmar su pedido; no le prometa hora ni le diga que ya está en preparación, y no vuelva a llamar crear_pedido.",
+  };
+  return { result, raw: result, orderId: null, propertyId: null };
 }
 
 /**

@@ -9,7 +9,7 @@ import { OrderValidationError } from "./errors.ts";
 import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { ADDRESS_MASK_MARKER, ADDRESS_OMITTED_MARKER, sanitizeInlineText, sanitizeNotes } from "./text-sanitize.ts";
-import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice } from "./order-quote.ts";
+import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice, MAX_PIEZAS_POR_RENGLON, mensajeCantidadInvalida } from "./order-quote.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
@@ -179,8 +179,8 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     const hasRequested = item.requestedQuantity !== undefined;
     if (hasQuantity === hasRequested) throw new OrderValidationError("Productos o cantidades inválidos");
     const value = hasRequested ? item.requestedQuantity : item.quantity;
-    if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 100) {
-      throw new OrderValidationError("Productos o cantidades inválidos");
+    if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > MAX_PIEZAS_POR_RENGLON) {
+      throw new OrderValidationError(mensajeCantidadInvalida(value));
     }
   }
 
@@ -381,6 +381,12 @@ export async function prepareCreateOrder(
     }
   }
 
+  // La propina no tiene tope en SQL y el de $100,000 de la validacion es absurdo para un pedido de $252: se rechaza una propina mayor que el
+  // total a pagar (el modelo la lee como un posible error de captura y la confirma con el cliente).
+  if (payload.propina !== undefined && redondearACentavos(payload.propina) > total) {
+    throw new OrderValidationError("La propina no puede ser mayor que el total del pedido. Confirme el monto con el cliente antes de registrarla.");
+  }
+
   return { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount };
 }
 
@@ -423,10 +429,10 @@ export async function createOrder(
   /** `beforePersist`: gancho que ve el pedido YA cotizado contra el catalogo vigente y puede rechazarlo (lanzando)
    * antes de escribir nada. Lo usa la maquina de estados del pedido para exigir que los precios sigan siendo los
    * que el cliente confirmo. */
-  options: { readonly beforePersist?: (prepared: PreparedOrder) => void } = {},
+  options: { readonly beforePersist?: (prepared: PreparedOrder) => void | Promise<void> } = {},
 ): Promise<Order> {
   const prepared = await prepareCreateOrder(repo, rawInput);
-  options.beforePersist?.(prepared);
+  await options.beforePersist?.(prepared);
   const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount } = prepared;
   // R-11: contra una base sin la migracion 034 el pedido programado se rechaza (503) en vez de crearse inmediato.
   if (payload.programadoPara) await assertProgramacionDisponible(repo);

@@ -36,6 +36,11 @@ export interface OrderFlowContext {
    * confirmo si el catalogo cambia entre confirmar y crear. Ausente en filas guardadas antes de este campo.
    */
   readonly quotedPrices?: string;
+  /** Total a pagar de la cotizacion vigente y cifras legitimas que el cliente vio (precios, importes, subtotal, descuento).
+   * Lo lee el agente de WhatsApp en el turno SIGUIENTE para que su guardia de cifras siga corrigiendo un total alucinado
+   * aunque ese turno no llame ninguna herramienta. Ausente en filas guardadas antes de este campo (guardia entonces solo en el turno que cotiza). */
+  readonly quotedTotal?: number;
+  readonly quotedAmounts?: readonly number[];
   readonly confirmedAtMs?: number;
   readonly claimedAtMs?: number;
   readonly orderId?: string;
