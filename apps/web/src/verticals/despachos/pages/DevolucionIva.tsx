@@ -22,7 +22,7 @@
 // esconderlos detrás de un switcher rompería el flujo guiado real.
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { Calculator, CalendarClock, CheckCircle2, ClipboardList, Download, FileSpreadsheet, ListChecks, Plus, Send, Trash2 } from "lucide-react";
+import { Calculator, CalendarClock, CheckCircle2, ClipboardList, Download, FileSpreadsheet, ListChecks, Lock, Plus, Send, Trash2 } from "lucide-react";
 import {
   Button,
   Callout,
@@ -31,10 +31,13 @@ import {
   CardHeader,
   CardTitle,
   Checkbox,
+  EstadoVacio,
+  FormField,
   Input,
   Label,
   NativeSelect,
   PageContainer,
+  PageHeader,
   StatusBadge,
   statusTone,
   Table,
@@ -198,22 +201,22 @@ function FacturasEditor({ filas, setFilas }: { filas: readonly FacturaFila[]; se
   return (
     <div className="flex flex-col gap-2">
       <div className="overflow-x-auto">
-        <Table className="min-w-[1200px] text-xs">
+        <Table className="min-w-[1200px]">
           <TableHeader>
             <TableRow>
-              <TableHead className="h-9">UUID *</TableHead>
-              <TableHead className="h-9">RFC emisor *</TableHead>
-              <TableHead className="h-9">Emisor</TableHead>
-              <TableHead className="h-9">RFC receptor *</TableHead>
-              <TableHead className="h-9">Fecha *</TableHead>
-              <TableHead className="h-9">Subtotal</TableHead>
-              <TableHead className="h-9">IVA</TableHead>
-              <TableHead className="h-9">Total</TableHead>
-              <TableHead className="h-9">Tipo</TableHead>
-              <TableHead className="h-9">Categoría</TableHead>
-              <TableHead className="h-9">Proporc.</TableHead>
-              <TableHead className="h-9">UUID REP</TableHead>
-              <TableHead className="h-9" />
+              <TableHead>UUID *</TableHead>
+              <TableHead>RFC emisor *</TableHead>
+              <TableHead>Emisor</TableHead>
+              <TableHead>RFC receptor *</TableHead>
+              <TableHead>Fecha *</TableHead>
+              <TableHead>Subtotal</TableHead>
+              <TableHead>IVA</TableHead>
+              <TableHead>Total</TableHead>
+              <TableHead>Tipo</TableHead>
+              <TableHead>Categoría</TableHead>
+              <TableHead>Proporc.</TableHead>
+              <TableHead>UUID REP</TableHead>
+              <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -223,55 +226,55 @@ function FacturasEditor({ filas, setFilas }: { filas: readonly FacturaFila[]; se
                   <Label htmlFor={`fac-uuid-${f.key}`} className="sr-only">
                     UUID
                   </Label>
-                  <Input id={`fac-uuid-${f.key}`} type="text" value={f.uuid} onChange={(e) => actualizar(f.key, "uuid", e.target.value)} className="h-9 w-40 font-mono text-xs" />
+                  <Input id={`fac-uuid-${f.key}`} type="text" value={f.uuid} onChange={(e) => actualizar(f.key, "uuid", e.target.value)} className="w-40 font-mono" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`fac-rfc-em-${f.key}`} className="sr-only">
                     RFC emisor
                   </Label>
-                  <Input id={`fac-rfc-em-${f.key}`} type="text" value={f.rfcEmisor} onChange={(e) => actualizar(f.key, "rfcEmisor", e.target.value.toUpperCase())} className="h-9 w-28 text-xs" />
+                  <Input id={`fac-rfc-em-${f.key}`} type="text" value={f.rfcEmisor} onChange={(e) => actualizar(f.key, "rfcEmisor", e.target.value.toUpperCase())} className="w-28" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`fac-emisor-${f.key}`} className="sr-only">
                     Emisor
                   </Label>
-                  <Input id={`fac-emisor-${f.key}`} type="text" value={f.nombreEmisor} onChange={(e) => actualizar(f.key, "nombreEmisor", e.target.value)} className="h-9 w-40 text-xs" />
+                  <Input id={`fac-emisor-${f.key}`} type="text" value={f.nombreEmisor} onChange={(e) => actualizar(f.key, "nombreEmisor", e.target.value)} className="w-40" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`fac-rfc-rec-${f.key}`} className="sr-only">
                     RFC receptor
                   </Label>
-                  <Input id={`fac-rfc-rec-${f.key}`} type="text" value={f.rfcReceptor} onChange={(e) => actualizar(f.key, "rfcReceptor", e.target.value.toUpperCase())} className="h-9 w-28 text-xs" />
+                  <Input id={`fac-rfc-rec-${f.key}`} type="text" value={f.rfcReceptor} onChange={(e) => actualizar(f.key, "rfcReceptor", e.target.value.toUpperCase())} className="w-28" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`fac-fecha-${f.key}`} className="sr-only">
                     Fecha
                   </Label>
-                  <Input id={`fac-fecha-${f.key}`} type="date" value={f.fecha} onChange={(e) => actualizar(f.key, "fecha", e.target.value)} className="h-9 w-32 text-xs" />
+                  <Input id={`fac-fecha-${f.key}`} type="date" value={f.fecha} onChange={(e) => actualizar(f.key, "fecha", e.target.value)} className="w-32" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`fac-subtotal-${f.key}`} className="sr-only">
                     Subtotal
                   </Label>
-                  <Input id={`fac-subtotal-${f.key}`} type="number" step="0.01" value={f.subtotal} onChange={(e) => actualizar(f.key, "subtotal", e.target.value)} className="h-9 w-24 text-xs" />
+                  <Input id={`fac-subtotal-${f.key}`} type="number" step="0.01" value={f.subtotal} onChange={(e) => actualizar(f.key, "subtotal", e.target.value)} className="w-24" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`fac-iva-${f.key}`} className="sr-only">
                     IVA
                   </Label>
-                  <Input id={`fac-iva-${f.key}`} type="number" step="0.01" value={f.iva} onChange={(e) => actualizar(f.key, "iva", e.target.value)} className="h-9 w-24 text-xs" />
+                  <Input id={`fac-iva-${f.key}`} type="number" step="0.01" value={f.iva} onChange={(e) => actualizar(f.key, "iva", e.target.value)} className="w-24" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`fac-total-${f.key}`} className="sr-only">
                     Total
                   </Label>
-                  <Input id={`fac-total-${f.key}`} type="number" step="0.01" value={f.total} onChange={(e) => actualizar(f.key, "total", e.target.value)} className="h-9 w-24 text-xs" />
+                  <Input id={`fac-total-${f.key}`} type="number" step="0.01" value={f.total} onChange={(e) => actualizar(f.key, "total", e.target.value)} className="w-24" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`fac-tipo-${f.key}`} className="sr-only">
                     Tipo
                   </Label>
-                  <NativeSelect id={`fac-tipo-${f.key}`} value={f.tipo} onChange={(e) => actualizar(f.key, "tipo", e.target.value as TipoFacturaIva)} size="sm" wrapperClassName="w-28">
+                  <NativeSelect id={`fac-tipo-${f.key}`} value={f.tipo} onChange={(e) => actualizar(f.key, "tipo", e.target.value as TipoFacturaIva)} wrapperClassName="w-28">
                     {TIPO_FACTURA_OPTIONS.map((t) => (
                       <option key={t} value={t}>
                         {t}
@@ -283,7 +286,7 @@ function FacturasEditor({ filas, setFilas }: { filas: readonly FacturaFila[]; se
                   <Label htmlFor={`fac-categoria-${f.key}`} className="sr-only">
                     Categoría
                   </Label>
-                  <NativeSelect id={`fac-categoria-${f.key}`} value={f.categoria} onChange={(e) => actualizar(f.key, "categoria", e.target.value as ClasificacionIva)} size="sm" wrapperClassName="w-40">
+                  <NativeSelect id={`fac-categoria-${f.key}`} value={f.categoria} onChange={(e) => actualizar(f.key, "categoria", e.target.value as ClasificacionIva)} wrapperClassName="w-40">
                     {CATEGORIA_OPTIONS.map((c) => (
                       <option key={c} value={c}>
                         {CATEGORIA_LABELS[c]}
@@ -303,7 +306,7 @@ function FacturasEditor({ filas, setFilas }: { filas: readonly FacturaFila[]; se
                     max={1}
                     value={f.proporcionalidad}
                     onChange={(e) => actualizar(f.key, "proporcionalidad", e.target.value)}
-                    className="h-9 w-[70px] text-xs"
+                    className="w-[70px]"
                   />
                 </TableCell>
                 <TableCell className="p-1.5">
@@ -316,17 +319,11 @@ function FacturasEditor({ filas, setFilas }: { filas: readonly FacturaFila[]; se
                     value={f.referenciaComplementoPago}
                     onChange={(e) => actualizar(f.key, "referenciaComplementoPago", e.target.value)}
                     placeholder="UUID del REP"
-                    className="h-9 w-36 font-mono text-xs"
+                    className="w-36 font-mono"
                   />
                 </TableCell>
                 <TableCell className="p-1.5">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive"
-                    onClick={() => setFilas(filas.filter((r) => r.key !== f.key))}
-                  >
+                  <Button type="button" variant="destructive" onClick={() => setFilas(filas.filter((r) => r.key !== f.key))}>
                     <Trash2 />
                     Quitar
                   </Button>
@@ -356,16 +353,16 @@ function DeclaracionesEditor({ filas, setFilas }: { filas: readonly DeclaracionF
   return (
     <div className="flex flex-col gap-2">
       <div className="overflow-x-auto">
-        <Table className="min-w-[640px] text-xs">
+        <Table className="min-w-[640px]">
           <TableHeader>
             <TableRow>
-              <TableHead className="h-9">Mes *</TableHead>
-              <TableHead className="h-9">Año *</TableHead>
-              <TableHead className="h-9">IVA cobrado</TableHead>
-              <TableHead className="h-9">IVA pagado</TableHead>
-              <TableHead className="h-9">Saldo a favor</TableHead>
-              <TableHead className="h-9">Saldo a cargo</TableHead>
-              <TableHead className="h-9" />
+              <TableHead>Mes *</TableHead>
+              <TableHead>Año *</TableHead>
+              <TableHead>IVA cobrado</TableHead>
+              <TableHead>IVA pagado</TableHead>
+              <TableHead>Saldo a favor</TableHead>
+              <TableHead>Saldo a cargo</TableHead>
+              <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -375,46 +372,40 @@ function DeclaracionesEditor({ filas, setFilas }: { filas: readonly DeclaracionF
                   <Label htmlFor={`decl-mes-${d.key}`} className="sr-only">
                     Mes
                   </Label>
-                  <Input id={`decl-mes-${d.key}`} type="number" min={1} max={12} value={d.mes} onChange={(e) => actualizar(d.key, "mes", e.target.value)} className="h-9 w-[70px] text-xs" />
+                  <Input id={`decl-mes-${d.key}`} type="number" min={1} max={12} value={d.mes} onChange={(e) => actualizar(d.key, "mes", e.target.value)} className="w-[70px]" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`decl-anio-${d.key}`} className="sr-only">
                     Año
                   </Label>
-                  <Input id={`decl-anio-${d.key}`} type="number" value={d.año} onChange={(e) => actualizar(d.key, "año", e.target.value)} className="h-9 w-20 text-xs" />
+                  <Input id={`decl-anio-${d.key}`} type="number" value={d.año} onChange={(e) => actualizar(d.key, "año", e.target.value)} className="w-20" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`decl-cobrado-${d.key}`} className="sr-only">
                     IVA cobrado
                   </Label>
-                  <Input id={`decl-cobrado-${d.key}`} type="number" step="0.01" value={d.ivaCobrado} onChange={(e) => actualizar(d.key, "ivaCobrado", e.target.value)} className="h-9 w-24 text-xs" />
+                  <Input id={`decl-cobrado-${d.key}`} type="number" step="0.01" value={d.ivaCobrado} onChange={(e) => actualizar(d.key, "ivaCobrado", e.target.value)} className="w-24" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`decl-pagado-${d.key}`} className="sr-only">
                     IVA pagado
                   </Label>
-                  <Input id={`decl-pagado-${d.key}`} type="number" step="0.01" value={d.ivaPagado} onChange={(e) => actualizar(d.key, "ivaPagado", e.target.value)} className="h-9 w-24 text-xs" />
+                  <Input id={`decl-pagado-${d.key}`} type="number" step="0.01" value={d.ivaPagado} onChange={(e) => actualizar(d.key, "ivaPagado", e.target.value)} className="w-24" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`decl-favor-${d.key}`} className="sr-only">
                     Saldo a favor
                   </Label>
-                  <Input id={`decl-favor-${d.key}`} type="number" step="0.01" value={d.saldoFavor} onChange={(e) => actualizar(d.key, "saldoFavor", e.target.value)} className="h-9 w-24 text-xs" />
+                  <Input id={`decl-favor-${d.key}`} type="number" step="0.01" value={d.saldoFavor} onChange={(e) => actualizar(d.key, "saldoFavor", e.target.value)} className="w-24" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`decl-contra-${d.key}`} className="sr-only">
                     Saldo a cargo
                   </Label>
-                  <Input id={`decl-contra-${d.key}`} type="number" step="0.01" value={d.saldoContra} onChange={(e) => actualizar(d.key, "saldoContra", e.target.value)} className="h-9 w-24 text-xs" />
+                  <Input id={`decl-contra-${d.key}`} type="number" step="0.01" value={d.saldoContra} onChange={(e) => actualizar(d.key, "saldoContra", e.target.value)} className="w-24" />
                 </TableCell>
                 <TableCell className="p-1.5">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive"
-                    onClick={() => setFilas(filas.filter((r) => r.key !== d.key))}
-                  >
+                  <Button type="button" variant="destructive" onClick={() => setFilas(filas.filter((r) => r.key !== d.key))}>
                     <Trash2 />
                     Quitar
                   </Button>
@@ -679,50 +670,38 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
 
   if (!puedeGestionar) {
     return (
-      <PageContainer padding="none" className="gap-2 [&>*]:min-w-0">
-        <h1 className="font-display text-xl font-semibold text-foreground">Devolución de IVA</h1>
-        <p role="alert" className="text-destructive text-sm">
-          Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede correr el flujo de devolución de IVA -- el servidor lo rechazaría igual.
-        </p>
+      <PageContainer className="[&>*]:min-w-0">
+        <PageHeader titulo="Devolución de IVA" descripcion="Flujo guiado del papel de trabajo de devolución de IVA." />
+        <EstadoVacio icon={Lock} titulo="Sin permiso" mensaje={`Esta función requiere rol admin o contador. Tu rol actual (${role}) no puede correr el flujo de devolución de IVA -- el servidor lo rechazaría igual.`} />
       </PageContainer>
     );
   }
 
   return (
-    <PageContainer padding="none" className="gap-5 [&>*]:min-w-0">
-      <header>
-        <h1 className="font-display text-xl font-semibold text-foreground">Devolución de IVA</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Flujo guiado del papel de trabajo de devolución de IVA: facturas del periodo → DIOT → conciliación → saldo a favor → congruencia (REQ-IVA-010) → solicitud → plazo de resolución (Art. 22 CFF) → papel de trabajo.
-        </p>
-      </header>
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader titulo="Devolución de IVA" descripcion="Flujo guiado del papel de trabajo de devolución de IVA: facturas del periodo → DIOT → conciliación → saldo a favor → congruencia (REQ-IVA-010) → solicitud → plazo de resolución (Art. 22 CFF) → papel de trabajo." />
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Periodo</CardTitle>
+        <CardHeader>
+          <CardTitle>Periodo</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex w-44 flex-col gap-1.5">
-            <Label htmlFor="iva-periodo">Periodo (YYYY-MM) *</Label>
+          <FormField label="Periodo (YYYY-MM)" required className="w-44">
             <Input id="iva-periodo" type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} />
-          </div>
+          </FormField>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">1. Facturas del periodo</CardTitle>
+        <CardHeader>
+          <CardTitle>1. Facturas del periodo</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {errorFacturas && (
-            <p role="alert" className="text-destructive text-sm">
-              {errorFacturas}
-            </p>
-          )}
+          {errorFacturas && <Callout tone="danger">{errorFacturas}</Callout>}
           <div>
-            <Button type="button" onClick={() => void handleCargarFacturas()} disabled={cargandoFacturas}>
+            <Button type="button" onClick={() => void handleCargarFacturas()} loading={cargandoFacturas}>
               <Download />
-              {cargandoFacturas ? "Cargando…" : "Cargar CFDI ya ingeridos del periodo"}
+              Cargar CFDI ya ingeridos del periodo
             </Button>
           </div>
           {clasificacionResumen && (
@@ -743,41 +722,37 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">2. DIOT</CardTitle>
+        <CardHeader>
+          <CardTitle>2. DIOT</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {diotError && (
-            <p role="alert" className="text-destructive text-sm">
-              {diotError}
-            </p>
-          )}
+          {diotError && <Callout tone="danger">{diotError}</Callout>}
           <div>
-            <Button type="button" onClick={() => void handleGenerarDiot()} disabled={diotLoading}>
+            <Button type="button" onClick={() => void handleGenerarDiot()} loading={diotLoading}>
               <FileSpreadsheet />
-              {diotLoading ? "Generando…" : "Generar DIOT"}
+              Generar DIOT
             </Button>
           </div>
           {diotErrores.length > 0 && (
             <div className="flex flex-col gap-1">
               {diotErrores.map((e, i) => (
-                <p key={i} role="alert" className="text-destructive text-xs">
+                <Callout key={i} tone="danger">
                   {e}
-                </p>
+                </Callout>
               ))}
             </div>
           )}
           {diotEntries && diotEntries.length > 0 && (
             <div className="overflow-x-auto rounded-xl border border-border">
-              <Table className="text-xs">
+              <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="h-9">RFC tercero</TableHead>
-                    <TableHead className="h-9">Nombre</TableHead>
-                    <TableHead className="h-9">Monto neto</TableHead>
-                    <TableHead className="h-9">IVA trasladado</TableHead>
-                    <TableHead className="h-9">IVA acreditable</TableHead>
-                    <TableHead className="h-9"># CFDI</TableHead>
+                    <TableHead>RFC tercero</TableHead>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Monto neto</TableHead>
+                    <TableHead>IVA trasladado</TableHead>
+                    <TableHead>IVA acreditable</TableHead>
+                    <TableHead># CFDI</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -799,8 +774,8 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Declaraciones mensuales</CardTitle>
+        <CardHeader>
+          <CardTitle>Declaraciones mensuales</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">Captura las declaraciones mensuales de IVA ya presentadas -- alimentan conciliación, saldo a favor, congruencia y solicitud.</p>
@@ -809,31 +784,27 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">3. Conciliación (facturas ↔ DIOT ↔ declaración)</CardTitle>
+        <CardHeader>
+          <CardTitle>3. Conciliación (facturas ↔ DIOT ↔ declaración)</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {conciliacionError && (
-            <p role="alert" className="text-destructive text-sm">
-              {conciliacionError}
-            </p>
-          )}
+          {conciliacionError && <Callout tone="danger">{conciliacionError}</Callout>}
           <div>
-            <Button type="button" onClick={() => void handleConciliar()} disabled={conciliacionLoading}>
+            <Button type="button" onClick={() => void handleConciliar()} loading={conciliacionLoading}>
               <ListChecks />
-              {conciliacionLoading ? "Conciliando…" : "Conciliar"}
+              Conciliar
             </Button>
           </div>
           {facturasVsDiot && (
             <div>
-              <p className="mb-1 text-xs font-semibold text-foreground">Facturas vs DIOT</p>
+              <p className="mb-1 text-xs font-medium text-foreground">Facturas vs DIOT</p>
               <div className="overflow-x-auto rounded-xl border border-border">
-                <Table className="text-xs">
+                <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="h-9">Factura</TableHead>
-                      <TableHead className="h-9">Estatus</TableHead>
-                      <TableHead className="h-9">Detalle</TableHead>
+                      <TableHead>Factura</TableHead>
+                      <TableHead>Estatus</TableHead>
+                      <TableHead>Detalle</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -853,15 +824,15 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
           )}
           {diotVsDeclaracion && diotVsDeclaracion.length > 0 && (
             <div>
-              <p className="mb-1 text-xs font-semibold text-foreground">DIOT vs declaración</p>
+              <p className="mb-1 text-xs font-medium text-foreground">DIOT vs declaración</p>
               <div className="overflow-x-auto rounded-xl border border-border">
-                <Table className="text-xs">
+                <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="h-9">IVA DIOT</TableHead>
-                      <TableHead className="h-9">IVA declaración</TableHead>
-                      <TableHead className="h-9">Diferencia</TableHead>
-                      <TableHead className="h-9">Estatus</TableHead>
+                      <TableHead>IVA DIOT</TableHead>
+                      <TableHead>IVA declaración</TableHead>
+                      <TableHead>Diferencia</TableHead>
+                      <TableHead>Estatus</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -884,19 +855,15 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">4. Saldo a favor / monto de devolución</CardTitle>
+        <CardHeader>
+          <CardTitle>4. Saldo a favor / monto de devolución</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {saldoError && (
-            <p role="alert" className="text-destructive text-sm">
-              {saldoError}
-            </p>
-          )}
+          {saldoError && <Callout tone="danger">{saldoError}</Callout>}
           <div>
-            <Button type="button" onClick={() => void handleCalcularSaldo()} disabled={saldoLoading}>
+            <Button type="button" onClick={() => void handleCalcularSaldo()} loading={saldoLoading}>
               <Calculator />
-              {saldoLoading ? "Calculando…" : "Calcular saldo a favor"}
+              Calcular saldo a favor
             </Button>
           </div>
           {montoDevolucion && (
@@ -928,23 +895,18 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">5. Congruencia DIOT ↔ CFDI ↔ declaración (REQ-IVA-010)</CardTitle>
+        <CardHeader>
+          <CardTitle>5. Congruencia DIOT ↔ CFDI ↔ declaración (REQ-IVA-010)</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <div className="flex w-44 flex-col gap-1.5">
-            <Label htmlFor="iva-tolerancia">Tolerancia (MXN)</Label>
+          <FormField label="Tolerancia (MXN)" className="w-44">
             <Input id="iva-tolerancia" type="number" step="0.01" value={tolerancia} onChange={(e) => setTolerancia(e.target.value)} />
-          </div>
-          {congruenciaError && (
-            <p role="alert" className="text-destructive text-sm">
-              {congruenciaError}
-            </p>
-          )}
+          </FormField>
+          {congruenciaError && <Callout tone="danger">{congruenciaError}</Callout>}
           <div>
-            <Button type="button" onClick={() => void handleVerificarCongruencia()} disabled={congruenciaLoading}>
+            <Button type="button" onClick={() => void handleVerificarCongruencia()} loading={congruenciaLoading}>
               <CheckCircle2 />
-              {congruenciaLoading ? "Verificando…" : "Verificar congruencia"}
+              Verificar congruencia
             </Button>
           </div>
           {congruencia && (
@@ -966,8 +928,8 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">6. Solicitud de devolución</CardTitle>
+        <CardHeader>
+          <CardTitle>6. Solicitud de devolución</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
@@ -975,31 +937,23 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
             10,001 MXN, el servidor exige congruencia (paso 5) para dejarla lista para envío -- si no es congruente, queda "requiere aclaración". No se persiste: archívala donde corresponda.
           </p>
           <form onSubmit={handlePrepararSolicitud} className="flex max-w-lg flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="sol-cuenta">Cuenta bancaria (opcional)</Label>
+            <FormField label="Cuenta bancaria (opcional)">
               <Input id="sol-cuenta" type="text" value={cuentaBanco} onChange={(e) => setCuentaBanco(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="sol-clabe">CLABE (opcional, 18 dígitos)</Label>
+            </FormField>
+            <FormField label="CLABE (opcional, 18 dígitos)">
               <Input id="sol-clabe" type="text" value={clabe} onChange={(e) => setClabe(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="sol-documentos">Documentos soporte (separados por coma)</Label>
+            </FormField>
+            <FormField label="Documentos soporte (separados por coma)">
               <Input id="sol-documentos" type="text" value={documentosTexto} onChange={(e) => setDocumentosTexto(e.target.value)} placeholder="cfdi.zip, diot.txt, declaraciones.pdf" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="sol-tenant">Tenant ID (opcional)</Label>
+            </FormField>
+            <FormField label="Tenant ID (opcional)">
               <Input id="sol-tenant" type="text" value={tenantId} onChange={(e) => setTenantId(e.target.value)} />
-            </div>
-            {solicitudError && (
-              <p role="alert" className="text-destructive text-sm">
-                {solicitudError}
-              </p>
-            )}
+            </FormField>
+            {solicitudError && <Callout tone="danger">{solicitudError}</Callout>}
             <div>
-              <Button type="submit" disabled={solicitudLoading}>
+              <Button type="submit" loading={solicitudLoading}>
                 <Send />
-                {solicitudLoading ? "Preparando…" : "Preparar solicitud"}
+                Preparar solicitud
               </Button>
             </div>
           </form>
@@ -1019,7 +973,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
               {solicitud.estado === "lista_para_envio" ? (
                 <Callout tone="success">Lista para envío.</Callout>
               ) : (
-                <Callout tone="warning" role="alert">
+                <Callout tone="warning">
                   Requiere aclaración: {solicitud.motivoAclaracion}
                 </Callout>
               )}
@@ -1029,25 +983,20 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">7. Plazo de resolución (Art. 22 CFF)</CardTitle>
+        <CardHeader>
+          <CardTitle>7. Plazo de resolución (Art. 22 CFF)</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <form onSubmit={handleCalcularPlazo} className="flex max-w-sm flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="plazo-fecha">Fecha de presentación *</Label>
+            <FormField label="Fecha de presentación" required>
               <Input id="plazo-fecha" type="date" value={fechaPresentacion} onChange={(e) => setFechaPresentacion(e.target.value)} required />
-            </div>
+            </FormField>
             <Checkbox checked={hayDictamenOGarantia} onChange={(e) => setHayDictamenOGarantia(e.target.checked)} label="Hay dictamen de contador público registrado o garantía del interés fiscal (plazo de 20 días hábiles en vez de 40)" />
-            {plazoError && (
-              <p role="alert" className="text-destructive text-sm">
-                {plazoError}
-              </p>
-            )}
+            {plazoError && <Callout tone="danger">{plazoError}</Callout>}
             <div>
-              <Button type="submit" disabled={plazoLoading}>
+              <Button type="submit" loading={plazoLoading}>
                 <CalendarClock />
-                {plazoLoading ? "Calculando…" : "Calcular plazo"}
+                Calcular plazo
               </Button>
             </div>
           </form>
@@ -1060,12 +1009,11 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">8. Papel de trabajo</CardTitle>
+        <CardHeader>
+          <CardTitle>8. Papel de trabajo</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <div className="flex max-w-md flex-col gap-1.5">
-            <Label htmlFor="papel-documentos">Documentos soporte (separados por coma)</Label>
+          <FormField label="Documentos soporte (separados por coma)" className="max-w-md">
             <Input
               id="papel-documentos"
               type="text"
@@ -1073,16 +1021,12 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
               onChange={(e) => setDocumentosSoporteTexto(e.target.value)}
               placeholder="cfdi.zip, diot.txt, estados_cuenta.pdf"
             />
-          </div>
-          {papelError && (
-            <p role="alert" className="text-destructive text-sm">
-              {papelError}
-            </p>
-          )}
+          </FormField>
+          {papelError && <Callout tone="danger">{papelError}</Callout>}
           <div>
-            <Button type="button" onClick={() => void handleGenerarPapel()} disabled={papelLoading}>
+            <Button type="button" onClick={() => void handleGenerarPapel()} loading={papelLoading}>
               <ClipboardList />
-              {papelLoading ? "Generando…" : "Generar papel de trabajo"}
+              Generar papel de trabajo
             </Button>
           </div>
           {papel && (
@@ -1099,7 +1043,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
                 </span>
               </div>
               <div className="flex flex-col gap-1">
-                <p className="font-semibold">1. Resumen del periodo</p>
+                <p className="font-medium">1. Resumen del periodo</p>
                 <div className="flex flex-wrap gap-4 text-muted-foreground">
                   <span>Subtotal: {formatMoney(papel.secciones["1_resumen_periodo"].resumenFacturas.totalSubtotal)}</span>
                   <span>IVA trasladado: {formatMoney(papel.secciones["1_resumen_periodo"].resumenFacturas.totalIvaTrasladado)}</span>
@@ -1107,25 +1051,25 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
                 </div>
               </div>
               <div className="flex flex-col gap-1">
-                <p className="font-semibold">3. Conciliación CFDI ↔ DIOT</p>
+                <p className="font-medium">3. Conciliación CFDI ↔ DIOT</p>
                 <span className="text-muted-foreground">
                   {papel.secciones["3_conciliacion_cfdi_diot"].matches}/{papel.secciones["3_conciliacion_cfdi_diot"].totalFacturas} conciliadas ({papel.secciones["3_conciliacion_cfdi_diot"].tasaConciliacion}%)
                 </span>
               </div>
               <div className="flex flex-col gap-1">
-                <p className="font-semibold">5. Cálculo de saldo</p>
+                <p className="font-medium">5. Cálculo de saldo</p>
                 <span className="text-muted-foreground">
                   Saldo a favor: {formatMoney(papel.secciones["5_calculo_saldo"].saldoAFavor)} · Monto sugerido: {formatMoney(papel.secciones["5_calculo_saldo"].montoDevolucion.montoDevolucionSugerido)}
                 </span>
               </div>
               <div className="flex flex-col gap-1">
-                <p className="font-semibold">6. Documentos soporte</p>
+                <p className="font-medium">6. Documentos soporte</p>
                 <div className="flex flex-wrap gap-3 text-muted-foreground">
-                  <span>CFDI: {papel.secciones["6_documentos_soporte"].checklist.cfdiCompra ? "✓" : "✗"}</span>
-                  <span>DIOT: {papel.secciones["6_documentos_soporte"].checklist.diot ? "✓" : "✗"}</span>
-                  <span>Declaraciones: {papel.secciones["6_documentos_soporte"].checklist.declaraciones ? "✓" : "✗"}</span>
-                  <span>Estados de cuenta: {papel.secciones["6_documentos_soporte"].checklist.estadosCuenta ? "✓" : "✗"}</span>
-                  <span>Balanza: {papel.secciones["6_documentos_soporte"].checklist.balanza ? "✓" : "✗"}</span>
+                  <span className="inline-flex items-center gap-1">CFDI: <StatusBadge tone={papel.secciones["6_documentos_soporte"].checklist.cfdiCompra ? "success" : "danger"}>{papel.secciones["6_documentos_soporte"].checklist.cfdiCompra ? "Sí" : "No"}</StatusBadge></span>
+                  <span className="inline-flex items-center gap-1">DIOT: <StatusBadge tone={papel.secciones["6_documentos_soporte"].checklist.diot ? "success" : "danger"}>{papel.secciones["6_documentos_soporte"].checklist.diot ? "Sí" : "No"}</StatusBadge></span>
+                  <span className="inline-flex items-center gap-1">Declaraciones: <StatusBadge tone={papel.secciones["6_documentos_soporte"].checklist.declaraciones ? "success" : "danger"}>{papel.secciones["6_documentos_soporte"].checklist.declaraciones ? "Sí" : "No"}</StatusBadge></span>
+                  <span className="inline-flex items-center gap-1">Estados de cuenta: <StatusBadge tone={papel.secciones["6_documentos_soporte"].checklist.estadosCuenta ? "success" : "danger"}>{papel.secciones["6_documentos_soporte"].checklist.estadosCuenta ? "Sí" : "No"}</StatusBadge></span>
+                  <span className="inline-flex items-center gap-1">Balanza: <StatusBadge tone={papel.secciones["6_documentos_soporte"].checklist.balanza ? "success" : "danger"}>{papel.secciones["6_documentos_soporte"].checklist.balanza ? "Sí" : "No"}</StatusBadge></span>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">{papel.secciones["7_no_discrepancia_fiscal_depositos"].advertenciaFiscal}</p>

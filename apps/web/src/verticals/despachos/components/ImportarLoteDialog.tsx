@@ -4,7 +4,7 @@
 // cancelacion) vive en ../lib/cfdi-lote.ts; aqui solo hay presentacion y estado.
 import { useRef, useState } from "react";
 import { FileStack, Upload } from "lucide-react";
-import { Button, DataTable, FormDialog, Label, StatusBadge, notify } from "@atiende/ui";
+import { Button, Callout, DataTable, FormDialog, FormField, StatusBadge, notify } from "@atiende/ui";
 import { armarTandas, descomprimirZip, ejecutarImportacion, importarLote, MAX_BYTES_XML, ZipNavegadorError } from "../lib/cfdi-lote.ts";
 import type { ArchivoParaLote, EstadoArchivoLote, ProgresoLote, ResultadoArchivoLote, ResumenImportacion } from "../lib/cfdi-lote.ts";
 
@@ -121,24 +121,24 @@ export function ImportarLoteDialog({ open, onOpenChange, apiBaseUrl, token, prop
       bloquearCierre={corriendo}
       footer={
         corriendo ? (
-          <Button type="button" variant="outline" className="rounded-full px-6" onClick={cancelar} disabled={cancelando}>
-            {cancelando ? "Cancelando…" : "Cancelar importación"}
+          <Button type="button" variant="outline" onClick={cancelar} loading={cancelando} loadingText="Cancelando…">
+            Cancelar importación
           </Button>
         ) : resumen ? (
           <>
-            <Button type="button" variant="outline" className="rounded-full px-6" onClick={reiniciar}>
+            <Button type="button" variant="outline" onClick={reiniciar}>
               Importar otro lote
             </Button>
-            <Button type="button" className="rounded-full px-6" onClick={() => onOpenChange(false)}>
+            <Button type="button" onClick={() => onOpenChange(false)}>
               Cerrar
             </Button>
           </>
         ) : (
           <>
-            <Button type="button" variant="outline" className="rounded-full px-6" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="button" className="rounded-full px-6" onClick={() => void importar()} disabled={seleccion.length === 0}>
+            <Button type="button" onClick={() => void importar()} disabled={seleccion.length === 0}>
               <Upload />
               Importar
             </Button>
@@ -149,16 +149,17 @@ export function ImportarLoteDialog({ open, onOpenChange, apiBaseUrl, token, prop
       <div className="flex flex-col gap-3">
         {!corriendo && !resumen && (
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cfdi-lote-archivos">Archivos (.zip o .xml)</Label>
-            <input
-              id="cfdi-lote-archivos"
-              ref={inputRef}
-              type="file"
-              multiple
-              accept=".zip,.xml,application/zip,application/xml,text/xml"
-              className="block w-full text-sm text-foreground file:mr-3 file:rounded-full file:border file:border-border file:bg-canvas file:px-3 file:py-1.5 file:text-xs file:font-medium"
-              onChange={(e) => setSeleccion([...(e.target.files ?? [])])}
-            />
+            <FormField label="Archivos (.zip o .xml)">
+              <input
+                id="cfdi-lote-archivos"
+                ref={inputRef}
+                type="file"
+                multiple
+                accept=".zip,.xml,application/zip,application/xml,text/xml"
+                className="block w-full text-sm text-foreground file:mr-3 file:rounded-lg file:border file:border-border file:bg-canvas file:px-3 file:py-1.5 file:text-xs file:font-medium"
+                onChange={(e) => setSeleccion([...(e.target.files ?? [])])}
+              />
+            </FormField>
             <p className="text-xs text-muted-foreground">
               Un ZIP se descomprime en tu navegador y se envía en tandas de hasta 50 XML (máximo 512 KB por XML). Los complementos de pago (REP) se registran como pagos; los recibos de nómina se rechazan.
             </p>
@@ -166,11 +167,7 @@ export function ImportarLoteDialog({ open, onOpenChange, apiBaseUrl, token, prop
           </div>
         )}
 
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
+        {error && <Callout tone="danger">{error}</Callout>}
 
         {progreso && corriendo && (
           <div className="flex flex-col gap-1.5" aria-live="polite">
@@ -189,14 +186,14 @@ export function ImportarLoteDialog({ open, onOpenChange, apiBaseUrl, token, prop
         {resumen && t && (
           <div className="flex flex-col gap-3">
             {resumen.cancelada && (
-              <p role="status" className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+              <Callout tone="neutral">
                 Importación cancelada: se importaron {t.ingeridos + t.enRevision} CFDI y quedaron {resumen.sinProcesar} archivo(s) sin enviar. Lo ya importado NO se revierte; puedes volver a cargar el mismo lote (lo que ya existe se reporta como «Ya existía»).
-              </p>
+              </Callout>
             )}
             {resumen.error && (
-              <p role="alert" className="text-sm text-destructive">
+              <Callout tone="danger">
                 La importación se detuvo: {resumen.error} Quedaron {resumen.sinProcesar} archivo(s) sin enviar; lo ya importado no se revierte. Si vuelves a cargar el mismo lote, lo ya importado se reporta como duplicado y se completa lo pendiente.
-              </p>
+              </Callout>
             )}
             <p className="flex flex-wrap items-center gap-2 text-sm" role="status">
               <FileStack className="h-4 w-4 shrink-0" strokeWidth={1.75} />
