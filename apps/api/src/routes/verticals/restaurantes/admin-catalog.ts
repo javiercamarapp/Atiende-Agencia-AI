@@ -5,8 +5,9 @@
 // disponibilidad EN UNA SUCURSAL (branch_products, la fuente real de precio/
 // disponibilidad que ya consulta searchProducts/quoteOrder — ver product-search.ts
 // y postgres-repository.ts). Mismo patrón de montaje/roles que admin-kpis.ts
-// (Fase 3): `:propertyId` + `requirePropertyMembership` + `assertVerticalRole(c,
-// MANAGER_ROLES)` dentro de cada handler.
+// (Fase 3): `:propertyId` + `requirePropertyMembership` + `assertAccion(c, ...)` dentro de
+// cada handler (matriz por accion de roles.ts, PL-23: ver el menu y marcar agotado = owner/admin/staff; cambiar
+// precios y editar el catalogo = owner/admin).
 //
 // El catálogo (categorías/productos) es organization-wide, no por-sucursal — un
 // producto se crea UNA vez para toda la organización y luego se activa/con precio
@@ -16,10 +17,11 @@
 // igual que en admin-kpis.ts — y para el sub-recurso de disponibilidad por
 // sucursal (`/branch-availability`), que sí es por-property.
 import { Hono } from "hono";
-import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
+import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES } from "@atiende/domain-restaurantes";
+import { puedeEjecutar } from "@atiende/domain-restaurantes";
 import type { Category, Product } from "@atiende/domain-restaurantes";
+import { assertAccion } from "./permisos-accion.ts";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -142,14 +144,14 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
   app.use("/v1/restaurantes/:propertyId/admin/products", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get("/v1/restaurantes/:propertyId/admin/categories", async (c) => {
-    assertVerticalRole(c, MANAGER_ROLES);
+    assertAccion(c, "catalogo.ver");
     const repo = deps.restaurantesRepo(c.get("db"));
     const categories = await repo.listCategories(c.get("organizationId"));
     return c.json({ categories: categories.map(serializeCategory) });
   });
 
   app.post("/v1/restaurantes/:propertyId/admin/categories", async (c) => {
-    assertVerticalRole(c, MANAGER_ROLES);
+    assertAccion(c, "catalogo.precio");
     const repo = deps.restaurantesRepo(c.get("db"));
     const raw = await readJsonCapped<CategoryBody>(c.req.raw, 8 * 1024);
     const name = requireNonEmptyString(raw.name, "name", 120);
@@ -157,11 +159,21 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
     const displayOrder = optionalDisplayOrder(raw.displayOrder);
     const created = await repo.createCategory(c.get("organizationId"), { name, slug, ...(displayOrder !== undefined ? { displayOrder } : {}) });
     logEvent(c, "info", "restaurantes_admin_categoria_creada", { actorUserId: c.get("userId"), organizationId: c.get("organizationId"), categoryId: created.id });
+    await repo.registrarAuditoria({
+      organizationId: c.get("organizationId"),
+      actorUserId: c.get("userId"),
+      action: "categoria.creada",
+      entityType: "producto",
+      entityId: created.id,
+      campo: "name,slug",
+      antes: null,
+      despues: `${created.name} (${created.slug})`,
+    });
     return c.json({ category: serializeCategory(created) }, 201);
   });
 
   app.patch("/v1/restaurantes/:propertyId/admin/categories/:categoryId", async (c) => {
-    assertVerticalRole(c, MANAGER_ROLES);
+    assertAccion(c, "catalogo.precio");
     const repo = deps.restaurantesRepo(c.get("db"));
     const raw = await readJsonCapped<CategoryBody>(c.req.raw, 8 * 1024);
     const patch = {
@@ -169,14 +181,25 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
       slug: raw.slug !== undefined ? requireSlug(raw.slug) : undefined,
       displayOrder: optionalDisplayOrder(raw.displayOrder),
     };
+    const antes = (await repo.listCategories(c.get("organizationId"))).find((cat) => cat.id === c.req.param("categoryId"));
     const updated = await repo.updateCategory(c.get("organizationId"), c.req.param("categoryId"), patch);
     if (!updated) throw Errors.notFound("Categoría no encontrada.");
+    await repo.registrarAuditoria({
+      organizationId: c.get("organizationId"),
+      actorUserId: c.get("userId"),
+      action: "categoria.actualizada",
+      entityType: "producto",
+      entityId: updated.id,
+      campo: "name,slug,displayOrder",
+      antes: antes ? `${antes.name} (${antes.slug})` : null,
+      despues: `${updated.name} (${updated.slug})`,
+    });
     logEvent(c, "info", "restaurantes_admin_categoria_actualizada", { actorUserId: c.get("userId"), organizationId: c.get("organizationId"), categoryId: updated.id });
     return c.json({ category: serializeCategory(updated) });
   });
 
   app.get("/v1/restaurantes/:propertyId/admin/products", async (c) => {
-    assertVerticalRole(c, MANAGER_ROLES);
+    assertAccion(c, "catalogo.ver");
     const repo = deps.restaurantesRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
     const products = await repo.listProducts(c.get("organizationId"));
@@ -190,7 +213,7 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
   });
 
   app.post("/v1/restaurantes/:propertyId/admin/products", async (c) => {
-    assertVerticalRole(c, MANAGER_ROLES);
+    assertAccion(c, "catalogo.precio");
     const repo = deps.restaurantesRepo(c.get("db"));
     const raw = await readJsonCapped<ProductBody>(c.req.raw, 16 * 1024);
     const name = requireNonEmptyString(raw.name, "name", 160);
@@ -215,11 +238,21 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
       ...(searchKeywords !== undefined ? { searchKeywords } : {}),
     });
     logEvent(c, "info", "restaurantes_admin_producto_creado", { actorUserId: c.get("userId"), organizationId: c.get("organizationId"), productId: created.id });
+    await repo.registrarAuditoria({
+      organizationId: c.get("organizationId"),
+      actorUserId: c.get("userId"),
+      action: "producto.creado",
+      entityType: "producto",
+      entityId: created.id,
+      campo: "name,price",
+      antes: null,
+      despues: `${created.name} (precio base ${created.price})`,
+    });
     return c.json({ product: { ...serializeProduct(created), branch: null } }, 201);
   });
 
   app.patch("/v1/restaurantes/:propertyId/admin/products/:productId", async (c) => {
-    assertVerticalRole(c, MANAGER_ROLES);
+    assertAccion(c, "catalogo.precio");
     const repo = deps.restaurantesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const productId = c.req.param("productId");
@@ -286,17 +319,45 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
   // product-search.ts::listAvailableProductsForBranch). Confirma primero que el
   // producto pertenece a esta organización — nunca se activa a ciegas un id ajeno.
   app.patch("/v1/restaurantes/:propertyId/admin/products/:productId/branch-availability", async (c) => {
-    assertVerticalRole(c, MANAGER_ROLES);
     const repo = deps.restaurantesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const productId = c.req.param("productId");
+    const raw = await readJsonCapped<BranchAvailabilityBody>(c.req.raw, 4 * 1024);
+
+    // PL-23 -- permiso por accion segun lo que el body PIDE cambiar: marcar agotado/disponible es de owner/admin/staff
+    // (`catalogo.disponibilidad`); mandar un precio (o dar de alta el producto en la sucursal) es de owner/admin
+    // (`catalogo.precio`). Un staff que manda `price` recibe 403 aunque el valor sea el mismo: el cliente del panel solo
+    // manda `isAvailable` en el interruptor de disponibilidad.
+    const cambiaPrecio = raw.price !== undefined;
+    assertAccion(c, cambiaPrecio ? "catalogo.precio" : "catalogo.disponibilidad");
 
     const product = await repo.findProduct(organizationId, productId);
     if (!product) throw Errors.notFound("Producto no encontrado.");
 
-    const raw = await readJsonCapped<BranchAvailabilityBody>(c.req.raw, 4 * 1024);
     const existing = await repo.getBranchProductState(propertyId, productId);
+
+    if (!puedeEjecutar(c.get("verticalRole"), "catalogo.precio")) {
+      // Camino del staff: SOLO `is_available` de una fila que ya existe (nunca alta, nunca precio).
+      if (raw.isAvailable === undefined) throw Errors.validation("isAvailable: indica si el producto está disponible o agotado.");
+      const isAvailable = requireBoolean(raw.isAvailable, "isAvailable");
+      if (!existing) throw Errors.conflict("Este producto todavía no está dado de alta en esta sucursal: pide a un administrador que lo active.");
+      const state = await repo.setBranchProductAvailability(propertyId, productId, isAvailable);
+      if (!state) throw Errors.conflict("Este producto todavía no está dado de alta en esta sucursal: pide a un administrador que lo active.");
+      logEvent(c, "info", "restaurantes_admin_producto_disponibilidad_sucursal_actualizada", { actorUserId: c.get("userId"), organizationId, propertyId, productId, isAvailable });
+      await repo.registrarAuditoria({
+        organizationId,
+        actorUserId: c.get("userId"),
+        action: "producto.disponibilidad_sucursal_actualizada",
+        entityType: "producto",
+        entityId: productId,
+        campo: "isAvailable",
+        antes: `isAvailable=${existing.isAvailable} (sucursal ${propertyId})`,
+        despues: `isAvailable=${isAvailable} (sucursal ${propertyId})`,
+      });
+      return c.json({ branch: state });
+    }
+
     const price = raw.price !== undefined ? requirePrice(raw.price) : (existing?.price ?? product.price);
     const isAvailable = raw.isAvailable !== undefined ? requireBoolean(raw.isAvailable, "isAvailable") : (existing?.isAvailable ?? true);
 

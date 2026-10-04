@@ -2,7 +2,7 @@
 // domain-restaurantes/src/promotions.ts para el porqué completo del gap y por qué
 // es deliberadamente nuevo respecto al original). Mismo patrón de montaje/roles
 // exacto que admin-catalog.ts (Fase 5): `:propertyId` + `requirePropertyMembership`
-// + `assertVerticalRole(c, MANAGER_ROLES)` dentro de cada handler — una promoción
+// + `assertAccion(c, ...)` (matriz por accion de roles.ts, PL-23) dentro de cada handler — una promoción
 // es organization-wide (nunca por-sucursal, igual que categorías/productos),
 // `:propertyId` en el path solo sirve para resolver `organizationId` real vía
 // `requirePropertyMembership`.
@@ -12,11 +12,12 @@
 // criterio exacto que `isAvailable` en admin-catalog.ts (nunca duplicar una ruta
 // solo para togglear un booleano que el PATCH genérico ya cubre).
 import { Hono } from "hono";
-import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
+import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, normalizePromotionCode, PROMOTION_CODE_PATTERN, RestaurantesConfigUnavailableError } from "@atiende/domain-restaurantes";
+import { normalizePromotionCode, PROMOTION_CODE_PATTERN, RestaurantesConfigUnavailableError } from "@atiende/domain-restaurantes";
 import type { CanalPedido, Promotion, PromotionType, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { UUID_PATTERN } from "@atiende/domain-restaurantes";
+import { assertAccion } from "./permisos-accion.ts";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -256,14 +257,14 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
   app.use("/v1/restaurantes/:propertyId/admin/promotions", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get("/v1/restaurantes/:propertyId/admin/promotions", async (c) => {
-    assertVerticalRole(c, MANAGER_ROLES);
+    assertAccion(c, "promociones.ver");
     const repo = deps.restaurantesRepo(c.get("db"));
     const promotions = await repo.listPromotions(c.get("organizationId"));
     return c.json({ promotions: promotions.map(serializePromotion) });
   });
 
   app.post("/v1/restaurantes/:propertyId/admin/promotions", async (c) => {
-    assertVerticalRole(c, MANAGER_ROLES);
+    assertAccion(c, "promociones.editar");
     const repo = deps.restaurantesRepo(c.get("db"));
     const raw = await readJsonCapped<PromotionBody>(c.req.raw, 8 * 1024);
 
@@ -340,7 +341,7 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
   });
 
   app.patch("/v1/restaurantes/:propertyId/admin/promotions/:promotionId", async (c) => {
-    assertVerticalRole(c, MANAGER_ROLES);
+    assertAccion(c, "promociones.editar");
     const repo = deps.restaurantesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const promotionId = c.req.param("promotionId");
