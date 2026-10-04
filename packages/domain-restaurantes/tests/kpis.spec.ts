@@ -57,9 +57,12 @@ function makeOrder(overrides: Partial<Order> & { organizationId: string; propert
 // tests frágiles según el TZ de quien los corra — con el constructor local, la
 // comparación es consistente sin importar el TZ del proceso.
 describe("buildTrendBuckets — puerto de construirTramosTendencia", () => {
-  it("'today' da 13 tramos de 1 hora, de 11:00 a 23:00", () => {
+  it("'today' sin horario da los 24 tramos de 1 hora del dia local; con las horas de la sucursal, solo esas (QA-03)", () => {
     const now = new Date(2026, 8, 10, 18, 0, 0);
-    const tramos = buildTrendBuckets("today", now, null);
+    const completo = buildTrendBuckets("today", now, null);
+    expect(completo).toHaveLength(24);
+    expect(completo[0]!.label).toBe("00:00");
+    const tramos = buildTrendBuckets("today", now, null, { horasHoy: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] });
     expect(tramos).toHaveLength(13);
     expect(tramos[0]!.label).toBe("11:00");
     expect(tramos.at(-1)!.label).toBe("23:00");
