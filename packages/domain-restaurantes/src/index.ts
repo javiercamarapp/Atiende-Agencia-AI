@@ -317,3 +317,4 @@ export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operati
 export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
 export * from "./encuesta-reglas.ts";
 export * from "./resenas-provider.ts";
+export * from "./mezcla-de-pago.ts";
