@@ -36,7 +36,7 @@ describe("buildPmSeedPlan", () => {
   it("modela las 7 sucursales: T1, T3 y T7 activas; T5 inactiva fuera de temporada; T2 y T8 con catalogo provisional pero inactivas; T4 Galerias sin pedidos", () => {
     expect(plan.branches).toHaveLength(7);
     expect(plan.branches.filter((b) => b.status === "active").map((b) => b.slug).sort()).toEqual(["garcia-lavin", "pensiones", "prol-montejo"]);
-    expect(plan.branches.map((b) => [b.id, b.catalogSize])).toEqual([["T1", 278], ["T2", 263], ["T3", 251], ["T4", 0], ["T5", 262], ["T7", 278], ["T8", 278]]);
+    expect(plan.branches.map((b) => [b.id, b.catalogSize])).toEqual([["T1", 278], ["T2", 265], ["T3", 265], ["T4", 0], ["T5", 264], ["T7", 278], ["T8", 278]]);
     expect(plan.branches.find((b) => b.slug === "galerias")).toMatchObject({ status: "inactive", catalogSize: 0, phone: "999 941 9612", lat: null, lng: null });
     expect(plan.branches.find((b) => b.slug === "playa")).toMatchObject({ status: "inactive", phone: "969 688 4195", address: "C. 19 x 22 y 24, Chicxulub, Progreso" });
     expect(plan.branches.find((b) => b.slug === "garcia-lavin")!.name).toBe("García Lavín (Victory Platz)");
@@ -52,9 +52,9 @@ describe("buildPmSeedPlan", () => {
     expect(cervezas.some((p) => p.noDomicilio) && cervezas.some((p) => !p.noDomicilio)).toBe(true);
   });
 
-  it("precios por sucursal: T1 278, T2 263, T3 251, T5 262, T7 278 y T8 278 (menus impresos + fracciones de kilo + extras; T7 = lista T1-2026)", () => {
-    expect(plan.summary.productsByBranch).toEqual({ T1: 278, T2: 263, T3: 251, T4: 0, T5: 262, T7: 278, T8: 278 });
-    expect(plan.summary.branchProducts).toBe(278 + 263 + 251 + 262 + 278 + 278);
+  it("catalogo por sucursal: T1 278, T2 265, T3 265, T5 264, T7 278 y T8 278 (lista T1-2026 en todas; T2 y T3 sin comida regional ni flautas; T5 solo lo impreso)", () => {
+    expect(plan.summary.productsByBranch).toEqual({ T1: 278, T2: 265, T3: 265, T4: 0, T5: 264, T7: 278, T8: 278 });
+    expect(plan.summary.branchProducts).toBe(278 + 265 + 265 + 264 + 278 + 278);
   });
 
   it("politica PM: franja 12:00-01:00 todos los dias, minimo a domicilio $200, propina solo con tarjeta", () => {
@@ -66,11 +66,22 @@ describe("buildPmSeedPlan", () => {
     });
   });
 
-  it("solo se carga el 2x1 del lunes (solo recoger); el combo del martes se reporta como no cargado", () => {
+  it("se cargan el 2x1 del lunes y el combo de cortesia del martes: solo recoger y SIN restriccion de sucursal (todas)", () => {
     expect(plan.promotions).toEqual([
-      expect.objectContaining({ code: "LUNES2X1PM", type: "bogo", daysOfWeek: [1], channels: ["recoger"], productNames: ["Taco Al Pastor (individual)"], branchIds: ["T2", "T3", "T4"] }),
+      expect.objectContaining({ code: "LUNES2X1PM", type: "bogo", daysOfWeek: [1], channels: ["recoger"], productNames: ["Taco Al Pastor (individual)"], branchIds: null, courtesyProductNames: null, courtesyQuantity: null }),
+      expect.objectContaining({
+        code: "MARTESNACHOSPM",
+        type: "cortesia",
+        daysOfWeek: [2],
+        channels: ["recoger"],
+        productNames: ["Nachos de Pastor"],
+        courtesyProductNames: ["Agua de Jamaica", "Horchata", "Té"],
+        courtesyQuantity: 2,
+        branchIds: null,
+        autoApply: true,
+      }),
     ]);
-    expect(plan.summary.skippedPromotions.join(" ")).toMatch(/PROMO-MAR/);
+    expect(plan.summary.skippedPromotions).toEqual([]);
   });
 
   it("zonas: solo puntos de sucursales con coordenadas reales (T3 y T4 no tienen; las de T5 son aproximadas); nada inventado", () => {
@@ -141,12 +152,12 @@ describe("archivos del agente (tools, evals) y comportamiento de voz generado", 
     expect(plan.voice.comportamiento).toContain("# ESCALACIÓN A HUMANO");
   });
 
-  it("validarComportamientoVoz rechaza prometer el combo del martes, exige decir que lo confirma la sucursal y respeta el tope", () => {
-    const ok = "El combo del martes la confirma la sucursal al recoger.";
+  it("validarComportamientoVoz exige que el combo del martes lo aplique cotizar_pedido, rechaza tratarlo como no cargado y respeta el tope", () => {
+    const ok = "H13. Combo del martes (nachos de pastor con 2 aguas, solo recoger): lo aplica cotizar_pedido; diga lo que devuelve.";
     expect(() => validarComportamientoVoz(ok)).not.toThrow();
-    expect(() => validarComportamientoVoz(`${ok} Martes: nachos con 2 aguas de cortesía.`)).toThrow(/promete el combo del martes/);
-    expect(() => validarComportamientoVoz(`${ok} El cliente elige dos aguas.`)).toThrow(/promete el combo del martes/);
-    expect(() => validarComportamientoVoz("Hoy no hay promociones.")).toThrow(/lo confirma la sucursal al recoger/);
+    expect(() => validarComportamientoVoz(`${ok} El combo del martes la confirma la sucursal al recoger.`)).toThrow(/todavia trata el combo del martes como no cargado/);
+    expect(() => validarComportamientoVoz(`${ok} No lo prometa ni lo aplique.`)).toThrow(/todavia trata el combo del martes/);
+    expect(() => validarComportamientoVoz("Hoy no hay promociones.")).toThrow(/lo aplica cotizar_pedido/);
     expect(() => validarComportamientoVoz(`${ok}${"x".repeat(COMPORTAMIENTO_MAX)}`)).toThrow(/maximo/);
   });
 });
@@ -154,9 +165,11 @@ describe("archivos del agente (tools, evals) y comportamiento de voz generado", 
 describe("SQL del seed", () => {
   const plan = buildPmSeedPlan(data, agent);
 
-  it("es acotado a la organizacion y no contiene operaciones destructivas", () => {
+  it("es acotado a la organizacion y no contiene operaciones destructivas (el unico delete es la reconciliacion de branch_products)", () => {
     const sql = renderPmSeedPlpgsql(plan);
-    expect(sql).not.toMatch(/\bdelete\b|\btruncate\b|\bdrop\b|\balter\b|\bgrant\b|password_hash/i);
+    expect(sql).not.toMatch(/\btruncate\b|\bdrop\b|\balter\b|\bgrant\b|password_hash/i);
+    expect(sql.match(/\bdelete\b/gi)).toHaveLength(1);
+    expect(sql).toMatch(/delete from restaurantes\.branch_products bp/);
     expect(sql).toMatch(/ya existe en otra vertical/);
     // La voz no se vuelve a deshabilitar ni habilitar al re-ejecutar; los usos de la promocion no se reinician.
     expect(sql).not.toMatch(/set[^;]*habilitado/i);
@@ -176,6 +189,7 @@ describe("SQL del seed", () => {
     const copia = clone(data) as unknown as { productos: Array<Record<string, unknown>>; promociones: unknown[] };
     copia.productos[0] = { ...copia.productos[0]!, nombre: "Taco 'del Rey'", descripcion: "linea1\nlinea2 \\ barra" };
     copia.promociones = [];
+    (copia as unknown as { agente_whatsapp: { promociones: string } }).agente_whatsapp.promociones = "sin promociones por ahora";
     const sql = renderPmSeedPlpgsql(buildPmSeedPlan(copia as unknown as typeof data, agent));
     expect(sql).toContain("Taco 'del Rey'");
     const conDelimitador = clone(data) as unknown as { productos: Array<Record<string, unknown>> };
@@ -359,18 +373,11 @@ describe("evals del agente vs. el motor real de pedidos (menu sembrado + 2x1 del
     // unifique la semantica. Se fija la lista exacta: si el motor o el menu cambian y aparece OTRA
     // discrepancia, este test falla; si el experto corrige las evals, falla pidiendo vaciar la lista.
     const SEMANTICA_PIEZAS_AMBIGUA_EN_EVALS = ["C04", "C08", "C09", "C11", "C13", "C20", "L03", "L17", "L22", "L25", "L46"];
-    // HALLAZGO REAL de PM-C1 (precio por sucursal): estas 5 evals de Pensiones (T3) esperan el total con los precios de T1-2026, pero Pensiones
-    // vende con su lista impresa T3-2025 (p. ej. pastor $36, no $42) y el motor cotiza con el precio de SU sucursal: 4 tacos al pastor el lunes
-    // = 2 x $36 + agua $51 = $123, no los $144 de la eval. Corregir esos totales es trabajo de PM-C5 (casos de evaluacion con datos reales);
-    // la lista es exacta y todas son de T3 con un total distinto.
-    const TOTAL_ESPERADO_CON_PRECIOS_DE_T1_EN_EVALS_DE_T3 = ["C01", "C10", "L14", "L30", "L39"];
-    for (const id of TOTAL_ESPERADO_CON_PRECIOS_DE_T1_EN_EVALS_DE_T3) {
-      const caso = casos.find((c) => c.id === id)!;
-      expect(caso.esperado.comanda!.sucursal).toBe("T3");
-      expect(discrepancias.find((d) => d.startsWith(`${id}:`))).toMatch(/total esperado/);
-    }
-    expect(discrepancias.map((d) => d.split(":")[0]).sort()).toEqual([...SEMANTICA_PIEZAS_AMBIGUA_EN_EVALS, ...TOTAL_ESPERADO_CON_PRECIOS_DE_T1_EN_EVALS_DE_T3].sort());
-    // Todos los demas casos (incluidos los 2x1 del lunes: L02 y C06; L30 es de T3 y esta en la lista de arriba) cuadran al centavo con el motor real.
+    // Con T3 en la lista T1-2026 (correccion CR01, 3-oct-2026) las 5 evals de Pensiones (C01, C10, L14, L30, L39), que esperan el total con los
+    // precios de T1-2026, YA cuadran con el motor: el 2x1 del lunes en T3 cobra lo mismo que en cualquier sucursal. Si T3 volviera a una lista distinta, fallarian aqui.
+    for (const id of ["C01", "C10", "L14", "L30", "L39"]) expect(casos.find((c) => c.id === id)!.esperado.comanda!.sucursal, id).toBe("T3");
+    expect(discrepancias.map((d) => d.split(":")[0]).sort()).toEqual([...SEMANTICA_PIEZAS_AMBIGUA_EN_EVALS].sort());
+    // Todos los demas casos (incluidos los 2x1 del lunes: L02 y C06; L30 y los de T3 incluidos) cuadran al centavo con el motor real.
     expect(casos.length - discrepancias.length).toBeGreaterThanOrEqual(20);
   });
 });

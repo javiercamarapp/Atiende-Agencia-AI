@@ -12,7 +12,7 @@ vi.mock("sonner", () => ({ toast: toastMock, Toaster: () => null }));
 
 import { IdentidadPage } from "../src/verticals/hoteles/pages/Identidad.tsx";
 import type { HotelesShellContext } from "../src/verticals/hoteles/HotelesShell.tsx";
-import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -119,6 +119,7 @@ function stubFetch(opts: Opts = {}) {
         ? jsonResponse({ message: "Doble control: quien solicita la purga no puede aprobarla ni rechazarla; debe decidirla otra persona con rol owner/gm." }, opts.decideStatus)
         : jsonResponse({ resultado: "ejecutada" });
     }
+    if (method !== "GET") return jsonResponse({ ok: true, resultado: "ok", solicitudId: "x", identidad: null, retencion: null, solicitud: null });
     throw new Error(`fetch inesperado en el test: ${method} ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -142,6 +143,14 @@ async function esperar(): Promise<void> {
 
 function buttonByText(text: string): HTMLButtonElement {
   return [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes(text)) as HTMLButtonElement;
+}
+
+const dialogo = () => document.body.querySelector('[role="alertdialog"], [role="dialog"]') as HTMLElement | null;
+const botonDialogo = (texto: string) => [...dialogo()!.querySelectorAll("button")].find((b) => b.textContent?.trim() === texto) as HTMLButtonElement;
+/** Cuerpo del dialogo (alertdialog de useConfirm o FormDialog) listo para escribir un motivo. */
+async function escribirYConfirmar(texto: string | null, boton: string): Promise<void> {
+  if (texto !== null) changeValue((dialogo()!.querySelector("textarea") ?? dialogo()!.querySelector("input")) as HTMLTextAreaElement, texto);
+  await clickButton(botonDialogo(boton));
 }
 
 async function clickButton(el: Element): Promise<void> {
@@ -180,7 +189,7 @@ describe("IdentidadPage (hoteles)", () => {
     rendered = renderPage();
     await esperar();
     expect(rendered.container.textContent).toContain("aún no está disponible");
-    expect(rendered.container.querySelector('form[aria-label="Capturar identidad"]')).toBeNull();
+    expect(buttonByText("Capturar identidad")).toBeUndefined();
   });
 
   it("sin llave de cifrado: avisa y NO ofrece capturar", async () => {
@@ -188,14 +197,16 @@ describe("IdentidadPage (hoteles)", () => {
     rendered = renderPage();
     await esperar();
     expect(rendered.container.textContent).toContain("Falta la llave de cifrado");
-    expect(rendered.container.querySelector('form[aria-label="Capturar identidad"]')).toBeNull();
+    expect(buttonByText("Capturar identidad")).toBeUndefined();
   });
 
-  it("con llave y base lista: muestra el formulario de captura cifrada", async () => {
+  it("con llave y base lista: ofrece capturar y el dialogo muestra el formulario de captura cifrada", async () => {
     stubFetch({ list: { disponible: true, llaveConfigurada: true, items: [] } });
     rendered = renderPage();
     await esperar();
-    expect(rendered.container.querySelector('form[aria-label="Capturar identidad"]')).not.toBeNull();
+    await clickButton(buttonByText("Capturar identidad"));
+    expect(dialogo()!.querySelector("form")).not.toBeNull();
+    expect(dialogo()!.querySelectorAll("label").length).toBeGreaterThanOrEqual(8);
     expect(rendered.container.textContent).toContain("Todavía no hay identidades capturadas");
   });
 
@@ -203,31 +214,41 @@ describe("IdentidadPage (hoteles)", () => {
     stubFetch({ list: { disponible: true, llaveConfigurada: true, items: [] } });
     rendered = renderPage();
     await esperar();
-    const plazo = rendered.container.querySelector('[data-testid="plazo-retencion"]')!;
+    await clickButton(buttonByText("Capturar identidad"));
+    const plazo = document.body.querySelector('[data-testid="plazo-retencion"]')!;
     expect(plazo.textContent).toContain("30 día(s)");
-    const nota = rendered.container.querySelector('[role="note"]')!.textContent!;
+    const nota = document.body.querySelector('[role="note"]')!.textContent!;
     expect(nota).toContain("aviso de privacidad");
     expect(nota).toContain("consentimiento");
     expect(nota).toContain("365 días");
   });
 
-  it("cancelar el prompt del motivo NUNCA llama a revelar", async () => {
+  it("cancelar el dialogo del motivo (boton o Escape) NUNCA llama a revelar", async () => {
     stubFetch();
-    vi.spyOn(window, "prompt").mockReturnValue(null);
+    const prompt = vi.spyOn(window, "prompt");
     rendered = renderPage();
     await esperar();
     const antes = fetchMock.mock.calls.length;
     await clickButton(buttonByText("Revelar"));
+    expect(dialogo()).not.toBeNull();
+    await clickButton(botonDialogo("Cancelar"));
+    expect(dialogo()).toBeNull();
+    await clickButton(buttonByText("Revelar"));
+    await act(async () => {
+      dialogo()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await flushMicrotasks();
+    });
+    expect(prompt).not.toHaveBeenCalled();
     expect(fetchMock.mock.calls.length).toBe(antes);
     expect(rendered.container.querySelector('[data-testid="documento-revelado"]')).toBeNull();
   });
 
   it("revelar con motivo: POST con el motivo, muestra el documento y 'Ocultar' lo descarta", async () => {
     stubFetch();
-    vi.spyOn(window, "prompt").mockReturnValue("Verificacion en mostrador al hacer check-in");
     rendered = renderPage();
     await esperar();
     await clickButton(buttonByText("Revelar"));
+    await escribirYConfirmar("Verificacion en mostrador al hacer check-in", "Revelar");
     const call = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/identidad/ident-1/revelar"))!;
     expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({ motivo: "Verificacion en mostrador al hacer check-in" });
     const box = rendered.container.querySelector('[data-testid="documento-revelado"]')!;
@@ -261,27 +282,37 @@ describe("IdentidadPage (hoteles)", () => {
 
   it("pestana Purgas (owner): lista la solicitud pendiente y aprobar la ejecuta", async () => {
     stubFetch();
-    vi.spyOn(window, "prompt").mockReturnValue("");
     rendered = renderPage();
     await esperar();
     await openTab("Purgas");
     expect(rendered.container.textContent).toContain("Cancelacion ARCO del titular");
     expect(rendered.container.textContent).toContain("Doble control");
     await clickButton(buttonByText("Aprobar purga"));
+    await escribirYConfirmar("", "Aprobar purga");
     const call = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/identidad-purgas/purga-1/decidir"))!;
     expect(JSON.parse((call[1] as RequestInit).body as string)).toMatchObject({ aprobar: true });
-    expect(toastMock.success).toHaveBeenCalledWith("Purga ejecutada.");
+    expect(toastMock.success).toHaveBeenCalledWith("Purga ejecutada.", expect.anything());
   });
 
-  it("doble control: si el servidor rechaza al solicitante (403), se muestra el mensaje real y NO hay toast de exito", async () => {
-    stubFetch({ decideStatus: 403 });
-    vi.spyOn(window, "prompt").mockReturnValue("");
+  it("purgas: cancelar el dialogo de decision NO llama a decidir", async () => {
+    stubFetch();
     rendered = renderPage();
     await esperar();
     await openTab("Purgas");
     await clickButton(buttonByText("Aprobar purga"));
+    await clickButton(botonDialogo("Cancelar"));
+    expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith("/decidir"))).toBe(false);
+  });
+
+  it("doble control: si el servidor rechaza al solicitante (403), se muestra el mensaje real y NO hay toast de exito", async () => {
+    stubFetch({ decideStatus: 403 });
+    rendered = renderPage();
+    await esperar();
+    await openTab("Purgas");
+    await clickButton(buttonByText("Aprobar purga"));
+    await escribirYConfirmar("", "Aprobar purga");
     expect(toastMock.success).not.toHaveBeenCalled();
-    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining("Doble control"));
+    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining("Doble control"), expect.anything());
   });
 });
 
@@ -318,7 +349,9 @@ describe("IdentidadPage (hoteles) -- H-02: bloqueo, consentimiento y privacidad"
     stubFetch({ list: { disponible: true, llaveConfigurada: true, items: [] }, avisos: { disponible: true, items: [AVISO] } });
     rendered = renderPage();
     await esperar();
-    const fieldset = rendered.container.querySelector('fieldset[aria-label="Consentimiento y aviso de privacidad"]')!;
+    await clickButton(buttonByText("Capturar identidad"));
+    await esperar();
+    const fieldset = document.body.querySelector('fieldset[aria-label="Consentimiento y aviso de privacidad"]')!;
     expect(fieldset.textContent).toContain("Usamos tus datos para identificarte y facturar.");
     expect(fieldset.textContent).toContain("Finalidades obligatorias (todas)");
     expect(fieldset.textContent).toContain("casilla distinta, sin marcar");
@@ -335,9 +368,10 @@ describe("IdentidadPage (hoteles) -- H-02: bloqueo, consentimiento y privacidad"
     stubFetch({ list: { disponible: true, llaveConfigurada: true, items: [] } });
     rendered = renderPage();
     await esperar();
-    const fieldset = rendered.container.querySelector('fieldset[aria-label="Consentimiento y aviso de privacidad"]')!;
+    await clickButton(buttonByText("Capturar identidad"));
+    const fieldset = document.body.querySelector('fieldset[aria-label="Consentimiento y aviso de privacidad"]')!;
     expect(fieldset.textContent).toContain("No hay un aviso de privacidad vigente");
-    expect(rendered.container.querySelector('form[aria-label="Capturar identidad"]')).not.toBeNull();
+    expect(dialogo()!.querySelector("form")).not.toBeNull();
   });
 
   it("pestana Privacidad: muestra que NO es asesoria legal y la lista 'un abogado debe confirmar'", async () => {
@@ -369,7 +403,8 @@ describe("IdentidadPage (hoteles) -- H-02: bloqueo, consentimiento y privacidad"
     await openTab("Privacidad");
     await openTab("ARCO");
     expect(rendered.container.textContent).toContain("por Formulario público");
-    const opciones = [...rendered.container.querySelectorAll<HTMLOptionElement>("#arco-canal option")].map((o) => o.textContent);
+    await clickButton(buttonByText("Registrar solicitud"));
+    const opciones = [...document.body.querySelectorAll<HTMLOptionElement>("#arco-canal option")].map((o) => o.textContent);
     expect(opciones).toContain("Mostrador");
     expect(opciones).not.toContain("Formulario público");
     expect([...rendered.container.querySelectorAll("button")].filter((b) => b.textContent?.includes("Enlace «Mis datos»"))).toHaveLength(1);
@@ -390,9 +425,9 @@ describe("IdentidadPage (hoteles) -- H-02: bloqueo, consentimiento y privacidad"
       await new Promise((r) => setTimeout(r, 350));
       for (let i = 0; i < 4; i++) await flushMicrotasks();
     });
-    const sel = rendered.container.querySelector<HTMLSelectElement>("#mis-datos-h-arco-2")!;
+    const sel = document.body.querySelector<HTMLSelectElement>("#mis-datos-h-arco-2")!;
     expect([...sel.options].map((o) => o.textContent)).toContain("Ana Torres");
-    const generar = buttonByText("Generar enlace");
+    const generar = botonDialogo("Generar enlace");
     expect(generar.disabled).toBe(true);
     await act(async () => {
       const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!;
@@ -401,12 +436,12 @@ describe("IdentidadPage (hoteles) -- H-02: bloqueo, consentimiento y privacidad"
       await flushMicrotasks();
     });
     await act(async () => {
-      rendered!.container.querySelector<HTMLFormElement>('form[aria-label="Enlace Mis datos"]')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      dialogo()!.querySelector<HTMLFormElement>("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
       for (let i = 0; i < 4; i++) await flushMicrotasks();
     });
     const post = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/arco/arco-2/enlace-mis-datos"))!;
     expect(JSON.parse(String(post[1].body))).toEqual({ huespedId: "guest-1", enviarCorreo: true });
-    const res = rendered.container.querySelector('[data-testid="enlace-mis-datos-resultado"]')!;
+    const res = document.body.querySelector('[data-testid="enlace-mis-datos-resultado"]')!;
     expect((res.querySelector("input") as HTMLInputElement).value).toBe("https://app.test/hoteles/demo/mis-datos#token=m1.abc.def");
     expect(res.textContent).toContain("NO saldrá hasta que se configure el envío de correo");
   });
@@ -426,17 +461,17 @@ describe("IdentidadPage (hoteles) -- H-02: bloqueo, consentimiento y privacidad"
       await new Promise((r) => setTimeout(r, 350));
       for (let i = 0; i < 4; i++) await flushMicrotasks();
     });
-    const sel = rendered.container.querySelector<HTMLSelectElement>("#mis-datos-h-arco-2")!;
+    const sel = document.body.querySelector<HTMLSelectElement>("#mis-datos-h-arco-2")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(sel, "guest-1");
       sel.dispatchEvent(new Event("change", { bubbles: true }));
       await flushMicrotasks();
     });
     await act(async () => {
-      rendered!.container.querySelector<HTMLFormElement>('form[aria-label="Enlace Mis datos"]')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      dialogo()!.querySelector<HTMLFormElement>("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
       for (let i = 0; i < 4; i++) await flushMicrotasks();
     });
-    expect(rendered.container.querySelector('form[aria-label="Enlace Mis datos"] [role="alert"]')!.textContent).toContain("solo se emite para una solicitud de acceso procedente");
+    expect(dialogo()!.querySelector('[role="alert"]')!.textContent).toContain("solo se emite para una solicitud de acceso procedente");
   });
 
   it("pestana Privacidad > Incidentes (owner): el recordatorio del art. 19 es visible y solo informa; frontdesk reporta pero no ve ARCO ni Retencion", async () => {
@@ -458,13 +493,14 @@ describe("IdentidadPage (hoteles) -- H-02: bloqueo, consentimiento y privacidad"
     expect(buttonByText("ARCO")).toBeUndefined();
     expect(buttonByText("Retención y bloqueo")).toBeUndefined();
     await openTab("Incidentes");
-    expect(rendered.container.querySelector('form[aria-label="Reportar incidente"]')).not.toBeNull();
+    expect(buttonByText("Reportar incidente")).toBeDefined();
+    await clickButton(buttonByText("Reportar incidente"));
+    expect(dialogo()!.querySelector("form")).not.toBeNull();
     expect(rendered.container.textContent).toContain("Solo owner/gm ven y gestionan los incidentes reportados.");
   });
 
   it("pestana Privacidad > Retencion y bloqueo: lista retenciones y accesos; el doble control rechaza al solicitante con el mensaje real", async () => {
     stubFetch({ retenciones: { disponible: true, items: [RETENCION] }, accesos: { disponible: true, items: [ACCESO] }, decideAccesoStatus: 403 });
-    vi.spyOn(window, "prompt").mockReturnValue("");
     rendered = renderPage();
     await esperar();
     await openTab("Privacidad");
@@ -473,8 +509,9 @@ describe("IdentidadPage (hoteles) -- H-02: bloqueo, consentimiento y privacidad"
     expect(rendered.container.textContent).toContain("autoriza: Direccion juridica");
     expect(buttonByText("Liberar retención")).toBeDefined();
     await clickButton(buttonByText("Aprobar acceso"));
+    await escribirYConfirmar("", "Aprobar acceso");
     expect(toastMock.success).not.toHaveBeenCalled();
-    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining("Doble control"));
+    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining("Doble control"), expect.anything());
   });
 
   it("base sin migrar (032): las secciones de privacidad muestran 'aun no esta disponible', sin pantallas rotas", async () => {
@@ -485,5 +522,114 @@ describe("IdentidadPage (hoteles) -- H-02: bloqueo, consentimiento y privacidad"
     expect(rendered.container.textContent).toContain("migración 032 pendiente");
     await openTab("ARCO");
     expect(rendered.container.textContent).toContain("migración 032 pendiente");
+  });
+});
+
+const escrituras = () => fetchMock.mock.calls.filter(([, init]) => ((init as RequestInit | undefined)?.method ?? "GET") !== "GET");
+
+describe("IdentidadPage (hoteles) -- UNI-C gestion: dialogos en lugar de window.prompt y altas en FormDialog", () => {
+  it("boveda: Bloquear y Solicitar purga piden el motivo (minimo 10) en un dialogo; Cancelar no escribe y confirmar manda el motivo", async () => {
+    stubFetch();
+    const prompt = vi.spyOn(window, "prompt");
+    rendered = renderPage();
+    await esperar();
+
+    await clickButton(buttonByText("Bloquear"));
+    await clickButton(botonDialogo("Cancelar"));
+    expect(escrituras()).toHaveLength(0);
+
+    await clickButton(buttonByText("Bloquear"));
+    await escribirYConfirmar("corto", "Bloquear");
+    expect(escrituras()).toHaveLength(0); // menos de 10 caracteres: el dialogo no deja continuar
+    await escribirYConfirmar("Solicitud del titular por ARCO", "Bloquear");
+    const bloqueo = escrituras()[0]!;
+    expect(String(bloqueo[0])).toContain("/bloquear");
+    expect(JSON.parse((bloqueo[1] as RequestInit).body as string)).toEqual({ motivo: "Solicitud del titular por ARCO" });
+
+    await clickButton(buttonByText("Solicitar purga"));
+    await escribirYConfirmar("Cancelacion ARCO del titular", "Solicitar purga");
+    expect(escrituras().some(([u]) => String(u).endsWith("/solicitar-purga"))).toBe(true);
+    expect(prompt).not.toHaveBeenCalled();
+  });
+
+  it("privacidad > aviso: Publicar version nueva abre un dialogo y manda POST con las finalidades por linea", async () => {
+    stubFetch();
+    rendered = renderPage();
+    await esperar();
+    await openTab("Privacidad");
+    await clickButton(buttonByText("Publicar versión nueva"));
+    const campo = (id: string) => dialogo()!.querySelector(`#${id}`) as HTMLInputElement;
+    changeValue(campo("aviso-version"), "v2");
+    changeValue(campo("aviso-texto"), "Usamos tus datos para identificarte y facturar tu estancia.");
+    changeValue(campo("aviso-obligatorias"), "identificar al huesped\nfacturacion");
+    await act(async () => {
+      dialogo()!.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      for (let i = 0; i < 4; i++) await flushMicrotasks();
+    });
+    const post = escrituras().find(([u]) => String(u).endsWith("/privacidad/avisos"))!;
+    expect(JSON.parse((post[1] as RequestInit).body as string)).toMatchObject({ version: "v2", finalidadesObligatorias: ["identificar al huesped", "facturacion"], finalidadesOpcionales: [] });
+    expect(toastMock.success).toHaveBeenCalledWith("Aviso publicado como versión vigente.", expect.anything());
+  });
+
+  it("privacidad > ARCO: registrar solicitud en dialogo; avanzar exige nota de 10+ caracteres y Cancelar no escribe", async () => {
+    stubFetch({ arco: { disponible: true, hoy: "2026-03-24", items: [ARCO] } });
+    rendered = renderPage();
+    await esperar();
+    await openTab("Privacidad");
+    await openTab("ARCO");
+
+    await clickButton(buttonByText("Registrar solicitud"));
+    expect(botonDialogo("Registrar solicitud").disabled).toBe(true);
+    changeValue(dialogo()!.querySelector("#arco-solicitante") as HTMLInputElement, "Juan Perez");
+    await act(async () => {
+      dialogo()!.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      for (let i = 0; i < 4; i++) await flushMicrotasks();
+    });
+    const alta = escrituras().find(([u]) => String(u).endsWith("/privacidad/arco"))!;
+    expect(JSON.parse((alta[1] as RequestInit).body as string)).toMatchObject({ derecho: "acceso", solicitante: "Juan Perez", canal: "mostrador" });
+
+    const antes = escrituras().length;
+    await clickButton(buttonByText("Procedente"));
+    await clickButton(botonDialogo("Cancelar"));
+    expect(escrituras()).toHaveLength(antes);
+    await clickButton(buttonByText("Procedente"));
+    await escribirYConfirmar("corta", "Procedente");
+    expect(escrituras()).toHaveLength(antes);
+    await escribirYConfirmar("Identidad verificada en mostrador", "Procedente");
+    const avanzar = escrituras().find(([u]) => String(u).endsWith("/arco/arco-1/avanzar"))!;
+    expect(JSON.parse((avanzar[1] as RequestInit).body as string)).toEqual({ estado: "procedente", nota: "Identidad verificada en mostrador" });
+  });
+
+  it("privacidad > incidentes: cerrar un incidente con riesgo significativo pide nota y motivo de no notificar; cancelar en cualquier paso no escribe", async () => {
+    stubFetch({ incidentes: { disponible: true, items: [INCIDENTE] } });
+    rendered = renderPage();
+    await esperar();
+    await openTab("Privacidad");
+    await openTab("Incidentes");
+    await clickButton(buttonByText("Cerrar incidente"));
+    await escribirYConfirmar("Se corrigio y se aviso al huesped", "Continuar");
+    expect(dialogo()!.textContent).toContain("Motivo de no notificar");
+    await clickButton(botonDialogo("Cancelar"));
+    expect(escrituras()).toHaveLength(0);
+
+    await clickButton(buttonByText("Cerrar incidente"));
+    await escribirYConfirmar("Se corrigio y se aviso al huesped", "Continuar");
+    await escribirYConfirmar("El titular ya fue avisado por telefono", "Cerrar incidente");
+    const post = escrituras().find(([u]) => String(u).endsWith("/incidentes/inc-1/accion"))!;
+    expect(JSON.parse((post[1] as RequestInit).body as string)).toMatchObject({ accion: "cerrar", nota: "Se corrigio y se aviso al huesped", motivoNoNotificar: "El titular ya fue avisado por telefono" });
+  });
+
+  it("privacidad > retencion: Liberar retencion pide nota y Cancelar no escribe", async () => {
+    stubFetch({ retenciones: { disponible: true, items: [RETENCION] } });
+    rendered = renderPage();
+    await esperar();
+    await openTab("Privacidad");
+    await openTab("Retención y bloqueo");
+    await clickButton(buttonByText("Liberar retención"));
+    await clickButton(botonDialogo("Cancelar"));
+    expect(escrituras()).toHaveLength(0);
+    await clickButton(buttonByText("Liberar retención"));
+    await escribirYConfirmar("Caso cerrado por la autoridad", "Liberar retención");
+    expect(escrituras().some(([u]) => String(u).endsWith("/retenciones/hold-1/liberar"))).toBe(true);
   });
 });

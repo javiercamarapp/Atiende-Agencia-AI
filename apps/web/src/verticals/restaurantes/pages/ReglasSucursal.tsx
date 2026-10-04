@@ -3,7 +3,7 @@
 // WhatsApp propio. Solo owner/admin (el servidor, admin-modelo-pm.ts + RLS, es el enforcement
 // real). Se monta bajo demanda desde Sucursales.tsx: no carga nada hasta que se abre.
 import { useEffect, useState } from "react";
-import { Button, Checkbox, EstadoCargando, EstadoError, Input, Label, NativeSelect } from "@atiende/ui";
+import { Button, Checkbox, EstadoCargando, EstadoError, Input, Label, NativeSelect, useConfirm } from "@atiende/ui";
 import { fetchKnownZones } from "../lib/config-client.ts";
 import type { KnownZone } from "../lib/config-client.ts";
 import {
@@ -31,11 +31,22 @@ interface Props {
   readonly branchId: string;
 }
 
+/** Un fallo de guardado se pinta DENTRO de su seccion (junto al boton que lo causo) y su "Reintentar" repite
+ * exactamente esa escritura (QA-restaurantes-R1-botones-12). */
+type Seccion = "reglas" | "puente" | "whatsapp";
+interface Fallo {
+  readonly seccion: Seccion;
+  readonly mensaje: string;
+  readonly reintentar?: () => void;
+}
+
 export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fallo, setFallo] = useState<Fallo | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const { confirmar, dialogo } = useConfirm();
 
   const [turnos, setTurnos] = useState<TurnoHorario[]>([]);
   const [minDomicilio, setMinDomicilio] = useState("");
@@ -55,6 +66,8 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
     { abre: "", cierra: "" },
   ]);
   const [puenteMotivo, setPuenteMotivo] = useState("");
+  // Cierre de una fecha completa (feriado, imprevisto): el puente va sin turnos y con `cerrado: true`.
+  const [puenteCerrado, setPuenteCerrado] = useState(false);
 
   async function load() {
     setError(null);
@@ -96,87 +109,131 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
     updateTurno(index, { dias });
   }
 
-  async function handleGuardarReglas() {
+  async function handleGuardarReglas(soloZonas = false) {
     const domicilio = parseMontoOpcional(minDomicilio);
     const recoger = parseMontoOpcional(minRecoger);
     if (domicilio === undefined || recoger === undefined) {
-      setError("Los pedidos mínimos deben ser un monto en pesos (o quedar vacíos para no exigir mínimo).");
+      setFallo({ seccion: "reglas", mensaje: "Los pedidos mínimos deben ser un monto en pesos (o quedar vacíos para no exigir mínimo)." });
       return;
     }
     if (turnos.some((t) => t.dias.length === 0 || !t.abre || !t.cierra || t.abre === t.cierra)) {
-      setError("Cada turno necesita al menos un día y una hora de apertura distinta a la de cierre.");
+      setFallo({ seccion: "reglas", mensaje: "Cada turno necesita al menos un día y una hora de apertura distinta a la de cierre." });
       return;
     }
     setSaving(true);
-    setError(null);
+    setFallo(null);
     setNotice(null);
+    // Son DOS escrituras (politica y zonas). Si la segunda falla, la primera ya quedo guardada: el aviso lo dice y
+    // "Reintentar" repite solo las zonas (QA-restaurantes-R1-botones-13 / caos-19).
+    let politicaGuardada = soloZonas;
     try {
-      await updatePoliticaSucursal(fetch, apiBaseUrl, token, propertyId, branchId, {
-        horario: turnos.length === 0 ? null : turnos,
-        pedidoMinimoDomicilio: domicilio,
-        pedidoMinimoRecoger: recoger,
-        propinaPolitica: propina === "" ? null : propina,
-      });
+      if (!soloZonas) {
+        await updatePoliticaSucursal(fetch, apiBaseUrl, token, propertyId, branchId, {
+          horario: turnos.length === 0 ? null : turnos,
+          pedidoMinimoDomicilio: domicilio,
+          pedidoMinimoRecoger: recoger,
+          propinaPolitica: propina === "" ? null : propina,
+        });
+        politicaGuardada = true;
+      }
       await updateZonasReparto(fetch, apiBaseUrl, token, propertyId, branchId, [...zonasElegidas]);
       setNotice("Reglas guardadas.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron guardar las reglas.");
+      const detalle = err instanceof Error ? err.message : "Error desconocido.";
+      setFallo(
+        politicaGuardada
+          ? { seccion: "reglas", mensaje: `El horario, los mínimos y la propina sí se guardaron, pero NO se pudieron guardar las zonas de reparto: ${detalle}`, reintentar: () => void handleGuardarReglas(true) }
+          : { seccion: "reglas", mensaje: err instanceof Error ? err.message : "No se pudieron guardar las reglas.", reintentar: () => void handleGuardarReglas(false) },
+      );
     } finally {
       setSaving(false);
     }
   }
 
   async function handleGuardarWhatsapp() {
+    const vaciar = whatsapp.trim() === "";
+    if (vaciar && whatsappGuardado) {
+      const ok = await confirmar({
+        titulo: "Desconectar el WhatsApp de la sucursal",
+        descripcion: "La sucursal se quedará sin número propio y dejará de recibir mensajes por su agente de WhatsApp. ¿Desconectarlo?",
+        tono: "danger",
+        confirmar: "Desconectar número",
+        cancelar: "Volver",
+      });
+      if (!ok) return;
+    }
     setSaving(true);
-    setError(null);
+    setFallo(null);
     setNotice(null);
     try {
-      if (whatsapp.trim() === "") {
+      if (vaciar) {
         if (whatsappGuardado) await deleteWhatsappSucursal(fetch, apiBaseUrl, token, propertyId, branchId);
         setWhatsappGuardado(null);
+        setNotice(whatsappGuardado ? "Número de WhatsApp desconectado." : "Número de WhatsApp guardado.");
       } else {
         setWhatsappGuardado(await updateWhatsappSucursal(fetch, apiBaseUrl, token, propertyId, branchId, whatsapp.trim()));
+        setNotice("Número de WhatsApp guardado.");
       }
-      setNotice("Número de WhatsApp guardado.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar el número de WhatsApp.");
+      setFallo({ seccion: "whatsapp", mensaje: err instanceof Error ? err.message : "No se pudo guardar el número de WhatsApp.", reintentar: () => void handleGuardarWhatsapp() });
     } finally {
       setSaving(false);
     }
   }
 
   async function handleCrearPuente() {
-    const turnos = puenteTurnos.filter((t) => t.abre && t.cierra);
-    if (!puenteDesde || !puenteHasta || turnos.length === 0 || turnos.some((t) => t.abre === t.cierra)) {
-      setError("Un puente necesita fecha inicial y final y al menos un turno con apertura distinta al cierre.");
+    const turnos = puenteCerrado ? [] : puenteTurnos.filter((t) => t.abre && t.cierra);
+    if (!puenteDesde || !puenteHasta || (!puenteCerrado && (turnos.length === 0 || turnos.some((t) => t.abre === t.cierra)))) {
+      setFallo({ seccion: "puente", mensaje: "Un puente necesita fecha inicial y final y al menos un turno con apertura distinta al cierre (o marcar «Cerrado todo el día»)." });
+      return;
+    }
+    if (puenteHasta < puenteDesde) {
+      setFallo({ seccion: "puente", mensaje: "Un puente necesita que la fecha final no sea anterior a la inicial." });
       return;
     }
     setSaving(true);
-    setError(null);
+    setFallo(null);
     setNotice(null);
     try {
-      await createPuente(fetch, apiBaseUrl, token, propertyId, { branchIds: [branchId], fechaDesde: puenteDesde, fechaHasta: puenteHasta, turnos, ...(puenteMotivo.trim() ? { motivo: puenteMotivo.trim() } : {}) });
+      await createPuente(fetch, apiBaseUrl, token, propertyId, {
+        branchIds: [branchId],
+        fechaDesde: puenteDesde,
+        fechaHasta: puenteHasta,
+        ...(puenteCerrado ? { cerrado: true } : { turnos }),
+        ...(puenteMotivo.trim() ? { motivo: puenteMotivo.trim() } : {}),
+      });
       setPuentes((await fetchPuentes(fetch, apiBaseUrl, token, propertyId)).filter((p) => p.branchId === branchId));
-      setNotice("Puente guardado.");
+      setNotice(puenteCerrado ? "Cierre de fecha guardado." : "Puente guardado.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar el puente.");
+      setFallo({ seccion: "puente", mensaje: err instanceof Error ? err.message : "No se pudo guardar el puente.", reintentar: () => void handleCrearPuente() });
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleBorrarPuente(id: string) {
+  async function handleBorrarPuente(puente: Puente) {
+    const ok = await confirmar({
+      titulo: "Quitar el puente",
+      descripcion: `¿Quitar ${puente.horario.length === 0 ? "el cierre" : "el puente"} del ${puente.fechaDesde} al ${puente.fechaHasta}? Volverá a regir el horario semanal en esas fechas.`,
+      tono: "danger",
+      confirmar: "Quitar puente",
+      cancelar: "Volver",
+    });
+    if (!ok) return;
     setSaving(true);
-    setError(null);
+    setFallo(null);
     try {
-      await deletePuente(fetch, apiBaseUrl, token, propertyId, id);
-      setPuentes((prev) => prev.filter((p) => p.id !== id));
+      await deletePuente(fetch, apiBaseUrl, token, propertyId, puente.id);
+      setPuentes((prev) => prev.filter((p) => p.id !== puente.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo borrar el puente.");
+      setFallo({ seccion: "puente", mensaje: err instanceof Error ? err.message : "No se pudo borrar el puente.", reintentar: () => void handleBorrarPuente(puente) });
     } finally {
       setSaving(false);
     }
   }
+
+  const falloDe = (seccion: Seccion) =>
+    fallo?.seccion === seccion ? <EstadoError titulo="No se pudo guardar" mensaje={fallo.mensaje} compacto className="w-full basis-full" onReintentar={fallo.reintentar ?? (() => setFallo(null))} /> : null;
 
   if (!loaded) {
     return error ? <EstadoError mensaje={error} onReintentar={() => void load()} /> : <EstadoCargando etiqueta="Cargando reglas de pedido…" />;
@@ -184,7 +241,7 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
 
   return (
     <div className="mt-3 flex flex-col gap-4 border-t border-border pt-3">
-      {error && <EstadoError mensaje={error} onReintentar={() => setError(null)} />}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
       {notice && <p className="m-0 text-xs text-muted-foreground">{notice}</p>}
 
       <section className="flex flex-col gap-2">
@@ -286,17 +343,20 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
           Guardar reglas
         </Button>
       </div>
+      {falloDe("reglas")}
 
       <section className="flex flex-col gap-2 border-t border-border pt-3" data-testid={`puentes-${branchId}`}>
         <h3 className="m-0 text-sm font-semibold text-foreground">Puentes (horario por fechas)</h3>
-        <p className="m-0 text-xs text-muted-foreground">En las fechas indicadas rigen estos turnos en lugar del horario semanal (por ejemplo, abrir los dos turnos en un puente).</p>
+        <p className="m-0 text-xs text-muted-foreground">
+          En las fechas indicadas rigen estos turnos en lugar del horario semanal (por ejemplo, abrir los dos turnos en un puente). Para un feriado o imprevisto marque «Cerrado todo el día»: la sucursal no recibe pedidos esas fechas.
+        </p>
         {puentes.map((p) => (
           <div key={p.id} className="flex flex-wrap items-center gap-2 text-xs text-foreground">
             <span>
-              {p.fechaDesde} → {p.fechaHasta}: {p.horario.map((t) => `${t.abre}–${t.cierra}`).filter((v, i, a) => a.indexOf(v) === i).join(" y ")}
+              {p.fechaDesde} → {p.fechaHasta}: {p.horario.length === 0 ? "Cerrado todo el día" : p.horario.map((t) => `${t.abre}–${t.cierra}`).filter((v, i, a) => a.indexOf(v) === i).join(" y ")}
               {p.motivo ? ` (${p.motivo})` : ""}
             </span>
-            <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => void handleBorrarPuente(p.id)} disabled={saving}>
+            <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => void handleBorrarPuente(p)} disabled={saving}>
               Quitar
             </Button>
           </div>
@@ -314,7 +374,8 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
             </Label>
             <Input id={`puente-hasta-${branchId}`} type="date" value={puenteHasta} onChange={(e) => setPuenteHasta(e.target.value)} className="w-[150px]" />
           </div>
-          {puenteTurnos.map((t, i) => (
+          <Checkbox label="Cerrado todo el día" wrapperClassName="text-xs" checked={puenteCerrado} onChange={() => setPuenteCerrado((v) => !v)} />
+          {!puenteCerrado && puenteTurnos.map((t, i) => (
             <div key={i} className="flex flex-col gap-1">
               <Label htmlFor={`puente-turno-${i}-${branchId}`} className="text-xs text-muted-foreground">
                 Turno {i + 1} (abre / cierra)
@@ -335,6 +396,7 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
             Guardar puente
           </Button>
         </div>
+        {falloDe("puente")}
       </section>
 
       <section className="flex flex-wrap items-end gap-3 border-t border-border pt-3">
@@ -347,7 +409,9 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
         <Button type="button" variant="outline" size="sm" onClick={() => void handleGuardarWhatsapp()} disabled={saving}>
           Guardar número
         </Button>
+        {falloDe("whatsapp")}
       </section>
+      {dialogo}
     </div>
   );
 }

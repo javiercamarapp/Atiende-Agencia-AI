@@ -11,7 +11,7 @@ import {
   ARCO_THIRD_PARTY_REPLY,
   arcoPendingConfirmationReply,
 } from "../../data-rights.ts";
-import { CRISIS_ESCALATION_MESSAGE, detectCrisisKeyword, requiresCrisisGuardrail } from "../../vertical-config.ts";
+import { CRISIS_ESCALATION_MESSAGE, crisisGuardActivaPara, detectCrisisKeyword } from "../../vertical-config.ts";
 import { TOOLS } from "../../whatsapp/llm-turn-handler.ts";
 import { isUrgentCancellationMessage } from "../../whatsapp/urgent-cancellation.ts";
 import type { CasoEval, EstadoFinal, EventoTraza, Negocio, SuiteEval, Traza } from "./tipos.ts";
@@ -153,7 +153,7 @@ export class Mundo {
     const cat = CATALOGO[this.caso.negocio];
 
     // 1) crisis (solo rubros de salud), sin herramientas ni LLM; avisa al dueno.
-    if (requiresCrisisGuardrail(cat.rubro) && detectCrisisKeyword(texto)) {
+    if (crisisGuardActivaPara(cat.rubro) && detectCrisisKeyword(texto)) {
       this.avisos.push({ tipo: "crisis", telefono: this.caso.cliente.telefono });
       this.eventos.push({ t: "agente", turno: this.turno, texto: CRISIS_ESCALATION_MESSAGE, origen: "guardrail_crisis" });
       this.respondioGuardrail = true;

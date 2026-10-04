@@ -69,3 +69,9 @@ export const CORRIDA_FUENTE_TONES: Tabla = { ok: "success" };
 
 /** Semaforo del KYC negativo 69-B del SAT (L-08): definitivo = rojo, presunto = ambar, sin riesgo vigente = verde, sin lista = neutro. */
 export const KYC_SEMAFORO_TONES: Tabla = { rojo: "danger", ambar: "warning", verde: "success", sin_datos: "neutral" };
+
+/** Estado EFECTIVO de una garantia de contrato (L-27): entregada = verde, pendiente/vencida = ambar/rojo, final = neutro. */
+export const GARANTIA_ESTADO_TONES: Tabla = { pendiente_entrega: "warning", entregada: "success", liberada: "neutral", ejecutada: "danger", vencida: "danger" };
+
+/** Estado EFECTIVO de un hito de contrato (L-27): `vencido` es un estado derivado de la fecha comprometida. */
+export const HITO_ESTADO_TONES: Tabla = { pendiente: "info", vencido: "danger", cumplido: "success", cancelado: "neutral" };

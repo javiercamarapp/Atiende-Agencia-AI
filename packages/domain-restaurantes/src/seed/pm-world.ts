@@ -67,6 +67,8 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
       daysOfWeek: promo.daysOfWeek,
       channels: promo.channels as never,
       productIds: promo.productNames.map((n) => productIds.get(n)!).filter(Boolean),
+      // Combo de cortesia (migracion 031): las aguas a elegir y las piezas por unidad disparadora.
+      ...(promo.type === "cortesia" ? { courtesyProductIds: (promo.courtesyProductNames ?? []).map((n) => productIds.get(n)!).filter(Boolean), courtesyQuantity: promo.courtesyQuantity } : {}),
       // Mismo alcance por sucursal que el SQL del seed (migracion 038): ids del seed (T2, T3...) -> sucursales de este mundo.
       ...(promo.branchIds
         ? { propertyIds: plan.branches.filter((b) => promo.branchIds!.includes(b.id)).map((b) => propertyBySlug.get(b.slug)!) }
@@ -74,7 +76,7 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
     });
   }
   // Misma configuracion del agente que inserta el SQL del seed (perfil taqueria_pm con los datos del dueño; sin nombre inventado).
-  await repo.upsertWhatsAppAgentConfig(organizationId, null, {
+  const configOrg = {
     perfil: plan.whatsappAgent.perfil,
     agentName: plan.whatsappAgent.agentName,
     businessName: plan.whatsappAgent.businessName,
@@ -83,6 +85,14 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
     salsasText: plan.whatsappAgent.salsasText,
     promosText: plan.whatsappAgent.promosText,
     escalationReasonsOff: [],
-  });
+    ...(plan.whatsappAgent.replyDebounceSeconds !== null ? { replyDebounceSeconds: plan.whatsappAgent.replyDebounceSeconds } : {}),
+  };
+  await repo.upsertWhatsAppAgentConfig(organizationId, null, configOrg);
+  // Filas propias de sucursal (10b del SQL): copian la de la organizacion y solo cambian el tiempo de entrega.
+  for (const d of plan.whatsappAgent.deliveryByBranch) {
+    const slug = plan.branches.find((b) => b.id === d.branchId)?.slug;
+    const propertyId = slug ? propertyBySlug.get(slug) : undefined;
+    if (propertyId) await repo.upsertWhatsAppAgentConfig(organizationId, propertyId, { ...configOrg, deliveryTimeText: d.deliveryTimeText });
+  }
   return { repo, organizationId, propertyBySlug, productIds };
 }

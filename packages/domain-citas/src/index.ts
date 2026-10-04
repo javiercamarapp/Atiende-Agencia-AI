@@ -219,6 +219,8 @@ export {
   ALL_VERTICALS,
   CRISIS_ESCALATION_MESSAGE,
   CRISIS_KEYWORDS,
+  CRISIS_VOICE_MESSAGE,
+  crisisGuardActivaPara,
   detectCrisisKeyword,
   findVerticalFaqAnswer,
   getVerticalFaqs,
@@ -227,8 +229,8 @@ export {
   VERTICAL_FAQS,
 } from "./vertical-config.ts";
 export type { Vertical, VerticalFaq } from "./vertical-config.ts";
-export { runCrisisGuardrail } from "./crisis-guardrail.ts";
-export type { CrisisGuardrailResult } from "./crisis-guardrail.ts";
+export { registrarEscalacionCrisis, runCrisisGuardrail } from "./crisis-guardrail.ts";
+export type { CrisisGuardrailResult, EntradaEscalacionCrisis } from "./crisis-guardrail.ts";
 
 // ---- Fase 6 §2 — CalendarSyncPort genérico + adaptadores Cal.com/CalDAV ----
 export { assertAvailabilityContract, assertCalendarSyncPortContract, CalendarCapabilityUnsupportedError, CalendarConflictError, FakeCalendarSyncPort, GoogleCalendarSyncAdapter, isRangeBookable, rangesOverlap } from "./calendar-sync-port.ts";
@@ -397,3 +399,7 @@ export type {
   MensajeConversacion,
   NotaInterna,
 } from "./conversaciones/index.ts";
+
+// ---- Agente de VOZ de citas sobre @atiende/voice-core (VOZ-CIT) ----
+// El simulador y sus guiones es-MX se importan desde `@atiende/domain-citas/voz/simulador` (solo pruebas y la prueba ciega manual).
+export * from "./voz/index.ts";

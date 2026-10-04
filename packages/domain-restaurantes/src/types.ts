@@ -339,6 +339,8 @@ export interface Order {
    * seleccionan (la base puede no estar migrada) -- `repo.listOrderScheduleInfo` las lee aparte. */
   readonly programadoPara?: string | null;
   readonly promovidoAt?: string | null;
+  /** Solo la trae `listDeliveredOrdersForRepartidor` (columna `delivered_at` de la 001, que se fija al pasar a `entregado`). */
+  readonly deliveredAt?: string | null;
 }
 
 /** Datos de programacion de un pedido (migracion 034): hora para la que se pidio y cuando se promovio a `pending`. */
@@ -630,7 +632,7 @@ export interface PromotionPatch {
 // en el schema base para ninguno de los dos — ver el comentario de cabecera de
 // esa migración).
 // ---------------------------------------------------------------------------
-export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion";
+export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion" | "exportacion";
 
 export interface RegistrarAuditoriaInput {
   readonly organizationId: string;

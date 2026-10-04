@@ -8,9 +8,12 @@
 // `LlmProvider`.
 import type { LlmMessage, LlmToolCall, LlmToolDefinition } from '../types.js';
 
+/** Partes de contenido multimodal de Chat Completions (texto + audio de entrada). */
+export type OpenAiWireContentPart = { type: 'text'; text: string } | { type: 'input_audio'; input_audio: { data: string; format: string } };
+
 export interface OpenAiWireMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | null;
+  content: string | OpenAiWireContentPart[] | null;
   tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
   tool_call_id?: string;
 }
@@ -41,6 +44,11 @@ export function toOpenAiWireMessages(system: string, messages: readonly LlmMessa
           ? { tool_calls: m.toolCalls.map((tc) => ({ id: tc.id, type: 'function' as const, function: { name: tc.name, arguments: tc.argumentsJson } })) }
           : {}),
       });
+      continue;
+    }
+    if (m.role === 'user' && m.audio) {
+      // Mensaje con nota de voz: texto (instruccion) + parte `input_audio`. Sin texto, solo el audio.
+      wire.push({ role: 'user', content: [...(m.content ? [{ type: 'text' as const, text: m.content }] : []), { type: 'input_audio' as const, input_audio: { data: m.audio.data, format: m.audio.format } }] });
       continue;
     }
     wire.push({ role: 'user', content: m.content });

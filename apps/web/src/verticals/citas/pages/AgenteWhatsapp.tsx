@@ -18,6 +18,8 @@ import {
 } from "../lib/whatsapp-agente-client.ts";
 import type { EstadoConexion, FormAgente, PanelAgenteWire, VistaPreviaAgenteWire } from "../lib/whatsapp-agente-client.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
+import type { EntornoVoz } from "../../../lib/voz/adaptador-gemini-live.ts";
+import { PruebaAgenteVoz } from "../voz/PruebaAgenteVoz.tsx";
 
 const ROLES = new Set(["owner", "admin"]);
 
@@ -32,7 +34,7 @@ function mensaje(err: unknown, porDefecto: string): string {
   return err instanceof Error ? err.message : porDefecto;
 }
 
-export function AgenteWhatsappPage({ apiBaseUrl, token, propertyId, role }: CitasShellContext) {
+export function AgenteWhatsappPage({ apiBaseUrl, token, propertyId, role, entornoVoz }: CitasShellContext & { readonly entornoVoz?: EntornoVoz }) {
   const puede = ROLES.has(role);
   const { confirmar, dialogo } = useConfirm();
   const [panel, setPanel] = useState<PanelAgenteWire | null>(null);
@@ -307,6 +309,7 @@ export function AgenteWhatsappPage({ apiBaseUrl, token, propertyId, role }: Cita
               </Card>
             </>
           )}
+          <PruebaAgenteVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} {...(entornoVoz ? { entorno: entornoVoz } : {})} />
         </>
       )}
       {dialogo}
