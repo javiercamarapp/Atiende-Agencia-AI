@@ -95,12 +95,12 @@ describe("PATCH .../tenant-config cambia de verdad el 'hoy' de negocio -- efecto
     const repoDefault = new PostgresLicitacionesRepository(fakeSession(null));
     await repoDefault.createApprovedRate("org-1", { concept: "c", unitPrice: "1.00" });
     const insertParamsDefault = calls[2]!.params;
-    expect(insertParamsDefault[4]).toBe("2026-01-02"); // CDMX, default de plataforma
+    expect(insertParamsDefault[3]).toBe("2026-01-02"); // CDMX, default de plataforma
 
     calls.length = 0;
     const repoTijuana = new PostgresLicitacionesRepository(fakeSession({ timezone: "America/Tijuana" }));
     await repoTijuana.createApprovedRate("org-1", { concept: "c", unitPrice: "1.00" });
     const insertParamsTijuana = calls[2]!.params;
-    expect(insertParamsTijuana[4]).toBe("2026-01-01"); // Tijuana real, un día antes
+    expect(insertParamsTijuana[3]).toBe("2026-01-01"); // Tijuana real, un día antes
   });
 });
