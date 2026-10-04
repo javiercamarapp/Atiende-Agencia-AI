@@ -18,7 +18,7 @@
 // que cambia es que los formularios ya no viven siempre abiertos en la página.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, Label, NativeSelect, PageContainer, StatusBadge, formatMoney } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, Label, NativeSelect, PageContainer, StatusBadge, formatMoney } from "@atiende/ui";
 import { CalendarRange, Plus } from "lucide-react";
 import {
   createPromotion,
@@ -29,6 +29,7 @@ import {
 import type { Promotion, PromotionCanal, PromotionType } from "../lib/promotions-client.ts";
 import { fetchProducts } from "../lib/catalog-client.ts";
 import type { Product } from "../lib/catalog-client.ts";
+import { puedeEn } from "../lib/permisos.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const DAY_LABELS: readonly string[] = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -108,7 +109,20 @@ function alternarProducto(elegidos: readonly string[], id: string, marcado: bool
   return ordenados.length === set.size ? ordenados : [...set];
 }
 
-export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
+/** PL-23: las promociones son de owner/admin. Un staff que llega por URL ve un estado honesto en vez de un 403 del servidor. */
+export function PromocionesPage(ctx: RestaurantesShellContext) {
+  if (!puedeEn(ctx.role, "promociones.ver")) {
+    return (
+      <PageContainer padding="none">
+        <h1 className="sr-only">Promociones</h1>
+        <Callout tone="info">Solo el dueño o un administrador puede ver y gestionar las promociones.</Callout>
+      </PageContainer>
+    );
+  }
+  return <PromocionesContenido {...ctx} />;
+}
+
+function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
   const [promotions, setPromotions] = useState<readonly Promotion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Los errores de crear/editar se pintan DENTRO de su dialogo (QA-restaurantes-R1-botones-17): el estado de la pagina queda

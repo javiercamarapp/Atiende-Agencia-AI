@@ -40,9 +40,12 @@ import {
 import type { Category, Product } from "../lib/catalog-client.ts";
 import { fetchNoDomicilio, setNoDomicilio } from "../lib/modelo-pm-client.ts";
 import type { NoDomicilioMarks } from "../lib/modelo-pm-client.ts";
+import { puedeEn } from "../lib/permisos.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
-export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
+export function ProductosPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
+  // PL-23: el staff (cajero/cocina) ve el menu y marca agotado/disponible; precios y alta/edicion del catalogo son de owner/admin.
+  const puedeEditarCatalogo = puedeEn(role, "catalogo.precio");
   const [categories, setCategories] = useState<readonly Category[] | null>(null);
   const [products, setProducts] = useState<readonly Product[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -154,8 +157,8 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
     setError(null);
     try {
       const nextAvailable = !(product.branch?.isAvailable ?? false);
-      const price = product.branch?.price ?? product.price;
-      await setBranchAvailability(fetch, apiBaseUrl, token, propertyId, product.id, { price, isAvailable: nextAvailable });
+      // Solo `isAvailable`: el servidor conserva el precio de la sucursal (o el precio base al dar de alta) y un staff no puede mandar precio.
+      await setBranchAvailability(fetch, apiBaseUrl, token, propertyId, product.id, { isAvailable: nextAvailable });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar la disponibilidad.");
@@ -211,16 +214,20 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button type="button" variant="outline" onClick={abrirCategoria}>
-          <FolderPlus />
-          Nueva categoría
-        </Button>
-        <Button type="button" onClick={abrirProducto}>
-          <Plus />
-          Nuevo producto
-        </Button>
-      </div>
+      {puedeEditarCatalogo ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" variant="outline" onClick={abrirCategoria}>
+            <FolderPlus />
+            Nueva categoría
+          </Button>
+          <Button type="button" onClick={abrirProducto}>
+            <Plus />
+            Nuevo producto
+          </Button>
+        </div>
+      ) : (
+        <Callout tone="info">Puedes marcar productos como agotados o disponibles en esta sucursal. Solo el dueño o un administrador cambia precios y edita el catálogo.</Callout>
+      )}
 
       {categories && categories.length > 0 && (
         <Card>
@@ -276,27 +283,37 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
                 {
                   id: "precio",
                   encabezado: "Precio en esta sucursal",
-                  celda: (p) => (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        aria-label={`Precio de ${p.name} en esta sucursal`}
-                        defaultValue={p.branch?.price ?? p.price}
-                        onBlur={(e) => void handlePriceChange(p, e.target.value)}
-                        disabled={savingId === p.id}
-                        className="w-[100px]"
-                      />
-                      {p.branch === null && <span className="text-xs text-muted-foreground">(precio base ${formatMoney(p.price)}, nunca dado de alta aquí)</span>}
-                    </div>
-                  ),
+                  celda: (p) =>
+                    puedeEditarCatalogo ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          aria-label={`Precio de ${p.name} en esta sucursal`}
+                          defaultValue={p.branch?.price ?? p.price}
+                          onBlur={(e) => void handlePriceChange(p, e.target.value)}
+                          disabled={savingId === p.id}
+                          className="w-[100px]"
+                        />
+                        {p.branch === null && <span className="text-xs text-muted-foreground">(precio base ${formatMoney(p.price)}, nunca dado de alta aquí)</span>}
+                      </div>
+                    ) : (
+                      <span className="text-foreground">${formatMoney(p.branch?.price ?? p.price)}</span>
+                    ),
                 },
                 {
                   id: "disponible",
                   encabezado: "Disponible aquí",
                   celda: (p) => (
-                    <Button type="button" size="sm" variant={p.branch?.isAvailable ? "default" : "outline"} onClick={() => void handleToggleAvailability(p)} disabled={savingId === p.id}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={p.branch?.isAvailable ? "default" : "outline"}
+                      onClick={() => void handleToggleAvailability(p)}
+                      disabled={savingId === p.id || (!puedeEditarCatalogo && p.branch === null)}
+                      title={!puedeEditarCatalogo && p.branch === null ? "Un administrador debe activar este producto en la sucursal primero." : undefined}
+                    >
                       {p.branch?.isAvailable ? "Disponible" : "No disponible"}
                     </Button>
                   ),
@@ -304,7 +321,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
                 {
                   id: "popular",
                   encabezado: "Popular",
-                  celda: (p) => <Checkbox aria-label={`Marcar ${p.name} como popular`} checked={p.isPopular} onChange={() => void handleTogglePopular(p)} disabled={savingId === p.id} />,
+                  celda: (p) => <Checkbox aria-label={`Marcar ${p.name} como popular`} checked={p.isPopular} onChange={() => void handleTogglePopular(p)} disabled={savingId === p.id || !puedeEditarCatalogo} />,
                 },
                 ...(marks
                   ? [

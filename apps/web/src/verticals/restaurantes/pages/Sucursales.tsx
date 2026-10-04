@@ -12,6 +12,7 @@ import { Pencil } from "lucide-react";
 import { fetchAdminBranches, updateBranchDetail } from "../lib/branches-client.ts";
 import type { BranchDetail } from "../lib/branches-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
+import { puedeEn } from "../lib/permisos.ts";
 import { ReglasSucursal } from "./ReglasSucursal.tsx";
 
 // Mismo criterio que STAFF_NAV_ROLES de RestaurantesShell.tsx: cosmético, el servidor (admin-modelo-pm.ts
@@ -25,6 +26,8 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
   const [draft, setDraft] = useState<{ phone: string; address: string }>({ phone: "", address: "" });
   const [saving, setSaving] = useState(false);
   const [reglasAbiertas, setReglasAbiertas] = useState<string | null>(null);
+  // PL-23: editar los datos de la sucursal es de owner/admin; el staff solo los consulta.
+  const puedeEditar = puedeEn(role, "sucursal.editar");
 
   async function load() {
     setError(null);
@@ -65,6 +68,8 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
         Crear una sucursal nueva o activar/desactivarla todavía no está disponible desde el panel — requiere un cambio de plataforma compartido por todas las verticales (ver README de este vertical).
       </Callout>
 
+      {!puedeEditar && <Callout tone="info">Solo el dueño o un administrador puede editar los datos de la sucursal.</Callout>}
+
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
       {!branches && !error && <EstadoCargando etiqueta="Cargando sucursales…" />}
 
@@ -80,7 +85,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
                     <StatusBadge tone={b.status === "active" ? "success" : "danger"}>{b.status === "active" ? "Activa" : "Inactiva"}</StatusBadge>
                   </div>
                 </div>
-                {editing !== b.propertyId && (
+                {editing !== b.propertyId && puedeEditar && (
                   <Button type="button" variant="outline" size="sm" onClick={() => startEditing(b)}>
                     <Pencil />
                     Editar
