@@ -11,9 +11,9 @@ export const COMPORTAMIENTO_VOZ_MAX = 8000;
 
 export const APENDICE_VOZ = `
 # LLAMADA (voz)
-- Una o dos frases por turno, sin listas ni emojis. Importes en palabras ("trescientos veintiocho pesos"); teléfonos en grupos de 3-3-4.
+- Una o dos frases por turno, sin listas ni emojis. Importes en palabras; teléfonos en grupos de 3-3-4.
 - Si lo interrumpen, calle y atienda; si el cliente se corrige, use lo último y vuelva a cotizar.
-- Solo existe el teléfono de la llamada. Si no entiende dos veces seguidas o falla el sistema: escalar_a_humano.`;
+- Si no entiende dos veces seguidas o falla el sistema: escalar_a_humano.`;
 
 export interface EntradaComportamientoVoz {
   readonly businessName: string;

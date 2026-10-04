@@ -6,6 +6,8 @@
 // aqui solo se redacta el simplificado: quien es el responsable, para que se usan los datos, que
 // se conserva y por cuanto tiempo, como ejercer derechos ARCO y donde esta el integral.
 
+import type { Idioma } from "../idioma.ts";
+
 export const PRIVACY_NOTICE_DEFAULT_VERSION = "v1";
 export const CONVERSATION_RETENTION_DAYS_DEFAULT = 180;
 export const CONVERSATION_RETENTION_DAYS_MIN = 30;
@@ -71,8 +73,18 @@ export function businessNameOf(config: PrivacyConfig): string {
 }
 
 /** Aviso simplificado + aviso de IA para el PRIMER mensaje de WhatsApp. Breve a proposito. */
-export function privacyNoticeWhatsApp(config: PrivacyConfig): string {
+export function privacyNoticeWhatsApp(config: PrivacyConfig, idioma: Idioma = "es"): string {
   const businessName = businessNameOf(config);
+  if (idioma === "en") {
+    const name = config.responsibleName ?? "this restaurant";
+    return (
+      `I'm the virtual assistant (an artificial intelligence) of ${name}. ` +
+      "Privacy notice: I use your name, phone number, address and orders only to take and deliver your order and assist you; " +
+      `I keep this conversation for ${config.conversationRetentionDays} days. ` +
+      "You can access, rectify, cancel or object to the use of your data (ARCO rights) by writing \"my personal data\". " +
+      (config.noticeUrl ? `Full privacy notice: ${config.noticeUrl}` : "Ask the restaurant for the full privacy notice.")
+    );
+  }
   return (
     `Soy el asistente virtual (una inteligencia artificial) de ${businessName}. ` +
     "Aviso de privacidad: uso tu nombre, teléfono, dirección y pedidos solo para tomar y entregar tu pedido y darte atención; " +

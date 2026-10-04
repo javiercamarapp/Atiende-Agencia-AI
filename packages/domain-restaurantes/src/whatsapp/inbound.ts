@@ -11,6 +11,7 @@ import type { ConversationMessage, RestaurantesRepository } from "../repository.
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
 import { matchesHighRiskOtherThan } from "./guards.ts";
 import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/aviso.ts";
+import { idiomaDeConversacion } from "../idioma.ts";
 import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -142,7 +143,7 @@ export async function handleInboundWhatsAppMessage(
         const config = await privacy.getPrivacyConfig(organizationId);
         const claimed = await privacy.claimPrivacyNotice(organizationId, phoneHash, "whatsapp", config.noticeVersion);
         const isFirstContact = claimed ?? messagesAfterUser.length === 1;
-        if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
+        if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config, idiomaDeConversacion(messagesAfterUser)), reply);
       }
 
       const assistantMessage: ConversationMessage = { role: "assistant", content: reply };
@@ -373,7 +374,7 @@ export async function responderTrasEspera(
           const claimed = await privacy.claimPrivacyNotice(organizationId, phoneHash, "whatsapp", config.noticeVersion);
           // Con varios mensajes antes de la primera respuesta el historial ya no tiene 1 solo: "primer contacto" = el agente nunca ha contestado.
           const isFirstContact = claimed ?? !historial.some((m) => m.role === "assistant");
-          if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
+          if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config, idiomaDeConversacion(historial)), reply);
         }
         await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: reply }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
         if (turn.escalacion && handoffGate) {

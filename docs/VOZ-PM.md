@@ -163,3 +163,7 @@ y las sesiones nuevas dejan de emitirse con 503 honesto); (4) revertir el despli
   pasa a una persona con `zona_ambigua`). Lo cierra la decisión de producto sobre el número único o el traspaso entre sucursales.
 - Tope mensual sin almacenamiento. Notificaciones in-app: conectadas "llamada pasó a una persona" y "el proveedor de voz registra errores"
   (`docs/NOTIFICACIONES.md`); siguen pendientes el umbral de costo de voz (80 y 100 % del tope), los callbacks pendientes y el handoff de WhatsApp.
+
+## Idioma (R-44)
+
+El agente contesta en inglés si el llamante habla inglés; ver `docs/AGENTE-INGLES.md` (reglas, límites de la cascada y de los mensajes pregrabados, guiones `guiones-en.ts`). El comportamiento sembrado en `branch_voice_config.comportamiento` hay que volver a sembrarlo para que incluya la regla de idioma.

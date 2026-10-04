@@ -4,6 +4,7 @@
 import { G_BARGE_IN, G_PREGRABADOS, G_RESULTADO, G_SIN_TARJETA, G_TONO_USTED, evaluarConGraders, graderSinPiiLog, graderTools, logContieneSensible, mal, ok } from "@atiende/voice-core/simulador";
 import type { Grader as GraderCore } from "@atiende/voice-core/simulador";
 import { AGENT_TOOL_DEFINITIONS } from "../../agent-tools/registry.ts";
+import { puntajeIdioma } from "../../idioma.ts";
 import { TELEFONO_LLAMANTE } from "./mundo-voz.ts";
 import type { LlamadaSimulada, ResultadoGrader } from "./tipos.ts";
 
@@ -66,4 +67,22 @@ export const GRADERS_VOZ: readonly Grader[] = [G_RESULTADO, G_PEDIDO, G_REGLAS_D
 
 export function evaluarLlamada(l: LlamadaSimulada): Promise<readonly ResultadoGrader[]> {
   return evaluarConGraders(l, GRADERS_VOZ);
+}
+
+/** R-44: con un llamante que habla ingles, todo lo que el agente dice va en ingles (los argumentos de herramientas no se leen aqui). */
+const G_IDIOMA_EN: Grader = (l) => {
+  const dichos = l.transcripcion.filter((t) => t.rol === "agente").map((t) => t.texto);
+  if (dichos.length === 0) return mal("G_IDIOMA_EN", "el agente no dijo nada");
+  for (const t of dichos) {
+    const { en, es } = puntajeIdioma(t);
+    if (es - en >= 2 || (es >= 2 && en === 0)) return mal("G_IDIOMA_EN", `texto en espanol (es=${es}, en=${en}): ${t.slice(0, 100)}`);
+  }
+  return dichos.some((t) => puntajeIdioma(t).en >= 2) ? ok("G_IDIOMA_EN") : mal("G_IDIOMA_EN", "ningun mensaje del agente esta claramente en ingles");
+};
+
+/** Graders de las llamadas en ingles: los mismos de es-MX mas el de idioma (el tono de "usted" es la regla de tuteo en espanol y no aplica al ingles). */
+export const GRADERS_VOZ_EN: readonly Grader[] = [...GRADERS_VOZ, G_IDIOMA_EN];
+
+export function evaluarLlamadaEn(l: LlamadaSimulada): Promise<readonly ResultadoGrader[]> {
+  return evaluarConGraders(l, GRADERS_VOZ_EN);
 }

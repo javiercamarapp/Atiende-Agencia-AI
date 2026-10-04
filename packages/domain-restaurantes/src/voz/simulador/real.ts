@@ -10,7 +10,8 @@ import { crearProveedorGeminiLlamada } from "../llamada/gemini-live-sesion.ts";
 import type { CrearSocketLive } from "../llamada/gemini-live-sesion.ts";
 import { GEMINI_LIVE_MODELO } from "../gemini-live-provider.ts";
 import { correrGuion } from "./correr-guion.ts";
-import { evaluarLlamada } from "./graders-voz.ts";
+import { evaluarLlamada, evaluarLlamadaEn } from "./graders-voz.ts";
+import { GUIONES_EN } from "./guiones-en.ts";
 import { GUIONES_ES_MX } from "./guiones-es-mx.ts";
 import { crearMundoVoz } from "./mundo-voz.ts";
 import { instruccionVozPm } from "./prompt-voz.ts";
@@ -23,6 +24,8 @@ export interface OpcionesRealVoz {
   readonly usdPorMin: number;
   readonly guiones?: readonly string[];
   readonly voiceId: string;
+  /** R-44: `en` corre los guiones del llamante en ingles (VOZ_EVALS_IDIOMA=en); por omision es-MX. */
+  readonly idioma?: "es" | "en";
   /** Solo pruebas: socket falso en lugar del WebSocket real. */
   readonly crearSocket?: CrearSocketLive;
 }
@@ -41,6 +44,7 @@ export function opcionesRealVozDesdeEntorno(env: Readonly<Record<string, string 
     usdPorMin,
     guiones: env.VOZ_EVALS_GUIONES?.split(",").map((s) => s.trim()).filter(Boolean),
     voiceId: env.VOZ_EVALS_VOZ || "Kore",
+    ...(env.VOZ_EVALS_IDIOMA === "en" ? { idioma: "en" as const } : {}),
   };
 }
 
@@ -58,7 +62,8 @@ export async function ejecutarPruebaCiegaReal(opts: OpcionesRealVoz, ahora: () =
     { propertyId: "altabrisa", slug: "altabrisa", name: "Altabrisa", address: null },
   ];
   const instruccion = instruccionVozPm(branches, "lunes 18:30", "lunes", "fco-montejo");
-  const seleccion = GUIONES_ES_MX.filter((g) => !g.soloFalso && (!opts.guiones || opts.guiones.some((id) => g.id.startsWith(id))));
+  const enIngles = opts.idioma === "en";
+  const seleccion = (enIngles ? GUIONES_EN : GUIONES_ES_MX).filter((g) => !g.soloFalso && (!opts.guiones || opts.guiones.some((id) => g.id.startsWith(id))));
   const resultados: ResultadoRealVoz["resultados"][number][] = [];
   const noCorridos: string[] = [];
   let gasto = 0;
@@ -76,7 +81,7 @@ export async function ejecutarPruebaCiegaReal(opts: OpcionesRealVoz, ahora: () =
         voiceId: opts.voiceId,
         proveedor: () => crearProveedorGeminiLlamada({ apiKey: opts.apiKey, model: opts.model, ...(opts.crearSocket ? { crearSocket: opts.crearSocket } : {}) }),
       });
-      const graders = await evaluarLlamada(llamada);
+      const graders = await (enIngles ? evaluarLlamadaEn(llamada) : evaluarLlamada(llamada));
       resultados.push({ id: guion.id, ok: graders.every((g) => g.ok), graders });
     } catch (err) {
       resultados.push({ id: guion.id, ok: false, graders: [], error: err instanceof Error ? err.message.replace(/key=[^&\s]+/g, "key=***") : "error" });

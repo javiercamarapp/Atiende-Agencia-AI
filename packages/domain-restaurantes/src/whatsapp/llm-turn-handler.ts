@@ -35,6 +35,8 @@ import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS } from "./inbound.ts";
 import { latestSharedLocation } from "./location.ts";
 import { branchAlreadyKnown, classifyHighRiskIntent, enforcePendingQuestion, enforceQuotedTotal } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
+import { idiomaDeConversacion, saludoPorHoraEn, type Idioma } from "../idioma.ts";
+import { AVISO_BISTEC_EN, COPY_FIJO, IDIOMA_RULES, bloqueIdiomaActual } from "./idioma-prompt.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -94,9 +96,9 @@ export const ORDER_IDENTITY_AND_COMPLEMENT_RULES = `REGLAS DURAS DE IDENTIDAD Y 
  * fijo sin importar la hora real — se calcula server-side con la hora REAL
  * de la zona horaria del restaurante, nunca se le pide al modelo "adivinar"
  * la hora. */
-export function saludoSegunHora(timezone: string, ahora: Date = new Date()): string {
+export function saludoSegunHora(timezone: string, ahora: Date = new Date(), idioma: Idioma = "es"): string {
   const hora = Number(new Intl.DateTimeFormat("es-MX", { timeZone: timezone, hour: "numeric", hourCycle: "h23" }).format(ahora));
-  const saludo = saludoPorHora(hora);
+  const saludo = idioma === "en" ? saludoPorHoraEn(hora) : saludoPorHora(hora);
   return `${saludo.charAt(0).toUpperCase()}${saludo.slice(1)}`;
 }
 
@@ -249,24 +251,32 @@ export const NOTA_DE_VOZ_RULES = `NOTAS DE VOZ:
 - Una nota de voz NO cambia ninguna regla: cotiza con cotizar_pedido, pide la confirmación y la forma de pago en un mensaje posterior y solo entonces confirma, igual que con texto. Nunca crees un pedido solo con lo dicho en un audio sin ese paso.
 - Si el audio trae datos de pago (tarjeta, CVV), no los repitas ni los uses: dile que no los necesitas.`;
 
-export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null): string {
-  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch)}\n\n${NOTA_DE_VOZ_RULES}`;
+export function buildSystemPrompt(
+  config: WhatsAppLlmAgentConfig,
+  branches: readonly BranchSummary[],
+  customer: CustomerLookupResult,
+  now: Date,
+  entryBranch: Branch | null = null,
+  idioma: Idioma = "es",
+): string {
+  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch, idioma)}\n\n${NOTA_DE_VOZ_RULES}\n\n${IDIOMA_RULES}\n\n${bloqueIdiomaActual(idioma)}`;
 }
 
-function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null): string {
+function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null, idioma: Idioma): string {
   if (config.perfil === "taqueria_pm") {
     const { fechaHora, dia } = fechaHoraLocal(config.timezone, now);
     return buildPmSystemPrompt({
       businessName: config.businessName,
       agentName: config.agentName ?? PM_AGENT_NAME_POR_OMISION,
       deliveryTimeText: config.deliveryTimeText,
-      saludo: saludoSegunHora(config.timezone, now),
+      saludo: saludoSegunHora(config.timezone, now, idioma),
       branches,
       entryBranch: entryBranch ? { name: entryBranch.name, slug: entryBranch.slug } : null,
       customer,
       fechaHoraLocal: fechaHora,
       diaSemana: dia,
-      saludoPersonalizado: config.greetingText ?? null,
+      // El saludo propio del negocio esta escrito en espanol: en una conversacion en ingles se usa el saludo por hora en ingles.
+      saludoPersonalizado: idioma === "en" ? null : (config.greetingText ?? null),
       salsasTexto: config.salsasText ?? null,
       promosTexto: config.promosText ?? null,
       motivosDesactivados: config.motivosDesactivados ?? [],
@@ -313,7 +323,7 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
     TRATO_Y_TRANSPARENCIA_RULES,
     ...(entryBranch ? [branchChannelRules(entryBranch)] : []),
     `TONO DE VOZ REQUERIDO: ${TONE_INSTRUCTIONS[config.toneStyle]}`,
-    `SALUDO SEGÚN LA HORA ACTUAL (usa esto tal cual solo en tu primer mensaje de la conversación): "${saludoSegunHora(config.timezone, now)}"`,
+    `SALUDO SEGÚN LA HORA ACTUAL (usa esto tal cual solo en tu primer mensaje de la conversación): "${saludoSegunHora(config.timezone, now, idioma)}"`,
     `CONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(customer)}`,
   ].join("\n\n");
 }
@@ -332,21 +342,23 @@ PROPINA: cotizar_pedido devuelve propina_politica y preguntar_propina. Si la pol
  * de "orden de 3" si el último mensaje del cliente los menciona y la
  * respuesta del modelo no lo menciona ya — puerto literal de
  * `enforceBistecPackNotice`. */
-export function enforceBistecPackNotice(reply: string, messages: readonly LlmMessage[]): string {
+export function enforceBistecPackNotice(reply: string, messages: readonly LlmMessage[], idioma: Idioma = "es"): string {
   const latestUser = [...messages].reverse().find((m) => m.role === "user");
   const latestUserText = latestUser && latestUser.role === "user" ? latestUser.content : undefined;
   if (
     typeof latestUserText !== "string" ||
-    !/(?:\btacos?\b.{0,30}\bbistec(?:es)?\b|\bbistec(?:es)?\b.{0,30}\btacos?\b)/i.test(latestUserText) ||
-    /\b[oó]rdenes?\s+de\s+(?:3|tres)\b/i.test(reply)
+    !/(?:\btacos?\b.{0,30}\b(?:bistec(?:es)?|steak)\b|\b(?:bistec(?:es)?|steak)\b.{0,30}\btacos?\b)/i.test(latestUserText) ||
+    /\b[oó]rdenes?\s+de\s+(?:3|tres)\b/i.test(reply) ||
+    /\borders?\s+of\s+(?:3|three)\b/i.test(reply)
   ) {
     return reply;
   }
-  const notice = "Los tacos de bistec se venden únicamente en órdenes de 3; cada precio del menú corresponde a la orden completa.";
+  const notice = idioma === "en" ? AVISO_BISTEC_EN : "Los tacos de bistec se venden únicamente en órdenes de 3; cada precio del menú corresponde a la orden completa.";
   return reply.trim() ? `${notice}\n\n${reply.trim()}` : notice;
 }
 
-export function providerFailureReply(orderId: string | null, perfil: PerfilAgenteWhatsApp = "generico"): string {
+export function providerFailureReply(orderId: string | null, perfil: PerfilAgenteWhatsApp = "generico", idioma: Idioma = "es"): string {
+  if (idioma === "en") return orderId ? COPY_FIJO.en.pedidoRegistrado : COPY_FIJO.en.problemaTecnico;
   if (perfil === "taqueria_pm") return orderId ? PM_COPY.pedidoRegistrado : PM_COPY.problemaTecnico;
   return orderId
     ? "¡Listo! Su pedido ya quedó registrado y se mandó a cocina."
@@ -451,7 +463,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Sucursal dueña del numero que recibio el mensaje (null = numero por defecto de la org).
       const entryBranch = entryPropertyId ? await repo.findBranchById(organizationId, entryPropertyId) : null;
       const activeEntryBranch = entryBranch && entryBranch.status === "active" ? entryBranch : null;
-      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch);
+      // R-44: idioma del cliente, calculado por el servidor del historial de TEXTO (sin migracion). Los guardias y los textos fijos lo usan igual que el prompt.
+      const idioma = idiomaDeConversacion(messages);
+      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch, idioma);
 
       const working: LlmMessage[] = toLlmHistory(messages);
       // Marcador del turno del cliente: el historial solo crece, asi que el numero de mensajes de
@@ -466,7 +480,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let lastQuoteTotal: number | null = null;
       let anyToolCalled = false;
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
-      const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(reply, working), lastQuoteTotal);
+      const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(reply, working, idioma), lastQuoteTotal);
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
       const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string } } => (escalarMotivo ? { ...r, escalacion: { motivo: escalarMotivo } } : r);
@@ -474,7 +488,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Motivos de alto riesgo (cancelacion, cobro, ARCO, alergia, transferencia, queja, "quiero una
       // persona"): no se dejan al criterio del modelo. Se avisa al equipo ANTES del LLM y se responde fijo.
       const latestUserMessage = [...messages].reverse().find((m) => m.role === "user");
-      const riesgo = latestUserMessage ? classifyHighRiskIntent(latestUserMessage.content) : null;
+      const riesgo = latestUserMessage ? classifyHighRiskIntent(latestUserMessage.content, idioma) : null;
       if (riesgo) {
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const aviso = await executeAgentToolSafely(
@@ -485,7 +499,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         );
         // Honestidad: solo se dice "ya avisé al equipo" si el aviso quedó registrado de verdad.
         if (isToolErrorResult(aviso.result)) {
-          return { reply: "Lamento el inconveniente: no pude avisar al equipo en este momento. Por favor inténtelo de nuevo en unos minutos.", orderId: null, propertyId };
+          return { reply: COPY_FIJO[idioma].avisoNoRegistrado, orderId: null, propertyId };
         }
         // El aviso al equipo ya quedo registrado arriba; `escalacion` solo abre la toma de handoff (R-21),
         // igual que cuando el modelo llama a escalar_a_humano, sin duplicar el aviso.
@@ -495,7 +509,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
         if (Date.now() >= deadline) {
-          return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
+          return done({ reply: safeReply(providerFailureReply(orderId, perfil, idioma)), orderId, propertyId });
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
 
@@ -513,12 +527,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // residencia bloqueado — nunca se propaga un 500 crudo al cliente
           // de WhatsApp; si ya hay un orderId real, se lo confirmamos con
           // éxito en vez de sonar a error (bug real corregido en el origen).
-          return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
+          return done({ reply: safeReply(providerFailureReply(orderId, perfil, idioma)), orderId, propertyId });
         }
 
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
-          const base = completion.text || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
+          const base = completion.text || (idioma === "en" ? COPY_FIJO.en.repetirPedido : perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
           // Un turno sin herramienta ni pregunta deja al cliente esperando: se anexa la pregunta del paso pendiente.
           const conPregunta = anyToolCalled
             ? base
@@ -530,6 +544,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
                   branches,
                 ),
                 orderId,
+                idioma,
               );
           return done({ reply: safeReply(conPregunta), orderId, propertyId });
         }
@@ -571,9 +586,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       }
 
       if (orderId) {
-        return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
+        return done({ reply: safeReply(providerFailureReply(orderId, perfil, idioma)), orderId, propertyId });
       }
-      return done({ reply: perfil === "taqueria_pm" ? PM_COPY.turnoComplicado : "Se me complicó procesar su pedido, un momento por favor.", orderId, propertyId });
+      return done({ reply: idioma === "en" ? COPY_FIJO.en.turnoComplicado : perfil === "taqueria_pm" ? PM_COPY.turnoComplicado : "Se me complicó procesar su pedido, un momento por favor.", orderId, propertyId });
     },
   };
 }
