@@ -156,3 +156,13 @@ revoke all on licitaciones.proposal_comment from public, anon;
 grant select on licitaciones.proposal_comment to authenticated;
 grant insert (id, organization_id, proposal_id, scope, scope_ref, kind, body, author_id, author_role) on licitaciones.proposal_comment to authenticated;
 grant select, insert on licitaciones.proposal_comment to service_role;
+
+-- ---------------------------------------------------------------------------------------------------------------
+-- 5. Bitacora: nuevas acciones en tender_audit_log (la escribe solo la capa de aplicacion; el CHECK de 010 es cerrado)
+-- ---------------------------------------------------------------------------------------------------------------
+alter table licitaciones.tender_audit_log drop constraint tender_audit_log_action_check;
+alter table licitaciones.tender_audit_log add constraint tender_audit_log_action_check
+  check (action in (
+    'tender.manual_upsert.created', 'tender.manual_upsert.updated', 'tender.version_recorded',
+    'document.uploaded', 'requirements.extracted', 'requirement.edited', 'requirement.conflict_resolved', 'section.edited'
+  ));

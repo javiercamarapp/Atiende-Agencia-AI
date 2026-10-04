@@ -456,5 +456,20 @@ do $$ begin
   end;
 end $$;
 rollback;
+\echo '--- 27. POSITIVO/NEGATIVO: la bitacora acepta las acciones nuevas y rechaza una desconocida (23514) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '34000000-0000-0000-0000-0000000000a3', true);
+insert into licitaciones.tender_audit_log (organization_id, tender_id, action, actor_id) values ('34000000-0000-0000-0000-0000000000d1', '34000000-0000-0000-0000-0000000000e1', 'requirement.edited', '34000000-0000-0000-0000-0000000000a3');
+insert into licitaciones.tender_audit_log (organization_id, tender_id, action, actor_id) values ('34000000-0000-0000-0000-0000000000d1', '34000000-0000-0000-0000-0000000000e1', 'document.uploaded', '34000000-0000-0000-0000-0000000000a3');
+do $$ begin
+  begin
+    insert into licitaciones.tender_audit_log (organization_id, tender_id, action, actor_id) values ('34000000-0000-0000-0000-0000000000d1', '34000000-0000-0000-0000-0000000000e1', 'accion.inventada', '34000000-0000-0000-0000-0000000000a3');
+    raise exception 'se acepto una accion de bitacora desconocida';
+  exception when sqlstate '23514' then null;
+  end;
+end $$;
+rollback;
+
 \echo ''
-\echo '==> 26 escenarios: cada uno corre en su begin/rollback y termina sin error si la regla se cumple.'
+\echo '==> 27 escenarios: cada uno corre en su begin/rollback y termina sin error si la regla se cumple.'
