@@ -81,6 +81,8 @@ export interface MundoApi {
   readonly reloj: RelojManual;
   /** Peticiones que llegaron a la API (metodo + ruta), en orden. */
   readonly peticiones: string[];
+  /** Cuerpos JSON de esas peticiones (ruta -> cuerpos), para afirmar lo que el worker mando. */
+  readonly cuerpos: Map<string, unknown[]>;
   depsAtencion(extra: Partial<DepsAtencion> & Pick<DepsAtencion, "crearEscalera">): DepsAtencion;
 }
 
@@ -115,12 +117,20 @@ export async function crearMundoApi(opts: OpcionesMundoApi = {}): Promise<MundoA
   };
   const app = buildApp(deps);
   const peticiones: string[] = [];
+  const cuerpos = new Map<string, unknown[]>();
   const fetchFn: typeof fetch = async (input, init) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     const headers = new Headers(init?.headers);
     const body = init?.body;
     if (typeof body === "string" && !headers.has("content-length")) headers.set("content-length", String(new TextEncoder().encode(body).byteLength));
     peticiones.push(`${init?.method ?? "GET"} ${url.pathname}`);
+    if (typeof body === "string") {
+      try {
+        cuerpos.set(url.pathname, [...(cuerpos.get(url.pathname) ?? []), JSON.parse(body)]);
+      } catch {
+        /* no es JSON */
+      }
+    }
     return app.request(url.pathname + url.search, { ...init, headers });
   };
   const env = {
@@ -150,6 +160,7 @@ export async function crearMundoApi(opts: OpcionesMundoApi = {}): Promise<MundoA
     fetchFn,
     reloj,
     peticiones,
+    cuerpos,
     depsAtencion: (extra) => ({
       config,
       pregrabados: pregrabadosDePrueba(),

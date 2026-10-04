@@ -7,6 +7,8 @@
 //   POST /internal/restaurantes/voz/conversaciones/:id/costo             costo por escalón (Gemini Live / cascada) hacia core.usage_cost_event; los
 //        eventos los arma el servidor desde los TRAMOS (duración por escalón), el worker no manda importes libres.
 //   POST /internal/restaurantes/voz/conversaciones/:id/modo-entrada      desborde | total | prueba y la franja del día (migración 044).
+//   POST /internal/restaurantes/voz/tope-mensual                         aviso in-app al owner/admin: el gasto de voz del mes llegó al 80 % del tope o lo alcanzó
+//        (el tope vive en la configuración del worker, que es quien lo compara; aquí solo se emite el aviso, con dedupe por organización y mes).
 //
 // Lado PANEL (staff owner/admin con alcance de la sucursal):
 //   GET  /v1/restaurantes/:propertyId/admin/voz/kpi-desborde             llamadas que el personal no contestó -> pedidos -> ventas recuperadas, y
@@ -29,6 +31,7 @@ import {
   diaLocalSucursal,
 } from "@atiende/domain-restaurantes";
 import type { FranjaVoz, ModoEntradaVoz, VozLlamadaRepository, VozModoEntradaKpiDia } from "@atiende/domain-restaurantes";
+import { emitirNotificacion } from "@atiende/db";
 import { ESCALERA_VOZ, eventosCostoLlamada } from "@atiende/voice-core";
 import type { EscalonVoz, TramoLlamada } from "@atiende/voice-core";
 import { Errors } from "../../../errors.ts";
@@ -152,6 +155,35 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       if (marcada === null) throw Errors.serviceUnavailable("El modo de entrada todavía no está disponible en esta base (falta aplicar la migración 044).");
       if (!marcada) throw Errors.notFound("La conversación no existe para esa organización.");
       return c.json({ marcada: true });
+    });
+  });
+
+  app.post(`${base}/tope-mensual`, async (c) => {
+    exigirSecreto(deps, c.req.raw);
+    const body = await readJsonCapped<Record<string, unknown>>(c.req.raw, 2 * 1024);
+    const organizationId = uuid(body.organizationId, "organizationId");
+    const propertyId = uuid(body.propertyId, "propertyId");
+    if (body.nivel !== "80" && body.nivel !== "alcanzado") throw Errors.validation('nivel: debe ser "80" o "alcanzado".');
+    const enteroMicroUsd = (valor: unknown, campo: string): number => {
+      if (typeof valor !== "number" || !Number.isInteger(valor) || valor < 0 || valor > 1_000_000_000_000) throw Errors.validation(`${campo}: se esperaba un entero de micro-USD entre 0 y 1000000000000.`);
+      return valor;
+    };
+    const usado = enteroMicroUsd(body.usadoMicroUsd, "usadoMicroUsd");
+    const limite = enteroMicroUsd(body.limiteMicroUsd, "limiteMicroUsd");
+    if (limite === 0) throw Errors.validation("limiteMicroUsd: el tope debe ser mayor que 0.");
+    // Un nivel que los numeros no respaldan no emite nada (el aviso lo decide el servidor con las cifras, no el llamador): 80 % o mas.
+    if (usado * 100 < limite * 80) throw Errors.validation("usadoMicroUsd: todavía no llega al 80 % del tope.");
+    if (body.nivel === "alcanzado" && usado < limite) throw Errors.validation("usadoMicroUsd: todavía no alcanza el tope.");
+    const periodo = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Merida", year: "numeric", month: "2-digit" }).format(new Date()).replace(/\D/g, "").slice(0, 6);
+    const usd = (micro: number): number => Math.round((micro / 1_000_000) * 100) / 100;
+
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const sucursal = await deps.restaurantesRepo(db).findBranchById(organizationId, propertyId);
+      if (!sucursal) throw Errors.notFound("La sucursal no existe para esa organización.");
+      // Ids del catalogo, literales (la prueba del catalogo verifica que este archivo los emite).
+      const evento = body.nivel === "alcanzado" ? "restaurantes.voz.tope_mensual_alcanzado" : "restaurantes.voz.tope_mensual_80";
+      const resultado = await emitirNotificacion(db, { evento, organizationId, clave: `${organizationId}:${periodo}`, parametros: { usado: usd(usado), limite: usd(limite) }, entidadTipo: "voz_tope_mensual" });
+      return c.json({ emitida: resultado.estado === "emitida", estado: resultado.estado });
     });
   });
 

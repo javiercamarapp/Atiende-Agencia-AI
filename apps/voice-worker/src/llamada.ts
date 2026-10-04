@@ -151,6 +151,16 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   const tope = resolverTopeMensualMicroUsd(deps.config.topeMensualPlataformaMicroUsd, entrada.topeMensualUsd);
   const decision = evaluarInicioLlamada({ habilitado: contexto.habilitado, gastoMesMicroUsd: contexto.gastoMesMicroUsd, topeMensualMicroUsd: tope, horaLocal: contexto.horaLocal });
 
+  // Aviso in-app al owner/admin cuando el gasto del mes llega al 80 % del tope y cuando lo alcanza (el servidor deduplica por organizacion y mes). No fatal.
+  if (tope !== null && contexto.gastoMesMicroUsd !== null && contexto.gastoMesMicroUsd * 100 >= tope * 80) {
+    const nivel = contexto.gastoMesMicroUsd >= tope ? "alcanzado" : "80";
+    try {
+      await deps.api.avisarTopeMensual({ organizationId, propertyId, nivel, usadoMicroUsd: contexto.gastoMesMicroUsd, limiteMicroUsd: tope });
+    } catch (err) {
+      log("aviso_tope_no_enviado", { codigo: err instanceof ErrorApi ? String(err.estado ?? "red") : "error" });
+    }
+  }
+
   // 3) Llamante anonimo: sin telefono no hay token ni herramientas. Mensaje y cierre visible `escalado` (el personal lo ve en Conversaciones).
   if (telefono === null) {
     log("llamante_anonimo", { ok: decision.ok });

@@ -172,6 +172,11 @@ export class ClienteApi {
     return { consentimiento: c, respuestaSugerida: typeof r.respuestaSugerida === "string" ? r.respuestaSugerida : "" };
   }
 
+  /** Aviso in-app al owner/admin: el gasto del mes llego al 80 % del tope o lo alcanzo. El servidor valida las cifras y deduplica por organizacion y mes. */
+  async avisarTopeMensual(e: { organizationId: string; propertyId: string; nivel: "80" | "alcanzado"; usadoMicroUsd: number; limiteMicroUsd: number }): Promise<void> {
+    await this.post("tope_mensual", "/internal/restaurantes/voz/tope-mensual", e, this.servicio(), 1);
+  }
+
   async marcarModoEntrada(e: { organizationId: string; conversationId: string; modo: string; franja: string }): Promise<void> {
     await this.post("modo_entrada", `/internal/restaurantes/voz/conversaciones/${e.conversationId}/modo-entrada`, { organizationId: e.organizationId, modo: e.modo, franja: e.franja }, this.servicio(), 2);
   }

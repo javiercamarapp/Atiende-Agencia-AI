@@ -106,3 +106,70 @@ describe("errores del proveedor de voz", () => {
     expect(await r.json()).toEqual({ registrado: true });
   });
 });
+
+describe("tope mensual de gasto de voz (aviso del worker de telefonia)", () => {
+  const cuerpo = (t: Awaited<ReturnType<typeof construir>>, extra: Record<string, unknown> = {}) => ({ organizationId: t.ctx.organizationId, propertyId: t.ctx.propertyIdA, nivel: "80", usadoMicroUsd: 4_100_000, limiteMicroUsd: 5_000_000, ...extra });
+
+  it("al 80 % emite UNA notificacion de atencion con las cifras en USD, enlace a Agente de voz y dedupe por organizacion y mes", async () => {
+    const t = await construir();
+    const r = await t.post("/tope-mensual", cuerpo(t));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ emitida: true });
+    expect(t.emisiones).toHaveLength(1);
+    expect(t.emisiones[0]).toMatchObject({
+      evento: "restaurantes.voz.tope_mensual_80",
+      organizationId: t.ctx.organizationId,
+      severidad: "atencion",
+      categoria: "cobranza",
+      enlace: "/restaurantes/{orgSlug}/agente-voz",
+    });
+    expect(t.emisiones[0]!.dedupeKey).toMatch(new RegExp(`^restaurantes\\.voz\\.tope_mensual_80:${t.ctx.organizationId}:\\d{6}$`));
+    expect(t.emisiones[0]!.cuerpo).toContain("4.1 de 5 USD");
+    expect(`${t.emisiones[0]!.titulo} ${t.emisiones[0]!.cuerpo}`).not.toMatch(/@|\d{10}/);
+  });
+
+  it("al alcanzar el tope emite el evento critico, aparte del de 80 %", async () => {
+    const t = await construir();
+    await t.post("/tope-mensual", cuerpo(t, { nivel: "alcanzado", usadoMicroUsd: 5_000_000 }));
+    expect(t.emisiones[0]).toMatchObject({ evento: "restaurantes.voz.tope_mensual_alcanzado", severidad: "critica" });
+  });
+
+  it("el nivel lo respaldan las cifras: sin llegar al 80 % o sin alcanzar el tope no se emite nada (400)", async () => {
+    const t = await construir();
+    expect((await t.post("/tope-mensual", cuerpo(t, { usadoMicroUsd: 3_999_999 }))).status).toBe(400);
+    expect((await t.post("/tope-mensual", cuerpo(t, { nivel: "alcanzado", usadoMicroUsd: 4_999_999 }))).status).toBe(400);
+    expect(t.emisiones).toHaveLength(0);
+  });
+
+  it.each([
+    ["nivel desconocido", { nivel: "50" }],
+    ["tope en cero", { limiteMicroUsd: 0 }],
+    ["usado negativo", { usadoMicroUsd: -1 }],
+    ["usado no entero", { usadoMicroUsd: 4_100_000.5 }],
+    ["organizationId invalido", { organizationId: "x" }],
+  ])("validacion: %s -> 400 y no se emite", async (_n, extra) => {
+    const t = await construir();
+    expect((await t.post("/tope-mensual", cuerpo(t, extra))).status).toBe(400);
+    expect(t.emisiones).toHaveLength(0);
+  });
+
+  it("sin el secreto interno: 401; cross-tenant (sucursal de otra organizacion): 404 y no se emite", async () => {
+    const t = await construir();
+    const raw = JSON.stringify(cuerpo(t));
+    const sinSecreto = await buildApp(t.ctx.deps).request("/internal/restaurantes/voz/tope-mensual", { method: "POST", body: raw, headers: { "content-type": "application/json", "content-length": String(raw.length) } });
+    expect(sinSecreto.status).toBe(401);
+    expect((await t.post("/tope-mensual", cuerpo(t, { propertyId: t.ctx.otherPropertyId }))).status).toBe(404);
+    expect(t.emisiones).toHaveLength(0);
+  });
+
+  it("si la base no tiene el productor, el aviso no rompe nada (200, emitida=false)", async () => {
+    const t = await construir({
+      alEmitir: () => {
+        throw Object.assign(new Error("function core.emit_notification does not exist"), { code: "42883" });
+      },
+    });
+    const r = await t.post("/tope-mensual", cuerpo(t));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ emitida: false });
+  });
+});

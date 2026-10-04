@@ -106,6 +106,43 @@ describe("tope mensual de gasto de voz por organizacion", () => {
     expect(api.mundo.callbacks).toHaveLength(1);
   });
 
+  it("el gasto llega al 80 % del tope: la llamada SE atiende y se avisa al owner/admin una vez (nivel 80, con las cifras)", async () => {
+    const api = await crearMundoApi({ gastoPrevioMicroUsd: 4_000_000, topeMensualUsd: 5 });
+    const agente = new AgenteGuionado([]);
+    const t = await escenario(api, () => [agente.escalon()]);
+    const llamada = t.telefonia.llamar({ id: "llamada-80", dnis: NUMERO_SUCURSAL, desde: SIP });
+    await vi.waitFor(() => expect(agente.saludos).toBe(1), { timeout: 5_000, interval: 5 });
+    llamada.clienteCuelga();
+    await t.esperarFin();
+    expect(api.cuerpos.get("/internal/restaurantes/voz/tope-mensual")).toEqual([{ organizationId: api.mundo.organizationId, propertyId: api.mundo.propertyId, nivel: "80", usadoMicroUsd: 4_000_000, limiteMicroUsd: 5_000_000 }]);
+    expect(pregrabadosQueSonaron(llamada)).not.toContain("tope_mensual");
+  });
+
+  it("el gasto alcanza el tope: se rechaza la llamada y el aviso es de nivel `alcanzado`", async () => {
+    const api = await crearMundoApi({ gastoPrevioMicroUsd: 5_000_000, topeMensualUsd: 5 });
+    const t = await escenario(api, () => [new AgenteGuionado([]).escalon()]);
+    t.telefonia.llamar({ id: "llamada-100", dnis: NUMERO_SUCURSAL, desde: SIP });
+    await t.esperarFin();
+    expect(api.cuerpos.get("/internal/restaurantes/voz/tope-mensual")).toMatchObject([{ nivel: "alcanzado", usadoMicroUsd: 5_000_000, limiteMicroUsd: 5_000_000 }]);
+  });
+
+  it("por debajo del 80 % o sin tope configurado no se avisa nada", async () => {
+    const a = await crearMundoApi({ gastoPrevioMicroUsd: 3_999_999, topeMensualUsd: 5 });
+    const ta = await escenario(a, () => [new AgenteGuionado([]).escalon()]);
+    const la = ta.telefonia.llamar({ id: "llamada-79", dnis: NUMERO_SUCURSAL, desde: SIP });
+    await vi.waitFor(() => expect(a.peticiones.some((p) => p.endsWith("/conversaciones"))).toBe(true), { timeout: 5_000, interval: 5 });
+    la.clienteCuelga();
+    await ta.esperarFin();
+    expect(a.cuerpos.has("/internal/restaurantes/voz/tope-mensual")).toBe(false);
+    const b = await crearMundoApi({ gastoPrevioMicroUsd: 999_000_000 });
+    const tb = await escenario(b, () => [new AgenteGuionado([]).escalon()]);
+    const lb = tb.telefonia.llamar({ id: "llamada-sin-tope", dnis: NUMERO_SUCURSAL, desde: SIP });
+    await vi.waitFor(() => expect(b.peticiones.some((p) => p.endsWith("/conversaciones"))).toBe(true), { timeout: 5_000, interval: 5 });
+    lb.clienteCuelga();
+    await tb.esperarFin();
+    expect(b.cuerpos.has("/internal/restaurantes/voz/tope-mensual")).toBe(false);
+  });
+
   it("por debajo del tope la llamada se atiende", async () => {
     const api = await crearMundoApi({ gastoPrevioMicroUsd: 4_999_999, topeMensualUsd: 5 });
     const agente = new AgenteGuionado([]);
