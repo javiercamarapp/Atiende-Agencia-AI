@@ -97,3 +97,30 @@ export function keydown(target: EventTarget, key: string): void {
     target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
   });
 }
+
+/** R-37: App.tsx carga cada pantalla con React.lazy. Tras montar la App real hay que esperar a que baje el chunk de la
+ * ruta: mientras tanto se pinta el estado de carga de pantalla completa (`.atiende-respira`, solo lo usan el Suspense de
+ * la App y el arranque de los shells). Espera con tiempo real corto (el import dinámico lo resuelve vite-node) y falla
+ * con un mensaje claro si la ruta nunca termina de cargar, en vez de dejar una aserción confusa sobre "Cargando…". */
+export async function esperarRutaCargada(container: HTMLElement, maxMs = 5000): Promise<void> {
+  const limite = Date.now() + maxMs;
+  while (container.querySelector(".atiende-respira")) {
+    if (Date.now() > limite) throw new Error(`La ruta no terminó de cargar en ${maxMs} ms (sigue el estado de carga de pantalla).`);
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    });
+  }
+}
+
+/** Espera (tiempo real corto, dentro de `act`) a que `condicion` sea cierta. Sirve cuando el contenido depende de un chunk
+ * lazy que React Router carga dentro de una transición: ahí NO se pinta el fallback del Suspense (la pantalla anterior se
+ * queda hasta que el chunk esté listo), así que `esperarRutaCargada` no basta. */
+export async function esperarHasta(condicion: () => boolean, descripcion: string, maxMs = 5000): Promise<void> {
+  const limite = Date.now() + maxMs;
+  while (!condicion()) {
+    if (Date.now() > limite) throw new Error(`No se cumplió en ${maxMs} ms: ${descripcion}`);
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    });
+  }
+}
