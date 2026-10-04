@@ -18,6 +18,7 @@ import { OrderValidationError } from "../errors.ts";
 import { DEFAULT_COMPLEMENTS, isTortillaChoice } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
+import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
 import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { assertWebOrderRules } from "../storefront.ts";
 import type { RestaurantesRepository } from "../repository.ts";
@@ -536,7 +537,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       }
     }
     const outcome = await dispatchTool(repo, ctx, name, input);
-    const quotedPrices = priceSignature((outcome.raw as { lines: readonly { productId: string; price: number; quantity: number }[] }).lines);
+    const quotedQuote = outcome.raw as OrderQuote & Partial<QuotePromotionInfo>;
+    const quotedPrices = priceSignature(quotedQuote.lines);
     const quoteHash = fingerprintOrder({
       branchSlug: String(input.branch_slug ?? ""),
       canal: canalOf(input.canal),
@@ -547,7 +549,14 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
       if (snap === null) return outcome; // base sin migrar: camino anterior
-      const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", { quoteHash, quotedAtMs: flowNow(flow), quotedTurn: flow.turn, quotedPrices });
+      const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", {
+        quoteHash,
+        quotedAtMs: flowNow(flow),
+        quotedTurn: flow.turn,
+        quotedPrices,
+        quotedTotal: quotedQuote.total,
+        quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
+      });
       if (res === "written") return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash }, quoteHash };
       if (res === "unavailable") return outcome;
     }

@@ -494,6 +494,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         return done({ reply: riesgo.reply, orderId: null, propertyId });
       }
 
+      // La cotizacion vigente vive en la maquina de estados del servidor (no en una variable del turno): un turno posterior
+      // sin herramientas ("¿cuanto era?") sigue corrigiendo un total alucinado. Base sin migrar -> null: solo el turno que cotiza.
+      const flowVigente = (await repo.readOrderFlow(organizationId, `wa:${phone}`))?.context ?? null;
+      if (flowVigente && typeof flowVigente.quotedTotal === "number" && Number.isFinite(flowVigente.quotedTotal)) {
+        lastQuoteTotal = flowVigente.quotedTotal;
+        lastQuoteAmounts = flowVigente.quotedAmounts;
+      }
+
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
         if (Date.now() >= deadline) {
           return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
