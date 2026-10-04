@@ -16,7 +16,9 @@
 // usan cancelar/conectar: JWT + `requirePropertyMembership("propertyId")`, SIN
 // `allowedRoles` (igual que el resto del panel de citas — ver roles.ts: citas
 // nunca distinguió quién del staff puede escribir, ni en el origen ni en las
-// fases ya construidas de esta vertical).
+// fases ya construidas de esta vertical). Única excepción: el PATCH de
+// `tenant-config` (rubro y teléfono de avisos de la organización) exige
+// `STAFF_INVITE_ROLES` (owner/admin) con `assertVerticalRole`.
 import { Hono } from "hono";
 import { assertVerticalRole, authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";

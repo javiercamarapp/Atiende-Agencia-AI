@@ -4,8 +4,8 @@
 //     errores de dedo (kiero, suisidarme, quieroooo), jerga, leetspeak (m4tarme), letras separadas (m a t a r m e), emoji y puntuación
 //     de por medio, doble espacio o salto de línea (la voz llega sin puntuación) y el inglés básico.
 //   - Los FALSOS POSITIVOS en un consultorio ("me corto el pelo", "ya no aguanto el dolor de muela", "terminar con todo el tratamiento",
-//     "ya no puedo más tarde de las 5") se evitan con contexto de la frase; lo que aun así coincida NO se silencia: recibe la respuesta
-//     cuidadosa de contención y una persona del negocio lo revisa.
+//     "ya no puedo más tarde de las 5") se evitan con contexto de la frase; lo que aun así coincida recibe la respuesta
+//     de contención y abre una escalación con handoff: una persona del negocio lo revisa y el agente no sigue hasta que cierre la toma.
 //   - El resultado es una ETIQUETA fija de familia (nunca la frase del paciente): es lo que se guarda en la escalación, se muestra al
 //     negocio y la voz acepta de vuelta, sin copiar texto del paciente (dato de salud).
 

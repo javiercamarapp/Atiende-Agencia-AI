@@ -1,5 +1,5 @@
-// Guardia de CRISIS de la voz de citas: la misma regla determinista que en WhatsApp (`crisis-guardrail.ts`: mismas palabras clave, mismo mensaje,
-// solo rubros de salud) aplicada a lo que DICE el cliente, ANTES de que el modelo lo reciba o conteste (el controlador de voice-core la corre en cada
+// Guardia de CRISIS de la voz de citas: la misma regla determinista que en WhatsApp (`crisis-guardrail.ts`: mismo detector, versión de voz del
+// mensaje, rubros de salud y rubro sin definir u "otro") aplicada a lo que DICE el cliente, ANTES de que el modelo lo reciba o conteste (el controlador de voice-core la corre en cada
 // habla inteligible). Nunca la decide el modelo. Al activarse, el core interrumpe al agente, dice `CRISIS_VOICE_MESSAGE` (la versión de voz, de usted y sin barras) TAL CUAL, escala con
 // `derivar_a_humano` (motivo `crisis`) y cierra la llamada como `escalado`; el servidor registra la escalacion (`citas.emergency_escalations`, canal
 // 'voice') con `derivarAHumanoVoz`.

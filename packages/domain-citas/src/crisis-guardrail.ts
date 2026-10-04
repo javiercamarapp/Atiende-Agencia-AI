@@ -8,10 +8,10 @@
 // `CitasRepository` en vez de un cliente supabase-js crudo (mismo cambio de firma
 // que el resto de este paquete).
 //
-// Solo aplica a rubros de salud (ver vertical-config.ts::requiresCrisisGuardrail).
+// Aplica a rubros de salud y también sin rubro o con "otro" (ver vertical-config.ts::crisisGuardActivaPara).
 // Aplica a WhatsApp (whatsapp/inbound.ts) y a la VOZ: el agente de voz corre sobre
 // @atiende/voice-core, cuyo controlador evalúa lo que dice el cliente con
-// `voz/guardia-crisis.ts` (misma lista de palabras y mismo rubro), dice el mensaje de crisis
+// `voz/guardia-crisis.ts` (mismo detector y misma regla de rubro), dice la versión de voz del mensaje de crisis
 // tal cual y escala con la herramienta `derivar_a_humano`, que registra la escalación
 // con `registrarEscalacionCrisis` (canal 'voice').
 import type { HandoffAgentGate } from "./conversaciones/repository.ts";
