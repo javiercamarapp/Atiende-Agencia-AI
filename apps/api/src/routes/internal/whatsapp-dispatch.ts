@@ -164,6 +164,10 @@ export async function dispatchWhatsAppVertical(deps: AppDeps, vertical: WhatsApp
   //   2. sesion B: lo envia y lo cierra (`sent`/reintento/`dead`; COMMIT).
   // Un fallo de B solo afecta a ESE mensaje (su lease vencido lo reabre); lo ya cerrado queda cerrado. Hueco residual
   // honesto: una caida entre el 2xx de Meta y el COMMIT de B todavia puede duplicar UNA respuesta.
+  // Hueco conocido (documentado, sin cambio de comportamiento): el claim no incrementa `attempts`, asi que un mensaje cuyo envio
+  // da 2xx pero cuyo `markSent` falla SIEMPRE de forma determinista se reenvia en cada vencimiento de lease, sin tope. Tambien hay
+  // hasta 2 x `limit` transacciones secuenciales por vertical y corrida (claim + cierre por mensaje); el limite por corrida
+  // acota el tiempo contra maxDuration.
   const construirPuerto = (db: TenantDbSession): MessagingOutboxPort =>
     vertical === "citas"
       ? createCitasMessagingOutboxPort(deps.citasRepo(db))
