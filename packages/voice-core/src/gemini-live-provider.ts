@@ -72,6 +72,10 @@ export class GeminiLiveProvider implements VoiceAgentProvider {
               speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: entrada.voiceId } } },
             },
             ...(instruccion ? { systemInstruction: { parts: [{ text: instruccion }] } } : {}),
+            // Herramientas fijadas en el token: el navegador no puede agregar otras. Las ejecuta SIEMPRE el servidor.
+            ...(entrada.herramientas && entrada.herramientas.length > 0
+              ? { tools: [{ functionDeclarations: entrada.herramientas.map((h) => ({ name: h.name, description: h.description, parameters: h.parameters })) }] }
+              : {}),
           },
         }),
       });

@@ -74,3 +74,14 @@ describe("registrar_contacto con reason pedido_telefonico", () => {
     expect(callbacks(f).filter((c) => c.reason === "pedido_telefonico")).toHaveLength(0);
   });
 });
+
+describe("modo preview del panel: sin efectos", () => {
+  it("cliente_llego y pedido_telefonico no crean avisos y devuelven el mensaje fijo simulado", async () => {
+    const f = buildRestaurantFixture();
+    const llego = await invokeAgentTool(f.repo, { ...ctx(f), modo: "preview" }, "registrar_contacto", { customer_name: "Ana", reason: "cliente_llego" });
+    expect(llego.result).toEqual({ ok: true, simulado: true, mensaje_al_cliente: MENSAJE_LLEGADA_REGISTRADA });
+    const tel = await invokeAgentTool(f.repo, { ...ctx(f), modo: "preview" }, "registrar_contacto", { customer_name: "Ana", reason: "pedido_telefonico", message: "depto 6" });
+    expect(tel.result).toEqual({ ok: true, simulado: true, mensaje_al_cliente: MENSAJE_PEDIDO_TELEFONICO_REGISTRADO });
+    expect(callbacks(f)).toHaveLength(0);
+  });
+});

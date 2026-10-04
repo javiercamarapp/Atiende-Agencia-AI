@@ -85,9 +85,9 @@ export async function correrGuionConAdaptador<R extends string, E extends object
 
   const transporteBase = adaptador.transporte(mundo, { callId, telefono: extraerTelefonoSipFrom(sipFrom, adaptador.canonicalizarTelefono) });
   const transporte: TransporteTools = guion.toolLenta
-    ? async (nombre, args, senal) => {
+    ? async (nombre, args, senal, contexto) => {
         if (nombre === guion.toolLenta!.nombre) await dormirDe(guion.toolLenta!.ms);
-        return transporteBase(nombre, args, senal);
+        return transporteBase(nombre, args, senal, contexto);
       }
     : transporteBase;
 
