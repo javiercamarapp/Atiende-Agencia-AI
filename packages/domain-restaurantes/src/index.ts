@@ -131,7 +131,7 @@ export {
   changeAssignedOrderStatus,
 } from "./order-lifecycle.ts";
 
-export { searchProducts, prepareCreateOrder, createOrder, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
+export { searchProducts, prepareCreateOrder, createOrder, redondearACentavos, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
 export type { PreparedOrder, QuotePolicyInfo, QuotePromotionInfo } from "./orders.ts";
 
 export {
