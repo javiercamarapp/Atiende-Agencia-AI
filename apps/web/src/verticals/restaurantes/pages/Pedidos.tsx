@@ -230,17 +230,27 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
     setNuevosAviso(0);
   }, [orgSlug, propertyId]);
 
+  // La preferencia se lee al montar y de nuevo cuando la pestana vuelve a estar visible: si owner/admin cambia el sonido de
+  // esta persona desde Avisos, la pantalla de Pedidos lo recoge al volver a ella (sin recargar).
   useEffect(() => {
     let cancelado = false;
-    fetchAvisos(fetch, apiBaseUrl, token, propertyId)
-      .then((a) => {
-        if (!cancelado) setSonidoPermitido(sonidoPedidoNuevoPermitido(a));
-      })
-      .catch(() => {
-        if (!cancelado) setSonidoPermitido(true);
-      });
+    const cargar = () => {
+      fetchAvisos(fetch, apiBaseUrl, token, propertyId)
+        .then((a) => {
+          if (!cancelado) setSonidoPermitido(sonidoPedidoNuevoPermitido(a));
+        })
+        .catch(() => {
+          if (!cancelado) setSonidoPermitido(true);
+        });
+    };
+    const alVolver = () => {
+      if (document.visibilityState === "visible") cargar();
+    };
+    cargar();
+    document.addEventListener("visibilitychange", alVolver);
     return () => {
       cancelado = true;
+      document.removeEventListener("visibilitychange", alVolver);
     };
   }, [apiBaseUrl, token, propertyId]);
 

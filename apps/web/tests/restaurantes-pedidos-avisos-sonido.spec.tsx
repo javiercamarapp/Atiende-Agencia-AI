@@ -134,4 +134,23 @@ describe("sonido del sondeo de pedidos y Avisos", () => {
     expect(sonidos).toBe(1);
     expect(casilla().disabled).toBe(false);
   });
+
+  it("si owner/admin apaga el sonido mientras la pantalla esta abierta, al volver a la pestana se recoge sin recargar", async () => {
+    const prefs = mias(true, true);
+    const estado = { pending: [pedido("a")] };
+    stubFetch(estado, prefs);
+    rendered = renderComponent(<PedidosPage {...CTX} />);
+    await asentar();
+    expect(casilla().disabled).toBe(false);
+    prefs.mias[0]!.sonido = false;
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await asentar();
+    expect(casilla().disabled).toBe(true);
+    await avanzar(20_000); // linea base
+    estado.pending = [pedido("b"), pedido("a")];
+    await avanzar(20_000);
+    expect(sonidos).toBe(0);
+  });
 });
