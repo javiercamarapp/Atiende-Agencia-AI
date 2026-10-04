@@ -72,16 +72,28 @@ class AdmissionGate {
  * sesion propia del turn handler (nivel 1, ver `buildRealRestaurantesTurnHandler`) y, por llamada al gateway de LLM, sesiones
  * cortas de presupuesto/uso/bitacora (nivel 2, hojas). Con N turnos en curso el pool se llena de sesiones de nivel 0 y 1 y las de
  * nivel 1 y 2 esperan una conexion que solo liberaria quien las espera: interbloqueo hasta `connectionTimeoutMillis` (5 s), dos
- * veces por turno -> 500 a los 10 s. Medido en un arnes con la API real y Postgres real (LLM simulado de 3 s, pool de 10): 6
- * concurrentes -> 2 de 6 con 500; 10 concurrentes -> 10 de 10 con 500; picos de 10 conexiones activas.
+ * veces por turno -> 500 a los 10 s. Medido en un arnes con la API real y Postgres real (pool de 10; la tabla de la PR #412 usa un LLM simulado de 600 ms,
+ * esta primera medicion usaba 3 s: son corridas distintas con el mismo patron): 6 concurrentes -> parte con 500; 10 concurrentes ->
+ * todas con 500; picos de 10 conexiones activas.
  *
- * REMEDIO (sin interbloqueo por construccion): el nivel 0 no puede ocupar mas de `outer` conexiones y el nivel 1 mas de `inner`,
+ * REMEDIO (sin interbloqueo SIEMPRE QUE el nivel 2 sea hoja y el contexto de AsyncLocalStorage se propague; ninguna de las dos cosas
+ * se impone en codigo, solo se registra un warn si la profundidad llega a 3): el nivel 0 no puede ocupar mas de `outer` conexiones y el nivel 1 mas de `inner`,
  * con `outer + inner < poolMax`: siempre queda al menos una conexion para el nivel 2 (hoja: no espera a nadie, termina en
  * milisegundos), asi que todo nivel 1 termina, luego todo nivel 0. Lo que excede los limites hace FILA con espera acotada
  * (`DatabaseBusyError` -> 503 reintentable) en vez de interbloquearse. La capacidad de turnos simultaneos pasa a ser `inner`
  * (4 con el pool por omision de 10): un `poolMax` mayor la sube de forma proporcional.
+ *
+ * EFECTO GLOBAL: la admision aplica a TODAS las verticales y rutas, no solo a WhatsApp. Con el pool por omision de 10, el trafico de
+ * nivel 0 (panel, storefront, hoteles, citas, crons) queda limitado a `outer` = 5 sesiones simultaneas por instancia (antes 10); lo
+ * que excede espera hasta el timeout de admision y luego recibe 503. Vigilar la metrica `apps_api_db_ocupada`.
+ *
+ * Exige `poolMax >= 3` (nivel 0 + nivel 1 + una conexion libre para el nivel 2); con menos lanza en vez de admitir un limite que
+ * dejaria al nivel 2 sin conexion.
  */
 export function admissionLimits(poolMax: number): { outer: number; inner: number } {
+  if (!Number.isInteger(poolMax) || poolMax < 3) {
+    throw new Error(`admissionLimits: poolMax debe ser un entero >= 3 (recibido ${poolMax}); con menos no queda conexion para el nivel 2`);
+  }
   const inner = Math.max(1, Math.floor((poolMax - 1) / 2));
   const outer = Math.max(1, poolMax - 1 - inner);
   return { outer, inner };

@@ -98,6 +98,10 @@ describe("admissionLimits", () => {
   it("con el pool por omision de 10: 5 sesiones de nivel 0 y 4 de nivel 1 (capacidad de 4 turnos simultaneos)", () => {
     expect(admissionLimits(10)).toEqual({ outer: 5, inner: 4 });
   });
+
+  it.each([0, 1, 2, 2.5, Number.NaN])("poolMax=%s: falla explicito (no queda conexion para el nivel 2)", (poolMax) => {
+    expect(() => admissionLimits(poolMax)).toThrow(/poolMax debe ser un entero >= 3/);
+  });
 });
 
 describe("ManagedPostgresEngine.withAppSession -- admision por nivel (P0 de 6+ turnos simultaneos)", () => {
