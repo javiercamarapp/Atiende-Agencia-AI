@@ -37,6 +37,7 @@ const RestaurantesCierresPage = cargaPerezosa(() => import("./verticals/restaura
 const RestaurantesPrivacidadPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Privacidad.tsx"), "PrivacidadPage");
 const RestaurantesConversacionesPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Conversaciones.tsx"), "ConversacionesPage");
 const RestaurantesTurnosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Turnos.tsx"), "TurnosPage");
+const RestaurantesAvisosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/AvisosStaff.tsx"), "AvisosStaffPage");
 const AceptarInvitacionPage = cargaPerezosa(() => import("./shell/AceptarInvitacion.tsx"), "AceptarInvitacionPage");
 const SeleccionarVerticalPage = cargaPerezosa(() => import("./shell/SeleccionarVertical.tsx"), "SeleccionarVerticalPage");
 const GoogleCallbackPage = cargaPerezosa(() => import("./shell/GoogleCallback.tsx"), "GoogleCallbackPage");
@@ -310,6 +311,8 @@ const RestaurantesPrivacidadOrganizacionRoute = shellRoute(RestaurantesShell, "/
 const RestaurantesConversacionesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConversacionesPage {...ctx} />);
 const RestaurantesPrimerosPasosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrimerosPasosPage {...ctx} />);
 const RestaurantesTurnosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesTurnosPage {...ctx} />);
+// R-16: avisos del staff (Mis avisos para todos; matriz del equipo y umbral de entrega tardia para owner/admin).
+const RestaurantesAvisosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAvisosPage {...ctx} />);
 // CHAT-08 -- Copiloto ("Pregunta a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de restaurantes.
 const RestaurantesCopilotoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCopilotoPage {...ctx} />);
 
@@ -1143,6 +1146,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/privacidad-organizacion" element={<RestaurantesPrivacidadOrganizacionRoute />} />
         <Route path="/restaurantes/:orgSlug/conversaciones" element={<RestaurantesConversacionesRoute />} />
         <Route path="/restaurantes/:orgSlug/turnos" element={<RestaurantesTurnosRoute />} />
+        <Route path="/restaurantes/:orgSlug/avisos" element={<RestaurantesAvisosRoute />} />
         <Route path="/restaurantes/:orgSlug/copiloto" element={<RestaurantesCopilotoRoute />} />
         <Route path="/restaurantes/:orgSlug/primeros-pasos" element={<RestaurantesPrimerosPasosRoute />} />
         <Route path="/restaurantes/:orgSlug/notificaciones" element={<RestaurantesNotificacionesRoute />} />
