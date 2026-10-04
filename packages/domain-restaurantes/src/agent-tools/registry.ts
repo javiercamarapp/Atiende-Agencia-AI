@@ -342,13 +342,19 @@ interface RawItemInput {
   readonly tortilla?: unknown;
 }
 
-/** `lenient`: WhatsApp historicamente convierte una cantidad ausente/invalida en 1; voz deja pasar NaN
- * para que la validacion de dominio lo rechace. */
+/** Mensaje al modelo cuando una cantidad no es un entero positivo: accionable y en usted (el cliente lo lee parafraseado). */
+export const CANTIDAD_NO_NUMERICA_MENSAJE =
+  "Indique la cantidad con un número entero de piezas (por ejemplo 2). Para medio kilo o una fracción de kilo use el renglón de esa fracción (por ejemplo 'Pastor — 500 g'), no una cantidad decimal ni escrita con letras.";
+
+/** `lenient` (WhatsApp): una cantidad escrita como numero ("2") se acepta, pero una que no es un entero positivo ('medio', 'dos', 0, 1.5, ausente)
+ * se RECHAZA con un error accionable. Antes se convertia en silencio a 1 (`Number(x) || 1`): 'medio' kilo se cotizaba como 1 kg. Voz y web dejan
+ * pasar el valor para que la validacion de dominio lo rechace. */
 export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrderItemInput[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((entry) => {
     const item = (entry ?? {}) as RawItemInput;
-    const qty = typeof item.requested_quantity === "number" ? item.requested_quantity : lenient ? Number(item.requested_quantity) || 1 : Number(item.requested_quantity);
+    const qty = typeof item.requested_quantity === "number" ? item.requested_quantity : Number(item.requested_quantity);
+    if (lenient && (!Number.isInteger(qty) || qty < 1)) throw new OrderValidationError(CANTIDAD_NO_NUMERICA_MENSAJE);
     return {
       productId: typeof item.product_id === "string" ? item.product_id : undefined,
       productName: typeof item.product_name === "string" ? item.product_name : undefined,
