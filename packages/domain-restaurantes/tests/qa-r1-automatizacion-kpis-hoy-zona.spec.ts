@@ -6,19 +6,13 @@
 //   - "Hoy" empieza a las 18:00 de AYER en Merida: las ventas de la cena de ayer cuentan como de hoy, y a las
 //     18:00 locales el contador "se reinicia" y la comida de hoy desaparece de "Hoy".
 //   - Los tramos por hora 11:00-23:00 son horas UTC (05:00-17:00 Merida): la cena (17:00-01:00) nunca aparece.
-// Estos specs fijan el proceso en UTC (como produccion) y piden el comportamiento correcto en la zona del
-// negocio. ROJOS hasta el fix (la funcion ni siquiera recibe la zona de la sucursal).
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+// Estos specs piden el comportamiento correcto en la zona del negocio sea cual sea la zona del proceso (produccion corre
+// en UTC). Estaban ROJOS hasta el fix; ahora pasan.
+import { describe, expect, it } from "vitest";
 import { buildComparisonPeriods, buildTrendBuckets } from "../src/kpis.ts";
 
-const TZ_ORIGINAL = process.env.TZ;
-beforeAll(() => {
-  process.env.TZ = "UTC"; // como Vercel
-});
-afterAll(() => {
-  if (TZ_ORIGINAL === undefined) delete process.env.TZ;
-  else process.env.TZ = TZ_ORIGINAL;
-});
+// Con el fix la zona sale de la plataforma (America/Mexico_City, UTC-6), no del proceso: el spec pasa igual con cualquier TZ
+// (el job `clock-guard` de CI lo corre con TZ=UTC, America/Merida, Mexico_City y Pacific/Kiritimati).
 
 // Sabado 3-oct-2026, 15:00 en Merida = 21:00Z.
 const AHORA = new Date("2026-10-03T21:00:00Z");
