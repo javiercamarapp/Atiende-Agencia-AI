@@ -1,7 +1,7 @@
 // Shell mínimo de apps/web para esta fase — solo lo necesario para que la pantalla
 // de login del vertical restaurantes sea real y navegable, sin portar el resto del
 // dashboard visual (fuera de alcance explícito de Fase 1, ver el brief).
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Suspense } from "react";
 import type { ComponentType, LazyExoticComponent, ReactElement, ReactNode } from "react";
@@ -1116,9 +1116,18 @@ const DespachosStaffRoute = shellRoute(DespachosShell, "/despachos/login", (ctx)
 const DespachosConfiguracionRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosConfiguracionPage {...ctx} />);
 const DespachosPortalClienteRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosPortalClientePage {...ctx} />);
 
+/** R-37: con pantallas perezosas, React Router cambia la URL al instante pero confirma la ruta (contenido, barra superior, h1)
+ * cuando baja el chunk. Este marcador invisible refleja la ruta ya confirmada, para que las pruebas E2E esperen a la pantalla
+ * asentada en vez de leer el DOM a medio navegar. No pinta nada. */
+function RutaConfirmada() {
+  const { pathname } = useLocation();
+  return <span hidden data-ruta-confirmada={pathname} />;
+}
+
 export function App() {
   return (
     <BrowserRouter>
+      <RutaConfirmada />
       {/* Hallazgo real (verificado con grep, no supuesto): ningún `<Toaster />`
           estaba montado en toda la app -- cada `toast(...)` (BotonChatDatos,
           los 6 Login.tsx de "Continuar con Google", etc.) empujaba a la cola
