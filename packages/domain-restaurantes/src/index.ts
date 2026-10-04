@@ -131,7 +131,7 @@ export {
   changeAssignedOrderStatus,
 } from "./order-lifecycle.ts";
 
-export { searchProducts, prepareCreateOrder, createOrder, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
+export { searchProducts, prepareCreateOrder, createOrder, redondearACentavos, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
 export type { PreparedOrder, QuotePolicyInfo, QuotePromotionInfo } from "./orders.ts";
 
 export {
@@ -173,6 +173,20 @@ export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
 export { extractMetaInboundMessages, extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
+export {
+  LIMITE_NOTAS_POR_CONVERSACION_HORA,
+  LIMITE_NOTAS_POR_ORGANIZACION_DIA,
+  NOTA_DE_VOZ_MAX_BYTES,
+  NOTA_DE_VOZ_MAX_SEGUNDOS,
+  NotaDeVozError,
+  PREFIJO_NOTA_DE_VOZ,
+  TRANSCRIPCION_MAX_CARACTERES,
+  formatearNotaDeVoz,
+  registrarMotivo as registrarMotivoNotaDeVoz,
+  resolverCuerpoConNotaDeVoz,
+  transcribirNotaDeVoz,
+} from "./whatsapp/nota-de-voz.ts";
+export type { AudioDescargado, MotivoSinTranscripcion, NotaDeVozEntrante, PuertoNotasDeVoz, ResultadoNotaDeVoz, TranscripcionDeEntrada } from "./whatsapp/nota-de-voz.ts";
 export { splitMetaPayloadByChannel } from "./whatsapp/batch-routing.ts";
 export type { MetaChannelBatch } from "./whatsapp/batch-routing.ts";
 export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEspera, responderTrasEspera, mensajesSinResponder, usuariosRespondidos, analizarHistorial, MAX_PASADAS_RAFAGA, esperaEfectivaMs, FUNCION_MAX_MS, PASADA_ESTIMADA_MS, liberarTurnoTrasFalloDeFaseB } from "./whatsapp/inbound.ts";
@@ -202,6 +216,7 @@ export {
 export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
+export * from "./cierres/index.ts";
 export { PM_COPY, buildPmSystemPrompt, pmCustomerContextBlock, saludoPorHora } from "./whatsapp/perfil-pm.ts";
 export type { PerfilPmContexto, SaludoPorHora } from "./whatsapp/perfil-pm.ts";
 export { MOTIVOS_ESCALACION_DESACTIVABLES, PERFILES_AGENTE_WHATSAPP, TONOS_AGENTE_WHATSAPP } from "./types.ts";

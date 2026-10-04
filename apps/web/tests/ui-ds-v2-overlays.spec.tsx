@@ -441,9 +441,19 @@ describe("notify / Toaster", () => {
     });
     expect(lista()?.getAttribute("data-theme")).toBe("dark");
     document.documentElement.classList.remove("dark");
+    // sonner desmonta el toast con un setTimeout propio (~200 ms) tras el dismiss: si el test termina antes, ese temporizador
+    // dispara con el entorno ya destruido ("caught after test environment was torn down"). Se espera a que el toast salga del DOM.
     await act(async () => {
       notify.dismiss();
-      await new Promise((r) => setTimeout(r, 20));
     });
+    await vi.waitFor(
+      async () => {
+        await act(async () => {
+          await new Promise((r) => setTimeout(r, 25));
+        });
+        expect(document.body.querySelector("[data-sonner-toast]")).toBeNull();
+      },
+      { timeout: 2000, interval: 25 },
+    );
   });
 });

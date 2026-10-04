@@ -54,7 +54,7 @@ import { PostgresAgentesRepository, PostgresHotelesRepository, PostgresReservasA
 import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
@@ -69,7 +69,7 @@ import {
   crearValidadorUrlCaldav,
   exchangeGoogleAuthorizationCode,
 } from "@atiende/domain-citas";
-import { PostgresAvisosSistemaRepository, PostgresDiasInhabilesRepository, PostgresKyc69bRepository, PostgresLicitacionesRepository, PostgresSalaGuerraRepository, PostgresWhatsAppRepository } from "@atiende/domain-licitaciones";
+import { PostgresAvisosSistemaRepository, PostgresDiasInhabilesRepository, PostgresKyc69bRepository, PostgresLicitacionesRepository, PostgresPostAdjudicacionRepository, PostgresSalaGuerraRepository, PostgresWhatsAppRepository } from "@atiende/domain-licitaciones";
 import { PostgresDespachosRepository } from "@atiende/domain-despachos";
 import {
   CanalMensajeriaPartnerPendiente,
@@ -95,6 +95,7 @@ import {
   PostgresCfoZoneRepository,
   PostgresAgentRunRepository,
   PostgresConsolaRepository,
+  PostgresOrgFichaRepository,
   PostgresFichasAgenteRepository,
   PostgresContratosRepository,
   PostgresPlataformaPrivacidadRepository,
@@ -114,6 +115,7 @@ import { createProductionRentasOnboardingRepo } from "./rentas-onboarding-reposi
 import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
 import { ProductionHotelesFraudeAuditSink } from "./hoteles-fraude-audit-sink.ts";
 import { encolarComandaParaPedido } from "@atiende/domain-restaurantes/softrestaurant";
+import { crearPuertoNotasDeVoz } from "../routes/verticals/restaurantes/transcripcion-voz.ts";
 import { softRestaurantComandaDeps, type SoftRestaurantDeps } from "../routes/verticals/restaurantes/softrestaurant-wiring.ts";
 import { PersistentAuthzAuditSink } from "./authz-audit-sink.ts";
 import { ProductionCfdiFolioReservationStore } from "./cfdi-folio-reservation-store.ts";
@@ -309,6 +311,10 @@ export function buildProductionDeps(): AppDeps {
   // tests/CI — este constructor solo corre en producción real.
   const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates }) }) : undefined;
 
+  // R-32: notas de voz de WhatsApp de restaurantes. Necesita el token de Meta (descarga de media) Y el gateway LLM (transcripcion); sin alguno de
+  // los dos queda `undefined` y el webhook conserva el comportamiento anterior (pedir al cliente que escriba).
+  const notasDeVoz = env.whatsappAccessToken && llmGateway ? crearPuertoNotasDeVoz({ gateway: llmGateway, accessToken: env.whatsappAccessToken }) : undefined;
+
   // Bitacora de corridas (SA-L-07): cada turno de WhatsApp deja una fila en core.agent_run (best-effort, sesion de
   // sistema propia por escritura; ver ../agentes/corridas.ts). Sin la 0044 aplicada se omite en silencio.
   const depsBitacora = { engine, agentRunRepo: (db: TenantDbSession) => new PostgresAgentRunRepository(db) };
@@ -334,6 +340,7 @@ export function buildProductionDeps(): AppDeps {
     // KPI de voz, costo y alertas (migración 035): cada consulta degrada con SAVEPOINT contra la base sin migrar.
     vozKpiRepo: (db) => new PostgresVozKpiRepository(db),
     whatsappKpiRepo: (db) => new PostgresWhatsappKpiRepository(db),
+    cierreRepo: (db) => new PostgresCierreRepository(db),
     // Privacidad (migración 030): ARCO, aviso simplificado y retención; cada operación degrada con SAVEPOINT.
     privacidadRepo: (db) => new PostgresPrivacidadRepository(db),
     conversacionesRepo: (db) => new PostgresConversacionesRepository(db),
@@ -458,6 +465,8 @@ export function buildProductionDeps(): AppDeps {
     licitacionesAvisosRepo: (db) => new PostgresAvisosSistemaRepository(db),
     // L-22 -- dias inhabiles por organizacion/convocatoria (migracion 032; sin ella los plazos usan los oficiales).
     licitacionesDiasInhabilesRepo: (db) => new PostgresDiasInhabilesRepository(db),
+    // L-27 -- garantias, hitos, convenios y plazos de post-adjudicacion (migracion 035; degrada a "no disponible aun" si falta).
+    licitacionesPostAdjudicacionRepo: (db) => new PostgresPostAdjudicacionRepository(db),
     despachosRepo: (db) => new PostgresDespachosRepository(db),
     // Adaptador real (ya NO `notProductionReady`) -- corrige la regresión real de
     // la Ronda 12 documentada en `packages/domain-despachos/migrations/
@@ -546,6 +555,7 @@ export function buildProductionDeps(): AppDeps {
     pylRepo: (db) => new PostgresPylRepository(db),
     cfoZoneRepo: (db) => new PostgresCfoZoneRepository(db),
     consolaRepo: (db) => new PostgresConsolaRepository(db),
+    orgFichaRepo: (db) => new PostgresOrgFichaRepository(db),
     fichasAgenteRepo: (db) => new PostgresFichasAgenteRepository(db),
     agentRunRepo: depsBitacora.agentRunRepo,
     modeloPrincipalDeRol: (role) => resolveRoleRoute(role, modelosLlm).models[0]?.model ?? null,
@@ -570,6 +580,7 @@ export function buildProductionDeps(): AppDeps {
     resumenDiarioLlmGateway,
     superadminCopiloto: buildProductionSuperadminCopiloto(superadminCopilotoLlmGateway),
     whatsAppDispatcher,
+    notasDeVoz,
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1
     // #6) -- mismo criterio EXACTO que `hotelesPaymentsPort` arriba: real en
     // cuanto `STRIPE_SECRET_KEY` esté configurada, `undefined` (503 honesto en

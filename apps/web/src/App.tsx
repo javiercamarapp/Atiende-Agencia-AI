@@ -19,6 +19,7 @@ import { AuditoriaPage as RestaurantesAuditoriaPage } from "./verticals/restaura
 import { ConfiguracionPage as RestaurantesConfiguracionPage } from "./verticals/restaurantes/pages/Configuracion.tsx";
 import { AgenteVozPage as RestaurantesAgenteVozPage } from "./verticals/restaurantes/pages/AgenteVoz.tsx";
 import { IndicadoresWhatsappPage as RestaurantesIndicadoresWhatsappPage } from "./verticals/restaurantes/pages/IndicadoresWhatsapp.tsx";
+import { CierresPage as RestaurantesCierresPage } from "./verticals/restaurantes/pages/Cierres.tsx";
 import { PrivacidadPage as RestaurantesPrivacidadPage } from "./verticals/restaurantes/pages/Privacidad.tsx";
 import { ConversacionesPage as RestaurantesConversacionesPage } from "./verticals/restaurantes/pages/Conversaciones.tsx";
 import { TurnosPage as RestaurantesTurnosPage } from "./verticals/restaurantes/pages/Turnos.tsx";
@@ -30,16 +31,18 @@ import { NotFoundPage } from "./pages/NotFound.tsx";
 import { PrivacidadPage } from "./pages/Privacidad.tsx";
 import { SuperAdminShell } from "./superadmin/SuperAdminShell.tsx";
 import { REDIRECCIONES_SUPERADMIN } from "./superadmin/rutas.ts";
-import { SuperAdminDashboardPage } from "./superadmin/pages/Dashboard.tsx";
+import { SuperAdminOrganizacionesPage } from "./superadmin/pages/Organizaciones.tsx";
+import { SuperAdminOrganizacionFichaPage } from "./superadmin/pages/OrganizacionFicha.tsx";
 import { SuperAdminProspectosPage } from "./superadmin/pages/Prospectos.tsx";
 import { SuperAdminTaxonomiaPage } from "./superadmin/pages/Taxonomia.tsx";
+import { SuperAdminCerebroMapaPage } from "./superadmin/cerebro/CerebroMapa.tsx";
+import { SuperAdminFichaProspectoPage } from "./superadmin/cerebro/FichaProspecto.tsx";
 import { SuperAdminPanelesPage } from "./superadmin/pages/Paneles.tsx";
-import { SuperAdminGastoApiPage } from "./superadmin/pages/GastoApi.tsx";
+import { SuperAdminConsumoIaPage } from "./superadmin/pages/ConsumoIa.tsx";
 import { SuperAdminBreakGlassPage } from "./superadmin/pages/BreakGlass.tsx";
 import { SuperAdminImpersonacionPage } from "./superadmin/pages/Impersonacion.tsx";
 import { SuperAdminAuthzAuditoriaPage } from "./superadmin/pages/AuthzAuditoria.tsx";
 import { SuperAdminIntegracionesPage } from "./superadmin/pages/Integraciones.tsx";
-import { SuperAdminFacturacionPage } from "./superadmin/pages/Facturacion.tsx";
 import { SuperAdminSaludPage } from "./superadmin/pages/Salud.tsx";
 import { SuperAdminResumenPage } from "./superadmin/pages/Resumen.tsx";
 import { SuperAdminConsolaResumenPage } from "./superadmin/pages/ConsolaResumen.tsx";
@@ -52,13 +55,10 @@ import { SuperAdminAgentesPage } from "./superadmin/pages/Agentes.tsx";
 import { SuperAdminAgenteConciliacionPage, SuperAdminAgenteExtractorPage, SuperAdminAgenteWhatsappPage } from "./superadmin/pages/AgenteFicha.tsx";
 import { SuperAdminModelOpsPage } from "./superadmin/pages/ModelOps.tsx";
 import { PrivacidadOrganizacionPage } from "./pages/PrivacidadOrganizacion.tsx";
-import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionOrganizaciones.tsx";
-import { SuperAdminCostosMargenPage } from "./superadmin/pages/CostosMargen.tsx";
-import { SuperAdminCfoDashboardPage } from "./superadmin/pages/CfoDashboard.tsx";
-import { SuperAdminPylVerticalPage } from "./superadmin/pages/PylVertical.tsx";
+import { SuperAdminCostosFacturacionPage } from "./superadmin/pages/CostosFacturacion.tsx";
+import { SuperAdminEjecutivoPage } from "./superadmin/pages/Ejecutivo.tsx";
 import { SuperAdminZonaCfoPage } from "./superadmin/pages/ZonaCfo.tsx";
 import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
-import { SuperAdminContratosPage } from "./superadmin/pages/Contratos.tsx";
 import { EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui";
 import { NotificacionesPagina } from "./components/NotificacionesPagina.tsx";
 import { PlanYUsoPagina } from "./components/PlanYUsoPagina.tsx";
@@ -283,6 +283,7 @@ const RestaurantesConfiguracionRoute = shellRoute(RestaurantesShell, "/restauran
 const RestaurantesAgenteVozRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAgenteVozPage {...ctx} />);
 // R-31: indicadores del agente de WhatsApp (owner/admin).
 const RestaurantesIndicadoresWhatsappRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesIndicadoresWhatsappPage {...ctx} />);
+const RestaurantesCierresRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCierresPage {...ctx} />);
 // PM PR-9 -- privacidad (solicitudes ARCO + aviso/retención/grabación), owner/admin.
 const RestaurantesPrivacidadRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrivacidadPage {...ctx} />);
 // PL-13 -- privacidad de la organizacion (ARCO de todos los verticales, retencion, bloqueo de purga, aviso versionado).
@@ -380,7 +381,17 @@ function SuperAdminOrganizacionesRoute() {
   const navigate = useNavigate();
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminDashboardPage {...ctx} />}
+      {(ctx) => <SuperAdminOrganizacionesPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+/** SA-07: ficha 360 de una organizacion. */
+function SuperAdminOrganizacionFichaRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminOrganizacionFichaPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -394,6 +405,26 @@ function SuperAdminProspectosRoute() {
   );
 }
 
+/** SA-L-42: el mapa del Cerebro de ventas (el mundo virtual de la cartera). */
+function SuperAdminCerebroMapaRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminCerebroMapaPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+/** SA-L-43: la ficha de un prospecto del Cerebro. */
+function SuperAdminFichaProspectoRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminFichaProspectoPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
 function SuperAdminPanelesRoute() {
   const navigate = useNavigate();
   return (
@@ -403,11 +434,11 @@ function SuperAdminPanelesRoute() {
   );
 }
 
-function SuperAdminGastoApiRoute() {
+function SuperAdminConsumoIaRoute() {
   const navigate = useNavigate();
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminGastoApiPage {...ctx} />}
+      {(ctx) => <SuperAdminConsumoIaPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -417,15 +448,6 @@ function SuperAdminIntegracionesRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminIntegracionesPage {...ctx} />}
-    </SuperAdminShell>
-  );
-}
-
-function SuperAdminFacturacionRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminFacturacionPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -538,20 +560,11 @@ function SuperAdminModelOpsRoute() {
   );
 }
 
-function SuperAdminGestionOrganizacionesRoute() {
+function SuperAdminEjecutivoRoute() {
   const navigate = useNavigate();
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminGestionOrganizacionesPage {...ctx} />}
-    </SuperAdminShell>
-  );
-}
-
-function SuperAdminCfoDashboardRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminCfoDashboardPage {...ctx} />}
+      {(ctx) => <SuperAdminEjecutivoPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -565,20 +578,11 @@ function SuperAdminZonaCfoRoute() {
   );
 }
 
-function SuperAdminPylVerticalRoute() {
+function SuperAdminCostosFacturacionRoute() {
   const navigate = useNavigate();
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminPylVerticalPage {...ctx} />}
-    </SuperAdminShell>
-  );
-}
-
-function SuperAdminCostosMargenRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminCostosMargenPage {...ctx} />}
+      {(ctx) => <SuperAdminCostosFacturacionPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -588,15 +592,6 @@ function SuperAdminPlanesRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminPlanesPage {...ctx} />}
-    </SuperAdminShell>
-  );
-}
-
-function SuperAdminContratosRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminContratosPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -1123,6 +1118,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/configuracion" element={<RestaurantesConfiguracionRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-voz" element={<RestaurantesAgenteVozRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-whatsapp" element={<RestaurantesIndicadoresWhatsappRoute />} />
+        <Route path="/restaurantes/:orgSlug/cierres" element={<RestaurantesCierresRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad" element={<RestaurantesPrivacidadRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad-organizacion" element={<RestaurantesPrivacidadOrganizacionRoute />} />
         <Route path="/restaurantes/:orgSlug/conversaciones" element={<RestaurantesConversacionesRoute />} />
@@ -1147,11 +1143,13 @@ export function App() {
         <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />
         <Route path="/superadmin/cerebro" element={<SuperAdminProspectosRoute />} />
         <Route path="/superadmin/cerebro/taxonomia" element={<SuperAdminTaxonomiaRoute />} />
+        <Route path="/superadmin/mapa-prospectos" element={<SuperAdminCerebroMapaRoute />} />
+        <Route path="/superadmin/mapa-prospectos/:id" element={<SuperAdminFichaProspectoRoute />} />
         <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
-        <Route path="/superadmin/gasto-api" element={<SuperAdminGastoApiRoute />} />
-        <Route path="/superadmin/facturacion" element={<SuperAdminFacturacionRoute />} />
+        <Route path="/superadmin/consumo-ia" element={<SuperAdminConsumoIaRoute />} />
         <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
         <Route path="/superadmin/organizaciones" element={<SuperAdminOrganizacionesRoute />} />
+        <Route path="/superadmin/organizaciones/:id" element={<SuperAdminOrganizacionFichaRoute />} />
         {/* Rutas que cambiaron de lugar (SA-L-01): la vieja redirige a la nueva, sin 404. */}
         {Object.entries(REDIRECCIONES_SUPERADMIN).map(([desde, hacia]) => (
           <Route key={desde} path={desde} element={<Navigate to={hacia} replace />} />
@@ -1166,13 +1164,10 @@ export function App() {
         <Route path="/superadmin/agente-conciliacion" element={<SuperAdminAgenteConciliacionRoute />} />
         <Route path="/superadmin/agente-whatsapp" element={<SuperAdminAgenteWhatsappRoute />} />
         <Route path="/superadmin/model-ops" element={<SuperAdminModelOpsRoute />} />
-        <Route path="/superadmin/gestion-organizaciones" element={<SuperAdminGestionOrganizacionesRoute />} />
-        <Route path="/superadmin/cfo" element={<SuperAdminCfoDashboardRoute />} />
-        <Route path="/superadmin/pyl" element={<SuperAdminPylVerticalRoute />} />
+        <Route path="/superadmin/ejecutivo" element={<SuperAdminEjecutivoRoute />} />
         <Route path="/superadmin/zona-cfo" element={<SuperAdminZonaCfoRoute />} />
-        <Route path="/superadmin/costos-margen" element={<SuperAdminCostosMargenRoute />} />
+        <Route path="/superadmin/costos-facturacion" element={<SuperAdminCostosFacturacionRoute />} />
         <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
-        <Route path="/superadmin/contratos" element={<SuperAdminContratosRoute />} />
         <Route path="/superadmin/notificaciones" element={<SuperAdminNotificacionesRoute />} />
         <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
         <Route path="/superadmin/impersonacion" element={<SuperAdminImpersonacionRoute />} />

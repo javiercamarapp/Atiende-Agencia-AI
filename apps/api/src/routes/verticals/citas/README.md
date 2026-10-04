@@ -25,8 +25,11 @@ Fase 1 construida — los 3 flujos elegidos (ver diseño Fase 1 citas):
   `apps/worker/src/jobs/citas/README.md` para el detalle completo).
 - `citas.ts` — agregador, montado en `apps/api/src/app.ts`.
 
-Fase 2 agregó `voice-tools.ts` (Server Tools de voz) y `whatsapp.ts` (agente de
-WhatsApp con LLM real).
+Fase 2 agregó `voice-tools.ts` (rutas de voz) y `whatsapp.ts` (agente de
+WhatsApp con LLM real). `voice-tools.ts` ya no es de ElevenLabs: expone
+`GET /v1/citas/:orgSlug/voz/contexto`, `POST /v1/citas/:orgSlug/voz/:herramienta`
+(las 9 herramientas, que ejecuta el worker de `voice-core` con `x-atiende-tool-secret`)
+y, para owner/admin, `GET .../admin/voz/estado` y `POST .../admin/voz/preview/sesion`.
 
 Fase 3 agregó (ver diseño Fase 3 citas §4/§5):
 
