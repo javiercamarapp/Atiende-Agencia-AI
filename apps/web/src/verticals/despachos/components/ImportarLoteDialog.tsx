@@ -195,7 +195,7 @@ export function ImportarLoteDialog({ open, onOpenChange, apiBaseUrl, token, prop
             )}
             {resumen.error && (
               <p role="alert" className="text-sm text-destructive">
-                La importación se detuvo: {resumen.error} Quedaron {resumen.sinProcesar} archivo(s) sin enviar; lo ya importado no se revierte. Vuelve a cargar el mismo lote para completar lo pendiente.
+                La importación se detuvo: {resumen.error} Quedaron {resumen.sinProcesar} archivo(s) sin enviar; lo ya importado no se revierte. Si vuelves a cargar el mismo lote, lo ya importado se reporta como duplicado y se completa lo pendiente.
               </p>
             )}
             <p className="flex flex-wrap items-center gap-2 text-sm" role="status">

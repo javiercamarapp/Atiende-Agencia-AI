@@ -33,7 +33,9 @@ export const MAX_CUERPO_LOTE_BYTES = 4_718_592;
 const MAX_XML_BYTES = 512 * 1024;
 /** Presupuesto de tiempo (la funcion dura 30 s): lo que no alcance se reporta como no procesado, nunca se pierde en silencio. */
 const PRESUPUESTO_MS = 22_000;
-const LOTE_RATE_LIMIT = { max: 20, windowMs: 5 * 60_000 } as const;
+// Una peticion = una tanda de <= 50 XML. El navegador descomprime hasta 5000 entradas (100 tandas): el tope debe cubrir un lote completo
+// con margen para un reintento; el costo por peticion ya esta acotado (cuerpo <= 4 MB, <= 50 XML, rol y periodo validados).
+const LOTE_RATE_LIMIT = { max: 150, windowMs: 5 * 60_000 } as const;
 
 interface ArchivoEntrada {
   readonly nombre: string;

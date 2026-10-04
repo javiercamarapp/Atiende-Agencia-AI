@@ -1,7 +1,7 @@
 // D-13: logica de la carga masiva en el navegador (descompresion defensiva, tandas, cancelacion, cliente multipart).
 import { zipSync, strToU8 } from "fflate";
 import { describe, expect, it, vi } from "vitest";
-import { armarTandas, descomprimirZip, ejecutarImportacion, importarLote, LIMITES_ZIP_NAVEGADOR, MAX_ARCHIVOS_POR_TANDA, sumarTotales, ZipNavegadorError } from "../src/verticals/despachos/lib/cfdi-lote.ts";
+import { armarTandas, descomprimirZip, ejecutarImportacion, importarLote, LimiteTasaError, LIMITES_ZIP_NAVEGADOR, MAX_ARCHIVOS_POR_TANDA, sumarTotales, ZipNavegadorError } from "../src/verticals/despachos/lib/cfdi-lote.ts";
 import type { ArchivoParaLote, RespuestaLote, TotalesLote } from "../src/verticals/despachos/lib/cfdi-lote.ts";
 
 const xml = (n: number) => strToU8(`<cfdi:Comprobante n="${n}"/>`);
@@ -90,6 +90,39 @@ describe("ejecutarImportacion", () => {
     expect(r).toMatchObject({ cancelada: false, error: "Error de red", sinProcesar: 70, totales: { recibidos: 50 } });
   });
 
+  it("un 429 en la tanda 21 de 100 espera y reintenta ESA tanda, sin reiniciar el lote", async () => {
+    const tandas = armarTandas(Array.from({ length: 5000 }, (_, i) => archivo(i)));
+    expect(tandas).toHaveLength(100);
+    const enviadas: number[] = [];
+    let fallo = false;
+    const enviar = vi.fn(async (t: readonly ArchivoParaLote[]) => {
+      const n = enviadas.length;
+      if (n === 20 && !fallo) {
+        fallo = true;
+        throw new LimiteTasaError("limite", 30);
+      }
+      enviadas.push(n);
+      return respuesta(t.length);
+    });
+    const esperas: number[] = [];
+    const r = await ejecutarImportacion(tandas, enviar, () => false, () => undefined, async (ms) => { esperas.push(ms); });
+    expect(esperas).toEqual([30_000]);
+    expect(enviar).toHaveBeenCalledTimes(101);
+    expect(enviadas).toEqual(Array.from({ length: 100 }, (_, i) => i));
+    expect(r).toMatchObject({ sinProcesar: 0, error: null, cancelada: false, totales: { recibidos: 5000 } });
+  });
+
+  it("un 429 persistente agota los reintentos, se detiene y lo dice; cancelar durante la espera detiene sin error", async () => {
+    const tandas = armarTandas(Array.from({ length: 60 }, (_, i) => archivo(i)));
+    const siempre = vi.fn(async (): Promise<RespuestaLote> => { throw new LimiteTasaError("Demasiadas cargas", 1); });
+    const r1 = await ejecutarImportacion(tandas, siempre, () => false, () => undefined, async () => undefined);
+    expect(siempre).toHaveBeenCalledTimes(4);
+    expect(r1).toMatchObject({ error: "Demasiadas cargas", sinProcesar: 60, cancelada: false });
+    let cancelar = false;
+    const r2 = await ejecutarImportacion(tandas, siempre, () => cancelar, () => undefined, async () => { cancelar = true; });
+    expect(r2).toMatchObject({ cancelada: true, error: null, sinProcesar: 60 });
+  });
+
   it("sumarTotales suma campo a campo", () => {
     expect(sumarTotales([{ ...cero, recibidos: 2, rechazados: 1 }, { ...cero, recibidos: 3, reps: 1 }])).toEqual({ ...cero, recibidos: 5, rechazados: 1, reps: 1 });
   });
@@ -114,5 +147,10 @@ describe("importarLote (cliente)", () => {
   it("un error del servidor se convierte en un Error con su mensaje", async () => {
     const fetchMock = (async () => ({ ok: false, status: 400, json: async () => ({ message: "El ZIP trae 201 entradas" }), text: async () => "" }) as unknown as Response) as unknown as typeof fetch;
     await expect(importarLote(fetchMock, "https://api.test", "tok", "prop-1", [archivo(1)])).rejects.toThrow(/201 entradas|No se pudo completar/);
+  });
+
+  it("un 429 se convierte en LimiteTasaError con el Retry-After del servidor", async () => {
+    const fetchMock = (async () => ({ ok: false, status: 429, headers: new Headers({ "retry-after": "45" }), json: async () => ({ message: "Demasiadas cargas masivas." }), text: async () => "" }) as unknown as Response) as unknown as typeof fetch;
+    await expect(importarLote(fetchMock, "https://api.test", "tok", "prop-1", [archivo(1)])).rejects.toMatchObject({ name: "Error", reintentarEnSeg: 45, message: "Demasiadas cargas masivas." });
   });
 });

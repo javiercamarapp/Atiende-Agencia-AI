@@ -55,6 +55,17 @@ export const LIMITES_ZIP_NAVEGADOR = {
 
 export class ZipNavegadorError extends Error {}
 
+/** 429 del servidor: la tanda NO se proceso; se espera `reintentarEnSeg` y se reintenta la MISMA tanda (no se reinicia el lote). */
+export class LimiteTasaError extends Error {
+  constructor(message: string, readonly reintentarEnSeg: number) {
+    super(message);
+  }
+}
+
+export const MAX_REINTENTOS_429 = 3;
+export const MAX_ESPERA_429_SEG = 120;
+const esperaReal = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
 const EXTENSIONES_ANIDADAS = /\.(zip|gz|tgz|rar|7z|tar|bz2|xz|jar)$/i;
 
 function rutaInsegura(nombre: string): boolean {
@@ -159,6 +170,10 @@ export async function importarLote(fetchImpl: typeof fetch, apiBaseUrl: string, 
     for (const a of archivos) fd.append("archivos", new Blob([a.bytes as BlobPart], { type: "application/xml" }), a.nombre);
     return fetchImpl(url, { method: "POST", headers: { authorization: `Bearer ${t}` }, body: fd });
   });
+  if (res.status === 429) {
+    const ra = Number(res.headers.get("retry-after"));
+    throw new LimiteTasaError(await readWriteErrorMessage(res, "Demasiadas cargas masivas. Intenta de nuevo en unos minutos."), Number.isFinite(ra) && ra > 0 ? ra : 60);
+  }
   if (!res.ok) throw new DespachosAdminError(await readWriteErrorMessage(res, `No se pudo completar la carga (${res.status}).`));
   return (await res.json()) as RespuestaLote;
 }
@@ -183,13 +198,14 @@ export interface ResumenImportacion {
 /**
  * Envia las tandas en orden. Si `estaCancelado()` es true ANTES de enviar una tanda, se detiene: las tandas ya enviadas NO se revierten
  * (cada una es una transaccion confirmada en el servidor) y el resumen lo dice. Un fallo de red/servidor en una tanda tambien detiene el
- * resto y se informa; como el servidor es idempotente por UUID, reintentar el mismo lote solo importa lo pendiente.
+ * resto y se informa; como el servidor es idempotente por UUID, reenviar el mismo lote reporta lo ya importado como duplicado. Un 429 espera y reintenta la misma tanda.
  */
 export async function ejecutarImportacion(
   tandas: readonly (readonly ArchivoParaLote[])[],
   enviar: (tanda: readonly ArchivoParaLote[]) => Promise<RespuestaLote>,
   estaCancelado: () => boolean,
   alProgresar: (p: ProgresoLote) => void,
+  esperar: (ms: number) => Promise<void> = esperaReal,
 ): Promise<ResumenImportacion> {
   const archivosTotal = tandas.reduce((s, t) => s + t.length, 0);
   const resultados: ResultadoArchivoLote[] = [];
@@ -203,15 +219,30 @@ export async function ejecutarImportacion(
       cancelada = true;
       break;
     }
-    try {
-      const r = await enviar(tandas[i]!);
-      resultados.push(...r.resultados);
-      totales.push(r.totales);
-      enviados += tandas[i]!.length;
-    } catch (err) {
-      error = err instanceof Error ? err.message : "No se pudo enviar la tanda.";
-      break;
+    let reintentos = 0;
+    let enviada = false;
+    while (!enviada) {
+      try {
+        const r = await enviar(tandas[i]!);
+        resultados.push(...r.resultados);
+        totales.push(r.totales);
+        enviados += tandas[i]!.length;
+        enviada = true;
+      } catch (err) {
+        if (err instanceof LimiteTasaError && reintentos < MAX_REINTENTOS_429) {
+          reintentos += 1;
+          await esperar(Math.min(err.reintentarEnSeg, MAX_ESPERA_429_SEG) * 1000);
+          if (estaCancelado()) {
+            cancelada = true;
+            break;
+          }
+          continue;
+        }
+        error = err instanceof Error ? err.message : "No se pudo enviar la tanda.";
+        break;
+      }
     }
+    if (!enviada) break;
     alProgresar({ tandasHechas: i + 1, tandasTotal: tandas.length, archivosEnviados: enviados, archivosTotal });
   }
   return { resultados, totales: sumarTotales(totales), sinProcesar: archivosTotal - enviados, cancelada, error };
