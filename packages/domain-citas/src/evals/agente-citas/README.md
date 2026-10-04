@@ -1,6 +1,6 @@
 # Arnes de evaluacion del agente de citas (WhatsApp)
 
-48 casos dorados en espanol de Mexico (`casos.json`) del agente de `whatsapp/llm-turn-handler.ts`, corridos SIN LLM real y sin red:
+50 casos dorados en espanol de Mexico (`casos.json`) del agente de `whatsapp/llm-turn-handler.ts`, corridos SIN LLM real y sin red:
 
 - `mundo.ts`: expone exactamente las 8 herramientas de `TOOLS` (listar_servicios, listar_proveedores, consultar_disponibilidad,
   crear_cita, buscar_mis_citas, cancelar_cita, reagendar_cita, modificar_cita) con las formas de respuesta del agente real, sobre dos

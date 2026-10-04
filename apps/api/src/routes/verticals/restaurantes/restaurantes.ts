@@ -13,6 +13,7 @@ import { restaurantesAdminBranchesRoutes } from "./admin-branches.ts";
 import { restaurantesAdminOrdersRoutes } from "./admin-orders.ts";
 import { restaurantesAdminCustomersRoutes } from "./admin-customers.ts";
 import { restaurantesAdminStaffRoutes } from "./admin-staff.ts";
+import { restaurantesAdminAvisosRoutes } from "./admin-avisos.ts";
 import { restaurantesRepartidorOrdersRoutes } from "./repartidor-orders.ts";
 import { restaurantesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { restaurantesProgramadosInternoRoutes } from "./programados-interno.ts";
@@ -56,6 +57,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fase 10 — alta/gestión de cuentas de staff (invitar/listar/revocar), ver el
   // comentario de cabecera de admin-staff.ts para la decisión de diseño completa.
   app.route("/", restaurantesAdminStaffRoutes(deps));
+  // R-16 (migración 043): preferencias de avisos por persona y umbral de entrega tardía (ver admin-avisos.ts).
+  app.route("/", restaurantesAdminAvisosRoutes(deps));
   // Hallazgo de auditoría — dispatcher real del canal de correo (channel='email'
   // del outbox), mismo patrón exacto que citasEmailDispatchRoutes.
   app.route("/", restaurantesEmailDispatchRoutes(deps));

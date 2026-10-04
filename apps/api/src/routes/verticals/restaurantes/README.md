@@ -195,9 +195,13 @@ documentados aquí mismo:
   de la anticipación (30 min) o ya pasó. Idempotente; un pedido cancelado nunca se promueve. Un fallo al
   promover se registra y no rompe el listado. Base sin migrar: `disponible:false` y lista vacía.
 - Interno: `GET|POST /internal/restaurantes/promover-programados` (secreto interno o `Authorization: Bearer
-  <CRON_SECRET>`) barre TODAS las organizaciones. NO está en `vercel.json` (decisión de costo: sin crons nuevos);
-  programarlo desde un scheduler externo es una decisión de despliegue. Respuesta: `{ ok, status: "ok" |
-  "not_available", promoted, orderIds }`.
+  <CRON_SECRET>`) barre TODAS las organizaciones (cron `*/5 * * * *` de `vercel.json`, ver docs/CRONS.md). R-16: en el mismo tick,
+  como unidad independiente, barre las alertas `restaurantes.pedido.entrega_tardia` y
+  `restaurantes.pedido.programado_por_vencer`. Respuesta: `{ ok, status: "ok" | "not_available", promoted, orderIds,
+  comandas, avisos: { disponible, candidatos, emitidas, sinNuevas, errores } }`.
+- R-16 (migración 043), `admin-avisos.ts`: `GET .../admin/avisos` (Mis avisos; owner/admin ven además la matriz del equipo
+  y los umbrales), `PUT .../admin/avisos/preferencias` (propia, u owner/admin la de su equipo, con bitácora) y
+  `PUT .../admin/avisos/umbral` (owner/admin, minutos de gracia de la entrega tardía por sucursal, 10 a 240).
 - Pendiente conocido: la comanda al POS (SoftRestaurant) no se encola al promover (hoy se omite al crear un
   programado); la captura manual de la comanda sigue disponible.
 
