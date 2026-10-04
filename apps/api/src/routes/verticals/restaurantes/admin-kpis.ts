@@ -48,7 +48,9 @@ async function contextoDeTiempo(repo: RestaurantesRepository, organizationId: st
   const { zonaHoraria } = await repo.findBranchZonaHoraria(branchId ?? propertyIdRuta);
   if (period !== "today") return { zonaHoraria, horasHoy: null };
   const ids = propertyIds ?? (await repo.listBranchesForOrganization(organizationId)).map((b) => b.propertyId);
-  const horarios = await Promise.all(ids.map(async (id) => (await repo.findBranchPolicy(id)).horario));
+  // Secuencial a proposito: comparten UNA sesion y cada lectura abre su SAVEPOINT con nombre fijo; en paralelo se intercalarian.
+  const horarios = [];
+  for (const id of ids) horarios.push((await repo.findBranchPolicy(id)).horario);
   return { zonaHoraria, horasHoy: horasAbiertasHoy(horarios, now, zonaHoraria) };
 }
 
