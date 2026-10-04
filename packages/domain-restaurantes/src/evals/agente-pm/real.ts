@@ -29,6 +29,8 @@ export interface OpcionesReal {
   /** Parametros del modelo evaluado (PM_EVALS_TEMPERATURE / PM_EVALS_REASONING). Por omision NO se manda
    *  temperature: GPT-6, Claude 5.x y Gemini Flash-Lite la rechazan o no la soportan. */
   readonly params?: OpenRouterModelParams;
+  /** PM_EVALS_TRAZA=1: el CLI imprime la conversacion y las herramientas de los casos que fallan (diagnostico). */
+  readonly traza?: boolean;
   /** URL de chat/completions (solo pruebas con un servidor falso). */
   readonly baseUrl?: string;
 }
@@ -50,7 +52,7 @@ export function opcionesRealDesdeEntorno(env: Readonly<Record<string, string | u
     ...(effort ? { reasoningEffort: effort as OpenRouterModelParams["reasoningEffort"] } : {}),
     minMaxTokens: 1500,
   };
-  return { apiKey: env.OPENROUTER_API_KEY, model: env.PM_EVALS_MODEL, maxUsd, k, params, casos: env.PM_EVALS_CASOS?.split(",").map((s) => s.trim()).filter(Boolean) };
+  return { apiKey: env.OPENROUTER_API_KEY, model: env.PM_EVALS_MODEL, maxUsd, k, params, casos: env.PM_EVALS_CASOS?.split(",").map((s) => s.trim()).filter(Boolean), traza: env.PM_EVALS_TRAZA === "1" };
 }
 
 export interface ResultadoReal {

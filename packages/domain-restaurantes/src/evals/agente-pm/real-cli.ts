@@ -1,11 +1,12 @@
 // CLI manual del modo LLM real. Ver `real.ts` para las variables de entorno y el tope de gasto.
 import { ejecutarSuiteReal, opcionesRealDesdeEntorno } from "./real.ts";
 
-const resultado = await ejecutarSuiteReal(opcionesRealDesdeEntorno());
+const opciones = opcionesRealDesdeEntorno();
+const resultado = await ejecutarSuiteReal(opciones);
 for (const r of resultado.resultados) {
   console.log(`${r.ok ? "OK " : "FALLA"} ${r.casoId} ${r.graders.filter((g) => !g.ok).map((g) => `${g.grader}: ${g.detalle}`).join(" | ")}`);
   // PM_EVALS_TRAZA=1: conversacion y llamadas a herramientas de los casos que fallan (diagnostico; nunca imprime la llave).
-  if (!r.ok && process.env.PM_EVALS_TRAZA === "1") {
+  if (!r.ok && opciones.traza) {
     for (const e of r.eventos ?? []) {
       if (e.tipo === "herramienta") console.log(`    [tool] ${e.nombre} ${JSON.stringify(e.args)} -> ${JSON.stringify(e.resultado).slice(0, 300)}`);
       else console.log(`    [${e.tipo}] ${e.texto.replace(/\n/g, " / ")}`);
