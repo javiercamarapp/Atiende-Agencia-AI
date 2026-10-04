@@ -308,7 +308,7 @@ revoke all on function restaurantes.voice_tool_audit_block_mutation() from publi
 
 -- 5b) Telefonos del titular con solicitud ARCO abierta (solo sistema): la purga TypeScript calcula con la llave del
 --     servidor los seudonimos de voz de cada telefono y los pasa a la purga SQL (la base no conoce esa llave).
-create or replace function restaurantes.system_list_open_arco_phones(p_limit integer default 1000)
+create or replace function restaurantes.system_list_open_arco_phones(p_limit integer default 1000, p_organization_id uuid default null)
 returns table (out_organization_id uuid, out_customer_phone text)
 language plpgsql
 stable
@@ -322,13 +322,13 @@ begin
   return query
     select r.organization_id, r.customer_phone
       from restaurantes.data_rights_requests r
-     where r.status in ('recibida', 'en_proceso', 'bloqueada')
+     where r.status in ('recibida', 'en_proceso', 'bloqueada') and (p_organization_id is null or r.organization_id = p_organization_id)
      order by r.created_at
      limit least(greatest(coalesce(p_limit, 1000), 1), 5000);
 end;
 $$;
-revoke all on function restaurantes.system_list_open_arco_phones(integer) from public, anon;
-grant execute on function restaurantes.system_list_open_arco_phones(integer) to authenticated;
+revoke all on function restaurantes.system_list_open_arco_phones(integer, uuid) from public, anon;
+grant execute on function restaurantes.system_list_open_arco_phones(integer, uuid) to authenticated;
 
 -- 5c) Ejecucion de la cancelacion ARCO (QA-R1-seguridad-06). Funcion INTERNA: nadie la ejecuta directamente (revoke total);
 --     la invoca update_data_rights_request_status (security definer, ya valido owner/admin y la organizacion de la solicitud).
@@ -782,3 +782,167 @@ end;
 $$;
 revoke all on function restaurantes.system_purge_expired_privacy_data(integer) from public, anon;
 grant execute on function restaurantes.system_purge_expired_privacy_data(integer) to authenticated;
+
+-- 5f) Purga de PLATAFORMA (core.system_run_retention_purge, 0036; cron diario /internal/plataforma/privacidad-retencion) para las
+--     clases restaurantes_*: misma proteccion de titulares con ARCO abierta (recibida/en_proceso/bloqueada) que la purga 5e.
+--     Defecto que corrige: la 0036 protegia la voz solo por el sha256 de UN formato de telefono y WhatsApp por igualdad literal;
+--     con ACTOR_HASH_KEY (seudonimo HMAC, QA R1 seguridad-08) los caller_hash nuevos no coincidian y el cron borraba los
+--     turnos de voz de quien tiene una solicitud abierta (incluida una de acceso).
+--     Cambios: (a) WhatsApp compara por restaurantes.telefono_clave (ultimos 10 digitos); (b) la voz se protege por los
+--     seudonimos que pasa el servidor en p_protected_hashes mas los sha256 de las 4 variantes del telefono de cada solicitud
+--     abierta de la organizacion; (c) la firma de 4 argumentos queda como envoltorio (p_protected_hashes nulo), asi un
+--     llamador viejo sigue funcionando. Justificacion de seguridad: solo sistema (auth.uid() is null, 42501 si no),
+--     security definer con search_path fijo, revoke de public/anon, sin GRANT nuevo a anon; la lista de hashes solo AMPLIA lo
+--     protegido (nunca borra mas). Se aplica solo si la 0036 ya esta en la base (si no, no hay nada que reemplazar).
+do $arco_plataforma$
+begin
+  if to_regprocedure('core.system_run_retention_purge(uuid,text,boolean,integer)') is null then
+    raise notice '041 5f: core.system_run_retention_purge no existe (0036 sin aplicar); se omite';
+    return;
+  end if;
+  execute $fn$
+create or replace function core.system_run_retention_purge(p_org uuid, p_data_class text, p_dry_run boolean, p_limit integer, p_protected_hashes text[])
+returns table (out_run_id uuid, out_status text, out_retention_days integer, out_rows_affected integer, out_rows_anonymized integer, out_rows_protected integer)
+language plpgsql security definer set search_path = core, restaurantes, pg_temp as $$
+declare
+  v_limit integer := least(greatest(coalesce(p_limit, 500), 1), 5000);
+  v_dry boolean := coalesce(p_dry_run, false);
+  v_class core.retention_class%rowtype;
+  v_days integer;
+  v_cutoff timestamptz;
+  v_affected integer := 0;
+  v_anon integer := 0;
+  v_protected integer := 0;
+  v_status text;
+  v_blocked text;
+  v_id uuid;
+  v_protegidos text[];
+begin
+  if auth.uid() is not null then
+    raise exception 'system_run_retention_purge: solo para la sesion de sistema' using errcode = '42501';
+  end if;
+  if not exists (select 1 from core.organization o where o.id = p_org) then
+    raise exception 'system_run_retention_purge: la organizacion no existe' using errcode = '22023';
+  end if;
+  -- Seudonimos de voz a proteger: los que pasa el servidor (HMAC, con la llave que la base no conoce) mas los sha256 planos
+  -- de todas las variantes del telefono de cada solicitud ARCO abierta de ESTA organizacion (filas anteriores a la llave).
+  v_protegidos := coalesce(p_protected_hashes, '{}'::text[]) ||
+    array(
+      select encode(sha256(convert_to(d, 'UTF8')), 'hex')
+        from restaurantes.data_rights_requests r
+        cross join lateral unnest(array[
+          regexp_replace(r.customer_phone, '\D', '', 'g'),
+          right(regexp_replace(r.customer_phone, '\D', '', 'g'), 10),
+          '52' || right(regexp_replace(r.customer_phone, '\D', '', 'g'), 10),
+          '521' || right(regexp_replace(r.customer_phone, '\D', '', 'g'), 10)
+        ]) as d
+       where r.organization_id = p_org and r.status in ('recibida', 'en_proceso', 'bloqueada') and d <> '' and d <> '52' and d <> '521'
+    );
+  select * into v_class from core.retention_class c where c.data_class = p_data_class;
+  if not found then
+    raise exception 'system_run_retention_purge: clase de dato desconocida' using errcode = '22023';
+  end if;
+
+  select e.out_days into v_days from core._retention_effective(p_org, p_data_class) e;
+  v_cutoff := now() - make_interval(days => v_days);
+
+  if v_class.executor <> 'plataforma' then
+    v_status := 'sin_ejecutor';
+  elsif exists (
+    select 1 from core.purge_hold h
+     where h.organization_id = p_org and h.released_at is null and (h.data_class is null or h.data_class = p_data_class)
+  ) then
+    v_status := 'bloqueada';
+    v_blocked := 'retencion_legal_activa';
+  elsif p_data_class = 'restaurantes_whatsapp_conversaciones' then
+    select count(*) into v_protected
+      from restaurantes.whatsapp_conversations w
+     where w.organization_id = p_org and w.messages <> '[]'::jsonb and w.updated_at < v_cutoff
+       and exists (
+         select 1 from restaurantes.data_rights_requests r
+          where r.organization_id = w.organization_id and restaurantes.telefono_clave(r.customer_phone) = restaurantes.telefono_clave(w.phone) and r.status in ('recibida', 'en_proceso', 'bloqueada')
+       );
+    if v_dry then
+      select count(*) into v_affected from (
+        select 1 from restaurantes.whatsapp_conversations w
+         where w.organization_id = p_org and w.messages <> '[]'::jsonb and w.updated_at < v_cutoff
+           and not exists (
+             select 1 from restaurantes.data_rights_requests r
+              where r.organization_id = w.organization_id and restaurantes.telefono_clave(r.customer_phone) = restaurantes.telefono_clave(w.phone) and r.status in ('recibida', 'en_proceso', 'bloqueada')
+           )
+         order by w.updated_at limit v_limit
+      ) s;
+    else
+      with victims as (
+        select w.id from restaurantes.whatsapp_conversations w
+         where w.organization_id = p_org and w.messages <> '[]'::jsonb and w.updated_at < v_cutoff
+           and not exists (
+             select 1 from restaurantes.data_rights_requests r
+              where r.organization_id = w.organization_id and restaurantes.telefono_clave(r.customer_phone) = restaurantes.telefono_clave(w.phone) and r.status in ('recibida', 'en_proceso', 'bloqueada')
+           )
+         order by w.updated_at limit v_limit
+      ), cleared as (
+        update restaurantes.whatsapp_conversations w set messages = '[]'::jsonb from victims v where w.id = v.id returning 1
+      )
+      select count(*) into v_affected from cleared;
+    end if;
+    v_status := case when v_dry then 'simulacion' else 'ok' end;
+  elsif p_data_class = 'restaurantes_voz_transcripciones' then
+    select count(*) into v_protected
+      from restaurantes.voice_conversation c
+     where c.organization_id = p_org and (c.ended_at is not null or c.started_at < now() - interval '1 day') and c.started_at < v_cutoff
+       and (exists (select 1 from restaurantes.voice_turn t where t.conversation_id = c.id) or c.caller_hash is not null)
+       and c.caller_hash = any (v_protegidos);
+    if v_dry then
+      select count(*), count(*) filter (where s.has_hash) into v_affected, v_anon from (
+        select c.caller_hash is not null as has_hash
+          from restaurantes.voice_conversation c
+         where c.organization_id = p_org and (c.ended_at is not null or c.started_at < now() - interval '1 day') and c.started_at < v_cutoff
+           and (exists (select 1 from restaurantes.voice_turn t where t.conversation_id = c.id) or c.caller_hash is not null)
+           and not coalesce(c.caller_hash = any (v_protegidos), false)
+         order by c.started_at limit v_limit
+      ) s;
+      -- En simulacion rows_affected cuenta llamadas candidatas (no turnos): se documenta en el catalogo.
+    else
+      with old_calls as (
+        select c.id from restaurantes.voice_conversation c
+         where c.organization_id = p_org and (c.ended_at is not null or c.started_at < now() - interval '1 day') and c.started_at < v_cutoff
+           and (exists (select 1 from restaurantes.voice_turn t where t.conversation_id = c.id) or c.caller_hash is not null)
+           and not coalesce(c.caller_hash = any (v_protegidos), false)
+         order by c.started_at limit v_limit
+      ), del_turns as (
+        delete from restaurantes.voice_turn t using old_calls o where t.conversation_id = o.id returning 1
+      ), anon as (
+        update restaurantes.voice_conversation c set caller_hash = null from old_calls o where c.id = o.id and c.caller_hash is not null returning 1
+      )
+      select (select count(*) from del_turns), (select count(*) from anon) into v_affected, v_anon;
+    end if;
+    v_status := case when v_dry then 'simulacion' else 'ok' end;
+  else
+    v_status := 'sin_ejecutor';
+  end if;
+
+  insert into core.purge_run_log (organization_id, data_class, status, retention_days, cutoff_at, rows_affected, rows_anonymized, rows_protected, blocked_reason)
+  values (p_org, p_data_class, v_status, v_days, v_cutoff, v_affected, v_anon, v_protected, v_blocked)
+  returning id into v_id;
+
+  return query select v_id, v_status, v_days, v_affected, v_anon, v_protected;
+end;
+$$;
+  $fn$;
+  execute 'revoke all on function core.system_run_retention_purge(uuid, text, boolean, integer, text[]) from public, anon';
+  execute 'grant execute on function core.system_run_retention_purge(uuid, text, boolean, integer, text[]) to authenticated';
+  execute $fn$
+create or replace function core.system_run_retention_purge(p_org uuid, p_data_class text, p_dry_run boolean default false, p_limit integer default 500)
+returns table (out_run_id uuid, out_status text, out_retention_days integer, out_rows_affected integer, out_rows_anonymized integer, out_rows_protected integer)
+language plpgsql security definer set search_path = core, restaurantes, pg_temp as $$
+begin
+  if auth.uid() is not null then
+    raise exception 'system_run_retention_purge: solo para la sesion de sistema' using errcode = '42501';
+  end if;
+  return query select * from core.system_run_retention_purge(p_org, p_data_class, p_dry_run, p_limit, null::text[]);
+end;
+$$;
+  $fn$;
+end
+$arco_plataforma$;

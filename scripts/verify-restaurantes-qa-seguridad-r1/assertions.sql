@@ -643,3 +643,78 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0011', true);
 select * from restaurantes.system_list_open_arco_phones(100) as should_fail;
 rollback;
+
+-- ═══ Purga de PLATAFORMA (core.system_run_retention_purge, cron /internal/plataforma/privacidad-retencion) ═══
+-- Misma proteccion de titulares con ARCO abierta que la purga de restaurantes. El caller_hash sha256('hmac-simulado-...') representa
+-- el seudonimo HMAC (ACTOR_HASH_KEY) que la base no puede recalcular: solo lo reconoce si el servidor lo pasa.
+\echo '=== P16. Plataforma/voz: la llamada vencida con seudonimo HMAC del titular con ARCO abierta CONSERVA su hash si el servidor lo pasa ==='
+begin;
+insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor, caller_hash, started_at, ended_at) values
+  ('00000000-0000-0000-0000-0000000f2023', '00000000-0000-0000-0000-0000000f0001', '00000000-0000-0000-0000-0000000f00a1', 'call-hmac', 'llamada', 'elevenlabs-agents',
+   encode(sha256(convert_to('hmac-simulado-9995550003', 'UTF8')), 'hex'), now() - interval '400 days', now() - interval '400 days');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as purga_ejecutada from core.system_run_retention_purge('00000000-0000-0000-0000-0000000f0001', 'restaurantes_voz_transcripciones', false, 500, array[encode(sha256(convert_to('hmac-simulado-9995550003', 'UTF8')), 'hex')]);
+reset role;
+select (select count(*) from restaurantes.voice_conversation where id = '00000000-0000-0000-0000-0000000f2023' and caller_hash is not null)
+     + (select count(*) from restaurantes.voice_conversation where id = '00000000-0000-0000-0000-0000000f2021' and caller_hash is not null)
+     + (select count(*) from restaurantes.voice_conversation where id = '00000000-0000-0000-0000-0000000f2022' and caller_hash is null) as plataforma_voz_bien_tratada_deberia_ser_3;
+rollback;
+
+\echo '=== P16b. Plataforma/voz: SIN la lista del servidor el seudonimo HMAC no se reconoce (por eso la ruta TypeScript la pasa) y la llamada libre se anonimiza ==='
+begin;
+insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor, caller_hash, started_at, ended_at) values
+  ('00000000-0000-0000-0000-0000000f2023', '00000000-0000-0000-0000-0000000f0001', '00000000-0000-0000-0000-0000000f00a1', 'call-hmac', 'llamada', 'elevenlabs-agents',
+   encode(sha256(convert_to('hmac-simulado-9995550003', 'UTF8')), 'hex'), now() - interval '400 days', now() - interval '400 days');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as purga_ejecutada from core.system_run_retention_purge('00000000-0000-0000-0000-0000000f0001', 'restaurantes_voz_transcripciones', false, 500, null);
+reset role;
+select (select count(*) from restaurantes.voice_conversation where id = '00000000-0000-0000-0000-0000000f2023' and caller_hash is null)
+     + (select count(*) from restaurantes.voice_conversation where id = '00000000-0000-0000-0000-0000000f2021' and caller_hash is not null) as sha256_plano_sigue_protegido_deberia_ser_2;
+rollback;
+
+\echo '=== P16c. Plataforma/voz: una llamada vencida SIN caller_hash pero con turnos se purga (el NOT con hash nulo no la excluye) ==='
+begin;
+insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor, caller_hash, started_at, ended_at) values
+  ('00000000-0000-0000-0000-0000000f2024', '00000000-0000-0000-0000-0000000f0001', '00000000-0000-0000-0000-0000000f00a1', 'call-sin-hash', 'llamada', 'elevenlabs-agents',
+   null, now() - interval '400 days', now() - interval '400 days');
+insert into restaurantes.voice_turn (conversation_id, organization_id, seq, rol, texto) values
+  ('00000000-0000-0000-0000-0000000f2024', '00000000-0000-0000-0000-0000000f0001', 0, 'cliente', 'hola');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as purga_ejecutada from core.system_run_retention_purge('00000000-0000-0000-0000-0000000f0001', 'restaurantes_voz_transcripciones', false, 500, array[encode(sha256(convert_to('hmac-simulado-9995550003', 'UTF8')), 'hex')]);
+reset role;
+select count(*)::int as turnos_sin_hash_borrados_deberia_ser_0 from restaurantes.voice_turn where conversation_id = '00000000-0000-0000-0000-0000000f2024';
+rollback;
+
+\echo '=== P16d. Plataforma/WhatsApp: la conversacion +521 del titular con ARCO abierta por voz (+52) queda protegida (cruce por telefono_clave) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as purga_ejecutada from core.system_run_retention_purge('00000000-0000-0000-0000-0000000f0001', 'restaurantes_whatsapp_conversaciones', false, 500, null);
+reset role;
+select count(*)::int as conversacion_protegida_conserva_mensajes_deberia_ser_1 from restaurantes.whatsapp_conversations where id = '00000000-0000-0000-0000-0000000f2011' and messages <> '[]'::jsonb;
+rollback;
+
+\echo '=== P16e. Plataforma: la firma anterior de 4 argumentos sigue funcionando y la simulacion cuenta la protegida ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (out_status = 'simulacion' and out_rows_protected = 1)::int as firma_de_4_argumentos_deberia_ser_1 from core.system_run_retention_purge('00000000-0000-0000-0000-0000000f0001', 'restaurantes_voz_transcripciones', true, 500);
+rollback;
+
+\echo '=== S16f. Plataforma: la purga de 5 argumentos rechaza al staff autenticado (solo sistema) ==='
+begin;
+-- as should_fail (sin alias)
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0011', true);
+select * from core.system_run_retention_purge('00000000-0000-0000-0000-0000000f0001', 'restaurantes_voz_transcripciones', false, 500, array['x']) as should_fail;
+rollback;
+
+\echo '=== S16g. Plataforma: anon no ejecuta ni la firma de 5 argumentos ni el envoltorio de 4 ==='
+begin;
+-- as should_fail (sin alias)
+set local role anon;
+select (select count(*) from core.system_run_retention_purge('00000000-0000-0000-0000-0000000f0001', 'restaurantes_voz_transcripciones', true, 500, null)) as should_fail;
+rollback;
