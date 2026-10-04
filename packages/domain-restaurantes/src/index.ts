@@ -318,3 +318,4 @@ export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from 
 export * from "./encuesta-reglas.ts";
 export * from "./resenas-provider.ts";
 export * from "./mezcla-de-pago.ts";
+export * from "./sucursal-sugerida.ts";

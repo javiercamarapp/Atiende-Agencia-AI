@@ -67,6 +67,55 @@ describe("lectura publica: sucursales y menu", () => {
   });
 });
 
+describe("sucursal sugerida y zonas (portada)", () => {
+  async function conZona() {
+    const s = await setup();
+    s.restaurantesRepo.seedKnownZone({ id: randomUUID(), organizationId: s.organizationId, name: "Vista Alegre", lat: 21.02, lng: -89.67, createdAt: "2026-01-01T00:00:00Z" });
+    return s;
+  }
+
+  it("zonas: solo nombres, sin coordenadas ni ids", async () => {
+    const s = await conZona();
+    const res = await s.app.request(`${BASE}/zonas`);
+    expect(res.status).toBe(200);
+    const body = await s.json(res);
+    expect(body).toEqual({ zonas: ["Vista Alegre"] });
+  });
+
+  it("por colonia: sugiere la sucursal que reparte ahi", async () => {
+    const s = await conZona();
+    const res = await s.post("/sucursal-sugerida", { colonia: "vista alegre" });
+    expect(res.status).toBe(200);
+    expect((await s.json(res)).sugerencia).toMatchObject({ tipo: "reparte", sucursal: { slug: "fco-montejo" }, zona: "Vista Alegre" });
+  });
+
+  it("colonia desconocida: sin_resultado honesto (200), no se inventa sucursal", async () => {
+    const s = await conZona();
+    const res = await s.post("/sucursal-sugerida", { colonia: "Atlantida" });
+    expect((await s.json(res)).sugerencia).toMatchObject({ tipo: "sin_resultado" });
+  });
+
+  it("por ubicacion: sugiere la mas cercana y NO devuelve ni guarda las coordenadas", async () => {
+    const s = await conZona();
+    const res = await s.post("/sucursal-sugerida", { lat: 21.0187, lng: -89.6709 });
+    const texto = JSON.stringify(await s.json(res));
+    expect(texto).toContain("fco-montejo");
+    expect(texto).not.toContain("21.0187");
+    expect(texto).not.toContain("89.6709");
+  });
+
+  it("validaciones: sin datos, ubicacion invalida, origen no permitido y restaurante inexistente", async () => {
+    const s = await conZona();
+    expect((await s.post("/sucursal-sugerida", {})).status).toBe(400);
+    expect((await s.post("/sucursal-sugerida", { lat: 999, lng: 0 })).status).toBe(400);
+    expect((await s.post("/sucursal-sugerida", { lat: "21", lng: "-89" })).status).toBe(400);
+    expect((await s.post("/sucursal-sugerida", { colonia: "x".repeat(121) })).status).toBe(400);
+    expect((await s.post("/sucursal-sugerida", { colonia: "vista alegre" }, { origin: "https://sitio-no-permitido.mx" })).status).toBe(403);
+    const res = await s.app.request(`/v1/restaurantes/no-existe/storefront/sucursal-sugerida`, jsonRequestInit({ colonia: "x" }, ORIGIN));
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("aviso de privacidad: encargados y transferencias (borrador)", () => {
   /** Restaurante sin canal de WhatsApp ni voz: la fixture base ya trae un numero conectado. */
   async function orgSinCanal() {

@@ -26,6 +26,8 @@ import {
   previewPromotion,
   redondearACentavos,
   seccionEncargados,
+  sugerirSucursalPorColonia,
+  sugerirSucursalPorUbicacion,
 } from "@atiende/domain-restaurantes";
 import type { AgentToolContext, CanalPedido, Order, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { encolarComandaParaPedido, type ResultadoEncolarPedido } from "@atiende/domain-restaurantes/softrestaurant";
@@ -168,6 +170,41 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
       const org = await resolveOrg(repo, c.req.param("orgSlug"));
       await limitOrThrow(repo, c, "storefront-read", 120, org.id);
       return c.json({ restaurante: { slug: org.slug, nombre: org.name }, sucursales: await buildStorefrontDirectorio(repo, org.id) });
+    });
+  });
+
+  // GET /v1/restaurantes/:orgSlug/storefront/zonas -- nombres de las colonias/zonas conocidas (autocompletar de "¿Dónde está?").
+  // Solo nombres: nada de coordenadas ni ids.
+  app.get("/v1/restaurantes/:orgSlug/storefront/zonas", async (c) => {
+    noStore(c);
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-read", 120, org.id);
+      const nombres = (await repo.listKnownZones(org.id)).map((z) => z.name).sort((a, b) => a.localeCompare(b, "es"));
+      return c.json({ zonas: nombres.slice(0, 500) });
+    });
+  });
+
+  // POST /v1/restaurantes/:orgSlug/storefront/sucursal-sugerida -- sucursal sugerida por colonia {colonia} o por ubicacion {lat, lng}.
+  // POST y no GET a proposito: las coordenadas viajan en el cuerpo (no en la URL, que queda en los registros) y NUNCA se guardan ni se
+  // escriben en logs; se usan solo para calcular la distancia.
+  app.post("/v1/restaurantes/:orgSlug/storefront/sucursal-sugerida", async (c) => {
+    noStore(c);
+    assertOrigin(c);
+    const body = await readJsonCapped<{ colonia?: unknown; lat?: unknown; lng?: unknown }>(c.req.raw, 2 * 1024);
+    const colonia = strOrReject(body.colonia, 120, "La colonia");
+    const tieneUbicacion = body.lat !== undefined || body.lng !== undefined;
+    if (!colonia && !tieneUbicacion) throw Errors.validation("Indique una colonia o permita su ubicación.");
+    if (tieneUbicacion && (typeof body.lat !== "number" || typeof body.lng !== "number" || !Number.isFinite(body.lat) || !Number.isFinite(body.lng) || Math.abs(body.lat) > 90 || Math.abs(body.lng) > 180)) {
+      throw Errors.validation("La ubicación no es válida.");
+    }
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-read", 120, org.id);
+      const sugerencia = colonia ? await sugerirSucursalPorColonia(repo, org.id, colonia) : await sugerirSucursalPorUbicacion(repo, org.id, { lat: body.lat as number, lng: body.lng as number });
+      return c.json({ sugerencia });
     });
   });
 
