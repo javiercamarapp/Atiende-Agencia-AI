@@ -107,7 +107,7 @@ test.describe("directorio publico de sucursales", () => {
     await expect(page.getByText("Solo recoger")).toBeVisible();
     await expect(page.getByText("Temporada")).toBeVisible();
     await expect(page.getByText("Solo informativa")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Cómo llegar" })).toHaveAttribute("href", /google\.com\/maps/);
+    await expect(page.getByRole("link", { name: "Cómo llegar" })).toHaveAttribute("href", "https://www.google.com/maps/search/?api=1&query=Pensiones");
     await expect(page.getByRole("link", { name: /Llamar/ })).toHaveAttribute("href", "tel:+529999875410");
     await expect(page.getByRole("link", { name: /^Pedir en/ })).toHaveCount(2);
     await page.getByRole("link", { name: "Pedir en Pensiones" }).click();
