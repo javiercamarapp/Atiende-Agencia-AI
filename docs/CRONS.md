@@ -18,7 +18,7 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
   (`for update skip locked`, `attempts < 5`) y envía con `Idempotency-Key` por job, así que un solapamiento o reintento no duplica correos.
 - Kill switch: superadmin → Interruptores → cron `<path>` (o global `crons`). Pausado responde 200 `{"skipped":"kill_switch"}`.
 - Verificar a mano: `curl -H "Authorization: Bearer $CRON_SECRET" https://<dominio><path>`; o `vercel crons run <path>`.
-  Revisa el latido en `/superadmin/salud/crons`. **No lo hagas contra producción con WhatsApp/correo reales sin querer enviar mensajes.**
+  Revisa el latido en `/superadmin/salud/crons` (más señales en [Cómo saber que corren](#cómo-saber-que-corren)). **No lo hagas contra producción con WhatsApp/correo reales sin querer enviar mensajes.**
 
 ## Tabla de crons
 
@@ -64,6 +64,21 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/plataforma/prueba-avisos` | `0 14 * * *` | PL-16: avisos de fin de prueba a 7/3/1 días (campana + correo), cada aviso exactamente una vez, con el día contado en la zona de cada negocio. Sin la migración 0046 responde `disponible:false` |
 
 Todos tienen latido en el panel de salud (verifica el de cada path en `/superadmin/salud/crons`), el interruptor global `crons` y el interruptor por path (`SWITCHABLE_CRONS`; el test de contrato exige que cada cron de `vercel.json` esté ahí).
+
+## Cómo saber que corren
+
+Cuatro señales, de la más barata a la más detallada. Ninguna corre un cron ni toca datos.
+
+1. **`GET /health` (público, sin secreto).** Además de `ok` y `status` trae `crons`, una señal agregada sin nombres ni errores:
+   - `ok`: ningún latido atrasado y todos los crons de cadencia de 15 min o menos con al menos un latido (un cron diario que aún no tuvo su primera corrida no cuenta);
+   - `sin_latido`: algún cron de cadencia de 15 min o menos (`whatsapp/dispatch`, `promover-programados`, `email-dispatch`...) **nunca** dejó un latido: el scheduler no los invoca (típico: `CRON_SECRET` distinto de `INTERNAL_SECRET`, o plan sin crons frecuentes);
+   - `atrasados`: algún latido lleva más de 3 veces la cadencia de su cron sin renovarse;
+   - `sin_medir`: no se pudo leer la tabla de latidos (migración 0015 sin aplicar, error o más de 2 s de espera). Nunca se reporta `ok` por no poder medir.
+   El código HTTP no cambia (200 si la base responde): un cron sin latido no tumba el smoke del deploy. La lectura usa `core.list_cron_heartbeats_for_system()` y se cachea 5 s junto con el sondeo de la base.
+   Un cron que corre pero termina en error **no** vuelve `crons` a `atrasados`: eso lo cubren `/superadmin/salud/crons` y la alerta `superadmin.cron.fallo`.
+2. **Sondeo externo (`.github/workflows/prod-health.yml`, cada 15 min, sin cambios de frecuencia).** `scripts/health-check/check.ts` falla si `crons` no es `ok` en **dos sondeos seguidos** (6 s de separación) y el job queda en rojo. Con `PROD_HEALTH_OPEN_ISSUE=true` abre o comenta un issue "Salud de produccion". Sin la variable de repo `PROD_BASE_URL` no sondea y deja un `::warning::` visible.
+3. **Alerta en la campana de superadmin.** El cron diario de resumen emite `superadmin.salud.cron_sin_latido` (una por día) si algún cron de cadencia de 15 min o menos no tiene ningún latido.
+4. **Panel `/superadmin/salud/crons`:** estado, último latido y error de cada cron, con el kill switch.
 
 ## No agendados a propósito
 
