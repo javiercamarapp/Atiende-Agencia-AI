@@ -3,7 +3,7 @@
 # que scripts/verify-restaurantes-audit-log/run.sh (ver ese archivo para el porqué
 # de cada paso). Cubre, contra RLS/GRANT/auth.uid() reales (nunca el repositorio en
 # memoria, que no aplica ninguno de los tres):
-#   - packages/domain-restaurantes/migrations/041_avisos_staff_preferencias_y_alertas.sql
+#   - packages/domain-restaurantes/migrations/043_avisos_staff_preferencias_y_alertas.sql
 #     (preferencias por usuario, filtro en core.emit_notification, umbral por sucursal y
 #     candidatos de las alertas operativas)
 #
@@ -48,7 +48,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 041_avisos_staff_preferencias_y_alertas.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 043_avisos_staff_preferencias_y_alertas.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

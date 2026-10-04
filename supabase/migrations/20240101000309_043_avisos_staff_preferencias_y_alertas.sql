@@ -1,6 +1,6 @@
 -- R-16 (PM, restaurantes): avisos del staff. Preferencias de notificacion por (organizacion, usuario),
 -- umbral de "entrega tardia" por sucursal y el candidato de las dos alertas operativas nuevas
--- (entrega tardia / programado por vencer). Interno 041, prefijo de supabase/migrations 20240101000309.
+-- (entrega tardia / programado por vencer). Interno 043, prefijo de supabase/migrations 20240101000309.
 --
 -- Piezas:
 --   A) core.notification_preference: que tipos de notificacion in-app (core.notification.tipo) recibe cada

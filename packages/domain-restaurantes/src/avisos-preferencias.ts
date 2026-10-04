@@ -1,4 +1,4 @@
-// R-16 -- preferencias de AVISOS del staff de restaurantes (migracion 041). Acceso SQL en un modulo propio (no
+// R-16 -- preferencias de AVISOS del staff de restaurantes (migracion 043). Acceso SQL en un modulo propio (no
 // engorda postgres-repository.ts): cada funcion recibe la sesion del request (la del usuario autenticado, con su
 // `auth.uid()` real) y llama a las funciones `security definer` de la migracion, que son quienes autorizan.
 //
@@ -33,7 +33,7 @@ export const EVENTOS_AVISO: readonly EventoAviso[] = [
 
 export const TIPOS_AVISO: ReadonlySet<string> = new Set(EVENTOS_AVISO.map((e) => e.tipo));
 
-/** Minutos de gracia por defecto de la alerta de entrega tardia cuando la sucursal no configuro uno (misma constante que la migracion 041). */
+/** Minutos de gracia por defecto de la alerta de entrega tardia cuando la sucursal no configuro uno (misma constante que la migracion 043). */
 export const UMBRAL_ENTREGA_TARDIA_DEFECTO_MIN = 45;
 export const UMBRAL_ENTREGA_TARDIA_MIN = 10;
 export const UMBRAL_ENTREGA_TARDIA_MAX = 240;
@@ -52,7 +52,7 @@ export interface UmbralSucursal {
   readonly entregaTardiaMin: number | null;
 }
 
-/** La base aun no tiene la migracion 041: la escritura no se puede aplicar (la ruta responde 503). */
+/** La base aun no tiene la migracion 043: la escritura no se puede aplicar (la ruta responde 503). */
 export class AvisosNoDisponiblesError extends Error {
   constructor() {
     super("Los avisos por persona aún no están disponibles en esta base de datos.");

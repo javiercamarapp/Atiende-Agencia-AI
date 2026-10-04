@@ -16,7 +16,7 @@ function pgError(code: string, message: string): Error & { code: string } {
   return err;
 }
 
-/** Envuelve el motor: responde a las funciones de la migracion 041 con un almacen en memoria (o con el error que se pida). */
+/** Envuelve el motor: responde a las funciones de la migracion 043 con un almacen en memoria (o con el error que se pida). */
 function conBaseDeAvisos(
   deps: Awaited<ReturnType<typeof buildRestaurantesKpiTestContext>>["deps"],
   propiedades: ReadonlyArray<{ id: string; name: string }>,

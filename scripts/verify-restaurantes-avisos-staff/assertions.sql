@@ -1,5 +1,5 @@
 -- R-16: fixtures + assertions contra Postgres REAL (RLS + GRANT + auth.uid() reales; el repositorio en
--- memoria nunca los aplica) de packages/domain-restaurantes/migrations/041_avisos_staff_preferencias_y_alertas.sql:
+-- memoria nunca los aplica) de packages/domain-restaurantes/migrations/043_avisos_staff_preferencias_y_alertas.sql:
 --
 --   A. core.notification_preference / list / set (preferencias por usuario): positivo (cada usuario las suyas,
 --      owner/admin las de su staff), RLS (nadie lee las de otro por la tabla), rol insuficiente, un admin no

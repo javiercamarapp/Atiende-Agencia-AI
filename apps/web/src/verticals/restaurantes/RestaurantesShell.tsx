@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import {
   BellRing,
+  CalendarCheck,
   ClipboardCheck,
   ClipboardList,
   History,
@@ -123,6 +124,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
         { to: `${base}/historial`, label: "Historial", icon: History },
         // R-16: "Mis avisos" para quien no ve la categoria Configuración (el staff de piso); owner/admin lo tienen allí.
         ...(canSeeStaff ? [] : [{ to: `${base}/avisos`, label: "Avisos", icon: BellRing }]),
+        // R-42: cierre del día y resumen semanal (solo owner/admin: el servidor exige el mismo umbral).
+        ...(canSeeStaff ? [{ to: `${base}/cierres`, label: "Cierre del día", icon: CalendarCheck }] : []),
       ],
     },
     {

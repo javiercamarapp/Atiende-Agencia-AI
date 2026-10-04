@@ -17,6 +17,8 @@ import { restaurantesAdminAvisosRoutes } from "./admin-avisos.ts";
 import { restaurantesRepartidorOrdersRoutes } from "./repartidor-orders.ts";
 import { restaurantesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { restaurantesProgramadosInternoRoutes } from "./programados-interno.ts";
+import { restaurantesCierresRoutes } from "./cierres.ts";
+import { restaurantesCierresInternoRoutes } from "./cierres-interno.ts";
 import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
@@ -51,13 +53,15 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fase 10 — alta/gestión de cuentas de staff (invitar/listar/revocar), ver el
   // comentario de cabecera de admin-staff.ts para la decisión de diseño completa.
   app.route("/", restaurantesAdminStaffRoutes(deps));
-  // R-16 (migración 041): preferencias de avisos por persona y umbral de entrega tardía (ver admin-avisos.ts).
+  // R-16 (migración 043): preferencias de avisos por persona y umbral de entrega tardía (ver admin-avisos.ts).
   app.route("/", restaurantesAdminAvisosRoutes(deps));
   // Hallazgo de auditoría — dispatcher real del canal de correo (channel='email'
   // del outbox), mismo patrón exacto que citasEmailDispatchRoutes.
   app.route("/", restaurantesEmailDispatchRoutes(deps));
   // R-11 (migración 034): promoción de pedidos programados por endpoint interno (sin cron, ver el archivo).
   app.route("/", restaurantesProgramadosInternoRoutes(deps));
+  app.route("/", restaurantesCierresInternoRoutes(deps));
+  app.route("/", restaurantesCierresRoutes(deps));
   // FASE 3 (producto) — bitácora de auditoría del staff (ver
   // packages/domain-restaurantes/migrations/019_restaurantes_audit_log.sql).
   app.route("/", restaurantesAuditoriaRoutes(deps));

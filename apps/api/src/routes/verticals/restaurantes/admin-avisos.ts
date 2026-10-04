@@ -1,4 +1,4 @@
-// R-16 -- avisos del staff de restaurantes (migracion 041). Tres rutas reales sobre las funciones de la base:
+// R-16 -- avisos del staff de restaurantes (migracion 043). Tres rutas reales sobre las funciones de la base:
 //
 //   GET  /v1/restaurantes/:propertyId/admin/avisos            "Mis avisos" (cada persona del staff) y, para owner/admin, la
 //                                                              matriz equipo x aviso y el umbral de entrega tardia por sucursal.

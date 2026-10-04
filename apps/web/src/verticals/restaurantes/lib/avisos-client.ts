@@ -1,4 +1,4 @@
-// R-16 -- cliente de las rutas de avisos del staff (apps/api/.../restaurantes/admin-avisos.ts, migracion 041). Los tipos
+// R-16 -- cliente de las rutas de avisos del staff (apps/api/.../restaurantes/admin-avisos.ts, migracion 043). Los tipos
 // replican la forma del servidor (apps/web no depende de los paquetes de dominio, mismo criterio que orders-client.ts).
 import { fetchJson, sendJson } from "./admin-client.ts";
 
@@ -31,7 +31,7 @@ export interface UmbralSucursalWire {
 }
 
 export interface AvisosWire {
-  /** `false` = la base aun no tiene la migracion 041: la pantalla muestra "no disponible aun". */
+  /** `false` = la base aun no tiene la migracion 043: la pantalla muestra "no disponible aun". */
   readonly disponible: boolean;
   readonly eventos: readonly EventoAvisoWire[];
   readonly mias: readonly PreferenciaAvisoWire[];

@@ -1,5 +1,5 @@
 // R-16 -- alertas operativas de restaurantes: "entrega tardia" y "programado por vencer". El candidato lo decide la
-// base (`restaurantes.avisos_operativos_candidatos`, migracion 041, SOLO sistema); este modulo lo convierte en
+// base (`restaurantes.avisos_operativos_candidatos`, migracion 043, SOLO sistema); este modulo lo convierte en
 // notificaciones in-app por el productor compartido (`emitirNotificacion`: catalogo, dedupe, destinatarios en SQL,
 // preferencias por usuario y texto sin PII: solo el numero de pedido).
 //
@@ -23,7 +23,7 @@ export interface CandidatoAviso {
 }
 
 export interface ResultadoBarridoAvisos {
-  /** `false` = la base aun no tiene la migracion 041 (no hay nada que barrer). */
+  /** `false` = la base aun no tiene la migracion 043 (no hay nada que barrer). */
   readonly disponible: boolean;
   readonly candidatos: number;
   readonly emitidas: number;

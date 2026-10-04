@@ -17,3 +17,5 @@ export { FakeWhatsAppGraphClient } from "./providers/fake-graph-client.ts";
 export type { FakeWhatsAppGraphClientOptions } from "./providers/fake-graph-client.ts";
 export { detectarOptOut, normalizarTextoOptOut } from "./opt-out.ts";
 export type { IntencionOptOut, OpcionesDeteccionOptOut } from "./opt-out.ts";
+export { DEFAULT_ALLOWED_AUDIO_MIMES, DEFAULT_MEDIA_MAX_BYTES, DEFAULT_MEDIA_TIMEOUT_MS, MetaGraphMediaDownloader, WhatsAppMediaError, normalizeMimeType, oggOpusDurationSeconds } from "./media.ts";
+export type { DownloadedMedia, MediaDownloadLimits, MediaDownloader, MetaMediaDownloaderOptions, WhatsAppMediaErrorCode } from "./media.ts";

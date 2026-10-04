@@ -30,6 +30,8 @@ describe("POST /internal/restaurantes/email-dispatch", () => {
           customer_name: "Cliente Correo",
           customer_phone: "9991112222",
           customer_email: "cliente@example.com",
+          canal: "recoger",
+          payment_method: "efectivo",
           items: [{ product_id: products.cocaCola, requested_quantity: 1 }],
           source: "web",
         },
@@ -63,7 +65,7 @@ describe("POST /internal/restaurantes/email-dispatch", () => {
     const createRes = await app.request(
       "/v1/restaurantes/los-taquitos-de-pm/orders",
       jsonRequestInit(
-        { branch_slug: "fco-montejo", customer_name: "Cliente Sin Correo", customer_phone: "9991112222", items: [{ product_id: products.cocaCola, requested_quantity: 1 }], source: "web" },
+        { branch_slug: "fco-montejo", customer_name: "Cliente Sin Correo", customer_phone: "9991112222", canal: "recoger", payment_method: "efectivo", items: [{ product_id: products.cocaCola, requested_quantity: 1 }], source: "web" },
         { origin: "http://localhost:5173" },
       ),
     );

@@ -344,10 +344,10 @@ describe("PM-C3 -- prompt del perfil taqueria_pm tal como lo recibe el modelo", 
   const sucursales = ["Prolongación Montejo", "Francisco de Montejo", "Pensiones", "Galerías", "Playa", "García Lavín", "Victory Altabrisa"].map((name, i) => ({ propertyId: `p${i}`, slug: `s${i}`, name, address: null }));
   const prompt = buildSystemPrompt(PM_CONFIG_POR_OMISION, sucursales, { isNew: true }, new Date("2026-10-06T20:00:00Z"));
 
-  it("T-PC01 tortilla mixta y no promete el combo del martes (dice que la confirma la sucursal)", () => {
+  it("T-PC01 tortilla mixta y el combo del martes lo aplica cotizar_pedido (ya no se dice que lo confirma la sucursal)", () => {
     expect(prompt).toContain("mixta");
-    expect(prompt).not.toMatch(/2 aguas de cortes[ií]a|nachos de pastor con 2 aguas/i);
-    expect(prompt).toContain("la confirma la sucursal al recoger");
+    expect(prompt).toMatch(/H13\. Combo del martes[^.\n]*lo aplica cotizar_pedido/);
+    expect(prompt).not.toContain("la confirma la sucursal al recoger");
   });
 
   it("T-PC02 ya no afirma precios iguales y trae las 7 sucursales, el horario prudente de T2 y la regla de ultimo pedido", () => {
