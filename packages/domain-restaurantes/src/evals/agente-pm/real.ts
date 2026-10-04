@@ -31,6 +31,10 @@ export interface OpcionesReal {
   readonly params?: OpenRouterModelParams;
   /** PM_EVALS_TRAZA=1: el CLI imprime la conversacion y las herramientas de los casos que fallan (diagnostico). */
   readonly traza?: boolean;
+  /** Se llama al terminar cada caso (para imprimir avance: una corrida larga no debe perderse si algo falla mas adelante). */
+  readonly alTerminarCaso?: (r: ResultadoCaso & { readonly repeticiones: number }) => void;
+  /** Pausas entre reintentos de una llamada al proveedor que fallo por red o timeout (ms). Por omision 2 s y 5 s; las pruebas pasan []. */
+  readonly pausasReintento?: readonly number[];
   /** URL de chat/completions (solo pruebas con un servidor falso). */
   readonly baseUrl?: string;
 }
@@ -76,18 +80,22 @@ export async function ejecutarSuiteReal(opts: OpcionesReal): Promise<ResultadoRe
   let gasto = 0;
   const llamar = async (system: string, messages: LlmMessage[], tools?: LlmToolDefinition[]) => {
     if (gasto >= opts.maxUsd) throw new TopeDeGasto();
-    let r;
-    try {
-      r = await gateway.complete({ tenantId: "pm-evals", runId: randomUUID(), lane: "interactive", role: "pm-evals", request: { system, messages, tools, temperature: 0, maxOutputTokens: 800 } });
-    } catch (err) {
-      // Si el presupuesto del gateway se agota antes que `gasto >= maxUsd` (la reserva previa se estima con
-      // el tope de tokens), se trata igual que el tope propio: corte limpio con casos no corridos, no un
-      // fallo de la corrida. Carril 'interactive': el carril batch solo dejaba gastar ~60% del tope.
-      if (isBudgetExceededError(err)) throw new TopeDeGasto();
-      throw err;
+    const pausas = opts.pausasReintento ?? [2000, 5000];
+    for (let intento = 0; ; intento++) {
+      try {
+        const r = await gateway.complete({ tenantId: "pm-evals", runId: randomUUID(), lane: "interactive", role: "pm-evals", request: { system, messages, tools, temperature: 0, maxOutputTokens: 800 } });
+        gasto += r.costUsd ?? 0;
+        return r;
+      } catch (err) {
+        // Si el presupuesto del gateway se agota antes que `gasto >= maxUsd` (la reserva previa se estima con
+        // el tope de tokens), se trata igual que el tope propio: corte limpio con casos no corridos, no un
+        // fallo de la corrida. Carril 'interactive': el carril batch solo dejaba gastar ~60% del tope.
+        if (isBudgetExceededError(err)) throw new TopeDeGasto();
+        // Timeout o corte de red del proveedor: se reintenta (una corrida de ~40 min no debe morir por un timeout aislado).
+        if (intento >= pausas.length) throw err;
+        await new Promise((resolve) => setTimeout(resolve, pausas[intento]));
+      }
     }
-    gasto += r.costUsd ?? 0;
-    return r;
   };
   const suite = cargarSuite();
   const menu = cargarMenu();
@@ -110,12 +118,18 @@ export async function ejecutarSuiteReal(opts: OpcionesReal): Promise<ResultadoRe
         ok = ultimo.ok;
       }
     } catch (err) {
-      if (!(err instanceof TopeDeGasto)) throw err;
-      cortado = true;
-      noCorridos.push(caso.id);
-      continue;
+      if (err instanceof TopeDeGasto) {
+        cortado = true;
+        noCorridos.push(caso.id);
+        continue;
+      }
+      // El proveedor siguio fallando tras los reintentos: el caso cuenta como fallo de infraestructura y la corrida sigue.
+      ultimo = { casoId: caso.id, ok: false, graders: [{ grader: "INFRA", ok: false, detalle: `el proveedor fallo tras reintentos: ${err instanceof Error ? err.message.slice(0, 160) : String(err)}` }] };
+      ok = false;
     }
-    resultados.push({ ...(ultimo as ResultadoCaso), ok, repeticiones: opts.k });
+    const resultadoCaso = { ...(ultimo as ResultadoCaso), ok, repeticiones: opts.k };
+    resultados.push(resultadoCaso);
+    opts.alTerminarCaso?.(resultadoCaso);
   }
   return { resultados, gastoUsd: gasto, noCorridos, cortadoPorTope: cortado };
 }

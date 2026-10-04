@@ -276,6 +276,52 @@ describe("modo real: el cliente simulado no puede cortar con FIN dejando sin res
   });
 });
 
+describe("modo real: un timeout o corte del proveedor no tira la corrida", () => {
+  const servir = async (responder: (n: number) => { status: number; body: unknown }) => {
+    const { createServer } = await import("node:http");
+    let n = 0;
+    const server = createServer((req, res) => {
+      req.on("data", () => undefined);
+      req.on("end", () => {
+        const r = responder(n++);
+        res.writeHead(r.status, { "content-type": "application/json" });
+        res.end(JSON.stringify(r.body));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    return { server, url: `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1/chat/completions`, llamadas: () => n };
+  };
+  const ok = { status: 200, body: { model: "m", choices: [{ message: { content: "hola" } }], usage: { prompt_tokens: 10, completion_tokens: 2, cost: 0.01 } } };
+
+  it("reintenta la llamada que fallo y sigue", async () => {
+    const { ejecutarSuiteReal } = await import("../src/evals/agente-pm/real.ts");
+    const s = await servir((n) => (n === 0 ? { status: 500, body: { error: { message: "boom" } } } : ok));
+    try {
+      const r = await ejecutarSuiteReal({ apiKey: "k", model: "openai/gpt-6-luna", maxUsd: 0.05, k: 1, casos: ["L01"], pausasReintento: [0, 0], params: { temperature: "omit", minMaxTokens: 1500 }, baseUrl: s.url });
+      expect(s.llamadas()).toBeGreaterThan(1);
+      expect(r.resultados.flatMap((x) => x.graders).some((g) => g.grader === "INFRA")).toBe(false);
+    } finally {
+      s.server.closeAllConnections?.();
+      await new Promise<void>((resolve) => s.server.close(() => resolve()));
+    }
+  });
+
+  it("si el proveedor sigue fallando, el caso cuenta como fallo INFRA y el siguiente corre; el avance se informa por caso", async () => {
+    const { ejecutarSuiteReal } = await import("../src/evals/agente-pm/real.ts");
+    const s = await servir(() => ({ status: 500, body: { error: { message: "boom" } } }));
+    const terminados: string[] = [];
+    try {
+      const r = await ejecutarSuiteReal({ apiKey: "k", model: "openai/gpt-6-luna", maxUsd: 0.05, k: 1, casos: ["L01", "L02"], pausasReintento: [0], params: { temperature: "omit", minMaxTokens: 1500 }, baseUrl: s.url, alTerminarCaso: (x) => terminados.push(x.casoId) });
+      expect(r.resultados.map((x) => x.casoId)).toEqual(["L01", "L02"]);
+      expect(r.resultados.every((x) => !x.ok && x.graders.some((g) => g.grader === "INFRA"))).toBe(true);
+      expect(terminados).toEqual(["L01", "L02"]);
+    } finally {
+      s.server.closeAllConnections?.();
+      await new Promise<void>((resolve) => s.server.close(() => resolve()));
+    }
+  });
+});
+
 describe("hora de recogida: el mundo lee solo el campo hora_recogida de crear_pedido (como el servidor real)", () => {
   it("minutos entre la hora local del caso y el ISO con zona; sin campo valido es null", () => {
     expect(minutosDesdeHoraRecogida("2026-10-03T16:05:00-06:00", "15:45")).toBe(20);
