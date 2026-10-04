@@ -109,6 +109,7 @@ import { RentasDashboardPage } from "./verticals/rentas/pages/Dashboard.tsx";
 import { CalendarioPage as RentasCalendarioPage } from "./verticals/rentas/pages/Calendario.tsx";
 import { PreciosPage as RentasPreciosPage } from "./verticals/rentas/pages/Precios.tsx";
 import { AprobacionesPage as RentasAprobacionesPage } from "./verticals/rentas/pages/Aprobaciones.tsx";
+import { HiloPage as RentasHiloPage } from "./verticals/rentas/pages/aprobaciones/Hilo.tsx";
 import { FinanzasPage as RentasFinanzasPage } from "./verticals/rentas/pages/Finanzas.tsx";
 import { MisTareasPage as RentasMisTareasPage } from "./verticals/rentas/pages/MisTareas.tsx";
 import { IcalSyncPage as RentasIcalSyncPage } from "./verticals/rentas/pages/IcalSync.tsx";
@@ -825,6 +826,9 @@ const RentasPreciosRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <Re
  * que RentasCalendarioRoute/RentasPreciosRoute. */
 const RentasAprobacionesRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasAprobacionesPage {...ctx} />);
 
+/** Hilo de una conversación (Rn-P3-20): mensajes del huésped con sus borradores, dentro de Aprobaciones. */
+const RentasHiloRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasHiloPage {...ctx} />);
+
 /** Finanzas (Fase 16) — movimiento por reserva, owner statements, payouts/
  * conciliación. Cierra el hallazgo de auditoría ALTA "Finanzas sin UI para
  * admin_gestora ni contador". Mismo patrón de ruta hija que
@@ -1238,6 +1242,7 @@ export function App() {
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />
         <Route path="/rentas/:orgSlug/precios" element={<RentasPreciosRoute />} />
         <Route path="/rentas/:orgSlug/aprobaciones" element={<RentasAprobacionesRoute />} />
+        <Route path="/rentas/:orgSlug/aprobaciones/:conversacionId" element={<RentasHiloRoute />} />
         <Route path="/rentas/:orgSlug/finanzas" element={<RentasFinanzasRoute />} />
         <Route path="/rentas/:orgSlug/mis-tareas" element={<RentasMisTareasRoute />} />
         <Route path="/rentas/:orgSlug/ical-sync" element={<RentasIcalSyncRoute />} />
