@@ -2,13 +2,13 @@
 // cross-tenant, las decisiones del hold que encolan el aviso, el cron (secreto, idempotencia), la base sin migrar (no-op honesto, nunca un 500)
 // y el estado honesto "sin credencial de Meta". RLS/GRANT/triggers, la derivacion del estado real y la concurrencia en la base los cubre
 // scripts/verify-hoteles-mensajes-huesped contra Postgres real; el SAVEPOINT lo cubre packages/domain-hoteles/tests/mensajes-huesped/postgres-savepoint.spec.ts.
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { InMemoryMensajeriaConfigRepository, InMemoryMensajesHuespedRepository, InMemoryReservasAgenteRepository, type CandidatoMensajeHuesped, type EventoMensajeHuesped } from "@atiende/domain-hoteles";
 import { buildApp } from "../src/app.ts";
 import { buildHotelesTestContext, authedJson } from "./hoteles-fixtures.ts";
 import type { HotelesTestContext } from "./hoteles-fixtures.ts";
-import { jsonRequestInit } from "./fixtures.ts";
+import { jsonRequestInit, TEST_ENV } from "./fixtures.ts";
 
 const NOW = new Date("2031-06-01T18:00:00Z");
 const SECRET = "secreto-de-esta-property";
@@ -266,5 +266,36 @@ describe("historial, estado honesto de WhatsApp y plantillas", () => {
     expect((await s.staff("owner", "DELETE", "/inventado/plantilla")).status).toBe(404);
     const sinPermiso = await setup({ puedeAdministrarPlantillas: false });
     expect((await sinPermiso.staff("gm", "PUT", "/pre_llegada/plantilla", { nombre: "x", variables: [], estado: "borrador" })).status).toBe(403);
+  });
+});
+
+describe("primer contacto por WhatsApp: el aviso de privacidad lo pone el codigo", () => {
+  function firmado(messageId: string, texto: string): RequestInit {
+    const raw = JSON.stringify({ entry: [{ changes: [{ value: { metadata: { phone_number_id: "9876543210" }, messages: [{ id: messageId, from: "5219991230000", type: "text", text: { body: texto } }] } }] }] });
+    const bytes = new TextEncoder().encode(raw);
+    const firma = `sha256=${createHmac("sha256", TEST_ENV.whatsappAppSecret).update(bytes).digest("hex")}`;
+    return { method: "POST", body: raw, headers: { "content-type": "application/json", "content-length": String(bytes.byteLength), "x-hub-signature-256": firma } };
+  }
+
+  it("el PRIMER mensaje de la conversacion sale con la linea de IA y el enlace /hoteles/:orgSlug/aviso; el segundo ya no", async () => {
+    const s = await setup();
+    s.ctx.hotelesRepo.seedWhatsAppChannel(s.ctx.propertyId, s.ctx.organizationId, "9876543210");
+    s.mensajes.slugs.set(s.ctx.propertyId, "hotel-de-prueba");
+    expect((await s.app.request("/v1/hoteles/whatsapp/webhook", firmado("wamid.pc-1", "Hola, buenas tardes"))).status).toBe(200);
+    expect((await s.app.request("/v1/hoteles/whatsapp/webhook", firmado("wamid.pc-2", "Quiero informacion"))).status).toBe(200);
+    const salida = (await s.ctx.hotelesRepo.claimMessagingOutboxBatch(10, 60)).map((m) => (m.payload as { body: string }).body);
+    expect(salida).toHaveLength(2);
+    const enlace = `Aviso de privacidad: ${TEST_ENV.appBaseUrl}/hoteles/hotel-de-prueba/aviso`;
+    expect(salida.filter((b) => b.includes(enlace))).toHaveLength(1);
+    expect(salida.filter((b) => b.includes("inteligencia artificial"))).toHaveLength(1);
+  });
+
+  it("sin la migracion 046 (no se puede resolver el slug) el primer mensaje igual sale, con la linea de IA y sin enlace", async () => {
+    const s = await setup({ migrado: false });
+    s.ctx.hotelesRepo.seedWhatsAppChannel(s.ctx.propertyId, s.ctx.organizationId, "9876543210");
+    expect((await s.app.request("/v1/hoteles/whatsapp/webhook", firmado("wamid.pc-3", "Hola"))).status).toBe(200);
+    const [salida] = (await s.ctx.hotelesRepo.claimMessagingOutboxBatch(10, 60)).map((m) => (m.payload as { body: string }).body);
+    expect(salida).toContain("inteligencia artificial");
+    expect(salida).not.toContain("Aviso de privacidad");
   });
 });
