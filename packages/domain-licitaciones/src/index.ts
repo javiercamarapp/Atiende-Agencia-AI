@@ -268,6 +268,15 @@ export type {
   LicitacionesTenantConfigPatch,
 } from "./repository.ts";
 export { InMemoryLicitacionesRepository } from "./in-memory-repository.ts";
+export {
+  TENDER_CLOSED_STATUSES,
+  TENDER_IDS_MAX,
+  escapeLikePattern,
+  matchesTenderFilter,
+  compareTendersForList,
+  summarizeTenderRecords,
+} from "./tender-list-filter.ts";
+export type { TenderListFilter, TenderPageOptions, TenderSummaryCounts } from "./tender-list-filter.ts";
 export { PostgresLicitacionesRepository, dateColumnToExplicitOffsetIso } from "./postgres-repository.ts";
 
 // ---- Fase 5 pieza 1: andamiaje de ingesta (REQ-004/005/146..150) ----

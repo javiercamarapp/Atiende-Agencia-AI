@@ -11,6 +11,8 @@ import { join } from "node:path";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
+import { compareTendersForList, matchesTenderFilter, summarizeTenderRecords } from "./tender-list-filter.ts";
+import type { TenderPageOptions, TenderSummaryCounts } from "./tender-list-filter.ts";
 import type {
   ApprovedRateCreateInput,
   ApprovedRateUpdateInput,
@@ -380,13 +382,16 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     return [...this.tenders.values()].filter((t) => t.organizationId === organizationId);
   }
 
-  async listTendersPage(organizationId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderPage> {
-    const filtered = [...this.tenders.values()]
-      .filter((t) => t.organizationId === organizationId)
-      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  async listTendersPage(organizationId: string, opts: TenderPageOptions): Promise<TenderPage> {
+    const filtered = [...this.tenders.values()].filter((t) => t.organizationId === organizationId && matchesTenderFilter(t, opts)).sort(compareTendersForList);
     const items = filtered.slice(opts.offset, opts.offset + opts.limit);
     const nextOffset = opts.offset + items.length < filtered.length ? opts.offset + items.length : null;
     return { items, total: filtered.length, nextOffset };
+  }
+
+  async summarizeTenders(organizationId: string, opts: { readonly nowIso: string; readonly windowDays: number }): Promise<TenderSummaryCounts> {
+    const mine = [...this.tenders.values()].filter((t) => t.organizationId === organizationId);
+    return summarizeTenderRecords(mine, new Date(opts.nowIso).getTime(), opts.windowDays);
   }
 
   async upsertTenderManual(organizationId: string, input: TenderUpsertInput): Promise<TenderUpsertResult> {

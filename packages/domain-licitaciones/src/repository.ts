@@ -2,6 +2,7 @@
 // adaptador que domain-hoteles/domain-restaurantes (ver diseño Fase 1 §3.2).
 // Ningún flujo de apps/api toca SQL directamente — todo pasa por aquí.
 import type { CalendarioPlazos } from "./dias-inhabiles.ts";
+import type { TenderPageOptions, TenderSummaryCounts } from "./tender-list-filter.ts";
 import type {
   TenderRecord,
   ProposalRecord,
@@ -647,7 +648,9 @@ export interface LicitacionesRepository {
    * (arriba) se queda INTACTA a propósito -- `matching.ts` la usa para calcular score
    * contra TODAS las convocatorias, nunca solo una página; paginar esa función
    * truncaría el matching real. */
-  listTendersPage(organizationId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderPage>;
+  listTendersPage(organizationId: string, opts: TenderPageOptions): Promise<TenderPage>;
+  /** Conteos de TODA la organizacion (no de una pagina): total, abiertas, por vencer y por estado. Alimenta los KPIs del Resumen. */
+  summarizeTenders(organizationId: string, opts: { readonly nowIso: string; readonly windowDays: number }): Promise<TenderSummaryCounts>;
   /**
    * Crea o actualiza (upsert por `externalId`, ver `TenderUpsertInput`) una
    * convocatoria manual. SIEMPRE fija `source='manual'` server-side (nunca

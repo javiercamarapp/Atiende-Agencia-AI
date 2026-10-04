@@ -92,6 +92,8 @@ import { LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
 import type { SourceConnectorId } from "./connector-registry.ts";
 import { evaluateSourceFreshness } from "./source-run.ts";
 import type { SourceFreshnessRecord, SourceRunInput, SourceRunRecord } from "./source-run.ts";
+import { TENDER_CLOSED_STATUSES, escapeLikePattern } from "./tender-list-filter.ts";
+import type { TenderPageOptions, TenderSummaryCounts } from "./tender-list-filter.ts";
 import type { TenderSourceIngestResult, TenderDeadlineReminderRecord, ScanDeadlineRemindersInput, ScanDeadlineRemindersResult } from "./repository.ts";
 import type { TenderSourceIngestCandidate } from "./connectors/types.ts";
 import type {
@@ -875,15 +877,69 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     return rows.map(mapTender);
   }
 
-  async listTendersPage(organizationId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderPage> {
+  async listTendersPage(organizationId: string, opts: TenderPageOptions): Promise<TenderPage> {
+    const params: unknown[] = [organizationId];
+    const where = ["organization_id = $1"];
+    const bind = (value: unknown): string => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+    if (opts.status !== undefined) where.push(`status = ${bind(opts.status)}`);
+    if (opts.source !== undefined) where.push(`source = ${bind(opts.source)}`);
+    if (opts.openOnly) where.push(`status <> all (${bind(TENDER_CLOSED_STATUSES)}::text[])`);
+    if (opts.ids !== undefined) where.push(`id = any (${bind(opts.ids)}::uuid[])`);
+    if (opts.deadlineFrom !== undefined) where.push(`submission_deadline >= ${bind(opts.deadlineFrom)}::timestamptz`);
+    if (opts.deadlineTo !== undefined) where.push(`submission_deadline <= ${bind(opts.deadlineTo)}::timestamptz`);
+    if (opts.q !== undefined && opts.q.trim().length > 0) {
+      const like = bind(`%${escapeLikePattern(opts.q.trim())}%`);
+      where.push(`(title ilike ${like} or coalesce(external_id, '') ilike ${like} or coalesce(contracting_body, '') ilike ${like})`);
+    }
+    const limitRef = bind(opts.limit);
+    const offsetRef = bind(opts.offset);
+    // Orden total: `id` desempata filas con el mismo `updated_at` (sin esto, paginar con offset repite o salta filas).
     const { rows } = await this.db.query<TenderRow & { total: string }>(
-      `select ${TENDER_COLUMNS}, count(*) over ()::text as total from licitaciones.tender where organization_id = $1 order by updated_at desc limit $2 offset $3;`,
-      [organizationId, opts.limit, opts.offset],
+      `select ${TENDER_COLUMNS}, count(*) over ()::text as total from licitaciones.tender where ${where.join(" and ")} order by updated_at desc, id desc limit ${limitRef} offset ${offsetRef};`,
+      params,
     );
     const items = rows.map(mapTender);
-    const total = rows[0] ? Number(rows[0].total) : 0;
+    let total = rows[0] ? Number(rows[0].total) : 0;
+    // Una pagina mas alla del final no trae filas (y por tanto tampoco el `count(*) over ()`): se cuenta aparte para no mentir "0".
+    if (rows.length === 0 && opts.offset > 0) {
+      const countParams = params.slice(0, params.length - 2);
+      const counted = await this.db.query<{ total: string }>(`select count(*)::text as total from licitaciones.tender where ${where.join(" and ")};`, countParams);
+      total = Number(counted.rows[0]?.total ?? 0);
+    }
     const nextOffset = opts.offset + items.length < total ? opts.offset + items.length : null;
     return { items, total, nextOffset };
+  }
+
+  async summarizeTenders(organizationId: string, opts: { readonly nowIso: string; readonly windowDays: number }): Promise<TenderSummaryCounts> {
+    const { rows } = await this.db.query<{ status: string; total: string; closing_soon: string }>(
+      `select status,
+              count(*)::text as total,
+              count(*) filter (
+                where status <> all ($2::text[]) and status <> 'submitted'
+                  and submission_deadline is not null
+                  and submission_deadline >= $3::timestamptz
+                  and submission_deadline <= $3::timestamptz + make_interval(days => $4::int)
+              )::text as closing_soon
+         from licitaciones.tender where organization_id = $1 group by status;`,
+      [organizationId, TENDER_CLOSED_STATUSES, opts.nowIso, opts.windowDays],
+    );
+    const byStatus: Record<string, number> = {};
+    let total = 0;
+    let open = 0;
+    let closingSoon = 0;
+    for (const row of rows) {
+      const n = Number(row.total);
+      byStatus[row.status] = n;
+      total += n;
+      if (!TENDER_CLOSED_STATUSES.includes(row.status)) {
+        open += n;
+        closingSoon += Number(row.closing_soon);
+      }
+    }
+    return { total, open, closingSoon, windowDays: opts.windowDays, byStatus };
   }
 
   async upsertTenderManual(organizationId: string, input: TenderUpsertInput): Promise<TenderUpsertResult> {
