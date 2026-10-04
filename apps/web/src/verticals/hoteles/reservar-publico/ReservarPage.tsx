@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, Label, StatusBadge } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, Checkbox, StatusBadge } from "@atiende/ui";
 import { useMetaPublica } from "../../restaurantes/storefront/meta-publica.ts";
 import { ReservarLayout } from "./Layout.tsx";
 import {
@@ -132,12 +132,12 @@ function Flujo({ cliente, orgSlug, propiedades }: { cliente: ClienteReservar; or
               {propiedades.length > 1 && (
                 <div className="flex flex-col gap-1">
                   <Label htmlFor="rp-propiedad">Propiedad</Label>
-                  <select id="rp-propiedad" className="h-9 rounded-md border border-border bg-card px-2 text-sm" value={slug} onChange={(e) => { setSlug(e.target.value); setDisp(null); setCot(null); }} required>
+                  <NativeSelect id="rp-propiedad" value={slug} onChange={(e) => { setSlug(e.target.value); setDisp(null); setCot(null); }} required>
                     <option value="" disabled>Elige una propiedad</option>
                     {propiedades.map((p) => (
                       <option key={p.slug} value={p.slug}>{p.nombre}</option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
@@ -276,16 +276,19 @@ function Cotizado({ cliente, cot, orgSlug, onCreada, onVencida }: { cliente: Cli
               <input tabIndex={-1} autoComplete="off" value={sitioWeb} onChange={(e) => setSitioWeb(e.target.value)} />
             </label>
           </div>
-          <label className="flex items-start gap-2 text-sm text-foreground">
-            <input type="checkbox" className="mt-0.5" checked={acepta} onChange={(e) => setAcepta(e.target.checked)} />
-            <span>
-              He leído el{" "}
-              <Link to={`/hoteles/${orgSlug}/aviso`} target="_blank" className="underline underline-offset-4">
-                aviso de privacidad
-              </Link>{" "}
-              y acepto el tratamiento de mis datos para gestionar esta reserva.
-            </span>
-          </label>
+          <Checkbox
+            checked={acepta}
+            onChange={(e) => setAcepta(e.target.checked)}
+            label={
+              <>
+                He leído el{" "}
+                <Link to={`/hoteles/${orgSlug}/aviso`} target="_blank" className="underline underline-offset-4">
+                  aviso de privacidad
+                </Link>{" "}
+                y acepto el tratamiento de mis datos para gestionar esta reserva.
+              </>
+            }
+          />
           {errores.acepta && <p className="text-xs text-destructive">{errores.acepta}</p>}
           {error && <Callout tone="danger" titulo="No pudimos reservar">{error}</Callout>}
           <Button type="submit" size="sm" disabled={busy}>
