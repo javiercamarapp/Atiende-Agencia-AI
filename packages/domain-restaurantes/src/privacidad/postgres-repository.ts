@@ -206,7 +206,7 @@ export class PostgresPrivacidadRepository implements PrivacidadRepository {
       session: this.db,
       savepointName: "sp_privacy_purge",
       primary: async () => {
-        // `select *`: contra la base con la 030 pero sin la 042 la funcion solo trae 3 columnas; las nuevas llegan como undefined.
+        // `select *`: contra la base con la 030 pero sin la 046 la funcion solo trae 3 columnas; las nuevas llegan como undefined.
         const { rows } = await this.db.query<{
           out_conversations_cleared: number;
           out_voice_turns_deleted: number;

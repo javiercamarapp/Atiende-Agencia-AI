@@ -41,9 +41,9 @@ describe("QA-restaurantes-R1-automatizacion-07: un programado vencido hace horas
     ctx.restaurantesRepo.seedOrder(aTiempo);
     emitidas.length = 0;
     const app = buildApp({ ...ctx.deps, softRestaurantStore: () => store, softRestaurantPort: port });
-    const r = (await (await app.request("/internal/restaurantes/promover-programados", { method: "POST", headers: SECRET })).json()) as { promoted: number; avisos: { atrasados: number } };
+    const r = (await (await app.request("/internal/restaurantes/promover-programados", { method: "POST", headers: SECRET })).json()) as { promoted: number; avisosCocina: { atrasados: number } };
     expect(r.promoted).toBe(2);
-    expect(r.avisos.atrasados).toBe(1);
+    expect(r.avisosCocina.atrasados).toBe(1);
     expect(emitidas.filter((e) => e.entidadId === tarde.id).map((e) => e.evento)).toEqual(["restaurantes.pedido.programado_atrasado"]);
     expect(emitidas.filter((e) => e.entidadId === aTiempo.id).map((e) => e.evento)).toEqual(["restaurantes.pedido.programado_en_cocina"]);
   });

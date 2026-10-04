@@ -109,4 +109,8 @@ export const ETIQUETA_ESTADO: Record<string, string> = {
   completado: "Completado",
   cancelado: "Cancelado",
   problema: "Tuvimos una incidencia",
+  // Estados del canal recoger (y del pedido programado): sin etiqueta, el cliente veria la clave interna justo cuando debe ir por su pedido.
+  listo_para_recoger: "Listo para recoger",
+  no_recogido: "No se recogió a tiempo",
+  programado: "Programado",
 };

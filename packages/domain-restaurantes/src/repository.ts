@@ -445,6 +445,9 @@ export interface RestaurantesRepository {
    * lo asignado a una sola persona); un límite fijo generoso evita igual un fetch
    * accidentalmente ilimitado. */
   listOrdersForRepartidor(organizationId: string, repartidorId: string): Promise<readonly Order[]>;
+  /** R-15: pedidos de ESTE repartidor entregados el dia local `fechaLocal` (YYYY-MM-DD) en `zonaHoraria` (IANA), por `delivered_at` (columna de la
+   * 001, existe en cualquier base), mas recientes primero, con `deliveredAt` poblado. Tope 200. Nunca los de otro repartidor. */
+  listDeliveredOrdersForRepartidor(organizationId: string, repartidorId: string, fechaLocal: string, zonaHoraria: string): Promise<readonly Order[]>;
   /** Ficha de un pedido — null si no existe, no es de esta organización, O no está
    * asignado a ESTE repartidor (un repartidor NUNCA puede leer el pedido de otro,
    * a diferencia de `findOrderById`, que solo acota por organización/property). */
@@ -612,7 +615,7 @@ export interface RestaurantesRepository {
   ): Promise<PromotedScheduledOrdersResult>;
   /** Pedidos ya promovidos a cocina en las ultimas `hours` horas (estado `pending` o `preparando`) cuya
    * comanda no esta en el outbox del POS, de organizaciones con SoftRestaurant en sombra/activo (QA-restaurantes-R1-
-   * automatizacion-02). Solo sesion de sistema. `[]` contra la base sin migrar (la 042). El repositorio en memoria no
+   * automatizacion-02). Solo sesion de sistema. `[]` contra la base sin migrar (la 046). El repositorio en memoria no
    * conoce el outbox del POS: devuelve todos los promovidos recientes (reencolar es idempotente). */
   listPromotedOrdersWithoutComanda(options: { readonly hours: number; readonly limit: number }): Promise<readonly Order[]>;
   /** Reemplaza la politica completa de la sucursal (upsert por property_id). */

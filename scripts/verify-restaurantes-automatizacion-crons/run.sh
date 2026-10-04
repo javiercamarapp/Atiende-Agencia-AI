@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lote QA R1 automatizacion (restaurantes), migracion 042: escenarios contra un Postgres LOCAL EFIMERO real.
+# Lote QA R1 automatizacion (restaurantes), migracion 046: escenarios contra un Postgres LOCAL EFIMERO real.
 # Mismo patron que scripts/verify-restaurantes-pedidos-programados/run.sh. Nunca toca la base real.
 #
 # Uso:  scripts/verify-restaurantes-automatizacion-crons/run.sh

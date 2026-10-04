@@ -146,7 +146,7 @@ proveedor/servicio/`tenant_config`, por lo que `apps/web/.../Proveedores.tsx`,
   migración/decisión de producto separada, fuera de esta fase (ver comentario en
   `types.ts::NewServiceInput`).
 - `upsertTenantConfig` (`TenantConfigPatch`) edita `citas.tenant_config.rubro` —
-  el campo real que usa la guardia de crisis (`vertical-config.ts::requiresCrisisGuardrail`) —
+  el campo real que usa la guardia de crisis (`vertical-config.ts::crisisGuardActivaPara`) —
   más `default_timezone` (el mismo que ya leía `findPropertyTimezone`) y
   `owner_notification_phone`. A propósito NO edita `name`/`slug`/`status` del
   negocio (`core.organization`): ese schema es compartido por las 6 verticales y
@@ -744,11 +744,11 @@ el mismo que en restaurantes y hoteles.
    proveedor salen de `listar_*`; solo se agenda un horario EXACTO que ofreció `consultar_disponibilidad`; una sola cita por llamada; cancelar, reagendar o
    modificar solo una cita vista con `buscar_mis_citas`; toda acción que escribe exige `confirmado_por_cliente` (el cliente dijo que sí en voz alta). Una
    escritura que sale bien cierra la llamada como `cita_gestionada`; `derivar_a_humano` como `escalado`.
-4. **Guardia de CRISIS** (`guardia-crisis.ts`): en rubros de salud (`requiresCrisisGuardrail`), cada habla del cliente se evalúa de forma determinista con
-   la misma lista de palabras que WhatsApp ANTES de que el modelo la reciba. Al activarse el core interrumpe al agente, dice `CRISIS_ESCALATION_MESSAGE` tal
-   cual (con la línea de ayuda), escala con `derivar_a_humano` (motivo fijo `crisis`) y cierra como `escalado`; el servidor registra la escalación real
+4. **Guardia de CRISIS** (`guardia-crisis.ts`): activa en rubros de salud y también sin rubro o con `otro` (`crisisGuardActivaPara`), cada habla del cliente se evalúa de forma determinista con
+   el mismo detector que WhatsApp (`crisis-detector.ts`) ANTES de que el modelo la reciba. Al activarse el core interrumpe al agente, dice `CRISIS_VOICE_MESSAGE` tal
+   cual (versión de voz, de usted y sin barras, con la línea de ayuda), escala con `derivar_a_humano` (motivo fijo `crisis`) y cierra como `escalado`; el servidor registra la escalación real
    (`registrarEscalacionCrisis`: `citas.emergency_escalations` canal `voice` -> notificación crítica del centro de avisos, aviso al dueño). No se guarda la
-   transcripción: solo la palabra clave de la lista fija (si el modelo manda otro texto, se descarta y se guarda un texto fijo).
+   transcripción: solo la etiqueta de la familia de señal de `CRISIS_KEYWORDS` (si el modelo manda otro texto, se descarta y se guarda un texto fijo).
 5. **Cierre y costo**: la vertical llama `eventosCostoLlamada` y `PostgresCostoVozRepository.registrarCostoLlamada` (`core.record_usage_cost_event`;
    vertical 'citas' la fija la base; un evento por escalón). Con la base sin la migración 0028 el costo queda "no disponible aún" (SAVEPOINT; nunca un 500).
 6. **Panel**: `GET /v1/citas/properties/:propertyId/admin/voz/estado` (credenciales por escalón, precio por minuto, vista previa disponible o el motivo) y

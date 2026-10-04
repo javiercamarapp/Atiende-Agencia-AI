@@ -17,7 +17,8 @@
 // cancelado (la funcion SQL solo actualiza filas en `programado`). Abre su PROPIA sesion de sistema (la
 // funcion `restaurantes.promover_pedidos_programados` con organizacion nula solo la acepta esa sesion).
 import { Hono } from "hono";
-import { promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
+import { barrerAvisosOperativos, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
+import type { ResultadoBarridoAvisos } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
@@ -42,7 +43,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
       const resultado = await deps.engine.withAppSession({ userId: null }, (db) => promoverProgramadosTodasLasOrganizaciones(deps.restaurantesRepo(db)));
       logEvent(c, "info", "restaurantes_programados_promovidos", { promovidos: resultado.promovidos.length, disponible: resultado.disponible });
       // Aviso in-app (campana): entran a cocina (o entran atrasados). Best-effort, en su propia sesion.
-      const avisos = await avisarPromovidosEnCocinaBestEffort(deps, resultado.promovidos);
+      const avisosCocina = await avisarPromovidosEnCocinaBestEffort(deps, resultado.promovidos);
       // R-29: encola la comanda al POS de lo recien promovido, en OTRA sesion de sistema (la promocion ya quedo
       // confirmada; un fallo aqui nunca la revierte). Idempotente: reintentar el endpoint no duplica filas.
       let comandas = SIN_COMANDAS;
@@ -57,7 +58,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         }
       }
       // QA-02: reconciliacion de comandas perdidas de corridas anteriores (o de la promocion desde el panel). Una sesion
-      // para consultar y OTRA para encolar: un error de la consulta (base sin la 042) no toca la transaccion de encolado.
+      // para consultar y OTRA para encolar: un error de la consulta (base sin la 046) no toca la transaccion de encolado.
       let reconciliacion = SIN_COMANDAS;
       try {
         const yaAtendidos = new Set(resultado.promovidos.map((o) => o.id));
@@ -74,6 +75,14 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         logEvent(c, "error", "restaurantes_programados_reconciliacion_fallida", { error: err instanceof Error ? err.message : String(err) });
         reconciliacion = { ...SIN_COMANDAS, errores: 1 };
       }
+      let avisos: ResultadoBarridoAvisos = { disponible: false, candidatos: 0, emitidas: 0, sinNuevas: 0, errores: 0 };
+      try {
+        avisos = await deps.engine.withAppSession({ userId: null }, (db) => barrerAvisosOperativos(db, { now: new Date() }));
+      } catch (err) {
+        logEvent(c, "error", "restaurantes_avisos_operativos_fallidos", { error: err instanceof Error ? err.message : String(err) });
+        avisos = { ...avisos, errores: 1 };
+      }
+      logEvent(c, "info", "restaurantes_avisos_operativos", { ...avisos });
       const respuesta = c.json({
         ok: true,
         status: resultado.disponible ? "ok" : "not_available",
@@ -81,6 +90,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         orderIds: resultado.promovidos.map((o) => o.id),
         comandas,
         reconciliacion,
+        avisosCocina,
         avisos,
       });
       // Una corrida con comandas que no se pudieron encolar NO es 'ok': el latido y la bitacora la marcan (el cron no

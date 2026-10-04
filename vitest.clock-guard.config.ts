@@ -46,6 +46,8 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "apps/api/tests/e2e-ciclo/voz-ciclo.spec.ts",
   "apps/api/tests/e2e-ciclo/storefront-ciclo.spec.ts",
   "apps/api/tests/e2e-ciclo/programado-pos-ciclo.spec.ts",
+  // R-16: alertas operativas (entrega tardia / programado por vencer) del tick de programados: reloj fijo en Merida/Cancun/CDMX.
+  "apps/api/tests/restaurantes-avisos-operativos-tick.spec.ts",
 ] as const;
 
 // `coverage` (y su umbral) se queda como en la config base: solo se evalua con `--coverage`, que este guard no usa.

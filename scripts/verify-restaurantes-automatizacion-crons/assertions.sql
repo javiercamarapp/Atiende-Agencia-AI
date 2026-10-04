@@ -1,4 +1,4 @@
--- Lote QA R1 automatizacion (restaurantes) contra Postgres REAL: migracion 042.
+-- Lote QA R1 automatizacion (restaurantes) contra Postgres REAL: migracion 046.
 --   S1/S1b (QA-04) la purga cuenta las llamadas PROCESADAS (con o sin caller_hash).
 --   S2..S2d (QA-05) la purga vacia orders.call_*, messaging_outbox.payload y staff_order_notification.message vencidos,
 --           sin tocar lo reciente, lo pendiente de enviar ni a un titular con ARCO abierto; staff y anon no la ejecutan.

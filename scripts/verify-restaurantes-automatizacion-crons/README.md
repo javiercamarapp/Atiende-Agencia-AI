@@ -1,6 +1,6 @@
 # verify-restaurantes-automatizacion-crons
 
-Lote QA R1 (lente automatizacion, restaurantes), migracion 042, contra un Postgres **efimero** con TODAS las migraciones
+Lote QA R1 (lente automatizacion, restaurantes), migracion 046, contra un Postgres **efimero** con TODAS las migraciones
 reales. Cada escenario termina en error si el comportamiento no es el esperado (el gate de CI, `run-gate.mjs`, lo
 descubre solo):
 

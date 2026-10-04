@@ -250,6 +250,26 @@ export async function encolarComandaParaPedido(deps: DepsComandaPos, pedido: Ped
   return modo === "activo" ? { modo: "activo", fila, agente: respuestaAgenteComanda(fila) } : { modo: "sombra", fila, agente: null };
 }
 
+/**
+ * Envio EN LINEA de una comanda que ya quedo ENCOLADA (`encolarComandaParaPedido` con `envioEnLinea: false`) en una
+ * transaccion YA CONFIRMADA. Existe para que el envio al POS (efecto externo) ocurra DESPUES del COMMIT del pedido:
+ * enviarlo dentro de la transaccion dejaba una comanda en cocina de un pedido que, si el COMMIT fallaba, no existia
+ * (y el reintento del cliente creaba otro pedido con otra llave). Reclama la fila por id (un reintento que ya la tomo
+ * no la reenvia). Nunca lanza: un fallo deja la fila `pendiente` para el despachador, y se devuelve el estado real
+ * (el agente solo puede decir un folio que el POS devolvio).
+ */
+export async function enviarComandaEncolada(deps: DepsComandaPos, fila: FilaComandaOutbox): Promise<Extract<ResultadoEncolarPedido, { modo: "activo" }>> {
+  try {
+    const politica = deps.politica ?? POLITICA_REINTENTO_DEFAULT;
+    const ahora = deps.ahora ?? (() => new Date());
+    const reclamada = await deps.store.reclamarPorId(fila.id, ahora(), politica.leaseMs);
+    if (reclamada) fila = (await procesarFilaReclamada(deps, reclamada)).fila;
+  } catch (err) {
+    console.error("softrestaurant: fallo best-effort al enviar la comanda encolada (queda pendiente para el despachador):", err);
+  }
+  return { modo: "activo", fila, agente: respuestaAgenteComanda(fila) };
+}
+
 export interface ResumenComandasPromovidos {
   /** Pedidos para los que se intento encolar (`pending` recien promovidos). */
   readonly intentados: number;
