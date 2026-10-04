@@ -16,7 +16,7 @@ export interface DatosOnboardingRentas {
   readonly feeds: { readonly activos: number; readonly sincronizados: number } | null;
   /** Unidades con al menos una tarifa base vigente. */
   readonly unidadesConTarifaBase: number | null;
-  /** Reglas de comision de canal configuradas (de la organizacion o de una propiedad). */
+  /** Reglas de comision de canal CONFIRMADAS por la organizacion (las sugeridas que nacen con ella, fuente `default_sugerido...`, no cuentan). */
   readonly reglasComision: number | null;
   /** Propiedades con la politica de liberacion de acceso activa. */
   readonly propiedadesConAccesoActivo: number | null;
@@ -76,8 +76,8 @@ export function calcularChecklistOnboardingRentas(d: DatosOnboardingRentas): Che
         : { hecho: d.unidades > 0 && d.unidadesConTarifaBase >= d.unidades, detalle: d.unidades === 0 ? "Aún no hay unidades" : `${d.unidadesConTarifaBase} de ${plural(d.unidades, "unidad", "unidades")} con tarifa` },
     ),
     punto(
-      { clave: "reglas_comision", titulo: "Configurar las reglas de comisión", descripcion: "La comisión de cada canal alimenta el movimiento por reserva y el estado de cuenta.", pantalla: "finanzas", obligatorio: true },
-      d.reglasComision === null ? null : { hecho: d.reglasComision > 0, detalle: d.reglasComision === 0 ? "Sin reglas de comisión" : plural(d.reglasComision, "regla configurada", "reglas configuradas") },
+      { clave: "reglas_comision", titulo: "Confirmar las reglas de comisión", descripcion: "Los valores sugeridos de cada canal hay que confirmarlos o editarlos: alimentan el movimiento por reserva y el estado de cuenta.", pantalla: "finanzas", obligatorio: true },
+      d.reglasComision === null ? null : { hecho: d.reglasComision > 0, detalle: d.reglasComision === 0 ? "Solo valores sugeridos sin confirmar" : plural(d.reglasComision, "regla confirmada", "reglas confirmadas") },
     ),
     punto(
       { clave: "acceso_huesped", titulo: "Definir la política de acceso al huésped", descripcion: "Cuándo y bajo qué condiciones se liberan las instrucciones de llegada.", pantalla: "acceso-huesped", obligatorio: false },

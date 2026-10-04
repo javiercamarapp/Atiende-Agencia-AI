@@ -35,7 +35,9 @@ export class PostgresRentasOnboardingChecklistRepository implements RentasOnboar
       return { activos: Number(r.rows[0]?.activos ?? 0), sincronizados: Number(r.rows[0]?.sincronizados ?? 0) };
     });
     const unidadesConTarifaBase = await this.contar(`select count(distinct unidad_id)::text as n from rentas.tarifa_base where organization_id = $1;`, organizationId);
-    const reglasComision = await this.contar(`select count(*)::text as n from rentas.regla_comision_canal where organization_id = $1;`, organizationId);
+    // Una organizacion nueva nace con reglas SUGERIDAS (fuente `default_sugerido...`, migracion 027): no cuentan hasta que alguien
+    // las confirma o edita (su fuente deja de empezar asi), igual que la pantalla de reglas las marca como "sugerida".
+    const reglasComision = await this.contar(`select count(*)::text as n from rentas.regla_comision_canal where organization_id = $1 and fuente not like 'default\\_sugerido%';`, organizationId);
     const propiedadesConAccesoActivo = await this.contar(`select count(*)::text as n from rentas.acceso_politica where organization_id = $1 and activo;`, organizationId);
     const propietarios = await this.contar(`select count(*)::text as n from rentas.owner_organization where organization_id = $1;`, organizationId);
     const plantillasAprobadas = await this.contar(`select count(*)::text as n from rentas.plantilla_mensaje where organization_id = $1 and aprobada_por_tenant and activa;`, organizationId);

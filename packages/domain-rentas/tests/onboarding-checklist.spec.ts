@@ -35,6 +35,7 @@ describe("calcularChecklistOnboardingRentas", () => {
   });
 
   it("reglas de comision, politica de acceso, propietarios y plantilla se marcan con su conteo real", () => {
+    expect(estado({ ...VACIO, reglasComision: 0 }, "reglas_comision")).toMatchObject({ estado: "pendiente", detalle: "Solo valores sugeridos sin confirmar" });
     expect(estado({ ...VACIO, reglasComision: 1 }, "reglas_comision").estado).toBe("hecho");
     expect(estado({ ...VACIO, propiedadesConAccesoActivo: 1 }, "acceso_huesped").estado).toBe("hecho");
     expect(estado({ ...VACIO, propietarios: 2 }, "propietarios")).toMatchObject({ estado: "hecho", detalle: "2 propietarios" });

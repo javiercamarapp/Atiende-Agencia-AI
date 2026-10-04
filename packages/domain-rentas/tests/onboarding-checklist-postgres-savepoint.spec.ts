@@ -44,6 +44,20 @@ describe("PostgresRentasOnboardingChecklistRepository", () => {
     expect(datos.unidades).toBe(0);
   });
 
+  it("las reglas de comision sugeridas (default_sugerido...) no cuentan como configuradas", async () => {
+    const capturadas: string[] = [];
+    const sesion = {
+      async query<T>(sql: string) {
+        capturadas.push(sql);
+        return { rows: [{ n: "0", activos: "0", sincronizados: "0" }] as T[] };
+      },
+      async exec() {},
+    };
+    await new PostgresRentasOnboardingChecklistRepository(sesion).cargar(ORG);
+    const regla = capturadas.find((c) => c.includes("rentas.regla_comision_canal"))!;
+    expect(regla).toContain("fuente not like 'default\\_sugerido%'");
+  });
+
   it("todas las consultas van acotadas a la organizacion con parametro (nunca interpolado)", async () => {
     const capturadas: { sql: string; params: unknown[] | undefined }[] = [];
     const sesion = {
