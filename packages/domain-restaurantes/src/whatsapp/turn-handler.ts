@@ -22,6 +22,9 @@ export interface WhatsAppTurnHandler {
     readonly propertyId?: string | null;
     /** Id del mensaje de Meta que dispara este turno: hace idempotente el aviso al equipo ante reenvios y reintentos. */
     readonly messageId?: string;
+    /** Instante absoluto (ms, mismo reloj que `Date.now`) antes del cual el turno debe TERMINAR para que la funcion del
+     * webhook alcance a confirmar la transaccion y encolar la respuesta. Ausente = solo manda el presupuesto propio del handler. */
+    readonly finTurnoMs?: number;
   }): Promise<{
     readonly reply: string;
     readonly orderId: string | null;

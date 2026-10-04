@@ -9,6 +9,7 @@
 import type { RestaurantesRepository } from "../repository.ts";
 import type { WhatsAppChannelResolution } from "../types.ts";
 import { formatLocationMessage, isValidCoordinate } from "./location.ts";
+import type { NotaDeVozEntrante } from "./nota-de-voz.ts";
 
 export type MetaTextMessage = {
   readonly id: string;
@@ -54,7 +55,16 @@ export function extractMetaTextMessages(payload: unknown): MetaTextMessage[] {
 /** Mensaje entrante ya listo para el turno: texto del cliente, o (P33/P34) una nota que le dice al
  * modelo que llego un audio/ubicacion/archivo que NO se puede leer, para que lo pida por escrito
  * en vez de ignorar al cliente en silencio. */
-export type MetaInboundMessage = { readonly id: string; readonly from: string; readonly body: string };
+export type MetaInboundMessage = {
+  readonly id: string;
+  readonly from: string;
+  readonly body: string;
+  /** R-32: nota de voz / audio entrante. `body` conserva la nota que pide escribir (comportamiento anterior); si hay credencial, modelo y
+   * cupo, el webhook la sustituye por la transcripcion (ver nota-de-voz.ts). Solo viene el id de media: los bytes no pasan por aqui. */
+  readonly audio?: NotaDeVozEntrante;
+};
+
+const MEDIA_ID_RE = /^[0-9A-Za-z_-]{1,128}$/;
 
 /** Nota que antepone el servidor al texto de una edicion del cliente. */
 export const EDICION_NOTA = "(el cliente corrigió su mensaje anterior)";
@@ -71,6 +81,11 @@ function unsupportedBody(type: string): string {
     return "[El cliente compartió su ubicación pero no trae coordenadas utilizables: pídale su colonia o una referencia cercana por texto.]";
   }
   return `[El cliente envió un archivo (${type}) que este asistente no puede abrir. Pídale amablemente que escriba su mensaje por texto.]`;
+}
+
+function audioDe(raw: { id?: unknown; mime_type?: unknown } | undefined): NotaDeVozEntrante | undefined {
+  if (!raw || typeof raw.id !== "string" || !MEDIA_ID_RE.test(raw.id) || typeof raw.mime_type !== "string" || raw.mime_type.length === 0 || raw.mime_type.length > 100) return undefined;
+  return { mediaId: raw.id, mimeType: raw.mime_type };
 }
 
 /** Como `extractMetaTextMessages`, pero ademas devuelve los mensajes de audio, ubicacion e imagen/
@@ -94,7 +109,7 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
           result.push({ id: text[0].id, from: text[0].from, body: text[0].text.body });
           continue;
         }
-        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown }; edit?: { original_message_id?: unknown; message?: { type?: unknown; text?: { body?: unknown } } } };
+        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown }; audio?: { id?: unknown; mime_type?: unknown }; edit?: { original_message_id?: unknown; message?: { type?: unknown; text?: { body?: unknown } } } };
         // Edicion de un mensaje de texto (webhook `messages` con `type: "edit"`, documentado por Meta; NO probado contra Meta real). Entra como mensaje
         // nuevo con la nota de correccion: el historial no guarda el id de Meta de cada mensaje, asi que no se reemplaza el original.
         if (message.type === "edit" && typeof message.id === "string" && message.id.length >= 1 && message.id.length <= 255 && typeof message.from === "string" && /^\d{7,20}$/.test(message.from)) {
@@ -110,7 +125,8 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
           const { latitude, longitude } = message.location ?? {};
           result.push({ id: message.id, from: message.from, body: formatLocationMessage({ latitude: latitude as number, longitude: longitude as number }) });
         } else if (typeof message.type === "string" && UNSUPPORTED_KINDS.has(message.type)) {
-          result.push({ id: message.id, from: message.from, body: unsupportedBody(message.type) });
+          const audio = message.type === "audio" || message.type === "voice" ? audioDe(message.audio) : undefined;
+          result.push({ id: message.id, from: message.from, body: unsupportedBody(message.type), ...(audio ? { audio } : {}) });
         }
       }
     }

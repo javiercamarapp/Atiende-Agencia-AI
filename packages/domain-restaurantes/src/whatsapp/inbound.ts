@@ -15,6 +15,7 @@ import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 import { PM_COPY } from "./perfil-pm.ts";
+import { resolverCuerpoConNotaDeVoz, type TranscripcionDeEntrada } from "./nota-de-voz.ts";
 
 // Hallazgo real de la auditoría adversarial del origen (3-sep-2026): el agente le
 // dijo a un cliente de prueba "no procesamos ni guardamos los datos que
@@ -64,9 +65,12 @@ export async function handleInboundWhatsAppMessage(
     /** `false` = NO encola la respuesta en el outbox de WhatsApp (nada sale hacia Meta): la respuesta solo se guarda en
      * la conversacion y se devuelve en `outcome.reply`. Lo usa el widget demo (R-19); por omision `true` (webhook real). */
     readonly deliverReply?: boolean;
+    /** R-32: el mensaje es una nota de voz. Con esto se intenta transcribirla DESPUES de reclamar el mensaje (un replay de Meta no la
+     * transcribe dos veces); si no se puede, `body` (pedir que escriba) se conserva tal cual. */
+    readonly transcripcion?: TranscripcionDeEntrada;
   },
 ): Promise<InboundMessageOutcome> {
-  const { organizationId, messageId, phone, body, phoneNumberId, propertyId, handoffGate, privacy } = args;
+  const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
   const deliverReply = args.deliverReply !== false;
   const phoneHash = actorHash(phone);
 
@@ -97,6 +101,7 @@ export async function handleInboundWhatsAppMessage(
     // sesión UTILIZABLE de nuevo antes de repropagar, para que el `catch` de abajo
     // sí pueda registrar el fallo.
     return await repo.runWithRowSavepoint(async () => {
+      const body = await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion });
       const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(body) };
       const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
@@ -214,6 +219,9 @@ export const FUNCION_MAX_MS = 30_000;
 /** Tiempo que se le deja a la fase B (hasta 3 turnos del agente + envio) DESPUES de esperar. */
 export const RESERVA_FASE_B_MS = 15_000;
 
+/** Margen entre el fin del turno del agente y la muerte de la funcion: confirmar la transaccion, encolar la respuesta y despachar inline. */
+export const MARGEN_CIERRE_TURNO_MS = 6_000;
+
 /** Lo que se estima que tarda UNA pasada (turno del agente + escritura): no se empieza otra si no cabe antes del fin de la funcion. */
 export const PASADA_ESTIMADA_MS = 7_000;
 
@@ -289,14 +297,15 @@ export function analizarHistorial(
 
 export async function recibirMensajeConEspera(
   repo: RestaurantesRepository,
-  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string; readonly body: string },
+  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string; readonly body: string; readonly transcripcion?: TranscripcionDeEntrada },
 ): Promise<RecepcionConEspera> {
-  const { organizationId, messageId, phone, body } = args;
+  const { organizationId, messageId, phone } = args;
   const phoneHash = actorHash(phone);
   const claimed = await repo.claimWhatsAppMessage(organizationId, messageId, phoneHash);
   if (!claimed) return { estado: "duplicado" };
   try {
     return await repo.runWithRowSavepoint(async (): Promise<RecepcionConEspera> => {
+      const body = await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion });
       await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: redactSensitiveInfo(body) });
       const turno = await repo.claimWhatsAppConversation(organizationId, phoneHash, messageId, LEASE_RAFAGA_SEGUNDOS);
       if (!turno) {
@@ -373,6 +382,7 @@ export async function responderTrasEspera(
               customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
               propertyId: propertyId ?? null,
               messageId,
+              ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
             });
         let reply = turn.reply;
         if (privacy) {

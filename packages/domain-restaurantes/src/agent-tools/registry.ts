@@ -26,6 +26,8 @@ import {
   assertCanCreate,
   FLOW_ROW_TTL_SECONDS,
   fingerprintOrder,
+  priceSignature,
+  OrderFlowViolationError,
   warnOrderFlowUnavailable,
   type OrderFlowContext,
   type OrderFlowRef,
@@ -527,7 +529,17 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   const canalOf = (raw: unknown) => (raw === "recoger" ? "recoger" : "domicilio");
 
   if (name === "cotizar_pedido") {
+    // Web: la sesion es la unidad de compra. Si ya registro un pedido, una cotizacion nueva NO lo pisa en
+    // silencio (si el cliente creyo que fallo la red y reenvia, nacerian dos pedidos para cocina): se avisa y se
+    // devuelve el pedido existente. WhatsApp y voz si encadenan pedidos en una misma conversacion.
+    if (ctx.channel === "web") {
+      const previo = await readFlow(repo, ctx, flow);
+      if (previo?.state === "creado") {
+        throw new OrderFlowViolationError("pedido_ya_creado", "Esta sesión ya tiene un pedido registrado. Revisa su estado en el rastreo en vez de hacer otro, o empieza un pedido nuevo.", previo.context?.orderId);
+      }
+    }
     const outcome = await dispatchTool(repo, ctx, name, input);
+    const quotedPrices = priceSignature((outcome.raw as { lines: readonly { productId: string; price: number; quantity: number }[] }).lines);
     const quoteHash = fingerprintOrder({
       branchSlug: String(input.branch_slug ?? ""),
       canal: canalOf(input.canal),
@@ -538,7 +550,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
       if (snap === null) return outcome; // base sin migrar: camino anterior
-      const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", { quoteHash, quotedAtMs: flowNow(flow), quotedTurn: flow.turn });
+      const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", { quoteHash, quotedAtMs: flowNow(flow), quotedTurn: flow.turn, quotedPrices });
       if (res === "written") return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash }, quoteHash };
       if (res === "unavailable") return outcome;
     }
@@ -583,7 +595,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   if (!claimed) throw new OrderValidationError(CONFLICT_MESSAGE);
 
   try {
-    const outcome = await dispatchTool(repo, ctx, name, input);
+    const outcome = await dispatchTool(repo, ctx, name, input, claimed.context.quotedPrices);
     await writeFlow(repo, ctx, flow, claimed.version, "creado", { ...claimed.context, orderId: outcome.orderId ?? undefined });
     return outcome;
   } catch (err) {
@@ -597,7 +609,14 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   }
 }
 
-async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
+async function dispatchTool(
+  repo: RestaurantesRepository,
+  ctx: AgentToolContext,
+  name: string,
+  input: Record<string, unknown>,
+  /** Huella de precios que el cliente confirmo (solo crear_pedido con maquina de estados activa). */
+  expectedPrices?: string,
+): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
   const lenient = ctx.channel === "whatsapp";
@@ -707,7 +726,15 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
       } else if (ctx.lockedPropertyId) {
         throw new OrderValidationError("Esta llamada está fijada a una sucursal; indica branch_slug.");
       }
-      const order = await createOrder(repo, createInput);
+      const order = await createOrder(repo, createInput, {
+        beforePersist: (prepared) => {
+          // El precio lo fija SIEMPRE el catalogo vigente, pero el cliente solo acepto los precios que vio: si
+          // cambiaron entre confirmar y crear, se pide re-cotizar en vez de cobrar un total distinto.
+          if (expectedPrices && priceSignature(prepared.orderItems) !== expectedPrices) {
+            throw new OrderFlowViolationError("precio_cambio", "Los precios del menú cambiaron después de que confirmaste. Vuelve a revisar tu pedido para ver el total actualizado.");
+          }
+        },
+      });
       return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
     }
     case "registrar_contacto":
