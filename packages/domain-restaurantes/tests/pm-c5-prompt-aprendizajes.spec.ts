@@ -1,6 +1,7 @@
 // PM-C5 -- lo aprendido de 104 chats reales de T7 queda escrito en el prompt del agente (WhatsApp) y, donde cabe, en la version compacta de
 // voz. El prompt es la primera linea de defensa (las herramientas aplican las reglas duras), asi que aqui se fija cada recomendacion y se ata
 // cada familia de escenarios de `escenarios-t7.json` con la regla del prompt que la cubre.
+import { AGENT_TOOL_DEFINITIONS } from "../src/agent-tools/registry.ts";
 import { describe, expect, it } from "vitest";
 import { cargarEscenariosT7 } from "../src/evals/agente-pm/escenarios-t7.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
@@ -213,5 +214,21 @@ describe("cada familia de escenarios de T7 tiene su regla en el prompt", () => {
     const cubiertos = suite.escenarios.filter((e) => COBERTURA.some(([intencion]) => intencion.test(e.intencion)));
     expect(cubiertos.length).toBeGreaterThanOrEqual(40);
     for (const [, regla] of COBERTURA) expect(p, String(regla)).toMatch(regla);
+  });
+});
+
+describe("7. nunca sustituir ni elegir por el cliente (eval real: C04, C11, L05, L10)", () => {
+  it("WhatsApp: sin coincidencia exacta o con varias parecidas, pregunta con opciones y no ajusta cifras", () => {
+    expect(p).toMatch(/NUNCA SUSTITUYA NI ELIJA POR EL CLIENTE: cotice solo el renglón de buscar_producto cuyo nombre coincide con lo que el cliente pidió/);
+    expect(p).toMatch(/pregunte con 2 o 3 opciones de la lista/);
+    expect(p).toMatch(/Las cifras \(cantidades, piezas, kilos\) las dice el cliente, nunca las ajuste usted/);
+  });
+  it("voz: la misma regla en version compacta", () => {
+    const voz = prompt({ canal: "voz" });
+    expect(voz).toMatch(/Cotice solo el renglón que coincide exacto con lo pedido; sin coincidencia exacta o con varias parecidas, no elija ni cambie producto, carne o cantidad: pregunte con 2 o 3 opciones/);
+  });
+  it("la herramienta buscar_producto lo repite en su descripcion (segunda linea de defensa)", () => {
+    const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === "buscar_producto")!;
+    expect(def.description).toMatch(/no elijas ni sustituyas por él/);
   });
 });
