@@ -221,13 +221,16 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
 
   // Selector real, visible solo cuando hay más de una sucursal (si no, solo el nombre). Se ofrece en el bloque de
   // cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
-  const sucursalSelector =
+  // El MISMO selector se pinta en el Sidebar y en el MobileHeader (ambos viven en el DOM; CSS oculta uno): cada copia lleva su
+  // propio id y su propio <label for>, para que no haya ids duplicados y el select visible tenga nombre accesible
+  // (QA-restaurantes-R1-botones-03).
+  const sucursalSelector = (idSelect: string) =>
     branches.length > 1 ? (
       <div>
-        <label htmlFor="restaurantes-sucursal-activa" className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
+        <label htmlFor={idSelect} className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
           Sucursal activa
         </label>
-        <NativeSelect id="restaurantes-sucursal-activa" size="sm" value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
+        <NativeSelect id={idSelect} size="sm" value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
           {branches.map((b) => (
             <option key={b.propertyId} value={b.propertyId}>
               {b.name}
@@ -254,8 +257,8 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
       header={{ icon: <UtensilsCrossed className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Restaurantes · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/restaurantes/${orgSlug}` }}
-      branchSelector={sucursalSelector}
-      mobileSelector={branches.length > 1 ? sucursalSelector : null}
+      branchSelector={sucursalSelector("restaurantes-sucursal-activa")}
+      mobileSelector={branches.length > 1 ? sucursalSelector("restaurantes-sucursal-activa-movil") : null}
       contentKey={propertyId}
     >
       {/* R-33: gate de onboarding (aterrizaje en "Primeros pasos" + banner en el Resumen) solo para owner/admin. */}
