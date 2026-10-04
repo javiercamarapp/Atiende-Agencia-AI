@@ -1290,8 +1290,20 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   async getSalesBucketedStats(organizationId: string, propertyIds: readonly string[] | null, buckets: readonly KpiDateRange[]): Promise<readonly SalesBucketRow[]> {
     if (buckets.length === 0) return [];
     const { rows } = await this.db.query<{ idx: number; revenue: string; order_count: string; customer_count: string }>(
-      `select idx, revenue, order_count, customer_count
-       from restaurantes.orders_bucketed_stats($1, $2::uuid[], $3::timestamptz[], $4::timestamptz[]);`,
+      // QA R1 viaje-09: consulta directa (no la funcion `orders_bucketed_stats`, cuya definicion en la base solo
+      // excluye cancelados y no puede cambiar sin migracion). Misma forma y alcance (RLS del usuario, organizacion
+      // y sucursales); una venta NO es un pedido cancelado, `no_recogido` (no se cobro) ni `programado` (aun no es
+      // venta). Funciona igual contra la base sin migrar: solo lee `restaurantes.orders`.
+      `select b.idx, coalesce(sum(o.total), 0) as revenue, count(o.id) as order_count, count(distinct o.customer_id) as customer_count
+       from unnest($3::timestamptz[], $4::timestamptz[]) with ordinality as b(bucket_start, bucket_end, idx)
+       left join restaurantes.orders o
+         on o.organization_id = $1
+         and o.status not in ('cancelado', 'no_recogido', 'programado')
+         and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
+         and o.created_at >= b.bucket_start
+         and o.created_at < b.bucket_end
+       group by b.idx
+       order by b.idx;`,
       [organizationId, propertyIds ? [...propertyIds] : null, buckets.map((b) => b.start.toISOString()), buckets.map((b) => b.end.toISOString())],
     );
     const byIdx = new Map(rows.map((row) => [Number(row.idx), { revenue: Number(row.revenue), orderCount: Number(row.order_count), customerCount: Number(row.customer_count) }]));

@@ -657,7 +657,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       const enRango = this.orders.filter((o) => {
         if (o.organizationId !== organizationId) return false;
         if (scope !== null && !scope.has(o.propertyId)) return false;
-        if (o.status === "cancelado") return false; // R-30: ventas netas, espejo de la migracion 036
+        // R-30 + QA R1 viaje-09: ventas netas; un pedido cancelado, no recogido (no se cobro) o programado (aun no es venta) no cuenta.
+        if (o.status === "cancelado" || o.status === "no_recogido" || o.status === "programado") return false;
         const createdMs = Date.parse(o.createdAt);
         return createdMs >= startMs && createdMs < endMs;
       });
