@@ -12,7 +12,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, assertOrderCanBeDispatched, avisarProgramadosPromovidos, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, assertOrderCanBeDispatched, avisarProgramadosPromovidos, changeOrderStatus, emitirAvisoProgramadoEnCocina, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
 import type { Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
 import { cortarComandaDePedidoCancelado, encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
@@ -294,6 +294,12 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       if (order.status === "programado" && updated.status === "pending") {
         const adelantado: Order = { ...updated, programadoPara: updated.programadoPara ?? order.programadoPara };
         c.get("postCommitTasks").push(async () => {
+          // Campana (entra a cocina, o atrasado): el adelanto manual solo emite la campana (la bandeja del staff es de la promocion automatica).
+          try {
+            await deps.engine.withAppSession({ userId: null }, (db) => emitirAvisoProgramadoEnCocina(db, adelantado));
+          } catch (err) {
+            logEvent(c, "warn", "restaurantes_programados_aviso_adelanto_fallido", { organizationId, error: err instanceof Error ? err.message : String(err) });
+          }
           await deps.engine.withAppSession({ userId: null }, (db) =>
             encolarComandasDePromovidos(softRestaurantComandaDeps(deps, db, deps.restaurantesRepo(db)), [adelantado]),
           );

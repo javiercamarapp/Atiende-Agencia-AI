@@ -47,6 +47,11 @@ import type { AppDeps } from "../deps.ts";
 
 const MAX_ERROR_LENGTH = 500;
 
+/** Marca explicita de un cron fail-closed sin credencial/adaptador: la ruta la agrega a su 503 para que `withHeartbeat` lo
+ *  distinga de cualquier otro 503 que un handler pudiera devolver en el futuro. */
+export const CRON_NO_CONFIGURADO_HEADER = "x-cron-no-configurado";
+export const CRON_NO_CONFIGURADO_HEADERS: Record<string, string> = { [CRON_NO_CONFIGURADO_HEADER]: "1" };
+
 export class CronPartialFailureError extends Error {
   constructor(
     message: string,
@@ -151,6 +156,15 @@ export function withHeartbeat(deps: AppDeps, cronName: string, handler: () => Pr
     try {
       const response = await handler();
       const finishedAt = new Date();
+      // QA-restaurantes-R1-automatizacion-09: un cron fail-closed sin credencial/adaptador (softrestaurant-dispatch,
+      // whatsapp-dispatch) responde 503 en cada corrida. No es un fallo del cron (no hay nada que correr): el latido
+      // queda 'ok' CON NOTA visible en /superadmin/salud (como la pausa por interruptor) y no se registra corrida (no
+      // corrio nada), en vez de aparentar una corrida sana sin nota. Solo cuenta un 503 con la marca explicita
+      // CRON_NO_CONFIGURADO_HEADER: cualquier otro 503 (o 5xx) devuelto por un handler no cambia.
+      if (response.status === 503 && response.headers.get(CRON_NO_CONFIGURADO_HEADER) === "1") {
+        await registrarLatidoBestEffort(deps, cronName, "ok", "no configurado: la ruta responde 503 (falta credencial o adaptador); no se ejecuto nada", startedAt, finishedAt);
+        return response;
+      }
       await registrarLatidoBestEffort(deps, cronName, "ok", null, startedAt, finishedAt);
       await registrarCorridaBestEffort(deps, { agente: cronName, vertical: verticalDeCron(cronName), disparo: "cron", estado: "ok", iniciadoEn: startedAt, terminadoEn: finishedAt });
       return response;

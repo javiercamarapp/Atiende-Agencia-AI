@@ -208,14 +208,17 @@ export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 
-export { createLlmWhatsAppTurnHandler, FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, getAgentConfig, resolveAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
+export { createLlmWhatsAppTurnHandler, bloqueConocimientoDelTurno, FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, getAgentConfig, resolveAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
 export type { WhatsAppLlmAgentConfig, WhatsAppLlmAgentOptions, WhatsAppToneStyle } from "./whatsapp/llm-turn-handler.ts";
+export { hashTelefonoParaLogs } from "./whatsapp/observabilidad-turno.ts";
+export type { EventoObservabilidadWhatsApp, EventoToolWhatsApp, EventoTurnoWhatsApp, ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./whatsapp/observabilidad-turno.ts";
 
 export {
   STATS_PERIODS,
   isStatsPeriod,
   buildTrendBuckets,
   buildComparisonPeriods,
+  horasAbiertasHoy,
   periodLabel,
   getSalesKpis,
   getSalesTrendKpis,
@@ -225,7 +228,7 @@ export {
   getCustomerKpis,
   computeCustomerKpis,
 } from "./kpis.ts";
-export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
+export type { OpcionesTramos, StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";
@@ -307,7 +310,7 @@ export {
   validarVentanaProgramacion,
 } from "./pedidos-programados.ts";
 export type { PromocionProgramados } from "./pedidos-programados.ts";
-export { avisarProgramadosPromovidos } from "./pedidos-programados-avisos.ts";
+export { ATRASO_PROGRAMADO_MIN, avisarProgramadosPromovidos, emitirAvisoProgramadoEnCocina, esPromocionAtrasada } from "./pedidos-programados-avisos.ts";
 export type { ResumenAvisosProgramados } from "./pedidos-programados-avisos.ts";
 export { etiquetaHoraLocal } from "./horarios.ts";
 export type { OrderScheduleInfo } from "./types.ts";
@@ -333,3 +336,5 @@ export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operati
 export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
 // Ajustes del agente por organizacion (modelo, temperatura, voz, fondo) y base de conocimiento automatica (equivalentes de lo que el original hacia con ElevenLabs).
 export * from "./ajustes-agente/index.ts";
+
+export * from "./conocimiento/index.ts";

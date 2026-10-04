@@ -53,7 +53,7 @@ describe("PATCH .../admin/orders/:orderId/status — drenado real vía postCommi
     );
 
     expect(res.status).toBe(200);
-    expect(claimSpy).toHaveBeenCalledTimes(2); // 1: intento inline (falla) -- 2: postCommitTasks (sesión de sistema, real).
+    expect(claimSpy).toHaveBeenCalledTimes(3); // 1: intento inline (falla) -- 2 y 3: postCommitTasks (sesión de sistema, real): reclama de a UN mensaje (QA-01) y una última vez vacía.
     // La prueba real de que el drenado post-commit funcionó: el WhatsApp
     // realmente salió por el Graph API (fake), sin esperar el cron diario.
     expect(graphClient.sent).toHaveLength(1);
@@ -86,7 +86,7 @@ describe("PATCH .../admin/orders/:orderId/status — drenado real vía postCommi
     );
 
     expect(res.status).toBe(200);
-    expect(claimSpy).toHaveBeenCalledTimes(2);
+    expect(claimSpy).toHaveBeenCalledTimes(3); // inline (falla) + claim de a un mensaje + claim final vacio (QA-01)
     expect(graphClient.sent).toHaveLength(1);
     expect(graphClient.sent[0]).toMatchObject({ to: "+529990002222", phoneNumberId: "PHONE_NUMBER_ID_TEST" });
   });
