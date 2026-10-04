@@ -16,7 +16,7 @@
 // guarda en claro: solo su sha256.
 import { createHash } from "node:crypto";
 import { Hono } from "hono";
-import { emitirNotificacion } from "@atiende/db";
+import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import {
   VOZ_EVENTO_TIPOS,
   VOZ_PROVEEDORES,
@@ -193,6 +193,9 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
     if (tipo === "error_proveedor") {
       if (typeof body.proveedor !== "string" || !(VOZ_PROVEEDORES_FALLO as readonly string[]).includes(body.proveedor)) throw Errors.validation(`proveedor: debe ser uno de ${VOZ_PROVEEDORES_FALLO.join(", ")}.`);
       proveedor = body.proveedor as VozProveedorFallo;
+    } else if (tipo === "latencia_voz") {
+      // Latencia de voz a voz de UNA respuesta del agente (migración 044): solo el número, sin texto ni herramienta.
+      if (latenciaMs === null) throw Errors.validation("latenciaMs: obligatorio en latencia_voz.");
     } else {
       if (typeof body.herramienta !== "string" || body.herramienta.length < 1 || body.herramienta.length > 80) throw Errors.validation("herramienta: se esperaba texto de 1 a 80 caracteres.");
       if (latenciaMs === null) throw Errors.validation("latenciaMs: obligatorio en tool_call.");
@@ -204,7 +207,23 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       if (!deps.vozKpiRepo) throw Errors.serviceUnavailable("Los KPI de voz no están disponibles en este despliegue.");
       try {
-        await deps.vozKpiRepo(db).registrarEvento({ organizationId, propertyId, conversationId, tipo, proveedor, herramienta, latenciaMs, codigo: typeof body.codigo === "string" ? body.codigo : null, ocurridoAt });
+        const evento = { organizationId, propertyId, conversationId, tipo, proveedor, herramienta, latenciaMs, codigo: typeof body.codigo === "string" ? body.codigo : null, ocurridoAt };
+        if (tipo === "latencia_voz") {
+          // Base con la 035 pero SIN la 044: el CHECK del tipo rechaza 'latencia_voz' (23514). SAVEPOINT: nunca aborta la transacción del request
+          // ni da un 500; la latencia queda "no disponible aun" (202) y la llamada, que ya ocurrio, no se ve afectada.
+          const registrado = await runWithSavepointFallback<boolean>({
+            session: db,
+            savepointName: "sp_voz_evento_latencia",
+            primary: async () => {
+              await deps.vozKpiRepo!(db).registrarEvento(evento);
+              return true;
+            },
+            isRecoverable: (err) => err instanceof VozNoDisponibleError || ["23514", "42703", "42883", "42P01"].includes(String((err as { code?: unknown } | null)?.code ?? "")),
+            fallback: async () => false,
+          });
+          return registrado ? c.json({ registrado: true }, 201) : c.json({ registrado: false, disponible: false }, 202);
+        }
+        await deps.vozKpiRepo(db).registrarEvento(evento);
         // Un error del proveedor de voz avisa al owner/admin (best-effort, sin PII, una por sucursal por hora).
         if (tipo === "error_proveedor") {
           const hora = (ocurridoAt ?? new Date().toISOString()).replace(/\D/g, "").slice(0, 10);
