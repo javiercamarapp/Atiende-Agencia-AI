@@ -136,6 +136,9 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const eventos = eventosCostoLlamada({ vertical: "restaurantes", llamadaId: body.llamadaId, organizationId, propertyId, ocurridoEn, tramos });
 
     return deps.engine.withAppSession({ userId: null }, async (db) => {
+      // La sucursal debe ser de la organizacion declarada ANTES de escribir nada (404 uniforme, igual que el contexto); core.record_usage_cost_event
+      // lo vuelve a exigir en la base como defensa en profundidad. El costo se registra por `llamadaId` (idempotencia), el id de la ruta solo se devuelve.
+      if (!(await deps.restaurantesRepo(db).findBranchById(organizationId, propertyId))) throw Errors.notFound("La sucursal no existe para esa organización.");
       const resultado = await llamadaRepo(db).registrarCostoLlamada(eventos);
       if (!resultado.disponible) throw Errors.serviceUnavailable("El registro de costos todavía no está disponible en esta base (falta aplicar la migración 0028 de core).");
       return c.json({ conversationId, registrados: resultado.registrados, repetidos: resultado.repetidos });

@@ -134,6 +134,13 @@ describe("POST .../conversaciones/:id/costo", () => {
     expect((await post(app, ruta(UUID_AJENO), cuerpo(ctx), null)).status).toBe(401);
   });
 
+  it("cross-tenant: una sucursal de OTRA organizacion declarada como propia da 404 y no registra ningun costo", async () => {
+    const { ctx, llamada, app } = await construir();
+    const res = await post(app, ruta(UUID_AJENO), cuerpo(ctx, { propertyId: ctx.otherPropertyId }));
+    expect(res.status).toBe(404);
+    expect(llamada.eventos).toHaveLength(0);
+  });
+
   it("registra UN evento por escalon con el costo calculado en el servidor (90 s de Gemini = 27 000 micro-USD) y es idempotente por llamada", async () => {
     const { ctx, llamada, app } = await construir();
     const tramos = [TRAMO, { escalon: "cascada-openrouter", duracionS: 30, costoReportadoMicroUsd: 0 }];
