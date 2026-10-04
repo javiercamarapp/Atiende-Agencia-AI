@@ -1,7 +1,7 @@
 // R-19/R-20 -- el seed deja el agente de WhatsApp de PM COMPLETO (perfil taqueria_pm con los datos del dueño) y puede
 // cargar la cuenta como DEMO. Los pendientes del dueño NO se inventan. Postgres real: scripts/verify-restaurantes-seed-pm/ (E1-E8).
 import { describe, expect, it } from "vitest";
-import { buildPmSeedPlan, PmSeedError, renderPmSeedPlpgsql, renderSchemaPreflightSql, WHATSAPP_AGENT_LIMITES } from "../src/seed/pm-demo.ts";
+import { buildPmSeedPlan, PmSeedError, renderPmSeedPlpgsql, renderSchemaPreflightSql, WHATSAPP_AGENT_LIMITES, type PmSeedData } from "../src/seed/pm-demo.ts";
 import { parseSeedArgs } from "../src/seed/target-safety.ts";
 import { aplicarFilaAConfig, buildSystemPrompt } from "../src/whatsapp/llm-turn-handler.ts";
 import { prepareCreateOrder } from "../src/orders.ts";
@@ -22,17 +22,27 @@ describe("configuracion del agente de WhatsApp en el seed", () => {
       agentName: null,
       escalationReasonsOff: [],
     });
-    expect(plan.whatsappAgent.deliveryTimeText).toMatch(/^a domicilio de 60 a 75 min \(pico: 75 a 90\); para recoger de 25 a 35 min/);
+    // Dato del dueño (cuestionario l.83-84): "de 40 a 50 minutos para recoger y domicilio; mas en hora pico". Los tiempos medidos en T7 (60-75 min)
+    // viven en la fila propia de T7, no en la de la organizacion que aplicaria tambien a T1 y T3.
+    expect(plan.whatsappAgent.deliveryTimeText).toBe("de 40 a 50 minutos para recoger y a domicilio; más en hora pico");
+    expect(plan.whatsappAgent.deliveryByBranch).toEqual([{ branchId: "T7", deliveryTimeText: "a domicilio de 60 a 75 min (pico: 75 a 90); para recoger de 25 a 35 min (pico: 45 a 60)" }]);
+    // CR15: espera de rafagas recomendada (chats reales, §g.17); CR16: tone_style no es el tono real y los datos lo dicen.
+    expect(plan.whatsappAgent.replyDebounceSeconds).toBe(6);
+    expect(data.agente_whatsapp.tono_nota).toMatch(/NO es el tono real.*usted suave y seguro.*l\.144/);
     expect(plan.whatsappAgent.salsasText).toContain("guacamolera");
   });
 
-  it("las promociones que anuncia el agente son SOLO las cargadas (lunes 2x1 en recoger): nunca promete el combo del martes", () => {
-    expect(plan.whatsappAgent.promosText).toMatch(/lunes 2x1/i);
-    expect(plan.whatsappAgent.promosText).not.toMatch(/martes|nachos/i);
-    expect(plan.promotions.map((p) => p.code)).toEqual(["LUNES2X1PM"]);
-    const malo = clone(data);
-    (malo.agente_whatsapp as unknown as { promociones: string }).promociones = "lunes 2x1 en pastor; martes nachos con 2 aguas";
-    expect(() => buildPmSeedPlan(malo, agent)).toThrow(PmSeedError);
+  it("las promociones que anuncia el agente son SOLO las cargadas (lunes 2x1 y martes nachos con 2 aguas, solo recoger, todas las sucursales)", () => {
+    expect(plan.whatsappAgent.promosText).toBe("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales");
+    expect(plan.whatsappAgent.promosText).not.toMatch(/Montejo|Pensiones|Galer/);
+    expect(plan.promotions.map((p) => p.code)).toEqual(["LUNES2X1PM", "MARTESNACHOSPM"]);
+    // Nunca se anuncia lo que la base no cargo: sin el combo cargado, mencionar el martes invalida el seed; igual con el 2x1.
+    const sinCombo = clone(data) as { -readonly [K in keyof PmSeedData]: PmSeedData[K] };
+    sinCombo.promociones = sinCombo.promociones.filter((p) => p.codigo !== "MARTESNACHOSPM");
+    expect(() => buildPmSeedPlan(sinCombo, agent)).toThrow(/combo del martes/);
+    const sinLunes = clone(data) as { -readonly [K in keyof PmSeedData]: PmSeedData[K] };
+    sinLunes.promociones = sinLunes.promociones.filter((p) => p.codigo !== "LUNES2X1PM");
+    expect(() => buildPmSeedPlan(sinLunes, agent)).toThrow(/2x1 del lunes/);
   });
 
   it("los textos respetan los limites de la tabla (CHECK de las migraciones 029/033) y los motivos solo son los apagables", () => {
@@ -64,9 +74,11 @@ describe("configuracion del agente de WhatsApp en el seed", () => {
     expect(prompt).toMatch(/Propina solo con tarjeta/i);
     expect(prompt).toMatch(/órdenes de 3/);
     expect(prompt).toMatch(/usted/i);
-    expect(prompt).toContain("lunes 2x1 en tacos al pastor, solo para recoger");
+    expect(prompt).toContain("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales");
+    expect(prompt).not.toMatch(/la confirma la sucursal al recoger|no lo prometa ni lo aplique/);
+    expect(prompt).toMatch(/Combo del martes[^.\n]*lo aplica cotizar_pedido/);
     expect(prompt).toContain("Los Taquitos de PM");
-    expect(prompt).toContain("a domicilio de 60 a 75 min (pico: 75 a 90); para recoger de 25 a 35 min (pico: 45 a 60)");
+    expect(prompt).toContain("de 40 a 50 minutos para recoger y a domicilio; más en hora pico");
   });
 
   it("la regla de '3 de bistec' queda documentada en los datos para que el guion y la prueba la usen", () => {
@@ -76,7 +88,14 @@ describe("configuracion del agente de WhatsApp en el seed", () => {
   it("la voz sigue DESHABILITADA en el SQL del seed (sin gasto de proveedores) y la config del agente no pisa la del dueño", () => {
     const sql = renderPmSeedPlpgsql(plan);
     expect(sql).toMatch(/insert into restaurantes\.branch_voice_config[\s\S]*?false, v->'voice'->>'voiceId'/);
-    expect(sql).toMatch(/insert into restaurantes\.whatsapp_agent_config[\s\S]*?on conflict \(organization_id\) where property_id is null do nothing/);
+    expect(sql).toMatch(/insert into restaurantes\.whatsapp_agent_config[\s\S]*?on conflict \(organization_id\) where property_id is null do update set/);
+    // Sobre la fila existente solo rellena la espera si esta vacia y reemplaza textos que ESTE seed sembro antes: nunca pisa lo que el dueño edito.
+    expect(sql).toMatch(/reply_debounce_seconds = coalesce\(restaurantes\.whatsapp_agent_config\.reply_debounce_seconds, excluded\.reply_debounce_seconds\)/);
+    expect(sql).toMatch(/delivery_time_text = case when restaurantes\.whatsapp_agent_config\.delivery_time_text in \(select jsonb_array_elements_text\(v->'whatsappAgent'->'legacyDeliveryTimeTexts'\)\)/);
+    expect(sql).toMatch(/promos_text = case when restaurantes\.whatsapp_agent_config\.promos_text in \(select jsonb_array_elements_text\(v->'whatsappAgent'->'legacyPromosTexts'\)\)/);
+    expect(sql).not.toMatch(/agent_name = excluded|tone_style = excluded|salsas_text = excluded|greeting_text = excluded/);
+    // La fila propia de T7 copia la de la organizacion y no se pisa si ya existe.
+    expect(sql).toMatch(/on conflict \(organization_id, property_id\) where property_id is not null do nothing/);
   });
 });
 
@@ -135,20 +154,23 @@ describe("carga como demo (--demo)", () => {
 });
 
 describe("la promocion 2x1 del lunes se carga AUTOMATICA (el agente no manda codigos)", () => {
-  it("el plan la marca auto_apply y el SQL la persiste y la repara al re-ejecutar", () => {
+  it("el plan la marca auto_apply y el SQL la persiste (con las columnas del combo de cortesia) y la repara al re-ejecutar", () => {
     const plan = buildPmSeedPlan(data, agent);
     expect(plan.promotions.every((p) => p.autoApply === true)).toBe(true);
     const sql = renderPmSeedPlpgsql(plan);
-    expect(sql).toMatch(/insert into restaurantes\.promotions \([^)]*auto_apply, property_ids\)/);
+    expect(sql).toMatch(/insert into restaurantes\.promotions \([^)]*auto_apply, property_ids, courtesy_product_ids, courtesy_quantity\)/);
+    expect(sql).toMatch(/courtesy_product_ids = excluded\.courtesy_product_ids, courtesy_quantity = excluded\.courtesy_quantity/);
     expect(sql).toMatch(/auto_apply = excluded\.auto_apply/);
     expect(sql).toMatch(/property_ids = excluded\.property_ids/);
     expect(renderSchemaPreflightSql()).toContain("031_recoger_promociones_automaticas_puentes.sql");
-    // PM-C2: sin la migracion 038 el 2x1 valdria en TODAS las sucursales: el seed se niega a correr.
+    // Sin la 038 y la 031 el INSERT de promociones fallaria a la mitad: el seed se niega a correr.
+    expect(renderSchemaPreflightSql()).toContain("restaurantes.promotions.courtesy_quantity");
+    expect(renderSchemaPreflightSql()).toContain("039_agente_config_umbral_y_rafagas.sql");
     expect(renderSchemaPreflightSql()).toContain("restaurantes.promotions.property_ids");
     expect(renderSchemaPreflightSql()).toContain("038_promociones_por_sucursal.sql");
   });
 
-  it("al cotizar SIN codigo, el motor aplica el 2x1 el lunes al recoger en Pensiones (T3); a domicilio, en otro dia o en Prolongacion Montejo (T1) no", async () => {
+  it("al cotizar SIN codigo, el motor aplica el 2x1 el lunes al recoger en Pensiones (T3) Y en Prolongacion Montejo (T1); a domicilio o en otro dia no", async () => {
     const plan = buildPmSeedPlan(data, agent);
     const world = await buildInMemoryPmWorld(plan);
     const lunes = new Date("2026-10-12T20:00:00Z"); // lunes 14:00 en Merida
@@ -174,9 +196,11 @@ describe("la promocion 2x1 del lunes se carga AUTOMATICA (el agente no manda cod
     expect(conPromo.total).toBeCloseTo(base.total - conPromo.discount, 2);
     const domicilio = await prepareCreateOrder(world.repo, pedido("domicilio"), { asOf: lunes });
     expect(domicilio.discount).toBe(0);
-    // PM-C2 (P6): el 2x1 NO vale en T1 (Prolongacion Montejo), aunque sea lunes y para recoger.
-    const enT1 = await prepareCreateOrder(world.repo, pedido("recoger", "prol-montejo"), { asOf: lunes });
-    expect(enT1.discount).toBe(0);
-    expect(enT1.appliedPromotion).toBeNull();
+    // CR07/CR08: el dueño da el 2x1 para TODAS las sucursales (cuestionario l.99); la restriccion a T2, T3 y T4 era del menu impreso de 2025.
+    for (const slug of ["prol-montejo", "garcia-lavin"]) {
+      const enSucursal = await prepareCreateOrder(world.repo, pedido("recoger", slug), { asOf: lunes });
+      expect(enSucursal.discount, slug).toBeGreaterThan(0);
+      expect(enSucursal.appliedPromotion?.code, slug).toBe("LUNES2X1PM");
+    }
   });
 });
