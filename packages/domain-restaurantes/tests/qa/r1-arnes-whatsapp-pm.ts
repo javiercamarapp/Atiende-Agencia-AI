@@ -57,7 +57,7 @@ export interface Banco {
   readonly conversaciones: InMemoryConversacionesRepository;
   readonly gate: { estadoParaAgente: InMemoryHandoffAgentGate["estadoParaAgente"]; solicitarHumano: InMemoryHandoffAgentGate["solicitarHumano"] };
   readonly privacidad: InMemoryPrivacidadRepository;
-  readonly callbacks: () => ReadonlyArray<{ reason?: string; propertyId: string | null; customerPhone: string }>;
+  readonly callbacks: () => ReadonlyArray<{ reason?: string; message?: string; propertyId: string | null; customerPhone: string }>;
 }
 
 export async function banco(opts: { readonly now?: string; readonly killSwitch?: boolean; readonly proveedorCae?: boolean } = {}): Promise<Banco> {
@@ -127,7 +127,7 @@ export async function banco(opts: { readonly now?: string; readonly killSwitch?:
     conversaciones,
     gate,
     privacidad,
-    callbacks: () => (w.repo as unknown as { callbackRequests: Array<{ reason?: string; propertyId: string | null; customerPhone: string }> }).callbackRequests,
+    callbacks: () => (w.repo as unknown as { callbackRequests: Array<{ reason?: string; message?: string; propertyId: string | null; customerPhone: string }> }).callbackRequests,
   };
 }
 

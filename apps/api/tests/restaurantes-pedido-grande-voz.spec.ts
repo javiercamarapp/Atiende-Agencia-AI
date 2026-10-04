@@ -11,6 +11,12 @@ describe("POST /orders de voz: pedido grande de PM", () => {
   it("100 Coca-Cola ($4,500) en efectivo de un numero sin historial: no se crea, queda el aviso para la sucursal", async () => {
     const { deps, restaurantesRepo, organizationId, products } = await buildTestDeps();
     await restaurantesRepo.upsertWhatsAppAgentConfig(organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: "Los Taquitos de PM", toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
+    const avisos: Array<{ reason?: string }> = [];
+    const original = restaurantesRepo.createCallbackRequest.bind(restaurantesRepo);
+    restaurantesRepo.createCallbackRequest = async (input) => {
+      avisos.push(input);
+      return original(input);
+    };
     const app = buildApp(deps);
     const res = await app.request(
       `/v1/restaurantes/${ORG_SLUG}/orders`,
@@ -25,7 +31,7 @@ describe("POST /orders de voz: pedido grande de PM", () => {
     expect(body.pedido_grande).toBe(true);
     expect(body.estado).toBe("por_confirmar_por_la_sucursal");
     expect((await restaurantesRepo.listOrders(organizationId, { propertyIds: null, limit: 10 })).orders).toHaveLength(0);
-    expect(restaurantesRepo.callbackRequests.some((c) => c.reason === "escalada:pedido_grande")).toBe(true);
+    expect(avisos.some((c) => c.reason === "escalada:pedido_grande")).toBe(true);
   });
 
   it("sin perfil de PM (organizacion generica) el mismo pedido se crea como siempre", async () => {
