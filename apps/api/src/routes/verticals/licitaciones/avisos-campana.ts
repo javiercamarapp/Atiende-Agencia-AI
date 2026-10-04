@@ -4,6 +4,9 @@
 //   * licitaciones.renovacion.por_vencer / licitaciones.cobranza.factura_vencida / licitaciones.documentos.por_vencer:
 //     despues del barrido `/internal/licitaciones/alert-notifications` (el cron YA agendado en vercel.json). Solo
 //     conteos; una transaccion propia por organizacion.
+//   * licitaciones.contrato.garantia_por_vencer / garantia_no_entregada / hito_vencido (L-27): tambien despues del barrido
+//     `/internal/licitaciones/alert-notifications`, UN aviso por garantia o hito y fecha (clave = id + fecha), con enlace a
+//     la pantalla de post-adjudicacion de la convocatoria. Sin crons nuevos; con la base sin la migracion 035 no emiten.
 //   * licitaciones.convocatoria.bases_modificadas: justo despues de la escritura que CREA una version nueva sobre una
 //     convocatoria que ya tenia una (alta manual con cambios, recalculo, re-extraccion de requisitos). Un recalculo
 //     sin cambios (`created: false`) no emite.
@@ -15,6 +18,8 @@
 // con ids y fechas (ningun RFC, nombre ni titulo).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { emitirNotificacion } from "@atiende/db";
+import { GARANTIA_POR_VENCER_DIAS } from "@atiende/domain-licitaciones";
+import type { PostAdjudicacionAlertaTipo } from "@atiende/domain-licitaciones";
 import type { AppDeps } from "../../../deps.ts";
 
 /** Ventana de "por vencer" de los documentos de empresa (dias). */
@@ -83,6 +88,49 @@ export async function avisarAlertasDelBarrido(deps: AppDeps, sweep: readonly Res
     }
   }
   return { renovacion, cobranza, documentos };
+}
+
+/** Evento del catalogo por cada tipo de candidato de la post-adjudicacion (L-27). */
+const EVENTO_POST_ADJUDICACION: Readonly<Record<PostAdjudicacionAlertaTipo, string>> = {
+  garantia_por_vencer: "licitaciones.contrato.garantia_por_vencer",
+  garantia_no_entregada: "licitaciones.contrato.garantia_no_entregada",
+  hito_vencido: "licitaciones.contrato.hito_vencido",
+};
+
+export interface AvisosPostAdjudicacionResultado {
+  readonly garantiasPorVencer: number;
+  readonly garantiasNoEntregadas: number;
+  readonly hitosVencidos: number;
+}
+
+/**
+ * Avisos de la post-adjudicacion tras el barrido: garantias por vencer (30 dias), garantias no entregadas dentro de su
+ * plazo e hitos vencidos. UNA transaccion por organizacion; una emision fallida o la base sin la migracion 035 nunca
+ * cambia el barrido ni la respuesta. Solo ids y fechas en las claves: ningun monto, afianzadora ni nombre. Repetir el
+ * barrido reutiliza las mismas claves (la base deduplica): cada evento avisa UNA sola vez.
+ */
+export async function avisarPostAdjudicacion(deps: AppDeps, sweep: readonly { readonly organizationId: string; readonly error?: string }[], hoyIso: string): Promise<AvisosPostAdjudicacionResultado> {
+  const factory = deps.licitacionesPostAdjudicacionRepo;
+  const total = { garantiasPorVencer: 0, garantiasNoEntregadas: 0, hitosVencidos: 0 };
+  if (!factory) return total;
+  for (const r of sweep) {
+    if (r.error != null) continue;
+    const org = r.organizationId;
+    await deps.engine
+      .withAppSession({ userId: null }, async (db) => {
+        const candidatos = await factory(db).listAlertCandidates(org, hoyIso, GARANTIA_POR_VENCER_DIAS);
+        if (!candidatos) return;
+        for (const c of candidatos) {
+          const e = await emitirNotificacion(db, { evento: EVENTO_POST_ADJUDICACION[c.tipo], organizationId: org, clave: `${c.entidadId}:${c.fecha}`, entidadTipo: "convocatoria", entidadId: c.tenderId });
+          if (e.estado !== "emitida") continue;
+          if (c.tipo === "garantia_por_vencer") total.garantiasPorVencer += 1;
+          else if (c.tipo === "garantia_no_entregada") total.garantiasNoEntregadas += 1;
+          else total.hitosVencidos += 1;
+        }
+      })
+      .catch(() => undefined);
+  }
+  return total;
 }
 
 /** Aviso de cambio de bases tras la escritura que creo la version `version` de la convocatoria. Mejor esfuerzo (nunca lanza). */
