@@ -439,11 +439,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
   const now = options.now ?? (() => new Date());
 
   return {
-    async handleInboundMessage({ organizationId, phone, messages, customer, propertyId: entryPropertyId, finTurnoMs }) {
+    async handleInboundMessage({ organizationId, phone, messages, customer, propertyId: entryPropertyId, finTurnoMs, modo, previewCustomerId, configBorrador }) {
       // Una llamada al LLM que ARRANCA justo antes del tope todavia tarda lo suyo: el presupuesto por omision deja
       // `MARGEN_CIERRE_TURNO_MS` + una llamada lenta de holgura bajo los 30 s de la funcion.
       const deadline = Math.min(Date.now() + turnBudgetMs, finTurnoMs ?? Number.POSITIVE_INFINITY);
-      const config = await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
+      // `modo` y `configBorrador` solo los fija la ruta de preview del panel (servidor); el modelo nunca los ve.
+      const preview = modo === "preview";
+      const config = preview && configBorrador ? aplicarFilaAConfig(configBorrador, organizationId) : await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
+      const modoCtx = preview ? { modo: "preview" as const, previewCustomerId: previewCustomerId ?? null } : {};
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
       // El flujo de PM encadena mas llamadas por turno (cliente, zona, un producto por renglon, cotizar).
       const maxToolUseTurns = options.maxToolUseTurns ?? (perfil === "taqueria_pm" ? 8 : 4);
@@ -465,11 +468,17 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let huboFalloDeHerramienta = false;
       let lastQuoteTotal: number | null = null;
       let anyToolCalled = false;
+      // Preview: el pedido SIMULADO de `crear_pedido` (para la tarjeta del panel).
+      let pedidoSimulado: unknown;
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
       const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(reply, working), lastQuoteTotal);
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
-      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string } } => (escalarMotivo ? { ...r, escalacion: { motivo: escalarMotivo } } : r);
+      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedidoSimulado?: unknown } => ({
+        ...r,
+        ...(escalarMotivo ? { escalacion: { motivo: escalarMotivo } } : {}),
+        ...(pedidoSimulado !== undefined ? { pedidoSimulado } : {}),
+      });
 
       // Motivos de alto riesgo (cancelacion, cobro, ARCO, alergia, transferencia, queja, "quiero una
       // persona"): no se dejan al criterio del modelo. Se avisa al equipo ANTES del LLM y se responde fijo.
@@ -479,7 +488,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const aviso = await executeAgentToolSafely(
           repo,
-          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null },
+          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, ...modoCtx },
           "escalar_a_humano",
           { customer_name: nombre, motivo: riesgo.motivo, resumen: latestUserMessage!.content.slice(0, 500) },
         );
@@ -545,12 +554,13 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ...modoCtx }, call.name, input);
             result = executed.result;
             anyToolCalled = true;
             const quoted = (result as { quote?: { total?: unknown }; order?: { total?: unknown } } | null) ?? null;
             if (call.name === "cotizar_pedido" && typeof quoted?.quote?.total === "number") lastQuoteTotal = quoted.quote.total;
             if (call.name === "crear_pedido" && typeof quoted?.order?.total === "number") lastQuoteTotal = quoted.order.total;
+            if (executed.simulated && call.name === "crear_pedido" && !isToolErrorResult(result)) pedidoSimulado = executed.raw;
             if (executed.orderId) {
               orderId = executed.orderId;
               propertyId = executed.propertyId;
