@@ -192,6 +192,14 @@ export class SinNumeroWhatsappError extends Error {
     this.name = "SinNumeroWhatsappError";
   }
 }
+/** Pasaron mas de 24 h desde el ultimo mensaje del cliente: WhatsApp solo admite una plantilla aprobada, no texto libre. */
+export const VENTANA_WHATSAPP_HORAS = 24;
+export class VentanaWhatsappCerradaError extends Error {
+  constructor() {
+    super("Pasaron más de 24 horas desde el último mensaje del cliente: WhatsApp ya no permite una respuesta de texto libre. Contáctelo por llamada o espere a que vuelva a escribir.");
+    this.name = "VentanaWhatsappCerradaError";
+  }
+}
 export class ConversacionesValidacionError extends Error {
   constructor(message: string) {
     super(message);

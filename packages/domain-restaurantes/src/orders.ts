@@ -51,10 +51,15 @@ function toProductoEncontrado(product: { id: string; name: string; description: 
 export async function searchProducts(repo: RestaurantesRepository, args: { readonly propertyId: string; readonly query: string }): Promise<ProductoEncontrado[]> {
   const tokens = tokenizeForProductSearch(args.query);
   const catalog = await repo.listAvailableProductsForBranch(args.propertyId);
-  return catalog
-    .filter((p) => matchesProductSearch(tokens, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }))
-    .slice(0, 8)
-    .map(toProductoEncontrado);
+  const buscar = (ts: readonly string[]) => catalog.filter((p) => matchesProductSearch(ts, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }));
+  let encontrados = buscar(tokens);
+  // "un cuarto de cochinita": el peso solo existe en los productos que se venden por kilo. Si con el peso no queda nada, se busca el producto sin el
+  // peso (la lista vacia la lee el agente como "no tenemos eso", y la cochinita si existe, en ordenes). Con peso que SI coincide se conserva la exactitud.
+  if (encontrados.length === 0 && tokens.some((t) => t.startsWith("peso:"))) {
+    const sinPeso = tokens.filter((t) => !t.startsWith("peso:"));
+    if (sinPeso.length > 0) encontrados = buscar(sinPeso);
+  }
+  return encontrados.slice(0, 8).map(toProductoEncontrado);
 }
 
 /**
