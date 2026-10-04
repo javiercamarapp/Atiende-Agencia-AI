@@ -428,6 +428,13 @@ function esErrorSinPedidoRecienteDisponible(err: unknown): boolean {
   return code === "42501" || code === "42883" || code === "42P01" || code === "42703";
 }
 
+// Compatibilidad con la base SIN migrar para la migracion 048 (escrituras de la sesion de sistema por funcion):
+// solo la funcion inexistente (42883) degrada al camino directo anterior. Un 42501 de la propia funcion (sesion
+// con auth.uid() no nulo) o cualquier otro error se propaga tal cual: nunca se enmascara un fallo real.
+function esFuncionSistema048NoDisponible(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "42883";
+}
+
 // Compatibilidad con la base SIN migrar para la migracion 026 (estado del pedido / secretos por
 // sucursal / bitacora de voz): funcion o tabla inexistente.
 function esErrorBaseSinMigrar026(err: unknown): boolean {
@@ -771,6 +778,25 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async upsertCustomer(organizationId: string, phone: string, name: string): Promise<Customer> {
+    // Migracion 048: el rol de produccion (authenticated, auth.uid() NULL) no tiene INSERT/UPDATE sobre
+    // restaurantes.customers; la escritura va por la funcion solo-sistema (atomica por UNIQUE(organizacion, telefono)).
+    // Contra una base sin esa migracion (42883) cae al camino directo anterior, dentro de un SAVEPOINT.
+    return runWithSavepointFallback<Customer>({
+      session: this.db,
+      savepointName: "sp_restaurantes_upsert_customer_fn",
+      primary: async () => {
+        const { rows } = await this.db.query<{ customer: CustomerRow | null }>(`select restaurantes.upsert_customer($1, $2, $3) as customer;`, [organizationId, phone, name]);
+        const row = rows[0]?.customer;
+        if (!row) throw new Error("upsert_customer no devolvió el cliente");
+        return mapCustomer(row);
+      },
+      isRecoverable: esFuncionSistema048NoDisponible,
+      fallback: () => this.upsertCustomerDirecto(organizationId, phone, name),
+    });
+  }
+
+  /** Camino anterior a la migracion 048 (INSERT/UPDATE directos). Solo funciona con un rol que tenga esos GRANT. */
+  private async upsertCustomerDirecto(organizationId: string, phone: string, name: string): Promise<Customer> {
     // Port literal de upsertCustomer() del origen: intenta insertar, y si pierde la
     // carrera del UNIQUE(organization_id, phone) real (23505), relee y actualiza en
     // vez de propagar el error — nunca sobreescribe un nombre ya conocido.
@@ -832,7 +858,21 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     }
   }
 
-  async addCustomerAddressIfNew(customerId: string, address: string): Promise<void> {
+  async addCustomerAddressIfNew(customerId: string, address: string, organizationId: string): Promise<void> {
+    // Migracion 048 (ver `upsertCustomer`): funcion solo-sistema que ademas exige que el cliente sea de la organizacion.
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_restaurantes_add_address_fn",
+      primary: async () => {
+        await this.db.query(`select restaurantes.add_customer_address_if_new($1, $2, $3);`, [organizationId, customerId, address]);
+      },
+      isRecoverable: esFuncionSistema048NoDisponible,
+      fallback: () => this.addCustomerAddressDirecto(customerId, address),
+    });
+  }
+
+  /** Camino anterior a la migracion 048 (INSERT directo). */
+  private async addCustomerAddressDirecto(customerId: string, address: string): Promise<void> {
     const { rows: countRows } = await this.db.query<{ count: string }>(
       `select count(*)::text as count from restaurantes.customer_addresses where customer_id = $1;`,
       [customerId],
@@ -981,26 +1021,41 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
     const params = [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source];
-    type Fila = { id: string; resolved: boolean; created_at: string };
-    // `restaurantes.callback_registrar` (migracion 062): la sesion de la API corre como `authenticated`, que NO tiene INSERT sobre
-    // callback_requests (001), asi que el INSERT directo falla con 42501 contra una base migrada. Sin la funcion (42883, base sin 062)
-    // se cae al INSERT anterior dentro de un SAVEPOINT, que es exactamente la conducta de antes.
-    const rows = await runWithSavepointFallback<Fila[]>({
+    // Migracion 048 (ver `upsertCustomer`): funcion solo-sistema; sin ella (42883) cae al INSERT directo anterior.
+    const row = await runWithSavepointFallback<{ id: string; resolved: boolean; created_at: string }>({
       session: this.db,
-      savepointName: "sp_restaurantes_callback_registrar",
-      primary: async () => (await this.db.query<Fila>(`select id, resolved, created_at from restaurantes.callback_registrar($1, $2, $3, $4, $5, $6, $7);`, params)).rows,
-      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42883",
-      fallback: async () =>
-        (
-          await this.db.query<Fila>(
-            `insert into restaurantes.callback_requests (organization_id, property_id, customer_name, customer_phone, reason, message, source)
-             values ($1, $2, $3, $4, $5, $6, $7)
-             returning id, resolved, created_at;`,
-            params,
-          )
-        ).rows,
+      savepointName: "sp_restaurantes_callback_fn",
+      primary: async () => {
+        const { rows } = await this.db.query<{ callback: { id: string; resolved: boolean; created_at: string } | null }>(
+          `select restaurantes.create_callback_request($1, $2, $3, $4, $5, $6, $7) as callback;`,
+          params,
+        );
+        const creado = rows[0]?.callback;
+        if (!creado) throw new Error("create_callback_request no devolvió el aviso");
+        return creado;
+      },
+      isRecoverable: esFuncionSistema048NoDisponible,
+      // Sin la 048 (42883): `restaurantes.callback_registrar` (062, ya en main) y, sin ella tampoco, el INSERT directo anterior.
+      fallback: async () => {
+        type Fila = { id: string; resolved: boolean; created_at: string };
+        const rows = await runWithSavepointFallback<Fila[]>({
+          session: this.db,
+          savepointName: "sp_restaurantes_callback_registrar",
+          primary: async () => (await this.db.query<Fila>(`select id, resolved, created_at from restaurantes.callback_registrar($1, $2, $3, $4, $5, $6, $7);`, params)).rows,
+          isRecoverable: (err) => (err as { code?: string } | null)?.code === "42883",
+          fallback: async () =>
+            (
+              await this.db.query<Fila>(
+                `insert into restaurantes.callback_requests (organization_id, property_id, customer_name, customer_phone, reason, message, source)
+                 values ($1, $2, $3, $4, $5, $6, $7)
+                 returning id, resolved, created_at;`,
+                params,
+              )
+            ).rows,
+        });
+        return rows[0]!;
+      },
     });
-    const row = rows[0]!;
     // Notificacion in-app (`restaurantes.callback.pendiente`): un contacto que el agente (voz o WhatsApp) dejo para devolver la
     // llamada. Uno por solicitud (clave = id), sin PII (ni nombre ni telefono viajan en el aviso). SAVEPOINT en emitirNotificacion.
     // R-43: una solicitud de evento/catering del storefront (reason = 'evento') avisa con su propio evento del catalogo, no con el generico.
@@ -1068,11 +1123,23 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async markInboundEventFailed(organizationId: string, messageId: string, errorClass: string): Promise<void> {
-    await this.db.query(
-      `update restaurantes.whatsapp_inbound_events set status = 'failed', last_error_class = $3
-       where message_id = $2 and organization_id = $1;`,
-      [organizationId, messageId, errorClass],
-    );
+    // Migracion 048: el rol de produccion no tiene GRANT sobre whatsapp_inbound_events; la escritura va por la
+    // funcion solo-sistema. Sin ella (42883) cae al UPDATE directo anterior.
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_restaurantes_inbound_failed_fn",
+      primary: async () => {
+        await this.db.query(`select restaurantes.mark_whatsapp_inbound_failed($1, $2, $3);`, [organizationId, messageId, errorClass]);
+      },
+      isRecoverable: esFuncionSistema048NoDisponible,
+      fallback: async () => {
+        await this.db.query(
+          `update restaurantes.whatsapp_inbound_events set status = 'failed', last_error_class = $3
+           where message_id = $2 and organization_id = $1;`,
+          [organizationId, messageId, errorClass],
+        );
+      },
+    });
   }
 
   // Aislamiento por tool call del turno de WhatsApp (ver el comentario de cabecera

@@ -439,7 +439,7 @@ export async function createOrder(
   if (payload.programadoPara) await assertProgramacionDisponible(repo);
 
   const customer = await repo.upsertCustomer(payload.organizationId, payload.customerPhone, payload.customerName);
-  if (payload.customerAddress) await repo.addCustomerAddressIfNew(customer.id, payload.customerAddress);
+  if (payload.customerAddress) await repo.addCustomerAddressIfNew(customer.id, payload.customerAddress, payload.organizationId);
 
   const itemsOrdenados = [...orderItems].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   const complementNotes = buildComplementNotes(payload.notes, [...new Set(payload.requestedComplements ?? [])].sort(), [...new Set(payload.omitDefaultComplements ?? [])].sort());
