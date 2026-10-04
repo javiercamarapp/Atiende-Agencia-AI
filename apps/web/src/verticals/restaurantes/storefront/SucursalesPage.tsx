@@ -7,6 +7,7 @@ import { Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, St
 import { crearClienteStorefront, type SucursalDirectorio } from "./storefront-client.ts";
 import { enlaceTel, lineasHorario } from "./horario-texto.ts";
 import { StorefrontLayout } from "./StorefrontLayout.tsx";
+import { SucursalSugerida } from "./SucursalSugerida.tsx";
 import { useMetaPublica } from "./meta-publica.ts";
 
 export function insigniasDe(s: SucursalDirectorio): Array<{ texto: string; tone: "success" | "info" | "warning" | "neutral" }> {
@@ -44,6 +45,7 @@ export function SucursalesPage({ apiBaseUrl, orgSlug }: { apiBaseUrl: string; or
       <h1 className="text-lg font-semibold tracking-tight">{nombre ? `Sucursales de ${nombre}` : "Sucursales"}</h1>
       <p className="mt-1 text-sm text-muted-foreground">Dirección, teléfono y horario de cada sucursal. Para pedir en línea elija una sucursal que lo permita.</p>
       <div className="mt-4">
+        <SucursalSugerida apiBaseUrl={apiBaseUrl} orgSlug={orgSlug} />
         {estado === "cargando" && <EstadoCargando />}
         {typeof estado === "object" && "error" in estado && <EstadoError mensaje={estado.error} onReintentar={cargar} />}
         {typeof estado === "object" && "sucursales" in estado && estado.sucursales.length === 0 && (

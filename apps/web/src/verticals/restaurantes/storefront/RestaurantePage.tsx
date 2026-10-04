@@ -5,6 +5,7 @@ import { Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, St
 import { formatoPesos } from "./carrito.ts";
 import { crearClienteStorefront, type SucursalPublica } from "./storefront-client.ts";
 import { StorefrontLayout } from "./StorefrontLayout.tsx";
+import { SucursalSugerida } from "./SucursalSugerida.tsx";
 import { useMetaPublica } from "./meta-publica.ts";
 
 export function textoApertura(s: SucursalPublica): { texto: string; tone: "success" | "danger" | "neutral" } {
@@ -39,6 +40,7 @@ export function RestaurantePage({ apiBaseUrl, orgSlug }: { apiBaseUrl: string; o
       <h1 className="text-2xl font-semibold tracking-tight">{nombre ? `Pide en ${nombre}` : "Pedir en línea"}</h1>
       <p className="mt-1 text-sm text-muted-foreground">Elige la sucursal. Pagas en la sucursal (efectivo o tarjeta); no necesitas crear una cuenta.</p>
       <div className="mt-6">
+        <SucursalSugerida apiBaseUrl={apiBaseUrl} orgSlug={orgSlug} />
         {estado === "cargando" && <EstadoCargando />}
         {typeof estado === "object" && "error" in estado && <EstadoError mensaje={estado.error} onReintentar={cargar} />}
         {typeof estado === "object" && "sucursales" in estado && estado.sucursales.length === 0 && (

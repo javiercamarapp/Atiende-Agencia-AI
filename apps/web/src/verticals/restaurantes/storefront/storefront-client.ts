@@ -41,6 +41,13 @@ export interface SucursalDirectorio {
   readonly comoLlegarUrl: string | null;
 }
 
+/** Respuesta de `POST .../sucursal-sugerida`. */
+export type SugerenciaSucursal =
+  | { readonly tipo: "reparte"; readonly sucursal: { readonly slug: string; readonly name: string }; readonly zona: string; readonly distanciaKm: number; readonly mensaje: string }
+  | { readonly tipo: "solo_recoger"; readonly sucursal: { readonly slug: string; readonly name: string }; readonly zona: string; readonly distanciaKm: number; readonly mensaje: string }
+  | { readonly tipo: "cercana"; readonly sucursal: { readonly slug: string; readonly name: string }; readonly distanciaKm: number; readonly mensaje: string }
+  | { readonly tipo: "sin_resultado"; readonly mensaje: string };
+
 /** Seccion "Encargados y transferencias" del aviso de privacidad (BORRADOR pendiente de revision legal). */
 export interface SeccionEncargados {
   readonly borrador: true;
@@ -224,6 +231,13 @@ export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetc
     },
     async directorio(): Promise<{ restaurante: { slug: string; nombre: string }; sucursales: SucursalDirectorio[] }> {
       return leer(await get("/directorio"), "No pudimos cargar las sucursales.");
+    },
+    async zonas(): Promise<{ zonas: string[] }> {
+      return leer(await get("/zonas"), "No pudimos cargar las colonias.");
+    },
+    /** Las coordenadas viajan en el cuerpo del POST (nunca en la URL) y el servidor no las guarda. */
+    async sucursalSugerida(entrada: { colonia: string } | { lat: number; lng: number }): Promise<{ sugerencia: SugerenciaSucursal }> {
+      return leer(await post("/sucursal-sugerida", entrada), "No pudimos sugerir una sucursal.");
     },
     async privacidad(): Promise<{ encargados: SeccionEncargados }> {
       return leer(await get("/privacidad"), "No pudimos cargar los encargados del aviso de privacidad.");

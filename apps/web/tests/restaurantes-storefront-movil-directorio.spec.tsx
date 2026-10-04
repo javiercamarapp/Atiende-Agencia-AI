@@ -201,7 +201,7 @@ describe("directorio publico de sucursales", () => {
     fetchMock.mockImplementation(async (url: string) => (String(url).endsWith("/directorio") ? json(DIRECTORIO) : json({}, 404)));
     rendered = renderEn("/pedir/demo/sucursales");
     await esperar();
-    expect(String(fetchMock.mock.calls[0]![0])).toBe("http://localhost:8787/v1/restaurantes/demo/storefront/directorio");
+    expect(fetchMock.mock.calls.map((c) => String(c[0]))).toContain("http://localhost:8787/v1/restaurantes/demo/storefront/directorio");
     const texto = rendered.container.textContent ?? "";
     for (const n of ["Pensiones", "Chicxulub", "Galerías", "Calle 7 #1", "lun-dom"]) {
       if (n === "lun-dom") continue;
@@ -231,5 +231,127 @@ describe("directorio publico de sucursales", () => {
     rendered = renderEn("/pedir/demo/sucursales");
     await esperar();
     expect(rendered.container.textContent).toContain("Sin sucursales publicadas");
+  });
+});
+
+describe("¿Dónde está? (sucursal sugerida)", () => {
+  const DIR_VACIO = { restaurante: { slug: "demo", nombre: "Los Taquitos" }, sucursales: [] };
+  const memoria = new Map<string, string>();
+
+  beforeEach(() => {
+    memoria.clear();
+    vi.stubGlobal("localStorage", { getItem: (k: string) => memoria.get(k) ?? null, setItem: (k: string, v: string) => void memoria.set(k, v), removeItem: (k: string) => void memoria.delete(k) });
+  });
+
+  function api(sugerencia: unknown) {
+    const posts: Array<{ url: string; body: Record<string, unknown> }> = [];
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.endsWith("/directorio")) return json(DIR_VACIO);
+      if (u.endsWith("/zonas")) return json({ zonas: ["Montebello", "Vista Alegre"] });
+      if (u.endsWith("/sucursal-sugerida")) {
+        posts.push({ url: u, body: JSON.parse(String(init?.body)) as Record<string, unknown> });
+        return json({ sugerencia });
+      }
+      return json({}, 404);
+    });
+    return posts;
+  }
+
+  it("autocompleta con las zonas del servidor, sugiere la sucursal, la recuerda y 'Cambiar' la olvida", async () => {
+    const posts = api({ tipo: "reparte", sucursal: { slug: "t7", name: "García Lavín" }, zona: "Montebello", distanciaKm: 2.1, mensaje: "García Lavín le reparte en Montebello." });
+    rendered = renderEn("/pedir/demo/sucursales");
+    await esperar();
+    const opciones = Array.from(document.querySelectorAll("datalist option")).map((o) => o.getAttribute("value"));
+    expect(opciones).toEqual(["Montebello", "Vista Alegre"]);
+    act(() => changeValue(q<HTMLInputElement>("#buscar-menu, input[list]"), "montebello"));
+    await act(async () => {
+      botonPorTexto("Buscar sucursal")!.click();
+    });
+    await esperar();
+    expect(posts).toEqual([{ url: "http://localhost:8787/v1/restaurantes/demo/storefront/sucursal-sugerida", body: { colonia: "montebello" } }]);
+    expect(document.body.textContent).toContain("García Lavín le reparte en Montebello.");
+    expect(q<HTMLAnchorElement>('a[href="/pedir/demo/t7"]')).not.toBeNull();
+    expect(JSON.parse(memoria.get("atiende.storefront.sucursal.demo")!)).toEqual({ slug: "t7", name: "García Lavín" });
+    expect(document.body.textContent).toContain("Su sucursal: García Lavín");
+    act(() => click(botonPorTexto("Cambiar")!));
+    expect(memoria.has("atiende.storefront.sucursal.demo")).toBe(false);
+    expect(document.body.textContent).not.toContain("Su sucursal:");
+  });
+
+  it("recuerda la eleccion al volver (leida de localStorage)", async () => {
+    memoria.set("atiende.storefront.sucursal.demo", JSON.stringify({ slug: "t3", name: "Pensiones" }));
+    api({ tipo: "sin_resultado", mensaje: "x" });
+    rendered = renderEn("/pedir/demo/sucursales");
+    await esperar();
+    expect(document.body.textContent).toContain("Su sucursal: Pensiones");
+    expect(q<HTMLAnchorElement>('a[href="/pedir/demo/t3"]')).not.toBeNull();
+  });
+
+  it("un valor corrupto en localStorage se ignora (no rompe la pagina)", async () => {
+    memoria.set("atiende.storefront.sucursal.demo", "{basura");
+    api({ tipo: "sin_resultado", mensaje: "x" });
+    rendered = renderEn("/pedir/demo/sucursales");
+    await esperar();
+    expect(document.body.textContent).not.toContain("Su sucursal:");
+    expect(document.body.textContent).toContain("¿Dónde está?");
+  });
+
+  it("colonia desconocida: aviso honesto, no se recuerda nada; colonia vacia: pide escribirla sin llamar al servidor", async () => {
+    const posts = api({ tipo: "sin_resultado", mensaje: "No reconocemos esa colonia. Pruebe con otra referencia cercana o elija una sucursal de la lista." });
+    rendered = renderEn("/pedir/demo/sucursales");
+    await esperar();
+    await act(async () => {
+      botonPorTexto("Buscar sucursal")!.click();
+    });
+    expect(document.body.textContent).toContain("Escriba su colonia.");
+    expect(posts).toHaveLength(0);
+    act(() => changeValue(q<HTMLInputElement>("input[list]"), "Atlantida"));
+    await act(async () => {
+      botonPorTexto("Buscar sucursal")!.click();
+    });
+    await esperar();
+    expect(document.body.textContent).toContain("No reconocemos esa colonia");
+    expect(memoria.size).toBe(0);
+  });
+
+  it("solo recoger: ofrece recoger en la sucursal mas cercana", async () => {
+    api({ tipo: "solo_recoger", sucursal: { slug: "t1", name: "Prol. Montejo" }, zona: "Cholul", distanciaKm: 9, mensaje: "Esa colonia no está en nuestras zonas de reparto; puede recoger en Prol. Montejo." });
+    rendered = renderEn("/pedir/demo/sucursales");
+    await esperar();
+    act(() => changeValue(q<HTMLInputElement>("input[list]"), "Cholul"));
+    await act(async () => {
+      botonPorTexto("Buscar sucursal")!.click();
+    });
+    await esperar();
+    expect(document.body.textContent).toContain("puede recoger en Prol. Montejo");
+    expect(document.body.textContent).toContain("Pedir para recoger en Prol. Montejo");
+  });
+
+  it("usar mi ubicacion: pide permiso al navegador y manda las coordenadas en el CUERPO del POST, nunca en la URL", async () => {
+    const posts = api({ tipo: "cercana", sucursal: { slug: "t7", name: "García Lavín" }, distanciaKm: 1.2, mensaje: "La sucursal más cercana es García Lavín, a 1.2 km." });
+    vi.stubGlobal("navigator", { geolocation: { getCurrentPosition: (ok: (p: { coords: { latitude: number; longitude: number } }) => void) => ok({ coords: { latitude: 21.02, longitude: -89.6 } }) } });
+    rendered = renderEn("/pedir/demo/sucursales");
+    await esperar();
+    await act(async () => {
+      botonPorTexto("Usar mi ubicación")!.click();
+    });
+    await esperar();
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.body).toEqual({ lat: 21.02, lng: -89.6 });
+    expect(posts[0]!.url).not.toContain("21.02");
+    expect(document.body.textContent).toContain("La sucursal más cercana es García Lavín");
+  });
+
+  it("si el navegador niega la ubicacion: mensaje honesto y la colonia sigue disponible", async () => {
+    api({ tipo: "sin_resultado", mensaje: "x" });
+    vi.stubGlobal("navigator", { geolocation: { getCurrentPosition: (_ok: unknown, fallo: () => void) => fallo() } });
+    rendered = renderEn("/pedir/demo/sucursales");
+    await esperar();
+    await act(async () => {
+      botonPorTexto("Usar mi ubicación")!.click();
+    });
+    expect(document.body.textContent).toContain("No pudimos obtener su ubicación");
+    expect(q("input[list]")).not.toBeNull();
   });
 });
