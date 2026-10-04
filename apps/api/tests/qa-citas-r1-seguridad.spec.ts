@@ -214,7 +214,7 @@ describe("QA-citas-R1-seguridad-06 — reserva publica sin verificar el telefono
 });
 
 describe("QA-citas-R1-seguridad-07 — rutas legadas del agente sin vinculo con el telefono del cliente", () => {
-  it("[DEFECTO] cancelar por id con solo el secreto de plataforma (sin telefono del cliente) no debe estar disponible", async () => {
+  async function conCitaDeAna() {
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const creada = await app.request(
@@ -222,10 +222,47 @@ describe("QA-citas-R1-seguridad-07 — rutas legadas del agente sin vinculo con 
       jsonRequestInit({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Ana", customer_phone: "+5219993334455", starts_at: LUNES_11_MERIDA, source: "web" }),
     );
     const { appointment } = (await creada.json()) as { appointment: { id: string } };
+    const estado = async () => (await ctx.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id))!;
+    const llamar = (accion: "cancel" | "reschedule" | "reassign", body: Record<string, unknown> | undefined) =>
+      app.request(`/v1/citas/clinica-dental-sonrisas/appointments/${appointment.id}/${accion}`, {
+        method: "POST",
+        headers: { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret, ...(body ? { "content-type": "application/json" } : {}) },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+    return { ctx, estado, llamar };
+  }
 
-    const res = await app.request(`/v1/citas/clinica-dental-sonrisas/appointments/${appointment.id}/cancel`, { method: "POST", headers: { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret } });
-    expect(res.status).not.toBe(200);
-    expect((await ctx.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id))?.status).not.toBe("cancelled");
+  it("[DEFECTO] cancelar, reagendar o modificar por id con solo el secreto de plataforma (sin el telefono del cliente) no cambia la cita", async () => {
+    const { ctx, estado, llamar } = await conCitaDeAna();
+    const inicial = await estado();
+    const otroProveedor = randomUUID();
+    ctx.citasRepo.seedProvider({ id: otroProveedor, organizationId: ctx.organizationId, propertyId: null, displayName: "Otro", roleLabel: "Dentista", isActive: true });
+    ctx.citasRepo.seedProviderService(otroProveedor, ctx.serviceId);
+
+    expect((await llamar("cancel", undefined)).status).toBe(400);
+    expect((await llamar("cancel", {})).status).toBe(400);
+    expect((await llamar("reschedule", { new_starts_at: LUNES_10_MERIDA })).status).toBe(400);
+    expect((await llamar("reassign", { new_provider_id: otroProveedor })).status).toBe(400);
+    const despues = await estado();
+    expect(despues.status).toBe(inicial.status);
+    expect(despues.startsAt).toBe(inicial.startsAt);
+    expect(despues.providerId).toBe(inicial.providerId);
+  });
+
+  it("[DEFECTO] con el telefono de OTRO cliente responde 404 y la cita no cambia (igual que una cita inexistente)", async () => {
+    const { estado, llamar } = await conCitaDeAna();
+    const inicial = await estado();
+    expect((await llamar("cancel", { customer_phone: "9990009999" })).status).toBe(404);
+    expect((await llamar("reschedule", { customer_phone: "9990009999", new_starts_at: LUNES_10_MERIDA })).status).toBe(404);
+    expect((await estado()).status).toBe(inicial.status);
+  });
+
+  it("[CONTROL] con el telefono del dueno de la cita (en cualquier formato) cancela y reagenda", async () => {
+    const { estado, llamar } = await conCitaDeAna();
+    expect((await llamar("reschedule", { customer_phone: "+52 1 999 333 4455", new_starts_at: LUNES_10_MERIDA })).status).toBe(200);
+    expect((await estado()).startsAt).toBe(LUNES_10_MERIDA);
+    expect((await llamar("cancel", { customer_phone: "9993334455" })).status).toBe(200);
+    expect((await estado()).status).toBe("cancelled");
   });
 
   it("[CONTROL] la herramienta de voz cancelar_cita SI exige que la cita sea del telefono de la llamada", async () => {
