@@ -127,7 +127,7 @@ function DosPasosCard({ apiBaseUrl, token, onAviso, onError }: DosPasosCardProps
         {disponible && <StatusBadge tone={status.enabled ? "success" : status.pending ? "warning" : "neutral"}>{status.enabled ? "Activa" : status.pending ? "Pendiente" : "Inactiva"}</StatusBadge>}
       </div>
       <p className="mt-1 text-eyebrow text-muted-foreground">
-        Cerrar un periodo, crear o revocar enlaces del portal, exportar el paquete de contabilidad electrónica y gestionar al staff piden un código de tu app de autenticación (Google Authenticator, 1Password, Authy…).
+        Cerrar un periodo, crear o revocar enlaces del portal, exportar el paquete de contabilidad electrónica y gestionar al equipo piden un código de tu app de autenticación (Google Authenticator, 1Password, Authy…).
       </p>
       <div className="mt-2.5 flex flex-col gap-4">
         {!disponible && (
@@ -198,7 +198,7 @@ function DosPasosCard({ apiBaseUrl, token, onAviso, onError }: DosPasosCardProps
                 <FormField label="Tu contraseña actual">
                   <Input id="seguridad-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
                 </FormField>
-                <p className="text-eyebrow text-muted-foreground">Usa también el código de arriba (app o respaldo). Sin 2FA no podrás cerrar periodos, compartir el portal, exportar el paquete contable ni gestionar al staff.</p>
+                <p className="text-eyebrow text-muted-foreground">Usa también el código de arriba (app o respaldo). Sin 2FA no podrás cerrar periodos, compartir el portal, exportar el paquete contable ni gestionar al equipo.</p>
                 <Button type="submit" size="xs" variant="destructive" className="self-start" loading={ocupado === "desactivar"} disabled={ocupado !== null}>
                   Desactivar verificación en dos pasos
                 </Button>
