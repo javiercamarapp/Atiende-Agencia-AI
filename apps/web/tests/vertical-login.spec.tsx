@@ -152,7 +152,7 @@ describe("VerticalLogin", () => {
     });
   });
 
-  it("el aviso de Google no se inserta en el flujo: va absoluto en el hueco del separador", async () => {
+  it("el aviso de Google no se inserta en el flujo: va absoluto sobre el separador", async () => {
     verificarGoogle.mockResolvedValue(false);
     const c = await montar();
     expect(c.querySelector(".login-aviso-google")!.className).toContain("absolute");

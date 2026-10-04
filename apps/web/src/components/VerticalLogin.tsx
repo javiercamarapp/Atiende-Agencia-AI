@@ -155,16 +155,22 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
                         <GoogleIcon />
                         Continuar con Google
                       </button>
-                      {/* Absoluto en el hueco del separador: "Comprobando Google..." aparece y desaparece al cargar y no puede empujar nada. */}
-                      {!googleHabilitado && <p className="login-aviso-google absolute inset-x-0 top-full mt-1 text-xs leading-none text-muted-foreground">{avisoGoogle}</p>}
+                      {/* Sin separador (solo Google) el aviso va absoluto bajo el boton, sin ocupar lugar. */}
+                      {!googleHabilitado && !conMagicLink && <p className="login-aviso-google absolute inset-x-0 top-full mt-1 text-xs leading-none text-muted-foreground">{avisoGoogle}</p>}
                     </div>
                   )}
 
                   {conGoogle && conMagicLink && (
-                    <div className="login-entra [--retraso:250ms] login-separador my-6 flex items-center gap-4">
+                    <div className="login-entra [--retraso:250ms] login-separador relative my-6 flex items-center gap-4">
                       <span className="h-px flex-1 bg-border" />
                       <span className="text-ui lowercase text-faint">o</span>
                       <span className="h-px flex-1 bg-border" />
+                      {/* El aviso "Google pendiente / comprobando" se pinta SOBRE el separador (absoluto, con el fondo de la pagina): aparece y desaparece al cargar sin empujar nada. */}
+                      {!googleHabilitado && (
+                        <p className="login-aviso-google absolute inset-0 flex items-center justify-center">
+                          <span className="bg-background px-2 text-xs leading-none text-muted-foreground">{avisoGoogle}</span>
+                        </p>
+                      )}
                     </div>
                   )}
 
