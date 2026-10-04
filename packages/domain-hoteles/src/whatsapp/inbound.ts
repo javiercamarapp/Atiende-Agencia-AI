@@ -5,7 +5,7 @@
 // append atómico (whatsappAppendTurn), y redacción de datos sensibles ANTES de
 // guardar cualquier mensaje real del huésped. Partición por PROPERTY (no por
 // organización) — ver channel-config.ts.
-import { redactarDatosDePago } from "@atiende/core-pii";
+import { redactarDatosDePagoEIdentidad } from "@atiende/core-pii";
 import { actorHash } from "../rate-limit.ts";
 import type { HotelesRepository } from "../repository.ts";
 import type { ConversacionesSistemaPort } from "../conversaciones/tipos.ts";
@@ -15,8 +15,10 @@ import type { HotelesWhatsAppTurnHandler } from "./turn-handler.ts";
 // Mismo hallazgo real que documenta domain-restaurantes/whatsapp/inbound.ts: nunca
 // basta con que el agente PROMETA no guardar datos sensibles — hay que redactarlos
 // antes de persistir cualquier mensaje real, para que la promesa sea cierta.
+// Paridad3 (H-P3-03): ademas de los datos de pago, el huesped escribe CURP, RFC y pasaporte al hacer check-in por chat;
+// tambien se ocultan antes de guardar el mensaje (L-HIS-19).
 export function redactSensitiveInfo(text: string): string {
-  return redactarDatosDePago(text);
+  return redactarDatosDePagoEIdentidad(text);
 }
 
 export interface InboundMessageOutcome {
