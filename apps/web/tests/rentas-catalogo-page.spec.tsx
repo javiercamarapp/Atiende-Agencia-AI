@@ -3,14 +3,14 @@
 // Rn-19 -- <CatalogoPage />: gate de rol, solo lectura para operador/contador, alta de unidad y de propietario con su
 // payload real, validacion local de la estancia minima, y el mensaje real del servidor dentro del formulario abierto.
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { notify } from "@atiende/ui";
 import { CatalogoPage } from "../src/verticals/rentas/pages/Catalogo.tsx";
 import type { LoginSession } from "../src/lib/auth-client.ts";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
-let exito: ReturnType<typeof vi.spyOn>;
+let exito: MockInstance;
 beforeEach(() => {
   exito = vi.spyOn(notify, "success").mockImplementation((() => "") as never);
 });

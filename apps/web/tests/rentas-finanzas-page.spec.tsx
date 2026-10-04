@@ -4,14 +4,14 @@
 // confirmacion de dos pasos en CADA escritura irreversible (Cancelar NO llama al servidor y deja el formulario abierto),
 // error de la API con su mensaje real y los estados cargando / vacio de la tabla (DataTable).
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { notify } from "@atiende/ui";
 import { FinanzasPage } from "../src/verticals/rentas/pages/Finanzas.tsx";
 import type { LoginSession } from "../src/lib/auth-client.ts";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
-let exito: ReturnType<typeof vi.spyOn>;
+let exito: MockInstance;
 beforeEach(() => {
   exito = vi.spyOn(notify, "success").mockImplementation((() => "") as never);
 });
