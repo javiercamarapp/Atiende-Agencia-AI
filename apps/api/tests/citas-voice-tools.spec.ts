@@ -145,15 +145,15 @@ describe("derivar_a_humano", () => {
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);
     ctx.citasRepo.seedTenantConfig({ organizationId: ctx.organizationId, rubro: "psicologo", defaultTimezone: "America/Merida", ownerNotificationPhone: "+5219990001111" });
-    const crisis = await llamar(app, "derivar_a_humano", { telefono: "9993334444", llamada_id: "l-3", motivo: "crisis", resumen: "palabra_clave:quiero morirme" });
+    const crisis = await llamar(app, "derivar_a_humano", { telefono: "9993334444", llamada_id: "l-3", motivo: "crisis", resumen: "palabra_clave:ideación suicida" });
     expect(crisis.cuerpo).toMatchObject({ derivado: true, crisis: true, aviso_enviado: true });
     const esc = ctx.citasRepo.getEmergencyEscalations();
     expect(esc).toHaveLength(1);
-    expect(esc[0]).toMatchObject({ channel: "voice", customerPhone: "9993334444", keywordMatched: "quiero morirme", messageExcerpt: "" });
+    expect(esc[0]).toMatchObject({ channel: "voice", customerPhone: "9993334444", keywordMatched: "ideación suicida", messageExcerpt: "" });
     expect(ctx.citasRepo.getOutbox().some((o) => o.eventType === "crisis.escalated")).toBe(true);
 
-    ctx.citasRepo.seedTenantConfig({ organizationId: ctx.organizationId, rubro: "otro", defaultTimezone: "America/Merida", ownerNotificationPhone: "+5219990001111" });
-    const noSalud = await llamar(app, "derivar_a_humano", { telefono: "9993334444", llamada_id: "l-4", motivo: "crisis", resumen: "palabra_clave:quiero morirme" });
+    ctx.citasRepo.seedTenantConfig({ organizationId: ctx.organizationId, rubro: "barberia", defaultTimezone: "America/Merida", ownerNotificationPhone: "+5219990001111" });
+    const noSalud = await llamar(app, "derivar_a_humano", { telefono: "9993334444", llamada_id: "l-4", motivo: "crisis", resumen: "palabra_clave:ideación suicida" });
     expect(noSalud.cuerpo.crisis).toBe(false);
     expect(ctx.citasRepo.getEmergencyEscalations()).toHaveLength(1);
   });
@@ -189,9 +189,13 @@ describe("GET /v1/citas/:orgSlug/voz/contexto", () => {
     expect(c.instruccion).toContain("asistente automático");
     expect(c.pregrabados.saludo_respaldo).toContain("Clínica Dental Sonrisas");
 
+    // Un rubro explícito que no es de salud no lleva guardia; el rubro sin elegir ('otro') SÍ: un negocio de salud que no lo configuró no queda sin ella.
+    ctx.citasRepo.seedTenantConfig({ organizationId: ctx.organizationId, rubro: "barberia", defaultTimezone: "America/Merida", ownerNotificationPhone: null });
+    const barberia = (await (await app.request(`${BASE}/contexto`, { method: "GET", headers: SECRETO })).json()) as Json;
+    expect(barberia.guardiaCrisis).toBe(false);
     ctx.citasRepo.seedTenantConfig({ organizationId: ctx.organizationId, rubro: "otro", defaultTimezone: "America/Merida", ownerNotificationPhone: null });
     const otro = (await (await app.request(`${BASE}/contexto`, { method: "GET", headers: SECRETO })).json()) as Json;
-    expect(otro.guardiaCrisis).toBe(false);
+    expect(otro.guardiaCrisis).toBe(true);
   });
 
   it("404 con un negocio inexistente", async () => {

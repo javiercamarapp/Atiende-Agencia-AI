@@ -2,7 +2,7 @@
 // @atiende/voice-core (maquina de la llamada + controlador + ejecutor + guardia de crisis) y el motor real de agenda en memoria, y lo juzgan graders
 // deterministas. Los graders tambien se prueban en NEGATIVO: un agente que hace lo que no debe tiene que fallar.
 import { describe, expect, it } from "vitest";
-import { CRISIS_ESCALATION_MESSAGE } from "../../src/vertical-config.ts";
+import { CRISIS_VOICE_MESSAGE } from "../../src/vertical-config.ts";
 import { GUIONES_ES_MX, correrGuion, evaluarLlamada } from "../../src/voz/simulador/index.ts";
 import type { GuionLlamada } from "../../src/voz/simulador/index.ts";
 
@@ -63,12 +63,12 @@ describe("efectos reales de los guiones (no solo que pasen los graders)", () => 
 
   it("X01: la guardia habla el mensaje de crisis TAL CUAL, el modelo no recibe la frase (la escalacion la hace la guardia, no el modelo), no se agenda nada y solo el MOTIVO llega al log", async () => {
     const l = await correrGuion(guion("X01"));
-    expect(l.textosGuardia).toEqual([CRISIS_ESCALATION_MESSAGE]);
+    expect(l.textosGuardia).toEqual([CRISIS_VOICE_MESSAGE]);
     expect(l.tools.map((t) => t.nombre)).toEqual(["listar_servicios", "listar_proveedores"]);
     expect(l.resultado).toBe("escalado");
     const escalaciones = l.mundo.repo.getEmergencyEscalations();
     expect(escalaciones).toHaveLength(1);
-    expect(escalaciones[0]).toMatchObject({ channel: "voice", customerPhone: "9991230000", keywordMatched: "quiero morirme", messageExcerpt: "" });
+    expect(escalaciones[0]).toMatchObject({ channel: "voice", customerPhone: "9991230000", keywordMatched: "ideación suicida", messageExcerpt: "" });
     expect(JSON.stringify(l.logs)).not.toContain("morirme");
     expect(JSON.stringify(l.logs)).not.toContain("aguanto");
   });
