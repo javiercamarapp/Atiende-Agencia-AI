@@ -339,6 +339,8 @@ export interface Order {
    * seleccionan (la base puede no estar migrada) -- `repo.listOrderScheduleInfo` las lee aparte. */
   readonly programadoPara?: string | null;
   readonly promovidoAt?: string | null;
+  /** Solo la trae `listDeliveredOrdersForRepartidor` (columna `delivered_at` de la 001, que se fija al pasar a `entregado`). */
+  readonly deliveredAt?: string | null;
 }
 
 /** Datos de programacion de un pedido (migracion 034): hora para la que se pidio y cuando se promovio a `pending`. */
@@ -498,7 +500,7 @@ export interface CallbackRequestInput {
   readonly message?: string;
   readonly source: "voice" | "whatsapp" | "web" | "admin";
   /** Id opaco del evento que origino el aviso (id del mensaje de Meta o de la llamada, mas el motivo): el mismo evento nunca crea dos
-   * avisos (migracion 043). Solo lo usan los avisos del agente (`voice`/`whatsapp`). */
+   * avisos (migracion 047). Solo lo usan los avisos del agente (`voice`/`whatsapp`). */
   readonly sourceEventId?: string | null;
 }
 
@@ -638,7 +640,7 @@ export interface PromotionPatch {
 // en el schema base para ninguno de los dos — ver el comentario de cabecera de
 // esa migración).
 // ---------------------------------------------------------------------------
-export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion";
+export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion" | "exportacion";
 
 export interface RegistrarAuditoriaInput {
   readonly organizationId: string;

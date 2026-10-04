@@ -42,7 +42,7 @@ export function extractMetaTextMessages(payload: unknown): MetaTextMessage[] {
           /^\d{7,20}$/.test(message.from) &&
           typeof message.text?.body === "string" &&
           message.text.body.trim().length >= 1 &&
-          message.text.body.length <= 4000
+          message.text.body.length <= META_TEXT_MAX_CHARS
         ) {
           result.push(message as MetaTextMessage);
         }
@@ -63,6 +63,18 @@ export type MetaInboundMessage = {
    * cupo, el webhook la sustituye por la transcripcion (ver nota-de-voz.ts). Solo viene el id de media: los bytes no pasan por aqui. */
   readonly audio?: NotaDeVozEntrante;
 };
+
+/** Limite de caracteres de un mensaje de texto de WhatsApp (Meta). Un texto de 4,001 a 4,096 caracteres es valido: descartarlo en silencio dejaba al cliente sin respuesta. */
+export const META_TEXT_MAX_CHARS = 4096;
+
+/** Texto que el cliente toco en una respuesta de boton (`button`, plantillas con botones de respuesta rapida) o de mensaje interactivo
+ * (`button_reply` / `list_reply`): se trata como el mensaje que el cliente escribio. `null` si no trae texto utilizable. */
+function textoDeRespuestaInteractiva(message: { type?: unknown; button?: { text?: unknown }; interactive?: { type?: unknown; button_reply?: { title?: unknown }; list_reply?: { title?: unknown } } }): string | null {
+  let texto: unknown;
+  if (message.type === "button") texto = message.button?.text;
+  else if (message.type === "interactive") texto = message.interactive?.type === "button_reply" ? message.interactive.button_reply?.title : message.interactive?.type === "list_reply" ? message.interactive.list_reply?.title : undefined;
+  return typeof texto === "string" && texto.trim().length >= 1 && texto.length <= META_TEXT_MAX_CHARS ? texto : null;
+}
 
 const MEDIA_ID_RE = /^[0-9A-Za-z_-]{1,128}$/;
 
@@ -109,7 +121,7 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
           result.push({ id: text[0].id, from: text[0].from, body: text[0].text.body });
           continue;
         }
-        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown }; audio?: { id?: unknown; mime_type?: unknown }; edit?: { original_message_id?: unknown; message?: { type?: unknown; text?: { body?: unknown } } } };
+        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown }; audio?: { id?: unknown; mime_type?: unknown }; button?: { text?: unknown }; interactive?: { type?: unknown; button_reply?: { title?: unknown }; list_reply?: { title?: unknown } }; edit?: { original_message_id?: unknown; message?: { type?: unknown; text?: { body?: unknown } } } };
         // Edicion de un mensaje de texto (webhook `messages` con `type: "edit"`, documentado por Meta; NO probado contra Meta real). Entra como mensaje
         // nuevo con la nota de correccion: el historial no guarda el id de Meta de cada mensaje, asi que no se reemplaza el original.
         if (message.type === "edit" && typeof message.id === "string" && message.id.length >= 1 && message.id.length <= 255 && typeof message.from === "string" && /^\d{7,20}$/.test(message.from)) {
@@ -119,6 +131,12 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
           continue;
         }
         if (typeof message.id !== "string" || message.id.length < 1 || message.id.length > 255 || typeof message.from !== "string" || !/^\d{7,20}$/.test(message.from)) continue;
+        // Respuesta de boton / lista: el texto del boton es lo que el cliente "dijo" (antes se descartaba en silencio).
+        const respuesta = textoDeRespuestaInteractiva(message);
+        if (respuesta !== null) {
+          result.push({ id: message.id, from: message.from, body: respuesta });
+          continue;
+        }
         // Ubicacion valida: se guarda como marcador de texto estable (ver location.ts) que el turno relee para
         // asignar sucursal por km. Con coordenadas invalidas cae a la nota honesta de abajo (nunca se adivina).
         if (message.type === "location" && isValidCoordinate(message.location?.latitude, message.location?.longitude)) {

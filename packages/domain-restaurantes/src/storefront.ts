@@ -9,6 +9,7 @@
 // Todas las lecturas pasan por `repo.*`, que degradan con SAVEPOINT contra la base sin migrar.
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError, PromotionError } from "./errors.ts";
+import { MAX_PIEZAS_POR_RENGLON_WEB, mensajeCantidadInvalida } from "./order-quote.ts";
 import { estaAbiertoAhora } from "./horarios.ts";
 import { canonicalizeMexicanPhone } from "./phone.ts";
 import { extraerPackSize, requiresAdultConfirmation, requiresTortillaChoice } from "./product-search.ts";
@@ -136,6 +137,13 @@ export async function buildStorefrontMenu(repo: RestaurantesRepository, property
  * staff o integraciones historicas sigue sin ellas): direccion a domicilio, telefono mexicano de 10
  * digitos, forma de pago y promociones solo para recoger. Devuelve el input con el telefono canonico.
  */
+/** El checkout web conserva su tope de 100 piezas por renglon (no tiene la retencion de pedido grande de los canales de agente). */
+export function assertCantidadesWeb(cantidades: readonly unknown[]): void {
+  for (const q of cantidades) {
+    if (typeof q === "number" && q > MAX_PIEZAS_POR_RENGLON_WEB) throw new OrderValidationError(mensajeCantidadInvalida(q, MAX_PIEZAS_POR_RENGLON_WEB));
+  }
+}
+
 export function assertWebOrderRules(input: CreateOrderInput): CreateOrderInput {
   const canal: CanalPedido = input.canal === "recoger" ? "recoger" : "domicilio";
   if (input.canal !== undefined && input.canal !== "recoger" && input.canal !== "domicilio") {
@@ -152,6 +160,7 @@ export function assertWebOrderRules(input: CreateOrderInput): CreateOrderInput {
   if (canal === "domicilio" && typeof input.promoCode === "string" && input.promoCode.trim()) {
     throw new OrderValidationError("Las promociones solo aplican para pedidos que recoges en la sucursal.");
   }
+  assertCantidadesWeb(input.items.map((i) => i.requestedQuantity ?? i.quantity));
   return { ...input, customerPhone: phone, canal };
 }
 

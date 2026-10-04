@@ -1,5 +1,5 @@
 -- Fixtures + escenarios contra Postgres REAL (GRANT/RLS + funcion definer reales, nunca el repositorio en memoria) de
--- packages/domain-restaurantes/migrations/043_avisos_idempotentes_y_contadores_agente.sql (restaurantes.callback_registrar_agente).
+-- packages/domain-restaurantes/migrations/047_avisos_idempotentes_y_contadores_agente.sql (restaurantes.callback_registrar_agente).
 --
 -- Cada escenario corre en su propio `begin; ... rollback;` y TERMINA SIN ERROR si todo se cumple: las comprobaciones de valor son bloques
 -- `do $$ ... raise exception ... $$` (el gate de CI las juzga por ausencia de error), las de rechazo esperan el SQLSTATE exacto.

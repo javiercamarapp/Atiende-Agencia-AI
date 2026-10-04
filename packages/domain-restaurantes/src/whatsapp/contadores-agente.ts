@@ -1,7 +1,7 @@
 // Contadores DETERMINISTAS del agente de WhatsApp (rescate-orig-restaurantes-1 §3, P11 y P32). En voz la maquina de la llamada ya cuenta los
 // malentendidos (`malentendidosMax: 2`); en WhatsApp dependia de que el modelo siguiera el prompt ("colonia no reconocida dos veces -> escalar").
 // La clave `ubicacion_solicitada` lleva la cuenta de la solicitud del pin con el boton nativo (§5): se pide UNA sola vez por pedido.
-// Aqui el SERVIDOR cuenta, entre turnos (migracion 043, `whatsapp_conversations.agent_counters`), y al llegar a 2 escala por su cuenta.
+// Aqui el SERVIDOR cuenta, entre turnos (migracion 047, `whatsapp_conversations.agent_counters`), y al llegar a 2 escala por su cuenta.
 import type { RestaurantesRepository } from "../repository.ts";
 
 export type ClaveContadorAgente = "colonia_no_reconocida" | "no_entiende" | "ubicacion_solicitada";

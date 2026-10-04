@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL real -- mismo patrón que
 # scripts/verify-restaurantes-agente-config-callbacks/run.sh. Prueba
-# packages/domain-restaurantes/migrations/043_avisos_idempotentes_y_contadores_agente.sql
+# packages/domain-restaurantes/migrations/047_avisos_idempotentes_y_contadores_agente.sql
 # (indice unico por evento, dedupe por motivo y la funcion de solo-sistema callback_registrar_agente) contra RLS/GRANT/auth.uid() reales.
 #
 # Requiere `initdb`/`pg_ctl`/`psql` en PATH (Postgres instalado localmente — en este
@@ -45,7 +45,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 043_avisos_idempotentes_y_contadores_agente.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 047_avisos_idempotentes_y_contadores_agente.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

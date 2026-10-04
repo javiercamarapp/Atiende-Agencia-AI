@@ -1,7 +1,7 @@
 # verify-restaurantes-avisos-y-contadores-agente
 
-Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/043_avisos_idempotentes_y_contadores_agente.sql`
-(espejo: `supabase/migrations/20240101000321_043_avisos_idempotentes_y_contadores_agente.sql`), rescate-orig-restaurantes-1 §2.
+Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/047_avisos_idempotentes_y_contadores_agente.sql`
+(espejo: `supabase/migrations/20240101000321_047_avisos_idempotentes_y_contadores_agente.sql`), rescate-orig-restaurantes-1 §2.
 
 Cubre `restaurantes.callback_registrar_agente` (solo sistema) y las columnas/indices nuevos de `restaurantes.callback_requests` (parte A, escenarios A/S/C), y
 `restaurantes.whatsapp_contador_agente` con `whatsapp_conversations.agent_counters` (parte B, escenarios K: contadores de "no entiendo" y "colonia no reconocida"):
