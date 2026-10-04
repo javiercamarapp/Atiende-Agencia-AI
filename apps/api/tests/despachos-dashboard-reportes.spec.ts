@@ -235,6 +235,21 @@ describe("GET /despachos/:propertyId/reportes/:tipo", () => {
     expect(obl.filas.map((f) => f.fechaLimite)).toEqual(["2026-09-17"]);
   });
 
+  it("D-P3-05: impuestos lee el papel de pagos provisionales guardado; sin papel dice la verdad y no repite el motivo falso", async () => {
+    const app = buildApp(ctx.deps);
+    type R = { sinDatos: boolean; secciones: { titulo: string; sinDatosMotivo: string | null; filas: { impuesto?: string; estado?: string; determinado?: number; aCargo?: number }[] }[] };
+    const url = `/despachos/${ctx.propertyId}/reportes/impuestos?periodo=2026-08`;
+    const sin = (await (await app.request(url, authedJson(ctx.staff.contador.token))).json()) as R;
+    expect(sin.secciones[0]!.sinDatosMotivo).toBe("No se ha generado el papel de pagos provisionales de 2026-08: genéralo y guárdalo en Pagos provisionales para ver aquí el IVA y el ISR del periodo.");
+    expect(JSON.stringify(sin)).not.toContain("no persiste los CFDI emitidos");
+
+    await ctx.pagosRepo.guardarPapel(ctx.propertyId, { ejercicio: 2026, mes: 8, impuesto: "IVA", regimen: "601", baseCentavos: 1_000_000, determinadoCentavos: 160_000, acreditableCentavos: 64_000, aCargoCentavos: 96_000, aFavorCentavos: 0, parametros: {}, advertencias: 0 });
+    await ctx.pagosRepo.guardarPapel(ctx.propertyId, { ejercicio: 2026, mes: 7, impuesto: "IVA", regimen: "601", baseCentavos: 5, determinadoCentavos: 5, acreditableCentavos: 0, aCargoCentavos: 5, aFavorCentavos: 0, parametros: {}, advertencias: 0 });
+    const con = (await (await app.request(url, authedJson(ctx.staff.readonly.token))).json()) as R;
+    expect(con.sinDatos).toBe(false);
+    expect(con.secciones[0]!.filas).toEqual([expect.objectContaining({ impuesto: "IVA", estado: "Borrador", determinado: 1600, aCargo: 960 })]);
+  });
+
   it("formato=xlsx entrega un .xlsx real (ZIP OOXML) con content-type y nombre de archivo", async () => {
     await ingestar();
     const res = await buildApp(ctx.deps).request(`/despachos/${ctx.propertyId}/reportes/diot?periodo=2026-08&formato=xlsx`, authedJson(ctx.staff.contador.token));

@@ -559,7 +559,7 @@ export type { DiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
 export { TIPOS_REPORTE_CLIENTE, ETIQUETA_TIPO_REPORTE } from "./reportes/types.ts";
 export type { CeldaReporte, ColumnaReporte, ReporteCliente, ReporteTabular, SeccionReporte, TipoColumnaReporte, TipoReporteCliente } from "./reportes/types.ts";
 export { construirReporteBalanza, construirReporteCliente, construirReporteDiot, construirReporteImpuestos, construirReporteNomina } from "./reportes/builders.ts";
-export type { EntradaReporte } from "./reportes/builders.ts";
+export type { EntradaReporte, PapelesReporte } from "./reportes/builders.ts";
 export { crc32, crearZipStored, nombreHojaSeguro, reporteAXlsx, XLSX_CONTENT_TYPE } from "./reportes/xlsx.ts";
 export { leerKpisCliente, leerFuenteOpcional, MAX_PERIODOS_CIERRE_ABIERTOS } from "./dashboard/lectura.ts";
 export type { ClienteDashboardRef } from "./dashboard/lectura.ts";
