@@ -16,21 +16,66 @@
 import type { BranchSummary } from "../types.ts";
 
 const MONEY_TOKEN = "\\$\\s?\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?|\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?\\s*pesos\\b";
-const TOTAL_WITH_MONEY = new RegExp(`(total[^$\\d]{0,40})(${MONEY_TOKEN})`, "gi");
+// "total" como palabra completa: "Subtotal" NO es un total (con la promo 2x1 el subtotal legitimo difiere del total). El tramo entre
+// la palabra y la cifra no cruza el fin de la oracion: "total; el medio kilo va en $450" no reescribe el $450.
+const TOTAL_WITH_MONEY = new RegExp(`((?<![\\p{L}\\p{N}])total[^$\\d.;!?\\n]{0,40})(${MONEY_TOKEN})`, "giu");
+// Redacciones que presentan una cifra como LO QUE PAGA el cliente sin decir "total" ("le queda en $300", "$300 en total").
+const AMOUNT_INTENT = "(?:(?:le\\s+)?queda(?:n)?\\s+en|saldr[ií]a(?:n)?\\s+en)\\s+(?:un\\s+total\\s+de\\s+)?";
+const INTENT_WITH_MONEY = new RegExp(`(${AMOUNT_INTENT})(${MONEY_TOKEN})`, "giu");
+const MONEY_WITH_TOTAL_TAIL = new RegExp(`(${MONEY_TOKEN})(\\s*(?:pesos\\s+)?(?:en\\s+total|todo|total)(?![\\p{L}\\p{N}]))`, "giu");
 
 function parseMoneyToken(token: string): number {
   return Number(token.replace(/[^\d.]/g, ""));
 }
 
-/** Corrige cualquier cifra que acompane a la palabra "total" para que coincida con el ultimo total
- * REAL (cotizar_pedido / crear_pedido). No toca precios unitarios ni montos sin la palabra "total". */
-export function enforceQuotedTotal(reply: string, lastQuoteTotal: number | null): string {
+function formatMoney(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
+/** Corrige las cifras con que el modelo presenta el total para que coincidan con el ultimo total REAL
+ * (cotizar_pedido / crear_pedido): la cifra junto a la palabra "total" (no "subtotal") y, cuando se conocen
+ * las cifras legitimas de la cotizacion (`knownAmounts`: precios, importes de renglon, subtotal, descuento),
+ * tambien una cifra ajena presentada como lo que paga el cliente ("le queda en $300"). No toca precios
+ * unitarios ni importes de la cotizacion. */
+export function enforceQuotedTotal(reply: string, lastQuoteTotal: number | null, knownAmounts?: readonly number[]): string {
   if (lastQuoteTotal === null || !Number.isFinite(lastQuoteTotal)) return reply;
-  return reply.replace(TOTAL_WITH_MONEY, (full: string, prefix: string, moneyToken: string) => {
+  const isKnown = (stated: number) => Math.abs(stated - lastQuoteTotal) < 0.01 || (knownAmounts ?? []).some((a) => Math.abs(stated - a) < 0.01);
+  const porTotal = reply.replace(TOTAL_WITH_MONEY, (full: string, prefix: string, moneyToken: string) => {
     const stated = parseMoneyToken(moneyToken);
     if (!Number.isFinite(stated) || Math.abs(stated - lastQuoteTotal) < 0.01) return full;
-    return `${prefix}$${lastQuoteTotal.toFixed(2)}`;
+    return `${prefix}${formatMoney(lastQuoteTotal)}`;
   });
+  if (!knownAmounts || knownAmounts.length === 0) return porTotal;
+  const porIntencion = porTotal.replace(INTENT_WITH_MONEY, (full: string, prefix: string, moneyToken: string) => {
+    const stated = parseMoneyToken(moneyToken);
+    return !Number.isFinite(stated) || isKnown(stated) ? full : `${prefix}${formatMoney(lastQuoteTotal)}`;
+  });
+  return porIntencion.replace(MONEY_WITH_TOTAL_TAIL, (full: string, moneyToken: string, tail: string) => {
+    const stated = parseMoneyToken(moneyToken);
+    return !Number.isFinite(stated) || isKnown(stated) ? full : `${formatMoney(lastQuoteTotal)}${tail}`;
+  });
+}
+
+/** Cifras legitimas de una cotizacion (wire o dominio): precio y importe de cada renglon, subtotal, descuento y total. */
+export function knownAmountsOfQuote(quote: {
+  readonly total?: unknown;
+  readonly subtotal?: unknown;
+  readonly descuento?: unknown;
+  readonly lines?: readonly { readonly price?: unknown; readonly line_total?: unknown; readonly lineTotal?: unknown }[];
+}): number[] {
+  const out: number[] = [];
+  const push = (v: unknown) => {
+    if (typeof v === "number" && Number.isFinite(v)) out.push(v);
+  };
+  push(quote.total);
+  push(quote.subtotal);
+  push(quote.descuento);
+  for (const line of quote.lines ?? []) {
+    push(line.price);
+    push(line.line_total);
+    push(line.lineTotal);
+  }
+  return [...new Set(out)];
 }
 
 export function pendingQuestionForMissingData(branchKnown: boolean, orderId: string | null): string | null {
