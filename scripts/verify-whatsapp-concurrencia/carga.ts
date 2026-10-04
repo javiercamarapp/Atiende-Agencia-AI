@@ -136,6 +136,47 @@ for (const n of NIVELES) {
   exigir(despues === antes, `reenvio del mismo message.id: ninguna respuesta duplicada (${despues - antes} nuevas)`);
 }
 
+// Fase 2: pedido de punta a punta por canal con el rol y la sesion EXACTOS de produccion (authenticated, auth.uid() NULL).
+// Antes de la migracion 043 cada uno de estos pasos fallaba con "permission denied for table customers".
+{
+  const ORG_SLUG = "carga-whatsapp";
+  const PRODUCTO = "00000000-0000-4000-8000-0000000e0d01";
+  const WEB = { origin: "http://localhost:5173", "content-type": "application/json" };
+  const VOZ = { "x-atiende-tool-secret": process.env.VOICE_TOOL_SECRET ?? "", "content-type": "application/json" };
+  const pedir = async (headers: Record<string, string>, body: Record<string, unknown>): Promise<{ status: number; json: Record<string, any> }> => {
+    const r = await app.fetch(new Request(`http://local/v1/restaurantes/${ORG_SLUG}/orders`, { method: "POST", headers, body: JSON.stringify({ branch_slug: "sucursal-carga", items: [{ product_id: PRODUCTO, requested_quantity: 2 }], ...body }) }));
+    return { status: r.status, json: (await r.json().catch(() => ({}))) as Record<string, any> };
+  };
+  const telWeb = `99${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
+  const telVoz = `99${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
+
+  // Canal web: cliente NUEVO a domicilio.
+  const w1 = await pedir(WEB, { customer_name: "Cliente Web", customer_phone: telWeb, customer_address: "Calle 10 #100", payment_method: "efectivo", source: "web", canal: "domicilio" });
+  exigir(w1.status === 200 && Boolean(w1.json.order?.id), `canal web, cliente nuevo a domicilio: HTTP ${w1.status} con pedido creado${w1.status !== 200 ? ` (${JSON.stringify(w1.json).slice(0, 160)})` : ""}`);
+  const cw = await cliente.query("select id, order_count from restaurantes.customers where organization_id = $1 and phone like $2", [ORG_ID, `%${telWeb}`]);
+  exigir(cw.rowCount === 1 && cw.rows[0].order_count === 1, "canal web: el cliente nuevo quedo registrado con order_count = 1");
+  // Canal web: cliente EXISTENTE con otra direccion.
+  const w2 = await pedir(WEB, { customer_name: "Cliente Web", customer_phone: telWeb, customer_address: "Calle 20 #200", payment_method: "tarjeta", source: "web", canal: "domicilio", notes: "segundo pedido" });
+  exigir(w2.status === 200 && Boolean(w2.json.order?.id), `canal web, cliente existente con otra direccion: HTTP ${w2.status}`);
+  const direcciones = await contar(`select count(*)::int as n from restaurantes.customer_addresses a join restaurantes.customers c on c.id = a.customer_id where c.organization_id = '${ORG_ID}' and c.phone like '%${telWeb}'`);
+  const clientes = await contar(`select count(*)::int as n from restaurantes.customers where organization_id = '${ORG_ID}' and phone like '%${telWeb}'`);
+  exigir(clientes === 1 && direcciones === 2, `canal web: un solo cliente con 2 direcciones (${clientes} cliente(s), ${direcciones} direccion(es))`);
+
+  // Canal voz (secreto de herramienta): cliente nuevo, domicilio.
+  const v1 = await pedir(VOZ, { customer_name: "Cliente Voz", customer_phone: telVoz, customer_address: "Calle 30 #300", payment_method: "efectivo", source: "voice", canal: "domicilio" });
+  exigir(v1.status === 200 && Boolean(v1.json.order?.id), `canal voz, cliente nuevo a domicilio: HTTP ${v1.status}${v1.status !== 200 ? ` (${JSON.stringify(v1.json).slice(0, 160)})` : ""}`);
+  const pedidosVoz = await contar(`select count(*)::int as n from restaurantes.orders where organization_id = '${ORG_ID}' and source = 'voice' and customer_phone like '%${telVoz}'`);
+  exigir(pedidosVoz === 1, "canal voz: exactamente un pedido guardado");
+
+  // Aviso "devolver la llamada" / escalar a humano (agentes de voz y WhatsApp) por el repositorio real y su sesion de sistema.
+  const { registerCallbackRequest } = await import("../../packages/domain-restaurantes/src/index.ts");
+  const aviso = await prod.engine.withAppSession({ userId: null }, (db) =>
+    registerCallbackRequest(prod.restaurantesRepo(db), { organizationId: ORG_ID, propertyId: "00000000-0000-0000-0000-0000000e0b01", customerName: "Cliente Aviso", customerPhone: "+529990001234", reason: "queja", message: "Prueba de aviso", source: "whatsapp" }),
+  );
+  exigir(Boolean(aviso.id), "aviso (escalar_a_humano / registrar_contacto): creado por la sesion de sistema");
+  exigir((await contar(`select count(*)::int as n from restaurantes.callback_requests where organization_id = '${ORG_ID}' and customer_phone = '+529990001234'`)) === 1, "aviso: una sola fila guardada");
+}
+
 console.log(`llamadas al LLM simulado: ${llamadasLlm}; mensajes enviados a la Graph simulada: ${salientes}`);
 await cliente.end();
 console.log(fallos === 0 ? "verify-whatsapp-concurrencia: TODO OK" : `verify-whatsapp-concurrencia: ${fallos} comprobaciones FALLARON`);
