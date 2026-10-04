@@ -62,6 +62,8 @@ import type {
   RestaurantesAuditLogRow,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
+  StorefrontMarca,
+  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
   StorefrontTrackingResult,
@@ -291,6 +293,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly addresses = new Map<string, CustomerAddress[]>();
   private readonly orders: StoredOrder[] = [];
   private readonly knownZones: StoredKnownZone[] = [];
+  private readonly storefrontMarcas = new Map<string, StorefrontMarca>();
   private readonly callbackRequests: CallbackRequest[] = [];
   private readonly contadoresAgente = new Map<string, { n: number; at: number }>();
   /** Ids de evento agregados como nota a un aviso (migracion 047, `eventos_agrupados`). */
@@ -887,6 +890,11 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   /** Solo pruebas: los avisos (callbacks) de la organizacion, tal como quedaron (con las notas agregadas en `message`). */
   listCallbackRequests(organizationId: string): readonly CallbackRequest[] {
     return this.callbackRequests.filter((c) => c.organizationId === organizationId);
+  }
+
+  /** Solo para pruebas: las solicitudes de contacto registradas (en orden de creacion). */
+  peekCallbackRequests(): readonly CallbackRequest[] {
+    return this.callbackRequests;
   }
 
   /** Mismas reglas que `restaurantes.callback_registrar_agente` (migracion 047) para los avisos del agente (`voice`/`whatsapp`): el mismo
@@ -1705,6 +1713,16 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     }
     this.phoneNumberIdToOrg.set(phoneNumberId, organizationId);
     return { phoneNumberId };
+  }
+
+  async findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null> {
+    return this.storefrontMarcas.get(organizationId) ?? null;
+  }
+
+  async upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca> {
+    const guardada: StorefrontMarca = { ...input, updatedAt: new Date().toISOString() };
+    this.storefrontMarcas.set(organizationId, guardada);
+    return guardada;
   }
 
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {

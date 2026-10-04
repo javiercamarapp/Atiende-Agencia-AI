@@ -56,6 +56,8 @@ import type {
   RestaurantesAuditLogPaginacion,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
+  StorefrontMarca,
+  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
   StorefrontTrackingResult,
@@ -530,6 +532,15 @@ export interface RestaurantesRepository {
   /** Alta o reemplazo del número conectado (`ON CONFLICT` por `organization_id`,
    *  primary key de la tabla) -- nunca dos filas por organización. */
   upsertWhatsappChannelConfig(organizationId: string, phoneNumberId: string): Promise<WhatsappChannelConfig>;
+
+  // ---- R-38 (migración 062): marca pública del storefront ----
+
+  /** Marca de la organización; `null` si nunca se guardó O si la base aún no tiene la migración 062 (la portada pública cae a una
+   *  genérica con el nombre del restaurante). Nunca lanza por tabla/columna ausente. */
+  findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null>;
+  /** Alta o reemplazo completo de la marca (owner/admin por RLS). Lanza `RestaurantesConfigUnavailableError` si la base aún no tiene
+   *  la migración 062 (la ruta responde 503, nunca 500). */
+  upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca>;
 
   /** Más reciente primero -- orden total (ver `created_at desc, id desc`, mismo
    *  criterio de desempate que `restaurantes.audit_log` para paginación estable). */

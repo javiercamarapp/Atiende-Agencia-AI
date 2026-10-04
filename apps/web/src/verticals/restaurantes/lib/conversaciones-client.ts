@@ -121,6 +121,7 @@ export interface SlaCallbackWire {
 /** Motivo legible: `escalada:queja` (lo que deja escalar_a_humano) -> "Escalada: queja". */
 export function textoMotivoCallback(motivo: string | null): string | null {
   if (!motivo) return null;
+  if (motivo === "evento") return "Evento o catering";
   return motivo.startsWith("escalada:") ? `Escalada: ${motivo.slice("escalada:".length).replace(/_/g, " ")}` : motivo;
 }
 

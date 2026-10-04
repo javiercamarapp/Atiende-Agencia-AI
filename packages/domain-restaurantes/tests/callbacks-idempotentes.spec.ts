@@ -104,6 +104,8 @@ describe("Postgres: compatibilidad con la base SIN migrar (REGLA DURA, SAVEPOINT
   it("la funcion no existe (42883): cae al INSERT de siempre, la MISMA sesion sigue viva (sin 25P02) y el aviso queda registrado", async () => {
     const session = new AbortAwareFakeSession([
       { match: REGISTRAR, respond: () => pgError("42883", "function restaurantes.callback_registrar_agente does not exist") },
+      // Tras la funcion del agente (047) el camino general prueba `callback_registrar` (062); sin ella tampoco, el INSERT de siempre.
+      { match: /callback_registrar\(/i, respond: () => pgError("42883", "function restaurantes.callback_registrar does not exist") },
       { match: INSERT_CALLBACK, respond: () => [{ id: CB, resolved: false, created_at: "2026-10-01T10:00:00.000Z" }] },
       { match: EMITIR, respond: () => [{ emit_notification: 1 }] },
       SIGUIENTE,
@@ -141,8 +143,9 @@ describe("Postgres: compatibilidad con la base SIN migrar (REGLA DURA, SAVEPOINT
     }
   });
 
-  it("los avisos web y admin conservan el INSERT de siempre (no pasan por la funcion del agente)", async () => {
+  it("los avisos web y admin siguen el camino general (callback_registrar de la 062 / INSERT), no la funcion del agente", async () => {
     const session = new AbortAwareFakeSession([
+      { match: /callback_registrar\(/i, respond: () => [{ id: CB, resolved: false, created_at: "2026-10-01T10:00:00.000Z" }] },
       { match: INSERT_CALLBACK, respond: () => [{ id: CB, resolved: false, created_at: "2026-10-01T10:00:00.000Z" }] },
       { match: EMITIR, respond: () => [{ emit_notification: 1 }] },
     ]);

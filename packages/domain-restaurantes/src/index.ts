@@ -1,4 +1,4 @@
-export type { StorefrontCatalogRow, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
+export type { StorefrontCatalogRow, StorefrontMarca, StorefrontMarcaInput, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
 export { buildStorefrontBranches, buildStorefrontMenu, groupStorefrontMenu, assertWebOrderRules, previewPromotion } from "./storefront.ts";
 export type { StorefrontBranchView, StorefrontMenuCategory, StorefrontMenuItem, PromotionPreview } from "./storefront.ts";
 export type {
@@ -164,6 +164,17 @@ export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJ
 export type { EmailDispatchSummary, ResendConfig } from "./email-dispatch.ts";
 
 export { registerCallbackRequest } from "./callback-requests.ts";
+export {
+  EVENTO_LIMITES,
+  MARCA_LIMITES,
+  MARCA_VACIA,
+  StorefrontValidationError,
+  buildStorefrontPromociones,
+  enlaceWhatsapp,
+  validarMarca,
+  validarSolicitudEvento,
+} from "./storefront-marca.ts";
+export type { SolicitudEventoValidada, StorefrontPromocionView } from "./storefront-marca.ts";
 
 export { findNearestBranch, normalizeZoneText, haversineKm, COLONIA_NO_RECONOCIDA_MENSAJE } from "./nearest-branch.ts";
 export type { NearestBranchResult } from "./nearest-branch.ts";
