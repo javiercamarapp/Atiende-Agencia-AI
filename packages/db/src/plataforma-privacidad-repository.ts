@@ -138,6 +138,15 @@ export interface ArcoQuery {
   readonly offset: number;
 }
 
+/**
+ * Seudonimos (con la llave del servidor) de un telefono, tal como los guarda cada canal. La base no conoce esa llave: la purga de
+ * las clases de voz los recibe ya calculados para no borrar a titulares con solicitud ARCO abierta (QA R1 seguridad-08).
+ */
+export type SeudonimosDeTelefono = (telefono: string) => readonly string[];
+
+/** Clase cuya proteccion ARCO depende de los seudonimos de voz que calcula el servidor. */
+const CLASE_VOZ = "restaurantes_voz_transcripciones";
+
 export interface PlataformaPrivacidadRepository {
   /** STAFF owner/admin (el SQL devuelve cero filas a cualquier otro). */
   orgListArco(orgId: string, query: ArcoQuery): Promise<ArcoPage>;
@@ -156,7 +165,7 @@ export interface PlataformaPrivacidadRepository {
   platformOverview(callerId: string, limit: number, offset: number): Promise<{ availability: PrivacidadAvailability; total: number; items: readonly PrivacyOverviewRow[] }>;
   platformListPurgeRuns(callerId: string, limit: number, beforeSeq: number | null): Promise<{ availability: PrivacidadAvailability; items: readonly PurgeRunRow[] }>;
   /** SOLO SISTEMA (`withAppSession({ userId: null })`). Una organizacion y una clase por llamada. */
-  runRetentionPurge(orgId: string, dataClass: string, dryRun: boolean, limit: number): Promise<{ availability: PrivacidadAvailability; result: PurgeRunResult | null }>;
+  runRetentionPurge(orgId: string, dataClass: string, dryRun: boolean, limit: number, seudonimosDeTelefono?: SeudonimosDeTelefono): Promise<{ availability: PrivacidadAvailability; result: PurgeRunResult | null }>;
   /** SOLO SISTEMA. Pares (organizacion, clase) que la plataforma purga, por paginas de organizaciones (cursor = ultimo id). */
   listPurgeTargets(afterOrgId: string | null, orgLimit: number, onlyOrgId?: string | null): Promise<{ availability: PrivacidadAvailability; targets: readonly PurgeTarget[] }>;
 }
@@ -539,18 +548,40 @@ export class PostgresPlataformaPrivacidadRepository implements PlataformaPrivaci
     );
   }
 
-  runRetentionPurge(orgId: string, dataClass: string, dryRun: boolean, limit: number) {
+  runRetentionPurge(orgId: string, dataClass: string, dryRun: boolean, limit: number, seudonimosDeTelefono?: SeudonimosDeTelefono) {
+    type Fila = {
+      out_run_id: string;
+      out_status: PurgeStatus;
+      out_retention_days: number;
+      out_rows_affected: number;
+      out_rows_anonymized: number;
+      out_rows_protected: number;
+    };
+    const cols = "select * from core.system_run_retention_purge";
+    // Camino de la migracion 041: recibe los seudonimos HMAC de los titulares con ARCO abierta. Si esa firma no existe aun
+    // (base con la 0036 y sin la 041: 42883) o no existe la lista de telefonos (42883), cae a la de 4 argumentos DENTRO de un
+    // savepoint (la transaccion de la unidad no queda abortada).
+    const corre4 = () => this.db.query<Fila>(`${cols}($1, $2, $3, $4::int);`, [orgId, dataClass, dryRun, limit]);
+    const corre = async (): Promise<readonly Fila[]> => {
+      if (!seudonimosDeTelefono || dataClass !== CLASE_VOZ) return (await corre4()).rows;
+      return runWithSavepointFallback<readonly Fila[]>({
+        session: this.db,
+        primary: async () => {
+          const { rows: abiertas } = await this.db.query<{ out_customer_phone: string }>(
+            `select out_customer_phone from restaurantes.system_list_open_arco_phones($1::int, $2);`,
+            [5000, orgId],
+          );
+          const hashes = [...new Set(abiertas.flatMap((a) => seudonimosDeTelefono(a.out_customer_phone)))];
+          return (await this.db.query<Fila>(`${cols}($1, $2, $3, $4::int, $5::text[]);`, [orgId, dataClass, dryRun, limit, hashes])).rows;
+        },
+        isRecoverable: (err) => isMigrationPendingError(err),
+        fallback: async () => (await corre4()).rows,
+      });
+    };
     return guarded(
       this.db,
       async () => {
-        const { rows } = await this.db.query<{
-          out_run_id: string;
-          out_status: PurgeStatus;
-          out_retention_days: number;
-          out_rows_affected: number;
-          out_rows_anonymized: number;
-          out_rows_protected: number;
-        }>(`select * from core.system_run_retention_purge($1, $2, $3, $4::int);`, [orgId, dataClass, dryRun, limit]);
+        const rows = await corre();
         const r = rows[0];
         return {
           availability: "available" as const,
@@ -777,7 +808,7 @@ export class InMemoryPlataformaPrivacidadRepository implements PlataformaPrivaci
     return { availability: "available" as const, items: this.runs.filter((r) => beforeSeq === null || r.seq < beforeSeq).sort((a, b) => b.seq - a.seq).slice(0, limit).map(({ orgId: _o, ...r }) => r) };
   }
 
-  async runRetentionPurge(orgId: string, dataClass: string, dryRun: boolean, _limit: number) {
+  async runRetentionPurge(orgId: string, dataClass: string, dryRun: boolean, _limit: number, _seudonimos?: SeudonimosDeTelefono) {
     if (!this.migrado) return { availability: "not_migrated" as const, result: null as PurgeRunResult | null };
     const c = this.classOf(dataClass);
     if (!c) throw new PlataformaPrivacidadError("system_run_retention_purge: clase de dato desconocida", "invalid");
