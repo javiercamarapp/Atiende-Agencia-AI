@@ -372,7 +372,7 @@ describe("Conciliacion -- D-P3-10/11/12: guardadas, ambiguo, sin conciliar, revi
     expect(boton("Deshacer")).toBeDefined();
   });
 
-  it("el interruptor del piloto: el admin lo cambia (PUT con el booleano); contador y solo lectura solo ven el estado", async () => {
+  it("el interruptor del piloto: el admin lo cambia (PUT con el booleano); contador y solo lectura no lo ven (la API es solo de admin)", async () => {
     stubFetch({ configuracion: { autoconfirmarNivel1: false } });
     rendered = await montar("admin");
     const sw = document.body.querySelector('button[role="switch"][aria-label="Piloto automático de nivel 1"]') as HTMLButtonElement;
@@ -390,8 +390,8 @@ describe("Conciliacion -- D-P3-10/11/12: guardadas, ambiguo, sin conciliar, revi
     stubFetch({ configuracion: { autoconfirmarNivel1: true } });
     rendered = await montar("contador");
     expect(document.body.querySelector('button[role="switch"]')).toBeNull();
-    expect(rendered.container.textContent).toContain("Piloto automático de nivel 1");
-    expect(rendered.container.textContent).toContain("Encendido");
+    expect(rendered.container.textContent).not.toContain("Piloto automático de nivel 1");
+    expect(llamadas.some((l) => l.url.endsWith("/conciliacion/configuracion"))).toBe(false); // ni siquiera se pide: la API es solo de admin
   });
 
   it("si el servidor rechaza el cambio del piloto (503 sin la migración 025) el interruptor NO cambia y se dice el motivo", async () => {

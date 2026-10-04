@@ -413,11 +413,13 @@ describe("D-P3-12: piloto automático al guardar un estado de cuenta", () => {
     expect(((await r.json()) as RespuestaGuardar).insertados).toBe(1);
   });
 
-  it("la bandera la cambia solo el admin (403 contador/readonly), la lee quien ve conciliación y valida el cuerpo", async () => {
+  it("la bandera la cambia solo el admin (403 contador/readonly), la lee solo el admin (403 contador, auditor y solo lectura) y valida el cuerpo", async () => {
     expect((await put(ctx.staff.contador.token, "configuracion", { autoconfirmarNivel1: true })).status).toBe(403);
     expect((await put(ctx.staff.readonly.token, "configuracion", { autoconfirmarNivel1: true })).status).toBe(403);
     expect((await put(admin(), "configuracion", { autoconfirmarNivel1: "si" })).status).toBe(400);
-    expect((await get(ctx.staff.readonly.token, "configuracion")).status).toBe(200);
+    expect((await get(ctx.staff.readonly.token, "configuracion")).status).toBe(403);
+    expect((await get(ctx.staff.auditor.token, "configuracion")).status).toBe(403);
+    expect((await get(ctx.staff.contador.token, "configuracion")).status).toBe(403);
     expect((await put(admin(), "configuracion", { autoconfirmarNivel1: true })).status).toBe(200);
     expect(((await (await get(admin(), "configuracion")).json()) as { autoconfirmarNivel1: boolean }).autoconfirmarNivel1).toBe(true);
   });

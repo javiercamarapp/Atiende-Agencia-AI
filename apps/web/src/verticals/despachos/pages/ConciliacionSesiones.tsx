@@ -114,14 +114,18 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
   }, [cargarLista]);
 
   useEffect(() => {
+    if (!esAdmin) {
+      setPiloto({ cargado: false, activo: false });
+      return;
+    }
     let vigente = true;
     leerConfiguracionConciliacion(fetch, apiBaseUrl, token, propertyId)
       .then((c) => vigente && setPiloto({ cargado: true, activo: c.autoconfirmarNivel1 }))
-      .catch(() => vigente && setPiloto({ cargado: false, activo: false })); // sin dato no se muestra un interruptor que no sabemos si funciona
+      .catch(() => vigente && setPiloto({ cargado: false, activo: false })); // sin dato (rol de solo lectura: 403, base sin migrar, error) no se muestra un interruptor que no sabemos si funciona
     return () => {
       vigente = false;
     };
-  }, [apiBaseUrl, token, propertyId]);
+  }, [apiBaseUrl, token, propertyId, esAdmin]);
 
   async function cambiarPiloto(activo: boolean) {
     setGuardandoPiloto(true);
@@ -283,11 +287,7 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
                 Nunca confirma grupos, cruces aproximados ni sugerencias de IA; cada uno queda en la bitácora y se puede deshacer con motivo.
               </p>
             </div>
-            {esAdmin ? (
-              <Switch aria-label="Piloto automático de nivel 1" checked={piloto.activo} disabled={guardandoPiloto} onCheckedChange={(v) => void cambiarPiloto(v)} />
-            ) : (
-              <StatusBadge tone={piloto.activo ? "success" : "neutral"}>{piloto.activo ? "Encendido" : "Apagado"}</StatusBadge>
-            )}
+            <Switch aria-label="Piloto automático de nivel 1" checked={piloto.activo} disabled={guardandoPiloto} onCheckedChange={(v) => void cambiarPiloto(v)} />
           </div>
         )}
 

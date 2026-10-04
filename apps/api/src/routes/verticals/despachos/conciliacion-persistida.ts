@@ -6,7 +6,7 @@
 //  GET  /despachos/:propertyId/conciliacion/sesiones/:id                    detalle: movimientos, propuestas del motor, matches, sugerencias
 //  POST /despachos/:propertyId/conciliacion/sesiones/:id/recalcular        recalcula el motor y GUARDA las propuestas en la sesión (el GET ya no recorre el motor)
 //  POST /despachos/:propertyId/conciliacion/sesiones/:id/confirmar          confirma pares (el servidor verifica CADA par con el motor, acotado al par; nunca confía en el cliente)
-//  GET/PUT /despachos/:propertyId/conciliacion/configuracion                 bandera del piloto automático de nivel 1 (apagada por omisión; solo el admin la cambia)
+//  GET/PUT /despachos/:propertyId/conciliacion/configuracion                 bandera del piloto automático de nivel 1 (apagada por omisión; solo el admin la lee y la cambia)
 //  POST /despachos/:propertyId/conciliacion/sesiones/:id/cerrar             cierra la sesión (idempotente)
 //  POST /despachos/:propertyId/conciliacion/matches/:matchId/deshacer       deshace un match (motivo obligatorio, idempotente)
 //  POST /despachos/:propertyId/conciliacion/sesiones/:id/sugerencias-llm    nivel 4: el modelo SUGIERE; 503 honesto sin gateway
@@ -395,9 +395,10 @@ export function registrarConciliacionPersistida(app: Hono<CoreAuthHonoEnv>, deps
   app.post("/despachos/:propertyId/conciliacion/sugerencias/:id/aprobar", (c) => resolver(c, true));
   app.post("/despachos/:propertyId/conciliacion/sugerencias/:id/rechazar", (c) => resolver(c, false));
 
-  // D-P3-12: bandera del piloto automático de nivel 1 (apagada por omisión). Ver = quien ve conciliación; cambiarla = SOLO el admin del despacho (la base repite el guard por RLS).
+  // D-P3-12: bandera del piloto automático de nivel 1 (apagada por omisión). Leerla y cambiarla = SOLO el admin del despacho (una ruta de configuración es de alto impacto, D-15; la base
+  // repite el guard del cambio por RLS). El piloto en sí lo ejecuta el servidor al guardar un estado de cuenta, no depende de que alguien lea la bandera.
   app.get("/despachos/:propertyId/conciliacion/configuracion", async (c) => {
-    assertVerticalRole(c, VER_CONCILIACION_ROLES);
+    assertVerticalRole(c, ADMIN_ROLES);
     return c.json(await piloto.leerConfiguracion(c, c.req.param("propertyId")));
   });
   app.put("/despachos/:propertyId/conciliacion/configuracion", async (c) => {
