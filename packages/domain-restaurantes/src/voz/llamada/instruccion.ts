@@ -40,7 +40,9 @@ export async function armarInstruccionLlamada(repo: RestaurantesRepository, e: E
   const config = await resolveAgentConfig(repo, e.organizationId, e.propertyId);
   const zonaHoraria = config.timezone || PM_CONFIG_POR_OMISION.timezone;
   const editable = e.config.configurada ? e.config.comportamiento.trim() : "";
-  const [branches, entrada] = await Promise.all([repo.listBranchesForOrganization(e.organizationId), repo.findBranchById(e.organizationId, e.propertyId)]);
+  // Secuencial a proposito: ambas consultas comparten la sesion (una sola transaccion); si alguna pasa a usar SAVEPOINT, en paralelo se entrelazarian.
+  const branches = await repo.listBranchesForOrganization(e.organizationId);
+  const entrada = await repo.findBranchById(e.organizationId, e.propertyId);
   // Solo el comportamiento editado necesita al cliente en el texto: sin el, no se hace una consulta de historial que el prompt no usa.
   const cliente: CustomerLookupResult = editable !== "" && e.telefono ? await lookupCustomerConPedidoReciente(repo, e.organizationId, e.telefono, e.ahora) : { isNew: true };
   const fechaHora = new Intl.DateTimeFormat("es-MX", { timeZone: zonaHoraria, dateStyle: "long", timeStyle: "short", hourCycle: "h23" }).format(e.ahora);
