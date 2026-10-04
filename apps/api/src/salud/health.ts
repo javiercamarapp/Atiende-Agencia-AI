@@ -88,6 +88,13 @@ export const CADENCIA_ALTA_FRECUENCIA_MIN = 15;
 /** Un latido mas viejo que este multiplo de la cadencia del cron cuenta como atrasado. */
 export const FACTOR_ATRASO_CRON = 3;
 
+/** Pura. Cuantos crons declarados de alta frecuencia (cadencia <= 15 min) no tienen NINGUN latido. */
+export function contarCronsAltaFrecuenciaSinLatido(filas: readonly CronHeartbeatRow[]): number {
+  const cadencias = cadenciaMinutosPorRuta();
+  const conLatido = new Set(filas.filter((f) => f.lastFinishedAt !== null && !Number.isNaN(new Date(f.lastFinishedAt).getTime())).map((f) => f.cronName));
+  return rutasDeCronDeclaradas().filter((r) => (cadencias[r] ?? 0) > 0 && (cadencias[r] ?? 0) <= CADENCIA_ALTA_FRECUENCIA_MIN && !conLatido.has(r)).length;
+}
+
 /** Pura. `filas === null` (no se pudo leer) => `sin_medir`. Solo mira los crons declarados en `vercel.json`: un latido de un path que
  *  ya no existe no cuenta, y un cron sin cadencia determinable (0) nunca se declara atrasado ni sin latido. `sin_latido` gana a `atrasados`. */
 export function resumirCronsPublico(filas: readonly CronHeartbeatRow[] | null, ahora: Date): SenalCronsPublica {
