@@ -5,7 +5,7 @@ import { ControladorLlamada as ControladorCore } from "@atiende/voice-core";
 import type { DepsControlador as DepsCore, EventoKpiLlamada, ResultadoLlamada as ResultadoCore, TurnoTranscrito } from "@atiende/voice-core";
 import { comoEjecutorCore } from "./ejecutor-tools.ts";
 import type { EjecutorTools } from "./ejecutor-tools.ts";
-import { REGLAS_CIERRE_PM } from "./maquina.ts";
+import { LIMITES_VOZ_PM, REGLAS_CIERRE_PM } from "./maquina.ts";
 import type { VozResultado } from "../types.ts";
 
 export type { EventoKpiLlamada, TurnoTranscrito };
@@ -20,6 +20,7 @@ export class ControladorLlamada extends ControladorCore<"pedido_creado"> {
   constructor(deps: DepsControlador) {
     super({
       ...deps,
+      limites: deps.limites ?? LIMITES_VOZ_PM,
       ejecutor: comoEjecutorCore(deps.ejecutor),
       reglas: REGLAS_CIERRE_PM,
       construirEscalacion: (motivo, resumen) => ({ nombre: "escalar_a_humano", args: { customer_name: "Cliente", motivo, resumen } }),

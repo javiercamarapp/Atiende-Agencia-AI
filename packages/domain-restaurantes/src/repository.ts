@@ -8,6 +8,7 @@
 // todas pasan por aquí, así que el mismo código de negocio corre igual en tests y
 // en producción.
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
+import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type {
@@ -231,6 +232,9 @@ export interface RestaurantesRepository {
   consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean>;
 
   resolveOrganizationByPhoneNumberId(phoneNumberId: string): Promise<string | null>;
+  /** Contadores DETERMINISTAS del agente por conversacion de WhatsApp ("no entiendo" y "colonia no reconocida" seguidos, migracion 047). Devuelve el
+   * contador resultante, o `null` si no hay donde llevarlo (base sin migrar o conversacion inexistente): el llamador degrada, nunca falla. */
+  contadorAgenteWhatsApp(organizationId: string, phone: string, clave: ClaveContadorAgente, accion: "incrementar" | "reiniciar"): Promise<number | null>;
   claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean>;
   claimWhatsAppConversation(organizationId: string, phoneHash: string, messageId: string, leaseSeconds: number): Promise<boolean>;
   appendWhatsAppUserMessageOnce(organizationId: string, phone: string, message: ConversationMessage): Promise<readonly ConversationMessage[]>;

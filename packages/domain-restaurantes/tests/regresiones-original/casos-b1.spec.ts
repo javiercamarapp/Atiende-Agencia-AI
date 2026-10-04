@@ -123,7 +123,7 @@ describe("X24 / X49 / X50 -- cervezas sin alcohol, 'lo de siempre' y VIP", () =>
   });
 
   // R1 (X50 PARCIAL): el bloque de cliente del perfil PM no incluye la nota VIP.
-  it.fails("X50 / [lote R1]: el bloque de cliente del perfil PM tambien incluye la nota VIP", () => {
+  it("X50 / [lote R1]: el bloque de cliente del perfil PM tambien incluye la nota VIP", () => {
     const vip: CustomerLookupResult = { isNew: false, name: "Marcela", orderCount: 30, addresses: [], lastOrderItems: null, frequentItems: [], tier: "BLACK", agentNotes: [] };
     expect(pmCustomerContextBlock(vip)).toMatch(/BLACK|VIP/);
   });
