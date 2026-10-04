@@ -77,10 +77,10 @@ describe("buildTrendBuckets — puerto de construirTramosTendencia", () => {
     expect(ultimo.end.getTime() - ultimo.start.getTime()).toBe(24 * 60 * 60 * 1000);
   });
 
-  it("'historico' con <=12 meses de antigüedad da un punto por mes", () => {
-    const now = new Date(2026, 8, 10); // 10-sep-2026
-    const firstOrderAt = new Date(2026, 2, 1); // 1-mar-2026, ~6 meses atrás
-    const tramos = buildTrendBuckets("historico", now, firstOrderAt);
+  it("'historico' con <=12 meses de antigüedad da un punto por mes (zona explicita: no depende del TZ del proceso)", () => {
+    const now = new Date("2026-09-10T18:00:00Z"); // 10-sep-2026
+    const firstOrderAt = new Date("2026-03-01T18:00:00Z"); // 1-mar-2026, ~6 meses atrás
+    const tramos = buildTrendBuckets("historico", now, firstOrderAt, { zonaHoraria: "America/Merida" });
     expect(tramos.length).toBe(7); // marzo..septiembre inclusive
   });
 
@@ -92,12 +92,12 @@ describe("buildTrendBuckets — puerto de construirTramosTendencia", () => {
 });
 
 describe("buildComparisonPeriods / periodLabel", () => {
-  it("'today': actual=[hoy,MUY_FUTURO), previo=[ayer,hoy)", () => {
-    const now = new Date(2026, 8, 10, 18, 0, 0);
-    const { current, previous } = buildComparisonPeriods("today", now);
-    expect(current.start.getTime()).toBe(new Date(2026, 8, 10, 0, 0, 0, 0).getTime());
-    expect(previous!.start.getTime()).toBe(new Date(2026, 8, 9, 0, 0, 0, 0).getTime());
-    expect(previous!.end.getTime()).toBe(new Date(2026, 8, 10, 0, 0, 0, 0).getTime());
+  it("'today': actual=[hoy,MUY_FUTURO), previo=[ayer,hoy) en la zona del negocio (QA-03)", () => {
+    const now = new Date("2026-09-10T18:00:00Z"); // 12:00 en Merida
+    const { current, previous } = buildComparisonPeriods("today", now, "America/Merida");
+    expect(current.start.toISOString()).toBe("2026-09-10T06:00:00.000Z");
+    expect(previous!.start.toISOString()).toBe("2026-09-09T06:00:00.000Z");
+    expect(previous!.end.toISOString()).toBe("2026-09-10T06:00:00.000Z");
   });
 
   it("'historico' no tiene periodo previo (es un total, no una ventana con antes/después)", () => {
