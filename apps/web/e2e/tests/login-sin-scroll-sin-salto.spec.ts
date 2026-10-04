@@ -135,6 +135,7 @@ test.describe("login sin saltos @humo", () => {
 
         // Error del servidor.
         modo = "falla";
+        await campo.fill("una.persona@un-dominio.example.com");
         await enviar();
         await expect(page.getByRole("alert")).toContainText("429");
         await afirmarMismoLugar(page, base, "error del servidor");
