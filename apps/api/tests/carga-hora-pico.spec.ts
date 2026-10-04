@@ -73,7 +73,7 @@ describe(`hora pico: ${CLIENTES} clientes simultaneos, lote Meta de ${MENSAJES_M
         const q = await medido(() => post("/fco-montejo/quote", body, headers));
         const quote = (await q.res.json()) as { quote_hash: string };
         const c = await medido(() => post("/fco-montejo/confirm", { session_id, quote_hash: quote.quote_hash }, headers));
-        const o = await medido(() => post("/fco-montejo/orders", { ...body, quote_hash: quote.quote_hash, customer_name: `Cliente ${i}`, customer_phone: `99${String(10000000 + i)}` }, headers));
+        const o = await medido(() => post("/fco-montejo/orders", { ...body, quote_hash: quote.quote_hash, acepta_aviso_privacidad: true, customer_name: `Cliente ${i}`, customer_phone: `99${String(10000000 + i)}` }, headers));
         const creado = (await o.res.json()) as { rastreo_token?: string; total?: number };
         return { m: [q.muestra, c.muestra, o.muestra], creado };
       }),
@@ -110,7 +110,7 @@ describe(`hora pico: ${CLIENTES} clientes simultaneos, lote Meta de ${MENSAJES_M
       const body = { session_id, items: [{ product_id: t.products.cocaCola, requested_quantity: 1 }], canal: "recoger", payment_method: "efectivo" };
       const q = (await (await app.request(`${BASE}/fco-montejo/quote`, jsonRequestInit(body, headers))).json()) as { quote_hash: string };
       await app.request(`${BASE}/fco-montejo/confirm`, jsonRequestInit({ session_id, quote_hash: q.quote_hash }, headers));
-      estados.push((await app.request(`${BASE}/fco-montejo/orders`, jsonRequestInit({ ...body, quote_hash: q.quote_hash, customer_name: `C${i}`, customer_phone: `99${String(30000000 + i)}` }, headers))).status);
+      estados.push((await app.request(`${BASE}/fco-montejo/orders`, jsonRequestInit({ ...body, quote_hash: q.quote_hash, acepta_aviso_privacidad: true, customer_name: `C${i}`, customer_phone: `99${String(30000000 + i)}` }, headers))).status);
     }
     expect(estados.filter((s) => s === 200)).toHaveLength(10);
     expect(estados.filter((s) => s === 429)).toHaveLength(2);
