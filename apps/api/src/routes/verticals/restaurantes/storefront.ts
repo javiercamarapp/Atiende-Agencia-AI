@@ -30,6 +30,7 @@ import { encolarComandaParaPedido, type ResultadoEncolarPedido } from "@atiende/
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
 import { issueStorefrontTrackingToken, storefrontTrackingKey, verifyStorefrontTrackingToken } from "../../../storefront-tracking-token.ts";
+import { edgeRateLimit } from "./edge-limit.ts";
 import { efectosPostCommitDePedido } from "./efectos-post-commit.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -96,6 +97,9 @@ function strOrReject(v: unknown, max: number, etiqueta: string): string | undefi
   return typeof v === "string" ? v : undefined;
 }
 
+/** Tope por IP sobre TODO el storefront (cuenta tambien los intentos que fallan y los slugs inexistentes): igual al tope de lectura. */
+const STOREFRONT_EDGE_MAX = 120;
+
 /** Los pedidos programados existen en el backend, pero este menu en linea no tiene (todavia) selector de fecha:
  * un `programado_para` se rechaza de forma explicita en vez de ignorarse y mandar el pedido a cocina de inmediato. */
 function rejectProgramado(body: StorefrontBody): void {
@@ -149,6 +153,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
   // GET /v1/restaurantes/:orgSlug/storefront -- el restaurante y sus sucursales activas.
   app.get("/v1/restaurantes/:orgSlug/storefront", async (c) => {
     noStore(c);
+    await edgeRateLimit(deps, c, "storefront-edge", STOREFRONT_EDGE_MAX);
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrg(repo, c.req.param("orgSlug"));
@@ -160,6 +165,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
   // GET /v1/restaurantes/:orgSlug/storefront/:branchSlug/menu -- menu por categorias con precios y disponibilidad en vivo.
   app.get("/v1/restaurantes/:orgSlug/storefront/:branchSlug/menu", async (c) => {
     noStore(c);
+    await edgeRateLimit(deps, c, "storefront-edge", STOREFRONT_EDGE_MAX);
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrg(repo, c.req.param("orgSlug"));
@@ -179,6 +185,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
     const sessionId = sessionIdOf(body);
     rejectProgramado(body);
     const items = cleanItems(body.items);
+    await edgeRateLimit(deps, c, "storefront-edge", STOREFRONT_EDGE_MAX);
     const coloniaEntrega = strOrReject(body.colonia_entrega, 200, "La colonia");
     const codigoPromo = strOrReject(body.promo_code, 40, "El código de promoción");
     return deps.engine.withAppSession({ userId: null }, async (db) => {
@@ -229,6 +236,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
     assertOrigin(c);
     const body = await readJsonCapped<StorefrontBody>(c.req.raw, 4 * 1024);
     const sessionId = sessionIdOf(body);
+    await edgeRateLimit(deps, c, "storefront-edge", STOREFRONT_EDGE_MAX);
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrg(repo, c.req.param("orgSlug"));
@@ -255,6 +263,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
     const sessionId = sessionIdOf(body);
     rejectProgramado(body);
     const items = cleanItems(body.items);
+    await edgeRateLimit(deps, c, "storefront-edge", STOREFRONT_EDGE_MAX);
     const cliente = {
       nombre: strOrReject(body.customer_name, 160, "El nombre"),
       telefono: strOrReject(body.customer_phone, 64, "El teléfono"),
@@ -332,6 +341,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
   // GET .../storefront/track/:token -- estado del pedido por token firmado (sin datos personales).
   app.get("/v1/restaurantes/:orgSlug/storefront/track/:token", async (c) => {
     noStore(c);
+    await edgeRateLimit(deps, c, "storefront-edge", STOREFRONT_EDGE_MAX);
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrg(repo, c.req.param("orgSlug"));

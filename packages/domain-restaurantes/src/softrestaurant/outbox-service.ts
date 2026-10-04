@@ -35,6 +35,7 @@ import {
   type SucursalPos,
   type TipoComanda,
 } from "./types.ts";
+import { describirErrorSeguro } from "../log-seguro.ts";
 
 /** Resuelve la clave T1..T8 del POS a partir de la sucursal de Atiende. */
 export type ResolverSucursalPos = (sucursal: { readonly propertyId: string; readonly nombre: string | null }) => SucursalPos | null;
@@ -146,7 +147,7 @@ async function alertarSeguro(deps: DepsComandaPos, fila: FilaComandaOutbox, moti
   try {
     await deps.alertar(fila, motivo);
   } catch (err) {
-    console.error("softrestaurant: no se pudo alertar captura manual (la fila queda visible en el panel):", err);
+    console.error("softrestaurant: no se pudo alertar captura manual (la fila queda visible en el panel):", describirErrorSeguro(err));
   }
 }
 
@@ -173,7 +174,7 @@ export async function procesarFilaReclamada(deps: DepsComandaPos, fila: FilaComa
     try {
       resultado = await conTimeout(deps.port.crearComanda(fila.payload), deps.timeoutInlineMs ?? 4000);
     } catch (err) {
-      console.error("softrestaurant: el adaptador lanzo en crearComanda (se trata como no_disponible):", err instanceof Error ? err.message : err);
+      console.error("softrestaurant: el adaptador lanzo en crearComanda (se trata como no_disponible):", describirErrorSeguro(err));
       resultado = { status: "no_disponible", causa: "desconocida" };
     }
     decision = decidirTransicion(resultado, fila.intentos, ahora(), {
@@ -207,7 +208,7 @@ export async function encolarComandaParaPedido(deps: DepsComandaPos, pedido: Ped
   try {
     modo = await deps.store.leerModo(pedido.order.organizationId);
   } catch (err) {
-    console.error("softrestaurant: no se pudo leer la bandera (se asume apagado):", err);
+    console.error("softrestaurant: no se pudo leer la bandera (se asume apagado):", describirErrorSeguro(err));
   }
   if (modo === "apagado") return { modo: "apagado", fila: null, agente: null, motivo: "bandera_apagada" };
 
@@ -242,7 +243,7 @@ export async function encolarComandaParaPedido(deps: DepsComandaPos, pedido: Ped
       });
     }
   } catch (err) {
-    console.error("softrestaurant: fallo best-effort al encolar/enviar la comanda (el pedido NO se ve afectado):", err);
+    console.error("softrestaurant: fallo best-effort al encolar/enviar la comanda (el pedido NO se ve afectado):", describirErrorSeguro(err));
     return modo === "activo"
       ? { modo: "activo", fila, agente: respuestaAgenteComanda(fila), motivo: "error" }
       : { modo: "sombra", fila, agente: null, motivo: "error" };
@@ -362,7 +363,7 @@ export async function drenarComandas(deps: DepsDrenaje, limite = 10): Promise<Re
     } catch (err) {
       // La fila queda `enviada`: el lease la hace reclamable de nuevo (idempotente en el POS).
       resumen.errores += 1;
-      console.error(`softrestaurant: error procesando la comanda ${fila.id} (se reintenta al vencer el lease):`, err);
+      console.error(`softrestaurant: error procesando la comanda ${fila.id} (se reintenta al vencer el lease):`, describirErrorSeguro(err));
     }
   }
   return resumen;

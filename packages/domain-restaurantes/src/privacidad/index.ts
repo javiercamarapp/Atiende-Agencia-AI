@@ -5,3 +5,4 @@ export type { ArcoFastPathResult, ArcoIntent, ArcoConfirmationIntent } from "./a
 export type { PrivacidadRepository, PurgeOutcome, RecordingConsent, SetRecordingConsentResult, UpdatePrivacyConfigResult } from "./repository.ts";
 export { PostgresPrivacidadRepository } from "./postgres-repository.ts";
 export { InMemoryPrivacidadRepository } from "./in-memory-repository.ts";
+export { seudonimosDeTelefono, variantesDeDigitos } from "./telefono-hash.ts";

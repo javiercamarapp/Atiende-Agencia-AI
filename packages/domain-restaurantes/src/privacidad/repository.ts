@@ -18,6 +18,16 @@ export interface PurgeOutcome {
   readonly conversationsCleared: number;
   readonly voiceTurnsDeleted: number;
   readonly voiceCallsAnonymized: number;
+  /** Migracion 042 (QA R1 seguridad-07): solicitudes de contacto anonimizadas. 0 contra una base sin la 042. */
+  readonly callbacksAnonymized: number;
+  /** Migracion 042: payloads de la cola de mensajes y de comandas del POS ya terminados, vaciados. */
+  readonly outboxScrubbed: number;
+  /** Migracion 042: notas internas de conversacion vencidas, borradas. */
+  readonly notesDeleted: number;
+  /** Migracion 042: filas vencidas de la bitacora de voz, borradas. */
+  readonly auditDeleted: number;
+  /** `true` si algun lote se lleno: todavia queda trabajo vencido y el barrido debe seguir (QA R1 seguridad-14). */
+  readonly pendiente: boolean;
 }
 
 export type UpdatePrivacyConfigResult = { readonly outcome: "updated" } | { readonly outcome: "forbidden" } | { readonly outcome: "unavailable" };

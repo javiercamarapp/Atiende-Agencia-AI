@@ -136,6 +136,33 @@ describe("PATCH .../solicitudes/:id/estado y GET .../:id/eventos", () => {
     expect(privacy.requests[0]!.status).toBe("recibida");
   });
 
+  it("QA R1 seguridad-06: una cancelacion pide EJECUTAR el bloqueo (bloqueada) y la supresion (resuelta) de los datos del titular", async () => {
+    const { app, base, ctx, seedConfirmed, privacy } = await construir();
+    const cancel = await seedConfirmed("cancelacion", "+5219990000003");
+    const acceso = await seedConfirmed("acceso", "+5219990000004");
+    const patch = (id: string, body: object) => app.request(`${base}/solicitudes/${id}/estado`, authedJson(ctx.staff.owner.token, body, "PATCH"));
+    expect((await patch(cancel, { estado: "bloqueada" })).status).toBe(200);
+    expect((await patch(cancel, { estado: "resuelta", nota: "datos suprimidos" })).status).toBe(200);
+    expect((await patch(acceso, { estado: "resuelta", nota: "entregado" })).status).toBe(200);
+    // Solo la cancelacion ejecuta algo sobre los datos; un acceso resuelto no suprime nada.
+    expect(privacy.cancelacionesEjecutadas).toEqual([
+      { requestId: cancel, modo: "bloqueo" },
+      { requestId: cancel, modo: "supresion" },
+    ]);
+  });
+
+  it("QA R1 seguridad-06: sin la migracion 042 una cancelacion NO se cierra (503 honesto), pero otros derechos si", async () => {
+    const { app, base, ctx, seedConfirmed, privacy } = await construir();
+    const cancel = await seedConfirmed("cancelacion", "+5219990000005");
+    const acceso = await seedConfirmed("acceso", "+5219990000006");
+    privacy.migrada041 = false;
+    const patch = (id: string, body: object) => app.request(`${base}/solicitudes/${id}/estado`, authedJson(ctx.staff.owner.token, body, "PATCH"));
+    const res = await patch(cancel, { estado: "resuelta", nota: "ok" });
+    expect(res.status).toBe(503);
+    expect(privacy.requests.find((r) => r.id === cancel)!.status).toBe("recibida");
+    expect((await patch(acceso, { estado: "resuelta", nota: "ok" })).status).toBe(200);
+  });
+
   it("base sin migrar: PATCH -> 503 y eventos -> disponible:false", async () => {
     const { app, base, ctx, privacy } = await construir();
     privacy.migrada = false;
@@ -274,9 +301,9 @@ describe("lado sistema: voz y purga", () => {
 
   it("purga por retencion: devuelve los conteos; base sin migrar -> disponible:false", async () => {
     const { app, privacy } = await construir();
-    privacy.purgeResult = { disponible: true, conversationsCleared: 4, voiceTurnsDeleted: 9, voiceCallsAnonymized: 2 };
+    privacy.purgeResult = { disponible: true, conversationsCleared: 4, voiceTurnsDeleted: 9, voiceCallsAnonymized: 2, callbacksAnonymized: 3, outboxScrubbed: 5, notesDeleted: 1, auditDeleted: 6, pendiente: false };
     const ok = await (await app.request("/internal/restaurantes/privacidad-retencion", { method: "POST", headers: SECRET })).json();
-    expect(ok).toMatchObject({ ok: true, disponible: true, conversacionesVaciadas: 4, turnosDeVozBorrados: 9, llamadasAnonimizadas: 2, lotes: 1 });
+    expect(ok).toMatchObject({ ok: true, disponible: true, conversacionesVaciadas: 4, turnosDeVozBorrados: 9, llamadasAnonimizadas: 2, solicitudesDeContactoAnonimizadas: 3, colaDeMensajesVaciada: 5, notasBorradas: 1, bitacoraDeVozBorrada: 6, pendiente: false, lotes: 1 });
     privacy.migrada = false;
     const nada = await (await app.request("/internal/restaurantes/privacidad-retencion", { method: "GET", headers: SECRET })).json();
     expect(nada).toMatchObject({ ok: true, disponible: false, conversacionesVaciadas: 0 });
@@ -284,10 +311,29 @@ describe("lado sistema: voz y purga", () => {
 
   it("purga: si un lote llena su tope sigue con otro lote (acotado)", async () => {
     const { app, privacy } = await construir();
-    privacy.purgeResult = { disponible: true, conversationsCleared: 500, voiceTurnsDeleted: 0, voiceCallsAnonymized: 0 };
+    privacy.purgeResult = { disponible: true, conversationsCleared: 500, voiceTurnsDeleted: 0, voiceCallsAnonymized: 0, callbacksAnonymized: 0, outboxScrubbed: 0, notesDeleted: 0, auditDeleted: 0, pendiente: true };
     const res = await (await app.request("/internal/restaurantes/privacidad-retencion", { method: "POST", headers: SECRET })).json();
     expect(res.lotes).toBe(10);
     expect(res.conversacionesVaciadas).toBe(5000);
+    // El tope de lotes se agoto con trabajo vencido todavia: se avisa para que el siguiente barrido lo retome.
+    expect(res.pendiente).toBe(true);
+  });
+
+  it("QA R1 seguridad-14: sigue mientras queden turnos vencidos aunque ninguna llamada se anonimizara (llamadas sin caller_hash)", async () => {
+    const { app, privacy } = await construir();
+    // Ningun contador llega al tope (voiceCallsAnonymized = 0, conversaciones = 0), pero la base avisa que el lote de voz se lleno.
+    privacy.purgeResult = { disponible: true, conversationsCleared: 0, voiceTurnsDeleted: 500, voiceCallsAnonymized: 0, callbacksAnonymized: 0, outboxScrubbed: 0, notesDeleted: 0, auditDeleted: 0, pendiente: true };
+    const res = await (await app.request("/internal/restaurantes/privacidad-retencion", { method: "POST", headers: SECRET })).json();
+    expect(res.lotes).toBe(10);
+    expect(res.turnosDeVozBorrados).toBe(5000);
+  });
+
+  it("QA R1 seguridad-14: se detiene en el primer lote cuando la base no reporta trabajo pendiente", async () => {
+    const { app, privacy } = await construir();
+    privacy.purgeResult = { disponible: true, conversationsCleared: 500, voiceTurnsDeleted: 0, voiceCallsAnonymized: 500, callbacksAnonymized: 0, outboxScrubbed: 0, notesDeleted: 0, auditDeleted: 0, pendiente: false };
+    const res = await (await app.request("/internal/restaurantes/privacidad-retencion", { method: "POST", headers: SECRET })).json();
+    expect(res.lotes).toBe(1);
+    expect(res.pendiente).toBe(false);
   });
 
   it("sin repositorio de privacidad: 503 (no 500)", async () => {

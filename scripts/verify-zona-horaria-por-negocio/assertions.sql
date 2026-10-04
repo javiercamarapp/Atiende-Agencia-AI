@@ -12,10 +12,9 @@
 --     (cualquier staff de la organización edita, mismo criterio ya establecido
 --     por esta tabla para phone/address -- ver el comentario de cabecera de la
 --     migración 022 para por qué NO se angosta aquí), cross-tenant (staff de otra
---     organización es RECHAZADO), SELECT público real (anon SÍ puede leer
---     zona_horaria -- mismo criterio que phone/address, información no sensible
---     de un negocio, consistente con el resto de la tabla desde antes de esta
---     fase), anon NUNCA puede escribir.
+--     organización es RECHAZADO), anon ya NO lee la tabla
+--     (migración 064, QA R1 seguridad-11: la lectura pública entra por la
+--     sesión de sistema), anon NUNCA puede escribir.
 --
 -- Cada escenario corre en su propio `begin; ... rollback;` -- nada de esto
 -- persiste. `\set ON_ERROR_STOP off` dentro del bloque de escenarios: un
@@ -187,14 +186,14 @@ with actualizado as (
 select count(*)::int as filas_actualizadas_cross_tenant_deberia_ser_0 from actualizado;
 rollback;
 
-\echo '=== 11. anon SÍ puede LEER zona_horaria (información no sensible, mismo criterio que phone/address -- migración 014, policy pública ya existente) ==='
+\echo '=== 11. RECHAZADO (debe fallar): anon ya NO tiene GRANT de lectura sobre branch_detail (migración 064, QA R1 seguridad-11: la lectura pública entra por la sesión de sistema, nadie conecta como anon) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f5', true);
 update restaurantes.branch_detail set zona_horaria = 'America/Cancun' where property_id = '00000000-0000-0000-0000-00000000e0a1';
 set local role anon;
 select set_config('request.jwt.claim.sub', '', true);
-select property_id, zona_horaria from restaurantes.branch_detail where property_id = '00000000-0000-0000-0000-00000000e0a1';
+select property_id, zona_horaria from restaurantes.branch_detail as should_fail where property_id = '00000000-0000-0000-0000-00000000e0a1';
 rollback;
 
 \echo '=== 12. RECHAZADO (debe fallar): anon NUNCA puede ESCRIBIR zona_horaria (permission denied real -- a diferencia del escenario 10, aquí ni siquiera hay GRANT de UPDATE para el rol) ==='

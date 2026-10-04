@@ -85,7 +85,11 @@ describe("PostgresPrivacidadRepository -- sobre una base sin la migracion 030", 
     ["22023", "invalid_input"],
     ["42501", "forbidden"],
   ] as const)("updateDataRightsRequestStatus: SQLSTATE %s de la funcion SQL -> %s, sin dejar la sesion abortada", async (code, outcome) => {
-    const session = new AbortAwareFakeSession([{ match: /update_data_rights_request_status/, respond: () => pgError("falla de negocio", code) }, NEXT_QUERY]);
+    const session = new AbortAwareFakeSession([
+      { match: /from restaurantes\.data_rights_requests where id/, respond: () => [] },
+      { match: /update_data_rights_request_status/, respond: () => pgError("falla de negocio", code) },
+      NEXT_QUERY,
+    ]);
     await expect(new PostgresPrivacidadRepository(session).updateDataRightsRequestStatus(ORG, "req-1", "resuelta", "ok")).resolves.toEqual({ outcome });
     await nextQueryWorks(session);
   });
@@ -109,10 +113,102 @@ describe("PostgresPrivacidadRepository -- sobre una base sin la migracion 030", 
     await nextQueryWorks(s2);
   });
 
-  it("purgeExpiredPrivacyData: 42883 -> disponible:false y la sesion queda utilizable", async () => {
-    const session = new AbortAwareFakeSession([{ match: /system_purge_expired_privacy_data/, respond: () => undefinedFn("system_purge_expired_privacy_data") }, NEXT_QUERY]);
-    await expect(new PostgresPrivacidadRepository(session).purgeExpiredPrivacyData(100)).resolves.toEqual({ disponible: false, conversationsCleared: 0, voiceTurnsDeleted: 0, voiceCallsAnonymized: 0 });
+  it("purgeExpiredPrivacyData: sin la 030 ni la 042 -> disponible:false y la sesion queda utilizable", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /system_list_open_arco_phones/, respond: () => undefinedFn("system_list_open_arco_phones") },
+      { match: /system_purge_expired_privacy_data/, respond: () => undefinedFn("system_purge_expired_privacy_data") },
+      NEXT_QUERY,
+    ]);
+    await expect(new PostgresPrivacidadRepository(session).purgeExpiredPrivacyData(100)).resolves.toEqual({
+      disponible: false,
+      conversationsCleared: 0,
+      voiceTurnsDeleted: 0,
+      voiceCallsAnonymized: 0,
+      callbacksAnonymized: 0,
+      outboxScrubbed: 0,
+      notesDeleted: 0,
+      auditDeleted: 0,
+      pendiente: false,
+    });
     await nextQueryWorks(session);
+  });
+
+  it("purgeExpiredPrivacyData: con la 030 pero SIN la 042 cae al camino anterior (3 columnas) y la sesion queda utilizable", async () => {
+    // Tras el 42883 de la lista de telefonos (funcion de la 042) el SAVEPOINT recupera la transaccion y la purga anterior corre.
+    const session = new AbortAwareFakeSession([
+      { match: /system_list_open_arco_phones/, respond: () => undefinedFn("system_list_open_arco_phones") },
+      { match: /system_purge_expired_privacy_data\(\$1\);/, respond: () => [{ out_conversations_cleared: 100, out_voice_turns_deleted: 1, out_voice_calls_anonymized: 0 }] },
+      NEXT_QUERY,
+    ]);
+    const outcome = await new PostgresPrivacidadRepository(session).purgeExpiredPrivacyData(100);
+    expect(outcome).toMatchObject({ disponible: true, conversationsCleared: 100, voiceTurnsDeleted: 1, callbacksAnonymized: 0, pendiente: true });
+    expect(session.calls).toContain("rollback to savepoint sp_privacy_purge_041");
+    await nextQueryWorks(session);
+  });
+
+  it("purgeExpiredPrivacyData: base con la 042 pasa los seudonimos de voz de los titulares con ARCO abierto y devuelve los conteos nuevos", async () => {
+    let params: unknown[] | undefined;
+    const session = new AbortAwareFakeSession([
+      { match: /system_list_open_arco_phones/, respond: () => [{ out_customer_phone: "+5219981234567" }] },
+      {
+        match: /system_purge_expired_privacy_data\(\$1, \$2::text\[\]\)/,
+        respond: () => [{ out_conversations_cleared: 1, out_voice_turns_deleted: 2, out_voice_calls_anonymized: 3, out_callbacks_anonymized: 4, out_outbox_scrubbed: 5, out_notes_deleted: 6, out_audit_deleted: 7, out_pendiente: true }],
+      },
+    ]);
+    const original = session.query.bind(session);
+    session.query = (async (sql: string, p?: unknown[]) => {
+      if (/system_purge_expired_privacy_data\(\$1, \$2::text\[\]\)/.test(sql)) params = p;
+      return original(sql, p);
+    }) as typeof session.query;
+    await expect(new PostgresPrivacidadRepository(session).purgeExpiredPrivacyData(500)).resolves.toEqual({
+      disponible: true,
+      conversationsCleared: 1,
+      voiceTurnsDeleted: 2,
+      voiceCallsAnonymized: 3,
+      callbacksAnonymized: 4,
+      outboxScrubbed: 5,
+      notesDeleted: 6,
+      auditDeleted: 7,
+      pendiente: true,
+    });
+    expect(params?.[0]).toBe(500);
+    // Los seudonimos del telefono del titular cubren los formatos de WhatsApp y de voz (+52 sin el 1).
+    expect((params?.[1] as string[]).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("updateDataRightsRequestStatus: una CANCELACION a resuelta sobre una base sin la 042 no se cierra (unavailable) y la sesion queda utilizable", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /from restaurantes\.data_rights_requests where id/, respond: () => [{ right_type: "cancelacion", customer_phone: "+5219981234567" }] },
+      { match: /update_data_rights_request_status\(\$1, \$2, \$3, \$4, \$5::text\[\]\)/, respond: () => undefinedFn("update_data_rights_request_status") },
+      NEXT_QUERY,
+    ]);
+    await expect(new PostgresPrivacidadRepository(session).updateDataRightsRequestStatus(ORG, "req-1", "resuelta", "ok")).resolves.toEqual({ outcome: "unavailable" });
+    expect(session.calls).toContain("rollback to savepoint sp_privacy_arco_update_cancelacion");
+    await nextQueryWorks(session);
+  });
+
+  it("updateDataRightsRequestStatus: un derecho que NO es cancelacion sigue resolviendose por el camino de la 030 aunque falte la 042", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /from restaurantes\.data_rights_requests where id/, respond: () => [{ right_type: "acceso", customer_phone: "+5219981234567" }] },
+      { match: /update_data_rights_request_status\(\$1, \$2, \$3, \$4, \$5::text\[\]\)/, respond: () => undefinedFn("update_data_rights_request_status") },
+      { match: /update_data_rights_request_status\(\$1, \$2, \$3, \$4\)/, respond: () => [{ out_id: "req-1", out_status: "resuelta" }] },
+    ]);
+    await expect(new PostgresPrivacidadRepository(session).updateDataRightsRequestStatus(ORG, "req-1", "resuelta", "ok")).resolves.toEqual({ outcome: "updated", id: "req-1", status: "resuelta" });
+  });
+
+  it("updateDataRightsRequestStatus: una cancelacion con la 042 pasa los seudonimos de voz del titular a la funcion", async () => {
+    let params: unknown[] | undefined;
+    const session = new AbortAwareFakeSession([
+      { match: /from restaurantes\.data_rights_requests where id/, respond: () => [{ right_type: "cancelacion", customer_phone: "+5219981234567" }] },
+      { match: /update_data_rights_request_status\(\$1, \$2, \$3, \$4, \$5::text\[\]\)/, respond: () => [{ out_id: "req-1", out_status: "resuelta" }] },
+    ]);
+    const original = session.query.bind(session);
+    session.query = (async (sql: string, p?: unknown[]) => {
+      if (/update_data_rights_request_status/.test(sql)) params = p;
+      return original(sql, p);
+    }) as typeof session.query;
+    await expect(new PostgresPrivacidadRepository(session).updateDataRightsRequestStatus(ORG, "req-1", "resuelta", "ok")).resolves.toEqual({ outcome: "updated", id: "req-1", status: "resuelta" });
+    expect((params?.[4] as string[]).length).toBeGreaterThanOrEqual(3);
   });
 
   it("un error NO recuperable (conexion caida) se repropaga, no se disfraza de 'no disponible'", async () => {
@@ -131,7 +227,8 @@ describe("PostgresPrivacidadRepository -- sobre una base sin la migracion 030", 
       { match: /system_claim_privacy_notice/, respond: () => [{ claimed: true }] },
       { match: /system_register_data_rights_request/, respond: () => [{ out_id: "req-1", out_status: "pendiente_confirmacion", out_already_open: false, out_response_due_at: null }] },
       { match: /system_resolve_data_rights_confirmation/, respond: () => [{ out_id: "req-1", out_right_type: "acceso", out_status: "recibida", out_response_due_at: "2026-10-20 15:00:00+00", out_execution_due_at: "2026-11-04 15:00:00+00" }] },
-      { match: /system_purge_expired_privacy_data/, respond: () => [{ out_conversations_cleared: 3, out_voice_turns_deleted: 7, out_voice_calls_anonymized: 2 }] },
+      { match: /system_list_open_arco_phones/, respond: () => [] },
+      { match: /system_purge_expired_privacy_data/, respond: () => [{ out_conversations_cleared: 3, out_voice_turns_deleted: 7, out_voice_calls_anonymized: 2, out_callbacks_anonymized: 0, out_outbox_scrubbed: 0, out_notes_deleted: 0, out_audit_deleted: 0, out_pendiente: false }] },
     ]);
     const repo = new PostgresPrivacidadRepository(session);
     await expect(repo.getPrivacyConfig(ORG)).resolves.toEqual({
@@ -152,6 +249,16 @@ describe("PostgresPrivacidadRepository -- sobre una base sin la migracion 030", 
       responseDueAt: null,
     });
     await expect(repo.resolveDataRightsConfirmationAsSystem(ORG, "+5219981234567", true)).resolves.toMatchObject({ available: true, found: true, id: "req-1", rightType: "acceso", status: "recibida" });
-    await expect(repo.purgeExpiredPrivacyData(100)).resolves.toEqual({ disponible: true, conversationsCleared: 3, voiceTurnsDeleted: 7, voiceCallsAnonymized: 2 });
+    await expect(repo.purgeExpiredPrivacyData(100)).resolves.toEqual({
+      disponible: true,
+      conversationsCleared: 3,
+      voiceTurnsDeleted: 7,
+      voiceCallsAnonymized: 2,
+      callbacksAnonymized: 0,
+      outboxScrubbed: 0,
+      notesDeleted: 0,
+      auditDeleted: 0,
+      pendiente: false,
+    });
   });
 });

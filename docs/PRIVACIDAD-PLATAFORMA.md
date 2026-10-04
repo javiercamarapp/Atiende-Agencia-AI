@@ -96,6 +96,24 @@ Ambas pueden coexistir: la de restaurantes sigue siendo global y usa su propia c
 si una organización fija en la plataforma MÁS días que en esa configuración y la purga de restaurantes se programa, esta
 última purgará antes. La de plataforma está programada en `vercel.json` (PL-35, ver abajo); la de restaurantes también (`/internal/restaurantes/privacidad-retencion`).
 
+### Restaurantes: cancelación ARCO ejecutable y retención ampliada (QA R1, migración 064)
+
+- **Cancelación ARCO.** Cuando owner/admin pasa una solicitud de `cancelacion` a `bloqueada`, la base **bloquea el uso** de los datos del titular
+  (borra direcciones, memoria de conversación de WhatsApp, estado de flujo y turnos de voz) y conserva pedido y cliente solo como registro; al pasarla a
+  `resuelta` **anonimiza** pedidos (se conservan importes y productos, no nombre, teléfono, correo, dirección ni transcripción), cliente, conversación,
+  solicitudes de contacto y cola de mensajes del titular, y deja evidencia en `data_rights_events` (solo conteos). El cruce entre canales es por
+  `restaurantes.telefono_clave` (últimos 10 dígitos): WhatsApp `+521…`, voz `+52…` y pedidos de 10 dígitos son el mismo titular. Sin la migración 064 la
+  API responde 503 y **no** cierra la cancelación (no promete lo que no ocurre). Los demás derechos no ejecutan cambios en los datos.
+- **Retención.** `system_purge_expired_privacy_data` ahora también anonimiza solicitudes de contacto (días de retención de conversaciones), vacía el
+  payload de la cola de mensajes (30 días) y de las comandas del POS ya terminadas, borra notas internas de conversación y la bitácora de voz
+  vencida, y avisa con `pendiente` cuando un lote se llenó para que el cron siga. Un titular con solicitud ARCO abierta queda protegido en todos los canales.
+- **Seudónimos de teléfono.** HMAC con `ACTOR_HASH_KEY` (ver `docs/CREDENCIALES.md`); la base no conoce la llave, así que el servidor le pasa los seudónimos
+  del titular a la purga de restaurantes, a la purga programada de plataforma (`core.system_run_retention_purge`, clase `restaurantes_voz_transcripciones`;
+  hasta 5000 teléfonos con solicitud abierta por organización) y a la cancelación. La purga de plataforma de WhatsApp compara por `telefono_clave`.
+- **Límites conocidos.** `restaurantes.data_rights_requests` conserva el teléfono del titular como evidencia de cumplimiento; las comandas del POS
+  todavía en `pendiente`/`captura_manual` conservan el cliente hasta terminar su ciclo; con más de 2000 solicitudes ARCO abiertas la purga protege por
+  seudónimo HMAC solo a las primeras 2000 (los sha256 planos los calcula la base para todas).
+
 ### Endpoint interno (programado, PL-35)
 
 `GET|POST /internal/plataforma/privacidad-retencion` (secreto interno o `Authorization: Bearer` de cron). Agendado a diario

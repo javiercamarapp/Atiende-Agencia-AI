@@ -18,7 +18,7 @@ import { createHash } from "node:crypto";
 import type { Context } from "hono";
 import { actorHash, consumeRateLimit } from "@atiende/domain-restaurantes";
 import type { RestaurantesRepository, VoiceToolAuditOutcome } from "@atiende/domain-restaurantes";
-import { constantTimeEqual } from "../../../http-security.ts";
+import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { VOICE_CALL_TOKEN_HEADER, verifyVoiceCallToken, voiceCallTokenKey } from "../../../voice-call-token.ts";
 
@@ -77,6 +77,31 @@ function deny(c: Context, status: 401 | 403 | 429, code: string, message: string
   return c.json({ code, message }, status);
 }
 
+/** Rechazos de credencial que una misma IP puede dejar en la bitacora (y recibir como 401) por minuto. */
+const DENIED_CREDENTIALS_PER_MINUTE = 20;
+
+/**
+ * Rechazo de credencial con tope por IP (QA R1 seguridad-05). Cada rechazo agregaba una fila a `voice_tool_audit`, que es
+ * append-only: una rafaga de credenciales invalidas la inflaba sin limite y nunca recibia un 429. Ahora cada rechazo consume del
+ * bucket de la IP; pasado el tope se responde 429 SIN escribir bitacora. Se responde (no se lanza) para que el contador y la fila
+ * se confirmen con la transaccion del request. El trafico valido no pasa por aqui: no se limita por la IP del proveedor de voz.
+ */
+async function denyCredential(
+  c: Context,
+  repo: RestaurantesRepository,
+  org: { readonly id: string },
+  tool: string,
+  detail: string,
+  response: Response,
+): Promise<{ readonly ok: false; readonly response: Response }> {
+  const budget = await consumeRateLimit(repo, "voice-auth-denied", requestActor(c.req.raw, ""), DENIED_CREDENTIALS_PER_MINUTE, 60);
+  if (!budget.allowed) {
+    return { ok: false, response: c.json({ code: "too_many_requests", message: "Demasiadas solicitudes." }, 429, { "Retry-After": "60" }) };
+  }
+  await auditVoice(repo, org, null, tool, "denied", detail);
+  return { ok: false, response };
+}
+
 export interface AuthenticateOptions {
   readonly tool: string;
   /** "required": solo el token de llamada; "legacy_ok": token, secreto por sucursal o secreto legado. */
@@ -98,26 +123,22 @@ export async function authenticateVoiceTool(
   if (token && !opts.secretOnly) {
     const verified = verifyVoiceCallToken(voiceCallTokenKey(deps.env.internalSecret), token);
     if (!verified.ok) {
-      await auditVoice(repo, org, null, opts.tool, "denied", `token_${verified.reason}`);
-      return { ok: false, response: deny(c, 401, "unauthorized", "Token de llamada inválido o expirado.") };
+      return denyCredential(c, repo, org, opts.tool, `token_${verified.reason}`, deny(c, 401, "unauthorized", "Token de llamada inválido o expirado."));
     }
     // Un token de OTRA organizacion nunca vale aqui (aislamiento entre restaurantes).
     if (verified.claims.org !== org.id) {
-      await auditVoice(repo, org, null, opts.tool, "denied", "token_otra_organizacion");
-      return { ok: false, response: deny(c, 401, "unauthorized", "Token de llamada inválido o expirado.") };
+      return denyCredential(c, repo, org, opts.tool, "token_otra_organizacion", deny(c, 401, "unauthorized", "Token de llamada inválido o expirado."));
     }
     return { ok: true, caller: { kind: "call_token", propertyId: verified.claims.prop, callId: verified.claims.call, phone: verified.claims.ph } };
   }
 
   if (!secret) {
-    await auditVoice(repo, org, null, opts.tool, "denied", "sin_credencial");
-    return { ok: false, response: deny(c, 401, "unauthorized", "Credenciales inválidas o token ausente/expirado.") };
+    return denyCredential(c, repo, org, opts.tool, "sin_credencial", deny(c, 401, "unauthorized", "Credenciales inválidas o token ausente/expirado."));
   }
 
   const secretsAllowed = opts.secretOnly === true || (opts.accept === "legacy_ok" && deps.env.voiceRequireCallToken !== true);
   if (!secretsAllowed) {
-    await auditVoice(repo, org, null, opts.tool, "denied", "se_requiere_token_de_llamada");
-    return { ok: false, response: deny(c, 401, "unauthorized", "Esta herramienta requiere el token de la llamada.") };
+    return denyCredential(c, repo, org, opts.tool, "se_requiere_token_de_llamada", deny(c, 401, "unauthorized", "Esta herramienta requiere el token de la llamada."));
   }
 
   // 2) secreto por sucursal (base migrada)
@@ -130,8 +151,7 @@ export async function authenticateVoiceTool(
     warnLegacyOnce();
     return { ok: true, caller: { kind: "legacy_secret", propertyId: null, callId: null, phone: null } };
   }
-  await auditVoice(repo, org, null, opts.tool, "denied", "secreto_invalido");
-  return { ok: false, response: deny(c, 401, "unauthorized", "Credenciales inválidas o token ausente/expirado.") };
+  return denyCredential(c, repo, org, opts.tool, "secreto_invalido", deny(c, 401, "unauthorized", "Credenciales inválidas o token ausente/expirado."));
 }
 
 /**

@@ -24,6 +24,7 @@ import { originAllowed, readJsonCapped, requestActor } from "../../../http-secur
 import { encolarComandaParaPedido, type ResultadoEncolarPedido } from "@atiende/domain-restaurantes/softrestaurant";
 import { efectosPostCommitDePedido, type ComandaVisible } from "./efectos-post-commit.ts";
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
+import { edgeRateLimit } from "./edge-limit.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import { auditVoice, authenticateVoiceTool, enforceVoiceLimits, hasVoiceCredentials } from "./voice-auth.ts";
 import { runVoiceToolRoute, voiceToolContext } from "./voice-tools.ts";
@@ -135,6 +136,11 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
     // caller no puede declararse "voice" ni recibir el trato de mayor rate limit.
     if (incoming.source === "voice" && !credentialsPresent) throw Errors.unauthorized();
     if (!credentialsPresent && incoming.source && incoming.source !== "web") throw Errors.validation("source inválido");
+
+    // QA R1 seguridad-09: el checkout web cuenta TODO intento por IP en su propia transaccion, tambien los de un slug
+    // inexistente o los que terminan en error (la transaccion del handler los revertiria). Las llamadas con credenciales de voz
+    // se limitan por llamada y por sucursal (voice-auth.ts), nunca por la IP del proveedor.
+    if (!credentialsPresent) await edgeRateLimit(deps, c, "create-order-edge", 120);
 
     // Camino WEB (sin credenciales): la transaccion crea el pedido y ENCOLA sus efectos; el correo y el envio de la comanda al POS
     // corren DESPUES del COMMIT (efectos-post-commit.ts). `diferido` lleva lo que hay que hacer tras confirmar.

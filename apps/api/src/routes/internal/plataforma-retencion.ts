@@ -19,10 +19,12 @@
 // solo toca filas ya vencidas. Cada
 // (organizacion, clase) corre en SU PROPIA transaccion de sistema (`userId: null`), de modo que un error en una
 // unidad no revierte las ya purgadas ni deja la sesion abortada. El bloqueo previo (retencion legal activa) y la
-// proteccion de titulares con ARCO abierta los aplica el SQL (core.system_run_retention_purge); cada llamada queda en
+// proteccion de titulares con ARCO abierta los aplica el SQL (core.system_run_retention_purge; en la voz, con los seudonimos HMAC
+// que calcula aqui el servidor con ACTOR_HASH_KEY y recibe la base, porque esta no conoce la llave); cada llamada queda en
 // core.purge_run_log sin PII. Base sin migrar: responde `disponible: false` y no toca nada.
 import { Hono } from "hono";
 import { PlataformaPrivacidadError } from "@atiende/db";
+import { seudonimosDeTelefono } from "@atiende/domain-restaurantes";
 import { Errors } from "../../errors.ts";
 import { constantTimeEqual, internalOrCronSecretMatches } from "../../http-security.ts";
 import { logEvent } from "../../logger.ts";
@@ -104,7 +106,7 @@ export function plataformaRetencionRoutes(deps: AppDeps): Hono {
         // 2) Una transaccion POR (organizacion, clase).
         for (const par of objetivos.targets) {
           try {
-            const salida = await deps.engine.withAppSession({ userId: null }, (db) => repoFor(db).runRetentionPurge(par.organizationId, par.dataClass, !ejecutar, limite));
+            const salida = await deps.engine.withAppSession({ userId: null }, (db) => repoFor(db).runRetentionPurge(par.organizationId, par.dataClass, !ejecutar, limite, seudonimosDeTelefono));
             if (salida.availability === "not_migrated" || !salida.result) {
               return c.json({ ok: true, disponible: false, resultados });
             }

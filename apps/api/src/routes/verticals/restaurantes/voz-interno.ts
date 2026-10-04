@@ -13,11 +13,11 @@
 // Cada operación corre en una sesión de sistema (`userId: null`): las funciones SQL exigen
 // `auth.uid() is null` y validan que sucursal/conversación/pedido pertenezcan a la organización
 // declarada. La transcripción se redacta (tarjeta/CVV) ANTES de persistir y el teléfono nunca se
-// guarda en claro: solo su sha256.
-import { createHash } from "node:crypto";
+// guarda en claro: solo su seudonimo (HMAC con la llave del servidor `ACTOR_HASH_KEY`; sha256 plano si aun no esta definida).
 import { Hono } from "hono";
 import { emitirNotificacion } from "@atiende/db";
 import {
+  actorHash,
   VOZ_EVENTO_TIPOS,
   VOZ_PROVEEDORES,
   VOZ_PROVEEDORES_FALLO,
@@ -87,7 +87,7 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
     if (body.callerPhone !== undefined && body.callerPhone !== null) {
       const digitos = typeof body.callerPhone === "string" ? body.callerPhone.replace(/\D/g, "") : "";
       if (digitos.length < 7 || digitos.length > 15) throw Errors.validation("callerPhone: se esperaba un teléfono de 7 a 15 dígitos.");
-      callerHash = createHash("sha256").update(digitos).digest("hex");
+      callerHash = actorHash(digitos);
     }
     const startedAt = fechaOpcional(body.startedAt, "startedAt");
 

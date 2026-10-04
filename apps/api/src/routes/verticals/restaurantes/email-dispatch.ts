@@ -40,6 +40,7 @@ import { logEvent } from "../../../logger.ts";
 import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { crearGuardCorreo } from "../../../supresion/index.ts";
+import { describirErrorSeguro } from "@atiende/domain-restaurantes";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de citas/email-dispatch.ts. */
 export const INLINE_BATCH_SIZE = 5;
@@ -126,7 +127,7 @@ export async function triggerRestaurantesEmailDispatchInline(deps: AppDeps, db: 
     },
     isRecoverable: () => true,
     fallback: async (err) => {
-      console.error("restaurantes email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
+      console.error("restaurantes email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", describirErrorSeguro(err));
     },
   });
 }

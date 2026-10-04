@@ -304,6 +304,9 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   // `env.ts::voiceRequireCallToken` -- opt-in ("true") para que las tools de voz de restaurantes
   // exijan el token por llamada. Apagado por defecto; nunca bloquea el arranque.
   "VOICE_REQUIRE_CALL_TOKEN",
+  // QA R1 seguridad-08 -- llave del HMAC con que restaurantes seudonimiza telefonos e IP (`rate-limit.ts::actorHash`).
+  // Recomendada; sin ella se conserva el sha256 plano de antes y se avisa en el log. Nunca bloquea el arranque.
+  "ACTOR_HASH_KEY",
   // R-27 -- plantillas HSM de WhatsApp declaradas aprobadas por Meta (lista separada por comas); vacia = todo
   // sale como texto libre. Opcional, nunca bloquea el arranque.
   "WHATSAPP_APPROVED_TEMPLATES",

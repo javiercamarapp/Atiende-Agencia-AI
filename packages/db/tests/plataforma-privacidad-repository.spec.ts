@@ -157,6 +157,49 @@ describe("PostgresPlataformaPrivacidadRepository -- errores de negocio y mapeo",
   });
 });
 
+describe("purga de plataforma de voz -- seudonimos del servidor (QA R1 seguridad-08)", () => {
+  const FILA = { out_run_id: "run1", out_status: "ok", out_retention_days: 30, out_rows_affected: 2, out_rows_anonymized: 1, out_rows_protected: 3 };
+  const VOZ = "restaurantes_voz_transcripciones";
+  const seud = (tel: string) => [`hmac:${tel}`, `plano:${tel}`];
+
+  it("pasa a la base los seudonimos de cada telefono con solicitud abierta de la organizacion", async () => {
+    const s = new AbortAwareFakeSession([
+      { match: /system_list_open_arco_phones/, respond: () => [{ out_customer_phone: "+5215512345678" }, { out_customer_phone: "+525512345678" }] },
+      { match: /system_run_retention_purge\(\$1, \$2, \$3, \$4::int, \$5::text\[\]\)/, respond: () => [FILA] },
+    ]);
+    const spy: unknown[][] = [];
+    const orig = s.query.bind(s);
+    s.query = (async (sql: string, params?: unknown[]) => {
+      spy.push([sql, params]);
+      return orig(sql, params);
+    }) as typeof s.query;
+    const r = await new PostgresPlataformaPrivacidadRepository(s).runRetentionPurge(ORG, VOZ, false, 500, seud);
+    expect(r.result?.rowsProtected).toBe(3);
+    const lista = spy.find(([q]) => /system_list_open_arco_phones/.test(q as string));
+    expect(lista?.[1]).toEqual([5000, ORG]);
+    const purga = spy.find(([q]) => /text\[\]\)/.test(q as string));
+    expect(purga?.[1]).toEqual([ORG, VOZ, false, 500, ["hmac:+5215512345678", "plano:+5215512345678", "hmac:+525512345678", "plano:+525512345678"]]);
+  });
+
+  it("base con la 0036 y sin la 042 (42883): cae a la purga de 4 argumentos con savepoint, sin 25P02", async () => {
+    const s = new AbortAwareFakeSession([
+      { match: /system_list_open_arco_phones/, respond: () => pgError("42883", "function restaurantes.system_list_open_arco_phones(integer, uuid) does not exist") },
+      { match: /system_run_retention_purge\(\$1, \$2, \$3, \$4::int\);/, respond: () => [FILA] },
+    ]);
+    const r = await new PostgresPlataformaPrivacidadRepository(s).runRetentionPurge(ORG, VOZ, false, 500, seud);
+    expect(r).toMatchObject({ availability: "available", result: { runId: "run1", status: "ok" } });
+    expect(s.calls.some((c) => /rollback to savepoint/.test(c))).toBe(true);
+  });
+
+  it("las demas clases y las llamadas sin funcion de seudonimos usan la firma de 4 argumentos", async () => {
+    const s = new AbortAwareFakeSession([{ match: /system_run_retention_purge\(\$1, \$2, \$3, \$4::int\);/, respond: () => [FILA] }]);
+    const repo = new PostgresPlataformaPrivacidadRepository(s);
+    await repo.runRetentionPurge(ORG, "restaurantes_whatsapp_conversaciones", false, 500, seud);
+    await repo.runRetentionPurge(ORG, VOZ, false, 500);
+    expect(s.calls.some((c) => /system_list_open_arco_phones/.test(c))).toBe(false);
+  });
+});
+
 describe("InMemoryPlataformaPrivacidadRepository -- misma semantica de acceso que el SQL", () => {
   function repo() {
     const r = new InMemoryPlataformaPrivacidadRepository();
