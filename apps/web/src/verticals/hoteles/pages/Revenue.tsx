@@ -65,6 +65,7 @@ import type { RoomTypeOption } from "../lib/reservas-client.ts";
 import { dineroMxConSigno } from "../lib/dinero.ts";
 import { RECOMENDACION_ESTADO_TONES } from "../lib/status-tones.ts";
 import { RevenueHerramientas } from "./RevenueHerramientas.tsx";
+import { RoomNightsDirectasCard } from "./RoomNightsDirectasCard.tsx";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const DOW_LABELS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
@@ -314,6 +315,8 @@ export function RevenuePage({ apiBaseUrl, token, propertyId, role }: HotelesShel
       </header>
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
+
+      <RoomNightsDirectasCard apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
 
       <Card>
         <CardHeader>

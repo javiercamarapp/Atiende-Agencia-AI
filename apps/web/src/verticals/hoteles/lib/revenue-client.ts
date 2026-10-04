@@ -304,3 +304,18 @@ export async function verificarCompset(
 
 // Espejo cosmetico de REVENUE_GATE_MANAGE_ROLES (domain-hoteles/src/roles.ts): el servidor es la barrera real (403).
 export const REVENUE_TOOLS_ROLES: ReadonlySet<string> = new Set(["owner", "gm"]);
+
+// H-42 -- KPI "room-nights directas" (GET revenue/room-nights-directas). Sin la migracion 044 el servidor responde `disponible: false`.
+export interface RoomNightsDirectasKpi {
+  readonly disponible: boolean;
+  readonly desde: string;
+  readonly hasta: string;
+  readonly directas: number;
+  readonly total: number;
+  /** 0..1; null cuando no hay noches reservadas en el rango. */
+  readonly porcentaje: number | null;
+}
+
+export function fetchRoomNightsDirectas(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<RoomNightsDirectasKpi> {
+  return fetchJson<RoomNightsDirectasKpi>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/room-nights-directas`, token);
+}

@@ -15,6 +15,8 @@ export interface PaymentChargeInput {
   readonly currency: string;
   readonly paymentMethodToken: string;
   readonly idempotencyKey: string;
+  /** H-42: el huesped esta presente en el checkout publico (no es un cargo posterior sin el): la pasarela NO lo trata como `off_session`. */
+  readonly onSession?: boolean;
 }
 
 export interface PaymentChargeResult {
@@ -22,8 +24,22 @@ export interface PaymentChargeResult {
   readonly externalPaymentId: string;
 }
 
+/** H-42: reembolso (total o parcial) de un cobro ya capturado. `amount` en centavos, nunca mayor a lo cobrado. */
+export interface PaymentRefundInput {
+  readonly externalPaymentId: string;
+  readonly amount: number;
+  readonly idempotencyKey: string;
+}
+
+export interface PaymentRefundResult {
+  readonly status: "procesado" | "pendiente" | "fallido";
+  readonly externalRefundId: string;
+}
+
 export interface PaymentsPort {
   charge(input: PaymentChargeInput): Promise<PaymentChargeResult>;
+  /** Opcional: un adaptador sin reembolsos deja la solicitud para el staff (la reserva directa publica lo maneja). */
+  refund?(input: PaymentRefundInput): Promise<PaymentRefundResult>;
 }
 
 /** Adaptador de prueba/desarrollo: siempre "captura" el pago con un id determinista
@@ -35,5 +51,9 @@ export interface PaymentsPort {
 export class InMemoryPaymentsPort implements PaymentsPort {
   async charge(input: PaymentChargeInput): Promise<PaymentChargeResult> {
     return { status: "capturado", externalPaymentId: `test_${input.idempotencyKey}` };
+  }
+
+  async refund(input: PaymentRefundInput): Promise<PaymentRefundResult> {
+    return { status: "procesado", externalRefundId: `test_refund_${input.idempotencyKey}` };
   }
 }

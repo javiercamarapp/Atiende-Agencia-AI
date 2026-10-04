@@ -76,6 +76,7 @@ function pgMessage(err: unknown): string {
 const BUSINESS_PREFIXES: readonly ReservasAgenteErrorCode[] = [
   "fechas_invalidas", "fecha_pasada", "fecha_muy_lejana", "estadia_muy_larga", "huespedes_invalidos", "cotizacion_no_disponible", "precio_cambio",
   "parametros_invalidos", "idempotencia_conflicto", "holds_deshabilitados", "limite_holds_activos", "limite_holds_contacto", "tipo_habitacion_invalido", "sin_disponibilidad",
+  "web_deshabilitado", "consentimiento_requerido",
 ];
 
 /** Traduce un error de Postgres a un error de dominio tipado. Los mensajes propios de la migracion 037 son seguros de mostrar. */

@@ -26,7 +26,7 @@
 // monorepo, la llamada HTTP real sí. La API de Stripe espera
 // `application/x-www-form-urlencoded`, no JSON — único detalle propio de este
 // proveedor frente a los demás.
-import type { PaymentChargeInput, PaymentChargeResult, PaymentsPort } from "@atiende/domain-hoteles";
+import type { PaymentChargeInput, PaymentChargeResult, PaymentRefundInput, PaymentRefundResult, PaymentsPort } from "@atiende/domain-hoteles";
 
 export interface StripePaymentsConfig {
   readonly secretKey: string | null;
@@ -59,11 +59,19 @@ export class StripeHotelesPaymentsPort implements PaymentsPort {
       currency: input.currency.toLowerCase(),
       payment_method: input.paymentMethodToken,
       confirm: "true",
-      // El huésped ya no está presente (folio cerrado desde el panel de recepción,
-      // no un checkout en vivo) — igual que un cargo de no-show o un cargo tardío
-      // de minibar, nunca hay un "return_url" al que redirigir a nadie.
-      off_session: "true",
     });
+    // El huésped ya no está presente (folio cerrado desde el panel de recepción,
+    // no un checkout en vivo) — igual que un cargo de no-show o un cargo tardío
+    // de minibar, nunca hay un "return_url" al que redirigir a nadie. Salvo el
+    // checkout publico de la reserva directa (H-42, `onSession`): ahi el huesped SI
+    // esta presente y el cargo no es `off_session`; nunca se redirige a nadie
+    // (`allow_redirects: never`), un metodo que exija autenticacion queda "pendiente".
+    if (input.onSession) {
+      body.set("automatic_payment_methods[enabled]", "true");
+      body.set("automatic_payment_methods[allow_redirects]", "never");
+    } else {
+      body.set("off_session", "true");
+    }
 
     const response = await this.fetchImpl("https://api.stripe.com/v1/payment_intents", {
       method: "POST",
@@ -104,5 +112,32 @@ export class StripeHotelesPaymentsPort implements PaymentsPort {
         : "fallido";
 
     return { status, externalPaymentId: json.id };
+  }
+
+  /** H-42: reembolso (total o parcial) de un PaymentIntent capturado. Mismo criterio que `charge`: sin llave lanza (el caller deja la solicitud para el
+   *  staff); un rechazo de negocio del reembolso es "fallido", cualquier otro error de integracion se lanza. */
+  async refund(input: PaymentRefundInput): Promise<PaymentRefundResult> {
+    if (!this.config.secretKey) throw new Error("Stripe secret key unavailable");
+    if (!(input.amount > 0)) throw new Error("PaymentRefundInput.amount debe ser mayor a 0");
+    if (!input.externalPaymentId) throw new Error("PaymentRefundInput.externalPaymentId requerido");
+    if (!input.idempotencyKey) throw new Error("PaymentRefundInput.idempotencyKey requerida");
+
+    const response = await this.fetchImpl("https://api.stripe.com/v1/refunds", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.config.secretKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Idempotency-Key": input.idempotencyKey,
+      },
+      body: new URLSearchParams({ payment_intent: input.externalPaymentId, amount: String(Math.round(input.amount)) }),
+    });
+    const json = (await response.json()) as { id?: string; status?: string; error?: { type?: string; code?: string; message?: string } };
+    if (!response.ok) {
+      if (json.error?.type === "invalid_request_error" && json.error.code === "charge_already_refunded") return { status: "procesado", externalRefundId: json.id ?? `stripe_refund_${input.idempotencyKey}` };
+      throw new Error(`Stripe respondió ${response.status} al reembolsar: ${json.error?.message ?? "sin detalle"}`);
+    }
+    if (!json.id || !json.status) throw new Error("Stripe respondió 200 sin id/status de reembolso");
+    const status: PaymentRefundResult["status"] = json.status === "succeeded" ? "procesado" : json.status === "pending" || json.status === "requires_action" ? "pendiente" : "fallido";
+    return { status, externalRefundId: json.id };
   }
 }

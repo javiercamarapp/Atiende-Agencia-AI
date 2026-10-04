@@ -56,6 +56,8 @@ import {
   type ParityGuardConfig,
   type BenchmarkQueryRequest,
 } from "@atiende/domain-hoteles";
+import { PostgresReservarDirectoRepository, isRealCalendarDate } from "@atiende/domain-hoteles";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -149,6 +151,22 @@ export function hotelesRevenueRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const repo = deps.hotelesRepo(c.get("db"));
     const gate = await repo.findRevenueGate(c.req.param("propertyId"));
     return c.json({ gate: gate ? serializeGate(gate) : null }, 200);
+  });
+
+  // H-42 -- KPI "room-nights directas": noches de reservas del canal directo web vs el total de noches reservadas (sin canceladas ni no-show) en
+  // [desde, hasta). Por defecto el mes en curso (fecha de negocio). Lectura de staff (RLS del hotel); sin la migracion 044 responde `disponible: false`.
+  app.get("/hoteles/:propertyId/revenue/room-nights-directas", async (c) => {
+    assertVerticalRole(c, HOTEL_ROLES);
+    const hoy = hoyFechaNegocio();
+    const primeroDelMes = `${hoy.slice(0, 7)}-01`;
+    const siguiente = new Date(`${primeroDelMes}T00:00:00Z`);
+    siguiente.setUTCMonth(siguiente.getUTCMonth() + 1);
+    const desde = c.req.query("desde") ?? primeroDelMes;
+    const hasta = c.req.query("hasta") ?? siguiente.toISOString().slice(0, 10);
+    if (!isRealCalendarDate(desde) || !isRealCalendarDate(hasta) || hasta <= desde) throw Errors.validation("desde/hasta: fechas AAAA-MM-DD reales, con hasta posterior a desde.");
+    if (Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`) > 366 * 86_400_000) throw Errors.validation("El rango maximo es de un año.");
+    const repo = deps.hotelesReservarPublicoRepo ? deps.hotelesReservarPublicoRepo(c.get("db")) : new PostgresReservarDirectoRepository(c.get("db"));
+    return c.json(await repo.roomNightsDirectas(c.req.param("propertyId"), desde, hasta), 200);
   });
 
   // Inicializa el gate en "shadow" -- idempotente, siempre la única entrada

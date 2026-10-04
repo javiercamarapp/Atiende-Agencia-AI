@@ -46,7 +46,128 @@ const TEXTO_OCUPACION = "Esta semana tu ocupación fue 73% (255 de 350 noches); 
 const FUENTE_OCUPACION = { tool: "ocupacion_adr_revpar", source: "Cargos de hospedaje del folio e inventario por día", periodLabel: "esta semana (lunes a hoy)", scopeLabel: "todos tus hoteles" };
 const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("hoteles.copiloto.conversaciones", () => []);
 
+
+// H-42 -- API PUBLICA de reserva directa del hotel (sin sesion): configuracion, disponibilidad, cotizacion, confirmar, estado y cancelar por token.
+// Mismo formato que apps/api/src/routes/verticals/hoteles/reservar-publico.ts. Sin sesion caen en el escenario compartido "anon": el estado se aisla POR SLUG
+// (cada prueba usa `${orgSlug}--<sufijo unico>`); la ultima habitacion se la queda quien confirme primero (la segunda confirmacion recibe 409 sin_disponibilidad),
+// igual que el servidor. Cualquier otro slug responde 404 uniforme. Solo existe en la API simulada de e2e.
+const TIPO_PUBLICO = "11111111-1111-4111-8111-111111111111";
+const TOTAL_NOCHE = 118_000; // 100000 + IVA 16% + ISH 3%
+interface ReservaPublicaMock {
+  token: string;
+  estado: "pago_pendiente" | "cancelada";
+  llegada: string;
+  salida: string;
+  noches: number;
+  huespedes: number;
+  total: number;
+}
+const hotelPublico = (org: string): boolean => org === ORG.slug || org.startsWith(`${ORG.slug}--`);
+const nochesEntre = (a: string, b: string): number => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+const vistaPublica = (r: ReservaPublicaMock) => ({
+  estado: r.estado,
+  hotel: PROP.nombre,
+  tipoHabitacion: "Doble",
+  llegada: r.llegada,
+  salida: r.salida,
+  noches: r.noches,
+  huespedes: r.huespedes,
+  totalCentavos: r.total,
+  anticipoCentavos: Math.round(r.total * 0.3),
+  pago: { estado: "pendiente", reembolso: null, ...(r.estado === "pago_pendiente" ? { requiereAccion: "El hotel te contactará para registrar tu anticipo." } : {}) },
+  vigenteHasta: r.estado === "pago_pendiente" ? new Date(Date.now() + 60 * 60_000).toISOString() : null,
+  cancelable: r.estado === "pago_pendiente",
+  cancelacion: { gratisHasta: null, penalidadPct: 0, siCancelasAhora: null, resultado: r.estado === "cancelada" ? { penalidadCentavos: 0, reembolsoCentavos: 0 } : null },
+});
+const reservasPublicas = (p: { estado: { obtener<T>(k: string, s: () => T): T }; params: Readonly<Record<string, string>> }) => p.estado.obtener<ReservaPublicaMock[]>(`hoteles.reservar.reservas:${p.params["org"]}`, () => []);
+
+const rutasHotelesPublicas: readonly Ruta[] = [
+  {
+    metodo: "GET",
+    patron: "/v1/hoteles/:org/reservar",
+    publica: true,
+    manejador: (p) =>
+      hotelPublico(p.params["org"]!)
+        ? { disponible: true, hotel: { nombre: ORG.nombre }, propiedades: [{ slug: "casa-azul", nombre: PROP.nombre, reservaEnLinea: true, anticipoPct: 0.3, maxHuespedes: 4, maxNoches: 14, cancelacion: null }] }
+        : fallo(404, "Hotel no encontrado."),
+  },
+  {
+    metodo: "GET",
+    patron: "/v1/hoteles/:org/reservar/disponibilidad",
+    publica: true,
+    manejador: (p) => {
+      if (!hotelPublico(p.params["org"]!)) return fallo(404, "Hotel no encontrado.");
+      const llegada = p.query.get("llegada") ?? "";
+      const salida = p.query.get("salida") ?? "";
+      const noches = nochesEntre(llegada, salida);
+      if (!Number.isFinite(noches) || noches < 1) return fallo(400, "Las fechas de llegada y salida no son válidas.");
+      const libre = reservasPublicas(p).filter((r) => r.estado !== "cancelada").length === 0;
+      return { disponible: true, reservaEnLinea: true, propiedad: { slug: "casa-azul", nombre: PROP.nombre }, llegada, salida, noches, huespedes: Number(p.query.get("huespedes") ?? 1), anticipoPct: 0.3, opciones: [{ tipoHabitacionId: TIPO_PUBLICO, nombre: "Doble", maxOcupacion: 2, disponible: libre, motivo: libre ? null : "Sin disponibilidad", desdePorNocheCentavos: libre ? TOTAL_NOCHE : null, totalCentavos: libre ? TOTAL_NOCHE * noches : null }] };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: "/v1/hoteles/:org/reservar/cotizacion",
+    publica: true,
+    manejador: (p) => {
+      if (!hotelPublico(p.params["org"]!)) return fallo(404, "Hotel no encontrado.");
+      const c = (p.cuerpo ?? {}) as { llegada?: string; salida?: string; huespedes?: number; tipoHabitacionId?: string };
+      if (!c.llegada || !c.salida || c.tipoHabitacionId !== TIPO_PUBLICO) return fallo(404, "No encontramos ese tipo de habitación.");
+      const noches = nochesEntre(c.llegada, c.salida);
+      const total = TOTAL_NOCHE * noches;
+      if (reservasPublicas(p).some((r) => r.estado !== "cancelada")) return conStatus(409, { code: "sin_disponibilidad", message: "Ya no hay habitaciones disponibles de ese tipo para esas fechas." });
+      const neto = 100_000 * noches;
+      return { quoteToken: `q1.${Buffer.from(JSON.stringify({ c: c.llegada, s: c.salida, g: c.huespedes ?? 1, t: total })).toString("base64url")}.firma-mock-e2e`, venceEn: new Date(Date.now() + 15 * 60_000).toISOString(), propiedad: { slug: "casa-azul", nombre: PROP.nombre }, tipoHabitacion: { id: TIPO_PUBLICO, nombre: "Doble" }, llegada: c.llegada, salida: c.salida, noches, huespedes: c.huespedes ?? 1, cotizacion: { netoCentavos: neto, ivaCentavos: neto * 0.16, ishCentavos: neto * 0.03, totalCentavos: total }, anticipo: { porcentaje: 0.3, centavos: Math.round(total * 0.3), requerido: true }, cancelacion: { gratisHasta: null, penalidadPct: 0 } };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: "/v1/hoteles/:org/reservar/confirmar",
+    publica: true,
+    manejador: (p) => {
+      if (!hotelPublico(p.params["org"]!)) return fallo(404, "Hotel no encontrado.");
+      const c = (p.cuerpo ?? {}) as { quoteToken?: string; consentimientoAviso?: boolean; huesped?: { nombre?: string } };
+      if (!p.cabeceras["idempotency-key"]) return fallo(400, "Idempotency-Key: obligatoria.");
+      if (c.consentimientoAviso !== true) return fallo(400, "Debes aceptar el aviso de privacidad para reservar.");
+      const partes = String(c.quoteToken ?? "").split(".");
+      let q: { c: string; s: string; g: number; t: number };
+      try {
+        q = JSON.parse(Buffer.from(partes[1] ?? "", "base64url").toString("utf8"));
+      } catch {
+        return fallo(400, "La cotización no es válida. Vuelve a cotizar.");
+      }
+      const reservas = reservasPublicas(p);
+      if (reservas.some((r) => r.estado !== "cancelada")) return conStatus(409, { code: "sin_disponibilidad", message: "Ya no hay habitaciones disponibles de ese tipo para esas fechas." });
+      const r: ReservaPublicaMock = { token: `tok-${p.params["org"]}-${reservas.length + 1}`, estado: "pago_pendiente", llegada: q.c, salida: q.s, noches: nochesEntre(q.c, q.s), huespedes: q.g, total: q.t };
+      reservas.push(r);
+      return conStatus(202, { rastreoToken: r.token, ...vistaPublica(r) });
+    },
+  },
+  {
+    metodo: "GET",
+    patron: "/v1/hoteles/:org/reservar/estado/:token",
+    publica: true,
+    manejador: (p) => {
+      const r = hotelPublico(p.params["org"]!) ? reservasPublicas(p).find((x) => x.token === p.params["token"]) : undefined;
+      return r ? vistaPublica(r) : fallo(404, "No encontramos esa reserva.");
+    },
+  },
+  {
+    metodo: "POST",
+    patron: "/v1/hoteles/:org/reservar/estado/:token/cancelar",
+    publica: true,
+    manejador: (p) => {
+      const r = hotelPublico(p.params["org"]!) ? reservasPublicas(p).find((x) => x.token === p.params["token"]) : undefined;
+      if (!r) return fallo(404, "No encontramos esa reserva.");
+      if (!p.cabeceras["idempotency-key"]) return fallo(400, "Idempotency-Key: obligatoria.");
+      r.estado = "cancelada";
+      return vistaPublica(r);
+    },
+  },
+];
+
 export const rutasHoteles: readonly Ruta[] = [
+  ...rutasHotelesPublicas,
   { metodo: "GET", patron: `${H}/chat-datos/pins`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ disponible: true, pins: [] }) },
   { metodo: "GET", patron: `${H}/chat-datos/estado`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }) },
   {
