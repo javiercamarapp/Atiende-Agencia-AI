@@ -9,6 +9,7 @@ export type {
   BranchTimezoneConfig,
   CallbackRequest,
   CallbackRequestInput,
+  CallbackRegistro,
   CanalPedido,
   Category,
   CategoryPatch,

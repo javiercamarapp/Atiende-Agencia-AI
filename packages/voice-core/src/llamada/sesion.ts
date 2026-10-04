@@ -34,6 +34,8 @@ export interface AperturaLlamada {
   readonly herramientas: readonly ToolDefinicion[];
   /** Handle de reanudacion de una sesion previa (reconexion). */
   readonly reanudarHandle?: string | null;
+  /** Nombres y apodos del menu que el STT de la cascada recibe como pista de vocabulario (tope `cascada.vocabularioMax`). Gemini Live no lo usa. */
+  readonly vocabulario?: readonly string[];
 }
 
 export interface VozSesionLlamada {

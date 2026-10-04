@@ -72,7 +72,8 @@ describe("addCustomerAddressIfNew (048)", () => {
 });
 
 describe("createCallbackRequest (048)", () => {
-  const ENTRADA = { organizationId: ORG, propertyId: PROP, customerName: "Ana", customerPhone: "+529991234567", reason: "queja", message: undefined, source: "whatsapp" as const };
+  const ENTRADA = { organizationId: ORG, propertyId: PROP, customerName: "Ana", customerPhone: "+529991234567", reason: "queja", message: undefined, source: "web" as const };
+  // (voz y WhatsApp pasan primero por `callback_registrar_agente`, 047; la 048 es el camino de los avisos web/admin y el respaldo de esa funcion.)
   const CREADO = { id: "00000000-0000-4000-8000-0000000000d1", resolved: false, created_at: "2026-10-03T12:00:00.000Z" };
   // La notificacion in-app (best-effort, con su propio SAVEPOINT) se absorbe con un handler generico.
   const NOTIFICACION: FakeSessionHandler = { match: /notificacion|core\.notif|emitir/i, respond: () => [] };
@@ -80,7 +81,7 @@ describe("createCallbackRequest (048)", () => {
   it("con la funcion: devuelve el aviso creado", async () => {
     const session = new AbortAwareFakeSession([{ match: /select restaurantes\.create_callback_request/i, respond: () => [{ callback: CREADO }] }, NOTIFICACION]);
     const aviso = await new PostgresRestaurantesRepository(session).createCallbackRequest(ENTRADA);
-    expect(aviso).toMatchObject({ id: CREADO.id, resolved: false, customerName: "Ana", source: "whatsapp" });
+    expect(aviso).toMatchObject({ id: CREADO.id, resolved: false, customerName: "Ana", source: "web" });
     expect(session.calls.some((c) => /insert into restaurantes\.callback_requests/i.test(c))).toBe(false);
   });
 

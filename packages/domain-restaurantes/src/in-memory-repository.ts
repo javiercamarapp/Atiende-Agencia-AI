@@ -8,6 +8,7 @@
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
+import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
@@ -276,6 +277,11 @@ interface InMemoryOutboxRow {
   lastErrorClass: string | null;
 }
 
+/** Ventana en que un aviso abierto del mismo canal, telefono y motivo absorbe al siguiente (misma que `callback_registrar_agente`: 2 h). */
+const CALLBACK_VENTANA_AGRUPAR_MS = 120 * 60_000;
+/** Vigencia de un contador del agente (misma que la funcion SQL: 2 h). */
+const CONTADOR_AGENTE_VIGENCIA_MS = 120 * 60_000;
+
 export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly organizations = new Map<string, StoredOrganization>();
   private readonly organizationIdBySlug = new Map<string, string>();
@@ -291,6 +297,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly knownZones: StoredKnownZone[] = [];
   private readonly storefrontMarcas = new Map<string, StorefrontMarca>();
   private readonly callbackRequests: CallbackRequest[] = [];
+  private readonly contadoresAgente = new Map<string, { n: number; at: number }>();
+  /** Ids de evento agregados como nota a un aviso (migracion 047, `eventos_agrupados`). */
+  private readonly callbackEventosAgrupados = new Map<string, string[]>();
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
   private readonly phoneNumberIdToOrg = new Map<string, string>();
   private readonly whatsappEvents = new Map<string, StoredWhatsAppEvent>();
@@ -888,15 +897,42 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
+  /** Solo pruebas: los avisos (callbacks) de la organizacion, tal como quedaron (con las notas agregadas en `message`). */
+  listCallbackRequests(organizationId: string): readonly CallbackRequest[] {
+    return this.callbackRequests.filter((c) => c.organizationId === organizationId);
+  }
+
   /** Solo para pruebas: las solicitudes de contacto registradas (en orden de creacion). */
   peekCallbackRequests(): readonly CallbackRequest[] {
     return this.callbackRequests;
   }
 
+  /** Mismas reglas que `restaurantes.callback_registrar_agente` (migracion 047) para los avisos del agente (`voice`/`whatsapp`): el mismo
+   * evento no se repite y un aviso abierto del mismo canal, telefono y motivo recibe una nota en vez de crear otro. */
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
+    if (input.source === "voice" || input.source === "whatsapp") {
+      const evento = input.sourceEventId ?? null;
+      const delTelefono = this.callbackRequests.filter((c) => c.organizationId === input.organizationId && c.customerPhone === input.customerPhone);
+      if (evento) {
+        const previo = delTelefono.find((c) => c.sourceEventId === evento || (this.callbackEventosAgrupados.get(c.id) ?? []).includes(evento));
+        if (previo) return { ...previo, registro: "evento_repetido" };
+      }
+      const ahora = Date.now();
+      const abierto = [...delTelefono]
+        .reverse()
+        .find((c) => c.source === input.source && (c.reason ?? null) === (input.reason ?? null) && !c.resolved && ahora - Date.parse(c.createdAt) < CALLBACK_VENTANA_AGRUPAR_MS);
+      if (abierto) {
+        const nota = `\n— Aviso repetido: ${(input.message ?? "").trim().slice(0, 500) || "sin detalle"}`;
+        const actual = abierto.message ?? "";
+        const actualizado: CallbackRequest = { ...abierto, message: actual.length + nota.length <= 4000 ? actual + nota : abierto.message };
+        this.callbackRequests[this.callbackRequests.indexOf(abierto)] = actualizado;
+        if (evento) this.callbackEventosAgrupados.set(abierto.id, [...(this.callbackEventosAgrupados.get(abierto.id) ?? []), evento]);
+        return { ...actualizado, registro: "nota_agregada" };
+      }
+    }
     const created: CallbackRequest = { ...input, id: randomUUID(), resolved: false, createdAt: new Date().toISOString() };
     this.callbackRequests.push(created);
-    return created;
+    return { ...created, registro: "nuevo" };
   }
 
   async consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean> {
@@ -931,6 +967,19 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       if (orgId === organizationId) return phoneNumberId;
     }
     return null;
+  }
+
+  /** Misma regla que `restaurantes.whatsapp_contador_agente` (migracion 047): un contador de mas de 2 h cuenta como 0. */
+  async contadorAgenteWhatsApp(organizationId: string, phone: string, clave: ClaveContadorAgente, accion: "incrementar" | "reiniciar"): Promise<number | null> {
+    const llave = `${organizationId}|${phone}|${clave}`;
+    if (accion === "reiniciar") {
+      this.contadoresAgente.delete(llave);
+      return 0;
+    }
+    const previo = this.contadoresAgente.get(llave);
+    const n = (previo && Date.now() - previo.at < CONTADOR_AGENTE_VIGENCIA_MS ? previo.n : 0) + 1;
+    this.contadoresAgente.set(llave, { n, at: Date.now() });
+    return n;
   }
 
   async claimWhatsAppMessage(organizationId: string, messageId: string, _phoneHash: string): Promise<boolean> {
