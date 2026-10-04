@@ -200,3 +200,20 @@ documentados aquí mismo:
   "not_available", promoted, orderIds }`.
 - Pendiente conocido: la comanda al POS (SoftRestaurant) no se encola al promover (hoy se omite al crear un
   programado); la captura manual de la comanda sigue disponible.
+
+## Encuesta post-entrega (R-41, migración 041)
+
+Calificación de 1 a 5 estrellas + comentario del cliente tras recibir su pedido, satisfacción por sucursal y por repartidor, y liga a reseñas.
+
+- Público (sin login; token HMAC con vencimiento a 14 días, ligado a organización + pedido, ver `apps/api/src/encuesta-token.ts`):
+  `GET|POST /v1/restaurantes/:orgSlug/encuesta/:token`. La primera respuesta gana (reintento = `ya_respondida`, 200). Token inválido, vencido, de otra
+  organización o sin encuesta: el mismo 404. POST exige origen permitido y limita a 10 por minuto por IP (GET 60). Una calificación de 2 o menos emite
+  `restaurantes.encuesta.calificacion_baja` (in-app, sin PII, una por pedido). La liga de reseñas solo se devuelve con calificación >= umbral y liga configurada.
+- Panel (owner/admin, `:propertyId`): `GET|PUT .../admin/encuestas/config` (activa, espera 5..1440 min, liga https, umbral; apagada por defecto; bitácora si cambia),
+  `GET .../admin/encuestas/resumen?dias=1..92|desde&hasta&alcance=organizacion|sucursal` y `POST .../admin/encuestas/enviar-pendientes` (solo con alcance de toda la
+  organización; 6 por minuto por organización; deja bitácora).
+- Interno: `GET|POST /internal/restaurantes/enviar-encuestas[?organizationId=]` (secreto interno o `Authorization: Bearer <CRON_SECRET>`). Idempotente. NO está en
+  `vercel.json` (decisión de costo): ver `docs/CRONS.md`.
+- El envío es un WhatsApp proactivo con la plantilla `encuesta_entrega` (variables: nombre, sucursal, liga). Hasta que el operador la cree y la declare aprobada en
+  `WHATSAPP_APPROVED_TEMPLATES`, sale el texto libre, que Meta solo entrega dentro de la ventana de 24 horas.
+- Base sin migrar: lecturas `disponible:false`, guardar configuración 503, página pública 200/503 honestos, barrido `status: "not_available"`; nunca un 500.
