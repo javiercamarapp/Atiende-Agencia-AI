@@ -3,8 +3,13 @@
 // captura manual que corta reintentos). La usan las pruebas de dominio y de rutas.
 import { randomUUID } from "node:crypto";
 import { esModoSoftRestaurant, resumenVacio } from "./outbox-store.ts";
+import { UMBRAL_CAPTURA_MANUAL_POR_OMISION_MIN } from "./outbox-store.ts";
 import type {
   ComandaOutboxStore,
+  ComandaVencida,
+  ResultadoEstadosPorPedido,
+  ResultadoUmbrales,
+  ResultadoVencidas,
   EntradaEncolar,
   FilaComandaOutbox,
   FiltroListarComandas,
@@ -190,5 +195,49 @@ export class InMemoryComandaOutboxStore implements ComandaOutboxStore {
     f.fila = { ...f.fila, estado: "capturada_manual", capturadoPor: actorUserId, capturadoEn: ahora, notaCaptura: nota ? nota.slice(0, 500) : null, actualizadoEn: ahora };
     f.reclamadaEn = null;
     return { resultado: "ok", fila: f.fila };
+  }
+
+  private readonly umbrales = new Map<string, { organizationId: string; minutos: number }>();
+  private readonly organizacionDeSucursal = new Map<string, string>();
+
+  /** Helper de pruebas: la sucursal pertenece a la organizacion (en SQL lo deriva core.property). */
+  registrarSucursal(propertyId: string, organizationId: string): void {
+    this.organizacionDeSucursal.set(propertyId, organizationId);
+  }
+
+  async listarCapturaManualVencidas(ahora: Date): Promise<ResultadoVencidas> {
+    if (!this.disponible) return { disponible: false, filas: [] };
+    const filas: ComandaVencida[] = [];
+    for (const f of this.filas.values()) {
+      if (f.fila.estado !== "captura_manual") continue;
+      const umbral = this.umbrales.get(f.fila.propertyId)?.minutos ?? UMBRAL_CAPTURA_MANUAL_POR_OMISION_MIN;
+      const desde = new Date(f.fila.actualizadoEn).getTime();
+      if (desde > ahora.getTime() - umbral * 60_000) continue;
+      filas.push({ comandaId: f.fila.id, orderId: f.fila.orderId, organizationId: f.fila.organizationId, propertyId: f.fila.propertyId, minutos: Math.max(0, Math.floor((ahora.getTime() - desde) / 60_000)) });
+    }
+    return { disponible: true, filas: filas.sort((a, b) => b.minutos - a.minutos).slice(0, 200) };
+  }
+
+  async leerUmbralesCapturaManual(organizationId: string): Promise<ResultadoUmbrales> {
+    if (!this.disponible) return { disponible: false, porSucursal: {} };
+    const porSucursal: Record<string, number> = {};
+    for (const [propertyId, u] of this.umbrales) if (u.organizationId === organizationId) porSucursal[propertyId] = u.minutos;
+    return { disponible: true, porSucursal };
+  }
+
+  async fijarUmbralCapturaManual(propertyId: string, minutos: number): Promise<{ readonly disponible: boolean }> {
+    if (!this.disponible) return { disponible: false };
+    const organizationId = this.organizacionDeSucursal.get(propertyId) ?? [...this.filas.values()].find((f) => f.fila.propertyId === propertyId)?.fila.organizationId;
+    if (!organizationId) throw Object.assign(new Error("set_umbral_captura_manual: sucursal desconocida"), { code: "42501" });
+    this.umbrales.set(propertyId, { organizationId, minutos });
+    return { disponible: true };
+  }
+
+  async estadosPorPedidos(organizationId: string, orderIds: readonly string[]): Promise<ResultadoEstadosPorPedido> {
+    if (!this.disponible) return { disponible: false, estados: {} };
+    const pedidos = new Set(orderIds);
+    const estados: Record<string, EstadoComanda> = {};
+    for (const f of this.filas.values()) if (f.fila.organizationId === organizationId && pedidos.has(f.fila.orderId)) estados[f.fila.orderId] = f.fila.estado as EstadoComanda;
+    return { disponible: true, estados };
   }
 }

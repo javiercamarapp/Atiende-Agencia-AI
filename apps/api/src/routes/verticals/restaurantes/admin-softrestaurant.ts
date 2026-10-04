@@ -11,6 +11,10 @@
 //           fallida, pendiente, enviada). Acotado al alcance de sucursales del staff.
 //   POST /v1/restaurantes/:propertyId/admin/softrestaurant/comandas/:comandaId/capturada  { nota? }
 //        -> marca la comanda como capturada a mano (corta los reintentos). Bitacora de auditoria.
+//   GET  /v1/restaurantes/:propertyId/admin/softrestaurant/estados?orderIds=a,b,c
+//        -> estado de la comanda de cada pedido (insignia de Pedidos); lectura liviana, hasta 100 ids.
+//   PUT  /v1/restaurantes/:propertyId/admin/softrestaurant/umbral-captura-manual  { branchId, minutos }
+//        -> owner/admin. Minutos que una comanda puede esperar captura manual antes de avisar al staff (1..240; 5 por omision).
 //
 // Compatibilidad con la base SIN migrar: si la migracion 024 no esta aplicada, las
 // lecturas responden `disponible: false` con lista vacia (nunca un 500) y las escrituras
@@ -19,7 +23,16 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { MANAGER_ROLES, STAFF_INVITE_ROLES, UUID_PATTERN } from "@atiende/domain-restaurantes";
-import { ESTADOS_COMANDA, esEstadoComanda, esModoSoftRestaurant, type EstadoComanda, type FilaComandaOutbox } from "@atiende/domain-restaurantes/softrestaurant";
+import {
+  ESTADOS_COMANDA,
+  UMBRAL_CAPTURA_MANUAL_MAX,
+  UMBRAL_CAPTURA_MANUAL_MIN,
+  UMBRAL_CAPTURA_MANUAL_POR_OMISION_MIN,
+  esEstadoComanda,
+  esModoSoftRestaurant,
+  type EstadoComanda,
+  type FilaComandaOutbox,
+} from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -76,6 +89,13 @@ interface CapturaBody {
   readonly nota?: unknown;
 }
 
+interface UmbralBody {
+  readonly branchId?: unknown;
+  readonly minutos?: unknown;
+}
+
+const ESTADOS_IDS_MAX = 100;
+
 export function restaurantesAdminSoftRestauranteRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const prefix = "/v1/restaurantes/:propertyId/admin/softrestaurant";
@@ -88,7 +108,60 @@ export function restaurantesAdminSoftRestauranteRoutes(deps: AppDeps): Hono<Core
     const port = softRestaurantPortFor(deps);
     const modo = await store.leerModo(organizationId);
     const resumen = await store.resumen(organizationId, null);
-    return c.json({ modo, disponible: resumen.disponible, adaptador: { nombre: port.nombre, esReal: port.esReal } });
+    const umbrales = await store.leerUmbralesCapturaManual(organizationId);
+    return c.json({
+      modo,
+      disponible: resumen.disponible,
+      adaptador: { nombre: port.nombre, esReal: port.esReal },
+      umbralCapturaManual: { porOmisionMin: UMBRAL_CAPTURA_MANUAL_POR_OMISION_MIN, minimo: UMBRAL_CAPTURA_MANUAL_MIN, maximo: UMBRAL_CAPTURA_MANUAL_MAX, disponible: umbrales.disponible, porSucursal: umbrales.porSucursal },
+    });
+  });
+
+  app.put(`${prefix}/umbral-captura-manual`, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const raw = await readJsonCapped<UmbralBody>(c.req.raw, 2 * 1024);
+    if (typeof raw.branchId !== "string" || !UUID_PATTERN.test(raw.branchId)) throw Errors.validation("branchId: se esperaba el id de una sucursal.");
+    if (typeof raw.minutos !== "number" || !Number.isInteger(raw.minutos) || raw.minutos < UMBRAL_CAPTURA_MANUAL_MIN || raw.minutos > UMBRAL_CAPTURA_MANUAL_MAX) {
+      throw Errors.validation(`minutos: se esperaba un entero entre ${UMBRAL_CAPTURA_MANUAL_MIN} y ${UMBRAL_CAPTURA_MANUAL_MAX}.`);
+    }
+    // La sucursal debe ser de la organizacion del staff (y de su alcance).
+    await resolveEffectivePropertyIds(deps, c, organizationId, raw.branchId);
+    const store = softRestaurantStoreFor(deps, c.get("db"));
+    const antes = (await store.leerUmbralesCapturaManual(organizationId)).porSucursal[raw.branchId] ?? UMBRAL_CAPTURA_MANUAL_POR_OMISION_MIN;
+    let resultado: { disponible: boolean };
+    try {
+      resultado = await store.fijarUmbralCapturaManual(raw.branchId, raw.minutos);
+    } catch (err) {
+      if ((err as { code?: string } | null)?.code === "42501") throw Errors.forbidden("Solo owner/admin pueden cambiar el umbral de captura manual.");
+      throw err;
+    }
+    if (!resultado.disponible) throw Errors.serviceUnavailable("Esta funcion requiere la migracion 054 de restaurantes, aun no aplicada en esta base.");
+    logEvent(c, "info", "restaurantes_softrestaurant_umbral_captura_manual", { actorUserId: c.get("userId"), organizationId, branchId: raw.branchId, antes, despues: raw.minutos });
+    if (antes !== raw.minutos) {
+      await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
+        organizationId,
+        actorUserId: c.get("userId"),
+        action: "softrestaurant.umbral_captura_manual",
+        entityType: "configuracion",
+        entityId: raw.branchId,
+        campo: "softrestaurant.umbral_captura_manual_min",
+        antes: String(antes),
+        despues: String(raw.minutos),
+      });
+    }
+    return c.json({ branchId: raw.branchId, minutos: raw.minutos });
+  });
+
+  app.get(`${prefix}/estados`, async (c) => {
+    assertVerticalRole(c, MANAGER_ROLES);
+    const crudo = c.req.query("orderIds") ?? "";
+    const ids = crudo === "" ? [] : crudo.split(",").map((x) => x.trim());
+    if (ids.length > ESTADOS_IDS_MAX) throw Errors.validation(`orderIds: hasta ${ESTADOS_IDS_MAX} ids por consulta.`);
+    for (const id of ids) if (!UUID_PATTERN.test(id)) throw Errors.validation("orderIds: se esperaba una lista de ids separados por coma.");
+    const store = softRestaurantStoreFor(deps, c.get("db"));
+    const r = await store.estadosPorPedidos(c.get("organizationId"), [...new Set(ids)]);
+    return c.json({ disponible: r.disponible, estados: r.estados });
   });
 
   app.put(`${prefix}/config`, async (c) => {

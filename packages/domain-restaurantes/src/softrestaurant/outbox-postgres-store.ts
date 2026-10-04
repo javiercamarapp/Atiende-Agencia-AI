@@ -19,6 +19,9 @@ import type {
   ModoSoftRestaurant,
   ResultadoCaptura,
   ResultadoEncolar,
+  ResultadoEstadosPorPedido,
+  ResultadoUmbrales,
+  ResultadoVencidas,
   ResultadoListar,
   ResumenComandas,
 } from "./outbox-store.ts";
@@ -295,6 +298,83 @@ export class PostgresComandaOutboxStore implements ComandaOutboxStore {
         if (code === "42501") return Promise.resolve({ resultado: "prohibido" });
         advertirBaseSinMigrar(err);
         return Promise.resolve({ resultado: "no_disponible" });
+      },
+    });
+  }
+
+  async listarCapturaManualVencidas(ahora: Date): Promise<ResultadoVencidas> {
+    return runWithSavepointFallback<ResultadoVencidas>({
+      session: this.db,
+      primary: async () => {
+        const r = await this.db.query<{ comanda_id: string; order_id: string; organization_id: string; property_id: string; minutos: number | string }>(
+          "select comanda_id, order_id, organization_id, property_id, minutos from restaurantes.pos_comandas_captura_manual_vencidas($1::timestamptz)",
+          [ahora.toISOString()],
+        );
+        return {
+          disponible: true,
+          filas: r.rows.map((x) => ({ comandaId: x.comanda_id, orderId: x.order_id, organizationId: x.organization_id, propertyId: x.property_id, minutos: Number(x.minutos) })),
+        };
+      },
+      isRecoverable: esBaseSinMigrar,
+      fallback: (err) => {
+        advertirBaseSinMigrar(err);
+        return Promise.resolve({ disponible: false, filas: [] });
+      },
+    });
+  }
+
+  async leerUmbralesCapturaManual(organizationId: string): Promise<ResultadoUmbrales> {
+    return runWithSavepointFallback<ResultadoUmbrales>({
+      session: this.db,
+      primary: async () => {
+        const r = await this.db.query<{ property_id: string; captura_manual_min: number | string }>(
+          "select property_id, captura_manual_min from restaurantes.pos_comanda_alerta_config where organization_id = $1",
+          [organizationId],
+        );
+        const porSucursal: Record<string, number> = {};
+        for (const x of r.rows) porSucursal[x.property_id] = Number(x.captura_manual_min);
+        return { disponible: true, porSucursal };
+      },
+      isRecoverable: esBaseSinMigrar,
+      fallback: (err) => {
+        advertirBaseSinMigrar(err);
+        return Promise.resolve({ disponible: false, porSucursal: {} });
+      },
+    });
+  }
+
+  async fijarUmbralCapturaManual(propertyId: string, minutos: number): Promise<{ readonly disponible: boolean }> {
+    return runWithSavepointFallback<{ readonly disponible: boolean }>({
+      session: this.db,
+      primary: async () => {
+        await this.db.query("select restaurantes.set_umbral_captura_manual($1::uuid, $2::int)", [propertyId, minutos]);
+        return { disponible: true };
+      },
+      isRecoverable: esBaseSinMigrar,
+      fallback: (err) => {
+        advertirBaseSinMigrar(err);
+        return Promise.resolve({ disponible: false });
+      },
+    });
+  }
+
+  async estadosPorPedidos(organizationId: string, orderIds: readonly string[]): Promise<ResultadoEstadosPorPedido> {
+    if (orderIds.length === 0) return { disponible: true, estados: {} };
+    return runWithSavepointFallback<ResultadoEstadosPorPedido>({
+      session: this.db,
+      primary: async () => {
+        const r = await this.db.query<{ order_id: string; estado: string }>(
+          "select order_id, estado from restaurantes.pos_comanda_outbox where organization_id = $1 and order_id = any($2::uuid[])",
+          [organizationId, [...orderIds]],
+        );
+        const estados: Record<string, import("./outbox-state.ts").EstadoComanda> = {};
+        for (const x of r.rows) if (esEstadoComanda(x.estado)) estados[x.order_id] = x.estado;
+        return { disponible: true, estados };
+      },
+      isRecoverable: esBaseSinMigrar,
+      fallback: (err) => {
+        advertirBaseSinMigrar(err);
+        return Promise.resolve({ disponible: false, estados: {} });
       },
     });
   }
