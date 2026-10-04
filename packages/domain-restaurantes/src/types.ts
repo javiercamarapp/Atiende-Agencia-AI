@@ -6,6 +6,7 @@
 import type { HorarioSucursal } from "./horarios.ts";
 
 import type { PedidoReciente } from "./pedido-reciente.ts";
+import type { UbicacionEntrega } from "./whatsapp/location.ts";
 
 export interface Branch {
   readonly propertyId: string;
@@ -188,6 +189,9 @@ export interface CreateOrderInput {
   /** Perfil de básicas por omisión del negocio (PM: roja, verde, cebolla con cilantro y limones). Con valor, la comanda separa
    * «Básicas» de «Pedidas»; sin valor (web/checkout histórico) imprime las 9 como incluidas, igual que antes. */
   readonly basicComplements?: readonly DefaultComplement[];
+  /** Destino de entrega que dio el cliente (pin de WhatsApp o link de Maps). Viaja en las notas del pedido (sin columna nueva)
+   * y la vista del repartidor lo abre en Maps. Solo a domicilio. */
+  readonly ubicacionEntrega?: UbicacionEntrega;
   /** Doble porcion de salsas (extra cobrado: una pieza del producto "Extra salsa" del catalogo por
    * cada salsa; si la sucursal no lo tiene en catalogo el pedido se rechaza con un mensaje claro). */
   readonly doubleSalsas?: readonly DoubleSalsa[];

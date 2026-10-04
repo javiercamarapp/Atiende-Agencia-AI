@@ -18,6 +18,7 @@ import { OrderValidationError } from "../errors.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
+import type { UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
 import { createOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { assertCantidadesWeb, assertWebOrderRules } from "../storefront.ts";
@@ -95,6 +96,8 @@ export interface AgentToolContext {
   /** Ultima ubicacion que el cliente COMPARTIO por WhatsApp (lat/lng reales del mensaje, no inventadas
    * por el modelo). Alimenta `buscar_sucursal_cercana` cuando el modelo no manda coordenadas. */
   readonly sharedLocation?: { readonly lat: number; readonly lng: number } | null;
+  /** Ultimo destino de entrega que dio el cliente (pin de WhatsApp o link de Maps); `crear_pedido` lo guarda en el pedido solo, el modelo no lo repite. */
+  readonly ubicacionEntrega?: UbicacionEntrega | null;
 }
 
 export interface AgentToolOutcome {
@@ -480,6 +483,7 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     omitDefaultComplements: Array.isArray(input.omit_default_complements) ? (input.omit_default_complements as readonly DefaultComplement[]) : undefined,
     // Los agentes (WhatsApp/voz) trabajan con el perfil de PM: comanda con «Básicas» y «Pedidas». El checkout web conserva las 9 incluidas.
     basicComplements: ctx.channel === "web" ? undefined : PM_BASIC_COMPLEMENTS,
+    ubicacionEntrega: ctx.ubicacionEntrega ?? undefined,
     doubleSalsas: toDoubleSalsas(input.doble_salsas),
     canal: toCanal(input.canal),
     colonia: str(input.colonia_entrega),

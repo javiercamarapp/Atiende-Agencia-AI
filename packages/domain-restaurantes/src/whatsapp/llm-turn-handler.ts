@@ -32,7 +32,7 @@ import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestauran
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
-import { latestSharedLocation } from "./location.ts";
+import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -483,6 +483,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // exige que la confirmacion llegue en un turno posterior a la cotizacion).
       // Ultima ubicacion que el cliente compartio con el clip de WhatsApp (ver whatsapp/location.ts).
       const sharedLocation = latestSharedLocation(messages);
+      const ubicacionEntrega = latestDeliveryPin(ventanaDeHistorial(messages));
       const userTurn = String(messages.filter((m) => m.role === "user").length);
       let orderId: string | null = null;
       let propertyId: string | null = activeEntryBranch?.propertyId ?? null;
@@ -600,7 +601,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, entryPropertyId: activeEntryBranch?.propertyId ?? null }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null }, call.name, input);
             result = executed.result;
             rechazoDelFlujo = executed.rechazoDelFlujo;
             anyToolCalled = true;
