@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// R-15 (migración 042) en la web: pestañas "Historial del día" y "Mi perfil" del repartidor y el diálogo de perfil de Staff (owner/admin).
+// R-15 (migración 043) en la web: pestañas "Historial del día" y "Mi perfil" del repartidor y el diálogo de perfil de Staff (owner/admin).
 // `fetch` inyectado por ruta real (lib/repartidor-perfil-client.ts). Cada caso afirma el EFECTO: qué llama al API (y con qué cuerpo), qué
 // NO llama (validación), el estado honesto de base sin migrar, el efectivo a rendir y la alerta de licencia < 30 días.
 import { act } from "react";

@@ -1,4 +1,4 @@
-// R-15 (migración 042): perfil operativo del repartidor. Cada caso afirma el EFECTO (qué quedó guardado, quién puede, qué NO se tocó),
+// R-15 (migración 043): perfil operativo del repartidor. Cada caso afirma el EFECTO (qué quedó guardado, quién puede, qué NO se tocó),
 // no solo el status. Las reglas de RLS reales las prueba scripts/verify-restaurantes-repartidor-perfil; aquí el contrato HTTP.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepartidorPerfilRepository } from "@atiende/domain-restaurantes";

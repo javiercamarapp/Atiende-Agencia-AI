@@ -1,4 +1,4 @@
-// R-15: perfil operativo del repartidor (migracion 042). Tipos, validacion de la entrada y las reglas puras de la licencia.
+// R-15: perfil operativo del repartidor (migracion 043). Tipos, validacion de la entrada y las reglas puras de la licencia.
 // Los telefonos se validan con `canonicalizeMexicanPhone` (phone.ts): se guardan SOLO los 10 digitos nacionales, igual que
 // `restaurantes.customers`. La base repite estas validaciones (la fuente de verdad es SQL).
 import { canonicalizeMexicanPhone } from "../phone.ts";
@@ -135,7 +135,7 @@ export type GuardarPerfilResultado =
   | { readonly estado: "invalido"; readonly detalle: string };
 
 export interface PerfilLectura {
-  /** false = la base aun no tiene la migracion 042 (estado honesto "no disponible aun"). */
+  /** false = la base aun no tiene la migracion 043 (estado honesto "no disponible aun"). */
   readonly disponible: boolean;
   readonly perfil: RepartidorPerfil | null;
 }

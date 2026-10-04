@@ -309,3 +309,53 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0014', true);
 select count(*)::int as programados_visibles_cross_tenant_deberia_ser_0 from restaurantes.orders where organization_id = '00000000-0000-0000-0000-0000000e0001' and status = 'programado';
 rollback;
+
+-- ===========================================================================
+-- D. Sucursal desactivada (042): sus programados no se promueven en silencio
+-- ===========================================================================
+\echo '=== D1. SUCURSAL DESACTIVADA: el barrido de sistema no promueve los programados de A (sucursal A1 inactiva); solo el de B (1) ==='
+begin;
+update core.property set status = 'inactive' where id = '00000000-0000-0000-0000-0000000e00a1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select jsonb_array_length(restaurantes.promover_pedidos_programados(null, null, 30)) as barrido_global_deberia_ser_1;
+rollback;
+
+\echo '=== D2. SUCURSAL DESACTIVADA: ni siquiera con el reloj de sistema adelantado 4 h se promueve un programado de A (0) ==='
+begin;
+update core.property set status = 'inactive' where id = '00000000-0000-0000-0000-0000000e00a1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select jsonb_array_length(restaurantes.promover_pedidos_programados('00000000-0000-0000-0000-0000000e0001', now() + interval '4 hours', 30)) as promovidos_deberia_ser_0;
+rollback;
+
+\echo '=== D3. SUCURSAL DESACTIVADA: el staff de A tampoco promueve desde el panel (0) y el pedido sigue en programado ==='
+begin;
+update core.property set status = 'inactive' where id = '00000000-0000-0000-0000-0000000e00a1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select jsonb_array_length(restaurantes.promover_pedidos_programados('00000000-0000-0000-0000-0000000e0001', null, 30)) as promovidos_deberia_ser_0;
+rollback;
+
+\echo '=== D4. REACTIVADA: al volver a active el programado vencido de A si se promueve (positivo: 2 en A, los vencidos) ==='
+begin;
+update core.property set status = 'inactive' where id = '00000000-0000-0000-0000-0000000e00a1';
+update core.property set status = 'active' where id = '00000000-0000-0000-0000-0000000e00a1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select jsonb_array_length(restaurantes.promover_pedidos_programados('00000000-0000-0000-0000-0000000e0001', null, 30)) as promovidos_deberia_ser_2;
+rollback;
+
+\echo '=== D5. SUCURSAL INACTIVA Y ORGANIZACION B: el cambio no cruza tenants (B sigue promoviendo su programado: 1) ==='
+begin;
+update core.property set status = 'inactive' where id = '00000000-0000-0000-0000-0000000e00a1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0014', true);
+select jsonb_array_length(restaurantes.promover_pedidos_programados('00000000-0000-0000-0000-0000000e0002', null, 30)) as promovidos_deberia_ser_1;
+rollback;
+
+\echo '=== D6. RECHAZADO (debe fallar): anon sigue sin poder ejecutar la funcion tras 042 ==='
+begin;
+set local role anon;
+select restaurantes.promover_pedidos_programados('00000000-0000-0000-0000-0000000e0001', null, 30) as should_fail;
+rollback;

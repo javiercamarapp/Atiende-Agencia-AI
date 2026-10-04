@@ -63,7 +63,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesProgramadosInternoRoutes(deps));
   app.route("/", restaurantesCierresInternoRoutes(deps));
   app.route("/", restaurantesCierresRoutes(deps));
-  // R-15 (migración 042): perfil operativo del repartidor + barrido interno de licencias por vencer.
+  // R-15 (migración 043): perfil operativo del repartidor + barrido interno de licencias por vencer.
   app.route("/", restaurantesRepartidorPerfilRoutes(deps));
   app.route("/", restaurantesRepartidorHistorialRoutes(deps));
   // R-17: exportar Historial y Clientes a CSV/PDF (owner/admin).

@@ -1,5 +1,5 @@
-// Adaptador Postgres de `RepartidorPerfilRepository` (migracion 042). REGLA DURA de compatibilidad con la base SIN migrar: mergear
-// despliega el codigo al instante y la 042 no se aplica sola. Toda llamada corre en la transaccion UNICA del request: un error de
+// Adaptador Postgres de `RepartidorPerfilRepository` (migracion 043). REGLA DURA de compatibilidad con la base SIN migrar: mergear
+// despliega el codigo al instante y la 043 no se aplica sola. Toda llamada corre en la transaccion UNICA del request: un error de
 // Postgres la deja abortada (25P02), por eso usa `runWithSavepointFallback` y degrada a "no disponible" (42883 funcion, 42P01 tabla,
 // 42703 columna). Los rechazos de negocio de la funcion SQL (42501, P0002, 22023) tambien se contienen en el SAVEPOINT y se
 // convierten en un resultado explicito; cualquier otro error se repropaga.
@@ -25,7 +25,7 @@ function advertirNoDisponible(err: unknown): void {
   advertido = true;
   console.warn(
     "PostgresRepartidorPerfilRepository: la tabla/funcion del perfil del repartidor todavia no existe en esta base (SQLSTATE 42P01/42703/42883) -- " +
-      "aplica packages/domain-restaurantes/migrations/042_repartidor_perfil_operativo.sql (o su espejo en supabase/migrations/).",
+      "aplica packages/domain-restaurantes/migrations/043_repartidor_perfil_operativo.sql (o su espejo en supabase/migrations/).",
     err,
   );
 }

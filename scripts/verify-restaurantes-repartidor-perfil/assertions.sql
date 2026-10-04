@@ -1,5 +1,5 @@
 -- Fixtures + escenarios contra Postgres REAL (RLS + GRANT + auth.uid() reales) de
--- packages/domain-restaurantes/migrations/042_repartidor_perfil_operativo.sql: perfil operativo del repartidor (R-15).
+-- packages/domain-restaurantes/migrations/043_repartidor_perfil_operativo.sql: perfil operativo del repartidor (R-15).
 --
 --   A. Escritura: el repartidor guarda SU perfil; owner/admin guardan el de un repartidor de su organizacion; reemplazo completo.
 --   B. Lectura (RLS): el repartidor lee solo el suyo; owner/admin leen los de su organizacion; el staff de piso lee lo OPERATIVO

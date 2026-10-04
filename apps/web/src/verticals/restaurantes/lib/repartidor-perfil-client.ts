@@ -1,7 +1,7 @@
-// R-15 -- cliente HTTP del perfil operativo del repartidor (migracion 042) y de su historial del dia. Rutas reales de
+// R-15 -- cliente HTTP del perfil operativo del repartidor (migracion 043) y de su historial del dia. Rutas reales de
 // apps/api/src/routes/verticals/restaurantes/repartidor-perfil.ts y repartidor-historial.ts. Mismo aislamiento que el resto de
 // apps/web: no depende de @atiende/domain-restaurantes (el servidor es la fuente de verdad; la validacion de abajo solo evita
-// ida y vuelta). `disponible: false` = la base aun no tiene la migracion 042 (estado honesto, nunca datos inventados).
+// ida y vuelta). `disponible: false` = la base aun no tiene la migracion 043 (estado honesto, nunca datos inventados).
 import { deleteJson, fetchJson, sendJson } from "./admin-client.ts";
 
 export type VehiculoTipo = "moto" | "bicicleta" | "auto" | "a_pie" | "otro";
