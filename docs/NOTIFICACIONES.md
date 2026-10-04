@@ -28,6 +28,14 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
   `no_disponible`, ambos dentro de un `SAVEPOINT` (la transacción del request no queda abortada). Una emisión nunca
   rompe el flujo de negocio que la invoca.
 
+## Preferencias por persona (R-16, migración 041)
+
+Cada persona puede apagar un tipo de aviso (`core.notification_preference`: organización + usuario + tipo, sin fila = encendido).
+`core.emit_notification` conserva su firma y su autorización; solo omite al destinatario que apagó ese `tipo`, así que los productores
+de las 6 verticales no cambian. La lectura y la escritura pasan por `core.list_notification_preferences` / `core.set_notification_preference`
+(cada quien edita las suyas; owner/admin las de su equipo, un admin no las de un owner). Hoy la pantalla Avisos de restaurantes
+(`/restaurantes/{orgSlug}/avisos`) es la única que las edita; el `tipo` debe empezar por el vertical de la organización.
+
 ## Cómo agregar un evento
 
 1. Agregarlo a `CATALOGO_NOTIFICACIONES` (`packages/db/src/notificaciones/catalogo.ts`).
