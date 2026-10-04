@@ -313,6 +313,14 @@ describe("Configuracion > Sitio publico (R-38)", () => {
     expect(guardar().disabled).toBe(true);
   });
 
+  it("la vista previa del panel no agrega un <h1> (la pagina de Configuracion ya tiene el suyo): el titular es <h2>", async () => {
+    montar();
+    await esperar();
+    const portada = rendered!.container.querySelector('[data-testid="portada-marca"]')!;
+    expect(portada.querySelector("h1")).toBeNull();
+    expect(portada.querySelector("h2")!.textContent).toBe("Tacos con historia");
+  });
+
   it("editar actualiza la vista previa en vivo y guarda por PUT con vacios como null; luego muestra 'Guardado'", async () => {
     montar();
     await esperar();
