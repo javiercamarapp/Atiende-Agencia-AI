@@ -12,14 +12,15 @@
 //   * Si el contexto fija una sucursal (`ctx.lockedPropertyId`: token de llamada o numero de
 //     WhatsApp de sucursal), una tool que apunte a otra sucursal de la organizacion se
 //     rechaza.
+import { createHash } from "node:crypto";
 import { registerCallbackRequest } from "../callback-requests.ts";
-import { lookupCustomerConPedidoReciente } from "../customers.ts";
+import { getCustomerDetailById, lookupCustomerConPedidoReciente } from "../customers.ts";
 import { OrderValidationError } from "../errors.ts";
 import { DEFAULT_COMPLEMENTS, isTortillaChoice } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
-import { createOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
+import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { assertCantidadesWeb, assertWebOrderRules } from "../storefront.ts";
 import { evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import { normalizePhone } from "../phone.ts";
@@ -53,6 +54,31 @@ import type {
 /** "web" = checkout publico del storefront (R-09): solo cotizar/confirmar/crear, con la misma maquina de estados
  * del servidor. El telefono lo escribe el cliente (no hay canal que lo identifique), asi que `ctx.phone` es null. */
 export type AgentChannel = "whatsapp" | "voz" | "web";
+
+/** Modo de ejecucion del registro. `real` (por omision) = comportamiento de siempre. `preview` = prueba del dueno en el
+ * panel: las lecturas y la maquina de estados del pedido son reales, pero NINGUNA herramienta escribe pedidos, clientes,
+ * comandas, avisos ni correos (ver `crear_pedido` y `registrar_contacto` / `escalar_a_humano` en `dispatchTool`). El modo
+ * lo fija SOLO el servidor en el contexto; ninguna herramienta lo lee de los argumentos del modelo (leccion X48 del
+ * original: un `modo_prueba` manipulable por el LLM fue un bug real). */
+export type AgentToolMode = "real" | "preview";
+
+/** Prefijo de los folios de los pedidos simulados de la preview. */
+export const FOLIO_PREVIEW_PREFIJO = "PRUEBA-";
+
+/** Prefijo del rango de telefonos ficticios reservado para las conversaciones de preview (10 digitos nacionales). No es
+ * un numero asignable a un cliente real: el 55 5550 se reserva para pruebas y el panel nunca lo muestra como cliente. */
+export const TELEFONO_PREVIEW_PREFIJO = "555550";
+
+/** Telefono ficticio estable por sesion de preview: `TELEFONO_PREVIEW_PREFIJO` + 4 digitos derivados de la sesion. */
+export function telefonoFicticioPreview(sesionId: string): string {
+  let h = 0;
+  for (let i = 0; i < sesionId.length; i++) h = (h * 31 + sesionId.charCodeAt(i)) >>> 0;
+  return `${TELEFONO_PREVIEW_PREFIJO}${String(h % 10000).padStart(4, "0")}`;
+}
+
+export function esTelefonoPreview(telefono: string | null | undefined): boolean {
+  return typeof telefono === "string" && /^\d{10}$/.test(telefono) && telefono.startsWith(TELEFONO_PREVIEW_PREFIJO);
+}
 
 export type AgentToolName =
   | "buscar_cliente"
@@ -96,9 +122,16 @@ export interface AgentToolContext {
   /** Ultima ubicacion que el cliente COMPARTIO por WhatsApp (lat/lng reales del mensaje, no inventadas
    * por el modelo). Alimenta `buscar_sucursal_cercana` cuando el modelo no manda coordenadas. */
   readonly sharedLocation?: { readonly lat: number; readonly lng: number } | null;
+  /** `real` (por omision) o `preview` (sin efectos). SOLO lo fija el servidor, nunca el modelo ni el cliente. */
+  readonly modo?: AgentToolMode;
+  /** Solo `preview`: cliente de la organizacion que el panel eligio para «simular cliente conocido». `buscar_cliente`
+   * lo resuelve con `getCustomerDetailById` (solo lectura, acotado a la organizacion). */
+  readonly previewCustomerId?: string | null;
 }
 
 export interface AgentToolOutcome {
+  /** `true` cuando la tool corrio en modo preview y simulo su efecto (el pedido/aviso NO existe en la base). */
+  readonly simulated?: boolean;
   /** Respuesta "wire" (snake_case) que ve el LLM de WhatsApp; la voz la usa salvo donde su
    * contrato historico difiere y lee `raw`. */
   readonly result: unknown;
@@ -108,6 +141,8 @@ export interface AgentToolOutcome {
   readonly propertyId: string | null;
   /** Huella de la cotizacion vigente (solo cotizar_pedido con maquina de estados activa). */
   readonly quoteHash?: string;
+  /** crear_pedido de VOZ repetido tras un intento incierto (timeout del worker): devuelve el pedido ya registrado, sin crear otro. */
+  readonly yaRegistrado?: boolean;
   /** Codigo de la violacion de la maquina de estados que el SERVIDOR rechazo a proposito (solo `executeAgentToolSafely`, con `{error}`). */
   readonly rechazoDelFlujo?: OrderFlowViolationCode;
 }
@@ -621,6 +656,12 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   for (let attempt = 0; attempt < 3 && !claimed; attempt++) {
     const snap = await readFlow(repo, ctx, flow);
     if (snap === null) return dispatchTool(repo, ctx, name, input); // base sin migrar: camino anterior
+    // Voz: un reintento del MISMO pedido ya creado (el worker corto la espera y el servidor si lo registro) devuelve el pedido
+    // existente con su id, para que la llamada cuente el objetivo y el agente no le diga al cliente que fallo.
+    if (ctx.channel === "voz" && snap.state === "creado" && snap.context?.orderId && snap.context.quoteHash === fingerprint) {
+      const existente = await repo.findOrderById(ctx.organizationId, snap.context.orderId);
+      if (existente) return { result: { order: orderToWire(existente), ya_registrado: true }, raw: existente, orderId: existente.id, propertyId: existente.propertyId, yaRegistrado: true };
+    }
     const current = assertCanCreate(snap, { now: flowNow(flow), turn: flow.turn, fingerprint });
     const claimCtx: OrderFlowContext = { ...current, claimedAtMs: flowNow(flow) };
     const res = await writeFlow(repo, ctx, flow, snap.version, "creando", claimCtx);
@@ -644,6 +685,42 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   }
 }
 
+/** `crear_pedido` en modo preview: corre EXACTAMENTE la misma validacion y cotizacion del pedido real
+ * (`prepareCreateOrder` -> `validateCreateOrderPayload`, reglas de horario/zona/minimo/precios del catalogo) y devuelve el
+ * pedido simulado con el total del servidor. NO llama a `createOrder`: no hay `upsertCustomer`, ni `createOrderIdempotent`
+ * (que a su vez encolaria la comanda de SoftRestaurant), ni avisos al staff, ni correo, ni uso de promocion. */
+async function simulatePreviewOrder(repo: RestaurantesRepository, ctx: AgentToolContext, createInput: CreateOrderInput, expectedPrices: string | undefined): Promise<AgentToolOutcome> {
+  const prepared = await prepareCreateOrder(repo, createInput);
+  if (expectedPrices && priceSignature(prepared.orderItems) !== expectedPrices) {
+    throw new OrderFlowViolationError("precio_cambio", "Los precios del menú cambiaron después de que confirmaste. Vuelve a revisar tu pedido para ver el total actualizado.");
+  }
+  // Pedido grande (PM): el preview muestra lo mismo que haria el real (el pedido NO se crea), pero sin dejar el aviso para la sucursal.
+  if (ctx.channel !== "web") {
+    try {
+      await assertNoEsPedidoGrande(repo, prepared);
+    } catch (err) {
+      if (!(err instanceof PedidoGrandeRetenidoError)) throw err;
+      const retenido = { pedido_grande: true, escalado: true, estado: "por_confirmar_por_la_sucursal", simulado: true, mensaje: "Este pedido supera el umbral de pedido grande: en el servicio real NO se mandaría a cocina y se avisaría a la sucursal para confirmarlo (en el preview no se crea ningún aviso)." };
+      return { result: retenido, raw: retenido, orderId: null, propertyId: null };
+    }
+  }
+  const folio = `${FOLIO_PREVIEW_PREFIJO}${createHash("sha256")
+    .update(JSON.stringify([prepared.payload.customerPhone, prepared.branch.propertyId, prepared.orderItems.map((i) => [i.id, i.quantity]), prepared.total]))
+    .digest("hex")
+    .slice(0, 4)
+    .toUpperCase()}`;
+  const simulated = {
+    id: folio,
+    branch: prepared.branch.name,
+    total: prepared.total,
+    status: "simulado",
+    payment_method: prepared.payload.paymentMethod ?? null,
+    items: prepared.orderItems,
+    simulado: true,
+  };
+  return { result: { order: simulated }, raw: simulated, orderId: null, propertyId: null, simulated: true };
+}
+
 async function dispatchTool(
   repo: RestaurantesRepository,
   ctx: AgentToolContext,
@@ -659,6 +736,13 @@ async function dispatchTool(
 
   switch (def.name) {
     case "buscar_cliente": {
+      if (ctx.modo === "preview") {
+        // Preview: un telefono ficticio nunca tiene historial. El panel puede pedir «simular cliente conocido» con un
+        // cliente de SU organizacion; se resuelve por id (null si es de otra organizacion => cliente nuevo).
+        const known = ctx.previewCustomerId ? await getCustomerDetailById(repo, organizationId, ctx.previewCustomerId) : null;
+        const result = known ?? { isNew: true as const };
+        return { result, raw: result, orderId: null, propertyId: null, simulated: true };
+      }
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede consultar el historial.");
       const result = await lookupCustomerConPedidoReciente(repo, organizationId, ctx.phone);
       return { result, raw: result, orderId: null, propertyId: null };
@@ -765,6 +849,7 @@ async function dispatchTool(
       } else if (ctx.lockedPropertyId) {
         throw new OrderValidationError("Esta llamada está fijada a una sucursal; indica branch_slug.");
       }
+      if (ctx.modo === "preview") return simulatePreviewOrder(repo, ctx, createInput, expectedPrices);
       let order: Order;
       try {
         order = await createOrder(repo, createInput, {
@@ -790,6 +875,8 @@ async function dispatchTool(
     }
     case "registrar_contacto":
     case "escalar_a_humano": {
+      // Preview: exito simulado, sin crear aviso (callback) ni notificacion para el equipo.
+      if (ctx.modo === "preview") return { result: { ok: true, simulado: true }, raw: { ok: true, simulado: true }, orderId: null, propertyId: null, simulated: true };
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede dejar aviso.");
       const esEscalada = def.name === "escalar_a_humano";
       await registerCallbackRequest(repo, {
