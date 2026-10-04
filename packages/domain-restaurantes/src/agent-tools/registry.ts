@@ -14,6 +14,8 @@
 //     rechaza.
 import { registerCallbackRequest } from "../callback-requests.ts";
 import { lookupCustomerConPedidoReciente } from "../customers.ts";
+import { buscarPedidoReciente, VENTANA_PEDIDO_RECIENTE_MIN } from "../pedido-reciente.ts";
+import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError } from "../errors.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
@@ -274,7 +276,8 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   },
   {
     name: "registrar_contacto",
-    description: "Registra nombre/motivo de un mensaje que NO es para hacer un pedido, para que alguien del restaurante le regrese la llamada. Nunca usar para pedidos normales.",
+    description:
+      "Registra nombre/motivo de un mensaje que NO es para hacer un pedido, para que alguien del restaurante le regrese la llamada. Nunca usar para pedidos normales. Caso especial: reason 'cliente_llego' cuando quien tiene un pedido para RECOGER avisa que ya llegó ('ya llegué, estoy afuera en un auto gris'): avisa de inmediato a la sucursal y devuelve el mensaje fijo que debes dar al cliente; en message va solo cómo identificarlo (auto, ropa, lugar).",
     parameters: {
       type: "object",
       properties: { customer_name: { type: "string" }, reason: { type: "string" }, message: { type: "string" } },
@@ -786,6 +789,7 @@ async function dispatchTool(
     case "escalar_a_humano": {
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede dejar aviso.");
       const esEscalada = def.name === "escalar_a_humano";
+      if (!esEscalada && input.reason === "cliente_llego") return avisarLlegadaDelCliente(repo, ctx, input);
       await registerCallbackRequest(repo, {
         organizationId,
         propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
@@ -798,6 +802,32 @@ async function dispatchTool(
       return { result: { ok: true }, raw: { ok: true }, orderId: null, propertyId: null };
     }
   }
+}
+
+/** Texto fijo que se le da al cliente tras el aviso de llegada (no se improvisa ni se prometen minutos). */
+export const MENSAJE_LLEGADA_REGISTRADA = "Ya avisé a la sucursal que usted llegó; en un momento le entregan su pedido.";
+const MENSAJE_LLEGADA_SIN_PEDIDO = "No encuentro un pedido para recoger a nombre de este número. No avise a la sucursal; pregúntele por su pedido o escale si insiste (otro).";
+
+/** `registrar_contacto` con `reason: cliente_llego`: solo procede si el cliente tiene un pedido vigente para RECOGER confirmado hace poco (la llegada
+ * se valida contra el pedido real, nunca contra lo que diga el modelo). Deja el aviso con la sucursal del pedido y una nota de como identificarlo. */
+async function avisarLlegadaDelCliente(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>): Promise<AgentToolOutcome> {
+  const reciente = await buscarPedidoReciente(repo, ctx.organizationId, ctx.phone as string);
+  if (!reciente || reciente.canal === "domicilio" || reciente.estado === "entregado") {
+    return { result: { ok: false, motivo: "sin_pedido_para_recoger", instruccion: MENSAJE_LLEGADA_SIN_PEDIDO }, raw: { ok: false }, orderId: null, propertyId: null };
+  }
+  // La sucursal del aviso es la del PEDIDO (el cliente pudo escribir a otro numero), no la del chat.
+  const pedido = await repo.findLatestOrderByPhone(ctx.organizationId, normalizePhone(ctx.phone as string), new Date(Date.now() - VENTANA_PEDIDO_RECIENTE_MIN * 60_000).toISOString());
+  const identificacion = typeof input.message === "string" ? sanitizeInlineText(input.message, 200) : "";
+  await registerCallbackRequest(repo, {
+    organizationId: ctx.organizationId,
+    propertyId: pedido?.propertyId ?? ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
+    customerName: String(input.customer_name ?? "Cliente"),
+    customerPhone: ctx.phone as string,
+    reason: "cliente_llego",
+    message: identificacion || undefined,
+    source: ctx.channel === "voz" ? "voice" : "whatsapp",
+  });
+  return { result: { ok: true, mensaje_al_cliente: MENSAJE_LLEGADA_REGISTRADA }, raw: { ok: true }, orderId: null, propertyId: null };
 }
 
 /** Lanza `PedidoGrandeRetenidoError` si el pedido ya cotizado supera el umbral de pedido grande de PM. Solo organizaciones con

@@ -135,4 +135,17 @@ describe("restaurantes.callback.pendiente", () => {
     expect(r.id).toBe(CALLBACK_ID);
     await expect(session.query("select 1 as siguiente;")).resolves.toEqual({ rows: [{ ok: true }] });
   });
+
+  it("reason cliente_llego emite el aviso URGENTE propio (restaurantes.cliente.llego, enlace a pedidos) y NO el generico; sin PII", async () => {
+    const { session, vistos } = conRegistro([
+      { match: INSERT_CALLBACK, respond: () => [{ id: CALLBACK_ID, resolved: false, created_at: "2026-10-01T10:00:00.000Z" }] },
+      { match: EMITIR, respond: () => [{ emit_notification: 1 }] },
+    ]);
+    await new PostgresRestaurantesRepository(session).createCallbackRequest({ ...INPUT, reason: "cliente_llego", message: "auto gris afuera", source: "whatsapp" });
+    expect(vistos).toHaveLength(1);
+    expect(vistos[0]![2]).toBe("restaurantes.cliente.llego");
+    expect(vistos[0]![10]).toBe(`restaurantes.cliente.llego:${CALLBACK_ID}`);
+    expect(vistos[0]![7]).toBe("/restaurantes/{orgSlug}/pedidos");
+    expect(JSON.stringify(vistos[0])).not.toMatch(/Ana|5500000000|auto gris/);
+  });
 });

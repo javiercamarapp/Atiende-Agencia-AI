@@ -921,7 +921,10 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     const row = rows[0]!;
     // Notificacion in-app (`restaurantes.callback.pendiente`): un contacto que el agente (voz o WhatsApp) dejo para devolver la
     // llamada. Uno por solicitud (clave = id), sin PII (ni nombre ni telefono viajan en el aviso). SAVEPOINT en emitirNotificacion.
-    await emitirNotificacion(this.db, { evento: "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
+    // El aviso de llegada de quien recoge (`reason: cliente_llego`) es urgente y lleva su propio evento (critica, enlace a pedidos): la sucursal
+    // tiene a una persona esperando en el mostrador. No emite ademas el aviso generico de «devolver llamada».
+    const evento = input.reason === "cliente_llego" ? "restaurantes.cliente.llego" : "restaurantes.callback.pendiente";
+    await emitirNotificacion(this.db, { evento, organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
     return { ...input, id: row.id, resolved: row.resolved, createdAt: row.created_at };
   }
 
