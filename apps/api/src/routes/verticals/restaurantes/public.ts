@@ -23,7 +23,7 @@ import { encolarComandaParaPedido } from "@atiende/domain-restaurantes/softresta
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import { auditVoice, authenticateVoiceTool, enforceVoiceLimits, hasVoiceCredentials } from "./voice-auth.ts";
-import { runVoiceToolRoute, voiceToolContext } from "./voice-tools.ts";
+import { runVoiceToolRoute, voiceToolContext, voiceTurnFromRequest } from "./voice-tools.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 interface CreateOrderItemBody {
@@ -151,7 +151,7 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
 
       if (voiceAuth?.ok) {
         const { caller } = voiceAuth;
-        const toolCtx = voiceToolContext(org.id, caller);
+        const toolCtx = voiceToolContext(org.id, caller, voiceTurnFromRequest(c));
         if (caller.kind === "legacy_secret") {
           const limited = await consumeRateLimit(repo, "create-order", requestActor(c.req.raw, typeof incoming.customer_phone === "string" ? incoming.customer_phone : ""), 120, 60);
           if (!limited.allowed) throw Errors.tooManyRequests();

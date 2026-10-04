@@ -36,8 +36,8 @@ export const ADAPTADOR_SIMULADOR_PM: AdaptadorSimulador<"pedido_creado", Memoria
       lockedPropertyId: mundo.propertyId,
       flow: { key: `call:${callId}`, turn: null },
     });
-    return async (nombre, args, senal) => {
-      const salida = await base(nombre as never, args, senal);
+    return async (nombre, args, senal, contexto) => {
+      const salida = await base(nombre as never, args, senal, contexto);
       return { resultado: salida.resultado, entidadId: salida.orderId };
     };
   },
