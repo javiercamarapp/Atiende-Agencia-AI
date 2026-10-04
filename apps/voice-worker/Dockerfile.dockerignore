@@ -1,0 +1,13 @@
+# Contexto de build del worker: solo lo que necesita (el monorepo completo pesa cientos de MB).
+**/node_modules
+**/dist
+.git
+apps/web
+apps/api/tests
+docs
+supabase
+scripts/verify-*
+scripts/seed-pm-demo
+**/*.log
+.env
+.env.*

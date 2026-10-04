@@ -6,7 +6,6 @@ import { ClienteApi } from "./api-cliente.ts";
 import { cargarConfig } from "./config.ts";
 import { crearPuertoLlmOpenRouter } from "./llm-openrouter.ts";
 import { cargarPregrabados } from "./pregrabados.ts";
-import { LiveKitTelefonia } from "./telefonia/livekit.ts";
 import { Worker, crearServidorSalud } from "./worker.ts";
 
 /** Log en JSON por linea. Solo recibe campos ya filtrados por `eventoSinPII` (lista cerrada, sin texto del cliente) o campos propios sin PII. */
@@ -20,6 +19,9 @@ async function main(): Promise<void> {
 
   let worker: Worker;
   if (config.estado === "configurado" && config.livekit) {
+    // Import diferido: el SDK de LiveKit trae un binario nativo. Un worker NO configurado (o en una maquina sin el binario) debe poder arrancar y
+    // responder 503 en /salud en vez de caerse al cargar un modulo que no va a usar.
+    const { LiveKitTelefonia } = await import("./telefonia/livekit.ts");
     const telefonia = new LiveKitTelefonia({ ...config.livekit, log: logPlano });
     const api = new ClienteApi({ baseUrl: config.apiBaseUrl, internalSecret: config.internalSecret });
     const llm = config.openrouterApiKey ? crearPuertoLlmOpenRouter(config.openrouterApiKey) : null;

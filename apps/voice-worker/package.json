@@ -7,7 +7,9 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "start": "node --experimental-strip-types src/main.ts",
+    "bundle": "node scripts/bundle.mjs",
+    "start": "node dist/main.mjs",
+    "dev": "npm run bundle && npm run start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
