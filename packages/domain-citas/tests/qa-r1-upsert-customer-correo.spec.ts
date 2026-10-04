@@ -1,7 +1,7 @@
 // QA R1 citas seguridad 06 -- el correo de una reserva publica (telefono sin verificar) no se asigna a un expediente que ya existe.
 // Postgres con una sesion guionada (solo se mira que SQL corre) y el doble en memoria (misma regla de coalesce que Postgres).
 import { describe, expect, it } from "vitest";
-import type { TenantDbSession } from "@atiende/db";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { InMemoryCitasRepository } from "../src/in-memory-repository.ts";
 import { PostgresCitasRepository } from "../src/postgres-repository.ts";
 
