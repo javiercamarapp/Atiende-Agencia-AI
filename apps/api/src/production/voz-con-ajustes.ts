@@ -24,6 +24,8 @@ export function conAjustesDeVoz(inner: VoiceAgentProvider, resolver: ResolverAju
     salud: () => inner.salud(),
     ...(inner.abrirLlamada ? { abrirLlamada: inner.abrirLlamada } : {}),
     async emitirSesionPreview(entrada: VozSesionPreviewEntrada) {
+      // Los ajustes son de restaurantes: hoteles y citas pasan directo, sin sesion extra ni consultas a restaurantes.*.
+      if (entrada.vertical !== "restaurantes") return inner.emitirSesionPreview(entrada);
       let extra: AjustesParaVoz | null = null;
       try {
         extra = await resolver(entrada.organizationId);

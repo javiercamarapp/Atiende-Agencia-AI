@@ -4,7 +4,7 @@ import { FakeVoiceProvider, AJUSTES_AGENTE_POR_DEFECTO } from "@atiende/domain-r
 import type { VozSesionPreviewEntrada } from "@atiende/voice-core";
 import { conAjustesDeVoz } from "../src/production/voz-con-ajustes.ts";
 
-const ENTRADA: VozSesionPreviewEntrada = { organizationId: "org-1", propertyId: "p1", sessionId: "s1", voiceId: "Kore", comportamiento: "REGLAS DURAS: siempre de usted.", mensajeInicial: "Hola", ttlSegundos: 300 };
+const ENTRADA: VozSesionPreviewEntrada = { organizationId: "org-1", propertyId: "p1", sessionId: "s1", voiceId: "Kore", comportamiento: "REGLAS DURAS: siempre de usted.", mensajeInicial: "Hola", ttlSegundos: 300, vertical: "restaurantes" };
 
 class Espia extends FakeVoiceProvider {
   entradas: VozSesionPreviewEntrada[] = [];
@@ -15,6 +15,18 @@ class Espia extends FakeVoiceProvider {
 }
 
 describe("conAjustesDeVoz", () => {
+  it("hoteles, citas o una entrada sin vertical pasan directo: no consulta ajustes ni toca instruccion ni temperatura", async () => {
+    for (const vertical of ["hoteles", "citas", undefined]) {
+      const inner = new Espia();
+      let consultas = 0;
+      const p = conAjustesDeVoz(inner, async () => { consultas += 1; return { ajustes: { ...AJUSTES_AGENTE_POR_DEFECTO, vozTemperatura: 0.4 }, conocimientoTexto: "X" }; });
+      await p.emitirSesionPreview({ ...ENTRADA, vertical });
+      expect(consultas).toBe(0);
+      expect(inner.entradas[0]!.comportamiento).toBe(ENTRADA.comportamiento);
+      expect(inner.entradas[0]!.temperatura).toBeUndefined();
+    }
+  });
+
   it("anexa conocimiento (antes), reglas (despues) y habla (al final) y manda la temperatura", async () => {
     const inner = new Espia();
     const p = conAjustesDeVoz(inner, async () => ({ ajustes: { ...AJUSTES_AGENTE_POR_DEFECTO, vozTemperatura: 0.4, vozRitmo: "pausado", vozEstilo: "calido" }, conocimientoTexto: "CONOCIMIENTO DEL NEGOCIO: abrimos a las 12." }));

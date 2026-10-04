@@ -214,7 +214,7 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     // 4) Sesión con el proveedor + token propio firmado.
     let emitida;
     try {
-      emitida = await provider.emitirSesionPreview({ organizationId, propertyId, sessionId: sesion.id, voiceId, comportamiento: lectura.valor.comportamiento, mensajeInicial: lectura.valor.mensajeInicial, ttlSegundos });
+      emitida = await provider.emitirSesionPreview({ organizationId, propertyId, sessionId: sesion.id, voiceId, comportamiento: lectura.valor.comportamiento, mensajeInicial: lectura.valor.mensajeInicial, ttlSegundos, vertical: "restaurantes" });
     } catch (err) {
       if (err instanceof VozNoConfiguradaError) throw Errors.serviceUnavailable(err.message);
       if (err instanceof VozProveedorError) {

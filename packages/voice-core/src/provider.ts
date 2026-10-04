@@ -19,6 +19,8 @@ export interface VozSesionPreviewEntrada {
   /** `temperature` de voz de la organizacion (0..1); null/ausente = la del proveedor. */
   readonly temperatura?: number | null;
   readonly ttlSegundos: number;
+  /** Vertical que emite la sesion. Los decoradores que aplican ajustes propios de una vertical (restaurantes) solo actuan si coincide; ausente = no aplican. */
+  readonly vertical?: string;
 }
 
 /** Lo que el navegador necesita para hablar con el proveedor durante el preview. */
