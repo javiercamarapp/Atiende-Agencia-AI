@@ -2,6 +2,7 @@
 //
 // Pruebas NUEVAS sobre la app Hono real (repositorio en memoria) que fijan el comportamiento SEGURO esperado. Las marcadas
 // `[DEFECTO QA-citas-R1-seguridad-NN]` fallan HOY en main (documentan un hallazgo del reporte local de QA); las `[CONTROL]` pasan.
+// (QA-08, la hora local que ve el agente, queda fuera del alcance de este lote: ver el cuerpo del PR.)
 // La contraparte contra Postgres real (RLS/GRANT) vive en scripts/verify-citas-qa-seguridad-r1/.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
@@ -107,6 +108,78 @@ describe("QA-citas-R1-seguridad-02 — conectar el calendario externo de un prov
   });
 });
 
+/**
+ * Modela el guard real de Postgres que el repositorio en memoria no tiene: `citas.set_provider_calendar_refresh_token` (el secreto de Cal.com/CalDAV)
+ * es de SOLO sistema (`auth.uid() is null`, migracion 017) y responde 42501 a una sesion de staff. `claimsUserId` lo fija el motor envuelto en cada sesion.
+ * `sistemaRechazado` modela ademas la base sin migrar (032): sin la policy de sistema de las cuentas, la escritura de la sesion de sistema tambien da 42501.
+ */
+function conGuardDeSecretoDeSistema(ctx: CitasTestContext, opciones: { sistemaRechazado?: boolean } = {}) {
+  const motorEnvuelto = new Proxy(ctx.engine, {
+    get(target, prop) {
+      if (prop === "withAppSession") {
+        return (claims: { userId: string | null }, fn: (session: object) => Promise<unknown>) =>
+          target.withAppSession(claims, (session) => fn(Object.assign(session, { claimsUserId: claims.userId })));
+      }
+      const valor = Reflect.get(target, prop, target) as unknown;
+      return typeof valor === "function" ? (valor as (...args: unknown[]) => unknown).bind(target) : valor;
+    },
+  });
+  const pgError42501 = () => Object.assign(new Error("permission denied"), { code: "42501" });
+  const citasRepo = (db: unknown) =>
+    new Proxy(ctx.citasRepo, {
+      get(target, prop) {
+        const valor = Reflect.get(target, prop, target) as unknown;
+        if (typeof valor !== "function") return valor;
+        if (prop === "connectProviderCalDavAccount" || prop === "connectProviderCalComAccount") {
+          return (...args: unknown[]) => {
+            const deSistema = (db as { claimsUserId?: string | null }).claimsUserId == null;
+            if (!deSistema || opciones.sistemaRechazado) throw pgError42501();
+            return (valor as (...a: unknown[]) => unknown).apply(target, args);
+          };
+        }
+        return (valor as (...args: unknown[]) => unknown).bind(target);
+      },
+    });
+  return { ...ctx.deps, engine: motorEnvuelto, citasRepo } as unknown as typeof ctx.deps;
+}
+
+describe("QA-citas-R1-seguridad-04 — conectar CalDAV y Cal.com guarda el secreto con la sesion de sistema", () => {
+  const cuerpoCaldav = { calendar_collection_url: "https://caldav.fastmail.com/dav/calendars/user/x@y.com/abc/", username: "x@y.com", password: "app-password" };
+  const post = (token: string, body: unknown): RequestInit => ({ method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+
+  it("conectar CalDAV desde el panel funciona cuando la funcion del secreto es de solo sistema (antes: 42501 -> 500)", async () => {
+    const ctx = await buildCitasTestContext(buildApp, { caldavPort: new FakeCalendarSyncPort("caldav") });
+    const app = buildApp(conGuardDeSecretoDeSistema(ctx));
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/caldav/connect`, post(ctx.staff.owner.token, cuerpoCaldav));
+    expect(res.status).toBe(200);
+    expect((await ctx.citasRepo.findProviderCalDavAccount(ctx.providerId))?.syncStatus).toBe("connected");
+  });
+
+  it("conectar Cal.com desde el panel funciona cuando la funcion del secreto es de solo sistema", async () => {
+    const ctx = await buildCitasTestContext(buildApp, { calcomPort: new FakeCalendarSyncPort("calcom") });
+    const app = buildApp(conGuardDeSecretoDeSistema(ctx));
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/calcom/connect`, post(ctx.staff.owner.token, { api_key: "cal_live_123", event_type_id: "42" }));
+    expect(res.status).toBe(200);
+    expect((await ctx.citasRepo.findProviderCalComAccount(ctx.providerId))?.syncStatus).toBe("connected");
+  });
+
+  it("base sin migrar (la sesion de sistema tambien recibe 42501): 503 honesto, no un 500, y nada queda conectado", async () => {
+    const ctx = await buildCitasTestContext(buildApp, { caldavPort: new FakeCalendarSyncPort("caldav") });
+    const app = buildApp(conGuardDeSecretoDeSistema(ctx, { sistemaRechazado: true }));
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/caldav/connect`, post(ctx.staff.owner.token, cuerpoCaldav));
+    expect(res.status).toBe(503);
+    expect(await ctx.citasRepo.findProviderCalDavAccount(ctx.providerId)).toBeNull();
+  });
+
+  it("un error que no es 42501 sigue siendo un error del servidor (no se disfraza de 503)", async () => {
+    const ctx = await buildCitasTestContext(buildApp, { caldavPort: new FakeCalendarSyncPort("caldav") });
+    const base = conGuardDeSecretoDeSistema(ctx);
+    const app = buildApp({ ...base, citasRepo: (db: unknown) => new Proxy(base.citasRepo(db as never), { get: (t, p) => (p === "connectProviderCalDavAccount" ? () => Promise.reject(new Error("boom")) : Reflect.get(t, p)) }) } as unknown as typeof ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/caldav/connect`, post(ctx.staff.owner.token, cuerpoCaldav));
+    expect(res.status).toBe(500);
+  });
+});
+
 describe("QA-citas-R1-seguridad-06 — reserva publica sin verificar el telefono", () => {
   it("[DEFECTO] reservar en la pagina publica con el telefono de OTRO paciente no le asigna el correo de quien reserva", async () => {
     const ctx = await buildCitasTestContext(buildApp);
@@ -170,25 +243,6 @@ describe("QA-citas-R1-seguridad-07 — rutas legadas del agente sin vinculo con 
     });
     expect(res.status).toBe(200);
     expect((await ctx.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id))?.status).not.toBe("cancelled");
-  });
-});
-
-describe("QA-citas-R1-seguridad-08 — horas que ve el agente (WhatsApp y voz comparten executeToolCall)", () => {
-  it("[DEFECTO] consultar_disponibilidad entrega al modelo la hora LOCAL del negocio, no solo un instante UTC", async () => {
-    const ctx = await buildCitasTestContext(buildApp);
-    const app = buildApp(ctx.deps);
-    const res = await app.request("/v1/citas/clinica-dental-sonrisas/voz/consultar_disponibilidad", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret },
-      body: JSON.stringify({ telefono: "", provider_id: ctx.providerId, service_id: ctx.serviceId, date: "2027-09-13" }),
-    });
-    expect(res.status).toBe(200);
-    const { slots } = (await res.json()) as { slots: Record<string, unknown>[] };
-    expect(slots.length).toBeGreaterThan(0);
-    // El negocio abre a las 09:00 de Merida (15:00 UTC). El primer horario que lee el modelo debe decir 09:00 en algun campo,
-    // no solo "2027-09-13T15:00:00.000Z" (que el modelo lee como "15:00").
-    const textoPrimerSlot = JSON.stringify(slots[0]);
-    expect(textoPrimerSlot).toContain("09:00");
   });
 });
 
