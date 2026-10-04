@@ -89,6 +89,32 @@ describe("PromocionesPage -- promociones automaticas", () => {
     expect(document.body.textContent).toContain("necesita un canal");
   });
 
+  // QA-restaurantes-R1-botones-17: el error del formulario debe verse DENTRO del dialogo, no detras del overlay.
+  it("el error de validacion y el rechazo del servidor se muestran dentro del dialogo de 'Crear codigo'", async () => {
+    stub();
+    await abrir();
+    changeValue(q("#promocion-codigo") as HTMLInputElement, "AUTO");
+    changeValue(q("#promocion-nombre") as HTMLInputElement, "Auto");
+    changeValue(q("#promocion-tipo") as HTMLSelectElement, "bogo");
+    await act(async () => {
+      click(q("#promocion-auto"));
+    });
+    await submitForm(q("#restaurantes-promocion-nueva") as HTMLFormElement);
+    const dialogo = q('[role="dialog"]');
+    expect(dialogo.textContent).toContain("necesita un canal");
+    expect(dialogo.querySelector('[role="alert"]')).not.toBeNull();
+
+    // Rechazo del servidor (400): tambien dentro del dialogo.
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+      init?.method === "POST" ? ({ ok: false, status: 400, json: async () => ({ message: "Ya existe una promoción con ese código." }) } as unknown as Response) : original(url, init),
+    );
+    changeValue(q("#promocion-canal") as HTMLSelectElement, "recoger");
+    await submitForm(q("#restaurantes-promocion-nueva") as HTMLFormElement);
+    expect(q('[role="dialog"]').textContent).toContain("Ya existe una promoción con ese código.");
+    expect(q('[role="dialog"]').querySelector('[role="alert"]')).not.toBeNull();
+  });
+
   it("combo de cortesia del martes: disparadores, aguas y piezas", async () => {
     stub();
     await abrir();
