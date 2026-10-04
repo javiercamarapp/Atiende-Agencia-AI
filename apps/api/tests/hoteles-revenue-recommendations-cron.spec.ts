@@ -9,6 +9,7 @@ import { buildApp } from "../src/app.ts";
 import { runRateRecommendationSweep } from "../src/routes/verticals/hoteles/revenue-recommendations-cron.ts";
 import { buildHotelesTestContext } from "./hoteles-fixtures.ts";
 import type { HotelesTestContext } from "./hoteles-fixtures.ts";
+import { conEmisiones } from "./support/emisiones.ts";
 
 let ctx: HotelesTestContext;
 
@@ -396,5 +397,34 @@ describe("runRateRecommendationSweep — aprobadas por staff en 'propone' se apl
     expect(ids).toEqual([hoyRec.id, futura.id]);
     expect(ids).not.toContain(pendiente.id);
     expect(await ctx.hotelesRepo.listApprovedRateRecommendationsAsSystem(randomUUID(), hoy)).toEqual([]);
+  });
+});
+
+describe("aviso en la campana cuando el motor rechaza aplicar una aprobada (H-P3-02)", () => {
+  it("emite hoteles.tarifa.aplicacion_rechazada UNA vez por property y dia, con la cantidad, sin PII y enlace a Revenue; sin rechazos no emite", async () => {
+    ctx.hotelesRepo.seedRevenueGate(ctx.propertyId, ctx.organizationId, { gate: "propone", proponeMaxVariationPct: 15 });
+    const hoy = hoyFechaNegocio();
+    const fecha = addDaysIso(hoy, 10);
+    ctx.hotelesRepo.seedNightlyRates(ctx.propertyId, ctx.roomTypeId, [{ date: fecha, price: 2000, minStay: 1, closedToArrival: false, closedToDeparture: false }]);
+    const { deps, emisiones } = conEmisiones(ctx.deps);
+
+    await runRateRecommendationSweep(deps);
+    expect(emisiones.filter((e) => e.evento === "hoteles.tarifa.aplicacion_rechazada")).toHaveLength(0); // nada aprobado: nada que avisar
+
+    const rec = await ctx.hotelesRepo.insertRateRecommendationAsSystem({
+      organizationId: ctx.organizationId, propertyId: ctx.propertyId, roomTypeId: ctx.roomTypeId, fecha: addDaysIso(hoy, 11), currentBarPrice: 2000, recommendedPrice: 4000, suggestedMinStay: 1, desglose: {},
+    });
+    await ctx.hotelesRepo.approveRateRecommendation(rec.id, ctx.staff.owner.id);
+    await runRateRecommendationSweep(deps);
+    const avisos = emisiones.filter((e) => e.evento === "hoteles.tarifa.aplicacion_rechazada");
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0]).toMatchObject({
+      propertyId: ctx.propertyId,
+      categoria: "operacion",
+      cuerpo: "Aprobadas rechazadas por la guarda del motor: 1. Revísalas en Revenue.",
+      enlace: "/hoteles/{orgSlug}/revenue",
+      dedupeKey: `hoteles.tarifa.aplicacion_rechazada:${ctx.propertyId}:${hoy}`,
+      roles: ["gm"],
+    });
   });
 });
