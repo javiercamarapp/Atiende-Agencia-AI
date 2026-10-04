@@ -34,7 +34,8 @@ Memoria del proceso (RSS) al final: ~336 MiB. 500 tokens de rastreo distintos y 
 2. **Un POST de Meta procesa sus mensajes en serie dentro de una sola transaccion.** El tiempo del POST crece con
    mensajes x latencia del turno (el test lo fija: 20 mensajes x 15 ms >= 270 ms). La funcion de Vercel tiene `maxDuration: 30` s
    (`vercel.json`); con turnos de LLM de varios segundos, un lote grande puede agotar el presupuesto y Meta reintenta (el reclamo por
-   `messageId` evita doble respuesta, pero el lote se vuelve a recorrer).
+   `messageId` evita doble respuesta porque el outbox se revierte junto con la transaccion, pero el lote se vuelve a recorrer:
+   los turnos de LLM ya ejecutados se repiten y **se cobran dos veces**).
 3. **El limite de tasa del webhook es 120 POST/min por IP + numero** (`whatsapp.ts`). Meta agrupa mensajes por POST, asi que un solo numero
    rara vez lo alcanza, pero no hay medicion contra trafico real de Meta.
 4. **Cada peticion del storefront hace 1 o 2 escrituras de limite de tasa en la base** (`consumeRateLimit`, bucket por IP y por sesion) antes de
