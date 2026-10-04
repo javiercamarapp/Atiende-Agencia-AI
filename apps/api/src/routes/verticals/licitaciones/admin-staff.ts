@@ -22,10 +22,11 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { canInviteStaff } from "@atiende/core-authz";
 import type { PlatformRole } from "@atiende/core-tenancy";
 import { correoInvitacionStaff, isLicitacionesRole, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "@atiende/domain-licitaciones";
-import { MembershipRoleUpdateError } from "@atiende/db";
+import { MembershipRemovalError, MembershipRemovalUnavailableError, MembershipRoleUpdateError } from "@atiende/db";
 import type { OrganizationMemberWithRoleRow, StaffInviteRow } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 // 7 días — misma vigencia que restaurantes/admin-staff.ts y el portal de
@@ -132,6 +133,13 @@ function serializeMemberWithRole(member: OrganizationMemberWithRoleRow) {
 
 interface UpdateMemberRoleBody {
   readonly verticalRole?: unknown;
+}
+
+/** `true` si dar de baja a `target` dejaria la organizacion sin ningun owner (el target es el unico owner). */
+export function removalLeavesNoOwner(members: readonly { readonly userId: string; readonly verticalRole: string | null }[], targetUserId: string): boolean {
+  const target = members.find((m) => m.userId === targetUserId);
+  if (!target || target.verticalRole !== "owner") return false;
+  return members.filter((m) => m.verticalRole === "owner").length <= 1;
 }
 
 export function licitacionesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -297,6 +305,37 @@ export function licitacionesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       if (err instanceof MembershipRoleUpdateError) throw Errors.forbidden(err.message);
       throw err;
     }
+  });
+
+  // paridad3 L-P3-16: baja de un miembro YA ACEPTADO (solo owner/admin, mismo umbral que el cambio de rol). Nunca auto-baja y nunca dejar la
+  // organizacion sin owner (409). La autoridad real es `core.remove_membership` (security definer): borra la membresia de ESTA organizacion y,
+  // como cada peticion revalida la membresia (`requirePropertyMembership`), el acceso del removido a esta organizacion termina en su siguiente
+  // peticion aunque conserve un token vigente. Sin la migracion de esa funcion (SQLSTATE 42883) responde 503 honesto, nunca un 500.
+  app.delete(miembroItemPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const callerUserId = c.get("userId");
+    const targetUserId = c.req.param("userId");
+
+    if (targetUserId === callerUserId) throw Errors.staffRemovalAutoBaja();
+
+    const members = await deps.coreStaffRepo(c.get("db")).listOrgMembers(organizationId);
+    const target = members.find((m) => m.userId === targetUserId);
+    if (!target) throw Errors.notFound("Ese staff no pertenece a esta organización.");
+
+    const callerPlatformRole = c.get("platformRole");
+    if (!callerPlatformRole || !canInviteStaff(callerPlatformRole, target.platformRole)) throw Errors.staffRemovalRolInsuficiente();
+    if (removalLeavesNoOwner(members, targetUserId)) throw Errors.staffRemovalUltimoOwner();
+
+    try {
+      await deps.coreStaffRepo(c.get("db")).removeMembership(organizationId, targetUserId);
+    } catch (err) {
+      if (err instanceof MembershipRemovalError) throw Errors.forbidden(err.message);
+      if (err instanceof MembershipRemovalUnavailableError) throw Errors.serviceUnavailable(err.message);
+      throw err;
+    }
+    logEvent(c, "info", "licitaciones_admin_staff_dado_de_baja", { actorUserId: callerUserId, organizationId, targetUserId, verticalRole: target.verticalRole });
+    return c.json({ ok: true });
   });
 
   return app;
