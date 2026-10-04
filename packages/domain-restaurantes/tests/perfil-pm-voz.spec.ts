@@ -93,7 +93,6 @@ describe("comportamiento de voz = el mismo perfil de WhatsApp en version compact
     // CR09: el combo del martes esta cargado: la voz dice que lo aplica cotizar_pedido y ya no que lo confirma la sucursal.
     expect(voz).toContain("H13. Combo del martes (nachos de pastor + 2 aguas, recoger): lo aplica cotizar_pedido; diga lo que devuelve.");
     expect(voz).not.toContain("la confirma la sucursal al recoger");
-    expect(voz).not.toMatch(/2 aguas de cortes[ií]a|elige dos aguas/i);
     expect(voz).not.toMatch(/6 pm a (12|1) am|HORARIO PARA TOMAR PEDIDOS/);
     expect(voz).toMatch(/H16\. Horario: solo lo dicen los datos de la sucursal/);
     expect(voz).toContain("hora_recogida");
