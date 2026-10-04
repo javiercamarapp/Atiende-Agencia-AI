@@ -4,9 +4,9 @@
 //
 // Defensa contra inyeccion de formulas (CSV injection): un texto que EMPIEZA con `=`, `+`, `-`, `@`, tabulador o retorno de carro puede
 // ejecutarse como formula al abrirlo en Excel/Sheets. Los nombres de clientes y notas los escribe un tercero (el cliente por WhatsApp o web),
-// asi que toda celda de TEXTO que empiece asi se antepone con un apostrofo. Excepcion: un telefono (solo digitos, espacios, +, -, parentesis).
+// asi que toda celda de TEXTO que empiece asi se antepone con un apostrofo. Excepcion: un telefono (solo digitos, espacios, +, -; con parentesis Excel lo lee como formula, asi que lleva apostrofo).
 export const CSV_BOM = "﻿";
-const TELEFONO_RE = /^\+?[0-9][0-9 ()-]{5,}$/;
+const TELEFONO_RE = /^\+?[0-9][0-9 -]{5,}$/;
 const NUMERO_RE = /^-?\d+(\.\d+)?$/;
 
 export type CeldaCsv = string | number | null | undefined;

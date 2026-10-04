@@ -32,6 +32,7 @@ describe("celdaCsv", () => {
   it("un telefono con + inicial NO lleva apostrofo; un texto con + que no es telefono si", () => {
     expect(celdaCsv("+52 999 123 4567", { telefono: true })).toBe("+52 999 123 4567");
     expect(celdaCsv("+cmd|' /C calc'!A0", { telefono: true })).toMatch(/^"?'\+/);
+    expect(celdaCsv("+52 (999) 123-4567", { telefono: true })).toBe("'+52 (999) 123-4567");
   });
   it("un numero con signo en columna numerica no se altera", () => {
     expect(celdaCsv("-5.00", { numerica: true })).toBe("-5.00");
