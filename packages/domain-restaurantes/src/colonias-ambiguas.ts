@@ -22,14 +22,6 @@ export type MotivoRevisionColonia =
   | "reasignada_desde_galerias"
   | "distancia_de_otra_direccion_de_pensiones";
 
-export const ETIQUETA_MOTIVO: Readonly<Record<MotivoRevisionColonia, string>> = {
-  ambigua: "Las dos sucursales más cercanas quedan a menos de 1 km",
-  sin_asignar: "Ninguna sucursal la cubre todavía: el agente no la valida y la pasa a una persona",
-  contradice_distancia: "La sucursal asignada no es la más cercana según el piloto",
-  reasignada_desde_galerias: "La más cercana (Galerías) no reparte: se asignó la siguiente",
-  distancia_de_otra_direccion_de_pensiones: "La distancia del piloto a Pensiones se calculó desde otra dirección",
-};
-
 export interface FilaColoniaAmbigua {
   readonly zoneId: string;
   readonly colonia: string;
