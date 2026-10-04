@@ -5,6 +5,7 @@
 // comentario crítico en routes/verticals/restaurantes/whatsapp.ts).
 import { Hono } from "hono";
 import { ApiError, requestId } from "@atiende/core-auth";
+import { DatabaseBusyError } from "@atiende/db";
 import type { AppDeps } from "./deps.ts";
 import { logEvent } from "./logger.ts";
 import { cabecerasSeguridadApi } from "./cabeceras-seguridad.ts";
@@ -95,6 +96,12 @@ export function buildApp(deps: AppDeps): Hono {
   app.onError((err, c) => {
     if (err instanceof ApiError) {
       return c.json({ code: err.code, message: err.message }, err.status as 400 | 401 | 403 | 404 | 409 | 413 | 429 | 503, err.headers);
+    }
+    // Pool de conexiones saturado (sobrecarga transitoria, ver `DatabaseBusyError`): 503 reintentable, no 500. Meta y los
+    // clientes HTTP reintentan; el ledger de mensajes entrantes y la idempotencia de pedidos evitan duplicados.
+    if (err instanceof DatabaseBusyError) {
+      logEvent(c, "warn", "apps_api_db_ocupada", { depth: err.depth, waitedMs: err.waitedMs });
+      return c.json({ code: "service_busy", message: "Servicio ocupado. Intenta de nuevo en unos segundos." }, 503, { "Retry-After": "2" });
     }
     logEvent(c, "error", "apps_api_error_interno", { message: err instanceof Error ? err.message : String(err) });
     return c.json({ code: "internal_error", message: "Error interno" }, 500);
