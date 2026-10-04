@@ -35,6 +35,9 @@ alter table restaurantes.branch_policy
   add column if not exists dias_domicilio smallint[],
   add column if not exists de_temporada boolean not null default false;
 
+-- Reaplicable: se suelta la restriccion (si existe) antes de crearla de nuevo.
+alter table restaurantes.branch_policy
+  drop constraint if exists branch_policy_dias_domicilio_check;
 alter table restaurantes.branch_policy
   add constraint branch_policy_dias_domicilio_check
   check (
