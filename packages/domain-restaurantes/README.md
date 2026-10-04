@@ -8,8 +8,8 @@ reales de WhatsApp al cliente por cambio de estado de pedido
 (`order-notifications.ts`), asignación de repartidor, correo transaccional
 (`email-dispatch.ts`), conversaciones con handoff, voz, comandas al POS
 (`src/softrestaurant/`), cierres del día, privacidad/ARCO y perfil del repartidor, con
-47 archivos en `migrations/` (la numeración interna llega a la 045, más la 063 del
-consentimiento del checkout; `npm run verify:migration-versions` vigila que no se repita) — ver
+49 archivos en `migrations/` (la numeración interna llega a la 063, con huecos en la
+secuencia; `npm run verify:migration-versions` vigila que no se repita) — ver
 `apps/api/src/routes/verticals/restaurantes/README.md` para el mapa completo
 de fases (3/5/8/9/11/12) que fue agregando cada pieza.
 
