@@ -89,6 +89,16 @@ insert into restaurantes.orders (id, organization_id, property_id, customer_id, 
 insert into restaurantes.customer_preferences (id, organization_id, customer_id, kind, value, source, times_seen) values
   ('00000000-0000-0000-0000-0000000c3651', '00000000-0000-0000-0000-0000000c3601', '00000000-0000-0000-0000-0000000c3621', 'tortilla', 'maiz', 'pedido', 2);
 
+-- Conversaciones con los formatos REALES: WhatsApp guarda +<pais><10 digitos> (customers.phone son los ultimos 10) y voz hashea
+-- TODOS los digitos que recibe (aqui 52 + 10 y 10 solos). Mas una de la organizacion B con el mismo telefono (no debe verse en A).
+insert into restaurantes.whatsapp_conversations (id, organization_id, phone, property_id, messages) values
+  ('00000000-0000-0000-0000-0000000c3661', '00000000-0000-0000-0000-0000000c3601', '+5215511110001', '00000000-0000-0000-0000-0000000c36a1', '[{"role":"user","content":"hola"},{"role":"assistant","content":"buenas"}]'),
+  ('00000000-0000-0000-0000-0000000c3662', '00000000-0000-0000-0000-0000000c3602', '+5215511110001', '00000000-0000-0000-0000-0000000c36b1', '[{"role":"user","content":"hola"}]');
+insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor, caller_hash, started_at, duration_s) values
+  ('00000000-0000-0000-0000-0000000c3671', '00000000-0000-0000-0000-0000000c3601', '00000000-0000-0000-0000-0000000c36a1', 'c360-call-1', 'llamada', 'elevenlabs-agents', encode(sha256(convert_to('525511110001', 'UTF8')), 'hex'), now() - interval '2 days', 60),
+  ('00000000-0000-0000-0000-0000000c3672', '00000000-0000-0000-0000-0000000c3601', '00000000-0000-0000-0000-0000000c36a1', 'c360-call-2', 'llamada', 'elevenlabs-agents', encode(sha256(convert_to('5511110001', 'UTF8')), 'hex'), now() - interval '1 day', 30),
+  ('00000000-0000-0000-0000-0000000c3673', '00000000-0000-0000-0000-0000000c3602', '00000000-0000-0000-0000-0000000c36b1', 'c360-call-3', 'llamada', 'elevenlabs-agents', encode(sha256(convert_to('525511110001', 'UTF8')), 'hex'), now(), 10);
+
 \echo '=== A1. sistema: cliente_memoria devuelve a Ana por telefono (2 entregados y 2 pendientes cuentan; cancelado y no recogidos no) ==='
 begin;
 set local role authenticated;
@@ -506,6 +516,27 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c3611', true);
 select public.t_esperar_error($q$insert into restaurantes.cliente_politica (organization_id, umbral_no_recogidos) values ('00000000-0000-0000-0000-0000000c3601', 5)$q$, '42501') as sin_error;
+rollback;
+
+\echo '=== H1. ficha: la conversacion de WhatsApp (+521...) se encuentra por los ultimos 10 digitos y no mezcla la de otra organizacion ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c3611', true);
+select (restaurantes.cliente_ficha('00000000-0000-0000-0000-0000000c3601', '00000000-0000-0000-0000-0000000c3621') -> 'whatsapp' ->> 'conversaciones')::int as conversaciones_deberia_ser_1;
+rollback;
+
+\echo '=== H2. ficha: los mensajes de WhatsApp de la conversacion encontrada son 2 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c3611', true);
+select (restaurantes.cliente_ficha('00000000-0000-0000-0000-0000000c3601', '00000000-0000-0000-0000-0000000c3621') -> 'whatsapp' ->> 'mensajes')::int as mensajes_deberia_ser_2;
+rollback;
+
+\echo '=== H3. ficha: las llamadas con hash de 52+10 digitos y de 10 digitos aparecen, la de otra organizacion no ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c3611', true);
+select jsonb_array_length(restaurantes.cliente_ficha('00000000-0000-0000-0000-0000000c3601', '00000000-0000-0000-0000-0000000c3621') -> 'llamadas') as llamadas_deberia_ser_2;
 rollback;
 
 \echo '=== I1. auxiliar cliente_direcciones_json: un autenticado de OTRA organizacion no puede llamarlo directo (42501) ==='

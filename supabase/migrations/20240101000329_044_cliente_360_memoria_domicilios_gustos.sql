@@ -471,7 +471,7 @@ set search_path = restaurantes, core, pg_temp
 as $$
 declare
   v_c restaurantes.customers;
-  v_hash text;
+  v_hashes text[];
 begin
   if not restaurantes.cliente_es_gestor(p_organization_id) then
     raise exception 'cliente_ficha: solo owner/admin/staff de la organizacion' using errcode = '42501';
@@ -480,7 +480,12 @@ begin
   if not found then
     return null;
   end if;
-  v_hash := encode(sha256(convert_to(regexp_replace(v_c.phone, '\D', '', 'g'), 'UTF8')), 'hex');
+  -- whatsapp_conversations.phone se guarda como +<codigo de pais><numero> y customers.phone son los ultimos 10 digitos; el
+  -- servicio de voz hashea TODOS los digitos que recibe del proveedor. Se aceptan las formas habituales de un mismo numero.
+  v_hashes := array(
+    select encode(sha256(convert_to(f, 'UTF8')), 'hex')
+      from unnest(array[v_c.phone, '52' || v_c.phone, '521' || v_c.phone, '1' || v_c.phone, '01' || v_c.phone]) as f
+  );
 
   return jsonb_build_object(
     'customer', jsonb_build_object(
@@ -508,14 +513,14 @@ begin
     'whatsapp', (
       select jsonb_build_object('conversaciones', count(*), 'ultima_actividad', max(w.updated_at), 'mensajes', coalesce(sum(jsonb_array_length(w.messages)), 0))
         from restaurantes.whatsapp_conversations w
-       where w.organization_id = p_organization_id and w.phone = v_c.phone
+       where w.organization_id = p_organization_id and right(regexp_replace(w.phone, '\D', '', 'g'), 10) = v_c.phone
     ),
     'llamadas', (
       select coalesce(jsonb_agg(jsonb_build_object('id', x.id, 'started_at', x.started_at, 'duration_s', x.duration_s, 'resultado', x.resultado) order by x.started_at desc), '[]'::jsonb)
         from (
           select vc.id, vc.started_at, vc.duration_s, vc.resultado
             from restaurantes.voice_conversation vc
-           where vc.organization_id = p_organization_id and vc.caller_hash = v_hash and vc.canal = 'llamada'
+           where vc.organization_id = p_organization_id and vc.caller_hash = any (v_hashes) and vc.canal = 'llamada'
            order by vc.started_at desc
            limit 10
         ) x
