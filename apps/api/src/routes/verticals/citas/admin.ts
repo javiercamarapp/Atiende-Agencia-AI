@@ -16,9 +16,11 @@
 // usan cancelar/conectar: JWT + `requirePropertyMembership("propertyId")`, SIN
 // `allowedRoles` (igual que el resto del panel de citas — ver roles.ts: citas
 // nunca distinguió quién del staff puede escribir, ni en el origen ni en las
-// fases ya construidas de esta vertical).
+// fases ya construidas de esta vertical). Única excepción: el PATCH de
+// `tenant-config` (rubro y teléfono de avisos de la organización) exige
+// `STAFF_INVITE_ROLES` (owner/admin) con `assertVerticalRole`.
 import { Hono } from "hono";
-import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
+import { assertVerticalRole, authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import {
@@ -34,6 +36,7 @@ import {
   previewListaEspera,
   runListaEsperaCore,
   sortWaitlistByPosition,
+  STAFF_INVITE_ROLES,
   tryEnqueueAppointmentEmail,
   tryTriggerCalendarSync,
   updateCustomerEmailFromPanel,
@@ -974,6 +977,9 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // de aviso — ver TenantConfigPatch para por qué `name`/`slug`/`is_active` del
   // negocio NO se editan aquí). Upsert real vía `upsertTenantConfig`: nunca 404. ----
   app.patch("/v1/citas/properties/:propertyId/tenant-config", async (c) => {
+    // Solo owner/admin (igual que la configuración del agente, los mensajes y la voz): el rubro enciende o apaga la guardia de crisis de TODA la
+    // organización y el teléfono de avisos recibe las escalaciones de crisis; un usuario `staff` (aunque solo tenga una sucursal) no los cambia.
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
     const organizationId = c.get("organizationId");
     const citasRepo = deps.citasRepo(c.get("db"));
     const raw = await readJsonCapped<TenantConfigBody>(c.req.raw, 4 * 1024);

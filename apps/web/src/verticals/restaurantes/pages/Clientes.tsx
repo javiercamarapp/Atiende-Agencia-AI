@@ -28,9 +28,11 @@ import { ArrowLeft, Search } from "lucide-react";
 import { fetchCustomerDetail, fetchCustomers } from "../lib/customers-client.ts";
 import type { CustomerDetail, CustomerSummary } from "../lib/customers-client.ts";
 import { CUSTOMER_TIER_META, CUSTOMER_TIER_TONES, tierBadgeClase } from "../lib/status-tones.ts";
+import { BotonExportar } from "../components/BotonExportar.tsx";
+import { urlExportarClientes } from "../lib/exportar-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
-export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
+export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role }: RestaurantesShellContext) {
   const [search, setSearch] = useState("");
   const [customers, setCustomers] = useState<readonly CustomerSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,20 +51,24 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Res
     <PageContainer padding="none">
       <h1 className="sr-only">Clientes</h1>
 
-      <div className="max-w-xs">
-        <Label htmlFor="restaurantes-clientes-buscar" className="mb-1.5 block text-xs text-muted-foreground">
-          Buscar
-        </Label>
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.75} />
-          <Input
-            id="restaurantes-clientes-buscar"
-            placeholder="Buscar por nombre o teléfono…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="w-full max-w-xs">
+          <Label htmlFor="restaurantes-clientes-buscar" className="mb-1.5 block text-xs text-muted-foreground">
+            Buscar
+          </Label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.75} />
+            <Input
+              id="restaurantes-clientes-buscar"
+              placeholder="Buscar por nombre o teléfono…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
         </div>
+        {/* R-17: exporta TODOS los clientes que coinciden con la búsqueda vigente (no solo los 50 en pantalla). Solo owner/admin. */}
+        <BotonExportar role={role} token={token} urlPara={(formato) => urlExportarClientes(apiBaseUrl, propertyId, formato, search || undefined)} />
       </div>
 
       {error && <EstadoError mensaje={error} />}

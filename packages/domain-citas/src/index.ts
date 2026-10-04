@@ -219,6 +219,8 @@ export {
   ALL_VERTICALS,
   CRISIS_ESCALATION_MESSAGE,
   CRISIS_KEYWORDS,
+  CRISIS_VOICE_MESSAGE,
+  crisisGuardActivaPara,
   detectCrisisKeyword,
   findVerticalFaqAnswer,
   getVerticalFaqs,
