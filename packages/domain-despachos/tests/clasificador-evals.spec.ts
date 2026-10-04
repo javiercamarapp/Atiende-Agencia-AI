@@ -21,7 +21,6 @@ describe("conjunto dorado del clasificador", () => {
   it("reporta el porcentaje y cumple el invariante: todo empate va a revisión", () => {
     const { reporte } = correrConjuntoDorado();
     const texto = formatearReporte(reporte);
-    // eslint-disable-next-line no-console
     console.log(`\n${texto}\n`);
     if (process.env.GITHUB_STEP_SUMMARY) {
       try {

@@ -576,7 +576,6 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.post("/despachos/:propertyId/cfdi/rep/analizar", async (c) => {
     assertVerticalRole(c, VER_CFDI_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
-    const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const raw = await readJsonCapped<{ xml?: unknown; rfcContribuyente?: unknown }>(c.req.raw, MAX_REP_BODY_BYTES);
     if (typeof raw.xml !== "string" || raw.xml.trim() === "") throw Errors.validation("xml: se esperaba el XML del complemento de pago como texto.");

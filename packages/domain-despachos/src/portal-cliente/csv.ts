@@ -13,5 +13,5 @@ export const COLUMNAS_CSV_PORTAL = ["Fecha", "Tipo", "Sentido", "UUID", "RFC emi
 
 export function cfdiPortalACsv(lista: readonly PortalCfdiVista[]): string {
   const filas = lista.map((c) => [c.fecha, c.tipo, c.direccion ?? "", c.folioFiscal, c.rfcEmisor, c.emisorNombre ?? "", c.rfcReceptor, centavosATexto(c.totalCentavos), c.estadoSat, c.excluido ? "si" : "no"]);
-  return `﻿${[COLUMNAS_CSV_PORTAL as readonly string[], ...filas].map((f) => f.map((v) => celda(v)).join(",")).join("\r\n")}\r\n`;
+  return `\uFEFF${[COLUMNAS_CSV_PORTAL as readonly string[], ...filas].map((f) => f.map((v) => celda(v)).join(",")).join("\r\n")}\r\n`;
 }
