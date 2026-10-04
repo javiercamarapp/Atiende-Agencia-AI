@@ -156,7 +156,7 @@ describe("Pedidos: pestana Por aprobar", () => {
     await abrirPorAprobar();
     click(boton("Reponer producto")!);
     await esperar();
-    let dialogo = document.body.querySelector('[role="dialog"]') as HTMLElement;
+    const dialogo = document.body.querySelector('[role="dialog"]') as HTMLElement;
     const reponer = [...dialogo.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reponer sin costo") as HTMLButtonElement;
     expect(reponer.disabled).toBe(true);
     const caja = [...dialogo.querySelectorAll("input[type=checkbox]")].find((i) => i.closest("label")?.textContent?.includes("Agua")) as HTMLInputElement;
