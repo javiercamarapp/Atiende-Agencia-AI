@@ -5,16 +5,10 @@ Fase 1 construida: `public.ts` (`POST /v1/restaurantes/:orgSlug/orders`,
 públicos/de sistema, ver diseño Fase 1 §3) y `whatsapp.ts`
 (`GET|POST /v1/restaurantes/whatsapp/webhook`, verificación HMAC sobre bytes crudos).
 
-**Problema conocido (verificado contra Postgres real, 19-sep-2026, arreglo en
-curso en otra rama — ver `scripts/verify-restaurantes-sql/README.md`):** la
-policy de SELECT de `core.property` nunca contempló la sesión de sistema
-(`auth.uid()` NULL) que usan estas rutas públicas — `findBranch()`
-(`postgres-repository.ts`, usada por `orders.ts::prepareCreateOrder`) hace
-JOIN contra `core.property` y devuelve `null` siempre bajo esa sesión. Efecto
-real: `POST /v1/restaurantes/:orgSlug/orders` (web, voz y WhatsApp por igual)
-falla con "Sucursal no encontrada" contra Postgres real, para cualquier
-organización. Invisible para los tests de este repo (corren contra el
-repositorio en memoria, que nunca aplica RLS real).
+**Sesión de sistema (verificado contra Postgres real, 4-oct-2026).** Estas rutas públicas corren con `withAppSession({userId: null})`. La policy de
+`core.property` no contemplaba esa sesión y `findBranch()` devolvía `null`; lo corrige `packages/db/migrations/0015_core_rls_sesion_sistema.sql`. El recorrido
+público completo (sucursal más cercana -> pedido idempotente) se verifica con `scripts/verify-restaurantes-sql` (24/24) y `scripts/verify-restaurantes-storefront`
+(14/14), ambos en el gate de CI. Los tests de este directorio corren contra el repositorio en memoria (no aplican RLS): el SQL real lo cubren los `scripts/verify-restaurantes-*`.
 
 Fase 3 agregó las primeras rutas de staff autenticado: `admin-kpis.ts` (dashboards de
 KPIs — ver `restaurantes-admin-kpis.spec.ts`).
@@ -195,11 +189,21 @@ documentados aquí mismo:
   de la anticipación (30 min) o ya pasó. Idempotente; un pedido cancelado nunca se promueve. Un fallo al
   promover se registra y no rompe el listado. Base sin migrar: `disponible:false` y lista vacía.
 - Interno: `GET|POST /internal/restaurantes/promover-programados` (secreto interno o `Authorization: Bearer
-  <CRON_SECRET>`) barre TODAS las organizaciones. NO está en `vercel.json` (decisión de costo: sin crons nuevos);
-  programarlo desde un scheduler externo es una decisión de despliegue. Respuesta: `{ ok, status: "ok" |
-  "not_available", promoted, orderIds }`.
-- Pendiente conocido: la comanda al POS (SoftRestaurant) no se encola al promover (hoy se omite al crear un
-  programado); la captura manual de la comanda sigue disponible.
+  <CRON_SECRET>`) barre TODAS las organizaciones. Está agendado cada 5 minutos en `vercel.json`. Respuesta: `{ ok, status: "ok" |
+  "not_available", promoted, orderIds, comandas, avisos }`.
+- Al promover (cron y panel): se encola la comanda al POS con su hora, **propina y canal** (R-29, `encolarComandasDePromovidos`) y se avisa al staff
+  (`avisarProgramadosPromovidos`): bandeja `order.programado_promovido` y campana `restaurantes.pedido.programado_en_cocina`, un aviso por pedido, sin
+  PII en la campana. Ambos van en su propia sesión de sistema tras el commit de la promoción y nunca la revierten. Un pedido programado **no** encola
+  comanda al crearse por ningún canal (`encolarComandaParaPedido` lo omite).
+- Los agentes de WhatsApp y voz también pueden programar: `cotizar_pedido`/`crear_pedido` aceptan `programado_para` (mismas reglas; ver
+  `docs/restaurantes/agente-system-prompt.md`).
+
+## Consentimiento del aviso de privacidad del checkout (migración 042)
+
+`POST /v1/restaurantes/:orgSlug/storefront/:sucursal/orders` exige `acepta_aviso_privacidad: true` (400 `aviso_privacidad_requerido` si falta, antes de
+tocar la base) y, creado el pedido, guarda la evidencia con `PrivacidadRepository.recordOrderPrivacyConsent` (versión del aviso vigente que decide la base, fecha,
+canal `web`; sin teléfono ni nombre) en `restaurantes.order_privacy_consent` (la ven owner y admin). Best-effort con SAVEPOINT: base sin la 042 el pedido se
+crea igual; un fallo real se registra y no tumba un pedido ya creado. SQL verificado en `scripts/verify-restaurantes-consentimiento-aviso/`.
 
 ## Cierre del día y resumen semanal (R-42, migración 041)
 

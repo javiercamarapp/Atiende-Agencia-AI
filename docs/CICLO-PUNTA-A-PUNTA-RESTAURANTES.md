@@ -163,9 +163,11 @@ npx vitest run packages/whatsapp-gateway --maxWorkers=2     # los simuladores mi
 | Tema | Estado hoy |
 |---|---|
 | Meta, correo, POS, LLM, voz | Simulados en los tests; en producción dependen de credenciales (WHATSAPP_ACCESS_TOKEN, RESEND_API_KEY, SoftRestaurant real, OpenRouter, proveedor de voz) |
-| Aviso fuera de la ventana de 24 h (pedidos de voz/web) | **Hueco**: el aviso de estado muere `dead` con 131047 porque `MetaGraphWhatsAppClient` no sabe enviar plantillas HSM (R-27). El e2e lo demuestra |
-| Notificación in-app en `core.notification` (campana) | **Hueco**: ningún código de restaurantes escribe ahí todavía; el staff se entera por la bandeja `order-notifications` |
-| Staff avisado cuando un programado entra a cocina | **Hueco**: el aviso de "pedido nuevo" se emite al crearlo; un evento nuevo requiere ampliar el CHECK de `event_type` (migración) |
-| Consentimiento del checkout web | **Hueco**: la interfaz lo exige, el servidor no lo persiste |
-| Postgres real (RLS, GRANT, definer) | No cubierto por este banco: lo cubren los `scripts/verify-restaurantes-*` |
-| Pedidos programados por agente (WhatsApp/voz) | **Hueco**: las tools `crear_pedido` de los agentes no tienen `programado_para`; solo el checkout público lo envía |
+| Aviso fuera de la ventana de 24 h (pedidos de voz/web) | **Parcial**: las plantillas HSM ya se envían (R-27, #293) cuando están declaradas en `WHATSAPP_APPROVED_TEMPLATES`; falta que Meta las **apruebe** (paso externo). Sin plantilla aprobada el aviso muere `dead` con 131047, y el e2e lo demuestra |
+| Notificación in-app en `core.notification` (campana) | **Cerrado en lo que emite restaurantes**: pedido nuevo, handoff, llamada escalada, cierres, tope de demo y **programado que entra a cocina** (catálogo en `docs/NOTIFICACIONES.md`). Los eventos con productor `pendiente` del catálogo siguen siendo huecos declarados allí |
+| Staff avisado cuando un programado entra a cocina | **Cerrado** (migración 042): bandeja `order.programado_promovido` y campana `restaurantes.pedido.programado_en_cocina`, un aviso por pedido; e2e en `programado-pos-ciclo.spec.ts` |
+| Consentimiento del checkout web | **Cerrado** (migración 042): el servidor exige `acepta_aviso_privacidad: true` (400 `aviso_privacidad_requerido`) y guarda versión del aviso, fecha y canal en `restaurantes.order_privacy_consent`; e2e en `storefront-ciclo.spec.ts`. Hasta aplicar la 042 el pedido se crea igual y la evidencia no se guarda |
+| Pedidos programados por agente (WhatsApp/voz) | **Cerrado**: `cotizar_pedido`/`crear_pedido` aceptan `programado_para` con las mismas reglas del checkout; la hora entra a la huella de lo confirmado; e2e en `whatsapp-casos.spec.ts` y pruebas de dominio en `agent-programados.spec.ts` |
+| Propina de los programados al POS | **Cerrado**: la comanda que se encola al promover lleva la propina y el canal del pedido (seguimiento de #294) |
+| Comandas del POS en el panel | **Hueco**: solo hay API (`.../admin/softrestaurant/comandas`); no hay pantalla |
+| Postgres real (RLS, GRANT, definer) | No cubierto por este banco: lo cubren los `scripts/verify-restaurantes-*` (incluye `verify-restaurantes-sql`, `-storefront`, `-pedidos-programados` y `-consentimiento-aviso`), que corren en el gate de CI |
