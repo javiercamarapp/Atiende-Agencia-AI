@@ -464,7 +464,9 @@ export type OrderStatus =
   | "listo_para_recoger"
   | "no_recogido"
   /** R-11 (migracion 034): pedido dejado para una hora futura; fuera de cocina hasta que se promueve a `pending`. */
-  | "programado";
+  | "programado"
+  /** Autopiloto (migracion 050): pedido grande retenido sin comanda ni cocina hasta que una persona lo aprueba (un clic) o lo rechaza. */
+  | "por_aprobar";
 
 export interface OrderListFilter {
   readonly propertyIds: readonly string[] | null;

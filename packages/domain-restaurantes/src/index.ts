@@ -217,6 +217,7 @@ export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTr
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";
+export * from "./autopiloto/index.ts";
 export * from "./repartidor-perfil/index.ts";
 export * from "./exportar/index.ts";
 export { PM_COPY, buildPmSystemPrompt, pmCustomerContextBlock, saludoPorHora } from "./whatsapp/perfil-pm.ts";
