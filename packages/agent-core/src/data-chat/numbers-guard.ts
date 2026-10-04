@@ -138,7 +138,8 @@ const DIGITS_RE = /(\$\s*)?(\d[\d,]*(?:\.\d+)?)(?:\s*(millones|millon|mil|k)\b)?
 
 /** Tokens numericos del texto: digitos (con separador de miles, multiplicador, $ y %) y cifras escritas con letras. */
 export function extractNumberTokens(text: string): NumberToken[] {
-  const norm = normalizar(text);
+  // "12 por ciento" es un porcentaje, no el numero 100 ("ciento"): se lee como "12%".
+  const norm = normalizar(text).replace(/\s+por\s+ciento\b/g, "%");
   const out: NumberToken[] = [];
   for (const m of norm.matchAll(DIGITS_RE)) {
     const raw = m[2]!;
@@ -155,7 +156,11 @@ export function extractNumberTokens(text: string): NumberToken[] {
   for (const m of sinDigitos.matchAll(WORD_RUN_RE)) {
     const palabras = m[0].split(/\s+/);
     if (palabras.every((w) => UNO.has(w))) continue;
-    for (const n of numerosDeCorrida(palabras)) out.push({ value: n, decimals: 0, kind: "plain" });
+    // Mismo contexto que los digitos: "$" antes, o "pesos"/"mxn"/"%" despues, vuelven la cifra monto o porcentaje.
+    const antes = sinDigitos.slice(0, m.index).trimEnd();
+    const despues = sinDigitos.slice((m.index ?? 0) + m[0].length);
+    const kind: NumberToken["kind"] = /^\s*%/.test(despues) ? "percent" : antes.endsWith("$") || /^\s*(?:pesos|mxn)\b/.test(despues) ? "money" : "plain";
+    for (const n of numerosDeCorrida(palabras)) out.push({ value: n, decimals: 0, kind });
   }
   return out;
 }
@@ -186,7 +191,7 @@ const QUESTION_STRUCTURAL: readonly RegExp[] = [
   /\b(\d{1,3})\s+(?:dias?|semanas?|mes(?:es)?|anos?|horas?)\b/g,
   new RegExp(`\\b(\\d{1,2})\\s+(?:de\\s+)?(?:${MESES})\\b`, "g"),
   new RegExp(`\\b(?:${MESES})\\s+(?:de\\s+)?(\\d{1,2})\\b`, "g"),
-  /\b((?:19|20)\d{2})\b/g,
+  // Sin regla de "años" sueltos: un monto de 1900 a 2099 ("$2000") se confundiria con un año. El año del periodo ya llega como etiqueta.
 ];
 
 function numerosEstructuralesDePregunta(question: string): number[] {
