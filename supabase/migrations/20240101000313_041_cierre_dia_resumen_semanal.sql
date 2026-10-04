@@ -23,7 +23,7 @@
 --   * Trafico demo (telefono del rango 0009) se excluye; las organizaciones demo no se barren.
 --   * Sin PII: solo agregados; no se lee ni se guarda nombre, telefono ni direccion.
 --   * Congelado: un cierre ya generado NO se recalcula (si un pedido cambia de estado despues, el reporte conserva lo
---     reportado ese dia). Es el comportamiento buscado de un cierre; el panel lo rotula con la hora de generacion.
+--     reportado ese dia). Es el comportamiento buscado de un cierre; el panel lo rotula como generado automaticamente o por el equipo y avisa que no se recalcula.
 --   * Un cierre solo se genera de un periodo YA TERMINADO en la zona de la sucursal (fecha_fin < hoy local); asi nunca se
 --     congela un dia a medias.
 --
