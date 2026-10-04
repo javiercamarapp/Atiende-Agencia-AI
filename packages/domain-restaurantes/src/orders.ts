@@ -376,6 +376,12 @@ export async function prepareCreateOrder(
     }
   }
 
+  // La propina no tiene tope en SQL y el de $100,000 de la validacion es absurdo para un pedido de $252: se rechaza una propina mayor que el
+  // total a pagar (el modelo la lee como un posible error de captura y la confirma con el cliente).
+  if (payload.propina !== undefined && redondearACentavos(payload.propina) > total) {
+    throw new OrderValidationError("La propina no puede ser mayor que el total del pedido. Confirme el monto con el cliente antes de registrarla.");
+  }
+
   return { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount };
 }
 
