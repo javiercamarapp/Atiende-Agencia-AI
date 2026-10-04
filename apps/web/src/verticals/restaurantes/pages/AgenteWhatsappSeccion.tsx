@@ -20,6 +20,8 @@ import {
   restablecerAgente,
   vistaPreviaAgente,
 } from "../lib/agente-whatsapp-client.ts";
+import { ProbarAgente } from "../preview/ProbarAgente.tsx";
+import { ConocimientoNegocio } from "../components/ConocimientoNegocio.tsx";
 import { fetchOrgMembers } from "../lib/staff-client.ts";
 import type { AgenteWhatsappWire, AlcanceAgente, ConfigAgenteForm, HistorialEntradaWire, OpcionesAgenteWire, PerfilAgente, TonoAgente, VistaPreviaWire } from "../lib/agente-whatsapp-client.ts";
 
@@ -188,6 +190,7 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
   const contador = (valor: string, max: number | undefined) => (max ? `${valor.length}/${max}` : undefined);
 
   return (
+    <div className="flex flex-col gap-4">
     <Card>
       <CardHeader className="p-4 pb-3">
         <CardTitle className="flex items-center gap-2">
@@ -384,5 +387,8 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
         {dialogo}
       </CardContent>
     </Card>
+    <ConocimientoNegocio apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} canal="whatsapp" />
+    {datos && <ProbarAgente apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} borrador={form} />}
+    </div>
   );
 }

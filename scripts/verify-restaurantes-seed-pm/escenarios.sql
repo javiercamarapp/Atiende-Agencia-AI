@@ -154,7 +154,7 @@ select count(*)::int as politicas_correctas_deberia_ser_7
     and bp.horario->0->>'abre' = '12:00' and bp.horario->0->>'cierra' = '01:00' and jsonb_array_length(bp.horario->0->'dias') = 7;
 rollback;
 
-\echo '=== B1b. Directorio y domicilio (migracion 070): Galerias visible e informativa, Playa (Chicxulub) visible + solo recoger + de temporada, Pensiones sin restriccion de dias (PREGUNTA B13), el resto por omision ==='
+\echo '=== B1b. Directorio y domicilio (migracion 057): Galerias visible e informativa, Playa (Chicxulub) visible + solo recoger + de temporada, Pensiones sin restriccion de dias (PREGUNTA B13), el resto por omision ==='
 begin;
 select public.seed_pm_demo();
 select count(*)::int as directorio_correcto_deberia_ser_7

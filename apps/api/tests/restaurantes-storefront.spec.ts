@@ -2,8 +2,9 @@
 // por HTTP real sobre el repositorio en memoria. Cubre reglas duras, token invalido/de otro tenant/vencido,
 // origen no permitido, limite de tasa, doble envio y rastreo sin datos personales.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FakeSoftRestaurantAdapter, InMemoryComandaOutboxStore, MapaProductoCodigo, crearResolverSucursalPos, type SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
+import { InMemoryPrivacidadRepository } from "@atiende/domain-restaurantes";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { issueStorefrontTrackingToken, signStorefrontTrackingToken, storefrontTrackingKey } from "../src/storefront-tracking-token.ts";
@@ -28,7 +29,7 @@ async function setup() {
     const q = await post("/fco-montejo/quote", body);
     const quote = await json(q);
     const c = await post("/fco-montejo/confirm", { session_id: SESSION, quote_hash: quote.quote_hash });
-    const o = await post("/fco-montejo/orders", { ...body, quote_hash: quote.quote_hash, customer_name: "Ana Pérez", customer_phone: "999 123 4567", customer_address: "Calle Secreta 123", ...extra });
+    const o = await post("/fco-montejo/orders", { ...body, quote_hash: quote.quote_hash, acepta_aviso_privacidad: true, customer_name: "Ana Pérez", customer_phone: "999 123 4567", customer_address: "Calle Secreta 123", ...extra });
     return { q, c, o };
   };
   return { ...t, app, coca, post, json, flow };
@@ -191,9 +192,74 @@ describe("flujo cotizar -> confirmar -> crear y rastreo", () => {
     expect(created.rastreo_token).not.toMatch(/Ana|9991234567|Secreta/);
   });
 
+  describe("consentimiento del aviso de privacidad (R-18)", () => {
+    async function conPrivacidad(privacidad: InMemoryPrivacidadRepository) {
+      const t = await buildTestDeps();
+      const deps: AppDeps = { ...t.deps, privacidadRepo: () => privacidad };
+      const app = buildApp(deps);
+      const coca = { product_id: t.products.cocaCola, requested_quantity: 2 };
+      const post = (path: string, body: Record<string, unknown>) => app.request(`${BASE}${path}`, jsonRequestInit(body, ORIGIN));
+      const base = { session_id: SESSION, items: [coca], canal: "recoger", payment_method: "efectivo" };
+      const quote = (await (await post("/fco-montejo/quote", base)).json()) as { quote_hash: string };
+      await post("/fco-montejo/confirm", { session_id: SESSION, quote_hash: quote.quote_hash });
+      const crear = (extra: Record<string, unknown>) => post("/fco-montejo/orders", { ...base, quote_hash: quote.quote_hash, customer_name: "Ana Pérez", customer_phone: "9991234567", ...extra });
+      return { t, crear };
+    }
+
+    it.each([[{}], [{ acepta_aviso_privacidad: false }], [{ acepta_aviso_privacidad: "true" }], [{ acepta_aviso_privacidad: 1 }]])("sin aceptar el aviso (%j): 400 claro y NO se crea pedido ni cliente", async (extra) => {
+      const privacidad = new InMemoryPrivacidadRepository();
+      const { t, crear } = await conPrivacidad(privacidad);
+      const res = await crear(extra);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ code: "validation_error", motivo: "aviso_privacidad_requerido", message: expect.stringContaining("aviso de privacidad") });
+      expect(await t.restaurantesRepo.findCustomerByPhone(t.organizationId, "9991234567")).toBeNull();
+      expect(privacidad.pedidoConsents.size).toBe(0);
+      // Y el rechazo no consume la cotizacion confirmada: con la casilla marcada, el MISMO flujo crea el pedido.
+      const ok = await crear({ acepta_aviso_privacidad: true });
+      expect(ok.status).toBe(200);
+    });
+
+    it("aceptando el aviso guarda la evidencia: version vigente del aviso, canal web, UNA fila por pedido y sin telefono ni nombre", async () => {
+      const privacidad = new InMemoryPrivacidadRepository();
+      const { t, crear } = await conPrivacidad(privacidad);
+      privacidad.configs.set(t.organizationId, { responsibleName: "PM", noticeUrl: "https://pm.example/aviso", noticeVersion: "v7", conversationRetentionDays: 180, voiceRetentionDays: 30, recordingConsentRequired: true, configurada: true });
+      const res = await crear({ acepta_aviso_privacidad: true });
+      expect(res.status).toBe(200);
+      const order = (await t.restaurantesRepo.listOrders(t.organizationId, { propertyIds: null, limit: 10 } as never)).orders[0]!;
+      expect(privacidad.pedidoConsents.size).toBe(1);
+      expect(privacidad.pedidoConsents.get(order.id)).toMatchObject({ organizationId: t.organizationId, noticeVersion: "v7", channel: "web" });
+      expect(JSON.stringify([...privacidad.pedidoConsents.values()])).not.toMatch(/Ana|9991234567/);
+      // Doble envio del mismo pedido: no duplica la evidencia.
+      expect((await crear({ acepta_aviso_privacidad: true })).status).toBe(200);
+      expect(privacidad.pedidoConsents.size).toBe(1);
+    });
+
+    it("base SIN la migracion 063: el pedido se crea igual (200), el consentimiento queda 'no disponible' y nada se guarda", async () => {
+      const privacidad = new InMemoryPrivacidadRepository();
+      privacidad.consentimientoPedidosMigrado = false;
+      const { crear } = await conPrivacidad(privacidad);
+      expect((await crear({ acepta_aviso_privacidad: true })).status).toBe(200);
+      expect(privacidad.pedidoConsents.size).toBe(0);
+    });
+
+    it("si guardar la evidencia falla de verdad, el pedido YA creado no se pierde (200) y el error se registra", async () => {
+      const privacidad = new InMemoryPrivacidadRepository();
+      privacidad.recordOrderPrivacyConsent = async () => {
+        throw new Error("falla simulada");
+      };
+      const { t, crear } = await conPrivacidad(privacidad);
+      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const res = await crear({ acepta_aviso_privacidad: true });
+      expect(res.status).toBe(200);
+      expect(error).toHaveBeenCalledWith(expect.stringContaining("consentimiento"), "falla simulada");
+      error.mockRestore();
+      expect((await t.restaurantesRepo.listOrders(t.organizationId, { propertyIds: null, limit: 10 } as never)).orders).toHaveLength(1);
+    });
+  });
+
   it("crear sin cotizar: 400 con el motivo y no se crea pedido", async () => {
     const s = await setup();
-    const res = await s.post("/fco-montejo/orders", { session_id: SESSION, items: [s.coca], canal: "recoger", payment_method: "efectivo", customer_name: "Ana", customer_phone: "9991234567" });
+    const res = await s.post("/fco-montejo/orders", { session_id: SESSION, items: [s.coca], canal: "recoger", payment_method: "efectivo", acepta_aviso_privacidad: true, customer_name: "Ana", customer_phone: "9991234567" });
     expect(res.status).toBe(400);
     expect(await s.json(res)).toMatchObject({ code: "validation_error", motivo: "sin_cotizacion" });
     expect(await s.restaurantesRepo.findCustomerByPhone(s.organizationId, "9991234567")).toBeNull();
@@ -202,7 +268,7 @@ describe("flujo cotizar -> confirmar -> crear y rastreo", () => {
   it("doble envio: el segundo POST devuelve el MISMO rastreo (ya_registrado), no un error ni un pedido nuevo", async () => {
     const s = await setup();
     const first = await s.json((await s.flow()).o);
-    const body = { session_id: SESSION, items: [s.coca], canal: "recoger", payment_method: "efectivo", customer_name: "Ana Pérez", customer_phone: "9991234567" };
+    const body = { session_id: SESSION, items: [s.coca], canal: "recoger", payment_method: "efectivo", acepta_aviso_privacidad: true, customer_name: "Ana Pérez", customer_phone: "9991234567" };
     const again = await s.json(await s.post("/fco-montejo/orders", body));
     expect(again.ya_registrado).toBe(true);
     const verify = (t: string) => JSON.parse(Buffer.from(t.split(".")[1]!, "base64url").toString()).ord;
@@ -218,7 +284,7 @@ describe("flujo cotizar -> confirmar -> crear y rastreo", () => {
     const ok = { session_id: SESSION, items: [{ product_id: s.products.tacosPastor, requested_quantity: 6, tortilla: "maiz" }], canal: "domicilio", payment_method: "efectivo" };
     const q = await s.json(await s.post("/fco-montejo/quote", ok));
     await s.post("/fco-montejo/confirm", { session_id: SESSION, quote_hash: q.quote_hash });
-    const sinDireccion = await s.post("/fco-montejo/orders", { ...ok, customer_name: "Ana", customer_phone: "9991234567" });
+    const sinDireccion = await s.post("/fco-montejo/orders", { ...ok, acepta_aviso_privacidad: true, customer_name: "Ana", customer_phone: "9991234567" });
     expect(sinDireccion.status).toBe(400);
     expect((await s.json(sinDireccion)).message).toMatch(/dirección completa/);
   });
@@ -323,7 +389,7 @@ describe("anti-abuso", () => {
     const headers = { ...ORIGIN, "x-forwarded-for": "203.0.113.9" };
     let last = 0;
     for (let i = 0; i < 11; i += 1) {
-      last = (await s.post("/fco-montejo/orders", { session_id: SESSION, items: [s.coca], canal: "recoger", payment_method: "efectivo", customer_name: "A", customer_phone: "9991234567" }, headers)).status;
+      last = (await s.post("/fco-montejo/orders", { session_id: SESSION, items: [s.coca], canal: "recoger", payment_method: "efectivo", acepta_aviso_privacidad: true, customer_name: "A", customer_phone: "9991234567" }, headers)).status;
     }
     expect(last).toBe(429);
   });
@@ -334,7 +400,7 @@ describe("anti-abuso", () => {
     const statuses: number[] = [];
     for (let i = 0; i < 12; i += 1) {
       const sid = `rotada-${String(i).padStart(2, "0")}-abcdefghij`;
-      statuses.push((await s.post("/fco-montejo/orders", { session_id: sid, items: [s.coca], canal: "recoger", payment_method: "efectivo", customer_name: "A", customer_phone: "9991234567" }, headers)).status);
+      statuses.push((await s.post("/fco-montejo/orders", { session_id: sid, items: [s.coca], canal: "recoger", payment_method: "efectivo", acepta_aviso_privacidad: true, customer_name: "A", customer_phone: "9991234567" }, headers)).status);
     }
     expect(statuses.slice(0, 10)).not.toContain(429);
     expect(statuses.slice(10)).toEqual([429, 429]);
@@ -367,7 +433,7 @@ describe("comanda a SoftRestaurant desde el storefront", () => {
     const post = (path: string, b: Record<string, unknown>) => app.request(`${BASE}${path}`, jsonRequestInit(b, ORIGIN));
     const q = (await (await post("/fco-montejo/quote", body)).json()) as { quote_hash: string };
     await post("/fco-montejo/confirm", { session_id: SESSION, quote_hash: q.quote_hash });
-    const res = await post("/fco-montejo/orders", { ...body, quote_hash: q.quote_hash, customer_name: "Ana", customer_phone: "9991234567" });
+    const res = await post("/fco-montejo/orders", { ...body, quote_hash: q.quote_hash, acepta_aviso_privacidad: true, customer_name: "Ana", customer_phone: "9991234567" });
     expect(res.status).toBe(200);
     const created = (await res.json()) as { comanda: { estado: string } | null };
     expect(created.comanda).not.toBeNull();

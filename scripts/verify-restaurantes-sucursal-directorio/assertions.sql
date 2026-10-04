@@ -1,5 +1,5 @@
 -- Fixtures + escenarios contra Postgres REAL (RLS + GRANT por columna reales -- nunca el repositorio en memoria) de
--- packages/domain-restaurantes/migrations/070_sucursal_directorio_y_domicilio.sql: columnas nuevas de
+-- packages/domain-restaurantes/migrations/057_sucursal_directorio_y_domicilio.sql: columnas nuevas de
 -- restaurantes.branch_policy (visible_en_directorio, acepta_domicilio, dias_domicilio, de_temporada).
 --
 --   A. Positivo: owner y admin escriben las columnas nuevas (INSERT y UPDATE por columna concedida).
@@ -179,7 +179,7 @@ rollback;
 \echo '=== E1. BASE SIN MIGRAR: sin la columna dias_domicilio la lectura nueva falla con 42703 y SAVEPOINT recupera la transaccion ==='
 begin;
 alter table restaurantes.branch_policy drop column dias_domicilio;
-savepoint sp_verify_branch_policy_070_read;
+savepoint sp_verify_branch_policy_057_read;
 do $$
 declare
   v_state text;
@@ -195,7 +195,7 @@ begin
     end if;
   end;
 end $$;
-rollback to savepoint sp_verify_branch_policy_070_read;
-release savepoint sp_verify_branch_policy_070_read;
+rollback to savepoint sp_verify_branch_policy_057_read;
+release savepoint sp_verify_branch_policy_057_read;
 select 1 as transaccion_recuperada_tras_42703_deberia_ser_1;
 rollback;

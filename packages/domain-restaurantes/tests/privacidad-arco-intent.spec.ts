@@ -121,7 +121,7 @@ describe("runArcoFastPath -- flujo guiado de punta a punta (repositorio en memor
   it("CANCELAR SOLICITUD la retira", async () => {
     await runArcoFastPath(repo, ORG, PHONE, "Quiero acceso a mis datos personales");
     const result = await runArcoFastPath(repo, ORG, PHONE, "CANCELAR SOLICITUD");
-    expect(result?.reply).toContain("retiré tu solicitud");
+    expect(result?.reply).toContain("retiré su solicitud");
     expect(repo.requests[0]!.status).toBe("cancelada_titular");
   });
 

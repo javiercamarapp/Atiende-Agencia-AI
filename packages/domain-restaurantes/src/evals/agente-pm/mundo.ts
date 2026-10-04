@@ -371,7 +371,7 @@ export class Mundo {
       promoId: q.promoId,
       cortesias: q.cortesias,
       propina: pago === "tarjeta" ? "en_terminal" : "no_aplica",
-      horaRecogerMin: canal === "recoger" ? minutosDeNotas(notas) : null,
+      horaRecogerMin: canal === "recoger" ? minutosDesdeHoraRecogida(args.hora_recogida, this.caso.contexto.hora_local) : null,
       totalMxn: q.total,
       colonia: typeof args.colonia_entrega === "string" ? args.colonia_entrega : null,
       direccion: typeof args.customer_address === "string" ? args.customer_address : null,
@@ -419,10 +419,13 @@ export function ajustesDeNotas(notas: string | null): string[] {
   return encontrados;
 }
 
-export function minutosDeNotas(notas: string | null): number | null {
-  if (!notas) return null;
-  const n = normalizar(notas);
-  if (/media hora/.test(n)) return 30;
-  const m = /(\d{1,3})\s*min/.exec(n);
-  return m ? Number(m[1]) : null;
+/** Minutos entre la hora local del caso y `hora_recogida` (ISO 8601 con zona, el parametro real de crear_pedido). Solo cuenta ese
+ * campo: el servidor real ignora la hora si va en `notes`, asi que el mundo tambien. Sin campo valido: null. */
+export function minutosDesdeHoraRecogida(horaRecogida: unknown, horaLocal: string): number | null {
+  if (typeof horaRecogida !== "string") return null;
+  const iso = /^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})/.exec(horaRecogida.trim());
+  const base = /^(\d{1,2}):(\d{2})/.exec(horaLocal);
+  if (!iso || !base) return null;
+  const delta = Number(iso[1]) * 60 + Number(iso[2]) - (Number(base[1]) * 60 + Number(base[2]));
+  return ((delta % 1440) + 1440) % 1440;
 }

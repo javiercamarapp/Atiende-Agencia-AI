@@ -1,4 +1,4 @@
-// REGLA DURA de compatibilidad con la base SIN migrar (migracion 070): la politica de sucursal se lee dentro de
+// REGLA DURA de compatibilidad con la base SIN migrar (migracion 057): la politica de sucursal se lee dentro de
 // la transaccion unica de un request. Contra una base sin las columnas nuevas (42703) la lectura cae a las
 // columnas de 023 SIN perder horario ni minimos, y la sesion sigue viva (AbortAwareFakeSession reproduce 25P02).
 import { describe, expect, it } from "vitest";
@@ -22,7 +22,7 @@ async function sesionSigueViva(session: AbortAwareFakeSession) {
   expect(session.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
 }
 
-describe("findBranchPolicy con la migracion 070", () => {
+describe("findBranchPolicy con la migracion 057", () => {
   it("lee las columnas nuevas y entiende smallint[] como arreglo o como literal", async () => {
     const fila = { horario: HORARIO, pedido_minimo_domicilio: "200", pedido_minimo_recoger: null, propina_politica: null, visible_en_directorio: true, acepta_domicilio: true, de_temporada: true };
     const a = new AbortAwareFakeSession([{ match: /dias_domicilio/, respond: () => [{ ...fila, dias_domicilio: [5, 6, 0] }] }]);
@@ -31,7 +31,7 @@ describe("findBranchPolicy con la migracion 070", () => {
     expect((await new PostgresRestaurantesRepository(b).findBranchPolicy(PROPERTY_ID)).diasDomicilio).toEqual([5, 6]);
   });
 
-  it("base SIN la 070 (42703): cae a la politica de 023 sin perder horario ni minimos, y la sesion sigue viva", async () => {
+  it("base SIN la 057 (42703): cae a la politica de 023 sin perder horario ni minimos, y la sesion sigue viva", async () => {
     const session = new AbortAwareFakeSession([
       { match: /dias_domicilio/, respond: () => pgError("42703", 'column "dias_domicilio" does not exist') },
       { match: /from restaurantes\.branch_policy where property_id/, respond: () => [{ horario: HORARIO, pedido_minimo_domicilio: "150", pedido_minimo_recoger: null, propina_politica: "solo_tarjeta" }] },
@@ -48,10 +48,10 @@ describe("findBranchPolicy con la migracion 070", () => {
   });
 });
 
-describe("upsertBranchPolicy con la migracion 070", () => {
+describe("upsertBranchPolicy con la migracion 057", () => {
   const base = { horario: HORARIO, pedidoMinimoDomicilio: 100, pedidoMinimoRecoger: null, propinaPolitica: null } as const;
 
-  it("base SIN la 070 y politica solo con campos de 023: se guarda con el SQL anterior", async () => {
+  it("base SIN la 057 y politica solo con campos de 023: se guarda con el SQL anterior", async () => {
     const session = new AbortAwareFakeSession([
       { match: /dias_domicilio/, respond: () => pgError("42703", 'column "dias_domicilio" of relation "branch_policy" does not exist') },
       { match: /insert into restaurantes\.branch_policy/, respond: () => [{ horario: HORARIO, pedido_minimo_domicilio: "100", pedido_minimo_recoger: null, propina_politica: null }] },
@@ -62,13 +62,13 @@ describe("upsertBranchPolicy con la migracion 070", () => {
     await sesionSigueViva(session);
   });
 
-  it("base SIN la 070 y una restriccion de domicilio: NO se descarta en silencio, la configuracion no esta disponible aun", async () => {
+  it("base SIN la 057 y una restriccion de domicilio: NO se descarta en silencio, la configuracion no esta disponible aun", async () => {
     const session = new AbortAwareFakeSession([{ match: /dias_domicilio/, respond: () => pgError("42703", "column does not exist") }, SIGUIENTE]);
     await expect(new PostgresRestaurantesRepository(session).upsertBranchPolicy(ORG_ID, PROPERTY_ID, { ...base, diasDomicilio: [5, 6, 0] })).rejects.toBeInstanceOf(RestaurantesConfigUnavailableError);
     await sesionSigueViva(session);
   });
 
-  it("con la 070 aplicada escribe los cuatro campos nuevos (dias como literal de arreglo)", async () => {
+  it("con la 057 aplicada escribe los cuatro campos nuevos (dias como literal de arreglo)", async () => {
     let params: unknown[] = [];
     const session = new AbortAwareFakeSession([
       {

@@ -1,6 +1,6 @@
-export type { StorefrontCatalogRow, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
 export { buildStorefrontDirectorio, enlaceComoLlegar, type StorefrontDirectorioItem } from "./storefront.ts";
 export { evaluarDomicilioSucursal, describirDiasDomicilio, insigniaDomicilio, mensajeDomicilioNoDisponible, type EstadoDomicilio } from "./domicilio-sucursal.ts";
+export type { StorefrontCatalogRow, StorefrontMarca, StorefrontMarcaInput, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
 export { buildStorefrontBranches, buildStorefrontMenu, groupStorefrontMenu, assertWebOrderRules, previewPromotion } from "./storefront.ts";
 export type { StorefrontBranchView, StorefrontMenuCategory, StorefrontMenuItem, PromotionPreview } from "./storefront.ts";
 export type {
@@ -11,6 +11,7 @@ export type {
   BranchTimezoneConfig,
   CallbackRequest,
   CallbackRequestInput,
+  CallbackRegistro,
   CanalPedido,
   Category,
   CategoryPatch,
@@ -131,6 +132,7 @@ export {
   REPARTIDOR_ALLOWED_STATUSES,
   assertValidRepartidorStatusTransition,
   changeAssignedOrderStatus,
+  assertOrderCanBeDispatched,
 } from "./order-lifecycle.ts";
 
 export { searchProducts, prepareCreateOrder, createOrder, redondearACentavos, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
@@ -164,6 +166,17 @@ export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJ
 export type { EmailDispatchSummary, ResendConfig } from "./email-dispatch.ts";
 
 export { registerCallbackRequest } from "./callback-requests.ts";
+export {
+  EVENTO_LIMITES,
+  MARCA_LIMITES,
+  MARCA_VACIA,
+  StorefrontValidationError,
+  buildStorefrontPromociones,
+  enlaceWhatsapp,
+  validarMarca,
+  validarSolicitudEvento,
+} from "./storefront-marca.ts";
+export type { SolicitudEventoValidada, StorefrontPromocionView } from "./storefront-marca.ts";
 
 export { findNearestBranch, normalizeZoneText, haversineKm, COLONIA_NO_RECONOCIDA_MENSAJE } from "./nearest-branch.ts";
 export type { NearestBranchResult } from "./nearest-branch.ts";
@@ -198,14 +211,17 @@ export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 
-export { createLlmWhatsAppTurnHandler, FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, getAgentConfig, resolveAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
+export { createLlmWhatsAppTurnHandler, bloqueConocimientoDelTurno, FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, getAgentConfig, resolveAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
 export type { WhatsAppLlmAgentConfig, WhatsAppLlmAgentOptions, WhatsAppToneStyle } from "./whatsapp/llm-turn-handler.ts";
+export { hashTelefonoParaLogs } from "./whatsapp/observabilidad-turno.ts";
+export type { EventoObservabilidadWhatsApp, EventoToolWhatsApp, EventoTurnoWhatsApp, ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./whatsapp/observabilidad-turno.ts";
 
 export {
   STATS_PERIODS,
   isStatsPeriod,
   buildTrendBuckets,
   buildComparisonPeriods,
+  horasAbiertasHoy,
   periodLabel,
   getSalesKpis,
   getSalesTrendKpis,
@@ -215,7 +231,7 @@ export {
   getCustomerKpis,
   computeCustomerKpis,
 } from "./kpis.ts";
-export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
+export type { OpcionesTramos, StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";
@@ -257,6 +273,10 @@ export {
   MOTIVOS_ESCALACION,
   normalizarMotivoEscalacion,
   VOICE_TOOL_HTTP_PATHS,
+  FOLIO_PREVIEW_PREFIJO,
+  TELEFONO_PREVIEW_PREFIJO,
+  esTelefonoPreview,
+  telefonoFicticioPreview,
   exportVoiceToolManifest,
   executeAgentToolSafely,
   invokeAgentTool,
@@ -264,7 +284,7 @@ export {
   toolDefinitionsForChannel,
 } from "./agent-tools/registry.ts";
 export type { MotivoEscalacion } from "./agent-tools/registry.ts";
-export type { AgentChannel, AgentToolContext, AgentToolDefinition, AgentToolJsonSchema, AgentToolName, AgentToolOutcome } from "./agent-tools/registry.ts";
+export type { AgentChannel, AgentToolMode, AgentToolContext, AgentToolDefinition, AgentToolJsonSchema, AgentToolName, AgentToolOutcome } from "./agent-tools/registry.ts";
 export {
   CLAIM_STALE_MS,
   OrderFlowViolationError,
@@ -293,6 +313,8 @@ export {
   validarVentanaProgramacion,
 } from "./pedidos-programados.ts";
 export type { PromocionProgramados } from "./pedidos-programados.ts";
+export { ATRASO_PROGRAMADO_MIN, avisarProgramadosPromovidos, emitirAvisoProgramadoEnCocina, esPromocionAtrasada } from "./pedidos-programados-avisos.ts";
+export type { ResumenAvisosProgramados } from "./pedidos-programados-avisos.ts";
 export { etiquetaHoraLocal } from "./horarios.ts";
 export type { OrderScheduleInfo } from "./types.ts";
 export type { PromotedScheduledOrdersResult, ScheduledOrdersResult } from "./repository.ts";
@@ -319,3 +341,5 @@ export * from "./encuesta-reglas.ts";
 export * from "./resenas-provider.ts";
 export * from "./mezcla-de-pago.ts";
 export * from "./sucursal-sugerida.ts";
+
+export * from "./conocimiento/index.ts";

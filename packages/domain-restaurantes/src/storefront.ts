@@ -11,7 +11,9 @@ import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError, PromotionError } from "./errors.ts";
 import { insigniaDomicilio } from "./domicilio-sucursal.ts";
 import { estaAbiertoAhora, type HorarioSucursal } from "./horarios.ts";
+import { MAX_PIEZAS_POR_RENGLON_WEB, mensajeCantidadInvalida } from "./order-quote.ts";
 import { canonicalizeMexicanPhone } from "./phone.ts";
+import { enlaceWhatsapp } from "./storefront-marca.ts";
 import { extraerPackSize, requiresAdultConfirmation, requiresTortillaChoice } from "./product-search.ts";
 import { applyPromotionToOrder, normalizePromotionCode } from "./promotions.ts";
 import type { RestaurantesRepository } from "./repository.ts";
@@ -22,6 +24,8 @@ export interface StorefrontBranchView {
   readonly name: string;
   readonly address: string | null;
   readonly phone: string | null;
+  /** wa.me de la sucursal con texto prellenado (R-38); null si la sucursal no tiene un numero valido. */
+  readonly whatsappUrl: string | null;
   /** null = la sucursal no tiene horario configurado (no se afirma ni abierto ni cerrado). */
   readonly abiertoAhora: boolean | null;
   readonly cierraA: string | null;
@@ -31,7 +35,7 @@ export interface StorefrontBranchView {
   readonly propinaPolitica: PropinaPolitica | null;
   /** Nombres de las zonas de reparto de la sucursal (vacio = sin cobertura configurada). */
   readonly zonasReparto: readonly string[];
-  /** Migracion 070. false = solo recoger. */
+  /** Migracion 057. false = solo recoger. */
   readonly aceptaDomicilio: boolean;
   /** Dias (0 = domingo .. 6) en que reparte; null = todos. */
   readonly diasDomicilio: readonly number[] | null;
@@ -62,6 +66,7 @@ async function vistaDeSucursal(repo: RestaurantesRepository, branch: Branch, now
     name: branch.name,
     address: branch.address,
     phone: branch.phone,
+    whatsappUrl: enlaceWhatsapp(branch.phone, `Hola, quiero información de ${branch.name}.`),
     abiertoAhora,
     cierraA,
     proximaApertura,
@@ -210,6 +215,13 @@ export async function buildStorefrontMenu(repo: RestaurantesRepository, property
  * staff o integraciones historicas sigue sin ellas): direccion a domicilio, telefono mexicano de 10
  * digitos, forma de pago y promociones solo para recoger. Devuelve el input con el telefono canonico.
  */
+/** El checkout web conserva su tope de 100 piezas por renglon (no tiene la retencion de pedido grande de los canales de agente). */
+export function assertCantidadesWeb(cantidades: readonly unknown[]): void {
+  for (const q of cantidades) {
+    if (typeof q === "number" && q > MAX_PIEZAS_POR_RENGLON_WEB) throw new OrderValidationError(mensajeCantidadInvalida(q, MAX_PIEZAS_POR_RENGLON_WEB));
+  }
+}
+
 export function assertWebOrderRules(input: CreateOrderInput): CreateOrderInput {
   const canal: CanalPedido = input.canal === "recoger" ? "recoger" : "domicilio";
   if (input.canal !== undefined && input.canal !== "recoger" && input.canal !== "domicilio") {
@@ -226,6 +238,7 @@ export function assertWebOrderRules(input: CreateOrderInput): CreateOrderInput {
   if (canal === "domicilio" && typeof input.promoCode === "string" && input.promoCode.trim()) {
     throw new OrderValidationError("Las promociones solo aplican para pedidos que recoges en la sucursal.");
   }
+  assertCantidadesWeb(input.items.map((i) => i.requestedQuantity ?? i.quantity));
   return { ...input, customerPhone: phone, canal };
 }
 

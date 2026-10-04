@@ -51,7 +51,7 @@ export interface PmSeedBranch {
    * fila que choque con `unique (organization_id, slug)`. */
   readonly slugs_anteriores?: readonly string[];
   readonly nota?: string;
-  /** Directorio publico y domicilio (migracion 070). Todo opcional: sin esto la sucursal sigue a su estado (visible si esta activa,
+  /** Directorio publico y domicilio (migracion 057). Todo opcional: sin esto la sucursal sigue a su estado (visible si esta activa,
    * reparte todos los dias). `dias_domicilio` en 0 (domingo) a 6 (sabado); null = todos los dias. */
   readonly directorio?: {
     readonly visible?: boolean | null;
@@ -245,7 +245,7 @@ export interface PmSeedPlan {
     readonly catalogSize: number;
     /** Slugs de versiones anteriores del seed (ver `PmSeedBranch.slugs_anteriores`); vacio si nunca cambio. */
     readonly legacySlugs: readonly string[];
-    /** Directorio publico y domicilio (migracion 070), con los valores por omision ya resueltos. */
+    /** Directorio publico y domicilio (migracion 057), con los valores por omision ya resueltos. */
     readonly visibleEnDirectorio: boolean | null;
     readonly aceptaDomicilio: boolean;
     readonly diasDomicilio: readonly number[] | null;
@@ -651,7 +651,7 @@ export const PM_SEED_REQUIRED_SCHEMA: readonly { readonly table: string; readonl
   { table: "restaurantes.products", columns: ["no_domicilio"], migration: "023_modelo_pm_horarios_minimos_zonas_whatsapp_sucursal.sql" },
   { table: "restaurantes.branch_policy", columns: ["horario", "pedido_minimo_domicilio", "pedido_minimo_recoger", "propina_politica"], migration: "023_modelo_pm_horarios_minimos_zonas_whatsapp_sucursal.sql" },
   // Directorio publico y domicilio por sucursal: el seed escribe estas columnas en el paso 7.
-  { table: "restaurantes.branch_policy", columns: ["visible_en_directorio", "acepta_domicilio", "dias_domicilio", "de_temporada"], migration: "070_sucursal_directorio_y_domicilio.sql" },
+  { table: "restaurantes.branch_policy", columns: ["visible_en_directorio", "acepta_domicilio", "dias_domicilio", "de_temporada"], migration: "057_sucursal_directorio_y_domicilio.sql" },
   { table: "restaurantes.branch_voice_config", columns: ["habilitado", "comportamiento", "mensaje_inicial", "voice_id"], migration: "025_voz_config_conversaciones.sql" },
   { table: "restaurantes.promotions", columns: ["channels", "product_ids"], migration: "027_promociones_2x1_y_canal.sql" },
   { table: "restaurantes.promotions", columns: ["auto_apply"], migration: "031_recoger_promociones_automaticas_puentes.sql" },

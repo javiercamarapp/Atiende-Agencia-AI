@@ -2,7 +2,7 @@
 # Verificación manual, opt-in, contra un Postgres LOCAL real -- mismo patrón EXACTO
 # que scripts/verify-restaurantes-audit-log/run.sh (ver ese archivo para el
 # porqué de cada paso). Se agrega junto con
-# packages/domain-restaurantes/migrations/070_sucursal_directorio_y_domicilio.sql para dejar,
+# packages/domain-restaurantes/migrations/057_sucursal_directorio_y_domicilio.sql para dejar,
 # en el repo, la prueba reproducible de que restaurantes.branch_policy/branch_delivery_zone/
 # whatsapp_branch_channel y sus GRANT por columna funcionan contra RLS/GRANT/auth.uid() reales -- el
 # repositorio en memoria de domain-restaurantes nunca aplica ninguno de los tres,
@@ -49,7 +49,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 070_sucursal_directorio_y_domicilio.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 057_sucursal_directorio_y_domicilio.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

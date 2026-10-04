@@ -98,6 +98,7 @@
     { "path": "/internal/hoteles/revenue-recommendations", "schedule": "10 15 * * *" },
     { "path": "/internal/restaurantes/promover-programados", "schedule": "*/5 * * * *" },
     { "path": "/internal/restaurantes/softrestaurant-dispatch", "schedule": "*/5 * * * *" },
+    { "path": "/internal/restaurantes/voz-huerfanas", "schedule": "*/30 * * * *" },
     { "path": "/internal/hoteles/tickets-sla", "schedule": "*/10 * * * *" },
     { "path": "/internal/hoteles/aprobaciones-expiracion", "schedule": "20 * * * *" },
     { "path": "/internal/rentas/acceso-huesped", "schedule": "10 * * * *" },

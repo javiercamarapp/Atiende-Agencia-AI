@@ -8,6 +8,8 @@
 // todas pasan por aquí, así que el mismo código de negocio corre igual en tests y
 // en producción.
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
+import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
+import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type {
   Branch,
@@ -55,6 +57,8 @@ import type {
   RestaurantesAuditLogPaginacion,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
+  StorefrontMarca,
+  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
   StorefrontTrackingResult,
@@ -209,7 +213,8 @@ export interface RestaurantesRepository {
    * incluida la recuperación de la carrera de INSERT concurrente real, UNIQUE
    * (organization_id, phone)). */
   upsertCustomer(organizationId: string, phone: string, name: string): Promise<Customer>;
-  addCustomerAddressIfNew(customerId: string, address: string): Promise<void>;
+  /** `organizationId` es obligatorio: la escritura real (funcion solo-sistema de la migracion 048) exige que el cliente pertenezca a esa organizacion. */
+  addCustomerAddressIfNew(customerId: string, address: string, organizationId: string): Promise<void>;
   listCustomerAddresses(customerId: string): Promise<readonly CustomerAddress[]>;
   /** Historial de pedidos ELEGIBLES para memoria/recomendación (pending/preparando/
    * en_camino/entregado/completado — nunca cancelado/problema), orden desc. */
@@ -227,6 +232,9 @@ export interface RestaurantesRepository {
   consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean>;
 
   resolveOrganizationByPhoneNumberId(phoneNumberId: string): Promise<string | null>;
+  /** Contadores DETERMINISTAS del agente por conversacion de WhatsApp ("no entiendo" y "colonia no reconocida" seguidos, migracion 047). Devuelve el
+   * contador resultante, o `null` si no hay donde llevarlo (base sin migrar o conversacion inexistente): el llamador degrada, nunca falla. */
+  contadorAgenteWhatsApp(organizationId: string, phone: string, clave: ClaveContadorAgente, accion: "incrementar" | "reiniciar"): Promise<number | null>;
   claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean>;
   claimWhatsAppConversation(organizationId: string, phoneHash: string, messageId: string, leaseSeconds: number): Promise<boolean>;
   appendWhatsAppUserMessageOnce(organizationId: string, phone: string, message: ConversationMessage): Promise<readonly ConversationMessage[]>;
@@ -354,7 +362,9 @@ export interface RestaurantesRepository {
   /** Más reciente primero. `propertyIds` null = organización completa (mismo
    * contrato que el resto de rutas admin de este vertical, ver admin-scope.ts). */
   listStaffOrderNotifications(organizationId: string, propertyIds: readonly string[] | null, options?: { readonly unacknowledgedOnly?: boolean; readonly limit?: number }): Promise<readonly StaffOrderNotificationRecord[]>;
-  acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string): Promise<StaffOrderNotificationRecord>;
+  /** `propertyIds` (opcional) acota el reconocimiento a las sucursales visibles del staff DENTRO de la propia escritura
+   * (QA-restaurantes-R1-features-08: antes se verificaba con un listado de 500 filas, que dejaba fuera las viejas). */
+  acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string, propertyIds?: readonly string[] | null): Promise<StaffOrderNotificationRecord>;
 
   // ---- Fase 5 — back-office CORE (ver diseño §1) ----
 
@@ -422,7 +432,9 @@ export interface RestaurantesRepository {
    * real ya NO es `fromStatus` (alguien más lo cambió primero) — el dominio
    * distingue ambos casos con un `findOrderById` de más SOLO en ese camino de
    * error, nunca en el camino feliz. */
-  updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus): Promise<Order | null>;
+  /** `incidentNote` (opcional): nota libre de la incidencia; solo se guarda cuando `toStatus === "problema"`
+   * (columna `incident_note`, migracion 008: no requiere SQL nuevo). */
+  updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus, incidentNote?: string | null): Promise<Order | null>;
 
   findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
   listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;
@@ -523,6 +535,15 @@ export interface RestaurantesRepository {
    *  primary key de la tabla) -- nunca dos filas por organización. */
   upsertWhatsappChannelConfig(organizationId: string, phoneNumberId: string): Promise<WhatsappChannelConfig>;
 
+  // ---- R-38 (migración 062): marca pública del storefront ----
+
+  /** Marca de la organización; `null` si nunca se guardó O si la base aún no tiene la migración 062 (la portada pública cae a una
+   *  genérica con el nombre del restaurante). Nunca lanza por tabla/columna ausente. */
+  findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null>;
+  /** Alta o reemplazo completo de la marca (owner/admin por RLS). Lanza `RestaurantesConfigUnavailableError` si la base aún no tiene
+   *  la migración 062 (la ruta responde 503, nunca 500). */
+  upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca>;
+
   /** Más reciente primero -- orden total (ver `created_at desc, id desc`, mismo
    *  criterio de desempate que `restaurantes.audit_log` para paginación estable). */
   listKnownZones(organizationId: string): Promise<readonly KnownZone[]>;
@@ -582,6 +603,23 @@ export interface RestaurantesRepository {
   /** `EMPTY_BRANCH_POLICY` cuando la sucursal no tiene politica o la base no esta migrada. */
   findBranchPolicy(propertyId: string): Promise<BranchPolicy>;
 
+  // ---- Conocimiento del negocio e interruptor del agente de WhatsApp (migracion 053). Toda LECTURA degrada con SAVEPOINT a
+  // "sin conocimiento" / "agente encendido" contra la base sin migrar; toda ESCRITURA lanza `RestaurantesConfigUnavailableError`. ----
+
+  /** Todas las entradas de la organizacion (borradores incluidos) para el panel; `disponible: false` contra la base sin migrar. */
+  listarConocimiento(organizationId: string): Promise<ConocimientoLectura>;
+  /** Entradas publicadas y activas que aplican a la sucursal (generales + las suyas). La vigencia por fecha la decide `listarConocimientoVigente`. */
+  listarConocimientoPublicado(organizationId: string, propertyId: string | null): Promise<readonly ConocimientoEntrada[]>;
+  crearConocimiento(organizationId: string, actorId: string, input: NuevaConocimientoEntrada): Promise<ConocimientoEntrada>;
+  /** `null` si no existe o es de otra organizacion. */
+  actualizarConocimiento(organizationId: string, actorId: string, id: string, patch: ConocimientoPatch): Promise<ConocimientoEntrada | null>;
+  borrarConocimiento(organizationId: string, id: string): Promise<boolean>;
+  /** `false` solo si la sucursal tiene el agente de WhatsApp APAGADO; sin fila o con la base sin migrar es `true` (como hasta hoy). */
+  findAgenteWhatsappActivo(propertyId: string): Promise<boolean>;
+  /** Sucursales con el agente de WhatsApp apagado; `disponible: false` contra la base sin migrar. */
+  listarAgentesWhatsappApagados(organizationId: string): Promise<{ readonly disponible: boolean; readonly propertyIdsApagados: readonly string[] }>;
+  fijarAgenteWhatsappActivo(organizationId: string, propertyId: string, actorId: string, activo: boolean): Promise<void>;
+
   // ---- Puentes (migracion 031): horario por fecha. La LECTURA degrada a [] contra la base sin migrar
   // (SAVEPOINT); la ESCRITURA lanza `RestaurantesConfigUnavailableError`. ----
 
@@ -613,6 +651,11 @@ export interface RestaurantesRepository {
     organizationId: string | null,
     options: { readonly now: Date; readonly anticipacionMin: number; readonly propertyIds?: readonly string[] | null },
   ): Promise<PromotedScheduledOrdersResult>;
+  /** Pedidos ya promovidos a cocina en las ultimas `hours` horas (estado `pending` o `preparando`) cuya
+   * comanda no esta en el outbox del POS, de organizaciones con SoftRestaurant en sombra/activo (QA-restaurantes-R1-
+   * automatizacion-02). Solo sesion de sistema. `[]` contra la base sin migrar (la 046). El repositorio en memoria no
+   * conoce el outbox del POS: devuelve todos los promovidos recientes (reencolar es idempotente). */
+  listPromotedOrdersWithoutComanda(options: { readonly hours: number; readonly limit: number }): Promise<readonly Order[]>;
   /** Reemplaza la politica completa de la sucursal (upsert por property_id). */
   upsertBranchPolicy(organizationId: string, propertyId: string, policy: BranchPolicy): Promise<BranchPolicy>;
   /** Ids de `known_zone` que cubre la sucursal para entregas; [] = sin cobertura
@@ -685,9 +728,9 @@ export interface EmailOutboxJobRow {
   readonly payload: Record<string, unknown>;
 }
 
-/** Los 3 eventos reales que dispara `order-notifications.ts` — mismo CHECK que
+/** Los 4 eventos reales que dispara `order-notifications.ts` — mismo CHECK que
  * `restaurantes.staff_order_notification.event_type` (migrations/009). */
-export type StaffOrderNotificationEventType = "order.created" | "order.problema" | "order.assigned_repartidor";
+export type StaffOrderNotificationEventType = "order.created" | "order.problema" | "order.assigned_repartidor" | "order.programado_promovido";
 
 /** Fila de `restaurantes.staff_order_notification` — bandeja interna consultable
  * por polling (ver comentario de `createStaffOrderNotification` arriba). Mismo

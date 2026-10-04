@@ -44,7 +44,7 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
     const propertyId = newId("sucursal", b.slug);
     propertyBySlug.set(b.slug, propertyId);
     repo.seedBranch({ propertyId, organizationId, name: b.name, slug: b.slug, status: b.status, phone: b.phone, address: b.address, lat: b.lat, lng: b.lng });
-    // Directorio y domicilio (migracion 070): se siembran aunque la sucursal no tenga catalogo (Galerias es solo informativa).
+    // Directorio y domicilio (migracion 057): se siembran aunque la sucursal no tenga catalogo (Galerias es solo informativa).
     const directorio = { visibleEnDirectorio: b.visibleEnDirectorio, aceptaDomicilio: b.aceptaDomicilio, diasDomicilio: b.diasDomicilio, deTemporada: b.deTemporada };
     if (b.catalogSize === 0) {
       repo.seedBranchPolicy(propertyId, directorio);

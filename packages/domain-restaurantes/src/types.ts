@@ -214,7 +214,7 @@ export interface BranchPolicy {
   readonly pedidoMinimoDomicilio: number | null;
   readonly pedidoMinimoRecoger: number | null;
   readonly propinaPolitica: PropinaPolitica | null;
-  // Migracion 070 (directorio y domicilio por sucursal). Opcionales: ausentes en una base sin migrar y en
+  // Migracion 057 (directorio y domicilio por sucursal). Opcionales: ausentes en una base sin migrar y en
   // quien construye una politica solo con los campos de 023; el valor por omision conserva el comportamiento anterior.
   /** null = sigue a la sucursal activa; true = aparece en el directorio aunque este inactiva; false = oculta. */
   readonly visibleEnDirectorio?: boolean | null;
@@ -518,12 +518,51 @@ export interface CallbackRequestInput {
   readonly reason?: string;
   readonly message?: string;
   readonly source: "voice" | "whatsapp" | "web" | "admin";
+  /** Id opaco del evento que origino el aviso (id del mensaje de Meta o de la llamada, mas el motivo): el mismo evento nunca crea dos
+   * avisos (migracion 047). Solo lo usan los avisos del agente (`voice`/`whatsapp`). */
+  readonly sourceEventId?: string | null;
+}
+
+/** Que paso con un aviso del agente: `nuevo` = se creo; `evento_repetido` = el mismo evento ya estaba registrado (no se hizo nada);
+ * `nota_agregada` = habia un aviso abierto del mismo canal, telefono y motivo y se le agrego una nota. */
+export type CallbackRegistro = "nuevo" | "evento_repetido" | "nota_agregada";
+
+// ---- R-38 (migracion 062): marca publica del storefront por organizacion. Todos los campos son opcionales (null = sin valor). ----
+export interface StorefrontMarcaInput {
+  readonly titular: string | null;
+  readonly eslogan: string | null;
+  /** Descripcion corta ("about") de la portada. */
+  readonly about: string | null;
+  /** URL https de la imagen de portada. */
+  readonly portadaUrl: string | null;
+  readonly logoUrl: string | null;
+  readonly instagramUrl: string | null;
+  readonly facebookUrl: string | null;
+  readonly tiktokUrl: string | null;
+}
+
+export interface StorefrontMarca extends StorefrontMarcaInput {
+  /** null = nunca se guardo (o la base aun no tiene la migracion 062). */
+  readonly updatedAt: string | null;
+}
+
+/** R-43: solicitud publica de evento/catering ya validada (ver storefront-marca.ts::validarSolicitudEvento). */
+export interface SolicitudEventoInput {
+  readonly nombre: string;
+  /** 10 digitos nacionales. */
+  readonly telefono: string;
+  /** YYYY-MM-DD. */
+  readonly fechaEvento: string;
+  readonly personas: number;
+  readonly sucursalSlug: string;
+  readonly comentario: string | null;
 }
 
 export interface CallbackRequest extends CallbackRequestInput {
   readonly id: string;
   readonly resolved: boolean;
   readonly createdAt: string;
+  readonly registro?: CallbackRegistro;
 }
 
 // ---- Fase 11 — promociones/marketing: motor real de código de descuento (ver

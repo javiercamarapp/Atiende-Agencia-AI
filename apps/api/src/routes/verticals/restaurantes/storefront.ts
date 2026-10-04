@@ -12,25 +12,34 @@
 // Compatibilidad con la base sin migrar: el menu, la politica y el flujo degradan con SAVEPOINT en el
 // repositorio; el rastreo (migracion 032) responde `disponible: false` si la funcion aun no existe. Nada
 // de esto devuelve 500 por una base vieja.
+//
+// Consentimiento: el POST de pedido exige `acepta_aviso_privacidad: true` (400 `aviso_privacidad_requerido` si falta) y, ya creado
+// el pedido, guarda la evidencia (version del aviso, fecha, canal) con `PrivacidadRepository.recordOrderPrivacyConsent` (migracion 063).
 import { Hono } from "hono";
 import type { Context } from "hono";
 import {
   OrderConflictError,
   OrderFlowViolationError,
+  MARCA_VACIA,
   OrderValidationError,
+  StorefrontValidationError,
   buildStorefrontBranches,
   buildStorefrontDirectorio,
   buildStorefrontMenu,
+  buildStorefrontPromociones,
   consumeRateLimit,
   invokeAgentTool,
   previewPromotion,
+  registerCallbackRequest,
   redondearACentavos,
   seccionEncargados,
   sugerirSucursalPorColonia,
   sugerirSucursalPorUbicacion,
+  validarSolicitudEvento,
 } from "@atiende/domain-restaurantes";
 import type { AgentToolContext, CanalPedido, Order, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { encolarComandaParaPedido, type ResultadoEncolarPedido } from "@atiende/domain-restaurantes/softrestaurant";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
 import { issueStorefrontTrackingToken, storefrontTrackingKey, verifyStorefrontTrackingToken } from "../../../storefront-tracking-token.ts";
@@ -65,6 +74,8 @@ interface StorefrontBody {
   readonly customer_address?: unknown;
   readonly notes?: unknown;
   readonly propina?: unknown;
+  /** Aceptacion del aviso de privacidad (casilla del checkout): sin `true` el servidor no crea el pedido. */
+  readonly acepta_aviso_privacidad?: unknown;
   readonly programado_para?: unknown;
 }
 
@@ -91,6 +102,10 @@ function sessionIdOf(body: StorefrontBody): string {
 
 function webContext(organizationId: string, sessionId: string): AgentToolContext {
   return { organizationId, channel: "web", phone: null, flow: { key: `web:${sessionId}`, turn: null } };
+}
+
+function escapeXml(v: string): string {
+  return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
 /** Texto libre del cliente: un valor que pasa del tope se RECHAZA con un 400 que nombra el campo; nunca se descarta
@@ -139,6 +154,16 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
     }
   }
 
+  async function registrarConsentimiento(db: Parameters<typeof deps.restaurantesRepo>[0], repo: RestaurantesRepository, organizationId: string, orderId: string): Promise<void> {
+    const privacidad = deps.privacidadRepo?.(db);
+    if (!privacidad) return;
+    try {
+      await repo.runWithRowSavepoint(() => privacidad.recordOrderPrivacyConsent(organizationId, orderId, "web"));
+    } catch (err) {
+      console.error("storefront: no se pudo guardar el consentimiento del aviso de privacidad (el pedido ya existe):", err instanceof Error ? err.message : err);
+    }
+  }
+
   /** Pedido ya registrado en esta sesion (reintento tras una respuesta perdida, doble clic): se devuelve el rastreo
    * del pedido existente en vez de crear otro o dejar al cliente sin saber que su pedido SI quedo. */
   function yaRegistrado(orgId: string, err: unknown): { rastreo_token: string } | null {
@@ -157,7 +182,76 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrg(repo, c.req.param("orgSlug"));
       await limitOrThrow(repo, c, "storefront-read", 120, org.id);
-      return c.json({ restaurante: { slug: org.slug, nombre: org.name }, sucursales: await buildStorefrontBranches(repo, org.id) });
+      const sucursales = await buildStorefrontBranches(repo, org.id);
+      // R-38: marca (portada, logo, redes) y promociones que el motor aplica solas. La marca es `null` si nunca se guardo o si la base
+      // aun no tiene la migracion 062 (la pagina cae a una portada generica con el nombre); nada de esto vuelve a la ruta un 500.
+      const marca = await repo.findStorefrontMarca(org.id);
+      const branches = (await repo.listBranchesForOrganizationAdmin(org.id)).filter((b) => b.status === "active");
+      const promociones = await buildStorefrontPromociones(repo, org.id, branches.map((b) => ({ slug: b.slug, propertyId: b.propertyId })));
+      return c.json({ restaurante: { slug: org.slug, nombre: org.name }, sucursales, marca: marca ?? { ...MARCA_VACIA }, promociones });
+    });
+  });
+
+  // GET /v1/restaurantes/:orgSlug/storefront/sitemap.xml -- sitemap de las paginas indexables del restaurante (R-38): la pagina
+  // de inicio, cada sucursal activa y el formulario de eventos. Nunca incluye rastreo ni checkout (noindex).
+  app.get("/v1/restaurantes/:orgSlug/storefront/sitemap.xml", async (c) => {
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-read", 120, org.id);
+      const sucursales = (await repo.listBranchesForOrganizationAdmin(org.id)).filter((b) => b.status === "active");
+      const base = `${deps.env.appBaseUrl}/pedir/${encodeURIComponent(org.slug)}`;
+      const rutas = [base, `${base}/eventos`, ...sucursales.map((b) => `${base}/${encodeURIComponent(b.slug)}`)];
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${rutas.map((r) => `  <url><loc>${escapeXml(r)}</loc></url>`).join("\n")}\n</urlset>\n`;
+      c.header("Cache-Control", "public, max-age=3600");
+      return c.body(xml, 200, { "Content-Type": "application/xml; charset=utf-8" });
+    });
+  });
+
+  // POST /v1/restaurantes/:orgSlug/storefront/eventos -- solicitud publica de evento/catering (R-43). Crea una solicitud de contacto
+  // (callback_requests) con motivo 'evento' y canal 'web' que aparece en la bandeja del panel y avisa al personal. Defensas: CORS por
+  // origen, limite de tasa por IP y por IP + telefono, cuerpo acotado, validacion estricta y honeypot sin captcha: un bot que llena el
+  // campo oculto `sitio_web` recibe el MISMO exito pero no se crea nada.
+  app.post("/v1/restaurantes/:orgSlug/storefront/eventos", async (c) => {
+    noStore(c);
+    assertOrigin(c);
+    const body = await readJsonCapped<Record<string, unknown>>(c.req.raw, 4 * 1024);
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-evento", 5, org.id);
+      if (typeof body.sitio_web === "string" && body.sitio_web.trim() !== "") return c.json({ recibido: true });
+      try {
+        const branch = typeof body.sucursal === "string" ? await repo.findBranch(org.id, { slug: body.sucursal }) : null;
+        const zona = resolverZonaHorariaNegocio(branch ? (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria : null);
+        const solicitud = validarSolicitudEvento(body, hoyFechaNegocio(zona));
+        if (!branch || branch.status !== "active") throw new StorefrontValidationError("Elige una sucursal disponible.");
+        // Tope por persona, independiente de la IP: el mismo telefono no abre mas de 3 solicitudes por hora en este restaurante
+        // (reintentos y doble clic incluidos; rotar de IP no da cupo nuevo).
+        const porTelefono = await consumeRateLimit(repo, "storefront-evento-telefono", `${org.id}:${solicitud.telefono}`, 3, 3600);
+        if (!porTelefono.allowed) throw Errors.tooManyRequests();
+        // SAVEPOINT propio: contra una base sin la migracion 062 el registro falla (sin la funcion de sistema, el INSERT directo no tiene
+        // permiso, SQLSTATE 42501) y esa transaccion unica del request quedaria abortada: con el savepoint el 503 honesto se entrega.
+        const creada = await repo.runWithRowSavepoint(() =>
+          registerCallbackRequest(repo, {
+            organizationId: org.id,
+            propertyId: branch.propertyId,
+            customerName: solicitud.nombre,
+            customerPhone: solicitud.telefono,
+            reason: "evento",
+            message: solicitud.mensaje,
+            source: "web",
+          }),
+        );
+        return c.json({ recibido: true, solicitud: creada.id });
+      } catch (err) {
+        if (err instanceof StorefrontValidationError) return c.json({ code: "validation_error", message: err.message }, 400);
+        const code = (err as { code?: string } | null)?.code;
+        if (code === "42501" || code === "42883" || code === "42P01" || code === "42703") {
+          return c.json({ code: "service_unavailable", message: "Las solicitudes de evento todavía no están disponibles en línea. Llama a la sucursal para cotizar tu evento." }, 503);
+        }
+        throw err;
+      }
     });
   });
 
@@ -242,7 +336,9 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
       const branch = await repo.findBranch(org.id, { slug: c.req.param("branchSlug") });
       if (!branch || branch.status !== "active") throw Errors.notFound("Sucursal no encontrada.");
       const [sucursal] = (await buildStorefrontBranches(repo, org.id)).filter((b) => b.slug === branch.slug);
-      return c.json({ sucursal: sucursal ?? null, categorias: await buildStorefrontMenu(repo, branch.propertyId) });
+      // La marca viaja tambien aqui: logo, redes y la imagen del Open Graph de la pagina de la sucursal (null si no hay o falta la 062).
+      const marca = await repo.findStorefrontMarca(org.id);
+      return c.json({ sucursal: sucursal ?? null, categorias: await buildStorefrontMenu(repo, branch.propertyId), marca: marca ?? { ...MARCA_VACIA } });
     });
   });
 
@@ -330,6 +426,11 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
     const sessionId = sessionIdOf(body);
     rejectProgramado(body);
     const items = cleanItems(body.items);
+    // El checkout web exige la aceptacion del aviso de privacidad EN EL SERVIDOR (la casilla de la interfaz no basta):
+    // sin ella no se toca la base ni se crea nada. Debe ser el booleano `true`, no un texto ni un numero.
+    if (body.acepta_aviso_privacidad !== true) {
+      return c.json({ code: "validation_error", message: "Para hacer tu pedido debes aceptar el aviso de privacidad.", motivo: "aviso_privacidad_requerido" }, 400);
+    }
     const cliente = {
       nombre: strOrReject(body.customer_name, 160, "El nombre"),
       telefono: strOrReject(body.customer_phone, 64, "El teléfono"),
@@ -370,6 +471,9 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
           }),
         );
         const order = outcome.raw as Order;
+        // Evidencia del consentimiento (version del aviso vigente, fecha, canal `web`; sin PII). Best-effort con SAVEPOINT: base sin la
+        // migracion 063 -> "no_disponible"; cualquier otro fallo se registra y NUNCA tumba un pedido ya creado.
+        await registrarConsentimiento(db, repo, org.id, order.id);
         const encolada = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), {
           order,
           tipo: canal === "recoger" ? "recoger" : "domicilio",

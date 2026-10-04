@@ -18,8 +18,8 @@ const POLITICA_PM = {
   propinaPolitica: "solo_tarjeta",
 };
 
-/** Valores por omision de la migracion 070 que el API siempre devuelve. */
-const DEFAULTS_070 = { visibleEnDirectorio: null, aceptaDomicilio: true, diasDomicilio: null, deTemporada: false };
+/** Valores por omision de la migracion 057 que el API siempre devuelve. */
+const DEFAULTS_057 = { visibleEnDirectorio: null, aceptaDomicilio: true, diasDomicilio: null, deTemporada: false };
 
 describe("politica por sucursal — GET/PUT .../admin/config/sucursales/:branchId/politica", () => {
   it("sin configurar: politica vacia; owner guarda y se lee de vuelta; queda en la bitacora", async () => {
@@ -29,16 +29,16 @@ describe("politica por sucursal — GET/PUT .../admin/config/sucursales/:branchI
 
     const vacia = await app.request(url, authedGet(ctx.staff.owner.token));
     expect(vacia.status).toBe(200);
-    expect(await vacia.json()).toEqual({ horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null, ...DEFAULTS_070 });
+    expect(await vacia.json()).toEqual({ horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null, ...DEFAULTS_057 });
 
     const put = await app.request(url, authedJson(ctx.staff.owner.token, POLITICA_PM, "PUT"));
     expect(put.status).toBe(200);
-    expect(await put.json()).toEqual({ ...POLITICA_PM, ...DEFAULTS_070 });
-    expect(await (await app.request(url, authedGet(ctx.staff.owner.token))).json()).toEqual({ ...POLITICA_PM, ...DEFAULTS_070 });
+    expect(await put.json()).toEqual({ ...POLITICA_PM, ...DEFAULTS_057 });
+    expect(await (await app.request(url, authedGet(ctx.staff.owner.token))).json()).toEqual({ ...POLITICA_PM, ...DEFAULTS_057 });
 
     // La sucursal A no se toca: la politica es POR sucursal.
     const otra = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/config/sucursales/${ctx.propertyIdA}/politica`, authedGet(ctx.staff.owner.token));
-    expect(await otra.json()).toEqual({ horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null, ...DEFAULTS_070 });
+    expect(await otra.json()).toEqual({ horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null, ...DEFAULTS_057 });
 
     const entrada = ctx.restaurantesRepo.auditLog.find((r) => r.action === "configuracion.politica_sucursal_actualizada");
     expect(entrada?.entityId).toBe(ctx.propertyIdB);
@@ -220,7 +220,7 @@ describe("marcas no_domicilio — .../admin/config/no-domicilio", () => {
   });
 });
 
-describe("domicilio y directorio por sucursal (migracion 070) — PUT .../politica y GET storefront/directorio", () => {
+describe("domicilio y directorio por sucursal (migracion 057) — PUT .../politica y GET storefront/directorio", () => {
   it("guarda dias de domicilio, solo recoger, directorio y temporada; PUT sin esos campos los conserva", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const app = buildApp(ctx.deps);

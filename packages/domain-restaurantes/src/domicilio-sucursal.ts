@@ -1,4 +1,4 @@
-// Domicilio por sucursal (migracion 070): una sucursal puede no repartir (solo recoger) o repartir solo
+// Domicilio por sucursal (migracion 057): una sucursal puede no repartir (solo recoger) o repartir solo
 // algunos dias de la semana. La regla vive AQUI, en el dominio, y la aplican `cotizar_pedido`, `crear_pedido`
 // y el checkout web por el mismo camino (`aplicarReglasDeSucursal`): ni el agente de WhatsApp ni el de voz
 // llevan la regla en su prompt.

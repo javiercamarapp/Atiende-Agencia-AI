@@ -1,7 +1,7 @@
 # verify-restaurantes-sucursal-directorio
 
-Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/070_sucursal_directorio_y_domicilio.sql`
-(espejo: `supabase/migrations/20240101000332_070_*.sql`): columnas `visible_en_directorio`, `acepta_domicilio`,
+Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/057_sucursal_directorio_y_domicilio.sql`
+(espejo: `supabase/migrations/20240101000332_057_*.sql`): columnas `visible_en_directorio`, `acepta_domicilio`,
 `dias_domicilio` y `de_temporada` de `restaurantes.branch_policy`.
 
 Cubre positivo (owner/admin), rol insuficiente (staff), cross-tenant (escritura y lectura), `anon` (sin lectura ni
