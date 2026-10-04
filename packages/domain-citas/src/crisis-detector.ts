@@ -43,7 +43,7 @@ export function normalizarTextoCrisis(texto: string): string {
   t = t.replace(/(?:^| )((?:[a-z] ){3,}[a-z])(?= |$)/g, (_m, g: string) => ` ${g.replace(/ /g, "")}`);
   // quieroooo -> quiero (3 o más repeticiones; el español no tiene letras triples).
   t = t.replace(/([a-z])\1{2,}/g, "$1");
-  t = t.replace(/\b(?:kero|quero|qero)\b/g, "quiero").replace(/\bke\b/g, "que").replace(/\bq\b/g, "que");
+  t = t.replace(/\b(?:kero|quero|qero|qiero)\b/g, "quiero").replace(/\bke\b/g, "que").replace(/\bq\b/g, "que");
   return t.replace(/\s+/g, " ").replace(/ ?\| ?(?:\| ?)*/g, " | ").trim();
 }
 
@@ -65,6 +65,10 @@ const ESPERA_FIGURADA = String.raw`(?!\s+(?:de\s+)?(?:la |el )?(?:risa|hambre|su
 const NO_PELO = String.raw`(?!\s+(?:el|la|las|los|mi|mis|un|una)\s+(?:pelo|cabello|cabellos|unas|barba|bigote|flequillo|fleco|puntas|melena|cuticulas?|hilo))`;
 const SITIO = String.raw`(?:brazos?|antebrazos?|munecas?|venas?|piernas?|muslos?|vientre|panza|piel|cuerpo|torso)`;
 
+const NO_OBJETO = String.raw`(?!\s+(?:el|la|los|las|un|una|mi|mis)\b)`;
+// "me tomo todas las pastillas del antibiotico / que me recetaron": consulta de un consultorio, no un plan.
+const NO_RECETA = String.raw`(?![^|]{0,40}\b(?:recet\w*|indicad\w*|indicaron|dieron|antibiotic\w*|antiinflamator\w*|tratamiento|dosis|doctor\w*|dentista)\b)`;
+
 interface Regla {
   readonly senal: CrisisSenal;
   readonly re: RegExp;
@@ -77,15 +81,16 @@ function r(senal: CrisisSenal, fuente: string): Regla {
 // Orden = prioridad (la primera familia que coincide es la etiqueta).
 const REGLAS_ES: readonly Regla[] = [
   // ---- Plan o medios ----
-  r(CRISIS_SENALES.plan, String.raw`\b(?:ahorcar|colgar|envenenar|electrocutar|disparar|degollar)(?:me|se)\b`),
-  r(CRISIS_SENALES.plan, String.raw`\bme (?:voy a |quiero |quisiera |podria |ire a |va a )?(?:ahorcar|colgar|envenenar|electrocutar|disparar|degollar)\b`),
-  r(CRISIS_SENALES.plan, String.raw`\bme (?:voy a |quiero |quisiera |podria |ire a |va a )?(?:pegar|meter|volar) (?:un |el |la )?(?:tiro|balazo|bala|cabeza|plomo)`),
+  r(CRISIS_SENALES.plan, String.raw`\b(?:ahorcar|colgar|envenenar|electrocutar|disparar|degollar)(?:me|se)\b${NO_OBJETO}`),
+  r(CRISIS_SENALES.plan, String.raw`\bme (?:voy a |quiero |quisiera |podria |ire a |va a )?(?:ahorcar|colgar|envenenar|electrocutar|disparar|degollar)\b${NO_OBJETO}`),
+  r(CRISIS_SENALES.plan, String.raw`\bme (?:voy a |quiero |quisiera |podria |ire a |va a )?(?:pegar|meter|volar|dar) (?:un |el |la )?(?:tiro|balazo|bala|cabeza|plomo)`),
   r(CRISIS_SENALES.plan, String.raw`\bme (?:voy a |quiero |quisiera |podria |ire a |va a )?(?:cortar|abrir|rebanar|rajar) (?:las |los )?(?:venas|munecas|muneca|brazos|cuello|garganta)`),
-  r(CRISIS_SENALES.plan, String.raw`\b(?:pegar(?:me|se)|meter(?:me|se)|volar(?:me|se)) (?:un |el |la )?(?:tiro|balazo|bala|cabeza|plomo)`),
+  r(CRISIS_SENALES.plan, String.raw`\b(?:pegar(?:me|se)|meter(?:me|se)|volar(?:me|se)|dar(?:me|se)) (?:un |el |la )?(?:tiro|balazo|bala|cabeza|plomo)`),
   r(CRISIS_SENALES.plan, String.raw`\b(?:cortar|abrir|rebanar|rajar)(?:me|se) (?:las |los )?(?:venas|munecas|muneca|brazos|cuello|garganta)`),
   r(CRISIS_SENALES.plan, String.raw`\b(?:aventar|tirar|lanzar|arrojar|echar|saltar)(?:me|se)? (?:de|del|desde|al|a la|a las|a un|a una|por) (?:el |la |un |una |los |las )?(?:puente|edificio|balcon|ventana|azotea|techo|vias|tren|metro|camion|barranco|acantilado|precipicio|cerro|torre)`),
   r(CRISIS_SENALES.plan, String.raw`\bme (?:voy a |quiero |quisiera |podria |ire a )?(?:aventar|tirar|lanzar|arrojar) (?:a las vias|al tren|al metro|a un carro|a un camion|al vacio)`),
-  r(CRISIS_SENALES.plan, String.raw`\b(?:tomar|tomarme|tome|me tome|me voy a tomar|quiero tomar|me tomo)\b[^|]{0,25}\b(?:todas|toda|todo|un monton de|muchas|el frasco|el bote|la caja)\b[^|]{0,20}\b(?:pastillas|pildoras|medicamentos?|medicinas?|tabletas|capsulas|frasco|caja|bote)`),
+  r(CRISIS_SENALES.plan, String.raw`\bme (?:voy a |quiero |quisiera |podria |ire a )aventar${FIN}`),
+  r(CRISIS_SENALES.plan, String.raw`\b(?:tomar|tomarme|tome|me tome|me voy a tomar|quiero tomar|me tomo)\b[^|]{0,25}\b(?:todas|toda|todo|un monton de|muchas|el frasco|el bote|la caja)\b[^|]{0,20}\b(?:pastillas|pildoras|medicamentos?|medicinas?|tabletas|capsulas|frasco|caja|bote)${NO_RECETA}`),
   r(CRISIS_SENALES.plan, String.raw`\bsobredosis\b[^|]{0,30}\b(?:a proposito|para morir|para matarme|voluntaria|intencional)`),
   r(CRISIS_SENALES.plan, String.raw`\b(?:me voy a|quiero|quisiera|intente|intento|pienso|planeo) (?:provocar(?:me)? )?(?:una )?sobredosis`),
   r(CRISIS_SENALES.plan, String.raw`\b(?:pistola|arma|soga|cuerda|pastillas|navaja|cuchillo|veneno|rifle|escopeta|medicamentos?|plan)\b[^|]{0,40}\bpara (?:matarme|suicidarme|acabar con|terminar con|hacerlo|dormirme para siempre|quitarme|morir|irme|desaparecer)`),
@@ -97,17 +102,20 @@ const REGLAS_ES: readonly Regla[] = [
   r(CRISIS_SENALES.ideacion, String.raw`\b(?:sui[cs]ide|suicidal)\b`),
   r(CRISIS_SENALES.ideacion, String.raw`\bmatar(?:me|se)\b${ESPERA_FIGURADA}(?!\s+(?:trabajando|estudiando|corriendo|haciendo))`),
   r(CRISIS_SENALES.ideacion, String.raw`\b(?:me|se) (?:voy a |va a |quiero |quiere |quisiera |quisiese |podria |debo |tengo que |ire a |pienso |planeo )?matar\b${ESPERA_FIGURADA}(?!\s+(?:trabajando|estudiando|corriendo|haciendo))`),
-  r(CRISIS_SENALES.ideacion, String.raw`\bme mato${FIN}|\bme mato (?:hoy|manana|esta noche|ya|solo|sola)\b`),
+  r(CRISIS_SENALES.ideacion, String.raw`(?:^|\| |\b(?:yo|ya|y|pues|mejor|entonces|asi|no|si) )me mato${FIN}|\bme mato (?:hoy|manana|esta noche|ya|solo|sola)\b`),
   r(CRISIS_SENALES.ideacion, String.raw`\b(?:me|se) (?:voy a |va a |quiero |quiere |quisiera |podria |debo |pienso )?quit\w* (?:la )?vida\b|\bquit(?:arme|arse|ar(?:me|se)?) (?:la )?vida\b`),
-  r(CRISIS_SENALES.ideacion, String.raw`\b${DESEO} ${REL}(?:morir|morirme|morirse|morirnos|fallecer)\b${ESPERA_FIGURADA}`),
+  r(CRISIS_SENALES.ideacion, String.raw`\b${DESEO} ${REL}(?:mori(?:r|rme|rse|rnos|me)?|fallecer)\b${ESPERA_FIGURADA}`),
   r(CRISIS_SENALES.ideacion, String.raw`\b(?:pensando|pensado|pienso|pensar|idea|ideas|pensamientos?) (?:en|de) (?:morir|morirme|morirse|muerte|acabar|terminar con (?:todo|mi vida|esto))`),
   r(CRISIS_SENALES.ideacion, String.raw`\b(?:acabar|acabo|terminar|termino|poner fin|acabare|terminare) (?:con |a )(?:mi vida|mi existencia|mis dias|conmigo|mi sufrimiento)\b`),
   r(CRISIS_SENALES.ideacion, String.raw`\b(?:acabar|terminar|acabo|termino|acabare|terminare) con todo(?: esto| ya| de una vez| hoy| esta noche| para siempre| de una buena vez)?${FIN}`),
   r(CRISIS_SENALES.ideacion, String.raw`\b(?:dejar de (?:vivir|existir|respirar)|dejar este mundo|irme de este mundo|irme para siempre)\b`),
-  r(CRISIS_SENALES.ideacion, String.raw`\bno (?:quiero|quisiera) (?:seguir )?(?:viviendo|vivir|vivo|viva|existir|estar vivo|estar viva|estar en este mundo|estar aca en este mundo|volver a despertar|despertar)\b(?!\s+con\s+(?:dolor|el dolor|este dolor|ese dolor|molestias?|esta molestia|miedo|ansiedad|esa))`),
-  r(CRISIS_SENALES.ideacion, String.raw`\bya no (?:quiero|quisiera) (?:seguir )?(?:viviendo|vivir|vivo|viva|existir|estar vivo|estar viva|estar aqui|estar aca|estar en este mundo|despertar|seguir aqui|seguir asi|seguir adelante|luchar|pelear)\b`),
+  r(CRISIS_SENALES.ideacion, String.raw`\b(?:quiero|quisiera|me quiero|me voy a|ya me quiero|ya me voy a) ir(?:me)? (?:de|del) (?:este |esta |el |la )?(?:mundo|vida)\b`),
+  r(CRISIS_SENALES.ideacion, String.raw`\b(?:quiero|quisiera|ojala|deseo) que todo (?:se )?(?:acabe|termine|acabara|terminara)\b`),
+  r(CRISIS_SENALES.ideacion, String.raw`\bno quiero estar (?:aqui|aca)${FIN}`),
+  r(CRISIS_SENALES.ideacion, String.raw`\bno (?:quiero|quisiera) (?:seguir )?(?:viviendo|vivir|vivo|viva|existir|estar vivo|estar viva|estar en este mundo|estar aca en este mundo|volver a despertar|despertar)\b(?!\s+(?:temprano|tarde|manana|hoy|a las|con|el|la|\d))(?!\s+con\s+(?:dolor|el dolor|este dolor|ese dolor|molestias?|esta molestia|miedo|ansiedad|esa))`),
+  r(CRISIS_SENALES.ideacion, String.raw`\bya no (?:quiero|quisiera) (?:seguir )?(?:viviendo|vivir|vivo|viva|existir|estar vivo|estar viva|estar aqui|estar aca|estar en este mundo|despertar|seguir aqui|seguir asi|seguir adelante|luchar|pelear)\b(?!\s+(?:temprano|tarde|manana|hoy|a las|con|el|la|\d))`),
   r(CRISIS_SENALES.ideacion, String.raw`\bno (?:puedo|podre) seguir (?:viviendo|asi|adelante|con mi vida)\b`),
-  r(CRISIS_SENALES.ideacion, String.raw`\b(?:quiero|quisiera|ojala|deseo|me gustaria|prefiero|preferiria|desearia) ${REL}(?:desaparecer|desvanecerme|no existir|no estar aqui|no haber nacido|no haber existido|no despertar|no amanecer|dormirme y no despertar|dormir y no despertar|estar muert[oa])\b`),
+  r(CRISIS_SENALES.ideacion, String.raw`\b(?:quiero|quisiera|ojala|deseo|me gustaria|prefiero|preferiria|desearia) ${REL}(?:desaparecer|desvanecerme|no existir|no estar aqui|no haber nacido|no haber existido|no despertar|no amanecer|dormirme y no despertar|dormir y no despertar|estar muert[oa])\b(?!\s+(?:el|la|las|los|mi|mis|un|una|esa|ese|esta|este|estas|estos|temprano|tarde|manana|hoy|a las|con)\b)`),
   r(CRISIS_SENALES.ideacion, String.raw`\bojala\b[^|]{0,40}\b(?:muriera|muera|muriese)\b`),
   r(CRISIS_SENALES.ideacion, String.raw`\bojala (?:me |se |no )?(?:muriera|muera|desapareciera|existiera|despertara|amaneciera|hubiera nacido)\b`),
   r(CRISIS_SENALES.ideacion, String.raw`\b(?:dormir|dormirme|dormirse) (?:y )?(?:ya )?(?:no volver a despertar|no despertar|para siempre)\b`),
@@ -131,8 +139,8 @@ const REGLAS_ES: readonly Regla[] = [
   r(CRISIS_SENALES.autolesion, String.raw`\b(?:quiero|quisiera|voy a|va a|ganas de|necesito|tengo que|pienso|pensando en|estoy pensando en|merezco|me dan ganas de) (?:\w+ )?(?:cortarme|cortarse|lastimarme|lastimarse|hacerme dano|hacerse dano|herirme|herirse|golpearme|golpearse|castigarme|castigarse)${NO_PELO}\b`),
   r(CRISIS_SENALES.autolesion, String.raw`\b(?:se|le) (?:corta|lastima|hace dano|hiere) (?:a proposito|adrede|(?:los |las |sus )?${SITIO})\b`),
   // ---- Despedida ----
-  r(CRISIS_SENALES.despedida, String.raw`\b(?:adios a todos|me despido de (?:todos|ustedes|ti)|despidanse de mi|ya me despedi|ya me despido|no me busquen)\b`),
-  r(CRISIS_SENALES.despedida, String.raw`\b(?:este es|esta es|es) mi (?:ultimo mensaje|ultima despedida|ultima carta|carta de despedida|despedida)\b|\bcarta (?:de despedida|suicida)\b|\bultimo mensaje\b`),
+  r(CRISIS_SENALES.despedida, String.raw`\b(?:adios a todos|me despido de (?:todos|ustedes|ti)|despidanse de mi|ya me despedi|ya me despido)\b|\bno me busquen(?!\s+(?:el|la|los|las|este|esta|manana|hoy|hasta|en|por|de|que|porque|estare|voy|salgo|lunes|martes|miercoles|jueves|viernes|sabado|domingo|durante|esa|ese)\b)`),
+  r(CRISIS_SENALES.despedida, String.raw`\b(?:este es|esta es|es) mi (?:ultimo mensaje|ultima despedida|ultima carta|carta de despedida|despedida)\b|\bcarta (?:de despedida|suicida)\b`),
   r(CRISIS_SENALES.despedida, String.raw`\bperdon(?:ame|enme|alo|adme) por lo que voy a hacer\b`),
   r(CRISIS_SENALES.despedida, String.raw`\bcuid\w+ (?:a |de )?(?:mis|mi|los|las) \w+ cuando (?:yo )?(?:ya )?no (?:este|estoy|este aqui)\b`),
   r(CRISIS_SENALES.despedida, String.raw`\bya no (?:les |le |te )?(?:voy a )?(?:dar|causar|ser) (?:mas )?(?:molestias|lata|problemas|problema|carga)\b|\bsoy (?:una |un )?(?:carga|estorbo|peso muerto|molestia para todos)\b`),
@@ -141,7 +149,7 @@ const REGLAS_ES: readonly Regla[] = [
   r(CRISIS_SENALES.desesperanza, String.raw`\bno le (?:veo|encuentro) (?:ningun )?sentido${FIN}`),
   r(CRISIS_SENALES.desesperanza, String.raw`\bno (?:tiene|tendria|tiene ya) (?:ningun )?sentido (?:seguir|vivir|la vida|mi vida|continuar|existir)\b`),
   r(CRISIS_SENALES.desesperanza, String.raw`\b(?:ya )?no (?:veo|hay|queda|tengo) (?:ninguna |ya |mas )?(?:salida|esperanza|futuro|solucion para mi)\b(?= (?:para mi|a esto|a mi vida|a mis problemas|en mi vida|alguna)\b|\s*(?:\||$))`),
-  r(CRISIS_SENALES.desesperanza, String.raw`\b(?:ya )?no (?:aguanto|soporto|resisto|tolero|puedo) mas(?=\s*(?:\||$)| (?:con (?:todo|esto|mi vida|la vida|nada|tanto)|de (?:todo|esto|vivir|esta vida|tanto|sufrir|estar asi)|esta vida|mi vida|asi|y|pero|quiero|necesito|me|ya|ayuda|ayudame|por favor|help)\b)`),
+  r(CRISIS_SENALES.desesperanza, String.raw`\b(?:ya )?no (?:aguanto|soporto|resisto|tolero|puedo) mas(?=\s*(?:\||$)| (?:con (?:todo|esto|mi vida|la vida|nada|tanto)|de (?:todo|esto|vivir|esta vida|tanto|sufrir|estar asi)|esta vida|mi vida|la vida|asi|y|pero|quiero|necesito|me|ya|ayuda|ayudame|por favor|help)\b)`),
   r(CRISIS_SENALES.desesperanza, String.raw`\b(?:ya )?no (?:aguanto|soporto|resisto|tolero|puedo)${FIN}`),
   r(CRISIS_SENALES.desesperanza, String.raw`\bya no (?:puedo|aguanto|soporto) (?:con )?(?:esto|todo|mi vida|esta vida|la vida)${FIN}`),
   r(CRISIS_SENALES.desesperanza, String.raw`\bya no puedo seguir(?=\s*(?:\||$)| (?:asi|con (?:esto|todo|mi vida|la vida)|adelante|viviendo|luchando|peleando|aguantando|fingiendo)\b)`),
