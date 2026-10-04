@@ -90,6 +90,9 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
     event.preventDefault();
     if (enviando) return;
     if (!esCorreoValido(correo)) {
+      // Un solo mensaje en la ranura: si antes se envio bien, el aviso de "enviado" se retira para que el error sea el unico visible.
+      setEnviadoA(null);
+      setErrorEnvio(null);
       setErrorCorreo("Escribe un correo válido, por ejemplo tu@negocio.com.");
       return;
     }
