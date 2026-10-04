@@ -58,6 +58,16 @@ export const RUTAS_CON_STEP_UP: readonly string[] = [
 ];
 
 export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
+  // honorarios.ts (D-32): ver = todos; escribir, generar, aprobar, timbrar y cancelar = solo admin (como la base: `honorarios_puede_escribir`).
+  "GET /honorarios/igualas": TODOS,
+  "POST /honorarios/igualas": SOLO_ADMIN,
+  "PUT /honorarios/igualas/:igualaId": SOLO_ADMIN,
+  "DELETE /honorarios/igualas/:igualaId": SOLO_ADMIN,
+  "GET /honorarios/prefacturas": TODOS,
+  "POST /honorarios/generar-prefacturas": SOLO_ADMIN,
+  "POST /honorarios/prefacturas/:prefacturaId/aprobar": SOLO_ADMIN,
+  "POST /honorarios/prefacturas/:prefacturaId/timbrar": SOLO_ADMIN,
+  "POST /honorarios/prefacturas/:prefacturaId/cancelar": SOLO_ADMIN,
   // admin-staff.ts
   "POST /admin/staff/invitaciones": SOLO_ADMIN,
   "GET /admin/staff/invitaciones": SOLO_ADMIN,

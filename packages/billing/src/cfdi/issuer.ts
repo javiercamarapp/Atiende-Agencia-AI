@@ -46,7 +46,8 @@ export interface PacClient {
     descripcion: string;
     referencia?: string;
   }): Promise<CfdiTimbrado>;
-  cancelar(facturaProveedorId: string, motivo: string): Promise<{ estado: string }>;
+  /** `folioSustitucion` (UUID del CFDI que lo sustituye) solo aplica al motivo 01; los demas motivos no lo llevan. */
+  cancelar(facturaProveedorId: string, motivo: string, folioSustitucion?: string): Promise<{ estado: string }>;
 }
 
 export interface FacturaParaTimbrar {
@@ -105,6 +106,7 @@ export async function cancelarCfdiDeFactura(
   pac: PacClient,
   facturaProveedorId: string,
   motivo: string = MOTIVO_OPERACION_NO_REALIZADA,
+  folioSustitucion?: string,
 ): Promise<{ estado: string }> {
-  return pac.cancelar(facturaProveedorId, motivo);
+  return folioSustitucion === undefined ? pac.cancelar(facturaProveedorId, motivo) : pac.cancelar(facturaProveedorId, motivo, folioSustitucion);
 }

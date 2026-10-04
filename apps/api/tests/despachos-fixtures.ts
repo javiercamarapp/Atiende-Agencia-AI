@@ -9,7 +9,7 @@ import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InM
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { InMemoryCarteraRepository, InMemoryConciliacionPersistidaRepository, InMemoryDespachosRepository, InMemoryLibroRepository, InMemoryPagosProvisionalesRepository } from "@atiende/domain-despachos";
+import { InMemoryCarteraRepository, InMemoryConciliacionPersistidaRepository, InMemoryDespachosRepository, InMemoryHonorariosRepository, InMemoryLibroRepository, InMemoryPagosProvisionalesRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
 import type { DespachosRole } from "@atiende/domain-despachos";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createCalendarSyncPortResolver, RealCalComPort, RealCalDavPort, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
@@ -49,6 +49,8 @@ export interface DespachosTestContext {
   readonly conciliacionRepo: InMemoryConciliacionPersistidaRepository;
   /** D-25 -- doble en memoria de pagos provisionales (misma instancia que resuelve `deps.pagosProvisionalesRepo(...)`). */
   readonly pagosRepo: InMemoryPagosProvisionalesRepository;
+  /** D-32 -- doble en memoria de honorarios (misma instancia que resuelve `deps.honorariosRepo(...)`). */
+  readonly honorariosRepo: InMemoryHonorariosRepository;
   /** Bitacora de las acciones de escritura de despachos. */
   readonly auditSink: InMemoryAuditSink;
   readonly organizationId: string;
@@ -80,6 +82,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
   const libroRepo = new InMemoryLibroRepository();
   const conciliacionRepo = new InMemoryConciliacionPersistidaRepository(despachosRepo);
   const pagosRepo = new InMemoryPagosProvisionalesRepository();
+  const honorariosRepo = new InMemoryHonorariosRepository(carteraRepo, () => organizationId);
   const auditSink = new InMemoryAuditSink();
 
   const organizationId = randomUUID();
@@ -125,6 +128,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     libroRepo: (_db) => libroRepo,
     conciliacionRepo: (_db) => conciliacionRepo,
     pagosProvisionalesRepo: (_db) => pagosRepo,
+    honorariosRepo: (_db) => honorariosRepo,
     despachosAuditSink: auditSink,
     hotelesCfdiPort: new DualPacCfdiPort(new FakeFinkokAdapter(), new FakeSwSapienAdapter()),
     hotelesFraudeAuditSink: new InMemoryAuditSink(),
@@ -185,6 +189,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     libroRepo,
     conciliacionRepo,
     pagosRepo,
+    honorariosRepo,
     auditSink,
     organizationId,
     propertyId,
