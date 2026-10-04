@@ -19,8 +19,10 @@ import { DEFAULT_COMPLEMENTS, isTortillaChoice } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
-import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
+import { createOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { assertWebOrderRules } from "../storefront.ts";
+import { evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
+import { normalizePhone } from "../phone.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import {
   assertCanConfirm,
@@ -732,15 +734,23 @@ async function dispatchTool(
       } else if (ctx.lockedPropertyId) {
         throw new OrderValidationError("Esta llamada está fijada a una sucursal; indica branch_slug.");
       }
-      const order = await createOrder(repo, createInput, {
-        beforePersist: (prepared) => {
-          // El precio lo fija SIEMPRE el catalogo vigente, pero el cliente solo acepto los precios que vio: si
-          // cambiaron entre confirmar y crear, se pide re-cotizar en vez de cobrar un total distinto.
-          if (expectedPrices && priceSignature(prepared.orderItems) !== expectedPrices) {
-            throw new OrderFlowViolationError("precio_cambio", "Los precios del menú cambiaron después de que confirmaste. Vuelve a revisar tu pedido para ver el total actualizado.");
-          }
-        },
-      });
+      let order: Order;
+      try {
+        order = await createOrder(repo, createInput, {
+          beforePersist: async (prepared) => {
+            // El precio lo fija SIEMPRE el catalogo vigente, pero el cliente solo acepto los precios que vio: si
+            // cambiaron entre confirmar y crear, se pide re-cotizar en vez de cobrar un total distinto.
+            if (expectedPrices && priceSignature(prepared.orderItems) !== expectedPrices) {
+              throw new OrderFlowViolationError("precio_cambio", "Los precios del menú cambiaron después de que confirmaste. Vuelve a revisar tu pedido para ver el total actualizado.");
+            }
+            // Pedido grande (decision de PM, 2-oct): lo hace cumplir el SERVIDOR aunque el modelo olvide escalar.
+            if (ctx.channel !== "web") await assertNoEsPedidoGrande(repo, prepared);
+          },
+        });
+      } catch (err) {
+        if (err instanceof PedidoGrandeRetenidoError) return retenerPedidoGrande(repo, ctx, createInput, err);
+        throw err;
+      }
       return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
     }
     case "registrar_contacto":
@@ -759,6 +769,47 @@ async function dispatchTool(
       return { result: { ok: true }, raw: { ok: true }, orderId: null, propertyId: null };
     }
   }
+}
+
+/** Lanza `PedidoGrandeRetenidoError` si el pedido ya cotizado supera el umbral de pedido grande de PM. Solo organizaciones con
+ * perfil `taqueria_pm` y con el motivo `pedido_grande` encendido; sin configuracion (base sin migrar) no aplica. */
+async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: PreparedOrder): Promise<void> {
+  const config = await repo.findWhatsAppAgentConfig(prepared.payload.organizationId, prepared.branch.propertyId);
+  if (!config || config.perfil !== "taqueria_pm" || (config.escalationReasonsOff ?? []).includes("pedido_grande")) return;
+  const pesoKg = pesoTotalKg(prepared.orderItems);
+  const cliente = await repo.findCustomerByPhone(prepared.payload.organizationId, normalizePhone(prepared.payload.customerPhone));
+  const motivo = evaluarPedidoGrande({
+    total: prepared.total,
+    pesoKg,
+    pagaEfectivo: prepared.payload.paymentMethod === "efectivo",
+    sinHistorial: !cliente || cliente.orderCount === 0,
+  });
+  if (!motivo) return;
+  const resumen = resumenPedidoGrande({ motivo, total: prepared.total, pesoKg, items: prepared.orderItems, canal: prepared.payload.canal, paymentMethod: prepared.payload.paymentMethod });
+  throw new PedidoGrandeRetenidoError(motivo, prepared.total, pesoKg, resumen);
+}
+
+/** En vez de crear el pedido: deja el aviso `escalada:pedido_grande` (con el resumen) para que la sucursal lo confirme y contacte al
+ * cliente. El resultado al modelo NO es un error: no marca fallo de herramienta ni sube al modelo caro. */
+async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolContext, input: CreateOrderInput, retenido: PedidoGrandeRetenidoError): Promise<AgentToolOutcome> {
+  const branch = await repo.findBranch(ctx.organizationId, { slug: input.branchSlug, name: input.branchName });
+  await registerCallbackRequest(repo, {
+    organizationId: ctx.organizationId,
+    propertyId: ctx.lockedPropertyId ?? branch?.propertyId ?? null,
+    customerName: input.customerName,
+    customerPhone: input.customerPhone,
+    reason: "escalada:pedido_grande",
+    message: retenido.resumen,
+    source: ctx.channel === "voz" ? "voice" : "whatsapp",
+  });
+  const result = {
+    pedido_grande: true,
+    escalado: true,
+    estado: "por_confirmar_por_la_sucursal",
+    mensaje:
+      "Este pedido supera el umbral de pedido grande, así que NO se mandó a cocina todavía: ya se avisó a la sucursal con el resumen para que lo confirme y contacte al cliente. Dígale al cliente, de usted, que la sucursal lo contactará para confirmar su pedido; no le prometa hora ni le diga que ya está en preparación, y no vuelva a llamar crear_pedido.",
+  };
+  return { result, raw: result, orderId: null, propertyId: null };
 }
 
 /**

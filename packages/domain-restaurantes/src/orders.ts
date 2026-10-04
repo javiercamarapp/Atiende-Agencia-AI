@@ -418,10 +418,10 @@ export async function createOrder(
   /** `beforePersist`: gancho que ve el pedido YA cotizado contra el catalogo vigente y puede rechazarlo (lanzando)
    * antes de escribir nada. Lo usa la maquina de estados del pedido para exigir que los precios sigan siendo los
    * que el cliente confirmo. */
-  options: { readonly beforePersist?: (prepared: PreparedOrder) => void } = {},
+  options: { readonly beforePersist?: (prepared: PreparedOrder) => void | Promise<void> } = {},
 ): Promise<Order> {
   const prepared = await prepareCreateOrder(repo, rawInput);
-  options.beforePersist?.(prepared);
+  await options.beforePersist?.(prepared);
   const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount } = prepared;
   // R-11: contra una base sin la migracion 034 el pedido programado se rechaza (503) en vez de crearse inmediato.
   if (payload.programadoPara) await assertProgramacionDisponible(repo);

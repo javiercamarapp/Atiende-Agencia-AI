@@ -581,6 +581,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (call.name === "escalar_a_humano" && !isToolErrorResult(result)) {
             escalarMotivo = typeof input.motivo === "string" ? input.motivo : "otro";
           }
+          // Pedido grande retenido por el servidor: el aviso ya quedo registrado; solo se abre la toma de handoff (R-21).
+          if (call.name === "crear_pedido" && (result as { pedido_grande?: unknown } | null)?.pedido_grande === true) escalarMotivo = "pedido_grande";
           if (call.name === "crear_pedido" && isToolErrorResult(result)) {
             huboFalloDeHerramienta = true;
           }
