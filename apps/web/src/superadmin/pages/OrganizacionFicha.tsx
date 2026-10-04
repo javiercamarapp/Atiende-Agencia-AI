@@ -15,6 +15,7 @@ import { BILLING_ESTADO_TONES, ORG_STATUS_TONES } from "../lib/status-tones.ts";
 import { NOMBRE_ESTADO_ORG, NOMBRE_ESTADO_PASO, NOMBRE_VERTICAL, entero, mxn, usd } from "../lib/organizaciones.ts";
 import type { CampoOrg, EstadoPasoOnboarding, FichaNoDisponible, FichaOrganizacion, MargenOrg, RespuestaMargen } from "../lib/organizaciones.ts";
 import { useEntrarOrganizacion } from "../components/EntrarOrganizacion.tsx";
+import { EquipoOrganizacion } from "../components/EquipoOrganizacion.tsx";
 
 type Carga = { readonly estado: "cargando" } | { readonly estado: "error"; readonly mensaje: string } | { readonly estado: "no_encontrada" } | { readonly estado: "ok"; readonly ficha: FichaOrganizacion | FichaNoDisponible };
 
@@ -89,6 +90,8 @@ export function SuperAdminOrganizacionFichaPage({ apiBaseUrl, token }: { readonl
         <Callout tone="warning" role="status">
           {f.mensaje}
         </Callout>
+        {/* El equipo tiene su propia fuente: se puede dar de alta aunque las metricas de la ficha no esten disponibles. */}
+        <EquipoOrganizacion apiBaseUrl={apiBaseUrl} token={token} organizacionId={org.id} />
         {dialogo}
       </PageContainer>
     );
@@ -128,6 +131,8 @@ export function SuperAdminOrganizacionFichaPage({ apiBaseUrl, token }: { readonl
           />
         </div>
       </section>
+
+      <EquipoOrganizacion apiBaseUrl={apiBaseUrl} token={token} organizacionId={org.id} />
 
       <div className="grid gap-2.5 lg:grid-cols-2">
         <Card className="min-w-0">
