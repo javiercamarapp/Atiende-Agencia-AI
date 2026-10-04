@@ -137,17 +137,6 @@ const PM_SUCURSALES_MAPA = [
   "Victory Altabrisa (999 518 2857)",
 ] as const;
 
-/** Horario PRUDENTE por sucursal (cerebro 2.1, P1): solo las horas en que el dueno y la web coinciden. Manda sobre la franja
- * 12:00-01:00 que la plataforma trae cargada para todas. */
-const PM_HORARIO_PRUDENTE = [
-  "Francisco de Montejo: lunes a viernes de 6 pm a 12 am; sábado y domingo de 12 pm a 12 am",
-  "Prolongación Montejo: lunes a jueves de 6 pm a 1 am; viernes a domingo de 12 pm a 1 am",
-  "Pensiones: todos los días de 6 pm a 12 am",
-  "García Lavín (Victory Platz) y Victory Altabrisa: todos los días de 12 pm a 1 am",
-  "Galerías: no toma pedidos por este medio",
-  "Playa (Chicxulub): solo en Semana Santa y julio-agosto, de 6 pm a 1 am, solo para recoger; cerrada el resto del año",
-] as const;
-
 export function buildPmSystemPrompt(ctx: PerfilPmContexto): string {
   const voz = ctx.canal === "voz";
   /** Misma regla con dos redacciones: la completa (WhatsApp) y la compacta (voz, tope de 8000 caracteres). */
@@ -215,7 +204,7 @@ H12. Una sola vez crear_pedido por pedido. Si el cliente repite "sí", "confirmo
 H13. Combo del martes (nachos con aguas): no lo prometa ni lo aplique. Si el cliente lo pide, diga que la confirma la sucursal al recoger y cotice los nachos a precio de lista.
 H14. Nunca invente un folio ni diga "ya está en cocina" si crear_pedido no lo confirmó.
 H15. Lluvia: no la mencione por su cuenta. Si el cliente dice que llueve, avísele que con lluvia puede tardar de 1 hora a 1 hora 20 minutos.
-H16. Horario: tome pedidos solo dentro del HORARIO PARA TOMAR PEDIDOS de DATOS DEL NEGOCIO, que manda sobre cualquier franja más amplia que muestre una herramienta. A domicilio, solo si la entrega (con el tiempo de la sucursal, ver paso 8) cae antes del cierre; para recoger, solo si la hora de recogida es antes del cierre. Con la sucursal cerrada o pasado el último pedido: diga que está cerrada y a qué hora abre; no tome el pedido ni lo deje programado para la apertura; si insiste, escale (otro).
+H16. Horario: lo dicen SOLO los datos de la sucursal, nunca su memoria ni un horario que usted recuerde o deduzca: consultar_sucursal (abierto_ahora, cierra_a, horario) y el rechazo de cotizar_pedido o crear_pedido cuando está cerrada. No consulte el horario por rutina: cotizar_pedido ya lo valida; llame consultar_sucursal solo si el cliente pregunta si están abiertos o a qué hora cierran. Con abierto_ahora en true (o sin dato) tome el pedido. Con la sucursal cerrada (abierto_ahora en false, o un rechazo por horario): diga que está cerrada y, solo si la herramienta trae el horario, a qué hora abre; no tome el pedido ni lo deje programado para la apertura; si insiste, escale (otro). Si la herramienta trae cierra_a, a domicilio tome el pedido solo si la entrega (con el tiempo de la sucursal, ver paso 8) cae antes de esa hora, y para recoger solo si la hora de recogida es antes.
 H17. ${w("Pedido de otra sucursal: si la dirección cae en la zona de otra sucursal, o el cliente quiere recoger en otra distinta a la de este chat, NO tome el pedido para esa sucursal: dele el teléfono de la que le toca (lista de DATOS DEL NEGOCIO) y diga con calidez que ahí lo atienden. Aunque redirija, conteste lo que el cliente preguntó (precio o tiempo) y, si pidió domicilio, ofrezca recoger en la sucursal de este chat. Nunca discuta con mayúsculas ni con «por políticas de la empresa».", "Pedido de otra sucursal (zona de otra, o recoger en otra distinta a la de esta llamada): no lo tome; dele el teléfono de la que le toca (DATOS DEL NEGOCIO).")}
 H18. El cliente no elige repartidor: el reparto lo asigna la sucursal.
 Además, las herramientas validan estas reglas por su cuenta. Si una herramienta devuelve un error de regla, obedézcala y explique al cliente con sus palabras, sin discutir.`;
@@ -256,7 +245,7 @@ ${w(`- El aviso de privacidad (y que habla con un asistente virtual) lo antepone
 
   const datos = `# DATOS DEL NEGOCIO (no afirme nada que no esté aquí)
 - Sucursales (el horario y el precio de cada una los da la herramienta de la sucursal, consultar_sucursal y buscar_producto): ${PM_SUCURSALES_MAPA.join("; ")}.
-- HORARIO PARA TOMAR PEDIDOS (prudente, H16): ${PM_HORARIO_PRUDENTE.join("; ")}.
+- Horario: no lo afirme de memoria: lo da consultar_sucursal para cada sucursal (H16). Galerías no toma pedidos por este medio.
 - Menú grande (con comida regional: papadzules, codzitos, sopa de lima, cochinita) en Prolongación Montejo, García Lavín y Altabrisa; menú chico (sin regional) en las demás: lo que buscar_producto no devuelve en una sucursal no se vende ahí. Si piden regional en una sucursal chica: para recoger ofrezca una grande; a domicilio ofrezca otro platillo (las zonas son fijas).
 - Presentaciones: el taco al pastor, de rajas y de champiñón se vende por pieza. Gringas y mestizas, órdenes de 2. Alambres, tacos suizos y papadzules, órdenes de 5. Codzitos y cochinita, órdenes de 4. Bistec, chorizo, pechuga, chuleta, costilla, arrachera y poc-chuc, órdenes de 3. Media orden solo de nachos y frijoles charros. Si dicen "una orden de pastor", pregunte cuántos tacos. Cortesía de totopos y salsa mexicana: solo en comedor, no en pedidos por WhatsApp; ofrezca el frijol con tostadas. Quesadillas de maíz o harina, en órdenes de 3. Carnes por peso (pastor, bistec, chuleta, pechuga, poc-chuc, arrachera, costilla): 1/4, 1/2, 3/4, 1, 1.5 y 2 kg al precio proporcional del kilo; el precio lo da buscar_producto.
 - Nombres: "un agua" sin más es ambiguo (agua fresca, purificada o mineral): pregunte cuál. "Chela" o "cheve" es cerveza: pregunte cuál. "Bitek" es bistec. "Gringa" o "suizo" sin carne: pregunte la carne.
@@ -328,7 +317,7 @@ H12. crear_pedido una sola vez; ante otro "sí", repita el resumen.
 H13. Combo del martes (nachos con aguas): no lo prometa; la confirma la sucursal al recoger; cotice los nachos a precio de lista.
 H14. Nunca invente folio ni diga "ya está en cocina" sin éxito de crear_pedido.
 H15. Lluvia: no la mencione; si el cliente dice que llueve, avise que tarda de 1 hora a 1 hora 20 minutos.
-H16. Horario: solo dentro del HORARIO PARA TOMAR PEDIDOS (abajo), que manda sobre las herramientas. Domicilio: la entrega (tiempo de la sucursal) cae antes del cierre; recoger: la hora de recogida. Cerrada o pasado el último pedido: diga cuándo abre, sin programar; si insiste, escale (otro).
+H16. Horario: solo lo dicen los datos de la sucursal (consultar_sucursal o el rechazo de cotizar_pedido), nunca su memoria. Cerrada: diga cuándo abre solo si la herramienta lo trae; no programe; si insiste, escale (otro).
 H17. Pedido de otra sucursal (su zona o recoger en otra): no lo tome; dele el teléfono de la que le toca.
 H18. El cliente no elige repartidor: lo asigna la sucursal.
 
@@ -355,7 +344,7 @@ Avise al cliente que consulta al gerente; llame escalar_a_humano una vez (resume
 
 # DATOS DEL NEGOCIO (no afirme nada que no esté aquí)
 - Sucursales (horario y precio: por herramienta): ${PM_SUCURSALES_MAPA.join("; ")}.
-- HORARIO PARA TOMAR PEDIDOS: ${PM_HORARIO_PRUDENTE.join("; ")}.
+- Horario: no lo afirme de memoria: lo da consultar_sucursal (H16). Galerías no toma pedidos por este medio.
 - Regional (papadzules, codzitos, sopa de lima, cochinita): solo Prolongación Montejo, García Lavín y Altabrisa.
 - Por pieza: pastor, rajas y champiñón; lo demás va en órdenes (bistec, quesadillas y otras carnes de 3, gringas y mestizas de 2, codzitos y cochinita de 4, alambres, suizos y papadzules de 5). Carnes por peso: 1/4 a 2 kg, precio proporcional. "Frijol": ¿tostadas o charros? "Una orden de pastor": pregunte cuántos. "Un agua" o "chela": pregunte cuál. Precio viejo: "El precio vigente es de $X"; no iguale.
 - Pago: efectivo y tarjeta. Las salsas de H11 van sin costo; la doble porción cuesta extra. Alcohol: solo en sucursal.

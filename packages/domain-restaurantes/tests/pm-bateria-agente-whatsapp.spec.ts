@@ -350,11 +350,12 @@ describe("PM-C3 -- prompt del perfil taqueria_pm tal como lo recibe el modelo", 
     expect(prompt).toContain("la confirma la sucursal al recoger");
   });
 
-  it("T-PC02 ya no afirma precios iguales y trae las 7 sucursales, el horario prudente de T2 y la regla de ultimo pedido", () => {
+  it("T-PC02 ya no afirma precios iguales, trae las 7 sucursales y el horario sale de los datos de la sucursal (sin franja fija en el prompt)", () => {
     expect(prompt).not.toContain("Precios iguales");
     for (const nombre of ["Prolongación Montejo", "Francisco de Montejo", "Pensiones", "Galerías", "Playa", "García Lavín", "Victory Altabrisa"]) expect(prompt).toContain(nombre);
-    expect(prompt).toMatch(/Francisco de Montejo: lunes a viernes de 6 pm a 12 am/);
-    expect(prompt).toMatch(/solo si la entrega .* cae antes del cierre/);
+    expect(prompt).not.toMatch(/Francisco de Montejo: lunes a viernes de 6 pm/);
+    expect(prompt).toMatch(/H16\. Horario: lo dicen SOLO los datos de la sucursal/);
+    expect(prompt).toMatch(/solo si la entrega .* cae antes de esa hora/);
   });
 
   it("T-PC03 el saludo del prompt sigue la hora (martes 14:00 en Merida (UTC-6) = buenas tardes)", () => {

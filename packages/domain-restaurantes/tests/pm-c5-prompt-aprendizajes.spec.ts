@@ -68,7 +68,7 @@ describe("3. tiempos configurables por sucursal en lugar del 40 a 50 fijo", () =
     expect(p).toMatch(/si el cliente pregunta antes de pedir, dele los dos \(domicilio y recoger\) y deje que elija/);
   });
   it("el horario de entrega de H16 usa el tiempo de la sucursal, no uno fijo", () => {
-    expect(p).toMatch(/A domicilio, solo si la entrega \(con el tiempo de la sucursal, ver paso 8\) cae antes del cierre/);
+    expect(p).toMatch(/a domicilio tome el pedido solo si la entrega \(con el tiempo de la sucursal, ver paso 8\) cae antes de esa hora/);
   });
 });
 

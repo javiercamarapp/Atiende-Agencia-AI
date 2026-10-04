@@ -87,12 +87,13 @@ describe("comportamiento de voz = el mismo perfil de WhatsApp en version compact
     }
   });
 
-  it("conserva lo que PM-C3 pide en voz: H2/H8 sin aflojar, combo del martes, horario prudente, hora_recogida y el umbral de pedido grande", () => {
+  it("conserva lo que PM-C3 pide en voz: H2/H8 sin aflojar, combo del martes, horario solo de los datos, hora_recogida y el umbral de pedido grande", () => {
     expect(voz).toContain("puede adquirirlo directamente en la sucursal al recoger");
     expect(voz).toMatch(/H8\. Escale.*alergias/);
     expect(voz).toContain("la confirma la sucursal al recoger");
     expect(voz).not.toMatch(/2 aguas de cortes[ií]a|elige dos aguas/i);
-    expect(voz).toContain("Francisco de Montejo: lunes a viernes de 6 pm a 12 am");
+    expect(voz).not.toMatch(/6 pm a (12|1) am|HORARIO PARA TOMAR PEDIDOS/);
+    expect(voz).toMatch(/H16\. Horario: solo lo dicen los datos de la sucursal/);
     expect(voz).toContain("hora_recogida");
     expect(voz).toMatch(/Pedido grande \(más de \$4,000 o más de 5 kg; más de \$2,500 si el número no tiene historial y paga en efectivo\)/);
     expect(voz).toContain(PM_PROMOS_POR_OMISION);
