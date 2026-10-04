@@ -66,4 +66,24 @@ describe("cortarComandaDePedidoCancelado", () => {
     t.store.disponible = false;
     expect((await cortarComandaDePedidoCancelado(t.store, t.fx.organizationId, t.cancelado, ACTOR)).cortadas).toBe(0);
   });
+
+  it("corta tambien la comanda en captura_manual del pedido cancelado", async () => {
+    const t = await preparar();
+    await encolarComandaParaPedido(t.deps, { order: t.cancelado });
+    const fila = t.store.todas()[0]!;
+    t.store.todas();
+    (fila as { estado: string }).estado = "captura_manual";
+    expect((await cortarComandaDePedidoCancelado(t.store, t.fx.organizationId, t.cancelado, ACTOR)).cortadas).toBe(1);
+    expect(t.store.todas()[0]!.estado).toBe("capturada_manual");
+  });
+
+  it("listar acota por order_id (no depende de la ventana de limite)", async () => {
+    const t = await preparar();
+    t.port.inyectarFalla("crearComanda", { tipo: "timeout" }, 1);
+    await encolarComandaParaPedido(t.deps, { order: t.cancelado });
+    const lectura = await t.store.listar(t.fx.organizationId, { propertyIds: [t.fx.propertyId], orderId: t.cancelado.id, estados: ["fallida"], limite: 1, offset: 0 });
+    expect(lectura.filas.map((f) => f.orderId)).toEqual([t.cancelado.id]);
+    const otra = await t.store.listar(t.fx.organizationId, { propertyIds: [t.fx.propertyId], orderId: t.vivo.id, limite: 5, offset: 0 });
+    expect(otra.filas).toEqual([]);
+  });
 });
