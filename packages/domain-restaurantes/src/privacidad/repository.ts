@@ -17,13 +17,13 @@ export interface PurgeOutcome {
   readonly disponible: boolean;
   readonly conversationsCleared: number;
   readonly voiceTurnsDeleted: number;
-  /** Llamadas PROCESADAS del lote (con o sin `caller_hash`) desde la 041; antes solo contaba las que tenian hash. */
+  /** Llamadas PROCESADAS del lote (con o sin `caller_hash`) desde la 042; antes solo contaba las que tenian hash. */
   readonly voiceCallsAnonymized: number;
-  /** Desde la 041 (QA-restaurantes-R1-automatizacion-05): pedidos a los que se les vacio transcripcion/URL de grabacion. */
+  /** Desde la 042 (QA-restaurantes-R1-automatizacion-05): pedidos a los que se les vacio transcripcion/URL de grabacion. */
   readonly ordersVoiceCleared?: number;
-  /** Desde la 041: filas de `messaging_outbox` terminadas cuyo payload (telefono y texto) se reemplazo. */
+  /** Desde la 042: filas de `messaging_outbox` terminadas cuyo payload (telefono y texto) se reemplazo. */
   readonly outboxPayloadsErased?: number;
-  /** Desde la 041: avisos de la bandeja del staff cuyo texto (nombre del cliente) se reemplazo. */
+  /** Desde la 042: avisos de la bandeja del staff cuyo texto (nombre del cliente) se reemplazo. */
   readonly staffNotificationsErased?: number;
 }
 

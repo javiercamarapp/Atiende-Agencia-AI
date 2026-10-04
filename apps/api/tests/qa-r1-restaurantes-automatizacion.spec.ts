@@ -183,10 +183,10 @@ describe("QA-restaurantes-R1-automatizacion-02 (ROJO hasta el fix): promovido a 
 
 // ---------------------------------------------------------------------------------------------------------------
 describe("QA-restaurantes-R1-automatizacion-04 (ROJO hasta el fix): la purga corta su bucle con un conteo que no incluye llamadas sin caller_hash", () => {
-  // Modelo FIEL a restaurantes.system_purge_expired_privacy_data (041): por lote toma hasta `limit` llamadas vencidas
+  // Modelo FIEL a restaurantes.system_purge_expired_privacy_data (042): por lote toma hasta `limit` llamadas vencidas
   // con turnos O caller_hash, borra sus turnos y anula caller_hash; y `out_voice_calls_anonymized` cuenta las llamadas
   // PROCESADAS (antes, 030, solo las que TENIAN caller_hash: el cron cortaba el bucle con 0). Las previews del panel y los numeros ocultos no tienen caller_hash (voz-interno.ts).
-  // El verify SQL S1 (scripts/verify-qa-restaurantes-automatizacion) prueba ese conteo contra Postgres real.
+  // El verify SQL S1 (scripts/verify-restaurantes-automatizacion-crons) prueba ese conteo contra Postgres real.
   class PurgaModelo {
     pendientes: number;
     constructor(llamadasVencidasSinHash: number) {
@@ -195,7 +195,7 @@ describe("QA-restaurantes-R1-automatizacion-04 (ROJO hasta el fix): la purga cor
     async purgeExpiredPrivacyData(limit: number): Promise<PurgeOutcome> {
       const lote = Math.min(limit, this.pendientes);
       this.pendientes -= lote;
-      return { disponible: true, conversationsCleared: 0, voiceTurnsDeleted: lote * 6, voiceCallsAnonymized: lote }; // 041: cuenta las llamadas PROCESADAS (con o sin caller_hash)
+      return { disponible: true, conversationsCleared: 0, voiceTurnsDeleted: lote * 6, voiceCallsAnonymized: lote }; // 042: cuenta las llamadas PROCESADAS (con o sin caller_hash)
     }
   }
 

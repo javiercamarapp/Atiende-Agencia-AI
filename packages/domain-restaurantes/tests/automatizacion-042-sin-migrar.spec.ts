@@ -1,4 +1,4 @@
-// Compatibilidad con la base SIN la migracion 041 (QA R1 automatizacion). Todo corre dentro de la transaccion unica del
+// Compatibilidad con la base SIN la migracion 042 (QA R1 automatizacion). Todo corre dentro de la transaccion unica del
 // barrido; `AbortAwareFakeSession` reproduce el estado abortado (25P02): vacio honesto Y sesion todavia utilizable.
 import { describe, expect, it } from "vitest";
 import { PostgresRestaurantesRepository } from "../src/postgres-repository.ts";
@@ -14,7 +14,7 @@ function pgError(code: string, message: string): Error & { code: string } {
   return err;
 }
 
-describe("pos_comanda_promovidos_sin_comanda contra la base sin la 041", () => {
+describe("pos_comanda_promovidos_sin_comanda contra la base sin la 042", () => {
   it("funcion inexistente (42883) -> [] y la MISMA sesion sigue viva (SAVEPOINT)", async () => {
     const session = new AbortAwareFakeSession([{ match: /pos_comanda_promovidos_sin_comanda/, respond: () => pgError("42883", "function does not exist") }, SIGUIENTE]);
     expect(await new PostgresRestaurantesRepository(session).listPromotedOrdersWithoutComanda({ hours: 24, limit: 100 })).toEqual([]);
@@ -37,7 +37,7 @@ describe("pos_comanda_promovidos_sin_comanda contra la base sin la 041", () => {
   });
 });
 
-describe("purga por retencion: lectura compatible con la funcion de 3 columnas (030 sin 041)", () => {
+describe("purga por retencion: lectura compatible con la funcion de 3 columnas (030 sin 042)", () => {
   it("las columnas nuevas ausentes salen como 0, no como NaN ni como error", async () => {
     const session = new AbortAwareFakeSession([
       { match: /system_purge_expired_privacy_data/, respond: () => [{ out_conversations_cleared: 2, out_voice_turns_deleted: 5, out_voice_calls_anonymized: 1 }] },
@@ -46,7 +46,7 @@ describe("purga por retencion: lectura compatible con la funcion de 3 columnas (
     expect(r).toMatchObject({ disponible: true, conversationsCleared: 2, voiceTurnsDeleted: 5, voiceCallsAnonymized: 1, ordersVoiceCleared: 0, outboxPayloadsErased: 0, staffNotificationsErased: 0 });
   });
 
-  it("con la 041: las tres columnas nuevas se leen", async () => {
+  it("con la 042: las tres columnas nuevas se leen", async () => {
     const session = new AbortAwareFakeSession([
       { match: /system_purge_expired_privacy_data/, respond: () => [{ out_conversations_cleared: 0, out_voice_turns_deleted: 0, out_voice_calls_anonymized: 3, out_orders_voice_cleared: 4, out_outbox_payloads_erased: 5, out_staff_notifications_erased: 6 }] },
     ]);

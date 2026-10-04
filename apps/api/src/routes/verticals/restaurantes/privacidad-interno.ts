@@ -88,7 +88,7 @@ export function restaurantesPrivacidadInternoRoutes(deps: AppDeps): Hono {
         pedidosConVozLimpiados += outcome.ordersVoiceCleared ?? 0;
         payloadsOutboxBorrados += outcome.outboxPayloadsErased ?? 0;
         avisosStaffBorrados += outcome.staffNotificationsErased ?? 0;
-        // El lote se acota por tabla: si ninguna lleno su tope, ya no queda nada vencido. Desde la 041
+        // El lote se acota por tabla: si ninguna lleno su tope, ya no queda nada vencido. Desde la 042
         // `voiceCallsAnonymized` cuenta las llamadas procesadas (con o sin caller_hash): QA-restaurantes-R1-automatizacion-04.
         const llenoElLote = [outcome.conversationsCleared, outcome.voiceCallsAnonymized, outcome.ordersVoiceCleared ?? 0, outcome.outboxPayloadsErased ?? 0, outcome.staffNotificationsErased ?? 0].some((n) => n >= PURGE_BATCH);
         if (!llenoElLote) break;

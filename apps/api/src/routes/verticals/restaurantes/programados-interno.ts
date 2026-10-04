@@ -57,7 +57,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         }
       }
       // QA-02: reconciliacion de comandas perdidas de corridas anteriores (o de la promocion desde el panel). Una sesion
-      // para consultar y OTRA para encolar: un error de la consulta (base sin la 041) no toca la transaccion de encolado.
+      // para consultar y OTRA para encolar: un error de la consulta (base sin la 042) no toca la transaccion de encolado.
       let reconciliacion = SIN_COMANDAS;
       try {
         const yaAtendidos = new Set(resultado.promovidos.map((o) => o.id));

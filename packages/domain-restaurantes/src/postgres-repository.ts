@@ -3030,7 +3030,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
         const { rows } = await this.db.query<OrderRow>(`select * from restaurantes.pos_comanda_promovidos_sin_comanda($1::int, $2::int);`, [options.hours, options.limit]);
         return rows.map(mapOrder);
       },
-      // Base sin la 041 (funcion 42883) o sin la 024/034 (tabla 42P01, columna 42703): no hay nada que reconciliar.
+      // Base sin la 042 (funcion 42883) o sin la 024/034 (tabla 42P01, columna 42703): no hay nada que reconciliar.
       isRecoverable: esErrorBaseSinMigrarProgramados,
       fallback: async () => [],
     });
