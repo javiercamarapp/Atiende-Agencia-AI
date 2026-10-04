@@ -67,6 +67,8 @@ El cierre del día (`/internal/restaurantes/cierres-dia`) **no** está agendado 
 
 - El pedido existe siempre; la comanda queda `pendiente_de_confirmar`/`fallida`. El gerente la consulta por API (no hay pantalla todavía) y la captura a mano en el POS;
   la marca como capturada con `POST .../admin/softrestaurant/comandas/:id/capturada` (queda en el log del servidor). Al volver el POS, el despachador no reenvía lo capturado a mano.
+- Si el pedido se **cancela** mientras su comanda sigue `pendiente`/`fallida`, el servidor la corta (`capturada_manual`, nota "Pedido cancelado antes de llegar al POS") y el
+  despachador ya no la manda al volver el POS. Si la comanda ya estaba en el POS (`confirmada`), cancélala también en el POS: Atiende no puede retirarla.
 - Un producto o sucursal sin código del POS **no se inventa**: la comanda va a captura manual y el motivo no incluye datos personales.
 - Modo de la integración por organización: `apagado`, `sombra` o `activo`.
 
