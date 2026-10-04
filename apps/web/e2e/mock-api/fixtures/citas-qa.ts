@@ -442,7 +442,7 @@ interface Escalacion {
   nota: string | null;
 }
 const escalaciones = (p: Peticion) =>
-  p.estado.obtener<Escalacion[]>(clave("citas.qa.escalaciones", p), () => (esNorte(p) ? [] : [{ id: "esc-1", canal: "whatsapp", palabraClave: "emergencia", telefono: "***0202", creadaEn: new Date(Date.now() - 20 * 60_000).toISOString(), seguimiento: null, seguimientoEn: null, nota: null }]));
+  p.estado.obtener<Escalacion[]>(clave("citas.qa.escalaciones", p), () => (esNorte(p) ? [] : [{ id: "esc-1", canal: "whatsapp", palabraClave: "emergencia", telefono: "***0202", creadaEn: new Date(Date.now() - 20 * 60_000).toISOString(), seguimiento: "pending", seguimientoEn: null, nota: null }]));
 
 export const rutasCitasQaAdmin: readonly Ruta[] = [
   // Clientes
@@ -843,7 +843,11 @@ export const rutasCitasQaAdmin: readonly Ruta[] = [
     metodo: "GET",
     patron: `${P}/admin/voz/estado`,
     roles: ["owner", "admin"],
-    manejador: () => ({
+    manejador: (p) => banderas(p.estado).includes("voz-preview") ? {
+      escalera: { operativa: true, escalones: [{ escalon: "gemini-3.8-live", configurado: true, detalle: "Listo." }, { escalon: "cascada-openrouter", configurado: true, detalle: "Listo." }] },
+      precioMicroUsdPorMinuto: { "gemini-3.8-live": 23_000, "cascada-openrouter": 9_000 },
+      preview: { disponible: true, motivo: null },
+    } : ({
       escalera: { operativa: false, escalones: [{ escalon: "gemini-3.8-live", configurado: false, detalle: "Falta la llave del proveedor de voz." }, { escalon: "cascada-openrouter", configurado: false, detalle: "Falta la llave de OpenRouter." }] },
       precioMicroUsdPorMinuto: { "gemini-3.8-live": 23_000, "cascada-openrouter": 9_000 },
       preview: { disponible: false, motivo: "Requiere las llaves de voz del negocio." },
@@ -930,6 +934,88 @@ export const rutasCitasQaAdmin: readonly Ruta[] = [
       if (!ev?.plantilla) return fallo(404, "Plantilla no encontrada.");
       ev.plantilla = null;
       return { ok: true };
+    },
+  },
+];
+
+// Agente de WhatsApp (version con control de concurrencia y conexion del numero; nada sale a Meta)
+interface EstadoAgente {
+  version: number;
+  config: { agentName: string | null; toneStyle: string | null; greetingText: string | null; rulesText: string | null };
+  actualizadoEn: string | null;
+  numero: { phoneNumberId: string; activo: boolean } | null;
+}
+const agente = (p: Peticion) => p.estado.obtener<EstadoAgente>(clave("citas.qa.agente", p), () => ({ version: 1, config: { agentName: null, toneStyle: null, greetingText: null, rulesText: null }, actualizadoEn: null, numero: { phoneNumberId: "100200300", activo: true } }));
+function panelAgente(a: EstadoAgente) {
+  return {
+    disponible: true,
+    agente: { version: a.version, config: a.config, actualizadoEn: a.actualizadoEn, promptDeMuestra: `Eres ${a.config.agentName ?? "la asistente"} de la clinica.` },
+    conexion: a.numero
+      ? { numero: a.numero, estado: a.numero.activo ? "registrado" : "pausado", credencialDeEnvioDisponible: true, nota: a.numero.activo ? "Número registrado." : "Número en pausa." }
+      : { numero: null, estado: "sin_numero", credencialDeEnvioDisponible: true, nota: "Sin número conectado." },
+    opciones: { tonos: [{ valor: "calido_cercano", etiqueta: "Cálido y cercano" }, { valor: "formal_directo", etiqueta: "Formal y directo" }], limites: { agentName: 60, greetingText: 300, rulesMaxLines: 10, ruleLength: 200, rulesText: 2000 } },
+  };
+}
+const difAgente = (antes: Record<string, unknown>, despues: Record<string, unknown>) => diferencias(antes, despues);
+export const rutasCitasQaAgente: readonly Ruta[] = [
+  { metodo: "GET", patron: `${P}/admin/whatsapp-agente`, roles: ["owner", "admin"], manejador: (p) => panelAgente(agente(p)) },
+  {
+    metodo: "POST",
+    patron: `${P}/admin/whatsapp-agente/vista-previa`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const a = agente(p);
+      const nuevo = { ...a.config, ...((p.cuerpo ?? {}) as Record<string, unknown>) };
+      return { prompt: `Eres ${String(nuevo["agentName"] ?? "la asistente")} de la clinica.`, diferencias: difAgente(a.config, nuevo), version: a.version };
+    },
+  },
+  {
+    metodo: "PUT",
+    patron: `${P}/admin/whatsapp-agente`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const a = agente(p);
+      const c = { ...((p.cuerpo ?? {}) as Record<string, unknown>) };
+      if (c["versionEsperada"] !== a.version) return fallo(409, "La configuración cambió mientras la editabas: recarga para ver la versión nueva.");
+      delete c["versionEsperada"];
+      a.config = { ...a.config, ...(c as Partial<EstadoAgente["config"]>) };
+      a.version += 1;
+      a.actualizadoEn = new Date().toISOString();
+      return { agente: panelAgente(a).agente };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${P}/admin/whatsapp-agente/restablecer`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const a = agente(p);
+      if (((p.cuerpo ?? {}) as { versionEsperada?: number }).versionEsperada !== a.version) return fallo(409, "La configuración cambió mientras la editabas.");
+      a.config = { agentName: null, toneStyle: null, greetingText: null, rulesText: null };
+      a.version += 1;
+      return { agente: panelAgente(a).agente };
+    },
+  },
+  {
+    metodo: "PUT",
+    patron: `${P}/admin/whatsapp-agente/conexion`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { phoneNumberId?: string; activo?: boolean };
+      if (!c.phoneNumberId || !/^\d{6,20}$/.test(c.phoneNumberId)) return fallo(400, "phoneNumberId: solo dígitos (6 a 20)");
+      const a = agente(p);
+      a.numero = { phoneNumberId: c.phoneNumberId, activo: c.activo !== false };
+      return { conexion: panelAgente(a).conexion };
+    },
+  },
+  {
+    metodo: "DELETE",
+    patron: `${P}/admin/whatsapp-agente/conexion`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const a = agente(p);
+      a.numero = null;
+      return { conexion: panelAgente(a).conexion };
     },
   },
 ];
