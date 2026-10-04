@@ -121,9 +121,9 @@ describe("tomar / devolver / cerrar / notas / responder", () => {
     como(ctx.staff.staffSucursalA, false);
     const { handoffId } = await (await app.request(`${base}/conversaciones/whatsapp/${conv}/tomar`, authedJson(ctx.staff.staffSucursalA.token, {}, "POST"))).json();
     const hace25h = new Date(Date.now() - 25 * 3_600_000).toISOString();
-    const c = store.conversaciones.find((x) => x.id === conv)!;
-    c.actividadAt = hace25h;
-    c.mensajes[0] = { ...c.mensajes[0]!, createdAt: hace25h };
+    const i = store.conversaciones.findIndex((x) => x.id === conv);
+    const c = store.conversaciones[i]!;
+    store.conversaciones[i] = { ...c, actividadAt: hace25h, mensajes: [{ ...c.mensajes[0]!, createdAt: hace25h }] };
     const r = await app.request(`${base}/handoffs/${handoffId}/responder`, authedJson(ctx.staff.staffSucursalA.token, { texto: "Una disculpa por la demora" }, "POST"));
     expect(r.status).toBe(409);
     expect(JSON.stringify(await r.json())).toMatch(/24 horas/);
