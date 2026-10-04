@@ -168,6 +168,19 @@ export function classifyHighRiskIntent(text: string): HighRiskMatch | null {
   return null;
 }
 
+/** Pura: el motivo de MAYOR prioridad (orden de `HIGH_RISK_PATTERNS`) entre varios mensajes del cliente, con el texto que lo disparo. En una
+ * rafaga (espera de mensajes) el riesgo puede venir en cualquiera de los mensajes pendientes, no solo en el ultimo ("me cobraron dos veces" + "hola??"). */
+export function classifyHighRiskIntentInMessages(texts: readonly string[]): (HighRiskMatch & { readonly text: string }) | null {
+  let mejor: { rank: number; match: HighRiskMatch; text: string } | null = null;
+  for (const text of texts) {
+    const match = classifyHighRiskIntent(text);
+    if (!match) continue;
+    const rank = HIGH_RISK_PATTERNS.findIndex((p) => p.intent === match.intent);
+    if (!mejor || rank < mejor.rank) mejor = { rank, match, text };
+  }
+  return mejor ? { ...mejor.match, text: mejor.text } : null;
+}
+
 /** Pura: ¿el texto dispara algun motivo de alto riesgo DISTINTO de `excepto`? (aunque otro de mayor
  * prioridad en el orden de arriba tambien coincida). */
 export function matchesHighRiskOtherThan(text: string, excepto: HighRiskIntent): boolean {

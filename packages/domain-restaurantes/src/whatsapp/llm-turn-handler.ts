@@ -31,9 +31,9 @@ import type { ConversationMessage, RestaurantesRepository } from "../repository.
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
-import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS } from "./inbound.ts";
+import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestSharedLocation } from "./location.ts";
-import { branchAlreadyKnown, classifyHighRiskIntent, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote } from "./guards.ts";
+import { branchAlreadyKnown, classifyHighRiskIntentInMessages, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
@@ -474,15 +474,18 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
       // Motivos de alto riesgo (cancelacion, cobro, ARCO, alergia, transferencia, queja, "quiero una
       // persona"): no se dejan al criterio del modelo. Se avisa al equipo ANTES del LLM y se responde fijo.
-      const latestUserMessage = [...messages].reverse().find((m) => m.role === "user");
-      const riesgo = latestUserMessage ? classifyHighRiskIntent(latestUserMessage.content) : null;
+      // En una rafaga (espera de mensajes) se revisan TODOS los mensajes del cliente sin responder, no solo el ultimo: el riesgo puede venir
+      // en el primero ("me cobraron dos veces") seguido de un "hola??". Sin rafaga el unico pendiente es el mensaje nuevo (igual que antes).
+      // Solo los ultimos 5: una cola larga sin respuesta (p. ej. mensajes de una toma humana ya devuelta) no revive escalaciones viejas.
+      const pendientes = mensajesSinResponder(messages).slice(-5);
+      const riesgo = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content));
       if (riesgo) {
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const aviso = await executeAgentToolSafely(
           repo,
           { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null },
           "escalar_a_humano",
-          { customer_name: nombre, motivo: riesgo.motivo, resumen: latestUserMessage!.content.slice(0, 500) },
+          { customer_name: nombre, motivo: riesgo.motivo, resumen: riesgo.text.slice(0, 500) },
         );
         // Honestidad: solo se dice "ya avisé al equipo" si el aviso quedó registrado de verdad.
         if (isToolErrorResult(aviso.result)) {
@@ -593,7 +596,20 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       if (orderId) {
         return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
       }
-      return done({ reply: perfil === "taqueria_pm" ? PM_COPY.turnoComplicado : "Se me complicó procesar su pedido, un momento por favor.", orderId, propertyId });
+      // El loop agoto sus vueltas sin pedido: "un momento, por favor" dejaba al cliente esperando algo que nunca llegaba. Se avisa al equipo
+      // (motivo no_puedo_resolver, que abre la toma de handoff) y solo se dice "ya avise" si el aviso quedo registrado; si no, una pregunta concreta.
+      const ultimoCliente = [...messages].reverse().find((m) => m.role === "user");
+      const aviso = await executeAgentToolSafely(
+        repo,
+        { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null },
+        "escalar_a_humano",
+        { customer_name: !customer.isNew && customer.name ? customer.name : "Cliente", motivo: "no_puedo_resolver", resumen: `El agente agoto sus vueltas sin completar el pedido. Ultimo mensaje del cliente: ${ultimoCliente?.content.slice(0, 400) ?? ""}` },
+      );
+      if (isToolErrorResult(aviso.result)) {
+        return done({ reply: perfil === "taqueria_pm" ? PM_COPY.turnoAgotadoSinAviso : "Se me complicó procesar su solicitud. ¿Me puede decir en una sola frase qué le gustaría pedir, por favor?", orderId, propertyId });
+      }
+      escalarMotivo = "no_puedo_resolver";
+      return done({ reply: perfil === "taqueria_pm" ? PM_COPY.turnoAgotadoConAviso : "Se me complicó procesar su solicitud por este medio. Ya avisé al equipo para que lo contacte directamente.", orderId, propertyId });
     },
   };
 }
