@@ -179,3 +179,254 @@ drop function restaurantes.storefront_order_tracking(uuid, uuid);
 select restaurantes.storefront_order_tracking('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0e01');
 select 1 as should_fail;
 rollback;
+
+-- =====================================================================================================================
+-- R-38 / R-43 -- packages/domain-restaurantes/migrations/041_storefront_marca.sql
+--   F. marca publica (restaurantes.storefront_marca): lectura de sistema / staff de la organizacion; escritura solo owner/admin;
+--      cross-tenant; anon; CHECK de enlaces; columnas de sello no escribibles; sin DELETE.
+--   G. solicitud de evento del storefront: el INSERT directo del sistema sobre callback_requests esta cerrado (hallazgo); la funcion
+--      solo-sistema callback_registrar registra la solicitud con motivo 'evento' y canal 'web'; el staff de SU organizacion la ve (y el
+--      de otra no); un usuario con sesion, anon, una sucursal ajena, un canal invalido o datos fuera de rango son rechazados.
+-- =====================================================================================================================
+\echo ''
+\echo '=== F) marca publica del storefront (041) ==='
+\echo ''
+
+insert into core.staff_user (id, email, full_name, created_via) values
+  ('00000000-0000-0000-0000-0000000d0c02', 'storefront-staff-a@example.com', 'Staff A', 'seed'),
+  ('00000000-0000-0000-0000-0000000d0c03', 'storefront-owner-b@example.com', 'Owner B', 'seed')
+on conflict do nothing;
+insert into core.membership (user_id, organization_id, property_ids, platform_role, vertical_role) values
+  ('00000000-0000-0000-0000-0000000d0c02', '00000000-0000-0000-0000-0000000d0a01', null, 'member', 'staff'),
+  ('00000000-0000-0000-0000-0000000d0c03', '00000000-0000-0000-0000-0000000d0a02', null, 'owner', 'owner')
+on conflict do nothing;
+insert into restaurantes.storefront_marca (organization_id, titular, eslogan, portada_url, instagram_url) values
+  ('00000000-0000-0000-0000-0000000d0a01', 'Marca A', 'Desde 1980', 'https://cdn.example.com/a.jpg', 'https://instagram.com/marca_a')
+on conflict do nothing;
+
+\echo '--- 15. la sesion de sistema (auth.uid() nulo, la del storefront publico) lee la marca de la organizacion: 1 fila ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as marca_visible_deberia_ser_1 from restaurantes.storefront_marca where organization_id = '00000000-0000-0000-0000-0000000d0a01';
+rollback;
+
+\echo '--- 16. el staff de OTRA organizacion no ve la marca ajena: 0 filas ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c03', true);
+select count(*) as marca_ajena_deberia_ser_0 from restaurantes.storefront_marca where organization_id = '00000000-0000-0000-0000-0000000d0a01';
+rollback;
+
+\echo '--- 17. anon no lee la marca: RECHAZADO ---'
+begin;
+set local role anon;
+select count(*) as should_fail from restaurantes.storefront_marca;
+rollback;
+
+\echo '--- 18. el staff NO puede leer la columna de sello updated_by (sin GRANT de columna): RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+select updated_by as should_fail from restaurantes.storefront_marca;
+rollback;
+
+\echo '--- 19. owner de la organizacion edita su marca (UPDATE): 1 fila y el trigger sella updated_by con SU id ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+update restaurantes.storefront_marca set titular = 'Marca A editada' where organization_id = '00000000-0000-0000-0000-0000000d0a01';
+reset role;
+select (titular = 'Marca A editada' and updated_by = '00000000-0000-0000-0000-0000000d0c01')::int as editada_y_sellada_deberia_ser_1 from restaurantes.storefront_marca where organization_id = '00000000-0000-0000-0000-0000000d0a01';
+rollback;
+
+\echo '--- 20. el staff (no owner/admin) intenta editar la marca: 0 filas afectadas (RLS) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c02', true);
+with u as (update restaurantes.storefront_marca set titular = 'Hackeada' where organization_id = '00000000-0000-0000-0000-0000000d0a01' returning 1)
+select count(*) as filas_afectadas_deberia_ser_0 from u;
+rollback;
+
+\echo '--- 21. el owner de OTRA organizacion intenta editar la marca ajena: 0 filas afectadas ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c03', true);
+with u as (update restaurantes.storefront_marca set titular = 'Hackeada' where organization_id = '00000000-0000-0000-0000-0000000d0a01' returning 1)
+select count(*) as filas_afectadas_deberia_ser_0 from u;
+rollback;
+
+\echo '--- 22. el owner de OTRA organizacion intenta CREAR la marca de la organizacion A: RECHAZADO (with check) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c03', true);
+insert into restaurantes.storefront_marca (organization_id, titular) values ('00000000-0000-0000-0000-0000000d0a01', 'x') on conflict (organization_id) do update set titular = excluded.titular;
+select 1 as should_fail;
+rollback;
+
+\echo '--- 23. owner B crea la marca de SU organizacion (INSERT): 1 fila ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c03', true);
+insert into restaurantes.storefront_marca (organization_id, titular) values ('00000000-0000-0000-0000-0000000d0a02', 'Marca B') returning organization_id;
+rollback;
+
+\echo '--- 24. el staff (no owner/admin) intenta CREAR su marca: RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c02', true);
+insert into restaurantes.storefront_marca (organization_id, titular) values ('00000000-0000-0000-0000-0000000d0a02', 'x');
+select 1 as should_fail;
+rollback;
+
+\echo '--- 25. mover la marca a otra organizacion (UPDATE de organization_id): RECHAZADO (sin GRANT de esa columna) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+update restaurantes.storefront_marca set organization_id = '00000000-0000-0000-0000-0000000d0a02' where organization_id = '00000000-0000-0000-0000-0000000d0a01';
+select 1 as should_fail;
+rollback;
+
+\echo '--- 26. falsificar el sello (UPDATE de updated_by): RECHAZADO (sin GRANT de esa columna) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+update restaurantes.storefront_marca set updated_by = '00000000-0000-0000-0000-0000000d0c02' where organization_id = '00000000-0000-0000-0000-0000000d0a01';
+select 1 as should_fail;
+rollback;
+
+\echo '--- 27. nadie borra la marca (sin DELETE): RECHAZADO para el owner ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+delete from restaurantes.storefront_marca where organization_id = '00000000-0000-0000-0000-0000000d0a01';
+select 1 as should_fail;
+rollback;
+
+\echo '--- 28. CHECK: portada con http (no https) RECHAZADA ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+update restaurantes.storefront_marca set portada_url = 'http://cdn.example.com/a.jpg' where organization_id = '00000000-0000-0000-0000-0000000d0a01';
+select 1 as should_fail;
+rollback;
+
+\echo '--- 29. CHECK: javascript: como logo RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+update restaurantes.storefront_marca set logo_url = 'javascript:alert(1)' where organization_id = '00000000-0000-0000-0000-0000000d0a01';
+select 1 as should_fail;
+rollback;
+
+\echo '--- 30. CHECK: una red apuntando a otro dominio RECHAZADA ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+update restaurantes.storefront_marca set instagram_url = 'https://evil.example.com/instagram.com/x' where organization_id = '00000000-0000-0000-0000-0000000d0a01';
+select 1 as should_fail;
+rollback;
+
+\echo '--- 31. CHECK: titular de mas de 120 caracteres RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+update restaurantes.storefront_marca set titular = repeat('x', 121) where organization_id = '00000000-0000-0000-0000-0000000d0a01';
+select 1 as should_fail;
+rollback;
+
+\echo ''
+\echo '=== G) solicitud de evento del storefront ==='
+\echo ''
+
+\echo '--- 32. HALLAZGO: el INSERT directo de la sesion de sistema (como authenticated) sobre callback_requests es RECHAZADO (sin GRANT de INSERT): por eso existe callback_registrar ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+insert into restaurantes.callback_requests (organization_id, property_id, customer_name, customer_phone, reason, source)
+values ('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0b01', 'Ana', '9991234567', 'evento', 'web');
+select 1 as should_fail;
+rollback;
+
+\echo '--- 33. la sesion de sistema registra una solicitud de evento por callback_registrar (reason evento, source web): 1 fila con los datos exactos ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as filas_devueltas_deberia_ser_1 from restaurantes.callback_registrar('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0b01', 'Ana', '9991234567', 'evento', E'Fecha del evento: 2026-11-15\nPersonas: 40', 'web');
+rollback;
+
+\echo '--- 34. la solicitud queda guardada con el motivo y el canal correctos y la organizacion/sucursal dadas ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.callback_registrar('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0b01', 'Ana', '9991234567', 'evento', 'm', 'web');
+reset role;
+select (count(*) = 1)::int as fila_correcta_deberia_ser_1 from restaurantes.callback_requests
+ where organization_id = '00000000-0000-0000-0000-0000000d0a01' and property_id = '00000000-0000-0000-0000-0000000d0b01'
+   and reason = 'evento' and source = 'web' and customer_phone = '9991234567' and resolved = false and status = 'nuevo';
+rollback;
+
+\echo '--- 35. el staff de la organizacion VE la solicitud por RLS; el staff de OTRA organizacion no (cross-tenant) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.callback_registrar('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0b01', 'Ana', '9991234567', 'evento', 'm', 'web');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+select (count(*) = 1)::int as staff_propio_ve_la_solicitud_deberia_ser_1 from restaurantes.callback_requests where reason = 'evento';
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.callback_registrar('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0b01', 'Ana', '9991234567', 'evento', 'm', 'web');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c03', true);
+select count(*) as staff_ajeno_no_ve_nada_deberia_ser_0 from restaurantes.callback_requests where reason = 'evento';
+rollback;
+
+\echo '--- 36. un usuario con sesion (auth.uid() no nulo), aunque sea owner de la organizacion, NO puede usar callback_registrar: RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+select restaurantes.callback_registrar('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0b01', 'Ana', '9991234567', 'evento', 'm', 'web') as should_fail;
+rollback;
+
+\echo '--- 37. anon no tiene EXECUTE: RECHAZADO ---'
+begin;
+set local role anon;
+select restaurantes.callback_registrar('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0b01', 'Ana', '9991234567', 'evento', 'm', 'web') as should_fail;
+rollback;
+
+\echo '--- 38. una sucursal de OTRA organizacion: RECHAZADA (sin sondeo cross-tenant) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.callback_registrar('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0b03', 'Ana', '9991234567', 'evento', 'm', 'web') as should_fail;
+rollback;
+
+\echo '--- 39. canal admin (es del staff, no del sistema) o canal inventado: RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.callback_registrar('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0b01', 'Ana', '9991234567', 'evento', 'm', 'admin') as should_fail;
+rollback;
+
+\echo '--- 40. datos fuera de rango (mensaje de mas de 2000 caracteres): RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.callback_registrar('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0b01', 'Ana', '9991234567', 'evento', repeat('x', 2001), 'web') as should_fail;
+rollback;
+
+\echo '--- 41. organizacion inexistente: RECHAZADA ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.callback_registrar('00000000-0000-0000-0000-0000000d0aff', null, 'Ana', '9991234567', 'evento', 'm', 'web') as should_fail;
+rollback;
+
+\echo '--- 42. sin sucursal (null) es valido: 1 fila ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as filas_devueltas_deberia_ser_1 from restaurantes.callback_registrar('00000000-0000-0000-0000-0000000d0a01', null, 'Ana', '9991234567', 'evento', 'm', 'voice');
+rollback;

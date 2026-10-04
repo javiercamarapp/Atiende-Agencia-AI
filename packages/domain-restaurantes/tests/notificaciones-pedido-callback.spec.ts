@@ -11,7 +11,7 @@ const ORDER_ID = "00000000-0000-4000-8000-0000000000d1";
 const CALLBACK_ID = "00000000-0000-4000-8000-0000000000e1";
 const EMITIR = /core\.emit_notification/i;
 const CREAR_PEDIDO = /restaurantes\.create_order_idempotent/i;
-const INSERT_CALLBACK = /insert into restaurantes\.callback_requests/i;
+const INSERT_CALLBACK = /callback_registrar/i;
 const SIGUIENTE: FakeSessionHandler = { match: /select 1 as siguiente/, respond: () => [{ ok: true }] };
 
 function filaPedido(source: string) {
@@ -162,5 +162,44 @@ describe("restaurantes.evento.solicitud (R-43)", () => {
     const r = await new PostgresRestaurantesRepository(session).createCallbackRequest(EVENTO);
     expect(r.id).toBe(CALLBACK_ID);
     await expect(session.query("select 1 as siguiente;")).resolves.toEqual({ rows: [{ ok: true }] });
+  });
+});
+
+describe("registro de la solicitud de contacto: funcion de sistema con respaldo (migracion 041)", () => {
+  const INPUT = { organizationId: ORG, propertyId: PROP, customerName: "Ana Perez", customerPhone: "9991234567", reason: "evento", message: "m", source: "web" as const };
+  const FILA = { id: CALLBACK_ID, resolved: false, created_at: "2026-10-01T10:00:00.000Z" };
+
+  it("la sesion de la API corre como `authenticated` (sin INSERT sobre la tabla): se registra por callback_registrar con los 7 parametros en orden", async () => {
+    const llamadas: Array<{ sql: string; params: unknown[] }> = [];
+    const session = new AbortAwareFakeSession([{ match: /callback_registrar/, respond: () => [FILA] }, { match: EMITIR, respond: () => [{ emit_notification: 1 }] }]);
+    const original = session.query.bind(session);
+    session.query = (async (sql: string, params?: unknown[]) => {
+      llamadas.push({ sql, params: params ?? [] });
+      return original(sql, params);
+    }) as typeof session.query;
+    await new PostgresRestaurantesRepository(session).createCallbackRequest(INPUT);
+    const registro = llamadas.find((c) => /callback_registrar/.test(c.sql))!;
+    expect(registro.params).toEqual([ORG, PROP, "Ana Perez", "9991234567", "evento", "m", "web"]);
+    expect(llamadas.some((c) => /insert into restaurantes\.callback_requests/i.test(c.sql))).toBe(false);
+  });
+
+  it("base sin la 041 (42883): cae al INSERT anterior dentro de un SAVEPOINT y la sesion sigue viva (sin 25P02)", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /callback_registrar/, respond: () => pgError("42883", "function restaurantes.callback_registrar does not exist") },
+      { match: /insert into restaurantes\.callback_requests/i, respond: () => [FILA] },
+      { match: EMITIR, respond: () => [{ emit_notification: 1 }] },
+      SIGUIENTE,
+    ]);
+    const r = await new PostgresRestaurantesRepository(session).createCallbackRequest(INPUT);
+    expect(r.id).toBe(CALLBACK_ID);
+    await expect(session.query("select 1 as siguiente;")).resolves.toEqual({ rows: [{ ok: true }] });
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
+  });
+
+  it("un rechazo real de la funcion (sucursal ajena 42501 o datos fuera de rango 22023) NO se esconde detras del INSERT: se propaga", async () => {
+    for (const code of ["42501", "22023"]) {
+      const session = new AbortAwareFakeSession([{ match: /callback_registrar/, respond: () => pgError(code, "rechazado") }, SIGUIENTE]);
+      await expect(new PostgresRestaurantesRepository(session).createCallbackRequest(INPUT)).rejects.toMatchObject({ code });
+    }
   });
 });

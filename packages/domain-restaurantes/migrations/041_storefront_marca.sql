@@ -9,8 +9,14 @@
 --   * El WhatsApp de contacto del boton flotante NO es columna nueva: reutiliza `branch_detail.phone` (la misma
 --     informacion de contacto que el storefront ya publica por sucursal, 001/023). Cero datos nuevos que filtrar.
 --
--- La solicitud de evento/catering (R-43) tampoco necesita SQL: `restaurantes.callback_requests.reason` es texto libre
--- (001; ningun CHECK que ampliar) y `source = 'web'` ya esta permitido; el evento se guarda con reason = 'evento'.
+--   * `restaurantes.callback_registrar` (R-43 + hallazgo de verificacion contra Postgres real): la funcion SOLO-SISTEMA con la que
+--     la API registra una solicitud de contacto. HALLAZGO: `restaurantes.callback_requests` solo concede SELECT a `authenticated`
+--     (001; ninguna migracion posterior concede INSERT ni crea policy de INSERT) y TODA sesion de la API, incluida la de sistema
+--     (`auth.uid()` nulo), corre como `authenticated`. Resultado: el INSERT directo de `createCallbackRequest` (agente de voz,
+--     agente de WhatsApp y, ahora, el formulario publico de eventos) falla con "permission denied for table callback_requests"
+--     contra una base migrada; el repositorio en memoria de las pruebas nunca lo reveló. Reproducido en
+--     scripts/verify-restaurantes-storefront (escenario 32). La solicitud de evento usa reason = 'evento' (texto libre en 001, sin
+--     CHECK que ampliar) y source = 'web' (ya permitido).
 --
 -- Justificacion de seguridad (uno por uno):
 --  * RLS habilitado. SELECT: `auth.uid() is null` (la sesion de sistema del storefront publico, que consulta siempre
@@ -25,11 +31,19 @@
 --  * Trigger `storefront_marca_sello` (BEFORE INSERT OR UPDATE, NO security definer, `set search_path` fijo): fija
 --    `updated_at = now()` y `updated_by = auth.uid()` sin que el cliente pueda falsificarlos. No concede nada.
 --  * Sin DELETE: quitar la marca es dejar los campos en null (UPDATE); no hay caso de uso real para borrar la fila.
---  * Sin funciones security definer nuevas.
+--  * `restaurantes.callback_registrar` -- `security definer`, `set search_path` fijo, `revoke ... from public, anon`, EXECUTE solo
+--    a `authenticated` y `service_role`. Exige `auth.uid() is null` (42501 si no): SOLO la sesion de sistema de la API (webhook de
+--    WhatsApp, herramientas de voz, storefront publico) puede registrar; un usuario con sesion no la usa, y `anon` no tiene
+--    EXECUTE. Elegida en lugar de abrir INSERT + una policy para la sesion de sistema porque un INSERT ... RETURNING exigiria
+--    ademas una policy de SELECT para el sistema (leeria TODAS las solicitudes, con telefonos). La funcion no devuelve mas que
+--    id, resolved y created_at de la fila que acaba de crear. Valida: organizacion existente; sucursal (si viene) perteneciente a
+--    ESA organizacion (una sucursal ajena = 42501, sin sondeo); source solo voice/whatsapp/web (admin es del staff); longitudes
+--    acotadas (defensa de disponibilidad: nombre 160, telefono 64, motivo 200, mensaje 2000). No concede nada mas.
 --
 -- COMPATIBILIDAD: el codigo TypeScript lee y escribe esta tabla dentro de SAVEPOINT y degrada contra la base SIN migrar
 -- (SQLSTATE 42P01/42703): la lectura publica responde sin marca (portada generica con el nombre del restaurante) y la
--- escritura del panel responde 503 "no disponible aun", nunca 500.
+-- escritura del panel responde 503 "no disponible aun", nunca 500. `createCallbackRequest` prueba primero `callback_registrar` y, si
+-- la funcion aun no existe (42883), cae al INSERT directo anterior dentro de un SAVEPOINT (conducta de hoy, sin empeorarla).
 
 create table restaurantes.storefront_marca (
   organization_id uuid primary key references core.organization(id) on delete cascade,
@@ -89,3 +103,46 @@ grant insert (organization_id, titular, eslogan, about, portada_url, logo_url, i
   on restaurantes.storefront_marca to authenticated;
 grant update (titular, eslogan, about, portada_url, logo_url, instagram_url, facebook_url, tiktok_url)
   on restaurantes.storefront_marca to authenticated;
+
+create or replace function restaurantes.callback_registrar(
+  p_organization_id uuid,
+  p_property_id uuid,
+  p_customer_name text,
+  p_customer_phone text,
+  p_reason text,
+  p_message text,
+  p_source text
+) returns table (id uuid, resolved boolean, created_at timestamptz)
+language plpgsql
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+begin
+  if auth.uid() is not null then
+    raise exception 'callback_registrar es solo para la sesión de sistema' using errcode = '42501';
+  end if;
+  if p_organization_id is null or not exists (select 1 from core.organization o where o.id = p_organization_id) then
+    raise exception 'callback_registrar: organización inválida' using errcode = '22023';
+  end if;
+  if p_property_id is not null
+     and not exists (select 1 from core.property p where p.id = p_property_id and p.organization_id = p_organization_id) then
+    raise exception 'callback_registrar: sucursal fuera de la organización' using errcode = '42501';
+  end if;
+  if p_source is null or p_source not in ('voice', 'whatsapp', 'web') then
+    raise exception 'callback_registrar: canal inválido' using errcode = '22023';
+  end if;
+  if coalesce(char_length(btrim(p_customer_name)), 0) not between 1 and 160
+     or coalesce(char_length(btrim(p_customer_phone)), 0) not between 1 and 64
+     or char_length(coalesce(p_reason, '')) > 200
+     or char_length(coalesce(p_message, '')) > 2000 then
+    raise exception 'callback_registrar: datos fuera de rango' using errcode = '22023';
+  end if;
+  return query
+  insert into restaurantes.callback_requests as cb (organization_id, property_id, customer_name, customer_phone, reason, message, source)
+  values (p_organization_id, p_property_id, p_customer_name, p_customer_phone, p_reason, p_message, p_source)
+  returning cb.id, cb.resolved, cb.created_at;
+end;
+$$;
+
+revoke all on function restaurantes.callback_registrar(uuid, uuid, text, text, text, text, text) from public, anon;
+grant execute on function restaurantes.callback_registrar(uuid, uuid, text, text, text, text, text) to authenticated, service_role;

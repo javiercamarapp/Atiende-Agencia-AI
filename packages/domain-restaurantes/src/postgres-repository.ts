@@ -939,12 +939,26 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
-    const { rows } = await this.db.query<{ id: string; resolved: boolean; created_at: string }>(
-      `insert into restaurantes.callback_requests (organization_id, property_id, customer_name, customer_phone, reason, message, source)
-       values ($1, $2, $3, $4, $5, $6, $7)
-       returning id, resolved, created_at;`,
-      [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source],
-    );
+    const params = [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source];
+    type Fila = { id: string; resolved: boolean; created_at: string };
+    // `restaurantes.callback_registrar` (migracion 041): la sesion de la API corre como `authenticated`, que NO tiene INSERT sobre
+    // callback_requests (001), asi que el INSERT directo falla con 42501 contra una base migrada. Sin la funcion (42883, base sin 041)
+    // se cae al INSERT anterior dentro de un SAVEPOINT, que es exactamente la conducta de antes.
+    const rows = await runWithSavepointFallback<Fila[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_callback_registrar",
+      primary: async () => (await this.db.query<Fila>(`select id, resolved, created_at from restaurantes.callback_registrar($1, $2, $3, $4, $5, $6, $7);`, params)).rows,
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42883",
+      fallback: async () =>
+        (
+          await this.db.query<Fila>(
+            `insert into restaurantes.callback_requests (organization_id, property_id, customer_name, customer_phone, reason, message, source)
+             values ($1, $2, $3, $4, $5, $6, $7)
+             returning id, resolved, created_at;`,
+            params,
+          )
+        ).rows,
+    });
     const row = rows[0]!;
     // Notificacion in-app (`restaurantes.callback.pendiente`): un contacto que el agente (voz o WhatsApp) dejo para devolver la
     // llamada. Uno por solicitud (clave = id), sin PII (ni nombre ni telefono viajan en el aviso). SAVEPOINT en emitirNotificacion.
