@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button, EstadoCargando, EstadoError, EstadoVacio, FormDialog } from "@atiende/ui";
 import { MOTIVO_CANCELACION_ETIQUETAS, etiquetaActor, fetchHistorialPedido } from "../lib/autopiloto-client.ts";
 import type { EventoEstado, MotivoCancelacion } from "../lib/autopiloto-client.ts";
+import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import { ORDER_STATUS_LABELS } from "../lib/orders-client.ts";
 
 export function HistorialPedidoDialogo({
@@ -68,7 +69,7 @@ export function HistorialPedidoDialogo({
                 {ORDER_STATUS_LABELS[e.hacia]}
               </span>
               <span className="block text-xs text-muted-foreground">
-                {etiquetaActor(e.actor)} · {new Date(e.at).toLocaleString("es-MX")}
+                {etiquetaActor(e.actor)} · {fechaHoraEsMx(e.at)}
                 {e.motivo ? ` · ${MOTIVO_CANCELACION_ETIQUETAS[e.motivo as MotivoCancelacion] ?? e.motivo.replace(/_/g, " ")}` : ""}
               </span>
             </li>

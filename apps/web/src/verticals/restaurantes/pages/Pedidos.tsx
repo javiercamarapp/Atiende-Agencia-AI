@@ -215,7 +215,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
   /** Aprobaciones pendientes de la sucursal (tambien alimentan la insignia de la pestana). Un fallo nunca tumba la lista de pedidos. */
   async function loadAprobaciones() {
     try {
-      setAprobaciones(await fetchSolicitudes(fetch, apiBaseUrl, token, propertyId, "pendiente"));
+      const r = await fetchSolicitudes(fetch, apiBaseUrl, token, propertyId, "pendiente");
+      // Una respuesta que no tiene la forma esperada (despliegue viejo) se trata como "no disponible", nunca rompe la pantalla.
+      setAprobaciones(r && Array.isArray(r.solicitudes) ? r : { disponible: false, solicitudes: [] });
     } catch {
       setAprobaciones((previa) => previa ?? { disponible: false, solicitudes: [] });
     }
@@ -227,7 +229,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
         fetchTiempoPrometido(fetch, apiBaseUrl, token, propertyId, "domicilio"),
         fetchTiempoPrometido(fetch, apiBaseUrl, token, propertyId, "recoger"),
       ]);
-      setTiempos({ domicilio, recoger });
+      setTiempos(domicilio?.texto && recoger?.texto ? { domicilio, recoger } : null);
     } catch {
       setTiempos(null);
     }
@@ -235,7 +237,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
 
   async function loadAutoConfig() {
     try {
-      setAutoConfig(await fetchAutopilotoConfig(fetch, apiBaseUrl, token, propertyId));
+      const r = await fetchAutopilotoConfig(fetch, apiBaseUrl, token, propertyId);
+      setAutoConfig(r?.config && Array.isArray(r.plantillas) ? r : null);
     } catch {
       setAutoConfig(null);
     }
