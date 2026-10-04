@@ -4,7 +4,7 @@
 // (migrations/001_restaurantes_schema.sql) — nunca inventados.
 import { fetchJson, sendJson } from "./admin-client.ts";
 
-export type OrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema" | "listo_para_recoger" | "no_recogido" | "programado";
+export type OrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema" | "listo_para_recoger" | "no_recogido" | "programado" | "por_aprobar";
 
 export type OrderCanal = "domicilio" | "recoger";
 
@@ -19,6 +19,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   listo_para_recoger: "Listo para recoger",
   no_recogido: "No recogido",
   programado: "Programado",
+  por_aprobar: "Por aprobar",
 };
 
 /** Próximos estados que SÍ aplican al canal del pedido: un pedido para recoger no sale "en_camino" y los estados
@@ -40,6 +41,8 @@ export function nextStatusesForCanal(status: OrderStatus, canal: OrderCanal | nu
 export const NEXT_STATUSES: Record<OrderStatus, readonly OrderStatus[]> = {
   // R-11: un programado espera fuera de cocina; "pending" lo adelanta a cocina, "cancelado" lo descarta.
   programado: ["pending", "cancelado"],
+  // Autopiloto: un pedido grande retenido se aprueba o rechaza desde "Por aprobar" (su solicitud), nunca con un cambio de estado manual.
+  por_aprobar: [],
   pending: ["preparando", "cancelado", "problema"],
   preparando: ["en_camino", "listo_para_recoger", "cancelado", "problema"],
   en_camino: ["entregado", "problema"],
@@ -127,9 +130,11 @@ export async function updateOrderStatus(
   orderId: string,
   status: OrderStatus,
   /** `false` = no avisar por WhatsApp al cliente (aviso opcional de "listo para recoger"). Omitido = comportamiento de siempre. */
-  options: { readonly notifyCustomer?: boolean } = {},
+  options: { readonly notifyCustomer?: boolean; /** Obligatorio al cancelar: motivo de la lista cerrada (`MOTIVOS_CANCELACION`). */ readonly motivo?: string } = {},
 ): Promise<OrderSummary> {
-  const payload = options.notifyCustomer === false ? { status, notifyCustomer: false } : { status };
+  const payload: { status: OrderStatus; notifyCustomer?: boolean; motivo?: string } = { status };
+  if (options.notifyCustomer === false) payload.notifyCustomer = false;
+  if (options.motivo) payload.motivo = options.motivo;
   const body = await sendJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${orderId}/status`, token, "PATCH", payload);
   return body.order;
 }
