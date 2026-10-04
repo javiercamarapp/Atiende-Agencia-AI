@@ -291,10 +291,15 @@ export class MetaCloudSimulator {
       text = ((body.text as { body?: unknown } | undefined)?.body as string | undefined) ?? null;
       if (!text) return graphError(400, 100, "text.body es obligatorio.");
     } else if (type === "interactive") {
-      const interactive = body.interactive as { body?: { text?: string }; action?: { buttons?: { reply?: { id: string; title: string } }[] } } | undefined;
+      const interactive = body.interactive as { type?: string; body?: { text?: string }; action?: { name?: string; buttons?: { reply?: { id: string; title: string } }[] } } | undefined;
       text = interactive?.body?.text ?? null;
-      buttons = (interactive?.action?.buttons ?? []).map((b) => b.reply).filter((r): r is { id: string; title: string } => !!r);
-      if (!text || buttons.length === 0 || buttons.length > 3) return graphError(400, 100, "interactive/button invalido (1-3 botones y body.text).");
+      if (interactive?.type === "location_request_message") {
+        // Solicitud de ubicacion: solo texto + `action.name = send_location` (un toque del cliente), sin botones de respuesta.
+        if (!text || interactive.action?.name !== "send_location") return graphError(400, 100, "interactive/location_request_message invalido (body.text y action.name = send_location).");
+      } else {
+        buttons = (interactive?.action?.buttons ?? []).map((b) => b.reply).filter((r): r is { id: string; title: string } => !!r);
+        if (!text || buttons.length === 0 || buttons.length > 3) return graphError(400, 100, "interactive/button invalido (1-3 botones y body.text).");
+      }
     } else {
       templateName = ((body.template as { name?: unknown } | undefined)?.name as string | undefined) ?? null;
       if (!templateName) return graphError(400, 100, "template.name es obligatorio.");
