@@ -78,6 +78,7 @@ describe("setup", () => {
     expect(sockets[0]!.url.startsWith(`${GEMINI_LIVE_WS_URL}?key=`)).toBe(true);
     const setup = (sockets[0]!.enviados[0] as { setup: { model: string; generationConfig: { speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: string } } } }; systemInstruction: { parts: { text: string }[] }; inputAudioTranscription: unknown; outputAudioTranscription: unknown; tools: { functionDeclarations: unknown[] }[] } }).setup;
     expect(setup.model).toBe("models/gemini-3.8-live");
+    expect((setup.generationConfig as unknown as { temperature: number }).temperature).toBe(0);
     expect(setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe("Kore");
     expect(setup.systemInstruction.parts[0]!.text).toContain("asistente de PM");
     expect(setup.inputAudioTranscription).toEqual({});

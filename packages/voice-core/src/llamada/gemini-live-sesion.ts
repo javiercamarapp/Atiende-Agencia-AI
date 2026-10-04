@@ -21,6 +21,8 @@ export interface SocketLive {
   onmessage: ((ev: { data: unknown }) => void) | null;
   onclose: ((ev: { code?: number }) => void) | null;
   onerror: ((ev: unknown) => void) | null;
+  /** Node >= 26 entrega los mensajes binarios como `Blob` por defecto; con "arraybuffer" llegan ya decodificables. */
+  binaryType?: string;
 }
 export type CrearSocketLive = (url: string) => SocketLive;
 
@@ -51,6 +53,8 @@ export function mensajeSetup(model: string, apertura: AperturaLlamada) {
       model: `models/${model}`,
       generationConfig: {
         responseModalities: ["AUDIO"],
+        // Temperatura 0: el agente de voz no debe improvisar importes ni datos (rescate del agente vivo del original).
+        temperature: 0,
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: apertura.voiceId } } },
       },
       systemInstruction: { parts: [{ text: apertura.instruccion }] },
@@ -62,6 +66,8 @@ export function mensajeSetup(model: string, apertura: AperturaLlamada) {
     },
   };
 }
+
+const esBlob = (data: unknown): data is Blob => typeof Blob !== "undefined" && data instanceof Blob;
 
 function textoDe(data: unknown): string | null {
   if (typeof data === "string") return data;
@@ -114,8 +120,16 @@ class SesionGemini implements VozSesionLlamada {
         }
         this.alCerrar(ev.code);
       };
-      this.socket.onmessage = (ev) => {
-        const texto = textoDe(ev.data);
+      // Node >= 26 entrega los mensajes como Blob (lectura asincrona): se pide "arraybuffer" y, si aun asi llega un Blob, se
+      // decodifica encadenando las lecturas para conservar el orden de llegada (setupComplete antes que el resto).
+      try {
+        this.socket.binaryType = "arraybuffer";
+      } catch {
+        /* un doble o socket sin binaryType: se ignora */
+      }
+      let cola: Promise<void> = Promise.resolve();
+      let blobsEnVuelo = 0;
+      const procesar = (texto: string | null): void => {
         if (texto === null) return;
         let msg: Record<string, unknown>;
         try {
@@ -132,6 +146,26 @@ class SesionGemini implements VozSesionLlamada {
           return;
         }
         this.recibir(msg);
+      };
+      this.socket.onmessage = (ev) => {
+        const data = ev.data;
+        if (esBlob(data)) {
+          blobsEnVuelo++;
+          cola = cola
+            .then(() => data.arrayBuffer())
+            .then((buf) => procesar(new TextDecoder().decode(buf)))
+            .catch(() => undefined)
+            .finally(() => {
+              blobsEnVuelo--;
+            });
+          return;
+        }
+        // Un mensaje de texto que llega con un Blob aun en lectura espera su turno para no adelantarse.
+        if (blobsEnVuelo > 0) {
+          cola = cola.then(() => procesar(textoDe(data)));
+          return;
+        }
+        procesar(textoDe(data));
       };
     });
   }

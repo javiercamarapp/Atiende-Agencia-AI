@@ -1,6 +1,6 @@
 # Crons de Vercel
 
-Fuente de verdad: `vercel.json::crons` (hoy **34** crons). Todos son rutas `GET|POST /internal/...` que
+Fuente de verdad: `vercel.json::crons` (hoy **35** crons). Todos son rutas `GET|POST /internal/...` que
 Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que `INTERNAL_SECRET`).
 
 ## Reglas
@@ -48,6 +48,7 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/hoteles/revenue-recommendations` | `10 15 * * *` | Barrido de recomendaciones de revenue |
 | `/internal/restaurantes/promover-programados` | `*/5 * * * *` | Promueve a pending los pedidos programados dentro de su anticipación (SQL solo actualiza filas en estado programado). R-16: el mismo tick barre, en una sesión de sistema independiente, las alertas in-app `restaurantes.pedido.entrega_tardia` y `restaurantes.pedido.programado_por_vencer` (una por pedido, sin cron nuevo). Autopiloto (migración 050, también sin cron nuevo, cada paso en su propia sesión de sistema): escala a owner/admin las aprobaciones sin respuesta (`restaurantes.aprobacion.vencida`, nunca aprueba solas), pasa `entregado` a `completado` y `listo_para_recoger` a `no_recogido` por tiempo, acepta solo `pending` con comanda capturada si la sucursal lo activó, avanza estados desde el POS (solo con adaptador real), devuelve al agente los handoffs sin respuesta humana y repone los «agotado hasta mañana» al cambiar el día de la sucursal |
 | `/internal/restaurantes/softrestaurant-dispatch` | `*/5 * * * *` | Drena el outbox de comandas a SoftRestaurant (503 sin adaptador real, no reclama nada) |
+| `/internal/restaurantes/voz-huerfanas` | `*/30 * * * *` | Cierra como `abandonado` las llamadas de voz abiertas hace más de 2 h (el worker murió antes de /cerrar); sin la migración 060 responde `not_available` y no toca nada |
 | `/internal/hoteles/tickets-sla` | `*/10 * * * *` | Escala tickets con SLA vencido y avisa al 75 % del SLA (idempotente en SQL) |
 | `/internal/hoteles/aprobaciones-expiracion` | `20 * * * *` | Marca como expiradas las aprobaciones humanas vencidas (idempotente en SQL) |
 | `/internal/rentas/acceso-huesped` | `10 * * * *` | Libera instrucciones de acceso (una transacción por reserva, dedupe_key en el outbox, tope de 50) |
