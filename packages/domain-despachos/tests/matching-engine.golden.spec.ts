@@ -4,6 +4,11 @@
 // tests/fixtures/golden-conciliacion-output.json vía
 // tests/fixtures/golden_gen_conciliacion.py) contra `conciliarMovimientos` (TS).
 //
+// D-P3-10: el nivel 3 se reescribió (centavos enteros, todas las combinaciones, ambigüedad, techo y presupuesto; ver subset-sum.ts). El
+// comportamiento anterior de devolver la PRIMERA combinación hallada (sin detectar ambigüedad) era un DEFECTO: los casos de este golden
+// tienen UNA sola combinación posible, así que el resultado sigue coincidiendo con el origen; los casos nuevos viven en
+// conciliacion-subset-sum.spec.ts.
+//
 // Niveles 1 (exacto) y 3 (multi-línea) NO dependen de `rapidfuzz.fuzz.partial_ratio`
 // — son byte-exactos aquí (score, nivel, índices, montos, fechas, agregados, todo).
 // El nivel 2 (fuzzy) SÍ depende de `partialRatio`, una aproximación documentada (ver
@@ -88,7 +93,9 @@ describe("golden: conciliarMovimientos niveles 1 y 3 (byte-exacto vs Python real
       const real = resultado.matched[i]!;
       expect(real.movementIdx).toBe(esperado.movementIdx);
       expect(real.registroIdx).toBe(esperado.registroIdx);
-      expect(real.registroIndices).toEqual(esperado.registroIndices);
+      // D-P3-10: el origen y el motor anterior listaban la combinación en el orden en que la hallaba (descendente por monto): ese orden es un
+      // artefacto de la enumeración, no un dato del negocio. La combinación es un CONJUNTO de registros y el motor nuevo la devuelve ordenada.
+      expect(real.registroIndices === null ? null : [...real.registroIndices].sort((a, b) => a - b)).toEqual(esperado.registroIndices === null ? null : [...esperado.registroIndices].sort((a, b) => a - b));
       const nivelEsperado = esperado.level === "exact" ? "exacto" : esperado.level === "multi_line" ? "multi_linea" : esperado.level;
       expect(real.level).toBe(nivelEsperado);
       expect(real.score).toBe(esperado.score);
