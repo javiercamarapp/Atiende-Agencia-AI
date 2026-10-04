@@ -102,7 +102,6 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
     return () => {
       cancelado = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `filtrosActivos` se arma de los mismos estados que ya estan en la lista
   }, [apiBaseUrl, token, propertyId, search, nivel, frecuencia, inactivoDias, branchId, version]);
 
   async function verMas() {

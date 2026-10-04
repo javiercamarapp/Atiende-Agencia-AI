@@ -49,7 +49,7 @@ function detectarSeparador(muestra: string): string {
 
 /** CSV con comillas (RFC 4180): comillas dobles escapadas, saltos de linea dentro de una celda, separador `,` `;` o tabulador, BOM. */
 export function parsearCsv(texto: string): string[][] {
-  const t = texto.replace(/^﻿/, "");
+  const t = texto.charCodeAt(0) === 0xfeff ? texto.slice(1) : texto;
   const sep = detectarSeparador(t);
   const filas: string[][] = [];
   let fila: string[] = [];

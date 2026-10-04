@@ -29,12 +29,15 @@ export interface PreparacionImportacion {
   readonly duplicadosEnArchivo: number;
 }
 
+// eslint-disable-next-line no-control-regex
+const CARACTERES_DE_CONTROL = /[\u0000-\u001f\u007f]/g;
+
 function limpiar(valor: unknown, max: number): string | null {
   if (valor === null || valor === undefined) return null;
   const texto = typeof valor === "string" ? valor : typeof valor === "number" && Number.isFinite(valor) ? String(valor) : "";
   // Sin caracteres de control ni espacios repetidos; recortado al maximo de la base.
   const limpio = texto
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(CARACTERES_DE_CONTROL, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, max)
