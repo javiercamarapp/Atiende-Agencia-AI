@@ -31,7 +31,7 @@ const LEET: Readonly<Record<string, string>> = { "0": "o", "1": "i", "3": "e", "
 export function normalizarTextoCrisis(texto: string): string {
   let t = (texto ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   // "me.quiero.morir" (sin espacios) une palabras; la puntuación con espacio es límite de frase. Los saltos de línea son espacio: "quiero\nmorirme".
-  t = t.replace(/(?<=[a-z0-9])[.,;:!?\/\\_-]+(?=[a-z0-9])/g, " ").replace(/[\n\r\t]+/g, " ");
+  t = t.replace(/(?<=[a-z0-9])[.,;:!?/\\_-]+(?=[a-z0-9])/g, " ").replace(/[\n\r\t]+/g, " ");
   t = t.replace(/[.,;:!?¡¿()"“”«»…\\/]+/g, " | ").replace(/['’`´]/g, " ");
   // Leetspeak solo dentro de palabras que ya tienen letras (no toca "10:00" ni "5pm").
   t = t
