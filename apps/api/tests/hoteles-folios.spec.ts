@@ -259,6 +259,37 @@ describe("carrera folio cerrado (H-P3-01): el rechazo de la base se traduce a 40
     expect(res.status).toBe(409);
   });
 
+  it("pago con tarjeta: si el cierre gana la carrera, el 409 sale ANTES de cobrar (el puerto nunca se llama)", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const charge = vi.spyOn(ctx.deps.hotelesPaymentsPort, "charge");
+    // La guarda sin candado vio el folio abierto; el candado de fila ya lo ve cerrado.
+    vi.spyOn(ctx.hotelesRepo, "lockFolioStatus").mockResolvedValueOnce("cerrado");
+    const res = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/pagos`,
+      authedJson(ctx.staff.owner.token, { monto: 50, metodo: "tarjeta", tokenPago: "tok_race" }, { "idempotency-key": "k-race-tarjeta" }),
+    );
+    expect(res.status).toBe(409);
+    expect(charge).not.toHaveBeenCalled();
+    expect((await ctx.hotelesRepo.findFolio(ctx.propertyId, ctx.folioId))!.payments).toHaveLength(0);
+  });
+
+  it("pago con tarjeta en folio abierto: toma el candado, cobra una vez y deja el pago registrado", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const lock = vi.spyOn(ctx.hotelesRepo, "lockFolioStatus");
+    const charge = vi.spyOn(ctx.deps.hotelesPaymentsPort, "charge");
+    const res = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/pagos`,
+      authedJson(ctx.staff.owner.token, { monto: 50, metodo: "tarjeta", tokenPago: "tok_ok" }, { "idempotency-key": "k-tarjeta-ok" }),
+    );
+    expect(res.status).toBe(201);
+    expect(lock).toHaveBeenCalledTimes(1);
+    expect(charge).toHaveBeenCalledTimes(1);
+    expect(lock.mock.invocationCallOrder[0]!).toBeLessThan(charge.mock.invocationCallOrder[0]!);
+    expect((await ctx.hotelesRepo.findFolio(ctx.propertyId, ctx.folioId))!.payments).toHaveLength(1);
+  });
+
   it("cierre doble: el segundo cierre que pierde la carrera recibe 409 y no pisa el cierre del primero", async () => {
     const ctx = await buildHotelesTestContext(buildApp);
     const app = buildApp(ctx.deps);
