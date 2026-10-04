@@ -8,7 +8,7 @@ export { firmarPreviewToken, verificarPreviewToken, PREVIEW_TOKEN_TTL_MAX_SEGUND
 export type { PreviewTokenPayload, PreviewTokenEntrada, PreviewTokenVerificacion } from "./preview-token.ts";
 export { redactarTranscripcion } from "./transcripcion.ts";
 export { VozNoConfiguradaError, VozProveedorError } from "./provider.ts";
-export type { VoiceAgentProvider, VozSalud, VozSesionPreviewEntrada, VozSesionPreviewProveedor } from "./provider.ts";
+export type { VoiceAgentProvider, VozHerramientaDeclaracion, VozSalud, VozSesionPreviewEntrada, VozSesionPreviewProveedor } from "./provider.ts";
 export { GeminiLiveProvider, GEMINI_LIVE_MODELO } from "./gemini-live-provider.ts";
 export type { GeminiLiveProviderOptions } from "./gemini-live-provider.ts";
 export { FakeVoiceProvider } from "./fake-voice-provider.ts";

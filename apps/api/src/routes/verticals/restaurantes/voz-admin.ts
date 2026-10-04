@@ -36,6 +36,8 @@ import {
   esVozDeGemini,
   executeAgentToolSafely,
   firmarPreviewToken,
+  MARCADOR_SALUDO,
+  resolverMarcadorSaludo,
   telefonoFicticioPreview,
   toolDefinitionsForChannel,
   verificarPreviewToken,
@@ -217,10 +219,24 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       return asServiceUnavailable(err);
     }
 
-    // 4) Sesión con el proveedor + token propio firmado.
+    // 4) Sesión con el proveedor + token propio firmado. El token fija las herramientas del registro unico (canal voz); las
+    // ejecuta el servidor en modo preview (ruta `.../preview/:sesionId/herramienta`). `{saludo}` se resuelve aqui con la zona
+    // horaria de la sucursal.
+    const mensajeInicial = lectura.valor.mensajeInicial.includes(MARCADOR_SALUDO)
+      ? resolverMarcadorSaludo(lectura.valor.mensajeInicial, (await restaurantes.findBranchZonaHoraria(propertyId)).zonaHoraria ?? "America/Merida", new Date())
+      : lectura.valor.mensajeInicial;
     let emitida;
     try {
-      emitida = await provider.emitirSesionPreview({ organizationId, propertyId, sessionId: sesion.id, voiceId, comportamiento: lectura.valor.comportamiento, mensajeInicial: lectura.valor.mensajeInicial, ttlSegundos });
+      emitida = await provider.emitirSesionPreview({
+        organizationId,
+        propertyId,
+        sessionId: sesion.id,
+        voiceId,
+        comportamiento: lectura.valor.comportamiento,
+        mensajeInicial,
+        ttlSegundos,
+        herramientas: toolDefinitionsForChannel("voz").map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),
+      });
     } catch (err) {
       if (err instanceof VozNoConfiguradaError) throw Errors.serviceUnavailable(err.message);
       if (err instanceof VozProveedorError) {
