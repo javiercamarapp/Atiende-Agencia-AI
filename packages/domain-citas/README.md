@@ -29,8 +29,8 @@ Guardias de negocio reales preservadas literal (no rediseñadas):
 - **Fix de timezone real**: la hora que ve el cliente (recordatorio 24h) SIEMPRE se
   calcula con el timezone de la sucursal/negocio, nunca con el del host (UTC).
 
-Explícitamente fuera de Fase 1 (ver diseño §6): agente de voz ElevenLabs/WhatsApp
-con LLM completo (construido en Fase 2), sincronización con Google Calendar
+Explícitamente fuera de Fase 1 (ver diseño §6): agente de voz/WhatsApp
+con LLM completo (construido en Fase 2; la voz pasó después a `@atiende/voice-core`, ver "Voz de citas" abajo), sincronización con Google Calendar
 (construida en Fase 3, ver abajo), `modificar-cita` (cambio de proveedor/servicio
 sin tocar horario, sigue fuera), `consultar-disponibilidad`/`listar-servicios`/
 `listar-proveedores`/`buscar-citas-cliente` como rutas propias (su lógica pura ya se
@@ -721,3 +721,52 @@ la pantalla muestra "no disponible" y las escrituras responden 503.
 - Límites: "política de cancelación" no existe como dato en el producto (no hay ventana ni cargo);
   el paso se apoya en el mensaje de cancelación de WhatsApp. "Primera cita" se evalúa a nivel
   negocio, no por sucursal.
+
+## Voz de citas (`src/voz/`, sobre `@atiende/voice-core`)
+
+Citas conserva SU agente de voz (persona de C-15, prompt, herramientas y guardias propias) y lo monta en el esqueleto compartido: LiveKit + Gemini Live
+(`gemini-3.8-live`), respaldo automático en cascada OpenRouter (STT -> Gemini por texto vía el gateway -> TTS) y, si ninguno abre, persona/buzón con
+callback. **Sin ElevenLabs ni gpt-live.** El motor, el modelo y el precio por minuto son los de la plataforma (`VOZ_PLATAFORMA`): el costo por minuto es
+el mismo que en restaurantes y hoteles.
+
+### Ciclo de una llamada
+
+1. **Inicio**: el worker (aún no existe en el repo, hueco compartido con restaurantes y hoteles) lee el `From` del SIP y lo canonicaliza
+   (`canonicalizarTelefonoCitas`: los últimos 10 dígitos, el MISMO cliente que por WhatsApp; sin número = llamante anónimo, solo consultas), pide
+   `GET /v1/citas/:orgSlug/voz/contexto` (prompt con la persona de C-15, el rubro y "hoy" en la zona del negocio; pregrabados; si el rubro exige la
+   guardia de crisis) y arma el `ControladorLlamada` con `crearEscaleraPlataforma` y, si el rubro lo exige, `crearGuardiaCrisisVoz`.
+2. **Herramientas** (`registro-tools.ts`): las 8 de agenda del agente de WhatsApp (`listar_servicios`, `listar_proveedores`, `consultar_disponibilidad`,
+   `crear_cita`, `buscar_mis_citas`, `cancelar_cita`, `reagendar_cita`, `modificar_cita`; el MISMO catálogo `TOOLS` y las mismas funciones de dominio) más
+   `derivar_a_humano`. SOLO corre lo que el registro declara. Llegan al servidor por `transporteHttpCitas` (`POST /v1/citas/:orgSlug/voz/:herramienta`,
+   secreto de plataforma en cabecera, teléfono del SIP inyectado por el transporte: nunca el que escriba el modelo). La lógica de servidor vive en
+   `tools-servidor.ts` y la ejecutan igual las rutas y el simulador; la cita queda con origen `voice`.
+3. **Máquina de la cita** (`maquina-cita.ts`, una por llamada; defensa en profundidad, el servidor y la base vuelven a aplicar todo): los ids de servicio y
+   proveedor salen de `listar_*`; solo se agenda un horario EXACTO que ofreció `consultar_disponibilidad`; una sola cita por llamada; cancelar, reagendar o
+   modificar solo una cita vista con `buscar_mis_citas`; toda acción que escribe exige `confirmado_por_cliente` (el cliente dijo que sí en voz alta). Una
+   escritura que sale bien cierra la llamada como `cita_gestionada`; `derivar_a_humano` como `escalado`.
+4. **Guardia de CRISIS** (`guardia-crisis.ts`): en rubros de salud (`requiresCrisisGuardrail`), cada habla del cliente se evalúa de forma determinista con
+   la misma lista de palabras que WhatsApp ANTES de que el modelo la reciba. Al activarse el core interrumpe al agente, dice `CRISIS_ESCALATION_MESSAGE` tal
+   cual (con la línea de ayuda), escala con `derivar_a_humano` (motivo fijo `crisis`) y cierra como `escalado`; el servidor registra la escalación real
+   (`registrarEscalacionCrisis`: `citas.emergency_escalations` canal `voice` -> notificación crítica del centro de avisos, aviso al dueño). No se guarda la
+   transcripción: solo la palabra clave de la lista fija (si el modelo manda otro texto, se descarta y se guarda un texto fijo).
+5. **Cierre y costo**: la vertical llama `eventosCostoLlamada` y `PostgresCostoVozRepository.registrarCostoLlamada` (`core.record_usage_cost_event`;
+   vertical 'citas' la fija la base; un evento por escalón). Con la base sin la migración 0028 el costo queda "no disponible aún" (SAVEPOINT; nunca un 500).
+6. **Panel**: `GET /v1/citas/properties/:propertyId/admin/voz/estado` (credenciales por escalón, precio por minuto, vista previa disponible o el motivo) y
+   `POST .../admin/voz/preview/sesion` (token efímero de Gemini + token propio firmado), owner/admin. La vista previa no llama herramientas ni agenda nada.
+
+### Simulador y prueba ciega
+
+`@atiende/domain-citas/voz/simulador` corre 10 guiones es-MX (camino feliz, cambio de horario, cancelación, sin disponibilidad, pide una persona, fuera de
+horario, dato ambiguo, intento de abuso y 2 de crisis) contra el núcleo real de voice-core y el motor real de agenda en memoria, con el proveedor falso y
+graders deterministas (`tests/voz/simulador-guiones.spec.ts`, en CI). Datos de prueba (negocio, proveedores, fechas) inventados para el arnés.
+
+### Huecos conocidos
+
+- Sin worker de telefonía (LiveKit SIP): ningún agente atiende llamadas reales todavía.
+- Sin tabla de llamadas de citas ni `core.voice_call`: no se persisten transcripciones ni resultados por llamada, y por eso los KPI/alertas de `kpi.ts` de
+  voice-core aún no tienen de dónde leer en citas. El costo SÍ va a `core.usage_cost_event`. Siguiente paso: migración con la tabla genérica.
+- Los avisos de la voz (callback y crisis) salen por el outbox de WhatsApp al teléfono de avisos del negocio; si no hay uno configurado el agente lo dice y no
+  promete un callback. No hay un evento propio de notificación in-app para el callback: queda como "notificaciones pendientes de conectar" hasta el
+  productor compartido (la crisis sí notifica, vía su escalación).
+- La personalidad de C-15 (nombre, tono, reglas) se reutiliza en voz; la voz (timbre) no es editable por negocio.
+- El protocolo de Gemini Live y los formatos STT/TTS de OpenRouter se probaron con dobles (WebSocket y `fetch` falsos), no contra las APIs reales.

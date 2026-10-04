@@ -45,6 +45,7 @@ import { fetchBranches, resolveActivePropertyId } from "./dashboard-client.ts";
 import type { BranchOption } from "./dashboard-client.ts";
 import { SUGERENCIAS_RESTAURANTES, ejecutarConsultaDirecta, fetchDataChatDisponible, preguntarDatos } from "./data-chat-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
+import { PuertaOnboarding } from "./PuertaOnboarding.tsx";
 
 /** Adaptador de sesión de restaurantes. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const RESTAURANTES_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -254,7 +255,10 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       mobileSelector={branches.length > 1 ? sucursalSelector : null}
       contentKey={propertyId}
     >
-      {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
+      {/* R-33: gate de onboarding (aterrizaje en "Primeros pasos" + banner en el Resumen) solo para owner/admin. */}
+      <PuertaOnboarding apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} orgSlug={orgSlug} role={role}>
+        {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
+      </PuertaOnboarding>
     </VerticalShellConectado>
   );
 }

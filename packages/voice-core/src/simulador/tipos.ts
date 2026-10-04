@@ -85,6 +85,8 @@ export interface LlamadaSimulada<R extends string = string, E extends object = o
   readonly tools: readonly { readonly nombre: string; readonly args: unknown; readonly resultado: unknown }[];
   readonly logs: readonly { readonly evento: string; readonly campos: Readonly<Record<string, string | number | boolean>> }[];
   readonly kpi: readonly unknown[];
+  /** Textos que una guardia del cliente (crisis) dijo tal cual, en orden. Vacio si la vertical no tiene guardia o no se activo. */
+  readonly textosGuardia?: readonly string[];
 }
 
 export interface ResultadoGrader {

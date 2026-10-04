@@ -43,7 +43,7 @@ import type {
   ResolveCalendarSyncPort,
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
-import type { AvisosSistemaRepository, DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
+import type { AvisosSistemaRepository, DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, PostAdjudicacionRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
 import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, ConsultaCfdiSatPort, CronSatRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type { Efos69bSource } from "@atiende/worker";
 import type {
@@ -345,6 +345,8 @@ export interface AppDeps {
   readonly licitacionesAvisosRepo?: (db: TenantDbSession) => AvisosSistemaRepository;
   /** L-22: dias inhabiles que declara cada organizacion o convocatoria (migracion 032). `production/deps.ts` lo cablea a `PostgresDiasInhabilesRepository`; OPCIONAL a proposito: si falta (o falta la migracion), los plazos se calculan con los dias OFICIALES de plataforma, la lectura responde `available: false` y las escrituras 503. */
   readonly licitacionesDiasInhabilesRepo?: (db: TenantDbSession) => DiasInhabilesRepository;
+  /** L-27: garantias, hitos, convenios modificatorios y plazos de la post-adjudicacion (migracion 035). `production/deps.ts` lo cablea a `PostgresPostAdjudicacionRepository`; OPCIONAL a proposito: si falta (o falta la migracion), las lecturas responden `available: false`, las escrituras 503 y el barrido de alertas no emite nada (nunca un 500). */
+  readonly licitacionesPostAdjudicacionRepo?: (db: TenantDbSession) => PostAdjudicacionRepository;
   readonly despachosRepo: (db: TenantDbSession) => DespachosRepository;
   /** D-08 -- portal del cliente final (migracion 016). OPCIONAL a proposito (mismo criterio que `rentasAccesoRepo`): las rutas caen a `PostgresPortalClienteRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly portalClienteRepo?: (db: TenantDbSession) => PortalClienteRepository;

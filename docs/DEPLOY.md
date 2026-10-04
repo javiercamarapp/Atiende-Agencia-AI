@@ -561,6 +561,15 @@ Orden recomendado:
 7. Verificación contra Postgres real (la corre el gate de CI): `node scripts/verify-real-postgres-ci/run-gate.mjs
    scripts/verify-data-chat-citas`.
 
+## Voz de citas sobre voice-core: orden de despliegue
+
+No hay SQL ni variables de entorno nuevas: el código se despliega con el merge y funciona contra la base actual. Las 4 rutas antiguas del agente de
+ElevenLabs de citas (`/v1/citas/:orgSlug/{availability,services,providers,customers/appointments}`) se retiraron; si algún agente externo de ElevenLabs
+las seguía llamando con `VOICE_TOOL_SECRET`, dejará de funcionar (nada del repo las usa). Las nuevas rutas del worker (`/v1/citas/:orgSlug/voz/...`)
+usan el mismo `VOICE_TOOL_SECRET`. La vista previa del panel exige `GEMINI_API_KEY` y `VOICE_PREVIEW_TOKEN_SECRET`; sin ellas el panel muestra "voz no
+configurada" y la API responde 503. El costo por llamada (`core.record_usage_cost_event`, migración 0028 de core) queda "no disponible aún" si esa
+migración no está aplicada. Atender llamadas reales requiere además el worker de telefonía (LiveKit SIP + Twilio), que aún no existe en el repo.
+
 ## Resumen de costo por plataforma (tier free)
 
 | Plataforma | Gratis mientras... | Empieza a costar cuando... |
@@ -568,7 +577,6 @@ Orden recomendado:
 | Supabase | 1 proyecto activo, <500MB DB, <2GB egress/mes, pausa tras 7 días sin uso | Excedes esos límites, necesitas más de 1 proyecto activo simultáneo, o pasas a plan Pro por soporte/uptime |
 | Vercel (Hobby) | Uso personal/no-comercial, builds y bandwidth dentro de cuota | Uso comercial (Vercel lo exige explícito en sus términos), excedes cuota de builds/bandwidth, o agregas add-ons (Postgres, KV, Cron más allá del free) |
 | Upstash Redis | Tier free (10K comandos/día aprox., 256MB) | Excedes esa cuota de comandos/almacenamiento |
-| ElevenLabs | Cuota gratis muy limitada (minutos/mes) | Casi cualquier uso real de voz en producción |
 
 ---
 
