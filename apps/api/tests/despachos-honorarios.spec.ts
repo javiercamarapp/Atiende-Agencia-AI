@@ -6,7 +6,6 @@ import { hashPassword } from "@atiende/db";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
-import type { DespachosTestContext } from "./despachos-fixtures.ts";
 import { conEmisiones } from "./support/emisiones.ts";
 
 const FICHA = { rfc: "RRR010101RR1", tipoPersona: "moral" as const, razonSocial: "Receptor Uno SA de CV", regimenesFiscales: ["601"], cpFiscal: "64000", periodicidad: "mensual" as const, responsableId: null };
