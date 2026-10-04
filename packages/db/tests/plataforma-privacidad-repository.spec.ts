@@ -157,6 +157,52 @@ describe("PostgresPlataformaPrivacidadRepository -- errores de negocio y mapeo",
   });
 });
 
+describe("hoteles_whatsapp_conversaciones -- ejecutor del vertical (H-P3-03)", () => {
+  const fila = { out_run_id: "run-h1", out_status: "ok", out_retention_days: 180, out_rows_affected: 7, out_rows_anonymized: 0, out_rows_protected: 1 };
+
+  it("enruta la clase a hoteles.system_run_retention_conversaciones (organizacion, simulacion, limite) y NO a core.system_run_retention_purge", async () => {
+    const s = new AbortAwareFakeSession([
+      { match: /hoteles\.system_run_retention_conversaciones/, respond: () => [fila] },
+      { match: /core\.system_run_retention_purge/, respond: () => pgError("42501", "no deberia llamarse") },
+    ]);
+    let sql = "";
+    let params: unknown[] | undefined;
+    const original = s.query.bind(s);
+    s.query = (async (q: string, p?: unknown[]) => {
+      sql = q;
+      params = p;
+      return original(q, p);
+    }) as typeof s.query;
+    await expect(new PostgresPlataformaPrivacidadRepository(s).runRetentionPurge(ORG, "hoteles_whatsapp_conversaciones", true, 300)).resolves.toEqual({
+      availability: "available",
+      result: { runId: "run-h1", status: "ok", retentionDays: 180, rowsAffected: 7, rowsAnonymized: 0, rowsProtected: 1 },
+    });
+    expect(sql).toMatch(/hoteles\.system_run_retention_conversaciones\(\$1, \$2::boolean, \$3::int\)/);
+    expect(params).toEqual([ORG, true, 300]);
+  });
+
+  it("las demas clases siguen en core.system_run_retention_purge con sus 4 parametros", async () => {
+    const s = new AbortAwareFakeSession([{ match: /core\.system_run_retention_purge/, respond: () => [fila] }]);
+    let params: unknown[] | undefined;
+    const original = s.query.bind(s);
+    s.query = (async (q: string, p?: unknown[]) => {
+      params = p;
+      return original(q, p);
+    }) as typeof s.query;
+    await new PostgresPlataformaPrivacidadRepository(s).runRetentionPurge(ORG, "restaurantes_voz_transcripciones", false, 500);
+    expect(params).toEqual([ORG, "restaurantes_voz_transcripciones", false, 500]);
+  });
+
+  it("base sin la migracion 046: degrada a not_migrated con la sesion utilizable", async () => {
+    const s = new AbortAwareFakeSession([
+      { match: /hoteles\.system_run_retention_conversaciones/, respond: () => pgError("42883", "function hoteles.system_run_retention_conversaciones(uuid, boolean, integer) does not exist") },
+      { match: /select 1 as despues/, respond: () => [{ ok: 1 }] },
+    ]);
+    await expect(new PostgresPlataformaPrivacidadRepository(s).runRetentionPurge(ORG, "hoteles_whatsapp_conversaciones", false, 500)).resolves.toEqual({ availability: "not_migrated", result: null });
+    await expect(s.query("select 1 as despues")).resolves.toEqual({ rows: [{ ok: 1 }] });
+  });
+});
+
 describe("InMemoryPlataformaPrivacidadRepository -- misma semantica de acceso que el SQL", () => {
   function repo() {
     const r = new InMemoryPlataformaPrivacidadRepository();

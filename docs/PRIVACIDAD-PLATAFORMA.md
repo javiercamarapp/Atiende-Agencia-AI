@@ -58,9 +58,16 @@ Valores por defecto (catálogo `core.retention_class`):
 | --- | --- | --- | --- |
 | `restaurantes_whatsapp_conversaciones` | 180 días | 30 a 1095 | plataforma |
 | `restaurantes_voz_transcripciones` | 30 días | 0 a 365 (0 = no conservar) | plataforma |
+| `hoteles_whatsapp_conversaciones` | 180 días | 30 a 1095 | plataforma (`hoteles.system_run_retention_conversaciones`) |
 | `hoteles_identidad_documento` | 30 días | 0 a 365 | el vertical (`hoteles.sweep_identity_retention`) |
 | `rentas_huesped_pii` | 90 días | 30 a 730 | plataforma (`rentas.system_purge_retencion`) |
 | `rentas_acceso_instrucciones` | 90 días | 30 a 730 | plataforma (`rentas.system_purge_retencion`) |
+
+Hoteles (migración hoteles 046): `hoteles_whatsapp_conversaciones` **vacía el texto** de `hoteles.whatsapp_conversations.messages` y el `payload` de los mensajes ya enviados
+(`sent`) o muertos (`dead`) de `hoteles.messaging_outbox` anteriores al corte; conserva las filas, sus fechas y su vínculo al ticket o hold, y no toca los pendientes. Respeta la
+retención legal activa (`core.purge_hold`: estado `bloqueada`) y conserva las conversaciones de un teléfono con una solicitud ARCO abierta. Los eventos entrantes
+(`hoteles.whatsapp_inbound_events`) solo guardan id, hash del teléfono y estado: no hay texto que vaciar. Su ejecutor es una función propia del vertical (no una rama de
+`core.system_run_retention_purge`); el repositorio de privacidad de plataforma la invoca para esta clase desde el mismo cron `/internal/plataforma/privacidad-retencion`.
 
 Rentas (migración rentas 028): `rentas_huesped_pii` **anonimiza** (nombre y contacto en nulo) a los huéspedes cuya última estancia terminó
 antes del corte y que no coinciden por contacto o nombre con una solicitud ARCO abierta; la reserva y sus montos se conservan.
