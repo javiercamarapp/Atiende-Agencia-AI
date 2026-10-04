@@ -166,8 +166,8 @@ activo) y consulta KPIs, voz y auditoría. El e2e ejercita el efecto de esas reg
 
 Los crons del ciclo (`vercel.json`): `/internal/whatsapp/dispatch` (5 min), `/internal/restaurantes/softrestaurant-dispatch`
 (5 min), `/internal/restaurantes/promover-programados` (5 min), `/internal/restaurantes/email-dispatch` (15 min) y
-`/internal/restaurantes/privacidad-retencion` (diario). Los barridos `/internal/restaurantes/cierres-dia` y `/internal/restaurantes/repartidor-licencias`
-existen pero **no** están en `vercel.json` (decisión de costo): hasta agendarlos, el cierre se genera con el botón del panel. Los crons reportan latido al panel de salud de superadmin (`withHeartbeat`). Además del cron, el webhook y
+`/internal/restaurantes/privacidad-retencion` (diario), `/internal/restaurantes/cierres-dia` (diario, 08:20 UTC = 02:20 en Mérida) y
+`/internal/restaurantes/repartidor-licencias` (diario, 13:35 UTC); el botón del panel sigue generando el cierre a demanda. Los crons reportan latido al panel de salud de superadmin (`withHeartbeat`). Además del cron, el webhook y
 las rutas de staff drenan el outbox "inline" para no esperar al siguiente tick.
 
 ## Cómo se verifica

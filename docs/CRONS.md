@@ -1,6 +1,6 @@
 # Crons de Vercel
 
-Fuente de verdad: `vercel.json::crons` (hoy **35** crons). Todos son rutas `GET|POST /internal/...` que
+Fuente de verdad: `vercel.json::crons` (hoy **38** crons). Todos son rutas `GET|POST /internal/...` que
 Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que `INTERNAL_SECRET`).
 
 ## Reglas
@@ -59,6 +59,9 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/despachos/vencimientos-barrido` | `45 12 * * *` | D-26: por cada cliente con ficha genera las obligaciones fiscales del periodo en curso y escala las que vencen hoy/mañana o ya vencieron; avisa en la campana (`vencimiento_proximo`/`_vencido`, dedupe diario por property). Una transacción por cliente; idempotente |
 | `/internal/despachos/cfdi-estatus-sat` | `20 6 * * 0` | D-27 (semanal, domingo): consulta el estatus de los CFDI ante el servicio **público** del SAT, los más antiguos primero (tope de 60 por corrida y 22 s de presupuesto, 3 consultas en paralelo). Un timeout deja el CFDI como estaba; jamás "vigente" por error. Una cancelación avisa una sola vez (`despachos.cfdi.cancelado`). Una transacción por CFDI |
 | `/internal/despachos/efos-69b/descarga` | `40 7 3 * *` | D-28 (mensual, día 3): baja el CSV público de la lista 69-B (URL en `EFOS_69B_URL`), lo ingiere (idempotente por SHA-256 y periodo) y, si la edición es nueva o corregida, emite `despachos.efos.alerta` por cada CFDI ya ingerido que toca (dedupe por CFDI) |
+| `/internal/restaurantes/cierres-dia` | `20 8 * * *` | R-42: asegura el cierre del día (y, tras un domingo cerrado, el resumen semanal) de cada sucursal con SU fecha local de negocio; 08:20 UTC = 02:20 en Mérida, después del cierre de la 01:00. Mira los últimos 3 días cerrados (`?dias=N`, 1 a 14, solo a mano), así un día sin corrida se recupera en la siguiente. Una transacción por sucursal; avisa en la campana (`dia_listo`/`semana_lista`, dedupe por sucursal y fecha). Idempotente |
+| `/internal/restaurantes/repartidor-licencias` | `35 13 * * *` | R-15: avisa a owner/admin las licencias de repartidor vencidas o a menos de 30 días (dedupe mensual por repartidor). Una transacción por repartidor. Sin la migración correspondiente responde `not_available` |
+| `/internal/plataforma/prueba-avisos` | `0 14 * * *` | PL-16: avisos de fin de prueba a 7/3/1 días (campana + correo), cada aviso exactamente una vez, con el día contado en la zona de cada negocio. Sin la migración 0046 responde `disponible:false` |
 
 Todos tienen latido en el panel de salud (verifica el de cada path en `/superadmin/salud/crons`), el interruptor global `crons` y el interruptor por path (`SWITCHABLE_CRONS`; el test de contrato exige que cada cron de `vercel.json` esté ahí).
 
