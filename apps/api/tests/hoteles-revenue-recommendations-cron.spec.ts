@@ -286,3 +286,115 @@ describe("GET /internal/hoteles/revenue-recommendations (cron HTTP)", () => {
     expect(body.properties_revisadas).toBeGreaterThanOrEqual(1);
   });
 });
+
+// H-P3-02 (P0): la migracion 029 promete que en "propone" el staff aprueba y el cron de sistema APLICA lo aprobado en su
+// siguiente corrida; antes el cron solo aplicaba en autopilot y al final EXPIRABA las aprobadas, asi que lo aprobado nunca llegaba
+// a hoteles.rate_plan.
+describe("runRateRecommendationSweep — aprobadas por staff en 'propone' se aplican (H-P3-02)", () => {
+  async function sweepMine() {
+    const results = await runRateRecommendationSweep(ctx.deps);
+    return results.find((r) => r.propertyId === ctx.propertyId)!;
+  }
+  function seedRate(fecha: string, price = 2000) {
+    ctx.hotelesRepo.seedNightlyRates(ctx.propertyId, ctx.roomTypeId, [{ date: fecha, price, minStay: 1, closedToArrival: false, closedToDeparture: false }]);
+  }
+
+  it("propone: una recomendacion aprobada se aplica de verdad a hoteles.rate_plan y queda 'aplicada' por el sistema", async () => {
+    ctx.hotelesRepo.seedRevenueGate(ctx.propertyId, ctx.organizationId, { gate: "propone" });
+    const fecha = addDaysIso(hoyFechaNegocio(), 10);
+    seedRate(fecha);
+    const first = await sweepMine();
+    expect(first.insertadas).toBe(1);
+    expect(first.aplicadasAprobadas).toBe(0); // nadie la aprobo todavia: sigue pendiente.
+    const pendiente = (await ctx.hotelesRepo.listRateRecommendations(ctx.propertyId, { estado: "pendiente", limit: 10 })).find((r) => r.fecha === fecha)!;
+    expect((await ctx.hotelesRepo.loadNightlyRates(ctx.propertyId, ctx.roomTypeId, fecha, fecha))[0]!.price).toBe(2000);
+
+    await ctx.hotelesRepo.approveRateRecommendation(pendiente.id, ctx.staff.owner.id);
+    const second = await sweepMine();
+    expect(second.error).toBeNull();
+    expect(second.aplicadasAprobadas).toBe(1);
+    expect(second.aplicacionRechazada).toBe(0);
+    expect(second.expiradas).toBe(0);
+
+    const aplicada = (await ctx.hotelesRepo.listRateRecommendations(ctx.propertyId, { estado: "aplicada", limit: 10 })).find((r) => r.id === pendiente.id)!;
+    expect(aplicada.aplicadaPor).toBeNull();
+    expect((await ctx.hotelesRepo.loadNightlyRates(ctx.propertyId, ctx.roomTypeId, fecha, fecha))[0]!.price).toBe(pendiente.recommendedPrice);
+  });
+
+  it("shadow: una aprobada (p. ej. de antes de retroceder el gate) NO se aplica ni se cuenta", async () => {
+    ctx.hotelesRepo.seedRevenueGate(ctx.propertyId, ctx.organizationId, { gate: "shadow" });
+    const fecha = addDaysIso(hoyFechaNegocio(), 10);
+    seedRate(fecha);
+    await sweepMine();
+    const rec = (await ctx.hotelesRepo.listRateRecommendations(ctx.propertyId, { estado: "pendiente", limit: 10 })).find((r) => r.fecha === fecha)!;
+    await ctx.hotelesRepo.approveRateRecommendation(rec.id, ctx.staff.owner.id);
+
+    const mine = await sweepMine();
+    expect(mine.aplicadasAprobadas).toBe(0);
+    expect(mine.aplicacionRechazada).toBe(0);
+    expect((await ctx.hotelesRepo.findRateRecommendation(rec.id))!.estado).toBe("aprobada");
+    expect((await ctx.hotelesRepo.loadNightlyRates(ctx.propertyId, ctx.roomTypeId, fecha, fecha))[0]!.price).toBe(2000);
+  });
+
+  it("rechazo del trigger (variacion fuera del limite): se cuenta en aplicacionRechazada, queda 'aprobada' y no tumba la property", async () => {
+    ctx.hotelesRepo.seedRevenueGate(ctx.propertyId, ctx.organizationId, { gate: "propone", proponeMaxVariationPct: 15 });
+    const fecha = addDaysIso(hoyFechaNegocio(), 10);
+    seedRate(fecha);
+    const rec = await ctx.hotelesRepo.insertRateRecommendationAsSystem({
+      organizationId: ctx.organizationId,
+      propertyId: ctx.propertyId,
+      roomTypeId: ctx.roomTypeId,
+      fecha,
+      currentBarPrice: 2000,
+      recommendedPrice: 4000, // +100%: el limite vigente es +-15%
+      suggestedMinStay: 1,
+      desglose: {},
+    });
+    await ctx.hotelesRepo.approveRateRecommendation(rec.id, ctx.staff.owner.id);
+
+    const mine = await sweepMine();
+    expect(mine.error).toBeNull();
+    expect(mine.aplicadasAprobadas).toBe(0);
+    expect(mine.aplicacionRechazada).toBe(1);
+    expect((await ctx.hotelesRepo.findRateRecommendation(rec.id))!.estado).toBe("aprobada");
+    expect((await ctx.hotelesRepo.loadNightlyRates(ctx.propertyId, ctx.roomTypeId, fecha, fecha))[0]!.price).toBe(2000);
+  });
+
+  it("una aprobada de una fecha ya pasada no se aplica: expira (la aplicacion corre ANTES de expirar y solo toma fecha >= hoy)", async () => {
+    ctx.hotelesRepo.seedRevenueGate(ctx.propertyId, ctx.organizationId, { gate: "propone" });
+    const fechaPasada = addDaysIso(hoyFechaNegocio(), -3);
+    const rec = await ctx.hotelesRepo.insertRateRecommendationAsSystem({
+      organizationId: ctx.organizationId,
+      propertyId: ctx.propertyId,
+      roomTypeId: ctx.roomTypeId,
+      fecha: fechaPasada,
+      currentBarPrice: 2000,
+      recommendedPrice: 2100,
+      suggestedMinStay: 1,
+      desglose: {},
+    });
+    await ctx.hotelesRepo.approveRateRecommendation(rec.id, ctx.staff.owner.id);
+
+    const mine = await sweepMine();
+    expect(mine.aplicadasAprobadas).toBe(0);
+    expect(mine.expiradas).toBe(1);
+    expect((await ctx.hotelesRepo.findRateRecommendation(rec.id))!.estado).toBe("expirada");
+  });
+
+  it("la lista de aprobadas por aplicar solo trae 'aprobada' con fecha >= hoy de ESA property", async () => {
+    ctx.hotelesRepo.seedRevenueGate(ctx.propertyId, ctx.organizationId, { gate: "propone" });
+    const hoy = hoyFechaNegocio();
+    const mk = (fecha: string) =>
+      ctx.hotelesRepo.insertRateRecommendationAsSystem({ organizationId: ctx.organizationId, propertyId: ctx.propertyId, roomTypeId: ctx.roomTypeId, fecha, currentBarPrice: 2000, recommendedPrice: 2050, suggestedMinStay: 1, desglose: {} });
+    const hoyRec = await mk(hoy);
+    const futura = await mk(addDaysIso(hoy, 5));
+    const pasada = await mk(addDaysIso(hoy, -1));
+    const pendiente = await mk(addDaysIso(hoy, 6));
+    for (const r of [hoyRec, futura, pasada]) await ctx.hotelesRepo.approveRateRecommendation(r.id, ctx.staff.owner.id);
+
+    const ids = (await ctx.hotelesRepo.listApprovedRateRecommendationsAsSystem(ctx.propertyId, hoy)).map((r) => r.id);
+    expect(ids).toEqual([hoyRec.id, futura.id]);
+    expect(ids).not.toContain(pendiente.id);
+    expect(await ctx.hotelesRepo.listApprovedRateRecommendationsAsSystem(randomUUID(), hoy)).toEqual([]);
+  });
+});
