@@ -466,6 +466,15 @@ begin
       and i.direccion in ('emitido', 'recibido')
       and i.estado_sat <> 'cancelado'
       and not i.excluido_por_revision
+      -- Solo lo que la póliza automática puede armar sin inventar (las mismas condiciones de `construirPolizaDesdeCfdi`): pesos, sin retenciones ni IEPS,
+      -- con centavos y total = base + IVA, y una categoría que tenga cuenta de gasto (para lo recibido; lo emitido no depende de la categoría).
+      -- Así un CFDI que el staff debe registrar a mano no ocupa el cupo de cada corrida.
+      and coalesce(i.moneda, 'MXN') = 'MXN'
+      and i.subtotal_centavos is not null and i.total_centavos is not null
+      and coalesce(i.isr_retenido_centavos, 0) = 0 and coalesce(i.iva_retenido_centavos, 0) = 0 and coalesce(i.ieps_centavos, 0) = 0
+      and i.subtotal_centavos - coalesce(i.descuento_centavos, 0) > 0
+      and i.subtotal_centavos - coalesce(i.descuento_centavos, 0) + coalesce(i.iva_trasladado_centavos, 0) = i.total_centavos
+      and (i.direccion = 'emitido' or c.categoria not in ('venta_servicios', 'venta_mercancia', 'sin_clasificar', 'activo_fijo', 'inversion', 'nomina'))
       and not exists (select 1 from despachos.invoice_review r where r.invoice_id = i.id and r.status = 'pendiente')
       and not exists (select 1 from despachos.libro_poliza lp where lp.property_id = i.property_id and lp.invoice_id = i.id and not lp.reversada)
       and not exists (select 1 from despachos.periodo_cierre pc where pc.property_id = i.property_id and pc.anio = extract(year from i.fecha)::int and pc.mes = extract(month from i.fecha)::int and pc.status = 'closed')
@@ -546,7 +555,8 @@ grant execute on function despachos.system_poliza_cfdi_registrar(uuid, uuid, tex
 -- ---------------------------------------------------------------------------
 -- 8. Portal: el cliente ve sus CFDI y autoaceptado de los válidos
 -- ---------------------------------------------------------------------------
--- El cliente (token vigente, sesión de sistema) ve SOLO los CFDI de la property de su enlace: hasta 500, los más recientes primero.
+-- El cliente (token vigente, sesión de sistema) ve SOLO los CFDI de la property de su enlace: hasta 500, los más recientes primero. Devuelve también la
+-- organización y la property del enlace (ids, no datos de nadie) para que la API deje la bitácora de la lectura/exportación (D-38).
 create or replace function despachos.portal_cliente_cfdi_listar(p_token_hash text)
 returns jsonb
 language plpgsql
@@ -560,18 +570,21 @@ begin
     raise exception 'portal_cliente_cfdi_listar: solo alcanzable desde sesión de sistema' using errcode = '42501';
   end if;
   v := despachos.portal_cliente_enlace_resolver(p_token_hash);
-  return coalesce((
-    select jsonb_agg(jsonb_build_object(
-             'id', x.id, 'folio_fiscal', x.folio_fiscal, 'tipo', x.tipo, 'direccion', x.direccion, 'fecha', x.fecha,
-             'rfc_emisor', x.rfc_emisor, 'rfc_receptor', x.rfc_receptor, 'emisor_nombre', x.emisor_nombre,
-             'total_centavos', x.total_centavos, 'estado_sat', x.estado_sat, 'excluido', x.excluido_por_revision)
-           order by x.fecha desc, x.created_at desc)
-    from (
-      select i.id, i.folio_fiscal, i.tipo, i.direccion, i.fecha, i.rfc_emisor, i.rfc_receptor, i.emisor_nombre,
-             coalesce(i.total_centavos, round(i.total * 100)::bigint) as total_centavos, i.estado_sat, i.excluido_por_revision, i.created_at
-      from despachos.invoice i where i.property_id = v.property_id order by i.fecha desc, i.created_at desc limit 500
-    ) x
-  ), '[]'::jsonb);
+  return jsonb_build_object(
+    'organization_id', v.organization_id,
+    'property_id', v.property_id,
+    'cfdi', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', x.id, 'folio_fiscal', x.folio_fiscal, 'tipo', x.tipo, 'direccion', x.direccion, 'fecha', x.fecha,
+               'rfc_emisor', x.rfc_emisor, 'rfc_receptor', x.rfc_receptor, 'emisor_nombre', x.emisor_nombre,
+               'total_centavos', x.total_centavos, 'estado_sat', x.estado_sat, 'excluido', x.excluido_por_revision)
+             order by x.fecha desc, x.created_at desc)
+      from (
+        select i.id, i.folio_fiscal, i.tipo, i.direccion, i.fecha, i.rfc_emisor, i.rfc_receptor, i.emisor_nombre,
+               coalesce(i.total_centavos, round(i.total * 100)::bigint) as total_centavos, i.estado_sat, i.excluido_por_revision, i.created_at
+        from despachos.invoice i where i.property_id = v.property_id order by i.fecha desc, i.created_at desc limit 500
+      ) x
+    ), '[]'::jsonb));
 end;
 $$;
 revoke all on function despachos.portal_cliente_cfdi_listar(text) from public, anon;

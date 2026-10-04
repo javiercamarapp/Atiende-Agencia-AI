@@ -781,6 +781,74 @@ select set_config('request.jwt.claim.sub', '', true);
 select count(*) as manual_con_umbral_uno_deberia_ser_1 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100) where out_invoice_id = '00000000-0000-0000-0000-000000d26d15';
 rollback;
 
+\echo '78e. no es candidato un CFDI en moneda extranjera'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+reset role;
+update despachos.invoice set moneda = 'USD' where id = '00000000-0000-0000-0000-000000d26d01';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as usd_fuera_deberia_ser_0 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100) where out_invoice_id = '00000000-0000-0000-0000-000000d26d01';
+rollback;
+
+\echo '78f. no es candidato un CFDI con retención de ISR'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+reset role;
+update despachos.invoice set isr_retenido_centavos = 100 where id = '00000000-0000-0000-0000-000000d26d01';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as retencion_fuera_deberia_ser_0 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100) where out_invoice_id = '00000000-0000-0000-0000-000000d26d01';
+rollback;
+
+\echo '78g. no es candidato un CFDI con IEPS'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+reset role;
+update despachos.invoice set ieps_centavos = 100 where id = '00000000-0000-0000-0000-000000d26d01';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as ieps_fuera_deberia_ser_0 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100) where out_invoice_id = '00000000-0000-0000-0000-000000d26d01';
+rollback;
+
+\echo '78h. no es candidato un CFDI cuyo total no es base + IVA'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+reset role;
+update despachos.invoice set total_centavos = 116001 where id = '00000000-0000-0000-0000-000000d26d01';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as total_fuera_deberia_ser_0 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100) where out_invoice_id = '00000000-0000-0000-0000-000000d26d01';
+rollback;
+
+\echo '78i. no es candidato un CFDI sin montos en centavos (anterior a D-22)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+reset role;
+update despachos.invoice set subtotal_centavos = null where id = '00000000-0000-0000-0000-000000d26d01';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as sincentavos_fuera_deberia_ser_0 from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100) where out_invoice_id = '00000000-0000-0000-0000-000000d26d01';
+rollback;
+
+\echo '78j. un recibido clasificado como venta (categoría sin cuenta de gasto) NO es candidato; un emitido sí aunque la categoría sea de venta'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+reset role;
+insert into despachos.invoice_classification (invoice_id, organization_id, property_id, categoria, confianza, method) values ('00000000-0000-0000-0000-000000d26d01', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', 'venta_servicios', 0.9, 'reglas');
+update despachos.invoice set direccion = 'emitido' where id = '00000000-0000-0000-0000-000000d26d08';
+insert into despachos.invoice_classification (invoice_id, organization_id, property_id, categoria, confianza, method) values ('00000000-0000-0000-0000-000000d26d08', '00000000-0000-0000-0000-0000000d26a1', '00000000-0000-0000-0000-0000000d26b1', 'venta_servicios', 0.9, 'reglas');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (select count(*) from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100) where out_invoice_id = '00000000-0000-0000-0000-000000d26d01') * 10 + (select count(*) from despachos.system_polizas_periodo_candidatos('2026-05-01', '2026-07-31', 100) where out_invoice_id = '00000000-0000-0000-0000-000000d26d08') as venta_recibido_fuera_emitido_dentro_deberia_ser_1;
+rollback;
+
 \echo '79. el staff autenticado NO puede listar candidatos'
 begin;
 set local role authenticated;
@@ -950,21 +1018,28 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select jsonb_array_length(despachos.portal_cliente_cfdi_listar(repeat('a', 64))) as cfdi_a1_deberia_ser_14;
+select jsonb_array_length((despachos.portal_cliente_cfdi_listar(repeat('a', 64)))->'cfdi') as cfdi_a1_deberia_ser_14;
 rollback;
 
 \echo '102. NO ve CFDI de otra property: ninguno de A2 ni de B1 aparece'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select count(*) as ajenos_deberia_ser_0 from jsonb_array_elements(despachos.portal_cliente_cfdi_listar(repeat('a', 64))) x where x->>'id' in ('00000000-0000-0000-0000-000000d26d11', '00000000-0000-0000-0000-000000d26d12');
+select count(*) as ajenos_deberia_ser_0 from jsonb_array_elements((despachos.portal_cliente_cfdi_listar(repeat('a', 64)))->'cfdi') x where x->>'id' in ('00000000-0000-0000-0000-000000d26d11', '00000000-0000-0000-0000-000000d26d12');
 rollback;
 
 \echo '103. el token de A2 ve solo lo de A2 (1)'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select jsonb_array_length(despachos.portal_cliente_cfdi_listar(repeat('b', 64))) as cfdi_a2_deberia_ser_1;
+select jsonb_array_length((despachos.portal_cliente_cfdi_listar(repeat('b', 64)))->'cfdi') as cfdi_a2_deberia_ser_1;
+rollback;
+
+\echo '103b. el listado trae la organizacion y la property del enlace (para la bitacora)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (r->>'organization_id' = '00000000-0000-0000-0000-0000000d26a1' and r->>'property_id' = '00000000-0000-0000-0000-0000000d26b1')::int as ids_bitacora_deberia_ser_1 from despachos.portal_cliente_cfdi_listar(repeat('a', 64)) r;
 rollback;
 
 \echo '104. token expirado -> error genérico'
@@ -1005,7 +1080,7 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select (select count(*) from jsonb_object_keys((despachos.portal_cliente_cfdi_listar(repeat('a', 64)))->0)) as llaves_deberia_ser_11;
+select (select count(*) from jsonb_object_keys((despachos.portal_cliente_cfdi_listar(repeat('a', 64)))->'cfdi'->0)) as llaves_deberia_ser_11;
 rollback;
 
 \echo '110. contexto: property y organización del documento, bandera por omisión encendida y umbral 0.7'

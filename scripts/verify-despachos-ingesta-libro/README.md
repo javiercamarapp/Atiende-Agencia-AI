@@ -4,7 +4,7 @@ Prueba contra Postgres REAL de `packages/domain-despachos/migrations/026_despach
 (paridad3: clasificación contable al ingerir, correcciones por RFC, pólizas del periodo del cron, UUID por cliente, marca de rechazo de una
 revisión, dirección al capturar la ficha, y el portal: CFDI del cliente y autoaceptado).
 
-- `assertions.sql` (juzgado por `scripts/verify-real-postgres-ci/run-gate.mjs` en CI, 147 escenarios):
+- `assertions.sql` (juzgado por `scripts/verify-real-postgres-ci/run-gate.mjs` en CI, 154 escenarios):
   - `invoice_clasificar` / `invoice_categoria_corregir`: fila nueva con método y razón, CHECK ampliado (categorías finas y métodos nuevos), roles
     (admin, contador acotado, readonly, otro despacho, sin membresía, sistema, anon), CFDI de otra property, INSERT directo cerrado, lectura por property;
   - `clasificacion_correccion_*`: upsert por (RFC, ClaveProdServ), validación de RFC/ClaveProdServ/categoría/cuenta, tope de 1000 por cliente, roles,
