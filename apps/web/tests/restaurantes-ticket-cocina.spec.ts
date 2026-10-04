@@ -187,3 +187,35 @@ describe("pedidosPorImprimir", () => {
     expect(TICKET_COCINA_CSS_DOCUMENTO).toContain("html, body");
   });
 });
+
+describe("ticket de cocina: básicas, pedidas y pin de entrega (T7)", () => {
+  const notas = [
+    "Sin cilantro",
+    "Básicas: salsa roja, salsa verde, limones.",
+    "Pedidas (sin costo): salsa guacamolera, piña picada.",
+    "Ubicación de entrega (pin de WhatsApp): lat=21.012345 lng=-89.601234.",
+    "Canal: domicilio.",
+  ].join("\n");
+
+  it("imprime las básicas y las pedidas por separado y no las deja en NOTAS", () => {
+    const t = construirTicketCocina(pedido({ notes: notas }), TZ);
+    expect(t.salsas).toEqual(["Básicas: salsa roja, salsa verde, limones", "PEDIDAS (sin costo): salsa guacamolera, piña picada"]);
+    expect(t.notas).toEqual(["Sin cilantro"]);
+  });
+
+  it("imprime el pin a domicilio y lo omite al recoger", () => {
+    const dom = construirTicketCocina(pedido({ notes: notas }), TZ);
+    expect(dom.pin).toBe("21.012345, -89.601234");
+    expect(renderTicketCocinaHtml(dom)).toContain("Pin: 21.012345, -89.601234");
+    const rec = construirTicketCocina(pedido({ notes: notas.replace("Canal: domicilio.", "Canal: recoger en sucursal.") }), TZ);
+    expect(rec.pin).toBeNull();
+    expect(construirTicketCocina(pedido({ notes: "Sin cilantro" }), TZ).pin).toBeNull();
+  });
+
+  it("el enlace corto de Maps se imprime tal cual; otro host no se toma como pin", () => {
+    const corto = construirTicketCocina(pedido({ notes: "Ubicación de entrega (enlace corto de Maps): https://maps.app.goo.gl/AbC123\nCanal: domicilio." }), TZ);
+    expect(corto.pin).toBe("https://maps.app.goo.gl/AbC123");
+    const ajeno = construirTicketCocina(pedido({ notes: "Ubicación de entrega (enlace corto de Maps): https://evil.example/x\nCanal: domicilio." }), TZ);
+    expect(ajeno.pin).toBeNull();
+  });
+});

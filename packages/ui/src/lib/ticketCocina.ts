@@ -56,6 +56,8 @@ export interface TicketCocina {
   readonly telefono: string;
   /** Solo para domicilio; incluye referencias si el cliente las escribió en la dirección. */
   readonly direccion: string | null;
+  /** Pin de entrega que dio el cliente (coordenadas o enlace corto de Maps); solo a domicilio. */
+  readonly pin: string | null;
   readonly lineas: readonly TicketCocinaLinea[];
   readonly salsas: readonly string[];
   readonly notas: readonly string[];
@@ -129,6 +131,10 @@ const RE_CANAL = /^Canal:\s*(.+?)\.?$/i;
 const RE_PROPINA = /^Propina:\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i;
 const RE_COMPLEMENTOS_INCLUIDOS = /^Complementos incluidos:\s*(.+?)\.?$/i;
 const RE_COMPLEMENTOS_SOLICITADOS = /^Complementos solicitados:\s*(.+?)\.?$/i;
+const RE_COMPLEMENTOS_BASICAS = /^B[aá]sicas:\s*(.+?)\.?$/i;
+const RE_COMPLEMENTOS_PEDIDAS = /^Pedidas(?:\s*\(sin costo\))?:\s*(.+?)\.?$/i;
+const RE_UBICACION_COORD = /^Ubicaci[oó]n de entrega \((?:pin de WhatsApp|enlace de Maps)\):\s*lat=(-?\d{1,2}(?:\.\d+)?)\s+lng=(-?\d{1,3}(?:\.\d+)?)\.?$/i;
+const RE_UBICACION_CORTA = /^Ubicaci[oó]n de entrega \(enlace corto de Maps\):\s*(https:\/\/(?:maps\.app\.goo\.gl|goo\.gl)\/\S+)$/i;
 const RE_SIN_COMPLEMENTOS = /^No enviar complementos de cortes[ií]a\.?$/i;
 
 interface NotasSeparadas {
@@ -136,13 +142,14 @@ interface NotasSeparadas {
   propina: number | null;
   salsas: string[];
   libres: string[];
+  pin: string | null;
 }
 
 /** Separa de `orders.notes` las líneas estructuradas (canal, propina, complementos) de la
  * nota libre. El servidor las agrega AL FINAL; si el cliente escribió una línea con el
  * mismo formato en su nota libre, gana la última (la del servidor). */
 export function separarNotas(notes: string | null): NotasSeparadas {
-  const out: NotasSeparadas = { canal: null, propina: null, salsas: [], libres: [] };
+  const out: NotasSeparadas = { canal: null, propina: null, salsas: [], libres: [], pin: null };
   for (const bruta of limpiarTexto(notes).split("\n")) {
     const linea = bruta.trim();
     if (!linea) continue;
@@ -163,6 +170,26 @@ export function separarNotas(notes: string | null): NotasSeparadas {
     const incl = RE_COMPLEMENTOS_INCLUIDOS.exec(linea);
     if (incl) {
       out.salsas.push(`Incluir: ${incl[1]}`);
+      continue;
+    }
+    const basicas = RE_COMPLEMENTOS_BASICAS.exec(linea);
+    if (basicas) {
+      out.salsas.push(`Básicas: ${basicas[1]}`);
+      continue;
+    }
+    const pedidas = RE_COMPLEMENTOS_PEDIDAS.exec(linea);
+    if (pedidas) {
+      out.salsas.push(`PEDIDAS (sin costo): ${pedidas[1]}`);
+      continue;
+    }
+    const coord = RE_UBICACION_COORD.exec(linea);
+    if (coord) {
+      out.pin = `${coord[1]}, ${coord[2]}`;
+      continue;
+    }
+    const corta = RE_UBICACION_CORTA.exec(linea);
+    if (corta) {
+      out.pin = corta[1] ?? null;
       continue;
     }
     const sol = RE_COMPLEMENTOS_SOLICITADOS.exec(linea);
@@ -195,6 +222,7 @@ export function construirTicketCocina(pedido: TicketPedidoFuente, opciones: Opci
     cliente: limpiarTexto(pedido.customerName) || "Sin nombre",
     telefono: limpiarTexto(pedido.customerPhone),
     direccion: canal === "recoger" ? null : direccionLimpia || null,
+    pin: canal === "recoger" ? null : notas.pin,
     lineas: pedido.items.map((it) => ({
       cantidad: formatoCantidad(it.quantity),
       nombre: limpiarTexto(it.name) || "(sin nombre)",
@@ -255,7 +283,7 @@ export function renderTicketCocinaHtml(t: TicketCocina): string {
   partes.push(
     seccion(
       "CLIENTE",
-      `<div>${e(t.cliente)}</div><div>Tel: ${e(t.telefono || "sin teléfono")}</div>${t.direccion ? `<div class="nota">Dir: ${e(t.direccion).replace(/\n/g, "<br>")}</div>` : ""}`,
+      `<div>${e(t.cliente)}</div><div>Tel: ${e(t.telefono || "sin teléfono")}</div>${t.direccion ? `<div class="nota">Dir: ${e(t.direccion).replace(/\n/g, "<br>")}</div>` : ""}${t.pin ? `<div class="nota">Pin: ${e(t.pin)}</div>` : ""}`,
     ),
   );
   const lineas = t.lineas
