@@ -1,6 +1,6 @@
 // R-23: paso a humano CON REGRESO. Un pedido grande escala al equipo (el agente calla); el gerente toma la conversacion, responde
 // al comensal y la DEVUELVE al agente; el siguiente mensaje del comensal vuelve a contestarlo el agente y puede cerrar un pedido
-// normal. Tambien: cerrar (en vez de devolver) reabre al agente y una toma ajena no la libera otro gerente sin ser administrador.
+// normal. Tambien: cerrar (en vez de devolver) reabre al agente.
 import { afterEach, describe, expect, it } from "vitest";
 import { authedGet, authedJson } from "../restaurantes-admin-kpis-fixtures.ts";
 import { call, say, sayObserving, startCicloStack } from "../support/e2e-ciclo-restaurantes.ts";

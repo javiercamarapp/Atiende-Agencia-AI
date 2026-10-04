@@ -116,14 +116,15 @@ El checkout exige aceptar el aviso de privacidad **en el servidor**: `POST /:suc
    cada 5 min) reintenta las pendientes y no reenvía las capturadas.
 3. `PATCH .../admin/orders/:id/status` (máquina en `order-lifecycle.ts`): `pending -> preparando -> en_camino -> entregado -> completado` a
    domicilio, y `preparando -> listo_para_recoger -> entregado|no_recogido` para recoger (un pedido para recoger no sale `en_camino` y un pedido a
-   domicilio no pasa a `listo_para_recoger`; ambos casos responden 409). `cancelado` es posible antes de entregar, `problema` desde cualquier estado
+   domicilio no pasa a `listo_para_recoger`; ambos casos responden 409). `cancelado` es posible desde `programado`, `pending`, `preparando`, `listo_para_recoger` y `no_recogido`, pero no desde `en_camino` ni `entregado`, `problema` desde cualquier estado
    activo, y `cancelado` y `completado` son terminales. Un salto inválido (p. ej. `pending -> entregado`) o repetir el mismo estado responde 409 y
    no cambia nada. Avisan al comensal por WhatsApp (outbox + dispatcher) **solo** `preparando`, `en_camino`, `listo_para_recoger`, `entregado` y
    `cancelado`, una vez por estado; `completado`, `problema` y `no_recogido` no mandan aviso al comensal.
-3. bis. **Cancelar antes de que la comanda llegue al POS**: si el POS estaba lento o caído, la comanda queda `pendiente`/`fallida` en el outbox. Al
+3. bis. **Cancelar antes de que la comanda llegue al POS**: si el POS estaba lento o caído, la comanda queda `pendiente`/`fallida` (o `captura_manual`) en el outbox. Al
    cancelar el pedido el servidor la corta (`cortarComandaDePedidoCancelado`: pasa a `capturada_manual` con la nota "Pedido cancelado antes de llegar al
    POS", sin migración) para que el despachador no la mande a cocina cuando el POS vuelva. Una comanda ya `confirmada` en el POS, o en vuelo
-   (`enviada`) en ese instante, **no** se retira: el puerto del POS no expone cancelar, así que cocina debe avisarse por el POS.
+   (`enviada`) en ese instante, **no** se retira: el puerto del POS no expone cancelar, así que cocina debe avisarse por el POS. Caso conocido: una comanda
+   `enviada` al cancelar que luego falla por timeout vuelve a `fallida` y el despachador puede reintentarla (el despachador no revisa el estado del pedido).
 4. **Pedido programado** (checkout público legado `POST /v1/restaurantes/:orgSlug/orders` **o agente** de WhatsApp/voz con `programado_para`; el
    storefront nuevo no lo acepta): queda en `programado` y no va a cocina ni al POS; al faltar 30 min lo promueve el cron
    (`/internal/restaurantes/promover-programados`, 5 min) o el panel al consultar, y en ese momento su comanda se encola al POS
@@ -209,6 +210,6 @@ npx vitest run packages/whatsapp-gateway --maxWorkers=2     # los simuladores mi
 | Propina de los programados al POS | **Cerrado**: la comanda que se encola al promover lleva la propina y el canal del pedido (seguimiento de #294) |
 | Cancelar un pedido cuya comanda YA está en el POS | **Hueco**: el puerto `SoftRestaurantPort` no expone cancelar; solo se corta la comanda que aún no salió (ver Cocina, 3 bis). Cocina debe avisarse por el POS |
 | Encuesta post-entrega | **No está en main** (PR #409, abierto): este banco no la cubre hasta que se fusione |
-| Recorrido de NAVEGADOR (Playwright) del ciclo completo | **No está en main** (PR #397, abierto, con su API simulada): este banco es de API real con repos en memoria |
+| Recorrido de NAVEGADOR (Playwright) del ciclo completo | **Cerrado** (PR #397, fusionado): recorrido de navegador en `apps/web/e2e` (ver `docs/QA-E2E.md`), contra su API simulada; este banco es de API real con repos en memoria |
 | Comandas del POS en el panel | **Hueco**: solo hay API (`.../admin/softrestaurant/comandas`); no hay pantalla |
 | Postgres real (RLS, GRANT, definer) | No cubierto por este banco: lo cubren los `scripts/verify-restaurantes-*` (incluye `verify-restaurantes-sql`, `-storefront`, `-pedidos-programados` y `-consentimiento-aviso`), que corren en el gate de CI |

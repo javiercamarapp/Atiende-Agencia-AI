@@ -176,7 +176,7 @@ describe("e2e cocina, avisos al comensal y cierre del dia", () => {
       expect(stack.pos.comandas).toHaveLength(3);
     });
     expect(new Set(stack.comandas.todas().map((c) => c.orderId)).size).toBe(3);
-    // El cliente de WhatsApp se reconoce por voz: historial de 2 pedidos al momento de la llamada del dia siguiente.
+    // El cliente de WhatsApp se reconoce por voz: historial de 3 pedidos (web, whatsapp y voz) al momento de la llamada del dia siguiente.
     const otra = await startVoiceCall(stack, "9991230210", "call-omni-2");
     expect((await otra.tool("buscar_cliente", {})).body).toMatchObject({ isNew: false, name: "Diana Omni", orderCount: 3 });
 
