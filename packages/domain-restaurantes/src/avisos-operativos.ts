@@ -52,7 +52,7 @@ export async function listarCandidatosAvisos(session: TenantDbSession, now?: Dat
   });
 }
 
-/** Emite las alertas de los candidatos de hoy. `now` es solo para pruebas (en produccion manda el reloj de la base). */
+/** Emite las alertas de los candidatos de hoy. `now` es el instante absoluto (UTC) con que se evalua el barrido: el tick de produccion pasa el reloj de la app (la base lo interpreta en la zona de cada sucursal) y, si se omite, manda el reloj de la base. */
 export async function barrerAvisosOperativos(session: TenantDbSession, options: { readonly now?: Date } = {}): Promise<ResultadoBarridoAvisos> {
   const { disponible, candidatos } = await listarCandidatosAvisos(session, options.now);
   if (!disponible) return SIN_BARRIDO;
