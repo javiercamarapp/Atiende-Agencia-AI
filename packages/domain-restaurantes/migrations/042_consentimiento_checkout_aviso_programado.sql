@@ -59,14 +59,14 @@ grant select (id, organization_id, order_id, notice_version, channel, accepted_a
   on restaurantes.order_privacy_consent to authenticated;
 
 -- ---------------------------------------------------------------------------
--- 2) Registro del consentimiento (solo sistema). Devuelve TRUE si registro una fila nueva, FALSE si ya existia.
+-- 2) Registro del consentimiento (solo sistema). Devuelve la version del aviso registrada, o NULL si el pedido ya tenia consentimiento.
 -- ---------------------------------------------------------------------------
 create or replace function restaurantes.system_record_order_privacy_consent(
   p_organization_id uuid,
   p_order_id uuid,
   p_channel text
 )
-returns boolean
+returns text
 language plpgsql
 security definer
 set search_path = restaurantes, core, pg_temp
@@ -89,7 +89,10 @@ begin
   values (p_organization_id, p_order_id, coalesce(v_version, 'v1'), p_channel)
   on conflict (order_id) do nothing
   returning id into v_id;
-  return v_id is not null;
+  if v_id is null then
+    return null;
+  end if;
+  return coalesce(v_version, 'v1');
 end;
 $$;
 
