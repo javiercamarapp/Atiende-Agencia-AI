@@ -40,6 +40,8 @@ async function abrir(page: Page, ruta: string, tema: (typeof TEMAS)[number], vie
   });
   await page.goto(ruta);
   await expect(page.locator("main")).toHaveCount(1);
+  // R-37: la pantalla es un chunk perezoso; se espera a que no haya cargas en vuelo (chunk, estilos, fuentes) antes de medir.
+  await page.waitForLoadState("networkidle");
   await page.evaluate(() => document.fonts.ready);
   // La carga de tipografias puede mover el texto UNA vez al abrir; el CLS que se exige es el de los cambios de estado.
   await page.evaluate(() => ((window as unknown as { __cls: number }).__cls = 0));
