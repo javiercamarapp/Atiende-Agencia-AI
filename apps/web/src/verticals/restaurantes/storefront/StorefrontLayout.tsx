@@ -21,6 +21,10 @@ export function StorefrontLayout({ orgSlug, nombre, children }: { orgSlug: strin
         {children}
       </main>
       <footer className="mx-auto max-w-5xl px-4 pb-10 pt-4 text-xs text-muted-foreground sm:px-6">
+        <Link to={`/pedir/${orgSlug}/sucursales`} className="underline underline-offset-2">
+          Sucursales
+        </Link>
+        <span aria-hidden="true"> · </span>
         <Link to={`/pedir/${orgSlug}/privacidad`} className="underline underline-offset-2">
           Aviso de privacidad
         </Link>

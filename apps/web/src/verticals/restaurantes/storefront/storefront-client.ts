@@ -19,6 +19,26 @@ export interface SucursalPublica {
   readonly pedidoMinimoRecoger: number | null;
   readonly propinaPolitica: "nunca" | "siempre" | "solo_tarjeta" | null;
   readonly zonasReparto: readonly string[];
+  /** false = la sucursal no reparte (solo recoger). Ausente en un servidor anterior: se asume que reparte. */
+  readonly aceptaDomicilio?: boolean;
+  /** "Domicilio vie-dom" cuando reparte solo algunos dias. */
+  readonly domicilioTexto?: string | null;
+}
+
+/** Una sucursal del directorio publico (`/pedir/:org/sucursales`). */
+export interface SucursalDirectorio {
+  readonly slug: string;
+  readonly name: string;
+  readonly address: string | null;
+  readonly phone: string | null;
+  readonly horario: ReadonlyArray<{ readonly dias: readonly number[]; readonly abre: string; readonly cierra: string }> | null;
+  readonly abiertoAhora: boolean | null;
+  readonly pideEnLinea: boolean;
+  readonly soloRecoger: boolean;
+  readonly insigniaDomicilio: string | null;
+  readonly deTemporada: boolean;
+  readonly soloInformativa: boolean;
+  readonly comoLlegarUrl: string | null;
 }
 
 export interface ProductoMenu {
@@ -193,6 +213,9 @@ export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetc
   return {
     async sucursales(): Promise<{ restaurante: { slug: string; nombre: string }; sucursales: SucursalPublica[] }> {
       return leer(await get(""), "No pudimos cargar el restaurante.");
+    },
+    async directorio(): Promise<{ restaurante: { slug: string; nombre: string }; sucursales: SucursalDirectorio[] }> {
+      return leer(await get("/directorio"), "No pudimos cargar las sucursales.");
     },
     async menu(branchSlug: string): Promise<{ sucursal: SucursalPublica | null; categorias: CategoriaMenu[] }> {
       return leer(await get(`/${enc(branchSlug)}/menu`), "No pudimos cargar el menú.");

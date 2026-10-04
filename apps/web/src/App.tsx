@@ -64,6 +64,7 @@ import { EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui";
 import { NotificacionesPagina } from "./components/NotificacionesPagina.tsx";
 import { PlanYUsoPagina } from "./components/PlanYUsoPagina.tsx";
 import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
+import { SucursalesPage as StorefrontSucursalesPage } from "./verticals/restaurantes/storefront/SucursalesPage.tsx";
 import { SucursalPage as StorefrontSucursalPage } from "./verticals/restaurantes/storefront/SucursalPage.tsx";
 import { RastreoPage as StorefrontRastreoPage } from "./verticals/restaurantes/storefront/RastreoPage.tsx";
 import { ReservarPage } from "./verticals/citas/reserva/ReservarPage.tsx";
@@ -302,6 +303,10 @@ const RestaurantesCopilotoRoute = shellRoute(RestaurantesShell, "/restaurantes/l
 function StorefrontRestauranteRoute() {
   const { orgSlug = "" } = useParams();
   return <StorefrontRestaurantePage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
+function StorefrontSucursalesRoute() {
+  const { orgSlug = "" } = useParams();
+  return <StorefrontSucursalesPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
 function StorefrontSucursalRoute() {
   const { orgSlug = "", branchSlug = "" } = useParams();
@@ -1141,6 +1146,8 @@ export function App() {
         <Route path="/reservar/:orgSlug" element={<ReservarCitasRoute />} />
         <Route path="/pedir/:orgSlug" element={<StorefrontRestauranteRoute />} />
         <Route path="/pedir/:orgSlug/privacidad" element={<StorefrontPrivacidadRoute />} />
+        {/* Directorio publico: va ANTES de :branchSlug (una sucursal con slug "sucursales" no se puede abrir; el slug esta reservado). */}
+        <Route path="/pedir/:orgSlug/sucursales" element={<StorefrontSucursalesRoute />} />
         <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
         <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
         <Route path="/superadmin" element={<SuperAdminRoute />} />
