@@ -47,6 +47,7 @@ insert into restaurantes.branch_detail (property_id, organization_id, slug) valu
 on conflict do nothing;
 
 insert into core.staff_user (id, email, full_name, created_via) values
+  ('00000000-0000-0000-0000-0000000e4515', 'admin-sucursal@mkt.example.com', 'Admin acotado a A1', 'seed'),
   ('00000000-0000-0000-0000-0000000e4511', 'owner-a@mkt.example.com', 'Owner A', 'seed'),
   ('00000000-0000-0000-0000-0000000e4512', 'admin-a@mkt.example.com', 'Admin A', 'seed'),
   ('00000000-0000-0000-0000-0000000e4513', 'staff-a@mkt.example.com', 'Staff A', 'seed'),
@@ -54,6 +55,7 @@ insert into core.staff_user (id, email, full_name, created_via) values
 on conflict do nothing;
 
 insert into core.membership (user_id, organization_id, property_ids, platform_role, vertical_role) values
+  ('00000000-0000-0000-0000-0000000e4515', '00000000-0000-0000-0000-0000000e4501', array['00000000-0000-0000-0000-0000000e45a1']::uuid[], 'admin', 'admin'),
   ('00000000-0000-0000-0000-0000000e4511', '00000000-0000-0000-0000-0000000e4501', null, 'owner', 'owner'),
   ('00000000-0000-0000-0000-0000000e4512', '00000000-0000-0000-0000-0000000e4501', null, 'admin', 'admin'),
   ('00000000-0000-0000-0000-0000000e4513', '00000000-0000-0000-0000-0000000e4501', null, 'member', 'staff'),
@@ -503,6 +505,19 @@ insert into restaurantes.marketing_config (organization_id, activo, tarifa_centa
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4512', true);
 select (hay_promocion_vigente and plantilla_aprobada and whatsapp_conectado and activo)::int as requisitos_deberia_ser_1 from restaurantes.marketing_config_leer('00000000-0000-0000-0000-0000000e4501');
+rollback;
+
+\echo '=== D21. RECHAZADO: un admin acotado a UNA sucursal no aprueba campanas de toda la organizacion -> 42501 ==='
+begin;
+insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, otorgado_at) select organization_id, id, 'whatsapp', 'otorgado', 'checkout_web', 'v2', now() from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e4501';
+insert into restaurantes.marketing_config (organization_id, activo, tarifa_centavos, minimo_segmento, plantilla_nombre) values ('00000000-0000-0000-0000-0000000e4501', true, 80, 5, 'reactivacion_promo');
+set local role authenticated;
+select count(*) from restaurantes.marketing_generar_borradores(now());
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4515', true);
+select public.t_esperar_error($q$select * from restaurantes.marketing_decidir_campana((select id from restaurantes.marketing_campana where segmento = 'inactivo_30'), true)$q$, '42501');
+select count(*) as filas_deberia_ser_0 from restaurantes.marketing_campana;
 rollback;
 
 \echo '=== E1. lectura: el owner de A ve sus campanas ==='

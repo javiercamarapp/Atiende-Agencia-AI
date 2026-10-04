@@ -32,7 +32,7 @@
 --     guard `auth.uid() is null`: ningun usuario logueado puede fabricar consentimientos ni disparar borradores. El cliente debe pertenecer a la
 --     organizacion declarada (42501). La version del aviso la decide LA BASE (privacy_config.notice_version), nunca el navegador.
 --   * marketing_guardar_config / marketing_decidir_campana / marketing_config_leer / marketing_resumen_campanas: security definer, search_path fijo,
---     revoke de public/anon, grant a authenticated; exigen auth.uid() y vertical_role owner/admin de la organizacion DUENA del dato (derivada de la fila,
+--     revoke de public/anon, grant a authenticated; exigen auth.uid() y vertical_role owner/admin con alcance a TODA la organizacion (property_ids nulo: clientes y campanas son de la organizacion, no de una sucursal) DUENA del dato (derivada de la fila,
 --     nunca del llamador: una campana ajena responde igual que una inexistente, 42501). Aprobar revalida en ese instante el consentimiento, el tope por
 --     cliente, el tope mensual, la plantilla aprobada y el WhatsApp conectado: un consentimiento revocado entre el borrador y el clic NO recibe mensaje.
 --   * marketing_en_control / marketing_elegibles: internas, sin EXECUTE para nadie salvo el dueno de las funciones que las invocan.
@@ -141,15 +141,15 @@ alter table restaurantes.marketing_campana enable row level security;
 alter table restaurantes.marketing_campana_envio enable row level security;
 
 create policy "owner/admin lee la configuracion de marketing" on restaurantes.marketing_config for select
-  using (exists (select 1 from core.membership m where m.organization_id = marketing_config.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin')));
+  using (exists (select 1 from core.membership m where m.organization_id = marketing_config.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin') and m.property_ids is null));
 create policy "owner/admin lee los consentimientos de marketing" on restaurantes.marketing_consentimiento for select
-  using (exists (select 1 from core.membership m where m.organization_id = marketing_consentimiento.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin')));
+  using (exists (select 1 from core.membership m where m.organization_id = marketing_consentimiento.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin') and m.property_ids is null));
 create policy "owner/admin lee el historial de consentimientos de marketing" on restaurantes.marketing_consentimiento_evento for select
-  using (exists (select 1 from core.membership m where m.organization_id = marketing_consentimiento_evento.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin')));
+  using (exists (select 1 from core.membership m where m.organization_id = marketing_consentimiento_evento.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin') and m.property_ids is null));
 create policy "owner/admin lee las campanas de marketing" on restaurantes.marketing_campana for select
-  using (exists (select 1 from core.membership m where m.organization_id = marketing_campana.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin')));
+  using (exists (select 1 from core.membership m where m.organization_id = marketing_campana.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin') and m.property_ids is null));
 create policy "owner/admin lee los envios de campanas" on restaurantes.marketing_campana_envio for select
-  using (exists (select 1 from core.membership m where m.organization_id = marketing_campana_envio.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin')));
+  using (exists (select 1 from core.membership m where m.organization_id = marketing_campana_envio.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin') and m.property_ids is null));
 
 revoke all on restaurantes.marketing_config, restaurantes.marketing_consentimiento, restaurantes.marketing_consentimiento_evento, restaurantes.marketing_campana, restaurantes.marketing_campana_envio
   from public, anon, authenticated, service_role;
@@ -362,7 +362,7 @@ grant execute on function restaurantes.marketing_generar_borradores(timestamptz)
 create or replace function restaurantes.marketing_es_gestor(p_organization_id uuid)
 returns boolean language sql stable security definer set search_path = core, pg_temp as $$
   select auth.uid() is not null and exists (
-    select 1 from core.membership m where m.organization_id = p_organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin')
+    select 1 from core.membership m where m.organization_id = p_organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin') and m.property_ids is null
   );
 $$;
 revoke all on function restaurantes.marketing_es_gestor(uuid) from public, anon, authenticated, service_role;
