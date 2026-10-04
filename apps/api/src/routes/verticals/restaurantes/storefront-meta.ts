@@ -5,11 +5,12 @@
 // organizacion y de la sucursal. Sin PII: nunca clientes, pedidos, ids ni coordenadas; sin precios en el JSON-LD.
 //
 // Compatibilidad: no usa ninguna tabla ni columna nueva (organizacion, sucursal y politica publicas de siempre;
-// la politica degrada con SAVEPOINT en el repositorio). Cualquier fallo cae a meta genericas: nunca rompe la pagina.
+// la politica degrada con SAVEPOINT en el repositorio). Cualquier fallo cae a meta genericas (sin cache) y la respuesta lleva la CSP de la SPA, no la restrictiva de la API.
 import { Hono } from "hono";
 import { consumeRateLimit, type RestaurantesRepository } from "@atiende/domain-restaurantes";
 import type { HorarioSucursal } from "@atiende/domain-restaurantes";
 import { requestActor } from "../../../http-security.ts";
+import { CSP_SPA_REPORT_ONLY, PERMISSIONS_POLICY_STOREFRONT } from "../../../cabeceras-seguridad.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 /** Sustituido por esbuild en `scripts/build-vercel-function.mjs` con el `index.html` ya construido del panel. */
@@ -197,18 +198,27 @@ export function restaurantesStorefrontMetaRoutes(deps: AppDeps) {
     const orgSlug = c.req.param("orgSlug") ?? "";
     const ruta = branchSlug ? `/pedir/${encodeURIComponent(orgSlug)}/${encodeURIComponent(branchSlug)}` : `/pedir/${encodeURIComponent(orgSlug)}`;
     let meta: MetaStorefront;
+    let degradada = false;
     try {
       meta = await deps.engine.withAppSession({ userId: null }, async (db) => {
         const repo = deps.restaurantesRepo(db);
         const limite = await consumeRateLimit(repo, "storefront-meta", requestActor(c.req.raw), 120, 60);
-        if (!limite.allowed) return metaGenerica(deps.env.appBaseUrl, ruta);
+        if (!limite.allowed) {
+          degradada = true;
+          return metaGenerica(deps.env.appBaseUrl, ruta);
+        }
         return construirMetaStorefront(repo, { baseUrl: deps.env.appBaseUrl, orgSlug, branchSlug });
       });
     } catch {
+      degradada = true;
       meta = metaGenerica(deps.env.appBaseUrl, ruta);
     }
     // Cache corto y compartido: la respuesta solo depende de la URL y de datos publicos (sin cookies ni PII).
-    c.header("Cache-Control", "public, max-age=0, s-maxage=300, stale-while-revalidate=600");
+    // Si cayo a meta genericas por limite de tasa o falla de la base NO se cachea: el CDN no debe fijar una tarjeta generica con noindex en una URL real.
+    c.header("Cache-Control", degradada ? "no-store" : "public, max-age=0, s-maxage=300, stale-while-revalidate=600");
+    // Esta respuesta es el index.html de la SPA: la CSP restrictiva de la API (default-src 'none') la dejaria en blanco, asi que lleva la CSP de la SPA.
+    c.header("Content-Security-Policy-Report-Only", CSP_SPA_REPORT_ONLY);
+    c.header("Permissions-Policy", PERMISSIONS_POLICY_STOREFRONT);
     c.header("Content-Type", "text/html; charset=utf-8");
     return c.body(inyectarMeta(plantilla, meta));
   }

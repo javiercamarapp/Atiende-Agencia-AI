@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { construirMetaStorefront, escaparHtml, horarioSchemaOrg, inyectarMeta, jsonLdRestaurante, metaGenerica, serializarJsonLd } from "../src/routes/verticals/restaurantes/storefront-meta.ts";
+import { CSP_SPA_REPORT_ONLY, PERMISSIONS_POLICY_STOREFRONT } from "../src/cabeceras-seguridad.ts";
 import { buildTestDeps } from "./fixtures.ts";
 
 const PLANTILLA = `<!doctype html>
@@ -138,6 +139,44 @@ describe("GET /pedir/:org[/:sucursal] (lo que ve un rastreador sin JS)", () => {
     expect(html).toContain('<meta property="og:title" content="Los Taquitos de PM · Pedir en línea" />');
     expect(html).toContain('<div id="root">');
     expect(html).not.toContain("Atiende, agencia de AI");
+  });
+
+  it("las paginas de entrada llevan la CSP de la SPA y NO default-src 'none' (si no, el storefront queda en blanco)", async () => {
+    const { app: a } = await app();
+    for (const ruta of ["/pedir/los-taquitos-de-pm", "/pedir/los-taquitos-de-pm/fco-montejo", "/pedir/no-existe"]) {
+      const res = await a.request(ruta);
+      expect(res.status, ruta).toBe(200);
+      expect(res.headers.get("content-security-policy"), ruta).toBeNull();
+      expect(res.headers.get("content-security-policy-report-only"), ruta).toBe(CSP_SPA_REPORT_ONLY);
+      expect(res.headers.get("content-security-policy-report-only")).not.toContain("default-src 'none'");
+      expect(res.headers.get("content-security-policy-report-only")).toContain("script-src 'self'");
+      expect(res.headers.get("permissions-policy"), ruta).toContain("geolocation=(self)");
+      expect(res.headers.get("x-frame-options")).toBe("DENY");
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    }
+  });
+
+  it("la CSP de la SPA del codigo coincide con la de vercel.json y /pedir permite geolocation a la propia pagina", async () => {
+    const { readFileSync } = await import("node:fs");
+    const config = JSON.parse(readFileSync(new URL("../../../vercel.json", import.meta.url), "utf8")) as { headers: Array<{ source: string; headers: Array<{ key: string; value: string }> }> };
+    const csp = config.headers.flatMap((h) => h.headers).find((h) => h.key === "Content-Security-Policy-Report-Only");
+    expect(csp?.value).toBe(CSP_SPA_REPORT_ONLY);
+    const pedir = config.headers.find((h) => h.source === "/pedir/(.*)");
+    expect(pedir?.headers.find((h) => h.key === "Permissions-Policy")?.value).toBe(PERMISSIONS_POLICY_STOREFRONT);
+    // Las respuestas JSON de la API siguen con la CSP restrictiva.
+    const { app: a } = await app();
+    expect((await a.request("/health")).headers.get("content-security-policy")).toContain("default-src 'none'");
+  });
+
+  it("si la base falla cae a meta genericas con noindex pero sin cache compartido", async () => {
+    const t = await buildTestDeps();
+    const degradado = { ...t.deps, restaurantesRepo: () => { throw new Error("db caida"); } } as typeof t.deps;
+    const a = buildApp({ ...degradado, storefrontIndexHtml: async () => PLANTILLA });
+    const res = await a.request("/pedir/los-taquitos-de-pm");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.text()).toContain('content="noindex,nofollow"');
+    expect(res.headers.get("content-security-policy")).toBeNull();
   });
 
   it("sucursal: og:title y JSON-LD de esa sucursal", async () => {
