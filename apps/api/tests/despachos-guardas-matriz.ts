@@ -78,6 +78,8 @@ export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
   // cfdi.ts
   "POST /cfdi": ESCRIBE,
   "POST /cfdi/importar-xml": ESCRIBE,
+  // cfdi-lote.ts (D-13)
+  "POST /cfdi/importar-lote": ESCRIBE,
   "POST /cfdi/rep/analizar": TODOS,
   "GET /cfdi/:invoiceId": TODOS,
   "PUT /cfdi/:invoiceId/estado-sat": ESCRIBE,

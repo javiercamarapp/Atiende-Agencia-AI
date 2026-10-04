@@ -33,28 +33,17 @@ el `README.md` de cada `packages/domain-<vertical>/` y de cada
 
 ## Voz (patrón oficial)
 
-**Restaurantes ya no usa ElevenLabs** (decisión del 1-oct-2026): su voz es Gemini Live sobre
-LiveKit SIP, con token de llamada firmado; ver `docs/VOZ-PM.md`. Lo que sigue describe el patrón
-de citas, que conserva ElevenLabs hasta su migración. **Hoteles también dejó ElevenLabs** (3-oct-2026): su agente de voz (reservas, pedido F&B y contacto
-no operativo, con su propia persona y guardias) corre sobre `packages/voice-core` con la misma escalera de plataforma que restaurantes (Gemini Live ->
-cascada OpenRouter -> persona/buzón); ver `packages/voice-core/README.md` y `packages/domain-hoteles/src/voz/`.
+**Ninguna vertical usa ya ElevenLabs.** Restaurantes (1-oct-2026), hoteles y citas (3-oct-2026) montan SU agente de voz (persona, prompt, herramientas y
+guardias propias) sobre `packages/voice-core`, con la misma escalera de plataforma (Gemini Live -> cascada OpenRouter -> persona/buzón) y el mismo costo
+por minuto; ver `packages/voice-core/README.md`, `packages/domain-hoteles/src/voz/`, `packages/domain-citas/src/voz/` y, para restaurantes, `docs/VOZ-PM.md`.
 
-Las verticales hoteles y citas exponen
-Server Tools HTTP entrantes (`apps/api/src/routes/verticals/<vertical>/
-voice-tools.ts`; en hoteles las llama el worker de `voice-core`, no ElevenLabs) que ElevenLabs invoca por webhook durante una llamada en
-curso, autenticadas con un secreto dedicado (`x-atiende-tool-secret`,
-compartido de plataforma en restaurantes/citas, por-property en hoteles) —
-nunca `authMiddleware`/`Origin`, porque ElevenLabs no los manda. Este es el
-patrón oficial: **no requiere ninguna API key saliente de ElevenLabs**, el
-repo nunca inicia una llamada, solo la recibe.
+Cada vertical expone rutas HTTP entrantes (`apps/api/src/routes/verticals/<vertical>/voice-tools.ts`) que el worker de telefonía de `voice-core` llama
+durante una llamada en curso, autenticadas con el secreto `x-atiende-tool-secret` (compartido de plataforma en restaurantes y citas, por property en
+hoteles) y nunca con `authMiddleware`/`Origin`, porque el worker no los manda. El repo no inicia llamadas por sí mismo: el worker de telefonía (LiveKit SIP)
+aún no existe en el repo, así que la voz de las tres verticales se prueba hoy con el simulador y la vista previa del panel.
 
-Existió un paquete `packages/voice-gateway` para la dirección saliente
-(signed URL de sesión, listado de voces, config de agente) — se retiró del
-árbol por falta de cualquier consumidor real (cero imports fuera de
-comentarios, ningún endpoint ni UI que lo llamara) y porque conectarlo de
-verdad exigía inventar esas superficies desde cero, fuera del alcance
-mecánico de una migración. Detalle completo y evidencia en
-`docs/CREDENCIALES.md` §"Voz (ElevenLabs) — patrón oficial".
+Existió un paquete `packages/voice-gateway` para la dirección saliente hacia ElevenLabs; se retiró del árbol por falta de cualquier consumidor real. Detalle
+en `docs/CREDENCIALES.md`.
 
 ## Problemas conocidos
 
