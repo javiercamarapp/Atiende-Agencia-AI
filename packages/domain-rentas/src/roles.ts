@@ -89,6 +89,12 @@ export const SYNC_CALENDARIO_LECTURA_ROLES: readonly RentasVerticalRole[] = ["ad
 // (aprobación humana obligatoria, restringida a quien puede escribir la conversación).
 export const MENSAJERIA_ESCRITURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"];
 
+// Leer el hilo de mensajería (conversaciones, mensajes del huésped y borradores): todo el staff con
+// acceso a la property MENOS `limpieza` -- el texto que escribe el huésped puede traer datos personales
+// que el personal de piso no necesita para operar tareas (minimización). `contador` y
+// `operador:solo_calendario` conservan la lectura que ya tenían.
+export const MENSAJERIA_LECTURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "operador:solo_calendario", "contador"];
+
 // Plantillas de mensajería (H-056): la APROBACIÓN de una plantilla para programación
 // automática es una decisión de negocio a nivel de tenant, acotada a `admin_gestora`
 // (mismo criterio que PRICING_ESCRITURA_ROLES) -- un operador puede proponer/editar el
