@@ -11,7 +11,7 @@ const ORDER_ID = "00000000-0000-4000-8000-0000000000d1";
 const CALLBACK_ID = "00000000-0000-4000-8000-0000000000e1";
 const EMITIR = /core\.emit_notification/i;
 const CREAR_PEDIDO = /restaurantes\.create_order_idempotent/i;
-const INSERT_CALLBACK = /insert into restaurantes\.callback_requests/i;
+const INSERT_CALLBACK = /select restaurantes\.create_callback_request/i;
 const SIGUIENTE: FakeSessionHandler = { match: /select 1 as siguiente/, respond: () => [{ ok: true }] };
 
 function filaPedido(source: string) {
@@ -113,7 +113,7 @@ describe("restaurantes.callback.pendiente", () => {
 
   it("un contacto anotado por el agente emite UN aviso con la clave de la solicitud; ni nombre, ni telefono ni mensaje viajan", async () => {
     const { session, vistos } = conRegistro([
-      { match: INSERT_CALLBACK, respond: () => [{ id: CALLBACK_ID, resolved: false, created_at: "2026-10-01T10:00:00.000Z" }] },
+      { match: INSERT_CALLBACK, respond: () => [{ callback: { id: CALLBACK_ID, resolved: false, created_at: "2026-10-01T10:00:00.000Z" } }] },
       { match: EMITIR, respond: () => [{ emit_notification: 1 }] },
     ]);
     const r = await new PostgresRestaurantesRepository(session).createCallbackRequest(INPUT);
@@ -127,7 +127,7 @@ describe("restaurantes.callback.pendiente", () => {
 
   it("base sin migrar (42883): el contacto queda anotado y la sesion sigue viva", async () => {
     const session = new AbortAwareFakeSession([
-      { match: INSERT_CALLBACK, respond: () => [{ id: CALLBACK_ID, resolved: false, created_at: "2026-10-01T10:00:00.000Z" }] },
+      { match: INSERT_CALLBACK, respond: () => [{ callback: { id: CALLBACK_ID, resolved: false, created_at: "2026-10-01T10:00:00.000Z" } }] },
       { match: EMITIR, respond: () => pgError("42883", "function core.emit_notification does not exist") },
       SIGUIENTE,
     ]);

@@ -209,7 +209,8 @@ export interface RestaurantesRepository {
    * incluida la recuperación de la carrera de INSERT concurrente real, UNIQUE
    * (organization_id, phone)). */
   upsertCustomer(organizationId: string, phone: string, name: string): Promise<Customer>;
-  addCustomerAddressIfNew(customerId: string, address: string): Promise<void>;
+  /** `organizationId` es obligatorio: la escritura real (funcion solo-sistema de la migracion 043) exige que el cliente pertenezca a esa organizacion. */
+  addCustomerAddressIfNew(customerId: string, address: string, organizationId: string): Promise<void>;
   listCustomerAddresses(customerId: string): Promise<readonly CustomerAddress[]>;
   /** Historial de pedidos ELEGIBLES para memoria/recomendación (pending/preparando/
    * en_camino/entregado/completado — nunca cancelado/problema), orden desc. */
