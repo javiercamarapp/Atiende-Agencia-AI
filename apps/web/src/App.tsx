@@ -69,6 +69,8 @@ import { RestaurantesCopilotoPage } from "./verticals/restaurantes/pages/Copilot
 import { RentasCopilotoPage } from "./verticals/rentas/pages/Copiloto.tsx";
 import { DemoWhatsAppPage } from "./verticals/restaurantes/demo/DemoWhatsAppPage.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
+import { ReservarPage as HotelesReservarPage } from "./verticals/hoteles/reservar-publico/ReservarPage.tsx";
+import { EstadoReservaPage as HotelesEstadoReservaPage } from "./verticals/hoteles/reservar-publico/EstadoReservaPage.tsx";
 import { AvisoPublicoPage } from "./verticals/hoteles/privacidad-publica/AvisoPublicoPage.tsx";
 import { MisDatosPage } from "./verticals/hoteles/privacidad-publica/MisDatosPage.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
@@ -313,6 +315,15 @@ function DemoWhatsAppRoute() {
 function HotelesAvisoPublicoRoute() {
   const { orgSlug = "" } = useParams();
   return <AvisoPublicoPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
+// H-42 -- reserva directa PUBLICA del hotel y su pagina de estado/cancelacion por token: sin shell de panel ni menu.
+function HotelesReservarRoute() {
+  const { orgSlug = "" } = useParams();
+  return <HotelesReservarPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
+function HotelesEstadoReservaRoute() {
+  const { orgSlug = "", token = "" } = useParams();
+  return <HotelesEstadoReservaPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} token={token} />;
 }
 function HotelesMisDatosRoute() {
   const { orgSlug = "" } = useParams();
@@ -1153,6 +1164,8 @@ export function App() {
         <Route path="/hoteles/verificar-correo" element={<VerificarCorreoPage apiBaseUrl={API_BASE_URL} vertical="hoteles" />} />
         <Route path="/hoteles/:orgSlug/aviso" element={<HotelesAvisoPublicoRoute />} />
         <Route path="/hoteles/:orgSlug/mis-datos" element={<HotelesMisDatosRoute />} />
+        <Route path="/hoteles/:orgSlug/reservar" element={<HotelesReservarRoute />} />
+        <Route path="/hoteles/:orgSlug/reservar/estado/:token" element={<HotelesEstadoReservaRoute />} />
         <Route path="/hoteles/:orgSlug" element={<HotelesDashboardRoute />} />
         <Route path="/hoteles/:orgSlug/copiloto" element={<HotelesCopilotoRoute />} />
         <Route path="/hoteles/:orgSlug/reservas" element={<HotelesReservasRoute />} />
