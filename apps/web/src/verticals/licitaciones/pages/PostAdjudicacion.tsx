@@ -24,6 +24,7 @@ import type { FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, CalendarDays, CircleDollarSign, Clock } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, PageContainer, StatCard, StatusBadge, statusTone, Tabs, TabsContent, TabsList, TabsTrigger, Textarea } from "@atiende/ui";
+import { GarantiasHitosPanel } from "../components/GarantiasHitosPanel.tsx";
 import { fetchTender } from "../lib/tenders-client.ts";
 import { BORRADOR_ESTATUS_TONES, FACTURA_STATUS_TONES, VIABILIDAD_TONES } from "../lib/status-tones.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
@@ -305,15 +306,16 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
           <ArrowLeft className="h-3.5 w-3.5" />
           {tender.title}
         </Link>
-        <h1 className="font-display text-xl font-semibold text-foreground">Post-adjudicación: cobranza e inconformidades</h1>
+        <h1 className="font-display text-xl font-semibold text-foreground">Post-adjudicación: cobranza, garantías e inconformidades</h1>
         <p className="text-sm text-muted-foreground">
-          Seguimiento de pagos contra el contrato ya adjudicado y redacción de borradores de inconformidad contra el fallo. La presentación de escritos ante cualquier autoridad, y el alta del contrato mismo, no viven en esta pantalla.
+          Seguimiento de pagos, garantías, hitos y convenios del contrato ya adjudicado, y redacción de borradores de inconformidad contra el fallo. La presentación de escritos ante cualquier autoridad, y el alta del contrato mismo, no viven en esta pantalla.
         </p>
       </div>
 
       <Tabs defaultValue="cobranza" className="w-full">
         <TabsList className="flex-wrap">
           <TabsTrigger value="cobranza">Cobranza</TabsTrigger>
+          <TabsTrigger value="garantias">Garantías y hitos</TabsTrigger>
           <TabsTrigger value="inconformidades">Inconformidades</TabsTrigger>
         </TabsList>
 
@@ -419,6 +421,11 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
               {!canWrite && !contractMissing && <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede registrar ni marcar facturas -- solo lectura.</p>}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* L-27: el panel solo se monta (y solo pide datos) al abrir su pestana: no cambia lo que carga la cobranza. */}
+        <TabsContent value="garantias">
+          <GarantiasHitosPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} tenderId={tenderId} />
         </TabsContent>
 
         <TabsContent value="inconformidades">
