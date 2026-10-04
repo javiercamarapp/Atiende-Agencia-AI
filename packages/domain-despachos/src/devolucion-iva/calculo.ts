@@ -11,6 +11,7 @@
 // duplicar la lógica, mismo criterio que pide la tarea de esta fase).
 import { r2 } from "../nomina/redondeo.ts";
 import { fechaADate } from "../conciliacion/fechas.ts";
+import { infoDiaInhabil } from "../vencimientos/calendario-fiscal.ts";
 import type {
   ClasificacionIva,
   CongruenciaDiotCfdiDeclaracion,
@@ -456,22 +457,24 @@ export const DIAS_HABILES_PLAZO_RESOLUCION = 40;
 export const DIAS_HABILES_PLAZO_RESOLUCION_CON_DICTAMEN_O_GARANTIA = 20;
 
 /** Días inhábiles federales de México observados en 2026 (mes, día) — puerto
- * de `MEXICO_HOLIDAYS_2026` (`b2b_ai/features/alertas/deadline_engine.py`),
- * el mismo calendario oficial que usa el resto de plazos fiscales del
- * sistema (reutilizado aquí explícitamente por el origen para no mantener
- * un segundo calendario paralelo). */
+ * de `MEXICO_HOLIDAYS_2026` (`b2b_ai/features/alertas/deadline_engine.py`).
+ * D-P3-34: YA NO es el calendario por defecto del plazo de devolución. Ese conjunto es de "mes-día" sin año: aplicado a cualquier otro
+ * año ponía como inhábiles los lunes de 2026 (2-feb, 16-mar, 16-nov) y omitía los lunes reales de 2025/2027 y la Semana Santa. Se conserva
+ * exportado solo para quien lo pase explícitamente como `holidays`; sin ese argumento el plazo usa el calendario fiscal del año real
+ * (`feriadosDelAnio`/`infoDiaInhabil`, que incluye Jueves y Viernes Santo por validar con el fiscalista). */
 export const MEXICO_HOLIDAYS_2026: ReadonlySet<string> = new Set(["1-1", "2-2", "3-16", "5-1", "9-16", "11-16", "12-25"]);
 
-function esDiaHabil(d: Date, holidays: ReadonlySet<string> = MEXICO_HOLIDAYS_2026): boolean {
+function esDiaHabil(d: Date, holidays?: ReadonlySet<string>): boolean {
   const dow = d.getUTCDay(); // 0=domingo, 6=sábado
   if (dow === 0 || dow === 6) return false;
-  const key = `${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
-  return !holidays.has(key);
+  if (holidays !== undefined) return !holidays.has(`${d.getUTCMonth() + 1}-${d.getUTCDate()}`);
+  const fecha = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  return !infoDiaInhabil(fecha).inhabil;
 }
 
 /** `sumar_dias_habiles` — la fecha de inicio se EXCLUYE del conteo (Art. 12
  * CFF: el plazo corre a partir del día siguiente). */
-export function sumarDiasHabiles(fechaInicio: string, numDiasHabiles: number, holidays: ReadonlySet<string> = MEXICO_HOLIDAYS_2026): string {
+export function sumarDiasHabiles(fechaInicio: string, numDiasHabiles: number, holidays?: ReadonlySet<string>): string {
   if (numDiasHabiles < 0) throw new Error("num_dias_habiles no puede ser negativo.");
   const inicio = fechaADate(fechaInicio);
   if (!inicio) throw new Error(`fecha_inicio inválida: '${fechaInicio}'.`);
@@ -489,7 +492,7 @@ export function sumarDiasHabiles(fechaInicio: string, numDiasHabiles: number, ho
 }
 
 /** `calcular_fecha_limite_resolucion` — REQ-IVA-016. */
-export function calcularFechaLimiteResolucion(fechaPresentacion: string, hayDictamenOGarantia = false, holidays: ReadonlySet<string> = MEXICO_HOLIDAYS_2026): string {
+export function calcularFechaLimiteResolucion(fechaPresentacion: string, hayDictamenOGarantia = false, holidays?: ReadonlySet<string>): string {
   const dias = hayDictamenOGarantia ? DIAS_HABILES_PLAZO_RESOLUCION_CON_DICTAMEN_O_GARANTIA : DIAS_HABILES_PLAZO_RESOLUCION;
   return sumarDiasHabiles(fechaPresentacion, dias, holidays);
 }
