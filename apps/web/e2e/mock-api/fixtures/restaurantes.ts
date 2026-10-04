@@ -8,20 +8,20 @@ const PROP = propiedadDe("restaurantes");
 const ORG = orgDe("restaurantes");
 const B = "/v1/restaurantes/:id/admin";
 
-const ORDENES = [
-  { id: "ord-1001", propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-1", customerName: "Marisol Pech", customerPhone: "+529995550101", customerAddress: "Calle 60 #412, Centro", total: 286, status: "pending", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 2 }, { id: "p-2", name: "Horchata", price: 48, quantity: 2 }], source: "whatsapp", notes: null, paymentMethod: "efectivo", createdAt: "2026-09-30T18:20:00.000Z", assignedRepartidorId: null, estimatedDeliveryAt: null, incidentNote: null, canal: "domicilio", propina: 20, horaRecogida: null },
-  { id: "ord-1002", propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-2", customerName: "Jorge Canul", customerPhone: "+529995550102", customerAddress: null, total: 190, status: "preparando", items: [{ id: "p-3", name: "Cochinita pibil (torta)", price: 95, quantity: 2 }], source: "web", notes: "Sin cebolla", paymentMethod: "tarjeta", createdAt: "2026-09-30T18:05:00.000Z", assignedRepartidorId: null, estimatedDeliveryAt: null, incidentNote: null, canal: "recoger", propina: null, horaRecogida: "2026-09-30T19:00:00.000Z" },
-  { id: "ord-0999", propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-1", customerName: "Marisol Pech", customerPhone: "+529995550101", customerAddress: "Calle 60 #412, Centro", total: 143, status: "completado", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 1 }, { id: "p-2", name: "Horchata", price: 48, quantity: 1 }], source: "voice", notes: null, paymentMethod: "efectivo", createdAt: "2026-09-29T20:10:00.000Z", assignedRepartidorId: null, estimatedDeliveryAt: null, incidentNote: null, canal: "domicilio", propina: null, horaRecogida: null },
+export const ORDENES_SEMILLA = [
+  { id: "ord-1001", propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-1", customerName: "Marisol Pech", customerPhone: "+529995550101", customerAddress: "Calle 60 #412, Centro", total: 286, status: "pending", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 2 }, { id: "p-2", name: "Horchata", price: 48, quantity: 2 }], source: "whatsapp", notes: null, paymentMethod: "efectivo", createdAt: "2026-09-30T18:20:00.000Z", assignedRepartidorId: null as string | null, estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, canal: "domicilio", propina: 20, horaRecogida: null },
+  { id: "ord-1002", propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-2", customerName: "Jorge Canul", customerPhone: "+529995550102", customerAddress: null, total: 190, status: "preparando", items: [{ id: "p-3", name: "Cochinita pibil (torta)", price: 95, quantity: 2 }], source: "web", notes: "Sin cebolla", paymentMethod: "tarjeta", createdAt: "2026-09-30T18:05:00.000Z", assignedRepartidorId: null as string | null, estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, canal: "recoger", propina: null, horaRecogida: "2026-09-30T19:00:00.000Z" },
+  { id: "ord-0999", propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-1", customerName: "Marisol Pech", customerPhone: "+529995550101", customerAddress: "Calle 60 #412, Centro", total: 143, status: "completado", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 1 }, { id: "p-2", name: "Horchata", price: 48, quantity: 1 }], source: "voice", notes: null, paymentMethod: "efectivo", createdAt: "2026-09-29T20:10:00.000Z", assignedRepartidorId: null as string | null, estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, canal: "domicilio", propina: null, horaRecogida: null },
 ];
 
 // Entregas asignadas al repartidor (GET/PATCH repartidor/orders). Forma = RepartidorOrder de lib/repartidor-client.ts.
-const ENTREGAS = [
-  { id: "ent-2001", propertyId: PROP.id, branch: PROP.nombre, customerName: "Marisol Pech", customerPhone: "+529995550101", customerAddress: "Calle 60 #412, Centro", total: 286, status: "preparando", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 2 }, { id: "p-2", name: "Horchata", price: 48, quantity: 2 }], notes: null, paymentMethod: "efectivo", estimatedDeliveryAt: null, incidentNote: null as string | null, createdAt: "2026-09-30T18:20:00.000Z" },
-  { id: "ent-2002", propertyId: PROP.id, branch: PROP.nombre, customerName: "Jorge Canul", customerPhone: "+529995550102", customerAddress: "Calle 45 #210, Garcia Gineres", total: 190, status: "en_camino", items: [{ id: "p-3", name: "Cochinita pibil (torta)", price: 95, quantity: 2 }], notes: "Sin cebolla", paymentMethod: "tarjeta", estimatedDeliveryAt: null, incidentNote: null as string | null, createdAt: "2026-09-30T18:05:00.000Z" },
-  { id: "ent-1998", propertyId: PROP.id, branch: PROP.nombre, customerName: "Lucia Xool", customerPhone: "+529995550103", customerAddress: "Calle 21 #88, Itzimna", total: 143, status: "entregado", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 1 }, { id: "p-2", name: "Horchata", price: 48, quantity: 1 }], notes: null, paymentMethod: "efectivo", estimatedDeliveryAt: null, incidentNote: null as string | null, createdAt: "2026-09-29T20:10:00.000Z" },
+export const ENTREGAS_SEMILLA = [
+  { id: "ent-2001", propertyId: PROP.id, branch: PROP.nombre, customerName: "Marisol Pech", customerPhone: "+529995550101", customerAddress: "Calle 60 #412, Centro", total: 286, status: "preparando", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 2 }, { id: "p-2", name: "Horchata", price: 48, quantity: 2 }], notes: null, paymentMethod: "efectivo", estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, createdAt: "2026-09-30T18:20:00.000Z" },
+  { id: "ent-2002", propertyId: PROP.id, branch: PROP.nombre, customerName: "Jorge Canul", customerPhone: "+529995550102", customerAddress: "Calle 45 #210, Garcia Gineres", total: 190, status: "en_camino", items: [{ id: "p-3", name: "Cochinita pibil (torta)", price: 95, quantity: 2 }], notes: "Sin cebolla", paymentMethod: "tarjeta", estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, createdAt: "2026-09-30T18:05:00.000Z" },
+  { id: "ent-1998", propertyId: PROP.id, branch: PROP.nombre, customerName: "Lucia Xool", customerPhone: "+529995550103", customerAddress: "Calle 21 #88, Itzimna", total: 143, status: "entregado", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 1 }, { id: "p-2", name: "Horchata", price: 48, quantity: 1 }], notes: null, paymentMethod: "efectivo", estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, createdAt: "2026-09-29T20:10:00.000Z" },
 ];
 
-const MIEMBROS = [
+export const MIEMBROS_SEMILLA = [
   { id: "usr-owner", email: "owner.restaurantes@example.test", fullName: "Owner restaurantes", verticalRole: "owner", propertyIds: null },
   { id: "usr-1", email: "lucia.xool@example.test", fullName: "Lucia Xool", verticalRole: "staff", propertyIds: null },
   { id: "usr-2", email: "ramon.uc@example.test", fullName: "Ramon Uc", verticalRole: "repartidor", propertyIds: null },
@@ -132,42 +132,30 @@ export const rutasRestaurantes: readonly Ruta[] = [
   { metodo: "GET", patron: `${B}/kpis/channels`, manejador: () => canales },
   { metodo: "GET", patron: `${B}/kpis/customers`, manejador: () => clientesKpis },
 
-  { metodo: "GET", patron: `${B}/orders`, manejador: (p) => {
-      const estado = p.query.get("status");
-      const orders = ORDENES.filter((o) => (estado ? o.status === estado : true));
-      return { orders, nextCursor: null };
-    } },
   { metodo: "GET", patron: `${B}/scheduled-orders`, manejador: () => ({ disponible: true, orders: [], promovidos: [], serverNow: "2026-09-30T19:00:00.000Z" }) },
 
-  { metodo: "GET", patron: `${B}/categories`, manejador: () => ({ categories: [{ id: "cat-1", name: "Tacos", slug: "tacos", displayOrder: 1 }, { id: "cat-2", name: "Bebidas", slug: "bebidas", displayOrder: 2 }] }) },
-  { metodo: "GET", patron: `${B}/products`, manejador: () => ({ products: [
-      { id: "p-1", categoryId: "cat-1", categoryName: "Tacos", name: "Tacos al pastor (orden)", description: "Cinco tacos con pina y cilantro", price: 95, imageUrl: null, isPopular: true, isAvailable: true, displayOrder: 1, searchKeywords: ["pastor"], branch: { propertyId: PROP.id, productId: "p-1", price: 95, isAvailable: true } },
-      { id: "p-2", categoryId: "cat-2", categoryName: "Bebidas", name: "Horchata", description: null, price: 48, imageUrl: null, isPopular: false, isAvailable: true, displayOrder: 2, searchKeywords: [], branch: { propertyId: PROP.id, productId: "p-2", price: 48, isAvailable: true } },
-    ] }) },
   { metodo: "GET", patron: `${B}/customers`, manejador: () => ({ customers: [{ id: "cli-1", name: "Marisol Pech", phone: "+529995550101", orderCount: 9 }, { id: "cli-2", name: "Jorge Canul", phone: "+529995550102", orderCount: 3 }], nextCursor: null }) },
-  { metodo: "GET", patron: `${B}/sucursales`, manejador: () => ({ branches: [{ propertyId: PROP.id, name: PROP.nombre, slug: "centro", status: "active", phone: "+529995550100", address: "Calle 60 #400, Centro, Merida", lat: 20.9674, lng: -89.6237 }] }) },
 
   // Staff: gestion solo owner/admin (el servidor es la autoridad; la SPA solo oculta controles).
   { metodo: "GET", patron: `${B}/staff/repartidores`, manejador: () => ({ repartidores: [{ id: "usr-2", email: "ramon.uc@example.test", fullName: "Ramon Uc" }] }) },
-  { metodo: "GET", patron: `${B}/staff/invitaciones`, roles: ["owner", "admin"], manejador: () => ({ invitations: [] }) },
-  { metodo: "GET", patron: `${B}/staff/miembros`, roles: ["owner", "admin"], manejador: (p) => ({ miembros: p.estado.obtener("rest.miembros", () => structuredClone(MIEMBROS)) }) },
+  { metodo: "GET", patron: `${B}/staff/miembros`, roles: ["owner", "admin"], manejador: (p) => ({ miembros: p.estado.obtener("rest.miembros", () => structuredClone(MIEMBROS_SEMILLA)) }) },
   { metodo: "DELETE", patron: `${B}/staff/miembros/:userId`, roles: ["owner", "admin"], manejador: (p) => {
-      const miembros = p.estado.obtener("rest.miembros", () => structuredClone(MIEMBROS));
+      const miembros = p.estado.obtener("rest.miembros", () => structuredClone(MIEMBROS_SEMILLA));
       const i = miembros.findIndex((m) => m.id === p.params.userId);
       if (i < 0) return fallo(404, "Ese miembro no existe");
       miembros.splice(i, 1);
       return { ok: true };
     } },
   { metodo: "PATCH", patron: `${B}/staff/miembros/:userId`, roles: ["owner", "admin"], manejador: (p) => {
-      const miembros = p.estado.obtener("rest.miembros", () => structuredClone(MIEMBROS));
+      const miembros = p.estado.obtener("rest.miembros", () => structuredClone(MIEMBROS_SEMILLA));
       const m = miembros.find((x) => x.id === p.params.userId);
       if (!m) return fallo(404, "Ese miembro no existe");
       m.verticalRole = String(((p.cuerpo ?? {}) as { verticalRole?: string }).verticalRole ?? m.verticalRole);
       return m;
     } },
-  { metodo: "GET", patron: "/v1/restaurantes/:id/repartidor/orders", manejador: (p) => ({ orders: p.estado.obtener("rest.entregas", () => structuredClone(ENTREGAS)) }) },
+  { metodo: "GET", patron: "/v1/restaurantes/:id/repartidor/orders", manejador: (p) => ({ orders: p.estado.obtener("rest.entregas", () => structuredClone(ENTREGAS_SEMILLA)) }) },
   { metodo: "PATCH", patron: "/v1/restaurantes/:id/repartidor/orders/:orderId/status", manejador: (p) => {
-      const entregas = p.estado.obtener("rest.entregas", () => structuredClone(ENTREGAS));
+      const entregas = p.estado.obtener("rest.entregas", () => structuredClone(ENTREGAS_SEMILLA));
       const e = entregas.find((x) => x.id === p.params.orderId);
       if (!e) return fallo(404, "Ese pedido no existe");
       const cuerpo = (p.cuerpo ?? {}) as { status?: string; incidentNote?: string };
@@ -175,6 +163,12 @@ export const rutasRestaurantes: readonly Ruta[] = [
       if (cuerpo.status === "problema" && !cuerpo.incidentNote?.trim()) return fallo(400, "La nota de incidencia es obligatoria");
       e.status = cuerpo.status;
       if (cuerpo.incidentNote) e.incidentNote = cuerpo.incidentNote;
+      // Mismo pedido visto desde el panel del owner (GET admin/orders): el cambio del repartidor se refleja alli.
+      const orden = p.estado.obtener("rest.ordenes", () => structuredClone(ORDENES_SEMILLA)).find((o) => o.id === e.id);
+      if (orden) {
+        orden.status = cuerpo.status;
+        if (cuerpo.incidentNote) orden.incidentNote = cuerpo.incidentNote;
+      }
       return { order: e };
     } },
 ];
