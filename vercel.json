@@ -63,6 +63,8 @@
     { "source": "/rentas/:path*", "destination": "/api" },
     { "source": "/superadmin/:path*", "destination": "/api" },
     { "source": "/portal-cliente/:path*", "destination": "/api" },
+    { "source": "/pedir/:orgSlug", "destination": "/api" },
+    { "source": "/pedir/:orgSlug/:branchSlug", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [

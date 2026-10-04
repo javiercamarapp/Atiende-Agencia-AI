@@ -115,6 +115,9 @@ import type { LlmRouteConfig } from "./production/llm-models.ts";
  * concepto de sesión/RLS (ver apps/api/tests/fixtures.ts y fixtures por vertical). */
 export interface AppDeps {
   readonly env: ApiEnv;
+  /** `index.html` del panel para las meta de vista previa de `/pedir/*` (storefront-meta.ts). OPCIONAL: ausente =
+   * el embebido en el build o el del CDN; los tests lo inyectan. */
+  readonly storefrontIndexHtml?: () => Promise<string | null>;
   readonly coreRepo: CoreRepository;
   /** Fase 10 — invitar/gestionar staff (crear/listar/revocar invitación), ver
    * `@atiende/db::CoreStaffRepository`. A DIFERENCIA de `coreRepo` (objeto fijo,
