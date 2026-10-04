@@ -595,7 +595,7 @@ function Mundo({ respuesta, generadoEn, recientes, apiBaseUrl, token }: {
         )}
 
         {/* La leyenda: las 6 verticales, cada una con su color y su conteo. FILTRABLE: un clic la agrega al filtro (otro clic la quita). */}
-        <div role="group" aria-label="Verticales (leyenda y filtro)" data-testid="cerebro-leyenda" className="absolute bottom-5 left-5 z-10 flex max-w-[calc(100%-2.5rem)] flex-wrap items-center gap-x-1.5 gap-y-1 rounded-3xl border border-border bg-card px-3 py-2 backdrop-blur-sm">
+        <div role="group" aria-label="Verticales (leyenda y filtro)" data-testid="cerebro-leyenda" className={cn("absolute bottom-5 left-5 z-10 max-w-[calc(100%-2.5rem)] flex-wrap items-center gap-x-1.5 gap-y-1 rounded-3xl border border-border bg-card px-3 py-2 backdrop-blur-sm", seleccion && !calles ? "hidden sm:flex sm:max-w-[calc(100%-24rem)]" : "flex")}>
           {VERTICALES_CEREBRO.map((v) => (
             <Chip key={v} vertical={v} activo={filtros.verticales?.has(v) ?? false} title={`${NOMBRE_VERTICAL[v]}: clic para ver solo esta vertical (otro clic la quita)`} onClick={() => setFiltros((f) => ({ ...f, verticales: alternarEnSet(f.verticales, v) }))}>
               {NOMBRE_VERTICAL[v]} <span className="tabular-nums">{entero(conteoVertical.get(v) ?? 0)}</span>
@@ -610,7 +610,7 @@ function Mundo({ respuesta, generadoEn, recientes, apiBaseUrl, token }: {
 
         {/* Los leads del estado: tarjetas FLOTANDO al lateral del pais, sin recuadro contenedor. Solo la columna hace scroll. */}
         {seleccion && !calles && (
-          <div className="cerebro-panel pointer-events-none absolute bottom-20 right-4 top-[4.4rem] z-20 flex w-[min(92vw,330px)] flex-col gap-2.5 sm:bottom-4">
+          <div data-testid="cerebro-panel-estado" className="cerebro-panel pointer-events-none absolute bottom-4 right-4 top-44 z-20 flex w-[min(92vw,330px)] flex-col gap-2.5 sm:top-[9rem] min-[1500px]:top-[4.4rem]">
             <div className="pointer-events-auto flex items-center gap-2.5 self-end rounded-full border border-border bg-card px-3.5 py-1.5 shadow-elevated backdrop-blur-sm">
               <span className="text-ui font-semibold text-foreground">{seleccion.nombre}</span>
               <span className="text-eyebrow tabular-nums text-muted-foreground">{entero(listaSeleccion.length)}</span>
@@ -689,7 +689,7 @@ function Mundo({ respuesta, generadoEn, recientes, apiBaseUrl, token }: {
       </Reveal>
 
       <Reveal retraso="delay-100">
-        <section className={PANEL_RESUMEN}>
+        <section data-testid="cerebro-top12" className={PANEL_RESUMEN}>
           <h3 className={TITULO_RESUMEN}>Los 12 más cerrables del país</h3>
           {ordenados.length === 0 ? (
             <p className="text-xs text-muted-foreground">{filtrosActivos > 0 ? "Ningún prospecto pasa los filtros." : "Todavía no hay prospectos."}</p>

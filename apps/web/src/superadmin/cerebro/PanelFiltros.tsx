@@ -55,7 +55,7 @@ export function PanelFiltros({ filtros, setFiltros, prospectos, filtrados, fuent
       role="dialog"
       aria-label="Filtros y orden"
       data-testid="cerebro-filtros"
-      className="cerebro-panel absolute right-4 top-20 z-40 max-h-[calc(100%-6.5rem)] w-[min(94vw,560px)] space-y-3 overflow-y-auto rounded-2xl border border-border bg-card p-4 shadow-elevated"
+      className="cerebro-panel absolute right-4 top-44 z-40 max-h-[calc(100%-12rem)] sm:top-[9rem] sm:max-h-[calc(100%-10rem)] min-[1500px]:top-20 min-[1500px]:max-h-[calc(100%-6.5rem)] w-[min(94vw,560px)] space-y-3 overflow-y-auto rounded-2xl border border-border bg-card p-4 shadow-elevated"
     >
       <div>
         <p className={ETIQUETA}>Vertical</p>
