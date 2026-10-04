@@ -25,6 +25,7 @@ import {
   invokeAgentTool,
   previewPromotion,
   redondearACentavos,
+  seccionEncargados,
 } from "@atiende/domain-restaurantes";
 import type { AgentToolContext, CanalPedido, Order, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { encolarComandaParaPedido, type ResultadoEncolarPedido } from "@atiende/domain-restaurantes/softrestaurant";
@@ -167,6 +168,30 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
       const org = await resolveOrg(repo, c.req.param("orgSlug"));
       await limitOrThrow(repo, c, "storefront-read", 120, org.id);
       return c.json({ restaurante: { slug: org.slug, nombre: org.name }, sucursales: await buildStorefrontDirectorio(repo, org.id) });
+    });
+  });
+
+  // GET /v1/restaurantes/:orgSlug/storefront/privacidad -- seccion "Encargados y transferencias" del aviso (BORRADOR pendiente de
+  // revision legal): proveedores que de verdad usa la organizacion segun su configuracion (canal de WhatsApp conectado, voz habilitada).
+  app.get("/v1/restaurantes/:orgSlug/storefront/privacidad", async (c) => {
+    noStore(c);
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-read", 120, org.id);
+      const whatsappConectado = (await repo.getWhatsappChannelConfig(org.id)).phoneNumberId !== null;
+      let vozHabilitada = false;
+      if (deps.vozRepo) {
+        const voz = deps.vozRepo(db);
+        for (const branch of (await repo.listBranchesForOrganizationAdmin(org.id)).filter((b) => b.status === "active")) {
+          const lectura = await voz.getConfig(branch.propertyId);
+          if (lectura.disponible && lectura.valor.habilitado) {
+            vozHabilitada = true;
+            break;
+          }
+        }
+      }
+      return c.json({ encargados: seccionEncargados({ whatsappConectado, vozHabilitada }) });
     });
   });
 

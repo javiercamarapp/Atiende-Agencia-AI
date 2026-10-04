@@ -276,6 +276,34 @@ describe("aviso de privacidad y lista de sucursales", () => {
     expect(document.title).toContain("Aviso de privacidad");
   });
 
+  it("muestra 'Encargados y transferencias' (borrador) con la configuracion real que manda el servidor", async () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).endsWith("/privacidad")
+        ? json({ encargados: { borrador: true, revisionLegalPendiente: true, aviso: "BORRADOR pendiente de revisión legal. Algunos proveedores tratan sus datos.", encargados: [{ id: "meta_whatsapp", proveedor: "Meta (WhatsApp)", finalidad: "Enviar y recibir los mensajes de WhatsApp.", pais: "Estados Unidos" }] } })
+        : json({}, 404),
+    );
+    rendered = renderEn("/pedir/demo/privacidad");
+    await esperar();
+    const t = rendered.container.textContent ?? "";
+    expect(t).toContain("Encargados y transferencias");
+    expect(t).toContain("Borrador pendiente de revisión legal.");
+    expect(t).toContain("Meta (WhatsApp) (Estados Unidos): Enviar y recibir los mensajes de WhatsApp.");
+  });
+
+  it("sin encargados (o si el servidor falla) la seccion no aparece y el aviso simplificado sigue completo", async () => {
+    fetchMock.mockImplementation(async () => json({ encargados: { borrador: true, revisionLegalPendiente: true, aviso: "x", encargados: [] } }));
+    rendered = renderEn("/pedir/demo/privacidad");
+    await esperar();
+    expect(rendered.container.textContent).not.toContain("Encargados y transferencias");
+    expect(rendered.container.textContent).toContain("Tus derechos");
+    rendered.unmount();
+    fetchMock.mockImplementation(async () => json({ message: "falla" }, 500));
+    rendered = renderEn("/pedir/demo/privacidad");
+    await esperar();
+    expect(rendered.container.textContent).not.toContain("Encargados y transferencias");
+    expect(rendered.container.textContent).toContain("Tus derechos");
+  });
+
   it("lista las sucursales con apertura y enlaza a su menu; titulo e indexable para SEO", async () => {
     fetchMock.mockResolvedValue(json({ restaurante: { slug: "demo", nombre: "Los Taquitos" }, sucursales: [SUCURSAL, { ...SUCURSAL, slug: "norte", name: "Norte", abiertoAhora: false, cierraA: null, proximaApertura: { dia: "martes", hora: "12:00", hoy: false } }] }));
     rendered = renderEn("/pedir/demo");

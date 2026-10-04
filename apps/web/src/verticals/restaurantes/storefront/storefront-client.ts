@@ -41,6 +41,14 @@ export interface SucursalDirectorio {
   readonly comoLlegarUrl: string | null;
 }
 
+/** Seccion "Encargados y transferencias" del aviso de privacidad (BORRADOR pendiente de revision legal). */
+export interface SeccionEncargados {
+  readonly borrador: true;
+  readonly revisionLegalPendiente: true;
+  readonly aviso: string;
+  readonly encargados: ReadonlyArray<{ readonly id: string; readonly proveedor: string; readonly finalidad: string; readonly pais: string }>;
+}
+
 export interface ProductoMenu {
   readonly id: string;
   readonly name: string;
@@ -216,6 +224,9 @@ export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetc
     },
     async directorio(): Promise<{ restaurante: { slug: string; nombre: string }; sucursales: SucursalDirectorio[] }> {
       return leer(await get("/directorio"), "No pudimos cargar las sucursales.");
+    },
+    async privacidad(): Promise<{ encargados: SeccionEncargados }> {
+      return leer(await get("/privacidad"), "No pudimos cargar los encargados del aviso de privacidad.");
     },
     async menu(branchSlug: string): Promise<{ sucursal: SucursalPublica | null; categorias: CategoriaMenu[] }> {
       return leer(await get(`/${enc(branchSlug)}/menu`), "No pudimos cargar el menú.");

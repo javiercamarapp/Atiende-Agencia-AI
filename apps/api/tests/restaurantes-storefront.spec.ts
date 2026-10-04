@@ -7,6 +7,7 @@ import { FakeSoftRestaurantAdapter, InMemoryComandaOutboxStore, MapaProductoCodi
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { issueStorefrontTrackingToken, signStorefrontTrackingToken, storefrontTrackingKey } from "../src/storefront-tracking-token.ts";
+import { InMemoryVozRepository } from "@atiende/domain-restaurantes";
 import { buildTestDeps, jsonRequestInit, TEST_ENV } from "./fixtures.ts";
 
 const ORG = "los-taquitos-de-pm";
@@ -63,6 +64,63 @@ describe("lectura publica: sucursales y menu", () => {
     const s = await setup();
     s.restaurantesRepo.seedBranch({ propertyId: randomUUID(), organizationId: s.organizationId, name: "Cerrada", slug: "cerrada", status: "inactive", phone: null, address: null, lat: null, lng: null });
     expect((await s.app.request(`${BASE}/cerrada/menu`)).status).toBe(404);
+  });
+});
+
+describe("aviso de privacidad: encargados y transferencias (borrador)", () => {
+  /** Restaurante sin canal de WhatsApp ni voz: la fixture base ya trae un numero conectado. */
+  async function orgSinCanal() {
+    const s = await setup();
+    const organizationId = randomUUID();
+    const propertyId = randomUUID();
+    s.restaurantesRepo.seedOrganization({ id: organizationId, slug: "sin-canal", name: "Sin Canal" });
+    s.restaurantesRepo.seedBranch({ propertyId, organizationId, name: "Unica", slug: "unica", status: "active", phone: null, address: null, lat: null, lng: null });
+    return { s, organizationId, propertyId, url: "/v1/restaurantes/sin-canal/storefront/privacidad" };
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ids = (body: Record<string, any>) => body.encargados.encargados.map((e: { id: string }) => e.id);
+
+  it("sin WhatsApp ni voz configurados: lista vacia, igual marcada como borrador", async () => {
+    const { s, url } = await orgSinCanal();
+    const res = await s.app.request(url);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect((await s.json(res)).encargados).toMatchObject({ borrador: true, revisionLegalPendiente: true, encargados: [] });
+  });
+
+  it("con un numero de WhatsApp conectado aparecen el modelo de lenguaje y Meta con su pais", async () => {
+    const { s, organizationId, url } = await orgSinCanal();
+    await s.restaurantesRepo.upsertWhatsappChannelConfig(organizationId, "pnid-123");
+    const body = await s.json(await s.app.request(url));
+    expect(ids(body)).toEqual(["openrouter", "meta_whatsapp"]);
+    expect(body.encargados.encargados[0].pais).toBeTruthy();
+  });
+
+  it("con la voz habilitada en una sucursal activa aparecen Gemini, Twilio y LiveKit", async () => {
+    const { s, organizationId, propertyId, url } = await orgSinCanal();
+    const voz = new InMemoryVozRepository();
+    voz.seedProperty(propertyId, organizationId);
+    await voz.upsertConfig(organizationId, propertyId, { habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "Hable de usted.", mensajeInicial: "Hola." } as never);
+    const app = buildApp({ ...s.deps, vozRepo: () => voz });
+    expect(ids((await (await app.request(url)).json()) as Record<string, unknown>)).toEqual(["openrouter", "gemini", "twilio", "livekit"]);
+  });
+
+  it("una voz deshabilitada, o con la base sin migrar, NO se lista", async () => {
+    const { s, organizationId, propertyId, url } = await orgSinCanal();
+    const voz = new InMemoryVozRepository();
+    voz.seedProperty(propertyId, organizationId);
+    await voz.upsertConfig(organizationId, propertyId, { habilitado: false, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "Hable de usted.", mensajeInicial: "Hola." } as never);
+    const deshabilitada = buildApp({ ...s.deps, vozRepo: () => voz });
+    expect(ids((await (await deshabilitada.request(url)).json()) as Record<string, unknown>)).toEqual([]);
+    voz.migrada = false;
+    const res = await deshabilitada.request(url);
+    expect(res.status).toBe(200);
+    expect(ids((await res.json()) as Record<string, unknown>)).toEqual([]);
+  });
+
+  it("restaurante inexistente: 404", async () => {
+    const s = await setup();
+    expect((await s.app.request(`/v1/restaurantes/no-existe/storefront/privacidad`)).status).toBe(404);
   });
 });
 

@@ -337,7 +337,7 @@ function ReservarCitasRoute() {
 }
 function StorefrontPrivacidadRoute() {
   const { orgSlug = "" } = useParams();
-  return <PrivacidadStorefrontPage orgSlug={orgSlug} />;
+  return <PrivacidadStorefrontPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
 
 /** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
