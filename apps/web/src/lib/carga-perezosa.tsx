@@ -3,9 +3,13 @@
 // Por qué existe: cada pantalla es un chunk con hash. Si entra un despliegue mientras el cliente tiene la app abierta,
 // el chunk viejo ya no existe (Vercel responde index.html por la reescritura `/(.*)`) y el import dinámico falla; con
 // una red móvil inestable pasa igual. React.lazy guarda el rechazo en caché, así que reintentar el render no lo arregla.
-// Estrategia: (1) un reintento corto del import (fallo transitorio); (2) si persiste, recargar la página UNA vez para
-// traer el index.html nuevo (protegido con una marca de tiempo en sessionStorage contra bucles de recarga); (3) si ni
-// así, el ErrorBoundary de la raíz pinta un error con "Recargar" en vez de dejar la pantalla en blanco.
+// Estrategia real en el build de Vite: el helper de precarga emite `vite:preloadError` en el PRIMER fallo de un import
+// dinámico; el manejador de main.tsx recarga la página (una vez por ventana de 30 s, marca en sessionStorage) para traer
+// el index.html nuevo. El reintento corto de importarConRecuperacion solo corre dentro de esa ventana (o sin helper de
+// Vite, p. ej. en tests). Pasada la ventana, un chunk que falla de forma persistente (sin conexión) puede provocar una
+// recarga por navegación: no hay bucle. Si ni así carga, el ErrorBoundary de la raíz pinta un error con "Recargar".
+// Limitación conocida: ErrorBoundaryRaiz no reinicia su estado al navegar; el botón recarga la página.
+// Nada del storefront debe precargar chunks con import() especulativo: el mismo evento recargaría con un formulario abierto.
 import { Component, lazy } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { EstadoError } from "@atiende/ui";
