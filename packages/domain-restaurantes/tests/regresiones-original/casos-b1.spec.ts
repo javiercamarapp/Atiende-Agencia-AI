@@ -2,7 +2,7 @@
 // X07, X21, X24, X27, X29, X30, X31, X33, X36, X46-X54. Se escriben con el guion de LLM simulado y la maquina de voz.
 // it.fails = defecto o brecha vigente en main que cierra el lote nombrado (R1 = rescate-orig-restaurantes-1,
 // C = voz); al entrar ese PR se quita `.fails`.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { evaluarLlamada } from "../../src/voz/simulador/graders-voz.ts";
 import { correrGuion } from "../../src/voz/simulador/correr-guion.ts";
 import { GUIONES_ES_MX } from "../../src/voz/simulador/guiones-es-mx.ts";
@@ -16,6 +16,7 @@ import { createOrder, quoteOrder, searchProducts } from "../../src/orders.ts";
 import { construirPayloadComanda } from "../../src/softrestaurant/outbox-service.ts";
 import { MapaProductoCodigo } from "../../src/softrestaurant/catalog-map.ts";
 import { handleInboundWhatsAppMessage } from "../../src/whatsapp/inbound.ts";
+import { GeminiLiveProvider } from "../../src/index.ts";
 import { FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, buildSystemPrompt } from "../../src/whatsapp/llm-turn-handler.ts";
 import { pmCustomerContextBlock } from "../../src/whatsapp/perfil-pm.ts";
 import type { WhatsAppTurnHandler } from "../../src/whatsapp/turn-handler.ts";
@@ -229,5 +230,31 @@ describe("X51 / X52 -- voz: silencio y precios", () => {
     const l = await correrGuion(GUIONES_ES_MX.find((g) => g.id.startsWith("V01"))!);
     const inventado = { ...l, transcripcion: [...l.transcripcion, { rol: "agente" as const, texto: "Con mucho gusto, el taco al pastor cuesta $999 pesos." }] };
     expect((await evaluarLlamada(inventado)).some((r) => !r.ok)).toBe(true);
+  });
+});
+
+describe("X28 / X38 / 0c0bebf -- repartidor, reglas duras de voz y tiempo antes de crear", () => {
+  it("X28 / 0a346be: el prompt PM dice que el cliente no elige repartidor (H18), por WhatsApp y por voz", () => {
+    const prompt = buildSystemPrompt(PM_CONFIG_POR_OMISION, [{ propertyId: "p1", slug: "t1", name: "Prolongación Montejo", address: null }], NEW_CUSTOMER, new Date("2026-10-06T20:00:00Z"));
+    expect(prompt).toMatch(/El cliente no elige repartidor/);
+  });
+
+  // R1 (X38 voz FALTA): el comportamiento de voz es texto editable por sucursal y se manda tal cual a Gemini; el original anexaba las
+  // reglas duras DESPUES del texto editable, para que un guardado no las pudiera borrar.
+  it.fails("X38 / [lote R1]: el prompt que recibe Gemini Live siempre lleva las reglas duras, aunque el comportamiento guardado sea otro texto", async () => {
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ name: "auth_tokens/x38" }), { status: 200 }));
+    const p = new GeminiLiveProvider({ apiKey: "k-test", fetchFn: fetchFn as unknown as typeof fetch });
+    await p.emitirSesionPreview({ organizationId: "o", propertyId: "p", sessionId: "s", voiceId: "Kore", comportamiento: "Platica con el cliente y vende todo lo que pueda.", mensajeInicial: "", ttlSegundos: 300 });
+    const body = JSON.parse((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    const instruccion = body.bidiGenerateContentSetup.systemInstruction.parts[0].text as string;
+    expect(instruccion).toMatch(/alcohol/i);
+    expect(instruccion).toMatch(/escalar_a_humano/);
+  });
+
+  // 0c0bebf: el original tenia un grader que falla si el agente da el tiempo de entrega ANTES de que crear_pedido tenga exito.
+  it.fails("0c0bebf / [lote C]: un grader de voz falla si el agente da el tiempo de espera antes de crear el pedido", async () => {
+    const l = await correrGuion(GUIONES_ES_MX.find((g) => g.id.startsWith("V01"))!);
+    const adelantado = { ...l, transcripcion: [{ rol: "agente" as const, texto: "Con gusto, su pedido llegará en 40 a 50 minutos." }, ...l.transcripcion] };
+    expect((await evaluarLlamada(adelantado)).some((r) => !r.ok)).toBe(true);
   });
 });
