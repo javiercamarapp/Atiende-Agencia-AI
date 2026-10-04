@@ -12,6 +12,7 @@ import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInU
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
+import { diaLocalSucursal } from "./voz/kpi.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
 import type {
   CanalPedido,
@@ -1513,6 +1514,13 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       .slice(0, 200);
   }
 
+  async listDeliveredOrdersForRepartidor(organizationId: string, repartidorId: string, fechaLocal: string, zonaHoraria: string): Promise<readonly Order[]> {
+    return this.orders
+      .filter((o) => o.organizationId === organizationId && o.assignedRepartidorId === repartidorId && o.deliveredAt && diaLocalSucursal(new Date(o.deliveredAt), zonaHoraria).fecha === fechaLocal)
+      .sort((a, b) => (b.deliveredAt ?? "").localeCompare(a.deliveredAt ?? ""))
+      .slice(0, 200);
+  }
+
   async findAssignedOrderById(organizationId: string, repartidorId: string, orderId: string): Promise<Order | null> {
     const order = this.orders.find((o) => o.id === orderId && o.organizationId === organizationId && o.assignedRepartidorId === repartidorId);
     return order ?? null;
@@ -1531,7 +1539,12 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     );
     if (index === -1) return null;
     const existing = this.orders[index]!;
-    const updated: Order = { ...existing, status: toStatus, incidentNote: toStatus === "problema" ? incidentNote : existing.incidentNote };
+    const updated: Order = {
+      ...existing,
+      status: toStatus,
+      incidentNote: toStatus === "problema" ? incidentNote : existing.incidentNote,
+      deliveredAt: toStatus === "entregado" ? new Date().toISOString() : existing.deliveredAt,
+    };
     this.orders[index] = updated;
     return updated;
   }
