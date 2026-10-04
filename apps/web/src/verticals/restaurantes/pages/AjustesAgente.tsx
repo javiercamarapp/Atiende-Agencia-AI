@@ -136,7 +136,7 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
         <>
           {!vista.disponible ? (
             <Callout tone="info" role="status" data-testid="ajustes-sin-migrar">
-              Los ajustes todavía no están disponibles en esta base de datos: se muestran los valores de siempre y no se pueden guardar hasta que se active la migración 047.
+              Los ajustes todavía no están disponibles en esta base de datos: se muestran los valores de siempre y no se pueden guardar hasta que se active la migración 055.
             </Callout>
           ) : null}
 

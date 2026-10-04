@@ -1,4 +1,4 @@
-// REGLA DURA de compatibilidad con la base SIN migrar (migracion 047): el repositorio corre dentro de la transaccion unica del request y del turno
+// REGLA DURA de compatibilidad con la base SIN migrar (migración 055): el repositorio corre dentro de la transaccion unica del request y del turno
 // de WhatsApp. `AbortAwareFakeSession` reproduce el estado abortado de Postgres (25P02): cada caso verifica el vacio honesto / el error correcto Y que
 // la MISMA sesion sigue viva para la consulta siguiente.
 import { describe, expect, it } from "vitest";

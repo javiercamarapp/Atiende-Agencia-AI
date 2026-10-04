@@ -1,6 +1,6 @@
 -- Ajustes del agente de restaurantes por ORGANIZACION: modelo y temperatura del agente de WhatsApp, modelo de la cascada de voz, temperatura de la
 -- voz, ritmo y estilo de habla, y sonido de fondo opcional de la llamada. Es el equivalente, sobre la arquitectura vigente (gateway LLM + Gemini Live),
--- de lo que el original dejaba ajustar en ElevenLabs. Prefijo de supabase/migrations asignado: 20240101000330 (interno 047).
+-- de lo que el original dejaba ajustar en ElevenLabs. Prefijo de supabase/migrations asignado: 20240101000330 (interno 055).
 --
 -- Decision de diseno: UNA tabla NUEVA, ninguna restriccion existente cambia. El codigo TypeScript que la lee degrada con SAVEPOINT a los valores de
 -- siempre cuando la base todavia no la tiene (SQLSTATE 42P01/42703/42883) -- nada de esto se aplica al mergear, y sin esta migracion el agente se

@@ -145,7 +145,7 @@ describe("AjustesAgentePage — carga y estados honestos", () => {
   it("base sin migrar (disponible=false): lo dice y NO deja guardar", async () => {
     montar({ ajustes: { status: 200, body: vista({ disponible: false, configurados: false }) } });
     await esperar();
-    expect(q('[data-testid="ajustes-sin-migrar"]')?.textContent).toMatch(/migración 047/);
+    expect(q('[data-testid="ajustes-sin-migrar"]')?.textContent).toMatch(/migración 055/);
     expect((q("#ajustes-modelo-whatsapp") as HTMLSelectElement).disabled).toBe(true);
     expect(boton("Guardar ajustes")!.disabled).toBe(true);
   });
