@@ -20,6 +20,9 @@ export interface WhatsAppTurnHandler {
     /** Sucursal dueña del número de WhatsApp que recibió el mensaje (modelo PM: un número
      * por sucursal). `null`/ausente = número por defecto de la organización. */
     readonly propertyId?: string | null;
+    /** Instante absoluto (ms, mismo reloj que `Date.now`) antes del cual el turno debe TERMINAR para que la funcion del
+     * webhook alcance a confirmar la transaccion y encolar la respuesta. Ausente = solo manda el presupuesto propio del handler. */
+    readonly finTurnoMs?: number;
   }): Promise<{
     readonly reply: string;
     readonly orderId: string | null;

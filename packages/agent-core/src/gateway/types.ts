@@ -46,8 +46,18 @@ export interface LlmToolDefinition {
   parameters: Record<string, unknown>;
 }
 
+/** Audio de entrada (nota de voz) adjunto a un mensaje de usuario: se manda al proveedor como parte `input_audio`
+ *  (base64 + formato) de Chat Completions. Los bytes viajan SOLO en la peticion: nunca se registran ni se guardan. */
+export interface LlmAudioPart {
+  /** Audio codificado en base64 (sin prefijo `data:`). */
+  data: string;
+  /** Formato de OpenRouter/OpenAI `input_audio.format`: 'ogg', 'mp3', 'wav', 'm4a', 'aac', 'flac'... */
+  format: string;
+}
+
 export type LlmMessage =
-  | { role: 'system' | 'user'; content: string }
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string; audio?: LlmAudioPart }
   | { role: 'assistant'; content: string; toolCalls?: LlmToolCall[] }
   | { role: 'tool'; toolCallId: string; content: string };
 
