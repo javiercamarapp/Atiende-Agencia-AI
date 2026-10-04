@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   TOPE_CARACTERES_PROMPT,
   UMBRAL_COLONIA_AMBIGUA_KM,
+  bloqueConocimientoOVacio,
   bloqueConocimientoParaPrompt,
   cargarDatosConocimiento,
   generarConocimientoAuto,
@@ -11,6 +12,7 @@ import {
 } from "../src/index.ts";
 import type { DatosConocimiento, KnownZone, StorefrontCatalogRow, SucursalConocimiento } from "../src/index.ts";
 import { InMemoryRestaurantesRepository } from "../src/in-memory-repository.ts";
+import { AbortAwareFakeSession } from "./support/aborting-fake-session.ts";
 
 const ORG = "00000000-0000-4000-8000-0000000000b1";
 
@@ -178,5 +180,29 @@ describe("textoDeHorario", () => {
     expect(textoDeHorario([{ dias: [1, 2], abre: "09:00", cierra: "14:00" }])).toBe("lunes y martes de 09:00 a 14:00");
     expect(textoDeHorario(null)).toBe("");
     expect(textoDeHorario([])).toBe("");
+  });
+});
+
+describe("bloqueConocimientoOVacio (contexto de sistema: nunca aborta la transaccion ni tumba la llamada)", () => {
+  it("un error de lectura devuelve el bloque vacio, hace ROLLBACK TO SAVEPOINT y la sesion sigue viva", async () => {
+    const sesion = new AbortAwareFakeSession([{ match: /select 1 as siguiente/, respond: () => [{ ok: true }] }]);
+    const repoRoto = new InMemoryRestaurantesRepository();
+    repoRoto.listKnownZones = async () => {
+      throw Object.assign(new Error("permission denied"), { code: "42501" });
+    };
+    const bloque = await bloqueConocimientoOVacio(sesion, repoRoto, ORG);
+    expect(bloque).toEqual({ texto: "", incluidos: [], omitidos: [] });
+    expect(sesion.calls.some((c) => c.startsWith("savepoint"))).toBe(true);
+    expect(sesion.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
+    await expect(sesion.query("select 1 as siguiente;")).resolves.toEqual({ rows: [{ ok: true }] });
+  });
+
+  it("sin error genera el bloque real y libera el savepoint", async () => {
+    const sesion = new AbortAwareFakeSession([]);
+    const repo = new InMemoryRestaurantesRepository();
+    const bloque = await bloqueConocimientoOVacio(sesion, repo, ORG);
+    expect(bloque.texto).toBe("");
+    expect(sesion.calls.some((c) => c.startsWith("release savepoint"))).toBe(true);
+    expect(sesion.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(false);
   });
 });

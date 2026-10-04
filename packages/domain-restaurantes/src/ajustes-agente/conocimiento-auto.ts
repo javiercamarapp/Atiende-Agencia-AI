@@ -8,6 +8,8 @@
 //
 // Todo lo de este archivo es puro salvo `cargarDatosConocimiento`, que solo LEE por el repositorio existente (mismos metodos que usa el panel).
 import { createHash } from "node:crypto";
+import { runWithSavepointFallback } from "@atiende/db";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { haversineKmExact } from "../nearest-branch.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
 import type { HorarioSucursal, TurnoHorario } from "../horarios.ts";
@@ -306,4 +308,25 @@ export function bloqueConocimientoParaPrompt(conocimiento: ConocimientoAuto, top
     incluidos.push(tipo);
   }
   return { texto: partes.length === 0 ? "" : `${encabezado}${partes.join("")}`, incluidos, omitidos };
+}
+
+const BLOQUE_VACIO: BloqueConocimiento = Object.freeze({ texto: "", incluidos: [], omitidos: [] });
+
+/**
+ * Bloque de conocimiento para la instruccion de voz desde un contexto de SISTEMA (servicio de llamadas, token de vista previa): corre dentro de la transaccion unica del
+ * request con SAVEPOINT, asi que un error de lectura (base sin migrar de algun dato, permiso de sesion de sistema) deja la sesion VIVA y el resultado es "sin conocimiento"
+ * en vez de abortar la transaccion (25P02) o tumbar la llamada. Nunca lanza.
+ */
+export async function bloqueConocimientoOVacio(session: TenantDbSession, repo: RestaurantesRepository, organizationId: string): Promise<BloqueConocimiento> {
+  return runWithSavepointFallback<BloqueConocimiento>({
+    session,
+    savepointName: "sp_conocimiento_auto",
+    primary: async () => bloqueConocimientoParaPrompt(generarConocimientoAuto(await cargarDatosConocimiento(repo, organizationId))),
+    isRecoverable: () => true,
+    fallback: async (err) => {
+      const codigo = err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : "desconocido";
+      console.warn(`conocimiento automatico: no se pudo generar para el prompt (SQLSTATE/codigo ${codigo}); la instruccion sale sin el bloque.`);
+      return BLOQUE_VACIO;
+    },
+  });
 }

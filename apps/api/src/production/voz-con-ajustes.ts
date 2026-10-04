@@ -3,7 +3,7 @@
 // ritmo/estilo de habla al final (ver `instruccionConAjustes`). Asi la vista previa del panel suena como sonara la llamada con esos ajustes, sin tocar las
 // rutas de voz. Si la lectura de ajustes falla, la sesion sale tal como la pidio la ruta (nunca se cae por esto).
 import type { VoiceAgentProvider, VozSesionPreviewEntrada } from "@atiende/voice-core";
-import { bloqueConocimientoParaPrompt, cargarDatosConocimiento, generarConocimientoAuto, instruccionConAjustes, PostgresAjustesAgenteRepository, PostgresRestaurantesRepository } from "@atiende/domain-restaurantes";
+import { bloqueConocimientoOVacio, instruccionConAjustes, PostgresAjustesAgenteRepository, PostgresRestaurantesRepository } from "@atiende/domain-restaurantes";
 import type { AjustesAgente } from "@atiende/domain-restaurantes";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 
@@ -45,7 +45,7 @@ export function resolverAjustesVozPostgres(engine: TenancyEngine): ResolverAjust
   return (organizationId) =>
     engine.withAppSession({ userId: null }, async (db) => {
       const lectura = await new PostgresAjustesAgenteRepository(db).leer(organizationId);
-      const conocimiento = generarConocimientoAuto(await cargarDatosConocimiento(new PostgresRestaurantesRepository(db), organizationId));
-      return { ajustes: lectura.valor, conocimientoTexto: bloqueConocimientoParaPrompt(conocimiento).texto };
+      const bloque = await bloqueConocimientoOVacio(db, new PostgresRestaurantesRepository(db), organizationId);
+      return { ajustes: lectura.valor, conocimientoTexto: bloque.texto };
     });
 }

@@ -24,6 +24,7 @@ import {
   TOPE_CARACTERES_PROMPT,
   UMBRAL_COLONIA_AMBIGUA_KM,
   ajustesDeLlamada,
+  bloqueConocimientoOVacio,
   bloqueConocimientoParaPrompt,
   cargarDatosConocimiento,
   costoEstimadoModelo,
@@ -213,7 +214,7 @@ export function restaurantesAjustesLlamadaInternoRoutes(deps: AppDeps): Hono {
     const ajustesRepo = deps.ajustesAgenteRepo;
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const lectura = await ajustesRepo(db).leer(organizationId);
-      const bloque = bloqueConocimientoParaPrompt(generarConocimientoAuto(await cargarDatosConocimiento(deps.restaurantesRepo(db), organizationId)));
+      const bloque = await bloqueConocimientoOVacio(db, deps.restaurantesRepo(db), organizationId);
       return c.json({
         disponible: lectura.disponible,
         ajustes: ajustesDeLlamada(lectura.valor),
