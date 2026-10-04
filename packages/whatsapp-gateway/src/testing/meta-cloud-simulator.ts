@@ -291,7 +291,7 @@ export class MetaCloudSimulator {
     if (!found) return graphError(404, 100, "Unsupported get request: media inexistente o expirada.");
     if (cdn) {
       this.mediaRequests.push({ step: "bytes", mediaId });
-      return new Response(found.bytes as BodyInit, { status: 200, headers: { "content-type": found.mimeType, "content-length": String(found.bytes.byteLength) } });
+      return new Response(found.bytes as unknown as ConstructorParameters<typeof Response>[0], { status: 200, headers: { "content-type": found.mimeType, "content-length": String(found.bytes.byteLength) } });
     }
     this.mediaRequests.push({ step: "metadata", mediaId });
     return json(200, { messaging_product: "whatsapp", url: `${this.baseUrl}/media-cdn/${mediaId}`, mime_type: found.mimeType, sha256: "SIM", file_size: found.bytes.byteLength, id: mediaId });

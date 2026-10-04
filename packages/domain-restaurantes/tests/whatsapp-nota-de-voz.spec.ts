@@ -106,7 +106,12 @@ describe("transcribirNotaDeVoz", () => {
       // un telefono distinto por nota para no chocar con el tope de conversacion
       expect((await transcribirNotaDeVoz(repo, p, { organizationId, phone: `+52199900${String(i).padStart(5, "0")}`, audio: AUDIO })).ok).toBe(true);
     }
-    expect(await transcribirNotaDeVoz(repo, p, { organizationId, phone: "+5219991111111", audio: AUDIO })).toEqual({ ok: false, motivo: "tope_organizacion" });
+    const aviso = vi.fn(async () => undefined);
+    expect(await transcribirNotaDeVoz(repo, p, { organizationId, phone: "+5219991111111", audio: AUDIO, alTopeDeOrganizacion: aviso })).toEqual({ ok: false, motivo: "tope_organizacion" });
+    expect(aviso).toHaveBeenCalledTimes(1);
+    // Un fallo del aviso (notificacion) nunca cambia el resultado ni lanza.
+    const roto = vi.fn(async () => Promise.reject(new Error("sin tabla")));
+    expect(await transcribirNotaDeVoz(repo, p, { organizationId, phone: "+5219992222222", audio: AUDIO, alTopeDeOrganizacion: roto })).toEqual({ ok: false, motivo: "tope_organizacion" });
   });
 
   it.each([

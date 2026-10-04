@@ -11,8 +11,9 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, registrarMotivoNotaDeVoz, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
+import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
+import { emitirNotificacion } from "@atiende/db";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
@@ -20,6 +21,9 @@ import type { AppDeps } from "../../../deps.ts";
 import { ALTA_CONFIRMADA_TEXTO, BAJA_CONFIRMADA_TEXTO, procesarBajaOAlta } from "../../../supresion/index.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
+
+/** Dia calendario (America/Merida) para la clave de dedupe de la notificacion de tope. */
+const diaMerida = (): string => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Merida", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
 // Hallazgo de auditoría (ALTO, "packages/core-ratelimit cataloga la categoría
 // 'conversation:inbound-webhook' -- ABIERTA (degrada a memoria, nunca a cero) ver
@@ -117,7 +121,17 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
           // R-32: nota de voz. Con el puerto (token de Meta + gateway LLM) se transcribe DESPUES de reclamar el mensaje (ver domain-restaurantes
           // whatsapp/nota-de-voz.ts); sin puerto se conserva la nota que pide escribir y se registra el motivo (sin PII).
           if (message.audio && !deps.notasDeVoz) registrarMotivoNotaDeVoz("no_configurado", organizationId);
-          const transcripcion = message.audio && deps.notasDeVoz ? { audio: message.audio, puerto: deps.notasDeVoz } : undefined;
+          // Tope diario de la organizacion alcanzado -> notificacion in-app (catalogo `restaurantes.voz.tope_notas_alcanzado`): una por dia, sin PII.
+          // `emitirNotificacion` corre en SAVEPOINT: nunca aborta la transaccion del webhook ni cambia la respuesta a Meta.
+          const transcripcion = message.audio && deps.notasDeVoz
+            ? {
+                audio: message.audio,
+                puerto: deps.notasDeVoz,
+                alTopeDeOrganizacion: async () => {
+                  await emitirNotificacion(db, { evento: "restaurantes.voz.tope_notas_alcanzado", organizationId, clave: diaMerida(), parametros: { cantidad: LIMITE_NOTAS_POR_ORGANIZACION_DIA } });
+                },
+              }
+            : undefined;
           // SA-L-46: BAJA / STOP -> lista de supresion de plataforma + UNA confirmacion; PL-32: ALTA la reactiva. No pasa al agente.
           const atendida = await procesarBajaOAlta(db, {
             telefono: `+${message.from}`,

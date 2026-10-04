@@ -70,6 +70,8 @@ export type ResultadoNotaDeVoz = { readonly ok: true; readonly texto: string } |
 export interface TranscripcionDeEntrada {
   readonly audio: NotaDeVozEntrante;
   readonly puerto: PuertoNotasDeVoz;
+  /** Se invoca (best-effort, nunca cambia el resultado) cuando se alcanza el tope diario de la organizacion: el webhook emite la notificacion in-app. */
+  readonly alTopeDeOrganizacion?: () => Promise<void>;
 }
 
 export function registrarMotivo(motivo: MotivoSinTranscripcion, organizationId: string): void {
@@ -96,7 +98,7 @@ export function formatearNotaDeVoz(texto: string): string {
 export async function transcribirNotaDeVoz(
   repo: RestaurantesRepository,
   puerto: PuertoNotasDeVoz,
-  args: { readonly organizationId: string; readonly phone: string; readonly audio: NotaDeVozEntrante },
+  args: { readonly organizationId: string; readonly phone: string; readonly audio: NotaDeVozEntrante; readonly alTopeDeOrganizacion?: () => Promise<void> },
 ): Promise<ResultadoNotaDeVoz> {
   const { organizationId, phone, audio } = args;
   const sinTranscribir = (motivo: MotivoSinTranscripcion): ResultadoNotaDeVoz => {
@@ -109,7 +111,10 @@ export async function transcribirNotaDeVoz(
   if (!porConversacion) return sinTranscribir("tope_conversacion");
   const porOrganizacion = await tomarCupo(repo, "whatsapp-voz-organizacion", organizationId, LIMITE_NOTAS_POR_ORGANIZACION_DIA, 86_400);
   if (porOrganizacion === "error") return sinTranscribir("tope_no_disponible");
-  if (!porOrganizacion) return sinTranscribir("tope_organizacion");
+  if (!porOrganizacion) {
+    await args.alTopeDeOrganizacion?.().catch(() => undefined);
+    return sinTranscribir("tope_organizacion");
+  }
 
   let descargado: AudioDescargado;
   try {
@@ -135,6 +140,6 @@ export async function resolverCuerpoConNotaDeVoz(
   args: { readonly organizationId: string; readonly phone: string; readonly body: string; readonly transcripcion?: TranscripcionDeEntrada },
 ): Promise<string> {
   if (!args.transcripcion) return args.body;
-  const resultado = await transcribirNotaDeVoz(repo, args.transcripcion.puerto, { organizationId: args.organizationId, phone: args.phone, audio: args.transcripcion.audio });
+  const resultado = await transcribirNotaDeVoz(repo, args.transcripcion.puerto, { organizationId: args.organizationId, phone: args.phone, audio: args.transcripcion.audio, alTopeDeOrganizacion: args.transcripcion.alTopeDeOrganizacion });
   return resultado.ok ? resultado.texto : args.body;
 }

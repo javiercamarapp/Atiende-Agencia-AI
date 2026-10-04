@@ -23,7 +23,7 @@ const gatewayCon = (complete: (opts: unknown) => Promise<{ text: string }>): Llm
 describe("crearPuertoNotasDeVoz", () => {
   it("descarga con el simulador y transcribe por el rol de transcripcion, con audio base64, formato y tope de salida", async () => {
     await conSimulador(async (sim) => {
-      const complete = vi.fn(async () => ({ text: "  dos de pastor  " }));
+      const complete = vi.fn(async (_opts: unknown) => ({ text: "  dos de pastor  " }));
       const puerto = crearPuertoNotasDeVoz({ gateway: gatewayCon(complete), accessToken: TOKEN, graphBaseUrl: sim.baseUrl });
       const id = sim.registerMedia({ bytes: new Uint8Array([9, 8, 7]), mimeType: "audio/mpeg" });
       const audio = await puerto.descargar(id, { maxBytes: 1000, maxDurationSeconds: 60 });
