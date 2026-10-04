@@ -33,6 +33,10 @@ export interface ComandaEsperada {
 
 export interface CasoEval {
   readonly id: string;
+  /** R-44: idioma en que escribe el cliente (ausente = espanol). El agente debe contestar en ese idioma. */
+  readonly idioma?: "es" | "en";
+  /** R-44: caso dorado en espanol del que se deriva (mismo mundo y mismo resultado esperado). */
+  readonly base?: string;
   readonly canal: "llamada" | "chat";
   readonly categoria: string;
   readonly contexto: {

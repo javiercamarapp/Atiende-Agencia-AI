@@ -34,10 +34,10 @@ function saludoHora(horaLocal: string): string {
   return "Buenas noches";
 }
 
-const sinParentesis = (nombre: string) => nombre.replace(/\(.*?\)/g, "").replace(/\s+/g, " ").trim();
-const primerNombre = (n: string) => n.split(" ")[0] ?? n;
+export const sinParentesis = (nombre: string) => nombre.replace(/\(.*?\)/g, "").replace(/\s+/g, " ").trim();
+export const primerNombre = (n: string) => n.split(" ")[0] ?? n;
 
-function coloniaDe(mundo: Mundo, ...textos: (string | undefined)[]): string | null {
+export function coloniaDe(mundo: Mundo, ...textos: (string | undefined)[]): string | null {
   for (const t of textos) {
     if (!t) continue;
     for (const clave of Object.keys(mundo.zonas).sort((a, b) => b.length - a.length)) {
@@ -59,12 +59,12 @@ function escalar(mundo: Mundo, motivo: string, resumen: string, aviso = "Permít
   mundo.ejecutar("escalar_a_humano", { customer_name: nombre, motivo, resumen });
 }
 
-interface ItemRef {
+export interface ItemRef {
   readonly producto: string;
   readonly piezas: number;
 }
 
-interface OpcionesFlujo {
+export interface OpcionesFlujo {
   readonly canal: "domicilio" | "recoger";
   readonly sucursal: string;
   readonly items: readonly ItemRef[];
@@ -77,12 +77,12 @@ interface OpcionesFlujo {
   readonly falla: boolean;
 }
 
-function pedirProducto(mundo: Mundo, slug: string, nombre: string): { id: string; name: string } | null {
+export function pedirProducto(mundo: Mundo, slug: string, nombre: string): { id: string; name: string } | null {
   const r = mundo.ejecutar("buscar_producto", { query: sinParentesis(nombre), branch_slug: slug }) as { id: string; name: string }[];
   return Array.isArray(r) ? (r.find((p) => p.name === nombre) ?? null) : null;
 }
 
-function itemsArgs(mundo: Mundo, slug: string, items: readonly ItemRef[], tortilla: string) {
+export function itemsArgs(mundo: Mundo, slug: string, items: readonly ItemRef[], tortilla: string) {
   const out: Record<string, unknown>[] = [];
   for (const it of items) {
     const p = pedirProducto(mundo, slug, it.producto);
@@ -232,7 +232,7 @@ async function flujoComanda(mundo: Mundo, opts: OpcionesFlujo): Promise<void> {
   }
 }
 
-function opcionesDeComanda(mundo: Mundo): OpcionesFlujo {
+export function opcionesDeComanda(mundo: Mundo): OpcionesFlujo {
   const caso = mundo.caso;
   const c = caso.esperado.comanda!;
   const datos = caso.simulador_cliente.datos;
