@@ -27,7 +27,7 @@ import type { RestaurantesAuditEntityType, RestaurantesRole } from "@atiende/dom
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
 
-const ENTITY_TYPES: readonly RestaurantesAuditEntityType[] = ["producto", "promocion", "pedido", "repartidor", "staff", "configuracion"];
+const ENTITY_TYPES: readonly RestaurantesAuditEntityType[] = ["producto", "promocion", "pedido", "repartidor", "staff", "configuracion", "exportacion"];
 // Solo owner/admin (mandato explícito de esta fase) -- deliberadamente MÁS
 // angosto que `MANAGER_ROLES` (owner/admin/staff, que sí puede ESCRIBIR en la
 // bitácora vía las rutas de arriba, pero no LEERLA).

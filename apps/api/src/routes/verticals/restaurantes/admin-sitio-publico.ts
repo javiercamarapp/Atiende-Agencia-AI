@@ -1,6 +1,6 @@
 // R-38 -- "Sitio publico" del panel: marca que el storefront muestra en su portada (titular, eslogan, descripcion, portada, logo y
 // redes). owner/admin unicamente (mismo umbral que la configuracion de canal, admin-config.ts); sesion de STAFF autenticado, nunca de
-// sistema. La RLS de `restaurantes.storefront_marca` (migracion 042) es la autoridad; `assertVerticalRole` da el mensaje claro.
+// sistema. La RLS de `restaurantes.storefront_marca` (migracion 062) es la autoridad; `assertVerticalRole` da el mensaje claro.
 // Base sin migrar: la lectura devuelve la marca vacia con `disponible: false` y la escritura 503 -- nunca 500.
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";

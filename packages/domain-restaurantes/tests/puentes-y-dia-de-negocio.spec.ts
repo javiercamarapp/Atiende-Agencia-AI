@@ -22,7 +22,7 @@ describe("horarioDePuente / validarExcepcionHorario", () => {
     expect(h[1]).toMatchObject({ abre: "17:00", cierra: "00:30" });
   });
 
-  it("valida fechas reales, rango <= 31 dias, al menos un turno y motivo", () => {
+  it("valida fechas reales, rango <= 31 dias y motivo", () => {
     const ok = validarExcepcionHorario({ fechaDesde: "2026-12-24", fechaHasta: "2026-12-26", horario: PUENTE.horario, motivo: "  Navidad " });
     expect(ok.motivo).toBe("Navidad");
     const mal = (patch: object) => () => validarExcepcionHorario({ fechaDesde: "2026-12-24", fechaHasta: "2026-12-26", horario: PUENTE.horario, ...patch });
@@ -30,9 +30,21 @@ describe("horarioDePuente / validarExcepcionHorario", () => {
     expect(mal({ fechaDesde: "24/12/2026" })).toThrow(/AAAA-MM-DD/);
     expect(mal({ fechaHasta: "2026-12-23" })).toThrow(/anterior/);
     expect(mal({ fechaHasta: "2027-02-01" })).toThrow(/31 días/);
-    expect(mal({ horario: [] })).toThrow(/al menos un turno/);
     expect(mal({ horario: [{ dias: [1], abre: "12:00", cierra: "12:00" }] })).toThrow(/no pueden ser iguales/);
     expect(mal({ motivo: "x".repeat(201) })).toThrow(/motivo/);
+  });
+});
+
+describe("cierre de una fecha completa (QA-restaurantes-R1-caos-16)", () => {
+  const PM = [{ dias: [0, 1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "01:00" }];
+  it("una excepcion con horario vacio es valida y deja la sucursal cerrada ese dia (la cola del dia anterior sigue)", () => {
+    const e = validarExcepcionHorario({ fechaDesde: "2026-09-16", fechaHasta: "2026-09-16", horario: [], motivo: "Feriado" });
+    expect(e.horario).toEqual([]);
+    expect(aperturaConExcepciones(PM, [e], new Date("2026-09-16T14:00:00-06:00"), "America/Merida").estado.abierto).toBe(false);
+    // fuera de la fecha cerrada rige el semanal
+    expect(aperturaConExcepciones(PM, [e], new Date("2026-09-17T14:00:00-06:00"), "America/Merida").estado.abierto).toBe(true);
+    // 00:30 del 16 es la cola del turno del 15 (que no estaba cerrado)
+    expect(aperturaConExcepciones(PM, [e], new Date("2026-09-16T00:30:00-06:00"), "America/Merida").estado.abierto).toBe(true);
   });
 });
 
@@ -152,6 +164,14 @@ describe("de punta a punta: horario, puente y promocion del lunes (en memoria)",
     expect(q.abiertoAhora).toBe(true);
     const order = await createOrder(f.repo, { ...f.orden, customerName: "Ana", customerPhone: "9991234567", source: "whatsapp", paymentMethod: "efectivo", canal: "recoger", items: f.items });
     expect(order.total).toBe(56);
+  });
+
+  it("cierre de fecha completa (QA caos-16): miercoles 13:00 con excepcion vacia, el pedido se rechaza como cerrado (storefront/WhatsApp/voz)", async () => {
+    vi.setSystemTime(merida("2026-09-30T13:00:00"));
+    const f = await seed();
+    await f.repo.createBranchHoursException(f.organizationId, { propertyId: f.propertyId, fechaDesde: "2026-09-30", fechaHasta: "2026-09-30", horario: [], motivo: "Feriado" });
+    await expect(quoteOrder(f.repo, { ...f.orden, canal: "recoger", items: f.items })).rejects.toThrow(/cerrada/);
+    await expect(createOrder(f.repo, { ...f.orden, customerName: "Ana", customerPhone: "9991234567", source: "whatsapp", paymentMethod: "efectivo", canal: "recoger", items: f.items })).rejects.toThrow(/cerrada/);
   });
 
   it("la excepcion de una sucursal de OTRA organizacion no se puede crear (aislamiento)", async () => {

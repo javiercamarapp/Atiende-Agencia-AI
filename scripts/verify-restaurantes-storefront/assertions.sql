@@ -181,7 +181,7 @@ select 1 as should_fail;
 rollback;
 
 -- =====================================================================================================================
--- R-38 / R-43 -- packages/domain-restaurantes/migrations/042_storefront_marca.sql
+-- R-38 / R-43 -- packages/domain-restaurantes/migrations/062_storefront_marca.sql
 --   F. marca publica (restaurantes.storefront_marca): lectura de sistema / staff de la organizacion; escritura solo owner/admin;
 --      cross-tenant; anon; CHECK de enlaces; columnas de sello no escribibles; sin DELETE.
 --   G. solicitud de evento del storefront: el INSERT directo del sistema sobre callback_requests esta cerrado (hallazgo); la funcion
@@ -189,7 +189,7 @@ rollback;
 --      de otra no); un usuario con sesion, anon, una sucursal ajena, un canal invalido o datos fuera de rango son rechazados.
 -- =====================================================================================================================
 \echo ''
-\echo '=== F) marca publica del storefront (042) ==='
+\echo '=== F) marca publica del storefront (062) ==='
 \echo ''
 
 insert into core.staff_user (id, email, full_name, created_via) values

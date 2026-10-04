@@ -16,7 +16,7 @@ Verificacion, contra un Postgres **real**, de
 - **E.** Base sin migrar: sin la funcion se obtiene 42883; con SAVEPOINT la transaccion se recupera y sin el
   SAVEPOINT queda abortada (25P02).
 
-- **F.** (migracion 042, escenarios 15-31) Marca publica `restaurantes.storefront_marca`: lectura de la sesion de sistema y del staff de la
+- **F.** (migracion 062, escenarios 15-31) Marca publica `restaurantes.storefront_marca`: lectura de la sesion de sistema y del staff de la
   organizacion; staff de otra organizacion y `anon` sin acceso; solo owner/admin crean/editan (staff y owner ajeno: RLS); sin DELETE; `organization_id`
   y los sellos (`updated_by`) no escribibles; el trigger sella al autor; CHECK de https, dominio de red y longitudes.
 - **G.** (escenarios 32-42) Solicitud de evento/catering: **hallazgo** -- el INSERT directo de la sesion de sistema sobre `callback_requests` esta cerrado

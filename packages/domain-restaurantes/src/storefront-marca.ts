@@ -30,7 +30,7 @@ export const MARCA_VACIA: StorefrontMarca = {
   updatedAt: null,
 };
 
-// Mismos patrones que los CHECK de la migracion 042 (la base es la ultima defensa; esto da el mensaje claro).
+// Mismos patrones que los CHECK de la migracion 062 (la base es la ultima defensa; esto da el mensaje claro).
 const HTTPS_RE = /^https:\/\/[^\s<>"']+$/;
 const RED_RE: Readonly<Record<"instagramUrl" | "facebookUrl" | "tiktokUrl", { readonly re: RegExp; readonly nombre: string }>> = {
   instagramUrl: { re: /^https:\/\/(www\.)?instagram\.com\/[^\s<>"']+$/, nombre: "Instagram" },

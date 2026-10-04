@@ -356,7 +356,9 @@ export interface RestaurantesRepository {
   /** Más reciente primero. `propertyIds` null = organización completa (mismo
    * contrato que el resto de rutas admin de este vertical, ver admin-scope.ts). */
   listStaffOrderNotifications(organizationId: string, propertyIds: readonly string[] | null, options?: { readonly unacknowledgedOnly?: boolean; readonly limit?: number }): Promise<readonly StaffOrderNotificationRecord[]>;
-  acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string): Promise<StaffOrderNotificationRecord>;
+  /** `propertyIds` (opcional) acota el reconocimiento a las sucursales visibles del staff DENTRO de la propia escritura
+   * (QA-restaurantes-R1-features-08: antes se verificaba con un listado de 500 filas, que dejaba fuera las viejas). */
+  acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string, propertyIds?: readonly string[] | null): Promise<StaffOrderNotificationRecord>;
 
   // ---- Fase 5 — back-office CORE (ver diseño §1) ----
 
@@ -424,7 +426,9 @@ export interface RestaurantesRepository {
    * real ya NO es `fromStatus` (alguien más lo cambió primero) — el dominio
    * distingue ambos casos con un `findOrderById` de más SOLO en ese camino de
    * error, nunca en el camino feliz. */
-  updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus): Promise<Order | null>;
+  /** `incidentNote` (opcional): nota libre de la incidencia; solo se guarda cuando `toStatus === "problema"`
+   * (columna `incident_note`, migracion 008: no requiere SQL nuevo). */
+  updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus, incidentNote?: string | null): Promise<Order | null>;
 
   findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
   listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;
@@ -447,6 +451,9 @@ export interface RestaurantesRepository {
    * lo asignado a una sola persona); un límite fijo generoso evita igual un fetch
    * accidentalmente ilimitado. */
   listOrdersForRepartidor(organizationId: string, repartidorId: string): Promise<readonly Order[]>;
+  /** R-15: pedidos de ESTE repartidor entregados el dia local `fechaLocal` (YYYY-MM-DD) en `zonaHoraria` (IANA), por `delivered_at` (columna de la
+   * 001, existe en cualquier base), mas recientes primero, con `deliveredAt` poblado. Tope 200. Nunca los de otro repartidor. */
+  listDeliveredOrdersForRepartidor(organizationId: string, repartidorId: string, fechaLocal: string, zonaHoraria: string): Promise<readonly Order[]>;
   /** Ficha de un pedido — null si no existe, no es de esta organización, O no está
    * asignado a ESTE repartidor (un repartidor NUNCA puede leer el pedido de otro,
    * a diferencia de `findOrderById`, que solo acota por organización/property). */
@@ -522,13 +529,13 @@ export interface RestaurantesRepository {
    *  primary key de la tabla) -- nunca dos filas por organización. */
   upsertWhatsappChannelConfig(organizationId: string, phoneNumberId: string): Promise<WhatsappChannelConfig>;
 
-  // ---- R-38 (migración 042): marca pública del storefront ----
+  // ---- R-38 (migración 062): marca pública del storefront ----
 
-  /** Marca de la organización; `null` si nunca se guardó O si la base aún no tiene la migración 042 (la portada pública cae a una
+  /** Marca de la organización; `null` si nunca se guardó O si la base aún no tiene la migración 062 (la portada pública cae a una
    *  genérica con el nombre del restaurante). Nunca lanza por tabla/columna ausente. */
   findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null>;
   /** Alta o reemplazo completo de la marca (owner/admin por RLS). Lanza `RestaurantesConfigUnavailableError` si la base aún no tiene
-   *  la migración 042 (la ruta responde 503, nunca 500). */
+   *  la migración 062 (la ruta responde 503, nunca 500). */
   upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca>;
 
   /** Más reciente primero -- orden total (ver `created_at desc, id desc`, mismo

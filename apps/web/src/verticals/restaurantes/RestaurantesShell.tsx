@@ -12,6 +12,7 @@
 import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import {
+  BellRing,
   CalendarCheck,
   ClipboardCheck,
   ClipboardList,
@@ -121,6 +122,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
         { to: `${base}/conversaciones`, label: "Conversaciones", icon: MessageSquare },
         { to: `${base}/turnos`, label: "Turnos", icon: Clock },
         { to: `${base}/historial`, label: "Historial", icon: History },
+        // R-16: "Mis avisos" para quien no ve la categoria Configuración (el staff de piso); owner/admin lo tienen allí.
+        ...(canSeeStaff ? [] : [{ to: `${base}/avisos`, label: "Avisos", icon: BellRing }]),
         // R-42: cierre del día y resumen semanal (solo owner/admin: el servidor exige el mismo umbral).
         ...(canSeeStaff ? [{ to: `${base}/cierres`, label: "Cierre del día", icon: CalendarCheck }] : []),
       ],
@@ -162,6 +165,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
         // FASE 3 (producto) — configuración de WhatsApp/zonas conocidas.
         { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
         { to: `${base}/staff`, label: "Staff", icon: UserCog },
+        // R-16: avisos por persona (matriz del equipo) y tiempo de gracia de la entrega tardía por sucursal.
+        { to: `${base}/avisos`, label: "Avisos", icon: BellRing },
         { to: `${base}/auditoria`, label: "Auditoría", icon: ClipboardCheck },
         // PM PR-9 -- solicitudes ARCO y configuración de privacidad (owner/admin).
         { to: `${base}/privacidad`, label: "Privacidad", icon: Lock },
@@ -221,13 +226,16 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
 
   // Selector real, visible solo cuando hay más de una sucursal (si no, solo el nombre). Se ofrece en el bloque de
   // cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
-  const sucursalSelector =
+  // El MISMO selector se pinta en el Sidebar y en el MobileHeader (ambos viven en el DOM; CSS oculta uno): cada copia lleva su
+  // propio id y su propio <label for>, para que no haya ids duplicados y el select visible tenga nombre accesible
+  // (QA-restaurantes-R1-botones-03).
+  const sucursalSelector = (idSelect: string) =>
     branches.length > 1 ? (
       <div>
-        <label htmlFor="restaurantes-sucursal-activa" className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
+        <label htmlFor={idSelect} className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
           Sucursal activa
         </label>
-        <NativeSelect id="restaurantes-sucursal-activa" size="sm" value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
+        <NativeSelect id={idSelect} size="sm" value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
           {branches.map((b) => (
             <option key={b.propertyId} value={b.propertyId}>
               {b.name}
@@ -254,8 +262,8 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
       header={{ icon: <UtensilsCrossed className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Restaurantes · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/restaurantes/${orgSlug}` }}
-      branchSelector={sucursalSelector}
-      mobileSelector={branches.length > 1 ? sucursalSelector : null}
+      branchSelector={sucursalSelector("restaurantes-sucursal-activa")}
+      mobileSelector={branches.length > 1 ? sucursalSelector("restaurantes-sucursal-activa-movil") : null}
       contentKey={propertyId}
     >
       {/* R-33: gate de onboarding (aterrizaje en "Primeros pasos" + banner en el Resumen) solo para owner/admin. */}

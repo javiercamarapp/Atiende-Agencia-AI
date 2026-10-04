@@ -98,7 +98,7 @@ export async function createPuente(
   apiBaseUrl: string,
   token: string,
   propertyId: string,
-  input: { readonly branchIds: readonly string[]; readonly fechaDesde: string; readonly fechaHasta: string; readonly turnos: readonly TurnoPuente[]; readonly motivo?: string },
+  input: { readonly branchIds: readonly string[]; readonly fechaDesde: string; readonly fechaHasta: string; readonly turnos?: readonly TurnoPuente[]; /** `true` = cierre de fecha completa (sin turnos). */ readonly cerrado?: boolean; readonly motivo?: string },
 ): Promise<readonly Puente[]> {
   const body = await sendJson<{ puentes: Puente[] }>(fetchImpl, puentesUrl(apiBaseUrl, propertyId), token, "POST", input);
   return body.puentes;

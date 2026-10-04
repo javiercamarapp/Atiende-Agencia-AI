@@ -16,7 +16,7 @@ export interface MarcaSitio {
 
 export interface SitioPublicoWire {
   readonly marca: MarcaSitio;
-  /** false = nunca se guardo (o la base aun no tiene la migracion 042: guardar responde 503 con el motivo). */
+  /** false = nunca se guardo (o la base aun no tiene la migracion 062: guardar responde 503 con el motivo). */
   readonly guardada: boolean;
 }
 

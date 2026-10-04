@@ -165,7 +165,7 @@ describe("restaurantes.evento.solicitud (R-43)", () => {
   });
 });
 
-describe("registro de la solicitud de contacto: funcion de sistema con respaldo (migracion 042)", () => {
+describe("registro de la solicitud de contacto: funcion de sistema con respaldo (migracion 062)", () => {
   const INPUT = { organizationId: ORG, propertyId: PROP, customerName: "Ana Perez", customerPhone: "9991234567", reason: "evento", message: "m", source: "web" as const };
   const FILA = { id: CALLBACK_ID, resolved: false, created_at: "2026-10-01T10:00:00.000Z" };
 
@@ -183,7 +183,7 @@ describe("registro de la solicitud de contacto: funcion de sistema con respaldo 
     expect(llamadas.some((c) => /insert into restaurantes\.callback_requests/i.test(c.sql))).toBe(false);
   });
 
-  it("base sin la 042 (42883): cae al INSERT anterior dentro de un SAVEPOINT y la sesion sigue viva (sin 25P02)", async () => {
+  it("base sin la 062 (42883): cae al INSERT anterior dentro de un SAVEPOINT y la sesion sigue viva (sin 25P02)", async () => {
     const session = new AbortAwareFakeSession([
       { match: /callback_registrar/, respond: () => pgError("42883", "function restaurantes.callback_registrar does not exist") },
       { match: /insert into restaurantes\.callback_requests/i, respond: () => [FILA] },

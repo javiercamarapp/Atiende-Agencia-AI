@@ -3,7 +3,7 @@
 // sin red ni credenciales) o uno real (manual). Cada llamada crea su propio registro: la maquina de la cita lleva estado POR llamada.
 import { correrGuionConAdaptador, proveedorFalsoGuionado as proveedorFalsoCore } from "@atiende/voice-core/simulador";
 import type { AdaptadorSimulador, ProveedorSimulable } from "@atiende/voice-core/simulador";
-import { requiresCrisisGuardrail } from "../../vertical-config.ts";
+import { crisisGuardActivaPara } from "../../vertical-config.ts";
 import { evaluarCrisisVoz } from "../guardia-crisis.ts";
 import { REGLAS_CIERRE_CITAS, crearRegistroToolsCitas } from "../registro-tools.ts";
 import type { ResultadoVozCitas } from "../registro-tools.ts";
@@ -34,8 +34,8 @@ export function crearAdaptadorSimuladorCitas(): AdaptadorSimulador<ResultadoVozC
     sipFromPorDefecto: SIP_FROM_LLAMANTE,
     crearMundo: () => crearMundoVozCitas(),
     crearMemoria: crearMemoriaCitas,
-    // Misma regla que produccion: la guardia solo existe si el rubro del negocio es de salud (aqui, psicologo).
-    guardiaCliente: (mundo) => ({ evaluar: (texto) => (requiresCrisisGuardrail(mundo.rubro) ? evaluarCrisisVoz(texto) : null) }),
+    // Misma regla que produccion: la guardia esta activa en rubros de salud y tambien sin rubro o con "otro" (aqui, psicologo).
+    guardiaCliente: (mundo) => ({ evaluar: (texto) => (crisisGuardActivaPara(mundo.rubro) ? evaluarCrisisVoz(texto) : null) }),
     transporte: (mundo, { callId, telefono }) => {
       const transporte = transporteEnProcesoCitas({ repo: mundo.repo, organizationId: mundo.organizationId }, { telefono, llamadaId: callId });
       return async (nombre, args, senal) => {

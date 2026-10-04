@@ -1,5 +1,5 @@
 -- R-38 (storefront publico a nivel de marca): datos de marca por organizacion. Prefijo de supabase/migrations asignado
--- para esta tarea: 20240101000311 (interno 042).
+-- para esta tarea: 20240101000311 (interno 062).
 --
 -- Que agrega (solo ADITIVO; nada existente se modifica):
 --   * `restaurantes.storefront_marca` -- UNA fila por organizacion con lo que la pagina publica muestra en su portada:

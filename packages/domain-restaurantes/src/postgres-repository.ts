@@ -173,6 +173,7 @@ function mapCustomer(row: CustomerRow): Customer {
 }
 
 interface OrderRow {
+  readonly created_at_cursor?: string;
   readonly id: string;
   readonly organization_id: string;
   readonly property_id: string;
@@ -941,8 +942,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
     const params = [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source];
     type Fila = { id: string; resolved: boolean; created_at: string };
-    // `restaurantes.callback_registrar` (migracion 042): la sesion de la API corre como `authenticated`, que NO tiene INSERT sobre
-    // callback_requests (001), asi que el INSERT directo falla con 42501 contra una base migrada. Sin la funcion (42883, base sin 042)
+    // `restaurantes.callback_registrar` (migracion 062): la sesion de la API corre como `authenticated`, que NO tiene INSERT sobre
+    // callback_requests (001), asi que el INSERT directo falla con 42501 contra una base migrada. Sin la funcion (42883, base sin 062)
     // se cae al INSERT anterior dentro de un SAVEPOINT, que es exactamente la conducta de antes.
     const rows = await runWithSavepointFallback<Fila[]>({
       session: this.db,
@@ -1298,7 +1299,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     }));
   }
 
-  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string): Promise<StaffOrderNotificationRecord> {
+  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string, propertyIds?: readonly string[] | null): Promise<StaffOrderNotificationRecord> {
     const { rows } = await this.db.query<{
       property_id: string;
       order_id: string;
@@ -1309,9 +1310,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       acknowledged_by: string | null;
     }>(
       `update restaurantes.staff_order_notification set acknowledged_at = now(), acknowledged_by = $1
-       where organization_id = $2 and id = $3
+       where organization_id = $2 and id = $3${propertyIds ? " and property_id = any($4::uuid[])" : ""}
        returning property_id, order_id, event_type, message, created_at::text as created_at, acknowledged_at::text as acknowledged_at, acknowledged_by;`,
-      [actorId, organizationId, notificationId],
+      propertyIds ? [actorId, organizationId, notificationId, [...propertyIds]] : [actorId, organizationId, notificationId],
     );
     const row = rows[0];
     if (!row) throw new Error(`Notificación "${notificationId}" no encontrada para la organización "${organizationId}".`);
@@ -2090,7 +2091,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
     params.push(filter.limit + 1);
     const { rows } = await this.db.query<OrderRow>(
-      `select ${ORDER_COLUMNS}
+      // QA-restaurantes-R1-features-01: `pg` entrega created_at como Date (milisegundos). El cursor usa
+      // la representacion TEXTO de Postgres (microsegundos exactos) para no saltar pedidos del mismo ms.
+      `select ${ORDER_COLUMNS}, created_at::text as created_at_cursor
        from restaurantes.orders
        where ${conditions.join(" and ")}
        order by created_at desc, id desc
@@ -2099,12 +2102,14 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     );
 
     const hasMore = rows.length > filter.limit;
-    const page = rows.slice(0, filter.limit).map(mapOrder);
-    const nextCursor = hasMore ? encodeCursor(page[page.length - 1]!) : null;
+    const pageRows = rows.slice(0, filter.limit);
+    const page = pageRows.map(mapOrder);
+    const last = pageRows[pageRows.length - 1];
+    const nextCursor = hasMore && last ? encodeCursor(last.created_at_cursor ?? toIsoText(last.created_at), last.id) : null;
     return { orders: page, nextCursor };
   }
 
-  async updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus): Promise<Order | null> {
+  async updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus, incidentNote?: string | null): Promise<Order | null> {
     // Fix hallazgo auditoría (rubro 3, "máquina de estados de pedidos sin guarda
     // TOCTOU") — `and status = $4` es la guarda real: sin ella, el UPDATE aplica
     // ciegamente sobre CUALQUIER estado actual, incluso uno distinto al que
@@ -2114,10 +2119,11 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     const run = async () => {
       const { rows } = await this.db.query<OrderRow>(
         `update restaurantes.orders
-         set status = $3, delivered_at = case when $3 = 'entregado' then now() else delivered_at end
+         set status = $3, delivered_at = case when $3 = 'entregado' then now() else delivered_at end,
+             incident_note = case when $3 = 'problema' and $5::text is not null then $5::text else incident_note end
          where id = $1 and organization_id = $2 and status = $4
          returning ${ORDER_COLUMNS};`,
-        [orderId, organizationId, toStatus, fromStatus],
+        [orderId, organizationId, toStatus, fromStatus, toStatus === "problema" ? (incidentNote ?? null) : null],
       );
       return rows[0] ? mapOrder(rows[0]) : null;
     };
@@ -2166,6 +2172,22 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows.map(mapOrder);
   }
 
+  async listDeliveredOrdersForRepartidor(organizationId: string, repartidorId: string, fechaLocal: string, zonaHoraria: string): Promise<readonly Order[]> {
+    // `delivered_at` es de la migracion 001: no hace falta fallback contra la base sin migrar. El dia local se convierte a un rango de
+    // instantes en la zona de la sucursal: [00:00 local del dia, 00:00 local del dia siguiente).
+    const { rows } = await this.db.query<OrderRow & { delivered_at: string | Date | null }>(
+      `select ${ORDER_COLUMNS}, delivered_at
+       from restaurantes.orders
+       where organization_id = $1 and assigned_repartidor_id = $2 and delivered_at is not null
+         and delivered_at >= ($3::date)::timestamp at time zone $4
+         and delivered_at < (($3::date + 1))::timestamp at time zone $4
+       order by delivered_at desc
+       limit 200;`,
+      [organizationId, repartidorId, fechaLocal, zonaHoraria],
+    );
+    return rows.map((r) => ({ ...mapOrder(r), deliveredAt: r.delivered_at === null ? null : r.delivered_at instanceof Date ? r.delivered_at.toISOString() : String(r.delivered_at) }));
+  }
+
   async findAssignedOrderById(organizationId: string, repartidorId: string, orderId: string): Promise<Order | null> {
     const { rows } = await this.db.query<OrderRow>(
       `select ${ORDER_COLUMNS}
@@ -2212,10 +2234,12 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
     const search = filter.search?.trim();
     if (search) {
-      params.push(`%${search}%`);
+      // QA-restaurantes-R1-features-06b: % _ \ del texto buscado son literales, no comodines.
+      params.push(`%${search.replace(/[\\%_]/g, "\\$&")}%`);
       conditions.push(`(name ilike $${params.length} or phone ilike $${params.length})`);
     }
-    if (filter.cursor) {
+    // QA-restaurantes-R1-features-06a: un cursor que no es uuid se ignora (antes: 22P02 -> 500).
+    if (filter.cursor && UUID_TEXT.test(filter.cursor)) {
       params.push(filter.cursor);
       conditions.push(`id > $${params.length}`);
     }
@@ -2398,7 +2422,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null> {
-    // Base sin la migracion 042 (42P01/42703) o sin permiso (42501): sin marca, nunca un 500. SAVEPOINT: la sesion es una sola
+    // Base sin la migracion 062 (42P01/42703) o sin permiso (42501): sin marca, nunca un 500. SAVEPOINT: la sesion es una sola
     // transaccion por request y un error de Postgres la dejaria abortada.
     return runWithSavepointFallback<StorefrontMarca | null>({
       session: this.db,
@@ -2434,7 +2458,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       },
       isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
       fallback: (err) => {
-        advertirConfigEscrituraNoDisponible("storefront_marca", err, "042_storefront_marca.sql");
+        advertirConfigEscrituraNoDisponible("storefront_marca", err, "062_storefront_marca.sql");
         throw new RestaurantesConfigUnavailableError();
       },
     });
@@ -3372,9 +3396,16 @@ interface OrderCursorBoundary {
   readonly id: string;
 }
 
-function encodeCursor(order: Order): string {
-  return Buffer.from(`${order.createdAt}|${order.id}`, "utf8").toString("base64url");
+function toIsoText(value: unknown): string {
+  return value instanceof Date ? value.toISOString() : String(value);
 }
+
+function encodeCursor(createdAt: string, id: string): string {
+  return Buffer.from(`${createdAt}|${id}`, "utf8").toString("base64url");
+}
+
+const CURSOR_TIMESTAMP = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)?$/;
+const UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function decodeCursor(cursor: string | undefined): OrderCursorBoundary | null {
   if (!cursor) return null;
@@ -3382,7 +3413,11 @@ function decodeCursor(cursor: string | undefined): OrderCursorBoundary | null {
     const decoded = Buffer.from(cursor, "base64url").toString("utf8");
     const separatorIndex = decoded.lastIndexOf("|");
     if (separatorIndex === -1) return null;
-    return { createdAt: decoded.slice(0, separatorIndex), id: decoded.slice(separatorIndex + 1) };
+    const createdAt = decoded.slice(0, separatorIndex);
+    const id = decoded.slice(separatorIndex + 1);
+    // Cursor manipulado o viejo (p. ej. Date.toString()): se ignora en vez de llegar a Postgres como 22007/22P02.
+    if (!CURSOR_TIMESTAMP.test(createdAt) || !UUID_TEXT.test(id)) return null;
+    return { createdAt, id };
   } catch {
     return null;
   }

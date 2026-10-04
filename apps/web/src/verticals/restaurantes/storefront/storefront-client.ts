@@ -124,7 +124,7 @@ export interface PedidoCreado {
   readonly comanda?: { readonly estado: string; readonly folio: string | null; readonly mensaje: string } | null;
 }
 
-export type EstadoPedido = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema";
+export type EstadoPedido = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema" | "listo_para_recoger" | "no_recogido" | "programado";
 
 export interface RastreoPedido {
   readonly disponible: boolean;
@@ -144,8 +144,11 @@ export class StorefrontError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    /** Motivo de la maquina de estados del servidor (p. ej. "cotizacion_vencida"), si lo hubo. */
+    /** Motivo de la maquina de estados del servidor (p. ej. "cotizacion_vencida"), o del cliente ("red", "tiempo_agotado",
+     * "respuesta_invalida"), si lo hubo. */
     readonly motivo?: string,
+    /** Rastreo del pedido que esta sesion YA tiene registrado (el servidor lo manda con `ya_registrado`). */
+    readonly rastreoToken?: string,
   ) {
     super(message);
     this.name = "StorefrontError";
@@ -175,24 +178,60 @@ function enc(v: string): string {
   return encodeURIComponent(v);
 }
 
+/** Tope de espera de cada peticion: sin el, un servidor colgado dejaba el dialogo de confirmacion girando para siempre. */
+export const TIEMPO_MAXIMO_MS = 20_000;
+
+export const MENSAJE_RED = "No pudimos conectar con el restaurante. Revisa tu internet e inténtalo de nuevo.";
+export const MENSAJE_TIEMPO_AGOTADO = "La solicitud tardó demasiado. Revisa tu conexión y vuelve a pulsar «Revisar pedido»: si tu pedido ya se había registrado, te lo mostraremos sin duplicarlo.";
+export const MENSAJE_RESPUESTA_INVALIDA = "Recibimos una respuesta inesperada del servidor. Inténtalo de nuevo en un momento.";
+
+/** Una peticion con tope de tiempo. Un fallo de red (el navegador rechaza con TypeError "Failed to fetch") o un timeout
+ * se traducen a un `StorefrontError` con mensaje en espanol: nunca se le muestra al cliente el texto crudo del navegador. */
+async function pedir(fetchImpl: typeof fetch, url: string, init: RequestInit | undefined, tiempoMs: number): Promise<Response> {
+  const control = new AbortController();
+  let agotado = false;
+  const reloj = setTimeout(() => {
+    agotado = true;
+    control.abort();
+  }, tiempoMs);
+  try {
+    return await fetchImpl(url, { ...init, signal: control.signal });
+  } catch {
+    if (agotado) throw new StorefrontError(MENSAJE_TIEMPO_AGOTADO, 0, "tiempo_agotado");
+    throw new StorefrontError(MENSAJE_RED, 0, "red");
+  } finally {
+    clearTimeout(reloj);
+  }
+}
+
 async function leer<T>(res: Response, fallback: string): Promise<T> {
-  if (res.ok) return (await res.json()) as T;
+  if (res.ok) {
+    try {
+      return (await res.json()) as T;
+    } catch {
+      // 200 que no es JSON (pagina de un proxy/CDN o de mantenimiento): mensaje generico, no el SyntaxError del navegador.
+      throw new StorefrontError(MENSAJE_RESPUESTA_INVALIDA, res.status, "respuesta_invalida");
+    }
+  }
   let message = fallback;
   let motivo: string | undefined;
+  let rastreoToken: string | undefined;
   try {
-    const body = (await res.json()) as { message?: unknown; motivo?: unknown };
+    const body = (await res.json()) as { message?: unknown; motivo?: unknown; ya_registrado?: unknown; rastreo_token?: unknown };
     if (typeof body.message === "string" && body.message) message = body.message;
     if (typeof body.motivo === "string") motivo = body.motivo;
+    if (body.ya_registrado === true && typeof body.rastreo_token === "string") rastreoToken = body.rastreo_token;
   } catch {
     // cuerpo no JSON: se conserva el mensaje generico
   }
   if (res.status === 429) message = "Demasiados intentos seguidos. Espera un minuto e inténtalo de nuevo.";
-  throw new StorefrontError(message, res.status, motivo);
+  throw new StorefrontError(message, res.status, motivo, rastreoToken);
 }
 
-export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetchImpl: typeof fetch = (...a) => fetch(...a)) {
+export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetchImpl: typeof fetch = (...a) => fetch(...a), tiempoMaximoMs: number = TIEMPO_MAXIMO_MS) {
   const raiz = `${apiBaseUrl.replace(/\/+$/, "")}/v1/restaurantes/${enc(orgSlug)}/storefront`;
-  const post = (path: string, body: unknown) => fetchImpl(`${raiz}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const get = (path: string) => pedir(fetchImpl, `${raiz}${path}`, undefined, tiempoMaximoMs);
+  const post = (path: string, body: unknown) => pedir(fetchImpl, `${raiz}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }, tiempoMaximoMs);
   const cuerpo = (d: DatosPedido) => ({
     session_id: d.sessionId,
     items: d.items,
@@ -204,10 +243,10 @@ export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetc
   });
   return {
     async sucursales(): Promise<RestaurantePublico> {
-      return leer(await fetchImpl(raiz), "No pudimos cargar el restaurante.");
+      return leer(await get(""), "No pudimos cargar el restaurante.");
     },
     async menu(branchSlug: string): Promise<{ sucursal: SucursalPublica | null; categorias: CategoriaMenu[]; marca?: MarcaPublica }> {
-      return leer(await fetchImpl(`${raiz}/${enc(branchSlug)}/menu`), "No pudimos cargar el menú.");
+      return leer(await get(`/${enc(branchSlug)}/menu`), "No pudimos cargar el menú.");
     },
     async cotizar(branchSlug: string, datos: DatosPedido): Promise<Cotizacion> {
       return leer(await post(`/${enc(branchSlug)}/quote`, cuerpo(datos)), "No pudimos cotizar tu pedido.");
@@ -246,7 +285,7 @@ export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetc
       );
     },
     async rastreo(token: string): Promise<RastreoPedido> {
-      return leer(await fetchImpl(`${raiz}/track/${enc(token)}`), "No encontramos ese pedido.");
+      return leer(await get(`/track/${enc(token)}`), "No encontramos ese pedido.");
     },
   };
 }
