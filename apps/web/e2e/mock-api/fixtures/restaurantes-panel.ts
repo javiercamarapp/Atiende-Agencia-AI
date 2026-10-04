@@ -413,6 +413,27 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
     },
   },
 
+  // ---------- Sitio publico (marca del storefront, R-38) ----------
+  {
+    metodo: "GET",
+    patron: `${B}/config/sitio-publico`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const marca = p.estado.obtener<Record<string, unknown> | null>("rest.marca", () => null);
+      return { marca: marca ?? { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null, updatedAt: null }, guardada: marca !== null };
+    },
+  },
+  {
+    metodo: "PUT",
+    patron: `${B}/config/sitio-publico`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const marca = { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null, ...((p.cuerpo ?? {}) as Record<string, unknown>), updatedAt: new Date().toISOString() };
+      p.estado.guardar("rest.marca", marca);
+      return { marca, guardada: true };
+    },
+  },
+
   // ---------- Agente de WhatsApp ----------
   { metodo: "GET", patron: `${B}/config/agente-whatsapp/opciones`, roles: ["owner", "admin"], manejador: () => ({ perfiles: [{ perfil: "generico", agentName: null, businessName: "Tu negocio", toneStyle: "calido_cercano", deliveryTimeText: "30 a 45 minutos" }, { perfil: "taqueria_pm", agentName: "Mari", businessName: "Taqueria", toneStyle: "formal_directo", deliveryTimeText: "30 a 40 minutos" }], tonos: ["calido_cercano", "formal_directo", "profesional_neutro", "divertido_desenfadado"], motivosDesactivables: ["pedido_grande", "zona_ambigua", "producto_agotado", "no_entiende"], limites: { agentName: 40, businessName: 80, deliveryTimeText: 120, greetingText: 400, salsasText: 400, promosText: 400, largeOrderText: 400 }, esperaRafagasMaxSegundos: 30 }) },
   { metodo: "GET", patron: `${B}/config/agente-whatsapp/historial`, roles: ["owner", "admin"], manejador: () => ({ entradas: [] }) },
