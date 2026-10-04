@@ -388,7 +388,7 @@ select rentas.actualizar_propiedad('00000000-0000-0000-0000-0000000000b1', null,
 select count(*) as zona_deberia_ser_1 from rentas.property_config where property_id = '00000000-0000-0000-0000-0000000000b1' and zona_horaria = 'America/Merida' and moneda = 'MXN';
 rollback;
 
-\echo '--- 39d. una ocupacion ya terminada (fin < hoy) no bloquea el cambio de zona; una vigente de Casa Centro SI ---'
+\echo '--- 39d. una ocupacion ya terminada (fin < hoy) no bloquea el cambio de zona ---'
 begin;
 insert into rentas.ocupacion (organization_id, property_id, unidad_id, rango, capa, razon, estado, bloqueante)
 values ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b3', '00000000-0000-0000-0000-0000000000c3', daterange(current_date - 10, current_date - 5, '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true);
