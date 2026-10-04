@@ -544,6 +544,9 @@ export async function quoteOrder(
     readonly paymentMethod?: "efectivo" | "tarjeta";
     /** Doble porcion de salsas (extra cobrado, ver `buildDoubleSalsaLine`). */
     readonly doubleSalsas?: readonly DoubleSalsa[];
+    /** R-11: hora programada (ISO con zona). Se valida con las MISMAS reglas que `createOrder`: ventana
+     * (anticipacion minima/maxima), horario de la sucursal en esa hora y zona horaria de la sucursal. */
+    readonly programadoPara?: string;
   },
 ): Promise<OrderQuote & QuotePolicyInfo & QuotePromotionInfo> {
   const branch = await repo.findBranch(args.organizationId, { slug: args.branchSlug });
@@ -551,13 +554,28 @@ export async function quoteOrder(
     throw new OrderValidationError(`Sucursal '${args.branchSlug}' no encontrada o inactiva`);
   }
   const canal = normalizarCanal(args.canal);
+  // R-11: cotizar un pedido programado aplica la misma ventana y el mismo horario que crearlo, para que el
+  // cliente no confirme un resumen que despues se rechazaria. Contra una base sin la migracion 034 se rechaza.
+  const programadoPara = args.programadoPara === undefined ? undefined : parsearProgramadoPara(args.programadoPara);
+  if (programadoPara) {
+    validarVentanaProgramacion(programadoPara, new Date());
+    await assertProgramacionDisponible(repo);
+  }
+  const instante = programadoPara ? new Date(programadoPara) : null;
   const resolved = await resolveBranchOrderItems(repo, branch.propertyId, args.items);
   const baseQuote = buildOrderQuoteFromProducts(resolved.items, resolved.products, { adultConfirmed: args.adultConfirmed, canal });
   const doubleSalsaLine = buildDoubleSalsaLine(resolved.products, args.doubleSalsas ?? []);
   const quote: OrderQuote = doubleSalsaLine
     ? { ...baseQuote, lines: [...baseQuote.lines, doubleSalsaLine], total: Math.round((baseQuote.total + doubleSalsaLine.lineTotal) * 100) / 100 }
     : baseQuote;
-  const reglas = await aplicarReglasDeSucursal(repo, { branch, canal, subtotal: quote.total, colonia: args.colonia, paymentMethod: args.paymentMethod });
+  const reglas = await aplicarReglasDeSucursal(repo, {
+    branch,
+    canal,
+    subtotal: quote.total,
+    colonia: args.colonia,
+    paymentMethod: args.paymentMethod,
+    ...(instante ? { now: instante, exigirAbierto: true, mensajeCerrado: mensajeCerradoProgramado(branch.name, programadoPara!) } : {}),
+  });
 
   // PM PR-4: promociones automaticas por dia y canal. `total` pasa a ser el TOTAL A PAGAR (ya con el
   // descuento) y `subtotal` conserva el de renglones; sin promocion aplicada nada cambia. Las promociones
@@ -569,7 +587,7 @@ export async function quoteOrder(
     orderTotal: quote.total,
     items: quote.lines.map((line) => ({ id: line.productId, name: line.name, price: line.price, quantity: line.quantity })),
     canal,
-    now: new Date(),
+    now: instante ?? new Date(),
     zonaHoraria,
     ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
     propertyId: branch.propertyId,
@@ -607,6 +625,7 @@ export async function quoteOrder(
     preguntarPropina: reglas.preguntarPropina,
     abiertoAhora: reglas.apertura ? reglas.apertura.abierto : null,
     cierraA: reglas.apertura?.cierraA ?? null,
+    ...(programadoPara ? { programadoPara } : {}),
   };
 }
 
@@ -637,4 +656,6 @@ export interface QuotePolicyInfo {
   /** null = la sucursal no tiene horario configurado. */
   readonly abiertoAhora: boolean | null;
   readonly cierraA: string | null;
+  /** R-11: hora programada ya validada (ISO UTC); ausente en un pedido inmediato. */
+  readonly programadoPara?: string;
 }

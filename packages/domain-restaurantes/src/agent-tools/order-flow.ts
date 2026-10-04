@@ -79,6 +79,8 @@ export function fingerprintOrder(input: {
   readonly items: readonly RequestedOrderItemInput[];
   /** Doble porcion de salsas: cambia el total, asi que forma parte de la huella (solo si hay alguna). */
   readonly doubleSalsas?: readonly string[];
+  /** R-11: hora programada normalizada (ISO UTC). Cambiarla tras confirmar obliga a re-cotizar; solo entra a la huella si existe. */
+  readonly programadoPara?: string;
 }): string {
   const items = input.items
     .map((i) => ({
@@ -87,7 +89,7 @@ export function fingerprintOrder(input: {
       t: i.tortilla ?? null,
     }))
     .sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : a.q - b.q));
-  const canonical = JSON.stringify({ b: input.branchSlug.trim(), c: input.canal === "recoger" ? "recoger" : "domicilio", a: input.adultConfirmed === true, i: items, ...(input.doubleSalsas && input.doubleSalsas.length > 0 ? { d: [...new Set(input.doubleSalsas)].sort() } : {}) });
+  const canonical = JSON.stringify({ b: input.branchSlug.trim(), c: input.canal === "recoger" ? "recoger" : "domicilio", a: input.adultConfirmed === true, i: items, ...(input.doubleSalsas && input.doubleSalsas.length > 0 ? { d: [...new Set(input.doubleSalsas)].sort() } : {}), ...(input.programadoPara ? { p: input.programadoPara } : {}) });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
 
