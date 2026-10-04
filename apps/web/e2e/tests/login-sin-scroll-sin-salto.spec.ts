@@ -126,6 +126,13 @@ test.describe("login sin saltos @humo", () => {
         await expect(page.getByRole("status")).toContainText("Te mandamos un enlace");
         await afirmarMismoLugar(page, base, "enviado");
 
+        // Correo mal escrito DESPUES de un envio exitoso: el error reemplaza al aviso y es visible (un solo mensaje).
+        await campo.fill("me-equivoque");
+        await enviar();
+        await expect(page.getByRole("alert")).toContainText("correo válido");
+        await expect(page.getByRole("status")).toHaveCount(0);
+        await afirmarMismoLugar(page, base, "correo invalido tras enviado");
+
         // Error del servidor.
         modo = "falla";
         await enviar();

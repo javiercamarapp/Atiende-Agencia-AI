@@ -135,6 +135,21 @@ describe("VerticalLogin", () => {
     expect(c.querySelector(".login-aviso-google")).toBeNull();
   });
 
+  it("enviado y luego un correo invalido: el error reemplaza al aviso de enviado y es el unico mensaje de la ranura", async () => {
+    iniciarMagicLink.mockResolvedValue({ ok: true });
+    const c = await montar();
+    const ranura = c.querySelector(".login-estado")!;
+    changeValue(correo(c), "a@b.com");
+    await submitForm(c.querySelector("form")!);
+    expect(ranura.getAttribute("data-estado")).toBe("enviado");
+    changeValue(correo(c), "mal-escrito");
+    await submitForm(c.querySelector("form")!);
+    expect(ranura.getAttribute("data-estado")).toBe("error");
+    expect(ranura.querySelector('[role="status"]')).toBeNull();
+    expect(ranura.querySelectorAll('[role="alert"]').length).toBe(1);
+    expect(c.querySelectorAll('[role="status"], [role="alert"]').length).toBe(1);
+  });
+
   it("la etiqueta del boton no cambia de caja al enviar: 'Enviando…' ya existe apilada y solo cambia cual es invisible", async () => {
     let terminar: (v: { ok: boolean }) => void = () => undefined;
     iniciarMagicLink.mockReturnValue(new Promise((r) => (terminar = r)));
