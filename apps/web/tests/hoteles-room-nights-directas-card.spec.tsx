@@ -26,7 +26,7 @@ const BASE = { desde: "2026-10-01", hasta: "2026-11-01" };
 describe("RoomNightsDirectasCard", () => {
   it("muestra el porcentaje y las noches reales del servidor", async () => {
     const f = await montar(json({ disponible: true, ...BASE, directas: 12, total: 40, porcentaje: 0.3 }));
-    expect(f.mock.calls[0]![0]).toBe("http://api.local/hoteles/prop-1/revenue/room-nights-directas");
+    expect((f.mock.calls as unknown[][])[0]![0]).toBe("http://api.local/hoteles/prop-1/revenue/room-nights-directas");
     expect(rendered!.container.textContent).toContain("30.0%");
     expect(rendered!.container.textContent).toContain("12 de 40 noches");
   });
