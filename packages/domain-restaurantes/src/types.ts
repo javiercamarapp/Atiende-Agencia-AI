@@ -316,6 +316,9 @@ export interface Order {
   readonly dedupeFingerprint: string | null;
   readonly idempotencyKey: string | null;
   readonly createdAt: string;
+  /** Folio corto del pedido (`orders.order_number`). Solo viene en la fila de creacion (`create_order_idempotent` devuelve la fila completa); ausente en
+   * lecturas por columnas y en pedidos de prueba. Se usa para el aviso "Recibimos su pedido #folio". */
+  readonly orderNumber?: number;
   // ---- Fase 8 — superficie real del rol "repartidor" (ver roles.ts, migrations/008) ----
   /** `core.staff_user.id` del repartidor despachado a este pedido por un
    * MANAGER_ROLES (nunca lo pone el repartidor mismo) — null hasta que se

@@ -438,10 +438,11 @@ export async function reponerAgotadosDelDia(deps: AutopilotoServicioDeps, ahora:
 // 4. Tiempo prometido aprendido y confirmacion inmediata de voz y web
 // ---------------------------------------------------------------------------------------------------------------------------------------
 
-export async function estimarTiempoSucursal(deps: Pick<AutopilotoServicioDeps, "auto" | "repo">, input: { readonly organizationId: string; readonly propertyId: string; readonly canal: CanalPedido; readonly ahora: Date }): Promise<TiempoEstimado> {
+export async function estimarTiempoSucursal(deps: { readonly auto: Pick<AutopilotoRepository, "leerConfig" | "muestrasTiempo"> | null; readonly repo: Pick<RestaurantesRepository, "findWhatsAppAgentConfig"> }, input: { readonly organizationId: string; readonly propertyId: string; readonly canal: CanalPedido; readonly ahora: Date }): Promise<TiempoEstimado> {
+  // Sin repositorio del autopiloto (despliegue sin cablear) o con la base sin migrar: sin muestras ni umbrales => texto fijo del dueno.
   const [config, muestras, agente] = await Promise.all([
-    deps.auto.leerConfig(input.organizationId, input.propertyId),
-    deps.auto.muestrasTiempo(input.organizationId, input.propertyId, input.canal, input.ahora),
+    deps.auto ? deps.auto.leerConfig(input.organizationId, input.propertyId) : Promise.resolve({ disponible: false, valor: AUTOPILOTO_CONFIG_POR_OMISION }),
+    deps.auto ? deps.auto.muestrasTiempo(input.organizationId, input.propertyId, input.canal, input.ahora) : Promise.resolve({ disponible: false, valor: { muestras: [], abiertos: 0 } }),
     deps.repo.findWhatsAppAgentConfig(input.organizationId, input.propertyId),
   ]);
   const cfg = config.valor ?? AUTOPILOTO_CONFIG_POR_OMISION;

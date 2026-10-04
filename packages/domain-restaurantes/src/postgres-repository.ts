@@ -194,6 +194,8 @@ interface OrderRow {
   readonly assigned_repartidor_id: string | null;
   readonly estimated_delivery_at: string | null;
   readonly incident_note: string | null;
+  /** Folio (`order_number`): solo viene en la fila de `create_order_idempotent` (`to_jsonb` de la fila completa). */
+  readonly order_number?: string | number | null;
   /** Migracion 031 -- solo vienen en la fila de `create_order_idempotent` con la base migrada. */
   readonly canal?: CanalPedido | null;
   readonly propina?: string | null;
@@ -237,6 +239,7 @@ function mapOrder(row: OrderRow): Order {
     assignedRepartidorId: row.assigned_repartidor_id,
     estimatedDeliveryAt: row.estimated_delivery_at,
     incidentNote: row.incident_note,
+    ...(row.order_number !== undefined && row.order_number !== null ? { orderNumber: Number(row.order_number) } : {}),
     ...(row.canal !== undefined ? { canal: row.canal } : {}),
     ...(row.propina !== undefined ? { propina: row.propina === null ? null : Number(row.propina) } : {}),
     ...(row.hora_recogida !== undefined ? { horaRecogida: row.hora_recogida } : {}),
