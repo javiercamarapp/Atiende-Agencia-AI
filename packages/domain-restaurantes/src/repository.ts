@@ -610,6 +610,11 @@ export interface RestaurantesRepository {
     organizationId: string | null,
     options: { readonly now: Date; readonly anticipacionMin: number; readonly propertyIds?: readonly string[] | null },
   ): Promise<PromotedScheduledOrdersResult>;
+  /** Pedidos ya promovidos a cocina en las ultimas `hours` horas (estado vivo: ni `programado` ni `cancelado`) cuya
+   * comanda no esta en el outbox del POS, de organizaciones con SoftRestaurant en sombra/activo (QA-restaurantes-R1-
+   * automatizacion-02). Solo sesion de sistema. `[]` contra la base sin migrar (la 041). El repositorio en memoria no
+   * conoce el outbox del POS: devuelve todos los promovidos recientes (reencolar es idempotente). */
+  listPromotedOrdersWithoutComanda(options: { readonly hours: number; readonly limit: number }): Promise<readonly Order[]>;
   /** Reemplaza la politica completa de la sucursal (upsert por property_id). */
   upsertBranchPolicy(organizationId: string, propertyId: string, policy: BranchPolicy): Promise<BranchPolicy>;
   /** Ids de `known_zone` que cubre la sucursal para entregas; [] = sin cobertura

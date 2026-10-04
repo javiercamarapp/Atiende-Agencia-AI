@@ -270,13 +270,19 @@ export interface ResumenComandasPromovidos {
  *  - Solo pedidos en `pending` (un cancelado u otro estado nunca se encola).
  *  - Nunca lanza: `encolarComandaParaPedido` traga y registra sus errores (el store recupera la sesion con SAVEPOINT).
  */
-export async function encolarComandasDePromovidos(deps: DepsComandaPos, promovidos: readonly Order[]): Promise<ResumenComandasPromovidos> {
+export async function encolarComandasDePromovidos(
+  deps: DepsComandaPos,
+  promovidos: readonly Order[],
+  /** `cualquierEstadoVivo`: la reconciliacion (QA-restaurantes-R1-automatizacion-02) reencola pedidos promovidos que la cocina ya
+   * avanzo (`preparando`...): siguen necesitando su comanda. Un `programado` o `cancelado` nunca se encola. */
+  opciones: { readonly cualquierEstadoVivo?: boolean } = {},
+): Promise<ResumenComandasPromovidos> {
   let intentados = 0;
   let encoladas = 0;
   let omitidas = 0;
   let errores = 0;
   for (const order of promovidos) {
-    if (order.status !== "pending") continue;
+    if (opciones.cualquierEstadoVivo ? order.status === "programado" || order.status === "cancelado" : order.status !== "pending") continue;
     intentados += 1;
     const r = await encolarComandaParaPedido(deps, { order, ...(order.programadoPara ? { horaCompromiso: order.programadoPara } : {}), envioEnLinea: false });
     if (r.modo === "apagado") omitidas += 1;

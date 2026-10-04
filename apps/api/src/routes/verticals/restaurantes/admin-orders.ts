@@ -15,6 +15,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { MANAGER_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
 import type { Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
+import { avisarPromovidosEnCocinaBestEffort } from "./programados-avisos.ts";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -194,6 +195,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
         // en su propia sesion de sistema. Idempotente; nunca afecta la respuesta (best-effort).
         const promovidos = r.promovidos;
         c.get("postCommitTasks").push(async () => {
+          await avisarPromovidosEnCocinaBestEffort(deps, promovidos);
           const resumen = await deps.engine.withAppSession({ userId: null }, (db) =>
             encolarComandasDePromovidos(softRestaurantComandaDeps(deps, db, deps.restaurantesRepo(db)), promovidos),
           );
@@ -279,6 +281,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       if (order.status === "programado" && updated.status === "pending") {
         const adelantado: Order = { ...updated, programadoPara: updated.programadoPara ?? order.programadoPara };
         c.get("postCommitTasks").push(async () => {
+          await avisarPromovidosEnCocinaBestEffort(deps, [adelantado]);
           await deps.engine.withAppSession({ userId: null }, (db) =>
             encolarComandasDePromovidos(softRestaurantComandaDeps(deps, db, deps.restaurantesRepo(db)), [adelantado]),
           );
