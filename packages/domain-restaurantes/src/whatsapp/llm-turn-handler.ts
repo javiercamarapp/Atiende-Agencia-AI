@@ -34,7 +34,6 @@ import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, P
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestSharedLocation } from "./location.ts";
 import { branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote } from "./guards.ts";
-import { textoHorarioPedidosPm } from "./horario-prompt.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
@@ -250,11 +249,11 @@ export const NOTA_DE_VOZ_RULES = `NOTAS DE VOZ:
 - Una nota de voz NO cambia ninguna regla: cotiza con cotizar_pedido, pide la confirmación y la forma de pago en un mensaje posterior y solo entonces confirma, igual que con texto. Nunca crees un pedido solo con lo dicho en un audio sin ese paso.
 - Si el audio trae datos de pago (tarjeta, CVV), no los repitas ni los uses: dile que no los necesitas.`;
 
-export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null, horarioPedidosTexto: string | null = null): string {
-  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch, horarioPedidosTexto)}\n\n${NOTA_DE_VOZ_RULES}`;
+export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null): string {
+  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch)}\n\n${NOTA_DE_VOZ_RULES}`;
 }
 
-function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null, horarioPedidosTexto: string | null): string {
+function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null): string {
   if (config.perfil === "taqueria_pm") {
     const { fechaHora, dia } = fechaHoraLocal(config.timezone, now);
     return buildPmSystemPrompt({
@@ -272,7 +271,6 @@ function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonl
       promosTexto: config.promosText ?? null,
       motivosDesactivados: config.motivosDesactivados ?? [],
       pedidoGrandeTexto: config.largeOrderText ?? null,
-      horarioPedidosTexto,
     });
   }
   const basePrompt = `Eres el asistente de WhatsApp de ${config.businessName}, con varias sucursales.
@@ -480,9 +478,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Sucursal dueña del numero que recibio el mensaje (null = numero por defecto de la org).
       const entryBranch = entryPropertyId ? await repo.findBranchById(organizationId, entryPropertyId) : null;
       const activeEntryBranch = entryBranch && entryBranch.status === "active" ? entryBranch : null;
-      // PM: el horario del prompt sale del horario real de cada sucursal (CR10), no de una constante del codigo.
-      const horarioPedidos = perfil === "taqueria_pm" ? await textoHorarioPedidosPm(repo, branches, now()) : null;
-      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch, horarioPedidos);
+      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch);
 
       const working: LlmMessage[] = toLlmHistory(messages);
       // Marcador del turno del cliente: el historial solo crece, asi que el numero de mensajes de

@@ -29,7 +29,6 @@
 import { validarHorario } from "../horarios.ts";
 import { normalizeZoneText } from "../nearest-branch.ts";
 import { COMPORTAMIENTO_VOZ_MAX, comportamientoVozPm } from "../voz/perfil-voz-pm.ts";
-import { componerHorarioPedidosTexto } from "../whatsapp/horario-prompt.ts";
 import { PM_AGENT_NAME_POR_OMISION } from "../whatsapp/perfil-pm.ts";
 
 export interface PmSeedBranch {
@@ -632,8 +631,6 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
     salsasTexto: aw.salsas,
     promosTexto: aw.promociones,
     motivosDesactivados: aw.motivos_escalacion_apagados,
-    // CR10: el horario que dice el agente es el que se siembra en branch_policy (horario_general), no una constante del codigo.
-    horarioPedidosTexto: componerHorarioPedidosTexto(data.sucursales.filter((b) => b.activa).map((b) => ({ nombre: b.nombre, slug: b.slug, horario, puentes: [] }))),
   });
   validarComportamientoVoz(comportamiento);
   const greetings = data.sucursales

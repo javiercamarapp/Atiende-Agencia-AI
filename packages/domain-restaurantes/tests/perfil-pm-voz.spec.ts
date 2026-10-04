@@ -1,7 +1,6 @@
 // PM-C3 -- WhatsApp y voz comparten UNA fuente (`whatsapp/perfil-pm.ts`). El comportamiento de voz es su version compacta (tope de 8000
 // caracteres de la migracion 025): estas pruebas atan que la version compacta no pierda ninguna regla, motivo ni dato de la completa, que
 // solo nombre herramientas que existen y que el simulador y el seed produzcan el mismo texto base.
-import { componerHorarioPedidosTexto } from "../src/whatsapp/horario-prompt.ts";
 import { describe, expect, it } from "vitest";
 import { AGENT_TOOL_DEFINITIONS } from "../src/agent-tools/registry.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
@@ -88,13 +87,14 @@ describe("comportamiento de voz = el mismo perfil de WhatsApp en version compact
     }
   });
 
-  it("conserva lo que PM-C3 pide en voz: H2/H8 sin aflojar, combo del martes, horario prudente, hora_recogida y el umbral de pedido grande", () => {
+  it("conserva lo que PM-C3 pide en voz: H2/H8 sin aflojar, combo del martes, horario solo de los datos, hora_recogida y el umbral de pedido grande", () => {
     expect(voz).toContain("puede adquirirlo directamente en la sucursal al recoger");
     expect(voz).toMatch(/H8\. Escale.*alergias/);
     // CR09: el combo del martes esta cargado: la voz dice que lo aplica cotizar_pedido y ya no que lo confirma la sucursal.
     expect(voz).toContain("H13. Combo del martes (nachos de pastor + 2 aguas, recoger): lo aplica cotizar_pedido; diga lo que devuelve.");
     expect(voz).not.toContain("la confirma la sucursal al recoger");
-    expect(voz).toContain("Francisco de Montejo: lunes a viernes de 6 pm a 12 am");
+    expect(voz).not.toMatch(/6 pm a (12|1) am|HORARIO PARA TOMAR PEDIDOS/);
+    expect(voz).toMatch(/H16\. Horario: solo lo dicen los datos de la sucursal/);
     expect(voz).toContain("hora_recogida");
     expect(voz).toMatch(/Pedido grande \(más de \$4,000 o más de 5 kg; más de \$2,500 si el número no tiene historial y paga en efectivo\)/);
     expect(voz).toContain(PM_PROMOS_POR_OMISION);
@@ -146,14 +146,8 @@ describe("seed: el comportamiento sembrado sale del perfil, no de un archivo apa
       salsasTexto: data.agente_whatsapp.salsas,
       promosTexto: data.agente_whatsapp.promociones,
       motivosDesactivados: data.agente_whatsapp.motivos_escalacion_apagados,
-      // CR10: el horario del prompt es el que se siembra en branch_policy (12:00-01:00 todos los dias), no la constante vieja.
-      horarioPedidosTexto: componerHorarioPedidosTexto(
-        data.sucursales.filter((b) => b.activa).map((b) => ({ nombre: b.nombre, slug: b.slug, horario: [{ dias: [...data.horario_general.dias], abre: data.horario_general.abre, cierra: data.horario_general.cierra }], puentes: [] })),
-      ),
     });
     expect(plan.voice.comportamiento).toBe(esperado);
-    expect(plan.voice.comportamiento).toContain("Pensiones: todos los días de 12 pm a 1 am");
-    expect(plan.voice.comportamiento).not.toContain("Pensiones: todos los días de 6 pm a 12 am");
   });
 
   it("con P5 aprobado (5 sucursales activas) sigue cabiendo en 8000 y trae sus slugs", () => {

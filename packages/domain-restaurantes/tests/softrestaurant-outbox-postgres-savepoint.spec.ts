@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { FakeSoftRestaurantAdapter } from "../src/softrestaurant/fake-adapter.ts";
 import { MapaProductoCodigo } from "../src/softrestaurant/catalog-map.ts";
 import { PostgresComandaOutboxStore, mapFilaComanda } from "../src/softrestaurant/outbox-postgres-store.ts";
-import { crearResolverSucursalPos, encolarComandaParaPedido } from "../src/softrestaurant/outbox-service.ts";
+import { cortarComandaDePedidoCancelado, crearResolverSucursalPos, encolarComandaParaPedido } from "../src/softrestaurant/outbox-service.ts";
 import { AbortAwareFakeSession, type FakeSessionHandler } from "./support/aborting-fake-session.ts";
 
 function pgError(code: string, message: string): Error & { code: string } {
@@ -114,6 +114,22 @@ describe("PostgresComandaOutboxStore: errores reales y camino feliz", () => {
     for (const [code, esperado] of casos) {
       const s = new AbortAwareFakeSession([{ match: /pos_comanda_marcar_capturada/i, respond: () => pgError(code, "x") }, SIGUIENTE_QUERY]);
       expect(await new PostgresComandaOutboxStore(s).marcarCapturada(ORG, "id", "u", "n")).toEqual({ resultado: esperado });
+      await sigueUsable(s);
+    }
+  });
+
+  it("el corte compuesto por cancelacion: un error no recuperable en marcarCapturada no deja abortada la sesion del request", async () => {
+    const ORDER = "33333333-3333-3333-3333-333333333333";
+    const fila = { id: "44444444-4444-4444-4444-444444444444", organization_id: ORG, property_id: PROP, order_id: ORDER, estado: "pendiente", modo: "activo", payload: { idempotencyKey: "k", sucursal: "T1", tipo: "recoger", cliente: { nombre: "A", telefono: "1" }, formaPago: "efectivo", items: [] }, intentos: 0, max_intentos: 5, proximo_intento_en: new Date(), folio: null, ultimo_error: null, capturado_por: null, capturado_en: null, nota_captura: null, creado_en: new Date(), actualizado_en: new Date() };
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    for (const handler of [
+      { match: /pos_comanda_marcar_capturada/i, respond: () => pgError("XX000", "error interno no recuperable") },
+      { match: /from restaurantes\.pos_comanda_outbox/i, respond: () => pgError("XX000", "error interno no recuperable") },
+    ] as FakeSessionHandler[]) {
+      const s = new AbortAwareFakeSession([handler, { match: /from restaurantes\.pos_comanda_outbox/i, respond: () => [fila] }, SIGUIENTE_QUERY]);
+      const r = await cortarComandaDePedidoCancelado(new PostgresComandaOutboxStore(s), ORG, { id: ORDER, propertyId: PROP }, "u");
+      expect(r).toEqual({ cortadas: 0 });
       await sigueUsable(s);
     }
   });
