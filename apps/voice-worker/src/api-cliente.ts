@@ -4,6 +4,7 @@
 //     token por llamada (`x-atiende-call-token`) desde `transporteHttp`, nunca el secreto.
 // Los errores llevan solo el estado HTTP y un codigo corto: jamas el cuerpo de la respuesta ni los secretos.
 import type { TramoLlamada } from "@atiende/voice-core";
+import { sinDiagonalFinal } from "./config.ts";
 import type { VozProveedorFallo } from "@atiende/voice-core";
 
 export class ErrorApi extends Error {
@@ -75,7 +76,7 @@ export class ClienteApi {
   private readonly timeoutMs: number;
 
   constructor(private readonly o: OpcionesCliente) {
-    this.base = o.baseUrl.replace(/\/+$/, "");
+    this.base = sinDiagonalFinal(o.baseUrl);
     this.fetchFn = o.fetchFn ?? fetch;
     this.timeoutMs = o.timeoutMs ?? 6_000;
   }

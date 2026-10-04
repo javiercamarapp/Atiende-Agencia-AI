@@ -1,6 +1,6 @@
 // Configuracion del worker: tabla DNIS -> sucursal, modo "no configurado" (nunca atiende a medias), tope mensual y modo de entrada.
 import { describe, expect, it } from "vitest";
-import { cargarConfig, franjaDeHora, modoEntradaDeLlamada, normalizarNumero, parsearTablaDnis, resolverTopeMensualMicroUsd } from "../src/config.ts";
+import { cargarConfig, franjaDeHora, modoEntradaDeLlamada, normalizarNumero, parsearTablaDnis, resolverTopeMensualMicroUsd, sinDiagonalFinal } from "../src/config.ts";
 
 const ORG = "00000000-0000-4000-8000-000000000001";
 const SUC_A = "00000000-0000-4000-8000-0000000000a1";
@@ -30,6 +30,21 @@ describe("normalizarNumero", () => {
     expect(normalizarNumero("anonymous")).toBeNull();
     expect(normalizarNumero(null)).toBeNull();
     expect(normalizarNumero(undefined)).toBeNull();
+  });
+});
+
+describe("sinDiagonalFinal", () => {
+  it("quita todas las diagonales finales y nada mas", () => {
+    expect(sinDiagonalFinal("https://api.ejemplo.invalid///")).toBe("https://api.ejemplo.invalid");
+    expect(sinDiagonalFinal("https://api.ejemplo.invalid/v1/")).toBe("https://api.ejemplo.invalid/v1");
+    expect(sinDiagonalFinal("https://api.ejemplo.invalid")).toBe("https://api.ejemplo.invalid");
+    expect(sinDiagonalFinal("///")).toBe("");
+    expect(sinDiagonalFinal("")).toBe("");
+  });
+  it("una entrada con cientos de miles de diagonales se procesa de inmediato (sin retroceso de expresion regular)", () => {
+    const inicio = performance.now();
+    expect(sinDiagonalFinal(`a${"/".repeat(500_000)}x${"/".repeat(500_000)}`)).toBe(`a${"/".repeat(500_000)}x`);
+    expect(performance.now() - inicio).toBeLessThan(500);
   });
 });
 

@@ -111,6 +111,13 @@ export function parsearTablaDnis(json: string | undefined, env: Readonly<Record<
 
 const lleno = (v: string | undefined): v is string => typeof v === "string" && v.trim() !== "";
 
+/** Quita las diagonales finales de una URL base. Con un bucle y no con una expresion regular (`/\/+$/` es de tiempo polinomial ante muchas diagonales). */
+export function sinDiagonalFinal(url: string): string {
+  let fin = url.length;
+  while (fin > 0 && url[fin - 1] === "/") fin -= 1;
+  return url.slice(0, fin);
+}
+
 export interface OpcionesCarga {
   /** Ids de pregrabados que faltan en `assetsDir` (los calcula quien arranca; vacio = completos). */
   readonly pregrabadosFaltantes?: readonly MensajeId[];
@@ -122,7 +129,7 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
   if (!lleno(env.LIVEKIT_URL)) motivos.push("Falta LIVEKIT_URL.");
   if (!lleno(env.LIVEKIT_API_KEY)) motivos.push("Falta LIVEKIT_API_KEY.");
   if (!lleno(env.LIVEKIT_API_SECRET)) motivos.push("Falta LIVEKIT_API_SECRET.");
-  const apiBaseUrl = (env.ATIENDE_API_URL ?? "").trim().replace(/\/+$/, "");
+  const apiBaseUrl = sinDiagonalFinal((env.ATIENDE_API_URL ?? "").trim());
   if (!apiBaseUrl) motivos.push("Falta ATIENDE_API_URL (URL base de la API de Atiende).");
   else if (!/^https?:\/\//.test(apiBaseUrl)) motivos.push("ATIENDE_API_URL debe empezar con http:// o https://.");
   const internalSecret = (env.INTERNAL_SECRET ?? "").trim();
