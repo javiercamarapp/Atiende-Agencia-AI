@@ -162,7 +162,19 @@ export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gate
     defaultRole: RESTAURANTES_WHATSAPP_AGENT_ROLE,
     escalatedRole: RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
     encolarComanda: (pedido) => encolarComandaParaPedido(softRestaurantComandaDeps(softRestaurantDeps, db, repo), pedido),
+    urlFacturacion: urlFacturacionDeEntorno(),
   });
+}
+
+/** Enlace de facturación en línea del negocio (variable `PM_URL_FACTURACION`, solo https). Sin ella el agente no inventa uno. */
+export function urlFacturacionDeEntorno(env: NodeJS.ProcessEnv = process.env): string | null {
+  const valor = env.PM_URL_FACTURACION?.trim();
+  if (!valor || valor.length > 300) return null;
+  try {
+    return new URL(valor).protocol === "https:" ? valor : null;
+  } catch {
+    return null;
+  }
 }
 
 function buildRealRestaurantesTurnHandler(engine: TenancyEngine, gateway: NonNullable<AppDeps["llmGateway"]>): WhatsAppTurnHandler {
