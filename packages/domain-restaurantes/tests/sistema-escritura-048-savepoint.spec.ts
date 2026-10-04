@@ -87,6 +87,8 @@ describe("createCallbackRequest (048)", () => {
   it("base sin migrar (42883): recupera la transaccion y cae al INSERT directo", async () => {
     const session = new AbortAwareFakeSession([
       { match: /select restaurantes\.create_callback_request/i, respond: () => sinFuncion("create_callback_request(uuid, uuid, text, text, text, text, text)") },
+      // Sin la 048 tampoco existe la 062 (`callback_registrar`): cae al INSERT directo anterior.
+      { match: /callback_registrar/i, respond: () => sinFuncion("callback_registrar(uuid, uuid, text, text, text, text, text)") },
       { match: /insert into restaurantes\.callback_requests/i, respond: () => [CREADO] },
       NOTIFICACION,
     ]);
