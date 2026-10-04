@@ -102,6 +102,7 @@ import type { RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { createLicitacionesMessagingOutboxPort } from "@atiende/domain-licitaciones";
 import type { DispatchItemResult, DispatchSummary, MessagingOutboxItem, MessagingOutboxPort } from "@atiende/whatsapp-gateway";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
 import { logEvent } from "../../logger.ts";
@@ -192,6 +193,7 @@ export async function dispatchWhatsAppVertical(deps: AppDeps, vertical: WhatsApp
       const r = await deps.engine.withAppSession({ userId: null }, async (db) =>
         dispatcher.dispatchClaimed(construirPuerto(db), reclamados, { suppression: crearGuardTelefono(db), medidor: crearMedidorMensajes(db, vertical), plantillas: crearCatalogoPlantillas(db) }),
       );
+      if (vertical === "restaurantes") await avisarMensajesMuertosBestEffort(deps, reclamados, r.items);
       total.claimed += r.claimed;
       total.sent += r.sent;
       total.retried += r.retried;
@@ -219,6 +221,26 @@ export async function dispatchWhatsAppVertical(deps: AppDeps, vertical: WhatsApp
     items,
     ...(errores > 0 ? { errores, ultimoError } : {}),
   };
+}
+
+/** QA-restaurantes-R1-automatizacion-11: un WhatsApp al cliente de restaurantes que queda `dead` (reintentos agotados o rechazado)
+ *  avisa en la campana al staff de la organizacion (un aviso por mensaje, clave = id del outbox, sin PII: solo el catalogo).
+ *  Los suprimidos y los omitidos por tope de plan NO son entrega fallida y no avisan. Best-effort, en su propia sesion de
+ *  sistema: nunca altera la corrida; contra la base sin la 0039 degrada en silencio. */
+async function avisarMensajesMuertosBestEffort(deps: AppDeps, reclamados: readonly MessagingOutboxItem[], items: readonly DispatchItemResult[]): Promise<void> {
+  const muertos = items.filter((i) => i.outcome === "dead");
+  if (muertos.length === 0) return;
+  try {
+    await deps.engine.withAppSession({ userId: null }, async (db) => {
+      for (const m of muertos) {
+        const organizationId = reclamados.find((x) => x.id === m.id)?.organizationId;
+        if (!organizationId) continue;
+        await emitirNotificacion(db, { evento: "restaurantes.whatsapp.mensaje_muerto", organizationId, clave: m.id, entidadTipo: "messaging_outbox", entidadId: m.id });
+      }
+    });
+  } catch {
+    // best-effort
+  }
 }
 
 const SAVEPOINT_NAME = "sp_inline_whatsapp_dispatch";
