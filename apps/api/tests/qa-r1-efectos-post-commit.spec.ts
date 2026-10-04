@@ -68,18 +68,19 @@ describe("caos-20: correo y comanda al POS despues del COMMIT del pedido", () =>
     expect(res.status).toBe(200);
     const body = (await res.json()) as { order: { id: string }; comanda: { estado: string; folio: string } };
     expect(body.comanda).toMatchObject({ estado: "confirmada", folio: t.fake.comandas[0]!.folio });
-    expect(t.eventos.indexOf("pos")).toBeGreaterThan(t.eventos.indexOf("commit1"));
+    // sesion 1 = tope por IP (transaccion propia, QA R1 seguridad-09); sesion 2 = la que crea el pedido.
+    expect(t.eventos.indexOf("pos")).toBeGreaterThan(t.eventos.indexOf("commit2"));
     expect(t.eventos.filter((e) => e === "pos")).toHaveLength(1);
   });
 
   it("checkout legado: si el COMMIT no llega, NO se manda la comanda al POS ni se drena el correo (no hay pedido que avisar)", async () => {
-    const t = await setup({ fallaElCommitEn: 1 });
+    const t = await setup({ fallaElCommitEn: 2 }); // la 1 es el tope por IP (seguridad-09); la 2 crea el pedido
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const res = await t.app.request(`/v1/restaurantes/${ORG}/orders`, jsonRequestInit(t.cuerpoLegado, ORIGIN));
     expect(res.status).toBeGreaterThanOrEqual(500);
     expect(t.fake.llamadasCrear).toHaveLength(0);
     expect(t.eventos).not.toContain("pos");
-    expect(t.eventos).toEqual(["abre1", "commit-fallido1"]); // ninguna sesion posterior (ni correo ni POS)
+    expect(t.eventos).toEqual(["abre1", "commit1", "abre2", "commit-fallido2"]); // ninguna sesion posterior (ni correo ni POS)
   });
 
   it("storefront: igual (comanda al POS despues del commit; sin commit, ningun efecto externo)", async () => {
@@ -94,13 +95,14 @@ describe("caos-20: correo y comanda al POS despues del COMMIT del pedido", () =>
     expect(res.status).toBe(200);
     const cuerpo = (await res.json()) as { comanda: { estado: string; folio: string } | null };
     expect(cuerpo.comanda).toMatchObject({ estado: "confirmada" });
-    // sesiones: 1 cotizar, 2 confirmar, 3 crear (transaccion del pedido), 4 efectos posteriores al commit
-    expect(t.eventos.indexOf("pos")).toBeGreaterThan(t.eventos.indexOf("commit3"));
-    expect(t.eventos.indexOf("abre4")).toBeGreaterThan(t.eventos.indexOf("commit3"));
+    // cada peticion abre antes su tope por IP en una transaccion propia (seguridad-09). Sesiones: 1-2 cotizar, 3-4 confirmar,
+    // 5 tope del pedido, 6 crear (transaccion del pedido), 7 efectos posteriores al commit
+    expect(t.eventos.indexOf("pos")).toBeGreaterThan(t.eventos.indexOf("commit6"));
+    expect(t.eventos.indexOf("abre7")).toBeGreaterThan(t.eventos.indexOf("commit6"));
   });
 
   it("storefront: si el COMMIT de la transaccion que crea el pedido no llega, no sale la comanda al POS", async () => {
-    const t = await setup({ fallaElCommitEn: 3 });
+    const t = await setup({ fallaElCommitEn: 6 }); // ver numeracion de sesiones arriba: la 6 crea el pedido
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const sesion = "efectos-post-commit-0002";
     const body = { session_id: sesion, items: [{ product_id: t.base.products.cocaCola, requested_quantity: 2 }], canal: "recoger", payment_method: "efectivo" };
@@ -111,7 +113,7 @@ describe("caos-20: correo y comanda al POS despues del COMMIT del pedido", () =>
     expect(res.status).toBeGreaterThanOrEqual(500);
     expect(t.fake.llamadasCrear).toHaveLength(0);
     expect(t.eventos).not.toContain("pos");
-    expect(t.eventos).not.toContain("abre4");
+    expect(t.eventos).not.toContain("abre7");
   });
 
   it("POS caido: el pedido sigue siendo 200 con 'pendiente de confirmar' y la comanda queda para el despachador", async () => {
