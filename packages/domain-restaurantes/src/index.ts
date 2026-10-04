@@ -129,6 +129,7 @@ export {
   REPARTIDOR_ALLOWED_STATUSES,
   assertValidRepartidorStatusTransition,
   changeAssignedOrderStatus,
+  assertOrderCanBeDispatched,
 } from "./order-lifecycle.ts";
 
 export { searchProducts, prepareCreateOrder, createOrder, redondearACentavos, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
