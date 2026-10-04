@@ -522,7 +522,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         // Autopiloto: con la bandera de la organizacion encendida, una cancelacion con pedido activo se resuelve con una solicitud de aprobacion (o la
         // cancelacion automatica que la sucursal haya permitido); si no aplica, `null` y todo sigue por el camino de siempre.
         if (riesgo.motivo === "cancelacion_modificacion" && options.autopiloto) {
-          const resuelta = await intentarCancelacionConAutopiloto(repo, options.autopiloto, { organizationId, phone, ahora: now() });
+          const resuelta = await intentarCancelacionConAutopiloto(repo, options.autopiloto, { organizationId, phone, ahora: now(), texto: riesgo.text });
           if (resuelta) return { reply: resuelta.reply, orderId: null, propertyId };
         }
         // El subtipo de la queja viaja en el resumen del aviso al equipo (lista cerrada).

@@ -7,6 +7,7 @@
 //   * Queja: ademas del aviso al equipo de siempre, se liga al ultimo pedido del telefono (solicitud de compensacion) y se guarda su subtipo. Nunca cambia lo
 //     que se le responde al cliente ni compensa nada por su cuenta.
 import { normalizePhone } from "../phone.ts";
+import { normalizarParaClasificar } from "./guards.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import { PostgresAutopilotoRepository } from "../autopiloto/postgres-repository.ts";
 import { registrarQuejaConPedido, solicitarCancelacion } from "../autopiloto/servicio.ts";
@@ -42,14 +43,24 @@ export function crearHooksAutopilotoTurnoPostgres(deps: Omit<AutopilotoServicioD
 }
 
 /**
+ * El clasificador de alto riesgo (guards.ts) no entiende la negacion: "no cancelen mi pedido" y "ya llego, no hace falta cancelar" coinciden con
+ * la cancelacion. Para el aviso al equipo eso es inocuo, pero la cancelacion AUTOMATICA no puede ejecutarse con un mensaje que dice lo contrario.
+ * Con negacion cerca del verbo no se interviene (`null`): el turno sigue por el camino de siempre (aviso a una persona).
+ */
+export function negacionDeCancelacion(texto: string): boolean {
+  return /\b(?:no|nunca|ni|tampoco)\b[^.!?\n]{0,25}\bcancel\w*|\bcancel\w*[^.!?\n]{0,15}\b(?:no|nunca)\b|\bsin\s+cancelar\b|\bya\s+no\b[^.!?\n]{0,20}\bcancel\w*/.test(normalizarParaClasificar(texto));
+}
+
+/**
  * Intenta resolver la cancelacion con el autopiloto. Devuelve la respuesta fija al cliente, o `null` para seguir por el camino anterior (bandera apagada,
  * sin pedido activo, base sin migrar o cualquier error: nunca se rompe el turno).
  */
 export async function intentarCancelacionConAutopiloto(
   repo: Pick<RestaurantesRepository, "runWithRowSavepoint">,
   hooks: AutopilotoTurnoHooks,
-  args: { readonly organizationId: string; readonly phone: string; readonly ahora: Date },
+  args: { readonly organizationId: string; readonly phone: string; readonly ahora: Date; readonly texto?: string },
 ): Promise<{ readonly reply: string } | null> {
+  if (args.texto !== undefined && negacionDeCancelacion(args.texto)) return null;
   try {
     return await repo.runWithRowSavepoint(async () => {
       if (!(await hooks.cancelacionActiva(args.organizationId))) return null;
