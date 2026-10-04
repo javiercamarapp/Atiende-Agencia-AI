@@ -86,3 +86,33 @@ describe("viaje-04: precio alucinado sin la palabra 'total'", () => {
     expect(r.reply).toContain("$179.00");
   });
 });
+
+describe("agentes-06: la cotizacion vigente sobrevive entre turnos", () => {
+  it("cotiza $179; en el turno siguiente, sin herramientas, 'su total queda en $150' se corrige a $179", async () => {
+    const b = await banco();
+    const pastor = b.pid("Taco Al Pastor (individual)");
+    const coca = b.pid("Coca-Cola");
+    b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items: [item(pastor, "Taco Al Pastor (individual)", 3, "maiz"), item(coca, "Coca-Cola", 1)] }), say("Total: $179.00. ¿Confirma?")]);
+    const tel = "+5219990000009";
+    await b.enviar(tel, "3 pastor maiz y una coca pa recoger");
+    b.setGuion([say("Claro, su total queda en $150.00. ¿Efectivo o tarjeta?")]);
+    const r = await b.enviar(tel, "cuanto era?");
+    expect(r.reply).toContain("$179.00");
+    expect(r.reply).not.toContain("$150.00");
+  });
+
+  it("sin cotizacion previa en la conversacion la guardia no inventa nada", async () => {
+    const b = await banco();
+    b.setGuion([say("El taco de pastor cuesta $42.00. ¿Cuántos le anoto?")]);
+    const r = await b.enviar("+5219990000023", "cuanto cuesta el taco de pastor?");
+    expect(r.reply).toContain("$42.00");
+  });
+
+  it("base sin migrar (sin maquina de estados): el turno sigue funcionando, solo sin la guardia entre turnos", async () => {
+    const b = await banco();
+    (b.w.repo as unknown as { orderFlowUnavailable: boolean }).orderFlowUnavailable = true;
+    b.setGuion([say("Su total queda en $150.00. ¿Confirma?")]);
+    const r = await b.enviar("+5219990000024", "hola");
+    expect(r.reply).toContain("$150.00");
+  });
+});
