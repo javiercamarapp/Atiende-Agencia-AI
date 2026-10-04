@@ -14,7 +14,7 @@ const SALIDA = opt("salida", "");
 // Por omision el mes simulado EMPIEZA hoy (hora de la property). El now() de Postgres es el real y varias restricciones lo comparan con la fecha
 // de negocio: las de "no puede estar en el pasado" (llegada y corte de un grupo, vigencia) exigen un mes que arranque hoy y no antes; las de
 // "no puede estar en el futuro" (fecha de recepcion de un ARCO) se resuelven mandando la fecha real. Ver el limite declarado en reloj.ts.
-const hoyReal = new Date().toLocaleDateString("en-CA", { timeZone: "America/Cancun" });
+const hoyReal = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Cancun", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const INICIO = opt("inicio", hoyReal);
 if (!process.env.SIM_DATABASE_URL) throw new Error("falta SIM_DATABASE_URL: corre scripts/simular-mes-hoteles/run.sh");
 if (!Number.isInteger(DIAS) || DIAS < 1 || DIAS > 60) throw new Error("--dias debe ser un entero entre 1 y 60");
