@@ -90,8 +90,9 @@ insert into restaurantes.messaging_outbox (organization_id, channel, event_type,
 insert into restaurantes.staff_order_notification (organization_id, property_id, order_id, event_type, message, created_at) values
   ('00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-00000000a0a1', '00000000-0000-0000-0000-00000000d001', 'order.created', 'Nuevo pedido de Cliente Voz - $300.00', now() - interval '400 days'),
   ('00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-00000000a0a1', '00000000-0000-0000-0000-00000000d002', 'order.created', 'Nuevo pedido de Cliente Reciente - $300.00', now() - interval '2 days');
+-- La solicitud ARCO se guarda con OTRO formato de telefono (espacios y guiones): la exclusion compara solo digitos.
 insert into restaurantes.data_rights_requests (organization_id, customer_phone, right_type, status, confirmed_at, response_due_at, execution_due_at)
-values ('00000000-0000-0000-0000-00000000a001', '+5219990000003', 'acceso', 'en_proceso', now(), now() + interval '20 days', now() + interval '35 days');
+values ('00000000-0000-0000-0000-00000000a001', '+52 (1) 999-000-0003', 'acceso', 'en_proceso', now(), now() + interval '20 days', now() + interval '35 days');
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
 create temp table s2_out on commit drop as select * from restaurantes.system_purge_expired_privacy_data(500);

@@ -74,7 +74,7 @@ begin
        and w.updated_at < now() - make_interval(days => coalesce(pc.conversation_retention_days, 180))
        and not exists (
          select 1 from restaurantes.data_rights_requests r
-          where r.organization_id = w.organization_id and r.customer_phone = w.phone
+          where r.organization_id = w.organization_id and regexp_replace(r.customer_phone, '\D', '', 'g') = regexp_replace(w.phone, '\D', '', 'g')
             and r.status in ('recibida', 'en_proceso', 'bloqueada')
        )
      order by w.updated_at
@@ -126,7 +126,7 @@ begin
        and o.created_at < now() - make_interval(days => coalesce(pc.voice_retention_days, 30))
        and not exists (
          select 1 from restaurantes.data_rights_requests r
-          where r.organization_id = o.organization_id and r.customer_phone = o.customer_phone
+          where r.organization_id = o.organization_id and regexp_replace(r.customer_phone, '\D', '', 'g') = regexp_replace(o.customer_phone, '\D', '', 'g')
             and r.status in ('recibida', 'en_proceso', 'bloqueada')
        )
      order by o.created_at
@@ -176,7 +176,7 @@ begin
        and n.created_at < now() - make_interval(days => coalesce(pc.conversation_retention_days, 180))
        and not exists (
          select 1 from restaurantes.data_rights_requests r
-          where r.organization_id = n.organization_id and r.customer_phone = o.customer_phone
+          where r.organization_id = n.organization_id and regexp_replace(r.customer_phone, '\D', '', 'g') = regexp_replace(o.customer_phone, '\D', '', 'g')
             and r.status in ('recibida', 'en_proceso', 'bloqueada')
        )
      order by n.created_at
