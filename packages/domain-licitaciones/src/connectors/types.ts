@@ -32,6 +32,8 @@ export interface TenderSourceIngestCandidate {
   readonly currency: string;
   readonly state: string | null;
   readonly procedureTypeRaw: string | null;
+  /** Numero de procedimiento tal como lo publica la fuente (insumo de la huella cruzada, paridad3 L-P3-14). Ausente/`null` = la fuente no lo expone: esa convocatoria no se deduplica entre fuentes. */
+  readonly procedureNumber?: string | null;
 }
 
 /** Fila descartada durante el parseo/mapeo (SR-16/17/21 del origen): nunca desaparece en silencio, se reporta con su motivo. */

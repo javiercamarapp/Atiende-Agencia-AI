@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
+import type { SourceFieldConflict, TenderSourceLink } from "./cross-source-fingerprint.ts";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import { ApprovalRejectedError, CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenantConfigNotMigratedError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
@@ -1383,6 +1384,10 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     }
     let created = 0;
     let updated = 0;
+    let linked = 0;
+    let conflicts = 0;
+    // Base sin migrar (037 sin aplicar): tras el primer 42883/42703/42P01 el resto del lote usa directo el camino anterior.
+    let dedupeAvailable = true;
     const tenders: TenderRecord[] = [];
 
     // Fase "flujos de sistema": `ingestTendersFromSource` SOLO se invoca hoy
@@ -1399,28 +1404,58 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     // worker SIEMPRE pasa un `limit` acotado) -- no pretende ser la forma más
     // eficiente posible para miles de filas por corrida (gap de rendimiento
     // declarado, no un problema de corrección).
+    type IngestRow = {
+      out_id: string;
+      out_organization_id: string;
+      out_title: string;
+      out_submission_deadline: string | null;
+      out_updated_at: string;
+      out_source: string;
+      out_external_id: string | null;
+      out_contracting_body: string | null;
+      out_cpv_codes: string[];
+      out_budget_amount: string | null;
+      out_currency: string;
+      out_state: string | null;
+      out_procedure_type_raw: string | null;
+      out_status: TenderStatus;
+      out_inserted: boolean;
+      out_linked?: boolean;
+      out_conflicts?: number;
+    };
     for (const rec of records) {
-      const { rows } = await this.db.query<{
-        out_id: string;
-        out_organization_id: string;
-        out_title: string;
-        out_submission_deadline: string | null;
-        out_updated_at: string;
-        out_source: string;
-        out_external_id: string | null;
-        out_contracting_body: string | null;
-        out_cpv_codes: string[];
-        out_budget_amount: string | null;
-        out_currency: string;
-        out_state: string | null;
-        out_procedure_type_raw: string | null;
-        out_status: TenderStatus;
-        out_inserted: boolean;
-      }>(
-        `select * from licitaciones.system_ingest_tender($1, $2, $3, $4, $5, $6, $7::text[], $8, $9, $10, $11);`,
-        [organizationId, rec.title, rec.submissionDeadline, source, rec.externalId, rec.contractingBody, rec.cpvCodes, rec.budgetAmount, rec.currency, rec.state, rec.procedureTypeRaw],
-      );
-      const row = rows[0]!;
+      const baseParams = [organizationId, rec.title, rec.submissionDeadline, source, rec.externalId, rec.contractingBody, rec.cpvCodes, rec.budgetAmount, rec.currency, rec.state, rec.procedureTypeRaw];
+      const legacy = async (): Promise<IngestRow> => {
+        const { rows } = await this.db.query<IngestRow>(`select * from licitaciones.system_ingest_tender($1, $2, $3, $4, $5, $6, $7::text[], $8, $9, $10, $11);`, baseParams);
+        return rows[0]!;
+      };
+      let row: IngestRow;
+      const procedureNumber = rec.procedureNumber?.trim();
+      if (dedupeAvailable && procedureNumber) {
+        // Huella cruzada (037): la funcion NUEVA solo existe tras la migracion. SAVEPOINT por registro: el error 42883/42703/42P01 no debe
+        // abortar la transaccion compartida del lote; cae al camino anterior (sin deduplicar entre fuentes) y desactiva el intento.
+        row = await runWithSavepointFallback<IngestRow>({
+          session: this.db,
+          savepointName: "licit_ingest_dedupe_sp",
+          primary: async () => {
+            const { rows } = await this.db.query<IngestRow>(
+              `select * from licitaciones.system_ingest_tender_dedupe($1, $2, $3, $4, $5, $6, $7::text[], $8, $9, $10, $11, $12);`,
+              [...baseParams, procedureNumber],
+            );
+            return rows[0]!;
+          },
+          isRecoverable: (err) => {
+            const code = (err as { code?: string } | null)?.code;
+            return code === "42883" || code === "42703" || code === "42P01";
+          },
+          fallback: async () => {
+            dedupeAvailable = false;
+            return legacy();
+          },
+        });
+      } else {
+        row = await legacy();
+      }
       const tender = mapTender({
         id: row.out_id,
         organization_id: row.out_organization_id,
@@ -1438,11 +1473,38 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
         status: row.out_status,
       });
       tenders.push(tender);
-      if (row.out_inserted) created += 1;
+      if (row.out_linked) {
+        linked += 1;
+        conflicts += row.out_conflicts ?? 0;
+      } else if (row.out_inserted) created += 1;
       else updated += 1;
     }
 
-    return { created, updated, tenders };
+    return { created, updated, tenders, linked, conflicts };
+  }
+
+  async listTenderSources(organizationId: string, tenderId: string): Promise<readonly TenderSourceLink[]> {
+    const primary = await this.db.query<{ source: string; external_id: string | null; updated_at: string }>(
+      `select source, external_id, updated_at::text from licitaciones.tender where organization_id = $1 and id = $2;`,
+      [organizationId, tenderId],
+    );
+    const head = primary.rows[0];
+    if (!head) return [];
+    const primaryLink: TenderSourceLink = { source: head.source, externalId: head.external_id ?? "", primary: true, firstSeenAt: null, lastSeenAt: head.updated_at, conflicts: [] };
+    // La tabla de fuentes adicionales existe solo tras la migracion 037: en la base sin migrar devuelve solo la primaria (SAVEPOINT: la sesion es una transaccion compartida).
+    return runWithSavepointFallback<readonly TenderSourceLink[]>({
+      session: this.db,
+      savepointName: "licit_tender_sources_sp",
+      primary: async () => {
+        const { rows } = await this.db.query<{ source: string; external_id: string; first_seen_at: string; last_seen_at: string; conflicts: SourceFieldConflict[] }>(
+          `select source, external_id, first_seen_at::text, last_seen_at::text, conflicts from licitaciones.tender_alt_source where organization_id = $1 and tender_id = $2 order by first_seen_at, id;`,
+          [organizationId, tenderId],
+        );
+        return [primaryLink, ...rows.map((r): TenderSourceLink => ({ source: r.source, externalId: r.external_id, primary: false, firstSeenAt: r.first_seen_at, lastSeenAt: r.last_seen_at, conflicts: r.conflicts }))];
+      },
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42P01",
+      fallback: async () => [primaryLink],
+    });
   }
 
   async listActiveOrganizations(): Promise<readonly { id: string }[]> {

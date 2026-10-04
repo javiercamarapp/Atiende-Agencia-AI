@@ -428,6 +428,7 @@ export type { AlertEmailEnqueueResult } from "./alert-notifications.ts";
 
 // "Chatea con tus datos": catalogo cerrado de herramientas de solo lectura (ver docs/DATA-CHAT.md).
 export * from "./data-chat/index.ts";
+export * from "./cross-source-fingerprint.ts";
 
 // ---- L-05: WhatsApp (avisos de plazos/convocatorias/fallos y decision go/no-go por boton) ----
 export {

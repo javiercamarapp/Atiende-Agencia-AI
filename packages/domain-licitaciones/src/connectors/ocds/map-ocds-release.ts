@@ -146,6 +146,7 @@ export function mapOcdsReleaseToCandidate(input: OcdsRelease | OcdsRecord, optio
   const currency = tender?.value?.currency?.trim() || "MXN";
   const procedureTypeRaw = tender?.procurementMethodDetails?.trim() || tender?.procurementMethod?.trim() || null;
 
+  const procedureNumber = toStringId(tender?.id ?? null);
   const candidate: TenderSourceIngestCandidate = {
     externalId: ocid,
     title,
@@ -156,6 +157,7 @@ export function mapOcdsReleaseToCandidate(input: OcdsRelease | OcdsRecord, optio
     currency,
     state: options.fixedState,
     procedureTypeRaw,
+    ...(procedureNumber ? { procedureNumber } : {}),
   };
   return { candidate };
 }

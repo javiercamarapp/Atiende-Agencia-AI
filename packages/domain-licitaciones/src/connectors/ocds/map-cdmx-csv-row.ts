@@ -74,6 +74,7 @@ export function mapCdmxCsvRow(row: Record<string, string>, options: { fixedState
     currency: "MXN",
     state: options.fixedState,
     procedureTypeRaw: firstNonEmpty(row.metodo_contratacion, row.tipo_contratacion) ?? null,
+    ...(firstNonEmpty(row.no_procedimiento) ? { procedureNumber: firstNonEmpty(row.no_procedimiento) } : {}),
   };
 }
 
