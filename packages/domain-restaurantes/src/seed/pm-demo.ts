@@ -51,6 +51,15 @@ export interface PmSeedBranch {
    * fila que choque con `unique (organization_id, slug)`. */
   readonly slugs_anteriores?: readonly string[];
   readonly nota?: string;
+  /** Directorio publico y domicilio (migracion 070). Todo opcional: sin esto la sucursal sigue a su estado (visible si esta activa,
+   * reparte todos los dias). `dias_domicilio` en 0 (domingo) a 6 (sabado); null = todos los dias. */
+  readonly directorio?: {
+    readonly visible?: boolean | null;
+    readonly acepta_domicilio?: boolean;
+    readonly dias_domicilio?: readonly number[] | null;
+    readonly de_temporada?: boolean;
+    readonly nota?: string;
+  };
 }
 
 /** Procedencia de un precio:
@@ -236,6 +245,11 @@ export interface PmSeedPlan {
     readonly catalogSize: number;
     /** Slugs de versiones anteriores del seed (ver `PmSeedBranch.slugs_anteriores`); vacio si nunca cambio. */
     readonly legacySlugs: readonly string[];
+    /** Directorio publico y domicilio (migracion 070), con los valores por omision ya resueltos. */
+    readonly visibleEnDirectorio: boolean | null;
+    readonly aceptaDomicilio: boolean;
+    readonly diasDomicilio: readonly number[] | null;
+    readonly deTemporada: boolean;
   }[];
   readonly categories: readonly { readonly name: string; readonly slug: string; readonly displayOrder: number }[];
   readonly products: readonly {
@@ -368,6 +382,8 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
     for (const anterior of b.slugs_anteriores ?? []) {
       if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(anterior)) fail(`${b.nombre}: slug anterior invalido: ${anterior}`);
     }
+    const dias = b.directorio?.dias_domicilio;
+    if (dias && (dias.length === 0 || dias.length > 7 || dias.some((x) => !Number.isInteger(x) || x < 0 || x > 6))) fail(`${b.nombre}: directorio.dias_domicilio debe ser una lista de 1 a 7 dias entre 0 (domingo) y 6 (sabado), o null.`);
     if ((b.lat === null) !== (b.lng === null)) fail(`${b.nombre}: lat y lng deben venir juntas.`);
     if (b.lat !== null && (b.lat < -90 || b.lat > 90 || (b.lng as number) < -180 || (b.lng as number) > 180)) fail(`${b.nombre}: coordenadas fuera de rango.`);
   }
@@ -587,6 +603,10 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       displayOrder: index,
       catalogSize: productsByBranch[b.id] ?? 0,
       legacySlugs: [...(b.slugs_anteriores ?? [])],
+      visibleEnDirectorio: b.directorio?.visible ?? null,
+      aceptaDomicilio: b.directorio?.acepta_domicilio ?? true,
+      diasDomicilio: b.directorio?.dias_domicilio ? [...b.directorio.dias_domicilio] : null,
+      deTemporada: b.directorio?.de_temporada ?? false,
     })),
     categories: categorias,
     products,
@@ -630,6 +650,8 @@ export const PM_SEED_REQUIRED_SCHEMA: readonly { readonly table: string; readonl
   { table: "restaurantes.branch_detail", columns: ["slug", "zona_horaria"], migration: "022_zona_horaria_branch_detail.sql" },
   { table: "restaurantes.products", columns: ["no_domicilio"], migration: "023_modelo_pm_horarios_minimos_zonas_whatsapp_sucursal.sql" },
   { table: "restaurantes.branch_policy", columns: ["horario", "pedido_minimo_domicilio", "pedido_minimo_recoger", "propina_politica"], migration: "023_modelo_pm_horarios_minimos_zonas_whatsapp_sucursal.sql" },
+  // Directorio publico y domicilio por sucursal: el seed escribe estas columnas en el paso 7.
+  { table: "restaurantes.branch_policy", columns: ["visible_en_directorio", "acepta_domicilio", "dias_domicilio", "de_temporada"], migration: "070_sucursal_directorio_y_domicilio.sql" },
   { table: "restaurantes.branch_voice_config", columns: ["habilitado", "comportamiento", "mensaje_inicial", "voice_id"], migration: "025_voz_config_conversaciones.sql" },
   { table: "restaurantes.promotions", columns: ["channels", "product_ids"], migration: "027_promociones_2x1_y_canal.sql" },
   { table: "restaurantes.promotions", columns: ["auto_apply"], migration: "031_recoger_promociones_automaticas_puentes.sql" },
@@ -801,12 +823,17 @@ begin
     where not exists (select 1 from restaurantes.known_zone z where z.organization_id = v_org and z.name = x.name);
 
   -- 7) politica por sucursal: horario, minimos, propina
-  insert into restaurantes.branch_policy (property_id, organization_id, horario, pedido_minimo_domicilio, pedido_minimo_recoger, propina_politica)
-    select p.id, v_org, (v->'policy'->'horario'), (v->'policy'->>'pedidoMinimoDomicilio')::numeric, (v->'policy'->>'pedidoMinimoRecoger')::numeric, v->'policy'->>'propinaPolitica'
-    from jsonb_to_recordset(v->'branches') as b(name text)
+  insert into restaurantes.branch_policy (property_id, organization_id, horario, pedido_minimo_domicilio, pedido_minimo_recoger, propina_politica, visible_en_directorio, acepta_domicilio, dias_domicilio, de_temporada)
+    select p.id, v_org, (v->'policy'->'horario'), (v->'policy'->>'pedidoMinimoDomicilio')::numeric, (v->'policy'->>'pedidoMinimoRecoger')::numeric, v->'policy'->>'propinaPolitica',
+           b."visibleEnDirectorio", coalesce(b."aceptaDomicilio", true),
+           case when jsonb_typeof(b."diasDomicilio") = 'array' then (select array_agg(d::smallint) from jsonb_array_elements_text(b."diasDomicilio") d) end,
+           coalesce(b."deTemporada", false)
+    from jsonb_to_recordset(v->'branches') as b(name text, "visibleEnDirectorio" boolean, "aceptaDomicilio" boolean, "diasDomicilio" jsonb, "deTemporada" boolean)
     join core.property p on p.organization_id = v_org and p.name = b.name
     on conflict (property_id) do update set horario = excluded.horario, pedido_minimo_domicilio = excluded.pedido_minimo_domicilio,
-      pedido_minimo_recoger = excluded.pedido_minimo_recoger, propina_politica = excluded.propina_politica, updated_at = now();
+      pedido_minimo_recoger = excluded.pedido_minimo_recoger, propina_politica = excluded.propina_politica,
+      visible_en_directorio = excluded.visible_en_directorio, acepta_domicilio = excluded.acepta_domicilio,
+      dias_domicilio = excluded.dias_domicilio, de_temporada = excluded.de_temporada, updated_at = now();
 
   -- 8) voz (DESHABILITADA: sin gasto de proveedores). Re-ejecutar no la vuelve a deshabilitar ni habilitar.
   insert into restaurantes.branch_voice_config (property_id, organization_id, habilitado, voice_id, comportamiento, mensaje_inicial)
