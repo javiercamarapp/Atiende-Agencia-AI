@@ -24,6 +24,7 @@ import {
   Mic,
   Settings,
   ShieldCheck,
+  Star,
   Sparkles,
   Store,
   Tag,
@@ -133,6 +134,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
       title: "Clientes",
       items: [
         { to: `${base}/clientes`, label: "Clientes", icon: Users },
+        // R-41: encuestas post-entrega (satisfacción por sucursal y repartidor, comentarios), solo owner/admin como la API.
+        ...(canSeeStaff ? [{ to: `${base}/encuestas`, label: "Encuestas", icon: Star }] : []),
         { to: `${base}/sucursales`, label: "Sucursales", icon: Store },
       ],
     },
