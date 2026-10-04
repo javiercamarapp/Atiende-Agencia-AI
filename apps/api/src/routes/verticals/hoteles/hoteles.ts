@@ -35,6 +35,7 @@ import { hotelesPrivacidadPublicaRoutes } from "./privacidad-publica.ts";
 import { hotelesTicketsRoutes } from "./tickets.ts";
 import { hotelesTicketsSlaCronRoutes } from "./tickets-sla-cron.ts";
 import { hotelesHoldsVencidosCronRoutes } from "./holds-vencidos-cron.ts";
+import { hotelesHousekeepingDiaCronRoutes } from "./housekeeping-dia-cron.ts";
 import { hotelesAdminDataChatRoutes } from "./admin-data-chat.ts";
 import { hotelesAgentesRoutes } from "./agentes.ts";
 import { hotelesAgentesExpiracionCronRoutes } from "./agentes-expiracion-cron.ts";
@@ -130,6 +131,8 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", hotelesReservasAgenteRoutes(deps));
   // H-P3-03 (P1) -- barrido cada 15 min de las pre-reservas vencidas (booking_hold_expire_due, antes sin llamador), ver holds-vencidos-cron.ts.
   app.route("/", hotelesHoldsVencidosCronRoutes(deps));
+  // H-P3-04 (P1) -- el dia de housekeeping arranca solo (genera tareas y asigna, horario por property), ver housekeeping-dia-cron.ts.
+  app.route("/", hotelesHousekeepingDiaCronRoutes(deps));
   // H-20 (P1) -- bandeja de conversaciones de WhatsApp con handoff a humano (tomar / devolver / cerrar / notas / responder via outbox), migracion 043.
   app.route("/", hotelesConversacionesRoutes(deps));
   return app;

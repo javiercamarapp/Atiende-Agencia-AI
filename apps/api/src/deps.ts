@@ -27,7 +27,7 @@ import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { CierreRepository, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
+import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -203,6 +203,9 @@ export interface AppDeps {
   /** H-26 -- housekeeping residual (config, fotos de inspeccion, blancos, opt-out; migracion 039). OPCIONAL: en produccion no se define y las
    *  rutas usan `PostgresHousekeepingResidualRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben. */
   readonly hotelesHousekeepingResidualRepo?: (db: TenantDbSession) => HousekeepingResidualRepository;
+  /** H-P3-04 -- arranque automatico del dia de housekeeping (cron, sesion de SISTEMA; migracion 045). OPCIONAL: en produccion no se define y el
+   *  cron usa `PostgresHousekeepingDiaSistemaRepository` (funciones `hoteles.system_hk_*`, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben. */
+  readonly hotelesHousekeepingDiaRepo?: (db: TenantDbSession) => HousekeepingDiaSistemaRepository;
   /** H-29 -- configuracion del canal WhatsApp y del agente de voz desde el panel (migracion 039). OPCIONAL: en produccion no se define y las
    *  rutas usan `PostgresMensajeriaConfigRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben. */
   readonly hotelesMensajeriaConfigRepo?: (db: TenantDbSession) => MensajeriaConfigRepository;
