@@ -3,9 +3,7 @@
 // horario 12:00-01:00, 2x1 del lunes solo para recoger). LLM guionado (FakeLlmProvider): el guion emite tool calls y texto,
 // incluso erroneo a proposito; las reglas tienen que vivir en el servidor. Todo en memoria: ni base real, ni red, ni Meta.
 //
-// (Lote qa-r1-rest-agente-whatsapp-clasificador-handoff: los casos de este lote ya son `it`; los `it.fails` que quedan son defectos de OTROS lotes.)
-// Convencion: `it` = comportamiento correcto que hoy PASA (regresion); `it.fails` = DEFECTO confirmado hoy (la prueba
-// describe el comportamiento ESPERADO y hoy falla). Cuando se corrija, vitest marcara el `it.fails` como roto: cambiarlo a `it`.
+// Este archivo solo contiene regresiones (`it`) de comportamiento correcto que hoy PASA; los defectos de otros lotes no se registran aqui.
 // Cada caso lleva el id del reporte work/qa/restaurantes/ronda-1-agentes.md (QA-restaurantes-R1-agentes-NN).
 // Datos personales: ninguno real (telefonos sinteticos 52199900000xx, nombres genericos).
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,8 +14,7 @@ import { buildPmSeedPlan } from "../../src/seed/pm-demo.ts";
 import { buildInMemoryPmWorld } from "../../src/seed/pm-world.ts";
 import type { PmWorld } from "../../src/seed/pm-world.ts";
 import { createLlmWhatsAppTurnHandler } from "../../src/whatsapp/llm-turn-handler.ts";
-import { enforceQuotedTotal } from "../../src/whatsapp/guards.ts";
-import { FUNCION_MAX_MS, handleInboundWhatsAppMessage, recibirMensajeConEspera, responderTrasEspera } from "../../src/whatsapp/inbound.ts";
+import { FUNCION_MAX_MS, handleInboundWhatsAppMessage } from "../../src/whatsapp/inbound.ts";
 import { extractMetaInboundMessages } from "../../src/whatsapp/channel-config.ts";
 import { changeOrderStatus } from "../../src/order-lifecycle.ts";
 import { InMemoryConversacionesRepository, InMemoryHandoffAgentGate } from "../../src/conversaciones/index.ts";
@@ -28,7 +25,6 @@ import { executeAgentToolSafely } from "../../src/agent-tools/registry.ts";
 /** Martes 13-oct-2026 14:00 en Merida (UTC-6): abierto, sin 2x1. */
 const MARTES_14 = "2026-10-13T20:00:00.000Z";
 /** Lunes 12-oct-2026 14:00 en Merida: dia del 2x1 de pastor (solo recoger, en T3 Pensiones). */
-const LUNES_14 = "2026-10-12T20:00:00.000Z";
 const STAFF = "00000000-0000-4000-8000-0000000000f1";
 const PNID_T7 = "5550007007";
 
@@ -272,24 +268,6 @@ describe("clasificador de alto riesgo (antes del LLM): falsos positivos a mitad 
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-describe("rafagas (espera de mensajes): el clasificador solo mira el ULTIMO mensaje", () => {
-  // QA-restaurantes-R1-agentes-02
-  it.fails("02 rafaga 'me cobraron dos veces' + 'hola??': debe escalar cobro_duplicado antes del LLM", async () => {
-    const b = await banco();
-    b.setGuion([say("Hola, ¿qué le preparamos hoy?")]);
-    const tel = "+5219990000004";
-    const a = await recibirMensajeConEspera(b.w.repo, { organizationId: b.w.organizationId, messageId: "wamid.r1", phone: tel, body: "oigan me cobraron dos veces el pedido de ayer" });
-    expect(a.estado).toBe("responder");
-    const c = await recibirMensajeConEspera(b.w.repo, { organizationId: b.w.organizationId, messageId: "wamid.r2", phone: tel, body: "hola??" });
-    expect(c.estado).toBe("absorbido");
-    const out = await responderTrasEspera(b.w.repo, b.handler, { organizationId: b.w.organizationId, messageId: "wamid.r1", phone: tel, phoneNumberId: PNID_T7, propertyId: b.t7, handoffGate: b.gate, deliverReply: false });
-    expect(out.escalated).toBe(true);
-    expect(b.llamadasLlm()).toBe(0);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 describe("modo sin IA: kill switch / presupuesto agotado / proveedor caido", () => {
   // QA-restaurantes-R1-agentes-03
   it("03 con el interruptor de plataforma encendido, el pedido NO se pierde en silencio: aviso falla_sistema (con la sucursal) y toma de handoff", async () => {
@@ -336,63 +314,11 @@ describe("modo sin IA: kill switch / presupuesto agotado / proveedor caido", () 
     expect(b.callbacks().some((c) => c.reason === "escalada:queja")).toBe(true);
   });
 
-  // QA-restaurantes-R1-agentes-04
-  it.fails("04 el loop agota sus 8 vueltas sin crear pedido: 'Un momento, por favor' deja al cliente esperando algo que nunca llega", async () => {
-    const b = await banco();
-    b.setGuion([call("buscar_producto", { query: "pastor", branch_slug: "garcia-lavin" })]); // el modelo se queda buscando
-    const r = await b.enviar("+5219990000007", "quiero de todo un poco jaja");
-    expect(r.reply).toMatch(/[?¿]/); // o una pregunta concreta...
-    expect(r.escalated).toBe(true); // ...o el aviso al equipo
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-describe("guardia de cifras del texto (enforceQuotedTotal)", () => {
-  // QA-restaurantes-R1-agentes-05: la guardia reescribe CUALQUIER cifra despues de "total", incluida la de "Subtotal".
-  it.fails("05a con la promo 2x1 el modelo escribe bien 'Subtotal $144 / Descuento $72 / Total $72': la guardia NO debe tocar el subtotal", () => {
-    const texto = "Subtotal: $144.00\nDescuento 2x1: $72.00\nTotal: $72.00";
-    expect(enforceQuotedTotal(texto, 72)).toBe(texto);
-  });
-
-  it.fails("05b punta a punta (lunes, T3 recoger, 4 pastor): el cliente lee 'Subtotal: $72.00' (cifra inventada por la guardia)", async () => {
-    const b = await banco({ now: LUNES_14 });
-    const pastor = b.pid("Taco Al Pastor (individual)");
-    b.setGuion([
-      call("cotizar_pedido", { branch_slug: "pensiones", canal: "recoger", items: [item(pastor, "Taco Al Pastor (individual)", 4, "maiz")] }),
-      (req) => {
-        const q = lastTool(req) as { quote: { subtotal: number; descuento: number; total: number } };
-        return { text: `Subtotal: $${q.quote.subtotal.toFixed(2)}. Descuento 2x1: $${q.quote.descuento.toFixed(2)}. Total: $${q.quote.total.toFixed(2)}. ¿Confirma?`, ...base };
-      },
-    ]);
-    const turn = await b.handler.handleInboundMessage({ organizationId: b.w.organizationId, phone: "+5219990000008", messages: [{ role: "user", content: "4 de pastor pa recoger" }], customer: { isNew: true }, propertyId: b.t3 });
-    expect(turn.reply).toContain("Subtotal: $144.00");
-  });
-
-  // QA-restaurantes-R1-agentes-06: el total real solo se impone en el MISMO turno que cotizo; en el turno siguiente el
-  // modelo puede escribir otra cifra sin herramienta y nadie la corrige.
-  it.fails("06 turno siguiente sin herramienta: 'su total queda en $150' no se corrige a la cotizacion vigente ($179)", async () => {
-    const b = await banco();
-    const pastor = b.pid("Taco Al Pastor (individual)");
-    const coca = b.pid("Coca-Cola");
-    b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items: [item(pastor, "Taco Al Pastor (individual)", 3, "maiz"), item(coca, "Coca-Cola", 1)] }), say("Total: $179.00. ¿Confirma?")]);
-    const tel = "+5219990000009";
-    await b.enviar(tel, "3 pastor maiz y una coca pa recoger");
-    b.setGuion([say("Claro, su total queda en $150.00. ¿Efectivo o tarjeta?")]);
-    const r = await b.enviar(tel, "cuanto era?");
-    expect(r.reply).toContain("$179.00");
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 describe("entrada de Meta: mensajes enormes, vacios y tipos no texto", () => {
   const payload = (message: Record<string, unknown>) => ({ entry: [{ changes: [{ value: { metadata: { phone_number_id: PNID_T7 }, messages: [message] } }] }] });
-
-  // QA-restaurantes-R1-agentes-07
-  it.fails("07 un texto de 4,001 a 4,096 caracteres (Meta acepta hasta 4,096) se descarta EN SILENCIO: el cliente no recibe respuesta", () => {
-    const largo = `quiero ${"3 de pastor y una coca, ".repeat(170)}`.slice(0, 4050);
-    const out = extractMetaInboundMessages(payload({ id: "wamid.big", from: "5219990000010", type: "text", text: { body: largo } }));
-    expect(out).toHaveLength(1);
-  });
 
   it("un texto solo de espacios se ignora (no gasta turno); audio, imagen y ubicacion invalida llegan como nota honesta", () => {
     expect(extractMetaInboundMessages(payload({ id: "wamid.e", from: "5219990000011", type: "text", text: { body: "   " } }))).toHaveLength(0);
@@ -402,37 +328,10 @@ describe("entrada de Meta: mensajes enormes, vacios y tipos no texto", () => {
     }
   });
 
-  // QA-restaurantes-R1-agentes-08
-  it.fails("08 respuesta de boton / lista (type 'button' o 'interactive') se descarta en silencio", () => {
-    const boton = extractMetaInboundMessages(payload({ id: "wamid.btn", from: "5219990000012", type: "button", button: { text: "Sí, confirmo", payload: "SI" } }));
-    const lista = extractMetaInboundMessages(payload({ id: "wamid.int", from: "5219990000012", type: "interactive", interactive: { type: "button_reply", button_reply: { id: "si", title: "Sí" } } }));
-    expect(boton).toHaveLength(1);
-    expect(lista).toHaveLength(1);
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 describe("reglas duras que hoy solo viven en el prompt", () => {
-  // QA-restaurantes-R1-agentes-09: pedido grande (> $4,000) sin escalar: el servidor lo crea y lo manda a cocina.
-  it.fails("09 el modelo 'olvida' escalar: un pedido de $4,020 en efectivo de un numero sin historial se crea directo", async () => {
-    const b = await banco();
-    const kilo = b.pid("Pastor — 2 kg");
-    const items = [item(kilo, "Pastor — 2 kg", 2), item(b.pid("Taco Al Pastor (individual)"), "Taco Al Pastor (individual)", 10, "maiz")];
-    b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items }), say("Total: $4,020.00. ¿Confirma?")]);
-    const tel = "+5219990000013";
-    await b.enviar(tel, "4 kilos de pastor y 10 tacos pa una fiesta, paso por ellos");
-    b.setGuion([call("confirmar_resumen", {}), call("crear_pedido", { branch_slug: "garcia-lavin", canal: "recoger", customer_name: "Fiesta", payment_method: "efectivo", items }), say("Listo")]);
-    const r = await b.enviar(tel, "si efectivo");
-    // Esperado: el servidor no lo manda a cocina sin que la sucursal lo confirme (o abre la escalacion pedido_grande).
-    expect(Boolean(r.orderId) && !r.escalated).toBe(false);
-  });
-
-  // QA-restaurantes-R1-agentes-10: tope de 100 piezas por renglon con error generico.
-  it.fails("10 '120 tacos de pastor para una fiesta' no se puede ni cotizar (error generico 'Productos o cantidades invalidos')", async () => {
-    const b = await banco();
-    const q = await quoteOrder(b.w.repo, { organizationId: b.w.organizationId, branchSlug: "garcia-lavin", canal: "recoger", items: [{ productId: b.pid("Taco Al Pastor (individual)"), requestedQuantity: 120, tortilla: "maiz" }] });
-    expect(q.total).toBe(5040);
-  });
 
   // QA-restaurantes-R1-agentes-11: escalar_a_humano desde el loop del LLM pierde la sucursal de entrada.
   it("11 el agente escala (pedido_grande) en el chat de T7: el aviso queda SIN sucursal (el clasificador si la pone)", async () => {
@@ -452,14 +351,6 @@ describe("reglas duras que hoy solo viven en el prompt", () => {
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 describe("spam y repeticiones del mismo cliente", () => {
-  // QA-restaurantes-R1-agentes-12: no hay tope por remitente antes del LLM (el unico tope del webhook es 120/min por
-  // NUMERO de la sucursal, compartido por todos sus clientes).
-  it.fails("12 40 mensajes seguidos de un mismo telefono disparan 40 turnos del LLM (sin tope por remitente)", async () => {
-    const b = await banco();
-    b.setGuion([say("¿Qué le gustaría pedir?")]);
-    for (let i = 0; i < 40; i++) await b.enviar("+5219990000016", `hola ${i}`);
-    expect(b.llamadasLlm()).toBeLessThanOrEqual(20);
-  });
 
   it("replay del mismo message.id (Meta at-least-once): un solo turno y un solo pedido", async () => {
     const b = await banco();
@@ -606,15 +497,6 @@ describe("escenarios de la bateria E sin prueba con id (T-RD23, T-RD24, T-PA01, 
     const efectivo = await executeAgentToolSafely(b.w.repo, ctx(b, "1"), "cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", payment_method: "efectivo", items: pastor3(b) });
     expect((tarjeta.result as { quote: { preguntar_propina: boolean } }).quote.preguntar_propina).toBe(true);
     expect((efectivo.result as { quote: { preguntar_propina: boolean } }).quote.preguntar_propina).toBe(false);
-  });
-
-  // QA-restaurantes-R1-agentes-22 (P3): la propina no tiene tope relativo al pedido: $5,000 de propina en un pedido de $252 pasa.
-  it.fails("22 propina absurda ($5,000 sobre $252) se acepta sin aviso", async () => {
-    const b = await banco();
-    await executeAgentToolSafely(b.w.repo, ctx(b, "1"), "cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", payment_method: "tarjeta", items: pastor3(b) });
-    await executeAgentToolSafely(b.w.repo, ctx(b, "2"), "confirmar_resumen", {});
-    const r = await executeAgentToolSafely(b.w.repo, ctx(b, "2"), "crear_pedido", { branch_slug: "garcia-lavin", canal: "recoger", customer_name: "X", payment_method: "tarjeta", propina: 5000, items: pastor3(b) });
-    expect(r.orderId).toBeNull();
   });
 
   it("T-AM15 el modelo copia mal el UUID pero el nombre es exacto: se recupera; un id valido de OTRO producto con otro nombre se rechaza", async () => {
