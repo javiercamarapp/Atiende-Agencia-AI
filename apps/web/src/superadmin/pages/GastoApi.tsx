@@ -86,7 +86,7 @@ function BarraTope({ pct, alerta }: { readonly pct: number; readonly alerta: boo
   );
 }
 
-export function SuperAdminGastoApiPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
+export function SuperAdminGastoApiPage({ apiBaseUrl, token, incrustada = false }: { readonly apiBaseUrl: string; readonly token: string; /** Dentro de Consumo de IA: sin h1 propio (el titulo lo pone la pagina contenedora). */ readonly incrustada?: boolean }) {
   const [from, setFrom] = useState(hace30DiasIso());
   const [to, setTo] = useState(hoyIso());
   const [resumen, setResumen] = useState<Resumen | null>(null);
@@ -201,8 +201,8 @@ export function SuperAdminGastoApiPage({ apiBaseUrl, token }: { readonly apiBase
     <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Gasto de API de LLM</h1>
-          <p className="text-sm text-muted-foreground mt-1">Control de gasto real de las 6 verticales — tokens, costo, proveedor y modelo por organización.</p>
+          {!incrustada && <h1 className="text-2xl font-semibold text-foreground">Gasto de API de LLM</h1>}
+          <p className={incrustada ? "text-sm text-muted-foreground" : "text-sm text-muted-foreground mt-1"}>Control de gasto real de las 6 verticales — tokens, costo, proveedor y modelo por organización.</p>
         </div>
         <div className="flex items-end gap-2 flex-wrap">
           <div className="flex flex-col gap-1">

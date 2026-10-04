@@ -25,7 +25,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { ConversacionesRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository } from "@atiende/domain-restaurantes";
+import type { CierreRepository, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
@@ -43,7 +43,7 @@ import type {
   ResolveCalendarSyncPort,
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
-import type { AvisosSistemaRepository, DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
+import type { AvisosSistemaRepository, DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, PostAdjudicacionRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
 import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, ConsultaCfdiSatPort, CronSatRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type { Efos69bSource } from "@atiende/worker";
 import type {
@@ -172,6 +172,12 @@ export interface AppDeps {
   /** R-31 (migración 040): KPI del agente de WhatsApp por día local. OPCIONAL: sin él la ruta responde 503 honesto. En producción es
    * `(db) => new PostgresWhatsappKpiRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
   readonly whatsappKpiRepo?: (db: TenantDbSession) => WhatsappKpiRepository;
+  /** R-42 (migración 041): cierre del día y resumen semanal. OPCIONAL: sin él las rutas responden 503 honesto. En producción es
+   * `(db) => new PostgresCierreRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
+  readonly cierreRepo?: (db: TenantDbSession) => CierreRepository;
+  /** R-15 (migración 044): perfil operativo del repartidor. OPCIONAL: sin él las rutas responden 503 honesto. En producción es
+   * `(db) => new PostgresRepartidorPerfilRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
+  readonly repartidorPerfilRepo?: (db: TenantDbSession) => RepartidorPerfilRepository;
   /** PM PR-9 -- privacidad de restaurantes (ARCO, aviso, retencion; migracion 030). OPCIONAL: ausente =
    * comportamiento anterior (el webhook de WhatsApp no antepone aviso ni atiende ARCO) y las rutas de
    * privacidad responden 503. En produccion es `(db) => new PostgresPrivacidadRepository(db)`. */
@@ -341,6 +347,8 @@ export interface AppDeps {
   readonly licitacionesAvisosRepo?: (db: TenantDbSession) => AvisosSistemaRepository;
   /** L-22: dias inhabiles que declara cada organizacion o convocatoria (migracion 032). `production/deps.ts` lo cablea a `PostgresDiasInhabilesRepository`; OPCIONAL a proposito: si falta (o falta la migracion), los plazos se calculan con los dias OFICIALES de plataforma, la lectura responde `available: false` y las escrituras 503. */
   readonly licitacionesDiasInhabilesRepo?: (db: TenantDbSession) => DiasInhabilesRepository;
+  /** L-27: garantias, hitos, convenios modificatorios y plazos de la post-adjudicacion (migracion 035). `production/deps.ts` lo cablea a `PostgresPostAdjudicacionRepository`; OPCIONAL a proposito: si falta (o falta la migracion), las lecturas responden `available: false`, las escrituras 503 y el barrido de alertas no emite nada (nunca un 500). */
+  readonly licitacionesPostAdjudicacionRepo?: (db: TenantDbSession) => PostAdjudicacionRepository;
   readonly despachosRepo: (db: TenantDbSession) => DespachosRepository;
   /** D-08 -- portal del cliente final (migracion 016). OPCIONAL a proposito (mismo criterio que `rentasAccesoRepo`): las rutas caen a `PostgresPortalClienteRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly portalClienteRepo?: (db: TenantDbSession) => PortalClienteRepository;
@@ -581,6 +589,10 @@ export interface AppDeps {
    *  (apps/api/tests/whatsapp-dispatch.spec.ts) y en producción real
    *  (production/deps.ts, cuando `WHATSAPP_ACCESS_TOKEN` está presente). */
   readonly whatsAppDispatcher?: WhatsAppOutboundDispatcher;
+  /** R-32: transcripcion de notas de voz de WhatsApp de restaurantes (descarga de media de Meta + rol `restaurantes:transcripcion` del gateway LLM).
+   *  `undefined` sin `WHATSAPP_ACCESS_TOKEN` o sin gateway LLM: el webhook conserva el comportamiento anterior (pedir al cliente que escriba, con el
+   *  motivo en un log sin PII). Opcional (`?:`) para no tocar los fixtures existentes. */
+  readonly notasDeVoz?: PuertoNotasDeVoz;
   /** Suscripción SaaS propia de Atiende a sus organizaciones clientes (auditoría
    * de 22 rubros, hallazgo P1 #6) -- `@atiende/billing::StripeClient` real
    * (Checkout Sessions per-seat, ver `production/saas-billing-stripe-port.ts`

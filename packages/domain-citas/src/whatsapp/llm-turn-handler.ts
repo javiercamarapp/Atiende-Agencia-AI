@@ -327,7 +327,7 @@ function domainErrorMessage(err: unknown): string {
   return "Error interno al procesar la solicitud.";
 }
 
-interface ToolExecutionOutcome {
+export interface ToolExecutionOutcome {
   readonly result: unknown;
   readonly appointmentId: string | null;
   readonly propertyId: string | null;
@@ -336,11 +336,14 @@ interface ToolExecutionOutcome {
   readonly isEscalatingFailure: boolean;
 }
 
-async function executeToolCall(
+/** Las 8 herramientas de citas se despachan EN PROCESO contra las mismas funciones de dominio; la voz (`voz/tools-servidor.ts`) usa este mismo
+ * despacho con `canal: "voice"` para que la cita quede marcada con su origen real. Por omision, WhatsApp (el comportamiento de siempre). */
+export async function executeToolCall(
   repo: CitasRepository,
-  args: { readonly organizationId: string; readonly phone: string; readonly name: string; readonly input: Record<string, unknown> },
+  args: { readonly organizationId: string; readonly phone: string; readonly name: string; readonly input: Record<string, unknown>; readonly canal?: "whatsapp" | "voice" },
 ): Promise<ToolExecutionOutcome> {
   const { organizationId, phone, name, input } = args;
+  const canal = args.canal ?? "whatsapp";
   const noFailure = { appointmentId: null, propertyId: null, isEscalatingFailure: false };
   try {
     // Bloqueante de re-revisión (PR #158, r3) -- SAVEPOINT propio por tool call (ver
@@ -382,7 +385,7 @@ async function executeToolCall(
             customerPhone: phone,
             startsAt: String(input.starts_at ?? ""),
             notes: typeof input.notes === "string" ? input.notes : undefined,
-            source: "whatsapp",
+            source: canal,
           });
           return { result: { appointment: appointmentToWire(appointment) }, appointmentId: appointment.id, propertyId: appointment.propertyId, isEscalatingFailure: false };
         }
@@ -401,7 +404,7 @@ async function executeToolCall(
         case "reagendar_cita": {
           await assertCustomerOwnsAppointment(repo, organizationId, phone, String(input.appointment_id ?? ""));
           try {
-            const outcome = await rescheduleAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? ""), newStartsAt: String(input.new_starts_at ?? ""), actorChannel: "whatsapp" });
+            const outcome = await rescheduleAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? ""), newStartsAt: String(input.new_starts_at ?? ""), actorChannel: canal });
             return { result: { appointment: appointmentToWire(outcome.appointment) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false };
           } catch (err) {
             if (err instanceof AppointmentAlternativesError) {
@@ -418,7 +421,7 @@ async function executeToolCall(
               appointmentId: String(input.appointment_id ?? ""),
               newProviderId: typeof input.new_provider_id === "string" && input.new_provider_id.trim() ? input.new_provider_id : undefined,
               newServiceId: typeof input.new_service_id === "string" && input.new_service_id.trim() ? input.new_service_id : undefined,
-              actorChannel: "whatsapp",
+              actorChannel: canal,
             });
             // Efectos best-effort (lista de espera del hueco viejo + correo), cada uno con
             // su SAVEPOINT: nunca revierten el cambio ya hecho (ver appointment-effects.ts).

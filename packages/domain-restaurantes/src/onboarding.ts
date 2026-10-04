@@ -6,10 +6,12 @@
 // Todas las lecturas pasan por el repositorio, que contra la base sin migrar degrada con SAVEPOINT a "sin configurar": un punto
 // nunca se da por hecho por falta de tabla.
 import type { RestaurantesRepository } from "./repository.ts";
+import type { PrivacidadRepository } from "./privacidad/repository.ts";
+import type { VozRepository } from "./voz/repository.ts";
 
 export type OnboardingEstado = "hecho" | "parcial" | "pendiente" | "externo";
 export type OnboardingResponsable = "plataforma" | "dueno" | "meta" | "distribuidor_pos";
-export type OnboardingPantalla = "sucursales" | "productos" | "configuracion" | "pedidos" | "conversaciones";
+export type OnboardingPantalla = "sucursales" | "productos" | "configuracion" | "pedidos" | "conversaciones" | "agente-voz" | "privacidad";
 
 export interface OnboardingItem {
   readonly id: string;
@@ -29,6 +31,22 @@ export interface OnboardingChecklist {
   readonly resumen: { readonly hechos: number; readonly total: number; readonly obligatoriosPendientes: number };
   /** Todos los puntos obligatorios estan hechos. */
   readonly listoParaOperar: boolean;
+  /** Gate de entrada al panel (ver `evaluarGateOnboarding`). */
+  readonly gate: OnboardingGate;
+}
+
+/** Gate de onboarding: lo que otras piezas (shell, banner, endpoint) consultan para decidir si el owner/admin debe aterrizar en "Primeros pasos".
+ * REGLA: bloquea solo si faltan puntos obligatorios Y la organizacion aun no tiene pedidos registrados. Una organizacion que ya opera con
+ * pedidos reales nunca se desvia: sus pendientes se muestran como banner informativo, no como bloqueo. */
+export interface OnboardingGate {
+  readonly bloquea: boolean;
+  readonly obligatoriosPendientes: number;
+  readonly operaConPedidos: boolean;
+}
+
+export function evaluarGateOnboarding(obligatoriosPendientes: number, pedidos: number): OnboardingGate {
+  const operaConPedidos = pedidos > 0;
+  return { bloquea: obligatoriosPendientes > 0 && !operaConPedidos, obligatoriosPendientes, operaConPedidos };
 }
 
 export interface OnboardingBranchSnapshot {
@@ -42,6 +60,9 @@ export interface OnboardingBranchSnapshot {
   readonly conPedidoMinimo: boolean;
   readonly zonasDeEntrega: number;
   readonly conWhatsappPropio: boolean;
+  /** Voz de la sucursal: `habilitada`, `deshabilitada` (el dueño la apago EXPLICITAMENTE: hay fila de configuracion) o `sin_configurar`
+   * (sin fila, o base sin la migracion 025). */
+  readonly voz: "habilitada" | "deshabilitada" | "sin_configurar";
 }
 
 export interface OnboardingSnapshot {
@@ -50,6 +71,12 @@ export interface OnboardingSnapshot {
   readonly agenteConfigurado: boolean;
   readonly nombreDelAsistente: boolean;
   readonly pedidos: number;
+  /** El proveedor de voz del despliegue tiene credenciales y responde (salud ok). `false` = credenciales ausentes. */
+  readonly vozProveedorListo: boolean;
+  /** `false` = la base no tiene la migracion 030 (el aviso no se puede publicar todavia). */
+  readonly privacidadDisponible: boolean;
+  /** La organizacion publico la URL de su aviso de privacidad integral (migracion 030). */
+  readonly avisoPublicado: boolean;
 }
 
 const lista = (nombres: readonly string[]) => (nombres.length > 0 ? nombres.join(", ") : "");
@@ -72,7 +99,12 @@ export function buildOnboardingChecklist(snapshot: OnboardingSnapshot): Onboardi
     titulo: "Sucursales activas",
     estado: activas.length > 0 ? "hecho" : "pendiente",
     obligatorio: true,
-    detalle: activas.length > 0 ? `${activas.length} sucursal(es) activa(s) de ${snapshot.sucursales.length} registrada(s).` : "No hay ninguna sucursal activa: el agente y el storefront no tienen a donde mandar pedidos.",
+    // QA-restaurantes-R1-viaje-13: con el punto en "hecho" las inactivas se mencionan en el detalle (la pantalla
+    // no las pinta como "Falta en:", ver PrimerosPasos.tsx); `faltantes` sigue listandolas para quien las consuma.
+    detalle:
+      activas.length > 0
+        ? `${activas.length} sucursal(es) activa(s) de ${snapshot.sucursales.length} registrada(s)${snapshot.sucursales.length > activas.length ? ` (inactivas: ${lista(snapshot.sucursales.filter((b) => !b.activa).map((b) => b.nombre))})` : ""}.`
+        : "No hay ninguna sucursal activa: el agente y el storefront no tienen a donde mandar pedidos.",
     faltantes: snapshot.sucursales.filter((b) => !b.activa).map((b) => b.nombre),
     responsable: "dueno",
     pantalla: "sucursales",
@@ -160,9 +192,11 @@ export function buildOnboardingChecklist(snapshot: OnboardingSnapshot): Onboardi
     detalle:
       whatsapp.estado === "hecho"
         ? "Cada sucursal recibe mensajes por su propio número."
-        : snapshot.whatsappGeneral
-          ? `Solo hay un número general; sin número propio: ${lista(whatsapp.faltantes)}.`
-          : "Ningún número de WhatsApp conectado: el agente por WhatsApp real no recibe mensajes (la demo del widget no lo necesita). Requiere el número de cada sucursal y las credenciales de Meta.",
+        : whatsapp.faltantes.length < activas.length
+          ? `${activas.length - whatsapp.faltantes.length} de ${activas.length} sucursal(es) con número propio; sin número propio: ${lista(whatsapp.faltantes)}${snapshot.whatsappGeneral ? " (atendidas por el número general)" : ""}.`
+          : snapshot.whatsappGeneral
+            ? `Solo hay un número general; sin número propio: ${lista(whatsapp.faltantes)}.`
+            : "Ningún número de WhatsApp conectado: el agente por WhatsApp real no recibe mensajes (la demo del widget no lo necesita). Requiere el número de cada sucursal y las credenciales de Meta.",
     faltantes: whatsapp.faltantes,
     responsable: "meta",
     pantalla: "configuracion",
@@ -177,6 +211,51 @@ export function buildOnboardingChecklist(snapshot: OnboardingSnapshot): Onboardi
     faltantes: [],
     responsable: "plataforma",
     pantalla: "configuracion",
+  });
+
+  // Voz por sucursal: hecho = habilitada con proveedor listo, o deshabilitada EXPLICITAMENTE por el dueño. Habilitada pero sin credenciales
+  // del proveedor depende de la plataforma (externo). No es obligatoria: un restaurante sin voz opera por WhatsApp y storefront.
+  const vozPend = activas.filter((b) => b.voz === "sin_configurar").map((b) => b.nombre);
+  const vozSinCredenciales = activas.filter((b) => b.voz === "habilitada").map((b) => b.nombre);
+  const vozEstado: OnboardingEstado =
+    activas.length === 0 || vozPend.length === activas.length
+      ? "pendiente"
+      : vozPend.length > 0
+        ? "parcial"
+        : vozSinCredenciales.length > 0 && !snapshot.vozProveedorListo
+          ? "externo"
+          : "hecho";
+  add({
+    id: "voz",
+    titulo: "Agente de voz por sucursal",
+    estado: vozEstado,
+    obligatorio: false,
+    detalle:
+      vozEstado === "hecho"
+        ? "Cada sucursal tiene su decisión de voz: habilitada o deshabilitada a propósito."
+        : vozEstado === "externo"
+          ? "La voz está habilitada pero el proveedor no tiene credenciales en este despliegue: las llamadas no se atienden hasta que la plataforma las cargue."
+          : `Sin decisión de voz en: ${lista(vozPend)}. Habilítela o deshabilítela a propósito en el agente de voz.`,
+    faltantes: vozPend,
+    responsable: vozEstado === "externo" ? "plataforma" : "dueno",
+    pantalla: "agente-voz",
+  });
+
+  // Aviso de privacidad: obligatorio (LFPDPPP) en cuanto la base lo soporta. Sin la migracion 030 el dueño no puede cerrarlo: se muestra
+  // como externo (plataforma) y NO bloquea, para no encerrar a nadie detras de algo que no puede hacer.
+  add({
+    id: "aviso_privacidad",
+    titulo: "Aviso de privacidad publicado",
+    estado: !snapshot.privacidadDisponible ? "externo" : snapshot.avisoPublicado ? "hecho" : "pendiente",
+    obligatorio: snapshot.privacidadDisponible,
+    detalle: !snapshot.privacidadDisponible
+      ? "La configuración de privacidad aún no está disponible en este despliegue (requiere la migración 030)."
+      : snapshot.avisoPublicado
+        ? "El aviso de privacidad integral está publicado y se antepone a los clientes."
+        : "Sin aviso de privacidad publicado: capture la URL https de su aviso integral en Privacidad. Es obligatorio antes de atender clientes.",
+    faltantes: [],
+    responsable: !snapshot.privacidadDisponible ? "plataforma" : "dueno",
+    pantalla: "privacidad",
   });
 
   add({
@@ -214,24 +293,35 @@ export function buildOnboardingChecklist(snapshot: OnboardingSnapshot): Onboardi
 
   const hechos = items.filter((i) => i.estado === "hecho").length;
   const obligatoriosPendientes = items.filter((i) => i.obligatorio && i.estado !== "hecho").length;
-  return { items, resumen: { hechos, total: items.length, obligatoriosPendientes }, listoParaOperar: obligatoriosPendientes === 0 };
+  return { items, resumen: { hechos, total: items.length, obligatoriosPendientes }, listoParaOperar: obligatoriosPendientes === 0, gate: evaluarGateOnboarding(obligatoriosPendientes, snapshot.pedidos) };
 }
 
 /** Lee el estado real de la organizacion con las consultas del repositorio. */
-export async function cargarOnboarding(repo: RestaurantesRepository, organizationId: string): Promise<OnboardingChecklist> {
+export interface OnboardingExtras {
+  /** Repositorio de voz (migracion 025). Ausente o base sin migrar = voz "sin configurar". */
+  readonly voz?: VozRepository;
+  /** Salud del proveedor de voz del despliegue; ausente = sin credenciales. */
+  readonly vozProveedorListo?: () => Promise<boolean>;
+  /** Repositorio de privacidad (migracion 030). Ausente o base sin migrar = aviso no disponible. */
+  readonly privacidad?: PrivacidadRepository;
+}
+
+export async function cargarOnboarding(repo: RestaurantesRepository, organizationId: string, extras: OnboardingExtras = {}): Promise<OnboardingChecklist> {
   const branches = await repo.listBranchesForOrganizationAdmin(organizationId);
   const numerosPropios = new Set((await repo.listWhatsappBranchChannels(organizationId)).map((c) => c.propertyId));
   const sucursales: OnboardingBranchSnapshot[] = [];
   for (const b of branches) {
     const activa = b.status === "active";
     if (!activa) {
-      sucursales.push({ nombre: b.name, activa, conCoordenadas: b.lat !== null && b.lng !== null, productosDisponibles: 0, conHorario: false, dobleTurno: false, conPedidoMinimo: false, zonasDeEntrega: 0, conWhatsappPropio: numerosPropios.has(b.propertyId) });
+      sucursales.push({ nombre: b.name, activa, conCoordenadas: b.lat !== null && b.lng !== null, productosDisponibles: 0, conHorario: false, dobleTurno: false, conPedidoMinimo: false, zonasDeEntrega: 0, conWhatsappPropio: numerosPropios.has(b.propertyId), voz: "sin_configurar" });
       continue;
     }
     // En SECUENCIA (no Promise.all): una sola sesion/transaccion por request, y cada lectura usa su propio SAVEPOINT.
     const productos = await repo.listAvailableProductsForBranch(b.propertyId);
     const politica = await repo.findBranchPolicy(b.propertyId);
     const zonas = await repo.listBranchDeliveryZoneIds(b.propertyId);
+    const vozLectura = extras.voz ? await extras.voz.getConfig(b.propertyId) : null;
+    const voz: OnboardingBranchSnapshot["voz"] = !vozLectura || !vozLectura.disponible || !vozLectura.valor.configurada ? "sin_configurar" : vozLectura.valor.habilitado ? "habilitada" : "deshabilitada";
     const porDia = new Map<number, number>();
     for (const t of politica.horario ?? []) for (const d of t.dias) porDia.set(d, (porDia.get(d) ?? 0) + 1);
     sucursales.push({
@@ -244,13 +334,21 @@ export async function cargarOnboarding(repo: RestaurantesRepository, organizatio
       conPedidoMinimo: politica.pedidoMinimoDomicilio !== null,
       zonasDeEntrega: zonas.length,
       conWhatsappPropio: numerosPropios.has(b.propertyId),
+      voz,
     });
   }
   const general = await repo.getWhatsappChannelConfig(organizationId);
   const agente = await repo.findWhatsAppAgentConfigExacta(organizationId, null);
   const pedidos = await repo.listOrders(organizationId, { propertyIds: null, limit: 1 });
+  const privacidad = extras.privacidad ? await extras.privacidad.getPrivacyConfig(organizationId) : null;
+  const vozProveedorListo = extras.vozProveedorListo ? await extras.vozProveedorListo().catch(() => false) : false;
   return buildOnboardingChecklist({
     sucursales,
+    vozProveedorListo,
+    // El repositorio de privacidad degrada la base sin migrar a "sin configurar" (indistinguible de "sin fila"): ambos quedan pendientes, nunca hechos.
+    // `privacidadDisponible` solo es `false` cuando el despliegue ni siquiera inyecta el repositorio.
+    privacidadDisponible: privacidad !== null,
+    avisoPublicado: privacidad !== null && privacidad.configurada && privacidad.noticeUrl !== null,
     whatsappGeneral: general.phoneNumberId !== null,
     agenteConfigurado: agente !== null,
     nombreDelAsistente: agente?.agentName != null && agente.agentName.trim().length > 0,

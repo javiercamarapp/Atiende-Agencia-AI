@@ -64,6 +64,7 @@ import { ORG_STATUS_TONES } from "../lib/status-tones.ts";
 import { PARTE_DIARIO } from "../rutas.ts";
 import {
   DIAS_SERIE,
+  META_MRR_MXN,
   NOMBRE_VERTICAL,
   actividadPorGrupo,
   costoPorAgente,
@@ -79,7 +80,6 @@ import {
 import type { AgentesActividad, CorridaCron, ConsolaResumen, OrganizacionConsola } from "../lib/consola-client.ts";
 import { fetchImpersonacionJson } from "./Impersonacion.tsx";
 
-const META_MRR = 1_000_000;
 const MOTIVO_MINIMO = 20;
 
 // ---- carga independiente por bloque ---------------------------------------------------------------------------------
@@ -172,7 +172,7 @@ export function SuperAdminConsolaResumenPage({ apiBaseUrl, token, staffFullName,
   const sinDatoMrr = resumen.estado === "error" ? `No se pudo cargar: ${resumen.mensaje}` : resumen.estado === "cargando" ? "Cargando…" : (mrr?.razon ?? "Sin dato de MRR.");
   const destacado = (
     <div className="flex min-w-0 flex-col items-end gap-2.5">
-      <Odometro valor={mrrMxn} digitos={7} prefijo="$" etiqueta="MRR — META $1,000,000" sinDato={sinDatoMrr} tamano="lg" meta={META_MRR} />
+      <Odometro valor={mrrMxn} digitos={7} prefijo="$" etiqueta="MRR — META $1,000,000" sinDato={sinDatoMrr} tamano="lg" meta={META_MRR_MXN} />
       {/* El odometro solo se pinta desde `sm`: en movil el mismo dato va en texto. */}
       <p className="text-ui text-muted-foreground sm:hidden">
         MRR <span className="font-medium tabular-nums text-foreground">{mrrMxn === null ? "—" : `$${entero(mrrMxn)}`}</span> · meta $1,000,000
@@ -241,7 +241,7 @@ export function SuperAdminConsolaResumenPage({ apiBaseUrl, token, staffFullName,
   const acciones = (
     <>
       {rutaExiste("/superadmin/analitica") && <PillLink to="/superadmin/analitica">Ver analítica</PillLink>}
-      {rutaExiste("/superadmin/gasto-api") && <PillLink to="/superadmin/gasto-api">Ver costos de IA</PillLink>}
+      {rutaExiste("/superadmin/consumo-ia") && <PillLink to="/superadmin/consumo-ia">Ver costos de IA</PillLink>}
       <PillLink to={PARTE_DIARIO}>Ver parte diario</PillLink>
     </>
   );

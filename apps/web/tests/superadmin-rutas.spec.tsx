@@ -151,7 +151,7 @@ describe("sidebar del superadmin (SuperAdminShell)", () => {
     rendered = await renderShell("/superadmin");
     const aside = rendered.container.querySelector('aside[aria-label="Navegación principal"]')!;
     const pie = [...aside.querySelectorAll("a")].filter((a) => ["Costos de IA", "Ver los otros paneles"].includes(a.getAttribute("aria-label") ?? ""));
-    expect(pie.map((a) => a.getAttribute("href"))).toEqual(["/superadmin/gasto-api", "/superadmin/paneles"]);
+    expect(pie.map((a) => a.getAttribute("href"))).toEqual(["/superadmin/costos-facturacion", "/superadmin/paneles"]);
     const navHrefs = [...aside.querySelectorAll("nav a")].map((a) => a.getAttribute("href"));
     expect(navHrefs).not.toContain("/superadmin/paneles");
   });

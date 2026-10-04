@@ -45,7 +45,7 @@ export function alertaCfoASaliente(a: AlertaCfo, mes: string): AlertaSaliente {
     severidad: a.severidad,
     titulo: `${a.titulo}: ${a.organizaciones.length}`,
     detalle: `${lista.join("; ")}${resto > 0 ? `; y ${resto} más` : ""}`,
-    href: "/superadmin/cfo",
+    href: "/superadmin/ejecutivo",
     contexto: { mes, organizaciones: a.organizaciones.length },
   };
 }

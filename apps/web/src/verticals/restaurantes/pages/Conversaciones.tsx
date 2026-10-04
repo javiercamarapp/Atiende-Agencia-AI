@@ -176,7 +176,8 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
   const { apiBaseUrl, token, propertyId, staffEmail } = ctx;
   const [d, setD] = useState<DetalleWire | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
+  // El resultado de una accion: un exito se anuncia como estado y un fallo como alerta con estilo de error (QA-restaurantes-R1-botones-04).
+  const [aviso, setAviso] = useState<{ readonly tipo: "ok" | "error"; readonly texto: string } | null>(null);
   const [nota, setNota] = useState("");
   const [respuesta, setRespuesta] = useState("");
   const [ocupado, setOcupado] = useState(false);
@@ -205,11 +206,11 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
     setAviso(null);
     try {
       await accion();
-      setAviso(ok);
+      setAviso({ tipo: "ok", texto: ok });
       setVersion((n) => n + 1);
       onCambio();
     } catch (err) {
-      setAviso(mensaje(err, "No se pudo completar la acción."));
+      setAviso({ tipo: "error", texto: mensaje(err, "No se pudo completar la acción.") });
     } finally {
       setOcupado(false);
     }
@@ -228,11 +229,16 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">
-        {aviso && (
-          <p role="status" className="m-0 text-foreground">
-            {aviso}
-          </p>
-        )}
+        {aviso &&
+          (aviso.tipo === "error" ? (
+            <p role="alert" className="m-0 text-destructive">
+              {aviso.texto}
+            </p>
+          ) : (
+            <p role="status" className="m-0 text-foreground">
+              {aviso.texto}
+            </p>
+          ))}
 
         <div className="flex flex-wrap gap-2">
           {(!h || !abierta || h.estado === "pendiente") && (

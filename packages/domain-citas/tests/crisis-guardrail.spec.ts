@@ -29,10 +29,19 @@ describe("runCrisisGuardrail", () => {
     expect(fixture.repo.getEmergencyEscalations()).toHaveLength(0);
   });
 
-  it("sin citas.tenant_config seedeado, no revienta y nunca se activa", async () => {
+  it("sin citas.tenant_config seedeado (rubro sin elegir) la guardia SIGUE activa: no revienta, escala y no hay aviso al dueño", async () => {
     const fixture = buildCitasFixture();
     const result = await runCrisisGuardrail(fixture.repo, fixture.organizationId, "5512345678", "quiero morirme");
-    expect(result.triggered).toBe(false);
+    expect(result.triggered).toBe(true);
+    expect(fixture.repo.getEmergencyEscalations()).toHaveLength(1);
+    expect(fixture.repo.getOutbox().filter((m) => m.eventType === "crisis.escalated")).toHaveLength(0);
+  });
+
+  it("con el rubro por defecto 'otro' la guardia sigue activa; un mensaje normal no la dispara", async () => {
+    const fixture = buildCitasFixture();
+    fixture.repo.seedTenantConfig({ organizationId: fixture.organizationId, rubro: "otro" });
+    expect((await runCrisisGuardrail(fixture.repo, fixture.organizationId, "5512345678", "me quiero morir")).triggered).toBe(true);
+    expect((await runCrisisGuardrail(fixture.repo, fixture.organizationId, "5512345678", "quiero una cita el lunes")).triggered).toBe(false);
   });
 
   it("en un rubro de salud, una palabra clave real registra la escalación y regresa el mensaje de crisis tal cual", async () => {
@@ -47,7 +56,7 @@ describe("runCrisisGuardrail", () => {
     expect(escalations).toHaveLength(1);
     expect(escalations[0]!.organizationId).toBe(fixture.organizationId);
     expect(escalations[0]!.customerPhone).toBe("5512345678");
-    expect(escalations[0]!.keywordMatched).toBe("no le veo sentido");
+    expect(escalations[0]!.keywordMatched).toBe("desesperanza");
   });
 
   it("sin owner_notification_phone configurado, no intenta avisar (pero SÍ registró la escalación)", async () => {

@@ -230,7 +230,8 @@ describe("fijados por HTTP", () => {
     // El gm de UN hotel abre el mismo fijado compartido: ve SOLO su hotel, no lo que vio el owner.
     const gm = (await (await h.app.request(url(h, `/pins/${id}/resultado`), get(h.gmA))).json()) as DataChatAnswer;
     expect(gm.blocks[0]!.rows[0]).toMatchObject({ noches_ocupadas: 5 });
-    expect(JSON.stringify(gm)).not.toMatch(/14/);
+    // Solo se inspeccionan las filas de datos: el resto del JSON trae UUID/fechas aleatorios que pueden contener "14".
+    expect(JSON.stringify(gm.blocks.map((b) => b.rows))).not.toMatch(/14/);
     // Segunda apertura del owner: cache (el lector no corre otra vez).
     await h.app.request(url(h, `/pins/${id}/resultado`), get(h.ctx.staff.owner.token));
     expect(h.reader.windows).toHaveLength(2);
