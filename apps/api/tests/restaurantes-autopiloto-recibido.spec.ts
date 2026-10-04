@@ -35,7 +35,7 @@ const WEB = (productId: string, telefono = "9991234567", extra: Record<string, u
 describe("POST /v1/restaurantes/:orgSlug/orders -> Recibimos su pedido", () => {
   it("web con plantilla aprobada: sale UN aviso con el tiempo del dueno, a E.164, con su plantilla", async () => {
     const t = await construir(["pedido_recibido"]);
-    const res = await t.app.request("/v1/restaurantes/los-taquitos-de-pm/orders", jsonRequestInit(WEB(t.products.cocaCola), { origin: "http://localhost:5173" }));
+    const res = await t.app.request("/v1/restaurantes/los-taquitos-de-pm/orders", jsonRequestInit(WEB(t.products.cocaCola!), { origin: "http://localhost:5173" }));
     expect(res.status).toBe(200);
     const filas = t.recibidos();
     expect(filas).toHaveLength(1);
@@ -50,14 +50,14 @@ describe("POST /v1/restaurantes/:orgSlug/orders -> Recibimos su pedido", () => {
 
   it("SIN la plantilla aprobada no se envia nada: el pedido se crea igual", async () => {
     const t = await construir([]);
-    const res = await t.app.request("/v1/restaurantes/los-taquitos-de-pm/orders", jsonRequestInit(WEB(t.products.cocaCola), { origin: "http://localhost:5173" }));
+    const res = await t.app.request("/v1/restaurantes/los-taquitos-de-pm/orders", jsonRequestInit(WEB(t.products.cocaCola!), { origin: "http://localhost:5173" }));
     expect(res.status).toBe(200);
     expect(t.recibidos()).toHaveLength(0);
   });
 
   it("voz con plantilla aprobada: sale UN aviso (y el reintento del mismo pedido no duplica)", async () => {
     const t = await construir(["pedido_recibido"]);
-    const cuerpo = { ...WEB(t.products.cocaCola), source: "voice", customer_address: "Calle 1 #200", canal: "domicilio" };
+    const cuerpo = { ...WEB(t.products.cocaCola!), source: "voice", customer_address: "Calle 1 #200", canal: "domicilio" };
     const init = jsonRequestInit(cuerpo, { "x-atiende-tool-secret": "test-voice-tool-secret" });
     expect((await t.app.request("/v1/restaurantes/los-taquitos-de-pm/orders", init)).status).toBe(200);
     expect(t.recibidos()).toHaveLength(1);
@@ -69,7 +69,7 @@ describe("POST /v1/restaurantes/:orgSlug/orders -> Recibimos su pedido", () => {
 
   it("un pedido de WhatsApp NUNCA recibe este aviso (el chat ya confirma), aunque la plantilla este aprobada", async () => {
     const t = await construir(["pedido_recibido"]);
-    const order = await createOrder(t.restaurantesRepo, { organizationId: t.organizationId, branchSlug: "fco-montejo", customerName: "Deb", customerPhone: "9991234567", customerAddress: "Calle 1", items: [{ productId: t.products.cocaCola, requestedQuantity: 1 }], source: "whatsapp", paymentMethod: "efectivo" });
+    const order = await createOrder(t.restaurantesRepo, { organizationId: t.organizationId, branchSlug: "fco-montejo", customerName: "Deb", customerPhone: "9991234567", customerAddress: "Calle 1", items: [{ productId: t.products.cocaCola!, requestedQuantity: 1 }], source: "whatsapp", paymentMethod: "efectivo" });
     const r = await avisarPedidoRecibido(t.deps, new SesionNula(), t.restaurantesRepo, order);
     expect(r).toEqual({ enviado: false, motivo: "canal_no_aplica" });
     expect(t.recibidos()).toHaveLength(0);

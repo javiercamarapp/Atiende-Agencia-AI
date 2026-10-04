@@ -140,3 +140,24 @@ export async function fetchTiempoPrometido(fetchImpl: typeof fetch, apiBaseUrl: 
   const body = await fetchJson<{ tiempo: TiempoPrometido }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/autopiloto/tiempo?canal=${canal}`, token);
   return body.tiempo;
 }
+
+export interface EventoEstado {
+  readonly desde: OrderStatus | null;
+  readonly hacia: OrderStatus;
+  /** `staff:<id>` | `agente` | `pos` | `sistema`. */
+  readonly actor: string;
+  readonly motivo: string | null;
+  readonly at: string;
+}
+
+/** Historial de transiciones del pedido (`order_status_events`, migracion 050). `disponible: false` = base sin migrar. */
+export function fetchHistorialPedido(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, orderId: string): Promise<{ readonly disponible: boolean; readonly eventos: readonly EventoEstado[] }> {
+  return fetchJson(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/autopiloto/pedidos/${orderId}/historial`, token);
+}
+
+export function etiquetaActor(actor: string): string {
+  if (actor.startsWith("staff:")) return "Equipo";
+  if (actor === "agente") return "Agente";
+  if (actor === "pos") return "POS";
+  return "Sistema";
+}

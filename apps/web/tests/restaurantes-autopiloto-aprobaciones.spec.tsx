@@ -47,6 +47,8 @@ interface Estado {
   fallaResolver?: string;
   config?: Record<string, unknown>;
   saturado?: boolean;
+  historialDisponible?: boolean;
+  pedidosPendientes?: unknown[];
 }
 
 function stub(estado: Estado) {
@@ -70,11 +72,23 @@ function stub(estado: Estado) {
       });
     }
     if (method === "PUT" && url === `${BASE}/autopiloto/config`) return json({ ok: true, config: {} });
+    if (method === "GET" && url.includes("/autopiloto/pedidos/") && url.endsWith("/historial")) {
+      return json({
+        disponible: estado.historialDisponible ?? true,
+        eventos: [
+          { desde: null, hacia: "pending", actor: "agente", motivo: null, at: "2026-10-04T12:00:00.000Z" },
+          { desde: "pending", hacia: "cancelado", actor: "staff:abc", motivo: "sin_producto", at: "2026-10-04T12:05:00.000Z" },
+        ],
+      });
+    }
     if (method === "GET" && url.startsWith(`${BASE}/autopiloto/tiempo`)) {
       return json({ tiempo: url.endsWith("domicilio") ? { origen: "aprendido", rango: { minimo: 40, maximo: 50 }, texto: "de 40 a 50 minutos", saturacion: estado.saturado ? "alargado" : "normal", muestras: 24 } : { origen: "texto_fijo", rango: null, texto: "Recoger 15-25 minutos", saturacion: "normal", muestras: 3 } });
     }
     if (url.includes("/admin/staff/repartidores")) return json({ repartidores: [] });
-    if (method === "GET" && url.includes("/admin/orders")) return json({ orders: [], nextCursor: null });
+    if (method === "GET" && url.includes("/admin/orders")) {
+      const status = new URL(url).searchParams.get("status");
+      return json({ orders: status === "pending" ? (estado.pedidosPendientes ?? []) : [], nextCursor: null });
+    }
     if (method === "GET" && url.includes("/admin/scheduled-orders")) return json({ disponible: true, orders: [], promovidos: [], serverNow: new Date().toISOString() });
     if (url.includes("/admin/avisos")) return json({ avisos: [] });
     throw new Error(`fetch inesperado en el test: ${method} ${url}`);
@@ -220,6 +234,33 @@ describe("Tiempo prometido hoy", () => {
     expect(linea).toContain("recoger Recoger 15-25 minutos");
     expect(linea).toContain("nunca menos que el tiempo que fijó el dueño");
     expect(linea).toContain("alta carga");
+  });
+});
+
+describe("Historial del pedido", () => {
+  const PEDIDO = { id: "ord-9", propertyId: "prop-1", branch: "Centro", customerId: null, customerName: "Juan Pérez", customerPhone: "5511112222", customerAddress: null, total: 120, status: "pending", canal: "recoger", items: [{ id: "i", name: "Tacos", price: 40, quantity: 3 }], source: "web", notes: null, paymentMethod: "efectivo", createdAt: "2026-10-04T12:00:00.000Z", assignedRepartidorId: null, estimatedDeliveryAt: null, incidentNote: null };
+
+  it("muestra quien movio el pedido, de que estado a cual, cuando y el motivo de la lista cerrada", async () => {
+    stub({ solicitudes: [], disponible: true, pedidosPendientes: [PEDIDO] });
+    rendered = renderComponent(<PedidosPage {...ctx("owner")} />);
+    await esperar();
+    click(boton("Historial")!);
+    await esperar();
+    const lista = document.body.querySelector('[data-testid="historial-pedido"]')!;
+    expect(lista.textContent).toContain("Creado como Recibido");
+    expect(lista.textContent).toContain("Agente");
+    expect(lista.textContent).toContain("Recibido → Cancelado");
+    expect(lista.textContent).toContain("Equipo");
+    expect(lista.textContent).toContain("Sin producto");
+  });
+
+  it("base sin migrar: estado honesto", async () => {
+    stub({ solicitudes: [], disponible: true, pedidosPendientes: [PEDIDO], historialDisponible: false });
+    rendered = renderComponent(<PedidosPage {...ctx("owner")} />);
+    await esperar();
+    click(boton("Historial")!);
+    await esperar();
+    expect(document.body.textContent).toContain("El historial todavía no está disponible en esta cuenta");
   });
 });
 

@@ -45,6 +45,7 @@ import { useSondeoPedidos } from "../lib/use-sondeo-pedidos.ts";
 import { ProgramadosPanel } from "./ProgramadosPanel.tsx";
 import { AprobacionesPanel } from "./AprobacionesPanel.tsx";
 import { AutopilotoReglasDialogo } from "../components/AutopilotoReglasDialogo.tsx";
+import { HistorialPedidoDialogo } from "../components/HistorialPedidoDialogo.tsx";
 import { MotivoDialogo } from "../components/MotivoDialogo.tsx";
 import { fetchRepartidores } from "../lib/staff-client.ts";
 import type { RepartidorMember } from "../lib/staff-client.ts";
@@ -81,6 +82,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
   const [aprobaciones, setAprobaciones] = useState<SolicitudesRespuesta | null>(null);
   const [autoConfig, setAutoConfig] = useState<AutopilotoConfigRespuesta | null>(null);
   const [reglasAbiertas, setReglasAbiertas] = useState(false);
+  // Historial de transiciones del pedido (A-03): quien lo movio, cuando y por que.
+  const [historialDe, setHistorialDe] = useState<OrderSummary | null>(null);
   // Tiempo prometido hoy por canal (aprendido de las entregas de la franja, nunca menos que el piso del dueno). Un fallo solo oculta la linea.
   const [tiempos, setTiempos] = useState<{ readonly domicilio: TiempoPrometido; readonly recoger: TiempoPrometido } | null>(null);
   // Cancelar un pedido exige un motivo de la lista cerrada (taxonomia de cancelacion): el dialogo guarda el pedido a cancelar.
@@ -604,6 +607,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
                 >
                   Vista previa
                 </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setHistorialDe(o)}>
+                  Historial
+                </Button>
               </div>
 
               {nextStatusesForCanal(o.status, o.canal).length > 0 && (
@@ -668,6 +674,15 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
           if (!cancelando) return;
           void aplicarCambioEstado(cancelando, "cancelado", motivo).then((ok) => ok && setCancelando(null));
         }}
+      />
+
+      <HistorialPedidoDialogo
+        orderId={historialDe?.id ?? null}
+        titulo={historialDe ? `${historialDe.customerName} · $${formatMoney(historialDe.total)}` : ""}
+        onClose={() => setHistorialDe(null)}
+        apiBaseUrl={apiBaseUrl}
+        token={token}
+        propertyId={propertyId}
       />
 
       <AutopilotoReglasDialogo

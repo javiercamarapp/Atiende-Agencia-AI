@@ -439,7 +439,7 @@ describe("avance desde el POS", () => {
       syncCatalog: async () => ({ items: [] }) as never,
       crearComanda: async () => ({ status: "no_disponible", causa: "no_configurado" }) as never,
       obtenerHistorialPorTelefono: async () => [],
-      obtenerEstadoComanda: async ({ folio }) => ({ encontrada: true, folio, estado: estado as never, impresaEnCocina: true }),
+      obtenerEstadoComanda: async ({ folio }: { folio: string }) => ({ encontrada: true, folio, estado: estado as never, impresaEnCocina: true }),
       salud: async () => ({ ok: true, latenciaMs: 1, chequeadoEn: new Date().toISOString() }),
     } as unknown as SoftRestaurantPort;
   }
