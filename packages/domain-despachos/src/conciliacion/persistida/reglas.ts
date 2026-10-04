@@ -1,9 +1,12 @@
 // D-35 -- reglas puras de la conciliación persistida: el SERVIDOR recalcula con el motor (niveles 1-3) las propuestas de una sesión y
 // solo deja confirmar pares que el motor propuso o que una persona con rol de escritura marcó como manuales. Nunca confía en nivel,
 // confianza ni origen que mande el cliente.
-import { conciliarMovimientos } from "../matching-engine.ts";
+import { compatibilidadDireccion, conciliarMovimientos } from "../matching-engine.ts";
 import type { CoincidenciaConciliacion, MotivoSinConciliar, OpcionesMatchingEngine, RegistroConciliable } from "../types.ts";
-import { ParNoPropuestoPorMotorError } from "./types.ts";
+import { fechaDiff } from "../fechas.ts";
+import { aCentavos } from "../subset-sum.ts";
+import { ConciliacionRevisionRequeridaError, ParNoPropuestoPorMotorError } from "./types.ts";
+import type { PropuestasGuardadas } from "./propuestas-guardadas.ts";
 import type { MovimientoGuardado, ParConfirmar } from "./types.ts";
 
 export interface PropuestaMotor {
@@ -111,6 +114,8 @@ export interface ParSolicitado {
   readonly movimientoId: string;
   readonly invoiceId: string;
   readonly manual: boolean;
+  /** D-P3-11: la persona revisó un CFDI de dirección indeterminada y lo confirma. Sin esto, un par que requiere revisión se rechaza. */
+  readonly revisado?: boolean;
 }
 
 /** Traduce lo que pidió el cliente a pares confirmables: un par del motor toma nivel y confianza de la propuesta del SERVIDOR; un par
@@ -121,6 +126,83 @@ export function resolverPares(solicitados: readonly ParSolicitado[], propuestas:
     if (s.manual) return { movimientoId: s.movimientoId, invoiceId: s.invoiceId, nivel: null, confianza: null, origen: "manual" as const };
     const p = porPar.get(`${s.movimientoId}|${s.invoiceId}`);
     if (!p) throw new ParNoPropuestoPorMotorError(s.movimientoId, s.invoiceId);
+    if (p.requiereRevision && s.revisado !== true) throw new ConciliacionRevisionRequeridaError(s.movimientoId, s.invoiceId);
     return { movimientoId: s.movimientoId, invoiceId: s.invoiceId, nivel: p.nivel, confianza: p.confianza, origen: "motor" as const };
   });
+}
+
+/** D-P3-10: lo que se guarda en la sesión tras correr el motor. */
+export function aPropuestasGuardadas(r: ResultadoPropuestas, calculadoEn: string): PropuestasGuardadas {
+  return { version: 1, calculadoEn, propuestas: r.propuestas, multiLinea: r.multiLinea, ambiguas: r.ambiguas, sinConciliar: r.sinConciliar };
+}
+
+/** D-P3-10: el servidor nunca confía en el cliente, pero ya no re-ejecuta el motor sobre TODAS las facturas del cliente al confirmar: verifica
+ * cada par solicitado ACOTADO AL PAR (el movimiento y el CFDI, leídos del servidor, pasan por el motor solos). Un par manual no lleva
+ * nivel ni confianza; un par del motor toma nivel y confianza de ESA verificación. Un par que el motor no propone, aun a solas, se rechaza. */
+export function resolverParesAcotados(
+  solicitados: readonly ParSolicitado[],
+  movimientos: ReadonlyMap<string, MovimientoGuardado>,
+  registros: ReadonlyMap<string, RegistroConciliable>,
+  opciones: OpcionesMatchingEngine = {},
+): readonly ParConfirmar[] {
+  return solicitados.map((s) => {
+    if (s.manual) return { movimientoId: s.movimientoId, invoiceId: s.invoiceId, nivel: null, confianza: null, origen: "manual" as const };
+    const mov = movimientos.get(s.movimientoId);
+    const reg = registros.get(s.invoiceId);
+    if (!mov || !reg) throw new ParNoPropuestoPorMotorError(s.movimientoId, s.invoiceId);
+    const p = calcularPropuestas([mov], [reg], opciones).propuestas.find((x) => x.movimientoId === s.movimientoId && x.invoiceId === s.invoiceId);
+    if (!p) throw new ParNoPropuestoPorMotorError(s.movimientoId, s.invoiceId);
+    if (p.requiereRevision && s.revisado !== true) throw new ConciliacionRevisionRequeridaError(s.movimientoId, s.invoiceId);
+    return { movimientoId: s.movimientoId, invoiceId: s.invoiceId, nivel: p.nivel, confianza: p.confianza, origen: "motor" as const };
+  });
+}
+
+export interface ParAutoconfirmable {
+  readonly movimientoId: string;
+  readonly invoiceId: string;
+  readonly confianza: number;
+}
+
+const DIAS_VENTANA_UNICIDAD = 3;
+
+function montoDe(r: RegistroConciliable): number | null {
+  const v = r.monto !== undefined && r.monto !== null ? r.monto : r.total;
+  if (v === undefined || v === null) return null;
+  const n = typeof v === "number" ? v : Number(String(v).replace(/[$,\s]/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
+/** D-P3-12: de las propuestas del motor, SOLO las que el piloto automático puede confirmar: nivel 1, dirección explícita (nunca `indeterminado` ni sin dato)
+ * y ÚNICAS: ningún otro CFDI libre cuadra con el movimiento (monto a 1 centavo, dirección compatible, dentro de la ventana de fechas) ni ningún otro
+ * movimiento libre cuadra con el CFDI. Nunca incluye nivel 2, grupos (multi-línea), ambiguos ni sugerencias de IA. */
+export function seleccionarAutoconfirmables(
+  propuestas: readonly PropuestaMotor[],
+  movimientos: readonly MovimientoGuardado[],
+  registros: readonly RegistroConciliable[],
+  diasVentana = DIAS_VENTANA_UNICIDAD,
+): readonly ParAutoconfirmable[] {
+  const movPorId = new Map(movimientos.map((m) => [m.id, m]));
+  const regPorId = new Map(registros.map((r) => [r.id, r]));
+  const cuadra = (m: MovimientoGuardado, r: RegistroConciliable): boolean => {
+    const montoRec = montoDe(r);
+    if (montoRec === null) return false;
+    if (Math.abs(aCentavos(Math.abs(m.monto)) - aCentavos(Math.abs(montoRec))) > 1) return false;
+    if (compatibilidadDireccion(m, r) === "incompatible") return false;
+    const d = fechaDiff(m.fecha, (r.fecha ?? "").slice(0, 10));
+    return d !== null && d <= diasVentana;
+  };
+  const salida: ParAutoconfirmable[] = [];
+  for (const p of propuestas) {
+    if (p.nivel !== 1 || p.requiereRevision) continue;
+    const m = movPorId.get(p.movimientoId);
+    const r = regPorId.get(p.invoiceId);
+    if (!m || !r) continue;
+    if (r.direccion !== "emitido" && r.direccion !== "recibido") continue;
+    if (!cuadra(m, r)) continue;
+    const otrosParaElMovimiento = registros.some((x) => x.id !== r.id && cuadra(m, x));
+    const otrosParaElCfdi = movimientos.some((x) => x.id !== m.id && cuadra(x, r));
+    if (otrosParaElMovimiento || otrosParaElCfdi) continue;
+    salida.push({ movimientoId: m.id, invoiceId: r.id, confianza: p.confianza });
+  }
+  return salida;
 }

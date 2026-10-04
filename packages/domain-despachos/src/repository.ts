@@ -125,8 +125,11 @@ export interface DespachosRepository {
    * resuelve directo contra `fecha`, así que incluye TODOS los tipos de CFDI de la
    * property que caigan en el período — el llamador decide si además filtra por
    * `diot.reportable` (como hace la agregación DIOT real, que solo reporta
-   * proveedores tipo 'I'). */
-  listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string }): Promise<readonly InvoiceRecord[]>;
+   * proveedores tipo 'I').
+   *
+   * `fechaDesde`/`fechaHasta` (YYYY-MM-DD, inclusivos): ventana de fecha de emisión (D-P3-10: la conciliación carga los CFDI de la ventana del
+   * periodo de la sesión, no todos los del cliente). */
+  listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string; readonly fechaDesde?: string; readonly fechaHasta?: string }): Promise<readonly InvoiceRecord[]>;
   /** Versión PAGINADA de `listInvoices`, para `GET /despachos/:propertyId/cfdi` (el
    * listado que un humano navega en el panel) -- hallazgo de auditoría (rubro 10,
    * "performance y escalabilidad", severidad BAJA: "listados sin paginación en 4
