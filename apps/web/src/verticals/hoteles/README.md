@@ -134,3 +134,13 @@ H-28 / H-27 / H-35 (paridad 2):
   `CotizadorPanel.tsx` (botón Cotizar en Reservas, `POST /quotes`), `TurnosPanel.tsx` (pestaña Turnos de Housekeeping: cumplimiento de la LFT y
   publicación de la plantilla; el 422 se muestra con su cita legal) y `RevenueHerramientas.tsx` (explicar un precio, verificar paridad y
   benchmark de compset; solo owner/gm).
+
+H-42 (motor de reservas directo público):
+
+- `reservar-publico/ReservarPage.tsx` (ruta pública `/hoteles/:orgSlug/reservar`, sin login; `/reservar/:orgSlug` ya es de citas) — fechas y
+  ocupación, tipos con precio desde, cotización server-side (el navegador nunca manda precio), datos del huésped con consentimiento del aviso y
+  confirmación con Idempotency-Key. `EstadoReservaPage.tsx` (`/hoteles/:orgSlug/reserva/:token`) — estado y cancelación por token opaco. La UI
+  no captura tarjeta: sin un `metodoPagoToken` real (Stripe, H-23) la reserva queda "pago pendiente" y el staff la ve en las holds.
+- `pages/RoomNightsDirectasCard.tsx` en Revenue — KPI de noches de reservas `directo_web` vs el total del mes (`GET revenue/room-nights-directas`);
+  sin la migración 044 dice "No disponible aún".
+- Hueco conocido: el widget embebible en el sitio del hotel es PL-27.
