@@ -193,7 +193,7 @@ describe("pestaña Voz (sin clonación)", () => {
     click(boton("Guardar cambios")!);
     await settle();
     const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!;
-    expect(JSON.parse((put[1] as RequestInit).body as string)).toEqual({ habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Puck", comportamiento: CONFIG.comportamiento, mensajeInicial: CONFIG.mensajeInicial });
+    expect(JSON.parse((put[1] as RequestInit).body as string)).toEqual({ habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Puck", comportamiento: CONFIG.comportamiento, mensajeInicial: CONFIG.mensajeInicial, mensajeInicialInterrumpible: true });
     expect(texto()).toContain("Cambios guardados.");
     expect((boton("Guardar cambios") as HTMLButtonElement).disabled).toBe(true);
   });
@@ -250,7 +250,7 @@ describe("Comportamiento, Conocimiento y Mensaje inicial", () => {
     click(boton("Guardar cambios")!);
     await settle();
     const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!;
-    expect(JSON.parse((put[1] as RequestInit).body as string)).toEqual({ habilitado: false, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "Sé breve.", mensajeInicial: CONFIG.mensajeInicial });
+    expect(JSON.parse((put[1] as RequestInit).body as string)).toEqual({ habilitado: false, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "Sé breve.", mensajeInicial: CONFIG.mensajeInicial, mensajeInicialInterrumpible: true });
   });
 
   const ENTRADA = { id: "k1", sucursalId: null, reemplazaId: null, titulo: "Estacionamiento", texto: "Hay estacionamiento gratuito para clientes.", tipo: "faq", prioridad: 50, vigenteDesde: null, vigenteHasta: null, activo: true, estado: "publicado", origen: "manual", version: 1, actualizadoEn: "2026-10-04T12:00:00Z" };
@@ -309,6 +309,22 @@ describe("Comportamiento, Conocimiento y Mensaje inicial", () => {
     await pintar({ config: { status: 200, body: { ...CONFIG, disponible: false, configurada: false } }, conversaciones: { status: 200, body: { ...CONVERSACIONES, disponible: false, items: [] } } });
     expect(rendered!.container.querySelector('[data-testid="aviso-servicio"]')).not.toBeNull();
     expect(texto()).toContain("Sin historial todavía");
+  });
+
+  it("Mensaje inicial: la casilla del saludo no interrumpible se lee de la API, se explica y se manda en el PUT", async () => {
+    await pintar({ config: { status: 200, body: { ...CONFIG, mensajeInicialInterrumpible: true } }, put: (body) => ({ status: 200, body: { ...CONFIG, ...body } }) });
+    await irA("Mensaje inicial");
+    const casilla = () => rendered!.container.querySelector<HTMLInputElement>("#voz-saludo-interrumpible")!;
+    expect(casilla().checked).toBe(true);
+    expect(texto()).toContain("el agente se calla");
+    click(casilla());
+    expect(casilla().checked).toBe(false);
+    expect(texto()).toContain("se escucha completo aunque quien llama hable encima");
+    click(boton("Guardar cambios")!);
+    await settle();
+    const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!;
+    expect(JSON.parse((put[1] as RequestInit).body as string)).toMatchObject({ mensajeInicialInterrumpible: false });
+    expect(casilla().checked).toBe(false);
   });
 
   it("Mensaje inicial muestra siempre el aviso de asistente virtual y alerta si el texto no lo dice", async () => {

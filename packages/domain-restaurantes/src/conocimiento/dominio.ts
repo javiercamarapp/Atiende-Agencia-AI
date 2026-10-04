@@ -124,3 +124,8 @@ export function bloqueConocimientoPrompt(entradas: readonly ConocimientoEntrada[
   const lineas = entradas.map((e) => `- [${ROTULO[e.tipo]}] ${sanitizeInlineText(e.titulo, CONOCIMIENTO_TITULO_MAX)}: ${sanitizeInlineText(e.texto, CONOCIMIENTO_TEXTO_MAX)}`);
   return `${CONOCIMIENTO_ENCABEZADO}\n${lineas.join("\n")}`;
 }
+
+/** Instruccion de voz: el bloque de conocimiento va ANTES del comportamiento guardado (que lleva las reglas duras), asi las reglas quedan al final y ganan. */
+export function anteponerConocimiento(comportamiento: string, bloque: string): string {
+  return bloque ? `${bloque}\n\n${comportamiento}` : comportamiento;
+}

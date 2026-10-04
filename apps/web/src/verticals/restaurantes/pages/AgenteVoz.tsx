@@ -48,7 +48,7 @@ const PESTANAS: readonly { readonly id: PestanaId; readonly etiqueta: string }[]
 
 const PESTANAS_EDITABLES: ReadonlySet<PestanaId> = new Set(["voz", "comportamiento", "mensaje"]);
 
-const BORRADOR_VACIO: VozConfigInput = { vozId: null, promptSistema: "", mensajeInicial: "", habilitado: false };
+const BORRADOR_VACIO: VozConfigInput = { vozId: null, promptSistema: "", mensajeInicial: "", mensajeInicialInterrumpible: true, habilitado: false };
 
 /** Regla de transparencia: el saludo debe presentarse como asistente virtual. */
 export function mencionaAsistenteVirtual(texto: string): boolean {
@@ -56,11 +56,11 @@ export function mencionaAsistenteVirtual(texto: string): boolean {
 }
 
 function aBorrador(c: VozConfig | null): VozConfigInput {
-  return c ? { vozId: c.vozId, promptSistema: c.promptSistema, mensajeInicial: c.mensajeInicial, habilitado: c.habilitado } : BORRADOR_VACIO;
+  return c ? { vozId: c.vozId, promptSistema: c.promptSistema, mensajeInicial: c.mensajeInicial, mensajeInicialInterrumpible: c.mensajeInicialInterrumpible, habilitado: c.habilitado } : BORRADOR_VACIO;
 }
 
 function iguales(a: VozConfigInput, b: VozConfigInput): boolean {
-  return a.vozId === b.vozId && a.promptSistema === b.promptSistema && a.mensajeInicial === b.mensajeInicial && a.habilitado === b.habilitado;
+  return a.vozId === b.vozId && a.promptSistema === b.promptSistema && a.mensajeInicial === b.mensajeInicial && a.mensajeInicialInterrumpible === b.mensajeInicialInterrumpible && a.habilitado === b.habilitado;
 }
 
 export interface AgenteVozPageProps extends RestaurantesShellContext {
@@ -266,6 +266,17 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, crearAudio,
                   placeholder="Hola, le atiende el asistente virtual de …"
                 />
               </div>
+              <Checkbox
+                id="voz-saludo-interrumpible"
+                checked={borrador.mensajeInicialInterrumpible}
+                onChange={(e) => setBorrador({ ...borrador, mensajeInicialInterrumpible: e.target.checked })}
+                label="Quien llama puede interrumpir el primer mensaje"
+              />
+              <p className="text-xs text-muted-foreground">
+                {borrador.mensajeInicialInterrumpible
+                  ? "Si quien llama habla encima, el agente se calla. Desmárquelo para que el aviso de asistente virtual y de grabación se escuche completo."
+                  : "El primer mensaje se escucha completo aunque quien llama hable encima; desde la segunda frase del agente sí puede interrumpirlo."}
+              </p>
               {borrador.mensajeInicial.trim() !== "" && !mencionaAsistenteVirtual(borrador.mensajeInicial) ? (
                 <Callout tone="warning" role="alert" data-testid="alerta-sin-asistente-virtual">
                   Este mensaje no dice que es un asistente virtual. Agrégalo antes de poner el agente en producción.
