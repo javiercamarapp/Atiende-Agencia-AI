@@ -273,6 +273,42 @@ export async function enviarComandaEncolada(deps: DepsComandaPos, fila: FilaComa
   return { modo: "activo", fila, agente: respuestaAgenteComanda(fila) };
 }
 
+/** Nota que queda en la comanda cuya salida al POS se corto porque el pedido se cancelo antes de llegar. */
+export const NOTA_COMANDA_CORTADA_POR_CANCELACION = "Pedido cancelado antes de llegar al POS: la comanda ya no se envia.";
+
+/**
+ * Un pedido CANCELADO antes de que su comanda llegara al POS no debe llegar a cocina despues: si el POS estaba lento o caido, la
+ * comanda sigue `pendiente`/`fallida` en el outbox y el despachador (cron de 5 min) la mandaria al volver el POS, con comida que
+ * nadie va a recoger. Aqui se corta con la MISMA operacion que ya usa el staff para cerrar una comanda a mano (`marcarCapturada`:
+ * pasa a `capturada_manual`, estado terminal que corta los reintentos y no cuenta como "requiere atencion").
+ *
+ * Solo toca filas `pendiente`/`fallida` de ESE pedido; una `enviada` (en vuelo) o `confirmada` (ya en el POS) no se modifica:
+ * esas ya estan en cocina y el POS no expone una cancelacion (limite documentado en docs/CICLO-PUNTA-A-PUNTA-RESTAURANTES.md).
+ * Best-effort: nunca lanza ni revierte la cancelacion. Corre en sesion de STAFF (la funcion SQL exige un actor autenticado).
+ * Base sin la migracion 024: `listar` responde `disponible: false` y no hace nada.
+ */
+export async function cortarComandaDePedidoCancelado(
+  store: ComandaOutboxStore,
+  organizationId: string,
+  order: Pick<Order, "id" | "propertyId">,
+  actorUserId: string,
+): Promise<{ readonly cortadas: number }> {
+  try {
+    const lectura = await store.listar(organizationId, { propertyIds: [order.propertyId], estados: ["pendiente", "fallida"], limite: 200, offset: 0 });
+    if (!lectura.disponible) return { cortadas: 0 };
+    let cortadas = 0;
+    for (const fila of lectura.filas) {
+      if (fila.orderId !== order.id) continue;
+      const r = await store.marcarCapturada(organizationId, fila.id, actorUserId, NOTA_COMANDA_CORTADA_POR_CANCELACION);
+      if (r.resultado === "ok") cortadas += 1;
+    }
+    return { cortadas };
+  } catch (err) {
+    console.error("softrestaurant: no se pudo cortar la comanda de un pedido cancelado (se registra y la cancelacion sigue):", err instanceof Error ? err.message : err);
+    return { cortadas: 0 };
+  }
+}
+
 export interface ResumenComandasPromovidos {
   /** Pedidos para los que se intento encolar (`pending` recien promovidos). */
   readonly intentados: number;
