@@ -91,3 +91,35 @@ export async function updateVozUmbrales(fetchImpl: typeof fetch, apiBaseUrl: str
   const w = await pedir<VozUmbrales & { disponible: boolean }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/alertas/config`, token, { method: "PUT", body: input });
   return { configurado: w.configurado, umbralCostoDiaCentavosMxn: w.umbralCostoDiaCentavosMxn, umbralTasaErrorPct: w.umbralTasaErrorPct, minLlamadasTasaError: w.minLlamadasTasaError };
 }
+
+/** Un día local de la sucursal: llamadas que llegaron por desvío del conmutador (el personal no las contestó), sus pedidos y ventas, y la latencia de voz a voz. */
+export interface VozKpiDesbordeDia {
+  readonly fecha: string;
+  readonly llamadasDesborde: number;
+  readonly pedidosDesborde: number;
+  /** Pesos MXN (suma de los totales de esos pedidos, sin cancelados). */
+  readonly ventasRecuperadas: number;
+  readonly llamadasConModo: number;
+  readonly llamadasConLatencia: number;
+  readonly latenciaP50Ms: number | null;
+  readonly latenciaP95Ms: number | null;
+}
+
+export interface VozKpiDesborde {
+  readonly zonaHoraria: string;
+  readonly desde: string;
+  readonly hasta: string;
+  /** Objetivo de latencia de voz a voz (p95), ms. */
+  readonly objetivoLatenciaP95Ms: number;
+  readonly totales: { readonly llamadasDesborde: number; readonly pedidosDesborde: number; readonly ventasRecuperadas: number };
+  /** Último día con muestras de latencia (los percentiles no se suman entre días). */
+  readonly ultimaLatencia: { readonly fecha: string; readonly p50Ms: number | null; readonly p95Ms: number | null; readonly llamadas: number } | null;
+  readonly serie: readonly VozKpiDesbordeDia[];
+}
+
+/** Llamadas no contestadas por el personal -> pedidos -> ventas recuperadas, y latencia de voz a voz (migración 044). 404/503 o `disponible: false` = no disponible aún. */
+export async function fetchVozKpiDesborde(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<VozKpiDesborde> {
+  const w = await pedir<VozKpiDesborde & { disponible: boolean }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/kpi-desborde`, token, { method: "GET" });
+  if (w.disponible === false) throw new VozNoDisponibleError(503);
+  return w;
+}

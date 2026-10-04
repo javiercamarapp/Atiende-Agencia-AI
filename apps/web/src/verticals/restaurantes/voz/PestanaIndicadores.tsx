@@ -5,8 +5,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Activity, Clock, DollarSign, Headset, PhoneCall, ShoppingBag, TriangleAlert } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, StatCard, DataTable } from "@atiende/ui";
-import { evaluarVozAlertas, fetchVozAlertas, fetchVozKpi, updateVozUmbrales } from "../lib/voz-kpi-client.ts";
-import type { VozAlerta, VozKpi, VozKpiDiaSerie, VozUmbrales } from "../lib/voz-kpi-client.ts";
+import { evaluarVozAlertas, fetchVozAlertas, fetchVozKpi, fetchVozKpiDesborde, updateVozUmbrales } from "../lib/voz-kpi-client.ts";
+import type { VozAlerta, VozKpi, VozKpiDesborde, VozKpiDiaSerie, VozUmbrales } from "../lib/voz-kpi-client.ts";
 import { desdeError } from "./carga.ts";
 import type { Carga } from "./carga.ts";
 import { etiquetaAlerta, formatoDia, formatoMs, formatoMxn, formatoPct, pesosACentavos } from "./formato-kpi.ts";
@@ -104,6 +104,8 @@ export function PestanaIndicadores({ apiBaseUrl, token, propertyId, fetchImpl }:
         </div>
       </section>
 
+      <SeccionDesborde apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} fetchImpl={fetchImpl} />
+
       <section aria-label="Últimos 14 días" className="space-y-2">
         <Card>
           <CardHeader className="p-3 pb-2">
@@ -145,6 +147,66 @@ export function PestanaIndicadores({ apiBaseUrl, token, propertyId, fetchImpl }:
           </ul>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+/** Llamadas que el personal no contestó (modo desborde) -> pedidos -> ventas recuperadas, y latencia de voz a voz contra el objetivo. Carga APARTE de los demás
+ * indicadores: si la API o la base aún no tienen la migración 044, solo esta sección dice "no disponible aún" y el resto sigue funcionando. */
+function SeccionDesborde({ apiBaseUrl, token, propertyId, fetchImpl }: { readonly apiBaseUrl: string; readonly token: string; readonly propertyId: string; readonly fetchImpl: typeof fetch | undefined }) {
+  const [datos, setDatos] = useState<Carga<VozKpiDesborde>>({ estado: "cargando" });
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    let cancelado = false;
+    setDatos({ estado: "cargando" });
+    fetchVozKpiDesborde(fetchImpl ?? fetch, apiBaseUrl, token, propertyId).then(
+      (kpi) => {
+        if (!cancelado) setDatos({ estado: "listo", datos: kpi });
+      },
+      (err: unknown) => {
+        if (!cancelado) setDatos(desdeError(err, "No se pudieron cargar las llamadas en desborde."));
+      },
+    );
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId, version, fetchImpl]);
+
+  return (
+    <section aria-label="Llamadas no contestadas por el personal" className="space-y-2" data-testid="kpi-desborde">
+      <h3 className="text-sm font-medium text-foreground">Llamadas no contestadas por el personal</h3>
+      {datos.estado === "cargando" ? <EstadoCargando etiqueta="Cargando llamadas en desborde…" /> : null}
+      {datos.estado === "error" ? <EstadoError mensaje={datos.mensaje} onReintentar={() => setVersion((v) => v + 1)} /> : null}
+      {datos.estado === "no_disponible" ? (
+        <p className="text-xs text-muted-foreground" data-testid="kpi-desborde-no-disponible">
+          Aún no disponible: requiere el worker de telefonía y la migración 044 aplicada en esta base. Cuando lo estén, aquí verás cuántas llamadas no contestó el personal, cuántas terminaron en pedido y cuánto se vendió.
+        </p>
+      ) : null}
+      {datos.estado === "listo" ? <ContenidoDesborde kpi={datos.datos} /> : null}
+    </section>
+  );
+}
+
+function ContenidoDesborde({ kpi }: { readonly kpi: VozKpiDesborde }) {
+  const t = kpi.totales;
+  const lat = kpi.ultimaLatencia;
+  const cumple = lat !== null && lat.p95Ms !== null ? lat.p95Ms < kpi.objetivoLatenciaP95Ms : null;
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <StatCard icon={PhoneCall} label="Llamadas no contestadas" value={String(t.llamadasDesborde)} nota={`Del ${formatoDia(kpi.desde)} al ${formatoDia(kpi.hasta)}`} />
+        <StatCard icon={ShoppingBag} label="Terminaron en pedido" value={String(t.pedidosDesborde)} nota={t.llamadasDesborde > 0 ? `${Math.round((t.pedidosDesborde / t.llamadasDesborde) * 100)}% de esas llamadas` : undefined} {...(t.llamadasDesborde === 0 ? { sinDato: "Sin llamadas en desborde en el periodo." } : {})} />
+        <StatCard icon={DollarSign} label="Ventas recuperadas" value={formatoMxn(Math.round(t.ventasRecuperadas * 100))} nota="Pedidos de esas llamadas, sin cancelados" />
+        <StatCard
+          icon={Activity}
+          label="Latencia de voz a voz (p95)"
+          value={formatoMs(lat?.p95Ms ?? null)}
+          {...(lat === null || lat.p95Ms === null ? { sinDato: "Sin llamadas con latencia medida en el periodo." } : { nota: `${cumple ? "Cumple" : "No cumple"} el objetivo de ${formatoMs(kpi.objetivoLatenciaP95Ms)} · p50 ${formatoMs(lat.p50Ms)} · ${formatoDia(lat.fecha)}` })}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Cifra verificable, sin comparar contra lo que habría pasado: suma de los pedidos de las llamadas que llegaron por desvío del conmutador. «Día» = día local de la sucursal.
+      </p>
     </div>
   );
 }
