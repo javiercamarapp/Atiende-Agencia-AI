@@ -27,6 +27,7 @@ import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
 import { restaurantesAdminOnboardingRoutes } from "./admin-onboarding.ts";
+import { restaurantesAjustesAgenteRoutes, restaurantesAjustesLlamadaInternoRoutes } from "./ajustes-agente.ts";
 import { restaurantesVozAdminRoutes } from "./voz-admin.ts";
 import { restaurantesVozInternoRoutes } from "./voz-interno.ts";
 import { restaurantesVozKpiRoutes } from "./voz-kpi.ts";
@@ -86,6 +87,9 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // de sistema del servicio de voz — ver el comentario de cabecera de voz-admin.ts/voz-interno.ts.
   app.route("/", restaurantesVozAdminRoutes(deps));
   app.route("/", restaurantesVozInternoRoutes(deps));
+  // Ajustes del agente por organizacion (migración 046: modelo, temperatura, voz, fondo) + conocimiento automatico + lado sistema del servicio de llamadas.
+  app.route("/", restaurantesAjustesAgenteRoutes(deps));
+  app.route("/", restaurantesAjustesLlamadaInternoRoutes(deps));
   // R-13 (migración 035): KPI de voz, costo por día y alertas operativas internas (panel + bitácora).
   app.route("/", restaurantesVozKpiRoutes(deps));
   app.route("/", restaurantesWhatsappKpiRoutes(deps));

@@ -152,7 +152,8 @@ export class LlmGateway {
   }
 
   /** Registra modelos que un rol puede usar SOLO cuando el llamador los pide con `preferredModel`; nunca entran a la
-   *  escalera por defecto (un fallo no cae a ellos). La clave es el `model` del proveedor. */
+   *  escalera por defecto (un fallo no cae a ellos). La clave es el `model` del proveedor. Si el modelo tambien esta en la
+   *  escalera del rol, al elegirlo se usa ESTA alternativa y no el escalon (se quita de la escalera para no repetirlo). */
   registerAlternatives(role: string, providers: LlmProvider[]): void {
     const porModelo = new Map<string, LlmProvider>();
     for (const p of providers) {
@@ -167,9 +168,11 @@ export class LlmGateway {
     const base = this.laddersByRole.get(role);
     if (!base) throw new Error(`gateway: sin proveedores registrados para el rol "${role}" (llamar registerLadder primero)`);
     if (!preferredModel) return base;
-    const elegido = base.find((p) => p.model === preferredModel) ?? this.alternativesByRole.get(role)?.get(preferredModel);
+    // La alternativa registrada manda sobre un escalon de la escalera con el mismo modelo: es la que el rol declaro para ELEGIR ese modelo
+    // (p.ej. con la temperatura habilitada, que los escalones por defecto omiten).
+    const elegido = this.alternativesByRole.get(role)?.get(preferredModel) ?? base.find((p) => p.model === preferredModel);
     if (!elegido) return base;
-    return [elegido, ...base.filter((p) => p !== elegido)];
+    return [elegido, ...base.filter((p) => p !== elegido && p.model !== elegido.model)];
   }
 
   async complete(opts: GatewayCallOptions): Promise<GatewayCallResult> {

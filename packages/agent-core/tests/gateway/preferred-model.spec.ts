@@ -62,6 +62,16 @@ describe('LlmGateway — modelo preferido por llamada', () => {
     await expect(llamar(g2, 'c/extra')).resolves.toMatchObject({ providerId: 'principal', fallbackUsed: true });
   });
 
+  it('una alternativa con el mismo modelo que un escalon manda sobre el escalon (y no se repite en el respaldo)', async () => {
+    const { gateway, principal } = build();
+    const conTemperatura = proveedor('principal-con-temperatura', 'a/principal');
+    gateway.registerAlternatives('restaurantes:whatsapp_agent', [conTemperatura]);
+    await expect(llamar(gateway, 'a/principal')).resolves.toMatchObject({ providerId: 'principal-con-temperatura', fallbackUsed: false });
+    expect(principal.callCount).toBe(0);
+    // sin modelo preferido el escalon original sigue siendo el de la escalera
+    await expect(llamar(gateway)).resolves.toMatchObject({ providerId: 'principal' });
+  });
+
   it('un modelo no registrado se IGNORA: nunca se llama a un modelo no listado', async () => {
     const { gateway, principal, extra } = build();
     await expect(llamar(gateway, 'x/no-listado')).resolves.toMatchObject({ providerId: 'principal' });
