@@ -344,6 +344,61 @@ jobs:
       - name: scripts/verify-licitaciones-aprobacion-datos-empresa/concurrencia.sh
         run: bash scripts/verify-licitaciones-aprobacion-datos-empresa/concurrencia.sh
 
+  restaurantes-whatsapp-concurrencia-gate:
+    name: WhatsApp y pedidos de restaurantes con 2+ conexiones simultaneas (scripts/verify-restaurantes-whatsapp-concurrencia)
+    runs-on: ubuntu-latest
+    # Job APARTE (mismo servicio postgres que el gate de arriba): el runner generico run-gate.mjs ejecuta cada escenario de
+    # assertions.sql en UNA conexion y esta verificacion necesita varias conexiones SIMULTANEAS. scripts/verify-restaurantes-
+    # whatsapp-concurrencia/run.sh aplica las migraciones reales, dispara N conexiones con una "pistola de salida" (advisory lock)
+    # y comprueba sobre las RPC reales de restaurantes que la idempotencia de pedidos, el ledger de mensajes de Meta, el lease de
+    # conversacion y el append atomico del historial aguantan la carrera. Sin assertions.sql a proposito (ver el README del script).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      VERIFY_USE_EXISTING_PG: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Confirmar cliente psql disponible
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+          psql --version
+
+      - name: Esperar a que el servicio Postgres acepte conexiones
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" >/dev/null 2>&1; then
+              echo "Postgres listo"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Postgres nunca quedó listo" >&2
+          exit 1
+
+      - name: scripts/verify-restaurantes-whatsapp-concurrencia/run.sh
+        run: bash scripts/verify-restaurantes-whatsapp-concurrencia/run.sh
+
   eval-copiloto-congelado:
     name: Arnes de evaluacion del Copiloto - respuestas esperadas congeladas vs Postgres sembrado (scripts/eval-copiloto)
     runs-on: ubuntu-latest
