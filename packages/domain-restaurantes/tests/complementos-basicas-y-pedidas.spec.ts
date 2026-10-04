@@ -33,7 +33,7 @@ describe("comanda con perfil de básicas (PM)", () => {
 describe("crear_pedido: complementos pedidos", () => {
   it("la herramienta acepta la lista cerrada de complementos pedidos", () => {
     const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === "crear_pedido")!;
-    const items = (def.parameters as { properties: { requested_complements: { items: { enum: string[] } } } }).properties.requested_complements.items.enum;
+    const items = (def.parameters as unknown as { properties: { requested_complements: { items: { enum: string[] } } } }).properties.requested_complements.items.enum;
     expect(items).toEqual(expect.arrayContaining(["salsa_guacamolera", "salsa_mexicana", "salsa_pina", "pina", "salsa_habanero_soasado", "crema_ajo", "salsa_habanero"]));
   });
 

@@ -125,7 +125,7 @@ export function buildComplementNotes(
   // solicitado). Si el cliente la pide expresamente, esa peticion gana sobre una omision contradictoria.
   const omittedSet = new Set(omitted.map(canonicalComplement));
   if (basics) return buildComplementNotesConBasicas(notes, requested, omittedSet, basics);
-  const requestedSet = new Set<DefaultComplement>(requested.filter((r): r is DefaultComplement => (DEFAULT_COMPLEMENTS as readonly string[]).includes(r)));
+  const requestedSet = new Set<DefaultComplement>(requested.filter((r) => (DEFAULT_COMPLEMENTS as readonly string[]).includes(r)) as unknown as DefaultComplement[]);
   const included = DEFAULT_COMPLEMENTS.filter((item) => requestedSet.has(item) || !omittedSet.has(item));
   const lines = [notes?.trim()].filter(Boolean) as string[];
   lines.push(
