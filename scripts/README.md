@@ -77,3 +77,10 @@ solas sin tocar el workflow — ver su propio README.
 
 Si agregas un `verify-*/` nuevo con ese mismo contrato, súmalo a la lista de
 arriba en tu misma pasada de documentación.
+
+## `verify-whatsapp-concurrencia/`
+
+Prueba de carga reproducible del webhook de WhatsApp de restaurantes (P0 "6+ mensajes simultáneos → HTTP 500"): API real de
+producción contra Postgres real con TLS, OpenRouter y Meta simulados; exige 200 en todos, ningún mensaje perdido ni
+duplicado y reenvío idempotente. No usa `assertions.sql` (job propio `whatsapp-concurrencia-gate` en
+`.github/workflows/postgres-real-gate.yml`). Ver su `README.md`.
