@@ -103,4 +103,40 @@ describe("e2e storefront web", () => {
     await stack.dispatchEmail();
     expect(stack.sink.emailsTo("reintento@example.test")).toHaveLength(1);
   });
+
+  it("R-38 + R-43: el panel guarda la marca, el storefront la publica con su sitemap y el cliente envia una solicitud de evento que el restaurante recibe", async () => {
+    stack = await startCicloStack();
+    const owner = stack.ctx.staff.owner.token;
+    // Panel: owner guarda la marca; el staff de sucursal no puede.
+    const marca = { titular: "Tacos con historia", eslogan: "Desde 1980", about: "Somos de Mérida", portadaUrl: "https://cdn.example.com/p.jpg", logoUrl: null, instagramUrl: "https://instagram.com/lostaquitos", facebookUrl: null, tiktokUrl: null };
+    const url = stack.url(`/v1/restaurantes/${stack.propertyId}/admin/config/sitio-publico`);
+    expect((await fetch(url, authedJson(stack.ctx.staff.staffSucursalA.token, marca, "PUT"))).status).toBe(403);
+    expect((await fetch(url, authedJson(owner, marca, "PUT"))).status).toBe(200);
+    // Storefront publico: portada de marca y boton de WhatsApp de la sucursal (telefono de la sucursal -> wa.me).
+    const sf = (await (await fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}/storefront`))).json()) as Json;
+    expect(sf.marca).toMatchObject({ titular: "Tacos con historia", instagramUrl: "https://instagram.com/lostaquitos" });
+    expect(sf.sucursales.find((b: Json) => b.slug === "fco-montejo").whatsappUrl).toMatch(/^https:\/\/wa\.me\/529991234567\?text=/);
+    // Sitemap: inicio, eventos y la sucursal; nunca rastreo.
+    const xml = await (await fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}/storefront/sitemap.xml`))).text();
+    expect(xml).toContain(`/pedir/${ORG_SLUG}/eventos`);
+    expect(xml).toContain(`/pedir/${ORG_SLUG}/fco-montejo`);
+    expect(xml).not.toMatch(/pedido|rastreo/);
+    // Cliente: solicitud de evento. Un bot (honeypot) no crea nada; la persona si.
+    const futuro = new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
+    const evento = { nombre: "Ana Pérez", telefono: "999 123 0099", fechaEvento: futuro, personas: 60, sucursal: "fco-montejo", comentario: "Boda en jardin", aceptaAviso: true };
+    expect((await post("/eventos", { ...evento, sitio_web: "http://spam.example" })).status).toBe(200);
+    expect(stack.ctx.restaurantesRepo.peekCallbackRequests()).toHaveLength(0);
+    expect((await post("/eventos", { ...evento, aceptaAviso: false })).status).toBe(400);
+    const ok = await post("/eventos", evento);
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as Json).recibido).toBe(true);
+    const [cb] = stack.ctx.restaurantesRepo.peekCallbackRequests();
+    expect(cb).toMatchObject({ organizationId: stack.ctx.organizationId, propertyId: stack.propertyId, reason: "evento", source: "web", customerPhone: "9991230099" });
+    expect(cb!.message).toMatch(/Personas: 60/);
+    expect(cb!.message).toMatch(/Boda en jardin/);
+    // Mismo telefono: tope de 3 por hora aunque cambie la IP.
+    expect((await post("/eventos", evento)).status).toBe(200);
+    expect((await post("/eventos", evento)).status).toBe(200);
+    expect((await post("/eventos", evento)).status).toBe(429);
+  });
 });
