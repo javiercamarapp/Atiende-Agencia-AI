@@ -23,7 +23,7 @@ async function sesionViva(session: AbortAwareFakeSession): Promise<void> {
   await expect(session.query("select 1 as viva")).resolves.toEqual({ rows: [{ viva: 1 }] });
 }
 
-describe("lectura y cierre de sistema contra la base sin la migracion 044", () => {
+describe("lectura y cierre de sistema contra la base sin la migracion 049", () => {
   it("cliente_memoria inexistente (42883) devuelve undefined y la transaccion sigue utilizable", async () => {
     const { session, repo } = repoConFunciones({ cliente_memoria: () => pgError("42883", "function restaurantes.cliente_memoria does not exist") });
     await expect(repo.getCustomerMemory(ORG, "9991234567")).resolves.toBeUndefined();
@@ -88,7 +88,7 @@ describe("lectura y cierre de sistema contra la base sin la migracion 044", () =
   });
 });
 
-describe("operaciones del staff contra la base sin la migracion 044", () => {
+describe("operaciones del staff contra la base sin la migracion 049", () => {
   it("la ficha lanza ClienteMemoriaNoDisponibleError (la ruta responde 503) y la transaccion sigue utilizable", async () => {
     const { session, repo } = repoConFunciones({ cliente_ficha: () => pgError("42883") });
     await expect(repo.getCustomerFicha(ORG, "c1")).rejects.toBeInstanceOf(ClienteMemoriaNoDisponibleError);

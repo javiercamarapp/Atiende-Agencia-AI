@@ -225,13 +225,13 @@ export interface RestaurantesRepository {
   listEligibleOrderHistory(customerId: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>>;
   calcCustomerTier(organizationId: string, customerId: string): Promise<CustomerTier | null>;
 
-  // ---- Cliente 360 (migracion 044, ver cliente-360/) ----
+  // ---- Cliente 360 (migracion 049, ver cliente-360/) ----
   /** Memoria del cliente por telefono de 10 digitos: domicilios, pedidos anteriores, gustos y reincidencia. `null` = cliente
-   * nuevo; `undefined` = la base todavia no la ofrece (migracion 044 sin aplicar): el llamador cae al camino anterior. */
+   * nuevo; `undefined` = la base todavia no la ofrece (migracion 049 sin aplicar): el llamador cae al camino anterior. */
   getCustomerMemory(organizationId: string, phone: string): Promise<CustomerMemory | null | undefined>;
   /** Cierre del ciclo tras crear un pedido (domicilio y gustos). Idempotente por pedido. `undefined` = base sin migrar. */
   registerOrderClosure(input: OrderClosureInput): Promise<{ readonly applied: boolean } | undefined>;
-  /** Ficha del cliente para el staff. `null` si no existe en la organizacion. Lanza `ClienteMemoriaNoDisponibleError` sin la 044. */
+  /** Ficha del cliente para el staff. `null` si no existe en la organizacion. Lanza `ClienteMemoriaNoDisponibleError` sin la 049. */
   getCustomerFicha(organizationId: string, customerId: string): Promise<Omit<CustomerFicha, "tier"> | null>;
   updateCustomerProfile(organizationId: string, customerId: string, patch: CustomerProfilePatch): Promise<void>;
   /** Alta (`addressId` null) o edicion de un domicilio del cliente. Devuelve el id. */
@@ -247,7 +247,7 @@ export interface RestaurantesRepository {
   markOrderFake(organizationId: string, orderId: string, falso: boolean): Promise<boolean>;
   exportCustomerData(organizationId: string, customerId: string): Promise<Record<string, unknown> | null>;
   deleteCustomerMemory(organizationId: string, customerId: string): Promise<{ readonly domiciliosBorrados: number; readonly gustosBorrados: number }>;
-  /** Politica de reincidencia; sin la 044 devuelve los valores por omision (2 en 90 dias). */
+  /** Politica de reincidencia; sin la 049 devuelve los valores por omision (2 en 90 dias). */
   getCustomerPolicy(organizationId: string): Promise<CustomerPolicy>;
   saveCustomerPolicy(organizationId: string, policy: CustomerPolicy): Promise<CustomerPolicy>;
 

@@ -1,5 +1,5 @@
 -- Fixtures + escenarios contra Postgres REAL (RLS + GRANT + auth.uid() reales) de
--- packages/domain-restaurantes/migrations/044_cliente_360_memoria_domicilios_gustos.sql: memoria del cliente (Cliente 360).
+-- packages/domain-restaurantes/migrations/049_cliente_360_memoria_domicilios_gustos.sql: memoria del cliente (Cliente 360).
 --
 --   A. SISTEMA (auth.uid() NULL, rol authenticated): cliente_memoria lee la memoria por (organizacion, telefono) aunque las
 --      policies de customers/orders exijan membresia; cliente_registrar_pedido cierra el ciclo (domicilio + gustos) y es

@@ -63,7 +63,7 @@ export async function fetchCustomerDetail(fetchImpl: typeof fetch, apiBaseUrl: s
   return body.customer;
 }
 
-// ---- Cliente 360 (migracion 044): ficha completa del cliente ----
+// ---- Cliente 360 (migracion 049): ficha completa del cliente ----
 
 export type TipoGusto = "tortilla" | "salsa" | "omision" | "nota" | "pago" | "propina" | "canal" | "sucursal";
 

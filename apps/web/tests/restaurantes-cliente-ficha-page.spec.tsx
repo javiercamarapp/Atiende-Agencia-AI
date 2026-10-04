@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Cliente 360: ficha del cliente del panel. Cada control llama a su endpoint real; contra una base sin la migracion 044 la
+// Cliente 360: ficha del cliente del panel. Cada control llama a su endpoint real; contra una base sin la migracion 049 la
 // ficha completa dice "no disponible aun" y muestra la ficha basica de siempre (nunca datos inventados).
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -123,10 +123,10 @@ describe("ClienteFichaPage (restaurantes)", () => {
     expect(boton("Guardar")).toBeTruthy();
   });
 
-  it("base sin la migracion 044: 'no disponible aun' y la ficha basica de siempre, sin controles que no funcionan", async () => {
+  it("base sin la migracion 049: 'no disponible aun' y la ficha basica de siempre, sin controles que no funcionan", async () => {
     fetchMock.mockImplementation(async (url: string) => {
       const u = String(url);
-      if (u.endsWith("/ficha")) return json({ message: "No disponible aún: la ficha del cliente requiere aplicar la migración 044 de restaurantes." }, 503);
+      if (u.endsWith("/ficha")) return json({ message: "No disponible aún: la ficha del cliente requiere aplicar la migración 049 de restaurantes." }, 503);
       return json({ customer: { isNew: false, name: "Ana Torres", orderCount: 3, addresses: [{ address: "Calle 1 #2", label: null, isDefault: true }], lastOrderItems: null, frequentItems: [{ name: "Tacos", quantity: 5 }], tier: "GOLD", agentNotes: [] } });
     });
     montar(OWNER);

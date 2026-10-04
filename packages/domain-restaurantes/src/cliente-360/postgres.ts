@@ -1,4 +1,4 @@
-// Adaptador Postgres de la memoria del cliente (migracion 044). Todas las llamadas son a funciones `security definer`
+// Adaptador Postgres de la memoria del cliente (migracion 049). Todas las llamadas son a funciones `security definer`
 // (ver la migracion) y corren dentro de un SAVEPOINT: la sesion es UNA transaccion por request, un error de Postgres sin
 // SAVEPOINT la dejaria abortada (25P02) y el COMMIT seria un ROLLBACK silencioso.
 //   - Lecturas/escrituras de SISTEMA (agente): contra una base sin la migracion devuelven `undefined` ("no disponible aun").
@@ -22,8 +22,8 @@ import type {
 } from "./types.ts";
 import { isPreferenceKind, POLITICA_POR_OMISION } from "./types.ts";
 
-/** Funcion, tabla o columna inexistente: la base todavia no tiene la migracion 044. */
-export function esBaseSinMigrar044(err: unknown): boolean {
+/** Funcion, tabla o columna inexistente: la base todavia no tiene la migracion 049. */
+export function esBaseSinMigrar049(err: unknown): boolean {
   const code = (err as { code?: string } | null)?.code;
   return code === "42883" || code === "42P01" || code === "42703";
 }
@@ -111,7 +111,7 @@ export async function getCustomerMemory(db: TenantDbSession, organizationId: str
         ...(raw.tier === undefined ? {} : { tier: typeof raw.tier === "string" ? (raw.tier as CustomerTier) : null }),
       };
     },
-    isRecoverable: esBaseSinMigrar044,
+    isRecoverable: esBaseSinMigrar049,
     fallback: async () => undefined,
   });
 }
@@ -140,7 +140,7 @@ export async function registerOrderClosure(db: TenantDbSession, input: OrderClos
       ])) as Json | null;
       return { applied: raw?.aplicado === true };
     },
-    isRecoverable: esBaseSinMigrar044,
+    isRecoverable: esBaseSinMigrar049,
     fallback: async () => undefined,
   });
 }
@@ -150,7 +150,7 @@ async function staffCall<T>(db: TenantDbSession, name: string, primary: () => Pr
     session: db,
     savepointName: `sp_cliente360_${name}`,
     primary,
-    isRecoverable: esBaseSinMigrar044,
+    isRecoverable: esBaseSinMigrar049,
     fallback: () => {
       throw new ClienteMemoriaNoDisponibleError();
     },
@@ -285,7 +285,7 @@ export async function getCustomerPolicy(db: TenantDbSession, organizationId: str
       const raw = (await callJson(db, `select restaurantes.cliente_politica_leer($1) as r;`, [organizationId])) as Json | null;
       return raw ? { umbralNoRecogidos: num(raw.umbral_no_recogidos, 2), ventanaDias: num(raw.ventana_dias, 90) } : POLITICA_POR_OMISION;
     },
-    isRecoverable: esBaseSinMigrar044,
+    isRecoverable: esBaseSinMigrar049,
     fallback: async () => POLITICA_POR_OMISION,
   });
 }

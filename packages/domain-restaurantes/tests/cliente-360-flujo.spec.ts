@@ -301,7 +301,7 @@ describe("reincidencia de no recogido y pedido falso", () => {
   });
 });
 
-describe("base SIN migrar (migracion 044 pendiente)", () => {
+describe("base SIN migrar (migracion 049 pendiente)", () => {
   it("el agente sigue funcionando como antes: lookup por el camino anterior, pedidos sin cierre y herramientas con aviso honesto", async () => {
     const w = nuevoMundo();
     await w.pedir();

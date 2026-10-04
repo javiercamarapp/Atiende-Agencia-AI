@@ -218,7 +218,7 @@ documentados aquí mismo:
   repositorio; `packages/domain-restaurantes/tests/cierres-savepoint.spec.ts`). SQL y permisos verificados contra Postgres real en
   `scripts/verify-restaurantes-cierre-dia/`. Pruebas HTTP: `apps/api/tests/restaurantes-cierres.spec.ts`.
 
-## Cliente 360 (migración 044)
+## Cliente 360 (migración 049)
 
 - Panel (`admin-customers.ts`, MANAGER_ROLES salvo lo marcado; todas las escrituras dejan huella en la bitácora sin PII):
   `GET .../admin/customers/:id/ficha`, `PATCH .../admin/customers/:id` (nombre, notas, cumpleaños día+mes),

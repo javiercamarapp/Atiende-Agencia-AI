@@ -76,6 +76,6 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Res
   );
 }
 
-// La ficha completa (Cliente 360, migracion 044) vive en ClienteFicha.tsx.
+// La ficha completa (Cliente 360, migracion 049) vive en ClienteFicha.tsx.
 export { ClienteFichaPage } from "./ClienteFicha.tsx";
 export type { ClienteFichaPageProps } from "./ClienteFicha.tsx";

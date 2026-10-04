@@ -1,7 +1,7 @@
 -- Cliente 360 (restaurantes): memoria del cliente de punta a punta. Identificar por telefono en WhatsApp/voz/web,
 -- recordar VARIOS domicilios con etiqueta y referencias, aprender gustos de pedidos CONFIRMADOS, repetir pedidos
 -- anteriores y dar al staff una ficha completa, con la reincidencia de "no recogido" / pedido falso.
--- Prefijo de supabase/migrations asignado para esta tarea: 20240101000329 (interno 044).
+-- Prefijo de supabase/migrations asignado para esta tarea: 20240101000329 (interno 049).
 --
 -- CAUSA RAIZ QUE ESTA MIGRACION CIERRA (defensa en profundidad, disponibilidad): el motor de produccion abre toda sesion
 -- con `set local role authenticated` y `auth.uid()` NULL para los canales publicos (WhatsApp, voz, checkout web). Las

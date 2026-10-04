@@ -231,7 +231,7 @@ export type {
 } from "./types.ts";
 export { WhatsAppAgentConfigConflictError, ClienteMemoriaNoDisponibleError } from "./errors.ts";
 
-// Cliente 360 (migracion 044): memoria del cliente, gustos, repetir pedido y ficha del staff.
+// Cliente 360 (migracion 049): memoria del cliente, gustos, repetir pedido y ficha del staff.
 export { PREFERENCE_KINDS, isPreferenceKind, POLITICA_POR_OMISION } from "./cliente-360/types.ts";
 export type {
   ClosureAddress,

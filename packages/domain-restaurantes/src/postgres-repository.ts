@@ -836,7 +836,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows.map((row) => ({ items: row.items, createdAt: row.created_at }));
   }
 
-  // ---- Cliente 360 (migracion 044): delegan en cliente-360/postgres.ts (funciones security definer + SAVEPOINT) ----
+  // ---- Cliente 360 (migracion 049): delegan en cliente-360/postgres.ts (funciones security definer + SAVEPOINT) ----
   getCustomerMemory(organizationId: string, phone: string) {
     return cliente360.getCustomerMemory(this.db, organizationId, phone);
   }

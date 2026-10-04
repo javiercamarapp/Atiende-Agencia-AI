@@ -46,7 +46,7 @@ function countFrequentItems(orders: ReadonlyArray<{ items: readonly PersistedOrd
  */
 export async function lookupCustomer(repo: RestaurantesRepository, organizationId: string, phone: string): Promise<CustomerLookupResult> {
   const phoneKey = normalizePhone(phone);
-  // Cliente 360 (migracion 044): la memoria completa llega por UNA funcion de sistema (la sesion de sistema no puede leer
+  // Cliente 360 (migracion 049): la memoria completa llega por UNA funcion de sistema (la sesion de sistema no puede leer
   // `customers`/`orders` por RLS). `undefined` = la base todavia no la ofrece: se usa el camino anterior, que sigue intacto.
   const memoria = await cargarMemoria(repo, organizationId, phoneKey);
   if (memoria === null) return { isNew: true };
@@ -143,7 +143,7 @@ export async function getCustomerDetailById(repo: RestaurantesRepository, organi
 const ESTADOS_ELEGIBLES = new Set(["pending", "preparando", "en_camino", "entregado", "completado"]);
 
 /**
- * Arma el resultado del agente a partir de la memoria completa (migracion 044): los mismos campos de siempre
+ * Arma el resultado del agente a partir de la memoria completa (migracion 049): los mismos campos de siempre
  * (nombre, direcciones, "lo de siempre", nivel, notas) mas domicilios con etiqueta (el ultimo usado primero), gustos
  * propuestos, pedidos anteriores y la marca de reincidencia. `frequentItems` se cuenta sobre los ultimos 30 pedidos.
  */

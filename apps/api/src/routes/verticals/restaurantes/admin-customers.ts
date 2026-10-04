@@ -28,12 +28,12 @@ function parseLimit(raw: string | undefined): number {
 }
 
 
-// ---- Cliente 360 (migracion 044): ficha del cliente ----
+// ---- Cliente 360 (migracion 049): ficha del cliente ----
 
 /** Las funciones SQL de la ficha validan rol y organizacion; aqui solo se traducen sus errores a respuestas honestas. */
 function traducirErrorCliente(err: unknown): never {
   if (err instanceof ClienteMemoriaNoDisponibleError) {
-    throw Errors.serviceUnavailable("No disponible aún: la ficha del cliente requiere aplicar la migración 044 de restaurantes.");
+    throw Errors.serviceUnavailable("No disponible aún: la ficha del cliente requiere aplicar la migración 049 de restaurantes.");
   }
   const code = (err as { code?: string } | null)?.code;
   // El rol ya se valido en la ruta; un 42501 aqui es "no existe en tu organizacion" (nunca se confirma el dato de otro tenant).
@@ -103,7 +103,7 @@ export function restaurantesAdminCustomersRoutes(deps: AppDeps): Hono<CoreAuthHo
 
 
   // ---------------------------------------------------------------------------
-  // Cliente 360 (migracion 044). Cada ruta exige MANAGER_ROLES (ARCO y politica: owner/admin) y la funcion SQL vuelve a
+  // Cliente 360 (migracion 049). Cada ruta exige MANAGER_ROLES (ARCO y politica: owner/admin) y la funcion SQL vuelve a
   // validar rol y organizacion; las escrituras dejan huella en la bitacora (sin PII: ids y nombres de campo).
   // ---------------------------------------------------------------------------
 

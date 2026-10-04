@@ -285,7 +285,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly customers = new Map<string, Customer>();
   private readonly customerIdByOrgPhone = new Map<string, string>();
   private readonly addresses = new Map<string, MemAddress[]>();
-  // Cliente 360 (migracion 044): espejo en memoria de las columnas/tablas nuevas.
+  // Cliente 360 (migracion 049): espejo en memoria de las columnas/tablas nuevas.
   private readonly cliente360 = new Cliente360Store();
   private readonly orders: StoredOrder[] = [];
   private readonly knownZones: StoredKnownZone[] = [];
@@ -620,9 +620,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       .map((o) => ({ items: o.items, createdAt: o.createdAt }));
   }
 
-  // ---- Cliente 360 (migracion 044): espejo en memoria de las funciones SQL (cliente_memoria, cliente_registrar_pedido, ...) ----
+  // ---- Cliente 360 (migracion 049): espejo en memoria de las funciones SQL (cliente_memoria, cliente_registrar_pedido, ...) ----
 
-  /** Pruebas: `false` simula la base SIN la migracion 044 (el agente cae al camino anterior; el staff ve "no disponible"). */
+  /** Pruebas: `false` simula la base SIN la migracion 049 (el agente cae al camino anterior; el staff ve "no disponible"). */
   setCliente360Supported(supported: boolean): void {
     this.cliente360.supported = supported;
   }

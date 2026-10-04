@@ -1,4 +1,4 @@
-// Cliente 360 (migracion 044): tipos de la memoria del cliente. Viven aparte de `types.ts` para no mezclar este
+// Cliente 360 (migracion 049): tipos de la memoria del cliente. Viven aparte de `types.ts` para no mezclar este
 // dominio con el resto del catalogo de tipos del paquete.
 import type { Customer, CustomerTier, PersistedOrderItem } from "../types.ts";
 
@@ -112,7 +112,7 @@ export interface CustomerPolicy {
   readonly ventanaDias: number;
 }
 
-/** Politica por omision cuando la organizacion no ha configurado nada (o la base no tiene la migracion 044). */
+/** Politica por omision cuando la organizacion no ha configurado nada (o la base no tiene la migracion 049). */
 export const POLITICA_POR_OMISION: CustomerPolicy = { umbralNoRecogidos: 2, ventanaDias: 90 };
 
 export interface CustomerFicha {

@@ -80,7 +80,7 @@ describe("Cliente 360: cliente de la ficha completa", () => {
   });
 
   it("un 503 'no disponible aun' llega como error legible (la pantalla lo traduce a estado honesto)", async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "No disponible aún: requiere la migración 044." }), { status: 503 })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "No disponible aún: requiere la migración 049." }), { status: 503 })) as unknown as typeof fetch;
     await expect(fetchFichaCliente(fetchImpl, "http://api.local", "tok", "prop-1", "c1")).rejects.toThrow("No disponible aún");
   });
 });

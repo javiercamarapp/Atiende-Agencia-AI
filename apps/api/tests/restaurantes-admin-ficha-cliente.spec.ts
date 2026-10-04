@@ -40,7 +40,7 @@ describe("ficha del cliente", () => {
     ctx.restaurantesRepo.setCliente360Supported(false);
     const res = await app.request(`${base}/${cliente.id}/ficha`, authedGet(ctx.staff.owner.token));
     expect(res.status).toBe(503);
-    expect(JSON.stringify(await res.json())).toMatch(/migración 044/);
+    expect(JSON.stringify(await res.json())).toMatch(/migración 049/);
   });
 });
 

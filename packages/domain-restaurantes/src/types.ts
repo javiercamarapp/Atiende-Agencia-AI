@@ -147,7 +147,7 @@ export type CustomerLookupResult =
       readonly agentNotes: readonly string[];
       /** Pedido de las ultimas 12 h de este telefono con el estado que marco la sucursal (para "¿ya salio?"); ausente/null si no hay. */
       readonly pedidoReciente?: PedidoReciente | null;
-      /** Cliente 360 (migracion 044). Ausentes contra una base sin migrar: el agente se comporta como antes. */
+      /** Cliente 360 (migracion 049). Ausentes contra una base sin migrar: el agente se comporta como antes. */
       /** Domicilios con etiqueta y referencias, el ULTIMO USADO primero. */
       readonly domicilios?: readonly CustomerAddressDetail[];
       /** Gustos que se le pueden PROPONER (aprendidos de pedidos confirmados; el cliente puede cambiarlos). */
@@ -221,7 +221,7 @@ export interface CreateOrderInput {
    * dentro del horario de la sucursal (en SU zona horaria) y dentro de la ventana permitida (ver
    * pedidos-programados.ts). Sin esto el pedido es inmediato, como siempre. */
   readonly programadoPara?: string;
-  /** Cliente 360 (migracion 044): datos opcionales del domicilio que el cliente dio al confirmar. Solo alimentan la ficha
+  /** Cliente 360 (migracion 049): datos opcionales del domicilio que el cliente dio al confirmar. Solo alimentan la ficha
    * del cliente (cierre del ciclo); no cambian el total ni el dedupe del pedido. */
   readonly addressLabel?: string;
   readonly accessNotes?: string;

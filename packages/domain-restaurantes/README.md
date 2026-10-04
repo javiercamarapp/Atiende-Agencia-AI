@@ -123,7 +123,7 @@ organización y se muestra aparte. Solo alertas internas (panel + `restaurantes.
 cifra (venta, ticket, cancelación, tiempo de entrega, comparativo, fecha de negocio) viven en el encabezado de `migrations/041_cierre_dia_resumen_semanal.sql`;
 el cálculo es SQL y lo prueba `scripts/verify-restaurantes-cierre-dia/` contra Postgres real.
 
-## Cliente 360: memoria del cliente (migración 044)
+## Cliente 360: memoria del cliente (migración 049)
 
 - Código en `src/cliente-360/`: `types.ts`, `gustos.ts` (observaciones de un pedido confirmado y gustos propuestos), `repetir.ts`
   ("lo mismo de la vez pasada" con precios de hoy), `memoria.ts` (carga, cierre del ciclo y regla de reincidencia), `postgres.ts` (llama a las

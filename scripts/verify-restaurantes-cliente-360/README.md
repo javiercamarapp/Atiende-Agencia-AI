@@ -1,7 +1,7 @@
 # verify-restaurantes-cliente-360
 
 Prueba contra Postgres real (RLS, GRANT y `auth.uid()` reales) de la migracion
-`packages/domain-restaurantes/migrations/044_cliente_360_memoria_domicilios_gustos.sql` (Cliente 360).
+`packages/domain-restaurantes/migrations/049_cliente_360_memoria_domicilios_gustos.sql` (Cliente 360).
 
 Cubre: lectura de la memoria del cliente por la sesion de sistema (`auth.uid()` NULL), cierre idempotente del ciclo
 (domicilio y gustos) por pedido, reincidencia de "no recogido" y pedido falso en la ventana, politica configurable

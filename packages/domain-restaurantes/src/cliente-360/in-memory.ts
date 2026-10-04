@@ -1,4 +1,4 @@
-// Estado en memoria de la memoria del cliente (espejo de las tablas/columnas de la migracion 044) para el repositorio en
+// Estado en memoria de la memoria del cliente (espejo de las tablas/columnas de la migracion 049) para el repositorio en
 // memoria. Solo guarda datos; las reglas viven en los metodos del repositorio y en gustos.ts / memoria.ts.
 import { randomUUID } from "node:crypto";
 import type { CustomerAddress } from "../types.ts";
@@ -29,7 +29,7 @@ export function ahoraEstricto(): string {
 }
 
 export class Cliente360Store {
-  /** `false` simula la base SIN la migracion 044. */
+  /** `false` simula la base SIN la migracion 049. */
   supported = true;
   readonly preferences = new Map<string, CustomerPreference[]>();
   readonly closures = new Set<string>();

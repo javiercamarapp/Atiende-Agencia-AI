@@ -519,7 +519,7 @@ export async function createOrder(
   // order-notifications.ts.
   await tryNotifyCustomerOrderConfirmationEmail(repo, order);
 
-  // Cliente 360 (migracion 044): cierre automatico del ciclo con el cliente. Domicilio (alta o "usado otra vez") y gustos
+  // Cliente 360 (migracion 049): cierre automatico del ciclo con el cliente. Domicilio (alta o "usado otra vez") y gustos
   // se actualizan a partir de lo que el cliente CONFIRMO en este pedido; idempotente por pedido (un reintento que devuelve
   // el mismo pedido no cuenta dos veces) y best-effort con SAVEPOINT: nunca revierte un pedido ya creado.
   await cerrarCicloDelCliente(repo, order, payload);

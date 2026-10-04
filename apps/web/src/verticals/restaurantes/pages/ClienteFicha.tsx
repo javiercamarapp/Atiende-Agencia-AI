@@ -1,7 +1,7 @@
-// Ficha del cliente (Cliente 360, migracion 044): datos, domicilios, gustos, historial de pedidos, conversaciones
+// Ficha del cliente (Cliente 360, migracion 049): datos, domicilios, gustos, historial de pedidos, conversaciones
 // (WhatsApp y llamadas), reincidencia de "no recogido" / pedido falso, notas del staff y derechos ARCO. Todo sale de
 // `GET .../admin/customers/:id/ficha` y cada control escribe por su endpoint (rol, organizacion y bitacora en el servidor).
-// Contra una base sin la migracion 044 la ficha completa responde 503 "no disponible aun": se muestra ese estado honesto
+// Contra una base sin la migracion 049 la ficha completa responde 503 "no disponible aun": se muestra ese estado honesto
 // y la ficha basica de siempre (nivel, direcciones, lo que mas pide), nunca datos inventados.
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
@@ -52,7 +52,7 @@ export interface ClienteFichaPageProps extends RestaurantesShellContext {
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"] as const;
 const TIPOS_GUSTO = Object.keys(ETIQUETA_TIPO_GUSTO) as TipoGusto[];
-const MENSAJE_NO_DISPONIBLE = "Ficha completa no disponible aún: requiere aplicar la migración 044 de restaurantes. Mientras tanto se muestra la ficha básica.";
+const MENSAJE_NO_DISPONIBLE = "Ficha completa no disponible aún: requiere aplicar la migración 049 de restaurantes. Mientras tanto se muestra la ficha básica.";
 
 function mensajeDeError(err: unknown, porDefecto: string): string {
   return err instanceof Error && err.message ? err.message : porDefecto;
@@ -93,7 +93,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role,
       .catch(async (err: unknown) => {
         if (cancelado) return;
         const texto = mensajeDeError(err, "No se pudo cargar el cliente.");
-        // 503 = base sin la migracion 044: ficha basica + aviso honesto. Cualquier otro error se muestra tal cual.
+        // 503 = base sin la migracion 049: ficha basica + aviso honesto. Cualquier otro error se muestra tal cual.
         if (/no disponible a[uú]n/i.test(texto)) {
           setNoDisponible(true);
           try {
@@ -159,7 +159,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role,
 type Api = { readonly apiBaseUrl: string; readonly token: string; readonly propertyId: string; readonly customerId: string };
 type Ejecutar = (tarea: () => Promise<unknown>, exito: string) => Promise<void>;
 
-/** Ficha de siempre (nivel, direcciones, lo que mas pide): es la que se muestra mientras la migracion 044 no esta aplicada. */
+/** Ficha de siempre (nivel, direcciones, lo que mas pide): es la que se muestra mientras la migracion 049 no esta aplicada. */
 function FichaBasica({ detalle }: { readonly detalle: CustomerDetail }) {
   if (detalle.isNew) return <EstadoVacio mensaje="Este cliente todavía no tiene ningún pedido registrado." />;
   return (
