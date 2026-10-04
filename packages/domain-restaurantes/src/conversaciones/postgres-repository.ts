@@ -17,6 +17,7 @@ import {
   HANDOFF_ESTADOS,
   HandoffYaTomadoError,
   SinNumeroWhatsappError,
+  VentanaWhatsappCerradaError,
 } from "./types.ts";
 import type {
   BandejaFiltro,
@@ -52,7 +53,7 @@ export function esBaseSinMigrar(err: unknown): boolean {
 /** Rechazos de negocio que la base declara con un SQLSTATE conocido. */
 function esRechazoConocido(err: unknown): boolean {
   const c = code(err);
-  return esBaseSinMigrar(err) || c === "42501" || c === "55006" || c === "55000" || c === "P0002" || c === "22023" || c === "23514" || c === "23503" || c === "23505";
+  return esBaseSinMigrar(err) || c === "42501" || c === "55006" || c === "55000" || c === "P0002" || c === "55W24" || c === "22023" || c === "23514" || c === "23503" || c === "23505";
 }
 
 let advertido = false;
@@ -75,6 +76,7 @@ function aError(err: unknown): never {
   if (c === "55006") throw new HandoffYaTomadoError();
   if (c === "55000") throw new ConversacionesConflictoError();
   if (c === "P0002") throw new SinNumeroWhatsappError();
+  if (c === "55W24") throw new VentanaWhatsappCerradaError();
   if (c === "22023" || c === "23514") throw new ConversacionesValidacionError("Dato fuera de rango (revisa el texto, el turno o el resultado).");
   if (c === "23505") throw new ConversacionesConflictoError();
   if (c === "23503") throw new ConversacionesValidacionError("Referencia inexistente (revisa la persona o la sucursal indicada).");
@@ -417,6 +419,20 @@ export class PostgresHandoffAgentGate implements HandoffAgentGate {
         advertirNoDisponible(err);
         return null;
       },
+    });
+  }
+
+  /** Acuse al cliente de una toma pendiente (migracion 044). Base sin migrar (42883/42P01/42703) -> false con SAVEPOINT: el agente sigue callando. */
+  async acusePendiente(organizationId: string, phone: string, esperaMin: number, repetirMin: number): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_handoff_gate_acuse",
+      primary: async () => {
+        const { rows } = await this.db.query<{ acuse: boolean | null }>(`select restaurantes.handoff_whatsapp_acuse_pendiente($1::uuid, $2::text, $3::int, $4::int) as acuse;`, [organizationId, phone, esperaMin, repetirMin]);
+        return rows[0]?.acuse === true;
+      },
+      isRecoverable: esBaseSinMigrar,
+      fallback: async () => false,
     });
   }
 

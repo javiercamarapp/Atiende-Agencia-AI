@@ -4,7 +4,7 @@
 // scripts/verify-restaurantes-conversaciones-handoff/ contra Postgres real).
 import { randomUUID } from "node:crypto";
 import type { ConversacionesRepository, HandoffAgentGate } from "./repository.ts";
-import { ConversacionesConflictoError, ConversacionesNoDisponibleError, ConversacionesRechazadaError, HandoffYaTomadoError, SinNumeroWhatsappError } from "./types.ts";
+import { ConversacionesConflictoError, ConversacionesNoDisponibleError, ConversacionesRechazadaError, HandoffYaTomadoError, SinNumeroWhatsappError, VENTANA_WHATSAPP_HORAS, VentanaWhatsappCerradaError } from "./types.ts";
 import type {
   BandejaFiltro,
   BandejaItem,
@@ -45,6 +45,8 @@ interface HandoffRow {
   motivo: string | null;
   solicitadaAt: string;
   ultimoClienteAt: string | null;
+  /** Ultimo acuse al cliente de una toma pendiente (migracion 044). */
+  acuseClienteAt?: string | null;
   tomadaPor: string | null;
   tomadaAt: string | null;
   createdAt: number;
@@ -207,6 +209,10 @@ export class InMemoryConversacionesRepository implements ConversacionesRepositor
     const conv = this.conversaciones.find((c) => c.id === h.conversationId);
     if (!conv?.telefono) throw new ConversacionesRechazadaError();
     if (!this.numeroPorSucursal.has(propertyId)) throw new SinNumeroWhatsappError();
+    // Ventana de 24 h (migracion 044): el ultimo mensaje del CLIENTE (o el ping del agente mientras la toma estaba abierta) fija el ancla.
+    const ultimoMensajeCliente = [...conv.mensajes].reverse().find((m) => m.rol === "cliente")?.createdAt ?? null;
+    const ancla = [h.ultimoClienteAt, ultimoMensajeCliente, h.solicitadoPor === "agente" ? h.solicitadaAt : null, conv.actividadAt].filter((x): x is string => Boolean(x)).map((x) => Date.parse(x)).reduce((a, b) => Math.max(a, b), Number.NEGATIVE_INFINITY);
+    if (this.now().getTime() - ancla > VENTANA_WHATSAPP_HORAS * 3_600_000) throw new VentanaWhatsappCerradaError();
     conv.mensajes.push({ rol: "humano", texto, createdAt: this.now().toISOString() });
     const id = randomUUID();
     this.outbox.push({ organizationId, to: conv.telefono, body: texto });
@@ -316,6 +322,18 @@ export class InMemoryHandoffAgentGate implements HandoffAgentGate {
     if (!h) return null;
     h.ultimoClienteAt = new Date().toISOString();
     return h.estado === "pendiente" ? "pendiente" : "tomada";
+  }
+
+  async acusePendiente(organizationId: string, phone: string, esperaMin: number, repetirMin: number): Promise<boolean> {
+    if (!this.repo.disponible) return false;
+    const conv = this.repo.conversaciones.find((c) => c.canal === "whatsapp" && c.organizationId === organizationId && c.telefono === phone);
+    const h = conv && this.repo.handoffs.find((x) => x.canal === "whatsapp" && x.conversationId === conv.id && x.estado === "pendiente");
+    if (!h) return false;
+    const ahora = Date.now();
+    if (ahora - Date.parse(h.solicitadaAt) < esperaMin * 60_000) return false;
+    if (h.acuseClienteAt && ahora - Date.parse(h.acuseClienteAt) < repetirMin * 60_000) return false;
+    h.acuseClienteAt = new Date(ahora).toISOString();
+    return true;
   }
 
   async solicitarHumano(input: { organizationId: string; propertyId: string | null; phone: string; motivo: string }): Promise<string | null> {
