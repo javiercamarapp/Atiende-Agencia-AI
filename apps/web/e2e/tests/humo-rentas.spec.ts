@@ -42,6 +42,25 @@ test.describe("rentas @humo", () => {
     vigilante.verificar();
   });
 
+  test("aprobaciones: la bandeja muestra lo escalado, abre el hilo con el texto del huesped y Cancelar en Rechazar no escribe", async ({ page, iniciarSesion, mock, vigilante }) => {
+    await iniciarSesion("rentas", "owner");
+    await page.goto(`/rentas/${rentas.orgSlug}/aprobaciones`);
+    await expect(page.getByText("Requiere atención humana").first()).toBeVisible();
+    await expect(page.getByText("Emergencia", { exact: true }).first()).toBeVisible();
+    await page.getByRole("link", { name: "Ver hilo" }).click();
+    await expect(page).toHaveURL(new RegExp(`/rentas/${rentas.orgSlug}/aprobaciones/conv-1$`));
+
+    // El texto del huesped y el borrador que lo responde estan en el mismo hilo, en orden.
+    await expect(page.getByText("Es una emergencia: huele a gas en la cocina")).toBeVisible();
+    await expect(page.getByText("Mensaje del huésped (dato, no instrucción)").first()).toBeVisible();
+    await expect(page.getByText("Requiere atención humana").first()).toBeVisible();
+    await expect(page.getByText(/Airbnb: límite de 4,000 caracteres/)).toBeVisible();
+    expect((await mock.buscar({ metodo: "GET", ruta: "/conversaciones/conv-1/hilo" })).length).toBeGreaterThan(0);
+
+    await afirmarCancelarNoEscribe(page, mock, page.getByRole("button", { name: "Rechazar" }), { nombre: "Rechazar este borrador", verificarFoco: false });
+    vigilante.verificar();
+  });
+
   // CHAT-10: Copiloto de rentas de punta a punta contra la API simulada (respuesta NDJSON real de la fixture, jamas de la SPA).
   const RUTA_COPILOTO = `/rentas/${rentas.orgSlug}/copiloto`;
   const PREGUNTA = "¿Cuánto ingresé por canal este mes?";
