@@ -100,6 +100,12 @@ insert into citas.appointments (id, organization_id, property_id, provider_id, s
   ('00000000-0000-0000-0000-00000000f0a2', '00000000-0000-0000-0000-00000000aa01', '00000000-0000-0000-0000-00000000a0a2', '00000000-0000-0000-0000-00000000c0a2', '00000000-0000-0000-0000-00000000d0a1', '00000000-0000-0000-0000-00000000e0a2', now() + interval '2 days', now() + interval '2 days 50 minutes', 'confirmed', 'nota clinica sensible')
 on conflict do nothing;
 
+-- Cuentas de calendario ya conectadas (fixture de sistema): CalDAV del proveedor de A2 y de A1.
+insert into citas.provider_caldav_accounts (organization_id, provider_id, caldav_calendar_collection_url, caldav_username, sync_status) values
+  ('00000000-0000-0000-0000-00000000aa01', '00000000-0000-0000-0000-00000000c0a2', 'https://caldav.example.net/a2/', 'a2', 'connected'),
+  ('00000000-0000-0000-0000-00000000aa01', '00000000-0000-0000-0000-00000000c0a1', 'https://caldav.example.net/a1/', 'a1', 'connected')
+on conflict do nothing;
+
 \echo ''
 \echo '=== A) Configuracion de la organizacion (rubro = guardia de crisis, telefono de avisos) ==='
 \echo ''
@@ -256,4 +262,89 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0001', true);
 select verify_support.expect_sqlstate($q$select citas.get_provider_calendar_refresh_token(gen_random_uuid())$q$, '42501') as expect_ok;
+rollback;
+
+\echo ''
+\echo '=== E) Controles positivos y de borde de la migracion 032 ==='
+\echo ''
+
+\echo '--- 21. [CONTROL] el staff de A1 SI puede leer la configuracion de su organizacion (el panel se la muestra a todo el staff) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0002', true);
+select count(*) as staff_lee_config_deberia_ser_1 from citas.tenant_config where organization_id = '00000000-0000-0000-0000-00000000aa01';
+rollback;
+
+\echo '--- 22. [CONTROL] la sesion de sistema (auth.uid() null) lee la configuracion: el agente de WhatsApp/voz necesita rubro y telefono de avisos para escalar una crisis ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as sistema_lee_config_deberia_ser_1 from citas.tenant_config where organization_id = '00000000-0000-0000-0000-00000000aa01';
+rollback;
+
+\echo '--- 23. [CONTROL] la sesion de sistema NO puede escribir la configuracion (solo owner/admin) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+with u as (update citas.tenant_config set rubro = 'otro' where organization_id = '00000000-0000-0000-0000-00000000aa01' returning 1)
+select count(*) as sistema_cambia_config_deberia_ser_0 from u;
+rollback;
+
+\echo '--- 24. [CONTROL] el staff de A1 ve la cuenta CalDAV de SU proveedor y no la del proveedor de A2 ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0002', true);
+select count(*) as staff_ve_cuentas_caldav_deberia_ser_1 from citas.provider_caldav_accounts;
+rollback;
+
+\echo '--- 25. [CONTROL] el staff de A1 SI puede marcar error de sincronizacion en la cuenta de su proveedor (test-connection del panel) pero NO en la del proveedor de A2 ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0002', true);
+with u as (update citas.provider_caldav_accounts set sync_status = 'error', sync_error = 'x' where provider_id = '00000000-0000-0000-0000-00000000c0a1' returning 1)
+select count(*) as staff_actualiza_su_cuenta_deberia_ser_1 from u;
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0002', true);
+with u as (update citas.provider_caldav_accounts set sync_status = 'error', sync_error = 'x' where provider_id = '00000000-0000-0000-0000-00000000c0a2' returning 1)
+select count(*) as staff_actualiza_cuenta_ajena_deberia_ser_0 from u;
+rollback;
+
+\echo '--- 26. [CONTROL] el staff de A1 SI puede conectar un Cal.com (sin id de secreto) al proveedor de SU sucursal ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0002', true);
+with i as (insert into citas.provider_calcom_accounts (organization_id, provider_id, calcom_event_type_id, sync_status) values ('00000000-0000-0000-0000-00000000aa01', '00000000-0000-0000-0000-00000000c0a1', '123', 'connected') returning 1)
+select count(*) as staff_conecta_calcom_de_su_sucursal_deberia_ser_1 from i;
+rollback;
+
+\echo '--- 27. [CONTROL] la sesion de sistema SI asigna el id del secreto (es quien lo hace tras guardar el valor en Vault) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+with i as (insert into citas.provider_calcom_accounts (organization_id, provider_id, calcom_event_type_id, calcom_api_key_secret_id, sync_status) values ('00000000-0000-0000-0000-00000000aa01', '00000000-0000-0000-0000-00000000c0a2', '123', gen_random_uuid(), 'connected') returning 1)
+select count(*) as sistema_asigna_secreto_deberia_ser_1 from i;
+rollback;
+
+\echo '--- 28. [DEFECTO QA-citas-R1-seguridad-03] tampoco puede cambiarse el id de secreto de una cuenta existente por UPDATE directo (CalDAV) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0001', true);
+select verify_support.expect_sqlstate($q$update citas.provider_caldav_accounts set caldav_password_secret_id = gen_random_uuid() where provider_id = '00000000-0000-0000-0000-00000000c0a1'$q$, '42501') as expect_ok;
+rollback;
+
+\echo '--- 29. [CONTROL] un owner crea una cita normal (proveedor, servicio y cliente de su organizacion, sucursal del proveedor) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0001', true);
+select (citas.create_appointment_from_panel('00000000-0000-0000-0000-00000000aa01', '00000000-0000-0000-0000-00000000a0a1', '00000000-0000-0000-0000-00000000c0a1', '00000000-0000-0000-0000-00000000d0a1', 'Paciente nuevo', '+5219990004444', null, now() + interval '9 days', now() + interval '9 days 50 minutes', null)) ->> 'status' as cita_creada_status_pending_expect_ok;
+rollback;
+
+\echo '--- 30. [DEFECTO QA-citas-R1-seguridad-05] create_appointment_idempotent (sistema): proveedor de A2 con la sucursal A1 se rechaza (AT400) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select verify_support.expect_sqlstate($q$select citas.create_appointment_idempotent(jsonb_build_object('organization_id','00000000-0000-0000-0000-00000000aa01','property_id','00000000-0000-0000-0000-00000000a0a1','provider_id','00000000-0000-0000-0000-00000000c0a2','service_id','00000000-0000-0000-0000-00000000d0a1','customer_id','00000000-0000-0000-0000-00000000e0a2','starts_at',(now() + interval '10 days')::text,'ends_at',(now() + interval '10 days 50 minutes')::text,'source','whatsapp'), repeat('b', 64), null)$q$, 'AT400') as expect_ok;
 rollback;
