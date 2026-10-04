@@ -29,6 +29,12 @@ export interface OpcionesReal {
   /** Parametros del modelo evaluado (PM_EVALS_TEMPERATURE / PM_EVALS_REASONING). Por omision NO se manda
    *  temperature: GPT-6, Claude 5.x y Gemini Flash-Lite la rechazan o no la soportan. */
   readonly params?: OpenRouterModelParams;
+  /** PM_EVALS_TRAZA=1: el CLI imprime la conversacion y las herramientas de los casos que fallan (diagnostico). */
+  readonly traza?: boolean;
+  /** Se llama al terminar cada caso (para imprimir avance: una corrida larga no debe perderse si algo falla mas adelante). */
+  readonly alTerminarCaso?: (r: ResultadoCaso & { readonly repeticiones: number }) => void;
+  /** Pausas entre reintentos de una llamada al proveedor que fallo por red o timeout (ms). Por omision 2 s y 5 s; las pruebas pasan []. */
+  readonly pausasReintento?: readonly number[];
   /** URL de chat/completions (solo pruebas con un servidor falso). */
   readonly baseUrl?: string;
 }
@@ -50,7 +56,7 @@ export function opcionesRealDesdeEntorno(env: Readonly<Record<string, string | u
     ...(effort ? { reasoningEffort: effort as OpenRouterModelParams["reasoningEffort"] } : {}),
     minMaxTokens: 1500,
   };
-  return { apiKey: env.OPENROUTER_API_KEY, model: env.PM_EVALS_MODEL, maxUsd, k, params, casos: env.PM_EVALS_CASOS?.split(",").map((s) => s.trim()).filter(Boolean) };
+  return { apiKey: env.OPENROUTER_API_KEY, model: env.PM_EVALS_MODEL, maxUsd, k, params, casos: env.PM_EVALS_CASOS?.split(",").map((s) => s.trim()).filter(Boolean), traza: env.PM_EVALS_TRAZA === "1" };
 }
 
 export interface ResultadoReal {
@@ -74,18 +80,22 @@ export async function ejecutarSuiteReal(opts: OpcionesReal): Promise<ResultadoRe
   let gasto = 0;
   const llamar = async (system: string, messages: LlmMessage[], tools?: LlmToolDefinition[]) => {
     if (gasto >= opts.maxUsd) throw new TopeDeGasto();
-    let r;
-    try {
-      r = await gateway.complete({ tenantId: "pm-evals", runId: randomUUID(), lane: "interactive", role: "pm-evals", request: { system, messages, tools, temperature: 0, maxOutputTokens: 800 } });
-    } catch (err) {
-      // Si el presupuesto del gateway se agota antes que `gasto >= maxUsd` (la reserva previa se estima con
-      // el tope de tokens), se trata igual que el tope propio: corte limpio con casos no corridos, no un
-      // fallo de la corrida. Carril 'interactive': el carril batch solo dejaba gastar ~60% del tope.
-      if (isBudgetExceededError(err)) throw new TopeDeGasto();
-      throw err;
+    const pausas = opts.pausasReintento ?? [2000, 5000];
+    for (let intento = 0; ; intento++) {
+      try {
+        const r = await gateway.complete({ tenantId: "pm-evals", runId: randomUUID(), lane: "interactive", role: "pm-evals", request: { system, messages, tools, temperature: 0, maxOutputTokens: 800 } });
+        gasto += r.costUsd ?? 0;
+        return r;
+      } catch (err) {
+        // Si el presupuesto del gateway se agota antes que `gasto >= maxUsd` (la reserva previa se estima con
+        // el tope de tokens), se trata igual que el tope propio: corte limpio con casos no corridos, no un
+        // fallo de la corrida. Carril 'interactive': el carril batch solo dejaba gastar ~60% del tope.
+        if (isBudgetExceededError(err)) throw new TopeDeGasto();
+        // Timeout o corte de red del proveedor: se reintenta (una corrida de ~40 min no debe morir por un timeout aislado).
+        if (intento >= pausas.length) throw err;
+        await new Promise((resolve) => setTimeout(resolve, pausas[intento]));
+      }
     }
-    gasto += r.costUsd ?? 0;
-    return r;
   };
   const suite = cargarSuite();
   const menu = cargarMenu();
@@ -108,12 +118,18 @@ export async function ejecutarSuiteReal(opts: OpcionesReal): Promise<ResultadoRe
         ok = ultimo.ok;
       }
     } catch (err) {
-      if (!(err instanceof TopeDeGasto)) throw err;
-      cortado = true;
-      noCorridos.push(caso.id);
-      continue;
+      if (err instanceof TopeDeGasto) {
+        cortado = true;
+        noCorridos.push(caso.id);
+        continue;
+      }
+      // El proveedor siguio fallando tras los reintentos: el caso cuenta como fallo de infraestructura y la corrida sigue.
+      ultimo = { casoId: caso.id, ok: false, graders: [{ grader: "INFRA", ok: false, detalle: `el proveedor fallo tras reintentos: ${err instanceof Error ? err.message.slice(0, 160) : String(err)}` }] };
+      ok = false;
     }
-    resultados.push({ ...(ultimo as ResultadoCaso), ok, repeticiones: opts.k });
+    const resultadoCaso = { ...(ultimo as ResultadoCaso), ok, repeticiones: opts.k };
+    resultados.push(resultadoCaso);
+    opts.alTerminarCaso?.(resultadoCaso);
   }
   return { resultados, gastoUsd: gasto, noCorridos, cortadoPorTope: cortado };
 }
@@ -135,7 +151,7 @@ async function correrCaso(caso: CasoEval, mundo: Mundo, llamar: Llamador, herram
     fechaHoraLocal: `${caso.contexto.dia} ${caso.contexto.hora_local}`,
     diaSemana: caso.contexto.dia,
   });
-  const sistemaCliente = `Usted simula a un cliente de una taqueria que escribe por WhatsApp. Diga solo lo que dicta este guion, de forma natural y breve, y responda con sus datos solo cuando el agente los pregunte.\nApertura: ${caso.simulador_cliente.apertura}\nDatos: ${JSON.stringify(caso.simulador_cliente.datos)}\nGiros en orden: ${caso.simulador_cliente.giros.join(" | ")}\nCuando el pedido ya quedo resuelto (o el agente lo paso con una persona), responda exactamente: FIN`;
+  const sistemaCliente = `Usted simula a un cliente de una taqueria que escribe por WhatsApp. Diga solo lo que dicta este guion, de forma natural y breve, y responda con sus datos solo cuando el agente los pregunte.\nApertura: ${caso.simulador_cliente.apertura}\nDatos: ${JSON.stringify(caso.simulador_cliente.datos)}\nGiros en orden: ${caso.simulador_cliente.giros.join(" | ")}\nConteste SIEMPRE lo que el agente le pregunte (con sus datos del guion, "no, gracias" o "no tengo", segun corresponda); si el agente le repite su pedido y le pregunta si es correcto y coincide con lo que usted pidio, responda "Si, es correcto." (o corrijalo si no coincide). Solo cuando el agente le diga que su pedido YA QUEDO REGISTRADO, o que lo pasa con una persona, responda exactamente: FIN. Nunca diga FIN mientras el agente espere una respuesta suya.`;
   const agente: LlmMessage[] = [];
   const cliente: LlmMessage[] = [{ role: "user", content: "Empiece la conversacion." }];
   let siguienteCliente = caso.simulador_cliente.apertura;
@@ -164,9 +180,22 @@ async function correrCaso(caso: CasoEval, mundo: Mundo, llamar: Llamador, herram
     }
     const ultimoAgente = [...agente].reverse().find((m) => m.role === "assistant");
     cliente.push({ role: "user", content: ultimoAgente && ultimoAgente.role === "assistant" ? ultimoAgente.content : "" });
-    const r = await llamar(sistemaCliente, cliente);
+    let r = await llamar(sistemaCliente, cliente);
+    // Defecto conocido del cliente simulado: a veces corta con FIN dejando sin respuesta la pregunta del agente (p. ej. "¿es correcto?"),
+    // y el caso se mide como "no cierra" cuando el agente si estaba cerrando. Si aun no hay pedido ni escalacion y el agente pregunto algo,
+    // se le pide una sola vez que conteste, igual que lo haria un cliente real.
+    if (/^\s*FIN\b/.test(r.text) && mundo.comandas.length === 0 && mundo.escalaciones.length === 0 && /\?\s*$/.test(ultimoTextoAgente(agente))) {
+      cliente.push({ role: "assistant", content: "FIN" });
+      cliente.push({ role: "user", content: `El agente sigue esperando su respuesta y el pedido aun no queda registrado. Conteste a su ultimo mensaje segun el guion (no diga FIN todavia): ${ultimoTextoAgente(agente)}` });
+      r = await llamar(sistemaCliente, cliente);
+    }
     if (/^\s*FIN\b/.test(r.text)) break;
     siguienteCliente = r.text;
   }
-  return evaluarCaso(caso, mundo);
+  return { ...evaluarCaso(caso, mundo), eventos: mundo.eventos };
+}
+
+function ultimoTextoAgente(agente: readonly LlmMessage[]): string {
+  const m = [...agente].reverse().find((x) => x.role === "assistant" && x.content.trim() !== "");
+  return m && m.role === "assistant" ? m.content : "";
 }
