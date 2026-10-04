@@ -86,7 +86,7 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     ]);
   });
 
-  it('el botón "Más" abre los 20 destinos + el Copiloto, incluidos Cartera de clientes, Cola de cobranza, Libro contable, Pagos provisionales, Portal del cliente, Staff y Configuración', async () => {
+  it('el botón "Más" abre los 20 destinos + el Copiloto, incluidos Cartera de clientes, Cola de cobranza, Libro contable, Pagos provisionales, Portal del cliente, Equipo y Configuración', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
@@ -109,9 +109,9 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     expect(categoriasAbiertas(root)).toEqual(["Fiscal"]);
     expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Cierre mensual", "Declaraciones", "Pagos provisionales", "Contabilidad electrónica", "Devolución de IVA", "Nómina"]);
     abrirCategoria(root, "Contabilidad");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Cierre mensual", "Conciliación bancaria", "Libro contable", "Bookkeeping", "Reportes de cliente", "Migración de catálogo"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Cierre mensual", "Conciliación bancaria", "Libro contable", "Clasificación contable", "Reportes de cliente", "Migración de catálogo"]);
     abrirCategoria(root, "Clientes y equipo");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Cierre mensual", "Cartera de clientes", "Portal del cliente", "Staff", "Configuración"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Cierre mensual", "Cartera de clientes", "Portal del cliente", "Equipo", "Configuración"]);
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Contador Demo", rol: "Administrador" });
   });
 
