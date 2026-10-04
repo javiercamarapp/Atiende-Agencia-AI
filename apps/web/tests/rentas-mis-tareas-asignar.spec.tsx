@@ -224,6 +224,30 @@ describe("MisTareasPage -- Asignar a… (gestión)", () => {
   });
 });
 
+describe("MisTareasPage -- completar la tarea", () => {
+  it("tras completar, la confirmacion «Tarea completada.» SE QUEDA visible (antes la recarga del detalle la borraba al instante)", async () => {
+    let completada = false;
+    const base = red({ mias: [tarea({ asignadoA: "ana", estado: "asignada" })], detalle: { asignadoA: "ana", estado: "asignada" } });
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if ((init?.method ?? "GET") === "POST" && url.endsWith("/tareas/t1/completar")) {
+        completada = true;
+        return json({ id: "t1", estado: "completada", alertasStockBajo: [] });
+      }
+      if (completada && url.endsWith("/tareas/t1")) return json({ tarea: { ...detalle({ asignadoA: "ana" }), estado: "completada" } });
+      return base.fn(url, init);
+    });
+    rendered = montar("limpieza");
+    await esperar();
+    await abrirTarea(rendered);
+    await act(async () => {
+      click(botonPagina(rendered!, "Completar tarea")!);
+      await esperar();
+    });
+    expect(rendered.container.textContent).toContain("Tarea completada.");
+    expect(rendered.container.textContent).toContain("Estado: Completada");
+  });
+});
+
 describe("TareasSemana -- tablero «Próximos 7 días»", () => {
   const montarSemana = () => renderComponent(<TareasSemana apiBaseUrl="http://api.local" token="tok" propertyId="prop-1" />);
 
