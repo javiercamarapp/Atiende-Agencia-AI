@@ -19,6 +19,16 @@ async function llenarContacto(page: Page, nombre: string): Promise<void> {
   await page.getByRole("checkbox").last().check();
 }
 
+/** En pantalla ancha el pedido es la columna "Tu pedido"; en el telefono vive en una hoja que abre la barra inferior "Ver pedido". */
+async function abrirPedido(page: Page) {
+  const ver = page.getByRole("button", { name: "Ver pedido" });
+  if (await ver.isVisible()) {
+    await ver.click();
+    return dialogo(page, "Tu pedido");
+  }
+  return page.getByRole("complementary", { name: "Tu pedido" });
+}
+
 async function escriturasDe(nombre: string, ruta: string) {
   return (await anon.buscar({ metodo: "POST", ruta })).filter((r) => JSON.stringify(r.cuerpo ?? {}).includes(nombre));
 }
@@ -38,7 +48,7 @@ test.describe("restaurantes: storefront publico @recorrido", () => {
     await page.getByLabel("Tortilla para Tacos al pastor (orden)").selectOption("maiz");
     await agregarTacos.click();
     await page.getByRole("button", { name: "Agregar Horchata al carrito" }).click();
-    const carrito = page.getByRole("complementary", { name: "Tu pedido" });
+    const carrito = await abrirPedido(page);
     await expect(carrito.getByText("$143").first()).toBeVisible();
     await page.getByRole("button", { name: "Agregar una unidad de Horchata" }).click();
     await page.getByRole("button", { name: "Quitar una unidad de Horchata" }).click();
@@ -83,6 +93,7 @@ test.describe("restaurantes: storefront publico @recorrido", () => {
   test("a domicilio: el pedido minimo bloquea con su aviso hasta alcanzarlo", async ({ page, vigilante }) => {
     await page.goto(`${RAIZ}/centro`);
     await page.getByRole("button", { name: "Agregar Horchata al carrito" }).click();
+    await abrirPedido(page);
     await page.getByLabel("A domicilio").check();
     await expect(page.getByText(/mínimo/i).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Revisar pedido" })).toBeDisabled();
@@ -92,6 +103,7 @@ test.describe("restaurantes: storefront publico @recorrido", () => {
   test("un codigo de promocion invalido al recoger se avisa en la confirmacion", async ({ page, vigilante }) => {
     await page.goto(`${RAIZ}/centro`);
     await page.getByRole("button", { name: "Agregar Horchata al carrito" }).click();
+    await abrirPedido(page);
     await llenarContacto(page, unico());
     await page.getByLabel("Código de promoción (opcional)").fill("NOEXISTE");
     await page.getByRole("button", { name: "Revisar pedido" }).click();
