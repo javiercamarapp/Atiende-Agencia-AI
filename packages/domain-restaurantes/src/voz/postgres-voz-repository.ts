@@ -315,6 +315,19 @@ export class PostgresVozRepository implements VozRepository {
     });
   }
 
+  async cerrarHuerfanas(opciones: { inactivasMinutos: number; limite: number }): Promise<number> {
+    return runWithSavepointFallback<number>({
+      session: this.db,
+      savepointName: "sp_voz_cerrar_huerfanas",
+      primary: async () => {
+        const { rows } = await this.db.query<{ cerradas: number | string }>(`select restaurantes.voz_cerrar_huerfanas($1::integer, $2::integer) as cerradas;`, [opciones.inactivasMinutos, opciones.limite]);
+        return Number(rows[0]!.cerradas);
+      },
+      isRecoverable: esBaseSinMigrar,
+      fallback: aErrorDeEscritura,
+    });
+  }
+
   async consumirPreview(input: { sessionId: string; organizationId: string; propertyId: string }): Promise<boolean> {
     return runWithSavepointFallback<boolean>({
       session: this.db,

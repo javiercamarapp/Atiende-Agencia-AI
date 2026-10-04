@@ -8,7 +8,7 @@
 import { registerCallbackRequest } from "../callback-requests.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import type { ConversationMessage } from "../repository.ts";
-import type { CustomerLookupResult } from "../types.ts";
+import type { CustomerLookupResult, WhatsAppAgentConfigInput } from "../types.ts";
 
 export interface WhatsAppTurnHandler {
   handleInboundMessage(args: {
@@ -23,12 +23,21 @@ export interface WhatsAppTurnHandler {
     /** Instante absoluto (ms, mismo reloj que `Date.now`) antes del cual el turno debe TERMINAR para que la funcion del
      * webhook alcance a confirmar la transaccion y encolar la respuesta. Ausente = solo manda el presupuesto propio del handler. */
     readonly finTurnoMs?: number;
+    /** Prueba del dueno en el panel (NO el webhook): `preview` corre las herramientas SIN efectos (pedido simulado, sin avisos).
+     * Lo fija solo el servidor desde la ruta de preview; nunca sale de un argumento del modelo ni del cliente de WhatsApp. */
+    readonly modo?: "real" | "preview";
+    /** Solo `preview`: cliente de la organizacion que el panel eligio simular (ver `AgentToolContext.previewCustomerId`). */
+    readonly previewCustomerId?: string | null;
+    /** Solo `preview`: configuracion del agente en BORRADOR (ya validada) para probarla antes de guardar. Ausente = la vigente. */
+    readonly configBorrador?: WhatsAppAgentConfigInput | null;
   }): Promise<{
     readonly reply: string;
     readonly orderId: string | null;
     readonly propertyId: string | null;
     /** R-21: el agente pidio un humano (`escalar_a_humano`); el webhook abre la toma de handoff. */
     readonly escalacion?: { readonly motivo: string };
+    /** Solo `preview`: el pedido SIMULADO que devolvio `crear_pedido` (no existe en la base). */
+    readonly pedidoSimulado?: unknown;
   }>;
 }
 

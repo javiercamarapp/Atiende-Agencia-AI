@@ -53,7 +53,7 @@ describe("createLlmWhatsAppTurnHandler (restaurantes) — SAVEPOINT por tool cal
       { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
       { match: /read_order_flow_state/, respond: () => [{ state: null, context: null, version: 0 }] },
       { match: /from core\.property/, respond: () => [] },
-      { match: /insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
+      { match: /callback_registrar|insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
       { match: /select 1/, respond: () => [] },
     ]);
     const repo = new PostgresRestaurantesRepository(session);
@@ -122,7 +122,7 @@ describe("createLlmWhatsAppTurnHandler (restaurantes) — SAVEPOINT por tool cal
     const session = new AbortAwareFakeSession([
       { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
       { match: /from core\.property/, respond: () => [] },
-      { match: /insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
+      { match: /callback_registrar|insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
       { match: /select 1/, respond: () => [] },
     ]);
     const repo = new PostgresRestaurantesRepository(session);
