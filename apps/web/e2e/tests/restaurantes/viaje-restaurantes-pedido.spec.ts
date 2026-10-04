@@ -4,7 +4,6 @@
 import { expect, test } from "../../helpers/fixtures.ts";
 import type { Page } from "../../helpers/fixtures.ts";
 import { cuerpoDe, esperarEscrituras, ir, BASE } from "../../helpers/recorrido.ts";
-import { URL_API } from "../../helpers/fixtures.ts";
 import { personaDe } from "../../mock-api/personas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
