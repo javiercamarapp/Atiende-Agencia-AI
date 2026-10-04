@@ -22,20 +22,10 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { avisarCambioDeBases } from "./avisos-campana.ts";
+import { DEFAULT_TENDERS_LIMIT, MAX_TENDERS_LIMIT, parseOffset, parsePositiveInt, parseTenderListFilter } from "./tender-list-query.ts";
 
-// Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad BAJA:
-// "listados sin paginación en 4 verticales") -- GET base devolvía TODAS las
-// convocatorias de la organización en un solo array. Una organización activa
-// acumula cientos/miles de convocatorias a lo largo de los años.
-const DEFAULT_TENDERS_LIMIT = 50;
-const MAX_TENDERS_LIMIT = 200;
-
-function parsePositiveInt(raw: string | undefined, fallback: number, max: number): number {
-  if (!raw) return fallback;
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isFinite(n) || n <= 0) return fallback;
-  return Math.min(n, max);
-}
+const DEFAULT_SUMMARY_WINDOW_DAYS = 7;
+const MAX_SUMMARY_WINDOW_DAYS = 60;
 
 interface TenderUpsertBody {
   readonly title?: unknown;
@@ -80,6 +70,8 @@ export function licitacionesTendersRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
   const detailBase = "/licitaciones/:propertyId/tenders/:tenderId{[0-9a-fA-F-]{36}}";
 
   app.use(base, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  const summaryBase = "/licitaciones/:propertyId/tenders/summary";
+  app.use(summaryBase, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(detailBase, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   // Fase 7 — GET base/lectura: el panel web (backoffice) necesita el `TenderRecord`
@@ -92,19 +84,27 @@ export function licitacionesTendersRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     const repo = deps.licitacionesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const limit = parsePositiveInt(c.req.query("limit"), DEFAULT_TENDERS_LIMIT, MAX_TENDERS_LIMIT);
-    const rawOffset = Number.parseInt(c.req.query("offset") ?? "0", 10);
-    const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
+    const offset = parseOffset(c.req.query("offset"));
+    const filter = parseTenderListFilter((name) => c.req.query(name));
 
     // Body sigue siendo `{ tenders: [...] }` (compatibilidad con el cliente ya
-    // existente) -- lo que cambia de verdad es que la QUERY ahora está acotada por
-    // `limit`/`offset` reales (`listTendersPage`, ver
-    // @atiende/domain-licitaciones::repository.ts) en vez de traer TODA la tabla;
-    // `listTenders` (sin paginar) se queda para `matching.ts`, que necesita el
-    // conjunto completo. El total real y el siguiente offset van en headers.
-    const page = await repo.listTendersPage(organizationId, { limit, offset });
+    // existente); la QUERY esta acotada por `limit`/`offset` reales y por los
+    // filtros `q`/`status`/`source`/`deadlineFrom`/`deadlineTo`/`ids`/`open`
+    // (todos en el servidor: la pagina y el total reflejan el filtro). El total
+    // real y el siguiente offset van en headers (`X-Total-Count`/`X-Next-Offset`).
+    const page = await repo.listTendersPage(organizationId, { ...filter, limit, offset });
     c.header("X-Total-Count", String(page.total));
     if (page.nextOffset !== null) c.header("X-Next-Offset", String(page.nextOffset));
     return c.json({ tenders: page.items });
+  });
+
+  // Conteos de TODA la organizacion para los KPIs del Resumen: antes se calculaban sobre la primera pagina (50 filas) y mentian en silencio.
+  app.get(summaryBase, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const windowDays = parsePositiveInt(c.req.query("windowDays"), DEFAULT_SUMMARY_WINDOW_DAYS, MAX_SUMMARY_WINDOW_DAYS);
+    const counts = await repo.summarizeTenders(organizationId, { nowIso: new Date().toISOString(), windowDays });
+    return c.json(counts);
   });
 
   app.get(detailBase, async (c) => {
