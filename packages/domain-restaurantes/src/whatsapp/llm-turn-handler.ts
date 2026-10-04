@@ -35,6 +35,8 @@ import { latestSharedLocation } from "./location.ts";
 import { branchAlreadyKnown, classifyHighRiskIntent, enforcePendingQuestion, enforceQuotedTotal } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
+import { emitirSeguro, telefonoHashSeguro } from "./observabilidad-turno.ts";
+import type { ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tono, reglas duras y generación del prompt.
@@ -383,6 +385,9 @@ export interface WhatsAppLlmAgentOptions {
    * web: `encolarComandaParaPedido`). Ausente = comportamiento anterior. La comanda va ANTES de cobrar
    * y el agente solo puede decir lo que devuelve esta funcion (nunca un folio inventado). */
   readonly encolarComanda?: (pedido: PedidoParaComanda) => Promise<ResultadoEncolarPedido>;
+  /** R-PM-15: sumidero de eventos estructurados por turno y por tool (sin texto del cliente ni telefono en
+   * claro). Ausente = sin observabilidad; emitir nunca lanza ni retrasa el turno. */
+  readonly observabilidad?: ObservabilidadTurno;
 }
 
 /** Encola la comanda del pedido recien creado. Nunca lanza: un fallo aqui no puede tumbar el turno ni
@@ -422,8 +427,22 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
   const turnBudgetMs = options.turnBudgetMs ?? 45_000;
   const now = options.now ?? (() => new Date());
 
-  return {
-    async handleInboundMessage({ organizationId, phone, messages, customer, propertyId: entryPropertyId }) {
+  type Entrada = Parameters<WhatsAppTurnHandler["handleInboundMessage"]>[0];
+  type Salida = Awaited<ReturnType<WhatsAppTurnHandler["handleInboundMessage"]>>;
+  /** Registro mutable del turno que alimenta los eventos de observabilidad (solo clases y duraciones). */
+  interface Telemetria {
+    vueltas: number;
+    rolesUsados: string[];
+    tools: Array<{ tool: string; latenciaMs: number; resultado: ResultadoTool; vuelta: number }>;
+    resultado: ResultadoTurno;
+    motivoEscalacion: string | null;
+    motivoEscaladaDeRol: "fallo_crear_pedido" | null;
+  }
+
+  async function ejecutarTurno(
+    { organizationId, phone, messages, customer, propertyId: entryPropertyId }: Entrada,
+    tele: Telemetria,
+  ): Promise<Salida> {
       const deadline = Date.now() + turnBudgetMs;
       const config = await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
@@ -467,19 +486,26 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         );
         // Honestidad: solo se dice "ya avisé al equipo" si el aviso quedó registrado de verdad.
         if (isToolErrorResult(aviso.result)) {
+          tele.resultado = "error_sistema";
           return { reply: "Lamento el inconveniente: no pude avisar al equipo en este momento. Por favor inténtelo de nuevo en unos minutos.", orderId: null, propertyId };
         }
         // El aviso al equipo ya quedo registrado arriba; `escalacion` solo abre la toma de handoff (R-21),
         // igual que cuando el modelo llama a escalar_a_humano, sin duplicar el aviso.
         escalarMotivo = riesgo.motivo;
+        tele.resultado = "escalado_alto_riesgo";
+        tele.motivoEscalacion = riesgo.motivo;
         return done({ reply: riesgo.reply, orderId: null, propertyId });
       }
 
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
         if (Date.now() >= deadline) {
+          tele.resultado = "presupuesto_agotado";
           return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
+        if (huboFalloDeHerramienta) tele.motivoEscaladaDeRol = "fallo_crear_pedido";
+        tele.vueltas += 1;
+        if (!tele.rolesUsados.includes(role)) tele.rolesUsados.push(role);
 
         let completion: { text: string; toolCalls?: LlmToolCall[] };
         try {
@@ -491,6 +517,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             request: { system: systemPrompt, messages: working, tools: [...TOOLS], temperature: 0 },
           });
         } catch {
+          tele.resultado = "error_proveedor";
           // Escalera de proveedores agotada / presupuesto excedido / gate de
           // residencia bloqueado — nunca se propaga un 500 crudo al cliente
           // de WhatsApp; si ya hay un orderId real, se lo confirmamos con
@@ -521,6 +548,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         for (const call of toolCalls) {
           let input: Record<string, unknown> = {};
           let result: unknown;
+          let fallaSistema = false;
+          const toolInicio = Date.now();
           try {
             input = JSON.parse(call.argumentsJson || "{}") as Record<string, unknown>;
           } catch {
@@ -529,6 +558,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (result === undefined) {
             const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation }, call.name, input);
             result = executed.result;
+            fallaSistema = executed.fallaSistema === true;
             anyToolCalled = true;
             const quoted = (result as { quote?: { total?: unknown }; order?: { total?: unknown } } | null) ?? null;
             if (call.name === "cotizar_pedido" && typeof quoted?.quote?.total === "number") lastQuoteTotal = quoted.quote.total;
@@ -544,7 +574,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           }
           if (call.name === "escalar_a_humano" && !isToolErrorResult(result)) {
             escalarMotivo = typeof input.motivo === "string" ? input.motivo : "otro";
+            tele.motivoEscalacion = escalarMotivo;
           }
+          tele.tools.push({ tool: call.name, latenciaMs: Date.now() - toolInicio, resultado: isToolErrorResult(result) ? (fallaSistema ? "error_sistema" : "error_regla") : "ok", vuelta: tele.vueltas });
           if (call.name === "crear_pedido" && isToolErrorResult(result)) {
             huboFalloDeHerramienta = true;
           }
@@ -552,10 +584,51 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
       }
 
+      tele.resultado = "loop_agotado";
       if (orderId) {
         return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
       }
       return done({ reply: perfil === "taqueria_pm" ? PM_COPY.turnoComplicado : "Se me complicó procesar su pedido, un momento por favor.", orderId, propertyId });
+  }
+
+  return {
+    async handleInboundMessage(entrada) {
+      const inicio = Date.now();
+      const correlationId = randomUUID();
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", motivoEscalacion: null, motivoEscaladaDeRol: null };
+      let salida: Salida | null = null;
+      try {
+        salida = await ejecutarTurno(entrada, tele);
+        return salida;
+      } catch (err) {
+        tele.resultado = "error_sistema";
+        throw err;
+      } finally {
+        const obs = options.observabilidad;
+        if (obs) {
+          // Solo identificadores, clases y duraciones: ni el texto del cliente, ni la respuesta, ni argumentos de tools.
+          const propertyId = salida?.propertyId ?? entrada.propertyId ?? null;
+          const telefonoHash = telefonoHashSeguro(obs, entrada.phone);
+          for (const t of tele.tools) {
+            emitirSeguro(obs, { evento: "whatsapp_tool", correlationId, organizationId: entrada.organizationId, propertyId, tool: t.tool, vuelta: t.vuelta, latenciaMs: t.latenciaMs, resultado: t.resultado, telefonoHash });
+          }
+          emitirSeguro(obs, {
+            evento: "whatsapp_turno",
+            correlationId,
+            organizationId: entrada.organizationId,
+            propertyId,
+            rolModelo: tele.rolesUsados.at(-1) ?? null,
+            rolesUsados: tele.rolesUsados,
+            vueltas: tele.vueltas,
+            latenciaTotalMs: Date.now() - inicio,
+            tools: tele.tools.map(({ tool, latenciaMs, resultado }) => ({ tool, latenciaMs, resultado })),
+            resultado: tele.resultado,
+            motivoEscalacion: tele.motivoEscalacion,
+            motivoEscaladaDeRol: tele.motivoEscaladaDeRol,
+            telefonoHash,
+          });
+        }
+      }
     },
   };
 }

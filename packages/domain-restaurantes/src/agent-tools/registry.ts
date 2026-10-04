@@ -96,6 +96,9 @@ export interface AgentToolOutcome {
   readonly raw?: unknown;
   readonly orderId: string | null;
   readonly propertyId: string | null;
+  /** true solo cuando `executeAgentToolSafely` atrapo una excepcion que NO es una regla de negocio
+   * (p. ej. un error de base de datos). Sirve a la observabilidad para separar `error_sistema` de `error_regla`. */
+  readonly fallaSistema?: boolean;
   /** Huella de la cotizacion vigente (solo cotizar_pedido con maquina de estados activa). */
   readonly quoteHash?: string;
 }
@@ -734,6 +737,7 @@ export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: 
   try {
     return await repo.runWithRowSavepoint(() => invokeAgentTool(repo, ctx, name, input));
   } catch (err) {
-    return { result: { error: err instanceof OrderValidationError ? err.message : "Error interno al ejecutar la herramienta" }, orderId: null, propertyId: null };
+    const esRegla = err instanceof OrderValidationError;
+    return { result: { error: esRegla ? err.message : "Error interno al ejecutar la herramienta" }, orderId: null, propertyId: null, ...(esRegla ? {} : { fallaSistema: true }) };
   }
 }
