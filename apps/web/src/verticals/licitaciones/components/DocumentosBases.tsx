@@ -185,7 +185,7 @@ export function DocumentosBases({ apiBaseUrl, token, propertyId, tenderId, canWr
           )}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <input ref={versionInput} type="file" accept=".pdf,.txt,.md,application/pdf,text/plain" className="hidden" aria-label="Archivo de la versión nueva" onChange={(e) => void handleVersionPicked(e)} />
+          {canWrite && <input ref={versionInput} type="file" accept=".pdf,.txt,.md,application/pdf,text/plain" className="hidden" aria-label="Archivo de la versión nueva" onChange={(e) => void handleVersionPicked(e)} />}
           {documents.length === 0 ? (
             <EstadoVacio mensaje="Todavía no hay documentos en la bóveda. Sube las bases de esta convocatoria arriba." />
           ) : (
