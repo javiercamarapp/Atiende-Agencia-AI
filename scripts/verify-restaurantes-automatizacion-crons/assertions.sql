@@ -143,7 +143,8 @@ insert into restaurantes.orders (id, organization_id, property_id, customer_name
   ('00000000-0000-0000-0000-00000000f003', '00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-00000000a0a1', 'Cancelada', '+5219990000013', 100, 'cancelado', '[]'::jsonb, 'web', now() - interval '2 hours', now() - interval '1 hour'),
   ('00000000-0000-0000-0000-00000000f004', '00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-00000000a0a1', 'Muy vieja', '+5219990000014', 100, 'pending', '[]'::jsonb, 'web', now() - interval '60 hours', now() - interval '48 hours'),
   ('00000000-0000-0000-0000-00000000f005', '00000000-0000-0000-0000-00000000a002', '00000000-0000-0000-0000-00000000a0b1', 'Bandera apagada', '+5219990000015', 100, 'pending', '[]'::jsonb, 'web', now() - interval '2 hours', now() - interval '1 hour'),
-  ('00000000-0000-0000-0000-00000000f006', '00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-00000000a0a1', 'Sin programar', '+5219990000016', 100, 'pending', '[]'::jsonb, 'web', null, null);
+  ('00000000-0000-0000-0000-00000000f006', '00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-00000000a0a1', 'Sin programar', '+5219990000016', 100, 'pending', '[]'::jsonb, 'web', null, null),
+  ('00000000-0000-0000-0000-00000000f007', '00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-00000000a0a1', 'Ya entregado', '+5219990000017', 100, 'completado', '[]'::jsonb, 'web', now() - interval '2 hours', now() - interval '1 hour');
 insert into restaurantes.pos_comanda_outbox (organization_id, property_id, order_id, idempotency_key, modo, payload) values
   ('00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-00000000a0a1', '00000000-0000-0000-0000-00000000f002', 'sr:a001:f002', 'sombra', '{}'::jsonb);
 set local role authenticated;

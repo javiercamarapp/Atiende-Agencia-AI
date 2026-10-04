@@ -30,7 +30,7 @@
 --  * pos_comanda_promovidos_sin_comanda -- `security definer`, search_path fijo, revoke de public/anon, GRANT
 --    EXECUTE solo a `authenticated`, guard `auth.uid() is null` (solo sistema, 42501 si no). Solo lee pedidos de
 --    organizaciones con la bandera de SoftRestaurant en `sombra`/`activo` y devuelve los de las ultimas
---    `p_horas` (1..168) en un estado vivo (ni `programado` ni `cancelado`), tope 1..500. No escribe nada.
+--    `p_horas` (1..168) en estado `pending` o `preparando` (un entregado, completado o con problema ya no necesita comanda), tope 1..500. No escribe nada.
 --
 -- Requiere 024 (pos_comanda_outbox, softrestaurant_config), 030 (privacidad) y 034 (promovido_at).
 
@@ -216,7 +216,7 @@ begin
       join restaurantes.softrestaurant_config c on c.organization_id = o.organization_id and c.modo in ('sombra', 'activo')
      where o.promovido_at is not null
        and o.promovido_at >= now() - make_interval(hours => least(greatest(coalesce(p_horas, 24), 1), 168))
-       and o.status not in ('programado', 'cancelado')
+       and o.status in ('pending', 'preparando')
        and not exists (
          select 1 from restaurantes.pos_comanda_outbox x
           where x.organization_id = o.organization_id and x.order_id = o.id

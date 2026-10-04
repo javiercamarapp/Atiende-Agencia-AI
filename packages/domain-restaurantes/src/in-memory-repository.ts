@@ -1853,7 +1853,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   async listPromotedOrdersWithoutComanda(options: { readonly hours: number; readonly limit: number }): Promise<readonly Order[]> {
     const desde = Date.now() - options.hours * 3_600_000;
     return this.orders
-      .filter((o) => o.promovidoAt && Date.parse(o.promovidoAt) >= desde && o.status !== "programado" && o.status !== "cancelado")
+      .filter((o) => o.promovidoAt && Date.parse(o.promovidoAt) >= desde && (o.status === "pending" || o.status === "preparando"))
       .sort((a, b) => (a.promovidoAt ?? "").localeCompare(b.promovidoAt ?? ""))
       .slice(0, options.limit);
   }
