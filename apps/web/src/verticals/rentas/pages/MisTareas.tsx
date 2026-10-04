@@ -324,13 +324,15 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
         .filter((c) => c.itemInventarioId && Number(c.cantidad) > 0)
         .map((c) => ({ itemInventarioId: c.itemInventarioId, cantidad: Number(c.cantidad) }));
       const resultado = await completarTarea(fetch, apiBaseUrl, token, propertyId, tareaSeleccionadaId, entradas);
+      await cargarListas();
+      // `cargarDetalle` limpia el aviso al empezar: el mensaje de exito se pone DESPUES de recargar (antes se borraba al instante y la
+      // persona no veia ninguna confirmacion de que la tarea quedo completada).
+      await cargarDetalle(tareaSeleccionadaId);
       setAviso(
         resultado.alertasStockBajo.length > 0
           ? `Tarea completada. Aviso: ${resultado.alertasStockBajo.length} ítem(s) de inventario cruzaron su umbral mínimo.`
           : "Tarea completada.",
       );
-      await cargarListas();
-      await cargarDetalle(tareaSeleccionadaId);
     } catch (err) {
       // El 409 real de "checklist_incompleto" (o cualquier otro error del servidor)
       // se muestra tal cual — nunca se silencia ni se finge éxito.
