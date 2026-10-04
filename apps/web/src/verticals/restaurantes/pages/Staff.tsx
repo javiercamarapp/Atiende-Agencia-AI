@@ -35,7 +35,7 @@ import {
   useConfirm,
 } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
-import { UserPlus } from "lucide-react";
+import { UserPlus, UserRoundCog } from "lucide-react";
 import {
   createStaffInvite,
   fetchOrgMembers,
@@ -46,6 +46,7 @@ import {
   updateStaffRole,
 } from "../lib/staff-client.ts";
 import type { CreatedStaffInvite, OrgMember, RepartidorMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
+import { PerfilRepartidorDialogo } from "../components/PerfilRepartidorDialogo.tsx";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const STAFF_INVITE_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
@@ -101,6 +102,8 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
   const [errorCorreo, setErrorCorreo] = useState<string | null>(null);
   const [lastCreated, setLastCreated] = useState<CreatedStaffInvite | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  // R-15: perfil operativo del repartidor (solo owner/admin; FormDialog con su propia carga y guardado).
+  const [perfilDe, setPerfilDe] = useState<RepartidorMember | null>(null);
 
   async function load() {
     setError(null);
@@ -341,9 +344,17 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
           <div className="flex flex-col gap-2">
             {repartidores.map((r) => (
               <Card key={r.id}>
-                <CardContent className="p-3">
-                  <p className="m-0 text-sm font-semibold text-foreground">{r.fullName}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{r.email}</p>
+                <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
+                  <div>
+                    <p className="m-0 text-sm font-semibold text-foreground">{r.fullName}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{r.email}</p>
+                  </div>
+                  {canManage && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setPerfilDe(r)}>
+                      <UserRoundCog />
+                      Perfil
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -377,6 +388,19 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
           </FormField>
         </div>
       </FormDialog>
+      {canManage && (
+        <PerfilRepartidorDialogo
+          open={perfilDe !== null}
+          onOpenChange={(abierto) => {
+            if (!abierto) setPerfilDe(null);
+          }}
+          repartidor={perfilDe}
+          apiBaseUrl={apiBaseUrl}
+          token={token}
+          propertyId={propertyId}
+          confirmar={confirmar}
+        />
+      )}
       {dialogo}
     </PageContainer>
   );

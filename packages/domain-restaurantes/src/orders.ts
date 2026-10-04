@@ -9,7 +9,7 @@ import { OrderValidationError } from "./errors.ts";
 import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { ADDRESS_MASK_MARKER, ADDRESS_OMITTED_MARKER, sanitizeInlineText, sanitizeNotes } from "./text-sanitize.ts";
-import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice } from "./order-quote.ts";
+import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice, MAX_PIEZAS_POR_RENGLON, mensajeCantidadInvalida } from "./order-quote.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
@@ -17,6 +17,11 @@ import { applyPromotionToOrder, normalizePromotionCode, selectAutomaticPromotion
 import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
+
+/** Dinero a centavos (el redondeo comun de todo el modulo): una fraccion de centavo no existe. */
+export function redondearACentavos(value: number): number {
+  return Math.round(value * 100) / 100;
+}
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -46,10 +51,15 @@ function toProductoEncontrado(product: { id: string; name: string; description: 
 export async function searchProducts(repo: RestaurantesRepository, args: { readonly propertyId: string; readonly query: string }): Promise<ProductoEncontrado[]> {
   const tokens = tokenizeForProductSearch(args.query);
   const catalog = await repo.listAvailableProductsForBranch(args.propertyId);
-  return catalog
-    .filter((p) => matchesProductSearch(tokens, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }))
-    .slice(0, 8)
-    .map(toProductoEncontrado);
+  const buscar = (ts: readonly string[]) => catalog.filter((p) => matchesProductSearch(ts, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }));
+  let encontrados = buscar(tokens);
+  // "un cuarto de cochinita": el peso solo existe en los productos que se venden por kilo. Si con el peso no queda nada, se busca el producto sin el
+  // peso (la lista vacia la lee el agente como "no tenemos eso", y la cochinita si existe, en ordenes). Con peso que SI coincide se conserva la exactitud.
+  if (encontrados.length === 0 && tokens.some((t) => t.startsWith("peso:"))) {
+    const sinPeso = tokens.filter((t) => !t.startsWith("peso:"));
+    if (sinPeso.length > 0) encontrados = buscar(sinPeso);
+  }
+  return encontrados.slice(0, 8).map(toProductoEncontrado);
 }
 
 /**
@@ -169,8 +179,8 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     const hasRequested = item.requestedQuantity !== undefined;
     if (hasQuantity === hasRequested) throw new OrderValidationError("Productos o cantidades inválidos");
     const value = hasRequested ? item.requestedQuantity : item.quantity;
-    if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 100) {
-      throw new OrderValidationError("Productos o cantidades inválidos");
+    if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > MAX_PIEZAS_POR_RENGLON) {
+      throw new OrderValidationError(mensajeCantidadInvalida(value));
     }
   }
 
@@ -191,6 +201,8 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     customerName: cleanName,
     customerPhone: voicePhone ?? normalizePhone(raw.customerPhone),
     customerAddress: cleanAddress,
+    // La propina se guarda, se imprime y se manda a la comanda ya redondeada a centavos (10.555 -> 10.56): una sola cifra.
+    ...(raw.propina !== undefined ? { propina: redondearACentavos(raw.propina) } : {}),
     notes: typeof raw.notes === "string" ? sanitizeNotes(raw.notes) || undefined : raw.notes,
     colonia: raw.colonia ? sanitizeInlineText(raw.colonia, 200) || undefined : undefined,
     customerEmail: raw.customerEmail?.trim() ? raw.customerEmail.trim().toLowerCase() : undefined,
@@ -369,6 +381,12 @@ export async function prepareCreateOrder(
     }
   }
 
+  // La propina no tiene tope en SQL y el de $100,000 de la validacion es absurdo para un pedido de $252: se rechaza una propina mayor que el
+  // total a pagar (el modelo la lee como un posible error de captura y la confirma con el cliente).
+  if (payload.propina !== undefined && redondearACentavos(payload.propina) > total) {
+    throw new OrderValidationError("La propina no puede ser mayor que el total del pedido. Confirme el monto con el cliente antes de registrarla.");
+  }
+
   return { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount };
 }
 
@@ -405,8 +423,17 @@ export async function tryIncrementPromotionUses(repo: RestaurantesRepository, or
  * automático de 5 minutos) — nunca dos filas reales por una sola intención real de
  * pedido (protección real y a prueba de canal, port literal de createOrderCore).
  */
-export async function createOrder(repo: RestaurantesRepository, rawInput: CreateOrderInput): Promise<Order> {
-  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount } = await prepareCreateOrder(repo, rawInput);
+export async function createOrder(
+  repo: RestaurantesRepository,
+  rawInput: CreateOrderInput,
+  /** `beforePersist`: gancho que ve el pedido YA cotizado contra el catalogo vigente y puede rechazarlo (lanzando)
+   * antes de escribir nada. Lo usa la maquina de estados del pedido para exigir que los precios sigan siendo los
+   * que el cliente confirmo. */
+  options: { readonly beforePersist?: (prepared: PreparedOrder) => void | Promise<void> } = {},
+): Promise<Order> {
+  const prepared = await prepareCreateOrder(repo, rawInput);
+  await options.beforePersist?.(prepared);
+  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount } = prepared;
   // R-11: contra una base sin la migracion 034 el pedido programado se rechaza (503) en vez de crearse inmediato.
   if (payload.programadoPara) await assertProgramacionDisponible(repo);
 

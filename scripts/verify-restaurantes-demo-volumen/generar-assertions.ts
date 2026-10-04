@@ -284,10 +284,10 @@ select (
 )::int as restos_del_volumen_deberia_ser_0;`,
     ),
     escenario(
-      "V16b. LIMPIEZA del volumen: el menu, la politica y la configuracion del agente de la demo siguen ahi",
+      "V16b. LIMPIEZA del volumen: el menu, la politica y la configuracion del agente de la demo (fila de la organizacion + fila propia de T7) siguen ahi",
       `${aplicar}select restaurantes.demo_limpiar(${DEMO_ORG}, 'volumen');\nselect (
   (select count(*) from restaurantes.products where organization_id = ${DEMO_ORG}) = 279
-  and (select count(*) from restaurantes.whatsapp_agent_config where organization_id = ${DEMO_ORG}) = 1
+  and (select count(*) from restaurantes.whatsapp_agent_config where organization_id = ${DEMO_ORG}) = 2
 )::int as configuracion_intacta_deberia_ser_1;`,
     ),
     escenario(

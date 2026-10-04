@@ -99,7 +99,12 @@ export function buildOnboardingChecklist(snapshot: OnboardingSnapshot): Onboardi
     titulo: "Sucursales activas",
     estado: activas.length > 0 ? "hecho" : "pendiente",
     obligatorio: true,
-    detalle: activas.length > 0 ? `${activas.length} sucursal(es) activa(s) de ${snapshot.sucursales.length} registrada(s).` : "No hay ninguna sucursal activa: el agente y el storefront no tienen a donde mandar pedidos.",
+    // QA-restaurantes-R1-viaje-13: con el punto en "hecho" las inactivas se mencionan en el detalle (la pantalla
+    // no las pinta como "Falta en:", ver PrimerosPasos.tsx); `faltantes` sigue listandolas para quien las consuma.
+    detalle:
+      activas.length > 0
+        ? `${activas.length} sucursal(es) activa(s) de ${snapshot.sucursales.length} registrada(s)${snapshot.sucursales.length > activas.length ? ` (inactivas: ${lista(snapshot.sucursales.filter((b) => !b.activa).map((b) => b.nombre))})` : ""}.`
+        : "No hay ninguna sucursal activa: el agente y el storefront no tienen a donde mandar pedidos.",
     faltantes: snapshot.sucursales.filter((b) => !b.activa).map((b) => b.nombre),
     responsable: "dueno",
     pantalla: "sucursales",
@@ -187,9 +192,11 @@ export function buildOnboardingChecklist(snapshot: OnboardingSnapshot): Onboardi
     detalle:
       whatsapp.estado === "hecho"
         ? "Cada sucursal recibe mensajes por su propio número."
-        : snapshot.whatsappGeneral
-          ? `Solo hay un número general; sin número propio: ${lista(whatsapp.faltantes)}.`
-          : "Ningún número de WhatsApp conectado: el agente por WhatsApp real no recibe mensajes (la demo del widget no lo necesita). Requiere el número de cada sucursal y las credenciales de Meta.",
+        : whatsapp.faltantes.length < activas.length
+          ? `${activas.length - whatsapp.faltantes.length} de ${activas.length} sucursal(es) con número propio; sin número propio: ${lista(whatsapp.faltantes)}${snapshot.whatsappGeneral ? " (atendidas por el número general)" : ""}.`
+          : snapshot.whatsappGeneral
+            ? `Solo hay un número general; sin número propio: ${lista(whatsapp.faltantes)}.`
+            : "Ningún número de WhatsApp conectado: el agente por WhatsApp real no recibe mensajes (la demo del widget no lo necesita). Requiere el número de cada sucursal y las credenciales de Meta.",
     faltantes: whatsapp.faltantes,
     responsable: "meta",
     pantalla: "configuracion",

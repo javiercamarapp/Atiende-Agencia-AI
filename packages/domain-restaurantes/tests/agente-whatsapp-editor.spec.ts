@@ -19,7 +19,7 @@ describe("prompt PM: sin personalizar es el de siempre", () => {
   const prompt = previewPromptAgente(PM);
 
   it("conserva literal H3, H11, la lista de motivos, el saludo y los datos del negocio", () => {
-    expect(prompt).toContain("H3. Promociones solo para recoger: lunes 2x1 en tacos al pastor, solo para recoger, en Francisco de Montejo, Pensiones y Galerías. Nunca las prometa a domicilio.");
+    expect(prompt).toContain("H3. Promociones solo para recoger: lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales. Nunca las prometa a domicilio.");
     expect(prompt).toContain("H11. No cobre como extra lo incluido: las 9 salsas (roja, verde, mexicana, guacamolera, limones, crema de ajo, cebolla con cilantro, piña y chile habanero) van sin costo.");
     expect(prompt).toContain(
       "Use escalar_a_humano (con customer_name si lo tiene) con estos motivos: queja, modificacion_platillo, transferencia, tiempos_entrega, pedido_grande, cancelacion_modificacion (pedido ya confirmado), reposicion_descuento, alergia_salud, zona_no_reconocida, zona_ambigua (el cliente insiste en otra sucursal para domicilio), producto_agotado, no_entiende, falla_sistema, otro (otro día, fuera de horario, lo inusual; facturación, empleo y eventos solo si insiste), cliente_lo_pide (pide hablar con una persona).",
@@ -27,7 +27,7 @@ describe("prompt PM: sin personalizar es el de siempre", () => {
     expect(prompt).toContain(
       "- Salsas incluidas sin costo (anótelas en notes si el cliente pide una en particular): roja, verde, mexicana, guacamolera, limones, crema de ajo, cebolla con cilantro, piña y chile habanero. Por omisión van solo las básicas (roja, verde, cebolla con cilantro y limones); si el cliente pide quitar alguna mándela en omit_default_complements. Las demás (crema de ajo, guacamolera, mexicana (pico de gallo) y habanero picado o soasado) van sin costo, pero solo si el cliente las pide: envíelas en requested_complements (no cambia el total). Con \"todas las salsas\" siga la aclaración del paso 5.",
     );
-    expect(prompt).toContain("- Promociones (solo recoger): lunes 2x1 en tacos al pastor, solo para recoger, en Francisco de Montejo, Pensiones y Galerías.");
+    expect(prompt).toContain("- Promociones (solo recoger): lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales.");
     expect(prompt).toContain('"Buenas tardes. Gracias por escribir a Los Taquitos de PM, le atiende el asistente virtual. ¿Es para recoger o a domicilio?"');
     expect(prompt).not.toContain("El negocio desactivó la escalación");
   });

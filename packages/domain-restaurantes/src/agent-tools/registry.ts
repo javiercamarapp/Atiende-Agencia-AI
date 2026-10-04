@@ -18,19 +18,25 @@ import { OrderValidationError } from "../errors.ts";
 import { DEFAULT_COMPLEMENTS, isTortillaChoice } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
-import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
-import { assertWebOrderRules } from "../storefront.ts";
+import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
+import { createOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
+import { assertCantidadesWeb, assertWebOrderRules } from "../storefront.ts";
+import { evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
+import { normalizePhone } from "../phone.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import {
   assertCanConfirm,
   assertCanCreate,
   FLOW_ROW_TTL_SECONDS,
   fingerprintOrder,
+  priceSignature,
+  OrderFlowViolationError,
   warnOrderFlowUnavailable,
   type OrderFlowContext,
   type OrderFlowRef,
   type OrderFlowSnapshot,
   type OrderFlowState,
+  type OrderFlowViolationCode,
 } from "./order-flow.ts";
 import type {
   CanalPedido,
@@ -80,6 +86,9 @@ export interface AgentToolContext {
   readonly phone: string | null;
   /** Sucursal fijada por el contexto (token de llamada / numero de WhatsApp de sucursal). */
   readonly lockedPropertyId?: string | null;
+  /** Sucursal del numero de WhatsApp por el que entro el chat. NO fija la sucursal del pedido (el cliente puede pedir en otra): solo
+   * identifica a quien le toca el aviso de `escalar_a_humano` / `registrar_contacto` (el callback queda con `property_id`, no solo para la org). */
+  readonly entryPropertyId?: string | null;
   /** Maquina de estados del pedido (order-flow.ts). Ausente = sin exigir cotizacion/confirmacion
    * (camino legado: voz con secreto global sin token de llamada). */
   readonly flow?: OrderFlowRef;
@@ -98,6 +107,8 @@ export interface AgentToolOutcome {
   readonly propertyId: string | null;
   /** Huella de la cotizacion vigente (solo cotizar_pedido con maquina de estados activa). */
   readonly quoteHash?: string;
+  /** Codigo de la violacion de la maquina de estados que el SERVIDOR rechazo a proposito (solo `executeAgentToolSafely`, con `{error}`). */
+  readonly rechazoDelFlujo?: OrderFlowViolationCode;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -337,13 +348,19 @@ interface RawItemInput {
   readonly tortilla?: unknown;
 }
 
-/** `lenient`: WhatsApp historicamente convierte una cantidad ausente/invalida en 1; voz deja pasar NaN
- * para que la validacion de dominio lo rechace. */
+/** Mensaje al modelo cuando una cantidad no es un entero positivo: accionable y en usted (el cliente lo lee parafraseado). */
+export const CANTIDAD_NO_NUMERICA_MENSAJE =
+  "Indique la cantidad con un número entero de piezas (por ejemplo 2). Para medio kilo o una fracción de kilo use el renglón de esa fracción (por ejemplo 'Pastor — 500 g'), no una cantidad decimal ni escrita con letras.";
+
+/** `lenient` (WhatsApp): una cantidad escrita como numero ("2") se acepta, pero una que no es un entero positivo ('medio', 'dos', 0, 1.5, ausente)
+ * se RECHAZA con un error accionable. Antes se convertia en silencio a 1 (`Number(x) || 1`): 'medio' kilo se cotizaba como 1 kg. Voz y web dejan
+ * pasar el valor para que la validacion de dominio lo rechace. */
 export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrderItemInput[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((entry) => {
     const item = (entry ?? {}) as RawItemInput;
-    const qty = typeof item.requested_quantity === "number" ? item.requested_quantity : lenient ? Number(item.requested_quantity) || 1 : Number(item.requested_quantity);
+    const qty = typeof item.requested_quantity === "number" ? item.requested_quantity : Number(item.requested_quantity);
+    if (lenient && (!Number.isInteger(qty) || qty < 1)) throw new OrderValidationError(CANTIDAD_NO_NUMERICA_MENSAJE);
     return {
       productId: typeof item.product_id === "string" ? item.product_id : undefined,
       productName: typeof item.product_name === "string" ? item.product_name : undefined,
@@ -524,7 +541,18 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   const canalOf = (raw: unknown) => (raw === "recoger" ? "recoger" : "domicilio");
 
   if (name === "cotizar_pedido") {
+    // Web: la sesion es la unidad de compra. Si ya registro un pedido, una cotizacion nueva NO lo pisa en
+    // silencio (si el cliente creyo que fallo la red y reenvia, nacerian dos pedidos para cocina): se avisa y se
+    // devuelve el pedido existente. WhatsApp y voz si encadenan pedidos en una misma conversacion.
+    if (ctx.channel === "web") {
+      const previo = await readFlow(repo, ctx, flow);
+      if (previo?.state === "creado") {
+        throw new OrderFlowViolationError("pedido_ya_creado", "Esta sesión ya tiene un pedido registrado. Revisa su estado en el rastreo en vez de hacer otro, o empieza un pedido nuevo.", previo.context?.orderId);
+      }
+    }
     const outcome = await dispatchTool(repo, ctx, name, input);
+    const quotedQuote = outcome.raw as OrderQuote & Partial<QuotePromotionInfo>;
+    const quotedPrices = priceSignature(quotedQuote.lines);
     const quoteHash = fingerprintOrder({
       branchSlug: String(input.branch_slug ?? ""),
       canal: canalOf(input.canal),
@@ -535,7 +563,14 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
       if (snap === null) return outcome; // base sin migrar: camino anterior
-      const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", { quoteHash, quotedAtMs: flowNow(flow), quotedTurn: flow.turn });
+      const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", {
+        quoteHash,
+        quotedAtMs: flowNow(flow),
+        quotedTurn: flow.turn,
+        quotedPrices,
+        quotedTotal: quotedQuote.total,
+        quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
+      });
       if (res === "written") return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash }, quoteHash };
       if (res === "unavailable") return outcome;
     }
@@ -580,7 +615,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   if (!claimed) throw new OrderValidationError(CONFLICT_MESSAGE);
 
   try {
-    const outcome = await dispatchTool(repo, ctx, name, input);
+    const outcome = await dispatchTool(repo, ctx, name, input, claimed.context.quotedPrices);
     await writeFlow(repo, ctx, flow, claimed.version, "creado", { ...claimed.context, orderId: outcome.orderId ?? undefined });
     return outcome;
   } catch (err) {
@@ -594,7 +629,14 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   }
 }
 
-async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
+async function dispatchTool(
+  repo: RestaurantesRepository,
+  ctx: AgentToolContext,
+  name: string,
+  input: Record<string, unknown>,
+  /** Huella de precios que el cliente confirmo (solo crear_pedido con maquina de estados activa). */
+  expectedPrices?: string,
+): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
   const lenient = ctx.channel === "whatsapp";
@@ -678,6 +720,7 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
     case "cotizar_pedido": {
       const branchSlug = String(input.branch_slug ?? "");
       await assertBranchAllowed(repo, ctx, branchSlug);
+      if (ctx.channel === "web") assertCantidadesWeb(toRequestedItems(input.items, lenient).map((i) => i.requestedQuantity));
       const quote = await quoteOrder(repo, {
         organizationId,
         branchSlug,
@@ -704,7 +747,23 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
       } else if (ctx.lockedPropertyId) {
         throw new OrderValidationError("Esta llamada está fijada a una sucursal; indica branch_slug.");
       }
-      const order = await createOrder(repo, createInput);
+      let order: Order;
+      try {
+        order = await createOrder(repo, createInput, {
+          beforePersist: async (prepared) => {
+            // El precio lo fija SIEMPRE el catalogo vigente, pero el cliente solo acepto los precios que vio: si
+            // cambiaron entre confirmar y crear, se pide re-cotizar en vez de cobrar un total distinto.
+            if (expectedPrices && priceSignature(prepared.orderItems) !== expectedPrices) {
+              throw new OrderFlowViolationError("precio_cambio", "Los precios del menú cambiaron después de que confirmaste. Vuelve a revisar tu pedido para ver el total actualizado.");
+            }
+            // Pedido grande (decision de PM, 2-oct): lo hace cumplir el SERVIDOR aunque el modelo olvide escalar.
+            if (ctx.channel !== "web") await assertNoEsPedidoGrande(repo, prepared);
+          },
+        });
+      } catch (err) {
+        if (err instanceof PedidoGrandeRetenidoError) return retenerPedidoGrande(repo, ctx, createInput, err);
+        throw err;
+      }
       return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
     }
     case "registrar_contacto":
@@ -713,7 +772,7 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
       const esEscalada = def.name === "escalar_a_humano";
       await registerCallbackRequest(repo, {
         organizationId,
-        propertyId: ctx.lockedPropertyId ?? null,
+        propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
         customerName: String(input.customer_name ?? "Cliente"),
         customerPhone: ctx.phone,
         reason: esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined,
@@ -725,6 +784,47 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
   }
 }
 
+/** Lanza `PedidoGrandeRetenidoError` si el pedido ya cotizado supera el umbral de pedido grande de PM. Solo organizaciones con
+ * perfil `taqueria_pm` y con el motivo `pedido_grande` encendido; sin configuracion (base sin migrar) no aplica. */
+async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: PreparedOrder): Promise<void> {
+  const config = await repo.findWhatsAppAgentConfig(prepared.payload.organizationId, prepared.branch.propertyId);
+  if (!config || config.perfil !== "taqueria_pm" || (config.escalationReasonsOff ?? []).includes("pedido_grande")) return;
+  const pesoKg = pesoTotalKg(prepared.orderItems);
+  const cliente = await repo.findCustomerByPhone(prepared.payload.organizationId, normalizePhone(prepared.payload.customerPhone));
+  const motivo = evaluarPedidoGrande({
+    total: prepared.total,
+    pesoKg,
+    pagaEfectivo: prepared.payload.paymentMethod === "efectivo",
+    sinHistorial: !cliente || cliente.orderCount === 0,
+  });
+  if (!motivo) return;
+  const resumen = resumenPedidoGrande({ motivo, total: prepared.total, pesoKg, items: prepared.orderItems, canal: prepared.payload.canal, paymentMethod: prepared.payload.paymentMethod });
+  throw new PedidoGrandeRetenidoError(motivo, prepared.total, pesoKg, resumen);
+}
+
+/** En vez de crear el pedido: deja el aviso `escalada:pedido_grande` (con el resumen) para que la sucursal lo confirme y contacte al
+ * cliente. El resultado al modelo NO es un error: no marca fallo de herramienta ni sube al modelo caro. */
+async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolContext, input: CreateOrderInput, retenido: PedidoGrandeRetenidoError): Promise<AgentToolOutcome> {
+  const branch = await repo.findBranch(ctx.organizationId, { slug: input.branchSlug, name: input.branchName });
+  await registerCallbackRequest(repo, {
+    organizationId: ctx.organizationId,
+    propertyId: ctx.lockedPropertyId ?? branch?.propertyId ?? null,
+    customerName: input.customerName,
+    customerPhone: input.customerPhone,
+    reason: "escalada:pedido_grande",
+    message: retenido.resumen,
+    source: ctx.channel === "voz" ? "voice" : "whatsapp",
+  });
+  const result = {
+    pedido_grande: true,
+    escalado: true,
+    estado: "por_confirmar_por_la_sucursal",
+    mensaje:
+      "Este pedido supera el umbral de pedido grande, así que NO se mandó a cocina todavía: ya se avisó a la sucursal con el resumen para que lo confirme y contacte al cliente. Dígale al cliente, de usted, que la sucursal lo contactará para confirmar su pedido; no le prometa hora ni le diga que ya está en preparación, y no vuelva a llamar crear_pedido.",
+  };
+  return { result, raw: result, orderId: null, propertyId: null };
+}
+
 /**
  * Variante para turnos dentro de una transaccion compartida (WhatsApp): SAVEPOINT propio por tool
  * call y errores de negocio convertidos en una respuesta `{error}` normal, nunca en una
@@ -734,6 +834,11 @@ export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: 
   try {
     return await repo.runWithRowSavepoint(() => invokeAgentTool(repo, ctx, name, input));
   } catch (err) {
-    return { result: { error: err instanceof OrderValidationError ? err.message : "Error interno al ejecutar la herramienta" }, orderId: null, propertyId: null };
+    return {
+      result: { error: err instanceof OrderValidationError ? err.message : "Error interno al ejecutar la herramienta" },
+      orderId: null,
+      propertyId: null,
+      ...(err instanceof OrderFlowViolationError ? { rechazoDelFlujo: err.code } : {}),
+    };
   }
 }

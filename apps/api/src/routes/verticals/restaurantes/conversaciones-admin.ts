@@ -33,6 +33,7 @@ import {
   NOTA_MAX,
   RESPUESTA_MAX,
   SinNumeroWhatsappError,
+  VentanaWhatsappCerradaError,
   STAFF_INVITE_ROLES,
   calcularCobertura,
   calcularEscalacion,
@@ -75,6 +76,7 @@ function aHttp(err: unknown): never {
   if (err instanceof ConversacionesNoDisponibleError) throw Errors.serviceUnavailable(err.message);
   if (err instanceof HandoffYaTomadoError) throw Errors.conflict(err.message);
   if (err instanceof SinNumeroWhatsappError) throw Errors.conflict(err.message);
+  if (err instanceof VentanaWhatsappCerradaError) throw Errors.conflict(err.message);
   if (err instanceof ConversacionesConflictoError) throw Errors.conflict(err.message);
   if (err instanceof ConversacionesRechazadaError) throw Errors.forbidden(err.message);
   if (err instanceof ConversacionesValidacionError) throw Errors.validation(err.message);

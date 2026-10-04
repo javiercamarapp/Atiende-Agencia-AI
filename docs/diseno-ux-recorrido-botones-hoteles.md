@@ -24,6 +24,47 @@ Alcance: `apps/web/src/verticals/hoteles/**` en la rama `feat/front-ds-v2-hotele
 | Login: "Continuar con correo" | `iniciarMagicLink(api, correo, "hoteles")`; validacion de correo, error por `notify`, estado "enviado" con "Usar otro correo" | CABLEADO |
 | Login: Terminos de Servicio / Aviso de Privacidad | enlaces a `/terminos` y `/privacidad` | CABLEADO |
 
+## Actualizacion UNI-C gestion (paginas de gestion de hoteles al estandar Likida)
+
+Alcance: `Revenue`, `RevenueHerramientas`, `Pl`, `Cfdi`, `CfdiListado`, `Fraude`, `Identidad`, `Privacidad`, `Reputacion`, `Agentes`, `Aprobaciones` y `Grupos` (`apps/web/src/verticals/hoteles/pages/`). **Cero cambios de logica de negocio y de llamadas de red**: cada control sigue llegando a la misma funcion de `lib/*-client.ts` y a la misma ruta. Lo que cambia es el contenedor (dialogo en lugar de formulario en linea), la confirmacion previa y la pantalla que la contiene.
+
+**Las tablas por pagina de abajo son la salida historica del script de PR-6 (lineas y conteos de ANTES de este cambio).** Para estas 12 paginas las lineas ya no coinciden: varias secciones se movieron a `components/{revenue,grupos,identidad,privacidad}/*` y `components/CfdiComprobantes.tsx`. Esta seccion es la fuente vigente de lo que cambio.
+
+### Medicion (mismas 12 paginas, `origin/main` antes vs. esta rama)
+
+| Patron | Antes | Despues |
+|---|---|---|
+| `<h1>` sueltos | 10 | 0 (todas con `PageHeader`, que pinta el unico `<h1>`) |
+| `<label>`/`<Label>` crudos | 98 | 0 (103 `FormField`) |
+| `window.prompt` | 21 | 0 (`useConfirm`: Cancelar/Escape nunca ejecutan) |
+| `toast.` directo | 42 | 0 (`notify.*`) |
+| `<Table>` crudo | 4 | 2 (las dos tablas del estado de resultados USALI de `Pl`, que son un calculo con totales y no un listado) |
+| `DataTable` | 8 | 21 |
+| `FormDialog` (altas y ediciones) | 0 | 17 |
+| llamadas a `toLocale*String` (baseline del guard de formato) | 108 | 100 (`formato-unico-baseline.json`) |
+| Lineas de la pagina mas grande | 976 (`Privacidad`) | 505 (`Agentes`); `Revenue` 751 -> 198, `Identidad` 792 -> 58, `Privacidad` 976 -> 93, `Grupos` 598 -> 385 |
+
+### Controles nuevos o con comportamiento distinto
+
+| Pagina | Control | Antes | Ahora | Prueba |
+|---|---|---|---|---|
+| Fraude | Confirmar / Descartar alerta | `window.prompt` de nota | `useConfirm` con nota opcional (confirmar fraude en tono de peligro) | `hoteles-fraude-page` |
+| CFDI (hotel y folio) | Cancelar CFDI | formulario en linea en la tarjeta | `FormDialog` compartido (`CfdiCancelarDialog`); Cerrar/Escape no cancelan; el error del PAC se ve dentro del dialogo | `hoteles-cfdi-listado-page`, `hoteles-cfdi-page` |
+| P&L | Registrar gasto | formulario que se despliega | `FormDialog` (la fecha por defecto se recarga cada vez que se abre) | `hoteles-pl-page` |
+| Revenue | Registrar backtest, Registrar evento, Capturar tarifa | formularios en linea | tres `FormDialog` con la validacion dentro del dialogo | `hoteles-revenue-page` |
+| Revenue | Aprobar recomendacion; Promover a autopilot | ejecutaba directo | piden confirmacion (Volver/Escape no escriben) | `hoteles-revenue-page` |
+| Reputacion | Capturar resena; Ver detalle / responder | formulario y panel en linea | `FormDialog` de captura y de detalle | `hoteles-reputacion-page` (spec nuevo; antes no habia ninguno) |
+| Reputacion | Responder; Ejecutar / Descartar accion sugerida | ejecutaba directo | piden confirmacion | `hoteles-reputacion-page` |
+| Agentes | Editar politica; Nueva plantilla | formulario en linea | `FormDialog` | `hoteles-agentes-page` |
+| Aprobaciones | Nueva solicitud | pestana "Nueva solicitud" | boton en la cabecera que abre `FormDialog` | `hoteles-agentes-page` |
+| Grupos | Nueva cotizacion; Agregar huesped | pestana y formulario en linea | `FormDialog` (`NuevaCotizacionDialog`, `RoomingCard`) | `hoteles-grupos-page` |
+| Identidad | Capturar identidad | formulario en linea | `FormDialog` (`CapturaIdentidadDialog`) | `hoteles-identidad-page` |
+| Identidad | Revelar, Bloquear, Solicitar purga, Retencion legal (3 pasos), Acceso excepcional, Aprobar/Rechazar purga, Marcar como reportado | `window.prompt` | `useConfirm`; motivos de 10+ caracteres validados en el dialogo | `hoteles-identidad-page` |
+| Privacidad | Publicar version nueva del aviso; Registrar solicitud ARCO; Enlace «Mis datos»; Reportar incidente | formularios en linea | `FormDialog` | `hoteles-identidad-page` |
+| Privacidad | Revocar consentimiento, avanzar/prorrogar ARCO, contener/notificar/cerrar incidente, liberar retencion, decidir acceso excepcional | `window.prompt` | `useConfirm` (en cadena donde eran varios prompts) | `hoteles-identidad-page` |
+
+Fuera de esta tabla no cambia ningun control: los que no se nombran mantienen el efecto de la tabla historica de abajo.
+
 ## Paginas (salida completa del script)
 
 

@@ -99,5 +99,27 @@ describe("ConversacionesPage (restaurantes)", () => {
     click(Array.from(rendered.container.querySelectorAll("button")).find((b) => b.textContent === "Tomar conversación")!);
     await esperar();
     expect(rendered.container.textContent).toContain("ya la tiene otra persona");
+    // QA-restaurantes-R1-botones-04: un fallo se anuncia como alerta (no como el estado de exito).
+    const alerta = rendered.container.querySelector('[role="alert"]');
+    expect(alerta?.textContent).toContain("ya la tiene otra persona");
+    expect(rendered.container.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it("un exito se anuncia como estado (role=status), no como alerta", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).endsWith("/tomar")) return json({ handoffId: "h-1", estado: "tomada" }, 201);
+      if (String(url).includes("/conversaciones/whatsapp/c-1")) {
+        return json({ canal: "whatsapp", conversationId: "c-1", transcripcionDisponible: true, mensajes: [], handoff: null, notas: [] });
+      }
+      return json({ disponible: true, total: 1, nextOffset: null, cobertura: COBERTURA, items: [{ ...ITEM, estado: "agente", handoffId: null, escalacion: null }] });
+    });
+    rendered = renderComponent(<ConversacionesPage {...CTX} />);
+    await esperar();
+    click(rendered.container.querySelector("ul[aria-label='Conversaciones'] button")!);
+    await esperar();
+    click(Array.from(rendered.container.querySelectorAll("button")).find((b) => b.textContent === "Tomar conversación")!);
+    await esperar();
+    expect(rendered.container.querySelector('[role="status"]')?.textContent).toContain("La conversación es tuya");
+    expect(rendered.container.querySelector('[role="alert"]')).toBeNull();
   });
 });

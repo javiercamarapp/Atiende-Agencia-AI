@@ -221,9 +221,10 @@ describe("lo que el guion atribuye al agente esta en su prompt y en sus datos", 
     expect(prompt).toContain("CLIENTE RECURRENTE");
   });
 
-  it("los tiempos que promete el guion (60 a 75 min, pico 75 a 90) son los sembrados para T7", () => {
-    expect(data.agente_whatsapp.tiempo_entrega).toContain("60 a 75");
-    expect(data.agente_whatsapp.tiempo_entrega).toContain("75 a 90");
+  it("los tiempos que promete el guion (60 a 75 min, pico 75 a 90) son los sembrados para T7 (fila propia de T7; la de la organizacion lleva el dato del dueño)", () => {
+    const t7 = data.agente_whatsapp.tiempo_entrega_por_sucursal!.T7!;
+    expect(t7).toContain("60 a 75");
+    expect(t7).toContain("75 a 90");
     expect(guion).toContain("60 a 75");
     expect(guion).toContain("75 a 90");
   });

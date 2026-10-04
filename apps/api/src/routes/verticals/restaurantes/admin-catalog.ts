@@ -101,6 +101,12 @@ interface CategoryBody {
   readonly displayOrder?: unknown;
 }
 
+/** Booleano ESTRICTO: "false" (string) o 0 no se coercionan a true (QA-restaurantes-R1-features-04). */
+function requireBoolean(value: unknown, field: string): boolean {
+  if (typeof value !== "boolean") throw Errors.validation(`${field}: se esperaba true o false.`);
+  return value;
+}
+
 interface ProductBody {
   readonly categoryId?: unknown;
   readonly name?: unknown;
@@ -192,8 +198,8 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
     const description = optionalNullableString(raw.description, "description", 2000);
     const imageUrl = optionalNullableString(raw.imageUrl, "imageUrl", 2000);
     const categoryId = optionalCategoryId(raw.categoryId, raw.categoryId !== undefined);
-    const isPopular = raw.isPopular === undefined ? undefined : Boolean(raw.isPopular);
-    const isAvailable = raw.isAvailable === undefined ? undefined : Boolean(raw.isAvailable);
+    const isPopular = raw.isPopular === undefined ? undefined : requireBoolean(raw.isPopular, "isPopular");
+    const isAvailable = raw.isAvailable === undefined ? undefined : requireBoolean(raw.isAvailable, "isAvailable");
     const displayOrder = optionalDisplayOrder(raw.displayOrder);
     const searchKeywords = optionalSearchKeywords(raw.searchKeywords);
 
@@ -232,8 +238,8 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
       description: optionalNullableString(raw.description, "description", 2000),
       imageUrl: optionalNullableString(raw.imageUrl, "imageUrl", 2000),
       categoryId: optionalCategoryId(raw.categoryId, raw.categoryId !== undefined),
-      isPopular: raw.isPopular === undefined ? undefined : Boolean(raw.isPopular),
-      isAvailable: raw.isAvailable === undefined ? undefined : Boolean(raw.isAvailable),
+      isPopular: raw.isPopular === undefined ? undefined : requireBoolean(raw.isPopular, "isPopular"),
+      isAvailable: raw.isAvailable === undefined ? undefined : requireBoolean(raw.isAvailable, "isAvailable"),
       displayOrder: optionalDisplayOrder(raw.displayOrder),
       searchKeywords: optionalSearchKeywords(raw.searchKeywords),
     };
@@ -292,7 +298,7 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
     const raw = await readJsonCapped<BranchAvailabilityBody>(c.req.raw, 4 * 1024);
     const existing = await repo.getBranchProductState(propertyId, productId);
     const price = raw.price !== undefined ? requirePrice(raw.price) : (existing?.price ?? product.price);
-    const isAvailable = raw.isAvailable !== undefined ? Boolean(raw.isAvailable) : (existing?.isAvailable ?? true);
+    const isAvailable = raw.isAvailable !== undefined ? requireBoolean(raw.isAvailable, "isAvailable") : (existing?.isAvailable ?? true);
 
     const state = await conAvisoOnboardingListo(deps, c, organizationId, () => repo.upsertBranchProductState(propertyId, productId, price, isAvailable));
     logEvent(c, "info", "restaurantes_admin_producto_disponibilidad_sucursal_actualizada", { actorUserId: c.get("userId"), organizationId, propertyId, productId, price, isAvailable });

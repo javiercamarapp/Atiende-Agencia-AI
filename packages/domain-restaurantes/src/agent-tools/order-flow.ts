@@ -30,6 +30,17 @@ export interface OrderFlowContext {
   readonly quotedAtMs: number;
   /** Marcador del turno del cliente en que se cotizo (null si el canal no tiene noción de turno). */
   readonly quotedTurn: string | null;
+  /**
+   * Huella de los PRECIOS que el cliente vio al cotizar (ver `priceSignature`). `fingerprintOrder` no incluye
+   * precios a proposito (identifica el carrito); esta huella es la que impide cobrar un total distinto al que se
+   * confirmo si el catalogo cambia entre confirmar y crear. Ausente en filas guardadas antes de este campo.
+   */
+  readonly quotedPrices?: string;
+  /** Total a pagar de la cotizacion vigente y cifras legitimas que el cliente vio (precios, importes, subtotal, descuento).
+   * Lo lee el agente de WhatsApp en el turno SIGUIENTE para que su guardia de cifras siga corrigiendo un total alucinado
+   * aunque ese turno no llame ninguna herramienta. Ausente en filas guardadas antes de este campo (guardia entonces solo en el turno que cotiza). */
+  readonly quotedTotal?: number;
+  readonly quotedAmounts?: readonly number[];
   readonly confirmedAtMs?: number;
   readonly claimedAtMs?: number;
   readonly orderId?: string;
@@ -59,12 +70,15 @@ export type OrderFlowViolationCode =
   | "confirmacion_mismo_turno"
   | "hash_no_coincide"
   | "pedido_ya_creado"
-  | "pedido_en_proceso";
+  | "pedido_en_proceso"
+  | "precio_cambio";
 
 export class OrderFlowViolationError extends OrderValidationError {
   constructor(
     readonly code: OrderFlowViolationCode,
     message: string,
+    /** Pedido ya registrado en este flujo (solo `pedido_ya_creado` con el id conocido). */
+    readonly orderId?: string,
   ) {
     super(message);
     this.name = "OrderFlowViolationError";
@@ -91,6 +105,19 @@ export function fingerprintOrder(input: {
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
 
+/**
+ * Huella de precios de un pedido: producto + precio unitario + cantidad de cada renglon (incluida la doble porcion
+ * de salsa, que es un renglon cobrado). Se calcula igual sobre los renglones de la cotizacion y sobre los del
+ * pedido ya resuelto contra el catalogo, asi que un cambio de precio entre ambos momentos las hace distintas.
+ */
+export function priceSignature(lines: readonly { readonly productId?: string; readonly id?: string; readonly price: number; readonly quantity: number }[]): string {
+  const canonical = lines
+    .map((l) => `${l.productId ?? l.id ?? "?"}|${Math.round(l.price * 100)}|${l.quantity}`)
+    .sort()
+    .join(";");
+  return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
+}
+
 export interface FlowCheckArgs {
   readonly now: number;
   readonly turn: string | null;
@@ -110,7 +137,7 @@ function assertFresh(ctx: OrderFlowContext, now: number): void {
 export function assertCanConfirm(snap: OrderFlowSnapshot, args: FlowCheckArgs): OrderFlowContext {
   const ctx = snap.context;
   if (snap.state !== "cotizado" || !ctx) {
-    if (snap.state === "creado") throw new OrderFlowViolationError("pedido_ya_creado", "El pedido ya quedó registrado. Si el cliente quiere otro, cotiza uno nuevo con cotizar_pedido.");
+    if (snap.state === "creado") throw new OrderFlowViolationError("pedido_ya_creado", "El pedido ya quedó registrado. Si el cliente quiere otro, cotiza uno nuevo con cotizar_pedido.", ctx?.orderId);
     if (snap.state === "confirmado" || snap.state === "creando") return ctx!; // idempotente: ya confirmado
     throw new OrderFlowViolationError("sin_cotizacion", "No hay una cotización vigente. Llama primero cotizar_pedido, repite el resumen completo y espera la respuesta del cliente.");
   }
@@ -134,7 +161,7 @@ export function assertCanCreate(snap: OrderFlowSnapshot, args: FlowCheckArgs): O
     throw new OrderFlowViolationError("sin_cotizacion", "No se puede crear el pedido: falta una cotización vigente. Llama cotizar_pedido, repite el resumen y espera la confirmación del cliente.");
   }
   if (snap.state === "creado") {
-    throw new OrderFlowViolationError("pedido_ya_creado", "Este pedido ya quedó registrado; no lo crees otra vez. Repite el resumen al cliente.");
+    throw new OrderFlowViolationError("pedido_ya_creado", "Este pedido ya quedó registrado; no lo crees otra vez. Repite el resumen al cliente.", ctx.orderId);
   }
   if (snap.state === "creando" && args.now - (ctx.claimedAtMs ?? 0) <= CLAIM_STALE_MS) {
     throw new OrderFlowViolationError("pedido_en_proceso", "El pedido se está registrando en este momento; espera un momento antes de reintentar.");

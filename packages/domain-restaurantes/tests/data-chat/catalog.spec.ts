@@ -256,7 +256,7 @@ describe("motor + catálogo de restaurantes (de punta a punta, con guion)", () =
     expect(a.status).toBe("ok");
     expect(a.text).toBe("Vendiste $2,480.75 MXN en 20 pedidos esta semana.");
     expect(a.blocks[0]!.chart).toEqual({ kind: "line", x: "periodo", y: "ventas" });
-    expect(a.sources[0]).toMatchObject({ source: "Pedidos de restaurantes (sin cancelados)", scopeLabel: "todas tus sucursales" });
+    expect(a.sources[0]).toMatchObject({ source: "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)", scopeLabel: "todas tus sucursales" });
     expect(a.sources[0]!.periodLabel).toContain("28 sep al 29 sep 2026");
   });
 
