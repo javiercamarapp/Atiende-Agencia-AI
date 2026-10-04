@@ -186,6 +186,8 @@ interface InvoiceRawRow {
   ieps_centavos?: string | null;
   estado_sat?: EstadoSatCfdi;
   estado_sat_verificado_en?: string | Date | null;
+  // D-P3-23 (migración 026): ausente en una base sin migrar.
+  excluido_por_revision?: boolean;
 }
 
 const numOrNull = (v: string | number | null | undefined): number | null => (v === null || v === undefined ? null : Number(v));
@@ -228,6 +230,7 @@ function mapInvoice(row: InvoiceRawRow): InvoiceRecord {
     iepsCentavos: numOrNull(row.ieps_centavos),
     estadoSat: row.estado_sat ?? "pendiente",
     estadoSatVerificadoEn: row.estado_sat_verificado_en === null || row.estado_sat_verificado_en === undefined ? null : String(row.estado_sat_verificado_en instanceof Date ? row.estado_sat_verificado_en.toISOString() : row.estado_sat_verificado_en),
+    excluidoPorRevision: row.excluido_por_revision === true,
   };
 }
 
@@ -623,12 +626,12 @@ export class PostgresDespachosRepository implements DespachosRepository {
     return rows.map(mapInvoice);
   }
 
-  async findInvoiceByFolioFiscal(organizationId: string, folioFiscal: string): Promise<InvoiceRecord | null> {
-    const { rows } = await this.db.query<InvoiceRawRow>(`select * from despachos.invoice where organization_id = $1 and folio_fiscal = $2;`, [organizationId, folioFiscal]);
+  async findInvoiceByFolioFiscal(propertyId: string, folioFiscal: string): Promise<InvoiceRecord | null> {
+    const { rows } = await this.db.query<InvoiceRawRow>(`select * from despachos.invoice where property_id = $1 and folio_fiscal = $2;`, [propertyId, folioFiscal]);
     return rows[0] ? mapInvoice(rows[0]) : null;
   }
 
-  async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string }): Promise<readonly InvoiceRecord[]> {
+  async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string; readonly incluirExcluidos?: boolean }): Promise<readonly InvoiceRecord[]> {
     // Filtro por período (migración 006, corregido — ver repository.ts): resuelto
     // directo contra la columna real `fecha` (fecha de emisión del CFDI), nunca
     // contra el jsonb `diot.proveedoresReportables` (que solo existe para un CFDI
@@ -645,8 +648,21 @@ export class PostgresDespachosRepository implements DespachosRepository {
       params.push(filter.periodo);
       conditions.push(`to_char(fecha, 'YYYY-MM') = $${params.length}`);
     }
-    const { rows } = await this.db.query<InvoiceRawRow>(`select * from despachos.invoice where ${conditions.join(" and ")} order by created_at desc;`, params);
-    return rows.map(mapInvoice);
+    const consultar = async (excluirRechazados: boolean): Promise<readonly InvoiceRecord[]> => {
+      const where = excluirRechazados ? [...conditions, "not excluido_por_revision"] : conditions;
+      const { rows } = await this.db.query<InvoiceRawRow>(`select * from despachos.invoice where ${where.join(" and ")} order by created_at desc;`, params);
+      return rows.map(mapInvoice);
+    };
+    if (filter?.incluirExcluidos === true) return consultar(false);
+    // D-P3-23 (migración 026): los agregados NO cuentan un CFDI cuya revisión se rechazó. La columna no existe en la base sin migrar (42703): con SAVEPOINT
+    // (esta lectura corre dentro de la transacción compartida del request) se cae a la consulta de siempre, sin abortar la transacción.
+    return runWithSavepointFallback<readonly InvoiceRecord[]>({
+      session: this.db,
+      savepointName: "sp_despachos_invoice_excluidos",
+      primary: () => consultar(true),
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: () => consultar(false),
+    });
   }
 
   async listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean; readonly direccion?: DireccionCfdi }): Promise<InvoicePage> {

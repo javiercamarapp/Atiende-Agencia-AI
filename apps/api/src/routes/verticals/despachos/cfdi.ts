@@ -459,7 +459,7 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const ids = [...new Set(rep.pagos.flatMap((p) => p.documentos.map((d) => d.idDocumento)))].filter((id) => UUID_RE.test(id));
     const facturas = new Map<string, FacturaLigable>();
     for (const id of ids) {
-      const inv = await repo.findInvoiceByFolioFiscal(organizationId, id);
+      const inv = await repo.findInvoiceByFolioFiscal(propertyId, id);
       if (!inv || inv.propertyId !== propertyId) continue;
       facturas.set(id, {
         folioFiscal: inv.folioFiscal,

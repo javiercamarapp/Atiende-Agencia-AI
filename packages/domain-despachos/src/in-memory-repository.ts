@@ -38,7 +38,7 @@ import type { ClosePeriod, CloseTask } from "./cierre-mensual/types.ts";
 
 export class InMemoryDespachosRepository implements DespachosRepository {
   private readonly invoices = new Map<string, InvoiceRecord>();
-  private readonly invoiceByOrgFolio = new Map<string, string>(); // key: organizationId:folioFiscal -> invoiceId
+  private readonly invoiceByOrgFolio = new Map<string, string>(); // key: propertyId:folioFiscal -> invoiceId (D-P3-18: unico por cliente)
   private readonly impuestosPorInvoice = new Map<string, readonly ImpuestoCfdiRecord[]>();
   private readonly reviews = new Map<string, InvoiceReviewRecord>();
   private readonly deadlines = new Map<string, FiscalDeadlineRecord>();
@@ -176,7 +176,7 @@ export class InMemoryDespachosRepository implements DespachosRepository {
   // ---- CFDI ----
 
   async insertInvoice(input: NewInvoiceInput): Promise<InvoiceRecord> {
-    const key = `${input.organizationId}:${input.folioFiscal}`;
+    const key = `${input.propertyId}:${input.folioFiscal}`;
     if (this.invoiceByOrgFolio.has(key)) {
       throw new InvoiceAlreadyExistsError(input.folioFiscal);
     }
@@ -240,18 +240,19 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     return resultado;
   }
 
-  async findInvoiceByFolioFiscal(organizationId: string, folioFiscal: string): Promise<InvoiceRecord | null> {
-    const id = this.invoiceByOrgFolio.get(`${organizationId}:${folioFiscal}`);
+  async findInvoiceByFolioFiscal(propertyId: string, folioFiscal: string): Promise<InvoiceRecord | null> {
+    const id = this.invoiceByOrgFolio.get(`${propertyId}:${folioFiscal}`);
     return id ? (this.invoices.get(id) ?? null) : null;
   }
 
-  async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string }): Promise<readonly InvoiceRecord[]> {
+  async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string; readonly incluirExcluidos?: boolean }): Promise<readonly InvoiceRecord[]> {
     // Filtro por período (migración 006, corregido — ver repository.ts): resuelto
     // directo contra `fecha` (fecha real de emisión del CFDI, "YYYY-MM-DD"), nunca
     // contra el jsonb `diot.proveedoresReportables` (solo existe para un CFDI tipo
     // 'I' con subtotal>0) ni contra `createdAt` (fecha de ingesta).
     return [...this.invoices.values()]
       .filter((i) => i.propertyId === propertyId)
+      .filter((i) => filter?.incluirExcluidos === true || i.excluidoPorRevision !== true)
       .filter((i) => filter?.requiresHumanReview === undefined || i.requiresHumanReview === filter.requiresHumanReview)
       .filter((i) => filter?.periodo === undefined || i.fecha.slice(0, 7) === filter.periodo)
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
@@ -306,6 +307,11 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     if (review.status !== "pendiente") throw new InvoiceReviewAlreadyResolvedError();
     const updated: InvoiceReviewRecord = { ...review, status, decisionNote, resolvedBy, resolvedAt: new Date().toISOString() };
     this.reviews.set(reviewId, updated);
+    // Espejo del trigger `invoice_review_exclusion` (migración 026): rechazar marca el CFDI y los agregados lo excluyen.
+    if (status === "rechazado") {
+      const invoice = this.invoices.get(review.invoiceId);
+      if (invoice) this.invoices.set(invoice.id, { ...invoice, excluidoPorRevision: true });
+    }
     return updated;
   }
 

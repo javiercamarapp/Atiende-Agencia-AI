@@ -118,6 +118,28 @@ describe("construirPolizaDesdeCfdi", () => {
     expect(r.ok && r.poliza.movimientos[0]?.cuenta).toBe("6020200");
   });
 
+  it("D-P3-14: la clasificación fina vigente manda sobre la categoría gruesa (equipo de cómputo, sin clasificar en el CFDI)", () => {
+    const r = construirPolizaDesdeCfdi(cfdi({ direccion: "recibido", categoria: "sin_clasificar" }), { categoria: "equipo_computo" });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.poliza.movimientos.map((m) => [m.cuenta, m.debeCentavos, m.haberCentavos])).toEqual([["1600000", 100000, 0], ["2600300", 16000, 0], ["2010000", 0, 116000]]);
+  });
+
+  it("D-P3-14: la cuenta de la corrección del despacho reemplaza la de cargo del mapeo", () => {
+    const r = construirPolizaDesdeCfdi(cfdi({ direccion: "recibido" }), { categoria: "mantenimiento", cuenta: "6020999" });
+    expect(r.ok && r.poliza.movimientos[0]?.cuenta).toBe("6020999");
+  });
+
+  it("D-P3-14: una clasificación gruesa histórica se trata como la categoría gruesa de siempre", () => {
+    const r = construirPolizaDesdeCfdi(cfdi({ direccion: "recibido", categoria: "sin_clasificar" }), { categoria: "gasto_operativo" });
+    expect(r.ok && r.poliza.movimientos[0]?.cuenta).toBe("6020200");
+  });
+
+  it("D-P3-23: un CFDI cuya revisión se rechazó NO se contabiliza", () => {
+    const r = construirPolizaDesdeCfdi(cfdi({ direccion: "recibido", excluidoPorRevision: true }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.motivo).toMatch(/revisión .* rechazada/);
+  });
+
   it.each([
     ["cancelado ante el SAT", { estadoSat: "cancelado" as const }, /cancelado/],
     ["sentido indeterminado", { direccion: "indeterminado" as const }, /emitido o recibido/],

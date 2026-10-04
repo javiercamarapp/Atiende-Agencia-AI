@@ -1,6 +1,7 @@
 // D-24 -- validación de una póliza de entrada y armado de la póliza de un CFDI persistido. Puro: sin I/O, sin SAT/PAC.
 // Todo en centavos enteros; el cuadre (debe = haber) se exige aquí Y en la función SQL de la migración 020.
 import { DEFAULT_MAPPINGS, mappingKey } from "../bookkeeping/catalogo.ts";
+import { CATEGORIAS_GRUESAS } from "../bookkeeping/clasificacion-cfdi.ts";
 import type { CategoriaContable, InvoiceRecord } from "../types.ts";
 import { CUENTA_CLIENTES, CUENTA_DEVOLUCIONES_VENTAS, CUENTA_INGRESOS_SERVICIOS, CUENTA_IVA_TRASLADADO } from "./catalogo-base.ts";
 import { TIPOS_POLIZA } from "./types.ts";
@@ -81,6 +82,13 @@ const MAPEO_POR_CATEGORIA: Readonly<Record<CategoriaContable, string | null>> = 
   sin_clasificar: null,
 };
 
+/** Clasificación vigente del CFDI (la última fila de `invoice_classification`): categoría (fina del catálogo de mapeos, o una gruesa histórica) y,
+ * si hay corrección con cuenta, la cuenta de cargo que reemplaza la del mapeo. */
+export interface ClasificacionParaPoliza {
+  readonly categoria: string;
+  readonly cuenta?: string | null;
+}
+
 export type ResultadoPolizaCfdi =
   | { readonly ok: true; readonly poliza: PolizaInput }
   | { readonly ok: false; readonly motivo: string };
@@ -94,9 +102,10 @@ export type ResultadoPolizaCfdi =
  * Cualquier otro (nómina, traslado, pago, nota de crédito recibida, categoría sin clasificar, sentido indeterminado) devuelve el motivo
  * para que el staff registre la póliza a mano. El cobro/pago (Bancos contra Clientes/Proveedores) es otra póliza y no se arma aquí.
  */
-export function construirPolizaDesdeCfdi(f: InvoiceRecord): ResultadoPolizaCfdi {
+export function construirPolizaDesdeCfdi(f: InvoiceRecord, clasificacion?: ClasificacionParaPoliza | null): ResultadoPolizaCfdi {
   const noAplica = (motivo: string): ResultadoPolizaCfdi => ({ ok: false, motivo });
   if (f.estadoSat === "cancelado") return noAplica("El CFDI está cancelado ante el SAT: no se contabiliza.");
+  if (f.excluidoPorRevision === true) return noAplica("La revisión de este CFDI fue rechazada: no se contabiliza.");
   if (f.direccion !== "emitido" && f.direccion !== "recibido") return noAplica("No se sabe si el CFDI es emitido o recibido: captura la ficha del cliente (RFC) y vuelve a ingerirlo.");
   if (f.totalCentavos == null || f.subtotalCentavos == null) return noAplica("El CFDI se ingirió antes del modelo completo (D-22) y no tiene montos en centavos: vuelve a cargar el XML.");
   if ((f.moneda ?? "MXN") !== "MXN") return noAplica("CFDI en moneda extranjera: la póliza requiere el tipo de cambio y se registra a mano.");
@@ -125,11 +134,15 @@ export function construirPolizaDesdeCfdi(f: InvoiceRecord): ResultadoPolizaCfdi 
     return { ok: true, poliza: { tipo: "diario", fecha: f.fecha, concepto: `Nota de crédito ${f.folioFiscal}`, movimientos } };
   }
   if (f.direccion === "recibido" && f.tipo === "I") {
-    const clave = MAPEO_POR_CATEGORIA[f.categoria];
+    // D-P3-14: la clasificación fina vigente (invoice_classification, ya con la corrección humana o la regla del despacho) manda; sin ella, la categoría
+    // gruesa de siempre. Una categoría gruesa en la clasificación (histórica) se trata como la gruesa.
+    const fina = clasificacion && !(CATEGORIAS_GRUESAS as readonly string[]).includes(clasificacion.categoria) ? clasificacion : null;
+    const clave = fina ? fina.categoria : MAPEO_POR_CATEGORIA[(clasificacion?.categoria as CategoriaContable | undefined) ?? f.categoria];
     const mapeo = clave ? DEFAULT_MAPPINGS[mappingKey("I", clave)] : undefined;
     if (!mapeo) return noAplica("La categoría del CFDI no tiene una cuenta de gasto que se pueda asignar sola (activo fijo, inversión, nómina o sin clasificar): regístrala a mano.");
     if (iva > 0 && !mapeo.ivaCargo) return noAplica("La categoría del CFDI no tiene cuenta de IVA acreditable: regístralo a mano.");
-    const movimientos: MovimientoPolizaInput[] = [{ cuenta: mapeo.cargo, concepto, debeCentavos: base, haberCentavos: 0 }];
+    const cuentaCargo = fina?.cuenta ?? mapeo.cargo;
+    const movimientos: MovimientoPolizaInput[] = [{ cuenta: cuentaCargo, concepto, debeCentavos: base, haberCentavos: 0 }];
     if (iva > 0 && mapeo.ivaCargo) movimientos.push({ cuenta: mapeo.ivaCargo, concepto: "IVA acreditable", debeCentavos: iva, haberCentavos: 0 });
     movimientos.push({ cuenta: mapeo.abono, concepto, debeCentavos: 0, haberCentavos: f.totalCentavos });
     return { ok: true, poliza: { tipo: "egreso", fecha: f.fecha, concepto, movimientos } };
