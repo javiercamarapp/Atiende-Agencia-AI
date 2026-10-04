@@ -24,6 +24,8 @@ import {
   MONEY_ROLES,
   ADMIN_ROLES,
   IdempotencyConflictError,
+  FolioCerradoError,
+  FolioCierreSaldoError,
   tryEnqueueGuestEmail,
   type ChargeConcept,
   type ChargeRecord,
@@ -164,6 +166,17 @@ function serializeFolio(deps: { id: string; status: string; reservationId: strin
 
 export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
+
+  // H-P3-01: UN solo lugar donde el rechazo de la base (folio cerrado / cierre con saldo distinto de cero, migracion
+  // 045) se vuelve un 409 legible, para cargos, descuentos, reversos, transferencias, split, pagos y cierre. Hono
+  // compone este `onError` por ruta; cualquier otro error se relanza al manejador global de la app.
+  app.onError((err, c) => {
+    if (err instanceof FolioCerradoError || err instanceof FolioCierreSaldoError) {
+      const conflict = Errors.conflict(err instanceof FolioCerradoError ? "El folio ya está cerrado: no admite más movimientos." : err.message);
+      return c.json({ code: conflict.code, message: conflict.message }, 409);
+    }
+    throw err;
+  });
 
   app.use("/hoteles/:propertyId/folios/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/hoteles/:propertyId/reservas/:reservationId/folios", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));

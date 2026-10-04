@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { runWithSavepointFallback, isMigrationPendingError } from "@atiende/db";
-import { FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError, PropertyConfigUnavailableError, RateEngineUnavailableError } from "./errors.ts";
+import { FolioCerradoError, FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError, PropertyConfigUnavailableError, RateEngineUnavailableError, translateFolioTriggerError } from "./errors.ts";
 import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
 import type {
   ActiveHotelProperty,
@@ -774,7 +774,7 @@ export class PostgresHotelesRepository implements HotelesRepository {
   }
 
   async insertCharge(input: NewChargeInput): Promise<{ id: string; createdAt: string }> {
-    const { rows } = await this.db.query<{ id: string; created_at: string }>(
+    const { rows } = await this.queryFolioWrite<{ id: string; created_at: string }>(
       `insert into hoteles.charge
          (organization_id, property_id, folio_id, description, amount, tax_amount, concept,
           reverses_charge_id, transferred_from_charge_id, discount_authorized_by, stay_date)
@@ -821,7 +821,7 @@ export class PostgresHotelesRepository implements HotelesRepository {
   }
 
   async insertPayment(input: NewPaymentInput): Promise<{ id: string; createdAt: string }> {
-    const { rows } = await this.db.query<{ id: string; created_at: string }>(
+    const { rows } = await this.queryFolioWrite<{ id: string; created_at: string }>(
       `insert into hoteles.payment (organization_id, property_id, folio_id, amount, method, status, external_ref, token_ref)
        values ($1, $2, $3, $4, $5, $6, $7, $8)
        returning id, created_at::text as created_at;`,
@@ -859,12 +859,26 @@ export class PostgresHotelesRepository implements HotelesRepository {
     return existing.rows[0];
   }
 
+  /** Escritura de dinero sobre un folio: traduce el rechazo de los triggers de la migracion 045 (folio cerrado /
+   *  cierre con saldo distinto de cero) a su error de dominio. Cualquier otro error se relanza intacto. */
+  private async queryFolioWrite<R extends Record<string, unknown>>(sql: string, params: unknown[]): Promise<{ rows: R[] }> {
+    try {
+      return await this.db.query<R>(sql, params);
+    } catch (err) {
+      throw translateFolioTriggerError(err) ?? err;
+    }
+  }
+
   async closeFolio(folioId: string, reason: "saldo_cero" | "cuenta_por_cobrar", arApprovedBy: string | null): Promise<void> {
-    await this.db.query(
+    // `and status = 'abierto' returning id`: el cierre es una transicion unica. Un segundo cierre (doble clic, dos
+    // pestanas) o uno que perdio la carrera no pisa closed_at/close_reason del primero: 0 filas -> FolioCerradoError.
+    const { rows } = await this.queryFolioWrite<{ id: string }>(
       `update hoteles.folio set status = 'cerrado', closed_at = now(), close_reason = $1, ar_approved_by = $2, updated_at = now()
-       where id = $3;`,
+       where id = $3 and status = 'abierto'
+       returning id;`,
       [reason, arApprovedBy, folioId],
     );
+    if (rows.length === 0) throw new FolioCerradoError();
   }
 
   async listFnbOrders(propertyId: string): Promise<readonly FnbOrderRecord[]> {
@@ -1817,7 +1831,7 @@ export class PostgresHotelesRepository implements HotelesRepository {
     const { rows } = await this.db.query<{ reservation_id: string; folio_id: string | null; nightly_price: string | null }>(
       `select r.id as reservation_id, f.id as folio_id, rp.price::text as nightly_price
        from hoteles.reservation r
-       left join hoteles.folio f on f.reservation_id = r.id and f.is_primary
+       left join hoteles.folio f on f.reservation_id = r.id and f.is_primary and f.status = 'abierto'
        left join hoteles.rate_plan rp on rp.room_type_id = r.room_type_id and rp.property_id = r.property_id and rp.date = $2::date
        where r.property_id = $1
          and r.status in ('check_in', 'en_estancia')

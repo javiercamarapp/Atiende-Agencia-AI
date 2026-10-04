@@ -89,7 +89,7 @@ import type { ReservationStatus } from "./reservationStateMachine.ts";
 import { isCancellable } from "./reservationStateMachine.ts";
 import { nightsBetween } from "./quote.ts";
 import { occupancyPct } from "./overbooking.ts";
-import { FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
+import { FolioCerradoError, FolioCierreSaldoError, FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
 import type { RevenueGateState } from "./revenue/revenueEngineGate.ts";
 import { evaluateGateTransition, isDemotion, isPromotion } from "./revenue/revenueEngineGate.ts";
 import type { WalkForwardBacktestResult } from "./revenue/walkForwardBacktest.ts";
@@ -602,6 +602,8 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   }
 
   async insertCharge(input: NewChargeInput): Promise<{ id: string; createdAt: string }> {
+    // Espejo del trigger BEFORE INSERT de la migracion 045: un folio cerrado no admite cargos.
+    if (this.folios.get(input.folioId)?.status === "cerrado") throw new FolioCerradoError("El folio está cerrado: no admite nuevos movimientos.");
     if (input.amount < 0 && !["descuento", "reverso"].includes(input.concept)) {
       throw new Error("charge_amount_check: un cargo real no admite monto negativo.");
     }
@@ -663,6 +665,8 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   }
 
   async insertPayment(input: NewPaymentInput): Promise<{ id: string; createdAt: string }> {
+    // Espejo del trigger BEFORE INSERT de la migracion 045: un folio cerrado no admite pagos.
+    if (this.folios.get(input.folioId)?.status === "cerrado") throw new FolioCerradoError("El folio está cerrado: no admite nuevos movimientos.");
     if (input.tokenRef && /^[0-9]{12,19}$/.test(input.tokenRef)) {
       throw new Error("payment_token_ref_not_pan: token_ref no puede parecer un PAN.");
     }
@@ -702,6 +706,13 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   async closeFolio(folioId: string, reason: "saldo_cero" | "cuenta_por_cobrar", arApprovedBy: string | null): Promise<void> {
     const folio = this.folios.get(folioId);
     if (!folio) throw new Error(`Folio ${folioId} no encontrado.`);
+    // Espejo de `update ... where status = 'abierto'` + trigger BEFORE UPDATE de la migracion 045.
+    if (folio.status !== "abierto") throw new FolioCerradoError();
+    if (reason === "saldo_cero") {
+      const cargos = [...this.charges.values()].filter((c) => c.folioId === folioId).reduce((sum, c) => sum + c.amount + c.taxAmount, 0);
+      const pagos = [...this.payments.values()].filter((p) => p.folioId === folioId && p.status === "capturado").reduce((sum, p) => sum + p.amount, 0);
+      if (Math.round((cargos - pagos) * 100) !== 0) throw new FolioCierreSaldoError();
+    }
     folio.status = "cerrado";
     folio.closedAt = new Date().toISOString();
     folio.closeReason = reason;
@@ -1559,7 +1570,7 @@ export class InMemoryHotelesRepository implements HotelesRepository {
         r.checkOutDate > businessDate,
     );
     return inHouse.map((r) => {
-      const folio = [...this.folios.values()].find((f) => f.reservationId === r.id && f.isPrimary);
+      const folio = [...this.folios.values()].find((f) => f.reservationId === r.id && f.isPrimary && f.status === "abierto");
       const rates = this.nightlyRates.get(`${propertyId}:${r.roomTypeId}`) ?? [];
       const rate = rates.find((x) => x.date === businessDate);
       return { reservationId: r.id, folioId: folio?.id ?? null, nightlyPrice: rate?.price ?? null };
