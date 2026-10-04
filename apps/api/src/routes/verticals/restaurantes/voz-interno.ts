@@ -65,7 +65,7 @@ function mapErrorDeVoz(err: unknown): never {
   throw err;
 }
 
-/** CHECK que una base con la 035 pero SIN la 046 viola al recibir 'latencia_voz': la lista de tipos (`voice_event_tipo_check`) o la regla de campos por
+/** CHECK que una base con la 035 pero SIN la 067 viola al recibir 'latencia_voz': la lista de tipos (`voice_event_tipo_check`) o la regla de campos por
  *  tipo autogenerada (`voice_event_check`, `voice_event_check1`...). Cualquier OTRO CHECK (p. ej. el rango de latencia_ms) es un error real y NO se enmascara. */
 const CHECK_TIPO_SIN_MIGRAR = /\bvoice_event_(tipo_check|check\d*)\b/;
 
@@ -207,7 +207,7 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
       if (typeof body.proveedor !== "string" || !(VOZ_PROVEEDORES_FALLO as readonly string[]).includes(body.proveedor)) throw Errors.validation(`proveedor: debe ser uno de ${VOZ_PROVEEDORES_FALLO.join(", ")}.`);
       proveedor = body.proveedor as VozProveedorFallo;
     } else if (tipo === "latencia_voz") {
-      // Latencia de voz a voz de UNA respuesta del agente (migración 046): solo el número, sin texto ni herramienta.
+      // Latencia de voz a voz de UNA respuesta del agente (migración 067): solo el número, sin texto ni herramienta.
       if (latenciaMs === null) throw Errors.validation("latenciaMs: obligatorio en latencia_voz.");
     } else {
       if (typeof body.herramienta !== "string" || body.herramienta.length < 1 || body.herramienta.length > 80) throw Errors.validation("herramienta: se esperaba texto de 1 a 80 caracteres.");
@@ -222,7 +222,7 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
       try {
         const evento = { organizationId, propertyId, conversationId, tipo, proveedor, herramienta, latenciaMs, codigo: typeof body.codigo === "string" ? body.codigo : null, ocurridoAt };
         if (tipo === "latencia_voz") {
-          // Base con la 035 pero SIN la 046: el CHECK del tipo rechaza 'latencia_voz' (23514). SAVEPOINT: nunca aborta la transacción del request
+          // Base con la 035 pero SIN la 067: el CHECK del tipo rechaza 'latencia_voz' (23514). SAVEPOINT: nunca aborta la transacción del request
           // ni da un 500; la latencia queda "no disponible aun" (202) y la llamada, que ya ocurrio, no se ve afectada.
           const registrado = await runWithSavepointFallback<boolean>({
             session: db,

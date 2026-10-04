@@ -1,7 +1,7 @@
 # verify-restaurantes-voz-worker
 
-Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/044_voz_modo_entrada_gasto_mes_y_latencia.sql`
-(espejo: `supabase/migrations/20240101000328_044_voz_modo_entrada_gasto_mes_y_latencia.sql`), la parte SQL del worker de
+Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/067_voz_modo_entrada_gasto_mes_y_latencia.sql`
+(espejo: `supabase/migrations/20240101000328_067_voz_modo_entrada_gasto_mes_y_latencia.sql`), la parte SQL del worker de
 telefonia de voz (`apps/voice-worker`):
 
 - `voz_marcar_modo_entrada` (solo sistema): marca como llego la llamada (`desborde` | `total` | `prueba`) y la franja del dia.

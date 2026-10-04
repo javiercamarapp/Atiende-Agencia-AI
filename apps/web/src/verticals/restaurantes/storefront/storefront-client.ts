@@ -11,6 +11,8 @@ export interface SucursalPublica {
   readonly name: string;
   readonly address: string | null;
   readonly phone: string | null;
+  /** wa.me de la sucursal con texto prellenado (R-38); null/ausente = sin numero valido: no se muestra el boton. */
+  readonly whatsappUrl?: string | null;
   /** null = sin horario configurado: no se afirma abierto ni cerrado. */
   readonly abiertoAhora: boolean | null;
   readonly cierraA: string | null;
@@ -19,6 +21,55 @@ export interface SucursalPublica {
   readonly pedidoMinimoRecoger: number | null;
   readonly propinaPolitica: "nunca" | "siempre" | "solo_tarjeta" | null;
   readonly zonasReparto: readonly string[];
+}
+
+/** Marca publica del restaurante (R-38). Todo opcional: sin marca guardada la portada es generica con el nombre. */
+export interface MarcaPublica {
+  readonly titular: string | null;
+  readonly eslogan: string | null;
+  readonly about: string | null;
+  readonly portadaUrl: string | null;
+  readonly logoUrl: string | null;
+  readonly instagramUrl: string | null;
+  readonly facebookUrl: string | null;
+  readonly tiktokUrl: string | null;
+}
+
+/** Promocion que el motor aplica sola a un pedido para recoger (R-38). */
+export interface PromocionPublica {
+  readonly id: string;
+  readonly nombre: string;
+  readonly descripcion: string | null;
+  readonly beneficio: string;
+  readonly canal: "recoger";
+  readonly pedidoMinimo: number | null;
+  /** 0=domingo..6=sabado; null = todos los dias. */
+  readonly dias: readonly number[] | null;
+  readonly horaInicio: string | null;
+  readonly horaFin: string | null;
+  readonly vigenteHasta: string | null;
+  /** Slugs de las sucursales donde vale; null = todas. */
+  readonly sucursales: readonly string[] | null;
+}
+
+export interface RestaurantePublico {
+  readonly restaurante: { readonly slug: string; readonly nombre: string };
+  readonly sucursales: SucursalPublica[];
+  /** Ausente en un servidor anterior a R-38. */
+  readonly marca?: MarcaPublica;
+  readonly promociones?: readonly PromocionPublica[];
+}
+
+/** Solicitud de evento/catering (R-43). `sitioWeb` es el honeypot: debe ir vacio (un campo oculto que una persona no ve). */
+export interface DatosEvento {
+  readonly nombre: string;
+  readonly telefono: string;
+  readonly fechaEvento: string;
+  readonly personas: number;
+  readonly sucursal: string;
+  readonly comentario?: string;
+  readonly aceptaAviso: boolean;
+  readonly sitioWeb?: string;
 }
 
 export interface ProductoMenu {
@@ -121,6 +172,8 @@ export interface DatosCliente {
   readonly direccion?: string;
   readonly notas?: string;
   readonly propina?: number;
+  /** Casilla del aviso de privacidad: el servidor la exige y guarda la evidencia (version del aviso, fecha, canal `web`). */
+  readonly aceptaAviso: boolean;
 }
 
 function enc(v: string): string {
@@ -191,10 +244,10 @@ export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetc
     promo_code: d.canal === "recoger" && d.codigoPromo?.trim() ? d.codigoPromo.trim() : undefined,
   });
   return {
-    async sucursales(): Promise<{ restaurante: { slug: string; nombre: string }; sucursales: SucursalPublica[] }> {
+    async sucursales(): Promise<RestaurantePublico> {
       return leer(await get(""), "No pudimos cargar el restaurante.");
     },
-    async menu(branchSlug: string): Promise<{ sucursal: SucursalPublica | null; categorias: CategoriaMenu[] }> {
+    async menu(branchSlug: string): Promise<{ sucursal: SucursalPublica | null; categorias: CategoriaMenu[]; marca?: MarcaPublica }> {
       return leer(await get(`/${enc(branchSlug)}/menu`), "No pudimos cargar el menú.");
     },
     async cotizar(branchSlug: string, datos: DatosPedido): Promise<Cotizacion> {
@@ -214,8 +267,24 @@ export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetc
           customer_address: datos.canal === "domicilio" ? cliente.direccion : undefined,
           notes: cliente.notas?.trim() || undefined,
           propina: cliente.propina !== undefined && cliente.propina > 0 ? cliente.propina : undefined,
+          acepta_aviso_privacidad: cliente.aceptaAviso === true,
         }),
         "No pudimos registrar tu pedido.",
+      );
+    },
+    async enviarEvento(d: DatosEvento): Promise<{ recibido: boolean }> {
+      return leer(
+        await post("/eventos", {
+          nombre: d.nombre,
+          telefono: d.telefono,
+          fechaEvento: d.fechaEvento,
+          personas: d.personas,
+          sucursal: d.sucursal,
+          comentario: d.comentario?.trim() || undefined,
+          aceptaAviso: d.aceptaAviso,
+          sitio_web: d.sitioWeb ?? "",
+        }),
+        "No pudimos enviar tu solicitud.",
       );
     },
     async rastreo(token: string): Promise<RastreoPedido> {

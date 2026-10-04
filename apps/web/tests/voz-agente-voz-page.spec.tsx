@@ -11,7 +11,7 @@ import type { EntornoVoz } from "../src/lib/voz/adaptador-gemini-live.ts";
 import type { MuestraAudio } from "../src/verticals/restaurantes/voz/SelectorVoz.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { contarEjecuciones } from "../src/verticals/restaurantes/voz/herramientas-agente.ts";
-import { changeValue, click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, keydown, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -55,6 +55,8 @@ interface Rutas {
   conversaciones?: Respuesta;
   detalle?: Respuesta;
   put?: (body: Record<string, unknown>) => Respuesta;
+  conocimiento?: Respuesta;
+  conocimientoPost?: (body: Record<string, unknown>) => Respuesta;
 }
 
 function res(r: Respuesta): Response {
@@ -72,6 +74,11 @@ function stub(rutas: Rutas) {
     }
     if (url.startsWith("https://api.test/v1/restaurantes/prop-1/admin/voz/conversaciones/")) return res(rutas.detalle ?? { status: 200, body: DETALLE_C1 });
     if (url.startsWith("https://api.test/v1/restaurantes/prop-1/admin/voz/conversaciones")) return res(rutas.conversaciones ?? { status: 200, body: CONVERSACIONES });
+    if (url === "https://api.test/v1/restaurantes/prop-1/admin/sucursales") return res({ status: 200, body: { branches: [{ propertyId: "prop-1", name: "Prolongación Montejo", slug: "montejo", status: "active", phone: null, address: null, lat: null, lng: null }] } });
+    if (url === "https://api.test/v1/restaurantes/prop-1/admin/conocimiento") {
+      if (method === "POST") return res(rutas.conocimientoPost ? rutas.conocimientoPost(JSON.parse(init!.body as string)) : { status: 500 });
+      return res(rutas.conocimiento ?? { status: 200, body: { disponible: true, topeCaracteres: 6000, entradas: [] } });
+    }
     throw new Error(`fetch inesperado: ${method} ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -101,6 +108,32 @@ async function irA(nombre: string) {
 }
 
 describe("<AgenteVozPage /> pestañas", () => {
+  it("QA-restaurantes-R1-botones-10: las flechas, Inicio y Fin recorren las pestañas (con vuelta), mueven el foco y solo la activa entra por Tab", async () => {
+    await pintar();
+    document.body.appendChild(rendered!.container); // el foco real exige el nodo en el documento (renderComponent ya lo agrega)
+    const nombre = () => document.activeElement?.textContent;
+    pestana("Resumen").focus();
+    expect(pestana("Resumen").tabIndex).toBe(0);
+    expect(pestana("Voz").tabIndex).toBe(-1);
+    keydown(pestana("Resumen"), "ArrowRight");
+    expect(nombre()).toBe("Voz");
+    expect(pestana("Voz").getAttribute("aria-selected")).toBe("true");
+    expect(pestana("Voz").tabIndex).toBe(0);
+    expect(pestana("Resumen").tabIndex).toBe(-1);
+    keydown(pestana("Voz"), "ArrowLeft");
+    expect(nombre()).toBe("Resumen");
+    keydown(pestana("Resumen"), "ArrowLeft"); // vuelta al final
+    expect(nombre()).toBe("Indicadores");
+    keydown(pestana("Indicadores"), "ArrowRight"); // vuelta al inicio
+    expect(nombre()).toBe("Resumen");
+    keydown(pestana("Resumen"), "End");
+    expect(nombre()).toBe("Indicadores");
+    keydown(pestana("Indicadores"), "Home");
+    expect(nombre()).toBe("Resumen");
+    keydown(pestana("Resumen"), "a"); // otra tecla no mueve nada
+    expect(nombre()).toBe("Resumen");
+  });
+
   it("tiene las 8 pestañas en orden y abre en Resumen", async () => {
     await pintar();
     const nombres = Array.from(rendered!.container.querySelectorAll('[role="tab"]')).map((t) => t.textContent);
@@ -160,7 +193,7 @@ describe("pestaña Voz (sin clonación)", () => {
     click(boton("Guardar cambios")!);
     await settle();
     const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!;
-    expect(JSON.parse((put[1] as RequestInit).body as string)).toEqual({ habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Puck", comportamiento: CONFIG.comportamiento, mensajeInicial: CONFIG.mensajeInicial });
+    expect(JSON.parse((put[1] as RequestInit).body as string)).toEqual({ habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Puck", comportamiento: CONFIG.comportamiento, mensajeInicial: CONFIG.mensajeInicial, mensajeInicialInterrumpible: true });
     expect(texto()).toContain("Cambios guardados.");
     expect((boton("Guardar cambios") as HTMLButtonElement).disabled).toBe(true);
   });
@@ -217,14 +250,51 @@ describe("Comportamiento, Conocimiento y Mensaje inicial", () => {
     click(boton("Guardar cambios")!);
     await settle();
     const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!;
-    expect(JSON.parse((put[1] as RequestInit).body as string)).toEqual({ habilitado: false, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "Sé breve.", mensajeInicial: CONFIG.mensajeInicial });
+    expect(JSON.parse((put[1] as RequestInit).body as string)).toEqual({ habilitado: false, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "Sé breve.", mensajeInicial: CONFIG.mensajeInicial, mensajeInicialInterrumpible: true });
   });
 
-  it("Conocimiento dice honestamente que las notas libres aún no se guardan", async () => {
-    await pintar();
+  const ENTRADA = { id: "k1", sucursalId: null, reemplazaId: null, titulo: "Estacionamiento", texto: "Hay estacionamiento gratuito para clientes.", tipo: "faq", prioridad: 50, vigenteDesde: null, vigenteHasta: null, activo: true, estado: "publicado", origen: "manual", version: 1, actualizadoEn: "2026-10-04T12:00:00Z" };
+
+  it("Conocimiento (owner): lista las entradas reales de la API, con su uso del tope y sin el aviso viejo de 'no se guardan'", async () => {
+    await pintar({ conocimiento: { status: 200, body: { disponible: true, topeCaracteres: 6000, entradas: [ENTRADA, { ...ENTRADA, id: "k2", titulo: "Borrador de importar", estado: "borrador", origen: "importado" }] } } });
     await irA("Conocimiento");
-    expect(rendered!.container.querySelector('[data-testid="aviso-conocimiento"]')!.textContent).toContain("todavía no se guardan");
-    expect(rendered!.container.querySelector("#voz-conocimiento")).toBeNull();
+    expect(rendered!.container.querySelector('[data-testid="aviso-conocimiento"]')).toBeNull();
+    expect(rendered!.container.querySelector('[data-entrada="k1"]')!.textContent).toContain("Hay estacionamiento gratuito");
+    expect(rendered!.container.querySelector('[data-entrada="k2"]')!.textContent).toContain("Borrador por aprobar");
+    expect(rendered!.container.querySelector('[data-testid="conocimiento-uso"]')!.textContent).toContain("de 6,000");
+    expect(texto()).toContain("Datos que consulta en vivo");
+  });
+
+  it("Conocimiento: crea una entrada con el cuerpo exacto de la API y recarga la lista; el rechazo del servidor (precio) se muestra tal cual", async () => {
+    await pintar({ conocimientoPost: () => ({ status: 400, body: { error: "validation_error", message: "No incluya precios: el agente los toma siempre del menú real." } }) });
+    await irA("Conocimiento");
+    click(boton("Agregar entrada")!);
+    await settle();
+    const form = rendered!.container.querySelector('section[aria-label="Nueva entrada"]')!;
+    changeValue(form.querySelector<HTMLInputElement>('input[placeholder="Estacionamiento"]')!, "Pastor");
+    changeValue(form.querySelector<HTMLTextAreaElement>("textarea")!, "El pastor cuesta $10.");
+    click(boton("Guardar entrada")!);
+    await settle();
+    const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST")!;
+    expect(JSON.parse((post[1] as RequestInit).body as string)).toEqual({ titulo: "Pastor", texto: "El pastor cuesta $10.", tipo: "faq", prioridad: 50, vigenteDesde: null, vigenteHasta: null, reemplazaId: null, sucursalId: null });
+    expect(rendered!.container.querySelector('[role="alert"]')!.textContent).toContain("No incluya precios");
+  });
+
+  it("Conocimiento: base sin migrar (disponible: false) dice 'No disponible aún' y no ofrece guardar", async () => {
+    await pintar({ conocimiento: { status: 200, body: { disponible: false, topeCaracteres: 6000, entradas: [] } } });
+    await irA("Conocimiento");
+    expect(rendered!.container.querySelector('[data-testid="conocimiento-no-disponible"]')!.textContent).toContain("migración 053");
+    expect(boton("Agregar entrada")).toBeUndefined();
+  });
+
+  it("Conocimiento: quien no es owner/admin no ve el editor (el servidor lo rechazaría) y el aviso lo explica", async () => {
+    stub({});
+    rendered = renderComponent(<AgenteVozPage {...CTX} role="staff" />);
+    await settle();
+    await irA("Conocimiento");
+    expect(rendered!.container.querySelector('[data-testid="conocimiento-negocio"]')).toBeNull();
+    expect(rendered!.container.querySelector('[data-testid="aviso-conocimiento"]')!.textContent).toContain("dueño o un administrador");
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/admin/conocimiento"))).toBe(false);
   });
 
   it("sin configuración guardada no se puede guardar hasta elegir una voz", async () => {
@@ -239,6 +309,22 @@ describe("Comportamiento, Conocimiento y Mensaje inicial", () => {
     await pintar({ config: { status: 200, body: { ...CONFIG, disponible: false, configurada: false } }, conversaciones: { status: 200, body: { ...CONVERSACIONES, disponible: false, items: [] } } });
     expect(rendered!.container.querySelector('[data-testid="aviso-servicio"]')).not.toBeNull();
     expect(texto()).toContain("Sin historial todavía");
+  });
+
+  it("Mensaje inicial: la casilla del saludo no interrumpible se lee de la API, se explica y se manda en el PUT", async () => {
+    await pintar({ config: { status: 200, body: { ...CONFIG, mensajeInicialInterrumpible: true } }, put: (body) => ({ status: 200, body: { ...CONFIG, ...body } }) });
+    await irA("Mensaje inicial");
+    const casilla = () => rendered!.container.querySelector<HTMLInputElement>("#voz-saludo-interrumpible")!;
+    expect(casilla().checked).toBe(true);
+    expect(texto()).toContain("el agente se calla");
+    click(casilla());
+    expect(casilla().checked).toBe(false);
+    expect(texto()).toContain("se escucha completo aunque quien llama hable encima");
+    click(boton("Guardar cambios")!);
+    await settle();
+    const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!;
+    expect(JSON.parse((put[1] as RequestInit).body as string)).toMatchObject({ mensajeInicialInterrumpible: false });
+    expect(casilla().checked).toBe(false);
   });
 
   it("Mensaje inicial muestra siempre el aviso de asistente virtual y alerta si el texto no lo dice", async () => {
@@ -414,7 +500,7 @@ describe("llamada de prueba (vista previa real)", () => {
     click(boton("Vista previa")!);
     await settle();
     expect(texto()).not.toContain("No disponible");
-    expect(rendered!.container.querySelector('[data-testid="aviso-prueba"]')!.textContent).toContain("No consulta el menú ni registra pedidos");
+    expect(rendered!.container.querySelector('[data-testid="aviso-prueba"]')!.textContent).toContain("Llamada de prueba: consulta el menú real y simula el pedido; no se registra ni se avisa a nadie");
     click(boton("Iniciar llamada de prueba")!);
     await settle();
     const llamada = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/preview/sesion"))!;

@@ -1,4 +1,4 @@
-// Rutas del WORKER DE TELEFONIA de voz (migracion 046): contexto de llamada, costo por escalon, modo de entrada, evento `latencia_voz` y KPI de desborde.
+// Rutas del WORKER DE TELEFONIA de voz (migración 067): contexto de llamada, costo por escalon, modo de entrada, evento `latencia_voz` y KPI de desborde.
 // Cada caso afirma el EFECTO (que se guardo, que NO se escribio) y cubre secreto interno, validacion, cross-tenant y la base sin migrar (SAVEPOINT).
 import { describe, expect, it } from "vitest";
 import { InMemoryVozKpiRepository, InMemoryVozLlamadaRepository, InMemoryVozRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository } from "@atiende/domain-restaurantes";
@@ -269,7 +269,7 @@ describe("POST /internal/restaurantes/voz/eventos con tipo latencia_voz", () => 
   });
 });
 
-describe("latencia_voz contra una base con la 035 pero SIN la 046 (el CHECK del tipo rechaza el valor), transaccion abortada", () => {
+describe("latencia_voz contra una base con la 035 pero SIN la 067 (el CHECK del tipo rechaza el valor), transaccion abortada", () => {
   const SIGUIENTE: FakeSessionHandler = { match: /select 1 as siguiente_query_del_request/, respond: () => [{ ok: true }] };
   function pgError(code: string, message: string): Error & { code: string } {
     const err = new Error(message) as Error & { code: string };

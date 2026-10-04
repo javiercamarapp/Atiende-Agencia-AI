@@ -9,7 +9,7 @@ import { OrderValidationError } from "./errors.ts";
 import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { ADDRESS_MASK_MARKER, ADDRESS_OMITTED_MARKER, sanitizeInlineText, sanitizeNotes } from "./text-sanitize.ts";
-import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice } from "./order-quote.ts";
+import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice, MAX_PIEZAS_POR_RENGLON, mensajeCantidadInvalida } from "./order-quote.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
@@ -51,10 +51,15 @@ function toProductoEncontrado(product: { id: string; name: string; description: 
 export async function searchProducts(repo: RestaurantesRepository, args: { readonly propertyId: string; readonly query: string }): Promise<ProductoEncontrado[]> {
   const tokens = tokenizeForProductSearch(args.query);
   const catalog = await repo.listAvailableProductsForBranch(args.propertyId);
-  return catalog
-    .filter((p) => matchesProductSearch(tokens, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }))
-    .slice(0, 8)
-    .map(toProductoEncontrado);
+  const buscar = (ts: readonly string[]) => catalog.filter((p) => matchesProductSearch(ts, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }));
+  let encontrados = buscar(tokens);
+  // "un cuarto de cochinita": el peso solo existe en los productos que se venden por kilo. Si con el peso no queda nada, se busca el producto sin el
+  // peso (la lista vacia la lee el agente como "no tenemos eso", y la cochinita si existe, en ordenes). Con peso que SI coincide se conserva la exactitud.
+  if (encontrados.length === 0 && tokens.some((t) => t.startsWith("peso:"))) {
+    const sinPeso = tokens.filter((t) => !t.startsWith("peso:"));
+    if (sinPeso.length > 0) encontrados = buscar(sinPeso);
+  }
+  return encontrados.slice(0, 8).map(toProductoEncontrado);
 }
 
 /**
@@ -174,8 +179,8 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     const hasRequested = item.requestedQuantity !== undefined;
     if (hasQuantity === hasRequested) throw new OrderValidationError("Productos o cantidades inválidos");
     const value = hasRequested ? item.requestedQuantity : item.quantity;
-    if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 100) {
-      throw new OrderValidationError("Productos o cantidades inválidos");
+    if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > MAX_PIEZAS_POR_RENGLON) {
+      throw new OrderValidationError(mensajeCantidadInvalida(value));
     }
   }
 
@@ -376,6 +381,12 @@ export async function prepareCreateOrder(
     }
   }
 
+  // La propina no tiene tope en SQL y el de $100,000 de la validacion es absurdo para un pedido de $252: se rechaza una propina mayor que el
+  // total a pagar (el modelo la lee como un posible error de captura y la confirma con el cliente).
+  if (payload.propina !== undefined && redondearACentavos(payload.propina) > total) {
+    throw new OrderValidationError("La propina no puede ser mayor que el total del pedido. Confirme el monto con el cliente antes de registrarla.");
+  }
+
   return { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount };
 }
 
@@ -418,16 +429,16 @@ export async function createOrder(
   /** `beforePersist`: gancho que ve el pedido YA cotizado contra el catalogo vigente y puede rechazarlo (lanzando)
    * antes de escribir nada. Lo usa la maquina de estados del pedido para exigir que los precios sigan siendo los
    * que el cliente confirmo. */
-  options: { readonly beforePersist?: (prepared: PreparedOrder) => void } = {},
+  options: { readonly beforePersist?: (prepared: PreparedOrder) => void | Promise<void> } = {},
 ): Promise<Order> {
   const prepared = await prepareCreateOrder(repo, rawInput);
-  options.beforePersist?.(prepared);
+  await options.beforePersist?.(prepared);
   const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount } = prepared;
   // R-11: contra una base sin la migracion 034 el pedido programado se rechaza (503) en vez de crearse inmediato.
   if (payload.programadoPara) await assertProgramacionDisponible(repo);
 
   const customer = await repo.upsertCustomer(payload.organizationId, payload.customerPhone, payload.customerName);
-  if (payload.customerAddress) await repo.addCustomerAddressIfNew(customer.id, payload.customerAddress);
+  if (payload.customerAddress) await repo.addCustomerAddressIfNew(customer.id, payload.customerAddress, payload.organizationId);
 
   const itemsOrdenados = [...orderItems].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   const complementNotes = buildComplementNotes(payload.notes, [...new Set(payload.requestedComplements ?? [])].sort(), [...new Set(payload.omitDefaultComplements ?? [])].sort());
@@ -560,6 +571,9 @@ export async function quoteOrder(
     readonly paymentMethod?: "efectivo" | "tarjeta";
     /** Doble porcion de salsas (extra cobrado, ver `buildDoubleSalsaLine`). */
     readonly doubleSalsas?: readonly DoubleSalsa[];
+    /** R-11: hora programada (ISO con zona). Se valida con las MISMAS reglas que `createOrder`: ventana
+     * (anticipacion minima/maxima), horario de la sucursal en esa hora y zona horaria de la sucursal. */
+    readonly programadoPara?: string;
   },
 ): Promise<OrderQuote & QuotePolicyInfo & QuotePromotionInfo> {
   const branch = await repo.findBranch(args.organizationId, { slug: args.branchSlug });
@@ -567,13 +581,28 @@ export async function quoteOrder(
     throw new OrderValidationError(`Sucursal '${args.branchSlug}' no encontrada o inactiva`);
   }
   const canal = normalizarCanal(args.canal);
+  // R-11: cotizar un pedido programado aplica la misma ventana y el mismo horario que crearlo, para que el
+  // cliente no confirme un resumen que despues se rechazaria. Contra una base sin la migracion 034 se rechaza.
+  const programadoPara = args.programadoPara === undefined ? undefined : parsearProgramadoPara(args.programadoPara);
+  if (programadoPara) {
+    validarVentanaProgramacion(programadoPara, new Date());
+    await assertProgramacionDisponible(repo);
+  }
+  const instante = programadoPara ? new Date(programadoPara) : null;
   const resolved = await resolveBranchOrderItems(repo, branch.propertyId, args.items);
   const baseQuote = buildOrderQuoteFromProducts(resolved.items, resolved.products, { adultConfirmed: args.adultConfirmed, canal });
   const doubleSalsaLine = buildDoubleSalsaLine(resolved.products, args.doubleSalsas ?? []);
   const quote: OrderQuote = doubleSalsaLine
     ? { ...baseQuote, lines: [...baseQuote.lines, doubleSalsaLine], total: Math.round((baseQuote.total + doubleSalsaLine.lineTotal) * 100) / 100 }
     : baseQuote;
-  const reglas = await aplicarReglasDeSucursal(repo, { branch, canal, subtotal: quote.total, colonia: args.colonia, paymentMethod: args.paymentMethod });
+  const reglas = await aplicarReglasDeSucursal(repo, {
+    branch,
+    canal,
+    subtotal: quote.total,
+    colonia: args.colonia,
+    paymentMethod: args.paymentMethod,
+    ...(instante ? { now: instante, exigirAbierto: true, mensajeCerrado: mensajeCerradoProgramado(branch.name, programadoPara!) } : {}),
+  });
 
   // PM PR-4: promociones automaticas por dia y canal. `total` pasa a ser el TOTAL A PAGAR (ya con el
   // descuento) y `subtotal` conserva el de renglones; sin promocion aplicada nada cambia. Las promociones
@@ -585,7 +614,7 @@ export async function quoteOrder(
     orderTotal: quote.total,
     items: quote.lines.map((line) => ({ id: line.productId, name: line.name, price: line.price, quantity: line.quantity })),
     canal,
-    now: new Date(),
+    now: instante ?? new Date(),
     zonaHoraria,
     ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
     propertyId: branch.propertyId,
@@ -623,6 +652,7 @@ export async function quoteOrder(
     preguntarPropina: reglas.preguntarPropina,
     abiertoAhora: reglas.apertura ? reglas.apertura.abierto : null,
     cierraA: reglas.apertura?.cierraA ?? null,
+    ...(programadoPara ? { programadoPara } : {}),
   };
 }
 
@@ -653,4 +683,6 @@ export interface QuotePolicyInfo {
   /** null = la sucursal no tiene horario configurado. */
   readonly abiertoAhora: boolean | null;
   readonly cierraA: string | null;
+  /** R-11: hora programada ya validada (ISO UTC); ausente en un pedido inmediato. */
+  readonly programadoPara?: string;
 }

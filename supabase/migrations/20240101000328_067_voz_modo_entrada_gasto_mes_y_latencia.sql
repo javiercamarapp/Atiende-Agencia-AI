@@ -1,4 +1,4 @@
--- 044_voz_modo_entrada_gasto_mes_y_latencia.sql
+-- 067_voz_modo_entrada_gasto_mes_y_latencia.sql
 -- Worker de telefonia de voz (VT, apps/voice-worker): tres piezas ADITIVAS sobre la voz de restaurantes (migraciones 025 y 035).
 --
 --   A) restaurantes.voice_conversation.modo_entrada / franja: como llego la llamada (desborde | total | prueba) y la franja del dia (manana |

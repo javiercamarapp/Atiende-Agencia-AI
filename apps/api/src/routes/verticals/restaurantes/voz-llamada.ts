@@ -1,4 +1,4 @@
-// Rutas que usa el WORKER DE TELEFONIA de voz (apps/voice-worker, migración 046) y su KPI en el panel. Lado SISTEMA (secreto interno
+// Rutas que usa el WORKER DE TELEFONIA de voz (apps/voice-worker, migración 067) y su KPI en el panel. Lado SISTEMA (secreto interno
 // `x-atiende-internal-secret`, comparado en tiempo constante; el llamador es un servicio, no un staff):
 //
 //   POST /internal/restaurantes/voz/llamada/contexto                     lo que el worker necesita para abrir UNA llamada: ¿la sucursal tiene el agente
@@ -6,7 +6,7 @@
 //        (para el tope mensual). No devuelve secretos ni el historial en bruto: solo la instrucción.
 //   POST /internal/restaurantes/voz/conversaciones/:id/costo             costo por escalón (Gemini Live / cascada) hacia core.usage_cost_event; los
 //        eventos los arma el servidor desde los TRAMOS (duración por escalón), el worker no manda importes libres.
-//   POST /internal/restaurantes/voz/conversaciones/:id/modo-entrada      desborde | total | prueba y la franja del día (migración 046).
+//   POST /internal/restaurantes/voz/conversaciones/:id/modo-entrada      desborde | total | prueba y la franja del día (migración 067).
 //   POST /internal/restaurantes/voz/tope-mensual                         aviso in-app al owner/admin: el gasto de voz del mes llegó al 80 % del tope o lo alcanzó
 //        (el tope vive en la configuración del worker, que es quien lo compara; aquí solo se emite el aviso, con dedupe por organización y mes).
 //
@@ -155,7 +155,7 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const marcada = await llamadaRepo(db).marcarModoEntrada({ organizationId, conversationId, modo: body.modo as ModoEntradaVoz, franja: body.franja as FranjaVoz });
-      if (marcada === null) throw Errors.serviceUnavailable("El modo de entrada todavía no está disponible en esta base (falta aplicar la migración 046).");
+      if (marcada === null) throw Errors.serviceUnavailable("El modo de entrada todavía no está disponible en esta base (falta aplicar la migración 067).");
       if (!marcada) throw Errors.notFound("La conversación no existe para esa organización.");
       return c.json({ marcada: true });
     });

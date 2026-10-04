@@ -59,6 +59,8 @@ export interface DepsControlador<R extends string = string> {
   readonly instruccion: string;
   readonly voiceId: string;
   readonly limites?: LimitesLlamada;
+  /** `false` = el saludo del agente no se corta si el cliente habla encima (`branch_voice_config.mensaje_inicial_interrumpible`). Por omision `true`. */
+  readonly saludoInterrumpible?: boolean;
   /** Reproduce un mensaje pregrabado (audio local, independiente del proveedor). */
   readonly reproducir: (mensaje: MensajeId) => void | Promise<void>;
   /** Corta el audio que se este reproduciendo al cliente (barge-in). */
@@ -83,13 +85,15 @@ export class ControladorLlamada<R extends string = string> {
   private sesion: VozSesionLlamada | null = null;
   private cola: Promise<void> = Promise.resolve();
   private handleReanudacion: string | null = null;
+  /** Hablas inteligibles del cliente en esta llamada: es el "turno" con el que el servidor ordena cotizacion y confirmacion. */
+  private turnosCliente = 0;
   private resolverFin!: (r: ResultadoLlamada<R>) => void;
   /** Se resuelve cuando la llamada termina (el sistema cuelga o el cliente cuelga). */
   readonly terminada: Promise<ResultadoLlamada<R>>;
   private readonly ref: string;
 
   constructor(private readonly deps: DepsControlador<R>) {
-    this.maquina = new CallStateMachine<R>(deps.reglas, deps.limites ?? LIMITES_POR_DEFECTO);
+    this.maquina = new CallStateMachine<R>(deps.reglas, deps.limites ?? LIMITES_POR_DEFECTO, deps.saludoInterrumpible === undefined ? {} : { saludoInterrumpible: deps.saludoInterrumpible });
     this.terminada = new Promise((resolve) => {
       this.resolverFin = resolve;
     });
@@ -126,6 +130,7 @@ export class ControladorLlamada<R extends string = string> {
       this.transcripcion.push({ rol: "cliente", texto: redactarTranscripcion(texto) });
       // La guardia va ANTES del modelo: el texto del cliente con una senal de seguridad nunca se le manda para que decida el.
       if (inteligible && (await this.aplicarGuardia(texto))) return;
+      if (inteligible) this.turnosCliente += 1;
       await this.eventoInterno({ tipo: "usuario_dijo", inteligible });
       if (inteligible && this.maquina.estadoActual !== "cerrada") this.sesion?.enviarTexto(texto);
     });
@@ -186,6 +191,7 @@ export class ControladorLlamada<R extends string = string> {
         usuarioDijo: (texto) => void this.encolar(async () => {
           this.transcripcion.push({ rol: "cliente", texto: redactarTranscripcion(texto) });
           if (await this.aplicarGuardia(texto)) return;
+          this.turnosCliente += 1;
           await this.eventoInterno({ tipo: "usuario_dijo", inteligible: true });
         }),
         ejecutarTool: (llamada) => this.herramienta(llamada),
@@ -212,7 +218,7 @@ export class ControladorLlamada<R extends string = string> {
   }
 
   private async herramienta(llamada: ToolCallPedida): Promise<unknown> {
-    const salida = await this.deps.ejecutor.ejecutar(llamada.nombre, llamada.args);
+    const salida = await this.deps.ejecutor.ejecutar(llamada.nombre, llamada.args, { turno: this.turnosCliente });
     this.deps.trazarTool?.({ nombre: llamada.nombre, args: llamada.args, resultado: salida.resultado });
     this.transcripcion.push({ rol: "herramienta", texto: llamada.nombre });
     this.log("tool", { herramienta: llamada.nombre, ok: salida.ok, timeout: salida.timeout, ms: salida.latenciaMs });

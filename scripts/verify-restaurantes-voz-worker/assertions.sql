@@ -1,5 +1,5 @@
 -- Fixtures + escenarios contra Postgres REAL (RLS + GRANT + auth.uid() reales, nunca el repositorio en memoria) de
--- packages/domain-restaurantes/migrations/044_voz_modo_entrada_gasto_mes_y_latencia.sql (worker de telefonia de voz).
+-- packages/domain-restaurantes/migrations/067_voz_modo_entrada_gasto_mes_y_latencia.sql (worker de telefonia de voz).
 --
 --   A. voz_marcar_modo_entrada (solo sistema): positivo, listas cerradas, cross-tenant, preview, staff y anon rechazados.
 --   B. voz_gasto_mes_micro_usd (solo sistema): suma solo 'voz' de restaurantes de la organizacion en el mes de Merida (frontera de mes),
