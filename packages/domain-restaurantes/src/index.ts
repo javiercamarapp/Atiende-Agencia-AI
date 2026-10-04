@@ -253,6 +253,10 @@ export {
   MOTIVOS_ESCALACION,
   normalizarMotivoEscalacion,
   VOICE_TOOL_HTTP_PATHS,
+  FOLIO_PREVIEW_PREFIJO,
+  TELEFONO_PREVIEW_PREFIJO,
+  esTelefonoPreview,
+  telefonoFicticioPreview,
   exportVoiceToolManifest,
   executeAgentToolSafely,
   invokeAgentTool,
@@ -260,7 +264,7 @@ export {
   toolDefinitionsForChannel,
 } from "./agent-tools/registry.ts";
 export type { MotivoEscalacion } from "./agent-tools/registry.ts";
-export type { AgentChannel, AgentToolContext, AgentToolDefinition, AgentToolJsonSchema, AgentToolName, AgentToolOutcome } from "./agent-tools/registry.ts";
+export type { AgentChannel, AgentToolMode, AgentToolContext, AgentToolDefinition, AgentToolJsonSchema, AgentToolName, AgentToolOutcome } from "./agent-tools/registry.ts";
 export {
   CLAIM_STALE_MS,
   OrderFlowViolationError,
