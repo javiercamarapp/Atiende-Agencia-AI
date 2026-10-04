@@ -1,5 +1,5 @@
 {
- "nota": "Menu de referencia de Los Taquitos de PM para el arnes de evaluacion, REGENERADO desde el seed (scripts/seed-pm-demo/data/pm-seed-data.json, PM-C1). El precio es el de referencia del seed (T1-2026, o el primero disponible): el arnes no modela precio por sucursal; el seed y el motor real si. `regional` = el producto no se vende en el menu chico de T2 y T3 (comida regional, flautas, Ensalada de PM, Jericallas y Cafe; plan PM-C1 y P10). Solo para el arnes de evaluacion: nunca se usa en produccion. pack_size se infiere del nombre '(orden de N)', igual que el servidor (orders.ts); 'Orden de 2 tacos' en la descripcion no es un paquete.",
+ "nota": "Menu de referencia de Los Taquitos de PM para el arnes de evaluacion, REGENERADO desde el seed (scripts/seed-pm-demo/data/pm-seed-data.json, PM-C1). El precio es el de referencia del seed (T1-2026, o el primero disponible): el arnes no modela precio por sucursal; el seed y el motor real si. `regional` = el producto no se vende en el menu chico de T2 y T3 (comida regional y flautas; cuestionario l.76 y P10: Ensalada de PM, Jericallas y Cafe SI se venden en T2 y T3). Solo para el arnes de evaluacion: nunca se usa en produccion. pack_size se infiere del nombre '(orden de N)', igual que el servidor (orders.ts); 'Orden de 2 tacos' en la descripcion no es un paquete.",
  "productos": [
   {
    "nombre": "Taco Al Pastor (individual)",
@@ -1511,7 +1511,7 @@
    "precio_mxn": 83,
    "pack_size": 1,
    "es_alcohol": false,
-   "regional": true
+   "regional": false
   },
   {
    "nombre": "Flan",
@@ -1527,7 +1527,7 @@
    "precio_mxn": 46,
    "pack_size": 1,
    "es_alcohol": false,
-   "regional": true
+   "regional": false
   },
   {
    "nombre": "Queso Napolitano",
@@ -2167,7 +2167,7 @@
    "precio_mxn": 206,
    "pack_size": 1,
    "es_alcohol": false,
-   "regional": true
+   "regional": false
   },
   {
    "nombre": "Sopa de Lima",

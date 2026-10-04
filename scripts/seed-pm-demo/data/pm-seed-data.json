@@ -1,6 +1,6 @@
 {
-  "version": "2026-10-01",
-  "fuente": "pm-datos.json del paquete PM (cuestionario del dueño + repo lostaquitosdepm); recortado: sin volumenes de pedidos ni datos operativos internos; precios por sucursal de los menus impresos T1-2026, T5-2026 y T3-2025 (scripts/seed-pm-demo/data/menus-impresos/)",
+  "version": "2026-10-03",
+  "fuente": "pm-datos.json del paquete PM (cuestionario del dueño + repo lostaquitosdepm); recortado: sin volumenes de pedidos ni datos operativos internos; precios por sucursal de los menus impresos T1-2026 (lista vigente de todas las sucursales desde el 1-sep-2026) y T5-2026; T3-2025 solo es referencia de nombres (scripts/seed-pm-demo/data/menus-impresos/)",
   "organizacion": {
     "nombre": "Los Taquitos de PM",
     "slug": "los-taquitos-de-pm",
@@ -39,9 +39,10 @@
       "telefono": "999 987 5410",
       "lat": null,
       "lng": null,
+      "coordenadas_pendientes_de_verificar": "Calle 11 No. 371 x Av. 32, San Damián, Mérida (direccion del dueño; tel. 999 987 5410). Sin ficha de Google Maps ni otra fuente citable verificada: lat/lng quedan en null.",
       "activa": true,
       "zona_cliente": "poniente",
-      "nota": "Catalogo y precios de la lista impresa T3-2025, por decision de Javier (cola-maestra:412). Sin coordenadas: no se inventan (P7, P9)."
+      "nota": "Catalogo = lista T1-2026 sin comida regional ni flautas (cuestionario l.76 y l.104-105: 'precios iguales en todas'; correccion CR01/CR02 del 3-oct-2026: antes llevaba la lista 2025). Sin coordenadas: no se inventan (P7, P9), asi que T3 NO participa en la asignacion de sucursal por distancia hasta que se verifiquen."
     },
     {
       "id": "T4",
@@ -154,7 +155,7 @@
       "precios_por_sucursal": {
         "T1": 42,
         "T5": 42,
-        "T3": 36,
+        "T3": 42,
         "T7": 42,
         "T8": 42,
         "T2": 42
@@ -162,7 +163,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -187,7 +188,7 @@
       "precios_por_sucursal": {
         "T1": 37,
         "T5": 37,
-        "T3": 32,
+        "T3": 37,
         "T7": 37,
         "T8": 37,
         "T2": 37
@@ -195,7 +196,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -214,7 +215,7 @@
       "precios_por_sucursal": {
         "T1": 38,
         "T5": 38,
-        "T3": 32,
+        "T3": 38,
         "T7": 38,
         "T8": 38,
         "T2": 38
@@ -222,7 +223,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -247,7 +248,7 @@
       "precios_por_sucursal": {
         "T1": 150,
         "T5": 150,
-        "T3": 127,
+        "T3": 150,
         "T7": 150,
         "T8": 150,
         "T2": 150
@@ -255,7 +256,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -274,7 +275,7 @@
       "precios_por_sucursal": {
         "T1": 194,
         "T5": 194,
-        "T3": 164,
+        "T3": 194,
         "T7": 194,
         "T8": 194,
         "T2": 194
@@ -282,7 +283,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -311,7 +312,7 @@
       "precios_por_sucursal": {
         "T1": 184,
         "T5": 184,
-        "T3": 164,
+        "T3": 184,
         "T7": 184,
         "T8": 184,
         "T2": 184
@@ -319,7 +320,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -338,7 +339,7 @@
       "precios_por_sucursal": {
         "T1": 184,
         "T5": 184,
-        "T3": 164,
+        "T3": 184,
         "T7": 184,
         "T8": 184,
         "T2": 184
@@ -346,7 +347,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -365,7 +366,7 @@
       "precios_por_sucursal": {
         "T1": 189,
         "T5": 189,
-        "T3": 164,
+        "T3": 189,
         "T7": 189,
         "T8": 189,
         "T2": 189
@@ -373,7 +374,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -392,7 +393,7 @@
       "precios_por_sucursal": {
         "T1": 254,
         "T5": 254,
-        "T3": 215,
+        "T3": 254,
         "T7": 254,
         "T8": 254,
         "T2": 254
@@ -400,7 +401,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -419,7 +420,7 @@
       "precios_por_sucursal": {
         "T1": 189,
         "T5": 189,
-        "T3": 164,
+        "T3": 189,
         "T7": 189,
         "T8": 189,
         "T2": 189
@@ -427,7 +428,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -449,7 +450,7 @@
       "precios_por_sucursal": {
         "T1": 202,
         "T5": 202,
-        "T3": 171,
+        "T3": 202,
         "T7": 202,
         "T8": 202,
         "T2": 202
@@ -457,7 +458,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -486,7 +487,7 @@
       "precios_por_sucursal": {
         "T1": 194,
         "T5": 194,
-        "T3": 164,
+        "T3": 194,
         "T7": 194,
         "T8": 194,
         "T2": 194
@@ -494,7 +495,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -513,7 +514,7 @@
       "precios_por_sucursal": {
         "T1": 224,
         "T5": 224,
-        "T3": 190,
+        "T3": 224,
         "T7": 224,
         "T8": 224,
         "T2": 224
@@ -521,7 +522,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -550,7 +551,7 @@
       "precios_por_sucursal": {
         "T1": 212,
         "T5": 212,
-        "T3": 184,
+        "T3": 212,
         "T7": 212,
         "T8": 212,
         "T2": 212
@@ -558,7 +559,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -577,7 +578,7 @@
       "precios_por_sucursal": {
         "T1": 212,
         "T5": 212,
-        "T3": 184,
+        "T3": 212,
         "T7": 212,
         "T8": 212,
         "T2": 212
@@ -585,7 +586,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -604,7 +605,7 @@
       "precios_por_sucursal": {
         "T1": 217,
         "T5": 217,
-        "T3": 184,
+        "T3": 217,
         "T7": 217,
         "T8": 217,
         "T2": 217
@@ -612,7 +613,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -631,7 +632,7 @@
       "precios_por_sucursal": {
         "T1": 299,
         "T5": 299,
-        "T3": 253,
+        "T3": 299,
         "T7": 299,
         "T8": 299,
         "T2": 299
@@ -639,7 +640,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -658,7 +659,7 @@
       "precios_por_sucursal": {
         "T1": 217,
         "T5": 217,
-        "T3": 184,
+        "T3": 217,
         "T7": 217,
         "T8": 217,
         "T2": 217
@@ -666,7 +667,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -688,7 +689,7 @@
       "precios_por_sucursal": {
         "T1": 168,
         "T5": 168,
-        "T3": 146,
+        "T3": 168,
         "T7": 168,
         "T8": 168,
         "T2": 168
@@ -696,7 +697,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -715,7 +716,7 @@
       "precios_por_sucursal": {
         "T1": 175,
         "T5": 175,
-        "T3": 152,
+        "T3": 175,
         "T7": 175,
         "T8": 175,
         "T2": 175
@@ -723,7 +724,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -745,7 +746,7 @@
       "precios_por_sucursal": {
         "T1": 194,
         "T5": 194,
-        "T3": 164,
+        "T3": 194,
         "T7": 194,
         "T8": 194,
         "T2": 194
@@ -753,7 +754,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -782,7 +783,7 @@
       "precios_por_sucursal": {
         "T1": 184,
         "T5": 184,
-        "T3": 164,
+        "T3": 184,
         "T7": 184,
         "T8": 184,
         "T2": 184
@@ -790,7 +791,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -809,7 +810,7 @@
       "precios_por_sucursal": {
         "T1": 184,
         "T5": 184,
-        "T3": 164,
+        "T3": 184,
         "T7": 184,
         "T8": 184,
         "T2": 184
@@ -817,7 +818,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -836,7 +837,7 @@
       "precios_por_sucursal": {
         "T1": 189,
         "T5": 189,
-        "T3": 164,
+        "T3": 189,
         "T7": 189,
         "T8": 189,
         "T2": 189
@@ -844,7 +845,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -863,7 +864,7 @@
       "precios_por_sucursal": {
         "T1": 269,
         "T5": 269,
-        "T3": 228,
+        "T3": 269,
         "T7": 269,
         "T8": 269,
         "T2": 269
@@ -871,7 +872,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -890,7 +891,7 @@
       "precios_por_sucursal": {
         "T1": 276,
         "T5": 276,
-        "T3": 240,
+        "T3": 276,
         "T7": 276,
         "T8": 276,
         "T2": 276
@@ -898,7 +899,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -917,7 +918,7 @@
       "precios_por_sucursal": {
         "T1": 283,
         "T5": 283,
-        "T3": 240,
+        "T3": 283,
         "T7": 283,
         "T8": 283,
         "T2": 283
@@ -925,7 +926,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -954,7 +955,7 @@
       "precios_por_sucursal": {
         "T1": 269,
         "T5": 269,
-        "T3": 240,
+        "T3": 269,
         "T7": 269,
         "T8": 269,
         "T2": 269
@@ -962,7 +963,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -981,7 +982,7 @@
       "precios_por_sucursal": {
         "T1": 269,
         "T5": 269,
-        "T3": 240,
+        "T3": 269,
         "T7": 269,
         "T8": 269,
         "T2": 269
@@ -989,7 +990,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1008,7 +1009,7 @@
       "precios_por_sucursal": {
         "T1": 276,
         "T5": 276,
-        "T3": 240,
+        "T3": 276,
         "T7": 276,
         "T8": 276,
         "T2": 276
@@ -1016,7 +1017,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1035,7 +1036,7 @@
       "precios_por_sucursal": {
         "T1": 343,
         "T5": 343,
-        "T3": 298,
+        "T3": 343,
         "T7": 343,
         "T8": 343,
         "T2": 343
@@ -1043,7 +1044,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1062,7 +1063,7 @@
       "precios_por_sucursal": {
         "T1": 247,
         "T5": 247,
-        "T3": 209,
+        "T3": 247,
         "T7": 247,
         "T8": 247,
         "T2": 247
@@ -1070,7 +1071,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1089,7 +1090,7 @@
       "precios_por_sucursal": {
         "T1": 291,
         "T5": 291,
-        "T3": 247,
+        "T3": 291,
         "T7": 291,
         "T8": 291,
         "T2": 291
@@ -1097,7 +1098,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1126,7 +1127,7 @@
       "precios_por_sucursal": {
         "T1": 284,
         "T5": 284,
-        "T3": 247,
+        "T3": 284,
         "T7": 284,
         "T8": 284,
         "T2": 284
@@ -1134,7 +1135,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1153,7 +1154,7 @@
       "precios_por_sucursal": {
         "T1": 284,
         "T5": 284,
-        "T3": 247,
+        "T3": 284,
         "T7": 284,
         "T8": 284,
         "T2": 284
@@ -1161,7 +1162,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1180,7 +1181,7 @@
       "precios_por_sucursal": {
         "T1": 284,
         "T5": 284,
-        "T3": 247,
+        "T3": 284,
         "T7": 284,
         "T8": 284,
         "T2": 284
@@ -1188,7 +1189,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1207,7 +1208,7 @@
       "precios_por_sucursal": {
         "T1": 373,
         "T5": 373,
-        "T3": 316,
+        "T3": 373,
         "T7": 373,
         "T8": 373,
         "T2": 373
@@ -1215,7 +1216,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1234,7 +1235,7 @@
       "precios_por_sucursal": {
         "T1": 284,
         "T5": 284,
-        "T3": 247,
+        "T3": 284,
         "T7": 284,
         "T8": 284,
         "T2": 284
@@ -1242,7 +1243,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1264,7 +1265,7 @@
       "precios_por_sucursal": {
         "T1": 209,
         "T5": 209,
-        "T3": 177,
+        "T3": 209,
         "T7": 209,
         "T8": 209,
         "T2": 209
@@ -1272,7 +1273,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1291,7 +1292,7 @@
       "precios_por_sucursal": {
         "T1": 204,
         "T5": 204,
-        "T3": 177,
+        "T3": 204,
         "T7": 204,
         "T8": 204,
         "T2": 204
@@ -1299,7 +1300,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1318,7 +1319,7 @@
       "precios_por_sucursal": {
         "T1": 306,
         "T5": 306,
-        "T3": 266,
+        "T3": 306,
         "T7": 306,
         "T8": 306,
         "T2": 306
@@ -1326,7 +1327,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1348,7 +1349,7 @@
       "precios_por_sucursal": {
         "T1": 314,
         "T5": 314,
-        "T3": 266,
+        "T3": 314,
         "T7": 314,
         "T8": 314,
         "T2": 314
@@ -1356,7 +1357,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1386,7 +1387,7 @@
       "precios_por_sucursal": {
         "T1": 306,
         "T5": 306,
-        "T3": 266,
+        "T3": 306,
         "T7": 306,
         "T8": 306,
         "T2": 306
@@ -1394,7 +1395,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1416,7 +1417,7 @@
       "precios_por_sucursal": {
         "T1": 306,
         "T5": 306,
-        "T3": 266,
+        "T3": 306,
         "T7": 306,
         "T8": 306,
         "T2": 306
@@ -1424,7 +1425,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1446,7 +1447,7 @@
       "precios_por_sucursal": {
         "T1": 306,
         "T5": 306,
-        "T3": 266,
+        "T3": 306,
         "T7": 306,
         "T8": 306,
         "T2": 306
@@ -1454,7 +1455,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1476,7 +1477,7 @@
       "precios_por_sucursal": {
         "T1": 371,
         "T5": 371,
-        "T3": 323,
+        "T3": 371,
         "T7": 371,
         "T8": 371,
         "T2": 371
@@ -1484,7 +1485,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1506,7 +1507,7 @@
       "precios_por_sucursal": {
         "T1": 328,
         "T5": 328,
-        "T3": 278,
+        "T3": 328,
         "T7": 328,
         "T8": 328,
         "T2": 328
@@ -1514,7 +1515,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1543,7 +1544,7 @@
       "precios_por_sucursal": {
         "T1": 378,
         "T5": 378,
-        "T3": 329,
+        "T3": 378,
         "T7": 378,
         "T8": 378,
         "T2": 378
@@ -1551,7 +1552,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1570,7 +1571,7 @@
       "precios_por_sucursal": {
         "T1": 194,
         "T5": 194,
-        "T3": 164,
+        "T3": 194,
         "T7": 194,
         "T8": 194,
         "T2": 194
@@ -1578,7 +1579,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1597,7 +1598,7 @@
       "precios_por_sucursal": {
         "T1": 224,
         "T5": 224,
-        "T3": 190,
+        "T3": 224,
         "T7": 224,
         "T8": 224,
         "T2": 224
@@ -1605,7 +1606,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1624,7 +1625,7 @@
       "precios_por_sucursal": {
         "T1": 238,
         "T5": 238,
-        "T3": 202,
+        "T3": 238,
         "T7": 238,
         "T8": 238,
         "T2": 238
@@ -1632,7 +1633,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1811,7 +1812,7 @@
       "precios_por_sucursal": {
         "T1": 291,
         "T5": 291,
-        "T3": 253,
+        "T3": 291,
         "T7": 291,
         "T8": 291,
         "T2": 291
@@ -1819,7 +1820,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1842,7 +1843,7 @@
       "precios_por_sucursal": {
         "T1": 306,
         "T5": 306,
-        "T3": 266,
+        "T3": 306,
         "T7": 306,
         "T8": 306,
         "T2": 306
@@ -1850,7 +1851,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1877,7 +1878,7 @@
       "precios_por_sucursal": {
         "T1": 314,
         "T5": 314,
-        "T3": 266,
+        "T3": 314,
         "T7": 314,
         "T8": 314,
         "T2": 314
@@ -1885,7 +1886,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1916,7 +1917,7 @@
       "precios_por_sucursal": {
         "T1": 306,
         "T5": 306,
-        "T3": 266,
+        "T3": 306,
         "T7": 306,
         "T8": 306,
         "T2": 306
@@ -1924,7 +1925,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1947,7 +1948,7 @@
       "precios_por_sucursal": {
         "T1": 306,
         "T5": 306,
-        "T3": 266,
+        "T3": 306,
         "T7": 306,
         "T8": 306,
         "T2": 306
@@ -1955,7 +1956,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -1978,7 +1979,7 @@
       "precios_por_sucursal": {
         "T1": 306,
         "T5": 306,
-        "T3": 266,
+        "T3": 306,
         "T7": 306,
         "T8": 306,
         "T2": 306
@@ -1986,7 +1987,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2009,7 +2010,7 @@
       "precios_por_sucursal": {
         "T1": 306,
         "T5": 306,
-        "T3": 266,
+        "T3": 306,
         "T7": 306,
         "T8": 306,
         "T2": 306
@@ -2017,7 +2018,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2041,7 +2042,7 @@
       "precios_por_sucursal": {
         "T1": 373,
         "T5": 373,
-        "T3": 316,
+        "T3": 373,
         "T7": 373,
         "T8": 373,
         "T2": 373
@@ -2049,7 +2050,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2072,7 +2073,7 @@
       "precios_por_sucursal": {
         "T1": 204,
         "T5": 204,
-        "T3": 177,
+        "T3": 204,
         "T7": 204,
         "T8": 204,
         "T2": 204
@@ -2080,7 +2081,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2103,7 +2104,7 @@
       "precios_por_sucursal": {
         "T1": 262,
         "T5": 262,
-        "T3": 228,
+        "T3": 262,
         "T7": 262,
         "T8": 262,
         "T2": 262
@@ -2111,7 +2112,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2134,7 +2135,7 @@
       "precios_por_sucursal": {
         "T1": 283,
         "T5": 283,
-        "T3": 240,
+        "T3": 283,
         "T7": 283,
         "T8": 283,
         "T2": 283
@@ -2142,7 +2143,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2173,7 +2174,7 @@
       "precios_por_sucursal": {
         "T1": 276,
         "T5": 276,
-        "T3": 240,
+        "T3": 276,
         "T7": 276,
         "T8": 276,
         "T2": 276
@@ -2181,7 +2182,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2204,7 +2205,7 @@
       "precios_por_sucursal": {
         "T1": 276,
         "T5": 276,
-        "T3": 240,
+        "T3": 276,
         "T7": 276,
         "T8": 276,
         "T2": 276
@@ -2212,7 +2213,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2235,7 +2236,7 @@
       "precios_por_sucursal": {
         "T1": 276,
         "T5": 276,
-        "T3": 240,
+        "T3": 276,
         "T7": 276,
         "T8": 276,
         "T2": 276
@@ -2243,7 +2244,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2266,7 +2267,7 @@
       "precios_por_sucursal": {
         "T1": 352,
         "T5": 352,
-        "T3": 298,
+        "T3": 352,
         "T7": 352,
         "T8": 352,
         "T2": 352
@@ -2274,7 +2275,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2297,7 +2298,7 @@
       "precios_por_sucursal": {
         "T1": 262,
         "T5": 262,
-        "T3": 228,
+        "T3": 262,
         "T7": 262,
         "T8": 262,
         "T2": 262
@@ -2305,7 +2306,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2327,7 +2328,7 @@
       "precios_por_sucursal": {
         "T1": 262,
         "T5": 262,
-        "T3": 228,
+        "T3": 262,
         "T7": 262,
         "T8": 262,
         "T2": 262
@@ -2335,7 +2336,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2361,7 +2362,7 @@
       "precios_por_sucursal": {
         "T1": 283,
         "T5": 283,
-        "T3": 240,
+        "T3": 283,
         "T7": 283,
         "T8": 283,
         "T2": 283
@@ -2369,7 +2370,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2399,7 +2400,7 @@
       "precios_por_sucursal": {
         "T1": 276,
         "T5": 276,
-        "T3": 240,
+        "T3": 276,
         "T7": 276,
         "T8": 276,
         "T2": 276
@@ -2407,7 +2408,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2429,7 +2430,7 @@
       "precios_por_sucursal": {
         "T1": 276,
         "T5": 276,
-        "T3": 240,
+        "T3": 276,
         "T7": 276,
         "T8": 276,
         "T2": 276
@@ -2437,7 +2438,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2459,7 +2460,7 @@
       "precios_por_sucursal": {
         "T1": 276,
         "T5": 276,
-        "T3": 240,
+        "T3": 276,
         "T7": 276,
         "T8": 276,
         "T2": 276
@@ -2467,7 +2468,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2489,7 +2490,7 @@
       "precios_por_sucursal": {
         "T1": 276,
         "T5": 276,
-        "T3": 240,
+        "T3": 276,
         "T7": 276,
         "T8": 276,
         "T2": 276
@@ -2497,7 +2498,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2520,7 +2521,7 @@
       "precios_por_sucursal": {
         "T1": 352,
         "T5": 352,
-        "T3": 298,
+        "T3": 352,
         "T7": 352,
         "T8": 352,
         "T2": 352
@@ -2528,7 +2529,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2550,7 +2551,7 @@
       "precios_por_sucursal": {
         "T1": 93,
         "T5": 93,
-        "T3": 83,
+        "T3": 93,
         "T7": 93,
         "T8": 93,
         "T2": 93
@@ -2558,7 +2559,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2582,7 +2583,7 @@
       "precios_por_sucursal": {
         "T1": 142,
         "T5": 142,
-        "T3": 127,
+        "T3": 142,
         "T7": 142,
         "T8": 142,
         "T2": 142
@@ -2590,7 +2591,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2609,7 +2610,7 @@
       "precios_por_sucursal": {
         "T1": 106,
         "T5": 106,
-        "T3": 90,
+        "T3": 106,
         "T7": 106,
         "T8": 106,
         "T2": 106
@@ -2617,7 +2618,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2636,7 +2637,7 @@
       "precios_por_sucursal": {
         "T1": 135,
         "T5": 135,
-        "T3": 114,
+        "T3": 135,
         "T7": 135,
         "T8": 135,
         "T2": 135
@@ -2644,7 +2645,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2663,7 +2664,7 @@
       "precios_por_sucursal": {
         "T1": 172,
         "T5": 172,
-        "T3": 146,
+        "T3": 172,
         "T7": 172,
         "T8": 172,
         "T2": 172
@@ -2671,7 +2672,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2693,7 +2694,7 @@
       "precios_por_sucursal": {
         "T1": 204,
         "T5": 204,
-        "T3": 177,
+        "T3": 204,
         "T7": 204,
         "T8": 204,
         "T2": 204
@@ -2701,7 +2702,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2720,7 +2721,7 @@
       "precios_por_sucursal": {
         "T1": 113,
         "T5": 113,
-        "T3": 101,
+        "T3": 113,
         "T7": 113,
         "T8": 113,
         "T2": 113
@@ -2728,7 +2729,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2747,7 +2748,7 @@
       "precios_por_sucursal": {
         "T1": 123,
         "T5": 123,
-        "T3": 114,
+        "T3": 123,
         "T7": 123,
         "T8": 123,
         "T2": 123
@@ -2755,7 +2756,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2774,7 +2775,7 @@
       "precios_por_sucursal": {
         "T1": 82,
         "T5": 82,
-        "T3": 76,
+        "T3": 82,
         "T7": 82,
         "T8": 82,
         "T2": 82
@@ -2782,7 +2783,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2801,7 +2802,7 @@
       "precios_por_sucursal": {
         "T1": 142,
         "T5": 142,
-        "T3": 127,
+        "T3": 142,
         "T7": 142,
         "T8": 142,
         "T2": 142
@@ -2809,7 +2810,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2828,7 +2829,7 @@
       "precios_por_sucursal": {
         "T1": 106,
         "T5": 106,
-        "T3": 95,
+        "T3": 106,
         "T7": 106,
         "T8": 106,
         "T2": 106
@@ -2836,7 +2837,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2855,7 +2856,7 @@
       "precios_por_sucursal": {
         "T1": 178,
         "T5": 178,
-        "T3": 159,
+        "T3": 178,
         "T7": 178,
         "T8": 178,
         "T2": 178
@@ -2863,7 +2864,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2882,7 +2883,7 @@
       "precios_por_sucursal": {
         "T1": 136,
         "T5": 136,
-        "T3": 121,
+        "T3": 136,
         "T7": 136,
         "T8": 136,
         "T2": 136
@@ -2890,7 +2891,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2909,7 +2910,7 @@
       "precios_por_sucursal": {
         "T1": 109,
         "T5": 109,
-        "T3": 95,
+        "T3": 109,
         "T7": 109,
         "T8": 109,
         "T2": 109
@@ -2917,7 +2918,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2936,7 +2937,7 @@
       "precios_por_sucursal": {
         "T1": 124,
         "T5": 124,
-        "T3": 108,
+        "T3": 124,
         "T7": 124,
         "T8": 124,
         "T2": 124
@@ -2944,7 +2945,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2963,7 +2964,7 @@
       "precios_por_sucursal": {
         "T1": 127,
         "T5": 127,
-        "T3": 108,
+        "T3": 127,
         "T7": 127,
         "T8": 127,
         "T2": 127
@@ -2971,7 +2972,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -2996,7 +2997,7 @@
       "precios_por_sucursal": {
         "T1": 135,
         "T5": 135,
-        "T3": 114,
+        "T3": 135,
         "T7": 135,
         "T8": 135,
         "T2": 135
@@ -3004,7 +3005,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3023,7 +3024,7 @@
       "precios_por_sucursal": {
         "T1": 160,
         "T5": 160,
-        "T3": 139,
+        "T3": 160,
         "T7": 160,
         "T8": 160,
         "T2": 160
@@ -3031,7 +3032,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3050,7 +3051,7 @@
       "precios_por_sucursal": {
         "T1": 175,
         "T5": 175,
-        "T3": 152,
+        "T3": 175,
         "T7": 175,
         "T8": 175,
         "T2": 175
@@ -3058,7 +3059,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3077,7 +3078,7 @@
       "precios_por_sucursal": {
         "T1": 175,
         "T5": 175,
-        "T3": 152,
+        "T3": 175,
         "T7": 175,
         "T8": 175,
         "T2": 175
@@ -3085,7 +3086,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3110,7 +3111,7 @@
       "precios_por_sucursal": {
         "T1": 179,
         "T5": 179,
-        "T3": 152,
+        "T3": 179,
         "T7": 179,
         "T8": 179,
         "T2": 179
@@ -3118,7 +3119,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3137,7 +3138,7 @@
       "precios_por_sucursal": {
         "T1": 179,
         "T5": 179,
-        "T3": 152,
+        "T3": 179,
         "T7": 179,
         "T8": 179,
         "T2": 179
@@ -3145,7 +3146,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3164,7 +3165,7 @@
       "precios_por_sucursal": {
         "T1": 328,
         "T5": 328,
-        "T3": 278,
+        "T3": 328,
         "T7": 328,
         "T8": 328,
         "T2": 328
@@ -3172,7 +3173,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3191,7 +3192,7 @@
       "precios_por_sucursal": {
         "T1": 232,
         "T5": 232,
-        "T3": 202,
+        "T3": 232,
         "T7": 232,
         "T8": 232,
         "T2": 232
@@ -3199,7 +3200,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3218,7 +3219,7 @@
       "precios_por_sucursal": {
         "T1": 320,
         "T5": 320,
-        "T3": 278,
+        "T3": 320,
         "T7": 320,
         "T8": 320,
         "T2": 320
@@ -3226,7 +3227,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3251,7 +3252,7 @@
       "precios_por_sucursal": {
         "T1": 232,
         "T5": 232,
-        "T3": 202,
+        "T3": 232,
         "T7": 232,
         "T8": 232,
         "T2": 232
@@ -3259,7 +3260,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3284,7 +3285,7 @@
       "precios_por_sucursal": {
         "T1": 373,
         "T5": 373,
-        "T3": 316,
+        "T3": 373,
         "T7": 373,
         "T8": 373,
         "T2": 373
@@ -3292,7 +3293,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3321,7 +3322,7 @@
       "precios_por_sucursal": {
         "T1": 262,
         "T5": 262,
-        "T3": 222,
+        "T3": 262,
         "T7": 262,
         "T8": 262,
         "T2": 262
@@ -3329,7 +3330,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3358,7 +3359,7 @@
       "precios_por_sucursal": {
         "T1": 363,
         "T5": 363,
-        "T3": 316,
+        "T3": 363,
         "T7": 363,
         "T8": 363,
         "T2": 363
@@ -3366,7 +3367,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3385,7 +3386,7 @@
       "precios_por_sucursal": {
         "T1": 249,
         "T5": 249,
-        "T3": 222,
+        "T3": 249,
         "T7": 249,
         "T8": 249,
         "T2": 249
@@ -3393,7 +3394,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3412,7 +3413,7 @@
       "precios_por_sucursal": {
         "T1": 358,
         "T5": 358,
-        "T3": 311,
+        "T3": 358,
         "T7": 358,
         "T8": 358,
         "T2": 358
@@ -3420,7 +3421,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3439,7 +3440,7 @@
       "precios_por_sucursal": {
         "T1": 249,
         "T5": 249,
-        "T3": 222,
+        "T3": 249,
         "T7": 249,
         "T8": 249,
         "T2": 249
@@ -3447,7 +3448,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3466,7 +3467,7 @@
       "precios_por_sucursal": {
         "T1": 367,
         "T5": 367,
-        "T3": 311,
+        "T3": 367,
         "T7": 367,
         "T8": 367,
         "T2": 367
@@ -3474,7 +3475,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3493,7 +3494,7 @@
       "precios_por_sucursal": {
         "T1": 255,
         "T5": 255,
-        "T3": 222,
+        "T3": 255,
         "T7": 255,
         "T8": 255,
         "T2": 255
@@ -3501,7 +3502,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3520,7 +3521,7 @@
       "precios_por_sucursal": {
         "T1": 433,
         "T5": 433,
-        "T3": 367,
+        "T3": 433,
         "T7": 433,
         "T8": 433,
         "T2": 433
@@ -3528,7 +3529,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3547,7 +3548,7 @@
       "precios_por_sucursal": {
         "T1": 299,
         "T5": 299,
-        "T3": 253,
+        "T3": 299,
         "T7": 299,
         "T8": 299,
         "T2": 299
@@ -3555,7 +3556,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3576,14 +3577,16 @@
         "T5": 206,
         "T7": 206,
         "T8": 206,
-        "T2": 206
+        "T2": 206,
+        "T3": 206
       },
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
-        "T2": "provisional_P5"
+        "T2": "provisional_P5",
+        "T3": "lista_t1_2026_cuestionario"
       },
       "alias": [
         "pizza"
@@ -3604,14 +3607,16 @@
         "T5": 232,
         "T7": 232,
         "T8": 232,
-        "T2": 232
+        "T2": 232,
+        "T3": 232
       },
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
-        "T2": "provisional_P5"
+        "T2": "provisional_P5",
+        "T3": "lista_t1_2026_cuestionario"
       },
       "alias": [
         "pizza"
@@ -3632,14 +3637,16 @@
         "T5": 254,
         "T7": 254,
         "T8": 254,
-        "T2": 254
+        "T2": 254,
+        "T3": 254
       },
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
-        "T2": "provisional_P5"
+        "T2": "provisional_P5",
+        "T3": "lista_t1_2026_cuestionario"
       },
       "alias": [
         "bitek",
@@ -3668,14 +3675,16 @@
         "T5": 247,
         "T7": 247,
         "T8": 247,
-        "T2": 247
+        "T2": 247,
+        "T3": 247
       },
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
-        "T2": "provisional_P5"
+        "T2": "provisional_P5",
+        "T3": "lista_t1_2026_cuestionario"
       },
       "alias": [
         "pizza"
@@ -3696,14 +3705,16 @@
         "T5": 247,
         "T7": 247,
         "T8": 247,
-        "T2": 247
+        "T2": 247,
+        "T3": 247
       },
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
-        "T2": "provisional_P5"
+        "T2": "provisional_P5",
+        "T3": "lista_t1_2026_cuestionario"
       },
       "alias": [
         "pizza"
@@ -3724,14 +3735,16 @@
         "T5": 247,
         "T7": 247,
         "T8": 247,
-        "T2": 247
+        "T2": 247,
+        "T3": 247
       },
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
-        "T2": "provisional_P5"
+        "T2": "provisional_P5",
+        "T3": "lista_t1_2026_cuestionario"
       },
       "alias": [
         "pizza"
@@ -3752,14 +3765,16 @@
         "T5": 291,
         "T7": 291,
         "T8": 291,
-        "T2": 291
+        "T2": 291,
+        "T3": 291
       },
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
-        "T2": "provisional_P5"
+        "T2": "provisional_P5",
+        "T3": "lista_t1_2026_cuestionario"
       },
       "alias": [
         "pizza"
@@ -3780,14 +3795,16 @@
         "T5": 212,
         "T7": 212,
         "T8": 212,
-        "T2": 212
+        "T2": 212,
+        "T3": 212
       },
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
-        "T2": "provisional_P5"
+        "T2": "provisional_P5",
+        "T3": "lista_t1_2026_cuestionario"
       },
       "alias": [
         "pizza"
@@ -3806,7 +3823,7 @@
       "precios_por_sucursal": {
         "T1": 329,
         "T5": 329,
-        "T3": 304,
+        "T3": 329,
         "T7": 329,
         "T8": 329,
         "T2": 329
@@ -3814,7 +3831,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3837,7 +3854,7 @@
       "precios_por_sucursal": {
         "T1": 335,
         "T5": 335,
-        "T3": 291,
+        "T3": 335,
         "T7": 335,
         "T8": 335,
         "T2": 335
@@ -3845,7 +3862,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3864,7 +3881,7 @@
       "precios_por_sucursal": {
         "T1": 404,
         "T5": 404,
-        "T3": 342,
+        "T3": 404,
         "T7": 404,
         "T8": 404,
         "T2": 404
@@ -3872,7 +3889,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3901,7 +3918,7 @@
       "precios_por_sucursal": {
         "T1": 378,
         "T5": 378,
-        "T3": 329,
+        "T3": 378,
         "T7": 378,
         "T8": 378,
         "T2": 378
@@ -3909,7 +3926,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3928,7 +3945,7 @@
       "precios_por_sucursal": {
         "T1": 378,
         "T5": 378,
-        "T3": 329,
+        "T3": 378,
         "T7": 378,
         "T8": 378,
         "T2": 378
@@ -3936,7 +3953,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3955,7 +3972,7 @@
       "precios_por_sucursal": {
         "T1": 388,
         "T5": 388,
-        "T3": 329,
+        "T3": 388,
         "T7": 388,
         "T8": 388,
         "T2": 388
@@ -3963,7 +3980,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -3982,7 +3999,7 @@
       "precios_por_sucursal": {
         "T1": 492,
         "T5": 492,
-        "T3": 417,
+        "T3": 492,
         "T7": 492,
         "T8": 492,
         "T2": 492
@@ -3990,7 +4007,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -4009,7 +4026,7 @@
       "precios_por_sucursal": {
         "T1": 368,
         "T5": 368,
-        "T3": 329,
+        "T3": 368,
         "T7": 368,
         "T8": 368,
         "T2": 368
@@ -4017,7 +4034,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -4039,7 +4056,7 @@
       "precios_por_sucursal": {
         "T1": 404,
         "T5": 404,
-        "T3": 342,
+        "T3": 404,
         "T7": 404,
         "T8": 404,
         "T2": 404
@@ -4047,7 +4064,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -4076,7 +4093,7 @@
       "precios_por_sucursal": {
         "T1": 393,
         "T5": 393,
-        "T3": 342,
+        "T3": 393,
         "T7": 393,
         "T8": 393,
         "T2": 393
@@ -4084,7 +4101,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -4103,7 +4120,7 @@
       "precios_por_sucursal": {
         "T1": 492,
         "T5": 492,
-        "T3": 417,
+        "T3": 492,
         "T7": 492,
         "T8": 492,
         "T2": 492
@@ -4111,7 +4128,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -4130,7 +4147,7 @@
       "precios_por_sucursal": {
         "T1": 612,
         "T5": 612,
-        "T3": 519,
+        "T3": 612,
         "T7": 612,
         "T8": 612,
         "T2": 612
@@ -4138,7 +4155,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -4157,7 +4174,7 @@
       "precios_por_sucursal": {
         "T1": 1045,
         "T5": 1045,
-        "T3": 886,
+        "T3": 1045,
         "T7": 1045,
         "T8": 1045,
         "T2": 1045
@@ -4165,7 +4182,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -4184,7 +4201,7 @@
       "precios_por_sucursal": {
         "T1": 900,
         "T5": 900,
-        "T3": 750,
+        "T3": 900,
         "T7": 900,
         "T8": 900,
         "T2": 900
@@ -4192,7 +4209,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -4207,7 +4224,7 @@
       "precios_por_sucursal": {
         "T1": 225,
         "T5": 225,
-        "T3": 187.5,
+        "T3": 225,
         "T7": 225,
         "T8": 225,
         "T2": 225
@@ -4234,7 +4251,7 @@
       "precios_por_sucursal": {
         "T1": 450,
         "T5": 450,
-        "T3": 375,
+        "T3": 450,
         "T7": 450,
         "T8": 450,
         "T2": 450
@@ -4261,7 +4278,7 @@
       "precios_por_sucursal": {
         "T1": 675,
         "T5": 675,
-        "T3": 562.5,
+        "T3": 675,
         "T7": 675,
         "T8": 675,
         "T2": 675
@@ -4288,7 +4305,7 @@
       "precios_por_sucursal": {
         "T1": 1350,
         "T5": 1350,
-        "T3": 1125,
+        "T3": 1350,
         "T7": 1350,
         "T8": 1350,
         "T2": 1350
@@ -4315,7 +4332,7 @@
       "precios_por_sucursal": {
         "T1": 1800,
         "T5": 1800,
-        "T3": 1500,
+        "T3": 1800,
         "T7": 1800,
         "T8": 1800,
         "T2": 1800
@@ -4346,7 +4363,7 @@
       "precios_por_sucursal": {
         "T1": 1100,
         "T5": 1100,
-        "T3": 950,
+        "T3": 1100,
         "T7": 1100,
         "T8": 1100,
         "T2": 1100
@@ -4354,7 +4371,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -4379,7 +4396,7 @@
       "precios_por_sucursal": {
         "T1": 275,
         "T5": 275,
-        "T3": 237.5,
+        "T3": 275,
         "T7": 275,
         "T8": 275,
         "T2": 275
@@ -4416,7 +4433,7 @@
       "precios_por_sucursal": {
         "T1": 550,
         "T5": 550,
-        "T3": 475,
+        "T3": 550,
         "T7": 550,
         "T8": 550,
         "T2": 550
@@ -4453,7 +4470,7 @@
       "precios_por_sucursal": {
         "T1": 825,
         "T5": 825,
-        "T3": 712.5,
+        "T3": 825,
         "T7": 825,
         "T8": 825,
         "T2": 825
@@ -4490,7 +4507,7 @@
       "precios_por_sucursal": {
         "T1": 1650,
         "T5": 1650,
-        "T3": 1425,
+        "T3": 1650,
         "T7": 1650,
         "T8": 1650,
         "T2": 1650
@@ -4527,7 +4544,7 @@
       "precios_por_sucursal": {
         "T1": 2200,
         "T5": 2200,
-        "T3": 1900,
+        "T3": 2200,
         "T7": 2200,
         "T8": 2200,
         "T2": 2200
@@ -4568,7 +4585,7 @@
       "precios_por_sucursal": {
         "T1": 1150,
         "T5": 1150,
-        "T3": 950,
+        "T3": 1150,
         "T7": 1150,
         "T8": 1150,
         "T2": 1150
@@ -4576,7 +4593,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -4601,7 +4618,7 @@
       "precios_por_sucursal": {
         "T1": 287.5,
         "T5": 287.5,
-        "T3": 237.5,
+        "T3": 287.5,
         "T7": 287.5,
         "T8": 287.5,
         "T2": 287.5
@@ -4638,7 +4655,7 @@
       "precios_por_sucursal": {
         "T1": 575,
         "T5": 575,
-        "T3": 475,
+        "T3": 575,
         "T7": 575,
         "T8": 575,
         "T2": 575
@@ -4675,7 +4692,7 @@
       "precios_por_sucursal": {
         "T1": 862.5,
         "T5": 862.5,
-        "T3": 712.5,
+        "T3": 862.5,
         "T7": 862.5,
         "T8": 862.5,
         "T2": 862.5
@@ -4712,7 +4729,7 @@
       "precios_por_sucursal": {
         "T1": 1725,
         "T5": 1725,
-        "T3": 1425,
+        "T3": 1725,
         "T7": 1725,
         "T8": 1725,
         "T2": 1725
@@ -4749,7 +4766,7 @@
       "precios_por_sucursal": {
         "T1": 2300,
         "T5": 2300,
-        "T3": 1900,
+        "T3": 2300,
         "T7": 2300,
         "T8": 2300,
         "T2": 2300
@@ -4790,7 +4807,7 @@
       "precios_por_sucursal": {
         "T1": 950,
         "T5": 950,
-        "T3": 800,
+        "T3": 950,
         "T7": 950,
         "T8": 950,
         "T2": 950
@@ -4798,7 +4815,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -4813,7 +4830,7 @@
       "precios_por_sucursal": {
         "T1": 237.5,
         "T5": 237.5,
-        "T3": 200,
+        "T3": 237.5,
         "T7": 237.5,
         "T8": 237.5,
         "T2": 237.5
@@ -4840,7 +4857,7 @@
       "precios_por_sucursal": {
         "T1": 475,
         "T5": 475,
-        "T3": 400,
+        "T3": 475,
         "T7": 475,
         "T8": 475,
         "T2": 475
@@ -4867,7 +4884,7 @@
       "precios_por_sucursal": {
         "T1": 712.5,
         "T5": 712.5,
-        "T3": 600,
+        "T3": 712.5,
         "T7": 712.5,
         "T8": 712.5,
         "T2": 712.5
@@ -4894,7 +4911,7 @@
       "precios_por_sucursal": {
         "T1": 1425,
         "T5": 1425,
-        "T3": 1200,
+        "T3": 1425,
         "T7": 1425,
         "T8": 1425,
         "T2": 1425
@@ -4921,7 +4938,7 @@
       "precios_por_sucursal": {
         "T1": 1900,
         "T5": 1900,
-        "T3": 1600,
+        "T3": 1900,
         "T7": 1900,
         "T8": 1900,
         "T2": 1900
@@ -4952,7 +4969,7 @@
       "precios_por_sucursal": {
         "T1": 950,
         "T5": 950,
-        "T3": 800,
+        "T3": 950,
         "T7": 950,
         "T8": 950,
         "T2": 950
@@ -4960,7 +4977,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -4975,7 +4992,7 @@
       "precios_por_sucursal": {
         "T1": 237.5,
         "T5": 237.5,
-        "T3": 200,
+        "T3": 237.5,
         "T7": 237.5,
         "T8": 237.5,
         "T2": 237.5
@@ -5002,7 +5019,7 @@
       "precios_por_sucursal": {
         "T1": 475,
         "T5": 475,
-        "T3": 400,
+        "T3": 475,
         "T7": 475,
         "T8": 475,
         "T2": 475
@@ -5029,7 +5046,7 @@
       "precios_por_sucursal": {
         "T1": 712.5,
         "T5": 712.5,
-        "T3": 600,
+        "T3": 712.5,
         "T7": 712.5,
         "T8": 712.5,
         "T2": 712.5
@@ -5056,7 +5073,7 @@
       "precios_por_sucursal": {
         "T1": 1425,
         "T5": 1425,
-        "T3": 1200,
+        "T3": 1425,
         "T7": 1425,
         "T8": 1425,
         "T2": 1425
@@ -5083,7 +5100,7 @@
       "precios_por_sucursal": {
         "T1": 1900,
         "T5": 1900,
-        "T3": 1600,
+        "T3": 1900,
         "T7": 1900,
         "T8": 1900,
         "T2": 1900
@@ -5114,7 +5131,7 @@
       "precios_por_sucursal": {
         "T1": 950,
         "T5": 950,
-        "T3": 800,
+        "T3": 950,
         "T7": 950,
         "T8": 950,
         "T2": 950
@@ -5122,7 +5139,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5140,7 +5157,7 @@
       "precios_por_sucursal": {
         "T1": 237.5,
         "T5": 237.5,
-        "T3": 200,
+        "T3": 237.5,
         "T7": 237.5,
         "T8": 237.5,
         "T2": 237.5
@@ -5170,7 +5187,7 @@
       "precios_por_sucursal": {
         "T1": 475,
         "T5": 475,
-        "T3": 400,
+        "T3": 475,
         "T7": 475,
         "T8": 475,
         "T2": 475
@@ -5200,7 +5217,7 @@
       "precios_por_sucursal": {
         "T1": 712.5,
         "T5": 712.5,
-        "T3": 600,
+        "T3": 712.5,
         "T7": 712.5,
         "T8": 712.5,
         "T2": 712.5
@@ -5230,7 +5247,7 @@
       "precios_por_sucursal": {
         "T1": 1425,
         "T5": 1425,
-        "T3": 1200,
+        "T3": 1425,
         "T7": 1425,
         "T8": 1425,
         "T2": 1425
@@ -5260,7 +5277,7 @@
       "precios_por_sucursal": {
         "T1": 1900,
         "T5": 1900,
-        "T3": 1600,
+        "T3": 1900,
         "T7": 1900,
         "T8": 1900,
         "T2": 1900
@@ -5294,7 +5311,7 @@
       "precios_por_sucursal": {
         "T1": 1400,
         "T5": 1400,
-        "T3": 1200,
+        "T3": 1400,
         "T7": 1400,
         "T8": 1400,
         "T2": 1400
@@ -5302,7 +5319,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5317,7 +5334,7 @@
       "precios_por_sucursal": {
         "T1": 350,
         "T5": 350,
-        "T3": 300,
+        "T3": 350,
         "T7": 350,
         "T8": 350,
         "T2": 350
@@ -5344,7 +5361,7 @@
       "precios_por_sucursal": {
         "T1": 700,
         "T5": 700,
-        "T3": 600,
+        "T3": 700,
         "T7": 700,
         "T8": 700,
         "T2": 700
@@ -5371,7 +5388,7 @@
       "precios_por_sucursal": {
         "T1": 1050,
         "T5": 1050,
-        "T3": 900,
+        "T3": 1050,
         "T7": 1050,
         "T8": 1050,
         "T2": 1050
@@ -5398,7 +5415,7 @@
       "precios_por_sucursal": {
         "T1": 2100,
         "T5": 2100,
-        "T3": 1800,
+        "T3": 2100,
         "T7": 2100,
         "T8": 2100,
         "T2": 2100
@@ -5425,7 +5442,7 @@
       "precios_por_sucursal": {
         "T1": 2800,
         "T5": 2800,
-        "T3": 2400,
+        "T3": 2800,
         "T7": 2800,
         "T8": 2800,
         "T2": 2800
@@ -5456,7 +5473,7 @@
       "precios_por_sucursal": {
         "T1": 950,
         "T5": 950,
-        "T3": 800,
+        "T3": 950,
         "T7": 950,
         "T8": 950,
         "T2": 950
@@ -5464,7 +5481,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5479,7 +5496,7 @@
       "precios_por_sucursal": {
         "T1": 237.5,
         "T5": 237.5,
-        "T3": 200,
+        "T3": 237.5,
         "T7": 237.5,
         "T8": 237.5,
         "T2": 237.5
@@ -5506,7 +5523,7 @@
       "precios_por_sucursal": {
         "T1": 475,
         "T5": 475,
-        "T3": 400,
+        "T3": 475,
         "T7": 475,
         "T8": 475,
         "T2": 475
@@ -5533,7 +5550,7 @@
       "precios_por_sucursal": {
         "T1": 712.5,
         "T5": 712.5,
-        "T3": 600,
+        "T3": 712.5,
         "T7": 712.5,
         "T8": 712.5,
         "T2": 712.5
@@ -5560,7 +5577,7 @@
       "precios_por_sucursal": {
         "T1": 1425,
         "T5": 1425,
-        "T3": 1200,
+        "T3": 1425,
         "T7": 1425,
         "T8": 1425,
         "T2": 1425
@@ -5587,7 +5604,7 @@
       "precios_por_sucursal": {
         "T1": 1900,
         "T5": 1900,
-        "T3": 1600,
+        "T3": 1900,
         "T7": 1900,
         "T8": 1900,
         "T2": 1900
@@ -5618,7 +5635,7 @@
       "precios_por_sucursal": {
         "T1": 83,
         "T5": 83,
-        "T3": 70,
+        "T3": 83,
         "T7": 83,
         "T8": 83,
         "T2": 83
@@ -5626,7 +5643,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5645,7 +5662,7 @@
       "precios_por_sucursal": {
         "T1": 83,
         "T5": 83,
-        "T3": 70,
+        "T3": 83,
         "T7": 83,
         "T8": 83,
         "T2": 83
@@ -5653,7 +5670,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5673,13 +5690,17 @@
         "T1": 83,
         "T5": 83,
         "T7": 83,
-        "T8": 83
+        "T8": 83,
+        "T3": 83,
+        "T2": 83
       },
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
         "T7": "lista_t1_2026",
-        "T8": "provisional_P5"
+        "T8": "provisional_P5",
+        "T3": "lista_t1_2026_cuestionario",
+        "T2": "provisional_P5"
       }
     },
     {
@@ -5695,7 +5716,7 @@
       "precios_por_sucursal": {
         "T1": 83,
         "T5": 83,
-        "T3": 70,
+        "T3": 83,
         "T7": 83,
         "T8": 83,
         "T2": 83
@@ -5703,7 +5724,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5723,13 +5744,17 @@
         "T1": 46,
         "T5": 46,
         "T7": 46,
-        "T8": 46
+        "T8": 46,
+        "T3": 46,
+        "T2": 46
       },
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
         "T7": "lista_t1_2026",
-        "T8": "provisional_P5"
+        "T8": "provisional_P5",
+        "T3": "lista_t1_2026_cuestionario",
+        "T2": "provisional_P5"
       }
     },
     {
@@ -5745,7 +5770,7 @@
       "precios_por_sucursal": {
         "T1": 109,
         "T5": 109,
-        "T3": 95,
+        "T3": 109,
         "T7": 109,
         "T8": 109,
         "T2": 109
@@ -5753,7 +5778,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5775,7 +5800,7 @@
       "precios_por_sucursal": {
         "T1": 53,
         "T5": 53,
-        "T3": 45,
+        "T3": 53,
         "T7": 53,
         "T8": 53,
         "T2": 53
@@ -5783,7 +5808,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5802,7 +5827,7 @@
       "precios_por_sucursal": {
         "T1": 53,
         "T5": 53,
-        "T3": 45,
+        "T3": 53,
         "T7": 53,
         "T8": 53,
         "T2": 53
@@ -5810,7 +5835,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5829,7 +5854,7 @@
       "precios_por_sucursal": {
         "T1": 53,
         "T5": 53,
-        "T3": 45,
+        "T3": 53,
         "T7": 53,
         "T8": 53,
         "T2": 53
@@ -5837,7 +5862,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5856,7 +5881,7 @@
       "precios_por_sucursal": {
         "T1": 53,
         "T5": 53,
-        "T3": 45,
+        "T3": 53,
         "T7": 53,
         "T8": 53,
         "T2": 53
@@ -5864,7 +5889,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5883,7 +5908,7 @@
       "precios_por_sucursal": {
         "T1": 53,
         "T5": 53,
-        "T3": 45,
+        "T3": 53,
         "T7": 53,
         "T8": 53,
         "T2": 53
@@ -5891,7 +5916,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5909,14 +5934,14 @@
       },
       "precios_por_sucursal": {
         "T1": 53,
-        "T3": 45,
+        "T3": 53,
         "T7": 53,
         "T8": 53,
         "T2": 53
       },
       "fuente_precio": {
         "T1": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5934,14 +5959,14 @@
       },
       "precios_por_sucursal": {
         "T1": 53,
-        "T3": 45,
+        "T3": 53,
         "T7": 53,
         "T8": 53,
         "T2": 53
       },
       "fuente_precio": {
         "T1": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5960,7 +5985,7 @@
       "precios_por_sucursal": {
         "T1": 53,
         "T5": 53,
-        "T3": 45,
+        "T3": 53,
         "T7": 53,
         "T8": 53,
         "T2": 53
@@ -5968,7 +5993,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -5987,7 +6012,7 @@
       "precios_por_sucursal": {
         "T1": 53,
         "T5": 53,
-        "T3": 45,
+        "T3": 53,
         "T7": 53,
         "T8": 53,
         "T2": 53
@@ -5995,7 +6020,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6014,7 +6039,7 @@
       "precios_por_sucursal": {
         "T1": 53,
         "T5": 53,
-        "T3": 45,
+        "T3": 53,
         "T7": 53,
         "T8": 53,
         "T2": 53
@@ -6022,7 +6047,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6041,7 +6066,7 @@
       "precios_por_sucursal": {
         "T1": 74,
         "T5": 74,
-        "T3": 63,
+        "T3": 74,
         "T7": 74,
         "T8": 74,
         "T2": 74
@@ -6049,7 +6074,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6068,7 +6093,7 @@
       "precios_por_sucursal": {
         "T1": 60,
         "T5": 60,
-        "T3": 51,
+        "T3": 60,
         "T7": 60,
         "T8": 60,
         "T2": 60
@@ -6076,7 +6101,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6095,7 +6120,7 @@
       "precios_por_sucursal": {
         "T1": 73,
         "T5": 73,
-        "T3": 62,
+        "T3": 73,
         "T7": 73,
         "T8": 73,
         "T2": 73
@@ -6103,7 +6128,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6122,7 +6147,7 @@
       "precios_por_sucursal": {
         "T1": 100,
         "T5": 100,
-        "T3": 83,
+        "T3": 100,
         "T7": 100,
         "T8": 100,
         "T2": 100
@@ -6130,7 +6155,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6149,7 +6174,7 @@
       "precios_por_sucursal": {
         "T1": 60,
         "T5": 60,
-        "T3": 51,
+        "T3": 60,
         "T7": 60,
         "T8": 60,
         "T2": 60
@@ -6157,7 +6182,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6176,7 +6201,7 @@
       "precios_por_sucursal": {
         "T1": 73,
         "T5": 73,
-        "T3": 62,
+        "T3": 73,
         "T7": 73,
         "T8": 73,
         "T2": 73
@@ -6184,7 +6209,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6203,7 +6228,7 @@
       "precios_por_sucursal": {
         "T1": 100,
         "T5": 100,
-        "T3": 83,
+        "T3": 100,
         "T7": 100,
         "T8": 100,
         "T2": 100
@@ -6211,7 +6236,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6230,7 +6255,7 @@
       "precios_por_sucursal": {
         "T1": 79,
         "T5": 79,
-        "T3": 62,
+        "T3": 79,
         "T7": 79,
         "T8": 79,
         "T2": 79
@@ -6238,7 +6263,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6257,7 +6282,7 @@
       "precios_por_sucursal": {
         "T1": 95,
         "T5": 95,
-        "T3": 83,
+        "T3": 95,
         "T7": 95,
         "T8": 95,
         "T2": 95
@@ -6265,7 +6290,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6284,7 +6309,7 @@
       "precios_por_sucursal": {
         "T1": 60,
         "T5": 60,
-        "T3": 51,
+        "T3": 60,
         "T7": 60,
         "T8": 60,
         "T2": 60
@@ -6292,7 +6317,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6311,7 +6336,7 @@
       "precios_por_sucursal": {
         "T1": 60,
         "T5": 60,
-        "T3": 51,
+        "T3": 60,
         "T7": 60,
         "T8": 60,
         "T2": 60
@@ -6319,7 +6344,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6338,7 +6363,7 @@
       "precios_por_sucursal": {
         "T1": 60,
         "T5": 60,
-        "T3": 51,
+        "T3": 60,
         "T7": 60,
         "T8": 60,
         "T2": 60
@@ -6346,7 +6371,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6365,7 +6390,7 @@
       "precios_por_sucursal": {
         "T1": 80,
         "T5": 80,
-        "T3": 66,
+        "T3": 80,
         "T7": 80,
         "T8": 80,
         "T2": 80
@@ -6373,7 +6398,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6396,7 +6421,7 @@
       "precios_por_sucursal": {
         "T1": 80,
         "T5": 80,
-        "T3": 66,
+        "T3": 80,
         "T7": 80,
         "T8": 80,
         "T2": 80
@@ -6404,7 +6429,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6427,7 +6452,7 @@
       "precios_por_sucursal": {
         "T1": 80,
         "T5": 80,
-        "T3": 66,
+        "T3": 80,
         "T7": 80,
         "T8": 80,
         "T2": 80
@@ -6435,7 +6460,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6460,14 +6485,16 @@
         "T5": 80,
         "T7": 80,
         "T8": 80,
-        "T2": 80
+        "T2": 80,
+        "T3": 80
       },
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
-        "T2": "provisional_P5"
+        "T2": "provisional_P5",
+        "T3": "lista_t1_2026_cuestionario"
       },
       "alias": [
         "chela",
@@ -6487,7 +6514,7 @@
       "precios_por_sucursal": {
         "T1": 90,
         "T5": 90,
-        "T3": 76,
+        "T3": 90,
         "T7": 90,
         "T8": 90,
         "T2": 90
@@ -6495,7 +6522,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6516,12 +6543,10 @@
         "item": "Heineken Silver"
       },
       "precios_por_sucursal": {
-        "T5": 90,
-        "T2": 90
+        "T5": 90
       },
       "fuente_precio": {
-        "T5": "impreso",
-        "T2": "provisional_P5"
+        "T5": "impreso"
       },
       "alias": [
         "chela",
@@ -6541,7 +6566,7 @@
       "precios_por_sucursal": {
         "T1": 80,
         "T5": 80,
-        "T3": 66,
+        "T3": 80,
         "T7": 80,
         "T8": 80,
         "T2": 80
@@ -6549,7 +6574,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6572,7 +6597,7 @@
       "precios_por_sucursal": {
         "T1": 80,
         "T5": 80,
-        "T3": 67,
+        "T3": 80,
         "T7": 80,
         "T8": 80,
         "T2": 80
@@ -6580,7 +6605,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6603,7 +6628,7 @@
       "precios_por_sucursal": {
         "T1": 80,
         "T5": 80,
-        "T3": 67,
+        "T3": 80,
         "T7": 80,
         "T8": 80,
         "T2": 80
@@ -6611,7 +6636,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6634,7 +6659,7 @@
       "precios_por_sucursal": {
         "T1": 90,
         "T5": 90,
-        "T3": 76,
+        "T3": 90,
         "T7": 90,
         "T8": 90,
         "T2": 90
@@ -6642,7 +6667,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6665,7 +6690,7 @@
       "precios_por_sucursal": {
         "T1": 90,
         "T5": 90,
-        "T3": 76,
+        "T3": 90,
         "T7": 90,
         "T8": 90,
         "T2": 90
@@ -6673,7 +6698,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6696,7 +6721,7 @@
       "precios_por_sucursal": {
         "T1": 90,
         "T5": 90,
-        "T3": 76,
+        "T3": 90,
         "T7": 90,
         "T8": 90,
         "T2": 90
@@ -6704,7 +6729,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6727,7 +6752,7 @@
       "precios_por_sucursal": {
         "T1": 120,
         "T5": 120,
-        "T3": 101,
+        "T3": 120,
         "T7": 120,
         "T8": 120,
         "T2": 120
@@ -6735,7 +6760,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6758,7 +6783,7 @@
       "precios_por_sucursal": {
         "T1": 120,
         "T5": 120,
-        "T3": 101,
+        "T3": 120,
         "T7": 120,
         "T8": 120,
         "T2": 120
@@ -6766,7 +6791,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6789,7 +6814,7 @@
       "precios_por_sucursal": {
         "T1": 120,
         "T5": 120,
-        "T3": 101,
+        "T3": 120,
         "T7": 120,
         "T8": 120,
         "T2": 120
@@ -6797,7 +6822,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6820,7 +6845,7 @@
       "precios_por_sucursal": {
         "T1": 120,
         "T5": 120,
-        "T3": 101,
+        "T3": 120,
         "T7": 120,
         "T8": 120,
         "T2": 120
@@ -6828,7 +6853,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6851,7 +6876,7 @@
       "precios_por_sucursal": {
         "T1": 120,
         "T5": 120,
-        "T3": 101,
+        "T3": 120,
         "T7": 120,
         "T8": 120,
         "T2": 120
@@ -6859,7 +6884,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6882,7 +6907,7 @@
       "precios_por_sucursal": {
         "T1": 120,
         "T5": 120,
-        "T3": 101,
+        "T3": 120,
         "T7": 120,
         "T8": 120,
         "T2": 120
@@ -6890,7 +6915,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6913,7 +6938,7 @@
       "precios_por_sucursal": {
         "T1": 44,
         "T5": 44,
-        "T3": 38,
+        "T3": 44,
         "T7": 44,
         "T8": 44,
         "T2": 44
@@ -6921,7 +6946,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6944,7 +6969,7 @@
       "precios_por_sucursal": {
         "T1": 22,
         "T5": 22,
-        "T3": 20,
+        "T3": 22,
         "T7": 22,
         "T8": 22,
         "T2": 22
@@ -6952,7 +6977,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -6975,7 +7000,7 @@
       "precios_por_sucursal": {
         "T1": 30,
         "T5": 30,
-        "T3": 25,
+        "T3": 30,
         "T7": 30,
         "T8": 30,
         "T2": 30
@@ -6983,7 +7008,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7006,7 +7031,7 @@
       "precios_por_sucursal": {
         "T1": 117,
         "T5": 117,
-        "T3": 108,
+        "T3": 117,
         "T7": 117,
         "T8": 117,
         "T2": 117
@@ -7014,7 +7039,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7033,7 +7058,7 @@
       "precios_por_sucursal": {
         "T1": 113,
         "T5": 113,
-        "T3": 101,
+        "T3": 113,
         "T7": 113,
         "T8": 113,
         "T2": 113
@@ -7041,7 +7066,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7060,7 +7085,7 @@
       "precios_por_sucursal": {
         "T1": 106,
         "T5": 106,
-        "T3": 95,
+        "T3": 106,
         "T7": 106,
         "T8": 106,
         "T2": 106
@@ -7068,7 +7093,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7087,7 +7112,7 @@
       "precios_por_sucursal": {
         "T1": 128,
         "T5": 128,
-        "T3": 114,
+        "T3": 128,
         "T7": 128,
         "T8": 128,
         "T2": 128
@@ -7095,7 +7120,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7114,7 +7139,7 @@
       "precios_por_sucursal": {
         "T1": 168,
         "T5": 168,
-        "T3": 146,
+        "T3": 168,
         "T7": 168,
         "T8": 168,
         "T2": 168
@@ -7122,7 +7147,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7141,7 +7166,7 @@
       "precios_por_sucursal": {
         "T1": 139,
         "T5": 139,
-        "T3": 121,
+        "T3": 139,
         "T7": 139,
         "T8": 139,
         "T2": 139
@@ -7149,7 +7174,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7168,7 +7193,7 @@
       "precios_por_sucursal": {
         "T1": 106,
         "T5": 106,
-        "T3": 95,
+        "T3": 106,
         "T7": 106,
         "T8": 106,
         "T2": 106
@@ -7176,7 +7201,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7195,7 +7220,7 @@
       "precios_por_sucursal": {
         "T1": 113,
         "T5": 113,
-        "T3": 101,
+        "T3": 113,
         "T7": 113,
         "T8": 113,
         "T2": 113
@@ -7203,7 +7228,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7222,7 +7247,7 @@
       "precios_por_sucursal": {
         "T1": 123,
         "T5": 123,
-        "T3": 114,
+        "T3": 123,
         "T7": 123,
         "T8": 123,
         "T2": 123
@@ -7230,7 +7255,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7249,7 +7274,7 @@
       "precios_por_sucursal": {
         "T1": 109,
         "T5": 109,
-        "T3": 101,
+        "T3": 109,
         "T7": 109,
         "T8": 109,
         "T2": 109
@@ -7257,7 +7282,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7276,7 +7301,7 @@
       "precios_por_sucursal": {
         "T1": 178,
         "T5": 178,
-        "T3": 159,
+        "T3": 178,
         "T7": 178,
         "T8": 178,
         "T2": 178
@@ -7284,7 +7309,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7303,7 +7328,7 @@
       "precios_por_sucursal": {
         "T1": 156,
         "T5": 156,
-        "T3": 139,
+        "T3": 156,
         "T7": 156,
         "T8": 156,
         "T2": 156
@@ -7311,7 +7336,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7330,7 +7355,7 @@
       "precios_por_sucursal": {
         "T1": 190,
         "T5": 190,
-        "T3": 139,
+        "T3": 190,
         "T7": 190,
         "T8": 190,
         "T2": 190
@@ -7338,7 +7363,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7357,7 +7382,7 @@
       "precios_por_sucursal": {
         "T1": 110,
         "T5": 110,
-        "T3": 97,
+        "T3": 110,
         "T7": 110,
         "T8": 110,
         "T2": 110
@@ -7365,7 +7390,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7384,7 +7409,7 @@
       "precios_por_sucursal": {
         "T1": 114,
         "T5": 114,
-        "T3": 97,
+        "T3": 114,
         "T7": 114,
         "T8": 114,
         "T2": 114
@@ -7392,7 +7417,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7411,7 +7436,7 @@
       "precios_por_sucursal": {
         "T1": 105,
         "T5": 105,
-        "T3": 89,
+        "T3": 105,
         "T7": 105,
         "T8": 105,
         "T2": 105
@@ -7419,7 +7444,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7438,7 +7463,7 @@
       "precios_por_sucursal": {
         "T1": 109,
         "T5": 109,
-        "T3": 97,
+        "T3": 109,
         "T7": 109,
         "T8": 109,
         "T2": 109
@@ -7446,7 +7471,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7465,7 +7490,7 @@
       "precios_por_sucursal": {
         "T1": 96,
         "T5": 96,
-        "T3": 89,
+        "T3": 96,
         "T7": 96,
         "T8": 96,
         "T2": 96
@@ -7473,7 +7498,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7492,7 +7517,7 @@
       "precios_por_sucursal": {
         "T1": 109,
         "T5": 109,
-        "T3": 97,
+        "T3": 109,
         "T7": 109,
         "T8": 109,
         "T2": 109
@@ -7500,7 +7525,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7519,7 +7544,7 @@
       "precios_por_sucursal": {
         "T1": 109,
         "T5": 109,
-        "T3": 97,
+        "T3": 109,
         "T7": 109,
         "T8": 109,
         "T2": 109
@@ -7527,7 +7552,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7546,7 +7571,7 @@
       "precios_por_sucursal": {
         "T1": 100,
         "T5": 100,
-        "T3": 89,
+        "T3": 100,
         "T7": 100,
         "T8": 100,
         "T2": 100
@@ -7554,7 +7579,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7573,7 +7598,7 @@
       "precios_por_sucursal": {
         "T1": 100,
         "T5": 100,
-        "T3": 89,
+        "T3": 100,
         "T7": 100,
         "T8": 100,
         "T2": 100
@@ -7581,7 +7606,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7600,7 +7625,7 @@
       "precios_por_sucursal": {
         "T1": 112,
         "T5": 112,
-        "T3": 97,
+        "T3": 112,
         "T7": 112,
         "T8": 112,
         "T2": 112
@@ -7608,7 +7633,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7627,7 +7652,7 @@
       "precios_por_sucursal": {
         "T1": 112,
         "T5": 112,
-        "T3": 97,
+        "T3": 112,
         "T7": 112,
         "T8": 112,
         "T2": 112
@@ -7635,7 +7660,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7654,7 +7679,7 @@
       "precios_por_sucursal": {
         "T1": 100,
         "T5": 100,
-        "T3": 89,
+        "T3": 100,
         "T7": 100,
         "T8": 100,
         "T2": 100
@@ -7662,7 +7687,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7681,7 +7706,7 @@
       "precios_por_sucursal": {
         "T1": 102,
         "T5": 102,
-        "T3": 89,
+        "T3": 102,
         "T7": 102,
         "T8": 102,
         "T2": 102
@@ -7689,7 +7714,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7708,7 +7733,7 @@
       "precios_por_sucursal": {
         "T1": 35,
         "T5": 35,
-        "T3": 32,
+        "T3": 35,
         "T7": 35,
         "T8": 35,
         "T2": 35
@@ -7716,7 +7741,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7741,7 +7766,7 @@
       "precios_por_sucursal": {
         "T1": 35,
         "T5": 35,
-        "T3": 32,
+        "T3": 35,
         "T7": 35,
         "T8": 35,
         "T2": 35
@@ -7749,7 +7774,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7768,7 +7793,7 @@
       "precios_por_sucursal": {
         "T1": 36,
         "T5": 36,
-        "T3": 32,
+        "T3": 36,
         "T7": 36,
         "T8": 36,
         "T2": 36
@@ -7776,7 +7801,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7795,7 +7820,7 @@
       "precios_por_sucursal": {
         "T1": 49,
         "T5": 49,
-        "T3": 45,
+        "T3": 49,
         "T7": 49,
         "T8": 49,
         "T2": 49
@@ -7803,7 +7828,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7822,7 +7847,7 @@
       "precios_por_sucursal": {
         "T1": 35,
         "T5": 35,
-        "T3": 32,
+        "T3": 35,
         "T7": 35,
         "T8": 35,
         "T2": 35
@@ -7830,7 +7855,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7849,7 +7874,7 @@
       "precios_por_sucursal": {
         "T1": 36,
         "T5": 36,
-        "T3": 32,
+        "T3": 36,
         "T7": 36,
         "T8": 36,
         "T2": 36
@@ -7857,7 +7882,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7876,7 +7901,7 @@
       "precios_por_sucursal": {
         "T1": 24,
         "T5": 24,
-        "T3": 20,
+        "T3": 24,
         "T7": 24,
         "T8": 24,
         "T2": 24
@@ -7884,7 +7909,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7903,7 +7928,7 @@
       "precios_por_sucursal": {
         "T1": 22,
         "T5": 22,
-        "T3": 20,
+        "T3": 22,
         "T7": 22,
         "T8": 22,
         "T2": 22
@@ -7911,7 +7936,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7930,7 +7955,7 @@
       "precios_por_sucursal": {
         "T1": 52,
         "T5": 52,
-        "T3": 45,
+        "T3": 52,
         "T7": 52,
         "T8": 52,
         "T2": 52
@@ -7938,7 +7963,7 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
-        "T3": "impreso",
+        "T3": "lista_t1_2026_cuestionario",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
@@ -7958,13 +7983,17 @@
         "T1": 206,
         "T5": 206,
         "T7": 206,
-        "T8": 206
+        "T8": 206,
+        "T3": 206,
+        "T2": 206
       },
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso",
         "T7": "lista_t1_2026",
-        "T8": "provisional_P5"
+        "T8": "provisional_P5",
+        "T3": "lista_t1_2026_cuestionario",
+        "T2": "provisional_P5"
       }
     },
     {
@@ -8103,13 +8132,17 @@
         "T1": 19,
         "T7": 19,
         "T2": 19,
-        "T8": 19
+        "T8": 19,
+        "T3": 19,
+        "T5": 19
       },
       "fuente_precio": {
         "T1": "decision_2oct",
         "T7": "decision_2oct",
         "T2": "decision_2oct",
-        "T8": "decision_2oct"
+        "T8": "decision_2oct",
+        "T3": "decision_2oct",
+        "T5": "decision_2oct"
       }
     },
     {
@@ -8122,13 +8155,17 @@
         "T1": 19,
         "T7": 19,
         "T2": 19,
-        "T8": 19
+        "T8": 19,
+        "T3": 19,
+        "T5": 19
       },
       "fuente_precio": {
         "T1": "decision_2oct",
         "T7": "decision_2oct",
         "T2": "decision_2oct",
-        "T8": "decision_2oct"
+        "T8": "decision_2oct",
+        "T3": "decision_2oct",
+        "T5": "decision_2oct"
       }
     }
   ],
@@ -8146,21 +8183,31 @@
       "productos": [
         "Taco Al Pastor (individual)"
       ],
-      "descripcion": "2x1 en tacos al pastor, solo para recoger (las promociones de PM no aplican a domicilio).",
-      "sucursales": [
-        "T2",
-        "T3",
-        "T4"
-      ]
-    }
-  ],
-  "promociones_no_modeladas": [
+      "descripcion": "2x1 en tacos al pastor, lunes, solo para recoger, en todas las sucursales (cuestionario l.99: la promocion no aplica a domicilio)."
+    },
     {
-      "id": "PROMO-MAR",
+      "codigo": "MARTESNACHOSPM",
       "nombre": "Martes nachos de pastor con 2 aguas de cortesía",
-      "motivo": "Pendiente de datos P13 (que aguas de cortesia y si se promete). El tipo cortesia de la migracion 031 si permite modelarlo; se deja sin cargar hasta que Javier conteste."
+      "tipo": "cortesia",
+      "dias": [
+        2
+      ],
+      "canales": [
+        "recoger"
+      ],
+      "productos": [
+        "Nachos de Pastor"
+      ],
+      "cortesia_productos": [
+        "Agua de Jamaica",
+        "Horchata",
+        "Té"
+      ],
+      "cortesia_cantidad": 2,
+      "descripcion": "Martes, solo para recoger: con una orden completa de Nachos de Pastor (la media orden no) van 2 aguas frescas de cortesia a elegir entre Jamaica, Horchata y Te, en todas las sucursales (cuestionario l.99). Que aguas entran exactamente sigue en P13."
     }
   ],
+  "promociones_no_modeladas": [],
   "agente": {
     "voice_id": "Kore",
     "saludo": "Gracias por llamar a Los Taquitos de PM, sucursal {sucursal}. Le atiende su asistente virtual."
@@ -8170,16 +8217,27 @@
     "nombre_agente": null,
     "nota_nombre_agente": "El dueño aun no define el nombre del asistente (cuestionario: {Asistente} por definir): no se inventa; el agente se presenta como 'el asistente virtual'.",
     "tono": "formal_directo",
-    "tiempo_entrega": "a domicilio de 60 a 75 min (pico: 75 a 90); para recoger de 25 a 35 min (pico: 45 a 60)",
+    "tiempo_entrega": "de 40 a 50 minutos para recoger y a domicilio; más en hora pico",
     "salsas": "roja, verde, cebolla con cilantro y limones van siempre; crema de ajo, guacamolera, mexicana y habanero (picado o soasado) solo si el cliente las pide, sin costo",
-    "promociones": "lunes 2x1 en tacos al pastor, solo para recoger, en Francisco de Montejo, Pensiones y Galerías",
+    "promociones": "lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales",
     "motivos_escalacion_apagados": [],
     "reglas_duras": [
       "Alcohol: nunca a domicilio (se marca por producto: no_domicilio).",
       "Pedido minimo a domicilio de $200 (no cuenta descuentos; sin costo de envio).",
       "Propina solo con tarjeta.",
       "Tacos de bistec: se venden en ordenes de 3; '3 de bistec' se interpreta como una orden (3 tacos) y se confirma con el cliente antes de cotizar."
-    ]
+    ],
+    "tono_nota": "tone_style NO es el tono real del agente: el perfil taqueria_pm usa trato de usted suave y seguro (cuestionario l.144) y por eso ignora este campo. No leerlo como decision de tono.",
+    "tiempo_entrega_por_sucursal": {
+      "T7": "a domicilio de 60 a 75 min (pico: 75 a 90); para recoger de 25 a 35 min (pico: 45 a 60)"
+    },
+    "tiempo_entrega_anteriores_sembrados": [
+      "a domicilio de 60 a 75 min (pico: 75 a 90); para recoger de 25 a 35 min (pico: 45 a 60)"
+    ],
+    "promociones_anteriores_sembradas": [
+      "lunes 2x1 en tacos al pastor, solo para recoger, en Francisco de Montejo, Pensiones y Galerías"
+    ],
+    "espera_rafagas_segundos": 6
   },
   "pendientes_dueno": [
     {
@@ -8201,7 +8259,7 @@
     {
       "id": "coordenadas_t3",
       "titulo": "Coordenadas de la sucursal Pensiones (T3)",
-      "detalle": "T3 no tiene latitud/longitud (P7, P9): no entra en la asignacion de sucursal por distancia y no se inventan coordenadas hasta que se confirmen.",
+      "detalle": "T3 no tiene latitud/longitud (P7, P9): no entra en la asignacion de sucursal por distancia y no se inventan coordenadas. Direccion del dueño por verificar en mapa: Calle 11 No. 371 x Av. 32, San Damian, Mérida (campo coordenadas_pendientes_de_verificar). Hasta cargarlas, un pedido a domicilio cuyo pin caiga cerca de T3 se asigna a otra sucursal.",
       "quien": "dueno",
       "pantalla": "sucursales",
       "estado": "abierta"
@@ -8232,8 +8290,8 @@
     },
     {
       "id": "combo_martes",
-      "titulo": "Combo del martes (nachos + 2 aguas de cortesia)",
-      "detalle": "El tipo cortesia de la migracion 031 ya permite modelarlo, pero faltan datos (cuales aguas y si se promete, P13): no esta cargado y el agente no lo promete.",
+      "titulo": "Combo del martes (nachos + 2 aguas de cortesia): confirmar cuales aguas",
+      "detalle": "El combo YA esta cargado (promocion MARTESNACHOSPM, tipo cortesia, solo recoger, auto_apply) y el agente lo dice tal cual lo devuelve la cotizacion. Falta confirmar con el dueño cuales aguas entran (hoy Jamaica, Horchata y Te): P13.",
       "quien": "dueno",
       "pantalla": "promociones",
       "estado": "abierta"
@@ -8281,7 +8339,7 @@
     {
       "id": "P5",
       "titulo": "¿Qué menú y qué precios usa cada sucursal?",
-      "detalle": "Decision de Javier (2-oct-2026): T7 (y T1, T8) usan la lista T1-2026; T2 y T8 quedan con la lista 2026 marcada provisional hasta confirmar su catalogo exacto; T3 sigue con la lista 2025. Fase 1 del agente = T7 (WhatsApp 999 518 2637).",
+      "detalle": "Decision de Javier (2-oct-2026): T7 (y T1, T8) usan la lista T1-2026; T2 y T8 quedan con la lista 2026 marcada provisional hasta confirmar su catalogo exacto. T3 (Pensiones) tambien usa la lista T1-2026 sin comida regional ni flautas: el cuestionario dice 'precios iguales en todas' (l.104-105) y los chats reales confirman que la lista vigente de todas es la T1-2026 (el 3-oct-2026 se corrigio la lista 2025 que T3 llevaba por error; esa no fue decision de Javier). Fase 1 del agente = T7 (WhatsApp 999 518 2637).",
       "quien": "dueno",
       "pantalla": "productos",
       "estado": "resuelta"
@@ -8289,7 +8347,7 @@
     {
       "id": "P6",
       "titulo": "2x1 en tacos al pastor: ¿qué días, en qué sucursales y para quién?",
-      "detalle": "Pregunta abierta para Javier (P0). Propuesta provisional: 2x1 solo lunes, solo para recoger, solo en T2, T3 y T4.",
+      "detalle": "Cargado como lo dio el dueño (cuestionario l.99): 2x1 en tacos al pastor solo el lunes, solo para recoger y en TODAS las sucursales (la restriccion a T2, T3 y T4 era del menu impreso de 2025). Pregunta abierta para Javier: ¿hay alguna sucursal o condicion que el dueño no menciono?",
       "quien": "dueno",
       "pantalla": "promociones",
       "estado": "abierta"
@@ -8321,7 +8379,7 @@
     {
       "id": "P10",
       "titulo": "Productos que no sabemos si se venden en cada sucursal",
-      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Codzitos y flautas en T7 y T8; T5 solo lo impreso; Ensalada no en T2 ni T3; Silver en T5 y T2; Jericallas y Café no en T2.",
+      "detalle": "Pregunta abierta para Javier (P1). Cargado segun el cuestionario l.76 ('las pequeñas tienen el mismo menu, pero sin la comida regional'): T2 y T3 venden Ensalada de PM, Jericallas y Cafe; T3 tambien Pizza Quesobich y Heineken 0.0; Heineken Silver solo en T5; Codzitos y flautas en T1, T7 y T8; T5 solo lo impreso. PREGUNTA: ¿las flautas (hoy solo T1, T7 y T8) tambien se venden en T2 y T3? El cuestionario solo excluye la comida regional.",
       "quien": "dueno",
       "pantalla": "productos",
       "estado": "abierta"
@@ -8345,7 +8403,7 @@
     {
       "id": "P13",
       "titulo": "Martes: nachos de pastor con 2 aguas",
-      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Martes: nachos a precio de lista + 2 aguas por orden; no prometer hasta confirmar.",
+      "detalle": "Cargado como combo de cortesia (martes, solo recoger, todas las sucursales): con una orden completa de Nachos de Pastor (la media orden no) van 2 aguas de cortesia a elegir entre Agua de Jamaica, Horchata y Te (las 'aguas frescas' del menu T3-2025). PREGUNTA abierta para Javier: ¿son esas tres las aguas de cortesia, o entran otras (p. ej. refrescos)?",
       "quien": "dueno",
       "pantalla": "promociones",
       "estado": "abierta"
@@ -8444,6 +8502,14 @@
       "detalle": "Pregunta abierta para Javier (P2). Propuesta provisional: Sin nombre propio; sin celulares personales; sin reservaciones.",
       "quien": "dueno",
       "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "activar_t2_t8",
+      "titulo": "¿Activamos Francisco de Montejo (T2) y Victory Altabrisa (T8) en la cuenta real?",
+      "detalle": "El dueño dice que ambas operan (cuestionario l.58-65), pero el agente solo atiende T7 en fase 1 y las dos siguen inactivas con su catalogo cargado. PREGUNTA para Javier: ¿se activan T2 y T8 (storefront y redireccion a la sucursal) aunque el agente solo atienda T7?",
+      "quien": "dueno",
+      "pantalla": "sucursales",
       "estado": "abierta"
     }
   ]

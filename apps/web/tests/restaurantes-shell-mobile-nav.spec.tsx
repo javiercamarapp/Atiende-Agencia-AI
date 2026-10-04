@@ -108,6 +108,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
       "Conversaciones",
       "Turnos",
       "Historial",
+      "Cierre del día", // R-42 (owner/admin)
       "Productos",
       "Promociones",
       "Clientes",
@@ -131,7 +132,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect(categoriasSidebar(root)).toEqual(["Operación", "Catálogo", "Clientes", "Agente", "Configuración"]);
     // Abre la primera categoria; "Resumen" (raiz) esta siempre, sin boton ni titulo.
     expect(categoriasAbiertas(root)).toEqual(["Operación"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Pedidos", "Conversaciones", "Turnos", "Historial"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Pedidos", "Conversaciones", "Turnos", "Historial", "Cierre del día"]);
     abrirCategoria(root, "Catálogo");
     expect(categoriasAbiertas(root)).toEqual(["Catálogo"]);
     expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Productos", "Promociones"]);
