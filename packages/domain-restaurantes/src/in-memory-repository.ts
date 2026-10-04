@@ -12,6 +12,7 @@ import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInU
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
+import { diaLocalSucursal } from "./voz/kpi.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
 import type {
   CanalPedido,
@@ -656,7 +657,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       const enRango = this.orders.filter((o) => {
         if (o.organizationId !== organizationId) return false;
         if (scope !== null && !scope.has(o.propertyId)) return false;
-        if (o.status === "cancelado") return false; // R-30: ventas netas, espejo de la migracion 036
+        // R-30 + QA R1 viaje-09: ventas netas; un pedido cancelado, no recogido (no se cobro) o programado (aun no es venta) no cuenta.
+        if (o.status === "cancelado" || o.status === "no_recogido" || o.status === "programado") return false;
         const createdMs = Date.parse(o.createdAt);
         return createdMs >= startMs && createdMs < endMs;
       });
@@ -1195,9 +1197,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       .slice(0, limit);
   }
 
-  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string): Promise<StaffOrderNotificationRecord> {
+  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string, propertyIds?: readonly string[] | null): Promise<StaffOrderNotificationRecord> {
     const existing = this.staffOrderNotifications.get(notificationId);
-    if (!existing || existing.organizationId !== organizationId) {
+    if (!existing || existing.organizationId !== organizationId || (propertyIds && !propertyIds.includes(existing.propertyId))) {
       throw new Error(`Notificación "${notificationId}" no encontrada para la organización "${organizationId}".`);
     }
     const updated: StaffOrderNotificationRecord = { ...existing, acknowledgedAt: new Date().toISOString(), acknowledgedBy: actorId };
@@ -1483,13 +1485,13 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return { orders: page, nextCursor };
   }
 
-  async updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus): Promise<Order | null> {
+  async updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus, incidentNote?: string | null): Promise<Order | null> {
     // Mismo espejo del fix TOCTOU de postgres-repository.ts: la guarda de estado
     // vive en el `findIndex`, no en una validación aparte.
     const index = this.orders.findIndex((o) => o.id === orderId && o.organizationId === organizationId && o.status === fromStatus);
     if (index === -1) return null;
     const existing = this.orders[index]!;
-    const updated: Order = { ...existing, status: toStatus };
+    const updated: Order = { ...existing, status: toStatus, ...(toStatus === "problema" && incidentNote ? { incidentNote } : {}) };
     this.orders[index] = updated;
     return updated;
   }
@@ -1513,6 +1515,13 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       .slice(0, 200);
   }
 
+  async listDeliveredOrdersForRepartidor(organizationId: string, repartidorId: string, fechaLocal: string, zonaHoraria: string): Promise<readonly Order[]> {
+    return this.orders
+      .filter((o) => o.organizationId === organizationId && o.assignedRepartidorId === repartidorId && o.deliveredAt && diaLocalSucursal(new Date(o.deliveredAt), zonaHoraria).fecha === fechaLocal)
+      .sort((a, b) => (b.deliveredAt ?? "").localeCompare(a.deliveredAt ?? ""))
+      .slice(0, 200);
+  }
+
   async findAssignedOrderById(organizationId: string, repartidorId: string, orderId: string): Promise<Order | null> {
     const order = this.orders.find((o) => o.id === orderId && o.organizationId === organizationId && o.assignedRepartidorId === repartidorId);
     return order ?? null;
@@ -1531,7 +1540,12 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     );
     if (index === -1) return null;
     const existing = this.orders[index]!;
-    const updated: Order = { ...existing, status: toStatus, incidentNote: toStatus === "problema" ? incidentNote : existing.incidentNote };
+    const updated: Order = {
+      ...existing,
+      status: toStatus,
+      incidentNote: toStatus === "problema" ? incidentNote : existing.incidentNote,
+      deliveredAt: toStatus === "entregado" ? new Date().toISOString() : existing.deliveredAt,
+    };
     this.orders[index] = updated;
     return updated;
   }

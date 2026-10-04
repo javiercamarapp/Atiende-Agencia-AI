@@ -1,5 +1,5 @@
 -- Fixtures + escenarios contra Postgres REAL (RLS + GRANT + auth.uid() reales) de
--- packages/domain-restaurantes/migrations/043_consentimiento_checkout_aviso_programado.sql:
+-- packages/domain-restaurantes/migrations/063_consentimiento_checkout_aviso_programado.sql:
 --
 --   A. system_record_order_privacy_consent: la sesion de sistema registra UNA fila por pedido con la version del aviso que decide
 --      la BASE (privacy_config.notice_version de la organizacion; 'v1' si no hay fila), idempotente (la segunda llamada devuelve NULL),

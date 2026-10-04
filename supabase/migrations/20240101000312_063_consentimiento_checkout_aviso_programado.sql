@@ -1,5 +1,5 @@
 -- Consentimiento del aviso de privacidad en el checkout web + aviso al staff cuando un pedido programado entra a cocina.
--- Prefijo de supabase/migrations: 20240101000312 (interno restaurantes 043).
+-- Prefijo de supabase/migrations: 20240101000312 (interno restaurantes 063).
 -- Requiere: 001 (orders), 009 (staff_order_notification), 018 (guard de membresia en enqueue_staff_order_notification),
 -- 030 (privacy_config), 034 (estado `programado`, promover_pedidos_programados).
 --

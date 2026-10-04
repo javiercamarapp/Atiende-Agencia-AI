@@ -14,7 +14,7 @@
 // de esto devuelve 500 por una base vieja.
 //
 // Consentimiento: el POST de pedido exige `acepta_aviso_privacidad: true` (400 `aviso_privacidad_requerido` si falta) y, ya creado
-// el pedido, guarda la evidencia (version del aviso, fecha, canal) con `PrivacidadRepository.recordOrderPrivacyConsent` (migracion 043).
+// el pedido, guarda la evidencia (version del aviso, fecha, canal) con `PrivacidadRepository.recordOrderPrivacyConsent` (migracion 063).
 import { Hono } from "hono";
 import type { Context } from "hono";
 import {
@@ -316,7 +316,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
         );
         const order = outcome.raw as Order;
         // Evidencia del consentimiento (version del aviso vigente, fecha, canal `web`; sin PII). Best-effort con SAVEPOINT: base sin la
-        // migracion 043 -> "no_disponible"; cualquier otro fallo se registra y NUNCA tumba un pedido ya creado.
+        // migracion 063 -> "no_disponible"; cualquier otro fallo se registra y NUNCA tumba un pedido ya creado.
         await registrarConsentimiento(db, repo, org.id, order.id);
         const encolada = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), {
           order,

@@ -105,7 +105,7 @@ sequenceDiagram
 El checkout exige aceptar el aviso de privacidad **en el servidor**: `POST /:sucursal/orders` responde 400
 `aviso_privacidad_requerido` si el cuerpo no trae `acepta_aviso_privacidad: true`, y ya creado el pedido guarda la evidencia
 (versión del aviso vigente, fecha y canal `web`, sin datos personales) en `restaurantes.order_privacy_consent`
-(migración 043; la ven owner y admin). Con la base sin la 043 el pedido se crea igual y la evidencia queda "no disponible".
+(migración 063; la ven owner y admin). Con la base sin la 063 el pedido se crea igual y la evidencia queda "no disponible".
 
 ## 4. Cocina
 
@@ -181,8 +181,8 @@ npx vitest run packages/whatsapp-gateway --maxWorkers=2     # los simuladores mi
 | Meta, correo, POS, LLM, voz | Simulados en los tests; en producción dependen de credenciales (WHATSAPP_ACCESS_TOKEN, RESEND_API_KEY, SoftRestaurant real, OpenRouter, proveedor de voz) |
 | Aviso fuera de la ventana de 24 h (pedidos de voz/web) | **Parcial**: las plantillas HSM ya se envían (R-27, #293) cuando están declaradas en `WHATSAPP_APPROVED_TEMPLATES`; falta que Meta las **apruebe** (paso externo). Sin plantilla aprobada el aviso muere `dead` con 131047, y el e2e lo demuestra |
 | Notificación in-app en `core.notification` (campana) | **Cerrado en lo que emite restaurantes**: pedido nuevo, handoff, llamada escalada, cierres, tope de demo y **programado que entra a cocina** (catálogo en `docs/NOTIFICACIONES.md`). Los eventos con productor `pendiente` del catálogo siguen siendo huecos declarados allí |
-| Staff avisado cuando un programado entra a cocina | **Cerrado** (migración 043): bandeja `order.programado_promovido` y campana `restaurantes.pedido.programado_en_cocina`, un aviso por pedido; e2e en `programado-pos-ciclo.spec.ts` |
-| Consentimiento del checkout web | **Cerrado** (migración 043): el servidor exige `acepta_aviso_privacidad: true` (400 `aviso_privacidad_requerido`) y guarda versión del aviso, fecha y canal en `restaurantes.order_privacy_consent`; e2e en `storefront-ciclo.spec.ts`. Hasta aplicar la 043 el pedido se crea igual y la evidencia no se guarda |
+| Staff avisado cuando un programado entra a cocina | **Cerrado** (migración 063): bandeja `order.programado_promovido` y campana `restaurantes.pedido.programado_en_cocina`, un aviso por pedido; e2e en `programado-pos-ciclo.spec.ts` |
+| Consentimiento del checkout web | **Cerrado** (migración 063): el servidor exige `acepta_aviso_privacidad: true` (400 `aviso_privacidad_requerido`) y guarda versión del aviso, fecha y canal en `restaurantes.order_privacy_consent`; e2e en `storefront-ciclo.spec.ts`. Hasta aplicar la 063 el pedido se crea igual y la evidencia no se guarda |
 | Pedidos programados por agente (WhatsApp/voz) | **Cerrado**: `cotizar_pedido`/`crear_pedido` aceptan `programado_para` con las mismas reglas del checkout público legado (el storefront nuevo no lo acepta); la hora entra a la huella de lo confirmado; e2e en `whatsapp-casos.spec.ts` y pruebas de dominio en `agent-programados.spec.ts` |
 | Propina de los programados al POS | **Cerrado**: la comanda que se encola al promover lleva la propina y el canal del pedido (seguimiento de #294) |
 | Comandas del POS en el panel | **Hueco**: solo hay API (`.../admin/softrestaurant/comandas`); no hay pantalla |

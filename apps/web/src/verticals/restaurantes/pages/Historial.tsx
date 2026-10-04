@@ -7,7 +7,7 @@
 // `@atiende/ui`, los filtros a `Input`/`Label`/`NativeSelect` y "Cargar más" a
 // `Button`. El estado de cada orden se pinta con `StatusBadge` (tono por estado).
 // La lógica de carga/paginación de abajo es la MISMA: solo cambia el JSX.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Button,
   Card,
@@ -23,17 +23,20 @@ import {
   StatusBadge,
   formatMoney,
   statusTone,
+  useConfirm,
 } from "@atiende/ui";
 import { ChevronDown } from "lucide-react";
-import { fetchOrders, ORDER_STATUS_LABELS } from "../lib/orders-client.ts";
+import { fetchOrders, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
 import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
+import { BotonExportar } from "../components/BotonExportar.tsx";
+import { urlExportarHistorial } from "../lib/exportar-client.ts";
 import { medianocheLocalUTC, sumarDiasFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const ALL_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema"];
 
-export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
+export function HistorialPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "">("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -42,10 +45,24 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Acciones sobre un pedido entregado (cerrar / registrar incidencia): su error no se mezcla con el de la lista.
+  const [accionError, setAccionError] = useState<string | null>(null);
+  const [accionId, setAccionId] = useState<string | null>(null);
+  const { pedirTexto, dialogo } = useConfirm();
+  // Generacion de la carga vigente (QA-restaurantes-R1-botones-06/07): cambiar un filtro la incrementa y una respuesta de una
+  // generacion anterior (mas lenta) se descarta en vez de pisar el filtro actual, igual que Auditoria.tsx.
+  const generacionRef = useRef(0);
 
   async function load(reset: boolean) {
+    const generacion = generacionRef.current;
     setLoading(true);
     setError(null);
+    // Filtro nuevo: las filas del filtro anterior no se quedan visibles si la carga nueva falla.
+    if (reset) {
+      setOrders([]);
+      setNextCursor(null);
+      setCursor(undefined);
+    }
     try {
       // Bug real (revisión de PR #164, "no bloqueante" #2, punto 4 del encargo original):
       // `new Date(dateFrom).toISOString()` sobre "YYYY-MM-DD" de estos `<input
@@ -62,19 +79,61 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
         limit: 20,
         cursor: reset ? undefined : cursor,
       });
+      if (generacion !== generacionRef.current) return;
       setOrders((prev) => (reset ? page.orders : [...prev, ...page.orders]));
       setNextCursor(page.nextCursor);
       setCursor(page.nextCursor ?? undefined);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cargar el historial.");
+      if (generacion === generacionRef.current) setError(err instanceof Error ? err.message : "No se pudo cargar el historial.");
     } finally {
-      setLoading(false);
+      if (generacion === generacionRef.current) setLoading(false);
     }
   }
 
   useEffect(() => {
+    generacionRef.current += 1;
     void load(true);
   }, [apiBaseUrl, token, propertyId, statusFilter, dateFrom, dateTo]);
+
+  // QA-restaurantes-R1-viaje-11: un pedido entregado sale de Pedidos (solo lista los operativos); aqui se cierra
+  // administrativamente (Completado) o se registra una queja posterior a la entrega (Incidencia, con nota). El servidor
+  // re-valida la transicion (order-lifecycle.ts).
+  async function cerrarPedido(o: OrderSummary) {
+    setAccionId(o.id);
+    setAccionError(null);
+    try {
+      await updateOrderStatus(fetch, apiBaseUrl, token, propertyId, o.id, "completado");
+      generacionRef.current += 1;
+      await load(true);
+    } catch (err) {
+      setAccionError(err instanceof Error ? err.message : "No se pudo cerrar el pedido.");
+    } finally {
+      setAccionId(null);
+    }
+  }
+
+  async function registrarIncidencia(o: OrderSummary) {
+    const nota = await pedirTexto({
+      titulo: `Registrar incidencia del pedido de ${o.customerName}`,
+      descripcion: "¿Qué pasó después de la entrega? La nota queda en el pedido y el equipo la ve de inmediato.",
+      tono: "danger",
+      confirmar: "Registrar incidencia",
+      cancelar: "Volver",
+      campo: { etiqueta: "Nota de la incidencia", placeholder: "Ej. El cliente reporta que faltó un producto.", multilinea: true, maxLength: 2000 },
+    });
+    if (nota === null) return; // Volver, Escape o cerrar: no se llama al API
+    setAccionId(o.id);
+    setAccionError(null);
+    try {
+      await updateOrderStatus(fetch, apiBaseUrl, token, propertyId, o.id, "problema", { incidentNote: nota.trim() });
+      generacionRef.current += 1;
+      await load(true);
+    } catch (err) {
+      setAccionError(err instanceof Error ? err.message : "No se pudo registrar la incidencia.");
+    } finally {
+      setAccionId(null);
+    }
+  }
 
   return (
     <PageContainer padding="none">
@@ -102,9 +161,24 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
         <FormField label="Hasta">
           <Input id="restaurantes-historial-hasta" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-auto" />
         </FormField>
+        {/* R-17: exporta con los filtros vigentes (mismos limites de fecha que la tabla). Solo owner/admin. */}
+        <div className="ml-auto">
+          <BotonExportar
+            role={role}
+            token={token}
+            urlPara={(formato) =>
+              urlExportarHistorial(apiBaseUrl, propertyId, formato, {
+                status: statusFilter || undefined,
+                dateFrom: dateFrom ? medianocheLocalUTC(dateFrom).toISOString() : undefined,
+                dateTo: dateTo ? medianocheLocalUTC(sumarDiasFechaSolo(dateTo, 1)).toISOString() : undefined,
+              })
+            }
+          />
+        </div>
       </div>
 
-      {error && <EstadoError mensaje={error} onReintentar={() => void load(true)} />}
+      {error && <EstadoError mensaje={error} onReintentar={() => { generacionRef.current += 1; void load(true); }} />}
+      {accionError && <EstadoError titulo="No se pudo completar la acción" mensaje={accionError} compacto onReintentar={() => setAccionError(null)} />}
 
       {!(error && orders.length === 0) && (
         <Card>
@@ -125,6 +199,22 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
                 { id: "sucursal", encabezado: "Sucursal", celda: (o) => <span className="text-muted-foreground">{o.branch ?? "—"}</span> },
                 { id: "estado", encabezado: "Estado", celda: (o) => <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge> },
                 { id: "total", encabezado: "Total", alinear: "right", className: "tabular-nums", celda: (o) => `$${formatMoney(o.total)}` },
+                {
+                  id: "acciones",
+                  encabezado: "Acciones",
+                  alinear: "right",
+                  celda: (o) =>
+                    o.status === "entregado" ? (
+                      <span className="inline-flex flex-wrap justify-end gap-1.5">
+                        <Button type="button" size="sm" variant="outline" loading={accionId === o.id} onClick={() => void cerrarPedido(o)}>
+                          Cerrar (completado)
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" disabled={accionId === o.id} onClick={() => void registrarIncidencia(o)}>
+                          Registrar incidencia
+                        </Button>
+                      </span>
+                    ) : null,
+                },
               ]}
             />
           </CardContent>
@@ -137,6 +227,8 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
           Cargar más
         </Button>
       )}
+
+      {dialogo}
     </PageContainer>
   );
 }

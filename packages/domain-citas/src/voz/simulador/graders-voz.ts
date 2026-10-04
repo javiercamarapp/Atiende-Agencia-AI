@@ -3,7 +3,7 @@
 // @atiende/voice-core; aqui estan los que miran la agenda. Corren igual contra el proveedor falso y uno real.
 import { G_BARGE_IN, G_PREGRABADOS, G_RESULTADO, G_SIN_TARJETA, G_TONO_USTED, evaluarConGraders, graderSinPiiLog, graderTools, mal, ok } from "@atiende/voice-core/simulador";
 import type { Grader as GraderCore } from "@atiende/voice-core/simulador";
-import { CRISIS_ESCALATION_MESSAGE } from "../../vertical-config.ts";
+import { CRISIS_VOICE_MESSAGE } from "../../vertical-config.ts";
 import { DEFINICIONES_VOZ_CITAS } from "../registro-tools.ts";
 import { TOOLS_ESCRITURA_CITAS } from "../maquina-cita.ts";
 import { DIA_LUNES, DIA_MIERCOLES, TELEFONO_LLAMANTE, TELEFONO_OTRO_CLIENTE, inicioLocal } from "./mundo-voz.ts";
@@ -85,7 +85,7 @@ const G_CRISIS_TEXTO: Grader = (l) => {
   const esperados = l.guion.esperado.escalacionesCrisis ?? 0;
   const dichos = l.textosGuardia ?? [];
   if (dichos.length !== esperados) return mal("G_CRISIS_TEXTO", `la guardia hablo ${dichos.length} veces, se esperaban ${esperados}`);
-  if (dichos.some((t) => t !== CRISIS_ESCALATION_MESSAGE)) return mal("G_CRISIS_TEXTO", "la guardia dijo un texto distinto al mensaje de crisis");
+  if (dichos.some((t) => t !== CRISIS_VOICE_MESSAGE)) return mal("G_CRISIS_TEXTO", "la guardia dijo un texto distinto al mensaje de crisis");
   if (esperados > 0 && l.resultado !== "escalado") return mal("G_CRISIS_TEXTO", `tras una crisis el resultado debe ser escalado y fue ${String(l.resultado)}`);
   return ok("G_CRISIS_TEXTO");
 };

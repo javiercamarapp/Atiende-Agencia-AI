@@ -42,6 +42,11 @@ export function cargarFuentes(raiz: string): Fuente[] {
 
 const PALETA = "green|amber|red|yellow|blue|emerald|orange|slate|gray|zinc|sky|rose|stone|neutral|purple|indigo|teal|cyan|lime|pink|fuchsia|violet|white|black";
 
+/** Paginas de despachos cuyas tablas son de calculo o de captura (balanza, DIOT, papeles de trabajo, nomina...): siguen en <Table> dentro de Card. */
+export const PAGINAS_CALCULO_DESPACHOS: readonly string[] = ["Bookkeeping", "DevolucionIva", "Declaraciones", "Nomina", "Reportes", "ContabilidadElectronica", "Conciliacion"];
+const EXCLUIDAS_DESPACHOS = ["Dashboard", ...PAGINAS_CALCULO_DESPACHOS].map((n) => `${n}\\.tsx`).join("|");
+export const ALCANCE_LISTADOS_DESPACHOS = new RegExp(`^verticals/despachos/(?!pages/(?:${EXCLUIDAS_DESPACHOS})$|portal/PortalClientePage\\.tsx$)`);
+
 export const REGLAS: ReadonlyArray<ReglaGuard> = [
   { nombre: "window.confirm (usar useConfirm)", patron: /\bwindow\.confirm\s*\(|(^|[^.\w])confirm\s*\(\s*[`"']/m },
   { nombre: "tamano de texto arbitrario text-[Npx] (usar la escala text-2xs/xs/sm/base)", patron: /text-\[[0-9.]+px\]/ },
@@ -61,6 +66,9 @@ export const REGLAS: ReadonlyArray<ReglaGuard> = [
   { nombre: 'variantes de Button retiradas (variant="hero|gold|terracotta")', patron: /variant=["{]\s*["']?(hero|gold|terracotta)\b/ },
   // Trinquete UNI-C (restaurantes): lo ya migrado no puede volver. Alcance acotado a la zona para no tocar el baseline de las demas.
   { nombre: "Table a mano en restaurantes (usar DataTable)", patron: /<Table[\s>]/, alcance: /^verticals\/restaurantes\// },
+  // Trinquete UNI-C (despachos): los LISTADOS usan DataTable. Solo las paginas de calculo/captura de `PAGINAS_CALCULO_DESPACHOS` conservan <Table>
+  // (con su tope en despachos-tablas-trinquete.spec.ts). Dashboard.tsx (UNI-RES) y portal/PortalClientePage.tsx (lote D2) quedan fuera de este PR.
+  { nombre: "Table a mano en listados de despachos (usar DataTable)", patron: /<Table[\s>]/, alcance: ALCANCE_LISTADOS_DESPACHOS },
   { nombre: "AlertDialog local en restaurantes (usar useConfirm o useConfirm().pedirTexto)", patron: /\bAlertDialog\b/, alcance: /^verticals\/restaurantes\// },
   { nombre: "Guardando a mano en restaurantes (usar Button loading)", patron: /Guardando(…|\.\.\.)/, alcance: /^verticals\/restaurantes\// },
 ];

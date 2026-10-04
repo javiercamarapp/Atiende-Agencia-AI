@@ -127,7 +127,7 @@ describe("flujo cotizar -> confirmar -> crear y rastreo", () => {
       expect(privacidad.pedidoConsents.size).toBe(1);
     });
 
-    it("base SIN la migracion 043: el pedido se crea igual (200), el consentimiento queda 'no disponible' y nada se guarda", async () => {
+    it("base SIN la migracion 063: el pedido se crea igual (200), el consentimiento queda 'no disponible' y nada se guarda", async () => {
       const privacidad = new InMemoryPrivacidadRepository();
       privacidad.consentimientoPedidosMigrado = false;
       const { crear } = await conPrivacidad(privacidad);
