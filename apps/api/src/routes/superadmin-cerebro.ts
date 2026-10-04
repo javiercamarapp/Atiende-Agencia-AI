@@ -7,6 +7,10 @@
 //   POST /superadmin/cerebro/prospectos/:id/personas persona de contacto (evidencia http(s) y origen verificable obligatorios)
 //   GET  /superadmin/cerebro/taxonomia              versiones de la taxonomia por vertical (precio leido de core.plan)
 //   PUT  /superadmin/cerebro/taxonomia/:vertical    editar = version nueva; exige step-up MFA (SENSITIVE_ROUTES)
+//   POST /superadmin/cerebro/exportaciones          rastro (bitacora de acceso, accion `exportacion`) ANTES de que el navegador arme el CSV
+//
+// El mapa y la ficha (SA-L-42/43) leen la lista, que ademas trae por prospecto `suprimido` ({telefono, correo}: el destino esta en la lista
+// de supresion de plataforma, SA-L-46); ausente = no se pudo verificar y la pantalla NO ofrece contactarlo.
 //
 // Autenticacion, gateo de superadmin y step-up montados una vez en routes/superadmin.ts sobre `/superadmin/*`; la autoridad
 // real sigue en SQL (core.platform_superadmin + caller-binding). Ver docs/SUPERADMIN_CEREBRO.md y la migracion 0051.
@@ -28,6 +32,8 @@ import {
   guardarTaxonomia,
   listarProspectos,
   listarTaxonomia,
+  sanearExportacion,
+  suprimidosPorProspecto,
   validarCoherenciaIcp,
   validarContenidoTaxonomia,
   validarDatosProspecto,
@@ -152,7 +158,32 @@ export function superadminCerebroRoutes(deps: AppDeps, opciones: { readonly ahor
       const legado = await deps.coreRepo.listProspectosForSuperadmin(callerId);
       return c.json({ disponible: false, mensaje: CEREBRO_NO_DISPONIBLE, prospectos: legado.map(desdeLegado), taxonomias: [] });
     }
-    return c.json({ disponible: true, prospectos: r.lista.prospectos, taxonomias: r.taxonomias.map(serializarTaxonomia) });
+    // Supresion por prospecto: funcion SOLO DE SISTEMA, en su propia sesion (si falla, el mapa sigue y NO ofrece contactar: nunca un 500).
+    const lista = r.lista.prospectos;
+    const suprimidos = await deps.engine
+      .withAppSession({ userId: null }, (db) => suprimidosPorProspecto(db, lista))
+      .catch((err: unknown) => {
+        console.warn(JSON.stringify({ ts: new Date().toISOString(), level: "warn", evento: "cerebro_supresion_no_verificada", error: err instanceof Error ? err.message : String(err) }));
+        return null;
+      });
+    const prospectos = suprimidos === null ? lista : lista.map((p) => ({ ...p, suprimido: suprimidos.get(p.id) ?? { telefono: false, correo: false } }));
+    return c.json({ disponible: true, prospectos, taxonomias: r.taxonomias.map(serializarTaxonomia) });
+  });
+
+  app.post("/superadmin/cerebro/exportaciones", async (c) => {
+    const callerId = c.get("userId");
+    await limitarMutaciones(c, callerId);
+    const cuerpo = sanearExportacion(await c.req.json().catch(() => null));
+    if (!cuerpo.ok) throw Errors.validation(cuerpo.error);
+    const zona = deps.cfoZoneRepo;
+    // Sin bitacora configurada o sin la migracion 0034 aplicada no hay donde registrar: se dice (`registrada: false`) y la pantalla lo avisa.
+    // Si registrar LANZA, el error se propaga (500): la pantalla NO arma el archivo (mismo criterio que la lectura del MRR, sin_bitacora).
+    if (!zona) return c.json({ registrada: false, motivo: "bitacora_no_disponible" });
+    const r = await deps.engine.withAppSession({ userId: callerId }, (db) =>
+      zona(db).logAccess(callerId, "exportacion", "cerebro_prospectos", { ...cuerpo.filtros, total: cuerpo.total, _ruta: c.req.path.slice(0, 160) }),
+    );
+    if (r.availability === "not_migrated") return c.json({ registrada: false, motivo: "bitacora_no_disponible" });
+    return c.json({ registrada: true });
   });
 
   async function guardar(c: Context<CoreAuthHonoEnv>, prospectoId: string | null) {

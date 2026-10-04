@@ -34,6 +34,8 @@ import { SuperAdminOrganizacionesPage } from "./superadmin/pages/Organizaciones.
 import { SuperAdminOrganizacionFichaPage } from "./superadmin/pages/OrganizacionFicha.tsx";
 import { SuperAdminProspectosPage } from "./superadmin/pages/Prospectos.tsx";
 import { SuperAdminTaxonomiaPage } from "./superadmin/pages/Taxonomia.tsx";
+import { SuperAdminCerebroMapaPage } from "./superadmin/cerebro/CerebroMapa.tsx";
+import { SuperAdminFichaProspectoPage } from "./superadmin/cerebro/FichaProspecto.tsx";
 import { SuperAdminPanelesPage } from "./superadmin/pages/Paneles.tsx";
 import { SuperAdminConsumoIaPage } from "./superadmin/pages/ConsumoIa.tsx";
 import { SuperAdminBreakGlassPage } from "./superadmin/pages/BreakGlass.tsx";
@@ -397,6 +399,26 @@ function SuperAdminProspectosRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminProspectosPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+/** SA-L-42: el mapa del Cerebro de ventas (el mundo virtual de la cartera). */
+function SuperAdminCerebroMapaRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminCerebroMapaPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+/** SA-L-43: la ficha de un prospecto del Cerebro. */
+function SuperAdminFichaProspectoRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminFichaProspectoPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -1118,6 +1140,8 @@ export function App() {
         <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />
         <Route path="/superadmin/cerebro" element={<SuperAdminProspectosRoute />} />
         <Route path="/superadmin/cerebro/taxonomia" element={<SuperAdminTaxonomiaRoute />} />
+        <Route path="/superadmin/mapa-prospectos" element={<SuperAdminCerebroMapaRoute />} />
+        <Route path="/superadmin/mapa-prospectos/:id" element={<SuperAdminFichaProspectoRoute />} />
         <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
         <Route path="/superadmin/consumo-ia" element={<SuperAdminConsumoIaRoute />} />
         <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
