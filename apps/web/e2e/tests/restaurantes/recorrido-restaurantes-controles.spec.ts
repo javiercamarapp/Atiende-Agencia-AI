@@ -103,7 +103,7 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     vigilante.verificar();
   });
 
-  test("Productos: precio por sucursal, Disponible y Popular hacen su PATCH", async ({ page, mock, vigilante }) => {
+  test("Productos: precio por sucursal, Disponible, Popular y no a domicilio hacen su PATCH/PUT", async ({ page, mock, vigilante }) => {
     await ir(page, "/productos");
     await mock.limpiarRegistro();
     const precio = page.getByLabel("Precio de Horchata en esta sucursal");
@@ -111,6 +111,11 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     await precio.blur();
     const [p1] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/products/p-2/branch-availability" });
     expect(cuerpoDe(p1)).toMatchObject({ price: 52 });
+
+    await mock.limpiarRegistro();
+    await page.locator("tr, li").filter({ hasText: "Horchata" }).getByRole("button", { name: /^(Disponible|No disponible)$/ }).click();
+    const [pd] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/products/p-2/branch-availability" });
+    expect(cuerpoDe(pd)).toHaveProperty("isAvailable");
 
     await mock.limpiarRegistro();
     await page.getByLabel("Marcar Horchata como popular").click();
@@ -211,6 +216,12 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     const [zona] = await esperarEscrituras(mock, { metodo: "POST", ruta: "/config/zonas" });
     expect(cuerpoDe(zona)).toMatchObject({ name: "Itzimna" });
     await expect(main(page).getByText("Itzimna")).toBeVisible();
+
+    await mock.limpiarRegistro();
+    await page.getByLabel("Zona horaria de esta sucursal").selectOption("America/Cancun");
+    await page.locator("form").filter({ has: page.locator("#config-zona-horaria") }).getByRole("button", { name: "Guardar" }).click();
+    const [tz] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/config/zona-horaria" });
+    expect(cuerpoDe(tz)).toEqual({ zona_horaria: "America/Cancun" });
     vigilante.verificar();
   });
 
