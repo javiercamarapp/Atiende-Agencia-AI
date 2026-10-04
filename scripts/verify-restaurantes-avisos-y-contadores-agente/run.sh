@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL real -- mismo patrón que
 # scripts/verify-restaurantes-agente-config-callbacks/run.sh. Prueba
-# packages/domain-restaurantes/migrations/043_callbacks_idempotentes_por_evento_y_motivo.sql
+# packages/domain-restaurantes/migrations/043_avisos_idempotentes_y_contadores_agente.sql
 # (indice unico por evento, dedupe por motivo y la funcion de solo-sistema callback_registrar_agente) contra RLS/GRANT/auth.uid() reales.
 #
 # Requiere `initdb`/`pg_ctl`/`psql` en PATH (Postgres instalado localmente — en este
 # entorno vienen con `brew install postgresql`). Si no están disponibles, este
 # script falla explícito con un mensaje claro en vez de fingir que corrió algo.
 #
-# Uso:  scripts/verify-restaurantes-callbacks-idempotentes/run.sh
+# Uso:  scripts/verify-restaurantes-avisos-y-contadores-agente/run.sh
 set -euo pipefail
 
 for bin in initdb pg_ctl psql; do
   if ! command -v "$bin" >/dev/null 2>&1; then
-    echo "verify-restaurantes-callbacks-idempotentes: falta '$bin' en PATH — instala Postgres localmente para correr esta verificación (opcional, no bloquea npm test)." >&2
+    echo "verify-restaurantes-avisos-y-contadores-agente: falta '$bin' en PATH — instala Postgres localmente para correr esta verificación (opcional, no bloquea npm test)." >&2
     exit 1
   fi
 done
@@ -45,7 +45,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 043_callbacks_idempotentes_por_evento_y_motivo.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 043_avisos_idempotentes_y_contadores_agente.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

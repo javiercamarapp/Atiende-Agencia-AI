@@ -2,6 +2,11 @@
 -- IDEMPOTENTE por mensaje y por motivo. Antes cada mensaje repetido creaba otro `callback_requests`: Meta reenvia el mismo id (entrega
 -- at-least-once) y el cliente insiste ("quiero hablar con una persona" x3) y la bandeja se llenaba de duplicados del mismo caso.
 --
+-- Parte B (§3, P11/P32): contadores DETERMINISTAS por conversacion de WhatsApp (`whatsapp_conversations.agent_counters` y la funcion de solo
+-- sistema `whatsapp_contador_agente`): "no entiendo" y "colonia no reconocida" seguidos. Al llegar a 2 el servidor escala por su cuenta (antes
+-- dependia de que el modelo siguiera el prompt). Ver el final de este archivo.
+--
+-- PARTE A -- avisos idempotentes
 -- Diseno (todo ADITIVO; nada existente cambia ni se renombra):
 --   * `callback_requests.source_event_id`: id del mensaje de Meta o de la llamada (+ motivo) que origino el aviso. Indice UNICO PARCIAL
 --     (organization_id, source_event_id): el mismo evento nunca crea dos avisos, ni con dos reintentos concurrentes (el INSERT ... ON
@@ -124,3 +129,69 @@ $$;
 
 revoke all on function restaurantes.callback_registrar_agente(uuid, uuid, text, text, text, text, text, text, integer) from public, anon;
 grant execute on function restaurantes.callback_registrar_agente(uuid, uuid, text, text, text, text, text, text, integer) to authenticated, service_role;
+
+-- ===== PARTE B -- contadores del agente de WhatsApp (rescate-orig-restaurantes-1 §3) =====
+--
+-- Justificacion de seguridad:
+--  * `whatsapp_conversations.agent_counters` (jsonb, por defecto `{}`): SIN GRANT nuevo. La tabla ya solo la ve el staff de la organizacion
+--    (policy de 001) y solo la escribe el sistema; el contenido son dos enteros con su fecha, nunca texto del cliente ni PII.
+--  * whatsapp_contador_agente -- `security definer`, `set search_path` fijo, SOLO SISTEMA (`auth.uid() is null`; un staff recibe 42501), `revoke
+--    ... from public, anon`, EXECUTE a `authenticated`/`service_role` como `whatsapp_append_turn` (013). Solo acepta dos claves y dos acciones
+--    (22023 si no). Opera sobre la fila (organizacion, telefono) con `for update` y nunca cruza organizaciones: una conversacion de otra
+--    organizacion no existe para quien la llama (devuelve null, no sondea). Un contador mas viejo de 2 h cuenta como 0 (no arrastra un caso
+--    de la semana pasada).
+alter table restaurantes.whatsapp_conversations
+  add column agent_counters jsonb not null default '{}'::jsonb check (jsonb_typeof(agent_counters) = 'object');
+
+create or replace function restaurantes.whatsapp_contador_agente(
+  p_organization_id uuid,
+  p_phone text,
+  p_clave text,
+  p_accion text
+) returns integer
+language plpgsql
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+declare
+  v_counters jsonb;
+  v_n integer;
+begin
+  if auth.uid() is not null then
+    raise exception 'whatsapp_contador_agente es solo de sistema' using errcode = '42501';
+  end if;
+  if p_clave is null or p_clave not in ('colonia_no_reconocida', 'no_entiende') then
+    raise exception 'whatsapp_contador_agente: clave invalida' using errcode = '22023';
+  end if;
+  if p_accion is null or p_accion not in ('incrementar', 'reiniciar') then
+    raise exception 'whatsapp_contador_agente: accion invalida' using errcode = '22023';
+  end if;
+
+  select c.agent_counters into v_counters from restaurantes.whatsapp_conversations c
+    where c.organization_id = p_organization_id and c.phone = p_phone for update;
+  if not found then
+    return null;
+  end if;
+
+  if p_accion = 'reiniciar' then
+    if v_counters ? p_clave then
+      update restaurantes.whatsapp_conversations c set agent_counters = c.agent_counters - p_clave
+        where c.organization_id = p_organization_id and c.phone = p_phone;
+    end if;
+    return 0;
+  end if;
+
+  v_n := case
+    when (v_counters -> p_clave ->> 'at') is not null and (v_counters -> p_clave ->> 'at')::timestamptz > now() - interval '2 hours'
+      then coalesce((v_counters -> p_clave ->> 'n')::integer, 0)
+    else 0
+  end + 1;
+  update restaurantes.whatsapp_conversations c
+    set agent_counters = jsonb_set(c.agent_counters, array[p_clave], jsonb_build_object('n', v_n, 'at', now()), true)
+    where c.organization_id = p_organization_id and c.phone = p_phone;
+  return v_n;
+end;
+$$;
+
+revoke all on function restaurantes.whatsapp_contador_agente(uuid, text, text, text) from public, anon;
+grant execute on function restaurantes.whatsapp_contador_agente(uuid, text, text, text) to authenticated, service_role;

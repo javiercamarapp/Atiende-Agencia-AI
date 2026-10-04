@@ -1,5 +1,5 @@
 -- Fixtures + escenarios contra Postgres REAL (GRANT/RLS + funcion definer reales, nunca el repositorio en memoria) de
--- packages/domain-restaurantes/migrations/043_callbacks_idempotentes_por_evento_y_motivo.sql (restaurantes.callback_registrar_agente).
+-- packages/domain-restaurantes/migrations/043_avisos_idempotentes_y_contadores_agente.sql (restaurantes.callback_registrar_agente).
 --
 -- Cada escenario corre en su propio `begin; ... rollback;` y TERMINA SIN ERROR si todo se cumple: las comprobaciones de valor son bloques
 -- `do $$ ... raise exception ... $$` (el gate de CI las juzga por ausencia de error), las de rechazo esperan el SQLSTATE exacto.
@@ -250,6 +250,96 @@ begin
   select registro into r2 from restaurantes.callback_registrar_agente('00000000-0000-0000-0000-0000000f0001', null, 'M', '+5219991110017', 'escalada:queja', 'b', 'voice', null);
   if r2 <> 'nota_agregada' then raise exception 'C2: registro %', r2; end if;
 end $$;
+rollback;
+
+-- ===== PARTE B: contadores del agente de WhatsApp (whatsapp_contador_agente) =====
+insert into restaurantes.whatsapp_conversations (organization_id, phone) values
+  ('00000000-0000-0000-0000-0000000f0001', '+5219993330001'),
+  ('00000000-0000-0000-0000-0000000f0002', '+5219993330002')
+on conflict do nothing;
+
+\echo '=== K1. POSITIVO: incrementar dos veces cuenta 1 y 2; reiniciar lo deja en 0 y quita la clave ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+do $$
+declare a int; b int; c int;
+begin
+  a := restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'colonia_no_reconocida', 'incrementar');
+  b := restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'colonia_no_reconocida', 'incrementar');
+  if a <> 1 or b <> 2 then raise exception 'K1: contadores % %', a, b; end if;
+  c := restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'colonia_no_reconocida', 'reiniciar');
+  if c <> 0 then raise exception 'K1: reiniciar debe devolver 0'; end if;
+  if restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'colonia_no_reconocida', 'incrementar') <> 1 then raise exception 'K1: tras reiniciar vuelve a 1'; end if;
+end $$;
+rollback;
+
+\echo '=== K2. Las dos claves son independientes ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+do $$
+begin
+  perform restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'colonia_no_reconocida', 'incrementar');
+  perform restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'colonia_no_reconocida', 'incrementar');
+  if restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'no_entiende', 'incrementar') <> 1 then raise exception 'K2: no_entiende arranca en 1'; end if;
+end $$;
+rollback;
+
+\echo '=== K3. NEGATIVO: un contador de mas de 2 h cuenta como 0 ==='
+begin;
+update restaurantes.whatsapp_conversations set agent_counters = jsonb_build_object('no_entiende', jsonb_build_object('n', 5, 'at', now() - interval '3 hours'))
+  where organization_id = '00000000-0000-0000-0000-0000000f0001' and phone = '+5219993330001';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+do $$
+begin
+  if restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'no_entiende', 'incrementar') <> 1 then raise exception 'K3: un contador viejo no arrastra'; end if;
+end $$;
+rollback;
+
+\echo '=== K4. CROSS-TENANT: el telefono de la organizacion A no existe para la organizacion B (null, sin escribir) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+do $$
+begin
+  if restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0002', '+5219993330001', 'no_entiende', 'incrementar') is not null then raise exception 'K4: debio devolver null'; end if;
+end $$;
+reset role;
+do $$ begin
+  if (select agent_counters from restaurantes.whatsapp_conversations where organization_id = '00000000-0000-0000-0000-0000000f0001' and phone = '+5219993330001') <> '{}'::jsonb then raise exception 'K4: no debio tocar la conversacion de A'; end if;
+end $$;
+rollback;
+
+\echo '=== K5. RECHAZADO: staff autenticado -> 42501; anon -> 42501; clave o accion invalidas -> 22023 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0011', true);
+do $$ begin
+  perform restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'no_entiende', 'incrementar');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+begin;
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true);
+do $$ begin
+  perform restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'no_entiende', 'incrementar');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+do $$ begin
+  perform restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'otra_clave', 'incrementar');
+  raise exception 'DEBIO FALLAR con 22023';
+exception when sqlstate '22023' then null; end $$;
+do $$ begin
+  perform restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'no_entiende', 'borrar');
+  raise exception 'DEBIO FALLAR con 22023';
+exception when sqlstate '22023' then null; end $$;
 rollback;
 
 \echo 'Todos los escenarios deben terminar SIN error: las comprobaciones de valor lanzan excepcion si algo no se cumple.'
