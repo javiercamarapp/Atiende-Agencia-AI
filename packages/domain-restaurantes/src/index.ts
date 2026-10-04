@@ -342,3 +342,30 @@ export type { DiagnosticoProveedorOrg, ItemDespachoOrg, ResultadoAlertasProveedo
 export * from "./conocimiento/index.ts";
 export { cargaDeRepartidor, sugerirRepartidor } from "./repartidor-sugerido.ts";
 export type { CandidatoRepartidor, CargaRepartidor, SugerenciaRepartidor } from "./repartidor-sugerido.ts";
+export {
+  MarketingNoDisponibleError,
+  MarketingParametrosError,
+  MarketingRechazadoError,
+  MarketingSinAccesoError,
+  SEGMENTOS_MARKETING,
+  decidirCampana,
+  generarBorradoresMarketing,
+  guardarConfigMarketing,
+  leerConfigMarketing,
+  listarCampanas,
+  registrarConsentimientoMarketing,
+  revocarMarketingPorTelefono,
+} from "./marketing/campanas.ts";
+export type {
+  BorradorGenerado,
+  CampanaMarketing,
+  CodigoRechazoMarketing,
+  ConfigMarketing,
+  EntradaConfigMarketing,
+  EstadoCampana,
+  LecturaMarketing,
+  ResultadoBorradores,
+  ResultadoConsentimiento,
+  ResultadoDecision,
+  SegmentoMarketing,
+} from "./marketing/campanas.ts";
