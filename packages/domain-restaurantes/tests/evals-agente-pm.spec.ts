@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { AGENT_TOOL_DEFINITIONS } from "../src/agent-tools/registry.ts";
 import { ejecutarCasoReferencia, ejecutarSuiteReferencia, resumenUmbrales } from "../src/evals/agente-pm/ejecutor.ts";
 import { GRADERS, evaluarGraders } from "../src/evals/agente-pm/graders.ts";
-import { CONTRATO_ACTUAL, CONTRATO_OBJETIVO, HERRAMIENTAS_REGISTRO, Mundo, cargarMenu, cargarSuite } from "../src/evals/agente-pm/mundo.ts";
+import { CONTRATO_ACTUAL, CONTRATO_OBJETIVO, HERRAMIENTAS_REGISTRO, Mundo, cargarMenu, cargarSuite, minutosDesdeHoraRecogida } from "../src/evals/agente-pm/mundo.ts";
 import type { ComandaRegistrada, EventoTraza } from "../src/evals/agente-pm/tipos.ts";
 
 const suite = cargarSuite();
@@ -240,5 +240,29 @@ describe("modo LLM real (opt-in, nunca en CI)", () => {
       server.closeAllConnections?.();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+});
+
+describe("hora de recogida: el mundo lee solo el campo hora_recogida de crear_pedido (como el servidor real)", () => {
+  it("minutos entre la hora local del caso y el ISO con zona; sin campo valido es null", () => {
+    expect(minutosDesdeHoraRecogida("2026-10-03T16:05:00-06:00", "15:45")).toBe(20);
+    expect(minutosDesdeHoraRecogida("2026-10-04T00:10:00-06:00", "23:50")).toBe(20);
+    expect(minutosDesdeHoraRecogida("en 20 minutos", "15:45")).toBeNull();
+    expect(minutosDesdeHoraRecogida(undefined, "15:45")).toBeNull();
+  });
+  it("una hora escrita en notes NO cuenta (el servidor la ignora): la comanda queda sin hora y G_COMANDA falla; en hora_recogida pasa", async () => {
+    // C11: recoger, tarjeta, hora_recoger_min 20.
+    const c = caso("C11");
+    const conHora = await ejecutarCasoReferencia(c);
+    expect(conHora.resultado.ok, JSON.stringify(conHora.resultado.graders.filter((g) => !g.ok))).toBe(true);
+    expect(conHora.mundo.comandas[0]!.horaRecogerMin).toBe(20);
+    const mundo = new Mundo(c);
+    const q = mundo.ejecutar("buscar_producto", { query: "alambre de pastor", branch_slug: "t1" }) as { id: string }[];
+    mundo.cliente("quiero un alambre");
+    mundo.ejecutar("cotizar_pedido", { branch_slug: "t1", canal: "recoger", payment_method: "tarjeta", items: [{ product_id: q[0]!.id, requested_quantity: 1 }] });
+    mundo.cliente("sí");
+    mundo.ejecutar("confirmar_resumen", {});
+    mundo.ejecutar("crear_pedido", { branch_slug: "t1", canal: "recoger", payment_method: "tarjeta", customer_name: "Luz Moo", items: [{ product_id: q[0]!.id, requested_quantity: 1 }], notes: "Recoge en 20 minutos" });
+    expect(mundo.comandas[0]!.horaRecogerMin).toBeNull();
   });
 });
