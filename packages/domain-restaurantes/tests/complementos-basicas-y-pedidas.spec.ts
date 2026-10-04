@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildComplementNotes, PM_BASIC_COMPLEMENTS } from "../src/order-quote.ts";
+import { buildComplementNotes, canonicalRequestedComplement, PM_BASIC_COMPLEMENTS } from "../src/order-quote.ts";
+import { matchesProductSearch, tokenizeForProductSearch } from "../src/product-search.ts";
 import { AGENT_TOOL_DEFINITIONS, mapCreateOrderToolInput } from "../src/agent-tools/registry.ts";
 
 describe("comanda con perfil de básicas (PM)", () => {
@@ -41,5 +42,52 @@ describe("crear_pedido: complementos pedidos", () => {
     expect(mapCreateOrderToolInput({ ...base, channel: "whatsapp" }, {}, true).basicComplements).toEqual(PM_BASIC_COMPLEMENTS);
     expect(mapCreateOrderToolInput({ ...base, channel: "voz" }, {}, false).basicComplements).toEqual(PM_BASIC_COMPLEMENTS);
     expect(mapCreateOrderToolInput({ ...base, channel: "web", phone: null }, {}, false).basicComplements).toBeUndefined();
+  });
+});
+
+describe("jerga de salsas y de platillos de T7", () => {
+  it.each([
+    ["xnipec", "salsa_mexicana"],
+    ["cebolla con tomate y limón", "salsa_mexicana"],
+    ["sauceada", "salsa_habanero_soasado"],
+    ["suasada", "salsa_habanero_soasado"],
+    ["habanero", "salsa_habanero"],
+    ["Piña", "pina"],
+    ["salsa de piña", "salsa_pina"],
+    ["crema de ajo", "crema_ajo"],
+    ["salsa_guacamolera", "salsa_guacamolera"],
+  ])("«%s» es %s", (dicho, canonico) => {
+    expect(canonicalRequestedComplement(dicho)).toBe(canonico);
+  });
+
+  it("lo desconocido se descarta", () => {
+    expect(canonicalRequestedComplement("salsa secreta")).toBeNull();
+    expect(canonicalRequestedComplement(42)).toBeNull();
+  });
+
+  it("el mapeo de crear_pedido normaliza la jerga y descarta lo desconocido", () => {
+    const input = { requested_complements: ["xnipec", "sauceada", "nada que ver"] };
+    const out = mapCreateOrderToolInput({ organizationId: "o", phone: "5219990000000", channel: "whatsapp" }, input, true);
+    expect(out.requestedComplements).toEqual(["salsa_mexicana", "salsa_habanero_soasado"]);
+  });
+
+  const charros = { name: "Frijoles Charros Normal (1/2 orden)", description: null, categoryName: "Frijoles Charros", searchKeywords: [] };
+  const charrosCompleta = { name: "Frijoles Charros Normal", description: null, categoryName: "Frijoles Charros", searchKeywords: [] };
+  const nachos = { name: "Nachos de Pastor", description: null, categoryName: "Nachos", searchKeywords: [] };
+
+  it("«medios charros» encuentra la media orden y no la completa", () => {
+    const tokens = tokenizeForProductSearch("medios charros");
+    expect(matchesProductSearch(tokens, charros)).toBe(true);
+    expect(matchesProductSearch(tokens, charrosCompleta)).toBe(false);
+  });
+
+  it("«nachos grandes» encuentra la orden completa (grande no es parte del nombre)", () => {
+    const tokens = tokenizeForProductSearch("unos nachos grandes de pastor");
+    expect(tokens).not.toContain("grande");
+    expect(matchesProductSearch(tokens, nachos)).toBe(true);
+  });
+
+  it("«grande» fuera de estos platillos no se pierde", () => {
+    expect(tokenizeForProductSearch("coca grande")).toContain("grande");
   });
 });

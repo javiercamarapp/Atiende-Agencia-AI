@@ -48,6 +48,30 @@ export function isTortillaChoice(value: unknown): value is TortillaChoice {
   return typeof value === "string" && (TORTILLA_CHOICES as readonly string[]).includes(value);
 }
 
+/** Lista cerrada de lo que el cliente puede pedir (sin costo). */
+export const COMPLEMENTOS_PEDIBLES: readonly RequestedComplement[] = ["salsa_guacamolera", "salsa_mexicana", "salsa_pina", "pina", "salsa_habanero", "salsa_habanero_soasado", "crema_ajo"];
+
+/** Jerga y escrituras de las salsas que el cliente pide (chats reales de T7) -> complemento canonico. Vive en el mapa de complementos, no
+ * en el catalogo: ninguna de estas salsas es un producto. Se compara sin acentos y en minusculas. */
+const ALIAS_DE_COMPLEMENTO: ReadonlyArray<readonly [RegExp, RequestedComplement]> = [
+  [/\b(?:sauceada|suasada|soasada|soasado|sauceado|suasado)\b/, "salsa_habanero_soasado"],
+  [/\bxnipec\b|\bxni\s?pec\b|\bpico\s+de\s+gallo\b|\bcebolla\s+con\s+tomate\b|\bsalsa\s+mexicana\b|\bmexicana\b/, "salsa_mexicana"],
+  [/\bguacamolera\b|\bguacamole\b/, "salsa_guacamolera"],
+  [/\bcrema\s+de\s+ajo\b|\bcrema_ajo\b/, "crema_ajo"],
+  [/\bsalsa\s+de\s+pi[ñn]a\b|\bsalsa_pina\b/, "salsa_pina"],
+  [/\bpi[ñn]a\b|\bpina\b/, "pina"],
+  [/\bhabanero\b|\bsalsa_habanero\b/, "salsa_habanero"],
+];
+
+/** Convierte lo que mando el modelo en un complemento canonico de la lista cerrada, o null si no se reconoce (se descarta, nunca se imprime). */
+export function canonicalRequestedComplement(valor: unknown): RequestedComplement | null {
+  if (typeof valor !== "string") return null;
+  const t = valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  if ((COMPLEMENTOS_PEDIBLES as readonly string[]).includes(t)) return t as RequestedComplement;
+  for (const [patron, canonico] of ALIAS_DE_COMPLEMENTO) if (patron.test(t)) return canonico;
+  return null;
+}
+
 /** `cebolla` es el nombre historico de `cebolla_cilantro`: ambos omiten la misma salsa. */
 function canonicalComplement(item: DefaultComplement): DefaultComplement {
   return item === "cebolla" ? "cebolla_cilantro" : item;
