@@ -318,7 +318,11 @@ begin
         ) x
     ),
     'preferences', restaurantes.cliente_gustos_json(v_customer.id),
-    'confiabilidad', restaurantes.cliente_confiabilidad_json(p_organization_id, v_customer.id)
+    'confiabilidad', restaurantes.cliente_confiabilidad_json(p_organization_id, v_customer.id),
+    -- Nivel del cliente (calc_customer_tier es de invocador y lee customers/orders: desde la sesion de sistema, bajo RLS,
+    -- devolveria siempre null y el agente nunca vería a un cliente BLACK/PLATINUM; aqui corre con los privilegios del dueno
+    -- de esta funcion, acotada a la MISMA organizacion y cliente ya resueltos arriba).
+    'tier', restaurantes.calc_customer_tier(p_organization_id, v_customer.id) ->> 'tier'
   );
 end;
 $$;

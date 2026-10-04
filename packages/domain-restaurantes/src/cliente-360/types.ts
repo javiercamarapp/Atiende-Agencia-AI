@@ -70,6 +70,8 @@ export interface CustomerMemory {
   readonly orders: readonly PastOrder[];
   readonly preferences: readonly CustomerPreference[];
   readonly reliability: CustomerReliability;
+  /** Nivel del cliente calculado por la funcion de sistema; `undefined` = no viene (se calcula aparte). */
+  readonly tier?: CustomerTier | null;
 }
 
 export interface ClosureAddress {

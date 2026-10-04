@@ -148,7 +148,7 @@ const ESTADOS_ELEGIBLES = new Set(["pending", "preparando", "en_camino", "entreg
  * propuestos, pedidos anteriores y la marca de reincidencia. `frequentItems` se cuenta sobre los ultimos 30 pedidos.
  */
 async function resultadoDesdeMemoria(repo: RestaurantesRepository, organizationId: string, memoria: CustomerMemory): Promise<CustomerLookupResult> {
-  const tier = await repo.calcCustomerTier(organizationId, memoria.customer.id);
+  const tier = memoria.tier !== undefined ? memoria.tier : await repo.calcCustomerTier(organizationId, memoria.customer.id);
   const history = memoria.orders.filter((o) => ESTADOS_ELEGIBLES.has(o.status));
   const lastOrder = history[0] ?? null;
   const frequentItems = countFrequentItems(history);

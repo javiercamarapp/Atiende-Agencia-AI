@@ -58,6 +58,7 @@ describe("lectura y cierre de sistema contra la base sin la migracion 044", () =
             orders: [{ id: "o1", order_number: 77, created_at: "2026-03-10T00:00:00Z", status: "entregado", total: 150, items: [{ id: "p", name: "Tacos", price: 75, quantity: 2 }], branch: "Centro", property_id: "pr1", payment_method: "tarjeta", canal: "domicilio", propina: 10, source: "whatsapp" }],
             preferences: [{ id: "g1", kind: "tortilla", value: "harina", source: "pedido", times_seen: 3, first_seen_at: "2026-01-01T00:00:00Z", last_seen_at: "2026-03-10T00:00:00Z", status: "activa" }, { id: "g2", kind: "inventada", value: "x", source: "pedido", times_seen: 1, first_seen_at: "", last_seen_at: "", status: "activa" }],
             confiabilidad: { no_recogidos_90d: 1, pedidos_falsos: 0, umbral: 2, ventana_dias: 90 },
+            tier: "GOLD",
           },
         },
       ],
@@ -69,6 +70,8 @@ describe("lectura y cierre de sistema contra la base sin la migracion 044", () =
     // Una categoria que este codigo no conoce se ignora en vez de romper la lectura.
     expect(mem?.preferences.map((p) => p.kind)).toEqual(["tortilla"]);
     expect(mem?.reliability).toEqual({ noRecogidos90d: 1, pedidosFalsos: 0, umbral: 2, ventanaDias: 90 });
+    // El nivel llega calculado por la funcion de sistema (calc_customer_tier bajo RLS devolveria null).
+    expect(mem?.tier).toBe("GOLD");
   });
 
   it("un cliente que no existe es null (cliente nuevo), no undefined (base sin migrar)", async () => {

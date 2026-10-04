@@ -6,7 +6,7 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { runWithSavepointFallback } from "@atiende/db";
 import { ClienteMemoriaNoDisponibleError } from "../errors.ts";
-import type { PersistedOrderItem } from "../types.ts";
+import type { CustomerTier, PersistedOrderItem } from "../types.ts";
 import type {
   CustomerAddressChanges,
   CustomerAddressDetail,
@@ -108,6 +108,7 @@ export async function getCustomerMemory(db: TenantDbSession, organizationId: str
         orders: (Array.isArray(raw.orders) ? (raw.orders as Json[]) : []).map(mapPastOrder),
         preferences: mapPreferences(raw.preferences),
         reliability: mapReliability(raw.confiabilidad),
+        ...(raw.tier === undefined ? {} : { tier: typeof raw.tier === "string" ? (raw.tier as CustomerTier) : null }),
       };
     },
     isRecoverable: esBaseSinMigrar044,

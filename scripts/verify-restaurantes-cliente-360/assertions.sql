@@ -131,6 +131,13 @@ select set_config('request.jwt.claim.sub', '', true);
 select (restaurantes.cliente_memoria('00000000-0000-0000-0000-0000000c3601', '5511110001') -> 'confiabilidad' ->> 'umbral')::int as umbral_deberia_ser_2;
 rollback;
 
+\echo '=== A6b. sistema: la memoria trae la llave tier (calc_customer_tier corre con los privilegios del dueno, no bajo RLS) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (restaurantes.cliente_memoria('00000000-0000-0000-0000-0000000c3601', '5511110001') ? 'tier')::int as trae_llave_tier_deberia_ser_1;
+rollback;
+
 \echo '=== A7. autorizacion: un usuario autenticado NO puede llamar cliente_memoria (42501) ==='
 begin;
 set local role authenticated;
