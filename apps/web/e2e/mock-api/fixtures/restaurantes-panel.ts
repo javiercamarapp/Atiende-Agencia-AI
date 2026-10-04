@@ -89,6 +89,44 @@ function sucursal(p: { estado: { obtener<T>(k: string, s: () => T): T } }) {
   return p.estado.obtener("rest.sucursal", () => ({ propertyId: PROP.id, name: PROP.nombre, slug: "centro", status: "active" as "active" | "inactive", phone: "+529995550100" as string | null, address: "Calle 60 #400, Centro, Merida" as string | null, lat: 20.9674 as number | null, lng: -89.6237 as number | null }));
 }
 
+// ---------- Avisos y cierres: forma de apps/web/src/verticals/restaurantes/lib/{avisos,cierres}-client.ts ----------
+const EVENTOS_AVISO_MOCK = [
+  { tipo: "restaurantes.pedido.nuevo", etiqueta: "Pedido nuevo", descripcion: "Entra un pedido por WhatsApp, voz o la tienda en línea.", sonidoAplica: true },
+  { tipo: "restaurantes.handoff.solicitado", etiqueta: "Cliente pide a una persona", descripcion: "El agente deriva una conversación a atención humana.", sonidoAplica: false },
+  { tipo: "restaurantes.pedido.entrega_tardia", etiqueta: "Entrega tardía", descripcion: "Un pedido pasó de su hora prometida y sigue sin entregarse.", sonidoAplica: false },
+];
+const EQUIPO_AVISOS = [
+  { userId: "restaurantes-owner", fullName: "Owner restaurantes", email: "owner.restaurantes@example.test", verticalRole: "owner" },
+  { userId: "restaurantes-admin", fullName: "Admin restaurantes", email: "admin.restaurantes@example.test", verticalRole: "admin" },
+  { userId: "restaurantes-staff", fullName: "Staff restaurantes", email: "staff.restaurantes@example.test", verticalRole: "staff" },
+];
+type PrefAviso = { tipo: string; enabled: boolean; sonido: boolean };
+const efectivasAviso = (): PrefAviso[] => EVENTOS_AVISO_MOCK.map((e) => ({ tipo: e.tipo, enabled: true, sonido: true }));
+function avisosPrefs(p: { estado: { obtener<T>(k: string, s: () => T): T } }): Record<string, PrefAviso[]> {
+  return p.estado.obtener<Record<string, PrefAviso[]>>("rest.avisos.prefs", () => ({}));
+}
+const diaRelativo = (n: number): string => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+function lunesDeSemanaPasada(): string {
+  const d = new Date(Date.now() - 7 * 86_400_000);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+function cierreMock(tipo: "dia" | "semana", inicio: string, n: number) {
+  const fin = tipo === "dia" ? inicio : new Date(Date.parse(`${inicio}T00:00:00Z`) + 6 * 86_400_000).toISOString().slice(0, 10);
+  const k = tipo === "dia" ? 1 : 7;
+  return {
+    id: `cierre-${n}`, tipo, fechaInicio: inicio, fechaFin: fin, zonaHoraria: "America/Merida", generadoPor: "staff" as const, generadoAt: new Date().toISOString(),
+    pedidos: 12 * k, ventasCentavos: 184_500 * k, ticketPromedioCentavos: 15_375, conProblema: 1, cancelados: 1, canceladosCentavos: 9_500, noRecogidos: 0, cancelacionPct: 8,
+    porCanal: [{ canal: "whatsapp" as const, pedidos: 8 * k, ventasCentavos: 120_000 * k, cancelados: 1 }, { canal: "web" as const, pedidos: 4 * k, ventasCentavos: 64_500 * k, cancelados: 0 }],
+    tiempos: { entregados: 10 * k, promedioMin: 32, medianaMin: 30, p90Min: 48 },
+    comparativo: { fechaInicio: inicio, fechaFin: fin, pedidos: 10 * k, ventasCentavos: 150_000 * k, variacionPedidosPct: 20, variacionVentasPct: 23 },
+    porDia: tipo === "semana" ? Array.from({ length: 7 }, (_, i) => ({ fecha: new Date(Date.parse(`${inicio}T00:00:00Z`) + i * 86_400_000).toISOString().slice(0, 10), pedidos: 12, ventasCentavos: 184_500 })) : null,
+  };
+}
+function cierresGenerados(p: { estado: { obtener<T>(k: string, s: () => T): T } }): ReturnType<typeof cierreMock>[] {
+  return p.estado.obtener("rest.cierres", () => [cierreMock("dia", diaRelativo(-3), 0)]);
+}
+
 export const rutasRestaurantesPanel: readonly Ruta[] = [
   // ---------- Pedidos (estado compartido con el repartidor y el Historial) ----------
   {
@@ -417,4 +455,63 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   { metodo: "GET", patron: `${B}/voz/conversaciones`, roles: ["owner", "admin"], manejador: () => ({ disponible: true, items: [{ id: "voz-conv-1", iniciadaEn: "2026-09-30T18:30:00.000Z", duracionS: 84, costoEstimadoMicroUsd: 120000, resultado: "pedido_creado" }] }) },
   { metodo: "GET", patron: `${B}/voz/conversaciones/:conversationId`, roles: ["owner", "admin"], manejador: () => ({ id: "voz-conv-1", iniciadaEn: "2026-09-30T18:30:00.000Z", duracionS: 84, costoEstimadoMicroUsd: 120000, resultado: "pedido_creado", turnos: [{ rol: "agente", texto: "Taqueria El Faro, en que le ayudo?", creadoEn: "2026-09-30T18:30:02.000Z" }, { rol: "usuario", texto: "Una orden de pastor", creadoEn: "2026-09-30T18:30:08.000Z" }] }) },
   { metodo: "GET", patron: `${B}/voz/kpi`, roles: ["owner", "admin"], manejador: () => ({ disponible: true, zonaHoraria: "America/Merida", hoy: hoyIso(), diaDeHoy: totalesVoz(1), mes: totalesVoz(30), serie: dias(7).map((d) => ({ fecha: d.fecha, llamadas: 14, pedidosVoz: 9, escaladas: 1, erroresProveedor: 0, toolP95Ms: 800, costoCentavosMxn: 4200 })) }) },
+
+  // ---------- Avisos del staff (R-16): lectura por rol, preferencias propias/del equipo y umbral de entrega tardia ----------
+  { metodo: "GET", patron: `${B}/avisos`, roles: ["owner", "admin", "staff"], manejador: (p) => {
+      const esAdmin = p.persona?.rol === "owner" || p.persona?.rol === "admin";
+      const prefs = avisosPrefs(p);
+      const base = { disponible: true, eventos: EVENTOS_AVISO_MOCK, mias: prefs[p.persona?.id ?? ""] ?? efectivasAviso(), umbralDefectoMin: 45 };
+      if (!esAdmin) return { ...base, equipo: null, umbrales: null };
+      return {
+        ...base,
+        equipo: EQUIPO_AVISOS.map((m) => ({ ...m, preferencias: prefs[m.userId] ?? efectivasAviso() })),
+        umbrales: p.estado.obtener("rest.avisos.umbrales", () => [{ propertyId: PROP.id, nombre: PROP.nombre, entregaTardiaMin: null as number | null }]),
+        umbralMin: 10,
+        umbralMax: 240,
+      };
+    } },
+  { metodo: "PUT", patron: `${B}/avisos/preferencias`, roles: ["owner", "admin", "staff"], manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { tipo?: string; enabled?: boolean; sonido?: boolean; userId?: string };
+      if (!EVENTOS_AVISO_MOCK.some((e) => e.tipo === c.tipo)) return fallo(400, "tipo: aviso desconocido.");
+      if (typeof c.enabled !== "boolean") return fallo(400, "enabled: debe ser verdadero o falso.");
+      const yo = p.persona?.id ?? "";
+      if (c.userId && c.userId !== yo && p.persona?.rol === "staff") return fallo(403, "No tienes permiso para esta acción.");
+      const objetivo = c.userId && c.userId !== yo ? c.userId : yo;
+      const prefs = avisosPrefs(p);
+      const filas = prefs[objetivo] ?? (prefs[objetivo] = efectivasAviso());
+      const fila = filas.find((f) => f.tipo === c.tipo)!;
+      fila.enabled = c.enabled;
+      if (typeof c.sonido === "boolean") fila.sonido = c.sonido;
+      return { ok: true, tipo: c.tipo, enabled: fila.enabled, sonido: fila.sonido };
+    } },
+  { metodo: "PUT", patron: `${B}/avisos/umbral`, roles: ["owner", "admin"], manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { propertyId?: string; minutos?: unknown };
+      if (typeof c.minutos !== "number" || !Number.isInteger(c.minutos)) return fallo(400, "minutos: debe ser un número entero.");
+      if (c.minutos < 10 || c.minutos > 240) return fallo(400, "minutos: fuera del rango permitido (10 a 240).");
+      const u = p.estado.obtener("rest.avisos.umbrales", () => [{ propertyId: PROP.id, nombre: PROP.nombre, entregaTardiaMin: null as number | null }]);
+      const fila = u.find((x) => x.propertyId === c.propertyId);
+      if (!fila) return fallo(404, "Sucursal no encontrada.");
+      fila.entregaTardiaMin = c.minutos;
+      return { ok: true, propertyId: c.propertyId, minutos: c.minutos };
+    } },
+
+  // ---------- Cierre del dia y resumen semanal (R-42, solo owner/admin): lo generado aparece en el GET siguiente ----------
+  { metodo: "GET", patron: `${B}/cierres`, roles: ["owner", "admin"], manejador: (p) => {
+      const tipo = p.query.get("tipo") === "semana" ? "semana" : "dia";
+      const cierres = cierresGenerados(p).filter((c) => c.tipo === tipo);
+      const pendientes = (tipo === "dia" ? [diaRelativo(-1), diaRelativo(-2)] : [lunesDeSemanaPasada()]).filter((f) => !cierres.some((c) => c.fechaInicio === f));
+      return { disponible: true, tipo, zonaHoraria: "America/Merida", hoy: hoyIso(), cierres, pendientes };
+    } },
+  { metodo: "POST", patron: `${B}/cierres/generar`, roles: ["owner", "admin"], manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { tipo?: string; fecha?: string };
+      if (c.tipo !== "dia" && c.tipo !== "semana") return fallo(400, "tipo debe ser «dia» o «semana».");
+      if (typeof c.fecha !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(c.fecha)) return fallo(400, "fecha debe ser YYYY-MM-DD.");
+      if (c.fecha >= hoyIso()) return fallo(400, "Solo se cierra un periodo que ya terminó en la zona horaria de la sucursal.");
+      const lista = cierresGenerados(p);
+      const previo = lista.find((x) => x.tipo === c.tipo && x.fechaInicio === c.fecha);
+      if (previo) return { estado: "existente", cierre: previo };
+      const nuevo = cierreMock(c.tipo, c.fecha, lista.length + 1);
+      lista.unshift(nuevo);
+      return conStatus(201, { estado: "creado", cierre: nuevo });
+    } },
 ];

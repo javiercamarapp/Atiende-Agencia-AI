@@ -23,6 +23,8 @@ export const DESTINOS: readonly Destino[] = [
   { sub: "/conversaciones", nombre: "Conversaciones", soloGestion: false },
   { sub: "/turnos", nombre: "Turnos", soloGestion: false },
   { sub: "/historial", nombre: "Historial", soloGestion: false },
+  { sub: "/avisos", nombre: "Avisos", soloGestion: false },
+  { sub: "/cierres", nombre: "Cierre del día", soloGestion: true },
   { sub: "/productos", nombre: "Productos", soloGestion: false },
   { sub: "/promociones", nombre: "Promociones", soloGestion: false },
   { sub: "/clientes", nombre: "Clientes", soloGestion: false },

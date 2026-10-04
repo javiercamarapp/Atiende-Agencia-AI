@@ -115,15 +115,16 @@ Base del protocolo de cierre por vertical. Archivos en `apps/web/e2e/tests/resta
 
 | Archivo | Que demuestra |
 |---|---|
-| `recorrido-restaurantes-roles.spec.ts` | owner y admin ven los 19 destinos del menu, staff solo los de operacion, el repartidor aterriza en Mis entregas; un staff que fuerza `/staff` o `/auditoria` ve la restriccion sin pedir datos ni escribir; un 403 del servidor es un estado de error manejado; sin sesion se manda al login |
+| `recorrido-restaurantes-roles.spec.ts` | owner y admin ven los 21 destinos del menu, staff solo los de operacion, el repartidor aterriza en Mis entregas; un staff que fuerza `/staff` o `/auditoria` ve la restriccion sin pedir datos ni escribir; un 403 del servidor es un estado de error manejado; sin sesion se manda al login |
 | `recorrido-restaurantes-controles.spec.ts` | camino feliz de los controles principales: cada uno hace la peticion exacta al mock (metodo, ruta, cuerpo) y la pantalla refleja el estado nuevo |
 | `recorrido-restaurantes-controles-2.spec.ts` | segunda tanda: Conversaciones (Tomar, nota, Devolver, Marcar como resuelta), Turnos (Agregar/Quitar), Productos "no a domicilio", Pedidos para recoger hasta Entregado |
+| `recorrido-restaurantes-avisos-cierres.spec.ts` | Avisos (R-16): apagar un aviso propio y el de otra persona, tiempo de gracia (valido e invalido), staff sin matriz; Cierre del dia (R-42): Generar y cambiar a resumen semanal, staff con restriccion sin pedir datos |
 | `recorrido-restaurantes-dialogos.spec.ts` | confirmaciones y formularios: Cancelar/Volver/Cerrar y Escape NO hacen ninguna escritura (vigilante de red); confirmar hace exactamente una en Cancelado, Quitar zona, Dar de baja, Borrar chat y Volver al perfil por defecto; los formularios prueban Cerrar/Escape y, solo en Editar vigencia, tambien el PATCH al guardar |
-| `recorrido-restaurantes-errores.spec.ts` | 16 pantallas con 503 inyectado: EstadoError con Reintentar y recuperacion; sesion vencida manda al login; latencia alta muestra "Cargando" |
+| `recorrido-restaurantes-errores.spec.ts` | 18 pantallas con 503 inyectado: EstadoError con Reintentar y recuperacion; sesion vencida manda al login; latencia alta muestra "Cargando" |
 | `recorrido-restaurantes-resumen-copiloto.spec.ts` | Resumen: 7 KPIs en orden, "—" sin dato (no un 0), pildoras con su destino; Copiloto: pregunta libre, abort con Detener, rol con acceso |
 | `recorrido-restaurantes-controles.spec.ts` (puerta R-33) | el Resumen consulta `GET /onboarding/gate`: banner sin bloqueo; con bloqueo redirige a Primeros pasos y "Ir al panel de todos modos" la omite en la sesion |
 | `viaje-restaurantes-pedido.spec.ts` | viaje encadenado con DOS sesiones: Primeros pasos, crear producto, pedido nuevo a preparando, asignar repartidor, el repartidor (otra sesion) lo marca en camino y entregado, el owner lo ve en Historial, Copiloto, cerrar sesion |
-| `matriz-restaurantes-visual.spec.ts` | las 19 paginas en claro, oscuro, escritorio y movil (los 4 proyectos): sin desborde horizontal, sin errores de consola ni 5xx, un solo `<main>`, a lo mucho un `<h1>` (una pagina sin `<h1>` no se marca como defecto) |
+| `matriz-restaurantes-visual.spec.ts` | las 21 paginas en claro, oscuro, escritorio y movil (los 4 proyectos): sin desborde horizontal, sin errores de consola ni 5xx, un solo `<main>`, a lo mucho un `<h1>` (una pagina sin `<h1>` no se marca como defecto) |
 | `storefront-restaurantes.spec.ts` | `/pedir/*` publico: sucursales, menu, carrito con tortilla obligatoria, validacion local, cotizacion, Seguir editando y Escape sin pedido, un solo pedido al confirmar, rastreo, minimo a domicilio, promocion invalida, error con Reintentar |
 
 La API simulada de restaurantes vive en `mock-api/fixtures/restaurantes.ts` (humo, Copiloto, repartidor), `restaurantes-panel.ts` (panel con
@@ -147,6 +148,8 @@ mide por pantalla. **No se alcanza el 95 % pedido**: queda en deuda lo marcado "
 | Staff | Invitar, Revocar (confirm), rol, Dar de baja (confirm) | — |
 | Configuracion | WhatsApp, zona horaria, Agregar/Quitar zona (confirm), Volver al perfil por defecto (confirm) | el resto de la seccion del agente de WhatsApp |
 | Conversaciones | Tomar, nota, Devolver, Marcar como resuelta | Enviar respuesta, callbacks |
+| Avisos | apagar aviso propio y ajeno, tiempo de gracia, vista del staff, error | sonido en el navegador |
+| Cierre del dia | Generar, tipo dia/semana, restriccion de staff, error | detalle por canal y por dia (solo se afirma que pinta) |
 | Turnos | Guardar turnos, Agregar/Quitar turno | doble turno |
 | Auditoria | filtro por tipo | fechas, Cargar mas |
 | Privacidad | Guardar configuracion, error (BUG-E2E-REST-003) | panel ARCO |
