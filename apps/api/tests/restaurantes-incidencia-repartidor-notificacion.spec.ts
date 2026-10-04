@@ -1,6 +1,6 @@
 // R-16 -- aviso in-app cuando un repartidor reporta una incidencia (status `problema`): productor compartido,
 // uno por pedido, sin PII ni texto de la nota; un fallo de la base (sin migrar) nunca revierte el cambio de estado.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildRestaurantesKpiTestContext, makeOrder } from "./restaurantes-admin-kpis-fixtures.ts";
 import { conEmisiones } from "./support/emisiones.ts";
@@ -17,6 +17,18 @@ async function construir(opts: { alEmitir?: () => number } = {}) {
 }
 
 describe("incidencia del repartidor", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("la clave de dedupe lleva el minuto UTC del reporte: un pedido que vuelve a `problema` en otro momento avisa de nuevo", async () => {
+    const t = await construir();
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 120_000 });
+    const minuto = new Date().toISOString().slice(0, 16).replace(/\D/g, "");
+    expect((await t.patch({ status: "problema", incidentNote: "Dirección incorrecta." })).status).toBe(200);
+    expect(t.emisiones[0]!.dedupeKey).toBe(`restaurantes.pedido.incidencia_repartidor:${t.order.id}-${minuto}`);
+  });
+
   it("reportar `problema` emite UNA notificacion de atencion con enlace a Pedidos y sin la nota del repartidor", async () => {
     const t = await construir();
     const res = await t.patch({ status: "problema", incidentNote: "El cliente Juan Perez no contesta, tel 9991234567." });
@@ -29,7 +41,7 @@ describe("incidencia del repartidor", () => {
       severidad: "atencion",
       categoria: "operacion",
       enlace: "/restaurantes/{orgSlug}/pedidos",
-      dedupeKey: `restaurantes.pedido.incidencia_repartidor:${t.order.id}`,
+      dedupeKey: expect.stringMatching(new RegExp(`^restaurantes\\.pedido\\.incidencia_repartidor:${t.order.id}-\\d{12}$`)),
       roles: ["staff"],
     });
     expect(`${t.emisiones[0]!.titulo} ${t.emisiones[0]!.cuerpo}`).not.toMatch(/Juan|9991234567|\d{7,}|@/);
