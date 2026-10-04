@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOrder } from "../src/orders.ts";
+import { promoverProgramadosTodasLasOrganizaciones } from "../src/pedidos-programados.ts";
 import { MapaProductoCodigo } from "../src/softrestaurant/catalog-map.ts";
 import { FakeSoftRestaurantAdapter } from "../src/softrestaurant/fake-adapter.ts";
 import { InMemoryComandaOutboxStore } from "../src/softrestaurant/outbox-memory-store.ts";
@@ -11,6 +12,8 @@ import {
   type DepsComandaPos,
 } from "../src/softrestaurant/outbox-service.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
+
+afterEach(() => vi.useRealTimers());
 
 const T0 = new Date("2026-09-30T18:00:00.000Z");
 
@@ -72,6 +75,43 @@ describe("encolarComandasDePromovidos", () => {
     expect(filas[0]).toMatchObject({ orderId: t.order.id, estado: "pendiente", payload: { horaCompromiso: HORA } });
     // Aun en modo activo, la promocion nunca bloquea en el POS: lo envia el despachador.
     expect(t.port.llamadasCrear).toHaveLength(0);
+  });
+
+  it("la propina y el canal del pedido programado viajan en la comanda (follow-up de #294)", async () => {
+    const t = await preparar({ modo: "sombra" });
+    const promovido = { ...t.order, status: "pending" as const, programadoPara: HORA, canal: "recoger" as const, propina: 35 };
+    await encolarComandasDePromovidos(t.deps, [promovido]);
+    expect(t.store.todas()[0]).toMatchObject({ payload: { propina: 35, tipo: "recoger", horaCompromiso: HORA } });
+  });
+
+  it("un pedido programado sin propina (null o 0) no manda propina al POS", async () => {
+    const t = await preparar({ modo: "sombra" });
+    await encolarComandasDePromovidos(t.deps, [{ ...t.order, status: "pending", programadoPara: HORA, propina: null }]);
+    expect(t.store.todas()[0]!.payload).not.toHaveProperty("propina");
+  });
+
+  it("de punta a punta en memoria: createOrder programado con propina -> promover -> la comanda lleva la propina", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T12:00:00-06:00"));
+    const t = await preparar({ modo: "sombra" });
+    t.fx.repo.seedBranchPolicy(t.fx.propertyId, { propinaPolitica: "solo_tarjeta" });
+    const programado = await createOrder(t.fx.repo, {
+      organizationId: t.fx.organizationId,
+      branchSlug: "fco-montejo",
+      customerName: "Deb",
+      customerPhone: "9990001111",
+      paymentMethod: "tarjeta",
+      canal: "recoger",
+      propina: 20,
+      programadoPara: "2026-10-03T14:00:00-06:00",
+      items: [{ productId: t.fx.products.cocaCola, requestedQuantity: 2 }],
+      source: "web",
+    });
+    const { promovidos } = await promoverProgramadosTodasLasOrganizaciones(t.fx.repo, { now: new Date("2026-10-03T19:45:00.000Z") });
+    expect(promovidos.map((o) => o.id)).toEqual([programado.id]);
+    await encolarComandasDePromovidos(t.deps, promovidos);
+    expect(t.store.todas()[0]).toMatchObject({ orderId: programado.id, payload: { propina: 20, tipo: "recoger" } });
+    vi.useRealTimers();
   });
 
   it("idempotente: promover/reencolar el mismo pedido dos veces deja una sola fila", async () => {
