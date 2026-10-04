@@ -18,6 +18,7 @@ import { PromocionesPage } from "./verticals/restaurantes/pages/Promociones.tsx"
 import { AuditoriaPage as RestaurantesAuditoriaPage } from "./verticals/restaurantes/pages/Auditoria.tsx";
 import { ConfiguracionPage as RestaurantesConfiguracionPage } from "./verticals/restaurantes/pages/Configuracion.tsx";
 import { AgenteVozPage as RestaurantesAgenteVozPage } from "./verticals/restaurantes/pages/AgenteVoz.tsx";
+import { AjustesAgentePage as RestaurantesAjustesAgentePage } from "./verticals/restaurantes/pages/AjustesAgente.tsx";
 import { IndicadoresWhatsappPage as RestaurantesIndicadoresWhatsappPage } from "./verticals/restaurantes/pages/IndicadoresWhatsapp.tsx";
 import { CierresPage as RestaurantesCierresPage } from "./verticals/restaurantes/pages/Cierres.tsx";
 import { PrivacidadPage as RestaurantesPrivacidadPage } from "./verticals/restaurantes/pages/Privacidad.tsx";
@@ -282,6 +283,8 @@ const RestaurantesAuditoriaRoute = shellRoute(RestaurantesShell, "/restaurantes/
 const RestaurantesConfiguracionRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConfiguracionPage {...ctx} />);
 // Agente de voz (Gemini Live, sin ElevenLabs): config, vista previa y conversaciones.
 const RestaurantesAgenteVozRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAgenteVozPage {...ctx} />);
+// Ajustes del agente por organizacion (modelo, temperatura, voz, fondo, conocimiento automatico), owner/admin.
+const RestaurantesAjustesAgenteRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAjustesAgentePage {...ctx} />);
 // R-31: indicadores del agente de WhatsApp (owner/admin).
 const RestaurantesIndicadoresWhatsappRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesIndicadoresWhatsappPage {...ctx} />);
 const RestaurantesCierresRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCierresPage {...ctx} />);
@@ -1120,6 +1123,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/auditoria" element={<RestaurantesAuditoriaRoute />} />
         <Route path="/restaurantes/:orgSlug/configuracion" element={<RestaurantesConfiguracionRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-voz" element={<RestaurantesAgenteVozRoute />} />
+        <Route path="/restaurantes/:orgSlug/agente-ajustes" element={<RestaurantesAjustesAgenteRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-whatsapp" element={<RestaurantesIndicadoresWhatsappRoute />} />
         <Route path="/restaurantes/:orgSlug/cierres" element={<RestaurantesCierresRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad" element={<RestaurantesPrivacidadRoute />} />

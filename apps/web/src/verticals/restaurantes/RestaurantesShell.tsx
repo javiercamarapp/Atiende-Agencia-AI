@@ -26,6 +26,7 @@ import {
   Mic,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Store,
   Tag,
@@ -152,6 +153,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
         { to: `${base}/agente-voz`, label: "Agente de voz", icon: Mic },
         // R-31: indicadores del agente de WhatsApp (conversaciones, conversión, handoff y costo LLM por día).
         { to: `${base}/agente-whatsapp`, label: "Agente de WhatsApp", icon: MessageCircle },
+        // Modelo, temperatura, voz, sonido de fondo y conocimiento automatico del agente (owner/admin).
+        { to: `${base}/agente-ajustes`, label: "Ajustes del agente", icon: SlidersHorizontal },
       ],
     });
     // FASE 3 (producto) — la bitácora de auditoría es de lectura SOLO owner/admin (mismo mandato que el servidor exige,
