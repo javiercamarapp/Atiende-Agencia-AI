@@ -40,6 +40,7 @@ import {
   StatusBadge,
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableFooter,
   TableHead,
@@ -198,31 +199,32 @@ function PolizaCard({ resultado }: { resultado: PolizaResultado }) {
         {poliza && (
           <div className="overflow-x-auto">
             <Table className="min-w-[480px] text-xs">
+              <TableCaption className="sr-only">Partidas de la póliza generada</TableCaption>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="h-9">Cuenta</TableHead>
+                  <TableHead className="sticky left-0 z-10 bg-canvas h-9">Cuenta</TableHead>
                   <TableHead className="h-9">Concepto</TableHead>
-                  <TableHead className="h-9">Debe</TableHead>
-                  <TableHead className="h-9">Haber</TableHead>
+                  <TableHead className="text-right h-9">Debe</TableHead>
+                  <TableHead className="text-right h-9">Haber</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {poliza.lineas.map((l, i) => (
                   <TableRow key={i}>
-                    <TableCell className="p-1.5 font-mono">{l.cuenta}</TableCell>
+                    <TableCell className="sticky left-0 z-10 bg-card p-1.5 font-mono">{l.cuenta}</TableCell>
                     <TableCell className="p-1.5 text-muted-foreground">{l.concepto}</TableCell>
-                    <TableCell className="p-1.5 tabular-nums">{l.debe > 0 ? formatMoney(l.debe) : "—"}</TableCell>
-                    <TableCell className="p-1.5 tabular-nums">{l.haber > 0 ? formatMoney(l.haber) : "—"}</TableCell>
+                    <TableCell className="text-right p-1.5 tabular-nums">{l.debe > 0 ? formatMoney(l.debe) : "—"}</TableCell>
+                    <TableCell className="text-right p-1.5 tabular-nums">{l.haber > 0 ? formatMoney(l.haber) : "—"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
               <TableFooter>
                 <TableRow>
-                  <TableCell className="p-1.5 font-semibold" colSpan={2}>
+                  <TableCell className="sticky left-0 z-10 bg-card p-1.5 font-semibold" colSpan={2}>
                     Totales · {poliza.tipo} · {poliza.fecha || "(sin fecha)"}
                   </TableCell>
-                  <TableCell className="p-1.5 font-semibold tabular-nums">{formatMoney(poliza.totalDebe)}</TableCell>
-                  <TableCell className="p-1.5 font-semibold tabular-nums">{formatMoney(poliza.totalHaber)}</TableCell>
+                  <TableCell className="p-1.5 text-right font-semibold tabular-nums">{formatMoney(poliza.totalDebe)}</TableCell>
+                  <TableCell className="p-1.5 text-right font-semibold tabular-nums">{formatMoney(poliza.totalHaber)}</TableCell>
                 </TableRow>
               </TableFooter>
             </Table>
@@ -441,16 +443,17 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                   />
                   <div className="max-h-64 overflow-auto rounded-lg border border-border">
                     <Table className="text-xs">
+                      <TableCaption className="sr-only">Catálogo de cuentas contables</TableCaption>
                       <TableHeader className="sticky top-0 bg-card">
                         <TableRow>
-                          <TableHead className="h-9">Código</TableHead>
+                          <TableHead className="sticky left-0 z-10 bg-canvas h-9">Código</TableHead>
                           <TableHead className="h-9">Nombre</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {cuentasFiltradas.map(([codigo, nombre]) => (
                           <TableRow key={codigo}>
-                            <TableCell className="p-1.5 font-mono">{codigo}</TableCell>
+                            <TableCell className="sticky left-0 z-10 bg-card p-1.5 font-mono">{codigo}</TableCell>
                             <TableCell className="p-1.5">{nombre}</TableCell>
                           </TableRow>
                         ))}
@@ -475,9 +478,10 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
           </p>
           <div className="overflow-x-auto">
             <Table className="min-w-[640px] text-xs">
+              <TableCaption className="sr-only">Historial de correcciones de categoría</TableCaption>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="h-9">CFDI UUID</TableHead>
+                  <TableHead className="sticky left-0 z-10 bg-canvas h-9">CFDI UUID</TableHead>
                   <TableHead className="h-9">RFC emisor</TableHead>
                   <TableHead className="h-9">Categoría corregida</TableHead>
                   <TableHead className="h-9">Tenant (opcional)</TableHead>
@@ -487,7 +491,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
               <TableBody>
                 {overrideFilas.map((f) => (
                   <TableRow key={f.key}>
-                    <TableCell className="p-1.5">
+                    <TableCell className="sticky left-0 z-10 bg-card p-1.5">
                       <Label htmlFor={`ov-uuid-${f.key}`} className="sr-only">
                         CFDI UUID
                       </Label>
@@ -550,9 +554,10 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
         <CardContent className="flex flex-col gap-3">
           <div className="overflow-x-auto">
             <Table className="min-w-[900px] text-xs">
+              <TableCaption className="sr-only">Facturas CFDI a clasificar</TableCaption>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="h-9">UUID *</TableHead>
+                  <TableHead className="sticky left-0 z-10 bg-canvas h-9">UUID *</TableHead>
                   <TableHead className="h-9">RFC emisor *</TableHead>
                   <TableHead className="h-9">RFC receptor</TableHead>
                   <TableHead className="h-9">Descripción</TableHead>
@@ -567,7 +572,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
               <TableBody>
                 {cfdiFilas.map((f) => (
                   <TableRow key={f.key}>
-                    <TableCell className="p-1.5">
+                    <TableCell className="sticky left-0 z-10 bg-card p-1.5">
                       <Label htmlFor={`bk-uuid-${f.key}`} className="sr-only">
                         UUID
                       </Label>
@@ -686,9 +691,10 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
               <p className="mb-1 mt-2 text-xs font-semibold text-foreground">Resultado ({clasificaciones.length}) -- la categoría es editable antes de generar pólizas</p>
               <div className="overflow-x-auto">
                 <Table className="min-w-[720px] text-xs">
+                  <TableCaption className="sr-only">Resultado de la clasificación de CFDI</TableCaption>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="h-9">UUID</TableHead>
+                      <TableHead className="sticky left-0 z-10 bg-canvas h-9">UUID</TableHead>
                       <TableHead className="h-9">RFC emisor</TableHead>
                       <TableHead className="h-9">Categoría</TableHead>
                       <TableHead className="h-9">Confianza</TableHead>
@@ -697,7 +703,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                   <TableBody>
                     {clasificaciones.map((c, i) => (
                       <TableRow key={c.cfdiUuid}>
-                        <TableCell className="p-1.5 font-mono">{c.cfdiUuid}</TableCell>
+                        <TableCell className="sticky left-0 z-10 bg-card p-1.5 font-mono">{c.cfdiUuid}</TableCell>
                         <TableCell className="p-1.5">{c.rfcEmisor}</TableCell>
                         <TableCell className="p-1.5">
                           <Label htmlFor={`bk-cat-${c.cfdiUuid}`} className="sr-only">
@@ -787,9 +793,10 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
             </div>
             <div className="overflow-x-auto">
               <Table className="min-w-[560px] text-xs">
+                <TableCaption className="sr-only">Ajustes de categoría por tenant</TableCaption>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="h-9">Cuenta *</TableHead>
+                    <TableHead className="sticky left-0 z-10 bg-canvas h-9">Cuenta *</TableHead>
                     <TableHead className="h-9">Debe</TableHead>
                     <TableHead className="h-9">Haber</TableHead>
                     <TableHead className="h-9">Concepto</TableHead>
@@ -799,7 +806,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                 <TableBody>
                   {ajusteEntries.map((f) => (
                     <TableRow key={f.key}>
-                      <TableCell className="p-1.5">
+                      <TableCell className="sticky left-0 z-10 bg-card p-1.5">
                         <Label htmlFor={`adj-cuenta-${f.key}`} className="sr-only">
                           Cuenta
                         </Label>
@@ -896,23 +903,24 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
           {sugerencias && sugerencias.length > 0 && (
             <div className="overflow-x-auto rounded-xl border border-border">
               <Table className="text-xs">
+                <TableCaption className="sr-only">Sugerencias de reglas permanentes</TableCaption>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="h-9">RFC</TableHead>
+                    <TableHead className="sticky left-0 z-10 bg-canvas h-9">RFC</TableHead>
                     <TableHead className="h-9">Categoría sugerida</TableHead>
-                    <TableHead className="h-9">Coincidencias</TableHead>
-                    <TableHead className="h-9">Total correcciones</TableHead>
-                    <TableHead className="h-9">Confianza</TableHead>
+                    <TableHead className="text-right h-9">Coincidencias</TableHead>
+                    <TableHead className="text-right h-9">Total correcciones</TableHead>
+                    <TableHead className="text-right h-9">Confianza</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {sugerencias.map((s) => (
                     <TableRow key={s.rfc}>
-                      <TableCell className="p-2 font-mono">{s.rfc}</TableCell>
+                      <TableCell className="sticky left-0 z-10 bg-card p-2 font-mono">{s.rfc}</TableCell>
                       <TableCell className="p-2">{s.suggestedCategoria}</TableCell>
-                      <TableCell className="p-2 tabular-nums">{s.overrideCount}</TableCell>
-                      <TableCell className="p-2 tabular-nums">{s.totalCorrections}</TableCell>
-                      <TableCell className="p-2 tabular-nums">{(s.confidence * 100).toFixed(0)}%</TableCell>
+                      <TableCell className="text-right p-2 tabular-nums">{s.overrideCount}</TableCell>
+                      <TableCell className="text-right p-2 tabular-nums">{s.totalCorrections}</TableCell>
+                      <TableCell className="text-right p-2 tabular-nums">{(s.confidence * 100).toFixed(0)}%</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

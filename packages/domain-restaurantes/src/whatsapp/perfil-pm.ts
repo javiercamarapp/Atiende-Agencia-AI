@@ -77,8 +77,13 @@ const PM_MOTIVOS_ESCALACION_PROMPT: readonly string[] = [
 export const PM_COPY = {
   pedidoRegistrado: "Su pedido ya quedó registrado y se mandó a cocina.",
   problemaTecnico: "En este momento tenemos un problema técnico. Por favor, inténtelo de nuevo en unos minutos.",
+  sinAsistenteAvisoEquipo: "En este momento tenemos un problema técnico. Ya avisé al equipo de la sucursal para que una persona tome su pedido lo antes posible.",
   repetirPedido: "¿Me puede repetir su pedido, por favor?",
   turnoComplicado: "Se me complicó procesar su pedido. Un momento, por favor.",
+  /** El turno agoto sus vueltas sin pedido y el aviso al equipo quedo registrado: se dice solo lo que es cierto. */
+  turnoAgotadoConAviso: "Se me complicó procesar su solicitud por este medio. Ya avisé al equipo para que lo contacte directamente.",
+  /** El turno agoto sus vueltas y NO se pudo avisar al equipo: una pregunta concreta, para no dejar al cliente esperando algo que nunca llega. */
+  turnoAgotadoSinAviso: "Se me complicó procesar su solicitud. ¿Me puede decir en una sola frase qué le gustaría pedir, por favor?",
 } as const;
 
 /** Lo que el agente puede afirmar de cada estado: SOLO lo que la sucursal marco en el pedido, nunca lo que cree del repartidor. */

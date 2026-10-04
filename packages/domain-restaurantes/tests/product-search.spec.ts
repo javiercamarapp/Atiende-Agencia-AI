@@ -129,3 +129,34 @@ describe("resolveOrderItemsAgainstProducts — guardia anti-alucinación de prec
     expect(() => resolveOrderItemsAgainstProducts([{ productId: "p1", productName: "Otro Producto" }], products)).toThrow(OrderValidationError);
   });
 });
+
+// QA R1 agentes-23/24: una busqueda vacia la lee el agente como "no tenemos eso"; las escrituras comunes no pueden devolver vacio.
+describe("busqueda tolerante a escrituras comunes (QA R1 agentes-23/24)", () => {
+  const campos = (name: string, categoryName: string | null = null) => ({ name, description: null, categoryName, searchKeywords: [] as string[] });
+
+  it("'kgs', 'kgr' y 'kilogramos' son 'kg': el peso se reconoce igual que con 'kg'", () => {
+    const base = tokenizeForProductSearch("2 kg de pastor");
+    expect(base).toContain("peso:2000");
+    for (const escrito of ["2 kgs de pastor", "2 kgr de pastor", "2 kilogramos de pastor", "2 KGS de pastor"]) expect(tokenizeForProductSearch(escrito), escrito).toEqual(base);
+  });
+
+  it("'bisteck', 'bistek' y 'biftec' se leen como 'bistec'", () => {
+    for (const escrito of ["bisteck", "bistek", "biftec", "tacos de bisteck"]) {
+      expect(matchesProductSearch(tokenizeForProductSearch(escrito), campos("Tacos de Bistec de Res (orden de 3)")), escrito).toBe(true);
+    }
+  });
+
+  it("'cocacola' (junto) encuentra 'Coca-Cola', y una palabra corta no cruza palabras vecinas", () => {
+    expect(matchesProductSearch(tokenizeForProductSearch("cocacola"), campos("Coca-Cola"))).toBe(true);
+    expect(matchesProductSearch(tokenizeForProductSearch("sal"), campos("Coca Cola"))).toBe(false);
+  });
+
+  it("un peso que el producto no maneja ('un cuarto de cochinita') no borra el producto; con peso que coincide se conserva la exactitud", async () => {
+    const { repo, propertyId } = buildRestaurantFixture();
+    const sinPeso = await searchProducts(repo, { propertyId, query: "pizza" });
+    const conPeso = await searchProducts(repo, { propertyId, query: "un cuarto de pizza" });
+    expect(sinPeso.length).toBeGreaterThan(0);
+    expect(conPeso.map((p) => p.name)).toEqual(sinPeso.map((p) => p.name));
+    expect(await searchProducts(repo, { propertyId, query: "un cuarto de sushi" })).toEqual([]);
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ConversacionesRechazadaError, HandoffYaTomadoError, InMemoryConversacionesRepository, SinNumeroWhatsappError } from "../src/index.ts";
+import { ConversacionesRechazadaError, HandoffYaTomadoError, InMemoryConversacionesRepository, SinNumeroWhatsappError, VentanaWhatsappCerradaError } from "../src/index.ts";
 
 const ORG = "00000000-0000-4000-8000-0000000000b1";
 const PROP = "00000000-0000-4000-8000-0000000000a1";
@@ -9,7 +9,7 @@ const BETO = "00000000-0000-4000-8000-0000000000f2";
 
 function base() {
   const r = new InMemoryConversacionesRepository({ actorUserId: ANA, nombres: { [ANA]: "Ana", [BETO]: "Beto" } });
-  r.conversaciones.push({ canal: "whatsapp", id: CONV, organizationId: ORG, propertyId: PROP, telefono: "+5219990000001", mensajes: [{ rol: "cliente", texto: "Hola", createdAt: null }], actividadAt: "2026-09-30T20:00:00.000Z" });
+  r.conversaciones.push({ canal: "whatsapp", id: CONV, organizationId: ORG, propertyId: PROP, telefono: "+5219990000001", mensajes: [{ rol: "cliente", texto: "Hola", createdAt: null }], actividadAt: new Date().toISOString() });
   r.numeroPorSucursal.add(PROP);
   return r;
 }
@@ -76,6 +76,38 @@ describe("notas y respuesta humana", () => {
     await ana.responderWhatsapp(ORG, PROP, id, "Ya le atiendo");
     expect(ana.outbox).toEqual([{ organizationId: ORG, to: "+5219990000001", body: "Ya le atiendo" }]);
     expect((await ana.detalle(ORG, PROP, "whatsapp", CONV)).valor?.mensajes.at(-1)).toMatchObject({ rol: "humano", texto: "Ya le atiendo" });
+  });
+
+  // QA R1 agentes-20: Meta rechaza (131047) el texto libre si el cliente escribio hace mas de 24 h; el panel no debe decir "encolado".
+  it("ventana de 24 h: el ultimo mensaje del cliente de hace 25 h rechaza la respuesta; de hace 23 h la deja pasar", async () => {
+    const ahora = new Date("2026-10-13T20:00:00.000Z");
+    const hace = (h: number) => new Date(ahora.getTime() - h * 3_600_000).toISOString();
+    for (const [horas, debePasar] of [[25, false], [23, true]] as const) {
+      const r = new InMemoryConversacionesRepository({ actorUserId: ANA, ahora: () => ahora });
+      r.conversaciones.push({ canal: "whatsapp", id: CONV, organizationId: ORG, propertyId: PROP, telefono: "+5219990000001", mensajes: [{ rol: "cliente", texto: "Hola", createdAt: hace(horas) }], actividadAt: hace(horas) });
+      r.numeroPorSucursal.add(PROP);
+      const id = await r.tomar(ORG, PROP, "whatsapp", CONV);
+      if (debePasar) {
+        await r.responderWhatsapp(ORG, PROP, id, "Ya le atiendo");
+        expect(r.outbox).toHaveLength(1);
+      } else {
+        await expect(r.responderWhatsapp(ORG, PROP, id, "Una disculpa por la demora")).rejects.toBeInstanceOf(VentanaWhatsappCerradaError);
+        expect(r.outbox).toHaveLength(0);
+        expect(r.conversaciones[0]!.mensajes).toHaveLength(1);
+      }
+    }
+  });
+
+  it("ventana de 24 h: si el cliente vuelve a escribir mientras la toma esta abierta (ping del agente), la ventana se reabre", async () => {
+    const ahora = new Date("2026-10-13T20:00:00.000Z");
+    const r = new InMemoryConversacionesRepository({ actorUserId: ANA, ahora: () => ahora });
+    const viejo = new Date(ahora.getTime() - 30 * 3_600_000).toISOString();
+    r.conversaciones.push({ canal: "whatsapp", id: CONV, organizationId: ORG, propertyId: PROP, telefono: "+5219990000001", mensajes: [{ rol: "cliente", texto: "Hola", createdAt: viejo }], actividadAt: viejo });
+    r.numeroPorSucursal.add(PROP);
+    const id = await r.tomar(ORG, PROP, "whatsapp", CONV);
+    r.handoffs[0]!.ultimoClienteAt = new Date(ahora.getTime() - 60_000).toISOString();
+    await r.responderWhatsapp(ORG, PROP, id, "Ya le atiendo");
+    expect(r.outbox).toHaveLength(1);
   });
 
   it("sin numero de WhatsApp en la sucursal falla con un error claro", async () => {
