@@ -203,6 +203,9 @@ export const FUNCION_MAX_MS = 30_000;
 /** Tiempo que se le deja a la fase B (hasta 3 turnos del agente + envio) DESPUES de esperar. */
 export const RESERVA_FASE_B_MS = 15_000;
 
+/** Margen entre el fin del turno del agente y la muerte de la funcion: confirmar la transaccion, encolar la respuesta y despachar inline. */
+export const MARGEN_CIERRE_TURNO_MS = 6_000;
+
 /** Lo que se estima que tarda UNA pasada (turno del agente + escritura): no se empieza otra si no cabe antes del fin de la funcion. */
 export const PASADA_ESTIMADA_MS = 7_000;
 
@@ -362,6 +365,7 @@ export async function responderTrasEspera(
               messages: historial,
               customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
               propertyId: propertyId ?? null,
+              ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
             });
         let reply = turn.reply;
         if (privacy) {

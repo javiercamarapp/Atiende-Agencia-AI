@@ -41,8 +41,9 @@ sequenceDiagram
   derechos ARCO ("mis datos personales") los atiende un fast-path determinista antes del LLM.
 - **Cliente existente**: `buscar_cliente` devuelve nombre, direcciones, último pedido y "lo de siempre"; una
   segunda dirección igual no se duplica.
-- **Handoff**: cancelaciones, cobros, alergias, quejas, "quiero una persona" y pedidos grandes (>= 40 piezas o
-  $1,500, regla del prompt de PM) abren una toma de handoff y el agente deja de contestar (`handoffGate`).
+- **Handoff**: cancelaciones, cobros, alergias, quejas, "quiero una persona" y pedidos grandes (más de $4,000 o más de 5 kg;
+  más de $2,500 si el número no tiene historial y paga en efectivo: decisión del 2-oct, `PM_PEDIDO_GRANDE_POR_OMISION` en
+  `perfil-pm.ts`, editable por organización; regla del prompt de PM) abren una toma de handoff y el agente deja de contestar (`handoffGate`).
 - **Replay / carrera**: Meta entrega al menos una vez; el mismo `message.id` no genera segundo turno ni segunda
   respuesta. Un payload solo de estados se acusa 200 sin turno.
 
@@ -115,7 +116,8 @@ El checkout exige aceptar el aviso de privacidad en la interfaz; el servidor **n
    (o `cancelado`/`problema`). Cada transición notifica al comensal por WhatsApp (outbox + dispatcher).
 4. **Pedido programado**: queda en `programado` y no va a cocina ni al POS; al faltar 30 min lo promueve el cron
    (`/internal/restaurantes/promover-programados`, 5 min) o el panel al consultar, y en ese momento su comanda se
-   encola al POS.
+   encola al POS. Una sucursal desactivada NO promueve sus programados (migración 042 y filtro en el panel): se quedan en
+   `programado`, visibles en la lista de programados, para que el equipo los atienda.
 
 ## 5. Repartidor
 
@@ -177,4 +179,4 @@ npx vitest run packages/whatsapp-gateway --maxWorkers=2     # los simuladores mi
 | Staff avisado cuando un programado entra a cocina | **Hueco**: el aviso de "pedido nuevo" se emite al crearlo; un evento nuevo requiere ampliar el CHECK de `event_type` (migración) |
 | Consentimiento del checkout web | **Hueco**: la interfaz lo exige, el servidor no lo persiste |
 | Postgres real (RLS, GRANT, definer) | No cubierto por este banco: lo cubren los `scripts/verify-restaurantes-*` |
-| Pedidos programados por agente (WhatsApp/voz) | **Hueco**: las tools `crear_pedido` de los agentes no tienen `programado_para`; solo el checkout público lo envía |
+| Pedidos programados por agente (WhatsApp/voz) | **Hueco**: las tools `crear_pedido` de los agentes no tienen `programado_para`; solo lo acepta el checkout público legado (`POST /v1/restaurantes/:orgSlug/orders`, que ya exige las mismas reglas web que el storefront); el menú en línea (`/pedir/...`) rechaza `programado_para` con un 400 explícito porque su interfaz todavía no tiene selector de fecha |

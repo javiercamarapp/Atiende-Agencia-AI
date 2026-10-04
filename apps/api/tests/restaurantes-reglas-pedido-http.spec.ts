@@ -29,7 +29,7 @@ describe("reglas de pedido por HTTP", () => {
     const { deps, restaurantesRepo, propertyId, products } = await buildTestDeps();
     restaurantesRepo.seedBranchPolicy(propertyId, { pedidoMinimoDomicilio: 100 });
     const app = buildApp(deps);
-    const base = { branch_slug: "fco-montejo", customer_name: "Cliente Web", customer_phone: "9991234567", source: "web" };
+    const base = { branch_slug: "fco-montejo", customer_name: "Cliente Web", customer_phone: "9991234567", customer_address: "Calle 1 #200, Centro", payment_method: "efectivo", source: "web" };
 
     const bajo = await app.request("/v1/restaurantes/los-taquitos-de-pm/orders", jsonRequestInit({ ...base, items: [{ product_id: products.cocaCola, requested_quantity: 1 }] }, WEB));
     expect(bajo.status).toBe(400);
