@@ -508,6 +508,55 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c3611
 select public.t_esperar_error($q$insert into restaurantes.cliente_politica (organization_id, umbral_no_recogidos) values ('00000000-0000-0000-0000-0000000c3601', 5)$q$, '42501') as sin_error;
 rollback;
 
+\echo '=== I1. auxiliar cliente_direcciones_json: un autenticado de OTRA organizacion no puede llamarlo directo (42501) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c3614', true);
+select public.t_esperar_error($q$select restaurantes.cliente_direcciones_json('00000000-0000-0000-0000-0000000c3621')$q$, '42501') as sin_error;
+rollback;
+
+\echo '=== I2. auxiliar cliente_gustos_json: sin EXECUTE para authenticated, ni siquiera el owner de la organizacion (42501) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c3611', true);
+select public.t_esperar_error($q$select restaurantes.cliente_gustos_json('00000000-0000-0000-0000-0000000c3621')$q$, '42501') as sin_error;
+rollback;
+
+\echo '=== I3. auxiliar cliente_confiabilidad_json: cross-tenant (42501) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c3614', true);
+select public.t_esperar_error($q$select restaurantes.cliente_confiabilidad_json('00000000-0000-0000-0000-0000000c3601', '00000000-0000-0000-0000-0000000c3621')$q$, '42501') as sin_error;
+rollback;
+
+\echo '=== I4. auxiliar cliente_politica_efectiva: sin EXECUTE para authenticated (42501) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c3614', true);
+select public.t_esperar_error($q$select * from restaurantes.cliente_politica_efectiva('00000000-0000-0000-0000-0000000c3601')$q$, '42501') as sin_error;
+rollback;
+
+\echo '=== I5. auxiliares: la sesion de sistema (rol authenticated sin sub) tampoco los llama directo (42501) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select public.t_esperar_error($q$select restaurantes.cliente_direcciones_json('00000000-0000-0000-0000-0000000c3621')$q$, '42501') as sin_error;
+rollback;
+
+\echo '=== I6. auxiliares: anon sin EXECUTE (42501) ==='
+begin;
+set local role anon;
+select public.t_esperar_error($q$select restaurantes.cliente_gustos_json('00000000-0000-0000-0000-0000000c3621')$q$, '42501') as sin_error;
+rollback;
+
+\echo '=== I7. ARCO: el rol staff NO exporta ni borra memoria (42501); solo owner/admin ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c3612', true);
+select public.t_esperar_error($q$select restaurantes.cliente_exportar_arco('00000000-0000-0000-0000-0000000c3601', '00000000-0000-0000-0000-0000000c3621')$q$, '42501') as sin_error_exportar;
+select public.t_esperar_error($q$select restaurantes.cliente_borrar_memoria('00000000-0000-0000-0000-0000000c3601', '00000000-0000-0000-0000-0000000c3621')$q$, '42501') as sin_error_borrar;
+rollback;
+
 \echo '=== G1. base SIN migrar: la funcion eliminada da 42883 y el bloque con subtransaccion recupera la transaccion ==='
 begin;
 drop function restaurantes.cliente_memoria(uuid, text);

@@ -168,7 +168,10 @@ grant select (organization_id, umbral_no_recogidos, ventana_dias, updated_at) on
 grant select, insert, update, delete on restaurantes.cliente_politica to service_role;
 
 -- ---------------------------------------------------------------------------
--- 7a) Auxiliares internos (no se otorgan a nadie salvo a authenticated por su uso dentro de las funciones)
+-- 7a) Auxiliares internos. cliente_es_gestor solo evalua la membresia de quien llama (su propia sesion). Los otros cuatro
+-- (politica efectiva, domicilios, gustos y confiabilidad) NO comprueban ningun permiso: se invocan unicamente desde funciones
+-- security definer, que corren con los privilegios del dueno y por eso no necesitan EXECUTE de authenticated. Se revoca
+-- EXECUTE a public, anon y authenticated: llamarlos directo por PostgREST leeria datos de cualquier cliente sin pasar por RLS.
 -- ---------------------------------------------------------------------------
 -- Rol de gestion en la organizacion. false (nunca error) sin sesion, asi la sesion de sistema nunca gana acceso por aqui.
 create or replace function restaurantes.cliente_es_gestor(p_organization_id uuid)
@@ -188,6 +191,24 @@ $$;
 revoke all on function restaurantes.cliente_es_gestor(uuid) from public, anon;
 grant execute on function restaurantes.cliente_es_gestor(uuid) to authenticated;
 
+-- Igual que cliente_es_gestor pero solo owner/admin (derechos ARCO: exportar y borrar memoria). false sin sesion.
+create or replace function restaurantes.cliente_es_admin(p_organization_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = core, pg_temp
+as $$
+  select auth.uid() is not null and exists (
+    select 1 from core.membership m
+     where m.user_id = auth.uid()
+       and m.organization_id = p_organization_id
+       and m.vertical_role in ('owner', 'admin')
+  );
+$$;
+revoke all on function restaurantes.cliente_es_admin(uuid) from public, anon;
+grant execute on function restaurantes.cliente_es_admin(uuid) to authenticated;
+
 -- Politica efectiva de la organizacion (valores por omision si no hay fila).
 create or replace function restaurantes.cliente_politica_efectiva(p_organization_id uuid)
 returns table (out_umbral integer, out_ventana integer)
@@ -199,8 +220,7 @@ as $$
   select coalesce((select p.umbral_no_recogidos from restaurantes.cliente_politica p where p.organization_id = p_organization_id), 2)::integer,
          coalesce((select p.ventana_dias from restaurantes.cliente_politica p where p.organization_id = p_organization_id), 90)::integer;
 $$;
-revoke all on function restaurantes.cliente_politica_efectiva(uuid) from public, anon;
-grant execute on function restaurantes.cliente_politica_efectiva(uuid) to authenticated;
+revoke all on function restaurantes.cliente_politica_efectiva(uuid) from public, anon, authenticated;
 
 -- Direcciones de un cliente como jsonb, el ultimo usado primero.
 create or replace function restaurantes.cliente_direcciones_json(p_customer_id uuid)
@@ -219,8 +239,7 @@ as $$
     left join restaurantes.branch_detail bd on bd.property_id = a.property_id
    where a.customer_id = p_customer_id;
 $$;
-revoke all on function restaurantes.cliente_direcciones_json(uuid) from public, anon;
-grant execute on function restaurantes.cliente_direcciones_json(uuid) to authenticated;
+revoke all on function restaurantes.cliente_direcciones_json(uuid) from public, anon, authenticated;
 
 -- Gustos de un cliente como jsonb (mas vistos primero).
 create or replace function restaurantes.cliente_gustos_json(p_customer_id uuid)
@@ -237,8 +256,7 @@ as $$
     from restaurantes.customer_preferences p
    where p.customer_id = p_customer_id;
 $$;
-revoke all on function restaurantes.cliente_gustos_json(uuid) from public, anon;
-grant execute on function restaurantes.cliente_gustos_json(uuid) to authenticated;
+revoke all on function restaurantes.cliente_gustos_json(uuid) from public, anon, authenticated;
 
 -- Conteos de confiabilidad (no recogidos dentro de la ventana y pedidos falsos marcados por el staff).
 create or replace function restaurantes.cliente_confiabilidad_json(p_organization_id uuid, p_customer_id uuid)
@@ -264,8 +282,7 @@ as $$
     'ventana_dias', (select out_ventana from restaurantes.cliente_politica_efectiva(p_organization_id))
   );
 $$;
-revoke all on function restaurantes.cliente_confiabilidad_json(uuid, uuid) from public, anon;
-grant execute on function restaurantes.cliente_confiabilidad_json(uuid, uuid) to authenticated;
+revoke all on function restaurantes.cliente_confiabilidad_json(uuid, uuid) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 7b) cliente_memoria -- SOLO SISTEMA. Lectura de la memoria del cliente por (organizacion, telefono de 10 digitos).
@@ -747,7 +764,7 @@ revoke all on function restaurantes.cliente_marcar_pedido_falso(uuid, uuid, bool
 grant execute on function restaurantes.cliente_marcar_pedido_falso(uuid, uuid, boolean) to authenticated;
 
 -- ---------------------------------------------------------------------------
--- 8f) cliente_exportar_arco / cliente_borrar_memoria -- STAFF (derechos ARCO de acceso y cancelacion)
+-- 8f) cliente_exportar_arco / cliente_borrar_memoria -- OWNER/ADMIN (derechos ARCO de acceso y cancelacion)
 -- ---------------------------------------------------------------------------
 create or replace function restaurantes.cliente_exportar_arco(p_organization_id uuid, p_customer_id uuid)
 returns jsonb
@@ -759,8 +776,8 @@ as $$
 declare
   v_c restaurantes.customers;
 begin
-  if not restaurantes.cliente_es_gestor(p_organization_id) then
-    raise exception 'cliente_exportar_arco: solo owner/admin/staff de la organizacion' using errcode = '42501';
+  if not restaurantes.cliente_es_admin(p_organization_id) then
+    raise exception 'cliente_exportar_arco: solo owner/admin de la organizacion (derechos ARCO)' using errcode = '42501';
   end if;
   select * into v_c from restaurantes.customers c where c.id = p_customer_id and c.organization_id = p_organization_id;
   if not found then
@@ -797,8 +814,8 @@ declare
   v_addr integer;
   v_pref integer;
 begin
-  if not restaurantes.cliente_es_gestor(p_organization_id) then
-    raise exception 'cliente_borrar_memoria: solo owner/admin/staff de la organizacion' using errcode = '42501';
+  if not restaurantes.cliente_es_admin(p_organization_id) then
+    raise exception 'cliente_borrar_memoria: solo owner/admin de la organizacion (derechos ARCO)' using errcode = '42501';
   end if;
   if not exists (select 1 from restaurantes.customers c where c.id = p_customer_id and c.organization_id = p_organization_id) then
     raise exception 'cliente inexistente en la organizacion' using errcode = '42501';
