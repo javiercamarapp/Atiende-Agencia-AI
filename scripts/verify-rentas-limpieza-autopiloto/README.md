@@ -19,9 +19,11 @@ Se auto-descubre en CI (`scripts/verify-real-postgres-ci/run-gate.mjs`); a mano:
 - D. `notificacion_tarea` como cola de avisos: sistema inserta/lee/marca; cross-tenant; solo la columna
   `notificada_in_app_en` admite UPDATE; anon sin acceso.
 - E. definer + search_path fijo, EXECUTE revocado, índices presentes.
+- F. SQL real del barrido por propiedad bajo la sesión de sistema (candidatos a tarea por propiedad, buffer pendiente, tareas de reservas
+  canceladas o desfasadas, mañana sin responsable), creación de la tarea con responsable y aviso en la cola, y los rechazos cross-tenant.
 
 ## Qué NO cubre
 
-- El TypeScript en vivo: los escenarios reproducen el SQL literal del barrido (misma limitación estructural que
+- El TypeScript en vivo: los escenarios reproducen el SQL literal del barrido (`barrerLimpiezaPendiente`, con `current_date + 1` en lugar de la cota calculada en TS) (misma limitación estructural que
   el resto de `scripts/verify-*/`); la lógica de dominio se prueba en `packages/domain-rentas/tests/limpieza/` y
   `apps/api/tests/`.

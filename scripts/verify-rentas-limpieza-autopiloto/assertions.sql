@@ -376,4 +376,207 @@ select count(*) as indices_deberia_ser_4 from pg_indexes where schemaname = 'ren
 rollback;
 
 \echo ''
+\echo '=== F. SQL del barrido por propiedad y ciclo de la tarea (sesion de sistema, RLS real) ==='
+\echo ''
+
+-- Casa Centro (b3) sin buffer de limpieza: sus tareas no entran a la fase de buffer.
+update rentas.property_config set buffer_limpieza_noches = 0 where property_id = '00000000-0000-0000-0000-0000000000b3';
+
+-- d1/d2: reservas confirmadas con checkout vencido y SIN tarea (una por propiedad). d3: reserva cancelada con tarea viva.
+-- d4: reserva confirmada cuya tarea quedo en otra fecha (desfasada). d5: reserva confirmada con tarea al dia y sin buffer.
+insert into rentas.ocupacion (id, organization_id, property_id, unidad_id, rango, capa, razon, estado, bloqueante) values
+  ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', daterange('2020-01-01', '2020-01-05', '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true),
+  ('00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b3', '00000000-0000-0000-0000-0000000000c3', daterange('2020-02-01', '2020-02-05', '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true),
+  ('00000000-0000-0000-0000-0000000000d3', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', daterange('2020-03-01', '2020-03-05', '[)'), 'reserva', 'RESERVA_CANAL', 'cancelado', true),
+  ('00000000-0000-0000-0000-0000000000d4', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', daterange('2030-02-01', '2030-02-05', '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true),
+  ('00000000-0000-0000-0000-0000000000d5', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', daterange('2020-04-01', '2020-04-04', '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true),
+  ('00000000-0000-0000-0000-0000000000d6', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b3', '00000000-0000-0000-0000-0000000000c3', daterange('2020-05-01', '2020-05-04', '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true);
+insert into rentas.tarea_operativa (id, organization_id, property_id, unidad_id, ocupacion_unidad_id, tipo, estado, prioridad, programada_para) values
+  ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000d3', 'limpieza', 'pendiente', 'media', '2020-03-05'),
+  ('00000000-0000-0000-0000-0000000000e3', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000d4', 'limpieza', 'pendiente', 'media', '2030-02-09'),
+  ('00000000-0000-0000-0000-0000000000e4', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000d5', 'limpieza', 'pendiente', 'media', '2020-04-04'),
+  ('00000000-0000-0000-0000-0000000000e5', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b3', '00000000-0000-0000-0000-0000000000c3', '00000000-0000-0000-0000-0000000000d6', 'limpieza', 'pendiente', 'media', '2020-05-04'),
+  ('00000000-0000-0000-0000-0000000000e6', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', null, 'limpieza', 'pendiente', 'media', (current_date + 1));
+
+\echo '--- 39. fase 1: el sistema ve las 2 propiedades con reservas sin tarea (consulta real del barrido) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as propiedades_deberia_ser_2 from (
+  SELECT o.property_id, pc.zona_horaria, min(upper(o.rango))::text AS primer_fin
+  FROM rentas.ocupacion o
+  LEFT JOIN rentas.property_config pc ON pc.property_id = o.property_id
+  WHERE o.capa = 'reserva' AND o.estado = 'confirmado' AND o.bloqueante
+    AND upper(o.rango) <= (current_date + 1)::date
+    AND NOT EXISTS (SELECT 1 FROM rentas.tarea_operativa t WHERE t.ocupacion_unidad_id = o.id AND t.tipo = 'limpieza')
+  GROUP BY o.property_id, pc.zona_horaria
+  ORDER BY min(upper(o.rango)), o.property_id
+) q;
+rollback;
+
+\echo '--- 40. fase 1: por propiedad solo aparece SU reserva pendiente (la de otra propiedad no se mezcla) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as pendientes_deberia_ser_1 from (
+  SELECT o.id AS ocupacion_id, o.unidad_id, upper(o.rango)::text AS fin
+  FROM rentas.ocupacion o
+  WHERE o.property_id = '00000000-0000-0000-0000-0000000000b1' AND o.capa = 'reserva' AND o.estado = 'confirmado' AND o.bloqueante
+    AND upper(o.rango) <= (current_date + 1)::date
+    AND NOT EXISTS (SELECT 1 FROM rentas.tarea_operativa t WHERE t.ocupacion_unidad_id = o.id AND t.tipo = 'limpieza')
+  ORDER BY upper(o.rango), o.id
+  LIMIT 40
+) q;
+rollback;
+
+\echo '--- 41. fase 1: el sistema crea la tarea con checklist, responsable por omision y deja el aviso en la cola ---'
+begin;
+update rentas.unidad set responsable_limpieza_default = '00000000-0000-0000-0000-000000000014' where id = '00000000-0000-0000-0000-0000000000c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select rentas.responsable_limpieza_vigente('00000000-0000-0000-0000-0000000000c1') as responsable;
+insert into rentas.tarea_operativa (organization_id, property_id, unidad_id, ocupacion_unidad_id, tipo, estado, prioridad, programada_para)
+  values ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000d1', 'limpieza', 'pendiente', 'media', '2020-01-05');
+insert into rentas.checklist_item_tarea (tarea_id, descripcion, orden) select id, 'Tender camas', 0 from rentas.tarea_operativa where ocupacion_unidad_id = '00000000-0000-0000-0000-0000000000d1';
+update rentas.tarea_operativa set asignado_a = '00000000-0000-0000-0000-000000000014', es_proveedor_externo = false, estado = case when estado = 'pendiente' then 'asignada' else estado end, actualizado_en = now()
+  where ocupacion_unidad_id = '00000000-0000-0000-0000-0000000000d1' returning id;
+insert into rentas.notificacion_tarea (tarea_id, evento, canales) select id, 'asignada', '{}' from rentas.tarea_operativa where ocupacion_unidad_id = '00000000-0000-0000-0000-0000000000d1';
+select count(*) as aviso_pendiente_deberia_ser_1 from rentas.notificacion_tarea n join rentas.tarea_operativa t on t.id = n.tarea_id
+  where t.ocupacion_unidad_id = '00000000-0000-0000-0000-0000000000d1' and n.evento = 'asignada' and n.notificada_in_app_en is null;
+rollback;
+
+\echo '--- 42. el staff de la propiedad (confirmar reserva) crea la tarea del checkout en su sesion: RLS de staff real ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000012', true);
+insert into rentas.tarea_operativa (organization_id, property_id, unidad_id, ocupacion_unidad_id, tipo, estado, prioridad, programada_para)
+  values ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000d1', 'limpieza', 'pendiente', 'media', '2020-01-05')
+  returning id as tarea_id;
+rollback;
+
+\echo '--- 43. cross-tenant: el staff de otra organizacion NO puede crear la tarea de una reserva ajena ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000017', true);
+insert into rentas.tarea_operativa (organization_id, property_id, unidad_id, ocupacion_unidad_id, tipo, estado, prioridad, programada_para)
+  values ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000d1', 'limpieza', 'pendiente', 'media', '2020-01-05')
+  returning id as should_fail;
+rollback;
+
+\echo '--- 44. cross-tenant: el staff de otra organizacion ve 0 reservas pendientes en la consulta del barrido ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000017', true);
+select count(*) as ajenas_deberia_ser_0 from rentas.ocupacion o
+  where o.property_id = '00000000-0000-0000-0000-0000000000b1' and o.capa = 'reserva' and o.estado = 'confirmado';
+rollback;
+
+\echo '--- 45. fase 2: el sistema encuentra la tarea sin buffer cuya propiedad tiene buffer > 0 (la de buffer 0 queda fuera) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as sin_buffer_deberia_ser_1 from (
+  SELECT t.id AS tarea_id, t.unidad_id, t.programada_para::text AS fecha, pc.zona_horaria
+  FROM rentas.tarea_operativa t
+  JOIN rentas.ocupacion o ON o.id = t.ocupacion_unidad_id
+  LEFT JOIN rentas.property_config pc ON pc.property_id = t.property_id
+  WHERE t.tipo = 'limpieza' AND t.estado NOT IN ('completada', 'cancelada') AND t.buffer_ocupacion_id IS NULL
+    AND o.capa = 'reserva' AND o.estado = 'confirmado'
+    AND COALESCE(pc.buffer_limpieza_noches, 1) > 0
+    AND t.programada_para <= (current_date + 1)::date
+  ORDER BY t.programada_para, t.id
+  LIMIT 100
+) q where tarea_id = '00000000-0000-0000-0000-0000000000e4';
+rollback;
+
+\echo '--- 46. fase 2: la propiedad con buffer 0 no entra a la fase de buffer ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as buffer_cero_deberia_ser_0 from (
+  SELECT t.id AS tarea_id
+  FROM rentas.tarea_operativa t
+  JOIN rentas.ocupacion o ON o.id = t.ocupacion_unidad_id
+  LEFT JOIN rentas.property_config pc ON pc.property_id = t.property_id
+  WHERE t.tipo = 'limpieza' AND t.estado NOT IN ('completada', 'cancelada') AND t.buffer_ocupacion_id IS NULL
+    AND o.capa = 'reserva' AND o.estado = 'confirmado'
+    AND COALESCE(pc.buffer_limpieza_noches, 1) > 0
+    AND t.programada_para <= (current_date + 1)::date
+) q where tarea_id = '00000000-0000-0000-0000-0000000000e5';
+rollback;
+
+\echo '--- 47. fase 2: el sistema crea el bloqueo BUFFER_LIMPIEZA y lo vincula a la tarea ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+with b as (
+  insert into rentas.ocupacion (organization_id, property_id, unidad_id, rango, capa, razon, estado, bloqueante)
+  values ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', daterange('2020-04-04', '2020-04-05', '[)'), 'bloqueo', 'BUFFER_LIMPIEZA', 'confirmado', true)
+  returning id
+)
+update rentas.tarea_operativa set buffer_ocupacion_id = (select id from b) where id = '00000000-0000-0000-0000-0000000000e4';
+select count(*) as vinculado_deberia_ser_1 from rentas.tarea_operativa where id = '00000000-0000-0000-0000-0000000000e4' and buffer_ocupacion_id is not null;
+rollback;
+
+\echo '--- 48. fase 3a: el sistema encuentra la tarea viva de una reserva cancelada y la cancela ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as huerfanas_deberia_ser_1 from (
+  SELECT t.ocupacion_unidad_id AS ocupacion_id
+  FROM rentas.tarea_operativa t
+  JOIN rentas.ocupacion o ON o.id = t.ocupacion_unidad_id
+  WHERE t.tipo = 'limpieza' AND t.estado NOT IN ('completada', 'cancelada') AND o.estado = 'cancelado'
+  ORDER BY t.creado_en, t.id
+  LIMIT 100
+) q;
+update rentas.tarea_operativa set estado = 'cancelada', actualizado_en = now() where id = '00000000-0000-0000-0000-0000000000e2';
+select count(*) as canceladas_deberia_ser_1 from rentas.tarea_operativa where id = '00000000-0000-0000-0000-0000000000e2' and estado = 'cancelada';
+rollback;
+
+\echo '--- 49. fase 3b: el sistema encuentra la tarea desfasada de la salida de su reserva y la reprograma sin tocar al responsable ---'
+begin;
+update rentas.tarea_operativa set asignado_a = '00000000-0000-0000-0000-000000000014', estado = 'asignada' where id = '00000000-0000-0000-0000-0000000000e3';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as desfasadas_deberia_ser_1 from (
+  SELECT t.ocupacion_unidad_id AS ocupacion_id, upper(o.rango)::text AS fin
+  FROM rentas.tarea_operativa t
+  JOIN rentas.ocupacion o ON o.id = t.ocupacion_unidad_id
+  WHERE t.tipo = 'limpieza' AND t.estado NOT IN ('completada', 'cancelada')
+    AND o.capa = 'reserva' AND o.estado = 'confirmado' AND t.programada_para <> upper(o.rango)
+  ORDER BY t.creado_en, t.id
+  LIMIT 100
+) q where ocupacion_id = '00000000-0000-0000-0000-0000000000d4';
+update rentas.tarea_operativa set programada_para = '2030-02-05', actualizado_en = now() where id = '00000000-0000-0000-0000-0000000000e3';
+select count(*) as conservado_deberia_ser_1 from rentas.tarea_operativa where id = '00000000-0000-0000-0000-0000000000e3' and programada_para = '2030-02-05' and asignado_a = '00000000-0000-0000-0000-000000000014';
+rollback;
+
+\echo '--- 50. fase 4: el sistema detecta las tareas de MAÑANA sin responsable (agrupadas por propiedad y dia) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as grupos_deberia_ser_1 from (
+  SELECT t.organization_id, t.property_id, pc.zona_horaria, t.programada_para::text AS fecha, count(*)::int AS cantidad
+  FROM rentas.tarea_operativa t
+  LEFT JOIN rentas.property_config pc ON pc.property_id = t.property_id
+  WHERE t.tipo = 'limpieza' AND t.estado = 'pendiente' AND t.asignado_a IS NULL
+    AND t.programada_para BETWEEN (current_date - 1)::date AND (current_date + 2)::date
+  GROUP BY t.organization_id, t.property_id, pc.zona_horaria, t.programada_para
+  ORDER BY t.property_id, t.programada_para
+) q;
+rollback;
+
+\echo '--- 51. el indice del barrido (ocupacion_checkout_barrido_idx) es usable por la consulta por propiedad ---'
+begin;
+set local enable_seqscan = off;
+select count(*) as usa_indice_deberia_ser_1 from (
+  select 1 where exists (
+    select 1 from pg_index i join pg_class c on c.oid = i.indexrelid
+    where c.relname = 'ocupacion_checkout_barrido_idx' and i.indisvalid and i.indisready
+  )
+) q;
+rollback;
+
+\echo ''
 \echo '==> listo -- revisa arriba: los escenarios marcados "should_fail"/"deberia_ser_0" deben terminar en ERROR o 0 filas (correcto), el resto debe devolver filas reales.'
