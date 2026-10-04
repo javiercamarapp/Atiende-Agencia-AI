@@ -39,6 +39,7 @@ import type {
   CustomerListFilter,
   CustomerListPage,
   CustomerTier,
+  ColoniasReferenciaLectura,
   KnownZone,
   NearestBranchMatch,
   NewCategoryInput,
@@ -2483,6 +2484,49 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       [organizationId],
     );
     return rows.map(mapKnownZoneRow);
+  }
+
+  async listColoniasReferencia(organizationId: string): Promise<ColoniasReferenciaLectura> {
+    // Columnas de la migracion 056: contra la base sin migrar (42703) el reporte dice "no disponible", sin abortar la transaccion del request.
+    return runWithSavepointFallback<ColoniasReferenciaLectura>({
+      session: this.db,
+      savepointName: "sp_restaurantes_colonias_referencia",
+      primary: async () => {
+        const { rows } = await this.db.query<{
+          id: string;
+          name: string;
+          lat: string | number | null;
+          lng: string | number | null;
+          fuente: string | null;
+          asignacion_fuente: string | null;
+          ref_sucursal_slug: string | null;
+          ref_km: string | number | null;
+          ref2_sucursal_slug: string | null;
+          ref2_km: string | number | null;
+        }>(
+          `select id, name, lat, lng, fuente, asignacion_fuente, ref_sucursal_slug, ref_km, ref2_sucursal_slug, ref2_km
+             from restaurantes.known_zone where organization_id = $1 order by name asc, id asc;`,
+          [organizationId],
+        );
+        return {
+          disponible: true,
+          zonas: rows.map((r) => ({
+            zoneId: r.id,
+            name: r.name,
+            lat: r.lat === null ? null : Number(r.lat),
+            lng: r.lng === null ? null : Number(r.lng),
+            fuente: r.fuente,
+            asignacionFuente: r.asignacion_fuente,
+            refSucursalSlug: r.ref_sucursal_slug,
+            refKm: r.ref_km === null ? null : Number(r.ref_km),
+            ref2SucursalSlug: r.ref2_sucursal_slug,
+            ref2Km: r.ref2_km === null ? null : Number(r.ref2_km),
+          })),
+        };
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => ({ disponible: false, zonas: [] }),
+    });
   }
 
   async createKnownZone(organizationId: string, input: NewKnownZoneInput): Promise<KnownZone> {

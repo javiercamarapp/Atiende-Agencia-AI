@@ -34,6 +34,7 @@ import type {
   CustomerListFilter,
   CustomerListPage,
   CustomerTier,
+  ColoniasReferenciaLectura,
   KnownZone,
   NearestBranchMatch,
   NewCategoryInput,
@@ -238,6 +239,13 @@ interface StoredKnownZone {
   readonly lat: number | null;
   readonly lng: number | null;
   readonly createdAt?: string;
+  /** Procedencia y referencia del piloto original (migracion 056); solo las siembran los mundos de prueba del seed. */
+  readonly fuente?: string | null;
+  readonly asignacionFuente?: string | null;
+  readonly refSucursalSlug?: string | null;
+  readonly refKm?: number | null;
+  readonly ref2SucursalSlug?: string | null;
+  readonly ref2Km?: number | null;
 }
 
 interface StoredWhatsAppEvent {
@@ -1685,8 +1693,29 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : b.id.localeCompare(a.id)));
   }
 
+  async listColoniasReferencia(organizationId: string): Promise<ColoniasReferenciaLectura> {
+    return {
+      disponible: true,
+      zonas: this.knownZones
+        .filter((z) => z.organizationId === organizationId)
+        .map((z) => ({
+          zoneId: z.id!,
+          name: z.name,
+          lat: z.lat,
+          lng: z.lng,
+          fuente: z.fuente ?? null,
+          asignacionFuente: z.asignacionFuente ?? null,
+          refSucursalSlug: z.refSucursalSlug ?? null,
+          refKm: z.refKm ?? null,
+          ref2SucursalSlug: z.ref2SucursalSlug ?? null,
+          ref2Km: z.ref2Km ?? null,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, "es")),
+    };
+  }
+
   async createKnownZone(organizationId: string, input: NewKnownZoneInput): Promise<KnownZone> {
-    const zone: Required<StoredKnownZone> = { id: randomUUID(), organizationId, name: input.name, lat: input.lat, lng: input.lng, createdAt: new Date().toISOString() };
+    const zone: StoredKnownZone & { readonly id: string; readonly createdAt: string } = { id: randomUUID(), organizationId, name: input.name, lat: input.lat, lng: input.lng, createdAt: new Date().toISOString() };
     this.knownZones.push(zone);
     return zone;
   }

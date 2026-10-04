@@ -95,7 +95,7 @@ describe("agente de PM con las colonias cargadas (mundo en memoria del seed)", (
     const error = await quoteOrder(world.repo, { ...base, colonia: ambigua.name }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(OrderValidationError);
     expect((error as Error).message).toMatch(/todavía no tiene una sucursal de reparto asignada/);
-    expect((error as Error).message).toContain("zona_no_reconocida");
+    expect((error as Error).message).toMatch(/pase el pedido con una persona/);
   });
 
   it("buscar_sucursal_cercana: una colonia asignada a una sucursal ACTIVA devuelve esa sucursal sin inventar distancia", async () => {

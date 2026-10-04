@@ -151,7 +151,7 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
         if (!(await algunaSucursalCubre(repo, branch.organizationId, match.id))) {
           throw new OrderValidationError(
             `${match.name} todavía no tiene una sucursal de reparto asignada: no puedo confirmar el domicilio a esa colonia. ` +
-              `Ofrezca recoger en sucursal o pase el pedido con una persona (escalar_a_humano, motivo zona_no_reconocida).`,
+              `Ofrezca recoger en sucursal o pase el pedido con una persona del negocio para que confirme la zona.`,
           );
         }
         throw new OrderValidationError(
