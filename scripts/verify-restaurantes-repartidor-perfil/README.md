@@ -1,7 +1,7 @@
 # verify-restaurantes-repartidor-perfil
 
-Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/043_repartidor_perfil_operativo.sql`
-(espejo: `supabase/migrations/20240101000310_043_repartidor_perfil_operativo.sql`): perfil operativo del repartidor
+Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/044_repartidor_perfil_operativo.sql`
+(espejo: `supabase/migrations/20240101000310_044_repartidor_perfil_operativo.sql`): perfil operativo del repartidor
 (`restaurantes.repartidor_perfil` y `repartidor_perfil_privado`, `guardar_perfil_repartidor`, `suprimir_perfil_repartidor`,
 `licencias_por_vencer_sistema`) y el tipo de bitacora `exportacion`.
 

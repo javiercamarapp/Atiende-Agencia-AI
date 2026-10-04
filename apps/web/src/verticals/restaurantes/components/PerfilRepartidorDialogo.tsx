@@ -127,7 +127,7 @@ export function PerfilRepartidorDialogo({
         {carga.estado === "error" && <EstadoError mensaje={carga.mensaje} onReintentar={() => void cargar()} />}
         {carga.estado === "listo" && !carga.datos.disponible && (
           <Callout tone="info" titulo="El perfil aún no está disponible">
-            No disponible aún: requiere la actualización de base de datos del perfil del repartidor (migración 043).
+            No disponible aún: requiere la actualización de base de datos del perfil del repartidor (migración 044).
           </Callout>
         )}
         {listo && carga.estado === "listo" && (

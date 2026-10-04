@@ -1,6 +1,6 @@
 // R-15 -- pestanas "Historial del dia" y "Mi perfil" del panel del repartidor (Repartidor.tsx). Cada pestana carga SOLO cuando se abre
 // (la primera pestana, "Mis pedidos", no cambia) y llama a endpoints reales: GET .../repartidor/historial-dia, GET|PUT .../repartidor/perfil.
-// Estados honestos: cargando, error con reintento, vacio ("Sin entregas hoy") y "no disponible aun" cuando la base no tiene la migracion 043.
+// Estados honestos: cargando, error con reintento, vacio ("Sin entregas hoy") y "no disponible aun" cuando la base no tiene la migracion 044.
 import { useCallback, useEffect, useState } from "react";
 import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, StatCard, StatusBadge, formatMoney, notify } from "@atiende/ui";
 import { Banknote, CircleCheck, CreditCard } from "lucide-react";
@@ -124,7 +124,7 @@ export function MiPerfilTab({ apiBaseUrl, token, propertyId, fetchImpl }: Props)
   if (!carga.datos.disponible) {
     return (
       <Callout tone="info" titulo="Tu perfil aún no está disponible">
-        No disponible aún: requiere la actualización de base de datos del perfil del repartidor (migración 043). Pide a administración que la aplique.
+        No disponible aún: requiere la actualización de base de datos del perfil del repartidor (migración 044). Pide a administración que la aplique.
       </Callout>
     );
   }

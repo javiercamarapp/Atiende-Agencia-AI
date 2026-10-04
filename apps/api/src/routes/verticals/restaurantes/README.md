@@ -222,7 +222,7 @@ documentados aquí mismo:
   repositorio; `packages/domain-restaurantes/tests/cierres-savepoint.spec.ts`). SQL y permisos verificados contra Postgres real en
   `scripts/verify-restaurantes-cierre-dia/`. Pruebas HTTP: `apps/api/tests/restaurantes-cierres.spec.ts`.
 
-## Perfil operativo del repartidor (R-15, migración 043)
+## Perfil operativo del repartidor (R-15, migración 044)
 
 - Propio (`repartidor-perfil.ts`, solo rol `repartidor`): `GET|PUT /v1/restaurantes/:propertyId/repartidor/perfil` lee y corrige SU perfil
   (tipo de vehículo, placas, disponibilidad, turno, licencia con vigencia y contacto de emergencia nombre + teléfono). PUT es reemplazo completo;
@@ -251,6 +251,6 @@ documentados aquí mismo:
   inyección de fórmulas). No hay dependencia `xlsx` en el repo (no se agregó ninguna): el CSV con BOM abre directo en Excel.
 - PDF (`exportar-pdf.ts`, pdf-lib): A4 horizontal, encabezado repetido en cada hoja y pie en CADA página con fecha de generación, zona horaria, alcance y "Página i de n".
   No reutiliza `despachos/reporte-pdf.ts` porque ese está atado al modelo de reporte fiscal (contribuyente/RFC).
-- Bitácora (tipo `exportacion`, migración 043 amplía el CHECK de `audit_log.entity_type`): `historial.exportado` / `clientes.exportado` con formato y número de filas,
-  nunca nombres, teléfonos ni el texto de búsqueda. Contra una base sin la 043 la fila de bitácora se omite (con aviso en el log) y la exportación funciona igual.
+- Bitácora (tipo `exportacion`, migración 044 amplía el CHECK de `audit_log.entity_type`): `historial.exportado` / `clientes.exportado` con formato y número de filas,
+  nunca nombres, teléfonos ni el texto de búsqueda. Contra una base sin la 044 la fila de bitácora se omite (con aviso en el log) y la exportación funciona igual.
 - PII: teléfonos completos solo para owner/admin; el staff de piso y el repartidor reciben 403.

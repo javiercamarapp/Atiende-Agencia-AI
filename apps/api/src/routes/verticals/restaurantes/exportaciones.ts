@@ -8,7 +8,7 @@
 //   GET /v1/restaurantes/:propertyId/admin/exportar/clientes?formato=csv|pdf&search=
 //
 // CSV: UTF-8 con BOM, separador coma, fechas en la zona horaria de CADA sucursal, dinero plano sin simbolo (ver domain-restaurantes/src/exportar).
-// PDF: pie en cada pagina con fecha de generacion, alcance y numero de pagina. Bitacora (migracion 019/043, tipo `exportacion`): quien exporto,
+// PDF: pie en cada pagina con fecha de generacion, alcance y numero de pagina. Bitacora (migracion 019/044, tipo `exportacion`): quien exporto,
 // que y cuantas filas; NUNCA el texto de busqueda ni datos de clientes.
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";

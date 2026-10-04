@@ -1,9 +1,9 @@
-// R-15 (migracion 043) -- perfil operativo del repartidor: vehiculo, placas, disponibilidad, turno, licencia y contacto de emergencia.
+// R-15 (migracion 044) -- perfil operativo del repartidor: vehiculo, placas, disponibilidad, turno, licencia y contacto de emergencia.
 //
 //   GET|PUT    /v1/restaurantes/:propertyId/repartidor/perfil                          el repartidor lee y corrige SU perfil
 //   GET|PUT|DELETE /v1/restaurantes/:propertyId/admin/staff/:userId/perfil-repartidor  owner/admin gestionan el de su organizacion
 //
-// Archivo aparte (no engorda admin-staff.ts). Quien puede qué lo decide la base (RLS + funciones definer de la 043); aquí se repite
+// Archivo aparte (no engorda admin-staff.ts). Quien puede qué lo decide la base (RLS + funciones definer de la 044); aquí se repite
 // como primer filtro: la ruta propia exige rol `repartidor`, la de gestion `STAFF_INVITE_ROLES` (owner/admin) y verifica que el
 // objetivo sea un repartidor de ESTA organizacion. El staff de piso no tiene acceso a ninguna de las dos (ni a licencia ni a
 // contacto de emergencia). PUT es un reemplazo completo; el telefono se valida con packages/domain-restaurantes/src/phone.ts.
@@ -30,7 +30,7 @@ import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { UUID_RE } from "./voz-admin.ts";
 
-const MSG_NO_DISPONIBLE = "El perfil del repartidor aún no está disponible: requiere aplicar la migración 043 en la base de datos.";
+const MSG_NO_DISPONIBLE = "El perfil del repartidor aún no está disponible: requiere aplicar la migración 044 en la base de datos.";
 
 function serializar(p: RepartidorPerfil, hoy: string) {
   const lic = estadoLicencia(p.licenciaVigencia, hoy);

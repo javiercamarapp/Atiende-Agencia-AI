@@ -1,5 +1,5 @@
 -- R-15: perfil operativo del repartidor por organizacion + tipo de bitacora 'exportacion' (R-17).
--- Prefijo de supabase/migrations: 20240101000310 (interno restaurantes 043).
+-- Prefijo de supabase/migrations: 20240101000310 (interno restaurantes 044).
 -- Requiere: 0001_core_schema.sql (core.membership, core.staff_user), 019_restaurantes_audit_log.sql (restaurantes.audit_log).
 --
 -- Que agrega (todo NUEVO salvo el CHECK de entity_type, que solo se AMPLIA):
