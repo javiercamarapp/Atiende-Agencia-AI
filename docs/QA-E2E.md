@@ -117,6 +117,7 @@ Base del protocolo de cierre por vertical. Archivos en `apps/web/e2e/tests/resta
 |---|---|
 | `recorrido-restaurantes-roles.spec.ts` | owner y admin ven los 19 destinos del menu, staff solo los de operacion, el repartidor aterriza en Mis entregas; un staff que fuerza `/staff` o `/auditoria` ve la restriccion sin pedir datos ni escribir; un 403 del servidor es un estado de error manejado; sin sesion se manda al login |
 | `recorrido-restaurantes-controles.spec.ts` | camino feliz de los controles principales: cada uno hace la peticion exacta al mock (metodo, ruta, cuerpo) y la pantalla refleja el estado nuevo |
+| `recorrido-restaurantes-controles-2.spec.ts` | segunda tanda: Conversaciones (Tomar, nota, Devolver, Marcar como resuelta), Turnos (Agregar/Quitar), Productos "no a domicilio", Pedidos para recoger hasta Entregado |
 | `recorrido-restaurantes-dialogos.spec.ts` | confirmaciones y formularios: Cancelar/Volver/Cerrar y Escape NO hacen ninguna escritura (vigilante de red); confirmar hace exactamente una |
 | `recorrido-restaurantes-errores.spec.ts` | 16 pantallas con 503 inyectado: EstadoError con Reintentar y recuperacion; sesion vencida manda al login; latencia alta muestra "Cargando" |
 | `recorrido-restaurantes-resumen-copiloto.spec.ts` | Resumen: 7 KPIs en orden, "—" sin dato (no un 0), pildoras con su destino; Copiloto: pregunta libre, abort con Detener, rol con acceso |
@@ -136,16 +137,16 @@ mide por pantalla. **No se alcanza el 95 % pedido**: queda en deuda lo marcado "
 | Pantalla | Cubierto por spec | Pendiente |
 |---|---|---|
 | Resumen | periodo, Actualizar, KPIs, pildoras, error | tarjetas de agentes y sparklines (solo se afirma que pintan) |
-| Pedidos | tabs, Actualizar ahora, Marcar Preparando, Cancelado (confirm), repartidor, Vista previa | auto-impresion, Imprimir/Reimprimir, Avisar al cliente, Marcar En camino/Entregado desde el panel |
+| Pedidos | tabs, Actualizar ahora, Marcar Preparando, Listo para recoger y Entregado, Cancelado (confirm), repartidor, Vista previa | auto-impresion, Imprimir/Reimprimir, Avisar al cliente |
 | Historial | filtro por estado, error | filtros de fecha, Cargar mas |
-| Productos | Nueva categoria, Nuevo producto, precio por sucursal, Disponible, Popular, error | casillas "no a domicilio" |
+| Productos | Nueva categoria, Nuevo producto, precio por sucursal, Disponible, Popular, error | casillas "no a domicilio" de productos (la de categoria si) |
 | Promociones | crear, Editar vigencia, Activar/Desactivar | tipo/canal/dias/productos del formulario |
 | Clientes | busqueda, ficha, error (BUG-E2E-REST-002) | Volver a clientes |
 | Sucursales | Editar/Guardar/Cancelar | Reglas de pedido (turnos, minimos, propina, zonas, puentes, numero) |
 | Staff | Invitar, Revocar (confirm), rol, Dar de baja (confirm) | — |
 | Configuracion | WhatsApp, zona horaria, Agregar/Quitar zona (confirm), Volver al perfil por defecto (confirm) | el resto de la seccion del agente de WhatsApp |
-| Conversaciones | Tomar | Devolver, Resolver, Enviar respuesta, Agregar nota, callbacks |
-| Turnos | Guardar turnos | Agregar/Quitar turno, doble turno |
+| Conversaciones | Tomar, nota, Devolver, Marcar como resuelta | Enviar respuesta, callbacks |
+| Turnos | Guardar turnos, Agregar/Quitar turno | doble turno |
 | Auditoria | filtro por tipo | fechas, Cargar mas |
 | Privacidad | Guardar configuracion, error (BUG-E2E-REST-003) | panel ARCO |
 | Agente de voz | pinta sano (matriz) | todos los controles |
