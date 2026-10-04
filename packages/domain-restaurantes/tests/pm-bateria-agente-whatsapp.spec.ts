@@ -187,9 +187,8 @@ describe("E.7 / E.4 motivos de alto riesgo: se avisan al equipo ANTES del modelo
     }
   });
 
-  it.todo("T-HO07 / P32 [P1] BRECHA: 'no entiende dos veces' -> no_entiende (necesita contador por conversacion; hoy depende del modelo)");
+  // T-HO07 / P32 y T-HO10 ya no son brechas: los cubre `contadores-agente-whatsapp.spec.ts` y `callbacks-idempotentes.spec.ts` (rescate-orig-restaurantes-1).
   it.todo("T-HO09 / P35 [P1] facturacion/empleo escalan 'otro' con el nombre dado: cubierto por registrar_contacto y el prompt; la regla de 'nunca inventar el nombre' solo se mide con modelo real");
-  it.todo("T-HO10 [P1] BRECHA: un solo ticket por motivo y conversacion (callback_requests no deduplica; 3 mensajes iguales crean 3 avisos)");
   it.todo("T-HO11 / P07 [P0] BRECHA: pausa del agente mientras el humano atiende (la conversacion solo tiene estados active/completed/abandoned; no hay 'handoff')");
   it.todo("T-HO12 / X28 [P2] 'que me lo lleve Juan': decir con honestidad que no se puede elegir repartidor (regla de prompt; medir con modelo real)");
 });
