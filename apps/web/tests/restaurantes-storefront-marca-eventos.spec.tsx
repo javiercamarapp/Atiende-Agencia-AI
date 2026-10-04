@@ -17,6 +17,7 @@ import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type 
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
+let respuestaEvento: ((init?: RequestInit) => Response) | undefined;
 
 function json(body: unknown, status = 200): Response {
   return { ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) } as unknown as Response;
@@ -50,6 +51,7 @@ function restaurante(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   fetchMock = vi.fn();
+  respuestaEvento = undefined;
   vi.stubGlobal("fetch", fetchMock);
   globalThis.sessionStorage.clear();
 });
@@ -204,7 +206,7 @@ describe("formulario publico de eventos (R-43)", () => {
 
   async function abrir() {
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (String(url).endsWith("/storefront/eventos")) return fetchMock.eventos?.(init) ?? json({ recibido: true });
+      if (String(url).endsWith("/storefront/eventos")) return respuestaEvento?.(init) ?? json({ recibido: true });
       return json(restaurante({ sucursales: [CENTRO, NORTE] }));
     });
     rendered = renderEn("/pedir/demo/eventos");
@@ -258,12 +260,12 @@ describe("formulario publico de eventos (R-43)", () => {
 
   it("error del servidor (400/429): se muestra el mensaje real, el formulario y lo escrito se conservan para reintentar", async () => {
     await abrir();
-    (fetchMock as unknown as { eventos: (i?: RequestInit) => Response }).eventos = () => json({ code: "validation_error", message: "La fecha del evento ya pasó." }, 400);
+    respuestaEvento = () => json({ code: "validation_error", message: "La fecha del evento ya pasó." }, 400);
     llenar();
     await submitForm(formulario());
     expect(rendered!.container.querySelector('[role="alert"]')!.textContent).toContain("La fecha del evento ya pasó.");
     expect(campo("Nombre").value).toBe("Ana Pérez");
-    (fetchMock as unknown as { eventos: (i?: RequestInit) => Response }).eventos = () => json({}, 429);
+    respuestaEvento = () => json({}, 429);
     await submitForm(formulario());
     expect(rendered!.container.querySelector('[role="alert"]')!.textContent).toContain("Demasiados intentos");
   });

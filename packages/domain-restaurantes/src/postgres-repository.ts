@@ -2412,7 +2412,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
         return rows[0] ? mapStorefrontMarca(rows[0]) : null;
       },
       isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
-      fallback: () => null,
+      fallback: async () => null,
     });
   }
 
