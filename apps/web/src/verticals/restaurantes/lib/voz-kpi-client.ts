@@ -117,7 +117,7 @@ export interface VozKpiDesborde {
   readonly serie: readonly VozKpiDesbordeDia[];
 }
 
-/** Llamadas no contestadas por el personal -> pedidos -> ventas recuperadas, y latencia de voz a voz (migración 044). 404/503 o `disponible: false` = no disponible aún. */
+/** Llamadas no contestadas por el personal -> pedidos -> ventas recuperadas, y latencia de voz a voz (migración 046). 404/503 o `disponible: false` = no disponible aún. */
 export async function fetchVozKpiDesborde(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<VozKpiDesborde> {
   const w = await pedir<VozKpiDesborde & { disponible: boolean }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/kpi-desborde`, token, { method: "GET" });
   if (w.disponible === false) throw new VozNoDisponibleError(503);

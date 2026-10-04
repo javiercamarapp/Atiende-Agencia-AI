@@ -169,7 +169,7 @@ export interface AppDeps {
   /** R-13 (migración 035): KPI de voz, costo y alertas. OPCIONAL: sin él las rutas de KPI responden 503 honesto. En producción es
    * `(db) => new PostgresVozKpiRepository(db)` (cada consulta degrada con SAVEPOINT contra la base sin migrar). */
   readonly vozKpiRepo?: (db: TenantDbSession) => VozKpiRepository;
-  /** Worker de telefonia de voz (migración 044): gasto del mes para el tope mensual, modo de entrada, costo por escalón y KPI de desborde/latencia.
+  /** Worker de telefonia de voz (migración 046): gasto del mes para el tope mensual, modo de entrada, costo por escalón y KPI de desborde/latencia.
    * OPCIONAL: sin él, el contexto de llamada no trae gasto (no bloquea) y las demás rutas responden 503 honesto. En producción es
    * `(db) => new PostgresVozLlamadaRepository(db)` (cada operación degrada con SAVEPOINT contra la base sin migrar). */
   readonly vozLlamadaRepo?: (db: TenantDbSession) => VozLlamadaRepository;

@@ -20,7 +20,7 @@ Server Tools de ElevenLabs; este documento es solo de restaurantes.
 | Mensajes pregrabados | Textos listos; el generador de los 15 audios existe (`npm run voz:pregrabados`, probado con `fetch` falso); **los WAV no se han generado** (los genera Javier con su llave, una vez) | `.../voz/llamada/mensajes.ts`, `scripts/voz-pregrabados.ts` |
 | **Worker de telefonía** (proceso de larga vida que recibe el SIP de LiveKit, puentea el audio y conduce `ControladorLlamada`) | Hecho en este PR y probado de punta a punta **sin red** (telefonía falsa + proveedor guionado + la API real en proceso); el adaptador de LiveKit compila pero **no se probó contra un servidor real**; la imagen Docker es una receta sin construir. **Dónde corre lo decide Javier** | `apps/voice-worker` (README propio), ADR-PM-001 |
 | Adaptador de gpt-live-1 | **NO existe**: solo el contrato (`VoiceAgentProvider.abrirLlamada`) y el `FakeVoiceProvider` | |
-| Tope mensual de gasto de voz | Lectura del gasto del mes: hecha (`restaurantes.voz_gasto_mes_micro_usd`, migración 044, suma `core.usage_cost_event` de categoría `voz`). Tope: de plataforma (`VOICE_TOPE_MENSUAL_USD`, sin valor = sin tope) con sobreescritura por organización en la tabla DNIS del worker (`topeMensualUsd`). **Sin tabla de topes por organización**: guardarlos en la base para editarlos desde el panel es el siguiente paso | `apps/voice-worker/src/config.ts` |
+| Tope mensual de gasto de voz | Lectura del gasto del mes: hecha (`restaurantes.voz_gasto_mes_micro_usd`, migración 046, suma `core.usage_cost_event` de categoría `voz`). Tope: de plataforma (`VOICE_TOPE_MENSUAL_USD`, sin valor = sin tope) con sobreescritura por organización en la tabla DNIS del worker (`topeMensualUsd`). **Sin tabla de topes por organización**: guardarlos en la base para editarlos desde el panel es el siguiente paso | `apps/voice-worker/src/config.ts` |
 
 Con el worker construido, el agente de voz atiende llamadas telefónicas **en cuanto Javier lo despliega y conecta Twilio/LiveKit** (pasos en `apps/voice-worker/README.md`);
 mientras tanto no atiende ninguna. Lo que sí se puede hacer hoy: configurar la voz y el comportamiento, hacer la llamada de prueba desde el panel, correr la prueba
@@ -52,7 +52,7 @@ Ningún valor real vive en el repo. Nombres, de dónde sale cada uno y dónde se
 | `ATIENDE_API_URL`, `INTERNAL_SECRET`, `VOICE_DNIS_MAP`, `VOICE_TOPE_MENSUAL_USD` | URL de la API; el mismo secreto interno de la API; JSON número marcado → sucursal | Host del worker | Tabla DNIS, registrador de conversaciones y costos, tope mensual (ver `apps/voice-worker/README.md`) |
 | Twilio: SIP trunk + número mexicano | Consola de Twilio (Elastic SIP Trunking) | Twilio y LiveKit (inbound trunk + dispatch rule) | Un número por sucursal (DNIS -> sucursal) |
 | Secreto por sucursal | `POST /v1/restaurantes/:propertyId/admin/config/sucursales/:branchId/voz/secreto` (se muestra una vez) | Host del worker | Emitir el token de llamada de esa sucursal |
-| Tope mensual (US$) | Decisión de Javier | `VOICE_TOPE_MENSUAL_USD` (plataforma) y `topeMensualUsd` en `VOICE_DNIS_MAP` (por organización) | Argumento `topeMensualMicroUsd` de `evaluarInicioLlamada`; el gasto sale de la base (migración 044) |
+| Tope mensual (US$) | Decisión de Javier | `VOICE_TOPE_MENSUAL_USD` (plataforma) y `topeMensualUsd` en `VOICE_DNIS_MAP` (por organización) | Argumento `topeMensualMicroUsd` de `evaluarInicioLlamada`; el gasto sale de la base (migración 046) |
 
 El número y la sucursal de cada llamada salen de la telefonía (DNIS y SIP From), nunca del modelo: `extraerTelefonoSipFrom` convierte el From
 en el teléfono del token firmado; un llamante anónimo no tiene teléfono y por eso no obtiene token (ver huecos).
@@ -156,9 +156,9 @@ y las sesiones nuevas dejan de emitirse con 503 honesto); (4) revertir el despli
 ## 8. Huecos conocidos
 
 - El worker de telefonía existe pero **no se ha probado con una llamada real** (ver sección 1 y `apps/voice-worker/README.md`); `gpt-live-1` salió de la escalera.
-- La latencia de voz a voz se mide por respuesta (evento `latencia_voz`, migración 044) y se muestra por día en Indicadores contra el objetivo de p95 < 1.5 s; la vista por
-  llamada queda como siguiente paso. Con la base sin la 044 el worker atiende igual y la latencia queda «no disponible aún».
-- Modo de entrada (`desborde` | `total` | `prueba`) y KPI «ventas recuperadas» (pedidos de llamadas en desborde, sin cancelados): requieren la migración 044. El worker lo
+- La latencia de voz a voz se mide por respuesta (evento `latencia_voz`, migración 046) y se muestra por día en Indicadores contra el objetivo de p95 < 1.5 s; la vista por
+  llamada queda como siguiente paso. Con la base sin la 046 el worker atiende igual y la latencia queda «no disponible aún».
+- Modo de entrada (`desborde` | `total` | `prueba`) y KPI «ventas recuperadas» (pedidos de llamadas en desborde, sin cancelados): requieren la migración 046. El worker lo
   decide por la configuración de la sucursal o por el encabezado de desvío de la llamada (`Diversion` / `History-Info`; nombres sin confirmar contra la primera llamada real).
 - El protocolo de Gemini Live y el nombre del modelo no están verificados contra la API real.
 - La llamada de prueba del panel no se ha probado en un navegador con credencial real (micrófono y reproducción detrás de `entorno-navegador.ts`).

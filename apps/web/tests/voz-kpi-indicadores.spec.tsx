@@ -46,7 +46,7 @@ function stub(rutas: { kpi?: Respuesta; alertas?: Respuesta; evaluar?: Respuesta
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     if (url === `${BASE}/kpi`) return res(rutas.kpi ?? { status: 200, body: KPI_CON_DATOS });
-    // Llamadas en desborde (migracion 044): por omision la API aun no lo tiene (404 = "no disponible aun").
+    // Llamadas en desborde (migracion 046): por omision la API aun no lo tiene (404 = "no disponible aun").
     if (url === `${BASE}/kpi-desborde`) return res(rutas.desborde ?? { status: 404 });
     if (url === `${BASE}/alertas/evaluar` && method === "POST") return res(rutas.evaluar ?? { status: 200, body: { disponible: true, alertas: [] } });
     if (url === `${BASE}/alertas/config` && method === "PUT") return res(rutas.put ? rutas.put(JSON.parse(init!.body as string)) : { status: 500 });
@@ -246,7 +246,7 @@ describe("<PestanaIndicadores /> llamadas no contestadas por el personal (desbor
     ["la base no esta migrada (disponible: false)", { status: 200, body: { disponible: false, totales: { llamadasDesborde: 0, pedidosDesborde: 0, ventasRecuperadas: 0 }, ultimaLatencia: null, serie: [] } }],
   ])("%s: solo esta seccion dice 'no disponible aun: requiere ...' y el resto de los indicadores sigue funcionando", async (_n, desborde) => {
     await pintar(stub({ desborde }));
-    expect(rendered!.container.querySelector('[data-testid="kpi-desborde-no-disponible"]')?.textContent).toMatch(/requiere el worker de telefonía y la migración 044/);
+    expect(rendered!.container.querySelector('[data-testid="kpi-desborde-no-disponible"]')?.textContent).toMatch(/requiere el worker de telefonía y la migración 046/);
     expect(texto()).toContain("Mes en curso");
     expect(texto()).toContain("$1,234.56 MXN");
   });

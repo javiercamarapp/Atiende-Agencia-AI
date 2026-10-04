@@ -194,7 +194,7 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
       if (typeof body.proveedor !== "string" || !(VOZ_PROVEEDORES_FALLO as readonly string[]).includes(body.proveedor)) throw Errors.validation(`proveedor: debe ser uno de ${VOZ_PROVEEDORES_FALLO.join(", ")}.`);
       proveedor = body.proveedor as VozProveedorFallo;
     } else if (tipo === "latencia_voz") {
-      // Latencia de voz a voz de UNA respuesta del agente (migración 044): solo el número, sin texto ni herramienta.
+      // Latencia de voz a voz de UNA respuesta del agente (migración 046): solo el número, sin texto ni herramienta.
       if (latenciaMs === null) throw Errors.validation("latenciaMs: obligatorio en latencia_voz.");
     } else {
       if (typeof body.herramienta !== "string" || body.herramienta.length < 1 || body.herramienta.length > 80) throw Errors.validation("herramienta: se esperaba texto de 1 a 80 caracteres.");
@@ -209,7 +209,7 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
       try {
         const evento = { organizationId, propertyId, conversationId, tipo, proveedor, herramienta, latenciaMs, codigo: typeof body.codigo === "string" ? body.codigo : null, ocurridoAt };
         if (tipo === "latencia_voz") {
-          // Base con la 035 pero SIN la 044: el CHECK del tipo rechaza 'latencia_voz' (23514). SAVEPOINT: nunca aborta la transacción del request
+          // Base con la 035 pero SIN la 046: el CHECK del tipo rechaza 'latencia_voz' (23514). SAVEPOINT: nunca aborta la transacción del request
           // ni da un 500; la latencia queda "no disponible aun" (202) y la llamada, que ya ocurrio, no se ve afectada.
           const registrado = await runWithSavepointFallback<boolean>({
             session: db,

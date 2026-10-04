@@ -221,7 +221,7 @@ export function validarUmbrales(entrada: { umbralCostoDiaCentavosMxn: unknown; u
 // Eventos que reporta el servicio de voz
 // ---------------------------------------------------------------------------------------------------
 
-/** `latencia_voz` (migracion 044): latencia de voz a voz de UNA respuesta del agente (fin de la voz del cliente -> primer audio del agente). */
+/** `latencia_voz` (migracion 046): latencia de voz a voz de UNA respuesta del agente (fin de la voz del cliente -> primer audio del agente). */
 export type VozEventoTipo = "tool_call" | "error_proveedor" | "latencia_voz";
 export const VOZ_EVENTO_TIPOS: readonly VozEventoTipo[] = ["tool_call", "error_proveedor", "latencia_voz"];
 export type VozProveedorFallo = "twilio" | "gemini" | "otro";

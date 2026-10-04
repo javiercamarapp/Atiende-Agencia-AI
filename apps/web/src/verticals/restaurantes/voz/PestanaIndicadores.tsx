@@ -152,7 +152,7 @@ export function PestanaIndicadores({ apiBaseUrl, token, propertyId, fetchImpl }:
 }
 
 /** Llamadas que el personal no contestó (modo desborde) -> pedidos -> ventas recuperadas, y latencia de voz a voz contra el objetivo. Carga APARTE de los demás
- * indicadores: si la API o la base aún no tienen la migración 044, solo esta sección dice "no disponible aún" y el resto sigue funcionando. */
+ * indicadores: si la API o la base aún no tienen la migración 046, solo esta sección dice "no disponible aún" y el resto sigue funcionando. */
 function SeccionDesborde({ apiBaseUrl, token, propertyId, fetchImpl }: { readonly apiBaseUrl: string; readonly token: string; readonly propertyId: string; readonly fetchImpl: typeof fetch | undefined }) {
   const [datos, setDatos] = useState<Carga<VozKpiDesborde>>({ estado: "cargando" });
   const [version, setVersion] = useState(0);
@@ -179,7 +179,7 @@ function SeccionDesborde({ apiBaseUrl, token, propertyId, fetchImpl }: { readonl
       {datos.estado === "error" ? <EstadoError mensaje={datos.mensaje} onReintentar={() => setVersion((v) => v + 1)} /> : null}
       {datos.estado === "no_disponible" ? (
         <p className="text-xs text-muted-foreground" data-testid="kpi-desborde-no-disponible">
-          Aún no disponible: requiere el worker de telefonía y la migración 044 aplicada en esta base. Cuando lo estén, aquí verás cuántas llamadas no contestó el personal, cuántas terminaron en pedido y cuánto se vendió.
+          Aún no disponible: requiere el worker de telefonía y la migración 046 aplicada en esta base. Cuando lo estén, aquí verás cuántas llamadas no contestó el personal, cuántas terminaron en pedido y cuánto se vendió.
         </p>
       ) : null}
       {datos.estado === "listo" ? <ContenidoDesborde kpi={datos.datos} /> : null}

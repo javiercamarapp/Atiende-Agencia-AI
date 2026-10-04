@@ -1,8 +1,8 @@
-// Persistencia del WORKER DE TELEFONIA de voz (migracion 044): gasto del mes (tope mensual), modo de entrada de la llamada, costo por escalon en
+// Persistencia del WORKER DE TELEFONIA de voz (migracion 046): gasto del mes (tope mensual), modo de entrada de la llamada, costo por escalon en
 // `core.usage_cost_event` (via `core.record_usage_cost_event`, solo sistema, idempotente por ref) y el KPI de llamadas en desborde / ventas
 // recuperadas / latencia de voz a voz.
 //
-// REGLA DE COMPATIBILIDAD CON LA BASE SIN MIGRAR: mergear despliega el codigo al instante y la 044 (y la 0028 de core) no se aplican solas. La
+// REGLA DE COMPATIBILIDAD CON LA BASE SIN MIGRAR: mergear despliega el codigo al instante y la 046 (y la 0028 de core) no se aplican solas. La
 // sesion es UNA transaccion por request: cada operacion corre en su propio SAVEPOINT (`runWithSavepointFallback`) y, ante tabla/columna/funcion
 // inexistente (42P01, 42703, 42883), degrada a "no disponible aun" (`null` / `disponible: false`), nunca a un 500 ni a una transaccion abortada.
 // Cualquier otro error (42501 por sesion de staff en una funcion de sistema, 22023 por un valor invalido) se repropaga: no se enmascara un fallo real.
