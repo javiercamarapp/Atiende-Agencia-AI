@@ -135,7 +135,7 @@ async function correrCaso(caso: CasoEval, mundo: Mundo, llamar: Llamador, herram
     fechaHoraLocal: `${caso.contexto.dia} ${caso.contexto.hora_local}`,
     diaSemana: caso.contexto.dia,
   });
-  const sistemaCliente = `Usted simula a un cliente de una taqueria que escribe por WhatsApp. Diga solo lo que dicta este guion, de forma natural y breve, y responda con sus datos solo cuando el agente los pregunte.\nApertura: ${caso.simulador_cliente.apertura}\nDatos: ${JSON.stringify(caso.simulador_cliente.datos)}\nGiros en orden: ${caso.simulador_cliente.giros.join(" | ")}\nCuando el pedido ya quedo resuelto (o el agente lo paso con una persona), responda exactamente: FIN`;
+  const sistemaCliente = `Usted simula a un cliente de una taqueria que escribe por WhatsApp. Diga solo lo que dicta este guion, de forma natural y breve, y responda con sus datos solo cuando el agente los pregunte.\nApertura: ${caso.simulador_cliente.apertura}\nDatos: ${JSON.stringify(caso.simulador_cliente.datos)}\nGiros en orden: ${caso.simulador_cliente.giros.join(" | ")}\nConteste SIEMPRE lo que el agente le pregunte (con sus datos del guion, "no, gracias" o "no tengo", segun corresponda); si el agente le repite su pedido y le pregunta si es correcto y coincide con lo que usted pidio, responda "Si, es correcto." (o corrijalo si no coincide). Solo cuando el agente le diga que su pedido YA QUEDO REGISTRADO, o que lo pasa con una persona, responda exactamente: FIN. Nunca diga FIN mientras el agente espere una respuesta suya.`;
   const agente: LlmMessage[] = [];
   const cliente: LlmMessage[] = [{ role: "user", content: "Empiece la conversacion." }];
   let siguienteCliente = caso.simulador_cliente.apertura;
@@ -164,9 +164,22 @@ async function correrCaso(caso: CasoEval, mundo: Mundo, llamar: Llamador, herram
     }
     const ultimoAgente = [...agente].reverse().find((m) => m.role === "assistant");
     cliente.push({ role: "user", content: ultimoAgente && ultimoAgente.role === "assistant" ? ultimoAgente.content : "" });
-    const r = await llamar(sistemaCliente, cliente);
+    let r = await llamar(sistemaCliente, cliente);
+    // Defecto conocido del cliente simulado: a veces corta con FIN dejando sin respuesta la pregunta del agente (p. ej. "¿es correcto?"),
+    // y el caso se mide como "no cierra" cuando el agente si estaba cerrando. Si aun no hay pedido ni escalacion y el agente pregunto algo,
+    // se le pide una sola vez que conteste, igual que lo haria un cliente real.
+    if (/^\s*FIN\b/.test(r.text) && mundo.comandas.length === 0 && mundo.escalaciones.length === 0 && /\?\s*$/.test(ultimoTextoAgente(agente))) {
+      cliente.push({ role: "assistant", content: "FIN" });
+      cliente.push({ role: "user", content: `El agente sigue esperando su respuesta y el pedido aun no queda registrado. Conteste a su ultimo mensaje segun el guion (no diga FIN todavia): ${ultimoTextoAgente(agente)}` });
+      r = await llamar(sistemaCliente, cliente);
+    }
     if (/^\s*FIN\b/.test(r.text)) break;
     siguienteCliente = r.text;
   }
-  return evaluarCaso(caso, mundo);
+  return { ...evaluarCaso(caso, mundo), eventos: mundo.eventos };
+}
+
+function ultimoTextoAgente(agente: readonly LlmMessage[]): string {
+  const m = [...agente].reverse().find((x) => x.role === "assistant" && x.content.trim() !== "");
+  return m && m.role === "assistant" ? m.content : "";
 }

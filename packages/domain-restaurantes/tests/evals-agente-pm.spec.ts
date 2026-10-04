@@ -243,6 +243,39 @@ describe("modo LLM real (opt-in, nunca en CI)", () => {
   });
 });
 
+describe("modo real: el cliente simulado no puede cortar con FIN dejando sin respuesta la pregunta del agente", () => {
+  it("si dice FIN con el pedido sin registrar y el agente pregunto algo, se le pide una vez que conteste", async () => {
+    const { createServer } = await import("node:http");
+    const { ejecutarSuiteReal } = await import("../src/evals/agente-pm/real.ts");
+    const bodies: { messages: { role: string; content: string }[] }[] = [];
+    const server = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (c: Buffer) => chunks.push(c));
+      req.on("end", () => {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { messages: { role: string; content: string }[] };
+        bodies.push(body);
+        const esCliente = body.messages.some((m) => m.role === "system" && /simula a un cliente/.test(m.content));
+        const ultimo = body.messages[body.messages.length - 1]?.content ?? "";
+        const texto = esCliente ? (/sigue esperando su respuesta/.test(ultimo) ? "Sí, es correcto." : "FIN") : "Permítame repetirle su pedido. ¿Es correcto?";
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ model: "m", choices: [{ message: { content: texto } }], usage: { prompt_tokens: 10, completion_tokens: 2, cost: 0.01 } }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      const port = (server.address() as { port: number }).port;
+      await ejecutarSuiteReal({ apiKey: "k", model: "openai/gpt-6-luna", maxUsd: 0.12, k: 1, casos: ["L01"], params: { temperature: "omit", minMaxTokens: 1500 }, baseUrl: `http://127.0.0.1:${port}/api/v1/chat/completions` });
+      const empujones = bodies.filter((b) => /sigue esperando su respuesta/.test(b.messages[b.messages.length - 1]?.content ?? ""));
+      expect(empujones.length).toBeGreaterThan(0);
+      // El empujon repite la ultima pregunta del agente.
+      expect(empujones[0]!.messages[empujones[0]!.messages.length - 1]!.content).toContain("¿Es correcto?");
+    } finally {
+      server.closeAllConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});
+
 describe("hora de recogida: el mundo lee solo el campo hora_recogida de crear_pedido (como el servidor real)", () => {
   it("minutos entre la hora local del caso y el ISO con zona; sin campo valido es null", () => {
     expect(minutosDesdeHoraRecogida("2026-10-03T16:05:00-06:00", "15:45")).toBe(20);
