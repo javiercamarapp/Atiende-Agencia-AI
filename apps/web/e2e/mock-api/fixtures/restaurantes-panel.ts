@@ -28,12 +28,12 @@ const SIGUIENTES: Record<string, readonly string[]> = {
   completado: [],
 };
 
-const CATEGORIAS_SEMILLA = [
+export const CATEGORIAS_SEMILLA = [
   { id: "cat-1", name: "Tacos", slug: "tacos", displayOrder: 1 },
   { id: "cat-2", name: "Bebidas", slug: "bebidas", displayOrder: 2 },
 ];
 
-const PRODUCTOS_SEMILLA = [
+export const PRODUCTOS_SEMILLA = [
   { id: "p-1", categoryId: "cat-1", categoryName: "Tacos", name: "Tacos al pastor (orden)", description: "Cinco tacos con pina y cilantro", price: 95, imageUrl: null, isPopular: true, isAvailable: true, displayOrder: 1, searchKeywords: ["pastor"], branch: { propertyId: PROP.id, productId: "p-1", price: 95, isAvailable: true } },
   { id: "p-2", categoryId: "cat-2", categoryName: "Bebidas", name: "Horchata", description: null, price: 48, imageUrl: null, isPopular: false, isAvailable: true, displayOrder: 2, searchKeywords: [], branch: { propertyId: PROP.id, productId: "p-2", price: 48, isAvailable: true } },
 ];
