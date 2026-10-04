@@ -60,6 +60,7 @@ import type {
   RentasCatalogoRepository,
   RentasReportesRepository,
   RentasResumenRepository,
+  RentasOnboardingChecklistRepository,
   RentasMensajeriaRepository,
   RentasOnboardingRepository,
   RentasOwnerPortalRepository,
@@ -403,6 +404,8 @@ export interface AppDeps {
   readonly rentasReportesRepo?: (db: TenantDbSession) => RentasReportesRepository;
   /** Rn-26 -- agregados del Resumen operativo de rentas. OPCIONAL por la misma razón que `rentasReportesRepo`: la ruta cae a `PostgresRentasResumenRepository` sobre la sesión del request y los tests inyectan el doble en memoria. */
   readonly rentasResumenRepo?: (db: TenantDbSession) => RentasResumenRepository;
+  /** Rn-36 -- conteos reales del checklist de onboarding de rentas. OPCIONAL por la misma razón que `rentasResumenRepo`: la ruta cae a `PostgresRentasOnboardingChecklistRepository` y los tests inyectan el doble en memoria. */
+  readonly rentasOnboardingChecklistRepo?: (db: TenantDbSession) => RentasOnboardingChecklistRepository;
   /** Rn-04 -- liberación de instrucciones de acceso al huésped (migración 025). OPCIONAL por la
    * misma razón que `rentasReportesRepo`: las rutas caen a `PostgresRentasAccesoRepository` y
    * los tests inyectan el doble en memoria. */
