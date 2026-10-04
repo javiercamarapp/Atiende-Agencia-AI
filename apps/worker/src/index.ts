@@ -47,4 +47,6 @@ export { runVencimientosBarridoSistema } from "./jobs/despachos/vencimientos-bar
 export type { VencimientosBarridoResultado, RunVencimientosBarridoOpciones } from "./jobs/despachos/vencimientos-barrido.ts";
 export { runEfos69bDescarga } from "./jobs/despachos/efos-69b-descarga.ts";
 export type { Efos69bDescargaResultado } from "./jobs/despachos/efos-69b-descarga.ts";
+export { runPolizasPeriodoSistema, inicioDeVentana } from "./jobs/despachos/polizas-periodo.ts";
+export type { PolizasPeriodoResultado, RunPolizasPeriodoOpciones, UnidadPolizasPeriodo, WithUnidadPolizasPeriodo } from "./jobs/despachos/polizas-periodo.ts";
 export type { NotificacionCron, NotificarCron, UnidadCronSat, WithUnidadCronSat } from "./jobs/despachos/cron-comun.ts";
