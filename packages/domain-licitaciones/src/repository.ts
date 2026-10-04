@@ -159,6 +159,8 @@ export interface ProposalSectionRecord {
   readonly version: number;
   /** Cuantas personas distintas han redactado/editado la seccion (AE-11); nunca se expone quienes. */
   readonly authorCount: number;
+  /** `true` si quien consulta es autor de la seccion: no puede aprobarla ni aprobar el expediente (AE-11). */
+  readonly authoredByViewer: boolean;
 }
 
 export interface SectionEditResult {
@@ -938,7 +940,7 @@ export interface LicitacionesRepository {
   // ---- paridad3 (L-P3-07): revision con comentarios y editor humano de secciones ----
   addProposalComment(organizationId: string, proposalId: string, input: { readonly scope: ProposalCommentScope; readonly scopeRef: string; readonly kind: ProposalCommentKind; readonly body: string; readonly authorId: string; readonly authorRole: string }): Promise<ProposalCommentRecord>;
   listProposalComments(organizationId: string, proposalId: string): Promise<{ readonly disponible: boolean; readonly comments: readonly ProposalCommentRecord[] }>;
-  listProposalSections(organizationId: string, proposalId: string): Promise<readonly ProposalSectionRecord[]>;
+  listProposalSections(organizationId: string, proposalId: string, viewerId: string): Promise<readonly ProposalSectionRecord[]>;
   /** Edicion humana: registra la autoria (AE-11); si el contenido cambio invalida las aprobaciones de esa seccion y del expediente (AE-02); si es el mismo texto no toca nada. `null` si la seccion no existe. */
   editProposalSection(organizationId: string, proposalId: string, sectionKey: string, input: { readonly content: string; readonly actorId: string }): Promise<SectionEditResult | null>;
 

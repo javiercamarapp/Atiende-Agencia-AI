@@ -2090,14 +2090,20 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     return boveda.listProposalComments(this.db, organizationId, proposalId);
   }
 
-  async listProposalSections(organizationId: string, proposalId: string): Promise<readonly ProposalSectionRecord[]> {
-    const { rows } = await this.db.query<{ section_key: string; label: string; content: string; version: number; author_count: string }>(
+  async listProposalSections(organizationId: string, proposalId: string, viewerId: string): Promise<readonly ProposalSectionRecord[]> {
+    const { rows } = await this.db.query<{ section_key: string; label: string; content: string; version: number; author_count: string; authored_by_viewer: boolean }>(
       `select s.section_key, s.label, s.content, s.version,
-              (select count(*)::text from licitaciones.section_author a where a.proposal_id = s.proposal_id and a.section_key = s.section_key) as author_count
+              (select count(*)::text from licitaciones.section_author a where a.proposal_id = s.proposal_id and a.section_key = s.section_key) as author_count,
+              exists (select 1 from licitaciones.section_author a where a.proposal_id = s.proposal_id and a.section_key = s.section_key and a.actor_id = $3) as authored_by_viewer
        from licitaciones.proposal_section s where s.organization_id = $1 and s.proposal_id = $2 order by s.section_key asc;`,
-      [organizationId, proposalId],
+      [organizationId, proposalId, viewerId],
     );
-    return rows.map((r) => ({ sectionKey: r.section_key, label: r.label, content: r.content, version: r.version, authorCount: Number(r.author_count) }));
+    return rows.map((r) => ({ sectionKey: r.section_key, label: r.label, content: r.content, version: r.version, authorCount: Number(r.author_count), authoredByViewer: r.authored_by_viewer }));
+  }
+
+  private async isSectionAuthor(proposalId: string, sectionKey: string, actorId: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ ok: boolean }>(`select exists (select 1 from licitaciones.section_author where proposal_id = $1 and section_key = $2 and actor_id = $3) as ok;`, [proposalId, sectionKey, actorId]);
+    return rows[0]?.ok ?? false;
   }
 
   async editProposalSection(organizationId: string, proposalId: string, sectionKey: string, input: { content: string; actorId: string }): Promise<SectionEditResult | null> {
@@ -2113,7 +2119,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     };
     // AE-02: el mismo texto no cambia nada ni invalida ninguna aprobacion.
     if (current.content === input.content) {
-      return { section: { sectionKey, label: current.label, content: current.content, version: current.version, authorCount: await authorCountOf() }, changed: false, invalidated: null };
+      return { section: { sectionKey, label: current.label, content: current.content, version: current.version, authorCount: await authorCountOf(), authoredByViewer: await this.isSectionAuthor(proposalId, sectionKey, input.actorId) }, changed: false, invalidated: null };
     }
     const { rows } = await this.db.query<{ version: number }>(
       `update licitaciones.proposal_section set content = $4, version = version + 1, updated_at = now()
@@ -2123,7 +2129,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     // AE-11: la autoria queda registrada con la sesion autenticada.
     await this.recordSectionAuthor(organizationId, proposalId, sectionKey, input.actorId);
     const change = await this.recordChange(organizationId, proposalId, { scope: "seccion", scopeRef: `seccion:${sectionKey}`, reason: `seccion_editada:${sectionKey}` });
-    return { section: { sectionKey, label: current.label, content: input.content, version: rows[0]!.version, authorCount: await authorCountOf() }, changed: true, invalidated: change };
+    return { section: { sectionKey, label: current.label, content: input.content, version: rows[0]!.version, authorCount: await authorCountOf(), authoredByViewer: true }, changed: true, invalidated: change };
   }
 
   async listFulfillmentMappings(organizationId: string): Promise<readonly RequirementFulfillmentMappingRecord[]> {

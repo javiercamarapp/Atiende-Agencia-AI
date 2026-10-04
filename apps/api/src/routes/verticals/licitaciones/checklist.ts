@@ -166,7 +166,9 @@ export function licitacionesChecklistRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
           crossDocumentTotals.push({ documentLabel: "carta", total: economicResult.totals.total }, { documentLabel: "anexo", total: economicResult.totals.total });
         }
 
-        const checklistResult = new IntegrityChecklist().run({ files, formatLimits, requiredSignatures, requiredAnnexes, presentAnnexRefs, documentsToValidate, economicResult, crossDocumentTotals });
+        // paridad3 (L-P3-06): un conflicto de requisitos abierto bloquea la consistencia cruzada (0 en una base sin la migracion 037).
+        const openRequirementConflicts = await repo.countOpenRequirementConflicts(organizationId, tenderId);
+        const checklistResult = new IntegrityChecklist().run({ files, formatLimits, requiredSignatures, requiredAnnexes, presentAnnexRefs, documentsToValidate, economicResult, crossDocumentTotals, openRequirementConflicts });
 
         const records = checklistResult.items.map(toComplianceRecord);
         await repo.replaceComplianceItems(organizationId, tenderId, proposal.id, records);

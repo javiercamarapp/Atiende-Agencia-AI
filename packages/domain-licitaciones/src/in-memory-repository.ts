@@ -1462,14 +1462,14 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     return { disponible: true, comments: [...(this.proposalComments.get(proposalId) ?? [])] };
   }
 
-  async listProposalSections(organizationId: string, proposalId: string): Promise<readonly ProposalSectionRecord[]> {
+  async listProposalSections(organizationId: string, proposalId: string, viewerId: string): Promise<readonly ProposalSectionRecord[]> {
     this.assertProposalOwnership(organizationId, proposalId);
     const map = this.proposalSections.get(proposalId);
     if (!map) return [];
     const authors = this.sectionAuthors.get(proposalId) ?? new Map<string, Set<string>>();
     return [...map.values()]
       .sort((a, b) => a.sectionKey.localeCompare(b.sectionKey))
-      .map((s) => ({ sectionKey: s.sectionKey, label: s.label, content: s.content, version: s.version, authorCount: authors.get(`seccion:${s.sectionKey}`)?.size ?? 0 }));
+      .map((s) => ({ sectionKey: s.sectionKey, label: s.label, content: s.content, version: s.version, authorCount: authors.get(`seccion:${s.sectionKey}`)?.size ?? 0, authoredByViewer: authors.get(`seccion:${s.sectionKey}`)?.has(viewerId) ?? false }));
   }
 
   async editProposalSection(organizationId: string, proposalId: string, sectionKey: string, input: { content: string; actorId: string }): Promise<SectionEditResult | null> {
@@ -1479,13 +1479,13 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     if (!map || !existing) return null;
     const authorCount = (): number => this.sectionAuthors.get(proposalId)?.get(`seccion:${sectionKey}`)?.size ?? 0;
     if (existing.content === input.content) {
-      return { section: { sectionKey, label: existing.label, content: existing.content, version: existing.version, authorCount: authorCount() }, changed: false, invalidated: null };
+      return { section: { sectionKey, label: existing.label, content: existing.content, version: existing.version, authorCount: authorCount(), authoredByViewer: this.sectionAuthors.get(proposalId)?.get(`seccion:${sectionKey}`)?.has(input.actorId) ?? false }, changed: false, invalidated: null };
     }
     map.set(sectionKey, { ...existing, content: input.content, version: existing.version + 1 });
     this.recordSectionAuthor(proposalId, sectionKey, input.actorId);
     const change = await this.recordChange(organizationId, proposalId, { scope: "seccion", scopeRef: `seccion:${sectionKey}`, reason: `seccion_editada:${sectionKey}` });
     const updated = map.get(sectionKey)!;
-    return { section: { sectionKey, label: updated.label, content: updated.content, version: updated.version, authorCount: authorCount() }, changed: true, invalidated: change };
+    return { section: { sectionKey, label: updated.label, content: updated.content, version: updated.version, authorCount: authorCount(), authoredByViewer: true }, changed: true, invalidated: change };
   }
 
   async listFulfillmentMappings(organizationId: string): Promise<readonly RequirementFulfillmentMappingRecord[]> {
