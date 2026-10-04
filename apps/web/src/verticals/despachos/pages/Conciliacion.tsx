@@ -34,9 +34,13 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  EstadoVacio,
+  FormField,
   Input,
   Label,
   PageContainer,
+  PageHeader,
+  RadioSegmentado,
   StatusBadge,
   statusTone,
   Table,
@@ -133,16 +137,16 @@ function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila
   return (
     <div className="flex flex-col gap-2">
       <div className="overflow-x-auto">
-        <Table className="min-w-[720px] text-xs">
+        <Table className="min-w-[720px]">
           <TableHeader>
             <TableRow>
-              <TableHead className="h-9">Fecha *</TableHead>
-              <TableHead className="h-9">Descripción</TableHead>
-              <TableHead className="h-9">Referencia</TableHead>
-              <TableHead className="h-9">Cargo</TableHead>
-              <TableHead className="h-9">Abono</TableHead>
-              <TableHead className="h-9">Banco</TableHead>
-              <TableHead className="h-9" />
+              <TableHead>Fecha *</TableHead>
+              <TableHead>Descripción</TableHead>
+              <TableHead>Referencia</TableHead>
+              <TableHead>Cargo</TableHead>
+              <TableHead>Abono</TableHead>
+              <TableHead>Banco</TableHead>
+              <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -152,7 +156,7 @@ function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila
                   <Label htmlFor={`mov-fecha-${f.key}`} className="sr-only">
                     Fecha
                   </Label>
-                  <Input id={`mov-fecha-${f.key}`} type="date" value={f.fecha} onChange={(e) => actualizarFila(f.key, "fecha", e.target.value)} className="h-9 w-32 text-xs" />
+                  <Input id={`mov-fecha-${f.key}`} type="date" value={f.fecha} onChange={(e) => actualizarFila(f.key, "fecha", e.target.value)} className="w-32" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`mov-desc-${f.key}`} className="sr-only">
@@ -164,35 +168,35 @@ function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila
                     value={f.descripcion}
                     onChange={(e) => actualizarFila(f.key, "descripcion", e.target.value)}
                     placeholder="p.ej. PAGO PROVEEDOR"
-                    className="h-9 w-52 text-xs"
+                    className="w-52"
                   />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`mov-ref-${f.key}`} className="sr-only">
                     Referencia
                   </Label>
-                  <Input id={`mov-ref-${f.key}`} type="text" value={f.referencia} onChange={(e) => actualizarFila(f.key, "referencia", e.target.value)} className="h-9 w-32 text-xs" />
+                  <Input id={`mov-ref-${f.key}`} type="text" value={f.referencia} onChange={(e) => actualizarFila(f.key, "referencia", e.target.value)} className="w-32" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`mov-cargo-${f.key}`} className="sr-only">
                     Cargo
                   </Label>
-                  <Input id={`mov-cargo-${f.key}`} type="number" step="0.01" value={f.cargo} onChange={(e) => actualizarFila(f.key, "cargo", e.target.value)} className="h-9 w-24 text-xs" />
+                  <Input id={`mov-cargo-${f.key}`} type="number" step="0.01" value={f.cargo} onChange={(e) => actualizarFila(f.key, "cargo", e.target.value)} className="w-24" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`mov-abono-${f.key}`} className="sr-only">
                     Abono
                   </Label>
-                  <Input id={`mov-abono-${f.key}`} type="number" step="0.01" value={f.abono} onChange={(e) => actualizarFila(f.key, "abono", e.target.value)} className="h-9 w-24 text-xs" />
+                  <Input id={`mov-abono-${f.key}`} type="number" step="0.01" value={f.abono} onChange={(e) => actualizarFila(f.key, "abono", e.target.value)} className="w-24" />
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`mov-banco-${f.key}`} className="sr-only">
                     Banco
                   </Label>
-                  <Input id={`mov-banco-${f.key}`} type="text" value={f.banco} onChange={(e) => actualizarFila(f.key, "banco", e.target.value)} placeholder="generic" className="h-9 w-24 text-xs" />
+                  <Input id={`mov-banco-${f.key}`} type="text" value={f.banco} onChange={(e) => actualizarFila(f.key, "banco", e.target.value)} placeholder="generic" className="w-24" />
                 </TableCell>
                 <TableCell className="p-1.5">
-                  <Button type="button" variant="outline" size="sm" className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive" onClick={() => eliminarFila(f.key)}>
+                  <Button type="button" variant="destructive" onClick={() => eliminarFila(f.key)}>
                     <Trash2 />
                     Quitar
                   </Button>
@@ -238,18 +242,18 @@ function ResultadoMatching({ resultado }: { resultado: ResultadoConciliacion }) 
 
       {resultado.matched.length > 0 && (
         <div>
-          <p className="mb-1 text-xs font-semibold text-foreground">Coincidencias ({resultado.matched.length})</p>
+          <p className="mb-1 text-xs font-medium text-foreground">Coincidencias ({resultado.matched.length})</p>
           <div className="overflow-x-auto rounded-xl border border-border">
-            <Table className="text-xs">
+            <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="h-9">Nivel</TableHead>
-                  <TableHead className="h-9">Score</TableHead>
-                  <TableHead className="h-9">Monto banco</TableHead>
-                  <TableHead className="h-9">Monto CFDI</TableHead>
-                  <TableHead className="h-9">Fecha banco</TableHead>
-                  <TableHead className="h-9">Fecha CFDI</TableHead>
-                  <TableHead className="h-9">Detalle</TableHead>
+                  <TableHead>Nivel</TableHead>
+                  <TableHead>Score</TableHead>
+                  <TableHead>Monto banco</TableHead>
+                  <TableHead>Monto CFDI</TableHead>
+                  <TableHead>Fecha banco</TableHead>
+                  <TableHead>Fecha CFDI</TableHead>
+                  <TableHead>Detalle</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -274,14 +278,14 @@ function ResultadoMatching({ resultado }: { resultado: ResultadoConciliacion }) 
 
       {resultado.unmatchedBank.length > 0 && (
         <div>
-          <p className="mb-1 text-xs font-semibold text-foreground">Movimientos bancarios sin conciliar ({resultado.unmatchedBank.length})</p>
+          <p className="mb-1 text-xs font-medium text-foreground">Movimientos bancarios sin conciliar ({resultado.unmatchedBank.length})</p>
           <div className="overflow-x-auto rounded-xl border border-border">
-            <Table className="text-xs">
+            <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="h-9">Fecha</TableHead>
-                  <TableHead className="h-9">Descripción</TableHead>
-                  <TableHead className="h-9">Monto</TableHead>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Descripción</TableHead>
+                  <TableHead>Monto</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -300,15 +304,15 @@ function ResultadoMatching({ resultado }: { resultado: ResultadoConciliacion }) 
 
       {resultado.unmatchedBooks.length > 0 && (
         <div>
-          <p className="mb-1 text-xs font-semibold text-foreground">CFDI sin conciliar ({resultado.unmatchedBooks.length})</p>
+          <p className="mb-1 text-xs font-medium text-foreground">CFDI sin conciliar ({resultado.unmatchedBooks.length})</p>
           <div className="overflow-x-auto rounded-xl border border-border">
-            <Table className="text-xs">
+            <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="h-9">Fecha</TableHead>
-                  <TableHead className="h-9">Emisor</TableHead>
-                  <TableHead className="h-9">Folio fiscal</TableHead>
-                  <TableHead className="h-9">Total</TableHead>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Emisor</TableHead>
+                  <TableHead>Folio fiscal</TableHead>
+                  <TableHead>Total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -358,7 +362,7 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
       });
       setMatchResultado(resultado);
     } catch (err) {
-      setMatchError(err instanceof Error ? err.message : "No se pudo correr el matching.");
+      setMatchError(err instanceof Error ? err.message : "No se pudo buscar las coincidencias.");
     } finally {
       setMatchLoading(false);
     }
@@ -451,37 +455,32 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
   }
 
   if (!puedeGestionar) {
-    // Solo lectura (auditor/readonly): ven las sesiones guardadas y sus conciliaciones; matching, alertas y verificaciones siguen siendo de admin/contador.
+    // Solo lectura (auditor/readonly): ven las sesiones guardadas y sus conciliaciones; las coincidencias, alertas y verificaciones siguen siendo de admin/contador.
     return (
-      <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
-        <header>
-          <h1 className="font-display text-xl font-semibold text-foreground">Conciliación bancaria</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Consulta de las sesiones de conciliación guardadas. Tu rol ({role}) no puede confirmar, deshacer ni correr matching, alertas o verificaciones.</p>
-        </header>
+      <PageContainer className="[&>*]:min-w-0">
+        <PageHeader titulo="Conciliación bancaria" descripcion={`Consulta de las sesiones de conciliación guardadas. Tu rol (${role}) no puede confirmar, deshacer ni buscar coincidencias, alertas o verificaciones.`} />
         <SesionesConciliacion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeGestionar={false} />
       </PageContainer>
     );
   }
 
   return (
-    <PageContainer padding="none" className="gap-5 [&>*]:min-w-0">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold text-foreground">Conciliación bancaria</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Corre el matching determinista contra los CFDI ya ingeridos, revisa alertas de antigüedad/comisión/duplicados, clasifica depósitos (CFF Art. 59 fr. III) y verifica pagos SPEI/proveedor.
-          </p>
-        </div>
-        <Button asChild variant="outline" size="sm">
-          <Link to={`/despachos/${orgSlug}/conciliacion/importar`}>Importar estado de cuenta</Link>
-        </Button>
-      </header>
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader
+        titulo="Conciliación bancaria"
+        descripcion="Busca coincidencias contra los CFDI ya ingeridos, revisa alertas de antigüedad/comisión/duplicados, clasifica depósitos (CFF Art. 59 fr. III) y verifica pagos SPEI/proveedor."
+        acciones={
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/despachos/${orgSlug}/conciliacion/importar`}>Importar estado de cuenta</Link>
+          </Button>
+        }
+      />
 
       <SesionesConciliacion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeGestionar />
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">1. Movimientos bancarios</CardTitle>
+        <CardHeader>
+          <CardTitle>1. Movimientos bancarios</CardTitle>
         </CardHeader>
         <CardContent>
           <MovimientosEditor filas={filas} setFilas={setFilas} />
@@ -489,33 +488,26 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">2. Matching contra CFDI</CardTitle>
+        <CardHeader>
+          <CardTitle>2. Coincidencias contra CFDI</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-3">
-            <div className="flex w-40 flex-col gap-1.5">
-              <Label htmlFor="match-tol-fecha">Tolerancia de fecha (días)</Label>
+            <FormField label="Tolerancia de fecha (días)" className="w-40">
               <Input id="match-tol-fecha" type="number" value={dateToleranceDays} onChange={(e) => setDateToleranceDays(e.target.value)} />
-            </div>
-            <div className="flex w-40 flex-col gap-1.5">
-              <Label htmlFor="match-tol-monto">Tolerancia de monto (%)</Label>
+            </FormField>
+            <FormField label="Tolerancia de monto (%)" className="w-40">
               <Input id="match-tol-monto" type="number" step="0.1" value={montoTolerancePct} onChange={(e) => setMontoTolerancePct(e.target.value)} />
-            </div>
-            <div className="flex w-40 flex-col gap-1.5">
-              <Label htmlFor="match-fuzzy">Umbral fuzzy (0-100)</Label>
+            </FormField>
+            <FormField label="Umbral fuzzy (0-100)" className="w-40">
               <Input id="match-fuzzy" type="number" value={fuzzyThreshold} onChange={(e) => setFuzzyThreshold(e.target.value)} />
-            </div>
+            </FormField>
           </div>
-          {matchError && (
-            <p role="alert" className="text-destructive text-sm">
-              {matchError}
-            </p>
-          )}
+          {matchError && <Callout tone="danger">{matchError}</Callout>}
           <div>
-            <Button type="button" onClick={() => void handleMatching()} disabled={matchLoading}>
+            <Button type="button" onClick={() => void handleMatching()} loading={matchLoading}>
               <ListChecks />
-              {matchLoading ? "Corriendo…" : "Correr matching"}
+              Buscar coincidencias
             </Button>
           </div>
           {matchResultado && <ResultadoMatching resultado={matchResultado} />}
@@ -523,30 +515,21 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">3. Alertas</CardTitle>
+        <CardHeader>
+          <CardTitle>3. Alertas</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <div className="flex w-60 flex-col gap-1.5">
-            <Label htmlFor="alertas-ingreso">Ingreso declarado del periodo (opcional, Art. 91 LISR)</Label>
+          <FormField label="Ingreso declarado del periodo (opcional, Art. 91 LISR)" className="w-72">
             <Input id="alertas-ingreso" type="number" step="0.01" value={declaredIncome} onChange={(e) => setDeclaredIncome(e.target.value)} />
-          </div>
-          {alertasError && (
-            <p role="alert" className="text-destructive text-sm">
-              {alertasError}
-            </p>
-          )}
+          </FormField>
+          {alertasError && <Callout tone="danger">{alertasError}</Callout>}
           <div>
-            <Button type="button" onClick={() => void handleAlertas()} disabled={alertasLoading}>
+            <Button type="button" onClick={() => void handleAlertas()} loading={alertasLoading}>
               <AlertTriangle />
-              {alertasLoading ? "Revisando…" : "Ver alertas"}
+              Ver alertas
             </Button>
           </div>
-          {alertas && alertas.length === 0 && (
-            <p role="status" className="text-sm text-muted-foreground">
-              Sin alertas para este lote.
-            </p>
-          )}
+          {alertas && alertas.length === 0 && <EstadoVacio compacto mensaje="Sin alertas para este lote." />}
           {alertas && alertas.length > 0 && (
             <div className="flex flex-col gap-1.5">
               {alertas.map((a, i) => (
@@ -566,35 +549,22 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Clasificar depósito (CFF Art. 59 fr. III)</CardTitle>
+        <CardHeader>
+          <CardTitle>Clasificar depósito (CFF Art. 59 fr. III)</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <form onSubmit={handleClasificar} className="flex max-w-md flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="clasif-descripcion">Descripción del depósito *</Label>
-              <Input
-                id="clasif-descripcion"
-                type="text"
-                value={clasifDescripcion}
-                onChange={(e) => setClasifDescripcion(e.target.value)}
-                required
-                placeholder="p.ej. APORTACION SOCIO CAPITAL"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="clasif-referencia">Referencia (opcional)</Label>
+            <FormField label="Descripción del depósito" required>
+              <Input id="clasif-descripcion" type="text" value={clasifDescripcion} onChange={(e) => setClasifDescripcion(e.target.value)} required placeholder="p.ej. APORTACION SOCIO CAPITAL" />
+            </FormField>
+            <FormField label="Referencia (opcional)">
               <Input id="clasif-referencia" type="text" value={clasifReferencia} onChange={(e) => setClasifReferencia(e.target.value)} />
-            </div>
-            {clasifError && (
-              <p role="alert" className="text-destructive text-sm">
-                {clasifError}
-              </p>
-            )}
+            </FormField>
+            {clasifError && <Callout tone="danger">{clasifError}</Callout>}
             <div>
-              <Button type="submit" disabled={clasifLoading}>
+              <Button type="submit" loading={clasifLoading}>
                 <Search />
-                {clasifLoading ? "Clasificando…" : "Clasificar"}
+                Clasificar
               </Button>
             </div>
           </form>
@@ -604,63 +574,52 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
                 <strong>Clasificación:</strong> {CLASIFICACION_LABELS[clasifResultado.clasificacion]} ({(clasifResultado.confidence * 100).toFixed(0)}% confianza)
               </div>
               {clasifResultado.articuloCff && <div className="text-muted-foreground">{clasifResultado.articuloCff}</div>}
-              {clasifResultado.requiresHumanReview && (
-                <Callout tone="warning" role="alert">
-                  Requiere revisión humana antes de persistirse -- confianza baja o clasificación no trivial.
-                </Callout>
-              )}
+              {clasifResultado.requiresHumanReview && <Callout tone="warning">Requiere revisión humana antes de persistirse -- confianza baja o clasificación no trivial.</Callout>}
             </div>
           )}
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Verificar pago SPEI / proveedor</CardTitle>
+        <CardHeader>
+          <CardTitle>Verificar pago SPEI / proveedor</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">Busca, dentro del lote de movimientos capturado arriba, el que mejor coincida con la clave de rastreo (o el RFC del proveedor) más monto y fecha.</p>
           <form onSubmit={handleVerificarSpei} className="flex max-w-md flex-col gap-3">
-            <div className="flex gap-4 text-sm text-foreground">
-              <label className="flex items-center gap-1.5">
-                <input type="radio" checked={speiModo === "clave"} onChange={() => setSpeiModo("clave")} className="h-4 w-4 accent-primary" /> Clave de rastreo SPEI
-              </label>
-              <label className="flex items-center gap-1.5">
-                <input type="radio" checked={speiModo === "rfc"} onChange={() => setSpeiModo("rfc")} className="h-4 w-4 accent-primary" /> RFC de proveedor
-              </label>
-            </div>
+            <RadioSegmentado
+              name="spei-modo"
+              label="Cómo identificar el pago"
+              value={speiModo}
+              onChange={setSpeiModo}
+              opciones={[
+                { id: "clave", rotulo: "Clave de rastreo SPEI" },
+                { id: "rfc", rotulo: "RFC de proveedor" },
+              ]}
+            />
             {speiModo === "clave" ? (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="spei-clave">Clave de rastreo *</Label>
+              <FormField label="Clave de rastreo" required>
                 <Input id="spei-clave" type="text" value={speiClave} onChange={(e) => setSpeiClave(e.target.value)} required />
-              </div>
+              </FormField>
             ) : (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="spei-rfc">RFC del proveedor *</Label>
+              <FormField label="RFC del proveedor" required>
                 <Input id="spei-rfc" type="text" value={speiRfc} onChange={(e) => setSpeiRfc(e.target.value.toUpperCase())} required />
-              </div>
+              </FormField>
             )}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="spei-monto">Monto *</Label>
+            <FormField label="Monto" required>
               <Input id="spei-monto" type="number" step="0.01" value={speiMonto} onChange={(e) => setSpeiMonto(e.target.value)} required />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="spei-fecha">Fecha del pago *</Label>
+            </FormField>
+            <FormField label="Fecha del pago" required>
               <Input id="spei-fecha" type="date" value={speiFecha} onChange={(e) => setSpeiFecha(e.target.value)} required />
-            </div>
-            <div className="flex w-40 flex-col gap-1.5">
-              <Label htmlFor="spei-tolerancia">Tolerancia de fecha (días)</Label>
+            </FormField>
+            <FormField label="Tolerancia de fecha (días)" className="w-40">
               <Input id="spei-tolerancia" type="number" value={speiTolerancia} onChange={(e) => setSpeiTolerancia(e.target.value)} />
-            </div>
-            {speiError && (
-              <p role="alert" className="text-destructive text-sm">
-                {speiError}
-              </p>
-            )}
+            </FormField>
+            {speiError && <Callout tone="danger">{speiError}</Callout>}
             <div>
-              <Button type="submit" disabled={speiLoading}>
+              <Button type="submit" loading={speiLoading}>
                 <ShieldCheck />
-                {speiLoading ? "Verificando…" : "Verificar"}
+                Verificar
               </Button>
             </div>
           </form>
