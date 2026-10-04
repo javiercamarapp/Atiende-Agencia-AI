@@ -6,6 +6,7 @@ import { calcularDesglose, evaluarTimbrabilidad, importesParaPac, DesgloseInvali
 import {
   HonorariosDatosInvalidosError,
   HonorariosEstadoInvalidoError,
+  HonorariosNoDisponiblesError,
   HonorariosNoEncontradoError,
   HonorariosSinPermisoError,
   HonorariosTopeExcedidoError,
@@ -118,6 +119,7 @@ export interface ResultadoGeneracion {
 export async function generarPrefacturasDelPeriodo(repo: HonorariosRepository, propertyId: string, periodo: string): Promise<ResultadoGeneracion> {
   if (!PERIODO_HONORARIOS_RE.test(periodo)) throw new HonorariosDatosInvalidosError("periodo: se esperaba el formato AAAA-MM.");
   const lectura = await repo.listarIgualas(propertyId);
+  if (lectura.estado === "no_disponible") throw new HonorariosNoDisponiblesError();
   let generadas = 0;
   let yaExistian = 0;
   const omitidas: { igualaId: string; concepto: string; motivo: string }[] = [];
@@ -144,8 +146,8 @@ export interface DepsTimbrado {
   readonly pac: PacClient | null | undefined;
   readonly enSesion: EnSesion;
   readonly expiraReservaSegundos?: number;
-  /** Se invoca despues de dejar la prefactura `fallida` (para emitir el aviso in-app dentro de la misma sesion). */
-  readonly alFallar?: (p: PrefacturaRecord, codigo: string, repo: HonorariosRepository) => Promise<void>;
+  /** Se invoca DESPUES de confirmar la prefactura como `fallida` (para emitir el aviso in-app en su propia sesion). Es best-effort: un error aqui nunca oculta el fallo del PAC. */
+  readonly alFallar?: (p: PrefacturaRecord, codigo: string) => Promise<void>;
 }
 
 export interface ResultadoTimbrado {
@@ -188,10 +190,12 @@ export async function timbrarPrefactura(deps: DepsTimbrado, propertyId: string, 
     );
   } catch (err) {
     const codigo = codigoDeFalloPac(err);
-    await deps.enSesion(async (repo) => {
-      await repo.registrarFallo(propertyId, prefacturaId, codigo);
-      await deps.alFallar?.(p, codigo, repo);
-    });
+    await deps.enSesion((repo) => repo.registrarFallo(propertyId, prefacturaId, codigo));
+    try {
+      await deps.alFallar?.(p, codigo);
+    } catch {
+      // el aviso es best-effort: el fallo del PAC es lo que se reporta
+    }
     throw new HonorariosTimbradoFalloError(codigo);
   }
 

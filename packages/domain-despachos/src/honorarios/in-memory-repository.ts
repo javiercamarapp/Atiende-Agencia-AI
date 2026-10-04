@@ -76,7 +76,7 @@ export class InMemoryHonorariosRepository implements HonorariosRepository {
   }
 
   async obtenerPrefactura(propertyId: string, id: string): Promise<PrefacturaRecord | null> {
-    if (!this.disponible) return null;
+    this.requerirDisponible();
     const p = this.prefacturas.get(id);
     return p && p.propertyId === propertyId ? p : null;
   }

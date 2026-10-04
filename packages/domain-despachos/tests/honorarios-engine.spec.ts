@@ -89,6 +89,11 @@ describe("generarPrefacturasDelPeriodo", () => {
     expect(r.omitidas).toHaveLength(1);
     expect(r.omitidas[0]!.motivo).toMatch(/ficha fiscal/);
   });
+  it("base sin migrar: generar es 'no disponible' (error de dominio), no un cero silencioso", async () => {
+    const { repo } = await montar();
+    repo.disponible = false;
+    await expect(generarPrefacturasDelPeriodo(repo, PROP, "2026-07")).rejects.toMatchObject({ name: "HonorariosNoDisponiblesError" });
+  });
   it("no mezcla clientes: las igualas de otra property no se generan", async () => {
     const { repo } = await montar();
     expect((await repo.listarPrefacturas(OTRA_PROP, null)).prefacturas).toHaveLength(0);

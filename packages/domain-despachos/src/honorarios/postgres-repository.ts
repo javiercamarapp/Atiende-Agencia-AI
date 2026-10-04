@@ -244,7 +244,10 @@ export class PostgresHonorariosRepository implements HonorariosRepository {
         return rows[0] ? mapPrefactura(rows[0]) : null;
       },
       isRecoverable: migracionPendiente,
-      fallback: async () => null,
+      // Una lectura puntual previa a una escritura: sin la migracion es "no disponible" (503), no "no existe" (404).
+      fallback: async () => {
+        throw new HonorariosNoDisponiblesError();
+      },
     });
   }
 

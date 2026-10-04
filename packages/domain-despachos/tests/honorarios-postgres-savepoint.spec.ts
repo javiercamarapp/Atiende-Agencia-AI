@@ -53,7 +53,8 @@ describe("PostgresHonorariosRepository: lecturas", () => {
     const repo = new PostgresHonorariosRepository(session);
     expect(await repo.listarIgualas("p1")).toEqual({ estado: "no_disponible", igualas: [] });
     expect(await repo.listarPrefacturas("p1", null)).toEqual({ estado: "no_disponible", prefacturas: [] });
-    expect(await repo.obtenerPrefactura("p1", "f1")).toBeNull();
+    // una lectura puntual previa a una escritura es "no disponible" (503), no "no existe" (404):
+    await expect(repo.obtenerPrefactura("p1", "f1")).rejects.toBeInstanceOf(HonorariosNoDisponiblesError);
     // el resto del request sigue en la MISMA transaccion:
     await expect(session.query("select 1")).resolves.toEqual({ rows: [{ ok: 1 }] });
     expect(session.calls.filter((c) => c.startsWith("rollback to savepoint")).length).toBe(3);
