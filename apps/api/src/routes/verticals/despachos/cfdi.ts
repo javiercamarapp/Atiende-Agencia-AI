@@ -102,6 +102,10 @@ interface IngestaCfdiBody {
   readonly retencionIsr?: unknown;
   readonly retencionIva?: unknown;
   readonly ieps?: unknown;
+  /** D-P3-01: totales del complemento `implocal` (ISH, etc.): los traslados suman al total y las retenciones restan. */
+  readonly impuestosLocalesTraslados?: unknown;
+  readonly impuestosLocalesRetenciones?: unknown;
+  readonly regimenFiscalReceptor?: unknown;
   readonly cfdiRelacionados?: unknown;
   readonly tipoRelacion?: unknown;
   readonly nomina?: { totalPercepciones?: unknown } | null;
@@ -173,6 +177,9 @@ function parseIngestaBody(raw: IngestaCfdiBody): DatosCfdiDespachos & { categori
     retencionIsr: optionalNumber(raw.retencionIsr, "retencionIsr"),
     retencionIva: optionalNumber(raw.retencionIva, "retencionIva"),
     ieps: optionalNumber(raw.ieps, "ieps"),
+    impuestosLocalesTraslados: optionalNumber(raw.impuestosLocalesTraslados, "impuestosLocalesTraslados"),
+    impuestosLocalesRetenciones: optionalNumber(raw.impuestosLocalesRetenciones, "impuestosLocalesRetenciones"),
+    regimenFiscalReceptor: typeof raw.regimenFiscalReceptor === "string" && raw.regimenFiscalReceptor.trim() !== "" ? raw.regimenFiscalReceptor.trim() : undefined,
     fecha: typeof raw.fecha === "string" ? raw.fecha : undefined,
     fechaTimbrado: typeof raw.fechaTimbrado === "string" ? raw.fechaTimbrado : undefined,
     cfdiRelacionados,

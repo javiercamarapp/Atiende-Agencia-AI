@@ -157,6 +157,12 @@ export function validarCfdiDespachos(datos: DatosCfdiDespachos): ResultadoValida
   let fail = 0;
 
   const tieneRetenciones = datos.retencionIsr != null || datos.retencionIva != null;
+  // D-P3-01: IEPS y complemento de impuestos locales (`implocal`) forman parte del Total (Anexo 20); sin ellos un CFDI legítimo de
+  // gasolinera, restaurante con IEPS u hotel con ISH salía `valido=false` y desaparecía de los pagos provisionales.
+  const ieps = datos.ieps ?? 0;
+  const locTraslados = datos.impuestosLocalesTraslados ?? 0;
+  const locRetenciones = datos.impuestosLocalesRetenciones ?? 0;
+  const conExtras = ieps !== 0 || locTraslados !== 0 || locRetenciones !== 0;
   const retencionIsr = datos.retencionIsr ?? 0;
   const retencionIva = datos.retencionIva ?? 0;
   const descuento = datos.descuento ?? 0;
@@ -203,14 +209,16 @@ export function validarCfdiDespachos(datos: DatosCfdiDespachos): ResultadoValida
   // ---- Total coherente, reemplazando el check base cuando hay retenciones ----
   if (tieneRetenciones) {
     const retTot = retencionIsr + retencionIva;
-    const esperado = r2(datos.subtotal + (iva ?? 0) - descuento - retTot);
+    const esperado = r2(datos.subtotal + (iva ?? 0) + ieps + locTraslados - descuento - retTot - locRetenciones);
     if (Math.abs(esperado - datos.total) > TOLERANCIA) {
       if (datos.tipo === "E" && datos.total === 0) {
         okLocal();
       } else {
         failLocal(
           "total_incoherente",
-          `SubTotal + IVA − Descuento − Retenciones = ${money(esperado)} pero Total=${money(datos.total)}`,
+          conExtras
+            ? `SubTotal + IVA + IEPS + impuestos locales − Descuento − Retenciones = ${money(esperado)} pero Total=${money(datos.total)}`
+            : `SubTotal + IVA − Descuento − Retenciones = ${money(esperado)} pero Total=${money(datos.total)}`,
           "Anexo 20 / Guia de llenado",
         );
       }
