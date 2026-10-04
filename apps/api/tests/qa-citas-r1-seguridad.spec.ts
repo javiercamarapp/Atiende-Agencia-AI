@@ -284,3 +284,53 @@ describe("QA-citas-R1-seguridad-10 — validacion de contacto en la reserva publ
     expect(correoBasura.status).toBe(400);
   });
 });
+
+describe("QA-citas-R1-seguridad-06/09/10 — controles de los arreglos de contacto", () => {
+  it("[CONTROL 06] un paciente NUEVO que reserva en la web conserva su correo, y por WhatsApp un expediente existente sin correo si lo recibe", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const web = await app.request(
+      "/v1/citas/clinica-dental-sonrisas/appointments",
+      jsonRequestInit({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Nuevo", customer_phone: "9991110000", customer_email: "nuevo@example.com", starts_at: LUNES_10_MERIDA, source: "web" }),
+    );
+    expect(web.status).toBe(201);
+    expect((await ctx.citasRepo.findCustomerByPhone(ctx.organizationId, "9991110000"))?.email).toBe("nuevo@example.com");
+
+    await ctx.citasRepo.upsertCustomer(ctx.organizationId, "9992220000", "Existente", null);
+    const wa = await app.request(
+      "/v1/citas/clinica-dental-sonrisas/appointments",
+      jsonRequestInit({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Existente", customer_phone: "9992220000", customer_email: "titular@example.com", starts_at: LUNES_11_MERIDA, source: "whatsapp" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }),
+    );
+    expect(wa.status).toBe(201);
+    expect((await ctx.citasRepo.findCustomerByPhone(ctx.organizationId, "9992220000"))?.email).toBe("titular@example.com");
+  });
+
+  it("[CONTROL 10] telefono y correo con formato valido se aceptan; el alta del panel rechaza un telefono o correo invalido con 400", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const ok = await app.request(
+      "/v1/citas/clinica-dental-sonrisas/appointments",
+      jsonRequestInit({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Ok", customer_phone: "+52 1 999 555 6677", customer_email: "ok@example.com", starts_at: LUNES_10_MERIDA, source: "web" }),
+    );
+    expect(ok.status).toBe(201);
+    const panel = (body: Record<string, unknown>): RequestInit => ({
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "P", starts_at: LUNES_11_MERIDA, ...body }),
+    });
+    expect((await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments`, panel({ customer_phone: "hola" }))).status).toBe(400);
+    expect((await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments`, panel({ customer_phone: "9995556677", customer_email: "no es correo" }))).status).toBe(400);
+  });
+
+  it("[CONTROL 09] el telefono capturado en el panel queda con la misma llave que usa el agente (un solo expediente)", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const alta = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Paciente", customer_phone: "+52 1 999 444 5566", starts_at: LUNES_10_MERIDA }),
+    });
+    expect(alta.status).toBe(201);
+    expect(await ctx.citasRepo.findCustomerByPhone(ctx.organizationId, "9994445566")).not.toBeNull();
+  });
+});
