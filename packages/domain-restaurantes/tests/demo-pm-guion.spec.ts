@@ -130,6 +130,7 @@ describe("las cifras del guion salen del motor real sobre el catalogo de T7", ()
         organizationId: world.organizationId,
         branchSlug: "garcia-lavin",
         canal: e.canal,
+        ...(e.canal === "domicilio" ? { colonia: "Temozón Norte" } : {}),
         items: e.renglones.map(([producto, requestedQuantity, tortilla]) => ({ productId: world.productIds.get(producto)!, requestedQuantity, ...(tortilla ? { tortilla } : {}) })),
         ...(e.dobleSalsas ? { doubleSalsas: e.dobleSalsas } : {}),
       });

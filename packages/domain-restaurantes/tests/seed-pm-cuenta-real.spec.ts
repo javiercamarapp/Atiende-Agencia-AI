@@ -170,7 +170,7 @@ describe("promociones: lunes 2x1 sin restriccion de sucursal y combo del martes 
         organizationId: world.organizationId,
         branchSlug: slug,
         canal,
-        ...(canal === "domicilio" ? { customerAddress: "Calle 7 #270, Vista Alegre" } : {}),
+        ...(canal === "domicilio" ? { customerAddress: "Calle 7 #270, Vista Alegre", colonia: "Temozón Norte" } : {}),
         items: lineas.map(([nombre, cantidad, tortilla]) => ({ productId: world.productIds.get(nombre)!, requestedQuantity: cantidad, ...(tortilla ? { tortilla } : {}) })),
       });
     }
