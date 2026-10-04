@@ -22,7 +22,7 @@ export interface ResumenAvisosProgramados {
   readonly intentados: number;
   /** Pedidos con la bandeja del staff registrada (o ya registrada antes: idempotente). */
   readonly bandeja: number;
-  /** Avisos que fallaron de verdad (un `no_disponible` por base sin migrar tambien se cuenta en la bandeja, no aqui). */
+  /** Avisos que fallaron: la bandeja (incluida una base sin la migracion 042) o una campana con error real. Un `no_disponible` de la campana no cuenta. */
   readonly errores: number;
 }
 

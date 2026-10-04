@@ -67,7 +67,7 @@ export interface DepsComandaPos {
 }
 
 export interface PedidoParaComanda {
-  readonly order: Pick<Order, "id" | "organizationId" | "propertyId" | "customerName" | "customerPhone" | "customerAddress" | "notes" | "paymentMethod" | "items" | "branch">;
+  readonly order: Pick<Order, "id" | "organizationId" | "propertyId" | "customerName" | "customerPhone" | "customerAddress" | "notes" | "paymentMethod" | "items" | "branch"> & Partial<Pick<Order, "status">>;
   /** Si no se da: con direccion => domicilio, sin direccion => recoger. */
   readonly tipo?: TipoComanda;
   readonly colonia?: string;
@@ -80,7 +80,7 @@ export interface PedidoParaComanda {
 }
 
 export type ResultadoEncolarPedido =
-  | { readonly modo: "apagado"; readonly fila: null; readonly agente: null; readonly motivo: "bandera_apagada" | "no_disponible" }
+  | { readonly modo: "apagado"; readonly fila: null; readonly agente: null; readonly motivo: "bandera_apagada" | "no_disponible" | "programado" }
   | { readonly modo: "sombra"; readonly fila: FilaComandaOutbox | null; readonly agente: null; readonly motivo?: "error" }
   | { readonly modo: "activo"; readonly fila: FilaComandaOutbox | null; readonly agente: RespuestaAgenteComanda; readonly motivo?: "error" };
 
@@ -203,6 +203,9 @@ export async function procesarFilaReclamada(deps: DepsComandaPos, fila: FilaComa
  * el resultado del pedido. Ver reglas duras en la cabecera del archivo.
  */
 export async function encolarComandaParaPedido(deps: DepsComandaPos, pedido: PedidoParaComanda): Promise<ResultadoEncolarPedido> {
+  // Un pedido PROGRAMADO todavia no es de cocina: su comanda llegaria horas antes. La encola la promocion a `pending`
+  // (`encolarComandasDePromovidos`). Es la unica puerta de entrada, asi que cubre checkout, voz, WhatsApp y cualquier canal nuevo.
+  if (pedido.order.status === "programado") return { modo: "apagado", fila: null, agente: null, motivo: "programado" };
   let modo: ModoSoftRestaurant = "apagado";
   try {
     modo = await deps.store.leerModo(pedido.order.organizationId);

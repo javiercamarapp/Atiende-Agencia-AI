@@ -88,8 +88,10 @@ sequenceDiagram
   W->>A: GET /storefront/track/:token (sin datos personales)
 ```
 
-El checkout exige aceptar el aviso de privacidad en la interfaz; el servidor **no** guarda hoy esa aceptación
-(ver huecos).
+El checkout exige aceptar el aviso de privacidad **en el servidor**: `POST /:sucursal/orders` responde 400
+`aviso_privacidad_requerido` si el cuerpo no trae `acepta_aviso_privacidad: true`, y ya creado el pedido guarda la evidencia
+(versión del aviso vigente, fecha y canal `web`, sin datos personales) en `restaurantes.order_privacy_consent`
+(migración 042; la ven owner y admin). Con la base sin la 042 el pedido se crea igual y la evidencia queda "no disponible".
 
 ## 4. Cocina
 
@@ -100,9 +102,10 @@ El checkout exige aceptar el aviso de privacidad en la interfaz; el servidor **n
    cada 5 min) reintenta las pendientes y no reenvía las capturadas.
 3. `PATCH .../admin/orders/:id/status`: `pending -> preparando -> en_camino|listo_para_recoger -> entregado`
    (o `cancelado`/`problema`). Cada transición notifica al comensal por WhatsApp (outbox + dispatcher).
-4. **Pedido programado**: queda en `programado` y no va a cocina ni al POS; al faltar 30 min lo promueve el cron
-   (`/internal/restaurantes/promover-programados`, 5 min) o el panel al consultar, y en ese momento su comanda se
-   encola al POS.
+4. **Pedido programado** (checkout público **o agente** de WhatsApp/voz con `programado_para`): queda en `programado` y no va
+   a cocina ni al POS; al faltar 30 min lo promueve el cron (`/internal/restaurantes/promover-programados`, 5 min) o el
+   panel al consultar, y en ese momento su comanda se encola al POS **con su propina y canal**, y el staff recibe el aviso
+   en la bandeja (`order.programado_promovido`) y en la campana (`restaurantes.pedido.programado_en_cocina`).
 
 ## 5. Repartidor
 
@@ -113,7 +116,8 @@ ajeno responde 404 uniforme. `en_camino` y `entregado` avisan al comensal; `prob
 ## 6. Gerente
 
 - **Bandeja de notificaciones** (`.../admin/order-notifications`, reconocer con `.../:id/acknowledge`): pedido
-  nuevo, repartidor asignado, incidencia. Es la bandeja propia de restaurantes (ver huecos sobre `core.notification`).
+  nuevo, repartidor asignado, incidencia y pedido programado que entró a cocina. Es la bandeja propia de restaurantes; la campana
+  (`core.notification`) recibe además los eventos del catálogo de `docs/NOTIFICACIONES.md`.
 - Asigna repartidor (`PATCH .../assign-repartidor`), atiende **conversaciones/handoff** y **callbacks** con SLA
   (`.../admin/conversaciones`, `.../admin/callbacks`), y ve las **conversaciones de voz** con su transcripción
   redactada (`.../admin/voz/conversaciones/:id`).
@@ -127,8 +131,8 @@ activo) y consulta KPIs, voz y auditoría. El e2e ejercita el efecto de esas reg
 ## 8. Superadmin y automatizaciones
 
 Los crons del ciclo (`vercel.json`): `/internal/whatsapp/dispatch` (5 min), `/internal/restaurantes/softrestaurant-dispatch`
-(5 min), `/internal/restaurantes/promover-programados` (5 min) y `/internal/restaurantes/email-dispatch` (diario).
-Los tres primeros reportan latido al panel de salud de superadmin (`withHeartbeat`). Además del cron, el webhook y
+(5 min), `/internal/restaurantes/promover-programados` (5 min), `/internal/restaurantes/email-dispatch` (15 min) y
+`/internal/restaurantes/privacidad-retencion` (diario). Los crons reportan latido al panel de salud de superadmin (`withHeartbeat`). Además del cron, el webhook y
 las rutas de staff drenan el outbox "inline" para no esperar al siguiente tick.
 
 ## Cómo se verifica

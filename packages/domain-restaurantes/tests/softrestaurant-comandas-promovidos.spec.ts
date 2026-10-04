@@ -7,6 +7,7 @@ import { FakeSoftRestaurantAdapter } from "../src/softrestaurant/fake-adapter.ts
 import { InMemoryComandaOutboxStore } from "../src/softrestaurant/outbox-memory-store.ts";
 import {
   crearResolverSucursalPos,
+  encolarComandaParaPedido,
   drenarComandas,
   encolarComandasDePromovidos,
   type DepsComandaPos,
@@ -163,5 +164,24 @@ describe("encolarComandasDePromovidos", () => {
     const otro = { ...t.order, id: randomUUID(), status: "pending" as const, programadoPara: HORA };
     const r = await encolarComandasDePromovidos(t.deps, [{ ...t.order, status: "pending", programadoPara: HORA }, otro]);
     expect(r).toEqual({ intentados: 2, encoladas: 1, omitidas: 0, errores: 1 });
+  });
+});
+
+// Hallazgo del e2e de agentes: voz y WhatsApp encolaban la comanda justo despues de crear_pedido sin mirar el estado; con
+// `programado_para` en las tools eso habria mandado el pedido al POS horas antes. La puerta unica lo impide.
+describe("encolarComandaParaPedido y los pedidos programados", () => {
+  it("un pedido en estado programado NO encola comanda (ni en modo activo); la encola la promocion", async () => {
+    const t = await preparar({ modo: "activo" });
+    const r = await encolarComandaParaPedido(t.deps, { order: { ...t.order, status: "programado" } });
+    expect(r).toMatchObject({ modo: "apagado", motivo: "programado", fila: null });
+    expect(t.store.todas()).toHaveLength(0);
+    expect(t.port.llamadasCrear).toHaveLength(0);
+  });
+
+  it("el mismo pedido ya promovido (pending) si encola", async () => {
+    const t = await preparar({ modo: "sombra" });
+    const r = await encolarComandaParaPedido(t.deps, { order: { ...t.order, status: "pending" } });
+    expect(r.modo).toBe("sombra");
+    expect(t.store.todas()).toHaveLength(1);
   });
 });
