@@ -3,20 +3,14 @@
 // dashboard visual (fuera de alcance explícito de Fase 1, ver el brief).
 import { useNavigate, useParams } from "react-router-dom";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { Suspense, lazy } from "react";
+import { Suspense } from "react";
 import type { ComponentType, LazyExoticComponent, ReactElement, ReactNode } from "react";
 import { REDIRECCIONES_SUPERADMIN } from "./superadmin/rutas.ts";
+import { cargaPerezosa, ErrorBoundaryRaiz } from "./lib/carga-perezosa.tsx";
 import { EstadoCargando, EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui";
 import { puedeVerPrivacidad as licitacionesPuedeVerPrivacidad } from "./verticals/licitaciones/roles-nav.ts";
 
-// R-37: cada pantalla es su propio chunk. Antes todo el panel (6 verticales + superadmin + storefront) iba en un solo
-// bundle, y el storefront público que abre el cliente final desde el celular descargaba código que nunca usa.
-// `cargaPerezosa` conserva el tipo exacto del componente exportado.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function cargaPerezosa<M extends Record<string, any>, K extends keyof M & string>(cargar: () => Promise<M>, nombre: K) {
-  return lazy(async () => ({ default: (await cargar())[nombre] as M[K] }));
-}
-
+// R-37: cada pantalla es su propio chunk (ver lib/carga-perezosa.tsx: reintento, recarga protegida y ErrorBoundary raíz).
 const RestaurantesLoginPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Login.tsx"), "RestaurantesLoginPage");
 const RestaurantesDashboardPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Dashboard.tsx"), "RestaurantesDashboardPage");
 const RestaurantesShell = cargaPerezosa(() => import("./verticals/restaurantes/RestaurantesShell.tsx"), "RestaurantesShell");
@@ -1118,7 +1112,8 @@ export function App() {
           se vea de verdad. */}
       <Toaster />
       {/* R-37: las pantallas son chunks cargados bajo demanda; mientras baja el chunk de la ruta se pinta el estado de carga estándar. */}
-      <Suspense fallback={<EstadoCargando variante="pantalla" />}>
+      <ErrorBoundaryRaiz>
+      <Suspense fallback={<div data-atiende-carga-ruta><EstadoCargando variante="pantalla" /></div>}>
       <Routes>
         <Route path="/restaurantes/login" element={<RestaurantesLoginRoute />} />
         {/* PL-21: enlaces del correo de restaurantes (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
@@ -1365,6 +1360,7 @@ export function App() {
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
       </Suspense>
+      </ErrorBoundaryRaiz>
     </BrowserRouter>
   );
 }
