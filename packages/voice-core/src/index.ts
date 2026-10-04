@@ -15,7 +15,7 @@ export { FakeVoiceProvider } from "./fake-voice-provider.ts";
 export type { FakeVoiceProviderOptions } from "./fake-voice-provider.ts";
 export * from "./kpi.ts";
 export { CallStateMachine, LIMITES_POR_DEFECTO } from "./llamada/maquina.ts";
-export type { AccionLlamada, EstadoLlamada, EventoLlamada, LimitesLlamada, MotivoEscalacionLlamada, ReglasCierreLlamada } from "./llamada/maquina.ts";
+export type { AccionLlamada, EstadoLlamada, EventoLlamada, LimitesLlamada, MotivoEscalacionLlamada, OpcionesMaquinaLlamada, ReglasCierreLlamada } from "./llamada/maquina.ts";
 export { MENSAJE_IDS, mensajeSaludoRespaldo, saludoPorHora } from "./llamada/mensajes.ts";
 export type { CatalogoMensajes, MensajeId, SaludoPorHora } from "./llamada/mensajes.ts";
 export { evaluarInicioLlamada } from "./llamada/inicio.ts";
