@@ -24,6 +24,9 @@ import { restaurantesVozAdminRoutes } from "./voz-admin.ts";
 import { restaurantesVozInternoRoutes } from "./voz-interno.ts";
 import { restaurantesVozKpiRoutes } from "./voz-kpi.ts";
 import { restaurantesWhatsappKpiRoutes } from "./whatsapp-kpi.ts";
+import { restaurantesEncuestaAdminRoutes } from "./encuesta-admin.ts";
+import { restaurantesEncuestaInternoRoutes } from "./encuesta-interno.ts";
+import { restaurantesEncuestaPublicaRoutes } from "./encuesta-publica.ts";
 import { restaurantesConversacionesAdminRoutes } from "./conversaciones-admin.ts";
 import { restaurantesAdminVoiceSecretRoutes } from "./admin-voice-secret.ts";
 import { restaurantesPrivacidadRoutes } from "./privacidad.ts";
@@ -72,6 +75,11 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // R-13 (migración 035): KPI de voz, costo por día y alertas operativas internas (panel + bitácora).
   app.route("/", restaurantesVozKpiRoutes(deps));
   app.route("/", restaurantesWhatsappKpiRoutes(deps));
+  // R-41 (migración 041): encuesta post-entrega -- panel (config, resumen, enviar pendientes), página pública del cliente por token firmado
+  // y barrido interno idempotente (sin cron, ver encuesta-interno.ts).
+  app.route("/", restaurantesEncuestaAdminRoutes(deps));
+  app.route("/", restaurantesEncuestaPublicaRoutes(deps));
+  app.route("/", restaurantesEncuestaInternoRoutes(deps));
   // PM PR-9 -- privacidad: solicitudes ARCO + configuración (panel, owner/admin) y lado sistema
   // (purga por retención, apertura/consentimiento/ARCO de voz). Migración 030.
   app.route("/", restaurantesPrivacidadRoutes(deps));
