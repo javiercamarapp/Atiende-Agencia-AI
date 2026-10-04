@@ -113,6 +113,9 @@ async function resolveOrganizationOrNotFound(repo: RestaurantesRepository, orgSl
   return org;
 }
 
+/** Espera maxima en linea de la comanda al POS en el camino de voz (la tool de voz expira a los 4000 ms). */
+export const VOICE_COMANDA_INLINE_MS = 1500;
+
 export function restaurantesPublicRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
@@ -163,15 +166,24 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
           // Registro único de tools + máquina de estados (cotizado -> confirmado -> creado) y, con token de
           // llamada, teléfono y sucursal tomados del token (nunca del body que escribe el modelo).
           const outcome = await repo.runWithRowSavepoint(() => invokeAgentTool(repo, toolCtx, "crear_pedido", incoming as Record<string, unknown>));
+          // Reintento tras un intento incierto: el pedido YA existe (con su comanda y correo encolados la primera vez). Se devuelve con su id
+          // para que la llamada cuente el objetivo; no se vuelve a encolar nada.
+          if (outcome.yaRegistrado) {
+            await auditVoice(repo, org, caller, "crear_pedido", "ok", "ya_registrado");
+            return c.json({ order: outcome.raw, ya_registrado: true });
+          }
           // Cluster #3 (CRÍTICO) de la auditoría final — `createOrder` ya encoló internamente
           // (best-effort) la confirmación por correo al cliente si dejó correo; disparo inline del
           // drenado, mismo `repo`/transacción, en vez de esperar al cron diario.
-          await triggerRestaurantesEmailDispatchInline(deps, db, repo);
+          // El correo NO se drena en linea por voz: la tool de voz tiene ~4 s de presupuesto y Resend lento no debe hacer expirar un pedido ya
+          // creado. Queda en el outbox y lo envia el cron de correo (red de seguridad).
           await auditVoice(repo, org, caller, "crear_pedido", "ok", null);
           // SoftRestaurant (POS): los pedidos de voz tambien encolan su comanda (igual que antes de
           // fusionar el registro unico de tools). Bandera apagada o sin migracion 024: respuesta identica.
           const voiceInput = mapCreateOrderBody(org.id, incoming, "voice");
-          const comanda = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), {
+          // Presupuesto de voz: el POS lento no puede consumir toda la espera de la tool (4 s). Pasado el tope la comanda queda pendiente y
+          // el cron del outbox la reintenta (misma ruta que cualquier caida del POS).
+          const comanda = await encolarComandaParaPedido({ ...softRestaurantComandaDeps(deps, db, repo), timeoutInlineMs: VOICE_COMANDA_INLINE_MS }, {
             order: outcome.raw as unknown as Parameters<typeof encolarComandaParaPedido>[1]["order"],
             tipo: voiceInput.canal,
             colonia: voiceInput.colonia,
