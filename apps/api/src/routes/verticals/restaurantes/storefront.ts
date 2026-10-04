@@ -209,7 +209,9 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
       const branch = await repo.findBranch(org.id, { slug: c.req.param("branchSlug") });
       if (!branch || branch.status !== "active") throw Errors.notFound("Sucursal no encontrada.");
       const [sucursal] = (await buildStorefrontBranches(repo, org.id)).filter((b) => b.slug === branch.slug);
-      return c.json({ sucursal: sucursal ?? null, categorias: await buildStorefrontMenu(repo, branch.propertyId) });
+      // La marca viaja tambien aqui: logo, redes y la imagen del Open Graph de la pagina de la sucursal (null si no hay o falta la 041).
+      const marca = await repo.findStorefrontMarca(org.id);
+      return c.json({ sucursal: sucursal ?? null, categorias: await buildStorefrontMenu(repo, branch.propertyId), marca: marca ?? { ...MARCA_VACIA } });
     });
   });
 

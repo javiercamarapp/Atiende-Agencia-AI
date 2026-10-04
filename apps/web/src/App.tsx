@@ -66,6 +66,7 @@ import { SucursalPage as StorefrontSucursalPage } from "./verticals/restaurantes
 import { RastreoPage as StorefrontRastreoPage } from "./verticals/restaurantes/storefront/RastreoPage.tsx";
 import { ReservarPage } from "./verticals/citas/reserva/ReservarPage.tsx";
 import { PrivacidadStorefrontPage } from "./verticals/restaurantes/storefront/PrivacidadStorefront.tsx";
+import { EventosPage as StorefrontEventosPage } from "./verticals/restaurantes/storefront/EventosPage.tsx";
 import { RestaurantesPrimerosPasosPage } from "./verticals/restaurantes/pages/PrimerosPasos.tsx";
 import { RestaurantesCopilotoPage } from "./verticals/restaurantes/pages/Copiloto.tsx";
 import { RentasCopilotoPage } from "./verticals/rentas/pages/Copiloto.tsx";
@@ -324,6 +325,10 @@ function HotelesMisDatosRoute() {
 function ReservarCitasRoute() {
   const { orgSlug = "" } = useParams();
   return <ReservarPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
+function StorefrontEventosRoute() {
+  const { orgSlug = "" } = useParams();
+  return <StorefrontEventosPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
 function StorefrontPrivacidadRoute() {
   const { orgSlug = "" } = useParams();
@@ -1134,6 +1139,7 @@ export function App() {
         <Route path="/reservar/:orgSlug" element={<ReservarCitasRoute />} />
         <Route path="/pedir/:orgSlug" element={<StorefrontRestauranteRoute />} />
         <Route path="/pedir/:orgSlug/privacidad" element={<StorefrontPrivacidadRoute />} />
+        <Route path="/pedir/:orgSlug/eventos" element={<StorefrontEventosRoute />} />
         <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
         <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
         <Route path="/superadmin" element={<SuperAdminRoute />} />
