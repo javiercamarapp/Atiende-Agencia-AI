@@ -2,7 +2,6 @@
 // prompt funcionan igual en los dos idiomas. Antes de R-44 un cliente que escribia "I want to cancel my order" o "I'm allergic to peanuts"
 // NO disparaba el clasificador de alto riesgo (solo conocia espanol) y el modelo decidia solo.
 import { describe, expect, it, vi } from "vitest";
-import { randomUUID } from "node:crypto";
 import { FakeLlmProvider, LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { InMemoryRestaurantesRepository } from "../src/in-memory-repository.ts";
