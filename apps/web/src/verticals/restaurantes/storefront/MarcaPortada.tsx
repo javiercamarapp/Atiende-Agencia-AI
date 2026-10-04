@@ -27,7 +27,9 @@ export function redesDe(marca: MarcaPublica | null | undefined): Array<{ nombre:
   return redes;
 }
 
-export function PortadaMarca({ nombre, marca }: { nombre: string | undefined; marca: MarcaPublica | null | undefined }) {
+/** `encabezado`: "h1" en el storefront publico; "h2" cuando se usa como vista previa dentro del panel (que ya tiene su unico h1). */
+export function PortadaMarca({ nombre, marca, encabezado = "h1" }: { nombre: string | undefined; marca: MarcaPublica | null | undefined; encabezado?: "h1" | "h2" }) {
+  const Titulo = encabezado;
   const portada = urlHttps(marca?.portadaUrl);
   const logo = urlHttps(marca?.logoUrl);
   const titular = marca?.titular ?? (nombre ? `Pide en ${nombre}` : "Pedir en línea");
@@ -38,7 +40,7 @@ export function PortadaMarca({ nombre, marca }: { nombre: string | undefined; ma
       <div className="flex items-start gap-3 p-4">
         {logo && <img src={logo} alt={nombre ? `Logo de ${nombre}` : "Logo"} width={48} height={48} loading="lazy" decoding="async" className="size-12 shrink-0 rounded-md border border-border object-cover" />}
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold tracking-tight">{titular}</h1>
+          <Titulo className="text-xl font-semibold tracking-tight">{titular}</Titulo>
           {marca?.eslogan && <p className="mt-0.5 text-sm font-medium text-foreground">{marca.eslogan}</p>}
           {marca?.about && <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{marca.about}</p>}
           {!marca?.about && <p className="mt-1 text-sm text-muted-foreground">Elige la sucursal. Pagas en la sucursal (efectivo o tarjeta); no necesitas crear una cuenta.</p>}
