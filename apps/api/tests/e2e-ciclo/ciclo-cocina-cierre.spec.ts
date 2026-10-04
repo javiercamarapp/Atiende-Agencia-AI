@@ -58,21 +58,20 @@ describe("e2e cocina, avisos al comensal y cierre del dia", () => {
     // Saltos invalidos: la maquina de estados responde 4xx y el pedido sigue en pending.
     for (const salto of ["entregado", "en_camino", "completado"]) {
       const r = await patchStatus(order.id, salto);
-      expect(r.status, `pending -> ${salto}`).toBeGreaterThanOrEqual(400);
-      expect(r.status).toBeLessThan(500);
+      expect(r.status, `pending -> ${salto}`).toBe(409);
     }
     expect((await pedidos())[0]!.status).toBe("pending");
     expect(avisos(wa)).toHaveLength(0);
 
     expect((await patchStatus(order.id, "preparando")).status).toBe(200);
     // Reintento del mismo estado (doble clic): no es transicion valida y no duplica el aviso.
-    expect((await patchStatus(order.id, "preparando")).status).toBeGreaterThanOrEqual(400);
+    expect((await patchStatus(order.id, "preparando")).status).toBe(409);
     await stack.dispatchWhatsApp();
     expect(avisos(wa)).toHaveLength(1);
     expect(avisos(wa)[0]).toMatch(/ya lo estamos preparando/);
 
     // Un pedido a domicilio no sale "listo para recoger".
-    expect((await patchStatus(order.id, "listo_para_recoger")).status).toBeGreaterThanOrEqual(400);
+    expect((await patchStatus(order.id, "listo_para_recoger")).status).toBe(409);
 
     const asignar = await fetch(admin(`/orders/${order.id}/assign-repartidor`), authedJson(owner(), { repartidorId: stack.ctx.staff.repartidor.id }, "PATCH"));
     expect(asignar.status).toBe(200);
@@ -93,7 +92,7 @@ describe("e2e cocina, avisos al comensal y cierre del dia", () => {
     expect(avisos(wa)).toHaveLength(3);
     expect((await pedidos())[0]!.status).toBe("completado");
     // Terminal: no se reabre.
-    expect((await patchStatus(order.id, "preparando")).status).toBeGreaterThanOrEqual(400);
+    expect((await patchStatus(order.id, "preparando")).status).toBe(409);
     expect(stack.sim.rejected).toHaveLength(0);
   });
 
@@ -103,9 +102,9 @@ describe("e2e cocina, avisos al comensal y cierre del dia", () => {
     const order = await pedirPorWhatsApp(wa, "Beto Recoger", "recoger");
     expect(order.total).toBe(90);
     expect((await patchStatus(order.id, "preparando")).status).toBe(200);
-    expect((await patchStatus(order.id, "en_camino")).status).toBeGreaterThanOrEqual(400);
+    expect((await patchStatus(order.id, "en_camino")).status).toBe(409);
     const asignar = await fetch(admin(`/orders/${order.id}/assign-repartidor`), authedJson(owner(), { repartidorId: stack.ctx.staff.repartidor.id }, "PATCH"));
-    expect(asignar.status).toBeGreaterThanOrEqual(400);
+    expect(asignar.status).toBe(409);
     expect((await patchStatus(order.id, "listo_para_recoger")).status).toBe(200);
     expect((await patchStatus(order.id, "entregado")).status).toBe(200);
     await stack.dispatchWhatsApp();
@@ -129,7 +128,7 @@ describe("e2e cocina, avisos al comensal y cierre del dia", () => {
     expect(avisos(wa).filter((t) => /fue cancelado/.test(t))).toHaveLength(1);
     expect((await pedidos())[0]!.status).toBe("cancelado");
     // Terminal: ni cocina ni entrega lo reabren.
-    expect((await patchStatus(order.id, "preparando")).status).toBeGreaterThanOrEqual(400);
+    expect((await patchStatus(order.id, "preparando")).status).toBe(409);
 
     // El POS vuelve y pasa el tiempo del reintento: cocina NO debe recibir un pedido cancelado.
     stack.pos.limpiarFallas();
