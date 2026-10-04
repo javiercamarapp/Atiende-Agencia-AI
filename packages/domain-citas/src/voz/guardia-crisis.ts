@@ -8,7 +8,7 @@ import { CRISIS_ESCALATION_MESSAGE, detectCrisisKeyword, requiresCrisisGuardrail
 
 /** Motivo con el que la guardia escala; el servidor lo reconoce y registra la escalacion de crisis. */
 export const MOTIVO_CRISIS_VOZ = "crisis";
-/** El resumen de la escalacion lleva la palabra clave tras este prefijo (la lista es fija y no es dato del cliente). */
+/** El resumen de la escalacion lleva la palabra clave tras este prefijo (solo una palabra de CRISIS_KEYWORDS se acepta; cualquier otro texto se descarta). */
 export const PREFIJO_PALABRA_CLAVE = "palabra_clave:";
 
 /** Una guardia de crisis para esta llamada, o null si el rubro del negocio no la requiere (misma regla que WhatsApp). */

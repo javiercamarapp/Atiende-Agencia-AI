@@ -157,6 +157,20 @@ describe("derivar_a_humano", () => {
     expect(noSalud.cuerpo.crisis).toBe(false);
     expect(ctx.citasRepo.getEmergencyEscalations()).toHaveLength(1);
   });
+
+  it("el texto libre que mande el modelo en `resumen` NO se guarda como palabra clave ni llega al aviso del dueño: solo la lista fija o el texto fijo", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    ctx.citasRepo.seedTenantConfig({ organizationId: ctx.organizationId, rubro: "psicologo", defaultTimezone: "America/Merida", ownerNotificationPhone: "+5219990001111" });
+    const libre = "palabra_clave:me siento muy mal y le conte a la asistente que mi pareja me lastima";
+    const r = await llamar(app, "derivar_a_humano", { telefono: "9995556666", llamada_id: "l-5", motivo: "crisis", resumen: libre });
+    expect(r.cuerpo).toMatchObject({ crisis: true });
+    const esc = ctx.citasRepo.getEmergencyEscalations();
+    expect(esc).toHaveLength(1);
+    expect(esc[0]?.keywordMatched).toBe("señal de crisis en la llamada");
+    expect(JSON.stringify(esc)).not.toContain("pareja");
+    expect(JSON.stringify(ctx.citasRepo.getOutbox())).not.toContain("pareja");
+  });
 });
 
 describe("GET /v1/citas/:orgSlug/voz/contexto", () => {

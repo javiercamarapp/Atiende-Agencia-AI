@@ -748,7 +748,7 @@ el mismo que en restaurantes y hoteles.
    la misma lista de palabras que WhatsApp ANTES de que el modelo la reciba. Al activarse el core interrumpe al agente, dice `CRISIS_ESCALATION_MESSAGE` tal
    cual (con la línea de ayuda), escala con `derivar_a_humano` (motivo fijo `crisis`) y cierra como `escalado`; el servidor registra la escalación real
    (`registrarEscalacionCrisis`: `citas.emergency_escalations` canal `voice` -> notificación crítica del centro de avisos, aviso al dueño). No se guarda la
-   transcripción: solo la palabra clave de la lista fija.
+   transcripción: solo la palabra clave de la lista fija (si el modelo manda otro texto, se descarta y se guarda un texto fijo).
 5. **Cierre y costo**: la vertical llama `eventosCostoLlamada` y `PostgresCostoVozRepository.registrarCostoLlamada` (`core.record_usage_cost_event`;
    vertical 'citas' la fija la base; un evento por escalón). Con la base sin la migración 0028 el costo queda "no disponible aún" (SAVEPOINT; nunca un 500).
 6. **Panel**: `GET /v1/citas/properties/:propertyId/admin/voz/estado` (credenciales por escalón, precio por minuto, vista previa disponible o el motivo) y

@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { registrarEscalacionCrisis } from "../crisis-guardrail.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
 import type { CitasRepository } from "../repository.ts";
-import { requiresCrisisGuardrail } from "../vertical-config.ts";
+import { CRISIS_KEYWORDS, requiresCrisisGuardrail } from "../vertical-config.ts";
 import { executeToolCall } from "../whatsapp/llm-turn-handler.ts";
 import { MOTIVO_CRISIS_VOZ, PREFIJO_PALABRA_CLAVE } from "./guardia-crisis.ts";
 
@@ -80,12 +80,15 @@ export async function derivarAHumanoVoz(ctx: CitasVozContexto, entrada: { readon
   const tenant = await ctx.repo.findTenantConfig(ctx.organizationId);
 
   if (motivo === MOTIVO_CRISIS_VOZ && tenant && requiresCrisisGuardrail(tenant.rubro)) {
-    const palabra = resumen.startsWith(PREFIJO_PALABRA_CLAVE) ? resumen.slice(PREFIJO_PALABRA_CLAVE.length).trim() : "";
+    // Solo una palabra de la lista FIJA (la que puso la guardia determinista) llega a la base y al aviso del dueño: el texto libre que mande el
+    // modelo (o lo que haya dicho el cliente) se descarta y se guarda el texto fijo.
+    const candidata = resumen.startsWith(PREFIJO_PALABRA_CLAVE) ? resumen.slice(PREFIJO_PALABRA_CLAVE.length).trim() : "";
+    const palabra = CRISIS_KEYWORDS.includes(candidata) ? candidata : "";
     await registrarEscalacionCrisis(
       ctx.repo,
       ctx.organizationId,
       tenant.ownerNotificationPhone,
-      { customerPhone: telefono, channel: "voice", keyword: (palabra || "señal de crisis en la llamada").slice(0, 120), excerpt: "" },
+      { customerPhone: telefono, channel: "voice", keyword: palabra || "señal de crisis en la llamada", excerpt: "" },
       ctx.handoffGate,
     );
     return { ok: true, derivado: true, aviso_enviado: tenant.ownerNotificationPhone !== null, crisis: true, mensaje: "Una persona del equipo se pondrá en contacto." };
