@@ -1,10 +1,10 @@
 // Ficha de un CFDI (Fase 9) — GET .../cfdi/:invoiceId (cfdi.ts, `serializeInvoice`):
 // el resultado completo de `validarCfdiDespachos()` (issues/warnings/DIOT), no solo
 // el resumen de la lista.
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { AlertTriangle, ArrowLeft, Check, X } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, notify } from "@atiende/ui";
+import { AlertTriangle, Check, X } from "lucide-react";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, FormField, NativeSelect, PageContainer, PageHeader, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, notify, useConfirm } from "@atiende/ui";
 import { fetchInvoice, registrarEstadoSat, verificarEstatusSat } from "../lib/cfdi-client.ts";
 import type { EstadoSatCfdi, InvoiceSummary } from "../lib/cfdi-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
@@ -42,6 +42,7 @@ function Field({ label, value }: { label: string; value: string }) {
 
 export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }: DespachosShellContext) {
   const { invoiceId } = useParams<{ invoiceId: string }>();
+  const { confirmar, dialogo } = useConfirm();
   const [invoice, setInvoice] = useState<InvoiceSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +102,15 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
 
   async function handleResolver(decision: "aprobar" | "rechazar") {
     if (!revision) return;
+    if (decision === "rechazar") {
+      const ok = await confirmar({
+        titulo: "Rechazar CFDI",
+        descripcion: "El CFDI queda rechazado en la cola de revisión humana. Esta decisión no se puede deshacer.",
+        tono: "danger",
+        confirmar: "Rechazar",
+      });
+      if (!ok) return;
+    }
     setResolviendo(true);
     setRevisionError(null);
     try {
@@ -108,6 +118,7 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
       if (decision === "aprobar") await aprobarRevision(fetch, apiBaseUrl, token, propertyId, revision.id, notaTrim);
       else await rechazarRevision(fetch, apiBaseUrl, token, propertyId, revision.id, notaTrim);
       setNota("");
+      notify.success(decision === "aprobar" ? "Revisión aprobada." : "CFDI rechazado.");
       await loadRevision();
     } catch (err) {
       setRevisionError(err instanceof Error ? err.message : "No se pudo resolver la revisión.");
@@ -155,78 +166,55 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
     }
   }
 
-  if (!invoiceId) return <p role="alert" className="text-destructive text-sm">CFDI no especificado.</p>;
+  if (!invoiceId) return <EstadoError mensaje="CFDI no especificado." />;
   if (loading && !invoice) return <EstadoCargando etiqueta="Cargando CFDI…" />;
   if (error) return <EstadoError mensaje={error} />;
   if (!invoice) return null;
 
   return (
-    <PageContainer padding="none" size="md" className="gap-4 [&>*]:min-w-0">
-      <div>
-        <Link to={`/despachos/${orgSlug}/cfdi`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
-          CFDI
-        </Link>
-      </div>
-
-      <header className="flex flex-wrap items-center gap-3">
-        <h1 className="font-mono text-lg font-semibold text-foreground">{invoice.folioFiscal}</h1>
-        <div className="flex items-center gap-2">
-          {invoice.valido ? (
-            <StatusBadge tone="success">Válido</StatusBadge>
-          ) : (
-            <StatusBadge tone="danger">Con hallazgos</StatusBadge>
-          )}
-          {invoice.requiereRevisionHumana && <StatusBadge tone="warning">Requiere revisión humana</StatusBadge>}
-        </div>
-      </header>
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader
+        atras={{ etiqueta: "CFDI", to: `/despachos/${orgSlug}/cfdi` }}
+        titulo="Detalle del CFDI"
+        descripcion={<span className="font-mono">{invoice.folioFiscal}</span>}
+        meta={
+          <>
+            {invoice.valido ? <StatusBadge tone="success">Válido</StatusBadge> : <StatusBadge tone="danger">Con hallazgos</StatusBadge>}
+            {invoice.requiereRevisionHumana && <StatusBadge tone="warning">Requiere revisión humana</StatusBadge>}
+          </>
+        }
+      />
 
       {invoice.requiereRevisionHumana && (
-        <Card className="border-destructive/30 bg-destructive/5">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm text-destructive">
+        <Card className="border-destructive/30 bg-destructive-tint">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="h-4 w-4" strokeWidth={1.75} />
               Revisión humana
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
-            {revisionError && (
-              <p role="alert" className="text-destructive text-sm">
-                {revisionError}
-              </p>
-            )}
-                        {revisionLoading && !revision && (
-              <EstadoCargando etiqueta="Cargando estado de revisión…" lineas={1} />
-            )}
+            {revisionError && <Callout tone="danger">{revisionError}</Callout>}
+            {revisionLoading && !revision && <EstadoCargando etiqueta="Cargando estado de revisión…" lineas={1} />}
 
-            {!revisionLoading && !revision && !revisionError && (
-              <p role="status" className="text-sm text-success">
-                Esta revisión ya fue resuelta (aprobada o rechazada).
-              </p>
-            )}
+            {!revisionLoading && !revision && !revisionError && <Callout tone="success">Esta revisión ya fue resuelta (aprobada o rechazada).</Callout>}
 
             {revision && (
               <>
                 <p className="text-sm text-foreground">{revision.motivo}</p>
                 {RESOLVER_ROLES.has(role) ? (
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="revision-nota" className="sr-only">
-                      Nota de la decisión
-                    </Label>
-                    <Textarea
-                      id="revision-nota"
-                      placeholder="Nota de la decisión (opcional)"
-                      value={nota}
-                      onChange={(e) => setNota(e.target.value)}
-                      rows={2} />
+                    <FormField label="Nota de la decisión (opcional)">
+                      <Textarea id="revision-nota" placeholder="Nota de la decisión (opcional)" value={nota} onChange={(e) => setNota(e.target.value)} rows={2} />
+                    </FormField>
                     <div className="flex gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={() => handleResolver("aprobar")} disabled={resolviendo}>
+                      <Button type="button" variant="outline" onClick={() => handleResolver("aprobar")} loading={resolviendo}>
                         <Check />
-                        {resolviendo ? "…" : "Aprobar"}
+                        Aprobar
                       </Button>
-                      <Button type="button" variant="destructive" size="sm" onClick={() => handleResolver("rechazar")} disabled={resolviendo}>
+                      <Button type="button" variant="destructive" onClick={() => handleResolver("rechazar")} disabled={resolviendo}>
                         <X />
-                        {resolviendo ? "…" : "Rechazar"}
+                        Rechazar
                       </Button>
                     </div>
                   </div>
@@ -254,8 +242,8 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Datos fiscales del comprobante</CardTitle>
+        <CardHeader>
+          <CardTitle>Datos fiscales del comprobante</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
           <Field label="Sentido" value={formatDireccionCfdi(invoice.direccion)} />
@@ -272,8 +260,8 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
 
       {invoice.impuestos && invoice.impuestos.length > 0 && (
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Impuestos desglosados</CardTitle>
+          <CardHeader>
+            <CardTitle>Impuestos desglosados</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
@@ -303,8 +291,8 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
       )}
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 pb-3">
-          <CardTitle className="text-sm">Estado ante el SAT</CardTitle>
+        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+          <CardTitle>Estado ante el SAT</CardTitle>
           <StatusBadge tone={tonoEstadoSat(invoice.estadoSat)}>{formatEstadoSat(invoice.estadoSat)}</StatusBadge>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
@@ -316,37 +304,31 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
               <Button type="button" size="sm" variant="outline" loading={verificandoSat} loadingText="Consultando al SAT…" disabled={guardandoSat || invoice.estadoSat === "cancelado"} onClick={() => void handleVerificarSat()}>
                 Verificar en el SAT
               </Button>
-              <Label htmlFor="cfdi-estado-sat" className="text-xs text-muted-foreground">
-                Registrar estado
-              </Label>
-              <NativeSelect
-                id="cfdi-estado-sat"
-                size="sm"
-                value={invoice.estadoSat ?? "pendiente"}
-                disabled={guardandoSat || invoice.estadoSat === "cancelado"}
-                onChange={(e) => void handleEstadoSat(e.target.value as EstadoSatCfdi)}
-                wrapperClassName="w-auto"
-              >
-                {ESTADOS_SAT.map((e) => (
-                  <option key={e} value={e}>
-                    {formatEstadoSat(e)}
-                  </option>
-                ))}
-              </NativeSelect>
+              <FormField label="Registrar estado" className="grid-flow-col items-center gap-2">
+                <NativeSelect
+                  id="cfdi-estado-sat"
+                  value={invoice.estadoSat ?? "pendiente"}
+                  disabled={guardandoSat || invoice.estadoSat === "cancelado"}
+                  onChange={(e) => void handleEstadoSat(e.target.value as EstadoSatCfdi)}
+                  wrapperClassName="w-auto"
+                >
+                  {ESTADOS_SAT.map((e) => (
+                    <option key={e} value={e}>
+                      {formatEstadoSat(e)}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </FormField>
               {invoice.estadoSat === "cancelado" && <span className="text-xs text-muted-foreground">Un CFDI cancelado ya no cambia de estado.</span>}
             </div>
           )}
-          {errorSat && (
-            <p role="alert" className="text-sm text-destructive">
-              {errorSat}
-            </p>
-          )}
+          {errorSat && <Callout tone="danger">{errorSat}</Callout>}
         </CardContent>
       </Card>
 
       {invoice.issues.length > 0 && (
         <div>
-          <h2 className="mb-2 text-sm font-semibold text-foreground">Hallazgos</h2>
+          <h2 className="mb-2 text-sm font-medium text-foreground">Hallazgos</h2>
           <ul className="m-0 list-disc pl-5 text-sm text-destructive">
             {invoice.issues.map((i, idx) => (
               <li key={`${i.codigo}-${idx}`}>
@@ -359,7 +341,7 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
 
       {invoice.warnings.length > 0 && (
         <div>
-          <h2 className="mb-2 text-sm font-semibold text-foreground">Advertencias</h2>
+          <h2 className="mb-2 text-sm font-medium text-foreground">Advertencias</h2>
           <ul className="m-0 list-disc pl-5 text-sm text-warning">
             {invoice.warnings.map((w, idx) => (
               <li key={idx}>{w}</li>
@@ -369,11 +351,12 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
       )}
 
       <div>
-        <h2 className="mb-2 text-sm font-semibold text-foreground">DIOT</h2>
+        <h2 className="mb-2 text-sm font-medium text-foreground">DIOT</h2>
         <p className="text-sm text-foreground">
           {invoice.diot.reportable ? `Reportable — ${invoice.diot.proveedoresReportables.length} proveedor(es)` : "No reportable"}
         </p>
       </div>
+      {dialogo}
     </PageContainer>
   );
 }

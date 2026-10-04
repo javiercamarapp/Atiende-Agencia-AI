@@ -3,9 +3,8 @@
 // solo se muestra al crearlo (la base guarda unicamente su hash): hay que copiarlo y entregarlo al cliente.
 // Esta pantalla NO envia correos ni WhatsApp: avisar al cliente es una accion manual del despacho.
 import { useCallback, useEffect, useState } from "react";
-import type { FormEvent } from "react";
-import { Copy, Download, Link2 } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label, NativeSelect, PageContainer, StatusBadge, Textarea } from "@atiende/ui";
+import { Copy, Download, Link2, Plus } from "lucide-react";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, NativeSelect, PageContainer, PageHeader, StatusBadge, Textarea, notify, useConfirm } from "@atiende/ui";
 import {
   aceptarPortalDocumento,
   crearPortalEnlace,
@@ -21,20 +20,16 @@ import {
 } from "../lib/portal-cliente-client.ts";
 import type { PortalDocumentoStaff, PortalEnlaceStaff, PortalMensajeStaff } from "../lib/portal-cliente-client.ts";
 import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
+import { formatDateTime } from "../lib/format.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
-
-function fechaHora(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Mexico_City" });
-}
 
 const TIPO_ETIQUETA: Readonly<Record<PortalDocumentoStaff["tipo"], string>> = { cfdi_xml: "CFDI (XML)", pdf: "PDF", imagen: "Imagen" };
 
 export function PortalClientePage({ apiBaseUrl, token, propertyId, role }: DespachosShellContext) {
   const puedeGestionar = GESTIONAR_ROLES.has(role);
+  const { confirmar, pedirTexto, dialogo } = useConfirm();
   const [enlaces, setEnlaces] = useState<readonly PortalEnlaceStaff[]>([]);
   const [documentos, setDocumentos] = useState<readonly PortalDocumentoStaff[]>([]);
   const [mensajes, setMensajes] = useState<readonly PortalMensajeStaff[]>([]);
@@ -42,6 +37,7 @@ export function PortalClientePage({ apiBaseUrl, token, propertyId, role }: Despa
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{ tono: "success" | "danger" | "info"; texto: string } | null>(null);
+  const [dialogoEnlace, setDialogoEnlace] = useState(false);
   const [etiqueta, setEtiqueta] = useState("");
   const [dias, setDias] = useState("30");
   const [urlNueva, setUrlNueva] = useState<string | null>(null);
@@ -84,14 +80,21 @@ export function PortalClientePage({ apiBaseUrl, token, propertyId, role }: Despa
     }
   }
 
-  async function alCrear(e: FormEvent) {
-    e.preventDefault();
-    await accion(async () => {
+  async function alCrear() {
+    setOcupado(true);
+    setAviso(null);
+    try {
       const r = await crearPortalEnlace(fetch, apiBaseUrl, token, propertyId, etiqueta.trim(), Number(dias));
       setUrlNueva(r.url);
       setEtiqueta("");
-      return null;
-    });
+      setDialogoEnlace(false);
+      notify.success("Enlace creado.");
+      await cargar();
+    } catch (err) {
+      notify.error(err instanceof Error ? err.message : "No se pudo crear el enlace.");
+    } finally {
+      setOcupado(false);
+    }
   }
 
   async function copiar(url: string) {
@@ -117,8 +120,35 @@ export function PortalClientePage({ apiBaseUrl, token, propertyId, role }: Despa
     }
   }
 
+  async function revocar(e: PortalEnlaceStaff) {
+    const ok = await confirmar({
+      titulo: "Revocar enlace",
+      descripcion: `El enlace «${e.etiqueta}» dejará de funcionar de inmediato y el cliente ya no podrá entrar con él. No se puede deshacer.`,
+      tono: "danger",
+      confirmar: "Revocar",
+    });
+    if (!ok) return;
+    await accion(async () => {
+      await revocarPortalEnlace(fetch, apiBaseUrl, token, propertyId, e.id);
+      return "Enlace revocado.";
+    });
+  }
+
+  async function aceptar(d: PortalDocumentoStaff) {
+    await accion(async () => {
+      const r = await aceptarPortalDocumento(fetch, apiBaseUrl, token, propertyId, d.id);
+      return r.invoiceId ? "CFDI ingresado. Revisa su validación en CFDI." : "Documento aceptado.";
+    });
+  }
+
   async function rechazar(d: PortalDocumentoStaff) {
-    const motivo = window.prompt("Motivo del rechazo (el cliente lo verá):", "") ?? null;
+    const motivo = await pedirTexto({
+      titulo: "Rechazar documento",
+      descripcion: `«${d.nombreArchivo}» quedará rechazado y el cliente verá el motivo. No se puede deshacer.`,
+      tono: "danger",
+      confirmar: "Rechazar",
+      campo: { etiqueta: "Motivo del rechazo (el cliente lo verá)", multilinea: true, requerido: false, maxLength: 500 },
+    });
     if (motivo === null) return;
     await accion(async () => {
       await rechazarPortalDocumento(fetch, apiBaseUrl, token, propertyId, d.id, motivo);
@@ -126,8 +156,7 @@ export function PortalClientePage({ apiBaseUrl, token, propertyId, role }: Despa
     });
   }
 
-  async function responder(e: FormEvent) {
-    e.preventDefault();
+  async function responder() {
     const cuerpo = respuesta.trim();
     if (!cuerpo) return;
     await accion(async () => {
@@ -137,143 +166,199 @@ export function PortalClientePage({ apiBaseUrl, token, propertyId, role }: Despa
     });
   }
 
-  if (cargando) return <PageContainer><EstadoCargando /></PageContainer>;
-  if (error) return <PageContainer><EstadoError mensaje={error} onReintentar={() => void cargar()} /></PageContainer>;
+  if (cargando) return <EstadoCargando />;
+  if (error) return <EstadoError mensaje={error} onReintentar={() => void cargar()} />;
 
   return (
     <PageContainer>
-      <div className="flex flex-col gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Portal del cliente</h1>
-          <p className="text-sm text-muted-foreground">Comparte un enlace privado para que tu cliente vea el estatus de sus obligaciones, suba CFDI y documentos, y te escriba.</p>
-        </div>
+      <PageHeader
+        titulo="Portal del cliente"
+        descripcion="Comparte un enlace privado para que tu cliente vea el estatus de sus obligaciones, suba CFDI y documentos, y te escriba."
+        acciones={
+          puedeGestionar && disponible ? (
+            <Button size="sm" onClick={() => setDialogoEnlace(true)}>
+              <Plus />
+              Crear enlace
+            </Button>
+          ) : undefined
+        }
+      />
 
-        {!disponible && <Callout tone="warning" titulo="Portal aún no disponible">Este ambiente todavía no tiene aplicada la migración del portal del cliente. Puedes ver esta pantalla, pero no crear enlaces.</Callout>}
-        {aviso && <Callout tone={aviso.tono} onDismiss={() => setAviso(null)}>{aviso.texto}</Callout>}
+      {!disponible && (
+        <Callout tone="warning" titulo="Portal aún no disponible">
+          Este ambiente todavía no tiene aplicada la migración del portal del cliente. Puedes ver esta pantalla, pero no crear enlaces.
+        </Callout>
+      )}
+      {aviso && (
+        <Callout tone={aviso.tono} onDismiss={() => setAviso(null)}>
+          {aviso.texto}
+        </Callout>
+      )}
 
-        {urlNueva && (
-          <Callout tone="info" titulo="Enlace creado: cópialo ahora" icon={<Link2 className="size-4" aria-hidden="true" />}>
-            <p className="mb-2">Por seguridad este enlace solo se muestra una vez. Si lo pierdes, revócalo y crea otro.</p>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input readOnly value={urlNueva} aria-label="Enlace del portal" onFocus={(e) => e.currentTarget.select()} />
-              <Button type="button" variant="outline" onClick={() => void copiar(urlNueva)}><Copy className="mr-1.5 size-4" aria-hidden="true" /> Copiar</Button>
-              <Button type="button" variant="ghost" onClick={() => setUrlNueva(null)}>Listo</Button>
-            </div>
-          </Callout>
-        )}
+      {urlNueva && (
+        <Callout tone="info" titulo="Enlace creado: cópialo ahora" icon={<Link2 className="size-4" aria-hidden="true" />}>
+          <p className="mb-2">Por seguridad este enlace solo se muestra una vez. Si lo pierdes, revócalo y crea otro.</p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input readOnly value={urlNueva} aria-label="Enlace del portal" onFocus={(e) => e.currentTarget.select()} />
+            <Button type="button" variant="outline" onClick={() => void copiar(urlNueva)}>
+              <Copy aria-hidden="true" /> Copiar
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setUrlNueva(null)}>
+              Listo
+            </Button>
+          </div>
+        </Callout>
+      )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Enlaces del cliente</CardTitle>
-            <CardDescription>Cada enlace es privado, expira y se puede revocar en cualquier momento.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {puedeGestionar && disponible && (
-              <form onSubmit={(e) => void alCrear(e)} className="grid gap-3 sm:grid-cols-[1fr_10rem_auto] sm:items-end">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="portal-etiqueta">Para quién es</Label>
-                  <Input id="portal-etiqueta" value={etiqueta} onChange={(e) => setEtiqueta(e.target.value)} maxLength={80} placeholder="Ej. Contacto de administración" required />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="portal-dias">Vigencia</Label>
-                  <NativeSelect id="portal-dias" value={dias} onChange={(e) => setDias(e.target.value)}>
-                    <option value="7">7 días</option>
-                    <option value="30">30 días</option>
-                    <option value="90">90 días</option>
-                    <option value="180">180 días</option>
-                    <option value="365">365 días</option>
-                  </NativeSelect>
-                </div>
-                <Button type="submit" disabled={ocupado || etiqueta.trim().length === 0}>Crear enlace</Button>
-              </form>
-            )}
-            {enlaces.length === 0 ? <p className="text-sm text-muted-foreground">Aún no has creado enlaces para este cliente.</p> : (
-              <ul className="flex flex-col divide-y divide-border">
-                {enlaces.map((e) => {
-                  const est = estadoEnlace(e);
-                  return (
-                    <li key={e.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">{e.etiqueta}</p>
-                        <p className="text-xs text-muted-foreground">Expira el {formatFechaSolo(e.expiraEn.slice(0, 10))} · último acceso: {fechaHora(e.ultimoUsoEn)}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <StatusBadge tone={est.tono}>{est.etiqueta}</StatusBadge>
-                        {puedeGestionar && est.etiqueta === "Vigente" && (
-                          <Button size="sm" variant="outline" disabled={ocupado} onClick={() => void accion(async () => { await revocarPortalEnlace(fetch, apiBaseUrl, token, propertyId, e.id); return "Enlace revocado."; })}>Revocar</Button>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Documentos recibidos</CardTitle>
-            <CardDescription>Aceptar un CFDI lo ingresa al flujo normal de CFDI (validación, lista 69-B del SAT y revisión).</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {documentos.length === 0 ? <p className="text-sm text-muted-foreground">No hay documentos recibidos.</p> : (
-              <ul className="flex flex-col divide-y divide-border">
-                {documentos.map((d) => {
-                  const est = estadoDocumento(d.estado);
-                  return (
-                    <li key={d.id} className="flex flex-col gap-2 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-foreground">{d.nombreArchivo}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {TIPO_ETIQUETA[d.tipo]} · {Math.max(1, Math.round(d.tamanoBytes / 1024))} KB · {fechaHora(d.creadoEn)}
-                            {d.resumen.folio_fiscal ? ` · UUID ${d.resumen.folio_fiscal.slice(0, 8)}… · total $${d.resumen.total ?? ""}` : ""}
-                          </p>
-                        </div>
-                        <StatusBadge tone={est.tono}>{est.etiqueta}</StatusBadge>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" onClick={() => void descargar(d)}><Download className="mr-1.5 size-4" aria-hidden="true" /> Descargar</Button>
-                        {puedeGestionar && d.estado === "recibido" && (
-                          <>
-                            <Button size="sm" disabled={ocupado} onClick={() => void accion(async () => { const r = await aceptarPortalDocumento(fetch, apiBaseUrl, token, propertyId, d.id); return r.invoiceId ? "CFDI ingresado. Revisa su validación en CFDI." : "Documento aceptado."; })}>Aceptar</Button>
-                            <Button size="sm" variant="outline" disabled={ocupado} onClick={() => void rechazar(d)}>Rechazar</Button>
-                          </>
-                        )}
-                      </div>
-                      {d.estado === "rechazado" && d.motivo && <p className="text-xs text-muted-foreground">Motivo: {d.motivo}</p>}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Mensajes</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {mensajes.length === 0 && <p className="text-sm text-muted-foreground">Aún no hay mensajes.</p>}
-            <ul className="flex flex-col gap-2">
-              {mensajes.map((m) => (
-                <li key={m.id} className={m.autor === "despacho" ? "self-end rounded-card bg-primary/10 px-3 py-2 text-sm" : "self-start rounded-card bg-muted px-3 py-2 text-sm"}>
-                  <p className="whitespace-pre-wrap break-words text-foreground">{m.cuerpo}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{m.autor === "despacho" ? "Despacho" : "Cliente"} · {fechaHora(m.creadoEn)}</p>
-                </li>
-              ))}
+      <Card>
+        <CardHeader>
+          <CardTitle>Enlaces del cliente</CardTitle>
+          <CardDescription>Cada enlace es privado, expira y se puede revocar en cualquier momento.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {enlaces.length === 0 ? (
+            <EstadoVacio compacto mensaje="Aún no has creado enlaces para este cliente." />
+          ) : (
+            <ul className="flex flex-col divide-y divide-border">
+              {enlaces.map((e) => {
+                const est = estadoEnlace(e);
+                return (
+                  <li key={e.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{e.etiqueta}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Expira el {formatFechaSolo(e.expiraEn.slice(0, 10))} · último acceso: {formatDateTime(e.ultimoUsoEn)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge tone={est.tono}>{est.etiqueta}</StatusBadge>
+                      {puedeGestionar && est.etiqueta === "Vigente" && (
+                        <Button size="sm" variant="destructive" disabled={ocupado} onClick={() => void revocar(e)}>
+                          Revocar
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
-            {puedeGestionar && disponible && (
-              <form onSubmit={(e) => void responder(e)} className="flex flex-col gap-2">
-                <Textarea value={respuesta} onChange={(e) => setRespuesta(e.target.value)} maxLength={2000} rows={3} placeholder="Responder al cliente…" aria-label="Respuesta al cliente" />
-                <Button type="submit" disabled={ocupado || respuesta.trim().length === 0}>Enviar respuesta</Button>
-              </form>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Documentos recibidos</CardTitle>
+          <CardDescription>Aceptar un CFDI lo ingresa al flujo normal de CFDI (validación, lista 69-B del SAT y revisión).</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {documentos.length === 0 ? (
+            <EstadoVacio compacto mensaje="No hay documentos recibidos." />
+          ) : (
+            <ul className="flex flex-col divide-y divide-border">
+              {documentos.map((d) => {
+                const est = estadoDocumento(d.estado);
+                return (
+                  <li key={d.id} className="flex flex-col gap-2 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{d.nombreArchivo}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {TIPO_ETIQUETA[d.tipo]} · {Math.max(1, Math.round(d.tamanoBytes / 1024))} KB · {formatDateTime(d.creadoEn)}
+                          {d.resumen.folio_fiscal ? ` · UUID ${d.resumen.folio_fiscal.slice(0, 8)}… · total $${d.resumen.total ?? ""}` : ""}
+                        </p>
+                      </div>
+                      <StatusBadge tone={est.tono}>{est.etiqueta}</StatusBadge>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={() => void descargar(d)}>
+                        <Download aria-hidden="true" /> Descargar
+                      </Button>
+                      {puedeGestionar && d.estado === "recibido" && (
+                        <>
+                          <Button size="sm" disabled={ocupado} onClick={() => void aceptar(d)}>
+                            Aceptar
+                          </Button>
+                          <Button size="sm" variant="destructive" disabled={ocupado} onClick={() => void rechazar(d)}>
+                            Rechazar
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    {d.estado === "rechazado" && d.motivo && <p className="text-xs text-muted-foreground">Motivo: {d.motivo}</p>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Mensajes</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {mensajes.length === 0 && <EstadoVacio compacto mensaje="Aún no hay mensajes." />}
+          <ul className="flex flex-col gap-2">
+            {mensajes.map((m) => (
+              <li key={m.id} className={m.autor === "despacho" ? "self-end rounded-card bg-primary/10 px-3 py-2 text-sm" : "self-start rounded-card bg-muted px-3 py-2 text-sm"}>
+                <p className="whitespace-pre-wrap break-words text-foreground">{m.cuerpo}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {m.autor === "despacho" ? "Despacho" : "Cliente"} · {formatDateTime(m.creadoEn)}
+                </p>
+              </li>
+            ))}
+          </ul>
+          {puedeGestionar && disponible && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void responder();
+              }}
+              className="flex flex-col gap-2"
+            >
+              <FormField label="Responder al cliente">
+                <Textarea value={respuesta} onChange={(e) => setRespuesta(e.target.value)} maxLength={2000} rows={3} placeholder="Escribe tu respuesta…" />
+              </FormField>
+              <Button type="submit" className="self-start" loading={ocupado} disabled={respuesta.trim().length === 0}>
+                Enviar respuesta
+              </Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
+
+      <FormDialog
+        open={dialogoEnlace}
+        onOpenChange={(abierto) => {
+          if (!ocupado) setDialogoEnlace(abierto);
+        }}
+        titulo="Crear enlace del cliente"
+        subtitulo="El enlace es privado y expira; solo se muestra completo al crearlo."
+        anchoClase="max-w-lg"
+        onGuardar={() => void alCrear()}
+        guardando={ocupado}
+        guardarDeshabilitado={etiqueta.trim().length === 0}
+        textoBotonGuardar="Crear enlace"
+        bloquearCierre={ocupado}
+      >
+        <div className="grid gap-3">
+          <FormField label="Para quién es" required>
+            <Input id="portal-etiqueta" value={etiqueta} onChange={(e) => setEtiqueta(e.target.value)} maxLength={80} placeholder="Ej. Contacto de administración" />
+          </FormField>
+          <FormField label="Vigencia">
+            <NativeSelect id="portal-dias" value={dias} onChange={(e) => setDias(e.target.value)}>
+              <option value="7">7 días</option>
+              <option value="30">30 días</option>
+              <option value="90">90 días</option>
+              <option value="180">180 días</option>
+              <option value="365">365 días</option>
+            </NativeSelect>
+          </FormField>
+        </div>
+      </FormDialog>
+      {dialogo}
     </PageContainer>
   );
 }

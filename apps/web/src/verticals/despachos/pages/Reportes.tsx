@@ -3,18 +3,21 @@
 // ingeridos, vencimientos del SAT); lo que el modelo no guarda se muestra «Sin datos» con su
 // motivo (ver `@atiende/domain-despachos::reportes/builders.ts`). Solo lectura.
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
-import { Download, FileSpreadsheet, FileText } from "lucide-react";
+import { FileSpreadsheet, FileText } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   EstadoCargando,
   EstadoError,
+  EstadoVacio,
+  FormField,
   Input,
-  Label,
   NativeSelect,
+  notify,
   PageContainer,
+  PageHeader,
   Table,
   TableBody,
   TableCell,
@@ -51,12 +54,9 @@ function guardarArchivo(blob: Blob, nombre: string) {
 function SeccionTabla({ seccion }: { seccion: SeccionReporte }) {
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="font-display text-sm font-semibold text-foreground">{seccion.titulo}</h3>
+      <h2 className="text-sm font-medium text-foreground">{seccion.titulo}</h2>
       {seccion.sinDatosMotivo !== null ? (
-        <div role="status" className="rounded-lg border border-dashed border-border bg-card/50 px-4 py-3 text-sm">
-          <p className="font-medium text-foreground">Sin datos</p>
-          <p className="mt-0.5 text-muted-foreground">{seccion.sinDatosMotivo}</p>
-        </div>
+        <EstadoVacio titulo="Sin datos" mensaje={seccion.sinDatosMotivo} />
       ) : (
         <Card>
           <CardContent className="overflow-x-auto p-0">
@@ -128,61 +128,42 @@ export function ReportesPage({ apiBaseUrl, token, propertyId }: DespachosShellCo
     // Solo al montar y al cambiar de contribuyente (el Shell remonta por propertyId); el resto lo dispara el botón.
   }, [apiBaseUrl, token, propertyId]);
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
+  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void generar();
   }
 
   async function descargar(formato: FormatoReporte) {
     setDescargando(formato);
-    setError(null);
     try {
       const { blob, nombre } = await descargarReporte(fetch, apiBaseUrl, token, propertyId, tipo, periodo, formato);
       guardarArchivo(blob, nombre);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo descargar el archivo.");
+      notify.error(err instanceof Error ? err.message : "No se pudo descargar el archivo.");
     } finally {
       setDescargando(null);
     }
   }
 
   return (
-    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
-      <header>
-        <h1 className="font-display text-xl font-semibold text-foreground">Reportes de cliente</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Balanza, DIOT, nómina e impuestos del contribuyente activo, listos para revisar, descargar en PDF o en Excel. Solo con datos reales: lo que aún no existe en el sistema se marca «Sin datos».</p>
-      </header>
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader titulo="Reportes de cliente" descripcion="Balanza, DIOT, nómina e impuestos del contribuyente activo, en PDF o Excel. Lo que aún no existe se marca «Sin datos»." />
 
       <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="reporte-tipo">Reporte</Label>
-          <NativeSelect
-            id="reporte-tipo"
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value as TipoReporte)}
-            wrapperClassName="w-auto min-w-44"
-          >
+        <FormField label="Reporte">
+          <NativeSelect id="reporte-tipo" value={tipo} onChange={(e) => setTipo(e.target.value as TipoReporte)} wrapperClassName="w-auto min-w-44">
             {TIPOS_REPORTE.map((t) => (
               <option key={t} value={t}>
                 {ETIQUETAS_TIPO_REPORTE[t]}
               </option>
             ))}
           </NativeSelect>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="reporte-periodo">Período (AAAA-MM)</Label>
-          <Input
-            id="reporte-periodo"
-            type="text"
-            inputMode="numeric"
-            placeholder="2026-08"
-            value={periodo}
-            onChange={(e) => setPeriodo(e.target.value)}
-            className="w-32"
-          />
-        </div>
-        <Button type="submit" disabled={loading}>
-          {loading ? "Generando…" : "Generar reporte"}
+        </FormField>
+        <FormField label="Período (AAAA-MM)">
+          <Input id="reporte-periodo" type="text" inputMode="numeric" placeholder="2026-08" value={periodo} onChange={(e) => setPeriodo(e.target.value)} className="w-32" />
+        </FormField>
+        <Button type="submit" loading={loading}>
+          Generar reporte
         </Button>
       </form>
 
@@ -193,27 +174,25 @@ export function ReportesPage({ apiBaseUrl, token, propertyId }: DespachosShellCo
         <article className="flex flex-col gap-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="font-display text-lg font-semibold text-foreground">{reporte.titulo}</h2>
-              <p className="text-sm text-muted-foreground">
+              <h2 className="text-sm font-medium text-foreground">{reporte.titulo}</h2>
+              <p className="text-ui text-muted-foreground">
                 {reporte.contribuyente.nombre} · RFC {reporte.contribuyente.rfc ?? "sin datos"} · Período {reporte.periodo} · Generado el {reporte.generadoEn}
               </p>
             </div>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => void descargar("pdf")} disabled={descargando !== null}>
-                {descargando === "pdf" ? <Download /> : <FileText />}
+              <Button type="button" variant="outline" size="sm" onClick={() => void descargar("pdf")} loading={descargando === "pdf"} disabled={descargando !== null}>
+                <FileText />
                 Descargar PDF
               </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => void descargar("xlsx")} disabled={descargando !== null}>
-                {descargando === "xlsx" ? <Download /> : <FileSpreadsheet />}
+              <Button type="button" variant="outline" size="sm" onClick={() => void descargar("xlsx")} loading={descargando === "xlsx"} disabled={descargando !== null}>
+                <FileSpreadsheet />
                 Descargar Excel
               </Button>
             </div>
           </div>
 
           {reporte.sinDatos && (
-            <p role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
-              No hay datos para este reporte en el período indicado.
-            </p>
+            <Callout tone="neutral">No hay datos para este reporte en el período indicado.</Callout>
           )}
 
           {reporte.secciones.map((s) => (

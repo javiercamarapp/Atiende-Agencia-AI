@@ -4,6 +4,7 @@
 // servidor), deshacer con motivo (useConfirm), "Sugerir con IA" con estado honesto sin IA, aprobar/rechazar sugerencias con confianza y razon, base sin migrar
 // y acciones ocultas por rol.
 import { act } from "react";
+import { pulsarEnDialogo } from "./test-utils/confirm.ts";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConciliacionPage } from "../src/verticals/despachos/pages/Conciliacion.tsx";
@@ -230,6 +231,8 @@ describe("Conciliacion -- conciliacion guardada por periodo", () => {
       click(document.body.querySelector('button[aria-label="Rechazar sugerencia"]')!);
       await flushMicrotasks();
     });
+    expect(escrituras().some((l) => l.url.endsWith("/sugerencias/sg-1/rechazar"))).toBe(false); // pide confirmacion primero
+    await pulsarEnDialogo("Rechazar");
     await flush();
     expect(escrituras().some((l) => l.url.endsWith("/sugerencias/sg-1/rechazar"))).toBe(true);
   });
@@ -267,5 +270,21 @@ describe("Conciliacion -- conciliacion guardada por periodo", () => {
     expect(texto).not.toContain("Confirmar seleccionados");
     expect(texto).not.toContain("Sugerir con IA");
     expect(texto).not.toContain("Cerrar sesión");
+  });
+
+  // UNI-C despachos: cerrar la sesion es irreversible -> useConfirm; Cancelar nunca llama a la API.
+  it("cerrar sesion pide confirmacion: Cancelar no manda nada y confirmar si", async () => {
+    stubFetch();
+    rendered = await montar("contador");
+    await abrirSesion();
+    click(boton("Cerrar sesión")!);
+    await flush();
+    await pulsarEnDialogo("Cancelar");
+    expect(escrituras().some((l) => l.url.endsWith("/sesiones/s-1/cerrar"))).toBe(false);
+    click(boton("Cerrar sesión")!);
+    await flush();
+    await pulsarEnDialogo("Cerrar sesión");
+    await flush();
+    expect(escrituras().some((l) => l.url.endsWith("/sesiones/s-1/cerrar"))).toBe(true);
   });
 });

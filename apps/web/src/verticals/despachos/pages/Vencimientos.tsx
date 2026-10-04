@@ -12,22 +12,22 @@
 // esta UI nunca decide una fecha límite fiscal, solo dispara el motor
 // existente y muestra su resultado.
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
 import { CalendarClock, CheckCircle2, ExternalLink, TrendingUp, TriangleAlert } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
+  FormDialog,
+  FormField,
   Input,
-  Label,
   NativeSelect,
+  notify,
   PageContainer,
+  PageHeader,
   StatusBadge,
   statusTone,
   Table,
@@ -36,6 +36,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  useConfirm,
 } from "@atiende/ui";
 import {
   barrerVencimientos,
@@ -71,8 +72,6 @@ function EstadoBadge({ estado }: { estado: EstadoVencimiento }) {
 
 interface RowActionState {
   readonly loading: boolean;
-  readonly message: string | null;
-  readonly isError: boolean;
 }
 
 // Catálogo c_RegimenFiscal (SAT) con calendario modelado por el motor.
@@ -100,6 +99,7 @@ const REGIMENES: ReadonlyArray<{ value: string; label: string }> = [
 const MESES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
 export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: DespachosShellContext) {
+  const { confirmar, dialogo } = useConfirm();
   const [vencimientos, setVencimientos] = useState<readonly FiscalDeadline[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -151,9 +151,12 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
     // eslint-plugin-react-hooks configurado.
   }, [apiBaseUrl, token, propertyId, filtroEstado]);
 
-  async function handleCalcular(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleCalcular() {
     setCalcError(null);
+    if (!Number.isInteger(calcAnio) || calcAnio < 2000) {
+      setCalcError("Año inválido.");
+      return;
+    }
     if (!Number.isInteger(calcMes) || calcMes < 1 || calcMes > 12) {
       setCalcError("Mes inválido.");
       return;
@@ -162,6 +165,7 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
     try {
       await calcularVencimientos(fetch, apiBaseUrl, token, propertyId, { year: calcAnio, month: calcMes, regimenFiscal: calcRegimen });
       setShowCalcularForm(false);
+      notify.success("Vencimientos del periodo calculados.");
       await load();
     } catch (err) {
       setCalcError(err instanceof Error ? err.message : "No se pudieron calcular los vencimientos del periodo.");
@@ -171,6 +175,12 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
   }
 
   async function handleBarrido() {
+    const ok = await confirmar({
+      titulo: "Escalar vencidos y por vencer",
+      descripcion: "Se escalarán todos los vencimientos que ya tocan y se encolarán los correos al equipo. No se puede deshacer.",
+      confirmar: "Escalar",
+    });
+    if (!ok) return;
     setBarridoMsg(null);
     setBarriendo(true);
     try {
@@ -195,127 +205,118 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
 
   async function handleCompletar(deadline: FiscalDeadline) {
     const comprobanteUrl = comprobanteDrafts[deadline.id]?.trim() || null;
-    setRowState(deadline.id, { loading: true, message: null, isError: false });
+    const ok = await confirmar({
+      titulo: "Marcar vencimiento como completado",
+      descripcion: `${deadline.tipo} · ${deadline.periodo}. Queda registrado como presentado y no se puede deshacer.`,
+      confirmar: "Marcar completado",
+    });
+    if (!ok) return;
+    setRowState(deadline.id, { loading: true });
     try {
       await completarVencimiento(fetch, apiBaseUrl, token, propertyId, deadline.id, comprobanteUrl);
-      setRowState(deadline.id, { loading: false, message: "Marcado como completado.", isError: false });
+      setRowState(deadline.id, { loading: false });
+      notify.success("Marcado como completado.");
       await load();
     } catch (err) {
-      setRowState(deadline.id, { loading: false, message: err instanceof Error ? err.message : "No se pudo marcar como completado.", isError: true });
+      setRowState(deadline.id, { loading: false });
+      notify.error(err instanceof Error ? err.message : "No se pudo marcar como completado.");
     }
   }
 
   async function handleEscalar(deadline: FiscalDeadline) {
-    setRowState(deadline.id, { loading: true, message: null, isError: false });
+    const ok = await confirmar({
+      titulo: "Escalar vencimiento",
+      descripcion: `${deadline.tipo} · ${deadline.periodo}. Se escalará y se encolará un correo al equipo. No se puede deshacer.`,
+      confirmar: "Escalar",
+    });
+    if (!ok) return;
+    setRowState(deadline.id, { loading: true });
     try {
       const resultado = await escalarVencimiento(fetch, apiBaseUrl, token, propertyId, deadline.id);
       const correos = resultado.notificacion.correosEncolados;
-      const mensaje = correos > 0 ? `Escalado (${resultado.escalamiento.nivel}). ${correos} correo(s) encolado(s) al staff.` : `Escalado (${resultado.escalamiento.nivel}). Sin correo enviado (sin destinatarios elegibles).`;
-      setRowState(deadline.id, { loading: false, message: mensaje, isError: false });
+      const mensaje = correos > 0 ? `Escalado (${resultado.escalamiento.nivel}). ${correos} correo(s) encolado(s) al equipo.` : `Escalado (${resultado.escalamiento.nivel}). Sin correo enviado (sin destinatarios elegibles).`;
+      setRowState(deadline.id, { loading: false });
+      notify.success(mensaje);
       await load();
     } catch (err) {
-      setRowState(deadline.id, { loading: false, message: err instanceof Error ? err.message : "No se pudo escalar el vencimiento.", isError: true });
+      setRowState(deadline.id, { loading: false });
+      notify.error(err instanceof Error ? err.message : "No se pudo escalar el vencimiento.");
     }
   }
 
   return (
-    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold text-foreground">Vencimientos fiscales</h1>
-          <p className="mt-1 text-sm text-muted-foreground">ISR, IVA, DIOT, Nómina, balanza y declaración anual -- fecha límite en día hábil (art. 12 CFF), con prioridad y escalamiento.</p>
-        </div>
-        {puedeGestionar && (
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => void handleBarrido()} disabled={barriendo}>
-              <TrendingUp />
-              {barriendo ? "Escalando…" : "Escalar vencidos y por vencer"}
-            </Button>
-          <Button variant={showCalcularForm ? "outline" : "default"} size="sm" onClick={() => setShowCalcularForm((v) => !v)}>
-            <CalendarClock />
-            {showCalcularForm ? "Cancelar" : "Calcular vencimientos del periodo"}
-          </Button>
-          </div>
-        )}
-      </header>
-
-      {barridoMsg && (
-        <p role={barridoMsg.isError ? "alert" : "status"} className={barridoMsg.isError ? "text-destructive text-sm" : "text-sm text-muted-foreground"}>
-          {barridoMsg.text}
-        </p>
-      )}
-
-      {/* Panel inline plegable (no overlay): dos campos que el staff llena
-          mirando la tabla de vencimientos de abajo. Solo cambia la piel. */}
-      {showCalcularForm && (
-        <Card className="max-w-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Calcular vencimientos</CardTitle>
-            <CardDescription>Genera las obligaciones del régimen elegido con fecha límite en día hábil. Las que dependen de un plazo por confirmar quedan marcadas para validar con el fiscalista.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleCalcular} className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="venc-anio">Año *</Label>
-                <Input id="venc-anio" type="number" value={calcAnio} onChange={(e) => setCalcAnio(Number(e.target.value))} required />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="venc-mes">Mes *</Label>
-                <NativeSelect
-                  id="venc-mes"
-                  value={calcMes}
-                  onChange={(e) => setCalcMes(Number(e.target.value))}
-                >
-                  {MESES.slice(1).map((nombre, i) => (
-                    <option key={i + 1} value={i + 1}>
-                      {nombre}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="venc-regimen">Régimen fiscal *</Label>
-                <NativeSelect id="venc-regimen" value={calcRegimen} onChange={(e) => setCalcRegimen(e.target.value)}>
-                  {REGIMENES.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </div>
-              {calcError && (
-                <p role="alert" className="text-destructive text-sm">
-                  {calcError}
-                </p>
-              )}
-              <Button type="submit" disabled={calculando} className="w-full">
-                {calculando ? "Calculando…" : "Calcular"}
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader
+        titulo="Vencimientos fiscales"
+        descripcion="ISR, IVA, DIOT, nómina, balanza y declaración anual, con fecha límite en día hábil (art. 12 CFF), prioridad y escalamiento."
+        acciones={
+          puedeGestionar ? (
+            <>
+              <Button variant="outline" size="sm" onClick={() => void handleBarrido()} loading={barriendo}>
+                <TrendingUp />
+                Escalar vencidos y por vencer
               </Button>
-            </form>
-          </CardContent>
-        </Card>
-      )}
+              <Button size="sm" onClick={() => setShowCalcularForm(true)}>
+                <CalendarClock />
+                Calcular vencimientos del periodo
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
+
+      {barridoMsg && <Callout tone={barridoMsg.isError ? "danger" : "info"}>{barridoMsg.text}</Callout>}
+
+      <FormDialog
+        open={showCalcularForm}
+        onOpenChange={(abierto) => {
+          if (!calculando) setShowCalcularForm(abierto);
+        }}
+        titulo="Calcular vencimientos"
+        subtitulo="Genera las obligaciones del régimen elegido con fecha límite en día hábil. Las que dependen de un plazo por confirmar quedan marcadas para validar con el fiscalista."
+        anchoClase="max-w-lg"
+        onGuardar={() => void handleCalcular()}
+        guardando={calculando}
+        textoBotonGuardar="Calcular"
+        bloquearCierre={calculando}
+      >
+        <div className="grid gap-3">
+          <FormField label="Año" required>
+            <Input id="venc-anio" type="number" value={calcAnio} onChange={(e) => setCalcAnio(Number(e.target.value))} />
+          </FormField>
+          <FormField label="Mes" required>
+            <NativeSelect id="venc-mes" value={calcMes} onChange={(e) => setCalcMes(Number(e.target.value))}>
+              {MESES.slice(1).map((nombre, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {nombre}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormField>
+          <FormField label="Régimen fiscal" required>
+            <NativeSelect id="venc-regimen" value={calcRegimen} onChange={(e) => setCalcRegimen(e.target.value)}>
+              {REGIMENES.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormField>
+          {calcError && <Callout tone="danger">{calcError}</Callout>}
+        </div>
+      </FormDialog>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
-      <div className="flex items-center gap-2">
-        <Label htmlFor="venc-filtro-estado" className="text-sm text-foreground">
-          Filtrar por estado
-        </Label>
-        <NativeSelect
-          id="venc-filtro-estado"
-          value={filtroEstado}
-          onChange={(e) => setFiltroEstado(e.target.value as EstadoVencimiento | "")}
-          size="sm"
-          wrapperClassName="w-auto min-w-44"
-        >
+      <FormField label="Filtrar por estado" className="w-fit">
+        <NativeSelect id="venc-filtro-estado" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value as EstadoVencimiento | "")} wrapperClassName="w-auto min-w-44">
           {ESTADO_FILTROS.map((f) => (
             <option key={f.value} value={f.value}>
               {f.label}
             </option>
           ))}
         </NativeSelect>
-      </div>
+      </FormField>
 
       {loading && !vencimientos && <EstadoCargando etiqueta="Cargando vencimientos…" />}
 
@@ -381,34 +382,27 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
                         <TableCell>
                           {!finalizado && (
                             <div className="flex min-w-56 flex-col gap-1.5">
-                              <Label htmlFor={`venc-comprobante-${d.id}`} className="sr-only">
-                                URL de comprobante
-                              </Label>
-                              <Input
-                                id={`venc-comprobante-${d.id}`}
-                                type="text"
-                                placeholder="URL de comprobante (opcional)"
-                                value={comprobanteDrafts[d.id] ?? ""}
-                                onChange={(e) => setComprobanteDrafts((prev) => ({ ...prev, [d.id]: e.target.value }))}
-                                className="h-9 text-xs"
-                              />
+                              <FormField label="Comprobante (URL, opcional)">
+                                <Input
+                                  id={`venc-comprobante-${d.id}`}
+                                  type="text"
+                                  placeholder="https://…"
+                                  value={comprobanteDrafts[d.id] ?? ""}
+                                  onChange={(e) => setComprobanteDrafts((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                                />
+                              </FormField>
                               <div className="flex gap-1.5">
-                                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleCompletar(d)} disabled={rowState?.loading}>
+                                <Button type="button" variant="outline" onClick={() => void handleCompletar(d)} loading={rowState?.loading}>
                                   <CheckCircle2 />
-                                  {rowState?.loading ? "…" : "Marcar completado"}
+                                  Marcar completado
                                 </Button>
                                 {d.estado !== "escalado" && (
-                                  <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEscalar(d)} disabled={rowState?.loading}>
+                                  <Button type="button" variant="outline" onClick={() => void handleEscalar(d)} disabled={rowState?.loading}>
                                     <TrendingUp />
                                     Escalar
                                   </Button>
                                 )}
                               </div>
-                              {rowState?.message && (
-                                <span className={`text-xs ${rowState.isError ? "text-destructive" : "text-success"}`} role={rowState.isError ? "alert" : undefined}>
-                                  {rowState.message}
-                                </span>
-                              )}
                             </div>
                           )}
                         </TableCell>
@@ -421,6 +415,7 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
           </CardContent>
         </Card>
       )}
+      {dialogo}
     </PageContainer>
   );
 }

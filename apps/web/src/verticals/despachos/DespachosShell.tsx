@@ -113,13 +113,13 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "conciliacion", label: "Conciliación bancaria" },
   { to: "migracion-catalogo", label: "Migración de catálogo" },
   { to: "devolucion-iva", label: "Devolución de IVA" },
-  { to: "bookkeeping", label: "Bookkeeping" },
+  { to: "bookkeeping", label: "Clasificación contable" },
   { to: "reportes", label: "Reportes de cliente" },
   { to: "libro-contable", label: "Libro contable" },
   { to: "pagos-provisionales", label: "Pagos provisionales" },
   { to: "contabilidad-electronica", label: "Contabilidad electrónica" },
   { to: "portal-cliente", label: "Portal del cliente" },
-  { to: "staff", label: "Staff" },
+  { to: "staff", label: "Equipo" },
   { to: "configuracion", label: "Configuración" },
 ];
 

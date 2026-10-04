@@ -9,6 +9,7 @@
 // principal (marcar cuenta pagada y enviar recordatorio) verificando método/ruta/
 // cuerpo reales.
 import { act } from "react";
+import { pulsarEnDialogo } from "./test-utils/confirm.ts";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { CobranzaPage } from "../src/verticals/despachos/pages/Cobranza.tsx";
 import type { DespachosShellContext } from "../src/verticals/despachos/DespachosShell.tsx";
@@ -192,8 +193,8 @@ describe("CobranzaPage (despachos)", () => {
     await act(async () => {
       pagarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       await flushMicrotasks();
-      await flushMicrotasks();
     });
+    await pulsarEnDialogo("Marcar pagada");
 
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/despachos/prop-1/cobranza/cuentas/cta-1/pagar" && init?.method === "POST");
     expect(call).toBeDefined();
@@ -216,8 +217,8 @@ describe("CobranzaPage (despachos)", () => {
     await act(async () => {
       enviarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       await flushMicrotasks();
-      await flushMicrotasks();
     });
+    await pulsarEnDialogo("Enviar");
 
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/despachos/prop-1/cobranza/cuentas/cta-1/recordatorio" && init?.method === "POST");
     expect(call).toBeDefined();
@@ -242,10 +243,29 @@ describe("CobranzaPage (despachos)", () => {
     await act(async () => {
       enviarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       await flushMicrotasks();
-      await flushMicrotasks();
     });
+    await pulsarEnDialogo("Enviar");
 
     expect(rendered.container.textContent).toContain("no tiene correo de contacto capturado");
     expect(rendered.container.querySelector('[role="alert"]')?.textContent).toContain("no tiene correo de contacto capturado");
   });
+
+  // UNI-C despachos: marcar pagada y enviar recordatorio son irreversibles -> useConfirm; Cancelar nunca llama a la API.
+  for (const [boton, sufijo] of [
+    ["Marcar pagada", "/pagar"],
+    ["Enviar recordatorio", "/recordatorio"],
+  ] as const) {
+    it(`'${boton}': Cancelar no llama a la API`, async () => {
+      stubFetch({ cuentas: [CUENTA] });
+      rendered = renderPage();
+      await esperarCarga();
+      const btn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes(boton))!;
+      await act(async () => {
+        btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        await flushMicrotasks();
+      });
+      await pulsarEnDialogo("Cancelar");
+      expect(fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith(sufijo) && init?.method === "POST")).toHaveLength(0);
+    });
+  }
 });

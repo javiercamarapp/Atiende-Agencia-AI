@@ -69,7 +69,7 @@ async function calcularSinCambiarNada(): Promise<{ year: number; month: number }
   const toggle = [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Calcular vencimientos del periodo"))!;
   click(toggle);
 
-  const form = rendered!.container.querySelector("form")!;
+  const form = document.body.querySelector<HTMLFormElement>('[role="dialog"] form')!;
   await submitForm(form);
 
   const call = fetchMock.mock.calls.find(([url, init]) => init?.method === "POST" && (url as string).endsWith("/vencimientos/calcular"));

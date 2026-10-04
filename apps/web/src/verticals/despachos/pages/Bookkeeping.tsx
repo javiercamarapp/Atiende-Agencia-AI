@@ -25,18 +25,22 @@
 // clasificación de 1 y 4 consume la tabla de overrides de arriba.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Calculator, ChevronDown, ChevronUp, FileStack, Lightbulb, ListChecks, Plus, Trash2 } from "lucide-react";
+import { Calculator, ChevronDown, ChevronUp, FileStack, Lightbulb, ListChecks, Lock, Plus, Trash2 } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
   EstadoCargando,
+  EstadoVacio,
+  FormField,
   Input,
   Label,
   NativeSelect,
   PageContainer,
+  PageHeader,
   StatusBadge,
   Table,
   TableBody,
@@ -197,13 +201,13 @@ function PolizaCard({ resultado }: { resultado: PolizaResultado }) {
         )}
         {poliza && (
           <div className="overflow-x-auto">
-            <Table className="min-w-[480px] text-xs">
+            <Table className="min-w-[480px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="h-9">Cuenta</TableHead>
-                  <TableHead className="h-9">Concepto</TableHead>
-                  <TableHead className="h-9">Debe</TableHead>
-                  <TableHead className="h-9">Haber</TableHead>
+                  <TableHead>Cuenta</TableHead>
+                  <TableHead>Concepto</TableHead>
+                  <TableHead>Debe</TableHead>
+                  <TableHead>Haber</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -218,7 +222,7 @@ function PolizaCard({ resultado }: { resultado: PolizaResultado }) {
               </TableBody>
               <TableFooter>
                 <TableRow>
-                  <TableCell className="p-1.5 font-semibold" colSpan={2}>
+                  <TableCell className="p-1.5 font-medium" colSpan={2}>
                     Totales · {poliza.tipo} · {poliza.fecha || "(sin fecha)"}
                   </TableCell>
                   <TableCell className="p-1.5 font-semibold tabular-nums">{formatMoney(poliza.totalDebe)}</TableCell>
@@ -366,7 +370,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
     }
   }
 
-  // -- 4. Sugerencias de override -----------------------------------------------
+  // -- 4. Sugerencias de ajuste manual -----------------------------------------------
   const [sugerenciasLoading, setSugerenciasLoading] = useState(false);
   const [sugerenciasError, setSugerenciasError] = useState<string | null>(null);
   const [sugerencias, setSugerencias] = useState<readonly SuggestionRetraining[] | null>(null);
@@ -374,7 +378,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
   async function handleSugerencias() {
     setSugerenciasError(null);
     if (overridesLote.length === 0) {
-      setSugerenciasError("Captura al menos un override humano en la tabla de arriba.");
+      setSugerenciasError("Captura al menos un ajuste manual en la tabla de arriba.");
       return;
     }
     setSugerenciasLoading(true);
@@ -390,61 +394,45 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
 
   if (!puedeGestionar) {
     return (
-      <PageContainer padding="none" className="gap-2 [&>*]:min-w-0">
-        <h1 className="font-display text-xl font-semibold text-foreground">Bookkeeping</h1>
-        <p role="alert" className="text-destructive text-sm">
-          Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede clasificar CFDI, generar pólizas ni registrar ajustes -- el servidor las rechazaría igual.
-        </p>
+      <PageContainer className="[&>*]:min-w-0">
+        <PageHeader titulo="Clasificación contable" descripcion="Clasifica CFDI, genera pólizas y registra ajustes manuales." />
+        <EstadoVacio icon={Lock} titulo="Sin permiso" mensaje={`Esta función requiere rol admin o contador. Tu rol actual (${role}) no puede clasificar CFDI, generar pólizas ni registrar ajustes -- el servidor las rechazaría igual.`} />
       </PageContainer>
     );
   }
 
   return (
-    <PageContainer padding="none" className="gap-5 [&>*]:min-w-0">
-      <header>
-        <h1 className="font-display text-xl font-semibold text-foreground">Bookkeeping</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Auto-clasificador de pólizas: clasifica CFDI por reglas determinísticas (override humano por RFC tiene prioridad máxima), genera + valida pólizas contables, registra ajustes manuales y revisa qué correcciones humanas conviene convertir en override permanente.
-        </p>
-      </header>
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader
+        titulo="Clasificación contable"
+        descripcion="Clasifica CFDI por reglas determinísticas (un ajuste manual por RFC tiene prioridad máxima), genera y valida pólizas, registra ajustes manuales y revisa qué correcciones conviene volver permanentes."
+      />
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
-          <CardTitle className="text-base">Catálogo de cuentas (SAT)</CardTitle>
-          <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => setCatalogoAbierto(!catalogoAbierto)} aria-expanded={catalogoAbierto}>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle>Catálogo de cuentas (SAT)</CardTitle>
+          <Button type="button" variant="outline" size="sm" onClick={() => setCatalogoAbierto(!catalogoAbierto)} aria-expanded={catalogoAbierto}>
             {catalogoAbierto ? <ChevronUp /> : <ChevronDown />}
             {catalogoAbierto ? "Ocultar" : "Mostrar"}
           </Button>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {catalogoError && (
-            <p role="alert" className="text-destructive text-sm">
-              {catalogoError}
-            </p>
-          )}
+          {catalogoError && <Callout tone="danger">{catalogoError}</Callout>}
           {catalogoAbierto && (
             <>
               {!catalogo ? (
                                 <EstadoCargando etiqueta="Cargando catálogo de cuentas…" lineas={3} />
               ) : (
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="catalogo-filtro" className="sr-only">
-                    Filtrar catálogo de cuentas
-                  </Label>
-                  <Input
-                    id="catalogo-filtro"
-                    type="text"
-                    placeholder="Filtrar por código o nombre…"
-                    value={catalogoFiltro}
-                    onChange={(e) => setCatalogoFiltro(e.target.value)}
-                    className="max-w-80"
-                  />
+                  <FormField label="Filtrar catálogo de cuentas" className="max-w-80">
+                    <Input id="catalogo-filtro" type="text" placeholder="Código o nombre…" value={catalogoFiltro} onChange={(e) => setCatalogoFiltro(e.target.value)} />
+                  </FormField>
                   <div className="max-h-64 overflow-auto rounded-lg border border-border">
-                    <Table className="text-xs">
+                    <Table>
                       <TableHeader className="sticky top-0 bg-card">
                         <TableRow>
-                          <TableHead className="h-9">Código</TableHead>
-                          <TableHead className="h-9">Nombre</TableHead>
+                          <TableHead>Código</TableHead>
+                          <TableHead>Nombre</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -466,22 +454,22 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Overrides humanos conocidos</CardTitle>
+        <CardHeader>
+          <CardTitle>Ajustes manuales conocidos</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
-            Historial de correcciones ya persistidas (este motor no guarda estado propio -- mándalas aquí en cada sesión). Se usan como prioridad máxima al clasificar y para calcular sugerencias de override permanente por RFC.
+            Historial de correcciones ya persistidas (este motor no guarda estado propio -- mándalas aquí en cada sesión). Se usan como prioridad máxima al clasificar y para calcular sugerencias de ajuste manual permanente por RFC.
           </p>
           <div className="overflow-x-auto">
-            <Table className="min-w-[640px] text-xs">
+            <Table className="min-w-[640px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="h-9">CFDI UUID</TableHead>
-                  <TableHead className="h-9">RFC emisor</TableHead>
-                  <TableHead className="h-9">Categoría corregida</TableHead>
-                  <TableHead className="h-9">Tenant (opcional)</TableHead>
-                  <TableHead className="h-9" />
+                  <TableHead>CFDI UUID</TableHead>
+                  <TableHead>RFC emisor</TableHead>
+                  <TableHead>Categoría corregida</TableHead>
+                  <TableHead>Tenant (opcional)</TableHead>
+                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -491,7 +479,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                       <Label htmlFor={`ov-uuid-${f.key}`} className="sr-only">
                         CFDI UUID
                       </Label>
-                      <Input id={`ov-uuid-${f.key}`} type="text" value={f.cfdiUuid} onChange={(e) => actualizarOverrideFila(f.key, "cfdiUuid", e.target.value)} className="h-9 w-40 text-xs" />
+                      <Input id={`ov-uuid-${f.key}`} type="text" value={f.cfdiUuid} onChange={(e) => actualizarOverrideFila(f.key, "cfdiUuid", e.target.value)} className="w-40" />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`ov-rfc-${f.key}`} className="sr-only">
@@ -502,29 +490,23 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                         type="text"
                         value={f.rfcEmisor}
                         onChange={(e) => actualizarOverrideFila(f.key, "rfcEmisor", e.target.value.toUpperCase())}
-                        className="h-9 w-36 text-xs"
+                        className="w-36"
                       />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`ov-categoria-${f.key}`} className="sr-only">
                         Categoría corregida
                       </Label>
-                      <Input id={`ov-categoria-${f.key}`} type="text" value={f.newCategoria} onChange={(e) => actualizarOverrideFila(f.key, "newCategoria", e.target.value)} className="h-9 w-44 text-xs" />
+                      <Input id={`ov-categoria-${f.key}`} type="text" value={f.newCategoria} onChange={(e) => actualizarOverrideFila(f.key, "newCategoria", e.target.value)} className="w-44" />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`ov-tenant-${f.key}`} className="sr-only">
                         Tenant
                       </Label>
-                      <Input id={`ov-tenant-${f.key}`} type="text" value={f.tenantId} onChange={(e) => actualizarOverrideFila(f.key, "tenantId", e.target.value)} className="h-9 w-24 text-xs" />
+                      <Input id={`ov-tenant-${f.key}`} type="text" value={f.tenantId} onChange={(e) => actualizarOverrideFila(f.key, "tenantId", e.target.value)} className="w-24" />
                     </TableCell>
                     <TableCell className="p-1.5">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive"
-                        onClick={() => setOverrideFilas(overrideFilas.filter((r) => r.key !== f.key))}
-                      >
+                      <Button type="button" variant="destructive" onClick={() => setOverrideFilas(overrideFilas.filter((r) => r.key !== f.key))}>
                         <Trash2 />
                         Quitar
                       </Button>
@@ -537,31 +519,31 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
           <div>
             <Button type="button" variant="outline" size="sm" onClick={() => setOverrideFilas([...overrideFilas, nuevaOverrideFila()])}>
               <Plus />
-              Agregar override
+              Agregar ajuste manual
             </Button>
           </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">1. Clasificar CFDI</CardTitle>
+        <CardHeader>
+          <CardTitle>1. Clasificar CFDI</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="overflow-x-auto">
-            <Table className="min-w-[900px] text-xs">
+            <Table className="min-w-[900px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="h-9">UUID *</TableHead>
-                  <TableHead className="h-9">RFC emisor *</TableHead>
-                  <TableHead className="h-9">RFC receptor</TableHead>
-                  <TableHead className="h-9">Descripción</TableHead>
-                  <TableHead className="h-9">Subtotal</TableHead>
-                  <TableHead className="h-9">IVA</TableHead>
-                  <TableHead className="h-9">Total</TableHead>
-                  <TableHead className="h-9">Tasa IVA</TableHead>
-                  <TableHead className="h-9">Tipo</TableHead>
-                  <TableHead className="h-9" />
+                  <TableHead>UUID *</TableHead>
+                  <TableHead>RFC emisor *</TableHead>
+                  <TableHead>RFC receptor</TableHead>
+                  <TableHead>Descripción</TableHead>
+                  <TableHead>Subtotal</TableHead>
+                  <TableHead>IVA</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Tasa IVA</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -571,7 +553,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                       <Label htmlFor={`bk-uuid-${f.key}`} className="sr-only">
                         UUID
                       </Label>
-                      <Input id={`bk-uuid-${f.key}`} type="text" value={f.cfdiUuid} onChange={(e) => actualizarCfdiFila(f.key, "cfdiUuid", e.target.value)} className="h-9 w-40 text-xs" />
+                      <Input id={`bk-uuid-${f.key}`} type="text" value={f.cfdiUuid} onChange={(e) => actualizarCfdiFila(f.key, "cfdiUuid", e.target.value)} className="w-40" />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`bk-rfc-em-${f.key}`} className="sr-only">
@@ -582,7 +564,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                         type="text"
                         value={f.rfcEmisor}
                         onChange={(e) => actualizarCfdiFila(f.key, "rfcEmisor", e.target.value.toUpperCase())}
-                        className="h-9 w-32 text-xs"
+                        className="w-32"
                       />
                     </TableCell>
                     <TableCell className="p-1.5">
@@ -594,7 +576,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                         type="text"
                         value={f.rfcReceptor}
                         onChange={(e) => actualizarCfdiFila(f.key, "rfcReceptor", e.target.value.toUpperCase())}
-                        className="h-9 w-32 text-xs"
+                        className="w-32"
                       />
                     </TableCell>
                     <TableCell className="p-1.5">
@@ -607,38 +589,38 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                         value={f.descripcion}
                         onChange={(e) => actualizarCfdiFila(f.key, "descripcion", e.target.value)}
                         placeholder="p.ej. Honorarios enero"
-                        className="h-9 w-52 text-xs"
+                        className="w-52"
                       />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`bk-subtotal-${f.key}`} className="sr-only">
                         Subtotal
                       </Label>
-                      <Input id={`bk-subtotal-${f.key}`} type="number" step="0.01" value={f.subtotal} onChange={(e) => actualizarCfdiFila(f.key, "subtotal", e.target.value)} className="h-9 w-24 text-xs" />
+                      <Input id={`bk-subtotal-${f.key}`} type="number" step="0.01" value={f.subtotal} onChange={(e) => actualizarCfdiFila(f.key, "subtotal", e.target.value)} className="w-24" />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`bk-iva-${f.key}`} className="sr-only">
                         IVA
                       </Label>
-                      <Input id={`bk-iva-${f.key}`} type="number" step="0.01" value={f.iva} onChange={(e) => actualizarCfdiFila(f.key, "iva", e.target.value)} className="h-9 w-24 text-xs" />
+                      <Input id={`bk-iva-${f.key}`} type="number" step="0.01" value={f.iva} onChange={(e) => actualizarCfdiFila(f.key, "iva", e.target.value)} className="w-24" />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`bk-total-${f.key}`} className="sr-only">
                         Total
                       </Label>
-                      <Input id={`bk-total-${f.key}`} type="number" step="0.01" value={f.total} onChange={(e) => actualizarCfdiFila(f.key, "total", e.target.value)} className="h-9 w-24 text-xs" />
+                      <Input id={`bk-total-${f.key}`} type="number" step="0.01" value={f.total} onChange={(e) => actualizarCfdiFila(f.key, "total", e.target.value)} className="w-24" />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`bk-tasa-${f.key}`} className="sr-only">
                         Tasa de IVA
                       </Label>
-                      <Input id={`bk-tasa-${f.key}`} type="number" step="0.01" value={f.tasaIva} onChange={(e) => actualizarCfdiFila(f.key, "tasaIva", e.target.value)} className="h-9 w-20 text-xs" />
+                      <Input id={`bk-tasa-${f.key}`} type="number" step="0.01" value={f.tasaIva} onChange={(e) => actualizarCfdiFila(f.key, "tasaIva", e.target.value)} className="w-20" />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`bk-tipo-${f.key}`} className="sr-only">
                         Tipo de CFDI
                       </Label>
-                      <NativeSelect id={`bk-tipo-${f.key}`} value={f.tipoCfdi} onChange={(e) => actualizarCfdiFila(f.key, "tipoCfdi", e.target.value)} size="sm" wrapperClassName="w-28">
+                      <NativeSelect id={`bk-tipo-${f.key}`} value={f.tipoCfdi} onChange={(e) => actualizarCfdiFila(f.key, "tipoCfdi", e.target.value)} wrapperClassName="w-28">
                         {TIPOS_CFDI.map((t) => (
                           <option key={t} value={t}>
                             {t} · {TIPO_CFDI_LABELS[t]}
@@ -647,13 +629,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                       </NativeSelect>
                     </TableCell>
                     <TableCell className="p-1.5">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive"
-                        onClick={() => setCfdiFilas(cfdiFilas.filter((r) => r.key !== f.key))}
-                      >
+                      <Button type="button" variant="destructive" onClick={() => setCfdiFilas(cfdiFilas.filter((r) => r.key !== f.key))}>
                         <Trash2 />
                         Quitar
                       </Button>
@@ -669,29 +645,25 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
               Agregar CFDI
             </Button>
           </div>
-          {clasifError && (
-            <p role="alert" className="text-destructive text-sm">
-              {clasifError}
-            </p>
-          )}
+          {clasifError && <Callout tone="danger">{clasifError}</Callout>}
           <div>
-            <Button type="button" onClick={() => void handleClasificar()} disabled={clasifLoading}>
+            <Button type="button" onClick={() => void handleClasificar()} loading={clasifLoading}>
               <ListChecks />
-              {clasifLoading ? "Clasificando…" : "Clasificar lote"}
+              Clasificar lote
             </Button>
           </div>
 
           {clasificaciones.length > 0 && (
             <div>
-              <p className="mb-1 mt-2 text-xs font-semibold text-foreground">Resultado ({clasificaciones.length}) -- la categoría es editable antes de generar pólizas</p>
+              <p className="mb-1 mt-2 text-xs font-medium text-foreground">Resultado ({clasificaciones.length}) -- la categoría es editable antes de generar pólizas</p>
               <div className="overflow-x-auto">
-                <Table className="min-w-[720px] text-xs">
+                <Table className="min-w-[720px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="h-9">UUID</TableHead>
-                      <TableHead className="h-9">RFC emisor</TableHead>
-                      <TableHead className="h-9">Categoría</TableHead>
-                      <TableHead className="h-9">Confianza</TableHead>
+                      <TableHead>UUID</TableHead>
+                      <TableHead>RFC emisor</TableHead>
+                      <TableHead>Categoría</TableHead>
+                      <TableHead>Confianza</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -703,7 +675,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                           <Label htmlFor={`bk-cat-${c.cfdiUuid}`} className="sr-only">
                             Categoría clasificada
                           </Label>
-                          <Input id={`bk-cat-${c.cfdiUuid}`} type="text" value={c.categoria} onChange={(e) => corregirCategoria(i, e.target.value)} className="h-9 w-52 text-xs" />
+                          <Input id={`bk-cat-${c.cfdiUuid}`} type="text" value={c.categoria} onChange={(e) => corregirCategoria(i, e.target.value)} className="w-52" />
                         </TableCell>
                         <TableCell className="p-1.5">
                           <ConfidenceBadge confidence={c.confidence} needsHumanReview={c.needsHumanReview} />
@@ -719,30 +691,24 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">2. Generar pólizas</CardTitle>
+        <CardHeader>
+          <CardTitle>2. Generar pólizas</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">Genera + valida una póliza por cada CFDI clasificado arriba (sección 1). Si no hay mapeo contable para (tipo, categoría) el resultado trae el error explícito en vez de una póliza a medias.</p>
           <div className="flex flex-wrap gap-3">
-            <div className="flex w-52 flex-col gap-1.5">
-              <Label htmlFor="poliza-tenant">Tenant (opcional, mapeos custom)</Label>
+            <FormField label="Tenant (opcional, mapeos custom)" className="w-52">
               <Input id="poliza-tenant" type="text" value={polizaTenantId} onChange={(e) => setPolizaTenantId(e.target.value)} />
-            </div>
-            <div className="flex w-44 flex-col gap-1.5">
-              <Label htmlFor="poliza-fecha">Fecha de la póliza</Label>
+            </FormField>
+            <FormField label="Fecha de la póliza" className="w-44">
               <Input id="poliza-fecha" type="date" value={polizaFecha} onChange={(e) => setPolizaFecha(e.target.value)} />
-            </div>
+            </FormField>
           </div>
-          {polizaError && (
-            <p role="alert" className="text-destructive text-sm">
-              {polizaError}
-            </p>
-          )}
+          {polizaError && <Callout tone="danger">{polizaError}</Callout>}
           <div>
-            <Button type="button" onClick={() => void handleGenerarPolizas()} disabled={polizaLoading}>
+            <Button type="button" onClick={() => void handleGenerarPolizas()} loading={polizaLoading}>
               <FileStack />
-              {polizaLoading ? "Generando…" : "Generar pólizas"}
+              Generar pólizas
             </Button>
           </div>
           {polizas && polizas.length > 0 && (
@@ -756,8 +722,8 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">3. Registrar ajuste manual (diario)</CardTitle>
+        <CardHeader>
+          <CardTitle>3. Registrar ajuste manual (diario)</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
@@ -765,12 +731,10 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
           </p>
           <form onSubmit={handleAjuste} className="flex flex-col gap-3">
             <div className="flex flex-wrap gap-3">
-              <div className="flex w-44 flex-col gap-1.5">
-                <Label htmlFor="ajuste-fecha">Fecha *</Label>
+              <FormField label="Fecha" required className="w-44">
                 <Input id="ajuste-fecha" type="date" value={ajusteFecha} onChange={(e) => setAjusteFecha(e.target.value)} required />
-              </div>
-              <div className="flex w-64 flex-col gap-1.5">
-                <Label htmlFor="ajuste-concepto">Concepto *</Label>
+              </FormField>
+              <FormField label="Concepto" required className="w-64">
                 <Input
                   id="ajuste-concepto"
                   type="text"
@@ -779,21 +743,20 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                   required
                   placeholder="p.ej. Depreciación mensual equipo de cómputo"
                 />
-              </div>
-              <div className="flex w-44 flex-col gap-1.5">
-                <Label htmlFor="ajuste-tenant">Tenant (opcional)</Label>
+              </FormField>
+              <FormField label="Tenant (opcional)" className="w-44">
                 <Input id="ajuste-tenant" type="text" value={ajusteTenantId} onChange={(e) => setAjusteTenantId(e.target.value)} />
-              </div>
+              </FormField>
             </div>
             <div className="overflow-x-auto">
-              <Table className="min-w-[560px] text-xs">
+              <Table className="min-w-[560px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="h-9">Cuenta *</TableHead>
-                    <TableHead className="h-9">Debe</TableHead>
-                    <TableHead className="h-9">Haber</TableHead>
-                    <TableHead className="h-9">Concepto</TableHead>
-                    <TableHead className="h-9" />
+                    <TableHead>Cuenta *</TableHead>
+                    <TableHead>Debe</TableHead>
+                    <TableHead>Haber</TableHead>
+                    <TableHead>Concepto</TableHead>
+                    <TableHead />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -809,35 +772,29 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                           value={f.cuenta}
                           onChange={(e) => actualizarAjusteFila(f.key, "cuenta", e.target.value)}
                           placeholder="p.ej. 6020300"
-                          className="h-9 w-32 text-xs"
+                          className="w-32"
                         />
                       </TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`adj-debe-${f.key}`} className="sr-only">
                           Debe
                         </Label>
-                        <Input id={`adj-debe-${f.key}`} type="number" step="0.01" value={f.debe} onChange={(e) => actualizarAjusteFila(f.key, "debe", e.target.value)} className="h-9 w-24 text-xs" />
+                        <Input id={`adj-debe-${f.key}`} type="number" step="0.01" value={f.debe} onChange={(e) => actualizarAjusteFila(f.key, "debe", e.target.value)} className="w-24" />
                       </TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`adj-haber-${f.key}`} className="sr-only">
                           Haber
                         </Label>
-                        <Input id={`adj-haber-${f.key}`} type="number" step="0.01" value={f.haber} onChange={(e) => actualizarAjusteFila(f.key, "haber", e.target.value)} className="h-9 w-24 text-xs" />
+                        <Input id={`adj-haber-${f.key}`} type="number" step="0.01" value={f.haber} onChange={(e) => actualizarAjusteFila(f.key, "haber", e.target.value)} className="w-24" />
                       </TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`adj-concepto-${f.key}`} className="sr-only">
                           Concepto
                         </Label>
-                        <Input id={`adj-concepto-${f.key}`} type="text" value={f.concepto} onChange={(e) => actualizarAjusteFila(f.key, "concepto", e.target.value)} className="h-9 w-52 text-xs" />
+                        <Input id={`adj-concepto-${f.key}`} type="text" value={f.concepto} onChange={(e) => actualizarAjusteFila(f.key, "concepto", e.target.value)} className="w-52" />
                       </TableCell>
                       <TableCell className="p-1.5">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive"
-                          onClick={() => eliminarAjusteFila(f.key)}
-                        >
+                        <Button type="button" variant="destructive" onClick={() => eliminarAjusteFila(f.key)}>
                           <Trash2 />
                           Quitar
                         </Button>
@@ -853,15 +810,11 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                 Agregar movimiento
               </Button>
             </div>
-            {ajusteError && (
-              <p role="alert" className="text-destructive text-sm">
-                {ajusteError}
-              </p>
-            )}
+            {ajusteError && <Callout tone="danger">{ajusteError}</Callout>}
             <div>
-              <Button type="submit" disabled={ajusteLoading}>
+              <Button type="submit" loading={ajusteLoading}>
                 <Calculator />
-                {ajusteLoading ? "Registrando…" : "Registrar ajuste"}
+                Registrar ajuste
               </Button>
             </div>
           </form>
@@ -870,39 +823,31 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">4. Sugerencias de override</CardTitle>
+        <CardHeader>
+          <CardTitle>4. Sugerencias de ajuste manual</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
-            Agrega el historial de overrides humanos capturado arriba por RFC -- sugiere convertir en override permanente solo cuando hay señal fuerte (2+ correcciones y más de la mitad coinciden en la misma categoría).
+            Agrega el historial de ajustes manuales capturado arriba por RFC -- sugiere convertir en ajuste manual permanente solo cuando hay señal fuerte (2+ correcciones y más de la mitad coinciden en la misma categoría).
           </p>
-          {sugerenciasError && (
-            <p role="alert" className="text-destructive text-sm">
-              {sugerenciasError}
-            </p>
-          )}
+          {sugerenciasError && <Callout tone="danger">{sugerenciasError}</Callout>}
           <div>
-            <Button type="button" onClick={() => void handleSugerencias()} disabled={sugerenciasLoading}>
+            <Button type="button" onClick={() => void handleSugerencias()} loading={sugerenciasLoading}>
               <Lightbulb />
-              {sugerenciasLoading ? "Calculando…" : "Ver sugerencias"}
+              Ver sugerencias
             </Button>
           </div>
-          {sugerencias && sugerencias.length === 0 && (
-            <p role="status" className="text-sm text-muted-foreground">
-              Sin señal suficiente todavía para sugerir ningún override permanente.
-            </p>
-          )}
+          {sugerencias && sugerencias.length === 0 && <EstadoVacio compacto mensaje="Sin señal suficiente todavía para sugerir ningún ajuste manual permanente." />}
           {sugerencias && sugerencias.length > 0 && (
             <div className="overflow-x-auto rounded-xl border border-border">
-              <Table className="text-xs">
+              <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="h-9">RFC</TableHead>
-                    <TableHead className="h-9">Categoría sugerida</TableHead>
-                    <TableHead className="h-9">Coincidencias</TableHead>
-                    <TableHead className="h-9">Total correcciones</TableHead>
-                    <TableHead className="h-9">Confianza</TableHead>
+                    <TableHead>RFC</TableHead>
+                    <TableHead>Categoría sugerida</TableHead>
+                    <TableHead>Coincidencias</TableHead>
+                    <TableHead>Total correcciones</TableHead>
+                    <TableHead>Confianza</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

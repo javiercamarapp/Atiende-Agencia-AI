@@ -4,6 +4,7 @@
 // 017), render de una promesa con monto desde centavos, resolver, encolar WhatsApp (sin enviar), roles de solo
 // lectura y descarga del PDF de cartera. `fetch` global mockeado por ruta real.
 import { act } from "react";
+import { pulsarEnDialogo } from "./test-utils/confirm.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ColaCobranzaPage } from "../src/verticals/despachos/pages/ColaCobranza.tsx";
 import type { DespachosShellContext } from "../src/verticals/despachos/DespachosShell.tsx";
@@ -96,8 +97,8 @@ describe("ColaCobranzaPage (despachos)", () => {
     await act(async () => {
       boton("Cumplida")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       await flushMicrotasks();
-      await flushMicrotasks();
     });
+    await pulsarEnDialogo("Marcar cumplida");
     const call = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith("/gestiones/g-1/estado") && (init as RequestInit | undefined)?.method === "POST");
     expect(call).toBeDefined();
     expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({ estado: "cumplida", nota: null });
@@ -143,5 +144,17 @@ describe("ColaCobranzaPage (despachos)", () => {
     });
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/cola-cobranza/reporte-cartera?formato=pdf"))).toBe(true);
     expect(crear).toHaveBeenCalledOnce();
+  });
+
+  // UNI-C despachos: resolver una gestion es irreversible -> useConfirm; Cancelar no llama a la API.
+  it.each([["Cumplida"], ["Incumplida"], ["Cancelar"]])("'%s': Cancelar en el dialogo no llama a la API", async (nombre) => {
+    stub();
+    await cargar();
+    await act(async () => {
+      boton(nombre)!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+    });
+    await pulsarEnDialogo("Cancelar");
+    expect(fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith("/gestiones/g-1/estado") && (init as RequestInit | undefined)?.method === "POST")).toHaveLength(0);
   });
 });

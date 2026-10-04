@@ -6,6 +6,7 @@
 // `formatFechaSolo`, no con `formatDate` (que las corría un día antes en
 // America/Mexico_City -- mismo bug real ya corregido en Cobranza.tsx). Mismo
 // patrón de mock de `fetch` que despachos-cobranza-page.spec.tsx.
+import { pulsarEnDialogo } from "./test-utils/confirm.ts";
 import { act } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { VencimientosPage } from "../src/verticals/despachos/pages/Vencimientos.tsx";
@@ -132,8 +133,9 @@ describe("VencimientosPage (despachos) -- calendario fiscal D-26", () => {
     await act(async () => {
       boton!.click();
       await flushMicrotasks();
-      await flushMicrotasks();
     });
+    expect(fetchMock.mock.calls.some(([u, i]) => String(u).endsWith("/vencimientos/barrido") && (i as RequestInit)?.method === "POST")).toBe(false);
+    await pulsarEnDialogo("Escalar");
     expect(fetchMock.mock.calls.some(([u, i]) => String(u).endsWith("/vencimientos/barrido") && (i as RequestInit)?.method === "POST")).toBe(true);
     expect(rendered.container.textContent).toContain("Se escalaron 1 vencimiento(s) (2 correo(s) encolado(s)).");
   });
@@ -152,8 +154,41 @@ describe("VencimientosPage (despachos) -- calendario fiscal D-26", () => {
     await act(async () => {
       boton.click();
       await flushMicrotasks();
-      await flushMicrotasks();
     });
+    await pulsarEnDialogo("Escalar");
     expect(rendered.container.querySelector('[role="alert"]')).not.toBeNull();
   });
+
+  // UNI-C despachos: escalar y completar son irreversibles -> useConfirm; Cancelar nunca llama a la API.
+  for (const [accion, boton, ruta, confirmar] of [
+    ["escalar", "Escalar", "/escalar", "Escalar"],
+    ["marcar completado", "Marcar completado", "/completar", "Marcar completado"],
+  ] as const) {
+    it(`${accion}: Cancelar no llama a la API y confirmar si`, async () => {
+      const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === "POST" && url.endsWith(ruta)) {
+          return jsonResponse(ruta === "/escalar" ? { escalamiento: { nivel: "nivel_4" }, notificacion: { correosEncolados: 0 } } : {});
+        }
+        if (url.includes("/vencimientos")) return jsonResponse([{ ...DEADLINE, estado: "pendiente", fechaPresentacion: null }]);
+        throw new Error(`fetch inesperado en el test: ${url}`);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const posts = () => fetchMock.mock.calls.filter(([u, i]) => (i as RequestInit | undefined)?.method === "POST" && String(u).endsWith(ruta));
+      rendered = renderPage();
+      await esperarCarga();
+      const abrir = async () => {
+        const b = [...rendered!.container.querySelectorAll("tbody button")].find((x) => x.textContent?.trim() === boton) as HTMLButtonElement;
+        await act(async () => {
+          b.click();
+          await flushMicrotasks();
+        });
+      };
+      await abrir();
+      await pulsarEnDialogo("Cancelar");
+      expect(posts()).toHaveLength(0);
+      await abrir();
+      await pulsarEnDialogo(confirmar);
+      expect(posts()).toHaveLength(1);
+    });
+  }
 });

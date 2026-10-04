@@ -17,10 +17,13 @@ import {
   EstadoCargando,
   EstadoError,
   FormDialog,
+  FormField,
+  formatMoney,
   Input,
   Label,
   NativeSelect,
   PageContainer,
+  PageHeader,
   StatusBadge,
 } from "@atiende/ui";
 import { dinero, periodoActual } from "../lib/libro-client.ts";
@@ -227,37 +230,35 @@ export function PagosProvisionalesPage({ apiBaseUrl, token, propertyId, role }: 
   const usaPerdidas = form?.regimen === "601" || form?.regimen === "612";
 
   return (
-    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold text-foreground">Pagos provisionales</h1>
-          <p className="mt-1 text-sm text-muted-foreground">ISR e IVA del mes por flujo de efectivo, desde los CFDI y los complementos de pago del cliente.</p>
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="pp-periodo">Periodo</Label>
-            <Input id="pp-periodo" type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} className="w-44" />
-          </div>
-          {datos && datos.cliente.regimenes.length > 1 && form && (
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="pp-regimen">Régimen</Label>
-              <NativeSelect id="pp-regimen" value={form.regimen} onChange={(e) => void cargar(e.target.value)}>
-                {datos.cliente.regimenes.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                    {ETIQUETA_REGIMEN[r] ? ` · ${ETIQUETA_REGIMEN[r]}` : ""}
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
-          )}
-        </div>
-      </header>
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader
+        titulo="Pagos provisionales"
+        descripcion="ISR e IVA del mes por flujo de efectivo, desde los CFDI y los complementos de pago del cliente."
+        acciones={
+          <>
+            <FormField label="Periodo" className="grid-flow-col items-center gap-2">
+              <Input id="pp-periodo" type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} className="w-44" />
+            </FormField>
+            {datos && datos.cliente.regimenes.length > 1 && form && (
+              <FormField label="Régimen" className="grid-flow-col items-center gap-2">
+                <NativeSelect id="pp-regimen" value={form.regimen} onChange={(e) => void cargar(e.target.value)}>
+                  {datos.cliente.regimenes.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                      {ETIQUETA_REGIMEN[r] ? ` · ${ETIQUETA_REGIMEN[r]}` : ""}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </FormField>
+            )}
+          </>
+        }
+      />
 
       {aviso && (
-        <p role="status" className="text-sm text-success">
+        <Callout tone="success" onDismiss={() => setAviso(null)}>
           {aviso}
-        </p>
+        </Callout>
       )}
       {error && <EstadoError mensaje={error} onReintentar={() => void cargar(datos?.regimen)} />}
       {cargando && !datos && <EstadoCargando etiqueta="Calculando el papel de trabajo…" />}
@@ -269,59 +270,35 @@ export function PagosProvisionalesPage({ apiBaseUrl, token, propertyId, role }: 
             {ETIQUETA_REGIMEN[datos.regimen] ? ` (${ETIQUETA_REGIMEN[datos.regimen]})` : ""} · {datos.papel.documentosIncluidos} CFDI incluidos.
           </Callout>
           {!datos.guardadoDisponible && (
-            <Callout tone="warning" role="status">
+            <Callout tone="warning">
               Guardar, presentar y registrar complementos de pago todavía no están disponibles en esta base (falta la migración 020). El cálculo se muestra sin contar los CFDI PPD.
             </Callout>
           )}
           {datos.papel.advertencias.map((a) => (
-            <Callout key={a} tone="warning" role="status">
+            <Callout key={a} tone="warning">
               {a}
             </Callout>
           ))}
 
           <form onSubmit={(e) => void calcular(e)} className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-card p-4">
             {necesitaCoeficiente && (
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="pp-coef">Coeficiente de utilidad</Label>
+              <FormField label="Coeficiente de utilidad" error={erroresForm.coeficienteUtilidad}>
                 <Input id="pp-coef" value={form.coeficienteUtilidad} inputMode="decimal" placeholder="0.234567" className="w-36 font-mono" onChange={(e) => setForm({ ...form, coeficienteUtilidad: e.target.value })} />
-                {erroresForm.coeficienteUtilidad && (
-                  <p role="alert" className="text-xs text-destructive">
-                    {erroresForm.coeficienteUtilidad}
-                  </p>
-                )}
-              </div>
+              </FormField>
             )}
             {usaPerdidas && (
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="pp-perdidas">Pérdidas fiscales pendientes</Label>
+              <FormField label="Pérdidas fiscales pendientes" error={erroresForm.perdidasPendientes}>
                 <Input id="pp-perdidas" value={form.perdidasPendientes} inputMode="decimal" placeholder="0.00" className="w-40 text-right font-mono" onChange={(e) => setForm({ ...form, perdidasPendientes: e.target.value })} />
-                {erroresForm.perdidasPendientes && (
-                  <p role="alert" className="text-xs text-destructive">
-                    {erroresForm.perdidasPendientes}
-                  </p>
-                )}
-              </div>
+              </FormField>
             )}
             {form.regimen !== "626" && (
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="pp-previos">Pagos previos no capturados aquí</Label>
+              <FormField label="Pagos previos no capturados aquí" error={erroresForm.ajustePagosPrevios}>
                 <Input id="pp-previos" value={form.ajustePagosPrevios} inputMode="decimal" placeholder="0.00" className="w-40 text-right font-mono" onChange={(e) => setForm({ ...form, ajustePagosPrevios: e.target.value })} />
-                {erroresForm.ajustePagosPrevios && (
-                  <p role="alert" className="text-xs text-destructive">
-                    {erroresForm.ajustePagosPrevios}
-                  </p>
-                )}
-              </div>
+              </FormField>
             )}
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="pp-saldo-iva">Saldo a favor de IVA anterior</Label>
+            <FormField label="Saldo a favor de IVA anterior" error={erroresForm.saldoFavorAnterior}>
               <Input id="pp-saldo-iva" value={form.saldoFavorAnterior} inputMode="decimal" placeholder="0.00" className="w-40 text-right font-mono" onChange={(e) => setForm({ ...form, saldoFavorAnterior: e.target.value })} />
-              {erroresForm.saldoFavorAnterior && (
-                <p role="alert" className="text-xs text-destructive">
-                  {erroresForm.saldoFavorAnterior}
-                </p>
-              )}
-            </div>
+            </FormField>
             <div className="flex flex-wrap gap-2">
               <Button type="submit" size="sm" disabled={trabajando || Object.keys(erroresForm).length > 0}>
                 <Calculator />
@@ -385,23 +362,19 @@ export function PagosProvisionalesPage({ apiBaseUrl, token, propertyId, role }: 
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Label htmlFor="pp-rep-archivo" className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-ui font-medium">
+                  <Label htmlFor="pp-rep-archivo" className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-ui font-medium hover:bg-canvas">
                     <Upload className="size-[15px]" />
                     Elegir XML
                   </Label>
                   <input id="pp-rep-archivo" type="file" accept=".xml,text/xml,application/xml" className="sr-only" onChange={(e) => void leerArchivo(e.target.files?.[0])} />
-                  <span className="text-xs text-muted-foreground">{xml.trim() === "" ? "Ningún archivo" : `${xml.length.toLocaleString("es-MX")} caracteres listos`}</span>
+                  <span className="text-xs text-muted-foreground">{xml.trim() === "" ? "Ningún archivo" : `${formatMoney(xml.length, 0)} caracteres listos`}</span>
                   <Button type="button" size="sm" disabled={trabajando || xml.trim() === "" || !datos.guardadoDisponible} onClick={() => void subirRep()}>
                     Registrar pagos
                   </Button>
                 </div>
-                {errorRep && (
-                  <p role="alert" className="text-sm text-destructive">
-                    {errorRep}
-                  </p>
-                )}
+                {errorRep && <Callout tone="danger">{errorRep}</Callout>}
                 {rep && (
-                  <Callout tone={rep.registrados > 0 ? "success" : "warning"} role="status">
+                  <Callout tone={rep.registrados > 0 ? "success" : "warning"}>
                     Complemento {rep.folioFiscalRep}: {rep.registrados} pago(s) registrado(s), {rep.yaExistian} ya existían, {rep.omitidos.length} omitido(s), {rep.rechazados.length} rechazado(s).
                     {[...rep.omitidos, ...rep.rechazados].map((o) => (
                       <span key={`${o.idDocumento}-${o.motivo}`} className="mt-1 block text-xs">
@@ -425,34 +398,27 @@ export function PagosProvisionalesPage({ apiBaseUrl, token, propertyId, role }: 
         bloquearCierre={trabajando}
         footer={
           <>
-            <Button type="button" variant="outline" className="rounded-full px-6" onClick={() => setPresentando(null)} disabled={trabajando}>
+            <Button type="button" variant="outline" onClick={() => setPresentando(null)} disabled={trabajando}>
               Cancelar
             </Button>
-            <Button type="submit" form="form-presentar" className="rounded-full px-6" disabled={trabajando}>
-              {trabajando ? "Guardando…" : "Marcar presentado"}
+            <Button type="submit" form="form-presentar" loading={trabajando}>
+              Marcar presentado
             </Button>
           </>
         }
       >
         {presentando && (
           <form id="form-presentar" onSubmit={(e) => void confirmarPresentar(e)} className="flex flex-col gap-3" noValidate>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="pres-monto">Monto efectivamente pagado (MXN)</Label>
+            <FormField label="Monto efectivamente pagado (MXN)">
               <Input id="pres-monto" inputMode="decimal" value={pres.monto} placeholder="0.00" className="text-right font-mono" onChange={(e) => setPres({ ...pres, monto: e.target.value })} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="pres-fecha">Fecha de presentación</Label>
+            </FormField>
+            <FormField label="Fecha de presentación">
               <Input id="pres-fecha" type="date" max={hoy} value={pres.fecha} onChange={(e) => setPres({ ...pres, fecha: e.target.value })} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="pres-confirmacion">Escribe «{presentando} {periodo}» para confirmar</Label>
+            </FormField>
+            <FormField label={`Escribe «${presentando} ${periodo}» para confirmar`}>
               <Input id="pres-confirmacion" value={pres.confirmacion} autoComplete="off" onChange={(e) => setPres({ ...pres, confirmacion: e.target.value })} />
-            </div>
-            {errorPresentar && (
-              <p role="alert" className="text-sm text-destructive">
-                {errorPresentar}
-              </p>
-            )}
+            </FormField>
+            {errorPresentar && <Callout tone="danger">{errorPresentar}</Callout>}
           </form>
         )}
       </FormDialog>
@@ -464,10 +430,9 @@ function EstadoGuardado({ impuesto, guardado, puedeGestionar, onPresentar }: { r
   if (!guardado) return <p className="text-xs text-muted-foreground">{impuesto}: sin borrador guardado.</p>;
   if (guardado.estado === "presentado") {
     return (
-      <p className="flex items-center gap-1.5 text-xs text-success">
-        <CheckCircle2 className="size-[15px]" />
+      <Callout tone="success" icon={<CheckCircle2 className="size-4" />}>
         {impuesto} presentado el {guardado.fechaPresentacion ? formatFechaSolo(guardado.fechaPresentacion) : "—"} · pagado {dinero(guardado.montoPagadoCentavos)}
-      </p>
+      </Callout>
     );
   }
   return (

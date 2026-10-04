@@ -12,10 +12,11 @@ import {
   EstadoCargando,
   EstadoError,
   FormDialog,
+  FormField,
   Input,
-  Label,
   NativeSelect,
   PageContainer,
+  PageHeader,
   StatusBadge,
   Tabs,
   TabsContent,
@@ -92,8 +93,7 @@ function FormularioPoliza({ cuentas, inicial, guardando, errorServidor, onGuarda
   return (
     <form id="form-poliza" onSubmit={enviar} className="flex flex-col gap-4" noValidate>
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="poliza-tipo">Tipo</Label>
+        <FormField label="Tipo">
           <NativeSelect id="poliza-tipo" value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value as TipoPoliza })}>
             {TIPOS_POLIZA.map((t) => (
               <option key={t} value={t}>
@@ -101,25 +101,13 @@ function FormularioPoliza({ cuentas, inicial, guardando, errorServidor, onGuarda
               </option>
             ))}
           </NativeSelect>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="poliza-fecha">Fecha</Label>
+        </FormField>
+        <FormField label="Fecha" error={intento ? errores.fecha : undefined}>
           <Input id="poliza-fecha" type="date" value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} />
-          {intento && errores.fecha && (
-            <p role="alert" className="text-xs text-destructive">
-              {errores.fecha}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-col gap-1.5 sm:col-span-3">
-          <Label htmlFor="poliza-concepto">Concepto</Label>
+        </FormField>
+        <FormField label="Concepto" className="sm:col-span-3" error={intento ? errores.concepto : undefined}>
           <Input id="poliza-concepto" value={f.concepto} maxLength={300} onChange={(e) => setF({ ...f, concepto: e.target.value })} placeholder="Qué registra esta póliza" />
-          {intento && errores.concepto && (
-            <p role="alert" className="text-xs text-destructive">
-              {errores.concepto}
-            </p>
-          )}
-        </div>
+        </FormField>
       </div>
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-medium text-foreground">Partidas</legend>
@@ -140,7 +128,7 @@ function FormularioPoliza({ cuentas, inicial, guardando, errorServidor, onGuarda
               <Trash2 />
             </Button>
             {intento && errores[`partida${i}`] && (
-              <p role="alert" className="text-xs text-destructive sm:col-span-5">
+              <p role="alert" className="text-xs font-medium text-destructive sm:col-span-5">
                 Partida {i + 1}: {errores[`partida${i}`]}
               </p>
             )}
@@ -156,16 +144,12 @@ function FormularioPoliza({ cuentas, inicial, guardando, errorServidor, onGuarda
           </p>
         </div>
         {intento && (errores.cuadre || errores.partidas) && (
-          <p role="alert" className="text-xs text-destructive">
+          <p role="alert" className="text-xs font-medium text-destructive">
             {errores.cuadre ?? errores.partidas}
           </p>
         )}
       </fieldset>
-      {errorServidor && (
-        <p role="alert" className="text-sm text-destructive">
-          {errorServidor}
-        </p>
-      )}
+      {errorServidor && <Callout tone="danger">{errorServidor}</Callout>}
     </form>
   );
 }
@@ -282,44 +266,43 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
   const periodoValido = /^\d{4}-(0[1-9]|1[0-2])$/.test(periodo);
 
   return (
-    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold text-foreground">Libro contable</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Pólizas con folio, balanza de comprobación y catálogo de cuentas del cliente activo.</p>
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="libro-periodo">Periodo</Label>
-            <Input id="libro-periodo" type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} className="w-44" />
-          </div>
-          {puedeGestionar && !noDisponible && (
-            <Button
-              type="button"
-              size="sm"
-              disabled={!periodoValido || cuentas.length === 0}
-              onClick={() => {
-                setErrorGuardar(null);
-                setAviso(null);
-                setNueva(true);
-              }}
-            >
-              <Plus />
-              Nueva póliza
-            </Button>
-          )}
-        </div>
-      </header>
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader
+        titulo="Libro contable"
+        descripcion="Pólizas con folio, balanza de comprobación y catálogo de cuentas del cliente activo."
+        acciones={
+          <>
+            <FormField label="Periodo" className="grid-flow-col items-center gap-2">
+              <Input id="libro-periodo" type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} className="w-44" />
+            </FormField>
+            {puedeGestionar && !noDisponible && (
+              <Button
+                type="button"
+                size="sm"
+                disabled={!periodoValido || cuentas.length === 0}
+                onClick={() => {
+                  setErrorGuardar(null);
+                  setAviso(null);
+                  setNueva(true);
+                }}
+              >
+                <Plus />
+                Nueva póliza
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {aviso && (
-        <p role="status" className="text-sm text-success">
+        <Callout tone="success" onDismiss={() => setAviso(null)}>
           {aviso}
-        </p>
+        </Callout>
       )}
       {error && <EstadoError mensaje={error} onReintentar={() => void cargar()} />}
       {cargando && polizas.length === 0 && !balanza && <EstadoCargando etiqueta="Cargando libro contable…" />}
       {noDisponible && (
-        <Callout tone="warning" role="status">
+        <Callout tone="warning">
           El libro contable todavía no está disponible en esta base: falta aplicar la migración 020. Hasta entonces no se pueden registrar pólizas.
         </Callout>
       )}
@@ -327,19 +310,19 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
       {!noDisponible && (
         <Tabs defaultValue="polizas" className="flex flex-col gap-3.5">
           <TabsList className="h-auto flex-wrap justify-start">
-            <TabsTrigger value="polizas" className="text-xs">
+            <TabsTrigger value="polizas">
               Pólizas
             </TabsTrigger>
-            <TabsTrigger value="cfdi" className="text-xs">
+            <TabsTrigger value="cfdi">
               CFDI del periodo
             </TabsTrigger>
-            <TabsTrigger value="balanza" className="text-xs">
+            <TabsTrigger value="balanza">
               Balanza
             </TabsTrigger>
-            <TabsTrigger value="catalogo" className="text-xs">
+            <TabsTrigger value="catalogo">
               Catálogo
             </TabsTrigger>
-            <TabsTrigger value="electronica" className="text-xs">
+            <TabsTrigger value="electronica">
               Contabilidad electrónica
             </TabsTrigger>
           </TabsList>
@@ -475,21 +458,18 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
                   });
                 }}
               >
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="cuenta-codigo">Código</Label>
+                <FormField label="Código">
                   <Input id="cuenta-codigo" value={cuentaNueva.codigo} inputMode="numeric" maxLength={10} className="w-32 font-mono" onChange={(e) => setCuentaNueva({ ...cuentaNueva, codigo: e.target.value.replace(/\D/g, "") })} />
-                </div>
-                <div className="flex min-w-48 flex-1 flex-col gap-1">
-                  <Label htmlFor="cuenta-descripcion">Descripción</Label>
+                </FormField>
+                <FormField label="Descripción" className="min-w-48 flex-1">
                   <Input id="cuenta-descripcion" value={cuentaNueva.descripcion} maxLength={200} onChange={(e) => setCuentaNueva({ ...cuentaNueva, descripcion: e.target.value })} />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="cuenta-naturaleza">Naturaleza</Label>
+                </FormField>
+                <FormField label="Naturaleza">
                   <NativeSelect id="cuenta-naturaleza" value={cuentaNueva.naturaleza} onChange={(e) => setCuentaNueva({ ...cuentaNueva, naturaleza: e.target.value as "D" | "A" })}>
                     <option value="D">Deudora</option>
                     <option value="A">Acreedora</option>
                   </NativeSelect>
-                </div>
+                </FormField>
                 <Button type="submit" size="sm" variant="outline" disabled={!/^\d{4,10}$/.test(cuentaNueva.codigo) || cuentaNueva.descripcion.trim() === ""}>
                   <Plus />
                   Guardar cuenta
@@ -511,7 +491,7 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
           </TabsContent>
 
           <TabsContent value="electronica" className="mt-0 flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground">Genera el catálogo y la balanza de comprobación del mes en XML (contabilidad electrónica), con su huella SHA-1, desde el libro. No se envía al SAT desde Atiende.</p>
+            <p className="text-ui text-muted-foreground">Genera el catálogo y la balanza de comprobación del mes en XML (contabilidad electrónica), con su huella SHA-1, desde el libro. No se envía al SAT desde Atiende.</p>
             <div>
               <Button type="button" size="sm" disabled={!periodoValido} onClick={() => void generarPaquete()}>
                 Generar paquete de {periodo}
@@ -552,11 +532,11 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
         bloquearCierre={guardando}
         footer={
           <>
-            <Button type="button" variant="outline" className="rounded-full px-6" onClick={() => setNueva(false)} disabled={guardando}>
+            <Button type="button" variant="outline" onClick={() => setNueva(false)} disabled={guardando}>
               Cancelar
             </Button>
-            <Button type="submit" form="form-poliza" className="rounded-full px-6" disabled={guardando}>
-              {guardando ? "Guardando…" : "Registrar póliza"}
+            <Button type="submit" form="form-poliza" loading={guardando}>
+              Registrar póliza
             </Button>
           </>
         }
@@ -571,7 +551,7 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
         subtitulo={detalle?.concepto}
         anchoClase="max-w-3xl"
         footer={
-          <Button type="button" variant="outline" className="rounded-full px-6" onClick={() => setDetalle(null)}>
+          <Button type="button" variant="outline" onClick={() => setDetalle(null)}>
             Cerrar
           </Button>
         }
@@ -600,24 +580,22 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
         anchoClase="max-w-lg"
         footer={
           <>
-            <Button type="button" variant="outline" className="rounded-full px-6" onClick={() => setReversando(null)}>
+            <Button type="button" variant="outline" onClick={() => setReversando(null)}>
               Cancelar
             </Button>
-            <Button type="submit" form="form-reversa" className="rounded-full px-6" disabled={reversa.concepto.trim() === "" || !/^\d{4}-\d{2}-\d{2}$/.test(reversa.fecha)}>
+            <Button type="submit" form="form-reversa" disabled={reversa.concepto.trim() === "" || !/^\d{4}-\d{2}-\d{2}$/.test(reversa.fecha)}>
               Revertir
             </Button>
           </>
         }
       >
         <form id="form-reversa" onSubmit={(e) => void confirmarReversa(e)} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="reversa-fecha">Fecha de la reversa</Label>
+          <FormField label="Fecha de la reversa">
             <Input id="reversa-fecha" type="date" value={reversa.fecha} onChange={(e) => setReversa({ ...reversa, fecha: e.target.value })} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="reversa-concepto">Concepto</Label>
+          </FormField>
+          <FormField label="Concepto">
             <Input id="reversa-concepto" value={reversa.concepto} maxLength={300} onChange={(e) => setReversa({ ...reversa, concepto: e.target.value })} />
-          </div>
+          </FormField>
         </form>
       </FormDialog>
     </PageContainer>

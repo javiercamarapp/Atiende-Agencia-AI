@@ -4,7 +4,7 @@
 // que el servidor rechazaria por rol; el servidor y la base son la autoridad. Sin IA configurada el boton lo dice (503 honesto) en lugar de simular.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bot, Check, Lock, Save, Undo2, X } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, Input, Label, notify, StatusBadge, useConfirm } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, FormField, Input, notify, StatusBadge, useConfirm } from "@atiende/ui";
 import {
   cerrarSesionConciliacion,
   confirmarParesConciliacion,
@@ -38,7 +38,7 @@ function textoCfdi(c: CfdiSesion | undefined): string {
 }
 
 export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGestionar }: Props) {
-  const { pedirTexto, dialogo } = useConfirm();
+  const { confirmar, pedirTexto, dialogo } = useConfirm();
   const [sesiones, setSesiones] = useState<readonly SesionConciliacionResumen[]>([]);
   const [disponible, setDisponible] = useState(true);
   const [cargando, setCargando] = useState(true);
@@ -180,6 +180,15 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
   }
 
   async function resolver(id: string, aprobar: boolean) {
+    if (!aprobar) {
+      const ok = await confirmar({
+        titulo: "Rechazar sugerencia",
+        descripcion: "La sugerencia de la IA se descarta y no se puede deshacer.",
+        tono: "danger",
+        confirmar: "Rechazar",
+      });
+      if (!ok) return;
+    }
     await ejecutar(`${aprobar ? "aprobar" : "rechazar"}:${id}`, async () => {
       await resolverSugerenciaConciliacion(fetch, apiBaseUrl, token, propertyId, id, aprobar);
       return aprobar ? "Sugerencia aprobada: conciliación creada." : "Sugerencia rechazada.";
@@ -188,6 +197,13 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
 
   async function cerrar() {
     if (!detalle) return;
+    const ok = await confirmar({
+      titulo: `Cerrar la sesión ${detalle.sesion.periodo}`,
+      descripcion: "Una sesión cerrada ya no admite confirmar, aprobar ni sugerir. Esta acción no se puede deshacer.",
+      tono: "danger",
+      confirmar: "Cerrar sesión",
+    });
+    if (!ok) return;
     await ejecutar("cerrar", async () => {
       await cerrarSesionConciliacion(fetch, apiBaseUrl, token, propertyId, detalle.sesion.id);
       return "Sesión cerrada.";
@@ -199,15 +215,15 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Conciliación guardada por periodo</CardTitle>
-        <p className="text-sm text-muted-foreground">
+      <CardHeader>
+        <CardTitle>Conciliación guardada por periodo</CardTitle>
+        <CardDescription>
           Guarda la corrida como sesión: los movimientos del estado de cuenta ya importados se concilian contra los CFDI, las confirmaciones quedan guardadas y se pueden deshacer con motivo.
-        </p>
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {!disponible && (
-          <Callout tone="warning" role="status">
+          <Callout tone="warning">
             La conciliación guardada todavía no está disponible en esta base: falta aplicar la migración 021. Hasta entonces las sesiones no se pueden crear.
           </Callout>
         )}
@@ -215,24 +231,18 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
 
         {puedeGestionar && disponible && (
           <div className="flex flex-wrap items-end gap-2">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="sesion-periodo">Periodo</Label>
+            <FormField label="Periodo">
               <Input id="sesion-periodo" type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} className="w-44" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="sesion-cuenta">Cuenta (opcional)</Label>
+            </FormField>
+            <FormField label="Cuenta (opcional)">
               <Input id="sesion-cuenta" value={cuenta} onChange={(e) => setCuenta(e.target.value)} placeholder="CLABE o número" className="w-56" />
-            </div>
-            <Button type="button" loading={guardando} loadingText="Guardando…" iconLeft={<Save />} onClick={() => void crear()}>
+            </FormField>
+            <Button type="button" loading={guardando} iconLeft={<Save />} onClick={() => void crear()}>
               Guardar como sesión
             </Button>
           </div>
         )}
-        {errorCrear && (
-          <p role="alert" className="text-sm text-destructive">
-            {errorCrear}
-          </p>
-        )}
+        {errorCrear && <Callout tone="danger">{errorCrear}</Callout>}
 
         {cargando ? (
           <EstadoCargando etiqueta="Cargando sesiones…" />
@@ -270,14 +280,12 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
             {cargandoDetalle && !detalle && <EstadoCargando etiqueta="Cargando sesión…" />}
             {errorDetalle && <EstadoError mensaje={errorDetalle} onReintentar={() => void cargarDetalle(abierta)} />}
             {avisoIa && (
-              <Callout tone={avisoIa.tono} role="status">
-                {avisoIa.texto}
-              </Callout>
+              <Callout tone={avisoIa.tono}>{avisoIa.texto}</Callout>
             )}
             {detalle && (
               <>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold text-foreground">
+                  <h2 className="text-sm font-medium text-foreground">
                     Sesión {detalle.sesion.periodo} {detalle.sesion.cuenta ? `· cuenta ${detalle.sesion.cuenta}` : ""}
                     <StatusBadge tone={sesionAbierta ? "info" : "neutral"} className="ml-2">
                       {sesionAbierta ? "Abierta" : "Cerrada"}
@@ -323,7 +331,7 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
                       </div>
                     )}
                     {detalle.multiLinea.length > 0 && (
-                      <Callout tone="info" role="status">
+                      <Callout tone="info">
                         {detalle.multiLinea.length} pago(s) cubren varios CFDI a la vez (multi-línea): se muestran en la conciliación de arriba, pero no se confirman desde aquí.
                       </Callout>
                     )}

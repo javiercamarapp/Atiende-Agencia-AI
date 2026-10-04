@@ -8,7 +8,7 @@
 // uno traslapado no duplica). Guardar NO marca cuentas por cobrar como pagadas ni concilia.
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, FileUp, Search } from "lucide-react";
+import { AlertTriangle, FileUp, Lock, Search } from "lucide-react";
 import {
   Button,
   Callout,
@@ -17,10 +17,11 @@ import {
   CardHeader,
   CardTitle,
   EstadoVacio,
+  FormField,
   Input,
-  Label,
   NativeSelect,
   PageContainer,
+  PageHeader,
   StatusBadge,
   Table,
   TableBody,
@@ -108,11 +109,9 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
 
   if (!puedeGestionar) {
     return (
-      <PageContainer padding="none" className="gap-2 [&>*]:min-w-0">
-        <h1 className="font-display text-xl font-semibold text-foreground">Importar estado de cuenta</h1>
-        <p role="alert" className="text-destructive text-sm">
-          Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede importar estados de cuenta -- el servidor lo rechazaría igual.
-        </p>
+      <PageContainer className="[&>*]:min-w-0">
+        <PageHeader titulo="Importar estado de cuenta" descripcion="Sube el CSV u OFX de tu banco y revisa la vista previa." />
+        <EstadoVacio icon={Lock} titulo="Sin permiso" mensaje={`Esta función requiere rol admin o contador. Tu rol actual (${role}) no puede importar estados de cuenta -- el servidor lo rechazaría igual.`} />
       </PageContainer>
     );
   }
@@ -122,27 +121,24 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
   const parseo = vista?.parseo;
 
   return (
-    <PageContainer padding="none" className="gap-5 [&>*]:min-w-0">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold text-foreground">Importar estado de cuenta</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Sube el archivo CSV u OFX que descargas de tu banco. Revisas la vista previa y los errores por renglón; solo se guarda cuando tú lo confirmas.
-          </p>
-        </div>
-        <Button asChild variant="outline" size="sm">
-          <Link to={`/despachos/${orgSlug}/conciliacion`}>Volver a conciliación</Link>
-        </Button>
-      </header>
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader
+        titulo="Importar estado de cuenta"
+        descripcion="Sube el archivo CSV u OFX que descargas de tu banco. Revisas la vista previa y los errores por renglón; solo se guarda cuando tú lo confirmas."
+        acciones={
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/despachos/${orgSlug}/conciliacion`}>Volver a conciliación</Link>
+          </Button>
+        }
+      />
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">1. Archivo del banco</CardTitle>
+        <CardHeader>
+          <CardTitle>1. Archivo del banco</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-3">
-            <div className="flex w-56 flex-col gap-1.5">
-              <Label htmlFor="estado-banco">Banco (opcional)</Label>
+            <FormField label="Banco (opcional)" className="w-56">
               <NativeSelect id="estado-banco" value={banco} onChange={(e) => setBanco(e.target.value as "" | BancoEstadoCuenta)}>
                 <option value="">Detectar automáticamente</option>
                 {BANCOS_ESTADO_CUENTA.map((b) => (
@@ -151,11 +147,10 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
                   </option>
                 ))}
               </NativeSelect>
-            </div>
-            <div className="flex w-64 flex-col gap-1.5">
-              <Label htmlFor="estado-cuenta">CLABE o número de cuenta (opcional)</Label>
+            </FormField>
+            <FormField label="CLABE o número de cuenta (opcional)" className="w-64">
               <Input id="estado-cuenta" type="text" inputMode="numeric" maxLength={34} value={cuenta} onChange={(e) => setCuenta(e.target.value)} placeholder="18 dígitos" />
-            </div>
+            </FormField>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <input
@@ -171,9 +166,9 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
                 e.target.value = "";
               }}
             />
-            <Button type="button" size="sm" onClick={() => archivoRef.current?.click()} disabled={cargando}>
+            <Button type="button" size="sm" onClick={() => archivoRef.current?.click()} loading={cargando}>
               <FileUp />
-              {cargando ? "Leyendo…" : "Elegir archivo CSV u OFX"}
+              Elegir archivo CSV u OFX
             </Button>
             {nombreArchivo && <span className="text-xs text-muted-foreground">{nombreArchivo}</span>}
           </div>
@@ -183,19 +178,15 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
         </CardContent>
       </Card>
 
-      {error && (
-        <p role="alert" className="text-destructive text-sm">
-          {error}
-        </p>
-      )}
+      {error && <Callout tone="danger">{error}</Callout>}
 
       {!vista && !error && !cargando && <EstadoVacio icon={Search} titulo="Sin archivo todavía" mensaje="Elige un estado de cuenta para ver la vista previa de sus movimientos." />}
 
       {vista && parseo && (
         <>
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">2. Resumen</CardTitle>
+            <CardHeader>
+              <CardTitle>2. Resumen</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-foreground">
@@ -248,8 +239,8 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
                 </Callout>
               ) : (
                 <div className="flex flex-wrap items-center gap-3">
-                  <Button type="button" size="sm" onClick={() => void handleGuardar()} disabled={guardando || parseo.errores.length > 0 || vista.nuevos === 0}>
-                    {guardando ? "Guardando…" : `Guardar ${vista.nuevos} movimiento(s) nuevos en el libro`}
+                  <Button type="button" size="sm" onClick={() => void handleGuardar()} loading={guardando} disabled={parseo.errores.length > 0 || vista.nuevos === 0}>
+                    {`Guardar ${vista.nuevos} movimiento(s) nuevos en el libro`}
                   </Button>
                   <span className="text-xs text-muted-foreground">
                     {parseo.errores.length > 0 ? "Corrige los renglones con error para poder guardar (se guarda todo o nada)." : vista.nuevos === 0 ? "Todo el archivo ya estaba guardado." : "Guardar no marca cuentas por cobrar como pagadas ni concilia por sí solo."}
@@ -261,17 +252,17 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
 
           {parseo.errores.length > 0 && (
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Errores por renglón ({parseo.errores.length})</CardTitle>
+              <CardHeader>
+                <CardTitle>Errores por renglón ({parseo.errores.length})</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto rounded-xl border border-border">
-                  <Table className="text-xs">
+                  <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="h-9">Renglón</TableHead>
-                        <TableHead className="h-9">Campo</TableHead>
-                        <TableHead className="h-9">Problema</TableHead>
+                        <TableHead>Renglón</TableHead>
+                        <TableHead>Campo</TableHead>
+                        <TableHead>Problema</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -292,7 +283,7 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
           {parseo.advertencias.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-1.5 text-base">
+                <CardTitle className="flex items-center gap-1.5">
                   <AlertTriangle className="h-4 w-4 text-warning" strokeWidth={1.75} />
                   Avisos ({parseo.advertencias.length})
                 </CardTitle>
@@ -308,8 +299,8 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
           )}
 
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">3. Movimientos y conciliación</CardTitle>
+            <CardHeader>
+              <CardTitle>3. Movimientos y conciliación</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               {vista.conciliacion && (
@@ -324,17 +315,17 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
                 <EstadoVacio compacto titulo="Sin movimientos válidos" mensaje="Revisa los errores por renglón de arriba." />
               ) : (
                 <div className="overflow-x-auto rounded-xl border border-border">
-                  <Table className="min-w-[760px] text-xs">
+                  <Table className="min-w-[760px]">
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="h-9">Renglón</TableHead>
-                        <TableHead className="h-9">Fecha</TableHead>
-                        <TableHead className="h-9">Concepto</TableHead>
-                        <TableHead className="h-9">Referencia</TableHead>
-                        <TableHead className="h-9 text-right">Cargo</TableHead>
-                        <TableHead className="h-9 text-right">Abono</TableHead>
-                        <TableHead className="h-9 text-right">Saldo</TableHead>
-                        <TableHead className="h-9">Estado</TableHead>
+                        <TableHead>Renglón</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Concepto</TableHead>
+                        <TableHead>Referencia</TableHead>
+                        <TableHead className="text-right">Cargo</TableHead>
+                        <TableHead className="text-right">Abono</TableHead>
+                        <TableHead className="text-right">Saldo</TableHead>
+                        <TableHead>Estado</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>

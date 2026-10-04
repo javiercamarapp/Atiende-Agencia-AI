@@ -5,7 +5,7 @@
 // llaman al backend: ven el estado "sin acceso" directo.
 import { useMemo } from "react";
 import { Lock } from "lucide-react";
-import { EstadoVacio, SeccionFijadosCopiloto } from "@atiende/ui";
+import { EstadoVacio, PageContainer, PageHeader, SeccionFijadosCopiloto } from "@atiende/ui";
 import { apiBaseUrlFromRequestUrl, withAuthRefresh } from "../../../lib/authed-fetch.ts";
 import { COPILOTO_DESPACHOS } from "../../../lib/copiloto/config/despachos.ts";
 import { crearClienteFijados } from "../../../lib/copiloto/fijados.ts";
@@ -22,9 +22,10 @@ export const COPILOTO_DESPACHOS_ROLES: ReadonlySet<string> = new Set(["admin", "
 export function DespachosCopilotoPage(ctx: DespachosShellContext) {
   if (!COPILOTO_DESPACHOS_ROLES.has(ctx.role)) {
     return (
-      <div className="p-4">
+      <PageContainer>
+        <PageHeader titulo="Copiloto" descripcion="Pregunta a tus datos." />
         <EstadoVacio icon={Lock} titulo="Sin acceso" mensaje={COPILOTO_DESPACHOS.textoSinAcceso} />
-      </div>
+      </PageContainer>
     );
   }
   return <DespachosCopilotoConectado {...ctx} />;

@@ -12,11 +12,11 @@
 // ver `DespachosShellContext.role`) — el servidor (admin-staff.ts) es SIEMPRE el
 // enforcement real, con la jerarquía fina de `canInviteStaff` encima.
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
-import { MailPlus, Trash2 } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer } from "@atiende/ui";
+import { Lock, MailPlus, Trash2 } from "lucide-react";
+import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, NativeSelect, notify, PageContainer, PageHeader, useConfirm } from "@atiende/ui";
 import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
+import { formatDateTime } from "../lib/format.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 // Mismo conjunto que STAFF_INVITE_ROLES (@atiende/domain-despachos/roles.ts) --
@@ -43,15 +43,17 @@ function statusLabel(status: string): string {
 
 export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShellContext) {
   const canManage = STAFF_INVITE_ROLES.has(role);
+  const { confirmar, dialogo } = useConfirm();
 
   const [invites, setInvites] = useState<readonly StaffInvite[] | null>(null);
   // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
   // restaurantes permite gestionar roles desde el producto"): todo lo de arriba
-  // (invites) solo cubre alta -- esto es la tabla nueva "Staff activo".
+  // (invites) solo cubre alta -- esto es la tabla nueva "Equipo activo".
   const [members, setMembers] = useState<readonly OrgMember[] | null>(null);
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [dialogAbierto, setDialogAbierto] = useState(false);
   const [email, setEmail] = useState("");
   const [verticalRole, setVerticalRole] = useState<StaffVerticalRole>("contador");
   const [creating, setCreating] = useState(false);
@@ -66,18 +68,18 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
         setMembers(await fetchOrgMembers(fetch, apiBaseUrl, token, propertyId));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cargar el staff.");
+      setError(err instanceof Error ? err.message : "No se pudo cargar el equipo.");
     }
   }
 
   async function handleRoleChange(memberId: string, nextRole: StaffVerticalRole) {
     setSavingRoleId(memberId);
-    setError(null);
     try {
       const updated = await updateStaffRole(fetch, apiBaseUrl, token, propertyId, memberId, nextRole);
       setMembers((prev) => (prev ? prev.map((m) => (m.id === memberId ? updated : m)) : prev));
+      notify.success("Rol actualizado.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cambiar el rol de ese staff.");
+      notify.error(err instanceof Error ? err.message : "No se pudo cambiar el rol de esa persona.");
     } finally {
       setSavingRoleId(null);
     }
@@ -89,127 +91,96 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
     // eslint-plugin-react-hooks configurado.
   }, [apiBaseUrl, token, propertyId, canManage]);
 
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
+  async function handleCreate() {
     if (!email.trim()) return;
     setCreating(true);
-    setError(null);
     setLastCreated(null);
     try {
       const created = await createStaffInvite(fetch, apiBaseUrl, token, propertyId, { email: email.trim().toLowerCase(), verticalRole });
       setLastCreated(created);
       setEmail("");
+      setDialogAbierto(false);
+      notify.success("Invitación creada.");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear la invitación.");
+      notify.error(err instanceof Error ? err.message : "No se pudo crear la invitación.");
     } finally {
       setCreating(false);
     }
   }
 
-  async function handleRevoke(inviteId: string) {
-    setRevokingId(inviteId);
-    setError(null);
+  async function handleRevoke(inv: StaffInvite) {
+    const ok = await confirmar({
+      titulo: "Revocar invitación",
+      descripcion: `La invitación para ${inv.email} dejará de funcionar. Esta acción no se puede deshacer.`,
+      tono: "danger",
+      confirmar: "Revocar",
+    });
+    if (!ok) return;
+    setRevokingId(inv.id);
     try {
-      await revokeStaffInvite(fetch, apiBaseUrl, token, propertyId, inviteId);
-      if (lastCreated?.id === inviteId) setLastCreated(null);
+      await revokeStaffInvite(fetch, apiBaseUrl, token, propertyId, inv.id);
+      if (lastCreated?.id === inv.id) setLastCreated(null);
+      notify.success("Invitación revocada.");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo revocar la invitación.");
+      notify.error(err instanceof Error ? err.message : "No se pudo revocar la invitación.");
     } finally {
       setRevokingId(null);
     }
   }
 
   return (
-    <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
-      <h1 className="font-display text-xl font-semibold text-foreground">Staff</h1>
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader
+        titulo="Equipo"
+        descripcion="Invita a las personas de tu despacho y define su rol."
+        acciones={
+          canManage ? (
+            <Button type="button" size="sm" onClick={() => setDialogAbierto(true)}>
+              <MailPlus />
+              Invitar
+            </Button>
+          ) : undefined
+        }
+      />
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       {!canManage && (
-        <p className="rounded-xl border border-border bg-muted px-3 py-3 text-sm text-muted-foreground">
-          Invitar o revocar staff está reservado al administrador del despacho. Tu rol actual ({role}) no tiene acceso a esta página.
-        </p>
+        <EstadoVacio
+          icon={Lock}
+          titulo="Sin permiso"
+          mensaje={`Invitar o revocar al equipo está reservado al administrador del despacho. Tu rol actual (${role}) no tiene acceso a esta página.`}
+        />
+      )}
+
+      {canManage && lastCreated && (
+        <Callout tone="success" titulo={`Invitación creada para ${lastCreated.email} (${ROLE_LABELS[lastCreated.verticalRole]})`}>
+          <p>Ya se encoló un correo real con el enlace de activación. Si prefieres compartirlo tú mismo, aquí está el token — solo se muestra una vez.</p>
+          <code className="mt-1.5 block break-all rounded-md border border-border bg-card px-2.5 py-2 font-mono text-xs text-foreground">{lastCreated.inviteToken}</code>
+        </Callout>
       )}
 
       {canManage && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Invitar a alguien nuevo</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleCreate} className="flex flex-wrap items-center gap-2">
-              <Label htmlFor="staff-email" className="sr-only">
-                Correo del staff
-              </Label>
-              <Input
-                id="staff-email"
-                type="email"
-                placeholder="correo@ejemplo.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="min-w-56 flex-1 text-sm"
-              />
-              <Label htmlFor="staff-rol" className="sr-only">
-                Rol del staff
-              </Label>
-              <NativeSelect
-                id="staff-rol"
-                value={verticalRole}
-                onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)}
-                wrapperClassName="w-auto min-w-44"
-              >
-                {ROLE_OPTIONS.map((r) => (
-                  <option key={r} value={r}>
-                    {ROLE_LABELS[r]}
-                  </option>
-                ))}
-              </NativeSelect>
-              <Button type="submit" size="sm" disabled={creating}>
-                <MailPlus />
-                {creating ? "Invitando…" : "Invitar"}
-              </Button>
-            </form>
-            <p className="mt-2 text-xs text-muted-foreground">
-              No podrás dar de alta a alguien con más alcance que el tuyo — el servidor lo rechaza (403) aunque el rol aparezca en esta lista.
-            </p>
-
-            {lastCreated && (
-              <div className="mt-3.5 rounded-lg border border-primary/30 bg-primary/5 p-3">
-                <p className="text-sm font-semibold text-foreground">
-                  Invitación creada para {lastCreated.email} ({ROLE_LABELS[lastCreated.verticalRole]})
-                </p>
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                  Ya se encoló un correo real con el enlace de activación. Si prefieres compartirlo tú mismo, aquí está el token — solo se muestra una vez.
-                </p>
-                <code className="mt-1.5 block break-all rounded-md border border-border bg-card px-2.5 py-2 font-mono text-xs text-foreground">{lastCreated.inviteToken}</code>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {canManage && (
-        <section>
-          <p className="mb-2 text-sm font-semibold text-foreground">Invitaciones pendientes</p>
+        <section className="grid gap-2">
+          <h2 className="text-sm font-medium text-foreground">Invitaciones pendientes</h2>
           {!invites && !error && <EstadoCargando etiqueta="Cargando invitaciones…" lineas={2} />}
           {invites && invites.length === 0 && <EstadoVacio mensaje="No hay ninguna invitación pendiente." />}
           {invites && invites.length > 0 && (
             <div className="flex flex-col gap-2">
               {invites.map((inv) => (
                 <Card key={inv.id}>
-                  <CardContent className="flex items-center justify-between gap-3 p-3">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{inv.email}</p>
+                  <CardContent className="flex items-center justify-between gap-3 p-4">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{inv.email}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {ROLE_LABELS[inv.verticalRole]} · {statusLabel(inv.status)} · expira {new Date(inv.expiresAt).toLocaleString("es-MX")}
+                        {ROLE_LABELS[inv.verticalRole]} · {statusLabel(inv.status)} · expira {formatDateTime(inv.expiresAt)}
                       </p>
                     </div>
-                    <Button type="button" variant="outline" size="sm" className="h-9 shrink-0 border-destructive/40 text-destructive hover:border-destructive" onClick={() => void handleRevoke(inv.id)} disabled={revokingId === inv.id}>
+                    <Button type="button" variant="destructive" size="sm" className="shrink-0" onClick={() => void handleRevoke(inv)} loading={revokingId === inv.id}>
                       <Trash2 />
-                      {revokingId === inv.id ? "Revocando…" : "Revocar"}
+                      Revocar
                     </Button>
                   </CardContent>
                 </Card>
@@ -220,39 +191,32 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
       )}
 
       {canManage && (
-        <section>
-          <p className="mb-2 text-sm font-semibold text-foreground">Staff activo</p>
-          <p className="mb-2 text-xs text-muted-foreground">
-            Cambia el rol de un staff ya aceptado. No puedes tocar el rol de alguien con más alcance que el tuyo, ni asignar un rol por encima del tuyo, ni cambiar tu propio rol
+        <section className="grid gap-2">
+          <h2 className="text-sm font-medium text-foreground">Equipo activo</h2>
+          <p className="text-xs text-muted-foreground">
+            Cambia el rol de una persona ya aceptada. No puedes tocar el rol de alguien con más alcance que el tuyo, ni asignar un rol por encima del tuyo, ni cambiar tu propio rol
             — el servidor lo rechaza aunque el rol aparezca en esta lista.
           </p>
-          {!members && !error && <EstadoCargando etiqueta="Cargando staff…" lineas={2} />}
-          {members && members.length === 0 && <EstadoVacio mensaje="Todavía no hay ningún staff aceptado en este despacho." />}
+          {!members && !error && <EstadoCargando etiqueta="Cargando equipo…" lineas={2} />}
+          {members && members.length === 0 && <EstadoVacio mensaje="Todavía no hay nadie aceptado en este despacho." />}
           {members && members.length > 0 && (
             <div className="flex flex-col gap-2">
               {members.map((m) => (
                 <Card key={m.id}>
-                  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{m.fullName}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{m.email}</p>
+                  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{m.fullName}</p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">{m.email}</p>
                     </div>
-                    <Label htmlFor={`staff-rol-${m.id}`} className="sr-only">
-                      Rol de {m.fullName}
-                    </Label>
-                    <NativeSelect
-                      id={`staff-rol-${m.id}`}
-                      value={m.verticalRole}
-                      disabled={savingRoleId === m.id}
-                      onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
-                      wrapperClassName="w-auto min-w-44"
-                    >
-                      {ROLE_OPTIONS.map((r) => (
-                        <option key={r} value={r}>
-                          {ROLE_LABELS[r]}
-                        </option>
-                      ))}
-                    </NativeSelect>
+                    <FormField label={`Rol de ${m.fullName}`} className="min-w-44 [&>label]:sr-only">
+                      <NativeSelect value={m.verticalRole} disabled={savingRoleId === m.id} onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)} wrapperClassName="w-auto min-w-44">
+                        {ROLE_OPTIONS.map((r) => (
+                          <option key={r} value={r}>
+                            {ROLE_LABELS[r]}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </FormField>
                   </CardContent>
                 </Card>
               ))}
@@ -260,6 +224,37 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
           )}
         </section>
       )}
+
+      <FormDialog
+        open={dialogAbierto}
+        onOpenChange={(abierto) => {
+          if (!creating) setDialogAbierto(abierto);
+        }}
+        titulo="Invitar a alguien nuevo"
+        subtitulo="No podrás dar de alta a alguien con más alcance que el tuyo — el servidor lo rechaza (403) aunque el rol aparezca en esta lista."
+        anchoClase="max-w-lg"
+        onGuardar={() => void handleCreate()}
+        guardando={creating}
+        guardarDeshabilitado={!email.trim()}
+        textoBotonGuardar="Invitar"
+        bloquearCierre={creating}
+      >
+        <div className="grid gap-3">
+          <FormField label="Correo" required>
+            <Input type="email" placeholder="correo@ejemplo.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />
+          </FormField>
+          <FormField label="Rol">
+            <NativeSelect value={verticalRole} onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)}>
+              {ROLE_OPTIONS.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABELS[r]}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormField>
+        </div>
+      </FormDialog>
+      {dialogo}
     </PageContainer>
   );
 }

@@ -23,15 +23,18 @@
 // El estado `tipo` y los tres formularios siguen siendo exactamente los mismos.
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { Calculator, Download, Search } from "lucide-react";
+import { Calculator, Download, Lock, Search } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   Checkbox,
+  EstadoVacio,
+  FormField,
   Input,
-  Label,
   PageContainer,
+  PageHeader,
   Separator,
   Table,
   TableBody,
@@ -124,23 +127,17 @@ function IsrPfForm({ ctx }: { ctx: DespachosShellContext }) {
       <Card className="max-w-sm flex-1">
         <CardContent className="p-4">
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="isr-pf-base">Base gravable *</Label>
+            <FormField label="Base gravable" required>
               <Input id="isr-pf-base" type="number" step="0.01" value={baseGravable} onChange={(e) => setBaseGravable(e.target.value)} required />
-            </div>
+            </FormField>
             <Checkbox checked={annual} onChange={(e) => setAnnual(e.target.checked)} label="Declaración anual (si no, mensual)" />
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="isr-pf-pagos">Pagos provisionales ya realizados</Label>
+            <FormField label="Pagos provisionales ya realizados">
               <Input id="isr-pf-pagos" type="number" step="0.01" value={pagosProvisionales} onChange={(e) => setPagosProvisionales(e.target.value)} placeholder="0" />
-            </div>
-            {error && (
-              <p role="alert" className="text-destructive text-sm">
-                {error}
-              </p>
-            )}
-            <Button type="submit" disabled={loading} className="w-full">
+            </FormField>
+            {error && <Callout tone="danger">{error}</Callout>}
+            <Button type="submit" loading={loading} className="w-full">
               <Calculator />
-              {loading ? "Calculando…" : "Calcular ISR PF"}
+              "Calcular ISR PF"
             </Button>
           </form>
         </CardContent>
@@ -184,22 +181,16 @@ function IsrPmForm({ ctx }: { ctx: DespachosShellContext }) {
       <Card className="max-w-sm flex-1">
         <CardContent className="p-4">
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="isr-pm-utilidad">Utilidad fiscal *</Label>
+            <FormField label="Utilidad fiscal" required>
               <Input id="isr-pm-utilidad" type="number" step="0.01" value={utilidadFiscal} onChange={(e) => setUtilidadFiscal(e.target.value)} required />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="isr-pm-pagos">Pagos provisionales ya realizados</Label>
+            </FormField>
+            <FormField label="Pagos provisionales ya realizados">
               <Input id="isr-pm-pagos" type="number" step="0.01" value={pagosProvisionales} onChange={(e) => setPagosProvisionales(e.target.value)} placeholder="0" />
-            </div>
-            {error && (
-              <p role="alert" className="text-destructive text-sm">
-                {error}
-              </p>
-            )}
-            <Button type="submit" disabled={loading} className="w-full">
+            </FormField>
+            {error && <Callout tone="danger">{error}</Callout>}
+            <Button type="submit" loading={loading} className="w-full">
               <Calculator />
-              {loading ? "Calculando…" : "Calcular ISR PM"}
+              "Calcular ISR PM"
             </Button>
           </form>
         </CardContent>
@@ -245,27 +236,20 @@ function IsrPmResicoForm({ ctx }: { ctx: DespachosShellContext }) {
       <Card className="max-w-sm flex-1">
         <CardContent className="p-4">
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="resico-ingresos">Ingresos efectivamente cobrados en el mes *</Label>
+            <FormField label="Ingresos efectivamente cobrados en el mes" required>
               <Input id="resico-ingresos" type="number" step="0.01" value={ingresosCobrados} onChange={(e) => setIngresosCobrados(e.target.value)} required />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="resico-deducciones">Deducciones autorizadas efectivamente pagadas</Label>
+            </FormField>
+            <FormField label="Deducciones autorizadas efectivamente pagadas">
               <Input id="resico-deducciones" type="number" step="0.01" value={deduccionesAutorizadas} onChange={(e) => setDeduccionesAutorizadas(e.target.value)} placeholder="0" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="resico-pagos">Pagos provisionales ya realizados</Label>
+            </FormField>
+            <FormField label="Pagos provisionales ya realizados">
               <Input id="resico-pagos" type="number" step="0.01" value={pagosProvisionales} onChange={(e) => setPagosProvisionales(e.target.value)} placeholder="0" />
-            </div>
+            </FormField>
             <p className="text-xs text-muted-foreground">RESICO PM: tasa fija de 30% sobre flujo de efectivo (ingresos cobrados − deducciones pagadas), Art. 206/209 LISR.</p>
-            {error && (
-              <p role="alert" className="text-destructive text-sm">
-                {error}
-              </p>
-            )}
-            <Button type="submit" disabled={loading} className="w-full">
+            {error && <Callout tone="danger">{error}</Callout>}
+            <Button type="submit" loading={loading} className="w-full">
               <Calculator />
-              {loading ? "Calculando…" : "Calcular ISR PM RESICO"}
+              "Calcular ISR PM RESICO"
             </Button>
           </form>
         </CardContent>
@@ -344,20 +328,15 @@ function DiotConsulta({ ctx }: { ctx: DespachosShellContext }) {
   return (
     <div className="flex flex-col gap-3">
       <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2.5">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="diot-periodo">Periodo (AAAA-MM) *</Label>
-          <Input id="diot-periodo" type="text" value={periodo} onChange={(e) => setPeriodo(e.target.value)} placeholder="2026-03" required className="w-36" />
-        </div>
-        <Button type="submit" disabled={loading}>
+        <FormField label="Periodo (AAAA-MM)" required>
+          <Input id="diot-periodo" type="text" value={periodo} onChange={(e) => setPeriodo(e.target.value)} placeholder="2026-03" className="w-36" required />
+        </FormField>
+        <Button type="submit" loading={loading}>
           <Search />
-          {loading ? "Consultando…" : "Consultar DIOT"}
+          Consultar DIOT
         </Button>
       </form>
-      {error && (
-        <p role="alert" className="text-destructive text-sm">
-          {error}
-        </p>
-      )}
+      {error && <Callout tone="danger">{error}</Callout>}
       {agregado && (
         <div className="flex flex-col gap-2.5">
           <div className="flex flex-wrap gap-6 text-sm text-foreground">
@@ -378,27 +357,27 @@ function DiotConsulta({ ctx }: { ctx: DespachosShellContext }) {
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outline" size="sm" disabled={descargando !== null || agregado.registros.length === 0} onClick={() => void descargarLayout("txt")}>
+            <Button type="button" variant="outline" size="sm" loading={descargando === "txt"} disabled={descargando !== null || agregado.registros.length === 0} onClick={() => void descargarLayout("txt")}>
               <Download />
-              {descargando === "txt" ? "Generando…" : "Descargar layout TXT"}
+              Descargar layout TXT
             </Button>
-            <Button type="button" variant="outline" size="sm" disabled={descargando !== null || agregado.registros.length === 0} onClick={() => void descargarLayout("xml")}>
+            <Button type="button" variant="outline" size="sm" loading={descargando === "xml"} disabled={descargando !== null || agregado.registros.length === 0} onClick={() => void descargarLayout("xml")}>
               <Download />
-              {descargando === "xml" ? "Generando…" : "Descargar XML"}
+              Descargar XML
             </Button>
             <span className="text-xs text-muted-foreground">Archivo para revisión: sin firma ni envío al SAT.</span>
           </div>
           {layoutAdvertencias.length > 0 && (
-            <ul role="status" className="list-disc pl-5 text-xs text-muted-foreground">
-              {layoutAdvertencias.map((a) => (
-                <li key={a}>{a}</li>
-              ))}
-            </ul>
+            <Callout tone="warning">
+              <ul className="list-disc pl-5">
+                {layoutAdvertencias.map((a) => (
+                  <li key={a}>{a}</li>
+                ))}
+              </ul>
+            </Callout>
           )}
           {agregado.registros.length === 0 ? (
-            <p role="status" className="text-sm text-muted-foreground">
-              Sin proveedores reportables en este periodo.
-            </p>
+            <EstadoVacio compacto mensaje="Sin proveedores reportables en este periodo." />
           ) : (
             <Card>
               <CardContent className="p-0 overflow-x-auto">
@@ -445,28 +424,23 @@ export function DeclaracionesPage(ctx: DespachosShellContext) {
 
   if (!puedeUsar) {
     return (
-      <PageContainer padding="none" className="[&>*]:min-w-0">
-        <h1 className="mb-2 font-display text-xl font-semibold text-foreground">Declaraciones fiscales</h1>
-        <p role="alert" className="text-destructive text-sm">
-          Tu rol ({ctx.role}) no tiene acceso a declaraciones fiscales. Solo admin/contador.
-        </p>
+      <PageContainer className="[&>*]:min-w-0">
+        <PageHeader titulo="Declaraciones fiscales" descripcion="ISR (PF / PM / PM RESICO) y consulta de DIOT." />
+        <EstadoVacio icon={Lock} titulo="Sin permiso" mensaje={`Tu rol (${ctx.role}) no tiene acceso a declaraciones fiscales. Solo admin/contador.`} />
       </PageContainer>
     );
   }
 
   return (
-    <PageContainer padding="none" className="gap-7 [&>*]:min-w-0">
-      <header>
-        <h1 className="font-display text-xl font-semibold text-foreground">Declaraciones fiscales</h1>
-        <p className="mt-1 text-sm text-muted-foreground">ISR (PF / PM / PM RESICO) y consulta de DIOT ya agregada desde los CFDI ya capturados.</p>
-      </header>
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader titulo="Declaraciones fiscales" descripcion="ISR (PF / PM / PM RESICO) y consulta de DIOT ya agregada desde los CFDI ya capturados." />
 
-      <section className="flex flex-col gap-3.5">
-        <h2 className="font-display text-base font-semibold text-foreground">Cálculo de ISR</h2>
-        <Tabs value={tipo} onValueChange={(v) => setTipo(v as TipoDeclaracion)} className="flex flex-col gap-3.5">
+      <section className="flex flex-col gap-2.5">
+        <h2 className="text-sm font-medium text-foreground">Cálculo de ISR</h2>
+        <Tabs value={tipo} onValueChange={(v) => setTipo(v as TipoDeclaracion)} className="flex flex-col gap-2.5">
           <TabsList className="h-auto flex-wrap justify-start">
             {TIPOS.map((t) => (
-              <TabsTrigger key={t.value} value={t.value} className="text-xs">
+              <TabsTrigger key={t.value} value={t.value}>
                 {t.label}
               </TabsTrigger>
             ))}
@@ -483,9 +457,9 @@ export function DeclaracionesPage(ctx: DespachosShellContext) {
         </Tabs>
       </section>
 
-      <section className="flex flex-col gap-3.5">
+      <section className="flex flex-col gap-2.5">
         <Separator />
-        <h2 className="font-display text-base font-semibold text-foreground">DIOT por periodo</h2>
+        <h2 className="text-sm font-medium text-foreground">DIOT por periodo</h2>
         <DiotConsulta ctx={ctx} />
       </section>
     </PageContainer>
