@@ -118,7 +118,7 @@ describe("tortilla obligatoria solo si el menu lo dice", () => {
 });
 
 describe("salsa doble sin producto 'Extra salsa' (no regresion)", () => {
-  it("con el producto en el catalogo (T1, T7: $19) la doble porcion se cobra a $19 por salsa, nunca otro precio", async () => {
+  it("con el producto en el catalogo (T1, T3, T7: $19) la doble porcion se cobra a $19 por salsa, nunca otro precio", async () => {
     // El horario de la sucursal se evalua con el reloj real: martes 14:00 en Merida (abierto, sin 2x1) para no depender de la hora de la corrida.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-13T20:00:00Z"));
@@ -130,7 +130,7 @@ describe("salsa doble sin producto 'Extra salsa' (no regresion)", () => {
   });
 
   async function cobraVeintePorSalsa() {
-    for (const slug of ["prol-montejo", "garcia-lavin"]) {
+    for (const slug of ["prol-montejo", "pensiones", "garcia-lavin"]) {
       const pid = world.propertyBySlug.get(slug)!;
       const [pastor] = await searchProducts(world.repo, { propertyId: pid, query: "tacos de pastor" });
       const sinDoble = await quoteOrder(world.repo, { organizationId: world.organizationId, branchSlug: slug, canal: "recoger", items: [{ productId: pastor!.id, requestedQuantity: 1, tortilla: "maiz" }] });
@@ -139,7 +139,16 @@ describe("salsa doble sin producto 'Extra salsa' (no regresion)", () => {
     }
   }
 
-  it("sin el producto en el catalogo de la sucursal (T3 sigue en la lista 2025) sigue rechazando la linea con el mensaje actual: no la ofrece ni la cobra", async () => {
+  it("sin el producto en el catalogo de la sucursal (aqui T3 sin Extra Salsa) sigue rechazando la linea con el mensaje actual: no la ofrece ni la cobra", async () => {
+    // Desde la correccion CR02 T3 SI vende Extra Salsa y Extra Piña ($19): para ejercer la rama "sin producto" se siembra T3 sin ellos.
+    const sinExtra = JSON.parse(JSON.stringify(data)) as typeof data;
+    for (const p of sinExtra.productos) {
+      if (p.nombre === "Extra Salsa" || p.nombre === "Extra Piña") {
+        delete (p.precios_por_sucursal as Record<string, number>).T3;
+        delete (p.fuente_precio as Record<string, string>).T3;
+      }
+    }
+    const world = await buildInMemoryPmWorld(buildPmSeedPlan(sinExtra, agent), { deterministic: true });
     const [pastor] = await searchProducts(world.repo, { propertyId: world.propertyBySlug.get("pensiones")!, query: "tacos de pastor" });
     const organizationId = world.organizationId;
     const err = await quoteOrder(world.repo, {
