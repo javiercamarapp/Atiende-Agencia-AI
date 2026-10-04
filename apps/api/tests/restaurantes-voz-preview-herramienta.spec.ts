@@ -26,11 +26,12 @@ async function construir() {
   ctx.restaurantesRepo.seedCategory({ id: categoryId, organizationId: ctx.organizationId, name: "Bebidas" });
   ctx.restaurantesRepo.seedProduct({ id: productId, organizationId: ctx.organizationId, categoryId, name: "Coca-Cola", description: null, searchKeywords: [] });
   ctx.restaurantesRepo.seedBranchProduct({ propertyId: ctx.propertyIdA, productId, price: 45, isAvailable: true });
-  const deps: AppDeps = { ...ctx.deps, vozRepo: () => voz, voiceProvider: new FakeVoiceProvider(), env: { ...ctx.deps.env, voicePreviewTokenSecret: SECRETO } };
+  const provider = new FakeVoiceProvider();
+  const deps: AppDeps = { ...ctx.deps, vozRepo: () => voz, voiceProvider: provider, env: { ...ctx.deps.env, voicePreviewTokenSecret: SECRETO } };
   const app = envolver(buildApp(deps));
   const base = `/v1/restaurantes/${ctx.propertyIdA}/admin/voz`;
   const sesion = async () => (await (await app.request(`${base}/preview/sesion`, authedJson(ctx.staff.owner.token, {}))).json()) as { sesionId: string; tokenPreview: string };
-  return { ctx, app, base, productId, sesion };
+  return { ctx, app, base, productId, sesion, provider, voz };
 }
 
 const llamar = (t: Awaited<ReturnType<typeof construir>>, sesionId: string, token: string, body: unknown, base = t.base) =>
@@ -119,5 +120,18 @@ describe("POST .../admin/voz/preview/:sesionId/herramienta", () => {
     const { sesionId, tokenPreview } = await t.sesion();
     const r = await (await llamar(t, sesionId, t.ctx.staff.owner.token, { tokenPreview, nombre: "buscar_cliente", argumentos: { phone: "9992222222" } })).json();
     expect(r.resultado).toEqual({ isNew: true });
+  });
+});
+
+describe("POST .../admin/voz/preview/sesion: herramientas y saludo", () => {
+  it("el token del proveedor fija las herramientas del registro de voz (sin telefono) y resuelve {saludo} con la hora local de la sucursal", async () => {
+    const t = await construir();
+    await t.voz.upsertConfig(t.ctx.organizationId, t.ctx.propertyIdA, { habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "", mensajeInicial: "{saludo}, le atiende Los Taquitos de PM." });
+    await t.sesion();
+    const emitida = t.provider.emitidas.at(-1)!;
+    expect(emitida.herramientas?.map((h) => h.name)).toEqual(expect.arrayContaining(["buscar_producto", "cotizar_pedido", "confirmar_resumen", "crear_pedido"]));
+    for (const h of emitida.herramientas ?? []) expect(Object.keys(h.parameters.properties).join(",")).not.toMatch(/phone|telefono|modo/i);
+    expect(emitida.mensajeInicial).toMatch(/^(Buenos días|Buenas tardes|Buenas noches), le atiende Los Taquitos de PM\.$/);
+    expect(emitida.mensajeInicial).not.toContain("{saludo}");
   });
 });
