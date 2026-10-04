@@ -70,6 +70,11 @@ export function contarFiltrosActivos(f: Filtros): number {
   );
 }
 
+/** Clave de filtro de tamano: el rango es de la TAXONOMIA de cada vertical ("1" sucursales no es "1" habitaciones), asi que va con su vertical. */
+export function claveTamano(p: Pick<ProspectoMapa, "vertical" | "tamano">): string {
+  return p.tamano === null ? "n/d" : `${p.vertical}:${p.tamano}`;
+}
+
 function quitarAcentos(t: string): string {
   return t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 }
@@ -85,7 +90,7 @@ export function pasaFiltros(p: ProspectoMapa, f: Filtros, ahoraMs: number): bool
   if (f.verticales && !f.verticales.has(p.vertical)) return false;
   if (f.etapas && !f.etapas.has(p.estado)) return false;
   if (f.subtipos && !f.subtipos.has(`${p.vertical}:${p.subtipo ?? ""}`)) return false;
-  if (f.tamanos && !f.tamanos.has(p.tamano ?? "n/d")) return false;
+  if (f.tamanos && !f.tamanos.has(claveTamano(p))) return false;
   if (f.fuentes && !f.fuentes.has(p.fuente ?? "sin-fuente")) return false;
   if (f.minUrgencia > 0 && (p.urgencia === null || p.urgencia < f.minUrgencia)) return false;
   if (f.minAjuste > 0 && (p.ajuste === null || p.ajuste < f.minAjuste)) return false;
@@ -182,7 +187,7 @@ export function csvDe(lista: readonly ProspectoMapa[]): string {
       p.contacto, p.telefono, p.correo, p.ciudad, p.municipio, p.entidad, p.fuente, p.baseLicitud, p.lat, p.lng, p.notas,
     ].map(esc).join(","),
   );
-  return `﻿${[CABECERA_CSV.join(","), ...filas].join("\n")}`;
+  return `\ufeff${[CABECERA_CSV.join(","), ...filas].join("\n")}`;
 }
 
 /** Los filtros como los registra la bitacora: solo la FORMA de la consulta, nunca datos de prospectos. */
