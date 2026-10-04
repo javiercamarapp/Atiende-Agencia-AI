@@ -14,16 +14,17 @@ export const IDIOMA_POR_OMISION: Idioma = "es";
 // Marcadores que el sistema antepone a mensajes del cliente: no son palabras suyas y no cuentan para detectar el idioma.
 const MARCADORES_SISTEMA_RE = /\[Nota de voz transcrita\]|\[Ubicaci[oó]n compartida por WhatsApp\][^\n]*/gi;
 
-// Palabras funcionales frecuentes de cada idioma. Se evitan las que existen en los dos ("no", "a", "me", "es", "taco").
+// Palabras funcionales frecuentes de cada idioma. Se evitan las que existen en los dos ("no", "a", "me", "es", "ok", "menu", "total",
+// "taco(s)", "tortilla", "salsa") ni los nombres de platillos del menu ("pastor", "bistec", "maiz", "agua"...): un "ok" suelto es habitual en el espanol de Mexico y no debe cambiar la conversacion a ingles.
 const EN_PALABRAS = new Set([
   "the", "and", "you", "your", "yours", "please", "thanks", "thank", "hello", "hi", "hey", "yes", "yeah", "yep", "nope",
   "want", "wanna", "would", "like", "need", "order", "pickup", "pick", "delivery", "deliver", "address", "pay", "cash", "card",
   "with", "without", "for", "from", "have", "can", "could", "do", "does", "what", "which", "where", "when", "how", "much", "many",
   "is", "are", "was", "this", "that", "these", "those", "my", "our", "its", "it", "i", "i'd", "i'm", "i'll", "ill", "id", "im", "we", "they", "of", "on", "in", "at",
-  "to", "be", "get", "give", "send", "bring", "take", "add", "remove", "change", "cancel", "wait", "ok", "okay", "morning", "afternoon", "evening", "night",
+  "to", "be", "get", "give", "send", "bring", "take", "add", "remove", "change", "cancel", "wait", "morning", "afternoon", "evening", "night",
   "good", "great", "sure", "some", "any", "more", "extra", "another", "also", "just", "only", "now", "today", "tonight", "tomorrow", "later",
-  "name", "phone", "number", "menu", "total", "price", "cost", "open", "close", "closed", "hours", "time", "long", "will", "take", "ready", "there",
-  "tacos", "orders", "pieces", "piece", "tortilla", "corn", "flour", "mixed", "spicy", "hot", "salsa", "sauce", "drink", "drinks", "beer", "water",
+  "name", "phone", "number", "price", "cost", "open", "close", "closed", "hours", "time", "long", "will", "take", "ready", "there",
+  "orders", "pieces", "piece", "corn", "flour", "mixed", "spicy", "hot", "sauce", "drink", "drinks", "beer", "water",
   "speak", "talk", "person", "human", "manager", "someone", "allergic", "allergy", "refund", "charged", "twice", "complaint", "cold", "missing", "wrong",
   "street", "avenue", "near", "close", "neighborhood", "location", "branch", "store", "restaurant",
 ]);
@@ -35,7 +36,7 @@ const ES_PALABRAS = new Set([
   "cuesta", "cuestan", "tiene", "tienen", "hay", "es", "son", "esta", "estan", "como", "donde", "cuando", "cual", "cuales", "porque", "pero", "tambien", "mas", "menos",
   "mucho", "poco", "todo", "todos", "toda", "ese", "esa", "eso", "este", "esto", "esos", "esas", "nombre", "telefono", "colonia", "calle", "numero", "hoy", "manana",
   "ahora", "luego", "despues", "antes", "puede", "pueden", "podria", "me", "te", "lo", "le", "les", "nos", "yo", "tu", "usted", "ustedes", "estoy", "estamos",
-  "maiz", "harina", "mixta", "salsa", "salsas", "bebida", "cerveza", "agua", "refresco", "pastor", "bistec", "cancelar", "cancela", "quitar", "agregar", "agrega", "ponle",
+  "bebida", "refresco", "cancelar", "cancela", "quitar", "agregar", "agrega", "ponle",
   "persona", "humano", "gerente", "alergico", "alergica", "queja", "cobraron", "cobro", "llego", "frio", "falto", "equivocado", "equivocada",
 ]);
 
