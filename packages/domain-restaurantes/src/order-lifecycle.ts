@@ -99,15 +99,25 @@ export async function changeOrderStatus(
   order: Order,
   nextStatus: OrderStatus,
   db?: TenantDbSession,
-  options: { /** `false` = no avisar por WhatsApp al cliente (aviso opcional de "listo para recoger"). */ readonly avisarCliente?: boolean } = {},
+  options: {
+    /** `false` = no avisar por WhatsApp al cliente (aviso opcional de "listo para recoger"). */
+    readonly avisarCliente?: boolean;
+    /** Nota de la incidencia: solo aplica (y se guarda) con `nextStatus === "problema"`, tambien tras la entrega. */
+    readonly incidentNote?: string | null;
+  } = {},
 ): Promise<Order> {
   if (order.status === "por_aprobar") {
     // Mover el pedido a mano dejaria la solicitud de aprobacion pendiente y sin bitacora de la decision.
     throw new OrderStatusTransitionError('Un pedido "por_aprobar" se aprueba o se rechaza desde la pestaña "Por aprobar", no con un cambio de estado.');
   }
   assertValidOrderStatusTransition(order.status, nextStatus);
+  const incidentNote = options.incidentNote === undefined || options.incidentNote === null ? null : options.incidentNote.trim();
+  if (incidentNote !== null) {
+    if (nextStatus !== "problema") throw new OrderStatusTransitionError('incidentNote solo aplica cuando el nuevo estado es "problema".');
+    if (incidentNote.length < 1 || incidentNote.length > 2000) throw new OrderStatusTransitionError("La nota de la incidencia debe tener entre 1 y 2000 caracteres.");
+  }
   await assertCanalAllowsStatus(repo, organizationId, order, nextStatus);
-  const updated = await repo.updateOrderStatus(organizationId, order.id, order.status, nextStatus);
+  const updated = await repo.updateOrderStatus(organizationId, order.id, order.status, nextStatus, incidentNote);
   if (!updated) {
     // Fix hallazgo auditoría (rubro 3, "máquina de estados de pedidos sin guarda
     // TOCTOU") — `order.status` (con el que se validó arriba) puede haber quedado
@@ -153,6 +163,20 @@ async function assertCanalAllowsStatus(repo: RestaurantesRepository, organizatio
   }
   if (nextStatus === "en_camino" && recoger === true) {
     throw new OrderStatusTransitionError('Un pedido para recoger no sale "en_camino": márquelo "listo_para_recoger" cuando esté listo en mostrador.');
+  }
+}
+
+/** Estados en los que ya no tiene sentido despachar a un repartidor (cerrados o exclusivos de recoger). */
+const NO_DESPACHABLES: readonly OrderStatus[] = ["cancelado", "completado", "entregado", "no_recogido", "listo_para_recoger"];
+
+/** QA-restaurantes-R1-features-05a/05b: un pedido cerrado o para recoger en sucursal no se asigna a repartidor. */
+export async function assertOrderCanBeDispatched(repo: RestaurantesRepository, organizationId: string, order: Order): Promise<void> {
+  if (NO_DESPACHABLES.includes(order.status)) {
+    throw new OrderStatusTransitionError(`No se puede asignar repartidor a un pedido en estado "${order.status}".`);
+  }
+  const [info] = await repo.listOrderPickupInfo(organizationId, [order.id]);
+  if (esPedidoParaRecoger(order, info ?? null) === true) {
+    throw new OrderStatusTransitionError("Un pedido para recoger en sucursal no se asigna a un repartidor.");
   }
 }
 
@@ -213,6 +237,8 @@ export async function changeAssignedOrderStatus(
   db?: TenantDbSession,
 ): Promise<Order> {
   assertValidRepartidorStatusTransition(order.status, nextStatus);
+  // QA-restaurantes-R1-features-05c: misma regla de canal que la ruta del gerente (un pedido para recoger no sale en_camino).
+  await assertCanalAllowsStatus(repo, organizationId, order, nextStatus);
   if (nextStatus === "problema") {
     if (!incidentNote || incidentNote.trim().length < 1 || incidentNote.trim().length > 2000) {
       throw new OrderStatusTransitionError('Para reportar una incidencia ("problema") debes escribir qué pasó (1-2000 caracteres).');

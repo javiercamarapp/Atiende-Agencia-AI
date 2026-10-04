@@ -88,6 +88,8 @@ interface PuenteBody {
    * cambio de turno la define el negocio. Alternativa avanzada: `horario` completo (con `dias`). */
   readonly turnos?: unknown;
   readonly horario?: unknown;
+  /** `true` = la sucursal queda CERRADA todo el rango (feriado, imprevisto): equivale a un horario vacio. Excluyente con `turnos`/`horario`. */
+  readonly cerrado?: unknown;
   readonly motivo?: unknown;
 }
 
@@ -95,6 +97,16 @@ const MAX_SUCURSALES_PUENTE = 20;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function parseHorarioPuente(raw: PuenteBody) {
+  if (raw.cerrado !== undefined && typeof raw.cerrado !== "boolean") throw Errors.validation("cerrado: se esperaba true o false.");
+  if (raw.cerrado === true) {
+    if (raw.turnos !== undefined || raw.horario !== undefined) throw Errors.validation("Un cierre de fecha completa (`cerrado: true`) no lleva `turnos` ni `horario`.");
+    try {
+      return validarExcepcionHorario({ fechaDesde: raw.fechaDesde, fechaHasta: raw.fechaHasta, horario: [], motivo: raw.motivo });
+    } catch (err) {
+      if (err instanceof OrderValidationError) throw Errors.validation(err.message);
+      throw err;
+    }
+  }
   if ((raw.turnos === undefined) === (raw.horario === undefined)) throw Errors.validation("Envíe `turnos` (lista de {abre, cierra} para todos los días del puente) o `horario` completo, no ambos ni ninguno.");
   try {
     let horario: unknown = raw.horario;

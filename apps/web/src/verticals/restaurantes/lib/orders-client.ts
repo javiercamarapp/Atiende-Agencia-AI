@@ -130,11 +130,20 @@ export async function updateOrderStatus(
   orderId: string,
   status: OrderStatus,
   /** `false` = no avisar por WhatsApp al cliente (aviso opcional de "listo para recoger"). Omitido = comportamiento de siempre. */
-  options: { readonly notifyCustomer?: boolean; /** Obligatorio al cancelar: motivo de la lista cerrada (`MOTIVOS_CANCELACION`). */ readonly motivo?: string } = {},
+  options: {
+    readonly notifyCustomer?: boolean;
+    /** Nota de la incidencia (solo con `status: "problema"`). */
+    readonly incidentNote?: string;
+    /** Obligatorio al cancelar: motivo de la lista cerrada (`MOTIVOS_CANCELACION`). */
+    readonly motivo?: string;
+  } = {},
 ): Promise<OrderSummary> {
-  const payload: { status: OrderStatus; notifyCustomer?: boolean; motivo?: string } = { status };
-  if (options.notifyCustomer === false) payload.notifyCustomer = false;
-  if (options.motivo) payload.motivo = options.motivo;
+  const payload = {
+    status,
+    ...(options.notifyCustomer === false ? { notifyCustomer: false } : {}),
+    ...(options.incidentNote !== undefined ? { incidentNote: options.incidentNote } : {}),
+    ...(options.motivo ? { motivo: options.motivo } : {}),
+  };
   const body = await sendJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${orderId}/status`, token, "PATCH", payload);
   return body.order;
 }
