@@ -7,7 +7,7 @@
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 import { atenderLlamada } from "./llamada.ts";
-import type { DepsAtencion } from "./llamada.ts";
+import type { DepsAtencion, ResumenAtencion } from "./llamada.ts";
 import type { ConfigWorker } from "./config.ts";
 import type { LlamadaTelefonica, TelefoniaPort } from "./telefonia/puerto.ts";
 
@@ -32,6 +32,8 @@ export class Worker {
   private readonly activas = new Set<Promise<unknown>>();
   private readonly abortos = new Set<AbortController>();
   private atendidas = 0;
+  /** Resumen de las ultimas llamadas atendidas (sin PII: resultado, costo, ids opacos y latencias); sirve a las pruebas y al diagnostico. */
+  readonly resumenes: ResumenAtencion[] = [];
 
   constructor(private readonly o: OpcionesWorker) {}
 
@@ -58,8 +60,10 @@ export class Worker {
     const control = new AbortController();
     this.abortos.add(control);
     const p = atenderLlamada(tel, deps, control.signal)
-      .then(() => {
+      .then((resumen) => {
         this.atendidas += 1;
+        this.resumenes.push(resumen);
+        if (this.resumenes.length > 100) this.resumenes.shift();
       })
       .catch(() => {
         // Un error inesperado en una llamada no llega al proceso: se cuelga y se sigue (el detalle sin PII ya salio por el log de la llamada).
