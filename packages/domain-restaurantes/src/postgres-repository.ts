@@ -941,8 +941,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
     const params = [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source];
     type Fila = { id: string; resolved: boolean; created_at: string };
-    // `restaurantes.callback_registrar` (migracion 041): la sesion de la API corre como `authenticated`, que NO tiene INSERT sobre
-    // callback_requests (001), asi que el INSERT directo falla con 42501 contra una base migrada. Sin la funcion (42883, base sin 041)
+    // `restaurantes.callback_registrar` (migracion 042): la sesion de la API corre como `authenticated`, que NO tiene INSERT sobre
+    // callback_requests (001), asi que el INSERT directo falla con 42501 contra una base migrada. Sin la funcion (42883, base sin 042)
     // se cae al INSERT anterior dentro de un SAVEPOINT, que es exactamente la conducta de antes.
     const rows = await runWithSavepointFallback<Fila[]>({
       session: this.db,
@@ -2398,7 +2398,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null> {
-    // Base sin la migracion 041 (42P01/42703) o sin permiso (42501): sin marca, nunca un 500. SAVEPOINT: la sesion es una sola
+    // Base sin la migracion 042 (42P01/42703) o sin permiso (42501): sin marca, nunca un 500. SAVEPOINT: la sesion es una sola
     // transaccion por request y un error de Postgres la dejaria abortada.
     return runWithSavepointFallback<StorefrontMarca | null>({
       session: this.db,
@@ -2434,7 +2434,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       },
       isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
       fallback: (err) => {
-        advertirConfigEscrituraNoDisponible("storefront_marca", err, "041_storefront_marca.sql");
+        advertirConfigEscrituraNoDisponible("storefront_marca", err, "042_storefront_marca.sql");
         throw new RestaurantesConfigUnavailableError();
       },
     });

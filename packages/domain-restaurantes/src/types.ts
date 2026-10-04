@@ -499,7 +499,7 @@ export interface CallbackRequestInput {
   readonly source: "voice" | "whatsapp" | "web" | "admin";
 }
 
-// ---- R-38 (migracion 041): marca publica del storefront por organizacion. Todos los campos son opcionales (null = sin valor). ----
+// ---- R-38 (migracion 042): marca publica del storefront por organizacion. Todos los campos son opcionales (null = sin valor). ----
 export interface StorefrontMarcaInput {
   readonly titular: string | null;
   readonly eslogan: string | null;
@@ -514,7 +514,7 @@ export interface StorefrontMarcaInput {
 }
 
 export interface StorefrontMarca extends StorefrontMarcaInput {
-  /** null = nunca se guardo (o la base aun no tiene la migracion 041). */
+  /** null = nunca se guardo (o la base aun no tiene la migracion 042). */
   readonly updatedAt: string | null;
 }
 

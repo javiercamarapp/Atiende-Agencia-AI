@@ -522,13 +522,13 @@ export interface RestaurantesRepository {
    *  primary key de la tabla) -- nunca dos filas por organización. */
   upsertWhatsappChannelConfig(organizationId: string, phoneNumberId: string): Promise<WhatsappChannelConfig>;
 
-  // ---- R-38 (migración 041): marca pública del storefront ----
+  // ---- R-38 (migración 042): marca pública del storefront ----
 
-  /** Marca de la organización; `null` si nunca se guardó O si la base aún no tiene la migración 041 (la portada pública cae a una
+  /** Marca de la organización; `null` si nunca se guardó O si la base aún no tiene la migración 042 (la portada pública cae a una
    *  genérica con el nombre del restaurante). Nunca lanza por tabla/columna ausente. */
   findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null>;
   /** Alta o reemplazo completo de la marca (owner/admin por RLS). Lanza `RestaurantesConfigUnavailableError` si la base aún no tiene
-   *  la migración 041 (la ruta responde 503, nunca 500). */
+   *  la migración 042 (la ruta responde 503, nunca 500). */
   upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca>;
 
   /** Más reciente primero -- orden total (ver `created_at desc, id desc`, mismo

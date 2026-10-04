@@ -136,7 +136,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
       await limitOrThrow(repo, c, "storefront-read", 120);
       const sucursales = await buildStorefrontBranches(repo, org.id);
       // R-38: marca (portada, logo, redes) y promociones que el motor aplica solas. La marca es `null` si nunca se guardo o si la base
-      // aun no tiene la migracion 041 (la pagina cae a una portada generica con el nombre); nada de esto vuelve a la ruta un 500.
+      // aun no tiene la migracion 042 (la pagina cae a una portada generica con el nombre); nada de esto vuelve a la ruta un 500.
       const marca = await repo.findStorefrontMarca(org.id);
       const branches = (await repo.listBranchesForOrganizationAdmin(org.id)).filter((b) => b.status === "active");
       const promociones = await buildStorefrontPromociones(repo, org.id, branches.map((b) => ({ slug: b.slug, propertyId: b.propertyId })));
@@ -209,7 +209,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
       const branch = await repo.findBranch(org.id, { slug: c.req.param("branchSlug") });
       if (!branch || branch.status !== "active") throw Errors.notFound("Sucursal no encontrada.");
       const [sucursal] = (await buildStorefrontBranches(repo, org.id)).filter((b) => b.slug === branch.slug);
-      // La marca viaja tambien aqui: logo, redes y la imagen del Open Graph de la pagina de la sucursal (null si no hay o falta la 041).
+      // La marca viaja tambien aqui: logo, redes y la imagen del Open Graph de la pagina de la sucursal (null si no hay o falta la 042).
       const marca = await repo.findStorefrontMarca(org.id);
       return c.json({ sucursal: sucursal ?? null, categorias: await buildStorefrontMenu(repo, branch.propertyId), marca: marca ?? { ...MARCA_VACIA } });
     });

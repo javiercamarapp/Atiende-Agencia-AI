@@ -66,7 +66,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // FASE 3 (producto) — configuración editable del panel (WhatsApp/zonas
   // conocidas), owner/admin -- ver el comentario de cabecera de admin-config.ts.
   app.route("/", restaurantesAdminConfigRoutes(deps));
-  // R-38 (migración 041): marca del storefront público ("Sitio público"), owner/admin.
+  // R-38 (migración 042): marca del storefront público ("Sitio público"), owner/admin.
   app.route("/", restaurantesAdminSitioPublicoRoutes(deps));
   // Modelo PM (migración 023) — política/cobertura/WhatsApp por sucursal y marcas no_domicilio.
   app.route("/", restaurantesAdminModeloPmRoutes(deps));
