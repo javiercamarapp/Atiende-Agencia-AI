@@ -289,6 +289,7 @@ describe("Reglas del autopiloto", () => {
     expect(cajas.every((c) => !c.checked)).toBe(true);
     expect(dialogo.textContent).toContain("Plantillas de WhatsApp sin aprobar en Meta: pedido_aprobado");
     expect(dialogo.textContent).toContain("requiere la API de SoftRestaurant");
+    expect(dialogo.textContent).toContain("todavía sin efecto, porque el agente aún no usa estas aprobaciones");
   });
 
   it("valida rangos antes de llamar y guarda con PUT .../autopiloto/config", async () => {

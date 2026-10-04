@@ -149,6 +149,7 @@ export function AutopilotoReglasDialogo({
           checked={form.cancelacionAuto}
           onChange={(e) => set("cancelacionAuto", e.target.checked)}
         />
+        <Callout tone="info">Cancelación automática, pedidos grandes y quejas del agente: todavía sin efecto, porque el agente aún no usa estas aprobaciones (requiere el cableado del agente de WhatsApp y voz, en otro PR). Las demás reglas ya funcionan.</Callout>
         <Checkbox
           label="Aceptar solo el pedido (de Recibido a Preparando) en cuanto la comanda se imprime o se captura, sin POS (apagado por omisión)"
           checked={form.aceptacionAuto}

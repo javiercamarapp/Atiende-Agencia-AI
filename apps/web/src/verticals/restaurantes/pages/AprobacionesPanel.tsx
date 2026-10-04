@@ -48,7 +48,7 @@ export function AprobacionesPanel({
   if (!datos.disponible) {
     return <EstadoVacio mensaje="Las aprobaciones todavía no están disponibles en esta cuenta (falta aplicar la actualización de base de datos)." />;
   }
-  if (datos.solicitudes.length === 0) return <EstadoVacio mensaje="No hay nada por aprobar. Aquí llegan los pedidos grandes, las cancelaciones en proceso y las quejas con compensación." />;
+  if (datos.solicitudes.length === 0) return <EstadoVacio mensaje="No hay nada por aprobar." />;
 
   async function enviar(s: Solicitud, entrada: ResolverEntrada): Promise<boolean> {
     setProcesandoId(s.id);
