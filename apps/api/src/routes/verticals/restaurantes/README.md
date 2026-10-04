@@ -217,3 +217,15 @@ documentados aquí mismo:
 - Base sin migrar: la lectura responde `disponible: false` con listas vacías, la escritura 503 y el barrido `not_available` (SAVEPOINT en el
   repositorio; `packages/domain-restaurantes/tests/cierres-savepoint.spec.ts`). SQL y permisos verificados contra Postgres real en
   `scripts/verify-restaurantes-cierre-dia/`. Pruebas HTTP: `apps/api/tests/restaurantes-cierres.spec.ts`.
+
+## Cliente 360 (migración 044)
+
+- Panel (`admin-customers.ts`, MANAGER_ROLES salvo lo marcado; todas las escrituras dejan huella en la bitácora sin PII):
+  `GET .../admin/customers/:id/ficha`, `PATCH .../admin/customers/:id` (nombre, notas, cumpleaños día+mes),
+  `POST|PATCH|DELETE .../admin/customers/:id/addresses[/:addressId]`, `POST .../admin/customers/:id/preferences` (`accion`: agregar, descartar,
+  reactivar, eliminar), `POST .../admin/customers/:id/orders/:orderId/falso`, `GET .../admin/customers/policy` y `PUT` (solo owner/admin),
+  `GET .../admin/customers/:id/arco-export` y `POST .../borrar-memoria` (solo owner/admin). Cada función SQL vuelve a validar rol y organización;
+  un id de otra organización responde 404. Base sin migrar: 503 "no disponible aún".
+- Voz (`voice-tools.ts`, exigen token de llamada: el teléfono sale del token): `POST /v1/restaurantes/:orgSlug/customers/orders`
+  (`historial_pedidos`) y `POST .../orders/repeat` (`repetir_pedido`).
+- Pruebas: `apps/api/tests/restaurantes-admin-ficha-cliente.spec.ts`.
