@@ -138,6 +138,56 @@ export const rutasHoteles: readonly Ruta[] = [
       t.estado = estado;
       return t;
     } },
+  // H-P3-01 -- folio con estado en el escenario: un cierre se refleja en el siguiente GET y un cargo/pago/cierre posterior recibe el mismo
+  // 409 legible que la API real (el trigger de la migracion 045 + el onError de apps/api/.../hoteles/folios.ts). Solo existe en la API simulada.
+  { metodo: "GET", patron: `${H}/folios/:fid`, manejador: (p) => {
+      const f = folioMock(p);
+      return p.params.fid === f.id ? serializarFolio(f) : fallo(404, "Folio no encontrado.");
+    } },
+  { metodo: "GET", patron: `${H}/reservas/:rid/folios`, manejador: (p) => [serializarFolio(folioMock(p))] },
+  { metodo: "POST", patron: `${H}/folios/:fid/cargos`, manejador: (p) => {
+      const f = folioMock(p);
+      if (f.estado !== "abierto") return fallo(409, MENSAJE_FOLIO_CERRADO);
+      const cuerpo = (p.cuerpo ?? {}) as { descripcion?: string; monto?: number; concepto?: ConceptoMock };
+      const monto = Number(cuerpo.monto);
+      if (!cuerpo.descripcion || !Number.isFinite(monto) || monto <= 0) return fallo(400, "Descripcion y monto (> 0) son requeridos.");
+      const cargo = { id: `chg-${f.cargos.length + 1}`, concepto: cuerpo.concepto ?? "extras", descripcion: cuerpo.descripcion, monto, impuesto: Math.round(monto * 16) / 100, revertidoPor: null, reversaDe: null, transferidoDe: null, creadoEn: new Date().toISOString() };
+      f.cargos.push(cargo);
+      return conStatus(201, { id: cargo.id, concepto: cargo.concepto, monto: cargo.monto, impuesto: cargo.impuesto });
+    } },
+  { metodo: "POST", patron: `${H}/folios/:fid/cerrar`, manejador: (p) => {
+      const f = folioMock(p);
+      if (f.estado !== "abierto") return fallo(409, "El folio ya está cerrado.");
+      const motivo = ((p.cuerpo ?? {}) as { motivo?: string }).motivo;
+      if (motivo !== "saldo_cero" && motivo !== "cuenta_por_cobrar") return fallo(400, "motivo: se esperaba saldo_cero|cuenta_por_cobrar.");
+      const saldo = saldoFolio(f);
+      if (motivo === "saldo_cero" && saldo !== 0) return fallo(409, "El saldo del folio cambió y ya no es cero: revisa el folio antes de cerrarlo.");
+      f.estado = "cerrado";
+      f.motivoCierre = motivo;
+      f.cerradoEn = new Date().toISOString();
+      return { id: f.id, estado: f.estado, motivoCierre: motivo, saldo };
+    } },
 ];
+
+const MENSAJE_FOLIO_CERRADO = "El folio ya está cerrado: no admite más movimientos.";
+type ConceptoMock = "hospedaje" | "ab" | "extras" | "ajuste" | "propina" | "otro";
+interface FolioMock {
+  id: string;
+  estado: "abierto" | "cerrado";
+  reservationId: string;
+  etiqueta: string;
+  motivoCierre: "saldo_cero" | "cuenta_por_cobrar" | null;
+  cerradoEn: string | null;
+  cargos: { id: string; concepto: ConceptoMock; descripcion: string; monto: number; impuesto: number; revertidoPor: string | null; reversaDe: string | null; transferidoDe: string | null; creadoEn: string }[];
+}
+function folioMock(p: { estado: { obtener<T>(k: string, s: () => T): T } }): FolioMock {
+  return p.estado.obtener<FolioMock>("hoteles.folio", () => ({ id: "fol-1", estado: "abierto", reservationId: "res-1", etiqueta: "Principal", motivoCierre: null, cerradoEn: null, cargos: [] }));
+}
+function saldoFolio(f: FolioMock): number {
+  return Math.round(f.cargos.reduce((n, c) => n + c.monto + c.impuesto, 0) * 100) / 100;
+}
+function serializarFolio(f: FolioMock) {
+  return { id: f.id, estado: f.estado, reservationId: f.reservationId, etiqueta: f.etiqueta, esPrincipal: true, cerradoEn: f.cerradoEn, motivoCierre: f.motivoCierre, cargos: f.cargos, pagos: [], saldo: saldoFolio(f) };
+}
 
 export const hoteles = { orgSlug: ORG.slug, propertyId: PROP.id };
