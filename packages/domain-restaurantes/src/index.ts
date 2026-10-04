@@ -217,6 +217,7 @@ export {
 export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
+export * from "./encuesta/index.ts";
 export * from "./cierres/index.ts";
 export * from "./repartidor-perfil/index.ts";
 export * from "./exportar/index.ts";

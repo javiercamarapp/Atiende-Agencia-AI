@@ -19,6 +19,7 @@ import { AuditoriaPage as RestaurantesAuditoriaPage } from "./verticals/restaura
 import { ConfiguracionPage as RestaurantesConfiguracionPage } from "./verticals/restaurantes/pages/Configuracion.tsx";
 import { AgenteVozPage as RestaurantesAgenteVozPage } from "./verticals/restaurantes/pages/AgenteVoz.tsx";
 import { IndicadoresWhatsappPage as RestaurantesIndicadoresWhatsappPage } from "./verticals/restaurantes/pages/IndicadoresWhatsapp.tsx";
+import { EncuestasPage as RestaurantesEncuestasPage } from "./verticals/restaurantes/pages/Encuestas.tsx";
 import { CierresPage as RestaurantesCierresPage } from "./verticals/restaurantes/pages/Cierres.tsx";
 import { PrivacidadPage as RestaurantesPrivacidadPage } from "./verticals/restaurantes/pages/Privacidad.tsx";
 import { ConversacionesPage as RestaurantesConversacionesPage } from "./verticals/restaurantes/pages/Conversaciones.tsx";
@@ -66,6 +67,7 @@ import { PlanYUsoPagina } from "./components/PlanYUsoPagina.tsx";
 import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
 import { SucursalPage as StorefrontSucursalPage } from "./verticals/restaurantes/storefront/SucursalPage.tsx";
 import { RastreoPage as StorefrontRastreoPage } from "./verticals/restaurantes/storefront/RastreoPage.tsx";
+import { EncuestaPage as StorefrontEncuestaPage } from "./verticals/restaurantes/storefront/EncuestaPage.tsx";
 import { ReservarPage } from "./verticals/citas/reserva/ReservarPage.tsx";
 import { PrivacidadStorefrontPage } from "./verticals/restaurantes/storefront/PrivacidadStorefront.tsx";
 import { RestaurantesPrimerosPasosPage } from "./verticals/restaurantes/pages/PrimerosPasos.tsx";
@@ -294,6 +296,8 @@ const RestaurantesConfiguracionRoute = shellRoute(RestaurantesShell, "/restauran
 const RestaurantesAgenteVozRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAgenteVozPage {...ctx} />);
 // R-31: indicadores del agente de WhatsApp (owner/admin).
 const RestaurantesIndicadoresWhatsappRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesIndicadoresWhatsappPage {...ctx} />);
+// R-41: encuestas post-entrega (satisfacción por sucursal y repartidor, configuración, envío de pendientes), owner/admin.
+const RestaurantesEncuestasRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesEncuestasPage {...ctx} />);
 const RestaurantesCierresRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCierresPage {...ctx} />);
 // PM PR-9 -- privacidad (solicitudes ARCO + aviso/retención/grabación), owner/admin.
 const RestaurantesPrivacidadRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrivacidadPage {...ctx} />);
@@ -320,6 +324,11 @@ function StorefrontSucursalRoute() {
 function StorefrontRastreoRoute() {
   const { orgSlug = "", token = "" } = useParams();
   return <StorefrontRastreoPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} token={token} />;
+}
+// Encuesta post-entrega (R-41): pagina publica del cliente, liga firmada por WhatsApp, sin login.
+function StorefrontEncuestaRoute() {
+  const { orgSlug = "", token = "" } = useParams();
+  return <StorefrontEncuestaPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} token={token} />;
 }
 // Demo de WhatsApp (R-19): chat publico contra el agente real, solo para organizaciones marcadas como demo.
 function DemoWhatsAppRoute() {
@@ -1131,6 +1140,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/configuracion" element={<RestaurantesConfiguracionRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-voz" element={<RestaurantesAgenteVozRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-whatsapp" element={<RestaurantesIndicadoresWhatsappRoute />} />
+        <Route path="/restaurantes/:orgSlug/encuestas" element={<RestaurantesEncuestasRoute />} />
         <Route path="/restaurantes/:orgSlug/cierres" element={<RestaurantesCierresRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad" element={<RestaurantesPrivacidadRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad-organizacion" element={<RestaurantesPrivacidadOrganizacionRoute />} />
@@ -1153,6 +1163,7 @@ export function App() {
         <Route path="/pedir/:orgSlug" element={<StorefrontRestauranteRoute />} />
         <Route path="/pedir/:orgSlug/privacidad" element={<StorefrontPrivacidadRoute />} />
         <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
+        <Route path="/encuesta/:orgSlug/:token" element={<StorefrontEncuestaRoute />} />
         <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
         <Route path="/superadmin" element={<SuperAdminRoute />} />
         <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />

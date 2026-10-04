@@ -112,6 +112,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
       "Productos",
       "Promociones",
       "Clientes",
+      "Encuestas", // R-41: solo owner/admin
       "Sucursales",
       "Agente de voz",
       "Agente de WhatsApp",

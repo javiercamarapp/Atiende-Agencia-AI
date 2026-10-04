@@ -65,6 +65,7 @@ Todos tienen latido en el panel de salud (verifica el de cada path en `/superadm
 
 - `/internal/despachos/efos-69b/ingestar`: POST con el listado en el cuerpo y `?periodo=` (tope de 4 MB); no es agendable por Vercel. La descarga automática la hace `/internal/despachos/efos-69b/descarga` (agendada), sin ese tope.
 - `/internal/restaurantes/voz/*`: endpoints de la llamada de voz, no son crons.
+- `/internal/restaurantes/enviar-encuestas` (R-41): barrido idempotente que encola por WhatsApp la encuesta post-entrega (un mensaje por pedido, nunca duplica). Sin cron por decisión de costo: hoy lo dispara el botón "Enviar pendientes ahora" del panel (por organización) o un scheduler externo con el secreto interno. No lleva latido ni interruptor de cron mientras no se agende; si se agenda, hay que añadirlo a `vercel.json`, `SWITCHABLE_CRONS` y a `withHeartbeat` y subir el conteo de esta página.
 
 ## Orden de despliegue
 
