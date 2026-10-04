@@ -182,6 +182,21 @@ describe("PUT .../admin/avisos/preferencias", () => {
 });
 
 describe("PUT .../admin/avisos/umbral", () => {
+  it("un admin con membership acotada a la sucursal A no cambia el umbral de la sucursal B (403) pero si el de la suya", async () => {
+    const t = await construir();
+    const coreRepo = t.ctx.deps.coreRepo;
+    const original = coreRepo.findMembershipsByUserId.bind(coreRepo);
+    coreRepo.findMembershipsByUserId = async (userId: string) => {
+      const ms = await original(userId);
+      return userId === t.ctx.staff.admin.id ? ms.map((m) => ({ ...m, propertyIds: [t.ctx.propertyIdA] })) : ms;
+    };
+    const put = (propertyId: string) => t.app.request(`${t.ruta}/umbral`, authedJson(t.ctx.staff.admin.token, { propertyId, minutos: 30 }, "PUT"));
+    expect((await put(t.ctx.propertyIdB)).status).toBe(403);
+    expect(t.umbrales.size).toBe(0);
+    expect((await put(t.ctx.propertyIdA)).status).toBe(200);
+    expect(t.umbrales.get(t.ctx.propertyIdA)).toBe(30);
+  });
+
   it("owner fija los minutos de una sucursal, se lee de vuelta y queda bitacora con antes/despues", async () => {
     const t = await construir();
     const r = await t.app.request(`${t.ruta}/umbral`, authedJson(t.ctx.staff.owner.token, { propertyId: t.ctx.propertyIdB, minutos: 30 }, "PUT"));

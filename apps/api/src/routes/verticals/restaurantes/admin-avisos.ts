@@ -36,6 +36,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -154,6 +155,11 @@ export function restaurantesAdminAvisosRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     const raw = await readJsonCapped<UmbralBody>(c.req.raw, 2 * 1024);
     if (typeof raw.propertyId !== "string" || !UUID_RE.test(raw.propertyId)) throw Errors.validation("propertyId: identificador de sucursal inválido.");
     if (typeof raw.minutos !== "number" || !Number.isInteger(raw.minutos)) throw Errors.validation("minutos: debe ser un número entero.");
+
+    // Alcance por sucursal: un owner/admin con membership acotada (property_ids) solo cambia el umbral de SUS sucursales
+    // (mismo criterio que el resto de rutas admin, sin ensanchar el alcance). Membership org-wide (null) = todas.
+    const alcance = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+    if (alcance !== null && !alcance.includes(raw.propertyId)) throw Errors.forbidden("No tienes acceso a esta sucursal.");
 
     const db = c.get("db");
     try {
