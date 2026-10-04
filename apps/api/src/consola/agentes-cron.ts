@@ -25,6 +25,8 @@ export const AGENTES_CRON: Readonly<Record<string, CronAgente>> = {
   "/internal/restaurantes/promover-programados": { vertical: "restaurantes", nombre: "Promoción de pedidos programados" },
   "/internal/restaurantes/softrestaurant-dispatch": { vertical: "restaurantes", nombre: "Envío a SoftRestaurant" },
   "/internal/restaurantes/voz-huerfanas": { vertical: "restaurantes", nombre: "Cierre de llamadas de voz sin cierre" },
+  "/internal/restaurantes/cierres-dia": { vertical: "restaurantes", nombre: "Cierre del día y resumen semanal" },
+  "/internal/restaurantes/repartidor-licencias": { vertical: "restaurantes", nombre: "Aviso de licencias de repartidor por vencer" },
   "/internal/restaurantes/privacidad-retencion": { vertical: "restaurantes", nombre: "Retención de privacidad de restaurantes" },
   "/internal/despachos/cobranza-reminders": { vertical: "despachos", nombre: "Recordatorios de cobranza" },
   "/internal/despachos/email-dispatch": { vertical: "despachos", nombre: "Despacho de correo de despachos" },
@@ -41,5 +43,6 @@ export const AGENTES_CRON: Readonly<Record<string, CronAgente>> = {
   "/internal/superadmin/resumen-diario": { vertical: "plataforma", nombre: "Parte diario" },
   "/internal/superadmin/mantenimiento": { vertical: "plataforma", nombre: "Mantenimiento de plataforma" },
   "/internal/superadmin/alertas-cfo": { vertical: "plataforma", nombre: "Alertas CFO" },
+  "/internal/plataforma/prueba-avisos": { vertical: "plataforma", nombre: "Avisos de fin de prueba" },
   "/internal/plataforma/privacidad-retencion": { vertical: "plataforma", nombre: "Retención de privacidad de la plataforma" },
 };
