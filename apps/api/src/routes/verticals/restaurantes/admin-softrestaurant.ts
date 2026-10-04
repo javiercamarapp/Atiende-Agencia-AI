@@ -43,7 +43,7 @@ import { softRestaurantPortFor, softRestaurantStoreFor } from "./softrestaurant-
 const ESTADOS_POR_DEFECTO: readonly EstadoComanda[] = ["captura_manual", "fallida", "pendiente", "enviada"];
 const NOTA_MAX = 300;
 
-function serializeComanda(f: FilaComandaOutbox) {
+function serializeComanda(f: FilaComandaOutbox, totalPedido: number | null = null) {
   return {
     id: f.id,
     propertyId: f.propertyId,
@@ -59,6 +59,8 @@ function serializeComanda(f: FilaComandaOutbox) {
     capturadoEn: f.capturadoEn,
     notaCaptura: f.notaCaptura,
     creadoEn: f.creadoEn,
+    /** Total del pedido en Atiende (la comanda nunca cobra: solo informa al staff que captura). */
+    totalPedido,
     // Lo que el staff necesita para capturar la comanda a mano.
     comanda: f.payload,
   };
@@ -212,9 +214,16 @@ export function restaurantesAdminSoftRestauranteRoutes(deps: AppDeps): Hono<Core
     const offset = parseEntero(c.req.query("offset"), "offset", 0, 100000, 0);
     const lista = await store.listar(organizationId, { propertyIds, estados, limite, offset });
     const resumen = await store.resumen(organizationId, propertyIds);
+    // Total del pedido de cada comanda (hasta `limit` lecturas por llave primaria; el outbox no guarda totales).
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const totales = new Map<string, number>();
+    for (const f of lista.filas) {
+      const pedido = await repo.findOrderById(organizationId, f.orderId);
+      if (pedido) totales.set(f.orderId, pedido.total);
+    }
     return c.json({
       disponible: lista.disponible,
-      comandas: lista.filas.map(serializeComanda),
+      comandas: lista.filas.map((f) => serializeComanda(f, totales.get(f.orderId) ?? null)),
       resumen: resumen.porEstado,
       // Conteo de "requieren atencion" para el badge del panel.
       requierenAtencion: resumen.porEstado.captura_manual + resumen.porEstado.fallida,

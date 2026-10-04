@@ -164,3 +164,20 @@ describe("GET admin/softrestaurant/estados (insignia de Pedidos)", () => {
     expect(await (await t.app.request(`${t.base}/estados?orderIds=${randomUUID()}`, authedGet(t.ctx.staff.owner.token))).json()).toEqual({ disponible: false, estados: {} });
   });
 });
+
+describe("GET admin/softrestaurant/comandas -- total del pedido", () => {
+  it("cada comanda trae el total del pedido de Atiende (la comanda nunca cobra: solo informa a quien captura); sin pedido, null", async () => {
+    const t = await construir();
+    const con = await t.sembrarCapturaManual();
+    const sin = await t.sembrarCapturaManual();
+    t.ctx.restaurantesRepo.seedOrder({
+      id: con.orderId, customerId: null, customerName: "Ana", customerPhone: "9991112222", customerAddress: null, customerEmail: null, branch: null, total: 345.5, status: "pending", items: [],
+      source: "voice", notes: null, paymentMethod: null, callTranscript: null, callRecordingUrl: null, dedupeFingerprint: null, idempotencyKey: null, createdAt: new Date().toISOString(),
+      assignedRepartidorId: null, estimatedDeliveryAt: null, incidentNote: null, organizationId: t.ctx.organizationId, propertyId: t.ctx.propertyIdA,
+    } as never);
+    const res = await t.app.request(`${t.base}/comandas`, authedGet(t.ctx.staff.owner.token));
+    const cuerpo = (await res.json()) as { comandas: Array<{ orderId: string; totalPedido: number | null }> };
+    expect(cuerpo.comandas.find((c) => c.orderId === con.orderId)!.totalPedido).toBe(345.5);
+    expect(cuerpo.comandas.find((c) => c.orderId === sin.orderId)!.totalPedido).toBeNull();
+  });
+});
