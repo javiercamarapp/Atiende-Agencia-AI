@@ -67,7 +67,8 @@ export const test = base.extend<Fixtures>({
       await page.waitForURL((url) => !url.pathname.includes("/auth/google/callback"), { timeout: 15_000 });
       // Hasta que el shell pinto (sesion y sucursales ya cargadas): si no, una falla inyectada justo despues del login
       // podria consumirla la carga inicial en vez de la accion que la prueba quiere ejercitar (flake visto en CI).
-      await page.locator("main").first().waitFor({ state: "visible", timeout: 15_000 });
+      // El repartidor aterriza en /repartidor, que no es parte del shell y no tiene <main> (BUG-E2E-REST-001): espera su encabezado.
+      await page.locator("main").or(page.getByRole("heading", { name: "Mis entregas" })).first().waitFor({ state: "visible", timeout: 15_000 });
       return new URL(page.url()).pathname;
     });
   },

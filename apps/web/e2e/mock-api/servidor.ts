@@ -151,7 +151,7 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
   async function control(req: IncomingMessage, res: ServerResponse, ruta: string, origen: string | undefined): Promise<void> {
     const metodo = req.method ?? "GET";
     if (ruta === "/__mock/salud") return enviar(res, 200, { ok: true, escenarios: escenarios.size }, origen);
-    const m = /^\/__mock\/escenarios\/([^/]+)\/(peticiones|config|reiniciar|notificaciones)$/.exec(ruta);
+    const m = /^\/__mock\/escenarios\/([^/]+)\/(peticiones|config|reiniciar|notificaciones|estado)$/.exec(ruta);
     if (!m) return enviar(res, 404, { message: "control desconocido" }, origen);
     const e = escenario(decodeURIComponent(m[1]!));
     if (m[2] === "peticiones") {
@@ -177,6 +177,16 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
         ...(typeof nueva.enlace === "string" ? { enlace: nueva.enlace } : {}),
       });
       return enviar(res, 200, { ok: true, id: fila.id }, origen);
+    }
+    if (m[2] === "estado") {
+      // Solo del mock: agrega un elemento a una lista del estado del escenario (p. ej. un pedido nuevo que llega mientras la
+      // prueba mira el panel: en produccion lo crea el storefront o WhatsApp, aqui no hay quien lo origine).
+      const dato = ((await leerCuerpo(req)) ?? {}) as { clave?: unknown; agregar?: unknown };
+      if (typeof dato.clave !== "string" || dato.clave === "" || dato.agregar === undefined) return enviar(res, 400, { message: "clave y agregar requeridos" }, origen);
+      const lista = e.datos.get(dato.clave) as unknown[] | undefined;
+      if (!Array.isArray(lista)) return enviar(res, 409, { message: "la lista aun no existe: la pantalla debe cargarla primero" }, origen);
+      lista.push(dato.agregar);
+      return enviar(res, 200, { ok: true, total: lista.length }, origen);
     }
     const cuerpo = ((await leerCuerpo(req)) ?? {}) as { latenciaMs?: number; fallas?: Falla[]; agregarFallas?: Falla[] };
     if (typeof cuerpo.latenciaMs === "number") e.latenciaMs = Math.max(0, cuerpo.latenciaMs);

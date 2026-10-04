@@ -164,6 +164,7 @@ export class InMemoryComandaOutboxStore implements ComandaOutboxStore {
       .filter((f) => f.organizationId === organizationId)
       .filter((f) => filtro.propertyIds === null || filtro.propertyIds.includes(f.propertyId))
       .filter((f) => !filtro.estados || filtro.estados.includes(f.estado))
+      .filter((f) => filtro.orderId === undefined || f.orderId === filtro.orderId)
       .sort((a, b) => b.creadoEn.localeCompare(a.creadoEn) || b.id.localeCompare(a.id))
       .slice(filtro.offset, filtro.offset + filtro.limite);
     return { disponible: true, filas };

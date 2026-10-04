@@ -4,6 +4,7 @@
 //   GET  .../admin/voz/config                   configuración de voz (vacío honesto si no hay / base sin migrar)
 //   PUT  .../admin/voz/config                   reemplaza la configuración completa
 //   POST .../admin/voz/preview/sesion           emite la sesión de preview (token efímero)
+//   POST .../admin/voz/preview/:sesionId/herramienta   relevo de UNA herramienta del agente en modo preview (sin efectos)
 //   GET  .../admin/voz/conversaciones           listado paginado de conversaciones
 //   GET  .../admin/voz/conversaciones/:id       conversación + transcripción propia
 //
@@ -32,8 +33,16 @@ import {
   VozProveedorError,
   VozRechazadaError,
   consumeRateLimit,
+  anteponerConocimiento,
+  bloqueConocimientoDelTurno,
   esVozDeGemini,
+  executeAgentToolSafely,
   firmarPreviewToken,
+  MARCADOR_SALUDO,
+  resolverMarcadorSaludo,
+  telefonoFicticioPreview,
+  toolDefinitionsForChannel,
+  verificarPreviewToken,
 } from "@atiende/domain-restaurantes";
 import type { VoiceAgentProvider, VozConfig, VozConfigEntrada, VozProveedorId, VozRepository, VozResultado } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
@@ -51,6 +60,8 @@ interface ConfigBody {
   readonly voiceId?: unknown;
   readonly comportamiento?: unknown;
   readonly mensajeInicial?: unknown;
+  /** Opcional (migracion 053): ausente = se conserva lo guardado (un cliente anterior a la bandera no la pisa). */
+  readonly mensajeInicialInterrumpible?: unknown;
 }
 
 /** PUT reemplaza la configuración COMPLETA: cada campo es obligatorio para que un cliente
@@ -71,16 +82,24 @@ function parseConfig(raw: ConfigBody): VozConfigEntrada {
   if (typeof raw.mensajeInicial !== "string" || raw.mensajeInicial.length > VOZ_MENSAJE_INICIAL_MAX) {
     throw Errors.validation(`mensajeInicial: se esperaba texto de hasta ${VOZ_MENSAJE_INICIAL_MAX} caracteres (puede ir vacío).`);
   }
-  return { habilitado: raw.habilitado, proveedor, voiceId: raw.voiceId, comportamiento: raw.comportamiento, mensajeInicial: raw.mensajeInicial };
+  if (raw.mensajeInicialInterrumpible !== undefined && typeof raw.mensajeInicialInterrumpible !== "boolean") throw Errors.validation("mensajeInicialInterrumpible: se esperaba true o false.");
+  return {
+    habilitado: raw.habilitado,
+    proveedor,
+    voiceId: raw.voiceId,
+    comportamiento: raw.comportamiento,
+    mensajeInicial: raw.mensajeInicial,
+    ...(raw.mensajeInicialInterrumpible === undefined ? {} : { mensajeInicialInterrumpible: raw.mensajeInicialInterrumpible }),
+  };
 }
 
 function serializeConfig(c: VozConfig, disponible: boolean) {
-  return { disponible, configurada: c.configurada, habilitado: c.habilitado, proveedor: c.proveedor, voiceId: c.voiceId, comportamiento: c.comportamiento, mensajeInicial: c.mensajeInicial };
+  return { disponible, configurada: c.configurada, habilitado: c.habilitado, proveedor: c.proveedor, voiceId: c.voiceId, comportamiento: c.comportamiento, mensajeInicial: c.mensajeInicial, mensajeInicialInterrumpible: c.mensajeInicialInterrumpible !== false };
 }
 
 /** Resumen para bitácora: nunca el prompt completo (puede ser largo y es configuración comercial). */
-function resumenConfig(c: Pick<VozConfig, "habilitado" | "proveedor" | "voiceId" | "comportamiento" | "mensajeInicial">): string {
-  return JSON.stringify({ habilitado: c.habilitado, proveedor: c.proveedor, voiceId: c.voiceId, comportamientoChars: c.comportamiento.length, mensajeInicialChars: c.mensajeInicial.length });
+function resumenConfig(c: Pick<VozConfig, "habilitado" | "proveedor" | "voiceId" | "comportamiento" | "mensajeInicial" | "mensajeInicialInterrumpible">): string {
+  return JSON.stringify({ habilitado: c.habilitado, proveedor: c.proveedor, voiceId: c.voiceId, comportamientoChars: c.comportamiento.length, mensajeInicialChars: c.mensajeInicial.length, saludoInterrumpible: c.mensajeInicialInterrumpible !== false });
 }
 
 function parseEntero(value: string | undefined, campo: string, min: number, max: number, porDefecto: number): number {
@@ -109,10 +128,11 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
   const catalogoPath = `${base}/catalogo`;
   const configPath = `${base}/config`;
   const previewPath = `${base}/preview/sesion`;
+  const previewHerramientaPath = `${base}/preview/:sesionId/herramienta`;
   const conversacionesPath = `${base}/conversaciones`;
   const conversacionPath = `${base}/conversaciones/:conversationId`;
 
-  for (const path of [catalogoPath, configPath, previewPath, conversacionesPath, conversacionPath]) {
+  for (const path of [catalogoPath, configPath, previewPath, previewHerramientaPath, conversacionesPath, conversacionPath]) {
     app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   }
 
@@ -151,9 +171,11 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
   app.put(configPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
     const { organizationId, propertyId } = await resolverSucursal(c);
-    const nueva = parseConfig(await readJsonCapped<ConfigBody>(c.req.raw, 32 * 1024));
+    const pedida = parseConfig(await readJsonCapped<ConfigBody>(c.req.raw, 32 * 1024));
     const repo = vozRepo(c);
     const anterior = await repo.getConfig(propertyId);
+    // Un cliente anterior a la bandera del saludo (053) no la manda: se conserva lo guardado en vez de pisarla con el valor por omision.
+    const nueva: VozConfigEntrada = pedida.mensajeInicialInterrumpible === undefined ? { ...pedida, mensajeInicialInterrumpible: anterior.valor.mensajeInicialInterrumpible !== false } : pedida;
 
     let guardada: VozConfig;
     try {
@@ -211,10 +233,27 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       return asServiceUnavailable(err);
     }
 
-    // 4) Sesión con el proveedor + token propio firmado.
+    // 4) Sesión con el proveedor + token propio firmado. El token fija las herramientas del registro unico (canal voz); las
+    // ejecuta el servidor en modo preview (ruta `.../preview/:sesionId/herramienta`). `{saludo}` se resuelve aqui con la zona
+    // horaria de la sucursal.
+    const mensajeInicial = lectura.valor.mensajeInicial.includes(MARCADOR_SALUDO)
+      ? resolverMarcadorSaludo(lectura.valor.mensajeInicial, (await restaurantes.findBranchZonaHoraria(propertyId)).zonaHoraria ?? "America/Merida", new Date())
+      : lectura.valor.mensajeInicial;
+    // Conocimiento del negocio vigente HOY (053): va ANTES del comportamiento guardado para que las reglas duras (que viven en el comportamiento) queden
+    // al final y ganen. Sin entradas o con la base sin migrar el texto es identico al guardado.
+    const bloqueConocimiento = await bloqueConocimientoDelTurno(restaurantes, organizationId, propertyId, "America/Merida", new Date());
     let emitida;
     try {
-      emitida = await provider.emitirSesionPreview({ organizationId, propertyId, sessionId: sesion.id, voiceId, comportamiento: lectura.valor.comportamiento, mensajeInicial: lectura.valor.mensajeInicial, ttlSegundos });
+      emitida = await provider.emitirSesionPreview({
+        organizationId,
+        propertyId,
+        sessionId: sesion.id,
+        voiceId,
+        comportamiento: anteponerConocimiento(lectura.valor.comportamiento, bloqueConocimiento),
+        mensajeInicial,
+        ttlSegundos,
+        herramientas: toolDefinitionsForChannel("voz").map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),
+      });
     } catch (err) {
       if (err instanceof VozNoConfiguradaError) throw Errors.serviceUnavailable(err.message);
       if (err instanceof VozProveedorError) {
@@ -255,6 +294,51 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       },
       201,
     );
+  });
+
+  // Relevo de herramientas de la llamada de PRUEBA: el navegador recibe el `toolCall` de Gemini Live y lo manda aquí; se
+  // ejecuta el MISMO registro de tools del agente real, pero con `modo: "preview"` fijado por el servidor (pedidos y avisos
+  // simulados, cero escrituras de dominio). Identidad: sesión de STAFF owner/admin + token de preview firmado y ligado a
+  // ESTA organización, sucursal y sesión (un token vencido, de otra sucursal o de otra sesión se rechaza). El nombre de la
+  // herramienta debe estar en el registro del canal voz; el modo y el teléfono NUNCA salen del cuerpo.
+  app.post(previewHerramientaPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const { organizationId, propertyId } = await resolverSucursal(c);
+    const sesionId = c.req.param("sesionId") ?? "";
+    if (!UUID_RE.test(sesionId)) throw Errors.notFound("Sesión de prueba no encontrada.");
+
+    const secreto = deps.env.voicePreviewTokenSecret;
+    if (!secreto || secreto.length < SECRETO_PREVIEW_MIN) throw Errors.serviceUnavailable("Voz no configurada: falta VOICE_PREVIEW_TOKEN_SECRET.");
+
+    const raw = await readJsonCapped<{ tokenPreview?: unknown; nombre?: unknown; argumentos?: unknown }>(c.req.raw, 32 * 1024);
+    const verificacion = verificarPreviewToken(secreto, raw.tokenPreview, new Date(), { sessionId: sesionId, organizationId, propertyId });
+    if (!verificacion.ok) {
+      // Vencido o de otra sesión => 401 (el panel pide una llamada nueva); de otra sucursal u organización => 403.
+      if (verificacion.razon === "ligadura") throw Errors.forbidden("El token de la prueba no corresponde a esta sucursal o sesión.");
+      throw Errors.unauthorized();
+    }
+    if (typeof raw.nombre !== "string" || !toolDefinitionsForChannel("voz").some((t) => t.name === raw.nombre)) throw Errors.validation("nombre: herramienta desconocida.");
+    if (raw.argumentos !== undefined && (typeof raw.argumentos !== "object" || raw.argumentos === null || Array.isArray(raw.argumentos))) throw Errors.validation("argumentos: se esperaba un objeto.");
+
+    const restaurantes = deps.restaurantesRepo(c.get("db"));
+    const limited = await consumeRateLimit(restaurantes, "voz-preview-herramienta", requestActor(c.req.raw, `${c.get("userId")}:${sesionId}`), 60, 600);
+    if (!limited.allowed) throw Errors.tooManyRequests();
+
+    const outcome = await executeAgentToolSafely(
+      restaurantes,
+      {
+        organizationId,
+        channel: "voz",
+        phone: telefonoFicticioPreview(sesionId),
+        lockedPropertyId: propertyId,
+        modo: "preview",
+        flow: { key: `voz-preview:${sesionId}`, turn: null },
+      },
+      raw.nombre,
+      (raw.argumentos ?? {}) as Record<string, unknown>,
+    );
+    logEvent(c, "info", "restaurantes_admin_voz_preview_herramienta", { actorUserId: c.get("userId"), organizationId, propertyId, sessionId: sesionId, herramienta: raw.nombre });
+    return c.json({ resultado: outcome.result, simulado: outcome.simulated === true });
   });
 
   app.get(conversacionesPath, async (c) => {

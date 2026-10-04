@@ -14,14 +14,14 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { MANAGER_ROLES, assertOrderCanBeDispatched, avisarProgramadosPromovidos, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
 import type { Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
-import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
+import { cortarComandaDePedidoCancelado, encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import { dispatchWhatsAppVertical, triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
-import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
+import { softRestaurantComandaDeps, softRestaurantStoreFor } from "./softrestaurant-wiring.ts";
 
 /** Canal, propina y hora de recogida (migracion 031). `null` en los tres cuando la base aun no esta migrada o
  * el pedido es anterior: los listados no seleccionan esas columnas, se leen aparte con SAVEPOINT. */
@@ -320,6 +320,9 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
           antes: order.status,
           despues: "cancelado",
         });
+        // Un pedido cancelado antes de llegar al POS no debe llegar a cocina despues (POS lento/caido + reintento del despachador).
+        const corte = await cortarComandaDePedidoCancelado(softRestaurantStoreFor(deps, c.get("db")), organizationId, updated, c.get("userId"));
+        if (corte.cortadas > 0) logEvent(c, "info", "restaurantes_comanda_cortada_por_cancelacion", { actorUserId: c.get("userId"), organizationId, orderId, cortadas: corte.cortadas });
       }
 
       return c.json({ order: (await serializeOrders(repo, organizationId, [updated]))[0] });

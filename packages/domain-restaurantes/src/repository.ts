@@ -8,6 +8,7 @@
 // todas pasan por aquí, así que el mismo código de negocio corre igual en tests y
 // en producción.
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
+import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type {
   Branch,
@@ -58,6 +59,8 @@ import type {
   RestaurantesAuditLogPaginacion,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
+  StorefrontMarca,
+  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
   StorefrontTrackingResult,
@@ -212,7 +215,8 @@ export interface RestaurantesRepository {
    * incluida la recuperación de la carrera de INSERT concurrente real, UNIQUE
    * (organization_id, phone)). */
   upsertCustomer(organizationId: string, phone: string, name: string): Promise<Customer>;
-  addCustomerAddressIfNew(customerId: string, address: string): Promise<void>;
+  /** `organizationId` es obligatorio: la escritura real (funcion solo-sistema de la migracion 048) exige que el cliente pertenezca a esa organizacion. */
+  addCustomerAddressIfNew(customerId: string, address: string, organizationId: string): Promise<void>;
   listCustomerAddresses(customerId: string): Promise<readonly CustomerAddress[]>;
   /** Historial de pedidos ELEGIBLES para memoria/recomendación (pending/preparando/
    * en_camino/entregado/completado — nunca cancelado/problema), orden desc. */
@@ -539,6 +543,15 @@ export interface RestaurantesRepository {
    *  primary key de la tabla) -- nunca dos filas por organización. */
   upsertWhatsappChannelConfig(organizationId: string, phoneNumberId: string): Promise<WhatsappChannelConfig>;
 
+  // ---- R-38 (migración 062): marca pública del storefront ----
+
+  /** Marca de la organización; `null` si nunca se guardó O si la base aún no tiene la migración 062 (la portada pública cae a una
+   *  genérica con el nombre del restaurante). Nunca lanza por tabla/columna ausente. */
+  findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null>;
+  /** Alta o reemplazo completo de la marca (owner/admin por RLS). Lanza `RestaurantesConfigUnavailableError` si la base aún no tiene
+   *  la migración 062 (la ruta responde 503, nunca 500). */
+  upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca>;
+
   /** Más reciente primero -- orden total (ver `created_at desc, id desc`, mismo
    *  criterio de desempate que `restaurantes.audit_log` para paginación estable). */
   listKnownZones(organizationId: string): Promise<readonly KnownZone[]>;
@@ -597,6 +610,23 @@ export interface RestaurantesRepository {
 
   /** `EMPTY_BRANCH_POLICY` cuando la sucursal no tiene politica o la base no esta migrada. */
   findBranchPolicy(propertyId: string): Promise<BranchPolicy>;
+
+  // ---- Conocimiento del negocio e interruptor del agente de WhatsApp (migracion 053). Toda LECTURA degrada con SAVEPOINT a
+  // "sin conocimiento" / "agente encendido" contra la base sin migrar; toda ESCRITURA lanza `RestaurantesConfigUnavailableError`. ----
+
+  /** Todas las entradas de la organizacion (borradores incluidos) para el panel; `disponible: false` contra la base sin migrar. */
+  listarConocimiento(organizationId: string): Promise<ConocimientoLectura>;
+  /** Entradas publicadas y activas que aplican a la sucursal (generales + las suyas). La vigencia por fecha la decide `listarConocimientoVigente`. */
+  listarConocimientoPublicado(organizationId: string, propertyId: string | null): Promise<readonly ConocimientoEntrada[]>;
+  crearConocimiento(organizationId: string, actorId: string, input: NuevaConocimientoEntrada): Promise<ConocimientoEntrada>;
+  /** `null` si no existe o es de otra organizacion. */
+  actualizarConocimiento(organizationId: string, actorId: string, id: string, patch: ConocimientoPatch): Promise<ConocimientoEntrada | null>;
+  borrarConocimiento(organizationId: string, id: string): Promise<boolean>;
+  /** `false` solo si la sucursal tiene el agente de WhatsApp APAGADO; sin fila o con la base sin migrar es `true` (como hasta hoy). */
+  findAgenteWhatsappActivo(propertyId: string): Promise<boolean>;
+  /** Sucursales con el agente de WhatsApp apagado; `disponible: false` contra la base sin migrar. */
+  listarAgentesWhatsappApagados(organizationId: string): Promise<{ readonly disponible: boolean; readonly propertyIdsApagados: readonly string[] }>;
+  fijarAgenteWhatsappActivo(organizationId: string, propertyId: string, actorId: string, activo: boolean): Promise<void>;
 
   // ---- Puentes (migracion 031): horario por fecha. La LECTURA degrada a [] contra la base sin migrar
   // (SAVEPOINT); la ESCRITURA lanza `RestaurantesConfigUnavailableError`. ----

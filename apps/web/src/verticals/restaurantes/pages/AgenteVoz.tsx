@@ -10,10 +10,13 @@
 // llamada REAL de prueba con Gemini Live por token efímero (voz/adaptador-gemini-live.ts);
 // sin credencial en el servidor dice "no disponible: falta GEMINI_API_KEY" en vez de simular.
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { BookOpen, CheckCircle2, Circle, Mic, Wrench } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada, StatusBadge } from "@atiende/ui";
-import { VozNoDisponibleError, crearSesionPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
-import type { ConversacionVoz, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
+import { VozNoDisponibleError, crearSesionPreviewVoz, ejecutarHerramientaPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
+import { pedidoSimuladoDe } from "../lib/voz-client.ts";
+import type { ConversacionVoz, PedidoSimulado, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
+import { TarjetaPedidoSimulado } from "../preview/TarjetaPedidoSimulado.tsx";
 import { buscarVoz } from "../lib/voz-catalogo.ts";
 import { crearFabricaGeminiLive } from "../../../lib/voz/adaptador-gemini-live.ts";
 import type { EntornoVoz } from "../../../lib/voz/adaptador-gemini-live.ts";
@@ -25,6 +28,7 @@ import { formatoCostoUsd, formatoDuracion } from "../voz/formato-voz.ts";
 import { PestanaConversaciones } from "../voz/PestanaConversaciones.tsx";
 import { PestanaIndicadores } from "../voz/PestanaIndicadores.tsx";
 import { SelectorVoz } from "../voz/SelectorVoz.tsx";
+import { ConocimientoNegocio } from "../components/ConocimientoNegocio.tsx";
 import type { MuestraAudio } from "../voz/SelectorVoz.tsx";
 import { useSesionVoz } from "../../../lib/voz/useSesionVoz.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -44,7 +48,7 @@ const PESTANAS: readonly { readonly id: PestanaId; readonly etiqueta: string }[]
 
 const PESTANAS_EDITABLES: ReadonlySet<PestanaId> = new Set(["voz", "comportamiento", "mensaje"]);
 
-const BORRADOR_VACIO: VozConfigInput = { vozId: null, promptSistema: "", mensajeInicial: "", habilitado: false };
+const BORRADOR_VACIO: VozConfigInput = { vozId: null, promptSistema: "", mensajeInicial: "", mensajeInicialInterrumpible: true, habilitado: false };
 
 /** Regla de transparencia: el saludo debe presentarse como asistente virtual. */
 export function mencionaAsistenteVirtual(texto: string): boolean {
@@ -52,11 +56,11 @@ export function mencionaAsistenteVirtual(texto: string): boolean {
 }
 
 function aBorrador(c: VozConfig | null): VozConfigInput {
-  return c ? { vozId: c.vozId, promptSistema: c.promptSistema, mensajeInicial: c.mensajeInicial, habilitado: c.habilitado } : BORRADOR_VACIO;
+  return c ? { vozId: c.vozId, promptSistema: c.promptSistema, mensajeInicial: c.mensajeInicial, mensajeInicialInterrumpible: c.mensajeInicialInterrumpible, habilitado: c.habilitado } : BORRADOR_VACIO;
 }
 
 function iguales(a: VozConfigInput, b: VozConfigInput): boolean {
-  return a.vozId === b.vozId && a.promptSistema === b.promptSistema && a.mensajeInicial === b.mensajeInicial && a.habilitado === b.habilitado;
+  return a.vozId === b.vozId && a.promptSistema === b.promptSistema && a.mensajeInicial === b.mensajeInicial && a.mensajeInicialInterrumpible === b.mensajeInicialInterrumpible && a.habilitado === b.habilitado;
 }
 
 export interface AgenteVozPageProps extends RestaurantesShellContext {
@@ -66,7 +70,7 @@ export interface AgenteVozPageProps extends RestaurantesShellContext {
   readonly entornoVoz?: EntornoVoz;
 }
 
-export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entornoVoz }: AgenteVozPageProps) {
+export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, crearAudio, entornoVoz }: AgenteVozPageProps) {
   const [pestana, setPestana] = useState<PestanaId>("resumen");
   const [config, setConfig] = useState<Carga<VozConfig | null>>({ estado: "cargando" });
   const [conversaciones, setConversaciones] = useState<Carga<readonly ConversacionVoz[]>>({ estado: "cargando" });
@@ -136,6 +140,21 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
     }
   }
 
+  // Patron ARIA de pestanas: flechas (con vuelta), Inicio y Fin mueven el foco y activan la pestana; solo la activa entra por Tab.
+  function alTeclearPestanas(e: KeyboardEvent<HTMLDivElement>) {
+    const i = PESTANAS.findIndex((p) => p.id === pestana);
+    let destino = -1;
+    if (e.key === "ArrowRight") destino = (i + 1) % PESTANAS.length;
+    else if (e.key === "ArrowLeft") destino = (i - 1 + PESTANAS.length) % PESTANAS.length;
+    else if (e.key === "Home") destino = 0;
+    else if (e.key === "End") destino = PESTANAS.length - 1;
+    if (destino < 0) return;
+    e.preventDefault();
+    const siguiente = PESTANAS[destino]!;
+    setPestana(siguiente.id);
+    document.getElementById(`pestana-${siguiente.id}`)?.focus();
+  }
+
   const ejecuciones = useMemo(() => contarEjecuciones(conversaciones.estado === "listo" ? conversaciones.datos : null), [conversaciones]);
 
   return (
@@ -152,7 +171,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
           </Button>
         </div>
 
-        <div role="tablist" aria-label="Secciones del agente de voz" className="flex flex-wrap gap-1.5 border-b border-border pb-2">
+        <div role="tablist" aria-label="Secciones del agente de voz" onKeyDown={alTeclearPestanas} className="flex flex-wrap gap-1.5 border-b border-border pb-2">
           {PESTANAS.map((p) => (
             <button
               key={p.id}
@@ -161,6 +180,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
               id={`pestana-${p.id}`}
               aria-selected={pestana === p.id}
               aria-controls={`panel-${p.id}`}
+              tabIndex={pestana === p.id ? 0 : -1}
               onClick={() => setPestana(p.id)}
               className={`h-8 px-3 rounded-lg text-xs font-medium border transition-colors ${pestana === p.id ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
             >
@@ -193,11 +213,15 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
             </div>
           ) : null}
 
-          {pestana === "conocimiento" && config.estado !== "cargando" ? (
+          {pestana === "conocimiento" ? (
             <div className="space-y-4">
-              <p role="note" data-testid="aviso-conocimiento" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                Las notas de conocimiento libres todavía no se guardan en el servicio de voz. Mientras tanto, escribe horarios, políticas y preguntas frecuentes en la pestaña Comportamiento: el agente las recibe como parte de sus instrucciones.
-              </p>
+              {role === "owner" || role === "admin" ? (
+                <ConocimientoNegocio apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} canal="voz" />
+              ) : (
+                <p role="note" data-testid="aviso-conocimiento" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  El conocimiento del negocio (políticas, preguntas frecuentes y avisos) lo administran el dueño o un administrador.
+                </p>
+              )}
               <div>
                 <p className="text-sm font-medium text-foreground mb-1.5 flex items-center gap-1.5">
                   <BookOpen className="h-4 w-4" strokeWidth={1.75} />
@@ -242,6 +266,17 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
                   placeholder="Hola, le atiende el asistente virtual de …"
                 />
               </div>
+              <Checkbox
+                id="voz-saludo-interrumpible"
+                checked={borrador.mensajeInicialInterrumpible}
+                onChange={(e) => setBorrador({ ...borrador, mensajeInicialInterrumpible: e.target.checked })}
+                label="Quien llama puede interrumpir el primer mensaje"
+              />
+              <p className="text-xs text-muted-foreground">
+                {borrador.mensajeInicialInterrumpible
+                  ? "Si quien llama habla encima, el agente se calla. Desmárquelo para que el aviso de asistente virtual y de grabación se escuche completo."
+                  : "El primer mensaje se escucha completo aunque quien llama hable encima; desde la segunda frase del agente sí puede interrumpirlo."}
+              </p>
               {borrador.mensajeInicial.trim() !== "" && !mencionaAsistenteVirtual(borrador.mensajeInicial) ? (
                 <Callout tone="warning" role="alert" data-testid="alerta-sin-asistente-virtual">
                   Este mensaje no dice que es un asistente virtual. Agrégalo antes de poner el agente en producción.
@@ -448,8 +483,25 @@ function VistaPreviaVoz({ apiBaseUrl, token, propertyId, vozId, servicioListo, e
     };
   }, [apiBaseUrl, token, propertyId, servicioListo]);
 
+  // Pedido simulado de la ultima llamada: lo devuelve `crear_pedido` en modo preview (no existe en la base).
+  const [pedidoSimulado, setPedidoSimulado] = useState<PedidoSimulado | null>(null);
   const fabrica = useMemo(
-    () => crearFabricaGeminiLive({ entorno, crearSesion: () => crearSesionPreviewVoz(fetch, apiBaseUrl, token, propertyId, vozId ? { voiceId: vozId } : {}) }),
+    () =>
+      crearFabricaGeminiLive({
+        entorno,
+        crearSesion: () => {
+          setPedidoSimulado(null);
+          return crearSesionPreviewVoz(fetch, apiBaseUrl, token, propertyId, vozId ? { voiceId: vozId } : {});
+        },
+        ejecutarHerramienta: async (sesion, llamada) => {
+          const r = await ejecutarHerramientaPreviewVoz(fetch, apiBaseUrl, token, propertyId, sesion, llamada.nombre, llamada.argumentos);
+          if (llamada.nombre === "crear_pedido") {
+            const pedido = pedidoSimuladoDe(r.resultado);
+            if (pedido) setPedidoSimulado(pedido);
+          }
+          return r.resultado;
+        },
+      }),
     [entorno, apiBaseUrl, token, propertyId, vozId],
   );
   const controller = useSesionVoz(fabrica);
@@ -462,9 +514,16 @@ function VistaPreviaVoz({ apiBaseUrl, token, propertyId, vozId, servicioListo, e
       videoSrc={`${import.meta.env.BASE_URL}media/orbe-agente.mp4`}
       {...(motivo ? { motivoNoDisponible: motivo } : {})}
       pie={
-        <Callout tone="info" role="note" data-testid="aviso-prueba" className="mx-4 mb-3">
-          Es una llamada real de prueba con la voz y el comportamiento guardados. No consulta el menú ni registra pedidos, y usa su micrófono: el navegador le pedirá permiso.
-        </Callout>
+        <>
+          <Callout tone="info" role="note" data-testid="aviso-prueba" className="mx-4 mb-3">
+            Llamada de prueba: consulta el menú real y simula el pedido; no se registra ni se avisa a nadie. Usa su micrófono: el navegador le pedirá permiso.
+          </Callout>
+          {pedidoSimulado ? (
+            <div className="mx-4 mb-3">
+              <TarjetaPedidoSimulado pedido={pedidoSimulado} />
+            </div>
+          ) : null}
+        </>
       }
     />
   );

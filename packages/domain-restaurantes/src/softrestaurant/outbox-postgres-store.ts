@@ -219,6 +219,10 @@ export class PostgresComandaOutboxStore implements ComandaOutboxStore {
       params.push([...f.estados]);
       condiciones.push(`estado = any($${params.length}::text[])`);
     }
+    if (f.orderId !== undefined) {
+      params.push(f.orderId);
+      condiciones.push(`order_id = $${params.length}::uuid`);
+    }
     params.push(limite, offset);
     const sql = `select ${COLUMNAS_LECTURA} from restaurantes.pos_comanda_outbox where ${condiciones.join(" and ")} order by creado_en desc, id desc limit $${params.length - 1} offset $${params.length}`;
     return runWithSavepointFallback<ResultadoListar>({

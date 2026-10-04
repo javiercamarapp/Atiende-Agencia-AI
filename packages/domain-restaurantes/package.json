@@ -11,8 +11,8 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "evals:pm:real": "node --experimental-strip-types src/evals/agente-pm/real-cli.ts",
-    "evals:voz:real": "node --experimental-strip-types src/voz/simulador/real-cli.ts"
+    "evals:pm:real": "vite-node src/evals/agente-pm/real-cli.ts",
+    "evals:voz:real": "vite-node src/voz/simulador/real-cli.ts"
   },
   "dependencies": {
     "@atiende/agent-core": "*",

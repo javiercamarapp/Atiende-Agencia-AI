@@ -1,5 +1,20 @@
 # Vertical: restaurantes (api)
 
+## Mapa vigente de archivos (4-oct-2026)
+
+Las secciones de abajo cuentan cómo se fue construyendo por fases; esta tabla es la lista **actual**. Cada archivo documenta sus rutas exactas en el
+comentario de cabecera. Los efectos y casos de punta a punta están en `docs/CICLO-PUNTA-A-PUNTA-RESTAURANTES.md`.
+
+| Grupo | Archivos | Qué hacen |
+|---|---|---|
+| Canales públicos / de sistema (sin `authMiddleware`) | `public.ts`, `storefront.ts`, `demo-widget.ts`, `whatsapp.ts`, `voice-tools.ts`, `voice-auth.ts`, `transcripcion-voz.ts` | checkout y storefront por token de rastreo, widget demo, webhook de WhatsApp (HMAC), herramientas HTTP del agente de voz con token por llamada, notas de voz de WhatsApp |
+| Efectos tras el commit | `efectos-post-commit.ts`, `email-dispatch.ts`, `softrestaurant-dispatch.ts`, `softrestaurant-wiring.ts`, `programados-interno.ts` | correo y comanda al POS del pedido recién creado, drenado de correo y de comandas, promoción de programados (crons de `vercel.json`) |
+| Panel de staff (`MANAGER_ROLES` u owner/admin) | `restaurantes.ts` (agregador), `admin-scope.ts`, `admin-catalog.ts`, `admin-branches.ts`, `admin-orders.ts`, `admin-customers.ts`, `admin-promotions.ts`, `admin-staff.ts`, `admin-config.ts`, `admin-modelo-pm.ts`, `admin-avisos.ts`, `admin-onboarding.ts` (+ `onboarding-aviso.ts`, `onboarding-carga.ts`), `auditoria.ts`, `exportaciones.ts` (+ `exportar-pdf.ts`), `privacidad.ts` | catálogo, sucursales, pedidos y su máquina de estados, clientes, promociones, cuentas, configuración, avisos, checklist de onboarding, bitácora, exportaciones y derechos ARCO |
+| Agente, voz y conversaciones | `conversaciones-admin.ts`, `voz-admin.ts`, `admin-voice-secret.ts`, `voz-interno.ts`, `voz-kpi.ts`, `whatsapp-kpi.ts`, `admin-data-chat.ts`, `admin-softrestaurant.ts` | bandeja de handoff (tomar, responder, devolver, cerrar), callbacks y turnos; configuración y secreto de voz por sucursal; registro de llamadas; KPI; "Chatea con tus datos"; bandeja de comandas del POS |
+| Repartidor | `repartidor-orders.ts`, `repartidor-historial.ts`, `repartidor-perfil.ts`, `repartidor-licencias-interno.ts` | solo sus pedidos asignados (`en_camino`, `entregado`, `problema`), su día, su perfil y el barrido de licencias |
+| Cierres y privacidad (sistema) | `cierres.ts`, `cierres-interno.ts`, `privacidad-interno.ts` | cierre del día/semana (panel y barrido), retención de datos |
+
+
 Fase 1 construida: `public.ts` (`POST /v1/restaurantes/:orgSlug/orders`,
 `POST /v1/restaurantes/:orgSlug/customers/lookup` — sin `authMiddleware`, canales
 públicos/de sistema, ver diseño Fase 1 §3) y `whatsapp.ts`

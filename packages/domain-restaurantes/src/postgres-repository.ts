@@ -12,6 +12,17 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
+import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
+import {
+  pgActualizarConocimiento,
+  pgAgenteWhatsappActivo,
+  pgBorrarConocimiento,
+  pgCrearConocimiento,
+  pgFijarAgenteWhatsappActivo,
+  pgListarAgentesApagados,
+  pgListarConocimiento,
+  pgListarConocimientoPublicado,
+} from "./conocimiento/postgres.ts";
 import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type {
@@ -66,6 +77,8 @@ import type {
   RestaurantesAuditLogRow,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
+  StorefrontMarca,
+  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
   StorefrontOrderTracking,
@@ -458,6 +471,13 @@ function esErrorSinPedidoRecienteDisponible(err: unknown): boolean {
   return code === "42501" || code === "42883" || code === "42P01" || code === "42703";
 }
 
+// Compatibilidad con la base SIN migrar para la migracion 048 (escrituras de la sesion de sistema por funcion):
+// solo la funcion inexistente (42883) degrada al camino directo anterior. Un 42501 de la propia funcion (sesion
+// con auth.uid() no nulo) o cualquier otro error se propaga tal cual: nunca se enmascara un fallo real.
+function esFuncionSistema048NoDisponible(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "42883";
+}
+
 // Compatibilidad con la base SIN migrar para la migracion 026 (estado del pedido / secretos por
 // sucursal / bitacora de voz): funcion o tabla inexistente.
 function esErrorBaseSinMigrar026(err: unknown): boolean {
@@ -513,19 +533,45 @@ function esErrorBaseSinMigrarProgramados(err: unknown): boolean {
   return code === "42883" || code === "42P01" || code === "42703";
 }
 
+interface StorefrontMarcaRow {
+  titular: string | null;
+  eslogan: string | null;
+  about: string | null;
+  portada_url: string | null;
+  logo_url: string | null;
+  instagram_url: string | null;
+  facebook_url: string | null;
+  tiktok_url: string | null;
+  updated_at: Date | string | null;
+}
+
+function mapStorefrontMarca(r: StorefrontMarcaRow): StorefrontMarca {
+  return {
+    titular: r.titular,
+    eslogan: r.eslogan,
+    about: r.about,
+    portadaUrl: r.portada_url,
+    logoUrl: r.logo_url,
+    instagramUrl: r.instagram_url,
+    facebookUrl: r.facebook_url,
+    tiktokUrl: r.tiktok_url,
+    updatedAt: r.updated_at === null ? null : new Date(r.updated_at).toISOString(),
+  };
+}
+
 function esErrorCompatibilidadConfigBaseSinMigrar(err: unknown): boolean {
   const code = (err as { code?: string } | null)?.code;
   return code === "42501" || code === "42883" || code === "42P01" || code === "42703";
 }
 
 const configEscrituraAdvertida = new Set<string>();
-function advertirConfigEscrituraNoDisponible(tabla: string, err: unknown): void {
+function advertirConfigEscrituraNoDisponible(tabla: string, err: unknown, migracion = "021_restaurantes_config_editable_y_search_path_fix.sql"): void {
   if (configEscrituraAdvertida.has(tabla)) return;
   configEscrituraAdvertida.add(tabla);
   console.warn(
     `PostgresRestaurantesRepository: la escritura sobre restaurantes.${tabla} todavía no está habilitada en esta base ` +
       "(SQLSTATE 42501/42883/42P01/42703) -- aplica " +
-      "packages/domain-restaurantes/migrations/021_restaurantes_config_editable_y_search_path_fix.sql (o su espejo en " +
+      `packages/domain-restaurantes/migrations/${migracion} (o su espejo en ` +
       "supabase/migrations/) para habilitarla.",
     err,
   );
@@ -778,6 +824,25 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async upsertCustomer(organizationId: string, phone: string, name: string): Promise<Customer> {
+    // Migracion 048: el rol de produccion (authenticated, auth.uid() NULL) no tiene INSERT/UPDATE sobre
+    // restaurantes.customers; la escritura va por la funcion solo-sistema (atomica por UNIQUE(organizacion, telefono)).
+    // Contra una base sin esa migracion (42883) cae al camino directo anterior, dentro de un SAVEPOINT.
+    return runWithSavepointFallback<Customer>({
+      session: this.db,
+      savepointName: "sp_restaurantes_upsert_customer_fn",
+      primary: async () => {
+        const { rows } = await this.db.query<{ customer: CustomerRow | null }>(`select restaurantes.upsert_customer($1, $2, $3) as customer;`, [organizationId, phone, name]);
+        const row = rows[0]?.customer;
+        if (!row) throw new Error("upsert_customer no devolvió el cliente");
+        return mapCustomer(row);
+      },
+      isRecoverable: esFuncionSistema048NoDisponible,
+      fallback: () => this.upsertCustomerDirecto(organizationId, phone, name),
+    });
+  }
+
+  /** Camino anterior a la migracion 048 (INSERT/UPDATE directos). Solo funciona con un rol que tenga esos GRANT. */
+  private async upsertCustomerDirecto(organizationId: string, phone: string, name: string): Promise<Customer> {
     // Port literal de upsertCustomer() del origen: intenta insertar, y si pierde la
     // carrera del UNIQUE(organization_id, phone) real (23505), relee y actualiza en
     // vez de propagar el error — nunca sobreescribe un nombre ya conocido.
@@ -839,7 +904,21 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     }
   }
 
-  async addCustomerAddressIfNew(customerId: string, address: string): Promise<void> {
+  async addCustomerAddressIfNew(customerId: string, address: string, organizationId: string): Promise<void> {
+    // Migracion 048 (ver `upsertCustomer`): funcion solo-sistema que ademas exige que el cliente sea de la organizacion.
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_restaurantes_add_address_fn",
+      primary: async () => {
+        await this.db.query(`select restaurantes.add_customer_address_if_new($1, $2, $3);`, [organizationId, customerId, address]);
+      },
+      isRecoverable: esFuncionSistema048NoDisponible,
+      fallback: () => this.addCustomerAddressDirecto(customerId, address),
+    });
+  }
+
+  /** Camino anterior a la migracion 048 (INSERT directo). */
+  private async addCustomerAddressDirecto(customerId: string, address: string): Promise<void> {
     const { rows: countRows } = await this.db.query<{ count: string }>(
       `select count(*)::text as count from restaurantes.customer_addresses where customer_id = $1;`,
       [customerId],
@@ -949,16 +1028,46 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
-    const { rows } = await this.db.query<{ id: string; resolved: boolean; created_at: string }>(
-      `insert into restaurantes.callback_requests (organization_id, property_id, customer_name, customer_phone, reason, message, source)
-       values ($1, $2, $3, $4, $5, $6, $7)
-       returning id, resolved, created_at;`,
-      [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source],
-    );
-    const row = rows[0]!;
+    const params = [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source];
+    // Migracion 048 (ver `upsertCustomer`): funcion solo-sistema; sin ella (42883) cae al INSERT directo anterior.
+    const row = await runWithSavepointFallback<{ id: string; resolved: boolean; created_at: string }>({
+      session: this.db,
+      savepointName: "sp_restaurantes_callback_fn",
+      primary: async () => {
+        const { rows } = await this.db.query<{ callback: { id: string; resolved: boolean; created_at: string } | null }>(
+          `select restaurantes.create_callback_request($1, $2, $3, $4, $5, $6, $7) as callback;`,
+          params,
+        );
+        const creado = rows[0]?.callback;
+        if (!creado) throw new Error("create_callback_request no devolvió el aviso");
+        return creado;
+      },
+      isRecoverable: esFuncionSistema048NoDisponible,
+      // Sin la 048 (42883): `restaurantes.callback_registrar` (062, ya en main) y, sin ella tampoco, el INSERT directo anterior.
+      fallback: async () => {
+        type Fila = { id: string; resolved: boolean; created_at: string };
+        const rows = await runWithSavepointFallback<Fila[]>({
+          session: this.db,
+          savepointName: "sp_restaurantes_callback_registrar",
+          primary: async () => (await this.db.query<Fila>(`select id, resolved, created_at from restaurantes.callback_registrar($1, $2, $3, $4, $5, $6, $7);`, params)).rows,
+          isRecoverable: (err) => (err as { code?: string } | null)?.code === "42883",
+          fallback: async () =>
+            (
+              await this.db.query<Fila>(
+                `insert into restaurantes.callback_requests (organization_id, property_id, customer_name, customer_phone, reason, message, source)
+                 values ($1, $2, $3, $4, $5, $6, $7)
+                 returning id, resolved, created_at;`,
+                params,
+              )
+            ).rows,
+        });
+        return rows[0]!;
+      },
+    });
     // Notificacion in-app (`restaurantes.callback.pendiente`): un contacto que el agente (voz o WhatsApp) dejo para devolver la
     // llamada. Uno por solicitud (clave = id), sin PII (ni nombre ni telefono viajan en el aviso). SAVEPOINT en emitirNotificacion.
-    await emitirNotificacion(this.db, { evento: "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
+    // R-43: una solicitud de evento/catering del storefront (reason = 'evento') avisa con su propio evento del catalogo, no con el generico.
+    await emitirNotificacion(this.db, { evento: input.reason === "evento" ? "restaurantes.evento.solicitud" : "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
     return { ...input, id: row.id, resolved: row.resolved, createdAt: row.created_at };
   }
 
@@ -1022,11 +1131,23 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async markInboundEventFailed(organizationId: string, messageId: string, errorClass: string): Promise<void> {
-    await this.db.query(
-      `update restaurantes.whatsapp_inbound_events set status = 'failed', last_error_class = $3
-       where message_id = $2 and organization_id = $1;`,
-      [organizationId, messageId, errorClass],
-    );
+    // Migracion 048: el rol de produccion no tiene GRANT sobre whatsapp_inbound_events; la escritura va por la
+    // funcion solo-sistema. Sin ella (42883) cae al UPDATE directo anterior.
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_restaurantes_inbound_failed_fn",
+      primary: async () => {
+        await this.db.query(`select restaurantes.mark_whatsapp_inbound_failed($1, $2, $3);`, [organizationId, messageId, errorClass]);
+      },
+      isRecoverable: esFuncionSistema048NoDisponible,
+      fallback: async () => {
+        await this.db.query(
+          `update restaurantes.whatsapp_inbound_events set status = 'failed', last_error_class = $3
+           where message_id = $2 and organization_id = $1;`,
+          [organizationId, messageId, errorClass],
+        );
+      },
+    });
   }
 
   // Aislamiento por tool call del turno de WhatsApp (ver el comentario de cabecera
@@ -2522,6 +2643,49 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     }
   }
 
+  async findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null> {
+    // Base sin la migracion 062 (42P01/42703) o sin permiso (42501): sin marca, nunca un 500. SAVEPOINT: la sesion es una sola
+    // transaccion por request y un error de Postgres la dejaria abortada.
+    return runWithSavepointFallback<StorefrontMarca | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_storefront_marca_read",
+      primary: async () => {
+        const { rows } = await this.db.query<StorefrontMarcaRow>(
+          `select titular, eslogan, about, portada_url, logo_url, instagram_url, facebook_url, tiktok_url, updated_at
+             from restaurantes.storefront_marca where organization_id = $1;`,
+          [organizationId],
+        );
+        return rows[0] ? mapStorefrontMarca(rows[0]) : null;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => null,
+    });
+  }
+
+  async upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca> {
+    return runWithSavepointFallback<StorefrontMarca>({
+      session: this.db,
+      savepointName: "sp_restaurantes_storefront_marca_write",
+      primary: async () => {
+        const { rows } = await this.db.query<StorefrontMarcaRow>(
+          `insert into restaurantes.storefront_marca (organization_id, titular, eslogan, about, portada_url, logo_url, instagram_url, facebook_url, tiktok_url)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           on conflict (organization_id) do update set
+             titular = excluded.titular, eslogan = excluded.eslogan, about = excluded.about, portada_url = excluded.portada_url,
+             logo_url = excluded.logo_url, instagram_url = excluded.instagram_url, facebook_url = excluded.facebook_url, tiktok_url = excluded.tiktok_url
+           returning titular, eslogan, about, portada_url, logo_url, instagram_url, facebook_url, tiktok_url, updated_at;`,
+          [organizationId, input.titular, input.eslogan, input.about, input.portadaUrl, input.logoUrl, input.instagramUrl, input.facebookUrl, input.tiktokUrl],
+        );
+        return mapStorefrontMarca(rows[0]!);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirConfigEscrituraNoDisponible("storefront_marca", err, "062_storefront_marca.sql");
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
+  }
+
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {
     const { rows } = await this.db.query<KnownZoneRowSql>(
       `select id, organization_id, name, lat, lng, created_at::text as created_at
@@ -2991,6 +3155,38 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
         throw new RestaurantesConfigUnavailableError();
       },
     });
+  }
+
+  async listarConocimiento(organizationId: string): Promise<ConocimientoLectura> {
+    return pgListarConocimiento(this.db, organizationId);
+  }
+
+  async listarConocimientoPublicado(organizationId: string, propertyId: string | null): Promise<readonly ConocimientoEntrada[]> {
+    return pgListarConocimientoPublicado(this.db, organizationId, propertyId);
+  }
+
+  async crearConocimiento(organizationId: string, actorId: string, input: NuevaConocimientoEntrada): Promise<ConocimientoEntrada> {
+    return pgCrearConocimiento(this.db, organizationId, actorId, input);
+  }
+
+  async actualizarConocimiento(organizationId: string, actorId: string, id: string, patch: ConocimientoPatch): Promise<ConocimientoEntrada | null> {
+    return pgActualizarConocimiento(this.db, organizationId, actorId, id, patch);
+  }
+
+  async borrarConocimiento(organizationId: string, id: string): Promise<boolean> {
+    return pgBorrarConocimiento(this.db, organizationId, id);
+  }
+
+  async findAgenteWhatsappActivo(propertyId: string): Promise<boolean> {
+    return pgAgenteWhatsappActivo(this.db, propertyId);
+  }
+
+  async listarAgentesWhatsappApagados(organizationId: string): Promise<{ readonly disponible: boolean; readonly propertyIdsApagados: readonly string[] }> {
+    return pgListarAgentesApagados(this.db, organizationId);
+  }
+
+  async fijarAgenteWhatsappActivo(organizationId: string, propertyId: string, actorId: string, activo: boolean): Promise<void> {
+    return pgFijarAgenteWhatsappActivo(this.db, organizationId, propertyId, actorId, activo);
   }
 
   async findBranchPolicy(propertyId: string): Promise<BranchPolicy> {

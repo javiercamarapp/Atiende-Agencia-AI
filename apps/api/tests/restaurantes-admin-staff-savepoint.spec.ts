@@ -88,7 +88,7 @@ describe("tryEnqueueStaffInviteEmail (restaurantes) — SAVEPOINT (corrección d
       throw pgPermissionDenied();
     });
 
-    await expect(tryEnqueueStaffInviteEmail(repo, ORGANIZATION_ID, INVITE_ID, "nuevo@restaurante-de-prueba.mx", CORREO)).resolves.toBeUndefined();
+    await expect(tryEnqueueStaffInviteEmail(repo, ORGANIZATION_ID, INVITE_ID, "nuevo@restaurante-de-prueba.mx", CORREO)).resolves.toBe(false);
 
     await expect(session.query()).resolves.toEqual({ rows: [] });
     expect(session.execCalls.some((c) => c.startsWith("savepoint"))).toBe(true);
@@ -101,7 +101,7 @@ describe("tryEnqueueStaffInviteEmail (restaurantes) — SAVEPOINT (corrección d
     const repo = new PostgresRestaurantesRepository(session);
     const enqueueSpy = vi.spyOn(repo, "enqueueMessagingOutbox").mockResolvedValue(undefined);
 
-    await tryEnqueueStaffInviteEmail(repo, ORGANIZATION_ID, INVITE_ID, "nuevo@restaurante-de-prueba.mx", CORREO);
+    await expect(tryEnqueueStaffInviteEmail(repo, ORGANIZATION_ID, INVITE_ID, "nuevo@restaurante-de-prueba.mx", CORREO)).resolves.toBe(true);
 
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
     expect(session.execCalls.some((c) => c.startsWith("release savepoint"))).toBe(true);

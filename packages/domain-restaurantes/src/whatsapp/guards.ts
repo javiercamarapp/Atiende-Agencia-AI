@@ -110,6 +110,15 @@ export interface HighRiskMatch {
   readonly reply: string;
 }
 
+/** El cliente pide a una persona: infinitivo, imperativo con o sin acento ("comuníqueme", "pásame", "páseme") y "quiero una persona". Sirve a WhatsApp y a voz. */
+export const PIDE_UNA_PERSONA_RE =
+  /\b(?:hablar|comunicar(?:me)?|comun[ií]que(?:me|se)?|comun[ií]came|pasar(?:me)?|p[aá]sa(?:me)?|p[aá]se(?:me)?|conectar(?:me)?|con[eé]cta(?:me)?|con[eé]cte(?:me)?|transferir(?:me)?|transf[ií]er[ea]?(?:me)?)\s+(?:con|a)\s+(?:una?\s+|el\s+|la\s+)?(?:persona|humano|gerente|encargad[oa]|alguien|asesor|agente)\b|\bquiero\s+(?:una\s+|un\s+)?(?:persona|humano)\b/i;
+
+/** Pura: ¿el cliente pide hablar con una persona? (independiente de otros motivos de riesgo del mismo texto). */
+export function pideUnaPersona(text: string): boolean {
+  return PIDE_UNA_PERSONA_RE.test(text);
+}
+
 /** Lo que el clasificador necesita saber del cliente para NO confundir un ajuste del carrito con una cancelacion o una queja. */
 export interface HighRiskContext {
   /** Pedido de las ultimas 12 h de este telefono: `null` = no hay; ausente = desconocido (cliente nuevo o lectura no disponible). */
@@ -176,11 +185,11 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
   },
   {
     intent: "queja",
-    pattern: /\bqueja\b|\bllego\s+(?:frio|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\bme\s+falto\b|\bmal\s+armado\b/,
+    pattern: /\bqueja\b|\bllego\s+(?:todo\s+|muy\s+)?(?:frio|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\bme\s+falto\b|\bmal\s+armado\b/,
     // "me falto" es queja solo si habla de algo que NO llego ("me falto la bebida de mi pedido"); "me falto pedir otra coca" es el carrito.
     cuando: (texto, ctx) => {
       if (!/\bme\s+falto\b/.test(texto)) return true;
-      if (/\bqueja\b|\bllego\s+(?:frio|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\bmal\s+armado\b/.test(texto)) return true;
+      if (/\bqueja\b|\bllego\s+(?:todo\s+|muy\s+)?(?:frio|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\bmal\s+armado\b/.test(texto)) return true;
       const resto = ME_FALTO.exec(texto)?.groups?.resto ?? "";
       if (new RegExp(`^(?:a\\s+)?${INFINITIVO}\\b`).test(resto)) return false;
       const estado = ctx.pedidoReciente?.estado;
@@ -197,7 +206,7 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
   },
   {
     intent: "cliente_lo_pide",
-    pattern: /\b(?:hablar|comunicar(?:me)?|pasar(?:me)?|conectar(?:me)?)\s+con\s+(?:una\s+|un\s+)?(?:persona|humano|gerente|encargad[oa]|alguien|asesor|agente)\b|\bquiero\s+(?:una\s+|un\s+)?(?:persona|humano)\b/,
+    pattern: PIDE_UNA_PERSONA_RE,
     reply: "Con gusto. Ya avisé al equipo del restaurante para que una persona lo contacte lo antes posible.",
   },
 ];

@@ -106,3 +106,46 @@ inexistente 404; el cron sigue en `ok`. Cada fuente corre bajo su propio SAVEPOI
 - **Interruptores por organizacion**: el CHECK de `core.platform_switch` no admite scope `org` (0025:282); no se agrego sin pedirlo.
 - **Senales de PMF**: fuera de alcance.
 - **Crons por organizacion**: no hay fuente por organizacion (`core.cron_heartbeat` es de toda la plataforma); la ficha lo dice ("—" con razon).
+
+# Alta del equipo inicial de una organizacion (SA-L-26 minimo, go-live G-07)
+
+Una organizacion nueva puede nacer **sin miembros** (caso real: Los Taquitos de PM, 7 sucursales y 0 miembros en `core.membership`). Solo owner/admin de
+la propia organizacion invitan, la impersonacion es de solo lectura y no hay registro publico, asi que nadie podia darle acceso al dueno. Este camino lo
+resuelve sin insertar filas a mano.
+
+Codigo: `packages/db/migrations/0053_superadmin_alta_equipo.sql` (espejo `supabase/migrations/20240101000367_...`),
+`packages/db/src/superadmin-alta-equipo-repository.ts`, `apps/api/src/routes/superadmin-organizaciones-equipo.ts`,
+`apps/web/src/superadmin/pages/OrganizacionFicha.tsx` (seccion "Equipo"). Verificacion SQL contra Postgres real:
+`scripts/verify-superadmin-alta-equipo/` (la corre el gate de CI).
+
+## Alta del equipo inicial (paso a paso)
+
+1. Entra a `/superadmin/organizaciones`, abre la ficha de la organizacion y baja a **Equipo**.
+2. **Invitar**: correo, rol (`owner`, `admin`, `staff`, `repartidor`), sucursales (vacio = todas) y **motivo** (minimo 20 caracteres). Si hay MFA activa
+   pide el codigo (step-up). Para el primer dueno elige `owner` y deja las sucursales vacias.
+3. La respuesta muestra el enlace de activacion **una sola vez** (solo su hash se guarda) y si el correo quedo encolado. El correo sale por la cola de
+   correo de la vertical; si el envio aun no esta listo, comparte el enlace por otro medio.
+4. La persona abre el enlace (`/aceptar-invitacion?token=...`), define su nombre y su contrasena (el superadmin nunca crea usuarios ni contrasenas) y queda
+   dentro con el rol y las sucursales de la invitacion. El superadmin recibe el aviso in-app `superadmin.organizacion.miembro_aceptado` (sin datos personales).
+5. **Reenviar** genera un token nuevo (el anterior deja de servir) y renueva la vigencia a 7 dias; **Revocar** impide aceptar. Ambas piden motivo y step-up.
+
+## Reglas (que hace cada capa)
+
+- **SQL (autoridad)**: cada funcion exige `auth.uid() = p_caller_id` y superadmin real (`core.superadmin_require_caller`); `anon` sin EXECUTE. Valida la lista
+  blanca de roles (el `platform_role` sale del rol, no del llamador), que las sucursales sean de la organizacion indicada, correo ya miembro (409),
+  invitacion pendiente duplicada (409), segundo owner sin confirmacion (409 `segundo_owner_requiere_confirmacion`) y motivo >= 20. Cada accion queda en
+  `core.superadmin_security_event` (append-only) con el correo **enmascarado**.
+- **API**: `GET/POST /superadmin/organizaciones/:id/invitaciones`, `POST .../:inviteId/reenviar`, `DELETE .../:inviteId`. Las tres mutaciones estan en
+  `SENSITIVE_ROUTES` (step-up). Las respuestas nunca traen hashes y el correo va enmascarado; el token en claro solo se devuelve en la respuesta de crear/reenviar.
+- **Correo**: se encola en una sesion de sistema propia despues de confirmar la invitacion; un fallo no la revierte (`correoEncolado: false`).
+- **Solo restaurantes** tiene hoy su lista blanca de roles; las demas verticales responden 400 explicito hasta tener la suya.
+
+## Correccion incluida: `core.accept_staff_invite`
+
+La funcion de la migracion 0002 fallaba con SQLSTATE 42702 (`column reference "email" is ambiguous`) en cada llamada contra Postgres real, porque sus columnas de
+salida se llaman igual que las columnas de las tablas que consulta; ninguna invitacion de staff (tampoco las de owner/admin) se podia aceptar. La 0053 la
+reemplaza con la misma firma y el mismo comportamiento (`#variable_conflict use_column`). Hasta aplicar la 0053 en la base real, aceptar una invitacion falla.
+
+## Compatibilidad con la base sin migrar
+
+Sin la 0053: la lectura responde 200 `disponible: false` con su razon y las mutaciones 503 honesto; el aviso de aceptacion no hace nada (nunca rompe el alta).

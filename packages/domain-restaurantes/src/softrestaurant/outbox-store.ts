@@ -53,6 +53,8 @@ export interface FiltroListarComandas {
   /** null = toda la organizacion. */
   readonly propertyIds: readonly string[] | null;
   readonly estados?: readonly EstadoComanda[];
+  /** Solo las comandas de ese pedido (lectura acotada, sin depender de la ventana de `limite`). */
+  readonly orderId?: string;
   readonly limite: number;
   readonly offset: number;
 }
