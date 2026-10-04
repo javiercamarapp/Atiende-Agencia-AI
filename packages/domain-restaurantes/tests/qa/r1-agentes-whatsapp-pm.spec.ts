@@ -545,7 +545,7 @@ describe("ventana de 24 h en la respuesta HUMANA del handoff", () => {
   // QA-restaurantes-R1-agentes-20: la respuesta de la persona que toma la conversacion sale como texto libre sin revisar la
   // ventana de 24 h (ni en `restaurantes.handoff_responder_whatsapp` de la 028 ni en el repositorio en memoria ni en la ruta):
   // si el cliente escribio hace mas de 24 h, Meta la rechaza (131047), queda `dead` en el outbox y el panel ya dijo "encolado".
-  it.fails("20 el cliente escribio hace 25 h: responder debe rechazarse (o pedir plantilla) en vez de encolar texto libre", async () => {
+  it("20 el cliente escribio hace 25 h: responder debe rechazarse (o pedir plantilla) en vez de encolar texto libre", async () => {
     const ahora = new Date(MARTES_14);
     const repo = new InMemoryConversacionesRepository({ actorUserId: STAFF, actorEsAdministrador: true, ahora: () => ahora });
     const org = "00000000-0000-4000-8000-0000000000aa";

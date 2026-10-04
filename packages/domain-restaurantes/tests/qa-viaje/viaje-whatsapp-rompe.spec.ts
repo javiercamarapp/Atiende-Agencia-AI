@@ -98,7 +98,7 @@ describe("viaje WhatsApp PM: handoff que nadie atiende", () => {
   // R-21: con una toma `pendiente` el agente calla y el mensaje solo se guarda. Si nadie la toma (noche, fin de semana, staff
   // ocupado) el cliente no recibe NINGUNA respuesta a sus mensajes siguientes, ni un acuse, por horas: el viaje se queda sin salida.
   // Sumado a los falsos positivos del clasificador (viaje-01/02/03), un cliente que solo queria pedir queda en silencio.
-  it.fails("QA-restaurantes-R1-viaje-14: tres horas despues de escalar, sin que nadie tome la conversacion, el cliente recibe al menos un acuse", async () => {
+  it("QA-restaurantes-R1-viaje-14: tres horas despues de escalar, sin que nadie tome la conversacion, el cliente recibe al menos un acuse", async () => {
     const v = await nuevoViaje();
     expect((await v.escribe("quiero hablar con una persona")).escalated).toBe(true);
     vi.setSystemTime(new Date(Date.parse(MARTES_14H) + 3 * 60 * 60_000));

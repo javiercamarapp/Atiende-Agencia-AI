@@ -11,6 +11,7 @@ import {
   PostgresConversacionesRepository,
   PostgresHandoffAgentGate,
   SinNumeroWhatsappError,
+  VentanaWhatsappCerradaError,
 } from "../src/index.ts";
 import { AbortAwareFakeSession, type FakeSessionHandler } from "./support/aborting-fake-session.ts";
 
@@ -102,6 +103,12 @@ describe("escrituras contra la base sin migrar: ConversacionesNoDisponibleError 
     await sesionSigueViva(s);
   });
 
+  it("55W24 (ventana de 24 h de WhatsApp cerrada, migracion 044) -> VentanaWhatsappCerradaError y la sesion sigue viva", async () => {
+    const s = new AbortAwareFakeSession([{ match: /handoff_responder_whatsapp/i, respond: () => pgError("55W24", "pasaron mas de 24 horas") }, SIGUIENTE]);
+    await expect(new PostgresConversacionesRepository(s).responderWhatsapp(ORG, PROP, ID, "hola")).rejects.toBeInstanceOf(VentanaWhatsappCerradaError);
+    await sesionSigueViva(s);
+  });
+
   const turnoT1 = [{ nombre: "T1", dias: [1], inicia: "12:00", termina: "18:00", miembros: [{ userId: ID, orden: 1 }] }];
 
   it("un fallo a mitad de reemplazarTurnos (FK 23503) revierte al savepoint, deja la sesion viva y es un error de validacion (no 403)", async () => {
@@ -153,5 +160,24 @@ describe("gate del agente de WhatsApp contra la base sin migrar: el agente sigue
     const gate = new PostgresHandoffAgentGate(s);
     expect(await gate.estadoParaAgente(ORG, "+521")).toBe("tomada");
     expect(await gate.solicitarHumano({ organizationId: ORG, propertyId: null, phone: "+521", motivo: "queja" })).toBe(ID);
+  });
+});
+
+describe("gate del agente: acuse de una toma pendiente (migracion 044)", () => {
+  it("true cuando la base dice que toca avisar", async () => {
+    const s = new AbortAwareFakeSession([{ match: /handoff_whatsapp_acuse_pendiente/i, respond: () => [{ acuse: true }] }]);
+    expect(await new PostgresHandoffAgentGate(s).acusePendiente(ORG, "+5219990000001", 15, 60)).toBe(true);
+    expect(s.calls.some((c) => /handoff_whatsapp_acuse_pendiente/.test(c))).toBe(true);
+  });
+
+  it("base sin migrar (42883): false (el agente sigue callando) y la MISMA sesion sigue viva", async () => {
+    const s = new AbortAwareFakeSession([{ match: /handoff_whatsapp_acuse_pendiente/i, respond: () => sinFuncion("handoff_whatsapp_acuse_pendiente") }, SIGUIENTE]);
+    expect(await new PostgresHandoffAgentGate(s).acusePendiente(ORG, "+5219990000001", 15, 60)).toBe(false);
+    await sesionSigueViva(s);
+  });
+
+  it("un error que no es de base sin migrar se repropaga (no se traga en silencio)", async () => {
+    const s = new AbortAwareFakeSession([{ match: /handoff_whatsapp_acuse_pendiente/i, respond: () => pgError("57014", "statement timeout") }, SIGUIENTE]);
+    await expect(new PostgresHandoffAgentGate(s).acusePendiente(ORG, "+5219990000001", 15, 60)).rejects.toThrow(/timeout/);
   });
 });

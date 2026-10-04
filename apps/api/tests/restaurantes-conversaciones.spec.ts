@@ -115,6 +115,21 @@ describe("tomar / devolver / cerrar / notas / responder", () => {
     expect(r.status).toBe(409);
   });
 
+  // QA R1 agentes-20: fuera de la ventana de 24 h de WhatsApp el panel no puede decir "encolado" (Meta rechaza el texto libre).
+  it("responder con el ultimo mensaje del cliente de hace mas de 24 h -> 409 con mensaje claro y nada se encola", async () => {
+    const { ctx, app, base, conv, store, como } = await construir();
+    como(ctx.staff.staffSucursalA, false);
+    const { handoffId } = await (await app.request(`${base}/conversaciones/whatsapp/${conv}/tomar`, authedJson(ctx.staff.staffSucursalA.token, {}, "POST"))).json();
+    const hace25h = new Date(Date.now() - 25 * 3_600_000).toISOString();
+    const c = store.conversaciones.find((x) => x.id === conv)!;
+    c.actividadAt = hace25h;
+    c.mensajes[0] = { ...c.mensajes[0]!, createdAt: hace25h };
+    const r = await app.request(`${base}/handoffs/${handoffId}/responder`, authedJson(ctx.staff.staffSucursalA.token, { texto: "Una disculpa por la demora" }, "POST"));
+    expect(r.status).toBe(409);
+    expect(JSON.stringify(await r.json())).toMatch(/24 horas/);
+    expect(store.outbox).toHaveLength(0);
+  });
+
   it("un administrador puede cerrar una toma ajena", async () => {
     const { ctx, app, base, conv, como } = await construir();
     como(ctx.staff.staffSucursalA, false);
