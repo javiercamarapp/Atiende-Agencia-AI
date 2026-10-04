@@ -42,6 +42,8 @@ export interface OpcionesInMemoryMensajesHuesped {
 export class InMemoryMensajesHuespedRepository implements MensajesHuespedSistemaRepository, MensajesHuespedStaffRepository {
   /** Candidatos ya derivados (los siembra la prueba). */
   candidatos: CandidatoMensajeHuesped[] = [];
+  /** Si una prueba lo define, REEMPLAZA a `candidatos`: deriva los candidatos del estado de otro doble (p. ej. los holds en memoria). */
+  derivador: (() => readonly CandidatoMensajeHuesped[]) | null = null;
   readonly envios: EnvioEnMemoria[] = [];
   /** Mensajes que `emitir` encolo en el outbox (los que llevan payload). */
   readonly outbox: EmitirMensajeEntrada[] = [];
@@ -68,7 +70,7 @@ export class InMemoryMensajesHuespedRepository implements MensajesHuespedSistema
   // ---- sistema ----
   async listarCandidatos(_ahora: Date, limite: number, opciones: { readonly propertyId?: string; readonly refId?: string } = {}): Promise<readonly CandidatoMensajeHuesped[]> {
     if (!this.migrado) throw errorMigracionPendiente();
-    return this.candidatos
+    return (this.derivador ? this.derivador() : this.candidatos)
       .filter((c) => (opciones.propertyId ? c.propertyId === opciones.propertyId : true))
       .filter((c) => (opciones.refId ? c.refId === opciones.refId : true))
       .filter((c) => !this.envios.some((e) => this.claveEnvio(e.propertyId, e.refTipo, e.refId, e.evento) === this.claveEnvio(c.propertyId, c.refTipo, c.refId, c.evento)))

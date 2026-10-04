@@ -18,6 +18,7 @@ export const AGENTES_CRON: Readonly<Record<string, CronAgente>> = {
   "/internal/hoteles/tickets-sla": { vertical: "hoteles", nombre: "SLA de tickets de hoteles" },
   "/internal/hoteles/aprobaciones-expiracion": { vertical: "hoteles", nombre: "Expiración de aprobaciones" },
   "/internal/hoteles/grupos-liberacion": { vertical: "hoteles", nombre: "Liberación de bloqueos de grupos" },
+  "/internal/hoteles/mensajes-huesped": { vertical: "hoteles", nombre: "Mensajes automáticos al huésped" },
   "/internal/citas/confirmacion-cita": { vertical: "citas", nombre: "Recordatorios de citas" },
   "/internal/citas/email-dispatch": { vertical: "citas", nombre: "Despacho de correo de citas" },
   "/internal/citas/google-calendar-sync": { vertical: "citas", nombre: "Sincronización de Google Calendar" },

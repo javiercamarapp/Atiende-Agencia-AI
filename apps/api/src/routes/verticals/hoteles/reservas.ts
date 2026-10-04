@@ -41,6 +41,7 @@ import { readJsonCapped } from "../../../http-security.ts";
 import { INLINE_BATCH_SIZE, runHotelesEmailDispatch, triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { ofrecerListaEsperaTrasLiberacion } from "./lista-espera-ofertas.ts";
+import { programarMensajesHuesped } from "./mensajes-huesped.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -302,6 +303,9 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           // folios.ts::cerrar; el envío real solo puede pasar post-commit, en
           // sesión de sistema.
           c.get("postCommitTasks").push(() => runHotelesEmailDispatch(deps, INLINE_BATCH_SIZE).then(() => undefined));
+          // H-P3-03: reserva.confirmada por WhatsApp (plantilla HSM aprobada o texto libre dentro de las 24 h); el correo ya lo cubre
+          // `reservation.created` de arriba. Despues del commit, en sesion de sistema; el cron es la red de seguridad.
+          programarMensajesHuesped(deps, c, { propertyId, refId: reservation.id });
           return { status: 201, body: serializeReservation(reservation) };
         },
       );
@@ -376,7 +380,7 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     }
     // H-12: las noches liberadas se ofrecen a la lista de espera (FIFO) y se avisa al staff. Best-effort dentro de un SAVEPOINT:
     // contra la base sin migrar (041) o ante cualquier fallo la cancelacion ya hecha sigue valida.
-    await ofrecerListaEsperaTrasLiberacion(deps, c.get("db"), { organizationId: c.get("organizationId"), propertyId, roomTypeId: reservation.roomTypeId, noches: nights });
+    await ofrecerListaEsperaTrasLiberacion(deps, c.get("db"), { organizationId: c.get("organizationId"), propertyId, roomTypeId: reservation.roomTypeId, noches: nights }, c.get("postCommitTasks"));
 
     return c.json(serializeReservation(canceled));
   });
