@@ -258,6 +258,20 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f5e03
 select count(*) as should_fail from restaurantes.clientes_cartera('00000000-0000-0000-0000-0000000f5a00', p_limit => 0);
 rollback;
 
+\echo '--- B21b. positivo: limite 200 (tope) aceptado; el repositorio parte las paginas de exportacion (500) en bloques de 200 ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f5e03', true);
+select count(*) <= 200 as deberia_ser_t from restaurantes.clientes_cartera('00000000-0000-0000-0000-0000000f5a00', p_limit => 200);
+rollback;
+
+\echo '--- B21c. NEGATIVO: limite 201 rechazado (22023); por eso listCustomers nunca pide mas de 200 por llamada ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f5e03', true);
+select count(*) as should_fail from restaurantes.clientes_cartera('00000000-0000-0000-0000-0000000f5a00', p_limit => 201);
+rollback;
+
 \echo '--- B22. NEGATIVO: dias sin pedir fuera de rango rechazado ---'
 begin;
 set local role authenticated;

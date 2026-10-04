@@ -5,7 +5,7 @@ Verificacion, contra un Postgres **real**, de
 cartera de clientes por nivel, importacion de cartera y alerta de comandas de SoftRestaurant que esperan captura manual.
 El repositorio en memoria nunca aplica RLS ni GRANT, asi que solo esto detecta un hueco de autorizacion.
 
-## Que demuestra (72 escenarios)
+## Que demuestra (74 escenarios)
 
 - **A) `customer_tiers`**: el nivel coincide con `calc_customer_tier` (002) para cada cliente; otra organizacion y anon no ven nada.
 - **B) `clientes_cartera`**: filtros por nivel (BLACK/PLATINUM/GOLD/BLUE), frecuencia (1 pedido / recurrentes), dias sin pedir

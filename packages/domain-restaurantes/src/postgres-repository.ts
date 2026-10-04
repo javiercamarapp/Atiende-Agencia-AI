@@ -577,6 +577,9 @@ function mapRestaurantesAuditLogRow(row: RestaurantesAuditLogRowSql): Restaurant
   };
 }
 
+/** Tope de p_limit de restaurantes.clientes_cartera (migracion 054). */
+const CARTERA_LIMITE_SQL = 200;
+
 export class PostgresRestaurantesRepository implements RestaurantesRepository {
   constructor(private readonly db: TenantDbSession) {}
 
@@ -2241,11 +2244,22 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return runWithSavepointFallback<CustomerListPage>({
       session: this.db,
       primary: async () => {
-        const { rows } = await this.db.query<CustomerCarteraRow>(
-          `select customer_id, phone, name, order_count, last_order_at, tier
-             from restaurantes.clientes_cartera($1::uuid, $2::text, $3::text, $4::int, $5::uuid, $6::text, $7::int, $8::uuid);`,
-          [organizationId, filter.nivel ?? null, filter.frecuencia ?? null, filter.inactivoDias ?? null, filter.propertyId ?? null, search ? escapeLike(search) : null, filter.limit + 1, cursor],
-        );
+        // La funcion SQL rechaza p_limit > 200 (22023): se pagina por dentro en bloques de <= 200 (cursor por id), de modo
+        // que un llamador con limit 500 (exportaciones) siga funcionando. Todos los bloques corren en el mismo SAVEPOINT.
+        const quiero = filter.limit + 1;
+        const rows: CustomerCarteraRow[] = [];
+        let cursorBloque = cursor;
+        while (rows.length < quiero) {
+          const pedir = Math.min(CARTERA_LIMITE_SQL, quiero - rows.length);
+          const { rows: bloque } = await this.db.query<CustomerCarteraRow>(
+            `select customer_id, phone, name, order_count, last_order_at, tier
+               from restaurantes.clientes_cartera($1::uuid, $2::text, $3::text, $4::int, $5::uuid, $6::text, $7::int, $8::uuid);`,
+            [organizationId, filter.nivel ?? null, filter.frecuencia ?? null, filter.inactivoDias ?? null, filter.propertyId ?? null, search ? escapeLike(search) : null, pedir, cursorBloque],
+          );
+          rows.push(...bloque);
+          if (bloque.length < pedir) break;
+          cursorBloque = bloque[bloque.length - 1]!.customer_id;
+        }
         const hasMore = rows.length > filter.limit;
         const page = rows.slice(0, filter.limit).map((r) => mapCustomerCartera(organizationId, r));
         return { customers: page, nextCursor: hasMore ? page[page.length - 1]!.id : null, filtrosDisponibles: true };
