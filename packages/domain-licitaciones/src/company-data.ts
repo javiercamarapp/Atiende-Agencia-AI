@@ -51,6 +51,8 @@ export interface CompanySigner {
   readonly name: string;
   readonly role: string;
   readonly authorized: boolean;
+  /** Ausente = comportamiento anterior (solo `authorized`). Presente y distinto de "aprobado" bloquea. */
+  readonly approvalStatus?: ApprovalStatus;
 }
 
 export interface ApprovedRate {
@@ -115,6 +117,7 @@ export type BlockingReasonCode =
   | "tarifa_vencida"
   | "tarifa_aun_no_vigente"
   | "firmante_no_autorizado"
+  | "firmante_no_aprobado"
   | "capacidad_no_aprobada"
   | "experiencia_no_aprobada"
   | "evidencia_no_verificable";
@@ -230,6 +233,9 @@ export class CompanyDataService {
     const field = `firmante:${role}`;
     const signer = this.resolver.getSigners(companyId).find((s) => s.role === role);
     if (!signer) return { status: "missing", field };
+    if (signer.approvalStatus !== undefined && signer.approvalStatus !== "aprobado") {
+      return { status: "blocked", field, reason: "firmante_no_aprobado", detail: `Firmante "${signer.name}" en estado "${signer.approvalStatus}", no "aprobado".` };
+    }
     if (!signer.authorized) {
       return { status: "blocked", field, reason: "firmante_no_autorizado", detail: `Firmante "${signer.name}" no está autorizado para el rol "${role}".` };
     }

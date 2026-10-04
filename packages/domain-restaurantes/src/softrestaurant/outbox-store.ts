@@ -72,6 +72,38 @@ export type ResultadoCaptura =
   | { readonly resultado: "prohibido" }
   | { readonly resultado: "no_disponible" };
 
+/** Minutos que una comanda puede esperar en `captura_manual` antes de avisar al staff, si la sucursal no fijo otro (migracion 054). */
+export const UMBRAL_CAPTURA_MANUAL_POR_OMISION_MIN = 5;
+export const UMBRAL_CAPTURA_MANUAL_MIN = 1;
+export const UMBRAL_CAPTURA_MANUAL_MAX = 240;
+
+/** Una comanda en `captura_manual` desde hace mas que el umbral de su sucursal. Sin PII (ids y minutos). */
+export interface ComandaVencida {
+  readonly comandaId: string;
+  readonly orderId: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly minutos: number;
+}
+
+/** `disponible: false` = la base aun no tiene la migracion 054 (vacio honesto). */
+export interface ResultadoVencidas {
+  readonly disponible: boolean;
+  readonly filas: readonly ComandaVencida[];
+}
+
+export interface ResultadoUmbrales {
+  readonly disponible: boolean;
+  /** Solo las sucursales con umbral propio; el resto usa `UMBRAL_CAPTURA_MANUAL_POR_OMISION_MIN`. */
+  readonly porSucursal: Readonly<Record<string, number>>;
+}
+
+export interface ResultadoEstadosPorPedido {
+  readonly disponible: boolean;
+  /** Estado de la comanda de cada pedido que SI tiene comanda (los demas no aparecen). */
+  readonly estados: Readonly<Record<string, EstadoComanda>>;
+}
+
 export interface ComandaOutboxStore {
   /** Modo efectivo. Sin fila, sin migracion o ante cualquier error de compatibilidad => "apagado". */
   leerModo(organizationId: string): Promise<ModoSoftRestaurant>;
@@ -93,6 +125,15 @@ export interface ComandaOutboxStore {
   resumen(organizationId: string, propertyIds: readonly string[] | null): Promise<ResumenComandas>;
   /** Staff. Detiene los reintentos automaticos de esa comanda. */
   marcarCapturada(organizationId: string, id: string, actorUserId: string, nota: string | null): Promise<ResultadoCaptura>;
+
+  /** Solo sistema (migracion 054). Comandas en `captura_manual` que ya pasaron el umbral de su sucursal. */
+  listarCapturaManualVencidas(ahora: Date): Promise<ResultadoVencidas>;
+  /** Staff (migracion 054). Umbrales por sucursal de la organizacion. */
+  leerUmbralesCapturaManual(organizationId: string): Promise<ResultadoUmbrales>;
+  /** Solo owner/admin (lo exige la base, 42501 si no). `false` = la base no tiene la migracion 054. */
+  fijarUmbralCapturaManual(propertyId: string, minutos: number): Promise<{ readonly disponible: boolean }>;
+  /** Staff. Estado de la comanda de cada pedido pedido (lectura liviana para la insignia de Pedidos). */
+  estadosPorPedidos(organizationId: string, orderIds: readonly string[]): Promise<ResultadoEstadosPorPedido>;
 }
 
 export function resumenVacio(): Record<EstadoComanda, number> {

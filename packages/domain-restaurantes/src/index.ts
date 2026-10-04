@@ -9,6 +9,7 @@ export type {
   BranchTimezoneConfig,
   CallbackRequest,
   CallbackRequestInput,
+  CallbackRegistro,
   CanalPedido,
   Category,
   CategoryPatch,
@@ -16,8 +17,13 @@ export type {
   CreateOrderItemInput,
   Customer,
   CustomerAddress,
+  CarteraKpis,
+  CustomerFrecuencia,
   CustomerListFilter,
+  CustomerListItem,
   CustomerListPage,
+  FilaImportacionCliente,
+  ResultadoImportacionClientes,
   CustomerLookupResult,
   CustomerTier,
   DefaultComplement,
@@ -60,7 +66,7 @@ export type {
   WhatsappBranchChannel,
   WhatsappChannelConfig,
 } from "./types.ts";
-export { EMPTY_BRANCH_POLICY } from "./types.ts";
+export { EMPTY_BRANCH_POLICY, CUSTOMER_FRECUENCIAS, CUSTOMER_TIERS } from "./types.ts";
 
 export { OrderConflictError, OrderValidationError, PromotionError, WhatsappNumberInUseError } from "./errors.ts";
 
@@ -82,7 +88,9 @@ export type { ReglasSucursalArgs, ReglasSucursalResultado } from "./reglas-pedid
 
 export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, applyPromotionToOrder, computeBogoDiscount, computeCortesiaDiscount, selectAutomaticPromotion, PROMOTION_CODE_PATTERN } from "./promotions.ts";
 
-export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient } from "./phone.ts";
+export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient, maskPhone } from "./phone.ts";
+export { prepararImportacionClientes, IMPORTACION_MAX_FILAS } from "./clientes-importacion.ts";
+export type { ErrorRenglonImportacion, PreparacionImportacion } from "./clientes-importacion.ts";
 
 export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole } from "./roles.ts";
 export type { RestaurantesRole } from "./roles.ts";

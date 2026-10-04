@@ -9,6 +9,7 @@
 //
 // Seguridad: la API key va en la URL del WebSocket (asi lo pide el endpoint de servidor); la URL NUNCA se loguea. Los errores
 // que suben al controlador llevan un codigo corto, nunca el cuerpo del mensaje del proveedor.
+import { VOZ_PLATAFORMA } from "../config-plataforma.ts";
 import { VozNoConfiguradaError, VozProveedorError } from "../provider.ts";
 import type { ToolDefinicion } from "./ejecutor-tools.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "./sesion.ts";
@@ -53,9 +54,13 @@ export function mensajeSetup(model: string, apertura: AperturaLlamada) {
       model: `models/${model}`,
       generationConfig: {
         responseModalities: ["AUDIO"],
-        // Temperatura de la organizacion (ajustes del agente); sin ajuste, 0: el agente de voz no debe improvisar importes ni datos.
-        temperature: typeof apertura.temperatura === "number" ? apertura.temperatura : 0,
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: apertura.voiceId } } },
+        // Temperatura de la organizacion (ajustes del agente); sin ajuste, 0 (VOZ_PLATAFORMA): el agente vivo de PM corre determinista.
+        // `languageCode` solo si la plataforma lo fija.
+        temperature: typeof apertura.temperatura === "number" ? apertura.temperatura : VOZ_PLATAFORMA.gemini.temperatura,
+        speechConfig: {
+          ...(VOZ_PLATAFORMA.gemini.idioma ? { languageCode: VOZ_PLATAFORMA.gemini.idioma } : {}),
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: apertura.voiceId } },
+        },
       },
       systemInstruction: { parts: [{ text: apertura.instruccion }] },
       tools: [{ functionDeclarations: declaracionesDeHerramientas(apertura.herramientas) }],
@@ -242,18 +247,19 @@ class SesionGemini implements VozSesionLlamada {
 
   private async herramientas(llamadas: { id?: string; name?: string; args?: Record<string, unknown> }[]): Promise<void> {
     this.pendiente = true;
-    const respuestas = await Promise.all(
-      llamadas.map(async (c, i) => {
-        const id = c.id ?? `call-${i}`;
-        const nombre = c.name ?? "";
-        try {
-          const salida = await this.h.ejecutarTool({ id, nombre, args: c.args ?? {} });
-          return { id, name: nombre, response: { output: salida } };
-        } catch {
-          return { id, name: nombre, response: { error: "Error interno al ejecutar la herramienta" } };
-        }
-      }),
-    );
+    // En SERIE y en el orden que pidio el modelo (equivale a `parallel_tool_calls: false` del agente vivo): una cotizacion y un
+    // crear_pedido pedidos juntos nunca corren a la vez ni compiten por el mismo estado del pedido.
+    const respuestas: { id: string; name: string; response: { output: unknown } | { error: string } }[] = [];
+    for (const [i, c] of llamadas.entries()) {
+      const id = c.id ?? `call-${i}`;
+      const nombre = c.name ?? "";
+      try {
+        const salida = await this.h.ejecutarTool({ id, nombre, args: c.args ?? {} });
+        respuestas.push({ id, name: nombre, response: { output: salida } });
+      } catch {
+        respuestas.push({ id, name: nombre, response: { error: "Error interno al ejecutar la herramienta" } });
+      }
+    }
     if (this.cerradaPorNosotros) return;
     this.socket.send(JSON.stringify({ toolResponse: { functionResponses: respuestas } }));
   }

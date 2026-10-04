@@ -10,6 +10,7 @@ import { RestaurantesShell } from "./verticals/restaurantes/RestaurantesShell.ts
 import { ProductosPage } from "./verticals/restaurantes/pages/Productos.tsx";
 import { SucursalesPage } from "./verticals/restaurantes/pages/Sucursales.tsx";
 import { PedidosPage } from "./verticals/restaurantes/pages/Pedidos.tsx";
+import { ComandasPosPage as RestaurantesComandasPosPage } from "./verticals/restaurantes/pages/ComandasPos.tsx";
 import { HistorialPage } from "./verticals/restaurantes/pages/Historial.tsx";
 import { ClienteFichaPage as RestaurantesClienteFichaPage, ClientesListPage as RestaurantesClientesListPage } from "./verticals/restaurantes/pages/Clientes.tsx";
 import { RepartidorPedidosPage } from "./verticals/restaurantes/pages/Repartidor.tsx";
@@ -255,6 +256,8 @@ const RestaurantesDashboardRoute = shellRoute(RestaurantesShell, "/restaurantes/
 const RestaurantesProductosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <ProductosPage {...ctx} />);
 const RestaurantesSucursalesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <SucursalesPage {...ctx} />);
 const RestaurantesPedidosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <PedidosPage {...ctx} />);
+// Captura asistida de SoftRestaurant: cola de comandas que alguien teclea en el POS (owner/admin/staff; el servidor exige MANAGER_ROLES).
+const RestaurantesComandasPosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesComandasPosPage {...ctx} />);
 const RestaurantesHistorialRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <HistorialPage {...ctx} />);
 const RestaurantesClientesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesClientesListPage {...ctx} />);
 
@@ -1126,6 +1129,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/productos" element={<RestaurantesProductosRoute />} />
         <Route path="/restaurantes/:orgSlug/sucursales" element={<RestaurantesSucursalesRoute />} />
         <Route path="/restaurantes/:orgSlug/pedidos" element={<RestaurantesPedidosRoute />} />
+        <Route path="/restaurantes/:orgSlug/comandas-pos" element={<RestaurantesComandasPosRoute />} />
         <Route path="/restaurantes/:orgSlug/historial" element={<RestaurantesHistorialRoute />} />
         <Route path="/restaurantes/:orgSlug/clientes" element={<RestaurantesClientesRoute />} />
         <Route path="/restaurantes/:orgSlug/clientes/:customerId" element={<RestaurantesClienteFichaRoute />} />
