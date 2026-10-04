@@ -77,7 +77,7 @@ describe("POST /v1/restaurantes/:orgSlug/orders con SoftRestaurant", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const res = await buildApp(base.deps).request(
       "/v1/restaurantes/los-taquitos-de-pm/orders",
-      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "C", customer_phone: "9991234567", items: [{ product_id: base.products.cocaCola, requested_quantity: 1 }], source: "web" }, { origin: "http://localhost:5173" }),
+      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "C", customer_phone: "9991234567", canal: "recoger", payment_method: "efectivo", items: [{ product_id: base.products.cocaCola, requested_quantity: 1 }], source: "web" }, { origin: "http://localhost:5173" }),
     );
     expect(res.status).toBe(200);
     expect(Object.keys((await res.json()) as object)).toEqual(["order"]);

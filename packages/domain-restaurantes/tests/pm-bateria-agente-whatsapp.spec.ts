@@ -117,7 +117,7 @@ describe("E.3 post-guards del texto del LLM (el modelo se equivoca a proposito)"
   it("T-PG06 / P26 [P1] ninguna cadena fija que lee el cliente tutea (verificador de 'usted')", async () => {
     const f = dosSucursales();
     const respuestas: string[] = [providerFailureReply(null), providerFailureReply("orden-1"), FALLBACK_CONFIG.deliveryTimeText];
-    for (const frase of ["quiero cancelar mi pedido", "me cobraron dos veces", "es urgente", "quiero borrar mis datos", "soy alérgico al cacahuate", "pagaré por transferencia", "llegó frío mi pedido", "quiero hablar con una persona"]) {
+    for (const frase of ["quiero cancelar mi pedido", "me cobraron dos veces", "es urgente, necesito mi pedido", "quiero borrar mis datos", "soy alérgico al cacahuate", "pagaré por transferencia", "llegó frío mi pedido", "quiero hablar con una persona"]) {
       respuestas.push(classifyHighRiskIntent(frase)!.reply);
     }
     respuestas.push(enforcePendingQuestion("Hola", false, null), enforcePendingQuestion("Hola", true, null));
@@ -301,8 +301,10 @@ describe("E.11 fallas del proveedor LLM", () => {
     const f = dosSucursales();
     const handler = createLlmWhatsAppTurnHandler(f.repo, gatewayDe([new FakeLlmProvider({ id: "a", failWith: () => new Error("500") }), new FakeLlmProvider({ id: "b", failWith: () => new Error("500") })]), { defaultRole: "default", escalatedRole: "escalated" });
     const turn = await handler.handleInboundMessage(entrada(f.organizationId, "hola"));
-    expect(turn.reply).toBe(providerFailureReply(null));
-    expect(turn.reply).toContain("inténtelo");
+    // Sin pedido creado el cliente no se queda con "inténtelo luego": el equipo recibe el aviso falla_sistema y se abre la toma de handoff (QA R1 agentes-03).
+    expect(turn.reply).toContain("problema técnico");
+    expect(turn.reply).toContain("avisé al equipo");
+    expect((turn as { escalacion?: { motivo: string } }).escalacion).toEqual({ motivo: "falla_sistema" });
     expect(turn.orderId).toBeNull();
   });
 
@@ -330,7 +332,8 @@ describe("E.11 fallas del proveedor LLM", () => {
     const provider = new FakeLlmProvider({ id: "lento", script: () => texto("no debe llamarse") });
     const handler = createLlmWhatsAppTurnHandler(f.repo, gatewayDe([provider]), { defaultRole: "default", escalatedRole: "escalated", turnBudgetMs: -1 });
     const turn = await handler.handleInboundMessage(entrada(f.organizationId, "hola"));
-    expect(turn.reply).toBe(providerFailureReply(null));
+    expect(turn.reply).toContain("problema técnico");
+    expect((turn as { escalacion?: { motivo: string } }).escalacion).toEqual({ motivo: "falla_sistema" });
     expect(provider.callCount).toBe(0);
   });
 
@@ -344,10 +347,10 @@ describe("PM-C3 -- prompt del perfil taqueria_pm tal como lo recibe el modelo", 
   const sucursales = ["Prolongación Montejo", "Francisco de Montejo", "Pensiones", "Galerías", "Playa", "García Lavín", "Victory Altabrisa"].map((name, i) => ({ propertyId: `p${i}`, slug: `s${i}`, name, address: null }));
   const prompt = buildSystemPrompt(PM_CONFIG_POR_OMISION, sucursales, { isNew: true }, new Date("2026-10-06T20:00:00Z"));
 
-  it("T-PC01 tortilla mixta y no promete el combo del martes (dice que la confirma la sucursal)", () => {
+  it("T-PC01 tortilla mixta y el combo del martes lo aplica cotizar_pedido (ya no se dice que lo confirma la sucursal)", () => {
     expect(prompt).toContain("mixta");
-    expect(prompt).not.toMatch(/2 aguas de cortes[ií]a|nachos de pastor con 2 aguas/i);
-    expect(prompt).toContain("la confirma la sucursal al recoger");
+    expect(prompt).toMatch(/H13\. Combo del martes[^.\n]*lo aplica cotizar_pedido/);
+    expect(prompt).not.toContain("la confirma la sucursal al recoger");
   });
 
   it("T-PC02 ya no afirma precios iguales y trae las 7 sucursales, el horario prudente de T2 y la regla de ultimo pedido", () => {

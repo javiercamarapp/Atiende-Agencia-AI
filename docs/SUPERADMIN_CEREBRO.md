@@ -28,5 +28,19 @@ INSUFICIENTE: falta X, como conseguirlo". Se recalcula al crear o editar y guard
 `PUT /superadmin/cerebro/taxonomia/:vertical`. Con la base sin migrar responden 200 con `disponible:false` (SQLSTATE 42883, 42P01,
 42703 dentro de SAVEPOINT) y la pagina sigue mostrando la lista de siempre con un aviso honesto.
 
+## Mapa y ficha (SA-L-42, SA-L-43)
+`/superadmin/mapa-prospectos` (menu Negocio) es el cerebro.tsx de Likida portado: pais -> estado (zoom animado) -> calles (Leaflet + racimos),
+camara libre, latido cada 5 min (no con la pestana oculta), KPIs, filtros, busqueda, radio por plaza, exportacion CSV y pie con el criterio de los
+scores; respeta `prefers-reduced-motion`. `/superadmin/mapa-prospectos/:id` es la ficha. **El color de cada luz, pin y racimo es el de su
+vertical** (tokens `--vertical-*` de `packages/ui/src/index.css`, contraste verificado en `packages/ui/tests/tokens-vertical.spec.ts`); la leyenda
+es el filtro por vertical; la etapa es filtro, dato de la tarjeta y anillo del pin (ganado resalta, perdido/descartado se apagan).
+- La lista (`GET /superadmin/cerebro/prospectos`) trae por prospecto `suprimido` ({telefono, correo}) leido con `core.esta_suprimido` (solo de sistema)
+  en una sesion de sistema propia y solo con hashes; si no se puede verificar, el campo falta y la pantalla NO ofrece contactar.
+- `POST /superadmin/cerebro/exportaciones` registra la FORMA de la consulta y el total (bitacora de acceso, accion `exportacion`, migracion 0034) antes
+  de armar el CSV; si registrar falla, no se exporta.
+- WhatsApp/correo abren la app de quien opera con el mensaje base de la taxonomia; no se ofrecen sin base de licitud, con el destino suprimido o con
+  marcadores sin resolver. Nada se manda solo.
+- Sin SQL nuevo. Huecos declarados: registro del toque, redaccion con IA, envio con aprobaciones (SA-L-45) y la "necesidad"/flota/vacante de Likida.
+
 ## Fuera de alcance
-Mapa (SA-L-42), ficha (SA-L-43), importador (SA-L-39) y redactor (SA-L-44).
+Importador (SA-L-39) y redactor (SA-L-44).

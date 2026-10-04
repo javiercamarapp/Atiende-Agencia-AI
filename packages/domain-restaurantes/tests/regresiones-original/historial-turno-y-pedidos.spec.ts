@@ -143,7 +143,7 @@ describe("e1ccae0 -- checkout endurecido: payload invalido y vista previa sin ef
   const invalidos: ReadonlyArray<readonly [string, (f: F) => Parameters<typeof pedido>[1]]> = [
     ["sin renglones", () => []],
     ["cantidad 0", (f) => [item(f.p.cocaCola, 0)]],
-    ["cantidad 101", (f) => [item(f.p.cocaCola, 101)]],
+    ["cantidad 501", (f) => [item(f.p.cocaCola, 501)]],
     ["cantidad con decimales", (f) => [item(f.p.cocaCola, 1.5)]],
   ];
   for (const [nombre, items] of invalidos) {

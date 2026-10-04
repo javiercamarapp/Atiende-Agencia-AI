@@ -42,7 +42,7 @@ Este PR no arregla nada de producción salvo los eventos de observabilidad por t
 | `6091e17` (regla de negocio) | Un rechazo correcto de regla (mínimo, zona) también sube de rol | `R/historial-turno-y-pedidos.spec.ts::X34 / 6091e17 [lote B1, agentes-26]` | it.fails (B1) |
 | `10d3485` | Total alucinado; turno sin pregunta; frontera de capas | `T/pm-bateria-agente-whatsapp.spec.ts::T-PG01 / X05`; `T/pm-bateria-agente-whatsapp.spec.ts::T-PG02 / X05`; `T/pm-bateria-agente-whatsapp.spec.ts::T-PG04 / X06`; `R/frontera-de-capas.spec.ts::ningun archivo de packages/domain-restaurantes/src` | verde |
 | `9460a3e` | Aviso al cliente por WhatsApp en cambios de estado | `R/historial-avisos-y-despacho.spec.ts::cada estado se avisa UNA sola vez`; `R/historial-avisos-y-despacho.spec.ts::cada aviso lleva su plantilla HSM` | verde |
-| `9460a3e` (usted) | Los textos de aviso tutean ("tu pedido") | `R/historial-avisos-y-despacho.spec.ts::P26 / 9460a3e [lote F, viaje-10]` | it.fails (F) |
+| `9460a3e` (usted) | Los textos de aviso hablan de usted (corregido en main) | `R/historial-avisos-y-despacho.spec.ts::P26 / 9460a3e [lote F, viaje-10]` | verde |
 | `e1ccae0` | Checkout de voz y WhatsApp endurecido; vista previa sin efectos | `R/historial-turno-y-pedidos.spec.ts::X46 / e1ccae0`; `R/historial-turno-y-pedidos.spec.ts::X48 / e1ccae0` | verde |
 | `cbad752` | Orden determinista y ruteo de modelos | `T/order-flow.spec.ts::crear_pedido sin cotizacion previa se rechaza` | verde |
 | `c2154a5` | Replay de pedidos entrantes | `R/historial-turno-y-pedidos.spec.ts::X31 / c2154a5`; `T/pm/concurrencia.spec.ts::T-CI01`; `S/verify-restaurantes-whatsapp-concurrencia/run.sh::=== 6. Meta reenvia el MISMO message.id` (Postgres real) | verde |

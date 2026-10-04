@@ -5,7 +5,7 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TurnosPage } from "../src/verticals/restaurantes/pages/Turnos.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
-import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -63,5 +63,57 @@ describe("TurnosPage (restaurantes)", () => {
     rendered = renderComponent(<TurnosPage {...CTX} />);
     await esperar();
     expect(rendered.container.textContent).toContain("Turnos no disponibles aún");
+  });
+
+  // QA-restaurantes-R1-botones-05: validacion local antes del PUT.
+  it("turno invalido (sin nombre, sin dias, inicio = fin) avisa localmente y NO manda el PUT", async () => {
+    rendered = renderComponent(<TurnosPage {...CTX} />);
+    await esperar();
+    const input = (label: string) => rendered!.container.querySelector(`input[aria-label='${label}']`) as HTMLInputElement;
+    changeValue(input("Nombre del turno 1"), "   ");
+    await esperar();
+    const guardar = () => Array.from(rendered!.container.querySelectorAll("button")).find((b) => b.textContent === "Guardar turnos")!;
+    click(guardar());
+    await esperar();
+    expect(rendered.container.querySelector('[role="alert"]')?.textContent).toContain("necesita un nombre");
+    changeValue(input("Nombre del turno 1"), "Comida");
+    changeValue(input("Fin del turno 1"), "12:00");
+    click(guardar());
+    await esperar();
+    expect(rendered.container.querySelector('[role="alert"]')?.textContent).toContain("no pueden ser iguales");
+    changeValue(input("Fin del turno 1"), "18:00");
+    for (const dia of Array.from(rendered.container.querySelectorAll("[role='group'] input[type='checkbox']"))) if ((dia as HTMLInputElement).checked) click(dia);
+    click(guardar());
+    await esperar();
+    expect(rendered.container.querySelector('[role="alert"]')?.textContent).toContain("al menos un día");
+    expect(fetchMock.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === "PUT")).toBe(false);
+  });
+
+  // QA-restaurantes-R1-botones-08: el nombre por defecto no se repite tras "Quitar turno".
+  it("Agregar, quitar y volver a agregar turnos nunca repite el nombre por defecto", async () => {
+    rendered = renderComponent(<TurnosPage {...CTX} />);
+    await esperar();
+    const agregar = () => click(Array.from(rendered!.container.querySelectorAll("button")).find((b) => b.textContent === "Agregar turno")!);
+    const nombres = () => Array.from(rendered!.container.querySelectorAll("input[aria-label^='Nombre del turno']")).map((i) => (i as HTMLInputElement).value);
+    agregar();
+    agregar();
+    expect(nombres()).toEqual(["Turno 1", "Turno 2", "Turno 3"]);
+    click(Array.from(rendered.container.querySelectorAll("button")).filter((b) => b.textContent === "Quitar turno")[1]!);
+    agregar();
+    const final = nombres();
+    expect(final).toHaveLength(3);
+    expect(new Set(final.map((n) => n.toLowerCase())).size).toBe(3);
+  });
+
+  it("un fallo del servidor al guardar se anuncia como alerta y el exito como estado", async () => {
+    rendered = renderComponent(<TurnosPage {...CTX} />);
+    await esperar();
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+      init?.method === "PUT" ? ({ ok: false, status: 503, json: async () => ({ message: "Servicio no disponible" }) } as unknown as Response) : String(url).endsWith("/staff/miembros") ? json({ miembros: [] }) : json(TURNOS),
+    );
+    click(Array.from(rendered.container.querySelectorAll("button")).find((b) => b.textContent === "Guardar turnos")!);
+    await esperar();
+    expect(rendered.container.querySelector('[role="alert"]')?.textContent).toContain("Servicio no disponible");
+    expect(rendered.container.querySelector('[role="status"]')).toBeNull();
   });
 });

@@ -50,10 +50,10 @@ Cada lote del volumen es su propia transacción: una interrupción se reanuda re
 | Se crea | Detalle |
 | --- | --- |
 | Organización **`los-taquitos-de-pm-demo`** | «Los Taquitos de PM (demo)». Slug distinto al de la cuenta real (`los-taquitos-de-pm`), así que nunca se mezclan. Marcada en `restaurantes.demo_organization`. |
-| 7 sucursales | **T7 García Lavín activa (fase 1, decisión de Javier del 2-oct-2026, lista T1-2026)**, T1 y T3 activas con su catálogo impreso; T2 y T8 con catálogo provisional pero inactivas; T5 inactiva fuera de temporada; T4 inactiva y sin pedidos. |
+| 7 sucursales | **T7 García Lavín activa (fase 1, decisión de Javier del 2-oct-2026, lista T1-2026)**, T1 y T3 activas (T3 con la lista T1-2026, sin comida regional ni flautas); T2 y T8 con catálogo provisional pero inactivas; T5 inactiva fuera de temporada; T4 inactiva y sin pedidos. |
 | Menú | 279 productos, 25 categorías (237 del menú impreso + 40 fracciones de kilo + Extra Salsa y Extra Piña); 42 de alcohol marcados `no_domicilio`; catálogo y precio por sucursal. |
-| Reglas | Horario 12:00–01:00, pedido mínimo a domicilio $200, propina solo con tarjeta, promoción `LUNES2X1PM` (automática, solo recoger, solo T2/T3/T4: nunca en T7). |
-| Agente de WhatsApp | Perfil `taqueria_pm` con los datos del dueño (tono de *usted*, tiempos de T7: domicilio 60 a 75 min, pico 75 a 90; recoger 25 a 35, pico 45 a 60; salsas; promociones). Nombre del asistente vacío (el dueño no lo definió). |
+| Reglas | Horario 12:00–01:00, pedido mínimo a domicilio $200, propina solo con tarjeta, promociones `LUNES2X1PM` (2x1 en tacos al pastor) y `MARTESNACHOSPM` (nachos de pastor con 2 aguas de cortesía): automáticas, solo recoger, en todas las sucursales. |
+| Agente de WhatsApp | Perfil `taqueria_pm` con los datos del dueño (tono de *usted*, tiempos del dueño en la organización (40 a 50 min, más en hora pico) y fila propia de T7 con los medidos en sus chats (domicilio 60 a 75 min, pico 75 a 90; recoger 25 a 35, pico 45 a 60); espera de ráfagas de 6 s; salsas; promociones). Nombre del asistente vacío (el dueño no lo definió). |
 | Voz | **Deshabilitada**, con comportamiento y saludo por sucursal cargados. |
 | Volumen | Perfil `t7`: pedidos, clientes, conversaciones, tomas y contactos de demostración con teléfonos ficticios `0001xxxxxx` (rango que no existe en México). |
 

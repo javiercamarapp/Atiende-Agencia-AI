@@ -33,6 +33,7 @@ const CASOS: ReadonlyArray<{ regla: string; viola: string; limpio: string; ruta?
   { regla: "variantes de Button", viola: '<Button variant="hero">a</Button>', limpio: '<Button variant="default">a</Button>' },
   { regla: "variantes de Button", viola: "<Button variant={'gold'}>a</Button>", limpio: '<Button variant="outline">a</Button>' },
   { regla: "Table a mano en restaurantes", viola: "<Table><TableBody /></Table>", limpio: "<DataTable />", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "Table a mano en listados de despachos", viola: "<Table><TableBody /></Table>", limpio: "<DataTable />", ruta: "verticals/despachos/pages/Cobranza.tsx" },
   { regla: "AlertDialog local en restaurantes", viola: "<AlertDialog open>x</AlertDialog>", limpio: "const { confirmar, dialogo } = useConfirm();", ruta: "verticals/restaurantes/pages/Y.tsx" },
   { regla: "Guardando a mano en restaurantes", viola: '<Button>{saving ? "Guardando…" : "Guardar"}</Button>', limpio: "<Button loading={saving}>Guardar</Button>", ruta: "verticals/restaurantes/pages/Y.tsx" },
 ];
@@ -62,6 +63,18 @@ describe("guard DS v2 — sanidad por regla (cada regla falla ante su violacion)
     for (const prefijo of ["Table a mano en restaurantes", "AlertDialog local en restaurantes", "Guardando a mano en restaurantes"]) {
       expect(infractores([fuente("<Table /> <AlertDialog /> {'Guardando…'}", "verticals/hoteles/pages/Y.tsx")], porRegla(prefijo))).toEqual([]);
     }
+  });
+
+  it("la regla de listados de despachos deja pasar las paginas de calculo, Dashboard y el portal, y atrapa cualquier otra", () => {
+    const regla = porRegla("Table a mano en listados de despachos");
+    for (const ruta of ["Bookkeeping", "DevolucionIva", "Declaraciones", "Nomina", "Reportes", "ContabilidadElectronica", "Conciliacion", "Dashboard"]) {
+      expect(infractores([fuente("<Table />", `verticals/despachos/pages/${ruta}.tsx`)], regla)).toEqual([]);
+    }
+    expect(infractores([fuente("<Table />", "verticals/despachos/portal/PortalClientePage.tsx")], regla)).toEqual([]);
+    for (const ruta of ["pages/Staff.tsx", "pages/NuevaPaginaListado.tsx", "components/Lista.tsx", "portal/OtraCosa.tsx"]) {
+      expect(infractores([fuente("<Table />", `verticals/despachos/${ruta}`)], regla)).toHaveLength(1);
+    }
+    expect(infractores([fuente("<Table />", "verticals/hoteles/pages/Y.tsx")], regla)).toEqual([]);
   });
 
   it("las reglas soloPaginas ignoran archivos fuera de pages/", () => {

@@ -52,7 +52,7 @@ export const PM_SALSAS_BASICAS = "roja, verde, cebolla con cilantro y limones";
 export const PM_SALSAS_A_PETICION = "crema de ajo, guacamolera, mexicana (pico de gallo) y habanero picado o soasado";
 /** Umbral de pedido grande por omision (decision de Javier, 2-oct-2026): editable por organizacion. */
 export const PM_PEDIDO_GRANDE_POR_OMISION = "más de $4,000 o más de 5 kg; más de $2,500 si el número no tiene historial y paga en efectivo";
-export const PM_PROMOS_POR_OMISION = "lunes 2x1 en tacos al pastor, solo para recoger, en Francisco de Montejo, Pensiones y Galerías";
+export const PM_PROMOS_POR_OMISION = "lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales";
 
 /** Motivos que el prompt enumera, en orden, con su aclaracion. El codigo es lo que va antes del primer espacio. */
 const PM_MOTIVOS_ESCALACION_PROMPT: readonly string[] = [
@@ -77,8 +77,13 @@ const PM_MOTIVOS_ESCALACION_PROMPT: readonly string[] = [
 export const PM_COPY = {
   pedidoRegistrado: "Su pedido ya quedó registrado y se mandó a cocina.",
   problemaTecnico: "En este momento tenemos un problema técnico. Por favor, inténtelo de nuevo en unos minutos.",
+  sinAsistenteAvisoEquipo: "En este momento tenemos un problema técnico. Ya avisé al equipo de la sucursal para que una persona tome su pedido lo antes posible.",
   repetirPedido: "¿Me puede repetir su pedido, por favor?",
   turnoComplicado: "Se me complicó procesar su pedido. Un momento, por favor.",
+  /** El turno agoto sus vueltas sin pedido y el aviso al equipo quedo registrado: se dice solo lo que es cierto. */
+  turnoAgotadoConAviso: "Se me complicó procesar su solicitud por este medio. Ya avisé al equipo para que lo contacte directamente.",
+  /** El turno agoto sus vueltas y NO se pudo avisar al equipo: una pregunta concreta, para no dejar al cliente esperando algo que nunca llega. */
+  turnoAgotadoSinAviso: "Se me complicó procesar su solicitud. ¿Me puede decir en una sola frase qué le gustaría pedir, por favor?",
 } as const;
 
 /** Lo que el agente puede afirmar de cada estado: SOLO lo que la sucursal marco en el pedido, nunca lo que cree del repartidor. */
@@ -212,7 +217,7 @@ H9. Nunca registre un pedido sin repetirlo completo al cliente y recibir su "sí
 H10. Nunca cambie la sucursal que aceptó la zona para sostener una venta.
 H11. No cobre como extra lo incluido: ${salsasH11} van sin costo.
 H12. Una sola vez crear_pedido por pedido. Si el cliente repite "sí", "confirmo" o "¿ya?", responda con el resumen ya creado; nunca vuelva a llamar crear_pedido.
-H13. Combo del martes (nachos con aguas): no lo prometa ni lo aplique. Si el cliente lo pide, diga que la confirma la sucursal al recoger y cotice los nachos a precio de lista.
+H13. Combo del martes (nachos de pastor con 2 aguas de cortesía, solo para recoger): lo aplica cotizar_pedido; diga lo que devuelve. Si el cliente pide el combo y la cotización no lo muestra (otro día, a domicilio, media orden o sin elegir las aguas), explíquelo con amabilidad y no lo prometa.
 H14. Nunca invente un folio ni diga "ya está en cocina" si crear_pedido no lo confirmó.
 H15. Lluvia: no la mencione por su cuenta. Si el cliente dice que llueve, avísele que con lluvia puede tardar de 1 hora a 1 hora 20 minutos.
 H16. Horario: tome pedidos solo dentro del HORARIO PARA TOMAR PEDIDOS de DATOS DEL NEGOCIO, que manda sobre cualquier franja más amplia que muestre una herramienta. A domicilio, solo si la entrega (con el tiempo de la sucursal, ver paso 8) cae antes del cierre; para recoger, solo si la hora de recogida es antes del cierre. Con la sucursal cerrada o pasado el último pedido: diga que está cerrada y a qué hora abre; no tome el pedido ni lo deje programado para la apertura; si insiste, escale (otro).
@@ -325,7 +330,7 @@ H9. No registre sin repetir el pedido completo y recibir un "sí"; no diga "regi
 H10. No cambie la sucursal que aceptó la zona.
 H11. No cobre lo incluido: las salsas incluidas (las básicas siempre; las demás, solo si el cliente las pide) van sin costo.
 H12. crear_pedido una sola vez; ante otro "sí", repita el resumen.
-H13. Combo del martes (nachos con aguas): no lo prometa; la confirma la sucursal al recoger; cotice los nachos a precio de lista.
+H13. Combo del martes (nachos de pastor + 2 aguas, recoger): lo aplica cotizar_pedido; diga lo que devuelve.
 H14. Nunca invente folio ni diga "ya está en cocina" sin éxito de crear_pedido.
 H15. Lluvia: no la mencione; si el cliente dice que llueve, avise que tarda de 1 hora a 1 hora 20 minutos.
 H16. Horario: solo dentro del HORARIO PARA TOMAR PEDIDOS (abajo), que manda sobre las herramientas. Domicilio: la entrega (tiempo de la sucursal) cae antes del cierre; recoger: la hora de recogida. Cerrada o pasado el último pedido: diga cuándo abre, sin programar; si insiste, escale (otro).

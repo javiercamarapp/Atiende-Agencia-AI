@@ -83,7 +83,7 @@ describe("create-order-core.test.ts:540 / :545 / :554 -- payloads abusivos", () 
   it("original :554: demasiados renglones o cantidades fuera de 1-100 se rechazan", async () => {
     const f = pmFixture();
     await rechaza(f, pedido(f, Array.from({ length: 101 }, () => item(f.p.cocaCola, 1))));
-    await rechaza(f, pedido(f, [item(f.p.cocaCola, 101)]));
+    await rechaza(f, pedido(f, [item(f.p.cocaCola, 501)])); // el tope por renglon de los canales de agente sube a 500 en main (el checkout web conserva 100)
     await rechaza(f, pedido(f, [item(f.p.cocaCola, 0)]));
   });
 });

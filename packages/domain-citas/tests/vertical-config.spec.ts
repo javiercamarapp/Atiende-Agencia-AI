@@ -21,11 +21,11 @@ describe("requiresCrisisGuardrail", () => {
 
 describe("detectCrisisKeyword", () => {
   it("detecta una frase real de crisis", () => {
-    expect(detectCrisisKeyword("ya no aguanto más, quiero terminar con todo")).toBe("ya no aguanto");
+    expect(detectCrisisKeyword("ya no aguanto más, quiero terminar con todo")).toBe("ideación suicida");
   });
 
   it("ignora acentos y mayúsculas", () => {
-    expect(detectCrisisKeyword("ESTARÍAN MEJOR SIN MÍ")).toBe("estarian mejor sin mi");
+    expect(detectCrisisKeyword("ESTARÍAN MEJOR SIN MÍ")).toBe("ideación suicida");
   });
 
   it("un mensaje normal no dispara nada", () => {

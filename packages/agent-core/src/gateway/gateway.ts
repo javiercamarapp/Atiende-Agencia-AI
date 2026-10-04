@@ -44,7 +44,7 @@ import type { LlmCompletionRequest, LlmCompletionResult, LlmCostEstimator, LlmLa
  *  tabla de precios real de cada modelo, como `PRICES` en el original). */
 export const defaultCostEstimator: LlmCostEstimator = (provider, req) => {
   const toolsChars = req.tools ? JSON.stringify(req.tools).length : 0;
-  const inputChars = req.system.length + toolsChars + req.messages.reduce((n, m) => n + m.content.length, 0);
+  const inputChars = req.system.length + toolsChars + req.messages.reduce((n, m) => n + m.content.length + (m.role === 'user' && m.audio ? m.audio.data.length : 0), 0);
   const estimatedTokensIn = Math.max(1, Math.ceil(inputChars / 4));
   // Con el tope REAL que manda el escalon (p.ej. el piso minMaxTokens de un modelo que razona), no el pedido: pedir 150
   // tokens a un modelo con piso de 1500 puede costar 1500 de salida.

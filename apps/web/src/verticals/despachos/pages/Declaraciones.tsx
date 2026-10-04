@@ -35,6 +35,7 @@ import {
   Separator,
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -403,29 +404,30 @@ function DiotConsulta({ ctx }: { ctx: DespachosShellContext }) {
             <Card>
               <CardContent className="p-0 overflow-x-auto">
                 <Table>
+                  <TableCaption className="sr-only">Operaciones con proveedores de la DIOT</TableCaption>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>RFC</TableHead>
+                      <TableHead className="sticky left-0 z-10 bg-canvas">RFC</TableHead>
                       <TableHead>Proveedor</TableHead>
                       <TableHead>Tipo</TableHead>
-                      <TableHead>Monto neto</TableHead>
-                      <TableHead>IVA 16%</TableHead>
-                      <TableHead>IVA 0%</TableHead>
-                      <TableHead>IVA exento</TableHead>
-                      <TableHead>CFDIs</TableHead>
+                      <TableHead className="text-right">Monto neto</TableHead>
+                      <TableHead className="text-right">IVA 16%</TableHead>
+                      <TableHead className="text-right">IVA 0%</TableHead>
+                      <TableHead className="text-right">IVA exento</TableHead>
+                      <TableHead className="text-right">CFDIs</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {agregado.registros.map((r) => (
                       <TableRow key={`${r.rfcTercero}-${r.tipoOperacion}`}>
-                        <TableCell className="font-mono text-xs">{r.rfcTercero}</TableCell>
+                        <TableCell className="sticky left-0 z-10 bg-card font-mono text-xs">{r.rfcTercero}</TableCell>
                         <TableCell>{r.nombre}</TableCell>
                         <TableCell>{formatDiotTipoOperacion(r.tipoOperacion)}</TableCell>
-                        <TableCell className="tabular-nums">{formatMoney(r.montoNeto)}</TableCell>
-                        <TableCell className="tabular-nums">{formatMoney(r.ivaTrasladado16)}</TableCell>
-                        <TableCell className="tabular-nums">{formatMoney(r.ivaTrasladado0)}</TableCell>
-                        <TableCell className="tabular-nums">{formatMoney(r.ivaExento)}</TableCell>
-                        <TableCell className="tabular-nums">{r.count}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMoney(r.montoNeto)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMoney(r.ivaTrasladado16)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMoney(r.ivaTrasladado0)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMoney(r.ivaExento)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{r.count}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

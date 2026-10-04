@@ -609,6 +609,23 @@ describe("GET/PATCH /v1/citas/properties/:propertyId/tenant-config — Fase 8", 
     expect(partialBody.tenant_config.owner_notification_phone).toBe("5599998888"); // no tocado
   });
 
+  it("403: un usuario de rol staff NO cambia el rubro (guardia de crisis) ni el teléfono de avisos de la organización; owner y admin sí", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const patch = (token: string, body: unknown) =>
+      app.request(`/v1/citas/properties/${ctx.propertyId}/tenant-config`, { method: "PATCH", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+    expect((await patch(ctx.staff.owner.token, { rubro: "psicologo", owner_notification_phone: "5599998888" })).status).toBe(200);
+
+    expect((await patch(ctx.staff.staffMember.token, { rubro: "otro" })).status).toBe(403);
+    expect((await patch(ctx.staff.staffMember.token, { owner_notification_phone: "5511112222" })).status).toBe(403);
+    const despues = await app.request(`/v1/citas/properties/${ctx.propertyId}/tenant-config`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    expect(((await despues.json()) as { tenant_config: { rubro: string; owner_notification_phone: string | null } }).tenant_config).toMatchObject({ rubro: "psicologo", owner_notification_phone: "5599998888" });
+
+    expect((await patch(ctx.staff.admin.token, { rubro: "dental" })).status).toBe(200);
+    // La lectura sigue abierta a todo miembro de la sucursal.
+    expect((await app.request(`/v1/citas/properties/${ctx.propertyId}/tenant-config`, { headers: { authorization: `Bearer ${ctx.staff.staffMember.token}` } })).status).toBe(200);
+  });
+
   it("400 si rubro no es uno de los 14 valores reales", async () => {
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);

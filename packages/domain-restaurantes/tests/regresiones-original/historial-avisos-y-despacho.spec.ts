@@ -44,8 +44,8 @@ describe("9460a3e -- aviso al cliente por WhatsApp en cada cambio de estado", ()
     expect(payload.template!.params[0]).toBe("Marcela");
   });
 
-  // QA viaje-10 (P26): los textos de aviso de estado tutean ("tu pedido"); el dueno pidio hablar de usted.
-  it.fails("P26 / 9460a3e [lote F, viaje-10]: el texto del aviso al cliente trata de usted", async () => {
+  // QA viaje-10 (P26): los avisos de estado hablan de usted (corregido en main; antes tuteaban).
+  it("P26 / 9460a3e [lote F, viaje-10]: el texto del aviso al cliente trata de usted", async () => {
     const { f, actualizados } = await pedidoEnEstado(["preparando", "en_camino", "entregado"]);
     for (const o of actualizados) await notifyCustomerOnOrderStatusChangeCore(f.repo, o);
     for (const fila of f.repo.getOutbox()) expect((fila.payload as { body: string }).body, fila.eventType).not.toMatch(TUTEO);
