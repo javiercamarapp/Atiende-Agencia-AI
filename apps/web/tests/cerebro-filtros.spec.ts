@@ -144,6 +144,12 @@ describe("CSV", () => {
     expect(b.conBusqueda).toBe(true);
     expect(b.verticales).toEqual(["hoteles"]);
   });
+  it("una combinacion amplia de filtros siempre cabe en el tope de 2000 caracteres de la bitacora", () => {
+    const muchos = (pref: string) => new Set(Array.from({ length: 200 }, (_, i) => `${pref}${i}-${"x".repeat(120)}`));
+    const b = filtrosParaBitacora({ ...SIN_FILTROS, verticales: muchos("v"), etapas: muchos("e"), subtipos: muchos("s"), tamanos: muchos("t"), fuentes: muchos("f") });
+    expect(JSON.stringify(b).length).toBeLessThanOrEqual(2000);
+    expect(JSON.stringify(b)).not.toContain("x".repeat(81));
+  });
 });
 
 describe("aProspectoMapa", () => {

@@ -190,25 +190,35 @@ export function csvDe(lista: readonly ProspectoMapa[]): string {
   return `\ufeff${[CABECERA_CSV.join(","), ...filas].join("\n")}`;
 }
 
-/** Los filtros como los registra la bitacora: solo la FORMA de la consulta, nunca datos de prospectos. */
+/** Tope de la bitacora: filtros::text <= 2000 en el SQL de 0034. Se recorta con margen para que una combinacion amplia nunca la rebase. */
+const TOPE_FILTROS_BITACORA = 1900;
+
+/** Los filtros como los registra la bitacora: solo la FORMA de la consulta, nunca datos de prospectos. Cabe siempre en 2000 caracteres. */
 export function filtrosParaBitacora(f: Filtros): Record<string, unknown> {
-  const lista = (s: ReadonlySet<string> | null) => (s ? [...s].slice(0, 40) : null);
-  return {
-    verticales: lista(f.verticales),
-    etapas: lista(f.etapas),
-    subtipos: lista(f.subtipos),
-    tamanos: lista(f.tamanos),
-    fuentes: lista(f.fuentes),
-    minUrgencia: f.minUrgencia,
-    minAjuste: f.minAjuste,
-    minCierre: f.minCierre,
-    minCompletitud: f.minCompletitud,
-    sinToqueDias: f.sinToqueDias,
-    soloTel: f.soloTel,
-    soloDecisor: f.soloDecisor,
-    soloContactable: f.soloContactable,
-    orden: f.orden,
-    radioKm: f.radioKm,
-    conBusqueda: f.busqueda.trim() !== "",
+  const armar = (max: number): Record<string, unknown> => {
+    const lista = (s: ReadonlySet<string> | null) => (s ? [...s].slice(0, max).map((x) => x.slice(0, 80)) : null);
+    return {
+      verticales: lista(f.verticales),
+      etapas: lista(f.etapas),
+      subtipos: lista(f.subtipos),
+      tamanos: lista(f.tamanos),
+      fuentes: lista(f.fuentes),
+      minUrgencia: f.minUrgencia,
+      minAjuste: f.minAjuste,
+      minCierre: f.minCierre,
+      minCompletitud: f.minCompletitud,
+      sinToqueDias: f.sinToqueDias,
+      soloTel: f.soloTel,
+      soloDecisor: f.soloDecisor,
+      soloContactable: f.soloContactable,
+      orden: f.orden,
+      radioKm: f.radioKm,
+      conBusqueda: f.busqueda.trim() !== "",
+    };
   };
+  for (const max of [40, 20, 10, 5, 2, 1, 0]) {
+    const r = armar(max);
+    if (JSON.stringify(r).length <= TOPE_FILTROS_BITACORA) return r;
+  }
+  return armar(0);
 }
