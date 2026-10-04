@@ -6,7 +6,6 @@ export const POSITIVAS: Readonly<Record<string, readonly string[]>> = {
   [CRISIS_SENALES.ideacion]: [
     // Segunda ronda (revision independiente)
     "ya me quiero ir de este mundo",
-    "quiero irme de este mundo",
     "no quiero estar aquí",
     "quiero que todo se acabe",
     "quiero que todo termine",
