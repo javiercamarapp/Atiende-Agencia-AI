@@ -3,22 +3,9 @@ import { describe, expect, it } from "vitest";
 import { correrGuion } from "../src/voz/simulador/correr-guion.ts";
 import { evaluarLlamada } from "../src/voz/simulador/graders-voz.ts";
 import { evaluarPersonaVoz, MOTIVO_PERSONA_VOZ, TEXTO_PERSONA_VOZ } from "../src/voz/guardia-persona.ts";
-import { BRANCH_SLUG_PRINCIPAL } from "../src/voz/simulador/mundo-voz.ts";
-import type { GuionLlamada, MemoriaTools, PasoAgente } from "../src/voz/simulador/tipos.ts";
+import type { GuionLlamada, PasoAgente } from "../src/voz/simulador/tipos.ts";
 
-const SUC = BRANCH_SLUG_PRINCIPAL;
-const buscar = (query: string): PasoAgente => ({ tool: "buscar_producto", args: { query, branch_slug: SUC } });
-const linea = (m: MemoriaTools, frag: string, piezas: number, tortilla?: "maiz" | "harina") => {
-  const p = m.producto(frag);
-  return { product_id: p.id, product_name: p.name, requested_quantity: piezas, ...(tortilla ? { tortilla } : {}) };
-};
-const recoger = (items: (m: MemoriaTools) => unknown[]): PasoAgente => ({ tool: "cotizar_pedido", args: (m) => ({ branch_slug: SUC, canal: "recoger", items: items(m) }) });
-const confirmar: PasoAgente = { tool: "confirmar_resumen", args: (m) => ({ quote_hash: m.quoteHash() }) };
-const crear = (items: (m: MemoriaTools) => unknown[]): PasoAgente => ({ tool: "crear_pedido", args: (m) => ({ branch_slug: SUC, customer_name: "Cliente Prueba", canal: "recoger", payment_method: "efectivo", items: items(m) }) });
 const dice = (texto: string): PasoAgente => ({ dice: texto });
-const bistec6 = (m: MemoriaTools) => [linea(m, "bistec", 6, "maiz")];
-const bistec9 = (m: MemoriaTools) => [linea(m, "bistec", 9, "maiz")];
-const PEDIDO_6 = { sucursal: "Francisco de Montejo", canal: "recoger" as const, pago: "efectivo" as const, total: 328, items: [{ nombre: "Tacos de Bistec de Res (orden de 3)", cantidad: 2 }] };
 
 async function correr(g: GuionLlamada) {
   const llamada = await correrGuion(g);

@@ -16,7 +16,6 @@ const confirmar: PasoAgente = { tool: "confirmar_resumen", args: (m) => ({ quote
 const crear = (items: (m: MemoriaTools) => unknown[]): PasoAgente => ({ tool: "crear_pedido", args: (m) => ({ branch_slug: SUC, customer_name: "Cliente Prueba", canal: "recoger", payment_method: "efectivo", items: items(m) }) });
 const dice = (texto: string): PasoAgente => ({ dice: texto });
 const bistec6 = (m: MemoriaTools) => [linea(m, "bistec", 6, "maiz")];
-const bistec9 = (m: MemoriaTools) => [linea(m, "bistec", 9, "maiz")];
 const PEDIDO_6 = { sucursal: "Francisco de Montejo", canal: "recoger" as const, pago: "efectivo" as const, total: 328, items: [{ nombre: "Tacos de Bistec de Res (orden de 3)", cantidad: 2 }] };
 
 async function correr(g: GuionLlamada) {

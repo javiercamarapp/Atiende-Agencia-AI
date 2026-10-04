@@ -131,9 +131,6 @@ describe("caos de voz: POS lento durante crear_pedido", () => {
   }, 20_000);
 });
 
-/** POS que tarda mas que el tope en linea (4000 ms) pero termina: lo tipico de un POS sobrecargado en hora pico. */
-const LEGACY_POS_LENTO_MS = 4_500;
-
 async function mintOtro(s: Awaited<ReturnType<typeof setup>>): Promise<{ token: string }> {
   // Llamada nueva con su propia cotizacion y confirmacion, para medir solo el POST /orders directo (sin el ejecutor).
   const mint = await s.app.request(`/v1/restaurantes/${ORG}/voice/call-token`, jsonRequestInit({ call_id: `caos-directo-${Date.now()}`, caller_phone: "9995556666", branch_slug: "fco-montejo" }, LEGACY));

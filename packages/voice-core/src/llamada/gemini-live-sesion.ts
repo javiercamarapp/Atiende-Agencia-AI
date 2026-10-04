@@ -53,6 +53,8 @@ export function mensajeSetup(model: string, apertura: AperturaLlamada) {
       model: `models/${model}`,
       generationConfig: {
         responseModalities: ["AUDIO"],
+        // Temperatura 0: el agente de voz no debe improvisar importes ni datos (rescate del agente vivo del original).
+        temperature: 0,
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: apertura.voiceId } } },
       },
       systemInstruction: { parts: [{ text: apertura.instruccion }] },
