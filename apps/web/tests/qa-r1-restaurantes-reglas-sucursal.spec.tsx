@@ -20,7 +20,7 @@ const json = (body: unknown, status = 200): Response => ({ ok: status < 400, sta
 const CTX: RestaurantesShellContext = { apiBaseUrl: "https://api.test", token: "tok", propertyId: "prop-1", orgSlug: "demo", role: "owner", staffFullName: "Gaby", staffEmail: "g@example.com" };
 const BRANCH = { propertyId: "prop-1", name: "Altabrisa", slug: "altabrisa", status: "active", phone: null, address: null, lat: null, lng: null };
 const BASE = "https://api.test/v1/restaurantes/prop-1/admin";
-type Call = { method: string; url: string; body?: any };
+type Call = { method: string; url: string; body?: Record<string, unknown> };
 
 interface Opciones {
   readonly fallas?: Record<string, number[]>; // "PUT /zonas-reparto" -> statuses por intento
