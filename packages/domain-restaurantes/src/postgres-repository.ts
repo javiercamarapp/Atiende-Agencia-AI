@@ -12,6 +12,17 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
+import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
+import {
+  pgActualizarConocimiento,
+  pgAgenteWhatsappActivo,
+  pgBorrarConocimiento,
+  pgCrearConocimiento,
+  pgFijarAgenteWhatsappActivo,
+  pgListarAgentesApagados,
+  pgListarConocimiento,
+  pgListarConocimientoPublicado,
+} from "./conocimiento/postgres.ts";
 import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type {
@@ -3056,6 +3067,38 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
         throw new RestaurantesConfigUnavailableError();
       },
     });
+  }
+
+  async listarConocimiento(organizationId: string): Promise<ConocimientoLectura> {
+    return pgListarConocimiento(this.db, organizationId);
+  }
+
+  async listarConocimientoPublicado(organizationId: string, propertyId: string | null): Promise<readonly ConocimientoEntrada[]> {
+    return pgListarConocimientoPublicado(this.db, organizationId, propertyId);
+  }
+
+  async crearConocimiento(organizationId: string, actorId: string, input: NuevaConocimientoEntrada): Promise<ConocimientoEntrada> {
+    return pgCrearConocimiento(this.db, organizationId, actorId, input);
+  }
+
+  async actualizarConocimiento(organizationId: string, actorId: string, id: string, patch: ConocimientoPatch): Promise<ConocimientoEntrada | null> {
+    return pgActualizarConocimiento(this.db, organizationId, actorId, id, patch);
+  }
+
+  async borrarConocimiento(organizationId: string, id: string): Promise<boolean> {
+    return pgBorrarConocimiento(this.db, organizationId, id);
+  }
+
+  async findAgenteWhatsappActivo(propertyId: string): Promise<boolean> {
+    return pgAgenteWhatsappActivo(this.db, propertyId);
+  }
+
+  async listarAgentesWhatsappApagados(organizationId: string): Promise<{ readonly disponible: boolean; readonly propertyIdsApagados: readonly string[] }> {
+    return pgListarAgentesApagados(this.db, organizationId);
+  }
+
+  async fijarAgenteWhatsappActivo(organizationId: string, propertyId: string, actorId: string, activo: boolean): Promise<void> {
+    return pgFijarAgenteWhatsappActivo(this.db, organizationId, propertyId, actorId, activo);
   }
 
   async findBranchPolicy(propertyId: string): Promise<BranchPolicy> {

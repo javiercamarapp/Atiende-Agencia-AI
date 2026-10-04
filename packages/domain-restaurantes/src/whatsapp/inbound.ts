@@ -64,6 +64,32 @@ async function limiteDeRemitente(repo: RestaurantesRepository, organizationId: s
   }
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// INTERRUPTOR DURO DEL AGENTE POR SUCURSAL (migracion 053). Con el agente de WhatsApp apagado en la sucursal que recibio el mensaje NO se llama al modelo:
+// se responde con un texto fijo y honesto y se abre una toma de handoff (motivo `agente_apagado`) para que la conversacion quede en la bandeja de una persona.
+// Las tomas abiertas ya callan al agente (R-21), asi que la respuesta sale UNA vez por conversacion; el limitador de aviso es la red de seguridad si la toma no
+// se pudo abrir (base sin la 028 / sin conversacion). Base sin migrar, sin sucursal o sin fila: el agente esta ENCENDIDO (como hasta hoy).
+// ---------------------------------------------------------------------------------------------------------------------
+export const AGENTE_APAGADO_TEXTO = "En este momento le atiende una persona del equipo. En cuanto pueda le responderá por este mismo medio.";
+export const MOTIVO_AGENTE_APAGADO = "agente_apagado";
+export const AGENTE_APAGADO_AVISO_VENTANA_SEGUNDOS = 6 * 3600;
+
+/** `null` = agente encendido; `responder` = primera vez (texto fijo + handoff); `callar` = ya se aviso en esta ventana. */
+async function decisionAgenteApagado(repo: RestaurantesRepository, organizationId: string, phone: string, propertyId: string | null | undefined): Promise<"responder" | "callar" | null> {
+  if (!propertyId) return null;
+  try {
+    if (await repo.findAgenteWhatsappActivo(propertyId)) return null;
+  } catch {
+    return null; // un fallo al leer el interruptor nunca deja a un cliente sin respuesta: el agente atiende como hasta hoy
+  }
+  try {
+    const primera = await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-agente-apagado-aviso", `${organizationId}:${phone}`, 1, AGENTE_APAGADO_AVISO_VENTANA_SEGUNDOS));
+    return primera.allowed ? "responder" : "callar";
+  } catch {
+    return "responder";
+  }
+}
+
 export async function handleInboundWhatsAppMessage(
   repo: RestaurantesRepository,
   turnHandler: WhatsAppTurnHandler,
@@ -158,7 +184,13 @@ export async function handleInboundWhatsAppMessage(
       // Tope por REMITENTE antes del LLM: cada mensaje de un mismo telefono es un turno pagado, y el unico tope del webhook es por NUMERO de la
       // sucursal (compartido por todos sus clientes). Pasado el tope no se llama al modelo: se avisa UNA vez por ventana y despues se calla (el
       // mensaje ya quedo en el historial para quien atienda). El ARCO (obligacion legal) no se limita.
-      const limite = arco ? null : await limiteDeRemitente(repo, organizationId, phone);
+      // Interruptor duro de la sucursal (053): antes del limite y del modelo, sin costo de IA. El ARCO (obligacion legal) corre aunque el agente este apagado.
+      const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId);
+      if (apagado === "callar") {
+        await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+        return { ok: true, retryable: false };
+      }
+      const limite = arco || apagado ? null : await limiteDeRemitente(repo, organizationId, phone);
       if (limite === "callar") {
         await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
         return { ok: true, retryable: false };
@@ -166,16 +198,18 @@ export async function handleInboundWhatsAppMessage(
 
       const turn = arco
         ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
-        : limite === "avisar"
-          ? { reply: REMITENTE_EXCEDIDO_TEXTO, orderId: null, propertyId: propertyId ?? null }
-          : await turnHandler.handleInboundMessage({
-              organizationId,
-              phone,
-              messages: messagesAfterUser,
-              customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
-              propertyId: propertyId ?? null,
-              messageId,
-            });
+        : apagado
+          ? { reply: AGENTE_APAGADO_TEXTO, orderId: null, propertyId: propertyId ?? null, escalacion: { motivo: MOTIVO_AGENTE_APAGADO } }
+          : limite === "avisar"
+            ? { reply: REMITENTE_EXCEDIDO_TEXTO, orderId: null, propertyId: propertyId ?? null }
+            : await turnHandler.handleInboundMessage({
+                organizationId,
+                phone,
+                messages: messagesAfterUser,
+                customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
+                propertyId: propertyId ?? null,
+                messageId,
+              });
 
       // PM PR-9 -- aviso de privacidad simplificado + "asistente virtual" en el PRIMER mensaje de
       // cada telefono (y de nuevo cuando se sube la version del aviso). La entrega queda registrada
@@ -436,17 +470,22 @@ export async function responderTrasEspera(
             return { salida: { ok: true, retryable: false, reply: ACUSE_HANDOFF_PENDIENTE, orderId: null, escalated: false }, silencio: true };
           }
         }
+        // Interruptor duro de la sucursal (053): sin modelo, texto fijo + toma de handoff; las pasadas siguientes las calla la propia toma abierta.
+        const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId);
+        if (apagado === "callar") return { salida: { ok: true, retryable: false }, silencio: true };
         const turn = arco
           ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
-          : await turnHandler.handleInboundMessage({
-              organizationId,
-              phone,
-              messages: historial,
-              customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
-              propertyId: propertyId ?? null,
-              messageId,
-              ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
-            });
+          : apagado
+            ? { reply: AGENTE_APAGADO_TEXTO, orderId: null, propertyId: propertyId ?? null, escalacion: { motivo: MOTIVO_AGENTE_APAGADO } }
+            : await turnHandler.handleInboundMessage({
+                organizationId,
+                phone,
+                messages: historial,
+                customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
+                propertyId: propertyId ?? null,
+                messageId,
+                ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
+              });
         let reply = turn.reply;
         if (privacy) {
           const config = await privacy.getPrivacyConfig(organizationId);

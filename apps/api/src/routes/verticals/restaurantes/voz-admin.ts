@@ -33,6 +33,8 @@ import {
   VozProveedorError,
   VozRechazadaError,
   consumeRateLimit,
+  anteponerConocimiento,
+  bloqueConocimientoDelTurno,
   esVozDeGemini,
   executeAgentToolSafely,
   firmarPreviewToken,
@@ -60,6 +62,8 @@ interface ConfigBody {
   readonly voiceId?: unknown;
   readonly comportamiento?: unknown;
   readonly mensajeInicial?: unknown;
+  /** Opcional (migracion 053): ausente = se conserva lo guardado (un cliente anterior a la bandera no la pisa). */
+  readonly mensajeInicialInterrumpible?: unknown;
 }
 
 /** PUT reemplaza la configuración COMPLETA: cada campo es obligatorio para que un cliente
@@ -80,16 +84,24 @@ function parseConfig(raw: ConfigBody): VozConfigEntrada {
   if (typeof raw.mensajeInicial !== "string" || raw.mensajeInicial.length > VOZ_MENSAJE_INICIAL_MAX) {
     throw Errors.validation(`mensajeInicial: se esperaba texto de hasta ${VOZ_MENSAJE_INICIAL_MAX} caracteres (puede ir vacío).`);
   }
-  return { habilitado: raw.habilitado, proveedor, voiceId: raw.voiceId, comportamiento: raw.comportamiento, mensajeInicial: raw.mensajeInicial };
+  if (raw.mensajeInicialInterrumpible !== undefined && typeof raw.mensajeInicialInterrumpible !== "boolean") throw Errors.validation("mensajeInicialInterrumpible: se esperaba true o false.");
+  return {
+    habilitado: raw.habilitado,
+    proveedor,
+    voiceId: raw.voiceId,
+    comportamiento: raw.comportamiento,
+    mensajeInicial: raw.mensajeInicial,
+    ...(raw.mensajeInicialInterrumpible === undefined ? {} : { mensajeInicialInterrumpible: raw.mensajeInicialInterrumpible }),
+  };
 }
 
 function serializeConfig(c: VozConfig, disponible: boolean) {
-  return { disponible, configurada: c.configurada, habilitado: c.habilitado, proveedor: c.proveedor, voiceId: c.voiceId, comportamiento: c.comportamiento, mensajeInicial: c.mensajeInicial };
+  return { disponible, configurada: c.configurada, habilitado: c.habilitado, proveedor: c.proveedor, voiceId: c.voiceId, comportamiento: c.comportamiento, mensajeInicial: c.mensajeInicial, mensajeInicialInterrumpible: c.mensajeInicialInterrumpible !== false };
 }
 
 /** Resumen para bitácora: nunca el prompt completo (puede ser largo y es configuración comercial). */
-function resumenConfig(c: Pick<VozConfig, "habilitado" | "proveedor" | "voiceId" | "comportamiento" | "mensajeInicial">): string {
-  return JSON.stringify({ habilitado: c.habilitado, proveedor: c.proveedor, voiceId: c.voiceId, comportamientoChars: c.comportamiento.length, mensajeInicialChars: c.mensajeInicial.length });
+function resumenConfig(c: Pick<VozConfig, "habilitado" | "proveedor" | "voiceId" | "comportamiento" | "mensajeInicial" | "mensajeInicialInterrumpible">): string {
+  return JSON.stringify({ habilitado: c.habilitado, proveedor: c.proveedor, voiceId: c.voiceId, comportamientoChars: c.comportamiento.length, mensajeInicialChars: c.mensajeInicial.length, saludoInterrumpible: c.mensajeInicialInterrumpible !== false });
 }
 
 function parseEntero(value: string | undefined, campo: string, min: number, max: number, porDefecto: number): number {
@@ -161,9 +173,11 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
   app.put(configPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
     const { organizationId, propertyId } = await resolverSucursal(c);
-    const nueva = parseConfig(await readJsonCapped<ConfigBody>(c.req.raw, 32 * 1024));
+    const pedida = parseConfig(await readJsonCapped<ConfigBody>(c.req.raw, 32 * 1024));
     const repo = vozRepo(c);
     const anterior = await repo.getConfig(propertyId);
+    // Un cliente anterior a la bandera del saludo (053) no la manda: se conserva lo guardado en vez de pisarla con el valor por omision.
+    const nueva: VozConfigEntrada = pedida.mensajeInicialInterrumpible === undefined ? { ...pedida, mensajeInicialInterrumpible: anterior.valor.mensajeInicialInterrumpible !== false } : pedida;
 
     let guardada: VozConfig;
     try {
@@ -247,6 +261,9 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     // 4) Sesión con el proveedor + token propio firmado. El token fija las herramientas del registro unico (canal voz); las
     // ejecuta el servidor en modo preview (ruta `.../preview/:sesionId/herramienta`). `{saludo}` se resuelve aqui con la zona
     // horaria de la sucursal.
+    // Conocimiento del negocio vigente HOY (053): va ANTES del comportamiento guardado para que las reglas duras (que viven en el comportamiento) queden
+    // al final y ganen. Sin entradas o con la base sin migrar el texto es identico al guardado.
+    const bloqueConocimiento = await bloqueConocimientoDelTurno(restaurantes, organizationId, propertyId, "America/Merida", new Date());
     let emitida;
     try {
       emitida = await provider.emitirSesionPreview({
@@ -254,7 +271,7 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
         propertyId,
         sessionId: sesion.id,
         voiceId,
-        comportamiento,
+        comportamiento: anteponerConocimiento(comportamiento, bloqueConocimiento),
         mensajeInicial: agente.perfil === "taqueria_pm" ? "" : mensajeInicial,
         ttlSegundos,
         herramientas: toolDefinitionsForChannel("voz").map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),

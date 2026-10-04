@@ -209,8 +209,10 @@ export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 
-export { createLlmWhatsAppTurnHandler, FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, getAgentConfig, resolveAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
+export { createLlmWhatsAppTurnHandler, bloqueConocimientoDelTurno, FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, getAgentConfig, resolveAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
 export type { WhatsAppLlmAgentConfig, WhatsAppLlmAgentOptions, WhatsAppToneStyle } from "./whatsapp/llm-turn-handler.ts";
+export { hashTelefonoParaLogs } from "./whatsapp/observabilidad-turno.ts";
+export type { EventoObservabilidadWhatsApp, EventoToolWhatsApp, EventoTurnoWhatsApp, ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./whatsapp/observabilidad-turno.ts";
 
 export {
   STATS_PERIODS,
@@ -332,3 +334,5 @@ export {
 export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
 export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operativos.ts";
 export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
+
+export * from "./conocimiento/index.ts";

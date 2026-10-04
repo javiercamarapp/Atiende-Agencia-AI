@@ -9,6 +9,7 @@
 // en producción.
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
+import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type {
   Branch,
@@ -601,6 +602,23 @@ export interface RestaurantesRepository {
 
   /** `EMPTY_BRANCH_POLICY` cuando la sucursal no tiene politica o la base no esta migrada. */
   findBranchPolicy(propertyId: string): Promise<BranchPolicy>;
+
+  // ---- Conocimiento del negocio e interruptor del agente de WhatsApp (migracion 053). Toda LECTURA degrada con SAVEPOINT a
+  // "sin conocimiento" / "agente encendido" contra la base sin migrar; toda ESCRITURA lanza `RestaurantesConfigUnavailableError`. ----
+
+  /** Todas las entradas de la organizacion (borradores incluidos) para el panel; `disponible: false` contra la base sin migrar. */
+  listarConocimiento(organizationId: string): Promise<ConocimientoLectura>;
+  /** Entradas publicadas y activas que aplican a la sucursal (generales + las suyas). La vigencia por fecha la decide `listarConocimientoVigente`. */
+  listarConocimientoPublicado(organizationId: string, propertyId: string | null): Promise<readonly ConocimientoEntrada[]>;
+  crearConocimiento(organizationId: string, actorId: string, input: NuevaConocimientoEntrada): Promise<ConocimientoEntrada>;
+  /** `null` si no existe o es de otra organizacion. */
+  actualizarConocimiento(organizationId: string, actorId: string, id: string, patch: ConocimientoPatch): Promise<ConocimientoEntrada | null>;
+  borrarConocimiento(organizationId: string, id: string): Promise<boolean>;
+  /** `false` solo si la sucursal tiene el agente de WhatsApp APAGADO; sin fila o con la base sin migrar es `true` (como hasta hoy). */
+  findAgenteWhatsappActivo(propertyId: string): Promise<boolean>;
+  /** Sucursales con el agente de WhatsApp apagado; `disponible: false` contra la base sin migrar. */
+  listarAgentesWhatsappApagados(organizationId: string): Promise<{ readonly disponible: boolean; readonly propertyIdsApagados: readonly string[] }>;
+  fijarAgenteWhatsappActivo(organizationId: string, propertyId: string, actorId: string, activo: boolean): Promise<void>;
 
   // ---- Puentes (migracion 031): horario por fecha. La LECTURA degrada a [] contra la base sin migrar
   // (SAVEPOINT); la ESCRITURA lanza `RestaurantesConfigUnavailableError`. ----
