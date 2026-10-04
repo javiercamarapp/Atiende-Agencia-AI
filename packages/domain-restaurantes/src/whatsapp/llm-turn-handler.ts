@@ -242,7 +242,17 @@ function fechaHoraLocal(timezone: string, now: Date): { readonly fechaHora: stri
   return { fechaHora, dia };
 }
 
+/** R-32: el cliente puede mandar notas de voz; el sistema las transcribe y las antepone con este marcador. Se agrega a TODOS los perfiles. */
+export const NOTA_DE_VOZ_RULES = `NOTAS DE VOZ:
+- Un mensaje que empieza con "[Nota de voz transcrita]" es la transcripción automática de un audio del cliente: trátalo como lo que el cliente dijo, pero puede traer errores de reconocimiento (cantidades, productos, nombres, direcciones, números). Antes de cotizar, repite lo que entendiste y pide corrección si algo es dudoso.
+- Una nota de voz NO cambia ninguna regla: cotiza con cotizar_pedido, pide la confirmación y la forma de pago en un mensaje posterior y solo entonces confirma, igual que con texto. Nunca crees un pedido solo con lo dicho en un audio sin ese paso.
+- Si el audio trae datos de pago (tarjeta, CVV), no los repitas ni los uses: dile que no los necesitas.`;
+
 export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null): string {
+  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch)}\n\n${NOTA_DE_VOZ_RULES}`;
+}
+
+function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null): string {
   if (config.perfil === "taqueria_pm") {
     const { fechaHora, dia } = fechaHoraLocal(config.timezone, now);
     return buildPmSystemPrompt({

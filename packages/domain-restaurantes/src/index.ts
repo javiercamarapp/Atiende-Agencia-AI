@@ -173,6 +173,19 @@ export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
 export { extractMetaInboundMessages, extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
+export {
+  LIMITE_NOTAS_POR_CONVERSACION_HORA,
+  LIMITE_NOTAS_POR_ORGANIZACION_DIA,
+  NOTA_DE_VOZ_MAX_BYTES,
+  NOTA_DE_VOZ_MAX_SEGUNDOS,
+  NotaDeVozError,
+  PREFIJO_NOTA_DE_VOZ,
+  TRANSCRIPCION_MAX_CARACTERES,
+  formatearNotaDeVoz,
+  resolverCuerpoConNotaDeVoz,
+  transcribirNotaDeVoz,
+} from "./whatsapp/nota-de-voz.ts";
+export type { AudioDescargado, MotivoSinTranscripcion, NotaDeVozEntrante, PuertoNotasDeVoz, ResultadoNotaDeVoz, TranscripcionDeEntrada } from "./whatsapp/nota-de-voz.ts";
 export { splitMetaPayloadByChannel } from "./whatsapp/batch-routing.ts";
 export type { MetaChannelBatch } from "./whatsapp/batch-routing.ts";
 export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEspera, responderTrasEspera, mensajesSinResponder, usuariosRespondidos, analizarHistorial, MAX_PASADAS_RAFAGA, esperaEfectivaMs, FUNCION_MAX_MS, PASADA_ESTIMADA_MS, liberarTurnoTrasFalloDeFaseB } from "./whatsapp/inbound.ts";
