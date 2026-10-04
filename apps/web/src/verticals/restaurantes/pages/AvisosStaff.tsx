@@ -4,7 +4,7 @@
 // bitacora (apps/api/.../restaurantes/admin-avisos.ts); el servidor y la base re-validan quien puede editar a quien.
 import { useEffect, useState } from "react";
 import { BellRing } from "lucide-react";
-import { Button, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, PageContainer, StatusBadge, Switch, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Card, CardContent, Checkbox, DataTable, EstadoCargando, EstadoError, EstadoVacio, Input, PageContainer, StatusBadge, Switch } from "@atiende/ui";
 import { fetchAvisos, guardarPreferenciaAviso, guardarUmbralEntrega } from "../lib/avisos-client.ts";
 import type { AvisosWire, MiembroAvisosWire, PreferenciaAvisoWire } from "../lib/avisos-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -157,50 +157,47 @@ export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmai
               ) : (
                 <Card>
                   <CardContent className="p-0">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Persona</TableHead>
-                          {datos.eventos.map((e) => (
-                            <TableHead key={e.tipo} className="text-center">
-                              {e.etiqueta}
-                            </TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {datos.equipo.map((m) => {
-                          const esUnoMismo = m.email === staffEmail;
-                          const bloqueado = role === "admin" && m.verticalRole === "owner" && !esUnoMismo;
-                          return (
-                            <TableRow key={m.userId}>
-                              <TableCell>
-                                <p className="m-0 text-sm font-semibold text-foreground">{m.fullName || m.email}</p>
-                                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                                  <StatusBadge tone="neutral" dot={false}>
-                                    {ROLE_LABELS[m.verticalRole] ?? m.verticalRole}
-                                  </StatusBadge>
-                                  {esUnoMismo && <span>tú</span>}
-                                </div>
-                              </TableCell>
-                              {datos.eventos.map((e) => {
-                                const p = m.preferencias.find((x) => x.tipo === e.tipo);
-                                return (
-                                  <TableCell key={e.tipo} className="text-center">
-                                    <Checkbox
-                                      aria-label={`${e.etiqueta} para ${m.fullName || m.email}`}
-                                      checked={p?.enabled ?? true}
-                                      disabled={bloqueado || ocupado === `${m.userId}:${e.tipo}`}
-                                      onChange={(ev) => void cambiar(e.tipo, { enabled: ev.target.checked }, m)}
-                                    />
-                                  </TableCell>
-                                );
-                              })}
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
+                    <DataTable<MiembroAvisosWire>
+                      etiqueta="Avisos por persona del equipo"
+                      filas={datos.equipo}
+                      obtenerId={(m) => m.userId}
+                      paginacion={false}
+                      columnas={[
+                        {
+                          id: "persona",
+                          encabezado: "Persona",
+                          principal: true,
+                          celda: (m) => (
+                            <div>
+                              <p className="m-0 text-sm font-semibold text-foreground">{m.fullName || m.email}</p>
+                              <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <StatusBadge tone="neutral" dot={false}>
+                                  {ROLE_LABELS[m.verticalRole] ?? m.verticalRole}
+                                </StatusBadge>
+                                {m.email === staffEmail && <span>tú</span>}
+                              </div>
+                            </div>
+                          ),
+                        },
+                        ...datos.eventos.map((e) => ({
+                          id: e.tipo,
+                          encabezado: e.etiqueta,
+                          alinear: "center" as const,
+                          celda: (m: MiembroAvisosWire) => {
+                            const p = m.preferencias.find((x) => x.tipo === e.tipo);
+                            const bloqueado = role === "admin" && m.verticalRole === "owner" && m.email !== staffEmail;
+                            return (
+                              <Checkbox
+                                aria-label={`${e.etiqueta} para ${m.fullName || m.email}`}
+                                checked={p?.enabled ?? true}
+                                disabled={bloqueado || ocupado === `${m.userId}:${e.tipo}`}
+                                onChange={(ev) => void cambiar(e.tipo, { enabled: ev.target.checked }, m)}
+                              />
+                            );
+                          },
+                        })),
+                      ]}
+                    />
                   </CardContent>
                 </Card>
               )}
