@@ -26,7 +26,7 @@ explícito, nunca a datos falsos.
 | Variable | Cómo generarla | Secreta | Habilita | Sin ella | Arranque |
 |---|---|:-:|---|---|:-:|
 | `JWT_SECRET` | `openssl rand -hex 32` (o equivalente) | Sí | Firma/verificación de access y refresh tokens de staff (`routes/auth.ts`) | La API no arranca (`env.ts::requireEnv`) | **Sí** |
-| `VOICE_TOOL_SECRET` | `openssl rand -hex 32` | Sí | Autentica llamadas ENTRANTES de ElevenLabs Server Tools (header `x-atiende-tool-secret`) en los agentes de voz de citas/hoteles/restaurantes (`routes/verticals/*/voice-tools.ts`) — **no** requiere ninguna API key de ElevenLabs, ver sección "Voz" abajo | La API no arranca | **Sí** |
+| `VOICE_TOOL_SECRET` | `openssl rand -hex 32` | Sí | Autentica las llamadas ENTRANTES del worker de voz (header `x-atiende-tool-secret`) a las herramientas de voz de citas y restaurantes (`routes/verticals/*/voice-tools.ts`; hoteles usa un secreto por property) — ninguna vertical requiere ya una API key de ElevenLabs, ver sección "Voz" abajo | La API no arranca | **Sí** |
 | `VOICE_REQUIRE_CALL_TOKEN` | `true` (opcional; vacío = apagado) | No | Las tools de voz de restaurantes exigen el token por llamada (`x-atiende-call-token`) y los secretos solo sirven para emitirlo. Actívalo DESPUÉS de aplicar la migración 026 y configurar la herramienta de voz (ver docs/DEPLOY.md) | Sigue aceptándose el secreto global sin token | No |
 | `INTERNAL_SECRET` | `openssl rand -hex 32` | Sí | Autentica las ~18 rutas `/internal/*` que Vercel Cron invoca a diario (`Authorization: Bearer $CRON_SECRET`) o que se llaman a mano (header `x-atiende-internal-secret`) — ver `http-security.ts::internalOrCronSecretMatches` | La API no arranca | **Sí** |
 | `RENTAS_OWNER_JWT_SECRET` | `openssl rand -hex 32`, **nunca el mismo valor que `JWT_SECRET`** | Sí | Firma/verificación de tokens del portal de propietario de rentas — secreto DISTINTO al de staff a propósito (defensa en profundidad) | La API no arranca | **Sí** |
@@ -201,55 +201,26 @@ OpenRouter. `OPENROUTER_MODEL` ya no se lee: el modelo sale de la tabla por rol.
 indistinto para el comportamiento actual; no cuenta como "faltante" en
 `computeIntegrationsStatus`.
 
-## Voz de restaurantes y hoteles (Gemini Live + LiveKit con respaldo en cascada OpenRouter, sin ElevenLabs)
+## Voz de restaurantes, hoteles y citas (Gemini Live + LiveKit con respaldo en cascada OpenRouter, sin ElevenLabs)
 
-Restaurantes dejó ElevenLabs el 1-oct-2026 y hoteles el 3-oct-2026: ambos montan SU agente (persona, prompt, tools y guardias propias) sobre el
+Restaurantes dejó ElevenLabs el 1-oct-2026 y hoteles y citas el 3-oct-2026: los tres montan SU agente (persona, prompt, tools y guardias propias) sobre el
 mismo esqueleto `packages/voice-core`, con UNA configuración de plataforma (`VOZ_PLATAFORMA`: escalera, modelos y precio por minuto), así que el costo
 por minuto es el mismo en todas las verticales. Escalera híbrida: (1) Gemini Live directo (`GEMINI_API_KEY`) -> (2) cascada OpenRouter
 (`OPENROUTER_API_KEY`, la misma llave del texto: STT -> Gemini por texto vía el gateway -> TTS) si Google falla o no hay llave -> (3) persona/buzón con
 callback. `gpt-live-1` salió de la escalera (pedía otra llave). El costo de cada llamada se registra en `core.usage_cost_event` con el desglose por
 escalon (`proveedor`). Hoteles autentica las tools del worker con el secreto POR PROPERTY (`hoteles.voice_agent_config`, rotación en el panel) y no usa
-`VOICE_TOOL_SECRET`. Variables, orden de activación, métricas y rollback de restaurantes están en `docs/VOZ-PM.md`. Resumen: `GEMINI_API_KEY` y `VOICE_PREVIEW_TOKEN_SECRET` (API), `VOICE_TOOL_SECRET` solo para emitir el token por
+`VOICE_TOOL_SECRET`; citas usa `VOICE_TOOL_SECRET` (secreto de plataforma) y el negocio sale del `orgSlug` de la ruta `/v1/citas/:orgSlug/voz/:herramienta`. Variables, orden de activación, métricas y rollback de restaurantes están en `docs/VOZ-PM.md`. Resumen: `GEMINI_API_KEY` y `VOICE_PREVIEW_TOKEN_SECRET` (API), `VOICE_TOOL_SECRET` solo para emitir el token por
 llamada, `VOICE_REQUIRE_CALL_TOKEN=true` al activar, y `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` más el trunk SIP de Twilio en el
-host del worker de telefonía (que aún no existe en el repo, ni para restaurantes ni para hoteles). Lo que sigue aplica solo a citas.
+host del worker de telefonía (que aún no existe en el repo, ni para restaurantes, hoteles ni citas).
 
-## Voz (ElevenLabs, solo citas) — patrón oficial
+## Voz: sin ElevenLabs en ninguna vertical
 
-Solo existe una dirección real hoy, y **no requiere ninguna API key de
-ElevenLabs**:
+Ninguna vertical usa ya ElevenLabs y el repo nunca inició una llamada saliente hacia ellos: solo existen las rutas ENTRANTES que ejecuta el worker de
+`voice-core` (`routes/verticals/<vertical>/voice-tools.ts`). `ELEVENLABS_API_KEY` no se lee en ningún código ni está en `.env.example`.
 
-**ENTRANTE** (ElevenLabs → nuestra API): `VOICE_TOOL_SECRET` (ver "Secretos
-propios" arriba) autentica las llamadas de las Server Tools que ElevenLabs
-invoca DURANTE una llamada en curso, contra
-`routes/verticals/citas/voice-tools.ts` — nosotros somos el servicio siendo
-llamado, nunca el que llama a ElevenLabs. Citas usa un secreto compartido de
-plataforma. (Hoteles ya no es de ElevenLabs: sus rutas `voice-tools.ts` las
-ejecuta el worker de `voice-core` con un secreto **por property**,
-`hoteles.voice_agent_config.tool_webhook_secret`, con endpoint de rotación; la
-migración de citas al esqueleto es un PR posterior.) Este es el patrón oficial para cualquier vertical
-nueva que agregue Server Tools de voz.
-
-**`packages/voice-gateway` (retirado del árbol en este PR) — por qué se
-deprecó, no se conectó.** Ese paquete resolvía la dirección SALIENTE
-(nuestro backend → API de ElevenLabs/GPT-Live-1: signed URL de sesión,
-listado de voces, lectura/escritura de config del agente, y una sesión
-WebRTC de navegador para GPT-Live-1) — una superficie DISTINTA de "recibir
-el webhook de tool call", que las 3 verticales nunca necesitaron para lo que
-construyeron. Verificado antes de deprecar: cero imports reales del paquete
-fuera de comentarios/docs en todo el monorepo; `ELEVENLABS_API_KEY` nunca se
-leía en código ejecutable; `VOICE_PROVIDER` nunca se leía; no existía (ni
-existe hoy) ningún endpoint de signed-url/config de agente en `apps/api`, ni
-una UI de admin de voz en `apps/web` que lo consumiera. Conectarlo de verdad
-habría exigido inventar esas superficies desde cero (decisión de producto:
-qué vertical la estrena, qué UI la expone) — no era una migración mecánica.
-El código en sí era real y probado (no un cascarón), simplemente nadie lo
-necesitaba todavía; si en el futuro un vertical necesita administrar
-sesiones/config de voz salientes, reconstruir sobre ese mismo diseño
-(disponible en el historial de git de este PR) sigue siendo razonable.
-
-`ELEVENLABS_API_KEY` se **retira** de `.env.example` en este PR: su único
-consumidor planeado (`voice-gateway`) se retiró, y el patrón oficial
-(entrante) no necesita nunca una API key saliente de ElevenLabs.
+**`packages/voice-gateway` (retirado del árbol) — por qué se deprecó, no se conectó.** Ese paquete resolvía la dirección SALIENTE (nuestro backend -> API
+de ElevenLabs/GPT-Live-1: signed URL de sesión, listado de voces, config de agente): cero imports reales fuera de comentarios/docs, ningún endpoint ni UI
+lo consumía. El código quedó en el historial de git.
 
 ## Cal.com / CalDAV (citas)
 
@@ -373,7 +344,7 @@ propósito como placeholder no funcional — ver sección "Voz").
 **Actualización 19-sep-2026 (PR de deprecación de `packages/voice-gateway`):**
 `ELEVENLABS_API_KEY` se retiró de `.env.example` — el placeholder existía solo
 para el día en que `voice-gateway` se conectara, y ese paquete se retiró del
-árbol (ver sección "Voz (ElevenLabs) — patrón oficial" arriba). El resto de
+árbol (ver sección "Voz: sin ElevenLabs en ninguna vertical" arriba). El resto de
 esta sección queda como registro histórico de la auditoría original.
 
 **Sin documentar antes de este PR** (leídas por el código, ausentes de

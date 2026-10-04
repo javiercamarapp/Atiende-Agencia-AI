@@ -63,6 +63,8 @@ function panel(e: Estado) {
 function stub(e: Estado = {}) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const metodo = init?.method ?? "GET";
+    // La tarjeta "Probar el agente de voz" consulta el estado de la escalera (sin credenciales en estos casos).
+    if (metodo === "GET" && url.endsWith("/admin/voz/estado")) return json({ escalera: { operativa: false, escalones: [] }, precioMicroUsdPorMinuto: { "gemini-3.8-live": 18000, "cascada-openrouter": 14000 }, preview: { disponible: false, motivo: "requiere GEMINI_API_KEY" } });
     if (url.endsWith("/vista-previa")) return json({ prompt: "PROMPT COMPLETO DE MUESTRA", diferencias: [{ campo: "Nombre del agente", antes: "", despues: "Sofi" }], version: e.version ?? 0 });
     if (url.endsWith("/restablecer")) return json({ disponible: true, agente: panel(e).agente });
     if (url.endsWith("/conexion")) {
@@ -86,6 +88,21 @@ describe("AgenteWhatsappPage (citas)", () => {
     await esperar();
     expect(rendered.container.textContent).toContain("Solo los roles");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("owner/admin ven la tarjeta de voz con su estado honesto (sin credenciales: no hay boton de llamada); staff no la ve", async () => {
+    stub();
+    rendered = renderComponent(<AgenteWhatsappPage {...ctx("admin")} />);
+    await esperar();
+    expect(rendered.container.textContent).toContain("Probar el agente de voz");
+    expect(rendered.container.textContent).toContain("No disponible aún: requiere GEMINI_API_KEY");
+    expect(boton("Hacer llamada de prueba")).toBeUndefined();
+    expect(llamadas("GET", "/admin/voz/estado")).toHaveLength(1);
+    rendered.unmount();
+    stub();
+    rendered = renderComponent(<AgenteWhatsappPage {...ctx("staff")} />);
+    await esperar();
+    expect(rendered.container.textContent).not.toContain("Probar el agente de voz");
   });
 
   it("base sin migrar: avisa que no esta disponible y deshabilita numero, campos y 'Revisar cambios'", async () => {
