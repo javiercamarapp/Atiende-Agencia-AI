@@ -219,3 +219,25 @@ describe("ticket de cocina: básicas, pedidas y pin de entrega (T7)", () => {
     expect(ajeno.pin).toBeNull();
   });
 });
+
+describe("ticket de cocina: pago en efectivo, terminal y acceso (T7)", () => {
+  it("efectivo: imprime con cuánto paga y el cambio que se lleva", () => {
+    const t = construirTicketCocina(pedido({ paymentMethod: "efectivo", total: 90, notes: "Paga con: $500.00 (cambio: $410.00).\nCanal: domicilio.\nIndicaciones de acceso: timbre del depto 6.\nTeléfono alterno: 9991234568." }), TZ);
+    expect([t.pagaCon, t.cambio, t.acceso, t.telefonoAlterno, t.llevarTerminal]).toEqual(["$500.00", "$410.00", "timbre del depto 6", "9991234568", false]);
+    const html = renderTicketCocinaHtml(t);
+    expect(html).toContain("Cambio a llevar");
+    expect(html).toContain("Acceso: timbre del depto 6");
+    expect(html).toContain("Tel. alterno: 9991234568");
+  });
+
+  it("tarjeta a domicilio siempre dice LLEVAR TERMINAL; al recoger o en efectivo no", () => {
+    expect(construirTicketCocina(pedido({ paymentMethod: "tarjeta" }), TZ).llevarTerminal).toBe(true);
+    expect(renderTicketCocinaHtml(construirTicketCocina(pedido({ paymentMethod: "tarjeta" }), TZ))).toContain("LLEVAR TERMINAL");
+    expect(construirTicketCocina(pedido({ paymentMethod: "tarjeta", notes: "Canal: recoger en sucursal." }), TZ).llevarTerminal).toBe(false);
+    expect(construirTicketCocina(pedido({ paymentMethod: "efectivo" }), TZ).llevarTerminal).toBe(false);
+  });
+
+  it("al recoger no se imprime el acceso", () => {
+    expect(construirTicketCocina(pedido({ notes: "Indicaciones de acceso: timbre 6.\nCanal: recoger en sucursal." }), TZ).acceso).toBeNull();
+  });
+});

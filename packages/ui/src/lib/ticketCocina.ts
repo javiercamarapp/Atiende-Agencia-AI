@@ -63,6 +63,14 @@ export interface TicketCocina {
   readonly notas: readonly string[];
   readonly formaPago: string;
   readonly total: string;
+  /** Pago en efectivo: monto con el que paga y cambio que debe llevar el repartidor (null = no lo dijo). */
+  readonly pagaCon: string | null;
+  readonly cambio: string | null;
+  /** Domicilio con tarjeta: el repartidor lleva terminal (implícito con tarjeta a domicilio, o explícito en la comanda). */
+  readonly llevarTerminal: boolean;
+  /** Indicaciones de acceso o aviso al llegar; solo a domicilio. */
+  readonly acceso: string | null;
+  readonly telefonoAlterno: string | null;
   /** Solo se llena con pago con tarjeta (política PM). */
   readonly propina: string | null;
   /** 0 = original; n>0 = n-ésima reimpresión (se marca en el ticket). */
@@ -135,6 +143,10 @@ const RE_COMPLEMENTOS_BASICAS = /^B[aá]sicas:\s*(.+?)\.?$/i;
 const RE_COMPLEMENTOS_PEDIDAS = /^Pedidas(?:\s*\(sin costo\))?:\s*(.+?)\.?$/i;
 const RE_UBICACION_COORD = /^Ubicaci[oó]n de entrega \((?:pin de WhatsApp|enlace de Maps)\):\s*lat=(-?\d{1,2}(?:\.\d+)?)\s+lng=(-?\d{1,3}(?:\.\d+)?)\.?$/i;
 const RE_UBICACION_CORTA = /^Ubicaci[oó]n de entrega \(enlace corto de Maps\):\s*(https:\/\/(?:maps\.app\.goo\.gl|goo\.gl)\/\S+)$/i;
+const RE_PAGA_CON = /^Paga con:\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)(?:\s*\(cambio:\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\))?\.?$/i;
+const RE_LLEVAR_TERMINAL = /^Llevar terminal\.?$/i;
+const RE_ACCESO = /^Indicaciones de acceso:\s*(.+?)\.?$/i;
+const RE_TEL_ALTERNO = /^Tel[eé]fono alterno:\s*(\d{10})\.?$/i;
 const RE_SIN_COMPLEMENTOS = /^No enviar complementos de cortes[ií]a\.?$/i;
 
 interface NotasSeparadas {
@@ -143,13 +155,18 @@ interface NotasSeparadas {
   salsas: string[];
   libres: string[];
   pin: string | null;
+  pagaCon: number | null;
+  cambio: number | null;
+  llevarTerminal: boolean;
+  acceso: string | null;
+  telefonoAlterno: string | null;
 }
 
 /** Separa de `orders.notes` las líneas estructuradas (canal, propina, complementos) de la
  * nota libre. El servidor las agrega AL FINAL; si el cliente escribió una línea con el
  * mismo formato en su nota libre, gana la última (la del servidor). */
 export function separarNotas(notes: string | null): NotasSeparadas {
-  const out: NotasSeparadas = { canal: null, propina: null, salsas: [], libres: [], pin: null };
+  const out: NotasSeparadas = { canal: null, propina: null, salsas: [], libres: [], pin: null, pagaCon: null, cambio: null, llevarTerminal: false, acceso: null, telefonoAlterno: null };
   for (const bruta of limpiarTexto(notes).split("\n")) {
     const linea = bruta.trim();
     if (!linea) continue;
@@ -170,6 +187,26 @@ export function separarNotas(notes: string | null): NotasSeparadas {
     const incl = RE_COMPLEMENTOS_INCLUIDOS.exec(linea);
     if (incl) {
       out.salsas.push(`Incluir: ${incl[1]}`);
+      continue;
+    }
+    const paga = RE_PAGA_CON.exec(linea);
+    if (paga) {
+      out.pagaCon = Number((paga[1] ?? "").replace(/,/g, ""));
+      out.cambio = paga[2] !== undefined ? Number(paga[2].replace(/,/g, "")) : null;
+      continue;
+    }
+    if (RE_LLEVAR_TERMINAL.test(linea)) {
+      out.llevarTerminal = true;
+      continue;
+    }
+    const acceso = RE_ACCESO.exec(linea);
+    if (acceso) {
+      out.acceso = acceso[1] ?? null;
+      continue;
+    }
+    const alterno = RE_TEL_ALTERNO.exec(linea);
+    if (alterno) {
+      out.telefonoAlterno = alterno[1] ?? null;
       continue;
     }
     const basicas = RE_COMPLEMENTOS_BASICAS.exec(linea);
@@ -230,6 +267,11 @@ export function construirTicketCocina(pedido: TicketPedidoFuente, opciones: Opci
     })),
     salsas: notas.salsas,
     notas: notas.libres,
+    pagaCon: pedido.paymentMethod === "efectivo" && notas.pagaCon !== null ? formatoDinero(notas.pagaCon) : null,
+    cambio: pedido.paymentMethod === "efectivo" && notas.pagaCon !== null && notas.cambio !== null ? formatoDinero(notas.cambio) : null,
+    llevarTerminal: canal !== "recoger" && pedido.paymentMethod === "tarjeta" && (notas.llevarTerminal || canal === "domicilio"),
+    acceso: canal === "recoger" ? null : notas.acceso,
+    telefonoAlterno: notas.telefonoAlterno,
     formaPago,
     total: formatoDinero(pedido.total),
     // Política PM: la propina solo existe con tarjeta; con otra forma de pago no se imprime.
@@ -283,7 +325,7 @@ export function renderTicketCocinaHtml(t: TicketCocina): string {
   partes.push(
     seccion(
       "CLIENTE",
-      `<div>${e(t.cliente)}</div><div>Tel: ${e(t.telefono || "sin teléfono")}</div>${t.direccion ? `<div class="nota">Dir: ${e(t.direccion).replace(/\n/g, "<br>")}</div>` : ""}${t.pin ? `<div class="nota">Pin: ${e(t.pin)}</div>` : ""}`,
+      `<div>${e(t.cliente)}</div><div>Tel: ${e(t.telefono || "sin teléfono")}</div>${t.direccion ? `<div class="nota">Dir: ${e(t.direccion).replace(/\n/g, "<br>")}</div>` : ""}${t.pin ? `<div class="nota">Pin: ${e(t.pin)}</div>` : ""}${t.acceso ? `<div class="nota">Acceso: ${e(t.acceso)}</div>` : ""}${t.telefonoAlterno ? `<div class="nota">Tel. alterno: ${e(t.telefonoAlterno)}</div>` : ""}`,
     ),
   );
   const lineas = t.lineas
@@ -297,6 +339,9 @@ export function renderTicketCocinaHtml(t: TicketCocina): string {
   if (t.notas.length > 0) partes.push(seccion("NOTAS", t.notas.map((n) => `<div class="nota">${e(n)}</div>`).join("")));
   partes.push(
     `<hr class="sep"><div class="fila"><span>Pago</span><span>${e(t.formaPago)}</span></div>` +
+      (t.pagaCon ? `<div class="fila"><span>Paga con</span><span>${e(t.pagaCon)}</span></div>` : "") +
+      (t.cambio ? `<div class="fila"><span>Cambio a llevar</span><span><strong>${e(t.cambio)}</strong></span></div>` : "") +
+      (t.llevarTerminal ? `<div class="canal">LLEVAR TERMINAL</div>` : "") +
       (t.propina ? `<div class="fila"><span>Propina (tarjeta)</span><span>${e(t.propina)}</span></div>` : "") +
       `<div class="fila"><span class="etq">Total</span><span class="etq">${e(t.total)}</span></div>`,
   );
