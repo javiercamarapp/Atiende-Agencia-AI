@@ -281,12 +281,27 @@ describe("latencia_voz contra una base con la 035 pero SIN la 046 (el CHECK del 
     expect(session.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
   });
 
-  it("un error que NO es de migracion pendiente (p. ej. 42501) no se enmascara", async () => {
+  async function estadoDelEvento(code: string, message: string, constraint?: string): Promise<number> {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
-    const session = new AbortAwareFakeSession([{ match: /voz_registrar_evento/i, respond: () => pgError("22P02", "invalid input syntax") }, SIGUIENTE]);
+    const err = pgError(code, message) as Error & { code: string; constraint?: string };
+    if (constraint) err.constraint = constraint;
+    const session = new AbortAwareFakeSession([{ match: /voz_registrar_evento/i, respond: () => err }, SIGUIENTE]);
     const deps: AppDeps = { ...ctx.deps, vozKpiRepo: () => new PostgresVozKpiRepository(session) };
     const res = await post(buildApp(deps), "/internal/restaurantes/voz/eventos", { organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, tipo: "latencia_voz", latenciaMs: 700 });
-    expect(res.status).toBe(500);
+    return res.status;
+  }
+
+  it("un error que NO es de migracion pendiente no se enmascara como 202: 22P02 es 500 y 42501 (permiso) es el 404 de recurso rechazado", async () => {
+    expect(await estadoDelEvento("22P02", "invalid input syntax")).toBe(500);
+    expect(await estadoDelEvento("42501", "permission denied for function voz_registrar_evento")).toBe(404);
+  });
+
+  it("una violacion de CHECK real (23514 de OTRO constraint, p. ej. el rango de latencia) tampoco se enmascara como 'no disponible'", async () => {
+    expect(await estadoDelEvento("23514", 'new row for relation "voice_event" violates check constraint "voice_event_latencia_ms_check"', "voice_event_latencia_ms_check")).toBe(500);
+  });
+
+  it("el CHECK autogenerado de campos por tipo de la 035 (voice_event_check) tambien cuenta como base sin migrar (202)", async () => {
+    expect(await estadoDelEvento("23514", 'new row for relation "voice_event" violates check constraint "voice_event_check"', "voice_event_check")).toBe(202);
   });
 });
 

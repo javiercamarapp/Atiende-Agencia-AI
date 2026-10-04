@@ -65,6 +65,19 @@ function mapErrorDeVoz(err: unknown): never {
   throw err;
 }
 
+/** CHECK que una base con la 035 pero SIN la 046 viola al recibir 'latencia_voz': la lista de tipos (`voice_event_tipo_check`) o la regla de campos por
+ *  tipo autogenerada (`voice_event_check`, `voice_event_check1`...). Cualquier OTRO CHECK (p. ej. el rango de latencia_ms) es un error real y NO se enmascara. */
+const CHECK_TIPO_SIN_MIGRAR = /\bvoice_event_(tipo_check|check\d*)\b/;
+
+function esLatenciaSinMigrar(err: unknown): boolean {
+  if (err instanceof VozNoDisponibleError) return true;
+  const e = err as { code?: unknown; constraint?: unknown; message?: unknown } | null;
+  const code = String(e?.code ?? "");
+  if (["42703", "42883", "42P01"].includes(code)) return true;
+  if (code !== "23514") return false;
+  return CHECK_TIPO_SIN_MIGRAR.test(`${String(e?.constraint ?? "")} ${String(e?.message ?? "")}`);
+}
+
 export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
   const app = new Hono();
   const base = "/internal/restaurantes/voz";
@@ -218,7 +231,7 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
               await deps.vozKpiRepo!(db).registrarEvento(evento);
               return true;
             },
-            isRecoverable: (err) => err instanceof VozNoDisponibleError || ["23514", "42703", "42883", "42P01"].includes(String((err as { code?: unknown } | null)?.code ?? "")),
+            isRecoverable: esLatenciaSinMigrar,
             fallback: async () => false,
           });
           return registrado ? c.json({ registrado: true }, 201) : c.json({ registrado: false, disponible: false }, 202);
