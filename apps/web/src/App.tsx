@@ -75,6 +75,7 @@ const StorefrontRestaurantePage = cargaPerezosa(() => import("./verticals/restau
 const StorefrontSucursalPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/SucursalPage.tsx"), "SucursalPage");
 const StorefrontRastreoPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/RastreoPage.tsx"), "RastreoPage");
 const ReservarPage = cargaPerezosa(() => import("./verticals/citas/reserva/ReservarPage.tsx"), "ReservarPage");
+const StorefrontEventosPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/EventosPage.tsx"), "EventosPage");
 const PrivacidadStorefrontPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/PrivacidadStorefront.tsx"), "PrivacidadStorefrontPage");
 const RestaurantesPrimerosPasosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/PrimerosPasos.tsx"), "RestaurantesPrimerosPasosPage");
 const RestaurantesCopilotoPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Copiloto.tsx"), "RestaurantesCopilotoPage");
@@ -351,6 +352,10 @@ function HotelesMisDatosRoute() {
 function ReservarCitasRoute() {
   const { orgSlug = "" } = useParams();
   return <ReservarPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
+function StorefrontEventosRoute() {
+  const { orgSlug = "" } = useParams();
+  return <StorefrontEventosPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
 function StorefrontPrivacidadRoute() {
   const { orgSlug = "" } = useParams();
@@ -1167,6 +1172,7 @@ export function App() {
         <Route path="/reservar/:orgSlug" element={<ReservarCitasRoute />} />
         <Route path="/pedir/:orgSlug" element={<StorefrontRestauranteRoute />} />
         <Route path="/pedir/:orgSlug/privacidad" element={<StorefrontPrivacidadRoute />} />
+        <Route path="/pedir/:orgSlug/eventos" element={<StorefrontEventosRoute />} />
         <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
         <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
         <Route path="/superadmin" element={<SuperAdminRoute />} />
