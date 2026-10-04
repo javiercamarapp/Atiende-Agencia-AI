@@ -104,6 +104,8 @@ export interface AutopilotoConfig {
 export interface AutopilotoConfigRespuesta {
   readonly disponible: boolean;
   readonly config: AutopilotoConfig;
+  /** Reglas de TODA la organizacion (no de la sucursal). */
+  readonly org?: { readonly cancelacionAgente: boolean };
   /** Plantillas de WhatsApp (Meta) que usa el autopiloto y si el operador las declaro aprobadas. */
   readonly plantillas: readonly { readonly nombre: string; readonly aprobada: boolean }[];
   /** `false` = no hay adaptador real de SoftRestaurant: el avance de estados desde el POS no esta disponible aun. */
@@ -114,7 +116,13 @@ export function fetchAutopilotoConfig(fetchImpl: typeof fetch, apiBaseUrl: strin
   return fetchJson<AutopilotoConfigRespuesta>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/autopiloto/config`, token);
 }
 
-export function guardarAutopilotoConfig(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, config: Omit<AutopilotoConfig, "configurada">): Promise<{ readonly ok: boolean; readonly config: AutopilotoConfig }> {
+export function guardarAutopilotoConfig(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  config: Omit<AutopilotoConfig, "configurada"> & { readonly cancelacionAgente?: boolean },
+): Promise<{ readonly ok: boolean; readonly config: AutopilotoConfig }> {
   return sendJson(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/autopiloto/config`, token, "PUT", config);
 }
 

@@ -285,11 +285,11 @@ describe("Reglas del autopiloto", () => {
     await esperar();
     const dialogo = document.body.querySelector('[role="dialog"]') as HTMLElement;
     const cajas = [...dialogo.querySelectorAll("input[type=checkbox]")] as HTMLInputElement[];
-    expect(cajas).toHaveLength(2);
+    expect(cajas).toHaveLength(3);
     expect(cajas.every((c) => !c.checked)).toBe(true);
     expect(dialogo.textContent).toContain("Plantillas de WhatsApp sin aprobar en Meta: pedido_aprobado");
     expect(dialogo.textContent).toContain("requiere la API de SoftRestaurant");
-    expect(dialogo.textContent).toContain("todavía sin efecto, porque el agente aún no usa estas aprobaciones");
+    expect(dialogo.textContent).toContain("Pedidos grandes y cancelaciones por voz: todavía sin efecto");
   });
 
   it("valida rangos antes de llamar y guarda con PUT .../autopiloto/config", async () => {
@@ -307,12 +307,12 @@ describe("Reglas del autopiloto", () => {
     expect((document.body.querySelector('[role="dialog"]') as HTMLElement).textContent).toContain("De 1 a 240 minutos.");
     changeValue(entradas()[0]!, "12");
     const cajas = [...(document.body.querySelector('[role="dialog"]') as HTMLElement).querySelectorAll("input[type=checkbox]")] as HTMLInputElement[];
-    click(cajas[0]!);
+    click(cajas[1]!); // cancelacion automatica de la sucursal (la 0 es la regla de organizacion)
     await esperar();
     click([...document.body.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.includes("Guardar reglas"))!);
     await esperar();
     const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!;
-    expect(JSON.parse(String((put[1] as RequestInit).body))).toMatchObject({ cancelacionAuto: true, aceptacionAuto: false, aprobacionMinutos: 12, handoffRegresoMinutos: 15 });
+    expect(JSON.parse(String((put[1] as RequestInit).body))).toMatchObject({ cancelacionAgente: false, cancelacionAuto: true, aceptacionAuto: false, aprobacionMinutos: 12, handoffRegresoMinutos: 15 });
   });
 });
 

@@ -204,6 +204,29 @@ describe("config del autopiloto", () => {
     expect(bitacora.items.some((f) => f.action === "autopiloto.config_actualizada")).toBe(true);
   });
 
+  it("la regla de toda la organizacion (el agente gestiona las cancelaciones) viene apagada, la guarda owner/admin y queda en la bitacora", async () => {
+    const t = await construir();
+    const antes = await (await t.app.request(`${t.base()}/config`, authedGet(t.ctx.staff.owner.token))).json();
+    expect(antes.org).toEqual({ cancelacionAgente: false });
+    const res = await t.app.request(`${t.base()}/config`, authedJson(t.ctx.staff.owner.token, { ...CONFIG, cancelacionAgente: true }, "PUT"));
+    expect(res.status).toBe(200);
+    expect((await res.json()).org).toEqual({ cancelacionAgente: true });
+    expect((await (await t.app.request(`${t.base()}/config`, authedGet(t.ctx.staff.owner.token))).json()).org).toEqual({ cancelacionAgente: true });
+    const bitacora = await t.ctx.restaurantesRepo.listAuditoria(t.ctx.organizationId, {}, { limit: 20 } as never);
+    expect(bitacora.items.some((f) => f.action === "autopiloto.cancelacion_agente_actualizada" && f.despues === "true")).toBe(true);
+    // Sin cambio no se vuelve a escribir ni a auditar.
+    await t.app.request(`${t.base()}/config`, authedJson(t.ctx.staff.owner.token, { ...CONFIG, cancelacionAgente: true }, "PUT"));
+    const bitacora2 = await t.ctx.restaurantesRepo.listAuditoria(t.ctx.organizationId, {}, { limit: 50 } as never);
+    expect(bitacora2.items.filter((f) => f.action === "autopiloto.cancelacion_agente_actualizada")).toHaveLength(1);
+  });
+
+  it("cancelacionAgente exige booleano (400) y sin alcance organizacional en la base es 403", async () => {
+    const t = await construir();
+    expect((await t.app.request(`${t.base()}/config`, authedJson(t.ctx.staff.owner.token, { ...CONFIG, cancelacionAgente: "si" }, "PUT"))).status).toBe(400);
+    t.auto.actorConAlcance = false;
+    expect((await t.app.request(`${t.base()}/config`, authedJson(t.ctx.staff.owner.token, { ...CONFIG, cancelacionAgente: true }, "PUT"))).status).toBe(403);
+  });
+
   it("valida rangos y umbrales (400)", async () => {
     const t = await construir();
     for (const malo of [{ ...CONFIG, aprobacionMinutos: 0 }, { ...CONFIG, cancelacionAuto: "si" }, { ...CONFIG, saturacionUmbral2: 5 }, { ...CONFIG, saturacionUmbral1: null, saturacionUmbral2: 30 }, { ...CONFIG, compensacionTopePct: 101 }]) {

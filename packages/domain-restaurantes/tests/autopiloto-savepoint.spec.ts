@@ -33,6 +33,23 @@ describe("PostgresAutopilotoRepository contra la base sin migrar", () => {
     expect(s.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
   });
 
+  it("bandera por organizacion: base SIN migrar => apagada (el agente sigue por el camino de siempre) y la sesion sigue viva; migrada => la lee", async () => {
+    const viejo = new AbortAwareFakeSession([{ match: /autopiloto_org_config_leer/, respond: () => pgError("42883", "function does not exist") }, SIGUIENTE]);
+    expect(await new PostgresAutopilotoRepository(viejo).leerConfigOrg(ORG)).toEqual({ disponible: false, valor: { cancelacionAgente: false } });
+    await sesionViva(viejo);
+    const nuevo = new AbortAwareFakeSession([{ match: /autopiloto_org_config_leer/, respond: () => [{ v: true }] }]);
+    expect(await new PostgresAutopilotoRepository(nuevo).leerConfigOrg(ORG)).toEqual({ disponible: true, valor: { cancelacionAgente: true } });
+  });
+
+  it("guardar la bandera por organizacion: sin migrar => no disponible; 42501 (sin alcance organizacional) => 403", async () => {
+    const viejo = new AbortAwareFakeSession([{ match: /autopiloto_org_config_guardar/, respond: () => pgError("42883", "function does not exist") }, SIGUIENTE]);
+    expect(await new PostgresAutopilotoRepository(viejo).guardarConfigOrg(ORG, { cancelacionAgente: true })).toEqual({ disponible: false });
+    await sesionViva(viejo);
+    const sa = new AbortAwareFakeSession([{ match: /autopiloto_org_config_guardar/, respond: () => pgError("42501", "sin acceso") }, SIGUIENTE]);
+    await expect(new PostgresAutopilotoRepository(sa).guardarConfigOrg(ORG, { cancelacionAgente: true })).rejects.toBeInstanceOf(AutopilotoAccesoError);
+    await sesionViva(sa);
+  });
+
   it("retenerPedidoGrande: base sin migrar => no_disponible (el pedido sigue el flujo anterior) y la sesion sigue viva", async () => {
     const s = new AbortAwareFakeSession([{ match: /solicitud_pedido_grande_retener/, respond: () => pgError("42883", "function does not exist") }, SIGUIENTE]);
     expect(await new PostgresAutopilotoRepository(s).retenerPedidoGrande(ORG, ORDER, {})).toEqual({ estado: "no_disponible", solicitudId: null, propertyId: null });

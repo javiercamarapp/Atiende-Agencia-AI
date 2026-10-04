@@ -7,6 +7,8 @@ import { guardarAutopilotoConfig } from "../lib/autopiloto-client.ts";
 import type { AutopilotoConfigRespuesta } from "../lib/autopiloto-client.ts";
 
 interface Form {
+  /** Regla de TODA la organizacion: el agente de WhatsApp gestiona las cancelaciones que pide el cliente. */
+  cancelacionAgente: boolean;
   cancelacionAuto: boolean;
   aceptacionAuto: boolean;
   aprobacionMinutos: string;
@@ -22,6 +24,7 @@ interface Form {
 function formDesde(r: AutopilotoConfigRespuesta): Form {
   const c = r.config;
   return {
+    cancelacionAgente: r.org?.cancelacionAgente ?? false,
     cancelacionAuto: c.cancelacionAuto,
     aceptacionAuto: c.aceptacionAuto,
     aprobacionMinutos: String(c.aprobacionMinutos),
@@ -106,6 +109,7 @@ export function AutopilotoReglasDialogo({
     setErrorServidor(null);
     try {
       await guardarAutopilotoConfig(fetch, apiBaseUrl, token, propertyId, {
+        cancelacionAgente: form.cancelacionAgente,
         cancelacionAuto: form.cancelacionAuto,
         aceptacionAuto: form.aceptacionAuto,
         aprobacionMinutos: aprobacion!,
@@ -145,11 +149,16 @@ export function AutopilotoReglasDialogo({
         {errorServidor && <Callout tone="danger">{errorServidor}</Callout>}
         {!datos.disponible && <Callout tone="warning">Las reglas todavía no están disponibles en esta cuenta (falta aplicar la actualización de base de datos). Se muestran los valores seguros por omisión.</Callout>}
         <Checkbox
+          label="Que el agente de WhatsApp gestione las cancelaciones que pide el cliente: avisa a la sucursal y, si el pedido aún no está en cocina y la regla de abajo lo permite, lo cancela (toda la organización; apagado por omisión)"
+          checked={form.cancelacionAgente}
+          onChange={(e) => set("cancelacionAgente", e.target.checked)}
+        />
+        <Checkbox
           label="Cancelar solo, sin pedir aprobación, un pedido que el cliente cancela antes de que llegue a cocina (apagado por omisión)"
           checked={form.cancelacionAuto}
           onChange={(e) => set("cancelacionAuto", e.target.checked)}
         />
-        <Callout tone="info">Cancelación automática, pedidos grandes y quejas del agente: todavía sin efecto, porque el agente aún no usa estas aprobaciones (requiere el cableado del agente de WhatsApp y voz, en otro PR). Las demás reglas ya funcionan.</Callout>
+        <Callout tone="info">Pedidos grandes y cancelaciones por voz: todavía sin efecto, porque el agente aún no los usa (requiere el cableado del umbral de pedido grande y de la voz, en otro PR). Las cancelaciones y las quejas de WhatsApp sí llegan a «Por aprobar».</Callout>
         <Checkbox
           label="Aceptar solo el pedido (de Recibido a Preparando) en cuanto la comanda se imprime o se captura, sin POS (apagado por omisión)"
           checked={form.aceptacionAuto}
