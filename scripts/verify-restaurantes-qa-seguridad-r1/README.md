@@ -1,7 +1,7 @@
 # verify-restaurantes-qa-seguridad-r1
 
 QA restaurantes ronda 1, lente seguridad y datos: escenarios contra Postgres **real** (RLS y GRANT reales) de
-`packages/domain-restaurantes/migrations/042_seguridad_rls_alcance_y_privacidad.sql`. Entra al gate de CI
+`packages/domain-restaurantes/migrations/064_seguridad_rls_alcance_y_privacidad.sql`. Entra al gate de CI
 (`scripts/verify-real-postgres-ci/run-gate.mjs` descubre todo `scripts/verify-*/`).
 
 Qué demuestra (62 escenarios; `S*` eran los defectos abiertos y fallaban antes de la 042, `R*` regresión, `P*` positivos):

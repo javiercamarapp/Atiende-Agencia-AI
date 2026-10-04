@@ -1,5 +1,5 @@
 -- QA restaurantes ronda 1 -- lente SEGURIDAD Y DATOS. Escenarios contra Postgres REAL (RLS + GRANT
--- reales) de packages/domain-restaurantes/migrations/042_seguridad_rls_alcance_y_privacidad.sql: alcance por
+-- reales) de packages/domain-restaurantes/migrations/064_seguridad_rls_alcance_y_privacidad.sql: alcance por
 -- rol y sucursal (QA-restaurantes-R1-seguridad-01/02/03), higiene de permisos (11) y privacidad (06/07/10/14).
 -- Los escenarios S* eran los defectos abiertos (fallaban antes de la 042); los R* son regresion y los P* son
 -- escenarios positivos de lo que SI debe seguir funcionando. Cada escenario corre en su propio begin; ... rollback;.

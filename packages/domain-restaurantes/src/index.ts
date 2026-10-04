@@ -129,9 +129,10 @@ export {
   REPARTIDOR_ALLOWED_STATUSES,
   assertValidRepartidorStatusTransition,
   changeAssignedOrderStatus,
+  assertOrderCanBeDispatched,
 } from "./order-lifecycle.ts";
 
-export { searchProducts, prepareCreateOrder, createOrder, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
+export { searchProducts, prepareCreateOrder, createOrder, redondearACentavos, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
 export type { PreparedOrder, QuotePolicyInfo, QuotePromotionInfo } from "./orders.ts";
 
 export {
@@ -174,6 +175,20 @@ export { actorHash, legacyActorHash, requestActor, consumeRateLimit } from "./ra
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
 export { extractMetaInboundMessages, extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
+export {
+  LIMITE_NOTAS_POR_CONVERSACION_HORA,
+  LIMITE_NOTAS_POR_ORGANIZACION_DIA,
+  NOTA_DE_VOZ_MAX_BYTES,
+  NOTA_DE_VOZ_MAX_SEGUNDOS,
+  NotaDeVozError,
+  PREFIJO_NOTA_DE_VOZ,
+  TRANSCRIPCION_MAX_CARACTERES,
+  formatearNotaDeVoz,
+  registrarMotivo as registrarMotivoNotaDeVoz,
+  resolverCuerpoConNotaDeVoz,
+  transcribirNotaDeVoz,
+} from "./whatsapp/nota-de-voz.ts";
+export type { AudioDescargado, MotivoSinTranscripcion, NotaDeVozEntrante, PuertoNotasDeVoz, ResultadoNotaDeVoz, TranscripcionDeEntrada } from "./whatsapp/nota-de-voz.ts";
 export { splitMetaPayloadByChannel } from "./whatsapp/batch-routing.ts";
 export type { MetaChannelBatch } from "./whatsapp/batch-routing.ts";
 export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEspera, responderTrasEspera, mensajesSinResponder, usuariosRespondidos, analizarHistorial, MAX_PASADAS_RAFAGA, esperaEfectivaMs, FUNCION_MAX_MS, PASADA_ESTIMADA_MS, liberarTurnoTrasFalloDeFaseB } from "./whatsapp/inbound.ts";
@@ -204,6 +219,8 @@ export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTr
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";
+export * from "./repartidor-perfil/index.ts";
+export * from "./exportar/index.ts";
 export { PM_COPY, buildPmSystemPrompt, pmCustomerContextBlock, saludoPorHora } from "./whatsapp/perfil-pm.ts";
 export type { PerfilPmContexto, SaludoPorHora } from "./whatsapp/perfil-pm.ts";
 export { MOTIVOS_ESCALACION_DESACTIVABLES, PERFILES_AGENTE_WHATSAPP, TONOS_AGENTE_WHATSAPP } from "./types.ts";
@@ -279,3 +296,22 @@ export type { PromocionProgramados } from "./pedidos-programados.ts";
 export { etiquetaHoraLocal } from "./horarios.ts";
 export type { OrderScheduleInfo } from "./types.ts";
 export type { PromotedScheduledOrdersResult, ScheduledOrdersResult } from "./repository.ts";
+
+// R-16 -- avisos del staff (migracion 043): preferencias por usuario, umbral de entrega tardia y alertas operativas.
+export {
+  AvisosNoDisponiblesError,
+  AvisosPermisoError,
+  AvisosValidacionError,
+  EVENTOS_AVISO,
+  TIPOS_AVISO,
+  UMBRAL_ENTREGA_TARDIA_DEFECTO_MIN,
+  UMBRAL_ENTREGA_TARDIA_MAX,
+  UMBRAL_ENTREGA_TARDIA_MIN,
+  guardarPreferenciaAviso,
+  guardarUmbralEntrega,
+  listarPreferenciasAvisos,
+  listarUmbralesEntrega,
+} from "./avisos-preferencias.ts";
+export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
+export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operativos.ts";
+export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";

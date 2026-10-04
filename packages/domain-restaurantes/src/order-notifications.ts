@@ -60,15 +60,15 @@ const CUSTOMER_NOTIFIED_STATUSES: ReadonlySet<OrderStatus> = new Set(["preparand
 function customerMessageForStatus(order: Order): string | null {
   switch (order.status) {
     case "preparando":
-      return `${greeting(order)}tu pedido${branchSuffix(order)} (${formatMxn(order.total)}) fue confirmado y ya lo estamos preparando.`;
+      return `${greeting(order)}su pedido${branchSuffix(order)} (${formatMxn(order.total)}) fue confirmado y ya lo estamos preparando.`;
     case "en_camino":
-      return `${greeting(order)}tu pedido${branchSuffix(order)} va en camino.`;
+      return `${greeting(order)}su pedido${branchSuffix(order)} va en camino.`;
     case "listo_para_recoger":
-      return `${greeting(order)}tu pedido${branchSuffix(order)} ya está listo para recoger en mostrador.`;
+      return `${greeting(order)}su pedido${branchSuffix(order)} ya está listo para recoger en mostrador.`;
     case "entregado":
-      return `${greeting(order)}tu pedido${branchSuffix(order)} fue entregado. ¡Buen provecho!`;
+      return `${greeting(order)}su pedido${branchSuffix(order)} fue entregado. ¡Buen provecho!`;
     case "cancelado":
-      return `${greeting(order)}tu pedido${branchSuffix(order)} fue cancelado. Si tienes dudas, contáctanos.`;
+      return `${greeting(order)}su pedido${branchSuffix(order)} fue cancelado. Si tiene dudas, contáctenos.`;
     default:
       return null;
   }

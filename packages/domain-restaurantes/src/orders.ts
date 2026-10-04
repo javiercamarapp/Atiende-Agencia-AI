@@ -19,6 +19,11 @@ import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
 import { describirErrorSeguro } from "./log-seguro.ts";
 
+/** Dinero a centavos (el redondeo comun de todo el modulo): una fraccion de centavo no existe. */
+export function redondearACentavos(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -192,6 +197,8 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     customerName: cleanName,
     customerPhone: voicePhone ?? normalizePhone(raw.customerPhone),
     customerAddress: cleanAddress,
+    // La propina se guarda, se imprime y se manda a la comanda ya redondeada a centavos (10.555 -> 10.56): una sola cifra.
+    ...(raw.propina !== undefined ? { propina: redondearACentavos(raw.propina) } : {}),
     notes: typeof raw.notes === "string" ? sanitizeNotes(raw.notes) || undefined : raw.notes,
     colonia: raw.colonia ? sanitizeInlineText(raw.colonia, 200) || undefined : undefined,
     customerEmail: raw.customerEmail?.trim() ? raw.customerEmail.trim().toLowerCase() : undefined,
@@ -406,8 +413,17 @@ export async function tryIncrementPromotionUses(repo: RestaurantesRepository, or
  * automático de 5 minutos) — nunca dos filas reales por una sola intención real de
  * pedido (protección real y a prueba de canal, port literal de createOrderCore).
  */
-export async function createOrder(repo: RestaurantesRepository, rawInput: CreateOrderInput): Promise<Order> {
-  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount } = await prepareCreateOrder(repo, rawInput);
+export async function createOrder(
+  repo: RestaurantesRepository,
+  rawInput: CreateOrderInput,
+  /** `beforePersist`: gancho que ve el pedido YA cotizado contra el catalogo vigente y puede rechazarlo (lanzando)
+   * antes de escribir nada. Lo usa la maquina de estados del pedido para exigir que los precios sigan siendo los
+   * que el cliente confirmo. */
+  options: { readonly beforePersist?: (prepared: PreparedOrder) => void } = {},
+): Promise<Order> {
+  const prepared = await prepareCreateOrder(repo, rawInput);
+  options.beforePersist?.(prepared);
+  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount } = prepared;
   // R-11: contra una base sin la migracion 034 el pedido programado se rechaza (503) en vez de crearse inmediato.
   if (payload.programadoPara) await assertProgramacionDisponible(repo);
 
