@@ -1,7 +1,7 @@
 // R-19/R-20 -- el seed deja el agente de WhatsApp de PM COMPLETO (perfil taqueria_pm con los datos del dueño) y puede
 // cargar la cuenta como DEMO. Los pendientes del dueño NO se inventan. Postgres real: scripts/verify-restaurantes-seed-pm/ (E1-E8).
 import { describe, expect, it } from "vitest";
-import { buildPmSeedPlan, PmSeedError, renderPmSeedPlpgsql, renderSchemaPreflightSql, WHATSAPP_AGENT_LIMITES } from "../src/seed/pm-demo.ts";
+import { buildPmSeedPlan, PmSeedError, renderPmSeedPlpgsql, renderSchemaPreflightSql, WHATSAPP_AGENT_LIMITES, type PmSeedData } from "../src/seed/pm-demo.ts";
 import { parseSeedArgs } from "../src/seed/target-safety.ts";
 import { aplicarFilaAConfig, buildSystemPrompt } from "../src/whatsapp/llm-turn-handler.ts";
 import { prepareCreateOrder } from "../src/orders.ts";
@@ -37,10 +37,10 @@ describe("configuracion del agente de WhatsApp en el seed", () => {
     expect(plan.whatsappAgent.promosText).not.toMatch(/Montejo|Pensiones|Galer/);
     expect(plan.promotions.map((p) => p.code)).toEqual(["LUNES2X1PM", "MARTESNACHOSPM"]);
     // Nunca se anuncia lo que la base no cargo: sin el combo cargado, mencionar el martes invalida el seed; igual con el 2x1.
-    const sinCombo = clone(data);
+    const sinCombo = clone(data) as { -readonly [K in keyof PmSeedData]: PmSeedData[K] };
     sinCombo.promociones = sinCombo.promociones.filter((p) => p.codigo !== "MARTESNACHOSPM");
     expect(() => buildPmSeedPlan(sinCombo, agent)).toThrow(/combo del martes/);
-    const sinLunes = clone(data);
+    const sinLunes = clone(data) as { -readonly [K in keyof PmSeedData]: PmSeedData[K] };
     sinLunes.promociones = sinLunes.promociones.filter((p) => p.codigo !== "LUNES2X1PM");
     expect(() => buildPmSeedPlan(sinLunes, agent)).toThrow(/2x1 del lunes/);
   });
