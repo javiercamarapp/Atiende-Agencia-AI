@@ -424,8 +424,29 @@ async function encolarComandaDelTurno(
   }
 }
 
+/** Tope de lo que se le manda al modelo de una conversacion: la fila de WhatsApp es UNA por (organizacion, telefono) y solo crece, asi que un cliente
+ * frecuente acumula semanas de chats. Sin tope cada turno manda TODO (costo y latencia sin limite; con suficiente historial revienta el contexto). */
+export const HISTORIAL_MAX_MENSAJES = 40;
+export const HISTORIAL_MAX_CARACTERES = 24_000;
+
+/** Ventana de la conversacion que ve el modelo: los ultimos mensajes dentro de ambos topes, empezando siempre en un mensaje del cliente (un
+ * "assistant" suelto al inicio confunde a los proveedores) y conservando SIEMPRE el ultimo mensaje del cliente. El resto del turno (marcador de
+ * turno de la maquina del pedido, ubicacion compartida) sigue leyendo el historial completo. */
+export function ventanaDeHistorial(messages: readonly ConversationMessage[]): readonly ConversationMessage[] {
+  let inicio = messages.length;
+  let caracteres = 0;
+  while (inicio > 0 && messages.length - inicio < HISTORIAL_MAX_MENSAJES) {
+    const siguiente = messages[inicio - 1]!;
+    if (caracteres + siguiente.content.length > HISTORIAL_MAX_CARACTERES && inicio < messages.length) break;
+    caracteres += siguiente.content.length;
+    inicio -= 1;
+  }
+  while (inicio < messages.length - 1 && messages[inicio]!.role !== "user") inicio += 1;
+  return inicio === 0 ? messages : messages.slice(inicio);
+}
+
 function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
-  return messages.map((m) => (m.role === "user" ? { role: "user" as const, content: m.content } : { role: "assistant" as const, content: m.content }));
+  return ventanaDeHistorial(messages).map((m) => (m.role === "user" ? { role: "user" as const, content: m.content } : { role: "assistant" as const, content: m.content }));
 }
 
 /** 30 s de funcion menos el margen de cierre menos ~6 s para la ultima llamada al LLM que arranque antes del tope. */
