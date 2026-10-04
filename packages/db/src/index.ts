@@ -270,3 +270,23 @@ export type {
   OrgOnboardingResumenRow,
 } from "./superadmin-organizaciones-ficha-repository.ts";
 export { InMemoryOrgFichaRepository, PostgresOrgFichaRepository } from "./superadmin-organizaciones-ficha-repository.ts";
+export type {
+  AceptacionSuperadmin,
+  EquipoFuente,
+  EquipoInvitacionCodigo,
+  EquipoInvitacionPendiente,
+  EquipoMiembro,
+  EquipoSucursal,
+  InvitacionEquipo,
+  InvitarEquipoInput,
+  OrgEquipo,
+  OrgEquipoRepository,
+} from "./superadmin-alta-equipo-repository.ts";
+export {
+  EquipoInvitacionError,
+  EquipoNoDisponibleError,
+  InMemoryOrgEquipoRepository,
+  PostgresOrgEquipoRepository,
+  enmascararCorreo,
+  traducirErrorEquipo,
+} from "./superadmin-alta-equipo-repository.ts";

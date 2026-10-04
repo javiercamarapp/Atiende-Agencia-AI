@@ -30,6 +30,7 @@ import { superadminMfaRoutes } from "./routes/superadmin-mfa.ts";
 import { superadminInterruptoresRoutes } from "./routes/superadmin-interruptores.ts";
 import { superadminOrganizacionesRoutes } from "./routes/superadmin-organizaciones.ts";
 import { superadminOrganizacionesFichaRoutes } from "./routes/superadmin-organizaciones-ficha.ts";
+import { superadminOrganizacionesEquipoRoutes } from "./routes/superadmin-organizaciones-equipo.ts";
 import { superadminCostosRoutes } from "./routes/superadmin-costos.ts";
 import { superadminCfoRoutes } from "./routes/superadmin-cfo.ts";
 import { superadminPylRoutes } from "./routes/superadmin-pyl.ts";
@@ -131,6 +132,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminInterruptoresRoutes(deps));
   app.route("/", superadminOrganizacionesRoutes(deps));
   app.route("/", superadminOrganizacionesFichaRoutes(deps));
+  app.route("/", superadminOrganizacionesEquipoRoutes(deps));
   app.route("/", superadminCostosRoutes(deps));
   app.route("/", superadminCfoRoutes(deps));
   app.route("/", superadminPylRoutes(deps));
