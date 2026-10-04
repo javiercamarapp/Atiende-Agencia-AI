@@ -61,7 +61,7 @@ describe("ingestTendersFromSource (en memoria) -- huella cruzada", () => {
     const b2 = await repo.ingestTendersFromSource(ORG, "cdmx_ocds", [candidato({ externalId: "CDMX-77" })]);
     expect(b2).toMatchObject({ created: 0, linked: 1 });
     expect(await repo.listTenderSources(ORG, b1.tenders[0]!.id)).toHaveLength(2);
-    expect((await repo.listTendersPage(ORG, {})).total).toBe(1);
+    expect((await repo.listTendersPage(ORG, { limit: 50, offset: 0 })).total).toBe(1);
   });
 
   it("procedimientos distintos NO se fusionan", async () => {
