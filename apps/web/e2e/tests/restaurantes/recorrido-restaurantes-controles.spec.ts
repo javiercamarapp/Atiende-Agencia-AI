@@ -146,6 +146,11 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     const [off] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/promotions/promo-1" });
     expect(cuerpoDe(off)).toEqual({ isActive: false });
     await expect(main(page).getByRole("button", { name: "Activar", exact: true })).toBeVisible();
+
+    await mock.limpiarRegistro();
+    await main(page).getByRole("button", { name: "Activar", exact: true }).click();
+    const [on] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/promotions/promo-1" });
+    expect(cuerpoDe(on)).toEqual({ isActive: true });
     vigilante.verificar();
   });
 
