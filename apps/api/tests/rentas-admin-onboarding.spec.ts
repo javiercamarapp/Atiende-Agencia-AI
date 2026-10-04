@@ -51,7 +51,7 @@ describe("GET /v1/rentas/:propertyId/admin/onboarding", () => {
     const t = await preparar();
     t.checklist.porOrganizacion.set(t.ctx.organizationId, {
       unidades: 2,
-      feeds: { activos: 2, sincronizados: 1 },
+      feeds: { activos: 2, enCuarentena: 0, sincronizados: 1 },
       unidadesConTarifaBase: 2,
       reglasComision: 3,
       propiedadesConAccesoActivo: 1,

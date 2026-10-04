@@ -4,7 +4,7 @@ import type { DatosOnboardingRentasSinStaff, RentasOnboardingChecklistRepository
 
 export const DATOS_ONBOARDING_VACIOS: DatosOnboardingRentasSinStaff = {
   unidades: 0,
-  feeds: { activos: 0, sincronizados: 0 },
+  feeds: { activos: 0, enCuarentena: 0, sincronizados: 0 },
   unidadesConTarifaBase: 0,
   reglasComision: 0,
   propiedadesConAccesoActivo: 0,

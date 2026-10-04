@@ -35,12 +35,12 @@ describe("PostgresRentasOnboardingChecklistRepository", () => {
   it("feeds: cuenta activos y sincronizados; sin filas devuelve ceros honestos", async () => {
     const repo = new PostgresRentasOnboardingChecklistRepository(
       new AbortAwareFakeSession([
-        { match: /from rentas\.canal_feed_externo/, respond: () => [{ activos: "2", sincronizados: "1" }] },
+        { match: /from rentas\.canal_feed_externo/, respond: () => [{ activos: "2", en_cuarentena: "1", sincronizados: "1" }] },
         { match: /from rentas\./, respond: () => [] },
       ]),
     );
     const datos = await repo.cargar(ORG);
-    expect(datos.feeds).toEqual({ activos: 2, sincronizados: 1 });
+    expect(datos.feeds).toEqual({ activos: 2, enCuarentena: 1, sincronizados: 1 });
     expect(datos.unidades).toBe(0);
   });
 
@@ -49,7 +49,7 @@ describe("PostgresRentasOnboardingChecklistRepository", () => {
     const sesion = {
       async query<T>(sql: string) {
         capturadas.push(sql);
-        return { rows: [{ n: "0", activos: "0", sincronizados: "0" }] as T[] };
+        return { rows: [{ n: "0", activos: "0", en_cuarentena: "0", sincronizados: "0" }] as T[] };
       },
       async exec() {},
     };
@@ -63,7 +63,7 @@ describe("PostgresRentasOnboardingChecklistRepository", () => {
     const sesion = {
       async query<T>(sql: string, params?: unknown[]) {
         capturadas.push({ sql, params });
-        return { rows: [{ n: "0", activos: "0", sincronizados: "0" }] as T[] };
+        return { rows: [{ n: "0", activos: "0", en_cuarentena: "0", sincronizados: "0" }] as T[] };
       },
       async exec() {},
     };

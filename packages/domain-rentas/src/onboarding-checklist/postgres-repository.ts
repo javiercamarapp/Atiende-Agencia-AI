@@ -26,13 +26,14 @@ export class PostgresRentasOnboardingChecklistRepository implements RentasOnboar
   async cargar(organizationId: string): Promise<DatosOnboardingRentasSinStaff> {
     const unidades = await this.contar(`select count(*)::text as n from rentas.unidad where organization_id = $1;`, organizationId);
     const feeds = await this.medir(async () => {
-      const r = await this.db.query<{ activos: string; sincronizados: string }>(
+      const r = await this.db.query<{ activos: string; en_cuarentena: string; sincronizados: string }>(
         `select count(*) filter (where activo)::text as activos,
-                count(*) filter (where activo and ultima_sincronizacion_exitosa_en is not null)::text as sincronizados
+                count(*) filter (where activo and en_cuarentena_desde is not null)::text as en_cuarentena,
+                count(*) filter (where activo and en_cuarentena_desde is null and ultima_sincronizacion_exitosa_en is not null)::text as sincronizados
          from rentas.canal_feed_externo where organization_id = $1;`,
         [organizationId],
       );
-      return { activos: Number(r.rows[0]?.activos ?? 0), sincronizados: Number(r.rows[0]?.sincronizados ?? 0) };
+      return { activos: Number(r.rows[0]?.activos ?? 0), enCuarentena: Number(r.rows[0]?.en_cuarentena ?? 0), sincronizados: Number(r.rows[0]?.sincronizados ?? 0) };
     });
     const unidadesConTarifaBase = await this.contar(`select count(distinct unidad_id)::text as n from rentas.tarifa_base where organization_id = $1;`, organizationId);
     // Una organizacion nueva nace con reglas SUGERIDAS (fuente `default_sugerido...`, migracion 027): no cuentan hasta que alguien

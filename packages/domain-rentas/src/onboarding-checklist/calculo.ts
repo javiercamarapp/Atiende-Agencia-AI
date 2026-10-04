@@ -12,8 +12,11 @@ export type EstadoPuntoOnboarding = "hecho" | "pendiente" | "no_disponible";
 export interface DatosOnboardingRentas {
   /** Unidades de la organizacion (toda). `null` = no medible. */
   readonly unidades: number | null;
-  /** Feeds iCal: activos y, de ellos, los que ya sincronizaron con exito al menos una vez. */
-  readonly feeds: { readonly activos: number; readonly sincronizados: number } | null;
+  /**
+   * Feeds iCal: activos, de ellos los que estan en cuarentena (dejaron de responder: no cuentan como conectados) y los que, sin estar
+   * en cuarentena, ya sincronizaron con exito al menos una vez.
+   */
+  readonly feeds: { readonly activos: number; readonly enCuarentena: number; readonly sincronizados: number } | null;
   /** Unidades con al menos una tarifa base vigente. */
   readonly unidadesConTarifaBase: number | null;
   /** Reglas de comision de canal CONFIRMADAS por la organizacion (las sugeridas que nacen con ella, fuente `default_sugerido...`, no cuentan). */
@@ -67,7 +70,14 @@ export function calcularChecklistOnboardingRentas(d: DatosOnboardingRentas): Che
       { clave: "ical", titulo: "Conectar un calendario iCal", descripcion: "Importa las reservas de Airbnb, Vrbo o Booking para evitar dobles reservas.", pantalla: "ical-sync", obligatorio: true },
       d.feeds === null
         ? null
-        : { hecho: d.feeds.activos > 0, detalle: d.feeds.activos === 0 ? "Ningún feed conectado" : `${plural(d.feeds.activos, "feed activo", "feeds activos")}, ${d.feeds.sincronizados} ya sincronizado${d.feeds.sincronizados === 1 ? "" : "s"}` },
+        : {
+            // Un feed en cuarentena (dejo de responder) no es un calendario conectado: si TODOS los activos estan asi, el punto sigue pendiente.
+            hecho: d.feeds.activos - d.feeds.enCuarentena > 0,
+            detalle:
+              d.feeds.activos === 0
+                ? "Ningún feed conectado"
+                : `${plural(d.feeds.activos, "feed activo", "feeds activos")}, ${d.feeds.sincronizados} ya sincronizado${d.feeds.sincronizados === 1 ? "" : "s"}${d.feeds.enCuarentena > 0 ? `, ${d.feeds.enCuarentena} en cuarentena` : ""}`,
+          },
     ),
     punto(
       { clave: "tarifa_base", titulo: "Definir la tarifa base", descripcion: "Cada unidad necesita un precio por noche para cotizar y calcular ingresos.", pantalla: "precios", obligatorio: true },

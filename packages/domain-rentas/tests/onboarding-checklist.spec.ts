@@ -5,7 +5,7 @@ import type { DatosOnboardingRentas } from "../src/onboarding-checklist/calculo.
 
 const VACIO: DatosOnboardingRentas = {
   unidades: 0,
-  feeds: { activos: 0, sincronizados: 0 },
+  feeds: { activos: 0, enCuarentena: 0, sincronizados: 0 },
   unidadesConTarifaBase: 0,
   reglasComision: 0,
   propiedadesConAccesoActivo: 0,
@@ -23,8 +23,13 @@ describe("calcularChecklistOnboardingRentas", () => {
   });
 
   it("iCal conectado: solo cuenta un feed ACTIVO; un feed pausado no marca el punto", () => {
-    expect(estado({ ...VACIO, feeds: { activos: 0, sincronizados: 0 } }, "ical").estado).toBe("pendiente");
-    expect(estado({ ...VACIO, feeds: { activos: 1, sincronizados: 0 } }, "ical")).toMatchObject({ estado: "hecho", detalle: "1 feed activo, 0 ya sincronizados" });
+    expect(estado({ ...VACIO, feeds: { activos: 0, enCuarentena: 0, sincronizados: 0 } }, "ical").estado).toBe("pendiente");
+    expect(estado({ ...VACIO, feeds: { activos: 1, enCuarentena: 0, sincronizados: 0 } }, "ical")).toMatchObject({ estado: "hecho", detalle: "1 feed activo, 0 ya sincronizados" });
+  });
+
+  it("iCal: un feed en cuarentena no cuenta como conectado; con otro sano el punto sigue hecho y se avisa de la cuarentena", () => {
+    expect(estado({ ...VACIO, feeds: { activos: 1, enCuarentena: 1, sincronizados: 0 } }, "ical")).toMatchObject({ estado: "pendiente", detalle: "1 feed activo, 0 ya sincronizados, 1 en cuarentena" });
+    expect(estado({ ...VACIO, feeds: { activos: 3, enCuarentena: 1, sincronizados: 2 } }, "ical")).toMatchObject({ estado: "hecho", detalle: "3 feeds activos, 2 ya sincronizados, 1 en cuarentena" });
   });
 
   it("tarifa base: exige TODAS las unidades y nunca se marca sin unidades", () => {
@@ -58,7 +63,7 @@ describe("calcularChecklistOnboardingRentas", () => {
   });
 
   it("listo para operar = todos los obligatorios hechos; los recomendados (acceso, staff, plantilla) solo suben el porcentaje", () => {
-    const obligatorios: DatosOnboardingRentas = { ...VACIO, unidades: 1, feeds: { activos: 1, sincronizados: 1 }, unidadesConTarifaBase: 1, reglasComision: 1, propietarios: 1 };
+    const obligatorios: DatosOnboardingRentas = { ...VACIO, unidades: 1, feeds: { activos: 1, enCuarentena: 0, sincronizados: 1 }, unidadesConTarifaBase: 1, reglasComision: 1, propietarios: 1 };
     const c = calcularChecklistOnboardingRentas(obligatorios);
     expect(c.listoParaOperar).toBe(true);
     expect(c.porcentaje).toBe(57); // 4 de 7
