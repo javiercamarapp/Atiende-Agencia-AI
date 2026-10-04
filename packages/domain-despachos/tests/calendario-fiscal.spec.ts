@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   calcularCalendarioFiscal,
   diaDeLaSemana,
+  diasHabilesHasta,
   feriadosDelAnio,
   infoDiaInhabil,
   metadatosVencimiento,
@@ -149,5 +150,21 @@ describe("calcularCalendarioFiscal", () => {
     expect(tipoPersonaDeRegimen("612")).toBe("fisica");
     expect(tipoPersonaDeRegimen("999")).toBeNull();
     expect(regimenSoportado("616")).toBe(true);
+  });
+});
+
+describe("diasHabilesHasta (D-P3-33)", () => {
+  it("cuenta dias habiles posteriores a hoy hasta la fecha limite inclusive; 0 = hoy; -1 = vencido", () => {
+    expect(diasHabilesHasta("2026-06-10", "2026-06-19")).toBe(7);
+    expect(diasHabilesHasta("2026-06-19", "2026-06-19")).toBe(0);
+    expect(diasHabilesHasta("2026-06-20", "2026-06-19")).toBe(-1);
+  });
+  it("los fines de semana no cuentan: del viernes al lunes siguiente es 1 dia habil", () => {
+    expect(diasHabilesHasta("2026-06-12", "2026-06-15")).toBe(1);
+    expect(diasHabilesHasta("2026-06-13", "2026-06-15")).toBe(1); // desde sabado
+  });
+  it("los feriados no cuentan: 16 de septiembre y Jueves/Viernes Santo", () => {
+    expect(diasHabilesHasta("2026-09-15", "2026-09-17")).toBe(1);
+    expect(diasHabilesHasta("2026-04-01", "2026-04-06")).toBe(1); // 2 y 3 de abril (Jueves y Viernes Santo) y fin de semana: solo el lunes 6
   });
 });

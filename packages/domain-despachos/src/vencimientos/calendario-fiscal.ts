@@ -126,6 +126,21 @@ export function infoDiaInhabil(fecha: string): InfoDiaInhabil {
   return { inhabil: false, motivo: null, porValidar: false };
 }
 
+/** Días HÁBILES entre `hoy` y `fechaLimite` (ambas YYYY-MM-DD): cuenta los días hábiles posteriores a `hoy` hasta la fecha límite
+ * inclusive (art. 12 CFF). 0 = vence hoy; -1 = ya venció. Usa el mismo calendario fiscal que las fechas límite (feriados por regla de la
+ * LFT y Jueves/Viernes Santo por validar), de modo que "faltan 3 días hábiles" coincide con lo que ve el contador en el calendario. */
+export function diasHabilesHasta(hoy: string, fechaLimite: string): number {
+  if (fechaLimite < hoy) return -1;
+  let n = 0;
+  let d = hoy;
+  // Tope defensivo (fechas límite absurdamente lejanas): 5 años.
+  for (let i = 0; i < 1830 && d < fechaLimite; i += 1) {
+    d = sumarDias(d, 1);
+    if (!infoDiaInhabil(d).inhabil) n += 1;
+  }
+  return n;
+}
+
 /** Periodos en los que el SAT suele declarar días inhábiles por vacaciones (segunda quincena de julio y de
  * diciembre). No son inhábiles aquí: solo disparan la advertencia "validar con fiscalista". */
 function enVentanaVacacionalSat(fecha: string): boolean {

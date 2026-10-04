@@ -154,4 +154,47 @@ set local role authenticated;
 select count(*) as ventana_21_dias_deberia_ser_1 from despachos.system_vencimientos_por_escalar('00000000-0000-0000-0000-000000d26b01', '2026-07-01');
 rollback;
 
+\echo '16. (024) la sesion de sistema lee los periodos con vencimientos de UNA property (y solo esa)'
+begin;
+insert into despachos.fiscal_deadline (organization_id, property_id, tipo, periodo, fecha_limite, prioridad) values
+  ('00000000-0000-0000-0000-000000d26a01', '00000000-0000-0000-0000-000000d26b01', 'IVA', '2026-05', '2026-06-17', 'baja'),
+  ('00000000-0000-0000-0000-000000d26a01', '00000000-0000-0000-0000-000000d26b01', 'ISR', '2026-05', '2026-06-17', 'baja'),
+  ('00000000-0000-0000-0000-000000d26a02', '00000000-0000-0000-0000-000000d26b02', 'IVA', '2026-04', '2026-05-17', 'baja');
+set local role authenticated;
+select count(*) as periodos_de_a_deberia_ser_1 from despachos.system_vencimientos_periodos('00000000-0000-0000-0000-000000d26b01');
+rollback;
+
+\echo '17. (024) un staff autenticado NO puede invocar system_vencimientos_periodos ni system_cliente_nombre (solo sistema)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d26c01', true);
+select * from despachos.system_vencimientos_periodos('00000000-0000-0000-0000-000000d26b01') as should_fail;
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d26c01', true);
+select despachos.system_cliente_nombre('00000000-0000-0000-0000-000000d26b01') as should_fail;
+rollback;
+
+\echo '18. (024) anon no puede invocar las funciones de solo sistema nuevas'
+begin;
+set local role anon;
+select * from despachos.system_vencimientos_periodos('00000000-0000-0000-0000-000000d26b01') as should_fail;
+rollback;
+
+begin;
+set local role anon;
+select despachos.system_cliente_nombre('00000000-0000-0000-0000-000000d26b01') as should_fail;
+rollback;
+
+\echo '19. (024) la sesion de sistema obtiene la razon social del cliente con ficha y null sin ficha'
+begin;
+insert into despachos.cliente_ficha (property_id, organization_id, rfc, razon_social, regimenes_fiscales, cp_fiscal) values
+  ('00000000-0000-0000-0000-000000d26b01', '00000000-0000-0000-0000-000000d26a01', 'AAA010101AAA', 'Cliente A SA de CV', array['601'], '06600');
+set local role authenticated;
+select (despachos.system_cliente_nombre('00000000-0000-0000-0000-000000d26b01') = 'Cliente A SA de CV')::int as con_ficha_deberia_ser_1;
+select (despachos.system_cliente_nombre('00000000-0000-0000-0000-000000d26b02') is null)::int as sin_ficha_deberia_ser_1;
+rollback;
+
 -- Lista explicita para scripts/verify-real-postgres-ci/run-gate.mjs: los escenarios 2/3/4/6/7 deben terminar en ERROR.

@@ -16,6 +16,7 @@
 // (`repo.listOrganizationNotificationRecipients`), mismo criterio que
 // `domain-licitaciones::alert-notifications.ts`.
 import { correoEscalamientoVencimiento } from "../emails/vencimiento-templates.ts";
+import type { CronSatRepository } from "../cron-sat/types.ts";
 import type { DespachosRepository } from "../repository.ts";
 import type { FiscalDeadlineRecord } from "../types.ts";
 import type { DecisionEscalamiento } from "./engine.ts";
@@ -41,7 +42,14 @@ const NO_RECIPIENTS: EscalationEmailEnqueueResult = { recipients: 0, enqueued: 0
  * poder mandar su propio aviso; reintentar el envío del MISMO nivel nunca
  * duplica.
  */
-export async function enqueueEscalationEmailCore(repo: DespachosRepository, deadline: FiscalDeadlineRecord, decision: DecisionEscalamiento, tenantNombre: string, diasRestantes: number): Promise<EscalationEmailEnqueueResult> {
+export async function enqueueEscalationEmailCore(
+  repo: DespachosRepository,
+  deadline: FiscalDeadlineRecord,
+  decision: DecisionEscalamiento,
+  tenantNombre: string,
+  diasRestantes: number,
+  opciones: { readonly habiles?: boolean } = {},
+): Promise<EscalationEmailEnqueueResult> {
   const recipients = await repo.listOrganizationNotificationRecipients(deadline.organizationId);
   if (recipients.length === 0) return NO_RECIPIENTS;
 
@@ -51,6 +59,7 @@ export async function enqueueEscalationEmailCore(repo: DespachosRepository, dead
     periodo: deadline.periodo,
     fechaLimite: deadline.fechaLimite,
     diasRestantes,
+    habiles: opciones.habiles === true,
     nivel: decision.level,
     notas: decision.notes,
   });
@@ -90,11 +99,49 @@ export async function enqueueEscalationEmailCore(repo: DespachosRepository, dead
  * relanza el mismo error para que este `catch` lo siga tragando, con la sesión ya
  * recuperada.
  */
-export async function tryEnqueueEscalationEmail(repo: DespachosRepository, deadline: FiscalDeadlineRecord, decision: DecisionEscalamiento, tenantNombre: string, diasRestantes: number): Promise<EscalationEmailEnqueueResult> {
+export async function tryEnqueueEscalationEmail(
+  repo: DespachosRepository,
+  deadline: FiscalDeadlineRecord,
+  decision: DecisionEscalamiento,
+  tenantNombre: string,
+  diasRestantes: number,
+  opciones: { readonly habiles?: boolean } = {},
+): Promise<EscalationEmailEnqueueResult> {
   try {
-    return await repo.runWithRowSavepoint(() => enqueueEscalationEmailCore(repo, deadline, decision, tenantNombre, diasRestantes));
+    return await repo.runWithRowSavepoint(() => enqueueEscalationEmailCore(repo, deadline, decision, tenantNombre, diasRestantes, opciones));
   } catch (err) {
     console.error("vencimientos/email-notifications: best-effort escalation email enqueue failed:", err);
     return NO_RECIPIENTS;
+  }
+}
+
+/**
+ * D-P3-33: correo de escalamiento desde el CRON de sistema (antes solo salía con el botón del panel). Mismo cuerpo que el del botón, a los
+ * mismos destinatarios (staff owner/admin de la organización), por el mismo outbox: la lista de supresión de plataforma y los reintentos los
+ * resuelve el despacho del outbox (el payload NO es transaccional, así que un correo suprimido no sale). Dedupe DIARIO: la clave incluye el
+ * día (`escalation:<vencimiento>:<nivel>:<hoy>:<correo>`), de modo que un reintento del cron el mismo día jamás duplica. Best-effort: lo
+ * llama el barrido después de registrar el escalamiento y un fallo aquí nunca lo revierte (cada llamada del repositorio corre en su propio
+ * SAVEPOINT). Devuelve cuántos correos se encolaron.
+ */
+export async function encolarCorreoEscalamientoSistema(
+  cron: CronSatRepository,
+  v: { readonly id: string; readonly organizationId: string; readonly propertyId: string; readonly tipo: FiscalDeadlineRecord["tipo"]; readonly periodo: string; readonly fechaLimite: string },
+  decision: DecisionEscalamiento,
+  diasHabiles: number,
+  hoy: string,
+): Promise<number> {
+  try {
+    const destinatarios = await cron.listarDestinatariosAvisoSistema(v.organizationId);
+    if (destinatarios.length === 0) return 0;
+    const clienteNombre = await cron.nombreClienteSistema(v.propertyId);
+    const correo = correoEscalamientoVencimiento({ tenantNombre: "tu despacho", clienteNombre, tipo: v.tipo, periodo: v.periodo, fechaLimite: v.fechaLimite, diasRestantes: diasHabiles, habiles: true, nivel: decision.level, notas: decision.notes });
+    let encolados = 0;
+    for (const d of destinatarios) {
+      if (await cron.encolarCorreoSistema(v.organizationId, "vencimiento.escalado", `escalation:${v.id}:${decision.level}:${hoy}:${d.email}`, { to: d.email, subject: correo.asunto, html: correo.html, text: correo.texto })) encolados += 1;
+    }
+    return encolados;
+  } catch (err) {
+    console.error("vencimientos/email-notifications: best-effort cron escalation email enqueue failed:", err);
+    return 0;
   }
 }

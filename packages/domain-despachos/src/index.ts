@@ -75,6 +75,10 @@ export {
 export {
   TIPOS_VENCIMIENTO,
   TIPOS_VENCIMIENTO_BASE,
+  TIPOS_VENCIMIENTO_MIGRACION_019,
+  TIPOS_VENCIMIENTO_MIGRACION_024,
+  AVISOS_DIAS_HABILES,
+  decidirEscalamientoHabil,
   REGIMEN_FISCAL_POR_DEFECTO,
   fechaLimiteDia17MesSiguiente,
   diasHasta,
@@ -99,6 +103,7 @@ export {
   RegimenNoSoportadoError,
   calcularCalendarioFiscal,
   diaDeLaSemana,
+  diasHabilesHasta,
   feriadosDelAnio,
   infoDiaInhabil,
   metadatosVencimiento,
@@ -107,6 +112,7 @@ export {
   sumarDias,
   tipoPersonaDeRegimen,
 } from "./vencimientos/calendario-fiscal.ts";
+export { encolarCorreoEscalamientoSistema } from "./vencimientos/email-notifications.ts";
 export { barrerEscalamientosVencimientos, crearVencimientosDelPeriodo, esCheckViolation, registrarEscalamiento } from "./vencimientos/procesos.ts";
 export type { ResultadoBarridoVencimientos, ResultadoCrearVencimientos } from "./vencimientos/procesos.ts";
 export type { FeriadoFiscal, FechaLimiteHabil, ObligacionFiscalPeriodo, TipoPersona } from "./vencimientos/calendario-fiscal.ts";

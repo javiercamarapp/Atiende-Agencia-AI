@@ -19,6 +19,10 @@ export interface EscalamientoVencimientoCorreo {
   readonly periodo: string; // "YYYY-MM"
   readonly fechaLimite: string; // "YYYY-MM-DD"
   readonly diasRestantes: number; // negativo = ya vencido
+  /** true = `diasRestantes` son días HÁBILES (barrido D-P3-33); por defecto son días naturales (escalamiento manual). */
+  readonly habiles?: boolean;
+  /** Nombre del cliente (razón social) al que pertenece el vencimiento; aviso interno al despacho, nunca al cliente. */
+  readonly clienteNombre?: string | null;
   readonly nivel: NivelEscalamiento;
   readonly notas: string;
 }
@@ -32,14 +36,15 @@ export interface Correo {
 const ETIQUETA_POR_NIVEL: Record<NivelEscalamiento, { readonly texto: string; readonly color: string }> = {
   nivel_1: { texto: "Escalamiento nivel 1", color: "#0ea5e9" },
   nivel_2: { texto: "Escalamiento nivel 2", color: "#b45309" },
-  nivel_3: { texto: "Escalamiento nivel 3 — vence hoy", color: "#dc2626" },
+  nivel_3: { texto: "Escalamiento nivel 3 — vence hoy o en 1 día hábil", color: "#dc2626" },
   nivel_4: { texto: "Escalamiento nivel 4 — vencido", color: "#dc2626" },
 };
 
-function textoDiasRestantes(diasRestantes: number): string {
-  if (diasRestantes < 0) return `Vencido hace ${Math.abs(diasRestantes)} día(s)`;
+function textoDiasRestantes(diasRestantes: number, habiles = false): string {
+  // Con días hábiles un -1 solo significa "ya venció" (no se cuenta cuántos días hace).
+  if (diasRestantes < 0) return habiles ? "Vencido" : `Vencido hace ${Math.abs(diasRestantes)} día(s)`;
   if (diasRestantes === 0) return "Vence hoy";
-  return `Faltan ${diasRestantes} día(s)`;
+  return habiles ? `Faltan ${diasRestantes} día(s) hábil(es)` : `Faltan ${diasRestantes} día(s)`;
 }
 
 /** Genera el correo de aviso interno de un escalamiento de vencimiento fiscal
@@ -49,7 +54,8 @@ function textoDiasRestantes(diasRestantes: number): string {
 export function correoEscalamientoVencimiento(c: EscalamientoVencimientoCorreo): Correo {
   const tenant = escapeHtml(c.tenantNombre);
   const etiqueta = ETIQUETA_POR_NIVEL[c.nivel];
-  const diasTexto = textoDiasRestantes(c.diasRestantes);
+  const diasTexto = textoDiasRestantes(c.diasRestantes, c.habiles === true);
+  const cliente = c.clienteNombre ? c.clienteNombre : null;
   const html = renderCorreo({
     titulo: `Vencimiento fiscal escalado — ${c.tipo}`,
     preheader: `${c.tipo} de ${c.tenantNombre} (${c.periodo}) — ${diasTexto}`,
@@ -59,6 +65,7 @@ export function correoEscalamientoVencimiento(c: EscalamientoVencimientoCorreo):
     ],
     tabla: {
       filas: [
+        ...(cliente ? [{ etiqueta: "Cliente", valor: cliente }] : []),
         { etiqueta: "Obligación", valor: c.tipo },
         { etiqueta: "Período", valor: c.periodo },
         { etiqueta: "Fecha límite", valor: c.fechaLimite },
@@ -70,8 +77,8 @@ export function correoEscalamientoVencimiento(c: EscalamientoVencimientoCorreo):
     piePorQueLlego: `Recibes este correo porque tu cuenta de staff en ${c.tenantNombre} tiene rol owner/admin en atiende.`,
   });
   return {
-    asunto: `[${etiqueta.texto}] ${c.tipo} · ${c.tenantNombre} · ${diasTexto}`,
+    asunto: `[${etiqueta.texto}] ${c.tipo} · ${c.clienteNombre ?? c.tenantNombre} · ${diasTexto}`,
     html,
-    texto: `Vencimiento fiscal escalado en ${c.tenantNombre}.\nObligación: ${c.tipo}\nPeríodo: ${c.periodo}\nFecha límite: ${c.fechaLimite}\nEstado: ${diasTexto}\nNivel: ${c.nivel}\n${c.notas}`,
+    texto: `Vencimiento fiscal escalado en ${c.tenantNombre}.\n${c.clienteNombre ? `Cliente: ${c.clienteNombre}\n` : ""}Obligación: ${c.tipo}\nPeríodo: ${c.periodo}\nFecha límite: ${c.fechaLimite}\nEstado: ${diasTexto}\nNivel: ${c.nivel}\n${c.notas}`,
   };
 }

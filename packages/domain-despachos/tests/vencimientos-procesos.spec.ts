@@ -174,16 +174,36 @@ describe("barrerEscalamientosVencimientos", () => {
     expect(await repo.listEscalations(d.id)).toHaveLength(1);
   });
 
-  it("vence mañana -> nivel_2; ya fue escalado a nivel_2 y llega el día -> nivel_3 (sube); completados se ignoran", async () => {
+  // D-P3-33: el barrido avisa por DIAS HABILES. 2026-06-10 es miercoles; el vencimiento vence el viernes 2026-06-19.
+  it("avisa a 7, 3 y 1 dia(s) habil(es): nivel_1 -> nivel_2 -> nivel_3; el dia del vencimiento no repite; ya vencido sube a nivel_4; completados se ignoran", async () => {
     const repo = new InMemoryDespachosRepository();
-    const d = await repo.createDeadline({ organizationId: ORG, propertyId: PROP, tipo: "IVA", periodo: "2026-05", fechaLimite: "2026-06-11", prioridad: "alta" });
+    const d = await repo.createDeadline({ organizationId: ORG, propertyId: PROP, tipo: "IVA", periodo: "2026-05", fechaLimite: "2026-06-19", prioridad: "baja" });
     const hecho = await repo.createDeadline({ organizationId: ORG, propertyId: PROP, tipo: "DIOT", periodo: "2026-05", fechaLimite: "2026-06-01", prioridad: "alta" });
     await repo.markDeadlineCompleted(hecho.id, null, "2026-05-30");
-    const a = await barrerEscalamientosVencimientos(repo, SESION_NOOP, PROP, "2026-06-10");
-    expect(a.escalados.map((e) => e.nivel)).toEqual(["nivel_2"]);
-    const b = await barrerEscalamientosVencimientos(repo, SESION_NOOP, PROP, "2026-06-11");
-    expect(b.escalados.map((e) => [e.id, e.nivel])).toEqual([[d.id, "nivel_3"]]);
-    expect(a.evaluados).toBe(1);
+    const dia = async (hoy: string) => (await barrerEscalamientosVencimientos(repo, SESION_NOOP, PROP, hoy)).escalados.map((e) => [e.id, e.nivel]);
+    expect(await dia("2026-06-09")).toEqual([]); // martes: 8 dias habiles, aun no toca
+    expect(await dia("2026-06-10")).toEqual([[d.id, "nivel_1"]]); // 7 dias habiles (jue 11, vie 12, lun 15 ... vie 19)
+    expect(await dia("2026-06-10")).toEqual([]); // idempotente el mismo dia
+    expect(await dia("2026-06-15")).toEqual([]); // 4 habiles: sigue en nivel_1, nada nuevo
+    expect(await dia("2026-06-16")).toEqual([[d.id, "nivel_2"]]); // 3 habiles
+    expect(await dia("2026-06-18")).toEqual([[d.id, "nivel_3"]]); // 1 habil
+    expect(await dia("2026-06-19")).toEqual([]); // vence hoy: ya tiene nivel_3
+    expect(await dia("2026-06-22")).toEqual([[d.id, "nivel_4"]]); // ya vencio
+  });
+
+  it("un cron que se salto dias no pierde el aviso: a 2 dias habiles escala directo a nivel_2", async () => {
+    const repo = new InMemoryDespachosRepository();
+    const d = await repo.createDeadline({ organizationId: ORG, propertyId: PROP, tipo: "ISR", periodo: "2026-05", fechaLimite: "2026-06-19", prioridad: "baja" });
+    const r = await barrerEscalamientosVencimientos(repo, SESION_NOOP, PROP, "2026-06-17"); // 2 habiles
+    expect(r.escalados.map((e) => [e.id, e.nivel])).toEqual([[d.id, "nivel_2"]]);
+  });
+
+  it("los dias inhabiles no cuentan: con el 17 en lunes el viernes anterior ya es 1 dia habil y el fin de semana no suma", async () => {
+    const repo = new InMemoryDespachosRepository();
+    const d = await repo.createDeadline({ organizationId: ORG, propertyId: PROP, tipo: "IVA", periodo: "2026-08", fechaLimite: "2026-09-17", prioridad: "baja" });
+    // 2026-09-17 es jueves; el 16 de septiembre (miercoles) es festivo: desde el martes 15 falta 1 habil (jueves 17).
+    const r = await barrerEscalamientosVencimientos(repo, SESION_NOOP, PROP, "2026-09-15");
+    expect(r.escalados.map((e) => [e.id, e.nivel])).toEqual([[d.id, "nivel_3"]]);
   });
 });
 
@@ -219,7 +239,7 @@ describe("barrerEscalamientosVencimientos emite avisos in-app (campana)", () => 
       propertyId: PROP,
       evento: "despachos.fiscal.vencimiento_proximo",
       severidad: "atencion",
-      cuerpo: "Por vencer hoy o mañana: 2.",
+      cuerpo: "Por vencer en 7 días hábiles o menos: 2.",
       enlace: "/despachos/{orgSlug}/vencimientos",
       dedupeKey: `despachos.fiscal.vencimiento_proximo:${PROP}:2026-06-10`,
       roles: ["contador"],
