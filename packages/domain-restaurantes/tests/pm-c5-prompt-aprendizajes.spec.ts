@@ -47,7 +47,7 @@ describe("1. aclarar lo ambiguo antes de cotizar", () => {
     expect(p).toMatch(/pregunte "¿Algo más\?" una sola vez/);
     expect(p).toMatch(/en LISTA \(un renglón por producto\)/);
     expect(p).toMatch(/salsas \(las básicas más las que pidió\)/);
-    expect(p).toMatch(/si es efectivo, con cuánto paga; si es tarjeta, "llevar terminal"/);
+    expect(p).toMatch(/forma de pago \(efectivo, o tarjeta con "llevar terminal"; solo diga con cuánto paga si el cliente ya lo dijo\)/);
   });
   it("con salsas personalizadas por el dueño no se mezclan con las del perfil", () => {
     const personalizado = prompt({ salsasTexto: "roja, verde y de la casa" });
@@ -84,12 +84,19 @@ describe("4. cliente recurrente", () => {
   });
 });
 
-describe("5. pin a reparto", () => {
-  it("se pide una sola vez, antes de confirmar, con privada o edificio, casa o depto y referencia, y se anota en el pedido", () => {
-    expect(p).toMatch(/PIN A REPARTO: pida el pin .* UNA SOLA VEZ y ANTES de confirmar el pedido/);
-    expect(p).toMatch(/privada o edificio, casa o depto y una referencia visible/);
-    expect(p).toMatch(/Anótelo en las notas del pedido/);
+describe("5. pin a reparto: ayuda opcional, nunca requisito", () => {
+  it("la direccion escrita (calle, numero y colonia) basta; el pin se ofrece una sola vez antes de confirmar y se anota", () => {
+    expect(p).toMatch(/DIRECCIÓN ESCRITA: con calle, número y colonia basta/);
+    expect(p).toMatch(/PIN A REPARTO \(ayuda opcional, no requisito\): ofrézcalo UNA SOLA VEZ y ANTES de confirmar el pedido/);
+    expect(p).toMatch(/NUNCA condicione el pedido al pin/);
+    expect(p).toMatch(/Si lo manda .* anótelo en las notas del pedido/);
     expect(p).toMatch(/"avisar al llegar" o "tocar en \[depto\]"/);
+  });
+  it("regresion del eval real (12/68): ya no exige pin, casa o depto, referencia ni con cuanto paga para cerrar", () => {
+    expect(p).not.toMatch(/pida el pin .* UNA SOLA VEZ y ANTES de confirmar el pedido, junto con privada o edificio/);
+    expect(p).not.toMatch(/casa o depto y una referencia visible/);
+    expect(p).toMatch(/OBJETIVO: cerrar el pedido\. Lo INDISPENSABLE es:/);
+    expect(p).toMatch(/NO condicione el pedido a nada más: no exija pin de ubicación, casa o depto, referencias, con cuánto paga ni propina en efectivo/);
   });
 });
 
