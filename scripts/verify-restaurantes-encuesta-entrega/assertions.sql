@@ -70,6 +70,10 @@ insert into restaurantes.encuesta_config (property_id, organization_id, activa, 
   ('00000000-0000-0000-0000-0000000e41a1', '00000000-0000-0000-0000-0000000e4101', true, 30, 'https://g.page/r/ejemplo/review', 4),
   ('00000000-0000-0000-0000-0000000e41b1', '00000000-0000-0000-0000-0000000e4102', true, 30, null, 4);
 
+-- Canal de WhatsApp: la organizacion A por numero de organizacion; la B por numero de sucursal.
+insert into restaurantes.whatsapp_channel_config (organization_id, phone_number_id) values ('00000000-0000-0000-0000-0000000e4101', 'pnid-enc-a');
+insert into restaurantes.whatsapp_branch_channel (phone_number_id, organization_id, property_id) values ('pnid-enc-b1', '00000000-0000-0000-0000-0000000e4102', '00000000-0000-0000-0000-0000000e41b1');
+
 -- Pedidos CANDIDATOS del barrido (sin encuesta). "Ahora" de las pruebas del barrido = 2026-03-10 19:00:00+00.
 insert into restaurantes.orders (id, organization_id, property_id, customer_name, customer_phone, total, status, items, source, created_at, delivered_at, assigned_repartidor_id) values
   ('00000000-0000-0000-0000-0000000e4191', '00000000-0000-0000-0000-0000000e4101', '00000000-0000-0000-0000-0000000e41a1', 'Cliente Uno', '+52 5511111111', 100, 'entregado', '[]', 'whatsapp', '2026-03-10 17:00:00+00', '2026-03-10 18:00:00+00', '00000000-0000-0000-0000-0000000e4114'),
@@ -272,6 +276,14 @@ set local role authenticated;
 select restaurantes.encuesta_registrar_envio('00000000-0000-0000-0000-0000000e4102', '00000000-0000-0000-0000-0000000e4198');
 reset role;
 select count(*) as sin_repartidor_deberia_ser_1 from restaurantes.encuesta_entrega where order_id = '00000000-0000-0000-0000-0000000e4198' and repartidor_id is null;
+rollback;
+
+\echo '=== B9b. una organizacion sin numero de WhatsApp no tiene candidatas (no ocupa el lote) ==='
+begin;
+set local role authenticated;
+reset role;
+delete from restaurantes.whatsapp_channel_config where organization_id = '00000000-0000-0000-0000-0000000e4101';
+select jsonb_array_length(restaurantes.encuesta_candidatas('00000000-0000-0000-0000-0000000e4101', timestamptz '2026-03-10 19:00:00+00', 100)) as sin_canal_deberia_ser_0;
 rollback;
 
 \echo '=== B10. RECHAZADO: registrar un pedido no entregado -> 22023 ==='
