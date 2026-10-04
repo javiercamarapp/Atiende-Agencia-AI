@@ -2066,7 +2066,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return { orders: page, nextCursor };
   }
 
-  async updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus): Promise<Order | null> {
+  async updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus, incidentNote?: string | null): Promise<Order | null> {
     // Fix hallazgo auditoría (rubro 3, "máquina de estados de pedidos sin guarda
     // TOCTOU") — `and status = $4` es la guarda real: sin ella, el UPDATE aplica
     // ciegamente sobre CUALQUIER estado actual, incluso uno distinto al que
@@ -2076,10 +2076,11 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     const run = async () => {
       const { rows } = await this.db.query<OrderRow>(
         `update restaurantes.orders
-         set status = $3, delivered_at = case when $3 = 'entregado' then now() else delivered_at end
+         set status = $3, delivered_at = case when $3 = 'entregado' then now() else delivered_at end,
+             incident_note = case when $3 = 'problema' and $5::text is not null then $5::text else incident_note end
          where id = $1 and organization_id = $2 and status = $4
          returning ${ORDER_COLUMNS};`,
-        [orderId, organizationId, toStatus, fromStatus],
+        [orderId, organizationId, toStatus, fromStatus, toStatus === "problema" ? (incidentNote ?? null) : null],
       );
       return rows[0] ? mapOrder(rows[0]) : null;
     };

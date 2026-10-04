@@ -87,3 +87,15 @@ describe("listCustomers: cursor y busqueda", () => {
     expect(calls[1]!.params[1]).toBe("%a\\_b\\\\c%");
   });
 });
+
+describe("updateOrderStatus: nota de incidencia (QA viaje-11)", () => {
+  it("solo manda la nota cuando el destino es problema", async () => {
+    const { session, calls } = fakeSession([]);
+    const repo = new PostgresRestaurantesRepository(session);
+    await repo.updateOrderStatus(ORG, "o1", "entregado", "problema", "Faltó un refresco");
+    await repo.updateOrderStatus(ORG, "o1", "entregado", "completado", "ignorada");
+    expect(calls[0]!.params).toEqual(["o1", ORG, "problema", "entregado", "Faltó un refresco"]);
+    expect(calls[1]!.params).toEqual(["o1", ORG, "completado", "entregado", null]);
+    expect(calls[0]!.sql).toContain("incident_note = case when $3 = 'problema'");
+  });
+});

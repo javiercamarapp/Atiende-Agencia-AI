@@ -86,3 +86,46 @@ describe("back-office: bandeja de notificaciones de pedidos", () => {
     expect(res.status).toBe(200);
   });
 });
+
+// QA-restaurantes-R1-viaje-11: cierre administrativo (entregado -> completado) e incidencia posterior a la entrega con nota.
+describe("back-office: entregado -> completado / incidencia con nota", () => {
+  async function setup() {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const order = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "entregado" });
+    ctx.restaurantesRepo.seedOrder(order);
+    const app = buildApp(ctx.deps);
+    const patch = (body: object) => app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${order.id}/status`, authedJson(ctx.staff.owner.token, body, "PATCH"));
+    return { ctx, order, patch };
+  }
+
+  it("el dueno cierra un pedido entregado como completado", async () => {
+    const { patch } = await setup();
+    const res = await patch({ status: "completado" });
+    expect(res.status).toBe(200);
+    expect((await json(res)).order.status).toBe("completado");
+  });
+
+  it("registra una incidencia posterior a la entrega y guarda la nota", async () => {
+    const { patch, ctx, order } = await setup();
+    const res = await patch({ status: "problema", incidentNote: "  El cliente reporta que faltó un refresco  " });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.order.status).toBe("problema");
+    expect(body.order.incidentNote).toBe("El cliente reporta que faltó un refresco");
+    expect((await ctx.restaurantesRepo.findOrderById(ctx.organizationId, order.id))?.incidentNote).toBe("El cliente reporta que faltó un refresco");
+  });
+
+  it("la nota se valida: vacia, de otro tipo, demasiado larga o con un estado distinto de problema -> 400", async () => {
+    const { patch } = await setup();
+    expect((await patch({ status: "problema", incidentNote: "   " })).status).toBe(400);
+    expect((await patch({ status: "problema", incidentNote: 5 })).status).toBe(400);
+    expect((await patch({ status: "problema", incidentNote: "x".repeat(2001) })).status).toBe(400);
+    expect((await patch({ status: "completado", incidentNote: "no aplica" })).status).toBe(400);
+  });
+
+  it("un pedido completado no se puede marcar como incidencia (409)", async () => {
+    const { patch } = await setup();
+    expect((await patch({ status: "completado" })).status).toBe(200);
+    expect((await patch({ status: "problema", incidentNote: "tarde" })).status).toBe(409);
+  });
+});

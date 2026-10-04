@@ -118,6 +118,8 @@ interface StatusBody {
   readonly status?: unknown;
   /** `false` = no avisar por WhatsApp al cliente de este cambio (aviso opcional de "listo para recoger"). */
   readonly notifyCustomer?: unknown;
+  /** Nota de la incidencia (solo con `status: "problema"`; 1-2000 caracteres). */
+  readonly incidentNote?: unknown;
 }
 
 interface AssignRepartidorBody {
@@ -247,7 +249,14 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       // SAVEPOINT.
       // `notifyCustomer: false` salta el aviso por WhatsApp al cliente (aviso OPCIONAL de "listo para recoger").
       if (raw.notifyCustomer !== undefined && typeof raw.notifyCustomer !== "boolean") throw Errors.validation("notifyCustomer: se esperaba true o false.");
-      const updated = await changeOrderStatus(repo, organizationId, order, raw.status, c.get("db"), raw.notifyCustomer === false ? { avisarCliente: false } : {});
+      if (raw.incidentNote !== undefined && raw.incidentNote !== null) {
+        if (typeof raw.incidentNote !== "string" || raw.incidentNote.trim().length < 1 || raw.incidentNote.trim().length > 2000) throw Errors.validation("incidentNote: se esperaba un texto de 1 a 2000 caracteres.");
+        if (raw.status !== "problema") throw Errors.validation('incidentNote solo aplica cuando status es "problema".');
+      }
+      const updated = await changeOrderStatus(repo, organizationId, order, raw.status, c.get("db"), {
+        ...(raw.notifyCustomer === false ? { avisarCliente: false } : {}),
+        ...(typeof raw.incidentNote === "string" ? { incidentNote: raw.incidentNote } : {}),
+      });
       // Cluster #3 (CRÍTICO) de la auditoría final — `changeOrderStatus` ya
       // encoló internamente (best-effort) el WhatsApp al cliente si el nuevo
       // status aplica (tryNotifyCustomerOnOrderStatusChange, ver

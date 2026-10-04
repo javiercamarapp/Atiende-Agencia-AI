@@ -96,11 +96,21 @@ export async function changeOrderStatus(
   order: Order,
   nextStatus: OrderStatus,
   db?: TenantDbSession,
-  options: { /** `false` = no avisar por WhatsApp al cliente (aviso opcional de "listo para recoger"). */ readonly avisarCliente?: boolean } = {},
+  options: {
+    /** `false` = no avisar por WhatsApp al cliente (aviso opcional de "listo para recoger"). */
+    readonly avisarCliente?: boolean;
+    /** Nota de la incidencia: solo aplica (y se guarda) con `nextStatus === "problema"`, tambien tras la entrega. */
+    readonly incidentNote?: string | null;
+  } = {},
 ): Promise<Order> {
   assertValidOrderStatusTransition(order.status, nextStatus);
+  const incidentNote = options.incidentNote === undefined || options.incidentNote === null ? null : options.incidentNote.trim();
+  if (incidentNote !== null) {
+    if (nextStatus !== "problema") throw new OrderStatusTransitionError('incidentNote solo aplica cuando el nuevo estado es "problema".');
+    if (incidentNote.length < 1 || incidentNote.length > 2000) throw new OrderStatusTransitionError("La nota de la incidencia debe tener entre 1 y 2000 caracteres.");
+  }
   await assertCanalAllowsStatus(repo, organizationId, order, nextStatus);
-  const updated = await repo.updateOrderStatus(organizationId, order.id, order.status, nextStatus);
+  const updated = await repo.updateOrderStatus(organizationId, order.id, order.status, nextStatus, incidentNote);
   if (!updated) {
     // Fix hallazgo auditoría (rubro 3, "máquina de estados de pedidos sin guarda
     // TOCTOU") — `order.status` (con el que se validó arriba) puede haber quedado

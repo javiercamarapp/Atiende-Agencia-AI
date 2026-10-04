@@ -424,7 +424,9 @@ export interface RestaurantesRepository {
    * real ya NO es `fromStatus` (alguien más lo cambió primero) — el dominio
    * distingue ambos casos con un `findOrderById` de más SOLO en ese camino de
    * error, nunca en el camino feliz. */
-  updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus): Promise<Order | null>;
+  /** `incidentNote` (opcional): nota libre de la incidencia; solo se guarda cuando `toStatus === "problema"`
+   * (columna `incident_note`, migracion 008: no requiere SQL nuevo). */
+  updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus, incidentNote?: string | null): Promise<Order | null>;
 
   findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
   listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;
