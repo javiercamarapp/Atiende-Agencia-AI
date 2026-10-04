@@ -30,6 +30,7 @@ import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
 import { issueStorefrontTrackingToken, storefrontTrackingKey, verifyStorefrontTrackingToken } from "../../../storefront-tracking-token.ts";
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
+import { edgeRateLimit } from "./edge-limit.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -91,6 +92,9 @@ function str(v: unknown, max: number): string | undefined {
   return typeof v === "string" && v.length <= max ? v : undefined;
 }
 
+/** Tope por IP sobre TODO el storefront (cuenta tambien los intentos que fallan y los slugs inexistentes): igual al tope de lectura. */
+const STOREFRONT_EDGE_MAX = 120;
+
 export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
   const app = new Hono();
   const trackingKey = storefrontTrackingKey(deps.env.internalSecret);
@@ -120,6 +124,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
   // GET /v1/restaurantes/:orgSlug/storefront -- el restaurante y sus sucursales activas.
   app.get("/v1/restaurantes/:orgSlug/storefront", async (c) => {
     noStore(c);
+    await edgeRateLimit(deps, c, "storefront-edge", STOREFRONT_EDGE_MAX);
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrg(repo, c.req.param("orgSlug"));
@@ -131,6 +136,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
   // GET /v1/restaurantes/:orgSlug/storefront/:branchSlug/menu -- menu por categorias con precios y disponibilidad en vivo.
   app.get("/v1/restaurantes/:orgSlug/storefront/:branchSlug/menu", async (c) => {
     noStore(c);
+    await edgeRateLimit(deps, c, "storefront-edge", STOREFRONT_EDGE_MAX);
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrg(repo, c.req.param("orgSlug"));
@@ -149,6 +155,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
     const body = await readJsonCapped<StorefrontBody>(c.req.raw, 24 * 1024);
     const sessionId = sessionIdOf(body);
     const items = cleanItems(body.items);
+    await edgeRateLimit(deps, c, "storefront-edge", STOREFRONT_EDGE_MAX);
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrg(repo, c.req.param("orgSlug"));
@@ -195,6 +202,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
     assertOrigin(c);
     const body = await readJsonCapped<StorefrontBody>(c.req.raw, 4 * 1024);
     const sessionId = sessionIdOf(body);
+    await edgeRateLimit(deps, c, "storefront-edge", STOREFRONT_EDGE_MAX);
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrg(repo, c.req.param("orgSlug"));
@@ -218,6 +226,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
     const body = await readJsonCapped<StorefrontBody>(c.req.raw, 32 * 1024);
     const sessionId = sessionIdOf(body);
     const items = cleanItems(body.items);
+    await edgeRateLimit(deps, c, "storefront-edge", STOREFRONT_EDGE_MAX);
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrg(repo, c.req.param("orgSlug"));
@@ -278,6 +287,7 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
   // GET .../storefront/track/:token -- estado del pedido por token firmado (sin datos personales).
   app.get("/v1/restaurantes/:orgSlug/storefront/track/:token", async (c) => {
     noStore(c);
+    await edgeRateLimit(deps, c, "storefront-edge", STOREFRONT_EDGE_MAX);
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrg(repo, c.req.param("orgSlug"));

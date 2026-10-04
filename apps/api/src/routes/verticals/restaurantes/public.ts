@@ -21,6 +21,7 @@ import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
 import { encolarComandaParaPedido } from "@atiende/domain-restaurantes/softrestaurant";
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
+import { edgeRateLimit } from "./edge-limit.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import { auditVoice, authenticateVoiceTool, enforceVoiceLimits, hasVoiceCredentials } from "./voice-auth.ts";
 import { runVoiceToolRoute, voiceToolContext } from "./voice-tools.ts";
@@ -132,6 +133,11 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
     // caller no puede declararse "voice" ni recibir el trato de mayor rate limit.
     if (incoming.source === "voice" && !credentialsPresent) throw Errors.unauthorized();
     if (!credentialsPresent && incoming.source && incoming.source !== "web") throw Errors.validation("source inválido");
+
+    // QA R1 seguridad-09: el checkout web cuenta TODO intento por IP en su propia transaccion, tambien los de un slug
+    // inexistente o los que terminan en error (la transaccion del handler los revertiria). Las llamadas con credenciales de voz
+    // se limitan por llamada y por sucursal (voice-auth.ts), nunca por la IP del proveedor.
+    if (!credentialsPresent) await edgeRateLimit(deps, c, "create-order-edge", 120);
 
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
