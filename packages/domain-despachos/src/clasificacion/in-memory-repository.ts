@@ -3,16 +3,15 @@
 // sin migrar (lecturas `no_disponible`, escrituras `ClasificacionNoDisponibleError`).
 import { randomUUID } from "node:crypto";
 import { CATEGORIAS_CONTABLES, CATEGORIAS_GRUESAS } from "../bookkeeping/clasificacion-cfdi.ts";
-import type { ResultadoClasificacionCfdi } from "../bookkeeping/clasificacion-cfdi.ts";
 import { DEFAULT_CONFIDENCE_THRESHOLD } from "../bookkeeping/confianza.ts";
 import { ClasificacionDatosInvalidosError, ClasificacionNoDisponibleError, ClasificacionNoEncontradaError, ClasificacionTopeExcedidoError } from "./types.ts";
-import type { ClasificacionRecord, ClasificacionRepository, ConfigClasificacion, CorreccionInput, CorreccionRecord, LecturaClasificacion } from "./types.ts";
+import type { ClasificacionAEscribir, ClasificacionRecord, ClasificacionRepository, ConfigClasificacion, CorreccionInput, CorreccionRecord, LecturaClasificacion } from "./types.ts";
 
 const RFC_RE = /^[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}$/;
 
 export interface InMemoryClasificacionOptions {
   /** RFC del emisor de un CFDI (para `corregirCategoria` con regla); `null` = el CFDI no existe en esa property. */
-  readonly rfcEmisorDe?: (propertyId: string, invoiceId: string) => string | null;
+  readonly rfcEmisorDe?: (propertyId: string, invoiceId: string) => string | null | Promise<string | null>;
   /** Recalculo de dirección (la ficha vive en otro repositorio). */
   readonly recalcularDireccion?: (propertyId: string) => number | Promise<number>;
   readonly actorId?: string | null;
@@ -35,7 +34,7 @@ export class InMemoryClasificacionRepository implements ClasificacionRepository 
     if (!CATEGORIAS_CONTABLES.includes(categoria) && !CATEGORIAS_GRUESAS.includes(categoria)) throw new ClasificacionDatosInvalidosError("categoría inválida");
   }
 
-  async registrar(propertyId: string, invoiceId: string, r: ResultadoClasificacionCfdi): Promise<boolean> {
+  async registrar(propertyId: string, invoiceId: string, r: ClasificacionAEscribir): Promise<boolean> {
     if (!this.disponible) return false;
     this.clasificaciones.push({ id: randomUUID(), invoiceId, categoria: r.categoria, confianza: r.confianza, metodo: r.metodo, razon: r.razon, cuenta: r.cuenta, empate: r.empate, clasificadaPor: this.opciones.actorId ?? null, creadaEn: new Date().toISOString() });
     void propertyId;
@@ -45,7 +44,7 @@ export class InMemoryClasificacionRepository implements ClasificacionRepository 
   async corregirCategoria(propertyId: string, invoiceId: string, input: { readonly categoria: string; readonly cuenta: string | null; readonly guardarRegla: boolean }): Promise<string> {
     this.exigirDisponible();
     this.validarCategoriaFina(input.categoria);
-    const rfc = this.opciones.rfcEmisorDe?.(propertyId, invoiceId);
+    const rfc = await this.opciones.rfcEmisorDe?.(propertyId, invoiceId);
     if (rfc === null) throw new ClasificacionNoEncontradaError("CFDI no encontrado");
     const id = randomUUID();
     this.clasificaciones.push({ id, invoiceId, categoria: input.categoria, confianza: 1, metodo: "manual", razon: "Corrección humana", cuenta: input.cuenta, empate: false, clasificadaPor: this.opciones.actorId ?? null, creadaEn: new Date().toISOString() });
@@ -98,7 +97,8 @@ export class InMemoryClasificacionRepository implements ClasificacionRepository 
   }
 
   async leerConfig(propertyId: string): Promise<ConfigClasificacion> {
-    const c = this.configs.get(propertyId);
+    // Sin la migración 026 la base no tiene la columna: valores por omisión, sin importar lo que se hubiera guardado antes en el doble.
+    const c = this.disponible ? this.configs.get(propertyId) : undefined;
     return { umbral: c?.umbral ?? DEFAULT_CONFIDENCE_THRESHOLD, portalAutoaceptar: c?.portalAutoaceptar ?? true, disponible: this.disponible };
   }
 

@@ -8,7 +8,9 @@ export {
   ClasificacionSinPermisoError,
   ClasificacionTopeExcedidoError,
 } from "./types.ts";
+export { aClasificacionAEscribir } from "./types.ts";
 export type {
+  ClasificacionAEscribir,
   ClasificacionRecord,
   ClasificacionRepository,
   ConfigClasificacion,

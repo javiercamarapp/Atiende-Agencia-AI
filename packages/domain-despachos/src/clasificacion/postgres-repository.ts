@@ -4,7 +4,6 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import { DEFAULT_CONFIDENCE_THRESHOLD } from "../bookkeeping/confianza.ts";
-import type { ResultadoClasificacionCfdi } from "../bookkeeping/clasificacion-cfdi.ts";
 import {
   ClasificacionDatosInvalidosError,
   ClasificacionNoDisponibleError,
@@ -12,7 +11,7 @@ import {
   ClasificacionSinPermisoError,
   ClasificacionTopeExcedidoError,
 } from "./types.ts";
-import type { ClasificacionRecord, ClasificacionRepository, ConfigClasificacion, CorreccionInput, CorreccionRecord, LecturaClasificacion, MetodoClasificacionRegistrado } from "./types.ts";
+import type { ClasificacionAEscribir, ClasificacionRecord, ClasificacionRepository, ConfigClasificacion, CorreccionInput, CorreccionRecord, LecturaClasificacion, MetodoClasificacionRegistrado } from "./types.ts";
 
 const MAX_HISTORIAL = 50;
 const MAX_CORRECCIONES = 1000;
@@ -101,7 +100,7 @@ export class PostgresClasificacionRepository implements ClasificacionRepository 
     }
   }
 
-  async registrar(propertyId: string, invoiceId: string, r: ResultadoClasificacionCfdi): Promise<boolean> {
+  async registrar(propertyId: string, invoiceId: string, r: ClasificacionAEscribir): Promise<boolean> {
     try {
       return await runWithSavepointFallback<boolean>({
         session: this.db,

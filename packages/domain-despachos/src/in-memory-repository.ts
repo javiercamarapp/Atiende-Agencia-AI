@@ -245,6 +245,21 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     return id ? (this.invoices.get(id) ?? null) : null;
   }
 
+  /** Espejo de `despachos.invoice_direccion_recalcular` (migración 026): solo para dobles de prueba. Devuelve cuántos CFDI `indeterminado` cambió. */
+  recalcularDireccionIndeterminados(propertyId: string, rfcCliente: string | null | undefined): number {
+    const cliente = (rfcCliente ?? "").trim().toUpperCase();
+    if (cliente === "") return 0;
+    let n = 0;
+    for (const invoice of [...this.invoices.values()]) {
+      if (invoice.propertyId !== propertyId || invoice.direccion !== "indeterminado") continue;
+      const nueva = invoice.rfcEmisor.trim().toUpperCase() === cliente ? "emitido" : invoice.rfcReceptor.trim().toUpperCase() === cliente ? "recibido" : null;
+      if (!nueva) continue;
+      this.invoices.set(invoice.id, { ...invoice, direccion: nueva });
+      n += 1;
+    }
+    return n;
+  }
+
   async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string; readonly incluirExcluidos?: boolean }): Promise<readonly InvoiceRecord[]> {
     // Filtro por período (migración 006, corregido — ver repository.ts): resuelto
     // directo contra `fecha` (fecha real de emisión del CFDI, "YYYY-MM-DD"), nunca

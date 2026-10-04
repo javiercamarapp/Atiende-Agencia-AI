@@ -5,6 +5,20 @@ import type { CorreccionClasificacion, MetodoClasificacion, ResultadoClasificaci
 
 export type MetodoClasificacionRegistrado = MetodoClasificacion | "manual" | "heuristica_claveprodserv";
 
+/** Lo que se escribe en `invoice_classification` al ingerir: el resultado del clasificador, o la categoría que el staff indicó (`manual`, confianza 1). */
+export interface ClasificacionAEscribir {
+  readonly categoria: string;
+  readonly confianza: number;
+  readonly metodo: MetodoClasificacion | "manual";
+  readonly razon: string | null;
+  readonly cuenta: string | null;
+  readonly empate: boolean;
+}
+
+export function aClasificacionAEscribir(r: ResultadoClasificacionCfdi): ClasificacionAEscribir {
+  return { categoria: r.categoria, confianza: r.confianza, metodo: r.metodo, razon: r.razon, cuenta: r.cuenta, empate: r.empate };
+}
+
 export interface ClasificacionRecord {
   readonly id: string;
   readonly invoiceId: string;
@@ -80,7 +94,7 @@ export class ClasificacionTopeExcedidoError extends Error {
 
 export interface ClasificacionRepository {
   /** Escribe la clasificación automática de un CFDI recién ingerido (fila nueva). `false` = la base no la tiene (el CFDI se ingiere igual). */
-  registrar(propertyId: string, invoiceId: string, resultado: ResultadoClasificacionCfdi): Promise<boolean>;
+  registrar(propertyId: string, invoiceId: string, resultado: ClasificacionAEscribir): Promise<boolean>;
   /** Corrección humana de UN CFDI: fila nueva `manual` (confianza 1) y, si se pide, la regla por RFC emisor. Devuelve el id de la clasificación. */
   corregirCategoria(propertyId: string, invoiceId: string, input: { readonly categoria: string; readonly cuenta: string | null; readonly guardarRegla: boolean }): Promise<string>;
   /** Última clasificación de cada CFDI dado (invoiceId -> registro). */
