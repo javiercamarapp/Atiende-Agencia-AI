@@ -1,8 +1,8 @@
-# Voz de Los Taquitos de PM (restaurantes): LiveKit + Gemini Live, sin ElevenLabs
+# Voz de Los Taquitos de PM (restaurantes): LiveKit + Gemini Live
 
-Decisión de Javier (1-oct-2026): la voz de PM corre con **Gemini 3.8 Live** sobre telefonía **LiveKit SIP + Twilio**, sin ElevenLabs. La
-escalera de degradación es **Gemini 3.8 Live -> gpt-live-1 -> persona / buzón con callback**. Los verticales hoteles y citas conservan sus
-Server Tools de ElevenLabs; este documento es solo de restaurantes.
+Decisión de Javier (1-oct-2026): la voz de PM corre con **Gemini 3.8 Live** sobre telefonía **LiveKit SIP + Twilio**. La
+escalera de degradación es **Gemini 3.8 Live -> gpt-live-1 -> persona / buzón con callback**. Este documento es solo de restaurantes
+(hoteles y citas tienen su propio agente sobre `packages/voice-core`).
 
 > Honestidad primero: este runbook separa lo que **ya está en el repo y probado** de lo que **falta para recibir la primera llamada real**.
 
@@ -25,12 +25,12 @@ Server Tools de ElevenLabs; este documento es solo de restaurantes.
 Hasta que exista el worker, el agente de voz **no atiende llamadas telefónicas**. Lo que sí se puede hacer hoy: configurar la voz y el
 comportamiento, hacer la llamada de prueba desde el panel y correr la prueba ciega.
 
-## 2. Qué cambió respecto a ElevenLabs en PM
+## 2. Proveedor de voz de PM: qué cambió
 
-- `VozProveedorId` queda `gemini-3.8-live | gpt-live-1`. La API rechaza `elevenlabs-agents`; una fila histórica con ese valor se lee como
+- `VozProveedorId` queda `gemini-3.8-live | gpt-live-1`. La API rechaza el valor histórico `elevenlabs-agents`; una fila antigua con ese valor se lee como
   Gemini (`proveedorDeFila`). La migración 025 conserva el valor en sus CHECK solo por filas históricas (no se tocó SQL).
-- Los KPI de voz ya no exponen ni muestran "ElevenLabs"; los errores de proveedor se desglosan en Twilio y "Gemini y otros". La columna
-  `errores_elevenlabs` de la migración 035 queda sin leer.
+- Los errores de proveedor de los KPI de voz se desglosan en Twilio y "Gemini y otros". La columna histórica `errores_elevenlabs` de la
+  migración 035 queda sin leer.
 - La vista previa del panel ya no es una simulación: es una llamada real de prueba, o dice "No disponible: <motivo>".
 - Reparto A/B `pct_trafico_ab`: **no existía en main**, no hay nada que retirar.
 - El otro proyecto (`okvxavwijqacomgtyyou`) no se tocó.
