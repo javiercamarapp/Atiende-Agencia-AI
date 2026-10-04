@@ -9,8 +9,8 @@
 // página.
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Check, FileBarChart, Lock } from "lucide-react";
-import { Button, Card, CardContent, ConfirmDialog, EstadoCargando, EstadoError, PageContainer, Separator, StatusBadge, statusTone } from "@atiende/ui";
+import { ArrowRight, Check, FileBarChart, Lock } from "lucide-react";
+import { Button, Callout, Card, CardContent, ConfirmDialog, EstadoCargando, EstadoError, PageContainer, PageHeader, Separator, StatusBadge, statusTone } from "@atiende/ui";
 import { cerrarPeriodoCierre, completarTareaCierre, fetchPeriodoDetalle, fetchReporteCierre } from "../lib/cierre-mensual-client.ts";
 import type { CloseTask, PeriodoDetalle, ReporteCierre } from "../lib/cierre-mensual-client.ts";
 import { formatDate, formatPeriodStatus, formatPeriodo, formatTaskCategory, formatTaskStatus } from "../lib/format.ts";
@@ -108,7 +108,7 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
     }
   }
 
-  if (!periodoId) return <p role="alert" className="text-destructive text-sm">Período no especificado.</p>;
+  if (!periodoId) return <EstadoError mensaje="Período no especificado." />;
   if (loading && !detalle) return <EstadoCargando etiqueta="Cargando período de cierre…" />;
   if (error) return <EstadoError mensaje={error} />;
   if (!detalle) return null;
@@ -117,37 +117,27 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
   const periodoTexto = `${periodo.year}-${String(periodo.month).padStart(2, "0")}`;
 
   return (
-    <PageContainer padding="none" size="md" className="gap-4 [&>*]:min-w-0">
-      <div>
-        <Link to={`/despachos/${orgSlug}/cierre-mensual`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
-          Cierre mensual
-        </Link>
-      </div>
-
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold text-foreground">{formatPeriodo(periodo.year, periodo.month)}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {formatPeriodStatus(periodo.status)} · Abierto {formatDate(periodo.openedAt)}
-            {periodo.closedAt && ` · Cerrado ${formatDate(periodo.closedAt)}`}
-          </p>
-        </div>
-        {periodo.status !== "closed" && CERRAR_ROLES.has(role) && !confirmando && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-destructive/40 text-destructive hover:border-destructive"
-            onClick={() => {
-              setActionError(null);
-              setConfirmando(true);
-            }}
-          >
-            <Lock />
-            Cerrar período
-          </Button>
-        )}
-      </header>
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader
+        atras={{ etiqueta: "Cierre mensual", to: `/despachos/${orgSlug}/cierre-mensual` }}
+        titulo={formatPeriodo(periodo.year, periodo.month)}
+        descripcion={`${formatPeriodStatus(periodo.status)} · Abierto ${formatDate(periodo.openedAt)}${periodo.closedAt ? ` · Cerrado ${formatDate(periodo.closedAt)}` : ""}`}
+        acciones={
+          periodo.status !== "closed" && CERRAR_ROLES.has(role) && !confirmando ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setActionError(null);
+                setConfirmando(true);
+              }}
+            >
+              <Lock />
+              Cerrar período
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* Hallazgo de auditoría (severidad ALTA, "cierre-mensual es irreversible y
           ejecuta con un clic sin confirmación ni reapertura"): un solo clic ya NO
@@ -198,18 +188,14 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
         </CardContent>
       </Card>
 
-      {actionError && (
-        <p role="alert" className="text-destructive text-sm">
-          {actionError}
-        </p>
-      )}
+      {actionError && !confirmando && <Callout tone="danger">{actionError}</Callout>}
 
       <div className="flex flex-col gap-2">
         {tareas.map((t) => {
           const puedeCompletar = GESTIONAR_ROLES.has(role) && t.status !== "done" && t.status !== "skipped" && t.status !== "blocked";
           return (
             <Card key={t.id}>
-              <CardContent className="flex items-start justify-between gap-3 p-3">
+              <CardContent className="flex items-start justify-between gap-3 p-4">
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <strong className="text-sm text-foreground">{t.title}</strong>
@@ -226,9 +212,9 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
                   {t.completedAt && <p className="mt-1 text-xs text-muted-foreground">Completada {formatDate(t.completedAt)}</p>}
                 </div>
                 {puedeCompletar && (
-                  <Button size="sm" className="h-9 shrink-0" onClick={() => handleCompletar(t.id)} disabled={busyTaskId === t.id}>
+                  <Button className="shrink-0" onClick={() => handleCompletar(t.id)} loading={busyTaskId === t.id}>
                     <Check />
-                    {busyTaskId === t.id ? "…" : "Completar"}
+                    Completar
                   </Button>
                 )}
               </CardContent>
@@ -239,9 +225,9 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
 
       <div>
         <Separator className="mb-4" />
-        <Button variant="outline" size="sm" onClick={handleVerReporte} disabled={cargandoReporte}>
+        <Button variant="outline" size="sm" onClick={handleVerReporte} loading={cargandoReporte}>
           <FileBarChart />
-          {cargandoReporte ? "Generando…" : reporte ? "Actualizar reporte" : "Ver reporte de cierre"}
+          {reporte ? "Actualizar reporte" : "Ver reporte de cierre"}
         </Button>
         {reporte && (
           <div className="mt-3 flex flex-col gap-1.5 text-sm text-foreground">

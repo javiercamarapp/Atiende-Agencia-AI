@@ -124,11 +124,11 @@ describe("CierreMensualPage (despachos)", () => {
       abrirBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
 
-    changeValue(rendered.container.querySelector("#cierre-anio") as HTMLInputElement, "2026");
-    changeValue(rendered.container.querySelector("#cierre-mes") as HTMLInputElement, "9");
+    changeValue(document.body.querySelector("#cierre-anio") as HTMLInputElement, "2026");
+    changeValue(document.body.querySelector("#cierre-mes") as HTMLInputElement, "9");
     current = [{ ...PERIODO, id: "per-nuevo", month: 9 }];
 
-    const form = rendered.container.querySelector("form")!;
+    const form = document.body.querySelector('[role="dialog"] form')!;
     await submitForm(form);
     await esperarCarga();
 
@@ -147,12 +147,12 @@ describe("CierreMensualPage (despachos)", () => {
     await act(async () => {
       abrirBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
-    changeValue(rendered.container.querySelector("#cierre-mes") as HTMLInputElement, "13");
+    changeValue(document.body.querySelector("#cierre-mes") as HTMLInputElement, "13");
 
     const callsAntes = fetchMock.mock.calls.length;
-    await submitForm(rendered.container.querySelector("form")!);
+    await submitForm(document.body.querySelector('[role="dialog"] form')!);
 
-    expect(rendered.container.textContent).toContain("Mes inválido (1-12).");
+    expect(document.body.textContent).toContain("Mes inválido (1-12).");
     expect(fetchMock.mock.calls.length).toBe(callsAntes);
   });
 });
