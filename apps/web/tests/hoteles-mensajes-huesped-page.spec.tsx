@@ -177,29 +177,26 @@ describe("Mensajes automaticos (Mensajeria de hoteles)", () => {
     expect(JSON.parse(String((put[1] as RequestInit).body))).toEqual({ nombre: "hotel_pre_llegada", idioma: "es_MX", variables: ["nombre", "hotel", "llegada"], estado: "aprobada" });
   });
 
-  it("quitar la plantilla pide confirmacion y manda DELETE; Cancelar no escribe", async () => {
+  it("quitar la plantilla pide confirmacion y manda DELETE; Volver no escribe", async () => {
     stub();
     rendered = renderComponent(<MensajeriaPage {...CTX} />);
     await esperar();
+    const quitar = () => boton(rendered!.container, "Quitar plantilla");
     await act(async () => {
-      click(boton(rendered!.container, "Cambiar plantilla"));
+      click(quitar());
       await flushMicrotasks();
     });
     await act(async () => {
-      click(boton(dialogo()!, "Quitar plantilla"));
-      await flushMicrotasks();
-    });
-    await act(async () => {
-      click(botones(document.body).filter((b) => b.textContent?.trim() === "Volver").at(-1)!);
+      click(botones(document.body).find((b) => b.textContent?.trim() === "Volver")!);
       for (let i = 0; i < 4; i++) await flushMicrotasks();
     });
     expect(escrituras()).toHaveLength(0);
     await act(async () => {
-      click(boton(dialogo()!, "Quitar plantilla"));
+      click(quitar());
       await flushMicrotasks();
     });
     await act(async () => {
-      click(botones(document.body).filter((b) => b.textContent?.trim() === "Quitar plantilla").at(-1)!);
+      click(botones(dialogo()!).find((b) => b.textContent?.trim() === "Quitar plantilla")!);
       for (let i = 0; i < 6; i++) await flushMicrotasks();
     });
     const del = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "DELETE")!;

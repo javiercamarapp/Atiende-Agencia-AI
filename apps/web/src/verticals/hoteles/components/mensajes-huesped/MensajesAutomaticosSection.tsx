@@ -91,6 +91,16 @@ export function MensajesAutomaticosSection({ apiBaseUrl, token, propertyId }: Pr
     setPlantillando(e);
   }
 
+  async function quitarPlantilla(e: EventoConfig) {
+    const ok = await confirmar({ titulo: "Quitar la plantilla", descripcion: `«${e.etiqueta}» volverá a salir por correo hasta que registres otra plantilla aprobada.`, tono: "danger", confirmar: "Quitar plantilla", cancelar: "Volver" });
+    if (!ok) return;
+    await correr("plantilla-quitar", async () => {
+      await eliminarPlantillaEvento(fetch, apiBaseUrl, token, propertyId, e.evento);
+      notify.success("Plantilla quitada.");
+      await cargar();
+    });
+  }
+
   if (error && !estado) return <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void cargar()} />;
   if (!estado) return <EstadoCargando etiqueta="Cargando mensajes automáticos…" />;
 
@@ -158,6 +168,11 @@ export function MensajesAutomaticosSection({ apiBaseUrl, token, propertyId }: Pr
             {estado.catalogoDisponible && (
               <Button type="button" size="sm" variant="outline" onClick={() => abrirPlantilla(e)}>
                 {e.plantilla ? "Cambiar plantilla" : "Elegir plantilla"}
+              </Button>
+            )}
+            {estado.catalogoDisponible && e.plantilla && (
+              <Button type="button" size="sm" variant="outline" disabled={ocupado !== null} onClick={() => void quitarPlantilla(e)}>
+                Quitar plantilla
               </Button>
             )}
           </div>
@@ -320,31 +335,6 @@ export function MensajesAutomaticosSection({ apiBaseUrl, token, propertyId }: Pr
             <Input id="mh-p-variables" value={pVariables} onChange={(e) => setPVariables(e.target.value)} />
           </FormField>
         </div>
-        {plantillando?.plantilla && (
-          <div className="mt-3">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={ocupado !== null}
-              onClick={() => {
-                const e = plantillando;
-                void (async () => {
-                  const ok = await confirmar({ titulo: "Quitar la plantilla", descripcion: "El evento volverá a salir por correo hasta que registres otra plantilla aprobada.", tono: "danger", confirmar: "Quitar plantilla", cancelar: "Volver" });
-                  if (!ok) return;
-                  await correr("plantilla-quitar", async () => {
-                    await eliminarPlantillaEvento(fetch, apiBaseUrl, token, propertyId, e.evento);
-                    notify.success("Plantilla quitada.");
-                    setPlantillando(null);
-                    await cargar();
-                  });
-                })();
-              }}
-            >
-              Quitar plantilla
-            </Button>
-          </div>
-        )}
       </FormDialog>
       {dialogo}
     </>
