@@ -5,6 +5,7 @@
 // conversación). Sirve como fixture de seed para tests determinísticos y como
 // fallback dev/CI sin Postgres real — mismo rol que InMemoryStateStore en
 // @atiende/core-conversation.
+import { avanzarEstadoEntrega } from "@atiende/whatsapp-gateway";
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
@@ -79,7 +80,10 @@ import type {
   CustomerOverviewRow,
   EmailOutboxJobRow,
   KpiDateRange,
+  EstadoEntregaEntrante,
   MessagingOutboxRow,
+  MotivoFalloEntregaGuardado,
+  RegistroEstadoEntrega,
   NewOrderRecord,
   PromotedScheduledOrdersResult,
   RestaurantesRepository,
@@ -278,6 +282,14 @@ interface InMemoryOutboxRow {
   claimedAt: number | null;
   nextAttemptAt: number;
   lastErrorClass: string | null;
+  /** Migracion 066: wamid y estado de entrega (espejo de las columnas nuevas). */
+  providerMessageId?: string | null;
+  enviadoComo?: "texto" | "plantilla" | "botones" | "ubicacion" | null;
+  deliveryStatus?: "sent" | "delivered" | "read" | "failed" | null;
+  deliveryUpdatedAt?: number | null;
+  deliveryErrorCode?: number | null;
+  deliveryErrorTitle?: string | null;
+  deliveryFailureReason?: MotivoFalloEntregaGuardado | null;
 }
 
 /** Ventana en que un aviso abierto del mismo canal, telefono y motivo absorbe al siguiente (misma que `callback_registrar_agente`: 2 h). */
@@ -1168,10 +1180,59 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return eligible.map((row) => ({ id: row.id, attempts: row.attempts, payload: row.payload, organizationId: row.organizationId }));
   }
 
-  async markMessagingOutboxSent(id: string): Promise<void> {
+  /** false simula la base sin la migracion 066: el wamid no se guarda y registrarEstadoEntregaWhatsapp responde `no_disponible`. */
+  estadosEntregaDisponibles = true;
+
+  async markMessagingOutboxSent(id: string, detalle?: { readonly providerMessageId: string; readonly enviadoComo?: "texto" | "plantilla" | "botones" | "ubicacion" }): Promise<void> {
     const row = this.outbox.get(id);
     if (!row || row.status !== "processing") return;
     row.status = "sent";
+    if (!this.estadosEntregaDisponibles || !detalle || detalle.providerMessageId.length === 0) return;
+    // Indice unico parcial (organizacion, wamid): un wamid repetido cierra el mensaje sin guardarlo.
+    const repetido = [...this.outbox.values()].some((o) => o.organizationId === row.organizationId && o.providerMessageId === detalle.providerMessageId);
+    if (repetido) return;
+    row.providerMessageId = detalle.providerMessageId.slice(0, 255);
+    row.enviadoComo = detalle.enviadoComo ?? null;
+    row.deliveryStatus = "sent";
+    row.deliveryUpdatedAt = Date.now();
+  }
+
+  /** Espejo de `restaurantes.registrar_estado_entrega_whatsapp` (066): mismo avance, mismo motivo, misma llave (organizacion + wamid). */
+  async registrarEstadoEntregaWhatsapp(organizationId: string, estado: EstadoEntregaEntrante): Promise<RegistroEstadoEntrega> {
+    const vacio = { outboxId: null, estado: null, eventType: null, motivoFallo: null, orderId: null, orderStatus: null, fallidasUltimaHora: 0 } as const;
+    if (!this.estadosEntregaDisponibles) return { resultado: "no_disponible", ...vacio };
+    const row = [...this.outbox.values()].find((o) => o.organizationId === organizationId && o.channel === "whatsapp" && o.providerMessageId === estado.wamid);
+    if (!row) return { resultado: "desconocido", ...vacio };
+    const nuevo = avanzarEstadoEntrega(row.deliveryStatus ?? null, estado.status);
+    const cambia = nuevo !== (row.deliveryStatus ?? null);
+    if (cambia) {
+      if (nuevo === "failed") {
+        const plantillaDisponible = typeof (row.payload as { template?: unknown } | null)?.template === "object" && (row.payload as { template?: unknown }).template !== null;
+        const codigo = estado.errorCode;
+        row.deliveryFailureReason =
+          codigo === 131047 ? (row.enviadoComo === "texto" && plantillaDisponible ? "fuera_de_ventana_plantilla_sin_usar" : "fuera_de_ventana")
+          : codigo === 131026 ? "numero_no_entregable"
+          : codigo === 131049 ? "limite_marketing"
+          : codigo !== null && codigo >= 132000 && codigo <= 132999 ? "plantilla"
+          : "otro";
+        row.deliveryErrorCode = codigo;
+        row.deliveryErrorTitle = estado.errorTitle ? estado.errorTitle.slice(0, 120) : null;
+      }
+      row.deliveryStatus = nuevo;
+      row.deliveryUpdatedAt = Date.now();
+    }
+    const m = /^order-status:([0-9a-fA-F-]{36}):(.+)$/.exec(row.dedupeKey);
+    const hora = Date.now() - 3_600_000;
+    return {
+      resultado: cambia ? "actualizado" : "sin_cambio",
+      outboxId: row.id,
+      estado: nuevo,
+      eventType: row.eventType,
+      motivoFallo: nuevo === "failed" ? (row.deliveryFailureReason ?? null) : null,
+      orderId: row.eventType.startsWith("order.status.") && m ? (m[1] ?? null) : null,
+      orderStatus: row.eventType.startsWith("order.status.") && m ? (m[2] ?? null) : null,
+      fallidasUltimaHora: [...this.outbox.values()].filter((o) => o.organizationId === organizationId && o.deliveryStatus === "failed" && (o.deliveryUpdatedAt ?? 0) > hora).length,
+    };
   }
 
   async markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {

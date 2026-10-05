@@ -335,7 +335,12 @@ export interface RestaurantesRepository {
   // encolaba para envío real (ver @atiende/whatsapp-gateway/README.md). ----
   enqueueMessagingOutbox(organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
   claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]>;
-  markMessagingOutboxSent(id: string): Promise<void>;
+  /** `detalle` (wamid y tipo de envio) llega del despachador: con la migracion 066 se guarda para que los `statuses` de Meta encuentren el
+   *  mensaje; contra una base sin ella se cierra como siempre, sin wamid. */
+  markMessagingOutboxSent(id: string, detalle?: { readonly providerMessageId: string; readonly enviadoComo?: "texto" | "plantilla" | "botones" | "ubicacion" }): Promise<void>;
+  /** Avanza el estado de entrega (migracion 066) de un mensaje saliente por su wamid. Solo sesion de sistema (el webhook). Contra una base sin
+   *  la migracion NO lanza ni aborta la transaccion: devuelve `resultado: "no_disponible"`. */
+  registrarEstadoEntregaWhatsapp(organizationId: string, estado: EstadoEntregaEntrante): Promise<RegistroEstadoEntrega>;
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
   // ---- Dispatcher real de correo (migrations/011_email_outbox_dispatch.sql) —
@@ -712,6 +717,31 @@ export class RestaurantesConfigUnavailableError extends Error {
     super("Esta configuración todavía no se puede editar en esta base de datos.");
     this.name = "RestaurantesConfigUnavailableError";
   }
+}
+
+/** Un status de Meta ya filtrado por el extractor: solo lo necesario, sin telefono ni texto. */
+export interface EstadoEntregaEntrante {
+  readonly wamid: string;
+  readonly status: "sent" | "delivered" | "read" | "failed";
+  readonly errorCode: number | null;
+  readonly errorTitle: string | null;
+}
+
+export type MotivoFalloEntregaGuardado = "fuera_de_ventana" | "fuera_de_ventana_plantilla_sin_usar" | "numero_no_entregable" | "plantilla" | "limite_marketing" | "otro";
+
+/** Resultado de `registrarEstadoEntregaWhatsapp`. `desconocido` = ningun mensaje de ESTA organizacion con ese wamid; `no_disponible` = base sin la
+ *  migracion 066 (el webhook sigue respondiendo 200). */
+export interface RegistroEstadoEntrega {
+  readonly resultado: "actualizado" | "sin_cambio" | "desconocido" | "no_disponible";
+  readonly outboxId: string | null;
+  readonly estado: "sent" | "delivered" | "read" | "failed" | null;
+  readonly eventType: string | null;
+  readonly motivoFallo: MotivoFalloEntregaGuardado | null;
+  /** Solo si el mensaje era un aviso de estado de pedido. */
+  readonly orderId: string | null;
+  readonly orderStatus: string | null;
+  /** Mensajes de la organizacion con entrega fallida en la ultima hora (incluye este). */
+  readonly fallidasUltimaHora: number;
 }
 
 /** Fila de `restaurantes.messaging_outbox` reclamada para despacho real — mismo
