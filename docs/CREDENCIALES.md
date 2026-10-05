@@ -164,6 +164,7 @@ extracción de licitaciones cae a solo reglas deterministas.
 | `OPENROUTER_ZDR` | opcional: `1` exige endpoints Zero Data Retention (habilitarlo antes en la cuenta de OpenRouter) | No |
 | `OPENROUTER_COUNTRY_OF_RESIDENCE` | opcional: ISO 3166-1 alpha-2 SOLO si confirmaste que la ruta cumple | No |
 | `OPENAI_API_KEY` + `OPENAI_MODEL` | LEGADO: solo si no hay llave de OpenRouter | Sí / No |
+| `PM_URL_FACTURACION` | enlace https de facturación en línea del negocio (Los Taquitos de PM); sin ella el agente no inventa uno y escala la factura a una persona | No |
 
 **Modelos baratos del Copiloto (CHAT-05).** No hay variables nuevas: el modelo barato del chat (`*:data_chat`) y el escalado de la
 cascada de cifras (`*:data_chat_retry`) se eligen con `LLM_MODELS_JSON` (validado: solo proveedores de EE.UU. con ZDR,
