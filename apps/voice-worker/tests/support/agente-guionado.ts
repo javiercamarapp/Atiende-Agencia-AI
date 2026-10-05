@@ -95,6 +95,8 @@ class SesionGuionada implements VozSesionLlamada {
       const lista = paso.tool === "buscar_producto" && resultado && typeof resultado === "object" && Array.isArray((resultado as { productos?: unknown }).productos) ? (resultado as { productos: unknown[] }).productos : resultado;
       this.agente.memoria.observar(paso.tool, lista);
     }
+    // Costo REAL que informaria Gemini (`usageMetadata`) tras cada respuesta: solo si el guion lo pidio.
+    if (this.agente.costoRealPorRespuestaMicroUsd > 0) this.h.costo?.(this.agente.costoRealPorRespuestaMicroUsd, true);
     this.agente.respondidos += 1;
     this.h.agenteTermino();
   }
@@ -115,6 +117,8 @@ export class AgenteGuionado {
   bytesAudioRecibidos = 0;
   /** Cuantas veces se pidio abrir sesion (la primera y cada reconexion). */
   aperturasPedidas = 0;
+  /** Costo real (micro-USD) que el proveedor guionado reporta con cada respuesta, como el `usageMetadata` de Gemini Live. 0 = no reporta. */
+  costoRealPorRespuestaMicroUsd = 0;
   /** Aperturas que fallan antes de lograr una (simula el proveedor caido al abrir). */
   fallasAlAbrir = 0;
 
