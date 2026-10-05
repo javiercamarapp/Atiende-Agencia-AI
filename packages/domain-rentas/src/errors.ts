@@ -24,7 +24,10 @@ export type RentasErrorCode =
   | "onboarding_datos_invalidos"
   | "onboarding_organizacion_duplicada"
   // ---- finanzas (Rn-18, ver ./finanzas/regla-comision-por-defecto.ts) ----
-  | "regla_comision_no_configurada";
+  | "regla_comision_no_configurada"
+  // ---- importacion del reporte de pagos de la OTA (Rn-P3-06, ver ./finanzas/csv/*) ----
+  | "formato_reporte_no_soportado"
+  | "reporte_invalido";
 
 export class RentasDomainError extends Error {
   readonly code: RentasErrorCode;
