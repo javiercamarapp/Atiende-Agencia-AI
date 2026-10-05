@@ -15,7 +15,7 @@
 import { createHash } from "node:crypto";
 import { registerCallbackRequest } from "../callback-requests.ts";
 import { getCustomerDetailById, lookupCustomerConPedidoReciente } from "../customers.ts";
-import { buscarPedidoReciente, VENTANA_PEDIDO_RECIENTE_MIN } from "../pedido-reciente.ts";
+import { buscarPedidoReciente } from "../pedido-reciente.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError } from "../errors.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
@@ -958,15 +958,14 @@ async function pasarNotaDePedidoTelefonico(repo: RestaurantesRepository, ctx: Ag
  * se valida contra el pedido real, nunca contra lo que diga el modelo). Deja el aviso con la sucursal del pedido y una nota de como identificarlo. */
 async function avisarLlegadaDelCliente(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   const reciente = await buscarPedidoReciente(repo, ctx.organizationId, ctx.phone as string);
-  if (!reciente || reciente.canal === "domicilio" || reciente.estado === "entregado") {
+  // Solo con un pedido CONOCIDO para recoger y aun vigente: canal desconocido (base sin migrar o sin dato) o un estado cerrado/con problema no se avisa como llegada.
+  if (!reciente || reciente.canal !== "recoger" || (reciente.estado !== "preparando" && reciente.estado !== "listo_para_recoger" && reciente.estado !== "programado")) {
     return { result: { ok: false, motivo: "sin_pedido_para_recoger", instruccion: MENSAJE_LLEGADA_SIN_PEDIDO }, raw: { ok: false }, orderId: null, propertyId: null };
   }
-  // La sucursal del aviso es la del PEDIDO (el cliente pudo escribir a otro numero), no la del chat.
-  const pedido = await repo.findLatestOrderByPhone(ctx.organizationId, normalizePhone(ctx.phone as string), new Date(Date.now() - VENTANA_PEDIDO_RECIENTE_MIN * 60_000).toISOString());
   const identificacion = typeof input.message === "string" ? sanitizeInlineText(input.message, 200) : "";
   await registerCallbackRequest(repo, {
     organizationId: ctx.organizationId,
-    propertyId: pedido?.propertyId ?? ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
+    propertyId: reciente.propertyId ?? ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
     customerName: String(input.customer_name ?? "Cliente"),
     customerPhone: ctx.phone as string,
     reason: "cliente_llego",

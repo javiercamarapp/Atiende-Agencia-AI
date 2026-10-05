@@ -16,6 +16,8 @@ export interface PedidoReciente {
   readonly estado: EstadoPedidoParaCliente;
   readonly canal: CanalPedido | null;
   readonly sucursal: string | null;
+  /** Sucursal del pedido (id de property): el aviso de llegada se dirige a ella. */
+  readonly propertyId?: string | null;
   /** Hora local de la sucursal a la que se confirmo el pedido ("19:42"). */
   readonly confirmadoHoraLocal: string;
   readonly minutosDesdeConfirmacion: number;
@@ -63,6 +65,7 @@ export async function buscarPedidoReciente(repo: RestaurantesRepository, organiz
     estado,
     canal: info[0]?.canal ?? null,
     sucursal: order.branch,
+    propertyId: order.propertyId ?? null,
     confirmadoHoraLocal: horaLocal(order.createdAt, zona.zonaHoraria ?? ZONA_POR_OMISION),
     minutosDesdeConfirmacion: Math.max(0, Math.round((now.getTime() - Date.parse(order.createdAt)) / 60_000)),
   };

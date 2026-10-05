@@ -44,6 +44,22 @@ describe("registrar_contacto con reason cliente_llego", () => {
     expect(callbacks(f).filter((c) => c.reason === "cliente_llego")).toHaveLength(0);
   });
 
+  it("un pedido para recoger ya entregado, con problema o no recogido NO se avisa como llegada; con canal desconocido tampoco", async () => {
+    for (const destino of ["entregado", "problema", "no_recogido"] as const) {
+      const f = buildRestaurantFixture();
+      const o = await pedido(f, "recoger");
+      await f.repo.updateOrderStatus(f.organizationId, o.id, "pending", destino, destino === "problema" ? "nota" : undefined);
+      const out = await invokeAgentTool(f.repo, ctx(f), "registrar_contacto", { customer_name: "Ana", reason: "cliente_llego" });
+      expect(out.result).toMatchObject({ ok: false, motivo: "sin_pedido_para_recoger" });
+      expect(callbacks(f).filter((c) => c.reason === "cliente_llego")).toHaveLength(0);
+    }
+    const f = buildRestaurantFixture();
+    await pedido(f, "recoger");
+    (f.repo as unknown as { listOrderPickupInfo: () => Promise<readonly unknown[]> }).listOrderPickupInfo = async () => [];
+    const sinCanal = await invokeAgentTool(f.repo, ctx(f), "registrar_contacto", { customer_name: "Ana", reason: "cliente_llego" });
+    expect(sinCanal.result).toMatchObject({ ok: false, motivo: "sin_pedido_para_recoger" });
+  });
+
   it("otros motivos siguen igual", async () => {
     const f = buildRestaurantFixture();
     const out = await invokeAgentTool(f.repo, ctx(f), "registrar_contacto", { customer_name: "Ana", reason: "empleo", message: "busca trabajo" });
