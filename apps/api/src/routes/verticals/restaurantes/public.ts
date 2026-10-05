@@ -102,10 +102,10 @@ function mapCreateOrderBody(organizationId: string, body: CreateOrderBody, sourc
     canal: typeof body.canal === "string" ? (body.canal as CreateOrderInput["canal"]) : undefined,
     colonia: typeof body.colonia_entrega === "string" ? body.colonia_entrega : undefined,
     propina: typeof body.propina === "number" && Number.isFinite(body.propina) ? redondearACentavos(body.propina) : typeof body.propina === "number" ? body.propina : undefined,
-    horaRecogida: typeof body.hora_recogida === "string" ? body.hora_recogida : undefined,
+    horaRecogida: typeof body.hora_recogida === "string" && body.hora_recogida.trim() !== "" ? body.hora_recogida : undefined,
     doubleSalsas: Array.isArray(body.doble_salsas) ? (body.doble_salsas as CreateOrderInput["doubleSalsas"]) : undefined,
     // Un valor no-string se manda tal cual: `createOrder` lo rechaza con un 400 claro (nunca se ignora en silencio).
-    programadoPara: body.programado_para === undefined || body.programado_para === null ? undefined : (body.programado_para as string),
+    programadoPara: body.programado_para === undefined || body.programado_para === null || (typeof body.programado_para === "string" && body.programado_para.trim() === "") ? undefined : (body.programado_para as string),
   };
 }
 

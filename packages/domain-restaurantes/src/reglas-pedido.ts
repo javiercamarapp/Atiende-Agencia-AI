@@ -6,7 +6,7 @@
 // Las lecturas van por `repo.find*`/`repo.list*`, que degradan con SAVEPOINT contra la base
 // sin migrar (ver PostgresRestaurantesRepository): este modulo nunca captura SQLSTATE por
 // su cuenta porque corre dentro de la transaccion unica del request.
-import { aperturaConExcepciones, fechaAnterior, fechaLocal, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
+import { aperturaConExcepciones, etiquetaHoraLocal, fechaAnterior, fechaLocal, mensajeProgramadoFueraDeHorario, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { normalizeZoneText } from "./nearest-branch.ts";
@@ -72,7 +72,15 @@ export interface ReglasSucursalArgs {
   readonly exigirAbierto?: boolean;
   /** Mensaje de cierre propio (pedido programado: "no atiende a la hora elegida"). */
   readonly mensajeCerrado?: (apertura: EstadoApertura, zonaHoraria: string) => string;
+  /** Solo canal "recoger": hora (ISO con zona) a la que el cliente pasara. Se valida contra el RELOJ del servidor: ni pasada, ni de otro dia
+   * de negocio, ni despues del cierre (la voz y el LLM calculan "en 40 minutos" con la hora UTC y la guardaban 6 h tarde o dos dias atras). */
+  readonly horaRecogida?: string;
 }
+
+/** Tolerancia hacia atras: el cliente dijo "paso a las 2" y el reloj ya marca 2:05. */
+export const HORA_RECOGIDA_GRACIA_MIN = 10;
+/** Una recogida mas lejana que esto ya no es "hoy": se pide un pedido programado. */
+export const HORA_RECOGIDA_MAX_HORAS = 12;
 
 export interface ReglasSucursalResultado {
   readonly policy: BranchPolicy;
@@ -111,6 +119,10 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
     if (!apertura.abierto && (args.source !== "admin" || args.exigirAbierto === true)) {
       throw new OrderValidationError(args.mensajeCerrado ? args.mensajeCerrado(apertura, zona) : mensajeSucursalCerrada(branch.name, apertura));
     }
+  }
+
+  if (args.horaRecogida && canal === "recoger") {
+    await validarHoraRecogida(repo, { branch, horarioBase, ahora, zonaCruda, zona, aperturaAhora: apertura, diaNegocioAhora: diaNegocio, horaRecogida: args.horaRecogida });
   }
 
   const pedidoMinimo = canal === "domicilio" ? policy.pedidoMinimoDomicilio : policy.pedidoMinimoRecoger;
@@ -157,4 +169,53 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
   }
 
   return { policy, apertura, pedidoMinimo, preguntarPropina, diaNegocio };
+}
+
+/** QA-PM-R2-reglas-05 / voz-03 / wa-15: la hora de recogida la valida el SERVIDOR. Lanza `OrderValidationError` con un mensaje accionable
+ * (incluye la hora local actual de la sucursal, que el modelo no sabia). */
+async function validarHoraRecogida(
+  repo: RestaurantesRepository,
+  a: {
+    readonly branch: Branch;
+    readonly horarioBase: BranchPolicy["horario"] | null;
+    readonly ahora: Date;
+    readonly zonaCruda: string | null | undefined;
+    readonly zona: string;
+    readonly aperturaAhora: EstadoApertura | null;
+    readonly diaNegocioAhora: number | null;
+    readonly horaRecogida: string;
+  },
+): Promise<void> {
+  const pickup = new Date(a.horaRecogida);
+  const etiquetaAhora = etiquetaHoraLocal(a.ahora, a.zona);
+  const etiquetaPickup = etiquetaHoraLocal(pickup, a.zona);
+  const minutos = (pickup.getTime() - a.ahora.getTime()) / 60_000;
+  if (minutos < -HORA_RECOGIDA_GRACIA_MIN) {
+    throw new OrderValidationError(
+      `La hora de recogida (${etiquetaPickup}) ya pasó: ahora son las ${etiquetaAhora} en la sucursal. Calcule la hora a partir de esa hora local (no de UTC) y confirme con el cliente a qué hora pasará.`,
+    );
+  }
+  if (minutos > HORA_RECOGIDA_MAX_HORAS * 60) {
+    throw new OrderValidationError(
+      `La hora de recogida (${etiquetaPickup}) está a más de ${HORA_RECOGIDA_MAX_HORAS} horas (ahora son las ${etiquetaAhora}). Para otro día use un pedido programado (programado_para); aquí solo se acepta una recogida de hoy.`,
+    );
+  }
+  const hoyLocal = fechaLocal(a.ahora, a.zona);
+  const fechaPickup = fechaLocal(pickup, a.zona);
+  const excepciones = await repo.listBranchHoursExceptions(a.branch.propertyId, fechaAnterior(fechaPickup), fechaPickup);
+  const cubrePickup = excepciones.some((e) => e.fechaDesde <= fechaPickup && fechaPickup <= e.fechaHasta);
+  if (a.horarioBase || cubrePickup) {
+    const r = aperturaConExcepciones(a.horarioBase ?? [], excepciones, pickup, a.zonaCruda);
+    if (!r.estado.abierto) {
+      const cierre = a.aperturaAhora?.cierraA ? ` Hoy cierra a las ${a.aperturaAhora.cierraA}: ofrezca pasar antes.` : "";
+      throw new OrderValidationError(`${mensajeProgramadoFueraDeHorario(a.branch.name, etiquetaPickup, r.estado)}${cierre}`);
+    }
+    if (a.diaNegocioAhora !== null && r.diaNegocio !== a.diaNegocioAhora) {
+      throw new OrderValidationError(
+        `La hora de recogida (${etiquetaPickup}) cae en otro día de negocio (ahora son las ${etiquetaAhora}). Para otro día use un pedido programado (programado_para).`,
+      );
+    }
+  } else if (fechaPickup !== hoyLocal) {
+    throw new OrderValidationError(`La hora de recogida (${etiquetaPickup}) no es de hoy (ahora son las ${etiquetaAhora}). Para otro día use un pedido programado (programado_para).`);
+  }
 }

@@ -30,6 +30,7 @@ import {
   assertCanConfirm,
   assertCanCreate,
   FLOW_ROW_TTL_SECONDS,
+  QUOTE_TTL_MS,
   fingerprintOrder,
   priceSignature,
   OrderFlowViolationError,
@@ -267,7 +268,8 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega que dio el cliente (solo a domicilio); la herramienta verifica que esté dentro de la zona de reparto de la sucursal." },
         payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida, solo para saber si corresponde preguntar propina." },
         doble_salsas: DOBLE_SALSAS_SCHEMA,
-        programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después: fecha y hora ISO 8601 con zona (por ejemplo 2026-10-03T14:00:00-06:00), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar." },
+        programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después (otro día o dentro de MÁS de 30 minutos con hora exacta): fecha y hora ISO 8601 con zona (por ejemplo 2026-10-03T14:00:00-06:00), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar. Si el cliente pasa 'en cuanto esté', 'ahorita' o 'en 20 minutos', NO mandes este campo (omítelo; no mandes texto vacío)." },
+        hora_recogida: { type: "string", description: "Solo canal 'recoger' y SIN programado_para: la hora a la que pasará el cliente (por ejemplo 'en 40 minutos'), en ISO 8601 con zona, calculada con la HORA LOCAL de la sucursal (no UTC). El servidor la valida (no pasada, de hoy, dentro del horario). Omítela si pasa 'en cuanto esté'." },
       },
       required: ["branch_slug", "items"],
     },
@@ -462,7 +464,14 @@ function toDoubleSalsas(raw: unknown): readonly DoubleSalsa[] | undefined {
 /** `undefined` si no vino; si vino, se valida y normaliza a ISO UTC (lanza `OrderValidationError`) para que la huella
  * de cotizar y la de crear comparen el mismo instante aunque el modelo cambie el offset. */
 function toProgramadoPara(raw: unknown): string | undefined {
-  return raw === undefined || raw === null ? undefined : parsearProgramadoPara(raw);
+  // El modelo manda "" cuando no hay hora programada: es "sin programar", no una hora invalida (QA-PM-R2-reglas-02).
+  if (raw === undefined || raw === null || (typeof raw === "string" && raw.trim() === "")) return undefined;
+  return parsearProgramadoPara(raw);
+}
+
+/** Texto en blanco = ausente (el modelo manda "" en vez de omitir el campo). */
+function textoOpcional(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim() !== "" ? v : undefined;
 }
 
 const PROGRAMADOS_NO_DISPONIBLES = "Los pedidos programados todavía no están disponibles en este restaurante. Ofrece un pedido normal o pasa la conversación a una persona.";
@@ -533,8 +542,8 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     canal: toCanal(input.canal),
     colonia: str(input.colonia_entrega),
     propina: typeof input.propina === "number" ? input.propina : undefined,
-    horaRecogida: str(input.hora_recogida),
-    programadoPara: str(input.programado_para),
+    horaRecogida: textoOpcional(input.hora_recogida),
+    programadoPara: textoOpcional(input.programado_para),
   };
   if (lenient) return base;
   // Campos que solo trae el canal de voz/checkout (correo, transcripcion, promo, idempotencia, nombre de sucursal).
@@ -618,6 +627,21 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
       if (snap === null) return outcome; // base sin migrar: camino anterior
+      // QA-PM-R2-whatsapp-01 (P0): el modelo vuelve a cotizar el MISMO carrito en el turno del "si" (para "refrescar" el resumen). Reescribir
+      // `quotedTurn` con el turno actual hacia que confirmar_resumen rechazara `confirmacion_mismo_turno` y ningun pedido cerraba (0/36).
+      // Una re-cotizacion identica (mismos renglones, mismos precios, mismo total) y todavia vigente CONSERVA la cotizacion y su turno: el
+      // cliente ya vio ese resumen. Si algo cambio (carrito, precio, total, hora), si es una cotizacion nueva y el cliente debe volver a aceptar.
+      const previo = snap.context;
+      if (
+        previo &&
+        (snap.state === "cotizado" || snap.state === "confirmado") &&
+        previo.quoteHash === quoteHash &&
+        previo.quotedPrices === quotedPrices &&
+        previo.quotedTotal === quotedQuote.total &&
+        flowNow(flow) - previo.quotedAtMs <= QUOTE_TTL_MS
+      ) {
+        return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash }, quoteHash };
+      }
       const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", {
         quoteHash,
         quotedAtMs: flowNow(flow),
@@ -836,6 +860,7 @@ async function dispatchTool(
         paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
         doubleSalsas: toDoubleSalsas(input.doble_salsas),
         programadoPara: toProgramadoPara(input.programado_para),
+        horaRecogida: textoOpcional(input.hora_recogida),
       }).catch((err: unknown) => {
         throw err instanceof RestaurantesConfigUnavailableError ? new OrderValidationError(PROGRAMADOS_NO_DISPONIBLES) : err;
       });

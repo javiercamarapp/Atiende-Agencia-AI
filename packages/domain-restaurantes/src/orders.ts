@@ -101,6 +101,14 @@ function invalidOptionalString(value: unknown, maxLength: number): boolean {
   return value !== undefined && value !== null && (typeof value !== "string" || value.length > maxLength);
 }
 
+/** Forma de la hora de recogida (ISO con zona). El reloj, el horario y el dia los valida `aplicarReglasDeSucursal`. */
+export function validarTextoHoraRecogida(valor: unknown): void {
+  if (typeof valor !== "string" || valor.length > 40 || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(valor) || Number.isNaN(Date.parse(valor))) {
+    throw new OrderValidationError("La hora de recogida debe ser una fecha y hora ISO 8601 con zona horaria.");
+  }
+  if (!/(Z|[+-]\d{2}:?\d{2})$/.test(valor)) throw new OrderValidationError("La hora de recogida debe incluir la zona horaria (por ejemplo -06:00).");
+}
+
 /** Port literal de validateCreateOrderPayload — contrato único para pedidos reales
  * y simulados, sin efectos secundarios. */
 export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCreateOrderInput {
@@ -141,10 +149,7 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
   }
   if (raw.horaRecogida !== undefined) {
     if (canal !== "recoger") throw new OrderValidationError("La hora de recogida solo aplica a pedidos para recoger.");
-    if (typeof raw.horaRecogida !== "string" || raw.horaRecogida.length > 40 || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw.horaRecogida) || Number.isNaN(Date.parse(raw.horaRecogida))) {
-      throw new OrderValidationError("La hora de recogida debe ser una fecha y hora ISO 8601 con zona horaria.");
-    }
-    if (!/(Z|[+-]\d{2}:?\d{2})$/.test(raw.horaRecogida)) throw new OrderValidationError("La hora de recogida debe incluir la zona horaria (por ejemplo -06:00).");
+    validarTextoHoraRecogida(raw.horaRecogida);
   }
   // R-11: hora programada (ISO con zona, normalizada a UTC). La ventana y el horario se validan al cotizar.
   const programadoPara = raw.programadoPara === undefined ? undefined : parsearProgramadoPara(raw.programadoPara);
@@ -247,6 +252,10 @@ export async function prepareCreateOrder(
   const programado = payload.programadoPara ? new Date(payload.programadoPara) : null;
   if (programado) validarVentanaProgramacion(payload.programadoPara!, new Date());
   const instanteDelPedido = programado ?? options.asOf ?? new Date();
+  // Una hora de recogida y una hora programada distintas en el mismo pedido se contradicen (la comanda decia 14:00 y 20:00 a la vez).
+  if (programado && payload.horaRecogida && Math.abs(Date.parse(payload.horaRecogida) - programado.getTime()) > 60_000) {
+    throw new OrderValidationError("La hora de recogida y la hora programada son distintas. Use una sola: para recoger más tarde use programado_para con esa hora y no mande hora_recogida.");
+  }
 
   const resolved = await resolveBranchOrderItems(
     repo,
@@ -323,6 +332,7 @@ export async function prepareCreateOrder(
       : options.asOf
         ? { now: options.asOf }
         : {}),
+    ...(payload.horaRecogida && !programado ? { horaRecogida: payload.horaRecogida } : {}),
   });
 
   // Fase 11 — promociones/marketing (ver promotions.ts para el porqué de este
@@ -576,6 +586,8 @@ export async function quoteOrder(
     /** R-11: hora programada (ISO con zona). Se valida con las MISMAS reglas que `createOrder`: ventana
      * (anticipacion minima/maxima), horario de la sucursal en esa hora y zona horaria de la sucursal. */
     readonly programadoPara?: string;
+    /** Solo canal "recoger": hora a la que pasara el cliente (ISO con zona). Se valida con el reloj del servidor, igual que al crear. */
+    readonly horaRecogida?: string;
   },
 ): Promise<OrderQuote & QuotePolicyInfo & QuotePromotionInfo> {
   const branch = await repo.findBranch(args.organizationId, { slug: args.branchSlug });
@@ -583,6 +595,10 @@ export async function quoteOrder(
     throw new OrderValidationError(`Sucursal '${args.branchSlug}' no encontrada o inactiva`);
   }
   const canal = normalizarCanal(args.canal);
+  if (args.horaRecogida !== undefined) {
+    if (canal !== "recoger") throw new OrderValidationError("La hora de recogida solo aplica a pedidos para recoger.");
+    validarTextoHoraRecogida(args.horaRecogida);
+  }
   // R-11: cotizar un pedido programado aplica la misma ventana y el mismo horario que crearlo, para que el
   // cliente no confirme un resumen que despues se rechazaria. Contra una base sin la migracion 034 se rechaza.
   const programadoPara = args.programadoPara === undefined ? undefined : parsearProgramadoPara(args.programadoPara);
@@ -604,6 +620,7 @@ export async function quoteOrder(
     colonia: args.colonia,
     paymentMethod: args.paymentMethod,
     ...(instante ? { now: instante, exigirAbierto: true, mensajeCerrado: mensajeCerradoProgramado(branch.name, programadoPara!) } : {}),
+    ...(args.horaRecogida && !instante && canal === "recoger" ? { horaRecogida: args.horaRecogida } : {}),
   });
 
   // PM PR-4: promociones automaticas por dia y canal. `total` pasa a ser el TOTAL A PAGAR (ya con el
