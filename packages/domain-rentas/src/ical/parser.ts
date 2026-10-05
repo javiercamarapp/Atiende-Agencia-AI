@@ -250,9 +250,10 @@ function desescaparTexto(valor: string): string {
 
 // Airbnb: la URL de la reserva trae el codigo de confirmacion `HM` + 8 alfanumericos en mayusculas
 // ("Reservation URL: https://www.airbnb.com/hosting/reservations/details/HMXXXXXXXX"). Es el unico patron con fixture real
-// (tests/fixtures/airbnb-reserva.ics). Booking.com y Vrbo NO tienen patron aqui: sin fixture del feed real no se inventa
+// (tests/fixtures/airbnb-reserva.ics). El dominio es un TLD acotado (`.com`, `.com.mx`...), sin cuantificador abierto: tiempo lineal ante un
+// DESCRIPTION malicioso (CodeQL js/polynomial-redos). Booking.com y Vrbo NO tienen patron aqui: sin fixture del feed real no se inventa
 // ninguno y el codigo queda `null`.
-const CODIGO_AIRBNB_RE = /airbnb\.[a-z.]+\/hosting\/reservations\/details\/(HM[A-Z0-9]{8})(?![A-Z0-9])/i;
+const CODIGO_AIRBNB_RE = /airbnb\.[a-z]{2,3}(?:\.[a-z]{2})?\/hosting\/reservations\/details\/(HM[A-Z0-9]{8})(?![A-Z0-9])/i;
 const ULTIMOS4_RE = /Phone Number \(Last 4 Digits\)\s*:\s*(\d{4})(?!\d)/i;
 
 export function extraerDatosCanal(descripcion: string | null, summary: string | null): { codigoConfirmacion: string | null; telefonoUltimos4: string | null } {

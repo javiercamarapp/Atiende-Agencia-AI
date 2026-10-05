@@ -32,6 +32,14 @@ describe("parsearIcs -- codigo de confirmacion y ultimos 4 del telefono (Airbnb)
     expect(extraerDatosCanal("https://www.airbnb.com/hosting/reservations/details/HMAB12C", null).codigoConfirmacion).toBeNull();
   });
 
+  it("acepta dominios regionales (airbnb.com.mx) y no se degrada con entradas patologicas (tiempo lineal)", () => {
+    expect(extraerDatosCanal("https://www.airbnb.com.mx/hosting/reservations/details/HMAB12CD34", null).codigoConfirmacion).toBe("HMAB12CD34");
+    const patologico = "airbnb.".repeat(1100) + "x";
+    const t0 = performance.now();
+    expect(extraerDatosCanal(patologico, null).codigoConfirmacion).toBeNull();
+    expect(performance.now() - t0).toBeLessThan(200);
+  });
+
   it("solo acepta exactamente 4 digitos para el telefono", () => {
     expect(extraerDatosCanal("Phone Number (Last 4 Digits): 12345", null).telefonoUltimos4).toBeNull();
     expect(extraerDatosCanal("Phone Number (Last 4 Digits): 12a4", null).telefonoUltimos4).toBeNull();
