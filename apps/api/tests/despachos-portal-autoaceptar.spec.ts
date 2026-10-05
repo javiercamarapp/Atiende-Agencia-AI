@@ -120,6 +120,13 @@ describe("autoaceptado de XML validos", () => {
     expect(await ctx.despachosRepo.listInvoices(ctx.propertyId)).toHaveLength(0);
   });
 
+  it("un XML cuyo emisor y receptor NO son el RFC de la ficha (direccion indeterminada) no se acepta solo: queda pendiente para el staff", async () => {
+    const token = await nuevoToken();
+    const res = await subir(token, cfdiXmlClasificable({ uuid: U(15), receptor: "XAXX010101000" }));
+    expect(await res.json()).toMatchObject({ estado: "recibido" });
+    expect(await ctx.despachosRepo.listInvoices(ctx.propertyId)).toHaveLength(0);
+  });
+
   it("un PDF o una imagen nunca se aceptan solos: pendientes con aviso; reenviar el mismo archivo (replay) no avisa otra vez", async () => {
     const token = await nuevoToken();
     const { deps: d, emisiones } = conEmisiones(deps);

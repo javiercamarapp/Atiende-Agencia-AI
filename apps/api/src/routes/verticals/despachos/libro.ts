@@ -208,7 +208,8 @@ export function despachosLibroRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   /**
    * D-P3-14 -- «Generar pólizas del periodo»: registra la póliza de cada CFDI del periodo que ya se puede contabilizar solo. MISMAS reglas que el cron diario
-   * (`/internal/despachos/polizas-periodo`): clasificado con confianza suficiente (o por una persona), sin revisión pendiente, no cancelado ni excluido, sentido
+   * (`/internal/despachos/polizas-periodo`), con UNA diferencia: el boton tambien contabiliza un CFDI sin fila de clasificacion (usa la categoria gruesa), mientras el cron
+   * exige clasificacion: clasificado con confianza suficiente (o por una persona), sin revisión pendiente, no cancelado ni excluido, sentido
    * conocido, periodo abierto, sin póliza vigente y armable sin inventar (`construirPolizaDesdeCfdi`). Idempotente: lo que ya tiene póliza no se repite. El resto
    * se devuelve con su motivo, para que el staff lo registre a mano. Cada póliza corre en su SAVEPOINT: una que falla no tumba las demás ni la transacción.
    */

@@ -4,7 +4,8 @@
 // ficha, duplicado, periodo cerrado, EFOS, correcciones) lo da la funcion de sistema `system_portal_ingesta_contexto` (migracion 026).
 //
 // Condiciones: XML CFDI 4.0 tipo I, valido (`ok`), SIN hallazgos ni advertencias; emisor que NO figura como presunto/definitivo en la lista 69-B (y la lista
-// existe: "no hay lista" NO es "limpio"); periodo no cerrado; clasificacion contable que pasa la compuerta (o comprobante emitido); bandera encendida.
+// existe: "no hay lista" NO es "limpio"); periodo no cerrado; clasificacion contable que pasa la compuerta (o comprobante emitido); direccion conocida (el RFC de la ficha es emisor o receptor); bandera encendida.
+// POLITICA: el autoaceptado fija `requires_human_review: false` aunque el motor fiscal lo exija (p. ej. proveedor reportable en DIOT): lo sustituye la bandera del cliente.
 // Un UUID que ya esta en el cliente se acepta como "ya existia" (sin duplicar). Un REP, una nota de credito, la nomina y todo lo demas se quedan para el staff.
 import { CfdiXmlParseError, parseCfdiXml } from "@atiende/billing";
 import type { CfdiXmlParseResult } from "@atiende/billing";
@@ -24,7 +25,8 @@ export type MotivoNoAutoaceptado =
   | "efos_lista_no_disponible"
   | "con_hallazgos"
   | "monto_invalido"
-  | "clasificacion_dudosa";
+  | "clasificacion_dudosa"
+  | "direccion_indeterminada";
 
 const MAX_RENGLONES_IMPUESTO = 50;
 
@@ -71,6 +73,8 @@ export function decidirAutoaceptado(analisis: Extract<AnalisisXmlPortal, { ok: t
 
   // Clasificacion contable: la misma de la ingesta del staff, con las correcciones del cliente; si dudosa (y no es una venta del cliente), lo ve una persona.
   const direccion = clasificarDireccionCfdi(contexto.fichaRfc, datos.rfcEmisor, datos.rfcReceptor);
+  // Sin ficha, o con un RFC de la ficha que no es ni emisor ni receptor: el XML puede no ser del contribuyente; no entra solo a sus libros.
+  if (direccion === "indeterminado") return no("direccion_indeterminada");
   const cls = clasificarCfdi(
     { tipo: "I", direccion, rfcEmisor: datos.rfcEmisor, conceptos: parsed.conceptos.map((c) => ({ descripcion: c.descripcion ?? null, claveProdServ: c.claveProdServ ?? null })) },
     contexto.correcciones.map((c) => ({ rfcEmisor: c.rfcEmisor, claveProdServ: c.claveProdServ, categoria: c.categoria, cuenta: c.cuenta })),
