@@ -38,6 +38,7 @@
 import {
   LICITACIONES_CONNECTOR_REGISTRY,
   classifySourceFailure,
+  newCorrelationId,
 } from "@atiende/domain-licitaciones";
 import type {
   ConnectorLogger,
@@ -109,6 +110,9 @@ export async function runDiscoverTendersForOrganization(
   for (const descriptor of connectors) {
     const startedAt = now().toISOString();
     let droppedCount = 0;
+    // L-P3-17: un `correlation_id` por corrida (organizacion + fuente): une el `source_run`, el alta de cada convocatoria nueva y, mas tarde, sus versiones,
+    // aprobaciones y manifiesto (se heredan de la convocatoria).
+    const correlationId = newCorrelationId();
 
     try {
       const candidates: TenderSourceIngestCandidate[] = [];
@@ -121,6 +125,19 @@ export async function runDiscoverTendersForOrganization(
 
       const { ingest: ingestResult, runNotPersistedReason } = await withRepo(async (repo) => {
         const ingest = await repo.ingestTendersFromSource(organizationId, descriptor.id, candidates);
+        // Bitacora (038, sesion de sistema: sin actor). Solo el alta; con la 038 pendiente `appendAuditoria` devuelve false sin abortar la transaccion.
+        for (const tender of ingest.tenders) {
+          if (!(ingest.createdIds ?? []).includes(tender.id)) continue;
+          await repo.appendAuditoria(organizationId, {
+            entity: "convocatoria",
+            entityId: tender.id,
+            action: "convocatoria.ingerida",
+            before: null,
+            after: { externalId: tender.externalId ?? null, source: descriptor.id, title: tender.title, submissionDeadline: tender.submissionDeadline },
+            actorId: null,
+            correlationId,
+          });
+        }
         const run = await repo.recordSourceRun(organizationId, {
           source: descriptor.id,
           state: "ok",
@@ -130,7 +147,7 @@ export async function runDiscoverTendersForOrganization(
             message: `Ingesta automática: ${ingest.created} nueva(s), ${ingest.updated} actualizada(s)${droppedCount > 0 ? `, ${droppedCount} fila(s) descartada(s)` : ""}.`,
             coverage: { expected: candidates.length, obtained: ingest.created + ingest.updated },
           },
-          correlationId: null,
+          correlationId,
         });
         return { ingest, runNotPersistedReason: run.notPersistedReason };
       });
