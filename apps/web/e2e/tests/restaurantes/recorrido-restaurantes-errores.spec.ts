@@ -27,7 +27,9 @@ const CASOS: readonly Caso[] = [
   { sub: "/sucursales", ruta: "/sucursales", listo: (p) => p.getByText("Calle 60 #400") },
   { sub: "/staff", ruta: "/staff/miembros", listo: (p) => p.getByText("Lucia Xool").first() },
   { sub: "/auditoria", ruta: "/auditoria", listo: (p) => p.getByTitle("producto.precio_actualizado") },
-  { sub: "/primeros-pasos", ruta: "/onboarding", listo: (p) => p.getByText("Faltan puntos obligatorios") },
+  // Ancla al final: "/onboarding/gate" (la puerta del shell) tambien contiene "/onboarding" y, al cargar el shell antes que la pagina
+  // (pantallas perezosas), consumia la unica falla inyectada dejando la pagina sana.
+  { sub: "/primeros-pasos", ruta: "/\\/onboarding$/", listo: (p) => p.getByText("Faltan puntos obligatorios") },
   { sub: "/turnos", ruta: "/turnos", listo: (p) => p.getByRole("button", { name: "Guardar turnos" }) },
   { sub: "/conversaciones", ruta: "/conversaciones?", listo: (p) => p.getByRole("button", { name: /WhatsApp · \+529995550101/ }) },
   { sub: "/privacidad", ruta: "/privacidad/configuracion", listo: (p) => p.getByRole("button", { name: "Guardar configuración" }), bug: "BUG-E2E-REST-003: Privacidad muestra la falla de carga de la configuracion como texto suelto, sin EstadoError ni Reintentar (pages/Privacidad.tsx:119)" },
