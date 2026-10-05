@@ -75,11 +75,13 @@ const AUTOSERVICIO_FINANZAS: readonly RutaAutoservicio[] = [
 
 /** Copiloto de superadmin (CHAT-16): el rol `finanzas` puede abrir el chat y ver sus propias conversaciones. La RUTA es quien aplica la politica de la zona:
  *  el catalogo del rol `finanzas` contiene SOLO herramientas financieras, todas exigen step-up (obligatorio, sin degradarse) y cada llamada deja una fila en
- *  core.cfo_access_log. Renombrar o borrar conversaciones (PATCH/DELETE) NO esta aqui: sigue siendo solo del superadmin completo. */
+ *  core.cfo_access_log. El reporte PDF de un mensaje propio (POST .../conversaciones/:id/reporte) tambien: la ruta exige step-up obligatorio a `finanzas` y re-ejecuta
+ *  SOLO herramientas de su catalogo. Renombrar o borrar conversaciones (PATCH/DELETE) NO esta aqui: sigue siendo solo del superadmin completo. */
 const COPILOTO_FINANZAS: readonly RutaAutoservicio[] = [
   { method: "GET", pattern: /^\/superadmin\/copiloto\/estado$/ },
   { method: "POST", pattern: /^\/superadmin\/copiloto$/ },
   { method: "GET", pattern: /^\/superadmin\/copiloto\/conversaciones(\/[^/]+)?$/ },
+  { method: "POST", pattern: /^\/superadmin\/copiloto\/conversaciones\/[^/]+\/reporte$/ },
 ];
 
 export function rutaFinanciera(method: string, path: string): RutaFinanciera | null {
