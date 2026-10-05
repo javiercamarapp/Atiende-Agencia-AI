@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { createOrder } from "../src/orders.ts";
 import { formatLocationMessage, formatUbicacionEntregaNota, latestDeliveryPin, parseMapsLink, parseUbicacionEntregaNota } from "../src/whatsapp/location.ts";
+import { handleInboundWhatsAppMessage } from "../src/whatsapp/inbound.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 import type { CreateOrderInput } from "../src/types.ts";
 
@@ -35,6 +36,43 @@ describe("latestDeliveryPin", () => {
     expect(latestDeliveryPin([{ role: "user", content: pin }, { role: "assistant", content: "https://www.google.com/maps?q=1,2" }])).toEqual({ fuente: "pin", lat: 21.01, lng: -89.6 });
     expect(latestDeliveryPin([{ role: "user", content: pin }, { role: "user", content: "https://www.google.com/maps?q=21.5,-89.5" }])).toEqual({ fuente: "link", lat: 21.5, lng: -89.5 });
     expect(latestDeliveryPin([{ role: "user", content: "hola" }])).toBeNull();
+  });
+});
+
+describe("latestDeliveryPin acotado al pedido en curso", () => {
+  const pinOficina = formatLocationMessage({ latitude: 21.01, longitude: -89.6 });
+
+  it("el pin de un pedido ya creado NO se pega al pedido nuevo con otra dirección", () => {
+    const historial = [
+      { role: "user" as const, content: pinOficina },
+      { role: "assistant" as const, content: "Pedido registrado, folio 12.", pedidoCreado: true },
+      { role: "user" as const, content: "Quiero otro pedido, ahora en Calle 60 #100 de Itzimná" },
+    ];
+    expect(latestDeliveryPin(historial)).toBeNull();
+  });
+
+  it("un link de Maps anterior a la marca tampoco se usa; uno posterior sí", () => {
+    const viejo = [{ role: "user" as const, content: "https://www.google.com/maps?q=21.5,-89.5" }, { role: "assistant" as const, content: "Listo.", pedidoCreado: true }];
+    expect(latestDeliveryPin(viejo)).toBeNull();
+    expect(latestDeliveryPin([...viejo, { role: "user" as const, content: pinOficina }])).toEqual({ fuente: "pin", lat: 21.01, lng: -89.6 });
+  });
+
+  it("sin marca (conversación en curso) conserva el comportamiento de lo más reciente", () => {
+    expect(latestDeliveryPin([{ role: "user" as const, content: pinOficina }, { role: "assistant" as const, content: "¿Cuál es la dirección?" }])).toEqual({ fuente: "pin", lat: 21.01, lng: -89.6 });
+  });
+
+  it("el turno que deja un pedido creado marca el mensaje del asistente en el historial", async () => {
+    const f = buildRestaurantFixture();
+    await handleInboundWhatsAppMessage(
+      f.repo,
+      { handleInboundMessage: async () => ({ reply: "Pedido registrado.", orderId: "00000000-0000-4000-8000-000000000001", propertyId: null }) },
+      { organizationId: f.organizationId, messageId: "wamid.1", phone: "9991234567", body: pinOficina, phoneNumberId: "pn" },
+    );
+    const guardado = await f.repo.appendWhatsAppUserMessageOnce(f.organizationId, "9991234567", { role: "user", content: "otro pedido en Calle 60" });
+    const marca = guardado.filter((m) => m.role === "assistant");
+    expect(marca).toHaveLength(1);
+    expect(marca[0]).toMatchObject({ pedidoCreado: true });
+    expect(latestDeliveryPin(guardado)).toBeNull();
   });
 });
 
