@@ -12,6 +12,7 @@ Escenarios (ver `assertions.sql`):
   requisitos honestos (tarifa, plantilla aprobada, WhatsApp conectado, tope mensual); owner de otra organizacion, staff de piso y anon rechazados.
 - **E. RLS de lectura** de las 5 tablas y ausencia de escritura directa.
 - **F. Atribucion**: pedidos de tratados y de control en los 7 dias siguientes.
+- **G. Alertas al dueño**: candidatos de «WhatsApp silencioso» (historico de 4 semanas, umbrales configurables, organizacion demo y sin canal excluidas), guardar/leer umbrales (owner/admin con alcance a toda la organizacion, cross-tenant, anon, rangos) y `es_organizacion_restaurantes` (solo sistema).
 
 Uso manual: `scripts/verify-restaurantes-marketing-campanas/run.sh` (Postgres local con `initdb`). En CI lo descubre solo `scripts/verify-real-postgres-ci/run-gate.mjs`.
 Concurrencia de dos conexiones: la unicidad `(organizacion, segmento, dia)` del borrador y `(campana, cliente)` del envio y el `for update` de la campana garantizan una sola campana y un solo envio por cliente; no hay un script de carrera separado en este PR.

@@ -623,4 +623,174 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4514
 select public.t_esperar_error($q$select * from restaurantes.marketing_resumen_campanas('00000000-0000-0000-0000-0000000e4501')$q$, '42501');
 rollback;
 
+\echo '=== G1. WhatsApp silencioso: sin mensajes en la ventana y 5 por ventana en las 4 semanas previas -> candidata con mensajes_historico = 5 ==='
+begin;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h1-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h1-' || g) || md5('x' || g), now() - interval '7 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h2-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h2-' || g) || md5('x' || g), now() - interval '14 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h3-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h3-' || g) || md5('x' || g), now() - interval '21 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h4-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h4-' || g) || md5('x' || g), now() - interval '28 days' - interval '20 minutes' from generate_series(1, 5) as g;
+set local role authenticated;
+select (count(*) = 1 and bool_and(mensajes_historico = 5 and ventana_min = 60))::int as silencio_deberia_ser_1 from restaurantes.whatsapp_silencio_candidatos(now());
+rollback;
+
+\echo '=== G2. con un mensaje entrante reciente (hace 10 minutos) NO hay alerta ==='
+begin;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h1-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h1-' || g) || md5('x' || g), now() - interval '7 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h2-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h2-' || g) || md5('x' || g), now() - interval '14 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h3-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h3-' || g) || md5('x' || g), now() - interval '21 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h4-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h4-' || g) || md5('x' || g), now() - interval '28 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) values ('reciente-1', '00000000-0000-0000-0000-0000000e4501', md5('r') || md5('s'), now() - interval '10 minutes');
+set local role authenticated;
+select count(*) as silencio_deberia_ser_0 from restaurantes.whatsapp_silencio_candidatos(now());
+rollback;
+
+\echo '=== G3. sin historico suficiente (trafico en solo 2 de las 4 semanas) NO alerta ==='
+begin;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h1-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h1-' || g) || md5('x' || g), now() - interval '7 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h2-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h2-' || g) || md5('x' || g), now() - interval '14 days' - interval '20 minutes' from generate_series(1, 5) as g;
+set local role authenticated;
+select count(*) as silencio_deberia_ser_0 from restaurantes.whatsapp_silencio_candidatos(now());
+rollback;
+
+\echo '=== G4. historico bajo el umbral conservador (1 mensaje por semana, promedio 1 < 3) NO alerta ==='
+begin;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h1-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h1-' || g) || md5('x' || g), now() - interval '7 days' - interval '20 minutes' from generate_series(1, 1) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h2-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h2-' || g) || md5('x' || g), now() - interval '14 days' - interval '20 minutes' from generate_series(1, 1) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h3-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h3-' || g) || md5('x' || g), now() - interval '21 days' - interval '20 minutes' from generate_series(1, 1) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h4-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h4-' || g) || md5('x' || g), now() - interval '28 days' - interval '20 minutes' from generate_series(1, 1) as g;
+set local role authenticated;
+select count(*) as silencio_deberia_ser_0 from restaurantes.whatsapp_silencio_candidatos(now());
+rollback;
+
+\echo '=== G5. la organizacion demo se excluye ==='
+begin;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h1-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h1-' || g) || md5('x' || g), now() - interval '7 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h2-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h2-' || g) || md5('x' || g), now() - interval '14 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h3-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h3-' || g) || md5('x' || g), now() - interval '21 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h4-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h4-' || g) || md5('x' || g), now() - interval '28 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.demo_organization (organization_id, seed_version) values ('00000000-0000-0000-0000-0000000e4501', 'v-test');
+set local role authenticated;
+select count(*) as silencio_deberia_ser_0 from restaurantes.whatsapp_silencio_candidatos(now());
+rollback;
+
+\echo '=== G6. el umbral configurable manda: con silencio_activo = false NO alerta ==='
+begin;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h1-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h1-' || g) || md5('x' || g), now() - interval '7 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h2-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h2-' || g) || md5('x' || g), now() - interval '14 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h3-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h3-' || g) || md5('x' || g), now() - interval '21 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h4-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h4-' || g) || md5('x' || g), now() - interval '28 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.alertas_duenio_config (organization_id, silencio_activo) values ('00000000-0000-0000-0000-0000000e4501', false);
+set local role authenticated;
+select count(*) as silencio_deberia_ser_0 from restaurantes.whatsapp_silencio_candidatos(now());
+rollback;
+
+\echo '=== G7. el umbral configurable manda: con historico_min = 6 (el historico promedia 5) NO alerta ==='
+begin;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h1-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h1-' || g) || md5('x' || g), now() - interval '7 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h2-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h2-' || g) || md5('x' || g), now() - interval '14 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h3-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h3-' || g) || md5('x' || g), now() - interval '21 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h4-' || g, '00000000-0000-0000-0000-0000000e4501', md5('h4-' || g) || md5('x' || g), now() - interval '28 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.alertas_duenio_config (organization_id, silencio_historico_min) values ('00000000-0000-0000-0000-0000000e4501', 6);
+set local role authenticated;
+select count(*) as silencio_deberia_ser_0 from restaurantes.whatsapp_silencio_candidatos(now());
+rollback;
+
+\echo '=== G8. otra organizacion (sin canal de WhatsApp) nunca es candidata aunque tenga historico ==='
+begin;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h1-' || g, '00000000-0000-0000-0000-0000000e4502', md5('h1-' || g) || md5('x' || g), now() - interval '7 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h2-' || g, '00000000-0000-0000-0000-0000000e4502', md5('h2-' || g) || md5('x' || g), now() - interval '14 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h3-' || g, '00000000-0000-0000-0000-0000000e4502', md5('h3-' || g) || md5('x' || g), now() - interval '21 days' - interval '20 minutes' from generate_series(1, 5) as g;
+insert into restaurantes.whatsapp_inbound_events (message_id, organization_id, phone_hash, claimed_at) select 'h4-' || g, '00000000-0000-0000-0000-0000000e4502', md5('h4-' || g) || md5('x' || g), now() - interval '28 days' - interval '20 minutes' from generate_series(1, 5) as g;
+delete from restaurantes.whatsapp_channel_config where organization_id = '00000000-0000-0000-0000-0000000e4501';
+set local role authenticated;
+select count(*) as silencio_deberia_ser_0 from restaurantes.whatsapp_silencio_candidatos(now());
+rollback;
+
+\echo '=== G9. RECHAZADO: un usuario logueado no consulta candidatos -> 42501 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4511', true);
+select public.t_esperar_error($q$select * from restaurantes.whatsapp_silencio_candidatos(now())$q$, '42501');
+rollback;
+
+\echo '=== G10. RECHAZADO: anon no consulta candidatos -> 42501 ==='
+begin;
+set local role anon;
+select public.t_esperar_error($q$select * from restaurantes.whatsapp_silencio_candidatos(now())$q$, '42501');
+rollback;
+
+\echo '=== G11. guardar umbrales: el owner si (queda en bitacora) y se leen despues ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4511', true);
+select restaurantes.alertas_duenio_guardar_config('00000000-0000-0000-0000-0000000e4501', true, 90, 4.5);
+reset role;
+select ((select silencio_ventana_min from restaurantes.alertas_duenio_config where organization_id = '00000000-0000-0000-0000-0000000e4501') = 90 and (select count(*) from restaurantes.audit_log where action = 'alertas_duenio.config_actualizada') = 1)::int as umbrales_deberia_ser_1;
+rollback;
+
+\echo '=== G12. RECHAZADO: el staff de piso no guarda umbrales -> 42501 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4513', true);
+select public.t_esperar_error($q$select restaurantes.alertas_duenio_guardar_config('00000000-0000-0000-0000-0000000e4501', true, 90, 4.5)$q$, '42501');
+rollback;
+
+\echo '=== G13. RECHAZADO: un admin acotado a una sucursal no guarda umbrales de toda la organizacion -> 42501 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4515', true);
+select public.t_esperar_error($q$select restaurantes.alertas_duenio_guardar_config('00000000-0000-0000-0000-0000000e4501', true, 90, 4.5)$q$, '42501');
+rollback;
+
+\echo '=== G14. RECHAZADO: umbrales fuera de rango -> 22023 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4511', true);
+select public.t_esperar_error($q$select restaurantes.alertas_duenio_guardar_config('00000000-0000-0000-0000-0000000e4501', true, 5, 4.5)$q$, '22023');
+rollback;
+
+\echo '=== G15. RECHAZADO cross-tenant: el owner de B no guarda los umbrales de A -> 42501; ni anon ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4514', true);
+select public.t_esperar_error($q$select restaurantes.alertas_duenio_guardar_config('00000000-0000-0000-0000-0000000e4501', true, 90, 4.5)$q$, '42501');
+rollback;
+
+\echo '=== G16. lectura de umbrales: el owner de A los ve, el de B no, el staff de piso no ==='
+begin;
+insert into restaurantes.alertas_duenio_config (organization_id) values ('00000000-0000-0000-0000-0000000e4501');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4511', true);
+select count(*) as filas_deberia_ser_1 from restaurantes.alertas_duenio_config;
+rollback;
+
+\echo '=== G17. lectura de umbrales: el owner de OTRO tenant no ve nada ==='
+begin;
+insert into restaurantes.alertas_duenio_config (organization_id) values ('00000000-0000-0000-0000-0000000e4501');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4514', true);
+select count(*) as filas_deberia_ser_0 from restaurantes.alertas_duenio_config;
+rollback;
+
+\echo '=== G18. RECHAZADO: ni el owner escribe directo en los umbrales -> 42501 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4511', true);
+select public.t_esperar_error($q$insert into restaurantes.alertas_duenio_config (organization_id) values ('00000000-0000-0000-0000-0000000e4501')$q$, '42501');
+rollback;
+
+\echo '=== G19. es_organizacion_restaurantes: el sistema ve true para restaurantes y false para otra cosa ==='
+begin;
+insert into core.organization (id, vertical, name, slug) values ('00000000-0000-0000-0000-0000000e4509', 'citas', 'Citas ajena', 'mkt-citas');
+set local role authenticated;
+select (restaurantes.es_organizacion_restaurantes('00000000-0000-0000-0000-0000000e4501') and not restaurantes.es_organizacion_restaurantes('00000000-0000-0000-0000-0000000e4509') and not restaurantes.es_organizacion_restaurantes('00000000-0000-0000-0000-0000000e45ff'))::int as vertical_deberia_ser_1;
+rollback;
+
+\echo '=== G20. RECHAZADO: un usuario logueado ni anon consultan el vertical -> 42501 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4511', true);
+select public.t_esperar_error($q$select restaurantes.es_organizacion_restaurantes('00000000-0000-0000-0000-0000000e4501')$q$, '42501');
+rollback;
+
 \echo 'Fin: cada escenario con alias deberia_ser_N debe devolver N; los t_esperar_error terminan sin error.'

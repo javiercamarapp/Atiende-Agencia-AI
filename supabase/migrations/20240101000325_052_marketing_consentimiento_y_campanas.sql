@@ -1,5 +1,6 @@
 -- Autopiloto de restaurantes 2 (reactivacion de clientes inactivos): consentimiento de mensajes PROMOCIONALES por cliente y canal,
 -- configuracion de marketing por organizacion, campanas borrador -> aprobacion con un clic -> encolado en el outbox, y atribucion.
+-- Incluye tambien (pieza E, al final) los umbrales y candidatos de la alerta al dueño «WhatsApp silencioso» y el helper de organizacion de restaurantes.
 -- Interno 052, prefijo de supabase/migrations 20240101000325. Requiere: 001 (customers, orders), 007 (messaging_outbox), 010 (promotions),
 -- 019 (audit_log), 030 (privacy_config), 035 (voz_zona_horaria), core 0050 (whatsapp_plantilla).
 --
@@ -581,3 +582,116 @@ end;
 $$;
 revoke all on function restaurantes.marketing_resumen_campanas(uuid) from public, anon;
 grant execute on function restaurantes.marketing_resumen_campanas(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- E) Alertas al dueño sin vigilancia (autopiloto 2): umbrales, «WhatsApp silencioso» y helper de vertical
+-- ---------------------------------------------------------------------------
+-- Justificacion de seguridad:
+--   * alertas_duenio_config: RLS; GRANT SELECT por columna a authenticated con policy owner/admin con alcance a TODA la organizacion (misma forma que
+--     marketing_config); sin escritura directa: solo la funcion alertas_duenio_guardar_config (owner/admin, valida rangos, deja bitacora).
+--   * whatsapp_silencio_candidatos: security definer, search_path fijo, SOLO sistema (auth.uid() is null), revoke de public/anon; solo LEE
+--     conteos de whatsapp_inbound_events (sin telefono ni texto: el evento guarda un hash) y excluye la organizacion demo. No escribe nada.
+--   * es_organizacion_restaurantes: security definer, solo sistema; devuelve un booleano. Permite al productor del aviso de presupuesto de IA
+--     (que corre para organizaciones de cualquier vertical) emitir el aviso del dueño SOLO en restaurantes, cuyo enlace apunta a su consola.
+create table restaurantes.alertas_duenio_config (
+  organization_id uuid primary key references core.organization(id) on delete cascade,
+  -- «WhatsApp silencioso»: sin ningun mensaje entrante en la ventana, cuando el mismo dia y hora de las 4 semanas previas promediaron al menos
+  -- `silencio_historico_min` mensajes por ventana (y hubo trafico en 3 de las 4 semanas). Valores por omision conservadores: 60 min y 3 mensajes.
+  silencio_activo boolean not null default true,
+  silencio_ventana_min integer not null default 60 check (silencio_ventana_min between 15 and 360),
+  silencio_historico_min numeric(8, 2) not null default 3 check (silencio_historico_min between 1 and 1000),
+  updated_by uuid references core.staff_user(id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+alter table restaurantes.alertas_duenio_config enable row level security;
+create policy "owner/admin lee los umbrales de alertas al dueno" on restaurantes.alertas_duenio_config for select
+  using (exists (select 1 from core.membership m where m.organization_id = alertas_duenio_config.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin') and m.property_ids is null));
+revoke all on restaurantes.alertas_duenio_config from public, anon, authenticated, service_role;
+grant select (organization_id, silencio_activo, silencio_ventana_min, silencio_historico_min, updated_by, updated_at) on restaurantes.alertas_duenio_config to authenticated;
+
+create or replace function restaurantes.alertas_duenio_guardar_config(p_organization_id uuid, p_silencio_activo boolean, p_ventana_min integer, p_historico_min numeric)
+returns void language plpgsql security definer set search_path = restaurantes, core, pg_temp as $$
+begin
+  if not restaurantes.marketing_es_gestor(p_organization_id) then
+    raise exception 'alertas_duenio_guardar_config: requiere owner/admin de la organizacion' using errcode = '42501';
+  end if;
+  if p_silencio_activo is null or p_ventana_min is null or p_ventana_min not between 15 and 360 or p_historico_min is null or p_historico_min not between 1 and 1000 then
+    raise exception 'alertas_duenio_guardar_config: parametros invalidos' using errcode = '22023';
+  end if;
+  insert into restaurantes.alertas_duenio_config (organization_id, silencio_activo, silencio_ventana_min, silencio_historico_min, updated_by, updated_at)
+  values (p_organization_id, p_silencio_activo, p_ventana_min, p_historico_min, auth.uid(), now())
+  on conflict (organization_id) do update
+    set silencio_activo = excluded.silencio_activo, silencio_ventana_min = excluded.silencio_ventana_min, silencio_historico_min = excluded.silencio_historico_min,
+        updated_by = auth.uid(), updated_at = now();
+  insert into restaurantes.audit_log (organization_id, actor_user_id, action, entity_type, entity_id, campo, antes, despues)
+  values (p_organization_id, auth.uid(), 'alertas_duenio.config_actualizada', 'configuracion', p_organization_id, 'silencio_whatsapp', null, p_ventana_min::text || 'min/' || p_historico_min::text);
+end;
+$$;
+revoke all on function restaurantes.alertas_duenio_guardar_config(uuid, boolean, integer, numeric) from public, anon;
+grant execute on function restaurantes.alertas_duenio_guardar_config(uuid, boolean, integer, numeric) to authenticated;
+
+-- Organizaciones con el WhatsApp en silencio inusual AHORA (solo sistema). El horario de servicio se INFIERE del historico (si a esta hora de este dia
+-- de la semana suele llegar trafico, se esta en servicio); no lee branch_policy.horario. Sin historico suficiente no alerta (conservador).
+create or replace function restaurantes.whatsapp_silencio_candidatos(p_now timestamptz default now())
+returns table (organization_id uuid, mensajes_historico numeric, ventana_min integer)
+language plpgsql security definer set search_path = restaurantes, core, pg_temp as $$
+#variable_conflict use_column
+declare
+  v_org record;
+  v_vent integer;
+  v_min numeric;
+  v_actual integer;
+  v_total integer;
+  v_semanas integer;
+  v_k integer;
+  v_c integer;
+begin
+  if auth.uid() is not null then
+    raise exception 'whatsapp_silencio_candidatos: solo alcanzable desde sesion de sistema' using errcode = '42501';
+  end if;
+  for v_org in
+    select w.organization_id as org, coalesce(c.silencio_activo, true) as activo, coalesce(c.silencio_ventana_min, 60) as ventana, coalesce(c.silencio_historico_min, 3) as historico
+      from restaurantes.whatsapp_channel_config w
+      left join restaurantes.alertas_duenio_config c on c.organization_id = w.organization_id
+     where not exists (select 1 from restaurantes.demo_organization d where d.organization_id = w.organization_id)
+     order by w.organization_id
+     limit 500
+  loop
+    continue when not v_org.activo;
+    v_vent := v_org.ventana;
+    v_min := v_org.historico;
+    select count(*) into v_actual from restaurantes.whatsapp_inbound_events e
+      where e.organization_id = v_org.org and e.claimed_at >= p_now - make_interval(mins => v_vent) and e.claimed_at < p_now;
+    continue when v_actual > 0;
+    v_total := 0;
+    v_semanas := 0;
+    for v_k in 1..4 loop
+      select count(*) into v_c from restaurantes.whatsapp_inbound_events e
+        where e.organization_id = v_org.org
+          and e.claimed_at >= p_now - make_interval(mins => v_vent) - make_interval(days => 7 * v_k) and e.claimed_at < p_now - make_interval(days => 7 * v_k);
+      v_total := v_total + v_c;
+      if v_c > 0 then v_semanas := v_semanas + 1; end if;
+    end loop;
+    if v_semanas >= 3 and (v_total::numeric / 4) >= v_min then
+      organization_id := v_org.org;
+      mensajes_historico := round(v_total::numeric / 4, 2);
+      ventana_min := v_vent;
+      return next;
+    end if;
+  end loop;
+end;
+$$;
+revoke all on function restaurantes.whatsapp_silencio_candidatos(timestamptz) from public, anon;
+grant execute on function restaurantes.whatsapp_silencio_candidatos(timestamptz) to authenticated;
+
+create or replace function restaurantes.es_organizacion_restaurantes(p_organization_id uuid)
+returns boolean language plpgsql stable security definer set search_path = core, pg_temp as $$
+begin
+  if auth.uid() is not null then
+    raise exception 'es_organizacion_restaurantes: solo alcanzable desde sesion de sistema' using errcode = '42501';
+  end if;
+  return exists (select 1 from core.organization o where o.id = p_organization_id and o.vertical = 'restaurantes');
+end;
+$$;
+revoke all on function restaurantes.es_organizacion_restaurantes(uuid) from public, anon;
+grant execute on function restaurantes.es_organizacion_restaurantes(uuid) to authenticated;
