@@ -326,7 +326,7 @@ garantiza que el bundle YA DESPLEGADO las tenga si se configuraron después del
 
 | Variable | Dónde se da de alta | Notas |
 |---|---|---|
-| `CRON_SECRET` | Vercel → Project → Settings → Environment Variables — **con el MISMO valor que `INTERNAL_SECRET`** | **No la lee ningún código de este repo** (`grep` no encuentra `process.env.CRON_SECRET`) — es pura convención de Vercel: sus Cron Jobs invocan con `Authorization: Bearer $CRON_SECRET` automáticamente cuando esa variable existe en el proyecto. Sin ella (o con un valor distinto a `INTERNAL_SECRET`), los ~18 crons de `vercel.json` disparan pero cada corrida recibe 401. |
+| `CRON_SECRET` | Vercel → Project → Settings → Environment Variables — **con el MISMO valor que `INTERNAL_SECRET`** | **La API no la usa para autenticar** (solo el preflight de go-live, `docs/GO-LIVE.md`, compara como booleano si coincide con `INTERNAL_SECRET`, sin imprimir ninguna) — es convención de Vercel: sus Cron Jobs invocan con `Authorization: Bearer $CRON_SECRET` automáticamente cuando esa variable existe en el proyecto. Sin ella (o con un valor distinto a `INTERNAL_SECRET`), los ~18 crons de `vercel.json` disparan pero cada corrida recibe 401. |
 
 `scripts/verify-real-postgres-ci/run-gate.mjs` (fuera del alcance `apps/`/
 `packages/` de este inventario) lee `PGHOST`/`PGPORT`/`PGUSER`/`PGPASSWORD` para
