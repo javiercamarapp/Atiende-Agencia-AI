@@ -42,6 +42,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { ReglasComisionSection } from "../components/ReglasComision.tsx";
+import { ImportarPagosSection } from "../components/ImportarPagos.tsx";
 import { FileSpreadsheet, Mail, Plus, Search, Wallet } from "lucide-react";
 import {
   Button,
@@ -154,6 +155,7 @@ export function FinanzasPage({ apiBaseUrl, token, propertyId, orgSlug, session }
       <MovimientoSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeEscribir={puedeEscribir} />
       <OwnerStatementsSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeEscribir={puedeEscribir} />
       <PayoutsSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeEscribir={puedeEscribir} />
+      <ImportarPagosSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeEscribir={puedeEscribir} />
     </PageContainer>
   );
 }
