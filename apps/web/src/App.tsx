@@ -159,6 +159,7 @@ import { RadarRenovacionesPage } from "./verticals/licitaciones/pages/RadarRenov
 import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatching.tsx";
 import { DatosEmpresaPage } from "./verticals/licitaciones/pages/DatosEmpresa.tsx";
 import { StaffPage as LicitacionesStaffPage } from "./verticals/licitaciones/pages/Staff.tsx";
+import { BitacoraPage as LicitacionesBitacoraPage } from "./verticals/licitaciones/pages/Bitacora.tsx";
 import { SeguridadPage as LicitacionesSeguridadPage } from "./verticals/licitaciones/pages/Seguridad.tsx";
 import { WhatsappPage as LicitacionesWhatsappPage } from "./verticals/licitaciones/pages/Whatsapp.tsx";
 import { DiasInhabilesPage as LicitacionesDiasInhabilesPage } from "./verticals/licitaciones/pages/DiasInhabiles.tsx";
@@ -1043,6 +1044,8 @@ const LicitacionesPrivacidadRoute = shellRoute(LicitacionesShell, "/licitaciones
 const LicitacionesWhatsappRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesWhatsappPage {...ctx} />);
 // L-08: KYC negativo contra la lista 69-B del SAT (proveedores y competidores).
 const LicitacionesKyc69bRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesKyc69bPage {...ctx} />);
+// L-P3-17: bitácora de escrituras de la organización (solo owner/admin; el servidor y la RLS lo exigen).
+const LicitacionesBitacoraRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesBitacoraPage {...ctx} />);
 const LicitacionesDiasInhabilesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesDiasInhabilesPage {...ctx} />);
 
 // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
@@ -1315,6 +1318,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/licitaciones/:orgSlug/datos-empresa" element={<LicitacionesDatosEmpresaRoute />} />
         <Route path="/licitaciones/:orgSlug/staff" element={<LicitacionesStaffRoute />} />
+        <Route path="/licitaciones/:orgSlug/bitacora" element={<LicitacionesBitacoraRoute />} />
         <Route path="/licitaciones/:orgSlug/notificaciones" element={<LicitacionesNotificacionesRoute />} />
         <Route path="/licitaciones/:orgSlug/plan" element={<LicitacionesPlanRoute />} />
         <Route path="/licitaciones/:orgSlug/seguridad" element={<LicitacionesSeguridadRoute />} />
