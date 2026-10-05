@@ -63,7 +63,8 @@ function parsearTramos(value: unknown): TramoLlamada[] {
     if (typeof o.escalon !== "string" || !(ESCALERA_VOZ as readonly string[]).includes(o.escalon)) throw Errors.validation(`tramos[${i}].escalon: debe ser uno de ${ESCALERA_VOZ.join(", ")}.`);
     if (typeof o.duracionS !== "number" || !Number.isFinite(o.duracionS) || o.duracionS < 0 || o.duracionS > TRAMO_MAX_S) throw Errors.validation(`tramos[${i}].duracionS: se esperaba un número entre 0 y ${TRAMO_MAX_S}.`);
     if (typeof o.costoReportadoMicroUsd !== "number" || !Number.isFinite(o.costoReportadoMicroUsd) || o.costoReportadoMicroUsd < 0 || o.costoReportadoMicroUsd > TRAMO_COSTO_MAX_MICRO_USD) throw Errors.validation(`tramos[${i}].costoReportadoMicroUsd: se esperaba un número entre 0 y ${TRAMO_COSTO_MAX_MICRO_USD}.`);
-    return { escalon: o.escalon as EscalonVoz, duracionS: o.duracionS, costoReportadoMicroUsd: o.costoReportadoMicroUsd };
+    // `costoReal` (opcional: un worker anterior no lo manda): el costo sale de los tokens que informo el proveedor, no de una tarifa.
+    return { escalon: o.escalon as EscalonVoz, duracionS: o.duracionS, costoReportadoMicroUsd: o.costoReportadoMicroUsd, ...(o.costoReal === true ? { costoReal: true } : {}) };
   });
 }
 

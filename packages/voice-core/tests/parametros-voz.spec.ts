@@ -1,7 +1,7 @@
 // Parametros del agente de voz probados en produccion (rescate-orig-restaurantes-1 §1): temperatura 0, idioma, herramientas EN SERIE y
 // vocabulario del menu para el STT de la cascada. Todo contra sockets y `fetch` FALSOS (el protocolo no se ha probado contra la API real).
 import { describe, expect, it } from "vitest";
-import { VOZ_PLATAFORMA, crearProveedorCascadaLlamada, crearProveedorGeminiLlamada, mensajeSetup, pistaVocabulario } from "../src/index.ts";
+import { VOZ_PLATAFORMA, crearProveedorCascadaLlamada, crearProveedorGeminiLlamada, mensajeSetup, pistaVocabulario, vertexLiveWsUrl } from "../src/index.ts";
 import type { AperturaLlamada, ManejadoresSesion, PuertoLlmVoz, PeticionLlmVoz, SocketLive } from "../src/index.ts";
 
 class SocketFalso implements SocketLive {
@@ -44,11 +44,36 @@ function manejadores(extra: Partial<ManejadoresSesion> = {}): ManejadoresSesion 
 }
 
 describe("setup de Gemini Live", () => {
-  it("lleva temperature 0 y el idioma de la plataforma (hoy es-US) junto a la voz", () => {
+  it("lleva temperature 0 y la voz; la Gemini API NO recibe languageCode (idioma = null) y el espanol de Mexico va en la instruccion", () => {
     const setup = mensajeSetup("gemini-3.8-live", APERTURA).setup;
     expect(setup.generationConfig.temperature).toBe(0);
     expect(VOZ_PLATAFORMA.gemini.temperatura).toBe(0);
+    expect(VOZ_PLATAFORMA.gemini.idioma).toBeNull();
+    expect(setup.generationConfig.speechConfig).toEqual({ voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } });
+    expect(setup.model).toBe("models/gemini-3.8-live");
+    const texto = setup.systemInstruction.parts[0]!.text;
+    expect(texto.startsWith(VOZ_PLATAFORMA.gemini.instruccionIdioma)).toBe(true);
+    expect(texto).toContain("español de México");
+    expect(texto.endsWith(APERTURA.instruccion)).toBe(true);
+  });
+
+  it("nunca manda thinkingConfig/thinkingLevel (gemini-3.8-live no lo admite)", () => {
+    const json = JSON.stringify(mensajeSetup("gemini-3.8-live", APERTURA));
+    expect(json).not.toMatch(/thinking/i);
+  });
+
+  it("afina el VAD del servidor para latencia: silenceDurationMs, prefixPaddingMs y sensibilidad de fin; sin tocar el inicio de habla (barge-in)", () => {
+    const vad = mensajeSetup("gemini-3.8-live", APERTURA).setup.realtimeInputConfig.automaticActivityDetection as Record<string, unknown>;
+    expect(vad).toEqual({ disabled: false, endOfSpeechSensitivity: "END_SENSITIVITY_HIGH", prefixPaddingMs: VOZ_PLATAFORMA.gemini.vad.prefijoMs, silenceDurationMs: VOZ_PLATAFORMA.gemini.vad.silencioFinMs });
+    expect(vad).not.toHaveProperty("startOfSpeechSensitivity");
+    expect(VOZ_PLATAFORMA.gemini.vad.silencioFinMs).toBeGreaterThanOrEqual(400);
+  });
+
+  it("Vertex: el adaptador manda languageCode es-US, la ruta de recurso del modelo del proyecto y NO la de la Gemini API", () => {
+    const setup = mensajeSetup("gemini-3.8-live", APERTURA, { project: "mi-proyecto", location: "us-central1" }).setup;
+    expect(setup.model).toBe("projects/mi-proyecto/locations/us-central1/publishers/google/models/gemini-3.8-live");
     expect(setup.generationConfig.speechConfig).toEqual({ languageCode: "es-US", voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } });
+    expect(vertexLiveWsUrl("us-central1")).toBe("wss://us-central1-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent");
   });
 });
 
