@@ -468,7 +468,7 @@ describe("D-P3-12: piloto automático al guardar un estado de cuenta", () => {
     try {
       const pendiente = guardar(admin(), CSV(["20/01/2026;20/01/2026;PAGO ACME;;1,000.00;1.00", "20/02/2026;20/02/2026;PAGO ACME;;1,000.00;1.00"]));
       let terminado = false;
-      void pendiente.finally(() => { terminado = true; });
+      void Promise.resolve(pendiente).finally(() => { terminado = true; });
       // El plazo se arma al llegar a la fase de IA (despues de las escrituras): se avanza el reloj falso por tramos hasta que responde.
       for (let i = 0; i < 200 && !terminado; i++) await vi.advanceTimersByTimeAsync(PLAZO_FASE_IA_PILOTO_MS / 4);
       const r = await pendiente;
