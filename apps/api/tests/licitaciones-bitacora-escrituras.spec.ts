@@ -6,8 +6,6 @@ import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildLicitacionesTestContext } from "./licitaciones-fixtures.ts";
 
-type Ctx = Awaited<ReturnType<typeof buildLicitacionesTestContext>>;
-
 const patch = (token: string, body: unknown, extra: Record<string, string> = {}): RequestInit => {
   const raw = JSON.stringify(body);
   return { method: "PATCH", body: raw, headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "content-length": String(new TextEncoder().encode(raw).byteLength), ...extra } };
