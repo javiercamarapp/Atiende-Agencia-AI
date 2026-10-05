@@ -254,7 +254,8 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
                       wrapperClassName="text-xs"
                       checked={marks.categoryIds.includes(c.id)}
                       onChange={() => void handleToggleNoDomicilio("categorias", c.id, marks.categoryIds.includes(c.id))}
-                      disabled={savingId === c.id}
+                      disabled={savingId === c.id || !puedeEditarCatalogo}
+                      title={puedeEditarCatalogo ? undefined : "Solo el dueño o un administrador puede cambiar esta regla."}
                     />
                   ))}
                 </div>
@@ -333,7 +334,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
                             aria-label={`${p.name}: no se vende a domicilio`}
                             checked={marks.productIds.includes(p.id)}
                             onChange={() => void handleToggleNoDomicilio("productos", p.id, marks.productIds.includes(p.id))}
-                            disabled={savingId === p.id}
+                            disabled={savingId === p.id || !puedeEditarCatalogo}
                           />
                         ),
                       },

@@ -134,6 +134,24 @@ set local role anon;
 insert into restaurantes.products (organization_id, name, price) values ('00000000-0000-0000-0000-0000000f0001', 'Anon', 1);
 rollback;
 
+\echo '=== A9. POSITIVO: admin de A marca no_domicilio en un producto y en una categoria (1 + 1 filas) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0012', true);
+with p as (update restaurantes.products set no_domicilio = true where id = '00000000-0000-0000-0000-0000000f00e1' returning id),
+     c as (update restaurantes.categories set no_domicilio = true where id = '00000000-0000-0000-0000-0000000f00d1' returning id)
+select (select count(*) from p)::int as admin_marca_producto_deberia_ser_1, (select count(*) from c)::int as admin_marca_categoria_deberia_ser_1;
+rollback;
+
+\echo '=== A10. staff NO marca no_domicilio (RLS filtra: 0 filas; la API responde 403 antes de llegar aqui) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0013', true);
+with p as (update restaurantes.products set no_domicilio = true where id = '00000000-0000-0000-0000-0000000f00e1' returning id),
+     c as (update restaurantes.categories set no_domicilio = true where id = '00000000-0000-0000-0000-0000000f00d1' returning id)
+select (select count(*) from p)::int + (select count(*) from c)::int as staff_marca_no_domicilio_deberia_ser_0;
+rollback;
+
 -- ===========================================================================
 -- B. branch_products
 -- ===========================================================================

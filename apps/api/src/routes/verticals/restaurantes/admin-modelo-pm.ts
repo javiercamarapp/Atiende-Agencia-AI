@@ -7,8 +7,8 @@
 //
 // Autorización: política, cobertura y WhatsApp son owner/admin (`STAFF_INVITE_ROLES`), mismo
 // umbral que `admin-config.ts` y que las policies de la migración (RLS es la autoridad; esta
-// capa da defensa en profundidad y un mejor mensaje). Las marcas no_domicilio son del catálogo
-// del día a día, así que usan `MANAGER_ROLES` como admin-catalog.ts. Todas corren en la sesión
+// capa da defensa en profundidad y un mejor mensaje). Las marcas no_domicilio (lectura) usan `MANAGER_ROLES`; escribirlas edita
+// products/categories, asi que exigen la accion `catalogo.precio` (owner/admin, PL-23). Todas corren en la sesión
 // de STAFF autenticado y respetan el alcance por membership (`resolveEffectivePropertyIds`):
 // un staff acotado a una sucursal nunca edita otra aunque la ruta cuelgue de su `:propertyId`.
 //
@@ -18,6 +18,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { assertAccion } from "./permisos-accion.ts";
 import { MANAGER_ROLES, OrderValidationError, RestaurantesConfigUnavailableError, STAFF_INVITE_ROLES, WhatsappNumberInUseError, horarioDePuente, validarExcepcionHorario, validarHorario } from "@atiende/domain-restaurantes";
 import type { BranchHoursException, BranchPolicy, PropinaPolitica } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
@@ -375,7 +376,8 @@ export function restaurantesAdminModeloPmRoutes(deps: AppDeps): Hono<CoreAuthHon
   });
 
   async function setMark(c: Context<CoreAuthHonoEnv>, kind: "producto" | "categoria", id: string) {
-    assertVerticalRole(c, MANAGER_ROLES);
+    // Escribe restaurantes.products/categories, que desde la 065 solo actualizan owner/admin: la misma accion que editar el catalogo.
+    assertAccion(c, "catalogo.precio");
     const organizationId = c.get("organizationId");
     const raw = await readJsonCapped<{ noDomicilio?: unknown }>(c.req.raw, 1024);
     if (typeof raw.noDomicilio !== "boolean") throw Errors.validation("noDomicilio: se esperaba true o false.");
