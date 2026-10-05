@@ -256,9 +256,14 @@ export async function registrarConsentimientoMarketing(
 }
 
 /** BAJA/ALTO por WhatsApp: revoca el consentimiento de marketing de ese telefono y mata los mensajes de campana aun pendientes. */
-export async function revocarMarketingPorTelefono(session: TenantDbSession, organizationId: string, telefono: string): Promise<{ readonly estado: "revocado" | "sin_cambio" | "no_disponible" | "error"; readonly revocados: number }> {
+export interface ResultadoBajaMarketing {
+  readonly estado: "revocado" | "sin_cambio" | "no_disponible" | "error";
+  readonly revocados: number;
+}
+
+export async function revocarMarketingPorTelefono(session: TenantDbSession, organizationId: string, telefono: string): Promise<ResultadoBajaMarketing> {
   try {
-    return await runWithSavepointFallback({
+    return await runWithSavepointFallback<ResultadoBajaMarketing>({
       session,
       savepointName: "sp_marketing_baja",
       primary: async () => {
