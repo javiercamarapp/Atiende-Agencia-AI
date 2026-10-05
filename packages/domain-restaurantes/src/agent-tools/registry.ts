@@ -17,7 +17,8 @@ import { registerCallbackRequest } from "../callback-requests.ts";
 import { getCustomerDetailById, lookupCustomerConPedidoReciente } from "../customers.ts";
 import { OrderValidationError } from "../errors.ts";
 import { DEFAULT_COMPLEMENTS, isTortillaChoice } from "../order-quote.ts";
-import { estaAbiertoAhora } from "../horarios.ts";
+import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch } from "../branch-assignment.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
 import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
@@ -793,13 +794,23 @@ async function dispatchTool(
       const policy = await repo.findBranchPolicy(branch.propertyId);
       let abierto: boolean | null = null;
       let cierraA: string | null = null;
+      const zonaCruda = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
+      const ahora = new Date();
       if (policy.horario && policy.horario.length > 0) {
-        const zona = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
-        const estado = estaAbiertoAhora(policy.horario, new Date(), zona);
+        const estado = estaAbiertoAhora(policy.horario, ahora, zonaCruda);
         abierto = estado.abierto;
         cierraA = estado.cierraA;
       }
+      // Reloj LOCAL de la sucursal: el modelo (sobre todo el de voz, que no trae la hora en su prompt) calculaba "en 40 minutos" con la hora UTC y guardaba
+      // la recogida 6 h tarde, o "hoy" dos dias atras (QA-PM-R2-voz-03 / reglas-04). Con esto calcula sobre la hora de la sucursal.
+      const zona = resolverZonaHorariaNegocio(zonaCruda);
+      const parte = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("es-MX", { timeZone: zona, hourCycle: "h23", ...opts }).format(ahora);
       const result = {
+        hora_local: parte({ hour: "2-digit", minute: "2-digit" }),
+        fecha_local: fechaLocal(ahora, zona),
+        dia_semana: parte({ weekday: "long" }),
+        zona_horaria: zona,
+        utc_offset: parte({ timeZoneName: "longOffset" }).replace(/^.*GMT/, "GMT"),
         branch_slug: branch.slug,
         branch_name: branch.name,
         direccion: branch.address,
@@ -910,7 +921,22 @@ async function dispatchTool(
         }
         throw err;
       }
-      return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
+      // (> 60 s: tolera el desfase entre el reloj de la app y el de la base) Un pedido IDENTICO en los ultimos 5 min devuelve el ya registrado (deduplicacion heredada del original): el agente debe saberlo para no decirle al cliente
+      // que su segundo pedido "quedo registrado" cuando en cocina hay uno solo (QA-PM-R2-reglas-15).
+      const registradoHace = Date.now() - Date.parse(String(order.createdAt));
+      const yaExistia = Number.isFinite(registradoHace) && registradoHace > 60_000;
+      return {
+        result: {
+          order: orderToWire(order),
+          ...(yaExistia
+            ? { ya_registrado: true, aviso: "Este pedido idéntico ya estaba registrado hace unos minutos: NO se creó otro (en cocina hay uno solo). Dígaselo al cliente; si quiere dos, pase con una persona (escalar_a_humano)." }
+            : {}),
+        },
+        raw: order,
+        orderId: order.id,
+        propertyId: order.propertyId,
+        ...(yaExistia ? { yaRegistrado: true } : {}),
+      };
     }
     case "registrar_contacto":
     case "escalar_a_humano": {
