@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { completeAppointmentFromPanel, createAppointment, createAppointmentFromPanel, markAppointmentNoShowFromPanel, rescheduleAppointment } from "../src/appointments.ts";
 import { computeCitasResumen } from "../src/resumen.ts";
+import { executeToolCall } from "../src/whatsapp/llm-turn-handler.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { AppointmentConflictError, AppointmentValidationError } from "../src/errors.ts";
 import { buildCitasFixture } from "./fixtures.ts";
@@ -120,5 +121,17 @@ describe("QA R1 citas -- una sucursal no ve las citas de otra (caos-01, caos-02,
     expect(reintento.id).toBe(primera.id);
     await expect(createAppointmentFromPanel(f.repo, base)).rejects.toBeInstanceOf(AppointmentConflictError); // sin llave: 409 honesto
     await expect(createAppointmentFromPanel(f.repo, { ...base, customerPhone: "9997654321", customerName: "Beto", idempotencyKey: "k2" })).rejects.toBeInstanceOf(AppointmentConflictError);
+  });
+});
+
+describe("QA R1 citas -- reglas de horario traslapadas (features-13)", () => {
+  it("QA-citas-R1-features-13: 09:00-17:00 mas 12:15-14:00 el mismo dia no producen horarios encimados ni repetidos", async () => {
+    const f = buildCitasFixture();
+    f.repo.seedAvailabilityRule({ id: randomUUID(), providerId: f.providerId, dayOfWeek: 1, startTime: "12:15", endTime: "14:00", isActive: true });
+    f.repo.seedAvailabilityRule({ id: randomUUID(), providerId: f.providerId, dayOfWeek: 1, startTime: "09:00", endTime: "17:00", isActive: true }); // duplicada exacta
+    const out = await executeToolCall(f.repo, { organizationId: f.organizationId, phone: PHONE, name: "consultar_disponibilidad", input: { provider_id: f.providerId, service_id: f.serviceId, date: LUNES } });
+    const slots = (out.result as { slots: Array<{ starts_at: string; ends_at: string }> }).slots.map((x) => ({ a: Date.parse(x.starts_at), b: Date.parse(x.ends_at) }));
+    expect(slots.some((x, i) => slots.some((y, j) => i !== j && x.a < y.b && y.a < x.b))).toBe(false);
+    expect(slots).toHaveLength(16); // 09:00-17:00 en bloques de 30 min, una sola vez cada uno
   });
 });

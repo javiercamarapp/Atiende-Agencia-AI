@@ -11,6 +11,7 @@
 // fielmente el mapeo real AT423->conflict / AT404->not_found / AT409->conflict del
 // origen sin acoplar el puerto a códigos de error de Postgres.
 import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroResultado, WhatsappAgentConfig, WhatsappAgentConfigRecord, WhatsappConnection } from "./whatsapp/agent-config.ts";
+import type { InsertWaitlistResult, NewWaitlistEntryInput } from "./waitlist-enrollment.ts";
 import type { PlantillaWhatsappAprobada } from "./whatsapp/proactivo.ts";
 import type { PlantillaWhatsappInput, PlantillaWhatsappRecord } from "./whatsapp/plantillas.ts";
 import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
@@ -735,6 +736,9 @@ export interface CitasRepository {
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
   loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]>;
+  /** QA R1 features-12 -- anota a un cliente en `citas.appointment_waitlist` (existe desde 003, sin migracion nueva). Idempotente: una anotacion ACTIVA identica
+   * (mismo telefono, proveedor, servicio, fechas y franja) se devuelve tal cual (`already_waiting`); mas de `maxActivePerPhone` activas por telefono -> `too_many`. */
+  insertWaitlistEntry(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult>;
   /** f2-citas-lista-de-espera — igual que `loadLiveWaitlistCandidates`, pero para
    * sesión de SISTEMA (`auth.uid()` null): `citas.appointment_waitlist` solo tiene
    * policy de RLS de staff (membership), así que el SELECT plano de

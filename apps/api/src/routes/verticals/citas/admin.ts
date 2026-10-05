@@ -30,6 +30,7 @@ import {
   AppointmentNotFoundError,
   AppointmentValidationError,
   computeCitasResumen,
+  enrollInWaitlist,
   createAppointmentFromPanel,
   DEFAULT_LISTA_ESPERA_LIMIT,
   MAX_LISTA_ESPERA_LIMIT,
@@ -1206,6 +1207,64 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         .filter((row) => !serviceId || row.serviceId === null || row.serviceId === serviceId),
     );
     return c.json({ waitlist: filtered.map((row, i) => serializeWaitlistCandidate(row, i + 1)) });
+  });
+
+  interface WaitlistEnrollBody {
+    readonly customer_name?: unknown;
+    readonly customer_phone?: unknown;
+    readonly provider_id?: unknown;
+    readonly service_id?: unknown;
+    readonly preferred_date_from?: unknown;
+    readonly preferred_date_to?: unknown;
+    readonly preferred_time_window?: unknown;
+  }
+
+  // ---- QA R1 features-12 -- INSCRIBIR a un cliente en la lista de espera desde el panel (antes solo existia la lectura y el broadcast: nadie podia anotarse,
+  // asi que el aviso al liberar un horario nunca tenia candidatos). Misma regla que el agente de WhatsApp/voz (`enrollInWaitlist`): idempotente (una anotacion
+  // activa identica se devuelve tal cual, 200) y con tope de anotaciones activas por telefono (409). Mismo guard que el resto del archivo
+  // (requirePropertyMembership, cualquier miembro); la politica de RLS de staff de `citas.appointment_waitlist` (003) es la que autoriza el INSERT. ----
+  app.post("/v1/citas/properties/:propertyId/waitlist", async (c) => {
+    const organizationId = c.get("organizationId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const raw = await readJsonCapped<WaitlistEnrollBody>(c.req.raw, 4 * 1024);
+    const customerPhone = requireNonEmptyString(raw.customer_phone, "customer_phone", 32);
+    const customerName = optionalNonEmptyString(raw.customer_name, "customer_name", 160);
+    const providerId = optionalNonEmptyString(raw.provider_id, "provider_id", 100);
+    const serviceId = optionalNonEmptyString(raw.service_id, "service_id", 100);
+    const preferredDateFrom = optionalNonEmptyString(raw.preferred_date_from, "preferred_date_from", 10);
+    const preferredDateTo = optionalNonEmptyString(raw.preferred_date_to, "preferred_date_to", 10);
+    const preferredTimeWindow = optionalNonEmptyString(raw.preferred_time_window, "preferred_time_window", 20);
+    try {
+      const { created, entry } = await enrollInWaitlist(citasRepo, {
+        organizationId,
+        customerPhone,
+        customerName: customerName ?? null,
+        providerId: providerId ?? null,
+        serviceId: serviceId ?? null,
+        preferredDateFrom: preferredDateFrom ?? null,
+        preferredDateTo: preferredDateTo ?? null,
+        preferredTimeWindow: preferredTimeWindow ?? null,
+      });
+      if (created) {
+        await citasRepo.registrarAuditoria({
+          organizationId,
+          actorUserId: c.get("userId"),
+          action: "lista_espera.inscrita",
+          entityType: "lista_espera",
+          entityId: entry.id,
+          campo: `providerId=${providerId ?? "cualquiera"} serviceId=${serviceId ?? "cualquiera"}`,
+          antes: null,
+          despues: `franja=${entry.preferredTimeWindow}`,
+        });
+      }
+      const fila = sortWaitlistByPosition(await citasRepo.loadLiveWaitlistCandidates(organizationId)).findIndex((r) => r.id === entry.id);
+      return c.json({ waitlist_entry: serializeWaitlistCandidate(entry, fila + 1), created }, created ? 201 : 200);
+    } catch (err) {
+      if (err instanceof AppointmentConflictError) throw Errors.conflict(err.message);
+      if (err instanceof AppointmentNotFoundError) throw Errors.validation(err.message);
+      if (err instanceof AppointmentValidationError) throw Errors.validation(err.message);
+      throw err;
+    }
   });
 
   interface WaitlistBroadcastBody {

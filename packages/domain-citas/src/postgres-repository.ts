@@ -9,6 +9,7 @@
 // interno) — ninguna de ellas usa un `auth.uid()` real (ver diseño Fase 1 §5); la
 // ruta de staff (cancelar desde panel) sí abre sesión con el userId real, que es lo
 // que `cancelAppointmentFromPanel` recibe como `actorUserId`.
+import type { InsertWaitlistResult, NewWaitlistEntryInput } from "./waitlist-enrollment.ts";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { configAgenteDesdeFila, fotoConfigAgente } from "./whatsapp/agent-config.ts";
 import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroResultado, WhatsappAgentConfig, WhatsappAgentConfigRecord, WhatsappConnection } from "./whatsapp/agent-config.ts";
@@ -1495,6 +1496,43 @@ export class PostgresCitasRepository implements CitasRepository {
 
   async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
     await this.db.query(`select citas.complete_messaging_outbox_dead($1, $2, $3);`, [id, attempts, errorClass]);
+  }
+
+  async insertWaitlistEntry(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult> {
+    type Fila = { id: string; customer_phone: string; customer_name: string | null; notified_count: number; provider_id: string | null; service_id: string | null; preferred_date_from: string | null; preferred_date_to: string | null; preferred_time_window: "morning" | "afternoon" | "evening" | "any"; created_at: string };
+    const columnas = "id, customer_phone, customer_name, notified_count, provider_id, service_id, preferred_date_from::text, preferred_date_to::text, preferred_time_window, created_at";
+    const aFila = (r: Fila): WaitlistCandidateRow => ({
+      id: r.id,
+      customerPhone: r.customer_phone,
+      customerName: r.customer_name,
+      notifiedCount: r.notified_count,
+      providerId: r.provider_id,
+      serviceId: r.service_id,
+      preferredDateFrom: r.preferred_date_from,
+      preferredDateTo: r.preferred_date_to,
+      preferredTimeWindow: r.preferred_time_window,
+      createdAt: r.created_at,
+    });
+    // Una sola anotacion activa por (telefono, proveedor, servicio, fechas, franja): reintentar no duplica.
+    const { rows: existentes } = await this.db.query<Fila>(
+      `select ${columnas} from citas.appointment_waitlist
+       where organization_id = $1 and customer_phone = $2 and status = 'active' and expires_at > now()
+         and provider_id is not distinct from $3::uuid and service_id is not distinct from $4::uuid
+         and preferred_date_from is not distinct from $5::date and preferred_date_to is not distinct from $6::date
+         and preferred_time_window = $7
+       order by created_at asc limit 1;`,
+      [input.organizationId, input.customerPhone, input.providerId, input.serviceId, input.preferredDateFrom, input.preferredDateTo, input.preferredTimeWindow],
+    );
+    if (existentes[0]) return { outcome: "already_waiting", entry: aFila(existentes[0]) };
+    const { rows: conteo } = await this.db.query<{ n: string }>(`select count(*)::text as n from citas.appointment_waitlist where organization_id = $1 and customer_phone = $2 and status = 'active' and expires_at > now();`, [input.organizationId, input.customerPhone]);
+    if (Number(conteo[0]?.n ?? "0") >= maxActivePerPhone) return { outcome: "too_many" };
+    const { rows } = await this.db.query<Fila>(
+      `insert into citas.appointment_waitlist (organization_id, customer_phone, customer_name, provider_id, service_id, preferred_date_from, preferred_date_to, preferred_time_window)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       returning ${columnas};`,
+      [input.organizationId, input.customerPhone, input.customerName, input.providerId, input.serviceId, input.preferredDateFrom, input.preferredDateTo, input.preferredTimeWindow],
+    );
+    return { outcome: "created", entry: aFila(rows[0]!) };
   }
 
   async loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]> {

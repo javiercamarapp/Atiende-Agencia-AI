@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { MAX_SYNC_ATTEMPTS } from "./calendar-sync.ts";
 import { MENSAJES_CONFIG_POR_OMISION as MENSAJES_CONFIG_POR_OMISION_MEM, fotoConfigMensajes } from "./whatsapp/message-config.ts";
 import { AGENTE_CONFIG_POR_OMISION } from "./whatsapp/agent-config.ts";
+import type { InsertWaitlistResult, NewWaitlistEntryInput } from "./waitlist-enrollment.ts";
 import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroResultado, WhatsappAgentConfig, WhatsappAgentConfigRecord, WhatsappConnection } from "./whatsapp/agent-config.ts";
 import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
 import type { PlantillaWhatsappAprobada } from "./whatsapp/proactivo.ts";
@@ -1270,6 +1271,43 @@ export class InMemoryCitasRepository implements CitasRepository {
     row.attempts = attempts;
     row.lastErrorClass = errorClass.slice(0, 120);
     row.claimedAt = null;
+  }
+
+  async insertWaitlistEntry(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult> {
+    const vivas = [...this.waitlist.values()].filter((w) => w.organizationId === input.organizationId && w.customerPhone === input.customerPhone && w.status === "active" && Date.parse(w.expiresAt) > Date.now());
+    const identica = vivas.find(
+      (w) =>
+        w.providerId === input.providerId &&
+        w.serviceId === input.serviceId &&
+        w.preferredDateFrom === input.preferredDateFrom &&
+        w.preferredDateTo === input.preferredDateTo &&
+        w.preferredTimeWindow === input.preferredTimeWindow,
+    );
+    const aFila = (w: StoredWaitlistRow): WaitlistCandidateRow => ({
+      id: w.id,
+      customerPhone: w.customerPhone,
+      customerName: w.customerName,
+      notifiedCount: w.notifiedCount,
+      providerId: w.providerId,
+      serviceId: w.serviceId,
+      preferredDateFrom: w.preferredDateFrom,
+      preferredDateTo: w.preferredDateTo,
+      preferredTimeWindow: w.preferredTimeWindow,
+      createdAt: w.createdAt,
+    });
+    if (identica) return { outcome: "already_waiting", entry: aFila(identica) };
+    if (vivas.length >= maxActivePerPhone) return { outcome: "too_many" };
+    const id = this.seedWaitlistEntry({
+      organizationId: input.organizationId,
+      customerPhone: input.customerPhone,
+      customerName: input.customerName,
+      providerId: input.providerId,
+      serviceId: input.serviceId,
+      preferredDateFrom: input.preferredDateFrom,
+      preferredDateTo: input.preferredDateTo,
+      preferredTimeWindow: input.preferredTimeWindow,
+    });
+    return { outcome: "created", entry: aFila(this.waitlist.get(id)!) };
   }
 
   async loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]> {
