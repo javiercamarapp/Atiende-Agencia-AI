@@ -100,7 +100,11 @@ describe("getCustomerDetailById — Fase 5 back-office CORE (ficha de admin por 
 
     const customer = await fixture.repo.findCustomerByPhone(fixture.organizationId, phone);
     const byId = await getCustomerDetailById(fixture.repo, fixture.organizationId, customer!.id);
-    expect(byId).toEqual(byPhone);
+    // Cliente 360: por telefono (agente) llegan ademas domicilios con etiqueta, gustos y pedidos anteriores; la ficha del staff
+    // por id trae lo de siempre y su detalle completo sale de `cliente_ficha` (ver cliente-360/).
+    if (byPhone.isNew) throw new Error("se esperaba un cliente conocido");
+    const { domicilios: _d, gustos: _g, pedidosAnteriores: _p, requiereConfirmacionSucursal: _r, ...comun } = byPhone;
+    expect(byId).toEqual(comun);
   });
 
   it("null cuando el id no existe", async () => {
