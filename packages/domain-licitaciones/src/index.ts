@@ -611,3 +611,5 @@ export type {
 } from "./post-adjudicacion.ts";
 export { InMemoryPostAdjudicacionRepository, PostgresPostAdjudicacionRepository } from "./post-adjudicacion-repository.ts";
 export type { GarantiaCreate, InMemoryPostAdjudicacionOptions, PostAdjudicacionActor, PostAdjudicacionRepository } from "./post-adjudicacion-repository.ts";
+export { AUDIT_ENTITIES, AUDIT_DEFAULT_LIMIT, AUDIT_MAX_LIMIT, isAuditEntity, sanitizeCorrelationId, newCorrelationId, pickAuditFields, appendAuditoria, listAuditoria } from "./audit-trail.ts";
+export type { AuditEntity, AuditTrailInput, AuditTrailEntry, AuditTrailFilters, AuditTrailPage } from "./audit-trail.ts";
