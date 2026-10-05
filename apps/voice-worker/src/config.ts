@@ -32,7 +32,12 @@ export interface ConfigWorker {
   readonly apiBaseUrl: string;
   readonly internalSecret: string;
   readonly geminiApiKey: string | null;
+  /** `vertex` = el escalon 1 va por Vertex AI (cuenta de servicio) en lugar de la Gemini API; hoy NO se activa (`GEMINI_BACKEND` ausente = `api`). */
+  readonly geminiBackend: "api" | "vertex";
+  readonly vertex: { readonly project: string; readonly location: string; readonly serviceAccountJson: string } | null;
   readonly openrouterApiKey: string | null;
+  /** Tope de costo por llamada en micro-USD (`VOICE_COSTO_MAX_LLAMADA_USD`); null = el de la plataforma (US$0.50, `COSTO_MAX_LLAMADA_MICRO_USD`). */
+  readonly costoMaxLlamadaMicroUsd: number | null;
   readonly dnis: ReadonlyMap<string, EntradaDnis>;
   /** Tope mensual de plataforma en micro-USD (null = sin tope de plataforma). */
   readonly topeMensualPlataformaMicroUsd: number | null;
@@ -149,7 +154,26 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
   if (!internalSecret) motivos.push("Falta INTERNAL_SECRET (el mismo de la API; registra conversaciones y costos).");
   const gemini = lleno(env.GEMINI_API_KEY) ? env.GEMINI_API_KEY.trim() : null;
   const openrouter = lleno(env.OPENROUTER_API_KEY) ? env.OPENROUTER_API_KEY.trim() : null;
-  if (!gemini && !openrouter) motivos.push("Falta GEMINI_API_KEY u OPENROUTER_API_KEY (ninguna escalera de voz puede abrir).");
+  const backendCrudo = lleno(env.GEMINI_BACKEND) ? env.GEMINI_BACKEND.trim().toLowerCase() : "api";
+  let geminiBackend: "api" | "vertex" = "api";
+  let vertex: ConfigWorker["vertex"] = null;
+  if (backendCrudo === "vertex") {
+    geminiBackend = "vertex";
+    if (!lleno(env.VERTEX_PROJECT)) motivos.push("GEMINI_BACKEND=vertex: falta VERTEX_PROJECT.");
+    if (!lleno(env.VERTEX_SERVICE_ACCOUNT_JSON)) motivos.push("GEMINI_BACKEND=vertex: falta VERTEX_SERVICE_ACCOUNT_JSON (cuenta de servicio con permiso de Vertex AI).");
+    const location = lleno(env.VERTEX_LOCATION) ? env.VERTEX_LOCATION.trim() : "us-central1";
+    if (!/^[a-z]+-[a-z]+[0-9]+$|^us$|^eu$/.test(location)) motivos.push("VERTEX_LOCATION no parece una region de Google Cloud (ej. us-central1).");
+    if (lleno(env.VERTEX_PROJECT) && lleno(env.VERTEX_SERVICE_ACCOUNT_JSON)) vertex = { project: env.VERTEX_PROJECT.trim(), location, serviceAccountJson: env.VERTEX_SERVICE_ACCOUNT_JSON };
+  } else if (backendCrudo !== "api") {
+    motivos.push("GEMINI_BACKEND debe ser api o vertex.");
+  }
+  if (!gemini && !vertex && !openrouter) motivos.push("Falta GEMINI_API_KEY u OPENROUTER_API_KEY (ninguna escalera de voz puede abrir).");
+  let costoMax: number | null = null;
+  if (lleno(env.VOICE_COSTO_MAX_LLAMADA_USD)) {
+    const usd = Number(env.VOICE_COSTO_MAX_LLAMADA_USD);
+    if (!Number.isFinite(usd) || usd <= 0 || usd > 20) motivos.push("VOICE_COSTO_MAX_LLAMADA_USD debe ser un numero entre 0 y 20.");
+    else costoMax = Math.round(usd * 1_000_000);
+  }
   const { tabla, problemas } = parsearTablaDnis(env.VOICE_DNIS_MAP, env);
   motivos.push(...problemas);
   let tope: number | null = null;
@@ -167,7 +191,10 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
     apiBaseUrl,
     internalSecret,
     geminiApiKey: gemini,
+    geminiBackend,
+    vertex,
     openrouterApiKey: openrouter,
+    costoMaxLlamadaMicroUsd: costoMax,
     dnis: tabla,
     topeMensualPlataformaMicroUsd: tope,
     assetsDir: lleno(env.VOICE_ASSETS_DIR) ? env.VOICE_ASSETS_DIR.trim() : "assets",
