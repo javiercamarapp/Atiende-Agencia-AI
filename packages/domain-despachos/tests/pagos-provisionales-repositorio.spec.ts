@@ -147,6 +147,30 @@ describe("PostgresPagosProvisionalesRepository (SAVEPOINT, base sin migrar)", ()
     await expect(session.query("select 1")).resolves.toBeDefined();
   });
 
+  it("D-P3-23: el papel excluye los CFDI con revisión rechazada (not i.excluido_por_revision)", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /from despachos\.pago_cfdi/i, respond: () => [] },
+      { match: /not i\.excluido_por_revision/i, respond: () => [FILA_FACTURA] },
+      { match: /from despachos\.invoice/i, respond: () => [FILA_FACTURA, { ...FILA_FACTURA, id: "inv-rechazado" }] },
+    ]);
+    const base = await new PostgresPagosProvisionalesRepository(session).leerBase(P1, 2026, 7);
+    expect(base.facturas.map((f) => f.id)).toEqual(["inv-1"]);
+  });
+
+  it("REGLA DURA (42703 en excluido_por_revision, base sin migrar): cae a la consulta anterior en la MISMA transacción, sin 25P02 y SIN marcar la base no disponible", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /from despachos\.pago_cfdi/i, respond: () => [] },
+      { match: /not i\.excluido_por_revision/i, respond: () => pgError("42703", 'column i.excluido_por_revision does not exist') },
+      { match: /from despachos\.invoice/i, respond: () => [FILA_FACTURA] },
+      { match: /select 1/, respond: () => [{ ok: 1 }] },
+    ]);
+    const base = await new PostgresPagosProvisionalesRepository(session).leerBase(P1, 2026, 7);
+    expect(base).toMatchObject({ facturasDisponibles: true });
+    expect(base.facturas).toHaveLength(1);
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
+    await expect(session.query("select 1")).resolves.toBeDefined();
+  });
+
   it("más CFDI que el tope: marca truncado (el papel NO se calcula incompleto)", async () => {
     const filas = Array.from({ length: 20_001 }, () => FILA_FACTURA);
     const session = new AbortAwareFakeSession([{ match: /from despachos\.pago_cfdi/i, respond: () => [] }, { match: /from despachos\.invoice/i, respond: () => filas }]);
