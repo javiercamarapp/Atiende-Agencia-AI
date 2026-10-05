@@ -56,6 +56,25 @@ describe("runDiscoverTendersForOrganization", () => {
     expect(runs[0]!.evidence.coverage).toEqual({ expected: 2, obtained: 2 });
   });
 
+  it("REQ-169: los registros ENLAZADOS a otra fuente (huella cruzada) cuentan en la cobertura y en el mensaje", async () => {
+    const csv = csvFixture(["CTR-1,EXP-1,Prov,Contrato Uno,,,,,,1000,MXN,,,,,", "CTR-2,EXP-2,Prov,Contrato Dos,,,,,,2000,MXN,,,,,", "CTR-3,EXP-3,Prov,Contrato Tres,,,,,,3000,MXN,,,,,"]);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(csv, { status: 200, headers: { "content-type": "text/csv" } })));
+    const conEnlazados = new Proxy(repo, {
+      get(target, prop, receiver) {
+        if (prop === "ingestTendersFromSource") return async () => ({ created: 1, updated: 1, linked: 1, tenders: [], conflicts: [] });
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const results = await runDiscoverTendersForOrganization((fn) => fn(conEnlazados), organizationId);
+    const own = results.find((r) => r.source === "compras_mx_historico")!;
+    expect(own.linked).toBe(1);
+    expect(own.message).toContain("1 enlazada(s) a otra fuente");
+    const runs = await repo.listSourceRuns(organizationId, { source: "compras_mx_historico" });
+    expect(runs[0]!.evidence.coverage).toEqual({ expected: 3, obtained: 3 });
+    expect(runs[0]!.evidence.message).toContain("1 enlazada(s) a otra fuente");
+  });
+
   it("reingestar el MISMO externalId actualiza en vez de duplicar", async () => {
     const csvV1 = csvFixture(["CTR-1,EXP-1,Prov,Titulo viejo,,,,,,1000,MXN,,,,,"]);
     vi.stubGlobal("fetch", vi.fn(async () => new Response(csvV1, { status: 200 })));
