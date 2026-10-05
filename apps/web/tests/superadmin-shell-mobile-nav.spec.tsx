@@ -89,7 +89,7 @@ describe("SuperAdminShell — nav móvil", () => {
     for (const sec of SECCIONES) {
       if (!categoriasAbiertas(root).includes(sec.title)) abrirCategoria(root, sec.title);
       expect(categoriasAbiertas(root)).toEqual([sec.title]);
-      expect(linksSidebar(root)).toEqual(["Resumen", ...sec.items.map((i) => i.label)]);
+      expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", ...sec.items.map((i) => i.label)]);
     }
     const pie = [...root.querySelectorAll<HTMLAnchorElement>('aside[aria-label="Navegación principal"] > div a')].map((a) => [a.getAttribute("aria-label"), a.getAttribute("href")]);
     expect(pie).toEqual(PIE_SUPERADMIN.map((p) => [p.label, p.to]));

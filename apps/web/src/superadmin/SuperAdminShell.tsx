@@ -23,7 +23,7 @@ import { CopilotoPanel, ID_PANEL_COPILOTO } from "./components/CopilotoPanel.tsx
 import { ImpersonacionBanner } from "./components/ImpersonacionBanner.tsx";
 import { StepUpDialog } from "./components/StepUpDialog.tsx";
 import { RUTA_COPILOTO } from "./lib/copiloto-cliente.ts";
-import { MOVIL_SUPERADMIN, PIE_SUPERADMIN, RESUMEN, SECCIONES } from "./rutas.ts";
+import { COPILOTO, MOVIL_SUPERADMIN, PIE_SUPERADMIN, RESUMEN, SECCIONES } from "./rutas.ts";
 import { limpiarStepUp } from "./lib/stepup.ts";
 
 export interface SuperAdminShellProps {
@@ -34,7 +34,7 @@ export interface SuperAdminShellProps {
 
 // Resumen arriba (raiz, sin cabecera) + las secciones de Likida con paginas reales (rutas.ts, fuente unica).
 const SECTIONS: SidebarSection[] = [
-  { title: "Resumen", siempreAbierto: true, items: [{ ...RESUMEN }] },
+  { title: "Resumen", siempreAbierto: true, items: [{ ...RESUMEN }, { ...COPILOTO }] },
   ...SECCIONES.map((s) => ({ title: s.title, items: s.items.map((i) => ({ ...i })) })),
 ];
 

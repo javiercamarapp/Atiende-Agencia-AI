@@ -57,12 +57,14 @@ export interface SeccionSuperadmin {
 /** "Resumen": arriba y fuera de las secciones (en Likida, `Inicio`). La pagina es el Resumen de la consola (UNI-RES-superadmin). */
 export const RESUMEN: RutaSuperadmin = { to: "/superadmin", label: "Resumen", icon: LayoutGrid, end: true };
 
+/** "Copiloto" (CHAT-17): el chat con los datos de la plataforma para el superadmin CFO. Va JUSTO DEBAJO de Resumen, en la misma primera seccion (orden de Javier, 4-oct). */
+export const COPILOTO: RutaSuperadmin = { to: "/superadmin/copiloto", label: "Copiloto", icon: Sparkles };
+
 /**
- * Agentes: el Copiloto de plataforma (CHAT-17, primera entrada como en Likida), el Panel de agentes (SA-L-08), las tres fichas de agente (SA-L-09)
+ * Agentes: el Panel de agentes (SA-L-08), las tres fichas de agente (SA-L-09)
  * y Model Ops (SA-L-10). Los demas (Evals, Playground, QA) estan en `PENDIENTES`. Las palancas por agente viven en el Panel y tambien en Interruptores (Sistema).
  */
 export const AGENTES: readonly RutaSuperadmin[] = [
-  { to: "/superadmin/copiloto", label: "Copiloto", icon: Sparkles },
   { to: "/superadmin/agentes", label: "Panel de agentes", icon: Bot },
   { to: "/superadmin/agente-extractor", label: "Agente extractor", icon: FileSearch },
   { to: "/superadmin/agente-conciliacion", label: "Agente de conciliación", icon: Scale },
@@ -110,8 +112,8 @@ export const SECCIONES: readonly SeccionSuperadmin[] = [
   { title: "Sistema", items: SISTEMA },
 ].filter((s) => s.items.length > 0);
 
-/** Lista plana con Resumen primero (la usaran la paleta, el rail y la rejilla del Resumen). */
-export const TODAS_LAS_RUTAS: readonly RutaSuperadmin[] = [RESUMEN, ...SECCIONES.flatMap((s) => s.items)];
+/** Lista plana con Resumen y Copiloto primero (la usaran la paleta, el rail y la rejilla del Resumen). */
+export const TODAS_LAS_RUTAS: readonly RutaSuperadmin[] = [RESUMEN, COPILOTO, ...SECCIONES.flatMap((s) => s.items)];
 
 /**
  * Pie fijo del sidebar. Cada pildora lleva a una pagina real: "Costos de IA" abre Costos y facturacion
