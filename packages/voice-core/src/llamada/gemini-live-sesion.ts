@@ -10,7 +10,7 @@
 // Seguridad: la API key va en la URL del WebSocket (asi lo pide el endpoint de servidor); la URL NUNCA se loguea. Los errores
 // que suben al controlador llevan un codigo corto, nunca el cuerpo del mensaje del proveedor.
 import { VOZ_PLATAFORMA, costoDeUsoGeminiMicroUsd } from "../config-plataforma.ts";
-import type { UsoGemini } from "../config-plataforma.ts";
+import type { ConfigPlataformaVoz, UsoGemini } from "../config-plataforma.ts";
 import { VozNoConfiguradaError, VozProveedorError } from "../provider.ts";
 import type { ToolDefinicion } from "./ejecutor-tools.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "./sesion.ts";
@@ -55,6 +55,10 @@ export function vertexModelPath(v: Pick<VertexLiveOpciones, "project" | "locatio
 export interface GeminiLiveSesionOpciones {
   readonly apiKey: string | null;
   readonly model: string;
+  /** Nombres de herramientas de SOLO LECTURA que pueden correr en paralelo cuando el modelo las pide juntas al inicio de un turno (el resto sigue en serie). */
+  readonly herramientasEnParalelo?: ReadonlySet<string>;
+  /** Sobreescribe el VAD de `VOZ_PLATAFORMA.gemini.vad` (campos sueltos; los demas conservan el valor de la plataforma). */
+  readonly vad?: Partial<ConfigPlataformaVoz["gemini"]["vad"]>;
   /** Sobreescribe `VOZ_PLATAFORMA.gemini.usoReportado` (como se lee `usageMetadata`); por omision el de la plataforma. */
   readonly usoReportado?: "por_turno" | "acumulado";
   /** Presente = Vertex AI en lugar de la Gemini API (la `apiKey` no se usa). */
@@ -73,12 +77,12 @@ export function declaracionesDeHerramientas(defs: readonly ToolDefinicion[]) {
 }
 
 /** Ruta de recurso del modelo en el setup: `models/<id>` en la Gemini API; `projects/.../publishers/google/models/<id>` en Vertex. */
-export function mensajeSetup(model: string, apertura: AperturaLlamada, vertex?: Pick<VertexLiveOpciones, "project" | "location">) {
+export function mensajeSetup(model: string, apertura: AperturaLlamada, vertex?: Pick<VertexLiveOpciones, "project" | "location">, vadOverride?: Partial<ConfigPlataformaVoz["gemini"]["vad"]>) {
   const g = VOZ_PLATAFORMA.gemini;
   // Gemini API: los modelos de audio nativo eligen el idioma solos y NO admiten `languageCode` (idioma = null): el espanol de Mexico se fija en la
   // instruccion. Vertex si lo admite. `thinkingConfig` NUNCA se manda: `gemini-3.8-live` no admite `thinkingLevel` (solo la variante extended-thinking).
   const languageCode = vertex ? g.idiomaVertex : g.idioma;
-  const vad = g.vad;
+  const vad = { ...g.vad, ...vadOverride };
   return {
     setup: {
       model: vertex ? vertexModelPath(vertex, model) : `models/${model}`,
@@ -149,7 +153,7 @@ class SesionGemini implements VozSesionLlamada {
           reject(new VozProveedorError("Gemini no respondió al abrir la sesión (tiempo agotado)."));
         }
       }, this.opts.setupTimeoutMs ?? 10_000);
-      this.socket.onopen = () => this.socket.send(JSON.stringify(mensajeSetup(this.opts.model, apertura, this.opts.vertex)));
+      this.socket.onopen = () => this.socket.send(JSON.stringify(mensajeSetup(this.opts.model, apertura, this.opts.vertex, this.opts.vad)));
       this.socket.onerror = () => {
         if (!listo) {
           clearTimeout(t);
@@ -294,19 +298,24 @@ class SesionGemini implements VozSesionLlamada {
 
   private async herramientas(llamadas: { id?: string; name?: string; args?: Record<string, unknown> }[]): Promise<void> {
     this.pendiente = true;
-    // En SERIE y en el orden que pidio el modelo (equivale a `parallel_tool_calls: false` del agente vivo): una cotizacion y un
-    // crear_pedido pedidos juntos nunca corren a la vez ni compiten por el mismo estado del pedido.
-    const respuestas: { id: string; name: string; response: { output: unknown } | { error: string } }[] = [];
-    for (const [i, c] of llamadas.entries()) {
+    const ejecutarUna = async (c: { id?: string; name?: string; args?: Record<string, unknown> }, i: number): Promise<{ id: string; name: string; response: { output: unknown } | { error: string } }> => {
       const id = c.id ?? `call-${i}`;
       const nombre = c.name ?? "";
       try {
         const salida = await this.h.ejecutarTool({ id, nombre, args: c.args ?? {} });
-        respuestas.push({ id, name: nombre, response: { output: salida } });
+        return { id, name: nombre, response: { output: salida } };
       } catch {
-        respuestas.push({ id, name: nombre, response: { error: "Error interno al ejecutar la herramienta" } });
+        return { id, name: nombre, response: { error: "Error interno al ejecutar la herramienta" } };
       }
-    }
+    };
+    // En SERIE y en el orden que pidio el modelo (equivale a `parallel_tool_calls: false` del agente vivo): una cotizacion y un crear_pedido pedidos juntos nunca
+    // corren a la vez ni compiten por el mismo estado del pedido. UNICA excepcion (latencia): la racha INICIAL de herramientas de solo lectura declaradas en
+    // `herramientasEnParalelo` (buscar cliente / sucursal / producto, sin estado compartido ni dependencia entre si) corre en paralelo; las respuestas conservan el orden pedido.
+    const paralelas = this.opts.herramientasEnParalelo;
+    let racha = 0;
+    while (paralelas && racha < llamadas.length && paralelas.has(llamadas[racha]?.name ?? "")) racha++;
+    const respuestas = racha > 1 ? await Promise.all(llamadas.slice(0, racha).map((c, i) => ejecutarUna(c, i))) : [];
+    for (let i = respuestas.length; i < llamadas.length; i++) respuestas.push(await ejecutarUna(llamadas[i] as { id?: string; name?: string; args?: Record<string, unknown> }, i));
     if (this.cerradaPorNosotros) return;
     this.socket.send(JSON.stringify({ toolResponse: { functionResponses: respuestas } }));
   }

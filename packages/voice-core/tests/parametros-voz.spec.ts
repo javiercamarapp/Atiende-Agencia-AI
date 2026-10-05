@@ -106,6 +106,99 @@ describe("herramientas en serie (equivale a parallel_tool_calls: false del agent
   });
 });
 
+describe("herramientas de solo lectura en paralelo (latencia; las de escritura siguen en serie)", () => {
+  function montarConParalelas(paralelas: ReadonlySet<string>) {
+    const sockets: SocketFalso[] = [];
+    const proveedor = crearProveedorGeminiLlamada({
+      apiKey: "clave-de-prueba-no-real",
+      model: "gemini-3.8-live",
+      herramientasEnParalelo: paralelas,
+      crearSocket: () => {
+        const s = new SocketFalso();
+        sockets.push(s);
+        queueMicrotask(() => {
+          s.onopen?.({});
+          s.servidor({ setupComplete: {} });
+        });
+        return s;
+      },
+    });
+    return { proveedor, sockets };
+  }
+  const LECTURAS = new Set(["buscar_cliente", "buscar_producto", "consultar_sucursal"]);
+
+  async function correr(nombres: string[]) {
+    const { proveedor, sockets } = montarConParalelas(LECTURAS);
+    let activas = 0;
+    let maxActivas = 0;
+    const orden: string[] = [];
+    await proveedor.abrirSesion(
+      APERTURA,
+      manejadores({
+        ejecutarTool: async (l) => {
+          activas += 1;
+          maxActivas = Math.max(maxActivas, activas);
+          orden.push(`ini:${l.nombre}`);
+          await new Promise((r) => setTimeout(r, l.nombre === "buscar_producto" ? 30 : 5));
+          orden.push(`fin:${l.nombre}`);
+          activas -= 1;
+          return { ok: l.nombre };
+        },
+      }),
+    );
+    sockets[0]!.servidor({ toolCall: { functionCalls: nombres.map((name, i) => ({ id: `id${i}`, name, args: {} })) } });
+    await new Promise((r) => setTimeout(r, 120));
+    const resp = (sockets[0]!.enviados.at(-1) as { toolResponse: { functionResponses: { id: string; name: string }[] } }).toolResponse.functionResponses;
+    return { maxActivas, orden, resp };
+  }
+
+  it("la racha inicial de lecturas corre en paralelo y las respuestas conservan el orden pedido aunque terminen al reves", async () => {
+    const r = await correr(["buscar_producto", "buscar_cliente", "consultar_sucursal"]);
+    expect(r.maxActivas).toBe(3);
+    expect(r.orden.slice(0, 3)).toEqual(["ini:buscar_producto", "ini:buscar_cliente", "ini:consultar_sucursal"]);
+    expect(r.orden.indexOf("fin:buscar_cliente")).toBeLessThan(r.orden.indexOf("fin:buscar_producto"));
+    expect(r.resp.map((x) => x.id)).toEqual(["id0", "id1", "id2"]);
+  });
+
+  it("una escritura NUNCA corre a la vez que otra herramienta: lecturas en paralelo, luego cotizar y crear en serie, y una lectura DESPUES de una escritura espera", async () => {
+    const r = await correr(["buscar_cliente", "buscar_producto", "cotizar_pedido", "crear_pedido", "buscar_cliente"]);
+    expect(r.maxActivas).toBe(2);
+    expect(r.orden.slice(4)).toEqual(["ini:cotizar_pedido", "fin:cotizar_pedido", "ini:crear_pedido", "fin:crear_pedido", "ini:buscar_cliente", "fin:buscar_cliente"]);
+    expect(r.resp.map((x) => x.id)).toEqual(["id0", "id1", "id2", "id3", "id4"]);
+  });
+
+  it("sin herramientas declaradas como paralelas (o con una sola lectura) todo sigue en serie", async () => {
+    const { proveedor, sockets } = montarConParalelas(new Set());
+    let activas = 0;
+    let maxActivas = 0;
+    await proveedor.abrirSesion(APERTURA, manejadores({ ejecutarTool: async () => (activas++, (maxActivas = Math.max(maxActivas, activas)), await new Promise((r) => setTimeout(r, 5)), activas--, {}) }));
+    sockets[0]!.servidor({ toolCall: { functionCalls: [{ id: "a", name: "buscar_cliente", args: {} }, { id: "b", name: "buscar_producto", args: {} }] } });
+    await new Promise((r) => setTimeout(r, 60));
+    expect(maxActivas).toBe(1);
+    const sola = await correr(["buscar_cliente", "cotizar_pedido"]);
+    expect(sola.maxActivas).toBe(1);
+  });
+
+  it("un error de una lectura en paralelo no tumba a las demas: esa responde con error y el resto con su resultado", async () => {
+    const { proveedor, sockets } = montarConParalelas(LECTURAS);
+    await proveedor.abrirSesion(APERTURA, manejadores({ ejecutarTool: async (l) => { if (l.nombre === "buscar_producto") throw new Error("boom"); return { ok: true }; } }));
+    sockets[0]!.servidor({ toolCall: { functionCalls: [{ id: "a", name: "buscar_cliente", args: {} }, { id: "b", name: "buscar_producto", args: {} }] } });
+    await new Promise((r) => setTimeout(r, 30));
+    const resp = (sockets[0]!.enviados.at(-1) as { toolResponse: { functionResponses: { id: string; response: Record<string, unknown> }[] } }).toolResponse.functionResponses;
+    expect(resp[0]!.response).toEqual({ output: { ok: true } });
+    expect(resp[1]!.response).toEqual({ error: "Error interno al ejecutar la herramienta" });
+  });
+});
+
+describe("VAD ajustable sin tocar codigo", () => {
+  it("un override parcial cambia solo lo que dice (silencio) y conserva el resto del VAD de la plataforma; null quita la sensibilidad de fin", () => {
+    const base = mensajeSetup("gemini-3.8-live", APERTURA, undefined, { silencioFinMs: 800 }).setup.realtimeInputConfig.automaticActivityDetection as Record<string, unknown>;
+    expect(base).toMatchObject({ silenceDurationMs: 800, prefixPaddingMs: VOZ_PLATAFORMA.gemini.vad.prefijoMs, endOfSpeechSensitivity: "END_SENSITIVITY_HIGH" });
+    const sinSens = mensajeSetup("gemini-3.8-live", APERTURA, undefined, { sensibilidadFin: null }).setup.realtimeInputConfig.automaticActivityDetection as Record<string, unknown>;
+    expect(sinSens).not.toHaveProperty("endOfSpeechSensitivity");
+  });
+});
+
 describe("cascada: temperatura y vocabulario del menu", () => {
   function fetchFalso() {
     const cuerpos: Record<string, unknown>[] = [];

@@ -36,6 +36,8 @@ export interface ConfigWorker {
   readonly geminiBackend: "api" | "vertex";
   readonly vertex: { readonly project: string; readonly location: string; readonly serviceAccountJson: string } | null;
   readonly openrouterApiKey: string | null;
+  /** Ajuste fino del VAD de Gemini (`VOICE_VAD_SILENCIO_MS`, `VOICE_VAD_SENSIBILIDAD_FIN`); vacio = los valores de `VOZ_PLATAFORMA.gemini.vad`. */
+  readonly vad: { readonly silencioFinMs?: number; readonly sensibilidadFin?: "END_SENSITIVITY_HIGH" | "END_SENSITIVITY_LOW" | null };
   /** Tope de costo por llamada en micro-USD (`VOICE_COSTO_MAX_LLAMADA_USD`); null = el de la plataforma (US$0.50, `COSTO_MAX_LLAMADA_MICRO_USD`). */
   readonly costoMaxLlamadaMicroUsd: number | null;
   readonly dnis: ReadonlyMap<string, EntradaDnis>;
@@ -168,6 +170,19 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
     motivos.push("GEMINI_BACKEND debe ser api o vertex.");
   }
   if (!gemini && !vertex && !openrouter) motivos.push("Falta GEMINI_API_KEY u OPENROUTER_API_KEY (ninguna escalera de voz puede abrir).");
+  const vad: { silencioFinMs?: number; sensibilidadFin?: "END_SENSITIVITY_HIGH" | "END_SENSITIVITY_LOW" | null } = {};
+  if (lleno(env.VOICE_VAD_SILENCIO_MS)) {
+    const ms = Number(env.VOICE_VAD_SILENCIO_MS);
+    if (!Number.isInteger(ms) || ms < 100 || ms > 3000) motivos.push("VOICE_VAD_SILENCIO_MS debe ser un entero entre 100 y 3000.");
+    else vad.silencioFinMs = ms;
+  }
+  if (lleno(env.VOICE_VAD_SENSIBILIDAD_FIN)) {
+    const v = env.VOICE_VAD_SENSIBILIDAD_FIN.trim().toLowerCase();
+    if (v === "alta") vad.sensibilidadFin = "END_SENSITIVITY_HIGH";
+    else if (v === "baja") vad.sensibilidadFin = "END_SENSITIVITY_LOW";
+    else if (v === "omitir") vad.sensibilidadFin = null;
+    else motivos.push("VOICE_VAD_SENSIBILIDAD_FIN debe ser alta, baja u omitir.");
+  }
   let costoMax: number | null = null;
   if (lleno(env.VOICE_COSTO_MAX_LLAMADA_USD)) {
     const usd = Number(env.VOICE_COSTO_MAX_LLAMADA_USD);
@@ -194,6 +209,7 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
     geminiBackend,
     vertex,
     openrouterApiKey: openrouter,
+    vad,
     costoMaxLlamadaMicroUsd: costoMax,
     dnis: tabla,
     topeMensualPlataformaMicroUsd: tope,

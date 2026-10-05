@@ -8,7 +8,7 @@ import { crearProveedorCascadaLlamada } from "./llamada/cascada-openrouter.ts";
 import type { PuertoLlmVoz } from "./llamada/cascada-openrouter.ts";
 import { VozNoConfiguradaError } from "./provider.ts";
 import { crearProveedorGeminiLlamada } from "./llamada/gemini-live-sesion.ts";
-import type { CrearSocketLive, VertexLiveOpciones } from "./llamada/gemini-live-sesion.ts";
+import type { CrearSocketLive, GeminiLiveSesionOpciones, VertexLiveOpciones } from "./llamada/gemini-live-sesion.ts";
 
 export interface CredencialesVoz {
   /** `GEMINI_API_KEY`: habilita el escalon 1. */
@@ -25,6 +25,10 @@ export interface DepsPlataformaVoz extends CredencialesVoz {
   readonly crearSocket?: CrearSocketLive;
   /** Adaptador de Vertex AI en lugar de la Gemini API (`GEMINI_BACKEND=vertex`); la `geminiApiKey` deja de usarse para el escalon 1. */
   readonly vertex?: VertexLiveOpciones;
+  /** Herramientas de solo lectura que el escalon de Gemini puede correr en paralelo (ver `GeminiLiveSesionOpciones.herramientasEnParalelo`). */
+  readonly herramientasEnParalelo?: ReadonlySet<string>;
+  /** Ajuste fino del VAD sin tocar codigo (`VOICE_VAD_*` en el worker). */
+  readonly vad?: GeminiLiveSesionOpciones["vad"];
 }
 
 export interface EstadoEscalonVoz {
@@ -60,7 +64,7 @@ export function estadoEscalera(deps: Pick<DepsPlataformaVoz, "geminiApiKey" | "o
 /** Los escalones en el orden de la escalera de plataforma; los que no tienen credencial lanzan `VozNoConfiguradaError` y se saltan. */
 export function crearEscalonesPlataforma(deps: DepsPlataformaVoz): EscalonLlamada[] {
   const config = deps.config ?? VOZ_PLATAFORMA;
-  const gemini = crearProveedorGeminiLlamada({ apiKey: deps.geminiApiKey, model: config.gemini.modelo, ...(deps.vertex ? { vertex: deps.vertex } : {}), ...(deps.crearSocket ? { crearSocket: deps.crearSocket } : {}) });
+  const gemini = crearProveedorGeminiLlamada({ apiKey: deps.geminiApiKey, model: config.gemini.modelo, ...(deps.vertex ? { vertex: deps.vertex } : {}), ...(deps.herramientasEnParalelo ? { herramientasEnParalelo: deps.herramientasEnParalelo } : {}), ...(deps.vad ? { vad: deps.vad } : {}), ...(deps.crearSocket ? { crearSocket: deps.crearSocket } : {}) });
   const cascada = crearProveedorCascadaLlamada({
     apiKey: deps.openrouterApiKey,
     llm: deps.llm ?? { completar: () => Promise.reject(new Error("sin gateway de texto")) },
