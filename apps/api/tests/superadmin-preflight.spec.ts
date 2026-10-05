@@ -210,6 +210,16 @@ describe("preflight: crons", () => {
     expect(porId(vs, "crons.restaurantes.promover-programados").estado).toBe("ok");
   });
 
+  it("el despacho a SoftRestaurant depende del POS: sin latido es aviso (no bloquea); la limpieza de voz solo importa con voz habilitada", () => {
+    const crons = [...CRONS_OK, cron("/internal/restaurantes/softrestaurant-dispatch", "sin_latido"), cron("/internal/restaurantes/voz-huerfanas", "sin_latido")];
+    const conVoz = evaluar({ crons });
+    expect(porId(conVoz, "crons.restaurantes.softrestaurant-dispatch").estado).toBe("aviso");
+    expect(porId(conVoz, "crons.restaurantes.softrestaurant-dispatch").detalle).toContain("No bloquea");
+    expect(porId(conVoz, "crons.restaurantes.voz-huerfanas").estado).toBe("falta");
+    const sinVozHabilitada = evaluar({ crons, hechos: { estado: "ok", dato: sinVoz(HECHOS_COMPLETOS) } });
+    expect(porId(sinVozHabilitada, "crons.restaurantes.voz-huerfanas").estado).toBe("no_aplica");
+  });
+
   it("latidos ilegibles: un solo aviso 'no se pudo medir', nunca 'ok'", () => {
     const vs = evaluar({ crons: null });
     expect(porId(vs, "crons.latidos").estado).toBe("aviso");
@@ -332,6 +342,8 @@ describe("preflight: datos del dueño (checklist consumido, no duplicado)", () =
     const v = porId(evaluar({ hechos: { estado: "ok", dato: h } }), "datos.menu");
     expect(v.estado).toBe("falta");
     expect(v.detalle).toContain("García Lavín");
+    // El detalle del dueño ya nombra la sucursal: no se repite al final.
+    expect(v.detalle.split("García Lavín").length - 1).toBe(1);
     expect(v.como_resolver.enlace).toBe("/restaurantes/los-taquitos-de-pm/productos");
   });
 
