@@ -32,3 +32,4 @@ scripts/eval-copiloto/salida/
 
 # Audios pregrabados de la llamada (se generan una vez con `npm run voz:pregrabados` y viajan en la imagen del worker; no se versionan)
 apps/voice-worker/assets/*.wav
+apps/web/bundle-manifest.json
