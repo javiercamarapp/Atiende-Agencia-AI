@@ -12,11 +12,13 @@
 // criterio exacto que `isAvailable` en admin-catalog.ts (nunca duplicar una ruta
 // solo para togglear un booleano que el PATCH genérico ya cubre).
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { normalizePromotionCode, PROMOTION_CODE_PATTERN, RestaurantesConfigUnavailableError } from "@atiende/domain-restaurantes";
 import type { CanalPedido, Promotion, PromotionType, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { UUID_PATTERN } from "@atiende/domain-restaurantes";
+import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 import { assertAccion } from "./permisos-accion.ts";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -196,6 +198,17 @@ async function conCompatibilidad<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Desde la 065 la policy de promotions solo deja escribir a un owner/admin cuya membresia cubre TODO el alcance de la promocion
+ * (`property_ids` null = toda la organizacion = solo membresia sin acotar). Se valida aqui para dar un 403 claro en vez de que el
+ * 42501 de la policy salga como un 503 de "base sin migrar". Esta API no escribe `property_ids`: una alta siempre es de toda la
+ * organizacion, y editar una promocion existente exige que su alcance (`existing.propertyIds`) quede dentro del de la membresia. */
+async function assertAlcancePromocion(deps: AppDeps, c: Context<CoreAuthHonoEnv>, alcance: readonly string[] | null | undefined): Promise<void> {
+  const membresia = await resolveEffectivePropertyIds(deps, c, c.get("organizationId"), null);
+  if (membresia === null) return;
+  if (alcance && alcance.length > 0 && alcance.every((id) => membresia.includes(id))) return;
+  throw Errors.forbidden("Tu acceso está limitado a algunas sucursales: solo un administrador con acceso a todas puede crear o cambiar promociones de toda la organización.");
+}
+
 function serializePromotion(p: Promotion) {
   return {
     id: p.id,
@@ -265,6 +278,7 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
 
   app.post("/v1/restaurantes/:propertyId/admin/promotions", async (c) => {
     assertAccion(c, "promociones.editar");
+    await assertAlcancePromocion(deps, c, null);
     const repo = deps.restaurantesRepo(c.get("db"));
     const raw = await readJsonCapped<PromotionBody>(c.req.raw, 8 * 1024);
 
@@ -349,6 +363,7 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
 
     const existing = await repo.findPromotion(organizationId, promotionId);
     if (!existing) throw Errors.notFound("Promoción no encontrada.");
+    await assertAlcancePromocion(deps, c, existing.propertyIds);
 
     const code = raw.code !== undefined ? requireCode(raw.code) : undefined;
     if (code !== undefined && code !== existing.code) {
