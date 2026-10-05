@@ -8,6 +8,7 @@
 // todas pasan por aquí, así que el mismo código de negocio corre igual en tests y
 // en producción.
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
+import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type {
@@ -32,7 +33,10 @@ import type {
   Customer,
   CustomerAddress,
   CustomerListFilter,
+  CarteraKpis,
   CustomerListPage,
+  FilaImportacionCliente,
+  ResultadoImportacionClientes,
   CustomerTier,
   KnownZone,
   NearestBranchMatch,
@@ -231,6 +235,9 @@ export interface RestaurantesRepository {
   consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean>;
 
   resolveOrganizationByPhoneNumberId(phoneNumberId: string): Promise<string | null>;
+  /** Contadores DETERMINISTAS del agente por conversacion de WhatsApp ("no entiendo" y "colonia no reconocida" seguidos, migracion 047). Devuelve el
+   * contador resultante, o `null` si no hay donde llevarlo (base sin migrar o conversacion inexistente): el llamador degrada, nunca falla. */
+  contadorAgenteWhatsApp(organizationId: string, phone: string, clave: ClaveContadorAgente, accion: "incrementar" | "reiniciar"): Promise<number | null>;
   claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean>;
   claimWhatsAppConversation(organizationId: string, phoneHash: string, messageId: string, leaseSeconds: number): Promise<boolean>;
   appendWhatsAppUserMessageOnce(organizationId: string, phone: string, message: ConversationMessage): Promise<readonly ConversationMessage[]>;
@@ -434,6 +441,15 @@ export interface RestaurantesRepository {
 
   findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
   listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;
+  /** Migracion 054. Sin ella: `{ disponible: false }` (nunca un error). */
+  getCarteraKpis(organizationId: string): Promise<CarteraKpis>;
+  /**
+   * Migracion 054: importa la cartera (filas ya normalizadas, hasta 5,000), upsert por (organizacion, telefono) que NO pisa el nombre ni la nota
+   * conocidos, SIN crear pedidos y SIN mandar mensajes. Idempotente por `huella` (sha-256 hex del archivo). Sin la migracion: `{ disponible: false }`.
+   */
+  importarClientes(organizationId: string, huella: string, filas: readonly FilaImportacionCliente[]): Promise<ResultadoImportacionClientes>;
+  /** Nota interna del cliente (migracion 054, columna `notes`); `null` si no hay o la base aun no la tiene. */
+  getCustomerNotes(organizationId: string, customerId: string): Promise<string | null>;
 
   // ---- Fase 8 — superficie real del rol "repartidor" (ver diseño, domain-restaurantes/
   // src/roles.ts::REPARTIDOR_ROLES). Todos estos métodos acotan la consulta a

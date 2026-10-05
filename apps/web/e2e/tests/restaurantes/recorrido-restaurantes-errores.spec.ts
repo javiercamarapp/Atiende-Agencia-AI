@@ -6,7 +6,7 @@ import type { Locator, Page } from "@playwright/test";
 
 interface Caso {
   readonly sub: string;
-  readonly ruta: string;
+  readonly ruta: string | RegExp;
   readonly listo: (page: Page) => Locator;
   /** 503 en las rutas de voz/WhatsApp significa "servicio no disponible aun" (estado honesto por diseno): ahi la falla es un 500. */
   readonly status?: number;
@@ -16,7 +16,7 @@ interface Caso {
 }
 
 const CASOS: readonly Caso[] = [
-  { sub: "", ruta: "/kpis/sales", listo: (p) => p.getByText("Número de órdenes") },
+  { sub: "", ruta: /\/kpis\/sales(\?|$)/, listo: (p) => p.getByText("Número de órdenes") },
   { sub: "/pedidos", ruta: "/orders?status=pending", listo: (p) => p.getByText("Marisol Pech").first() },
   { sub: "/historial", ruta: "/orders", listo: (p) => p.getByText("Marisol Pech").first() },
   { sub: "/productos", ruta: "/products", listo: (p) => p.getByText("Tacos al pastor (orden)").first() },

@@ -454,7 +454,7 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
         const resolverExperience: CompanyExperienceRecord[] = companyExperience.map((e) => ({ id: e.id, companyId: organizationId, description: e.description, evidenceDocId: e.evidenceDocId, approvalStatus: e.approvalStatus }));
 
         const companySigners = await repo.listCompanySigners(organizationId);
-        const resolverSigners: CompanySigner[] = companySigners.map((s) => ({ id: s.id, companyId: organizationId, name: s.name, role: s.role, authorized: s.authorized }));
+        const resolverSigners: CompanySigner[] = companySigners.map((s) => ({ id: s.id, companyId: organizationId, name: s.name, role: s.role, authorized: s.authorized, approvalStatus: s.approvalStatus }));
 
         const companyData = new CompanyDataService(
           new InMemoryCompanyDataResolver({ documents: resolverDocuments, capabilities: resolverCapabilities, experience: resolverExperience, signers: resolverSigners }),

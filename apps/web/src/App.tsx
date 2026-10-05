@@ -17,6 +17,7 @@ const RestaurantesShell = cargaPerezosa(() => import("./verticals/restaurantes/R
 const ProductosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Productos.tsx"), "ProductosPage");
 const SucursalesPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Sucursales.tsx"), "SucursalesPage");
 const PedidosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Pedidos.tsx"), "PedidosPage");
+const RestaurantesComandasPosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/ComandasPos.tsx"), "ComandasPosPage");
 const HistorialPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Historial.tsx"), "HistorialPage");
 const RestaurantesClienteFichaPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Clientes.tsx"), "ClienteFichaPage");
 const RestaurantesClientesListPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Clientes.tsx"), "ClientesListPage");
@@ -266,6 +267,8 @@ const RestaurantesDashboardRoute = shellRoute(RestaurantesShell, "/restaurantes/
 const RestaurantesProductosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <ProductosPage {...ctx} />);
 const RestaurantesSucursalesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <SucursalesPage {...ctx} />);
 const RestaurantesPedidosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <PedidosPage {...ctx} />);
+// Captura asistida de SoftRestaurant: cola de comandas que alguien teclea en el POS (owner/admin/staff; el servidor exige MANAGER_ROLES).
+const RestaurantesComandasPosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesComandasPosPage {...ctx} />);
 const RestaurantesHistorialRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <HistorialPage {...ctx} />);
 const RestaurantesClientesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesClientesListPage {...ctx} />);
 
@@ -1147,6 +1150,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/productos" element={<RestaurantesProductosRoute />} />
         <Route path="/restaurantes/:orgSlug/sucursales" element={<RestaurantesSucursalesRoute />} />
         <Route path="/restaurantes/:orgSlug/pedidos" element={<RestaurantesPedidosRoute />} />
+        <Route path="/restaurantes/:orgSlug/comandas-pos" element={<RestaurantesComandasPosRoute />} />
         <Route path="/restaurantes/:orgSlug/historial" element={<RestaurantesHistorialRoute />} />
         <Route path="/restaurantes/:orgSlug/clientes" element={<RestaurantesClientesRoute />} />
         <Route path="/restaurantes/:orgSlug/clientes/:customerId" element={<RestaurantesClienteFichaRoute />} />

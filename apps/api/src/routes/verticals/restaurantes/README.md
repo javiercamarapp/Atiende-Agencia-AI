@@ -48,8 +48,11 @@ Fase 5 agrega el back-office CORE (CRUD real, con `authMiddleware` +
   por cursor) y cambio de estado real (`PATCH
   .../admin/orders/:orderId/status`, validado por la máquina de estados de
   `@atiende/domain-restaurantes::order-lifecycle.ts`).
-- `admin-customers.ts` — listado/búsqueda (`GET .../admin/customers`) y ficha
-  (`GET .../admin/customers/:customerId`, mismo shape que `lookupCustomer`).
+- `admin-customers.ts` — listado/búsqueda (`GET .../admin/customers`, con `nivel`, `frecuencia`, `inactivoDias` y `branchId` resueltos en el
+  servidor por la migración 054), KPIs de cartera (`GET .../admin/customers/kpis`, teléfono del cliente más frecuente enmascarado), importación de
+  cartera (`POST .../admin/customers/import/preview` no escribe; `POST .../admin/customers/import`: tope de 5,000 renglones, idempotente por la huella
+  SHA-256 del archivo, bitácora, 503 honesto sin la migración 054) y ficha (`GET .../admin/customers/:customerId`, mismo shape que `lookupCustomer`
+  más la nota interna).
 
 Cuentas/accesos de staff, notificaciones, promociones/marketing, panel de
 superadmin, "pregunta a tus datos" y configuración del agente de voz/WhatsApp
