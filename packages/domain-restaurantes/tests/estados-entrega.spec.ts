@@ -8,6 +8,7 @@ import { createRestaurantesMessagingOutboxPort } from "../src/whatsapp/outbox-ad
 import { UMBRAL_AVISOS_AGRUPADOS, procesarEstadosEntrega } from "../src/whatsapp/estados-entrega.ts";
 import type { EmisionEntregaFallida } from "../src/whatsapp/estados-entrega.ts";
 import { PostgresRestaurantesRepository } from "../src/postgres-repository.ts";
+import { PostgresWhatsappKpiRepository, resumirWhatsappEntrega } from "../src/whatsapp-kpi/index.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 import { AbortAwareFakeSession } from "./support/aborting-fake-session.ts";
 import type { CreateOrderInput } from "../src/types.ts";
@@ -277,5 +278,23 @@ describe("PostgresRestaurantesRepository: estados de entrega contra la base SIN 
     const db = new AbortAwareFakeSession([{ match: /complete_messaging_outbox_sent\(\$1\)/, respond: () => [] }]);
     await new PostgresRestaurantesRepository(db).markMessagingOutboxSent(OUTBOX_ID);
     expect(db.calls.some((c) => c.includes("savepoint"))).toBe(false);
+  });
+});
+
+describe("PostgresWhatsappKpiRepository.getEntregaDiaria contra la base SIN la 066 (AbortAwareFakeSession)", () => {
+  it("42883 -> disponible:false y la sesion sigue utilizable (SAVEPOINT); la base migrada mapea la serie", async () => {
+    const sinMigrar = new AbortAwareFakeSession([
+      { match: /whatsapp_entrega_diaria/, respond: () => funcionInexistente("restaurantes.whatsapp_entrega_diaria(uuid, uuid, date, date)") },
+      { match: /select 1/, respond: () => [{ ok: 1 }] },
+    ]);
+    expect(await new PostgresWhatsappKpiRepository(sinMigrar).getEntregaDiaria(ORG, ORG, "2026-03-10", "2026-03-10")).toEqual({ disponible: false, valor: [] });
+    await expect(sinMigrar.query("select 1")).resolves.toEqual({ rows: [{ ok: 1 }] });
+
+    const migrada = new AbortAwareFakeSession([
+      { match: /whatsapp_entrega_diaria/, respond: () => [{ fecha: "2026-03-10", enviados: 5, entregados: 3, leidos: 1, fallidos: 2, sin_estado: "0", fallos_por_motivo: { fuera_de_ventana: 2 } }] },
+    ]);
+    const l = await new PostgresWhatsappKpiRepository(migrada).getEntregaDiaria(ORG, ORG, "2026-03-10", "2026-03-10");
+    expect(l.valor).toEqual([{ fecha: "2026-03-10", enviados: 5, entregados: 3, leidos: 1, fallidos: 2, sinEstado: 0, fallosPorMotivo: { fuera_de_ventana: 2 } }]);
+    expect(resumirWhatsappEntrega(l.valor)).toMatchObject({ entregaPct: 60, lecturaPct: 33.3 });
   });
 });
