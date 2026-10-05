@@ -18,8 +18,8 @@
 // cancelado (la funcion SQL solo actualiza filas en `programado`). Abre su PROPIA sesion de sistema (la
 // funcion `restaurantes.promover_pedidos_programados` con organizacion nula solo la acepta esa sesion).
 import { Hono } from "hono";
-import { avisarProgramadosPromovidos, barrerAvisosOperativos, esPromocionAtrasada, generarBorradoresMarketing, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
-import type { ResultadoBarridoAvisos, ResultadoBorradores } from "@atiende/domain-restaurantes";
+import { avisarProgramadosPromovidos, barrerAvisosOperativos, barrerSilencioWhatsapp, esPromocionAtrasada, generarBorradoresMarketing, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
+import type { ResultadoBarridoAvisos, ResultadoBorradores, ResultadoSilencio } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
@@ -102,6 +102,15 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         logEvent(c, "error", "restaurantes_marketing_borradores_fallidos", { error: err instanceof Error ? err.message : String(err) });
       }
       logEvent(c, "info", "restaurantes_marketing_borradores", { ...marketing });
+      // Alerta al dueño «WhatsApp silencioso» (autopiloto 2): otra unidad independiente del mismo tick, con el reloj absoluto (el dedupe usa el dia de
+      // Merida). Una falla solo se registra: no toca la promocion, las comandas ni los demas avisos.
+      let silencio: ResultadoSilencio = { disponible: false, candidatos: 0, emitidas: 0, sinNuevas: 0, errores: 0 };
+      try {
+        silencio = await deps.engine.withAppSession({ userId: null }, (db) => barrerSilencioWhatsapp(db, { now: new Date() }));
+      } catch (err) {
+        logEvent(c, "error", "restaurantes_whatsapp_silencio_fallido", { error: err instanceof Error ? err.message : String(err) });
+      }
+      logEvent(c, "info", "restaurantes_whatsapp_silencio", { ...silencio });
       const respuesta = c.json({
         ok: true,
         status: resultado.disponible ? "ok" : "not_available",
@@ -113,6 +122,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         atrasadosCocina: resultado.promovidos.filter((o) => esPromocionAtrasada(o)).length,
         avisos,
         marketing,
+        silencio,
       });
       // Una corrida con comandas que no se pudieron encolar NO es 'ok': el latido y la bitacora la marcan (el cron no
       // reintenta por HTTP; la proxima corrida reconcilia).

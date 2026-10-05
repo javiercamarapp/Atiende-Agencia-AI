@@ -35,6 +35,7 @@ import { restaurantesAgentePreviewRoutes } from "./agente-preview.ts";
 import { restaurantesVozInternoRoutes } from "./voz-interno.ts";
 import { restaurantesVozKpiRoutes } from "./voz-kpi.ts";
 import { restaurantesAdminMarketingRoutes } from "./admin-marketing.ts";
+import { restaurantesAdminAlertasDuenioRoutes } from "./admin-alertas-duenio.ts";
 import { restaurantesWhatsappKpiRoutes } from "./whatsapp-kpi.ts";
 import { restaurantesConversacionesAdminRoutes } from "./conversaciones-admin.ts";
 import { restaurantesAdminVoiceSecretRoutes } from "./admin-voice-secret.ts";
@@ -103,6 +104,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesWhatsappKpiRoutes(deps));
   // Autopiloto 2 (migración 052): campañas de reactivación de clientes inactivos con aprobación de un clic (owner/admin).
   app.route("/", restaurantesAdminMarketingRoutes(deps));
+  // Autopiloto 2: umbrales configurables de las alertas al dueño («WhatsApp silencioso»), owner/admin.
+  app.route("/", restaurantesAdminAlertasDuenioRoutes(deps));
   // PM PR-9 -- privacidad: solicitudes ARCO + configuración (panel, owner/admin) y lado sistema
   // (purga por retención, apertura/consentimiento/ARCO de voz). Migración 030.
   app.route("/", restaurantesPrivacidadRoutes(deps));
