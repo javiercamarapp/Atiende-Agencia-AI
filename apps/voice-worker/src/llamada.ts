@@ -120,31 +120,28 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     return { resultado: "api_no_disponible", costoMicroUsd: 0, conversationId: null, orderId: null, latenciasMs: [], modoEntrada: null };
   }
 
-  // 2) Conversacion registrada (no fatal: si el registrador falla, la llamada se atiende igual, solo sin historial).
+  // 2) SEGUNDA OLA, en paralelo (antes eran viajes secuenciales a la API antes de que el agente pudiera saludar; la latencia de arranque era la suma):
+  //    conversacion registrada (no fatal: si el registrador falla se atiende igual, solo sin historial), aviso de privacidad por voz (migracion 030: guion de apertura
+  //    y evidencia de entrega; no fatal: si falla, el agente saluda sin el aviso y la llamada se atiende SIN grabar) y token de llamada (el secreto de la sucursal
+  //    solo sirve para esto; con telefono no confiable NO se emite aun: lo emite `confirmarTelefono`). El token y el aviso se piden DESPUES del contexto, nunca
+  //    antes: si el contexto falla no se deja evidencia de un aviso que no se dijo.
+  let callToken: string | null = null;
+  const emitirToken = async (callerPhone: string): Promise<void> => {
+    callToken = await deps.api.pedirToken({ orgSlug: entrada.orgSlug, secreto: entrada.secreto, callId, callerPhone, branchSlug: entrada.branchSlug });
+  };
+  const codigoDe = (err: unknown): string => (err instanceof ErrorApi ? String(err.estado ?? "red") : "error");
+  const [convR, avisoR, tokenR] = await Promise.allSettled([
+    deps.api.iniciarConversacion({ organizationId, propertyId, externalId: callId, voiceId: contexto.voiceId, callerPhone: telefono, startedAt: new Date(iniciadaEn).toISOString() }),
+    deps.api.privacidadApertura({ organizationId, callerPhone: telefono }),
+    !telefonoPendiente && telefono !== null ? emitirToken(telefono) : Promise.resolve(),
+  ]);
   let conversationId: string | null = null;
-  try {
-    conversationId = await deps.api.iniciarConversacion({ organizationId, propertyId, externalId: callId, voiceId: contexto.voiceId, callerPhone: telefono, startedAt: new Date(iniciadaEn).toISOString() });
-  } catch (err) {
-    log("conversacion_no_registrada", { codigo: err instanceof ErrorApi ? String(err.estado ?? "red") : "error" });
-  }
-  const modo = modoEntradaDeLlamada(entrada.modoEntrada, tel.desviadaDesde);
-  if (conversationId) {
-    try {
-      await deps.api.marcarModoEntrada({ organizationId, conversationId, modo, franja: franjaDeHora(contexto.horaLocal) });
-    } catch (err) {
-      // Base sin migrar (404/503): "no disponible aun", no es una falla de la llamada.
-      log("modo_entrada_no_registrado", { codigo: err instanceof ErrorApi ? String(err.estado ?? "red") : "error" });
-    }
-  }
-
-  // Aviso de privacidad por voz (migracion 030): el guion de apertura y la evidencia de que se entrego. No fatal: si falla, el agente saluda sin el
-  // aviso y la llamada se atiende SIN grabar (sin consentimiento la base no guarda turnos).
+  if (convR.status === "fulfilled") conversationId = convR.value;
+  else log("conversacion_no_registrada", { codigo: codigoDe(convR.reason) });
   let aviso: AperturaPrivacidad | null = null;
-  try {
-    aviso = await deps.api.privacidadApertura({ organizationId, callerPhone: telefono });
-  } catch (err) {
-    log("apertura_privacidad_fallo", { codigo: err instanceof ErrorApi ? String(err.estado ?? "red") : "error" });
-  }
+  if (avisoR.status === "fulfilled") aviso = avisoR.value;
+  else log("apertura_privacidad_fallo", { codigo: codigoDe(avisoR.reason) });
+  const modo = modoEntradaDeLlamada(entrada.modoEntrada, tel.desviadaDesde);
 
   const cerrarConversacion = async (resultado: VozResultado, orderId: string | null): Promise<void> => {
     if (!conversationId) return;
@@ -159,31 +156,28 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   const tope = resolverTopeMensualMicroUsd(deps.config.topeMensualPlataformaMicroUsd, entrada.topeMensualUsd);
   const decision = evaluarInicioLlamada({ habilitado: contexto.habilitado, gastoMesMicroUsd: contexto.gastoMesMicroUsd, topeMensualMicroUsd: tope, horaLocal: contexto.horaLocal });
 
-  // Aviso in-app al owner/admin cuando el gasto del mes llega al 80 % del tope y cuando lo alcanza (el servidor deduplica por organizacion y mes). No fatal.
+  // Tareas NO criticas que ya no retrasan el saludo (corren en segundo plano y se esperan al terminar la llamada, para que ninguna se pierda ni quede colgando):
+  //  - modo de entrada / franja del KPI (base sin migrar: 404/503 = "no disponible aun", no es una falla de la llamada);
+  //  - aviso in-app al owner/admin cuando el gasto del mes llega al 80 % del tope y cuando lo alcanza (el servidor deduplica por organizacion y mes).
+  const segundoPlano: Promise<void>[] = [];
+  if (conversationId) {
+    const id = conversationId;
+    segundoPlano.push(
+      deps.api.marcarModoEntrada({ organizationId, conversationId: id, modo, franja: franjaDeHora(contexto.horaLocal) }).catch((err: unknown) => log("modo_entrada_no_registrado", { codigo: codigoDe(err) })),
+    );
+  }
   if (tope !== null && contexto.gastoMesMicroUsd !== null && contexto.gastoMesMicroUsd * 100 >= tope * 80) {
     const nivel = contexto.gastoMesMicroUsd >= tope ? "alcanzado" : "80";
-    try {
-      await deps.api.avisarTopeMensual({ organizationId, propertyId, nivel, usadoMicroUsd: contexto.gastoMesMicroUsd, limiteMicroUsd: tope });
-    } catch (err) {
-      log("aviso_tope_no_enviado", { codigo: err instanceof ErrorApi ? String(err.estado ?? "red") : "error" });
-    }
+    segundoPlano.push(deps.api.avisarTopeMensual({ organizationId, propertyId, nivel, usadoMicroUsd: contexto.gastoMesMicroUsd, limiteMicroUsd: tope }).catch((err: unknown) => log("aviso_tope_no_enviado", { codigo: codigoDe(err) })));
   }
 
-  // 4) Token de llamada (el secreto de la sucursal solo sirve para esto). Con telefono no confiable NO se emite aun: lo emite `confirmarTelefono`.
-  let callToken: string | null = null;
-  const emitirToken = async (callerPhone: string): Promise<void> => {
-    callToken = await deps.api.pedirToken({ orgSlug: entrada.orgSlug, secreto: entrada.secreto, callId, callerPhone, branchSlug: entrada.branchSlug });
-  };
-  if (!telefonoPendiente && telefono !== null) {
-    try {
-      await emitirToken(telefono);
-    } catch (err) {
-      log("token_fallo", { codigo: err instanceof ErrorApi ? String(err.estado ?? "red") : "error" });
-      await reproducirSolo("proveedor_caido");
-      await tel.colgar();
-      await cerrarConversacion("escalado", null);
-      return { resultado: "api_no_disponible", costoMicroUsd: 0, conversationId, orderId: null, latenciasMs: [], modoEntrada: modo };
-    }
+  if (tokenR.status === "rejected") {
+    log("token_fallo", { codigo: codigoDe(tokenR.reason) });
+    await reproducirSolo("proveedor_caido");
+    await tel.colgar();
+    await cerrarConversacion("escalado", null);
+    await Promise.allSettled(segundoPlano);
+    return { resultado: "api_no_disponible", costoMicroUsd: 0, conversationId, orderId: null, latenciasMs: [], modoEntrada: modo };
   }
 
   // 5) Controlador + escalera + puente.
@@ -399,6 +393,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     await Promise.allSettled(puente.latenciasMs.map((ms) => deps.api.registrarEvento({ organizationId, propertyId, conversationId, tipo: "latencia_voz", latenciaMs: Math.round(ms) })));
   }
   await cerrarConversacion(resultado, orderId);
+  await Promise.allSettled(segundoPlano);
   log("atencion_fin", { resultado, costoMicroUsd, propertyId, organizationId });
   return { resultado, costoMicroUsd, conversationId, orderId, latenciasMs: [...puente.latenciasMs], modoEntrada: modo };
 }
