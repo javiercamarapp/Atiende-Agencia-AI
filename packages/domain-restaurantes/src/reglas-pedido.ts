@@ -42,12 +42,12 @@ export function matchKnownZone(zones: readonly KnownZone[], colonia: string): Kn
   if (!input) return null;
   let best: KnownZone | null = null;
   for (const zone of zones) {
-    const name = normalizeZoneText(zone.name);
-    if (!name) continue;
+    // Una zona con aclaracion entre parentesis ("García Lavín (Victory Platz)") tambien se llama por su nombre corto: el modelo manda la direccion completa
+    // en `colonia` ("Calle 32 #345 x 20 y 22, García Lavín") y el nombre largo nunca estaba contenido (QA-PM-R2-voz-07).
+    const nombres = [zone.name, zone.name.replace(/\s*\([^)]*\)/g, " ")].map(normalizeZoneText).filter((n) => n.length > 0);
     // La colonia escrita contiene la zona conocida (zona >= 3 letras), o la zona contiene lo escrito (fragmento >= LARGO_MIN_COLONIA).
-    if ((name.length >= 3 && input.includes(name)) || (input.length >= LARGO_MIN_COLONIA && name.includes(input))) {
-      if (!best || zone.name.length > best.name.length) best = zone;
-    }
+    const coincide = nombres.some((name) => (name.length >= 3 && input.includes(name)) || (input.length >= LARGO_MIN_COLONIA && name.includes(input)));
+    if (coincide && (!best || zone.name.length > best.name.length)) best = zone;
   }
   return best;
 }

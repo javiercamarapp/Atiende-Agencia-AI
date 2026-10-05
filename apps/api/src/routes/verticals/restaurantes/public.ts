@@ -20,6 +20,7 @@ import {
 } from "@atiende/domain-restaurantes";
 import type { CreateOrderInput, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
+import { VOICE_CALL_TOKEN_HEADER } from "../../../voice-call-token.ts";
 import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
 import { encolarComandaParaPedido, type ResultadoEncolarPedido } from "@atiende/domain-restaurantes/softrestaurant";
 import { efectosPostCommitDePedido, type ComandaVisible } from "./efectos-post-commit.ts";
@@ -151,7 +152,9 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
       if (credentialsPresent) {
         voiceAuth = await authenticateVoiceTool(deps, c, repo, org, { tool: "crear_pedido", accept: "legacy_ok" });
         if (!voiceAuth.ok) {
-          if (incoming.source === "voice") return voiceAuth.response;
+          // Un token de llamada vencido o invalido NUNCA se trata como checkout web (respondia "Escribe un teléfono de 10 dígitos..." a una llamada de voz):
+          // 401 claro para que el agente escale (QA-PM-R2-reglas-16).
+          if (incoming.source === "voice" || c.req.header(VOICE_CALL_TOKEN_HEADER)) return voiceAuth.response;
           if (incoming.source && incoming.source !== "web") throw Errors.validation("source inválido");
           voiceAuth = null; // credencial inválida en un checkout web: se trata como web, igual que antes.
         }

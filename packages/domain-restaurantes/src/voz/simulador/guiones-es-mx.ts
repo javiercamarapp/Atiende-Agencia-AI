@@ -379,4 +379,58 @@ export const GUIONES_ES_MX: readonly GuionLlamada[] = [
       herramientasRechazadas: [{ nombre: "buscar_producto", error: /otra sucursal/i }],
     },
   },
+  // ---- Ronda 2 del loop de PM (QA-PM-R2): regresion permanente de lo que rompio la medida contra la cuenta real ----
+  {
+    id: "V22-pedido-grande-retenido-es-escalado",
+    titulo: "Pedido de fiesta (mas de $4,000): el servidor lo retiene y deja el aviso; la llamada termina `escalado` y no se promete cocina (QA-PM-R2-voz-14)",
+    rasgos: ["pedido grande", "retenido por el servidor", "resultado escalado"],
+    turnos: [
+      { kind: "voz", cliente: "Buenas tardes, quiero cuarenta y cinco ordenes de tacos de bistec para una fiesta, para recoger por Francisco de Montejo", agente: [buscar("bistec"), cotizar((m) => [linea(m, "bistec", 135, "maiz")], { canal: "recoger" }), dice("Son cuarenta y cinco órdenes, siete mil trescientos ochenta pesos. ¿Le parece bien?")] },
+      { kind: "voz", cliente: "Sí, a nombre de Ana Pech, en efectivo", agente: [confirmar, crear((m) => [linea(m, "bistec", 135, "maiz")], { canal: "recoger" }), dice("Es un pedido grande: la sucursal lo contactará para confirmarlo. Gracias por llamar.")] },
+    ],
+    esperado: { resultado: "escalado", sinPedido: true, callbacks: ["escalada:pedido_grande"] },
+  },
+  {
+    id: "V23-crear-pedido-expira-avisa-a-una-persona",
+    titulo: "crear_pedido expira (el pedido pudo quedar registrado): se reintenta una vez y, si vuelve a expirar, una persona recibe el aviso para verificar; no queda `abandonado` (QA-PM-R2-voz-04)",
+    rasgos: ["tool lenta", "resultado incierto", "aviso a persona"],
+    limites: { toolTimeoutMs: 30 },
+    toolLenta: { nombre: "crear_pedido", ms: 200 },
+    turnos: [
+      { kind: "voz", cliente: "Buenas tardes, seis tacos de bistec de maíz para recoger por Francisco de Montejo", agente: [buscar("bistec"), cotizar(bistec6, { canal: "recoger" }), dice("Son dos órdenes de bistec, trescientos veintiocho pesos. ¿Es correcto?")] },
+      { kind: "voz", cliente: "Sí, Ana Pech, en efectivo", agente: [confirmar, crear(bistec6, { canal: "recoger" }), dice("Una persona le confirmará su pedido en un momento.")] },
+    ],
+    esperado: { resultado: "escalado", callbacks: ["escalada:falla_sistema"], pregrabados: ["tool_timeout"] },
+  },
+  {
+    id: "V24-niega-querer-persona-y-pide-tacos",
+    titulo: "'No, no quiero hablar con una persona, con usted esta bien' no pasa a una persona: se toma el pedido (QA-PM-R2-voz-02)",
+    rasgos: ["guardia de persona", "negacion"],
+    turnos: [
+      { kind: "voz", cliente: "Buenas tardes", agente: [dice("Buenas tardes, gracias por llamar a Los Taquitos de PM. ¿Es para recoger o a domicilio?")] },
+      { kind: "voz", cliente: "No, no quiero hablar con una persona, con usted está bien. Seis tacos de bistec de maíz para recoger por Francisco de Montejo", agente: [buscar("bistec"), cotizar(bistec6, { canal: "recoger" }), dice("Son dos órdenes de bistec, trescientos veintiocho pesos. ¿Es correcto?")] },
+      { kind: "voz", cliente: "Sí, a nombre de Ana Pech, en efectivo", agente: [confirmar, crear(bistec6, { canal: "recoger" }), dice("Listo, su pedido quedó registrado. Gracias por llamar.")] },
+    ],
+    esperado: { resultado: "pedido_creado", pedido: { sucursal: "Francisco de Montejo", canal: "recoger", pago: "efectivo", total: 328, items: [{ nombre: "Tacos de Bistec de Res (orden de 3)", cantidad: 2 }] } },
+  },
+  {
+    id: "V25-voy-a-pasar-con-alguien-a-recogerlo",
+    titulo: "'Voy a pasar con alguien a recogerlo' es una visita, no una transferencia: el pedido se toma (QA-PM-R2-voz-02)",
+    rasgos: ["guardia de persona", "pasar con alguien"],
+    turnos: [
+      { kind: "voz", cliente: "Buenas tardes, seis tacos de bistec de maíz para recoger por Francisco de Montejo", agente: [buscar("bistec"), cotizar(bistec6, { canal: "recoger" }), dice("Son dos órdenes de bistec, trescientos veintiocho pesos. ¿Es correcto?")] },
+      { kind: "voz", cliente: "Sí, voy a pasar con alguien a recogerlo como en cuarenta minutos, a nombre de Ana Pech, en efectivo", agente: [confirmar, crear(bistec6, { canal: "recoger" }), dice("Listo, su pedido quedó registrado. Gracias por llamar.")] },
+    ],
+    esperado: { resultado: "pedido_creado", pedido: { sucursal: "Francisco de Montejo", canal: "recoger", pago: "efectivo", total: 328, items: [{ nombre: "Tacos de Bistec de Res (orden de 3)", cantidad: 2 }] } },
+  },
+  {
+    id: "V26-pide-persona-con-carrito-cotizado",
+    titulo: "El cliente pide al gerente con el pedido ya cotizado: pasa a una persona y el aviso lleva el carrito (QA-PM-R2-voz-13)",
+    rasgos: ["guardia de persona", "carrito en el aviso"],
+    turnos: [
+      { kind: "voz", cliente: "Buenas tardes, seis tacos de bistec de maíz para recoger por Francisco de Montejo", agente: [buscar("bistec"), cotizar(bistec6, { canal: "recoger" }), dice("Son dos órdenes de bistec, trescientos veintiocho pesos. ¿Es correcto?")] },
+      { kind: "voz", cliente: "Antes de seguir, pásame con el gerente para felicitarlos", agente: [] },
+    ],
+    esperado: { resultado: "escalado", sinPedido: true, callbacks: ["escalada:cliente_lo_pide"] },
+  },
 ];

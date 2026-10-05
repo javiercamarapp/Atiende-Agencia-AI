@@ -202,3 +202,48 @@ describe("doble salsa (QA-PM-R2-reglas-13 / 14)", () => {
     expect((ok.raw as { total: number }).total).toBe(164 + 19);
   });
 });
+
+describe("carrito del catalogo de WhatsApp (QA-PM-R2-whatsapp-11)", () => {
+  it("un mensaje type=order ya no se ignora en silencio: entra como nota honesta para que el agente pida que lo escriba", async () => {
+    const { extractMetaInboundMessages } = await import("../src/whatsapp/channel-config.ts");
+    const payload = { entry: [{ changes: [{ value: { messages: [{ id: "wamid.1", from: "5219990001111", type: "order", order: { catalog_id: "c1", text: "para recoger", product_items: [{ product_retailer_id: "taco-pastor", quantity: 4 }, { product_retailer_id: "coca-cola", quantity: 1 }] } }] } }] }] };
+    const [m] = extractMetaInboundMessages(payload);
+    expect(m?.body).toMatch(/carrito del catálogo de WhatsApp \(5 piezas\)/);
+    expect(m?.body).toMatch(/no invente productos ni precios/);
+    expect(m?.body).toContain("para recoger");
+  });
+});
+
+describe("zonas conocidas con aclaracion entre parentesis (QA-PM-R2-voz-07 / reglas-09)", () => {
+  it("la direccion completa que escribe el modelo en `colonia` reconoce 'García Lavín (Victory Platz)'", async () => {
+    const { matchKnownZone } = await import("../src/reglas-pedido.ts");
+    const zonas = [
+      { id: "z1", organizationId: "o", name: "García Lavín (Victory Platz)", lat: 21.0205, lng: -89.615 },
+      { id: "z2", organizationId: "o", name: "Victory Altabrisa", lat: 21.0156, lng: -89.5982 },
+    ] as never;
+    expect(matchKnownZone(zonas, "Calle 32 #345 x 20 y 22, casa 13, fachada verde, García Lavín")?.id).toBe("z1");
+    expect(matchKnownZone(zonas, "Garcia Lavin")?.id).toBe("z1");
+    expect(matchKnownZone(zonas, "García Lavín (Victory Platz)")?.id).toBe("z1");
+    expect(matchKnownZone(zonas, "Altabrisa")?.id).toBe("z2");
+    expect(matchKnownZone(zonas, "Progreso")).toBeNull();
+  });
+});
+
+describe("segundo pedido identico en la misma sesion (QA-PM-R2-reglas-15)", () => {
+  it("devuelve el pedido ya registrado marcado ya_registrado en vez de presentarlo como nuevo", async () => {
+    const s = setup();
+    await s.quote();
+    s.nextTurn();
+    await s.confirm();
+    const primero = await s.create();
+    expect((primero.result as { ya_registrado?: boolean }).ya_registrado).toBeUndefined();
+    vi.setSystemTime(new Date(MARTES_13.getTime() + 90_000)); // "otro igualito aparte para mi mama" minuto y medio despues
+    s.nextTurn();
+    await s.quote();
+    s.nextTurn();
+    await s.confirm();
+    const segundo = await s.create();
+    expect(segundo.orderId).toBe(primero.orderId);
+    expect(segundo.result).toMatchObject({ ya_registrado: true });
+  });
+});
