@@ -19,20 +19,53 @@ export function formatMoneyFromCents(cents: number | null): string {
 // anclada a UTC formateada en `America/Mexico_City` se corre un día, el MISMO bug
 // que se busca arreglar) -- por eso el fix real vive en el call site de Agenda.tsx
 // (`computeRange`), NO aquí: no toca estos formatters compartidos.
-const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("es-MX", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const DATE_FORMATTER = new Intl.DateTimeFormat("es-MX", { weekday: "long", day: "numeric", month: "long" });
-const TIME_FORMATTER = new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit" });
-
-export function formatDateTime(iso: string): string {
-  return DATE_TIME_FORMATTER.format(new Date(iso));
+// Zona horaria: con `timeZone` (la del NEGOCIO, la manda el servidor) las horas y los dias se pintan como los ve el negocio; sin ella, la del navegador (callers
+// que todavia no la conocen). Un navegador en Tijuana operando una clinica de Merida veia las citas corridas una hora.
+const FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+function formatter(clave: string, opciones: Intl.DateTimeFormatOptions, timeZone?: string): Intl.DateTimeFormat {
+  const llave = `${clave}|${timeZone ?? ""}`;
+  let f = FORMATTERS.get(llave);
+  if (!f) {
+    f = new Intl.DateTimeFormat("es-MX", { ...opciones, ...(timeZone ? { timeZone } : {}) });
+    FORMATTERS.set(llave, f);
+  }
+  return f;
 }
 
-export function formatDateLong(iso: string): string {
-  return DATE_FORMATTER.format(new Date(iso));
+export function formatDateTime(iso: string, timeZone?: string): string {
+  return formatter("dt", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }, timeZone).format(new Date(iso));
 }
 
-export function formatTimeRange(startsAtIso: string, endsAtIso: string): string {
-  return `${TIME_FORMATTER.format(new Date(startsAtIso))} – ${TIME_FORMATTER.format(new Date(endsAtIso))}`;
+export function formatDateLong(iso: string, timeZone?: string): string {
+  return formatter("dl", { weekday: "long", day: "numeric", month: "long" }, timeZone).format(new Date(iso));
+}
+
+export function formatTimeRange(startsAtIso: string, endsAtIso: string, timeZone?: string): string {
+  const f = formatter("t", { hour: "2-digit", minute: "2-digit" }, timeZone);
+  return `${f.format(new Date(startsAtIso))} – ${f.format(new Date(endsAtIso))}`;
+}
+
+/** "YYYY-MM-DD" de un instante en la zona dada (la del negocio para agrupar la Agenda por dia; la del navegador si no hay zona). */
+export function zonedDayKey(iso: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", ...(timeZone ? { timeZone } : {}) }).format(new Date(iso));
+}
+
+/** Diferencia (ms) entre la hora de pared de `timeZone` y UTC en el instante `utcMs`. */
+function zoneOffsetMs(utcMs: number, timeZone: string): number {
+  const partes = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(new Date(utcMs));
+  const n = (tipo: string) => Number(partes.find((p) => p.type === tipo)!.value);
+  return Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second")) - Math.floor(utcMs / 1000) * 1000;
+}
+
+/** Convierte lo que devuelve un `<input type="datetime-local">` ("2027-09-13T10:00", hora de pared SIN zona) al instante ISO en que ESA hora ocurre en
+ * `timeZone` (la del negocio). Sin zona o con un valor invalido cae al comportamiento del navegador. */
+export function wallTimeToIso(local: string, timeZone?: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(local);
+  if (!timeZone || !m) return new Date(local).toISOString();
+  const comoUtc = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  let instante = comoUtc - zoneOffsetMs(comoUtc, timeZone);
+  instante = comoUtc - zoneOffsetMs(instante, timeZone); // segunda pasada: el offset puede cambiar entre los dos instantes (horario de verano)
+  return new Date(instante).toISOString();
 }
 
 export const DAY_NAMES: readonly string[] = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];

@@ -1105,7 +1105,9 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const truncated = filas.length > limit;
     const appointments = truncated ? filas.slice(0, limit) : filas;
     const enriched = await enrichAppointments(citasRepo, organizationId, appointments);
-    return c.json({ appointments: enriched, truncated, next_from: truncated ? filas[limit]!.startsAt : null });
+    // Zona horaria del NEGOCIO (la de esta sucursal): el panel pinta las horas y arma el alta manual con ella, no con la del navegador de quien mira.
+    const timezone = resolverZonaHorariaNegocio(await citasRepo.findPropertyTimezone(c.req.param("propertyId"), organizationId));
+    return c.json({ appointments: enriched, truncated, next_from: truncated ? filas[limit]!.startsAt : null, timezone });
   });
 
   // ---- C-05 -- Resumen: citas de hoy/semana, pendientes por confirmar, no-shows y clientes

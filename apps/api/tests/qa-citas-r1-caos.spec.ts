@@ -174,6 +174,15 @@ describe("QA R1 caos citas -- datos enormes", () => {
     expect(body.appointments.length === 600 || avisaQueHayMas).toBe(true);
   });
 
+  it("QA-citas-R1-viaje-16 (API): la Agenda responde la zona horaria del NEGOCIO y truncated=false cuando el rango cabe", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments?from=${MES_DESDE}&to=${MES_HASTA}`, authedGet(ctx.staff.owner.token));
+    const body = (await res.json()) as { timezone: string; truncated: boolean; next_from: string | null };
+    expect(body).toMatchObject({ truncated: false, next_from: null });
+    expect(body.timezone).toMatch(/^[A-Za-z_]+\/[A-Za-z_]+/);
+  });
+
   it("control: unicode/emoji y nombres de 160 caracteres viajan intactos por el alta y la Agenda", async () => {
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);
