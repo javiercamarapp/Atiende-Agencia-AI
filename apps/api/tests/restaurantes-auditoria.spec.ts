@@ -122,7 +122,7 @@ describe("FASE 3 — registro de auditoría en las rutas de escritura reales", (
     const app = buildApp(ctx.deps);
     const antes = ctx.restaurantesRepo.auditLog.length;
 
-    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${order.id}/status`, authedJson(ctx.staff.owner.token, { status: "cancelado" }, "PATCH"));
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${order.id}/status`, authedJson(ctx.staff.owner.token, { status: "cancelado", motivo: "otro" }, "PATCH"));
     expect(res.status).toBe(200);
     const nuevas = ctx.restaurantesRepo.auditLog.slice(antes);
     expect(nuevas).toHaveLength(1);
@@ -288,7 +288,7 @@ describe("FASE 3 — GET /v1/restaurantes/:propertyId/admin/auditoria", () => {
     await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/promotions`, authedJson(ctx.staff.owner.token, { code: "FILTRO1", name: "x", type: "fixed", value: 10 }));
     const order = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "pending", total: 50 });
     ctx.restaurantesRepo.seedOrder(order);
-    await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${order.id}/status`, authedJson(ctx.staff.owner.token, { status: "cancelado" }, "PATCH"));
+    await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${order.id}/status`, authedJson(ctx.staff.owner.token, { status: "cancelado", motivo: "otro" }, "PATCH"));
 
     const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/auditoria?tipo=promocion`, authedGet(ctx.staff.owner.token));
     expect(res.status).toBe(200);
