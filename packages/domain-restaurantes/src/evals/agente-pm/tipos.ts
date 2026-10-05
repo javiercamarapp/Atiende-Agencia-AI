@@ -117,4 +117,6 @@ export interface ResultadoCaso {
   readonly casoId: string;
   readonly graders: readonly ResultadoGrader[];
   readonly ok: boolean;
+  /** Traza completa (solo el modo LLM real la llena): la usa `real-cli.ts` con PM_EVALS_TRAZA=1 para diagnosticar fallos. */
+  readonly eventos?: readonly EventoTraza[];
 }

@@ -58,6 +58,9 @@ export interface OutboundWhatsAppMessagePayload {
    *  catalogo (`core.whatsapp_plantilla`). Con `true` el cliente la envia como `type: "template"` aunque no este en la lista
    *  global de plantillas aprobadas del entorno. Ausente o `false` = decide solo la lista global (comportamiento anterior). */
   readonly templateApproved?: boolean;
+  /** Mensaje interactivo `location_request_message` de la Cloud API: el cliente comparte su ubicacion con un toque. `body` es el texto que
+   *  acompana al boton. Exclusivo (no se combina con botones ni plantilla) y solo vale dentro de la ventana de 24 h del cliente. */
+  readonly solicitarUbicacion?: boolean;
 }
 
 export interface WhatsAppSendResult {
