@@ -130,7 +130,8 @@ test.describe("copiloto de superadmin @copiloto", () => {
     await iniciarSesion("superadmin");
     await page.goto(RUTA);
     await afirmarPantallaSana(page, "copiloto");
-    // Portada: las tres tarjetas de preguntas por categoria y los chips CFO / cobranza.
+    // Portada: «Consulta» abre las tres tarjetas de preguntas por categoria; los chips CFO / cobranza ya estan a la vista.
+    await page.getByRole("button", { name: "Consulta", exact: true }).click();
     for (const titulo of ["CFO y cobranza", "Ventas y costos de IA", "Clientes, agentes y salud"]) await expect(page.getByText(titulo, { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "¿Cuál es mi MRR por vertical?" }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "¿Qué clientes tienen el pago pendiente?" }).first()).toBeVisible();
