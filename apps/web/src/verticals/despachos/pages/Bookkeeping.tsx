@@ -9,8 +9,8 @@
 //
 // Flujo: 1) captura el lote de CFDI a clasificar (tabla editable, mismo patrón
 // exacto que la tabla de movimientos de Conciliacion.tsx) + el historial de
-// overrides humanos ya conocido (usado tanto por /clasificar como prioridad
-// máxima, como por /overrides/sugerencias para agregarlos); 2) clasifica el lote
+// correcciones por RFC que el servidor ya persistió (prioridad máxima en /clasificar y
+// base de /overrides/sugerencias; el navegador ya no las reenvía); 2) clasifica el lote
 // -- el resultado queda en una tabla editable (el contador puede corregir la
 // categoría antes de generar pólizas, exactamente el override que este mismo
 // módulo aprende); 3) genera + valida pólizas contables sobre esas
@@ -24,6 +24,7 @@
 // secciones siguen apiladas en el mismo orden (NO son pestañas): 2 consume la
 // clasificación de 1 y 4 consume la tabla de overrides de arriba.
 import { useEffect, useState } from "react";
+import { CorreccionesRfcCard } from "../components/CorreccionesRfcCard.tsx";
 import type { FormEvent } from "react";
 import { Calculator, ChevronDown, ChevronUp, FileStack, Lightbulb, ListChecks, Plus, Trash2 } from "lucide-react";
 import {
@@ -59,7 +60,6 @@ import type {
   CfdiClasificarInput,
   CfdiClassification,
   EntradaAjusteInput,
-  OverrideRecord,
   PolizaContable,
   PolizaResultado,
   SuggestionRetraining,
@@ -116,30 +116,6 @@ function cfdiFilaAInput(f: CfdiFila): CfdiClasificarInput | null {
     tasaIva: f.tasaIva.trim() ? Number(f.tasaIva) : undefined,
     tipoCfdi: f.tipoCfdi,
   };
-}
-
-// -- Fila: override humano ---------------------------------------------------
-
-interface OverrideFila {
-  readonly key: string;
-  cfdiUuid: string;
-  rfcEmisor: string;
-  newCategoria: string;
-  tenantId: string;
-}
-
-let overrideSeq = 0;
-function nuevaOverrideFila(): OverrideFila {
-  overrideSeq += 1;
-  return { key: `ov-${overrideSeq}`, cfdiUuid: "", rfcEmisor: "", newCategoria: "", tenantId: "" };
-}
-
-function overrideFilaAInput(f: OverrideFila): OverrideRecord | null {
-  const cfdiUuid = f.cfdiUuid.trim();
-  const rfcEmisor = f.rfcEmisor.trim();
-  const newCategoria = f.newCategoria.trim();
-  if (!cfdiUuid || !rfcEmisor || !newCategoria) return null;
-  return { cfdiUuid, rfcEmisor: rfcEmisor.toUpperCase(), newCategoria, tenantId: f.tenantId.trim() };
 }
 
 // -- Fila: entrada de ajuste manual ------------------------------------------
@@ -264,14 +240,6 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
     ? Object.entries(catalogo.catalogoCuentas).filter(([codigo, nombre]) => !catalogoFiltro.trim() || codigo.includes(catalogoFiltro.trim()) || nombre.toLowerCase().includes(catalogoFiltro.trim().toLowerCase()))
     : [];
 
-  // -- Overrides humanos (historial compartido: /clasificar y /overrides/sugerencias) --
-  const [overrideFilas, setOverrideFilas] = useState<readonly OverrideFila[]>([]);
-  const overridesLote = overrideFilas.map(overrideFilaAInput).filter((o): o is OverrideRecord => o !== null);
-
-  function actualizarOverrideFila(key: string, campo: keyof OverrideFila, valor: string) {
-    setOverrideFilas(overrideFilas.map((f) => (f.key === key ? { ...f, [campo]: valor } : f)));
-  }
-
   // -- 1. Clasificar CFDI -----------------------------------------------------
   const [cfdiFilas, setCfdiFilas] = useState<readonly CfdiFila[]>([nuevaCfdiFila()]);
   const [clasifLoading, setClasifLoading] = useState(false);
@@ -291,7 +259,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
     }
     setClasifLoading(true);
     try {
-      const { clasificaciones: result } = await clasificarCfdisBookkeeping(fetch, apiBaseUrl, token, propertyId, cfdis, overridesLote);
+      const { clasificaciones: result } = await clasificarCfdisBookkeeping(fetch, apiBaseUrl, token, propertyId, cfdis);
       setClasificaciones(result);
     } catch (err) {
       setClasifError(err instanceof Error ? err.message : "No se pudo clasificar el lote.");
@@ -375,13 +343,10 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
 
   async function handleSugerencias() {
     setSugerenciasError(null);
-    if (overridesLote.length === 0) {
-      setSugerenciasError("Captura al menos un override humano en la tabla de arriba.");
-      return;
-    }
     setSugerenciasLoading(true);
     try {
-      const { sugerencias: result } = await fetchSugerenciasOverridesBookkeeping(fetch, apiBaseUrl, token, propertyId, overridesLote);
+      // D-P3-13: el historial lo lee el servidor de las correcciones humanas ya persistidas; el navegador no reenvia nada.
+      const { sugerencias: result } = await fetchSugerenciasOverridesBookkeeping(fetch, apiBaseUrl, token, propertyId);
       setSugerencias(result);
     } catch (err) {
       setSugerenciasError(err instanceof Error ? err.message : "No se pudieron calcular las sugerencias.");
@@ -406,7 +371,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Bookkeeping</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Auto-clasificador de pólizas: clasifica CFDI por reglas determinísticas (override humano por RFC tiene prioridad máxima), genera + valida pólizas contables, registra ajustes manuales y revisa qué correcciones humanas conviene convertir en override permanente.
+          Auto-clasificador de pólizas: clasifica CFDI por reglas determinísticas (la corrección persistida por RFC tiene prioridad máxima), genera + valida pólizas contables, registra ajustes manuales y revisa qué correcciones humanas conviene convertir en override permanente.
         </p>
       </header>
 
@@ -468,84 +433,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Overrides humanos conocidos</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <p className="text-xs text-muted-foreground">
-            Historial de correcciones ya persistidas (este motor no guarda estado propio -- mándalas aquí en cada sesión). Se usan como prioridad máxima al clasificar y para calcular sugerencias de override permanente por RFC.
-          </p>
-          <div className="overflow-x-auto">
-            <Table className="min-w-[640px] text-xs">
-              <TableCaption className="sr-only">Historial de correcciones de categoría</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="sticky left-0 z-10 bg-canvas h-9">CFDI UUID</TableHead>
-                  <TableHead className="h-9">RFC emisor</TableHead>
-                  <TableHead className="h-9">Categoría corregida</TableHead>
-                  <TableHead className="h-9">Tenant (opcional)</TableHead>
-                  <TableHead className="h-9" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {overrideFilas.map((f) => (
-                  <TableRow key={f.key}>
-                    <TableCell className="sticky left-0 z-10 bg-card p-1.5">
-                      <Label htmlFor={`ov-uuid-${f.key}`} className="sr-only">
-                        CFDI UUID
-                      </Label>
-                      <Input id={`ov-uuid-${f.key}`} type="text" value={f.cfdiUuid} onChange={(e) => actualizarOverrideFila(f.key, "cfdiUuid", e.target.value)} className="h-9 w-40 text-xs" />
-                    </TableCell>
-                    <TableCell className="p-1.5">
-                      <Label htmlFor={`ov-rfc-${f.key}`} className="sr-only">
-                        RFC emisor
-                      </Label>
-                      <Input
-                        id={`ov-rfc-${f.key}`}
-                        type="text"
-                        value={f.rfcEmisor}
-                        onChange={(e) => actualizarOverrideFila(f.key, "rfcEmisor", e.target.value.toUpperCase())}
-                        className="h-9 w-36 text-xs"
-                      />
-                    </TableCell>
-                    <TableCell className="p-1.5">
-                      <Label htmlFor={`ov-categoria-${f.key}`} className="sr-only">
-                        Categoría corregida
-                      </Label>
-                      <Input id={`ov-categoria-${f.key}`} type="text" value={f.newCategoria} onChange={(e) => actualizarOverrideFila(f.key, "newCategoria", e.target.value)} className="h-9 w-44 text-xs" />
-                    </TableCell>
-                    <TableCell className="p-1.5">
-                      <Label htmlFor={`ov-tenant-${f.key}`} className="sr-only">
-                        Tenant
-                      </Label>
-                      <Input id={`ov-tenant-${f.key}`} type="text" value={f.tenantId} onChange={(e) => actualizarOverrideFila(f.key, "tenantId", e.target.value)} className="h-9 w-24 text-xs" />
-                    </TableCell>
-                    <TableCell className="p-1.5">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive"
-                        onClick={() => setOverrideFilas(overrideFilas.filter((r) => r.key !== f.key))}
-                      >
-                        <Trash2 />
-                        Quitar
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <div>
-            <Button type="button" variant="outline" size="sm" onClick={() => setOverrideFilas([...overrideFilas, nuevaOverrideFila()])}>
-              <Plus />
-              Agregar override
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <CorreccionesRfcCard apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
 
       <Card>
         <CardHeader className="pb-3">
@@ -882,7 +770,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
-            Agrega el historial de overrides humanos capturado arriba por RFC -- sugiere convertir en override permanente solo cuando hay señal fuerte (2+ correcciones y más de la mitad coinciden en la misma categoría).
+            Agrega las correcciones humanas ya guardadas en el servidor por RFC -- sugiere convertirlas en regla permanente solo cuando hay señal fuerte (2+ correcciones y más de la mitad coinciden en la misma categoría).
           </p>
           {sugerenciasError && (
             <p role="alert" className="text-destructive text-sm">

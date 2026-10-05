@@ -112,8 +112,8 @@ export async function fetchCatalogoBookkeeping(fetchImpl: typeof fetch, apiBaseU
   return fetchJson<CatalogoBookkeeping>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/bookkeeping/catalogo`, token);
 }
 
-/** Clasifica un lote de CFDI: override humano exacto por RFC (prioridad
- * máxima, `overrides` ya persistidos) -> fallback de reglas por keyword. */
+/** Clasifica un lote de CFDI: la corrección humana por RFC que el SERVIDOR ya persistió (prioridad máxima; el navegador ya no la reenvía) -> reglas por palabra completa.
+ * `overrides` queda solo para usar el motor como calculadora (gana a lo persistido). */
 export async function clasificarCfdisBookkeeping(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,
@@ -122,7 +122,7 @@ export async function clasificarCfdisBookkeeping(
   cfdis: readonly CfdiClasificarInput[],
   overrides: readonly OverrideRecord[] = [],
 ): Promise<{ readonly clasificaciones: readonly CfdiClassification[] }> {
-  return postJson<{ readonly clasificaciones: readonly CfdiClassification[] }>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/bookkeeping/clasificar`, token, { cfdis, overrides });
+  return postJson<{ readonly clasificaciones: readonly CfdiClassification[] }>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/bookkeeping/clasificar`, token, overrides.length > 0 ? { cfdis, overrides } : { cfdis });
 }
 
 /** Genera + valida una póliza por cada CFDI ya clasificado (normalmente el
@@ -159,15 +159,13 @@ export async function generarAjusteBookkeeping(
   return postJson<{ readonly poliza: PolizaContable; readonly errores: readonly string[] }>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/bookkeeping/ajuste`, token, payload);
 }
 
-/** Agregación de correcciones humanas por RFC -- el cliente manda el
- * historial completo de overrides ya persistido (este motor no guarda
- * estado propio, mismo criterio que el resto de este módulo). */
+/** Agregación de correcciones humanas por RFC: sin `overrides` el servidor lee el historial de las correcciones ya persistidas (D-P3-13); con ellos, calculadora pura. */
 export async function fetchSugerenciasOverridesBookkeeping(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,
   token: string,
   propertyId: string,
-  overrides: readonly OverrideRecord[],
+  overrides: readonly OverrideRecord[] = [],
 ): Promise<{ readonly sugerencias: readonly SuggestionRetraining[] }> {
-  return postJson<{ readonly sugerencias: readonly SuggestionRetraining[] }>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/bookkeeping/overrides/sugerencias`, token, { overrides });
+  return postJson<{ readonly sugerencias: readonly SuggestionRetraining[] }>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/bookkeeping/overrides/sugerencias`, token, overrides.length > 0 ? { overrides } : {});
 }

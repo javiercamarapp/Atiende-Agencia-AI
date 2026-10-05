@@ -36,14 +36,43 @@ describe("InMemoryDespachosRepository — invoices", () => {
     const input = invoiceInput();
     const created = await repo.insertInvoice(input);
     expect(await repo.findInvoice(input.propertyId, created.id)).toEqual(created);
-    expect(await repo.findInvoiceByFolioFiscal(input.organizationId, input.folioFiscal)).toEqual(created);
+    expect(await repo.findInvoiceByFolioFiscal(input.propertyId, input.folioFiscal)).toEqual(created);
   });
 
-  it("REQ: el folio fiscal es único por organización — reintentar el mismo CFDI nunca lo duplica", async () => {
+  it("REQ (D-P3-18): el folio fiscal es único por CLIENTE (property) — reintentar el mismo CFDI en el mismo cliente nunca lo duplica", async () => {
     const repo = new InMemoryDespachosRepository();
     const folioFiscal = randomUUID();
     await repo.insertInvoice(invoiceInput({ folioFiscal }));
     await expect(repo.insertInvoice(invoiceInput({ folioFiscal }))).rejects.toThrow(InvoiceAlreadyExistsError);
+  });
+
+  it("REQ (D-P3-18): el mismo UUID entra a dos clientes del MISMO despacho, y cada búsqueda por folio resuelve el de su cliente", async () => {
+    const repo = new InMemoryDespachosRepository();
+    const folioFiscal = randomUUID();
+    const a = await repo.insertInvoice(invoiceInput({ folioFiscal, propertyId: "prop-1" }));
+    const b = await repo.insertInvoice(invoiceInput({ folioFiscal, propertyId: "prop-2" }));
+    expect(a.id).not.toBe(b.id);
+    expect((await repo.findInvoiceByFolioFiscal("prop-1", folioFiscal))?.id).toBe(a.id);
+    expect((await repo.findInvoiceByFolioFiscal("prop-2", folioFiscal))?.id).toBe(b.id);
+    expect(await repo.findInvoiceByFolioFiscal("prop-3", folioFiscal)).toBeNull();
+  });
+
+  it("REQ (D-P3-23): rechazar una revisión marca el CFDI y los agregados (listInvoices) lo excluyen; aprobar no", async () => {
+    const repo = new InMemoryDespachosRepository();
+    const rechazado = await repo.insertInvoice(invoiceInput({ requiresHumanReview: true }));
+    const aprobado = await repo.insertInvoice(invoiceInput({ requiresHumanReview: true }));
+    const limpio = await repo.insertInvoice(invoiceInput({ requiresHumanReview: false }));
+    const r1 = await repo.createReview({ organizationId: "org-1", propertyId: "prop-1", invoiceId: rechazado.id, reason: "x" });
+    const r2 = await repo.createReview({ organizationId: "org-1", propertyId: "prop-1", invoiceId: aprobado.id, reason: "x" });
+    await repo.resolveReview("prop-1", r1.id, "u1", "rechazado", "no es del cliente");
+    await repo.resolveReview("prop-1", r2.id, "u1", "aprobado", null);
+    const agregados = await repo.listInvoices("prop-1");
+    expect(agregados.map((i) => i.id).sort()).toEqual([aprobado.id, limpio.id].sort());
+    expect((await repo.listInvoices("prop-1", { incluirExcluidos: true })).map((i) => i.id)).toContain(rechazado.id);
+    expect((await repo.findInvoice("prop-1", rechazado.id))?.excluidoPorRevision).toBe(true);
+    expect((await repo.findInvoice("prop-1", aprobado.id))?.excluidoPorRevision).not.toBe(true);
+    // El listado de la pantalla (paginado) sigue mostrando el rechazado, marcado.
+    expect((await repo.listInvoicesPage("prop-1", { limit: 10, offset: 0 })).items.map((i) => i.id)).toContain(rechazado.id);
   });
 
   it("listInvoices filtra por requiresHumanReview", async () => {

@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import golden from "./fixtures/golden-bookkeeping-output.json" with { type: "json" };
 import { getMapping, generatePoliza, validatePoliza, generateAdjustment, generateDepreciationEntry } from "../src/bookkeeping/rules-engine.ts";
-import { clasificarPorReglas } from "../src/bookkeeping/clasificador.ts";
+import { clasificarPorReglas, confianzaDeEmpate, necesitaRevisionHumana } from "../src/bookkeeping/clasificador.ts";
 import { getRfcCategoryFeedback, getSuggestionsForRetraining } from "../src/bookkeeping/overrides.ts";
 import type { CfdiClassification, OverrideRecord } from "../src/bookkeeping/types.ts";
 
@@ -95,13 +95,52 @@ describe("golden: clasificarPorReglas (fallback determinista, sin ML)", () => {
     ["renta_oficina", "renta de oficina mensual, alquiler local comercial", "I"],
     ["sin_match", "xyz sin ninguna palabra clave reconocible", "I"],
     ["venta_servicios_egreso", "servicio de consultoría y desarrollo de proyecto", "E"],
-    ["empate_primer_patron_gana", "renta arrendamiento", "I"],
   ] as const)("%s", (nombre, descripcion, tipo) => {
     const esperado = (golden as unknown as Record<string, { categoria: string; confidence: number }>)[`rule_based_predict_${nombre}`];
     if (!esperado) throw new Error(`Falta el caso golden rule_based_predict_${nombre}`);
     const resultado = clasificarPorReglas(descripcion, tipo);
     expect(resultado.categoria).toBe(esperado.categoria);
     expect(resultado.confidence).toBeCloseTo(esperado.confidence, 10);
+  });
+});
+
+describe("clasificarPorReglas: empate y palabra completa (defecto heredado corregido, ver e302c60 del suelto)", () => {
+  it("el caso golden «renta arrendamiento» NO es un empate real (renta_oficina 2 coincidencias contra arrendamiento 1): sigue igual que el origen", () => {
+    const origen = (golden as unknown as Record<string, { categoria: string; confidence: number }>)["rule_based_predict_empate_primer_patron_gana"]!;
+    const r = clasificarPorReglas("renta arrendamiento", "I");
+    expect(r.categoria).toBe(origen.categoria);
+    expect(r.confidence).toBeCloseTo(origen.confidence, 10);
+    expect(r.rivales).toBe(0);
+  });
+
+  it("«renta de laptop»: DEFECTO HEREDADO (ver e302c60 del suelto) -- el origen devolvia renta_oficina con 0.65 >= 0.6 sin revision; ahora empata con equipo_computo (1 vs 1) y cae a 0.45", () => {
+    const r = clasificarPorReglas("renta de laptop", "I");
+    expect(r.rivales).toBe(1);
+    expect(r.confidence).toBeCloseTo(0.45, 10);
+    expect(r.coincidencias).toEqual(expect.arrayContaining(["renta", "laptop"]));
+    expect(necesitaRevisionHumana(r.confidence)).toBe(true);
+  });
+
+  it("una frase específica de otra categoría gana a la palabra suelta: «renta vehículo» es arrendamiento, no renta_oficina", () => {
+    const r = clasificarPorReglas("Renta vehículo utilitario", "I");
+    expect(r.categoria).toBe("arrendamiento");
+    expect(r.rivales).toBe(0);
+  });
+
+  it("palabra completa: «material» dentro de «materialización» y «disco» dentro de «discoteca» NO cuentan", () => {
+    expect(clasificarPorReglas("materialización del proyecto", "I").categoria).toBe("otros");
+    expect(clasificarPorReglas("consumo en discoteca", "I").categoria).toBe("otros");
+  });
+
+  it("sin acentos y con plural: «Notarío» y «laptops» coinciden", () => {
+    expect(clasificarPorReglas("Honorarios de Notarío y escritura", "I").categoria).toBe("honorarios_legales");
+    expect(clasificarPorReglas("compra de laptops", "I").categoria).toBe("equipo_computo");
+  });
+
+  it("el empate de tres rivales baja a 0.30 como piso", () => {
+    expect(confianzaDeEmpate(1)).toBeCloseTo(0.45, 10);
+    expect(confianzaDeEmpate(2)).toBeCloseTo(0.35, 10);
+    expect(confianzaDeEmpate(9)).toBeCloseTo(0.3, 10);
   });
 });
 

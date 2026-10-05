@@ -4,6 +4,9 @@
 //   GET  /portal-cliente/resumen     estatus de obligaciones (SAT), cierres, documentos y mensajes de SU cliente.
 //   POST /portal-cliente/documentos  sube un CFDI (XML), PDF o imagen (cuerpo = bytes del archivo, <= 2 MB).
 //   POST /portal-cliente/mensajes    { cuerpo } mensaje simple al despacho.
+//   GET  /portal-cliente/cfdi         D-P3-22: sus CFDI (solo los de SU cliente); `?formato=csv` los exporta (celdas neutralizadas contra formulas). Cada lectura/exportacion deja bitacora (D-38).
+// Un XML valido que sube el cliente se acepta SOLO (bandera por cliente `portal_autoaceptar_validos`, encendida por omision) si cumple todo lo de `decidirAutoaceptado`
+// (valido, sin hallazgos, emisor fuera de la 69-B, no duplicado, periodo abierto, clasificacion con confianza); si no, queda pendiente y el staff recibe el aviso in-app.
 // El token viaja en el header `X-Portal-Token` (el enlace lo lleva en el FRAGMENTO `#t=...`, que el
 // navegador nunca envia al servidor): no aparece en URLs de peticion, logs de acceso ni cabecera
 // Referer. El servidor solo maneja su SHA-256; la base (funciones de sistema, migracion 016) valida
@@ -30,8 +33,12 @@ import type { Context } from "hono";
 import { ApiError, authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { rateLimit } from "@atiende/core-ratelimit";
+import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import {
   GESTIONAR_PORTAL_CLIENTE_ROLES,
+  analizarXmlParaAutoaceptado,
+  cfdiPortalACsv,
+  decidirAutoaceptado,
   PortalCuotaExcedidaError,
   PortalEnlaceInvalidoError,
   PortalEntradaInvalidaError,
@@ -40,6 +47,7 @@ import {
   PostgresPortalClienteRepository,
   VER_PORTAL_CLIENTE_ROLES,
   esTokenPortalValido,
+  tipoComprobanteDeXml,
   generarTokenPortal,
   hashTokenPortal,
   validarArchivoPortal,
@@ -51,7 +59,9 @@ import { exigirStepUpDespachos } from "./step-up.ts";
 import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
 import { readJsonCapped, requestActor } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { ingestarXmlCfdiDespachos } from "./cfdi.ts";
+import { avisarCfdiRequiereRevision, avisarEmisorEfos, ingestarXmlCfdiDespachos } from "./cfdi.ts";
+import { clasificacionDe } from "./clasificacion-deps.ts";
+import { registrarRepDespachos } from "./pagos-provisionales.ts";
 
 const CATEGORIA = "despachos:portal-cliente";
 const MAX_BYTES_SUBIDA = 2 * 1024 * 1024;
@@ -170,6 +180,39 @@ export function despachosPortalClienteRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     });
   });
 
+  /**
+   * D-P3-22: lo que pasa con un documento RECIEN recibido (en la misma transaccion de sistema, dentro de un SAVEPOINT: nada de aqui puede tumbar la recepcion).
+   * XML valido que cumple todo -> se acepta solo y queda en bitacora; cualquier otra cosa queda pendiente y avisa al staff (`despachos.portal.documento_pendiente`).
+   */
+  async function procesarDocumentoNuevo(c: Context, db: TenantDbSession, repo: PortalClienteRepository, id: string, tipo: string, bytes: Uint8Array): Promise<"aceptado" | "ya_existia" | null> {
+    const analisis = tipo === "cfdi_xml" ? analizarXmlParaAutoaceptado(new TextDecoder("utf-8").decode(bytes)) : null;
+    const ctx = await repo.contextoIngesta(id, analisis?.ok ? { folioFiscal: analisis.folioFiscal, fecha: analisis.fecha, rfcEmisor: analisis.rfcEmisor } : { folioFiscal: null, fecha: null, rfcEmisor: null });
+    if (!ctx.disponible) return null;
+    const contexto = ctx.valor;
+    if (analisis?.ok) {
+      const decision = decidirAutoaceptado(analisis, contexto);
+      if (decision.aceptar) {
+        const r = await repo.aceptarCfdiSistema(id, decision.datos);
+        if (r.disponible && (r.valor.estado === "aceptado" || r.valor.estado === "ya_existia")) {
+          await deps.despachosAuditSink.record({
+            at: new Date().toISOString(),
+            actorUserId: null,
+            actorEmail: null,
+            organizationId: contexto.organizationId,
+            action: "despachos.portal_cliente:documento_autoaceptado",
+            route: c.req.path,
+            method: c.req.method,
+            decision: "allowed",
+            metadata: { propertyId: contexto.propertyId, documentoId: id, invoiceId: r.valor.invoiceId, yaExistia: r.valor.estado === "ya_existia", origen: "sistema" },
+          });
+          return r.valor.estado;
+        }
+      }
+    }
+    await emitirNotificacion(db, { evento: "despachos.portal.documento_pendiente", organizationId: contexto.organizationId, propertyId: contexto.propertyId, clave: id, entidadTipo: "portal_documento", entidadId: id });
+    return null;
+  }
+
   app.post("/portal-cliente/documentos", async (c) => {
     const hash = await credencial(c, { clave: "upl", max: 15, ventanaMs: 600_000 });
     const bytes = await leerBytesAcotados(c.req.raw, MAX_BYTES_SUBIDA);
@@ -184,8 +227,60 @@ export function despachosPortalClienteRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     }
     const v = validarArchivoPortal({ nombre, contentType: c.req.header("content-type"), bytes });
     if (!v.ok) throw new ApiError(422, `archivo_${v.codigo}`, v.mensaje);
-    const r = await comoSistema((repo) => repo.recibirDocumento(hash, { tipo: v.tipo, nombreArchivo: v.nombreArchivo, mimeType: v.mimeType, contenido: bytes, resumen: v.resumen }));
-    return c.json({ id: r.id, estado: r.estado, duplicado: r.duplicado, nombreArchivo: v.nombreArchivo }, r.duplicado ? 200 : 201);
+    let salida: { id: string; estado: string; duplicado: boolean };
+    try {
+      salida = await deps.engine.withAppSession({ userId: null }, async (db) => {
+        const repo = repoDe(db);
+        const r = await repo.recibirDocumento(hash, { tipo: v.tipo, nombreArchivo: v.nombreArchivo, mimeType: v.mimeType, contenido: bytes, resumen: v.resumen });
+        if (!r.disponible) throw portalNoDisponible();
+        let estado: string = r.valor.estado;
+        if (!r.valor.duplicado && r.valor.estado === "recibido") {
+          const auto = await runWithSavepointFallback<"aceptado" | "ya_existia" | null>({
+            session: db,
+            primary: () => procesarDocumentoNuevo(c, db, repo, r.valor.id, v.tipo, bytes),
+            // La recepcion ya ocurrio: cualquier fallo del autoaceptado/aviso deja el documento pendiente para el staff, sin responder error al cliente.
+            isRecoverable: () => true,
+            fallback: async () => null,
+          });
+          if (auto !== null) estado = "aceptado";
+        }
+        return { id: r.valor.id, estado, duplicado: r.valor.duplicado };
+      });
+    } catch (err) {
+      throw traducirErrorPublico(err);
+    }
+    return c.json({ id: salida.id, estado: salida.estado, duplicado: salida.duplicado, nombreArchivo: v.nombreArchivo }, salida.duplicado ? 200 : 201);
+  });
+
+  /** D-P3-22: el cliente ve (y exporta) SUS CFDI. Solo los de la property de su enlace; la lectura y la exportacion dejan bitacora (D-38), sin el token. */
+  app.get("/portal-cliente/cfdi", async (c) => {
+    const hash = await credencial(c);
+    const r = await comoSistema((repo) => repo.listarCfdi(hash));
+    const csv = c.req.query("formato") === "csv";
+    await deps.despachosAuditSink.record({
+      at: new Date().toISOString(),
+      actorUserId: null,
+      actorEmail: null,
+      organizationId: r.organizationId,
+      action: csv ? "despachos.portal_cliente:cfdi_exportado" : "despachos.portal_cliente:cfdi_consultado",
+      route: c.req.path,
+      method: c.req.method,
+      decision: "allowed",
+      metadata: { propertyId: r.propertyId, filas: r.cfdi.length, formato: csv ? "csv" : "json", origen: "portal_cliente" },
+    });
+    if (csv) {
+      return new Response(cfdiPortalACsv(r.cfdi), {
+        status: 200,
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="mis-cfdi.csv"',
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+        },
+      });
+    }
+    return c.json({ cfdi: r.cfdi, tope: 500 });
   });
 
   app.post("/portal-cliente/mensajes", async (c) => {
@@ -303,12 +398,29 @@ export function despachosPortalClienteRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     if (doc.estado !== "recibido") throw Errors.conflict("Este documento ya fue resuelto.");
 
     let invoiceId: string | null = null;
-    let cfdi: { valido: boolean; requiereRevisionHumana: boolean } | null = null;
+    let cfdi: { valido: boolean; requiereRevisionHumana: boolean; duplicado: boolean } | null = null;
+    let rep: { registrados: number; yaExistian: number; omitidos: number; rechazados: number } | null = null;
     if (doc.tipo === "cfdi_xml") {
-      // Misma ingesta que `POST .../cfdi/importar-xml` (EFOS, cierre de periodo, cola de revision): sin duplicar.
-      const { invoice } = await ingestarXmlCfdiDespachos(deps.despachosRepo(c.get("db")), c.get("organizationId"), propertyId, new TextDecoder("utf-8").decode(doc.contenido), deps.carteraRepo ? deps.carteraRepo(c.get("db")) : new PostgresCarteraRepository(c.get("db")));
-      invoiceId = invoice.id;
-      cfdi = { valido: invoice.valido, requiereRevisionHumana: invoice.requiresHumanReview };
+      const xml = new TextDecoder("utf-8").decode(doc.contenido);
+      if (tipoComprobanteDeXml(xml) === "P") {
+        // D-P3-22: un complemento de pago (REP) se ingiere por la MISMA ruta REP de siempre (`registrarRepDespachos`), no como factura.
+        const r = await registrarRepDespachos(deps, c.get("db"), c.get("organizationId"), propertyId, xml);
+        if (r.registrados === 0 && r.yaExistian === 0) {
+          const detalle = r.rechazados[0]?.motivo ?? r.omitidos[0]?.motivo ?? "ningún documento relacionado se pudo ligar a una factura de este cliente";
+          throw Errors.conflict(`El complemento de pago no se pudo registrar: ${detalle}. El documento sigue pendiente.`);
+        }
+        rep = { registrados: r.registrados, yaExistian: r.yaExistian, omitidos: r.omitidos.length, rechazados: r.rechazados.length };
+      } else {
+        // Misma ingesta que `POST .../cfdi/importar-xml` (EFOS, cierre de periodo, cola de revision, clasificacion): sin duplicar.
+        const ingesta = await ingestarXmlCfdiDespachos(deps.despachosRepo(c.get("db")), c.get("organizationId"), propertyId, new TextDecoder("utf-8").decode(doc.contenido), deps.carteraRepo ? deps.carteraRepo(c.get("db")) : new PostgresCarteraRepository(c.get("db")), clasificacionDe(deps, c.get("db")));
+        invoiceId = ingesta.invoice.id;
+        cfdi = { valido: ingesta.invoice.valido, requiereRevisionHumana: ingesta.invoice.requiresHumanReview, duplicado: ingesta.duplicado };
+        // D-P3-22: un duplicado se acepta como "ya existía" (no es un 409 que bloquee el documento); lo nuevo avisa al staff como cualquier ingesta.
+        if (!ingesta.duplicado) {
+          await avisarEmisorEfos(c.get("db"), c.get("organizationId"), propertyId, ingesta.invoice, ingesta.efos);
+          if (ingesta.invoice.requiresHumanReview) await avisarCfdiRequiereRevision(deps, c.get("db"), c.get("organizationId"), propertyId);
+        }
+      }
     }
     const resuelto = exigirDisponible(await staff(() => repo.resolverDocumento(propertyId, documentoId, "aceptado", null, invoiceId)));
     // Si otro staff lo resolvio entre la lectura y aqui, el error revierte tambien la ingesta (misma transaccion).
@@ -323,9 +435,9 @@ export function despachosPortalClienteRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       route: c.req.path,
       method: c.req.method,
       decision: "allowed",
-      metadata: { propertyId, documentoId, tipo: doc.tipo, invoiceId },
+      metadata: { propertyId, documentoId, tipo: doc.tipo, invoiceId, duplicado: cfdi?.duplicado ?? false, rep: rep !== null },
     });
-    return c.json({ estado: "aceptado", invoiceId, cfdi });
+    return c.json({ estado: "aceptado", invoiceId, cfdi, rep });
   });
 
   app.post("/despachos/:propertyId/portal-cliente/documentos/:documentoId/rechazar", async (c) => {

@@ -47,6 +47,10 @@ export interface CfdiXmlConcepto {
   readonly cantidad: number;
   readonly valorUnitario: number;
   readonly importe: number;
+  /** ClaveProdServ (catálogo SAT c_ClaveProdServ, 8 dígitos); undefined si el XML no la trae. Alimenta el clasificador contable. */
+  readonly claveProdServ?: string;
+  /** Descripcion del concepto tal como la escribió el emisor; undefined si el XML no la trae. */
+  readonly descripcion?: string;
 }
 
 /** Mismo shape que `DatosCfdiDespachos` (@atiende/domain-despachos) menos los
@@ -75,6 +79,9 @@ export interface CfdiXmlParseResult {
   readonly noCertificado: string;
   readonly fecha: string;
   readonly fechaTimbrado: string | null;
+  /** Serie y Folio del comprobante (opcionales en el Anexo 20); undefined si no vienen. */
+  readonly serie?: string;
+  readonly folio?: string;
   readonly retencionIsr: number | null;
   readonly retencionIva: number | null;
   readonly ieps: number | null;
@@ -331,11 +338,17 @@ export function parseCfdiXml(xml: string): CfdiXmlParseResult {
     (comprobante.Conceptos as Record<string, unknown> | undefined)?.Concepto as Record<string, unknown> | readonly Record<string, unknown>[] | undefined,
   );
   if (conceptosRaw.length === 0) throw new CfdiXmlParseError('El XML no trae ningún cfdi:Concepto.');
-  const conceptos: CfdiXmlConcepto[] = conceptosRaw.map((c, i) => ({
-    cantidad: requireAttrNumber(c.Cantidad, `Conceptos[${i}].Cantidad`),
-    valorUnitario: requireAttrNumber(c.ValorUnitario, `Conceptos[${i}].ValorUnitario`),
-    importe: requireAttrNumber(c.Importe, `Conceptos[${i}].Importe`),
-  }));
+  const conceptos: CfdiXmlConcepto[] = conceptosRaw.map((c, i) => {
+    const claveProdServ = attrString(c.ClaveProdServ);
+    const descripcion = attrString(c.Descripcion);
+    return {
+      cantidad: requireAttrNumber(c.Cantidad, `Conceptos[${i}].Cantidad`),
+      valorUnitario: requireAttrNumber(c.ValorUnitario, `Conceptos[${i}].ValorUnitario`),
+      importe: requireAttrNumber(c.Importe, `Conceptos[${i}].Importe`),
+      ...(claveProdServ ? { claveProdServ } : {}),
+      ...(descripcion ? { descripcion } : {}),
+    };
+  });
 
   const timbre = (comprobante.Complemento as Record<string, unknown> | undefined)?.TimbreFiscalDigital as Record<string, unknown> | undefined;
   if (!timbre) {
@@ -351,6 +364,8 @@ export function parseCfdiXml(xml: string): CfdiXmlParseResult {
         .filter((u): u is string => Boolean(u))
     : undefined;
   const tipoRelacion = cfdiRelacionadosNodo ? attrString(cfdiRelacionadosNodo.TipoRelacion) : undefined;
+  const serie = attrString(comprobante.Serie);
+  const folio = attrString(comprobante.Folio);
 
   return {
     folioFiscal,
@@ -371,6 +386,8 @@ export function parseCfdiXml(xml: string): CfdiXmlParseResult {
     noCertificado: requireAttrString(comprobante.NoCertificado, 'NoCertificado'),
     fecha: requireAttrString(comprobante.Fecha, 'Fecha'),
     fechaTimbrado,
+    ...(serie ? { serie } : {}),
+    ...(folio ? { folio } : {}),
     retencionIsr: sumarImporteImpuesto(comprobante, 'Retenciones', 'Retencion', IMPUESTO_ISR),
     retencionIva: sumarImporteImpuesto(comprobante, 'Retenciones', 'Retencion', IMPUESTO_IVA),
     ieps: sumarImporteImpuesto(comprobante, 'Traslados', 'Traslado', IMPUESTO_IEPS),

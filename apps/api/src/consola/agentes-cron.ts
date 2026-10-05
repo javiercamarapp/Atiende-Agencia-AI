@@ -31,6 +31,7 @@ export const AGENTES_CRON: Readonly<Record<string, CronAgente>> = {
   "/internal/despachos/cfdi-estatus-sat": { vertical: "despachos", nombre: "Estatus de CFDI ante el SAT" },
   "/internal/despachos/efos-69b/descarga": { vertical: "despachos", nombre: "Descarga de la lista 69-B" },
   "/internal/despachos/vencimientos-barrido": { vertical: "despachos", nombre: "Barrido de vencimientos fiscales" },
+  "/internal/despachos/polizas-periodo": { vertical: "despachos", nombre: "Pólizas del periodo de despachos" },
   "/internal/rentas/email-dispatch": { vertical: "rentas", nombre: "Despacho de correo de rentas" },
   "/internal/rentas/checkin-recordatorio": { vertical: "rentas", nombre: "Recordatorios de check-in" },
   "/internal/rentas/ical-sync": { vertical: "rentas", nombre: "Sincronización iCal de rentas" },

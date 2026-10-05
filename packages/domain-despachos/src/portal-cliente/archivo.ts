@@ -3,7 +3,8 @@
 // existente (@atiende/billing), el resto de los archivos solo se revisa por tamano, tipo declarado y
 // firma de bytes, y se guarda tal cual en la bandeja del despacho. La base repite lo esencial
 // (tamano, firma, sin DTD/entidades) como defensa en profundidad (migracion 016).
-import { CfdiXmlParseError, parseCfdiXml } from "@atiende/billing";
+import { CfdiXmlParseError, parseCfdiXml, parseComplementoPagoXml } from "@atiende/billing";
+import { tipoComprobanteDeXml } from "../cfdi/lote.ts";
 
 export const PORTAL_MAX_ARCHIVO_BYTES = 2 * 1024 * 1024;
 
@@ -95,6 +96,11 @@ function validarXml(bytes: Uint8Array): ArchivoPortalRechazado | { readonly resu
     return rechazo("contenido_no_permitido", "El XML debe declarar codificacion UTF-8.");
   }
   try {
+    // D-P3-22: un complemento de pago (REP, tipo P) es un XML valido para el portal -- el parser de facturas lo rechaza a proposito, asi que se lee con el parser de REP.
+    if (tipoComprobanteDeXml(texto) === "P") {
+      const rep = parseComplementoPagoXml(texto);
+      return { resumen: { folio_fiscal: rep.folioFiscal, tipo: "P", total: "0.00", fecha: rep.fecha.slice(0, 10), rfc_emisor: rep.rfcEmisor, rfc_receptor: rep.rfcReceptor } };
+    }
     const cfdi = parseCfdiXml(texto);
     return {
       resumen: {

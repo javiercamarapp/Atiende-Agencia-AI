@@ -51,3 +51,11 @@ El SAT tiene limites de frecuencia **no documentados** y la salida de red desde 
 (`decidirEscalamiento`). Emite `despachos.fiscal.vencimiento_proximo` / `_vencido` con dedupe diario por property. Una
 transaccion por cliente; idempotente. NO encola correo de escalamiento (solo avisos in-app): el correo sigue saliendo del
 boton del panel. Cron diario `/internal/despachos/vencimientos-barrido`.
+
+## polizas-periodo.ts (D-P3-14, politicas de periodo)
+
+`runPolizasPeriodoSistema(withUnidad, ...)`: por cada cliente genera las polizas de los CFDI ya clasificados del periodo EN CURSO y del anterior
+(candidatos: clasificado, sin revision pendiente, no cancelado ni excluido, sin poliza vigente, periodo abierto). Una transaccion por cliente;
+idempotente (el registro de la poliza es por CFDI y actor NULL). Un fallo en un cliente no frena a los demas: la corrida responde 200 con `ok:false`
+(`CronPartialFailureError`). Base sin migrar (42883/42P01/42703): omite con aviso. Cron diario `/internal/despachos/polizas-periodo`. El mismo nucleo lo
+usa el boton «Generar pólizas del periodo» del libro (con confirmacion), que emite `despachos.libro.polizas_generadas`.

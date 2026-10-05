@@ -16,6 +16,7 @@ import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Esta
 import { Clock, Info } from "lucide-react";
 import { fetchConfiguracion, updateConfiguracion } from "../lib/configuracion-client.ts";
 import type { DespachosConfiguracion } from "../lib/configuracion-client.ts";
+import { AjustesClasificacionCard } from "../components/AjustesClasificacionCard.tsx";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 // Mismo umbral EXACTO que GESTIONAR_CONFIGURACION_ROLES
@@ -146,6 +147,8 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Despa
           )}
         </CardContent>
       </Card>
+
+      <AjustesClasificacionCard apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
     </PageContainer>
   );
 }

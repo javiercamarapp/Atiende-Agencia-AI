@@ -3,8 +3,9 @@
 // `b2b_ai/features/bookkeeping/`, ver domain-despachos/src/bookkeeping/) —
 // SIN el nivel ML (ver comentario de cabecera de clasificador.ts). Endpoint
 // puro/calculadora, mismo criterio que conciliacion.ts: el cliente HTTP manda
-// los CFDI ya clasificables (descripción, montos, tipo) y las correcciones
-// humanas (`overrides`) ya persistidas — este motor no guarda estado propio.
+// los CFDI ya clasificables (descripción, montos, tipo) — este motor no guarda estado propio.
+// D-P3-13: las correcciones humanas YA NO las reenvía el navegador: el servidor lee las que el despacho persistió por RFC emisor (migración 026) y las aplica con
+// prioridad máxima; `overrides` en el cuerpo sigue aceptándose (calculadora) y gana a las persistidas. Las sugerencias salen del historial persistido.
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
@@ -25,6 +26,7 @@ import type { CfdiClassification, OverrideRecord, TipoCfdiBookkeeping } from "@a
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { clasificacionDe } from "./clasificacion-deps.ts";
 
 const TIPOS_VALIDOS = new Set<TipoCfdiBookkeeping>(["I", "E", "T", "P", "N"]);
 
@@ -106,7 +108,11 @@ export function despachosBookkeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     assertVerticalRole(c, BOOKKEEPING_ROLES);
     const raw = await readJsonCapped<{ readonly cfdis?: unknown; readonly overrides?: unknown }>(c.req.raw, 512 * 1024);
     if (!Array.isArray(raw.cfdis)) throw Errors.validation("cfdis: se esperaba un arreglo.");
-    const overridesMap = overridesARfcMap(parseOverrides(raw.overrides));
+    // D-P3-13: las correcciones por RFC emisor (sin ClaveProdServ) que el despacho persistio; las del cuerpo, si vienen, ganan.
+    const persistidas = await clasificacionDe(deps, c.get("db")).listarCorrecciones(c.req.param("propertyId"));
+    const overridesMap = new Map<string, string>();
+    for (const corr of persistidas.datos) if (corr.claveProdServ === null) overridesMap.set(corr.rfcEmisor, corr.categoria);
+    for (const [rfc, cat] of overridesARfcMap(parseOverrides(raw.overrides))) overridesMap.set(rfc, cat);
 
     const resultados = (raw.cfdis as CfdiBody[]).map((cfdi, idx) => {
       const descripcion = typeof cfdi.descripcion === "string" ? cfdi.descripcion : "";
@@ -130,7 +136,7 @@ export function despachosBookkeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       return classification;
     });
 
-    return c.json({ clasificaciones: resultados });
+    return c.json({ clasificaciones: resultados, correccionesPersistidas: persistidas.datos.length, correccionesEstado: persistidas.estado });
   });
 
   /** Genera + valida una póliza por cada CFDI ya clasificado (ver ruta
@@ -197,8 +203,11 @@ export function despachosBookkeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
   app.post("/despachos/:propertyId/bookkeeping/overrides/sugerencias", async (c) => {
     assertVerticalRole(c, BOOKKEEPING_ROLES);
     const raw = await readJsonCapped<{ readonly overrides?: unknown }>(c.req.raw, 512 * 1024);
-    const overrides = parseOverrides(raw.overrides);
-    return c.json({ sugerencias: getSuggestionsForRetraining(overrides) });
+    // D-P3-13: sin `overrides` en el cuerpo, el historial sale de las correcciones humanas ya persistidas (filas `manual` de la clasificacion de este cliente).
+    const delCuerpo = parseOverrides(raw.overrides);
+    const persistido = delCuerpo.length === 0 ? await clasificacionDe(deps, c.get("db")).historialManual(c.req.param("propertyId")) : null;
+    const overrides: readonly OverrideRecord[] = persistido ? persistido.datos.map((h) => ({ cfdiUuid: h.cfdiUuid, rfcEmisor: h.rfcEmisor.toUpperCase(), newCategoria: h.categoria, tenantId: "" })) : delCuerpo;
+    return c.json({ sugerencias: getSuggestionsForRetraining(overrides), origen: persistido ? "persistido" : "cuerpo", estado: persistido?.estado ?? "ok" });
   });
 
   return app;

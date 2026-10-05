@@ -91,6 +91,57 @@ export interface NuevoDocumentoPortal {
   readonly resumen: Readonly<Record<string, string>>;
 }
 
+/** D-P3-22: un CFDI del cliente tal como lo ve en su portal (solo SU property; sin issues, diot ni datos internos). */
+export interface PortalCfdiVista {
+  readonly id: string;
+  readonly folioFiscal: string;
+  readonly tipo: string;
+  readonly direccion: "emitido" | "recibido" | "indeterminado" | null;
+  readonly fecha: string;
+  readonly rfcEmisor: string;
+  readonly rfcReceptor: string;
+  readonly emisorNombre: string | null;
+  readonly totalCentavos: number;
+  readonly estadoSat: string;
+  /** La revision del despacho rechazo este CFDI: no cuenta en sus declaraciones. */
+  readonly excluido: boolean;
+}
+
+export interface PortalCfdiListado {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly cfdi: readonly PortalCfdiVista[];
+}
+
+/** D-P3-22: todo lo que la API NO puede leer por RLS en sesion de sistema y necesita para decidir el autoaceptado de UN documento recibido. */
+export interface ContextoIngestaPortal {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly documentoEstado: PortalDocumentoEstado;
+  readonly documentoTipo: PortalDocumentoTipo;
+  /** Bandera `portal_autoaceptar_validos` del cliente (encendida por omision). */
+  readonly autoaceptar: boolean;
+  readonly umbral: number;
+  readonly fichaRfc: string | null;
+  /** El UUID ya esta en ESTA property. */
+  readonly existe: boolean;
+  readonly periodoCerrado: boolean;
+  /** Situacion del emisor en la lista 69-B vigente (`null` = no figura). */
+  readonly efosSituacion: string | null;
+  /** false = nunca se ingirio una lista 69-B: "no figura" no significa "limpio". */
+  readonly efosListaDisponible: boolean;
+  readonly correcciones: readonly { readonly rfcEmisor: string; readonly claveProdServ: string | null; readonly categoria: string; readonly cuenta: string | null }[];
+}
+
+export interface DatosAceptacionPortal {
+  /** CFDI en las columnas de `despachos.invoice` (snake_case): la base fija organizacion y property desde el documento. */
+  readonly invoice: Readonly<Record<string, unknown>>;
+  readonly impuestos: readonly Readonly<Record<string, unknown>>[];
+  readonly clasificacion: { readonly categoria: string; readonly confianza: number; readonly method: string; readonly razon: string | null; readonly cuenta: string | null; readonly empate: boolean } | null;
+}
+
+export type EstadoAceptacionPortal = "aceptado" | "ya_existia" | "no_aplica" | "autoaceptar_apagado" | "periodo_cerrado";
+
 /** Puerto del portal. Los tres primeros metodos son del CLIENTE (sesion de sistema, reciben el HASH del
  * token); el resto son del STAFF (sesion de staff con acceso a la property). Cuando la migracion 016 aun
  * no esta aplicada devuelven `{ disponible: false }` en vez de fallar. */
@@ -107,6 +158,13 @@ export interface PortalClienteRepository {
   contenidoDocumento(propertyId: string, documentoId: string): Promise<PortalDisponible<PortalDocumentoContenido | null>>;
   resolverDocumento(propertyId: string, documentoId: string, estado: "aceptado" | "rechazado", motivo: string | null, invoiceId: string | null): Promise<PortalDisponible<boolean>>;
   enviarMensajeStaff(propertyId: string, cuerpo: string): Promise<PortalDisponible<{ readonly id: string }>>;
+
+  /** CLIENTE (sesion de sistema, HASH del token): sus CFDI (hasta 500, recientes primero). */
+  listarCfdi(tokenHash: string): Promise<PortalDisponible<PortalCfdiListado>>;
+  /** SISTEMA: contexto del autoaceptado de un documento recien recibido. `folioFiscal`/`fecha`/`rfcEmisor` salen del XML ya parseado (pueden ser null si no es un CFDI). */
+  contextoIngesta(documentoId: string, datos: { readonly folioFiscal: string | null; readonly fecha: string | null; readonly rfcEmisor: string | null }): Promise<PortalDisponible<ContextoIngestaPortal>>;
+  /** SISTEMA: ingiere el CFDI del documento y lo marca aceptado por el sistema (atomico). */
+  aceptarCfdiSistema(documentoId: string, datos: DatosAceptacionPortal): Promise<PortalDisponible<{ readonly estado: EstadoAceptacionPortal; readonly invoiceId: string | null }>>;
 }
 
 /** Token inexistente, expirado o revocado: una sola clase, sin distinguir (anti-enumeracion). */

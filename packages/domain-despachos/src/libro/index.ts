@@ -6,3 +6,6 @@ export { totalesBalanza, catalogoLibroAAnexo24, generarPaqueteDesdeLibro } from 
 export type { TotalesBalanzaLibro } from "./balanza.ts";
 export { PostgresLibroRepository, traducirErrorLibro } from "./postgres-repository.ts";
 export { InMemoryLibroRepository } from "./in-memory-repository.ts";
+export { InMemoryPolizasPeriodoRepository, PolizasPeriodoNoDisponibleError, catalogoBaseParaSistema, decidirPolizaDeCandidato, invoiceDesdeCandidato, polizasPeriodoDesdeRepositorios, registroCreadoDoble } from "./polizas-periodo.ts";
+export type { CandidatoPolizaSistema, DecisionPoliza, EstadoRegistroSistema, FuentesPolizasPeriodoEnMemoria, PolizasPeriodoRepository, RegistroPolizaSistema } from "./polizas-periodo.ts";
+export { PostgresPolizasPeriodoRepository } from "./postgres-polizas-periodo.ts";

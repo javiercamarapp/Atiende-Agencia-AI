@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { PAGINAS_CALCULO_DESPACHOS, cargarFuentes, type Fuente } from "./test-utils/ds-v2-guard-reglas";
 
 export const TOPE_TABLAS_CALCULO: Readonly<Record<string, number>> = {
-  Bookkeeping: 7,
+  Bookkeeping: 6,
   DevolucionIva: 5,
   Declaraciones: 1,
   Nomina: 3,

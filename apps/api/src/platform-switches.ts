@@ -48,6 +48,7 @@ export const SWITCHABLE_CRONS: readonly string[] = [
   "/internal/despachos/cobranza-reminders",
   "/internal/despachos/efos-69b/descarga",
   "/internal/despachos/email-dispatch",
+  "/internal/despachos/polizas-periodo",
   "/internal/despachos/vencimientos-barrido",
   "/internal/hoteles/aprobaciones-expiracion",
   "/internal/hoteles/email-dispatch",

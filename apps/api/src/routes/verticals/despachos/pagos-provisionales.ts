@@ -142,7 +142,7 @@ export async function registrarRepDespachos(deps: AppDeps, db: TenantDbSession, 
   const ligables = new Map<string, FacturaLigable>();
   const paraPago = new Map<string, FacturaParaPago>();
   for (const id of ids) {
-    const inv = await despachos.findInvoiceByFolioFiscal(organizationId, id);
+    const inv = await despachos.findInvoiceByFolioFiscal(propertyId, id);
     if (!inv || inv.propertyId !== propertyId) continue;
     const total = inv.totalCentavos ?? Math.round(inv.total * 100);
     ligables.set(id, { folioFiscal: inv.folioFiscal, rfcEmisor: inv.rfcEmisor, rfcReceptor: inv.rfcReceptor, totalCentavos: total, ivaCentavos: inv.ivaTrasladadoCentavos ?? (inv.iva === null ? null : Math.round(inv.iva * 100)), metodoPago: inv.metodoPago ?? null });

@@ -1,0 +1,891 @@
+{
+ "version": 1,
+ "descripcion": "Conjunto dorado del clasificador contable de despachos (D-P3-13). Descripciones SINTETICAS: ningun dato de clientes. categoriaEsperada null = empate legitimo (no hay categoria correcta unica): solo se exige que vaya a revision.",
+ "casos": [
+  {
+   "id": "c001",
+   "descripcion": "Honorarios por asesoría contable mensual",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "servicios_profesionales",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c002",
+   "descripcion": "Servicios de consultoría y auditoría de estados financieros",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "servicios_profesionales",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c003",
+   "descripcion": "Dictamen fiscal del ejercicio",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "servicios_profesionales",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c004",
+   "descripcion": "Desarrollo software a la medida y diseño de interfaz",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "servicios_profesionales",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c005",
+   "descripcion": "Servicio profesional de ingeniería civil",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "servicios_profesionales",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c006",
+   "descripcion": "Honorarios de arquitectura por proyecto ejecutivo",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "servicios_profesionales",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c007",
+   "descripcion": "Servicios profesionales",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "servicios_profesionales",
+   "claveProdServ": "84111506",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c008",
+   "descripcion": "Pago mensual",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "servicios_profesionales",
+   "claveProdServ": "80101505",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c009",
+   "descripcion": "Renta de oficina mes de agosto",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "renta_oficina",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c010",
+   "descripcion": "Arrendamiento de local comercial en Polanco",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "renta_oficina",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c011",
+   "descripcion": "Alquiler de oficina y subarrendamiento de bodega",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "renta_oficina",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c012",
+   "descripcion": "Renta mensual oficina sucursal norte",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "renta_oficina",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c013",
+   "descripcion": "Mensualidad julio",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "renta_oficina",
+   "claveProdServ": "80131501",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c014",
+   "descripcion": "Compra de materia prima para producción",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "materia_prima",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c015",
+   "descripcion": "Suministro de insumos y empaque",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "materia_prima",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c016",
+   "descripcion": "Envases y componentes para línea de ensamble",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "materia_prima",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c017",
+   "descripcion": "Material e insumo para manufactura",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "materia_prima",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c018",
+   "descripcion": "Campaña de marketing en redes sociales",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "publicidad",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c019",
+   "descripcion": "Anuncio en Google Ads y Facebook Ads",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "publicidad",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c020",
+   "descripcion": "Publicidad impresa y mercadotecnia",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "publicidad",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c021",
+   "descripcion": "Promoción de temporada y campaña de anuncio",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "publicidad",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c022",
+   "descripcion": "Servicio",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "publicidad",
+   "claveProdServ": "82101502",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c023",
+   "descripcion": "Honorarios de notario por escritura de constitución",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "honorarios_legales",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c024",
+   "descripcion": "Honorarios abogado litigio mercantil",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "honorarios_legales",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c025",
+   "descripcion": "Servicio jurídico y poder notarial",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "honorarios_legales",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c026",
+   "descripcion": "Escritura pública y notario",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "honorarios_legales",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c027",
+   "descripcion": "Trámite",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "honorarios_legales",
+   "claveProdServ": "80121604",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c028",
+   "descripcion": "Comisión bancaria por transferencia",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "comision_bancaria",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c029",
+   "descripcion": "Comisión por TPV y dispersión",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "comision_bancaria",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c030",
+   "descripcion": "Comisión de banco por tarjeta",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "comision_bancaria",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c031",
+   "descripcion": "Intereses por inversión en cetes",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "intereses_bancarios",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c032",
+   "descripcion": "Rendimiento de fondo de inversión",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "intereses_bancarios",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c033",
+   "descripcion": "Interés devengado del mes",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "intereses_bancarios",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c034",
+   "descripcion": "Pago de nómina quincenal",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "nomina",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c035",
+   "descripcion": "Sueldo y prestaciones del personal",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "nomina",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c036",
+   "descripcion": "Aguinaldo y prima vacacional",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "nomina",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c037",
+   "descripcion": "Compensación y salario mensual",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "nomina",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c038",
+   "descripcion": "Nómina del periodo",
+   "tipo": "N",
+   "direccion": "recibido",
+   "categoriaEsperada": "nomina",
+   "nota": "TipoDeComprobante=N",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c039",
+   "descripcion": "Recibo de nómina",
+   "tipo": "N",
+   "direccion": "recibido",
+   "categoriaEsperada": "nomina",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c040",
+   "descripcion": "Renta vehículo utilitario",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "arrendamiento",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c041",
+   "descripcion": "Leasing de equipo de reparto",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "arrendamiento",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c042",
+   "descripcion": "Renta equipo de sonido para evento",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "arrendamiento",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c043",
+   "descripcion": "Renta maquinaria pesada obra",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "arrendamiento",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c044",
+   "descripcion": "Póliza de seguro de gastos médicos",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "seguros",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c045",
+   "descripcion": "Prima seguro de flotilla",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "seguros",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c046",
+   "descripcion": "Cobertura de aseguradora para inmueble",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "seguros",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c047",
+   "descripcion": "Siniestro y póliza de daños",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "seguros",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c048",
+   "descripcion": "Prima",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "seguros",
+   "claveProdServ": "84131501",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c049",
+   "descripcion": "Servicio de internet y teléfono",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "telefonia",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c050",
+   "descripcion": "Plan celular Telcel",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "telefonia",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c051",
+   "descripcion": "Fibra óptica Telmex",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "telefonia",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c052",
+   "descripcion": "Telecomunicaciones y datos móviles",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "telefonia",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c053",
+   "descripcion": "Mensualidad servicios",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "telefonia",
+   "claveProdServ": "81161701",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c054",
+   "descripcion": "Servicio de flete y logística",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "transporte",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c055",
+   "descripcion": "Envío por paquetería DHL",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "transporte",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c056",
+   "descripcion": "Viaje en Uber a cliente",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "transporte",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c057",
+   "descripcion": "Transporte de mercancía y FedEx",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "transporte",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c058",
+   "descripcion": "Servicio de entrega",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "transporte",
+   "claveProdServ": "78102203",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c059",
+   "descripcion": "Laptop para el área de contabilidad",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": null,
+   "debeIrARevision": true,
+   "nota": "falso amigo: «contabilidad» es palabra de servicios_profesionales; empate legítimo"
+  },
+  {
+   "id": "c060",
+   "descripcion": "Monitor e impresora",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "equipo_computo",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c061",
+   "descripcion": "Servidor y disco SSD",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "equipo_computo",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c062",
+   "descripcion": "Computadora de escritorio",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "equipo_computo",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c063",
+   "descripcion": "Equipo",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "equipo_computo",
+   "claveProdServ": "43211503",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c064",
+   "descripcion": "Artículo 55",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "equipo_computo",
+   "claveProdServ": "43212105",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c065",
+   "descripcion": "Mantenimiento de aire acondicionado",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "mantenimiento",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c066",
+   "descripcion": "Servicio de limpieza y jardinería",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "mantenimiento",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c067",
+   "descripcion": "Reparación de plomería",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "mantenimiento",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c068",
+   "descripcion": "Electricidad y albañilería en oficina",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "mantenimiento",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c069",
+   "descripcion": "Servicio",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "mantenimiento",
+   "claveProdServ": "76111501",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c070",
+   "descripcion": "Papelería y carpeta",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "papeleria",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c071",
+   "descripcion": "Tinta y papel para impresora",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "papeleria",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c072",
+   "descripcion": "Artículos oficina y material oficina",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "papeleria",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c073",
+   "descripcion": "Compra",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "papeleria",
+   "claveProdServ": "44121615",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c074",
+   "descripcion": "Venta de mercancía",
+   "tipo": "I",
+   "direccion": "emitido",
+   "categoriaEsperada": "venta_mercancia",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c075",
+   "descripcion": "Venta de producto y artículo",
+   "tipo": "I",
+   "direccion": "emitido",
+   "categoriaEsperada": "venta_mercancia",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c076",
+   "descripcion": "Venta de mercancía importe total",
+   "tipo": "I",
+   "direccion": "emitido",
+   "categoriaEsperada": "venta_mercancia",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c077",
+   "descripcion": "Servicio de consultoría y desarrollo de proyecto",
+   "tipo": "I",
+   "direccion": "emitido",
+   "categoriaEsperada": "venta_servicios",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c078",
+   "descripcion": "Honorarios facturados por servicio",
+   "tipo": "I",
+   "direccion": "emitido",
+   "categoriaEsperada": "venta_servicios",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c079",
+   "descripcion": "Proyecto de desarrollo y servicio",
+   "tipo": "I",
+   "direccion": "emitido",
+   "categoriaEsperada": "venta_servicios",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c080",
+   "descripcion": "Renta de laptop",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": null,
+   "debeIrARevision": true,
+   "nota": "empate: renta (renta_oficina) vs laptop (equipo_computo)"
+  },
+  {
+   "id": "c081",
+   "descripcion": "Renta de oficina y compra de computadora",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": null,
+   "debeIrARevision": true,
+   "nota": "empate: renta_oficina vs equipo_computo | LIMITE CONOCIDO: concepto mixto, gana el que suma 2 contra 1 con 0.80 y pasa la compuerta"
+  },
+  {
+   "id": "c082",
+   "descripcion": "Servicio de internet y publicidad",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": null,
+   "debeIrARevision": true,
+   "nota": "empate: telefonia vs publicidad"
+  },
+  {
+   "id": "c083",
+   "descripcion": "Seguro de transporte",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": null,
+   "debeIrARevision": true,
+   "nota": "empate: seguros vs transporte"
+  },
+  {
+   "id": "c084",
+   "descripcion": "Mantenimiento de servidor",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": null,
+   "debeIrARevision": true,
+   "nota": "empate: mantenimiento vs equipo_computo"
+  },
+  {
+   "id": "c085",
+   "descripcion": "Papel para campaña",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": null,
+   "debeIrARevision": true,
+   "nota": "empate: papeleria vs publicidad"
+  },
+  {
+   "id": "c086",
+   "descripcion": "Honorarios de notario y asesoría",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": null,
+   "debeIrARevision": true,
+   "nota": "empate: honorarios_legales vs servicios_profesionales | LIMITE CONOCIDO: concepto mixto, gana el que suma 2 contra 1 con 0.80 y pasa la compuerta"
+  },
+  {
+   "id": "c087",
+   "descripcion": "Comisión por transferencia de nómina",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": null,
+   "debeIrARevision": true,
+   "nota": "empate: comision_bancaria vs nomina | LIMITE CONOCIDO: concepto mixto, gana el que suma 2 contra 1 con 0.80 y pasa la compuerta"
+  },
+  {
+   "id": "c088",
+   "descripcion": "Laptop",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": null,
+   "claveProdServ": "84131501",
+   "debeIrARevision": true,
+   "nota": "ClaveProdServ (seguros) contradice la descripción"
+  },
+  {
+   "id": "c089",
+   "descripcion": "Campaña de publicidad",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": null,
+   "claveProdServ": "43211503",
+   "debeIrARevision": true,
+   "nota": "ClaveProdServ (equipo) contradice la descripción"
+  },
+  {
+   "id": "c090",
+   "descripcion": "Concepto 1",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": null,
+   "claveProdServ": "43211503",
+   "debeIrARevision": false,
+   "nota": "ClaveProdServ sola sin descripción útil: 0.80, pasa"
+  },
+  {
+   "id": "c091",
+   "descripcion": "xyz sin ninguna palabra clave",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "otros",
+   "debeIrARevision": true
+  },
+  {
+   "id": "c092",
+   "descripcion": "Concepto varios",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "otros",
+   "debeIrARevision": true
+  },
+  {
+   "id": "c093",
+   "descripcion": "Pago ref 4455",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "otros",
+   "debeIrARevision": true
+  },
+  {
+   "id": "c094",
+   "descripcion": "Ajuste",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "otros",
+   "debeIrARevision": true
+  },
+  {
+   "id": "c095",
+   "descripcion": "Gastos diversos del periodo",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "otros",
+   "debeIrARevision": true
+  },
+  {
+   "id": "c096",
+   "descripcion": "Misc.",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "otros",
+   "debeIrARevision": true
+  },
+  {
+   "id": "c097",
+   "descripcion": "Materialización del proyecto de obra",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "otros",
+   "debeIrARevision": true,
+   "nota": "el includes() del origen coincidia por subcadena"
+  },
+  {
+   "id": "c098",
+   "descripcion": "Consumo en discoteca",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "otros",
+   "debeIrARevision": true,
+   "nota": "el includes() del origen coincidia por subcadena"
+  },
+  {
+   "id": "c099",
+   "descripcion": "Servicio de cerrajería exprés",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "otros",
+   "debeIrARevision": true,
+   "nota": "el includes() del origen coincidia por subcadena"
+  },
+  {
+   "id": "c100",
+   "descripcion": "Comprobante de pago extranjero",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "otros",
+   "debeIrARevision": true,
+   "nota": "el includes() del origen coincidia por subcadena"
+  },
+  {
+   "id": "c101",
+   "descripcion": "Orientación vocacional",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "otros",
+   "debeIrARevision": true,
+   "nota": "el includes() del origen coincidia por subcadena"
+  },
+  {
+   "id": "c102",
+   "descripcion": "ASESORIA CONTABLE",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "servicios_profesionales",
+   "nota": "mayúsculas y sin acento (el catálogo trae acento)",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c103",
+   "descripcion": "Consultoria y auditoria",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "servicios_profesionales",
+   "nota": "sin acentos",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c104",
+   "descripcion": "Compra de LAPTOPS",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "equipo_computo",
+   "nota": "plural",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c105",
+   "descripcion": "Renta de OFICINAS",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "renta_oficina",
+   "nota": "plural",
+   "debeIrARevision": false
+  },
+  {
+   "id": "c106",
+   "descripcion": "Servicio de internet y fibra óptica",
+   "tipo": "I",
+   "direccion": "recibido",
+   "categoriaEsperada": "telefonia",
+   "debeIrARevision": false
+  }
+ ]
+}

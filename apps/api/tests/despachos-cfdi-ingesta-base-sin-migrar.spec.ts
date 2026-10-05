@@ -39,6 +39,10 @@ class SesionBaseSinMigrar implements TenantDbSession {
       throw pgError(code, msg);
     };
     if (/from despachos\.periodo_cierre/.test(q)) return { rows: [] };
+    // D-P3-18: el chequeo de idempotencia por (cliente, UUID) corre ANTES de insertar; D-P3-14: el aviso de revision lee la zona horaria y emite la notificacion.
+    if (/from despachos\.invoice where property_id = \$1 and folio_fiscal = \$2/.test(q)) return { rows: [] };
+    if (/from despachos\.property_config/.test(q)) return this.migrada ? { rows: [] } : falla("42P01", 'relation "despachos.property_config" does not exist');
+    if (/core\.emit_notification/.test(q)) return this.migrada ? { rows: [{ emit_notification: 1 } as unknown as T] } : falla("42883", "function core.emit_notification(uuid, uuid, text) does not exist");
     if (/despachos\.efos_consultar/.test(q)) return falla("42883", "function despachos.efos_consultar(text[]) does not exist");
     if (/from despachos\.cliente_ficha/.test(q)) return this.migrada ? { rows: [] } : falla("42P01", 'relation "despachos.cliente_ficha" does not exist');
     if (/insert into despachos\.invoice \(/.test(q) && /direccion/.test(q)) {

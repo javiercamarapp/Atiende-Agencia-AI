@@ -84,6 +84,14 @@ export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
   "GET /cfdi/:invoiceId": TODOS,
   "PUT /cfdi/:invoiceId/estado-sat": ESCRIBE,
   "GET /cfdi": TODOS,
+  // clasificacion.ts (D-P3-13)
+  "PUT /cfdi/:invoiceId/categoria": ESCRIBE,
+  "GET /clasificacion/catalogo": TODOS,
+  "GET /clasificacion/correcciones": TODOS,
+  "PUT /clasificacion/correcciones": ESCRIBE,
+  "DELETE /clasificacion/correcciones/:id": ESCRIBE,
+  "GET /clasificacion/ajustes": TODOS,
+  "PUT /clasificacion/ajustes": SOLO_ADMIN,
   // cierre-mensual.ts
   "POST /cierre-mensual/periodos": ESCRIBE,
   "GET /cierre-mensual/periodos": TODOS,
@@ -170,6 +178,7 @@ export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
   "GET /libro/polizas/:polizaId": TODOS,
   "POST /libro/polizas": ESCRIBE,
   "POST /libro/polizas/desde-cfdi": ESCRIBE,
+  "POST /libro/polizas/generar-periodo": ESCRIBE,
   "POST /libro/polizas/:polizaId/reversar": ESCRIBE,
   "GET /libro/cfdi": TODOS,
   "GET /libro/balanza": TODOS,

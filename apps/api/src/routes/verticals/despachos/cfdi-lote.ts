@@ -23,7 +23,8 @@ import type { CarteraRepository, ResultadoArchivoLote } from "@atiende/domain-de
 import { PostgresCarteraRepository } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { avisarEmisorEfos, ingestarXmlCfdiDespachos } from "./cfdi.ts";
+import { avisarCfdiRequiereRevision, avisarEmisorEfos, ingestarXmlCfdiDespachos } from "./cfdi.ts";
+import { clasificacionDe } from "./clasificacion-deps.ts";
 import { registrarRepDespachos } from "./pagos-provisionales.ts";
 import { LIMITES_ZIP_CFDI, ZipCfdiInvalidoError, leerZipCfdi } from "./cfdi-lote-zip.ts";
 
@@ -139,6 +140,7 @@ export function despachosCfdiLoteRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     }
 
     const cartera = carteraDe(db);
+    let hayRevision = false;
     const decodificador = new TextDecoder("utf-8", { fatal: true });
     for (const archivo of pendientes) {
       const nombre = nombreArchivoParaMostrar(archivo.nombre);
@@ -197,15 +199,19 @@ export function despachosCfdiLoteRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         const r = await runWithSavepointFallback({
           session: db,
           primary: async () => {
-            const ingesta = await ingestarXmlCfdiDespachos(deps.despachosRepo(db), organizationId, propertyId, xml, cartera);
-            await avisarEmisorEfos(db, organizationId, propertyId, ingesta.invoice, ingesta.efos);
+            const ingesta = await ingestarXmlCfdiDespachos(deps.despachosRepo(db), organizationId, propertyId, xml, cartera, clasificacionDe(deps, db));
+            if (!ingesta.duplicado) await avisarEmisorEfos(db, organizationId, propertyId, ingesta.invoice, ingesta.efos);
             return ingesta;
           },
           isRecoverable: () => true,
           fallback: (e) => Promise.reject(e),
         });
         const folio = r.invoice.folioFiscal;
-        if (r.invoice.requiresHumanReview) {
+        if (r.duplicado) {
+          // D-P3-18: el UUID ya estaba en ESTE cliente -- no se duplica ni se reporta como error.
+          resultados.push({ archivo: nombre, estado: "duplicado", clase: "cfdi", folioFiscal: folio, motivo: "Ya existía un CFDI con ese UUID en este cliente: no se duplicó." });
+        } else if (r.invoice.requiresHumanReview) {
+          hayRevision = true;
           resultados.push({ archivo: nombre, estado: "en_revision", clase: "cfdi", folioFiscal: folio, motivo: "Quedó en la cola de revisión humana." });
         } else {
           resultados.push({ archivo: nombre, estado: "ingerido", clase: "cfdi", folioFiscal: folio, motivo: null });
@@ -221,6 +227,8 @@ export function despachosCfdiLoteRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       }
     }
 
+    // D-P3-23: una sola campana por cliente y por dia si algun CFDI del lote quedo en la cola de revision (por el motor fiscal o por la clasificacion).
+    if (hayRevision) await avisarCfdiRequiereRevision(deps, db, organizationId, propertyId);
     const totales = totalesDeLote(resultados);
     const loteId = randomUUID();
     if (totales.ingeridos + totales.enRevision > 0) {

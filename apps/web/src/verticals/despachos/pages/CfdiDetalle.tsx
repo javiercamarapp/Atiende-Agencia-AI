@@ -8,6 +8,7 @@ import { Button, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCarg
 import type { DataTableColumna } from "@atiende/ui";
 import { fetchInvoice, registrarEstadoSat, verificarEstatusSat } from "../lib/cfdi-client.ts";
 import type { EstadoSatCfdi, ImpuestoDesglosado, InvoiceSummary } from "../lib/cfdi-client.ts";
+import { ClasificacionCfdiCard } from "../components/ClasificacionCfdiCard.tsx";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
 import type { RevisionCfdi } from "../lib/revisiones-client.ts";
 import { formatCentavos, formatDate, formatDireccionCfdi, formatEstadoSat, formatFormaPago, formatMetodoPago, formatMoney, formatTasaImpuesto, tonoEstadoSat } from "../lib/format.ts";
@@ -81,6 +82,16 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
       cancelado = true;
     };
   }, [apiBaseUrl, token, propertyId, invoiceId]);
+
+  /** Vuelve a pedir el CFDI tras corregir su categoria (clasificacion vigente e historial nuevos). */
+  async function recargarInvoice() {
+    if (!invoiceId) return;
+    try {
+      setInvoice(await fetchInvoice(fetch, apiBaseUrl, token, propertyId, invoiceId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo recargar el CFDI.");
+    }
+  }
 
   async function loadRevision() {
     if (!invoiceId) return;
@@ -191,6 +202,7 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
             <StatusBadge tone="danger">Con hallazgos</StatusBadge>
           )}
           {invoice.requiereRevisionHumana && <StatusBadge tone="warning">Requiere revisión humana</StatusBadge>}
+          {invoice.excluidoPorRevision && <StatusBadge tone="danger">Excluido de los reportes</StatusBadge>}
         </div>
       </header>
 
@@ -261,7 +273,7 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
           <Field label="IVA" value={formatMoney(invoice.iva)} />
           <Field label="Descuento" value={formatMoney(invoice.descuento)} />
           <Field label="Total" value={formatMoney(invoice.total)} />
-          <Field label="Categoría" value={CATEGORIA_LABELS[invoice.categoria] ?? invoice.categoria} />
+          <Field label="Categoría" value={invoice.clasificacion?.nombre ?? CATEGORIA_LABELS[invoice.categoria] ?? invoice.categoria} />
           <Field label="Ingestado" value={formatDate(invoice.creadoEn)} />
         </CardContent>
       </Card>
@@ -282,6 +294,14 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
           <Field label="IEPS" value={formatCentavos(invoice.montosCentavos?.ieps)} />
         </CardContent>
       </Card>
+
+      {invoice.excluidoPorRevision && (
+        <p role="status" className="text-sm text-destructive">
+          La revisión de este CFDI se rechazó: ya no cuenta en la DIOT, los pagos provisionales, los reportes, la conciliación ni las pólizas.
+        </p>
+      )}
+
+      <ClasificacionCfdiCard apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} role={role} invoice={invoice} onCambio={recargarInvoice} />
 
       {invoice.impuestos && invoice.impuestos.length > 0 && (
         <Card>

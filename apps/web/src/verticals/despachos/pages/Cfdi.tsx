@@ -7,7 +7,7 @@
 // server-to-server (PAC/timbrado), fuera de alcance de esta fase — mismo criterio
 // que Convocatorias.tsx/licitaciones: cerrar el gap de LECTURA real primero.
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Check, FileStack, FileUp, ShieldAlert, Upload, X } from "lucide-react";
 import {
   Button,
@@ -33,6 +33,7 @@ import { fetchEfosAlertas, resumenEfos } from "../lib/efos-client.ts";
 import type { EfosAlerta, EfosAlertasRespuesta } from "../lib/efos-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
 import type { RevisionCfdi } from "../lib/revisiones-client.ts";
+import { formatConfianza } from "../lib/clasificacion-client.ts";
 import { formatDate, formatDireccionCfdi, formatEstadoSat, formatMoney, tonoEstadoSat } from "../lib/format.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 import { ImportarLoteDialog } from "../components/ImportarLoteDialog.tsx";
@@ -58,7 +59,9 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
   const [invoices, setInvoices] = useState<readonly InvoiceSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [soloRevision, setSoloRevision] = useState(false);
+  // `?revision=1` es el enlace de la campana (despachos.cfdi.requiere_revision): abre la lista ya filtrada.
+  const [params] = useSearchParams();
+  const [soloRevision, setSoloRevision] = useState(params.get("revision") === "1");
   // D-22: emitidos vs recibidos segun el RFC de la ficha del cliente ("" = todos).
   const [direccion, setDireccion] = useState<"" | DireccionCfdi>("");
 
@@ -155,7 +158,8 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
     try {
       const xml = await file.text();
       const invoice = await importarCfdiXml(fetch, apiBaseUrl, token, propertyId, xml);
-      setImportOk(`CFDI ${invoice.folioFiscal.slice(0, 13)}… importado correctamente.`);
+      // D-P3-18: un UUID que ya estaba en este cliente no se duplica (el servidor responde 200 con la fila existente).
+      setImportOk(invoice.duplicado ? `CFDI ${invoice.folioFiscal.slice(0, 13)}… ya existía en este cliente: no se duplicó.` : `CFDI ${invoice.folioFiscal.slice(0, 13)}… importado correctamente.`);
       await Promise.all([load(), loadRevisiones()]);
     } catch (err) {
       setImportError(err instanceof Error ? err.message : "No se pudo importar el CFDI.");
@@ -399,11 +403,24 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
             { id: "sentido", encabezado: "Sentido", celda: (inv) => <span className="text-muted-foreground">{formatDireccionCfdi(inv.direccion)}</span> },
             { id: "moneda", encabezado: "Moneda", celda: (inv) => <span className="font-mono text-xs text-muted-foreground">{inv.moneda ?? "—"}</span> },
             { id: "estatus", encabezado: "Estatus", celda: (inv) => <ValidoBadge valido={inv.valido} /> },
+            {
+              id: "categoria",
+              encabezado: "Categoría",
+              celda: (inv) =>
+                inv.clasificacion ? (
+                  <>
+                    <span className="text-foreground">{inv.clasificacion.nombre}</span>
+                    <div className="text-xs text-muted-foreground">{inv.clasificacion.empate ? "Empate: revisar" : `${formatConfianza(inv.clasificacion.confianza)}${inv.clasificacion.porPersona ? " · persona" : ""}`}</div>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                ),
+            },
             { id: "sat", encabezado: "SAT", celda: (inv) => <StatusBadge tone={tonoEstadoSat(inv.estadoSat)}>{formatEstadoSat(inv.estadoSat)}</StatusBadge> },
             {
               id: "revision",
               encabezado: "Revisión",
-              celda: (inv) => <span className={inv.requiereRevisionHumana ? "text-destructive" : "text-muted-foreground"}>{inv.requiereRevisionHumana ? "Pendiente" : "—"}</span>,
+              celda: (inv) => <span className={inv.requiereRevisionHumana || inv.excluidoPorRevision ? "text-destructive" : "text-muted-foreground"}>{inv.excluidoPorRevision ? "Rechazada (excluido)" : inv.requiereRevisionHumana ? "Pendiente" : "—"}</span>,
             },
             { id: "fecha", encabezado: "Fecha", celda: (inv) => <span className="text-muted-foreground">{formatDate(inv.creadoEn)}</span> },
           ]}

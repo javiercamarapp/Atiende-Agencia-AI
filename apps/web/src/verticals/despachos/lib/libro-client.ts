@@ -73,6 +73,24 @@ export interface CfdiLibro {
   readonly poliza: { readonly id: string; readonly folio: number; readonly tipo: TipoPoliza } | null;
   readonly armable: boolean;
   readonly motivo: string | null;
+  /** D-P3-14: categoria contable vigente (clasificacion) y su confianza; `null` = sin clasificar o base sin la migracion 026. */
+  readonly categoriaContable?: string | null;
+  readonly confianzaClasificacion?: number | null;
+}
+
+/** Resultado de `POST .../libro/polizas/generar-periodo` (mismas reglas que el cron diario). */
+export interface ResultadoGenerarPolizasPeriodo {
+  readonly periodo: string;
+  readonly candidatos: number;
+  readonly generadas: number;
+  /** Ya tenian poliza vigente (el segundo clic nunca duplica). */
+  readonly yaTenian: number;
+  /** Con revision humana pendiente: no se contabilizan. */
+  readonly porRevision: number;
+  /** Con clasificacion dudosa (bajo el piso o el umbral, o empate): no se contabilizan solos. */
+  readonly porClasificacion: number;
+  readonly noArmables: readonly { readonly folioFiscal: string; readonly motivo: string }[];
+  readonly fallidas: readonly { readonly folioFiscal: string; readonly motivo: string }[];
 }
 
 export interface PaqueteContabilidad {
@@ -217,4 +235,9 @@ export async function fetchCfdiLibro(f: typeof fetch, apiBaseUrl: string, token:
 export async function fetchPaquete(f: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodo: string): Promise<PaqueteContabilidad> {
   // D-30: misma exportacion fiscal que el paquete de contabilidad electronica -> segundo factor reciente (lib/step-up.ts).
   return conStepUp({ fetchImpl: f, apiBaseUrl, token }, (h) => fetchJson<PaqueteContabilidad>(f, `${base(apiBaseUrl, propertyId)}/contabilidad-electronica?periodo=${encodeURIComponent(periodo)}`, token, despachosAuthContext(), h));
+}
+
+/** D-P3-14: registra la poliza de cada CFDI del periodo que ya se puede contabilizar solo (clasificado, sin revision pendiente, no cancelado ni excluido, periodo abierto). Idempotente. */
+export async function generarPolizasPeriodo(f: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodo: string): Promise<ResultadoGenerarPolizasPeriodo> {
+  return postJson(f, `${base(apiBaseUrl, propertyId)}/polizas/generar-periodo`, token, { periodo });
 }

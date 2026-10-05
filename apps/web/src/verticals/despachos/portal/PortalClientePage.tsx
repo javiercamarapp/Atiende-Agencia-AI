@@ -4,11 +4,14 @@
 // en el header `X-Portal-Token`; nunca se imprime ni se escribe en almacenamiento.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
-import { CalendarClock, FileUp, MessageSquare, ShieldCheck } from "lucide-react";
+import { CalendarClock, Download, FileText, FileUp, MessageSquare, ShieldCheck } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoVacio, StatusBadge, Textarea } from "@atiende/ui";
 import { BarraProgreso } from "../../../components/BarraProgreso.tsx";
 import {
   avanceCierre,
+  descargarPortalCfdiCsv,
+  ETIQUETA_SENTIDO_CFDI,
+  fetchPortalCfdi,
   enviarMensajePortal,
   estadoCierre,
   estadoDocumento,
@@ -20,7 +23,8 @@ import {
   tokenDeFragmento,
   validarArchivoLocal,
 } from "../lib/portal-cliente-client.ts";
-import type { PortalResumen } from "../lib/portal-cliente-client.ts";
+import type { PortalCfdiCliente, PortalResumen } from "../lib/portal-cliente-client.ts";
+import { formatCentavos } from "../lib/format.ts";
 import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
 
 function formatFechaHora(iso: string): string {
@@ -43,6 +47,10 @@ export function PortalClientePage({ apiBaseUrl, hash }: PortalClientePageProps) 
   const [subiendo, setSubiendo] = useState(false);
   const [mensaje, setMensaje] = useState("");
   const [enviando, setEnviando] = useState(false);
+  // D-P3-22: "Mis CFDI" -- carga aparte para que un fallo de esta lista no tumbe el resto del portal.
+  const [cfdi, setCfdi] = useState<{ readonly estado: "cargando" | "listo" | "error" | "no_disponible"; readonly lista: readonly PortalCfdiCliente[]; readonly tope: number }>({ estado: "cargando", lista: [], tope: 500 });
+  const [verTodos, setVerTodos] = useState(false);
+  const [exportando, setExportando] = useState(false);
 
   useEffect(() => {
     document.title = "Portal del cliente";
@@ -60,9 +68,41 @@ export function PortalClientePage({ apiBaseUrl, hash }: PortalClientePageProps) 
     }
   }, [apiBaseUrl]);
 
+  const cargarCfdi = useCallback(async () => {
+    const t = token.current;
+    if (!t) return;
+    try {
+      const r = await fetchPortalCfdi(fetch, apiBaseUrl, t);
+      setCfdi({ estado: "listo", lista: r.cfdi, tope: r.tope });
+    } catch (err) {
+      setCfdi({ estado: err instanceof PortalClienteError && err.status === 503 ? "no_disponible" : "error", lista: [], tope: 500 });
+    }
+  }, [apiBaseUrl]);
+
   useEffect(() => {
     void cargar();
-  }, [cargar]);
+    void cargarCfdi();
+  }, [cargar, cargarCfdi]);
+
+  async function exportarCsv() {
+    const t = token.current;
+    if (!t) return;
+    setExportando(true);
+    setAviso(null);
+    try {
+      const blob = await descargarPortalCfdiCsv(fetch, apiBaseUrl, t);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "mis-cfdi.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setAviso({ tono: "danger", texto: err instanceof PortalClienteError ? err.message : "No se pudo exportar tus CFDI. Intenta de nuevo." });
+    } finally {
+      setExportando(false);
+    }
+  }
 
   async function alElegirArchivo(e: ChangeEvent<HTMLInputElement>) {
     const archivo = e.target.files?.[0];
@@ -78,8 +118,9 @@ export function PortalClientePage({ apiBaseUrl, hash }: PortalClientePageProps) 
     setAviso(null);
     try {
       const r = await subirDocumentoPortal(fetch, apiBaseUrl, t, archivo);
-      setAviso({ tono: "success", texto: r.duplicado ? `Ya habíamos recibido “${r.nombreArchivo}”.` : `Recibimos “${r.nombreArchivo}”. Tu despacho lo revisará.` });
-      await cargar();
+      // Un XML valido se acepta solo: el despacho ya lo tiene registrado (D-P3-22).
+      setAviso({ tono: "success", texto: r.duplicado ? `Ya habíamos recibido “${r.nombreArchivo}”.` : r.estado === "aceptado" ? `Recibimos “${r.nombreArchivo}” y ya quedó registrado con tu despacho.` : `Recibimos “${r.nombreArchivo}”. Tu despacho lo revisará.` });
+      await Promise.all([cargar(), cargarCfdi()]);
     } catch (err) {
       setAviso({ tono: "danger", texto: err instanceof PortalClienteError ? err.message : "No se pudo subir el archivo. Intenta de nuevo." });
     } finally {
@@ -178,6 +219,57 @@ export function PortalClientePage({ apiBaseUrl, hash }: PortalClientePageProps) 
               </div>
             );
           })}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><FileText className="size-4" aria-hidden="true" /> Mis CFDI</CardTitle>
+          <CardDescription>Los comprobantes que tu despacho tiene registrados a tu nombre.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {cfdi.estado === "cargando" && <EstadoCargando etiqueta="Cargando tus CFDI…" lineas={2} />}
+          {cfdi.estado === "error" && (
+            <p role="alert" className="text-sm text-destructive">
+              No se pudieron cargar tus CFDI. <button type="button" className="underline underline-offset-2" onClick={() => void cargarCfdi()}>Reintentar</button>
+            </p>
+          )}
+          {cfdi.estado === "no_disponible" && <p role="status" className="text-sm text-muted-foreground">Esta lista aún no está disponible. Contacta a tu despacho.</p>}
+          {cfdi.estado === "listo" && cfdi.lista.length === 0 && <p role="status" className="text-sm text-muted-foreground">Tu despacho aún no tiene CFDI registrados a tu nombre.</p>}
+          {cfdi.estado === "listo" && cfdi.lista.length > 0 && (
+            <>
+              <ul className="flex flex-col gap-2">
+                {(verTodos ? cfdi.lista : cfdi.lista.slice(0, 8)).map((c) => (
+                  <li key={c.id} className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-foreground">{c.emisorNombre ?? c.rfcEmisor}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatFechaSolo(c.fecha)} · {ETIQUETA_SENTIDO_CFDI[c.direccion ?? "indeterminado"]} · <span className="font-mono">{c.folioFiscal.slice(0, 8)}…</span>
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-0.5">
+                      <span className="text-sm tabular-nums text-foreground">{formatCentavos(c.totalCentavos)}</span>
+                      {c.excluido ? <StatusBadge tone="danger">Excluido</StatusBadge> : c.estadoSat === "cancelado" ? <StatusBadge tone="danger">Cancelado</StatusBadge> : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {cfdi.lista.length > 8 ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setVerTodos(!verTodos)}>
+                    {verTodos ? "Ver menos" : `Ver los ${cfdi.lista.length}`}
+                  </Button>
+                ) : (
+                  <span />
+                )}
+                <Button type="button" size="sm" disabled={exportando} loading={exportando} loadingText="Exportando…" onClick={() => void exportarCsv()}>
+                  <Download />
+                  Exportar CSV
+                </Button>
+              </div>
+              {cfdi.lista.length >= cfdi.tope && <p className="text-xs text-muted-foreground">Se muestran los {cfdi.tope} más recientes.</p>}
+            </>
+          )}
         </CardContent>
       </Card>
 

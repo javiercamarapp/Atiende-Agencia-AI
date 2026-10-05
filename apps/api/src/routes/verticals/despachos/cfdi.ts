@@ -7,6 +7,7 @@
 // reingestar el mismo CFDI (mismo UUID de timbre) nunca duplica la fila (ver
 // domain-despachos/src/repository.ts).
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
@@ -31,14 +32,21 @@ import {
   EstadoSatInvalidoError,
   EstadoSatNoDisponibleError,
   InvoiceNoEncontradoError,
+  NOMBRE_CATEGORIA,
+  aClasificacionAEscribir,
+  clasificarCfdi,
+  evaluarCompuertaClasificacion,
 } from "@atiende/domain-despachos";
-import type { CarteraRepository, CategoriaContable, DatosCfdiDespachos, DespachosRepository, DireccionCfdi, EfosConsulta, EfosSituacion, FacturaLigable, ImpuestoCfdiInput, ImpuestoCfdiRecord, InvoiceRecord } from "@atiende/domain-despachos";
+import type { CarteraRepository, CategoriaContable, ClasificacionAEscribir, ClasificacionRecord, ClasificacionRepository, ConceptoClasificable, DatosCfdiDespachos, DespachosRepository, DireccionCfdi, EfosConsulta, EfosSituacion, FacturaLigable, ImpuestoCfdiInput, ImpuestoCfdiRecord, InvoiceRecord } from "@atiende/domain-despachos";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { CfdiXmlParseError, parseCfdiXml, parseComplementoPagoXml } from "@atiende/billing";
 import { emitirNotificacion } from "@atiende/db";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, readTextCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
+import { clasificacionDe } from "./clasificacion-deps.ts";
 
 /** Un CFDI real timbrado rara vez pasa de ~100 KB incluso con varias decenas de
  * conceptos; 512 KB deja margen holgado (complementos, muchos conceptos) sin abrir
@@ -78,6 +86,9 @@ interface ConceptoBody {
   readonly cantidad?: unknown;
   readonly valorUnitario?: unknown;
   readonly importe?: unknown;
+  /** D-P3-13: alimentan el clasificador contable (opcionales). */
+  readonly descripcion?: unknown;
+  readonly claveProdServ?: unknown;
 }
 
 interface IngestaCfdiBody {
@@ -138,8 +149,24 @@ function parseNomina(raw: IngestaCfdiBody["nomina"]): { totalPercepciones?: numb
 
 const CATEGORIAS_VALIDAS = new Set<CategoriaContable>(["gasto_operativo", "activo_fijo", "inversion", "honorarios", "nomina", "sin_clasificar"]);
 
-function parseIngestaBody(raw: IngestaCfdiBody): DatosCfdiDespachos & { categoria: CategoriaContable } {
+/** Descripción (hasta 500 caracteres) y ClaveProdServ (8 dígitos) opcionales de un concepto del JSON. */
+function parseConceptoClasificable(c: ConceptoBody, i: number): ConceptoClasificable {
+  let descripcion: string | null = null;
+  if (c.descripcion !== undefined && c.descripcion !== null) {
+    if (typeof c.descripcion !== "string") throw Errors.validation(`conceptos[${i}].descripcion: se esperaba un texto.`);
+    descripcion = c.descripcion.trim().slice(0, 500) || null;
+  }
+  let claveProdServ: string | null = null;
+  if (c.claveProdServ !== undefined && c.claveProdServ !== null && c.claveProdServ !== "") {
+    if (typeof c.claveProdServ !== "string" || !/^[0-9]{8}$/.test(c.claveProdServ.trim())) throw Errors.validation(`conceptos[${i}].claveProdServ: se esperaban 8 dígitos.`);
+    claveProdServ = c.claveProdServ.trim();
+  }
+  return { descripcion, claveProdServ };
+}
+
+function parseIngestaBody(raw: IngestaCfdiBody): DatosCfdiDespachos & { categoria: CategoriaContable; conceptosClasificables: readonly ConceptoClasificable[] } {
   if (!Array.isArray(raw.conceptos)) throw Errors.validation("conceptos: se esperaba un arreglo.");
+  const conceptosClasificables = (raw.conceptos as ConceptoBody[]).map(parseConceptoClasificable);
   const conceptos = (raw.conceptos as ConceptoBody[]).map((c, i) => ({
     cantidad: requireNumber(c.cantidad, `conceptos[${i}].cantidad`),
     valorUnitario: requireNumber(c.valorUnitario, `conceptos[${i}].valorUnitario`),
@@ -181,6 +208,7 @@ function parseIngestaBody(raw: IngestaCfdiBody): DatosCfdiDespachos & { categori
     moneda: typeof raw.moneda === "string" && raw.moneda.trim() !== "" ? raw.moneda.trim().toUpperCase() : undefined,
     tipoCambio: optionalNumber(raw.tipoCambio, "tipoCambio") ?? undefined,
     categoria,
+    conceptosClasificables,
   };
 }
 
@@ -222,7 +250,24 @@ function serializeInvoice(invoice: InvoiceRecord, impuestos?: readonly ImpuestoC
     },
     estadoSat: invoice.estadoSat ?? "pendiente",
     estadoSatVerificadoEn: invoice.estadoSatVerificadoEn ?? null,
+    // D-P3-23 (migracion 026): la revision se rechazo -> el CFDI no cuenta en DIOT, pagos provisionales, reportes, conciliacion ni poliza.
+    excluidoPorRevision: invoice.excluidoPorRevision === true,
     ...(impuestos ? { impuestos } : {}),
+  };
+}
+
+function serializarClasificacion(r: ClasificacionRecord) {
+  return {
+    categoria: r.categoria,
+    nombre: NOMBRE_CATEGORIA[r.categoria] ?? r.categoria,
+    confianza: r.confianza,
+    metodo: r.metodo,
+    razon: r.razon,
+    cuenta: r.cuenta,
+    empate: r.empate,
+    // true = la escribió una persona (corrección o categoría indicada); false = el sistema (ingesta automática).
+    porPersona: r.clasificadaPor !== null || r.metodo === "manual" || r.metodo === "correccion",
+    creadaEn: r.creadaEn,
   };
 }
 
@@ -244,19 +289,57 @@ function resumirMotivoRevision(result: ReturnType<typeof validarCfdiDespachos>, 
   return motivos.length > 0 ? motivos.join("; ") : "requiere confirmación humana";
 }
 
+/** Clasificación contable que acompaña la respuesta de ingesta (D-P3-13). `null` en la respuesta = el comprobante no se clasifica solo (E/T/P) o la base aún
+ * no tiene la migración 026. `requiereRevision` = la compuerta (piso 0.5 / umbral del despacho) lo mandó a la cola con motivo `clasificacion_baja`. */
+export interface ClasificacionIngesta {
+  readonly categoria: string;
+  readonly nombre: string;
+  readonly confianza: number;
+  readonly metodo: ClasificacionAEscribir["metodo"];
+  readonly razon: string | null;
+  readonly empate: boolean;
+  readonly requiereRevision: boolean;
+}
+
+export interface ResultadoIngestaCfdi {
+  readonly invoice: InvoiceRecord;
+  readonly efos: EfosIngesta;
+  /** D-P3-18: el UUID ya estaba en ESTE cliente: se devuelve la fila existente, sin duplicar ni fallar. */
+  readonly duplicado: boolean;
+  readonly clasificacion: ClasificacionIngesta | null;
+}
+
+export interface ExtrasIngestaCfdi {
+  readonly cartera: CarteraRepository;
+  readonly impuestos?: readonly ImpuestoCfdiInput[];
+  /** Repositorio de la clasificación contable (migración 026). Ausente = no se clasifica (compatibilidad). */
+  readonly clasificacion?: ClasificacionRepository;
+  /** Descripción y ClaveProdServ de cada concepto (el XML las trae; el JSON puede mandarlas). */
+  readonly conceptos?: readonly ConceptoClasificable[];
+}
+
+function motivoClasificacion(c: ClasificacionAEscribir): string {
+  const nombre = NOMBRE_CATEGORIA[c.categoria] ?? c.categoria;
+  return `clasificacion_baja: ${nombre}, confianza ${c.confianza.toFixed(2)}${c.empate ? " (empate entre categorías)" : ""}${c.razon ? `; ${c.razon}` : ""}`;
+}
+
 /** Flujo 1 compartido por AMBAS rutas de ingesta (JSON ya desarmado a mano vía
  * `POST /cfdi`, y XML crudo del PAC vía `POST /cfdi/importar-xml`) — el único
  * punto donde se corre `validarCfdiDespachos`, se persiste el invoice y se
  * encola la revisión humana. Ninguna de las dos rutas duplica esta lógica: solo
- * difieren en CÓMO llegan a un `DatosCfdiDespachos` (parseando JSON o XML). */
+ * difieren en CÓMO llegan a un `DatosCfdiDespachos` (parseando JSON o XML).
+ *
+ * D-P3-18: reingestar el mismo UUID en el mismo cliente devuelve la fila existente (`duplicado: true`). D-P3-13: clasifica y escribe
+ * `invoice_classification`; la compuerta (confianza < piso 0.5 o < umbral del despacho) agrega el motivo `clasificacion_baja` a la revisión.
+ * Un comprobante emitido (venta) se clasifica pero no pasa por la compuerta: su categoría no decide ninguna póliza. */
 async function ingestarCfdiDespachos(
   repo: DespachosRepository,
   organizationId: string,
   propertyId: string,
   datos: DatosCfdiDespachos,
   categoria: CategoriaContable,
-  extras: { readonly cartera: CarteraRepository; readonly impuestos?: readonly ImpuestoCfdiInput[] },
-): Promise<{ readonly invoice: InvoiceRecord; readonly efos: EfosIngesta }> {
+  extras: ExtrasIngestaCfdi,
+): Promise<ResultadoIngestaCfdi> {
   // Migración 006 (hallazgo de auditoría): `fecha` (fecha REAL de emisión del
   // CFDI) ahora se persiste en `despachos.invoice.fecha` (columna NOT NULL) —
   // conciliación bancaria, DIOT, devolución de IVA y declaraciones dependen de
@@ -265,6 +348,10 @@ async function ingestarCfdiDespachos(
   // exige aquí en vez de inventar un fallback silencioso.
   if (!datos.fecha) throw Errors.validation("fecha: se esperaba un texto (fecha de emisión del CFDI, ISO 8601).");
   const fechaInvoice = datos.fecha.slice(0, 10);
+
+  // D-P3-18: idempotencia por (cliente, UUID). Antes del bloqueo de periodo: reenviar un CFDI que ya existe nunca falla por un cierre posterior.
+  const yaExistia = await repo.findInvoiceByFolioFiscal(propertyId, datos.folioFiscal);
+  if (yaExistia) return { invoice: yaExistia, efos: { estado: EFOS_NO_DISPONIBLE.estado, periodoLista: null, situacion: null }, duplicado: true, clasificacion: null };
 
   // Fase 6 (cierre mensual) — bloqueo de edición de movimientos ya cerrados:
   // funcionalidad NUEVA (ver domain-despachos/src/errors.ts,
@@ -308,6 +395,28 @@ async function ingestarCfdiDespachos(
     throw err;
   }
 
+  // D-P3-13: clasificación contable (sin LLM) + compuerta. Solo con la migración 026 (`leerConfig().disponible`): contra la base vieja el flujo es el de siempre.
+  let aEscribir: ClasificacionAEscribir | null = null;
+  let compuerta: { readonly requiereRevision: boolean } = { requiereRevision: false };
+  const clasif = extras.clasificacion;
+  if (clasif) {
+    const config = await clasif.leerConfig(propertyId);
+    if (config.disponible) {
+      if (categoria !== "sin_clasificar") {
+        // Una categoría indicada a mano al ingerir (JSON) es una decisión humana: se registra tal cual, sin compuerta.
+        aEscribir = { categoria, confianza: 1, metodo: "manual", razon: "Categoría indicada al ingerir", cuenta: null, empate: false };
+      } else {
+        const correcciones = await clasif.listarCorrecciones(propertyId);
+        const r = clasificarCfdi({ tipo: datos.tipo, direccion, rfcEmisor: datos.rfcEmisor, conceptos: extras.conceptos ?? [] }, correcciones.datos);
+        if (r) {
+          aEscribir = aClasificacionAEscribir(r);
+          if (direccion !== "emitido") compuerta = evaluarCompuertaClasificacion(r.confianza, { umbral: config.umbral });
+        }
+      }
+    }
+  }
+  const requiereRevision = resultado.requiresHumanReview || compuerta.requiereRevision;
+
   try {
     const invoice = await repo.insertInvoice({
       organizationId,
@@ -326,7 +435,7 @@ async function ingestarCfdiDespachos(
       valido: resultado.ok,
       issues: resultado.issues,
       warnings: resultado.warnings,
-      requiresHumanReview: resultado.requiresHumanReview,
+      requiresHumanReview: requiereRevision,
       diot: resultado.diot,
       direccion,
       ...pago,
@@ -334,21 +443,31 @@ async function ingestarCfdiDespachos(
       impuestos: extras.impuestos ?? [],
     });
 
-    // Flujo 2 (cola de revisión humana): gateado ESTRICTAMENTE por el flag
-    // `requiresHumanReview` que acaba de calcular el motor determinista — nunca se
-    // decide "a ojo" en la ruta si un CFDI necesita revisión.
-    if (resultado.requiresHumanReview) {
-      await repo.createReview({
-        organizationId,
-        propertyId,
-        invoiceId: invoice.id,
-        reason: resumirMotivoRevision(resultado, datos.tipo, coincidenciaEfos?.situacion ?? null),
-      });
+    let clasificacion: ClasificacionIngesta | null = null;
+    if (aEscribir && clasif) {
+      // La escritura de la clasificación va dentro de su SAVEPOINT (repositorio): un fallo recuperable no aborta el CFDI ya insertado.
+      if (await clasif.registrar(propertyId, invoice.id, aEscribir)) {
+        clasificacion = { categoria: aEscribir.categoria, nombre: NOMBRE_CATEGORIA[aEscribir.categoria] ?? aEscribir.categoria, confianza: aEscribir.confianza, metodo: aEscribir.metodo, razon: aEscribir.razon, empate: aEscribir.empate, requiereRevision: compuerta.requiereRevision };
+      }
     }
 
-    return { invoice, efos: { estado: consultaEfos.estado, periodoLista: consultaEfos.periodoLista, situacion: coincidenciaEfos?.situacion ?? null } };
+    // Flujo 2 (cola de revisión humana): gateado ESTRICTAMENTE por los flags que acaban de calcular el motor determinista y la compuerta de la
+    // clasificación — nunca se decide "a ojo" en la ruta si un CFDI necesita revisión.
+    if (requiereRevision) {
+      const motivos: string[] = [];
+      if (resultado.requiresHumanReview) motivos.push(resumirMotivoRevision(resultado, datos.tipo, coincidenciaEfos?.situacion ?? null));
+      if (compuerta.requiereRevision && aEscribir) motivos.push(motivoClasificacion(aEscribir));
+      await repo.createReview({ organizationId, propertyId, invoiceId: invoice.id, reason: motivos.join("; ") });
+    }
+
+    return { invoice, efos: { estado: consultaEfos.estado, periodoLista: consultaEfos.periodoLista, situacion: coincidenciaEfos?.situacion ?? null }, duplicado: false, clasificacion };
   } catch (err) {
-    if (err instanceof InvoiceAlreadyExistsError) throw Errors.conflict(err.message);
+    if (err instanceof InvoiceAlreadyExistsError) {
+      // Carrera (dos peticiones con el mismo UUID a la vez) o base sin la 026 (llave por organización): si ya está en ESTE cliente, es el mismo CFDI.
+      const existente = await repo.findInvoiceByFolioFiscal(propertyId, datos.folioFiscal);
+      if (existente) return { invoice: existente, efos: { estado: EFOS_NO_DISPONIBLE.estado, periodoLista: null, situacion: null }, duplicado: true, clasificacion: null };
+      throw Errors.conflict(err.message);
+    }
     throw err;
   }
 }
@@ -362,9 +481,11 @@ export async function ingestarXmlCfdiDespachos(
   propertyId: string,
   xml: string,
   cartera: CarteraRepository,
-): Promise<{ readonly invoice: InvoiceRecord; readonly efos: EfosIngesta }> {
+  clasificacion?: ClasificacionRepository,
+): Promise<ResultadoIngestaCfdi> {
   let datos: DatosCfdiDespachos;
   let impuestos: readonly ImpuestoCfdiInput[];
+  let conceptos: readonly ConceptoClasificable[];
   try {
     const { impuestos: desglose, ...parsed } = parseCfdiXml(xml);
     if (!TIPOS_COMPROBANTE_VALIDOS.has(parsed.tipo)) {
@@ -372,12 +493,20 @@ export async function ingestarXmlCfdiDespachos(
     }
     datos = { ...parsed, tipo: parsed.tipo as DatosCfdiDespachos["tipo"] };
     impuestos = impuestosDesdeXml(desglose).slice(0, MAX_RENGLONES_IMPUESTO);
+    conceptos = parsed.conceptos.map((c) => ({ descripcion: c.descripcion ?? null, claveProdServ: c.claveProdServ ?? null }));
   } catch (err) {
     if (err instanceof CfdiXmlParseError) throw Errors.validation(err.message);
     if (err instanceof MontoInvalidoError) throw Errors.validation(`Monto inválido en el CFDI: ${err.message}`);
     throw err;
   }
-  return ingestarCfdiDespachos(repo, organizationId, propertyId, datos, "sin_clasificar", { cartera, impuestos });
+  return ingestarCfdiDespachos(repo, organizationId, propertyId, datos, "sin_clasificar", { cartera, impuestos, clasificacion, conceptos });
+}
+
+/** Aviso in-app a contadores: el CFDI recién ingerido quedó en la cola de revisión humana (por el motor fiscal o por la compuerta de la clasificación).
+ * Una campana por cliente y por día (clave = property + fecha de negocio), sin PII ni conteos en el texto. Dentro de un SAVEPOINT (emitirNotificacion). */
+export async function avisarCfdiRequiereRevision(deps: AppDeps, db: TenantDbSession, organizationId: string, propertyId: string): Promise<void> {
+  const hoy = hoyFechaNegocio(await resolverZonaHorariaDespachosProperty(deps.despachosRepo(db), propertyId));
+  await emitirNotificacion(db, { evento: "despachos.cfdi.requiere_revision", organizationId, propertyId, clave: `${propertyId}:${hoy}`, entidadTipo: "property", entidadId: propertyId });
 }
 
 /**
@@ -395,6 +524,15 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const carteraDe = (db: TenantDbSession): CarteraRepository => (deps.carteraRepo ? deps.carteraRepo(db) : new PostgresCarteraRepository(db));
 
+  /** Respuesta de las dos rutas de ingesta: 201 CFDI nuevo; 200 + `duplicado: true` si el UUID ya estaba en este cliente (D-P3-18). Avisos in-app solo de lo NUEVO. */
+  async function responderIngesta(c: Context<CoreAuthHonoEnv>, r: ResultadoIngestaCfdi, organizationId: string, propertyId: string): Promise<Response> {
+    if (!r.duplicado) {
+      await avisarEmisorEfos(c.get("db"), organizationId, propertyId, r.invoice, r.efos);
+      if (r.invoice.requiresHumanReview) await avisarCfdiRequiereRevision(deps, c.get("db"), organizationId, propertyId);
+    }
+    return c.json({ ...serializeInvoice(r.invoice), efos: r.efos, duplicado: r.duplicado, clasificacion: r.clasificacion }, r.duplicado ? 200 : 201);
+  }
+
   app.use("/despachos/:propertyId/cfdi/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/despachos/:propertyId/cfdi", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
@@ -404,11 +542,10 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const raw = await readJsonCapped<IngestaCfdiBody>(c.req.raw, 64 * 1024);
-    const { categoria, ...datos } = parseIngestaBody(raw);
+    const { categoria, conceptosClasificables, ...datos } = parseIngestaBody(raw);
 
-    const { invoice, efos } = await ingestarCfdiDespachos(repo, organizationId, propertyId, datos, categoria, { cartera: carteraDe(c.get("db")) });
-    await avisarEmisorEfos(c.get("db"), organizationId, propertyId, invoice, efos);
-    return c.json({ ...serializeInvoice(invoice), efos }, 201);
+    const r = await ingestarCfdiDespachos(repo, organizationId, propertyId, datos, categoria, { cartera: carteraDe(c.get("db")), clasificacion: clasificacionDe(deps, c.get("db")), conceptos: conceptosClasificables });
+    return responderIngesta(c, r, organizationId, propertyId);
   });
 
   // ALCANCE (ver TAREA): consume el CFDI 4.0 tal como lo entrega el PAC —
@@ -427,9 +564,8 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const propertyId = c.req.param("propertyId");
     const xml = await readTextCapped(c.req.raw, MAX_CFDI_XML_BYTES);
 
-    const { invoice, efos } = await ingestarXmlCfdiDespachos(repo, organizationId, propertyId, xml, carteraDe(c.get("db")));
-    await avisarEmisorEfos(c.get("db"), organizationId, propertyId, invoice, efos);
-    return c.json({ ...serializeInvoice(invoice), efos }, 201);
+    const r = await ingestarXmlCfdiDespachos(repo, organizationId, propertyId, xml, carteraDe(c.get("db")), clasificacionDe(deps, c.get("db")));
+    return responderIngesta(c, r, organizationId, propertyId);
   });
 
   // D-23: análisis (SOLO LECTURA, no persiste nada) de un complemento de pago 2.0 (REP). Liga cada
@@ -440,7 +576,6 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.post("/despachos/:propertyId/cfdi/rep/analizar", async (c) => {
     assertVerticalRole(c, VER_CFDI_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
-    const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const raw = await readJsonCapped<{ xml?: unknown; rfcContribuyente?: unknown }>(c.req.raw, MAX_REP_BODY_BYTES);
     if (typeof raw.xml !== "string" || raw.xml.trim() === "") throw Errors.validation("xml: se esperaba el XML del complemento de pago como texto.");
@@ -459,7 +594,7 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const ids = [...new Set(rep.pagos.flatMap((p) => p.documentos.map((d) => d.idDocumento)))].filter((id) => UUID_RE.test(id));
     const facturas = new Map<string, FacturaLigable>();
     for (const id of ids) {
-      const inv = await repo.findInvoiceByFolioFiscal(organizationId, id);
+      const inv = await repo.findInvoiceByFolioFiscal(propertyId, id);
       if (!inv || inv.propertyId !== propertyId) continue;
       facturas.set(id, {
         folioFiscal: inv.folioFiscal,
@@ -494,7 +629,15 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const invoice = await repo.findInvoice(c.req.param("propertyId"), c.req.param("invoiceId"));
     if (!invoice) throw Errors.notFound("CFDI no encontrado.");
     // Desglose de impuestos (D-22): vacío si el CFDI es anterior a la migración 018, no traía detalle o la base aún no la tiene.
-    return c.json(serializeInvoice(invoice, await repo.listarImpuestosInvoice(invoice.propertyId, invoice.id)));
+    const impuestos = await repo.listarImpuestosInvoice(invoice.propertyId, invoice.id);
+    // D-P3-13: clasificación vigente + historial (la más reciente primero); `no_disponible` + vacío honesto contra la base sin la migración 026.
+    const historial = await clasificacionDe(deps, c.get("db")).historial(invoice.propertyId, invoice.id);
+    return c.json({
+      ...serializeInvoice(invoice, impuestos),
+      clasificacionEstado: historial.estado,
+      clasificacion: historial.datos[0] ? serializarClasificacion(historial.datos[0]) : null,
+      clasificacionHistorial: historial.datos.map(serializarClasificacion),
+    });
   });
 
   // D-22: estado del CFDI ante el SAT, capturado por el staff (la consulta automática al SAT es otro ítem). Un CFDI cancelado
@@ -539,7 +682,9 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const page = await repo.listInvoicesPage(c.req.param("propertyId"), { limit, offset, requiresHumanReview: soloRevision !== undefined ? soloRevision === "true" : undefined, direccion: direccionRaw });
     c.header("X-Total-Count", String(page.total));
     if (page.nextOffset !== null) c.header("X-Next-Offset", String(page.nextOffset));
-    return c.json(page.items.map((item) => serializeInvoice(item)));
+    // D-P3-13: categoría vigente de cada CFDI de la página (una sola consulta); sin la migración 026 va `null`.
+    const vigentes = await clasificacionDe(deps, c.get("db")).vigentes(c.req.param("propertyId"), page.items.map((i) => i.id));
+    return c.json(page.items.map((item) => ({ ...serializeInvoice(item), clasificacion: vigentes.datos.get(item.id) ? serializarClasificacion(vigentes.datos.get(item.id)!) : null })));
   });
 
   return app;

@@ -6,6 +6,7 @@
 // vive por completo en @atiende/domain-despachos; este cliente solo transporta lo
 // que la ruta ya serializa.
 import { fetchJson, postJson, postXml, putJson } from "./admin-client.ts";
+import type { ClasificacionVista } from "./clasificacion-client.ts";
 
 export type TipoComprobante = "I" | "E" | "T" | "P" | "N";
 export type CategoriaContable = "gasto_operativo" | "activo_fijo" | "inversion" | "honorarios" | "nomina" | "sin_clasificar";
@@ -82,6 +83,15 @@ export interface InvoiceSummary {
   readonly estadoSatVerificadoEn?: string | null;
   /** Solo en el detalle (`GET .../cfdi/:invoiceId`). */
   readonly impuestos?: readonly ImpuestoDesglosado[];
+  /** D-P3-23: la revision humana se rechazo -> este CFDI no cuenta en DIOT, pagos provisionales, reportes, conciliacion ni poliza. */
+  readonly excluidoPorRevision?: boolean;
+  /** D-P3-18: la respuesta de importar un CFDI cuyo UUID ya estaba en este cliente (200, sin duplicar). */
+  readonly duplicado?: boolean;
+  /** D-P3-13: clasificacion contable vigente; `null` = sin clasificar o la base aun no tiene la migracion 026. */
+  readonly clasificacion?: ClasificacionVista | null;
+  /** Solo en el detalle: `no_disponible` = la base aun no tiene la migracion 026 (se dice en pantalla, no se inventa una categoria). */
+  readonly clasificacionEstado?: "ok" | "no_disponible";
+  readonly clasificacionHistorial?: readonly ClasificacionVista[];
 }
 
 export async function fetchInvoices(

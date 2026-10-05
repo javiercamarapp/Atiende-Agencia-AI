@@ -161,13 +161,24 @@ export class PostgresPagosProvisionalesRepository implements PagosProvisionalesR
       session: this.db,
       savepointName: "sp_pp_facturas",
       primary: async () => {
-        const { rows } = await this.db.query<FacturaRaw>(
-          `select ${FACTURA_COLUMNAS} from despachos.invoice i
-           where i.property_id = $1 and ((i.fecha between $2::date and $3::date) or i.id = any($4::uuid[]))
-           order by i.fecha, i.id limit $5;`,
-          [propertyId, desde, hasta, idsConPago, MAX_FACTURAS_PAPEL + 1],
-        );
-        return { disponible: true, filas: rows };
+        // D-P3-23 (migración 026): un CFDI cuya revisión se RECHAZÓ (excluido_por_revision) no suma en el papel. La columna no existe en la base sin migrar
+        // (42703): SAVEPOINT PROPIO y caída a la consulta de siempre, para no convertir el papel en "no disponible" ni abortar la transacción compartida.
+        const consultar = async (excluirRechazados: boolean): Promise<{ disponible: boolean; filas: FacturaRaw[] }> => {
+          const { rows } = await this.db.query<FacturaRaw>(
+            `select ${FACTURA_COLUMNAS} from despachos.invoice i
+             where i.property_id = $1 and ((i.fecha between $2::date and $3::date) or i.id = any($4::uuid[]))${excluirRechazados ? " and not i.excluido_por_revision" : ""}
+             order by i.fecha, i.id limit $5;`,
+            [propertyId, desde, hasta, idsConPago, MAX_FACTURAS_PAPEL + 1],
+          );
+          return { disponible: true, filas: rows };
+        };
+        return runWithSavepointFallback<{ disponible: boolean; filas: FacturaRaw[] }>({
+          session: this.db,
+          savepointName: "sp_pp_facturas_excl",
+          primary: () => consultar(true),
+          isRecoverable: (err) => isMigrationPendingError(err),
+          fallback: () => consultar(false),
+        });
       },
       isRecoverable: (err) => isMigrationPendingError(err),
       fallback: async () => ({ disponible: false, filas: [] }),

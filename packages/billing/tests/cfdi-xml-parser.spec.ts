@@ -88,7 +88,7 @@ describe('parseCfdiXml — camino feliz (CFDI 4.0, un concepto, IVA trasladado 1
     expect(r.total).toBe(1160);
     expect(r.descuento).toBe(0);
     expect(r.iva).toBe(160);
-    expect(r.conceptos).toEqual([{ cantidad: 1, valorUnitario: 1000, importe: 1000 }]);
+    expect(r.conceptos).toEqual([{ cantidad: 1, valorUnitario: 1000, importe: 1000, claveProdServ: '80131500', descripcion: 'Honorarios' }]);
     expect(r.usoCfdi).toBe('G03');
     expect(r.formaPago).toBe('03');
     expect(r.metodoPago).toBe('PUE');
@@ -121,8 +121,8 @@ describe('parseCfdiXml — camino feliz (CFDI 4.0, un concepto, IVA trasladado 1
     });
     const r = parseCfdiXml(xml);
     expect(r.conceptos).toEqual([
-      { cantidad: 1, valorUnitario: 1000, importe: 1000 },
-      { cantidad: 2, valorUnitario: 250, importe: 500 },
+      { cantidad: 1, valorUnitario: 1000, importe: 1000, descripcion: 'Concepto A' },
+      { cantidad: 2, valorUnitario: 250, importe: 500, descripcion: 'Concepto B' },
     ]);
     expect(r.iva).toBe(240);
   });
@@ -207,5 +207,37 @@ describe('parseCfdiXml — rechazos explícitos (alcance documentado, nunca se f
   it('falta un atributo obligatorio (UsoCFDI del receptor)', () => {
     const xml = cfdiXml().replace(' UsoCFDI="G03"', '');
     expect(() => parseCfdiXml(xml)).toThrow(/UsoCFDI/);
+  });
+});
+
+describe('parseCfdiXml — datos para clasificar (ClaveProdServ, Descripcion por concepto; Serie/Folio)', () => {
+  it('captura ClaveProdServ y Descripcion de cada concepto, y omite los que el XML no trae (nunca un texto inventado)', () => {
+    const xml = cfdiXml({
+      subtotal: '1500.00',
+      total: '1740.00',
+      conceptosXml: `
+        <cfdi:Concepto ClaveProdServ="43211503" Cantidad="1" ClaveUnidad="H87" Descripcion="Laptop 14 pulgadas" ValorUnitario="1000.00" Importe="1000.00"/>
+        <cfdi:Concepto Cantidad="2" ClaveUnidad="E48" ValorUnitario="250.00" Importe="500.00"/>
+      `,
+      impuestosComprobanteXml: '',
+    });
+    const r = parseCfdiXml(xml);
+    expect(r.conceptos[0]).toEqual({ cantidad: 1, valorUnitario: 1000, importe: 1000, claveProdServ: '43211503', descripcion: 'Laptop 14 pulgadas' });
+    expect(r.conceptos[1]).toEqual({ cantidad: 2, valorUnitario: 250, importe: 500 });
+    expect('claveProdServ' in r.conceptos[1]!).toBe(false);
+  });
+
+  it('Serie y Folio del comprobante: se leen cuando vienen y quedan ausentes cuando no', () => {
+    const conSerie = parseCfdiXml(cfdiXml().replace('Version="4.0"', 'Version="4.0" Serie="A" Folio="1234"'));
+    expect(conSerie.serie).toBe('A');
+    expect(conSerie.folio).toBe('1234');
+    const sin = parseCfdiXml(cfdiXml());
+    expect('serie' in sin).toBe(false);
+    expect('folio' in sin).toBe(false);
+  });
+
+  it('un atributo ClaveProdServ vacío se trata como ausente', () => {
+    const xml = cfdiXml({ conceptosXml: '<cfdi:Concepto ClaveProdServ="" Cantidad="1" ClaveUnidad="E48" Descripcion="  " ValorUnitario="1000.00" Importe="1000.00"/>' });
+    expect(parseCfdiXml(xml).conceptos[0]).toEqual({ cantidad: 1, valorUnitario: 1000, importe: 1000 });
   });
 });

@@ -66,6 +66,8 @@ export interface InvoiceRecord {
   /** Estado del comprobante ante el SAT. `pendiente` = nunca verificado (default); lo captura el staff. */
   readonly estadoSat?: EstadoSatCfdi;
   readonly estadoSatVerificadoEn?: string | null;
+  /** D-P3-23 (migración 026): una revisión humana RECHAZADA marca el CFDI. Ausente/`false` = cuenta en los agregados (DIOT, pagos provisionales, reportes, conciliación, póliza). */
+  readonly excluidoPorRevision?: boolean;
 }
 
 export interface NewInvoiceInput {

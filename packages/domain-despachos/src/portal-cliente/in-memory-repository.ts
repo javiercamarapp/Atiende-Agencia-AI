@@ -5,6 +5,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { PortalCuotaExcedidaError, PortalEnlaceInvalidoError } from "./types.ts";
 import type {
+  ContextoIngestaPortal,
+  DatosAceptacionPortal,
+  EstadoAceptacionPortal,
+  PortalCfdiListado,
+  PortalCfdiVista,
   NuevoDocumentoPortal,
   PortalClienteRepository,
   PortalDisponible,
@@ -31,8 +36,16 @@ interface MsgMem extends PortalMensajeStaff {
   readonly propertyId: string;
 }
 
+/** Enlaces del doble con el resto del dominio (los CFDI y el contexto del autoaceptado viven en otros repositorios): las pruebas los inyectan. */
+export interface IngestaPortalEnMemoria {
+  readonly cfdi: (propertyId: string) => readonly PortalCfdiVista[] | Promise<readonly PortalCfdiVista[]>;
+  readonly contexto: (propertyId: string, datos: { readonly folioFiscal: string | null; readonly fecha: string | null; readonly rfcEmisor: string | null }) => Promise<Omit<ContextoIngestaPortal, "organizationId" | "propertyId" | "documentoEstado" | "documentoTipo">>;
+  readonly aceptar: (propertyId: string, datos: DatosAceptacionPortal) => Promise<{ readonly estado: EstadoAceptacionPortal; readonly invoiceId: string | null }>;
+}
+
 export interface ClientePortalSemilla {
   readonly propertyId: string;
+  readonly organizationId?: string;
   readonly clienteNombre: string;
   readonly despachoNombre: string;
   readonly obligaciones?: readonly PortalObligacion[];
@@ -93,6 +106,39 @@ export class InMemoryPortalClienteRepository implements PortalClienteRepository 
     };
     this.documentos.push(nuevo);
     return { disponible: true, valor: { id: nuevo.id, estado: "recibido" as PortalDocumentoEstado, duplicado: false } } as const;
+  }
+
+  /** Se inyecta en las pruebas que ejercen el autoaceptado y el listado de CFDI del cliente. */
+  ingesta: IngestaPortalEnMemoria | null = null;
+
+  async listarCfdi(tokenHash: string) {
+    if (!this.disponible) return { disponible: false } as const;
+    const e = this.enlaceVigente(tokenHash);
+    const cfdi = this.ingesta ? await this.ingesta.cfdi(e.propertyId) : [];
+    const valor: PortalCfdiListado = { organizationId: this.clientes.get(e.propertyId)?.organizationId ?? "org-test", propertyId: e.propertyId, cfdi: cfdi.slice(0, 500) };
+    return { disponible: true, valor } as const;
+  }
+
+  async contextoIngesta(documentoId: string, datos: { readonly folioFiscal: string | null; readonly fecha: string | null; readonly rfcEmisor: string | null }) {
+    if (!this.disponible) return { disponible: false } as const;
+    const d = this.documentos.find((x) => x.id === documentoId);
+    if (!d) throw new PortalEnlaceInvalidoError();
+    const base = this.ingesta
+      ? await this.ingesta.contexto(d.propertyId, datos)
+      : { autoaceptar: true, umbral: 0.7, fichaRfc: null, existe: false, periodoCerrado: false, efosSituacion: null, efosListaDisponible: false, correcciones: [] };
+    const valor: ContextoIngestaPortal = { organizationId: this.clientes.get(d.propertyId)?.organizationId ?? "org-test", propertyId: d.propertyId, documentoEstado: d.estado, documentoTipo: d.tipo, ...base };
+    return { disponible: true, valor } as const;
+  }
+
+  async aceptarCfdiSistema(documentoId: string, datos: DatosAceptacionPortal) {
+    if (!this.disponible) return { disponible: false } as const;
+    const i = this.documentos.findIndex((x) => x.id === documentoId);
+    if (i < 0) throw new PortalEnlaceInvalidoError();
+    const d = this.documentos[i]!;
+    if (d.estado !== "recibido" || d.tipo !== "cfdi_xml") return { disponible: true, valor: { estado: "no_aplica" as EstadoAceptacionPortal, invoiceId: null } } as const;
+    const r = this.ingesta ? await this.ingesta.aceptar(d.propertyId, datos) : { estado: "aceptado" as EstadoAceptacionPortal, invoiceId: randomUUID() };
+    if (r.estado === "aceptado" || r.estado === "ya_existia") this.documentos[i] = { ...d, estado: "aceptado", invoiceId: r.invoiceId, motivo: r.estado === "ya_existia" ? "Ya existía" : "Aceptado automáticamente", resueltoEn: this.ahora().toISOString() };
+    return { disponible: true, valor: r } as const;
   }
 
   async enviarMensajeCliente(tokenHash: string, cuerpo: string) {

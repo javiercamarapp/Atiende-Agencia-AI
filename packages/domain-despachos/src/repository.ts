@@ -112,7 +112,9 @@ export interface DespachosRepository {
    * llama a `findInvoice` uno por uno en sus rutas de listado. Orden no garantizado;
    * el llamador indexa por `id`. */
   findInvoicesByIds(propertyId: string, invoiceIds: readonly string[]): Promise<readonly InvoiceRecord[]>;
-  findInvoiceByFolioFiscal(organizationId: string, folioFiscal: string): Promise<InvoiceRecord | null>;
+  /** D-P3-18 (migración 026): el UUID es único POR CLIENTE (property), no por organización: el mismo CFDI puede entrar a dos clientes del mismo despacho.
+   * Contra la base sin migrar la llave sigue siendo por organización (el insert del mismo UUID en otra property del despacho da `InvoiceAlreadyExistsError`). */
+  findInvoiceByFolioFiscal(propertyId: string, folioFiscal: string): Promise<InvoiceRecord | null>;
   /** `filter.periodo` (Fase 2, aditivo; corregido en migración 006): "YYYY-MM",
    * filtra a los invoices cuya `fecha` real de emisión (columna `despachos.
    * invoice.fecha`, migración 006) caiga en ese período — es el filtro que habilita
@@ -125,8 +127,10 @@ export interface DespachosRepository {
    * resuelve directo contra `fecha`, así que incluye TODOS los tipos de CFDI de la
    * property que caigan en el período — el llamador decide si además filtra por
    * `diot.reportable` (como hace la agregación DIOT real, que solo reporta
-   * proveedores tipo 'I'). */
-  listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string }): Promise<readonly InvoiceRecord[]>;
+   * proveedores tipo 'I').
+   * D-P3-23 (migración 026): por omisión EXCLUYE los CFDI cuya revisión humana fue rechazada (`excluidoPorRevision`): todos los agregados la heredan.
+   * `incluirExcluidos: true` los incluye (solo para pantallas que los muestran marcados). Contra la base sin migrar no hay marca y nada se excluye. */
+  listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string; readonly incluirExcluidos?: boolean }): Promise<readonly InvoiceRecord[]>;
   /** Versión PAGINADA de `listInvoices`, para `GET /despachos/:propertyId/cfdi` (el
    * listado que un humano navega en el panel) -- hallazgo de auditoría (rubro 10,
    * "performance y escalabilidad", severidad BAJA: "listados sin paginación en 4

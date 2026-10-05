@@ -45,7 +45,7 @@ import type {
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import type { AvisosSistemaRepository, DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, PostAdjudicacionRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
-import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, ConsultaCfdiSatPort, CronSatRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
+import type { CarteraRepository, ClasificacionRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, ConsultaCfdiSatPort, CronSatRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PolizasPeriodoRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type { Efos69bSource } from "@atiende/worker";
 import type {
   BreakGlassAuditRepository,
@@ -365,6 +365,8 @@ export interface AppDeps {
   readonly carteraRepo?: (db: TenantDbSession) => CarteraRepository;
   /** D-24 -- libro contable persistido (migracion 020). OPCIONAL a proposito (mismo criterio que `carteraRepo`): las rutas caen a `PostgresLibroRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly libroRepo?: (db: TenantDbSession) => LibroRepository;
+  /** D-P3-13 -- clasificacion contable persistida (clasificaciones por CFDI, correcciones por RFC, umbral del despacho; migracion 026). OPCIONAL a proposito (mismo criterio que `libroRepo`): las rutas caen a `PostgresClasificacionRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
+  readonly clasificacionRepo?: (db: TenantDbSession) => ClasificacionRepository;
   /** D-35 + D-02 -- conciliacion bancaria persistida (sesiones, matches, sugerencias del nivel 4; migracion 021). OPCIONAL a proposito (mismo criterio que `libroRepo`): las rutas caen a `PostgresConciliacionPersistidaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly conciliacionRepo?: (db: TenantDbSession) => ConciliacionPersistidaRepository;
   /** D-25 -- pagos provisionales ISR/IVA (migraciones 018 y 020). OPCIONAL a proposito: las rutas caen a `PostgresPagosProvisionalesRepository`; los tests inyectan el doble en memoria. */
@@ -373,6 +375,8 @@ export interface AppDeps {
   readonly consultaCfdiSat?: ConsultaCfdiSatPort;
   /** D-26/D-27/D-28 -- repositorio de SOLO SISTEMA de los crons de despachos (migracion 022). OPCIONAL a proposito: los crons caen a `PostgresCronSatRepository` sobre la sesion de sistema y los tests inyectan el doble en memoria. */
   readonly cronSatRepo?: (db: TenantDbSession) => CronSatRepository;
+  /** D-P3-14 -- repositorio de SOLO SISTEMA del cron de polizas del periodo (migracion 026). OPCIONAL a proposito: el cron cae a `PostgresPolizasPeriodoRepository` sobre la sesion de sistema y los tests inyectan el doble en memoria. */
+  readonly polizasPeriodoRepo?: (db: TenantDbSession) => PolizasPeriodoRepository;
   /** D-28 -- fuente de la lista 69-B del SAT para el cron mensual. OPCIONAL a proposito: sin ella el cron usa `HttpEfos69bSource` (URL de `EFOS_69B_URL`); los tests inyectan una fuente fija. */
   readonly efos69bSource?: Efos69bSource;
   /** D-11 -- cola de cobranza (migracion 017: gestiones, consentimiento de WhatsApp y outbox). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresColaCobranzaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */

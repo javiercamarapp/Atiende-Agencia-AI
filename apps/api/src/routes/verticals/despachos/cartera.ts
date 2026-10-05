@@ -33,6 +33,7 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { clasificacionDe } from "./clasificacion-deps.ts";
 
 const MAX_BODY_BYTES = 8 * 1024;
 
@@ -137,7 +138,23 @@ export function despachosCarteraRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       return traducir(err);
     }
     const guardada = await repo.obtenerFicha(propertyId);
-    return c.json({ ficha: guardada ? serializeFicha(guardada) : null });
+    // D-P3-23: los CFDI que se ingirieron antes de capturar la ficha quedaron `indeterminado`; con el RFC ya conocido se recalcula su sentido (emitido/recibido).
+    // Idempotente y con SAVEPOINT; contra la base sin la migracion 026 devuelve null (nada que recalcular) sin tumbar el guardado de la ficha.
+    const recalculados = await clasificacionDe(deps, c.get("db")).recalcularDireccion(propertyId);
+    if (recalculados !== null && recalculados > 0) {
+      await deps.despachosAuditSink.record({
+        at: new Date().toISOString(),
+        actorUserId: c.get("userId"),
+        actorEmail: c.get("userEmail") ?? null,
+        organizationId: c.get("organizationId"),
+        action: "despachos.cartera:direccion-recalculada",
+        route: c.req.path,
+        method: c.req.method,
+        decision: "allowed",
+        metadata: { propertyId, cfdi: recalculados },
+      });
+    }
+    return c.json({ ficha: guardada ? serializeFicha(guardada) : null, direccionRecalculada: recalculados ?? 0 });
   });
 
   return app;
