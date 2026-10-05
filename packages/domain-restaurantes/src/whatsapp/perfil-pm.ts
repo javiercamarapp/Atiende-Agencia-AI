@@ -109,6 +109,7 @@ const ESTADO_PEDIDO_TEXTO = {
   programado: "programado para más tarde",
   con_problema: "con una incidencia (pásela a la sucursal con escalar_a_humano)",
   no_recogido: "no recogido",
+  por_confirmar: "pendiente de confirmación por la sucursal (todavía no está en cocina; no prometa hora ni que ya va en camino)",
 } as const;
 
 /** Contexto del cliente SIN direccion completa (la direccion guardada no se inyecta en el prompt: el modelo la ve
