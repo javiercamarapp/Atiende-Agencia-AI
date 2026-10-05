@@ -2,20 +2,23 @@
 // con el ejecutor HTTP de restaurantes, escalera Gemini Live -> cascada, registrador de conversaciones) con el puente de audio de la telefonia.
 //
 //   1. DNIS -> sucursal (tabla de configuracion). Numero desconocido: se cuelga sin abrir nada.
-//   2. Telefono del llamante SOLO del SIP From (`extraerTelefonoSipFrom`). Anonimo: no hay telefono, no hay token, no hay herramientas -> mensaje
-//      pregrabado y conversacion `escalado` visible para el personal (hueco de producto conocido: no hay a donde devolver la llamada).
+//   2. Telefono del llamante SOLO del SIP From (`extraerTelefonoSipFrom`) Y solo si es CONFIABLE (`resolverTelefonoLlamante`): un From vacio, anonimo o que es un
+//      numero puente / de la sucursal / del desvio (el desvio condicional puede re-originar la llamada) NO es del cliente. Entonces no se emite token todavia: el
+//      agente PIDE el telefono al cliente y lo confirma, y solo con `confirmar_telefono_llamante` (herramienta del worker, una vez por llamada) se emite el token
+//      con ESE telefono; mientras tanto ninguna otra herramienta corre.
 //   3. Contexto de la API (instruccion, interruptor de la sucursal, gasto del mes), token de llamada, conversacion registrada con su modo de entrada.
 //   4. `evaluarInicioLlamada` con el interruptor y el tope mensual: si no pasa, NO se abre sesion con el proveedor: pregrabado + callback.
 //   5. Escalera, puente de audio, controlador. Al terminar: se vacia la despedida, se cuelga, se registran turnos, costo por escalon y cierre.
 //
 // El worker nunca contesta a medias: sin contexto de la API (o sin token) dice el pregrabado de falla y cuelga, sin abrir sesion con el proveedor.
-import { ControladorLlamada, crearEjecutorTools, extraerTelefonoSipFrom, transporteHttp, evaluarInicioLlamada, LIMITES_POR_DEFECTO } from "@atiende/domain-restaurantes";
-import type { AbrirSesionLlamada, MensajeId, SumideroLog, TransporteTools, VozResultado } from "@atiende/domain-restaurantes";
+import { ControladorLlamada, canonicalizeMexicanPhone, crearEjecutorTools, transporteHttp, evaluarInicioLlamada, LIMITES_POR_DEFECTO } from "@atiende/domain-restaurantes";
+import type { AbrirSesionLlamada, EjecutorTools, MensajeId, SumideroLog, TransporteTools, VozResultado } from "@atiende/domain-restaurantes";
 import { costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
 import type { EscaleraLlamada, LimitesLlamada, VozSesionLlamada } from "@atiende/voice-core";
 import { ErrorApi } from "./api-cliente.ts";
 import type { AperturaPrivacidad, ClienteApi, ContextoLlamada, TurnoRegistro } from "./api-cliente.ts";
 import { franjaDeHora, modoEntradaDeLlamada, normalizarNumero, resolverTopeMensualMicroUsd } from "./config.ts";
+import { DEFINICION_CONFIRMAR_TELEFONO, INSTRUCCION_TELEFONO_NO_CONFIABLE, TOOL_CONFIRMAR_TELEFONO, resolverTelefonoLlamante } from "./telefono-llamante.ts";
 import type { ConfigWorker, EntradaDnis } from "./config.ts";
 import { PuenteAudio } from "./puente-audio.ts";
 import type { AudioWav } from "./audio/pcm.ts";
@@ -53,7 +56,7 @@ export interface DepsAtencion {
 
 export interface ResumenAtencion {
   /** Resultado del registrador (`pedido_creado` | `escalado` | `abandonado`) o un motivo de no atencion. */
-  readonly resultado: VozResultado | "dnis_desconocido" | "api_no_disponible" | "anonima";
+  readonly resultado: VozResultado | "dnis_desconocido" | "api_no_disponible";
   readonly costoMicroUsd: number;
   readonly conversationId: string | null;
   readonly orderId: string | null;
@@ -85,7 +88,12 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     return { resultado: "dnis_desconocido", costoMicroUsd: 0, conversationId: null, orderId: null, latenciasMs: [], modoEntrada: null };
   }
   const { organizationId, propertyId } = entrada;
-  const telefono = extraerTelefonoSipFrom(tel.sipFrom);
+  const numerosPuente = new Set(deps.config.dnis.keys());
+  const origen = resolverTelefonoLlamante({ sipFrom: tel.sipFrom, desviadaDesde: tel.desviadaDesde, entrada, numerosPuente });
+  // Solo un telefono confiable viaja a la API (contexto, privacidad, token). Sin el, el agente lo pide y lo confirma (ver `confirmarTelefono` abajo).
+  const telefono = origen.telefono;
+  const telefonoPendiente = !origen.confiable;
+  if (telefonoPendiente) log("telefono_no_confiable", { motivo: origen.motivo, desviada: origen.desviada });
 
   // Cuelgue del cliente: se aplica al controlador cuando exista y se recuerda para el cierre.
   let clienteColgo = false;
@@ -161,33 +169,37 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     }
   }
 
-  // 3) Llamante anonimo: sin telefono no hay token ni herramientas. Mensaje y cierre visible `escalado` (el personal lo ve en Conversaciones).
-  if (telefono === null) {
-    log("llamante_anonimo", { ok: decision.ok });
-    await reproducirSolo(decision.ok ? "handoff" : decision.mensaje);
-    await tel.colgar();
-    await cerrarConversacion("escalado", null);
-    return { resultado: "anonima", costoMicroUsd: 0, conversationId, orderId: null, latenciasMs: [], modoEntrada: modo };
-  }
-
-  // 4) Token de llamada (el secreto de la sucursal solo sirve para esto).
-  let callToken: string;
-  try {
-    callToken = await deps.api.pedirToken({ orgSlug: entrada.orgSlug, secreto: entrada.secreto, callId, callerPhone: telefono, branchSlug: entrada.branchSlug });
-  } catch (err) {
-    log("token_fallo", { codigo: err instanceof ErrorApi ? String(err.estado ?? "red") : "error" });
-    await reproducirSolo("proveedor_caido");
-    await tel.colgar();
-    await cerrarConversacion("escalado", null);
-    return { resultado: "api_no_disponible", costoMicroUsd: 0, conversationId, orderId: null, latenciasMs: [], modoEntrada: modo };
+  // 4) Token de llamada (el secreto de la sucursal solo sirve para esto). Con telefono no confiable NO se emite aun: lo emite `confirmarTelefono`.
+  let callToken: string | null = null;
+  const emitirToken = async (callerPhone: string): Promise<void> => {
+    callToken = await deps.api.pedirToken({ orgSlug: entrada.orgSlug, secreto: entrada.secreto, callId, callerPhone, branchSlug: entrada.branchSlug });
+  };
+  if (!telefonoPendiente && telefono !== null) {
+    try {
+      await emitirToken(telefono);
+    } catch (err) {
+      log("token_fallo", { codigo: err instanceof ErrorApi ? String(err.estado ?? "red") : "error" });
+      await reproducirSolo("proveedor_caido");
+      await tel.colgar();
+      await cerrarConversacion("escalado", null);
+      return { resultado: "api_no_disponible", costoMicroUsd: 0, conversationId, orderId: null, latenciasMs: [], modoEntrada: modo };
+    }
   }
 
   // 5) Controlador + escalera + puente.
   const limites = deps.limites ?? LIMITES_POR_DEFECTO;
   const escalera = deps.crearEscalera();
   let orderId: string | null = null;
-  const transporteBase = transporteHttp({ baseUrl: deps.config.apiBaseUrl, orgSlug: entrada.orgSlug, callToken, ...(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}) });
+  // El transporte se arma cuando hay token (de inmediato con caller ID confiable; tras `confirmarTelefono` si no).
+  let transporteBase: TransporteTools | null = null;
+  const armarTransporte = (): void => {
+    transporteBase = transporteHttp({ baseUrl: deps.config.apiBaseUrl, orgSlug: entrada.orgSlug, callToken: callToken!, ...(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}) });
+  };
+  if (callToken !== null) armarTransporte();
+  // OJO (hueco conocido, comportamiento heredado): el contexto de turno (`x-atiende-call-turn`) NO se reenvia a la API. Activarlo exige validar con una llamada
+  // real que la transcripcion de entrada de Gemini llega ANTES de la herramienta; si llega despues, `confirmar_resumen` se rechazaria por "mismo turno".
   const transporte: TransporteTools = async (nombre, args, sig) => {
+    if (!transporteBase) return { resultado: { error: "telefono_pendiente", mensaje: "Pida y confirme el teléfono del cliente y regístrelo con confirmar_telefono_llamante antes de usar otras herramientas." }, orderId: null };
     const salida = await transporteBase(nombre, args, sig);
     if (nombre === "crear_pedido" && salida.orderId) orderId = salida.orderId;
     return salida;
@@ -255,13 +267,45 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     sesionActual = sesion;
     return sesion;
   };
+  // Telefono dictado por el cliente cuando el caller ID no sirve. UNA sola vez por llamada (cambiarlo despues dejaria enumerar clientes ajenos con
+  // `buscar_cliente`), nunca un numero puente o de la sucursal, y la ultima palabra la tiene la API: el token se emite con ESE telefono canonico.
+  const confirmarTelefono = async (args: Readonly<Record<string, unknown>>): Promise<unknown> => {
+    if (callToken !== null) return { ok: true, ya_registrado: true, mensaje: "El teléfono ya quedó registrado; continúe con el pedido." };
+    const crudo = typeof args.numero === "string" ? args.numero : "";
+    const numero = crudo.length > 0 && crudo.length <= 40 ? canonicalizeMexicanPhone(crudo) : null;
+    if (numero === null) return { error: "telefono_invalido", mensaje: "No son 10 dígitos válidos. Pídale al cliente que se lo repita completo." };
+    const clave = normalizarNumero(numero);
+    if (clave !== null && (numerosPuente.has(clave) || entrada.numerosSucursal.includes(clave))) return { error: "telefono_no_valido", mensaje: "Ese es un número del restaurante. Pídale al cliente su teléfono personal." };
+    try {
+      await emitirToken(numero);
+    } catch (err) {
+      log("token_fallo", { codigo: err instanceof ErrorApi ? String(err.estado ?? "red") : "error", tras: "confirmar_telefono" });
+      return { error: "no_se_pudo_registrar", mensaje: "No se pudo registrar el teléfono. Intente una vez más o pase con una persona." };
+    }
+    armarTransporte();
+    log("telefono_confirmado_por_cliente", { motivo: origen.motivo });
+    return { ok: true, mensaje: "Teléfono registrado." };
+  };
+  const ejecutorBase = crearEjecutorTools({ transporte, timeoutMs: limites.toolTimeoutMs });
+  const ejecutor: EjecutorTools = telefonoPendiente
+    ? {
+        definiciones: () => [...ejecutorBase.definiciones(), DEFINICION_CONFIRMAR_TELEFONO as unknown as ReturnType<EjecutorTools["definiciones"]>[number]],
+        async ejecutar(nombre, args, contexto) {
+          if (nombre !== TOOL_CONFIRMAR_TELEFONO) return ejecutorBase.ejecutar(nombre, args, contexto);
+          const t0 = ahora();
+          const resultado = await confirmarTelefono(args !== null && typeof args === "object" ? (args as Record<string, unknown>) : {});
+          const ok = typeof resultado === "object" && resultado !== null && !("error" in resultado);
+          return { resultado, ok, timeout: false, orderId: null, latenciaMs: Math.max(0, ahora() - t0) };
+        },
+      }
+    : ejecutorBase;
   const controlador = new ControladorLlamada({
     callId,
     propertyId,
     organizationId,
     abrirSesion,
-    ejecutor: crearEjecutorTools({ transporte, timeoutMs: limites.toolTimeoutMs }),
-    instruccion: contexto.instruccion,
+    ejecutor,
+    instruccion: telefonoPendiente ? `${contexto.instruccion}\n\n${INSTRUCCION_TELEFONO_NO_CONFIABLE}` : contexto.instruccion,
     voiceId: contexto.voiceId,
     limites,
     reproducir: async (id) => {

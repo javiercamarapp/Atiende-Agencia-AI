@@ -18,6 +18,9 @@ export interface EntradaDnis {
   readonly topeMensualUsd: number | null;
   /** Modo de entrada de la sucursal; un encabezado de desvio en la llamada lo vuelve `desborde` (salvo `prueba`). */
   readonly modoEntrada: ModoEntrada;
+  /** Lineas propias de la sucursal que desvian al numero puente (Telmex/Telcel/conmutador), normalizadas a 10 digitos. Si el desvio re-origina la llamada, el
+   * `From` que llega puede ser UNA DE ESTAS en lugar del cliente: no es un telefono confiable (ver `telefono-llamante.ts`). */
+  readonly numerosSucursal: readonly string[];
 }
 
 export interface ConfigWorker {
@@ -55,7 +58,7 @@ export interface ResultadoTablaDnis {
   readonly problemas: readonly string[];
 }
 
-/** Parsea `VOICE_DNIS_MAP` (JSON `{ "<numero>": { orgSlug, organizationId, propertyId, branchSlug, secretoEnv, topeMensualUsd?, modoEntrada? } }`). */
+/** Parsea `VOICE_DNIS_MAP` (JSON `{ "<numero>": { orgSlug, organizationId, propertyId, branchSlug, secretoEnv, topeMensualUsd?, modoEntrada?, numerosSucursal? } }`). */
 export function parsearTablaDnis(json: string | undefined, env: Readonly<Record<string, string | undefined>>): ResultadoTablaDnis {
   const problemas: string[] = [];
   const tabla = new Map<string, EntradaDnis>();
@@ -103,7 +106,17 @@ export function parsearTablaDnis(json: string | undefined, env: Readonly<Record<
       problemas.push(`${donde}: modoEntrada debe ser desborde, total o prueba.`);
       continue;
     }
-    tabla.set(clave, { orgSlug, organizationId, propertyId, branchSlug, secreto, secretoEnv, topeMensualUsd: topeUsd, modoEntrada: modo as ModoEntrada });
+    let numerosSucursal: string[] = [];
+    if (v.numerosSucursal !== undefined && v.numerosSucursal !== null) {
+      const lista = Array.isArray(v.numerosSucursal) ? (v.numerosSucursal as unknown[]) : null;
+      const normalizados = lista === null ? null : lista.map((n) => (typeof n === "string" ? normalizarNumero(n) : null));
+      if (normalizados === null || normalizados.length > 20 || normalizados.some((n) => n === null)) {
+        problemas.push(`${donde}: numerosSucursal debe ser una lista (hasta 20) de numeros de al menos 10 digitos.`);
+        continue;
+      }
+      numerosSucursal = [...new Set(normalizados as string[])];
+    }
+    tabla.set(clave, { orgSlug, organizationId, propertyId, branchSlug, secreto, secretoEnv, topeMensualUsd: topeUsd, modoEntrada: modo as ModoEntrada, numerosSucursal });
   }
   if (tabla.size === 0 && problemas.length === 0) problemas.push("VOICE_DNIS_MAP: no trae ningun numero.");
   return { tabla, problemas };
