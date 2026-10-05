@@ -111,6 +111,21 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
   // Estado de la comanda al POS de cada pedido de la lista (lectura liviana, solo ids). Sin respuesta (base sin migrar, error de red) no se pinta
   // ninguna insignia: nunca bloquea ni tumba la lista de pedidos.
   const [comandaEstados, setComandaEstados] = useState<Readonly<Record<string, EstadoComandaWire>>>({});
+  // Insignia "En POS" / "Capturar a mano" / "Falló": se consulta cada vez que cambia el conjunto de pedidos visibles.
+  const idsVisibles = orders ? [...new Set(orders.map((o) => o.id))].join(",") : "";
+  useEffect(() => {
+    if (idsVisibles === "") {
+      setComandaEstados({});
+      return;
+    }
+    let cancelado = false;
+    fetchEstadosComandaPorPedido(fetch, apiBaseUrl, token, propertyId, idsVisibles.split(","))
+      .then((r) => !cancelado && setComandaEstados(r.disponible ? r.estados : {}))
+      .catch(() => !cancelado && setComandaEstados({}));
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId, idsVisibles]);
   // Aviso OPCIONAL por WhatsApp al marcar "listo para recoger" (por defecto sí avisa; el staff puede apagarlo
   // por pedido, p. ej. si el cliente ya está en mostrador).
   const [sinAvisoPorPedido, setSinAvisoPorPedido] = useState<ReadonlySet<string>>(new Set());
