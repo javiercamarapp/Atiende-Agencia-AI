@@ -42,7 +42,10 @@ import type {
   Customer,
   CustomerAddress,
   CustomerListFilter,
+  CarteraKpis,
   CustomerListPage,
+  FilaImportacionCliente,
+  ResultadoImportacionClientes,
   CustomerTier,
   KnownZone,
   NearestBranchMatch,
@@ -473,6 +476,15 @@ export interface RestaurantesRepository {
 
   findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
   listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;
+  /** Migracion 054. Sin ella: `{ disponible: false }` (nunca un error). */
+  getCarteraKpis(organizationId: string): Promise<CarteraKpis>;
+  /**
+   * Migracion 054: importa la cartera (filas ya normalizadas, hasta 5,000), upsert por (organizacion, telefono) que NO pisa el nombre ni la nota
+   * conocidos, SIN crear pedidos y SIN mandar mensajes. Idempotente por `huella` (sha-256 hex del archivo). Sin la migracion: `{ disponible: false }`.
+   */
+  importarClientes(organizationId: string, huella: string, filas: readonly FilaImportacionCliente[]): Promise<ResultadoImportacionClientes>;
+  /** Nota interna del cliente (migracion 054, columna `notes`); `null` si no hay o la base aun no la tiene. */
+  getCustomerNotes(organizationId: string, customerId: string): Promise<string | null>;
 
   // ---- Fase 8 — superficie real del rol "repartidor" (ver diseño, domain-restaurantes/
   // src/roles.ts::REPARTIDOR_ROLES). Todos estos métodos acotan la consulta a

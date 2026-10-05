@@ -186,6 +186,13 @@ function FichaBasica({ detalle }: { readonly detalle: CustomerDetail }) {
           </ul>
         )}
       </Seccion>
+      {detalle.notes && (
+        <Seccion titulo="Nota del cliente">
+          <p className="m-0 text-ui text-foreground" data-testid="cliente-nota">
+            {detalle.notes}
+          </p>
+        </Seccion>
+      )}
       <Seccion titulo="Lo que más pide">
         {detalle.frequentItems.length === 0 ? (
           <p className="m-0 text-ui text-muted-foreground">Sin historial suficiente todavía.</p>
@@ -242,6 +249,13 @@ function FichaCompleta({ ficha, puedeAdministrar, ejecutar, api }: { readonly fi
         </dd>
       </dl>
 
+      {ficha.notes && (
+        <Seccion titulo="Nota del cliente">
+          <p className="m-0 text-ui text-foreground" data-testid="cliente-nota">
+            {ficha.notes}
+          </p>
+        </Seccion>
+      )}
       <PerfilForm ficha={ficha} ejecutar={ejecutar} api={api} />
       <Domicilios domicilios={ficha.addresses} ejecutar={ejecutar} api={api} confirmar={confirmar} />
       <Gustos gustos={ficha.preferences} ejecutar={ejecutar} api={api} confirmar={confirmar} />

@@ -21,6 +21,8 @@ import type {
   CompanyExperienceUpdateInput,
   CompanySignerCreateInput,
   CompanySignerUpdateInput,
+  CompanyItemDecisionInput,
+  CompanyItemDecisionOutcome,
   GoNoGoDecisionCreateInput,
   IdempotencyParams,
   IdempotentResult,
@@ -77,7 +79,8 @@ import { computeRenewalAlertCandidates, DEFAULT_RENEWAL_LEAD_DAYS } from "./rene
 import type { RenewalCandidateContract } from "./renewal-radar.ts";
 import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
-import { sha256Bytes, sha256Hex } from "./types.ts";
+import { isoNow, sha256Bytes, sha256Hex } from "./types.ts";
+import { computeCompanyProfileHash } from "./company-profile-hash.ts";
 import { ApprovalWorkflow } from "./approval-workflow.ts";
 import type { Approval, ApprovalScope, ChangeDetected, ExpedienteApprovalStage } from "./approval-workflow.ts";
 import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
@@ -144,6 +147,49 @@ export function dateColumnToExplicitOffsetIso(value: string | null): string | nu
   if (value === null) return null;
   return DATE_ONLY_PATTERN.test(value) ? `${value}T00:00:00Z` : value;
 }
+
+
+// ---- Datos de empresa (migración 036): filas y mapeos. Las columnas de autoría son opcionales: en una base sin migrar la consulta anterior no las trae. ----
+type ApprovalStatusColumn = "aprobado" | "pendiente_aprobacion" | "rechazado";
+interface AuthorshipColumns {
+  proposed_by?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+}
+interface DocumentRow extends AuthorshipColumns { id: string; document_type: string; label: string; expires_at: string | null; approval_status: ApprovalStatusColumn }
+interface RateRow extends AuthorshipColumns { id: string; concept: string; unit_price: string; approval_status: ApprovalStatusColumn; valid_from: string; valid_until: string | null }
+interface CapabilityRow extends AuthorshipColumns { id: string; name: string; description: string; evidence_doc_id: string | null; approval_status: ApprovalStatusColumn }
+interface ExperienceRow extends AuthorshipColumns { id: string; description: string; evidence_doc_id: string; approval_status: ApprovalStatusColumn }
+interface SignerRow extends AuthorshipColumns { id: string; name: string; role: string; authorized: boolean; approval_status?: ApprovalStatusColumn }
+
+function authorship(r: AuthorshipColumns): { proposedBy?: string | null; approvedBy?: string | null; approvedAt?: string | null } {
+  if (r.proposed_by === undefined) return {};
+  return { proposedBy: r.proposed_by, approvedBy: r.approved_by ?? null, approvedAt: r.approved_at ?? null };
+}
+function mapDocumentRow(r: DocumentRow): CompanyDocumentRecord {
+  return { id: r.id, type: r.document_type, label: r.label, expiresAt: dateColumnToExplicitOffsetIso(r.expires_at), approvalStatus: r.approval_status, ...authorship(r) };
+}
+function mapRateRow(r: RateRow): ApprovedRateRecord {
+  return { id: r.id, concept: r.concept, unitPrice: r.unit_price, currency: "MXN", approvalStatus: r.approval_status, validFrom: dateColumnToExplicitOffsetIso(r.valid_from)!, validUntil: dateColumnToExplicitOffsetIso(r.valid_until), ...authorship(r) };
+}
+function mapCapabilityRow(r: CapabilityRow): CompanyCapabilityRecord {
+  return { id: r.id, name: r.name, description: r.description, evidenceDocId: r.evidence_doc_id, approvalStatus: r.approval_status, ...authorship(r) };
+}
+function mapExperienceRow(r: ExperienceRow): CompanyExperienceItemRecord {
+  return { id: r.id, description: r.description, evidenceDocId: r.evidence_doc_id, approvalStatus: r.approval_status, ...authorship(r) };
+}
+/** Sin columna `approval_status` (base sin migrar) un firmante cuenta como 'aprobado': es lo que respalda la migración 036 y el comportamiento anterior. */
+function mapSignerRow(r: SignerRow): CompanySignerRecord {
+  return { id: r.id, name: r.name, role: r.role, authorized: r.authorized, approvalStatus: r.approval_status ?? "aprobado", ...authorship(r) };
+}
+/** Tablas con `approval_status` antes de la 036 (camino anterior de `decideCompanyItem`); los firmantes no tenían aprobación. */
+const LEGACY_DECISION_TABLE: Record<CompanyItemDecisionInput["kind"], string | null> = {
+  rate: "approved_rate",
+  document: "company_document",
+  capability: "company_capability",
+  experience: "company_experience",
+  signer: null,
+};
 
 function hashBody(body: unknown): string {
   return createHash("sha256").update(JSON.stringify(body ?? null)).digest("hex");
@@ -1590,30 +1636,54 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
 
   // ---- Fase 16: escritura de "datos de empresa" ----
 
+  // Migración 036: `approval_status` YA NO se escribe en create/update. Nace 'pendiente_aprobacion' (default), el trigger
+  // `company_data_proponer` fija `proposed_by = auth.uid()` y devuelve a pendiente cualquier registro cuyo dato cambie
+  // (DB-03), y aprobar/rechazar es `decideCompanyItem`. Cada método tiene un camino primario (columnas de la 036) y,
+  // en una base sin migrar (42703/42P01/42883), un camino anterior dentro de un SAVEPOINT -- nunca un try/catch a mano.
+
   async createCompanyDocument(organizationId: string, input: CompanyDocumentCreateInput): Promise<CompanyDocumentRecord> {
-    const { rows } = await this.db.query<{ id: string; document_type: string; label: string; expires_at: string | null; approval_status: CompanyDocumentRecord["approvalStatus"] }>(
-      `insert into licitaciones.company_document (organization_id, document_type, label, expires_at, approval_status)
-       values ($1, $2, $3, $4, $5)
+    const { rows } = await this.db.query<DocumentRow>(
+      `insert into licitaciones.company_document (organization_id, document_type, label, expires_at)
+       values ($1, $2, $3, $4)
        returning id, document_type, label, expires_at::text as expires_at, approval_status;`,
-      [organizationId, input.type, input.label, input.expiresAt, input.approvalStatus ?? "pendiente_aprobacion"],
+      [organizationId, input.type, input.label, input.expiresAt],
     );
-    const row = rows[0]!;
-    return { id: row.id, type: row.document_type, label: row.label, expiresAt: dateColumnToExplicitOffsetIso(row.expires_at), approvalStatus: row.approval_status };
+    return mapDocumentRow(rows[0]!);
   }
 
   async updateCompanyDocument(organizationId: string, documentId: string, input: CompanyDocumentUpdateInput): Promise<CompanyDocumentRecord> {
-    const { rows } = await this.db.query<{ id: string; document_type: string; label: string; expires_at: string | null; approval_status: CompanyDocumentRecord["approvalStatus"] }>(
-      `update licitaciones.company_document set
-         label = coalesce($3, label),
-         expires_at = case when $4::boolean then $5::date else expires_at end,
-         approval_status = coalesce($6, approval_status)
-       where id = $1 and organization_id = $2
-       returning id, document_type, label, expires_at::text as expires_at, approval_status;`,
-      [documentId, organizationId, input.label ?? null, "expiresAt" in input, input.expiresAt ?? null, input.approvalStatus ?? null],
-    );
+    const params = [documentId, organizationId, input.label ?? null, "expiresAt" in input, input.expiresAt ?? null];
+    const rows = await runWithSavepointFallback<DocumentRow[]>({
+      session: this.db,
+      savepointName: "sp_licitaciones_update_company_document",
+      primary: async () =>
+        (
+          await this.db.query<DocumentRow>(
+            `update licitaciones.company_document set
+               label = coalesce($3, label),
+               expires_at = case when $4::boolean then $5::date else expires_at end
+             where id = $1 and organization_id = $2
+             returning id, document_type, label, expires_at::text as expires_at, approval_status, proposed_by, approved_by, approved_at::text as approved_at;`,
+            params,
+          )
+        ).rows,
+      isRecoverable: isMigrationPendingError,
+      fallback: async () =>
+        (
+          await this.db.query<DocumentRow>(
+            `update licitaciones.company_document set
+               label = coalesce($3, label),
+               expires_at = case when $4::boolean then $5::date else expires_at end,
+               approval_status = case when (label is distinct from coalesce($3, label) or ($4::boolean and expires_at is distinct from $5::date)) then 'pendiente_aprobacion' else approval_status end
+             where id = $1 and organization_id = $2
+             returning id, document_type, label, expires_at::text as expires_at, approval_status;`,
+            params,
+          )
+        ).rows,
+    });
     const row = rows[0];
     if (!row) throw new CompanyDataNotFoundError("Documento de empresa", documentId);
-    return { id: row.id, type: row.document_type, label: row.label, expiresAt: dateColumnToExplicitOffsetIso(row.expires_at), approvalStatus: row.approval_status };
+    return mapDocumentRow(row);
   }
 
   async createApprovedRate(organizationId: string, input: ApprovedRateCreateInput): Promise<ApprovedRateRecord> {
@@ -1630,114 +1700,244 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     // Caller SIEMPRE de staff autenticado (`POST .../company/rates`, verificado con
     // `grep -rn` -- sin invocación de sistema) -- `isSystemSession: false`.
     const validFrom = input.validFrom ?? (await this.resolveOrganizationTimezoneForToday(organizationId, false));
-    const { rows } = await this.db.query<{ id: string; concept: string; unit_price: string; approval_status: ApprovedRateRecord["approvalStatus"]; valid_from: string; valid_until: string | null }>(
-      `insert into licitaciones.approved_rate (organization_id, concept, unit_price, approval_status, valid_from, valid_until)
-       values ($1, $2, $3, $4, $5::date, $6)
+    const { rows } = await this.db.query<RateRow>(
+      `insert into licitaciones.approved_rate (organization_id, concept, unit_price, valid_from, valid_until)
+       values ($1, $2, $3, $4::date, $5)
        returning id, concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until;`,
-      [organizationId, input.concept, input.unitPrice, input.approvalStatus ?? "pendiente_aprobacion", validFrom, input.validUntil ?? null],
+      [organizationId, input.concept, input.unitPrice, validFrom, input.validUntil ?? null],
     );
-    const row = rows[0]!;
-    return { id: row.id, concept: row.concept, unitPrice: row.unit_price, currency: "MXN", approvalStatus: row.approval_status, validFrom: dateColumnToExplicitOffsetIso(row.valid_from)!, validUntil: dateColumnToExplicitOffsetIso(row.valid_until) };
+    return mapRateRow(rows[0]!);
   }
 
   async updateApprovedRate(organizationId: string, rateId: string, input: ApprovedRateUpdateInput): Promise<ApprovedRateRecord> {
-    const { rows } = await this.db.query<{ id: string; concept: string; unit_price: string; approval_status: ApprovedRateRecord["approvalStatus"]; valid_from: string; valid_until: string | null }>(
-      `update licitaciones.approved_rate set
-         unit_price = coalesce($3, unit_price),
-         approval_status = coalesce($4, approval_status),
-         valid_from = coalesce($5::date, valid_from),
-         valid_until = case when $6::boolean then $7::date else valid_until end
-       where id = $1 and organization_id = $2
-       returning id, concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until;`,
-      [rateId, organizationId, input.unitPrice ?? null, input.approvalStatus ?? null, input.validFrom ?? null, "validUntil" in input, input.validUntil ?? null],
-    );
+    const params = [rateId, organizationId, input.unitPrice ?? null, input.validFrom ?? null, "validUntil" in input, input.validUntil ?? null];
+    const rows = await runWithSavepointFallback<RateRow[]>({
+      session: this.db,
+      savepointName: "sp_licitaciones_update_approved_rate",
+      primary: async () =>
+        (
+          await this.db.query<RateRow>(
+            `update licitaciones.approved_rate set
+               unit_price = coalesce($3, unit_price),
+               valid_from = coalesce($4::date, valid_from),
+               valid_until = case when $5::boolean then $6::date else valid_until end
+             where id = $1 and organization_id = $2
+             returning id, concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until, proposed_by, approved_by, approved_at::text as approved_at;`,
+            params,
+          )
+        ).rows,
+      isRecoverable: isMigrationPendingError,
+      fallback: async () =>
+        (
+          await this.db.query<RateRow>(
+            // DB-03 sin trigger (base sin migrar): cambiar precio o vigencia de una tarifa aprobada la regresa a pendiente en la misma sentencia.
+            `update licitaciones.approved_rate set
+               unit_price = coalesce($3, unit_price),
+               valid_from = coalesce($4::date, valid_from),
+               valid_until = case when $5::boolean then $6::date else valid_until end,
+               approval_status = case when (unit_price is distinct from coalesce($3, unit_price) or valid_from is distinct from coalesce($4::date, valid_from) or ($5::boolean and valid_until is distinct from $6::date)) then 'pendiente_aprobacion' else approval_status end
+             where id = $1 and organization_id = $2
+             returning id, concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until;`,
+            params,
+          )
+        ).rows,
+    });
     const row = rows[0];
     if (!row) throw new CompanyDataNotFoundError("Tarifa aprobada", rateId);
-    return { id: row.id, concept: row.concept, unitPrice: row.unit_price, currency: "MXN", approvalStatus: row.approval_status, validFrom: dateColumnToExplicitOffsetIso(row.valid_from)!, validUntil: dateColumnToExplicitOffsetIso(row.valid_until) };
+    return mapRateRow(row);
   }
 
   async listAllApprovedRates(organizationId: string): Promise<readonly ApprovedRateRecord[]> {
-    const { rows } = await this.db.query<{ id: string; concept: string; unit_price: string; approval_status: ApprovedRateRecord["approvalStatus"]; valid_from: string; valid_until: string | null }>(
-      `select id, concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until from licitaciones.approved_rate where organization_id = $1 order by concept asc;`,
-      [organizationId],
-    );
-    return rows.map((r) => ({ id: r.id, concept: r.concept, unitPrice: r.unit_price, currency: "MXN" as const, approvalStatus: r.approval_status, validFrom: dateColumnToExplicitOffsetIso(r.valid_from)!, validUntil: dateColumnToExplicitOffsetIso(r.valid_until) }));
+    const rows = await runWithSavepointFallback<RateRow[]>({
+      session: this.db,
+      savepointName: "sp_licitaciones_list_all_rates",
+      primary: async () =>
+        (
+          await this.db.query<RateRow>(
+            `select id, concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until, proposed_by, approved_by, approved_at::text as approved_at from licitaciones.approved_rate where organization_id = $1 order by concept asc;`,
+            [organizationId],
+          )
+        ).rows,
+      isRecoverable: isMigrationPendingError,
+      fallback: async () =>
+        (
+          await this.db.query<RateRow>(
+            `select id, concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until from licitaciones.approved_rate where organization_id = $1 order by concept asc;`,
+            [organizationId],
+          )
+        ).rows,
+    });
+    return rows.map(mapRateRow);
   }
 
   async createCompanyCapability(organizationId: string, input: CompanyCapabilityCreateInput): Promise<CompanyCapabilityRecord> {
     const existing = await this.db.query<{ id: string }>(`select id from licitaciones.company_capability where organization_id = $1 and name = $2;`, [organizationId, input.name]);
     if (existing.rows.length > 0) throw new CompanyDataDuplicateKeyError("capacidad", input.name);
 
-    const { rows } = await this.db.query<{ id: string; name: string; description: string; evidence_doc_id: string | null; approval_status: CompanyCapabilityRecord["approvalStatus"] }>(
-      `insert into licitaciones.company_capability (organization_id, name, description, evidence_doc_id, approval_status)
-       values ($1, $2, $3, $4, $5)
+    const { rows } = await this.db.query<CapabilityRow>(
+      `insert into licitaciones.company_capability (organization_id, name, description, evidence_doc_id)
+       values ($1, $2, $3, $4)
        returning id, name, description, evidence_doc_id, approval_status;`,
-      [organizationId, input.name, input.description, input.evidenceDocId ?? null, input.approvalStatus ?? "pendiente_aprobacion"],
+      [organizationId, input.name, input.description, input.evidenceDocId ?? null],
     );
-    const row = rows[0]!;
-    return { id: row.id, name: row.name, description: row.description, evidenceDocId: row.evidence_doc_id, approvalStatus: row.approval_status };
+    return mapCapabilityRow(rows[0]!);
   }
 
   async updateCompanyCapability(organizationId: string, capabilityId: string, input: CompanyCapabilityUpdateInput): Promise<CompanyCapabilityRecord> {
-    const { rows } = await this.db.query<{ id: string; name: string; description: string; evidence_doc_id: string | null; approval_status: CompanyCapabilityRecord["approvalStatus"] }>(
-      `update licitaciones.company_capability set
-         description = coalesce($3, description),
-         evidence_doc_id = case when $4::boolean then $5::uuid else evidence_doc_id end,
-         approval_status = coalesce($6, approval_status)
-       where id = $1 and organization_id = $2
-       returning id, name, description, evidence_doc_id, approval_status;`,
-      [capabilityId, organizationId, input.description ?? null, "evidenceDocId" in input, input.evidenceDocId ?? null, input.approvalStatus ?? null],
-    );
+    const params = [capabilityId, organizationId, input.description ?? null, "evidenceDocId" in input, input.evidenceDocId ?? null];
+    const rows = await runWithSavepointFallback<CapabilityRow[]>({
+      session: this.db,
+      savepointName: "sp_licitaciones_update_company_capability",
+      primary: async () =>
+        (
+          await this.db.query<CapabilityRow>(
+            `update licitaciones.company_capability set
+               description = coalesce($3, description),
+               evidence_doc_id = case when $4::boolean then $5::uuid else evidence_doc_id end
+             where id = $1 and organization_id = $2
+             returning id, name, description, evidence_doc_id, approval_status, proposed_by, approved_by, approved_at::text as approved_at;`,
+            params,
+          )
+        ).rows,
+      isRecoverable: isMigrationPendingError,
+      fallback: async () =>
+        (
+          await this.db.query<CapabilityRow>(
+            `update licitaciones.company_capability set
+               description = coalesce($3, description),
+               evidence_doc_id = case when $4::boolean then $5::uuid else evidence_doc_id end,
+               approval_status = case when (description is distinct from coalesce($3, description) or ($4::boolean and evidence_doc_id is distinct from $5::uuid)) then 'pendiente_aprobacion' else approval_status end
+             where id = $1 and organization_id = $2
+             returning id, name, description, evidence_doc_id, approval_status;`,
+            params,
+          )
+        ).rows,
+    });
     const row = rows[0];
     if (!row) throw new CompanyDataNotFoundError("Capacidad", capabilityId);
-    return { id: row.id, name: row.name, description: row.description, evidenceDocId: row.evidence_doc_id, approvalStatus: row.approval_status };
+    return mapCapabilityRow(row);
   }
 
   async createCompanyExperience(organizationId: string, input: CompanyExperienceCreateInput): Promise<CompanyExperienceItemRecord> {
-    const { rows } = await this.db.query<{ id: string; description: string; evidence_doc_id: string; approval_status: CompanyExperienceItemRecord["approvalStatus"] }>(
-      `insert into licitaciones.company_experience (organization_id, description, evidence_doc_id, approval_status)
-       values ($1, $2, $3, $4)
+    const { rows } = await this.db.query<ExperienceRow>(
+      `insert into licitaciones.company_experience (organization_id, description, evidence_doc_id)
+       values ($1, $2, $3)
        returning id, description, evidence_doc_id, approval_status;`,
-      [organizationId, input.description, input.evidenceDocId, input.approvalStatus ?? "pendiente_aprobacion"],
+      [organizationId, input.description, input.evidenceDocId],
     );
-    const row = rows[0]!;
-    return { id: row.id, description: row.description, evidenceDocId: row.evidence_doc_id, approvalStatus: row.approval_status };
+    return mapExperienceRow(rows[0]!);
   }
 
   async updateCompanyExperience(organizationId: string, experienceId: string, input: CompanyExperienceUpdateInput): Promise<CompanyExperienceItemRecord> {
-    const { rows } = await this.db.query<{ id: string; description: string; evidence_doc_id: string; approval_status: CompanyExperienceItemRecord["approvalStatus"] }>(
-      `update licitaciones.company_experience set
-         description = coalesce($3, description),
-         evidence_doc_id = coalesce($4, evidence_doc_id),
-         approval_status = coalesce($5, approval_status)
-       where id = $1 and organization_id = $2
-       returning id, description, evidence_doc_id, approval_status;`,
-      [experienceId, organizationId, input.description ?? null, input.evidenceDocId ?? null, input.approvalStatus ?? null],
-    );
+    const params = [experienceId, organizationId, input.description ?? null, input.evidenceDocId ?? null];
+    const rows = await runWithSavepointFallback<ExperienceRow[]>({
+      session: this.db,
+      savepointName: "sp_licitaciones_update_company_experience",
+      primary: async () =>
+        (
+          await this.db.query<ExperienceRow>(
+            `update licitaciones.company_experience set
+               description = coalesce($3, description),
+               evidence_doc_id = coalesce($4, evidence_doc_id)
+             where id = $1 and organization_id = $2
+             returning id, description, evidence_doc_id, approval_status, proposed_by, approved_by, approved_at::text as approved_at;`,
+            params,
+          )
+        ).rows,
+      isRecoverable: isMigrationPendingError,
+      fallback: async () =>
+        (
+          await this.db.query<ExperienceRow>(
+            `update licitaciones.company_experience set
+               description = coalesce($3, description),
+               evidence_doc_id = coalesce($4, evidence_doc_id),
+               approval_status = case when (description is distinct from coalesce($3, description) or evidence_doc_id is distinct from coalesce($4::uuid, evidence_doc_id)) then 'pendiente_aprobacion' else approval_status end
+             where id = $1 and organization_id = $2
+             returning id, description, evidence_doc_id, approval_status;`,
+            params,
+          )
+        ).rows,
+    });
     const row = rows[0];
     if (!row) throw new CompanyDataNotFoundError("Experiencia", experienceId);
-    return { id: row.id, description: row.description, evidenceDocId: row.evidence_doc_id, approvalStatus: row.approval_status };
+    return mapExperienceRow(row);
   }
 
   async createCompanySigner(organizationId: string, input: CompanySignerCreateInput): Promise<CompanySignerRecord> {
     const existing = await this.db.query<{ id: string }>(`select id from licitaciones.company_signer where organization_id = $1 and role = $2;`, [organizationId, input.role]);
     if (existing.rows.length > 0) throw new CompanyDataDuplicateKeyError("firmante", input.role);
 
-    const { rows } = await this.db.query<{ id: string; name: string; role: string; authorized: boolean }>(
-      `insert into licitaciones.company_signer (organization_id, name, role, authorized) values ($1, $2, $3, $4) returning id, name, role, authorized;`,
-      [organizationId, input.name, input.role, input.authorized ?? false],
-    );
-    return rows[0]!;
+    const params = [organizationId, input.name, input.role, input.authorized ?? false];
+    const rows = await runWithSavepointFallback<SignerRow[]>({
+      session: this.db,
+      savepointName: "sp_licitaciones_create_company_signer",
+      primary: async () =>
+        (await this.db.query<SignerRow>(`insert into licitaciones.company_signer (organization_id, name, role, authorized) values ($1, $2, $3, $4) returning id, name, role, authorized, approval_status;`, params)).rows,
+      isRecoverable: isMigrationPendingError,
+      fallback: async () => (await this.db.query<SignerRow>(`insert into licitaciones.company_signer (organization_id, name, role, authorized) values ($1, $2, $3, $4) returning id, name, role, authorized;`, params)).rows,
+    });
+    return mapSignerRow(rows[0]!);
   }
 
   async updateCompanySigner(organizationId: string, signerId: string, input: CompanySignerUpdateInput): Promise<CompanySignerRecord> {
-    const { rows } = await this.db.query<{ id: string; name: string; role: string; authorized: boolean }>(
-      `update licitaciones.company_signer set name = coalesce($3, name), authorized = coalesce($4, authorized) where id = $1 and organization_id = $2 returning id, name, role, authorized;`,
-      [signerId, organizationId, input.name ?? null, input.authorized ?? null],
-    );
+    const params = [signerId, organizationId, input.name ?? null, input.authorized ?? null];
+    const rows = await runWithSavepointFallback<SignerRow[]>({
+      session: this.db,
+      savepointName: "sp_licitaciones_update_company_signer",
+      primary: async () =>
+        (
+          await this.db.query<SignerRow>(
+            `update licitaciones.company_signer set name = coalesce($3, name), authorized = coalesce($4, authorized) where id = $1 and organization_id = $2
+             returning id, name, role, authorized, approval_status, proposed_by, approved_by, approved_at::text as approved_at;`,
+            params,
+          )
+        ).rows,
+      isRecoverable: isMigrationPendingError,
+      fallback: async () =>
+        (await this.db.query<SignerRow>(`update licitaciones.company_signer set name = coalesce($3, name), authorized = coalesce($4, authorized) where id = $1 and organization_id = $2 returning id, name, role, authorized;`, params)).rows,
+    });
     const row = rows[0];
     if (!row) throw new CompanyDataNotFoundError("Firmante", signerId);
-    return row;
+    return mapSignerRow(row);
+  }
+
+  async decideCompanyItem(organizationId: string, input: CompanyItemDecisionInput): Promise<CompanyItemDecisionOutcome> {
+    try {
+      return await runWithSavepointFallback<CompanyItemDecisionOutcome>({
+        session: this.db,
+        savepointName: "sp_licitaciones_decide_company_item",
+        primary: async () => {
+          const { rows } = await this.db.query<{ outcome: CompanyItemDecisionOutcome }>(`select licitaciones.decide_company_item($1::uuid, $2::uuid, $3, $4::uuid, $5) as outcome;`, [
+            input.actorId,
+            organizationId,
+            input.kind,
+            input.itemId,
+            input.decision,
+          ]);
+          return rows[0]!.outcome;
+        },
+        isRecoverable: isMigrationPendingError,
+        // Base sin migrar (falta la función de la 036): firmantes no tenían aprobación; el resto conserva el camino anterior
+        // (rol validado aquí, transición condicional), sin autor-distinto-de-aprobador porque aún no existe `proposed_by`.
+        fallback: async () => {
+          const table = LEGACY_DECISION_TABLE[input.kind];
+          if (!table) return "no_disponible";
+          const decisionRoles = input.kind === "rate" ? ["owner", "admin"] : ["owner", "admin", "analyst"];
+          if (!decisionRoles.includes(input.actorRole)) return "rol";
+          const updated = await this.db.query<{ id: string }>(
+            `update licitaciones.${table} set approval_status = $1 where id = $2::uuid and organization_id = $3 and approval_status = 'pendiente_aprobacion' returning id;`,
+            [input.decision, input.itemId, organizationId],
+          );
+          if (updated.rows.length > 0) return "ok";
+          const exists = await this.db.query<{ id: string }>(`select id from licitaciones.${table} where id = $1::uuid and organization_id = $2;`, [input.itemId, organizationId]);
+          return exists.rows.length > 0 ? "conflict" : "not_found";
+        },
+      });
+    } catch (err) {
+      // La función exige rol/membresía y lanza 42501 si el llamador no puede decidir (el savepoint ya recuperó la sesión).
+      if (err && typeof err === "object" && (err as { code?: unknown }).code === "42501") return "rol";
+      throw err;
+    }
   }
 
   async listComplianceItems(organizationId: string, proposalId: string): Promise<readonly ComplianceItemRecord[]> {
@@ -1770,35 +1970,71 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   }
 
   async listCompanyDocuments(organizationId: string, _asOfIso: string): Promise<readonly CompanyDocumentRecord[]> {
-    const { rows } = await this.db.query<{ id: string; document_type: string; label: string; expires_at: string | null; approval_status: CompanyDocumentRecord["approvalStatus"] }>(
-      `select id, document_type, label, expires_at::text as expires_at, approval_status from licitaciones.company_document where organization_id = $1;`,
-      [organizationId],
-    );
-    return rows.map((r) => ({ id: r.id, type: r.document_type, label: r.label, expiresAt: dateColumnToExplicitOffsetIso(r.expires_at), approvalStatus: r.approval_status }));
+    const rows = await runWithSavepointFallback<DocumentRow[]>({
+      session: this.db,
+      savepointName: "sp_licitaciones_list_company_documents",
+      primary: async () =>
+        (
+          await this.db.query<DocumentRow>(
+            `select id, document_type, label, expires_at::text as expires_at, approval_status, proposed_by, approved_by, approved_at::text as approved_at from licitaciones.company_document where organization_id = $1;`,
+            [organizationId],
+          )
+        ).rows,
+      isRecoverable: isMigrationPendingError,
+      fallback: async () => (await this.db.query<DocumentRow>(`select id, document_type, label, expires_at::text as expires_at, approval_status from licitaciones.company_document where organization_id = $1;`, [organizationId])).rows,
+    });
+    return rows.map(mapDocumentRow);
   }
 
   async listCompanyCapabilities(organizationId: string): Promise<readonly CompanyCapabilityRecord[]> {
-    const { rows } = await this.db.query<{ id: string; name: string; description: string; evidence_doc_id: string | null; approval_status: CompanyCapabilityRecord["approvalStatus"] }>(
-      `select id, name, description, evidence_doc_id, approval_status from licitaciones.company_capability where organization_id = $1;`,
-      [organizationId],
-    );
-    return rows.map((r) => ({ id: r.id, name: r.name, description: r.description, evidenceDocId: r.evidence_doc_id, approvalStatus: r.approval_status }));
+    const rows = await runWithSavepointFallback<CapabilityRow[]>({
+      session: this.db,
+      savepointName: "sp_licitaciones_list_company_capabilities",
+      primary: async () =>
+        (
+          await this.db.query<CapabilityRow>(
+            `select id, name, description, evidence_doc_id, approval_status, proposed_by, approved_by, approved_at::text as approved_at from licitaciones.company_capability where organization_id = $1;`,
+            [organizationId],
+          )
+        ).rows,
+      isRecoverable: isMigrationPendingError,
+      fallback: async () => (await this.db.query<CapabilityRow>(`select id, name, description, evidence_doc_id, approval_status from licitaciones.company_capability where organization_id = $1;`, [organizationId])).rows,
+    });
+    return rows.map(mapCapabilityRow);
   }
 
   async listCompanyExperience(organizationId: string): Promise<readonly CompanyExperienceItemRecord[]> {
-    const { rows } = await this.db.query<{ id: string; description: string; evidence_doc_id: string; approval_status: CompanyExperienceItemRecord["approvalStatus"] }>(
-      `select id, description, evidence_doc_id, approval_status from licitaciones.company_experience where organization_id = $1;`,
-      [organizationId],
-    );
-    return rows.map((r) => ({ id: r.id, description: r.description, evidenceDocId: r.evidence_doc_id, approvalStatus: r.approval_status }));
+    const rows = await runWithSavepointFallback<ExperienceRow[]>({
+      session: this.db,
+      savepointName: "sp_licitaciones_list_company_experience",
+      primary: async () =>
+        (
+          await this.db.query<ExperienceRow>(
+            `select id, description, evidence_doc_id, approval_status, proposed_by, approved_by, approved_at::text as approved_at from licitaciones.company_experience where organization_id = $1;`,
+            [organizationId],
+          )
+        ).rows,
+      isRecoverable: isMigrationPendingError,
+      fallback: async () => (await this.db.query<ExperienceRow>(`select id, description, evidence_doc_id, approval_status from licitaciones.company_experience where organization_id = $1;`, [organizationId])).rows,
+    });
+    return rows.map(mapExperienceRow);
   }
 
   async listCompanySigners(organizationId: string): Promise<readonly CompanySignerRecord[]> {
-    const { rows } = await this.db.query<{ id: string; name: string; role: string; authorized: boolean }>(
-      `select id, name, role, authorized from licitaciones.company_signer where organization_id = $1;`,
-      [organizationId],
-    );
-    return rows.map((r) => ({ id: r.id, name: r.name, role: r.role, authorized: r.authorized }));
+    const rows = await runWithSavepointFallback<SignerRow[]>({
+      session: this.db,
+      savepointName: "sp_licitaciones_list_company_signers",
+      primary: async () =>
+        (
+          await this.db.query<SignerRow>(
+            `select id, name, role, authorized, approval_status, proposed_by, approved_by, approved_at::text as approved_at from licitaciones.company_signer where organization_id = $1;`,
+            [organizationId],
+          )
+        ).rows,
+      isRecoverable: isMigrationPendingError,
+      fallback: async () => (await this.db.query<SignerRow>(`select id, name, role, authorized from licitaciones.company_signer where organization_id = $1;`, [organizationId])).rows,
+    });
+    return rows.map(mapSignerRow);
   }
 
   async listApprovedRates(organizationId: string, asOfIso: string): Promise<readonly ApprovedRateRecord[]> {
@@ -1898,16 +2134,22 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       : [];
     const rates = usedRateConcepts.length > 0
       ? (
-          await this.db.query<{ concept: string; unit_price: string }>(`select concept, unit_price from licitaciones.approved_rate where organization_id = $1 and concept = any($2::text[]);`, [
+          await this.db.query<{ concept: string; unit_price: string; approval_status: string; valid_from: string; valid_until: string | null }>(`select concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until from licitaciones.approved_rate where organization_id = $1 and concept = any($2::text[]);`, [
               organizationId,
               usedRateConcepts,
             ])
         ).rows
       : [];
 
+    const allDocuments = await this.listCompanyDocuments(organizationId, isoNow());
+    const capabilities = await this.listCompanyCapabilities(organizationId);
+    const experience = await this.listCompanyExperience(organizationId);
+    const signers = await this.listCompanySigners(organizationId);
+
     const raw: ExpedienteInputs = {
       tenderVersionHash: sha256Hex({ updatedAt: tender.updatedAt, submissionDeadline: tender.submissionDeadline }),
-      companyProfileHash: sha256Hex("licitaciones:fase1:company-profile-fijo"),
+      // AE-08 / REQ-162: hash REAL de todo el perfil (documentos, capacidades, experiencia, firmantes y su estado de aprobación).
+      companyProfileHash: computeCompanyProfileHash({ documents: allDocuments, capabilities, experience, signers }),
       companyDocuments: usedCompanyDocumentIds.map((id) => {
         const doc = documents.find((d) => d.id === id);
         return { documentId: id, hash: sha256Hex(doc ?? null), vigenteHasta: doc?.expires_at ?? null };
