@@ -136,11 +136,13 @@ describe("despachos.efos.alerta", () => {
   }
 
   it("un CFDI de emisor DEFINITIVO o PRESUNTO emite UN aviso por CFDI, a contadores y auditores, sin RFC ni nombre", async () => {
-    const { ctx, emisiones, postCfdi } = await conLista();
+    const { ctx, emisiones: todas, postCfdi } = await conLista();
+    // Un CFDI tipo I tambien avisa "requiere revision" (D-P3-18): aqui solo se juzga la alerta de EFOS.
     const definitivo = await postCfdi("AAA010101AA1", "11111111-2222-3333-4444-000000000001");
     expect(definitivo.status).toBe(201);
     const presunto = await postCfdi("BBB020202BB2", "11111111-2222-3333-4444-000000000002");
     expect(presunto.status).toBe(201);
+    const emisiones = todas.filter((e) => e.evento === "despachos.efos.alerta");
     expect(emisiones).toHaveLength(2);
     expect(emisiones[0]).toMatchObject({ evento: "despachos.efos.alerta", organizationId: ctx.organizationId, propertyId: ctx.propertyId, severidad: "critica", categoria: "fiscal", enlace: "/despachos/{orgSlug}/cfdi", roles: ["contador", "auditor"] });
     expect(emisiones[0]!.dedupeKey).toMatch(/^despachos\.efos\.alerta:[0-9a-f-]{36}$/);
@@ -149,12 +151,13 @@ describe("despachos.efos.alerta", () => {
   });
 
   it("un emisor que no esta en la lista no emite; sin lista cargada tampoco", async () => {
-    const { emisiones, postCfdi } = await conLista();
+    const { emisiones: todas, postCfdi } = await conLista();
+    const emisiones = { get length() { return todas.filter((e) => e.evento === "despachos.efos.alerta").length; } };
     expect((await postCfdi("ZZZ990909ZZ9", "11111111-2222-3333-4444-000000000003")).status).toBe(201);
     expect(emisiones).toHaveLength(0);
     const sinLista = await contexto();
     expect((await buildApp(sinLista.deps).request(`/despachos/${sinLista.ctx.propertyId}/cfdi`, authedJson(sinLista.ctx.staff.contador.token, cfdi("AAA010101AA1", "11111111-2222-3333-4444-000000000004")))).status).toBe(201);
-    expect(sinLista.emisiones).toHaveLength(0);
+    expect(sinLista.emisiones.filter((e) => e.evento === "despachos.efos.alerta")).toHaveLength(0);
   });
 
   it("una emision que falla (base sin migrar) no cambia el 201 de la ingesta", async () => {

@@ -40,6 +40,10 @@ const EXCLUSIONS: ReadonlySet<string> = new Set([
   // plataforma que no es una credencial de integración" — se excluye a propósito
   // por si algún día se lee.
   "NODE_ENV",
+  // Solo los lee la prueba del golden set del clasificador (no hay codigo de produccion): GITHUB_STEP_SUMMARY lo pone GitHub Actions para el
+  // resumen del job y EVAL_CLASIFICADOR_UMBRAL permite ensayar un umbral local; ninguna es una credencial.
+  "GITHUB_STEP_SUMMARY",
+  "EVAL_CLASIFICADOR_UMBRAL",
 ]);
 
 const SOURCE_ROOTS = ["apps/api/src", "apps/api/tests", "apps/worker/src", "apps/web/src", "packages"];
