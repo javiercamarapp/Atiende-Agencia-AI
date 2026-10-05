@@ -77,6 +77,21 @@ export interface ResultadoLlamada<R extends string = string> {
   readonly costoMicroUsd: number;
 }
 
+/** "Carrito cotizado (sin confirmar): 3 x Tacos, 1 x Horchata. Total $126." a partir del resultado de cotizar_pedido (camelCase de dominio o snake_case wire). */
+function resumenCarrito(resultado: unknown): string | null {
+  const r = resultado as { quote?: { lines?: unknown; total?: unknown }; total?: unknown; lines?: unknown } | null;
+  const quote = r?.quote ?? r;
+  if (!quote || !Array.isArray(quote.lines) || quote.lines.length === 0) return null;
+  const renglones = (quote.lines as { name?: unknown; requested_quantity?: unknown; requestedQuantity?: unknown; quantity?: unknown }[])
+    .map((l) => ({ nombre: typeof l.name === "string" ? l.name : null, cantidad: l.requested_quantity ?? l.requestedQuantity ?? l.quantity }))
+    .filter((l) => l.nombre !== null && typeof l.cantidad === "number")
+    .slice(0, 12)
+    .map((l) => `${l.cantidad} x ${l.nombre}`);
+  if (renglones.length === 0) return null;
+  const total = typeof quote.total === "number" ? ` Total $${quote.total}.` : "";
+  return `Carrito cotizado (sin confirmar): ${renglones.join(", ")}.${total}`.slice(0, 480);
+}
+
 const MENSAJES_QUE_NO_CORTAN: ReadonlySet<MensajeId> = new Set<MensajeId>(["tool_timeout", "silencio_reprompt", "aviso_duracion"]);
 
 export class ControladorLlamada<R extends string = string> {
@@ -87,6 +102,8 @@ export class ControladorLlamada<R extends string = string> {
   private handleReanudacion: string | null = null;
   /** Hablas inteligibles del cliente en esta llamada: es el "turno" con el que el servidor ordena cotizacion y confirmacion. */
   private turnosCliente = 0;
+  /** Carrito de la ultima cotizacion vigente (renglones y total, sin datos del cliente): lo lleva el aviso a una persona si la llamada se escala antes de crear el pedido. */
+  private carritoCotizado: string | null = null;
   private resolverFin!: (r: ResultadoLlamada<R>) => void;
   /** Se resuelve cuando la llamada termina (el sistema cuelga o el cliente cuelga). */
   readonly terminada: Promise<ResultadoLlamada<R>>;
@@ -222,6 +239,8 @@ export class ControladorLlamada<R extends string = string> {
     this.deps.trazarTool?.({ nombre: llamada.nombre, args: llamada.args, resultado: salida.resultado });
     this.transcripcion.push({ rol: "herramienta", texto: llamada.nombre });
     this.log("tool", { herramienta: llamada.nombre, ok: salida.ok, timeout: salida.timeout, ms: salida.latenciaMs });
+    if (salida.ok && llamada.nombre === "cotizar_pedido") this.carritoCotizado = resumenCarrito(salida.resultado);
+    else if (salida.ok && salida.entidadId) this.carritoCotizado = null;
     await this.deps.kpi?.({ tipo: "tool_call", herramienta: llamada.nombre, latenciaMs: salida.latenciaMs });
     // La maquina puede ordenar acciones (aviso por tool lenta, escalar tras dos timeouts) ANTES de contestar al modelo.
     await this.encolar(() => this.eventoInterno({ tipo: "tool_resultado", nombre: llamada.nombre, ok: salida.ok, entidadId: salida.entidadId, timeout: salida.timeout }));
@@ -257,7 +276,8 @@ export class ControladorLlamada<R extends string = string> {
   }
 
   private async escalar(motivo: string, resumen: string): Promise<void> {
-    const llamada = this.deps.construirEscalacion(motivo, resumen);
+    // QA-PM-R2-voz-13: un carrito ya cotizado no se pierde con el aviso (la persona que lo recibe sabe que pedia el cliente).
+    const llamada = this.deps.construirEscalacion(motivo, this.carritoCotizado ? `${resumen} ${this.carritoCotizado}` : resumen);
     const salida = await this.deps.ejecutor.ejecutar(llamada.nombre, llamada.args);
     this.log("escalada", { motivo, ok: salida.ok });
   }

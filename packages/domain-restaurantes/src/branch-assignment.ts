@@ -21,6 +21,11 @@ import { matchKnownZone } from "./reglas-pedido.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, KnownZone } from "./types.ts";
 
+/** Tope DURO de reparto, decidido por el SERVIDOR (QA-PM-R2-whatsapp-08): un pin en Progreso a 28.8 km se asignaba a Prolongacion Montejo porque el modelo mandaba
+ * `max_km: 500` y sin tope no habia limite. El modelo solo puede bajarlo (un radio del negocio menor), nunca subirlo. Valor provisional hasta que el negocio
+ * fije su radio de reparto por sucursal. */
+export const RADIO_MAXIMO_REPARTO_KM = 20;
+
 export const FUERA_DE_ZONA_MENSAJE = "Ese domicilio queda fuera de la zona de reparto: no se envía. Ofrezca recoger en sucursal.";
 
 export interface AssignBranchInput {
@@ -29,7 +34,7 @@ export interface AssignBranchInput {
   readonly lng?: number;
   /** Colonia/referencia tal como la dijo el cliente (se empareja con `known_zone`). */
   readonly colonia?: string;
-  /** Radio maximo de reparto en km; sin valor = sin tope. */
+  /** Radio maximo de reparto en km; solo puede ser MENOR que `RADIO_MAXIMO_REPARTO_KM` (el servidor lo recorta). */
   readonly maxKm?: number;
 }
 
@@ -130,8 +135,9 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
   }
 
   const distanceKm = redondear1(chosen.km);
-  if (input.maxKm !== undefined && chosen.km > input.maxKm) {
-    return { estado: "fuera_de_zona", branchSlug: chosen.branch.slug, branchName: chosen.branch.name, distanceKm, maxKm: input.maxKm, message: FUERA_DE_ZONA_MENSAJE };
+  const tope = Math.min(input.maxKm ?? RADIO_MAXIMO_REPARTO_KM, RADIO_MAXIMO_REPARTO_KM);
+  if (chosen.km > tope) {
+    return { estado: "fuera_de_zona", branchSlug: chosen.branch.slug, branchName: chosen.branch.name, distanceKm, maxKm: tope, message: FUERA_DE_ZONA_MENSAJE };
   }
   return {
     estado: "asignada",

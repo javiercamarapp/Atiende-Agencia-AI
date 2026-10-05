@@ -914,7 +914,7 @@ async function dispatchTool(
       await registerCallbackRequest(repo, {
         organizationId,
         propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
-        customerName: String(input.customer_name ?? "Cliente"),
+        customerName: textoOpcional(input.customer_name)?.trim() || "Cliente", // "" (el modelo no sabe el nombre) -> "Cliente": antes lanzaba y el cliente leia "Error interno"
         customerPhone: ctx.phone,
         reason,
         sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:${reason ?? ""}`.slice(0, 255) : null,

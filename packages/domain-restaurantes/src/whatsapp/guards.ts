@@ -79,6 +79,23 @@ export function knownAmountsOfQuote(quote: {
   return [...new Set(out)];
 }
 
+/** El texto del agente dice que YA AVISO (o avisara) al gerente/equipo/sucursal. Sirve a la guardia de honestidad: solo se puede decir si el aviso existe
+ * (QA-PM-R2-whatsapp-04: 12 de 48 conversaciones del juez eran "ya avise al gerente" sin llamar a escalar_a_humano). */
+export function afirmaHaberAvisado(reply: string): boolean {
+  const t = normalizarParaClasificar(reply);
+  return /\bavis(?:e|are|o)\s+(?:ya\s+)?(?:a|al|a\s+la|a\s+los)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal|encargad[oa]|restaurante|personal)\b|\bnotific(?:ue|are)\s+(?:al|a\s+la)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal)\b/.test(t);
+}
+
+/** Quita la afirmacion de aviso cuando no se pudo dejar el aviso. */
+export function quitarAfirmacionDeAviso(reply: string): string {
+  const sinFrase = reply
+    .split(/(?<=[.!?])\s+/)
+    .filter((frase) => !afirmaHaberAvisado(frase))
+    .join(" ")
+    .trim();
+  return `${sinFrase} Por ahora no pude dejar el aviso al equipo; si lo necesita, inténtelo de nuevo en unos minutos.`.trim();
+}
+
 export function pendingQuestionForMissingData(branchKnown: boolean, orderId: string | null): string | null {
   if (orderId) return null;
   if (!branchKnown) return "¿Me comparte su colonia o una referencia cercana para ubicar la sucursal más cercana?";
@@ -114,9 +131,33 @@ export interface HighRiskMatch {
 export const PIDE_UNA_PERSONA_RE =
   /\b(?:hablar|comunicar(?:me)?|comun[ií]que(?:me|se)?|comun[ií]came|pasar(?:me)?|p[aá]sa(?:me)?|p[aá]se(?:me)?|conectar(?:me)?|con[eé]cta(?:me)?|con[eé]cte(?:me)?|transferir(?:me)?|transf[ií]er[ea]?(?:me)?)\s+(?:con|a)\s+(?:una?\s+|el\s+|la\s+)?(?:persona|humano|gerente|encargad[oa]|alguien|asesor|agente)\b|\bquiero\s+(?:una\s+|un\s+)?(?:persona|humano)\b/i;
 
-/** Pura: ¿el cliente pide hablar con una persona? (independiente de otros motivos de riesgo del mismo texto). */
+const PIDE_UNA_PERSONA_GLOBAL = new RegExp(PIDE_UNA_PERSONA_RE.source, "gi");
+/** Marco de peticion que hace de "pasar con X" un pedido de transferencia ("quiero pasar con el gerente") y no un "voy a pasar con alguien a recogerlo". */
+const MARCO_DE_PETICION = /\b(?:quiero|quisiera|necesito|puedes|puede|podr[ií]as?|podr[ií]an|favor|por\s+favor|me\s+puede|me\s+pueden|le\s+pido|les\s+pido)\b/i;
+const NEGACION_AL_FINAL = /\b(?:no|ni|nunca|jam[aá]s|tampoco)\b(?:\s+\S+){0,4}\s*$/i;
+/** Habla de armar un pedido en el mismo mensaje (cantidad + producto, o un verbo de pedir): una peticion de persona MEZCLADA con un pedido no debe tragarse el pedido. */
+const TRAE_PEDIDO =
+  /\b(?:\d+|un|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|doce|medio|media)\s+(?:ordenes?\s+de\s+)?(?:tacos?|kilos?|kg|nachos?|quesadillas?|gringas?|alambres?|horchatas?|refrescos?|cocas?|cervezas?|aguas?|bistec|pastor|arrachera|pollo|cochinita|frijoles|guacamole|papas?|tortas?|hamburguesas?|platillos?)\b|\b(?:apart(?:a|ame|as|ar)|ap[aá]rtame|ponme|p[oó]nme|anota(?:me)?|quiero\s+(?:pedir|ordenar|hacer\s+un\s+pedido)|me\s+das|me\s+mandas?)\b/i;
+
+/** ¿El texto trae un pedido (cantidad + producto o un verbo de pedir)? */
+export function traePedido(text: string): boolean {
+  return TRAE_PEDIDO.test(text);
+}
+
+/** Pura: ¿el cliente pide hablar con una persona? (independiente de otros motivos de riesgo del mismo texto). NO cuenta: la negacion ("no quiero hablar con
+ * una persona, con usted esta bien"), "pasar con alguien" como visita ("voy a pasar con alguien a recogerlo") ni una peticion mezclada con un pedido
+ * ("quiero hablar con alguien de recursos humanos y de paso me apartas 4 tacos": el pedido sigue su camino y el modelo escala lo otro). */
 export function pideUnaPersona(text: string): boolean {
-  return PIDE_UNA_PERSONA_RE.test(text);
+  if (traePedido(text)) return false;
+  for (const m of text.matchAll(PIDE_UNA_PERSONA_GLOBAL)) {
+    const idx = m.index ?? 0;
+    const antes = text.slice(Math.max(0, idx - 60), idx);
+    const segmento = antes.slice(Math.max(antes.lastIndexOf("."), antes.lastIndexOf(","), antes.lastIndexOf(";"), antes.lastIndexOf("!"), antes.lastIndexOf("?")) + 1);
+    if (NEGACION_AL_FINAL.test(segmento)) continue;
+    if (/^pasar\b/i.test(m[0]) && !MARCO_DE_PETICION.test(segmento)) continue;
+    return true;
+  }
+  return false;
 }
 
 /** Lo que el clasificador necesita saber del cliente para NO confundir un ajuste del carrito con una cancelacion o una queja. */
@@ -207,6 +248,7 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
   {
     intent: "cliente_lo_pide",
     pattern: PIDE_UNA_PERSONA_RE,
+    cuando: (texto) => pideUnaPersona(texto),
     reply: "Con gusto. Ya avisé al equipo del restaurante para que una persona lo contacte lo antes posible.",
   },
 ];
