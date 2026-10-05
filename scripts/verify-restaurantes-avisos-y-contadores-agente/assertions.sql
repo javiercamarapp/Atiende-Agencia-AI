@@ -299,10 +299,10 @@ begin
 end $$;
 rollback;
 
-\echo '=== K3. NEGATIVO: un contador de mas de 2 h cuenta como 0 ==='
+\echo '=== K3. NEGATIVO: un contador de mas de 2 h cuenta como 0 (071: tabla propia, sin bloquear la conversacion) ==='
 begin;
-update restaurantes.whatsapp_conversations set agent_counters = jsonb_build_object('no_entiende', jsonb_build_object('n', 5, 'at', now() - interval '3 hours'))
-  where organization_id = '00000000-0000-0000-0000-0000000f0001' and phone = '+5219993330001';
+insert into restaurantes.whatsapp_contadores_agente (organization_id, phone_hash, clave, n, updated_at)
+  values ('00000000-0000-0000-0000-0000000f0001', encode(sha256(convert_to('+5219993330001', 'UTF8')), 'hex'), 'no_entiende', 5, now() - interval '3 hours');
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
 do $$
@@ -311,17 +311,28 @@ begin
 end $$;
 rollback;
 
-\echo '=== K4. CROSS-TENANT: el telefono de la organizacion A no existe para la organizacion B (null, sin escribir) ==='
+\echo '=== K4. CROSS-TENANT: el contador de la organizacion B es SUYO; no toca el de A ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
 do $$
 begin
-  if restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0002', '+5219993330001', 'no_entiende', 'incrementar') is not null then raise exception 'K4: debio devolver null'; end if;
+  if restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0002', '+5219993330001', 'no_entiende', 'incrementar') <> 1 then raise exception 'K4: B cuenta su propio contador desde 1'; end if;
+  if restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'no_entiende', 'incrementar') <> 1 then raise exception 'K4: el contador de A no se toco (arranca en 1)'; end if;
 end $$;
-reset role;
-do $$ begin
-  if (select agent_counters from restaurantes.whatsapp_conversations where organization_id = '00000000-0000-0000-0000-0000000f0001' and phone = '+5219993330001') <> '{}'::jsonb then raise exception 'K4: no debio tocar la conversacion de A'; end if;
+rollback;
+
+\echo '=== K4b. 071: contar no necesita la fila de la conversacion (una sola conexion: la espera entre dos sesiones se probo con dos psql a mano, ver el PR) ==='
+begin;
+-- Esta transaccion bloquea la fila de la conversacion como lo hace el webhook al reclamar el turno ...
+select 1 from restaurantes.whatsapp_conversations where organization_id = '00000000-0000-0000-0000-0000000f0001' and phone = '+5219993330001' for update;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+set local lock_timeout = '1s';
+-- ... y el contador responde sin esperar ese lock (antes: `for update` sobre la misma fila => espera hasta el statement_timeout en OTRA sesion).
+do $$
+begin
+  if restaurantes.whatsapp_contador_agente('00000000-0000-0000-0000-0000000f0001', '+5219993330001', 'ubicacion_solicitada', 'incrementar') <> 1 then raise exception 'K4b'; end if;
 end $$;
 rollback;
 
