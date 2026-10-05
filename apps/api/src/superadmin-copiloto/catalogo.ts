@@ -6,7 +6,7 @@
 // Dos grupos:
 //   * OPERATIVAS (superadmin completo): organizaciones, costos_ia, consumo_vs_tope, uso_por_vertical, agentes_interruptores, ultimas_corridas,
 //     errores, salud_colas, planes_y_topes, eventos_seguridad, prospectos, uso_copiloto.
-//   * FINANCIERAS (Copiloto CFO, SA-33): mrr, margen_costos_unitarios, pyl, contratos_por_vencer. Las puede usar el superadmin con step-up
+//   * FINANCIERAS (Copiloto CFO, SA-33): mrr, margen_costos_unitarios, pyl, contratos_por_vencer, facturacion_cobranza. Las puede usar el superadmin con step-up
 //     (o sin MFA activa, segun la politica ya vigente del back office) y el rol `finanzas` (solo lectura, que NO ve ninguna operativa). Cada
 //     llamada deja una fila en core.cfo_access_log ANTES de leer el dato; sin step-up deja una fila `denegado` y no devuelve cifras. La respuesta
 //     cita la consulta (herramienta y parametros) y dice "no tengo el dato" cuando falta la fuente. Sin pagos y sin escrituras.
@@ -33,7 +33,7 @@ import type { PlatformScope } from "./alcance.ts";
 import type { Fuente, FuentesPlataforma, RazonFuente } from "./fuentes.ts";
 import { crearHerramientaProponerAccion, type DependenciasAcciones } from "./acciones.ts";
 
-export const HERRAMIENTAS_FINANCIERAS: readonly string[] = ["mrr", "margen_costos_unitarios", "pyl", "contratos_por_vencer"];
+export const HERRAMIENTAS_FINANCIERAS: readonly string[] = ["mrr", "margen_costos_unitarios", "pyl", "contratos_por_vencer", "facturacion_cobranza"];
 
 /** CHAT-17: la unica herramienta que no lee: propone una accion para que una persona la confirme. Nunca la ve el rol `finanzas`. */
 export const HERRAMIENTAS_ACCION: readonly string[] = ["proponer_accion"];
@@ -898,6 +898,35 @@ function contratosPorVencer(f: FuentesPlataforma, scope: PlatformScope): DataCha
   });
 }
 
+function facturacionCobranza(f: FuentesPlataforma, scope: PlatformScope): DataChatTool {
+  const fuente = "Estado de facturacion por organizacion: suscripcion y fin del periodo (core.list_organization_billing_for_superadmin, la misma lectura de la pantalla Costos y facturacion)";
+  return herramientaCfo(f, scope, {
+    name: "facturacion_cobranza",
+    label: "Facturación y cobranza",
+    description:
+      "Estado de cobro de las organizaciones: cuántas tienen suscripción activa, pago pendiente (morosas), cancelada o sin suscripción, con asientos y fin del periodo vigente. Útil para cobranza y próximas renovaciones. Solo consulta financiera.",
+    params: { estado: { type: "enum", values: ["activa", "pago_pendiente", "cancelada", "sin_suscripcion"], optional: true, description: "Solo ese estado de cobro; sin él, todos." } },
+    async run(ctx, args) {
+      const source = `${cita("facturacion_cobranza", args)}: ${fuente}`;
+      const r = await f.facturacion();
+      if (!r.ok) return sinDato(source, r.razon);
+      const porEstado = new Map<string, number>();
+      for (const o of r.data) porEstado.set(o.billingStatus, (porEstado.get(o.billingStatus) ?? 0) + 1);
+      const filtradas = r.data.filter((o) => !args["estado"] || o.billingStatus === args["estado"]);
+      // Primero las que piden atencion (pago pendiente), luego por fin de periodo mas cercano.
+      const prioridad = (e: string): number => (e === "pago_pendiente" ? 0 : e === "activa" ? 1 : 2);
+      const ordenadas = [...filtradas].sort((a, b) => prioridad(a.billingStatus) - prioridad(b.billingStatus) || (a.currentPeriodEnd ?? "9999").localeCompare(b.currentPeriodEnd ?? "9999") || a.name.localeCompare(b.name));
+      const resumen = `${r.data.length} organizaciones: ${porEstado.get("activa") ?? 0} con suscripción activa, ${porEstado.get("pago_pendiente") ?? 0} con pago pendiente, ${porEstado.get("cancelada") ?? 0} canceladas y ${porEstado.get("sin_suscripcion") ?? 0} sin suscripción.`;
+      return resultado(
+        { source, scopeLabel: SCOPE_PLATAFORMA, summary: resumen },
+        [col("organizacion", "Organización"), col("vertical", "Vertical"), col("estado_cobro", "Estado de cobro"), col("asientos", "Asientos", "integer"), col("periodo_hasta", "Periodo vigente hasta")],
+        ordenadas.map((o) => ({ organizacion: texto(o.name), vertical: o.vertical, estado_cobro: o.billingStatus, asientos: o.seats, periodo_hasta: o.currentPeriodEnd ? o.currentPeriodEnd.slice(0, 10) : null })),
+        ctx.maxRows,
+      );
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------------------------------------------------------
 // Catalogo
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -907,7 +936,7 @@ function contratosPorVencer(f: FuentesPlataforma, scope: PlatformScope): DataCha
  * (estas ultimas rechazan el turno sin step-up y dejan huella). `vertical` = 'plataforma'.
  */
 export function buildCatalogoPlataforma(fuentes: FuentesPlataforma, scope: PlatformScope, opciones: OpcionesCatalogoPlataforma = {}): DataChatCatalog {
-  const financieras = [mrr(fuentes, scope), margenCostosUnitarios(fuentes, scope), pyl(fuentes, scope), contratosPorVencer(fuentes, scope)];
+  const financieras = [mrr(fuentes, scope), margenCostosUnitarios(fuentes, scope), pyl(fuentes, scope), contratosPorVencer(fuentes, scope), facturacionCobranza(fuentes, scope)];
   const operativas = [
     organizaciones(fuentes),
     costosIa(fuentes),
@@ -928,7 +957,7 @@ export function buildCatalogoPlataforma(fuentes: FuentesPlataforma, scope: Platf
     vertical: "plataforma",
     domain:
       scope.rol === "finanzas"
-        ? "la plataforma Atiende, rol finanzas de solo lectura (únicamente consultas financieras: MRR, márgenes, P&L y contratos)"
+        ? "la plataforma Atiende, rol finanzas de solo lectura (únicamente consultas financieras: MRR, márgenes, P&L, contratos y cobranza)"
         : "la plataforma Atiende, vista de superadmin (organizaciones, costos de IA, salud operativa, planes, seguridad y finanzas de todos los clientes)",
     tools,
     outOfCatalogMessage: MENSAJE_FUERA_DE_CATALOGO,

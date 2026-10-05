@@ -23,10 +23,18 @@ describe("config del Copiloto de plataforma contra el catalogo real", () => {
     }
   });
 
-  it("ningun chip lanza `proponer_accion` ni una herramienta financiera (exigen step-up: se piden escribiendo)", () => {
-    for (const directa of Object.values(DIRECTAS_COPILOTO_SUPERADMIN)) {
-      expect(["proponer_accion", "mrr", "margen_costos_unitarios", "pyl", "contratos_por_vencer"]).not.toContain(directa.tool);
+  it("ningun chip lanza `proponer_accion` (la accion la propone el modelo y la confirma una persona)", () => {
+    for (const directa of Object.values(DIRECTAS_COPILOTO_SUPERADMIN)) expect(directa.tool).not.toBe("proponer_accion");
+  });
+
+  it("la portada cubre CFO, cobranza, ventas, costos de IA, margen, clientes, agentes y salud, y cada pregunta de tarjeta o chip tiene consulta directa", () => {
+    const herramientas = new Set(Object.values(DIRECTAS_COPILOTO_SUPERADMIN).map((d) => d.tool));
+    for (const necesaria of ["mrr", "pyl", "margen_costos_unitarios", "facturacion_cobranza", "contratos_por_vencer", "prospectos", "costos_ia", "organizaciones", "agentes_interruptores", "errores", "salud_colas"]) {
+      expect(herramientas, `falta una consulta directa a ${necesaria}`).toContain(necesaria);
     }
+    for (const c of COPILOTO_SUPERADMIN.categorias) for (const q of c.preguntas) expect(DIRECTAS_COPILOTO_SUPERADMIN[q], `${q} no tiene consulta directa`).toBeDefined();
+    for (const q of COPILOTO_SUPERADMIN.sugerencias) expect(DIRECTAS_COPILOTO_SUPERADMIN[q], `${q} no tiene consulta directa`).toBeDefined();
+    expect(COPILOTO_SUPERADMIN.sugerencias.length).toBeLessThanOrEqual(5);
   });
 
   it("las etiquetas de los pasos cubren TODAS las herramientas del catalogo (incluida proponer_accion) y no sobra ninguna", () => {
@@ -34,7 +42,7 @@ describe("config del Copiloto de plataforma contra el catalogo real", () => {
   });
 
   it("las rutas de fuente solo apuntan a pantallas internas", () => {
-    for (const ruta of Object.values(COPILOTO_SUPERADMIN.rutasFuente)) expect(ruta).toMatch(/^\/superadmin(\/[a-z-]+)?$/);
+    for (const ruta of Object.values(COPILOTO_SUPERADMIN.rutasFuente)) expect(ruta).toMatch(/^\/superadmin(\/[a-z-]+)?(\?tab=[a-z]+)?$/);
     for (const tool of Object.keys(COPILOTO_SUPERADMIN.rutasFuente)) expect(catalogo.tools.map((t) => t.name)).toContain(tool);
   });
 });

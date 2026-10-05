@@ -176,15 +176,15 @@ describe("acceso: solo superadmin y finanzas", () => {
     expect(ctx.scripted.requests).toHaveLength(0);
   });
 
-  it("el superadmin completo ve las 16 herramientas en el estado; las financieras vienen marcadas", async () => {
+  it("el superadmin completo ve las 17 herramientas en el estado; las financieras vienen marcadas", async () => {
     const ctx = await setup();
     const sa = await ctx.alta();
     const res = await ctx.estado(sa.token);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { permitido: boolean; motivo: string | null; rol: string; herramientas: { nombre: string; financiera: boolean }[]; interruptor: { apagado: boolean }; gastoMes: { topeMicroUsd: number }; financierasDisponibles: boolean };
     expect(body).toMatchObject({ permitido: true, motivo: null, rol: "superadmin", financierasDisponibles: true, interruptor: { apagado: false } });
-    expect(body.herramientas).toHaveLength(16);
-    expect(body.herramientas.filter((h) => h.financiera).map((h) => h.nombre).sort()).toEqual(["contratos_por_vencer", "margen_costos_unitarios", "mrr", "pyl"]);
+    expect(body.herramientas).toHaveLength(17);
+    expect(body.herramientas.filter((h) => h.financiera).map((h) => h.nombre).sort()).toEqual(["contratos_por_vencer", "facturacion_cobranza", "margen_costos_unitarios", "mrr", "pyl"]);
     expect(body.gastoMes.topeMicroUsd).toBe(25_000_000);
   });
 
@@ -266,7 +266,7 @@ describe("turno con LLM guionado", () => {
     expect(a.sources[0]?.scopeLabel).toBe("Toda la plataforma");
     // El modelo vio SOLO las herramientas del catalogo de plataforma (16) y el alcance en el prompt.
     const primera = ctx.scripted.requests[0]!;
-    expect(primera.tools?.map((t) => t.name).sort()).toHaveLength(17); // 16 de lectura + proponer_accion (CHAT-17: solo propone)
+    expect(primera.tools?.map((t) => t.name).sort()).toHaveLength(18); // 17 de lectura + proponer_accion (CHAT-17: solo propone)
     expect(primera.system).toMatch(/Plataforma completa \(superadmin\)/);
   });
 
@@ -559,12 +559,12 @@ describe("herramientas financieras: step-up, rol finanzas y huella en core.cfo_a
     const e = (await (await ctx.estado(fin.token, cab)).json()) as { rol: string; herramientas: { nombre: string; financiera: boolean }[]; financierasDisponibles: boolean };
     expect(e.rol).toBe("finanzas");
     expect(e.financierasDisponibles).toBe(true);
-    expect(e.herramientas.map((h) => h.nombre).sort()).toEqual(["contratos_por_vencer", "margen_costos_unitarios", "mrr", "pyl"]);
+    expect(e.herramientas.map((h) => h.nombre).sort()).toEqual(["contratos_por_vencer", "facturacion_cobranza", "margen_costos_unitarios", "mrr", "pyl"]);
     expect(e.herramientas.every((h) => h.financiera)).toBe(true);
     const a = await ctx.turno(fin.token, { question: "cual es el mrr" }, cab);
     expect(a.status).toBe("ok");
     // El modelo solo vio las financieras.
-    expect(ctx.scripted.requests[0]!.tools?.map((t) => t.name).sort()).toEqual(["contratos_por_vencer", "margen_costos_unitarios", "mrr", "pyl"]);
+    expect(ctx.scripted.requests[0]!.tools?.map((t) => t.name).sort()).toEqual(["contratos_por_vencer", "facturacion_cobranza", "margen_costos_unitarios", "mrr", "pyl"]);
     expect(ctx.zona.entries().filter((x) => x.accion === "consulta").map((x) => [x.actorRol, x.recurso])).toEqual([["finanzas", "copiloto/mrr"]]);
   });
 

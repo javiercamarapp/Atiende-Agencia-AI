@@ -358,6 +358,22 @@ describe("herramientas financieras (Copiloto CFO)", () => {
     expect(rota.message).toMatch(/^No tengo el dato/);
   });
 
+  it("facturacion_cobranza: cuenta por estado de cobro, pone primero el pago pendiente y NO expone correos ni ids de Stripe", async () => {
+    const r = await correr(fuentesFalsas(), "facturacion_cobranza");
+    expect(r.status).toBe("ok");
+    expect(r.summary).toBe("3 organizaciones: 1 con suscripción activa, 1 con pago pendiente, 0 canceladas y 1 sin suscripción.");
+    expect(r.rows).toHaveLength(3);
+    expect(fila(r)).toMatchObject({ organizacion: "Hotel Bahía", estado_cobro: "pago_pendiente", asientos: 1, periodo_hasta: "2026-10-05" });
+    expect(r.columns.map((c) => c.key)).toEqual(["organizacion", "vertical", "estado_cobro", "asientos", "periodo_hasta"]);
+    expect(JSON.stringify(r)).not.toMatch(/cus_|sub_|price_/);
+    const morosas = await correr(fuentesFalsas(), "facturacion_cobranza", { estado: "pago_pendiente" });
+    expect(morosas.rows).toHaveLength(1);
+    expect(morosas.source).toMatch(/estado=pago_pendiente/);
+    const rota = await correr(fuentesFalsas({ facturacion: async () => ({ ok: false, razon: "no_migrado" }) }), "facturacion_cobranza");
+    expect(rota.status).toBe("unavailable");
+    expect(rota.message).toMatch(/^No tengo el dato/);
+  });
+
   it("SIN step-up ninguna herramienta financiera devuelve cifras: deja una fila 'denegado' y NO una de 'consulta'", async () => {
     const f = fuentesFalsas();
     const sinStepUp = { ...SCOPE_SUPERADMIN, stepUp: false };
@@ -367,7 +383,7 @@ describe("herramientas financieras (Copiloto CFO)", () => {
       expect(r.message, nombre).toMatch(/^No tengo el dato: las consultas financieras exigen verificar tu código MFA/);
       expect(r.rows, nombre).toEqual([]);
     }
-    expect(f.accesosCfo.map((a) => a.accion)).toEqual(["denegado", "denegado", "denegado", "denegado"]);
+    expect(f.accesosCfo.map((a) => a.accion)).toEqual(HERRAMIENTAS_FINANCIERAS.map(() => "denegado"));
     expect(f.accesosCfo.map((a) => a.recurso)).toEqual(HERRAMIENTAS_FINANCIERAS.map((n) => `copiloto/${n} (sin step-up)`));
   });
 
