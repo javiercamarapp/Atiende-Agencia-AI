@@ -299,6 +299,9 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "ACCESS_TOKEN_TTL_SECONDS",
   "REFRESH_TOKEN_TTL_SECONDS",
   "ALLOWED_ORIGINS",
+  // Preflight de go-live (superadmin-preflight/verificaciones.ts): solo compara, como booleano, si CRON_SECRET (la que Vercel Cron manda como
+  // `Authorization: Bearer`) coincide con INTERNAL_SECRET; ningun valor se imprime ni se devuelve. La API no la usa para autenticar.
+  "CRON_SECRET",
   // `env.ts::resolveAppBaseUrl` -- obligatoria en produccion (inventariada tambien como la integracion "app-base-url"); fuera de
   // produccion cae a VERCEL_URL y luego a localhost. VERCEL_URL la inyecta Vercel (host del despliegue, sin esquema).
   "APP_BASE_URL",

@@ -175,6 +175,16 @@ export function cronsRelevantes(vertical: string, declarados: readonly string[])
   return [...new Set([...fijos, ...propios])].sort((a, b) => a.localeCompare(b));
 }
 
+/** Crons que no bloquean el go-live de restaurantes: el despacho a SoftRestaurant depende de un tercero (distribuidor del POS). */
+const CRONS_NO_BLOQUEANTES: ReadonlySet<string> = new Set(["/internal/restaurantes/softrestaurant-dispatch"]);
+/** Cron que solo importa si alguna sucursal activa tiene la voz habilitada. */
+const CRON_SOLO_CON_VOZ = "/internal/restaurantes/voz-huerfanas";
+
+function algunaVozHabilitada(hechos: PreflightEntrada["hechos"]): boolean | null {
+  if (hechos.estado !== "ok" || hechos.dato?.restaurantes?.sucursales == null) return null;
+  return hechos.dato.restaurantes.sucursales.some((s) => s.activa && s.voz === "habilitada");
+}
+
 function verificacionesCrons(entrada: PreflightEntrada): Verificacion[] {
   const out: Verificacion[] = [];
   const { env } = entrada;
@@ -209,6 +219,10 @@ function verificacionesCrons(entrada: PreflightEntrada): Verificacion[] {
       out.push({ id, area: "crons", titulo, estado: "aviso", detalle: "El cron no está declarado en vercel.json de este despliegue.", como_resolver: como });
       continue;
     }
+    if (nombre === CRON_SOLO_CON_VOZ && algunaVozHabilitada(entrada.hechos) === false) {
+      out.push(noAplica(id, "crons", titulo, "Ninguna sucursal activa tiene la voz habilitada."));
+      continue;
+    }
     const ultimo = c.heartbeat?.lastFinishedAt ?? null;
     const detalle: Record<CronConEstado["estado"], string> = {
       ok: `Corrió dentro de su cadencia${ultimo ? ` (último latido ${ultimo})` : ""}.`,
@@ -216,7 +230,9 @@ function verificacionesCrons(entrada: PreflightEntrada): Verificacion[] {
       sin_latido: "Nunca ha dejado un latido.",
       error: `El último latido terminó en error (${c.heartbeat?.consecutiveFailures ?? 0} fallo(s) seguidos).`,
     };
-    out.push({ id, area: "crons", titulo, estado: c.estado === "ok" ? "ok" : "falta", detalle: detalle[c.estado], como_resolver: como });
+    const noOk: PreflightEstado = CRONS_NO_BLOQUEANTES.has(nombre) ? "aviso" : "falta";
+    const texto = c.estado !== "ok" && noOk === "aviso" ? `${detalle[c.estado]} No bloquea: depende del distribuidor del POS.` : detalle[c.estado];
+    out.push({ id, area: "crons", titulo, estado: c.estado === "ok" ? "ok" : noOk, detalle: texto, como_resolver: como });
   }
   return out;
 }
@@ -476,7 +492,9 @@ function verificacionesDatos(entrada: PreflightEntrada, hechos: OrgPreflightHech
   const checklist = buildOnboardingChecklist(snapshot);
   return checklist.items.map((item): Verificacion => {
     const estado: PreflightEstado = item.estado === "hecho" ? "ok" : item.estado === "externo" ? "aviso" : item.obligatorio ? "falta" : "aviso";
-    const faltantes = item.faltantes.length > 0 && item.estado !== "hecho" ? ` Sucursales: ${lista(item.faltantes)}.` : "";
+    // Casi todos los detalles del dueño ya nombran las sucursales que faltan; solo se agregan las que el detalle no menciona.
+    const sinMencionar = item.estado === "hecho" ? [] : item.faltantes.filter((n) => !item.detalle.includes(n));
+    const faltantes = sinMencionar.length > 0 ? ` Sucursales: ${lista(sinMencionar)}.` : "";
     return {
       id: `datos.${item.id}`,
       area: "datos",
