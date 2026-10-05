@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildComplementNotes, canonicalRequestedComplement, PM_BASIC_COMPLEMENTS } from "../src/order-quote.ts";
 import { matchesProductSearch, tokenizeForProductSearch } from "../src/product-search.ts";
-import { AGENT_TOOL_DEFINITIONS, mapCreateOrderToolInput } from "../src/agent-tools/registry.ts";
+import { AGENT_TOOL_DEFINITIONS, executeAgentToolSafely, mapCreateOrderToolInput } from "../src/agent-tools/registry.ts";
+import { buildRestaurantFixture } from "./fixtures.ts";
 
 describe("comanda con perfil de básicas (PM)", () => {
   it("sin pedidas imprime solo las 4 básicas", () => {
@@ -42,6 +43,38 @@ describe("crear_pedido: complementos pedidos", () => {
     expect(mapCreateOrderToolInput({ ...base, channel: "whatsapp" }, {}, true).basicComplements).toEqual(PM_BASIC_COMPLEMENTS);
     expect(mapCreateOrderToolInput({ ...base, channel: "voz" }, {}, false).basicComplements).toEqual(PM_BASIC_COMPLEMENTS);
     expect(mapCreateOrderToolInput({ ...base, channel: "web", phone: null }, {}, false).basicComplements).toBeUndefined();
+  });
+});
+
+describe("las básicas de la comanda son del perfil taqueria_pm", () => {
+  const crear = (f: ReturnType<typeof buildRestaurantFixture>) =>
+    executeAgentToolSafely(f.repo, { organizationId: f.organizationId, phone: "9991234567", channel: "whatsapp" }, "crear_pedido", {
+      branch_slug: "fco-montejo",
+      customer_name: "Cliente Sintético",
+      customer_address: "Calle 50 #200",
+      payment_method: "efectivo",
+      canal: "domicilio",
+      items: [{ product_id: f.products.tacosPastor, requested_quantity: 3, tortilla: "maiz" }],
+    });
+  const notas = async (f: ReturnType<typeof buildRestaurantFixture>, o: { orderId: string | null }) => String((await f.repo.findOrderById(f.organizationId, o.orderId ?? ""))?.notes ?? "");
+
+  it("sin configuración o con perfil genérico imprime las 9 incluidas, no «Básicas»", async () => {
+    const f = buildRestaurantFixture();
+    const sinConfig = await crear(f);
+    expect(await notas(f, sinConfig)).toMatch(/Complementos incluidos:/);
+    expect(await notas(f, sinConfig)).not.toMatch(/Básicas:/);
+    const g = buildRestaurantFixture();
+    await g.repo.upsertWhatsAppAgentConfig(g.organizationId, null, { perfil: "generico", agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null });
+    const generico = await crear(g);
+    expect(await notas(g, generico)).toMatch(/Complementos incluidos:/);
+    expect(await notas(g, generico)).not.toMatch(/Básicas:/);
+  });
+
+  it("con perfil taqueria_pm la comanda lleva «Básicas»", async () => {
+    const f = buildRestaurantFixture();
+    await f.repo.upsertWhatsAppAgentConfig(f.organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null });
+    const pm = await crear(f);
+    expect(await notas(f, pm)).toMatch(/Básicas:/);
   });
 });
 

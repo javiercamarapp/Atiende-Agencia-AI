@@ -535,7 +535,8 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
       ? input.requested_complements.map(canonicalRequestedComplement).filter((c): c is RequestedComplement => c !== null)
       : undefined,
     omitDefaultComplements: Array.isArray(input.omit_default_complements) ? (input.omit_default_complements as readonly DefaultComplement[]) : undefined,
-    // Los agentes (WhatsApp/voz) trabajan con el perfil de PM: comanda con «Básicas» y «Pedidas». El checkout web conserva las 9 incluidas.
+    // Los agentes (WhatsApp/voz) piden la comanda con «Básicas» y «Pedidas»; `crear_pedido` lo restringe despues al perfil `taqueria_pm`
+    // (una organizacion con otro perfil conserva las 9 incluidas). El checkout web siempre conserva las 9.
     basicComplements: ctx.channel === "web" ? undefined : PM_BASIC_COMPLEMENTS,
     ubicacionEntrega: ctx.ubicacionEntrega ?? undefined,
     efectivoCon: typeof input.efectivo_con === "number" ? input.efectivo_con : undefined,
@@ -859,7 +860,14 @@ async function dispatchTool(
       return { result: { confirmado: true, aviso: "confirmación no registrada por el servidor" }, orderId: null, propertyId: null };
     }
     case "crear_pedido": {
-      const mapped = mapCreateOrderToolInput(ctx, input, lenient);
+      const mappedBase = mapCreateOrderToolInput(ctx, input, lenient);
+      // Las basicas (comanda con «Básicas»/«Pedidas») son del perfil `taqueria_pm`, no de todo agente: con otro perfil o sin configuracion
+      // (base sin migrar) se conservan las 9 incluidas de siempre.
+      let mapped = mappedBase;
+      if (mappedBase.basicComplements) {
+        const config = await repo.findWhatsAppAgentConfig(ctx.organizationId, ctx.entryPropertyId ?? ctx.lockedPropertyId ?? null);
+        if (config?.perfil !== "taqueria_pm") mapped = { ...mappedBase, basicComplements: undefined };
+      }
       // Checkout web: reglas duras que la fuente "web" historica no exige (ver storefront.ts).
       const createInput = ctx.channel === "web" ? assertWebOrderRules(mapped) : mapped;
       // La sucursal puede venir por slug o por nombre (contrato historico del checkout de voz).
