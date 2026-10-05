@@ -32,7 +32,7 @@ import {
   reassignAppointment,
   rescheduleAppointment,
 } from "../appointments.ts";
-import { runAfterReassignEffects } from "../appointment-effects.ts";
+import { runAfterReassignEffects, runWaitlistAfterAgentCancel, runWaitlistAfterAgentReschedule } from "../appointment-effects.ts";
 import { isUrgentCancellationMessage } from "./urgent-cancellation.ts";
 import { zonedDateStr } from "../availability.ts";
 import type { CitasCustomerContext } from "../customers.ts";
@@ -399,12 +399,16 @@ export async function executeToolCall(
         case "cancelar_cita": {
           await assertCustomerOwnsAppointment(repo, organizationId, phone, String(input.appointment_id ?? ""));
           const appointment = await cancelAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? "") });
+          // El horario liberado se ofrece a la lista de espera (best-effort con SAVEPOINT), igual que el boton Cancelar y el panel.
+          await runWaitlistAfterAgentCancel(repo, organizationId, appointment);
           return { result: { appointment: appointmentToWire(appointment) }, appointmentId: appointment.id, propertyId: appointment.propertyId, isEscalatingFailure: false };
         }
         case "reagendar_cita": {
           await assertCustomerOwnsAppointment(repo, organizationId, phone, String(input.appointment_id ?? ""));
           try {
             const outcome = await rescheduleAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? ""), newStartsAt: String(input.new_starts_at ?? ""), actorChannel: canal });
+            // El horario VIEJO queda libre: se ofrece a la lista de espera (best-effort con SAVEPOINT).
+            await runWaitlistAfterAgentReschedule(repo, organizationId, outcome);
             return { result: { appointment: appointmentToWire(outcome.appointment) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false };
           } catch (err) {
             if (err instanceof AppointmentAlternativesError) {

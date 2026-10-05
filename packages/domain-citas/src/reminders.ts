@@ -9,11 +9,12 @@
 // existe o el de la organización, nunca el del host). Ver diseño Fase 1 §0.4/§5.3:
 // es la pieza de mayor riesgo silencioso de todo el vertical — un bug de timezone no
 // falla ruidosamente, solo le dice al cliente la hora equivocada.
+import { zonedDateStr } from "./availability.ts";
 import { decidirEnvioProactivo, encolarCorreoListaEspera } from "./whatsapp/proactivo.ts";
 import { tryEnqueueAppointmentEmail } from "./appointment-email-notifications.ts";
 import { eventoRecordatorioFallido } from "./notification-events.ts";
 import type { EventoRecordatorioFallido } from "./notification-events.ts";
-import type { CitasRepository, WaitlistCandidateRow } from "./repository.ts";
+import type { CitasRepository, ConversationMessage, WaitlistCandidateRow } from "./repository.ts";
 import { appointmentReminderButtons } from "./whatsapp/appointment-button-ids.ts";
 import { MENSAJES_CONFIG_POR_OMISION, ANTICIPACION_POR_OMISION_HORAS, sanitizarValor, dentroDelHorarioDeEnvio, legacyReminderBody, reservaMuyReciente, textoPropio, ventanaDeRecordatorio } from "./whatsapp/message-config.ts";
 import { armarMensaje, formatearFechaYHora, nuevoCacheValores, resolverValoresCita } from "./whatsapp/message-send.ts";
@@ -255,6 +256,21 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
   return summary;
 }
 
+/** "Limpieza dental con Dra. Paola, martes 6 de octubre, 10:00 a. m." en la zona del negocio; null si el servicio ya no existe (el aviso sale igual, sin detalle). */
+async function describirHuecoOfrecido(
+  repo: CitasRepository,
+  organizationId: string,
+  timeZone: string,
+  event: { readonly providerId: string; readonly serviceId?: string; readonly startsAt: string },
+): Promise<{ readonly resumen: string } | null> {
+  const service = event.serviceId ? await repo.findService(organizationId, event.serviceId) : null;
+  const provider = await repo.findProvider(organizationId, event.providerId);
+  if (!service && !provider) return null;
+  const cuando = formatearFechaYHora(event.startsAt, timeZone).fechaHora;
+  const que = [service ? sanitizarValor(service.name, 80) : "", provider ? `con ${sanitizarValor(provider.displayName, 80)}` : ""].filter(Boolean).join(" ");
+  return { resumen: `${que}, ${cuando}` };
+}
+
 export interface OptimizadorResult {
   readonly matched: boolean;
   readonly waitlistId?: string;
@@ -286,7 +302,9 @@ function matchesWaitlistPreferences(row: WaitlistCandidateRow, providerId: strin
  */
 export async function runOptimizadorCore(repo: CitasRepository, organizationId: string, timeZone: string, event: { readonly providerId: string; readonly serviceId?: string; readonly startsAt: string }): Promise<OptimizadorResult> {
   const slotDate = new Date(event.startsAt);
-  const slotDateStr = slotDate.toISOString().slice(0, 10);
+  // El dia del hueco es el de la zona del NEGOCIO (un hueco del martes 19:00 en Merida ya es miercoles en UTC): comparar contra la fecha UTC le
+  // ofrecia el hueco a quien pidio el dia siguiente.
+  const slotDateStr = zonedDateStr(slotDate, timeZone);
   const window = timeWindowFor(slotDate, timeZone);
 
   // f2-citas-lista-de-espera, hallazgo (A) — TODOS los callers reales de
@@ -341,12 +359,27 @@ export async function runOptimizadorCore(repo: CitasRepository, organizationId: 
   }
 
   const name = winner.customerName ? ` ${winner.customerName}` : "";
+  // El detalle del hueco y su registro en la conversacion son best-effort: cada uno con su SAVEPOINT, nunca impiden el aviso.
+  const hueco = await repo.runWithRowSavepoint(() => describirHuecoOfrecido(repo, organizationId, timeZone, event)).catch((err: unknown) => {
+    console.error("reminders: no se pudo describir el hueco ofrecido (best-effort, el aviso sale sin detalle):", err);
+    return null;
+  });
   await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "waitlist.slot_offered", dedupeKey, {
     to: winner.customerPhone,
     phone_number_id: phoneNumberId,
-    body: `¡Buenas noticias${name}! Se liberó un espacio que coincide con lo que buscaba. Responda "Sí" para que se lo agendemos, o "No" si ya no le interesa.`,
+    body: `¡Buenas noticias${name}! Se liberó un espacio${hueco ? ` (${hueco.resumen})` : ""} que coincide con lo que buscaba. Responda "Sí" para que se lo agendemos, o "No" si ya no le interesa.`,
     ...(decision.template ? { template: decision.template } : {}),
   });
+  // La oferta tambien vive en la conversacion: sin esto el "Sí" del cliente llegaba al agente sin contexto y no agendaba nada.
+  if (hueco) {
+    const oferta: ConversationMessage = {
+      role: "assistant",
+      content: `Oferta de lista de espera enviada al cliente: ${hueco.resumen} (service_id=${event.serviceId ?? ""}, provider_id=${event.providerId}, starts_at=${event.startsAt}). Si responde que sí, confirma el horario con consultar_disponibilidad y agéndalo con crear_cita; si responde que no, agradece y no insistas.`,
+    };
+    await repo.runWithRowSavepoint(() => repo.whatsappAppendTurn(organizationId, winner.customerPhone, [oferta], null, null, null)).catch((err: unknown) => {
+      console.error("reminders: no se pudo registrar la oferta en la conversacion (best-effort):", err);
+    });
+  }
 
   return { matched: true, waitlistId: winner.id, customerPhone: winner.customerPhone };
 }
