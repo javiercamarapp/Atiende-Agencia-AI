@@ -777,6 +777,9 @@ export interface RegistroEstadoEntrega {
   readonly orderStatus: string | null;
   /** Mensajes de la organizacion con entrega fallida en la ultima hora (incluye este). */
   readonly fallidasUltimaHora: number;
+  /** Datos del pedido para el respaldo por correo: SOLO cuando este status hace pasar un aviso de pedido a `failed` y el cliente dejo correo (la
+   *  sesion de sistema no puede leer `orders`, asi que los entrega la funcion SQL ya acotada por organizacion). */
+  readonly respaldoCorreo: { readonly to: string; readonly clienteNombre: string; readonly sucursal: string | null; readonly total: number } | null;
 }
 
 /** Fila de `restaurantes.messaging_outbox` reclamada para despacho real — mismo

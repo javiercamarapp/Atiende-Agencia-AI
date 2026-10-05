@@ -52,17 +52,18 @@ function horaUtc(d: Date): string {
 }
 
 async function respaldoPorCorreo(repo: RestaurantesRepository, organizationId: string, r: RegistroEstadoEntrega): Promise<boolean> {
-  if (!r.orderId || !r.orderStatus || !esEstadoNotificadoAlCliente(r.orderStatus)) return false;
+  const datos = r.respaldoCorreo;
+  if (!datos || !r.orderId || !r.orderStatus || !esEstadoNotificadoAlCliente(r.orderStatus)) return false;
   const orderId = r.orderId;
   const orderStatus = r.orderStatus;
+  // La frase sale de la misma plantilla del aviso por WhatsApp (por estado). Los datos del pedido vienen de la funcion SQL: la sesion de sistema no
+  // puede leer `orders` (RLS solo de staff).
+  const frase = frasePedidoParaEstado({ customerName: datos.clienteNombre, branch: datos.sucursal, total: datos.total, status: orderStatus });
+  if (!frase) return false;
+  const correo = correoRespaldoEstadoPedido({ clienteNombre: datos.clienteNombre, branch: datos.sucursal, mensaje: frase, total: datos.total });
   return repo.runWithRowSavepoint(async () => {
-    const order = await repo.findOrderById(organizationId, orderId);
-    if (!order || !order.customerEmail) return false;
-    const frase = frasePedidoParaEstado({ ...order, status: orderStatus });
-    if (!frase) return false;
-    const correo = correoRespaldoEstadoPedido({ clienteNombre: order.customerName, branch: order.branch ?? null, mensaje: frase, total: order.total });
     await repo.enqueueMessagingOutbox(organizationId, "email", "order.status.whatsapp_fallido.email", `order-status-email:${orderId}:${orderStatus}`, {
-      to: order.customerEmail,
+      to: datos.to,
       subject: correo.asunto,
       html: correo.html,
       text: correo.texto,

@@ -247,11 +247,11 @@ describe("PostgresRestaurantesRepository: estados de entrega contra la base SIN 
     const db = new AbortAwareFakeSession([
       {
         match: /registrar_estado_entrega_whatsapp/,
-        respond: () => [{ outbox_id: OUTBOX_ID, resultado: "actualizado", estado: "failed", event_type: "order.status.en_camino", failure_reason: "fuera_de_ventana", order_id: "00000000-0000-0000-0000-0000000000c1", order_status: "en_camino", fallidas_ultima_hora: "3" }],
+        respond: () => [{ outbox_id: OUTBOX_ID, resultado: "actualizado", estado: "failed", event_type: "order.status.en_camino", failure_reason: "fuera_de_ventana", order_id: "00000000-0000-0000-0000-0000000000c1", order_status: "en_camino", fallidas_ultima_hora: "3", pedido_correo: "cliente@example.com", pedido_cliente: "Deb", pedido_sucursal: "Fco. de Montejo", pedido_total: "45.00" }],
       },
     ]);
     const r = await new PostgresRestaurantesRepository(db).registrarEstadoEntregaWhatsapp(ORG, { wamid: "wamid.Y", status: "failed", errorCode: 131047, errorTitle: "t" });
-    expect(r).toEqual({ resultado: "actualizado", outboxId: OUTBOX_ID, estado: "failed", eventType: "order.status.en_camino", motivoFallo: "fuera_de_ventana", orderId: "00000000-0000-0000-0000-0000000000c1", orderStatus: "en_camino", fallidasUltimaHora: 3 });
+    expect(r).toEqual({ resultado: "actualizado", outboxId: OUTBOX_ID, estado: "failed", eventType: "order.status.en_camino", motivoFallo: "fuera_de_ventana", orderId: "00000000-0000-0000-0000-0000000000c1", orderStatus: "en_camino", fallidasUltimaHora: 3, respaldoCorreo: { to: "cliente@example.com", clienteNombre: "Deb", sucursal: "Fco. de Montejo", total: 45 } });
   });
 
   it("registrarEstadoEntregaWhatsapp: un error que NO es de base sin migrar se repropaga, pero la sesion queda utilizable", async () => {

@@ -1412,6 +1412,10 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       order_id: string | null;
       order_status: string | null;
       fallidas_ultima_hora: number | string | null;
+      pedido_correo: string | null;
+      pedido_cliente: string | null;
+      pedido_sucursal: string | null;
+      pedido_total: number | string | null;
     }
     // El webhook comparte UNA transaccion para todo el lote: el SAVEPOINT evita que una base sin la 066 (42883/42P01/42703) la deje abortada.
     return runWithSavepointFallback<RegistroEstadoEntrega>({
@@ -1419,12 +1423,13 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       savepointName: "sp_registrar_estado_entrega",
       primary: async () => {
         const { rows } = await this.db.query<Fila>(
-          `select outbox_id, resultado, estado, event_type, failure_reason, order_id, order_status, fallidas_ultima_hora
+          `select outbox_id, resultado, estado, event_type, failure_reason, order_id, order_status, fallidas_ultima_hora,
+                  pedido_correo, pedido_cliente, pedido_sucursal, pedido_total
              from restaurantes.registrar_estado_entrega_whatsapp($1, $2, $3, $4, $5);`,
           [organizationId, estado.wamid, estado.status, estado.errorCode, estado.errorTitle],
         );
         const r = rows[0];
-        if (!r) return { resultado: "desconocido", outboxId: null, estado: null, eventType: null, motivoFallo: null, orderId: null, orderStatus: null, fallidasUltimaHora: 0 };
+        if (!r) return { resultado: "desconocido", outboxId: null, estado: null, eventType: null, motivoFallo: null, orderId: null, orderStatus: null, fallidasUltimaHora: 0, respaldoCorreo: null };
         return {
           resultado: r.resultado,
           outboxId: r.outbox_id,
@@ -1434,10 +1439,11 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
           orderId: r.order_id,
           orderStatus: r.order_status,
           fallidasUltimaHora: Number(r.fallidas_ultima_hora ?? 0),
+          respaldoCorreo: r.pedido_correo ? { to: r.pedido_correo, clienteNombre: r.pedido_cliente ?? "", sucursal: r.pedido_sucursal, total: Number(r.pedido_total ?? 0) } : null,
         };
       },
       isRecoverable: (err) => isMigrationPendingError(err),
-      fallback: async () => ({ resultado: "no_disponible", outboxId: null, estado: null, eventType: null, motivoFallo: null, orderId: null, orderStatus: null, fallidasUltimaHora: 0 }),
+      fallback: async () => ({ resultado: "no_disponible", outboxId: null, estado: null, eventType: null, motivoFallo: null, orderId: null, orderStatus: null, fallidasUltimaHora: 0, respaldoCorreo: null }),
     });
   }
 

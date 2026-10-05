@@ -60,10 +60,10 @@ insert into core.membership (user_id, organization_id, property_ids, platform_ro
 on conflict do nothing;
 
 -- Pedidos: oA1 y oA2 de la organizacion A (sucursales distintas), oB1 de la B.
-insert into restaurantes.orders (id, organization_id, property_id, customer_name, customer_phone, total, status, items, source, created_at) values
-  ('00000000-0000-0000-0000-0000000e50e1', '00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50a1', 'Cliente Uno', '+5219990000001', 100, 'en_camino', '[]'::jsonb, 'whatsapp', '2026-03-10 17:00:00+00'),
-  ('00000000-0000-0000-0000-0000000e50e2', '00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50a2', 'Cliente Dos', '+5219990000002', 100, 'en_camino', '[]'::jsonb, 'whatsapp', '2026-03-10 17:00:00+00'),
-  ('00000000-0000-0000-0000-0000000e50e3', '00000000-0000-0000-0000-0000000e5002', '00000000-0000-0000-0000-0000000e50b1', 'Cliente Tres', '+5219990000003', 100, 'en_camino', '[]'::jsonb, 'whatsapp', '2026-03-10 17:00:00+00')
+insert into restaurantes.orders (id, organization_id, property_id, customer_name, customer_phone, customer_email, branch, total, status, items, source, created_at) values
+  ('00000000-0000-0000-0000-0000000e50e1', '00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50a1', 'Cliente Uno', '+5219990000001', 'uno@entrega.example.com', 'Sucursal A1', 100, 'en_camino', '[]'::jsonb, 'whatsapp', '2026-03-10 17:00:00+00'),
+  ('00000000-0000-0000-0000-0000000e50e2', '00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50a2', 'Cliente Dos', '+5219990000002', null, null, 100, 'en_camino', '[]'::jsonb, 'whatsapp', '2026-03-10 17:00:00+00'),
+  ('00000000-0000-0000-0000-0000000e50e3', '00000000-0000-0000-0000-0000000e5002', '00000000-0000-0000-0000-0000000e50b1', 'Cliente Tres', '+5219990000003', 'tres@entrega.example.com', 'Sucursal B1', 100, 'en_camino', '[]'::jsonb, 'whatsapp', '2026-03-10 17:00:00+00')
 on conflict do nothing;
 
 -- Mensajes de la cola. 'r0' (A): aviso en_camino enviado como TEXTO con plantilla disponible, aun sin estado de entrega mas alla de `sent`.
@@ -228,6 +228,30 @@ select count(*) as pedido_ligado_deberia_ser_1 from restaurantes.registrar_estad
   where order_id = '00000000-0000-0000-0000-0000000e50e1' and order_status = 'en_camino' and resultado = 'actualizado' and estado = 'failed';
 select count(*) as sin_pedido_deberia_ser_1 from restaurantes.registrar_estado_entrega_whatsapp('00000000-0000-0000-0000-0000000e5001', 'wamid.RT', 'failed', 131047, 'x')
   where order_id is null and order_status is null and event_type = 'whatsapp.inbound_reply';
+rollback;
+
+\echo '=== B8b. RESPALDO POR CORREO: al pasar a failed el aviso de pedido, la funcion devuelve correo, cliente, sucursal y total del pedido (la sesion de sistema no lee orders) ==='
+begin;
+set local role authenticated;
+select count(*) as respaldo_correo_deberia_ser_1 from restaurantes.registrar_estado_entrega_whatsapp('00000000-0000-0000-0000-0000000e5001', 'wamid.R0', 'failed', 131047, 'x')
+  where pedido_correo = 'uno@entrega.example.com' and pedido_cliente = 'Cliente Uno' and pedido_sucursal = 'Sucursal A1' and pedido_total = 100;
+rollback;
+
+\echo '=== B8c. el correo SOLO sale en la transicion a failed: un status repetido, un delivered y un mensaje que no es de pedido no lo devuelven ==='
+begin;
+set local role authenticated;
+select * from restaurantes.registrar_estado_entrega_whatsapp('00000000-0000-0000-0000-0000000e5001', 'wamid.R0', 'failed', 131047, 'x');
+select count(*) as sin_correo_deberia_ser_3 from (
+  select pedido_correo from restaurantes.registrar_estado_entrega_whatsapp('00000000-0000-0000-0000-0000000e5001', 'wamid.R0', 'failed', 131047, 'x')
+  union all select pedido_correo from restaurantes.registrar_estado_entrega_whatsapp('00000000-0000-0000-0000-0000000e5001', 'wamid.R1', 'delivered')
+  union all select pedido_correo from restaurantes.registrar_estado_entrega_whatsapp('00000000-0000-0000-0000-0000000e5001', 'wamid.RT', 'failed', 131047, 'x')
+) t where pedido_correo is null;
+rollback;
+
+\echo '=== B8d. CROSS-TENANT: el correo del pedido de la organizacion A nunca sale por un webhook de la B, ni siquiera con el mismo wamid ==='
+begin;
+set local role authenticated;
+select count(*) as correo_ajeno_deberia_ser_0 from restaurantes.registrar_estado_entrega_whatsapp('00000000-0000-0000-0000-0000000e5002', 'wamid.R0', 'failed', 131047, 'x') where pedido_correo = 'uno@entrega.example.com';
 rollback;
 
 \echo '=== B9. fallidas_ultima_hora cuenta los fallos recientes de la organizacion (dos fallos nuevos -> 2) ==='

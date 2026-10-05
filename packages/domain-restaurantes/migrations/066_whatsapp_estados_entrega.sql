@@ -15,7 +15,8 @@
 --   2. restaurantes.complete_messaging_outbox_sent(uuid, text, text): sobrecarga de la de 007/015 que ademas guarda el wamid y como salio
 --      el mensaje. La de un argumento queda intacta (la usa el TypeScript contra una base sin esta migracion).
 --   3. restaurantes.registrar_estado_entrega_whatsapp(org, wamid, estado, codigo, titulo): avanza el estado de entrega por wamid, de forma
---      idempotente y sin retroceder, y devuelve lo que el backend necesita para avisar (pedido ligado, fallos de la ultima hora).
+--      idempotente y sin retroceder, y devuelve lo que el backend necesita para avisar (pedido ligado, fallos de la ultima hora y, solo al pasar
+--      a `failed` un aviso de pedido, el correo/nombre/sucursal/total de ESE pedido para el respaldo por correo).
 --   4. restaurantes.whatsapp_entrega_diaria(org, property, desde, hasta): conteos por dia local de los avisos de estado de pedido
 --      (enviados, entregados, leidos, fallidos y fallos por motivo). Solo conteos, sin PII.
 --   5. Trigger de retencion: cuando la purga de 046 reemplaza el payload por '{"erased": true}', el wamid y todo el estado de entrega de esa
@@ -42,7 +43,10 @@
 --    `authenticated`, guard `auth.uid() is null` (solo sistema; 42501 si no). Es la UNICA via de escritura del estado de entrega. Toda
 --    busqueda lleva `organization_id = p_organization_id`: el webhook resuelve esa organizacion del `phone_number_id` firmado, asi que un
 --    wamid de la organizacion A enviado al webhook del numero de la B no toca nada (devuelve 'desconocido'). Valida el estado (22023) y
---    acota wamid (255), codigo y titulo. No lee ni escribe el payload.
+--    acota wamid (255), codigo y titulo. No lee ni escribe el payload. Es definer ademas porque la sesion de sistema no puede leer
+--    `restaurantes.orders` (su unica policy es de staff): lee el correo, nombre, sucursal y total del pedido del aviso (con `organization_id`
+--    = el del webhook) y SOLO los devuelve cuando el mensaje acaba de pasar a `failed`; es PII que ya maneja el backend (mismo dato que la
+--    confirmacion por correo) y la funcion solo la ejecuta la sesion de sistema.
 --  * whatsapp_entrega_diaria -- SECURITY DEFINER, search_path fijo, `revoke all from public, anon`, GRANT EXECUTE solo a `authenticated`.
 --    Mismo guard que whatsapp_kpis_diarios (040): auth.uid() no nulo y owner/admin con alcance a la sucursal via
 --    restaurantes.handoff_actor_en_sucursal(org, property, true) (42501 igual para sucursal ajena o inexistente). Cruza el aviso con su
@@ -131,7 +135,11 @@ create or replace function restaurantes.registrar_estado_entrega_whatsapp(
   failure_reason text,
   order_id uuid,
   order_status text,
-  fallidas_ultima_hora integer
+  fallidas_ultima_hora integer,
+  pedido_correo text,
+  pedido_cliente text,
+  pedido_sucursal text,
+  pedido_total numeric
 )
 language plpgsql security definer set search_path = restaurantes, pg_temp as $$
 #variable_conflict use_column
@@ -141,6 +149,10 @@ declare
   v_razon text;
   v_order uuid;
   v_order_status text;
+  v_correo text;
+  v_cliente text;
+  v_sucursal text;
+  v_total numeric;
 begin
   if auth.uid() is not null then
     raise exception 'registrar_estado_entrega_whatsapp es solo para la sesión de sistema' using errcode = '42501';
@@ -156,7 +168,7 @@ begin
    where m.organization_id = p_organization_id and m.provider_message_id = p_wamid and m.channel = 'whatsapp'
    for update;
   if not found then
-    return query select null::uuid, 'desconocido'::text, null::text, null::text, null::text, null::uuid, null::text, 0;
+    return query select null::uuid, 'desconocido'::text, null::text, null::text, null::text, null::uuid, null::text, 0, null::text, null::text, null::text, null::numeric;
     return;
   end if;
 
@@ -197,6 +209,13 @@ begin
     v_order_status := substring(v_row.dedupe_key from '^order-status:[0-9a-fA-F-]{36}:(.+)$');
   end if;
 
+  -- Respaldo por correo: SOLO cuando este status hace pasar el mensaje a `failed` y era el aviso de un pedido de ESTA organizacion. La sesion de
+  -- sistema no puede leer `orders` (su unica policy es de staff), por eso los datos del correo salen de aqui, ya acotados por organizacion.
+  if v_nuevo = 'failed' and v_row.delivery_status is distinct from 'failed' and v_order is not null then
+    select o.customer_email, o.customer_name, o.branch, o.total into v_correo, v_cliente, v_sucursal, v_total
+      from restaurantes.orders o where o.id = v_order and o.organization_id = p_organization_id;
+  end if;
+
   return query
     select v_row.id,
            (case when v_nuevo is distinct from v_row.delivery_status then 'actualizado' else 'sin_cambio' end)::text,
@@ -207,7 +226,8 @@ begin
            v_order_status,
            (select count(*)::integer from restaurantes.messaging_outbox f
              where f.organization_id = p_organization_id and f.delivery_status = 'failed'
-               and f.delivery_updated_at > now() - interval '1 hour');
+               and f.delivery_updated_at > now() - interval '1 hour'),
+           v_correo, v_cliente, v_sucursal, v_total;
 end;
 $$;
 revoke all on function restaurantes.registrar_estado_entrega_whatsapp(uuid, text, text, integer, text) from public, anon;

@@ -1534,7 +1534,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
 
   /** Espejo de `restaurantes.registrar_estado_entrega_whatsapp` (066): mismo avance, mismo motivo, misma llave (organizacion + wamid). */
   async registrarEstadoEntregaWhatsapp(organizationId: string, estado: EstadoEntregaEntrante): Promise<RegistroEstadoEntrega> {
-    const vacio = { outboxId: null, estado: null, eventType: null, motivoFallo: null, orderId: null, orderStatus: null, fallidasUltimaHora: 0 } as const;
+    const vacio = { outboxId: null, estado: null, eventType: null, motivoFallo: null, orderId: null, orderStatus: null, fallidasUltimaHora: 0, respaldoCorreo: null } as const;
     if (!this.estadosEntregaDisponibles) return { resultado: "no_disponible", ...vacio };
     const row = [...this.outbox.values()].find((o) => o.organizationId === organizationId && o.channel === "whatsapp" && o.providerMessageId === estado.wamid);
     if (!row) return { resultado: "desconocido", ...vacio };
@@ -1558,6 +1558,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     }
     const m = /^order-status:([0-9a-fA-F-]{36}):(.+)$/.exec(row.dedupeKey);
     const hora = Date.now() - 3_600_000;
+    // Como la funcion SQL: los datos del correo solo salen cuando ESTE status hace pasar un aviso de pedido a failed.
+    const pedido = cambia && nuevo === "failed" && row.eventType.startsWith("order.status.") && m?.[1] ? await this.findOrderById(organizationId, m[1]) : null;
     return {
       resultado: cambia ? "actualizado" : "sin_cambio",
       outboxId: row.id,
@@ -1567,6 +1569,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       orderId: row.eventType.startsWith("order.status.") && m ? (m[1] ?? null) : null,
       orderStatus: row.eventType.startsWith("order.status.") && m ? (m[2] ?? null) : null,
       fallidasUltimaHora: [...this.outbox.values()].filter((o) => o.organizationId === organizationId && o.deliveryStatus === "failed" && (o.deliveryUpdatedAt ?? 0) > hora).length,
+      respaldoCorreo: pedido?.customerEmail ? { to: pedido.customerEmail, clienteNombre: pedido.customerName, sucursal: pedido.branch ?? null, total: pedido.total } : null,
     };
   }
 
