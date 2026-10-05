@@ -11,6 +11,8 @@
 // de sistema con userId:null + policies RLS explícitas para esa sesión).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { emitirNotificacion, isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import * as cliente360 from "./cliente-360/postgres.ts";
+import type { CustomerAddressChanges, CustomerPolicy, CustomerProfilePatch, OrderClosureInput, PreferenceAction } from "./cliente-360/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import {
@@ -954,6 +956,44 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       [customerId],
     );
     return rows.map((row) => ({ items: row.items, createdAt: row.created_at }));
+  }
+
+  // ---- Cliente 360 (migracion 049): delegan en cliente-360/postgres.ts (funciones security definer + SAVEPOINT) ----
+  getCustomerMemory(organizationId: string, phone: string) {
+    return cliente360.getCustomerMemory(this.db, organizationId, phone);
+  }
+  registerOrderClosure(input: OrderClosureInput) {
+    return cliente360.registerOrderClosure(this.db, input);
+  }
+  getCustomerFicha(organizationId: string, customerId: string) {
+    return cliente360.getCustomerFicha(this.db, organizationId, customerId);
+  }
+  updateCustomerProfile(organizationId: string, customerId: string, patch: CustomerProfilePatch) {
+    return cliente360.updateCustomerProfile(this.db, organizationId, customerId, patch);
+  }
+  saveCustomerAddress(organizationId: string, customerId: string, addressId: string | null, changes: CustomerAddressChanges) {
+    return cliente360.saveCustomerAddress(this.db, organizationId, customerId, addressId, changes);
+  }
+  deleteCustomerAddress(organizationId: string, customerId: string, addressId: string) {
+    return cliente360.deleteCustomerAddress(this.db, organizationId, customerId, addressId);
+  }
+  applyCustomerPreferenceAction(organizationId: string, customerId: string, action: PreferenceAction, args: { readonly prefId?: string | null; readonly kind?: string | null; readonly value?: string | null }) {
+    return cliente360.applyCustomerPreferenceAction(this.db, organizationId, customerId, action, args);
+  }
+  markOrderFake(organizationId: string, orderId: string, falso: boolean) {
+    return cliente360.markOrderFake(this.db, organizationId, orderId, falso);
+  }
+  exportCustomerData(organizationId: string, customerId: string) {
+    return cliente360.exportCustomerData(this.db, organizationId, customerId);
+  }
+  deleteCustomerMemory(organizationId: string, customerId: string) {
+    return cliente360.deleteCustomerMemory(this.db, organizationId, customerId);
+  }
+  getCustomerPolicy(organizationId: string) {
+    return cliente360.getCustomerPolicy(this.db, organizationId);
+  }
+  saveCustomerPolicy(organizationId: string, policy: CustomerPolicy) {
+    return cliente360.saveCustomerPolicy(this.db, organizationId, policy);
   }
 
   async calcCustomerTier(organizationId: string, customerId: string): Promise<CustomerTier | null> {
