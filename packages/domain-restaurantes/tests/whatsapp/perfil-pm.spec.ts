@@ -260,15 +260,17 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).toContain("alergia_salud");
   });
 
-  it("horario prudente por sucursal (T2: 6 pm entre semana), ultimo pedido y sucursal cerrada", () => {
-    expect(p).toContain("Francisco de Montejo: lunes a viernes de 6 pm a 12 am; sábado y domingo de 12 pm a 12 am");
-    expect(p).toContain("Prolongación Montejo: lunes a jueves de 6 pm a 1 am; viernes a domingo de 12 pm a 1 am");
-    expect(p).toContain("Pensiones: todos los días de 6 pm a 12 am");
-    expect(p).toContain("García Lavín (Victory Platz) y Victory Altabrisa: todos los días de 12 pm a 1 am");
-    expect(p).toMatch(/Playa \(Chicxulub\): solo en Semana Santa y julio-agosto, de 6 pm a 1 am/);
-    expect(p).toMatch(/solo si la entrega \(con el tiempo de la sucursal, ver paso 8\) cae antes del cierre/);
-    expect(p).toMatch(/Con la sucursal cerrada o pasado el último pedido: diga que está cerrada y a qué hora abre; no tome el pedido ni lo deje programado/);
-    expect(p).toMatch(/manda sobre cualquier franja más amplia/);
+  it("H16: el horario sale solo de los datos de la sucursal (consultar_sucursal / rechazo de la cotizacion), nunca de un texto fijo del prompt", () => {
+    // Regresion del eval real (12/68): el prompt fijaba "6 pm" para Pensiones y Fco. Montejo y el agente rechazaba pedidos de tarde
+    // aunque la herramienta dijera abierto. No debe quedar ninguna franja horaria fija por sucursal.
+    expect(p).not.toMatch(/HORARIO PARA TOMAR PEDIDOS/);
+    expect(p).not.toMatch(/de 6 pm a (12|1) am|todos los días de 12 pm a 1 am/);
+    expect(p).not.toMatch(/lunes a viernes de 6 pm/);
+    expect(p).toMatch(/H16\. Horario: lo dicen SOLO los datos de la sucursal/);
+    expect(p).toMatch(/consultar_sucursal \(abierto_ahora, cierra_a, horario\)/);
+    expect(p).toMatch(/solo si la entrega \(con el tiempo de la sucursal, ver paso 8\) cae antes de esa hora/);
+    expect(p).toMatch(/no tome el pedido ni lo deje programado para la apertura/);
+    expect(p).toMatch(/Horario: no lo afirme de memoria: lo da consultar_sucursal/);
   });
 
   it("umbral de pedido grande: 40 piezas o $1,500 se queda, sin rechazar el pedido (lo confirma la sucursal)", () => {

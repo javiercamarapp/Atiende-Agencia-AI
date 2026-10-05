@@ -8,11 +8,14 @@
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
+import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
 import { diaLocalSucursal } from "./voz/kpi.ts";
+import { InMemoryConocimientoStore } from "./conocimiento/in-memory.ts";
+import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
 import type {
   CanalPedido,
@@ -32,7 +35,10 @@ import type {
   Customer,
   CustomerAddress,
   CustomerListFilter,
+  CarteraKpis,
   CustomerListPage,
+  FilaImportacionCliente,
+  ResultadoImportacionClientes,
   CustomerTier,
   KnownZone,
   NearestBranchMatch,
@@ -274,6 +280,11 @@ interface InMemoryOutboxRow {
   lastErrorClass: string | null;
 }
 
+/** Ventana en que un aviso abierto del mismo canal, telefono y motivo absorbe al siguiente (misma que `callback_registrar_agente`: 2 h). */
+const CALLBACK_VENTANA_AGRUPAR_MS = 120 * 60_000;
+/** Vigencia de un contador del agente (misma que la funcion SQL: 2 h). */
+const CONTADOR_AGENTE_VIGENCIA_MS = 120 * 60_000;
+
 export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly organizations = new Map<string, StoredOrganization>();
   private readonly organizationIdBySlug = new Map<string, string>();
@@ -289,6 +300,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly knownZones: StoredKnownZone[] = [];
   private readonly storefrontMarcas = new Map<string, StorefrontMarca>();
   private readonly callbackRequests: CallbackRequest[] = [];
+  private readonly contadoresAgente = new Map<string, { n: number; at: number }>();
+  /** Ids de evento agregados como nota a un aviso (migracion 047, `eventos_agrupados`). */
+  private readonly callbackEventosAgrupados = new Map<string, string[]>();
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
   private readonly phoneNumberIdToOrg = new Map<string, string>();
   private readonly whatsappEvents = new Map<string, StoredWhatsAppEvent>();
@@ -305,6 +319,11 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   // Modelo PM (migracion 023), espejo en memoria de branch_policy / branch_delivery_zone /
   // whatsapp_branch_channel / no_domicilio.
   private readonly branchPolicies = new Map<string, BranchPolicy>();
+  /** Conocimiento del negocio e interruptor del agente de WhatsApp (migracion 053); `conocimiento.noDisponible = true` simula la base sin migrar. */
+  readonly conocimiento = new InMemoryConocimientoStore(
+    () => new Date(),
+    (organizationId, propertyId) => this.branches.get(propertyId)?.organizationId === organizationId,
+  );
   private readonly branchHoursExceptions: BranchHoursException[] = [];
   private readonly orderPickupInfo = new Map<string, { canal: CanalPedido | null; propina: number | null; horaRecogida: string | null }>();
   // R-11 (migracion 034): `false` simula la base SIN migrar (los pedidos programados no estan disponibles).
@@ -599,7 +618,10 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
-  async addCustomerAddressIfNew(customerId: string, address: string): Promise<void> {
+  async addCustomerAddressIfNew(customerId: string, address: string, organizationId: string): Promise<void> {
+    // Mismo guard cross-tenant que la funcion SQL (`add_customer_address_if_new`, migracion 048).
+    const dueno = this.customers.get(customerId);
+    if (!dueno || dueno.organizationId !== organizationId) throw new Error("el cliente no pertenece a la organización");
     const list = this.addresses.get(customerId) ?? [];
     if (list.some((a) => a.address === address)) return; // onConflict ignoreDuplicates
     list.push({ address, label: null, isDefault: list.length === 0 });
@@ -878,15 +900,42 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
+  /** Solo pruebas: los avisos (callbacks) de la organizacion, tal como quedaron (con las notas agregadas en `message`). */
+  listCallbackRequests(organizationId: string): readonly CallbackRequest[] {
+    return this.callbackRequests.filter((c) => c.organizationId === organizationId);
+  }
+
   /** Solo para pruebas: las solicitudes de contacto registradas (en orden de creacion). */
   peekCallbackRequests(): readonly CallbackRequest[] {
     return this.callbackRequests;
   }
 
+  /** Mismas reglas que `restaurantes.callback_registrar_agente` (migracion 047) para los avisos del agente (`voice`/`whatsapp`): el mismo
+   * evento no se repite y un aviso abierto del mismo canal, telefono y motivo recibe una nota en vez de crear otro. */
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
+    if (input.source === "voice" || input.source === "whatsapp") {
+      const evento = input.sourceEventId ?? null;
+      const delTelefono = this.callbackRequests.filter((c) => c.organizationId === input.organizationId && c.customerPhone === input.customerPhone);
+      if (evento) {
+        const previo = delTelefono.find((c) => c.sourceEventId === evento || (this.callbackEventosAgrupados.get(c.id) ?? []).includes(evento));
+        if (previo) return { ...previo, registro: "evento_repetido" };
+      }
+      const ahora = Date.now();
+      const abierto = [...delTelefono]
+        .reverse()
+        .find((c) => c.source === input.source && (c.reason ?? null) === (input.reason ?? null) && !c.resolved && ahora - Date.parse(c.createdAt) < CALLBACK_VENTANA_AGRUPAR_MS);
+      if (abierto) {
+        const nota = `\n— Aviso repetido: ${(input.message ?? "").trim().slice(0, 500) || "sin detalle"}`;
+        const actual = abierto.message ?? "";
+        const actualizado: CallbackRequest = { ...abierto, message: actual.length + nota.length <= 4000 ? actual + nota : abierto.message };
+        this.callbackRequests[this.callbackRequests.indexOf(abierto)] = actualizado;
+        if (evento) this.callbackEventosAgrupados.set(abierto.id, [...(this.callbackEventosAgrupados.get(abierto.id) ?? []), evento]);
+        return { ...actualizado, registro: "nota_agregada" };
+      }
+    }
     const created: CallbackRequest = { ...input, id: randomUUID(), resolved: false, createdAt: new Date().toISOString() };
     this.callbackRequests.push(created);
-    return created;
+    return { ...created, registro: "nuevo" };
   }
 
   async consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean> {
@@ -921,6 +970,19 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       if (orgId === organizationId) return phoneNumberId;
     }
     return null;
+  }
+
+  /** Misma regla que `restaurantes.whatsapp_contador_agente` (migracion 047): un contador de mas de 2 h cuenta como 0. */
+  async contadorAgenteWhatsApp(organizationId: string, phone: string, clave: ClaveContadorAgente, accion: "incrementar" | "reiniciar"): Promise<number | null> {
+    const llave = `${organizationId}|${phone}|${clave}`;
+    if (accion === "reiniciar") {
+      this.contadoresAgente.delete(llave);
+      return 0;
+    }
+    const previo = this.contadoresAgente.get(llave);
+    const n = (previo && Date.now() - previo.at < CONTADOR_AGENTE_VIGENCIA_MS ? previo.n : 0) + 1;
+    this.contadoresAgente.set(llave, { n, at: Date.now() });
+    return n;
   }
 
   async claimWhatsAppMessage(organizationId: string, messageId: string, _phoneHash: string): Promise<boolean> {
@@ -1563,11 +1625,46 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return customer && customer.organizationId === organizationId ? customer : null;
   }
 
+  /** Nivel de TODOS los clientes de la organizacion (espejo de `restaurantes.customer_tiers`, migracion 054). */
+  private tiersDeOrganizacion(organizationId: string): Map<string, CustomerTier | null> {
+    const clientes = [...this.customers.values()].filter((c) => c.organizationId === organizationId);
+    const resultado = new Map<string, CustomerTier | null>();
+    const gastoPorCliente = this.gastoPorClienteDeOrganizacion(organizationId);
+    const metrica = chooseTierMetric(clientes, gastoPorCliente);
+    if (metrica === "sin_datos") {
+      for (const c of clientes) resultado.set(c.id, null);
+      return resultado;
+    }
+    const valueOf = (c: Customer) => (metrica === "gasto" ? (gastoPorCliente.get(c.id) ?? 0) : c.orderCount);
+    const percentiles = computeMidRankPercentiles(clientes, valueOf);
+    for (const c of clientes) resultado.set(c.id, tierFromPercentile(percentiles.get(c) ?? 0));
+    return resultado;
+  }
+
+  private ultimoPedidoDeCliente(customerId: string): string | null {
+    let ultimo: string | null = null;
+    for (const o of this.orders) {
+      if (o.customerId === customerId && (ultimo === null || o.createdAt > ultimo)) ultimo = o.createdAt;
+    }
+    return ultimo;
+  }
+
   async listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage> {
     const search = filter.search?.trim().toLowerCase();
+    const tiers = this.tiersDeOrganizacion(organizationId);
+    const limiteInactivoMs = filter.inactivoDias === undefined ? null : Date.now() - filter.inactivoDias * 86_400_000;
     let matching = [...this.customers.values()].filter((c) => {
       if (c.organizationId !== organizationId) return false;
       if (search && !(c.name?.toLowerCase().includes(search) || c.phone.includes(search))) return false;
+      if (filter.nivel !== undefined && tiers.get(c.id) !== filter.nivel) return false;
+      if (filter.frecuencia === "una_vez" && c.orderCount !== 1) return false;
+      if (filter.frecuencia === "recurrentes" && c.orderCount < 2) return false;
+      if (limiteInactivoMs !== null) {
+        const ultimo = this.ultimoPedidoDeCliente(c.id);
+        // Quien nunca ha pedido cuenta como "sin pedir" (igual que clientes_cartera).
+        if (ultimo !== null && Date.parse(ultimo) >= limiteInactivoMs) return false;
+      }
+      if (filter.propertyId !== undefined && !this.orders.some((o) => o.customerId === c.id && o.propertyId === filter.propertyId)) return false;
       return true;
     });
     // Orden por `id asc` — mismo criterio (y mismo formato de cursor: el último id
@@ -1580,9 +1677,76 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       matching = matching.filter((c) => c.id > cursorBoundary);
     }
 
-    const page = matching.slice(0, filter.limit);
+    const page = matching.slice(0, filter.limit).map((c) => ({ ...c, tier: tiers.get(c.id) ?? null, lastOrderAt: this.ultimoPedidoDeCliente(c.id) }));
     const nextCursor = matching.length > filter.limit ? page[page.length - 1]!.id : null;
-    return { customers: page, nextCursor };
+    return { customers: page, nextCursor, filtrosDisponibles: true };
+  }
+
+  async getCarteraKpis(organizationId: string): Promise<CarteraKpis> {
+    const clientes = [...this.customers.values()].filter((c) => c.organizationId === organizationId);
+    const vigentes = new Set(["pending", "preparando", "en_camino", "entregado", "completado"]);
+    const pedidos = this.orders.filter((o) => o.organizationId === organizationId && o.customerId && vigentes.has(o.status));
+    const ticket = pedidos.length === 0 ? null : Math.round((pedidos.reduce((suma, o) => suma + o.total, 0) / pedidos.length) * 100) / 100;
+    const conPedidos = clientes
+      .filter((c) => c.orderCount > 0)
+      .sort((a, b) => b.orderCount - a.orderCount || (this.ultimoPedidoDeCliente(b.id) ?? "").localeCompare(this.ultimoPedidoDeCliente(a.id) ?? "") || a.id.localeCompare(b.id));
+    const top = conPedidos[0];
+    return {
+      disponible: true,
+      total: clientes.length,
+      recurrentes: clientes.filter((c) => c.orderCount >= 2).length,
+      ticketPromedio: ticket,
+      masFrecuente: top ? { customerId: top.id, orderCount: top.orderCount, ultimoPedidoEn: this.ultimoPedidoDeCliente(top.id) } : null,
+    };
+  }
+
+  private readonly customerNotes = new Map<string, string>();
+  private readonly importacionesClientes = new Map<string, Extract<ResultadoImportacionClientes, { disponible: true }>>();
+
+  async importarClientes(organizationId: string, huella: string, filas: readonly FilaImportacionCliente[]): Promise<ResultadoImportacionClientes> {
+    // Un solo hilo: el chequeo + escritura son sincronos, asi que dos llamadas "simultaneas" nunca se entrelazan (espejo de la huella unica).
+    const clave = `${organizationId}:${huella}`;
+    const previa = this.importacionesClientes.get(clave);
+    if (previa) return { ...previa, yaImportado: true };
+    let creados = 0;
+    let actualizados = 0;
+    let sinCambios = 0;
+    let rechazados = 0;
+    for (const f of filas) {
+      if (!/^[0-9]{10}$/.test(f.phone)) {
+        rechazados += 1;
+        continue;
+      }
+      const key = `${organizationId}:${f.phone}`;
+      const existenteId = this.customerIdByOrgPhone.get(key);
+      let id: string;
+      if (!existenteId) {
+        id = randomUUID();
+        this.customers.set(id, { id, organizationId, phone: f.phone, name: f.name, orderCount: 0 });
+        this.customerIdByOrgPhone.set(key, id);
+        if (f.notes) this.customerNotes.set(id, f.notes);
+        creados += 1;
+      } else {
+        id = existenteId;
+        const actual = this.customers.get(id)!;
+        // Nunca pisa el nombre ni la nota conocidos: solo completa lo vacio.
+        const completaNombre = actual.name === null && f.name !== null;
+        const completaNota = !this.customerNotes.has(id) && f.notes !== null;
+        if (completaNombre) this.customers.set(id, { ...actual, name: f.name });
+        if (completaNota) this.customerNotes.set(id, f.notes!);
+        if (completaNombre || completaNota) actualizados += 1;
+        else sinCambios += 1;
+      }
+      if (f.address) await this.addCustomerAddressIfNew(id, f.address, organizationId);
+    }
+    const resultado = { disponible: true as const, yaImportado: false, total: filas.length, creados, actualizados, sinCambios, rechazados };
+    this.importacionesClientes.set(clave, resultado);
+    return resultado;
+  }
+
+  async getCustomerNotes(organizationId: string, customerId: string): Promise<string | null> {
+    const cliente = this.customers.get(customerId);
+    return cliente && cliente.organizationId === organizationId ? (this.customerNotes.get(customerId) ?? null) : null;
   }
 
   // ---- FASE 3 (producto) -- bitácora de auditoría del staff ----
@@ -1780,6 +1944,38 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   }
 
   // ---- Modelo PM (migracion 023) ----
+  async listarConocimiento(organizationId: string): Promise<ConocimientoLectura> {
+    return this.conocimiento.listar(organizationId);
+  }
+
+  async listarConocimientoPublicado(organizationId: string, propertyId: string | null): Promise<readonly ConocimientoEntrada[]> {
+    return this.conocimiento.listarPublicado(organizationId, propertyId);
+  }
+
+  async crearConocimiento(organizationId: string, actorId: string, input: NuevaConocimientoEntrada): Promise<ConocimientoEntrada> {
+    return this.conocimiento.crear(organizationId, actorId, input);
+  }
+
+  async actualizarConocimiento(organizationId: string, actorId: string, id: string, patch: ConocimientoPatch): Promise<ConocimientoEntrada | null> {
+    return this.conocimiento.actualizar(organizationId, actorId, id, patch);
+  }
+
+  async borrarConocimiento(organizationId: string, id: string): Promise<boolean> {
+    return this.conocimiento.borrar(organizationId, id);
+  }
+
+  async findAgenteWhatsappActivo(propertyId: string): Promise<boolean> {
+    return this.conocimiento.agenteActivo(propertyId);
+  }
+
+  async listarAgentesWhatsappApagados(organizationId: string): Promise<{ readonly disponible: boolean; readonly propertyIdsApagados: readonly string[] }> {
+    return this.conocimiento.agentesApagadosDe(organizationId);
+  }
+
+  async fijarAgenteWhatsappActivo(organizationId: string, propertyId: string, _actorId: string, activo: boolean): Promise<void> {
+    this.conocimiento.fijarAgenteActivo(organizationId, propertyId, activo);
+  }
+
   async findBranchPolicy(propertyId: string): Promise<BranchPolicy> {
     return this.branchPolicies.get(propertyId) ?? EMPTY_BRANCH_POLICY;
   }
@@ -1882,6 +2078,14 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       promoted.push(updated);
     }
     return { disponible: true, promoted };
+  }
+
+  async listPromotedOrdersWithoutComanda(options: { readonly hours: number; readonly limit: number }): Promise<readonly Order[]> {
+    const desde = Date.now() - options.hours * 3_600_000;
+    return this.orders
+      .filter((o) => o.promovidoAt && Date.parse(o.promovidoAt) >= desde && (o.status === "pending" || o.status === "preparando"))
+      .sort((a, b) => (a.promovidoAt ?? "").localeCompare(b.promovidoAt ?? ""))
+      .slice(0, options.limit);
   }
 
   async listBranchDeliveryZoneIds(propertyId: string): Promise<readonly string[]> {

@@ -273,6 +273,42 @@ export async function enviarComandaEncolada(deps: DepsComandaPos, fila: FilaComa
   return { modo: "activo", fila, agente: respuestaAgenteComanda(fila) };
 }
 
+/** Nota que queda en la comanda cuya salida al POS se corto porque el pedido se cancelo antes de llegar. */
+export const NOTA_COMANDA_CORTADA_POR_CANCELACION = "Pedido cancelado antes de llegar al POS: la comanda ya no se envia.";
+
+/**
+ * Un pedido CANCELADO antes de que su comanda llegara al POS no debe llegar a cocina despues: si el POS estaba lento o caido, la
+ * comanda sigue `pendiente`/`fallida` en el outbox y el despachador (cron de 5 min) la mandaria al volver el POS, con comida que
+ * nadie va a recoger. Aqui se corta con la MISMA operacion que ya usa el staff para cerrar una comanda a mano (`marcarCapturada`:
+ * pasa a `capturada_manual`, estado terminal que corta los reintentos y no cuenta como "requiere atencion").
+ *
+ * Solo toca filas `pendiente`/`fallida`/`captura_manual` de ESE pedido (lectura filtrada por order_id); una `enviada` (en vuelo) o `confirmada`
+ * (ya en el POS) no se modifica: esas ya estan en cocina y el POS no expone una cancelacion (limite documentado en docs/CICLO-PUNTA-A-PUNTA-RESTAURANTES.md).
+ * Best-effort: nunca lanza ni revierte la cancelacion. Corre en sesion de STAFF (la funcion SQL exige un actor autenticado).
+ * Base sin la migracion 024: `listar` responde `disponible: false` y no hace nada.
+ */
+export async function cortarComandaDePedidoCancelado(
+  store: ComandaOutboxStore,
+  organizationId: string,
+  order: Pick<Order, "id" | "propertyId">,
+  actorUserId: string,
+): Promise<{ readonly cortadas: number }> {
+  try {
+    const lectura = await store.listar(organizationId, { propertyIds: [order.propertyId], orderId: order.id, estados: ["pendiente", "fallida", "captura_manual"], limite: 50, offset: 0 });
+    if (!lectura.disponible) return { cortadas: 0 };
+    let cortadas = 0;
+    for (const fila of lectura.filas) {
+      const r = await store.marcarCapturada(organizationId, fila.id, actorUserId, NOTA_COMANDA_CORTADA_POR_CANCELACION);
+      if (r.resultado === "ok") cortadas += 1;
+      else console.warn(`softrestaurant: no se pudo cortar la comanda ${fila.id} del pedido cancelado ${order.id} (resultado: ${r.resultado}); puede seguir su curso hacia el POS`);
+    }
+    return { cortadas };
+  } catch (err) {
+    console.error("softrestaurant: no se pudo cortar la comanda de un pedido cancelado (se registra y la cancelacion sigue):", err instanceof Error ? err.message : err);
+    return { cortadas: 0 };
+  }
+}
+
 export interface ResumenComandasPromovidos {
   /** Pedidos para los que se intento encolar (`pending` recien promovidos). */
   readonly intentados: number;
@@ -294,13 +330,20 @@ export interface ResumenComandasPromovidos {
  *  - Solo pedidos en `pending` (un cancelado u otro estado nunca se encola).
  *  - Nunca lanza: `encolarComandaParaPedido` traga y registra sus errores (el store recupera la sesion con SAVEPOINT).
  */
-export async function encolarComandasDePromovidos(deps: DepsComandaPos, promovidos: readonly Order[]): Promise<ResumenComandasPromovidos> {
+export async function encolarComandasDePromovidos(
+  deps: DepsComandaPos,
+  promovidos: readonly Order[],
+  /** `cualquierEstadoVivo`: la reconciliacion (QA-restaurantes-R1-automatizacion-02) reencola pedidos promovidos que la cocina ya
+   * avanzo hasta `preparando`: siguen necesitando su comanda. Un pedido entregado, completado, cancelado, programado o con
+   * problema nunca se reencola (mandar al POS la comanda de algo ya servido seria un duplicado en cocina). */
+  opciones: { readonly cualquierEstadoVivo?: boolean } = {},
+): Promise<ResumenComandasPromovidos> {
   let intentados = 0;
   let encoladas = 0;
   let omitidas = 0;
   let errores = 0;
   for (const order of promovidos) {
-    if (order.status !== "pending") continue;
+    if (opciones.cualquierEstadoVivo ? order.status !== "pending" && order.status !== "preparando" : order.status !== "pending") continue;
     intentados += 1;
     // La propina y el canal viajan en la fila del pedido (migracion 031) y `promover_pedidos_programados` devuelve la
     // fila completa: se pasan a la comanda igual que en un pedido inmediato (antes se perdian y el POS no la veia).

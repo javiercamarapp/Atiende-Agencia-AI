@@ -9,6 +9,7 @@ export type {
   BranchTimezoneConfig,
   CallbackRequest,
   CallbackRequestInput,
+  CallbackRegistro,
   CanalPedido,
   Category,
   CategoryPatch,
@@ -16,8 +17,13 @@ export type {
   CreateOrderItemInput,
   Customer,
   CustomerAddress,
+  CarteraKpis,
+  CustomerFrecuencia,
   CustomerListFilter,
+  CustomerListItem,
   CustomerListPage,
+  FilaImportacionCliente,
+  ResultadoImportacionClientes,
   CustomerLookupResult,
   CustomerTier,
   DefaultComplement,
@@ -60,7 +66,7 @@ export type {
   WhatsappBranchChannel,
   WhatsappChannelConfig,
 } from "./types.ts";
-export { EMPTY_BRANCH_POLICY } from "./types.ts";
+export { EMPTY_BRANCH_POLICY, CUSTOMER_FRECUENCIAS, CUSTOMER_TIERS } from "./types.ts";
 
 export { OrderConflictError, OrderValidationError, PromotionError, WhatsappNumberInUseError } from "./errors.ts";
 
@@ -82,7 +88,9 @@ export type { ReglasSucursalArgs, ReglasSucursalResultado } from "./reglas-pedid
 
 export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, applyPromotionToOrder, computeBogoDiscount, computeCortesiaDiscount, selectAutomaticPromotion, PROMOTION_CODE_PATTERN } from "./promotions.ts";
 
-export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient } from "./phone.ts";
+export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient, maskPhone } from "./phone.ts";
+export { prepararImportacionClientes, IMPORTACION_MAX_FILAS } from "./clientes-importacion.ts";
+export type { ErrorRenglonImportacion, PreparacionImportacion } from "./clientes-importacion.ts";
 
 export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole } from "./roles.ts";
 export type { RestaurantesRole } from "./roles.ts";
@@ -208,14 +216,17 @@ export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 
-export { createLlmWhatsAppTurnHandler, FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, getAgentConfig, resolveAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
+export { createLlmWhatsAppTurnHandler, bloqueConocimientoDelTurno, FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, getAgentConfig, resolveAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
 export type { WhatsAppLlmAgentConfig, WhatsAppLlmAgentOptions, WhatsAppToneStyle } from "./whatsapp/llm-turn-handler.ts";
+export { hashTelefonoParaLogs } from "./whatsapp/observabilidad-turno.ts";
+export type { EventoObservabilidadWhatsApp, EventoToolWhatsApp, EventoTurnoWhatsApp, ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./whatsapp/observabilidad-turno.ts";
 
 export {
   STATS_PERIODS,
   isStatsPeriod,
   buildTrendBuckets,
   buildComparisonPeriods,
+  horasAbiertasHoy,
   periodLabel,
   getSalesKpis,
   getSalesTrendKpis,
@@ -225,7 +236,7 @@ export {
   getCustomerKpis,
   computeCustomerKpis,
 } from "./kpis.ts";
-export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
+export type { OpcionesTramos, StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";
@@ -307,7 +318,7 @@ export {
   validarVentanaProgramacion,
 } from "./pedidos-programados.ts";
 export type { PromocionProgramados } from "./pedidos-programados.ts";
-export { avisarProgramadosPromovidos } from "./pedidos-programados-avisos.ts";
+export { ATRASO_PROGRAMADO_MIN, avisarProgramadosPromovidos, emitirAvisoProgramadoEnCocina, esPromocionAtrasada } from "./pedidos-programados-avisos.ts";
 export type { ResumenAvisosProgramados } from "./pedidos-programados-avisos.ts";
 export { etiquetaHoraLocal } from "./horarios.ts";
 export type { OrderScheduleInfo } from "./types.ts";
@@ -331,3 +342,5 @@ export {
 export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
 export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operativos.ts";
 export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
+
+export * from "./conocimiento/index.ts";

@@ -187,9 +187,8 @@ describe("E.7 / E.4 motivos de alto riesgo: se avisan al equipo ANTES del modelo
     }
   });
 
-  it.todo("T-HO07 / P32 [P1] BRECHA: 'no entiende dos veces' -> no_entiende (necesita contador por conversacion; hoy depende del modelo)");
+  // T-HO07 / P32 y T-HO10 ya no son brechas: los cubre `contadores-agente-whatsapp.spec.ts` y `callbacks-idempotentes.spec.ts` (rescate-orig-restaurantes-1).
   it.todo("T-HO09 / P35 [P1] facturacion/empleo escalan 'otro' con el nombre dado: cubierto por registrar_contacto y el prompt; la regla de 'nunca inventar el nombre' solo se mide con modelo real");
-  it.todo("T-HO10 [P1] BRECHA: un solo ticket por motivo y conversacion (callback_requests no deduplica; 3 mensajes iguales crean 3 avisos)");
   it.todo("T-HO11 / P07 [P0] BRECHA: pausa del agente mientras el humano atiende (la conversacion solo tiene estados active/completed/abandoned; no hay 'handoff')");
   it.todo("T-HO12 / X28 [P2] 'que me lo lleve Juan': decir con honestidad que no se puede elegir repartidor (regla de prompt; medir con modelo real)");
 });
@@ -353,11 +352,12 @@ describe("PM-C3 -- prompt del perfil taqueria_pm tal como lo recibe el modelo", 
     expect(prompt).not.toContain("la confirma la sucursal al recoger");
   });
 
-  it("T-PC02 ya no afirma precios iguales y trae las 7 sucursales, el horario prudente de T2 y la regla de ultimo pedido", () => {
+  it("T-PC02 ya no afirma precios iguales, trae las 7 sucursales y el horario sale de los datos de la sucursal (sin franja fija en el prompt)", () => {
     expect(prompt).not.toContain("Precios iguales");
     for (const nombre of ["Prolongación Montejo", "Francisco de Montejo", "Pensiones", "Galerías", "Playa", "García Lavín", "Victory Altabrisa"]) expect(prompt).toContain(nombre);
-    expect(prompt).toMatch(/Francisco de Montejo: lunes a viernes de 6 pm a 12 am/);
-    expect(prompt).toMatch(/solo si la entrega .* cae antes del cierre/);
+    expect(prompt).not.toMatch(/Francisco de Montejo: lunes a viernes de 6 pm/);
+    expect(prompt).toMatch(/H16\. Horario: lo dicen SOLO los datos de la sucursal/);
+    expect(prompt).toMatch(/solo si la entrega .* cae antes de esa hora/);
   });
 
   it("T-PC03 el saludo del prompt sigue la hora (martes 14:00 en Merida (UTC-6) = buenas tardes)", () => {

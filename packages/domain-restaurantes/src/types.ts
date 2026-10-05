@@ -504,16 +504,71 @@ export interface OrderListPage {
   readonly nextCursor: string | null;
 }
 
+/** Frecuencia de la cartera: `una_vez` = exactamente 1 pedido; `recurrentes` = 2 o mas. */
+export type CustomerFrecuencia = "una_vez" | "recurrentes";
+export const CUSTOMER_FRECUENCIAS: readonly CustomerFrecuencia[] = ["una_vez", "recurrentes"];
+export const CUSTOMER_TIERS: readonly CustomerTier[] = ["BLACK", "PLATINUM", "GOLD", "BLUE"];
+
 export interface CustomerListFilter {
   readonly search?: string;
   readonly limit: number;
   readonly cursor?: string;
+  /** Migracion 054: nivel (`calc_customer_tier`). Sin la migracion, la pagina responde `filtrosDisponibles: false`. */
+  readonly nivel?: CustomerTier;
+  readonly frecuencia?: CustomerFrecuencia;
+  /** Sin pedir en los ultimos N dias (quien nunca ha pedido cuenta). */
+  readonly inactivoDias?: number;
+  /** Clientes que han pedido en esa sucursal. */
+  readonly propertyId?: string;
+}
+
+/** Un cliente del listado de cartera. `tier`/`lastOrderAt` salen de la migracion 054; sin ella son `null`. */
+export interface CustomerListItem extends Customer {
+  readonly tier: CustomerTier | null;
+  readonly lastOrderAt: string | null;
 }
 
 export interface CustomerListPage {
-  readonly customers: readonly Customer[];
+  readonly customers: readonly CustomerListItem[];
   readonly nextCursor: string | null;
+  /** `false` solo cuando se pidio un filtro nuevo y la base aun no tiene la migracion 054 (lista vacia + estado "no disponible aun"). */
+  readonly filtrosDisponibles: boolean;
 }
+
+/** KPIs de la cartera (migracion 054). `disponible: false` = la base aun no la tiene. */
+export type CarteraKpis =
+  | { readonly disponible: false }
+  | {
+      readonly disponible: true;
+      readonly total: number;
+      readonly recurrentes: number;
+      /** Promedio del total de pedidos vigentes con cliente conocido; `null` si aun no hay pedidos. */
+      readonly ticketPromedio: number | null;
+      /** Cliente con mas pedidos; `null` si nadie ha pedido. */
+      readonly masFrecuente: { readonly customerId: string; readonly orderCount: number; readonly ultimoPedidoEn: string | null } | null;
+    };
+
+/** Un renglon YA normalizado de la importacion de cartera (`importar_clientes`, migracion 054). */
+export interface FilaImportacionCliente {
+  /** 10 digitos (`canonicalizeMexicanPhone`). */
+  readonly phone: string;
+  readonly name: string | null;
+  readonly address: string | null;
+  readonly notes: string | null;
+}
+
+export type ResultadoImportacionClientes =
+  | { readonly disponible: false }
+  | {
+      readonly disponible: true;
+      /** El archivo (misma huella) ya se habia importado: nada se volvio a escribir; las cifras son las de la primera vez. */
+      readonly yaImportado: boolean;
+      readonly total: number;
+      readonly creados: number;
+      readonly actualizados: number;
+      readonly sinCambios: number;
+      readonly rechazados: number;
+    };
 
 export interface CallbackRequestInput {
   readonly organizationId: string;
@@ -523,7 +578,14 @@ export interface CallbackRequestInput {
   readonly reason?: string;
   readonly message?: string;
   readonly source: "voice" | "whatsapp" | "web" | "admin";
+  /** Id opaco del evento que origino el aviso (id del mensaje de Meta o de la llamada, mas el motivo): el mismo evento nunca crea dos
+   * avisos (migracion 047). Solo lo usan los avisos del agente (`voice`/`whatsapp`). */
+  readonly sourceEventId?: string | null;
 }
+
+/** Que paso con un aviso del agente: `nuevo` = se creo; `evento_repetido` = el mismo evento ya estaba registrado (no se hizo nada);
+ * `nota_agregada` = habia un aviso abierto del mismo canal, telefono y motivo y se le agrego una nota. */
+export type CallbackRegistro = "nuevo" | "evento_repetido" | "nota_agregada";
 
 // ---- R-38 (migracion 062): marca publica del storefront por organizacion. Todos los campos son opcionales (null = sin valor). ----
 export interface StorefrontMarcaInput {
@@ -560,6 +622,7 @@ export interface CallbackRequest extends CallbackRequestInput {
   readonly id: string;
   readonly resolved: boolean;
   readonly createdAt: string;
+  readonly registro?: CallbackRegistro;
 }
 
 // ---- Fase 11 — promociones/marketing: motor real de código de descuento (ver

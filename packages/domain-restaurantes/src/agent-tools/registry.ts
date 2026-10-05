@@ -15,7 +15,7 @@
 import { createHash } from "node:crypto";
 import { registerCallbackRequest } from "../callback-requests.ts";
 import { getCustomerDetailById, lookupCustomerConPedidoReciente } from "../customers.ts";
-import { buscarPedidoReciente } from "../pedido-reciente.ts";
+import { buscarPedidoRecienteConSucursal } from "../pedido-reciente.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError } from "../errors.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
@@ -127,6 +127,9 @@ export interface AgentToolContext {
   readonly sharedLocation?: { readonly lat: number; readonly lng: number } | null;
   /** Ultimo destino de entrega que dio el cliente (pin de WhatsApp o link de Maps); `crear_pedido` lo guarda en el pedido solo, el modelo no lo repite. */
   readonly ubicacionEntrega?: UbicacionEntrega | null;
+  /** Id del evento que origina las llamadas a herramientas (WhatsApp: id del mensaje de Meta; voz: id de la llamada). Hace idempotente
+   * el aviso al equipo (`escalar_a_humano` / `registrar_contacto`, migracion 047): el mismo evento y motivo nunca crean dos avisos. */
+  readonly sourceEventId?: string | null;
   /** `real` (por omision) o `preview` (sin efectos). SOLO lo fija el servidor, nunca el modelo ni el cliente. */
   readonly modo?: AgentToolMode;
   /** Solo `preview`: cliente de la organizacion que el panel eligio para «simular cliente conocido». `buscar_cliente`
@@ -144,6 +147,9 @@ export interface AgentToolOutcome {
   readonly raw?: unknown;
   readonly orderId: string | null;
   readonly propertyId: string | null;
+  /** true solo cuando `executeAgentToolSafely` atrapo una excepcion que NO es una regla de negocio
+   * (p. ej. un error de base de datos). Sirve a la observabilidad para separar `error_sistema` de `error_regla`. */
+  readonly fallaSistema?: boolean;
   /** Huella de la cotizacion vigente (solo cotizar_pedido con maquina de estados activa). */
   readonly quoteHash?: string;
   /** crear_pedido de VOZ repetido tras un intento incierto (timeout del worker): devuelve el pedido ya registrado, sin crear otro. */
@@ -242,7 +248,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "buscar_producto",
     description:
-      "Busca productos del menú real de la sucursal por nombre, sinónimo o palabra clave. Devuelve id, nombre, precio real de esa sucursal, pack_size y requires_adult_confirmation. Lista vacía significa que ese producto no existe en el menú.",
+      "Busca productos del menú real de la sucursal por nombre, sinónimo o palabra clave. Devuelve id, nombre, precio real de esa sucursal, pack_size y requires_adult_confirmation. Lista vacía significa que ese producto no existe en el menú. Si ningún resultado coincide exactamente con lo que pidió el cliente (o hay varios parecidos), no elijas ni sustituyas por él: pregúntale cuál prefiere entre 2 o 3 opciones de la lista.",
     parameters: {
       type: "object",
       properties: {
@@ -913,12 +919,14 @@ async function dispatchTool(
       const esEscalada = def.name === "escalar_a_humano";
       if (!esEscalada && input.reason === "cliente_llego") return avisarLlegadaDelCliente(repo, ctx, input);
       if (!esEscalada && input.reason === "pedido_telefonico") return pasarNotaDePedidoTelefonico(repo, ctx, input);
+      const reason = esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined;
       await registerCallbackRequest(repo, {
         organizationId,
         propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
         customerName: String(input.customer_name ?? "Cliente"),
         customerPhone: ctx.phone,
-        reason: esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined,
+        reason,
+        sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:${reason ?? ""}`.slice(0, 255) : null,
         message: esEscalada ? (typeof input.resumen === "string" ? input.resumen : undefined) : typeof input.message === "string" ? input.message : undefined,
         source: ctx.channel === "voz" ? "voice" : "whatsapp",
       });
@@ -948,6 +956,7 @@ async function pasarNotaDePedidoTelefonico(repo: RestaurantesRepository, ctx: Ag
     customerName: String(input.customer_name ?? "Cliente"),
     customerPhone: ctx.phone as string,
     reason: "pedido_telefonico",
+    sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:pedido_telefonico`.slice(0, 255) : null,
     message: mensaje,
     source: ctx.channel === "voz" ? "voice" : "whatsapp",
   });
@@ -957,7 +966,8 @@ async function pasarNotaDePedidoTelefonico(repo: RestaurantesRepository, ctx: Ag
 /** `registrar_contacto` con `reason: cliente_llego`: solo procede si el cliente tiene un pedido vigente para RECOGER confirmado hace poco (la llegada
  * se valida contra el pedido real, nunca contra lo que diga el modelo). Deja el aviso con la sucursal del pedido y una nota de como identificarlo. */
 async function avisarLlegadaDelCliente(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>): Promise<AgentToolOutcome> {
-  const reciente = await buscarPedidoReciente(repo, ctx.organizationId, ctx.phone as string);
+  const encontrado = await buscarPedidoRecienteConSucursal(repo, ctx.organizationId, ctx.phone as string);
+  const reciente = encontrado?.reciente;
   // Solo con un pedido CONOCIDO para recoger y aun vigente: canal desconocido (base sin migrar o sin dato) o un estado cerrado/con problema no se avisa como llegada.
   if (!reciente || reciente.canal !== "recoger" || (reciente.estado !== "preparando" && reciente.estado !== "listo_para_recoger" && reciente.estado !== "programado")) {
     return { result: { ok: false, motivo: "sin_pedido_para_recoger", instruccion: MENSAJE_LLEGADA_SIN_PEDIDO }, raw: { ok: false }, orderId: null, propertyId: null };
@@ -965,10 +975,11 @@ async function avisarLlegadaDelCliente(repo: RestaurantesRepository, ctx: AgentT
   const identificacion = typeof input.message === "string" ? sanitizeInlineText(input.message, 200) : "";
   await registerCallbackRequest(repo, {
     organizationId: ctx.organizationId,
-    propertyId: reciente.propertyId ?? ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
+    propertyId: encontrado?.propertyId ?? ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
     customerName: String(input.customer_name ?? "Cliente"),
     customerPhone: ctx.phone as string,
     reason: "cliente_llego",
+    sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:cliente_llego`.slice(0, 255) : null,
     message: identificacion || undefined,
     source: ctx.channel === "voz" ? "voice" : "whatsapp",
   });
@@ -1025,10 +1036,12 @@ export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: 
   try {
     return await repo.runWithRowSavepoint(() => invokeAgentTool(repo, ctx, name, input));
   } catch (err) {
+    const esRegla = err instanceof OrderValidationError;
     return {
-      result: { error: err instanceof OrderValidationError ? err.message : "Error interno al ejecutar la herramienta" },
+      result: { error: esRegla ? err.message : "Error interno al ejecutar la herramienta" },
       orderId: null,
       propertyId: null,
+      ...(esRegla ? {} : { fallaSistema: true }),
       ...(err instanceof OrderFlowViolationError ? { rechazoDelFlujo: err.code } : {}),
     };
   }
