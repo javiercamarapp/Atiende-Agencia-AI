@@ -11,6 +11,8 @@
 // de sistema con userId:null + policies RLS explícitas para esa sesión).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
+import * as cliente360 from "./cliente-360/postgres.ts";
+import type { CustomerAddressChanges, CustomerPolicy, CustomerProfilePatch, OrderClosureInput, PreferenceAction } from "./cliente-360/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import {
@@ -49,7 +51,11 @@ import type {
   Customer,
   CustomerAddress,
   CustomerListFilter,
+  CarteraKpis,
+  CustomerListItem,
   CustomerListPage,
+  FilaImportacionCliente,
+  ResultadoImportacionClientes,
   CustomerTier,
   KnownZone,
   NearestBranchMatch,
@@ -183,6 +189,36 @@ interface CustomerRow {
 
 function mapCustomer(row: CustomerRow): Customer {
   return { id: row.id, organizationId: row.organization_id, phone: row.phone, name: row.name, orderCount: row.order_count };
+}
+
+interface CustomerCarteraRow {
+  readonly customer_id: string;
+  readonly phone: string;
+  readonly name: string | null;
+  readonly order_count: number;
+  readonly last_order_at: unknown;
+  readonly tier: string | null;
+}
+
+function isoOrNullCustomer(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  return v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString();
+}
+
+function mapCustomerCartera(organizationId: string, r: CustomerCarteraRow): CustomerListItem {
+  const tier = r.tier === "BLACK" || r.tier === "PLATINUM" || r.tier === "GOLD" || r.tier === "BLUE" ? r.tier : null;
+  return { id: r.customer_id, organizationId, phone: r.phone, name: r.name, orderCount: r.order_count, tier, lastOrderAt: isoOrNullCustomer(r.last_order_at) };
+}
+
+/** `%` `_` `\` del texto buscado son literales, no comodines (el listado anterior ya lo hacia). */
+function escapeLike(texto: string): string {
+  return texto.replace(/[\\%_]/g, "\\$&");
+}
+
+/** SQLSTATE de funcion/tabla/columna inexistente = la base aun no tiene la migracion 054. */
+function esErrorBaseSinMigrar054(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code;
+  return code === "42883" || code === "42P01" || code === "42703";
 }
 
 interface OrderRow {
@@ -591,6 +627,9 @@ function mapRestaurantesAuditLogRow(row: RestaurantesAuditLogRowSql): Restaurant
   };
 }
 
+/** Tope de p_limit de restaurantes.clientes_cartera (migracion 054). */
+const CARTERA_LIMITE_SQL = 200;
+
 export class PostgresRestaurantesRepository implements RestaurantesRepository {
   constructor(private readonly db: TenantDbSession) {}
 
@@ -914,6 +953,44 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       [customerId],
     );
     return rows.map((row) => ({ items: row.items, createdAt: row.created_at }));
+  }
+
+  // ---- Cliente 360 (migracion 049): delegan en cliente-360/postgres.ts (funciones security definer + SAVEPOINT) ----
+  getCustomerMemory(organizationId: string, phone: string) {
+    return cliente360.getCustomerMemory(this.db, organizationId, phone);
+  }
+  registerOrderClosure(input: OrderClosureInput) {
+    return cliente360.registerOrderClosure(this.db, input);
+  }
+  getCustomerFicha(organizationId: string, customerId: string) {
+    return cliente360.getCustomerFicha(this.db, organizationId, customerId);
+  }
+  updateCustomerProfile(organizationId: string, customerId: string, patch: CustomerProfilePatch) {
+    return cliente360.updateCustomerProfile(this.db, organizationId, customerId, patch);
+  }
+  saveCustomerAddress(organizationId: string, customerId: string, addressId: string | null, changes: CustomerAddressChanges) {
+    return cliente360.saveCustomerAddress(this.db, organizationId, customerId, addressId, changes);
+  }
+  deleteCustomerAddress(organizationId: string, customerId: string, addressId: string) {
+    return cliente360.deleteCustomerAddress(this.db, organizationId, customerId, addressId);
+  }
+  applyCustomerPreferenceAction(organizationId: string, customerId: string, action: PreferenceAction, args: { readonly prefId?: string | null; readonly kind?: string | null; readonly value?: string | null }) {
+    return cliente360.applyCustomerPreferenceAction(this.db, organizationId, customerId, action, args);
+  }
+  markOrderFake(organizationId: string, orderId: string, falso: boolean) {
+    return cliente360.markOrderFake(this.db, organizationId, orderId, falso);
+  }
+  exportCustomerData(organizationId: string, customerId: string) {
+    return cliente360.exportCustomerData(this.db, organizationId, customerId);
+  }
+  deleteCustomerMemory(organizationId: string, customerId: string) {
+    return cliente360.deleteCustomerMemory(this.db, organizationId, customerId);
+  }
+  getCustomerPolicy(organizationId: string) {
+    return cliente360.getCustomerPolicy(this.db, organizationId);
+  }
+  saveCustomerPolicy(organizationId: string, policy: CustomerPolicy) {
+    return cliente360.saveCustomerPolicy(this.db, organizationId, policy);
   }
 
   async calcCustomerTier(organizationId: string, customerId: string): Promise<CustomerTier | null> {
@@ -2363,6 +2440,45 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage> {
+    // Migracion 054: `clientes_cartera` resuelve nivel / frecuencia / dias sin pedir / sucursal en el servidor y trae el nivel de cada cliente.
+    // SAVEPOINT (la sesion es UNA transaccion por request): sin la migracion cae al listado de siempre (sin nivel) y, si se pidio un filtro
+    // nuevo, a una lista vacia con `filtrosDisponibles: false` (estado honesto, nunca un 500).
+    const search = filter.search?.trim();
+    const cursor = filter.cursor && UUID_TEXT.test(filter.cursor) ? filter.cursor : null;
+    const pidioFiltroNuevo = filter.nivel !== undefined || filter.frecuencia !== undefined || filter.inactivoDias !== undefined || filter.propertyId !== undefined;
+    return runWithSavepointFallback<CustomerListPage>({
+      session: this.db,
+      primary: async () => {
+        // La funcion SQL rechaza p_limit > 200 (22023): se pagina por dentro en bloques de <= 200 (cursor por id), de modo
+        // que un llamador con limit 500 (exportaciones) siga funcionando. Todos los bloques corren en el mismo SAVEPOINT.
+        const quiero = filter.limit + 1;
+        const rows: CustomerCarteraRow[] = [];
+        let cursorBloque = cursor;
+        while (rows.length < quiero) {
+          const pedir = Math.min(CARTERA_LIMITE_SQL, quiero - rows.length);
+          const { rows: bloque } = await this.db.query<CustomerCarteraRow>(
+            `select customer_id, phone, name, order_count, last_order_at, tier
+               from restaurantes.clientes_cartera($1::uuid, $2::text, $3::text, $4::int, $5::uuid, $6::text, $7::int, $8::uuid);`,
+            [organizationId, filter.nivel ?? null, filter.frecuencia ?? null, filter.inactivoDias ?? null, filter.propertyId ?? null, search ? escapeLike(search) : null, pedir, cursorBloque],
+          );
+          rows.push(...bloque);
+          if (bloque.length < pedir) break;
+          cursorBloque = bloque[bloque.length - 1]!.customer_id;
+        }
+        const hasMore = rows.length > filter.limit;
+        const page = rows.slice(0, filter.limit).map((r) => mapCustomerCartera(organizationId, r));
+        return { customers: page, nextCursor: hasMore ? page[page.length - 1]!.id : null, filtrosDisponibles: true };
+      },
+      isRecoverable: esErrorBaseSinMigrar054,
+      fallback: async () => {
+        if (pidioFiltroNuevo) return { customers: [], nextCursor: null, filtrosDisponibles: false };
+        return this.listCustomersSinMigracion054(organizationId, filter);
+      },
+    });
+  }
+
+  /** El listado anterior a la migracion 054 (sin nivel ni filtros nuevos). */
+  private async listCustomersSinMigracion054(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage> {
     const conditions: string[] = [`organization_id = $1`];
     const params: unknown[] = [organizationId];
 
@@ -2379,8 +2495,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     }
 
     params.push(filter.limit + 1);
-    const { rows } = await this.db.query<CustomerRow>(
-      `select id, organization_id, phone, name, order_count from restaurantes.customers
+    const { rows } = await this.db.query<CustomerRow & { readonly last_order_at: unknown }>(
+      `select id, organization_id, phone, name, order_count, last_order_at from restaurantes.customers
        where ${conditions.join(" and ")}
        order by id asc
        limit $${params.length};`,
@@ -2388,9 +2504,65 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     );
 
     const hasMore = rows.length > filter.limit;
-    const page = rows.slice(0, filter.limit).map(mapCustomer);
+    const page = rows.slice(0, filter.limit).map((r) => ({ ...mapCustomer(r), tier: null, lastOrderAt: isoOrNullCustomer(r.last_order_at) }));
     const nextCursor = hasMore ? page[page.length - 1]!.id : null;
-    return { customers: page, nextCursor };
+    return { customers: page, nextCursor, filtrosDisponibles: true };
+  }
+
+  async getCarteraKpis(organizationId: string): Promise<CarteraKpis> {
+    return runWithSavepointFallback<CarteraKpis>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{
+          total: string | number;
+          recurrentes: string | number;
+          ticket_promedio: string | number | null;
+          top_customer_id: string | null;
+          top_order_count: number | null;
+          top_last_order_at: unknown;
+        }>(`select total, recurrentes, ticket_promedio, top_customer_id, top_order_count, top_last_order_at from restaurantes.cartera_kpis($1::uuid);`, [organizationId]);
+        const r = rows[0];
+        if (!r) return { disponible: true, total: 0, recurrentes: 0, ticketPromedio: null, masFrecuente: null };
+        return {
+          disponible: true,
+          total: Number(r.total),
+          recurrentes: Number(r.recurrentes),
+          ticketPromedio: r.ticket_promedio === null ? null : Number(r.ticket_promedio),
+          masFrecuente: r.top_customer_id ? { customerId: r.top_customer_id, orderCount: Number(r.top_order_count ?? 0), ultimoPedidoEn: isoOrNullCustomer(r.top_last_order_at) } : null,
+        };
+      },
+      isRecoverable: esErrorBaseSinMigrar054,
+      fallback: async () => ({ disponible: false }),
+    });
+  }
+
+  async importarClientes(organizationId: string, huella: string, filas: readonly FilaImportacionCliente[]): Promise<ResultadoImportacionClientes> {
+    return runWithSavepointFallback<ResultadoImportacionClientes>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ ya_importado: boolean; total: number; creados: number; actualizados: number; sin_cambios: number; rechazados: number }>(
+          `select ya_importado, total, creados, actualizados, sin_cambios, rechazados from restaurantes.importar_clientes($1::uuid, $2, $3::jsonb);`,
+          [organizationId, huella, JSON.stringify(filas.map((f) => ({ phone: f.phone, name: f.name, address: f.address, notes: f.notes })))],
+        );
+        const r = rows[0];
+        if (!r) throw new Error("importar_clientes no devolvio resultado");
+        return { disponible: true, yaImportado: r.ya_importado, total: Number(r.total), creados: Number(r.creados), actualizados: Number(r.actualizados), sinCambios: Number(r.sin_cambios), rechazados: Number(r.rechazados) };
+      },
+      isRecoverable: esErrorBaseSinMigrar054,
+      fallback: async () => ({ disponible: false }),
+    });
+  }
+
+  async getCustomerNotes(organizationId: string, customerId: string): Promise<string | null> {
+    return runWithSavepointFallback<string | null>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ notes: string | null }>(`select notes from restaurantes.customers where organization_id = $1 and id = $2;`, [organizationId, customerId]);
+        return rows[0]?.notes ?? null;
+      },
+      isRecoverable: esErrorBaseSinMigrar054,
+      fallback: async () => null,
+    });
   }
 
   // ---- FASE 3 (producto) -- bitácora de auditoría del staff ----

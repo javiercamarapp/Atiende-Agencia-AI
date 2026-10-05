@@ -35,7 +35,8 @@ describe("POST/GET/PATCH /licitaciones/:propertyId/company/rates (Fase 16)", () 
     const createdBody = (await created.json()) as { id: string; approvalStatus: string };
     expect(createdBody.approvalStatus).toBe("pendiente_aprobacion");
 
-    const approved = await app.request(`/licitaciones/${ctx.propertyId}/company/rates/${createdBody.id}`, patchJson(ctx.staff.writer.token, { approvalStatus: "aprobado" }));
+    // La aprobación ya NO la hace quien propone (WI-04): la decide un owner/admin en .../approve.
+    const approved = await app.request(`/licitaciones/${ctx.propertyId}/company/rates/${createdBody.id}/approve`, authedJson(ctx.staff.owner.token, {}));
     expect(approved.status).toBe(200);
 
     const after = await app.request(
@@ -80,7 +81,9 @@ describe("POST/GET/PATCH /licitaciones/:propertyId/company/rates (Fase 16)", () 
     await app.request(`/licitaciones/${ctx.propertyId}/company/rates`, authedJson(ctx.staff.writer.token, { concept: "pendiente", unitPrice: "1.00" }));
     const list = await app.request(`/licitaciones/${ctx.propertyId}/company/rates`, authedJson(ctx.staff.viewer.token));
     const body = (await list.json()) as { rates: { concept: string; approvalStatus: string }[] };
-    expect(body.rates).toEqual([{ id: expect.any(String), concept: "pendiente", unitPrice: "1.00", currency: "MXN", approvalStatus: "pendiente_aprobacion", validFrom: expect.any(String), validUntil: null }]);
+    expect(body.rates).toEqual([
+      { id: expect.any(String), concept: "pendiente", unitPrice: "1.00", currency: "MXN", approvalStatus: "pendiente_aprobacion", validFrom: expect.any(String), validUntil: null, proposedBy: ctx.staff.writer.id, approvedBy: null, approvedAt: null },
+    ]);
   });
 });
 
@@ -92,11 +95,11 @@ describe("POST/PATCH /licitaciones/:propertyId/company/documents (Fase 16)", () 
     expect(created.status).toBe(201);
     const createdBody = (await created.json()) as { id: string };
 
-    const approved = await app.request(`/licitaciones/${ctx.propertyId}/company/documents/${createdBody.id}`, patchJson(ctx.staff.writer.token, { approvalStatus: "aprobado" }));
+    const approved = await app.request(`/licitaciones/${ctx.propertyId}/company/documents/${createdBody.id}/approve`, authedJson(ctx.staff.analyst.token, {}));
     expect(approved.status).toBe(200);
-    const approvedBody = (await approved.json()) as { approvalStatus: string; type: string; label: string };
+    const approvedBody = (await approved.json()) as { approvalStatus: string; kind: string };
     expect(approvedBody.approvalStatus).toBe("aprobado");
-    expect(approvedBody.type).toBe("acta_constitutiva");
+    expect(approvedBody.kind).toBe("document");
 
     const list = await app.request(`/licitaciones/${ctx.propertyId}/company/documents`, authedJson(ctx.staff.viewer.token));
     const listBody = (await list.json()) as { documents: { id: string }[] };
@@ -113,7 +116,7 @@ describe("POST/PATCH /licitaciones/:propertyId/company/documents (Fase 16)", () 
   it("PATCH contra un documentId inexistente -> 404", async () => {
     const ctx = await buildLicitacionesTestContext(buildApp);
     const app = buildApp(ctx.deps);
-    const res = await app.request(`/licitaciones/${ctx.propertyId}/company/documents/00000000-0000-0000-0000-000000000000`, patchJson(ctx.staff.writer.token, { approvalStatus: "aprobado" }));
+    const res = await app.request(`/licitaciones/${ctx.propertyId}/company/documents/00000000-0000-0000-0000-000000000000`, patchJson(ctx.staff.writer.token, { label: "x" }));
     expect(res.status).toBe(404);
   });
 });

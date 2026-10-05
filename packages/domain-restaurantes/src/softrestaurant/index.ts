@@ -6,3 +6,4 @@ export * from "./outbox-store.ts";
 export * from "./outbox-memory-store.ts";
 export * from "./outbox-postgres-store.ts";
 export * from "./outbox-service.ts";
+export * from "./alerta-vencida.ts";
