@@ -1130,15 +1130,9 @@ export class PostgresRentasRepository implements RentasRepository {
   }
 
   async listOrganizacionesConReservasSinMovimiento(desde: string, hasta: string): Promise<readonly OrganizacionConReservasSinMovimiento[]> {
-    const { rows } = await this.db.query<{ organization_id: string; n: string }>(
-      `select o.organization_id, count(*)::text as n
-         from rentas.ocupacion o
-        where o.capa = 'reserva' and o.estado = 'confirmado' and lower(o.rango) >= $1::date and lower(o.rango) < $2::date
-          and not exists (select 1 from rentas.reserva_financiero rf where rf.ocupacion_id = o.id)
-        group by o.organization_id order by o.organization_id;`,
-      [desde, hasta],
-    );
-    return rows.map((r) => ({ organizationId: r.organization_id, cantidad: Number(r.n) }));
+    // Funcion de sistema (migracion 035): las policies de reserva_financiero dependen de auth.uid(), que en la sesion de sistema es NULL.
+    const { rows } = await this.db.query<{ organization_id: string; cantidad: number }>(`select organization_id, cantidad from rentas.system_reservas_sin_movimiento($1::date, $2::date);`, [desde, hasta]);
+    return rows.map((r) => ({ organizationId: r.organization_id, cantidad: Number(r.cantidad) }));
   }
 
   // ---- Payout / conciliación (flujo 6, Fase 2, alcance recortado) ----

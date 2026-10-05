@@ -5,7 +5,8 @@
 --   B) rentas.reserva_financiero: origen del movimiento y estado `requiere_revision` (+ trigger sobre rentas.ocupacion que lo
 --      marca cuando la reserva cambia de fechas o se cancela; nunca recalcula montos).
 --   C) rentas.importacion_pagos / importacion_pagos_linea: importacion idempotente del reporte de pagos de la OTA (CSV).
---   D) Clase de retencion rentas_huesped_pii: la purga tambien pone en NULL telefono_ultimos4 (create or replace de
+--   D) rentas.system_reservas_sin_movimiento: conteo por organizacion para el aviso diario de "reservas sin movimiento financiero".
+--   E) Clase de retencion rentas_huesped_pii: la purga tambien pone en NULL telefono_ultimos4 (create or replace de
 --      rentas.system_purge_retencion con el cuerpo vigente de 028 mas ese unico bloque).
 --
 -- Compatibilidad con la base sin migrar: el codigo TypeScript captura 42703/42P01 (columnas/tablas nuevas) dentro de SAVEPOINT
@@ -121,7 +122,40 @@ grant select, insert on rentas.importacion_pagos_linea to authenticated;
 grant update (ocupacion_id, resultado, nota, actualizado_en) on rentas.importacion_pagos_linea to authenticated;
 grant select, insert, update, delete on rentas.importacion_pagos, rentas.importacion_pagos_linea to service_role;
 
--- D) Purga de retencion: cuerpo vigente de 028 + bloque de telefono_ultimos4
+-- D) Barrido de sistema del aviso "reservas confirmadas sin movimiento financiero".
+-- Por que security definer: el cron corre como sesion de sistema (rol authenticated con auth.uid() NULL) y las policies de
+-- rentas.reserva_financiero se evaluan con auth.uid(); sin esta funcion el barrido no veria NINGUN movimiento y reportaria como "sin
+-- movimiento" todas las reservas de todas las organizaciones (falso positivo masivo). Guard auth.uid() is null: un usuario autenticado
+-- no puede llamarla (42501). Devuelve solo conteos por organizacion, nunca filas ni PII. Ventana acotada a 62 dias. search_path fijo;
+-- EXECUTE revocado a public y anon, concedido a authenticated porque la sesion de sistema usa ese rol.
+create function rentas.system_reservas_sin_movimiento(p_desde date, p_hasta date)
+returns table (organization_id uuid, cantidad integer)
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog, rentas, pg_temp
+as $$
+begin
+  if auth.uid() is not null then
+    raise exception 'rentas.system_reservas_sin_movimiento: solo la sesion de sistema (auth.uid() es NULL).' using errcode = '42501';
+  end if;
+  if p_desde is null or p_hasta is null or p_hasta <= p_desde or p_hasta - p_desde > 62 then
+    raise exception 'rentas.system_reservas_sin_movimiento: ventana invalida (maximo 62 dias).' using errcode = '22023';
+  end if;
+  return query
+    select o.organization_id, count(*)::integer
+      from rentas.ocupacion o
+     where o.capa = 'reserva' and o.estado = 'confirmado'
+       and lower(o.rango) >= p_desde and lower(o.rango) < p_hasta
+       and not exists (select 1 from rentas.reserva_financiero rf where rf.ocupacion_id = o.id)
+     group by o.organization_id
+     order by o.organization_id;
+end;
+$$;
+revoke all on function rentas.system_reservas_sin_movimiento(date, date) from public, anon;
+grant execute on function rentas.system_reservas_sin_movimiento(date, date) to authenticated;
+
+-- E) Purga de retencion: cuerpo vigente de 028 + bloque de telefono_ultimos4
 create or replace function rentas.system_purge_retencion(p_org uuid, p_class text, p_cutoff timestamptz, p_dry boolean, p_limit integer)
 returns table (out_afectadas integer, out_anonimizadas integer, out_protegidas integer)
 language plpgsql
