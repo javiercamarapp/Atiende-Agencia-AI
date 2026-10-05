@@ -209,7 +209,7 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (mode === "doble") {
       if (!isExpedienteApprovalStage(raw.stage)) throw Errors.validation(`stage requerido: ${EXPEDIENTE_APPROVAL_STAGES.join(" | ")}.`);
       stage = raw.stage;
-      await requireStepUp(deps, { userId, organizationId, scope: "expediente_approval", token: c.req.header("x-step-up-token") });
+      await requireStepUp(deps, { userId, organizationId, scope: "expediente_approval", token: c.req.header("x-step-up-token"), db: c.get("db") });
     } else if (raw.stage !== undefined) {
       throw Errors.conflict("La doble aprobación del expediente aún no está disponible en esta base (falta la migración 033).");
     }

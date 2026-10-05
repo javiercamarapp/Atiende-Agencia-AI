@@ -225,6 +225,10 @@ describe("step-up TOTP en cada aprobacion (L-26)", () => {
     expect(((await ajeno.json()) as { code: string }).code).toBe("step_up_required");
 
     expect((await approve(s, s.ctx.staff.analyst.token, "tecnica_legal", { "x-step-up-token": tokenAnalyst })).status).toBe(201);
+    // UN SOLO USO: el mismo token ya no sirve para otra aprobacion, aunque sea del mismo usuario y alcance.
+    const reuso = await approve(s, s.ctx.staff.analyst.token, "economica", { "x-step-up-token": tokenAnalyst });
+    expect(reuso.status).toBe(403);
+    expect(((await reuso.json()) as { code: string }).code).toBe("step_up_required");
     // la 2/2 exige SU propio step-up (el del analyst no vale para el owner)
     expect((await approve(s, s.ctx.staff.owner.token, "economica", { "x-step-up-token": tokenAnalyst })).status).toBe(403);
     expect((await approve(s, s.ctx.staff.owner.token, "economica", { "x-step-up-token": tokenOwner })).status).toBe(201);

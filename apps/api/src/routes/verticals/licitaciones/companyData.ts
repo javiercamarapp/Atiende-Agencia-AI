@@ -426,7 +426,7 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
         const itemId = c.req.param(target.param) ?? "";
         if (!UUID_RE.test(itemId)) throw Errors.notFound("Dato de empresa no encontrado.");
         // Las tarifas son la decisión económica: segundo factor reciente (token atado a usuario + organización + alcance).
-        if (target.stepUp) await requireStepUp(deps, { userId, organizationId, scope: "company_rate_approval", token: c.req.header("x-step-up-token") });
+        if (target.stepUp) await requireStepUp(deps, { userId, organizationId, scope: "company_rate_approval", token: c.req.header("x-step-up-token"), db: c.get("db") });
         const repo = deps.licitacionesRepo(c.get("db"));
         const outcome = await repo.decideCompanyItem(organizationId, { kind: target.kind, itemId, decision, actorId: userId, actorRole: c.get("verticalRole")! });
         if (outcome !== "ok") decisionStatus(outcome);
