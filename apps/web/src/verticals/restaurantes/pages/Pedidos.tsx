@@ -11,6 +11,7 @@
 // gate de confirmación, las transiciones ofrecidas y todas las llamadas al
 // backend son EXACTAMENTE las mismas.
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Button,
   Card,
@@ -47,6 +48,8 @@ import { AprobacionesPanel } from "./AprobacionesPanel.tsx";
 import { AutopilotoReglasDialogo } from "../components/AutopilotoReglasDialogo.tsx";
 import { HistorialPedidoDialogo } from "../components/HistorialPedidoDialogo.tsx";
 import { MotivoDialogo } from "../components/MotivoDialogo.tsx";
+import { ETIQUETA_ESTADO_COMANDA, TONO_ESTADO_COMANDA, etiquetaInsigniaPedido, fetchEstadosComandaPorPedido } from "../lib/pos-comandas-client.ts";
+import type { EstadoComandaWire } from "../lib/pos-comandas-client.ts";
 import { fetchRepartidores } from "../lib/staff-client.ts";
 import type { RepartidorMember } from "../lib/staff-client.ts";
 import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
@@ -105,6 +108,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
   const [repartidores, setRepartidores] = useState<readonly RepartidorMember[] | null>(null);
   const [repartidoresError, setRepartidoresError] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
+  // Estado de la comanda al POS de cada pedido de la lista (lectura liviana, solo ids). Sin respuesta (base sin migrar, error de red) no se pinta
+  // ninguna insignia: nunca bloquea ni tumba la lista de pedidos.
+  const [comandaEstados, setComandaEstados] = useState<Readonly<Record<string, EstadoComandaWire>>>({});
   // Aviso OPCIONAL por WhatsApp al marcar "listo para recoger" (por defecto sí avisa; el staff puede apagarlo
   // por pedido, p. ej. si el cliente ya está en mostrador).
   const [sinAvisoPorPedido, setSinAvisoPorPedido] = useState<ReadonlySet<string>>(new Set());
@@ -598,6 +604,13 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
                     <StatusBadge tone="neutral" dot={false} data-testid={`canal-${o.id}`}>
                       {o.canal === "recoger" ? "Recoger" : "Domicilio"}
                     </StatusBadge>
+                  )}
+                  {comandaEstados[o.id] && (
+                    <Link to={`/restaurantes/${orgSlug}/comandas-pos`} className="no-underline" title={`Comanda al POS: ${ETIQUETA_ESTADO_COMANDA[comandaEstados[o.id]!]}. Ver la cola.`} data-testid={`comanda-pos-${o.id}`}>
+                      <StatusBadge tone={TONO_ESTADO_COMANDA[comandaEstados[o.id]!]} dot={false}>
+                        {etiquetaInsigniaPedido(comandaEstados[o.id]!)}
+                      </StatusBadge>
+                    </Link>
                   )}
                   <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge>
                 </div>
