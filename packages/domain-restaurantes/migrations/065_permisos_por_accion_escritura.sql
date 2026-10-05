@@ -114,6 +114,9 @@ create policy "duenos y admins borran productos" on restaurantes.products for de
 --    * GRANT por COLUMNA: las funciones reales solo escriben price, is_available y updated_at (upsertBranchProductState y
 --      setBranchProductAvailability); property_id/product_id dejan de ser reescribibles. Es un REVOKE + GRANT mas angosto, no uno nuevo.
 -- ---------------------------------------------------------------------------
+-- ADVERTENCIA para quien agregue columnas a branch_products: este REVOKE retira TODO UPDATE de columna a authenticated, incluido cualquier
+--   GRANT por columna de migraciones previas; si una columna nueva debe ser editable por staff, hay que sumarla a la lista del GRANT de abajo
+--   (y al trigger si afecta el precio). Hoy los unicos escritores son upsertBranchProductState, setBranchProductAvailability y el seed (postgres).
 revoke update on restaurantes.branch_products from authenticated;
 grant update (price, is_available, updated_at) on restaurantes.branch_products to authenticated;
 
@@ -178,6 +181,9 @@ create policy "duenos y admins actualizan promociones dentro de su alcance" on r
 create policy "duenos y admins borran promociones dentro de su alcance" on restaurantes.promotions for delete
   using (restaurantes.actor_tiene_rol_en_alcance(organization_id, property_ids, array['owner', 'admin']));
 
+-- Efecto con la 064 aplicada: la 064 ya reemplazo "cualquiera puede ver promociones activas" por una policy solo de sistema, asi que con ambas
+--   el staff NO lee ninguna promocion. No se rompe nada: ningun camino de staff lee promotions (createOrder/quoteOrder solo corren desde
+--   public/whatsapp/voice/email con sesion de sistema, que no pasa por estas policies).
 drop policy if exists "staff ve promociones de su organización" on restaurantes.promotions;
 drop policy if exists "gestores ven las promociones de su organizacion" on restaurantes.promotions;
 create policy "duenos y admins ven las promociones de su organizacion" on restaurantes.promotions for select
