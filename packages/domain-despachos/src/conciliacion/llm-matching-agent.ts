@@ -162,6 +162,9 @@ export interface SugerirMatchesLLMOptions {
    * por sí sola: el status siempre es `pendiente_aprobacion` sin importar el score).
    * Default 30. */
   readonly minScoreParaSugerir?: number;
+  /** Cancela la corrida: se pasa a cada llamada del gateway (corta la petición al proveedor) y, una vez
+   * abortada, ya no se inicia ningún movimiento más (quedan en `sinSugerencia` con `limite_de_lote_alcanzado`). */
+  readonly signal?: AbortSignal;
 }
 
 /** Rol por defecto registrado en `LlmGateway.registerLadder` para este agente -- DEBE
@@ -337,7 +340,7 @@ export async function sugerirMatchesLLM(
 
   let contador = 0;
   for (let movementIdx = 0; movementIdx < unmatchedBank.length; movementIdx++) {
-    if (contador >= maxMovimientos) {
+    if (contador >= maxMovimientos || opciones.signal?.aborted) {
       sinSugerencia.push({ movementIdx, razon: "limite_de_lote_alcanzado", mejorScoreEvaluado: null });
       continue;
     }
@@ -367,6 +370,7 @@ export async function sugerirMatchesLLM(
           messages: [{ role: "user", content: buildUserMessage(mov, candidatos) }],
           tools: [PROPONER_MATCH_TOOL],
           temperature: 0,
+          ...(opciones.signal ? { signal: opciones.signal } : {}),
         },
       });
     } catch (err) {

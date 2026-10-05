@@ -2,9 +2,10 @@
 // tope por CFDI, revisión de direcciones indeterminadas y piloto automático al guardar un estado de cuenta (bandera apagada por omisión; nunca confirma nivel 2, grupos ni IA).
 // Mismo patrón que despachos-conciliacion-persistida.spec.ts: dobles en memoria con auth/RLS/roles reales.
 import { randomUUID } from "node:crypto";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LlmGateway } from "@atiende/agent-core";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { PLAZO_FASE_IA_PILOTO_MS } from "../src/routes/verticals/despachos/conciliacion-piloto.ts";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
@@ -411,6 +412,39 @@ describe("D-P3-12: piloto automático al guardar un estado de cuenta", () => {
     const r = await guardar(admin(), CSV(["21/01/2026;21/01/2026;OTRO PAGO CLIENTE ACME;;1,001.00;1.00"]));
     expect(r.status).toBe(201);
     expect(((await r.json()) as RespuestaGuardar).insertados).toBe(1);
+  });
+
+  it("la fase de IA tiene UN plazo global y abortable: un proveedor colgado no retiene el guardado y solo se evalua la sesion mas reciente", async () => {
+    await put(admin(), "configuracion", { autoconfirmarNivel1: true });
+    await cfdi(1160, "2026-01-05");
+    await cfdi(1160, "2026-02-05");
+    let llamadas = 0;
+    let senal: AbortSignal | undefined;
+    const colgado = {
+      complete: (peticion: { request: { signal?: AbortSignal } }) => {
+        llamadas += 1;
+        senal = peticion.request.signal;
+        return new Promise(() => {}); // nunca responde
+      },
+    } as unknown as LlmGateway;
+    ctx.deps = conEmisiones([], colgado);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const pendiente = guardar(admin(), CSV(["20/01/2026;20/01/2026;PAGO ACME;;1,000.00;1.00", "20/02/2026;20/02/2026;PAGO ACME;;1,000.00;1.00"]));
+      let terminado = false;
+      void pendiente.finally(() => { terminado = true; });
+      // El plazo se arma al llegar a la fase de IA (despues de las escrituras): se avanza el reloj falso por tramos hasta que responde.
+      for (let i = 0; i < 200 && !terminado; i++) await vi.advanceTimersByTimeAsync(PLAZO_FASE_IA_PILOTO_MS / 4);
+      const r = await pendiente;
+      expect(r.status).toBe(201);
+      const cuerpo = (await r.json()) as RespuestaGuardar;
+      expect(cuerpo.insertados).toBe(2);
+      expect(cuerpo.conciliacion!.sesiones.map((x) => x.sugerenciasIA)).toEqual([0, 0]);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(llamadas).toBe(1); // dos periodos, una sola llamada: solo la sesion mas reciente
+    expect(senal?.aborted).toBe(true);
   });
 
   it("la bandera la cambia solo el admin (403 contador/readonly), la lee solo el admin (403 contador, auditor y solo lectura) y valida el cuerpo", async () => {

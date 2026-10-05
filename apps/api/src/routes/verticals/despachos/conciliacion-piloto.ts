@@ -27,8 +27,8 @@ import type { AppDeps } from "../../../deps.ts";
 export const MAX_PERIODOS_PILOTO = 12;
 /** Techo de movimientos que el piloto manda al modelo por sesión (el botón manual permite 25; el automático es más conservador: cuesta sin que nadie lo pida). */
 export const MAX_MOVIMIENTOS_LLM_PILOTO = 10;
-/** El piloto no espera al proveedor más de esto: pasado el plazo se omite y el archivo se responde igual. */
-export const PLAZO_LLM_PILOTO_MS = 12_000;
+/** Plazo GLOBAL de toda la fase de IA del piloto (no por periodo): vercel.json fija maxDuration 30 s para la función y el guardado del archivo sigue sin COMMIT mientras se espera. Pasado el plazo se aborta la llamada al proveedor y el archivo se responde igual. */
+export const PLAZO_FASE_IA_PILOTO_MS = 8_000;
 const TAMANO_LOTE_AUTOPILOTO = 25;
 
 export interface DatosPiloto {
@@ -119,7 +119,7 @@ export function crearPilotoConciliacion<D extends DatosPiloto>(p: DependenciasPi
   }
 
   /** Sugerencias de nivel 4, best-effort. Nunca lanza. */
-  async function sugerirConIA(c: Context<CoreAuthHonoEnv>, repo: ConciliacionPersistidaRepository, sesion: SesionConciliacion, calculo: ResultadoPropuestas, d: D): Promise<number> {
+  async function sugerirConIA(c: Context<CoreAuthHonoEnv>, repo: ConciliacionPersistidaRepository, sesion: SesionConciliacion, calculo: ResultadoPropuestas, d: D, signal: AbortSignal): Promise<number> {
     const gateway = deps.llmGateway;
     if (!gateway || calculo.movimientosSinConciliar.length === 0) return 0;
     const conPendiente = new Set(d.sugerencias.filter((g) => g.estado === "pendiente").map((g) => g.movimientoId));
@@ -128,22 +128,19 @@ export function crearPilotoConciliacion<D extends DatosPiloto>(p: DependenciasPi
     const registros = calculo.registrosSinConciliar.filter((r) => !cfdiConPendiente.has(r.id));
     if (movimientos.length === 0 || registros.length === 0) return 0;
     try {
-      let vencido = false;
-      let temporizador: ReturnType<typeof setTimeout> | undefined;
-      const plazo = new Promise<null>((resolve) => {
-        temporizador = setTimeout(() => {
-          vencido = true;
-          resolve(null);
-        }, PLAZO_LLM_PILOTO_MS);
-      });
+      // La señal cancela la petición al proveedor; la carrera además suelta la espera si un gateway la ignora.
       const llamada = sugerirMatchesLLM(gateway, movimientos, registros, {
         tenantId: c.get("organizationId"),
         actor: { actorId: c.get("userId"), actorRole: c.get("verticalRole") as DespachosRole },
         maxMovimientos: MAX_MOVIMIENTOS_LLM_PILOTO,
+        signal,
       }).catch(() => null);
-      const resultado = await Promise.race([llamada, plazo]);
-      if (temporizador) clearTimeout(temporizador);
-      if (vencido || resultado === null || resultado.sugerencias.length === 0) return 0;
+      const abortada = new Promise<null>((resolve) => {
+        if (signal.aborted) resolve(null);
+        else signal.addEventListener("abort", () => resolve(null), { once: true });
+      });
+      const resultado = await Promise.race([llamada, abortada]);
+      if (signal.aborted || resultado === null || resultado.sugerencias.length === 0) return 0;
       const guardadas = await repo.guardarSugerencias(
         sesion.propertyId,
         sesion.id,
@@ -261,11 +258,18 @@ export function crearPilotoConciliacion<D extends DatosPiloto>(p: DependenciasPi
       });
       if (nucleo.estado !== "ok" || deps.llmGateway === undefined) return nucleo;
       // Nivel 4 (IA): best-effort fuera del núcleo; cada escritura abre su propio savepoint y nada de aquí puede fallar la respuesta.
-      const conIA: ResumenSesionPiloto[] = [];
-      for (const x of procesados) {
-        conIA.push({ ...x.resumen, sugerenciasIA: await sugerirConIA(c, repo, x.sesion, x.calculo, x.datos) });
+      // Un solo plazo global y solo la sesión más reciente (la que el usuario mira al terminar): una espera por periodo pasaría el maxDuration de Vercel y revertiría el archivo.
+      const reciente = procesados[procesados.length - 1];
+      if (!reciente) return nucleo;
+      const control = new AbortController();
+      const temporizador = setTimeout(() => control.abort(), PLAZO_FASE_IA_PILOTO_MS);
+      let sugerenciasIA = 0;
+      try {
+        sugerenciasIA = await sugerirConIA(c, repo, reciente.sesion, reciente.calculo, reciente.datos, control.signal);
+      } finally {
+        clearTimeout(temporizador);
       }
-      return { ...nucleo, sesiones: conIA };
+      return { ...nucleo, sesiones: procesados.map((x) => (x === reciente ? { ...x.resumen, sugerenciasIA } : x.resumen)) };
     },
   };
 }
