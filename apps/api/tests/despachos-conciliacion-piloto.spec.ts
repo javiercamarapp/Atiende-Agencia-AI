@@ -70,6 +70,7 @@ interface Detalle {
   ventana: { desde: string; hasta: string; dias: number };
   propuestas: { movimientoId: string; invoiceId: string; nivel: number; requiereRevision: boolean }[];
   ambiguas: { movimientoId: string; combinaciones: string[][]; exactas: boolean }[];
+  multiLinea: { movimientoId: string; invoiceIds: string[] }[];
   sinConciliar: { movimientoId: string; motivo: string; cercanos: { invoiceId: string; diferenciaCentavos: number }[] }[];
   propuestasEn: string | null;
   propuestasFuente: "guardadas" | "calculadas" | "ninguna";
@@ -187,6 +188,24 @@ describe("D-P3-10: ambiguo y sin conciliar", () => {
     expect(det.ambiguas[0]!.exactas).toBe(true);
     expect(det.ambiguas[0]!.combinaciones.map((x) => [...x].sort())).toEqual(expect.arrayContaining([[a.id, b.id].sort(), [c.id, d.id].sort()]));
     expect(det.sinConciliar[0]).toMatchObject({ motivo: "ambiguo" });
+  });
+
+  it("un ambiguo al que solo le queda UNA combinación vigente no desaparece: el GET recalcula al vuelo y lo muestra como multi-línea (no como 'sin conciliar' sin motivo)", async () => {
+    const [a, b, c] = [await cfdi(100, "2026-01-05"), await cfdi(200, "2026-01-05"), await cfdi(150, "2026-01-05")];
+    await cfdi(150, "2026-01-05");
+    await movimiento("2026-01-05", 300, "DEPOSITO VARIOS");
+    await movimiento("2026-01-06", 150, "PAGO CLIENTE UNO");
+    const sesionId = await crearSesion();
+    const antes = await detalle(sesionId);
+    const mov300 = antes.movimientos.find((m) => m.monto === 300)!;
+    const mov150 = antes.movimientos.find((m) => m.monto === 150)!;
+    expect(antes.ambiguas.map((x) => x.movimientoId)).toContain(mov300.id);
+    expect((await confirmar(sesionId, [par(mov150.id, c.id, { manual: true })])).status).toBe(201); // c queda conciliado: al ambiguo le queda [a, b]
+    const despues = await detalle(sesionId);
+    expect(despues.ambiguas.map((x) => x.movimientoId)).not.toContain(mov300.id);
+    expect(despues.propuestasFuente).toBe("calculadas");
+    const m = despues.multiLinea.find((x) => x.movimientoId === mov300.id);
+    expect(m && [...m.invoiceIds].sort()).toEqual([a.id, b.id].sort());
   });
 
   it("sin combinación -> sin_conciliar con el motivo y los CFDI individuales más cercanos", async () => {

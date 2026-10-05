@@ -159,6 +159,13 @@ export function registrarConciliacionPersistida(app: Hono<CoreAuthHonoEnv>, deps
       if (guardadas) {
         propuestas = vigentesDe(guardadas, libresMov, libresReg);
         fuente = "guardadas";
+        // Un ambiguo al que ya solo le queda UNA combinación (la otra se concilió) no se promueve a propuesta sin volver a correr el motor, y quedaría como
+        // «sin conciliar» sin motivo. En ese caso raro la lectura calcula al vuelo, sin guardar (como antes de la 025), hasta el próximo Recalcular.
+        const ambiguosLibres = guardadas.ambiguas.filter((a) => libresMov.has(a.movimientoId)).length;
+        if (propuestas.ambiguas.length < ambiguosLibres) {
+          propuestas = aPropuestasGuardadas(calcularPropuestas(d.movimientosLibres, d.registrosLibres), new Date().toISOString());
+          fuente = "calculadas";
+        }
       } else {
         // Sesión anterior a la migración 025 (o base sin migrar): se calcula al vuelo, como antes, sin guardar (una lectura no escribe).
         propuestas = aPropuestasGuardadas(calcularPropuestas(d.movimientosLibres, d.registrosLibres), new Date().toISOString());
