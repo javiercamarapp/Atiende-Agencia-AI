@@ -271,6 +271,14 @@ export type {
 } from "./superadmin-organizaciones-ficha-repository.ts";
 export { InMemoryOrgFichaRepository, PostgresOrgFichaRepository } from "./superadmin-organizaciones-ficha-repository.ts";
 export type {
+  OrgPreflightHechos,
+  OrgPreflightRepository,
+  PreflightRestaurantesHechos,
+  PreflightSucursalHechos,
+  PreflightVoz,
+} from "./superadmin-preflight-repository.ts";
+export { InMemoryOrgPreflightRepository, PostgresOrgPreflightRepository } from "./superadmin-preflight-repository.ts";
+export type {
   AceptacionSuperadmin,
   EquipoFuente,
   EquipoInvitacionCodigo,

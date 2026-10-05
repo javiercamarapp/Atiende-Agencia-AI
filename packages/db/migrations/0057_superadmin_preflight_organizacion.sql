@@ -12,7 +12,7 @@
 --     * organizacion inexistente -> NULL; vertical distinta de 'restaurantes' -> {vertical, restaurantes: null} (el preflight marca
 --       "no aplica");
 --     * restaurantes -> sucursales (activa, coordenadas, productos disponibles, horario crudo, pedido minimo a domicilio, zonas, numero
---       propio de WhatsApp, decision de voz, personas del equipo con alcance), canal general de WhatsApp, agente configurado y nombre,
+--       propio de WhatsApp, decision de voz), canal general de WhatsApp, agente configurado y nombre,
 --       si hay pedidos, y la configuracion de privacidad (responsable, URL del aviso, version) con los avisos publicados.
 --     * Cada bloque corre en su propio subbloque: si una tabla o columna falta en este despliegue, ESE bloque queda en NULL ("no se
 --       pudo medir") y el resto se entrega; nunca se inventa un cero ni un "hecho".
@@ -54,7 +54,7 @@ begin
     return jsonb_build_object('vertical', v_vertical, 'restaurantes', null);
   end if;
 
-  -- Sucursales con todo lo que el checklist del dueño mide por sucursal.
+  -- Sucursales con todo lo que el checklist del dueño mide por sucursal (el equipo se lee con core.list_org_team_for_superadmin, 0053).
   begin
     select coalesce(jsonb_agg(jsonb_build_object(
         'id', p.id,
@@ -70,12 +70,7 @@ begin
                  when not exists (select 1 from restaurantes.branch_voice_config v where v.property_id = p.id) then 'sin_configurar'
                  when (select v.habilitado from restaurantes.branch_voice_config v where v.property_id = p.id) then 'habilitada'
                  else 'deshabilitada'
-               end,
-        'personasConAlcance', (
-          select count(*) from core.membership m
-          where m.organization_id = p_organization_id
-            and m.vertical_role in ('owner', 'admin', 'staff')
-            and (m.property_ids is null or p.id = any (m.property_ids)))
+               end
       ) order by bd.display_order, p.name), '[]'::jsonb)
       into v_sucursales
     from core.property p

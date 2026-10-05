@@ -4,7 +4,7 @@
 --   A) Autorizacion: solo un superadmin real con su propio uid; staff normal (owner de la propia organizacion), uid ajeno
 --      (caller-binding), sesion de sistema y anon reciben 42501.
 --   B) Contenido correcto para una organizacion de restaurantes: sucursales (activa/inactiva, coordenadas, productos, horario,
---      pedido minimo, zonas, numero propio, voz, personas con alcance), canal general, agente, pedidos y privacidad.
+--      pedido minimo, zonas, numero propio, voz), canal general, agente, pedidos y privacidad.
 --   C) Aislamiento: nada de otra organizacion; vertical distinta de restaurantes -> restaurantes null; inexistente -> NULL.
 --   D) La respuesta no trae correos, telefonos ni la URL del aviso de privacidad.
 --   E) Base sin una tabla (simulada): ESE bloque queda en NULL y el resto se entrega (nunca un cero inventado).
@@ -150,14 +150,11 @@ do $$ declare r jsonb; s jsonb; a1 jsonb; a2 jsonb; a3 jsonb; begin
   if (a1->>'zonasDeEntrega')::int <> 1 then raise exception 'A1 zonas: %', a1; end if;
   if not (a1->>'conWhatsappPropio')::boolean then raise exception 'A1 whatsapp propio: %', a1; end if;
   if a1->>'voz' <> 'habilitada' then raise exception 'A1 voz: %', a1; end if;
-  -- owner (alcance total) + staff con alcance en A1; el repartidor no cuenta.
-  if (a1->>'personasConAlcance')::int <> 2 then raise exception 'A1 personas con alcance debia ser 2: %', a1; end if;
   if not (a2->>'activa')::boolean then raise exception 'A2 debia estar activa'; end if;
   if (a2->>'conCoordenadas')::boolean or (a2->>'conWhatsappPropio')::boolean then raise exception 'A2 debia estar vacia: %', a2; end if;
   if (a2->>'productosDisponibles')::int <> 0 or (a2->>'zonasDeEntrega')::int <> 0 then raise exception 'A2 sin menu ni zonas: %', a2; end if;
   if a2->'horario' <> 'null'::jsonb then raise exception 'A2 sin politica -> horario null: %', a2; end if;
   if a2->>'voz' <> 'deshabilitada' then raise exception 'A2 voz deshabilitada a proposito: %', a2; end if;
-  if (a2->>'personasConAlcance')::int <> 1 then raise exception 'A2 solo el owner con alcance total: %', a2; end if;
   if (a3->>'activa')::boolean then raise exception 'A3 debia estar inactiva'; end if;
   if a3->>'voz' <> 'sin_configurar' then raise exception 'A3 voz sin configurar: %', a3; end if;
 end $$;
@@ -188,7 +185,6 @@ do $$ declare r jsonb; x jsonb; begin
   x := r->'restaurantes';
   if jsonb_array_length(x->'sucursales') <> 1 then raise exception 'org B debia tener 1 sucursal: %', x->'sucursales'; end if;
   if (x->'sucursales'->0->>'nombre') <> 'Sucursal B1 solo de B' then raise exception 'sucursal ajena: %', x->'sucursales'; end if;
-  if (x->'sucursales'->0->>'personasConAlcance')::int <> 1 then raise exception 'solo el owner de B: %', x->'sucursales'; end if;
   if (x->>'whatsappGeneral')::boolean or (x->>'hayPedidos')::boolean then raise exception 'B no tiene canal ni pedidos: %', x; end if;
   if (x->'agente'->>'configurada')::boolean then raise exception 'B sin agente: %', x->'agente'; end if;
   if (x->'privacidad'->>'configurada')::boolean or (x->'privacidad'->>'conAviso')::boolean then raise exception 'B sin privacidad: %', x->'privacidad'; end if;
