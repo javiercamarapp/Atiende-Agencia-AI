@@ -55,6 +55,8 @@ import type { PilotoConciliacion } from "./conciliacion-piloto.ts";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Techo de movimientos que se mandan al modelo en una corrida (defensa de costo; el resto queda sin evaluar y se puede repetir). */
 export const MAX_MOVIMIENTOS_LLM_POR_CORRIDA = 25;
+/** Ventana de facturas (días antes y después del periodo) del botón de IA: cubre crédito a 90 días más margen. */
+export const VENTANA_NIVEL4_DIAS = 120;
 
 /** Errores de dominio -> ApiError (400/403/404/409/503). Todo lo demás se repropaga. */
 export function traducirErrorConciliacionHttp(err: unknown): never {
@@ -106,18 +108,27 @@ export function registrarConciliacionPersistida(app: Hono<CoreAuthHonoEnv>, deps
 
   /** Datos que el motor necesita, SIEMPRE leídos del servidor: movimientos de la sesión sin match vigente y CFDI de la property aún sin conciliar y no cancelados,
    * acotados a la VENTANA de fechas del periodo de la sesión (D-P3-10: ya no se cargan todas las facturas del cliente). */
-  async function cargarDatos(c: Context<CoreAuthHonoEnv>, repo: ConciliacionPersistidaRepository, sesion: SesionConciliacion) {
+  async function cargarDatos(c: Context<CoreAuthHonoEnv>, repo: ConciliacionPersistidaRepository, sesion: SesionConciliacion, diasVentana?: number) {
     // En SECUENCIA: la sesión del request es UNA transacción con un solo cliente pg. Cada método del repo abre su propio
     // SAVEPOINT; en paralelo se encolan SAVEPOINT a, b, c y luego RELEASE a destruye b y c (3B001) y aborta la transacción.
     const movimientos = await repo.listarMovimientosSesion(sesion);
     const matches = await repo.listarMatches(sesion.id);
     const sugerencias = await repo.listarSugerencias(sesion.id);
     const conciliados = await repo.invoiceIdsConciliados(sesion.propertyId);
-    const ventana = ventanaFechasSesion(sesion.periodo);
-    const invoices = await deps.despachosRepo(c.get("db")).listInvoices(sesion.propertyId, { fechaDesde: ventana.desde, fechaHasta: ventana.hasta });
+    const ventana = ventanaFechasSesion(sesion.periodo, diasVentana);
+    const despachosRepo = deps.despachosRepo(c.get("db"));
+    const enVentana = await despachosRepo.listInvoices(sesion.propertyId, { fechaDesde: ventana.desde, fechaHasta: ventana.hasta });
+    // Los CFDI que ya referencia un match vigente o una sugerencia pendiente se cargan aunque caigan fuera de la ventana: la pantalla los etiqueta con folio y emisor.
+    // Solo se agregan a `invoices` (etiquetas y estado); `registrosLibres`, lo que ve el motor, sigue acotado a la ventana.
+    const idsEnVentana = new Set(enVentana.map((i) => i.id));
+    const referenciados = new Set<string>();
+    for (const m of matches) if (m.deshechoEn === null && !idsEnVentana.has(m.invoiceId)) referenciados.add(m.invoiceId);
+    for (const g of sugerencias) if (g.estado === "pendiente" && !idsEnVentana.has(g.invoiceId)) referenciados.add(g.invoiceId);
+    const fuera = referenciados.size > 0 ? await despachosRepo.findInvoicesByIds(sesion.propertyId, [...referenciados]) : [];
+    const invoices = [...enVentana, ...fuera];
     const movimientosConMatch = new Set(matches.filter((m) => m.deshechoEn === null).map((m) => m.movimientoId));
     const movimientosLibres: MovimientoGuardado[] = movimientos.filter((m) => !movimientosConMatch.has(m.id));
-    const registrosLibres = invoices.filter((i) => !conciliados.datos.has(i.id) && i.estadoSat !== "cancelado").map(invoiceARegistro);
+    const registrosLibres = enVentana.filter((i) => !conciliados.datos.has(i.id) && i.estadoSat !== "cancelado").map(invoiceARegistro);
     return { movimientos, movimientosLibres, matches, sugerencias, invoices, conciliados: conciliados.datos, registrosLibres, ventana };
   }
 
@@ -318,7 +329,8 @@ export function registrarConciliacionPersistida(app: Hono<CoreAuthHonoEnv>, deps
       const sesion = await sesionOFallar(repo, propertyId, c.req.param("id"));
       if (sesion.estado !== "abierta") throw Errors.conflict("La sesión está cerrada: no admite sugerencias.");
       await exigirPeriodoAbierto(c, sesion);
-      const d = await cargarDatos(c, repo, sesion);
+      // Ventana ampliada: el nivel 4 resuelve justo la cobranza a crédito (30, 60 o 90 días), que la ventana del motor (+-35) no alcanza.
+      const d = await cargarDatos(c, repo, sesion, VENTANA_NIVEL4_DIAS);
       const conPendiente = new Set(d.sugerencias.filter((g) => g.estado === "pendiente").map((g) => g.movimientoId));
       // El nivel 4 opera SOLO sobre lo que el motor determinístico no pudo conciliar y que no tiene ya una sugerencia pendiente.
       const sinPendiente = d.movimientosLibres.filter((m) => !conPendiente.has(m.id));

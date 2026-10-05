@@ -159,6 +159,23 @@ describe("D-P3-10: propuestas guardadas en la sesión (el GET no recorre el moto
   });
 });
 
+describe("D-P3-10: CFDI fuera de la ventana", () => {
+  it("el botón de IA (nivel 4) ve crédito a 60 días y el detalle etiqueta el CFDI que una sugerencia referencia aunque caiga fuera de la ventana del motor", async () => {
+    const fuera = await cfdi(1160, "2025-11-01", { emisor: "CLIENTE ACME SA DE CV" }); // 65 días antes del periodo: fuera de +-35
+    await movimiento("2026-01-05", 1000, "PAGO FACTURA CLIENTE ACME");
+    ctx.deps = conEmisiones([], gatewayQueElige(0, 80));
+    const sesionId = await crearSesion();
+    const antes = await detalle(sesionId);
+    expect(antes.cfdis.map((c) => c.id)).not.toContain(fuera.id); // sin referencias, el detalle sigue acotado a la ventana
+    const r = await post(admin(), `sesiones/${sesionId}/sugerencias-llm`);
+    expect(r.status).toBe(201);
+    const d = (await detalle(sesionId)) as Detalle & { sugerencias: { estado: string; invoiceId: string }[] };
+    expect(d.sugerencias).toHaveLength(1);
+    expect(d.sugerencias[0]).toMatchObject({ estado: "pendiente", invoiceId: fuera.id });
+    expect(d.cfdis.map((c) => c.id)).toContain(fuera.id);
+  });
+});
+
 describe("D-P3-10: ambiguo y sin conciliar", () => {
   it("2 combinaciones exactas -> el movimiento queda 'ambiguo' con sus combinaciones y NO se propone ninguna", async () => {
     const [a, b, c, d] = [await cfdi(100, "2026-01-05"), await cfdi(200, "2026-01-05"), await cfdi(150, "2026-01-05"), await cfdi(150, "2026-01-05")];
