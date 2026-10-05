@@ -48,6 +48,12 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "apps/api/tests/e2e-ciclo/programado-pos-ciclo.spec.ts",
   // R-16: alertas operativas (entrega tardia / programado por vencer) del tick de programados: reloj fijo en Merida/Cancun/CDMX.
   "apps/api/tests/restaurantes-avisos-operativos-tick.spec.ts",
+  // Autopiloto 2: alertas al dueno (dedupe por dia de Merida con reloj fijo en Merida/Cancun/CDMX) y borradores de campana del tick.
+  "packages/domain-restaurantes/tests/alertas-duenio-proveedor.spec.ts",
+  "packages/domain-restaurantes/tests/alertas-duenio-silencio.spec.ts",
+  "apps/api/tests/restaurantes-marketing-tick.spec.ts",
+  "apps/api/tests/restaurantes-silencio-tick.spec.ts",
+  "apps/api/tests/restaurantes-presupuesto-ia-duenio.spec.ts",
 ] as const;
 
 // `coverage` (y su umbral) se queda como en la config base: solo se evalua con `--coverage`, que este guard no usa.
