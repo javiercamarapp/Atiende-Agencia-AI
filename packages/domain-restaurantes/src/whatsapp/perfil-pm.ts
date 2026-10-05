@@ -55,7 +55,7 @@ export const PM_SALSAS_BASICAS = "roja, verde, cebolla con cilantro y limones";
 export const PM_SALSAS_A_PETICION = "crema de ajo, guacamolera, mexicana (pico de gallo) y habanero picado o soasado";
 /** Umbral de pedido grande por omision (decision de Javier, 2-oct-2026): editable por organizacion. */
 export const PM_PEDIDO_GRANDE_POR_OMISION = "más de $4,000 o más de 5 kg; más de $2,500 si el número no tiene historial y paga en efectivo";
-export const PM_PROMOS_POR_OMISION = "lunes 2x1 en tacos al pastor y martes nachos de pastor (orden completa) con 2 aguas de cortesía; solo para recoger, en todas las sucursales";
+export const PM_PROMOS_POR_OMISION = "lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales";
 
 /** Reglas del agente vivo de PM que el original ya habia probado (rescate-orig-restaurantes-1 §4). UNA sola redaccion para los dos
  * canales: WhatsApp las lleva en su prompt completo y la voz en el bloque no borrable (`voz/perfil-voz-pm.ts`), porque el

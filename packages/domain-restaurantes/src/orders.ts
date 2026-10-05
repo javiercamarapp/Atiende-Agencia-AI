@@ -324,8 +324,8 @@ export async function prepareCreateOrder(
   }
 
   // Doble porcion de salsas: extra COBRADO (producto "Extra salsa" del catalogo, precio de catalogo).
-  assertDobleSalsaAplica(resolved.products, resolved.items.map((i) => i.productId), payload.doubleSalsas);
   const doubleSalsaLine = buildDoubleSalsaLine(resolved.products, payload.doubleSalsas ?? []);
+  assertDobleSalsaAplica(resolved.products, resolved.items.map((i) => i.productId), payload.doubleSalsas);
   if (doubleSalsaLine) {
     total = Math.round((total + doubleSalsaLine.lineTotal) * 100) / 100;
     orderItems.push({ id: doubleSalsaLine.productId, name: doubleSalsaLine.name, price: doubleSalsaLine.price, quantity: doubleSalsaLine.quantity });
@@ -628,8 +628,8 @@ export async function quoteOrder(
   if (args.doubleSalsas !== undefined && (!Array.isArray(args.doubleSalsas) || args.doubleSalsas.length > DEFAULT_COMPLEMENTS.length || args.doubleSalsas.some((salsa) => !(DEFAULT_COMPLEMENTS as readonly string[]).includes(salsa)))) {
     throw new OrderValidationError("La doble porción solo aplica a las salsas incluidas del menú.");
   }
-  assertDobleSalsaAplica(resolved.products, resolved.items.map((i) => i.productId), args.doubleSalsas);
   const doubleSalsaLine = buildDoubleSalsaLine(resolved.products, args.doubleSalsas ?? []);
+  assertDobleSalsaAplica(resolved.products, resolved.items.map((i) => i.productId), args.doubleSalsas);
   const quote: OrderQuote = doubleSalsaLine
     ? { ...baseQuote, lines: [...baseQuote.lines, doubleSalsaLine], total: Math.round((baseQuote.total + doubleSalsaLine.lineTotal) * 100) / 100 }
     : baseQuote;

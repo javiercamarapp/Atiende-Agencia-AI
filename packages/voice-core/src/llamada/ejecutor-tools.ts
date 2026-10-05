@@ -88,17 +88,7 @@ export function crearEjecutorTools(opts: EjecutorToolsOpciones): EjecutorTools {
   const inciertas = new Set<string>(opts.registro.herramientasInciertas);
   return {
     definiciones: () => opts.registro.definiciones(),
-    async ejecutar(nombre, args, contexto) {
-      const primero = await ejecutarUna(nombre, args, contexto);
-      // QA-PM-R2-voz-04: una herramienta de ESCRITURA que expira (crear_pedido) pudo haberse registrado en el servidor. Se reintenta UNA vez con los mismos
-      // argumentos: el servidor es idempotente (mismo pedido de la llamada -> `ya_registrado` con su id, nunca un segundo pedido) y asi la llamada cuenta el
-      // objetivo y el agente no le dice al cliente que fallo un pedido que ya esta en cocina.
-      if (primero.timeout && inciertas.has(nombre)) {
-        const segundo = await ejecutarUna(nombre, args, contexto);
-        return { ...segundo, latenciaMs: primero.latenciaMs + segundo.latenciaMs };
-      }
-      return primero;
-    },
+    ejecutar: (nombre, args, contexto) => ejecutarUna(nombre, args, contexto),
   };
 
   async function ejecutarUna(nombre: string, args: unknown, contexto?: ContextoEjecucionTool): Promise<ResultadoTool> {

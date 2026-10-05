@@ -51,24 +51,8 @@ describe("maquina: pedido retenido e incierto", () => {
   });
 });
 
-describe("ejecutor: reintento de la herramienta de escritura que expira", () => {
-  it("crear_pedido expira la primera vez y el reintento (idempotente en el servidor) devuelve el pedido: la llamada cuenta el objetivo", async () => {
-    const registro: RegistroToolsVoz = { definiciones: () => [{ name: "crear_pedido", description: "x", parameters: { type: "object", properties: {} } }], herramientasInciertas: ["crear_pedido"], mensajeIncierto: "incierto" };
-    let llamadas = 0;
-    const ej = crearEjecutorTools({
-      registro,
-      timeoutMs: 20,
-      transporte: async (_n, _a, senal) => {
-        llamadas += 1;
-        if (llamadas === 1) await new Promise((_r, rej) => senal.addEventListener("abort", () => rej(new Error("abortado"))));
-        return { resultado: { order: { id: "o-1" }, ya_registrado: true }, entidadId: "o-1" };
-      },
-    });
-    const r = await ej.ejecutar("crear_pedido", {});
-    expect(llamadas).toBe(2);
-    expect(r).toMatchObject({ ok: true, timeout: false, entidadId: "o-1" });
-  });
-  it("si el reintento tambien expira queda INCIERTO", async () => {
+describe("ejecutor: el timeout de una escritura que aborta la peticion sigue siendo INCIERTO", () => {
+  it("si el transporte rechaza por el aborto ANTES de que gane la carrera del timeout, el resultado conserva `incierto` (antes se perdia y la maquina no avisaba)", async () => {
     const registro: RegistroToolsVoz = { definiciones: () => [{ name: "crear_pedido", description: "x", parameters: { type: "object", properties: {} } }], herramientasInciertas: ["crear_pedido"], mensajeIncierto: "incierto" };
     const ej = crearEjecutorTools({ registro, timeoutMs: 15, transporte: (_n, _a, senal) => new Promise((_r, rej) => senal.addEventListener("abort", () => rej(new Error("abortado")))) });
     const r = await ej.ejecutar("crear_pedido", {});
@@ -160,7 +144,7 @@ describe("controlador", () => {
     expect(r.resultado).toBe("pedido_creado");
   });
 
-  it("si el crear_pedido expira dos veces, el aviso a la persona lleva el carrito y la nota de verificar (voz-04 / voz-13)", async () => {
+  it("si crear_pedido expira (resultado incierto), el aviso a la persona lleva el carrito y la nota de verificar (voz-04 / voz-13)", async () => {
     const { c, s, escaladas } = controlador({
       ejecutor: crearEjecutorTools({
         registro: REGISTRO,

@@ -57,7 +57,7 @@ describe("token de llamada vencido en /orders (QA-PM-R2-reglas-16)", () => {
     const app = buildApp(deps);
     const r = await app.request(
       `/v1/restaurantes/${ORG}/orders`,
-      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "Nora", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 1 }], payment_method: "efectivo", canal: "recoger" }, { "x-atiende-call-token": "token-vencido-o-invalido" }),
+      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "Nora", customer_phone: "9991230002", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 1 }], payment_method: "efectivo", canal: "recoger" }, { "x-atiende-call-token": "token-vencido-o-invalido" }),
     );
     expect(r.status).toBe(401);
     expect(JSON.stringify(await r.json())).toMatch(/Token de llamada inválido o expirado/);
