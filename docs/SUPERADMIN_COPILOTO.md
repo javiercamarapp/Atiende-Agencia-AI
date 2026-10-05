@@ -13,6 +13,7 @@ Van detrás de la cadena de `routes/superadmin.ts` (autenticación, gateo de sup
 | `POST /superadmin/copiloto` | Turno del chat. JSON, o NDJSON con `Accept: application/x-ndjson` (se aborta si el cliente corta). Cuerpo: `question`, `history`, `conversationId`, o `tool` + `args` (consulta directa sin modelo). Cualquier otro campo es 400. |
 | `GET /superadmin/copiloto/estado` | Disponibilidad, rol (`superadmin` o `finanzas`), si hay step-up, estado del interruptor, gasto del mes frente al tope y herramientas visibles. |
 | `GET/PATCH/DELETE /superadmin/copiloto/conversaciones[/:id]` | Conversaciones propias (scope plataforma). Solo el autor las ve; ajena o inexistente = 404. |
+| `POST /superadmin/copiloto/conversaciones/:id/reporte?seq=N` | Reporte PDF del mensaje (el «Descargar PDF» de las verticales, CHAT-14). Re-ejecuta las herramientas del mensaje con el alcance actual (jamás `proponer_accion`); las financieras exigen step-up (403 `stepup_required` antes de consultar) y dejan huella en `core.cfo_access_log`; 6 por 10 min por usuario (fail-closed); `finanzas` puede pedir el de su propia conversación. Sin IA, con el interruptor apagado o el tope agotado, el PDF sale solo con datos (`x-reporte-narrativa: no_disponible`). |
 
 Reglas del turno, en orden: impersonación activa -> **409** (chat y estado; el guard común de escrituras exime solo `POST /superadmin/copiloto` para que el rechazo sea este
 409); rol efectivo (`core.cfo_zone_resolve_role`); step-up; interruptor `agente superadmin:copiloto`; tope mensual propio; 20 preguntas por minuto por usuario (el motor
@@ -27,9 +28,9 @@ Operativas (superadmin completo): `organizaciones`, `costos_ia` (por organizaci�
 del Copiloto), `uso_por_vertical` (consola SA-L-05/06), `agentes_interruptores`, `ultimas_corridas` (latidos de crons), `errores` (crons, colas muertas, fuentes de
 licitaciones, denegaciones), `salud_colas`, `planes_y_topes`, `eventos_seguridad`, `prospectos` (sin contacto: ni nombre, ni teléfono, ni correo, ni notas) y `uso_copiloto`.
 
-Financieras, Copiloto CFO (SA-33): `mrr`, `margen_costos_unitarios`, `pyl` y `contratos_por_vencer`.
+Financieras, Copiloto CFO (SA-33): `mrr`, `margen_costos_unitarios`, `pyl`, `contratos_por_vencer` y `facturacion_cobranza` (estado de cobro por organización: activa, pago pendiente, cancelada o sin suscripción, con asientos y fin del periodo; sin correos ni ids de Stripe).
 
-* Las ve el superadmin y el rol `finanzas` (solo lectura). `finanzas` **solo** ve estas cuatro y su catálogo no contiene ninguna operativa.
+* Las ve el superadmin y el rol `finanzas` (solo lectura). `finanzas` **solo** ve estas cinco y su catálogo no contiene ninguna operativa.
 * Exigen step-up con la política vigente de `exigirStepUp` (con factor MFA activo, token reciente; `finanzas` no admite degradarse: sin MFA, 403 `mfa_enrollment_required`).
   Consulta directa sin step-up: 403 `stepup_required` antes de abrir el flujo. Si la pide el modelo: la herramienta se niega y no devuelve cifras.
 * Cada llamada deja una fila en `core.cfo_access_log` (`consulta`, recurso `copiloto/<herramienta>`, filtros con herramienta y parámetros; o `denegado`) **antes** de leer, en
@@ -56,6 +57,8 @@ Usa un gateway **dedicado** (`buildSuperadminCopilotoLlmGateway`): su propio cir
 ## Huecos conocidos
 
 * SA-44: presupuesto real de gasto del Copiloto en producción (queda para Javier).
+* **Fijados en el tablero**: las verticales fijan resultados (`core.copiloto_pin`, por organización). El Copiloto de plataforma NO ofrece «Fijar» (el transporte se crea con `fijados: false`) porque ese servidor no tiene `/pins` ni hay dónde pintar el tablero en el Resumen; requiere migración propia (fijados por superadmin, sin organización) + script verify + sección en el Resumen.
+* **Adjuntar archivo**: el chat de las verticales (`ChatDatosShell`) no tiene adjuntos; por eso el de plataforma tampoco. Si se quiere analizar CSV/Excel/PDF en ambos, es una función nueva y común (decisión de producto).
 * `prospectos` solo cubre el modelo actual del cerebro de ventas.
 * Tu turno (SA-L-19) todavía no existe: la tarjeta de acción enlaza a la bandeja de pendientes actual (`/superadmin/acciones`) hasta que exista.
 * Las acciones del catálogo que no están implementadas siguen apareciendo como «no disponible» en `/superadmin/acciones`; el Copiloto no puede proponerlas (el esquema de `proponer_accion` es cerrado).
@@ -76,4 +79,4 @@ Ejecutar exige que la misma persona confirme con un segundo POST, con step-up (M
 * `GET /superadmin/copiloto/acciones/:propuesta[?agente=]` devuelve el estado (`pendiente`, `ejecutada`, `fallida`, `cancelada`, `vencida`, `archivada`) y el efecto calculado por el servidor; al reabrir una conversación la tarjeta ya no ofrece confirmar lo vencido, usado o cambiado.
 * Con impersonación activa el Copiloto sigue deshabilitado (409 en `/estado` y en `/acciones/:propuesta`).
 * Notificación: `superadmin.copiloto.accion_propuesta` (aprobaciones, atención, enlace `/superadmin/acciones`, clave de dedupe = id del intent o nonce de la propuesta, sin PII).
-* UI: `/superadmin/copiloto` (primera entrada de Agentes) y el panel lateral Cmd+J (400 px, 480 ms, no se desmonta al navegar porque `SuperAdminShell` es el layout de todas las rutas `/superadmin/*`; Esc lo cierra; cerrado = ancho 0 e `inert`).
+* UI: `/superadmin/copiloto` (justo debajo de Resumen, en la primera sección del sidebar) y el panel lateral Cmd+J (400 px, 480 ms, no se desmonta al navegar porque `SuperAdminShell` es el layout de todas las rutas `/superadmin/*`; Esc lo cierra; cerrado = ancho 0 e `inert`).

@@ -32,8 +32,15 @@ async function pedirAccion(donde: Locator | Page): Promise<void> {
 }
 
 test.describe("copiloto de superadmin @copiloto", () => {
-  test("pagina: aparece primera en Agentes, pregunta con un chip y ve la respuesta con su fuente @oscuro", async ({ page, iniciarSesion, mock, vigilante }, info) => {
+  test("pagina: aparece justo debajo de Resumen, pregunta con un chip y ve la respuesta con su fuente @oscuro", async ({ page, iniciarSesion, mock, vigilante }, info) => {
     await iniciarSesion("superadmin");
+    if (!esMovil(page)) {
+      // Orden de Javier: «Copiloto» va JUSTO DEBAJO de «Resumen» (primera seccion), no dentro de «Agentes».
+      const enlaces = page.locator('aside[aria-label="Navegación principal"] nav a');
+      await expect(enlaces.nth(0)).toHaveAttribute("href", "/superadmin");
+      await expect(enlaces.nth(1)).toHaveAttribute("href", RUTA);
+      await expect(enlaces.nth(1)).toHaveText(/Copiloto/);
+    }
     await irASeccion(page, { texto: "Copiloto", href: RUTA });
     await expect(page).toHaveURL(new RegExp(`${RUTA}$`));
     await afirmarPantallaSana(page, "copiloto");
@@ -116,6 +123,39 @@ test.describe("copiloto de superadmin @copiloto", () => {
     await page.getByRole("dialog", { name: "Historial de chats" }).getByRole("button", { name: CHIP, exact: true }).click();
     await expect(page.getByText(TEXTO)).toBeVisible();
     await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: /\/superadmin\/copiloto\/conversaciones\/[0-9a-f-]+$/ })).length).toBeGreaterThan(0);
+    vigilante.verificar();
+  });
+
+  test("paridad: portada con CFO y cobranza, sin Fijar; el historial renombra y borra chats reales", async ({ page, iniciarSesion, mock, vigilante }) => {
+    await iniciarSesion("superadmin");
+    await page.goto(RUTA);
+    await afirmarPantallaSana(page, "copiloto");
+    // Portada: las tres tarjetas de preguntas por categoria y los chips CFO / cobranza.
+    for (const titulo of ["CFO y cobranza", "Ventas y costos de IA", "Clientes, agentes y salud"]) await expect(page.getByText(titulo, { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "¿Cuál es mi MRR por vertical?" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "¿Qué clientes tienen el pago pendiente?" }).first()).toBeVisible();
+
+    await page.getByRole("button", { name: CHIP }).click();
+    await expect(page.getByText(TEXTO)).toBeVisible();
+    // Copiar y CSV existen; Fijar NO (el servidor de plataforma no tiene /pins: nunca un boton que responde 404).
+    await expect(page.getByRole("button", { name: "Copiar respuesta" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Descargar CSV" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Fijar/ })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Historial de chats" }).click();
+    const historial = page.getByRole("dialog", { name: "Historial de chats" });
+    await historial.getByRole("button", { name: `Renombrar ${CHIP}` }).click();
+    await historial.getByRole("textbox", { name: "Nuevo nombre del chat" }).fill("Organizaciones por estado");
+    await page.keyboard.press("Enter");
+    await expect(historial.getByRole("button", { name: "Organizaciones por estado", exact: true })).toBeVisible();
+    const patch = await mock.buscar({ metodo: "PATCH", ruta: /\/superadmin\/copiloto\/conversaciones\/[0-9a-f-]+$/ });
+    expect(patch).toHaveLength(1);
+    expect(patch[0]?.cuerpo).toEqual({ titulo: "Organizaciones por estado" });
+
+    await historial.getByRole("button", { name: "Borrar Organizaciones por estado" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Borrar" }).click();
+    await expect(historial.getByRole("button", { name: "Organizaciones por estado", exact: true })).toHaveCount(0);
+    expect(await mock.buscar({ metodo: "DELETE", ruta: /\/superadmin\/copiloto\/conversaciones\/[0-9a-f-]+$/ })).toHaveLength(1);
     vigilante.verificar();
   });
 
