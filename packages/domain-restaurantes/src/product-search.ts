@@ -81,10 +81,10 @@ export function sinAcentos(texto: string): string {
  * lo mas especifico primero ("kilo y medio" antes que "medio"; "1/4 de bistec" sin unidad es un cuarto de kilo, pero "1/2" sin
  * unidad NO es peso porque tambien es la "media orden"). */
 const FRASES_DE_PESO: ReadonlyArray<readonly [RegExp, number]> = [
-  [/\btres\s+cuartos?\s+de\s+kilo\b|\b3\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.75\s*(?:kg|kilos?)\b|(?<![\d.])0?\.750\b/g, 750],
-  [/\bcuarto\s+de\s+kilo\b|\bun\s+cuarto\b|\b1\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.25\s*(?:kg|kilos?)\b|(?<![\d.])0?\.250\b/g, 250],
+  [/\btres\s+cuartos?(?:\s+de\s+kilo)?\b|\b3\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.75\s*(?:kg|kilos?)\b|(?<![\d.])0?\.750\b/g, 750],
+  [/\b(?:un\s+)?cuarto\s+de\s+kilo\b|\bun\s+cuarto\b|\bcuarto\b(?=\s+de\s)|\b1\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.25\s*(?:kg|kilos?)\b|(?<![\d.])0?\.250\b/g, 250],
   [/\bkilo\s+y\s+medio\b|(?<![\d.])1[.,]5\s*(?:kg|kilos?)\b|\b1\s+1\s*\/\s*2\s*(?:kg|kilos?)\b/g, 1500],
-  [/\bmedio\s+kilo\b|\b1\s*\/\s*2\s*(?:de\s+)?(?:kg|kilos?)\b|(?<![\d.])0?\.5\s*(?:kg|kilos?)\b|(?<![\d.])0?\.500\b/g, 500],
+  [/\bmedio\s+kilo\b|\bmedio\b(?=\s+de\s)|\b1\s*\/\s*2\s*(?:de\s+)?(?:kg|kilos?)\b|(?<![\d.])0?\.5\s*(?:kg|kilos?)\b|(?<![\d.])0?\.500\b/g, 500],
   [/\bdos\s+kilos?\b|\b2\s*(?:kg|kilos?)\b/g, 2000],
   [/(?<![\d./])(\d{2,4})\s*(?:gr|g|gramos)\b/g, -1],
   [/\b1\s*(?:kg|kilo)\b|\bun\s+kilo\b|\bkilos?\b|\bkg\b/g, 1000],
@@ -140,6 +140,58 @@ export function tokenizeForProductSearch(query: string): string[] {
     tokens.push(ALIAS_DE_ESCRITURA[singular] ?? singular);
   }
   return tokens.length > 0 ? tokens : [sinAcentos(query)];
+}
+
+/** Palabras que identifican un platillo (sin "de/la", sin "(orden de 3)", sin el peso "— 500 g"): sirve para saber si un producto es una
+ * VARIANTE de otro ("Margarita sin Alcohol" de "Margarita", "Bistec de Res Encebollado" de "Bistec de Res"). */
+function palabrasNucleo(nombre: string): Set<string> {
+  const base = sinAcentos(nombre).replace(/\([^)]*\)/g, " ").replace(/\s[—-]\s.*$/, " ");
+  return new Set(base.split(/[^a-z0-9.]+/).filter((w) => w && !STOPWORDS_BUSQUEDA.has(w)));
+}
+
+const CALIFICADORES_DE_VARIANTE = new Set(["encebollado", "especial", "especiales", "sin", "light"]);
+
+/** Puntaje de relevancia de UN producto que ya hizo match: palabra completa o alias exacto (4) > inicio de palabra, p. ej. el plural (3) >
+ * subcadena del nombre (1.5) > descripcion/categoria (0.5); "orden de ..." prefiere los renglones "(orden de N)". */
+export function puntajeDeBusqueda(
+  tokens: readonly string[],
+  fields: { readonly name: string; readonly searchKeywords?: readonly string[] },
+  consultaCruda = "",
+): number {
+  const nombre = sinAcentos(fields.name);
+  const palabras = nombre.split(/[^a-z0-9.]+/).filter(Boolean);
+  const alias = (fields.searchKeywords ?? []).map(sinAcentos);
+  let puntaje = 0;
+  for (const t of tokens) {
+    if (t.startsWith("peso:")) continue;
+    if (palabras.includes(t) || alias.some((a) => a === t || a.split(/[^a-z0-9.]+/).includes(t))) puntaje += 4;
+    else if (palabras.some((w) => w.startsWith(t))) puntaje += 3;
+    else if (nombre.includes(t)) puntaje += 1.5;
+    else puntaje += 0.5;
+  }
+  if (/\b(?:una?|la|las)\s+orden(?:es)?\b|^orden(?:es)?\b/.test(sinAcentos(consultaCruda)) && /\(orden de \d+/.test(nombre)) puntaje += 2;
+  // El producto "base" gana al calificado cuando el cliente no pidio el calificativo ("bistec" no es "bistec encebollado").
+  if (palabras.some((w) => CALIFICADORES_DE_VARIANTE.has(w) && !tokens.some((t) => w.startsWith(t) || t.startsWith(w)))) puntaje -= 0.5;
+  return puntaje;
+}
+
+/** Ordena los productos que hicieron match de mayor a menor relevancia. Estable (a igualdad queda el orden del catalogo). Una VARIANTE
+ * (su nucleo contiene al de otro resultado) baja un punto frente al producto base. */
+export function ordenarPorRelevancia<T extends { readonly name: string; readonly searchKeywords?: readonly string[] }>(
+  tokens: readonly string[],
+  encontrados: readonly T[],
+  consultaCruda: string,
+): T[] {
+  const nucleos = encontrados.map((p) => palabrasNucleo(p.name));
+  // Solo se comparan renglones de la MISMA presentacion: "Bistec de Res — 500 g" vs "Bistec de Res Encebollado — 500 g", no vs unos tacos.
+  const forma = (n: string) => sinAcentos(n).replace(/^[^(—]*?(?=\(|\s—|$)/, "").trim();
+  const formas = encontrados.map((p) => forma(p.name));
+  const esVariante = (i: number) =>
+    nucleos.some((otro, j) => j !== i && formas[j] === formas[i] && otro.size > 0 && otro.size < nucleos[i]!.size && [...otro].every((w) => nucleos[i]!.has(w)));
+  return encontrados
+    .map((p, i) => ({ p, i, s: puntajeDeBusqueda(tokens, p, consultaCruda) - (esVariante(i) ? 1 : 0) }))
+    .sort((x, y) => y.s - x.s || x.i - y.i)
+    .map((x) => x.p);
 }
 
 /** Determina si un texto de búsqueda hace match contra un producto — un token hace

@@ -14,7 +14,7 @@ import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
 import { applyPromotionToOrder, normalizePromotionCode, selectAutomaticPromotion } from "./promotions.ts";
-import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
+import { extraerPackSize, matchesProductSearch, ordenarPorRelevancia, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
 
@@ -59,7 +59,9 @@ export async function searchProducts(repo: RestaurantesRepository, args: { reado
     const sinPeso = tokens.filter((t) => !t.startsWith("peso:"));
     if (sinPeso.length > 0) encontrados = buscar(sinPeso);
   }
-  return encontrados.slice(0, 8).map(toProductoEncontrado);
+  // "heineken cero": el menu escribe "0.0".
+  if (encontrados.length === 0 && tokens.includes("cero")) encontrados = buscar(tokens.map((t) => (t === "cero" ? "0.0" : t)));
+  return ordenarPorRelevancia(tokens, encontrados, args.query).slice(0, 8).map(toProductoEncontrado);
 }
 
 /**
