@@ -30,3 +30,12 @@ export class WhatsAppAgentConfigConflictError extends Error {
     this.name = "WhatsAppAgentConfigConflictError";
   }
 }
+
+/** La memoria del cliente (migracion 049) todavia no esta aplicada en esta base. Las rutas del staff lo traducen a 503
+ * "no disponible aun: requiere la migracion 049" en vez de fingir un resultado; el agente cae al camino anterior. */
+export class ClienteMemoriaNoDisponibleError extends Error {
+  constructor() {
+    super("La memoria del cliente todavía no está disponible: requiere aplicar la migración 049 de restaurantes.");
+    this.name = "ClienteMemoriaNoDisponibleError";
+  }
+}

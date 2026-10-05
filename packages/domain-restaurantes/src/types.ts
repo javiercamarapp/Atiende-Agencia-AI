@@ -1,3 +1,4 @@
+import type { CustomerAddressDetail, TasteProposal } from "./cliente-360/types.ts";
 // Tipos de dominio de restaurantes — port de las formas de
 // restaurantes/supabase/functions/_shared/create-order-core.ts, renombrando
 // restaurant_id -> organizationId y branch_id -> propertyId para integrar con el
@@ -146,7 +147,26 @@ export type CustomerLookupResult =
       readonly agentNotes: readonly string[];
       /** Pedido de las ultimas 12 h de este telefono con el estado que marco la sucursal (para "¿ya salio?"); ausente/null si no hay. */
       readonly pedidoReciente?: PedidoReciente | null;
+      /** Cliente 360 (migracion 049). Ausentes contra una base sin migrar: el agente se comporta como antes. */
+      /** Domicilios con etiqueta y referencias, el ULTIMO USADO primero. */
+      readonly domicilios?: readonly CustomerAddressDetail[];
+      /** Gustos que se le pueden PROPONER (aprendidos de pedidos confirmados; el cliente puede cambiarlos). */
+      readonly gustos?: readonly TasteProposal[];
+      /** Ultimos pedidos (sin cancelados), el mas reciente primero, para "lo mismo de la vez pasada". */
+      readonly pedidosAnteriores?: readonly PedidoAnteriorResumen[];
+      /** true = en los ultimos pedidos hubo "no recogido"/pedido falso por encima del umbral: la sucursal confirma el siguiente. */
+      readonly requiereConfirmacionSucursal?: boolean;
     };
+
+/** Resumen de un pedido anterior para el agente: sin telefono ni direccion completa. */
+export interface PedidoAnteriorResumen {
+  readonly numero: number | null;
+  readonly fecha: string;
+  readonly canal: CanalPedido | null;
+  readonly sucursal: string | null;
+  readonly total: number;
+  readonly productos: readonly OrderHistoryItem[];
+}
 
 export interface CreateOrderItemInput {
   readonly productId?: string;
@@ -201,6 +221,11 @@ export interface CreateOrderInput {
    * dentro del horario de la sucursal (en SU zona horaria) y dentro de la ventana permitida (ver
    * pedidos-programados.ts). Sin esto el pedido es inmediato, como siempre. */
   readonly programadoPara?: string;
+  /** Cliente 360 (migracion 049): datos opcionales del domicilio que el cliente dio al confirmar. Solo alimentan la ficha
+   * del cliente (cierre del ciclo); no cambian el total ni el dedupe del pedido. */
+  readonly addressLabel?: string;
+  readonly accessNotes?: string;
+  readonly mapsUrl?: string;
 }
 
 export type CanalPedido = "domicilio" | "recoger";

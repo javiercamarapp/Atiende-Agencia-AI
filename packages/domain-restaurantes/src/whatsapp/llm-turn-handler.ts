@@ -22,6 +22,7 @@
 // se protege de forma ESTRUCTURAL (idempotencyKey + dedupeFingerprint de 5
 // min en `createOrder`, ver orders.ts), no dependiendo de que el LLM relea su
 // propio historial de tool_calls.
+import { lineasCliente360 } from "../cliente-360/prompt.ts";
 import { randomUUID } from "node:crypto";
 import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@atiende/agent-core";
 import { vipNote } from "../customers.ts";
@@ -123,6 +124,7 @@ export function customerContextBlock(customer: CustomerLookupResult): string {
   } else {
     lines.push("No tiene dirección guardada todavía — pídesela.");
   }
+  lines.push(...lineasCliente360(customer));
   if (customer.lastOrderItems && customer.lastOrderItems.length > 0) {
     const items = customer.lastOrderItems.map((i) => `${i.quantity}x ${sanitizeInlineText(i.name, 80)}`).join(", ");
     lines.push(`Su último pedido fue: ${items}.`);
