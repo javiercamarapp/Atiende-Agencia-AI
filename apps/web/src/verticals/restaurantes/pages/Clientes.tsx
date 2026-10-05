@@ -14,8 +14,6 @@ import {
   Callout,
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -29,11 +27,11 @@ import {
   formatMoney,
   statusTone,
 } from "@atiende/ui";
-import { ArrowLeft, Crown, Receipt, Repeat, Search, Upload, Users } from "lucide-react";
+import { Crown, Receipt, Repeat, Search, Upload, Users } from "lucide-react";
 import { fetchBranches } from "../dashboard-client.ts";
 import type { BranchOption } from "../dashboard-client.ts";
-import { fetchCarteraKpis, fetchCustomerDetail, fetchCustomers } from "../lib/customers-client.ts";
-import type { CarteraKpisWire, CustomerDetail, CustomerSummary, CustomerTier, FrecuenciaCliente } from "../lib/customers-client.ts";
+import { fetchCarteraKpis, fetchCustomers } from "../lib/customers-client.ts";
+import type { CarteraKpisWire, CustomerSummary, CustomerTier, FrecuenciaCliente } from "../lib/customers-client.ts";
 import { ImportarClientesDialog } from "../components/ImportarClientesDialog.tsx";
 import { CUSTOMER_TIER_META, CUSTOMER_TIER_TONES, tierBadgeClase } from "../lib/status-tones.ts";
 import { BotonExportar } from "../components/BotonExportar.tsx";
@@ -276,117 +274,6 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
   );
 }
 
-export interface ClienteFichaPageProps extends RestaurantesShellContext {
-  readonly customerId: string;
-}
-
-export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, customerId }: ClienteFichaPageProps) {
-  const [detail, setDetail] = useState<CustomerDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelado = false;
-    fetchCustomerDetail(fetch, apiBaseUrl, token, propertyId, customerId)
-      .then((d) => !cancelado && setDetail(d))
-      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : "No se pudo cargar el cliente."));
-    return () => {
-      cancelado = true;
-    };
-  }, [apiBaseUrl, token, propertyId, customerId]);
-
-  return (
-    <PageContainer padding="none">
-      <Button asChild variant="ghost" size="sm" className="self-start px-2 text-muted-foreground">
-        <Link to={`/restaurantes/${orgSlug}/clientes`}>
-          <ArrowLeft />
-          Volver a clientes
-        </Link>
-      </Button>
-
-      {error && <EstadoError mensaje={error} />}
-      {!detail && !error && <EstadoCargando etiqueta="Cargando cliente…" />}
-      {detail?.isNew && <EstadoVacio mensaje="Este cliente todavía no tiene ningún pedido registrado." />}
-
-      {detail && !detail.isNew && (
-        <>
-          <div className="flex items-center gap-2.5">
-            <h1 className="m-0 font-display text-xl font-semibold text-foreground">{detail.name ?? "Sin nombre"}</h1>
-            {detail.tier && (
-              <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, detail.tier)} className={`gap-1.5 px-2.5 py-1 ${tierBadgeClase(detail.tier) ?? ""}`}>
-                <span aria-hidden>{CUSTOMER_TIER_META[detail.tier].glyph}</span>
-                {CUSTOMER_TIER_META[detail.tier].label}
-              </StatusBadge>
-            )}
-          </div>
-
-          <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
-            <dt className="text-muted-foreground">Pedidos totales</dt>
-            <dd className="m-0 text-foreground">{detail.orderCount}</dd>
-          </dl>
-
-          <Card>
-            <CardHeader className="p-4 pb-2">
-              <CardTitle>Direcciones guardadas</CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              {detail.addresses.length === 0 ? (
-                <p className="m-0 text-sm text-muted-foreground">Sin direcciones guardadas.</p>
-              ) : (
-                <ul className="m-0 list-disc pl-5 text-sm text-foreground">
-                  {detail.addresses.map((a, i) => (
-                    <li key={i}>
-                      {a.address} {a.isDefault && <span className="text-muted-foreground">(principal)</span>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="p-4 pb-2">
-              <CardTitle>Lo que más pide</CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              {detail.frequentItems.length === 0 ? (
-                <p className="m-0 text-sm text-muted-foreground">Sin historial suficiente todavía.</p>
-              ) : (
-                <ul className="m-0 list-disc pl-5 text-sm text-foreground">
-                  {detail.frequentItems.map((item, i) => (
-                    <li key={i}>
-                      {item.quantity}× {item.name}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-
-          {detail.notes && (
-            <Card>
-              <CardHeader className="p-4 pb-2">
-                <CardTitle>Nota del cliente</CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 pt-0">
-                <p className="m-0 text-sm text-foreground" data-testid="cliente-nota">
-                  {detail.notes}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {detail.agentNotes.length > 0 && (
-            <section className="rounded-lg border border-dashed border-border p-3">
-              <p className="m-0 mb-1.5 text-xs font-semibold text-muted-foreground">Notas para el agente</p>
-              {detail.agentNotes.map((note, i) => (
-                <p key={i} className="mt-1 text-sm text-foreground">
-                  {note}
-                </p>
-              ))}
-            </section>
-          )}
-        </>
-      )}
-    </PageContainer>
-  );
-}
+// La ficha completa (Cliente 360, migracion 049) vive en ClienteFicha.tsx.
+export { ClienteFichaPage } from "./ClienteFicha.tsx";
+export type { ClienteFichaPageProps } from "./ClienteFicha.tsx";

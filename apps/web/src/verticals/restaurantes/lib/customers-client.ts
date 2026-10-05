@@ -3,7 +3,7 @@
 // campos: la ficha es exactamente el mismo shape que
 // `@atiende/domain-restaurantes::CustomerLookupResult` (tier real, "lo de siempre"
 // real, direcciones guardadas).
-import { fetchJson, sendJson } from "./admin-client.ts";
+import { deleteJson, fetchJson, sendJson } from "./admin-client.ts";
 
 export interface CustomerSummary {
   readonly id: string;
@@ -72,6 +72,165 @@ export type CustomerDetail =
 export async function fetchCustomerDetail(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, customerId: string): Promise<CustomerDetail> {
   const body = await fetchJson<{ customer: CustomerDetail }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/customers/${customerId}`, token);
   return body.customer;
+}
+
+// ---- Cliente 360 (migracion 049): ficha completa del cliente ----
+
+export type TipoGusto = "tortilla" | "salsa" | "omision" | "nota" | "pago" | "propina" | "canal" | "sucursal";
+
+export const ETIQUETA_TIPO_GUSTO: Readonly<Record<TipoGusto, string>> = {
+  tortilla: "Tortilla",
+  salsa: "Salsa",
+  omision: "Sin (omite)",
+  nota: "Nota recurrente",
+  pago: "Forma de pago",
+  propina: "Propina habitual",
+  canal: "Canal",
+  sucursal: "Sucursal",
+};
+
+export interface DomicilioFicha {
+  readonly id: string;
+  readonly address: string;
+  readonly label: string | null;
+  readonly isDefault: boolean;
+  readonly accessNotes: string | null;
+  readonly mapsUrl: string | null;
+  readonly colonia: string | null;
+  readonly branchSlug: string | null;
+  readonly lastUsedAt: string | null;
+  readonly timesUsed: number;
+}
+
+export interface GustoFicha {
+  readonly id: string;
+  readonly kind: TipoGusto;
+  readonly value: string;
+  readonly source: "pedido" | "staff";
+  readonly timesSeen: number;
+  readonly firstSeenAt: string;
+  readonly lastSeenAt: string;
+  readonly status: "activa" | "descartada";
+}
+
+export interface PedidoFicha {
+  readonly id: string;
+  readonly orderNumber: number | null;
+  readonly createdAt: string;
+  readonly status: string;
+  readonly total: number;
+  readonly items: readonly { readonly name: string; readonly quantity: number }[];
+  readonly branch: string | null;
+  readonly source: string;
+  readonly paymentMethod: string | null;
+  readonly pedidoFalso: boolean;
+}
+
+export interface FichaCliente {
+  readonly customer: {
+    readonly id: string;
+    readonly name: string | null;
+    readonly phone: string;
+    readonly orderCount: number;
+    readonly lastOrderAt: string | null;
+    readonly createdAt: string;
+    readonly fechaNacimientoDia: number | null;
+    readonly fechaNacimientoMes: number | null;
+    readonly staffNotes: string | null;
+  };
+  /** Nota interna (migracion 054, p. ej. la de una importacion de cartera); `null` si no hay. */
+  readonly notes?: string | null;
+  readonly addresses: readonly DomicilioFicha[];
+  readonly preferences: readonly GustoFicha[];
+  readonly reliability: { readonly noRecogidos90d: number; readonly pedidosFalsos: number; readonly umbral: number; readonly ventanaDias: number };
+  readonly tier: CustomerTier | null;
+  readonly orders: readonly PedidoFicha[];
+  readonly whatsapp: { readonly conversaciones: number; readonly ultimaActividad: string | null; readonly mensajes: number };
+  readonly llamadas: readonly { readonly id: string; readonly startedAt: string; readonly durationS: number | null; readonly resultado: string | null }[];
+}
+
+export interface CambiosDomicilio {
+  readonly address?: string;
+  readonly label?: string | null;
+  readonly access_notes?: string | null;
+  readonly maps_url?: string | null;
+  readonly colonia?: string | null;
+  readonly is_default?: boolean;
+}
+
+export interface PoliticaReincidencia {
+  readonly umbralNoRecogidos: number;
+  readonly ventanaDias: number;
+}
+
+const base = (propertyId: string) => `/v1/restaurantes/${propertyId}/admin/customers`;
+
+export async function fetchFichaCliente(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, customerId: string): Promise<FichaCliente> {
+  const body = await fetchJson<{ ficha: FichaCliente }>(fetchImpl, `${apiBaseUrl}${base(propertyId)}/${customerId}/ficha`, token);
+  return body.ficha;
+}
+
+export async function actualizarPerfilCliente(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  customerId: string,
+  cambios: { name?: string | null; staffNotes?: string | null; fechaNacimientoDia?: number | null; fechaNacimientoMes?: number | null },
+): Promise<void> {
+  await sendJson(fetchImpl, `${apiBaseUrl}${base(propertyId)}/${customerId}`, token, "PATCH", cambios);
+}
+
+export async function guardarDomicilio(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  customerId: string,
+  addressId: string | null,
+  cambios: CambiosDomicilio,
+): Promise<void> {
+  const url = `${apiBaseUrl}${base(propertyId)}/${customerId}/addresses${addressId ? `/${addressId}` : ""}`;
+  await sendJson(fetchImpl, url, token, addressId ? "PATCH" : "POST", cambios);
+}
+
+export async function borrarDomicilio(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, customerId: string, addressId: string): Promise<void> {
+  await deleteJson(fetchImpl, `${apiBaseUrl}${base(propertyId)}/${customerId}/addresses/${addressId}`, token);
+}
+
+export async function accionGusto(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  customerId: string,
+  accion: { accion: "agregar"; kind: TipoGusto; value: string } | { accion: "descartar" | "reactivar" | "eliminar"; prefId: string },
+): Promise<void> {
+  await sendJson(fetchImpl, `${apiBaseUrl}${base(propertyId)}/${customerId}/preferences`, token, "POST", accion);
+}
+
+export async function marcarPedidoFalso(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, customerId: string, orderId: string, falso: boolean): Promise<void> {
+  await sendJson(fetchImpl, `${apiBaseUrl}${base(propertyId)}/${customerId}/orders/${orderId}/falso`, token, "POST", { falso });
+}
+
+export async function fetchPoliticaReincidencia(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<PoliticaReincidencia> {
+  const body = await fetchJson<{ policy: PoliticaReincidencia }>(fetchImpl, `${apiBaseUrl}${base(propertyId)}/policy`, token);
+  return body.policy;
+}
+
+export async function guardarPoliticaReincidencia(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, politica: PoliticaReincidencia): Promise<PoliticaReincidencia> {
+  const body = await sendJson<{ policy: PoliticaReincidencia }>(fetchImpl, `${apiBaseUrl}${base(propertyId)}/policy`, token, "PUT", politica);
+  return body.policy;
+}
+
+export async function exportarDatosCliente(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, customerId: string): Promise<Record<string, unknown>> {
+  const body = await fetchJson<{ datos: Record<string, unknown> }>(fetchImpl, `${apiBaseUrl}${base(propertyId)}/${customerId}/arco-export`, token);
+  return body.datos;
+}
+
+export async function borrarMemoriaCliente(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, customerId: string): Promise<{ domiciliosBorrados: number; gustosBorrados: number }> {
+  const body = await sendJson<{ resultado: { domiciliosBorrados: number; gustosBorrados: number } }>(fetchImpl, `${apiBaseUrl}${base(propertyId)}/${customerId}/borrar-memoria`, token, "POST", {});
+  return body.resultado;
 }
 
 // ---- Cartera por nivel (filtros, KPIs) e importacion -------------------------------------------------------------------------------
