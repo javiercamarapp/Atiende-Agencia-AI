@@ -45,6 +45,10 @@ export interface OrderFlowContext {
    * grande en dos no la esquive (QA-PM-R2-reglas-08). Ausente en filas anteriores = 0. */
   readonly sessionTotal?: number;
   readonly sessionPesoKg?: number;
+  /** Cuantos pedidos creo esta sesion (un cliente cuyo unico historial es de hace segundos en esta misma sesion sigue contando como SIN historial). */
+  readonly sessionPedidos?: number;
+  /** Id del ultimo pedido creado en la sesion: un pedido identico dentro de la ventana de deduplicacion devuelve ESE id y se marca `ya_registrado`. */
+  readonly sessionUltimoPedidoId?: string;
   readonly confirmedAtMs?: number;
   readonly claimedAtMs?: number;
   readonly orderId?: string;

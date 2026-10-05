@@ -86,6 +86,9 @@ const FRASES_DE_PESO: ReadonlyArray<readonly [RegExp, number]> = [
   [/\bkilo\s+y\s+medio\b|(?<![\d.])1[.,]5\s*(?:kg|kilos?)\b|\b1\s+1\s*\/\s*2\s*(?:kg|kilos?)\b/g, 1500],
   [/\bmedio\s+kilo\b|\bmedio\b(?=\s+de\s)|\b1\s*\/\s*2\s*(?:de\s+)?(?:kg|kilos?)\b|(?<![\d.])0?\.5\s*(?:kg|kilos?)\b|(?<![\d.])0?\.500\b/g, 500],
   [/\bdos\s+kilos?\b|\b2\s*(?:kg|kilos?)\b/g, 2000],
+  // "3 kilos", "5 kg": no hay producto de ese peso (se venden 1/4 a 2 kg): el numero no es un peso exacto; se buscan todos los pesos del producto (`peso:cualquiera`) y el agente
+  // arma el total con renglones de 2 kg y de 1 kg (nunca 3 piezas del de 1 kg). Va ANTES del patron generico de "kilo".
+  [/(?<![\d./])(?:[3-9]|[1-9]\d)\s*(?:kg|kilos?)\b/g, 0],
   [/(?<![\d./])(\d{2,4})\s*(?:gr|g|gramos)\b/g, -1],
   [/\b1\s*(?:kg|kilo)\b|\bun\s+kilo\b|\bkilos?\b|\bkg\b/g, 1000],
 ];
@@ -102,7 +105,7 @@ function normalizarUnidadesDeKilo(texto: string): string {
 export function normalizarPesosEnConsulta(textoSinAcentos: string): string {
   let texto = textoSinAcentos;
   for (const [patron, gramos] of FRASES_DE_PESO) {
-    texto = texto.replace(patron, (...args: unknown[]) => ` peso:${gramos === -1 ? String(args[1]) : gramos} `);
+    texto = texto.replace(patron, (...args: unknown[]) => ` peso:${gramos === 0 ? "cualquiera" : gramos === -1 ? String(args[1]) : gramos} `);
   }
   return texto;
 }
@@ -150,6 +153,8 @@ function palabrasNucleo(nombre: string): Set<string> {
 }
 
 const CALIFICADORES_DE_VARIANTE = new Set(["encebollado", "especial", "especiales", "sin", "light"]);
+/** Palabras que marcan la version NORMAL de un platillo con variantes ("Frijoles Charros Normal" vs "con Queso"): ganan al empatar si el cliente no pidio otra. */
+const PALABRAS_DE_VERSION_NORMAL = new Set(["normal", "regular"]);
 
 /** Puntaje de relevancia de UN producto que ya hizo match: palabra completa o alias exacto (4) > inicio de palabra, p. ej. el plural (3) >
  * subcadena del nombre (1.5) > descripcion/categoria (0.5); "orden de ..." prefiere los renglones "(orden de N)". */
@@ -171,6 +176,7 @@ export function puntajeDeBusqueda(
   }
   if (/\b(?:una?|la|las)\s+orden(?:es)?\b|^orden(?:es)?\b/.test(sinAcentos(consultaCruda)) && /\(orden de \d+/.test(nombre)) puntaje += 2;
   // El producto "base" gana al calificado cuando el cliente no pidio el calificativo ("bistec" no es "bistec encebollado").
+  if (palabras.some((w) => PALABRAS_DE_VERSION_NORMAL.has(w)) && !tokens.some((t) => PALABRAS_DE_VERSION_NORMAL.has(t))) puntaje += 0.5;
   if (palabras.some((w) => CALIFICADORES_DE_VARIANTE.has(w) && !tokens.some((t) => w.startsWith(t) || t.startsWith(w)))) puntaje -= 0.5;
   return puntaje;
 }
@@ -207,6 +213,7 @@ export function matchesProductSearch(
   const textoCompacto = textoPlano.replace(/[\s-]/g, "");
   const pesoProducto = pesoDeProductoEnGramos(fields.name);
   return tokens.every((t) => {
+    if (t === "peso:cualquiera") return pesoProducto !== null;
     if (t.startsWith("peso:")) return pesoProducto !== null && pesoProducto === Number(t.slice(5));
     return textoPlano.includes(t) || alias.some((a) => a.includes(t)) || (t.length >= 6 && textoCompacto.includes(t));
   });

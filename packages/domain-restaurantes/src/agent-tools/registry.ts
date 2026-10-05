@@ -650,7 +650,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         quotedPrices,
         quotedTotal: quotedQuote.total,
         quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
-        ...(snap.context?.sessionTotal ? { sessionTotal: snap.context.sessionTotal, sessionPesoKg: snap.context.sessionPesoKg ?? 0 } : {}),
+        ...(snap.context?.sessionTotal ? { sessionTotal: snap.context.sessionTotal, sessionPesoKg: snap.context.sessionPesoKg ?? 0, sessionPedidos: snap.context.sessionPedidos ?? 0, ...(snap.context.sessionUltimoPedidoId ? { sessionUltimoPedidoId: snap.context.sessionUltimoPedidoId } : {}) } : {}),
       });
       if (res === "written") return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash }, quoteHash };
       if (res === "unavailable") return outcome;
@@ -703,11 +703,20 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   if (!claimed) throw new OrderValidationError(CONFLICT_MESSAGE);
 
   try {
-    const outcome = await dispatchTool(repo, ctx, name, input, claimed.context.quotedPrices, { total: claimed.context.sessionTotal ?? 0, pesoKg: claimed.context.sessionPesoKg ?? 0 });
+    let outcome = await dispatchTool(repo, ctx, name, input, claimed.context.quotedPrices, { total: claimed.context.sessionTotal ?? 0, pesoKg: claimed.context.sessionPesoKg ?? 0, pedidos: claimed.context.sessionPedidos ?? 0 });
+    // Un pedido IDENTICO al ultimo de esta sesion (misma ventana de deduplicacion de 5 min) devuelve ese mismo pedido: el agente debe saber que NO se creo otro (QA-PM-R2-reglas-15).
+    const repetido = outcome.orderId !== null && outcome.orderId === claimed.context.sessionUltimoPedidoId;
+    if (repetido) {
+      outcome = {
+        ...outcome,
+        result: { ...(outcome.result as object), ya_registrado: true, aviso: "Este pedido idéntico ya estaba registrado hace unos minutos: NO se creó otro (en cocina hay uno solo). Dígaselo al cliente; si quiere dos, pase con una persona (escalar_a_humano)." },
+        yaRegistrado: true,
+      };
+    }
     // Un pedido realmente creado suma a lo acumulado de la sesion (un pedido grande retenido o simulado no: no tiene orderId).
     const creado = outcome.orderId ? (outcome.raw as { total?: unknown; items?: readonly { name: string; quantity: number }[] } | undefined) : undefined;
     const acumulado = creado
-      ? { sessionTotal: (claimed.context.sessionTotal ?? 0) + (typeof creado.total === "number" ? creado.total : 0), sessionPesoKg: (claimed.context.sessionPesoKg ?? 0) + pesoTotalKg(creado.items ?? []) }
+      ? { sessionTotal: (claimed.context.sessionTotal ?? 0) + (repetido ? 0 : typeof creado.total === "number" ? creado.total : 0), sessionPesoKg: (claimed.context.sessionPesoKg ?? 0) + (repetido ? 0 : pesoTotalKg(creado.items ?? [])), sessionPedidos: (claimed.context.sessionPedidos ?? 0) + (repetido ? 0 : 1), sessionUltimoPedidoId: outcome.orderId ?? undefined }
       : {};
     await writeFlow(repo, ctx, flow, claimed.version, "creado", { ...claimed.context, ...acumulado, orderId: outcome.orderId ?? undefined });
     return outcome;
@@ -766,7 +775,7 @@ async function dispatchTool(
   /** Huella de precios que el cliente confirmo (solo crear_pedido con maquina de estados activa). */
   expectedPrices?: string,
   /** Total y kilos de los pedidos ya creados en esta sesion (solo crear_pedido con maquina de estados activa): la guardia de pedido grande los suma. */
-  sesionPrevia?: { readonly total: number; readonly pesoKg: number },
+  sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number },
 ): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
@@ -921,22 +930,7 @@ async function dispatchTool(
         }
         throw err;
       }
-      // (> 60 s: tolera el desfase entre el reloj de la app y el de la base) Un pedido IDENTICO en los ultimos 5 min devuelve el ya registrado (deduplicacion heredada del original): el agente debe saberlo para no decirle al cliente
-      // que su segundo pedido "quedo registrado" cuando en cocina hay uno solo (QA-PM-R2-reglas-15).
-      const registradoHace = Date.now() - Date.parse(String(order.createdAt));
-      const yaExistia = Number.isFinite(registradoHace) && registradoHace > 60_000;
-      return {
-        result: {
-          order: orderToWire(order),
-          ...(yaExistia
-            ? { ya_registrado: true, aviso: "Este pedido idéntico ya estaba registrado hace unos minutos: NO se creó otro (en cocina hay uno solo). Dígaselo al cliente; si quiere dos, pase con una persona (escalar_a_humano)." }
-            : {}),
-        },
-        raw: order,
-        orderId: order.id,
-        propertyId: order.propertyId,
-        ...(yaExistia ? { yaRegistrado: true } : {}),
-      };
+      return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
     }
     case "registrar_contacto":
     case "escalar_a_humano": {
@@ -962,7 +956,7 @@ async function dispatchTool(
 
 /** Lanza `PedidoGrandeRetenidoError` si el pedido ya cotizado supera el umbral de pedido grande de PM. Solo organizaciones con
  * perfil `taqueria_pm` y con el motivo `pedido_grande` encendido; sin configuracion (base sin migrar) no aplica. */
-async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: PreparedOrder, sesionPrevia?: { readonly total: number; readonly pesoKg: number }): Promise<void> {
+async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: PreparedOrder, sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number }): Promise<void> {
   const config = await repo.findWhatsAppAgentConfig(prepared.payload.organizationId, prepared.branch.propertyId);
   if (!config || config.perfil !== "taqueria_pm" || (config.escalationReasonsOff ?? []).includes("pedido_grande")) return;
   // Se suman los pedidos que esta misma conversacion/llamada ya creo: partir un pedido grande en dos no esquiva la regla.
@@ -973,7 +967,8 @@ async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: Pr
     total: totalSesion,
     pesoKg,
     pagaEfectivo: prepared.payload.paymentMethod === "efectivo",
-    sinHistorial: !cliente || cliente.orderCount === 0,
+    // Los pedidos creados en ESTA sesion no son historial (R90: un pedido de $126 de hace segundos no apaga la regla de $2,500 en efectivo).
+    sinHistorial: !cliente || cliente.orderCount - (sesionPrevia?.pedidos ?? 0) <= 0,
   });
   if (!motivo) return;
   const resumen = resumenPedidoGrande({ motivo, total: totalSesion, totalDeEstePedido: prepared.total, pesoKg, items: prepared.orderItems, canal: prepared.payload.canal, paymentMethod: prepared.payload.paymentMethod });

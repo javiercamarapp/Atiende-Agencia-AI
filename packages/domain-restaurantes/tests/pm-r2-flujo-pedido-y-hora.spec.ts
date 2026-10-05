@@ -237,7 +237,7 @@ describe("segundo pedido identico en la misma sesion (QA-PM-R2-reglas-15)", () =
     await s.confirm();
     const primero = await s.create();
     expect((primero.result as { ya_registrado?: boolean }).ya_registrado).toBeUndefined();
-    vi.setSystemTime(new Date(MARTES_13.getTime() + 90_000)); // "otro igualito aparte para mi mama" minuto y medio despues
+    // "otro igualito aparte para mi mama": se detecta por el id del ultimo pedido de la sesion, sin depender de relojes
     s.nextTurn();
     await s.quote();
     s.nextTurn();
@@ -245,5 +245,32 @@ describe("segundo pedido identico en la misma sesion (QA-PM-R2-reglas-15)", () =
     const segundo = await s.create();
     expect(segundo.orderId).toBe(primero.orderId);
     expect(segundo.result).toMatchObject({ ya_registrado: true });
+  });
+});
+
+describe("el historial de esta misma sesion no apaga la regla de efectivo sin historial (R90)", () => {
+  it("numero nuevo: un pedido de $126 y enseguida uno de $2,800 en efectivo se retiene (los $2,500 sin historial)", async () => {
+    const f = buildRestaurantFixture();
+    await f.repo.upsertWhatsAppAgentConfig(f.organizationId, null, { perfil: "taqueria_pm", agentName: "Lupita", businessName: "Los Taquitos de PM", toneStyle: "formal_directo", deliveryTimeText: "de 40 a 50 minutos" });
+    const kilos = randomUUID();
+    f.repo.seedCategory({ id: kilos, organizationId: f.organizationId, name: "Kilos a Domicilio" });
+    const arrachera = randomUUID();
+    f.repo.seedProduct({ id: arrachera, organizationId: f.organizationId, categoryId: kilos, name: "Arrachera — 2 kg", description: null, searchKeywords: [] });
+    f.repo.seedBranchProduct({ propertyId: f.propertyId, productId: arrachera, price: 2800, isAvailable: true });
+    let turn = 1;
+    const ctx = () => ({ organizationId: f.organizationId, channel: "whatsapp" as const, phone: "9995550199", flow: { key: "k:r90", turn: String(turn), now: () => Date.now() } });
+    const base = { branch_slug: "fco-montejo", canal: "recoger" };
+    const pedir = async (items: unknown[], pago: "efectivo" | "tarjeta") => {
+      await invokeAgentTool(f.repo, ctx(), "cotizar_pedido", { ...base, items });
+      turn += 1;
+      await invokeAgentTool(f.repo, ctx(), "confirmar_resumen", {});
+      return invokeAgentTool(f.repo, ctx(), "crear_pedido", { ...base, items, customer_name: "Nora", payment_method: pago });
+    };
+    const chico = await pedir([{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 2 }], "efectivo");
+    expect(chico.orderId).not.toBeNull();
+    turn += 1;
+    const grande = await pedir([{ product_id: arrachera, product_name: "Arrachera — 2 kg", requested_quantity: 1 }], "efectivo");
+    expect(grande.orderId).toBeNull();
+    expect(grande.result).toMatchObject({ pedido_grande: true });
   });
 });

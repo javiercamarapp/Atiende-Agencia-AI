@@ -60,6 +60,11 @@ describe("busqueda con el catalogo real de PM: el primer resultado es el product
       expect(await primero(consulta)).toBe(esperado);
     });
   }
+  it("'3 kilos de pastor' ya no se reduce a 1 kg: trae todos los pesos para armar 2 kg + 1 kg", async () => {
+    const r = (await searchProducts(w.repo, { propertyId: w.propertyId, query: "3 kilos de pastor" })).map((p) => p.name);
+    expect(r).toContain("Pastor — 2 kg");
+    expect(r).toContain("Pastor — 1 kg");
+  });
   it("un producto que no existe sigue dando lista vacia (sushi)", async () => {
     expect(await primero("sushi")).toBeNull();
   });
