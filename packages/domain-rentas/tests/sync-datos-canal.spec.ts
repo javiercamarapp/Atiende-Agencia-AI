@@ -34,36 +34,40 @@ async function fixture() {
   port.definirEscenario(URL_AIRBNB, { tipo: "ics", contenidoIcs: ICS });
   const cambiarFeed = (ics: string) => port.definirEscenario(URL_AIRBNB, { tipo: "ics", contenidoIcs: ics });
   const ciclo = async () => ejecutarCicloImportacion({ db, syncRepo, port, feed: (await syncRepo.findFeed(propertyId, unidad.id, canal.id))!, zonaHorariaPropiedad: "America/Mexico_City" });
-  return { store, syncRepo, ciclo, unidad, cambiarFeed };
+  const datos = () => [...store.ocupaciones.values()].filter((o) => o.codigoConfirmacion || o.telefonoUltimos4).map((o) => ({ codigoConfirmacion: o.codigoConfirmacion ?? null, telefonoUltimos4: o.telefonoUltimos4 ?? null }));
+  return { store, syncRepo, ciclo, unidad, cambiarFeed, datos };
 }
 
 describe("motor iCal -- datos del canal en la ocupacion", () => {
   it("al crear la reserva guarda codigo HM... y ultimos 4; el bloqueo sin DESCRIPTION no guarda nada", async () => {
-    const { store, syncRepo, ciclo, unidad } = await fixture();
+    const { store, ciclo, unidad, datos } = await fixture();
     await ciclo();
     const ocupaciones = [...store.ocupaciones.values()].filter((o) => o.unidadId === unidad.id);
     expect(ocupaciones).toHaveLength(2);
-    const conCodigo = ocupaciones.filter((o) => syncRepo.datosCanalPorOcupacion.has(o.id));
+    const conCodigo = ocupaciones.filter((o) => o.codigoConfirmacion);
     expect(conCodigo).toHaveLength(1);
-    expect(syncRepo.datosCanalPorOcupacion.get(conCodigo[0]!.id)).toEqual({ codigoConfirmacion: "HMAB12CD34", telefonoUltimos4: "0123" });
+    expect(datos()).toEqual([{ codigoConfirmacion: "HMAB12CD34", telefonoUltimos4: "0123" }]);
     expect(conCodigo[0]!.externalId).toBe("1418fb94e984-ff1c0a7c0f3f@airbnb.com");
   });
 
   it("una segunda corrida sin cambios no duplica ni pierde el dato", async () => {
-    const { syncRepo, ciclo } = await fixture();
+    const { ciclo, datos } = await fixture();
     await ciclo();
     await ciclo();
-    expect(syncRepo.datosCanalPorOcupacion.size).toBe(1);
+    expect(datos()).toHaveLength(1);
   });
 
   it("rellena una reserva importada ANTES de la migracion (el evento no cambio pero faltaba el dato)", async () => {
-    const { syncRepo, ciclo, cambiarFeed } = await fixture();
+    const { store, ciclo, cambiarFeed, datos } = await fixture();
     await ciclo();
-    syncRepo.datosCanalPorOcupacion.clear();
+    for (const o of store.ocupaciones.values()) {
+      o.codigoConfirmacion = null;
+      o.telefonoUltimos4 = null;
+    }
     // El feed cambia (un evento nuevo): el evento de la reserva viene igual (sin_cambio) pero faltaba el dato.
     cambiarFeed(ICS.replace("END:VCALENDAR", "BEGIN:VEVENT\r\nDTEND;VALUE=DATE:20261205\r\nDTSTART;VALUE=DATE:20261201\r\nUID:otro@airbnb.com\r\nDTSTAMP:20261001T120000Z\r\nSUMMARY:Airbnb (Not available)\r\nEND:VEVENT\r\nEND:VCALENDAR"));
     await ciclo();
-    expect([...syncRepo.datosCanalPorOcupacion.values()]).toEqual([{ codigoConfirmacion: "HMAB12CD34", telefonoUltimos4: "0123" }]);
+    expect(datos()).toEqual([{ codigoConfirmacion: "HMAB12CD34", telefonoUltimos4: "0123" }]);
   });
 });
 

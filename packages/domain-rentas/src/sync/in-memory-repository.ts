@@ -243,15 +243,15 @@ export class InMemoryRentasCalendarSyncRepository implements RentasCalendarSyncR
     return encontrada ? encontrada.id : null;
   }
 
-  readonly datosCanalPorOcupacion = new Map<string, { codigoConfirmacion: string | null; telefonoUltimos4: string | null }>();
-
   async guardarDatosCanalOcupacion(ocupacionId: string, datos: { readonly codigoConfirmacion: string | null; readonly telefonoUltimos4: string | null }): Promise<boolean> {
     if (datos.codigoConfirmacion === null && datos.telefonoUltimos4 === null) return false;
-    if (!this.calendarStore.getOcupacion(ocupacionId)) return false;
-    const previo = this.datosCanalPorOcupacion.get(ocupacionId) ?? { codigoConfirmacion: null, telefonoUltimos4: null };
-    const nuevo = { codigoConfirmacion: datos.codigoConfirmacion ?? previo.codigoConfirmacion, telefonoUltimos4: datos.telefonoUltimos4 ?? previo.telefonoUltimos4 };
-    if (nuevo.codigoConfirmacion === previo.codigoConfirmacion && nuevo.telefonoUltimos4 === previo.telefonoUltimos4) return false;
-    this.datosCanalPorOcupacion.set(ocupacionId, nuevo);
+    const ocupacion = this.calendarStore.getOcupacion(ocupacionId);
+    if (!ocupacion) return false;
+    const codigo = datos.codigoConfirmacion ?? ocupacion.codigoConfirmacion ?? null;
+    const telefono = datos.telefonoUltimos4 ?? ocupacion.telefonoUltimos4 ?? null;
+    if (codigo === (ocupacion.codigoConfirmacion ?? null) && telefono === (ocupacion.telefonoUltimos4 ?? null)) return false;
+    ocupacion.codigoConfirmacion = codigo;
+    ocupacion.telefonoUltimos4 = telefono;
     return true;
   }
 
