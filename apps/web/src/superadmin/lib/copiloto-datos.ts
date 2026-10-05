@@ -1,7 +1,7 @@
 // Datos de la configuracion del Copiloto de PLATAFORMA (superadmin). Solo textos y listas: las respuestas salen del servidor (`POST /superadmin/copiloto`) con el catalogo
 // de `apps/api/src/superadmin-copiloto/catalogo.ts`. Cada chip y pregunta de tarjeta tiene consulta DIRECTA (sin modelo) a una herramienta que existe; un test del
-// API (`superadmin-copiloto-config.spec.ts`) lo valida contra el catalogo real. Los chips evitan las herramientas financieras (exigen step-up): esas se piden
-// escribiendo la pregunta, y el cliente abre el dialogo de verificacion si hace falta.
+// API (`superadmin-copiloto-config.spec.ts`) lo valida contra el catalogo real. Las consultas CFO (MRR, P&L, margen, cobranza, contratos) tambien son chips y tarjetas:
+// exigen step-up y el cliente abre el dialogo de verificacion MFA y reintenta (nunca se muestran cifras sin esa verificacion).
 //
 // DATOS PUROS, sin importar nada (ni tipos de @atiende/ui): asi la prueba del API puede leerlos sin arrastrar la UI al typecheck de la raiz. `copiloto-config.ts` los
 // tipa como `CopilotoConfigVertical`.
@@ -19,7 +19,12 @@ const P5 = "¿Cuánto gasté en IA este mes por vertical?";
 const P6 = "¿Qué agentes están apagados?";
 const P7 = "¿Qué errores recientes hay en la plataforma?";
 const P8 = "¿Cuántos clientes están en prueba?";
-const P9 = "¿Qué clientes están suspendidos?";
+const P10 = "¿Cuál es mi MRR por vertical?";
+const P11 = "¿Cómo va el P&L por vertical este mes?";
+const P12 = "¿Qué clientes tienen menor margen?";
+const P13 = "¿Qué clientes tienen el pago pendiente?";
+const P14 = "¿Qué contratos vencen en los próximos 60 días?";
+const P15 = "¿Cómo están las colas de mensajes?";
 
 const FASES: ReadonlyArray<readonly [number, string]> = [
   [0, "Leyendo la plataforma…"],
@@ -29,7 +34,7 @@ const FASES: ReadonlyArray<readonly [number, string]> = [
   [30000, "Esto está tardando más de lo normal…"],
 ];
 
-export const SUGERENCIAS_COPILOTO_SUPERADMIN: readonly string[] = [P1, P2, P5, P6, P7];
+export const SUGERENCIAS_COPILOTO_SUPERADMIN: readonly string[] = [P1, P10, P13, P5, P6];
 
 export const DIRECTAS_COPILOTO_SUPERADMIN: Readonly<Record<string, Directa>> = {
   [P1]: { tool: "organizaciones" },
@@ -40,7 +45,12 @@ export const DIRECTAS_COPILOTO_SUPERADMIN: Readonly<Record<string, Directa>> = {
   [P6]: { tool: "agentes_interruptores" },
   [P7]: { tool: "errores" },
   [P8]: { tool: "organizaciones", args: { estado: "trial" } },
-  [P9]: { tool: "organizaciones", args: { estado: "suspended" } },
+  [P10]: { tool: "mrr" },
+  [P11]: { tool: "pyl" },
+  [P12]: { tool: "margen_costos_unitarios" },
+  [P13]: { tool: "facturacion_cobranza", args: { estado: "pago_pendiente" } },
+  [P14]: { tool: "contratos_por_vencer", args: { dias: 60 } },
+  [P15]: { tool: "salud_colas" },
 };
 
 export const DATOS_COPILOTO_SUPERADMIN = {
@@ -55,9 +65,9 @@ export const DATOS_COPILOTO_SUPERADMIN = {
   },
   sugerencias: SUGERENCIAS_COPILOTO_SUPERADMIN,
   categorias: [
-    { titulo: "Plataforma y ventas", preguntas: [P2, P3, P4] },
-    { titulo: "Costos y agentes", preguntas: [P5, P6, P7] },
-    { titulo: "Clientes", preguntas: [P1, P8, P9] },
+    { titulo: "CFO y cobranza", preguntas: [P10, P11, P12, P13, P14] },
+    { titulo: "Ventas y costos de IA", preguntas: [P2, P3, P5, P4] },
+    { titulo: "Clientes, agentes y salud", preguntas: [P1, P8, P6, P7, P15] },
   ],
   directas: DIRECTAS_COPILOTO_SUPERADMIN,
   etiquetasHerramienta: {
@@ -77,12 +87,13 @@ export const DATOS_COPILOTO_SUPERADMIN = {
     margen_costos_unitarios: "Calculando márgenes y costos unitarios",
     pyl: "Armando el P&L",
     contratos_por_vencer: "Buscando contratos por vencer",
+    facturacion_cobranza: "Revisando la facturación y la cobranza",
     proponer_accion: "Preparando la propuesta",
   },
   rutasFuente: {
     organizaciones: "/superadmin/organizaciones",
-    costos_ia: "/superadmin/gasto-api",
-    consumo_vs_tope: "/superadmin/gasto-api",
+    costos_ia: "/superadmin/consumo-ia",
+    consumo_vs_tope: "/superadmin/consumo-ia",
     uso_por_vertical: "/superadmin",
     agentes_interruptores: "/superadmin/agentes",
     ultimas_corridas: "/superadmin/salud",
@@ -90,12 +101,13 @@ export const DATOS_COPILOTO_SUPERADMIN = {
     salud_colas: "/superadmin/salud",
     planes_y_topes: "/superadmin/planes",
     eventos_seguridad: "/superadmin/seguridad",
-    prospectos: "/superadmin/prospectos",
-    uso_copiloto: "/superadmin/gasto-api",
-    mrr: "/superadmin/cfo",
-    margen_costos_unitarios: "/superadmin/costos-margen",
-    pyl: "/superadmin/pyl",
-    contratos_por_vencer: "/superadmin/contratos",
+    prospectos: "/superadmin/cerebro",
+    uso_copiloto: "/superadmin/consumo-ia",
+    mrr: "/superadmin/ejecutivo",
+    margen_costos_unitarios: "/superadmin/costos-facturacion?tab=costos",
+    pyl: "/superadmin/costos-facturacion?tab=pyl",
+    contratos_por_vencer: "/superadmin/costos-facturacion?tab=contratos",
+    facturacion_cobranza: "/superadmin/costos-facturacion?tab=facturacion",
   },
   maxCaracteres: 600,
   textoSinAcceso: "Tu rol no tiene acceso al Copiloto de plataforma.",
