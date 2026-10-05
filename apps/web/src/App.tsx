@@ -1,204 +1,216 @@
 // Shell mínimo de apps/web para esta fase — solo lo necesario para que la pantalla
 // de login del vertical restaurantes sea real y navegable, sin portar el resto del
 // dashboard visual (fuera de alcance explícito de Fase 1, ver el brief).
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import type { ReactElement, ReactNode } from "react";
-import { RestaurantesLoginPage } from "./verticals/restaurantes/pages/Login.tsx";
-import { RestaurantesDashboardPage } from "./verticals/restaurantes/pages/Dashboard.tsx";
-import { RestaurantesShell } from "./verticals/restaurantes/RestaurantesShell.tsx";
-import { ProductosPage } from "./verticals/restaurantes/pages/Productos.tsx";
-import { SucursalesPage } from "./verticals/restaurantes/pages/Sucursales.tsx";
-import { PedidosPage } from "./verticals/restaurantes/pages/Pedidos.tsx";
-import { ComandasPosPage as RestaurantesComandasPosPage } from "./verticals/restaurantes/pages/ComandasPos.tsx";
-import { HistorialPage } from "./verticals/restaurantes/pages/Historial.tsx";
-import { ClienteFichaPage as RestaurantesClienteFichaPage, ClientesListPage as RestaurantesClientesListPage } from "./verticals/restaurantes/pages/Clientes.tsx";
-import { RepartidorPedidosPage } from "./verticals/restaurantes/pages/Repartidor.tsx";
-import { StaffPage } from "./verticals/restaurantes/pages/Staff.tsx";
-import { PromocionesPage } from "./verticals/restaurantes/pages/Promociones.tsx";
-import { AuditoriaPage as RestaurantesAuditoriaPage } from "./verticals/restaurantes/pages/Auditoria.tsx";
-import { ConfiguracionPage as RestaurantesConfiguracionPage } from "./verticals/restaurantes/pages/Configuracion.tsx";
-import { AgenteVozPage as RestaurantesAgenteVozPage } from "./verticals/restaurantes/pages/AgenteVoz.tsx";
-import { AjustesAgentePage as RestaurantesAjustesAgentePage } from "./verticals/restaurantes/pages/AjustesAgente.tsx";
-import { IndicadoresWhatsappPage as RestaurantesIndicadoresWhatsappPage } from "./verticals/restaurantes/pages/IndicadoresWhatsapp.tsx";
-import { CierresPage as RestaurantesCierresPage } from "./verticals/restaurantes/pages/Cierres.tsx";
-import { PrivacidadPage as RestaurantesPrivacidadPage } from "./verticals/restaurantes/pages/Privacidad.tsx";
-import { ConversacionesPage as RestaurantesConversacionesPage } from "./verticals/restaurantes/pages/Conversaciones.tsx";
-import { TurnosPage as RestaurantesTurnosPage } from "./verticals/restaurantes/pages/Turnos.tsx";
-import { AvisosStaffPage as RestaurantesAvisosPage } from "./verticals/restaurantes/pages/AvisosStaff.tsx";
-import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
-import { SeleccionarVerticalPage } from "./shell/SeleccionarVertical.tsx";
-import { GoogleCallbackPage } from "./shell/GoogleCallback.tsx";
-import { TerminosPage } from "./pages/Terminos.tsx";
-import { NotFoundPage } from "./pages/NotFound.tsx";
-import { PrivacidadPage } from "./pages/Privacidad.tsx";
-import { SuperAdminShell } from "./superadmin/SuperAdminShell.tsx";
+import { Suspense } from "react";
+import type { ComponentType, LazyExoticComponent, ReactElement, ReactNode } from "react";
 import { REDIRECCIONES_SUPERADMIN } from "./superadmin/rutas.ts";
-import { SuperAdminOrganizacionesPage } from "./superadmin/pages/Organizaciones.tsx";
-import { SuperAdminOrganizacionFichaPage } from "./superadmin/pages/OrganizacionFicha.tsx";
-import { SuperAdminProspectosPage } from "./superadmin/pages/Prospectos.tsx";
-import { SuperAdminTaxonomiaPage } from "./superadmin/pages/Taxonomia.tsx";
-import { SuperAdminCerebroMapaPage } from "./superadmin/cerebro/CerebroMapa.tsx";
-import { SuperAdminFichaProspectoPage } from "./superadmin/cerebro/FichaProspecto.tsx";
-import { SuperAdminPanelesPage } from "./superadmin/pages/Paneles.tsx";
-import { SuperAdminConsumoIaPage } from "./superadmin/pages/ConsumoIa.tsx";
-import { SuperAdminBreakGlassPage } from "./superadmin/pages/BreakGlass.tsx";
-import { SuperAdminImpersonacionPage } from "./superadmin/pages/Impersonacion.tsx";
-import { SuperAdminAuthzAuditoriaPage } from "./superadmin/pages/AuthzAuditoria.tsx";
-import { SuperAdminIntegracionesPage } from "./superadmin/pages/Integraciones.tsx";
-import { SuperAdminSaludPage } from "./superadmin/pages/Salud.tsx";
-import { SuperAdminResumenPage } from "./superadmin/pages/Resumen.tsx";
-import { SuperAdminConsolaResumenPage } from "./superadmin/pages/ConsolaResumen.tsx";
-import { SuperAdminAccionesPage } from "./superadmin/pages/Acciones.tsx";
-import { SuperAdminSeguridadPage } from "./superadmin/pages/Seguridad.tsx";
-import { SuperAdminInterruptoresPage } from "./superadmin/pages/Interruptores.tsx";
-import { SuperAdminPrivacidadPage } from "./superadmin/pages/Privacidad.tsx";
-import { SuperAdminSupresionPage } from "./superadmin/pages/Supresion.tsx";
-import { SuperAdminAgentesPage } from "./superadmin/pages/Agentes.tsx";
-import { SuperAdminAgenteConciliacionPage, SuperAdminAgenteExtractorPage, SuperAdminAgenteWhatsappPage } from "./superadmin/pages/AgenteFicha.tsx";
-import { SuperAdminModelOpsPage } from "./superadmin/pages/ModelOps.tsx";
-import { PrivacidadOrganizacionPage } from "./pages/PrivacidadOrganizacion.tsx";
-import { SuperAdminCostosFacturacionPage } from "./superadmin/pages/CostosFacturacion.tsx";
-import { SuperAdminEjecutivoPage } from "./superadmin/pages/Ejecutivo.tsx";
-import { SuperAdminZonaCfoPage } from "./superadmin/pages/ZonaCfo.tsx";
-import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
-import { EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui";
-import { NotificacionesPagina } from "./components/NotificacionesPagina.tsx";
-import { PlanYUsoPagina } from "./components/PlanYUsoPagina.tsx";
-import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
-import { SucursalPage as StorefrontSucursalPage } from "./verticals/restaurantes/storefront/SucursalPage.tsx";
-import { RastreoPage as StorefrontRastreoPage } from "./verticals/restaurantes/storefront/RastreoPage.tsx";
-import { ReservarPage } from "./verticals/citas/reserva/ReservarPage.tsx";
-import { PrivacidadStorefrontPage } from "./verticals/restaurantes/storefront/PrivacidadStorefront.tsx";
-import { EventosPage as StorefrontEventosPage } from "./verticals/restaurantes/storefront/EventosPage.tsx";
-import { RestaurantesPrimerosPasosPage } from "./verticals/restaurantes/pages/PrimerosPasos.tsx";
-import { RestaurantesCopilotoPage } from "./verticals/restaurantes/pages/Copiloto.tsx";
-import { RentasCopilotoPage } from "./verticals/rentas/pages/Copiloto.tsx";
-import { DemoWhatsAppPage } from "./verticals/restaurantes/demo/DemoWhatsAppPage.tsx";
-import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
-import { AvisoPublicoPage } from "./verticals/hoteles/privacidad-publica/AvisoPublicoPage.tsx";
-import { MisDatosPage } from "./verticals/hoteles/privacidad-publica/MisDatosPage.tsx";
-import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
-import { HotelesCopilotoPage } from "./verticals/hoteles/pages/Copiloto.tsx";
-import { DashboardPage as HotelesDashboardPage } from "./verticals/hoteles/pages/Dashboard.tsx";
-import { ReservasPage } from "./verticals/hoteles/pages/Reservas.tsx";
-import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
-import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
-import { HousekeepingPage } from "./verticals/hoteles/pages/Housekeeping.tsx";
-import { MensajeriaPage } from "./verticals/hoteles/pages/Mensajeria.tsx";
-import { TicketsPage } from "./verticals/hoteles/pages/Tickets.tsx";
-import { AgentesPage } from "./verticals/hoteles/pages/Agentes.tsx";
-import { AprobacionesAgentesPage } from "./verticals/hoteles/pages/Aprobaciones.tsx";
-import { GruposPage } from "./verticals/hoteles/pages/Grupos.tsx";
-import { RecepcionPage } from "./verticals/hoteles/pages/Recepcion.tsx";
-import { HuespedesPage } from "./verticals/hoteles/pages/Huespedes.tsx";
-import { HuespedFichaPage } from "./verticals/hoteles/pages/HuespedFicha.tsx";
-import { ConversacionesPage as HotelesConversacionesPage } from "./verticals/hoteles/pages/Conversaciones.tsx";
-import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
-import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
-import { IdentidadPage } from "./verticals/hoteles/pages/Identidad.tsx";
-import { CfdiPage as HotelesCfdiPage } from "./verticals/hoteles/pages/Cfdi.tsx";
-import { CfdiListadoPage as HotelesCfdiListadoPage } from "./verticals/hoteles/pages/CfdiListado.tsx";
-import { PlPage as HotelesPlPage } from "./verticals/hoteles/pages/Pl.tsx";
-import { RevenuePage as HotelesRevenuePage } from "./verticals/hoteles/pages/Revenue.tsx";
-import { ReputacionPage as HotelesReputacionPage } from "./verticals/hoteles/pages/Reputacion.tsx";
-import { CatalogoPage as HotelesCatalogoPage } from "./verticals/hoteles/pages/Catalogo.tsx";
-import { PedidosFnbPage } from "./verticals/hoteles/pages/PedidosFnb.tsx";
-import { RentasLoginPage } from "./verticals/rentas/pages/Login.tsx";
-import { RentasRegistroPage } from "./verticals/rentas/pages/Registro.tsx";
-import { RentasShell } from "./verticals/rentas/RentasShell.tsx";
-import { RentasDashboardPage } from "./verticals/rentas/pages/Dashboard.tsx";
-import { CalendarioPage as RentasCalendarioPage } from "./verticals/rentas/pages/Calendario.tsx";
-import { PreciosPage as RentasPreciosPage } from "./verticals/rentas/pages/Precios.tsx";
-import { AprobacionesPage as RentasAprobacionesPage } from "./verticals/rentas/pages/Aprobaciones.tsx";
-import { FinanzasPage as RentasFinanzasPage } from "./verticals/rentas/pages/Finanzas.tsx";
-import { MisTareasPage as RentasMisTareasPage } from "./verticals/rentas/pages/MisTareas.tsx";
-import { IcalSyncPage as RentasIcalSyncPage } from "./verticals/rentas/pages/IcalSync.tsx";
-import { MonitorSyncPage as RentasMonitorSyncPage } from "./verticals/rentas/pages/MonitorSync.tsx";
-import { ReportesPage as RentasReportesPage } from "./verticals/rentas/pages/Reportes.tsx";
-import { AccesoHuespedPage as RentasAccesoHuespedPage } from "./verticals/rentas/pages/AccesoHuesped.tsx";
-import { PlantillasPage as RentasPlantillasPage } from "./verticals/rentas/pages/Plantillas.tsx";
-import { PrivacidadPage as RentasPrivacidadPage } from "./verticals/rentas/pages/Privacidad.tsx";
-import { AuditoriaPage as RentasAuditoriaPage } from "./verticals/rentas/pages/Auditoria.tsx";
-import { CatalogoPage as RentasCatalogoPage } from "./verticals/rentas/pages/Catalogo.tsx";
-import { EquipoPage as RentasEquipoPage } from "./verticals/rentas/pages/Equipo.tsx";
-import { OwnerPortalLoginPage } from "./verticals/rentas/pages/OwnerPortalLogin.tsx";
-import { OwnerPortalActivarPage } from "./verticals/rentas/pages/OwnerPortalActivar.tsx";
-import { OwnerPortalDashboardPage } from "./verticals/rentas/pages/OwnerPortalDashboard.tsx";
-import { SinOrganizacionPage } from "./shell/SinOrganizacion.tsx";
-import { SeleccionarOrganizacionPage } from "./shell/SeleccionarOrganizacion.tsx";
-import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
-import { CitasShell } from "./verticals/citas/CitasShell.tsx";
-import { AgendaPage } from "./verticals/citas/pages/Agenda.tsx";
-import { ResumenPage as CitasResumenPage } from "./verticals/citas/pages/Resumen.tsx";
-import { CitasCopilotoPage } from "./verticals/citas/pages/Copiloto.tsx";
-import { PrimerosPasosPage as CitasPrimerosPasosPage } from "./verticals/citas/pages/PrimerosPasos.tsx";
-import { ProveedorFichaPage, ProveedoresListPage } from "./verticals/citas/pages/Proveedores.tsx";
-import { ServicioFichaPage, ServiciosListPage } from "./verticals/citas/pages/Servicios.tsx";
-import { ClienteFichaPage, ClientesListPage } from "./verticals/citas/pages/Clientes.tsx";
-import { DisponibilidadPage } from "./verticals/citas/pages/Disponibilidad.tsx";
-import { ConfiguracionPage } from "./verticals/citas/pages/Configuracion.tsx";
-import { StaffPage as CitasStaffPage } from "./verticals/citas/pages/Staff.tsx";
-import { AuditoriaPage as CitasAuditoriaPage } from "./verticals/citas/pages/Auditoria.tsx";
-import { AvisosPage as CitasAvisosPage } from "./verticals/citas/pages/Avisos.tsx";
-import { PrivacidadPage as CitasPrivacidadPage } from "./verticals/citas/pages/Privacidad.tsx";
-import { AgenteWhatsappPage as CitasAgenteWhatsappPage } from "./verticals/citas/pages/AgenteWhatsapp.tsx";
-import { WhatsappMensajesPage as CitasWhatsappMensajesPage } from "./verticals/citas/pages/WhatsappMensajes.tsx";
-import { ConversacionesPage as CitasConversacionesPage } from "./verticals/citas/pages/Conversaciones.tsx";
-import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
-import { LicitacionesShell, puedeVerPrivacidad as licitacionesPuedeVerPrivacidad } from "./verticals/licitaciones/LicitacionesShell.tsx";
-import { LicitacionesCopilotoPage } from "./verticals/licitaciones/pages/Copiloto.tsx";
-import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
-import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
-import { RequisitosConvocatoriaPage } from "./verticals/licitaciones/pages/RequisitosConvocatoria.tsx";
-import { PropuestaTecnicaPage } from "./verticals/licitaciones/pages/PropuestaTecnica.tsx";
-import { CierrePage } from "./verticals/licitaciones/pages/Cierre.tsx";
-import { ContratoPage } from "./verticals/licitaciones/pages/Contrato.tsx";
-import { PostAdjudicacionPage } from "./verticals/licitaciones/pages/PostAdjudicacion.tsx";
-import { AutopsiaPage } from "./verticals/licitaciones/pages/Autopsia.tsx";
-import { RadarRenovacionesPage } from "./verticals/licitaciones/pages/RadarRenovaciones.tsx";
-import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatching.tsx";
-import { DatosEmpresaPage } from "./verticals/licitaciones/pages/DatosEmpresa.tsx";
-import { StaffPage as LicitacionesStaffPage } from "./verticals/licitaciones/pages/Staff.tsx";
-import { SeguridadPage as LicitacionesSeguridadPage } from "./verticals/licitaciones/pages/Seguridad.tsx";
-import { WhatsappPage as LicitacionesWhatsappPage } from "./verticals/licitaciones/pages/Whatsapp.tsx";
-import { DiasInhabilesPage as LicitacionesDiasInhabilesPage } from "./verticals/licitaciones/pages/DiasInhabiles.tsx";
-import { Kyc69bPage as LicitacionesKyc69bPage } from "./verticals/licitaciones/pages/Kyc69b.tsx";
-import { RestablecerContrasenaPage, VerificarCorreoPage } from "./shell/cuenta/CuentaEnlaces.tsx";
-import { SeguridadCuentaPagina } from "./shell/cuenta/SeguridadCuentaPagina.tsx";
-import { PanelPage as LicitacionesPanelPage } from "./verticals/licitaciones/pages/Panel.tsx";
-import { FuentesFrescuraPage } from "./verticals/licitaciones/pages/FuentesFrescura.tsx";
-import { SeguimientoPage } from "./verticals/licitaciones/pages/Seguimiento.tsx";
-import { AprobacionesPage } from "./verticals/licitaciones/pages/Aprobaciones.tsx";
-import { SalaGuerraPage } from "./verticals/licitaciones/pages/SalaGuerra.tsx";
-import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
-import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
-import { SeguridadPage as DespachosSeguridadPage } from "./verticals/despachos/pages/Seguridad.tsx";
-import { DespachosCopilotoPage } from "./verticals/despachos/pages/Copiloto.tsx";
-import { DashboardPage as DespachosDashboardPage } from "./verticals/despachos/pages/Dashboard.tsx";
-import { ReportesPage as DespachosReportesPage } from "./verticals/despachos/pages/Reportes.tsx";
-import { CierreMensualPage } from "./verticals/despachos/pages/CierreMensual.tsx";
-import { CierreMensualDetallePage } from "./verticals/despachos/pages/CierreMensualDetalle.tsx";
-import { CarteraPage } from "./verticals/despachos/pages/Cartera.tsx";
-import { CfdiPage } from "./verticals/despachos/pages/Cfdi.tsx";
-import { CfdiDetallePage } from "./verticals/despachos/pages/CfdiDetalle.tsx";
-import { CobranzaPage } from "./verticals/despachos/pages/Cobranza.tsx";
-import { ColaCobranzaPage } from "./verticals/despachos/pages/ColaCobranza.tsx";
-import { VencimientosPage } from "./verticals/despachos/pages/Vencimientos.tsx";
-import { DeclaracionesPage } from "./verticals/despachos/pages/Declaraciones.tsx";
-import { NominaPage } from "./verticals/despachos/pages/Nomina.tsx";
-import { ConciliacionPage } from "./verticals/despachos/pages/Conciliacion.tsx";
-import { ImportarEstadoCuentaPage } from "./verticals/despachos/pages/ImportarEstadoCuenta.tsx";
-import { MigracionCatalogoPage } from "./verticals/despachos/pages/MigracionCatalogo.tsx";
-import { DevolucionIvaPage } from "./verticals/despachos/pages/DevolucionIva.tsx";
-import { BookkeepingPage } from "./verticals/despachos/pages/Bookkeeping.tsx";
-import { ContabilidadElectronicaPage } from "./verticals/despachos/pages/ContabilidadElectronica.tsx";
-import { LibroContablePage } from "./verticals/despachos/pages/LibroContable.tsx";
-import { PagosProvisionalesPage } from "./verticals/despachos/pages/PagosProvisionales.tsx";
-import { StaffPage as DespachosStaffPage } from "./verticals/despachos/pages/Staff.tsx";
-import { ConfiguracionPage as DespachosConfiguracionPage } from "./verticals/despachos/pages/Configuracion.tsx";
-import { PortalClientePage as DespachosPortalClientePage } from "./verticals/despachos/pages/PortalCliente.tsx";
-import { PortalClientePage as PortalClientePublicoPage } from "./verticals/despachos/portal/PortalClientePage.tsx";
+import { cargaPerezosa, ErrorBoundaryRaiz } from "./lib/carga-perezosa.tsx";
+import { EstadoCargando, EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui";
+import { puedeVerPrivacidad as licitacionesPuedeVerPrivacidad } from "./verticals/licitaciones/roles-nav.ts";
+
+// R-37: cada pantalla es su propio chunk (ver lib/carga-perezosa.tsx: reintento, recarga protegida y ErrorBoundary raíz).
+const RestaurantesLoginPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Login.tsx"), "RestaurantesLoginPage");
+const RestaurantesDashboardPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Dashboard.tsx"), "RestaurantesDashboardPage");
+const RestaurantesShell = cargaPerezosa(() => import("./verticals/restaurantes/RestaurantesShell.tsx"), "RestaurantesShell");
+const ProductosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Productos.tsx"), "ProductosPage");
+const SucursalesPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Sucursales.tsx"), "SucursalesPage");
+const PedidosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Pedidos.tsx"), "PedidosPage");
+const RestaurantesComandasPosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/ComandasPos.tsx"), "ComandasPosPage");
+const HistorialPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Historial.tsx"), "HistorialPage");
+const RestaurantesClienteFichaPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Clientes.tsx"), "ClienteFichaPage");
+const RestaurantesClientesListPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Clientes.tsx"), "ClientesListPage");
+const RepartidorPedidosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Repartidor.tsx"), "RepartidorPedidosPage");
+const StaffPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Staff.tsx"), "StaffPage");
+const PromocionesPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Promociones.tsx"), "PromocionesPage");
+const RestaurantesAuditoriaPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Auditoria.tsx"), "AuditoriaPage");
+const RestaurantesConfiguracionPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Configuracion.tsx"), "ConfiguracionPage");
+const RestaurantesAgenteVozPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/AgenteVoz.tsx"), "AgenteVozPage");
+const RestaurantesAjustesAgentePage = cargaPerezosa(() => import("./verticals/restaurantes/pages/AjustesAgente.tsx"), "AjustesAgentePage");
+const RestaurantesIndicadoresWhatsappPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/IndicadoresWhatsapp.tsx"), "IndicadoresWhatsappPage");
+const RestaurantesCierresPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Cierres.tsx"), "CierresPage");
+const RestaurantesPrivacidadPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Privacidad.tsx"), "PrivacidadPage");
+const RestaurantesConversacionesPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Conversaciones.tsx"), "ConversacionesPage");
+const RestaurantesTurnosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Turnos.tsx"), "TurnosPage");
+const RestaurantesAvisosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/AvisosStaff.tsx"), "AvisosStaffPage");
+const AceptarInvitacionPage = cargaPerezosa(() => import("./shell/AceptarInvitacion.tsx"), "AceptarInvitacionPage");
+const SeleccionarVerticalPage = cargaPerezosa(() => import("./shell/SeleccionarVertical.tsx"), "SeleccionarVerticalPage");
+const GoogleCallbackPage = cargaPerezosa(() => import("./shell/GoogleCallback.tsx"), "GoogleCallbackPage");
+const TerminosPage = cargaPerezosa(() => import("./pages/Terminos.tsx"), "TerminosPage");
+const NotFoundPage = cargaPerezosa(() => import("./pages/NotFound.tsx"), "NotFoundPage");
+const PrivacidadPage = cargaPerezosa(() => import("./pages/Privacidad.tsx"), "PrivacidadPage");
+const SuperAdminShell = cargaPerezosa(() => import("./superadmin/SuperAdminShell.tsx"), "SuperAdminShell");
+const SuperAdminOrganizacionesPage = cargaPerezosa(() => import("./superadmin/pages/Organizaciones.tsx"), "SuperAdminOrganizacionesPage");
+const SuperAdminOrganizacionFichaPage = cargaPerezosa(() => import("./superadmin/pages/OrganizacionFicha.tsx"), "SuperAdminOrganizacionFichaPage");
+const SuperAdminProspectosPage = cargaPerezosa(() => import("./superadmin/pages/Prospectos.tsx"), "SuperAdminProspectosPage");
+const SuperAdminTaxonomiaPage = cargaPerezosa(() => import("./superadmin/pages/Taxonomia.tsx"), "SuperAdminTaxonomiaPage");
+const SuperAdminCerebroMapaPage = cargaPerezosa(() => import("./superadmin/cerebro/CerebroMapa.tsx"), "SuperAdminCerebroMapaPage");
+const SuperAdminFichaProspectoPage = cargaPerezosa(() => import("./superadmin/cerebro/FichaProspecto.tsx"), "SuperAdminFichaProspectoPage");
+const SuperAdminPanelesPage = cargaPerezosa(() => import("./superadmin/pages/Paneles.tsx"), "SuperAdminPanelesPage");
+const SuperAdminConsumoIaPage = cargaPerezosa(() => import("./superadmin/pages/ConsumoIa.tsx"), "SuperAdminConsumoIaPage");
+const SuperAdminBreakGlassPage = cargaPerezosa(() => import("./superadmin/pages/BreakGlass.tsx"), "SuperAdminBreakGlassPage");
+const SuperAdminImpersonacionPage = cargaPerezosa(() => import("./superadmin/pages/Impersonacion.tsx"), "SuperAdminImpersonacionPage");
+const SuperAdminAuthzAuditoriaPage = cargaPerezosa(() => import("./superadmin/pages/AuthzAuditoria.tsx"), "SuperAdminAuthzAuditoriaPage");
+const SuperAdminIntegracionesPage = cargaPerezosa(() => import("./superadmin/pages/Integraciones.tsx"), "SuperAdminIntegracionesPage");
+const SuperAdminSaludPage = cargaPerezosa(() => import("./superadmin/pages/Salud.tsx"), "SuperAdminSaludPage");
+const SuperAdminResumenPage = cargaPerezosa(() => import("./superadmin/pages/Resumen.tsx"), "SuperAdminResumenPage");
+const SuperAdminConsolaResumenPage = cargaPerezosa(() => import("./superadmin/pages/ConsolaResumen.tsx"), "SuperAdminConsolaResumenPage");
+const SuperAdminAccionesPage = cargaPerezosa(() => import("./superadmin/pages/Acciones.tsx"), "SuperAdminAccionesPage");
+const SuperAdminSeguridadPage = cargaPerezosa(() => import("./superadmin/pages/Seguridad.tsx"), "SuperAdminSeguridadPage");
+const SuperAdminInterruptoresPage = cargaPerezosa(() => import("./superadmin/pages/Interruptores.tsx"), "SuperAdminInterruptoresPage");
+const SuperAdminPrivacidadPage = cargaPerezosa(() => import("./superadmin/pages/Privacidad.tsx"), "SuperAdminPrivacidadPage");
+const SuperAdminSupresionPage = cargaPerezosa(() => import("./superadmin/pages/Supresion.tsx"), "SuperAdminSupresionPage");
+const SuperAdminAgentesPage = cargaPerezosa(() => import("./superadmin/pages/Agentes.tsx"), "SuperAdminAgentesPage");
+const SuperAdminAgenteConciliacionPage = cargaPerezosa(() => import("./superadmin/pages/AgenteFicha.tsx"), "SuperAdminAgenteConciliacionPage");
+const SuperAdminAgenteExtractorPage = cargaPerezosa(() => import("./superadmin/pages/AgenteFicha.tsx"), "SuperAdminAgenteExtractorPage");
+const SuperAdminAgenteWhatsappPage = cargaPerezosa(() => import("./superadmin/pages/AgenteFicha.tsx"), "SuperAdminAgenteWhatsappPage");
+const SuperAdminModelOpsPage = cargaPerezosa(() => import("./superadmin/pages/ModelOps.tsx"), "SuperAdminModelOpsPage");
+const PrivacidadOrganizacionPage = cargaPerezosa(() => import("./pages/PrivacidadOrganizacion.tsx"), "PrivacidadOrganizacionPage");
+const SuperAdminCostosFacturacionPage = cargaPerezosa(() => import("./superadmin/pages/CostosFacturacion.tsx"), "SuperAdminCostosFacturacionPage");
+const SuperAdminEjecutivoPage = cargaPerezosa(() => import("./superadmin/pages/Ejecutivo.tsx"), "SuperAdminEjecutivoPage");
+const SuperAdminZonaCfoPage = cargaPerezosa(() => import("./superadmin/pages/ZonaCfo.tsx"), "SuperAdminZonaCfoPage");
+const SuperAdminPlanesPage = cargaPerezosa(() => import("./superadmin/pages/Planes.tsx"), "SuperAdminPlanesPage");
+const NotificacionesPagina = cargaPerezosa(() => import("./components/NotificacionesPagina.tsx"), "NotificacionesPagina");
+const PlanYUsoPagina = cargaPerezosa(() => import("./components/PlanYUsoPagina.tsx"), "PlanYUsoPagina");
+const StorefrontRestaurantePage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/RestaurantePage.tsx"), "RestaurantePage");
+const StorefrontSucursalPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/SucursalPage.tsx"), "SucursalPage");
+const StorefrontRastreoPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/RastreoPage.tsx"), "RastreoPage");
+const ReservarPage = cargaPerezosa(() => import("./verticals/citas/reserva/ReservarPage.tsx"), "ReservarPage");
+const StorefrontEventosPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/EventosPage.tsx"), "EventosPage");
+const PrivacidadStorefrontPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/PrivacidadStorefront.tsx"), "PrivacidadStorefrontPage");
+const RestaurantesPrimerosPasosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/PrimerosPasos.tsx"), "RestaurantesPrimerosPasosPage");
+const RestaurantesCopilotoPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Copiloto.tsx"), "RestaurantesCopilotoPage");
+const RentasCopilotoPage = cargaPerezosa(() => import("./verticals/rentas/pages/Copiloto.tsx"), "RentasCopilotoPage");
+const DemoWhatsAppPage = cargaPerezosa(() => import("./verticals/restaurantes/demo/DemoWhatsAppPage.tsx"), "DemoWhatsAppPage");
+const HotelesLoginPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Login.tsx"), "HotelesLoginPage");
+const AvisoPublicoPage = cargaPerezosa(() => import("./verticals/hoteles/privacidad-publica/AvisoPublicoPage.tsx"), "AvisoPublicoPage");
+const MisDatosPage = cargaPerezosa(() => import("./verticals/hoteles/privacidad-publica/MisDatosPage.tsx"), "MisDatosPage");
+const HotelesShell = cargaPerezosa(() => import("./verticals/hoteles/HotelesShell.tsx"), "HotelesShell");
+const HotelesCopilotoPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Copiloto.tsx"), "HotelesCopilotoPage");
+const HotelesDashboardPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Dashboard.tsx"), "DashboardPage");
+const ReservasPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Reservas.tsx"), "ReservasPage");
+const FolioPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Folio.tsx"), "FolioPage");
+const MantenimientoPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Mantenimiento.tsx"), "MantenimientoPage");
+const HousekeepingPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Housekeeping.tsx"), "HousekeepingPage");
+const MensajeriaPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Mensajeria.tsx"), "MensajeriaPage");
+const TicketsPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Tickets.tsx"), "TicketsPage");
+const AgentesPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Agentes.tsx"), "AgentesPage");
+const AprobacionesAgentesPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Aprobaciones.tsx"), "AprobacionesAgentesPage");
+const GruposPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Grupos.tsx"), "GruposPage");
+const RecepcionPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Recepcion.tsx"), "RecepcionPage");
+const HuespedesPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Huespedes.tsx"), "HuespedesPage");
+const HuespedFichaPage = cargaPerezosa(() => import("./verticals/hoteles/pages/HuespedFicha.tsx"), "HuespedFichaPage");
+const HotelesConversacionesPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Conversaciones.tsx"), "ConversacionesPage");
+const AsistenciaPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Asistencia.tsx"), "AsistenciaPage");
+const FraudePage = cargaPerezosa(() => import("./verticals/hoteles/pages/Fraude.tsx"), "FraudePage");
+const IdentidadPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Identidad.tsx"), "IdentidadPage");
+const HotelesCfdiPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Cfdi.tsx"), "CfdiPage");
+const HotelesCfdiListadoPage = cargaPerezosa(() => import("./verticals/hoteles/pages/CfdiListado.tsx"), "CfdiListadoPage");
+const HotelesPlPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Pl.tsx"), "PlPage");
+const HotelesRevenuePage = cargaPerezosa(() => import("./verticals/hoteles/pages/Revenue.tsx"), "RevenuePage");
+const HotelesReputacionPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Reputacion.tsx"), "ReputacionPage");
+const HotelesCatalogoPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Catalogo.tsx"), "CatalogoPage");
+const PedidosFnbPage = cargaPerezosa(() => import("./verticals/hoteles/pages/PedidosFnb.tsx"), "PedidosFnbPage");
+const RentasLoginPage = cargaPerezosa(() => import("./verticals/rentas/pages/Login.tsx"), "RentasLoginPage");
+const RentasRegistroPage = cargaPerezosa(() => import("./verticals/rentas/pages/Registro.tsx"), "RentasRegistroPage");
+const RentasShell = cargaPerezosa(() => import("./verticals/rentas/RentasShell.tsx"), "RentasShell");
+const RentasDashboardPage = cargaPerezosa(() => import("./verticals/rentas/pages/Dashboard.tsx"), "RentasDashboardPage");
+const RentasCalendarioPage = cargaPerezosa(() => import("./verticals/rentas/pages/Calendario.tsx"), "CalendarioPage");
+const RentasPreciosPage = cargaPerezosa(() => import("./verticals/rentas/pages/Precios.tsx"), "PreciosPage");
+const RentasAprobacionesPage = cargaPerezosa(() => import("./verticals/rentas/pages/Aprobaciones.tsx"), "AprobacionesPage");
+const RentasFinanzasPage = cargaPerezosa(() => import("./verticals/rentas/pages/Finanzas.tsx"), "FinanzasPage");
+const RentasMisTareasPage = cargaPerezosa(() => import("./verticals/rentas/pages/MisTareas.tsx"), "MisTareasPage");
+const RentasIcalSyncPage = cargaPerezosa(() => import("./verticals/rentas/pages/IcalSync.tsx"), "IcalSyncPage");
+const RentasMonitorSyncPage = cargaPerezosa(() => import("./verticals/rentas/pages/MonitorSync.tsx"), "MonitorSyncPage");
+const RentasReportesPage = cargaPerezosa(() => import("./verticals/rentas/pages/Reportes.tsx"), "ReportesPage");
+const RentasAccesoHuespedPage = cargaPerezosa(() => import("./verticals/rentas/pages/AccesoHuesped.tsx"), "AccesoHuespedPage");
+const RentasPlantillasPage = cargaPerezosa(() => import("./verticals/rentas/pages/Plantillas.tsx"), "PlantillasPage");
+const RentasPrivacidadPage = cargaPerezosa(() => import("./verticals/rentas/pages/Privacidad.tsx"), "PrivacidadPage");
+const RentasAuditoriaPage = cargaPerezosa(() => import("./verticals/rentas/pages/Auditoria.tsx"), "AuditoriaPage");
+const RentasCatalogoPage = cargaPerezosa(() => import("./verticals/rentas/pages/Catalogo.tsx"), "CatalogoPage");
+const RentasEquipoPage = cargaPerezosa(() => import("./verticals/rentas/pages/Equipo.tsx"), "EquipoPage");
+const OwnerPortalLoginPage = cargaPerezosa(() => import("./verticals/rentas/pages/OwnerPortalLogin.tsx"), "OwnerPortalLoginPage");
+const OwnerPortalActivarPage = cargaPerezosa(() => import("./verticals/rentas/pages/OwnerPortalActivar.tsx"), "OwnerPortalActivarPage");
+const OwnerPortalDashboardPage = cargaPerezosa(() => import("./verticals/rentas/pages/OwnerPortalDashboard.tsx"), "OwnerPortalDashboardPage");
+const SinOrganizacionPage = cargaPerezosa(() => import("./shell/SinOrganizacion.tsx"), "SinOrganizacionPage");
+const SeleccionarOrganizacionPage = cargaPerezosa(() => import("./shell/SeleccionarOrganizacion.tsx"), "SeleccionarOrganizacionPage");
+const CitasLoginPage = cargaPerezosa(() => import("./verticals/citas/pages/Login.tsx"), "CitasLoginPage");
+const CitasShell = cargaPerezosa(() => import("./verticals/citas/CitasShell.tsx"), "CitasShell");
+const AgendaPage = cargaPerezosa(() => import("./verticals/citas/pages/Agenda.tsx"), "AgendaPage");
+const CitasResumenPage = cargaPerezosa(() => import("./verticals/citas/pages/Resumen.tsx"), "ResumenPage");
+const CitasCopilotoPage = cargaPerezosa(() => import("./verticals/citas/pages/Copiloto.tsx"), "CitasCopilotoPage");
+const CitasPrimerosPasosPage = cargaPerezosa(() => import("./verticals/citas/pages/PrimerosPasos.tsx"), "PrimerosPasosPage");
+const ProveedorFichaPage = cargaPerezosa(() => import("./verticals/citas/pages/Proveedores.tsx"), "ProveedorFichaPage");
+const ProveedoresListPage = cargaPerezosa(() => import("./verticals/citas/pages/Proveedores.tsx"), "ProveedoresListPage");
+const ServicioFichaPage = cargaPerezosa(() => import("./verticals/citas/pages/Servicios.tsx"), "ServicioFichaPage");
+const ServiciosListPage = cargaPerezosa(() => import("./verticals/citas/pages/Servicios.tsx"), "ServiciosListPage");
+const ClienteFichaPage = cargaPerezosa(() => import("./verticals/citas/pages/Clientes.tsx"), "ClienteFichaPage");
+const ClientesListPage = cargaPerezosa(() => import("./verticals/citas/pages/Clientes.tsx"), "ClientesListPage");
+const DisponibilidadPage = cargaPerezosa(() => import("./verticals/citas/pages/Disponibilidad.tsx"), "DisponibilidadPage");
+const ConfiguracionPage = cargaPerezosa(() => import("./verticals/citas/pages/Configuracion.tsx"), "ConfiguracionPage");
+const CitasStaffPage = cargaPerezosa(() => import("./verticals/citas/pages/Staff.tsx"), "StaffPage");
+const CitasAuditoriaPage = cargaPerezosa(() => import("./verticals/citas/pages/Auditoria.tsx"), "AuditoriaPage");
+const CitasAvisosPage = cargaPerezosa(() => import("./verticals/citas/pages/Avisos.tsx"), "AvisosPage");
+const CitasPrivacidadPage = cargaPerezosa(() => import("./verticals/citas/pages/Privacidad.tsx"), "PrivacidadPage");
+const CitasAgenteWhatsappPage = cargaPerezosa(() => import("./verticals/citas/pages/AgenteWhatsapp.tsx"), "AgenteWhatsappPage");
+const CitasWhatsappMensajesPage = cargaPerezosa(() => import("./verticals/citas/pages/WhatsappMensajes.tsx"), "WhatsappMensajesPage");
+const CitasConversacionesPage = cargaPerezosa(() => import("./verticals/citas/pages/Conversaciones.tsx"), "ConversacionesPage");
+const LicitacionesLoginPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Login.tsx"), "LicitacionesLoginPage");
+const LicitacionesShell = cargaPerezosa(() => import("./verticals/licitaciones/LicitacionesShell.tsx"), "LicitacionesShell");
+const LicitacionesCopilotoPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Copiloto.tsx"), "LicitacionesCopilotoPage");
+const ConvocatoriasPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Convocatorias.tsx"), "ConvocatoriasPage");
+const ConvocatoriaDetallePage = cargaPerezosa(() => import("./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx"), "ConvocatoriaDetallePage");
+const RequisitosConvocatoriaPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/RequisitosConvocatoria.tsx"), "RequisitosConvocatoriaPage");
+const PropuestaTecnicaPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/PropuestaTecnica.tsx"), "PropuestaTecnicaPage");
+const CierrePage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Cierre.tsx"), "CierrePage");
+const ContratoPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Contrato.tsx"), "ContratoPage");
+const PostAdjudicacionPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/PostAdjudicacion.tsx"), "PostAdjudicacionPage");
+const AutopsiaPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Autopsia.tsx"), "AutopsiaPage");
+const RadarRenovacionesPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/RadarRenovaciones.tsx"), "RadarRenovacionesPage");
+const PerfilMatchingPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/PerfilMatching.tsx"), "PerfilMatchingPage");
+const DatosEmpresaPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/DatosEmpresa.tsx"), "DatosEmpresaPage");
+const LicitacionesStaffPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Staff.tsx"), "StaffPage");
+const LicitacionesSeguridadPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Seguridad.tsx"), "SeguridadPage");
+const LicitacionesWhatsappPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Whatsapp.tsx"), "WhatsappPage");
+const LicitacionesDiasInhabilesPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/DiasInhabiles.tsx"), "DiasInhabilesPage");
+const LicitacionesKyc69bPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Kyc69b.tsx"), "Kyc69bPage");
+const RestablecerContrasenaPage = cargaPerezosa(() => import("./shell/cuenta/CuentaEnlaces.tsx"), "RestablecerContrasenaPage");
+const VerificarCorreoPage = cargaPerezosa(() => import("./shell/cuenta/CuentaEnlaces.tsx"), "VerificarCorreoPage");
+const SeguridadCuentaPagina = cargaPerezosa(() => import("./shell/cuenta/SeguridadCuentaPagina.tsx"), "SeguridadCuentaPagina");
+const LicitacionesPanelPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Panel.tsx"), "PanelPage");
+const FuentesFrescuraPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/FuentesFrescura.tsx"), "FuentesFrescuraPage");
+const SeguimientoPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Seguimiento.tsx"), "SeguimientoPage");
+const AprobacionesPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Aprobaciones.tsx"), "AprobacionesPage");
+const SalaGuerraPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/SalaGuerra.tsx"), "SalaGuerraPage");
+const DespachosLoginPage = cargaPerezosa(() => import("./verticals/despachos/pages/Login.tsx"), "DespachosLoginPage");
+const DespachosShell = cargaPerezosa(() => import("./verticals/despachos/DespachosShell.tsx"), "DespachosShell");
+const DespachosSeguridadPage = cargaPerezosa(() => import("./verticals/despachos/pages/Seguridad.tsx"), "SeguridadPage");
+const DespachosCopilotoPage = cargaPerezosa(() => import("./verticals/despachos/pages/Copiloto.tsx"), "DespachosCopilotoPage");
+const DespachosDashboardPage = cargaPerezosa(() => import("./verticals/despachos/pages/Dashboard.tsx"), "DashboardPage");
+const DespachosReportesPage = cargaPerezosa(() => import("./verticals/despachos/pages/Reportes.tsx"), "ReportesPage");
+const CierreMensualPage = cargaPerezosa(() => import("./verticals/despachos/pages/CierreMensual.tsx"), "CierreMensualPage");
+const CierreMensualDetallePage = cargaPerezosa(() => import("./verticals/despachos/pages/CierreMensualDetalle.tsx"), "CierreMensualDetallePage");
+const CarteraPage = cargaPerezosa(() => import("./verticals/despachos/pages/Cartera.tsx"), "CarteraPage");
+const CfdiPage = cargaPerezosa(() => import("./verticals/despachos/pages/Cfdi.tsx"), "CfdiPage");
+const CfdiDetallePage = cargaPerezosa(() => import("./verticals/despachos/pages/CfdiDetalle.tsx"), "CfdiDetallePage");
+const CobranzaPage = cargaPerezosa(() => import("./verticals/despachos/pages/Cobranza.tsx"), "CobranzaPage");
+const ColaCobranzaPage = cargaPerezosa(() => import("./verticals/despachos/pages/ColaCobranza.tsx"), "ColaCobranzaPage");
+const VencimientosPage = cargaPerezosa(() => import("./verticals/despachos/pages/Vencimientos.tsx"), "VencimientosPage");
+const DeclaracionesPage = cargaPerezosa(() => import("./verticals/despachos/pages/Declaraciones.tsx"), "DeclaracionesPage");
+const NominaPage = cargaPerezosa(() => import("./verticals/despachos/pages/Nomina.tsx"), "NominaPage");
+const ConciliacionPage = cargaPerezosa(() => import("./verticals/despachos/pages/Conciliacion.tsx"), "ConciliacionPage");
+const ImportarEstadoCuentaPage = cargaPerezosa(() => import("./verticals/despachos/pages/ImportarEstadoCuenta.tsx"), "ImportarEstadoCuentaPage");
+const MigracionCatalogoPage = cargaPerezosa(() => import("./verticals/despachos/pages/MigracionCatalogo.tsx"), "MigracionCatalogoPage");
+const DevolucionIvaPage = cargaPerezosa(() => import("./verticals/despachos/pages/DevolucionIva.tsx"), "DevolucionIvaPage");
+const BookkeepingPage = cargaPerezosa(() => import("./verticals/despachos/pages/Bookkeeping.tsx"), "BookkeepingPage");
+const ContabilidadElectronicaPage = cargaPerezosa(() => import("./verticals/despachos/pages/ContabilidadElectronica.tsx"), "ContabilidadElectronicaPage");
+const LibroContablePage = cargaPerezosa(() => import("./verticals/despachos/pages/LibroContable.tsx"), "LibroContablePage");
+const PagosProvisionalesPage = cargaPerezosa(() => import("./verticals/despachos/pages/PagosProvisionales.tsx"), "PagosProvisionalesPage");
+const DespachosStaffPage = cargaPerezosa(() => import("./verticals/despachos/pages/Staff.tsx"), "StaffPage");
+const DespachosConfiguracionPage = cargaPerezosa(() => import("./verticals/despachos/pages/Configuracion.tsx"), "ConfiguracionPage");
+const DespachosPortalClientePage = cargaPerezosa(() => import("./verticals/despachos/pages/PortalCliente.tsx"), "PortalClientePage");
+const PortalClientePublicoPage = cargaPerezosa(() => import("./verticals/despachos/portal/PortalClientePage.tsx"), "PortalClientePage");
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -226,7 +238,7 @@ interface ShellRouteProps<Ctx> {
  * registro, redirects de landing, portal de propietario) se quedan como función
  * completa a propósito: forzarlas en esta fábrica genérica (parámetros opcionales,
  * ramas condicionales) las haría MENOS legibles que hoy, no más. */
-function shellRoute<Ctx>(Shell: (props: ShellRouteProps<Ctx>) => ReactElement | null, loginPath: string, renderPage: (ctx: Ctx) => ReactNode): () => ReactElement | null {
+function shellRoute<Ctx>(Shell: ComponentType<ShellRouteProps<Ctx>> | LazyExoticComponent<ComponentType<ShellRouteProps<Ctx>>>, loginPath: string, renderPage: (ctx: Ctx) => ReactNode): () => ReactElement | null {
   return function ShellRoute() {
     const navigate = useNavigate();
     const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -1110,9 +1122,18 @@ const DespachosStaffRoute = shellRoute(DespachosShell, "/despachos/login", (ctx)
 const DespachosConfiguracionRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosConfiguracionPage {...ctx} />);
 const DespachosPortalClienteRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosPortalClientePage {...ctx} />);
 
+/** R-37: con pantallas perezosas, React Router cambia la URL al instante pero confirma la ruta (contenido, barra superior, h1)
+ * cuando baja el chunk. Este marcador invisible refleja la ruta ya confirmada, para que las pruebas E2E esperen a la pantalla
+ * asentada en vez de leer el DOM a medio navegar. No pinta nada. */
+function RutaConfirmada() {
+  const { pathname } = useLocation();
+  return <span hidden data-ruta-confirmada={pathname} />;
+}
+
 export function App() {
   return (
     <BrowserRouter>
+      <RutaConfirmada />
       {/* Hallazgo real (verificado con grep, no supuesto): ningún `<Toaster />`
           estaba montado en toda la app -- cada `toast(...)` (BotonChatDatos,
           los 6 Login.tsx de "Continuar con Google", etc.) empujaba a la cola
@@ -1120,6 +1141,9 @@ export function App() {
           vez aquí, a nivel raíz, para que TODA notificación de toda vertical
           se vea de verdad. */}
       <Toaster />
+      {/* R-37: las pantallas son chunks cargados bajo demanda; mientras baja el chunk de la ruta se pinta el estado de carga estándar. */}
+      <ErrorBoundaryRaiz>
+      <Suspense fallback={<div data-atiende-carga-ruta><EstadoCargando variante="pantalla" /></div>}>
       <Routes>
         <Route path="/restaurantes/login" element={<RestaurantesLoginRoute />} />
         {/* PL-21: enlaces del correo de restaurantes (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
@@ -1369,6 +1393,8 @@ export function App() {
         {/* Cualquier URL sin ruta propia: 404 real en vez de pantalla en blanco. */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
+      </Suspense>
+      </ErrorBoundaryRaiz>
     </BrowserRouter>
   );
 }

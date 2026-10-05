@@ -7,7 +7,7 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App.tsx";
 import { diasDisponibles, etiquetaDia, formatoFechaHora, formatoHora, hoyEnZona, sumarDias, validarFormulario } from "../src/verticals/citas/reserva/reserva-client.ts";
-import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
+import { esperarRutaCargada, changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -29,22 +29,26 @@ const SLOTS = { lista: true, zona_horaria: "America/Merida", slots: [{ starts_at
 function json(body: unknown, status = 200): Response {
   return { ok: status < 400, status, json: async () => body } as unknown as Response;
 }
-const esperar = () =>
-  act(async () => {
+const esperar = async () => {
+  await act(async () => {
     await flushMicrotasks();
     await flushMicrotasks();
     await flushMicrotasks();
   });
-function renderEn(ruta: string): RenderedComponent {
+  await esperarRutaCargada(document.body);
+};
+async function renderEn(ruta: string): Promise<RenderedComponent> {
   window.history.pushState({}, "", ruta);
-  return renderComponent(<App />);
+  const r = renderComponent(<App />);
+  await esperarRutaCargada(r.container);
+  return r;
 }
 const q = <T extends Element>(sel: string): T => rendered!.container.querySelector<T>(sel) as T;
 const boton = (texto: string) => Array.from(rendered!.container.querySelectorAll("button")).find((b) => b.textContent?.includes(texto)) as HTMLButtonElement | undefined;
 const llamadas = (sufijo: string, metodo?: string) => fetchMock.mock.calls.filter(([u, init]) => String(u).endsWith(sufijo) && (!metodo || (init as RequestInit | undefined)?.method === metodo));
 
 async function llegarAlFormulario() {
-  rendered = renderEn("/reservar/clinica-mayab");
+  rendered = await renderEn("/reservar/clinica-mayab");
   await esperar();
   act(() => click(boton("Cualquiera disponible")!));
   act(() => click(rendered!.container.querySelector<HTMLButtonElement>('button[aria-pressed][aria-label]')!));
@@ -160,7 +164,7 @@ describe("/reservar/:orgSlug", () => {
 
   it("negocio no listo: no muestra el formulario ni pide mas datos", async () => {
     fetchMock.mockImplementation(async () => json({ lista: false, faltan: ["horario"] }));
-    rendered = renderEn("/reservar/clinica-mayab");
+    rendered = await renderEn("/reservar/clinica-mayab");
     await esperar();
     expect(rendered.container.textContent).toContain("aún no recibe reservas en línea");
     expect(q("form")).toBeNull();
@@ -169,7 +173,7 @@ describe("/reservar/:orgSlug", () => {
 
   it("negocio inexistente: 404 honesto", async () => {
     fetchMock.mockImplementation(async () => json({ message: "Negocio no encontrado." }, 404));
-    rendered = renderEn("/reservar/no-existe");
+    rendered = await renderEn("/reservar/no-existe");
     await esperar();
     expect(rendered.container.textContent).toContain("No encontramos este negocio");
     expect(q("form")).toBeNull();
@@ -181,7 +185,7 @@ describe("/reservar/:orgSlug", () => {
       if (u.endsWith("/publico/catalogo")) return json(CATALOGO);
       return json({ lista: true, zona_horaria: "America/Merida", slots: [] });
     });
-    rendered = renderEn("/reservar/clinica-mayab");
+    rendered = await renderEn("/reservar/clinica-mayab");
     await esperar();
     act(() => click(boton("Dra. Fernanda López")!));
     act(() => click(rendered!.container.querySelector<HTMLButtonElement>("button[aria-pressed][aria-label]")!));
