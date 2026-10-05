@@ -140,6 +140,26 @@ describe("assemble exige el 2/2 y un cambio de insumos lo invalida (L-26)", () =
     expect(((await ok.json()) as { status: string }).status).toBe("ready");
   });
 
+  it("L-P3-17: la traza con X-Correlation-Id une las dos aprobaciones y el manifiesto (el manifiesto guarda esa misma correlacion)", async () => {
+    const s = await setup();
+    await prepararExpediente(s);
+    const corr = { "x-correlation-id": "traza-cierre-1" };
+    expect((await approve(s, s.ctx.staff.analyst.token, "tecnica_legal", corr)).status).toBe(201);
+    expect((await approve(s, s.ctx.staff.owner.token, "economica", corr)).status).toBe(201);
+    const ok = await s.app.request(s.url("package/assemble"), authedJson(s.ctx.staff.writer.token, {}, { "idempotency-key": "t-1", ...corr }));
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("x-correlation-id")).toBe("traza-cierre-1");
+    const traza = (await s.ctx.repo.listAuditoria(s.ctx.organizationId, { correlationId: "traza-cierre-1" }, { orden: "asc" })).items;
+    expect(traza.map((f) => f.action)).toEqual(["expediente.etapa_aprobada", "expediente.etapa_aprobada", "paquete.manifiesto_generado"]);
+    expect(traza.map((f) => f.actorId)).toEqual([s.ctx.staff.analyst.id, s.ctx.staff.owner.id, s.ctx.staff.writer.id]);
+    expect(traza.every((f) => f.entityId === s.ctx.tenderId)).toBe(true);
+    expect(traza[0]!.after).toMatchObject({ stage: "tecnica_legal" });
+    expect(traza[2]!.after).toMatchObject({ status: "ready" });
+    // sin header, la aprobacion hereda la correlacion de origen de la convocatoria (aqui no hay: usa la de la peticion, valida)
+    const sinHeader = await s.app.request(s.url("package/assemble"), authedJson(s.ctx.staff.writer.token, {}, { "idempotency-key": "t-2" }));
+    expect(sinHeader.headers.get("x-correlation-id")).toMatch(/^[A-Za-z0-9._:-]{1,64}$/);
+  });
+
   it("cambiar un insumo (tarifa usada) invalida AMBAS etapas: el paquete ready deja de serlo, el estado vuelve a 'pendiente' y assemble da 409", async () => {
     const s = await setup();
     await prepararExpediente(s);

@@ -56,6 +56,24 @@ describe("runDiscoverTendersForOrganization", () => {
     expect(runs[0]!.evidence.coverage).toEqual({ expected: 2, obtained: 2 });
   });
 
+  it("L-P3-17: la corrida lleva un correlation_id que comparten el source_run y el alta de cada convocatoria NUEVA (bitacora de sistema, sin actor); reingestar no duplica renglones", async () => {
+    const csv = csvFixture(["CTR-1,EXP-1,Prov,Contrato Uno,,,,,,1000,MXN,2020-01-01,2020-06-01,,,", "CTR-2,EXP-2,Prov,Contrato Dos,,,,,,2000,MXN,2021-01-01,2021-06-01,,,"]);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(csv, { status: 200 })));
+    await runDiscoverTendersForOrganization((fn) => fn(repo), organizationId);
+    const filas = (await repo.listAuditoria(organizationId, {}, { orden: "asc" })).items;
+    expect(filas.map((f) => f.action)).toEqual(["convocatoria.ingerida", "convocatoria.ingerida"]);
+    expect(filas.every((f) => f.actorId === null && /^c-[0-9a-f-]{36}$/.test(f.correlationId ?? ""))).toBe(true);
+    expect(new Set(filas.map((f) => f.correlationId)).size).toBe(1);
+    const [run] = await repo.listSourceRuns(organizationId, { source: "compras_mx_historico" });
+    expect(run!.correlationId).toBe(filas[0]!.correlationId);
+    // cada convocatoria nueva hereda esa correlacion
+    const tenders = (await repo.listTenders(organizationId)).filter((t) => t.source === "compras_mx_historico");
+    for (const t of tenders) expect(await repo.findTenderCorrelationId(organizationId, t.id)).toBe(filas[0]!.correlationId);
+    // la segunda corrida solo actualiza: no hay altas nuevas, no hay renglones nuevos
+    await runDiscoverTendersForOrganization((fn) => fn(repo), organizationId);
+    expect((await repo.listAuditoria(organizationId, {})).items).toHaveLength(2);
+  });
+
   it("reingestar el MISMO externalId actualiza en vez de duplicar", async () => {
     const csvV1 = csvFixture(["CTR-1,EXP-1,Prov,Titulo viejo,,,,,,1000,MXN,,,,,"]);
     vi.stubGlobal("fetch", vi.fn(async () => new Response(csvV1, { status: 200 })));

@@ -20,6 +20,9 @@
 --      rol de escritura en la organizacion. Sistema (ingesta automatica): `auth.uid() is null` y `p_caller_id` nulo. Valida el formato del
 --      `correlation_id` y acota el tamano de antes/despues.
 --   6. `licitaciones.is_org_admin(...)`: ayuda para la policy de lectura (owner/admin).
+--   7. `licitaciones.tender_correlation_id(...)`: devuelve el `correlation_id` con que nacio una convocatoria (su primer renglon de bitacora
+--      con correlacion) para que las aprobaciones y el manifiesto lo HEREDEN aunque quien actua (analyst/writer) no pueda leer la bitacora.
+--      SECURITY DEFINER de solo lectura: devuelve unicamente ese identificador opaco, nunca antes/despues; exige membresia en la organizacion.
 --
 -- Justificacion de cada GRANT/policy/funcion:
 --   * Sin GRANT sobre `core.step_up_consumption`: un cliente no debe poder leer ni borrar consumos (borrarlos reabriria el reuso).
@@ -29,6 +32,7 @@
 --   * GRANT select a authenticated sobre `audit_trail` + policy `is_org_admin`: la pantalla de bitacora es para owner/admin de la
 --     propia organizacion; no hay `using (true)`; nada para anon.
 --   * GRANT execute de `append_audit` a authenticated: unica via de escritura; ver (5).
+--   * GRANT execute de `tender_correlation_id` a authenticated: valida membresia por si misma (sesion de sistema permitida: auth.uid() nulo).
 --
 -- Sin PII extra: antes/despues los arma la API con una lista cerrada de campos de la entidad (nunca tokens ni secretos).
 --
@@ -173,3 +177,22 @@ end;
 $$;
 revoke all on function licitaciones.append_audit(uuid, uuid, text, text, text, jsonb, jsonb, text) from public, anon;
 grant execute on function licitaciones.append_audit(uuid, uuid, text, text, text, jsonb, jsonb, text) to authenticated;
+
+create or replace function licitaciones.tender_correlation_id(p_organization_id uuid, p_tender_id text)
+returns text
+language plpgsql stable security definer set search_path = pg_catalog, licitaciones, core as $$
+declare
+  v_corr text;
+begin
+  if auth.uid() is not null and not licitaciones.can_access_org(p_organization_id) then
+    raise exception 'tender_correlation_id: sin membresia en la organizacion' using errcode = '42501';
+  end if;
+  select a.correlation_id into v_corr
+    from licitaciones.audit_trail a
+   where a.organization_id = p_organization_id and a.entity = 'convocatoria' and a.entity_id = p_tender_id and a.correlation_id is not null
+   order by a.seq asc limit 1;
+  return v_corr;
+end;
+$$;
+revoke all on function licitaciones.tender_correlation_id(uuid, text) from public, anon;
+grant execute on function licitaciones.tender_correlation_id(uuid, text) to authenticated;

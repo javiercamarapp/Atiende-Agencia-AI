@@ -250,5 +250,29 @@ do $$ declare n integer; ult bigint; pag integer; begin
 end $$;
 rollback;
 
+\echo '--- 15. POSITIVO: cualquier miembro (writer) hereda la correlacion de la convocatoria sin leer la bitacora; cross-tenant y anon no (42501) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '38000000-0000-0000-0000-0000000000a3', true);
+select licitaciones.append_audit('38000000-0000-0000-0000-0000000000a3', '38000000-0000-0000-0000-0000000000d1', 'convocatoria', 'tender-15', 'convocatoria.creada', null, null, 'origen-15');
+select licitaciones.append_audit('38000000-0000-0000-0000-0000000000a3', '38000000-0000-0000-0000-0000000000d1', 'convocatoria', 'tender-15', 'convocatoria.version_registrada', null, null, 'posterior-15');
+do $$ declare c text; begin
+  c := licitaciones.tender_correlation_id('38000000-0000-0000-0000-0000000000d1', 'tender-15');
+  if c is distinct from 'origen-15' then raise exception 'debia heredar la correlacion de origen: %', c; end if;
+  if licitaciones.tender_correlation_id('38000000-0000-0000-0000-0000000000d1', 'no-existe') is not null then raise exception 'debia ser nulo'; end if;
+end $$;
+select set_config('request.jwt.claim.sub', '38000000-0000-0000-0000-0000000000b1', true);
+do $$ begin
+  begin perform licitaciones.tender_correlation_id('38000000-0000-0000-0000-0000000000d1', 'tender-15'); raise exception 'cross-tenant'; exception when sqlstate '42501' then null; end;
+end $$;
+rollback;
+
+begin;
+set local role anon;
+do $$ begin
+  begin perform licitaciones.tender_correlation_id('38000000-0000-0000-0000-0000000000d1', 'tender-15'); raise exception 'anon'; exception when sqlstate '42501' then null; end;
+end $$;
+rollback;
+
 \echo ''
 \echo '=== listo ==='
