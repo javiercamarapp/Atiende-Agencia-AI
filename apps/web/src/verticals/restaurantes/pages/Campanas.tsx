@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CircleCheck, CircleX, Megaphone } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, DataTable, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, PageContainer, StatCard, StatusBadge, notify, useConfirm } from "@atiende/ui";
+import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import { decidirCampana, ETIQUETA_SEGMENTO, fetchMarketing, guardarConfigMarketing, recompraIncremental } from "../lib/marketing-client.ts";
 import type { CampanaMarketing, ConfigMarketing, EstadoCampana, PanelMarketing } from "../lib/marketing-client.ts";
 import { desdeError } from "../voz/carga.ts";
@@ -22,8 +23,9 @@ function centavosAPesos(c: number | null): string {
   return c === null ? "" : (c / 100).toFixed(2);
 }
 
+/** Fecha y hora de creacion en la zona del negocio (formateador canonico de lib/formato-fecha.ts). */
 function fecha(iso: string): string {
-  return new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+  return fechaHoraEsMx(iso, "America/Merida");
 }
 
 export function CampanasPage({ apiBaseUrl, token, propertyId, role, fetchImpl }: RestaurantesShellContext & { readonly fetchImpl?: typeof fetch }) {
