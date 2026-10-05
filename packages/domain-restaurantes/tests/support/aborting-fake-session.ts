@@ -106,6 +106,14 @@ export class AbortAwareFakeSession implements TenantDbSession {
         return (result as unknown[] | undefined) ?? [];
       }
     }
+    // Migracion 071 (lecturas de sistema): si el test no registro una regla para las funciones `restaurantes.sistema_*`, la base simulada es una SIN esa
+    // migracion (42883, funcion inexistente) y el repositorio cae a la lectura directa de siempre (dentro de su SAVEPOINT).
+    if (/restaurantes\.sistema_\w+\(/.test(sql)) {
+      const err = new Error("function restaurantes.sistema_* does not exist") as Error & { code: string };
+      err.code = "42883";
+      this.aborted = true;
+      throw err;
+    }
     throw new Error(`AbortAwareFakeSession: ninguna regla coincide con la consulta -> ${sql}`);
   }
 }
