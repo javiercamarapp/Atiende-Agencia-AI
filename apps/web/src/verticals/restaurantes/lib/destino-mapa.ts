@@ -4,7 +4,7 @@
 // (apps/web no depende de @atiende/domain-restaurantes) y solo se aceptan coordenadas validas o un enlace corto de Maps.
 
 const NOTA_COORD_RE = /^Ubicación de entrega \((?:pin de WhatsApp|enlace de Maps)\): lat=(-?\d{1,2}(?:\.\d+)?) lng=(-?\d{1,3}(?:\.\d+)?)\.$/m;
-const NOTA_CORTO_RE = /^Ubicación de entrega \(enlace corto de Maps\): (https:\/\/(?:maps\.app\.goo\.gl|goo\.gl)\/[^\s]+)/m;
+const NOTA_CORTO_RE = /^Ubicación de entrega \(enlace corto de Maps\): (https:\/\/(?:maps\.app\.goo\.gl\/|goo\.gl\/maps)[^\s]*)/m;
 
 export function urlDestinoMapa(notes: string | null | undefined, direccion: string | null | undefined): string | null {
   const coord = notes ? NOTA_COORD_RE.exec(notes) : null;

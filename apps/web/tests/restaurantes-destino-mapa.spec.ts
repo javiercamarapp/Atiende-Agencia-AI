@@ -30,4 +30,10 @@ describe("un texto del cliente no puede fijar el destino", () => {
     expect(urlDestinoMapa(falsa, "Calle 5")).toContain("search");
     expect(destinoEsPin(falsa)).toBe(false);
   });
+
+  it("un enlace de goo.gl que no es de Maps no se toma como destino (mismo criterio que el servidor)", () => {
+    const nota = "Ubicación de entrega (enlace corto de Maps): https://goo.gl/otra-cosa";
+    expect(destinoEsPin(nota)).toBe(false);
+    expect(urlDestinoMapa(nota, "Calle 5")).toContain("search");
+  });
 });

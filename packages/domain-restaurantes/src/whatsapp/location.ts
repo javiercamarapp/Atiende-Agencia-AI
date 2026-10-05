@@ -133,7 +133,7 @@ export function latestDeliveryPin(messages: readonly { readonly role: string; re
 
 const NOTA_PIN_RE = /^Ubicación de entrega \(pin de WhatsApp\): lat=(-?\d{1,2}(?:\.\d+)?) lng=(-?\d{1,3}(?:\.\d+)?)\.$/m;
 const NOTA_LINK_RE = /^Ubicación de entrega \(enlace de Maps\): lat=(-?\d{1,2}(?:\.\d+)?) lng=(-?\d{1,3}(?:\.\d+)?)\.$/m;
-const NOTA_CORTO_RE = /^Ubicación de entrega \(enlace corto de Maps\): (https:\/\/(?:maps\.app\.goo\.gl|goo\.gl)\/\S+)/m;
+const NOTA_CORTO_RE = /^Ubicación de entrega \(enlace corto de Maps\): (https:\/\/(?:maps\.app\.goo\.gl\/|goo\.gl\/maps)\S*)/m;
 
 /** Linea de la comanda/notas del pedido que lleva el destino al repartidor. */
 export function formatUbicacionEntregaNota(u: UbicacionEntrega): string {

@@ -142,7 +142,7 @@ const RE_COMPLEMENTOS_SOLICITADOS = /^Complementos solicitados:\s*(.+?)\.?$/i;
 const PREFIJO_BASICAS = /^B[aá]sicas: /i;
 const PREFIJO_PEDIDAS = /^Pedidas(?: \(sin costo\))?: /i;
 const RE_UBICACION_COORD = /^Ubicaci[oó]n de entrega \((?:pin de WhatsApp|enlace de Maps)\):\s*lat=(-?\d{1,2}(?:\.\d+)?)\s+lng=(-?\d{1,3}(?:\.\d+)?)\.?$/i;
-const RE_UBICACION_CORTA = /^Ubicaci[oó]n de entrega \(enlace corto de Maps\):\s*(https:\/\/(?:maps\.app\.goo\.gl|goo\.gl)\/\S+)$/i;
+const RE_UBICACION_CORTA = /^Ubicaci[oó]n de entrega \(enlace corto de Maps\):\s*(https:\/\/(?:maps\.app\.goo\.gl\/|goo\.gl\/maps)\S*)$/i;
 // Formato EXACTO que escribe el servidor («Paga con: $500.00 (cambio: $410.00).»): sin cuantificadores que se solapen (defensa contra ReDoS).
 const RE_PAGA_CON = /^Paga con: \$([0-9][0-9,]*(?:\.[0-9]{1,2})?)(?: \(cambio: \$([0-9][0-9,]*(?:\.[0-9]{1,2})?)\))?\.?$/i;
 const RE_LLEVAR_TERMINAL = /^Llevar terminal\.?$/i;
