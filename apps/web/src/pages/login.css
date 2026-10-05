@@ -4,11 +4,47 @@
    lámina de foto con Ken Burns 1.05 -> 1.13 y entrada escalonada.
    ÚNICA desviación, decisión de Javier (1-oct): el acento es el AZUL de
    Atiende (`--primary`) donde Likida usa la tinta (botón, foco, hover). */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400&family=Instrument+Sans:wght@400;500;600&display=swap');
+/* Tipografias propias (OFL, ver public/fonts/OFL-*.txt): servidas desde el mismo origen y precargadas en index.html.
+   Antes se importaban de Google Fonts y llegaban tarde: el swap movia el titular y el pie (CLS 0.05 y ~20 px a 360x740
+   con la red lenta). Las caras "Fallback" igualan las metricas de Georgia/Arial a las de la fuente real, de modo que si
+   el swap llega tarde (fuente aun descargandose) no cambia la altura de las lineas ni los saltos de renglon. */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/fraunces-latin-400.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 400 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('/fonts/instrument-sans-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Fraunces Fallback';
+  src: local('Georgia');
+  size-adjust: 105.61%;
+  ascent-override: 92.6%;
+  descent-override: 24.1%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Instrument Sans Fallback';
+  src: local('Arial'), local('Helvetica');
+  size-adjust: 103.46%;
+  ascent-override: 93.8%;
+  descent-override: 24.2%;
+  line-gap-override: 0%;
+}
 
 .login {
-  --serif-marca: 'Fraunces', Georgia, 'Times New Roman', serif;
-  --sans-marca: 'Instrument Sans', var(--font-body);
+  --serif-marca: 'Fraunces', 'Fraunces Fallback', Georgia, 'Times New Roman', serif;
+  --sans-marca: 'Instrument Sans', 'Instrument Sans Fallback', var(--font-body);
   font-family: var(--sans-marca);
   letter-spacing: 0;
   background: var(--background);
