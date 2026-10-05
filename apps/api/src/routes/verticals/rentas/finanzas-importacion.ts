@@ -12,6 +12,7 @@ import { Hono } from "hono";
 import { ApiError, authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import type { LineaColaImportacion, MovimientoEnRevision } from "@atiende/domain-rentas";
 import { FINANZAS_ESCRITURA_ROLES, FINANZAS_LECTURA_ROLES, importarReportePagos, LIMITES_REPORTE, parsearReportePagos, RentasDomainError } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -20,6 +21,8 @@ import { mapRentasDomainError } from "./reservas.ts";
 
 const PERIODO_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const MOTIVO_NO_DISPONIBLE = "Requiere la migracion 035 de rentas, pendiente de aplicar en este ambiente.";
+
+type Listado<T> = { readonly disponible: true; readonly items: readonly T[] } | { readonly disponible: false; readonly motivo: string; readonly items: readonly never[] };
 
 function noDisponible(): ApiError {
   return new ApiError(503, "rentas_finanzas_autopiloto_no_disponible", `No disponible aun: ${MOTIVO_NO_DISPONIBLE}`);
@@ -116,11 +119,11 @@ export function rentasFinanzasImportacionRoutes(deps: AppDeps): Hono<CoreAuthHon
   app.get(colaPath, async (c) => {
     assertVerticalRole(c, FINANZAS_LECTURA_ROLES);
     const repo = deps.rentasRepo(c.get("db"));
-    const items = await runWithSavepointFallback({
+    const items = await runWithSavepointFallback<Listado<LineaColaImportacion>>({
       session: c.get("db"),
-      primary: async () => ({ disponible: true as const, items: await repo.listColaImportacion(c.req.param("propertyId"), 200) }),
+      primary: async () => ({ disponible: true, items: await repo.listColaImportacion(c.req.param("propertyId"), 200) }),
       isRecoverable: (err) => isMigrationPendingError(err),
-      fallback: async () => ({ disponible: false as const, motivo: MOTIVO_NO_DISPONIBLE, items: [] }),
+      fallback: async () => ({ disponible: false, motivo: MOTIVO_NO_DISPONIBLE, items: [] }),
     });
     return c.json(items, 200);
   });
@@ -139,11 +142,11 @@ export function rentasFinanzasImportacionRoutes(deps: AppDeps): Hono<CoreAuthHon
   app.get(revisionPath, async (c) => {
     assertVerticalRole(c, FINANZAS_LECTURA_ROLES);
     const repo = deps.rentasRepo(c.get("db"));
-    const r = await runWithSavepointFallback({
+    const r = await runWithSavepointFallback<Listado<MovimientoEnRevision>>({
       session: c.get("db"),
-      primary: async () => ({ disponible: true as const, items: await repo.listMovimientosEnRevision(c.req.param("propertyId"), 200) }),
+      primary: async () => ({ disponible: true, items: await repo.listMovimientosEnRevision(c.req.param("propertyId"), 200) }),
       isRecoverable: (err) => isMigrationPendingError(err),
-      fallback: async () => ({ disponible: false as const, motivo: MOTIVO_NO_DISPONIBLE, items: [] }),
+      fallback: async () => ({ disponible: false, motivo: MOTIVO_NO_DISPONIBLE, items: [] }),
     });
     return c.json(r, 200);
   });
