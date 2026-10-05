@@ -47,6 +47,26 @@ export function normalizePhone(phone: string): string {
   return phone.trim();
 }
 
+/**
+ * Un instante ISO 8601 de verdad ("2027-09-13T10:00", "...T16:00:00Z", "...-06:00"): `Date.parse` por sí solo acepta texto libre como "10" o
+ * "mañana a las 10" (lo lee como otra fecha, p. ej. 2001-10-01) y el caller recibía un 409 engañoso de "fuera de disponibilidad".
+ */
+const ISO_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?$/i;
+
+export function isIsoInstantString(value: unknown): value is string {
+  return typeof value === "string" && ISO_INSTANT_RE.test(value.trim()) && !Number.isNaN(Date.parse(value));
+}
+
+/** Postgres rechaza el byte NUL en un texto (22021) y el caller lo vería como un 500: se corta antes como validación (400). */
+function hasNulByte(...values: readonly (string | null | undefined)[]): boolean {
+  return values.some((v) => typeof v === "string" && v.includes("\u0000"));
+}
+
+/** Un horario que ya pasó no se puede reservar ni mover (web pública, WhatsApp y voz comparten este chequeo; el alta manual del panel no lo usa a propósito). */
+function assertNotInThePast(startsAt: Date, now: Date, mensaje: string): void {
+  if (startsAt.getTime() < now.getTime()) throw new AppointmentConflictError(mensaje);
+}
+
 function invalidOptionalString(value: unknown, maxLength: number): boolean {
   return value !== undefined && value !== null && (typeof value !== "string" || value.length > maxLength);
 }
@@ -208,10 +228,12 @@ export function validateCreateAppointmentPayload(raw: CreateAppointmentPayload):
     !raw.customerName.trim() ||
     typeof raw.customerPhone !== "string" ||
     !raw.customerPhone.trim() ||
-    typeof raw.startsAt !== "string" ||
-    Number.isNaN(Date.parse(raw.startsAt))
+    !isIsoInstantString(raw.startsAt)
   ) {
     throw new AppointmentValidationError("providerId, serviceId, customerName, customerPhone y startsAt (ISO 8601 válido) son requeridos");
+  }
+  if (hasNulByte(raw.customerName, raw.customerPhone, raw.customerEmail, raw.notes, raw.propertyId, raw.conversationId, raw.idempotencyKey)) {
+    throw new AppointmentValidationError("Los textos no pueden contener caracteres de control nulos");
   }
   if (
     raw.providerId.length > 64 ||
@@ -254,7 +276,7 @@ export interface PreparedAppointment {
  * para que un futuro endpoint de vista previa pueda reusar la validación sin
  * insertar nada.
  */
-export async function prepareCreateAppointment(repo: CitasRepository, rawPayload: CreateAppointmentPayload): Promise<PreparedAppointment> {
+export async function prepareCreateAppointment(repo: CitasRepository, rawPayload: CreateAppointmentPayload, now: Date = new Date()): Promise<PreparedAppointment> {
   const payload = validateCreateAppointmentPayload(rawPayload);
   const { provider, service, timeZone } = await resolveProviderAndService(repo, payload.organizationId, payload.providerId, payload.serviceId);
 
@@ -263,6 +285,7 @@ export async function prepareCreateAppointment(repo: CitasRepository, rawPayload
   }
 
   const startsAt = new Date(payload.startsAt);
+  assertNotInThePast(startsAt, now, "Ese horario ya pasó. Vuelve a consultar disponibilidad y ofrece exactamente uno de esos horarios.");
   const endsAt = new Date(startsAt.getTime() + service.durationMinutes * 60_000);
 
   const localDateStr = zonedDateStr(startsAt, timeZone);
@@ -291,8 +314,8 @@ export async function prepareCreateAppointment(repo: CitasRepository, rawPayload
  * automático) — nunca dos filas reales por una sola intención real de cita
  * (protección real y a prueba de canal, port literal de createAppointmentCore).
  */
-export async function createAppointment(repo: CitasRepository, rawPayload: CreateAppointmentPayload): Promise<AppointmentRecord> {
-  const { payload, provider, service, startsAt, endsAt } = await prepareCreateAppointment(repo, rawPayload);
+export async function createAppointment(repo: CitasRepository, rawPayload: CreateAppointmentPayload, now: Date = new Date()): Promise<AppointmentRecord> {
+  const { payload, provider, service, startsAt, endsAt } = await prepareCreateAppointment(repo, rawPayload, now);
 
   const customer = await repo.upsertCustomer(payload.organizationId, payload.customerPhone, payload.customerName, payload.customerEmail ?? null);
 
@@ -370,8 +393,11 @@ export async function createAppointmentFromPanel(repo: CitasRepository, payload:
   }
   if (!payload.customerName?.trim()) throw new AppointmentValidationError("customer_name es requerido");
   if (!payload.customerPhone?.trim()) throw new AppointmentValidationError("customer_phone es requerido");
+  if (!isIsoInstantString(payload.startsAt)) throw new AppointmentValidationError("starts_at debe ser una fecha ISO 8601 válida");
+  if (hasNulByte(payload.customerName, payload.customerPhone, payload.customerEmail, payload.notes)) {
+    throw new AppointmentValidationError("Los textos no pueden contener caracteres de control nulos");
+  }
   const startsAt = new Date(payload.startsAt);
-  if (Number.isNaN(startsAt.getTime())) throw new AppointmentValidationError("starts_at debe ser una fecha ISO 8601 válida");
 
   const { provider, service } = await resolveProviderAndService(repo, payload.organizationId, payload.providerId, payload.serviceId);
   const endsAt = new Date(startsAt.getTime() + service.durationMinutes * 60_000);
@@ -511,6 +537,18 @@ function resolveNoShowOutcome(
   return result.appointment;
 }
 
+/**
+ * Completar o marcar no-show solo tiene sentido cuando la cita ya empezó: antes, un no-show de una cita futura liberaba el horario, encolaba el
+ * correo de "no asististe" y no se podía revertir. Una cita que no existe o ya está en un estado final se deja al repositorio (no_found / ya aplicado).
+ */
+async function assertAppointmentAlreadyStarted(repo: CitasRepository, organizationId: string, appointmentId: string, now: Date, accion: string): Promise<void> {
+  const appointment = await repo.findAppointmentForOrganization(organizationId, appointmentId);
+  if (!appointment || !(LIFECYCLE_EDITABLE_STATUSES as readonly string[]).includes(appointment.status)) return;
+  if (Date.parse(appointment.startsAt) > now.getTime()) {
+    throw new AppointmentConflictError(`No se puede ${accion} una cita que todavía no ha empezado.`);
+  }
+}
+
 /** Confirmar desde el panel de staff — pending -> confirmed. */
 export async function confirmAppointmentFromPanel(repo: CitasRepository, organizationId: string, appointmentId: string, actorUserId: string): Promise<AppointmentRecord> {
   const validated = validateCancelAppointmentPayload({ organizationId, appointmentId });
@@ -519,15 +557,17 @@ export async function confirmAppointmentFromPanel(repo: CitasRepository, organiz
 }
 
 /** Completar desde el panel de staff — pending|confirmed -> completed. */
-export async function completeAppointmentFromPanel(repo: CitasRepository, organizationId: string, appointmentId: string, actorUserId: string): Promise<AppointmentRecord> {
+export async function completeAppointmentFromPanel(repo: CitasRepository, organizationId: string, appointmentId: string, actorUserId: string, now: Date = new Date()): Promise<AppointmentRecord> {
   const validated = validateCancelAppointmentPayload({ organizationId, appointmentId });
+  await assertAppointmentAlreadyStarted(repo, validated.organizationId, validated.appointmentId, now, "completar");
   const result = await repo.completeAppointmentFromPanel(validated.organizationId, validated.appointmentId, actorUserId);
   return resolveCompleteOutcome(result);
 }
 
 /** Marcar no-show desde el panel de staff — pending|confirmed -> no_show. */
-export async function markAppointmentNoShowFromPanel(repo: CitasRepository, organizationId: string, appointmentId: string, actorUserId: string): Promise<AppointmentRecord> {
+export async function markAppointmentNoShowFromPanel(repo: CitasRepository, organizationId: string, appointmentId: string, actorUserId: string, now: Date = new Date()): Promise<AppointmentRecord> {
   const validated = validateCancelAppointmentPayload({ organizationId, appointmentId });
+  await assertAppointmentAlreadyStarted(repo, validated.organizationId, validated.appointmentId, now, "marcar como no-show");
   const result = await repo.markAppointmentNoShowFromPanel(validated.organizationId, validated.appointmentId, actorUserId);
   return resolveNoShowOutcome(result);
 }
@@ -572,8 +612,7 @@ export function validateRescheduleAppointmentPayload(raw: RescheduleAppointmentP
     typeof raw.appointmentId !== "string" ||
     !raw.appointmentId.trim() ||
     raw.appointmentId.length > 64 ||
-    typeof raw.newStartsAt !== "string" ||
-    Number.isNaN(Date.parse(raw.newStartsAt)) ||
+    !isIsoInstantString(raw.newStartsAt) ||
     invalidOptionalString(raw.actorNote, 2000)
   ) {
     throw new AppointmentValidationError("appointmentId y newStartsAt (ISO 8601 válido) son requeridos");
@@ -607,7 +646,7 @@ export interface PreparedReschedule {
  * "reagendarse" a un horario cercano al suyo propio porque se vería a sí misma
  * como conflicto).
  */
-export async function prepareRescheduleAppointment(repo: CitasRepository, rawPayload: RescheduleAppointmentPayload): Promise<PreparedReschedule> {
+export async function prepareRescheduleAppointment(repo: CitasRepository, rawPayload: RescheduleAppointmentPayload, now: Date = new Date()): Promise<PreparedReschedule> {
   const payload = validateRescheduleAppointmentPayload(rawPayload);
   const appointment = await repo.findAppointmentForOrganization(payload.organizationId, payload.appointmentId);
   if (!appointment) throw new AppointmentNotFoundError("Cita no encontrada");
@@ -619,6 +658,7 @@ export async function prepareRescheduleAppointment(repo: CitasRepository, rawPay
   const { service, timeZone } = await resolveProviderAndService(repo, payload.organizationId, appointment.providerId, appointment.serviceId);
 
   const newStartsAt = new Date(payload.newStartsAt);
+  assertNotInThePast(newStartsAt, now, "Ese horario ya pasó. Vuelve a consultar disponibilidad y ofrece exactamente uno de esos horarios.");
   const newEndsAt = new Date(newStartsAt.getTime() + service.durationMinutes * 60_000);
 
   // NOTA: isSlotWithinAvailability solo valida horario de ATENCIÓN (rules/override)
@@ -658,8 +698,8 @@ export interface RescheduleOutcome {
   readonly previousStartsAt: string;
 }
 
-export async function rescheduleAppointment(repo: CitasRepository, rawPayload: RescheduleAppointmentPayload): Promise<RescheduleOutcome> {
-  const prepared = await prepareRescheduleAppointment(repo, rawPayload);
+export async function rescheduleAppointment(repo: CitasRepository, rawPayload: RescheduleAppointmentPayload, now: Date = new Date()): Promise<RescheduleOutcome> {
+  const prepared = await prepareRescheduleAppointment(repo, rawPayload, now);
   const { payload, appointment, timeZone, newStartsAt, newEndsAt } = prepared;
   // Capturado ANTES del RPC a propósito: un adaptador en memoria puede mutar el
   // mismo objeto `appointment` in-place al aplicar el "UPDATE" — sin esta captura

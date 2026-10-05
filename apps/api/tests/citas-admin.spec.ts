@@ -4,11 +4,20 @@
 // Fase 8 agrega las rutas de ESCRITURA real (crear/editar proveedores/servicios,
 // checkbox de provider_services, tenant-config) — ver admin.ts para el detalle.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createAppointment } from "@atiende/domain-citas";
 import { buildApp } from "../src/app.ts";
 import { buildCitasTestContext } from "./citas-fixtures.ts";
 import { claveFicticia, llaveFicticia } from "./support/credenciales-ficticias.ts";
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 const MONDAY_10AM_MERIDA = "2026-09-14T16:00:00.000Z"; // 10:00 hora de Mérida (UTC-6)
 const RANGE_FROM = "2026-09-14T00:00:00.000Z";
