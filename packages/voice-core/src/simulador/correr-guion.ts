@@ -4,6 +4,7 @@
 import { crearEjecutorTools } from "../llamada/ejecutor-tools.ts";
 import type { RegistroToolsVoz, TransporteTools } from "../llamada/ejecutor-tools.ts";
 import { ControladorLlamada } from "../llamada/controlador.ts";
+import type { GuardiaCliente } from "../llamada/controlador.ts";
 import { LIMITES_POR_DEFECTO } from "../llamada/maquina.ts";
 import type { ReglasCierreLlamada } from "../llamada/maquina.ts";
 import type { MensajeId } from "../llamada/mensajes.ts";
@@ -35,6 +36,8 @@ export interface AdaptadorSimulador<R extends string, M extends MemoriaObservabl
   readonly sipFromPorDefecto: string;
   crearMundo(): W;
   crearMemoria(): M;
+  /** Guardia determinista de la vertical sobre lo que dice el cliente (citas: crisis). `decir` lo pone el simulador (queda en `textosGuardia`). Recibe el mundo para leer, p. ej., el rubro del negocio. */
+  readonly guardiaCliente?: (mundo: W) => Omit<GuardiaCliente, "decir">;
   /** Transporte EN PROCESO sobre el mundo (simulador y pruebas; nunca produccion). */
   transporte(mundo: W, ctx: { readonly callId: string; readonly telefono: string | null }): TransporteTools;
 }
@@ -82,9 +85,9 @@ export async function correrGuionConAdaptador<R extends string, E extends object
 
   const transporteBase = adaptador.transporte(mundo, { callId, telefono: extraerTelefonoSipFrom(sipFrom, adaptador.canonicalizarTelefono) });
   const transporte: TransporteTools = guion.toolLenta
-    ? async (nombre, args, senal) => {
+    ? async (nombre, args, senal, contexto) => {
         if (nombre === guion.toolLenta!.nombre) await dormirDe(guion.toolLenta!.ms);
-        return transporteBase(nombre, args, senal);
+        return transporteBase(nombre, args, senal, contexto);
       }
     : transporteBase;
 
@@ -93,6 +96,8 @@ export async function correrGuionConAdaptador<R extends string, E extends object
   const logs: LlamadaSimulada["logs"][number][] = [];
   const kpi: unknown[] = [];
   let audioCortado = 0;
+  const textosGuardia: string[] = [];
+  const guardiaBase = adaptador.guardiaCliente?.(mundo);
 
   const ctrl = new ControladorLlamada<R>({
     callId,
@@ -101,6 +106,7 @@ export async function correrGuionConAdaptador<R extends string, E extends object
     propertyId: mundo.propertyId,
     organizationId: mundo.organizationId,
     abrirSesion: proveedor.abrirSesion,
+    ...(guardiaBase ? { guardiaCliente: { evaluar: (t: string) => guardiaBase.evaluar(t), decir: (t: string) => void textosGuardia.push(t) } } : {}),
     ejecutor: crearEjecutorTools({ registro: adaptador.crearRegistro ? adaptador.crearRegistro() : adaptador.registro, transporte, timeoutMs: limites.toolTimeoutMs }),
     instruccion: opciones.instruccion ?? "",
     voiceId: opciones.voiceId ?? "Kore",
@@ -164,5 +170,5 @@ export async function correrGuionConAdaptador<R extends string, E extends object
   // El guion termino con la llamada abierta: el cliente cuelga.
   if (iniciada && ctrl.maquina.estadoActual !== "cerrada") await ctrl.clienteCuelga();
   const resultado = iniciada ? (ctrl.maquina.resultado ?? "abandonado") : "no_iniciada";
-  return { guion, mundo, iniciada, resultado, pregrabados, audioCortado, transcripcion: ctrl.transcripcion, tools, logs, kpi };
+  return { guion, mundo, iniciada, resultado, pregrabados, audioCortado, transcripcion: ctrl.transcripcion, tools, logs, kpi, textosGuardia };
 }

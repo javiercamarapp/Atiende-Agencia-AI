@@ -73,6 +73,11 @@ export interface InboundMessageInput {
   readonly opensWindow?: boolean;
 }
 
+export interface RegisteredMedia {
+  readonly bytes: Uint8Array;
+  readonly mimeType: string;
+}
+
 export interface WebhookDelivery {
   readonly status: number;
   readonly bodyText: string;
@@ -95,6 +100,9 @@ export class MetaCloudSimulator {
   readonly deliveries: WebhookDelivery[] = [];
   private readonly lastInboundAt = new Map<string, number>();
   private readonly failures: ForcedFailure[] = [];
+  private readonly media = new Map<string, RegisteredMedia>();
+  /** Descargas de media atendidas (paso 1: metadatos; paso 2: bytes): las pruebas de idempotencia cuentan los bytes. */
+  readonly mediaRequests: { readonly step: "metadata" | "bytes"; readonly mediaId: string }[] = [];
   private server: RunningServer | null = null;
   private counter = 0;
   private offsetMs = 0;
@@ -160,6 +168,19 @@ export class MetaCloudSimulator {
   sentTo(to: string): SimulatedOutboundMessage[] {
     const wa = normalizeWaId(to);
     return this.accepted.filter((m) => normalizeWaId(m.to) === wa);
+  }
+
+  /** Registra un archivo que el cliente "subio" a WhatsApp y devuelve su media-id (el que viaja en el webhook de audio). */
+  registerMedia(media: RegisteredMedia, id?: string): string {
+    const mediaId = id ?? `SIMMEDIA${++this.counter}`;
+    this.media.set(mediaId, media);
+    return mediaId;
+  }
+
+  /** Meta -> webhook: nota de voz (type "audio", voice: true) que apunta a un media-id registrado. */
+  async deliverAudio(from: string, mediaId: string, opts: { readonly id?: string; readonly mimeType?: string; readonly voice?: boolean } = {}): Promise<WebhookDelivery> {
+    const mimeType = opts.mimeType ?? this.media.get(mediaId)?.mimeType ?? "audio/ogg; codecs=opus";
+    return this.deliverInbound({ from, body: "", ...(opts.id ? { id: opts.id } : {}), raw: { type: "audio", audio: { id: mediaId, mime_type: mimeType, voice: opts.voice ?? true, sha256: "SIM" } } });
   }
 
   buildInboundPayload(input: InboundMessageInput): Record<string, unknown> {
@@ -259,8 +280,27 @@ export class MetaCloudSimulator {
     return { status: response.status, body: await response.text() };
   }
 
+  private handleMedia(request: Request, url: URL): Response | null {
+    if (request.method !== "GET") return null;
+    const cdn = /^\/media-cdn\/([^/]+)$/.exec(url.pathname);
+    const meta = /^\/(v\d+\.\d+)\/([^/]+)$/.exec(url.pathname);
+    if (!cdn && !meta) return null;
+    if (request.headers.get("authorization") !== `Bearer ${this.opts.accessToken}`) return graphError(401, META_ERROR_BAD_TOKEN, "Invalid OAuth access token.");
+    const mediaId = (cdn ?? meta)![cdn ? 1 : 2]!;
+    const found = this.media.get(mediaId);
+    if (!found) return graphError(404, 100, "Unsupported get request: media inexistente o expirada.");
+    if (cdn) {
+      this.mediaRequests.push({ step: "bytes", mediaId });
+      return new Response(found.bytes as unknown as ConstructorParameters<typeof Response>[0], { status: 200, headers: { "content-type": found.mimeType, "content-length": String(found.bytes.byteLength) } });
+    }
+    this.mediaRequests.push({ step: "metadata", mediaId });
+    return json(200, { messaging_product: "whatsapp", url: `${this.baseUrl}/media-cdn/${mediaId}`, mime_type: found.mimeType, sha256: "SIM", file_size: found.bytes.byteLength, id: mediaId });
+  }
+
   private async handle(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    const mediaResponse = this.handleMedia(request, url);
+    if (mediaResponse) return mediaResponse;
     const match = /^\/(v\d+\.\d+)\/([^/]+)\/messages$/.exec(url.pathname);
     if (request.method !== "POST" || !match) return json(404, { error: { message: "ruta no soportada por el simulador", code: 100 } });
     if (request.headers.get("authorization") !== `Bearer ${this.opts.accessToken}`) return graphError(401, META_ERROR_BAD_TOKEN, "Invalid OAuth access token.");
@@ -291,10 +331,15 @@ export class MetaCloudSimulator {
       text = ((body.text as { body?: unknown } | undefined)?.body as string | undefined) ?? null;
       if (!text) return graphError(400, 100, "text.body es obligatorio.");
     } else if (type === "interactive") {
-      const interactive = body.interactive as { body?: { text?: string }; action?: { buttons?: { reply?: { id: string; title: string } }[] } } | undefined;
+      const interactive = body.interactive as { type?: string; body?: { text?: string }; action?: { name?: string; buttons?: { reply?: { id: string; title: string } }[] } } | undefined;
       text = interactive?.body?.text ?? null;
-      buttons = (interactive?.action?.buttons ?? []).map((b) => b.reply).filter((r): r is { id: string; title: string } => !!r);
-      if (!text || buttons.length === 0 || buttons.length > 3) return graphError(400, 100, "interactive/button invalido (1-3 botones y body.text).");
+      if (interactive?.type === "location_request_message") {
+        // Solicitud de ubicacion: solo texto + `action.name = send_location` (un toque del cliente), sin botones de respuesta.
+        if (!text || interactive.action?.name !== "send_location") return graphError(400, 100, "interactive/location_request_message invalido (body.text y action.name = send_location).");
+      } else {
+        buttons = (interactive?.action?.buttons ?? []).map((b) => b.reply).filter((r): r is { id: string; title: string } => !!r);
+        if (!text || buttons.length === 0 || buttons.length > 3) return graphError(400, 100, "interactive/button invalido (1-3 botones y body.text).");
+      }
     } else {
       templateName = ((body.template as { name?: unknown } | undefined)?.name as string | undefined) ?? null;
       if (!templateName) return graphError(400, 100, "template.name es obligatorio.");

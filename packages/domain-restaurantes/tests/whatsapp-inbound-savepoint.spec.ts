@@ -116,3 +116,50 @@ describe("handleInboundWhatsAppMessage (restaurantes) — SAVEPOINT alrededor de
     ).rejects.toMatchObject({ code: "25P02" });
   });
 });
+
+describe("handleInboundWhatsAppMessage (restaurantes) — tope por remitente contra Postgres real (AbortAwareFakeSession)", () => {
+  function reglasBase(consume: () => unknown) {
+    return [
+      { match: /select restaurantes\.claim_whatsapp_message/, respond: () => [{ claim_whatsapp_message: true }] },
+      { match: /select restaurantes\.claim_whatsapp_conversation/, respond: () => [{ claim_whatsapp_conversation: true }] },
+      { match: /select restaurantes\.append_whatsapp_user_message_once/, respond: () => [] },
+      { match: /consume_api_rate_limit/, respond: consume },
+      { match: /select id, organization_id, phone, name, order_count from restaurantes\.customers/, respond: () => [] },
+      // Cliente 360: la memoria del cliente llega por la funcion de sistema; cliente nuevo = sin memoria.
+      { match: /select restaurantes\.cliente_memoria/, respond: () => [{ r: null }] },
+      { match: /select restaurantes\.whatsapp_append_turn/, respond: () => [] },
+      { match: /select restaurantes\.enqueue_messaging_outbox/, respond: () => [] },
+      { match: /select restaurantes\.finish_whatsapp_message/, respond: () => [] },
+      { match: /select 1/, respond: () => [] },
+    ];
+  }
+
+  it("la funcion del limite no existe (42883, base sin migrar): el turno sigue, usa SAVEPOINT y la sesion queda utilizable (nunca 25P02)", async () => {
+    const sinFuncion = Object.assign(new Error("function restaurantes.consume_api_rate_limit does not exist"), { code: "42883" });
+    const session = new AbortAwareFakeSession(reglasBase(() => sinFuncion));
+    const repo = new PostgresRestaurantesRepository(session);
+    const outcome = await handleInboundWhatsAppMessage(repo, fixedReplyTurnHandler, { organizationId: randomUUID(), messageId: randomUUID(), phone: "+5219990000000", body: "hola", phoneNumberId: "1234567890" });
+    expect(outcome.ok).toBe(true);
+    expect(outcome.reply).toMatch(/pedido quedó registrado/);
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint sp_fallback_"))).toBe(true);
+    await expect(session.query("select 1;")).resolves.toEqual({ rows: [] });
+  });
+
+  it("fuera del tope: no se llama al modelo, se responde el aviso fijo y la sesion queda utilizable", async () => {
+    let llamadas = 0;
+    const handler: WhatsAppTurnHandler = {
+      async handleInboundMessage() {
+        llamadas += 1;
+        return { reply: "no deberia llamarse", orderId: null, propertyId: null };
+      },
+    };
+    // 1a consulta (tope del turno): negada; 2a (aviso unico): permitida.
+    let n = 0;
+    const session = new AbortAwareFakeSession(reglasBase(() => [{ consume_api_rate_limit: n++ === 1 }]));
+    const repo = new PostgresRestaurantesRepository(session);
+    const outcome = await handleInboundWhatsAppMessage(repo, handler, { organizationId: randomUUID(), messageId: randomUUID(), phone: "+5219990000000", body: "hola", phoneNumberId: "1234567890" });
+    expect(llamadas).toBe(0);
+    expect(outcome.reply).toMatch(/muchos mensajes seguidos/);
+    await expect(session.query("select 1;")).resolves.toEqual({ rows: [] });
+  });
+});

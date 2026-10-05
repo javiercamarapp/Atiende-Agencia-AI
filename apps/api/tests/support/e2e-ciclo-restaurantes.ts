@@ -35,6 +35,8 @@ import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/wh
 import { MetaCloudSimulator, ResendSink, createSimulatorFetch, serveFetchHandler } from "@atiende/whatsapp-gateway/testing";
 import type { RunningServer } from "@atiende/whatsapp-gateway/testing";
 import { buildApp } from "../../src/app.ts";
+import { crearPuertoNotasDeVoz } from "../../src/routes/verticals/restaurantes/transcripcion-voz.ts";
+import { RESTAURANTES_TRANSCRIPCION_ROLE } from "../../src/production/llm-models.ts";
 import type { AppDeps } from "../../src/deps.ts";
 import { softRestaurantComandaDeps } from "../../src/routes/verticals/restaurantes/softrestaurant-wiring.ts";
 import { TEST_ENV } from "../fixtures.ts";
@@ -107,6 +109,10 @@ export interface CicloStack {
   readonly propertyId: string;
   /** Reemplaza el guion del LLM (cada prueba trae el suyo). */
   setScript(steps: readonly ScriptStep[]): void;
+  /** R-32: lo que "transcribe" el modelo de audio (texto fijo o funcion; lanzar simula un fallo del modelo). Por omision falla el test si se pide una transcripcion. */
+  setTranscripcion(respuesta: string | ((req: LlmCompletionRequest) => string)): void;
+  /** Peticiones que llegaron al rol de transcripcion (con el audio en base64 en `messages[].audio`). */
+  readonly transcripcionesSolicitadas: LlmCompletionRequest[];
   /** Drena el outbox de WhatsApp por la ruta real de cron (ademas del drenado inline del webhook). */
   dispatchWhatsApp(): Promise<Response>;
   /** Drena el outbox de correo por la ruta real. */
@@ -122,7 +128,7 @@ function falsoComoReal(fake: FakeSoftRestaurantAdapter): SoftRestaurantPort {
   return new Proxy(fake, { get: (t, p, r) => (p === "esReal" ? true : Reflect.get(t, p, r)) }) as unknown as SoftRestaurantPort;
 }
 
-export async function startCicloStack(opts: { readonly now?: string } = {}): Promise<CicloStack> {
+export async function startCicloStack(opts: { readonly now?: string; /** R-32: sin puerto de notas de voz (simula "sin token de Meta"). */ readonly sinNotasDeVoz?: boolean } = {}): Promise<CicloStack> {
   vi.useFakeTimers({ toFake: ["Date"], now: new Date(opts.now ?? MARTES_ABIERTO) });
 
   const ctx = await buildRestaurantesKpiTestContext(buildApp);
@@ -196,8 +202,25 @@ export async function startCicloStack(opts: { readonly now?: string } = {}): Pro
     }),
   ]);
   gateway.registerLadder("e2e-escalated", [new FakeLlmProvider({ id: "escalated-unused" })]);
+  // R-32: rol real de transcripcion con un modelo de audio falso (sin red); registra lo que recibe.
+  let transcripcion: string | ((req: LlmCompletionRequest) => string) = () => {
+    throw new Error("transcripcion no esperada: la prueba no llamo a setTranscripcion");
+  };
+  const transcripcionesSolicitadas: LlmCompletionRequest[] = [];
+  gateway.registerLadder(RESTAURANTES_TRANSCRIPCION_ROLE, [
+    new FakeLlmProvider({
+      id: "audio-falso",
+      script: (req) => {
+        transcripcionesSolicitadas.push(req);
+        const text = typeof transcripcion === "function" ? transcripcion(req) : transcripcion;
+        return { text, ...base };
+      },
+    }),
+  ]);
 
   const conversaciones = new InMemoryConversacionesRepository({ actorUserId: ctx.staff.owner.id, actorEsAdministrador: true });
+  // La sucursal tiene numero de WhatsApp (seedWhatsAppBranchChannel): el gerente puede responder desde el handoff.
+  conversaciones.numeroPorSucursal.add(propertyId);
   // La toma de handoff necesita la conversacion de WhatsApp (en Postgres la crea el webhook): se refleja aqui.
   const gateBase = new InMemoryHandoffAgentGate(conversaciones);
   const handoffGate = {
@@ -251,6 +274,7 @@ export async function startCicloStack(opts: { readonly now?: string } = {}): Pro
       resolverSucursal: crearResolverSucursalPos({ [propertyId]: "T2" }),
     },
     whatsAppDispatcher: new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: E2E_SECRETS.accessToken, baseUrl: sim.baseUrl }) }),
+    ...(opts.sinNotasDeVoz ? {} : { notasDeVoz: crearPuertoNotasDeVoz({ gateway, accessToken: E2E_SECRETS.accessToken, graphBaseUrl: sim.baseUrl }) }),
     privacidadRepo: () => privacidad,
     conversacionesRepo: () => conversaciones,
     handoffGate: () => handoffGate,
@@ -284,6 +308,10 @@ export async function startCicloStack(opts: { readonly now?: string } = {}): Pro
       script = steps;
       cursor = 0;
     },
+    setTranscripcion(respuesta) {
+      transcripcion = respuesta;
+    },
+    transcripcionesSolicitadas,
     dispatchWhatsApp: () => internal("/internal/whatsapp/dispatch"),
     dispatchEmail: () => internal("/internal/restaurantes/email-dispatch"),
     dispatchPos: () => internal("/internal/restaurantes/softrestaurant-dispatch"),

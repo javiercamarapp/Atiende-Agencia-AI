@@ -1,4 +1,4 @@
-export type { StorefrontCatalogRow, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
+export type { StorefrontCatalogRow, StorefrontMarca, StorefrontMarcaInput, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
 export { buildStorefrontBranches, buildStorefrontMenu, groupStorefrontMenu, assertWebOrderRules, previewPromotion } from "./storefront.ts";
 export type { StorefrontBranchView, StorefrontMenuCategory, StorefrontMenuItem, PromotionPreview } from "./storefront.ts";
 export type {
@@ -9,6 +9,7 @@ export type {
   BranchTimezoneConfig,
   CallbackRequest,
   CallbackRequestInput,
+  CallbackRegistro,
   CanalPedido,
   Category,
   CategoryPatch,
@@ -16,8 +17,13 @@ export type {
   CreateOrderItemInput,
   Customer,
   CustomerAddress,
+  CarteraKpis,
+  CustomerFrecuencia,
   CustomerListFilter,
+  CustomerListItem,
   CustomerListPage,
+  FilaImportacionCliente,
+  ResultadoImportacionClientes,
   CustomerLookupResult,
   CustomerTier,
   DefaultComplement,
@@ -60,7 +66,7 @@ export type {
   WhatsappBranchChannel,
   WhatsappChannelConfig,
 } from "./types.ts";
-export { EMPTY_BRANCH_POLICY } from "./types.ts";
+export { EMPTY_BRANCH_POLICY, CUSTOMER_FRECUENCIAS, CUSTOMER_TIERS } from "./types.ts";
 
 export { OrderConflictError, OrderValidationError, PromotionError, WhatsappNumberInUseError } from "./errors.ts";
 
@@ -82,7 +88,9 @@ export type { ReglasSucursalArgs, ReglasSucursalResultado } from "./reglas-pedid
 
 export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, applyPromotionToOrder, computeBogoDiscount, computeCortesiaDiscount, selectAutomaticPromotion, PROMOTION_CODE_PATTERN } from "./promotions.ts";
 
-export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient } from "./phone.ts";
+export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient, maskPhone } from "./phone.ts";
+export { prepararImportacionClientes, IMPORTACION_MAX_FILAS } from "./clientes-importacion.ts";
+export type { ErrorRenglonImportacion, PreparacionImportacion } from "./clientes-importacion.ts";
 
 export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole } from "./roles.ts";
 export type { RestaurantesRole } from "./roles.ts";
@@ -129,9 +137,10 @@ export {
   REPARTIDOR_ALLOWED_STATUSES,
   assertValidRepartidorStatusTransition,
   changeAssignedOrderStatus,
+  assertOrderCanBeDispatched,
 } from "./order-lifecycle.ts";
 
-export { searchProducts, prepareCreateOrder, createOrder, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
+export { searchProducts, prepareCreateOrder, createOrder, redondearACentavos, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
 export type { PreparedOrder, QuotePolicyInfo, QuotePromotionInfo } from "./orders.ts";
 
 export {
@@ -162,6 +171,17 @@ export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJ
 export type { EmailDispatchSummary, ResendConfig } from "./email-dispatch.ts";
 
 export { registerCallbackRequest } from "./callback-requests.ts";
+export {
+  EVENTO_LIMITES,
+  MARCA_LIMITES,
+  MARCA_VACIA,
+  StorefrontValidationError,
+  buildStorefrontPromociones,
+  enlaceWhatsapp,
+  validarMarca,
+  validarSolicitudEvento,
+} from "./storefront-marca.ts";
+export type { SolicitudEventoValidada, StorefrontPromocionView } from "./storefront-marca.ts";
 
 export { findNearestBranch, normalizeZoneText, haversineKm, COLONIA_NO_RECONOCIDA_MENSAJE } from "./nearest-branch.ts";
 export type { NearestBranchResult } from "./nearest-branch.ts";
@@ -173,6 +193,20 @@ export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
 export { extractMetaInboundMessages, extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
+export {
+  LIMITE_NOTAS_POR_CONVERSACION_HORA,
+  LIMITE_NOTAS_POR_ORGANIZACION_DIA,
+  NOTA_DE_VOZ_MAX_BYTES,
+  NOTA_DE_VOZ_MAX_SEGUNDOS,
+  NotaDeVozError,
+  PREFIJO_NOTA_DE_VOZ,
+  TRANSCRIPCION_MAX_CARACTERES,
+  formatearNotaDeVoz,
+  registrarMotivo as registrarMotivoNotaDeVoz,
+  resolverCuerpoConNotaDeVoz,
+  transcribirNotaDeVoz,
+} from "./whatsapp/nota-de-voz.ts";
+export type { AudioDescargado, MotivoSinTranscripcion, NotaDeVozEntrante, PuertoNotasDeVoz, ResultadoNotaDeVoz, TranscripcionDeEntrada } from "./whatsapp/nota-de-voz.ts";
 export { splitMetaPayloadByChannel } from "./whatsapp/batch-routing.ts";
 export type { MetaChannelBatch } from "./whatsapp/batch-routing.ts";
 export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEspera, responderTrasEspera, mensajesSinResponder, usuariosRespondidos, analizarHistorial, MAX_PASADAS_RAFAGA, esperaEfectivaMs, FUNCION_MAX_MS, PASADA_ESTIMADA_MS, liberarTurnoTrasFalloDeFaseB } from "./whatsapp/inbound.ts";
@@ -182,14 +216,17 @@ export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 
-export { createLlmWhatsAppTurnHandler, FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, getAgentConfig, resolveAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
+export { createLlmWhatsAppTurnHandler, bloqueConocimientoDelTurno, FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, getAgentConfig, resolveAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
 export type { WhatsAppLlmAgentConfig, WhatsAppLlmAgentOptions, WhatsAppToneStyle } from "./whatsapp/llm-turn-handler.ts";
+export { hashTelefonoParaLogs } from "./whatsapp/observabilidad-turno.ts";
+export type { EventoObservabilidadWhatsApp, EventoToolWhatsApp, EventoTurnoWhatsApp, ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./whatsapp/observabilidad-turno.ts";
 
 export {
   STATS_PERIODS,
   isStatsPeriod,
   buildTrendBuckets,
   buildComparisonPeriods,
+  horasAbiertasHoy,
   periodLabel,
   getSalesKpis,
   getSalesTrendKpis,
@@ -199,9 +236,12 @@ export {
   getCustomerKpis,
   computeCustomerKpis,
 } from "./kpis.ts";
-export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
+export type { OpcionesTramos, StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
+export * from "./cierres/index.ts";
+export * from "./repartidor-perfil/index.ts";
+export * from "./exportar/index.ts";
 export { PM_COPY, buildPmSystemPrompt, pmCustomerContextBlock, saludoPorHora } from "./whatsapp/perfil-pm.ts";
 export type { PerfilPmContexto, SaludoPorHora } from "./whatsapp/perfil-pm.ts";
 export { MOTIVOS_ESCALACION_DESACTIVABLES, PERFILES_AGENTE_WHATSAPP, TONOS_AGENTE_WHATSAPP } from "./types.ts";
@@ -214,7 +254,33 @@ export type {
   WhatsAppAgentConfigInput,
   WhatsAppAgentConfigRow,
 } from "./types.ts";
-export { WhatsAppAgentConfigConflictError } from "./errors.ts";
+export { WhatsAppAgentConfigConflictError, ClienteMemoriaNoDisponibleError } from "./errors.ts";
+
+// Cliente 360 (migracion 049): memoria del cliente, gustos, repetir pedido y ficha del staff.
+export { PREFERENCE_KINDS, isPreferenceKind, POLITICA_POR_OMISION } from "./cliente-360/types.ts";
+export type {
+  ClosureAddress,
+  ClosureObservation,
+  CustomerAddressChanges,
+  CustomerAddressDetail,
+  CustomerFicha,
+  CustomerMemory,
+  CustomerPolicy,
+  CustomerPreference,
+  CustomerProfilePatch,
+  CustomerReliability,
+  OrderClosureInput,
+  PastOrder,
+  PreferenceAction,
+  PreferenceKind,
+  TasteProposal,
+} from "./cliente-360/types.ts";
+export { extraerObservaciones, extraerDomicilio, proponerGustos, describirGusto, MIN_VECES_PARA_PROPONER } from "./cliente-360/gustos.ts";
+export { repetirPedido, elegirPedido } from "./cliente-360/repetir.ts";
+export type { CambioDeRepeticion, PedidoRepetido, RenglonRepetido } from "./cliente-360/repetir.ts";
+export { cargarMemoria, cerrarCicloDelCliente, evaluarReincidencia } from "./cliente-360/memoria.ts";
+export type { DecisionReincidencia } from "./cliente-360/memoria.ts";
+export type { PedidoAnteriorResumen } from "./types.ts";
 export {
   AGENTE_LIMITES,
   ESPERA_RAFAGAS_MAX_SEGUNDOS,
@@ -238,6 +304,10 @@ export {
   MOTIVOS_ESCALACION,
   normalizarMotivoEscalacion,
   VOICE_TOOL_HTTP_PATHS,
+  FOLIO_PREVIEW_PREFIJO,
+  TELEFONO_PREVIEW_PREFIJO,
+  esTelefonoPreview,
+  telefonoFicticioPreview,
   exportVoiceToolManifest,
   executeAgentToolSafely,
   invokeAgentTool,
@@ -245,7 +315,7 @@ export {
   toolDefinitionsForChannel,
 } from "./agent-tools/registry.ts";
 export type { MotivoEscalacion } from "./agent-tools/registry.ts";
-export type { AgentChannel, AgentToolContext, AgentToolDefinition, AgentToolJsonSchema, AgentToolName, AgentToolOutcome } from "./agent-tools/registry.ts";
+export type { AgentChannel, AgentToolMode, AgentToolContext, AgentToolDefinition, AgentToolJsonSchema, AgentToolName, AgentToolOutcome } from "./agent-tools/registry.ts";
 export {
   CLAIM_STALE_MS,
   OrderFlowViolationError,
@@ -274,6 +344,29 @@ export {
   validarVentanaProgramacion,
 } from "./pedidos-programados.ts";
 export type { PromocionProgramados } from "./pedidos-programados.ts";
+export { ATRASO_PROGRAMADO_MIN, avisarProgramadosPromovidos, emitirAvisoProgramadoEnCocina, esPromocionAtrasada } from "./pedidos-programados-avisos.ts";
+export type { ResumenAvisosProgramados } from "./pedidos-programados-avisos.ts";
 export { etiquetaHoraLocal } from "./horarios.ts";
 export type { OrderScheduleInfo } from "./types.ts";
 export type { PromotedScheduledOrdersResult, ScheduledOrdersResult } from "./repository.ts";
+
+// R-16 -- avisos del staff (migracion 043): preferencias por usuario, umbral de entrega tardia y alertas operativas.
+export {
+  AvisosNoDisponiblesError,
+  AvisosPermisoError,
+  AvisosValidacionError,
+  EVENTOS_AVISO,
+  TIPOS_AVISO,
+  UMBRAL_ENTREGA_TARDIA_DEFECTO_MIN,
+  UMBRAL_ENTREGA_TARDIA_MAX,
+  UMBRAL_ENTREGA_TARDIA_MIN,
+  guardarPreferenciaAviso,
+  guardarUmbralEntrega,
+  listarPreferenciasAvisos,
+  listarUmbralesEntrega,
+} from "./avisos-preferencias.ts";
+export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
+export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operativos.ts";
+export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
+
+export * from "./conocimiento/index.ts";

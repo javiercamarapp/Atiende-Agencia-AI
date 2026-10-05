@@ -228,13 +228,16 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).toMatch(/maíz, harina o mixta \(mitad y mitad\)/);
   });
 
-  it("no promete el combo del martes: dice que la confirma la sucursal y cotiza los nachos a precio de lista", () => {
-    expect(p).not.toMatch(/2 aguas de cortes[ií]a/i);
-    expect(p).not.toMatch(/nachos de pastor con 2 aguas/i);
-    expect(p).toContain("la confirma la sucursal al recoger");
-    expect(p).toMatch(/cotice los nachos a precio de lista/);
-    expect(PM_PROMOS_POR_OMISION).toBe("lunes 2x1 en tacos al pastor, solo para recoger, en Francisco de Montejo, Pensiones y Galerías");
-    expect(PM_PROMOS_POR_OMISION).not.toMatch(/martes|nachos/i);
+  it("el combo del martes lo aplica cotizar_pedido (CR09): el agente dice lo que devuelve y no lo promete si la cotizacion no lo muestra", () => {
+    expect(p).not.toContain("la confirma la sucursal al recoger");
+    expect(p).not.toMatch(/no lo prometa ni lo aplique|cotice los nachos a precio de lista/);
+    expect(p).toMatch(/H13\. Combo del martes \(nachos de pastor con 2 aguas de cortesía, solo para recoger\): lo aplica cotizar_pedido; diga lo que devuelve\./);
+    expect(p).toMatch(/Si el cliente pide el combo y la cotización no lo muestra .* no lo prometa/);
+  });
+
+  it("las promociones por omision valen en TODAS las sucursales: lunes 2x1 y martes nachos con 2 aguas, solo recoger (CR07/CR08)", () => {
+    expect(PM_PROMOS_POR_OMISION).toBe("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales");
+    expect(PM_PROMOS_POR_OMISION).not.toMatch(/Francisco de Montejo|Pensiones|Galerías/);
   });
 
   it("ya no afirma 'Precios iguales' ni prohibe dar horarios por sucursal: el horario y el precio los da la herramienta", () => {
@@ -257,15 +260,17 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).toContain("alergia_salud");
   });
 
-  it("horario prudente por sucursal (T2: 6 pm entre semana), ultimo pedido y sucursal cerrada", () => {
-    expect(p).toContain("Francisco de Montejo: lunes a viernes de 6 pm a 12 am; sábado y domingo de 12 pm a 12 am");
-    expect(p).toContain("Prolongación Montejo: lunes a jueves de 6 pm a 1 am; viernes a domingo de 12 pm a 1 am");
-    expect(p).toContain("Pensiones: todos los días de 6 pm a 12 am");
-    expect(p).toContain("García Lavín (Victory Platz) y Victory Altabrisa: todos los días de 12 pm a 1 am");
-    expect(p).toMatch(/Playa \(Chicxulub\): solo en Semana Santa y julio-agosto, de 6 pm a 1 am/);
-    expect(p).toMatch(/solo si la entrega \(con el tiempo de la sucursal, ver paso 8\) cae antes del cierre/);
-    expect(p).toMatch(/Con la sucursal cerrada o pasado el último pedido: diga que está cerrada y a qué hora abre; no tome el pedido ni lo deje programado/);
-    expect(p).toMatch(/manda sobre cualquier franja más amplia/);
+  it("H16: el horario sale solo de los datos de la sucursal (consultar_sucursal / rechazo de la cotizacion), nunca de un texto fijo del prompt", () => {
+    // Regresion del eval real (12/68): el prompt fijaba "6 pm" para Pensiones y Fco. Montejo y el agente rechazaba pedidos de tarde
+    // aunque la herramienta dijera abierto. No debe quedar ninguna franja horaria fija por sucursal.
+    expect(p).not.toMatch(/HORARIO PARA TOMAR PEDIDOS/);
+    expect(p).not.toMatch(/de 6 pm a (12|1) am|todos los días de 12 pm a 1 am/);
+    expect(p).not.toMatch(/lunes a viernes de 6 pm/);
+    expect(p).toMatch(/H16\. Horario: lo dicen SOLO los datos de la sucursal/);
+    expect(p).toMatch(/consultar_sucursal \(abierto_ahora, cierra_a, horario\)/);
+    expect(p).toMatch(/solo si la entrega \(con el tiempo de la sucursal, ver paso 8\) cae antes de esa hora/);
+    expect(p).toMatch(/no tome el pedido ni lo deje programado para la apertura/);
+    expect(p).toMatch(/Horario: no lo afirme de memoria: lo da consultar_sucursal/);
   });
 
   it("umbral de pedido grande: 40 piezas o $1,500 se queda, sin rechazar el pedido (lo confirma la sucursal)", () => {

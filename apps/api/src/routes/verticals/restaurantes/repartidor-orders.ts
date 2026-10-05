@@ -10,6 +10,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { emitirNotificacion } from "@atiende/db";
 import { REPARTIDOR_ROLES, changeAssignedOrderStatus, isOrderStatus, OrderStatusTransitionError } from "@atiende/domain-restaurantes";
 import type { Order } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
@@ -103,6 +104,13 @@ export function restaurantesRepartidorOrdersRoutes(deps: AppDeps): Hono<CoreAuth
       // notificación pueda envolverse en SAVEPOINT (esta ruta también corre en
       // sesión de STAFF).
       const updated = await changeAssignedOrderStatus(repo, organizationId, repartidorId, order, raw.status, incidentNote, c.get("db"));
+      // R-16: una incidencia del repartidor (status `problema`) es "algo que fallo" para el staff: aviso in-app por el productor
+      // compartido (catalogo `restaurantes.pedido.incidencia_repartidor`; los destinatarios y las preferencias por persona las
+      // resuelve la base). Uno por incidencia (clave = id del pedido + minuto UTC del reporte: un pedido que vuelve a `problema` tras resolverse avisa de nuevo y un reintento del mismo PATCH no duplica), sin PII ni texto de la nota; best-effort dentro de un SAVEPOINT
+      // (emitirNotificacion): nunca revierte ni rompe el cambio de estado.
+      if (updated.status === "problema") {
+        await emitirNotificacion(c.get("db"), { evento: "restaurantes.pedido.incidencia_repartidor", organizationId, propertyId: updated.propertyId, clave: `${updated.id}-${new Date().toISOString().slice(0, 16).replace(/\D/g, "")}`, entidadTipo: "order", entidadId: updated.id });
+      }
       // Cluster #3 (CRÍTICO) de la auditoría final — mismo disparo inline
       // best-effort que admin-orders.ts::PATCH .../status (changeAssignedOrderStatus
       // también puede encolar el WhatsApp al cliente vía

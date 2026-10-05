@@ -172,6 +172,18 @@
     /* Utilidades safe-area (notch/home-indicator). */
     --safe-area-top: env(safe-area-inset-top, 0px);
     --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+
+    /* Color por VERTICAL (Cerebro de ventas: luces, pines, racimos, leyenda y filtros). Una sola paleta de 6
+       tonos separados por matiz (naranja, azul, verde azulado, violeta, ambar, magenta), cada uno con
+       contraste >= 3:1 (WCAG 1.4.11) sobre --card y --canvas en claro y en oscuro; lo verifica
+       packages/ui/tests/tokens-vertical.spec.ts. Es el unico lugar donde se definen: las pantallas leen
+       los tokens, nunca un hex. */
+    --vertical-restaurantes: 14 82% 44%;
+    --vertical-hoteles: 217 80% 46%;
+    --vertical-rentas: 168 95% 26%;
+    --vertical-licitaciones: 285 55% 45%;
+    --vertical-despachos: 42 95% 34%;
+    --vertical-citas: 330 70% 46%;
   }
 
   .dark {
@@ -240,6 +252,13 @@
     --info-tint: 218 40% 20%;
     --destructive-tint: 352 40% 20%;
     --control-off: 240 4% 45%;
+
+    --vertical-restaurantes: 14 90% 64%;
+    --vertical-hoteles: 217 90% 68%;
+    --vertical-rentas: 168 65% 50%;
+    --vertical-licitaciones: 285 70% 72%;
+    --vertical-despachos: 45 95% 58%;
+    --vertical-citas: 330 80% 70%;
   }
 }
 

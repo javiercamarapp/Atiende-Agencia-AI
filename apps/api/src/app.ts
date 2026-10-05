@@ -5,6 +5,7 @@
 // comentario crítico en routes/verticals/restaurantes/whatsapp.ts).
 import { Hono } from "hono";
 import { ApiError, requestId } from "@atiende/core-auth";
+import { DatabaseBusyError } from "@atiende/db";
 import type { AppDeps } from "./deps.ts";
 import { logEvent } from "./logger.ts";
 import { cabecerasSeguridadApi } from "./cabeceras-seguridad.ts";
@@ -28,6 +29,8 @@ import { superadminAccionesRoutes } from "./routes/superadmin-acciones.ts";
 import { superadminMfaRoutes } from "./routes/superadmin-mfa.ts";
 import { superadminInterruptoresRoutes } from "./routes/superadmin-interruptores.ts";
 import { superadminOrganizacionesRoutes } from "./routes/superadmin-organizaciones.ts";
+import { superadminOrganizacionesFichaRoutes } from "./routes/superadmin-organizaciones-ficha.ts";
+import { superadminOrganizacionesEquipoRoutes } from "./routes/superadmin-organizaciones-equipo.ts";
 import { superadminCostosRoutes } from "./routes/superadmin-costos.ts";
 import { superadminCfoRoutes } from "./routes/superadmin-cfo.ts";
 import { superadminPylRoutes } from "./routes/superadmin-pyl.ts";
@@ -95,6 +98,12 @@ export function buildApp(deps: AppDeps): Hono {
     if (err instanceof ApiError) {
       return c.json({ code: err.code, message: err.message }, err.status as 400 | 401 | 403 | 404 | 409 | 413 | 429 | 503, err.headers);
     }
+    // Pool de conexiones saturado (sobrecarga transitoria, ver `DatabaseBusyError`): 503 reintentable, no 500. Meta y los
+    // clientes HTTP reintentan; el ledger de mensajes entrantes y la idempotencia de pedidos evitan duplicados.
+    if (err instanceof DatabaseBusyError) {
+      logEvent(c, "warn", "apps_api_db_ocupada", { depth: err.depth, waitedMs: err.waitedMs });
+      return c.json({ code: "service_busy", message: "Servicio ocupado. Intenta de nuevo en unos segundos." }, 503, { "Retry-After": "2" });
+    }
     logEvent(c, "error", "apps_api_error_interno", { message: err instanceof Error ? err.message : String(err) });
     return c.json({ code: "internal_error", message: "Error interno" }, 500);
   });
@@ -122,6 +131,8 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminMfaRoutes(deps));
   app.route("/", superadminInterruptoresRoutes(deps));
   app.route("/", superadminOrganizacionesRoutes(deps));
+  app.route("/", superadminOrganizacionesFichaRoutes(deps));
+  app.route("/", superadminOrganizacionesEquipoRoutes(deps));
   app.route("/", superadminCostosRoutes(deps));
   app.route("/", superadminCfoRoutes(deps));
   app.route("/", superadminPylRoutes(deps));

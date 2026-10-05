@@ -1,8 +1,8 @@
-# Voz de Los Taquitos de PM (restaurantes): LiveKit + Gemini Live, sin ElevenLabs
+# Voz de Los Taquitos de PM (restaurantes): LiveKit + Gemini Live
 
-Decisión de Javier (1-oct-2026): la voz de PM corre con **Gemini 3.8 Live** sobre telefonía **LiveKit SIP + Twilio**, sin ElevenLabs. La
-escalera de degradación es **Gemini 3.8 Live -> gpt-live-1 -> persona / buzón con callback**. Los verticales hoteles y citas conservan sus
-Server Tools de ElevenLabs; este documento es solo de restaurantes.
+Decisión de Javier (1-oct-2026): la voz de PM corre con **Gemini 3.8 Live** sobre telefonía **LiveKit SIP + Twilio**. La
+escalera de degradación es **Gemini 3.8 Live -> gpt-live-1 -> persona / buzón con callback**. Este documento es solo de restaurantes
+(hoteles y citas tienen su propio agente sobre `packages/voice-core`).
 
 > Honestidad primero: este runbook separa lo que **ya está en el repo y probado** de lo que **falta para recibir la primera llamada real**.
 
@@ -17,20 +17,21 @@ Server Tools de ElevenLabs; este documento es solo de restaurantes.
 | Simulador local de llamadas + prueba ciega es-MX (21 guiones, 11 graders), en CI contra el proveedor falso | Hecho en este PR | `.../voz/simulador/`, `tests/voz-simulador-*.spec.ts` |
 | Corrida de la prueba ciega contra Gemini real (manual) | Hecho en este PR; **sin ejecutar (no hay `GEMINI_API_KEY` en este entorno)** | `npm run evals:voz:real -w @atiende/domain-restaurantes` |
 | Llamada de prueba desde el panel (orbe, token efímero, estado honesto) | Hecho en este PR; **sin probar en un navegador con credencial real** | `apps/web/src/verticals/restaurantes/voz/` |
-| Mensajes pregrabados | Textos listos; **faltan los audios** | `.../voz/llamada/mensajes.ts` |
-| **Worker de telefonía** (proceso de larga vida que recibe el SIP de LiveKit, puentea el audio y conduce `ControladorLlamada`) | **NO existe en el repo** | ADR-PM-001 (`apps/voice-worker`) |
+| Mensajes pregrabados | Textos listos; el generador de los 15 audios existe (`npm run voz:pregrabados`, probado con `fetch` falso); **los WAV no se han generado** (los genera Javier con su llave, una vez) | `.../voz/llamada/mensajes.ts`, `scripts/voz-pregrabados.ts` |
+| **Worker de telefonía** (proceso de larga vida que recibe el SIP de LiveKit, puentea el audio y conduce `ControladorLlamada`) | Hecho en este PR y probado de punta a punta **sin red** (telefonía falsa + proveedor guionado + la API real en proceso); el adaptador de LiveKit compila pero **no se probó contra un servidor real**; la imagen Docker es una receta sin construir. **Dónde corre lo decide Javier** | `apps/voice-worker` (README propio), ADR-PM-001 |
 | Adaptador de gpt-live-1 | **NO existe**: solo el contrato (`VoiceAgentProvider.abrirLlamada`) y el `FakeVoiceProvider` | |
-| Tope mensual de gasto: almacenamiento y lectura | **NO existe**: `evaluarInicioLlamada` recibe el tope y el gasto del mes, pero ninguna tabla guarda el tope | |
+| Tope mensual de gasto de voz | Lectura del gasto del mes: hecha (`restaurantes.voz_gasto_mes_micro_usd`, migración 067, suma `core.usage_cost_event` de categoría `voz`). Tope: de plataforma (`VOICE_TOPE_MENSUAL_USD`, sin valor = sin tope) con sobreescritura por organización en la tabla DNIS del worker (`topeMensualUsd`). **Sin tabla de topes por organización**: guardarlos en la base para editarlos desde el panel es el siguiente paso | `apps/voice-worker/src/config.ts` |
 
-Hasta que exista el worker, el agente de voz **no atiende llamadas telefónicas**. Lo que sí se puede hacer hoy: configurar la voz y el
-comportamiento, hacer la llamada de prueba desde el panel y correr la prueba ciega.
+Con el worker construido, el agente de voz atiende llamadas telefónicas **en cuanto Javier lo despliega y conecta Twilio/LiveKit** (pasos en `apps/voice-worker/README.md`);
+mientras tanto no atiende ninguna. Lo que sí se puede hacer hoy: configurar la voz y el comportamiento, hacer la llamada de prueba desde el panel, correr la prueba
+ciega y probar el worker sin red con `npx vitest run apps/voice-worker --maxWorkers=2`.
 
-## 2. Qué cambió respecto a ElevenLabs en PM
+## 2. Proveedor de voz de PM: qué cambió
 
-- `VozProveedorId` queda `gemini-3.8-live | gpt-live-1`. La API rechaza `elevenlabs-agents`; una fila histórica con ese valor se lee como
+- `VozProveedorId` queda `gemini-3.8-live | gpt-live-1`. La API rechaza el valor histórico `elevenlabs-agents`; una fila antigua con ese valor se lee como
   Gemini (`proveedorDeFila`). La migración 025 conserva el valor en sus CHECK solo por filas históricas (no se tocó SQL).
-- Los KPI de voz ya no exponen ni muestran "ElevenLabs"; los errores de proveedor se desglosan en Twilio y "Gemini y otros". La columna
-  `errores_elevenlabs` de la migración 035 queda sin leer.
+- Los errores de proveedor de los KPI de voz se desglosan en Twilio y "Gemini y otros". La columna histórica `errores_elevenlabs` de la
+  migración 035 queda sin leer.
 - La vista previa del panel ya no es una simulación: es una llamada real de prueba, o dice "No disponible: <motivo>".
 - Reparto A/B `pct_trafico_ab`: **no existía en main**, no hay nada que retirar.
 - El otro proyecto (`okvxavwijqacomgtyyou`) no se tocó.
@@ -47,10 +48,11 @@ Ningún valor real vive en el repo. Nombres, de dónde sale cada uno y dónde se
 | `VOICE_PREVIEW_TOKEN_SECRET` | `openssl rand -hex 32` | Vercel (API) | Firma el token de la llamada de prueba |
 | `VOICE_TOOL_SECRET` | `openssl rand -hex 32` (ya existe) | Vercel (API); el worker lo usa solo para pedir el token de llamada | Emitir `POST /v1/restaurantes/:org/voice/call-token` |
 | `VOICE_REQUIRE_CALL_TOKEN` | `true` | Vercel (API) | Las herramientas de voz exigen el token por llamada |
-| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Proyecto de LiveKit Cloud | Host del worker | Recibir el SIP y abrir la sala. **Las lee el worker, que aún no existe** |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Proyecto de LiveKit Cloud | Host del worker | Recibir el SIP y entrar a las salas. Las lee `apps/voice-worker` |
+| `ATIENDE_API_URL`, `INTERNAL_SECRET`, `VOICE_DNIS_MAP`, `VOICE_TOPE_MENSUAL_USD` | URL de la API; el mismo secreto interno de la API; JSON número marcado → sucursal | Host del worker | Tabla DNIS, registrador de conversaciones y costos, tope mensual (ver `apps/voice-worker/README.md`) |
 | Twilio: SIP trunk + número mexicano | Consola de Twilio (Elastic SIP Trunking) | Twilio y LiveKit (inbound trunk + dispatch rule) | Un número por sucursal (DNIS -> sucursal) |
 | Secreto por sucursal | `POST /v1/restaurantes/:propertyId/admin/config/sucursales/:branchId/voz/secreto` (se muestra una vez) | Host del worker | Emitir el token de llamada de esa sucursal |
-| Tope mensual (US$) | Decisión de Javier | Configuración del worker | Argumento `topeMensualMicroUsd` de `evaluarInicioLlamada` (hoy sin almacenamiento) |
+| Tope mensual (US$) | Decisión de Javier | `VOICE_TOPE_MENSUAL_USD` (plataforma) y `topeMensualUsd` en `VOICE_DNIS_MAP` (por organización) | Argumento `topeMensualMicroUsd` de `evaluarInicioLlamada`; el gasto sale de la base (migración 067) |
 
 El número y la sucursal de cada llamada salen de la telefonía (DNIS y SIP From), nunca del modelo: `extraerTelefonoSipFrom` convierte el From
 en el teléfono del token firmado; un llamante anónimo no tiene teléfono y por eso no obtiene token (ver huecos).
@@ -61,7 +63,7 @@ en el teléfono del token firmado; un llamante anónimo no tiene teléfono y por
 |---|---|---|
 | Duración máxima | 8 min (aviso a los 7) | Pregrabado + callback a una persona (`no_puedo_resolver`) y cuelga; con pedido ya creado solo se despide |
 | Costo máximo por llamada | US$0.10 (100 000 micro-USD) | Igual que la duración |
-| Silencio del cliente | 7 s, 2 re-preguntas | A la tercera se despide (resultado `abandonado`) |
+| Silencio del cliente | 7 s, 1 re-pregunta (`LIMITES_VOZ_PM`; voice-core deja 2 para las otras verticales) | Al segundo silencio se despide (resultado `abandonado`) |
 | Ruido | 3 eventos sin habla inteligible = 1 malentendido | Pide repetir |
 | Malentendidos seguidos | 2 | Pasa a una persona (`no_entiende`) |
 | DTMF | `0` = persona, `*` = repetir | |
@@ -71,6 +73,24 @@ en el teléfono del token firmado; un llamante anónimo no tiene teléfono y por
 
 Logs sin PII: solo una lista cerrada de campos (ids opacos, estados, conteos, duraciones); la transcripción se guarda aparte, con PAN y CVV
 redactados.
+
+### Instruccion y parametros del agente (rescate-orig-restaurantes-1)
+
+- **Reglas duras no borrables.** `branch_voice_config.comportamiento` es texto libre editable por sucursal (tope 8000). La instruccion que recibe el
+  proveedor la arma el servidor con `instruccionVozConReglas` (`voz/perfil-voz-pm.ts`): texto editable + saludo inicial + **bloque al final** con las
+  reglas H1-H18, el flujo y la seguridad del mismo perfil que WhatsApp, las reglas vivas del agente (precios solo de herramientas de ESTA llamada, un
+  solo "¿sigue ahi?", no repetir datos, reintento honesto de `crear_pedido`, reservaciones) y el apendice de la llamada. El bloque no cuenta para el tope
+  del panel. Hoy lo usa la vista previa del panel (solo organizaciones con perfil `taqueria_pm`; las demas conservan su texto tal cual). **El worker de
+  telefonia debe llamar a la misma funcion al abrir la llamada** (pendiente: el worker no existe).
+- **Temperatura 0** (`VOZ_PLATAFORMA.gemini.temperatura` y `.cascada.temperatura`): va en `generationConfig` del setup de Gemini Live y en la peticion del
+  LLM de la cascada (`PeticionLlmVoz.temperatura`; el puerto que la implemente debe respetarla).
+- **Idioma:** `speechConfig.languageCode = "es-US"` (`VOZ_PLATAFORMA.gemini.idioma`; `null` lo omite). **No verificado contra la API real**: si Gemini rechaza el
+  campo con el modelo configurado, la primera corrida real (prueba ciega B) falla al abrir; poner `idioma: null` en un solo lugar lo quita.
+- **Herramientas en serie** (equivale a `parallel_tool_calls: false` del agente vivo): `gemini-live-sesion.ts` ejecuta los `functionCalls` de un turno uno tras
+  otro, en el orden pedido (antes `Promise.all`), igual que la cascada. Lo fija `packages/voice-core/tests/parametros-voz.spec.ts`.
+- **Vocabulario para el STT de la cascada:** `AperturaLlamada.vocabulario` (nombres y apodos del menu, sin repetidos, hasta
+  `VOZ_PLATAFORMA.cascada.vocabularioMax` = 200) viaja como `prompt` de `/audio/transcriptions`. **No probado contra OpenRouter real**; el worker debe llenar el
+  campo con el menu de la sucursal.
 
 ### Mensajes pregrabados
 
@@ -153,7 +173,11 @@ y las sesiones nuevas dejan de emitirse con 503 honesto); (4) revertir el despli
 
 ## 8. Huecos conocidos
 
-- No existe el worker de telefonía ni el adaptador de gpt-live-1 (ver sección 1).
+- El worker de telefonía existe pero **no se ha probado con una llamada real** (ver sección 1 y `apps/voice-worker/README.md`); `gpt-live-1` salió de la escalera.
+- La latencia de voz a voz se mide por respuesta (evento `latencia_voz`, migración 067) y se muestra por día en Indicadores contra el objetivo de p95 < 1.5 s; la vista por
+  llamada queda como siguiente paso. Con la base sin la 067 el worker atiende igual y la latencia queda «no disponible aún».
+- Modo de entrada (`desborde` | `total` | `prueba`) y KPI «ventas recuperadas» (pedidos de llamadas en desborde, sin cancelados): requieren la migración 067. El worker lo
+  decide por la configuración de la sucursal o por el encabezado de desvío de la llamada (`Diversion` / `History-Info`; nombres sin confirmar contra la primera llamada real).
 - El protocolo de Gemini Live y el nombre del modelo no están verificados contra la API real.
 - La llamada de prueba del panel no se ha probado en un navegador con credencial real (micrófono y reproducción detrás de `entorno-navegador.ts`).
 - Un llamante anónimo (sin caller ID) no tiene teléfono: `POST .../voice/call-token` exige un teléfono válido, así que no puede usar herramientas,
@@ -161,5 +185,5 @@ y las sesiones nuevas dejan de emitirse con 503 honesto); (4) revertir el despli
   teléfono hablado con confirmación, que hoy el servidor no admite porque el teléfono solo sale del token).
 - Una llamada queda fijada a la sucursal que marcó el cliente: si su colonia es de otra sucursal, las herramientas no operan en la otra (el agente
   pasa a una persona con `zona_ambigua`). Lo cierra la decisión de producto sobre el número único o el traspaso entre sucursales.
-- Tope mensual sin almacenamiento. Notificaciones in-app: conectadas "llamada pasó a una persona" y "el proveedor de voz registra errores"
+- Tope mensual por organización sin tabla (vive en la configuración del worker). Notificaciones in-app: conectadas "llamada pasó a una persona" y "el proveedor de voz registra errores"
   (`docs/NOTIFICACIONES.md`); siguen pendientes el umbral de costo de voz (80 y 100 % del tope), los callbacks pendientes y el handoff de WhatsApp.

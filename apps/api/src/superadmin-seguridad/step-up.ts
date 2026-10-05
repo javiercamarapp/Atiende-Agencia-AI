@@ -32,6 +32,7 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "PUT", pattern: /^\/superadmin\/gasto-api\/organizaciones\/[^/]+\/tope$/, label: "cambiar tope de gasto de una organizacion" },
   { method: "PUT", pattern: /^\/superadmin\/gasto-api\/plataforma\/tope$/, label: "cambiar tope de gasto de plataforma" },
   // Gasto de IA por organizacion y rol (CHAT-07): leer el reporte y ver o cambiar el tope diario de turnos por rol.
+  { method: "GET", pattern: /^\/superadmin\/gasto-api\/consumo-ia$/, label: "leer el consumo de IA por rol y sus alertas" },
   { method: "GET", pattern: /^\/superadmin\/gasto-api\/por-rol$/, label: "leer el gasto de IA por organizacion y rol" },
   { method: "GET", pattern: /^\/superadmin\/gasto-api\/organizaciones\/[^/]+\/topes-rol$/, label: "ver el tope diario de turnos por rol de una organizacion" },
   { method: "PUT", pattern: /^\/superadmin\/gasto-api\/organizaciones\/[^/]+\/topes-rol$/, label: "cambiar el tope diario de turnos por rol de una organizacion" },
@@ -42,6 +43,10 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "POST", pattern: /^\/superadmin\/copiloto\/acciones\/confirmar$/, label: "confirmar una accion propuesta por el Copiloto" },
   { method: "POST", pattern: /^\/superadmin\/organizaciones\/acciones\/[^/]+\/confirmar$/, label: "confirmar gestion de organizacion" },
   { method: "POST", pattern: /^\/superadmin\/organizaciones\/acciones\/[^/]+\/aprobar$/, label: "aprobar (doble control) la gestion de una organizacion" },
+  // Alta del equipo inicial (SA-L-26): invitar, reenviar (token nuevo) y revocar dan o quitan acceso al panel de una organizacion.
+  { method: "POST", pattern: /^\/superadmin\/organizaciones\/[^/]+\/invitaciones$/, label: "invitar a una persona al equipo de una organizacion" },
+  { method: "POST", pattern: /^\/superadmin\/organizaciones\/[^/]+\/invitaciones\/[^/]+\/reenviar$/, label: "reenviar una invitacion de equipo (token nuevo)" },
+  { method: "DELETE", pattern: /^\/superadmin\/organizaciones\/[^/]+\/invitaciones\/[^/]+$/, label: "revocar una invitacion de equipo" },
   { method: "PUT", pattern: /^\/superadmin\/costos\/tipo-cambio$/, label: "cambiar el tipo de cambio del reporte de costos" },
   { method: "PUT", pattern: /^\/superadmin\/pyl\/infra$/, label: "capturar la infraestructura compartida del P&L" },
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+$/, label: "editar un plan del catalogo" },

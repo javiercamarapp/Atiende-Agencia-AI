@@ -218,8 +218,14 @@ describe("maquina de estados por llamada (pedido sin cotizacion se rechaza)", ()
     expect(await s.restaurantesRepo.findCustomerByPhone(s.organizationId, "9993333333")).not.toBeNull();
     expect(await s.restaurantesRepo.findCustomerByPhone(s.organizationId, "9994444444")).toBeNull();
 
+    // QA-caos-14: el reintento tras un pedido ya creado devuelve el pedido existente (mismo id, ya_registrado) en vez de un 400 sin id,
+    // para que la llamada cuente el objetivo; no se crea un segundo pedido.
     const repetido = await s.app.request(`/v1/restaurantes/${ORG}/orders`, jsonRequestInit(pedido, h));
-    expect(repetido.status).toBe(400);
+    expect(repetido.status).toBe(200);
+    const repetidoBody = (await repetido.json()) as { order: { id: string }; ya_registrado?: boolean };
+    const creadoBody = (await creado.clone().json()) as { order: { id: string } };
+    expect(repetidoBody.ya_registrado).toBe(true);
+    expect(repetidoBody.order.id).toBe(creadoBody.order.id);
   });
 
   it("el estado es POR LLAMADA: la cotizacion de una llamada no habilita crear en otra", async () => {

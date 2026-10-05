@@ -105,15 +105,15 @@ describe("SuperAdminShell — nav móvil", () => {
     expect(new Set(hrefs)).toEqual(new Set([...TODAS_LAS_RUTAS.map((r) => r.to), ...PIE_SUPERADMIN.map((p) => p.to)]));
     expect(hrefs).toContain("/superadmin/organizaciones");
     expect(hrefs).toContain("/superadmin/privacidad");
-    expect(hrefs).toContain("/superadmin/gestion-organizaciones");
+    // SA-L-20: la gestion es la pestana "Gestion" de Organizaciones; su ruta vieja redirige y ya no es una entrada del menu.
+    expect(hrefs).not.toContain("/superadmin/gestion-organizaciones");
     expect(hrefs).toContain("/superadmin/interruptores");
     expect(hrefs).toContain("/superadmin/seguridad");
     expect(hrefs).toContain("/superadmin/zona-cfo");
-    expect(hrefs).toContain("/superadmin/cfo");
-    expect(hrefs).toContain("/superadmin/pyl");
-    expect(hrefs).toContain("/superadmin/costos-margen");
+    expect(hrefs).toContain("/superadmin/ejecutivo");
+    expect(hrefs).toContain("/superadmin/costos-facturacion");
+    expect(hrefs).toContain("/superadmin/consumo-ia");
     expect(hrefs).toContain("/superadmin/planes");
-    expect(hrefs).toContain("/superadmin/contratos");
     expect(hrefs).toContain("/superadmin/break-glass");
     expect(hrefs).toContain("/superadmin/integraciones");
   });

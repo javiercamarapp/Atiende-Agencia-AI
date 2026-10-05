@@ -171,6 +171,8 @@ export const rutasDespachos: readonly Ruta[] = [
   { metodo: "POST", patron: `${D}/cierre-mensual/periodos/:pid/cerrar`, roles: ["admin"], manejador: (p) => {
       const periodo = p.estado.obtener("desp.periodos", periodosSemilla).find((x) => x.id === p.params.pid);
       if (!periodo) return fallo(404, "Ese periodo no existe");
+      // D-30: el servidor real exige el segundo factor reciente (x-step-up-token) ademas del rol; el mock tambien.
+      if (p.cabeceras["x-step-up-token"] !== `mock-step-up.${p.persona!.id}`) return fallo(403, "Esta acción requiere confirmar tu identidad con el código de tu app de autenticación.");
       const esperado = `${periodo.year}-${String(periodo.month).padStart(2, "0")}`;
       // El servidor real exige el mismo texto que la UI: aqui tambien, para que la prueba no pueda "saltarse" el candado.
       if (((p.cuerpo ?? {}) as { confirmacion?: string }).confirmacion !== esperado) return fallo(400, `Escribe exactamente ${esperado}`);

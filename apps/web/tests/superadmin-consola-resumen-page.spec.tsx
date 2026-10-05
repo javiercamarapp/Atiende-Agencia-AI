@@ -336,12 +336,12 @@ describe("enlaces solo a rutas reales", () => {
     expect(hrefs.length).toBeGreaterThan(0);
     for (const h of hrefs) expect(conocidas.has(h), h).toBe(true);
     expect(texto()).not.toContain("Ver analítica");
-    expect(hrefs).toContain("/superadmin/gasto-api");
+    expect(hrefs).toContain("/superadmin/consumo-ia");
     expect(hrefs).toContain(PARTE_DIARIO);
   });
 
   it("rutaExiste solo acepta lo que esta en rutas.ts", () => {
-    expect(rutaExiste("/superadmin/gasto-api")).toBe(true);
+    expect(rutaExiste("/superadmin/consumo-ia")).toBe(true);
     expect(rutaExiste(PARTE_DIARIO)).toBe(true);
     expect(rutaExiste("/superadmin/analitica")).toBe(false);
     expect(rutaExiste("/superadmin/copiloto")).toBe(true);

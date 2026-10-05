@@ -2,6 +2,7 @@
 import { conStatus, fallo, ndjson } from "../respuestas.ts";
 import { orgDe } from "../personas.ts";
 import type { Ruta, Vertical } from "../tipos.ts";
+import { rutasCerebro } from "./cerebro.ts";
 
 const VERTICALES: readonly Vertical[] = ["restaurantes", "hoteles", "rentas", "despachos", "licitaciones", "citas"];
 
@@ -243,6 +244,97 @@ const BLOQUE_PROPUESTA_COPILOTO = {
 };
 const convsCopiloto = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConvCopilotoMock[]>("sa.copiloto.conversaciones", () => []);
 
+// Organizaciones / Clientes y Ficha 360 (SA-L-20 / SA-07): misma forma que apps/api/src/routes/superadmin-organizaciones-ficha.ts. Solo existe en la
+// API simulada de e2e; en produccion sale de las funciones core.get_orgs_metricas_for_superadmin / get_org_ficha_for_superadmin.
+const campoOrg = <T,>(valor: T) => ({ valor, razon: null });
+const sinDatoOrg = (razon: string) => ({ valor: null, razon });
+const razonSinFuenteOps = "Sin fuente: despachos no guarda un registro de operaciones (la conciliación bancaria no se persiste).";
+
+function filasResumenOrg() {
+  return organizaciones().map((o, i) => {
+    const despachos = o.vertical === "despachos";
+    return {
+      id: o.id, nombre: o.name, slug: o.slug, vertical: o.vertical, estado: o.status, creadaEn: o.createdAt, staff: o.staffCount,
+      plan: i % 2 === 0 ? campoOrg({ id: `plan-${o.vertical}`, nombre: `Plan ${o.vertical}` }) : sinDatoOrg("Sin plan asignado: no hay ingreso esperado contra el cual calcular el margen."),
+      operaciones30d: despachos ? sinDatoOrg(razonSinFuenteOps) : campoOrg(40 + i * 7),
+      costoIa30dUsd: campoOrg(Math.round((12 - i * 1.7) * 100) / 100),
+      onboarding: despachos ? campoOrg({ hechos: 1, total: 4, noMedibles: 1 }) : campoOrg({ hechos: Math.min(6, 2 + i), total: 6, noMedibles: 0 }),
+    };
+  });
+}
+
+function fichaOrg(id: string) {
+  const o = organizaciones().find((x) => x.id === id);
+  if (!o) return null;
+  const despachos = o.vertical === "despachos";
+  return {
+    disponible: true, mensaje: null, mes: "2026-09", ventanaDias: 30,
+    organizacion: { id: o.id, nombre: o.name, slug: o.slug, vertical: o.vertical, estado: o.status, creadaEn: o.createdAt },
+    uso: { operaciones30d: despachos ? sinDatoOrg(razonSinFuenteOps) : campoOrg(52), conversaciones30d: campoOrg(130), minutosVoz30d: campoOrg(8.5) },
+    costo: { llm30dUsd: campoOrg(9.8), eventos30dUsd: campoOrg(1.2), costoPorEventoUsd: campoOrg(0.4) },
+    membresias: { porRol: [{ rol: "owner / staff", cantidad: 1 }, { rol: "member / staff", cantidad: 3 }], ultimosAccesos: campoOrg([{ rol: "member", ultimoAcceso: "2026-09-30T16:00:00.000Z" }]) },
+    errores: {
+      outboxMuerto: campoOrg(0),
+      denegaciones30d: { valor: 0, razon: null, ultimas: [] },
+      crons: sinDatoOrg("Sin fuente por organización: los crons se miden para toda la plataforma (ver Salud operativa)."),
+    },
+    facturacion: { plan: { id: `plan-${o.vertical}`, nombre: `Plan ${o.vertical}` }, cobro: { estado: "activa", periodoHasta: "2026-10-30T00:00:00.000Z", asientos: 3 }, contrato: { contractId: "contrato-1", version: 1 } },
+    onboarding: [
+      { paso: "staff_invitado", titulo: "Staff invitado", estado: "hecho", razon: null, razonTexto: null },
+      despachos
+        ? { paso: "primera_operacion", titulo: "Primera operación real", estado: "no_se_pudo_medir", razon: "sin_fuente", razonTexto: "Sin fuente: despachos no guarda un registro de operaciones (la conciliación bancaria no se persiste)." }
+        : { paso: "primera_operacion", titulo: "Primera operación real", estado: "hecho", razon: null, razonTexto: null },
+      { paso: "plan_asignado", titulo: "Plan asignado", estado: "pendiente", razon: null, razonTexto: null },
+    ],
+  };
+}
+
+// Consumo de IA (SA-L-22) y Ejecutivo / Board (SA-L-24): misma forma que apps/api/src/routes/superadmin-llm-usage.ts (gasto-api/*) y
+// superadmin-cfo.ts (cfo/dashboard). Solo existen en la API simulada de e2e.
+const RANGO_GASTO = { from: "2026-09-01", to: HOY_CONSOLA };
+function consumoIa() {
+  const cero = { costMicroUsd: 0, callCount: 0, fallbackCallCount: 0 };
+  return {
+    hoy: HOY_CONSOLA,
+    desde: "2026-09-01",
+    disponible: true,
+    roles: [
+      { role: "restaurantes:data_chat", grupo: "restaurantes", hoy: { costMicroUsd: 4200, callCount: 12, fallbackCallCount: 3 }, ventana: { costMicroUsd: 61000, callCount: 150, fallbackCallCount: 30 }, techoTurnosDia: 400, maxTurnosOrganizacionHoy: 12, pctTecho: 3 },
+      { role: "restaurantes:whatsapp_agent", grupo: "restaurantes", hoy: { costMicroUsd: 1900, callCount: 8, fallbackCallCount: 0 }, ventana: { costMicroUsd: 72000, callCount: 610, fallbackCallCount: 4 }, techoTurnosDia: null, maxTurnosOrganizacionHoy: 8, pctTecho: null },
+      { role: "hoteles:whatsapp_agent", grupo: "hoteles", hoy: cero, ventana: { costMicroUsd: 31000, callCount: 300, fallbackCallCount: 1 }, techoTurnosDia: null, maxTurnosOrganizacionHoy: 0, pctTecho: null },
+    ],
+    insights: [
+      { codigo: "rol_con_fallbacks", severidad: "atencion", titulo: "El rol restaurantes:data_chat cae a su modelo de respaldo 20 % de las veces", detalle: "30 de 150 llamadas usaron respaldo en la ventana (umbral 10 %).", role: "restaurantes:data_chat" },
+      { codigo: "rol_sin_techo", severidad: "info", titulo: "El rol restaurantes:whatsapp_agent no tiene techo diario", detalle: "610 llamadas y US$0.0720 en la ventana sin un tope de turnos por día; solo lo acotan el presupuesto del gateway y el tope mensual.", role: "restaurantes:whatsapp_agent" },
+    ],
+  };
+}
+
+function gastoApiOrganizaciones() {
+  return VERTICALES.map((v, i) => {
+    const org = orgDe(v);
+    return { organizationId: org.id, organizationName: org.nombre, organizationSlug: org.slug, vertical: v, tokensIn: 1200 * (i + 1), tokensOut: 400 * (i + 1), costMicroUsd: 1_500_000 * (i + 1), callCount: 40 * (i + 1), monthlyCapMicroUsd: 100_000_000, alertThresholdPct: 80, spendThisMonthMicroUsd: 1_500_000 * (i + 1), pctTopeUsado: 1.5 * (i + 1) };
+  });
+}
+
+function dashboardCfo() {
+  return {
+    disponible: true,
+    mes: "2026-09",
+    tipoCambio: null,
+    supuestos: ["El MRR suma solo organizaciones con plan y precio conocidos."],
+    dashboard: {
+      mes: "2026-09",
+      ingresos: { mrrMxn: 48_900, arrMxn: 586_800, clientesConIngreso: 4, clientesSinPrecio: 2, porVertical: VERTICALES.map((v) => ({ vertical: v, mrrMxn: v === "restaurantes" ? 12_000 : 0, clientes: v === "restaurantes" ? 1 : 0, sinPrecio: 0 })), topClientes: [], concentracionTopPct: null },
+      nrr: { disponible: false, razon: "sin_foto_previa" },
+      margen: { disponible: false, razon: "sin_tipo_de_cambio" },
+      caja: { disponible: false, razon: "Todavía no hay una fuente de caja." },
+      cobranza: { pagoPendiente: 0, mrrEnRiesgoMxn: null },
+      alertas: [],
+    },
+  };
+}
+
 export const rutasSuperadmin: readonly Ruta[] = [
   { metodo: "GET", patron: "/superadmin/copiloto/estado", manejador: () => ({ disponible: true, permitido: true, motivo: null, rol: "superadmin", financierasDisponibles: true, stepUpRequerido: false, interruptor: { apagado: false, clave: null }, gastoMes: { usadoMicroUsd: 1000000, topeMicroUsd: 25000000, usoPct: 4, medidoEnBitacora: true }, acciones: { propone: true }, herramientas: [] }) },
   {
@@ -321,12 +413,24 @@ export const rutasSuperadmin: readonly Ruta[] = [
   // Parte diario (/superadmin/parte-diario): sin resumenes generados todavia; la pagina pinta su vacio honesto.
   { metodo: "GET", patron: "/superadmin/resumen", manejador: () => ({ disponible: true, resumenes: [] }) },
   { metodo: "GET", patron: "/superadmin/consola/resumen", manejador: () => resumenConsola() },
+  { metodo: "GET", patron: "/superadmin/gasto-api/consumo-ia", manejador: () => consumoIa() },
+  { metodo: "GET", patron: "/superadmin/gasto-api/resumen", manejador: () => ({ range: RANGO_GASTO, usage: { tokensIn: 21_000, tokensOut: 7_000, costMicroUsd: 31_500_000, callCount: 840, fallbackCallCount: 38 }, platformBudget: { monthlyCapMicroUsd: 1_000_000_000, alertThresholdPct: 80, spendThisMonthMicroUsd: 31_500_000 } }) },
+  { metodo: "GET", patron: "/superadmin/gasto-api/organizaciones", manejador: () => ({ range: RANGO_GASTO, organizaciones: gastoApiOrganizaciones() }) },
+  { metodo: "GET", patron: "/superadmin/gasto-api/desglose", manejador: () => ({ range: RANGO_GASTO, desglose: [{ vertical: "restaurantes", providerId: "openrouter:deepseek", model: "deepseek/deepseek-v4.1-flash", tokensIn: 12_000, tokensOut: 4_000, costMicroUsd: 9_000_000, callCount: 500 }] }) },
+  { metodo: "GET", patron: "/superadmin/gasto-api/por-rol", manejador: () => ({ range: RANGO_GASTO, disponible: true, filas: [] }) },
+  { metodo: "GET", patron: "/superadmin/cfo/dashboard", manejador: () => dashboardCfo() },
   { metodo: "GET", patron: "/superadmin/consola/agentes-actividad", manejador: () => agentesConsola() },
   { metodo: "GET", patron: "/superadmin/organizations", manejador: () => ({ organizations: organizaciones() }) },
+  { metodo: "GET", patron: "/superadmin/organizaciones/resumen", manejador: () => ({ disponible: true, mensaje: null, ventanaDias: 30, organizaciones: filasResumenOrg() }) },
+  { metodo: "GET", patron: "/superadmin/organizaciones/margen", manejador: () => ({
+      disponible: true, mes: "2026-09", mensaje: null,
+      margenes: Object.fromEntries(organizaciones().map((o, i) => [o.id, i % 2 === 0 ? campoOrg({ mxn: 1498 - i * 100, pct: 93.7 - i, ingresoMxn: 1598 }) : sinDatoOrg("Sin plan asignado: no hay ingreso esperado contra el cual calcular el margen.")])),
+    }) },
+  { metodo: "GET", patron: "/superadmin/organizaciones/acciones", manejador: () => ({ disponible: true, acciones: [] }) },
+  { metodo: "GET", patron: "/superadmin/organizaciones/:id/ficha", manejador: (p) => fichaOrg(String(p.params["id"])) ?? fallo(404, "Organización no encontrada.") },
   { metodo: "GET", patron: "/superadmin/prospectos", manejador: (p) => ({ prospectos: p.estado.obtener("sa.prospectos", () => structuredClone(PROSPECTOS)) }) },
-  // Cerebro de ventas (SA-L-37/38/41): la API simulada se comporta como una base SIN la migracion 0051 (disponible:false), la misma
-  // respuesta honesta que da el API real; la lista sigue saliendo de los prospectos de siempre.
-  { metodo: "GET", patron: "/superadmin/cerebro/prospectos", manejador: (p) => ({ disponible: false, mensaje: "Requiere aplicar la migración 0051_cerebro_ventas_base.", prospectos: p.estado.obtener("sa.prospectos", () => structuredClone(PROSPECTOS)), taxonomias: [] }) },
+  // Cerebro de ventas (SA-L-37/38/41/42/43): lista con ubicacion, scores y supresion, detalle y rastro de exportaciones (fixtures/cerebro.ts).
+  ...rutasCerebro,
   { metodo: "GET", patron: "/superadmin/cerebro/taxonomia", manejador: () => ({
       disponible: true,
       verticales: ["restaurantes"],

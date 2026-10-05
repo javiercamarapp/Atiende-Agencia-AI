@@ -8,7 +8,7 @@
 // que Convocatorias.tsx/licitaciones: cerrar el gap de LECTURA real primero.
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, FileUp, ShieldAlert, Upload, X } from "lucide-react";
+import { Check, FileStack, FileUp, ShieldAlert, Upload, X } from "lucide-react";
 import {
   Button,
   Card,
@@ -17,6 +17,7 @@ import {
   CardTitle,
   Checkbox,
   DataTable,
+  type DataTableColumna,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -29,11 +30,12 @@ import {
 import { fetchInvoices, importarCfdiXml } from "../lib/cfdi-client.ts";
 import type { DireccionCfdi, InvoiceSummary } from "../lib/cfdi-client.ts";
 import { fetchEfosAlertas, resumenEfos } from "../lib/efos-client.ts";
-import type { EfosAlertasRespuesta } from "../lib/efos-client.ts";
+import type { EfosAlerta, EfosAlertasRespuesta } from "../lib/efos-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
 import type { RevisionCfdi } from "../lib/revisiones-client.ts";
 import { formatDate, formatDireccionCfdi, formatEstadoSat, formatMoney, tonoEstadoSat } from "../lib/format.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
+import { ImportarLoteDialog } from "../components/ImportarLoteDialog.tsx";
 
 const TIPO_LABELS: Record<InvoiceSummary["tipo"], string> = { I: "Ingreso", E: "Egreso", T: "Traslado", P: "Pago", N: "Nómina" };
 
@@ -75,6 +77,8 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
   const [importError, setImportError] = useState<string | null>(null);
   const [importOk, setImportOk] = useState<string | null>(null);
   const xmlInputRef = useRef<HTMLInputElement | null>(null);
+  // D-13: carga masiva (ZIP o varios XML).
+  const [loteAbierto, setLoteAbierto] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -163,6 +167,81 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
 
   const invoicesById = new Map((invoices ?? []).map((inv) => [inv.id, inv] as const));
 
+  const columnasEfos: DataTableColumna<EfosAlerta>[] = [
+    {
+      id: "emisor",
+      encabezado: "Emisor",
+      principal: true,
+      valorOrden: (a) => a.emisorNombre ?? a.rfcEmisor,
+      celda: (a) => (
+        <Link to={`/despachos/${orgSlug}/cfdi/${a.invoiceId}`} className="font-semibold text-foreground hover:underline underline-offset-2">
+          {a.emisorNombre ?? a.rfcEmisor}
+        </Link>
+      ),
+    },
+    { id: "rfc", encabezado: "RFC", celda: (a) => <span className="font-mono text-xs text-muted-foreground">{a.rfcEmisor}</span> },
+    { id: "total", encabezado: "Total", alinear: "right", valorOrden: (a) => a.total, celda: (a) => <span className="tabular-nums">{formatMoney(a.total)}</span> },
+    {
+      id: "situacion",
+      encabezado: "Situación",
+      valorOrden: (a) => a.situacion,
+      celda: (a) => <StatusBadge tone={a.situacion === "definitivo" ? "danger" : "warning"}>{a.situacion === "definitivo" ? "Definitivo" : "Presunto"}</StatusBadge>,
+    },
+  ];
+
+  const columnasRevisiones: DataTableColumna<RevisionCfdi>[] = [
+    {
+      id: "cfdi",
+      encabezado: "CFDI",
+      principal: true,
+      valorOrden: (r) => {
+        const inv = invoicesById.get(r.invoiceId);
+        return inv ? (inv.emisorNombre ?? inv.rfcEmisor) : r.invoiceId;
+      },
+      celda: (r) => {
+        const inv = invoicesById.get(r.invoiceId);
+        return (
+          <Link to={`/despachos/${orgSlug}/cfdi/${r.invoiceId}`} className="font-semibold text-foreground hover:underline underline-offset-2">
+            {inv ? (inv.emisorNombre ?? inv.rfcEmisor) : r.invoiceId}
+          </Link>
+        );
+      },
+    },
+    { id: "motivo", encabezado: "Motivo", valorOrden: (r) => r.motivo, celda: (r) => <span className="text-xs text-muted-foreground">{r.motivo}</span> },
+    { id: "fecha", encabezado: "Fecha", valorOrden: (r) => r.creadoEn, celda: (r) => <span className="text-xs text-muted-foreground">{formatDate(r.creadoEn)}</span> },
+    {
+      id: "acciones",
+      encabezado: "Acciones",
+      alinear: "right",
+      celda: (r) =>
+        RESOLVER_ROLES.has(role) ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Label htmlFor={`revision-nota-${r.id}`} className="sr-only">
+              Nota de la revisión
+            </Label>
+            <Input
+              id={`revision-nota-${r.id}`}
+              type="text"
+              placeholder="Nota (opcional)"
+              value={notaDrafts[r.id] ?? ""}
+              onChange={(e) => setNotaDrafts((prev) => ({ ...prev, [r.id]: e.target.value }))}
+              className="h-9 min-w-40 flex-1 text-xs"
+            />
+            <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => handleResolver(r.id, "aprobar")} disabled={resolvingId === r.id}>
+              <Check />
+              {resolvingId === r.id ? "…" : "Aprobar"}
+            </Button>
+            <Button type="button" variant="destructive" size="sm" className="h-9" onClick={() => handleResolver(r.id, "rechazar")} disabled={resolvingId === r.id}>
+              <X />
+              {resolvingId === r.id ? "…" : "Rechazar"}
+            </Button>
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">Tu rol no puede resolver revisiones (solo admin/contador).</span>
+        ),
+    },
+  ];
+
   return (
     <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -199,10 +278,23 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
                 <Upload />
                 {importando ? "Importando…" : "Cargar XML de CFDI"}
               </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setLoteAbierto(true)}>
+                <FileStack />
+                Importar ZIP o varios XML
+              </Button>
             </>
           )}
         </div>
       </header>
+
+      <ImportarLoteDialog
+        open={loteAbierto}
+        onOpenChange={setLoteAbierto}
+        apiBaseUrl={apiBaseUrl}
+        token={token}
+        propertyId={propertyId}
+        onTerminado={() => void Promise.all([load(), loadRevisiones()])}
+      />
 
       {/* Avisos de la importación: banderas inline (persisten hasta la siguiente importación; un toast se iría solo). */}
       {importError && (
@@ -237,20 +329,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
             </p>
           )}
           {efos && efos.alertas.length > 0 && (
-            <ul className="flex flex-col gap-1.5">
-              {efos.alertas.map((a) => (
-                <li key={a.invoiceId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-                  <span>
-                    <Link to={`/despachos/${orgSlug}/cfdi/${a.invoiceId}`} className="font-semibold text-foreground hover:underline underline-offset-2">
-                      {a.emisorNombre ?? a.rfcEmisor}
-                    </Link>
-                    <span className="ml-2 font-mono text-xs text-muted-foreground">{a.rfcEmisor}</span>
-                    <span className="ml-2 tabular-nums text-muted-foreground">{formatMoney(a.total)}</span>
-                  </span>
-                  <StatusBadge tone={a.situacion === "definitivo" ? "danger" : "warning"}>{a.situacion === "definitivo" ? "Definitivo" : "Presunto"}</StatusBadge>
-                </li>
-              ))}
-            </ul>
+            <DataTable etiqueta="Alertas EFOS 69-B" columnas={columnasEfos} filas={efos.alertas} obtenerId={(a) => a.invoiceId} />
           )}
         </CardContent>
       </Card>
@@ -271,7 +350,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
               {revisionesError}
             </p>
           )}
-                    {revisionesLoading && !revisiones && (
+          {revisionesLoading && !revisiones && (
             <EstadoCargando etiqueta="Cargando cola de revisión…" lineas={2} />
           )}
           {revisiones && revisiones.length === 0 && !revisionesLoading && (
@@ -281,49 +360,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
           )}
 
           {revisiones && revisiones.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {revisiones.map((r) => {
-                const inv = invoicesById.get(r.invoiceId);
-                return (
-                  <div key={r.id} className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
-                    <div className="flex flex-wrap justify-between gap-3">
-                      <div>
-                        <Link to={`/despachos/${orgSlug}/cfdi/${r.invoiceId}`} className="text-sm font-semibold text-foreground hover:underline underline-offset-2">
-                          {inv ? (inv.emisorNombre ?? inv.rfcEmisor) : r.invoiceId}
-                        </Link>
-                        <p className="mt-0.5 text-xs text-muted-foreground">{r.motivo}</p>
-                      </div>
-                      <span className="text-xs text-muted-foreground">{formatDate(r.creadoEn)}</span>
-                    </div>
-                    {RESOLVER_ROLES.has(role) ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Label htmlFor={`revision-nota-${r.id}`} className="sr-only">
-                          Nota de la revisión
-                        </Label>
-                        <Input
-                          id={`revision-nota-${r.id}`}
-                          type="text"
-                          placeholder="Nota (opcional)"
-                          value={notaDrafts[r.id] ?? ""}
-                          onChange={(e) => setNotaDrafts((prev) => ({ ...prev, [r.id]: e.target.value }))}
-                          className="h-9 min-w-40 flex-1 text-xs"
-                        />
-                        <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => handleResolver(r.id, "aprobar")} disabled={resolvingId === r.id}>
-                          <Check />
-                          {resolvingId === r.id ? "…" : "Aprobar"}
-                        </Button>
-                        <Button type="button" variant="destructive" size="sm" className="h-9" onClick={() => handleResolver(r.id, "rechazar")} disabled={resolvingId === r.id}>
-                          <X />
-                          {resolvingId === r.id ? "…" : "Rechazar"}
-                        </Button>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">Tu rol no puede resolver revisiones (solo admin/contador).</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <DataTable etiqueta="Cola de revisión humana" columnas={columnasRevisiones} filas={revisiones} obtenerId={(r) => r.id} />
           )}
         </CardContent>
       </Card>

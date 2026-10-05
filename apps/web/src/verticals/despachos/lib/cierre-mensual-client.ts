@@ -9,6 +9,7 @@
 // snake_case — a diferencia de otras verticales, cierre-mensual.ts no define un
 // `serializeX` propio).
 import { fetchJson, postJson } from "./admin-client.ts";
+import { conStepUp } from "./step-up.ts";
 
 export type ClosePeriodStatus = "open" | "closed" | "overdue";
 export type TaskStatus = "pending" | "in_progress" | "blocked" | "done" | "skipped";
@@ -114,7 +115,8 @@ export async function completarTareaCierre(
  * en CierreMensualDetalle.tsx, para que un bug de formato aquí nunca finja
  * una confirmación que nadie tecleó. */
 export async function cerrarPeriodoCierre(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodoId: string, confirmacion: string): Promise<ClosePeriod> {
-  return postJson<ClosePeriod>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cierre-mensual/periodos/${periodoId}/cerrar`, token, { confirmacion });
+  // D-30: cerrar un periodo es irreversible -> segundo factor reciente (lib/step-up.ts).
+  return conStepUp({ fetchImpl, apiBaseUrl, token }, (h) => postJson<ClosePeriod>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cierre-mensual/periodos/${periodoId}/cerrar`, token, { confirmacion }, h));
 }
 
 export async function fetchReporteCierre(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodoId: string): Promise<ReporteCierre> {

@@ -33,6 +33,7 @@ import {
   Separator,
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -131,31 +132,32 @@ function DesgloseTabla({ resultado }: { resultado: PayrollPeriodResultado }) {
       <Card>
         <CardContent className="p-0 overflow-x-auto">
           <Table>
+            <TableCaption className="sr-only">Resultado del cálculo de nómina por empleado</TableCaption>
             <TableHeader>
               <TableRow>
-                <TableHead>Empleado</TableHead>
-                <TableHead>Bruto</TableHead>
-                <TableHead>Percepciones</TableHead>
-                <TableHead>ISR</TableHead>
-                <TableHead>IMSS obrero</TableHead>
-                <TableHead>IMSS patronal</TableHead>
-                <TableHead>Infonavit</TableHead>
-                <TableHead>Deducciones</TableHead>
-                <TableHead>Neto</TableHead>
+                <TableHead className="sticky left-0 z-10 bg-canvas">Empleado</TableHead>
+                <TableHead className="text-right">Bruto</TableHead>
+                <TableHead className="text-right">Percepciones</TableHead>
+                <TableHead className="text-right">ISR</TableHead>
+                <TableHead className="text-right">IMSS obrero</TableHead>
+                <TableHead className="text-right">IMSS patronal</TableHead>
+                <TableHead className="text-right">Infonavit</TableHead>
+                <TableHead className="text-right">Deducciones</TableHead>
+                <TableHead className="text-right">Neto</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {resultado.employees.map((e: EmployeePayroll) => (
                 <TableRow key={e.employeeId || e.nombre}>
-                  <TableCell>{e.nombre || e.employeeId || "—"}</TableCell>
-                  <TableCell className="tabular-nums">{formatMoney(e.salarioBruto)}</TableCell>
-                  <TableCell className="tabular-nums">{formatMoney(e.percepciones)}</TableCell>
-                  <TableCell className="tabular-nums">{formatMoney(e.taxes.isr)}</TableCell>
-                  <TableCell className="tabular-nums">{formatMoney(e.taxes.imssObrero)}</TableCell>
-                  <TableCell className="tabular-nums">{formatMoney(e.taxes.imssPatronal)}</TableCell>
-                  <TableCell className="tabular-nums">{formatMoney(e.taxes.infonavit)}</TableCell>
-                  <TableCell className="tabular-nums">{formatMoney(e.deducciones)}</TableCell>
-                  <TableCell className="font-bold tabular-nums">{formatMoney(e.neto)}</TableCell>
+                  <TableCell className="sticky left-0 z-10 bg-card">{e.nombre || e.employeeId || "—"}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatMoney(e.salarioBruto)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatMoney(e.percepciones)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatMoney(e.taxes.isr)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatMoney(e.taxes.imssObrero)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatMoney(e.taxes.imssPatronal)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatMoney(e.taxes.infonavit)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatMoney(e.deducciones)}</TableCell>
+                  <TableCell className="text-right font-bold tabular-nums">{formatMoney(e.neto)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -397,9 +399,10 @@ export function NominaPage(ctx: DespachosShellContext) {
 
           <div className="overflow-x-auto">
             <Table className="min-w-[640px]">
+              <TableCaption className="sr-only">Captura de percepciones y deducciones de nómina</TableCaption>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="h-9">ID empleado</TableHead>
+                  <TableHead className="sticky left-0 z-10 bg-canvas h-9">ID empleado</TableHead>
                   <TableHead className="h-9">Nombre</TableHead>
                   <TableHead className="h-9">Salario bruto</TableHead>
                   <TableHead className="h-9">Percepciones</TableHead>
@@ -410,7 +413,7 @@ export function NominaPage(ctx: DespachosShellContext) {
               <TableBody>
                 {empleados.map((f) => (
                   <TableRow key={f.key}>
-                    <TableCell className="p-1.5">
+                    <TableCell className="sticky left-0 z-10 bg-card p-1.5">
                       <Label htmlFor={`nomina-id-${f.key}`} className="sr-only">
                         ID empleado
                       </Label>
@@ -525,9 +528,10 @@ export function NominaPage(ctx: DespachosShellContext) {
             </p>
             <div className="overflow-x-auto">
               <Table className="min-w-[1100px]">
+                <TableCaption className="sr-only">Captura de datos del CFDI de nómina por empleado</TableCaption>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="h-9">Empleado</TableHead>
+                    <TableHead className="sticky left-0 z-10 bg-canvas h-9">Empleado</TableHead>
                     <TableHead className="h-9">RFC receptor *</TableHead>
                     <TableHead className="h-9">Nombre receptor</TableHead>
                     <TableHead className="h-9">CP fiscal receptor *</TableHead>
@@ -544,7 +548,7 @@ export function NominaPage(ctx: DespachosShellContext) {
                 <TableBody>
                   {empleados.map((f) => (
                     <TableRow key={f.key}>
-                      <TableCell className="p-1.5">{f.nombre || f.employeeId || "—"}</TableCell>
+                      <TableCell className="sticky left-0 z-10 bg-card p-1.5">{f.nombre || f.employeeId || "—"}</TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`xml-rfc-${f.key}`} className="sr-only">
                           RFC receptor

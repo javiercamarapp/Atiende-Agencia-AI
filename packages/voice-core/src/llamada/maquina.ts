@@ -48,6 +48,13 @@ export interface LimitesLlamada {
   readonly dtmf: boolean;
 }
 
+/** Opciones de comportamiento de la maquina (no son limites numericos). */
+export interface OpcionesMaquinaLlamada {
+  /** `false` = el PRIMER turno del agente (el saludo con el aviso de asistente virtual y grabacion) no se corta aunque el cliente hable encima: el
+   * barge-in se ignora hasta que el saludo termina. Cumplimiento (P37): el aviso se escucha completo. Por omision `true` (como siempre). */
+  readonly saludoInterrumpible?: boolean;
+}
+
 export const LIMITES_POR_DEFECTO: LimitesLlamada = {
   duracionMaxS: 8 * 60,
   avisoDuracionS: 7 * 60,
@@ -85,7 +92,10 @@ export type EventoLlamada =
   | { readonly tipo: "tick"; readonly segundos: number }
   | { readonly tipo: "proveedor_cae" }
   | { readonly tipo: "proveedor_vuelve" }
-  | { readonly tipo: "cliente_cuelga" };
+  | { readonly tipo: "cliente_cuelga" }
+  /** Una guardia DETERMINISTA de la vertical (p. ej. crisis) ya dijo su texto y escalo a una persona: la llamada se cierra como `escalado`,
+   * aunque ya se hubiera logrado el objetivo (una guardia de seguridad pesa mas que un cierre exitoso). */
+  | { readonly tipo: "escalada_forzada" };
 
 export type AccionLlamada<R extends string = string> =
   | { readonly tipo: "decir"; readonly mensaje: MensajeId }
@@ -108,11 +118,20 @@ export class CallStateMachine<R extends string = string> {
   /** La llamada ya logro su objetivo (la herramienta objetivo salio bien): no se escala algo resuelto. */
   private objetivoLogrado = false;
   private escalado = false;
+  /** Una guardia de la vertical forzo la escalada: el resultado es `escalado` pase lo que pase. */
+  private escaladoForzado = false;
+  /** El saludo (primer turno del agente) esta sonando y no es interrumpible. */
+  private saludoProtegido = false;
+  private saludoDicho = false;
   /** El agente ya paso a la persona por su cuenta: la llamada termina cuando acabe de despedirse. */
   private cerrarAlTerminar = false;
   private resultadoFinal: R | VozResultadoBase | null = null;
 
-  constructor(private readonly reglas: ReglasCierreLlamada<R>, private readonly limites: LimitesLlamada = LIMITES_POR_DEFECTO) {}
+  constructor(
+    private readonly reglas: ReglasCierreLlamada<R>,
+    private readonly limites: LimitesLlamada = LIMITES_POR_DEFECTO,
+    private readonly opciones: OpcionesMaquinaLlamada = {},
+  ) {}
 
   get estadoActual(): EstadoLlamada {
     return this.estado;
@@ -136,11 +155,19 @@ export class CallStateMachine<R extends string = string> {
         return [];
       case "agente_empieza":
         this.agenteHablando = true;
+        // El primer turno del agente ES el saludo; si no es interrumpible, queda protegido hasta que termine.
+        if (!this.saludoDicho) {
+          this.saludoDicho = true;
+          this.saludoProtegido = this.opciones.saludoInterrumpible === false;
+        }
         return [];
       case "agente_termina":
         this.agenteHablando = false;
+        this.saludoProtegido = false;
         return this.cerrarAlTerminar ? this.cerrar([]) : [];
       case "usuario_habla":
+        // Saludo no interrumpible: el cliente habla encima y el audio NO se corta (el agente sigue hablando hasta terminar el aviso).
+        if (this.saludoProtegido) return [];
         if (this.agenteHablando) {
           this.agenteHablando = false;
           return [{ tipo: "cortar_audio_agente" }];
@@ -174,12 +201,16 @@ export class CallStateMachine<R extends string = string> {
         return [];
       case "cliente_cuelga":
         return this.cerrar([], false);
+      case "escalada_forzada":
+        this.escalado = true;
+        this.escaladoForzado = true;
+        return this.cerrar([]);
     }
   }
 
   /** Cierra la llamada. `colgar` solo se emite cuando la llamada la termina el sistema (el cliente que cuelga ya no la necesita). */
   private cerrar(acciones: AccionLlamada<R>[], colgar = true): AccionLlamada<R>[] {
-    const resultado: R | VozResultadoBase = this.objetivoLogrado ? this.reglas.resultadoObjetivo : this.escalado ? "escalado" : "abandonado";
+    const resultado: R | VozResultadoBase = this.escaladoForzado ? "escalado" : this.objetivoLogrado ? this.reglas.resultadoObjetivo : this.escalado ? "escalado" : "abandonado";
     this.estado = "cerrada";
     this.resultadoFinal = resultado;
     return colgar ? [...acciones, { tipo: "colgar", resultado }] : [];
@@ -257,6 +288,7 @@ export class CallStateMachine<R extends string = string> {
       this.reconexiones += 1;
       this.estado = "reconectando";
       this.agenteHablando = false;
+      this.saludoProtegido = false;
       const espera = this.limites.reconexionEsperaMs[Math.min(this.reconexiones - 1, this.limites.reconexionEsperaMs.length - 1)] ?? 0;
       return [{ tipo: "reconectar", intento: this.reconexiones, esperaMs: espera }];
     }

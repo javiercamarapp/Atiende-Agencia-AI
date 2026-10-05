@@ -212,18 +212,19 @@ describe("lo que el guion atribuye al agente esta en su prompt y en sus datos", 
     expect(prompt).toContain("tiempos_entrega");
   });
 
-  it("las salsas basicas, el pin unico, la repeticion en lista, la propina solo con tarjeta y 'ofrezca recoger' (escenarios 1, 2 y 5) estan en el prompt", () => {
+  it("las salsas basicas, el pin opcional (una sola vez), la repeticion en lista, la propina solo con tarjeta y 'ofrezca recoger' (escenarios 1, 2 y 5) estan en el prompt", () => {
     expect(prompt).toContain("roja, verde, cebolla con cilantro y limones");
-    expect(prompt).toMatch(/PIN A REPARTO: pida el pin[^.]*UNA SOLA VEZ/);
+    expect(prompt).toMatch(/PIN A REPARTO \(ayuda opcional, no requisito\): ofrézcalo UNA SOLA VEZ/);
     expect(prompt).toContain("Permítame repetirle su pedido");
     expect(prompt).toContain("No pregunte propina con efectivo");
     expect(prompt).toMatch(/ofrezca recoger en la sucursal de este chat/);
     expect(prompt).toContain("CLIENTE RECURRENTE");
   });
 
-  it("los tiempos que promete el guion (60 a 75 min, pico 75 a 90) son los sembrados para T7", () => {
-    expect(data.agente_whatsapp.tiempo_entrega).toContain("60 a 75");
-    expect(data.agente_whatsapp.tiempo_entrega).toContain("75 a 90");
+  it("los tiempos que promete el guion (60 a 75 min, pico 75 a 90) son los sembrados para T7 (fila propia de T7; la de la organizacion lleva el dato del dueño)", () => {
+    const t7 = data.agente_whatsapp.tiempo_entrega_por_sucursal!.T7!;
+    expect(t7).toContain("60 a 75");
+    expect(t7).toContain("75 a 90");
     expect(guion).toContain("60 a 75");
     expect(guion).toContain("75 a 90");
   });

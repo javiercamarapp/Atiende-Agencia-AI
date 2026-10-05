@@ -15,15 +15,17 @@ import {
   OrderConflictError,
   OrderValidationError,
   RestaurantesConfigUnavailableError,
+  assertWebOrderRules,
+  redondearACentavos,
 } from "@atiende/domain-restaurantes";
 import type { CreateOrderInput, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
-import { encolarComandaParaPedido } from "@atiende/domain-restaurantes/softrestaurant";
-import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
+import { encolarComandaParaPedido, type ResultadoEncolarPedido } from "@atiende/domain-restaurantes/softrestaurant";
+import { efectosPostCommitDePedido, type ComandaVisible } from "./efectos-post-commit.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import { auditVoice, authenticateVoiceTool, enforceVoiceLimits, hasVoiceCredentials } from "./voice-auth.ts";
-import { runVoiceToolRoute, voiceToolContext } from "./voice-tools.ts";
+import { runVoiceToolRoute, voiceToolContext, voiceTurnFromRequest } from "./voice-tools.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 interface CreateOrderItemBody {
@@ -99,7 +101,7 @@ function mapCreateOrderBody(organizationId: string, body: CreateOrderBody, sourc
     promoCode: typeof body.promo_code === "string" ? body.promo_code : undefined,
     canal: typeof body.canal === "string" ? (body.canal as CreateOrderInput["canal"]) : undefined,
     colonia: typeof body.colonia_entrega === "string" ? body.colonia_entrega : undefined,
-    propina: typeof body.propina === "number" ? body.propina : undefined,
+    propina: typeof body.propina === "number" && Number.isFinite(body.propina) ? redondearACentavos(body.propina) : typeof body.propina === "number" ? body.propina : undefined,
     horaRecogida: typeof body.hora_recogida === "string" ? body.hora_recogida : undefined,
     doubleSalsas: Array.isArray(body.doble_salsas) ? (body.doble_salsas as CreateOrderInput["doubleSalsas"]) : undefined,
     // Un valor no-string se manda tal cual: `createOrder` lo rechaza con un 400 claro (nunca se ignora en silencio).
@@ -112,6 +114,9 @@ async function resolveOrganizationOrNotFound(repo: RestaurantesRepository, orgSl
   if (!org) throw Errors.notFound(`Restaurante "${orgSlug}" no encontrado.`);
   return org;
 }
+
+/** Espera maxima en linea de la comanda al POS en el camino de voz (la tool de voz expira a los 4000 ms). */
+export const VOICE_COMANDA_INLINE_MS = 1500;
 
 export function restaurantesPublicRoutes(deps: AppDeps): Hono {
   const app = new Hono();
@@ -133,7 +138,10 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
     if (incoming.source === "voice" && !credentialsPresent) throw Errors.unauthorized();
     if (!credentialsPresent && incoming.source && incoming.source !== "web") throw Errors.validation("source inválido");
 
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
+    // Camino WEB (sin credenciales): la transaccion crea el pedido y ENCOLA sus efectos; el correo y el envio de la comanda al POS
+    // corren DESPUES del COMMIT (efectos-post-commit.ts). `diferido` lleva lo que hay que hacer tras confirmar.
+    const diferido: { efectos: { readonly encolada: ResultadoEncolarPedido; readonly armar: (comanda: ComandaVisible | null) => Response } | null } = { efectos: null };
+    const respuesta = await deps.engine.withAppSession({ userId: null }, async (db): Promise<Response> => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrganizationOrNotFound(repo, c.req.param("orgSlug"));
 
@@ -151,7 +159,7 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
 
       if (voiceAuth?.ok) {
         const { caller } = voiceAuth;
-        const toolCtx = voiceToolContext(org.id, caller);
+        const toolCtx = voiceToolContext(org.id, caller, voiceTurnFromRequest(c));
         if (caller.kind === "legacy_secret") {
           const limited = await consumeRateLimit(repo, "create-order", requestActor(c.req.raw, typeof incoming.customer_phone === "string" ? incoming.customer_phone : ""), 120, 60);
           if (!limited.allowed) throw Errors.tooManyRequests();
@@ -163,15 +171,30 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
           // Registro único de tools + máquina de estados (cotizado -> confirmado -> creado) y, con token de
           // llamada, teléfono y sucursal tomados del token (nunca del body que escribe el modelo).
           const outcome = await repo.runWithRowSavepoint(() => invokeAgentTool(repo, toolCtx, "crear_pedido", incoming as Record<string, unknown>));
+          // Reintento tras un intento incierto: el pedido YA existe (con su comanda y correo encolados la primera vez). Se devuelve con su id
+          // para que la llamada cuente el objetivo; no se vuelve a encolar nada.
+          if (outcome.yaRegistrado) {
+            await auditVoice(repo, org, caller, "crear_pedido", "ok", "ya_registrado");
+            return c.json({ order: outcome.raw, ya_registrado: true });
+          }
           // Cluster #3 (CRÍTICO) de la auditoría final — `createOrder` ya encoló internamente
           // (best-effort) la confirmación por correo al cliente si dejó correo; disparo inline del
           // drenado, mismo `repo`/transacción, en vez de esperar al cron diario.
-          await triggerRestaurantesEmailDispatchInline(deps, db, repo);
+          // El correo NO se drena en linea por voz: la tool de voz tiene ~4 s de presupuesto y Resend lento no debe hacer expirar un pedido ya
+          // creado. Queda en el outbox y lo envia el cron de correo (red de seguridad).
+          // Pedido grande (decision de PM): el servidor NO lo creo, dejo el aviso `pedido_grande` para que la sucursal lo
+          // confirme. No hay pedido que correo-notificar ni comanda que encolar; el agente de voz recibe el resultado tal cual.
+          if (outcome.orderId === null) {
+            await auditVoice(repo, org, caller, "crear_pedido", "ok", "pedido_grande_retenido");
+            return c.json(outcome.result);
+          }
           await auditVoice(repo, org, caller, "crear_pedido", "ok", null);
           // SoftRestaurant (POS): los pedidos de voz tambien encolan su comanda (igual que antes de
           // fusionar el registro unico de tools). Bandera apagada o sin migracion 024: respuesta identica.
           const voiceInput = mapCreateOrderBody(org.id, incoming, "voice");
-          const comanda = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), {
+          // Presupuesto de voz: el POS lento no puede consumir toda la espera de la tool (4 s). Pasado el tope la comanda queda pendiente y
+          // el cron del outbox la reintenta (misma ruta que cualquier caida del POS).
+          const comanda = await encolarComandaParaPedido({ ...softRestaurantComandaDeps(deps, db, repo), timeoutInlineMs: VOICE_COMANDA_INLINE_MS }, {
             order: outcome.raw as unknown as Parameters<typeof encolarComandaParaPedido>[1]["order"],
             tipo: voiceInput.canal,
             colonia: voiceInput.colonia,
@@ -197,19 +220,21 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
       if (!limited.allowed) throw Errors.tooManyRequests();
 
       try {
-        const order = await createOrder(repo, input);
-        await triggerRestaurantesEmailDispatchInline(deps, db, repo);
+        // Mismas reglas duras que el storefront (direccion a domicilio, telefono de 10 digitos, forma de pago,
+        // promociones solo al recoger): este checkout legado seguia aceptando por Origin ausente (clientes que no
+        // son navegador) pedidos que cocina no puede atender. El precio sigue saliendo siempre del catalogo.
+        const order = await createOrder(repo, assertWebOrderRules(input));
         // SoftRestaurant (POS): punto de enganche. Con la bandera APAGADA (default) o sin la
         // migracion 024 no hace nada y la respuesta es EXACTAMENTE la de antes. Nunca lanza
         // ni cambia el resultado del pedido (ver softrestaurant/outbox-service.ts).
         // R-11/R-29: un pedido PROGRAMADO todavia no es de cocina: no se manda la comanda al POS hoy (llegaria horas
         // antes). Al promoverse a `pending` (admin-orders.ts / programados-interno.ts) se encola su comanda.
-        if (order.status === "programado") return c.json({ order });
-        const comanda = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), { order, tipo: input.canal, colonia: input.colonia, propina: input.propina });
-        if (comanda.modo === "activo") {
-          // El agente solo puede decir un folio si el POS lo devolvio; si no, "pendiente de confirmar".
-          return c.json({ order, comanda: { estado: comanda.agente.estado, folio: comanda.agente.folio, mensaje: comanda.agente.mensaje } });
-        }
+        const encolada: ResultadoEncolarPedido =
+          order.status === "programado"
+            ? { modo: "apagado", fila: null, agente: null, motivo: "bandera_apagada" }
+            : await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), { order, tipo: input.canal, colonia: input.colonia, propina: input.propina, envioEnLinea: false });
+        // El agente solo puede decir un folio si el POS lo devolvio; si no, "pendiente de confirmar".
+        diferido.efectos = { encolada, armar: (comanda) => (comanda ? c.json({ order, comanda }) : c.json({ order })) };
         return c.json({ order });
       } catch (err) {
         if (err instanceof OrderConflictError) throw Errors.conflict(err.message);
@@ -218,6 +243,8 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
         throw err;
       }
     });
+    if (diferido.efectos) return diferido.efectos.armar(await efectosPostCommitDePedido(deps, diferido.efectos.encolada));
+    return respuesta;
   });
 
   // §4.2 — POST /v1/restaurantes/:orgSlug/customers/lookup (== customer-lookup del

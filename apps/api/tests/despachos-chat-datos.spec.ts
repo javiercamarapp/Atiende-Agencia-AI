@@ -200,7 +200,10 @@ describe("alcance del servidor", () => {
     const h = await harness([CARTERA, { text: "ok" }]);
     await h.app.request(url(h), post(h.ctx.staff.admin.token, { question: "cuánto me deben mis clientes secretos" }));
     expect(h.audit[0]).toMatchObject({ organizationId: h.ctx.organizationId, userId: h.ctx.staff.admin.id, vertical: "despachos", tool: "cartera_por_cliente", outcome: "ok" });
-    expect(JSON.stringify(h.audit)).not.toMatch(/1000|250|secretos/);
+    // Se excluyen los campos generados al azar (UUID de organizacion/usuario) y las duraciones/costos: una cifra aleatoria
+    // podria contener "1000" o "250" sin que se haya filtrado ningun resultado.
+    const deterministico = h.audit.map(({ organizationId: _org, userId: _usr, durationMs: _ms, costMicroUsd: _costo, ...resto }) => resto);
+    expect(JSON.stringify(deterministico)).not.toMatch(/1000|250|secretos/);
   });
 });
 

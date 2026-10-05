@@ -13,6 +13,7 @@ import type { BlockedSwitch, SwitchScope } from "@atiende/db";
 export const SWITCHABLE_AGENT_ROLES: readonly string[] = [
   "restaurantes:whatsapp_agent",
   "restaurantes:data_chat",
+  "restaurantes:transcripcion",
   "hoteles:data_chat",
   "rentas:data_chat",
   "despachos:data_chat",
@@ -70,6 +71,7 @@ export const SWITCHABLE_CRONS: readonly string[] = [
   "/internal/restaurantes/privacidad-retencion",
   "/internal/restaurantes/promover-programados",
   "/internal/restaurantes/softrestaurant-dispatch",
+  "/internal/restaurantes/voz-huerfanas",
   "/internal/superadmin/alertas-cfo",
   "/internal/superadmin/mantenimiento",
   "/internal/superadmin/resumen-diario",

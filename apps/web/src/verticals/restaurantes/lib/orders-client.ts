@@ -127,9 +127,13 @@ export async function updateOrderStatus(
   orderId: string,
   status: OrderStatus,
   /** `false` = no avisar por WhatsApp al cliente (aviso opcional de "listo para recoger"). Omitido = comportamiento de siempre. */
-  options: { readonly notifyCustomer?: boolean } = {},
+  options: { readonly notifyCustomer?: boolean; /** Nota de la incidencia (solo con `status: "problema"`). */ readonly incidentNote?: string } = {},
 ): Promise<OrderSummary> {
-  const payload = options.notifyCustomer === false ? { status, notifyCustomer: false } : { status };
+  const payload = {
+    status,
+    ...(options.notifyCustomer === false ? { notifyCustomer: false } : {}),
+    ...(options.incidentNote !== undefined ? { incidentNote: options.incidentNote } : {}),
+  };
   const body = await sendJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${orderId}/status`, token, "PATCH", payload);
   return body.order;
 }

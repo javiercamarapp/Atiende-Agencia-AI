@@ -9,6 +9,7 @@
 //
 // Seguridad: la API key va en la URL del WebSocket (asi lo pide el endpoint de servidor); la URL NUNCA se loguea. Los errores
 // que suben al controlador llevan un codigo corto, nunca el cuerpo del mensaje del proveedor.
+import { VOZ_PLATAFORMA } from "../config-plataforma.ts";
 import { VozNoConfiguradaError, VozProveedorError } from "../provider.ts";
 import type { ToolDefinicion } from "./ejecutor-tools.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "./sesion.ts";
@@ -21,6 +22,8 @@ export interface SocketLive {
   onmessage: ((ev: { data: unknown }) => void) | null;
   onclose: ((ev: { code?: number }) => void) | null;
   onerror: ((ev: unknown) => void) | null;
+  /** Node >= 26 entrega los mensajes binarios como `Blob` por defecto; con "arraybuffer" llegan ya decodificables. */
+  binaryType?: string;
 }
 export type CrearSocketLive = (url: string) => SocketLive;
 
@@ -51,7 +54,12 @@ export function mensajeSetup(model: string, apertura: AperturaLlamada) {
       model: `models/${model}`,
       generationConfig: {
         responseModalities: ["AUDIO"],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: apertura.voiceId } } },
+        // temperatura 0 (VOZ_PLATAFORMA): el agente vivo de PM corre determinista; `languageCode` solo si la plataforma lo fija.
+        temperature: VOZ_PLATAFORMA.gemini.temperatura,
+        speechConfig: {
+          ...(VOZ_PLATAFORMA.gemini.idioma ? { languageCode: VOZ_PLATAFORMA.gemini.idioma } : {}),
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: apertura.voiceId } },
+        },
       },
       systemInstruction: { parts: [{ text: apertura.instruccion }] },
       tools: [{ functionDeclarations: declaracionesDeHerramientas(apertura.herramientas) }],
@@ -62,6 +70,8 @@ export function mensajeSetup(model: string, apertura: AperturaLlamada) {
     },
   };
 }
+
+const esBlob = (data: unknown): data is Blob => typeof Blob !== "undefined" && data instanceof Blob;
 
 function textoDe(data: unknown): string | null {
   if (typeof data === "string") return data;
@@ -114,8 +124,16 @@ class SesionGemini implements VozSesionLlamada {
         }
         this.alCerrar(ev.code);
       };
-      this.socket.onmessage = (ev) => {
-        const texto = textoDe(ev.data);
+      // Node >= 26 entrega los mensajes como Blob (lectura asincrona): se pide "arraybuffer" y, si aun asi llega un Blob, se
+      // decodifica encadenando las lecturas para conservar el orden de llegada (setupComplete antes que el resto).
+      try {
+        this.socket.binaryType = "arraybuffer";
+      } catch {
+        /* un doble o socket sin binaryType: se ignora */
+      }
+      let cola: Promise<void> = Promise.resolve();
+      let blobsEnVuelo = 0;
+      const procesar = (texto: string | null): void => {
         if (texto === null) return;
         let msg: Record<string, unknown>;
         try {
@@ -132,6 +150,26 @@ class SesionGemini implements VozSesionLlamada {
           return;
         }
         this.recibir(msg);
+      };
+      this.socket.onmessage = (ev) => {
+        const data = ev.data;
+        if (esBlob(data)) {
+          blobsEnVuelo++;
+          cola = cola
+            .then(() => data.arrayBuffer())
+            .then((buf) => procesar(new TextDecoder().decode(buf)))
+            .catch(() => undefined)
+            .finally(() => {
+              blobsEnVuelo--;
+            });
+          return;
+        }
+        // Un mensaje de texto que llega con un Blob aun en lectura espera su turno para no adelantarse.
+        if (blobsEnVuelo > 0) {
+          cola = cola.then(() => procesar(textoDe(data)));
+          return;
+        }
+        procesar(textoDe(data));
       };
     });
   }
@@ -208,18 +246,19 @@ class SesionGemini implements VozSesionLlamada {
 
   private async herramientas(llamadas: { id?: string; name?: string; args?: Record<string, unknown> }[]): Promise<void> {
     this.pendiente = true;
-    const respuestas = await Promise.all(
-      llamadas.map(async (c, i) => {
-        const id = c.id ?? `call-${i}`;
-        const nombre = c.name ?? "";
-        try {
-          const salida = await this.h.ejecutarTool({ id, nombre, args: c.args ?? {} });
-          return { id, name: nombre, response: { output: salida } };
-        } catch {
-          return { id, name: nombre, response: { error: "Error interno al ejecutar la herramienta" } };
-        }
-      }),
-    );
+    // En SERIE y en el orden que pidio el modelo (equivale a `parallel_tool_calls: false` del agente vivo): una cotizacion y un
+    // crear_pedido pedidos juntos nunca corren a la vez ni compiten por el mismo estado del pedido.
+    const respuestas: { id: string; name: string; response: { output: unknown } | { error: string } }[] = [];
+    for (const [i, c] of llamadas.entries()) {
+      const id = c.id ?? `call-${i}`;
+      const nombre = c.name ?? "";
+      try {
+        const salida = await this.h.ejecutarTool({ id, nombre, args: c.args ?? {} });
+        respuestas.push({ id, name: nombre, response: { output: salida } });
+      } catch {
+        respuestas.push({ id, name: nombre, response: { error: "Error interno al ejecutar la herramienta" } });
+      }
+    }
     if (this.cerradaPorNosotros) return;
     this.socket.send(JSON.stringify({ toolResponse: { functionResponses: respuestas } }));
   }

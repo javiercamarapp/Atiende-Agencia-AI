@@ -1,6 +1,6 @@
 // Fixtures de licitaciones (Constructora Peninsular). Forma = apps/web/src/verticals/licitaciones/lib/*-client.ts.
 import { conStatus, fallo, ndjson } from "../respuestas.ts";
-import { orgDe, propiedadDe } from "../personas.ts";
+import { orgDe, personaDe, propiedadDe } from "../personas.ts";
 import type { Ruta } from "../tipos.ts";
 
 const PROP = propiedadDe("licitaciones");
@@ -136,7 +136,10 @@ const rutasCierre: readonly Ruta[] = [
     patron: "/auth/step-up",
     manejador: (p) => {
       const c = (p.cuerpo ?? {}) as { scope?: string; code?: string };
-      if (c.scope !== "expediente_approval") return fallo(400, "scope desconocido.");
+      // `despachos_sensitive` (D-30): mismas reglas del segundo factor para las acciones sensibles del despacho.
+      // `contract_sensitive` (L-27): convenios modificatorios del contrato.
+      // `company_rate_approval` (L-P3-01): aprobar o rechazar una tarifa de la empresa.
+      if (c.scope !== "expediente_approval" && c.scope !== "despachos_sensitive" && c.scope !== "contract_sensitive" && c.scope !== "company_rate_approval") return fallo(400, "scope desconocido.");
       if (c.code !== CODIGO_TOTP_VALIDO) return fallo(422, "El código es incorrecto o ya se usó.");
       return { stepUpToken: `mock-step-up.${p.persona!.id}`, expiresInSeconds: 300 };
     },
@@ -331,9 +334,192 @@ function resumenPrivacidadMock(): unknown {
   };
 }
 
+// L-27 -- post-adjudicacion estructurada: garantias, hitos, convenios y plazos del contrato de tnd-1. Replica las reglas del
+// servidor (postAdjudicacion.ts: roles, maquina de estados, Idempotency-Key, step-up de convenios, bitacora) para que lo que la
+// pantalla muestre tras cada accion sea coherente; solo existe en la API simulada de e2e. Roles: owner/admin deciden y escriben,
+// staff solo escribe, finanzas solo lee.
+const HOY_POST_AWARD = "2026-10-05";
+interface GarantiaMock { id: string; contractId: string; tipo: string; monto: string; porcentaje: number | null; afianzadora: string | null; numeroPoliza: string | null; vigenciaDesde: string; vigenciaHasta: string; fechaLimiteEntrega: string | null; entregadaEn: string | null; estado: string; notas: string | null }
+interface HitoMock { id: string; contractId: string; titulo: string; descripcion: string | null; responsableId: string | null; fechaCompromiso: string; estado: string; cumplidoEn: string | null }
+interface ConvenioMock { id: string; numero: number; tipo: string; montoDelta: string | null; nuevaFechaFin: string | null; fechaFinAnterior: string | null; fechaFirma: string; motivo: string; createdAt: string }
+interface BitacoraMock { id: string; entidad: string; entidadId: string; accion: string; detalle: Record<string, unknown>; actorId: string | null; createdAt: string }
+interface PostAwardMock { endDate: string; plazos: { falloNotificadoEn: string | null; plazoFirmaDias: number | null; firmadoEn: string | null; plazoGarantiaDias: number | null } | null; garantias: GarantiaMock[]; hitos: HitoMock[]; convenios: ConvenioMock[]; bitacora: BitacoraMock[]; claves: Record<string, unknown>; n: number }
+const postAward = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<PostAwardMock>("lic.postaward", () => ({ endDate: "2026-12-31", plazos: null, garantias: [], hitos: [], convenios: [], bitacora: [], claves: {}, n: 0 }));
+const dias = (desde: string, hasta: string) => Math.round((Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86_400_000);
+const permisosPostAward = (rol: string) => ({ puedeEscribir: rol !== "finanzas", puedeDecidir: rol === "owner" || rol === "admin" });
+const vigenciaGarantia = (g: GarantiaMock) => {
+  const d = dias(HOY_POST_AWARD, g.vigenciaHasta);
+  const vencidaPorFecha = g.estado === "entregada" && d < 0;
+  return { estadoEfectivo: vencidaPorFecha ? "vencida" : g.estado, vencidaPorFecha, porVencer: g.estado === "entregada" && d >= 0 && d <= 30, diasParaVencer: d, entregaVencida: g.estado === "pendiente_entrega" && g.fechaLimiteEntrega !== null && g.fechaLimiteEntrega < HOY_POST_AWARD };
+};
+const vigenciaHito = (h: HitoMock) => {
+  const retraso = dias(h.fechaCompromiso, HOY_POST_AWARD);
+  const vencido = h.estado === "pendiente" && retraso > 0;
+  return { estadoEfectivo: vencido ? "vencido" : h.estado, vencido, diasDeRetraso: vencido ? retraso : 0 };
+};
+function sumaAjustes(c: readonly ConvenioMock[]): string {
+  const cents = c.reduce((a, x) => (x.montoDelta ? a + Math.round(Number(x.montoDelta) * 100) : a), 0);
+  return `${cents < 0 ? "-" : ""}${Math.floor(Math.abs(cents) / 100)}.${String(Math.abs(cents) % 100).padStart(2, "0")}`;
+}
+const PERSONAS_EQUIPO = (["owner", "admin", "staff"] as const).map((r) => personaDe("licitaciones", r));
+const registrar = (s: PostAwardMock, entidad: string, entidadId: string, accion: string, detalle: Record<string, unknown>, actorId: string) => {
+  s.n += 1;
+  s.bitacora.unshift({ id: `bit-${s.n}`, entidad, entidadId, accion, detalle, actorId, createdAt: "2026-10-05T12:00:00.000Z" });
+};
+const llaveIdem = (c: Record<string, string | string[] | undefined>) => (typeof c["idempotency-key"] === "string" ? c["idempotency-key"] : "");
+const PA = `${L}/tenders/:tid/contract/post-award`;
+
+const rutasPostAdjudicacion: readonly Ruta[] = [
+  // La pagina de post-adjudicacion tambien carga cobranza e inconformidades al montarse.
+  { metodo: "GET", patron: `${L}/tenders/:tid/contract/invoices`, manejador: () => ({ invoices: [] }) },
+  { metodo: "GET", patron: `${L}/tenders/:tid/contract/receivables`, manejador: () => ({ asOfDate: HOY_POST_AWARD, totalPending: "0.00", totalOverdue: "0.00", countPending: 0, countOverdue: 0, invoices: [] }) },
+  { metodo: "GET", patron: `${L}/tenders/:tid/inconformidad`, manejador: () => ({ drafts: [] }) },
+  {
+    metodo: "GET",
+    patron: PA,
+    manejador: (p) => {
+      const s = postAward(p);
+      const plazos = s.plazos;
+      return {
+        available: true,
+        hoy: HOY_POST_AWARD,
+        ...permisosPostAward(p.persona!.rol),
+        contract: { id: "ctr-1", status: "en_ejecucion", endDate: s.endDate },
+        plazos,
+        plazosCalculados: { fechaLimiteFirma: plazos?.falloNotificadoEn && plazos.plazoFirmaDias ? "2026-11-18" : null, fechaLimiteEntregaGarantia: null, firmaVencida: false, nota: "Los días del plazo los declara la organización. Plazo legal no verificado contra la fuente primaria: validar con abogado.", calendarioNota: "Se excluyen sábados, domingos y los días inhábiles oficiales de plataforma.", avisos: [] },
+        garantias: s.garantias.map((g) => ({ ...g, vigencia: vigenciaGarantia(g) })),
+        hitos: s.hitos.map((h) => ({ ...h, vigencia: vigenciaHito(h) })),
+        convenios: s.convenios,
+        resumen: {
+          garantiasEntregadas: s.garantias.filter((g) => g.estado === "entregada").length,
+          garantiasPendientes: s.garantias.filter((g) => g.estado === "pendiente_entrega").length,
+          garantiasPorVencer: s.garantias.filter((g) => vigenciaGarantia(g).porVencer).length,
+          garantiasVencidas: s.garantias.filter((g) => vigenciaGarantia(g).vencidaPorFecha).length,
+          garantiasEntregaVencida: s.garantias.filter((g) => vigenciaGarantia(g).entregaVencida).length,
+          hitosPendientes: s.hitos.filter((h) => h.estado === "pendiente").length,
+          hitosVencidos: s.hitos.filter((h) => vigenciaHito(h).vencido).length,
+          ajusteDeMontoAcumulado: sumaAjustes(s.convenios),
+        },
+      };
+    },
+  },
+  { metodo: "GET", patron: `${PA}/bitacora`, manejador: (p) => ({ available: true, bitacora: postAward(p).bitacora }) },
+  { metodo: "GET", patron: `${PA}/responsables`, manejador: () => ({ available: true, responsables: PERSONAS_EQUIPO.map((x) => ({ userId: x.id, nombre: x.fullName, rol: x.rol })) }) },
+  {
+    metodo: "PUT",
+    patron: `${PA}/plazos`,
+    manejador: (p) => {
+      if (!permisosPostAward(p.persona!.rol).puedeEscribir) return fallo(403, "Tu rol no puede realizar esta acción.");
+      const s = postAward(p);
+      s.plazos = { falloNotificadoEn: null, plazoFirmaDias: null, firmadoEn: null, plazoGarantiaDias: null, ...(s.plazos ?? {}), ...((p.cuerpo ?? {}) as object) };
+      registrar(s, "plazos", "ctr-1", "editar", { campos: Object.keys((p.cuerpo ?? {}) as object).sort() }, p.persona!.id);
+      return { plazos: s.plazos, plazosCalculados: { fechaLimiteFirma: null, fechaLimiteEntregaGarantia: null, firmaVencida: false, nota: "", calendarioNota: "" }, garantiasActualizadas: 0 };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${PA}/garantias`,
+    manejador: (p) => {
+      if (!permisosPostAward(p.persona!.rol).puedeEscribir) return fallo(403, "Tu rol no puede realizar esta acción.");
+      const llave = llaveIdem(p.cabeceras);
+      if (!llave) return fallo(400, "Falta el header Idempotency-Key, obligatorio para esta operación de dinero.");
+      const s = postAward(p);
+      if (s.claves[llave]) return conStatus(201, s.claves[llave]);
+      const c = (p.cuerpo ?? {}) as Partial<GarantiaMock>;
+      if (typeof c.monto !== "string" || !/^\d+(\.\d{1,2})?$/.test(c.monto)) return fallo(400, "monto: se esperaba una cadena decimal (p. ej. \"125000.50\").");
+      if (!c.vigenciaDesde || !c.vigenciaHasta || c.vigenciaHasta < c.vigenciaDesde) return fallo(400, "vigenciaHasta no puede ser anterior a vigenciaDesde.");
+      s.n += 1;
+      const g: GarantiaMock = { id: `gar-${s.n}`, contractId: "ctr-1", tipo: c.tipo ?? "cumplimiento", monto: Number(c.monto).toFixed(2), porcentaje: c.porcentaje ?? null, afianzadora: c.afianzadora ?? null, numeroPoliza: c.numeroPoliza ?? null, vigenciaDesde: c.vigenciaDesde, vigenciaHasta: c.vigenciaHasta, fechaLimiteEntrega: c.fechaLimiteEntrega ?? null, entregadaEn: c.entregadaEn ?? null, estado: c.entregadaEn ? "entregada" : "pendiente_entrega", notas: c.notas ?? null };
+      s.garantias.push(g);
+      registrar(s, "garantia", g.id, "crear", { estado: g.estado }, p.persona!.id);
+      const respuesta = { ...g, vigencia: vigenciaGarantia(g) };
+      s.claves[llave] = respuesta;
+      return conStatus(201, respuesta);
+    },
+  },
+  {
+    metodo: "PATCH",
+    patron: `${PA}/garantias/:gid`,
+    manejador: (p) => {
+      const permisos = permisosPostAward(p.persona!.rol);
+      const c = (p.cuerpo ?? {}) as Partial<GarantiaMock>;
+      const decide = c.estado === "liberada" || c.estado === "ejecutada";
+      if (decide ? !permisos.puedeDecidir : !permisos.puedeEscribir) return fallo(403, "Tu rol no puede realizar esta acción.");
+      const s = postAward(p);
+      const g = s.garantias.find((x) => x.id === p.params["gid"]);
+      if (!g) return fallo(404, "Garantía no encontrada.");
+      if (g.estado === "liberada" || g.estado === "ejecutada") return fallo(409, `La garantía ya está ${g.estado} y no admite más cambios.`);
+      if (c.estado === "entregada" && g.estado !== "pendiente_entrega") return fallo(409, "Transición de garantía inválida.");
+      if (c.estado === "liberada" && g.estado === "pendiente_entrega") return fallo(409, "Transición de garantía inválida: pendiente_entrega -> liberada.");
+      const anterior = g.estado;
+      Object.assign(g, c);
+      registrar(s, "garantia", g.id, g.estado !== anterior ? "cambio_estado" : "editar", { estado: g.estado, estado_anterior: anterior }, p.persona!.id);
+      return { ...g, vigencia: vigenciaGarantia(g) };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${PA}/hitos`,
+    manejador: (p) => {
+      if (!permisosPostAward(p.persona!.rol).puedeEscribir) return fallo(403, "Tu rol no puede realizar esta acción.");
+      const llave = llaveIdem(p.cabeceras);
+      if (!llave) return fallo(400, "Falta el header Idempotency-Key, obligatorio para esta operación de dinero.");
+      const s = postAward(p);
+      if (s.claves[llave]) return conStatus(201, s.claves[llave]);
+      const c = (p.cuerpo ?? {}) as Partial<HitoMock>;
+      if (!PERSONAS_EQUIPO.some((x) => x.id === c.responsableId)) return fallo(400, "responsableId: debe ser un miembro del equipo de tu organización.");
+      s.n += 1;
+      const h: HitoMock = { id: `hit-${s.n}`, contractId: "ctr-1", titulo: c.titulo ?? "", descripcion: c.descripcion ?? null, responsableId: c.responsableId ?? null, fechaCompromiso: c.fechaCompromiso ?? HOY_POST_AWARD, estado: "pendiente", cumplidoEn: null };
+      s.hitos.push(h);
+      registrar(s, "hito", h.id, "crear", { estado: "pendiente" }, p.persona!.id);
+      const respuesta = { ...h, vigencia: vigenciaHito(h) };
+      s.claves[llave] = respuesta;
+      return conStatus(201, respuesta);
+    },
+  },
+  {
+    metodo: "PATCH",
+    patron: `${PA}/hitos/:hid`,
+    manejador: (p) => {
+      if (!permisosPostAward(p.persona!.rol).puedeEscribir) return fallo(403, "Tu rol no puede realizar esta acción.");
+      const s = postAward(p);
+      const h = s.hitos.find((x) => x.id === p.params["hid"]);
+      if (!h) return fallo(404, "Hito no encontrado.");
+      if (h.estado !== "pendiente") return fallo(409, `El hito ya está ${h.estado} y no admite más cambios.`);
+      const c = (p.cuerpo ?? {}) as Partial<HitoMock>;
+      const anterior = h.estado;
+      Object.assign(h, c, c.estado === "cumplido" ? { cumplidoEn: HOY_POST_AWARD } : {});
+      registrar(s, "hito", h.id, h.estado !== anterior ? "cambio_estado" : "editar", { estado: h.estado, estado_anterior: anterior }, p.persona!.id);
+      return { ...h, vigencia: vigenciaHito(h) };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${PA}/convenios`,
+    manejador: (p) => {
+      if (!permisosPostAward(p.persona!.rol).puedeDecidir) return fallo(403, "Tu rol (" + p.persona!.rol + ") no puede realizar esta acción.");
+      if (p.cabeceras["x-step-up-token"] !== `mock-step-up.${p.persona!.id}`) return fallo(403, "Esta acción requiere confirmar tu identidad con el código de tu app de autenticación.");
+      const llave = llaveIdem(p.cabeceras);
+      if (!llave) return fallo(400, "Falta el header Idempotency-Key, obligatorio para esta operación de dinero.");
+      const s = postAward(p);
+      if (s.claves[llave]) return conStatus(201, s.claves[llave]);
+      const c = (p.cuerpo ?? {}) as Partial<ConvenioMock>;
+      s.n += 1;
+      const convenio: ConvenioMock = { id: `conv-${s.n}`, numero: s.convenios.length + 1, tipo: c.tipo ?? "monto", montoDelta: c.montoDelta ?? null, nuevaFechaFin: c.nuevaFechaFin ?? null, fechaFinAnterior: c.nuevaFechaFin ? s.endDate : null, fechaFirma: c.fechaFirma ?? HOY_POST_AWARD, motivo: c.motivo ?? "", createdAt: "2026-10-05T12:00:00.000Z" };
+      s.convenios.push(convenio);
+      if (convenio.nuevaFechaFin) s.endDate = convenio.nuevaFechaFin;
+      registrar(s, "convenio", convenio.id, "crear", { tipo: convenio.tipo }, p.persona!.id);
+      const respuesta = { convenio, contratoFechaFin: s.endDate };
+      s.claves[llave] = respuesta;
+      return conStatus(201, respuesta);
+    },
+  },
+];
+
 export const rutasLicitaciones: readonly Ruta[] = [
   ...rutasCopiloto,
   ...rutasCierre,
+  ...rutasPostAdjudicacion,
   ...rutasSalaGuerra,
   { metodo: "GET", patron: "/v1/licitaciones/:org/admin/branches", manejador: () => ({ branches: [{ propertyId: PROP.id, name: PROP.nombre }] }) },
   { metodo: "GET", patron: `${L}/tenders`, manejador: () => ({ tenders: CONVOCATORIAS }) },

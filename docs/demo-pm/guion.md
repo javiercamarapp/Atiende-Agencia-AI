@@ -1,6 +1,6 @@
 # Guion de demo: Los Taquitos de PM en T7 García Lavín
 
-Guion para **presentar a Los Taquitos de PM** el producto funcionando **sin credenciales de Meta, Twilio, ElevenLabs ni SoftRestaurant**. El
+Guion para **presentar a Los Taquitos de PM** el producto funcionando **sin credenciales de Meta, Twilio ni SoftRestaurant**. El
 agente de WhatsApp **real** (perfil `taqueria_pm`) conversa en una página web, toma pedidos reales contra el menú real de **T7 García Lavín
 (Victory Platz)**, la comanda cae en el panel y el panel trae **8 semanas de operación de demostración con el ritmo real de T7**.
 
@@ -183,8 +183,8 @@ Pestaña A no se cierra ni se recarga hasta terminar el escenario 10. El orden d
 | **Pedidos programados antes de abrir y cobertura con la zona dueña cerrada** (T7-007, T7-010, T7-018, T7-027, T7-036, T7-053, T7-054, T7-065) | Decisiones abiertas de Javier; los escenarios están listados pero no se prueban | Javier |
 | **Fotos, audios, ticket** | El widget solo manda texto | n/a (WhatsApp real) |
 | **Respuesta humana por WhatsApp** | Requiere un número conectado | Dueño + Meta |
-| **Combo del martes** | No cargado; el agente no lo promete | Dueño (aguas de cortesía) |
-| **Notificaciones in-app** | Conectados: la escalación a una persona y el tope diario del chat. La campana con punto rojo y la página de notificaciones son la parte B (otro PR) | Parte B |
+| **Combo del martes** | Cargado (cortesía, solo recoger, 2 aguas); el agente dice lo que devuelve la cotización. Falta confirmar con el dueño cuáles aguas entran (P13) | Dueño (aguas de cortesía) |
+| **Notificaciones in-app** | Conectados los eventos de restaurantes del catálogo (`docs/NOTIFICACIONES.md`): escalación a una persona, pedido nuevo del agente, tope diario del chat, **pedido programado que entra a cocina** y cierres. En la demo los pedidos programados se promueven por el cron o al abrir *Pedidos* | n/a |
 | La organización demo en **superadmin/costos** | Aparece como una más (no se filtra por demo) | Pendiente |
 
 ## Reinicio entre demos

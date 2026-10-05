@@ -11,6 +11,8 @@ export interface SucursalPublica {
   readonly name: string;
   readonly address: string | null;
   readonly phone: string | null;
+  /** wa.me de la sucursal con texto prellenado (R-38); null/ausente = sin numero valido: no se muestra el boton. */
+  readonly whatsappUrl?: string | null;
   /** null = sin horario configurado: no se afirma abierto ni cerrado. */
   readonly abiertoAhora: boolean | null;
   readonly cierraA: string | null;
@@ -19,6 +21,55 @@ export interface SucursalPublica {
   readonly pedidoMinimoRecoger: number | null;
   readonly propinaPolitica: "nunca" | "siempre" | "solo_tarjeta" | null;
   readonly zonasReparto: readonly string[];
+}
+
+/** Marca publica del restaurante (R-38). Todo opcional: sin marca guardada la portada es generica con el nombre. */
+export interface MarcaPublica {
+  readonly titular: string | null;
+  readonly eslogan: string | null;
+  readonly about: string | null;
+  readonly portadaUrl: string | null;
+  readonly logoUrl: string | null;
+  readonly instagramUrl: string | null;
+  readonly facebookUrl: string | null;
+  readonly tiktokUrl: string | null;
+}
+
+/** Promocion que el motor aplica sola a un pedido para recoger (R-38). */
+export interface PromocionPublica {
+  readonly id: string;
+  readonly nombre: string;
+  readonly descripcion: string | null;
+  readonly beneficio: string;
+  readonly canal: "recoger";
+  readonly pedidoMinimo: number | null;
+  /** 0=domingo..6=sabado; null = todos los dias. */
+  readonly dias: readonly number[] | null;
+  readonly horaInicio: string | null;
+  readonly horaFin: string | null;
+  readonly vigenteHasta: string | null;
+  /** Slugs de las sucursales donde vale; null = todas. */
+  readonly sucursales: readonly string[] | null;
+}
+
+export interface RestaurantePublico {
+  readonly restaurante: { readonly slug: string; readonly nombre: string };
+  readonly sucursales: SucursalPublica[];
+  /** Ausente en un servidor anterior a R-38. */
+  readonly marca?: MarcaPublica;
+  readonly promociones?: readonly PromocionPublica[];
+}
+
+/** Solicitud de evento/catering (R-43). `sitioWeb` es el honeypot: debe ir vacio (un campo oculto que una persona no ve). */
+export interface DatosEvento {
+  readonly nombre: string;
+  readonly telefono: string;
+  readonly fechaEvento: string;
+  readonly personas: number;
+  readonly sucursal: string;
+  readonly comentario?: string;
+  readonly aceptaAviso: boolean;
+  readonly sitioWeb?: string;
 }
 
 export interface ProductoMenu {
@@ -73,7 +124,7 @@ export interface PedidoCreado {
   readonly comanda?: { readonly estado: string; readonly folio: string | null; readonly mensaje: string } | null;
 }
 
-export type EstadoPedido = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema";
+export type EstadoPedido = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema" | "listo_para_recoger" | "no_recogido" | "programado";
 
 export interface RastreoPedido {
   readonly disponible: boolean;
@@ -93,8 +144,11 @@ export class StorefrontError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    /** Motivo de la maquina de estados del servidor (p. ej. "cotizacion_vencida"), si lo hubo. */
+    /** Motivo de la maquina de estados del servidor (p. ej. "cotizacion_vencida"), o del cliente ("red", "tiempo_agotado",
+     * "respuesta_invalida"), si lo hubo. */
     readonly motivo?: string,
+    /** Rastreo del pedido que esta sesion YA tiene registrado (el servidor lo manda con `ya_registrado`). */
+    readonly rastreoToken?: string,
   ) {
     super(message);
     this.name = "StorefrontError";
@@ -118,30 +172,68 @@ export interface DatosCliente {
   readonly direccion?: string;
   readonly notas?: string;
   readonly propina?: number;
+  /** Casilla del aviso de privacidad: el servidor la exige y guarda la evidencia (version del aviso, fecha, canal `web`). */
+  readonly aceptaAviso: boolean;
 }
 
 function enc(v: string): string {
   return encodeURIComponent(v);
 }
 
+/** Tope de espera de cada peticion: sin el, un servidor colgado dejaba el dialogo de confirmacion girando para siempre. */
+export const TIEMPO_MAXIMO_MS = 20_000;
+
+export const MENSAJE_RED = "No pudimos conectar con el restaurante. Revisa tu internet e inténtalo de nuevo.";
+export const MENSAJE_TIEMPO_AGOTADO = "La solicitud tardó demasiado. Revisa tu conexión y vuelve a pulsar «Revisar pedido»: si tu pedido ya se había registrado, te lo mostraremos sin duplicarlo.";
+export const MENSAJE_RESPUESTA_INVALIDA = "Recibimos una respuesta inesperada del servidor. Inténtalo de nuevo en un momento.";
+
+/** Una peticion con tope de tiempo. Un fallo de red (el navegador rechaza con TypeError "Failed to fetch") o un timeout
+ * se traducen a un `StorefrontError` con mensaje en espanol: nunca se le muestra al cliente el texto crudo del navegador. */
+async function pedir(fetchImpl: typeof fetch, url: string, init: RequestInit | undefined, tiempoMs: number): Promise<Response> {
+  const control = new AbortController();
+  let agotado = false;
+  const reloj = setTimeout(() => {
+    agotado = true;
+    control.abort();
+  }, tiempoMs);
+  try {
+    return await fetchImpl(url, { ...init, signal: control.signal });
+  } catch {
+    if (agotado) throw new StorefrontError(MENSAJE_TIEMPO_AGOTADO, 0, "tiempo_agotado");
+    throw new StorefrontError(MENSAJE_RED, 0, "red");
+  } finally {
+    clearTimeout(reloj);
+  }
+}
+
 async function leer<T>(res: Response, fallback: string): Promise<T> {
-  if (res.ok) return (await res.json()) as T;
+  if (res.ok) {
+    try {
+      return (await res.json()) as T;
+    } catch {
+      // 200 que no es JSON (pagina de un proxy/CDN o de mantenimiento): mensaje generico, no el SyntaxError del navegador.
+      throw new StorefrontError(MENSAJE_RESPUESTA_INVALIDA, res.status, "respuesta_invalida");
+    }
+  }
   let message = fallback;
   let motivo: string | undefined;
+  let rastreoToken: string | undefined;
   try {
-    const body = (await res.json()) as { message?: unknown; motivo?: unknown };
+    const body = (await res.json()) as { message?: unknown; motivo?: unknown; ya_registrado?: unknown; rastreo_token?: unknown };
     if (typeof body.message === "string" && body.message) message = body.message;
     if (typeof body.motivo === "string") motivo = body.motivo;
+    if (body.ya_registrado === true && typeof body.rastreo_token === "string") rastreoToken = body.rastreo_token;
   } catch {
     // cuerpo no JSON: se conserva el mensaje generico
   }
   if (res.status === 429) message = "Demasiados intentos seguidos. Espera un minuto e inténtalo de nuevo.";
-  throw new StorefrontError(message, res.status, motivo);
+  throw new StorefrontError(message, res.status, motivo, rastreoToken);
 }
 
-export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetchImpl: typeof fetch = (...a) => fetch(...a)) {
+export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetchImpl: typeof fetch = (...a) => fetch(...a), tiempoMaximoMs: number = TIEMPO_MAXIMO_MS) {
   const raiz = `${apiBaseUrl.replace(/\/+$/, "")}/v1/restaurantes/${enc(orgSlug)}/storefront`;
-  const post = (path: string, body: unknown) => fetchImpl(`${raiz}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const get = (path: string) => pedir(fetchImpl, `${raiz}${path}`, undefined, tiempoMaximoMs);
+  const post = (path: string, body: unknown) => pedir(fetchImpl, `${raiz}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }, tiempoMaximoMs);
   const cuerpo = (d: DatosPedido) => ({
     session_id: d.sessionId,
     items: d.items,
@@ -152,11 +244,11 @@ export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetc
     promo_code: d.canal === "recoger" && d.codigoPromo?.trim() ? d.codigoPromo.trim() : undefined,
   });
   return {
-    async sucursales(): Promise<{ restaurante: { slug: string; nombre: string }; sucursales: SucursalPublica[] }> {
-      return leer(await fetchImpl(raiz), "No pudimos cargar el restaurante.");
+    async sucursales(): Promise<RestaurantePublico> {
+      return leer(await get(""), "No pudimos cargar el restaurante.");
     },
-    async menu(branchSlug: string): Promise<{ sucursal: SucursalPublica | null; categorias: CategoriaMenu[] }> {
-      return leer(await fetchImpl(`${raiz}/${enc(branchSlug)}/menu`), "No pudimos cargar el menú.");
+    async menu(branchSlug: string): Promise<{ sucursal: SucursalPublica | null; categorias: CategoriaMenu[]; marca?: MarcaPublica }> {
+      return leer(await get(`/${enc(branchSlug)}/menu`), "No pudimos cargar el menú.");
     },
     async cotizar(branchSlug: string, datos: DatosPedido): Promise<Cotizacion> {
       return leer(await post(`/${enc(branchSlug)}/quote`, cuerpo(datos)), "No pudimos cotizar tu pedido.");
@@ -175,12 +267,28 @@ export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetc
           customer_address: datos.canal === "domicilio" ? cliente.direccion : undefined,
           notes: cliente.notas?.trim() || undefined,
           propina: cliente.propina !== undefined && cliente.propina > 0 ? cliente.propina : undefined,
+          acepta_aviso_privacidad: cliente.aceptaAviso === true,
         }),
         "No pudimos registrar tu pedido.",
       );
     },
+    async enviarEvento(d: DatosEvento): Promise<{ recibido: boolean }> {
+      return leer(
+        await post("/eventos", {
+          nombre: d.nombre,
+          telefono: d.telefono,
+          fechaEvento: d.fechaEvento,
+          personas: d.personas,
+          sucursal: d.sucursal,
+          comentario: d.comentario?.trim() || undefined,
+          aceptaAviso: d.aceptaAviso,
+          sitio_web: d.sitioWeb ?? "",
+        }),
+        "No pudimos enviar tu solicitud.",
+      );
+    },
     async rastreo(token: string): Promise<RastreoPedido> {
-      return leer(await fetchImpl(`${raiz}/track/${enc(token)}`), "No encontramos ese pedido.");
+      return leer(await get(`/track/${enc(token)}`), "No encontramos ese pedido.");
     },
   };
 }

@@ -7,7 +7,7 @@ import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Callout, Checkbox, ConfirmDialog, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, NativeSelect, StatusBadge, Textarea, notify } from "@atiende/ui";
 import { agregar, aItemsApi, avisos, cambiarCantidad, formatoPesos, hayAlcohol, nuevoIdSesion, propinaPermitida, subtotal, type Carrito } from "./carrito.ts";
-import { crearClienteStorefront, StorefrontError, type CategoriaMenu, type Canal, type Cotizacion, type MetodoPago, type ProductoMenu, type SucursalPublica, type Tortilla } from "./storefront-client.ts";
+import { crearClienteStorefront, StorefrontError, type CategoriaMenu, type Canal, type MarcaPublica, type Cotizacion, type MetodoPago, type ProductoMenu, type SucursalPublica, type Tortilla } from "./storefront-client.ts";
 import { textoApertura } from "./RestaurantePage.tsx";
 import { StorefrontLayout } from "./StorefrontLayout.tsx";
 import { useMetaPublica } from "./meta-publica.ts";
@@ -83,7 +83,7 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
   const claveCarrito = `atiende.storefront.carrito.${orgSlug}.${branchSlug}`;
   const claveSesion = `atiende.storefront.sesion.${orgSlug}.${branchSlug}`;
 
-  const [menu, setMenu] = useState<{ sucursal: SucursalPublica | null; categorias: CategoriaMenu[] } | "cargando" | { error: string }>("cargando");
+  const [menu, setMenu] = useState<{ sucursal: SucursalPublica | null; categorias: CategoriaMenu[]; marca?: MarcaPublica } | "cargando" | { error: string }>("cargando");
   const [carrito, setCarrito] = useState<Carrito>([]);
   const [canal, setCanal] = useState<Canal>("recoger");
   const [pago, setPago] = useState<MetodoPago | null>(null);
@@ -148,10 +148,12 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
   }, [carrito, claveCarrito]);
 
   const sucursal = typeof menu === "object" && "categorias" in menu ? menu.sucursal : null;
+  const marca = typeof menu === "object" && "categorias" in menu ? menu.marca : undefined;
   useMetaPublica({
     titulo: sucursal ? `Menú de ${sucursal.name} · Pedir en línea` : "Menú · Pedir en línea",
     descripcion: sucursal ? `Menú y precios de la sucursal ${sucursal.name}${sucursal.address ? `, ${sucursal.address}` : ""}. Pide a domicilio o para recoger y paga en la sucursal.` : "Menú y precios.",
     indexable: true,
+    imagen: marca?.portadaUrl ?? marca?.logoUrl,
   });
 
   const alcohol = hayAlcohol(carrito);
@@ -184,26 +186,40 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
       setCotizacion(c);
       setDialogoAbierto(true);
     } catch (err) {
+      // La sesion ya tiene un pedido registrado (respuesta perdida en un intento anterior): se muestra ese pedido.
+      if (err instanceof StorefrontError && err.rastreoToken) return irAlPedidoRegistrado(err.rastreoToken);
       setErrorServidor(err instanceof Error ? err.message : "No pudimos cotizar tu pedido.");
     } finally {
       setCotizando(false);
     }
   }
 
+  function limpiarSesion() {
+    try {
+      almacen()?.removeItem(claveCarrito);
+      almacen()?.removeItem(claveSesion);
+    } catch {
+      // ignorado
+    }
+  }
+
+  function irAlPedidoRegistrado(rastreoToken: string) {
+    limpiarSesion();
+    setDialogoAbierto(false);
+    notify.success("Tu pedido ya estaba registrado.");
+    navigate(`/pedir/${orgSlug}/pedido/${encodeURIComponent(rastreoToken)}`);
+  }
+
   async function confirmarPedido() {
     try {
       await cliente.confirmar(branchSlug, sessionId.current, cotizacion?.quote_hash ?? null);
       const propina = form.propina.trim() && puedePropina ? Number(form.propina) : undefined;
-      const creado = await cliente.crearPedido(branchSlug, datosPedido(), { nombre: form.nombre, telefono: form.telefono, correo: form.correo, direccion: form.direccion, notas: form.notas, propina }, cotizacion?.quote_hash ?? null);
-      try {
-        almacen()?.removeItem(claveCarrito);
-        almacen()?.removeItem(claveSesion);
-      } catch {
-        // ignorado
-      }
+      const creado = await cliente.crearPedido(branchSlug, datosPedido(), { nombre: form.nombre, telefono: form.telefono, correo: form.correo, direccion: form.direccion, notas: form.notas, propina, aceptaAviso: form.acepta }, cotizacion?.quote_hash ?? null);
+      limpiarSesion();
       notify.success(creado.ya_registrado ? "Tu pedido ya estaba registrado." : "¡Pedido recibido!");
       navigate(`/pedir/${orgSlug}/pedido/${encodeURIComponent(creado.rastreo_token)}`);
     } catch (err) {
+      if (err instanceof StorefrontError && err.rastreoToken) return irAlPedidoRegistrado(err.rastreoToken);
       const mensaje = err instanceof Error ? err.message : "No pudimos registrar tu pedido.";
       notify.error(mensaje);
       setErrorServidor(mensaje);
@@ -230,7 +246,7 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
   const ap = sucursal ? textoApertura(sucursal) : null;
 
   return (
-    <StorefrontLayout orgSlug={orgSlug}>
+    <StorefrontLayout orgSlug={orgSlug} marca={marca} whatsappUrl={sucursal?.whatsappUrl}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{sucursal?.name ?? "Menú"}</h1>

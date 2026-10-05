@@ -41,10 +41,24 @@ sequenceDiagram
   derechos ARCO ("mis datos personales") los atiende un fast-path determinista antes del LLM.
 - **Cliente existente**: `buscar_cliente` devuelve nombre, direcciones, último pedido y "lo de siempre"; una
   segunda dirección igual no se duplica.
-- **Handoff**: cancelaciones, cobros, alergias, quejas, "quiero una persona" y pedidos grandes (>= 40 piezas o
-  $1,500, regla del prompt de PM) abren una toma de handoff y el agente deja de contestar (`handoffGate`).
+- **Handoff**: cancelaciones, cobros, alergias, quejas, "quiero una persona" y pedidos grandes (más de $4,000 o más de 5 kg;
+  más de $2,500 si el número no tiene historial y paga en efectivo: decisión del 2-oct, `PM_PEDIDO_GRANDE_POR_OMISION` en
+  `perfil-pm.ts`, editable por organización; regla del prompt de PM) abren una toma de handoff y el agente deja de contestar (`handoffGate`).
 - **Replay / carrera**: Meta entrega al menos una vez; el mismo `message.id` no genera segundo turno ni segunda
   respuesta. Un payload solo de estados se acusa 200 sin turno.
+
+- **Nota de voz (R-32)**: un mensaje `audio` se descarga de Meta (`GET /{media-id}` y luego la URL firmada, ambas con el
+  token), se transcribe con el rol `restaurantes:transcripcion` del gateway LLM (modelos con entrada de audio y proveedor
+  de EE.UU., ver `docs/LLM-GATEWAY.md`) y el agente recibe el texto marcado `[Nota de voz transcrita] ...`. La
+  transcripción es un mensaje más: **no salta cotizar ni confirmar** (el pedido solo se crea con la confirmación en un
+  mensaje posterior) y pasa por la redacción de datos de pago. Topes: 90 s y 3 MiB por nota, 5 notas por conversación y
+  hora, 300 por organización y día, más el interruptor de plataforma `restaurantes:transcripcion` y el presupuesto
+  mensual de la organización. El replay de Meta (mismo `message.id`) no se transcribe dos veces: la transcripción corre
+  después de reclamar el mensaje en el ledger. **Sin `WHATSAPP_ACCESS_TOKEN`, sin gateway LLM, sin modelo que acepte
+  audio, con un tope alcanzado o ante cualquier error se conserva el comportamiento anterior** (el agente le pide al
+  cliente que escriba) y el motivo queda en un log sin PII (`nota_de_voz_sin_transcribir`: nunca la URL firmada, el id
+  de media, el audio ni el teléfono). Formatos aceptados: ogg/opus, mp3, m4a y aac (amr se rechaza). En producción
+  requiere el token de WhatsApp Cloud API (R-25); mientras no exista, el estado es el de antes.
 
 ## 2. Comensal por llamada (voz)
 
@@ -88,8 +102,10 @@ sequenceDiagram
   W->>A: GET /storefront/track/:token (sin datos personales)
 ```
 
-El checkout exige aceptar el aviso de privacidad en la interfaz; el servidor **no** guarda hoy esa aceptación
-(ver huecos).
+El checkout exige aceptar el aviso de privacidad **en el servidor**: `POST /:sucursal/orders` responde 400
+`aviso_privacidad_requerido` si el cuerpo no trae `acepta_aviso_privacidad: true`, y ya creado el pedido guarda la evidencia
+(versión del aviso vigente, fecha y canal `web`, sin datos personales) en `restaurantes.order_privacy_consent`
+(migración 063; la ven owner y admin). Con la base sin la 063 el pedido se crea igual y la evidencia queda "no disponible".
 
 ## 4. Cocina
 
@@ -98,11 +114,23 @@ El checkout exige aceptar el aviso de privacidad en la interfaz; el servidor **n
 2. Si el POS estaba caído, la comanda queda `fallida`/`captura_manual`: el gerente la captura a mano en el POS y la
    marca (`POST .../comandas/:id/capturada`). El dispatcher interno (`/internal/restaurantes/softrestaurant-dispatch`,
    cada 5 min) reintenta las pendientes y no reenvía las capturadas.
-3. `PATCH .../admin/orders/:id/status`: `pending -> preparando -> en_camino|listo_para_recoger -> entregado`
-   (o `cancelado`/`problema`). Cada transición notifica al comensal por WhatsApp (outbox + dispatcher).
-4. **Pedido programado**: queda en `programado` y no va a cocina ni al POS; al faltar 30 min lo promueve el cron
-   (`/internal/restaurantes/promover-programados`, 5 min) o el panel al consultar, y en ese momento su comanda se
-   encola al POS.
+3. `PATCH .../admin/orders/:id/status` (máquina en `order-lifecycle.ts`): `pending -> preparando -> en_camino -> entregado -> completado` a
+   domicilio, y `preparando -> listo_para_recoger -> entregado|no_recogido` para recoger (un pedido para recoger no sale `en_camino` y un pedido a
+   domicilio no pasa a `listo_para_recoger`; ambos casos responden 409). `cancelado` es posible desde `programado`, `pending`, `preparando`, `listo_para_recoger` y `no_recogido`, pero no desde `en_camino` ni `entregado`, `problema` desde cualquier estado
+   activo, y `cancelado` y `completado` son terminales. Un salto inválido (p. ej. `pending -> entregado`) o repetir el mismo estado responde 409 y
+   no cambia nada. Avisan al comensal por WhatsApp (outbox + dispatcher) **solo** `preparando`, `en_camino`, `listo_para_recoger`, `entregado` y
+   `cancelado`, una vez por estado; `completado`, `problema` y `no_recogido` no mandan aviso al comensal.
+3. bis. **Cancelar antes de que la comanda llegue al POS**: si el POS estaba lento o caído, la comanda queda `pendiente`/`fallida` (o `captura_manual`) en el outbox. Al
+   cancelar el pedido el servidor la corta (`cortarComandaDePedidoCancelado`: pasa a `capturada_manual` con la nota "Pedido cancelado antes de llegar al
+   POS", sin migración) para que el despachador no la mande a cocina cuando el POS vuelva. Una comanda ya `confirmada` en el POS, o en vuelo
+   (`enviada`) en ese instante, **no** se retira: el puerto del POS no expone cancelar, así que cocina debe avisarse por el POS. Caso conocido: una comanda
+   `enviada` al cancelar que luego falla por timeout vuelve a `fallida` y el despachador puede reintentarla (el despachador no revisa el estado del pedido).
+4. **Pedido programado** (checkout público legado `POST /v1/restaurantes/:orgSlug/orders` **o agente** de WhatsApp/voz con `programado_para`; el
+   storefront nuevo no lo acepta): queda en `programado` y no va a cocina ni al POS; al faltar 30 min lo promueve el cron
+   (`/internal/restaurantes/promover-programados`, 5 min) o el panel al consultar, y en ese momento su comanda se encola al POS
+   **con su propina y canal**, y el staff recibe el aviso en la bandeja (`order.programado_promovido`) y en la campana
+   (`restaurantes.pedido.programado_en_cocina`). Una sucursal desactivada NO promueve sus programados (migración interna 042
+   `promover_programados_solo_sucursal_activa` y filtro en el panel): se quedan en `programado`, visibles en la lista de programados, para que el equipo los atienda.
 
 ## 5. Repartidor
 
@@ -113,10 +141,20 @@ ajeno responde 404 uniforme. `en_camino` y `entregado` avisan al comensal; `prob
 ## 6. Gerente
 
 - **Bandeja de notificaciones** (`.../admin/order-notifications`, reconocer con `.../:id/acknowledge`): pedido
-  nuevo, repartidor asignado, incidencia. Es la bandeja propia de restaurantes (ver huecos sobre `core.notification`).
-- Asigna repartidor (`PATCH .../assign-repartidor`), atiende **conversaciones/handoff** y **callbacks** con SLA
+  nuevo, repartidor asignado, incidencia y pedido programado que entró a cocina. Es la bandeja propia de restaurantes; la campana
+  (`core.notification`) recibe además los eventos del catálogo de `docs/NOTIFICACIONES.md`.
+- Asigna repartidor (`PATCH .../assign-repartidor`; solo pedidos a domicilio y aún abiertos), atiende **conversaciones/handoff** y **callbacks** con SLA
   (`.../admin/conversaciones`, `.../admin/callbacks`), y ve las **conversaciones de voz** con su transcripción
   redactada (`.../admin/voz/conversaciones/:id`).
+- **Paso a humano con regreso** (`conversaciones-admin.ts`): cuando el agente escala (pedido grande, cancelación, cobro, queja, "quiero una persona") el
+  handoff queda `pendiente` y el agente calla. El gerente lo **toma** (`POST .../conversaciones/whatsapp/:id/tomar`, `tomada`), responde
+  (`POST .../handoffs/:id/responder`, dentro de la ventana de 24 h) y lo **devuelve** al agente (`.../devolver`, queda `devuelta`) o lo **cierra**
+  (`.../cerrar`); en ambos casos el siguiente mensaje del comensal vuelve a contestarlo el agente y puede cerrar un pedido normal. Repetir `cerrar` no
+  cambia nada (`cambio: false`).
+- **Cierre del día** (R-42, `cierres.ts`, solo owner/admin): `POST .../admin/cierres/generar` `{ tipo: "dia", fecha }` genera el cierre de un día
+  ya terminado en la zona de la sucursal (hoy se rechaza con 400), es idempotente (`estado: "existente"` la segunda vez), deja bitácora y aviso en la
+  campana; un repartidor recibe 403. Los agregados (pedidos, ventas, cancelados) los calcula SQL real y se verifican en
+  `scripts/verify-restaurantes-cierre-dia`; el e2e comprueba el cableado (periodo, idempotencia, roles).
 
 ## 7. Dueño
 
@@ -127,8 +165,9 @@ activo) y consulta KPIs, voz y auditoría. El e2e ejercita el efecto de esas reg
 ## 8. Superadmin y automatizaciones
 
 Los crons del ciclo (`vercel.json`): `/internal/whatsapp/dispatch` (5 min), `/internal/restaurantes/softrestaurant-dispatch`
-(5 min), `/internal/restaurantes/promover-programados` (5 min) y `/internal/restaurantes/email-dispatch` (diario).
-Los tres primeros reportan latido al panel de salud de superadmin (`withHeartbeat`). Además del cron, el webhook y
+(5 min), `/internal/restaurantes/promover-programados` (5 min), `/internal/restaurantes/email-dispatch` (15 min) y
+`/internal/restaurantes/privacidad-retencion` (diario). Los barridos `/internal/restaurantes/cierres-dia` y `/internal/restaurantes/repartidor-licencias`
+existen pero **no** están en `vercel.json` (decisión de costo): hasta agendarlos, el cierre se genera con el botón del panel. Los crons reportan latido al panel de salud de superadmin (`withHeartbeat`). Además del cron, el webhook y
 las rutas de staff drenan el outbox "inline" para no esperar al siguiente tick.
 
 ## Cómo se verifica
@@ -143,6 +182,10 @@ conecta simuladores locales que hablan HTTP de verdad (`@atiende/whatsapp-gatewa
 | `createSimulatorFetch` | Redirige `api.resend.com` y `graph.facebook.com` a los simuladores y **bloquea cualquier otro host** |
 | `FakeSoftRestaurantAdapter` | POS falso en modo activo (idempotente, fallas inyectables) |
 | LLM guionado | `FakeLlmProvider` con un guion de tool calls: el servidor aplica las reglas, el guion solo "se equivoca" a propósito |
+
+Casos nuevos de R-23: `ciclo-cocina-cierre` (domicilio y recoger con UN aviso por estado, saltos de estado rechazados, cancelación antes de cocina con
+POS caído, el mismo comensal por WhatsApp + voz + storefront como UN cliente con 3 pedidos y 3 comandas, y cierre del día idempotente) y `handoff-regreso`
+(escalar, tomar, responder, devolver/cerrar y el agente vuelve a cerrar un pedido).
 
 Casos: `whatsapp-cliente-nuevo`, `whatsapp-casos` (existente, agotado, fuera de horario, fuera de zona, mínimo,
 alcohol, cancelación, pedido grande, replay y carrera de webhook, firma inválida, mensajes fuera de orden, ventana de
@@ -159,9 +202,14 @@ npx vitest run packages/whatsapp-gateway --maxWorkers=2     # los simuladores mi
 | Tema | Estado hoy |
 |---|---|
 | Meta, correo, POS, LLM, voz | Simulados en los tests; en producción dependen de credenciales (WHATSAPP_ACCESS_TOKEN, RESEND_API_KEY, SoftRestaurant real, OpenRouter, proveedor de voz) |
-| Aviso fuera de la ventana de 24 h (pedidos de voz/web) | **Hueco**: el aviso de estado muere `dead` con 131047 porque `MetaGraphWhatsAppClient` no sabe enviar plantillas HSM (R-27). El e2e lo demuestra |
-| Notificación in-app en `core.notification` (campana) | **Hueco**: ningún código de restaurantes escribe ahí todavía; el staff se entera por la bandeja `order-notifications` |
-| Staff avisado cuando un programado entra a cocina | **Hueco**: el aviso de "pedido nuevo" se emite al crearlo; un evento nuevo requiere ampliar el CHECK de `event_type` (migración) |
-| Consentimiento del checkout web | **Hueco**: la interfaz lo exige, el servidor no lo persiste |
-| Postgres real (RLS, GRANT, definer) | No cubierto por este banco: lo cubren los `scripts/verify-restaurantes-*` |
-| Pedidos programados por agente (WhatsApp/voz) | **Hueco**: las tools `crear_pedido` de los agentes no tienen `programado_para`; solo el checkout público lo envía |
+| Aviso fuera de la ventana de 24 h (pedidos de voz/web) | **Parcial**: las plantillas HSM ya se envían (R-27, #293) cuando están declaradas en `WHATSAPP_APPROVED_TEMPLATES`; falta que Meta las **apruebe** (paso externo). Sin plantilla aprobada el aviso muere `dead` con 131047, y el e2e lo demuestra |
+| Notificación in-app en `core.notification` (campana) | **Cerrado en lo que emite restaurantes**: pedido nuevo, handoff, llamada escalada, cierres, tope de demo y **programado que entra a cocina** (catálogo en `docs/NOTIFICACIONES.md`). Los eventos con productor `pendiente` del catálogo siguen siendo huecos declarados allí |
+| Staff avisado cuando un programado entra a cocina | **Cerrado** (migración 063): bandeja `order.programado_promovido` y campana `restaurantes.pedido.programado_en_cocina`, un aviso por pedido; e2e en `programado-pos-ciclo.spec.ts` |
+| Consentimiento del checkout web | **Cerrado** (migración 063): el servidor exige `acepta_aviso_privacidad: true` (400 `aviso_privacidad_requerido`) y guarda versión del aviso, fecha y canal en `restaurantes.order_privacy_consent`; e2e en `storefront-ciclo.spec.ts`. Hasta aplicar la 063 el pedido se crea igual y la evidencia no se guarda |
+| Pedidos programados por agente (WhatsApp/voz) | **Cerrado**: `cotizar_pedido`/`crear_pedido` aceptan `programado_para` con las mismas reglas del checkout público legado (el storefront nuevo no lo acepta); la hora entra a la huella de lo confirmado; e2e en `whatsapp-casos.spec.ts` y pruebas de dominio en `agent-programados.spec.ts` |
+| Propina de los programados al POS | **Cerrado**: la comanda que se encola al promover lleva la propina y el canal del pedido (seguimiento de #294) |
+| Cancelar un pedido cuya comanda YA está en el POS | **Hueco**: el puerto `SoftRestaurantPort` no expone cancelar; solo se corta la comanda que aún no salió (ver Cocina, 3 bis). Cocina debe avisarse por el POS |
+| Encuesta post-entrega | **No está en main** (PR #409, abierto): este banco no la cubre hasta que se fusione |
+| Recorrido de NAVEGADOR (Playwright) del ciclo completo | **Cerrado** (PR #397, fusionado): recorrido de navegador en `apps/web/e2e` (ver `docs/QA-E2E.md`), contra su API simulada; este banco es de API real con repos en memoria |
+| Comandas del POS en el panel | **Hueco**: solo hay API (`.../admin/softrestaurant/comandas`); no hay pantalla |
+| Postgres real (RLS, GRANT, definer) | No cubierto por este banco: lo cubren los `scripts/verify-restaurantes-*` (incluye `verify-restaurantes-sql`, `-storefront`, `-pedidos-programados` y `-consentimiento-aviso`), que corren en el gate de CI |

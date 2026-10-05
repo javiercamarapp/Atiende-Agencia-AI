@@ -11,6 +11,7 @@
 // gate de confirmación, las transiciones ofrecidas y todas las llamadas al
 // backend son EXACTAMENTE las mismas.
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Button,
   Card,
@@ -36,15 +37,18 @@ import {
 } from "@atiende/ui";
 import type { TicketCocina } from "@atiende/ui";
 import { AlertTriangle, Clock, Printer, RefreshCw } from "lucide-react";
+import { fetchAvisos, sonidoPedidoNuevoPermitido } from "../lib/avisos-client.ts";
 import { assignRepartidor, fetchOrders, fetchScheduledOrders, nextStatusesForCanal, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
 import { guardarSonido, idsNuevos, leerSonido, etiquetaActualizado, reproducirAviso, SONDEO_BASE_MS } from "../lib/sondeo-pedidos.ts";
 import { useSondeoPedidos } from "../lib/use-sondeo-pedidos.ts";
 import { ProgramadosPanel } from "./ProgramadosPanel.tsx";
+import { ETIQUETA_ESTADO_COMANDA, TONO_ESTADO_COMANDA, etiquetaInsigniaPedido, fetchEstadosComandaPorPedido } from "../lib/pos-comandas-client.ts";
+import type { EstadoComandaWire } from "../lib/pos-comandas-client.ts";
 import { fetchRepartidores } from "../lib/staff-client.ts";
 import type { RepartidorMember } from "../lib/staff-client.ts";
 import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
-import { guardarPrefs, leerPrefs, PREFS_VACIAS, marcarImpresos, registrarReimpresion, storageDisponible } from "../lib/ticket-cocina-prefs.ts";
+import { clavePrefsTicketCocina, conCandadoDeImpresion, guardarPrefs, leerPrefs, liberarReclamo, PREFS_VACIAS, marcarImpresos, reclamarImpresion, registrarReimpresion, storageDisponible } from "../lib/ticket-cocina-prefs.ts";
 import type { PrefsTicketCocina } from "../lib/ticket-cocina-prefs.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
@@ -65,6 +69,9 @@ function storageLocal(): Storage | null {
 }
 
 export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
+  // Estado de la comanda al POS de cada pedido de la lista (lectura liviana, solo ids). Sin respuesta (base sin migrar, error de red) no se pinta
+  // ninguna insignia: nunca bloquea ni tumba la lista de pedidos.
+  const [comandaEstados, setComandaEstados] = useState<Readonly<Record<string, EstadoComandaWire>>>({});
   const [status, setStatus] = useState<PestanaPedidos>("todos");
   const [orders, setOrders] = useState<readonly OrderSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +80,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   const [programados, setProgramados] = useState<readonly OrderSummary[] | null>(null);
   const [programadosDisponible, setProgramadosDisponible] = useState(true);
   const [sonido, setSonido] = useState<boolean>(() => leerSonido(storageLocal(), orgSlug, propertyId));
+  // R-16: la preferencia de la persona (Avisos) manda sobre la casilla local: con el aviso de pedido nuevo o su sonido apagados no suena.
+  // Sin respuesta (base sin migrar, error de red) conserva el comportamiento de siempre.
+  const [sonidoPermitido, setSonidoPermitido] = useState<boolean>(true);
   const [nuevosAviso, setNuevosAviso] = useState<number>(0);
   const [ahoraMs, setAhoraMs] = useState<number>(() => Date.now());
   const pendientesVistos = useRef<ReadonlySet<string> | null>(null);
@@ -85,6 +95,21 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   const [repartidores, setRepartidores] = useState<readonly RepartidorMember[] | null>(null);
   const [repartidoresError, setRepartidoresError] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
+  // Insignia "En POS" / "Capturar a mano" / "Falló": se consulta cada vez que cambia el conjunto de pedidos visibles.
+  const idsVisibles = orders ? [...new Set(orders.map((o) => o.id))].join(",") : "";
+  useEffect(() => {
+    if (idsVisibles === "") {
+      setComandaEstados({});
+      return;
+    }
+    let cancelado = false;
+    fetchEstadosComandaPorPedido(fetch, apiBaseUrl, token, propertyId, idsVisibles.split(","))
+      .then((r) => !cancelado && setComandaEstados(r.disponible ? r.estados : {}))
+      .catch(() => !cancelado && setComandaEstados({}));
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId, idsVisibles]);
   // Confirmación de cancelación (ver `handleChangeStatus`): el diálogo lo monta `dialogo` al final del JSX.
   const { confirmar, dialogo } = useConfirm();
   // Aviso OPCIONAL por WhatsApp al marcar "listo para recoger" (por defecto sí avisa; el staff puede apagarlo
@@ -105,6 +130,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   // `load` cambia con el filtro de estado; el ciclo de auto-impresión debe refrescar
   // siempre con el filtro vigente, no con el del momento en que se activó.
   const loadRef = useRef<() => Promise<void>>(async () => undefined);
+  // Generacion de la carga vigente (QA-restaurantes-R1-botones-01): una respuesta vieja (p. ej. la lenta de "Todos" tras
+  // elegir "Preparando") se descarta en vez de pisar la lista de la pestana actual.
+  const cargaGenRef = useRef(0);
 
   function actualizarPrefs(next: PrefsTicketCocina): void {
     prefsRef.current = next;
@@ -121,16 +149,39 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
     setPrefs(cargadas);
   }, [orgSlug, propertyId]);
 
+  // Las preferencias de impresion viven en localStorage y las comparten todas las pestanas del equipo: antes de
+  // decidir/escribir se re-leen (QA-restaurantes-R1-caos-18) para no pisar lo que otra pestana ya marco.
+  function prefsActuales(): PrefsTicketCocina {
+    const st = storageLocal();
+    return st ? leerPrefs(st, orgSlug, propertyId) : prefsRef.current;
+  }
+
+  // Otra pestana cambio las preferencias (auto-impresion, pedidos ya impresos): la copia en memoria las sigue.
+  useEffect(() => {
+    const clave = clavePrefsTicketCocina(orgSlug, propertyId);
+    function alCambiarStorage(e: StorageEvent): void {
+      if (e.key !== clave) return;
+      const st = storageLocal();
+      if (!st) return;
+      const cargadas = leerPrefs(st, orgSlug, propertyId);
+      prefsRef.current = cargadas;
+      setPrefs(cargadas);
+    }
+    window.addEventListener("storage", alCambiarStorage);
+    return () => window.removeEventListener("storage", alCambiarStorage);
+  }, [orgSlug, propertyId]);
+
   function imprimirPedido(order: OrderSummary): void {
-    const yaImpreso = prefsRef.current.impresos.includes(order.id);
-    const reimpresion = yaImpreso ? (prefsRef.current.reimpresiones[order.id] ?? 0) + 1 : 0;
+    const base = prefsActuales();
+    const yaImpreso = base.impresos.includes(order.id);
+    const reimpresion = yaImpreso ? (base.reimpresiones[order.id] ?? 0) + 1 : 0;
     const ok = imprimirTicketsCocina([construirTicketCocina(order, { reimpresion })]);
     if (!ok) {
       setAvisoImpresion("Este navegador no pudo abrir la impresión.");
       return;
     }
     setAvisoImpresion(null);
-    actualizarPrefs(yaImpreso ? registrarReimpresion(prefsRef.current, order.id) : marcarImpresos(prefsRef.current, [order.id]));
+    actualizarPrefs(yaImpreso ? registrarReimpresion(base, order.id) : marcarImpresos(base, [order.id]));
   }
 
   async function activarAutoImpresion(): Promise<void> {
@@ -143,7 +194,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
       // Solo esta sucursal (branchId): sin él el API devuelve todo el alcance de la membresía.
       // Línea base: lo que ya está pendiente NO se imprime solo (evita vomitar el rezago).
       const page = await fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: "pending", limit: 50, branchId: propertyId });
-      actualizarPrefs({ ...marcarImpresos(prefsRef.current, page.orders.map((o) => o.id)), autoImprimir: true });
+      actualizarPrefs({ ...marcarImpresos(prefsActuales(), page.orders.map((o) => o.id)), autoImprimir: true });
       setAvisoImpresion(null);
     } catch (err) {
       setAvisoImpresion(err instanceof Error ? err.message : "No se pudo activar la auto-impresión.");
@@ -151,7 +202,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   }
 
   function desactivarAutoImpresion(): void {
-    actualizarPrefs({ ...prefsRef.current, autoImprimir: false });
+    actualizarPrefs({ ...prefsActuales(), autoImprimir: false });
   }
 
   // Polling del panel como "cola de impresión": solo mientras esta pantalla está abierta
@@ -165,13 +216,35 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
       try {
         const page = await fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: "pending", limit: 50, branchId: propertyId });
         if (cancelado) return;
-        const nuevos = pedidosPorImprimir(page.orders, new Set(prefsRef.current.impresos));
+        const st = storageLocal();
+        // Reclamo entre pestanas: solo se imprimen los pedidos que NINGUNA pestana del equipo habia marcado ya.
+        const candidatos = pedidosPorImprimir(page.orders, new Set(prefsActuales().impresos));
+        if (candidatos.length === 0) return;
+        const reclamados = st
+          ? new Set(await conCandadoDeImpresion(orgSlug, propertyId, () => reclamarImpresion(st, orgSlug, propertyId, candidatos.map((o) => o.id))))
+          : new Set(candidatos.map((o) => o.id));
+        if (cancelado) {
+          if (st && reclamados.size > 0) liberarReclamo(st, orgSlug, propertyId, [...reclamados]);
+          return;
+        }
+        const nuevos = candidatos.filter((o) => reclamados.has(o.id));
+        if (st) {
+          const frescas = leerPrefs(st, orgSlug, propertyId);
+          prefsRef.current = frescas;
+          setPrefs(frescas);
+        }
         if (nuevos.length === 0) return;
         if (imprimirTicketsCocina(nuevos.map((o) => construirTicketCocina(o)))) {
-          actualizarPrefs(marcarImpresos(prefsRef.current, nuevos.map((o) => o.id)));
+          if (!st) actualizarPrefs(marcarImpresos(prefsRef.current, nuevos.map((o) => o.id)));
           setAvisoImpresion(null);
           void loadRef.current();
         } else {
+          if (st) {
+            liberarReclamo(st, orgSlug, propertyId, nuevos.map((o) => o.id));
+            const frescas = leerPrefs(st, orgSlug, propertyId);
+            prefsRef.current = frescas;
+            setPrefs(frescas);
+          }
           setAvisoImpresion("Este navegador no pudo abrir la impresión automática.");
         }
       } catch (err) {
@@ -185,31 +258,39 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
       cancelado = true;
       window.clearInterval(id);
     };
-  }, [prefs.autoImprimir, apiBaseUrl, token, propertyId]);
-
-  async function loadProgramados() {
-    // Promover + listar: la promocion a cocina corre en el servidor al consultar (sin cron).
-    const page = await fetchScheduledOrders(fetch, apiBaseUrl, token, propertyId, { limit: 100 });
-    setProgramadosDisponible(page.disponible);
-    setProgramados(page.orders);
-  }
+  }, [prefs.autoImprimir, apiBaseUrl, token, propertyId, orgSlug]);
 
   async function load() {
+    const gen = ++cargaGenRef.current;
     setError(null);
     try {
       if (status === "programados") {
-        await loadProgramados();
+        const page = await fetchScheduledOrders(fetch, apiBaseUrl, token, propertyId, { limit: 100 });
+        if (gen !== cargaGenRef.current) return;
+        setProgramadosDisponible(page.disponible);
+        setProgramados(page.orders);
       } else if (status === "todos") {
         const pages = await Promise.all(OPERATIVE_STATUSES.map((s) => fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: s, limit: 50 })));
+        if (gen !== cargaGenRef.current) return;
         const merged = pages.flatMap((p) => p.orders).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         setOrders(merged);
+        fijarLineaBase(pages[OPERATIVE_STATUSES.indexOf("pending")]?.orders ?? []);
       } else {
         const page = await fetchOrders(fetch, apiBaseUrl, token, propertyId, { status, limit: 50 });
+        if (gen !== cargaGenRef.current) return;
         setOrders(page.orders);
+        if (status === "pending") fijarLineaBase(page.orders);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron cargar los pedidos.");
+      if (gen === cargaGenRef.current) setError(err instanceof Error ? err.message : "No se pudieron cargar los pedidos.");
     }
+  }
+
+  // QA-restaurantes-R1-botones-02: la linea base de "pedidos ya vistos" parte de la lista que la pantalla YA cargo (lo que la
+  // persona ya ve), no del primer sondeo: un pedido que entra entre la carga y el primer sondeo cuenta como nuevo (suena, sube
+  // el contador y repinta la lista) en vez de quedar absorbido en silencio.
+  function fijarLineaBase(pendientes: readonly OrderSummary[]): void {
+    if (pendientesVistos.current === null) pendientesVistos.current = new Set(pendientes.map((o) => o.id));
   }
 
   loadRef.current = load;
@@ -225,6 +306,30 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
     pendientesVistos.current = null;
     setNuevosAviso(0);
   }, [orgSlug, propertyId]);
+
+  // La preferencia se lee al montar y de nuevo cuando la pestana vuelve a estar visible: si owner/admin cambia el sonido de
+  // esta persona desde Avisos, la pantalla de Pedidos lo recoge al volver a ella (sin recargar).
+  useEffect(() => {
+    let cancelado = false;
+    const cargar = () => {
+      fetchAvisos(fetch, apiBaseUrl, token, propertyId)
+        .then((a) => {
+          if (!cancelado) setSonidoPermitido(sonidoPedidoNuevoPermitido(a));
+        })
+        .catch(() => {
+          if (!cancelado) setSonidoPermitido(true);
+        });
+    };
+    const alVolver = () => {
+      if (document.visibilityState === "visible") cargar();
+    };
+    cargar();
+    document.addEventListener("visibilitychange", alVolver);
+    return () => {
+      cancelado = true;
+      document.removeEventListener("visibilitychange", alVolver);
+    };
+  }, [apiBaseUrl, token, propertyId]);
 
   // R-11 -- tiempo real por sondeo con backoff y pausa con la pestana oculta (ver lib/sondeo-pedidos.ts). Cada
   // consulta pide SOLO los pendientes (una peticion liviana; el servidor ademas promueve los programados
@@ -243,7 +348,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
       setAhoraMs(Date.now());
       if (nuevos.length > 0) {
         setNuevosAviso((n) => n + nuevos.length);
-        if (sonido) reproducirAviso();
+        if (sonido && sonidoPermitido) reproducirAviso();
       }
       if (cambio || status === "programados") await loadRef.current();
     },
@@ -354,13 +459,14 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
         )}
         <Checkbox
           id="sonido-pedidos"
-          checked={sonido}
+          checked={sonido && sonidoPermitido}
+          disabled={!sonidoPermitido}
           onChange={(e) => {
             setSonido(e.target.checked);
             guardarSonido(storageLocal(), orgSlug, propertyId, e.target.checked);
             if (e.target.checked) reproducirAviso();
           }}
-          label="Sonido al llegar un pedido nuevo"
+          label={sonidoPermitido ? "Sonido al llegar un pedido nuevo" : "Sonido al llegar un pedido nuevo (apagado en tus Avisos)"}
           wrapperClassName="text-xs text-foreground"
         />
       </div>
@@ -425,6 +531,13 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                     <StatusBadge tone="neutral" dot={false} data-testid={`canal-${o.id}`}>
                       {o.canal === "recoger" ? "Recoger" : "Domicilio"}
                     </StatusBadge>
+                  )}
+                  {comandaEstados[o.id] && (
+                    <Link to={`/restaurantes/${orgSlug}/comandas-pos`} className="no-underline" title={`Comanda al POS: ${ETIQUETA_ESTADO_COMANDA[comandaEstados[o.id]!]}. Ver la cola.`} data-testid={`comanda-pos-${o.id}`}>
+                      <StatusBadge tone={TONO_ESTADO_COMANDA[comandaEstados[o.id]!]} dot={false}>
+                        {etiquetaInsigniaPedido(comandaEstados[o.id]!)}
+                      </StatusBadge>
+                    </Link>
                   )}
                   <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge>
                 </div>

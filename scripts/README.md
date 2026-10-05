@@ -32,7 +32,7 @@ Ver su propio `README.md`.
 variables de entorno reales hacen falta en ESTE entorno, sin imprimir valores.
 Ver `docs/CREDENCIALES.md` y su propio `README.md`.
 
-## `verify-outbox-grants/`, `verify-rentas-cron-rls/`, `verify-llm-usage-budget-guard/`, `verify-superadmin-caller-binding/`, `verify-caller-binding-fase2/`, `verify-rentas-break-glass/`, `verify-superadmin-facturacion/`, `verify-hoteles-sql-critico/`, `verify-restaurantes-sql/`, `verify-superadmin-salud/`, `verify-crons-transaccion-por-unidad/`, `verify-correo-inline-sesion-staff/`, `verify-whatsapp-inline-sesion-staff/`, `verify-rentas-bitacora-auditoria/`, `verify-restaurantes-audit-log/`, `verify-restaurantes-voz-seguridad/`, `verify-restaurantes-softrestaurant-outbox/`, `verify-restaurantes-privacidad-arco/`, `verify-restaurantes-conversaciones-handoff/`, `verify-restaurantes-voz-kpi/`, `verify-restaurantes-whatsapp-kpi/`, `verify-plataforma-privacidad/`
+## `verify-outbox-grants/`, `verify-rentas-cron-rls/`, `verify-llm-usage-budget-guard/`, `verify-superadmin-caller-binding/`, `verify-caller-binding-fase2/`, `verify-rentas-break-glass/`, `verify-superadmin-facturacion/`, `verify-hoteles-sql-critico/`, `verify-restaurantes-sql/`, `verify-superadmin-salud/`, `verify-crons-transaccion-por-unidad/`, `verify-correo-inline-sesion-staff/`, `verify-whatsapp-inline-sesion-staff/`, `verify-rentas-bitacora-auditoria/`, `verify-restaurantes-audit-log/`, `verify-restaurantes-voz-seguridad/`, `verify-restaurantes-softrestaurant-outbox/`, `verify-restaurantes-privacidad-arco/`, `verify-restaurantes-conversaciones-handoff/`, `verify-restaurantes-voz-kpi/`, `verify-restaurantes-whatsapp-kpi/`, `verify-restaurantes-cierre-dia/`, `verify-restaurantes-canales-escritura/`, `verify-restaurantes-voz-huerfanas/`, `verify-restaurantes-repartidor-perfil/`, `verify-restaurantes-cliente-360/`, `verify-plataforma-privacidad/`
 
 `verify-correo-inline-sesion-staff/` (auditoría a2, CRÍTICO) y
 `verify-whatsapp-inline-sesion-staff/` (auditoría a2b, CRÍTICO, mismo bug con el
@@ -77,3 +77,10 @@ solas sin tocar el workflow — ver su propio README.
 
 Si agregas un `verify-*/` nuevo con ese mismo contrato, súmalo a la lista de
 arriba en tu misma pasada de documentación.
+
+## `verify-whatsapp-concurrencia/`
+
+Prueba de carga reproducible del webhook de WhatsApp de restaurantes (P0 "6+ mensajes simultáneos → HTTP 500"): API real de
+producción contra Postgres real con TLS, OpenRouter y Meta simulados; exige 200 en todos, ningún mensaje perdido ni
+duplicado y reenvío idempotente. No usa `assertions.sql` (job propio `whatsapp-concurrencia-gate` en
+`.github/workflows/postgres-real-gate.yml`). Ver su `README.md`.

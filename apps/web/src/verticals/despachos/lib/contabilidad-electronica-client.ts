@@ -17,6 +17,7 @@
 // cliente manda a /listo-para-timbrar es el que la propia página conserva en
 // memoria desde la última respuesta de /paquete.
 import { fetchJson, postJson } from "./admin-client.ts";
+import { conStepUp } from "./step-up.ts";
 
 export type NaturalezaCuentaAnexo24 = "D" | "A";
 export type EstadoPaqueteContabilidad = "borrador" | "listo_para_timbrar" | "timbrado" | "enviado";
@@ -136,7 +137,8 @@ export interface PaqueteOpciones extends PeriodoOpciones {
  * balanza + hashes + estado inicial `listo_para_timbrar`) -- lo que la tarea
  * "contabilidad_elect" del cierre mensual necesita generar. */
 export async function postPaqueteContabilidadElectronica(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, opciones: PaqueteOpciones): Promise<PaqueteContabilidadElectronica> {
-  return postJson(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/contabilidad-electronica/paquete`, token, opciones);
+  // D-30: el paquete XML es la exportacion fiscal completa -> segundo factor reciente (lib/step-up.ts).
+  return conStepUp({ fetchImpl, apiBaseUrl, token }, (h) => postJson<PaqueteContabilidadElectronica>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/contabilidad-electronica/paquete`, token, opciones, h));
 }
 
 /** POST .../contabilidad-electronica/listo-para-timbrar -- transiciona el

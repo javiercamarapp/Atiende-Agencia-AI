@@ -17,6 +17,7 @@ import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
 import { reporteAPdf } from "./reporte-pdf.ts";
+import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
 
 const PERIODO_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const FORMATOS = ["json", "pdf", "xlsx"] as const;
@@ -69,6 +70,9 @@ export function despachosReportesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const reporte = construirReporteCliente(tipo, { periodo, generadoEn: hoy, contribuyente: { nombre } }, { invoicesDelPeriodo, vencimientosDelPeriodo: vencimientos.filter((v) => v.periodo === periodo), balanzaLibro });
 
     if (formato === "json") return c.json(reporte);
+
+    // D-38: PDF y XLSX son documentos que salen del sistema -> fila de bitacora (tipo de reporte, periodo y formato; sin datos del contribuyente).
+    await auditarAccesoDespachos(deps, c, { recurso: `reporte.${tipo}`, tipo: "export", metadata: { periodo, formato } });
 
     const archivo = `reporte-${tipo}-${periodo}.${formato}`;
     const cabeceras = { "content-disposition": `attachment; filename="${archivo}"`, "cache-control": "private, no-store", "x-content-type-options": "nosniff" };

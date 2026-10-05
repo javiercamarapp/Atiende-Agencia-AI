@@ -184,6 +184,9 @@ export function costoPorAgente(filas: readonly AgenteActividad[]): readonly { et
 
 // ---- formatos -----------------------------------------------------------------------------------------------------
 
+/** Meta de MRR del tablero (el odometro del Resumen y del Ejecutivo se miden contra ella). */
+export const META_MRR_MXN = 1_000_000;
+
 export const usd = (n: number): string => `US$${formatMoney(n)}`;
 
 export function fechaHoraCorta(iso: string | null): string | null {

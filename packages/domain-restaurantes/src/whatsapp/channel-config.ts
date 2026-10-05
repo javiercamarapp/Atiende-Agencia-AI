@@ -9,6 +9,7 @@
 import type { RestaurantesRepository } from "../repository.ts";
 import type { WhatsAppChannelResolution } from "../types.ts";
 import { formatLocationMessage, isValidCoordinate } from "./location.ts";
+import type { NotaDeVozEntrante } from "./nota-de-voz.ts";
 
 export type MetaTextMessage = {
   readonly id: string;
@@ -41,7 +42,7 @@ export function extractMetaTextMessages(payload: unknown): MetaTextMessage[] {
           /^\d{7,20}$/.test(message.from) &&
           typeof message.text?.body === "string" &&
           message.text.body.trim().length >= 1 &&
-          message.text.body.length <= 4000
+          message.text.body.length <= META_TEXT_MAX_CHARS
         ) {
           result.push(message as MetaTextMessage);
         }
@@ -54,7 +55,31 @@ export function extractMetaTextMessages(payload: unknown): MetaTextMessage[] {
 /** Mensaje entrante ya listo para el turno: texto del cliente, o (P33/P34) una nota que le dice al
  * modelo que llego un audio/ubicacion/archivo que NO se puede leer, para que lo pida por escrito
  * en vez de ignorar al cliente en silencio. */
-export type MetaInboundMessage = { readonly id: string; readonly from: string; readonly body: string };
+export type MetaInboundMessage = {
+  readonly id: string;
+  readonly from: string;
+  readonly body: string;
+  /** R-32: nota de voz / audio entrante. `body` conserva la nota que pide escribir (comportamiento anterior); si hay credencial, modelo y
+   * cupo, el webhook la sustituye por la transcripcion (ver nota-de-voz.ts). Solo viene el id de media: los bytes no pasan por aqui. */
+  readonly audio?: NotaDeVozEntrante;
+};
+
+/** Limite de caracteres de un mensaje de texto de WhatsApp (Meta). Un texto de 4,001 a 4,096 caracteres es valido: descartarlo en silencio dejaba al cliente sin respuesta. */
+export const META_TEXT_MAX_CHARS = 4096;
+
+/** Texto que el cliente toco en una respuesta de boton (`button`, plantillas con botones de respuesta rapida) o de mensaje interactivo
+ * (`button_reply` / `list_reply`): se trata como el mensaje que el cliente escribio. `null` si no trae texto utilizable. */
+function textoDeRespuestaInteractiva(message: { type?: unknown; button?: { text?: unknown }; interactive?: { type?: unknown; button_reply?: { title?: unknown }; list_reply?: { title?: unknown } } }): string | null {
+  let texto: unknown;
+  if (message.type === "button") texto = message.button?.text;
+  else if (message.type === "interactive") texto = message.interactive?.type === "button_reply" ? message.interactive.button_reply?.title : message.interactive?.type === "list_reply" ? message.interactive.list_reply?.title : undefined;
+  return typeof texto === "string" && texto.trim().length >= 1 && texto.length <= META_TEXT_MAX_CHARS ? texto : null;
+}
+
+const MEDIA_ID_RE = /^[0-9A-Za-z_-]{1,128}$/;
+
+/** Nota que antepone el servidor al texto de una edicion del cliente. */
+export const EDICION_NOTA = "(el cliente corrigió su mensaje anterior)";
 
 const UNSUPPORTED_KINDS = new Set(["audio", "voice", "image", "video", "document", "sticker", "location", "contacts"]);
 
@@ -68,6 +93,11 @@ function unsupportedBody(type: string): string {
     return "[El cliente compartió su ubicación pero no trae coordenadas utilizables: pídale su colonia o una referencia cercana por texto.]";
   }
   return `[El cliente envió un archivo (${type}) que este asistente no puede abrir. Pídale amablemente que escriba su mensaje por texto.]`;
+}
+
+function audioDe(raw: { id?: unknown; mime_type?: unknown } | undefined): NotaDeVozEntrante | undefined {
+  if (!raw || typeof raw.id !== "string" || !MEDIA_ID_RE.test(raw.id) || typeof raw.mime_type !== "string" || raw.mime_type.length === 0 || raw.mime_type.length > 100) return undefined;
+  return { mediaId: raw.id, mimeType: raw.mime_type };
 }
 
 /** Como `extractMetaTextMessages`, pero ademas devuelve los mensajes de audio, ubicacion e imagen/
@@ -91,15 +121,30 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
           result.push({ id: text[0].id, from: text[0].from, body: text[0].text.body });
           continue;
         }
-        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown } };
+        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown }; audio?: { id?: unknown; mime_type?: unknown }; button?: { text?: unknown }; interactive?: { type?: unknown; button_reply?: { title?: unknown }; list_reply?: { title?: unknown } }; edit?: { original_message_id?: unknown; message?: { type?: unknown; text?: { body?: unknown } } } };
+        // Edicion de un mensaje de texto (webhook `messages` con `type: "edit"`, documentado por Meta; NO probado contra Meta real). Entra como mensaje
+        // nuevo con la nota de correccion: el historial no guarda el id de Meta de cada mensaje, asi que no se reemplaza el original.
+        if (message.type === "edit" && typeof message.id === "string" && message.id.length >= 1 && message.id.length <= 255 && typeof message.from === "string" && /^\d{7,20}$/.test(message.from)) {
+          const inner = message.edit?.message;
+          const body = inner?.type === "text" && typeof inner.text?.body === "string" ? inner.text.body : "";
+          if (body.trim().length >= 1 && body.length <= 4000) result.push({ id: message.id, from: message.from, body: `${EDICION_NOTA} ${body}` });
+          continue;
+        }
         if (typeof message.id !== "string" || message.id.length < 1 || message.id.length > 255 || typeof message.from !== "string" || !/^\d{7,20}$/.test(message.from)) continue;
+        // Respuesta de boton / lista: el texto del boton es lo que el cliente "dijo" (antes se descartaba en silencio).
+        const respuesta = textoDeRespuestaInteractiva(message);
+        if (respuesta !== null) {
+          result.push({ id: message.id, from: message.from, body: respuesta });
+          continue;
+        }
         // Ubicacion valida: se guarda como marcador de texto estable (ver location.ts) que el turno relee para
         // asignar sucursal por km. Con coordenadas invalidas cae a la nota honesta de abajo (nunca se adivina).
         if (message.type === "location" && isValidCoordinate(message.location?.latitude, message.location?.longitude)) {
           const { latitude, longitude } = message.location ?? {};
           result.push({ id: message.id, from: message.from, body: formatLocationMessage({ latitude: latitude as number, longitude: longitude as number }) });
         } else if (typeof message.type === "string" && UNSUPPORTED_KINDS.has(message.type)) {
-          result.push({ id: message.id, from: message.from, body: unsupportedBody(message.type) });
+          const audio = message.type === "audio" || message.type === "voice" ? audioDe(message.audio) : undefined;
+          result.push({ id: message.id, from: message.from, body: unsupportedBody(message.type), ...(audio ? { audio } : {}) });
         }
       }
     }

@@ -31,7 +31,9 @@ import { despachosLibroRoutes } from "./libro.ts";
 import { despachosPagosProvisionalesRoutes } from "./pagos-provisionales.ts";
 import { despachosColaCobranzaRoutes } from "./cola-cobranza.ts";
 import { despachosCfdiEstatusSatRoutes } from "./cfdi-estatus-sat.ts";
+import { despachosCfdiLoteRoutes } from "./cfdi-lote.ts";
 import { despachosCronSatRoutes } from "./cron-sat.ts";
+import { despachosBitacoraRoutes } from "./bitacora.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -44,6 +46,8 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", despachosCfdiRoutes(deps));
   // D-27 -- "Verificar en el SAT" por CFDI. DEBE montarse DESPUES de cfdi.ts: hereda su middleware de sesion (ver cfdi-estatus-sat.ts).
   app.route("/", despachosCfdiEstatusSatRoutes(deps));
+  // D-13 -- carga masiva (XML sueltos o ZIP). Misma regla: DESPUES de cfdi.ts (hereda su middleware de sesion).
+  app.route("/", despachosCfdiLoteRoutes(deps));
   app.route("/", despachosEfosRoutes(deps));
   app.route("/", despachosRevisionesRoutes(deps));
   app.route("/", despachosVencimientosRoutes(deps));
@@ -90,5 +94,7 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", despachosColaCobranzaRoutes(deps));
   // D-26/D-27/D-28 -- crons de estatus SAT de CFDI, descarga mensual de la 69-B y barrido diario de vencimientos, ver cron-sat.ts.
   app.route("/", despachosCronSatRoutes(deps));
+  // D-38 -- bitacora de lecturas, descargas y exportaciones (solo admin y auditor con alcance de toda la organizacion), ver bitacora.ts.
+  app.route("/", despachosBitacoraRoutes(deps));
   return app;
 }

@@ -5,10 +5,14 @@ import { rutasCitas } from "./citas.ts";
 import { rutasComunes } from "./comun.ts";
 import { rutasCuenta } from "./cuenta.ts";
 import { rutasDespachos } from "./despachos.ts";
+import { rutasDespachosListados } from "./despachos-listados.ts";
 import { rutasHoteles } from "./hoteles.ts";
 import { rutasLicitaciones } from "./licitaciones.ts";
+import { rutasLicitacionesDatosEmpresa } from "./licitaciones-datos-empresa.ts";
 import { rutasRentas } from "./rentas.ts";
 import { rutasRestaurantes } from "./restaurantes.ts";
+import { rutasRestaurantesPanel } from "./restaurantes-panel.ts";
+import { rutasRestaurantesStorefront } from "./restaurantes-storefront.ts";
 import { rutasSuperadmin } from "./superadmin.ts";
 
-export const todasLasRutas: readonly Ruta[] = [...rutasComunes, ...rutasCuenta, ...rutasRestaurantes, ...rutasHoteles, ...rutasRentas, ...rutasDespachos, ...rutasLicitaciones, ...rutasCitas, ...rutasSuperadmin];
+export const todasLasRutas: readonly Ruta[] = [...rutasComunes, ...rutasCuenta, ...rutasRestaurantes, ...rutasRestaurantesPanel, ...rutasRestaurantesStorefront, ...rutasHoteles, ...rutasRentas, ...rutasDespachos, ...rutasDespachosListados, ...rutasLicitacionesDatosEmpresa, ...rutasLicitaciones, ...rutasCitas, ...rutasSuperadmin];

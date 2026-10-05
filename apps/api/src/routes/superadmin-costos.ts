@@ -20,7 +20,7 @@ import { rateLimit } from "@atiende/core-ratelimit";
 import { calcularFilaCostoMargen, resumirCostoMargen, UMBRAL_MARGEN_PCT_DEFAULT } from "@atiende/billing";
 import type { EntradaCostoMargen, FilaCostoMargen, LimitePlan } from "@atiende/billing";
 import { listarUsoSuperadmin } from "@atiende/db";
-import type { FxRateRow, PlanRow } from "@atiende/db";
+import type { CostReportRow, FxRateRow, PlanRow } from "@atiende/db";
 import { Errors } from "../errors.ts";
 import { requestActor } from "../http-security.ts";
 import { traducirErrorSeguridad } from "./superadmin-mfa.ts";
@@ -60,6 +60,36 @@ function limitesDe(plan: PlanRow | undefined): readonly LimitePlan[] {
   return (plan?.limites ?? []).map((l) => ({ metrica: l.metrica, limite: l.limite, accion: l.accion }));
 }
 
+/** Reporte de costo del mes -> filas con margen (mismo calculo para la pantalla de Costos y la tabla/ficha de Organizaciones). */
+export function construirFilasCostoMargen(rows: readonly CostReportRow[], plans: readonly PlanRow[], fx: FxRateRow | null, umbralMargenPct: number): FilaCostoMargen[] {
+  const planPorId = new Map(plans.map((p) => [p.id, p]));
+  return rows.map((r) => {
+    const plan = r.planId ? planPorId.get(r.planId) : undefined;
+    const entrada: EntradaCostoMargen = {
+      organizationId: r.organizationId,
+      nombre: r.organizationName,
+      slug: r.organizationSlug,
+      vertical: r.vertical,
+      orgStatus: r.orgStatus,
+      plan: r.planId
+        ? { id: r.planId, nombre: r.planNombre ?? r.planId, precioBaseCentavos: r.precioBaseCentavos, precioAsientoCentavos: r.precioAsientoCentavos, asientosIncluidos: r.asientosIncluidos ?? 0 }
+        : null,
+      limites: limitesDe(plan),
+      billingStatus: r.billingStatus,
+      billingSeats: r.billingSeats,
+      sucursalesActivas: r.sucursalesActivas,
+      costo: { llm: r.llmMicroUsd, voz: r.vozMicroUsd, whatsapp: r.whatsappMicroUsd, telefonia: r.telefoniaMicroUsd, otros: r.otrosMicroUsd },
+      eventosTotal: r.eventosTotal,
+      eventosEstimados: r.eventosEstimados,
+      minutosVoz: r.minutosVoz,
+      mensajes: r.mensajes,
+      llmCapMicroUsd: r.llmCapMicroUsd,
+      llmAlertPct: r.llmAlertPct,
+    };
+    return calcularFilaCostoMargen(entrada, { mxnPorUsd: fx?.mxnPorUsd ?? null, umbralMargenPct });
+  });
+}
+
 export function superadminCostosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
@@ -86,33 +116,8 @@ export function superadminCostosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       return c.json({ disponible: false, mes, mensaje: NO_DISPONIBLE, organizaciones: [], resumen: null, tipoCambio: null, umbralMargenPct: umbral, supuestos: [] });
     }
 
-    const planPorId = new Map(plans.plans.map((p) => [p.id, p]));
     const fx = elegirTipoCambio(rates.rates, mes);
-    const filas = report.rows.map((r) => {
-      const plan = r.planId ? planPorId.get(r.planId) : undefined;
-      const entrada: EntradaCostoMargen = {
-        organizationId: r.organizationId,
-        nombre: r.organizationName,
-        slug: r.organizationSlug,
-        vertical: r.vertical,
-        orgStatus: r.orgStatus,
-        plan: r.planId
-          ? { id: r.planId, nombre: r.planNombre ?? r.planId, precioBaseCentavos: r.precioBaseCentavos, precioAsientoCentavos: r.precioAsientoCentavos, asientosIncluidos: r.asientosIncluidos ?? 0 }
-          : null,
-        limites: limitesDe(plan),
-        billingStatus: r.billingStatus,
-        billingSeats: r.billingSeats,
-        sucursalesActivas: r.sucursalesActivas,
-        costo: { llm: r.llmMicroUsd, voz: r.vozMicroUsd, whatsapp: r.whatsappMicroUsd, telefonia: r.telefoniaMicroUsd, otros: r.otrosMicroUsd },
-        eventosTotal: r.eventosTotal,
-        eventosEstimados: r.eventosEstimados,
-        minutosVoz: r.minutosVoz,
-        mensajes: r.mensajes,
-        llmCapMicroUsd: r.llmCapMicroUsd,
-        llmAlertPct: r.llmAlertPct,
-      };
-      return calcularFilaCostoMargen(entrada, { mxnPorUsd: fx?.mxnPorUsd ?? null, umbralMargenPct: umbral });
-    });
+    const filas = construirFilasCostoMargen(report.rows, plans.plans, fx, umbral);
     filas.sort((a, b) => RIESGO_ORDEN[a.riesgo] - RIESGO_ORDEN[b.riesgo] || b.costoMicroUsd.total - a.costoMicroUsd.total || a.nombre.localeCompare(b.nombre));
 
     const supuestos = [
