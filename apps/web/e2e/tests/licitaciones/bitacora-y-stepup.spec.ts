@@ -82,9 +82,13 @@ test.describe("licitaciones: bitacora de escrituras @humo", () => {
     // Traza por convocatoria (enlace de la ficha): cronologica y completa.
     await page.goto(`${BASE}/bitacora?convocatoria=tnd-1`);
     await expect(page.getByText("Traza de la convocatoria").first()).toBeVisible();
-    const filas = page.getByRole("row");
     await expect(page.getByText("Paquete · manifiesto generado")).toBeVisible();
-    await expect(filas.filter({ hasText: "Convocatoria ·" }).first()).toBeVisible();
+    await expect(page.getByText("Convocatoria · ingerida por la ingesta automática")).toBeVisible();
+    // Orden cronologico (la tabla en escritorio, las tarjetas en movil): ingesta -> version -> aprobaciones -> manifiesto.
+    const cuerpo = (await page.locator("main#contenido-principal").innerText()).replace(/\s+/g, " ");
+    const pos = ["Convocatoria · ingerida", "Convocatoria · nueva versión", "Expediente · etapa aprobada", "Paquete · manifiesto generado"].map((t) => cuerpo.indexOf(t));
+    expect(pos.every((n) => n >= 0), `faltan eventos de la traza: ${pos.join(",")}`).toBe(true);
+    expect([...pos].sort((a, b) => a - b)).toEqual(pos);
     vigilante.verificar();
   });
 
