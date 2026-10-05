@@ -26,6 +26,7 @@ import {
   NativeSelect,
   PageContainer,
   formatMoney,
+  notify,
   StatusBadge,
 } from "@atiende/ui";
 import { FolderPlus, Plus } from "lucide-react";
@@ -38,6 +39,7 @@ import {
   updateProduct,
 } from "../lib/catalog-client.ts";
 import type { Category, Product } from "../lib/catalog-client.ts";
+import { marcarAgotadoHastaManana } from "../lib/autopiloto-client.ts";
 import { fetchNoDomicilio, setNoDomicilio } from "../lib/modelo-pm-client.ts";
 import type { NoDomicilioMarks } from "../lib/modelo-pm-client.ts";
 import { puedeEn } from "../lib/permisos.ts";
@@ -162,6 +164,22 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar la disponibilidad.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  // Autopiloto (migracion 050): "agotado solo por hoy". El servidor lo deja no disponible y lo repone al cambiar el dia de negocio de la sucursal
+  // (zona horaria de la sucursal), con bitacora; el agente ya respeta `is_available`.
+  async function handleAgotadoHastaManana(product: Product) {
+    setSavingId(product.id);
+    setError(null);
+    try {
+      const r = await marcarAgotadoHastaManana(fetch, apiBaseUrl, token, propertyId, product.id);
+      notify.success(`${product.name} queda agotado y se repone solo el ${r.agotadoHasta}.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo marcar el producto como agotado.");
     } finally {
       setSavingId(null);
     }
@@ -316,6 +334,22 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
                       title={!puedeEditarCatalogo && p.branch === null ? "Un administrador debe activar este producto en la sucursal primero." : undefined}
                     >
                       {p.branch?.isAvailable ? "Disponible" : "No disponible"}
+                    </Button>
+                  ),
+                },
+                {
+                  id: "agotado-hoy",
+                  encabezado: "Agotado solo por hoy",
+                  celda: (p) => (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={savingId === p.id || !p.branch?.isAvailable}
+                      title={p.branch?.isAvailable ? "Se repone solo al cambiar el día de la sucursal" : "Ya no está disponible"}
+                      onClick={() => void handleAgotadoHastaManana(p)}
+                    >
+                      Agotado hasta mañana
                     </Button>
                   ),
                 },

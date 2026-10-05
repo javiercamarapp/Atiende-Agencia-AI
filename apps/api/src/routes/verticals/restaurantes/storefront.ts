@@ -40,6 +40,7 @@ import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
 import { issueStorefrontTrackingToken, storefrontTrackingKey, verifyStorefrontTrackingToken } from "../../../storefront-tracking-token.ts";
 import { efectosPostCommitDePedido } from "./efectos-post-commit.ts";
+import { avisarPedidoRecibido } from "./autopiloto-recibido.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -406,6 +407,8 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
           propina: cliente.propina,
           envioEnLinea: false,
         });
+        // Autopiloto: "Recibimos su pedido #folio, tiempo estimado X" por WhatsApp (solo con plantilla aprobada; idempotente por pedido).
+        await avisarPedidoRecibido(deps, db, repo, order);
         return { order, orgId: org.id, encolada };
       } catch (err) {
         if (err instanceof OrderFlowViolationError && err.code === "pedido_ya_creado") {

@@ -138,7 +138,8 @@ const rutasCierre: readonly Ruta[] = [
       const c = (p.cuerpo ?? {}) as { scope?: string; code?: string };
       // `despachos_sensitive` (D-30): mismas reglas del segundo factor para las acciones sensibles del despacho.
       // `contract_sensitive` (L-27): convenios modificatorios del contrato.
-      if (c.scope !== "expediente_approval" && c.scope !== "despachos_sensitive" && c.scope !== "contract_sensitive") return fallo(400, "scope desconocido.");
+      // `company_rate_approval` (L-P3-01): aprobar o rechazar una tarifa de la empresa.
+      if (c.scope !== "expediente_approval" && c.scope !== "despachos_sensitive" && c.scope !== "contract_sensitive" && c.scope !== "company_rate_approval") return fallo(400, "scope desconocido.");
       if (c.code !== CODIGO_TOTP_VALIDO) return fallo(422, "El código es incorrecto o ya se usó.");
       return { stepUpToken: `mock-step-up.${p.persona!.id}`, expiresInSeconds: 300 };
     },

@@ -8,7 +8,8 @@
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
-import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
+import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
+import { ClienteMemoriaNoDisponibleError, OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
@@ -16,6 +17,9 @@ import { diaLocalSucursal } from "./voz/kpi.ts";
 import { InMemoryConocimientoStore } from "./conocimiento/in-memory.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
+import { ahoraEstricto, Cliente360Store, newMemAddress, type MemAddress } from "./cliente-360/in-memory.ts";
+import type { ClosureObservation, CustomerAddressChanges, CustomerAddressDetail, CustomerFicha, CustomerMemory, CustomerPolicy, CustomerPreference, CustomerProfilePatch, OrderClosureInput, PastOrder, PreferenceAction } from "./cliente-360/types.ts";
+import { isPreferenceKind, POLITICA_POR_OMISION } from "./cliente-360/types.ts";
 import type {
   CanalPedido,
   Branch,
@@ -34,7 +38,10 @@ import type {
   Customer,
   CustomerAddress,
   CustomerListFilter,
+  CarteraKpis,
   CustomerListPage,
+  FilaImportacionCliente,
+  ResultadoImportacionClientes,
   CustomerTier,
   KnownZone,
   NearestBranchMatch,
@@ -276,6 +283,11 @@ interface InMemoryOutboxRow {
   lastErrorClass: string | null;
 }
 
+/** Ventana en que un aviso abierto del mismo canal, telefono y motivo absorbe al siguiente (misma que `callback_registrar_agente`: 2 h). */
+const CALLBACK_VENTANA_AGRUPAR_MS = 120 * 60_000;
+/** Vigencia de un contador del agente (misma que la funcion SQL: 2 h). */
+const CONTADOR_AGENTE_VIGENCIA_MS = 120 * 60_000;
+
 export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly organizations = new Map<string, StoredOrganization>();
   private readonly organizationIdBySlug = new Map<string, string>();
@@ -286,11 +298,16 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly promotions = new Map<string, StoredPromotion>();
   private readonly customers = new Map<string, Customer>();
   private readonly customerIdByOrgPhone = new Map<string, string>();
-  private readonly addresses = new Map<string, CustomerAddress[]>();
+  private readonly addresses = new Map<string, MemAddress[]>();
+  // Cliente 360 (migracion 049): espejo en memoria de las columnas/tablas nuevas.
+  private readonly cliente360 = new Cliente360Store();
   private readonly orders: StoredOrder[] = [];
   private readonly knownZones: StoredKnownZone[] = [];
   private readonly storefrontMarcas = new Map<string, StorefrontMarca>();
   private readonly callbackRequests: CallbackRequest[] = [];
+  private readonly contadoresAgente = new Map<string, { n: number; at: number }>();
+  /** Ids de evento agregados como nota a un aviso (migracion 047, `eventos_agrupados`). */
+  private readonly callbackEventosAgrupados = new Map<string, string[]>();
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
   private readonly phoneNumberIdToOrg = new Map<string, string>();
   private readonly whatsappEvents = new Map<string, StoredWhatsAppEvent>();
@@ -612,13 +629,13 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (!dueno || dueno.organizationId !== organizationId) throw new Error("el cliente no pertenece a la organización");
     const list = this.addresses.get(customerId) ?? [];
     if (list.some((a) => a.address === address)) return; // onConflict ignoreDuplicates
-    list.push({ address, label: null, isDefault: list.length === 0 });
+    list.push(newMemAddress(address, list.length === 0));
     this.addresses.set(customerId, list);
   }
 
   async listCustomerAddresses(customerId: string): Promise<readonly CustomerAddress[]> {
     const list = this.addresses.get(customerId) ?? [];
-    return [...list].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+    return [...list].sort((a, b) => Number(b.isDefault) - Number(a.isDefault)).map((a) => ({ address: a.address, label: a.label, isDefault: a.isDefault }));
   }
 
   async listEligibleOrderHistory(customerId: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>> {
@@ -627,6 +644,336 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       .filter((o) => o.customerId === customerId && eligibleStatuses.has(o.status))
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
       .map((o) => ({ items: o.items, createdAt: o.createdAt }));
+  }
+
+  // ---- Cliente 360 (migracion 049): espejo en memoria de las funciones SQL (cliente_memoria, cliente_registrar_pedido, ...) ----
+
+  /** Pruebas: `false` simula la base SIN la migracion 049 (el agente cae al camino anterior; el staff ve "no disponible"). */
+  setCliente360Supported(supported: boolean): void {
+    this.cliente360.supported = supported;
+  }
+
+  /** Pruebas: pedido de un cliente con el estado y la fecha que se indiquen (p. ej. `no_recogido` hace 10 dias). */
+  seedOrderForCustomer(order: Order): void {
+    this.orders.push(order);
+    const pickup = { canal: order.canal ?? null, propina: order.propina ?? null, horaRecogida: order.horaRecogida ?? null };
+    this.orderPickupInfo.set(order.id, pickup);
+  }
+
+  private policyFor(organizationId: string): CustomerPolicy {
+    return this.cliente360.policies.get(organizationId) ?? POLITICA_POR_OMISION;
+  }
+
+  private addressDetails(customerId: string): CustomerAddressDetail[] {
+    const list = [...(this.addresses.get(customerId) ?? [])];
+    list.sort((a, b) => {
+      const la = a.lastUsedAt ? Date.parse(a.lastUsedAt) : -Infinity;
+      const lb = b.lastUsedAt ? Date.parse(b.lastUsedAt) : -Infinity;
+      return lb - la || Number(b.isDefault) - Number(a.isDefault) || Date.parse(b.createdAt) - Date.parse(a.createdAt);
+    });
+    return list.map((a) => ({
+      id: a.id,
+      address: a.address,
+      label: a.label,
+      isDefault: a.isDefault,
+      accessNotes: a.accessNotes,
+      mapsUrl: a.mapsUrl,
+      colonia: a.colonia,
+      branchSlug: a.propertyId ? ([...this.branches.values()].find((b) => b.propertyId === a.propertyId)?.slug ?? null) : null,
+      lastUsedAt: a.lastUsedAt,
+      timesUsed: a.timesUsed,
+    }));
+  }
+
+  private reliabilityFor(organizationId: string, customerId: string): { noRecogidos90d: number; pedidosFalsos: number; umbral: number; ventanaDias: number } {
+    const policy = this.policyFor(organizationId);
+    const desde = Date.now() - policy.ventanaDias * 86_400_000;
+    const delCliente = this.orders.filter((o) => o.customerId === customerId && o.organizationId === organizationId && Date.parse(o.createdAt) >= desde);
+    return {
+      noRecogidos90d: delCliente.filter((o) => o.status === "no_recogido").length,
+      pedidosFalsos: delCliente.filter((o) => this.cliente360.fakeOrders.has(o.id)).length,
+      umbral: policy.umbralNoRecogidos,
+      ventanaDias: policy.ventanaDias,
+    };
+  }
+
+  private orderNumberOf(order: Order): number {
+    return this.orders.indexOf(order) + 1;
+  }
+
+  async getCustomerMemory(organizationId: string, phone: string): Promise<CustomerMemory | null | undefined> {
+    if (!this.cliente360.supported) return undefined;
+    const customer = await this.findCustomerByPhone(organizationId, phone);
+    if (!customer) return null;
+    const eligible = new Set(["pending", "preparando", "en_camino", "entregado", "completado", "listo_para_recoger"]);
+    const orders: PastOrder[] = this.orders
+      .filter((o) => o.customerId === customer.id && o.organizationId === organizationId && eligible.has(o.status))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .slice(0, 30)
+      .map((o) => {
+        const pickup = this.orderPickupInfo.get(o.id);
+        return {
+          id: o.id,
+          orderNumber: this.orderNumberOf(o),
+          createdAt: o.createdAt,
+          status: o.status,
+          total: o.total,
+          items: o.items,
+          branch: o.branch,
+          propertyId: o.propertyId,
+          paymentMethod: o.paymentMethod,
+          canal: pickup?.canal ?? null,
+          propina: pickup?.propina ?? null,
+          source: o.source,
+        };
+      });
+    return {
+      customer,
+      addresses: this.addressDetails(customer.id),
+      orders,
+      preferences: [...(this.cliente360.preferences.get(customer.id) ?? [])],
+      reliability: this.reliabilityFor(organizationId, customer.id),
+    };
+  }
+
+  async registerOrderClosure(input: OrderClosureInput): Promise<{ readonly applied: boolean } | undefined> {
+    if (!this.cliente360.supported) return undefined;
+    const order = this.orders.find((o) => o.id === input.orderId && o.organizationId === input.organizationId);
+    if (!order || !order.customerId) throw Object.assign(new Error("el pedido no existe en la organizacion o no tiene cliente"), { code: "42501" });
+    if (this.cliente360.closures.has(order.id)) return { applied: false };
+    this.cliente360.closures.add(order.id);
+    const customerId = order.customerId;
+
+    if (input.address) {
+      const list = this.addresses.get(customerId) ?? [];
+      const now = ahoraEstricto();
+      const validProperty = input.address.propertyId && [...this.branches.values()].some((b) => b.propertyId === input.address!.propertyId && b.organizationId === input.organizationId) ? input.address.propertyId : null;
+      const existing = list.find((a) => a.address === input.address!.address);
+      if (existing) {
+        existing.lastUsedAt = now;
+        existing.timesUsed += 1;
+        existing.accessNotes = input.address.accessNotes ?? existing.accessNotes;
+        existing.mapsUrl = input.address.mapsUrl ?? existing.mapsUrl;
+        existing.colonia = input.address.colonia ?? existing.colonia;
+        existing.propertyId = validProperty ?? existing.propertyId;
+        if (input.address.label) this.setAddressLabel(customerId, existing.id, input.address.label);
+      } else {
+        const created = newMemAddress(input.address.address, list.length === 0);
+        created.lastUsedAt = now;
+        created.timesUsed = 1;
+        created.accessNotes = input.address.accessNotes ?? null;
+        created.mapsUrl = input.address.mapsUrl ?? null;
+        created.colonia = input.address.colonia ?? null;
+        created.propertyId = validProperty;
+        list.push({ ...created, label: input.address.label ?? null });
+        this.addresses.set(customerId, list);
+      }
+    }
+
+    const prefs = this.cliente360.preferences.get(customerId) ?? [];
+    const now = ahoraEstricto();
+    for (const obs of input.observations.slice(0, 20) as readonly ClosureObservation[]) {
+      const value = obs.value.trim().slice(0, 120);
+      if (!value || !isPreferenceKind(obs.kind)) continue;
+      const found = prefs.find((p) => p.kind === obs.kind && p.value === value);
+      if (found) {
+        const idx = prefs.indexOf(found);
+        prefs[idx] = { ...found, timesSeen: found.timesSeen + 1, lastSeenAt: now };
+      } else if (prefs.length < 80) {
+        prefs.push({ id: randomUUID(), kind: obs.kind, value, source: "pedido", timesSeen: 1, firstSeenAt: now, lastSeenAt: now, status: "activa" });
+      }
+    }
+    this.cliente360.preferences.set(customerId, prefs);
+    return { applied: true };
+  }
+
+  private setAddressLabel(customerId: string, addressId: string, label: string | null): void {
+    const list = this.addresses.get(customerId) ?? [];
+    const idx = list.findIndex((a) => a.id === addressId);
+    if (idx >= 0) list[idx] = { ...list[idx]!, label };
+  }
+
+  private requireCliente360(): void {
+    if (!this.cliente360.supported) throw new ClienteMemoriaNoDisponibleError();
+  }
+
+  private requireCustomer(organizationId: string, customerId: string): Customer {
+    const customer = this.customers.get(customerId);
+    if (!customer || customer.organizationId !== organizationId) throw Object.assign(new Error("cliente inexistente en la organizacion"), { code: "42501" });
+    return customer;
+  }
+
+  async getCustomerFicha(organizationId: string, customerId: string): Promise<Omit<CustomerFicha, "tier"> | null> {
+    this.requireCliente360();
+    const customer = this.customers.get(customerId);
+    if (!customer || customer.organizationId !== organizationId) return null;
+    const profile = this.cliente360.profiles.get(customerId);
+    const orders = this.orders
+      .filter((o) => o.customerId === customerId && o.organizationId === organizationId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .slice(0, 20);
+    const conversation = this.whatsappConversations.get(`${organizationId}:${customer.phone}`);
+    return {
+      customer: {
+        ...customer,
+        lastOrderAt: orders[0]?.createdAt ?? null,
+        createdAt: orders.length > 0 ? orders[orders.length - 1]!.createdAt : new Date(0).toISOString(),
+        fechaNacimientoDia: profile?.dia ?? null,
+        fechaNacimientoMes: profile?.mes ?? null,
+        staffNotes: profile?.staffNotes ?? null,
+      },
+      addresses: this.addressDetails(customerId),
+      preferences: [...(this.cliente360.preferences.get(customerId) ?? [])],
+      reliability: this.reliabilityFor(organizationId, customerId),
+      orders: orders.map((o) => ({
+        id: o.id,
+        orderNumber: this.orderNumberOf(o),
+        createdAt: o.createdAt,
+        status: o.status,
+        total: o.total,
+        items: o.items,
+        branch: o.branch,
+        source: o.source,
+        paymentMethod: o.paymentMethod,
+        pedidoFalso: this.cliente360.fakeOrders.has(o.id),
+      })),
+      whatsapp: { conversaciones: conversation ? 1 : 0, ultimaActividad: null, mensajes: conversation?.messages.length ?? 0 },
+      llamadas: [],
+    };
+  }
+
+  async updateCustomerProfile(organizationId: string, customerId: string, patch: CustomerProfilePatch): Promise<void> {
+    this.requireCliente360();
+    const customer = this.requireCustomer(organizationId, customerId);
+    if (patch.name !== undefined) this.customers.set(customerId, { ...customer, name: patch.name });
+    const prev = this.cliente360.profiles.get(customerId) ?? { dia: null, mes: null, staffNotes: null };
+    const dia = patch.fechaNacimientoDia !== undefined || patch.fechaNacimientoMes !== undefined ? (patch.fechaNacimientoDia ?? null) : prev.dia;
+    const mes = patch.fechaNacimientoDia !== undefined || patch.fechaNacimientoMes !== undefined ? (patch.fechaNacimientoMes ?? null) : prev.mes;
+    if ((dia === null) !== (mes === null)) throw Object.assign(new Error("fecha de nacimiento incompleta"), { code: "23514" });
+    const diasPorMes = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if (dia !== null && mes !== null && (mes < 1 || mes > 12 || dia < 1 || dia > diasPorMes[mes - 1]!)) throw Object.assign(new Error("fecha de nacimiento invalida"), { code: "23514" });
+    this.cliente360.profiles.set(customerId, { dia, mes, staffNotes: patch.staffNotes !== undefined ? patch.staffNotes : prev.staffNotes });
+  }
+
+  async saveCustomerAddress(organizationId: string, customerId: string, addressId: string | null, changes: CustomerAddressChanges): Promise<string> {
+    this.requireCliente360();
+    this.requireCustomer(organizationId, customerId);
+    if (changes.mapsUrl && !/^https:\/\/\S+$/.test(changes.mapsUrl)) throw Object.assign(new Error("el link de Maps debe empezar con https://"), { code: "22023" });
+    if (changes.propertyId && ![...this.branches.values()].some((b) => b.propertyId === changes.propertyId && b.organizationId === organizationId)) {
+      throw Object.assign(new Error("sucursal inexistente en la organizacion"), { code: "42501" });
+    }
+    const list = this.addresses.get(customerId) ?? [];
+    let id = addressId;
+    if (id === null) {
+      if (!changes.address?.trim()) throw Object.assign(new Error("la direccion es requerida"), { code: "22023" });
+      const created = newMemAddress(changes.address.trim(), list.length === 0);
+      list.push({ ...created, label: changes.label ?? null, accessNotes: changes.accessNotes ?? null, mapsUrl: changes.mapsUrl ?? null, colonia: changes.colonia ?? null, propertyId: changes.propertyId ?? null });
+      id = created.id;
+    } else {
+      const idx = list.findIndex((a) => a.id === id);
+      if (idx < 0) throw Object.assign(new Error("direccion inexistente para el cliente"), { code: "42501" });
+      const cur = list[idx]!;
+      list[idx] = {
+        ...cur,
+        address: changes.address?.trim() ? changes.address.trim() : cur.address,
+        label: changes.label !== undefined ? changes.label : cur.label,
+        accessNotes: changes.accessNotes !== undefined ? changes.accessNotes : cur.accessNotes,
+        mapsUrl: changes.mapsUrl !== undefined ? changes.mapsUrl : cur.mapsUrl,
+        colonia: changes.colonia !== undefined ? changes.colonia : cur.colonia,
+        propertyId: changes.propertyId !== undefined ? changes.propertyId : cur.propertyId,
+      };
+    }
+    if (changes.isDefault) for (let i = 0; i < list.length; i++) list[i] = { ...list[i]!, isDefault: list[i]!.id === id };
+    this.addresses.set(customerId, list);
+    return id!;
+  }
+
+  async deleteCustomerAddress(organizationId: string, customerId: string, addressId: string): Promise<boolean> {
+    this.requireCliente360();
+    this.requireCustomer(organizationId, customerId);
+    const list = this.addresses.get(customerId) ?? [];
+    const idx = list.findIndex((a) => a.id === addressId);
+    if (idx < 0) return false;
+    const wasDefault = list[idx]!.isDefault;
+    list.splice(idx, 1);
+    if (wasDefault && list.length > 0) {
+      const next = [...list].sort((a, b) => (b.lastUsedAt ? Date.parse(b.lastUsedAt) : -Infinity) - (a.lastUsedAt ? Date.parse(a.lastUsedAt) : -Infinity))[0]!;
+      const i = list.indexOf(next);
+      list[i] = { ...next, isDefault: true };
+    }
+    this.addresses.set(customerId, list);
+    return true;
+  }
+
+  async applyCustomerPreferenceAction(organizationId: string, customerId: string, action: PreferenceAction, args: { readonly prefId?: string | null; readonly kind?: string | null; readonly value?: string | null }): Promise<string> {
+    this.requireCliente360();
+    this.requireCustomer(organizationId, customerId);
+    const prefs = this.cliente360.preferences.get(customerId) ?? [];
+    const now = new Date().toISOString();
+    if (action === "agregar") {
+      const value = args.value?.trim().slice(0, 120);
+      if (!value || !isPreferenceKind(args.kind)) throw Object.assign(new Error("categoria o valor invalido"), { code: "22023" });
+      const idx = prefs.findIndex((p) => p.kind === args.kind && p.value === value);
+      const base: CustomerPreference = { id: idx >= 0 ? prefs[idx]!.id : randomUUID(), kind: args.kind, value, source: "staff", timesSeen: idx >= 0 ? prefs[idx]!.timesSeen : 1, firstSeenAt: idx >= 0 ? prefs[idx]!.firstSeenAt : now, lastSeenAt: idx >= 0 ? prefs[idx]!.lastSeenAt : now, status: "activa" };
+      if (idx >= 0) prefs[idx] = base;
+      else prefs.push(base);
+      this.cliente360.preferences.set(customerId, prefs);
+      return base.id;
+    }
+    const idx = prefs.findIndex((p) => p.id === args.prefId);
+    if (idx < 0) throw Object.assign(new Error("gusto inexistente para el cliente"), { code: "42501" });
+    const found = prefs[idx]!;
+    if (action === "eliminar") prefs.splice(idx, 1);
+    else prefs[idx] = { ...found, status: action === "descartar" ? "descartada" : "activa" };
+    this.cliente360.preferences.set(customerId, prefs);
+    return found.id;
+  }
+
+  async markOrderFake(organizationId: string, orderId: string, falso: boolean): Promise<boolean> {
+    this.requireCliente360();
+    const order = this.orders.find((o) => o.id === orderId && o.organizationId === organizationId);
+    if (!order) throw Object.assign(new Error("pedido inexistente en la organizacion"), { code: "42501" });
+    if (falso) this.cliente360.fakeOrders.add(orderId);
+    else this.cliente360.fakeOrders.delete(orderId);
+    return falso;
+  }
+
+  async exportCustomerData(organizationId: string, customerId: string): Promise<Record<string, unknown> | null> {
+    const ficha = await this.getCustomerFicha(organizationId, customerId);
+    if (!ficha) return null;
+    return {
+      nombre: ficha.customer.name,
+      telefono: ficha.customer.phone,
+      fecha_nacimiento_dia: ficha.customer.fechaNacimientoDia,
+      fecha_nacimiento_mes: ficha.customer.fechaNacimientoMes,
+      notas_del_restaurante: ficha.customer.staffNotes,
+      domicilios: ficha.addresses,
+      gustos: ficha.preferences,
+      pedidos: ficha.orders.map((o) => ({ numero: o.orderNumber, fecha: o.createdAt, estado: o.status, total: o.total, productos: o.items, sucursal: o.branch })),
+    };
+  }
+
+  async deleteCustomerMemory(organizationId: string, customerId: string): Promise<{ readonly domiciliosBorrados: number; readonly gustosBorrados: number }> {
+    this.requireCliente360();
+    const customer = this.requireCustomer(organizationId, customerId);
+    const domicilios = (this.addresses.get(customerId) ?? []).length;
+    const gustos = (this.cliente360.preferences.get(customerId) ?? []).length;
+    this.addresses.delete(customerId);
+    this.cliente360.preferences.delete(customerId);
+    this.cliente360.profiles.delete(customerId);
+    this.customers.set(customerId, { ...customer, name: null });
+    return { domiciliosBorrados: domicilios, gustosBorrados: gustos };
+  }
+
+  async getCustomerPolicy(organizationId: string): Promise<CustomerPolicy> {
+    return this.cliente360.supported ? this.policyFor(organizationId) : POLITICA_POR_OMISION;
+  }
+
+  async saveCustomerPolicy(organizationId: string, policy: CustomerPolicy): Promise<CustomerPolicy> {
+    this.requireCliente360();
+    if (policy.umbralNoRecogidos < 0 || policy.umbralNoRecogidos > 20 || policy.ventanaDias < 7 || policy.ventanaDias > 365) throw Object.assign(new Error("fuera de rango"), { code: "22023" });
+    this.cliente360.policies.set(organizationId, policy);
+    return policy;
   }
 
   async calcCustomerTier(organizationId: string, customerId: string): Promise<CustomerTier | null> {
@@ -888,15 +1235,42 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
+  /** Solo pruebas: los avisos (callbacks) de la organizacion, tal como quedaron (con las notas agregadas en `message`). */
+  listCallbackRequests(organizationId: string): readonly CallbackRequest[] {
+    return this.callbackRequests.filter((c) => c.organizationId === organizationId);
+  }
+
   /** Solo para pruebas: las solicitudes de contacto registradas (en orden de creacion). */
   peekCallbackRequests(): readonly CallbackRequest[] {
     return this.callbackRequests;
   }
 
+  /** Mismas reglas que `restaurantes.callback_registrar_agente` (migracion 047) para los avisos del agente (`voice`/`whatsapp`): el mismo
+   * evento no se repite y un aviso abierto del mismo canal, telefono y motivo recibe una nota en vez de crear otro. */
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
+    if (input.source === "voice" || input.source === "whatsapp") {
+      const evento = input.sourceEventId ?? null;
+      const delTelefono = this.callbackRequests.filter((c) => c.organizationId === input.organizationId && c.customerPhone === input.customerPhone);
+      if (evento) {
+        const previo = delTelefono.find((c) => c.sourceEventId === evento || (this.callbackEventosAgrupados.get(c.id) ?? []).includes(evento));
+        if (previo) return { ...previo, registro: "evento_repetido" };
+      }
+      const ahora = Date.now();
+      const abierto = [...delTelefono]
+        .reverse()
+        .find((c) => c.source === input.source && (c.reason ?? null) === (input.reason ?? null) && !c.resolved && ahora - Date.parse(c.createdAt) < CALLBACK_VENTANA_AGRUPAR_MS);
+      if (abierto) {
+        const nota = `\n— Aviso repetido: ${(input.message ?? "").trim().slice(0, 500) || "sin detalle"}`;
+        const actual = abierto.message ?? "";
+        const actualizado: CallbackRequest = { ...abierto, message: actual.length + nota.length <= 4000 ? actual + nota : abierto.message };
+        this.callbackRequests[this.callbackRequests.indexOf(abierto)] = actualizado;
+        if (evento) this.callbackEventosAgrupados.set(abierto.id, [...(this.callbackEventosAgrupados.get(abierto.id) ?? []), evento]);
+        return { ...actualizado, registro: "nota_agregada" };
+      }
+    }
     const created: CallbackRequest = { ...input, id: randomUUID(), resolved: false, createdAt: new Date().toISOString() };
     this.callbackRequests.push(created);
-    return created;
+    return { ...created, registro: "nuevo" };
   }
 
   async consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean> {
@@ -931,6 +1305,19 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       if (orgId === organizationId) return phoneNumberId;
     }
     return null;
+  }
+
+  /** Misma regla que `restaurantes.whatsapp_contador_agente` (migracion 047): un contador de mas de 2 h cuenta como 0. */
+  async contadorAgenteWhatsApp(organizationId: string, phone: string, clave: ClaveContadorAgente, accion: "incrementar" | "reiniciar"): Promise<number | null> {
+    const llave = `${organizationId}|${phone}|${clave}`;
+    if (accion === "reiniciar") {
+      this.contadoresAgente.delete(llave);
+      return 0;
+    }
+    const previo = this.contadoresAgente.get(llave);
+    const n = (previo && Date.now() - previo.at < CONTADOR_AGENTE_VIGENCIA_MS ? previo.n : 0) + 1;
+    this.contadoresAgente.set(llave, { n, at: Date.now() });
+    return n;
   }
 
   async claimWhatsAppMessage(organizationId: string, messageId: string, _phoneHash: string): Promise<boolean> {
@@ -1580,11 +1967,46 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return customer && customer.organizationId === organizationId ? customer : null;
   }
 
+  /** Nivel de TODOS los clientes de la organizacion (espejo de `restaurantes.customer_tiers`, migracion 054). */
+  private tiersDeOrganizacion(organizationId: string): Map<string, CustomerTier | null> {
+    const clientes = [...this.customers.values()].filter((c) => c.organizationId === organizationId);
+    const resultado = new Map<string, CustomerTier | null>();
+    const gastoPorCliente = this.gastoPorClienteDeOrganizacion(organizationId);
+    const metrica = chooseTierMetric(clientes, gastoPorCliente);
+    if (metrica === "sin_datos") {
+      for (const c of clientes) resultado.set(c.id, null);
+      return resultado;
+    }
+    const valueOf = (c: Customer) => (metrica === "gasto" ? (gastoPorCliente.get(c.id) ?? 0) : c.orderCount);
+    const percentiles = computeMidRankPercentiles(clientes, valueOf);
+    for (const c of clientes) resultado.set(c.id, tierFromPercentile(percentiles.get(c) ?? 0));
+    return resultado;
+  }
+
+  private ultimoPedidoDeCliente(customerId: string): string | null {
+    let ultimo: string | null = null;
+    for (const o of this.orders) {
+      if (o.customerId === customerId && (ultimo === null || o.createdAt > ultimo)) ultimo = o.createdAt;
+    }
+    return ultimo;
+  }
+
   async listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage> {
     const search = filter.search?.trim().toLowerCase();
+    const tiers = this.tiersDeOrganizacion(organizationId);
+    const limiteInactivoMs = filter.inactivoDias === undefined ? null : Date.now() - filter.inactivoDias * 86_400_000;
     let matching = [...this.customers.values()].filter((c) => {
       if (c.organizationId !== organizationId) return false;
       if (search && !(c.name?.toLowerCase().includes(search) || c.phone.includes(search))) return false;
+      if (filter.nivel !== undefined && tiers.get(c.id) !== filter.nivel) return false;
+      if (filter.frecuencia === "una_vez" && c.orderCount !== 1) return false;
+      if (filter.frecuencia === "recurrentes" && c.orderCount < 2) return false;
+      if (limiteInactivoMs !== null) {
+        const ultimo = this.ultimoPedidoDeCliente(c.id);
+        // Quien nunca ha pedido cuenta como "sin pedir" (igual que clientes_cartera).
+        if (ultimo !== null && Date.parse(ultimo) >= limiteInactivoMs) return false;
+      }
+      if (filter.propertyId !== undefined && !this.orders.some((o) => o.customerId === c.id && o.propertyId === filter.propertyId)) return false;
       return true;
     });
     // Orden por `id asc` — mismo criterio (y mismo formato de cursor: el último id
@@ -1597,9 +2019,76 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       matching = matching.filter((c) => c.id > cursorBoundary);
     }
 
-    const page = matching.slice(0, filter.limit);
+    const page = matching.slice(0, filter.limit).map((c) => ({ ...c, tier: tiers.get(c.id) ?? null, lastOrderAt: this.ultimoPedidoDeCliente(c.id) }));
     const nextCursor = matching.length > filter.limit ? page[page.length - 1]!.id : null;
-    return { customers: page, nextCursor };
+    return { customers: page, nextCursor, filtrosDisponibles: true };
+  }
+
+  async getCarteraKpis(organizationId: string): Promise<CarteraKpis> {
+    const clientes = [...this.customers.values()].filter((c) => c.organizationId === organizationId);
+    const vigentes = new Set(["pending", "preparando", "en_camino", "entregado", "completado"]);
+    const pedidos = this.orders.filter((o) => o.organizationId === organizationId && o.customerId && vigentes.has(o.status));
+    const ticket = pedidos.length === 0 ? null : Math.round((pedidos.reduce((suma, o) => suma + o.total, 0) / pedidos.length) * 100) / 100;
+    const conPedidos = clientes
+      .filter((c) => c.orderCount > 0)
+      .sort((a, b) => b.orderCount - a.orderCount || (this.ultimoPedidoDeCliente(b.id) ?? "").localeCompare(this.ultimoPedidoDeCliente(a.id) ?? "") || a.id.localeCompare(b.id));
+    const top = conPedidos[0];
+    return {
+      disponible: true,
+      total: clientes.length,
+      recurrentes: clientes.filter((c) => c.orderCount >= 2).length,
+      ticketPromedio: ticket,
+      masFrecuente: top ? { customerId: top.id, orderCount: top.orderCount, ultimoPedidoEn: this.ultimoPedidoDeCliente(top.id) } : null,
+    };
+  }
+
+  private readonly customerNotes = new Map<string, string>();
+  private readonly importacionesClientes = new Map<string, Extract<ResultadoImportacionClientes, { disponible: true }>>();
+
+  async importarClientes(organizationId: string, huella: string, filas: readonly FilaImportacionCliente[]): Promise<ResultadoImportacionClientes> {
+    // Un solo hilo: el chequeo + escritura son sincronos, asi que dos llamadas "simultaneas" nunca se entrelazan (espejo de la huella unica).
+    const clave = `${organizationId}:${huella}`;
+    const previa = this.importacionesClientes.get(clave);
+    if (previa) return { ...previa, yaImportado: true };
+    let creados = 0;
+    let actualizados = 0;
+    let sinCambios = 0;
+    let rechazados = 0;
+    for (const f of filas) {
+      if (!/^[0-9]{10}$/.test(f.phone)) {
+        rechazados += 1;
+        continue;
+      }
+      const key = `${organizationId}:${f.phone}`;
+      const existenteId = this.customerIdByOrgPhone.get(key);
+      let id: string;
+      if (!existenteId) {
+        id = randomUUID();
+        this.customers.set(id, { id, organizationId, phone: f.phone, name: f.name, orderCount: 0 });
+        this.customerIdByOrgPhone.set(key, id);
+        if (f.notes) this.customerNotes.set(id, f.notes);
+        creados += 1;
+      } else {
+        id = existenteId;
+        const actual = this.customers.get(id)!;
+        // Nunca pisa el nombre ni la nota conocidos: solo completa lo vacio.
+        const completaNombre = actual.name === null && f.name !== null;
+        const completaNota = !this.customerNotes.has(id) && f.notes !== null;
+        if (completaNombre) this.customers.set(id, { ...actual, name: f.name });
+        if (completaNota) this.customerNotes.set(id, f.notes!);
+        if (completaNombre || completaNota) actualizados += 1;
+        else sinCambios += 1;
+      }
+      if (f.address) await this.addCustomerAddressIfNew(id, f.address, organizationId);
+    }
+    const resultado = { disponible: true as const, yaImportado: false, total: filas.length, creados, actualizados, sinCambios, rechazados };
+    this.importacionesClientes.set(clave, resultado);
+    return resultado;
+  }
+
+  async getCustomerNotes(organizationId: string, customerId: string): Promise<string | null> {
+    const cliente = this.customers.get(customerId);
+    return cliente && cliente.organizationId === organizationId ? (this.customerNotes.get(customerId) ?? null) : null;
   }
 
   // ---- FASE 3 (producto) -- bitácora de auditoría del staff ----
@@ -1931,6 +2420,14 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       promoted.push(updated);
     }
     return { disponible: true, promoted };
+  }
+
+  async listPromotedOrdersWithoutComanda(options: { readonly hours: number; readonly limit: number }): Promise<readonly Order[]> {
+    const desde = Date.now() - options.hours * 3_600_000;
+    return this.orders
+      .filter((o) => o.promovidoAt && Date.parse(o.promovidoAt) >= desde && (o.status === "pending" || o.status === "preparando"))
+      .sort((a, b) => (a.promovidoAt ?? "").localeCompare(b.promovidoAt ?? ""))
+      .slice(0, options.limit);
   }
 
   async listBranchDeliveryZoneIds(propertyId: string): Promise<readonly string[]> {

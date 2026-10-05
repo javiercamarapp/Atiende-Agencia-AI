@@ -19,6 +19,9 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-citas/tests/whatsapp-llm-turn-handler-zona-horaria.spec.ts",
   "packages/domain-citas/tests/reminders-ventana-cron.spec.ts",
   "packages/domain-restaurantes/tests/zona-horaria-branch-savepoint.spec.ts",
+  // QA R1 automatizacion-03: el "Hoy" del tablero de ventas sigue la zona del negocio, no la del proceso.
+  "packages/domain-restaurantes/tests/qa-r1-automatizacion-kpis-hoy-zona.spec.ts",
+  "packages/domain-restaurantes/tests/kpis-zona-horaria.spec.ts",
   "packages/domain-restaurantes/tests/pm-c4-herramientas.spec.ts",
   "packages/domain-restaurantes/tests/pm-c5-escenarios-t7.spec.ts",
   "packages/domain-restaurantes/tests/pm-c5-pedido-reciente.spec.ts",

@@ -9,6 +9,7 @@ export type {
   BranchTimezoneConfig,
   CallbackRequest,
   CallbackRequestInput,
+  CallbackRegistro,
   CanalPedido,
   Category,
   CategoryPatch,
@@ -16,8 +17,13 @@ export type {
   CreateOrderItemInput,
   Customer,
   CustomerAddress,
+  CarteraKpis,
+  CustomerFrecuencia,
   CustomerListFilter,
+  CustomerListItem,
   CustomerListPage,
+  FilaImportacionCliente,
+  ResultadoImportacionClientes,
   CustomerLookupResult,
   CustomerTier,
   DefaultComplement,
@@ -60,7 +66,7 @@ export type {
   WhatsappBranchChannel,
   WhatsappChannelConfig,
 } from "./types.ts";
-export { EMPTY_BRANCH_POLICY } from "./types.ts";
+export { EMPTY_BRANCH_POLICY, CUSTOMER_FRECUENCIAS, CUSTOMER_TIERS } from "./types.ts";
 
 export { OrderConflictError, OrderValidationError, PromotionError, WhatsappNumberInUseError } from "./errors.ts";
 
@@ -82,7 +88,9 @@ export type { ReglasSucursalArgs, ReglasSucursalResultado } from "./reglas-pedid
 
 export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, applyPromotionToOrder, computeBogoDiscount, computeCortesiaDiscount, selectAutomaticPromotion, PROMOTION_CODE_PATTERN } from "./promotions.ts";
 
-export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient } from "./phone.ts";
+export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient, maskPhone } from "./phone.ts";
+export { prepararImportacionClientes, IMPORTACION_MAX_FILAS } from "./clientes-importacion.ts";
+export type { ErrorRenglonImportacion, PreparacionImportacion } from "./clientes-importacion.ts";
 
 export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole, ACCIONES_RESTAURANTES, ACCIONES_RESTAURANTES_LISTA, rolesParaAccion, puedeEjecutar, permisosEfectivos } from "./roles.ts";
 export type { RestaurantesRole, AccionRestaurantes } from "./roles.ts";
@@ -218,6 +226,7 @@ export {
   isStatsPeriod,
   buildTrendBuckets,
   buildComparisonPeriods,
+  horasAbiertasHoy,
   periodLabel,
   getSalesKpis,
   getSalesTrendKpis,
@@ -227,10 +236,11 @@ export {
   getCustomerKpis,
   computeCustomerKpis,
 } from "./kpis.ts";
-export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
+export type { OpcionesTramos, StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";
+export * from "./autopiloto/index.ts";
 export * from "./repartidor-perfil/index.ts";
 export * from "./exportar/index.ts";
 export { PM_COPY, buildPmSystemPrompt, pmCustomerContextBlock, saludoPorHora } from "./whatsapp/perfil-pm.ts";
@@ -245,7 +255,33 @@ export type {
   WhatsAppAgentConfigInput,
   WhatsAppAgentConfigRow,
 } from "./types.ts";
-export { WhatsAppAgentConfigConflictError } from "./errors.ts";
+export { WhatsAppAgentConfigConflictError, ClienteMemoriaNoDisponibleError } from "./errors.ts";
+
+// Cliente 360 (migracion 049): memoria del cliente, gustos, repetir pedido y ficha del staff.
+export { PREFERENCE_KINDS, isPreferenceKind, POLITICA_POR_OMISION } from "./cliente-360/types.ts";
+export type {
+  ClosureAddress,
+  ClosureObservation,
+  CustomerAddressChanges,
+  CustomerAddressDetail,
+  CustomerFicha,
+  CustomerMemory,
+  CustomerPolicy,
+  CustomerPreference,
+  CustomerProfilePatch,
+  CustomerReliability,
+  OrderClosureInput,
+  PastOrder,
+  PreferenceAction,
+  PreferenceKind,
+  TasteProposal,
+} from "./cliente-360/types.ts";
+export { extraerObservaciones, extraerDomicilio, proponerGustos, describirGusto, MIN_VECES_PARA_PROPONER } from "./cliente-360/gustos.ts";
+export { repetirPedido, elegirPedido } from "./cliente-360/repetir.ts";
+export type { CambioDeRepeticion, PedidoRepetido, RenglonRepetido } from "./cliente-360/repetir.ts";
+export { cargarMemoria, cerrarCicloDelCliente, evaluarReincidencia } from "./cliente-360/memoria.ts";
+export type { DecisionReincidencia } from "./cliente-360/memoria.ts";
+export type { PedidoAnteriorResumen } from "./types.ts";
 export {
   AGENTE_LIMITES,
   ESPERA_RAFAGAS_MAX_SEGUNDOS,
@@ -309,7 +345,7 @@ export {
   validarVentanaProgramacion,
 } from "./pedidos-programados.ts";
 export type { PromocionProgramados } from "./pedidos-programados.ts";
-export { avisarProgramadosPromovidos } from "./pedidos-programados-avisos.ts";
+export { ATRASO_PROGRAMADO_MIN, avisarProgramadosPromovidos, emitirAvisoProgramadoEnCocina, esPromocionAtrasada } from "./pedidos-programados-avisos.ts";
 export type { ResumenAvisosProgramados } from "./pedidos-programados-avisos.ts";
 export { etiquetaHoraLocal } from "./horarios.ts";
 export type { OrderScheduleInfo } from "./types.ts";
