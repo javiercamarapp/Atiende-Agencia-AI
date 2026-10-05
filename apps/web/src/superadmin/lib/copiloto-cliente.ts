@@ -68,10 +68,10 @@ export async function consultarEstadoSuperadmin(apiBaseUrl: string, token: strin
   }
 }
 
-/** Transporte del chat de plataforma: el generico, con step-up automatico (una consulta financiera sin MFA reciente abre el dialogo y se reintenta). */
+/** Transporte del chat de plataforma: el generico, con step-up automatico (una consulta financiera sin MFA reciente abre el dialogo y se reintenta). Sin "Fijar": el servidor de plataforma aun no tiene `/pins` (los fijados viven por organizacion; ver docs/SUPERADMIN_COPILOTO.md, huecos). */
 export function crearTransporteSuperadmin(apiBaseUrl: string, token: string, fetchImpl?: typeof fetch): CopilotoTransporteVertical {
   const conStepUp: typeof fetch = (input, init) => fetchConStepUp(apiBaseUrl, token, String(input), init ?? {});
-  return crearTransporteCopiloto({ baseUrl: `${base(apiBaseUrl)}${RUTA_COPILOTO}`, fetchImpl: fetchImpl ?? conStepUp, token });
+  return crearTransporteCopiloto({ baseUrl: `${base(apiBaseUrl)}${RUTA_COPILOTO}`, fetchImpl: fetchImpl ?? conStepUp, token, fijados: false });
 }
 
 const ESTADOS: ReadonlySet<string> = new Set<CopilotoAccionEstado>(["pendiente", "ejecutada", "fallida", "cancelada", "vencida", "archivada"]);

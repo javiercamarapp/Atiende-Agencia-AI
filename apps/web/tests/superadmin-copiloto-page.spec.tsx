@@ -472,6 +472,105 @@ describe("cliente del Copiloto", () => {
   });
 });
 
+const ID_CONV = "11111111-1111-4111-8111-111111111111";
+const FIN_TABLA = {
+  t: "fin",
+  conversacionId: ID_CONV,
+  seq: 2,
+  respuesta: {
+    status: "ok",
+    text: "El MRR de octubre es 1,000 MXN.",
+    blocks: [{ tool: "mrr", title: "MRR y ARR", columns: [{ key: "vertical", label: "Vertical", kind: "text" }, { key: "mrr_mxn", label: "MRR (MXN)", kind: "mxn" }], rows: [{ vertical: "restaurantes", mrr_mxn: 1000 }], truncated: false }],
+    sources: [{ tool: "mrr", source: "MRR esperado", scopeLabel: "Toda la plataforma" }],
+    toolsUsed: ["mrr"],
+  },
+};
+
+describe("paridad con el chat de las verticales", () => {
+  it("las consultas CFO son chips y tarjetas: MRR es consulta directa a `mrr` (el cliente maneja el step-up)", async () => {
+    instalarFetch(undefined, undefined, FIN_TABLA);
+    const root = await montarPagina();
+    click(porTexto(root, "¿Cuál es mi MRR por vertical?")!);
+    await esperar();
+    const post = llamadas.find((l) => l.method === "POST");
+    expect(post?.body).toEqual({ tool: "mrr", label: "¿Cuál es mi MRR por vertical?", conversationId: "new" });
+    expect(root.textContent).toContain("El MRR de octubre");
+    const fuente = [...root.querySelectorAll("a")].find((a) => a.textContent?.includes("MRR"));
+    expect(fuente?.getAttribute("href")).toBe("/superadmin/ejecutivo");
+  });
+
+  it("tras una respuesta con cifras ofrece Copiar, CSV y Descargar PDF (POST real a /reporte?seq=N) y NO ofrece Fijar (el servidor de plataforma no tiene /pins)", async () => {
+    const descargas: string[] = [];
+    URL.createObjectURL = () => "blob:reporte";
+    URL.revokeObjectURL = () => undefined;
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      descargas.push(this.download);
+    });
+    instalarFetch(
+      undefined,
+      (url, init) =>
+        url.includes(`/superadmin/copiloto/conversaciones/${ID_CONV}/reporte?seq=2`) && init.method === "POST"
+          ? new Response(new Blob(["%PDF-1.4"]), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": 'attachment; filename="reporte-plataforma-2026-10-04.pdf"' } })
+          : undefined,
+      FIN_TABLA,
+    );
+    const root = await montarPagina();
+    await preguntar(root, "mrr");
+    expect(root.querySelector('[aria-label="Copiar respuesta"]')).not.toBeNull();
+    expect(root.querySelector('[aria-label="Descargar CSV"]')).not.toBeNull();
+    expect(root.querySelector('[aria-label="Regenerar respuesta"]')).not.toBeNull();
+    expect(root.querySelector('[aria-label^="Fijar"]')).toBeNull();
+    click(root.querySelector('[aria-label="Descargar PDF"]')!);
+    await esperar();
+    const pdf = llamadas.find((l) => l.url.includes("/reporte"));
+    expect(pdf?.method).toBe("POST");
+    expect(pdf?.url).toBe(`${API}/superadmin/copiloto/conversaciones/${ID_CONV}/reporte?seq=2`);
+    expect(pdf?.headers["authorization"]).toBe(`Bearer ${TOKEN}`);
+    expect(descargas).toEqual(["reporte-plataforma-2026-10-04.pdf"]);
+  });
+
+  it("un fallo del reporte (422 sin cifras, 429, 503) se dice con un mensaje honesto, nunca un 500 crudo", async () => {
+    URL.createObjectURL = () => "blob:x";
+    instalarFetch(undefined, (url) => (url.includes("/reporte") ? json(429, { code: "too_many_requests" }) : undefined), FIN_TABLA);
+    const root = await montarPagina();
+    await preguntar(root, "mrr");
+    click(root.querySelector('[aria-label="Descargar PDF"]')!);
+    await esperar();
+    expect(root.textContent).toContain("Pediste muchos reportes en poco tiempo");
+  });
+
+  it("el Historial es el sidebar de chats: lista del servidor, buscar, renombrar (PATCH), borrar con confirmacion (DELETE) y chat nuevo", async () => {
+    const lista = [
+      { id: ID_CONV, titulo: "Costos de IA de octubre", actualizadaEn: new Date().toISOString() },
+      { id: "33333333-3333-4333-8333-333333333333", titulo: "Margen por cliente", actualizadaEn: new Date().toISOString() },
+    ];
+    instalarFetch(undefined, (url, init) => {
+      if (url.endsWith("/superadmin/copiloto/conversaciones") && (init.method ?? "GET") === "GET") return json(200, { disponible: true, conversaciones: lista });
+      if (url.includes("/superadmin/copiloto/conversaciones/") && init.method === "PATCH") return json(200, { id: ID_CONV, titulo: "Octubre" });
+      if (url.includes("/superadmin/copiloto/conversaciones/") && init.method === "DELETE") return new Response(null, { status: 204 });
+      return undefined;
+    });
+    const root = await montarPagina();
+    click(root.querySelector('[aria-label="Historial de chats"]')!);
+    await esperar();
+    const panel = document.querySelector('[role="dialog"][aria-label="Historial de chats"], aside[aria-label="Historial de chats"]') ?? document.body;
+    expect(panel.textContent).toContain("Costos de IA de octubre");
+    expect(panel.textContent).toContain("Margen por cliente");
+    changeValue(document.querySelector('[aria-label="Buscar chats"]')!, "margen");
+    await esperar();
+    expect(document.body.textContent).not.toContain("Costos de IA de octubre");
+    expect(document.body.textContent).toContain("Margen por cliente");
+    expect(document.querySelector('[aria-label="Nuevo chat"]')).not.toBeNull();
+    click(document.querySelector('[aria-label="Borrar Margen por cliente"]')!);
+    await esperar();
+    const confirmar = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Borrar")!;
+    click(confirmar);
+    await esperar();
+    const del = llamadas.find((l) => l.method === "DELETE");
+    expect(del?.url).toBe(`${API}/superadmin/copiloto/conversaciones/33333333-3333-4333-8333-333333333333`);
+  });
+});
+
 describe("config", () => {
   it("cada chip y pregunta de tarjeta tiene consulta directa y no hay entradas huerfanas", () => {
     const preguntas = [...new Set([...COPILOTO_SUPERADMIN.sugerencias, ...COPILOTO_SUPERADMIN.categorias.flatMap((c) => c.preguntas)])];
