@@ -41,8 +41,22 @@ function toProductoEncontrado(product: { id: string; name: string; description: 
     packSize: extraerPackSize(product.name, product.description),
     requiresAdultConfirmation: requiresAdultConfirmation(product.name, product.categoryName),
     requiresTortilla: requiresTortillaChoice(product.name, product.description),
+    categoryName: product.categoryName,
     ...(product.noDomicilio === true ? { noDomicilio: true } : {}),
   };
+}
+
+/** Categorias que NO traen las 9 salsas incluidas: un pedido solo de ellas no tiene salsa que duplicar (QA-PM-R2-reglas-14: 2 Coca-Cola con doble salsa
+ * cobraban un Extra Salsa de $19). */
+const CATEGORIAS_SIN_SALSA = /^(?:bebidas?|aguas frescas|refrescos|cervezas|licores y cocktails|postres|guarniciones extra)$/i;
+
+/** La doble porcion de salsa exige al menos un platillo que traiga salsas incluidas. */
+export function assertDobleSalsaAplica(products: readonly ProductoEncontrado[], orderedProductIds: readonly string[], doubleSalsas: readonly unknown[] | undefined): void {
+  if (!doubleSalsas || doubleSalsas.length === 0) return;
+  const ordenados = orderedProductIds.map((id) => products.find((p) => p.id === id)).filter((p): p is ProductoEncontrado => p !== undefined);
+  if (ordenados.length > 0 && ordenados.every((p) => p.categoryName !== null && p.categoryName !== undefined && CATEGORIAS_SIN_SALSA.test(p.categoryName))) {
+    throw new OrderValidationError("La doble porción de salsa solo aplica a platillos que ya traen salsas incluidas; este pedido es solo de bebidas o postres. Quite la doble salsa y vuelva a cotizar.");
+  }
 }
 
 /** Búsqueda real de productos disponibles en una sucursal — port literal de
@@ -310,6 +324,7 @@ export async function prepareCreateOrder(
   }
 
   // Doble porcion de salsas: extra COBRADO (producto "Extra salsa" del catalogo, precio de catalogo).
+  assertDobleSalsaAplica(resolved.products, resolved.items.map((i) => i.productId), payload.doubleSalsas);
   const doubleSalsaLine = buildDoubleSalsaLine(resolved.products, payload.doubleSalsas ?? []);
   if (doubleSalsaLine) {
     total = Math.round((total + doubleSalsaLine.lineTotal) * 100) / 100;
@@ -609,6 +624,11 @@ export async function quoteOrder(
   const instante = programadoPara ? new Date(programadoPara) : null;
   const resolved = await resolveBranchOrderItems(repo, branch.propertyId, args.items);
   const baseQuote = buildOrderQuoteFromProducts(resolved.items, resolved.products, { adultConfirmed: args.adultConfirmed, canal });
+  // Misma validacion que al crear: una doble salsa fuera del catalogo (R07) se cotizaba y despues crear_pedido la rechazaba.
+  if (args.doubleSalsas !== undefined && (!Array.isArray(args.doubleSalsas) || args.doubleSalsas.length > DEFAULT_COMPLEMENTS.length || args.doubleSalsas.some((salsa) => !(DEFAULT_COMPLEMENTS as readonly string[]).includes(salsa)))) {
+    throw new OrderValidationError("La doble porción solo aplica a las salsas incluidas del menú.");
+  }
+  assertDobleSalsaAplica(resolved.products, resolved.items.map((i) => i.productId), args.doubleSalsas);
   const doubleSalsaLine = buildDoubleSalsaLine(resolved.products, args.doubleSalsas ?? []);
   const quote: OrderQuote = doubleSalsaLine
     ? { ...baseQuote, lines: [...baseQuote.lines, doubleSalsaLine], total: Math.round((baseQuote.total + doubleSalsaLine.lineTotal) * 100) / 100 }

@@ -1,5 +1,6 @@
 // QA-PM-R2 (WhatsApp y voz): el pedido CIERRA aunque el modelo vuelva a cotizar en el turno del "si" (whatsapp-01, P0); una hora programada vacia
 // es "sin programar" (reglas-02); la hora de recogida la valida el SERVIDOR con su reloj (reglas-05, voz-03, whatsapp-15). Reloj: solo `Date`.
+import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invokeAgentTool } from "../src/agent-tools/registry.ts";
 import { OrderFlowViolationError, resetOrderFlowWarningForTests } from "../src/agent-tools/order-flow.ts";
@@ -144,5 +145,60 @@ describe("hora_recogida la valida el servidor con su reloj (QA-PM-R2-reglas-05 /
   it("hora_recogida en un pedido a domicilio se rechaza (solo aplica a recoger)", async () => {
     const s = setup();
     await expect(s.quote({ canal: "domicilio", hora_recogida: "2026-10-06T14:00:00-06:00" })).rejects.toThrow(/solo aplica a pedidos para recoger/);
+  });
+});
+
+describe("pedido grande partido en dos pedidos (QA-PM-R2-reglas-08)", () => {
+  it("el segundo pedido de la misma conversacion suma al primero y escala pedido_grande en vez de ir a cocina", async () => {
+    const f = buildRestaurantFixture();
+    await f.repo.upsertWhatsAppAgentConfig(f.organizationId, null, { perfil: "taqueria_pm", agentName: "Lupita", businessName: "Los Taquitos de PM", toneStyle: "formal_directo", deliveryTimeText: "de 40 a 50 minutos" });
+    const kilos = randomUUID();
+    f.repo.seedCategory({ id: kilos, organizationId: f.organizationId, name: "Kilos a Domicilio" });
+    const arrachera = randomUUID();
+    const bistec = randomUUID();
+    for (const [id, name, price] of [[arrachera, "Arrachera — 2 kg", 2800], [bistec, "Bistec de Res — 2 kg", 2200]] as const) {
+      f.repo.seedProduct({ id, organizationId: f.organizationId, categoryId: kilos, name, description: null, searchKeywords: [] });
+      f.repo.seedBranchProduct({ propertyId: f.propertyId, productId: id, price, isAvailable: true });
+    }
+    // Cliente con historial para que no entre por la regla de "sin historial en efectivo".
+    await f.repo.upsertCustomer(f.organizationId, "9991234567", "Nora");
+    let turn = 1;
+    const ctx = () => ({ organizationId: f.organizationId, channel: "whatsapp" as const, phone: "9991234567", flow: { key: "k:grande", turn: String(turn), now: () => Date.now() } });
+    const base = { branch_slug: "fco-montejo", canal: "recoger" };
+    const pedir = async (id: string, name: string) => {
+      const items = [{ product_id: id, product_name: name, requested_quantity: 1 }];
+      await invokeAgentTool(f.repo, ctx(), "cotizar_pedido", { ...base, items });
+      turn += 1;
+      await invokeAgentTool(f.repo, ctx(), "confirmar_resumen", {});
+      return invokeAgentTool(f.repo, ctx(), "crear_pedido", { ...base, items, customer_name: "Nora", payment_method: "tarjeta" });
+    };
+    const primero = await pedir(arrachera, "Arrachera — 2 kg"); // $2,800: no es grande por si solo
+    expect(primero.orderId).not.toBeNull();
+    turn += 1;
+    const segundo = await pedir(bistec, "Bistec de Res — 2 kg"); // $2,200: la sesion suma $5,000 > $4,000
+    expect(segundo.orderId).toBeNull();
+    expect(segundo.result).toMatchObject({ pedido_grande: true, escalado: true });
+    const avisos = f.repo.listCallbackRequests(f.organizationId);
+    expect(avisos.some((a) => a.reason === "escalada:pedido_grande" && /Total \$5000\.00/.test(a.message ?? ""))).toBe(true);
+  });
+});
+
+describe("doble salsa (QA-PM-R2-reglas-13 / 14)", () => {
+  it("una doble salsa fuera del catalogo se rechaza al COTIZAR (antes cotizaba $145 y crear la rechazaba)", async () => {
+    const s = setup();
+    await expect(s.quote({ doble_salsas: ["roja"] })).rejects.toThrow(/solo aplica a las salsas incluidas/);
+  });
+
+  it("un pedido de solo bebidas (Coca-Cola) con doble salsa se rechaza: no hay salsa incluida que duplicar", async () => {
+    const f = buildRestaurantFixture();
+    const extra = randomUUID();
+    f.repo.seedProduct({ id: extra, organizationId: f.organizationId, categoryId: f.categories.tacos, name: "Extra Salsa", description: null, searchKeywords: [] });
+    f.repo.seedBranchProduct({ propertyId: f.propertyId, productId: extra, price: 19, isAvailable: true });
+    const ctx = { organizationId: f.organizationId, channel: "whatsapp" as const, phone: "9991234567" };
+    const bebidas = [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 2 }];
+    await expect(invokeAgentTool(f.repo, ctx, "cotizar_pedido", { branch_slug: "fco-montejo", canal: "recoger", items: bebidas, doble_salsas: ["salsa_roja"] })).rejects.toThrow(/solo de bebidas/);
+    // con un platillo si aplica
+    const ok = await invokeAgentTool(f.repo, ctx, "cotizar_pedido", { branch_slug: "fco-montejo", canal: "recoger", items: [{ product_id: f.products.tacosPastor, product_name: "Tacos de Bistec de Res (orden de 3)", requested_quantity: 3, tortilla: "maiz" }], doble_salsas: ["salsa_roja"] });
+    expect((ok.raw as { total: number }).total).toBe(164 + 19);
   });
 });

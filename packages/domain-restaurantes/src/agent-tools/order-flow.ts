@@ -41,6 +41,10 @@ export interface OrderFlowContext {
    * aunque ese turno no llame ninguna herramienta. Ausente en filas guardadas antes de este campo (guardia entonces solo en el turno que cotiza). */
   readonly quotedTotal?: number;
   readonly quotedAmounts?: readonly number[];
+  /** Pedidos YA creados en esta conversacion/llamada: total y kilos acumulados. La guardia de pedido grande los suma al siguiente pedido para que partir un pedido
+   * grande en dos no la esquive (QA-PM-R2-reglas-08). Ausente en filas anteriores = 0. */
+  readonly sessionTotal?: number;
+  readonly sessionPesoKg?: number;
   readonly confirmedAtMs?: number;
   readonly claimedAtMs?: number;
   readonly orderId?: string;

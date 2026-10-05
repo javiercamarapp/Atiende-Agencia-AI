@@ -649,6 +649,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         quotedPrices,
         quotedTotal: quotedQuote.total,
         quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
+        ...(snap.context?.sessionTotal ? { sessionTotal: snap.context.sessionTotal, sessionPesoKg: snap.context.sessionPesoKg ?? 0 } : {}),
       });
       if (res === "written") return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash }, quoteHash };
       if (res === "unavailable") return outcome;
@@ -701,8 +702,13 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   if (!claimed) throw new OrderValidationError(CONFLICT_MESSAGE);
 
   try {
-    const outcome = await dispatchTool(repo, ctx, name, input, claimed.context.quotedPrices);
-    await writeFlow(repo, ctx, flow, claimed.version, "creado", { ...claimed.context, orderId: outcome.orderId ?? undefined });
+    const outcome = await dispatchTool(repo, ctx, name, input, claimed.context.quotedPrices, { total: claimed.context.sessionTotal ?? 0, pesoKg: claimed.context.sessionPesoKg ?? 0 });
+    // Un pedido realmente creado suma a lo acumulado de la sesion (un pedido grande retenido o simulado no: no tiene orderId).
+    const creado = outcome.orderId ? (outcome.raw as { total?: unknown; items?: readonly { name: string; quantity: number }[] } | undefined) : undefined;
+    const acumulado = creado
+      ? { sessionTotal: (claimed.context.sessionTotal ?? 0) + (typeof creado.total === "number" ? creado.total : 0), sessionPesoKg: (claimed.context.sessionPesoKg ?? 0) + pesoTotalKg(creado.items ?? []) }
+      : {};
+    await writeFlow(repo, ctx, flow, claimed.version, "creado", { ...claimed.context, ...acumulado, orderId: outcome.orderId ?? undefined });
     return outcome;
   } catch (err) {
     // Error de negocio (horario, zona, minimo...): vuelve a "confirmado" para poder corregir/reintentar.
@@ -758,6 +764,8 @@ async function dispatchTool(
   input: Record<string, unknown>,
   /** Huella de precios que el cliente confirmo (solo crear_pedido con maquina de estados activa). */
   expectedPrices?: string,
+  /** Total y kilos de los pedidos ya creados en esta sesion (solo crear_pedido con maquina de estados activa): la guardia de pedido grande los suma. */
+  sesionPrevia?: { readonly total: number; readonly pesoKg: number },
 ): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
@@ -891,7 +899,7 @@ async function dispatchTool(
               throw new OrderFlowViolationError("precio_cambio", "Los precios del menú cambiaron después de que confirmaste. Vuelve a revisar tu pedido para ver el total actualizado.");
             }
             // Pedido grande (decision de PM, 2-oct): lo hace cumplir el SERVIDOR aunque el modelo olvide escalar.
-            if (ctx.channel !== "web") await assertNoEsPedidoGrande(repo, prepared);
+            if (ctx.channel !== "web") await assertNoEsPedidoGrande(repo, prepared, sesionPrevia);
           },
         });
       } catch (err) {
@@ -928,20 +936,22 @@ async function dispatchTool(
 
 /** Lanza `PedidoGrandeRetenidoError` si el pedido ya cotizado supera el umbral de pedido grande de PM. Solo organizaciones con
  * perfil `taqueria_pm` y con el motivo `pedido_grande` encendido; sin configuracion (base sin migrar) no aplica. */
-async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: PreparedOrder): Promise<void> {
+async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: PreparedOrder, sesionPrevia?: { readonly total: number; readonly pesoKg: number }): Promise<void> {
   const config = await repo.findWhatsAppAgentConfig(prepared.payload.organizationId, prepared.branch.propertyId);
   if (!config || config.perfil !== "taqueria_pm" || (config.escalationReasonsOff ?? []).includes("pedido_grande")) return;
-  const pesoKg = pesoTotalKg(prepared.orderItems);
+  // Se suman los pedidos que esta misma conversacion/llamada ya creo: partir un pedido grande en dos no esquiva la regla.
+  const pesoKg = pesoTotalKg(prepared.orderItems) + (sesionPrevia?.pesoKg ?? 0);
+  const totalSesion = prepared.total + (sesionPrevia?.total ?? 0);
   const cliente = await repo.findCustomerByPhone(prepared.payload.organizationId, normalizePhone(prepared.payload.customerPhone));
   const motivo = evaluarPedidoGrande({
-    total: prepared.total,
+    total: totalSesion,
     pesoKg,
     pagaEfectivo: prepared.payload.paymentMethod === "efectivo",
     sinHistorial: !cliente || cliente.orderCount === 0,
   });
   if (!motivo) return;
-  const resumen = resumenPedidoGrande({ motivo, total: prepared.total, pesoKg, items: prepared.orderItems, canal: prepared.payload.canal, paymentMethod: prepared.payload.paymentMethod });
-  throw new PedidoGrandeRetenidoError(motivo, prepared.total, pesoKg, resumen);
+  const resumen = resumenPedidoGrande({ motivo, total: totalSesion, totalDeEstePedido: prepared.total, pesoKg, items: prepared.orderItems, canal: prepared.payload.canal, paymentMethod: prepared.payload.paymentMethod });
+  throw new PedidoGrandeRetenidoError(motivo, totalSesion, pesoKg, resumen);
 }
 
 /** En vez de crear el pedido: deja el aviso `escalada:pedido_grande` (con el resumen) para que la sucursal lo confirme y contacte al
