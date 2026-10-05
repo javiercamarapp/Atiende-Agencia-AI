@@ -7,11 +7,11 @@
 //      agente PIDE el telefono al cliente y lo confirma, y solo con `confirmar_telefono_llamante` (herramienta del worker, una vez por llamada) se emite el token
 //      con ESE telefono; mientras tanto ninguna otra herramienta corre.
 //   3. Contexto de la API (instruccion, interruptor de la sucursal, gasto del mes), token de llamada, conversacion registrada con su modo de entrada.
-//   4. `evaluarInicioLlamada` con el interruptor y el tope mensual: si no pasa, NO se abre sesion con el proveedor: pregrabado + callback.
+//   4. `evaluarInicioLlamada` (dentro de `controlador.iniciar`) con el interruptor y el tope mensual: si no pasa, NO se abre sesion con el proveedor: pregrabado + callback.
 //   5. Escalera, puente de audio, controlador. Al terminar: se vacia la despedida, se cuelga, se registran turnos, costo por escalon y cierre.
 //
 // El worker nunca contesta a medias: sin contexto de la API (o sin token) dice el pregrabado de falla y cuelga, sin abrir sesion con el proveedor.
-import { ControladorLlamada, canonicalizeMexicanPhone, crearEjecutorTools, transporteHttp, evaluarInicioLlamada, LIMITES_POR_DEFECTO } from "@atiende/domain-restaurantes";
+import { ControladorLlamada, canonicalizeMexicanPhone, crearEjecutorTools, transporteHttp, LIMITES_POR_DEFECTO } from "@atiende/domain-restaurantes";
 import type { AbrirSesionLlamada, EjecutorTools, MensajeId, SumideroLog, TransporteTools, VozResultado } from "@atiende/domain-restaurantes";
 import { costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
 import type { EscaleraLlamada, LimitesLlamada, VozSesionLlamada } from "@atiende/voice-core";
@@ -154,7 +154,6 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   };
 
   const tope = resolverTopeMensualMicroUsd(deps.config.topeMensualPlataformaMicroUsd, entrada.topeMensualUsd);
-  const decision = evaluarInicioLlamada({ habilitado: contexto.habilitado, gastoMesMicroUsd: contexto.gastoMesMicroUsd, topeMensualMicroUsd: tope, horaLocal: contexto.horaLocal });
 
   // Tareas NO criticas que ya no retrasan el saludo (corren en segundo plano y se esperan al terminar la llamada, para que ninguna se pierda ni quede colgando):
   //  - modo de entrada / franja del KPI (base sin migrar: 404/503 = "no disponible aun", no es una falla de la llamada);
