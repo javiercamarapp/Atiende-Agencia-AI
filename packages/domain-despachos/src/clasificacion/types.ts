@@ -40,6 +40,12 @@ export interface CorreccionRecord extends CorreccionClasificacion {
   readonly actualizadaEn: string;
 }
 
+export interface HistorialCorreccionManual {
+  readonly cfdiUuid: string;
+  readonly rfcEmisor: string;
+  readonly categoria: string;
+}
+
 export interface CorreccionInput {
   readonly rfcEmisor: string;
   readonly claveProdServ: string | null;
@@ -102,6 +108,8 @@ export interface ClasificacionRepository {
   /** Historial completo de un CFDI, la más reciente primero (tope 50). */
   historial(propertyId: string, invoiceId: string): Promise<LecturaClasificacion<readonly ClasificacionRecord[]>>;
   listarCorrecciones(propertyId: string): Promise<LecturaClasificacion<readonly CorreccionRecord[]>>;
+  /** Correcciones HUMANAS de categoria ya persistidas (filas `manual` de `invoice_classification`), las mas recientes primero (tope 2000): alimentan las sugerencias de regla por RFC. */
+  historialManual(propertyId: string): Promise<LecturaClasificacion<readonly HistorialCorreccionManual[]>>;
   guardarCorreccion(propertyId: string, input: CorreccionInput): Promise<string>;
   eliminarCorreccion(propertyId: string, id: string): Promise<boolean>;
   leerConfig(propertyId: string): Promise<ConfigClasificacion>;

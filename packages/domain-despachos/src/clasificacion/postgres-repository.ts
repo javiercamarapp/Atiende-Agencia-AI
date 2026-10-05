@@ -11,7 +11,8 @@ import {
   ClasificacionSinPermisoError,
   ClasificacionTopeExcedidoError,
 } from "./types.ts";
-import type { ClasificacionAEscribir, ClasificacionRecord, ClasificacionRepository, ConfigClasificacion, CorreccionInput, CorreccionRecord, LecturaClasificacion, MetodoClasificacionRegistrado } from "./types.ts";
+import { CATEGORIAS_CONTABLES } from "../bookkeeping/clasificacion-cfdi.ts";
+import type { ClasificacionAEscribir, ClasificacionRecord, ClasificacionRepository, ConfigClasificacion, CorreccionInput, CorreccionRecord, HistorialCorreccionManual, LecturaClasificacion, MetodoClasificacionRegistrado } from "./types.ts";
 
 const MAX_HISTORIAL = 50;
 const MAX_CORRECCIONES = 1000;
@@ -161,6 +162,20 @@ export class PostgresClasificacionRepository implements ClasificacionRepository 
         [propertyId],
       );
       return rows.map((r) => ({ id: r.id, rfcEmisor: r.rfc_emisor, claveProdServ: r.clave_prod_serv, categoria: r.categoria, cuenta: r.cuenta, autorId: r.autor_id, creadaEn: iso(r.created_at), actualizadaEn: iso(r.updated_at) }));
+    });
+  }
+
+  async historialManual(propertyId: string): Promise<LecturaClasificacion<readonly HistorialCorreccionManual[]>> {
+    return this.leer<readonly HistorialCorreccionManual[]>("sp_despachos_clasificacion_historial_manual", [], async () => {
+      const { rows } = await this.db.query<{ folio: string; rfc_emisor: string; categoria: string }>(
+        `select i.folio_fiscal::text as folio, i.rfc_emisor, c.categoria
+           from despachos.invoice_classification c
+           join despachos.invoice i on i.id = c.invoice_id and i.property_id = c.property_id
+          where c.property_id = $1 and c.method = 'manual' and c.categoria = any($2::text[])
+          order by c.created_at desc, c.id desc limit 2000;`,
+        [propertyId, [...CATEGORIAS_CONTABLES]],
+      );
+      return rows.map((r) => ({ cfdiUuid: r.folio, rfcEmisor: r.rfc_emisor, categoria: r.categoria }));
     });
   }
 

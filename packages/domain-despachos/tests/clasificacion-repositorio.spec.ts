@@ -94,6 +94,13 @@ describe("PostgresClasificacionRepository", () => {
     expect(session.calls).toEqual([]);
   });
 
+  it("historialManual: las filas manuales con RFC y categoria fina; sin migrar (42703) vacio honesto", async () => {
+    const ok = new AbortAwareFakeSession([{ match: /c\.method = 'manual'/, respond: () => [{ folio: "f1", rfc_emisor: "AAA010101AAA", categoria: "seguros" }] }]);
+    expect((await new PostgresClasificacionRepository(ok).historialManual(P)).datos).toEqual([{ cfdiUuid: "f1", rfcEmisor: "AAA010101AAA", categoria: "seguros" }]);
+    const vieja = new AbortAwareFakeSession([{ match: /c\.method = 'manual'/, respond: () => pgError("42703") }]);
+    expect(await new PostgresClasificacionRepository(vieja).historialManual(P)).toEqual({ estado: "no_disponible", datos: [] });
+  });
+
   it("leerConfig: sin fila = valores por omisión (0.7, autoaceptado encendido); sin migrar = disponible false", async () => {
     const vacia = new AbortAwareFakeSession([{ match: /from despachos\.property_config/, respond: () => [] }]);
     expect(await new PostgresClasificacionRepository(vacia).leerConfig(P)).toEqual({ umbral: 0.7, portalAutoaceptar: true, disponible: true });

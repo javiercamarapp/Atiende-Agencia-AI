@@ -16,6 +16,7 @@ export type {
   ConfigClasificacion,
   CorreccionInput,
   CorreccionRecord,
+  HistorialCorreccionManual,
   LecturaClasificacion,
   MetodoClasificacionRegistrado,
 } from "./types.ts";

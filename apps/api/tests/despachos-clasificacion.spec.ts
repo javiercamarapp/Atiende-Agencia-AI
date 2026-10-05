@@ -287,3 +287,33 @@ describe("D-P3-23: avisos in-app de la cola de revision", () => {
     expect(emisiones.length).toBe(antes);
   });
 });
+
+describe("bookkeeping: las correcciones ya no las reenvia el navegador", () => {
+  const clasificar = (cuerpo: unknown) => json(ctx.staff.contador.token, "POST", `${base()}/bookkeeping/clasificar`, cuerpo);
+  const cfdis = [{ cfdiUuid: U(70), rfcEmisor: RFC_PROVEEDOR, tipoCfdi: "I", descripcion: "Renta de laptop" }];
+
+  it("/clasificar aplica con prioridad maxima las correcciones por RFC persistidas (sin que el cliente las mande) y el cuerpo, si trae overrides, gana", async () => {
+    const sin = (await (await clasificar({ cfdis })).json()) as { clasificaciones: { categoria: string; confidence: number }[]; correccionesPersistidas: number };
+    expect(sin.correccionesPersistidas).toBe(0);
+    expect(sin.clasificaciones[0]!.confidence).toBeCloseTo(0.45, 2); // empate: ya no gana el primer patron con 0.65
+    await json(ctx.staff.contador.token, "PUT", `${base()}/clasificacion/correcciones`, { rfcEmisor: RFC_PROVEEDOR, categoria: "equipo_computo" });
+    const con = (await (await clasificar({ cfdis })).json()) as { clasificaciones: { categoria: string; confidence: number }[]; correccionesPersistidas: number };
+    expect(con.correccionesPersistidas).toBe(1);
+    expect(con.clasificaciones[0]).toMatchObject({ categoria: "equipo_computo", confidence: 1 });
+    const cuerpoGana = (await (await clasificar({ cfdis, overrides: [{ cfdiUuid: "x", rfcEmisor: RFC_PROVEEDOR, newCategoria: "seguros" }] })).json()) as { clasificaciones: { categoria: string }[] };
+    expect(cuerpoGana.clasificaciones[0]!.categoria).toBe("seguros");
+  });
+
+  it("/overrides/sugerencias sin cuerpo usa el historial persistido (filas manuales): 2+ correcciones del mismo RFC con la misma categoria sugieren la regla; sin migrar, vacio honesto", async () => {
+    await sembrarFicha();
+    for (const n of [71, 72, 73]) {
+      const r = (await (await importar(cfdiXmlClasificable({ uuid: U(n), descripcion: "Concepto 7788" }))).json()) as RespuestaIngesta;
+      await json(ctx.staff.contador.token, "PUT", `${base()}/cfdi/${r.id}/categoria`, { categoria: "publicidad" });
+    }
+    const r = (await (await json(ctx.staff.contador.token, "POST", `${base()}/bookkeeping/overrides/sugerencias`, {})).json()) as { sugerencias: { rfc: string; suggestedCategoria: string; overrideCount: number }[]; origen: string };
+    expect(r.origen).toBe("persistido");
+    expect(r.sugerencias).toMatchObject([{ rfc: RFC_PROVEEDOR, suggestedCategoria: "publicidad", overrideCount: 3 }]);
+    ctx.clasificacionRepo.disponible = false;
+    expect(await (await json(ctx.staff.contador.token, "POST", `${base()}/bookkeeping/overrides/sugerencias`, {})).json()).toMatchObject({ sugerencias: [], estado: "no_disponible" });
+  });
+});

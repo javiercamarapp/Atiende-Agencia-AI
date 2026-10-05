@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { CATEGORIAS_CONTABLES, CATEGORIAS_GRUESAS } from "../bookkeeping/clasificacion-cfdi.ts";
 import { DEFAULT_CONFIDENCE_THRESHOLD } from "../bookkeeping/confianza.ts";
 import { ClasificacionDatosInvalidosError, ClasificacionNoDisponibleError, ClasificacionNoEncontradaError, ClasificacionTopeExcedidoError } from "./types.ts";
-import type { ClasificacionAEscribir, ClasificacionRecord, ClasificacionRepository, ConfigClasificacion, CorreccionInput, CorreccionRecord, LecturaClasificacion } from "./types.ts";
+import type { ClasificacionAEscribir, ClasificacionRecord, ClasificacionRepository, ConfigClasificacion, CorreccionInput, CorreccionRecord, HistorialCorreccionManual, LecturaClasificacion } from "./types.ts";
 
 const RFC_RE = /^[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}$/;
 
@@ -67,6 +67,17 @@ export class InMemoryClasificacionRepository implements ClasificacionRepository 
   async listarCorrecciones(propertyId: string): Promise<LecturaClasificacion<readonly CorreccionRecord[]>> {
     if (!this.disponible) return { estado: "no_disponible", datos: [] };
     return { estado: "ok", datos: [...this.correcciones.values()].filter((c) => c.propertyId === propertyId).sort((a, b) => a.rfcEmisor.localeCompare(b.rfcEmisor)) };
+  }
+
+  async historialManual(propertyId: string): Promise<LecturaClasificacion<readonly HistorialCorreccionManual[]>> {
+    if (!this.disponible) return { estado: "no_disponible", datos: [] };
+    const out: HistorialCorreccionManual[] = [];
+    for (const c of [...this.clasificaciones].reverse()) {
+      if (c.metodo !== "manual" || !CATEGORIAS_CONTABLES.includes(c.categoria)) continue;
+      const rfc = await this.opciones.rfcEmisorDe?.(propertyId, c.invoiceId);
+      if (rfc) out.push({ cfdiUuid: c.invoiceId, rfcEmisor: rfc, categoria: c.categoria });
+    }
+    return { estado: "ok", datos: out.slice(0, 2000) };
   }
 
   async guardarCorreccion(propertyId: string, input: CorreccionInput): Promise<string> {
