@@ -273,11 +273,37 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   },
 
   // ---------- Clientes (ficha) ----------
+  // Politica de reincidencia: va ANTES de `/customers/:customerId` (misma regla que el servidor real, que la registra primero).
+  { metodo: "GET", patron: `${B}/customers/policy`, roles: ["owner", "admin"], manejador: (p) => ({ policy: p.estado.obtener("rest.politica-clientes", () => ({ umbralNoRecogidos: 2, ventanaDias: 90 })) }) },
+  { metodo: "PUT", patron: `${B}/customers/policy`, roles: ["owner", "admin"], manejador: (p) => { p.estado.guardar("rest.politica-clientes", p.cuerpo); return { policy: p.cuerpo }; } },
+  // Ficha completa del cliente (Cliente 360): la pantalla la pide primero; la ficha basica de abajo solo sirve de respaldo (503).
+  {
+    metodo: "GET",
+    patron: `${B}/customers/:customerId/ficha`,
+    manejador: (p) => {
+      if (p.params["customerId"] !== "cli-1") return fallo(404, "Ese cliente no existe");
+      return {
+        ficha: {
+          customer: { id: "cli-1", name: "Marisol Pech", phone: "+529995550101", orderCount: 9, lastOrderAt: "2026-10-02T19:30:00.000Z", createdAt: "2026-06-01T15:00:00.000Z", fechaNacimientoDia: null, fechaNacimientoMes: null, staffNotes: null },
+          addresses: [{ id: "dom-1", address: "Calle 60 #412, Centro", label: "Casa", isDefault: true, accessNotes: null, mapsUrl: null, colonia: "Centro", branchSlug: null, lastUsedAt: "2026-10-02T19:30:00.000Z", timesUsed: 4 }],
+          preferences: [],
+          reliability: { noRecogidos90d: 0, pedidosFalsos: 0, umbral: 2, ventanaDias: 90 },
+          tier: null,
+          orders: [],
+          whatsapp: { conversaciones: 0, ultimaActividad: null, mensajes: 0 },
+          llamadas: [],
+        },
+      };
+    },
+  },
   {
     metodo: "GET",
     patron: `${B}/customers/:customerId`,
     manejador: (p) => ({ customer: p.params["customerId"] === "cli-1" ? { isNew: false, name: "Marisol Pech", orderCount: 9, addresses: [{ address: "Calle 60 #412, Centro", label: "Casa", isDefault: true }], lastOrderItems: [{ name: "Tacos al pastor (orden)", quantity: 2 }], frequentItems: [{ name: "Horchata", quantity: 7 }], tier: "GOLD", agentNotes: ["Prefiere sin cebolla"] } : { isNew: true } }),
   },
+
+  // ---------- Sitio publico (R-38): la pantalla de Configuracion lo pide al abrir ----------
+  { metodo: "GET", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: () => ({ marca: { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null }, guardada: false }) },
 
   // ---------- Sucursales ----------
   { metodo: "GET", patron: `${B}/sucursales`, manejador: (p) => ({ branches: [sucursal(p)] }) },

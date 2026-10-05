@@ -307,6 +307,9 @@ describe("Configuracion > Sitio publico (R-38)", () => {
     expect(texto()).toContain("Publicado");
     expect(rendered!.container.querySelector('[data-testid="portada-marca"]')!.textContent).toContain("Desde 1980");
     expect(guardar().disabled).toBe(true);
+    // Dentro del panel la vista previa no es el titulo de la pagina: el panel ya tiene su <h1> (un solo <h1> por pantalla).
+    expect(rendered!.container.querySelectorAll("h1")).toHaveLength(0);
+    expect(rendered!.container.querySelector('[data-testid="portada-marca"] h2')!.textContent).toBe("Tacos con historia");
   });
 
   it("editar actualiza la vista previa en vivo y guarda por PUT con vacios como null; luego muestra 'Guardado'", async () => {

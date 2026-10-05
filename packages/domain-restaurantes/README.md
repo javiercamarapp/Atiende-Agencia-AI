@@ -125,3 +125,24 @@ organización y se muestra aparte. Solo alertas internas (panel + `restaurantes.
 `InMemoryCierreRepository` (pruebas) y `barrerCierresSucursal` (barrido idempotente por sucursal que avisa solo al CREAR un cierre). Las definiciones de cada
 cifra (venta, ticket, cancelación, tiempo de entrega, comparativo, fecha de negocio) viven en el encabezado de `migrations/041_cierre_dia_resumen_semanal.sql`;
 el cálculo es SQL y lo prueba `scripts/verify-restaurantes-cierre-dia/` contra Postgres real.
+
+## Cliente 360: memoria del cliente (migración 049)
+
+- Código en `src/cliente-360/`: `types.ts`, `gustos.ts` (observaciones de un pedido confirmado y gustos propuestos), `repetir.ts`
+  ("lo mismo de la vez pasada" con precios de hoy), `memoria.ts` (carga, cierre del ciclo y regla de reincidencia), `postgres.ts` (llama a las
+  funciones `security definer` dentro de SAVEPOINT) e `in-memory.ts`.
+- **Por qué una función de sistema para leer:** la sesión de los canales (WhatsApp, voz, web) entra con `auth.uid()` NULL y las policies de
+  `customers`/`orders` exigen membresía, así que no veía ninguna fila. `restaurantes.cliente_memoria(org, telefono)` (solo sistema) devuelve
+  cliente, domicilios (el último usado primero), hasta 30 pedidos sin cancelados, gustos y conteos de reincidencia.
+- **Cierre del ciclo:** `createOrder` llama a `restaurantes.cliente_registrar_pedido` (solo sistema, idempotente por pedido) con el domicilio y
+  las observaciones del pedido (tortilla, salsas, omisiones, nota corta, pago, propina, canal, sucursal). Un gusto se propone desde la 2.ª
+  vez; si el más reciente ya se vio 2 veces gana al más visto (gusto cambiado); los descartados nunca se proponen.
+- **Herramientas del agente** (WhatsApp y voz, `agent-tools/registry.ts`): `historial_pedidos` y `repetir_pedido` (solo pedidos del mismo
+  número; re-cotiza con precios de hoy, entra a la máquina de estados de `cotizar_pedido` y avisa de productos que ya no están o cambiaron de
+  precio). `buscar_cliente` devuelve además `domicilios`, `gustos` y `pedidosAnteriores`.
+- **Reincidencia:** con `umbral` (por omisión 2, 0 = apagada) "no recogido" + pedidos falsos dentro de la ventana (90 días) el pedido de WhatsApp o voz
+  no se crea solo: queda un aviso (`callback_requests`, motivo `aprobacion_pedido_cliente`, con todo el pedido) y el agente solo dice que la
+  sucursal lo confirma. El checkout web no se retiene.
+- **Base sin migrar:** `getCustomerMemory`/`registerOrderClosure` devuelven `undefined` (42883/42P01/42703 dentro de SAVEPOINT) y el agente usa
+  el camino anterior; las operaciones del staff lanzan `ClienteMemoriaNoDisponibleError` (503 "no disponible aún"). Pruebas:
+  `tests/cliente-360-*.spec.ts`; SQL y permisos contra Postgres real en `scripts/verify-restaurantes-cliente-360/`.
