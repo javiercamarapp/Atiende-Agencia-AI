@@ -216,6 +216,14 @@ Idénticas a Likida (`admin/notificaciones.tsx`, `dashboard/notificaciones/lista
 - **Sin migrar**: la lectura cae a las funciones de 0013 (ver Modelo); en esa base las filas no traen categoría, severidad ni
   enlace, así que la página las muestra como «Aviso» sin «Resolver».
 
+## Entrega de WhatsApp de restaurantes
+
+Tres eventos (`restaurantes.whatsapp.entrega_fallida_pedido`, `restaurantes.whatsapp.entrega_fallida` y `restaurantes.whatsapp.entregas_fallidas_varias`) los emite
+`apps/api/src/routes/verticals/restaurantes/whatsapp.ts` cuando Meta reporta `failed` por el webhook (statuses). Dedupe por mensaje (clave = id del mensaje del
+outbox); con mas de 5 fallos en una hora de la misma organizacion sale solo el aviso agrupado (una fila por destinatario y hora UTC). El texto lleva unicamente un
+codigo de motivo o un conteo. Detalle de los motivos y del respaldo por correo en `docs/PLANTILLAS-WHATSAPP.md` ("Estados de entrega"). No se emite nada si la
+base no tiene la migracion `066` (la emision y el registro del status degradan con SAVEPOINT).
+
 ## Estado
 
 - **Parte A (backend)**: productor compartido, dedupe, RLS, leído por usuario, contador barato, API, catálogo y los

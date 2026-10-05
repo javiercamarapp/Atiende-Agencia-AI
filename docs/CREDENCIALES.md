@@ -61,6 +61,11 @@ quitó en esta pasada — ver más abajo).
 | `RENTAS_ACCESS_KEY` | La generas tú: `openssl rand -base64 32` (32 bytes en base64) y la guardas en un gestor de secretos con respaldo (no la reutilices de otra llave) | Sí | Cifrado AES-256-GCM en reposo de la dirección exacta, el código de acceso y las indicaciones de cada unidad de rentas (`@atiende/domain-rentas::acceso/cipher`, migración rentas 028) | Leer o guardar instrucciones (`/rentas/:propertyId/unidades/:unidadId/acceso-instrucciones`) responde 503 «no disponible: falta RENTAS_ACCESS_KEY»; la liberación al huésped no envía nada y queda como error del cron (`/internal/rentas/acceso-huesped`); nunca se guarda ni se muestra texto plano. Perder la llave vuelve ilegibles las instrucciones ya cifradas | No |
 | `HOTELES_IDENTITY_KEY` | La generas tú: `openssl rand -base64 32` (32 bytes en base64) y la guardas en un gestor de secretos con respaldo | Sí | Cifrado AES-256-GCM de la bóveda de identidad de hoteles (`@atiende/domain-hoteles::identity`, migración 031): captura y revelación de documentos | `POST /hoteles/:propertyId/identidad` y `.../revelar` responden 503 explícito (nunca se guarda un documento en claro); la lista avisa `llaveConfigurada:false`. Perder la llave vuelve ilegibles las identidades ya capturadas | No |
 
+Estados de entrega (restaurantes): la app de Meta debe estar suscrita al campo **`messages`** del webhook (Meta for Developers → tu App → WhatsApp →
+Configuration → Webhook fields → `messages` → Subscribe). Los `statuses` de entrega y lectura (`delivered`, `read`, `failed`) llegan por ese mismo campo al
+mismo webhook firmado (`/v1/restaurantes/whatsapp/webhook`); sin la suscripcion los avisos fallidos no se detectan. No hay una variable nueva: usa
+`WHATSAPP_APP_SECRET` y requiere aplicar la migracion `066_whatsapp_estados_entrega.sql` (ver `docs/PLANTILLAS-WHATSAPP.md`, "Estados de entrega").
+
 Nota: `WHATSAPP_VERIFY_TOKEN`/`WHATSAPP_APP_SECRET` son obligatorias para
 **arrancar la API entera**, aunque solo gatean el webhook ENTRANTE de 3 verticales
 — así está escrito hoy en `env.ts::requireEnv`, sin fallback.
