@@ -172,6 +172,9 @@ export class LiveKitTelefonia implements TelefoniaPort {
       await sala.disconnect();
       return;
     }
+    // Solo los NOMBRES de los atributos SIP (nunca los valores: traen telefonos): permiten confirmar en la primera llamada real que LiveKit entrega `sip.phoneNumber`,
+    // `sip.trunkPhoneNumber` y `sip.h.diversion` / `sip.h.history-info` (docs/VOZ-ACTIVACION.md, paso del INVITE).
+    this.o.log?.("sip_atributos", { claves: Object.keys(sip.attributes).filter((k) => k.startsWith("sip.")).sort().join(",").slice(0, 400) });
     const fuente = new AudioSource(HZ_SALIDA_LIVEKIT, 1);
     const pista = LocalAudioTrack.createAudioTrack("agente", fuente);
     await sala.localParticipant?.publishTrack(pista, new TrackPublishOptions({ source: TrackSource.SOURCE_MICROPHONE }));
