@@ -34,6 +34,8 @@ export function licitacionesMatchingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     const offset = parseOffset(c.req.query("offset"));
     const filter = parseTenderListFilter((name) => c.req.query(name));
     const incluirVencidas = c.req.query("incluirVencidas") === "true";
+    // "Plazo vigente" = plazo >= ahora: las convocatorias SIN fecha limite (submission_deadline NULL) quedan fuera de este
+    // listado por omision (NULL >= ahora no es verdadero); se ven con `incluirVencidas=true` o con un filtro de plazo propio.
     const acotarPorPlazo = filter.ids === undefined && !incluirVencidas && filter.deadlineFrom === undefined;
     const effective = acotarPorPlazo ? { ...filter, deadlineFrom: new Date().toISOString() } : filter;
     const [page, profileRecord] = await Promise.all([repo.listTendersPage(organizationId, { ...effective, limit, offset }), repo.findMatchingProfile(organizationId)]);
