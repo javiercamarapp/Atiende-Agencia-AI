@@ -115,10 +115,13 @@ export function parseMapsLink(texto: string): UbicacionEntrega | null {
   return null;
 }
 
-/** Destino de entrega MAS RECIENTE que dio el cliente (pin de WhatsApp o link de Maps), leyendo solo sus mensajes. */
-export function latestDeliveryPin(messages: readonly { readonly role: string; readonly content: string }[]): UbicacionEntrega | null {
+/** Destino de entrega MAS RECIENTE que dio el cliente (pin de WhatsApp o link de Maps), leyendo solo sus mensajes y solo los del pedido EN CURSO:
+ * la fila de la conversacion es una por telefono y acumula todos los pedidos del cliente, asi que la busqueda se detiene en el mensaje del asistente
+ * marcado `pedidoCreado` (el pin de un pedido anterior, por ejemplo el de la oficina de ayer, NO viaja al pedido nuevo con otra direccion). */
+export function latestDeliveryPin(messages: readonly { readonly role: string; readonly content: string; readonly pedidoCreado?: boolean }[]): UbicacionEntrega | null {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i]!;
+    if (message.role === "assistant" && message.pedidoCreado === true) return null;
     if (message.role !== "user") continue;
     const pin = parseSharedLocation(message.content);
     if (pin) return { fuente: "pin", lat: pin.lat, lng: pin.lng };
