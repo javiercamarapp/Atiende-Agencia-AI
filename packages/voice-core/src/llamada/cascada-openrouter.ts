@@ -32,7 +32,6 @@ export interface PeticionLlmVoz {
   readonly herramientas: readonly ToolDefinicion[];
   /** Modelo de texto elegido por la organizacion (de la lista permitida); el puerto lo manda al gateway como modelo preferido. */
   readonly modeloPreferido?: string;
-  readonly temperatura?: number;
   readonly senal?: AbortSignal;
   /** Temperatura que debe usar el puerto (`VOZ_PLATAFORMA.cascada.temperatura`). */
   readonly temperatura?: number;

@@ -12,6 +12,7 @@ import {
   esTemperaturaVoz,
   esVolumenFondo,
   instruccionDeHabla,
+  VOZ_PLATAFORMA,
   mensajeSetup,
 } from "../src/index.ts";
 import type { AperturaLlamada, ManejadoresSesion, PeticionLlmVoz, PuertoLlmVoz } from "../src/index.ts";
@@ -66,7 +67,8 @@ describe("temperatura y modelo elegido en la cascada", () => {
     await prov.inactivo();
     expect(peticiones[0]).toMatchObject({ modeloPreferido: "google/gemini-3.8-flash", temperatura: 0.2 });
     expect("modeloPreferido" in peticiones[1]!).toBe(false);
-    expect("temperatura" in peticiones[1]!).toBe(false);
+    // Sin ajuste de la organizacion manda la temperatura de la plataforma (VOZ_PLATAFORMA.cascada), nunca omitida.
+    expect(peticiones[1]!.temperatura).toBe(VOZ_PLATAFORMA.cascada.temperatura);
   });
 });
 
