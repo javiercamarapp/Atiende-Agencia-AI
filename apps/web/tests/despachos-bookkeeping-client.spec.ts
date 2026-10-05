@@ -27,14 +27,14 @@ describe("fetchCatalogoBookkeeping", () => {
 });
 
 describe("clasificarCfdisBookkeeping", () => {
-  it("sin overrides manda {cfdis, overrides: []} y devuelve las clasificaciones", async () => {
+  it("sin overrides manda solo {cfdis} (D-P3-13: el servidor aplica las correcciones persistidas) y devuelve las clasificaciones", async () => {
     const clasificaciones: readonly CfdiClassification[] = [
       { cfdiUuid: "u1", rfcEmisor: "AAA010101AAA", rfcReceptor: "", descripcion: "Honorarios enero", subtotal: 10000, iva: 1600, total: 11600, tasaIva: 0.16, tipoCfdi: "I", categoria: "servicios_profesionales", confidence: 0.9, needsHumanReview: false },
     ];
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("http://api.local/despachos/prop-1/bookkeeping/clasificar");
       expect(init?.method).toBe("POST");
-      expect(JSON.parse(init?.body as string)).toEqual({ cfdis: [CFDI_INPUT], overrides: [] });
+      expect(JSON.parse(init?.body as string)).toEqual({ cfdis: [CFDI_INPUT] });
       return new Response(JSON.stringify({ clasificaciones }), { status: 200 });
     }) as unknown as typeof fetch;
     const result = await clasificarCfdisBookkeeping(fetchImpl, "http://api.local", "tok", "prop-1", [CFDI_INPUT]);

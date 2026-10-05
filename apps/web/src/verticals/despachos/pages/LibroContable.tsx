@@ -30,6 +30,7 @@ import {
   ETIQUETA_TIPO_POLIZA,
   fetchBalanza,
   fetchCfdiLibro,
+  generarPolizasPeriodo,
   fetchCuentas,
   fetchPaquete,
   fetchPoliza,
@@ -45,7 +46,8 @@ import {
   sembrarCatalogo,
   TIPOS_POLIZA,
 } from "../lib/libro-client.ts";
-import type { BalanzaRespuesta, CfdiLibro, CuentaLibro, PaqueteContabilidad, PartidaFormulario, PolizaDetalle, PolizaFormulario, PolizaResumen, TipoPoliza } from "../lib/libro-client.ts";
+import type { BalanzaRespuesta, CfdiLibro, CuentaLibro, PaqueteContabilidad, PartidaFormulario, PolizaDetalle, PolizaFormulario, PolizaResumen, ResultadoGenerarPolizasPeriodo, TipoPoliza } from "../lib/libro-client.ts";
+import { formatConfianza } from "../lib/clasificacion-client.ts";
 import { formatFechaSolo, hoyFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
@@ -188,6 +190,11 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
   const [detalle, setDetalle] = useState<PolizaDetalle | null>(null);
   const [reversando, setReversando] = useState<PolizaResumen | null>(null);
   const [reversa, setReversa] = useState({ fecha: hoy, concepto: "" });
+  // D-P3-14: "Generar polizas del periodo" (confirmacion + resultado real del servidor).
+  const [confirmarGenerar, setConfirmarGenerar] = useState(false);
+  const [generando, setGenerando] = useState(false);
+  const [resultadoGenerar, setResultadoGenerar] = useState<ResultadoGenerarPolizasPeriodo | null>(null);
+  const [errorGenerar, setErrorGenerar] = useState<string | null>(null);
   const [paquete, setPaquete] = useState<PaqueteContabilidad | null>(null);
   const [paqueteError, setPaqueteError] = useState<string | null>(null);
   const [cuentaNueva, setCuentaNueva] = useState({ codigo: "", descripcion: "", naturaleza: "D" as "D" | "A" });
@@ -267,6 +274,21 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
       const r = await reversarPoliza(fetch, apiBaseUrl, token, propertyId, original.id, reversa.fecha, reversa.concepto.trim());
       return `Póliza revertida: reversa folio ${r.folio}.`;
     });
+  }
+
+  async function ejecutarGenerarPolizas() {
+    setGenerando(true);
+    setErrorGenerar(null);
+    try {
+      const r = await generarPolizasPeriodo(fetch, apiBaseUrl, token, propertyId, periodo);
+      setResultadoGenerar(r);
+      setConfirmarGenerar(false);
+      await cargar();
+    } catch (err) {
+      setErrorGenerar(mensajeDe(err, "No se pudieron generar las pólizas del periodo."));
+    } finally {
+      setGenerando(false);
+    }
   }
 
   async function generarPaquete() {
@@ -392,6 +414,27 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
           <TabsContent value="cfdi" className="mt-0 flex flex-col gap-3">
             {cfdiError && <EstadoError mensaje={cfdiError} onReintentar={() => void cargar()} />}
             {cfdi?.truncado && <Callout tone="warning">Se muestran los primeros 500 CFDI del periodo.</Callout>}
+            {cfdi && puedeGestionar && !noDisponible && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  {cfdi.cfdi.filter((c) => c.armable).length} CFDI listos para contabilizar. El sistema también lo hace solo cada día con los que ya están clasificados y sin revisión pendiente.
+                </p>
+                <Button type="button" size="sm" disabled={!periodoValido || cuentas.length === 0 || cfdi.cfdi.every((c) => !c.armable)} onClick={() => { setErrorGenerar(null); setConfirmarGenerar(true); }}>
+                  <FilePlus2 />
+                  Generar pólizas del periodo
+                </Button>
+              </div>
+            )}
+            {resultadoGenerar && (
+              <Callout tone={resultadoGenerar.fallidas.length > 0 ? "warning" : "success"} role="status">
+                {resultadoGenerar.generadas} póliza(s) generada(s) en {resultadoGenerar.periodo}
+                {resultadoGenerar.yaTenian > 0 ? ` · ${resultadoGenerar.yaTenian} ya tenían póliza` : ""}
+                {resultadoGenerar.porRevision > 0 ? ` · ${resultadoGenerar.porRevision} con revisión pendiente` : ""}
+                {resultadoGenerar.porClasificacion > 0 ? ` · ${resultadoGenerar.porClasificacion} con clasificación dudosa` : ""}
+                {resultadoGenerar.noArmables.length > 0 ? ` · ${resultadoGenerar.noArmables.length} para registrar a mano (ver el motivo en la tabla)` : ""}
+                {resultadoGenerar.fallidas.length > 0 ? ` · ${resultadoGenerar.fallidas.length} con error: ${resultadoGenerar.fallidas[0]!.motivo}` : ""}.
+              </Callout>
+            )}
             {cfdi && (
               <DataTable
                 etiqueta="CFDI del periodo y su póliza"
@@ -404,6 +447,11 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
                   { id: "tipo", encabezado: "Tipo", celda: (c) => <span className="text-muted-foreground">{c.tipo} · {c.direccion === "emitido" ? "Emitido" : c.direccion === "recibido" ? "Recibido" : "Sin sentido"}</span> },
                   { id: "fecha", encabezado: "Fecha", valorOrden: (c) => c.fecha, celda: (c) => formatFechaSolo(c.fecha) },
                   { id: "total", encabezado: "Total", alinear: "right", celda: (c) => <span className="font-mono text-xs">{dinero(c.totalCentavos)}</span> },
+                  {
+                    id: "categoria",
+                    encabezado: "Categoría",
+                    celda: (c) => (c.categoriaContable ? <span className="text-muted-foreground">{c.categoriaContable.replace(/_/g, " ")} · {formatConfianza(c.confianzaClasificacion)}</span> : <span className="text-xs text-muted-foreground">—</span>),
+                  },
                   {
                     id: "poliza",
                     encabezado: "Póliza",
@@ -589,6 +637,32 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
               { id: "haber", encabezado: "Haber", alinear: "right", celda: (m) => <span className="font-mono text-xs">{m.haberCentavos ? centavosAPesos(m.haberCentavos) : ""}</span> },
             ]}
           />
+        )}
+      </FormDialog>
+
+      <FormDialog
+        open={confirmarGenerar}
+        onOpenChange={(abrir) => !abrir && !generando && setConfirmarGenerar(false)}
+        titulo="Generar pólizas del periodo"
+        subtitulo={`Se registrará la póliza de cada CFDI de ${periodo} que ya esté clasificado con confianza suficiente, sin revisión pendiente, que no esté cancelado ni excluido y que no tenga póliza. Es lo mismo que hace el sistema cada día; si lo repites no duplica nada.`}
+        anchoClase="max-w-lg"
+        footer={
+          <>
+            <Button type="button" variant="outline" className="rounded-full px-6" disabled={generando} onClick={() => setConfirmarGenerar(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" className="rounded-full px-6" loading={generando} loadingText="Generando…" onClick={() => void ejecutarGenerarPolizas()}>
+              Generar pólizas
+            </Button>
+          </>
+        }
+      >
+        {errorGenerar ? (
+          <p role="alert" className="text-sm text-destructive">
+            {errorGenerar}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Las pólizas quedan en el libro con su folio y se pueden revertir una por una desde la pestaña Pólizas.</p>
         )}
       </FormDialog>
 

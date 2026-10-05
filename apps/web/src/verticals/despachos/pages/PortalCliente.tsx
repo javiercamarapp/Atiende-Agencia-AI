@@ -188,6 +188,8 @@ export function PortalClientePage({ apiBaseUrl, token, propertyId, role }: Despa
           <div className="flex flex-col items-start gap-1">
             <StatusBadge tone={est.tono}>{est.etiqueta}</StatusBadge>
             {d.estado === "rechazado" && d.motivo ? <p className="text-xs text-muted-foreground">Motivo: {d.motivo}</p> : null}
+            {/* D-P3-22: un XML valido se acepta solo (bandera por cliente); la base deja el motivo y quien resolvio es el sistema. */}
+            {d.estado === "aceptado" && d.motivo ? <p className="text-xs text-muted-foreground">{d.motivo}</p> : null}
           </div>
         );
       },
@@ -201,7 +203,7 @@ export function PortalClientePage({ apiBaseUrl, token, propertyId, role }: Despa
           <Button size="sm" variant="outline" onClick={() => void descargar(d)}><Download className="mr-1.5 size-4" aria-hidden="true" /> Descargar</Button>
           {puedeGestionar && d.estado === "recibido" && (
             <>
-              <Button size="sm" disabled={ocupado} onClick={() => void accion(async () => { const r = await aceptarPortalDocumento(fetch, apiBaseUrl, token, propertyId, d.id); return r.invoiceId ? "CFDI ingresado. Revisa su validación en CFDI." : "Documento aceptado."; })}>Aceptar</Button>
+              <Button size="sm" disabled={ocupado} onClick={() => void accion(async () => { const r = await aceptarPortalDocumento(fetch, apiBaseUrl, token, propertyId, d.id); if (r.rep) return `Complemento de pago registrado (${r.rep.registrados} pago(s) nuevo(s), ${r.rep.yaExistian} ya existía(n)).`; if (r.cfdi?.duplicado) return "Ese CFDI ya existía en este cliente: el documento se aceptó sin duplicarlo."; return r.invoiceId ? "CFDI ingresado. Revisa su validación en CFDI." : "Documento aceptado."; })}>Aceptar</Button>
               <Button size="sm" variant="outline" disabled={ocupado} onClick={() => void rechazar(d)}>Rechazar</Button>
             </>
           )}

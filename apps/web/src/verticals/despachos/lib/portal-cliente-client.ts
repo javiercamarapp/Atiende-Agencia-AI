@@ -71,6 +71,34 @@ export async function fetchPortalResumen(fetchImpl: typeof fetch, apiBaseUrl: st
   return (await (await llamarPublico(fetchImpl, apiBaseUrl, token, "/portal-cliente/resumen", { method: "GET" })).json()) as PortalResumen;
 }
 
+/** D-P3-22: un CFDI de SU cliente tal como lo ve en el portal. */
+export interface PortalCfdiCliente {
+  readonly id: string;
+  readonly folioFiscal: string;
+  readonly tipo: string;
+  readonly direccion: "emitido" | "recibido" | "indeterminado" | null;
+  readonly fecha: string;
+  readonly rfcEmisor: string;
+  readonly rfcReceptor: string;
+  readonly emisorNombre: string | null;
+  readonly totalCentavos: number;
+  readonly estadoSat: string;
+  /** El despacho rechazo este CFDI en su revision: no cuenta en sus declaraciones. */
+  readonly excluido: boolean;
+}
+
+export async function fetchPortalCfdi(fetchImpl: typeof fetch, apiBaseUrl: string, token: string): Promise<{ readonly cfdi: readonly PortalCfdiCliente[]; readonly tope: number }> {
+  const cuerpo = (await (await llamarPublico(fetchImpl, apiBaseUrl, token, "/portal-cliente/cfdi", { method: "GET" })).json()) as { cfdi?: readonly PortalCfdiCliente[]; tope?: number };
+  return { cfdi: Array.isArray(cuerpo.cfdi) ? cuerpo.cfdi : [], tope: typeof cuerpo.tope === "number" ? cuerpo.tope : 500 };
+}
+
+/** CSV de SUS CFDI (el servidor neutraliza celdas que empiezan con = + - @ y deja bitacora). El token viaja en el header, nunca en la URL. */
+export async function descargarPortalCfdiCsv(fetchImpl: typeof fetch, apiBaseUrl: string, token: string): Promise<Blob> {
+  return (await llamarPublico(fetchImpl, apiBaseUrl, token, "/portal-cliente/cfdi?formato=csv", { method: "GET" })).blob();
+}
+
+export const ETIQUETA_SENTIDO_CFDI: Readonly<Record<string, string>> = { emitido: "Emitido", recibido: "Recibido", indeterminado: "Sin sentido" };
+
 export interface ArchivoParaSubir {
   readonly name: string;
   readonly type: string;
@@ -192,7 +220,7 @@ export function fetchPortalDocumentos(f: typeof fetch, apiBaseUrl: string, token
   return fetchJson<{ disponible: boolean; documentos: readonly PortalDocumentoStaff[] }>(f, `${base(apiBaseUrl, propertyId)}/documentos`, token);
 }
 export function aceptarPortalDocumento(f: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, documentoId: string) {
-  return postJson<{ estado: "aceptado"; invoiceId: string | null; cfdi: { valido: boolean; requiereRevisionHumana: boolean } | null }>(f, `${base(apiBaseUrl, propertyId)}/documentos/${documentoId}/aceptar`, token, {});
+  return postJson<{ estado: "aceptado"; invoiceId: string | null; cfdi: { valido: boolean; requiereRevisionHumana: boolean; duplicado: boolean } | null; rep: { registrados: number; yaExistian: number; omitidos: number; rechazados: number } | null }>(f, `${base(apiBaseUrl, propertyId)}/documentos/${documentoId}/aceptar`, token, {});
 }
 export function rechazarPortalDocumento(f: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, documentoId: string, motivo: string) {
   return postJson<{ estado: "rechazado" }>(f, `${base(apiBaseUrl, propertyId)}/documentos/${documentoId}/rechazar`, token, { motivo });
