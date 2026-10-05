@@ -35,7 +35,7 @@ import type { AppDeps } from "../deps.ts";
  *  error). Un latido "huérfano" (cron_name que ya no está en vercel.json,
  *  p. ej. uno removido) también se incluye -- mejor mostrar de más que
  *  esconder un latido real. */
-function construirEstadoCrons(heartbeats: readonly CronHeartbeatRow[], ahora: Date): CronConEstado[] {
+export function construirEstadoCrons(heartbeats: readonly CronHeartbeatRow[], ahora: Date): CronConEstado[] {
   const cadencias = cadenciaMinutosPorRuta();
   const porNombre = new Map(heartbeats.map((h) => [h.cronName, h]));
   const nombres = new Set<string>([...rutasDeCronDeclaradas(), ...porNombre.keys()]);
