@@ -11,6 +11,7 @@
 // gate de confirmación, las transiciones ofrecidas y todas las llamadas al
 // backend son EXACTAMENTE las mismas.
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Button,
   Card,
@@ -42,6 +43,8 @@ import type { OrderStatus, OrderSummary, RepartidorSugerido } from "../lib/order
 import { guardarSonido, idsNuevos, leerSonido, etiquetaActualizado, reproducirAviso, SONDEO_BASE_MS } from "../lib/sondeo-pedidos.ts";
 import { useSondeoPedidos } from "../lib/use-sondeo-pedidos.ts";
 import { ProgramadosPanel } from "./ProgramadosPanel.tsx";
+import { ETIQUETA_ESTADO_COMANDA, TONO_ESTADO_COMANDA, etiquetaInsigniaPedido, fetchEstadosComandaPorPedido } from "../lib/pos-comandas-client.ts";
+import type { EstadoComandaWire } from "../lib/pos-comandas-client.ts";
 import { fetchRepartidores } from "../lib/staff-client.ts";
 import type { RepartidorMember } from "../lib/staff-client.ts";
 import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
@@ -66,6 +69,9 @@ function storageLocal(): Storage | null {
 }
 
 export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
+  // Estado de la comanda al POS de cada pedido de la lista (lectura liviana, solo ids). Sin respuesta (base sin migrar, error de red) no se pinta
+  // ninguna insignia: nunca bloquea ni tumba la lista de pedidos.
+  const [comandaEstados, setComandaEstados] = useState<Readonly<Record<string, EstadoComandaWire>>>({});
   const [status, setStatus] = useState<PestanaPedidos>("todos");
   const [orders, setOrders] = useState<readonly OrderSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +98,21 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   // Autopiloto (semiautomatico): repartidor SUGERIDO por el servidor para los pedidos a domicilio en preparando sin repartidor.
   // Solo sugiere: asignar es un clic del gerente (el mismo PATCH assign-repartidor). Si el fetch falla no se muestra nada.
   const [sugeridos, setSugeridos] = useState<Readonly<Record<string, RepartidorSugerido>>>({});
+  // Insignia "En POS" / "Capturar a mano" / "Falló": se consulta cada vez que cambia el conjunto de pedidos visibles.
+  const idsVisibles = orders ? [...new Set(orders.map((o) => o.id))].join(",") : "";
+  useEffect(() => {
+    if (idsVisibles === "") {
+      setComandaEstados({});
+      return;
+    }
+    let cancelado = false;
+    fetchEstadosComandaPorPedido(fetch, apiBaseUrl, token, propertyId, idsVisibles.split(","))
+      .then((r) => !cancelado && setComandaEstados(r.disponible ? r.estados : {}))
+      .catch(() => !cancelado && setComandaEstados({}));
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId, idsVisibles]);
   // Confirmación de cancelación (ver `handleChangeStatus`): el diálogo lo monta `dialogo` al final del JSX.
   const { confirmar, dialogo } = useConfirm();
   // Aviso OPCIONAL por WhatsApp al marcar "listo para recoger" (por defecto sí avisa; el staff puede apagarlo
@@ -533,6 +554,13 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                     <StatusBadge tone="neutral" dot={false} data-testid={`canal-${o.id}`}>
                       {o.canal === "recoger" ? "Recoger" : "Domicilio"}
                     </StatusBadge>
+                  )}
+                  {comandaEstados[o.id] && (
+                    <Link to={`/restaurantes/${orgSlug}/comandas-pos`} className="no-underline" title={`Comanda al POS: ${ETIQUETA_ESTADO_COMANDA[comandaEstados[o.id]!]}. Ver la cola.`} data-testid={`comanda-pos-${o.id}`}>
+                      <StatusBadge tone={TONO_ESTADO_COMANDA[comandaEstados[o.id]!]} dot={false}>
+                        {etiquetaInsigniaPedido(comandaEstados[o.id]!)}
+                      </StatusBadge>
+                    </Link>
                   )}
                   <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge>
                 </div>
