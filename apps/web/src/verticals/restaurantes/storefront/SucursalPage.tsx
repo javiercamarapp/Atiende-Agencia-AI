@@ -425,6 +425,15 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
                 )}
               </FormField>
             )}
+            <FormField label="Promociones (opcional)">
+              {(p) => (
+                <label className="flex items-start gap-2 text-sm">
+                  <Checkbox {...p} checked={form.promociones} onChange={(e) => cambiar("promociones", e.target.checked)} />
+                  <span>Quiero recibir promociones por WhatsApp. Puedes darte de baja cuando quieras escribiendo BAJA.</span>
+                </label>
+              )}
+            </FormField>
+
             <FormField label="Aviso de privacidad" error={errores.acepta}>
               {(p) => (
                 <label className="flex items-start gap-2 text-sm">
@@ -436,15 +445,6 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
                     </a>
                     .
                   </span>
-                </label>
-              )}
-            </FormField>
-
-            <FormField label="Promociones (opcional)">
-              {(p) => (
-                <label className="flex items-start gap-2 text-sm">
-                  <Checkbox {...p} checked={form.promociones} onChange={(e) => cambiar("promociones", e.target.checked)} />
-                  <span>Quiero recibir promociones por WhatsApp. Puedes darte de baja cuando quieras escribiendo BAJA.</span>
                 </label>
               )}
             </FormField>
