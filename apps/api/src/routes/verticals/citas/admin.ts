@@ -1031,6 +1031,7 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     readonly customer_email?: unknown;
     readonly starts_at?: unknown;
     readonly notes?: unknown;
+    readonly idempotency_key?: unknown;
   }
 
   // ---- Fase 12 — hallazgo de auditoría (ALTO, "Staff no puede crear citas
@@ -1055,10 +1056,15 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const startsAt = requireNonEmptyString(raw.starts_at, "starts_at", 40);
     if (Number.isNaN(Date.parse(startsAt))) throw Errors.validation('starts_at: se esperaba una fecha ISO 8601 válida.');
     const notes = optionalNonEmptyString(raw.notes, "notes", 2000);
+    // Llave de idempotencia del formulario: un reintento tras perder la respuesta devuelve la misma cita en vez de un 409 contra la propia cita.
+    const idempotencyKey = optionalNonEmptyString(raw.idempotency_key, "idempotency_key", 100);
 
     try {
       const appointment = await createAppointmentFromPanel(citasRepo, {
         organizationId,
+        // La sucursal de la RUTA: el proveedor debe ser de ella (o no tener sucursal asignada).
+        propertyId: c.req.param("propertyId"),
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         providerId,
         serviceId,
         customerName,
@@ -1092,9 +1098,13 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const providerId = c.req.query("provider_id") || undefined;
     const limit = parsePositiveInt(c.req.query("limit"), DEFAULT_APPOINTMENTS_LIMIT, DEFAULT_APPOINTMENTS_LIMIT);
 
-    const appointments = await citasRepo.listAppointmentsInRange(organizationId, from, to, providerId, limit);
+    // Solo la sucursal de la ruta (mas las de proveedores sin sucursal asignada). Se pide UNA fila de mas para saber si el tope recorto el rango: el cliente
+    // recibe `truncated` + `next_from` (primer horario omitido) en vez de perder en silencio las citas de los ultimos dias del mes.
+    const filas = await citasRepo.listAppointmentsInRange(organizationId, from, to, providerId, limit + 1, c.req.param("propertyId"));
+    const truncated = filas.length > limit;
+    const appointments = truncated ? filas.slice(0, limit) : filas;
     const enriched = await enrichAppointments(citasRepo, organizationId, appointments);
-    return c.json({ appointments: enriched });
+    return c.json({ appointments: enriched, truncated, next_from: truncated ? filas[limit]!.startsAt : null });
   });
 
   // ---- C-05 -- Resumen: citas de hoy/semana, pendientes por confirmar, no-shows y clientes
@@ -1105,7 +1115,7 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const organizationId = c.get("organizationId");
     const citasRepo = deps.citasRepo(c.get("db"));
     const timeZone = resolverZonaHorariaNegocio(await citasRepo.findPropertyTimezone(c.req.param("propertyId"), organizationId));
-    const r = await computeCitasResumen(citasRepo, organizationId, timeZone);
+    const r = await computeCitasResumen(citasRepo, organizationId, timeZone, new Date(), c.req.param("propertyId"));
     return c.json({
       timezone: r.timezone,
       generated_at: r.generatedAt,

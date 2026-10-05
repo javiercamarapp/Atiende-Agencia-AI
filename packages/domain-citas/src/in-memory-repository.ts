@@ -196,6 +196,11 @@ interface InMemoryOutboxRow {
   createdAtMs: number;
 }
 
+/** Misma regla que el SQL: la cita es de la sucursal pedida o de un proveedor sin sucursal asignada; sin sucursal pedida, todas. */
+function enSucursal(a: { readonly propertyId: string | null }, propertyId: string | null | undefined): boolean {
+  return !propertyId || a.propertyId === null || a.propertyId === propertyId;
+}
+
 export class InMemoryCitasRepository implements CitasRepository {
   private readonly organizations = new Map<string, StoredOrganization>();
   private readonly organizationIdBySlug = new Map<string, string>();
@@ -636,13 +641,13 @@ export class InMemoryCitasRepository implements CitasRepository {
     return [...this.customers.values()].filter((c) => c.organizationId === organizationId && idSet.has(c.id));
   }
 
-  async countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string): Promise<Readonly<Record<AppointmentStatus, number>>> {
+  async countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string, propertyId?: string | null): Promise<Readonly<Record<AppointmentStatus, number>>> {
     const result: Record<AppointmentStatus, number> = { pending: 0, confirmed: 0, completed: 0, cancelled: 0, no_show: 0 };
     const from = Date.parse(fromIso);
     const to = Date.parse(toIso);
     for (const a of this.appointments.values()) {
       const t = Date.parse(a.startsAt);
-      if (a.organizationId === organizationId && t >= from && t < to) result[a.status] += 1;
+      if (a.organizationId === organizationId && t >= from && t < to && enSucursal(a, propertyId)) result[a.status] += 1;
     }
     return result;
   }
@@ -650,11 +655,11 @@ export class InMemoryCitasRepository implements CitasRepository {
   /** Solo para tests: fecha de alta de un cliente (en Postgres es `created_at`). */
   readonly customerCreatedAt = new Map<string, string>();
 
-  async countAppointmentsCreatedBySource(organizationId: string, sinceIso: string): Promise<Readonly<Record<AppointmentSource, number>>> {
+  async countAppointmentsCreatedBySource(organizationId: string, sinceIso: string, propertyId?: string | null): Promise<Readonly<Record<AppointmentSource, number>>> {
     const result: Record<AppointmentSource, number> = { voice: 0, whatsapp: 0, web: 0, manual: 0 };
     const since = Date.parse(sinceIso);
     for (const a of this.appointments.values()) {
-      if (a.organizationId === organizationId && a.status !== "cancelled" && Date.parse(a.createdAt) >= since) result[a.source] += 1;
+      if (a.organizationId === organizationId && a.status !== "cancelled" && Date.parse(a.createdAt) >= since && enSucursal(a, propertyId)) result[a.source] += 1;
     }
     return result;
   }
@@ -824,11 +829,11 @@ export class InMemoryCitasRepository implements CitasRepository {
     return appointment;
   }
 
-  async listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number): Promise<readonly AppointmentRecord[]> {
+  async listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number, propertyId?: string | null): Promise<readonly AppointmentRecord[]> {
     const fromMs = Date.parse(fromIso);
     const toMs = Date.parse(toIso);
     return [...this.appointments.values()]
-      .filter((a) => a.organizationId === organizationId && (!providerId || a.providerId === providerId))
+      .filter((a) => a.organizationId === organizationId && (!providerId || a.providerId === providerId) && enSucursal(a, propertyId))
       .filter((a) => {
         const startsMs = Date.parse(a.startsAt);
         return startsMs >= fromMs && startsMs < toMs;

@@ -557,10 +557,14 @@ export interface CitasRepository {
    * calcula", nunca decide nada nuevo sobre el cliente. */
   /** C-05 -- conteo de citas por estado con `starts_at` en [fromIso, toIso) (agregado SQL,
    * nunca una lista truncada por `limit`). Todos los estados vienen presentes (0 si no hay). */
-  countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string): Promise<Readonly<Record<AppointmentStatus, number>>>;
+  /** `propertyId`: solo las citas de esa sucursal (`property_id = propertyId`) mas las del proveedor sin sucursal asignada (`property_id` nulo = toda la
+   * organizacion); sin `propertyId`, toda la organizacion (avisos, onboarding). */
+  countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string, propertyId?: string | null): Promise<Readonly<Record<AppointmentStatus, number>>>;
   /** UNI-RES-citas -- citas NO canceladas dadas de alta (`created_at`) desde `sinceIso` (inclusive), por canal de origen (`source`).
    * Agregado SQL de solo lectura sobre columnas existentes desde 001; todos los canales vienen presentes (0 si no hay). */
-  countAppointmentsCreatedBySource(organizationId: string, sinceIso: string): Promise<Readonly<Record<AppointmentSource, number>>>;
+  /** `propertyId`: solo las citas de esa sucursal (`property_id = propertyId`) mas las del proveedor sin sucursal asignada (`property_id` nulo = toda la
+   * organizacion); sin `propertyId`, toda la organizacion (avisos, onboarding). */
+  countAppointmentsCreatedBySource(organizationId: string, sinceIso: string, propertyId?: string | null): Promise<Readonly<Record<AppointmentSource, number>>>;
   /** C-05 -- clientes dados de alta (`created_at`) desde `sinceIso` (inclusive). */
   countCustomersCreatedSince(organizationId: string, sinceIso: string): Promise<number>;
   listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage>;
@@ -599,7 +603,9 @@ export interface CitasRepository {
    * calcula", nunca decidir algo nuevo sobre la cita). `limit` acota el peor caso
    * (una organización con un volumen anómalo de citas en el rango pedido) sin
    * cursor — un rango de fechas ya acota naturalmente el tamaño esperado. */
-  listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number): Promise<readonly AppointmentRecord[]>;
+  /** `propertyId`: solo las citas de esa sucursal (`property_id = propertyId`) mas las del proveedor sin sucursal asignada (`property_id` nulo = toda la
+   * organizacion); sin `propertyId`, toda la organizacion (avisos, onboarding). */
+  listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number, propertyId?: string | null): Promise<readonly AppointmentRecord[]>;
   cancelAppointmentIdempotent(organizationId: string, appointmentId: string): Promise<CancelResult>;
   cancelAppointmentFromPanel(organizationId: string, appointmentId: string, actorUserId: string): Promise<CancelResult>;
   /** Fase 7 -- confirmar/completar/marcar no-show desde el panel de staff (única

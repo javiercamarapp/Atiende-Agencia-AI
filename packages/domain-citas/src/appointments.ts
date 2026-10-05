@@ -370,6 +370,11 @@ export interface CreateAppointmentFromPanelPayload {
    * el staff nunca lo especifica (mismo criterio que el flujo del agente). */
   readonly startsAt: string;
   readonly notes?: string;
+  /** Sucursal de la RUTA desde la que el staff crea la cita: el proveedor debe ser de esa sucursal (o no tener ninguna asignada). Sin este campo (callers
+   * de dominio sin ruta de sucursal) no se valida. */
+  readonly propertyId?: string;
+  /** Reintento tras perder la respuesta: con llave, un 409 de horario ocupado por la MISMA cita (mismo proveedor, horario y telefono) devuelve esa cita. */
+  readonly idempotencyKey?: string;
 }
 
 /**
@@ -400,6 +405,10 @@ export async function createAppointmentFromPanel(repo: CitasRepository, payload:
   const startsAt = new Date(payload.startsAt);
 
   const { provider, service } = await resolveProviderAndService(repo, payload.organizationId, payload.providerId, payload.serviceId);
+  // El formulario de una sucursal no puede crear la cita en OTRA: antes tomaba la sucursal del proveedor sin mirar la de la ruta.
+  if (payload.propertyId && provider.propertyId !== null && provider.propertyId !== payload.propertyId) {
+    throw new AppointmentValidationError("provider_id: ese proveedor no pertenece a esta sucursal.");
+  }
   const endsAt = new Date(startsAt.getTime() + service.durationMinutes * 60_000);
 
   const result = await repo.createAppointmentFromPanel({
@@ -416,12 +425,27 @@ export async function createAppointmentFromPanel(repo: CitasRepository, payload:
   });
 
   if (result.outcome === "conflict_slot_taken") {
+    // Reintento de la MISMA solicitud (respuesta perdida): con llave de idempotencia, la cita que ya ocupa el horario es la que este mismo cliente
+    // acaba de crear -> se devuelve esa, no un 409 contra la propia cita. Sin llave, o con otro cliente, el 409 honesto de siempre.
+    if (payload.idempotencyKey?.trim()) {
+      const misma = await findSameIntentPanelAppointment(repo, payload.organizationId, provider.id, startsAt.toISOString(), payload.customerPhone.trim());
+      if (misma) return misma;
+    }
     throw new AppointmentConflictError("Ese horario ya no está disponible para este proveedor -- alguien más lo tomó primero.");
   }
   if (result.outcome === "forbidden_out_of_scope") {
     throw new AppointmentForbiddenError(result.message ?? "No tienes acceso a la sucursal de este proveedor.");
   }
   return result.appointment;
+}
+
+/** La cita activa de este proveedor en este horario exacto que ya es de este cliente (por telefono), o null. */
+async function findSameIntentPanelAppointment(repo: CitasRepository, organizationId: string, providerId: string, startsAtIso: string, customerPhone: string): Promise<AppointmentRecord | null> {
+  const customer = await repo.findCustomerByPhone(organizationId, customerPhone);
+  if (!customer) return null;
+  const inicio = Date.parse(startsAtIso);
+  const candidatas = await repo.listAppointmentsInRange(organizationId, new Date(inicio).toISOString(), new Date(inicio + 1000).toISOString(), providerId, 20);
+  return candidatas.find((a) => a.customerId === customer.id && Date.parse(a.startsAt) === inicio && (a.status === "pending" || a.status === "confirmed")) ?? null;
 }
 
 // ============================================================================

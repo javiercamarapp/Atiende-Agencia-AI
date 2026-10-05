@@ -43,7 +43,9 @@ function totalActive(byStatus: ResumenPorEstado): number {
   return byStatus.pending + byStatus.confirmed + byStatus.completed + byStatus.no_show;
 }
 
-export async function computeCitasResumen(repo: CitasRepository, organizationId: string, timeZone: string, now: Date = new Date()): Promise<CitasResumen> {
+/** `propertyId`: los conteos de citas son SOLO de esa sucursal (mas las de proveedores sin sucursal); los clientes nuevos son de toda la organizacion
+ * (un cliente no pertenece a una sucursal). */
+export async function computeCitasResumen(repo: CitasRepository, organizationId: string, timeZone: string, now: Date = new Date(), propertyId: string | null = null): Promise<CitasResumen> {
   const todayDate = zonedDateStr(now, timeZone);
   const todayStart = zonedTimeToUtc(todayDate, "00:00", timeZone);
   const tomorrowStart = zonedTimeToUtc(addDays(todayDate, 1), "00:00", timeZone);
@@ -60,12 +62,12 @@ export async function computeCitasResumen(repo: CitasRepository, organizationId:
   const pendingHorizon = new Date(now.getTime() + RESUMEN_HORIZONTE_PENDIENTES_DIAS * dayMs);
 
   const [today, week, upcoming, past, newCustomers, createdBySource] = await Promise.all([
-    repo.countAppointmentsByStatus(organizationId, todayStart.toISOString(), tomorrowStart.toISOString()),
-    repo.countAppointmentsByStatus(organizationId, weekStart.toISOString(), nextWeekStart.toISOString()),
-    repo.countAppointmentsByStatus(organizationId, now.toISOString(), pendingHorizon.toISOString()),
-    repo.countAppointmentsByStatus(organizationId, windowStart.toISOString(), now.toISOString()),
+    repo.countAppointmentsByStatus(organizationId, todayStart.toISOString(), tomorrowStart.toISOString(), propertyId),
+    repo.countAppointmentsByStatus(organizationId, weekStart.toISOString(), nextWeekStart.toISOString(), propertyId),
+    repo.countAppointmentsByStatus(organizationId, now.toISOString(), pendingHorizon.toISOString(), propertyId),
+    repo.countAppointmentsByStatus(organizationId, windowStart.toISOString(), now.toISOString(), propertyId),
     repo.countCustomersCreatedSince(organizationId, windowStart.toISOString()),
-    repo.countAppointmentsCreatedBySource(organizationId, windowStart.toISOString()),
+    repo.countAppointmentsCreatedBySource(organizationId, windowStart.toISOString(), propertyId),
   ]);
 
   return {
