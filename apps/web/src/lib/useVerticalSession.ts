@@ -10,8 +10,8 @@
 // El rol que devuelve es COSMETICO (ocultar controles): la autorizacion real es
 // siempre del servidor.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SESSION_EXPIRED_EVENT } from "./authed-fetch.ts";
-import type { SessionExpiredEventDetail } from "./authed-fetch.ts";
+import { SESSION_EXPIRED_EVENT, SESSION_REFRESHED_EVENT } from "./authed-fetch.ts";
+import type { SessionExpiredEventDetail, SessionRefreshedEventDetail } from "./authed-fetch.ts";
 import type { LoginSession, SessionStorageLike } from "./auth-client.ts";
 
 export interface VerticalBranch {
@@ -108,6 +108,21 @@ export function useVerticalSession<B extends VerticalBranch>({ adapter, apiBaseU
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
   }, [adapter, onRequireLogin]);
 
+  // Tras un refresh exitoso (withAuthRefresh persiste la sesion nueva) el estado de aqui seguia con el access token y el refresh token VIEJOS: cada
+  // pantalla mandaba el token vencido (401 + otro refresh en cada peticion) y "Cerrar sesion" revocaba el refresh token ya rotado, dejando vigente el
+  // verdadero. Se relee la sesion persistida; solo cambia el estado si el token realmente cambio.
+  useEffect(() => {
+    function handleSessionRefreshed(event: Event) {
+      const detail = (event as CustomEvent<SessionRefreshedEventDetail>).detail;
+      if (detail?.vertical !== adapter.vertical) return;
+      const fresca = adapter.readSession(window.localStorage);
+      if (!fresca) return;
+      setSession((actual) => (actual && actual.token === fresca.token && actual.refreshToken === fresca.refreshToken ? actual : fresca));
+    }
+    window.addEventListener(SESSION_REFRESHED_EVENT, handleSessionRefreshed);
+    return () => window.removeEventListener(SESSION_REFRESHED_EVENT, handleSessionRefreshed);
+  }, [adapter]);
+
   useEffect(() => {
     if (!session) return;
     let cancelado = false;
@@ -132,7 +147,9 @@ export function useVerticalSession<B extends VerticalBranch>({ adapter, apiBaseU
     // Logout limpio: la llamada real a /auth/logout es best-effort (red caida, token ya vencido): si falla, la
     // sesion local se limpia igual y se redirige al login; el error no se propaga (nadie lo atiende en un onClick).
     try {
-      await adapter.logout(fetch, apiBaseUrl, session.refreshToken);
+      // El refresh token VIGENTE es el persistido (el del estado puede ser uno ya rotado por un refresh).
+      const vigente = adapter.readSession(window.localStorage) ?? session;
+      await adapter.logout(fetch, apiBaseUrl, vigente.refreshToken);
     } catch {
       // ignorado a proposito, ver arriba
     } finally {

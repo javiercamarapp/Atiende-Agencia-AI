@@ -6,7 +6,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useVerticalSession, type VerticalSession, type VerticalSessionAdapter, type VerticalBranch } from "../src/lib/useVerticalSession.ts";
-import { SESSION_EXPIRED_EVENT } from "../src/lib/authed-fetch.ts";
+import { SESSION_EXPIRED_EVENT, SESSION_REFRESHED_EVENT } from "../src/lib/authed-fetch.ts";
 import type { LoginSession } from "../src/lib/auth-client.ts";
 import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
@@ -160,6 +160,33 @@ describe("useVerticalSession", () => {
     expect(onRequireLogin).toHaveBeenCalledTimes(1);
     expect(storage.getItem(SESSION_KEY)).toBeNull();
     expect(ultimo!.fase).toBe("sin-sesion");
+  });
+
+  it("QA-citas-R1-caos-09: tras un refresh la sesion del hook usa el access token NUEVO (las pantallas no siguen mandando el vencido); el evento de otra vertical se ignora", async () => {
+    storage.setItem(SESSION_KEY, JSON.stringify(SESSION));
+    await montar();
+    expect(ultimo!.session!.token).toBe("tok");
+    storage.setItem(SESSION_KEY, JSON.stringify({ ...SESSION, token: "tok-2", refreshToken: "ref-2" }));
+    act(() => {
+      window.dispatchEvent(new CustomEvent(SESSION_REFRESHED_EVENT, { detail: { vertical: "hoteles" } }));
+    });
+    expect(ultimo!.session!.token).toBe("tok");
+    act(() => {
+      window.dispatchEvent(new CustomEvent(SESSION_REFRESHED_EVENT, { detail: { vertical: "citas" } }));
+    });
+    expect(ultimo!.session!.token).toBe("tok-2");
+    expect(ultimo!.fase).toBe("listo");
+  });
+
+  it("QA-citas-R1-caos-10: 'Cerrar sesion' tras un refresh revoca el refresh token VIGENTE, no el viejo ya rotado", async () => {
+    storage.setItem(SESSION_KEY, JSON.stringify(SESSION));
+    await montar();
+    // Un refresh persistio la sesion nueva pero el evento todavia no llego al estado (o el estado quedo viejo): el logout lee lo persistido.
+    storage.setItem(SESSION_KEY, JSON.stringify({ ...SESSION, token: "tok-2", refreshToken: "ref-2" }));
+    await act(async () => {
+      await ultimo!.logout();
+    });
+    expect(logout).toHaveBeenCalledWith(fetch, "https://api.test", "ref-2");
   });
 
   it("logout llama al endpoint con el refreshToken, limpia la sesion y redirige", async () => {

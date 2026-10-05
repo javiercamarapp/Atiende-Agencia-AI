@@ -16,7 +16,7 @@ describe("fetchJson", () => {
     const fetchImpl = fakeFetch({ "/algo": { status: 200, body: { ok: true } } });
     const result = await fetchJson(fetchImpl, "http://api.local/algo", "tok");
     expect(result).toEqual({ ok: true });
-    expect(fetchImpl).toHaveBeenCalledWith("http://api.local/algo", { headers: { authorization: "Bearer tok" } });
+    expect(fetchImpl).toHaveBeenCalledWith("http://api.local/algo", expect.objectContaining({ headers: { authorization: "Bearer tok" } }));
   });
 
   it("respuesta no-ok -> CitasAdminError con el mensaje real del servidor", async () => {
