@@ -68,6 +68,9 @@ export interface DepsControlador<R extends string = string> {
   readonly log?: SumideroLog;
   readonly kpi?: (e: EventoKpiLlamada) => void | Promise<void>;
   readonly dormir?: (ms: number) => Promise<void>;
+  /** Si el agente se queda CALLADO tantos ms despues de recibir el resultado de una herramienta (el modelo se colgo 55 a 105 s en la corrida real), el
+   * controlador dice el pregrabado "tool_timeout" (un momento, por favor) en vez de dejar al cliente en silencio (QA-PM-R2-voz-06). Sin valor = apagado. */
+  readonly vigilarSilencioAgenteMs?: number;
   /** Solo simulador/pruebas: recibe cada tool con sus argumentos reales (el log de produccion nunca los lleva). */
   readonly trazarTool?: (t: { readonly nombre: string; readonly args: unknown; readonly resultado: unknown }) => void;
 }
@@ -75,6 +78,17 @@ export interface DepsControlador<R extends string = string> {
 export interface ResultadoLlamada<R extends string = string> {
   readonly resultado: R | VozResultadoBase;
   readonly costoMicroUsd: number;
+}
+
+/** El agente se despide (la llamada ya logro su objetivo): "hasta luego", "que tenga buen dia", "gracias por llamar". */
+const DESPEDIDA_RE = /\b(?:hasta\s+luego|que\s+tenga\s+(?:un\s+)?(?:excelente\s+|muy\s+)?(?:buen|bonit)[oa]\s+(?:d[ií]a|tarde|noche)|buen[oa]s?\s+(?:d[ií]as?|tardes?|noches?)\s*$|gracias\s+por\s+(?:llamar|su\s+llamada|comunicarse)|con\s+gusto,?\s+que\s+est[eé]\s+bien)/i;
+
+/** Quita de lo que dice el agente las llamadas a herramienta que el modelo a veces "pronuncia" (":buscar_cliente{output:{isNew:true}}", "tool_code ..."). */
+export function limpiarTextoAgente(texto: string): string {
+  return texto
+    .replace(/[:`]?\b[a-z]+(?:_[a-z]+)+\s*\{(?:[^{}]|\{[^{}]*\})*\}?/g, " ")
+    .replace(/\b(?:tool_code|tool_outputs?|function_call|print\(default_api)[^\n]*/gi, " ")
+    .replace(/\s{2,}/g, " ");
 }
 
 /** "Carrito cotizado (sin confirmar): 3 x Tacos, 1 x Horchata. Total $126." a partir del resultado de cotizar_pedido (camelCase de dominio o snake_case wire). */
@@ -104,6 +118,11 @@ export class ControladorLlamada<R extends string = string> {
   private turnosCliente = 0;
   /** Carrito de la ultima cotizacion vigente (renglones y total, sin datos del cliente): lo lleva el aviso a una persona si la llamada se escala antes de crear el pedido. */
   private carritoCotizado: string | null = null;
+  /** Texto del turno actual del agente (para detectar su despedida) y vigilancia de silencio tras una herramienta. */
+  private turnoAgenteTexto = "";
+  /** Nota para el aviso cuando el timeout de crear_pedido dejo el resultado incierto. */
+  private notaIncierto: string | null = null;
+  private vigiaSilencio: ReturnType<typeof setTimeout> | null = null;
   private resolverFin!: (r: ResultadoLlamada<R>) => void;
   /** Se resuelve cuando la llamada termina (el sistema cuelga o el cliente cuelga). */
   readonly terminada: Promise<ResultadoLlamada<R>>;
@@ -196,15 +215,29 @@ export class ControladorLlamada<R extends string = string> {
   }
 
   private abrir(handle: string | null): Promise<VozSesionLlamada> {
+    // Reconexion SIN handle de reanudacion (la caida llego antes del primer `sessionResumptionUpdate`): la sesion nueva arrancaria sin memoria y volveria a saludar.
+    // Se le siembra la conversacion hasta ahora (ya redactada) para que continue donde iba.
+    const historial = handle === null && this.transcripcion.length > 0 ? this.historialParaReanudar() : undefined;
     return this.deps.abrirSesion(
-      { instruccion: this.deps.instruccion, voiceId: this.deps.voiceId, herramientas: this.deps.ejecutor.definiciones(), reanudarHandle: handle },
+      { instruccion: this.deps.instruccion, voiceId: this.deps.voiceId, herramientas: this.deps.ejecutor.definiciones(), reanudarHandle: handle, ...(historial ? { historial } : {}) },
       {
         agenteDijo: (texto) => void this.encolar(async () => {
-          this.transcripcion.push({ rol: "agente", texto: redactarTranscripcion(texto) });
+          this.cancelarVigiaSilencio();
+          // QA-PM-R2-voz-12: el modelo llego a "pronunciar" la llamada a una herramienta (":buscar_cliente{...}"): no entra a la transcripcion.
+          const limpio = limpiarTextoAgente(texto);
+          if (limpio.trim() !== "") this.transcripcion.push({ rol: "agente", texto: redactarTranscripcion(limpio) });
+          this.turnoAgenteTexto += limpio;
           await this.eventoInterno({ tipo: "agente_empieza" });
+          if (this.maquina.hayObjetivo && DESPEDIDA_RE.test(this.turnoAgenteTexto)) await this.eventoInterno({ tipo: "despedida_dicha" });
         }),
-        agenteTermino: () => void this.encolar(() => this.eventoInterno({ tipo: "agente_termina" })),
-        interrumpido: () => void this.encolar(() => this.eventoInterno({ tipo: "agente_termina" })),
+        agenteTermino: () => void this.encolar(async () => {
+          this.turnoAgenteTexto = "";
+          await this.eventoInterno({ tipo: "agente_termina" });
+        }),
+        interrumpido: () => void this.encolar(async () => {
+          this.turnoAgenteTexto = "";
+          await this.eventoInterno({ tipo: "agente_termina" });
+        }),
         usuarioDijo: (texto) => void this.encolar(async () => {
           this.transcripcion.push({ rol: "cliente", texto: redactarTranscripcion(texto) });
           if (await this.aplicarGuardia(texto)) return;
@@ -243,8 +276,56 @@ export class ControladorLlamada<R extends string = string> {
     else if (salida.ok && salida.entidadId) this.carritoCotizado = null;
     await this.deps.kpi?.({ tipo: "tool_call", herramienta: llamada.nombre, latenciaMs: salida.latenciaMs });
     // La maquina puede ordenar acciones (aviso por tool lenta, escalar tras dos timeouts) ANTES de contestar al modelo.
-    await this.encolar(() => this.eventoInterno({ tipo: "tool_resultado", nombre: llamada.nombre, ok: salida.ok, entidadId: salida.entidadId, timeout: salida.timeout }));
+    const res = (typeof salida.resultado === "object" && salida.resultado !== null ? salida.resultado : {}) as { pedido_grande?: unknown; escalado?: unknown; incierto?: unknown };
+    if (res.incierto === true) this.notaIncierto = "El registro del pedido expiró y PUDO quedar registrado: verifique en la sucursal antes de contactar al cliente.";
+    await this.encolar(() =>
+      this.eventoInterno({
+        tipo: "tool_resultado",
+        nombre: llamada.nombre,
+        ok: salida.ok,
+        entidadId: salida.entidadId,
+        timeout: salida.timeout,
+        ...(salida.ok && (res.pedido_grande === true || res.escalado === true) ? { retenido: true } : {}),
+        ...(res.incierto === true ? { incierto: true } : {}),
+      }),
+    );
+    this.armarVigiaSilencio();
     return salida.resultado;
+  }
+
+  /** Despues de devolverle al modelo el resultado de una herramienta, si no dice nada en `vigilarSilencioAgenteMs`, se dice el pregrabado (una vez por herramienta). */
+  private armarVigiaSilencio(): void {
+    const ms = this.deps.vigilarSilencioAgenteMs;
+    if (ms === undefined || this.maquina.estadoActual === "cerrada") return;
+    this.cancelarVigiaSilencio();
+    this.vigiaSilencio = setTimeout(() => {
+      this.vigiaSilencio = null;
+      void this.encolar(async () => {
+        if (this.maquina.estadoActual === "cerrada") return;
+        this.log("agente_callado", { ms });
+        await this.deps.reproducir("tool_timeout");
+      });
+    }, ms);
+    (this.vigiaSilencio as { unref?: () => void }).unref?.();
+  }
+
+  private cancelarVigiaSilencio(): void {
+    if (this.vigiaSilencio) clearTimeout(this.vigiaSilencio);
+    this.vigiaSilencio = null;
+  }
+
+  /** Ultimos turnos de la conversacion (ya redactados), con tope de tamano, para sembrar una sesion nueva tras una caida. */
+  private historialParaReanudar(): { readonly rol: "cliente" | "agente"; readonly texto: string }[] {
+    const turnos = this.transcripcion.filter((t): t is TurnoTranscrito & { rol: "cliente" | "agente" } => t.rol !== "herramienta").slice(-30);
+    let total = 0;
+    const out: { rol: "cliente" | "agente"; texto: string }[] = [];
+    for (const t of [...turnos].reverse()) {
+      total += t.texto.length;
+      if (total > 6000) break;
+      out.unshift({ rol: t.rol, texto: t.texto });
+    }
+    const carrito = this.carritoCotizado;
+    return carrito ? [...out, { rol: "agente", texto: `(Contexto del sistema: ${carrito})` }] : out;
   }
 
   private async alCaer(razon: string, handle: string | null): Promise<void> {
@@ -268,6 +349,7 @@ export class ControladorLlamada<R extends string = string> {
   private async finalizar(resultado: R | VozResultadoBase): Promise<void> {
     if (this.finalizado) return;
     this.finalizado = true;
+    this.cancelarVigiaSilencio();
     const sesion = this.sesion;
     this.sesion = null;
     await sesion?.cerrar().catch(() => undefined);
@@ -277,7 +359,7 @@ export class ControladorLlamada<R extends string = string> {
 
   private async escalar(motivo: string, resumen: string): Promise<void> {
     // QA-PM-R2-voz-13: un carrito ya cotizado no se pierde con el aviso (la persona que lo recibe sabe que pedia el cliente).
-    const llamada = this.deps.construirEscalacion(motivo, this.carritoCotizado ? `${resumen} ${this.carritoCotizado}` : resumen);
+    const llamada = this.deps.construirEscalacion(motivo, [resumen, this.notaIncierto, this.carritoCotizado].filter((t) => t).join(" "));
     const salida = await this.deps.ejecutor.ejecutar(llamada.nombre, llamada.args);
     this.log("escalada", { motivo, ok: salida.ok });
   }
