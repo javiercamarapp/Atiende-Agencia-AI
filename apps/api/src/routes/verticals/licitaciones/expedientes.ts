@@ -30,8 +30,13 @@ export interface ExpedienteFila {
   readonly presentada: boolean;
 }
 
-async function filaDe(repo: LicitacionesRepository, organizationId: string, tender: TenderRecord): Promise<ExpedienteFila> {
-  const [items, proposal] = await Promise.all([repo.listRequirementItems(organizationId, tender.id), repo.findProposal(organizationId, tender.id)]);
+export async function filaDe(repo: LicitacionesRepository, organizationId: string, tender: TenderRecord): Promise<ExpedienteFila> {
+  // SECUENCIAL a proposito: la sesion es UNA transaccion compartida y `listExpedienteStageApprovals` abre un SAVEPOINT
+  // (la columna `stage` solo existe tras la 033). Con la base sin migrar su consulta primaria falla con 42703 y deja la
+  // transaccion abortada hasta el ROLLBACK TO SAVEPOINT; cualquier consulta concurrente en la misma sesion correria dentro
+  // de la transaccion abortada (25P02) y la peticion daria 500 en vez del camino legacy. Nada en paralelo en esta funcion.
+  const items = await repo.listRequirementItems(organizationId, tender.id);
+  const proposal = await repo.findProposal(organizationId, tender.id);
   const base = {
     tenderId: tender.id,
     title: tender.title,
@@ -42,13 +47,11 @@ async function filaDe(repo: LicitacionesRepository, organizationId: string, tend
   if (!proposal) {
     return { ...base, redaccion: "pendiente", checklist: "sin_correr", aprobacion: { modo: "sin_propuesta", tecnicaLegal: false, economica: false, completa: false }, paquete: false, presentada: false };
   }
-  const [compliance, snapshot, manifest, submission, inputs] = await Promise.all([
-    repo.listComplianceItems(organizationId, proposal.id),
-    repo.listExpedienteStageApprovals(organizationId, proposal.id),
-    repo.findLatestManifest(organizationId, proposal.id),
-    repo.findSubmission(organizationId, proposal.id),
-    repo.computeCurrentInputsHash(organizationId, tender.id, proposal.id),
-  ]);
+  const compliance = await repo.listComplianceItems(organizationId, proposal.id);
+  const snapshot = await repo.listExpedienteStageApprovals(organizationId, proposal.id);
+  const manifest = await repo.findLatestManifest(organizationId, proposal.id);
+  const submission = await repo.findSubmission(organizationId, proposal.id);
+  const inputs = await repo.computeCurrentInputsHash(organizationId, tender.id, proposal.id);
   const checklist: ExpedienteFila["checklist"] = compliance.length === 0 ? "sin_correr" : compliance.some((i) => i.result === "rojo") ? "rojo" : compliance.some((i) => i.result === "ambar") ? "ambar" : "verde";
   const sealed = sealInputs(inputs.raw as ExpedienteInputs);
   let aprobacion: ExpedienteFila["aprobacion"];
