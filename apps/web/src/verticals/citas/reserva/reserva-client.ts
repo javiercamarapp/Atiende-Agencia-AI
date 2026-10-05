@@ -74,9 +74,12 @@ async function leer<T>(res: Response, fallback: string): Promise<T> {
   throw new ReservaError(message, res.status);
 }
 
+import { fetchWithTimeout } from "../../../lib/authed-fetch.ts";
+
 export function crearClienteReserva(apiBaseUrl: string, orgSlug: string, fetchImpl: typeof fetch = (...a) => fetch(...a)) {
   const raiz = `${apiBaseUrl.replace(/\/+$/, "")}/v1/citas/${encodeURIComponent(orgSlug)}`;
-  const post = (path: string, body: unknown) => fetchImpl(`${raiz}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  // Con la API colgada la reserva no se queda en "Confirmando..." para siempre: vence a los 20 s (un RequestTimeoutError que la pagina trata como un fallo de red, con la MISMA llave de idempotencia al reintentar).
+  const post = (path: string, body: unknown) => fetchWithTimeout(fetchImpl, `${raiz}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return {
     async catalogo(): Promise<CatalogoPublico | NegocioNoListo> {
       const raw = await leer<{
@@ -85,7 +88,7 @@ export function crearClienteReserva(apiBaseUrl: string, orgSlug: string, fetchIm
         negocio?: { nombre: string; zona_horaria: string };
         servicios?: { id: string; nombre: string; duracion_minutos: number; precio_centavos: number | null }[];
         profesionales?: { id: string; nombre: string; servicio_ids: string[] }[];
-      }>(await fetchImpl(`${raiz}/publico/catalogo`), "No pudimos cargar el negocio.");
+      }>(await fetchWithTimeout(fetchImpl, `${raiz}/publico/catalogo`), "No pudimos cargar el negocio.");
       if (!raw.lista) return { lista: false, faltan: raw.faltan ?? [] };
       return {
         lista: true,
