@@ -14,6 +14,7 @@ import { EtiquetaBoton } from "./EtiquetaBoton.tsx";
 import { OlvidoContrasena } from "../shell/cuenta/OlvidoContrasena.tsx";
 import { esVerticalCuenta } from "../shell/cuenta/cuenta-client.ts";
 import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../lib/google-auth.ts";
+import { LoginArtwork, LOGIN_STORIES } from "./LoginArtwork.tsx";
 import "../pages/login.css";
 
 export interface VerticalLoginHero {
@@ -120,15 +121,13 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
   const alerta = errorCorreo ?? errorEnvio ?? (avisoEnviado ? null : alertaExterna);
   const idAlerta = `${idEstado}-alerta`;
 
-  // Composición de ~/likida/src/app/login/page.tsx:283-441 (UNI-9). Medidas citadas por línea de Likida:
-  // columna `max-w-[392px]` centrada en la mitad (:292), logo h-6 (:296), bloque centrado en vertical `py-12` (:299),
-  // kicker (:301), titular 38/44 px serif (:304), bajada 15 px/1.6 (:311), aviso de "enviado" ENCIMA del formulario (:333),
-  // hairline `mt-9` (:365), Google `mt-8` (:373), separador `my-6` (:389), formulario `gap-3` (:405), píldora `mt-1` (:431),
-  // pie `mt-7` 14 px (:438), error inline 14 px (:455), legales `mt-10` 12 px (:464) y lámina `p-9` (:512).
+  const story = LOGIN_STORIES[vertical];
+
+  // El formulario mantiene sus estados y su orden de teclado; la lámina editorial es complementaria.
   return (
-    <main className="login login-pantalla lg:grid lg:grid-cols-2">
+    <main className="login login-pantalla login-editorial lg:grid lg:grid-cols-2" data-vertical={vertical}>
       <section className="login-seccion flex flex-col px-6 sm:px-10 lg:px-14">
-        <div className="mx-auto flex w-full max-w-[392px] flex-1 flex-col">
+        <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col">
           <header className="login-entra flex items-center">
             <AtiendeWordmark markClassName="h-6 w-auto" className="[&>span]:text-xl [&>span]:leading-6" />
           </header>
@@ -256,16 +255,18 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
         </div>
       </section>
 
-      {/* Lámina: `hidden lg:flex` como Likida (:496): por debajo de 1024 px no se pinta ni se descarga. */}
-      <aside className="login-aside hidden lg:flex lg:flex-col lg:pl-6 lg:pr-10">
-        <figure className="login-lamina min-h-0 flex-1">
-          <img src={`${import.meta.env.BASE_URL}${hero.imagen}`} alt={hero.alt} className="login-foto" />
-          <div className="login-velo" />
-          <figcaption className="absolute inset-x-0 bottom-0 p-9">
-            <p className="login-kicker login-kicker-foto">{hero.kicker}</p>
-            <p className="login-serif login-titular-foto foto-texto mt-3.5">{hero.texto}</p>
-          </figcaption>
-        </figure>
+      <aside className="login-aside login-story-panel hidden lg:flex lg:flex-col" aria-label={`Atiende ${nombre}`}>
+        <div className="login-story-surface">
+          <div className="login-story-copy">
+            <p className="login-kicker">Atiende · {nombre}</p>
+            <h2 className="login-serif">{story?.title ?? hero.kicker}</h2>
+            <p className="login-story-description">{story?.description ?? hero.texto}</p>
+          </div>
+          {story ? <LoginArtwork vertical={vertical} /> : <img src={`${import.meta.env.BASE_URL}${hero.imagen}`} alt={hero.alt} className="login-foto" />}
+          {story && <ol className="login-story-steps" aria-label="Tu operación conectada">
+            {story.steps.map((step, index) => <li key={step}><span aria-hidden="true">0{index + 1}</span>{step}</li>)}
+          </ol>}
+        </div>
       </aside>
     </main>
   );
