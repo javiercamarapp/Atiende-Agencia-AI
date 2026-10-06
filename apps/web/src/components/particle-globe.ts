@@ -182,6 +182,12 @@ export function mountParticleGlobe(
     last = 0;
   }
   function tick(now: number) {
+    // Media preferences can change before the browser delivers its change event.
+    // Paint the stable frame and update the public state before stopping RAF.
+    if (motion.matches) {
+      sync();
+      return;
+    }
     if (!visible || document.hidden || motion.matches) {
       stop();
       return;
