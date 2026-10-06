@@ -1,3 +1,4 @@
+import { createGlyphAtlas } from "./particle-glyph-atlas.ts";
 type Shape = "sphere" | "torus" | "diamond" | "octahedron" | "cube" | "helix" | "double-ring";
 const symbols: Partial<Record<Shape, number[][][]>> = {};
 const glyphs = "01{}[]<>/\\+=:;%&!?$#()*-0123456789";
@@ -19,6 +20,7 @@ export function mountParticleGlobe(
   const styles = getComputedStyle(canvas);
   const color = (name: string) => styles.getPropertyValue(`--login-particle-${name}`).trim() || "transparent";
   const palette = { glow: color("glow"), wash: color("wash"), clear: color("clear"), front: color("front"), middle: color("middle"), rear: color("rear"), ambient: color("ambient") };
+  const atlas = createGlyphAtlas(glyphs, [palette.front, palette.middle, palette.rear]);
   let width = 0,
     height = 0,
     raf = 0,
@@ -31,7 +33,7 @@ export function mountParticleGlobe(
     pointerY = 0;
   let cursorX = -10000, cursorY = -10000, elapsed = 0, frameSeconds = 0;
   let hovered = false, energy = 0, flowTime = 0;
-  const count = compact ? 650 : crop ? 3600 : 1600;
+  const count = compact ? 650 : crop ? 4200 : 1600;
   const segments = (symbols[shape] ?? []).flatMap((path) =>
     path.slice(1).map((b, i) => ({
       a: path[i]!,
@@ -153,22 +155,15 @@ export function mountParticleGlobe(
       const x = baseX + original.ox, y = baseY + original.oy;
       const glyph = glyphs[(p.seed + Math.floor((elapsed + p.seed * 173) / (1800 + p.seed % 7 * 240))) % glyphs.length]!;
       if (y < -20 || y > height + 20 || x < -20 || x > width + 20) continue;
-      const variation = 0.78 + (p.seed % 7) * 0.055;
+      const variation = 0.71 + (p.seed % 7) * 0.065;
       const size =
         Math.max(7, Math.min(22, radius * (compact ? 0.075 : 0.037))) *
-        (0.46 + depth * 0.9) *
+        (0.38 + depth * 1.08) *
         variation;
-      ctx.font = `${size.toFixed(1)}px "IBM Plex Mono", monospace`;
       const rim = Math.max(0, -p.y) * (0.5 + depth * 0.5);
-      ctx.globalAlpha = Math.min(1, (crop ? 0.25 : 0.12) + depth * 0.65 + rim * 0.35);
-      ctx.fillStyle =
-        depth + rim * 0.55 > 0.8 ? palette.front : depth > 0.48 ? palette.middle : palette.rear;
-      ctx.fillText(glyph, x, y);
-      // Sparse bright foreground characters give depth without a fuzzy halo.
-      if (depth > 0.83 && p.seed % 11 === 0) {
-        ctx.globalAlpha = 0.18;
-        ctx.fillText(glyph, x + 0.5, y);
-      }
+      const illumination = depth + rim * 0.82;
+      ctx.globalAlpha = Math.min(1, (crop ? 0.18 : 0.12) + depth * 0.75 + rim * 0.45);
+      atlas?.draw(ctx, glyph, x, y, size, illumination > 0.78 ? 0 : depth > 0.4 ? 1 : 2);
     }
     ctx.globalAlpha = 0.13;
     ctx.fillStyle = palette.ambient;

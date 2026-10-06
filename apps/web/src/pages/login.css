@@ -355,12 +355,12 @@
 }
 
 .login-artwork {
-  --login-particle-glow: #168bda25;
+  --login-particle-glow: #168bda40;
   --login-particle-wash: #0764de0c;
   --login-particle-clear: #0045aa00;
-  --login-particle-front: #b3ecff;
-  --login-particle-middle: #58c5fa;
-  --login-particle-rear: #277cc8;
+  --login-particle-front: #e0faff;
+  --login-particle-middle: #77d9ff;
+  --login-particle-rear: #287ac0;
   --login-particle-ambient: #5cbdff;
 }
 
