@@ -161,7 +161,7 @@ export function mountParticleGlobe(
         (0.38 + depth * 1.08) *
         variation;
       const rim = Math.max(0, -p.y) * (0.5 + depth * 0.5);
-      const illumination = depth + rim * 0.82;
+      const illumination = depth * 0.82 + rim * 0.42 - p.x * 0.18;
       ctx.globalAlpha = Math.min(1, (crop ? 0.18 : 0.12) + depth * 0.75 + rim * 0.45);
       atlas?.draw(ctx, glyph, x, y, size, illumination > 0.78 ? 0 : depth > 0.4 ? 1 : 2);
     }

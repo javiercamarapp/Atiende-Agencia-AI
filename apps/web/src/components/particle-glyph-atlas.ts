@@ -13,13 +13,15 @@ export function createGlyphAtlas(alphabet: string, colors: readonly string[]) {
   colors.forEach((color, tier) => {
     context.fillStyle = color;
     context.shadowColor = color;
-    context.shadowBlur = tier === 0 ? 7 : 0;
+    context.shadowBlur = tier === 0 ? 5 : 0;
     characters.forEach((glyph, column) => {
+      context.globalAlpha = tier === 0 ? 0.45 : 1;
       context.fillText(glyph, (column + 0.5) * cell, (tier + 0.5) * cell);
       if (tier === 0) {
+        context.globalAlpha = 1;
         context.shadowBlur = 0;
         context.fillText(glyph, (column + 0.5) * cell, (tier + 0.5) * cell);
-        context.shadowBlur = 7;
+        context.shadowBlur = 5;
       }
     });
   });
