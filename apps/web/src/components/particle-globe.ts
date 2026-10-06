@@ -30,7 +30,8 @@ export function mountParticleGlobe(
     pointerX = 0,
     pointerY = 0;
   let cursorX = -10000, cursorY = -10000, elapsed = 0, frameSeconds = 0;
-  const count = compact ? 650 : crop ? 4200 : 1600;
+  let hovered = false, energy = 0, flowTime = 0;
+  const count = compact ? 650 : crop ? 3600 : 1600;
   const segments = (symbols[shape] ?? []).flatMap((path) =>
     path.slice(1).map((b, i) => ({
       a: path[i]!,
@@ -94,7 +95,7 @@ export function mountParticleGlobe(
       ? Math.max(width * 0.63, height * 0.77)
       : Math.min(width, height) * 0.39;
     const cx = width * 0.5 + pointerX * 9;
-    const cy = crop ? radius + height * 0.11 : height * 0.5;
+    const cy = crop ? radius * 1.06 + height * 0.045 : height * 0.5;
     const glow = ctx.createRadialGradient(
       cx,
       cy - radius * 0.25,
@@ -117,9 +118,18 @@ export function mountParticleGlobe(
       sp = Math.sin(pitch);
     const projected = points
       .map((p) => {
-        const x = p.x * c - p.z * s,
-          z = p.x * s + p.z * c;
-        return { ...p, x, y: p.y * cp - z * sp, z: p.y * sp + z * cp };
+        // Several travelling waves deform the surface continuously, not just its orbit.
+        const wave = Math.sin(p.x * 4.7 + p.y * 3.2 + flowTime * 1.2)
+          * Math.cos(p.z * 3.8 - flowTime * 0.73);
+        const ripple = Math.sin(p.y * 8.2 - p.z * 3.1 + flowTime * 1.65);
+        const amplitude = motion.matches ? 0.025 : 0.07 + energy * 0.09;
+        const radial = 1 + amplitude * wave + amplitude * 0.38 * ripple;
+        const shear = Math.sin(p.y * 3.4 + flowTime * 0.8) * amplitude;
+        const px = p.x * radial + p.z * shear;
+        const py = p.y * radial + Math.sin(p.x * 5 + flowTime) * amplitude * 0.28;
+        const pz = p.z * radial;
+        const x = px * c - pz * s, z = px * s + pz * c;
+        return { ...p, x, y: py * cp - z * sp, z: py * sp + z * cp };
       })
       .sort((a, b) => a.z - b.z);
     ctx.textAlign = "center";
@@ -133,10 +143,10 @@ export function mountParticleGlobe(
       const baseX = cx + p.x * radius * scale, baseY = cy + p.y * radius * scale;
       if (frameSeconds && !motion.matches) {
         const dx = baseX + original.ox - cursorX, dy = baseY + original.oy - cursorY;
-        const distance = Math.hypot(dx, dy), reach = Math.min(150, radius * 0.38);
-        const force = distance < reach ? (1 - distance / reach) ** 2 * 950 * (0.3 + depth) : 0;
-        original.vx += ((dx / Math.max(1, distance)) * force - original.ox * 30 - original.vx * 8) * frameSeconds;
-        original.vy += ((dy / Math.max(1, distance)) * force - original.oy * 30 - original.vy * 8) * frameSeconds;
+        const distance = Math.hypot(dx, dy), reach = Math.min(245, radius * 0.58);
+        const force = distance < reach ? (1 - distance / reach) ** 2 * 2600 * (0.3 + depth) : 0;
+        original.vx += (((dx - dy * 0.85) / Math.max(1, distance)) * force - original.ox * 20 - original.vx * 8) * frameSeconds;
+        original.vy += (((dy + dx * 0.85) / Math.max(1, distance)) * force - original.oy * 20 - original.vy * 8) * frameSeconds;
         original.ox += original.vx * frameSeconds;
         original.oy += original.vy * frameSeconds;
       }
@@ -145,13 +155,14 @@ export function mountParticleGlobe(
       if (y < -20 || y > height + 20 || x < -20 || x > width + 20) continue;
       const variation = 0.78 + (p.seed % 7) * 0.055;
       const size =
-        Math.max(7, Math.min(18, radius * (compact ? 0.075 : 0.033))) *
-        (0.68 + depth * 0.53) *
+        Math.max(7, Math.min(22, radius * (compact ? 0.075 : 0.037))) *
+        (0.46 + depth * 0.9) *
         variation;
       ctx.font = `${size.toFixed(1)}px "IBM Plex Mono", monospace`;
-      ctx.globalAlpha = (crop ? 0.22 : 0.12) + depth * 0.75;
+      const rim = Math.max(0, -p.y) * (0.5 + depth * 0.5);
+      ctx.globalAlpha = Math.min(1, (crop ? 0.25 : 0.12) + depth * 0.65 + rim * 0.35);
       ctx.fillStyle =
-        depth > 0.8 ? palette.front : depth > 0.48 ? palette.middle : palette.rear;
+        depth + rim * 0.55 > 0.8 ? palette.front : depth > 0.48 ? palette.middle : palette.rear;
       ctx.fillText(glyph, x, y);
       // Sparse bright foreground characters give depth without a fuzzy halo.
       if (depth > 0.83 && p.seed % 11 === 0) {
@@ -184,7 +195,9 @@ export function mountParticleGlobe(
       const dt = last ? Math.min(now - last, 80) : 33;
       frameSeconds = dt / 1000;
       elapsed += dt;
-      angle += dt * 0.00003;
+      energy += ((hovered ? 1 : 0) - energy) * (1 - Math.exp(-dt / (hovered ? 240 : 950)));
+      flowTime += dt * 0.00055 * (1 + energy * 3.2);
+      angle += dt * 0.000045 * (1 + energy * 4.5);
       const ease = 1 - Math.exp(-dt / 190);
       pointerX += (targetX - pointerX) * ease;
       pointerY += (targetY - pointerY) * ease;
@@ -197,6 +210,8 @@ export function mountParticleGlobe(
     stop();
     frameSeconds = 0;
     if (motion.matches) {
+      hovered = false;
+      energy = 0;
       pointerX = pointerY = targetX = targetY = 0;
       cursorX = cursorY = -10000;
       for (const p of points) p.ox = p.oy = p.vx = p.vy = 0;
@@ -208,6 +223,7 @@ export function mountParticleGlobe(
   }
   function pointer(event: PointerEvent) {
     if (motion.matches || event.pointerType === "touch") return;
+    hovered = true;
     const canvasBounds = canvas.getBoundingClientRect();
     cursorX = event.clientX - canvasBounds.left;
     cursorY = event.clientY - canvasBounds.top;
@@ -222,6 +238,7 @@ export function mountParticleGlobe(
     );
   }
   function leave() {
+    hovered = false;
     targetX = targetY = 0;
     cursorX = cursorY = -10000;
   }

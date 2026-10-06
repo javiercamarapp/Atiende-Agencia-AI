@@ -53,9 +53,9 @@ export function LoginArtwork({ vertical }: { readonly vertical: string }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || typeof matchMedia !== "function") return;
-    return mountParticleGlobe(canvas, story.shape, story.shape === "sphere");
+    return mountParticleGlobe(canvas, "sphere", true);
   }, [story.shape]);
-  return <div className="login-artwork" data-shape={story.shape} aria-hidden="true">
+  return <div className="login-artwork" data-shape="sphere" aria-hidden="true">
     <canvas ref={canvasRef} className="login-particles" />
     <div className="login-artwork-floor" />
   </div>;

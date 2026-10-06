@@ -56,3 +56,18 @@ test("las seis verticales separan el texto de la geometría en escritorio compac
     expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(720);
   }
 });
+
+
+test("idiomas cambian el acceso y la recuperación sin perder el correo", async ({ page }) => {
+  await page.goto("/restaurantes/login");
+  await page.getByRole("textbox", { name: "Tu correo", exact: true }).fill("persona@example.test");
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Welcome to atiende restaurants");
+  await expect(page.getByRole("textbox", { name: "Your email", exact: true })).toHaveValue("persona@example.test");
+  await expect(page.locator(".login-story-steps")).toHaveCount(0);
+  await page.getByRole("button", { name: "Forgot your password?", exact: true }).click();
+  await expect(page.getByText("Reset your password", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back to sign in", exact: true }).click();
+  await page.getByRole("button", { name: "Español", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Bienvenido a atiende restaurantes");
+});

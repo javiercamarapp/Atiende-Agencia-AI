@@ -71,7 +71,7 @@ describe("VerticalLogin", () => {
     const c = await montar();
     const campo = correo(c);
     changeValue(campo, "dueno@negocio.com");
-    expect(c.querySelector(".login-artwork")!.getAttribute("data-shape")).toBe("helix");
+    expect(c.querySelector(".login-artwork")!.getAttribute("data-shape")).toBe("sphere");
     expect([...c.querySelectorAll("button")].some(b => /animación/.test(b.textContent ?? ""))).toBe(false);
     expect(correo(c)).toBe(campo);
     expect(campo.value).toBe("dueno@negocio.com");
