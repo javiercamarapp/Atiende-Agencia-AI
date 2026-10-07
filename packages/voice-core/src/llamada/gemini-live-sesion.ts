@@ -79,8 +79,8 @@ export function declaracionesDeHerramientas(defs: readonly ToolDefinicion[]) {
 /** Ruta de recurso del modelo en el setup: `models/<id>` en la Gemini API; `projects/.../publishers/google/models/<id>` en Vertex. */
 export function mensajeSetup(model: string, apertura: AperturaLlamada, vertex?: Pick<VertexLiveOpciones, "project" | "location">, vadOverride?: Partial<ConfigPlataformaVoz["gemini"]["vad"]>) {
   const g = VOZ_PLATAFORMA.gemini;
-  // Gemini API: los modelos de audio nativo eligen el idioma solos y NO admiten `languageCode` (idioma = null): el espanol de Mexico se fija en la
-  // instruccion. Vertex si lo admite. `thinkingConfig` NUNCA se manda: `gemini-3.8-live` no admite `thinkingLevel` (solo la variante extended-thinking).
+  // Gemini API: los modelos de audio nativo eligen el idioma solos y NO admiten `languageCode` (idioma = null, no se manda): el espanol de Mexico se fija
+  // en la instruccion. Vertex si lo admite (`idiomaVertex`, se manda). `languageCode` solo se incluye si la plataforma lo fija. `thinkingConfig` NUNCA se manda: `gemini-3.8-live` no admite `thinkingLevel` (solo la variante extended-thinking).
   const languageCode = vertex ? g.idiomaVertex : g.idioma;
   const vad = { ...g.vad, ...vadOverride };
   return {
@@ -88,8 +88,8 @@ export function mensajeSetup(model: string, apertura: AperturaLlamada, vertex?: 
       model: vertex ? vertexModelPath(vertex, model) : `models/${model}`,
       generationConfig: {
         responseModalities: ["AUDIO"],
-        // temperatura 0 (VOZ_PLATAFORMA): el agente vivo de PM corre determinista.
-        temperature: g.temperatura,
+        // Temperatura de la organizacion (ajustes del agente); sin ajuste, 0 (VOZ_PLATAFORMA): el agente vivo de PM corre determinista.
+        temperature: typeof apertura.temperatura === "number" ? apertura.temperatura : g.temperatura,
         speechConfig: {
           ...(languageCode ? { languageCode } : {}),
           voiceConfig: { prebuiltVoiceConfig: { voiceName: apertura.voiceId } },

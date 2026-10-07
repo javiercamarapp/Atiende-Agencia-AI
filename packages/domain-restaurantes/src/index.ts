@@ -213,6 +213,9 @@ export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEsp
 export type { RecepcionConEspera } from "./whatsapp/inbound.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
 export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
+export { UMBRAL_AVISOS_AGRUPADOS, procesarEstadosEntrega } from "./whatsapp/estados-entrega.ts";
+export type { EmisionEntregaFallida, EventoEntregaFallida, ProcesarEstadosEntregaOptions, ResumenEstadosEntrega } from "./whatsapp/estados-entrega.ts";
+export type { EstadoEntregaEntrante, MotivoFalloEntregaGuardado, RegistroEstadoEntrega } from "./repository.ts";
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 
@@ -369,5 +372,7 @@ export {
 export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
 export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operativos.ts";
 export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
+// Ajustes del agente por organizacion (modelo, temperatura, voz, fondo) y base de conocimiento automatica (equivalentes de lo que el original hacia con ElevenLabs).
+export * from "./ajustes-agente/index.ts";
 
 export * from "./conocimiento/index.ts";

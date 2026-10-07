@@ -43,3 +43,7 @@ export { crearProveedorCascadaLlamada, energiaRms, pcm16AWav, pistaVocabulario }
 export type { CascadaOpenRouterOpciones, MensajeLlmVoz, PeticionLlmVoz, ProveedorCascadaLlamada, PuertoLlmVoz, RespuestaLlmVoz, ToolCallLlmVoz } from "./llamada/cascada-openrouter.ts";
 export { crearEscalonesPlataforma, crearEscaleraPlataforma, estadoEscalera } from "./plataforma.ts";
 export type { CredencialesVoz, DepsPlataformaVoz, EstadoEscaleraVoz, EstadoEscalonVoz } from "./plataforma.ts";
+export { AJUSTES_HABLA_POR_DEFECTO, ESTILOS_HABLA, RITMOS_HABLA, TEMPERATURA_VOZ_MAX, TEMPERATURA_VOZ_MIN, conInstruccionDeHabla, esEstiloHabla, esRitmoHabla, esTemperaturaVoz, instruccionDeHabla } from "./ajustes-habla.ts";
+export type { AjustesHabla, EstiloHabla, RitmoHabla } from "./ajustes-habla.ts";
+export { FONDO_VOLUMEN_MAX, FONDO_VOLUMEN_MIN, FONDO_VOLUMEN_POR_DEFECTO, FondoRestaurante, HZ_AUDIO_AGENTE, esVolumenFondo } from "./fondo-ambiente.ts";
+export type { OpcionesFondo } from "./fondo-ambiente.ts";
