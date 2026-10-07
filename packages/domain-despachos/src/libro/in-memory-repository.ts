@@ -167,6 +167,7 @@ export class InMemoryLibroRepository implements LibroRepository {
     return this.lectura<readonly PagoRepConPoliza[]>([], () =>
       (this.pagosRep.get(propertyId) ?? [])
         .filter((p) => (f.folioFiscalRep === undefined || p.folioFiscalRep === f.folioFiscalRep.toLowerCase()) && (f.ejercicio === undefined || f.mes === undefined || p.fechaPago.startsWith(`${f.ejercicio}-${String(f.mes).padStart(2, "0")}`)))
+        .sort((a, b) => a.fechaPago.localeCompare(b.fechaPago) || a.folioFiscalRep.localeCompare(b.folioFiscalRep) || a.pagoIndex - b.pagoIndex)
         .map((p) => ({ ...p, polizaVigente: this.polizaVigenteDePago(propertyId, p.pagoId) })),
     );
   }
