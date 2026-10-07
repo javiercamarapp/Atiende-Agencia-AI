@@ -186,13 +186,14 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-do $$ declare a boolean; b boolean; n integer; first_id uuid; sc integer; begin
+do $$ declare a boolean; b boolean; n integer; first_id uuid; sc integer; ttl text; begin
   a := licitaciones.system_record_new_match('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000c1', 72, true);
   b := licitaciones.system_record_new_match('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000c1', 99, true);
   if not a or b then raise exception 'dedupe mal: % %', a, b; end if;
   perform licitaciones.system_record_new_match('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000c2', 150, false);
-  select out_tender_id, out_score into first_id, sc from licitaciones.system_list_new_matches('00000000-0000-0000-0000-0000000000a1', now() - interval '1 day', 10) limit 1;
+  select out_tender_id, out_score, out_title into first_id, sc, ttl from licitaciones.system_list_new_matches('00000000-0000-0000-0000-0000000000a1', now() - interval '1 day', 10) limit 1;
   if first_id <> '00000000-0000-0000-0000-0000000000c2' or sc <> 100 then raise exception 'orden o tope de puntuacion mal: % %', first_id, sc; end if;
+  if ttl <> 'Convocatoria A2' then raise exception 'la lista debia traer el titulo de la convocatoria, trajo %', ttl; end if;
   select count(*) into n from licitaciones.system_list_new_matches('00000000-0000-0000-0000-0000000000a1', now() - interval '1 day', 10);
   if n <> 2 then raise exception 'debia listar 2, listo %', n; end if;
   select count(*) into n from licitaciones.system_list_new_matches('00000000-0000-0000-0000-0000000000a1', now() + interval '1 day', 10);

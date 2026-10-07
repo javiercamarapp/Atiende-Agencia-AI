@@ -50,6 +50,7 @@ import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-hear
 import type { AppDeps } from "../../../deps.ts";
 import { crearGuardCorreo } from "../../../supresion/index.ts";
 import { AvisoKycNoEmitidoError, avisarAlertasDelBarrido, avisarPostAdjudicacion, retamizarCarteraYAvisar } from "./avisos-campana.ts";
+import { avisarResumenSemanal } from "./autopiloto-resumen.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts. */
 export const INLINE_BATCH_SIZE = 5;
@@ -187,6 +188,8 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
       const avisos = await avisarAlertasDelBarrido(deps, sweep, new Date().toISOString().slice(0, 10));
       // L-27: avisos de garantias por vencer/no entregadas e hitos vencidos (misma pasada, sin cron nuevo).
       const avisosPostAdjudicacion = await avisarPostAdjudicacion(deps, sweep, mexicoCityDateKey(new Date()));
+      // L-P3-11: resumen semanal por organizacion (campana + correo), solo cuando hay algo que contar; dedupe por semana, sin cron nuevo.
+      const resumenSemanal = await avisarResumenSemanal(deps, sweep, mexicoCityDateKey(new Date()));
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const totals = sweep.reduce(
         (acc, r) => ({
@@ -203,6 +206,7 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
         ...totals,
         avisos_campana: avisos,
         avisos_post_adjudicacion: avisosPostAdjudicacion,
+        resumen_semanal: resumenSemanal,
         corridas: sweep.map((r) => ({
           organization_id: r.organizationId,
           error: r.error ?? null,

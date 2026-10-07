@@ -1613,11 +1613,11 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       session: this.db,
       savepointName: "sp_list_new_matches",
       primary: async () => {
-        const { rows } = await this.db.query<{ out_tender_id: string; out_score: number; out_eligible: boolean; out_created_at: string }>(
+        const { rows } = await this.db.query<{ out_tender_id: string; out_score: number; out_eligible: boolean; out_created_at: string; out_title: string }>(
           `select * from licitaciones.system_list_new_matches($1, $2::timestamptz, $3);`,
           [organizationId, sinceIso, limit],
         );
-        return rows.map((r) => ({ tenderId: r.out_tender_id, score: r.out_score, eligible: r.out_eligible, createdAt: r.out_created_at }));
+        return rows.map((r) => ({ tenderId: r.out_tender_id, tenderTitle: r.out_title, score: r.out_score, eligible: r.out_eligible, createdAt: r.out_created_at }));
       },
       isRecoverable: (err) => isMigrationPendingError(err),
       fallback: async () => null,
@@ -1627,6 +1627,17 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   async listActiveOrganizations(): Promise<readonly { id: string }[]> {
     const { rows } = await this.db.query<{ id: string }>(`select id from core.organization where vertical = 'licitaciones' and status = 'active';`);
     return rows.map((r) => ({ id: r.id }));
+  }
+
+  async listUpcomingDeadlines(organizationId: string, nowIso: string, windowDays: number): Promise<readonly { tenderId: string; title: string; submissionDeadline: string }[]> {
+    // Misma funcion de sistema (024) que el barrido de recordatorios, pero SOLO lectura: no inserta nada.
+    const now = new Date(nowIso);
+    const end = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
+    const { rows } = await this.db.query<{ out_id: string; out_title: string; out_submission_deadline: string }>(
+      `select * from licitaciones.system_list_tenders_with_upcoming_deadline($1, $2, $3);`,
+      [organizationId, now.toISOString(), end.toISOString()],
+    );
+    return rows.map((r) => ({ tenderId: r.out_id, title: r.out_title, submissionDeadline: r.out_submission_deadline }));
   }
 
   async scanUpcomingDeadlineReminders(organizationId: string, input: ScanDeadlineRemindersInput = {}): Promise<ScanDeadlineRemindersResult> {

@@ -21,6 +21,8 @@ export interface NewMatchContext {
 /** Aviso de nuevo match persistido (dedupe por organizacion y convocatoria). Solo ids, puntuacion y bandera: sin PII. */
 export interface NewMatchNoticeRecord {
   readonly tenderId: string;
+  /** Titulo de la convocatoria (dato de negocio de la organizacion, no PII): solo para el CORREO; la campana nunca lo lleva. */
+  readonly tenderTitle: string;
   readonly score: number;
   readonly eligible: boolean;
   readonly createdAt: string;

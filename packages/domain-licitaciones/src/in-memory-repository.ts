@@ -784,7 +784,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const mine = this.newMatchNotices.get(organizationId) ?? new Map<string, NewMatchNoticeRecord>();
     this.newMatchNotices.set(organizationId, mine);
     if (mine.has(tenderId)) return false;
-    mine.set(tenderId, { tenderId, score: Math.max(0, Math.min(100, Math.round(input.score))), eligible: input.eligible, createdAt: new Date().toISOString() });
+    mine.set(tenderId, { tenderId, tenderTitle: tender.title, score: Math.max(0, Math.min(100, Math.round(input.score))), eligible: input.eligible, createdAt: new Date().toISOString() });
     return true;
   }
 
@@ -801,6 +801,19 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   }
 
   private static readonly DEADLINE_REMINDER_EXCLUDED_STATUSES = new Set(["cancelled", "lost", "won", "submitted"]);
+
+  async listUpcomingDeadlines(organizationId: string, nowIso: string, windowDays: number): Promise<readonly { tenderId: string; title: string; submissionDeadline: string }[]> {
+    const now = new Date(nowIso).getTime();
+    const end = now + windowDays * 24 * 60 * 60 * 1000;
+    return [...this.tenders.values()]
+      .filter((t) => {
+        if (t.organizationId !== organizationId || !t.submissionDeadline) return false;
+        const ms = new Date(t.submissionDeadline).getTime();
+        return !Number.isNaN(ms) && ms > now && ms <= end && !InMemoryLicitacionesRepository.DEADLINE_REMINDER_EXCLUDED_STATUSES.has(t.status ?? "discovered");
+      })
+      .sort((a, b) => a.submissionDeadline!.localeCompare(b.submissionDeadline!))
+      .map((t) => ({ tenderId: t.id, title: t.title, submissionDeadline: t.submissionDeadline! }));
+  }
 
   async scanUpcomingDeadlineReminders(organizationId: string, input: ScanDeadlineRemindersInput = {}): Promise<ScanDeadlineRemindersResult> {
     const windowDays = input.windowDays ?? 3;

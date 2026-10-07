@@ -246,17 +246,20 @@ $$;
 revoke all on function licitaciones.system_record_new_match(uuid, uuid, integer, boolean) from public, anon;
 grant execute on function licitaciones.system_record_new_match(uuid, uuid, integer, boolean) to authenticated;
 
--- Mejores N matches recientes de una organizacion para el resumen semanal (sesion de sistema). Solo ids/puntuacion, sin PII.
+-- Mejores N matches recientes de una organizacion para el resumen semanal (sesion de sistema). Devuelve el titulo de la convocatoria
+-- (dato de negocio de la propia organizacion, NO PII) solo para el CORREO a owner/admin de esa misma organizacion; la campana nunca lo
+-- lleva. El join exige que la convocatoria pertenezca a la organizacion pedida (cross-tenant: cero filas).
 create or replace function licitaciones.system_list_new_matches(p_organization_id uuid, p_since timestamptz, p_limit integer)
-returns table (out_tender_id uuid, out_score integer, out_eligible boolean, out_created_at text)
+returns table (out_tender_id uuid, out_score integer, out_eligible boolean, out_created_at text, out_title text)
 language plpgsql stable security definer set search_path = licitaciones as $$
 begin
   if auth.uid() is not null then
     raise exception 'system_list_new_matches es solo para la sesion de sistema' using errcode = '42501';
   end if;
   return query
-    select n.tender_id, n.score, n.eligible, n.created_at::text
+    select n.tender_id, n.score, n.eligible, n.created_at::text, t.title
     from licitaciones.new_match_notice n
+    join licitaciones.tender t on t.id = n.tender_id and t.organization_id = n.organization_id
     where n.organization_id = p_organization_id and n.created_at >= p_since
     order by n.score desc, n.created_at desc
     limit greatest(1, least(coalesce(p_limit, 10), 50));

@@ -92,7 +92,7 @@ describe("InMemoryLicitacionesRepository -- avisos de nuevo match", () => {
     expect(await repo.recordNewMatch(ORG, ta!.id, { score: 99, eligible: true })).toBe(false);
     expect(await repo.recordNewMatch(ORG, tb!.id, { score: 80, eligible: false })).toBe(true);
     const lista = await repo.listNewMatches(ORG, "2000-01-01T00:00:00Z", 10);
-    expect(lista!.map((n) => [n.tenderId, n.score])).toEqual([[tb!.id, 80], [ta!.id, 60]]);
+    expect(lista!.map((n) => [n.tenderId, n.score, n.tenderTitle])).toEqual([[tb!.id, 80, "B"], [ta!.id, 60, "A"]]);
     expect(await repo.listNewMatches(ORG, "2999-01-01T00:00:00Z", 10)).toEqual([]);
   });
 

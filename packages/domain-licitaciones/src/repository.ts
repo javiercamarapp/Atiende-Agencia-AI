@@ -916,6 +916,9 @@ export interface LicitacionesRepository {
    * conector automatizado puede traer cientos de filas por corrida).
    */
   ingestTendersFromSource(organizationId: string, source: SourceConnectorId, records: readonly TenderSourceIngestCandidate[]): Promise<TenderSourceIngestResult>;
+  /** Convocatorias de la organizacion con plazo de presentacion en las proximas `windowDays` (solo lectura, sesion de SISTEMA; excluye las ya cerradas). Insumo del resumen semanal: NO crea recordatorios. */
+  listUpcomingDeadlines(organizationId: string, nowIso: string, windowDays: number): Promise<readonly { readonly tenderId: string; readonly title: string; readonly submissionDeadline: string }[]>;
+
   // ---- L-P3-11: auditor determinista del expediente (migracion 039). `disponible: false` = la base aun no tiene la tabla: el auditor degrada a la clave de dedupe de la campana. ----
   getExpedienteAuditoria(organizationId: string, proposalId: string): Promise<{ readonly disponible: boolean; readonly registro: ExpedienteAuditoriaRecord | null }>;
   /** Guarda el ultimo estado auditado (upsert por propuesta). `false` si la base no esta migrada. */
