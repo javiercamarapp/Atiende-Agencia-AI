@@ -131,6 +131,15 @@ describe("Pedidos: pestana Por aprobar", () => {
     expect(lista.textContent).toContain("no se ejecuta desde aquí");
   });
 
+  it("R2-seguridad-03: si el servidor no ofrece reponer ni descontar (rol staff) la tarjeta no muestra esos botones y lo dice", async () => {
+    stub({ solicitudes: [{ ...COMPENSACION, decisionesPosibles: ["sin_compensacion"] }], disponible: true });
+    await abrirPorAprobar("staff");
+    expect(boton("Sin compensación")).toBeDefined();
+    expect(boton("Reponer producto")).toBeUndefined();
+    expect(boton("Descuento en el próximo pedido")).toBeUndefined();
+    expect(document.body.querySelector('[data-testid="aprobaciones-lista"]')!.textContent).toContain("lo decide un dueño o administrador");
+  });
+
   it("Aprobar manda POST .../resolver {decision:'aprobar'} UNA vez, recarga y la tarjeta desaparece", async () => {
     stub({ solicitudes: [GRANDE], disponible: true });
     await abrirPorAprobar();
