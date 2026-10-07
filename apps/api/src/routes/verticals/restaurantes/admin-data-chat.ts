@@ -17,6 +17,7 @@ import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 import { parseDataChatRequest } from "../../../data-chat/body.ts";
 import { beginTurnPersistence, mountConversacionesRoutes } from "../../../data-chat/conversaciones.ts";
 import { mountReporteRoutes } from "../../../data-chat/reporte-routes.ts";
+import { mountAdjuntosRoutes } from "../../../data-chat/adjuntos-routes.ts";
 import { buildDataChatEstado } from "../../../data-chat/estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
@@ -103,6 +104,8 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
 
   mountConversacionesRoutes(app, deps, { base, vertical: "restaurantes", roles: MANAGER_ROLES });
   mountPinsRoutes(app, deps, { base, vertical: "restaurantes", roles: MANAGER_ROLES, turnContext });
+  // Adjuntar archivo (CSV / Excel / PDF): analisis determinista en el servidor, sin guardar el archivo.
+  mountAdjuntosRoutes(app, deps, { base, vertical: "restaurantes", roles: MANAGER_ROLES, role: RESTAURANTES_DATA_CHAT_ROLE });
   // CHAT-14: reporte PDF de un mensaje guardado, con el mismo alcance que el chat.
   mountReporteRoutes(app, deps, {
     base,

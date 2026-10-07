@@ -6,6 +6,7 @@
 //   PATCH/DELETE /superadmin/copiloto/conversaciones/:id   -> renombrar / borrar una conversacion propia
 //   POST /superadmin/copiloto/conversaciones/:id/reporte?seq=N -> reporte PDF del mensaje (mismo pipeline que las verticales: re-consulta con el alcance actual; paridad CHAT-14)
 //   GET/POST /superadmin/copiloto/pins, PATCH/DELETE /superadmin/copiloto/pins/:pinId, GET .../pins/:pinId/resultado -> fijados del tablero (personales, sin organizacion; migracion 0056)
+//   POST /superadmin/copiloto/adjuntos                     -> adjuntar archivo (CSV / Excel / PDF): perfil determinista en el servidor, sin guardar el archivo (superadmin completo)
 //   GET  /superadmin/copiloto/acciones/:propuesta          -> estado y vista previa de una propuesta de `proponer_accion` (CHAT-17)
 //   POST /superadmin/copiloto/acciones/confirmar           -> confirma una propuesta de apagar/encender agente (step-up + motivo); los intents se confirman en /superadmin/acciones
 //
@@ -74,6 +75,7 @@ import { TOPE_MENSUAL_COPILOTO_MICRO_USD, type SuperadminCopilotoDeps } from "..
 import { fuentesDeProduccion, type FuentesPlataforma } from "../superadmin-copiloto/fuentes.ts";
 import { PostgresPinsPlataformaRepository, type PinsPlataformaRepository } from "../superadmin-copiloto/pins.ts";
 import { cleanPinTitle, parseCreatePin } from "../data-chat/pins.ts";
+import { procesarAdjunto } from "../data-chat/adjuntos-routes.ts";
 import { NO_LLM_COMPLETION } from "../data-chat/turno.ts";
 import { parseArgs } from "@atiende/agent-core/data-chat";
 
@@ -609,6 +611,23 @@ export function superadminCopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "superadmin_copiloto_pin_error", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
     });
     return c.json({ id: pin.id, titulo: pin.titulo, status: respuesta.status, text: respuesta.text, blocks: respuesta.blocks, sources: respuesta.sources });
+  });
+
+  // ------------------------------------------------------------------------------------------------------------------------------
+  // Adjuntar archivo (CSV / Excel / PDF). Analisis determinista (sin modelo, sin guardar el archivo) con la bitacora del Copiloto. Solo el superadmin completo:
+  // el rol `finanzas` (solo lectura) no tiene esta ruta (la zona CFO no la deja pasar) y aqui se vuelve a comprobar.
+  app.post("/superadmin/copiloto/adjuntos", async (c) => {
+    const callerId = c.get("userId");
+    await rechazarSiImpersona(callerId);
+    if ((await resolverRol(callerId)) !== "superadmin") throw Errors.forbidden("Tu rol es de solo lectura: no puede adjuntar archivos.");
+    const db = c.get("db");
+    return procesarAdjunto(c, {
+      organizationId: alcanceDelMotor(scopeDe(callerId, "superadmin", false)).organizationId,
+      userId: callerId,
+      vertical: PLATAFORMA_VERTICAL,
+      role: SUPERADMIN_COPILOTO_ROLE,
+      audit: cfg()?.audit?.(db) ?? new PostgresPlataformaAuditSink(db),
+    });
   });
 
   // ------------------------------------------------------------------------------------------------------------------------------
