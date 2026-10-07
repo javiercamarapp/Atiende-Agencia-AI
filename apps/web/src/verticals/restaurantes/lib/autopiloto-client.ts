@@ -2,6 +2,7 @@
 // Endpoints reales de apps/api/src/routes/verticals/restaurantes/autopiloto.ts. Los tipos se duplican a proposito (apps/web no depende de ningun
 // paquete domain-*, mismo aislamiento que orders-client.ts); el servidor SIEMPRE re-valida decision, motivo, alcance y rol.
 import { fetchJson, sendJson } from "./admin-client.ts";
+import { ORDER_STATUS_LABELS } from "./orders-client.ts";
 import type { OrderCanal, OrderStatus } from "./orders-client.ts";
 
 export type SolicitudTipo = "pedido_grande" | "cancelacion" | "compensacion" | "pausa_sucursal";
@@ -80,7 +81,36 @@ export interface ResolverRespuesta {
   readonly estadoPedido: OrderStatus | null;
   readonly codigoDescuento: string | null;
   readonly reposicionOrderId: string | null;
+  /** Por que se cerro asi (`no_cancelable_<estado>`, `pedido_ya_no_estaba_por_aprobar`, un motivo de lista cerrada o `null`). Ausente con una API anterior. */
+  readonly motivo?: string | null;
   readonly efectos: readonly string[];
+}
+
+export interface MensajeResultado {
+  readonly tono: "success" | "info" | "warning";
+  readonly texto: string;
+}
+
+/**
+ * Lo que se le dice a la persona tras pulsar un boton de una solicitud, segun lo que REALMENTE paso (no solo `aplicado`):
+ *   * se aplico lo pedido -> exito;
+ *   * pidio cancelar un pedido que ya salio/cerro -> la solicitud se cerro como "mantener" y se avisa al cliente que sigue en proceso (aviso, no exito);
+ *   * el pedido grande ya no estaba por aprobar (otra persona lo cancelo o lo movio) -> se explica en vez de "ya estaba resuelta";
+ *   * doble clic o la resolvio otra persona -> "ya estaba resuelta".
+ */
+export function mensajeResultadoSolicitud(entrada: Pick<ResolverEntrada, "decision">, r: Pick<ResolverRespuesta, "aplicado" | "decision" | "motivo" | "estadoPedido" | "codigoDescuento">): MensajeResultado {
+  if (r.aplicado) {
+    if (entrada.decision === "cancelar" && r.decision === "mantener") {
+      const estado = r.estadoPedido ? ORDER_STATUS_LABELS[r.estadoPedido] : null;
+      return { tono: "warning", texto: `No se pudo cancelar: el pedido ya salió o ya cerró${estado ? ` (estado: ${estado})` : ""}. Se avisó al cliente que sigue en proceso y la solicitud quedó cerrada.` };
+    }
+    return { tono: "success", texto: r.codigoDescuento ? `Listo. Código de descuento enviado al cliente: ${r.codigoDescuento}.` : "Listo: decisión aplicada y cliente avisado." };
+  }
+  if (r.motivo === "pedido_ya_no_estaba_por_aprobar") {
+    const estado = r.estadoPedido ? ORDER_STATUS_LABELS[r.estadoPedido] : null;
+    return { tono: "warning", texto: `El pedido ya no estaba por aprobar${estado ? ` (estado actual: ${estado})` : ""}: la solicitud se cerró sin mandar nada a cocina ni avisar al cliente desde aquí.` };
+  }
+  return { tono: "info", texto: "Esta solicitud ya estaba resuelta; no se repitió ningún aviso." };
 }
 
 export function resolverSolicitud(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, solicitudId: string, entrada: ResolverEntrada): Promise<ResolverRespuesta> {
