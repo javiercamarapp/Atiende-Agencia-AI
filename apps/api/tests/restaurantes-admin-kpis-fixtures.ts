@@ -68,6 +68,8 @@ export interface RestaurantesKpiTestContext {
     /** verticalRole "staff" (SÍ pasa MANAGER_ROLES), membership acotada SOLO a
      * propertyIdA — nunca debe ver datos de propertyIdB en un KPI org-wide. */
     readonly staffSucursalA: RestaurantesKpiStaff;
+    /** verticalRole "admin" con membership acotada SOLO a propertyIdA (PL-23: no puede tocar promociones de toda la organizacion). */
+    readonly adminSucursalA: RestaurantesKpiStaff;
     /** verticalRole "repartidor" — excluido por MANAGER_ROLES pase lo que pase. */
     readonly repartidor: RestaurantesKpiStaff;
     /** Staff de la OTRA organización — nunca debe poder leer KPIs de esta. */
@@ -150,6 +152,7 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
   const ownerSeed = await seedStaff(organizationId, "owner", "owner", null);
   const adminSeed = await seedStaff(organizationId, "admin", "admin", null);
   const staffASeed = await seedStaff(organizationId, "staff", "staff-sucursal-a", [propertyIdA]);
+  const adminAcotadoSeed = await seedStaff(organizationId, "admin", "admin-sucursal-a", [propertyIdA]);
   const repartidorSeed = await seedStaff(organizationId, "repartidor", "repartidor", null);
   const otroOrgOwnerSeed = await seedStaff(otherOrganizationId, "owner", "owner-otro", null);
 
@@ -211,10 +214,11 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
   };
 
   const app = buildApp(deps);
-  const [ownerToken, adminToken, staffAToken, repartidorToken, otroOrgOwnerToken] = await Promise.all([
+  const [ownerToken, adminToken, staffAToken, adminAcotadoToken, repartidorToken, otroOrgOwnerToken] = await Promise.all([
     signInAndGetToken(app, ownerSeed.email, ownerSeed.password),
     signInAndGetToken(app, adminSeed.email, adminSeed.password),
     signInAndGetToken(app, staffASeed.email, staffASeed.password),
+    signInAndGetToken(app, adminAcotadoSeed.email, adminAcotadoSeed.password),
     signInAndGetToken(app, repartidorSeed.email, repartidorSeed.password),
     signInAndGetToken(app, otroOrgOwnerSeed.email, otroOrgOwnerSeed.password),
   ]);
@@ -231,6 +235,7 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
       owner: { ...ownerSeed, token: ownerToken },
       admin: { ...adminSeed, token: adminToken },
       staffSucursalA: { ...staffASeed, token: staffAToken },
+      adminSucursalA: { ...adminAcotadoSeed, token: adminAcotadoToken },
       repartidor: { ...repartidorSeed, token: repartidorToken },
       otroOrgOwner: { ...otroOrgOwnerSeed, token: otroOrgOwnerToken },
     },

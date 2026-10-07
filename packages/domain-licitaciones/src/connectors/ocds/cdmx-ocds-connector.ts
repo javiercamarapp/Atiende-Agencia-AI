@@ -53,6 +53,7 @@
 // responde `200` con datos reales y bien formados.
 import type { SourceConnectorId } from "../../connector-registry.ts";
 import { streamCsvRows } from "../csv.ts";
+import { guardedFetch, throwIfSourceUnavailable } from "../fetch-guard.ts";
 import { assertLegitimateCsvBody } from "../response-classifier.ts";
 import type { ConnectorContext, DiscoverParams, DroppedRowInfo, LicitacionesSourceConnector, TenderSourceIngestCandidate } from "../types.ts";
 import { mapCdmxCsvRow, rowRejectionReason } from "./map-cdmx-csv-row.ts";
@@ -97,7 +98,8 @@ export function createCdmxOcdsConnector(config: CdmxOcdsConnectorConfig = {}): L
 
     async *discover(params: DiscoverParams, ctx: ConnectorContext): AsyncGenerator<TenderSourceIngestCandidate> {
       const now = (ctx.now ?? (() => new Date()))();
-      const response = await fetchImpl(csvUrl, { headers: { "User-Agent": USER_AGENT } });
+      const response = await guardedFetch(fetchImpl, csvUrl, { headers: { "User-Agent": USER_AGENT } }, "CSV de convocatorias CDMX");
+      throwIfSourceUnavailable(response.status, "CSV de convocatorias CDMX", csvUrl);
       if (!response.ok) {
         throw new Error(`CSV de convocatorias CDMX respondió ${response.status} en ${csvUrl}.`);
       }

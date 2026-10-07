@@ -20,7 +20,7 @@ describe("e2e cocina, avisos al comensal y cierre del dia", () => {
 
   const owner = () => stack.ctx.staff.owner.token;
   const admin = (p: string) => stack.url(`/v1/restaurantes/${stack.propertyId}/admin${p}`);
-  const patchStatus = (orderId: string, status: string) => fetch(admin(`/orders/${orderId}/status`), authedJson(owner(), { status }, "PATCH"));
+  const patchStatus = (orderId: string, status: string) => fetch(admin(`/orders/${orderId}/status`), authedJson(owner(), status === "cancelado" ? { status, motivo: "cliente_desistio" } : { status }, "PATCH"));
   const pedidos = async () => (await stack.ctx.restaurantesRepo.listOrders(stack.ctx.organizationId, { propertyIds: null, limit: 50 } as never)).orders;
   const avisos = (wa: string) => stack.sim.sentTo(wa).map((m) => m.text ?? "").filter((t) => /su pedido/i.test(t));
 

@@ -3,10 +3,13 @@
 //
 //   OPENROUTER_API_KEY=... npm run voz:pregrabados -- [--tope-usd=0.25] [--voz=Kore] [--forzar] [--dir=apps/voice-worker/assets]
 //
+//   npm run voz:pregrabados -- --verificar [--dir=apps/voice-worker/assets]   (sin llave, sin costo: comprueba que los 15 WAV existen, son PCM16 mono, 8/16/24 kHz y duran > 0.5 s)
+//
 // Sin la llave falla con un mensaje claro y no genera nada. Respeta el tope de gasto (estimado antes de pedir el primer audio). Ver docs/VOZ-PM.md.
 import { MENSAJES_PREGRABADOS } from "@atiende/domain-restaurantes";
 import { VOZ_POR_DEFECTO } from "@atiende/voice-core";
 import { PregrabadosError, generarPregrabados } from "../apps/voice-worker/src/pregrabados-generar.ts";
+import { verificarPregrabados } from "../apps/voice-worker/src/pregrabados.ts";
 
 function opcion(args: readonly string[], nombre: string): string | undefined {
   const pref = `--${nombre}=`;
@@ -15,6 +18,12 @@ function opcion(args: readonly string[], nombre: string): string | undefined {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+  if (args.includes("--verificar")) {
+    const v = await verificarPregrabados(opcion(args, "dir") ?? "apps/voice-worker/assets");
+    for (const r of v.reportes) console.log(`${r.ok ? "OK   " : "FALLA"} ${r.id}${r.hz ? ` ${r.hz} Hz ${r.duracionS} s` : ""}${r.problema ? ` - ${r.problema}` : ""}`);
+    console.log(v.ok ? "Los 15 pregrabados son validos. Escuchelos antes de desplegar." : "Hay pregrabados invalidos o faltantes: corre npm run voz:pregrabados.");
+    process.exit(v.ok ? 0 : 1);
+  }
   const resultado = await generarPregrabados({
     apiKey: process.env.OPENROUTER_API_KEY ?? null,
     textos: MENSAJES_PREGRABADOS,

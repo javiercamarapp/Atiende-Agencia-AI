@@ -3,6 +3,7 @@
 // `http/response-classifier.ts` (clasificación de fallos) al modelo de
 // tenancy por organización de Fusion (mismo criterio que el resto de
 // domain-licitaciones: sin `SourceId` de plataforma, todo `organizationId`).
+import { SourceUnavailableError } from "./connector-errors.ts";
 import { SOURCE_HEALTH_STATES, CaptchaDetectedError, InterfaceChangedError, RateLimitedError, SourceNotConfiguredError, type SourceConnectorId, type SourceHealthState } from "./connector-registry.ts";
 
 export function isSourceHealthState(value: string): value is SourceHealthState {
@@ -97,8 +98,10 @@ export const DEFAULT_STALE_THRESHOLD_MS: Record<SourceConnectorId, number> = {
  * futuro que SÍ los use puede extender esta función igual que el origen
  * extendía la suya, sin romper los casos ya cubiertos.
  */
-export function classifySourceFailure(error: unknown): { state: SourceHealthState; message: string } {
+export function classifySourceFailure(error: unknown): { state: SourceHealthState; message: string; unavailable?: true } {
   const message = error instanceof Error ? error.message : String(error);
+  // Fuente externa no disponible (WAF, retirada, TLS inválido, inalcanzable): sigue siendo `down` en `source_run` (el CHECK de la base no cambia), pero marcada `unavailable` para que el cron no la cuente como fallo real de la corrida.
+  if (error instanceof SourceUnavailableError) return { state: "down", message, unavailable: true };
   if (error instanceof SourceNotConfiguredError) return { state: "not_configured", message };
   if (error instanceof CaptchaDetectedError) return { state: "captcha_detected", message };
   if (error instanceof InterfaceChangedError) return { state: "interface_changed", message };

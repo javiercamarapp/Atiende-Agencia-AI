@@ -224,8 +224,9 @@ export class MetaCloudSimulator {
     return this.postSigned(delivery.rawBody);
   }
 
-  /** Estado de un mensaje saliente aceptado (sent/delivered/read/failed) hacia el webhook. */
-  async deliverStatus(messageId: string, status: "sent" | "delivered" | "read" | "failed"): Promise<WebhookDelivery> {
+  /** Estado de un mensaje saliente aceptado (sent/delivered/read/failed) hacia el webhook. Un `failed` puede llevar `error` (forma documentada por Meta:
+   *  `statuses[].errors[]` con `code` y `title`, p. ej. 131047 "Re-engagement message"). */
+  async deliverStatus(messageId: string, status: "sent" | "delivered" | "read" | "failed", error?: { readonly code: number; readonly title: string }): Promise<WebhookDelivery> {
     const sent = this.accepted.find((m) => m.id === messageId);
     if (!sent) throw new Error(`MetaCloudSimulator: el mensaje ${messageId} no fue aceptado por este simulador`);
     const payload = {
@@ -239,7 +240,7 @@ export class MetaCloudSimulator {
               value: {
                 messaging_product: "whatsapp",
                 metadata: { display_phone_number: "5219990000000", phone_number_id: this.opts.phoneNumberId },
-                statuses: [{ id: messageId, status, timestamp: String(Math.floor(this.now() / 1000)), recipient_id: normalizeWaId(sent.to) }],
+                statuses: [{ id: messageId, status, timestamp: String(Math.floor(this.now() / 1000)), recipient_id: normalizeWaId(sent.to), ...(error ? { errors: [{ code: error.code, title: error.title, message: error.title, error_data: { details: error.title } }] } : {}) }],
               },
             },
           ],

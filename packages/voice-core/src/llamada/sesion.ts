@@ -22,8 +22,8 @@ export interface ManejadoresSesion {
   ejecutarTool(llamada: ToolCallPedida): Promise<unknown>;
   /** Audio PCM16 del agente (24 kHz mono en Gemini) para reproducirlo al cliente; solo en sesiones con audio. */
   audioAgente?(pcm16: Uint8Array): void;
-  /** Costo adicional estimado (micro-USD) desde el ultimo aviso. */
-  costo?(microUsd: number): void;
+  /** Costo adicional (micro-USD) desde el ultimo aviso. `real` = sale de los tokens que reporto el proveedor (`usageMetadata`), no de una tarifa. */
+  costo?(microUsd: number, real?: boolean): void;
   /** El proveedor se cayo (cierre inesperado, error de red o `goAway`). Lleva el handle de reanudacion si lo hay. */
   caido(razon: string, handleReanudacion: string | null): void;
 }
@@ -32,6 +32,10 @@ export interface AperturaLlamada {
   readonly instruccion: string;
   readonly voiceId: string;
   readonly herramientas: readonly ToolDefinicion[];
+  /** `temperature` de la organizacion (0..1) para el modelo de voz; sin valor, el del proveedor. */
+  readonly temperatura?: number | null;
+  /** Modelo de TEXTO que la organizacion eligio para la cascada (id de OpenRouter, de la lista permitida). Lo resuelve el puerto del LLM. */
+  readonly modeloLlm?: string | null;
   /** Handle de reanudacion de una sesion previa (reconexion). */
   readonly reanudarHandle?: string | null;
   /** Nombres y apodos del menu que el STT de la cascada recibe como pista de vocabulario (tope `cascada.vocabularioMax`). Gemini Live no lo usa. */
