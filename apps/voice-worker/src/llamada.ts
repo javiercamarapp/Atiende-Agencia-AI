@@ -11,7 +11,7 @@
 //   5. Escalera, puente de audio, controlador. Al terminar: se vacia la despedida, se cuelga, se registran turnos, costo por escalon y cierre.
 //
 // El worker nunca contesta a medias: sin contexto de la API (o sin token) dice el pregrabado de falla y cuelga, sin abrir sesion con el proveedor.
-import { ControladorLlamada, canonicalizeMexicanPhone, crearEjecutorTools, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
+import { ControladorLlamada, canonicalizeMexicanPhone, crearEjecutorTools, crearGuardiaPersonaVoz, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
 import type { AbrirSesionLlamada, EjecutorTools, MensajeId, SumideroLog, TransporteTools, VozResultado } from "@atiende/domain-restaurantes";
 import { costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
 import type { EscaleraLlamada, LimitesLlamada, VozSesionLlamada } from "@atiende/voice-core";
@@ -322,6 +322,13 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
       await puente.reproducirPregrabado(a);
     },
     cortarAudio: () => puente.cortarAudio(),
+    // Pedir una persona de viva voz escala SIN depender del modelo (R1-14, reabierto como QA-restaurantes-R2-agentes-12: el simulador la tenia, el worker real no).
+    // No hay sintesis local en el worker: se reproduce el pregrabado "handoff", que dice lo mismo que la guardia (pasa con una persona o devuelve la llamada).
+    guardiaCliente: crearGuardiaPersonaVoz(async () => {
+      const a = deps.pregrabados.get("handoff");
+      if (a) await puente.reproducirPregrabado(a);
+      else log("pregrabado_faltante", { mensaje: "handoff" });
+    }),
     log: deps.log,
     kpi: async (e) => {
       try {
