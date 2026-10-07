@@ -51,7 +51,7 @@ export function negacionDeCancelacion(texto: string): boolean {
   // Criterio asimetrico: cancelar por error un pedido real es lo caro, asi que POR DEFECTO la negacion cruza comas y cualquier forma desconocida NO cancela
   // (pasa a una persona). Solo se EXIMEN (se quitan antes de buscar la negacion) formas explicitas que si son una orden de cancelar, y NINGUNA exencion
   // aplica si una palabra condicional antecede en la frase ("si llega frio ya no lo quiero, cancelo" es una amenaza, no una orden):
-  //  - "no, cancelen..." / "ya no, cancelen..." al inicio (no si sigue jamas/para nada/ni de chiste/nunca);
+  //  - "no, cancelen..." / "ya no, cancelen..." al inicio (solo si el resto es una orden simple: "no, cancelen el pedido [por favor]"; "no, cancelar el pedido jamas/ni de broma/ni loco" no se exime);
   //  - "(ya) no lo/la quiero|necesito|voy a querer" como motivo, salvo "no lo quiero (tener que) cancelar";
   //  - cortesias ("si no es molestia", "si no les molesta", "si no hay problema"), salvo "si no les molesta esperar, cancelo";
   //  - motivos ya ocurridos ("no llego", "no ha llegado", "nunca llego", "llevo una hora esperando y no llega").
@@ -61,14 +61,16 @@ export function negacionDeCancelacion(texto: string): boolean {
     const todo = args[args.length - 1] as string;
     const frase = todo.slice(0, off).split(/[.!?\n]/).pop() ?? "";
     const condicionalPrevio = CONDICIONAL.test(frase);
-    return condicionalPrevio || (extra?.(todo.slice(off + m.length)) ?? false) ? m : " ";
+    // Exencion POSICIONAL: solo al inicio de la frase (con muletillas) o justo despues de la orden de cancelar; no depende de una lista cerrada de condicionales.
+    const previoNeutral = /^[\s,]*(?:(?:hola|oigan|oye|pues|bueno|ok|ya|no|porque)\b[\s,]*)*$/.test(frase) || /\bcancel\w*\b[^.!?\n]*(?:,|\bporque)\s*$/.test(frase);
+    return condicionalPrevio || !previoNeutral || (extra?.(todo.slice(off + m.length)) ?? false) ? m : " ";
   };
   const t = normalizarParaClasificar(texto)
     .replace(/\b([ap])\.\s?m\./g, "$1m")
     .replace(/(\d)[:.](\d)/g, "$1$2")
-    .replace(/^\s*(?:ya\s+)?no\s*,\s*(?=cancel)(?![^.!?\n]*\b(?:jamas|para\s+nada|ni\s+de\s+chiste|ni\s+de\s+broma|nunca)\b)/, " ")
+    .replace(/^\s*(?:ya\s+)?no\s*,\s*(?=cancel\w*\s+(?:el|mi|la|su)\s+(?:pedido|orden)\s*(?:,?\s*(?:por\s+favor|porfa|ya|gracias))*\s*[.!]*\s*$)/, " ")
     .replace(/\b(?:ya\s+)?no\s+(?:lo|la|los|las)\s+(?:quiero|necesito|voy\s+a\s+querer)\b(?!\s+(?:tener\s+que\s+)?cancelar\b)/g, eximir())
-    .replace(/\bsi\s+no\s+(?:es\s+(?:mucha\s+)?molestia|(?:le|les|te|me)\s+molesta|hay\s+(?:mayor\s+)?(?:problema|inconveniente)|es\s+mucho\s+pedir)\b/g, eximir((resto) => /^[^,.!?\n]*\besperar\b/.test(resto)))
+    .replace(/\bsi\s+no\s+(?:es\s+(?:mucha\s+)?molestia|(?:le|les|te|me)\s+molesta|hay\s+(?:mayor\s+)?(?:problema|inconveniente)|es\s+mucho\s+pedir)\b/g, eximir((resto) => /^[^,.!?\n]*\besper\w*/.test(resto)))
     .replace(/\bllevo\s+[^.!?\n,]{0,25}\besperando\s+y\s+no\s+llega\b/g, eximir())
     .replace(/\b(?:ya\s+)?no\s+(?:llego|llegaron|ha\s+llegado|han\s+llegado)\b|\bnunca\s+(?:llego|llegaron)\b/g, eximir());
   return /\b(?:si|como|cuando|mientras|de|al|por\s+si|caso\s+de\s+que)\b[^.!?\n]{0,60}\bno\b[^.!?\n]{0,50}\bcancel\w*|\b(?:no|nunca|ni|tampoco)\b[^.!?\n]{0,25}\bcancel\w*|\bcancel\w*[^.!?\n]{0,30}\b(?:no|nunca)\b|\bsin\s+cancelar\b|\bya\s+no\b[^.!?\n]{0,20}\bcancel\w*/.test(t);
