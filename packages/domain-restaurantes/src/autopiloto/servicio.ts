@@ -17,7 +17,7 @@ import type { MotivoCancelacion } from "./taxonomia.ts";
 import { estimarTiempo } from "./tiempo-prometido.ts";
 import type { TiempoEstimado } from "./tiempo-prometido.ts";
 import { AUTOPILOTO_CONFIG_POR_OMISION } from "./tipos.ts";
-import type { AutopilotoRepository, OpcionesResolver, ResultadoResolver, SolicitudDecision } from "./tipos.ts";
+import type { AutopilotoRepository, OpcionesResolver, PedidoGrandeHook, ResultadoResolver, SolicitudDecision } from "./tipos.ts";
 
 export interface AutopilotoServicioDeps {
   readonly auto: AutopilotoRepository;
@@ -104,6 +104,19 @@ export async function retenerPedidoGrande(deps: AutopilotoServicioDeps, input: {
     });
   }
   return { estado: "por_aprobar", solicitudId: r.solicitudId, creada: r.estado === "creada" };
+}
+
+/** Hook de `crear_pedido` sobre UNA sesion: `disponible` es una lectura barata de la config (degrada con SAVEPOINT a `false` contra la base sin migrar). */
+export function crearHookPedidoGrande(deps: Pick<AutopilotoServicioDeps, "auto" | "repo" | "db">): PedidoGrandeHook {
+  return {
+    async disponible(organizationId, propertyId) {
+      return (await deps.auto.leerConfig(organizationId, propertyId)).disponible;
+    },
+    async retener(input) {
+      const r = await retenerPedidoGrande(deps, input);
+      return r.estado === "por_aprobar" ? { estado: "por_aprobar", solicitudId: r.solicitudId } : { estado: "no_disponible" };
+    },
+  };
 }
 
 export interface ResultadoResolucion {
