@@ -579,6 +579,7 @@ export async function createOrder(
   // pedidos reales con el mismo código, y no hay forma barata de diferenciarlos
   // sin una tabla de uso por pedido, fuera de alcance de esta fase). Best-effort:
   // nunca revierte un pedido real ya creado por esto.
+  // Nota: un pedido RETENIDO (`por_aprobar`) tambien consume el uso de la promocion: si la sucursal lo rechaza despues, el uso queda consumido (no se devuelve).
   if (appliedPromotion) {
     await tryIncrementPromotionUses(repo, payload.organizationId, appliedPromotion.id);
   }
