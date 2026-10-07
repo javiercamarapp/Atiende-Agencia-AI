@@ -41,6 +41,12 @@ function makeDb(opts: { migrated: boolean }) {
         },
       },
       {
+        // L-P3-08: el vigilante de cambios consulta la ultima version; estas pruebas modelan una base SIN la migracion 039
+        // (42883 dentro de un SAVEPOINT): la ingesta y el registro de la corrida no deben verse afectados.
+        match: /system_latest_tender_version/,
+        respond: () => Object.assign(new Error("function licitaciones.system_latest_tender_version(uuid, uuid) does not exist"), { code: "42883" }),
+      },
+      {
         match: /system_record_source_run/,
         respond: () => {
           if (!opts.migrated) {
@@ -88,7 +94,10 @@ describe("discover-tenders con yucatan_ocds/guadalajara_ocds", () => {
       expect(r.created).toBe(1);
       expect(r.message).toMatch(/AVISO: source_run no registrado.*028_source_run_check_yucatan_guadalajara/);
     }
-    expect(warn).toHaveBeenCalledTimes(2);
+    // un aviso por fuente por la 028 (source_run) y otro por la 039 (el vigilante de cambios no esta disponible: nunca en silencio)
+    expect(warn).toHaveBeenCalledTimes(4);
+    expect(warn.mock.calls.filter(([m]) => /039_licitaciones_autopiloto/.test(String(m)))).toHaveLength(2);
+    for (const r of results) expect(r.vigilanteNoDisponible).toMatch(/039_licitaciones_autopiloto/);
   });
 
   it("base migrada (028): tenders persistidos Y source_run registrado por cada fuente, sin aviso", async () => {
