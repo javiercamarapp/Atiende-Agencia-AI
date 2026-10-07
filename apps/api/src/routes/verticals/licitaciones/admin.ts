@@ -14,6 +14,7 @@ import { authMiddleware, dbSession } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { STAFF_INVITE_ROLES, TenantConfigNotMigratedError } from "@atiende/domain-licitaciones";
 import type { LicitacionesTenantConfigPatch } from "@atiende/domain-licitaciones";
+import { auditar } from "./auditoria.ts";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -120,7 +121,9 @@ export function licitacionesAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const patch: LicitacionesTenantConfigPatch = timezone.seen ? { timezone: timezone.value } : {};
 
     try {
+      const antes = await repo.findTenantConfig(org.id);
       const updated = await repo.upsertTenantConfig(org.id, patch);
+      await auditar(deps, c, { entity: "configuracion", entityId: org.id, action: "configuracion.editada", before: antes, after: updated, organizationId: org.id });
       return c.json({ tenant_config: { organization_id: updated.organizationId, timezone: updated.timezone } });
     } catch (err) {
       if (err instanceof TenantConfigNotMigratedError) throw Errors.serviceUnavailable(err.message);

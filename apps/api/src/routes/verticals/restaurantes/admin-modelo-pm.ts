@@ -19,7 +19,7 @@ import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { assertAccion } from "./permisos-accion.ts";
-import { MANAGER_ROLES, OrderValidationError, RestaurantesConfigUnavailableError, STAFF_INVITE_ROLES, WhatsappNumberInUseError, horarioDePuente, validarExcepcionHorario, validarHorario } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, OrderValidationError, reporteColoniasAmbiguas, RestaurantesConfigUnavailableError, STAFF_INVITE_ROLES, WhatsappNumberInUseError, horarioDePuente, validarExcepcionHorario, validarHorario } from "@atiende/domain-restaurantes";
 import type { BranchHoursException, BranchPolicy, PropinaPolitica } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -171,13 +171,14 @@ export function restaurantesAdminModeloPmRoutes(deps: AppDeps): Hono<CoreAuthHon
   const politicaPath = `${branchBase}/politica`;
   const zonasRepartoPath = `${branchBase}/zonas-reparto`;
   const whatsappPath = `${branchBase}/whatsapp`;
+  const coloniasAmbiguasPath = "/v1/restaurantes/:propertyId/admin/config/colonias-ambiguas";
   const puentesPath = "/v1/restaurantes/:propertyId/admin/config/puentes";
   const puentePath = `${puentesPath}/:exceptionId`;
   const noDomicilioPath = "/v1/restaurantes/:propertyId/admin/config/no-domicilio";
   const noDomicilioProductoPath = `${noDomicilioPath}/productos/:productId`;
   const noDomicilioCategoriaPath = `${noDomicilioPath}/categorias/:categoryId`;
 
-  for (const path of [politicaPath, zonasRepartoPath, whatsappPath, puentesPath, puentePath, noDomicilioPath, noDomicilioProductoPath, noDomicilioCategoriaPath]) {
+  for (const path of [politicaPath, zonasRepartoPath, whatsappPath, coloniasAmbiguasPath, puentesPath, puentePath, noDomicilioPath, noDomicilioProductoPath, noDomicilioCategoriaPath]) {
     app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   }
 
@@ -337,6 +338,17 @@ export function restaurantesAdminModeloPmRoutes(deps: AppDeps): Hono<CoreAuthHon
       despues: String(guardadas.length),
     });
     return c.json({ zoneIds: guardadas });
+  });
+
+  // ---- reporte de colonias ambiguas (X42): solo lectura, owner/admin sin alcance acotado a una sucursal ----
+  // Muestra, por colonia, la sucursal que la cubre, los km del piloto original o calculados, la segunda sucursal y la marca "revisar". No
+  // escribe nada y no trae datos personales. Contra la base sin la migracion 056 responde 200 con `disponible: false` (vacio honesto).
+  app.get(coloniasAmbiguasPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+    if (scope !== null) throw Errors.forbidden("El reporte de colonias abarca todas las sucursales: solo lo ve el staff sin alcance acotado a una sucursal.");
+    return c.json(await reporteColoniasAmbiguas(deps.restaurantesRepo(c.get("db")), organizationId));
   });
 
   // ---- WhatsApp de la sucursal ----
