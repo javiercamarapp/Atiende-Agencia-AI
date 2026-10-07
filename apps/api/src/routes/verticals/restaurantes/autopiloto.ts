@@ -20,7 +20,6 @@ import {
   PLANTILLAS_AUTOPILOTO,
   STAFF_INVITE_ROLES,
   diaDeNegocio,
-  diaLocalSucursal,
   estimarTiempoSucursal,
   resolverSolicitudAprobacion,
   sumarDiasFecha,
