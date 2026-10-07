@@ -7,7 +7,7 @@
 //   * Queja: ademas del aviso al equipo de siempre, se liga al ultimo pedido del telefono (solicitud de compensacion) y se guarda su subtipo. Nunca cambia lo
 //     que se le responde al cliente ni compensa nada por su cuenta.
 import { normalizePhone } from "../phone.ts";
-import { normalizarParaClasificar } from "./guards.ts";
+import { esConsultaDeCancelacion, normalizarParaClasificar } from "./guards.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import { PostgresAutopilotoRepository } from "../autopiloto/postgres-repository.ts";
 import { registrarQuejaConPedido, solicitarCancelacion } from "../autopiloto/servicio.ts";
@@ -48,7 +48,10 @@ export function crearHooksAutopilotoTurnoPostgres(deps: Omit<AutopilotoServicioD
  * Con negacion cerca del verbo no se interviene (`null`): el turno sigue por el camino de siempre (aviso a una persona).
  */
 export function negacionDeCancelacion(texto: string): boolean {
-  return /\b(?:no|nunca|ni|tampoco)\b[^.!?\n]{0,25}\bcancel\w*|\bcancel\w*[^.!?\n]{0,15}\b(?:no|nunca)\b|\bsin\s+cancelar\b|\bya\s+no\b[^.!?\n]{0,20}\bcancel\w*/.test(normalizarParaClasificar(texto));
+  // "Ya no lo quiero, cancelen el pedido" es la forma mas comun de CANCELAR: el "no" niega el deseo del platillo, no el verbo. Se quita esa frase antes de
+  // buscar la negacion, y la negacion nunca cruza una coma ("no, cancelen el pedido" es una confirmacion).
+  const t = normalizarParaClasificar(texto).replace(/\bya\s+no\s+(?:lo|la|los|las)\s+(?:quiero|necesito|voy\s+a\s+querer)\b/g, " ");
+  return /\b(?:no|nunca|ni|tampoco)\b[^.!?\n,;:]{0,25}\bcancel\w*|\bcancel\w*[^.!?\n,;:]{0,15}\b(?:no|nunca)\b|\bsin\s+cancelar\b|\bya\s+no\b[^.!?\n,;:]{0,20}\bcancel\w*/.test(t);
 }
 
 /**
@@ -60,7 +63,8 @@ export async function intentarCancelacionConAutopiloto(
   hooks: AutopilotoTurnoHooks,
   args: { readonly organizationId: string; readonly phone: string; readonly ahora: Date; readonly texto?: string },
 ): Promise<{ readonly reply: string } | null> {
-  if (args.texto !== undefined && negacionDeCancelacion(args.texto)) return null;
+  // Defensa en profundidad: una pregunta ("¿se cancelo?", "¿hasta que hora se puede cancelar?") ni cancela ni abre solicitud aunque el clasificador la deje pasar.
+  if (args.texto !== undefined && (negacionDeCancelacion(args.texto) || esConsultaDeCancelacion(args.texto))) return null;
   try {
     return await repo.runWithRowSavepoint(async () => {
       if (!(await hooks.cancelacionActiva(args.organizationId))) return null;
