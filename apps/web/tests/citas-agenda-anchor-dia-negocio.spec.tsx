@@ -9,7 +9,7 @@
 // es el de MAÑANA, así que la semana/mes que se pedía al servidor (`fromIso`/`toIso`)
 // era la SIGUIENTE, no la real -- aunque la etiqueta (ya corregida) mostrara el día
 // correcto PARA ESE `anchor` ya corrido. Este test verifica el RANGO pedido al
-// servidor, no solo la etiqueta. El rango va de medianoche a medianoche LOCAL del negocio (00:00 CDMX = 06:00Z; QA-citas-R1-botones-06). (El rango va de medianoche a medianoche LOCAL del negocio: 00:00 CDMX = 06:00Z, QA-citas-R1-botones-06.)
+// servidor, no solo la etiqueta. El rango va de medianoche a medianoche LOCAL del negocio (00:00 CDMX = 06:00Z; QA-citas-R1-botones-06).
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgendaPage } from "../src/verticals/citas/pages/Agenda.tsx";
@@ -18,6 +18,8 @@ import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test
 
 let rendered: RenderedComponent | undefined;
 let appointmentsUrls: string[] = [];
+// Zona que informa `GET .../resumen`; undefined = el endpoint falla (la Agenda cae a la zona por omisión, CDMX).
+let resumenTz: string | undefined;
 
 function jsonResponse(body: unknown): Response {
   return { ok: true, status: 200, json: async () => body } as unknown as Response;
@@ -36,9 +38,14 @@ const CTX: CitasShellContext = {
 
 beforeEach(() => {
   appointmentsUrls = [];
+  resumenTz = undefined;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
+      if (url.includes("/resumen")) {
+        if (!resumenTz) throw new Error("sin resumen");
+        return jsonResponse({ timezone: resumenTz, generated_at: "2026-10-01T05:30:00.000Z", today: { date: "2026-10-01", total: 0, by_status: {} }, week: { from_date: "2026-09-28", to_date: "2026-10-04", total: 0, by_status: {} }, pending_to_confirm: 0, no_shows_last_30_days: 0, new_customers_last_30_days: 0 });
+      }
       if (url.includes("/providers")) return jsonResponse({ providers: [] });
       if (url.includes("/appointments")) {
         appointmentsUrls.push(url);
@@ -145,5 +152,39 @@ describe("AgendaPage (citas) — el RANGO pedido al servidor usa el día de NEGO
     // día de negocio (30-sep) y vuelve a pedir septiembre.
     expect(url.searchParams.get("from")).toBe("2026-09-01T06:00:00.000Z");
     expect(url.searchParams.get("to")).toBe("2026-10-01T06:00:00.000Z");
+  });
+
+  it("botón 'Hoy' con negocio en Cancún (UTC-5) a las 00:30 locales del 1-oct: pide OCTUBRE, no el mes de CDMX (septiembre)", async () => {
+    // 2026-10-01T05:30:00Z = 00:30 del 1-oct en Cancún, pero 23:30 del 30-sep en CDMX (la
+    // zona por omisión de `hoyFechaSolo`). Con `hoyFechaSolo()` sin zona, "Hoy" caía en
+    // septiembre y no coincidía con la carga inicial.
+    resumenTz = "America/Cancun";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-01T05:30:00.000Z"));
+
+    rendered = renderComponent(<AgendaPage {...CTX} />);
+    await esperarCarga();
+
+    const inicial = new URL(appointmentsUrls.at(-1)!);
+    expect(inicial.searchParams.get("from")).toBe("2026-10-01T05:00:00.000Z");
+
+    const siguienteBtn = Array.from(rendered.container.querySelectorAll("button")).find((b) => b.textContent?.includes("Siguiente"))!;
+    act(() => {
+      siguienteBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+      siguienteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+    });
+    await esperarCarga();
+    expect(new URL(appointmentsUrls.at(-1)!).searchParams.get("from")).toBe("2026-11-01T05:00:00.000Z");
+
+    const hoyBtn = Array.from(rendered.container.querySelectorAll("button")).find((b) => b.textContent === "Hoy")!;
+    act(() => {
+      hoyBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+      hoyBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+    });
+    await esperarCarga();
+
+    const url = new URL(appointmentsUrls.at(-1)!);
+    expect(url.searchParams.get("from")).toBe("2026-10-01T05:00:00.000Z");
+    expect(url.searchParams.get("to")).toBe("2026-11-01T05:00:00.000Z");
   });
 });
