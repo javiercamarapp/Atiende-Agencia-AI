@@ -201,7 +201,7 @@ export function hotelesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.get(membersPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
     const members = await deps.coreStaffRepo(c.get("db")).listOrgMembers(c.get("organizationId"));
-    return c.json({ members: members.map((m) => ({ userId: m.userId, email: m.email, fullName: m.fullName, verticalRole: m.verticalRole, propertyIds: m.propertyIds })) });
+    return c.json({ miembros: members.map((m) => ({ id: m.userId, email: m.email, fullName: m.fullName, verticalRole: m.verticalRole, propertyIds: m.propertyIds })) });
   });
 
   app.delete(itemPath, async (c) => {
