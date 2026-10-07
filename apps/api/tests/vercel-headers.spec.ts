@@ -10,32 +10,21 @@ interface Regla {
 }
 const config = JSON.parse(readFileSync(resolve(__dirname, "../../../vercel.json"), "utf8")) as { headers?: Regla[] };
 const reglas = config.headers ?? [];
-// Reglas globales (todas las rutas); las unicas excepciones declaradas son el panel con voz y /pedir/* (ver abajo).
+// Reglas globales (todas las rutas); la unica excepcion declarada es /pedir/* (ver abajo).
 const reglasGlobales = reglas.filter((r) => r.source === "/(.*)");
-const PANEL_VOZ = "/(restaurantes|hoteles|citas)/(.*)";
 const todas = new Map(reglasGlobales.flatMap((r) => r.headers.map((h) => [h.key.toLowerCase(), h.value] as const)));
 
 describe("vercel.json headers", () => {
-  it("aplica a todas las rutas, salvo las excepciones del microfono del panel y de la geolocalizacion de /pedir/*", () => {
+  it("aplica a todas las rutas, salvo la excepcion de /pedir/*", () => {
     expect(reglasGlobales.length).toBeGreaterThan(0);
-    expect(reglas.filter((r) => r.source !== "/(.*)").map((r) => r.source)).toEqual([PANEL_VOZ, "/pedir/(.*)"]);
+    expect(reglas.filter((r) => r.source !== "/(.*)").map((r) => r.source)).toEqual(["/pedir/(.*)"]);
   });
 
-  it("el microfono esta deshabilitado en todo el sitio y solo el panel con llamada de prueba de voz lo permite a su propia pagina (self, nunca *)", () => {
-    expect(todas.get("permissions-policy")).toContain("microphone=()");
-    const panel = reglas.find((r) => r.source === PANEL_VOZ)!;
-    expect(panel.headers.map((h) => h.key)).toEqual(["Permissions-Policy"]);
-    const valor = panel.headers[0]!.value;
-    expect(valor).toContain("microphone=(self)");
+  it("el microfono es self en la regla global (una SPA no relee la cabecera al navegar): nunca *, y lo demas sigue denegado", () => {
+    const valor = todas.get("permissions-policy")!;
+    expect(valor).toBe("camera=(), microphone=(self), geolocation=(), payment=(), usb=()");
     expect(valor).not.toContain("*");
-    // Todo lo demas sigue denegado.
     for (const d of ["camera=()", "geolocation=()", "payment=()", "usb=()"]) expect(valor).toContain(d);
-    // Solo las verticales que realmente tienen llamada de prueba de voz (apps/web/src/verticals/*/voz y AgenteVoz).
-    expect(PANEL_VOZ).toBe("/(restaurantes|hoteles|citas)/(.*)");
-    // El storefront publico y el resto de verticales no reciben el microfono.
-    const regla = new RegExp(`^${PANEL_VOZ}$`);
-    for (const ruta of ["/restaurantes/mi-org/agente-voz", "/hoteles/mi-org/mensajeria", "/citas/mi-org/agente-whatsapp"]) expect(regla.test(ruta), ruta).toBe(true);
-    for (const ruta of ["/pedir/mi-org", "/despachos/x/y", "/licitaciones/x/y", "/rentas/x/y", "/superadmin/x", "/", "/terminos"]) expect(regla.test(ruta), ruta).toBe(false);
   });
 
   it("geolocation esta deshabilitada en todo el sitio y solo /pedir/* la permite a su propia pagina, sin tocar nada mas", () => {
