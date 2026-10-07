@@ -57,6 +57,7 @@ test.describe("rentas @humo", () => {
     expect((await mock.buscar({ metodo: "GET", ruta: "/conversaciones/conv-1/hilo" })).length).toBeGreaterThan(0);
 
     await afirmarCancelarNoEscribe(page, mock, page.getByRole("button", { name: "Rechazar" }), { nombre: "Rechazar este borrador", verificarFoco: false });
+    vigilante.verificar();
   });
 
   // paridad3: reparto del trabajo de limpieza de punta a punta contra la API simulada (el estado vive en el mock: cada POST se refleja en el
