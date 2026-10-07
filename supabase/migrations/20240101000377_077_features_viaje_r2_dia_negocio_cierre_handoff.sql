@@ -10,6 +10,11 @@
 --  1) R2-features-08 (P2) nearest_branch_by_colonia exigia solo que el texto normalizado fuera subcadena de la zona (o al reves), asi que
 --     'a' o 'mo' devolvian una sucursal (la arreglada en R1 era solo la copia de TypeScript). Ahora la misma regla que matchKnownZone:
 --     la colonia escrita contiene la zona conocida (zona de 3 o mas letras) o la zona contiene lo escrito (fragmento de 4 o mas letras).
+--     Esta funcion CONSERVA lo de 056 (prefijo 326, ya aplicada): solo zonas con lat/lng no nulos y desempate por nombre normalizado exacto antes
+--     que el nombre mas largo. Un create or replace con el cuerpo anterior a 056 lo regresaria.
+--     AVISO #475: 076 (prefijo 376, rama fix/qa-r2-rest-automatizacion-y-caos) redefine agotado_marcar, agotados_reponer y
+--     autopiloto_candidatos_estados y define dia_negocio_corte/dia_negocio. Como 077 se aplica DESPUES, repite aqui esos cuerpos de 076 (misma regla
+--     de dia de negocio y de no_recogido) y les suma lo propio (ticket impreso en la aceptacion automatica). Orden de fusion: #475 primero, luego #477.
 --  2) R2-features-03 (P2) "agotado hasta manana" se reponia a la medianoche CALENDARIO, en pleno turno de PM (12:00-01:00). Nueva
 --     dia_negocio_sucursal: la cola de un turno que cruza la medianoche (00:30 con turno 12:00-01:00) pertenece al dia en que el turno
 --     EMPEZO (misma regla que aperturaConExcepciones de horarios.ts, con excepciones por fecha). agotado_marcar y agotados_reponer
@@ -77,9 +82,12 @@ begin
   if char_length(v_input_norm) < 3 then
     return;
   end if;
+  -- Solo zonas CON coordenadas (056): una colonia sin coordenadas no sirve de punto para medir distancia. Entre las que empatan, la zona cuyo
+  -- nombre normalizado es EXACTAMENTE lo dicho gana; si no, la de nombre mas largo/especifico.
   select z.name, z.lat, z.lng into v_zone_name, v_zone_lat, v_zone_lng
   from restaurantes.known_zone z
   where z.organization_id = p_organization_id
+    and z.lat is not null and z.lng is not null
     and char_length(regexp_replace(unaccent(lower(z.name)), '[^a-z0-9]', '', 'g')) >= 3
     and (
       -- La colonia escrita contiene la zona conocida (zona de 3 o mas letras)...
@@ -87,9 +95,10 @@ begin
       -- ...o la zona contiene lo escrito (fragmento de 4 o mas letras: una o dos letras son subcadena de casi cualquier zona).
       or (char_length(v_input_norm) >= 4 and strpos(regexp_replace(unaccent(lower(z.name)), '[^a-z0-9]', '', 'g'), v_input_norm) > 0)
     )
-  order by length(z.name) desc
+  order by (regexp_replace(unaccent(lower(z.name)), '[^a-z0-9]', '', 'g') = v_input_norm) desc, length(z.name) desc
   limit 1;
 
+  -- Cero-match real: ninguna zona conocida con coordenadas se parece a lo que dijo el cliente: cero filas, nunca una sucursal adivinada.
   if v_zone_lat is null then
     return;
   end if;
@@ -127,57 +136,50 @@ $function$;
 -- ---------------------------------------------------------------------------
 -- 2) Dia de negocio de la sucursal y "agotado hasta manana"
 -- ---------------------------------------------------------------------------
-create or replace function restaurantes.dia_negocio_sucursal(p_property_id uuid, p_instante timestamptz)
-returns date
-language plpgsql
+-- Helpers del dia de negocio: copia BYTE A BYTE de los de 076 (#475). Se repiten aqui con create or replace para que 077 no dependa de que 076
+-- ya este aplicada; si 076 ya esta, no cambia nada. UNA sola definicion de dia de negocio para todo el sistema (agotados, cierre, muestras):
+-- la fecha local menos la hora de cierre, despues de medianoche, de los turnos que cruzan la medianoche (PM 12:00-01:00 => 1 h).
+create or replace function restaurantes.dia_negocio_corte(p_property_id uuid)
+returns interval
+language sql
 stable
 security definer
 set search_path = restaurantes, core, pg_temp
 as $$
-declare
-  v_tz text := restaurantes.voz_zona_horaria(p_property_id);
-  v_local timestamp := p_instante at time zone restaurantes.voz_zona_horaria(p_property_id);
-  v_hoy date := v_local::date;
-  v_min integer := extract(hour from v_local)::integer * 60 + extract(minute from v_local)::integer;
-  v_dia integer := extract(dow from v_local)::integer;
-  v_dia_ant integer;
-  v_hor_hoy jsonb;
-  v_hor_ayer jsonb;
-begin
-  v_dia_ant := (v_dia + 6) % 7;
-  -- Horario vigente de HOY y de AYER: la excepcion por fecha mas reciente que cubre el dia, o el semanal.
-  v_hor_hoy := coalesce(
-    (select e.horario from restaurantes.branch_hours_exception e
-      where e.property_id = p_property_id and e.fecha_desde <= v_hoy and v_hoy <= e.fecha_hasta order by e.fecha_desde desc limit 1),
-    (select bp.horario from restaurantes.branch_policy bp where bp.property_id = p_property_id),
-    '[]'::jsonb);
-  v_hor_ayer := coalesce(
-    (select e.horario from restaurantes.branch_hours_exception e
-      where e.property_id = p_property_id and e.fecha_desde <= v_hoy - 1 and v_hoy - 1 <= e.fecha_hasta order by e.fecha_desde desc limit 1),
-    (select bp.horario from restaurantes.branch_policy bp where bp.property_id = p_property_id),
-    '[]'::jsonb);
-  if jsonb_typeof(v_hor_hoy) <> 'array' or jsonb_typeof(v_hor_ayer) <> 'array' then
-    return v_hoy;
-  end if;
-  -- Estamos en la cola (despues de la medianoche) de un turno de AYER que cruza la medianoche, y no ha empezado un turno de HOY:
-  -- el dia de negocio es el de ayer.
-  if exists (
-       select 1 from jsonb_array_elements(v_hor_ayer) t
-        where (split_part(t ->> 'cierra', ':', 1)::integer * 60 + split_part(t ->> 'cierra', ':', 2)::integer)
-              <= (split_part(t ->> 'abre', ':', 1)::integer * 60 + split_part(t ->> 'abre', ':', 2)::integer)
-          and (t -> 'dias') @> to_jsonb(v_dia_ant)
-          and v_min < (split_part(t ->> 'cierra', ':', 1)::integer * 60 + split_part(t ->> 'cierra', ':', 2)::integer))
-     and not exists (
-       select 1 from jsonb_array_elements(v_hor_hoy) t
-        where (t -> 'dias') @> to_jsonb(v_dia)
-          and v_min >= (split_part(t ->> 'abre', ':', 1)::integer * 60 + split_part(t ->> 'abre', ':', 2)::integer)) then
-    return v_hoy - 1;
-  end if;
-  return v_hoy;
-exception when others then
-  -- Horario malformado (la forma la valida la capa de aplicacion): se degrada al dia calendario, nunca rompe el tick.
-  return (p_instante at time zone v_tz)::date;
-end;
+  select coalesce((
+    select max((t.value ->> 'cierra')::time - time '00:00')
+      from restaurantes.branch_policy bp,
+           jsonb_array_elements(case when jsonb_typeof(bp.horario) = 'array' then bp.horario else '[]'::jsonb end) as t(value)
+     where bp.property_id = p_property_id
+       and jsonb_typeof(t.value) = 'object'
+       and (t.value ->> 'abre') ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+       and (t.value ->> 'cierra') ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+       and (t.value ->> 'cierra') <= (t.value ->> 'abre')
+  ), interval '0');
+$$;
+revoke all on function restaurantes.dia_negocio_corte(uuid) from public, anon, authenticated;
+
+create or replace function restaurantes.dia_negocio(p_property_id uuid, p_instante timestamptz)
+returns date
+language sql
+stable
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+  select ((p_instante at time zone restaurantes.voz_zona_horaria(p_property_id)) - restaurantes.dia_negocio_corte(p_property_id))::date;
+$$;
+revoke all on function restaurantes.dia_negocio(uuid, timestamptz) from public, anon, authenticated;
+
+-- dia_negocio_sucursal: nombre usado por dia_negocio_sucursal_actual y por el TypeScript de este lote; delega en dia_negocio (076) para que
+-- agotados y cierre no se contradigan (las excepciones por fecha no mueven el corte, igual que en 076).
+create or replace function restaurantes.dia_negocio_sucursal(p_property_id uuid, p_instante timestamptz)
+returns date
+language sql
+stable
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+  select restaurantes.dia_negocio(p_property_id, p_instante);
 $$;
 revoke all on function restaurantes.dia_negocio_sucursal(uuid, timestamptz) from public, anon, authenticated;
 
@@ -214,8 +216,8 @@ begin
   if auth.uid() is null or not restaurantes.handoff_actor_en_sucursal(p_organization_id, p_property_id, false) then
     raise exception 'agotado_marcar: sin acceso a la sucursal' using errcode = '42501';
   end if;
-  -- QA R2 features-03: "hoy" es el dia de NEGOCIO (a las 00:30 de un turno 12:00-01:00 sigue siendo el dia que empezo ayer).
-  v_hoy := restaurantes.dia_negocio_sucursal(p_property_id, now());
+  -- QA R2 features-03 / automatizacion-02: "hoy" es el dia de NEGOCIO (a las 00:30 de un turno 12:00-01:00 sigue siendo el dia que empezo ayer).
+  v_hoy := restaurantes.dia_negocio(p_property_id, now());
   if p_hasta is null or p_hasta <= v_hoy or p_hasta > v_hoy + 7 then
     raise exception 'agotado_marcar: la fecha de reposicion debe ser posterior a hoy y a lo mucho en 7 dias' using errcode = '22023';
   end if;
@@ -244,7 +246,7 @@ begin
         from restaurantes.branch_products bp
        where bp.agotado_hasta is not null and bp.is_available = false
          -- QA R2 features-03: se repone al cambiar el dia de NEGOCIO (tras el cierre del turno que cruza la medianoche), no a las 00:00.
-         and restaurantes.dia_negocio_sucursal(bp.property_id, p_ahora) >= bp.agotado_hasta
+         and restaurantes.dia_negocio(bp.property_id, p_ahora) >= bp.agotado_hasta
        for update of bp skip locked
     ), upd as (
       update restaurantes.branch_products bp set is_available = true, agotado_hasta = null, updated_at = p_ahora
@@ -327,16 +329,16 @@ begin
        where o.status = 'entregado' and o.delivered_at is not null
          and o.delivered_at <= p_ahora - make_interval(hours => coalesce(c.completado_horas, 6))
       union all
-      -- listo_para_recoger -> no_recogido a los X minutos de la hora de recogida (por omision 60). QA R2 viaje-05: el storefront no pide
-      -- hora, asi que sin `hora_recogida` el reloj parte de cuando el pedido quedo listo (su evento de historial) o, en ultimo caso, de su alta.
+      -- listo_para_recoger -> no_recogido a los X minutos de max(hora de recogida, cuando quedo listo) (por omision 60). Cuerpo de 076 (#475,
+      -- caos-03): el ULTIMO evento a listo_para_recoger (re-marcar listo reinicia el plazo); sin eventos se usa created_at. QA R2 viaje-05: sin
+      -- `hora_recogida` (el storefront no la manda) cuenta solo desde que quedo listo.
       select o.id, o.organization_id, o.property_id, o.status, 'no_recogido'::text, 'limpieza_no_recogido'::text
         from restaurantes.orders o
         left join restaurantes.autopiloto_config c on c.property_id = o.property_id
        where o.status = 'listo_para_recoger'
-         and coalesce(
-               o.hora_recogida,
-               (select max(e.at) from restaurantes.order_status_events e where e.order_id = o.id and e.to_status = 'listo_para_recoger'),
-               o.created_at
+         and greatest(
+               coalesce(o.hora_recogida, '-infinity'::timestamptz),
+               coalesce((select max(e.at) from restaurantes.order_status_events e where e.order_id = o.id and e.to_status = 'listo_para_recoger'), o.created_at)
              ) <= p_ahora - make_interval(mins => coalesce(c.no_recogido_minutos, 60))
       union all
       -- pending -> preparando (aceptacion automatica): la comanda ya se confirmo/capturo en el POS, o (sin POS) el ticket de cocina ya se imprimio

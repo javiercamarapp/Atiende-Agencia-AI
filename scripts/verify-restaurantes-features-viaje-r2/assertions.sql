@@ -119,6 +119,20 @@ set local role authenticated;
 select public.t_afirmar((select count(*) from restaurantes.nearest_branch_by_colonia('00000000-0000-0000-0000-0000000e7702', 'Garcia Gineres')) = 0, 'zona_ajena');
 rollback;
 
+\echo '=== N4. (056) una zona SIN coordenadas no se usa como punto: cero filas; una zona con coordenadas si; el nombre exacto gana el desempate ==='
+begin;
+insert into restaurantes.known_zone (organization_id, name, lat, lng) values
+  ('00000000-0000-0000-0000-0000000e7701', 'Colonia Sincoordenadas', null, null),
+  ('00000000-0000-0000-0000-0000000e7701', 'Centro', 21.0, -89.6),
+  ('00000000-0000-0000-0000-0000000e7701', 'Centro Chichi Suarez', 21.05, -89.65);
+set local role authenticated;
+select public.t_afirmar((select count(*) from restaurantes.nearest_branch_by_colonia('00000000-0000-0000-0000-0000000e7701', 'Colonia Sincoordenadas')) = 0, 'zona_sin_coordenadas_no_es_punto');
+select public.t_afirmar((select count(*) from restaurantes.nearest_branch_by_colonia('00000000-0000-0000-0000-0000000e7701', 'Centro Chichi Suarez')) = 1, 'zona_con_coordenadas_si');
+select public.t_afirmar((select distance_km is not null from restaurantes.nearest_branch_by_colonia('00000000-0000-0000-0000-0000000e7701', 'Centro Chichi Suarez')), 'zona_con_coordenadas_da_distancia');
+select public.t_afirmar((select recognized_zone_name = 'Centro' from restaurantes.nearest_branch_by_colonia('00000000-0000-0000-0000-0000000e7701', 'centro')), 'nombre_exacto_gana_al_mas_largo');
+select public.t_afirmar((select recognized_zone_name = 'Centro Chichi Suarez' from restaurantes.nearest_branch_by_colonia('00000000-0000-0000-0000-0000000e7701', 'Centro Chichi Suarez')), 'exacto_largo_gana');
+rollback;
+
 \echo '=== D1. dia de negocio: la cola del turno 12:00-01:00 pertenece al dia en que empezo ==='
 begin;
 select public.t_afirmar((select (restaurantes.dia_negocio_sucursal('00000000-0000-0000-0000-0000000e77a1', timestamptz '2026-10-08 00:10:00-06') = date '2026-10-07')::int) = 1, 'cola_es_dia_anterior');
@@ -127,11 +141,12 @@ select public.t_afirmar((select (restaurantes.dia_negocio_sucursal('00000000-000
 select public.t_afirmar((select (restaurantes.dia_negocio_sucursal('00000000-0000-0000-0000-0000000e77a1', timestamptz '2026-10-08 15:00:00-06') = date '2026-10-08')::int) = 1, 'en_pleno_turno');
 rollback;
 
-\echo '=== D2. una excepcion por fecha que cierra el dia anterior elimina la cola (puente) ==='
+\echo '=== D2. una excepcion por fecha NO mueve el corte (misma regla que 076/cierre): la cola sigue siendo del dia anterior ==='
 begin;
 insert into restaurantes.branch_hours_exception (organization_id, property_id, fecha_desde, fecha_hasta, horario, motivo)
 values ('00000000-0000-0000-0000-0000000e7701', '00000000-0000-0000-0000-0000000e77a1', date '2026-10-07', date '2026-10-07', '[]'::jsonb, 'cerrado');
-select public.t_afirmar((select (restaurantes.dia_negocio_sucursal('00000000-0000-0000-0000-0000000e77a1', timestamptz '2026-10-08 00:10:00-06') = date '2026-10-08')::int) = 1, 'sin_turno_ayer_es_dia_calendario');
+select public.t_afirmar((select (restaurantes.dia_negocio_sucursal('00000000-0000-0000-0000-0000000e77a1', timestamptz '2026-10-08 00:10:00-06') = date '2026-10-07')::int) = 1, 'excepcion_no_mueve_el_corte');
+select public.t_afirmar((select (restaurantes.dia_negocio_sucursal('00000000-0000-0000-0000-0000000e77a1', timestamptz '2026-10-08 00:10:00-06') = restaurantes.dia_negocio('00000000-0000-0000-0000-0000000e77a1', timestamptz '2026-10-08 00:10:00-06'))::int) = 1, 'una_sola_regla_de_dia_de_negocio');
 rollback;
 
 \echo '=== D3. un horario malformado degrada al dia calendario, nunca rompe ==='
@@ -277,9 +292,10 @@ select public.t_afirmar((select count(*) from restaurantes.autopiloto_candidatos
 select public.t_afirmar((select count(*) from restaurantes.autopiloto_candidatos_estados(now() + interval '90 minutes', 500) where order_id = '00000000-0000-0000-0000-0000000e77d4' and to_status = 'no_recogido') = 1, 'web_sin_hora_a_los_90_min');
 rollback;
 
-\echo '=== R2. el pedido de WhatsApp con hora sigue su hora de recogida (vencida hace 2 h) ==='
+\echo '=== R2. el pedido de WhatsApp con hora: el plazo cuenta desde max(hora de recogida, cuando quedo listo) (cuerpo de 076) ==='
 begin;
-select public.t_afirmar((select count(*) from restaurantes.autopiloto_candidatos_estados(now(), 500) where order_id = '00000000-0000-0000-0000-0000000e77d5' and to_status = 'no_recogido') = 1, 'whatsapp_con_hora');
+select public.t_afirmar((select count(*) from restaurantes.autopiloto_candidatos_estados(now(), 500) where order_id = '00000000-0000-0000-0000-0000000e77d5' and to_status = 'no_recogido') = 0, 'whatsapp_recien_listo_aun_no');
+select public.t_afirmar((select count(*) from restaurantes.autopiloto_candidatos_estados(now() + interval '90 minutes', 500) where order_id = '00000000-0000-0000-0000-0000000e77d5' and to_status = 'no_recogido') = 1, 'whatsapp_con_hora_a_los_90_min');
 rollback;
 
 \echo '=== R3. solo sistema: un usuario no consulta los candidatos -> 42501 ==='
