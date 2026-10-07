@@ -182,7 +182,7 @@ describe("WhatsApp por sucursal — .../sucursales/:branchId/whatsapp", () => {
 });
 
 describe("marcas no_domicilio — .../admin/config/no-domicilio", () => {
-  it("staff de catalogo marca un producto y una categoria; las marcas se leen y se desmarcan", async () => {
+  it("owner/admin marcan un producto y una categoria; las marcas se leen y se desmarcan; el staff las lee pero no las escribe (403, 065)", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const categoryId = randomUUID();
@@ -190,7 +190,14 @@ describe("marcas no_domicilio — .../admin/config/no-domicilio", () => {
     ctx.restaurantesRepo.seedCategory({ id: categoryId, organizationId: ctx.organizationId, name: "Cervezas" });
     ctx.restaurantesRepo.seedProduct({ id: productId, organizationId: ctx.organizationId, categoryId, name: "Sol", description: null, searchKeywords: [] });
     const base = `/v1/restaurantes/${ctx.propertyIdA}/admin/config/no-domicilio`;
-    const token = ctx.staff.staffSucursalA.token;
+    const token = ctx.staff.admin.token;
+
+    const staffToken = ctx.staff.staffSucursalA.token;
+    for (const ruta of [`categorias/${categoryId}`, `productos/${productId}`]) {
+      const denegado = await app.request(`${base}/${ruta}`, authedJson(staffToken, { noDomicilio: true }, "PUT"));
+      expect(denegado.status).toBe(403);
+    }
+    expect(await (await app.request(base, authedGet(staffToken))).json()).toEqual({ productIds: [], categoryIds: [] });
 
     expect((await app.request(`${base}/categorias/${categoryId}`, authedJson(token, { noDomicilio: true }, "PUT"))).status).toBe(200);
     expect((await app.request(`${base}/productos/${productId}`, authedJson(token, { noDomicilio: true }, "PUT"))).status).toBe(200);

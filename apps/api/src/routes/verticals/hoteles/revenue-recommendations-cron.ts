@@ -14,6 +14,10 @@
 //   - "shadow"/"propone": inserta la recomendación como "pendiente" y se detiene
 //     ahí -- shadow es solo bitácora backtesteable, propone exige aprobación
 //     humana antes de que CUALQUIER cosa aplique la tarifa.
+//   - "propone" y "autopilot" ADEMAS aplican las recomendaciones que el staff ya APROBO (estado "aprobada", fecha >= hoy):
+//     la migracion 029 promete que el cron de sistema las aplica en su siguiente corrida (H-P3-02; antes solo expiraban). Se hace
+//     despues de generar y ANTES de expirar. El trigger real decide la elegibilidad; si rechaza, queda "aprobada", se cuenta en
+//     `aplicacionRechazada` y se avisa en la campana (sin reintento a la fuerza dentro de la corrida). En "shadow" nunca se aplica.
 //   - "autopilot": inserta la recomendación y, en la MISMA transacción, intenta
 //     aplicarla directo vía `applyRateRecommendationAsSystem` -- el trigger real
 //     (`rate_recommendation_status_guard`, migrations/029) es quien decide si es
@@ -38,6 +42,7 @@ import {
   type LocalEventInput,
   type CompsetRateSample,
 } from "@atiende/domain-hoteles";
+import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -79,6 +84,10 @@ export interface RateRecommendationSweepPropertyResult {
   readonly insertadas: number;
   readonly autoAplicadas: number;
   readonly autoAplicacionRechazada: number;
+  /** H-P3-02: recomendaciones aprobadas por staff que esta corrida aplico de verdad a `hoteles.rate_plan`. */
+  readonly aplicadasAprobadas: number;
+  /** H-P3-02: aprobadas que el trigger de la base rechazo al aplicar (siguen "aprobada", visibles en Revenue). */
+  readonly aplicacionRechazada: number;
   readonly expiradas: number;
   readonly error: string | null;
 }
@@ -89,7 +98,7 @@ async function sweepProperty(deps: AppDeps, organizationId: string, propertyId: 
       const repo = deps.hotelesRepo(db);
       const gate = await repo.findRevenueGate(propertyId);
       if (!gate) {
-        return { organizationId, propertyId, skippedReason: "sin_gate_inicializado" as const, fechasEvaluadas: 0, insertadas: 0, autoAplicadas: 0, autoAplicacionRechazada: 0, expiradas: 0, error: null };
+        return { organizationId, propertyId, skippedReason: "sin_gate_inicializado" as const, fechasEvaluadas: 0, insertadas: 0, autoAplicadas: 0, autoAplicacionRechazada: 0, aplicadasAprobadas: 0, aplicacionRechazada: 0, expiradas: 0, error: null };
       }
 
       // FASE 3 (producto) zona horaria por negocio: cada property de un barrido
@@ -110,7 +119,7 @@ async function sweepProperty(deps: AppDeps, organizationId: string, propertyId: 
         console.warn("revenue-recommendations: compuerta del agente (H-03) fallo -- se continua:", err instanceof Error ? err.message : err);
       }
       if (pausado) {
-        return { organizationId, propertyId, skippedReason: "agente_pausado" as const, fechasEvaluadas: 0, insertadas: 0, autoAplicadas: 0, autoAplicacionRechazada: 0, expiradas: 0, error: null };
+        return { organizationId, propertyId, skippedReason: "agente_pausado" as const, fechasEvaluadas: 0, insertadas: 0, autoAplicadas: 0, autoAplicacionRechazada: 0, aplicadasAprobadas: 0, aplicacionRechazada: 0, expiradas: 0, error: null };
       }
 
       const today = hoyFechaNegocio(resolverZonaHorariaNegocio(propertyTimezone));
@@ -198,12 +207,38 @@ async function sweepProperty(deps: AppDeps, organizationId: string, propertyId: 
         }
       }
 
+      // H-P3-02: aplicar lo ya aprobado (gate propone/autopilot), ANTES de expirar. `applyRateRecommendationAsSystem` corre en su
+      // propio SAVEPOINT: un rechazo del trigger no aborta la transaccion de la property.
+      let aplicadasAprobadas = 0;
+      let aplicacionRechazada = 0;
+      if (gate.gate === "propone" || gate.gate === "autopilot") {
+        const aprobadas = await repo.listApprovedRateRecommendationsAsSystem(propertyId, today);
+        for (const rec of aprobadas) {
+          try {
+            await repo.applyRateRecommendationAsSystem(rec.id);
+            aplicadasAprobadas += 1;
+          } catch (err) {
+            aplicacionRechazada += 1;
+            console.warn(`revenue-recommendations-cron: aplicación de la aprobada ${rec.id} rechazada (property ${propertyId}, ${rec.fecha}):`, err instanceof Error ? err.message : err);
+          }
+        }
+        if (aplicacionRechazada > 0) {
+          await emitirNotificacion(db, {
+            evento: "hoteles.tarifa.aplicacion_rechazada",
+            organizationId,
+            propertyId,
+            clave: `${propertyId}:${today}`,
+            parametros: { cantidad: aplicacionRechazada },
+          });
+        }
+      }
+
       const expirables = await repo.listExpirableRateRecommendationsAsSystem(propertyId, today);
       for (const rec of expirables) {
         await repo.expireRateRecommendationAsSystem(rec.id);
       }
 
-      return { organizationId, propertyId, skippedReason: null, fechasEvaluadas, insertadas, autoAplicadas, autoAplicacionRechazada, expiradas: expirables.length, error: null };
+      return { organizationId, propertyId, skippedReason: null, fechasEvaluadas, insertadas, autoAplicadas, autoAplicacionRechazada, aplicadasAprobadas, aplicacionRechazada, expiradas: expirables.length, error: null };
     });
   } catch (err) {
     return {
@@ -214,6 +249,8 @@ async function sweepProperty(deps: AppDeps, organizationId: string, propertyId: 
       insertadas: 0,
       autoAplicadas: 0,
       autoAplicacionRechazada: 0,
+      aplicadasAprobadas: 0,
+      aplicacionRechazada: 0,
       expiradas: 0,
       error: err instanceof Error ? err.message : String(err),
     };
@@ -253,6 +290,8 @@ export function hotelesRevenueRecommendationsCronRoutes(deps: AppDeps): Hono {
           insertadas: r.insertadas,
           autoAplicadas: r.autoAplicadas,
           autoAplicacionRechazada: r.autoAplicacionRechazada,
+          aplicadasAprobadas: r.aplicadasAprobadas,
+          aplicacionRechazada: r.aplicacionRechazada,
           expiradas: r.expiradas,
           error: r.error,
         })),
