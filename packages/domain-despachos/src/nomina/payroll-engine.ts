@@ -2,14 +2,17 @@
 // Compone ISR (tarifa art. 96), subsidio % UMA, IMSS por rama, prestaciones con exentos del art. 93. Valores legales en
 // parametros.ts (por validar con fiscalista).
 //
-// Escala del ISR y del subsidio: `salary` es siempre mensual. En periodicidad quincenal el ingreso del periodo se escala a
-// mensual (salary + benefits + 2 × conceptos gravados), se calcula ISR mensual y se divide entre 2; el subsidio se
-// prorratea por días del periodo / 30.4 (subsidio-empleo.ts). Sin pago en efectivo del excedente del subsidio.
+// Escala de las cifras: `salarioBruto` (salary) y `percepciones` (benefits) son importes DEL PERIODO que se paga: el sueldo
+// del mes en nómina mensual y el sueldo de la quincena en nómina quincenal. Así neto, totalBruto y el sueldo del XML
+// (percepción 001) cuadran con los días pagados. Para el ISR el ingreso del periodo quincenal se escala a mensual
+// (2 × (salary + benefits + conceptos gravados)), se calcula ISR mensual y se divide entre 2; el subsidio se prorratea por
+// días del periodo / 30.4 (subsidio-empleo.ts). El salario diario (base del SBC) es salary/15 en quincenal y salary/30 en
+// mensual. Sin pago en efectivo del excedente del subsidio.
 //
 // Simplificación declarada: el gravado de aguinaldo/PTU/prima se suma al ingreso del periodo (no se usa el método de tasa
 // efectiva del art. 174 RLISR); sobrestima el ISR en meses con aguinaldo grande.
 import { calcularIsrNomina } from "./isr-nomina-engine.ts";
-import { calcularImssPorRama } from "./imss-engine.ts";
+import { calcularImssPorRama, ImssInvalidoError } from "./imss-engine.ts";
 import { calcularSubsidio } from "./subsidio-empleo.ts";
 import { umaVigente } from "./parametros.ts";
 import { exentoAguinaldo, exentoPrimaVacacional, exentoPtu, exentoTiempoExtra, factorIntegracion } from "./prestaciones.ts";
@@ -103,20 +106,21 @@ export function calcularImpuestosNominaDetalle(opts: OpcionesImpuestosNomina): I
   const diasPagados = opts.diasPagados ?? (periodicidad === "quincenal" ? 15 : 30);
   const antiguedadAnios = opts.antiguedadAnios ?? 1;
 
+  const escala = periodicidad === "quincenal" ? 2 : 1;
+  const diasBase = periodicidad === "quincenal" ? 15 : 30;
   let salarioMensual: number;
   let salarioDiario: number;
   if (salaryPerDay > 0) {
     salarioMensual = salaryPerDay * 30;
     salarioDiario = salaryPerDay;
   } else {
-    salarioMensual = salary;
-    salarioDiario = salary > 0 ? salary / 30 : 0;
+    salarioMensual = salary * escala;
+    salarioDiario = salary > 0 ? salary / diasBase : 0;
   }
 
   const uma = umaVigente(opts.fechaPago).diaria;
   const conceptos = desglosarConceptos(opts.conceptos, uma, periodicidad);
-  const escala = periodicidad === "quincenal" ? 2 : 1;
-  const gravable = Math.max(0, salarioMensual + benefits + escala * (conceptos.totalGravado - conceptos.descuentoIncapacidad));
+  const gravable = Math.max(0, salarioMensual + escala * benefits + escala * (conceptos.totalGravado - conceptos.descuentoIncapacidad));
 
   const isrMensual = calcularIsrNomina(gravable, false, opts.isrTabla);
   const isrCausado = periodicidad === "quincenal" ? r2(isrMensual / 2) : isrMensual;
@@ -166,25 +170,35 @@ export function procesarNomina(period: PayrollPeriodInput, employees: readonly E
   if (!FECHA_RE.test(fechaPago)) throw new NominaInvalidaError("period.fechaPago debe tener formato YYYY-MM-DD.");
   const salaryPerDayDefault = period.salarioDiarioDefault ?? null;
 
-  const payrollEmployees: EmployeePayroll[] = employees.map((emp) => {
+  const payrollEmployees: EmployeePayroll[] = employees.map((emp, idx) => {
     const salarioBruto = emp.salarioBruto ?? 0;
     const percepciones = emp.percepciones ?? 0;
     let salDiario = emp.salarioDiario ?? 0;
     if (salaryPerDayDefault && !salDiario) salDiario = salaryPerDayDefault;
 
     const antig = emp.antiguedadAnios ?? (emp.fechaInicioRelLaboral ? aniosCompletos(emp.fechaInicioRelLaboral, fechaPago) : undefined);
-    const r = calcularImpuestosNominaDetalle({
-      fechaPago,
-      salary: salarioBruto,
-      benefits: percepciones,
-      salaryPerDay: salDiario,
-      diasPagados,
-      periodicidad,
-      antiguedadAnios: antig,
-      sbc: emp.sbc,
-      primaRt: emp.primaRt,
-      conceptos: emp.conceptos,
-    });
+    let r: ImpuestosNominaResultado;
+    try {
+      r = calcularImpuestosNominaDetalle({
+        fechaPago,
+        salary: salarioBruto,
+        benefits: percepciones,
+        salaryPerDay: salDiario,
+        diasPagados,
+        periodicidad,
+        antiguedadAnios: antig,
+        sbc: emp.sbc,
+        primaRt: emp.primaRt,
+        conceptos: emp.conceptos,
+      });
+    } catch (err) {
+      // Dice qué renglón falló (el motor lanza errores sin contexto de empleado).
+      if (err instanceof NominaInvalidaError || err instanceof ImssInvalidoError) {
+        const quien = emp.nombre || emp.employeeId || `empleado ${idx + 1}`;
+        throw new (err.constructor as new (m: string) => Error)(`employees[${idx}] (${quien}): ${err.message}`);
+      }
+      throw err;
+    }
     const taxes = r.taxes;
     const deducciones = taxes.isr + taxes.imssObrero + r.conceptos.descuentoIncapacidad;
     const neto = salarioBruto + percepciones + r.conceptos.totalPercibido - deducciones;

@@ -39,7 +39,7 @@ export interface ConceptosPeriodoInput {
   readonly primaVacacional?: number;
   readonly ptu?: number;
   readonly horasExtra?: readonly HoraExtraInput[];
-  /** Semanas del periodo para el tope de 5 UMA/semana del tiempo extra; por omisión 1 (quincenal) o 4 (mensual). */
+  /** Semanas del periodo para el tope de 5 UMA/semana del tiempo extra; por omisión 2 (quincenal) o 4 (mensual). */
   readonly semanasTiempoExtra?: number;
   readonly incapacidades?: readonly IncapacidadInput[];
 }
@@ -58,9 +58,9 @@ export interface ConceptosPeriodoDesglose {
 export interface OpcionesImpuestosNomina {
   /** YYYY-MM-DD de pago: define UMA, subsidio y tarifa vigentes. */
   readonly fechaPago: string;
-  /** Salario bruto mensual (o diario si `salaryPerDay > 0`). */
+  /** Sueldo bruto del PERIODO que se paga (mes en mensual, quincena en quincenal); se ignora para ISR/SBC si `salaryPerDay > 0`. */
   readonly salary?: number;
-  /** Prestaciones gravables adicionales del periodo. */
+  /** Prestaciones gravables adicionales del periodo (misma escala que `salary`). */
   readonly benefits?: number;
   readonly salaryPerDay?: number;
   /** Días pagados: por omisión 30 (mensual) o 15 (quincenal). */
@@ -81,11 +81,12 @@ export interface EmployeePayroll {
   readonly nombre: string;
   /** Salario diario de ENTRADA (0 si solo se dio salarioBruto). */
   readonly salarioDiario: number;
-  /** Salario diario que alimentó el cálculo (entrada o salarioBruto/30). */
+  /** Salario diario que alimentó el cálculo (entrada, o salarioBruto/30 en mensual y salarioBruto/15 en quincenal). */
   readonly salarioDiarioCalculado: number;
   readonly sbcDiario: number;
   readonly factorIntegracion: number | null;
   readonly antiguedadAnios: number;
+  /** Sueldo bruto del periodo pagado (mes o quincena según la periodicidad). */
   readonly salarioBruto: number;
   readonly percepciones: number;
   readonly conceptos: ConceptosPeriodoDesglose;
@@ -118,6 +119,7 @@ export interface PayrollPeriodInput {
 export interface EmployeePayrollInput {
   readonly employeeId?: string;
   readonly nombre?: string;
+  /** Sueldo bruto del periodo pagado (mes en mensual, quincena en quincenal). */
   readonly salarioBruto?: number;
   readonly percepciones?: number;
   readonly salarioDiario?: number;

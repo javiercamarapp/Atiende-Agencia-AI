@@ -37,17 +37,37 @@ describe("calcularImpuestosNomina", () => {
     expect(feb.imss.umaDiaria).toBe(117.31);
   });
 
-  it("quincenal 9,000 (escala mensual): ISR/2 y subsidio prorrateado 15/30.4, nunca 0 por tabla mal escalada", () => {
-    const t = calcularImpuestosNomina({ fechaPago: "2026-02-15", salary: 9000, periodicidad: "quincenal" });
-    expect(t.subsidioCausado).toBe(264.3);
-    expect(t.isrCausado).toBe(Math.round((calcularIsrNomina(9000) / 2) * 100) / 100);
+  it("quincenal: salarioBruto es el sueldo de la QUINCENA (4,500 equivale a 9,000 mensuales): ISR/2, subsidio 15/30.4 y SBC sobre salario/15", () => {
+    const q = calcularImpuestosNominaDetalle({ fechaPago: "2026-02-15", salary: 4500, periodicidad: "quincenal" });
+    expect(q.taxes.subsidioCausado).toBe(264.3);
+    expect(q.taxes.isrCausado).toBe(Math.round((calcularIsrNomina(9000) / 2) * 100) / 100);
+    expect(q.salarioDiarioCalculado).toBe(300);
+    const m = calcularImpuestosNominaDetalle({ fechaPago: "2026-02-15", salary: 9000 });
+    expect(q.sbcDiario).toBe(m.sbcDiario);
   });
 
-  it("quincenal usa 15 días por omisión en IMSS", () => {
-    const q = calcularImpuestosNominaDetalle({ fechaPago: "2026-02-15", salary: 15000, periodicidad: "quincenal" });
+  it("quincenal usa 15 días por omisión en IMSS e Infonavit: la mitad de lo mensual para el mismo sueldo mensual equivalente", () => {
+    const q = calcularImpuestosNominaDetalle({ fechaPago: "2026-02-15", salary: 7500, periodicidad: "quincenal" });
     expect(q.diasPagados).toBe(15);
     const m = calcularImpuestosNominaDetalle({ fechaPago: "2026-02-15", salary: 15000 });
     expect(q.taxes.infonavit).toBeCloseTo(m.taxes.infonavit / 2, 1);
+  });
+
+  it("quincenal de punta a punta: neto, totalBruto y deducciones cuadran con el sueldo de la quincena (no con el mensual)", () => {
+    const p = procesarNomina({ month: 2, year: 2026, periodicidad: "quincenal", fechaPago: "2026-02-15" }, [{ employeeId: "E1", nombre: "Ana", salarioBruto: 4500, percepciones: 500 }]);
+    const e = p.employees[0]!;
+    expect(e.diasPagados).toBe(15);
+    expect(p.totalBruto).toBe(5000);
+    expect(e.neto).toBe(Math.round((5000 - e.taxes.isr - e.taxes.imssObrero) * 100) / 100);
+    // neto razonable: nunca más que la quincena bruta ni menos del 85 % de ella para este sueldo
+    expect(e.neto).toBeLessThanOrEqual(5000);
+    expect(e.neto).toBeGreaterThan(4250);
+    // ISR causado quincenal = ISR mensual del ingreso x2, entre 2
+    expect(e.taxes.isrCausado).toBe(Math.round((calcularIsrNomina(10000) / 2) * 100) / 100);
+  });
+
+  it("el error de un renglón dice qué empleado es", () => {
+    expect(() => procesarNomina({ month: 2, year: 2026 }, [{ employeeId: "E7", nombre: "Luis" }])).toThrow(/employees\[0\] \(Luis\)/);
   });
 
   it("SBC explícito reemplaza el factor de integración", () => {
