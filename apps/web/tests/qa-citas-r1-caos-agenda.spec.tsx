@@ -222,6 +222,21 @@ describe("QA R1 caos citas -- alta manual (caos-03 y caos-08)", () => {
   });
 });
 
+describe("QA R1 caos -- el borrador no pasa de un staff a otro", () => {
+  it("otro staff de la MISMA organizacion que inicia sesion en la misma pestana no ve el borrador del anterior", async () => {
+    stubFetch(() => jsonResponse({ appointments: [], truncated: false, next_from: null, timezone: "America/Merida" }));
+    rendered = renderComponent(<AgendaPage {...CTX} staffEmail="turno-manana@example.com" />);
+    await esperar();
+    await pulsar("Nueva cita");
+    changeValue(document.body.querySelector("#citas-nueva-cliente") as HTMLInputElement, "Paciente del turno de la mañana");
+    rendered.unmount();
+    rendered = renderComponent(<AgendaPage {...CTX} staffEmail="turno-tarde@example.com" />);
+    await esperar();
+    await pulsar("Nueva cita");
+    expect((document.body.querySelector("#citas-nueva-cliente") as HTMLInputElement).value).toBe("");
+  });
+});
+
 describe("QA R1 viaje -- zona horaria del negocio (viaje-16), rotulos (viaje-17) y encabezados (viaje-19)", () => {
   it("QA-citas-R1-viaje-16: con el navegador en Tijuana y el negocio en Merida, la hora de pared 10:00 son 16:00Z y la Agenda pinta las horas del negocio", () => {
     process.env.TZ = "America/Tijuana";
