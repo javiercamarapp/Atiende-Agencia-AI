@@ -262,8 +262,10 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const policy = await repo.findBranchPolicy(propertyId);
     const hoy = diaDeNegocio(new Date(), zonaHoraria, policy.horario);
     const hasta = sumarDiasFecha(hoy, 1);
+    // Respaldo para la base sin la 076: la funcion de la 050 exige `hasta` > fecha calendario de hoy.
+    const hastaCalendario = sumarDiasFecha(diaDeNegocio(new Date(), zonaHoraria, null), 1);
     try {
-      const r = await repoAuto(c).marcarAgotado(organizationId, propertyId, raw.productId, hasta);
+      const r = await repoAuto(c).marcarAgotado(organizationId, propertyId, raw.productId, hasta, hastaCalendario);
       if (!r.disponible) throw Errors.serviceUnavailable("«Agotado hasta mañana» todavía no está disponible en esta base de datos (falta aplicar la migración 050).");
       if (!r.aplicado) throw Errors.notFound("El producto no está dado de alta en esta sucursal.");
       await repo.registrarAuditoria({

@@ -330,7 +330,7 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
     return { aplicado: true, estado: "cancelado" };
   }
 
-  async marcarAgotado(organizationId: string, propertyId: string, productId: string, hasta: string): Promise<{ readonly disponible: boolean; readonly aplicado: boolean }> {
+  async marcarAgotado(organizationId: string, propertyId: string, productId: string, hasta: string, _hastaCalendario?: string): Promise<{ readonly disponible: boolean; readonly aplicado: boolean }> {
     if (!this.disponible) return { disponible: false, aplicado: false };
     const a = this.agotados.find((x) => x.organizationId === organizationId && x.propertyId === propertyId && x.productId === productId);
     if (!a) return { disponible: true, aplicado: false };
