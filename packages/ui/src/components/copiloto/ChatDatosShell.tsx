@@ -86,6 +86,20 @@ export function ChatDatosShell({
     }, DURACION_PANEL_MS);
   }, []);
 
+  const [avisoAdjunto, setAvisoAdjunto] = useState<string | null>(null);
+  const adjuntar = (archivo: File) => {
+    const cfg = transporte.adjuntos;
+    if (!cfg || enviando) return;
+    const ext = archivo.name.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? "";
+    const permitidas = cfg.accept.split(",").map((x) => x.trim().toLowerCase());
+    if (!permitidas.includes(ext)) return setAvisoAdjunto(`Solo puedo leer archivos ${permitidas.join(", ")}.`);
+    if (archivo.size === 0) return setAvisoAdjunto("El archivo está vacío.");
+    if (archivo.size > cfg.maxBytes) return setAvisoAdjunto(`El archivo supera los ${Math.round(cfg.maxBytes / (1024 * 1024))} MB.`);
+    setAvisoAdjunto(null);
+    setCategoriasVisibles(false);
+    copiloto.enviar(`Adjunté «${archivo.name.slice(0, 80)}»`, undefined, archivo);
+  };
+
   const preguntar = (pregunta: string, directa?: CopilotoDirecta) => {
     const q = pregunta.trim().slice(0, maxCaracteres);
     if (!q || enviando) return;
@@ -189,6 +203,9 @@ export function ChatDatosShell({
             categoriasId={idCategorias}
             categoriasVisibles={categoriasVisibles}
             inputId={idEntrada}
+            adjuntos={transporte.adjuntos}
+            onAdjuntar={transporte.adjuntos ? adjuntar : undefined}
+            avisoAdjunto={avisoAdjunto}
           />
         </div>
 
