@@ -97,7 +97,7 @@ describe("Agenda en la zona del negocio", () => {
     await submitForm(root.querySelector("#citas-nueva-cita") as HTMLFormElement);
     await esperar();
     const call = fm.mock.calls.find(([url, init]) => /\/appointments$/.test(url) && init?.method === "POST");
-    expect(JSON.parse(call![1].body as string).starts_at).toBe("2026-10-21T16:00:00.000Z");
+    expect(JSON.parse(call![1]!.body as string).starts_at).toBe("2026-10-21T16:00:00.000Z");
   });
 
   it("el rango del mes se pide de medianoche a medianoche del negocio (06:00Z), no de 00:00Z", async () => {
