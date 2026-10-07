@@ -16,7 +16,8 @@ insert into core.property (id, organization_id, vertical, name) values
   ('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44a01', 'despachos', 'Cliente A1'),
   ('00000000-0000-0000-0000-000000d44b02', '00000000-0000-0000-0000-000000d44a01', 'despachos', 'Cliente A2'),
   ('00000000-0000-0000-0000-000000d44b03', '00000000-0000-0000-0000-000000d44a02', 'despachos', 'Cliente B1'),
-  ('00000000-0000-0000-0000-000000d44b04', '00000000-0000-0000-0000-000000d44a03', 'hoteles', 'Hotel H1')
+  ('00000000-0000-0000-0000-000000d44b04', '00000000-0000-0000-0000-000000d44a03', 'hoteles', 'Hotel H1'),
+  ('00000000-0000-0000-0000-000000d44b05', '00000000-0000-0000-0000-000000d44a01', 'despachos', 'Cliente A3')
 on conflict do nothing;
 insert into core.staff_user (id, email, full_name, created_via) values
   ('00000000-0000-0000-0000-000000d44c01', 'catsat-admin-a@example.com', 'Admin A', 'seed'),
@@ -42,8 +43,31 @@ insert into despachos.libro_cuenta (property_id, organization_id, codigo, descri
   ('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44a01', '2600400', 'IVA trasladado', 'A', 1, null, null),
   ('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44a01', '4080000', 'Ingresos por servicios', 'A', 1, null, null),
   ('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44a01', '6020100', 'Servicios profesionales', 'D', 1, null, null),
+  ('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44a01', '2010000', 'Proveedores nacionales', 'A', 1, null, null),
+  ('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44a01', '2600300', 'IVA acreditable', 'D', 1, null, null),
+  ('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44a01', '2600310', 'IVA acreditable pagado', 'D', 1, null, null),
+  ('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44a01', '2600410', 'IVA trasladado cobrado', 'A', 1, null, null),
+  ('00000000-0000-0000-0000-000000d44b05', '00000000-0000-0000-0000-000000d44a01', '1020000', 'Bancos', 'D', 1, null, null),
+  ('00000000-0000-0000-0000-000000d44b05', '00000000-0000-0000-0000-000000d44a01', '1050000', 'Clientes', 'D', 1, null, null),
+  ('00000000-0000-0000-0000-000000d44b05', '00000000-0000-0000-0000-000000d44a01', '2600400', 'IVA trasladado', 'A', 1, null, null),
+  ('00000000-0000-0000-0000-000000d44b05', '00000000-0000-0000-0000-000000d44a01', '2600410', 'IVA trasladado cobrado', 'A', 1, null, null),
   ('00000000-0000-0000-0000-000000d44b03', '00000000-0000-0000-0000-000000d44a02', '1050000', 'Clientes', 'D', 1, null, null),
   ('00000000-0000-0000-0000-000000d44b03', '00000000-0000-0000-0000-000000d44a02', '9990000', 'Solo de B1', 'D', 1, null, null)
+on conflict do nothing;
+
+-- CFDI PPD ficticios (centavos) y sus pagos de complemento de pago: 100000 + 16000 de IVA = 116000; se pagan dos parcialidades de 58000 (8000 de IVA).
+insert into despachos.invoice (id, organization_id, property_id, folio_fiscal, tipo, rfc_emisor, rfc_receptor, subtotal, total, iva, valido, fecha,
+                               direccion, metodo_pago, forma_pago, uso_cfdi, moneda, subtotal_centavos, total_centavos, iva_trasladado_centavos, estado_sat) values
+  ('00000000-0000-0000-0000-000000d44d01', '00000000-0000-0000-0000-000000d44a01', '00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44e01', 'I', 'CAA010101AB1', 'RRR010101RR1', 1000, 1160, 160, true, '2026-07-10', 'emitido', 'PPD', '99', 'G03', 'MXN', 100000, 116000, 16000, 'vigente'),
+  ('00000000-0000-0000-0000-000000d44d02', '00000000-0000-0000-0000-000000d44a01', '00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44e02', 'I', 'PPP010101PP1', 'CAA010101AB1', 1000, 1160, 160, true, '2026-07-11', 'recibido', 'PPD', '99', 'G03', 'MXN', 100000, 116000, 16000, 'vigente'),
+  ('00000000-0000-0000-0000-000000d44d03', '00000000-0000-0000-0000-000000d44a01', '00000000-0000-0000-0000-000000d44b05', '00000000-0000-0000-0000-000000d44e03', 'I', 'CAA030303AB3', 'RRR010101RR1', 1000, 1160, 160, true, '2026-07-12', 'emitido', 'PPD', '99', 'G03', 'MXN', 100000, 116000, 16000, 'vigente'),
+  ('00000000-0000-0000-0000-000000d44d04', '00000000-0000-0000-0000-000000d44a02', '00000000-0000-0000-0000-000000d44b03', '00000000-0000-0000-0000-000000d44e04', 'I', 'CBB020202BC2', 'RRR020202RR2', 1000, 1160, 160, true, '2026-07-13', 'emitido', 'PPD', '99', 'G03', 'MXN', 100000, 116000, 16000, 'vigente')
+on conflict do nothing;
+insert into despachos.pago_cfdi (id, organization_id, property_id, invoice_id, folio_fiscal_rep, pago_index, fecha_pago, flujo, num_parcialidad, importe_pagado_centavos, base_centavos, iva_centavos) values
+  ('00000000-0000-0000-0000-000000d44f01', '00000000-0000-0000-0000-000000d44a01', '00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44d01', '00000000-0000-0000-0000-000000d44a11', 0, '2026-07-28', 'trasladado', 1, 58000, 50000, 8000),
+  ('00000000-0000-0000-0000-000000d44f02', '00000000-0000-0000-0000-000000d44a01', '00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44d02', '00000000-0000-0000-0000-000000d44a12', 0, '2026-07-29', 'acreditable', 1, 58000, 50000, 8000),
+  ('00000000-0000-0000-0000-000000d44f03', '00000000-0000-0000-0000-000000d44a01', '00000000-0000-0000-0000-000000d44b05', '00000000-0000-0000-0000-000000d44d03', '00000000-0000-0000-0000-000000d44a13', 0, '2026-07-28', 'trasladado', 1, 58000, 50000, 8000),
+  ('00000000-0000-0000-0000-000000d44f04', '00000000-0000-0000-0000-000000d44a02', '00000000-0000-0000-0000-000000d44b03', '00000000-0000-0000-0000-000000d44d04', '00000000-0000-0000-0000-000000d44a14', 0, '2026-07-28', 'trasladado', 1, 58000, 50000, 8000)
 on conflict do nothing;
 
 \echo '=== CHECKS Y LLAVES DE LA TABLA (insert directo como dueño) ==='
@@ -353,12 +377,12 @@ select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d44b02', 
 select count(*) as siembra_idempotente_deberia_ser_3 from despachos.libro_cuenta where property_id = '00000000-0000-0000-0000-000000d44b02';
 rollback;
 
-\echo '47. la siembra completa el codigo agrupador VACIO de una cuenta existente'
+\echo '47. la siembra NO completa en silencio el codigo agrupador vacio de una cuenta existente'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
 select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d44b01', '[{"codigo":"1020000","descripcion":"OTRA","naturaleza":"D","nivel":1,"codigo_agrupador":"102"}]'::jsonb);
-select count(*) as completa_vacio_deberia_ser_1 from despachos.libro_cuenta where property_id = '00000000-0000-0000-0000-000000d44b01' and codigo = '1020000' and codigo_agrupador = '102' and descripcion = 'Bancos';
+select count(*) as siembra_no_completa_deberia_ser_1 from despachos.libro_cuenta where property_id = '00000000-0000-0000-0000-000000d44b01' and codigo = '1020000' and codigo_agrupador is null and descripcion = 'Bancos';
 rollback;
 
 \echo '48. la siembra NO pisa un codigo agrupador ya capturado ni la descripcion'
@@ -369,12 +393,12 @@ select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d44b01', 
 select count(*) as no_pisa_deberia_ser_1 from despachos.libro_cuenta where property_id = '00000000-0000-0000-0000-000000d44b01' and codigo = '1020100' and codigo_agrupador = '102.01' and descripcion = 'Bancos nacionales' and naturaleza = 'D';
 rollback;
 
-\echo '49. la siembra completa la jerarquia de una cuenta que seguia en nivel 1 sin padre'
+\echo '49. la siembra NO cambia la jerarquia de una cuenta existente (sigue en nivel 1 sin padre)'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
-select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d44b01', '[{"codigo":"1020000","descripcion":"Bancos","naturaleza":"D"},{"codigo":"1050000","descripcion":"Clientes","naturaleza":"D","nivel":2,"cuenta_padre":"1020000"}]'::jsonb);
-select count(*) as completa_jerarquia_deberia_ser_1 from despachos.libro_cuenta where property_id = '00000000-0000-0000-0000-000000d44b01' and codigo = '1050000' and nivel = 2 and cuenta_padre = '1020000';
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d44b01', '[{"codigo":"1050000","descripcion":"Clientes","naturaleza":"D","nivel":2,"cuenta_padre":"1020000"}]'::jsonb);
+select count(*) as siembra_no_cambia_jerarquia_deberia_ser_1 from despachos.libro_cuenta where property_id = '00000000-0000-0000-0000-000000d44b01' and codigo = '1050000' and nivel = 1 and cuenta_padre is null;
 rollback;
 
 \echo '50. la siembra rechaza un codigo agrupador mal formado'
@@ -569,7 +593,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
 select * from despachos.libro_catalogo_importar('00000000-0000-0000-0000-000000d44b01', '[{"codigo":"7770000","descripcion":"Cuenta nueva","naturaleza":"A","nivel":1}]'::jsonb);
-select count(*) as no_borra_deberia_ser_7 from despachos.libro_cuenta where property_id = '00000000-0000-0000-0000-000000d44b01';
+select count(*) as no_borra_deberia_ser_11 from despachos.libro_cuenta where property_id = '00000000-0000-0000-0000-000000d44b01';
 rollback;
 
 \echo '77. importar sin codigo agrupador NO borra el que la cuenta ya tenia'
@@ -738,7 +762,7 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
-select count(*) as lee_catalogo_deberia_ser_6 from despachos.libro_cuenta where property_id = '00000000-0000-0000-0000-000000d44b01' and nivel >= 1;
+select count(*) as lee_catalogo_deberia_ser_10 from despachos.libro_cuenta where property_id = '00000000-0000-0000-0000-000000d44b01' and nivel >= 1;
 rollback;
 
 \echo '100. RLS: el admin de B no ve ninguna cuenta de A1'
@@ -788,6 +812,261 @@ rollback;
 \echo '108. ninguna policy permisiva en libro_cuenta (using true)'
 begin;
 select count(*) as policies_permisivas_deberia_ser_0 from pg_policies where schemaname = 'despachos' and tablename = 'libro_cuenta' and (qual = 'true' or qual is null);
+rollback;
+
+\echo '=== libro_poliza_registrar_rep (polizas de cobro / pago de un REP) ==='
+\echo '109. cobro: registra la poliza y la liga al pago (admin de A)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb);
+select count(*) as liga_deberia_ser_1 from despachos.libro_poliza_rep where pago_cfdi_id = '00000000-0000-0000-0000-000000d44f01';
+rollback;
+
+\echo '110. cobro: la poliza queda con el total = importe + IVA y folio consecutivo de ingreso'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb);
+select count(*) as poliza_rep_deberia_ser_1 from despachos.libro_poliza p join despachos.libro_poliza_rep r on r.poliza_id = p.id where p.tipo = 'ingreso' and p.folio = 1 and p.total_centavos = 66000 and p.fecha = '2026-07-28';
+rollback;
+
+\echo '111. pago (acreditable): registra la poliza de egreso'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f02', 'egreso', '2026-07-29', 'Cobro REP', '[{"cuenta":"2010000","concepto":"","debe":58000,"haber":0},{"cuenta":"1020000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600310","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600300","concepto":"IVA","debe":0,"haber":8000}]'::jsonb);
+select count(*) as pago_deberia_ser_1 from despachos.libro_poliza_rep where pago_cfdi_id = '00000000-0000-0000-0000-000000d44f02';
+rollback;
+
+\echo '112. registrar dos veces el mismo pago se rechaza (una poliza vigente por pago)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '113. tras reversar la poliza el pago queda libre y se puede registrar de nuevo (una sola vigente)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select out_poliza_id as pid from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) \gset
+select * from despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d44b01', :'pid'::uuid, '2026-07-30', 'Correccion');
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb);
+select count(*) as ligas_vigentes_deberia_ser_1 from despachos.libro_poliza_rep r join despachos.libro_poliza p on p.id = r.poliza_id where r.pago_cfdi_id = '00000000-0000-0000-0000-000000d44f01' and not p.reversada;
+rollback;
+
+\echo '114. el tipo debe corresponder al flujo (cobro = ingreso)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'egreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '115. el tipo debe corresponder al flujo (pago = egreso)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f02', 'ingreso', '2026-07-29', 'Cobro REP', '[{"cuenta":"2010000","concepto":"","debe":58000,"haber":0},{"cuenta":"1020000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600310","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600300","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '116. tipo diario no se admite en una poliza de REP'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'diario', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '117. la poliza se fecha en la fecha de pago del complemento'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-27', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '118. el total de la poliza debe ser importe pagado + IVA del pago'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58001,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58001},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '119. una poliza descuadrada no se registra (aunque el total coincida)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":7999}]'::jsonb) as should_fail;
+rollback;
+
+\echo '120. una cuenta fuera del catalogo del cliente no se registra'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600499","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '121. montos no enteros se rechazan'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":"x","haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '122. un pago inexistente no se registra'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f99', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '123. cross-tenant: el pago de OTRA property del mismo despacho (A3) no se registra desde A1'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f03', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '124. CONTROL: el pago de A3 si se registra en A3 (mismo despacho, otra property)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b05', '00000000-0000-0000-0000-000000d44f03', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb);
+select count(*) as a3_deberia_ser_1 from despachos.libro_poliza_rep where pago_cfdi_id = '00000000-0000-0000-0000-000000d44f03';
+rollback;
+
+\echo '125. cross-tenant: el pago de otro despacho (B1) no se registra desde A1'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f04', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '126. periodo cerrado: no se registra la poliza de un REP en un mes cerrado'
+begin;
+insert into despachos.periodo_cierre (organization_id, property_id, anio, mes, status) values ('00000000-0000-0000-0000-000000d44a01', '00000000-0000-0000-0000-000000d44b01', 2026, 7, 'closed');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '127. CONTROL: contador acotado a A1 registra en A1'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c02', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb);
+rollback;
+
+\echo '128. contador acotado a A1 NO registra en A3'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c02', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b05', '00000000-0000-0000-0000-000000d44f03', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '129. readonly NO registra'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c03', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '130. cross-tenant: admin de B NO registra en A1'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c04', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '131. hotel: admin de un hotel NO registra en A1'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c06', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '132. usuario sin membresia NO registra'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c05', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '133. sin sub NO registra'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '134. anon NO tiene EXECUTE sobre libro_poliza_registrar_rep'
+begin;
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '--- libro_poliza_rep: escritura directa cerrada y RLS ---'
+\echo '135. authenticated NO inserta directo en libro_poliza_rep'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+insert into despachos.libro_poliza_rep (poliza_id, pago_cfdi_id, organization_id, property_id) values (gen_random_uuid(), '00000000-0000-0000-0000-000000d44f01', '00000000-0000-0000-0000-000000d44a01', '00000000-0000-0000-0000-000000d44b01') returning 1 as should_fail;
+rollback;
+
+\echo '136. authenticated NO borra de libro_poliza_rep'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+delete from despachos.libro_poliza_rep returning 1 as should_fail;
+rollback;
+
+\echo '137. anon NO lee libro_poliza_rep'
+begin;
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as should_fail from despachos.libro_poliza_rep;
+rollback;
+
+\echo '138. RLS: el staff lee las ligas de su cliente'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb);
+select count(*) as lee_ligas_deberia_ser_1 from despachos.libro_poliza_rep where property_id = '00000000-0000-0000-0000-000000d44b01';
+rollback;
+
+\echo '139. RLS: el admin de B no ve las ligas de A1 (ni las de A3)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c01', true);
+select * from despachos.libro_poliza_registrar_rep('00000000-0000-0000-0000-000000d44b01', '00000000-0000-0000-0000-000000d44f01', 'ingreso', '2026-07-28', 'Cobro REP', '[{"cuenta":"1020000","concepto":"","debe":58000,"haber":0},{"cuenta":"1050000","concepto":"","debe":0,"haber":58000},{"cuenta":"2600400","concepto":"IVA","debe":8000,"haber":0},{"cuenta":"2600410","concepto":"IVA","debe":0,"haber":8000}]'::jsonb);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d44c04', true);
+select count(*) as rls_otro_despacho_deberia_ser_0 from despachos.libro_poliza_rep;
+rollback;
+
+\echo '140. llave compuesta: una liga no puede unir una poliza de A1 con un pago de A3'
+begin;
+select 1;
+insert into despachos.libro_poliza_rep (poliza_id, pago_cfdi_id, organization_id, property_id) select p.id, '00000000-0000-0000-0000-000000d44f03', p.organization_id, p.property_id from despachos.libro_poliza p limit 0;
+insert into despachos.libro_poliza (id, organization_id, property_id, ejercicio, mes, tipo, folio, fecha, concepto, origen, total_centavos) values ('00000000-0000-0000-0000-000000d44999', '00000000-0000-0000-0000-000000d44a01', '00000000-0000-0000-0000-000000d44b01', 2026, 7, 'ingreso', 1, '2026-07-28', 'x', 'manual', 1);
+insert into despachos.libro_poliza_rep (poliza_id, pago_cfdi_id, organization_id, property_id) values ('00000000-0000-0000-0000-000000d44999', '00000000-0000-0000-0000-000000d44f03', '00000000-0000-0000-0000-000000d44a01', '00000000-0000-0000-0000-000000d44b01') returning 1 as should_fail;
+rollback;
+
+\echo '--- postura de catalogo de la parte REP ---'
+\echo '141. libro_poliza_registrar_rep es security definer con search_path fijo, sin EXECUTE para anon/public y con EXECUTE para authenticated'
+begin;
+select count(*) as postura_rep_deberia_ser_1 from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace where ns.nspname = 'despachos' and p.proname = 'libro_poliza_registrar_rep' and p.prosecdef and p.proconfig is not null and exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%') and not has_function_privilege('anon', p.oid, 'execute') and not has_function_privilege('public', p.oid, 'execute') and has_function_privilege('authenticated', p.oid, 'execute');
+rollback;
+
+\echo '142. libro_poliza_rep: RLS habilitado, authenticated solo SELECT y ninguna policy permisiva'
+begin;
+select count(*) as postura_tabla_rep_deberia_ser_1 from pg_class c join pg_namespace ns on ns.oid = c.relnamespace where ns.nspname = 'despachos' and c.relname = 'libro_poliza_rep' and c.relrowsecurity and not exists (select 1 from information_schema.role_table_grants g where g.table_schema = 'despachos' and g.table_name = 'libro_poliza_rep' and g.grantee in ('authenticated', 'anon', 'public') and g.privilege_type <> 'SELECT') and not exists (select 1 from pg_policies pp where pp.schemaname = 'despachos' and pp.tablename = 'libro_poliza_rep' and (pp.qual = 'true' or pp.qual is null));
+rollback;
+
+\echo '143. regresion: libro_poliza_insertar de 020 sigue sin EXECUTE para authenticated (la parte REP no lo expone)'
+begin;
+select count(*) as insertar_expuesto_deberia_ser_0 from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace where ns.nspname = 'despachos' and p.proname = 'libro_poliza_insertar' and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'));
 rollback;
 
 \echo 'Verificacion de la migracion 028 terminada: los escenarios de arriba deben pasar todos (los should_fail terminan en ERROR, los _deberia_ser_N dan N).'
