@@ -60,7 +60,7 @@ describe("base SIN migrar: estado honesto, la transaccion sigue utilizable", () 
 });
 
 describe("decidirCampana: errores de negocio de la base como errores tipados", () => {
-  it.each(["requiere_tarifa", "requiere_plantilla_aprobada", "requiere_whatsapp_conectado", "tope_mensual_excedido", "campana_no_aprobable"] as const)("P0001 %s -> MarketingRechazadoError con su codigo", async (codigo) => {
+  it.each(["requiere_tarifa", "requiere_plantilla_aprobada", "requiere_whatsapp_conectado", "tope_mensual_excedido", "campana_no_aprobable", "requiere_marketing_activo", "requiere_nuevo_borrador"] as const)("P0001 %s -> MarketingRechazadoError con su codigo", async (codigo) => {
     const s = new AbortAwareFakeSession([{ match: /marketing_decidir_campana/, respond: () => pgError("P0001", codigo) }, { match: /select 1 as despues/, respond: () => [{ despues: 1 }] }]);
     const err = await decidirCampana(s, CAMP, true).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(MarketingRechazadoError);

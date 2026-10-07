@@ -136,6 +136,8 @@ describe("POST .../admin/marketing/campanas/:campanaId/decidir", () => {
     ["requiere_whatsapp_conectado", "WhatsApp"],
     ["tope_mensual_excedido", "tope mensual"],
     ["campana_no_aprobable", "ya fue decidida"],
+    ["requiere_marketing_activo", "desactivadas"],
+    ["requiere_nuevo_borrador", "siguiente borrador"],
   ])("la base dice %s -> 409 con mensaje 'requiere X' en espanol, nunca un 500", async (codigo, fragmento) => {
     const { ctx, app } = await contexto({ marketing_decidir_campana: () => pgError("P0001", codigo) });
     const res = await decidir(ctx, app, ctx.staff.owner.token, { accion: "aprobar" });
