@@ -97,7 +97,7 @@ export type { RestaurantesRole, AccionRestaurantes } from "./roles.ts";
 
 export { tokenizeForProductSearch, matchesProductSearch, sinAcentos, requiresTortillaChoice, extraerPackSize, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, UUID_PATTERN } from "./product-search.ts";
 
-export { DEFAULT_COMPLEMENTS, TORTILLA_CHOICES, buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, findExtraSalsaProduct, isTortillaChoice } from "./order-quote.ts";
+export { DEFAULT_COMPLEMENTS, PM_BASIC_COMPLEMENTS, TORTILLA_CHOICES, buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, findExtraSalsaProduct, isTortillaChoice } from "./order-quote.ts";
 
 export type {
   RestaurantesRepository,
@@ -331,7 +331,7 @@ export {
 export type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowStore, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 export type { VoiceSecretMatch, VoiceToolAuditInput, VoiceToolAuditOutcome } from "./types.ts";
 
-export { formatLocationMessage, isValidCoordinate, latestSharedLocation, parseSharedLocation, type MetaLocationMessage, type SharedLocation } from "./whatsapp/location.ts";
+export { formatLocationMessage, formatUbicacionEntregaNota, isValidCoordinate, latestDeliveryPin, latestSharedLocation, parseMapsLink, parseSharedLocation, parseUbicacionEntregaNota, type MetaLocationMessage, type SharedLocation, type UbicacionEntrega } from "./whatsapp/location.ts";
 export type { MetaInboundMessage } from "./whatsapp/channel-config.ts";
 export * from "./privacidad/index.ts";
 export * from "./data-chat/index.ts";
