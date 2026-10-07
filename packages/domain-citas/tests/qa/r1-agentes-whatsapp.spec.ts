@@ -344,7 +344,7 @@ describe("QA R1 citas · WhatsApp · DEFECTOS confirmados", () => {
   // QA-citas-R1-agentes-18 (P1): la lista de espera no tiene puerta de entrada. El optimizador ofrece los huecos liberados a
   // `citas.appointment_waitlist`, pero ningun canal inscribe a nadie: el agente (WhatsApp y voz) no tiene herramienta, la API solo LEE la lista y
   // dispara avisos, y el unico INSERT del repo es el seed de la demo. "Si se libera algo me avisan" no tiene efecto real.
-  it.fails("18 'apuntenme en la lista de espera para el lunes' inscribe al paciente (herramienta del agente o puerto del repositorio)", async () => {
+  it("18 'apuntenme en la lista de espera para el lunes' inscribe al paciente (herramienta del agente o puerto del repositorio)", async () => {
     const t = montarConsultorio();
     const herramienta = TOOLS.some((tool) => /espera|waitlist/.test(tool.name));
     const puerto = Object.getOwnPropertyNames(Object.getPrototypeOf(t.repo)).some((m) => /^(insert|add|create|join|registrar|inscribir)\w*waitlist/i.test(m));
