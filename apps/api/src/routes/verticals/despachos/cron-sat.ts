@@ -1,7 +1,8 @@
 // Crons de despachos de la ronda D-26/D-27/D-28 (secreto interno/cron, sesion de sistema, latido y kill switch via withHeartbeat):
 //
-//  /internal/despachos/cfdi-estatus-sat           semanal  -- consulta el estatus de los CFDI ante el SAT (publico), por lotes,
-//                                                             los mas antiguos primero, con tope por corrida.
+//  /internal/despachos/cfdi-estatus-sat           diario   -- consulta el estatus de los CFDI ante el SAT (publico), por lotes y por
+//                                                             prioridad (nunca consultados, cancelacion en proceso, recientes y vigentes
+//                                                             dentro de la ventana), con tope por cliente y por corrida.
 //  /internal/despachos/efos-69b/descarga          mensual  -- baja la lista 69-B (CSV publico), la ingiere (idempotente por SHA-256 y
 //                                                             periodo) y alerta los CFDI ya ingeridos que toca la edicion nueva.
 //  /internal/despachos/vencimientos-barrido       diario   -- genera las obligaciones del periodo en curso por cliente con ficha y
@@ -44,6 +45,7 @@ export function despachosCronSatRoutes(deps: AppDeps): Hono {
         no_encontrados: r.noEncontrados,
         sin_concluir: r.sinConcluir,
         nuevos_cancelados: r.nuevosCancelados,
+        cancelaciones_en_proceso: r.cancelacionesEnProceso,
         cortado_por_tiempo: r.cortadoPorTiempo,
         failures: r.fallidos.map((f) => ({ invoice_id: f.invoiceId, error: f.error })),
       };

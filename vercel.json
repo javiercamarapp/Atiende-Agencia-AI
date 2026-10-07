@@ -109,7 +109,7 @@
     { "path": "/internal/restaurantes/privacidad-retencion", "schedule": "30 8 * * *" },
     { "path": "/internal/plataforma/privacidad-retencion", "schedule": "50 8 * * *" },
     { "path": "/internal/despachos/vencimientos-barrido", "schedule": "45 12 * * *" },
-    { "path": "/internal/despachos/cfdi-estatus-sat", "schedule": "20 6 * * 0" },
+    { "path": "/internal/despachos/cfdi-estatus-sat", "schedule": "20 6 * * *" },
     { "path": "/internal/despachos/efos-69b/descarga", "schedule": "40 7 3 * *" },
     { "path": "/internal/restaurantes/cierres-dia", "schedule": "20 8 * * *" },
     { "path": "/internal/restaurantes/repartidor-licencias", "schedule": "35 13 * * *" },

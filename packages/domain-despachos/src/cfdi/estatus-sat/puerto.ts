@@ -24,6 +24,10 @@ export interface ConsultaCfdiSatResultado {
   readonly esCancelable: string | null;
   /** Texto del SAT (EstatusCancelacion): "En proceso", "Plazo vencido", "Cancelado sin aceptación", ... */
   readonly estatusCancelacion: string | null;
+  /** Texto del SAT (CodigoEstatus): "S - Comprobante obtenido satisfactoriamente.", "N - 601: La expresión impresa proporcionada no es válida.", ... */
+  readonly codigoEstatus: string | null;
+  /** Codigo del SAT (ValidacionEFOS): "200" = el emisor no esta en la lista 69-B, "100" = esta. Se guarda tal cual lo devuelve el SAT. */
+  readonly validacionEfos: string | null;
   /** Solo cuando `consultado` es false. */
   readonly motivo?: MotivoConsultaSatFallida;
 }
@@ -33,5 +37,5 @@ export interface ConsultaCfdiSatPort {
 }
 
 export function consultaNoConcluida(motivo: MotivoConsultaSatFallida): ConsultaCfdiSatResultado {
-  return { consultado: false, estado: "pendiente", esCancelable: null, estatusCancelacion: null, motivo };
+  return { consultado: false, estado: "pendiente", esCancelable: null, estatusCancelacion: null, codigoEstatus: null, validacionEfos: null, motivo };
 }

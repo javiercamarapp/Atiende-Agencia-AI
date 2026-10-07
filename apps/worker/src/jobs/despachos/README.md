@@ -41,7 +41,7 @@ solo sesion de sistema, idempotente por periodo y SHA-256). Falla ENTERA si el a
 `ConsultaCfdiSatPort`, adaptador SOAP `ConsultaCfdiSatSoap` en `@atiende/domain-despachos`). Los mas antiguos primero
 (`system_cfdi_pendientes_estatus_sat`, migracion 022), tope por corrida (60) y presupuesto de tiempo (22 s). La consulta
 va fuera de la transaccion; cada resultado se registra en SU transaccion. Un timeout/red/XML ilegible solo anota el
-intento (el CFDI conserva su estado; jamas pasa a "vigente" por error). Cron semanal `/internal/despachos/cfdi-estatus-sat`.
+intento (el CFDI conserva su estado; jamas pasa a "vigente" por error). Cron diario `/internal/despachos/cfdi-estatus-sat` (prioridad: nunca consultados, cancelacion en proceso, recientes y vigentes de la ventana de ejercicios; tope por cliente).
 El SAT tiene limites de frecuencia **no documentados** y la salida de red desde Vercel hacia el SAT **no esta verificada**.
 
 ## vencimientos-barrido.ts (D-26, hueco del calendario fiscal)

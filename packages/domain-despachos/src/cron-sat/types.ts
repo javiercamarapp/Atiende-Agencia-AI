@@ -24,6 +24,16 @@ export interface CfdiPendienteEstatusSat {
   /** Total en pesos (numeric(14,2)). */
   readonly total: number;
   readonly estadoSat: EstadoSatCfdi;
+  /** 0 nunca consultado, 1 cancelacion «En proceso», 2 reciente, 3 vigente dentro de la ventana (027). Ausente con la base sin migrar. */
+  readonly prioridad?: number;
+}
+
+/** Detalle que responde el SAT ademas del estado (paridad3 D-P3-19): se persiste tal cual, acotado a 80/200 caracteres. */
+export interface DetalleEstatusSat {
+  readonly esCancelable: string | null;
+  readonly estatusCancelacion: string | null;
+  readonly codigoEstatus: string | null;
+  readonly validacionEfos: string | null;
 }
 
 export interface RegistroEstatusSat {
@@ -33,6 +43,8 @@ export interface RegistroEstatusSat {
   readonly estadoNuevo: EstadoSatCfdi;
   /** true solo la PRIMERA vez que el CFDI pasa a cancelado (el estado es terminal). */
   readonly cambioACancelado: boolean;
+  /** true solo la PRIMERA vez que el SAT reporta la cancelacion «En proceso» (el receptor tiene 72 h para aceptar o rechazar). */
+  readonly cancelacionEnProcesoNueva: boolean;
 }
 
 export interface EfosAfectadoSistema {
@@ -59,10 +71,13 @@ export interface VencimientoPorEscalar {
 }
 
 export interface CronSatRepository {
-  /** CFDI por verificar ante el SAT, los mas antiguos primero (`null` = base sin migrar). */
-  listarCfdiPendientesEstatusSat(limite: number, reintentoDias: number): Promise<readonly CfdiPendienteEstatusSat[] | null>;
-  /** Registra el resultado de UNA consulta. `pendiente` solo anota el intento (no pisa un estado verificado). */
-  registrarEstatusSatSistema(invoiceId: string, estado: EstadoSatCfdi): Promise<RegistroEstatusSat>;
+  /**
+   * CFDI por verificar ante el SAT, por prioridad (nunca consultados, cancelacion «En proceso», recientes, vigentes dentro de la ventana de
+   * ejercicios) con tope por cliente (`null` = base sin migrar). Con la base sin la migracion 027 cae al orden anterior (mas antiguos primero).
+   */
+  listarCfdiPendientesEstatusSat(limite: number, reintentoDias: number, ventanaEjercicios?: number, porProperty?: number): Promise<readonly CfdiPendienteEstatusSat[] | null>;
+  /** Registra el resultado de UNA consulta. `pendiente` solo anota el intento (no pisa un estado verificado). Sin 027 no guarda el detalle. */
+  registrarEstatusSatSistema(invoiceId: string, estado: EstadoSatCfdi, detalle?: DetalleEstatusSat): Promise<RegistroEstatusSat>;
   /** CFDI ya ingeridos de cualquier cliente cuyo emisor figura como presunto/definitivo en la edicion mas reciente (`null` = sin migrar). */
   listarEfosAfectadosSistema(limite: number): Promise<readonly EfosAfectadoSistema[] | null>;
   /** Clientes (properties activas) con ficha de cliente (`null` = sin migrar). */

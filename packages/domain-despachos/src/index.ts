@@ -475,7 +475,7 @@ export type {
   DespachosAuditLogPage,
 } from "./types.ts";
 
-export type { DespachosRepository, InvoicePage, OrganizationNotificationRecipient, EmailOutboxJobRow } from "./repository.ts";
+export type { DespachosRepository, DetalleCancelacionSat, InvoicePage, OrganizationNotificationRecipient, EmailOutboxJobRow } from "./repository.ts";
 export { InMemoryDespachosRepository } from "./in-memory-repository.ts";
 export { PostgresDespachosRepository } from "./postgres-repository.ts";
 

@@ -48,8 +48,14 @@ export function despachosCfdiEstatusSatRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       return c.json({ consultado: false, motivo: consulta.motivo ?? "respuesta_invalida", estadoSat: estadoAnterior, estadoSatVerificadoEn: invoice.estadoSatVerificadoEn ?? null, esCancelable: null, estatusCancelacion: null });
     }
 
+    let cancelacionEnProcesoNueva = false;
     try {
-      await repo.registrarEstadoSatInvoice(propertyId, invoiceId, consulta.estado);
+      ({ cancelacionEnProcesoNueva } = await repo.registrarDetalleSatInvoice(propertyId, invoiceId, consulta.estado, {
+        esCancelable: consulta.esCancelable,
+        estatusCancelacion: consulta.estatusCancelacion,
+        codigoEstatus: consulta.codigoEstatus,
+        validacionEfos: consulta.validacionEfos,
+      }));
     } catch (err) {
       if (err instanceof InvoiceNoEncontradoError) throw Errors.notFound("CFDI no encontrado.");
       if (err instanceof EstadoSatInvalidoError) throw Errors.conflict(err.message);
@@ -59,8 +65,11 @@ export function despachosCfdiEstatusSatRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (consulta.estado === "cancelado") {
       await emitirNotificacion(db, { evento: "despachos.cfdi.cancelado", organizationId: invoice.organizationId, propertyId, clave: invoice.id, entidadTipo: "invoice", entidadId: invoice.id });
     }
+    if (consulta.estado !== "cancelado" && cancelacionEnProcesoNueva) {
+      await emitirNotificacion(db, { evento: "despachos.cfdi.cancelacion_en_proceso", organizationId: invoice.organizationId, propertyId, clave: invoice.id, entidadTipo: "invoice", entidadId: invoice.id });
+    }
     const actualizado = await repo.findInvoice(propertyId, invoiceId);
-    return c.json({ consultado: true, estadoSat: consulta.estado, estadoSatVerificadoEn: actualizado?.estadoSatVerificadoEn ?? null, esCancelable: consulta.esCancelable, estatusCancelacion: consulta.estatusCancelacion });
+    return c.json({ consultado: true, estadoSat: consulta.estado, estadoSatVerificadoEn: actualizado?.estadoSatVerificadoEn ?? null, esCancelable: consulta.esCancelable, estatusCancelacion: consulta.estatusCancelacion, codigoEstatus: consulta.codigoEstatus, validacionEfos: consulta.validacionEfos });
   });
 
   return app;
