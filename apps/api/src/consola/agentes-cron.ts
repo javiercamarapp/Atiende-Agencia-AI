@@ -11,6 +11,7 @@ export const AGENTES_CRON: Readonly<Record<string, CronAgente>> = {
   "/internal/licitaciones/deadline-reminders": { vertical: "licitaciones", nombre: "Recordatorios de fecha límite" },
   "/internal/licitaciones/alert-notifications": { vertical: "licitaciones", nombre: "Avisos de licitaciones" },
   "/internal/licitaciones/email-dispatch": { vertical: "licitaciones", nombre: "Despacho de correo de licitaciones" },
+  "/internal/licitaciones/kyc-69b/retamizar": { vertical: "licitaciones", nombre: "Re-tamizado KYC de proveedores (69-B)" },
   "/internal/hoteles/identidad-purga": { vertical: "hoteles", nombre: "Purga de identidades de huéspedes" },
   "/internal/hoteles/night-audit": { vertical: "hoteles", nombre: "Auditoría nocturna de hoteles" },
   "/internal/hoteles/email-dispatch": { vertical: "hoteles", nombre: "Despacho de correo de hoteles" },

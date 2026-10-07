@@ -71,6 +71,14 @@ export function despachosCronSatRoutes(deps: AppDeps): Hono {
         detalle: r.detalle ?? null,
       };
       const response = c.json(body, 200);
+      // L-P3-10: edicion NUEVA o corregida -> encadena el re-tamizado KYC de licitaciones (gancho inyectado; despachos no importa
+      // licitaciones). Va en su propia transaccion y NUNCA cambia la respuesta ni el latido de la descarga: si falla, el cron semanal
+      // de respaldo de licitaciones lo reintenta (idempotente por edicion).
+      if (deps.alIngerirEdicionEfos69b && (r.resultado === "insertada" || r.resultado === "reemplazada")) {
+        await deps.alIngerirEdicionEfos69b(deps, { periodo: r.periodo, resultado: r.resultado }).catch((err) => {
+          console.error("efos-69b-descarga: el re-tamizado encadenado fallo (el cron de respaldo lo reintenta):", err instanceof Error ? err.message : err);
+        });
+      }
       if (r.estado === "fallo" || r.alertasFallidas > 0) throw new CronPartialFailureError(`efos-69b-descarga: ${r.detalle ?? `${r.alertasFallidas} alertas fallaron`}`, response);
       return response;
     })();

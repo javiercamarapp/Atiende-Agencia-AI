@@ -62,6 +62,7 @@ export const SWITCHABLE_CRONS: readonly string[] = [
   "/internal/licitaciones/deadline-reminders",
   "/internal/licitaciones/discover-tenders",
   "/internal/licitaciones/email-dispatch",
+  "/internal/licitaciones/kyc-69b/retamizar",
   "/internal/plataforma/privacidad-retencion",
   "/internal/rentas/acceso-huesped",
   "/internal/rentas/checkin-recordatorio",

@@ -130,6 +130,7 @@ import { ProductionSuperadminAccionesRepository } from "./superadmin-acciones-re
 import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "./saas-billing-stripe-port.ts";
 import { createPlatformSwitchGuard } from "../platform-switches.ts";
+import { retamizarCarteraYAvisar } from "../routes/verticals/licitaciones/avisos-campana.ts";
 import { crearDespachadorAlertas, configAlertasDesdeEnv } from "../alertas/index.ts";
 import { notProductionReady } from "./not-ready.ts";
 import { conAjustesDeVoz, resolverAjustesVozPostgres } from "./voz-con-ajustes.ts";
@@ -509,6 +510,10 @@ export function buildProductionDeps(): AppDeps {
     // L-08 -- KYC negativo 69-B (migracion 031; degrada a "no disponible aun" si falta).
     licitacionesKycRepo: (db) => new PostgresKyc69bRepository(db),
     licitacionesAvisosRepo: (db) => new PostgresAvisosSistemaRepository(db),
+    // L-P3-10 -- una edicion NUEVA de la lista 69-B (descarga mensual de despachos) re-tamiza al instante la cartera KYC de licitaciones.
+    alIngerirEdicionEfos69b: async (d) => {
+      await retamizarCarteraYAvisar(d);
+    },
     // L-22 -- dias inhabiles por organizacion/convocatoria (migracion 032; sin ella los plazos usan los oficiales).
     licitacionesDiasInhabilesRepo: (db) => new PostgresDiasInhabilesRepository(db),
     // L-27 -- garantias, hitos, convenios y plazos de post-adjudicacion (migracion 035; degrada a "no disponible aun" si falta).

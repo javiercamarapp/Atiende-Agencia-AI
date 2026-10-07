@@ -245,19 +245,21 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
     })();
   });
 
-  // L-32: re-tamizado de la cartera KYC 69-B contra la edicion MAS RECIENTE de la lista. Ruta interna e IDEMPOTENTE
-  // (repetirla con la misma edicion no evalua ni avisa de nuevo): la invoca quien ingiere una edicion nueva (la ingesta
-  // `/internal/despachos/efos-69b/ingestar` es compartida con despachos y no se toca) o un operador. NO es un cron de
-  // vercel.json: agendarla es una decision de costo aparte. La descarga automatica de la lista queda fuera (tarea l21).
+  // L-32 / L-P3-10: re-tamizado de la cartera KYC 69-B contra la edicion MAS RECIENTE de la lista. Ruta interna e IDEMPOTENTE
+  // (repetirla con la misma edicion no evalua ni avisa de nuevo). Dos disparadores: (1) la descarga mensual de despachos la
+  // encadena al ingerir una edicion NUEVA (`AppDeps.alIngerirEdicionEfos69b`, sin acoplar despachos a licitaciones) y (2) el
+  // cron semanal de respaldo de `vercel.json` (lunes) por si la cadena fallo o la descarga corrio antes que esta ruta existiera.
   app.on(["GET", "POST"], "/internal/licitaciones/kyc-69b/retamizar", async (c) => {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
-    try {
-      const r = await retamizarCarteraYAvisar(deps);
-      return c.json({ ok: true, disponible: r.disponible, organizaciones: r.organizaciones, fichas_evaluadas: r.fichasEvaluadas, alertas_emitidas: r.alertasEmitidas });
-    } catch (err) {
-      if (err instanceof AvisoKycNoEmitidoError) throw Errors.serviceUnavailable(err.message);
-      throw err;
-    }
+    return withHeartbeat(deps, "/internal/licitaciones/kyc-69b/retamizar", async () => {
+      try {
+        const r = await retamizarCarteraYAvisar(deps);
+        return c.json({ ok: true, disponible: r.disponible, organizaciones: r.organizaciones, fichas_evaluadas: r.fichasEvaluadas, alertas_emitidas: r.alertasEmitidas });
+      } catch (err) {
+        if (err instanceof AvisoKycNoEmitidoError) throw Errors.serviceUnavailable(err.message);
+        throw err;
+      }
+    })();
   });
 
   return app;

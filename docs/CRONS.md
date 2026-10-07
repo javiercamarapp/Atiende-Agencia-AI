@@ -28,6 +28,7 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/licitaciones/deadline-reminders` | `0 6 * * *` | Avisos de plazos |
 | `/internal/licitaciones/alert-notifications` | `0 7 * * *` | Alertas de coincidencias |
 | `/internal/licitaciones/email-dispatch` | `*/15 * * * *` | Drena el outbox de correo |
+| `/internal/licitaciones/kyc-69b/retamizar` | `30 8 * * 1` | L-P3-10 (semanal, lunes): respaldo del re-tamizado de la cartera KYC contra la edicion MAS RECIENTE de la lista 69-B. Idempotente (misma edicion y mismo SHA no evalua ni avisa de nuevo). Normalmente ya lo dispara la descarga mensual de despachos al ingerir una edicion nueva |
 | `/internal/hoteles/identidad-purga` | `0 8 * * *` | Purga de la bóveda de identidad vencida |
 | `/internal/hoteles/night-audit` | `0 9 * * *` | Auditoría nocturna |
 | `/internal/citas/confirmacion-cita` | `*/30 * * * *` | Recordatorio de cita 24 h antes (ventana ±30 min; marca reminder_24h_sent_at + dedupe_key en el outbox) |

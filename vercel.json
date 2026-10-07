@@ -70,6 +70,7 @@
     { "path": "/internal/licitaciones/deadline-reminders", "schedule": "0 6 * * *" },
     { "path": "/internal/licitaciones/alert-notifications", "schedule": "0 7 * * *" },
     { "path": "/internal/licitaciones/email-dispatch", "schedule": "*/15 * * * *" },
+    { "path": "/internal/licitaciones/kyc-69b/retamizar", "schedule": "30 8 * * 1" },
     { "path": "/internal/hoteles/identidad-purga", "schedule": "0 8 * * *" },
     { "path": "/internal/hoteles/night-audit", "schedule": "0 9 * * *" },
     { "path": "/internal/citas/confirmacion-cita", "schedule": "*/30 * * * *" },
