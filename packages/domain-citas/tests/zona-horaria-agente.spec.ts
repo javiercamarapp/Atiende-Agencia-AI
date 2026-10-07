@@ -1,7 +1,7 @@
 // Regresion QA R1 (citas): lo que ve el agente de WhatsApp y de voz lleva la hora LOCAL del negocio, y un starts_at sin zona ya no se lee en la zona del servidor.
 // Ids: QA-citas-R1-seguridad-08, agentes-01, features-01/02/03, viaje-01/02/09, automatizacion-04.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createAppointment, rescheduleAppointment } from "../src/appointments.ts";
+import { createAppointment, createAppointmentFromPanel, rescheduleAppointment } from "../src/appointments.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { lookupCitasCustomer } from "../src/customers.ts";
 import { AppointmentValidationError } from "../src/errors.ts";
@@ -95,6 +95,23 @@ describe("QA-citas-R1-features-02 / viaje-02: el CONTEXTO DEL CLIENTE lista las 
     expect(prompt).not.toMatch(/GMT|Coordinated/);
   });
 
+  it("lookupCitasCustomer normaliza a ISO el `Date` que entrega el driver de Postgres (recorre customers.ts, no solo el prompt)", async () => {
+    const f = buildCitasFixture();
+    await createAppointment(f.repo, { organizationId: f.organizationId, providerId: f.providerId, serviceId: f.serviceId, customerName: "Ana", customerPhone: PHONE, startsAt: lunesA("10:00"), source: "whatsapp" });
+    const conDate = new Proxy(f.repo, {
+      get(target, prop, receiver) {
+        if (prop === "listActiveAppointmentsForCustomer") {
+          return async (...args: Parameters<typeof target.listActiveAppointmentsForCustomer>) =>
+            (await target.listActiveAppointmentsForCustomer(...args)).map((r) => ({ ...r, startsAt: new Date(r.startsAt) as unknown as string }));
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const customer = await lookupCitasCustomer(conDate, f.organizationId, PHONE, ahora);
+    expect(customer.upcomingAppointments[0]!.startsAt).toBe("2027-09-13T16:00:00.000Z");
+    expect(typeof customer.upcomingAppointments[0]!.startsAt).toBe("string");
+  });
+
   it("lookupCitasCustomer entrega startsAt como ISO string y la zona de la sucursal", async () => {
     const f = buildCitasFixture();
     await createAppointment(f.repo, { organizationId: f.organizationId, providerId: f.providerId, serviceId: f.serviceId, customerName: "Ana", customerPhone: PHONE, startsAt: lunesA("10:00"), source: "whatsapp" });
@@ -129,6 +146,14 @@ describe("QA-citas-R1-features-03: un starts_at sin zona ya no se interpreta en 
     }
     const c = await createAppointment(f.repo, { ...base, startsAt: lunesA("10:00") });
     await expect(rescheduleAppointment(f.repo, { organizationId: f.organizationId, appointmentId: c.id, newStartsAt: "2027-09-13T11:00:00" })).rejects.toBeInstanceOf(AppointmentValidationError);
+  });
+
+  it("el alta manual del panel tambien rechaza un starts_at sin zona y acepta uno con zona", async () => {
+    const f = buildCitasFixture();
+    const base = { organizationId: f.organizationId, providerId: f.providerId, serviceId: f.serviceId, customerName: "Ana", customerPhone: PHONE };
+    await expect(createAppointmentFromPanel(f.repo, { ...base, startsAt: "2027-09-13T10:00:00" })).rejects.toBeInstanceOf(AppointmentValidationError);
+    const ok = await createAppointmentFromPanel(f.repo, { ...base, startsAt: "2027-09-13T10:00:00-06:00" });
+    expect(new Date(ok.startsAt).toISOString()).toBe("2027-09-13T16:00:00.000Z");
   });
 
   it("con zona explicita (Z u offset) se agenda a la hora local correcta", async () => {
