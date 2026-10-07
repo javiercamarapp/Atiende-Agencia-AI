@@ -3,7 +3,7 @@
 //
 // Cada `describe` QA-restaurantes-R2-automatizacion-NN fija la correccion de ese defecto; los de "cobertura" fijan lo que ya estaba bien. Solo dobles: repos en memoria, adaptador falso de SoftRestaurant, motor fake; nunca red ni base real.
 // La semantica SQL (dia de negocio de agotados_reponer, abiertos de la saturacion, recoger sin hora) la prueba
-// scripts/verify-qa-r2-restaurantes-automatizacion contra Postgres efimero.
+// scripts/verify-restaurantes-qa-r2-automatizacion-caos contra Postgres efimero.
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TenantDbSession } from "@atiende/core-tenancy";
