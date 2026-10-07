@@ -952,19 +952,21 @@ export function normalizarBusqueda(v: string): string {
 }
 
 /** Separa la frase en una vertical implicita ("el hotel de ..." -> hoteles) y los terminos que deben aparecer en el nombre o el slug. */
-export function interpretarNombre(frase: string): { readonly vertical: (typeof VERTICALES)[number] | undefined; readonly terminos: readonly string[] } {
+export function interpretarNombre(frase: string): { readonly vertical: (typeof VERTICALES)[number] | undefined; readonly terminos: readonly string[]; readonly palabraVertical: string | undefined } {
   let vertical: (typeof VERTICALES)[number] | undefined;
+  let palabraVertical: string | undefined;
   const terminos: string[] = [];
   for (const t of normalizarBusqueda(frase).split(/[^a-z0-9ñ]+/u).filter(Boolean)) {
     if (PALABRAS_VACIAS.has(t)) continue;
     const v = VERTICAL_POR_PALABRA[t];
     if (v && !vertical) {
       vertical = v;
+      palabraVertical = t;
       continue;
     }
     terminos.push(t);
   }
-  return { vertical, terminos };
+  return { vertical, terminos, palabraVertical };
 }
 
 function buscarOrganizacion(f: FuentesPlataforma): DataChatTool {
@@ -983,11 +985,14 @@ function buscarOrganizacion(f: FuentesPlataforma): DataChatTool {
       const r = await f.organizaciones();
       if (!r.ok) return sinDato(fuente, r.razon);
       const frase = typeof args["nombre"] === "string" ? args["nombre"] : "";
-      const { vertical: verticalImplicita, terminos } = interpretarNombre(frase);
-      const vertical = (args["vertical"] as string | undefined) ?? verticalImplicita;
+      const { vertical: verticalImplicita, terminos, palabraVertical } = interpretarNombre(frase);
+      const verticalExplicita = args["vertical"] as string | undefined;
+      const vertical = verticalExplicita ?? verticalImplicita;
       const coincide = (o: (typeof r.data)[number]): boolean => {
         const hay = `${normalizarBusqueda(o.name)} ${normalizarBusqueda(o.slug)}`;
-        return terminos.every((t) => hay.includes(t)) && (!vertical || o.vertical === vertical) && (!args["estado"] || o.status === args["estado"]);
+        // La palabra de vertical de la frase ("hotel") acota la vertical, salvo que tambien este en el nombre ("Hotel Merida" de otra vertical): ahi cuenta como parte del nombre.
+        const verticalOk = verticalExplicita ? o.vertical === verticalExplicita : !verticalImplicita || o.vertical === verticalImplicita || (palabraVertical !== undefined && hay.includes(palabraVertical));
+        return terminos.every((t) => hay.includes(t)) && verticalOk && (!args["estado"] || o.status === args["estado"]);
       };
       const halladas = r.data.filter(coincide).sort((a, b) => a.name.localeCompare(b.name));
       const filtro = [frase ? `nombre «${sanitizeCell(frase, 40)}»` : null, vertical ? `vertical ${vertical}` : null, args["estado"] ? `estado ${String(args["estado"])}` : null].filter(Boolean).join(", ");
@@ -1005,6 +1010,10 @@ function buscarOrganizacion(f: FuentesPlataforma): DataChatTool {
       );
     },
   });
+}
+
+function pluralOrganizaciones(n: number): string {
+  return `${n} ${n === 1 ? "organización" : "organizaciones"}`;
 }
 
 function rankingOrganizaciones(f: FuentesPlataforma): DataChatTool {
@@ -1026,30 +1035,34 @@ function rankingOrganizaciones(f: FuentesPlataforma): DataChatTool {
       const { fromDate, toDate, label } = p.period;
       const [uso, orgs] = await Promise.all([f.llmPorOrganizacion(fromDate, toDate), f.organizaciones()]);
       if (!uso.ok) return sinDato(fuente, uso.razon);
+      // La lista de organizaciones es la base: una organizacion sin gasto de IA aparece con 0 (no se omite en silencio).
+      if (!orgs.ok) return sinDato(fuente, orgs.razon);
       const metrica = (args["ordenar_por"] as string | undefined) ?? "costo_ia";
-      const staff = new Map<string, number>(orgs.ok ? orgs.data.map((o) => [o.id, o.staffCount] as const) : []);
-      if (metrica === "personal" && !orgs.ok) return sinDato(fuente, orgs.razon);
-      const filas = uso.data
-        .filter((x) => !args["vertical"] || x.vertical === args["vertical"])
-        .map((x) => ({ nombre: x.organizationName, vertical: x.vertical, costoMicro: x.costMicroUsd, llamadas: x.callCount, personal: orgs.ok ? (staff.get(x.organizationId) ?? 0) : null }));
-      const valor = (x: (typeof filas)[number]): number => (metrica === "llamadas_ia" ? x.llamadas : metrica === "personal" ? (x.personal ?? 0) : x.costoMicro);
+      const usoPorOrg = new Map(uso.data.map((x) => [x.organizationId, x] as const));
+      const filas = orgs.data
+        .filter((o) => !args["vertical"] || o.vertical === args["vertical"])
+        .map((o) => {
+          const u = usoPorOrg.get(o.id);
+          return { nombre: o.name, vertical: o.vertical, costoMicro: u?.costMicroUsd ?? 0, llamadas: u?.callCount ?? 0, personal: o.staffCount };
+        });
+      const conGasto = filas.filter((x) => x.costoMicro > 0 || x.llamadas > 0).length;
+      const valor = (x: (typeof filas)[number]): number => (metrica === "llamadas_ia" ? x.llamadas : metrica === "personal" ? x.personal : x.costoMicro);
       const orden = [...filas].sort((a, b) => valor(b) - valor(a) || a.nombre.localeCompare(b.nombre));
       const limite = typeof args["limite"] === "number" ? args["limite"] : 10;
-      const porVertical = new Map<string, { organizaciones: number; costo: number; llamadas: number }>();
+      const porVertical = new Map<string, { organizaciones: number; costo: number }>();
       for (const x of filas) {
-        const a = porVertical.get(x.vertical) ?? { organizaciones: 0, costo: 0, llamadas: 0 };
+        const a = porVertical.get(x.vertical) ?? { organizaciones: 0, costo: 0 };
         a.organizaciones += 1;
         a.costo += x.costoMicro;
-        a.llamadas += x.llamadas;
         porVertical.set(x.vertical, a);
       }
-      const resumenVerticales = [...porVertical.entries()].sort((a, b) => b[1].costo - a[1].costo).map(([v, a]) => `${v}: ${usd(a.costo)} USD en ${a.organizaciones} organizaciones`).join("; ");
+      const resumenVerticales = [...porVertical.entries()].sort((a, b) => b[1].costo - a[1].costo).map(([v, a]) => `${v}: ${usd(a.costo)} USD en ${pluralOrganizaciones(a.organizaciones)}`).join("; ");
       return resultado(
         {
           source: `${cita("ranking_organizaciones", { ...args, ordenar_por: metrica })}: ${fuente}`,
           periodLabel: label,
           scopeLabel: SCOPE_PLATAFORMA,
-          summary: filas.length === 0 ? "No hay organizaciones con gasto de IA en el periodo." : `Por vertical: ${resumenVerticales}.`,
+          summary: filas.length === 0 ? "No hay organizaciones que coincidan." : `${pluralOrganizaciones(filas.length)}, ${conGasto} con gasto de IA en el periodo. Por vertical: ${resumenVerticales}.`,
           chart: { kind: "bar", x: "organizacion", y: metrica === "llamadas_ia" ? "llamadas_ia" : metrica === "personal" ? "personal" : "costo_usd" },
         },
         [col("posicion", "Lugar", "integer"), col("organizacion", "Organización"), col("vertical", "Vertical"), col("costo_usd", "Costo de IA (USD)", "decimal"), col("llamadas_ia", "Llamadas de IA", "integer"), col("personal", "Personal con acceso", "integer")],

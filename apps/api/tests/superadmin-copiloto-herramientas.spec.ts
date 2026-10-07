@@ -92,14 +92,37 @@ describe("alcance multi-organizacion", () => {
   it("ranking_organizaciones: ordena por costo de IA, por llamadas o por personal, totaliza por vertical y respeta el limite", async () => {
     const f = fuentesFalsas();
     const costo = await correr(f, "ranking_organizaciones", { periodo: "este_mes" });
-    expect(columna(costo, "organizacion")).toEqual(["Taquería Don Beto", "Hotel Bahía"]);
-    expect(columna(costo, "posicion")).toEqual([1, 2]);
-    expect(costo.summary).toBe("Por vertical: restaurantes: 3.5 USD en 1 organizaciones; hoteles: 1.5 USD en 1 organizaciones.");
+    // Posada Sol existe pero no tiene gasto de IA: aparece con 0 y el resumen separa "organizaciones" de "con gasto de IA".
+    expect(columna(costo, "organizacion")).toEqual(["Taquería Don Beto", "Hotel Bahía", "Posada Sol"]);
+    expect(columna(costo, "posicion")).toEqual([1, 2, 3]);
+    expect(fila(costo, 2)["costo_usd"]).toBe(0);
+    expect(fila(costo, 2)["llamadas_ia"]).toBe(0);
+    expect(costo.summary).toBe("3 organizaciones, 2 con gasto de IA en el periodo. Por vertical: restaurantes: 3.5 USD en 1 organización; hoteles: 1.5 USD en 2 organizaciones.");
     const personal = await correr(f, "ranking_organizaciones", { periodo: "este_mes", ordenar_por: "personal", limite: 1 });
     expect(columna(personal, "organizacion")).toEqual(["Taquería Don Beto"]);
     const hoteles = await correr(f, "ranking_organizaciones", { periodo: "este_mes", vertical: "hoteles" });
-    expect(columna(hoteles, "organizacion")).toEqual(["Hotel Bahía"]);
+    expect(columna(hoteles, "organizacion")).toEqual(["Hotel Bahía", "Posada Sol"]);
     expect(JSON.stringify(costo)).not.toMatch(/org-a|org-b/);
+  });
+
+  it("ranking_organizaciones: sin la lista de organizaciones dice 'no tengo el dato' (no ofrece un ranking parcial)", async () => {
+    const r = await correr(fuentesFalsas({ organizaciones: async () => ({ ok: false, razon: "no_migrado" as RazonFuente }) }), "ranking_organizaciones", { periodo: "este_mes" });
+    expect(r.status).toBe("unavailable");
+  });
+
+  it("buscar_organizacion: la palabra de vertical tambien cuenta como nombre cuando esta en el nombre de otra vertical", async () => {
+    const f = fuentesFalsas({
+      organizaciones: async () =>
+        ok([
+          { id: "o1", vertical: "restaurantes", name: "Hotel Rosa Café", slug: "hotel-rosa-cafe", status: "active" as const, createdAt: "2026-03-01T10:00:00.000Z", staffCount: 1 },
+          { id: "o2", vertical: "hoteles", name: "Casa Rosa", slug: "casa-rosa", status: "active" as const, createdAt: "2026-03-02T10:00:00.000Z", staffCount: 1 },
+          { id: "o3", vertical: "restaurantes", name: "Rosa Taqueria", slug: "rosa-taqueria", status: "active" as const, createdAt: "2026-03-03T10:00:00.000Z", staffCount: 1 },
+        ]),
+    });
+    const r = await correr(f, "buscar_organizacion", { nombre: "hotel Rosa" });
+    expect(columna(r, "organizacion")).toEqual(["Casa Rosa", "Hotel Rosa Café"]);
+    const explicita = await correr(f, "buscar_organizacion", { nombre: "hotel Rosa", vertical: "hoteles" });
+    expect(columna(explicita, "organizacion")).toEqual(["Casa Rosa"]);
   });
 
   it("ranking_organizaciones: sin la fuente de gasto dice 'no tengo el dato'", async () => {
