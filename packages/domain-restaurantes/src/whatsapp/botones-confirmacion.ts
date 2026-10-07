@@ -120,7 +120,13 @@ export function marcadorDeToque(botonId: unknown): string {
 /** Quita cualquier marcador de un texto (lo que el cliente ESCRIBE no puede falsificar un toque). */
 export function quitarMarcadoresDeToque(texto: string): string {
   if (!texto.includes("[boton:")) return texto;
-  return texto.replace(MARCADOR_RE, "").replace(/\[boton:[^\]\n]*\]/g, "").trim();
+  // Hasta que no cambie: «[bo[boton:x]ton:<id>]» deja un marcador valido al quitar el interno.
+  let actual = texto;
+  for (let previo = ""; previo !== actual; ) {
+    previo = actual;
+    actual = actual.replace(/\[boton:[^\]\n]*\]/g, "");
+  }
+  return actual.replace(/\[boton:/g, "").trim();
 }
 
 /** Contenido que se guarda en el historial: el titulo que toco (ya redactado) y, aparte, el marcador del toque. */
@@ -160,6 +166,8 @@ export type VigenciaDelToque =
   | "vigente"
   /** Ese resumen ya se convirtio en pedido: nada que hacer, no se duplica. */
   | "ya_creado"
+  /** El resumen se acepto pero el pedido NO se registro: quedo retenido (pedido grande) y la sucursal lo confirmara. Nunca se dice «ya quedo registrado». */
+  | "retenido"
   /** El pedido se esta registrando en este instante (otro toque o el «si» escrito). */
   | "en_proceso"
   /** El pedido cambio, la cotizacion vencio o ya no existe: el boton no aplica. */
@@ -167,12 +175,13 @@ export type VigenciaDelToque =
   /** No hay forma de comprobarlo (base sin la maquina de estados): se sigue como un «si» escrito, que es el camino de siempre. */
   | "no_verificable";
 
+/** Nota: una re-cotizacion IDENTICA conserva el instante de la primera (`quotedAtMs`), asi que los botones de un resumen repetido vencen a los 20 min de la PRIMERA cotizacion, igual que la cotizacion misma. */
 export function vigenciaDelToque(snap: OrderFlowSnapshot | null, toque: BotonResumen, ahoraMs: number): VigenciaDelToque {
   if (snap === null) return "no_verificable";
   const ctx = snap.context;
   if (!snap.state || !ctx) return "obsoleto";
   if (ctx.quoteHash !== toque.quoteHash || ctx.quotedAtMs !== toque.quotedAtMs) return "obsoleto";
-  if (snap.state === "creado") return "ya_creado";
+  if (snap.state === "creado") return ctx.orderId ? "ya_creado" : "retenido";
   if (snap.state === "creando") return "en_proceso";
   if (ahoraMs - ctx.quotedAtMs > QUOTE_TTL_MS) return "obsoleto";
   return "vigente";
@@ -182,11 +191,13 @@ export function vigenciaDelToque(snap: OrderFlowSnapshot | null, toque: BotonRes
 export const RESPUESTA_TOQUE_OBSOLETO =
   "Ese resumen ya no es el vigente (su pedido cambió o el resumen venció), así que no lo confirmé. Dígame qué desea pedir o cambiar y le preparo el resumen otra vez.";
 export const RESPUESTA_TOQUE_YA_CREADO = "Su pedido ya quedó registrado y no se duplicó. Si desea agregar algo más, dígame y le preparo un pedido nuevo.";
+export const RESPUESTA_TOQUE_RETENIDO = "Su pedido está pendiente de que la sucursal lo confirme; ya se le avisó y lo contactará. No se duplicó.";
 export const RESPUESTA_TOQUE_EN_PROCESO = "Su pedido se está registrando en este momento. En unos segundos le confirmo.";
 
 export function respuestaDeToqueQueNoSigue(v: VigenciaDelToque): string | null {
   if (v === "obsoleto") return RESPUESTA_TOQUE_OBSOLETO;
   if (v === "ya_creado") return RESPUESTA_TOQUE_YA_CREADO;
+  if (v === "retenido") return RESPUESTA_TOQUE_RETENIDO;
   if (v === "en_proceso") return RESPUESTA_TOQUE_EN_PROCESO;
   return null;
 }

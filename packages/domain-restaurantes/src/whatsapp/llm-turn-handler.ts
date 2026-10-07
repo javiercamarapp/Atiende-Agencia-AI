@@ -42,7 +42,7 @@ import { afirmaHaberAvisado, branchAlreadyKnown, classifyHighRiskIntentInMessage
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
-import { contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
+import { quitarMarcadoresDeToque, contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
 import { emitirSeguro, telefonoHashSeguro } from "./observabilidad-turno.ts";
 import type { ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
 
@@ -485,7 +485,13 @@ export function ventanaDeHistorial(messages: readonly ConversationMessage[]): re
 /** Historial para el modelo. Los toques a los botones del resumen se leen como nota (nunca se le muestra el id): «Cambiar algo» siempre; «Confirmar pedido»
  * solo se vuelve un «si» explicito despues de comprobar que el resumen sigue vigente (ver `confirmarVigente` y el turno). */
 function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
-  return ventanaDeHistorial(messages).map((m) => (m.role === "user" ? { role: "user" as const, content: contenidoParaElModelo(m.content, { esElUltimo: false, confirmarVigente: false }) } : { role: "assistant" as const, content: m.content }));
+  // La nota de «Cambiar algo» solo vale para el turno inmediato siguiente: los toques ya respondidos (antes de la ultima respuesta del agente) vuelven a ser su titulo.
+  const pendientes = new Set<ConversationMessage>(mensajesSinResponder(messages));
+  return ventanaDeHistorial(messages).map((m) =>
+    m.role === "user"
+      ? { role: "user" as const, content: pendientes.has(m) ? contenidoParaElModelo(m.content, { esElUltimo: false, confirmarVigente: false }) : quitarMarcadoresDeToque(m.content) }
+      : { role: "assistant" as const, content: m.content },
+  );
 }
 
 /** 30 s de funcion menos el margen de cierre menos ~6 s para la ultima llamada al LLM que arranque antes del tope. */
@@ -653,8 +659,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // (confirmar_resumen -> crear_pedido) y el servidor revalida precio, zona, horario y pedido grande.
       const ultimoDelCliente = pendientes.at(-1);
       const toqueUltimo = ultimoDelCliente ? toqueDeMensaje(ultimoDelCliente.content) : null;
-      if (ultimoDelCliente && toqueUltimo?.accion === "confirmar") {
-        const vigencia = vigenciaDelToque(flowSnapshot, toqueUltimo, Date.now());
+      // Solo es un «si» a ese resumen si TODO lo pendiente son toques: con texto escrito junto (en una rafaga, antes o despues del toque: «mejor 5») el cliente pudo cambiar el
+      // pedido, asi que no se inyecta la nota ni se responde con texto fijo; el modelo lee el texto y vuelve a cotizar.
+      const soloToques = pendientes.length > 0 && pendientes.every((m) => toqueDeMensaje(m.content) !== null);
+      if (ultimoDelCliente && soloToques && toqueUltimo?.accion === "confirmar") {
+        const vigencia = vigenciaDelToque(flowSnapshot, toqueUltimo, options.now ? options.now().getTime() : Date.now());
         const fija = respuestaDeToqueQueNoSigue(vigencia);
         if (fija) return done({ reply: fija, orderId: null, propertyId });
         const ultimoEnHistorial = working.findLastIndex((m) => m.role === "user");

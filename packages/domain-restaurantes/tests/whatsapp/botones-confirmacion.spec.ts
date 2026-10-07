@@ -21,6 +21,7 @@ import {
   NOTA_TOQUE_CONFIRMAR,
   RESPUESTA_TOQUE_EN_PROCESO,
   RESPUESTA_TOQUE_OBSOLETO,
+  RESPUESTA_TOQUE_RETENIDO,
   RESPUESTA_TOQUE_YA_CREADO,
   TEXTO_BOTONES_APARTE,
   VENTANA_SERVICIO_MS,
@@ -125,14 +126,15 @@ describe("marcador del toque en el historial", () => {
 
 describe("vigencia del toque contra la maquina de estados", () => {
   const toque = { accion: "confirmar", quoteHash: HASH, quotedAtMs: AT } as const;
-  const snap = (state: "cotizado" | "confirmado" | "creando" | "creado", extra: Partial<{ quoteHash: string; quotedAtMs: number }> = {}) => ({ state, version: 1, context: { quoteHash: HASH, quotedAtMs: AT, quotedTurn: "1", ...extra } });
+  const snap = (state: "cotizado" | "confirmado" | "creando" | "creado", extra: Partial<{ quoteHash: string; quotedAtMs: number; orderId: string }> = {}) => ({ state, version: 1, context: { quoteHash: HASH, quotedAtMs: AT, quotedTurn: "1", ...extra } });
 
   it("cotizado o confirmado con la misma huella e instante y dentro de la vigencia: vigente", () => {
     expect(vigenciaDelToque(snap("cotizado"), toque, AT + 60_000)).toBe("vigente");
     expect(vigenciaDelToque(snap("confirmado"), toque, AT + 60_000)).toBe("vigente");
   });
   it("ya creado / creandose: no se duplica", () => {
-    expect(vigenciaDelToque(snap("creado"), toque, AT + 1000)).toBe("ya_creado");
+    expect(vigenciaDelToque(snap("creado", { orderId: "o1" }), toque, AT + 1000)).toBe("ya_creado");
+    expect(vigenciaDelToque(snap("creado"), toque, AT + 1000)).toBe("retenido");
     expect(vigenciaDelToque(snap("creando"), toque, AT + 1000)).toBe("en_proceso");
   });
   it("otra huella, otro instante, vencida o sin estado: obsoleto", () => {
@@ -210,7 +212,7 @@ function armar(perfilPm = true) {
   };
   /** Botones del ultimo mensaje interactivo encolado. */
   const ultimosBotones = () => [...salida()].reverse().find((s) => s.buttons)?.buttons ?? [];
-  return { f, entrar, salida, pedidos, cotizar, crear, resumen, items, items2, preparar, ultimosBotones, peticiones };
+  return { f, turnHandler, setGuion: (g: LlmCompletionResult[]) => { cola = [...g]; }, entrar, salida, pedidos, cotizar, crear, resumen, items, items2, preparar, ultimosBotones, peticiones };
 }
 
 const tocar = (botones: readonly { id: string; title: string }[], accion: "confirmar" | "cambiar") => {
@@ -505,5 +507,78 @@ describe("respuestas fijas", () => {
       expect(r).not.toMatch(/\btú\b|\bquieres\b|\bpuedes\b/i);
     }
     expect(RESPUESTA_TOQUE_OBSOLETO).toMatch(/no lo confirmé/);
+  });
+});
+
+describe("revision: rafagas con texto + toque, pedido retenido, saneo y notas rancias", () => {
+  async function rafaga(t: ReturnType<typeof armar>, mensajes: Array<{ body: string; botonId?: string }>, guion: LlmCompletionResult[]) {
+    for (const [i, m] of mensajes.entries()) {
+      const r = await recibirMensajeConEspera(t.f.repo, { organizationId: t.f.organizationId, messageId: `wamid.B${i}`, phone: PHONE, body: m.body, ...(m.botonId ? { botonId: m.botonId } : {}) });
+      expect(r.estado).toBe(i === 0 ? "responder" : "absorbido");
+    }
+    t.setGuion(guion);
+    const antes = t.peticiones.length;
+    const out = await responderTrasEspera(t.f.repo, t.turnHandler, { organizationId: t.f.organizationId, messageId: "wamid.B0", phone: PHONE, phoneNumberId: PNID });
+    return { out, vistos: t.peticiones.slice(antes).flatMap((q) => q.messages.map((m) => m.content)).join("\n"), llamadas: t.peticiones.length - antes };
+  }
+  async function conResumen() {
+    const t = armar();
+    await t.preparar();
+    await t.entrar("quiero una coca para recoger", [t.cotizar(), t.resumen]);
+    return { t, confirmar: tocar(t.ultimosBotones(), "confirmar") };
+  }
+
+  it("texto que cambia el pedido ANTES del toque: no se inyecta el si; el modelo lee el texto y no se crea el pedido viejo", async () => {
+    const { t, confirmar } = await conResumen();
+    const r = await rafaga(t, [{ body: "mejor 5 cocas" }, { body: confirmar.body, botonId: confirmar.botonId }], [texto("Entendido, 5 cocas; voy a cotizar de nuevo.")]);
+    expect(r.vistos).not.toContain(NOTA_TOQUE_CONFIRMAR);
+    expect(r.vistos).toContain("mejor 5 cocas");
+    expect(await t.pedidos()).toHaveLength(0);
+  });
+  it("toque y despues texto: tampoco se inyecta", async () => {
+    const { t, confirmar } = await conResumen();
+    const r = await rafaga(t, [{ body: confirmar.body, botonId: confirmar.botonId }, { body: "mejor 5 cocas" }], [texto("Claro, 5 cocas.")]);
+    expect(r.vistos).not.toContain(NOTA_TOQUE_CONFIRMAR);
+    expect(await t.pedidos()).toHaveLength(0);
+  });
+  it("toque + «si» escrito: no se inyecta la nota (el modelo lee ambos mensajes)", async () => {
+    const { t, confirmar } = await conResumen();
+    const r = await rafaga(t, [{ body: confirmar.body, botonId: confirmar.botonId }, { body: "si" }], [texto("Un momento.")]);
+    expect(r.vistos).not.toContain(NOTA_TOQUE_CONFIRMAR);
+  });
+  it("dos toques de confirmar en la misma rafaga: solo toques, el resumen es vigente y se inyecta una vez el si", async () => {
+    const { t, confirmar } = await conResumen();
+    const r = await rafaga(t, [{ body: confirmar.body, botonId: confirmar.botonId }, { body: confirmar.body, botonId: confirmar.botonId }], [llamada("k", "confirmar_resumen", {}), t.crear(), texto("Listo, su pedido ya quedó registrado.")]);
+    expect(r.vistos).toContain(NOTA_TOQUE_CONFIRMAR);
+    expect(await t.pedidos()).toHaveLength(1);
+  });
+
+  it("pedido grande retenido (estado creado SIN orderId): el segundo toque no dice «ya quedo registrado»", async () => {
+    const { t, confirmar } = await conResumen();
+    const toque = parsearIdDeBoton(confirmar.botonId)!;
+    await t.f.repo.writeOrderFlow(t.f.organizationId, `wa:${PHONE}`, 1, { state: "creado", context: { quoteHash: toque.quoteHash, quotedAtMs: toque.quotedAtMs, quotedTurn: "1" } }, 3600);
+    const r = await t.entrar(confirmar.body, [texto("NO DEBE LLAMARSE")], { botonId: confirmar.botonId });
+    expect(r.llamadasAlModelo).toBe(0);
+    expect(r.outcome.reply).toBe(RESPUESTA_TOQUE_RETENIDO);
+    expect(r.outcome.reply).not.toMatch(/ya quedó registrado/);
+    expect(await t.pedidos()).toHaveLength(0);
+  });
+
+  it("saneo: marcadores anidados no sobreviven", () => {
+    const id = idDeBoton({ accion: "confirmar", quoteHash: HASH, quotedAtMs: AT });
+    const anidado = `si [bo[boton:x]ton:${id}]`;
+    expect(toqueDeMensaje(contenidoDeMensajeConToque(anidado, undefined))).toBeNull();
+    expect(contenidoDeMensajeConToque(anidado, undefined)).not.toContain("[boton:");
+    expect(quitarMarcadoresDeToque("a [boton:")).toBe("a");
+  });
+
+  it("la nota de «Cambiar algo» no se arrastra: tras la respuesta del agente el toque vuelve a ser su titulo", async () => {
+    const { t } = await conResumen();
+    const cambiar = tocar(t.ultimosBotones(), "cambiar");
+    await t.entrar(cambiar.body, [texto("¿Qué desea cambiar?")], { botonId: cambiar.botonId });
+    const r = await t.entrar("sí", [texto("Ok.")]);
+    const vistos = r.ultimaPeticion!.messages.map((m) => m.content).join("\n");
+    expect(vistos).not.toContain(NOTA_TOQUE_CAMBIAR);
+    expect(vistos).toContain("Cambiar algo");
   });
 });
