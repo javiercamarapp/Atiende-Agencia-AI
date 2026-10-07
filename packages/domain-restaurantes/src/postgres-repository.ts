@@ -448,10 +448,12 @@ interface BranchProductRow {
   readonly product_id: string;
   readonly price: string;
   readonly is_available: boolean;
+  readonly agotado_hasta?: string | null;
 }
 
 function mapBranchProductState(row: BranchProductRow): BranchProductState {
-  return { propertyId: row.property_id, productId: row.product_id, price: Number(row.price), isAvailable: row.is_available };
+  const base = { propertyId: row.property_id, productId: row.product_id, price: Number(row.price), isAvailable: row.is_available };
+  return row.agotado_hasta === undefined ? base : { ...base, agotadoHasta: row.agotado_hasta ?? null };
 }
 
 // ---------------------------------------------------------------------------
@@ -2363,11 +2365,39 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async getBranchProductState(propertyId: string, productId: string): Promise<BranchProductState | null> {
-    const { rows } = await this.db.query<BranchProductRow>(`select property_id, product_id, price, is_available from restaurantes.branch_products where property_id = $1 and product_id = $2;`, [
-      propertyId,
-      productId,
-    ]);
+    // `to_jsonb(bp)->>'agotado_hasta'` no falla en una base SIN la migración 050 (no existe la columna: da null), así que no hace falta SAVEPOINT.
+    const { rows } = await this.db.query<BranchProductRow>(
+      `select bp.property_id, bp.product_id, bp.price, bp.is_available, to_jsonb(bp)->>'agotado_hasta' as agotado_hasta
+       from restaurantes.branch_products bp where bp.property_id = $1 and bp.product_id = $2;`,
+      [propertyId, productId],
+    );
     return rows[0] ? mapBranchProductState(rows[0]) : null;
+  }
+
+  async limpiarAgotadoHasta(propertyId: string, productId: string): Promise<void> {
+    // `authenticated` NO puede escribir `agotado_hasta` (migración 065: solo `grant update (price, is_available, updated_at)`; un
+    // `set agotado_hasta = null` da 42501). El trigger de la 050 (`branch_products_limpiar_agotado_hasta`) borra la fecha en CUALQUIER cambio de
+    // `is_available`, pero no al apagar algo ya apagado: por eso dos UPDATE de columnas permitidas, encendiendo y apagando de nuevo, en la
+    // MISMA transacción del request (nadie ve el estado intermedio hasta el COMMIT). Solo 42703 (base sin la 050) es un no-op; un 42501
+    // u otro error se propaga: tragarlo dejaría al cron reactivando el producto sin que nadie lo sepa.
+    // La condición `agotado_hasta is not null` en `to_jsonb` evita nombrar la columna (no falla sin la 050).
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_restaurantes_limpiar_agotado_hasta",
+      primary: async () => {
+        const donde = `property_id = $1 and product_id = $2`;
+        const { rows } = await this.db.query<{ id: string }>(
+          `update restaurantes.branch_products set is_available = true, updated_at = now()
+           where ${donde} and is_available = false and to_jsonb(branch_products)->>'agotado_hasta' is not null
+           returning product_id as id;`,
+          [propertyId, productId],
+        );
+        if (rows.length === 0) return;
+        await this.db.query(`update restaurantes.branch_products set is_available = false, updated_at = now() where ${donde} and is_available = true;`, [propertyId, productId]);
+      },
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42703",
+      fallback: async () => undefined,
+    });
   }
 
   async upsertBranchProductState(propertyId: string, productId: string, price: number, isAvailable: boolean): Promise<BranchProductState> {

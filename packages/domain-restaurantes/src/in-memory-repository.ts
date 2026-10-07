@@ -235,6 +235,7 @@ interface StoredBranchProduct {
   readonly productId: string;
   price: number;
   isAvailable: boolean;
+  agotadoHasta?: string | null;
 }
 
 type StoredPromotion = Promotion;
@@ -1929,7 +1930,31 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
 
   async getBranchProductState(propertyId: string, productId: string): Promise<BranchProductState | null> {
     const entry = this.branchProducts.find((bp) => bp.propertyId === propertyId && bp.productId === productId);
-    return entry ? { propertyId: entry.propertyId, productId: entry.productId, price: entry.price, isAvailable: entry.isAvailable } : null;
+    return entry ? { propertyId: entry.propertyId, productId: entry.productId, price: entry.price, isAvailable: entry.isAvailable, ...(entry.agotadoHasta !== undefined ? { agotadoHasta: entry.agotadoHasta } : {}) } : null;
+  }
+
+  async limpiarAgotadoHasta(propertyId: string, productId: string): Promise<void> {
+    const entry = this.branchProducts.find((bp) => bp.propertyId === propertyId && bp.productId === productId);
+    if (entry) entry.agotadoHasta = null;
+  }
+
+  /** Pruebas: deja la reposición programada (`agotado_hasta`) que escribe `agotado_marcar` (migración 050). */
+  marcarAgotadoHastaParaPruebas(propertyId: string, productId: string, hasta: string): void {
+    const entry = this.branchProducts.find((bp) => bp.propertyId === propertyId && bp.productId === productId);
+    if (entry) entry.agotadoHasta = hasta;
+  }
+
+  /** Doble de `restaurantes.agotados_reponer` (migración 050) para pruebas: devuelve a la venta lo que está apagado CON reposición
+   * programada que ya venció (`agotadoHasta <= hoy`). Lo apagado sin `agotadoHasta` nunca se reactiva solo. */
+  reponerAgotadosVencidos(hoy: string): readonly { readonly propertyId: string; readonly productId: string }[] {
+    const repuestos: { propertyId: string; productId: string }[] = [];
+    for (const bp of this.branchProducts) {
+      if (!bp.agotadoHasta || bp.isAvailable || bp.agotadoHasta > hoy) continue;
+      bp.isAvailable = true;
+      bp.agotadoHasta = null;
+      repuestos.push({ propertyId: bp.propertyId, productId: bp.productId });
+    }
+    return repuestos;
   }
 
   async upsertBranchProductState(propertyId: string, productId: string, price: number, isAvailable: boolean): Promise<BranchProductState> {
