@@ -2,7 +2,7 @@
 // atado a una comprobacion REAL contra el servidor (registro de herramientas, motor de pedidos, busqueda, entrada de Meta, prompt).
 // Lo que depende de algo que main aun no tiene queda como `it.todo` citando de que depende; nunca se finge que pasa.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cargarEscenariosK, escenariosKActivos, escenariosKPendientesDeConstruccion } from "../src/evals/agente-pm/escenarios-k.ts";
 import { InMemoryRestaurantesRepository } from "../src/in-memory-repository.ts";
 import { createOrder, searchProducts } from "../src/orders.ts";
@@ -74,6 +74,13 @@ const prompt = (over: Partial<Parameters<typeof buildPmSystemPrompt>[0]> = {}) =
   buildPmSystemPrompt({ businessName: "Los Taquitos de PM", agentName: "Lupita", deliveryTimeText: PM_CONFIG_POR_OMISION.deliveryTimeText, saludo: "Buenas tardes", branches: BRANCHES, entryBranch: null, customer: { isNew: true }, fechaHoraLocal: "2 de octubre de 2026, 14:10", diaSemana: "viernes", ...over });
 const callbacks = (m: Mundo) => (m.repo as unknown as { callbackRequests: Array<{ reason?: string; message?: string; propertyId: string | null }> }).callbackRequests;
 const pedidoRecoger = (m: Mundo) => createOrder(m.repo, base(m, { canal: "recoger", customerAddress: undefined, horaRecogida: new Date(Date.now() + 30 * 60_000).toISOString().replace("Z", "+00:00") }));
+
+// Reloj simulado (solo Date): martes 13:00 de Merida. Con el reloj real, +30 min cae en otro dia entre 05:30 y 06:00 UTC y -5 min entre 06:00 y 06:05 UTC.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-06T13:00:00-06:00"));
+});
+afterEach(() => vi.useRealTimers());
 
 /** Una comprobacion REAL por escenario determinista. */
 const CHECKS: Record<string, () => Promise<void> | void> = {
