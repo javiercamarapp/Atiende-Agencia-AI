@@ -67,7 +67,25 @@ export interface MetaInboundMessage {
   readonly from: string;
   readonly body: string;
   readonly interactive?: MetaInteractiveReply;
+  /** Tipo de contenido que el agente NO puede leer (nota de voz, imagen, archivo, ubicacion...). `body` va vacio: el webhook responde un aviso fijo
+   * en vez de descartar el mensaje en silencio. */
+  readonly noSoportado?: TipoMensajeNoSoportado;
 }
+
+export type TipoMensajeNoSoportado = "audio" | "imagen" | "video" | "documento" | "sticker" | "ubicacion" | "contacto";
+
+const TIPOS_NO_SOPORTADOS: Readonly<Record<string, TipoMensajeNoSoportado>> = {
+  audio: "audio",
+  image: "imagen",
+  video: "video",
+  document: "documento",
+  sticker: "sticker",
+  location: "ubicacion",
+  contacts: "contacto",
+};
+
+/** Tope de caracteres de un texto que llega al agente. Un texto mas largo se recorta (antes se descartaba en silencio). */
+export const MAX_TEXTO_ENTRANTE = 4000;
 
 const MAX_INTERACTIVE_ID_LENGTH = 256;
 const MAX_INTERACTIVE_TITLE_LENGTH = 200;
@@ -102,9 +120,15 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
 
         if (message.type === "text") {
           const body = message.text?.body;
-          if (typeof body === "string" && body.trim().length >= 1 && body.length <= 4000) {
-            result.push({ id: message.id, from: message.from, body });
+          if (typeof body === "string" && body.trim().length >= 1) {
+            result.push({ id: message.id, from: message.from, body: body.length > MAX_TEXTO_ENTRANTE ? body.slice(0, MAX_TEXTO_ENTRANTE) : body });
           }
+          continue;
+        }
+
+        const noSoportado = typeof message.type === "string" ? TIPOS_NO_SOPORTADOS[message.type] : undefined;
+        if (noSoportado) {
+          result.push({ id: message.id, from: message.from, body: "", noSoportado });
           continue;
         }
 
