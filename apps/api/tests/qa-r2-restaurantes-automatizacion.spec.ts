@@ -52,18 +52,37 @@ describe("QA-restaurantes-R2-automatizacion-02: 'agotado hasta manana' usa el di
   // PM abre 12:00-01:00. A las 00:30 del DOMINGO todavia corre el turno del SABADO. "Agotado hasta manana" debe reponerse para el turno siguiente
   // (domingo 12:00), pero la ruta calcula hasta = fecha calendario local + 1 = LUNES: el producto se pierde el domingo entero.
   // El reverso (marcado a las 23:30 y repuesto a las 00:10, con el turno abierto) lo reproduce el verify SQL S1.
-  it.fails("marcado a las 00:30 del domingo (turno del sabado): se repone el domingo, no el lunes", async () => {
+  it("marcado a las 00:30 del domingo (turno del sabado): se repone el domingo, no el lunes", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-11T06:30:00Z")); // 00:30 del domingo 11-oct en Merida (UTC-6)
     const t = await contextoAutopiloto();
     await t.ctx.restaurantesRepo.upsertBranchZonaHoraria(t.ctx.propertyIdA, "America/Merida");
     await t.ctx.restaurantesRepo.upsertBranchPolicy(t.ctx.organizationId, t.ctx.propertyIdA, { horario: HORARIO_PM, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null });
+    // La base lee el horario de branch_policy para el dia de negocio; el doble en memoria lo recibe aqui.
+    t.auto.zonaPorSucursal.set(t.ctx.propertyIdA, "America/Merida");
+    t.auto.horarioPorSucursal.set(t.ctx.propertyIdA, HORARIO_PM);
     const productId = randomUUID();
     t.auto.agotados.push({ organizationId: t.ctx.organizationId, propertyId: t.ctx.propertyIdA, productId, disponible: true, agotadoHasta: null });
     const res = await t.app.request(`/v1/restaurantes/${t.ctx.propertyIdA}/admin/autopiloto/agotado`, authedJson(t.ctx.staff.owner.token, { productId }));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { agotadoHasta: string };
     expect(body.agotadoHasta, "el producto queda agotado TODO el domingo: se marco en el turno del sabado").toBe("2026-10-11");
+    // ...y el tick lo repone al terminar el turno (01:10), no antes (00:45) ni hasta el lunes.
+    expect((await t.auto.reponerAgotados(new Date("2026-10-11T06:45:00Z"))).valor).toHaveLength(0);
+    expect((await t.auto.reponerAgotados(new Date("2026-10-11T07:10:00Z"))).valor).toHaveLength(1);
+  });
+
+  it("sin horario que cruce la medianoche el dia de negocio es el calendario: marcado a las 00:30 queda hasta el lunes, como siempre", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-11T06:30:00Z"));
+    const t = await contextoAutopiloto();
+    await t.ctx.restaurantesRepo.upsertBranchZonaHoraria(t.ctx.propertyIdA, "America/Merida");
+    await t.ctx.restaurantesRepo.upsertBranchPolicy(t.ctx.organizationId, t.ctx.propertyIdA, { horario: [{ dias: [0, 1, 2, 3, 4, 5, 6], abre: "09:00", cierra: "22:00" }], pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null });
+    t.auto.zonaPorSucursal.set(t.ctx.propertyIdA, "America/Merida");
+    const productId = randomUUID();
+    t.auto.agotados.push({ organizationId: t.ctx.organizationId, propertyId: t.ctx.propertyIdA, productId, disponible: true, agotadoHasta: null });
+    const res = await t.app.request(`/v1/restaurantes/${t.ctx.propertyIdA}/admin/autopiloto/agotado`, authedJson(t.ctx.staff.owner.token, { productId }));
+    expect(((await res.json()) as { agotadoHasta: string }).agotadoHasta).toBe("2026-10-12");
   });
 });
 

@@ -81,6 +81,8 @@ export {
   validarExcepcionHorario,
   fechaLocal,
   fechaAnterior,
+  corteDiaNegocioMinutos,
+  diaDeNegocio,
 } from "./horarios.ts";
 export type { TurnoHorario, HorarioSucursal, EstadoApertura, ApreturaConExcepciones } from "./horarios.ts";
 export { aplicarReglasDeSucursal, normalizarCanal, debePreguntarPropina, matchKnownZone, COLONIA_FUERA_DE_VERIFICACION_MENSAJE } from "./reglas-pedido.ts";
