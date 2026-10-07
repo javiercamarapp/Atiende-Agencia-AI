@@ -325,6 +325,26 @@ describe("POST /despachos/:propertyId/nomina/generar-xml", () => {
     expect(xml).toContain('SalarioBaseCotApor="');
   });
 
+  it("quincena de 4,500 de punta a punta: /calcular y el XML dan las mismas cifras de la quincena (no las de un mes)", async () => {
+    const app = buildApp(ctx.deps);
+    const base = payloadXmlNomina({ period: { month: 7, year: 2026, periodicidad: "quincenal", fechaPago: "2026-07-15" } });
+    const payload = { ...base, employees: [{ ...(base.employees[0] as object), salarioBruto: 4500 }] };
+
+    const calc = await app.request(`/despachos/${ctx.propertyId}/nomina/calcular`, authedJson(ctx.staff.contador.token, { period: payload.period, employees: payload.employees }));
+    expect(calc.status).toBe(200);
+    const c = (await calc.json()) as { totalBruto: number; totalNeto: number; employees: readonly { diasPagados: number; neto: number; taxes: { isr: number; imssObrero: number; subsidioCausado: number } }[] };
+    expect(c.totalBruto).toBe(4500);
+    expect(c.employees[0]).toMatchObject({ diasPagados: 15, neto: 4342.05, taxes: { isr: 45.81, imssObrero: 112.14, subsidioCausado: 264.3 } });
+    expect(c.totalNeto).toBe(4342.05);
+
+    const res = await app.request(`/despachos/${ctx.propertyId}/nomina/generar-xml`, authedJson(ctx.staff.contador.token, payload));
+    expect(res.status).toBe(200);
+    const xml = ((await res.json()) as { comprobantes: readonly { xml: string }[] }).comprobantes[0]!.xml;
+    expect(xml).toContain('FechaInicialPago="2026-07-01" FechaFinalPago="2026-07-15" NumDiasPagados="15" TotalPercepciones="4500.00"');
+    expect(xml).toContain('TotalDeducciones="157.95"'); // 45.81 + 112.14
+    expect(xml).toMatch(/TipoPercepcion="001"[^>]*ImporteGravado="4500.00"/);
+  });
+
   it("falta domicilioFiscalReceptor de un empleado -> 400 (no genera un XML con un CP fabricado)", async () => {
     const app = buildApp(ctx.deps);
     const payload = payloadXmlNomina({
