@@ -26,6 +26,7 @@ import { PlataformaPrivacidadError } from "@atiende/db";
 import { Errors } from "../../errors.ts";
 import { constantTimeEqual, internalOrCronSecretMatches } from "../../http-security.ts";
 import { logEvent } from "../../logger.ts";
+import { purgarRetencionCitas } from "../verticals/citas/retencion.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../deps.ts";
 
@@ -87,6 +88,11 @@ export function plataformaRetencionRoutes(deps: AppDeps): Hono {
     // Interruptor por path + latido + bitacora de corrida (withHeartbeat). Una pausa responde 200 `skipped`.
     return withHeartbeat(deps, PLATAFORMA_RETENCION_PATH, async () => {
       const resultados: Resultado[] = [];
+      // QA R1 citas 07 -- paso extra de la MISMA corrida: purga de datos de salud de citas (no tiene cron propio: vercel.json esta en el
+      // tope de 40). Solo en el barrido completo (sin organizationId ni cursor), una vez por corrida; su propio error no impide la
+      // purga de la plataforma y deja el latido como parcial.
+      const citas = org === null && despuesDe === null ? await purgarRetencionCitas(deps, ejecutar) : undefined;
+      if (citas?.error) logEvent(c, "error", "citas_retencion_fallida", {});
       let cursor = despuesDe;
       let siguienteDespuesDe: string | null = null;
       const inicio = Date.now();
@@ -96,7 +102,7 @@ export function plataformaRetencionRoutes(deps: AppDeps): Hono {
         // 1) Objetivos de la pagina (una transaccion propia de solo lectura).
         const desde = cursor;
         const objetivos = await deps.engine.withAppSession({ userId: null }, (db) => repoFor(db).listPurgeTargets(desde, ORGS_POR_PAGINA, org));
-        if (objetivos.availability === "not_migrated") return c.json({ ok: true, disponible: false, resultados });
+        if (objetivos.availability === "not_migrated") return c.json({ ok: true, disponible: false, resultados, ...(citas ? { citas } : {}) });
         const orgsEnPagina = [...new Set(objetivos.targets.map((t) => t.organizationId))];
         const ultima = orgsEnPagina[orgsEnPagina.length - 1] ?? null;
         siguienteDespuesDe = org === null && orgsEnPagina.length === ORGS_POR_PAGINA ? ultima : null;
@@ -106,7 +112,7 @@ export function plataformaRetencionRoutes(deps: AppDeps): Hono {
           try {
             const salida = await deps.engine.withAppSession({ userId: null }, (db) => repoFor(db).runRetentionPurge(par.organizationId, par.dataClass, !ejecutar, limite));
             if (salida.availability === "not_migrated" || !salida.result) {
-              return c.json({ ok: true, disponible: false, resultados });
+              return c.json({ ok: true, disponible: false, resultados, ...(citas ? { citas } : {}) });
             }
             resultados.push({
               organizationId: par.organizationId,
@@ -127,7 +133,7 @@ export function plataformaRetencionRoutes(deps: AppDeps): Hono {
         if (cursor === null || Date.now() - inicio > PRESUPUESTO_CRON_MS) break;
       }
 
-      const errores = resultados.filter((r) => r.estado === "error").length;
+      const errores = resultados.filter((r) => r.estado === "error").length + (citas?.error ? 1 : 0);
       const respuesta = c.json({
         ok: true,
         disponible: true,
@@ -139,6 +145,7 @@ export function plataformaRetencionRoutes(deps: AppDeps): Hono {
         filasProtegidas: resultados.reduce((a, r) => a + r.filasProtegidas, 0),
         siguienteDespuesDe,
         resultados,
+        ...(citas ? { citas } : {}),
       });
       // Una unidad que fallo deja el latido como error/parcial (el panel de salud no miente) sin devolver 500: la
       // respuesta ya trae el detalle y Vercel Cron no debe reintentar lo que ya purgo.

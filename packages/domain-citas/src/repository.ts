@@ -271,6 +271,17 @@ export interface WaitlistCandidateRow {
  * @atiende/whatsapp-gateway::MessagingOutboxPort (el puerto que
  * `createCitasMessagingOutboxPort` en whatsapp/outbox-adapter.ts implementa sobre
  * estos 4 métodos). */
+/** Resultado de un lote de la purga por retencion de datos de salud de citas (`citas.system_purge_retencion`). Solo conteos. */
+export interface RetentionPurgeBatch {
+  /** `false` = la base todavia no tiene la migracion 033: no se toco nada. */
+  readonly disponible: boolean;
+  readonly conversacionesVaciadas: number;
+  readonly escalacionesBorradas: number;
+  readonly notasBorradas: number;
+  /** Vencidas que se conservan por retencion legal activa o por una solicitud ARCO abierta del titular. */
+  readonly protegidas: number;
+}
+
 export interface MessagingOutboxRow {
   readonly id: string;
   readonly attempts: number;
@@ -782,6 +793,11 @@ export interface CitasRepository {
    * si la función no existe (a diferencia de invocarla). */
   areSystemWaitlistFunctionsAvailable(): Promise<boolean>;
   claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean>;
+
+  // ---- Retencion de datos de salud (migracion 033) ----
+  /** Un lote de la purga por retencion de citas (conversaciones de WhatsApp, escalaciones de crisis, notas internas). Solo sesion de
+   * sistema. `dry` cuenta sin tocar. Base sin migrar (SQLSTATE 42883): `{ disponible: false }` sin abortar la transaccion. */
+  purgeRetentionBatch(limit: number, dry: boolean): Promise<RetentionPurgeBatch>;
 
   // ---- Idempotencia/rate-limit (transversal) ----
   consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean>;
