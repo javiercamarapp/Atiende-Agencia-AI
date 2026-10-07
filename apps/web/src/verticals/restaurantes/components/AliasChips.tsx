@@ -10,7 +10,7 @@ export const MAX_ALIAS_LARGO = 60;
 
 /** Misma limpieza que el servidor. Devuelve "" si no queda nada que guardar. */
 export function normalizarAlias(texto: string): string {
-  return texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 const ALIAS_VALIDO = /^[a-z0-9][a-z0-9 .-]*$/;
@@ -19,11 +19,17 @@ export interface AliasChipsProps {
   readonly alias: readonly string[];
   readonly onChange: (alias: readonly string[]) => void;
   readonly disabled?: boolean;
+  /** Texto escrito y aún no agregado como ficha: el formulario lo usa para no guardar y perderlo en silencio. */
+  readonly onBorradorChange?: (texto: string) => void;
 }
 
-export function AliasChips({ alias, onChange, disabled = false }: AliasChipsProps) {
+export function AliasChips({ alias, onChange, disabled = false, onBorradorChange }: AliasChipsProps) {
   const [borrador, setBorrador] = useState("");
   const [aviso, setAviso] = useState<string | null>(null);
+  const cambiarBorrador = (texto: string) => {
+    setBorrador(texto);
+    onBorradorChange?.(texto);
+  };
 
   // Acepta varios a la vez separados por coma ("flautas, taquitos dorados").
   function agregar(texto: string): boolean {
@@ -52,7 +58,7 @@ export function AliasChips({ alias, onChange, disabled = false }: AliasChipsProp
 
   function confirmarBorrador() {
     if (borrador.trim() === "") return;
-    if (agregar(borrador)) setBorrador("");
+    if (agregar(borrador)) cambiarBorrador("");
   }
 
   return (
@@ -91,7 +97,7 @@ export function AliasChips({ alias, onChange, disabled = false }: AliasChipsProp
           value={borrador}
           disabled={disabled}
           onChange={(e) => {
-            setBorrador(e.target.value);
+            cambiarBorrador(e.target.value);
             if (aviso) setAviso(null);
           }}
           onKeyDown={(e) => {

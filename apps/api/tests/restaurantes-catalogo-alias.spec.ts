@@ -120,3 +120,62 @@ describe("alias de producto — PATCH admin/products/:productId y buscar_product
     expect(res.status).toBe(404);
   });
 });
+
+describe("agotado «solo por hoy» (autopiloto, migración 050) y «Dejar de venderlo»", () => {
+  async function productoAgotado(app: App, ctx: Ctx) {
+    const id = await crearProductoActivo(app, ctx, "Taco dorado de papa");
+    await patchAlias(app, ctx, ctx.staff.owner.token, id, { searchKeywords: ["flautas"] });
+    // Lo que deja `agotado_marcar`: apagado + reposición programada.
+    await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/products/${id}/branch-availability`, authedJson(ctx.staff.owner.token, { isAvailable: false }, "PATCH"));
+    ctx.restaurantesRepo.marcarAgotadoHastaParaPruebas(ctx.propertyIdA, id, "2026-10-08");
+    return id;
+  }
+  const listar = async (app: App, ctx: Ctx) => {
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/products`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    return ((await res.json()) as { products: Array<{ id: string; branch: { isAvailable: boolean; agotadoHasta?: string | null } | null }> }).products;
+  };
+
+  it("el listado del panel expone branch.agotadoHasta", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const id = await productoAgotado(app, ctx);
+    expect((await listar(app, ctx)).find((p) => p.id === id)!.branch).toMatchObject({ isAvailable: false, agotadoHasta: "2026-10-08" });
+  });
+
+  it("sin «Dejar de venderlo», el cron de reposición lo vuelve a poner a la venta (control)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const id = await productoAgotado(app, ctx);
+    expect(ctx.restaurantesRepo.reponerAgotadosVencidos("2026-10-09")).toEqual([{ propertyId: ctx.propertyIdA, productId: id }]);
+    expect(await buscar(app, "flautas")).toEqual(["Taco dorado de papa"]);
+  });
+
+  it("owner/admin mandan isAvailable:false a propósito: se cancela la reposición y el cron NO lo reactiva", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const id = await productoAgotado(app, ctx);
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/products/${id}/branch-availability`, authedJson(ctx.staff.admin.token, { isAvailable: false }, "PATCH"));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { branch: { isAvailable: boolean; agotadoHasta: string | null } }).branch).toMatchObject({ isAvailable: false, agotadoHasta: null });
+    expect((await listar(app, ctx)).find((p) => p.id === id)!.branch).toMatchObject({ isAvailable: false, agotadoHasta: null });
+    expect(ctx.restaurantesRepo.reponerAgotadosVencidos("2026-12-31")).toEqual([]);
+    expect(await buscar(app, "flautas")).toEqual([]);
+  });
+
+  it("mandar solo precio (sin isAvailable) no cancela la reposición programada", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const id = await productoAgotado(app, ctx);
+    await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/products/${id}/branch-availability`, authedJson(ctx.staff.admin.token, { price: 35 }, "PATCH"));
+    expect((await listar(app, ctx)).find((p) => p.id === id)!.branch).toMatchObject({ agotadoHasta: "2026-10-08" });
+  });
+
+  it("base sin la 050: un producto sin agotadoHasta funciona igual (no falla ni inventa el dato)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const id = await crearProductoActivo(app, ctx, "Taco dorado de papa");
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/products/${id}/branch-availability`, authedJson(ctx.staff.owner.token, { isAvailable: false }, "PATCH"));
+    expect(res.status).toBe(200);
+    expect((await listar(app, ctx)).find((p) => p.id === id)!.branch!.agotadoHasta ?? null).toBeNull();
+  });
+});

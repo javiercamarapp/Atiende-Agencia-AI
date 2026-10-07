@@ -460,6 +460,9 @@ export interface RestaurantesRepository {
   /** Solo `is_available` de una fila YA existente de `branch_products` (agotado/disponible, PL-23): nunca toca el precio ni da de alta.
    *  `null` cuando el producto no esta dado de alta en esa sucursal. Es lo unico que puede escribir un `staff`. */
   setBranchProductAvailability(propertyId: string, productId: string, isAvailable: boolean): Promise<BranchProductState | null>;
+  /** Cancela la reposición programada (`agotado_hasta`, migración 050) de un producto en una sucursal: el dueño lo apagó a propósito y
+   * el cron `agotados_reponer` no debe volver a ponerlo a la venta. No-op en una base sin la 050. */
+  limpiarAgotadoHasta(propertyId: string, productId: string): Promise<void>;
 
   findOrderById(organizationId: string, orderId: string): Promise<Order | null>;
   /** Pedido MAS RECIENTE (no cancelado) de un telefono (10 digitos, `normalizePhone`) creado desde `sinceIso`, o null. Para "¿ya salio?". */

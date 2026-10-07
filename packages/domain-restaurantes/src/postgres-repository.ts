@@ -448,10 +448,12 @@ interface BranchProductRow {
   readonly product_id: string;
   readonly price: string;
   readonly is_available: boolean;
+  readonly agotado_hasta?: string | null;
 }
 
 function mapBranchProductState(row: BranchProductRow): BranchProductState {
-  return { propertyId: row.property_id, productId: row.product_id, price: Number(row.price), isAvailable: row.is_available };
+  const base = { propertyId: row.property_id, productId: row.product_id, price: Number(row.price), isAvailable: row.is_available };
+  return row.agotado_hasta === undefined ? base : { ...base, agotadoHasta: row.agotado_hasta ?? null };
 }
 
 // ---------------------------------------------------------------------------
@@ -2340,11 +2342,26 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async getBranchProductState(propertyId: string, productId: string): Promise<BranchProductState | null> {
-    const { rows } = await this.db.query<BranchProductRow>(`select property_id, product_id, price, is_available from restaurantes.branch_products where property_id = $1 and product_id = $2;`, [
-      propertyId,
-      productId,
-    ]);
+    // `to_jsonb(bp)->>'agotado_hasta'` no falla en una base SIN la migración 050 (no existe la columna: da null), así que no hace falta SAVEPOINT.
+    const { rows } = await this.db.query<BranchProductRow>(
+      `select bp.property_id, bp.product_id, bp.price, bp.is_available, to_jsonb(bp)->>'agotado_hasta' as agotado_hasta
+       from restaurantes.branch_products bp where bp.property_id = $1 and bp.product_id = $2;`,
+      [propertyId, productId],
+    );
     return rows[0] ? mapBranchProductState(rows[0]) : null;
+  }
+
+  async limpiarAgotadoHasta(propertyId: string, productId: string): Promise<void> {
+    // Corre dentro de la transacción única del request: contra una base sin la 050 (42703) el respaldo EXIGE SAVEPOINT (si no, 25P02).
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_restaurantes_limpiar_agotado_hasta",
+      primary: async () => {
+        await this.db.query(`update restaurantes.branch_products set agotado_hasta = null where property_id = $1 and product_id = $2 and agotado_hasta is not null;`, [propertyId, productId]);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => undefined,
+    });
   }
 
   async upsertBranchProductState(propertyId: string, productId: string, price: number, isAvailable: boolean): Promise<BranchProductState> {

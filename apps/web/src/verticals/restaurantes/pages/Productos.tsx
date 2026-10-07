@@ -73,6 +73,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
   const [newProdCategoryId, setNewProdCategoryId] = useState("");
   const [newProdDescription, setNewProdDescription] = useState("");
   const [newProdAlias, setNewProdAlias] = useState<readonly string[]>([]);
+  const [newProdBorradorAlias, setNewProdBorradorAlias] = useState("");
   // Producto abierto en el diálogo de edición (nombre, descripción, categoría, alias, disponibilidad).
   const [productoEditando, setProductoEditando] = useState<Product | null>(null);
   const [creatingProduct, setCreatingProduct] = useState(false);
@@ -133,6 +134,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
     setNewProdCategoryId("");
     setNewProdDescription("");
     setNewProdAlias([]);
+    setNewProdBorradorAlias("");
     setErrorProducto(null);
     setErroresProducto({});
     setDialogoProducto(true);
@@ -146,6 +148,10 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
     };
     setErroresProducto(faltantes);
     if (faltantes.nombre || faltantes.precio) return;
+    if (newProdBorradorAlias.trim() !== "") {
+      setErrorProducto(`Tienes un alias sin agregar («${newProdBorradorAlias.trim()}»): presiona Enter para agregarlo o bórralo.`);
+      return;
+    }
     setCreatingProduct(true);
     setErrorProducto(null);
     setError(null);
@@ -469,7 +475,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
               ))}
             </NativeSelect>
           </FormField>
-          <AliasChips alias={newProdAlias} onChange={setNewProdAlias} disabled={creatingProduct} />
+          <AliasChips alias={newProdAlias} onChange={setNewProdAlias} disabled={creatingProduct} onBorradorChange={setNewProdBorradorAlias} />
         </div>
       </FormDialog>
 

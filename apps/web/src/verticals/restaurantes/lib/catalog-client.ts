@@ -14,6 +14,8 @@ export interface BranchProductState {
   readonly productId: string;
   readonly price: number;
   readonly isAvailable: boolean;
+  /** Autopiloto «agotado solo por hoy»: día (YYYY-MM-DD) en que vuelve a la venta solo. `null`/ausente = sin reposición programada. */
+  readonly agotadoHasta?: string | null;
 }
 
 export interface Product {

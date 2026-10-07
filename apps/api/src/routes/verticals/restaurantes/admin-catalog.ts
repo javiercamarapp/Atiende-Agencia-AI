@@ -375,7 +375,14 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
     const price = raw.price !== undefined ? requirePrice(raw.price) : (existing?.price ?? product.price);
     const isAvailable = raw.isAvailable !== undefined ? requireBoolean(raw.isAvailable, "isAvailable") : (existing?.isAvailable ?? true);
 
-    const state = await conAvisoOnboardingListo(deps, c, organizationId, () => repo.upsertBranchProductState(propertyId, productId, price, isAvailable));
+    let state = await conAvisoOnboardingListo(deps, c, organizationId, () => repo.upsertBranchProductState(propertyId, productId, price, isAvailable));
+    // «Dejar de venderlo» a propósito: si estaba agotado «solo por hoy» (autopiloto, migración 050), el cron `agotados_reponer` lo
+    // volvería a poner a la venta al siguiente día de negocio. Apagarlo ya apagado no dispara el trigger de la base, así que se cancela
+    // la reposición programada de forma explícita. Contra una base sin la 050 es un no-op.
+    if (raw.isAvailable !== undefined && !isAvailable && existing?.agotadoHasta) {
+      await repo.limpiarAgotadoHasta(propertyId, productId);
+      state = (await repo.getBranchProductState(propertyId, productId)) ?? state;
+    }
     logEvent(c, "info", "restaurantes_admin_producto_disponibilidad_sucursal_actualizada", { actorUserId: c.get("userId"), organizationId, propertyId, productId, price, isAvailable });
 
     // FASE 3 (producto) — precio/disponibilidad EN ESTA sucursal es justo la

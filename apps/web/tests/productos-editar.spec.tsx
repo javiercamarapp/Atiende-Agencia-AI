@@ -40,7 +40,7 @@ interface Prod {
   isAvailable: boolean;
   displayOrder: number;
   searchKeywords: string[];
-  branch: { propertyId: string; productId: string; price: number; isAvailable: boolean } | null;
+  branch: { propertyId: string; productId: string; price: number; isAvailable: boolean; agotadoHasta?: string | null } | null;
 }
 interface Call {
   method: string;
@@ -330,6 +330,68 @@ describe("ProductosPage — editar producto", () => {
     await abrirEditar("Horchata");
     expect(campo("Nombre").value).toBe("Horchata");
     expect(campo("Descripción").value).toBe("");
+  });
+});
+
+describe("ProductosPage — agotado «solo por hoy» y «Dejar de venderlo»", () => {
+  function mundoAgotado(): Mundo {
+    const m = mundoBase();
+    m.productos[0]!.branch = { propertyId: "prop-1", productId: "p1", price: 65, isAvailable: false, agotadoHasta: "2026-10-08" };
+    return m;
+  }
+  const botonDejar = () => [...(dialogo()?.querySelectorAll("button") ?? [])].find((b) => /Dejar de venderlo/.test(b.textContent ?? ""));
+
+  it("un producto agotado hasta mañana lo dice en el diálogo y ofrece «Dejar de venderlo»", async () => {
+    await montar(ADMIN, mundoAgotado(), []);
+    await abrirEditar("Taco dorado");
+    expect(dialogo()!.textContent).toContain("Agotado hasta el 2026-10-08: vuelve a la venta solo.");
+    expect(botonDejar()).toBeDefined();
+  });
+
+  it("guardar sin pulsar nada NO cambia la reposición; «Dejar de venderlo» manda isAvailable:false y avisa que ya no volverá solo", async () => {
+    const calls: Call[] = [];
+    await montar(ADMIN, mundoAgotado(), calls);
+    await abrirEditar("Taco dorado");
+    await guardar();
+    expect(escritas(calls)).toEqual([]);
+
+    await abrirEditar("Taco dorado");
+    click(botonDejar()!);
+    expect(dialogo()!.textContent).toContain("Se dejará de vender: no volverá solo a la venta.");
+    expect(botonDejar()).toBeUndefined();
+    await guardar();
+    expect(escritas(calls)).toEqual([{ method: "PATCH", url: `${BASE}/products/p1/branch-availability`, body: { isAvailable: false } }]);
+  });
+
+  it("si lo enciende en vez de dejarlo de vender, manda isAvailable:true y no queda la marca de «dejar»", async () => {
+    const calls: Call[] = [];
+    await montar(ADMIN, mundoAgotado(), calls);
+    await abrirEditar("Taco dorado");
+    click(botonDejar()!);
+    click(q('[role="switch"]')!);
+    await guardar();
+    expect(escritas(calls)).toEqual([{ method: "PATCH", url: `${BASE}/products/p1/branch-availability`, body: { isAvailable: true } }]);
+  });
+
+  it("base sin la 050 (sin agotadoHasta): ni aviso ni botón", async () => {
+    await montar(ADMIN, mundoBase(), []);
+    await abrirEditar("Taco dorado");
+    expect(dialogo()!.textContent).not.toContain("Agotado hasta");
+    expect(botonDejar()).toBeUndefined();
+  });
+});
+
+describe("ProductosPage — alias a medio escribir", () => {
+  it("Guardar con texto en el campo de alias (válido o no) NO lo pierde en silencio: avisa y no guarda", async () => {
+    const calls: Call[] = [];
+    await montar(ADMIN, mundoBase(), calls);
+    await abrirEditar("Taco dorado");
+    changeValue(campo("Nombre"), "Otro");
+    changeValue(q<HTMLInputElement>('input[placeholder^="Escribe un alias"]')!, "<script>");
+    await guardar();
+    expect(escritas(calls)).toEqual([]);
+    expect(dialogo()!.textContent).toContain("Tienes un alias sin agregar («<script>»)");
+    expect(q<HTMLInputElement>('input[placeholder^="Escribe un alias"]')!.value).toBe("<script>");
   });
 });
 

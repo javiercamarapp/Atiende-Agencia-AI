@@ -2,7 +2,7 @@
 // clave y si se vende en ESTA sucursal. «Desactivar» no borra nada: apaga el producto en la sucursal (branch_products, lo que
 // consulta el agente) y conserva su descripción y sus alias para cuando se vuelva a encender.
 import { useEffect, useState } from "react";
-import { Callout, FormDialog, FormField, Input, NativeSelect, Switch, Textarea } from "@atiende/ui";
+import { Button, Callout, FormDialog, FormField, Input, NativeSelect, Switch, Textarea } from "@atiende/ui";
 import { AliasChips } from "./AliasChips.tsx";
 import { setBranchAvailability, updateProduct } from "../lib/catalog-client.ts";
 import type { Category, Product } from "../lib/catalog-client.ts";
@@ -30,6 +30,9 @@ export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, 
   const [categoriaId, setCategoriaId] = useState("");
   const [alias, setAlias] = useState<readonly string[]>([]);
   const [seVende, setSeVende] = useState(false);
+  // «Dejar de venderlo»: apagado definitivo de un producto agotado «solo por hoy» (cancela su reposición automática).
+  const [dejarDeVender, setDejarDeVender] = useState(false);
+  const [borradorAlias, setBorradorAlias] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
   const [errores, setErrores] = useState<{ nombre?: string; precio?: string }>({});
@@ -43,10 +46,14 @@ export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, 
     setCategoriaId(producto.categoryId ?? "");
     setAlias(producto.searchKeywords);
     setSeVende(producto.branch?.isAvailable ?? false);
+    setDejarDeVender(false);
+    setBorradorAlias("");
     setErrorGeneral(null);
     setErrores({});
     setGuardando(false);
   }, [producto]);
+
+  const agotadoHasta = producto?.branch?.agotadoHasta ?? null;
 
   async function guardar() {
     if (!producto) return;
@@ -57,6 +64,10 @@ export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, 
     };
     setErrores(faltantes);
     if (faltantes.nombre || faltantes.precio) return;
+    if (borradorAlias.trim() !== "") {
+      setErrorGeneral(`Tienes un alias sin agregar («${borradorAlias.trim()}»): presiona Enter para agregarlo o bórralo.`);
+      return;
+    }
 
     // Solo viaja lo que cambió: un guardado sin cambios no escribe nada ni ensucia la bitácora.
     const patch: Parameters<typeof updateProduct>[5] = {};
@@ -66,7 +77,9 @@ export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, 
     if (descNueva !== (producto.description ?? null)) patch.description = descNueva;
     if ((categoriaId || null) !== producto.categoryId) patch.categoryId = categoriaId || null;
     if (!mismosAlias(alias, producto.searchKeywords)) patch.searchKeywords = alias;
-    const cambiaSucursal = seVende !== (producto.branch?.isAvailable ?? false);
+    // Un producto agotado «solo por hoy» ya está apagado: sin «Dejar de venderlo» no hay nada que mandar y el cron lo repondría.
+    const apagarDefinitivo = dejarDeVender && !seVende;
+    const cambiaSucursal = seVende !== (producto.branch?.isAvailable ?? false) || apagarDefinitivo;
 
     if (Object.keys(patch).length === 0 && !cambiaSucursal) {
       onCerrar();
@@ -100,7 +113,7 @@ export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, 
         if (!abierto) onCerrar();
       }}
       titulo={producto ? `Editar ${producto.name}` : "Editar producto"}
-      subtitulo="Los cambios llegan al agente y al panel en cuanto guardas."
+      subtitulo="Nombre, descripción, categoría, alias y disponibilidad llegan al agente en cuanto guardas. El precio base no cambia el de los pedidos ya hechos ni el de cada sucursal."
       anchoClase="max-w-2xl"
       onGuardar={() => void guardar()}
       guardando={guardando}
@@ -128,7 +141,25 @@ export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, 
             ))}
           </NativeSelect>
         </FormField>
-        <AliasChips alias={alias} onChange={setAlias} disabled={guardando} />
+        <AliasChips alias={alias} onChange={setAlias} disabled={guardando} onBorradorChange={setBorradorAlias} />
+        {agotadoHasta && (
+          <Callout tone="warning">
+            <div className="grid gap-2">
+              <p>
+                {dejarDeVender
+                  ? "Se dejará de vender: no volverá solo a la venta. Guarda para aplicarlo."
+                  : `Agotado hasta el ${agotadoHasta}: vuelve a la venta solo.`}
+              </p>
+              {!dejarDeVender && !seVende && (
+                <div>
+                  <Button type="button" size="sm" variant="outline" disabled={guardando} onClick={() => setDejarDeVender(true)}>
+                    Dejar de venderlo
+                  </Button>
+                </div>
+              )}
+            </div>
+          </Callout>
+        )}
         <div className="flex items-start justify-between gap-3 rounded-md border border-border p-3">
           <div className="grid gap-0.5">
             <label htmlFor="producto-se-vende" className="text-sm font-medium text-foreground">
@@ -136,7 +167,15 @@ export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, 
             </label>
             <p className="text-xs text-muted-foreground">Apagado, el agente deja de ofrecerlo. No se borra: conserva su descripción y sus alias.</p>
           </div>
-          <Switch id="producto-se-vende" checked={seVende} onCheckedChange={setSeVende} disabled={guardando} />
+          <Switch
+            id="producto-se-vende"
+            checked={seVende}
+            onCheckedChange={(v) => {
+              setSeVende(v);
+              if (v) setDejarDeVender(false);
+            }}
+            disabled={guardando}
+          />
         </div>
       </div>
     </FormDialog>
