@@ -14,8 +14,8 @@ describe("conocimiento publicado del seed de PM", () => {
     const todo = JSON.stringify(plan.conocimiento);
     expect(todo).toMatch(/misma sucursal/);
     expect(todo).toMatch(/Calle 69 # 596 x 78 y 80/);
-    expect(todo).toMatch(/facebook\.com\/lostaquitosdepm/);
-    expect(todo).toMatch(/instagram\.com\/taquitosdepm/);
+    expect(todo).toContain("facebook.com/lostaquitosdepm");
+    expect(todo).toContain("instagram.com/taquitosdepm");
     expect(todo).not.toMatch(/lluvia|\$\s*\d|pesos/i);
   });
 
