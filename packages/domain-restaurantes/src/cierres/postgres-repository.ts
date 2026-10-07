@@ -12,6 +12,12 @@ function esBaseSinMigrar(err: unknown): boolean {
   return c === "42P01" || c === "42703" || c === "42883";
 }
 
+/** `generar_cierre` rechaza (22023) un periodo que aun no termina en el dia de negocio: un estado esperado, no un fallo (QA R2 automatizacion-08). */
+function esPeriodoAbierto(err: unknown): boolean {
+  const e = err as { code?: unknown; message?: unknown } | null;
+  return Boolean(e) && e!.code === "22023" && typeof e!.message === "string" && e!.message.includes("aun no termina");
+}
+
 let advertido = false;
 function advertirNoDisponible(err: unknown): void {
   if (advertido) return;
@@ -95,8 +101,9 @@ export class PostgresCierreRepository implements CierreRepository {
         if (!fila || fila.id === null) return { estado: "sin_actividad" };
         return { estado: fila.creado ? "creado" : "existente", reporte: mapFila(fila) };
       },
-      isRecoverable: esBaseSinMigrar,
+      isRecoverable: (err) => esBaseSinMigrar(err) || esPeriodoAbierto(err),
       fallback: async (err) => {
+        if (esPeriodoAbierto(err)) return { estado: "periodo_abierto" };
         advertirNoDisponible(err);
         return { estado: "no_disponible" };
       },
