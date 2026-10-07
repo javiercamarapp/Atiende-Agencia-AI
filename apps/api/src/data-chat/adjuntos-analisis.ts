@@ -15,7 +15,7 @@ import JSZip from "jszip";
 export const ADJUNTO_MAX_BYTES = 5 * 1024 * 1024;
 export const ADJUNTO_MAX_FILAS = 50_000;
 export const ADJUNTO_MAX_COLUMNAS = 200;
-const XLSX_MAX_XML_CHARS = 30_000_000;
+const XLSX_MAX_XML_BYTES = 30_000_000;
 const MAX_FILAS_TABLA = 50;
 const EXTRACTO_PDF_CHARS = 600;
 
@@ -148,12 +148,31 @@ function columnaDe(ref: string): number {
   return n - 1;
 }
 
+/** Descomprime una entrada del zip por trozos y CORTA al pasar el tope: un zip pequeno que se expande a gigabytes ("bomba") nunca llena la memoria (el tamano declarado en el zip no se usa: puede mentir). */
+function leerAcotado(entrada: JSZip.JSZipObject): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const trozos: Uint8Array[] = [];
+    let total = 0;
+    const flujo = entrada.internalStream("uint8array");
+    flujo
+      .on("data", (trozo: Uint8Array) => {
+        total += trozo.length;
+        if (total > XLSX_MAX_XML_BYTES) {
+          flujo.pause();
+          reject(new LimiteAdjunto("La hoja de Excel es demasiado grande para analizarla."));
+          return;
+        }
+        trozos.push(trozo);
+      })
+      .on("error", (e: Error) => reject(e))
+      .on("end", () => resolve(new TextDecoder("utf-8").decode(Buffer.concat(trozos))))
+      .resume();
+  });
+}
+
 async function leerXml(zip: JSZip, ruta: string): Promise<string | null> {
   const f = zip.file(ruta);
-  if (!f) return null;
-  const xml = await f.async("string");
-  if (xml.length > XLSX_MAX_XML_CHARS) throw new LimiteAdjunto("La hoja de Excel es demasiado grande para analizarla.");
-  return xml;
+  return f ? leerAcotado(f) : null;
 }
 
 export async function parsearXlsx(bytes: Uint8Array): Promise<string[][]> {
