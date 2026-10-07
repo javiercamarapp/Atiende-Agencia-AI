@@ -56,6 +56,7 @@ import {
 import { EXPEDIENTE_STAGE_LABELS } from "../lib/cierre-client.ts";
 import type { ApprovalResult, ExpedienteApprovalsState, PackageStatusResult } from "../lib/cierre-client.ts";
 import { AprobacionExpediente } from "../components/AprobacionExpediente.tsx";
+import { fetchProposalSections } from "../lib/revision-client.ts";
 import { PresentacionPortal } from "../components/PresentacionPortal.tsx";
 import { formatComplianceResult, formatDate } from "../lib/format.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
@@ -167,6 +168,9 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
   // L-26: con la doble aprobacion disponible, sin el 2/2 vigente el servidor responde 409 al ensamblar: el boton lo anticipa.
   const awaitingApprovals = approvals?.mode === "doble" && !approvals.complete;
 
+  // paridad3 (AE-11): secciones que la persona editó -- quien redacta una sección no puede aprobarla ni aprobar el expediente.
+  const [authoredSections, setAuthoredSections] = useState<ReadonlySet<string>>(new Set());
+  const authoredAny = authoredSections.size > 0;
   const [sectionKeyToApprove, setSectionKeyToApprove] = useState(KNOWN_SECTION_KEYS[0]!.value);
   const [approvingSection, setApprovingSection] = useState(false);
   const [sectionApprovalError, setSectionApprovalError] = useState<string | null>(null);
@@ -208,6 +212,13 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
       setApprovalsError(null);
     } catch (err) {
       setApprovalsError(err instanceof Error ? err.message : "No se pudo consultar el estado de las aprobaciones.");
+    }
+    // La autoria solo adelanta la razon del bloqueo (el servidor decide): si no se puede consultar, no se muestra nada de mas.
+    try {
+      const sections = await fetchProposalSections(fetch, apiBaseUrl, token, propertyId, id);
+      setAuthoredSections(new Set(sections.filter((x) => x.authoredByViewer).map((x) => x.sectionKey)));
+    } catch {
+      setAuthoredSections(new Set());
     }
   }
 
@@ -577,6 +588,7 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
               orgSlug={orgSlug}
               role={role}
               canApprove={canApprove}
+              authoredByViewer={authoredAny}
               state={approvals}
               stateError={approvalsError}
               onChanged={reloadAfterApproval}
@@ -599,9 +611,15 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
                         ))}
                       </NativeSelect>
                     </div>
-                    <Button type="button" variant="outline" size="sm" onClick={() => void handleApproveSection()} disabled={approvingSection}>
-                      {approvingSection ? "Aprobando…" : "Aprobar sección"}
-                    </Button>
+                    {authoredSections.has(sectionKeyToApprove) ? (
+                      <p className="text-xs text-muted-foreground" data-testid="seccion-autor">
+                        Editaste esta sección: debe aprobarla otra persona (el autor no aprueba su propio contenido).
+                      </p>
+                    ) : (
+                      <Button type="button" variant="outline" size="sm" onClick={() => void handleApproveSection()} disabled={approvingSection}>
+                        {approvingSection ? "Aprobando…" : "Aprobar sección"}
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede aprobar secciones -- solo propietario, administrador o analista.</p>

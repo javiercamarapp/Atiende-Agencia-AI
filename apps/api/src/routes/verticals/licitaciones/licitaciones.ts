@@ -8,6 +8,8 @@ import { licitacionesChecklistRoutes } from "./checklist.ts";
 import { licitacionesProposalRoutes } from "./proposalEconomic.ts";
 import { licitacionesCierreRoutes } from "./cierre.ts";
 import { licitacionesTechnicalProposalRoutes } from "./technicalProposal.ts";
+import { licitacionesBovedaRoutes } from "./boveda.ts";
+import { licitacionesRevisionRoutes } from "./revision.ts";
 import { licitacionesTendersRoutes } from "./tenders.ts";
 import { licitacionesMatchingProfileRoutes } from "./matchingProfile.ts";
 import { licitacionesMatchingRoutes } from "./matching.ts";
@@ -40,6 +42,9 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", licitacionesProposalRoutes(deps));
   app.route("/", licitacionesCierreRoutes(deps));
   app.route("/", licitacionesTechnicalProposalRoutes(deps));
+  // paridad3 (L-P3-05/06/07): boveda de bases, edicion de la matriz, conflictos persistidos y revision con comentarios.
+  app.route("/", licitacionesBovedaRoutes(deps));
+  app.route("/", licitacionesRevisionRoutes(deps));
   // Fase 3 — matching/scoring y go/no-go (ver diseño Fase 3 §8).
   app.route("/", licitacionesTendersRoutes(deps));
   app.route("/", licitacionesMatchingProfileRoutes(deps));

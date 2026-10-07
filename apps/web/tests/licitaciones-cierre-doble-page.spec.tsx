@@ -84,6 +84,13 @@ describe("AprobacionExpediente -- doble aprobacion con step-up", () => {
     expect(r.container.textContent).toContain("Falta la aprobación técnico-legal (1/2).");
   });
 
+  it("paridad3 / AE-11: quien edito contenido del expediente no puede aprobarlo y ve el motivo (el servidor decide igual)", async () => {
+    stubFetch();
+    const { r } = await montarAprobacion({ authoredByViewer: true });
+    expect(boton(r, "Aprobar técnico-legal (1/2)")!.disabled).toBe(true);
+    expect(r.container.textContent).toContain("Editaste contenido de este expediente: debe aprobarlo otra persona");
+  });
+
   it("el primer clic solo abre el dialogo de identidad; Cancelar no llama a NINGUN endpoint de escritura", async () => {
     stubFetch();
     const { r, onChanged } = await montarAprobacion();

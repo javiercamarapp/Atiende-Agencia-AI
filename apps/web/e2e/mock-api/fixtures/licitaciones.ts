@@ -2,6 +2,7 @@
 import { conStatus, fallo, ndjson } from "../respuestas.ts";
 import { orgDe, personaDe, propiedadDe } from "../personas.ts";
 import type { Ruta } from "../tipos.ts";
+import { matrizBoveda, rutasBovedaRevision } from "./licitaciones-boveda.ts";
 import { consumirStepUp, emitirStepUp } from "./step-up.ts";
 
 const PROP = propiedadDe("licitaciones");
@@ -147,7 +148,7 @@ const rutasCierre: readonly Ruta[] = [
   },
   { metodo: "GET", patron: `${L}/tenders/:tid`, manejador: (p) => CONVOCATORIAS.find((c) => c.id === p.params["tid"]) ?? fallo(404, "Convocatoria no encontrada.") },
   // L-33: tnd-1 trae requisitos extraidos por IA (`llm`) y por reglas; tnd-2 solo por reglas (el aviso de IA NO debe aparecer).
-  { metodo: "GET", patron: `${L}/tenders/:tid/requirements`, manejador: (p) => ({ items: requisitosMock(p.params["tid"] ?? "") }) },
+  { metodo: "GET", patron: `${L}/tenders/:tid/requirements`, manejador: (p) => matrizBoveda(p) ?? { items: requisitosMock(p.params["tid"] ?? "") } },
   { metodo: "GET", patron: `${L}/tenders/:tid/proposal`, manejador: (p) => ({ id: `prop-${p.params["tid"]}`, tenderId: p.params["tid"], title: "Propuesta", ivaRate: 0.16, economicTotals: null, generationReport: null, correlationId: null, createdAt: "2026-09-30T15:00:00.000Z" }) },
   { metodo: "GET", patron: `${L}/tenders/:tid/junta`, manejador: (p) => juntaMock(p.params["tid"] ?? "") },
   // L-20: privacidad de la organizacion (PL-13), solo owner/admin. Solo existe en la API simulada de e2e.
@@ -518,6 +519,7 @@ const rutasPostAdjudicacion: readonly Ruta[] = [
 ];
 
 export const rutasLicitaciones: readonly Ruta[] = [
+  ...rutasBovedaRevision,
   ...rutasCopiloto,
   ...rutasCierre,
   ...rutasPostAdjudicacion,
