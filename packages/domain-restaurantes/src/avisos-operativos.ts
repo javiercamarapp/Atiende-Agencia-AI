@@ -1,4 +1,5 @@
-// R-16 -- alertas operativas de restaurantes: "entrega tardia" y "programado por vencer". El candidato lo decide la
+// R-16 -- alertas operativas de restaurantes: "entrega tardia", "programado por vencer" y (QA R2 automatizacion-04/-05, migracion 076)
+// "pedido sin aceptar" (pending sin aceptar 15 min) y "pedido estancado" (listo_para_recoger o en_camino sin cerrar 6 h). El candidato lo decide la
 // base (`restaurantes.avisos_operativos_candidatos`, migracion 043, SOLO sistema); este modulo lo convierte en
 // notificaciones in-app por el productor compartido (`emitirNotificacion`: catalogo, dedupe, destinatarios en SQL,
 // preferencias por usuario y texto sin PII: solo el numero de pedido).
@@ -12,7 +13,18 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { emitirNotificacion, isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 
-export type TipoAvisoOperativo = "restaurantes.pedido.entrega_tardia" | "restaurantes.pedido.programado_por_vencer";
+export type TipoAvisoOperativo =
+  | "restaurantes.pedido.entrega_tardia"
+  | "restaurantes.pedido.programado_por_vencer"
+  | "restaurantes.pedido.sin_aceptar"
+  | "restaurantes.pedido.estancado";
+
+const TIPOS_CONOCIDOS: ReadonlySet<string> = new Set<TipoAvisoOperativo>([
+  "restaurantes.pedido.entrega_tardia",
+  "restaurantes.pedido.programado_por_vencer",
+  "restaurantes.pedido.sin_aceptar",
+  "restaurantes.pedido.estancado",
+]);
 
 export interface CandidatoAviso {
   readonly tipo: TipoAvisoOperativo;
@@ -61,10 +73,9 @@ export async function barrerAvisosOperativos(session: TenantDbSession, options: 
   let errores = 0;
   for (const c of candidatos) {
     const base = { organizationId: c.organizationId, propertyId: c.propertyId, clave: c.orderId, parametros: { numero: c.orderNumber }, entidadTipo: "order", entidadId: c.orderId } as const;
-    const r =
-      c.tipo === "restaurantes.pedido.entrega_tardia"
-        ? await emitirNotificacion(session, { evento: "restaurantes.pedido.entrega_tardia", ...base })
-        : await emitirNotificacion(session, { evento: "restaurantes.pedido.programado_por_vencer", ...base });
+    // Un tipo que este codigo no conoce (una base mas nueva que el despliegue) se salta en vez de emitirse con un texto equivocado.
+    if (!TIPOS_CONOCIDOS.has(c.tipo)) continue;
+    const r = await emitirNotificacion(session, { evento: c.tipo, ...base });
     if (r.estado === "emitida") emitidas += 1;
     else if (r.estado === "sin_nuevas") sinNuevas += 1;
     else errores += 1;

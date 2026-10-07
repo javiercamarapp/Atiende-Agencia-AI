@@ -108,3 +108,38 @@ describe("barrerAvisosOperativos", () => {
     expect(r).toEqual({ disponible: true, candidatos: 2, emitidas: 1, sinNuevas: 0, errores: 1 });
   });
 });
+
+describe("QA R2 automatizacion-04/-05: pedido sin aceptar y pedido estancado", () => {
+  const O3 = "6129984c-4f5e-4a0f-9b7e-0d4d8a1b2c03";
+  const O4 = "6129984c-4f5e-4a0f-9b7e-0d4d8a1b2c04";
+  const NUEVOS = [
+    { tipo: "restaurantes.pedido.sin_aceptar", order_id: O3, organization_id: ORG, property_id: PROP, order_number: 103 },
+    { tipo: "restaurantes.pedido.estancado", order_id: O4, organization_id: ORG, property_id: PROP, order_number: 104 },
+  ];
+
+  it("emite cada tipo nuevo con su propio texto (solo el numero de pedido), clave de dedupe por pedido y enlace a Pedidos", async () => {
+    const { session, emisiones } = sesionConDedupe(NUEVOS);
+    expect(await barrerAvisosOperativos(session)).toEqual({ disponible: true, candidatos: 2, emitidas: 2, sinNuevas: 0, errores: 0 });
+    const [sinAceptar, estancado] = emisiones;
+    expect(sinAceptar![2]).toBe("restaurantes.pedido.sin_aceptar");
+    expect(sinAceptar![5]).toBe("Un pedido lleva tiempo sin aceptarse");
+    expect(sinAceptar![6]).toContain("#103");
+    expect(sinAceptar![7]).toBe("/restaurantes/{orgSlug}/pedidos");
+    expect(sinAceptar![10]).toBe(`restaurantes.pedido.sin_aceptar:${O3}`);
+    expect(estancado![2]).toBe("restaurantes.pedido.estancado");
+    expect(estancado![6]).toContain("#104");
+    expect(estancado![10]).toBe(`restaurantes.pedido.estancado:${O4}`);
+  });
+
+  it("dos ticks dejan UNA alerta por pedido y tipo (segundo tick: sin nuevas)", async () => {
+    const { session } = sesionConDedupe(NUEVOS);
+    await barrerAvisosOperativos(session);
+    expect(await barrerAvisosOperativos(session)).toMatchObject({ emitidas: 0, sinNuevas: 2, errores: 0 });
+  });
+
+  it("un tipo que este codigo no conoce se salta (nunca se emite con el texto de otro tipo)", async () => {
+    const { session, emisiones } = sesionConDedupe([{ tipo: "restaurantes.pedido.futuro", order_id: O3, organization_id: ORG, property_id: PROP, order_number: 103 }]);
+    expect(await barrerAvisosOperativos(session)).toMatchObject({ candidatos: 1, emitidas: 0, errores: 0 });
+    expect(emisiones).toHaveLength(0);
+  });
+});
