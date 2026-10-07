@@ -111,6 +111,11 @@ describe("mapeo OCDS de tender.documents[]", () => {
     expect(muchos).toHaveLength(50);
   });
 
+  it("un titulo o tipo de documento que no es texto (JSON crudo) se trata como ausente y no lanza", () => {
+    const docs = mapOcdsDocuments({ documents: [{ url: "https://fuente.gob.mx/x.pdf", title: 42, documentType: { a: 1 } }] } as unknown as Parameters<typeof mapOcdsDocuments>[0]);
+    expect(docs).toEqual([{ url: "https://fuente.gob.mx/x.pdf", title: null, documentType: null, datePublished: null }]);
+  });
+
   it("el candidato lleva `documents` solo cuando la fuente los publica", () => {
     const con = mapOcdsReleaseToCandidate({ ocid: "ocds-1", tender: { title: "T", documents: [{ url: "https://fuente.gob.mx/a.pdf" }] } }, { fixedState: null });
     const sin = mapOcdsReleaseToCandidate({ ocid: "ocds-2", tender: { title: "T" } }, { fixedState: null });

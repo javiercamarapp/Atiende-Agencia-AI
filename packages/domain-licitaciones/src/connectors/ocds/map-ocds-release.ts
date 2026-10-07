@@ -134,7 +134,7 @@ export function mapOcdsDocuments(tender: OcdsTender | null | undefined): TenderS
     if (seen.has(parsed.href)) continue;
     seen.add(parsed.href);
     const datePublished = typeof raw?.datePublished === "string" && isIsoWithOffset(raw.datePublished) ? raw.datePublished : null;
-    out.push({ url: parsed.href, title: raw?.title?.trim() || null, documentType: raw?.documentType?.trim() || null, datePublished });
+    out.push({ url: parsed.href, title: typeof raw?.title === "string" ? raw.title.trim() || null : null, documentType: typeof raw?.documentType === "string" ? raw.documentType.trim() || null : null, datePublished });
     if (out.length >= MAX_TENDER_DOCUMENTS) break;
   }
   return out;
