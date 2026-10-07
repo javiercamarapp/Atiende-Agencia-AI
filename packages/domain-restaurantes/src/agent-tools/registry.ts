@@ -118,6 +118,9 @@ export interface AgentToolContext {
   /** Telefono del cliente tomado del CONTEXTO (remitente de WhatsApp / token de llamada).
    * `null` = el canal no lo conoce (voz sin token de llamada, camino legado). */
   readonly phone: string | null;
+  /** `true` cuando el telefono lo DICTO el cliente en una llamada cuyo caller ID no era confiable: nadie verifico que sea suyo, asi que las herramientas de
+   * Cliente 360 (buscar_cliente, historial_pedidos, repetir_pedido) lo tratan como cliente nuevo y NO devuelven nombre, direcciones ni pedidos de ese numero. */
+  readonly phoneDeclared?: boolean;
   /** Sucursal fijada por el contexto (token de llamada / numero de WhatsApp de sucursal). */
   readonly lockedPropertyId?: string | null;
   /** Sucursal del numero de WhatsApp por el que entro el chat. NO fija la sucursal del pedido (el cliente puede pedir en otra): solo
@@ -219,14 +222,14 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "buscar_cliente",
     description:
-      "Devuelve el historial real del cliente que esta hablando (nombre, direcciones, ultimo pedido, lo que mas pide). No recibe telefono: el sistema usa el numero real de la conversacion o llamada.",
+      "Devuelve el historial real del cliente que esta hablando (nombre, direcciones, ultimo pedido, lo que mas pide). No recibe telefono: el sistema usa el numero de la conversacion o llamada. Si el cliente DICTO su telefono (la linea no lo identifico), devuelve cliente nuevo: nunca datos de ese numero.",
     parameters: { type: "object", properties: {} },
     channels: ["whatsapp", "voz"],
   },
   {
     name: "historial_pedidos",
     description:
-      "Lista los ultimos pedidos del cliente que esta hablando (sin cancelados): numero, fecha, canal, sucursal, productos y total de ESA vez. Sirve para ofrecer 'lo mismo de la vez pasada'. No recibe telefono: el sistema usa el numero real de la conversacion o llamada; un cliente nunca ve pedidos de otro numero.",
+      "Lista los ultimos pedidos del cliente que esta hablando (sin cancelados): numero, fecha, canal, sucursal, productos y total de ESA vez. Sirve para ofrecer 'lo mismo de la vez pasada'. No recibe telefono: el sistema usa el numero de la conversacion o llamada; un cliente nunca ve pedidos de otro numero, y si el telefono lo dicto el cliente (la linea no lo identifico) la lista viene vacia.",
     parameters: { type: "object", properties: {} },
     channels: ["whatsapp", "voz"],
   },
@@ -816,11 +819,19 @@ async function dispatchTool(
         return { result, raw: result, orderId: null, propertyId: null, simulated: true };
       }
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede consultar el historial.");
+      if (ctx.phoneDeclared) {
+        const nuevo = { isNew: true as const };
+        return { result: nuevo, raw: nuevo, orderId: null, propertyId: null };
+      }
       const result = await lookupCustomerConPedidoReciente(repo, organizationId, ctx.phone);
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "historial_pedidos": {
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede consultar el historial.");
+      if (ctx.phoneDeclared) {
+        const vacio = { pedidos: [], total_pedidos_anteriores: 0 };
+        return { result: vacio, raw: vacio, orderId: null, propertyId: null };
+      }
       const memoria = await cargarMemoria(repo, organizationId, normalizePhone(ctx.phone));
       if (memoria === undefined) throw new OrderValidationError("El historial de pedidos todavía no está disponible: tome el pedido de forma normal.");
       const pedidos = (memoria?.orders ?? []).slice(0, 5).map((o) => ({
@@ -1057,6 +1068,7 @@ async function avisarLlegadaDelCliente(repo: RestaurantesRepository, ctx: AgentT
 /** Arma la entrada de `cotizar_pedido` a partir de un pedido anterior del MISMO cliente (el telefono sale del contexto). */
 async function prepararRepeticion(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>) {
   if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede repetir un pedido.");
+  if (ctx.phoneDeclared) throw new OrderValidationError("No hay pedidos anteriores que repetir en esta llamada: tome el pedido de forma normal.");
   const branchSlug = String(input.branch_slug ?? "");
   await assertBranchAllowed(repo, ctx, branchSlug);
   const memoria = await cargarMemoria(repo, ctx.organizationId, normalizePhone(ctx.phone));

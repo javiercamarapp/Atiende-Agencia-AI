@@ -30,7 +30,7 @@ export type { SumideroLog } from "./llamada/log-sin-pii.ts";
 export { HUERFANAS_INACTIVAS_MIN, HUERFANAS_LOTE, cerrarLlamadasHuerfanas } from "./huerfanas.ts";
 export type { BarridoHuerfanas } from "./huerfanas.ts";
 export { MOTIVO_PERSONA_VOZ, TEXTO_PERSONA_VOZ, crearGuardiaPersonaVoz, evaluarPersonaVoz } from "./guardia-persona.ts";
-export { crearEjecutorTools, sanearArgumentos, transporteEnProceso, transporteHttp } from "./llamada/ejecutor-tools.ts";
+export { HERRAMIENTAS_VOZ_SOLO_LECTURA, crearEjecutorTools, sanearArgumentos, transporteEnProceso, transporteHttp } from "./llamada/ejecutor-tools.ts";
 export type { EjecutorTools, ResultadoTool, TransporteTools } from "./llamada/ejecutor-tools.ts";
 export { ControladorLlamada } from "./llamada/controlador.ts";
 export type { DepsControlador, EventoKpiLlamada, ResultadoLlamada, TurnoTranscrito } from "./llamada/controlador.ts";

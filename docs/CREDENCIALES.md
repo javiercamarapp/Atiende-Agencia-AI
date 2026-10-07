@@ -222,7 +222,7 @@ escalon (`proveedor`). Hoteles autentica las tools del worker con el secreto POR
 `VOICE_TOOL_SECRET`; citas usa `VOICE_TOOL_SECRET` (secreto de plataforma) y el negocio sale del `orgSlug` de la ruta `/v1/citas/:orgSlug/voz/:herramienta`. Variables, orden de activación, métricas y rollback de restaurantes están en `docs/VOZ-PM.md`. Resumen: `GEMINI_API_KEY` y `VOICE_PREVIEW_TOKEN_SECRET` (API), `VOICE_TOOL_SECRET` solo para emitir el token por
 llamada, `VOICE_REQUIRE_CALL_TOKEN=true` al activar, y `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` más el trunk SIP de Twilio en el
 host del worker de telefonía. Para **restaurantes** el worker existe en `apps/voice-worker` (variables `ATIENDE_API_URL`, `INTERNAL_SECRET`, `VOICE_DNIS_MAP` con un secreto por sucursal,
-`VOICE_TOPE_MENSUAL_USD`, `GEMINI_API_KEY`/`OPENROUTER_API_KEY`: ver `apps/voice-worker/README.md`; sin ellas responde 503 en `/salud` y no contesta); para hoteles y citas todavía no existe.
+`VOICE_TOPE_MENSUAL_USD`, `VOICE_COSTO_MAX_LLAMADA_USD`, `GEMINI_API_KEY`/`OPENROUTER_API_KEY`, y las opcionales `GEMINI_BACKEND`/`VERTEX_*` y `VOICE_VAD_*`: ver `apps/voice-worker/README.md` y el checklist de llaves de `docs/VOZ-ACTIVACION.md`; sin ellas responde 503 en `/salud` y no contesta); para hoteles y citas todavía no existe.
 
 ## Voz: sin ElevenLabs en ninguna vertical
 

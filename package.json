@@ -38,6 +38,8 @@
     "test:e2e": "npm run test:e2e -w @atiende/web --",
     "test:e2e:ui": "npm run test:e2e:ui -w @atiende/web --",
     "voz:pregrabados": "vite-node scripts/voz-pregrabados.ts --",
+    "voz:twilio": "node --experimental-strip-types scripts/voz/configurar-twilio.ts",
+    "voz:livekit": "node --experimental-strip-types scripts/voz/configurar-livekit.ts",
     "eval:copiloto": "vite-node scripts/eval-copiloto/cli.ts --",
     "eval:copiloto:congelar": "bash scripts/eval-copiloto/run.sh vite-node scripts/eval-copiloto/congelar.ts --",
     "eval:copiloto:congelar:check": "bash scripts/eval-copiloto/run.sh vite-node scripts/eval-copiloto/congelar.ts -- --check",

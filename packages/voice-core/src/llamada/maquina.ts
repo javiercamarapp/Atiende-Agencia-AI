@@ -11,6 +11,7 @@
 //   * duracion maxima y costo maximo por llamada: avisa, corta y deja callback (nunca cuelga un pedido ya creado);
 //   * proveedor caido: una reanudacion (`reconexionesMax`) y despues pregrabado + persona (falla_sistema);
 //   * herramienta lenta (timeout): avisa; dos seguidas pasan a una persona.
+import { COSTO_MAX_LLAMADA_MICRO_USD } from "../costo-gemini.ts";
 import type { VozResultadoBase } from "../types.ts";
 import type { MensajeId } from "./mensajes.ts";
 
@@ -33,7 +34,7 @@ export interface LimitesLlamada {
   readonly duracionMaxS: number;
   /** A partir de aqui se avisa que la llamada esta por terminar. */
   readonly avisoDuracionS: number;
-  /** Costo maximo estimado por llamada, en micro-USD (ADR: US$0.10). */
+  /** Costo maximo estimado por llamada, en micro-USD (antes US$0.10 del ADR; ver costo-gemini.ts). */
   readonly costoMaxMicroUsd: number;
   /** Silencio del cliente (tras hablar el agente) que cuenta como "no contesta". */
   readonly silencioMs: number;
@@ -58,7 +59,8 @@ export interface OpcionesMaquinaLlamada {
 export const LIMITES_POR_DEFECTO: LimitesLlamada = {
   duracionMaxS: 8 * 60,
   avisoDuracionS: 7 * 60,
-  costoMaxMicroUsd: 100_000,
+  // US$0.50: la facturacion compuesta de Gemini Live deja una llamada media en ~US$0.17 y una larga en ~US$0.42 (src/costo-gemini.ts). Antes US$0.10.
+  costoMaxMicroUsd: COSTO_MAX_LLAMADA_MICRO_USD,
   silencioMs: 7_000,
   silenciosMax: 2,
   malentendidosMax: 2,
