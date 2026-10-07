@@ -113,16 +113,18 @@ export interface UsoGemini {
 
 const nat = (n: unknown): number => (typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0);
 
-/** Costo (micro-USD, entero hacia arriba) de UN mensaje `usageMetadata` con la tarifa por modalidad. Si el desglose por modalidad falta se usa la tarifa de AUDIO
- * (la mas cara): sobreestimar es el lado seguro del tope. Los tokens de pensamiento y de uso de herramientas se cobran como texto. */
+/** Costo (micro-USD, entero hacia arriba) de UN mensaje `usageMetadata` con la tarifa por modalidad. El desglose por modalidad NO suma el total: la medicion cruda
+ * (work/voz/medicion, 7 llamadas) trae en cada turno tokens de entrada y de salida sin desglose (p. ej. 4759 TEXT + 251 AUDIO = 5010 contra promptTokenCount 5804). Lo que
+ * falta del desglose (el conteo total menos lo detallado) se cobra a la tarifa de AUDIO (la mas cara): sobreestimar es el lado seguro del tope, subestimar es el bug.
+ * Sin desglose alguno todo el conteo va a tarifa de audio. Los tokens de pensamiento y de uso de herramientas se cobran como texto. */
 export function costoDeUsoGeminiMicroUsd(uso: UsoGemini, config: ConfigPlataformaVoz = VOZ_PLATAFORMA): number {
   const p = config.gemini.preciosTokenMicroUsd;
   const entrada = (uso.promptTokensDetails ?? []).reduce((s, d) => s + nat(d.tokenCount) * (d.modality === "TEXT" ? p.textoEntrada : p.audioEntrada), 0);
   const detalladoEntrada = (uso.promptTokensDetails ?? []).reduce((s, d) => s + nat(d.tokenCount), 0);
-  const entradaSinDesglose = detalladoEntrada > 0 ? 0 : nat(uso.promptTokenCount) * p.audioEntrada;
+  const entradaSinDesglose = Math.max(0, nat(uso.promptTokenCount) - detalladoEntrada) * p.audioEntrada;
   const salida = (uso.responseTokensDetails ?? []).reduce((s, d) => s + nat(d.tokenCount) * (d.modality === "TEXT" ? p.textoSalida : p.audioSalida), 0);
   const detalladoSalida = (uso.responseTokensDetails ?? []).reduce((s, d) => s + nat(d.tokenCount), 0);
-  const salidaSinDesglose = detalladoSalida > 0 ? 0 : nat(uso.responseTokenCount) * p.audioSalida;
+  const salidaSinDesglose = Math.max(0, nat(uso.responseTokenCount) - detalladoSalida) * p.audioSalida;
   const extra = nat(uso.toolUsePromptTokenCount) * p.textoEntrada + nat(uso.thoughtsTokenCount) * p.textoSalida;
   return Math.ceil(entrada + entradaSinDesglose + salida + salidaSinDesglose + extra);
 }
