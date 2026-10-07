@@ -11,6 +11,7 @@ import {
   textoDeHorario,
 } from "../src/index.ts";
 import type { DatosConocimiento, KnownZone, StorefrontCatalogRow, SucursalConocimiento } from "../src/index.ts";
+import type { ColoniaReferencia } from "../src/types.ts";
 import { InMemoryRestaurantesRepository } from "../src/in-memory-repository.ts";
 import { AbortAwareFakeSession } from "./support/aborting-fake-session.ts";
 
@@ -204,5 +205,134 @@ describe("bloqueConocimientoOVacio (contexto de sistema: nunca aborta la transac
     expect(bloque.texto).toBe("");
     expect(sesion.calls.some((c) => c.startsWith("release savepoint"))).toBe(true);
     expect(sesion.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(false);
+  });
+});
+
+// B07: las colonias del piloto vienen SIN coordenadas; el documento usa la referencia del piloto (known_zone.ref_*, migracion 056) y la cobertura vigente.
+// Los renglones salen de work/base-vieja-pm/colonias.json (alcala martin: Prol. Montejo 2.6 / Pensiones 2.9; aleman: Prol. Montejo 2.5 / Garcia Lavin 4.6).
+describe("colonias sin coordenadas: referencia del piloto y cobertura (B07)", () => {
+  const MONTEJO = sucursal("m1", "Montejo", null, null);
+  const PENSIONES = sucursal("m2", "Pensiones", null, null);
+  const LAVIN = sucursal("m3", "Lavin", null, null);
+  const sinCoord = (id: string, name: string): KnownZone => ({ id, organizationId: ORG, name, lat: null, lng: null, createdAt: "2026-10-01T00:00:00Z" });
+  const ref = (zoneId: string, name: string, r1: string | null, k1: number | null, r2: string | null, k2: number | null): ColoniaReferencia => ({
+    zoneId, name, lat: null, lng: null, fuente: "doc_auto", asignacionFuente: null, refSucursalSlug: r1, refKm: k1, ref2SucursalSlug: r2, ref2Km: k2,
+  });
+  const con = (s: SucursalConocimiento, ids: readonly string[]): SucursalConocimiento => ({ ...s, zonasDeReparto: ids.length, zonaIdsReparto: ids });
+  const zonas = [sinCoord("a", "Alcala Martin"), sinCoord("b", "Aleman"), sinCoord("c", "Sin Referencia")];
+  const referencias = [ref("a", "Alcala Martin", "montejo", 2.6, "pensiones", 2.9), ref("b", "Aleman", "montejo", 2.5, "lavin", 4.6), ref("c", "Sin Referencia", null, null, null, null)];
+  const base = (parche: Partial<DatosConocimiento> = {}): DatosConocimiento => ({
+    sucursales: [con(MONTEJO, ["b"]), con(PENSIONES, []), con(LAVIN, [])],
+    zonas,
+    referencias,
+    menus: [],
+    ...parche,
+  });
+  const colonias = (k: ReturnType<typeof generarConocimientoAuto>) => doc(k, "colonias_sucursal").contenido;
+
+  it("hoy (sin referencia) el documento sale vacio; con la referencia lista sucursal sugerida, km del piloto y 2.a opcion", () => {
+    const antes = generarConocimientoAuto(base({ referencias: undefined, sucursales: [MONTEJO, PENSIONES, LAVIN] }));
+    expect(doc(antes, "colonias_sucursal").vacio).toBe(true);
+    const k = generarConocimientoAuto(base());
+    expect(doc(k, "colonias_sucursal").vacio).toBe(false);
+    expect(colonias(k)).toContain("Aleman: sugerida Montejo (2.5 km, piloto), 2.ª Lavin (4.6 km, piloto).");
+    expect(colonias(k)).not.toContain("NaN");
+  });
+
+  it("cobertura vigente: 'cubre X' si una sucursal activa la cubre y 'por confirmar' si ninguna; nunca 'reparte' lo que nadie cubre", () => {
+    const c = colonias(generarConocimientoAuto(base()));
+    expect(c).toContain("Aleman: sugerida Montejo (2.5 km, piloto), 2.ª Lavin (4.6 km, piloto). Reparto: cubre Montejo.");
+    expect(c).toMatch(/Alcala Martin: .*Reparto por confirmar\./);
+    // la sucursal que cubre esta INACTIVA: ya no cuenta
+    const inactiva = generarConocimientoAuto(base({ sucursales: [con(sucursal("m1", "Montejo", null, null, {}, "inactive"), ["b"]), con(PENSIONES, []), con(LAVIN, [])] }));
+    expect(colonias(inactiva)).not.toContain("cubre Montejo");
+    expect(colonias(inactiva)).not.toContain("sugerida Montejo");
+  });
+
+  it("ambigua (< 1 km entre la 1.a y la 2.a): ADVERTENCIA y alerta con la diferencia; la que no es ambigua no alerta", () => {
+    const k = generarConocimientoAuto(base());
+    expect(k.alertasColonias).toEqual([{ colonia: "Alcala Martin", sucursales: ["Montejo", "Pensiones"], diferenciaKm: 0.3 }]);
+    expect(colonias(k)).toContain("Alcala Martin: Montejo (2.6 km, piloto) o Pensiones (2.9 km, piloto); quedan a menos de 1 km de diferencia, pregunta al cliente cuál le queda mejor (ADVERTENCIA");
+  });
+
+  it("sin referencia ni coordenadas: no se inventa nada y se cuenta como sin sucursal; si ademas la cubre una sucursal, se dice solo el reparto", () => {
+    const k = generarConocimientoAuto(base({ sucursales: [con(MONTEJO, ["b", "c"]), con(PENSIONES, []), con(LAVIN, [])] }));
+    expect(k.coloniasSinSucursal).toBe(1);
+    expect(colonias(k)).toContain("Sin Referencia: sin sucursal sugerida (no hay distancia). Reparto: cubre Montejo.");
+    const solo = generarConocimientoAuto({ sucursales: [con(MONTEJO, [])], zonas: [sinCoord("c", "Sin Referencia")], referencias: [referencias[2]!], menus: [] });
+    expect(doc(solo, "colonias_sucursal")).toMatchObject({ vacio: true });
+  });
+
+  it("referencia a una sucursal que no existe o esta inactiva: se salta esa opcion (la 2.a pasa a ser la sugerida) y sin km no se imprime NaN", () => {
+    const k = generarConocimientoAuto(base({ referencias: [ref("a", "Alcala Martin", "fantasma", 1.1, "pensiones", null), referencias[1]!], zonas: [zonas[0]!, zonas[1]!] }));
+    expect(colonias(k)).toContain("Alcala Martin: sugerida Pensiones (piloto).");
+    expect(colonias(k)).not.toContain("fantasma");
+    expect(k.alertasColonias).toEqual([]);
+  });
+
+  it("con coordenadas el calculo de siempre manda aunque haya referencia (sin regresion) y puede llevar el reparto", () => {
+    const k = generarConocimientoAuto(
+      datos({ sucursales: [con(CENTRO, ["z2"]), con(NORTE, [])], referencias: [ref("z1", "Altabrisa", "centro", 0.1, null, null)] }),
+    );
+    const c = colonias(k);
+    expect(c).toContain("Altabrisa: Norte (");
+    expect(c).toContain("Garcia Gineres: Centro (");
+    expect(c).toContain("Reparto: cubre Centro.");
+    expect(c).toContain("Altabrisa: Norte (");
+    expect(c.split("\n").find((l) => l.startsWith("Altabrisa"))).toContain("Reparto por confirmar.");
+  });
+
+  it("base sin migrar (sin referencias ni cobertura leida): igual que antes, sin hablar de reparto", () => {
+    const k = generarConocimientoAuto(datos());
+    expect(colonias(k)).not.toContain("Reparto");
+    expect(colonias(k)).toContain("Altabrisa: Norte (");
+    expect(doc(k, "faq").contenido).toContain("Reconocemos 2 colonias: Altabrisa, Garcia Gineres.");
+  });
+
+  it("FAQ: separa colonias con reparto confirmado de las por confirmar (conteos) y no nombra mas de 40", () => {
+    const f = doc(generarConocimientoAuto(base()), "faq").contenido;
+    expect(f).toContain("Reconocemos 3 colonias: 1 con reparto confirmado: Aleman; 2 reconocidas con reparto por confirmar");
+    const muchas = Array.from({ length: 60 }, (_, i) => sinCoord(`k${i}`, `Colonia ${String(i).padStart(2, "0")}`));
+    const ids = muchas.map((z) => z.id);
+    const grande = doc(generarConocimientoAuto({ sucursales: [con(MONTEJO, ids)], zonas: muchas, referencias: [], menus: [] }), "faq").contenido;
+    expect(grande).toContain("60 con reparto confirmado (algunas: ");
+    expect(grande).toContain("Colonia 39");
+    expect(grande).not.toContain("Colonia 40");
+  });
+
+  it("la huella cambia cuando cambia la cobertura (o la referencia) y no cuando no cambia nada", () => {
+    const a = generarConocimientoAuto(base());
+    expect(generarConocimientoAuto(base()).huella).toBe(a.huella);
+    const otra = generarConocimientoAuto(base({ sucursales: [con(MONTEJO, ["a", "b"]), con(PENSIONES, []), con(LAVIN, [])] }));
+    expect(otra.huella).not.toBe(a.huella);
+    expect(doc(otra, "colonias_sucursal").huella).not.toBe(doc(a, "colonias_sucursal").huella);
+    expect(doc(otra, "sucursales_horarios").huella).toBe(doc(a, "sucursales_horarios").huella);
+  });
+
+  it("no cabe entero en el tope del prompt: el documento de colonias se omite completo y lo dice `omitidos`", () => {
+    const muchas = Array.from({ length: 200 }, (_, i) => sinCoord(`k${i}`, `Colonia numero ${i}`));
+    const refs = muchas.map((z) => ref(z.id, z.name, "montejo", 2.5, "lavin", 4.6));
+    const k = generarConocimientoAuto({ sucursales: [con(MONTEJO, []), con(LAVIN, [])], zonas: muchas, referencias: refs, menus: [] });
+    const b = bloqueConocimientoParaPrompt(k);
+    expect(b.incluidos).not.toContain("colonias_sucursal");
+    expect(b.omitidos.map((o) => o.tipo)).toContain("colonias_sucursal");
+  });
+
+  it("cargarDatosConocimiento lee la referencia y la cobertura del repositorio; contra la base sin la 056 deja `referencias` sin definir", async () => {
+    const repo = new InMemoryRestaurantesRepository();
+    const lecturas: string[] = [];
+    const espia = new Proxy(repo, {
+      get(t, p, r) {
+        const v = Reflect.get(t, p, r);
+        if (typeof v === "function" && typeof p === "string" && p.startsWith("list")) lecturas.push(p);
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    });
+    const conRef = await cargarDatosConocimiento(espia, ORG);
+    expect(lecturas).toContain("listColoniasReferencia");
+    expect(conRef.referencias).toEqual([]);
+    repo.listColoniasReferencia = async () => ({ disponible: false, zonas: [] });
+    const sinRef = await cargarDatosConocimiento(repo, ORG);
+    expect(sinRef.referencias).toBeUndefined();
   });
 });
