@@ -34,6 +34,13 @@ describe("pickAuditFields", () => {
     });
     expect(pickAuditFields(null, ["a"])).toBeNull();
   });
+
+  it("recorta las listas de mas de 100 elementos y registra el total real", () => {
+    const largo = Array.from({ length: 150 }, (_, i) => `k${i}`);
+    const r = pickAuditFields({ keywords: largo }, ["keywords"])!;
+    expect((r.keywords as string[]).length).toBe(100);
+    expect(r.keywordsTotal).toBe(150);
+  });
 });
 
 describe("appendAuditoria / listAuditoria / tenderCorrelationId sobre una transaccion compartida", () => {

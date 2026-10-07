@@ -107,7 +107,11 @@ export function pickAuditFields(source: object | null | undefined, allowed: read
     const v = rec[key];
     if (v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean") out[key] = v;
     else if (v instanceof Date) out[key] = v.toISOString();
-    else if (Array.isArray(v) && v.length <= 100 && v.every((x) => typeof x === "string" || typeof x === "number")) out[key] = v.slice() as (string | number)[];
+    else if (Array.isArray(v) && v.every((x) => typeof x === "string" || typeof x === "number")) {
+      // Una lista larga se recorta a 100 elementos y deja `<campo>Total` con el tamano real: el cambio no queda sin rastro.
+      out[key] = v.slice(0, 100) as (string | number)[];
+      if (v.length > 100) out[`${key}Total`] = v.length;
+    }
   }
   return out;
 }
