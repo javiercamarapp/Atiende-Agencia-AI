@@ -227,7 +227,7 @@ export class TechnicalProposalBuilder {
       case "document":
         return this.companyData.resolveDocumentByType(companyId, mapping.refKey, asOfIso);
       case "signer":
-        return this.companyData.resolveAuthorizedSigner(companyId, mapping.refKey);
+        return this.companyData.resolveAuthorizedSigner(companyId, mapping.refKey, asOfIso);
       default:
         return { status: "missing", field: mapping.refKey };
     }

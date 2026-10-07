@@ -23,6 +23,7 @@
 //    convocatoria por `tenderId` (el uuid real de `licitaciones.tender`).
 import type { MatchingProfileRecord, TenderRecord } from "./types.ts";
 import { sha256Hex } from "./types.ts";
+import type { CompanyRestrictionRecord, ProvenanceIndex } from "./company-profile.ts";
 
 // ---------------------------------------------------------------------------
 // Utilidades de normalización de texto -- port literal de
@@ -111,8 +112,19 @@ export interface MatchCriterionResult {
  */
 export type EligibilityStatus = "cumple" | "no_cumple" | "no_evaluable";
 
+/**
+ * Datos del perfil de empresa que participan en la ELEGIBILIDAD (nunca en el score). Opcional: sin contexto el motor se
+ * comporta exactamente como antes. `asOfDate` ("YYYY-MM-DD") es la fecha del acto contra la que se evalua la vigencia de
+ * las restricciones; la decide el llamador (nunca el reloj del motor, que es puro).
+ */
+export interface CompanyMatchingContext {
+  readonly restrictions: readonly CompanyRestrictionRecord[];
+  readonly provenance: ProvenanceIndex;
+  readonly asOfDate: string;
+}
+
 export interface EligibilityCriterionResult {
-  requirement: "budget" | "states" | "excludedKeywords";
+  requirement: "budget" | "states" | "excludedKeywords" | "restrictions";
   status: EligibilityStatus;
   explanation: string;
 }
@@ -190,8 +202,8 @@ export class MatchingEngine {
     this.weights = { ...DEFAULT_WEIGHTS, ...weights };
   }
 
-  score(record: TenderRecord, profile: OrganizationMatchingProfile): MatchResult {
-    const eligibility = this.evaluateEligibility(record, profile);
+  score(record: TenderRecord, profile: OrganizationMatchingProfile, company?: CompanyMatchingContext): MatchResult {
+    const eligibility = this.evaluateEligibility(record, profile, company);
     const applicable: Array<{ criterion: MatchCriterionResult["criterion"]; weight: number; compute: () => MatchCriterionResult }> = [];
 
     if (profile.classifierCodes && profile.classifierCodes.length > 0) {
@@ -247,7 +259,7 @@ export class MatchingEngine {
    * convocatoria SIEMPRE produce "no_evaluable" para ese criterio, nunca
    * "cumple" ni "no_cumple" inventados.
    */
-  private evaluateEligibility(record: TenderRecord, profile: OrganizationMatchingProfile): EligibilityResult {
+  private evaluateEligibility(record: TenderRecord, profile: OrganizationMatchingProfile, company?: CompanyMatchingContext): EligibilityResult {
     const criteria: EligibilityCriterionResult[] = [];
     const budgetAmount = record.budgetAmount ?? undefined;
     const currency = record.currency ?? "MXN";
@@ -294,6 +306,9 @@ export class MatchingEngine {
         explanation: hit ? `El título contiene la palabra clave excluida "${hit}" configurada por la organización.` : "El título no contiene ninguna palabra clave excluida por la organización.",
       });
     }
+
+    const restrictions = company ? evaluateRestrictions(company) : null;
+    if (restrictions) criteria.push(restrictions);
 
     return { status: aggregateEligibility(criteria), criteria };
   }
@@ -371,6 +386,35 @@ export class MatchingEngine {
 }
 
 /**
+ * REQ-142: restricciones de la empresa vigentes a la fecha del acto. Solo participa si hay restricciones capturadas.
+ *  - Sin procedencia o sin aprobar -> "no_evaluable" con su motivo (un dato sin procedencia nunca decide).
+ *  - Aprobada, con procedencia y vigente: inhabilitacion o sancion -> "no_cumple"; conflicto de interes u otra -> "no_evaluable"
+ *    (requiere revision humana: por si sola no determina la elegibilidad).
+ *  - Todas vencidas -> "cumple". Las rechazadas se ignoran. Sin texto de la restriccion en la explicacion (sin PII).
+ */
+function evaluateRestrictions(company: CompanyMatchingContext): EligibilityCriterionResult | null {
+  const vivas = company.restrictions.filter((r) => r.approvalStatus !== "rechazado");
+  if (vivas.length === 0) return null;
+  const vigentes = vivas.filter((r) => r.validFrom <= company.asOfDate && (r.validUntil === null || company.asOfDate <= r.validUntil));
+  if (vigentes.length === 0) {
+    return { requirement: "restrictions", status: "cumple", explanation: `Ninguna de las ${vivas.length} restricciones registradas está vigente al ${company.asOfDate}.` };
+  }
+  const sinProcedencia = vigentes.filter((r) => !company.provenance.has("restriction", r.id));
+  if (sinProcedencia.length > 0) {
+    return { requirement: "restrictions", status: "no_evaluable", explanation: `${sinProcedencia.length} restricción(es) vigente(s) no tienen procedencia registrada (quién las capturó y cuándo); un dato sin procedencia no se usa para decidir.` };
+  }
+  const sinAprobar = vigentes.filter((r) => r.approvalStatus !== "aprobado");
+  if (sinAprobar.length > 0) {
+    return { requirement: "restrictions", status: "no_evaluable", explanation: `${sinAprobar.length} restricción(es) vigente(s) esperan aprobación; hasta que se decidan no es posible evaluar la elegibilidad.` };
+  }
+  const bloqueante = vigentes.find((r) => r.kind === "inhabilitacion" || r.kind === "sancion");
+  if (bloqueante) {
+    return { requirement: "restrictions", status: "no_cumple", explanation: `La empresa tiene una restricción vigente de tipo "${bloqueante.kind}" al ${company.asOfDate}.` };
+  }
+  return { requirement: "restrictions", status: "no_evaluable", explanation: `Hay ${vigentes.length} restricción(es) vigente(s) de tipo conflicto de interés u otra: requieren revisión humana antes de decidir la elegibilidad.` };
+}
+
+/**
  * Agrega el resultado de todos los criterios de elegibilidad configurados:
  * "no_cumple" tiene prioridad; si ninguno incumple pero al menos uno es
  * "no_evaluable", el agregado es "no_evaluable" (nunca se "redondea" a
@@ -417,9 +461,14 @@ export interface MatchInputsSnapshot {
   };
   /** `null` si la organización aún no configuró ningún perfil de matching. */
   readonly profile: MatchingProfileRecord | null;
+  /** Restricciones de la empresa que entraron a la elegibilidad. Solo aparece si hubo restricciones: sin ellas el hash es el de siempre. */
+  readonly companyRestrictions?: readonly { readonly kind: string; readonly validFrom: string; readonly validUntil: string | null; readonly approvalStatus: string; readonly hasProvenance: boolean }[];
 }
 
-export function buildMatchInputsSnapshot(tender: TenderRecord, profile: MatchingProfileRecord | null): MatchInputsSnapshot {
+export function buildMatchInputsSnapshot(tender: TenderRecord, profile: MatchingProfileRecord | null, company?: CompanyMatchingContext): MatchInputsSnapshot {
+  const companyRestrictions = company && company.restrictions.length > 0
+    ? company.restrictions.map((r) => ({ kind: r.kind, validFrom: r.validFrom, validUntil: r.validUntil, approvalStatus: r.approvalStatus, hasProvenance: company.provenance.has("restriction", r.id) }))
+    : undefined;
   return {
     tenderId: tender.id,
     tenderUpdatedAt: tender.updatedAt,
@@ -434,6 +483,7 @@ export function buildMatchInputsSnapshot(tender: TenderRecord, profile: Matching
       procedureTypeRaw: tender.procedureTypeRaw,
     },
     profile,
+    ...(companyRestrictions ? { companyRestrictions } : {}),
   };
 }
 
