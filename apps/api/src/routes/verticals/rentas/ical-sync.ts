@@ -25,7 +25,7 @@ interface ConectarFeedBody {
   readonly url?: unknown;
 }
 
-function requireUrlImportacion(value: unknown): string {
+export function requireUrlImportacion(value: unknown): string {
   if (typeof value !== "string" || value.trim().length === 0 || value.length > 2048) {
     throw Errors.validation("url: se esperaba una URL de feed .ics no vacía (máx. 2048 caracteres).");
   }
