@@ -15,7 +15,7 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { ApiError } from "@atiende/core-auth";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
-import { calcularCotizacion, calcularMovimientoReserva, CANCELAR_ROLES, cancelarOcupacion, crearReservaConfirmada, ESCRITURA_CALENDARIO_ROLES, modificarFechasReserva, RentasDomainError, tryEnqueueReservaEmail } from "@atiende/domain-rentas";
+import { calcularCotizacion, calcularMovimientoReserva, CANCELAR_ROLES, cancelarOcupacion, crearReservaConfirmada, ESCRITURA_CALENDARIO_ROLES, FINANZAS_ESCRITURA_ROLES, modificarFechasReserva, RentasDomainError, tryEnqueueReservaEmail } from "@atiende/domain-rentas";
 import type { NewReservaFinancieroInput, RangoFechas, RentasRepository } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -235,6 +235,8 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const huespedNombre = requireOptionalString(raw.huespedNombre, "huespedNombre", 200);
     const huespedContacto = requireOptionalString(raw.huespedContacto, "huespedContacto", 200);
     const pedidoMovimiento = leerMovimientoDirecto(raw);
+    // El movimiento financiero se escribe bajo la RLS de finanzas (solo admin_gestora): sin este rol previo el INSERT daba 42501 -> 500 y revertia la reserva.
+    if (pedidoMovimiento !== null) assertVerticalRole(c, FINANZAS_ESCRITURA_ROLES);
 
     const canalManual = await repo.findCanalPorCodigo("manual");
     if (!canalManual) throw new Error("Catálogo rentas.canal sin sembrar: falta el canal 'manual'.");
