@@ -8,6 +8,7 @@
 // por intencion) viven en pm-bateria-agente-whatsapp.spec.ts con un LLM simulado por guion.
 // Los `it.todo` son BRECHAS reales de producto (la funcion no existe todavia en main) o
 // DECISIONES ABIERTAS del dueno; no se inventa una regla para taparlas.
+import { reporteColoniasAmbiguas } from "../src/colonias-ambiguas.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { InMemoryRestaurantesRepository } from "../src/in-memory-repository.ts";
@@ -480,6 +481,8 @@ describe("PM zonas y sucursal (X41-X43, P10-P12)", () => {
     const zona = await f.repo.createKnownZone(f.organizationId, { name: "Kanasin", lat: 20.93, lng: -89.56 });
     const zonaT1 = await f.repo.createKnownZone(f.organizationId, { name: "Vista Alegre", lat: 21.02, lng: -89.65 });
     await f.repo.replaceBranchDeliveryZones(f.organizationId, f.t1, [zonaT1.id]);
+    // Kanasin la cubre OTRA sucursal (Pensiones): para t1 esta fuera de su zona de reparto.
+    await f.repo.replaceBranchDeliveryZones(f.organizationId, f.t3, [zona.id]);
     expect(zona.id).not.toBe(zonaT1.id);
     expect(await mensajeDe(cotizar(f, [item(f.p.cocaCola, 5)], { colonia: "Kanasin" }))).toMatch(/fuera de la zona de reparto/);
     expect((await cotizar(f, [item(f.p.cocaCola, 5)], { colonia: "Vista Alegre" })).total).toBe(225);
@@ -503,7 +506,28 @@ describe("PM zonas y sucursal (X41-X43, P10-P12)", () => {
   });
 
   it.todo("T-ZS05 / P12 [P1] DECISION ABIERTA (sucursal elegida a domicilio): si el cliente insiste en otra sucursal, no hay 'zona_ambigua' ni regla que fije la asignada");
-  it.todo("T-ZS09 / X42 [P2] BRECHA: reporte de colonias cuyas 2 sucursales mas cercanas quedan a menos de 1 km");
+  it("T-ZS09 / X42 [P2] reporte de colonias cuyas 2 sucursales mas cercanas quedan a menos de 1 km", async () => {
+    const f = pmFixture();
+    // Punto a medio camino entre Francisco de Montejo (t1) y Pensiones (t3): las dos quedan a casi la misma distancia (0.6 km de diferencia o menos).
+    await f.repo.createKnownZone(f.organizationId, { name: "Entre Montejo y Pensiones", lat: (21.0186 + 20.9751) / 2 + 0.002, lng: (-89.6708 + -89.5923) / 2 });
+    // Colonia clara: pegada a Altabrisa (t8), las demas quedan a varios km.
+    await f.repo.createKnownZone(f.organizationId, { name: "Junto a Altabrisa", lat: 21.0214, lng: -89.5579 });
+    const reporte = await reporteColoniasAmbiguas(f.repo, f.organizationId);
+    expect(reporte.disponible).toBe(true);
+    const ambigua = reporte.filas.find((x) => x.colonia === "Entre Montejo y Pensiones")!;
+    expect(ambigua.origenKm).toBe("calculada");
+    expect(ambigua.diferenciaKm).not.toBeNull();
+    expect(ambigua.diferenciaKm!).toBeLessThan(1);
+    expect(ambigua.motivos).toContain("ambigua");
+    expect(ambigua.revisar).toBe(true);
+    expect(ambigua.segundaSucursal).not.toBeNull();
+    const clara = reporte.filas.find((x) => x.colonia === "Junto a Altabrisa")!;
+    expect(clara.motivos).not.toContain("ambigua");
+    expect(clara.diferenciaKm!).toBeGreaterThanOrEqual(1);
+    // Primero lo ambiguo.
+    expect(reporte.filas[0]!.colonia).toBe("Entre Montejo y Pensiones");
+    expect(reporte.ambiguas).toBe(1);
+  });
 });
 
 describe("PM horarios y cierre (P15, P16, X40)", () => {

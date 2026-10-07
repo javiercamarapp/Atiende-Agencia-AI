@@ -125,6 +125,10 @@ export interface ApiEnv {
    *  tiene un factor activo -- ningun flujo actual se rompe antes de enrolar.
    *  OPCIONAL: los fixtures de tests no necesitan declararla. */
   readonly superadminMfaRequired?: boolean;
+  /** `true` en el ambiente de PRODUCCION (`VERCEL_ENV=production`, o `NODE_ENV=production` si no hay `VERCEL_ENV`). Con el, el step-up
+   *  de las acciones sensibles FALLA CERRADO (503) si falta el puerto de 2FA o su migracion, en vez de dejar pasar. OPCIONAL: ausente
+   *  = desarrollo/pruebas (se conserva el comportamiento anterior: sin 2FA disponible no se exige nada). */
+  readonly production?: boolean;
   /** Material de llave para cifrar el secreto TOTP en reposo (>= 16 caracteres).
    *  Sin ella se deriva de `jwtSecret` (HKDF con etiqueta propia) -- rotar
    *  JWT_SECRET entonces invalida los factores enrolados (hay que re-enrolar), por
@@ -194,6 +198,7 @@ export function breakerEnvName(raw: string | undefined): string {
 export function loadApiEnv(): ApiEnv {
   return {
     jwtSecret: requireEnv("JWT_SECRET"),
+    production: (process.env.VERCEL_ENV || process.env.NODE_ENV) === "production",
     superadminMfaRequired: ["1", "true"].includes((process.env.SUPERADMIN_MFA_REQUIRED ?? "").toLowerCase()),
     mfaEncryptionKey: process.env.SUPERADMIN_MFA_ENCRYPTION_KEY || undefined,
     accessTokenTtlSeconds: Number(process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900),

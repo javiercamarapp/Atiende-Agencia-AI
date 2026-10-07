@@ -137,12 +137,15 @@ function asignarColonias(d: DatosConocimiento): { readonly asignaciones: readonl
   const asignaciones: Asignacion[] = [];
   let sinSucursal = 0;
   for (const z of d.zonas) {
-    if (candidatas.length === 0) {
+    // Una colonia sin coordenadas propias (migracion 056) no se puede ordenar por distancia: queda sin sucursal sugerida, nunca se inventa una.
+    if (candidatas.length === 0 || z.lat === null || z.lng === null) {
       sinSucursal += 1;
       continue;
     }
+    const zLat = z.lat;
+    const zLng = z.lng;
     const ordenadas = candidatas
-      .map((s) => ({ nombre: limpio(s.branch.name, 120), km: haversineKmExact(z.lat, z.lng, s.branch.lat as number, s.branch.lng as number) }))
+      .map((s) => ({ nombre: limpio(s.branch.name, 120), km: haversineKmExact(zLat, zLng, s.branch.lat as number, s.branch.lng as number) }))
       .sort((a, b) => a.km - b.km || a.nombre.localeCompare(b.nombre));
     asignaciones.push({ colonia: limpio(z.name, 120), mas: ordenadas[0]!, segunda: ordenadas[1] ?? null });
   }

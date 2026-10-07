@@ -11,7 +11,7 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, procesarEstadosEntrega, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
+import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, procesarEstadosEntrega, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature, revocarMarketingPorTelefono } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { extractMetaStatuses } from "@atiende/whatsapp-gateway";
 import type { EventoEntregaFallida } from "@atiende/domain-restaurantes";
@@ -20,7 +20,7 @@ import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { ALTA_CONFIRMADA_TEXTO, BAJA_CONFIRMADA_TEXTO, procesarBajaOAlta } from "../../../supresion/index.ts";
+import { ALTA_CONFIRMADA_TEXTO, BAJA_CONFIRMADA_TEXTO, esPalabraBaja, procesarBajaOAlta } from "../../../supresion/index.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -163,6 +163,10 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
                 },
               }
             : undefined;
+          // Autopiloto 2: BAJA / ALTO tambien REVOCA el consentimiento de marketing de ese telefono en esta organizacion y mata los mensajes de campana
+          // aun pendientes (la lista de supresion de plataforma, de abajo, ya los frena en el despachador). Best-effort con SAVEPOINT: base sin la 052 ->
+          // no hace nada; nunca altera el turno ni la respuesta a Meta.
+          if (esPalabraBaja(message.body)) await revocarMarketingPorTelefono(db, organizationId, `+${message.from}`);
           // SA-L-46: BAJA / STOP -> lista de supresion de plataforma + UNA confirmacion; PL-32: ALTA la reactiva. No pasa al agente.
           const atendida = await procesarBajaOAlta(db, {
             telefono: `+${message.from}`,

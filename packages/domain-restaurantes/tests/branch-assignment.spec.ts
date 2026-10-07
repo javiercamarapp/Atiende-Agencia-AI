@@ -95,7 +95,7 @@ describe("assignBranch -- radio maximo (fuera de zona)", () => {
     const punto = { lat: 21.0156, lng: -89.5882 }; // ~1.04 km al este de Altabrisa
     const base = await assignBranch(repo, { organizationId, ...punto });
     expect(base.estado).toBe("asignada");
-    const exacto = base.estado === "asignada" ? base.distanceKm : 0;
+    const exacto = base.estado === "asignada" ? (base.distanceKm ?? 0) : 0;
     // maxKm mayor que la distancia real: asigna.
     expect(await assignBranch(repo, { organizationId, ...punto, maxKm: exacto + 0.5 })).toMatchObject({ estado: "asignada" });
     // maxKm menor que la distancia real: fuera de zona, con la sucursal mas cercana informada.
@@ -177,5 +177,50 @@ describe("assignBranch -- zonas conocidas", () => {
     const { repo, organizationId } = seed();
     repo.seedKnownZone({ organizationId: randomUUID(), name: "Vista Alegre", lat: 21.0152, lng: -89.5995 });
     expect(await assignBranch(repo, { organizationId, colonia: "Vista Alegre" })).toMatchObject({ estado: "no_reconocida" });
+  });
+});
+
+describe("colonia reconocida SIN coordenadas (migracion 056, colonias del piloto original)", () => {
+  async function mundoColonias() {
+    const repo = new InMemoryRestaurantesRepository();
+    const organizationId = randomUUID();
+    const t1 = randomUUID();
+    const t7 = randomUUID();
+    repo.seedOrganization({ id: organizationId, slug: "los-taquitos-de-pm", name: "Los Taquitos de PM" });
+    repo.seedBranch({ propertyId: t1, organizationId, name: "Prolongación Montejo", slug: "prol-montejo", status: "active", phone: null, address: null, lat: 21.028, lng: -89.61 });
+    repo.seedBranch({ propertyId: t7, organizationId, name: "García Lavín", slug: "garcia-lavin", status: "active", phone: null, address: null, lat: 21.0205, lng: -89.615 });
+    const temozon = randomUUID();
+    const ambigua = randomUUID();
+    repo.seedKnownZone({ id: temozon, organizationId, name: "Temozón Norte", lat: null, lng: null });
+    repo.seedKnownZone({ id: ambigua, organizationId, name: "Alcalá Martín", lat: null, lng: null });
+    repo.seedBranchDeliveryZones(t7, [temozon]);
+    return { repo, organizationId, t1, t7, temozon, ambigua };
+  }
+
+  it("la sucursal sale de la cobertura cargada; sin distancia inventada", async () => {
+    const { repo, organizationId } = await mundoColonias();
+    expect(await assignBranch(repo, { organizationId, colonia: "temozon norte" })).toMatchObject({ estado: "asignada", branchSlug: "garcia-lavin", distanceKm: null, via: "zona", recognizedZoneName: "Temozón Norte" });
+  });
+
+  it("colonia sin ninguna sucursal que la cubra (ambigua): no se adivina, no_reconocida", async () => {
+    const { repo, organizationId } = await mundoColonias();
+    expect(await assignBranch(repo, { organizationId, colonia: "Alcalá Martín" })).toMatchObject({ estado: "no_reconocida" });
+  });
+
+  it("cubierta por dos sucursales: no se elige por orden de listado", async () => {
+    const { repo, organizationId, t1, temozon } = await mundoColonias();
+    repo.seedBranchDeliveryZones(t1, [temozon]);
+    expect(await assignBranch(repo, { organizationId, colonia: "Temozón Norte" })).toMatchObject({ estado: "no_reconocida" });
+  });
+
+  it("con pin: el punto es el pin (via coordenadas) y la cobertura de la colonia sigue ganando sobre la geometria pura", async () => {
+    const { repo, organizationId } = await mundoColonias();
+    expect(await assignBranch(repo, { organizationId, lat: 21.0281, lng: -89.6101 })).toMatchObject({ estado: "asignada", branchSlug: "prol-montejo", via: "coordenadas" });
+    expect(await assignBranch(repo, { organizationId, colonia: "Temozón Norte", lat: 21.0281, lng: -89.6101 })).toMatchObject({ estado: "asignada", branchSlug: "garcia-lavin", via: "coordenadas", ajustePorZona: true });
+  });
+
+  it("findNearestBranch (buscar por colonia) ignora la colonia sin coordenadas: silencio, nunca una sucursal inventada", async () => {
+    const { repo, organizationId } = await mundoColonias();
+    expect(await repo.findNearestBranchByColonia(organizationId, "Temozón Norte")).toBeNull();
   });
 });

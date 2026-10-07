@@ -69,7 +69,10 @@ describe("transiciones sensibles del contrato con step-up (L-01)", () => {
     expect(facturado.status).toBe(200);
     const pagado = { toStatus: "pagado", reason: "Pago confirmado por tesoreria." };
     expect((await app.request(`${base}/transition`, authedJson(ctx.staff.writer.token, pagado))).status).toBe(403);
-    expect((await app.request(`${base}/transition`, authedJson(ctx.staff.owner.token, pagado, { "x-step-up-token": stepUp }))).status).toBe(200);
+    // El step-up es de UN SOLO USO: el token de la penalizacion ya no sirve para marcar el pago; se pide otro.
+    expect((await app.request(`${base}/transition`, authedJson(ctx.staff.owner.token, pagado, { "x-step-up-token": stepUp }))).status).toBe(403);
+    const otro = await signContractStepUpToken({ userId: ctx.staff.owner.id, organizationId: ctx.organizationId, scope: "contract_sensitive" }, TEST_ENV.jwtSecret);
+    expect((await app.request(`${base}/transition`, authedJson(ctx.staff.owner.token, pagado, { "x-step-up-token": otro }))).status).toBe(200);
   });
 
   it("token de otro usuario, de otro alcance, vencido o basura -> 403 step_up_required", async () => {

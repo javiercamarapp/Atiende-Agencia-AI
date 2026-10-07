@@ -601,6 +601,7 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     doubleSalsas: toDoubleSalsas(input.doble_salsas),
     canal: toCanal(input.canal),
     colonia: str(input.colonia_entrega),
+    ...(ctx.sharedLocation && ctx.channel === "whatsapp" ? { ubicacion: { lat: ctx.sharedLocation.lat, lng: ctx.sharedLocation.lng } } : {}),
     propina: typeof input.propina === "number" ? input.propina : undefined,
     horaRecogida: str(input.hora_recogida),
     // Cliente 360: datos opcionales del domicilio (solo alimentan la ficha; nunca cambian el total).
@@ -941,6 +942,8 @@ async function dispatchTool(
         adultConfirmed: input.adult_confirmed === true,
         canal: toCanal(input.canal),
         colonia: typeof input.colonia_entrega === "string" ? input.colonia_entrega : undefined,
+        source: ctx.channel === "voz" ? "voice" : ctx.channel === "web" ? "web" : "whatsapp",
+        ...(ctx.sharedLocation && ctx.channel === "whatsapp" ? { ubicacion: { lat: ctx.sharedLocation.lat, lng: ctx.sharedLocation.lng } } : {}),
         paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
         doubleSalsas: toDoubleSalsas(input.doble_salsas),
         programadoPara: toProgramadoPara(input.programado_para),

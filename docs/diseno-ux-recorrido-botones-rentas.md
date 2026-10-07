@@ -31,7 +31,7 @@ Alcance: `apps/web/src/verticals/rentas/**` (shell, login, registro, portal de p
 
 | Accion | Confirmacion | Cancelar/descartar |
 |---|---|---|
-| Rechazar borrador (Aprobaciones) | `ConfirmDialog` con motivo obligatorio | no llama al servidor (probado); si falla el servidor el dialogo queda abierto con el motivo |
+| Rechazar borrador (Aprobaciones y su hilo) | `ConfirmDialog` con motivo obligatorio (`BorradorPendienteCard`, la misma en la bandeja y en el hilo) | no llama al servidor (probado en ambas pantallas); si falla el servidor el dialogo queda abierto con el motivo |
 | Cancelar reserva / liberar bloqueo (Calendario) | `ConfirmDialog` que nombra unidad y fechas | "No, mantenerla" no llama al servidor (probado) |
 | Desconectar canal iCal (Sincronizacion) | `ConfirmDialog` **nuevo** en este PR (antes ejecutaba con un clic) | Cancelar no llama al servidor (probado) |
 
@@ -41,7 +41,8 @@ Alcance: `apps/web/src/verticals/rentas/**` (shell, login, registro, portal de p
 |---|---|---|
 | Resumen | lista de propiedades (boton por propiedad: cambia la activa) | no |
 | Calendario | nueva reserva / nuevo bloqueo (`FormDialog`), modificar fechas, cancelar | confirmaciones |
-| Aprobaciones | aprobar y enviar, rechazar, simulador de mensaje entrante | confirmaciones |
+| Aprobaciones | aprobar y enviar, rechazar, simulador de mensaje entrante; filtros (canal, con pendientes, requiere atencion, busqueda) con estado en la URL; insignia «Requiere atencion humana» con su senal; aviso de politica del canal; «Ver hilo» | confirmaciones, hilo-mensajes, humo-rentas (e2e) |
+| Hilo de una conversacion (`/aprobaciones/:conversacionId`) | mensajes entrantes y salientes en orden con su origen (texto del huesped como texto plano, «dato, no instruccion»), marca de contenido redactado, cada borrador junto al mensaje que responde, aprobar/rechazar, «Generar borrador» por mensaje entrante sin borrador pendiente | hilo-mensajes, humo-rentas (e2e) |
 | Mis tareas | seleccionar tarea, asignar, checklist (`Checkbox` con nombre), completar, incidencias, confirmar bloqueo | confirmar-bloqueo |
 | Sincronizacion iCal | conectar (`FormDialog`), desconectar, copiar URL | confirmaciones |
 | Monitor de conflictos | resolver, ignorar con motivo (inline), historial, atender alerta | monitor-sync-page |

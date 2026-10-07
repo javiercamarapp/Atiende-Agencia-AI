@@ -23,6 +23,9 @@ async function construir(plantillas: readonly string[]) {
   const t = await buildTestDeps();
   const deps: AppDeps = { ...t.deps, env: { ...t.deps.env, whatsappApprovedTemplates: plantillas } };
   await t.restaurantesRepo.upsertWhatsAppAgentConfig(t.organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: null, toneStyle: null, deliveryTimeText: "Domicilio 30-45 minutos. Recoger 15-25 minutos." } as never);
+  // CR12: con perfil PM, el domicilio por voz exige zonas de reparto cargadas (o pin); la sucursal del fixture recibe una zona para ese caso.
+  const zona = await t.restaurantesRepo.createKnownZone(t.organizationId, { name: "Centro", lat: 20.97, lng: -89.62 });
+  await t.restaurantesRepo.replaceBranchDeliveryZones(t.organizationId, t.propertyId, [zona.id]);
   const app = buildApp(deps);
   const recibidos = () => t.restaurantesRepo.getOutbox().filter((o) => o.eventType === "order.recibido");
   return { ...t, deps, app, recibidos };
@@ -57,7 +60,7 @@ describe("POST /v1/restaurantes/:orgSlug/orders -> Recibimos su pedido", () => {
 
   it("voz con plantilla aprobada: sale UN aviso (y el reintento del mismo pedido no duplica)", async () => {
     const t = await construir(["pedido_recibido"]);
-    const cuerpo = { ...WEB(t.products.cocaCola!), source: "voice", customer_address: "Calle 1 #200", canal: "domicilio" };
+    const cuerpo = { ...WEB(t.products.cocaCola!), source: "voice", customer_address: "Calle 1 #200", colonia_entrega: "Centro", canal: "domicilio" };
     const init = jsonRequestInit(cuerpo, { "x-atiende-tool-secret": "test-voice-tool-secret" });
     expect((await t.app.request("/v1/restaurantes/los-taquitos-de-pm/orders", init)).status).toBe(200);
     expect(t.recibidos()).toHaveLength(1);
@@ -69,7 +72,7 @@ describe("POST /v1/restaurantes/:orgSlug/orders -> Recibimos su pedido", () => {
 
   it("un pedido de WhatsApp NUNCA recibe este aviso (el chat ya confirma), aunque la plantilla este aprobada", async () => {
     const t = await construir(["pedido_recibido"]);
-    const order = await createOrder(t.restaurantesRepo, { organizationId: t.organizationId, branchSlug: "fco-montejo", customerName: "Deb", customerPhone: "9991234567", customerAddress: "Calle 1", items: [{ productId: t.products.cocaCola!, requestedQuantity: 1 }], source: "whatsapp", paymentMethod: "efectivo" });
+    const order = await createOrder(t.restaurantesRepo, { organizationId: t.organizationId, branchSlug: "fco-montejo", customerName: "Deb", customerPhone: "9991234567", customerAddress: "Calle 1", colonia: "Centro", items: [{ productId: t.products.cocaCola!, requestedQuantity: 1 }], source: "whatsapp", paymentMethod: "efectivo" });
     const r = await avisarPedidoRecibido(t.deps, new SesionNula(), t.restaurantesRepo, order);
     expect(r).toEqual({ enviado: false, motivo: "canal_no_aplica" });
     expect(t.recibidos()).toHaveLength(0);

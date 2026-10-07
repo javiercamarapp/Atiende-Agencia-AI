@@ -235,6 +235,9 @@ export interface CreateOrderInput {
   /** Colonia/zona de entrega que dio el cliente (se empareja con `known_zone`). Solo se
    * exige cuando la sucursal tiene cobertura de entrega configurada. */
   readonly colonia?: string;
+  /** Pin de ubicacion que el cliente compartio por WhatsApp. Lo pone el SERVIDOR (contexto del turno), nunca el modelo: sirve para
+   * asignar por distancia un domicilio de PM cuando la sucursal no tiene zonas cargadas (`pin-reparto.ts`, CR12). */
+  readonly ubicacion?: { readonly lat: number; readonly lng: number };
   /** Propina en pesos capturada en terminal. Solo se acepta si la politica de la sucursal
    * lo permite (PM: solo con tarjeta); no modifica `total`, se registra en las notas. */
   readonly propina?: number;
@@ -875,9 +878,31 @@ export interface KnownZone {
   readonly id: string;
   readonly organizationId: string;
   readonly name: string;
-  readonly lat: number;
-  readonly lng: number;
+  /** `null` = colonia sin coordenadas propias (migracion 056: las colonias del piloto original vienen sin lat/lng y NO se inventan).
+   * Empareja el nombre y cuenta para la cobertura de entrega, pero no sirve de punto para calcular distancias. Ambas o ninguna. */
+  readonly lat: number | null;
+  readonly lng: number | null;
   readonly createdAt: string;
+}
+
+/** Lo que el piloto original dijo de una colonia (migracion 056): sucursal mas cercana y segunda con sus km, y como se asigno hoy. Solo lectura. */
+export interface ColoniaReferencia {
+  readonly zoneId: string;
+  readonly name: string;
+  readonly lat: number | null;
+  readonly lng: number | null;
+  readonly fuente: string | null;
+  readonly asignacionFuente: string | null;
+  readonly refSucursalSlug: string | null;
+  readonly refKm: number | null;
+  readonly ref2SucursalSlug: string | null;
+  readonly ref2Km: number | null;
+}
+
+/** `disponible:false` = la base todavia no tiene la migracion 056 (el reporte lo dice, nunca finge una lista vacia). */
+export interface ColoniasReferenciaLectura {
+  readonly disponible: boolean;
+  readonly zonas: readonly ColoniaReferencia[];
 }
 
 export interface NewKnownZoneInput {

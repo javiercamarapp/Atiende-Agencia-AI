@@ -6,7 +6,7 @@
 // Dos grupos:
 //   * OPERATIVAS (superadmin completo): organizaciones, costos_ia, consumo_vs_tope, uso_por_vertical, agentes_interruptores, ultimas_corridas,
 //     errores, salud_colas, planes_y_topes, eventos_seguridad, prospectos, uso_copiloto.
-//   * FINANCIERAS (Copiloto CFO, SA-33): mrr, margen_costos_unitarios, pyl, contratos_por_vencer. Las puede usar el superadmin con step-up
+//   * FINANCIERAS (Copiloto CFO, SA-33): mrr, margen_costos_unitarios, pyl, contratos_por_vencer, facturacion_cobranza. Las puede usar el superadmin con step-up
 //     (o sin MFA activa, segun la politica ya vigente del back office) y el rol `finanzas` (solo lectura, que NO ve ninguna operativa). Cada
 //     llamada deja una fila en core.cfo_access_log ANTES de leer el dato; sin step-up deja una fila `denegado` y no devuelve cifras. La respuesta
 //     cita la consulta (herramienta y parametros) y dice "no tengo el dato" cuando falta la fuente. Sin pagos y sin escrituras.
@@ -31,8 +31,12 @@ import { UMBRAL_MARGEN_PCT_DEFAULT, construirFilasCfo, tipoCambioDeFilas } from 
 import { infraDelMes, pylDelMes } from "../routes/superadmin-pyl.ts";
 import type { PlatformScope } from "./alcance.ts";
 import type { Fuente, FuentesPlataforma, RazonFuente } from "./fuentes.ts";
+import { crearHerramientaProponerAccion, type DependenciasAcciones } from "./acciones.ts";
 
-export const HERRAMIENTAS_FINANCIERAS: readonly string[] = ["mrr", "margen_costos_unitarios", "pyl", "contratos_por_vencer"];
+export const HERRAMIENTAS_FINANCIERAS: readonly string[] = ["mrr", "margen_costos_unitarios", "pyl", "contratos_por_vencer", "facturacion_cobranza"];
+
+/** CHAT-17: la unica herramienta que no lee: propone una accion para que una persona la confirme. Nunca la ve el rol `finanzas`. */
+export const HERRAMIENTAS_ACCION: readonly string[] = ["proponer_accion"];
 
 export const HERRAMIENTAS_OPERATIVAS: readonly string[] = [
   "organizaciones",
@@ -47,6 +51,11 @@ export const HERRAMIENTAS_OPERATIVAS: readonly string[] = [
   "eventos_seguridad",
   "prospectos",
   "uso_copiloto",
+  "buscar_organizacion",
+  "ranking_organizaciones",
+  "operaciones_organizacion",
+  "agentes_organizacion",
+  "ranking_actividad",
 ];
 
 export const MENSAJE_FUERA_DE_CATALOGO = "No tengo el dato: esa pregunta no está cubierta por las consultas de plataforma disponibles, así que no puedo darte una cifra confiable.";
@@ -58,6 +67,8 @@ const MICRO = 1_000_000;
 export interface OpcionesCatalogoPlataforma {
   /** Tope mensual propio del Copiloto de plataforma (micro-USD), para `consumo_vs_tope`. */
   readonly topeCopilotoMicroUsd?: number | undefined;
+  /** CHAT-17: con esto el superadmin completo recibe ademas `proponer_accion` (solo PROPONE; ver acciones.ts). Sin ello, el catalogo es de solo lectura. */
+  readonly acciones?: DependenciasAcciones | undefined;
 }
 
 const RAZON_TEXTO: Readonly<Record<RazonFuente, string>> = {
@@ -892,6 +903,402 @@ function contratosPorVencer(f: FuentesPlataforma, scope: PlatformScope): DataCha
   });
 }
 
+function facturacionCobranza(f: FuentesPlataforma, scope: PlatformScope): DataChatTool {
+  const fuente = "Estado de facturacion por organizacion: suscripcion y fin del periodo (core.list_organization_billing_for_superadmin, la misma lectura de la pantalla Costos y facturacion)";
+  return herramientaCfo(f, scope, {
+    name: "facturacion_cobranza",
+    label: "Facturación y cobranza",
+    description:
+      "Estado de cobro de las organizaciones: cuántas tienen suscripción activa, pago pendiente (morosas), cancelada o sin suscripción, con asientos y fin del periodo vigente. Útil para cobranza y próximas renovaciones. Solo consulta financiera.",
+    params: { estado: { type: "enum", values: ["activa", "pago_pendiente", "cancelada", "sin_suscripcion"], optional: true, description: "Solo ese estado de cobro; sin él, todos." } },
+    async run(ctx, args) {
+      const source = `${cita("facturacion_cobranza", args)}: ${fuente}`;
+      const r = await f.facturacion();
+      if (!r.ok) return sinDato(source, r.razon);
+      const porEstado = new Map<string, number>();
+      for (const o of r.data) porEstado.set(o.billingStatus, (porEstado.get(o.billingStatus) ?? 0) + 1);
+      const filtradas = r.data.filter((o) => !args["estado"] || o.billingStatus === args["estado"]);
+      // Primero las que piden atencion (pago pendiente), luego por fin de periodo mas cercano.
+      const prioridad = (e: string): number => (e === "pago_pendiente" ? 0 : e === "activa" ? 1 : 2);
+      const ordenadas = [...filtradas].sort((a, b) => prioridad(a.billingStatus) - prioridad(b.billingStatus) || (a.currentPeriodEnd ?? "9999").localeCompare(b.currentPeriodEnd ?? "9999") || a.name.localeCompare(b.name));
+      const resumen = `${r.data.length} organizaciones: ${porEstado.get("activa") ?? 0} con suscripción activa, ${porEstado.get("pago_pendiente") ?? 0} con pago pendiente, ${porEstado.get("cancelada") ?? 0} canceladas y ${porEstado.get("sin_suscripcion") ?? 0} sin suscripción.`;
+      return resultado(
+        { source, scopeLabel: SCOPE_PLATAFORMA, summary: resumen },
+        [col("organizacion", "Organización"), col("vertical", "Vertical"), col("estado_cobro", "Estado de cobro"), col("asientos", "Asientos", "integer"), col("periodo_hasta", "Periodo vigente hasta")],
+        ordenadas.map((o) => ({ organizacion: texto(o.name), vertical: o.vertical, estado_cobro: o.billingStatus, asientos: o.seats, periodo_hasta: o.currentPeriodEnd ? o.currentPeriodEnd.slice(0, 10) : null })),
+        ctx.maxRows,
+      );
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Alcance multi-organizacion (CHAT-17, agregado del 4-oct): resolver "PM" o "el hotel de Merida" y ordenar organizaciones. Solo lee los repositorios
+// de superadmin que ya existen (nombre, vertical, estado, personal y gasto de IA): NO devuelve ids, correos, telefonos ni datos de clientes finales de
+// las organizaciones (esas columnas ni se leen), asi que no hay PII que redactar ni titulares ARCO que consultar. La bitacora del turno
+// (core.record_data_chat_query) guarda el usuario, la herramienta y los parametros tipados (`nombre`, `vertical`, `estado`), es decir QUE organizacion se busco.
+// ---------------------------------------------------------------------------------------------------------------------------
+
+const PALABRAS_VACIAS = new Set(["el", "la", "los", "las", "de", "del", "en", "un", "una", "y", "a", "mi", "mis", "su", "sus", "con", "por", "para", "que", "cual", "cuanto"]);
+const VERTICAL_POR_PALABRA: Readonly<Record<string, (typeof VERTICALES)[number]>> = {
+  restaurante: "restaurantes", restaurantes: "restaurantes", taqueria: "restaurantes", taquerias: "restaurantes",
+  hotel: "hoteles", hoteles: "hoteles", posada: "hoteles", posadas: "hoteles",
+  renta: "rentas", rentas: "rentas",
+  cita: "citas", citas: "citas", clinica: "citas", clinicas: "citas",
+  despacho: "despachos", despachos: "despachos",
+  licitacion: "licitaciones", licitaciones: "licitaciones",
+};
+
+/** Minusculas y sin acentos, para comparar "Mérida" con "merida". */
+export function normalizarBusqueda(v: string): string {
+  return v.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
+}
+
+/** Separa la frase en una vertical implicita ("el hotel de ..." -> hoteles) y los terminos que deben aparecer en el nombre o el slug. */
+export function interpretarNombre(frase: string): { readonly vertical: (typeof VERTICALES)[number] | undefined; readonly terminos: readonly string[]; readonly palabraVertical: string | undefined } {
+  let vertical: (typeof VERTICALES)[number] | undefined;
+  let palabraVertical: string | undefined;
+  const terminos: string[] = [];
+  for (const t of normalizarBusqueda(frase).split(/[^a-z0-9ñ]+/u).filter(Boolean)) {
+    if (PALABRAS_VACIAS.has(t)) continue;
+    const v = VERTICAL_POR_PALABRA[t];
+    if (v && !vertical) {
+      vertical = v;
+      palabraVertical = t;
+      continue;
+    }
+    terminos.push(t);
+  }
+  return { vertical, terminos, palabraVertical };
+}
+
+function buscarOrganizacion(f: FuentesPlataforma): DataChatTool {
+  const fuente = "Organizaciones de la plataforma (core.list_all_organizations_for_superadmin y core.count_staff_by_organization_for_superadmin); solo nombre, vertical, estado y personal";
+  return herramienta({
+    name: "buscar_organizacion",
+    label: "Buscar organización",
+    description:
+      "Encuentra organizaciones por parte del nombre (sin importar acentos o mayúsculas), vertical o estado: sirve para resolver «PM», «los taquitos» o «el hotel de Mérida». Con el nombre y la vertical, la palabra «hotel» o «restaurante» dentro del nombre acota la vertical. Si hay varias coincidencias las lista para que el usuario elija.",
+    params: {
+      nombre: { type: "string", maxLength: 80, optional: true, description: "Parte del nombre, tal como lo dijo el usuario (p. ej. «PM», «Taquitos», «hotel Mérida»)." },
+      vertical: { type: "enum", values: VERTICALES, optional: true, description: "Solo esa vertical; sin él, todas." },
+      estado: { type: "enum", values: ["trial", "active", "suspended"], optional: true, description: "Solo ese estado; sin él, todos." },
+    },
+    async run(ctx, args) {
+      const r = await f.organizaciones();
+      if (!r.ok) return sinDato(fuente, r.razon);
+      const frase = typeof args["nombre"] === "string" ? args["nombre"] : "";
+      const { vertical: verticalImplicita, terminos, palabraVertical } = interpretarNombre(frase);
+      const verticalExplicita = args["vertical"] as string | undefined;
+      const vertical = verticalExplicita ?? verticalImplicita;
+      const coincide = (o: (typeof r.data)[number]): boolean => {
+        const hay = `${normalizarBusqueda(o.name)} ${normalizarBusqueda(o.slug)}`;
+        // La palabra de vertical de la frase ("hotel") acota la vertical, salvo que tambien este en el nombre ("Hotel Merida" de otra vertical): ahi cuenta como parte del nombre.
+        const verticalOk = verticalExplicita ? o.vertical === verticalExplicita : !verticalImplicita || o.vertical === verticalImplicita || (palabraVertical !== undefined && hay.includes(palabraVertical));
+        return terminos.every((t) => hay.includes(t)) && verticalOk && (!args["estado"] || o.status === args["estado"]);
+      };
+      const halladas = r.data.filter(coincide).sort((a, b) => a.name.localeCompare(b.name));
+      const filtro = [frase ? `nombre «${sanitizeCell(frase, 40)}»` : null, vertical ? `vertical ${vertical}` : null, args["estado"] ? `estado ${String(args["estado"])}` : null].filter(Boolean).join(", ");
+      const resumen =
+        halladas.length === 0
+          ? `Ninguna organización coincide${filtro ? ` con ${filtro}` : ""}.`
+          : halladas.length === 1
+            ? `Una organización coincide${filtro ? ` con ${filtro}` : ""}: ${texto(halladas[0]!.name)}.`
+            : `${halladas.length} organizaciones coinciden${filtro ? ` con ${filtro}` : ""}: pide al usuario que elija una antes de dar cifras de una sola.`;
+      return resultado(
+        { source: `${cita("buscar_organizacion", args)}: ${fuente}`, scopeLabel: SCOPE_PLATAFORMA, summary: resumen },
+        [col("organizacion", "Organización"), col("vertical", "Vertical"), col("estado", "Estado"), col("personal", "Personal con acceso", "integer"), col("alta", "Alta")],
+        halladas.map((o) => ({ organizacion: texto(o.name), vertical: o.vertical, estado: o.status, personal: o.staffCount, alta: o.createdAt.slice(0, 10) })),
+        ctx.maxRows,
+      );
+    },
+  });
+}
+
+function pluralOrganizaciones(n: number): string {
+  return `${n} ${n === 1 ? "organización" : "organizaciones"}`;
+}
+
+function rankingOrganizaciones(f: FuentesPlataforma): DataChatTool {
+  const fuente = "Gasto y llamadas de IA por organizacion (core.llm_usage_daily) y personal con membresia: el mismo dato de Consumo de IA y Organizaciones";
+  return herramienta({
+    name: "ranking_organizaciones",
+    label: "Ranking de organizaciones",
+    description:
+      "Ordena las organizaciones de mayor a menor por gasto de IA, llamadas de IA o personal con acceso, con su vertical, y totaliza por vertical (p. ej. restaurantes frente a hoteles). No incluye pedidos, reservas ni citas por organización: esos conteos solo existen por vertical (herramienta uso_por_vertical).",
+    params: {
+      ...PERIOD_PARAMS,
+      ordenar_por: { type: "enum", values: ["costo_ia", "llamadas_ia", "personal"], optional: true, description: "Métrica del ranking; sin él, costo de IA." },
+      vertical: { type: "enum", values: VERTICALES, optional: true, description: "Solo esa vertical; sin él, todas." },
+      limite: { type: "integer", min: 1, max: 50, optional: true, description: "Cuántas organizaciones mostrar; sin él, 10." },
+    },
+    async run(ctx, args) {
+      const p = periodoDe(ctx, args, fuente);
+      if (!p.ok) return p.result;
+      const { fromDate, toDate, label } = p.period;
+      const [uso, orgs] = await Promise.all([f.llmPorOrganizacion(fromDate, toDate), f.organizaciones()]);
+      if (!uso.ok) return sinDato(fuente, uso.razon);
+      // La lista de organizaciones es la base: una organizacion sin gasto de IA aparece con 0 (no se omite en silencio).
+      if (!orgs.ok) return sinDato(fuente, orgs.razon);
+      const metrica = (args["ordenar_por"] as string | undefined) ?? "costo_ia";
+      const usoPorOrg = new Map(uso.data.map((x) => [x.organizationId, x] as const));
+      const filas = orgs.data
+        .filter((o) => !args["vertical"] || o.vertical === args["vertical"])
+        .map((o) => {
+          const u = usoPorOrg.get(o.id);
+          return { nombre: o.name, vertical: o.vertical, costoMicro: u?.costMicroUsd ?? 0, llamadas: u?.callCount ?? 0, personal: o.staffCount };
+        });
+      const conGasto = filas.filter((x) => x.costoMicro > 0 || x.llamadas > 0).length;
+      const valor = (x: (typeof filas)[number]): number => (metrica === "llamadas_ia" ? x.llamadas : metrica === "personal" ? x.personal : x.costoMicro);
+      const orden = [...filas].sort((a, b) => valor(b) - valor(a) || a.nombre.localeCompare(b.nombre));
+      const limite = typeof args["limite"] === "number" ? args["limite"] : 10;
+      const porVertical = new Map<string, { organizaciones: number; costo: number }>();
+      for (const x of filas) {
+        const a = porVertical.get(x.vertical) ?? { organizaciones: 0, costo: 0 };
+        a.organizaciones += 1;
+        a.costo += x.costoMicro;
+        porVertical.set(x.vertical, a);
+      }
+      const resumenVerticales = [...porVertical.entries()].sort((a, b) => b[1].costo - a[1].costo).map(([v, a]) => `${v}: ${usd(a.costo)} USD en ${pluralOrganizaciones(a.organizaciones)}`).join("; ");
+      return resultado(
+        {
+          source: `${cita("ranking_organizaciones", { ...args, ordenar_por: metrica })}: ${fuente}`,
+          periodLabel: label,
+          scopeLabel: SCOPE_PLATAFORMA,
+          summary: filas.length === 0 ? "No hay organizaciones que coincidan." : `${pluralOrganizaciones(filas.length)}, ${conGasto} con gasto de IA en el periodo. Por vertical: ${resumenVerticales}.`,
+          chart: { kind: "bar", x: "organizacion", y: metrica === "llamadas_ia" ? "llamadas_ia" : metrica === "personal" ? "personal" : "costo_usd" },
+        },
+        [col("posicion", "Lugar", "integer"), col("organizacion", "Organización"), col("vertical", "Vertical"), col("costo_usd", "Costo de IA (USD)", "decimal"), col("llamadas_ia", "Llamadas de IA", "integer"), col("personal", "Personal con acceso", "integer")],
+        orden.slice(0, limite).map((x, i) => ({ posicion: i + 1, organizacion: texto(x.nombre), vertical: x.vertical, costo_usd: usd(x.costoMicro), llamadas_ia: x.llamadas, personal: x.personal })),
+        ctx.maxRows,
+      );
+    },
+  });
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Lecturas POR ORGANIZACION (seguimiento de CHAT-17): todo de todos los negocios, SOLO agregados
+// ---------------------------------------------------------------------------------------------------------------------------
+// Fuente: core.get_operaciones_por_organizacion_for_superadmin (conteos y sumas; ninguna columna es un dato personal de un cliente final) y la bitacora
+// core.superadmin_org_access_log: ANTES de leer, una fila por organizacion consultada (quien, que organizacion resuelta por id, que herramienta, cuando). Si la
+// bitacora no se puede escribir, la consulta NO se ejecuta (falla cerrado). El rol `finanzas` no recibe estas herramientas (ni la funcion SQL le responde).
+
+interface EtiquetasVertical {
+  readonly operaciones: string;
+  readonly ingresos?: string;
+  readonly escalaciones?: string;
+  readonly abiertos?: string;
+  readonly vencidos?: string;
+}
+
+const ETIQUETAS_VERTICAL: Readonly<Record<string, EtiquetasVertical>> = {
+  restaurantes: { operaciones: "Pedidos (sin cancelados)", ingresos: "Ventas de esos pedidos (MXN)", escalaciones: "Escalaciones a una persona", abiertos: "Pedidos abiertos ahora" },
+  hoteles: { operaciones: "Reservas creadas", ingresos: "Importe de esas reservas (MXN)", abiertos: "Estancias vigentes hoy" },
+  rentas: { operaciones: "Reservas de canal creadas", abiertos: "Reservas que ocupan hoy" },
+  citas: { operaciones: "Citas creadas (sin canceladas ni no-show)", abiertos: "Citas por venir" },
+  despachos: { operaciones: "CFDI registrados", abiertos: "Vencimientos fiscales abiertos", vencidos: "Vencimientos fiscales vencidos" },
+  licitaciones: { operaciones: "Convocatorias creadas", abiertos: "Convocatorias abiertas" },
+};
+
+const FUENTE_POR_ORGANIZACION =
+  "Conteos y sumas por organización (core.get_operaciones_por_organizacion_for_superadmin): pedidos, reservas, citas, CFDI y convocatorias según la vertical. Solo agregados, sin datos de clientes finales";
+
+type OrgPlataforma = Extract<Awaited<ReturnType<FuentesPlataforma["organizaciones"]>>, { ok: true }>["data"][number];
+
+type OrgResuelta = { readonly ok: true; readonly org: OrgPlataforma } | { readonly ok: false; readonly result: DataChatToolResult };
+
+/** Resuelve «PM», «los taquitos» o «el hotel de Mérida» a UNA organizacion; si hay varias o ninguna, pide aclarar (nunca adivina). */
+async function resolverOrganizacion(f: FuentesPlataforma, frase: string, source: string): Promise<OrgResuelta> {
+  if (frase.trim() === "") return { ok: false, result: falla("needs_clarification", "¿De qué organización? Dime su nombre o parte de él (si no la conoces, usa buscar_organizacion).", source) };
+  const r = await f.organizaciones();
+  if (!r.ok) return { ok: false, result: sinDato(source, r.razon) };
+  const { vertical, terminos, palabraVertical } = interpretarNombre(frase);
+  const hallazgos = r.data.filter((o) => {
+    const hay = `${normalizarBusqueda(o.name)} ${normalizarBusqueda(o.slug)}`;
+    const verticalOk = !vertical || o.vertical === vertical || (palabraVertical !== undefined && hay.includes(palabraVertical));
+    return terminos.every((t) => hay.includes(t)) && verticalOk;
+  });
+  if (hallazgos.length === 1) return { ok: true, org: hallazgos[0]! };
+  const exactas = hallazgos.filter((o) => normalizarBusqueda(o.name) === normalizarBusqueda(frase));
+  if (exactas.length === 1) return { ok: true, org: exactas[0]! };
+  if (hallazgos.length === 0) return { ok: false, result: falla("needs_clarification", `No encontré ninguna organización que coincida con «${sanitizeCell(frase, 40)}». Prueba con otra parte del nombre o usa la herramienta buscar_organizacion.`, source) };
+  const lista = [...hallazgos]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 6)
+    .map((o) => `${texto(o.name, 40)} (${o.vertical})`)
+    .join("; ");
+  return { ok: false, result: falla("needs_clarification", `Hay ${hallazgos.length} organizaciones que coinciden con «${sanitizeCell(frase, 40)}»: ${lista}. Pide al usuario que elija una.`, source) };
+}
+
+type Huella = { readonly ok: true } | { readonly ok: false; readonly result: DataChatToolResult };
+
+/** Deja la fila de bitacora por organizacion ANTES de leer; sin ella, la consulta no corre. */
+async function dejarHuella(f: FuentesPlataforma, ids: readonly string[], nombre: string, args: ParsedArgs, source: string): Promise<Huella> {
+  const filtros: Record<string, unknown> = { _ruta: "/superadmin/copiloto" };
+  for (const [k, v] of Object.entries(args)) if (v !== undefined && k !== "organizacion") filtros[k] = typeof v === "string" ? v.slice(0, 40) : v;
+  const r = await f.registrarAccesoOrganizaciones(ids, nombre, filtros);
+  if (r === "ok") return { ok: true };
+  if (r === "no_migrado") return { ok: false, result: sinDato(source, "no_migrado") };
+  return { ok: false, result: falla("unavailable", "No tengo el dato: no pude registrar la consulta por organización en la bitácora y, por seguridad, no se ejecuta.", source) };
+}
+
+function operacionesOrganizacion(f: FuentesPlataforma): DataChatTool {
+  return herramienta({
+    name: "operaciones_organizacion",
+    label: "Operación de una organización",
+    description:
+      "Actividad de UNA organización (cualquier vertical) en el periodo: pedidos y ventas (restaurantes), reservas e importe (hoteles), reservas de canal (rentas), citas, CFDI y vencimientos fiscales (despachos) o convocatorias (licitaciones), más escalaciones y lo abierto ahora. Solo cifras agregadas; nunca nombres, teléfonos ni direcciones de clientes. Si el nombre es ambiguo pide aclarar.",
+    params: {
+      ...PERIOD_PARAMS,
+      organizacion: { type: "string", maxLength: 80, optional: true, description: "Nombre o parte del nombre de la organización, tal como lo dijo el usuario (p. ej. «Taquitos de PM», «hotel Mérida»). Obligatorio para responder." },
+    },
+    async run(ctx, args) {
+      const frase = typeof args["organizacion"] === "string" ? args["organizacion"] : "";
+      const fuente = FUENTE_POR_ORGANIZACION;
+      const p = periodoDe(ctx, args, fuente);
+      if (!p.ok) return p.result;
+      const org = await resolverOrganizacion(f, frase, fuente);
+      if (!org.ok) return org.result;
+      const { fromDate, toDate, label } = p.period;
+      const source = `${cita("operaciones_organizacion", { ...args, organizacion: org.org.name })}: ${fuente}`;
+      const huella = await dejarHuella(f, [org.org.id], "operaciones_organizacion", args, source);
+      if (!huella.ok) return huella.result;
+      const r = await f.operacionesPorOrganizacion(fromDate, toDate, hoy(ctx), org.org.id);
+      if (!r.ok) return sinDato(source, r.razon);
+      const fila = r.data.find((x) => x.organizationId === org.org.id);
+      if (!fila) return falla("unavailable", `No tengo el dato: no hay lectura de ${texto(org.org.name)} en este despliegue.`, source);
+      if (fila.razon === "fuente_no_migrada") return falla("unavailable", `No tengo el dato: falta aplicar en este despliegue la actualización de datos de la vertical ${org.org.vertical}.`, source);
+      const et = ETIQUETAS_VERTICAL[fila.vertical] ?? { operaciones: "Operaciones" };
+      const valores: ReadonlyArray<readonly [string | undefined, number | null, "integer" | "mxn"]> = [
+        [et.operaciones, fila.operaciones, "integer"],
+        [et.ingresos, fila.ingresos, "mxn"],
+        [et.escalaciones, fila.escalaciones, "integer"],
+        [et.abiertos, fila.abiertos, "integer"],
+        [et.vencidos, fila.vencidos, "integer"],
+      ];
+      const rows = valores.filter(([etiqueta, valor]) => etiqueta !== undefined && valor !== null).map(([etiqueta, valor, tipo]) => ({ metrica: etiqueta as string, valor: tipo === "mxn" ? roundMoney(valor as number) : (valor as number) }));
+      const resumen = `${texto(org.org.name)} (${fila.vertical}): ${fila.operaciones ?? 0} ${(et.operaciones ?? "operaciones").toLowerCase()} en el periodo${fila.ingresos !== null ? `, ${formatMxn(roundMoney(fila.ingresos))}` : ""}${(fila.operaciones ?? 0) === 0 ? ". Sin actividad en el periodo." : "."}`;
+      return resultado(
+        { source, periodLabel: label, scopeLabel: `${texto(org.org.name)} · ${fila.vertical}`, summary: resumen },
+        [col("metrica", "Métrica"), col("valor", "Valor", "decimal")],
+        rows,
+        ctx.maxRows,
+      );
+    },
+  });
+}
+
+const METRICAS_RANKING = ["operaciones", "ingresos", "escalaciones", "abiertos"] as const;
+const ETIQUETA_METRICA: Readonly<Record<(typeof METRICAS_RANKING)[number], string>> = { operaciones: "Operaciones", ingresos: "Ingresos (MXN)", escalaciones: "Escalaciones", abiertos: "Abiertos ahora" };
+
+function rankingActividad(f: FuentesPlataforma): DataChatTool {
+  return herramienta({
+    name: "ranking_actividad",
+    label: "Ranking de actividad por organización",
+    description:
+      "Ordena TODAS las organizaciones (las que no tuvieron actividad aparecen con 0) por operaciones del periodo (pedidos, reservas, citas, CFDI o convocatorias según su vertical), ingresos (solo restaurantes y hoteles), escalaciones a una persona (solo restaurantes) o pendientes abiertos ahora. Dice cuántas organizaciones hay y cuántas tuvieron actividad. Solo agregados.",
+    params: {
+      ...PERIOD_PARAMS,
+      metrica: { type: "enum", values: METRICAS_RANKING, optional: true, description: "Qué ordenar; sin él, operaciones (pedidos, reservas, citas, etc.)." },
+      vertical: { type: "enum", values: VERTICALES, optional: true, description: "Solo esa vertical; sin él, todas las que guardan esa métrica." },
+      limite: { type: "integer", min: 1, max: 50, optional: true, description: "Cuántas organizaciones mostrar; sin él, 10." },
+    },
+    async run(ctx, args) {
+      const fuente = FUENTE_POR_ORGANIZACION;
+      const p = periodoDe(ctx, args, fuente);
+      if (!p.ok) return p.result;
+      const { fromDate, toDate, label } = p.period;
+      const metrica = (args["metrica"] as (typeof METRICAS_RANKING)[number] | undefined) ?? "operaciones";
+      const source = `${cita("ranking_actividad", { ...args, metrica })}: ${fuente}`;
+      const orgs = await f.organizaciones();
+      if (!orgs.ok) return sinDato(source, orgs.razon);
+      const alcance = orgs.data.filter((o) => !args["vertical"] || o.vertical === args["vertical"]);
+      const huella = await dejarHuella(f, alcance.map((o) => o.id), "ranking_actividad", args, source);
+      if (!huella.ok) return huella.result;
+      const r = await f.operacionesPorOrganizacion(fromDate, toDate, hoy(ctx), null);
+      if (!r.ok) return sinDato(source, r.razon);
+      const porId = new Map(r.data.map((x) => [x.organizationId, x] as const));
+      const filas = alcance.map((o) => ({ o, d: porId.get(o.id) }));
+      // Con dato = la vertical guarda esa metrica y su fuente esta migrada; "sin fuente" NO es 0 y se cuenta aparte.
+      const conFuente = filas.filter((x) => x.d !== undefined && x.d.razon === null && x.d[metrica] !== null);
+      const sinFuente = filas.length - conFuente.length;
+      const valor = (x: (typeof conFuente)[number]): number => x.d![metrica] ?? 0;
+      const conActividad = conFuente.filter((x) => valor(x) > 0).length;
+      const orden = [...conFuente].sort((a, b) => valor(b) - valor(a) || a.o.name.localeCompare(b.o.name));
+      const limite = typeof args["limite"] === "number" ? args["limite"] : 10;
+      const porVertical = new Map<string, { organizaciones: number; total: number }>();
+      for (const x of conFuente) {
+        const a = porVertical.get(x.o.vertical) ?? { organizaciones: 0, total: 0 };
+        a.organizaciones += 1;
+        a.total += valor(x);
+        porVertical.set(x.o.vertical, a);
+      }
+      const unidad = (n: number): string => (metrica === "ingresos" ? formatMxn(roundMoney(n)) : String(n));
+      const porVerticalTxt = [...porVertical.entries()].sort((a, b) => b[1].total - a[1].total).map(([v, a]) => `${v}: ${unidad(a.total)} en ${pluralOrganizaciones(a.organizaciones)}`).join("; ");
+      const resumen =
+        conFuente.length === 0
+          ? `Ninguna organización${args["vertical"] ? ` de ${String(args["vertical"])}` : ""} guarda «${ETIQUETA_METRICA[metrica].toLowerCase()}» (${pluralOrganizaciones(sinFuente)} sin esa fuente).`
+          : `${pluralOrganizaciones(conFuente.length)}, ${conActividad} con actividad en el periodo${sinFuente > 0 ? `; ${pluralOrganizaciones(sinFuente)} no ${sinFuente === 1 ? "guarda" : "guardan"} ese dato y no se comparan` : ""}. Por vertical: ${porVerticalTxt}.`;
+      return resultado(
+        { source, periodLabel: label, scopeLabel: SCOPE_PLATAFORMA, summary: resumen, chart: { kind: "bar", x: "organizacion", y: "valor" } },
+        [col("posicion", "Lugar", "integer"), col("organizacion", "Organización"), col("vertical", "Vertical"), col("valor", ETIQUETA_METRICA[metrica], metrica === "ingresos" ? "mxn" : "integer")],
+        orden.slice(0, limite).map((x, i) => ({ posicion: i + 1, organizacion: texto(x.o.name), vertical: x.o.vertical, valor: metrica === "ingresos" ? roundMoney(valor(x)) : valor(x) })),
+        ctx.maxRows,
+      );
+    },
+  });
+}
+
+function agentesOrganizacion(f: FuentesPlataforma): DataChatTool {
+  const fuente = "Llamadas, fallbacks y costo de los agentes de IA de una organización (core.llm_usage_daily) y escalaciones a una persona (core.get_operaciones_por_organizacion_for_superadmin). Solo agregados";
+  return herramienta({
+    name: "agentes_organizacion",
+    label: "Agentes y escalaciones de una organización",
+    description:
+      "Qué agentes de IA usó UNA organización en el periodo (llamadas, fallbacks a otro modelo, costo en USD) y cuántas escalaciones a una persona tuvo (solo restaurantes las guardan). Si el nombre es ambiguo pide aclarar.",
+    params: {
+      ...PERIOD_PARAMS,
+      organizacion: { type: "string", maxLength: 80, optional: true, description: "Nombre o parte del nombre de la organización. Obligatorio para responder." },
+    },
+    async run(ctx, args) {
+      const frase = typeof args["organizacion"] === "string" ? args["organizacion"] : "";
+      const p = periodoDe(ctx, args, fuente);
+      if (!p.ok) return p.result;
+      const org = await resolverOrganizacion(f, frase, fuente);
+      if (!org.ok) return org.result;
+      const { fromDate, toDate, label } = p.period;
+      const source = `${cita("agentes_organizacion", { ...args, organizacion: org.org.name })}: ${fuente}`;
+      const huella = await dejarHuella(f, [org.org.id], "agentes_organizacion", args, source);
+      if (!huella.ok) return huella.result;
+      const [uso, ops] = await Promise.all([f.llmPorRolMes(fromDate, toDate), f.operacionesPorOrganizacion(fromDate, toDate, hoy(ctx), org.org.id)]);
+      if (!uso.ok) return sinDato(source, uso.razon);
+      const porRol = new Map<string, { llamadas: number; fallbacks: number; costo: number }>();
+      for (const x of uso.data.filter((u) => u.organizationId === org.org.id)) {
+        const a = porRol.get(x.role) ?? { llamadas: 0, fallbacks: 0, costo: 0 };
+        a.llamadas += x.callCount;
+        a.fallbacks += x.fallbackCallCount;
+        a.costo += x.costMicroUsd;
+        porRol.set(x.role, a);
+      }
+      const escalaciones = ops.ok ? (ops.data.find((x) => x.organizationId === org.org.id)?.escalaciones ?? null) : null;
+      const escTxt = escalaciones === null ? "las escalaciones a una persona no se guardan para esta vertical o no están disponibles" : `${escalaciones} escalaciones a una persona`;
+      const rows = [...porRol.entries()].sort((a, b) => b[1].llamadas - a[1].llamadas || a[0].localeCompare(b[0])).map(([rol, a]) => ({ rol, llamadas: a.llamadas, fallbacks: a.fallbacks, costo_usd: usd(a.costo) }));
+      return resultado(
+        {
+          source,
+          periodLabel: label,
+          scopeLabel: `${texto(org.org.name)} · ${org.org.vertical}`,
+          summary: rows.length === 0 ? `${texto(org.org.name)} no usó agentes de IA en el periodo; ${escTxt}.` : `${texto(org.org.name)}: ${rows.length} agentes con uso en el periodo; ${escTxt}.`,
+        },
+        [col("rol", "Agente"), col("llamadas", "Llamadas", "integer"), col("fallbacks", "Fallbacks", "integer"), col("costo_usd", "Costo (USD)", "decimal")],
+        rows,
+        ctx.maxRows,
+      );
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------------------------------------------------------
 // Catalogo
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -901,7 +1308,7 @@ function contratosPorVencer(f: FuentesPlataforma, scope: PlatformScope): DataCha
  * (estas ultimas rechazan el turno sin step-up y dejan huella). `vertical` = 'plataforma'.
  */
 export function buildCatalogoPlataforma(fuentes: FuentesPlataforma, scope: PlatformScope, opciones: OpcionesCatalogoPlataforma = {}): DataChatCatalog {
-  const financieras = [mrr(fuentes, scope), margenCostosUnitarios(fuentes, scope), pyl(fuentes, scope), contratosPorVencer(fuentes, scope)];
+  const financieras = [mrr(fuentes, scope), margenCostosUnitarios(fuentes, scope), pyl(fuentes, scope), contratosPorVencer(fuentes, scope), facturacionCobranza(fuentes, scope)];
   const operativas = [
     organizaciones(fuentes),
     costosIa(fuentes),
@@ -915,14 +1322,20 @@ export function buildCatalogoPlataforma(fuentes: FuentesPlataforma, scope: Platf
     eventosSeguridad(fuentes),
     prospectos(fuentes),
     usoCopiloto(fuentes),
+    buscarOrganizacion(fuentes),
+    rankingOrganizaciones(fuentes),
+    operacionesOrganizacion(fuentes),
+    agentesOrganizacion(fuentes),
+    rankingActividad(fuentes),
   ];
-  const tools = scope.rol === "finanzas" ? financieras : [...operativas, ...financieras];
+  const acciones = scope.rol === "superadmin" && opciones.acciones ? [crearHerramientaProponerAccion(scope, opciones.acciones)] : [];
+  const tools = scope.rol === "finanzas" ? financieras : [...operativas, ...financieras, ...acciones];
   return {
     vertical: "plataforma",
     domain:
       scope.rol === "finanzas"
-        ? "la plataforma Atiende, rol finanzas de solo lectura (únicamente consultas financieras: MRR, márgenes, P&L y contratos)"
-        : "la plataforma Atiende, vista de superadmin (organizaciones, costos de IA, salud operativa, planes, seguridad y finanzas de todos los clientes)",
+        ? "la plataforma Atiende, rol finanzas de solo lectura (únicamente consultas financieras: MRR, márgenes, P&L, contratos y cobranza)"
+        : "la plataforma Atiende, vista de superadmin (organizaciones, actividad de cada negocio, costos de IA, salud operativa, planes, seguridad y finanzas de todos los clientes)",
     tools,
     outOfCatalogMessage: MENSAJE_FUERA_DE_CATALOGO,
     async describeScope() {

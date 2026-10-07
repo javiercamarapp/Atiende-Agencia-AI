@@ -63,6 +63,23 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
       ...directorio,
     });
   }
+  // Zonas conocidas y cobertura de entrega, igual que el SQL del seed (pasos 6, 6b y 6c): puntos de las sucursales con coordenadas y colonias sin
+  // coordenadas; cada una cubre solo la sucursal que le asigno el plan (las sin asignar no cubren ninguna).
+  const zonaIds = new Map<string, string>();
+  const coberturas = new Map<string, string[]>();
+  const cubrir = (zoneName: string, branchId: string | null, lat: number | null, lng: number | null, extra: Partial<Parameters<typeof repo.seedKnownZone>[0]> = {}) => {
+    const id = newId("zona", zoneName);
+    zonaIds.set(zoneName, id);
+    repo.seedKnownZone({ id, organizationId, name: zoneName, lat, lng, ...extra });
+    const slug = branchId ? plan.branches.find((b) => b.id === branchId)?.slug : undefined;
+    const propertyId = slug ? propertyBySlug.get(slug) : undefined;
+    if (propertyId) coberturas.set(propertyId, [...(coberturas.get(propertyId) ?? []), id]);
+  };
+  for (const z of plan.zones) cubrir(z.name, z.branchId, z.lat, z.lng);
+  for (const c of plan.colonias) {
+    cubrir(c.name, c.branchId, null, null, { fuente: c.fuente, asignacionFuente: c.asignacionFuente, refSucursalSlug: c.refSlug, refKm: c.refKm, ref2SucursalSlug: c.ref2Slug, ref2Km: c.ref2Km });
+  }
+  for (const [propertyId, ids] of coberturas) repo.seedBranchDeliveryZones(propertyId, ids);
   for (const promo of plan.promotions) {
     await repo.createPromotion(organizationId, {
       code: promo.code,

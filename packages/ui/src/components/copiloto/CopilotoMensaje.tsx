@@ -3,9 +3,10 @@ import { Link } from "react-router-dom";
 import { AtiendeMark } from "../AtiendeLogo";
 import { Card, CardContent } from "../ui/card";
 import { CopilotoAcciones } from "./CopilotoAcciones";
+import { CopilotoTarjetaAccion, TOOL_PROPONER_ACCION, propuestaDeBloque } from "./CopilotoTarjetaAccion";
 import { GraficaBloque, Sparkline, planGrafica } from "./CopilotoGraficas";
 import { formatoCelda, rutaInternaSegura } from "./formato";
-import type { CopilotoBloque, CopilotoMensaje, CopilotoStatus, CopilotoTransporte } from "./tipos";
+import type { CopilotoAccionesCliente, CopilotoBloque, CopilotoMensaje, CopilotoStatus, CopilotoTransporte } from "./tipos";
 
 const MAX_FILAS = 10;
 
@@ -124,6 +125,7 @@ export function CopilotoMensajeVista({
   onRegenerar,
   onPreguntar,
   vertical,
+  acciones,
 }: {
   mensaje: CopilotoMensaje;
   esUltima: boolean;
@@ -135,6 +137,8 @@ export function CopilotoMensajeVista({
   onRegenerar: () => void;
   onPreguntar: (pregunta: string) => void;
   vertical?: string;
+  /** Solo Copiloto de superadmin: dibuja los bloques `proponer_accion` como tarjeta de accion. */
+  acciones?: CopilotoAccionesCliente;
 }) {
   if (mensaje.role === "user") {
     return (
@@ -186,11 +190,22 @@ export function CopilotoMensajeVista({
       ) : null}
 
       {exito
-        ? (mensaje.blocks ?? []).map((b, i) => (
-            <div key={`${b.tool}-${i}`} className="ml-6">
-              <BloqueDatos bloque={b} />
-            </div>
-          ))
+        ? (mensaje.blocks ?? []).map((b, i) => {
+            // Una propuesta de accion NUNCA se dibuja como tabla (lleva el identificador de la propuesta): o es tarjeta, o no se muestra.
+            if (b.tool === TOOL_PROPONER_ACCION) {
+              const propuesta = acciones ? propuestaDeBloque(b) : null;
+              return propuesta && acciones ? (
+                <div key={`${b.tool}-${i}`} className="ml-6">
+                  <CopilotoTarjetaAccion propuesta={propuesta} cliente={acciones} />
+                </div>
+              ) : null;
+            }
+            return (
+              <div key={`${b.tool}-${i}`} className="ml-6">
+                <BloqueDatos bloque={b} />
+              </div>
+            );
+          })
         : null}
 
       {exito && mensaje.sources && mensaje.sources.length > 0 ? (
@@ -215,7 +230,7 @@ export function CopilotoMensajeVista({
       ) : null}
 
       {exito && mensaje.text.trim() ? (
-        <CopilotoAcciones mensaje={mensaje} conversacionId={conversacionId} transporte={transporte} esUltima={esUltima} ocupado={ocupado} onRegenerar={onRegenerar} vertical={vertical} />
+        <CopilotoAcciones mensaje={{ ...mensaje, blocks: (mensaje.blocks ?? []).filter((b) => b.tool !== TOOL_PROPONER_ACCION) }} conversacionId={conversacionId} transporte={transporte} esUltima={esUltima} ocupado={ocupado} onRegenerar={onRegenerar} vertical={vertical} />
       ) : null}
       {mensaje.status === "unavailable" && esUltima ? (
         <div className="ml-6">

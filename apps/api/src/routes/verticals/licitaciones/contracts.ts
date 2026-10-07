@@ -149,7 +149,7 @@ export function licitacionesContractRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
 
     // Segunda capa (L-01): segundo factor reciente para las transiciones sensibles.
     if (CONTRACT_STEP_UP_TRANSITIONS.includes(toStatus)) {
-      await requireStepUp(deps, { userId: actorId, organizationId, scope: "contract_sensitive", token: c.req.header("x-step-up-token") });
+      await requireStepUp(deps, { userId: actorId, organizationId, scope: "contract_sensitive", token: c.req.header("x-step-up-token"), db: c.get("db") });
     }
 
     const tender = await repo.findTender(organizationId, tenderId);

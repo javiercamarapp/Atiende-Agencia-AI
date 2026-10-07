@@ -12,6 +12,7 @@ import { ADDRESS_MASK_MARKER, ADDRESS_OMITTED_MARKER, sanitizeInlineText, saniti
 import { formatUbicacionEntregaNota } from "./whatsapp/location.ts";
 import { cerrarCicloDelCliente } from "./cliente-360/memoria.ts";
 import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice, MAX_PIEZAS_POR_RENGLON, mensajeCantidadInvalida } from "./order-quote.ts";
+import { exigirPinSiPmSinZonas } from "./pin-reparto.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
@@ -338,6 +339,8 @@ export async function prepareCreateOrder(
         ? { now: options.asOf }
         : {}),
   });
+  // CR12: PM sin zonas cargadas no acepta "cualquier colonia" a domicilio: exige el pin (asigna por distancia) o una persona.
+  await exigirPinSiPmSinZonas(repo, { branch, canal: normalizarCanal(payload.canal), source: payload.source, ubicacion: payload.ubicacion });
 
   // Fase 11 — promociones/marketing (ver promotions.ts para el porqué de este
   // gap y por qué es deliberadamente nuevo respecto al original). Se aplica DESPUÉS
@@ -600,6 +603,9 @@ export async function quoteOrder(
      * (solo para decidir si corresponde preguntar propina). */
     readonly canal?: CanalPedido;
     readonly colonia?: string;
+    /** Pin compartido por el cliente y canal de origen (CR12, `pin-reparto.ts`); solo los pone el servidor. */
+    readonly ubicacion?: { readonly lat: number; readonly lng: number };
+    readonly source?: "web" | "voice" | "whatsapp" | "admin";
     readonly paymentMethod?: "efectivo" | "tarjeta";
     /** Doble porcion de salsas (extra cobrado, ver `buildDoubleSalsaLine`). */
     readonly doubleSalsas?: readonly DoubleSalsa[];
@@ -638,6 +644,7 @@ export async function quoteOrder(
     paymentMethod: args.paymentMethod,
     ...(instante ? { now: instante, exigirAbierto: true, mensajeCerrado: mensajeCerradoProgramado(branch.name, programadoPara!) } : {}),
   });
+  await exigirPinSiPmSinZonas(repo, { branch, canal, source: args.source, ubicacion: args.ubicacion });
 
   // PM PR-4: promociones automaticas por dia y canal. `total` pasa a ser el TOTAL A PAGAR (ya con el
   // descuento) y `subtotal` conserva el de renglones; sin promocion aplicada nada cambia. Las promociones

@@ -286,7 +286,7 @@ export function licitacionesPostAdjudicacionRoutes(deps: AppDeps): Hono<CoreAuth
     const key = requireIdempotencyKey(c);
     const organizationId = c.get("organizationId");
     const raw = await readJsonCapped<unknown>(c.req.raw, MAX_BODY_BYTES);
-    await requireStepUp(deps, { userId: c.get("userId"), organizationId, scope: "contract_sensitive", token: c.req.header("x-step-up-token") });
+    await requireStepUp(deps, { userId: c.get("userId"), organizationId, scope: "contract_sensitive", token: c.req.header("x-step-up-token"), db: c.get("db") });
     const licRepo = deps.licitacionesRepo(c.get("db"));
     const contract = await requireContract(licRepo, organizationId, c.req.param("tenderId"));
     try {

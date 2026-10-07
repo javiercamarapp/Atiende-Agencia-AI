@@ -294,7 +294,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
                   <div>
                     <p className="m-0 text-sm font-semibold text-foreground">{z.name}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {z.lat}, {z.lng}
+                      {z.lat === null || z.lng === null ? "Sin coordenadas" : `${z.lat}, ${z.lng}`}
                     </p>
                   </div>
                   <Button type="button" variant="ghost" size="icon-sm" aria-label={`Quitar zona ${z.name}`} onClick={() => void handleDeleteZone(z)} disabled={deletingZoneId === z.id}>

@@ -14,7 +14,7 @@
 // diferencia de hoteles): el adaptador resuelve siempre la primera property y no persiste
 // ninguna elección (mismo criterio que antes: `branches[0]`), así que no hay selector.
 import type { ReactNode } from "react";
-import { BellRing, Building2, CalendarOff, CheckCheck, Database, FileText, Gavel, LayoutDashboard, Lock, MessageCircle, Radar, ShieldAlert, ShieldCheck, Sparkles, Target, Users } from "lucide-react";
+import { BellRing, Building2, CalendarOff, CheckCheck, Database, FileText, Gavel, LayoutDashboard, Lock, MessageCircle, Radar, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Target, Users } from "lucide-react";
 import { VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
@@ -115,6 +115,8 @@ function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean, puedePriv
         { to: `${base}/dias-inhabiles`, label: "Días inhábiles", icon: CalendarOff },
         { to: `${base}/aprobaciones`, label: "Aprobaciones", icon: CheckCheck },
         ...(puedeVerStaff ? [{ to: `${base}/staff`, label: "Staff", icon: Users }] : []),
+        // L-P3-17: quién cambió qué, con antes y después (solo owner/admin, mismo umbral que Staff).
+        ...(puedeVerStaff ? [{ to: `${base}/bitacora`, label: "Bitácora", icon: ScrollText }] : []),
         { to: `${base}/whatsapp`, label: "WhatsApp", icon: MessageCircle },
         { to: `${base}/seguridad`, label: "Seguridad", icon: ShieldCheck },
         // L-20: solicitudes ARCO, retención y aviso de privacidad de la organización (solo owner/admin).

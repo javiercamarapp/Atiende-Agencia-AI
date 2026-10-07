@@ -4,6 +4,7 @@
 // texto en la bandeja de Aprobaciones: nunca crea elementos <script>/<img>/<svg>, atributos de evento ni ejecuta codigo. Equivalente del
 // `xss-mensajeria.adversarial.test.tsx` del original.
 import { act } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AprobacionesPage } from "../src/verticals/rentas/pages/Aprobaciones.tsx";
 import type { RentasShellContext } from "../src/verticals/rentas/RentasShell.tsx";
@@ -58,7 +59,7 @@ async function abrir(): Promise<RenderedComponent> {
       throw new Error(`fetch inesperado en el test: ${url}`);
     }),
   );
-  const r = renderComponent(<AprobacionesPage {...CTX} />);
+  const r = renderComponent(<MemoryRouter><AprobacionesPage {...CTX} /></MemoryRouter>);
   await esperar();
   const verHistorial = [...r.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Ver historial"));
   if (verHistorial) {

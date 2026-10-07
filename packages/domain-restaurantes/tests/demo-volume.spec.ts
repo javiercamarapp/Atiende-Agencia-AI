@@ -107,19 +107,27 @@ describe("generarVolumenDemo (motor real de pedidos)", () => {
     void world;
   });
 
-  it("la promocion 2x1 del lunes la aplica el motor: solo lunes, solo recoger y solo con tacos al pastor", async () => {
+  it("las promociones de PM las aplica el motor: 2x1 solo lunes con tacos al pastor y combo solo martes, ambas solo recoger", async () => {
     const { orders } = await generar({ dias: 56, pedidosPorDia: 30 });
     const conPromo = orders.filter((o) => descuento(o) > 0);
     expect(conPromo.length).toBeGreaterThan(0);
+    const diaNegocio = (o: DemoOrderRow) =>
+      // Dia de NEGOCIO: el turno cierra a la 1 am, asi que un pedido entre 00:00 y 01:00 es de la jornada anterior.
+      new Intl.DateTimeFormat("en-US", { timeZone: "America/Merida", weekday: "long" }).format(new Date(new Date(o.createdAt).getTime() - 3_600_000));
     for (const o of conPromo) {
       expect(o.canal).toBe("recoger");
       // CR07/CR08: el dueño da el 2x1 para todas las sucursales (cuestionario l.99): vale en todas las sucursales con pedidos (T1, T3 y T7).
       expect(["pensiones", "prol-montejo", "garcia-lavin"]).toContain(o.branchSlug);
-      const dia = new Intl.DateTimeFormat("en-US", { timeZone: "America/Merida", weekday: "long" }).format(new Date(o.createdAt));
-      expect(dia).toBe("Monday");
-      expect(o.items.some((i) => i.name === "Taco Al Pastor (individual)")).toBe(true);
+      const codigo = /Promoción aplicada: ([A-Z0-9_-]+)/.exec(o.notes)?.[1];
+      if (codigo === "LUNES2X1PM") {
+        expect(diaNegocio(o)).toBe("Monday");
+        expect(o.items.some((i) => i.name === "Taco Al Pastor (individual)")).toBe(true);
+      } else {
+        expect(codigo).toBe("MARTESNACHOSPM");
+        expect(diaNegocio(o)).toBe("Tuesday");
+      }
     }
-    // A domicilio nunca hay promocion (aunque sea lunes).
+    // A domicilio nunca hay promocion (aunque sea lunes o martes).
     expect(orders.filter((o) => o.canal === "domicilio").every((o) => descuento(o) === 0)).toBe(true);
   });
 

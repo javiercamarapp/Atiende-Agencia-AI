@@ -40,7 +40,8 @@ export type BranchAssignment =
       readonly estado: "asignada";
       readonly branchSlug: string;
       readonly branchName: string;
-      readonly distanceKm: number;
+      /** `null` = colonia reconocida sin coordenadas: la sucursal sale de la cobertura cargada y no hay distancia que reportar. */
+      readonly distanceKm: number | null;
       readonly via: BranchAssignmentVia;
       readonly recognizedZoneName: string | null;
       /** true cuando la cobertura de la zona cambio la sucursal respecto a la mas cercana en km puros. */
@@ -103,13 +104,27 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
   let via: BranchAssignmentVia = "coordenadas";
   if (hasLat) {
     point = { lat: input.lat as number, lng: input.lng as number };
-  } else if (zone) {
+  } else if (zone && zone.lat !== null && zone.lng !== null) {
     point = { lat: zone.lat, lng: zone.lng };
     via = "zona";
   }
-  if (!point) return { estado: "no_reconocida", message: COLONIA_NO_RECONOCIDA_MENSAJE };
-
   const active = (await repo.listBranchesForOrganizationAdmin(input.organizationId)).filter((b) => b.status === "active");
+
+  // Colonia reconocida SIN coordenadas propias (migracion 056, colonias del piloto original): no hay punto para medir km. La sucursal
+  // sale SOLO de la cobertura de entrega cargada (`branch_delivery_zone`); si ninguna sucursal activa la cubre (colonia ambigua o
+  // sin asignar) NO se adivina: `no_reconocida` y el agente pide otra referencia o escala. La distancia queda `null` (no se inventa).
+  if (!point && zone) {
+    const cubren: Branch[] = [];
+    for (const candidate of active) {
+      if ((await repo.listBranchDeliveryZoneIds(candidate.propertyId)).includes(zone.id)) cubren.push(candidate);
+    }
+    // Mas de una sucursal que la cubre: no se elige por orden de listado; el cliente debe dar otra referencia o pin.
+    const unica = cubren.length === 1 ? cubren[0] : undefined;
+    if (!unica) return { estado: "no_reconocida", message: COLONIA_NO_RECONOCIDA_MENSAJE };
+    return { estado: "asignada", branchSlug: unica.slug, branchName: unica.name, distanceKm: null, via: "zona", recognizedZoneName: zone.name, ajustePorZona: false };
+  }
+
+  if (!point) return { estado: "no_reconocida", message: COLONIA_NO_RECONOCIDA_MENSAJE };
   const ranked = rankBranchesByKm(point.lat, point.lng, active);
   const nearest = ranked[0];
   if (!nearest) return { estado: "no_reconocida", message: COLONIA_NO_RECONOCIDA_MENSAJE };

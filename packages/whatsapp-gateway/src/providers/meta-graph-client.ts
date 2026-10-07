@@ -169,7 +169,7 @@ export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
     } catch (err) {
       // Fallo de red (DNS, timeout, conexión rechazada) — siempre reintentable,
       // nunca es culpa del mensaje en sí.
-      throw new WhatsAppSendError(`fallo de red al llamar Graph API: ${err instanceof Error ? err.message : String(err)}`, true);
+      throw new WhatsAppSendError(`fallo de red al llamar Graph API: ${err instanceof Error ? err.message : String(err)}`, true, { proveedor: true });
     }
 
     if (!response.ok) {
@@ -186,7 +186,11 @@ export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
       // sin cambiar nada solo repite el mismo error, así que se marca no
       // reintentable (el dispatcher lo manda a `dead` de inmediato).
       const retryable = response.status === 429 || response.status >= 500;
-      throw new WhatsAppSendError(`Graph API respondió ${response.status}: ${detail}`, retryable);
+      const graphCode = typeof parsed?.error?.code === "number" ? parsed.error.code : undefined;
+      // Solo cuenta como falla del PROVEEDOR (base de la alerta de proveedor caido) lo que no es culpa del mensaje: 429, 5xx y el token invalido (190).
+      // Un 4xx causado por el mensaje (numero invalido, parametro de plantilla malo) no es proveedor caido: se informa httpStatus/graphCode sin la marca.
+      const proveedor = retryable || graphCode === 190;
+      throw new WhatsAppSendError(`Graph API respondió ${response.status}: ${detail}`, retryable, { proveedor, httpStatus: response.status, ...(graphCode !== undefined ? { graphCode } : {}) });
     }
 
     let success: GraphApiSuccessBody;
