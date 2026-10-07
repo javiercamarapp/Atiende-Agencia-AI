@@ -7,6 +7,25 @@
 import type { ConversationMessage } from "../repository.ts";
 import type { CitasCustomerContext } from "../customers.ts";
 
+/**
+ * Pedido de pasar la conversacion a una persona. Lo levanta el turno (el paciente lo pidio, o el asistente no estuvo disponible) y lo ejecuta
+ * `inbound.ts`, que es quien tiene el puerto de handoff: abre una toma pendiente (notificacion in-app incluida) y entonces responde `replyAbierto`;
+ * si no hay forma de abrirla (base sin migrar, sin puerto) responde `replySinHandoff`, que NUNCA promete una persona.
+ */
+export interface SolicitudHumano {
+  /** Texto fijo (sin datos del paciente) que se guarda como motivo de la toma. */
+  readonly motivo: string;
+  readonly replyAbierto: string;
+  readonly replySinHandoff: string;
+}
+
+export interface WhatsAppTurnResult {
+  readonly reply: string;
+  readonly appointmentId: string | null;
+  readonly propertyId: string | null;
+  readonly humano?: SolicitudHumano;
+}
+
 export interface WhatsAppTurnHandler {
   handleInboundMessage(args: {
     readonly organizationId: string;
@@ -15,7 +34,7 @@ export interface WhatsAppTurnHandler {
      * diseño Fase 2 §2.5) — nunca tool_calls/resultados crudos. */
     readonly messages: readonly ConversationMessage[];
     readonly customer: CitasCustomerContext;
-  }): Promise<{ readonly reply: string; readonly appointmentId: string | null; readonly propertyId: string | null }>;
+  }): Promise<WhatsAppTurnResult>;
 }
 
 /**

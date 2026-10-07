@@ -192,13 +192,21 @@ export async function handleInboundWhatsAppMessage(
             await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
             return null;
           }
-          const turn = crisisCheck.triggered
+          const turnoBase = crisisCheck.triggered
             ? { reply: crisisCheck.reply!, appointmentId: null, propertyId: null }
             : button?.kind === "reply"
               ? { reply: button.reply, appointmentId: null, propertyId: null }
               : arco
               ? { reply: arco.reply, appointmentId: null, propertyId: null }
               : await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer: await lookupCitasCustomer(repo, organizationId, phone) });
+
+          // El turno pidio pasar a una persona (el paciente lo pidio, o el asistente no estuvo disponible): se abre la toma pendiente (con su
+          // notificacion in-app) y la respuesta lo dice. Si no hay forma de abrirla (sin puerto o base sin migrar) la respuesta NUNCA promete una persona.
+          let turn: { readonly reply: string; readonly appointmentId: string | null; readonly propertyId: string | null } = turnoBase;
+          if ("humano" in turnoBase && turnoBase.humano) {
+            const handoffId = handoffGate ? await handoffGate.solicitarHumano({ organizationId, phone, motivo: turnoBase.humano.motivo, crisis: false }) : null;
+            turn = { reply: handoffId ? turnoBase.humano.replyAbierto : turnoBase.humano.replySinHandoff, appointmentId: turnoBase.appointmentId, propertyId: turnoBase.propertyId };
+          }
 
           const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
           await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.appointmentId ? "completed" : "active", turn.appointmentId, turn.propertyId);
