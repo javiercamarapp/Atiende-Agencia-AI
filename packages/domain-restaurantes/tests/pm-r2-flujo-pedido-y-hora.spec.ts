@@ -46,6 +46,18 @@ describe.each(["whatsapp", "voz"] as const)("%s: re-cotizar el MISMO carrito en 
     expect(created.orderId).not.toBeNull();
   });
 
+  it("una re-cotizacion identica en un turno POSTERIOR avisa que ya se mostro y dice el siguiente paso; en el mismo turno no", async () => {
+    const s = setup(channel);
+    const primera = await s.quote();
+    expect(primera.result).not.toHaveProperty("ya_mostrada_al_cliente");
+    const mismoTurno = await s.quote();
+    expect(mismoTurno.result).not.toHaveProperty("ya_mostrada_al_cliente");
+    s.nextTurn();
+    const siguiente = await s.quote();
+    expect(siguiente.result).toMatchObject({ ya_mostrada_al_cliente: true });
+    expect((siguiente.result as { siguiente_paso: string }).siguiente_paso).toContain("confirmar_resumen");
+  });
+
   it("si cambia el carrito al re-cotizar, es una cotizacion NUEVA y confirmar en ese mismo turno sigue rechazado", async () => {
     const s = setup(channel);
     await s.quote();
