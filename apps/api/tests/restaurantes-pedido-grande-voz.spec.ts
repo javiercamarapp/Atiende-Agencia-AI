@@ -67,6 +67,7 @@ describe("POST /orders de voz: pedido grande de PM", () => {
   });
 
   // QA R2 (automatizacion-01, voz): con el autopiloto disponible el pedido grande SI se crea (`por_aprobar`) y la ruta corta antes de la comanda del POS.
+  // CR12 (056/326): un domicilio PM por voz sin zonas cargadas se rechaza; el pedido grande no depende de la zona, asi que va para recoger.
   it("CON autopiloto: 100 Coca-Cola en efectivo queda por_aprobar con su solicitud y SIN comanda en el POS ni 'recibido'", async () => {
     const base = await buildTestDeps();
     const { restaurantesRepo, organizationId, products } = base;
@@ -85,7 +86,7 @@ describe("POST /orders de voz: pedido grande de PM", () => {
     const res = await app.request(
       `/v1/restaurantes/${ORG_SLUG}/orders`,
       jsonRequestInit(
-        { branch_slug: "fco-montejo", customer_name: "Evento", customer_phone: "9991230003", customer_address: "Calle 20 #300, Mérida", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 100 }], payment_method: "efectivo" },
+        { branch_slug: "fco-montejo", customer_name: "Evento", customer_phone: "9991230003", customer_address: "Calle 20 #300, Mérida", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 100 }], payment_method: "efectivo", canal: "recoger" },
         TOOL_SECRET_HEADERS,
       ),
     );
