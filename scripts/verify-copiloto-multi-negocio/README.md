@@ -14,6 +14,10 @@ Cubre `core.get_operaciones_por_organizacion_for_superadmin`, `core.log_superadm
 - **Bitácora**: una fila por organización consultada (quién, qué organización, qué herramienta, cuándo); las
   organizaciones inexistentes se ignoran; nadie registra a nombre de otro; no se lee ni se escribe directo
   (sin GRANT) y es append-only (UPDATE y DELETE bloqueados por trigger).
+- **Fijados de plataforma** (`core.copiloto_pin` con organización NULL y `core.copiloto_pin_create_plataforma`): solo el
+  autor superadmin los ve, renombra y borra; no se comparten; ni un miembro de una organización, ni otro superadmin, ni
+  `anon`, ni la sesión de sistema los leen o crean; alta solo por la función (tope de 50, sin duplicados, conversación
+  propia); CHECK de coherencia organización/vertical; un superadmin degradado pierde el acceso.
 - **Estructura**: funciones `security definer` con `search_path` fijo, sin EXECUTE para `anon`/PUBLIC, tabla con
   RLS y sin policies.
 

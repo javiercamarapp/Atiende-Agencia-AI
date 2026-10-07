@@ -58,6 +58,12 @@ insert into despachos.fiscal_deadline (id, organization_id, property_id, tipo, p
   ('00000000-0000-0000-0000-0000000a5f43', '00000000-0000-0000-0000-0000000a5d06', '00000000-0000-0000-0000-0000000a5e03', 'ISR', '2026-08', '2026-09-17', 'media', 'completado')
 on conflict do nothing;
 
+-- Conversaciones de plataforma: K1 de c1, K2 de c2 (otro superadmin).
+insert into core.data_chat_conversation (id, scope, organization_id, vertical, property_id, user_id, title, message_count) values
+  ('00000000-0000-0000-0000-0000000a5b01', 'plataforma', null, 'plataforma', null, '00000000-0000-0000-0000-0000000a5c01', 'Resumen de plataforma c1', 2),
+  ('00000000-0000-0000-0000-0000000a5b02', 'plataforma', null, 'plataforma', null, '00000000-0000-0000-0000-0000000a5c02', 'Resumen de plataforma c2', 2)
+on conflict do nothing;
+
 \echo '1. c1 superadmin: una fila por cada una de las 6 organizaciones sembradas, incluidas las SIN actividad'
 begin;
 set local role authenticated;
@@ -278,4 +284,154 @@ select count(*)::int as estructura_deberia_ser_0 from (
   union all
   select 1 from pg_policy pol join pg_class c on c.oid = pol.polrelid where c.relname = 'superadmin_org_access_log'
 ) fallos;
+rollback;
+
+\echo '=== FIJADOS DE PLATAFORMA ==='
+
+\echo '31. c1 fija un resultado de plataforma y lo ve (RLS del autor)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c01', true);
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b01', 1, 0, 'ranking_actividad', '{"periodo":"este_mes"}'::jsonb, 'Actividad por negocio');
+select count(*)::int as fijados_propios_deberia_ser_1 from core.copiloto_pin where vertical = 'plataforma';
+rollback;
+
+\echo '32. fijar dos veces lo mismo no duplica (misma herramienta y argumentos)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c01', true);
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b01', 1, 0, 'ranking_actividad', '{"periodo":"este_mes"}'::jsonb, 'Actividad por negocio');
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b01', 1, 0, 'ranking_actividad', '{"periodo":"este_mes"}'::jsonb, 'Actividad por negocio');
+select count(*)::int as sin_duplicar_deberia_ser_1 from core.copiloto_pin where vertical = 'plataforma';
+rollback;
+
+\echo '33. el fijado de plataforma no lleva organizacion y no se comparte'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c01', true);
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b01', 1, 0, 'ranking_actividad', '{"periodo":"este_mes"}'::jsonb, 'Actividad por negocio');
+select count(*)::int as forma_deberia_ser_1 from core.copiloto_pin where vertical = 'plataforma' and organization_id is null and shared = false and author_id = '00000000-0000-0000-0000-0000000a5c01';
+rollback;
+
+\echo '34. otro superadmin (c2) no ve los fijados de c1'
+begin;
+insert into core.copiloto_pin (organization_id, vertical, author_id, tool, args, title) values (null, 'plataforma', '00000000-0000-0000-0000-0000000a5c01', 'organizaciones', '{}', 'De c1');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c02', true);
+select count(*)::int as ajeno_deberia_ser_0 from core.copiloto_pin;
+rollback;
+
+\echo '35. un miembro de una organizacion no ve fijados de plataforma'
+begin;
+insert into core.copiloto_pin (organization_id, vertical, author_id, tool, args, title) values (null, 'plataforma', '00000000-0000-0000-0000-0000000a5c01', 'organizaciones', '{}', 'De c1');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c03', true);
+select count(*)::int as miembro_deberia_ser_0 from core.copiloto_pin;
+rollback;
+
+\echo '36. un miembro de una organizacion no puede crear fijados de plataforma'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c03', true);
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b01', 1, 0, 'ranking_actividad', '{"periodo":"este_mes"}'::jsonb, 'Actividad por negocio') as should_fail;
+rollback;
+
+\echo '37. anon no puede crear fijados de plataforma'
+begin;
+set local role anon;
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b01', 1, 0, 'ranking_actividad', '{"periodo":"este_mes"}'::jsonb, 'Actividad por negocio') as should_fail;
+rollback;
+
+\echo '38. la sesion de sistema no crea fijados de plataforma'
+begin;
+
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b01', 1, 0, 'ranking_actividad', '{"periodo":"este_mes"}'::jsonb, 'Actividad por negocio') as should_fail;
+rollback;
+
+\echo '39. c1 no puede fijar desde la conversacion de otro superadmin'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c01', true);
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b02', 1, 0, 'ranking_actividad', '{"periodo":"este_mes"}'::jsonb, 'Actividad por negocio') as should_fail;
+rollback;
+
+\echo '40. un fijado de plataforma no se puede compartir'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c01', true);
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b01', 1, 0, 'ranking_actividad', '{"periodo":"este_mes"}'::jsonb, 'Actividad por negocio');
+update core.copiloto_pin set shared = true where vertical = 'plataforma' returning 1 as should_fail;
+rollback;
+
+\echo '41. c1 puede renombrar su fijado (UPDATE a nivel columna sobre title)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c01', true);
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b01', 1, 0, 'ranking_actividad', '{"periodo":"este_mes"}'::jsonb, 'Actividad por negocio');
+update core.copiloto_pin set title = 'Nuevo titulo' where vertical = 'plataforma';
+select count(*)::int as renombrado_deberia_ser_1 from core.copiloto_pin where vertical = 'plataforma' and title = 'Nuevo titulo';
+rollback;
+
+\echo '42. c1 no puede cambiar la herramienta de un fijado (sin GRANT de columna)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c01', true);
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b01', 1, 0, 'ranking_actividad', '{"periodo":"este_mes"}'::jsonb, 'Actividad por negocio');
+update core.copiloto_pin set tool = 'mrr' where vertical = 'plataforma' returning 1 as should_fail;
+rollback;
+
+\echo '43. c1 borra su fijado'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c01', true);
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b01', 1, 0, 'ranking_actividad', '{"periodo":"este_mes"}'::jsonb, 'Actividad por negocio');
+delete from core.copiloto_pin where vertical = 'plataforma';
+select count(*)::int as borrado_deberia_ser_0 from core.copiloto_pin where vertical = 'plataforma';
+rollback;
+
+\echo '44. c2 no puede borrar el fijado de c1 (0 filas afectadas)'
+begin;
+insert into core.copiloto_pin (id, organization_id, vertical, author_id, tool, args, title) values ('00000000-0000-0000-0000-0000000a5a11', null, 'plataforma', '00000000-0000-0000-0000-0000000a5c01', 'organizaciones', '{}', 'De c1');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c02', true);
+delete from core.copiloto_pin where id = '00000000-0000-0000-0000-0000000a5a11';
+reset role;
+select count(*)::int as sigue_existiendo_deberia_ser_1 from core.copiloto_pin where id = '00000000-0000-0000-0000-0000000a5a11';
+rollback;
+
+\echo '45. authenticated no inserta fijados directo (solo por la funcion)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c01', true);
+insert into core.copiloto_pin (organization_id, vertical, author_id, tool, args, title) values (null, 'plataforma', '00000000-0000-0000-0000-0000000a5c01', 'organizaciones', '{}', 'x') returning 1 as should_fail;
+rollback;
+
+\echo '46. un fijado de plataforma con organizacion se rechaza (CHECK de coherencia)'
+begin;
+
+insert into core.copiloto_pin (organization_id, vertical, author_id, tool, args, title) values ('00000000-0000-0000-0000-0000000a5d01', 'plataforma', '00000000-0000-0000-0000-0000000a5c01', 'organizaciones', '{}', 'x') returning 1 as should_fail;
+rollback;
+
+\echo '47. un fijado de vertical sin organizacion se rechaza (CHECK de coherencia)'
+begin;
+
+insert into core.copiloto_pin (organization_id, vertical, author_id, tool, args, title) values (null, 'restaurantes', '00000000-0000-0000-0000-0000000a5c01', 'ventas_por_dia', '{}', 'x') returning 1 as should_fail;
+rollback;
+
+\echo '48. tope de 50 fijados por superadmin'
+begin;
+insert into core.copiloto_pin (organization_id, vertical, author_id, tool, args, title) select null, 'plataforma', '00000000-0000-0000-0000-0000000a5c01', 'organizaciones', jsonb_build_object('n', g), 'Fijado ' || g from generate_series(1, 50) g;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c01', true);
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b01', 1, 0, 'ranking_actividad', '{"periodo":"este_mes"}'::jsonb, 'Actividad por negocio') as should_fail;
+rollback;
+
+\echo '49. un superadmin que deja de serlo ya no lee ni borra sus fijados'
+begin;
+insert into core.copiloto_pin (organization_id, vertical, author_id, tool, args, title) values (null, 'plataforma', '00000000-0000-0000-0000-0000000a5c02', 'organizaciones', '{}', 'De c2');
+delete from core.cfo_zone_role where staff_user_id = '00000000-0000-0000-0000-0000000a5c02';
+delete from core.platform_superadmin where staff_user_id = '00000000-0000-0000-0000-0000000a5c02';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c02', true);
+select count(*)::int as degradado_deberia_ser_0 from core.copiloto_pin;
 rollback;

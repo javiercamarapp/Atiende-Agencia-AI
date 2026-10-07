@@ -6,6 +6,8 @@
 --   2. core.superadmin_org_access_log (append-only) + core.log_superadmin_org_access: una fila por organizacion consultada con quien, que
 --      organizacion (id resuelto), que herramienta y cuando.
 --   3. core.list_superadmin_org_access_for_superadmin: lectura de esa bitacora para el superadmin completo (transparencia y pruebas).
+--   4. Fijados del Copiloto de PLATAFORMA: core.copiloto_pin admite filas con vertical 'plataforma' y organizacion NULL (CHECK de coherencia en ambos
+--      sentidos, nunca compartidas), con policies propias para su autor superadmin y core.copiloto_pin_create_plataforma como unica via de alta.
 --
 -- DECISION: por que NO se reutilizo la ruta de break-glass / impersonacion (deps.ts: impersonationRepo, rentas.open_break_glass_session).
 --   Esas rutas abren una ventana de acceso con la identidad de un miembro de la organizacion y devuelven filas de negocio completas (nombres,
@@ -40,6 +42,15 @@
 --     llamada y parametros limitados a un objeto jsonb de 2000 bytes.
 --   * core.list_superadmin_org_access_for_superadmin: security definer, search_path fijo, exige superadmin completo; devuelve solo ids, vertical,
 --     herramienta y fecha (sin parametros de consulta), acotada a 500 filas.
+--   * core.copiloto_pin (fijados de plataforma): conserva RLS, `revoke all` a public/anon/authenticated/service_role y los GRANT existentes (select,
+--     delete y update a nivel columna de title/shared); NO se agrega GRANT. Las policies existentes comparan con una membresia de la organizacion, que
+--     no existe para NULL, asi que NO exponen ninguna fila de plataforma. Tres policies NUEVAS (select/update/delete) limitadas a
+--     `vertical = 'plataforma' and author_id = auth.uid() and core.is_platform_superadmin(auth.uid())`: solo el autor, mientras siga siendo superadmin.
+--     Un fijado de plataforma nunca se comparte (CHECK `not shared`): el tablero es personal. Un fijado no guarda cifras sino herramienta + argumentos;
+--     al abrirlo se re-ejecuta con el rol ACTUAL del autor (si pasa a `finanzas`, solo ve lo financiero).
+--   * core.copiloto_pin_create_plataforma: security definer, search_path fijo, revoke de public/anon, GRANT a authenticated; actor = auth.uid() (28000 sin
+--     actor), superadmin vigente (42501), conversacion propia de ambito plataforma (P0002), tope de 50 por autor serializado con advisory lock (54000) y
+--     deduplicacion por herramienta + argumentos.
 
 -- ---------------------------------------------------------------------------
 -- 1) Bitacora por organizacion consultada
@@ -343,3 +354,91 @@ grant execute on function core.get_operaciones_por_organizacion_for_superadmin(u
 
 comment on function core.get_operaciones_por_organizacion_for_superadmin(uuid, date, date, date, uuid) is
   'Conteos y sumas por organizacion (todas, con 0 si no hubo actividad) para el Copiloto de superadmin. Sin datos personales. Solo superadmin completo.';
+
+-- ---------------------------------------------------------------------------
+-- 3) Fijados del Copiloto de plataforma (core.copiloto_pin con organizacion NULL)
+-- ---------------------------------------------------------------------------
+alter table core.copiloto_pin alter column organization_id drop not null;
+
+alter table core.copiloto_pin drop constraint if exists copiloto_pin_vertical_check;
+alter table core.copiloto_pin
+  add constraint copiloto_pin_vertical_check
+  check (vertical in ('restaurantes', 'hoteles', 'rentas', 'despachos', 'licitaciones', 'citas', 'plataforma'));
+alter table core.copiloto_pin
+  add constraint copiloto_pin_plataforma_sin_org
+  check ((vertical = 'plataforma') = (organization_id is null));
+alter table core.copiloto_pin
+  add constraint copiloto_pin_plataforma_no_compartido
+  check (vertical <> 'plataforma' or not shared);
+
+create policy "superadmin lee sus fijados de plataforma" on core.copiloto_pin for select
+  using (vertical = 'plataforma' and author_id = auth.uid() and core.is_platform_superadmin(auth.uid()));
+
+create policy "superadmin edita sus fijados de plataforma" on core.copiloto_pin for update
+  using (vertical = 'plataforma' and author_id = auth.uid() and core.is_platform_superadmin(auth.uid()))
+  with check (vertical = 'plataforma' and author_id = auth.uid() and core.is_platform_superadmin(auth.uid()));
+
+create policy "superadmin borra sus fijados de plataforma" on core.copiloto_pin for delete
+  using (vertical = 'plataforma' and author_id = auth.uid() and core.is_platform_superadmin(auth.uid()));
+
+create or replace function core.copiloto_pin_create_plataforma(
+  p_conversation_id uuid,
+  p_message_seq integer,
+  p_block_index integer,
+  p_tool text,
+  p_args jsonb,
+  p_title text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = core, pg_temp
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_title text := left(btrim(regexp_replace(coalesce(p_title, ''), '\s+', ' ', 'g')), 80);
+  v_args jsonb := coalesce(p_args, '{}'::jsonb);
+  v_id uuid;
+  v_count integer;
+begin
+  if v_actor is null then
+    raise exception 'core.copiloto_pin_create_plataforma: requiere un actor autenticado (auth.uid() es NULL) -- nunca corre desde la sesion de sistema.'
+      using errcode = '28000';
+  end if;
+  if not core.is_platform_superadmin(v_actor) then
+    raise exception 'core.copiloto_pin_create_plataforma: el actor no es superadmin de plataforma.' using errcode = '42501';
+  end if;
+  if p_tool is null or p_tool !~ '^[a-z0-9_]{1,80}$' or jsonb_typeof(v_args) <> 'object' or pg_column_size(v_args) > 2000 or v_title = '' then
+    raise exception 'core.copiloto_pin_create_plataforma: argumentos invalidos.' using errcode = '22023';
+  end if;
+  if p_conversation_id is not null and not exists (
+    select 1 from core.data_chat_conversation c where c.id = p_conversation_id and c.user_id = v_actor and c.scope = 'plataforma'
+  ) then
+    raise exception 'core.copiloto_pin_create_plataforma: la conversacion no existe.' using errcode = 'P0002';
+  end if;
+
+  -- Serializa las altas del mismo autor para que el tope no se rebase por carreras.
+  perform pg_advisory_xact_lock(hashtextextended('copiloto_pin:' || v_actor::text || ':plataforma', 0));
+
+  select p.id into v_id from core.copiloto_pin p
+   where p.author_id = v_actor and p.vertical = 'plataforma' and p.tool = p_tool and p.args = v_args;
+  if v_id is not null then
+    return v_id;
+  end if;
+
+  select count(*) into v_count from core.copiloto_pin p where p.author_id = v_actor and p.vertical = 'plataforma';
+  if v_count >= 50 then
+    raise exception 'core.copiloto_pin_create_plataforma: limite_fijados (50).' using errcode = '54000';
+  end if;
+
+  insert into core.copiloto_pin (organization_id, vertical, author_id, conversation_id, message_seq, block_index, tool, args, title)
+  values (null, 'plataforma', v_actor, p_conversation_id, p_message_seq, p_block_index, p_tool, v_args, v_title)
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+revoke all on function core.copiloto_pin_create_plataforma(uuid, integer, integer, text, jsonb, text) from public, anon;
+grant execute on function core.copiloto_pin_create_plataforma(uuid, integer, integer, text, jsonb, text) to authenticated;
+
+comment on function core.copiloto_pin_create_plataforma(uuid, integer, integer, text, jsonb, text) is
+  'Unica via de alta de fijados del Copiloto de plataforma: actor = auth.uid() superadmin, conversacion propia de plataforma, tope de 50, deduplica por herramienta + argumentos.';
