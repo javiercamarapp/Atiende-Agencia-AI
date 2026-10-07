@@ -144,6 +144,10 @@ export interface ResultadoValidacionIp {
 export function validarIpPermitida(ip: string): ResultadoValidacionIp {
   const esIpv4Literal = ip.includes(".") && !ip.includes(":");
   if (esIpv4Literal) {
+    // Fail-closed: una cadena con puntos que no es una IPv4 valida (p. ej. "999.1.1.1", "1.2.3")
+    // no coincide con ningun rango bloqueado y antes se PERMITIA; la deny-list nunca debe
+    // aprobar algo que no pudo interpretar.
+    if (ipv4AEntero(ip) === null) return { permitida: false, motivo: "dirección IP no reconocida" };
     for (const rango of RANGOS_BLOQUEADOS_IPV4) {
       if (enRangoIpv4(ip, rango.base, rango.bits)) {
         return { permitida: false, motivo: rango.motivo };
