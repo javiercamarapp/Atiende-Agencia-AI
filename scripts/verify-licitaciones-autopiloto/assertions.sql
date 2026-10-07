@@ -344,6 +344,14 @@ rollback;
 
 begin;
 set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', true);
+-- as should_fail (new row violates row-level security policy: owner B escribe en SU organizacion pero con la propuesta de A)
+insert into licitaciones.expediente_auditoria (proposal_id, organization_id, tender_id, estado, bloqueos, inputs_hash)
+  values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000a2', '00000000-0000-0000-0000-0000000000c3', 'sin_bloqueos', 0, repeat('h', 64)) returning 1 as should_fail;
+rollback;
+
+begin;
+set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b5', true);
 -- as should_fail (permission denied for table: no se puede borrar)
 delete from licitaciones.expediente_auditoria returning 1 as should_fail;

@@ -179,6 +179,7 @@ create index if not exists new_match_notice_org_idx on licitaciones.new_match_no
 alter table licitaciones.new_match_notice enable row level security;
 -- Lectura: cualquier miembro de la organizacion (solo ids, puntuacion y bandera; sin PII). Sin policy de escritura: solo las
 -- funciones de sistema de abajo (definer) la escriben; un usuario autenticado NO puede insertar, editar ni borrar.
+drop policy if exists "org ve sus nuevos matches" on licitaciones.new_match_notice;
 create policy "org ve sus nuevos matches" on licitaciones.new_match_notice for select using (licitaciones.can_access_org(organization_id));
 
 revoke all on licitaciones.new_match_notice from public, anon;
@@ -285,8 +286,16 @@ create table if not exists licitaciones.expediente_auditoria (
 create index if not exists expediente_auditoria_org_idx on licitaciones.expediente_auditoria (organization_id, revisado_en desc);
 
 alter table licitaciones.expediente_auditoria enable row level security;
+drop policy if exists "org ve la auditoria de sus expedientes" on licitaciones.expediente_auditoria;
 create policy "org ve la auditoria de sus expedientes" on licitaciones.expediente_auditoria for select using (licitaciones.can_access_org(organization_id));
-create policy "escritura: roles de escritura registran la auditoria del expediente" on licitaciones.expediente_auditoria for insert with check (licitaciones.can_write_org(organization_id));
+-- Defensa en profundidad: la FK a proposal/tender no pasa por RLS, asi que el WITH CHECK exige que la propuesta y la convocatoria
+-- pertenezcan a la MISMA organizacion de la fila (un writer de otra organizacion no puede ocupar la PK de una propuesta ajena).
+drop policy if exists "escritura: roles de escritura registran la auditoria del expediente" on licitaciones.expediente_auditoria;
+create policy "escritura: roles de escritura registran la auditoria del expediente" on licitaciones.expediente_auditoria for insert with check (
+  licitaciones.can_write_org(organization_id)
+  and exists (select 1 from licitaciones.proposal p where p.id = proposal_id and p.organization_id = expediente_auditoria.organization_id and p.tender_id = expediente_auditoria.tender_id)
+);
+drop policy if exists "escritura: roles de escritura actualizan la auditoria del expediente" on licitaciones.expediente_auditoria;
 create policy "escritura: roles de escritura actualizan la auditoria del expediente" on licitaciones.expediente_auditoria for update using (licitaciones.can_write_org(organization_id)) with check (licitaciones.can_write_org(organization_id));
 
 revoke all on licitaciones.expediente_auditoria from public, anon;
