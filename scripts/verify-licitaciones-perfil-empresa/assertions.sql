@@ -578,5 +578,27 @@ do $$ declare r text; x text; v date; begin
 end $$;
 rollback;
 
+\echo '--- 28. MAPEOS: el CHECK de requirement_fulfillment_mapping admite los tipos del perfil (owner) y sigue rechazando cualquier otro (23514); el writer no mapea (42501) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-0000000000a1', true);
+do $$ begin
+  insert into licitaciones.requirement_fulfillment_mapping (organization_id, topic_key, kind, ref_key, statement_template) values ('40000000-0000-0000-0000-0000000000d1', 'acta', 'stakeholders', 'socios', 'Socios: {value}');
+  insert into licitaciones.requirement_fulfillment_mapping (organization_id, topic_key, kind, ref_key, statement_template) values ('40000000-0000-0000-0000-0000000000d1', 'perfil', 'profile', 'general', '{value}');
+  insert into licitaciones.requirement_fulfillment_mapping (organization_id, topic_key, kind, ref_key, statement_template) values ('40000000-0000-0000-0000-0000000000d1', 'firma', 'signer', 'rep', '{value}');
+  begin
+    insert into licitaciones.requirement_fulfillment_mapping (organization_id, topic_key, kind, ref_key, statement_template) values ('40000000-0000-0000-0000-0000000000d1', 'otro', 'inventado', 'x', '{value}');
+    raise exception 'tipo inventado aceptado';
+  exception when sqlstate '23514' then null;
+  end;
+  perform set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-0000000000a3', true);
+  begin
+    insert into licitaciones.requirement_fulfillment_mapping (organization_id, topic_key, kind, ref_key, statement_template) values ('40000000-0000-0000-0000-0000000000d1', 'escritor', 'locations', 'x', '{value}');
+    raise exception 'el writer mapeo un requisito';
+  exception when sqlstate '42501' then null;
+  end;
+end $$;
+rollback;
+
 \echo ''
 \echo 'Fin: cada escenario debe terminar sin error (los negativos verifican su SQLSTATE con DO ... raise exception) o con el valor deberia_ser_N.'

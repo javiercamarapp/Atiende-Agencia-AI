@@ -4,7 +4,7 @@ Verificacion contra Postgres REAL (RLS, triggers, GRANT por columna, funciones `
 `packages/domain-licitaciones/migrations/040_licitaciones_perfil_empresa_completo.sql` (L-P3-03/04: perfil de empresa completo,
 firmantes con vigencia del poder y procedencia por campo, REQ-141/142/145).
 
-`assertions.sql` (27 escenarios, una conexion cada uno) cubre:
+`assertions.sql` (28 escenarios, una conexion cada uno) cubre:
 
 - **Migracion**: el unico viejo `(organization_id, role)` de `company_signer` ya no existe y caben dos firmantes del mismo cargo; el
   firmante anterior (sin vigencia) sigue legible.
@@ -21,6 +21,8 @@ firmantes con vigencia del poder y procedencia por campo, REQ-141/142/145).
   procedencia falla, el dato recien insertado se revierte** (misma transaccion); un dato sembrado por SQL no tiene procedencia.
 - **Cross-tenant, anon y sin sesion** en tablas y funciones; bajas (el writer borra productos y ubicaciones, NO restricciones ni socios);
   `service_role` conserva el acceso de mantenimiento.
+- **Mapeos de requisitos**: el CHECK de `requirement_fulfillment_mapping.kind` admite perfil, socios, restricciones, ubicaciones y productos (owner) y rechaza
+  cualquier otro tipo (23514); el writer no mapea (42501).
 - **Aviso de poder por vencer**: `system_count_signer_powers_expiring` solo corre en sesion de sistema y cuenta unicamente firmantes aprobados,
   autorizados y con vigencia dentro de la ventana.
 
