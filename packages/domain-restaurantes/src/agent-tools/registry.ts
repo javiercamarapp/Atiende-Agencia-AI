@@ -538,6 +538,17 @@ function textoOpcional(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() !== "" ? v : undefined;
 }
 
+/**
+ * QA R2 features-07: el codigo de compensacion («Descuento en el proximo pedido») que el dueno emitio a ESTE cliente se aplica solo, por el
+ * SERVIDOR, a su siguiente pedido por WhatsApp o voz. El modelo nunca dicta ni recibe un codigo (decision de PM, T-AB01: ninguna tool acepta
+ * promo, descuento ni total): el telefono sale del contexto del canal. Sin telefono, en vista previa del dueno o contra la base sin migrar
+ * devuelve `undefined` y el pedido sigue exactamente como antes. Si ademas vino un codigo explicito (voz HTTP) manda ese.
+ */
+async function compensacionPendiente(repo: RestaurantesRepository, ctx: AgentToolContext): Promise<string | undefined> {
+  if (ctx.channel === "web" || ctx.modo === "preview" || !ctx.phone) return undefined;
+  return (await repo.findCompensationCode(ctx.organizationId, ctx.phone)) ?? undefined;
+}
+
 const PROGRAMADOS_NO_DISPONIBLES = "Los pedidos programados todavía no están disponibles en este restaurante. Ofrece un pedido normal o pasa la conversación a una persona.";
 
 function toCanal(raw: unknown): CanalPedido | undefined {
@@ -1030,6 +1041,7 @@ async function dispatchTool(
         paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
         doubleSalsas: toDoubleSalsas(input.doble_salsas),
         programadoPara: toProgramadoPara(input.programado_para),
+        promoCode: await compensacionPendiente(repo, ctx),
         horaRecogida: textoOpcional(input.hora_recogida),
       }).catch((err: unknown) => {
         throw err instanceof RestaurantesConfigUnavailableError ? new OrderValidationError(PROGRAMADOS_NO_DISPONIBLES) : err;
@@ -1048,6 +1060,11 @@ async function dispatchTool(
       if (mappedBase.basicComplements) {
         const config = await repo.findWhatsAppAgentConfig(ctx.organizationId, ctx.entryPropertyId ?? ctx.lockedPropertyId ?? null);
         if (config?.perfil !== "taqueria_pm") mapped = { ...mappedBase, basicComplements: undefined };
+      }
+      // QA R2 features-07: el codigo de compensacion emitido a ESTE telefono se aplica solo (el modelo no lo dicta; ver `compensacionPendiente`).
+      if (!mapped.promoCode) {
+        const compensacion = await compensacionPendiente(repo, ctx);
+        if (compensacion) mapped = { ...mapped, promoCode: compensacion };
       }
       // Checkout web: reglas duras que la fuente "web" historica no exige (ver storefront.ts).
       const createInput = ctx.channel === "web" ? assertWebOrderRules(mapped) : mapped;

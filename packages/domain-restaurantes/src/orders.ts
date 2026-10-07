@@ -666,6 +666,9 @@ export async function quoteOrder(
     /** R-11: hora programada (ISO con zona). Se valida con las MISMAS reglas que `createOrder`: ventana
      * (anticipacion minima/maxima), horario de la sucursal en esa hora y zona horaria de la sucursal. */
     readonly programadoPara?: string;
+    /** QA R2 features-07: codigo de promocion (p. ej. el GRACIAS-XXXX de una compensacion) que el cliente dicta por WhatsApp o voz.
+     * Cuando viene, REEMPLAZA a la promocion automatica (igual que en `createOrder`) y un codigo invalido lanza `PromotionError`. */
+    readonly promoCode?: string;
     /** Solo canal "recoger": hora a la que pasara el cliente (ISO con zona). Se valida con el reloj del servidor, igual que al crear. */
     readonly horaRecogida?: string;
   },
@@ -714,16 +717,20 @@ export async function quoteOrder(
   // que ya valen hoy pero a las que el pedido aun no llega se devuelven como sugerencias para que el agente
   // las ofrezca (p. ej. el martes: "con los nachos de pastor van 2 aguas de cortesia, ¿cuales?").
   const zonaHoraria = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
-  const auto = selectAutomaticPromotion({
-    promotions: await repo.listAutoApplyPromotions(args.organizationId),
-    orderTotal: quote.total,
-    items: quote.lines.map((line) => ({ id: line.productId, name: line.name, price: line.price, quantity: line.quantity })),
-    canal,
-    now: instante ?? new Date(),
-    zonaHoraria,
-    ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
-    propertyId: branch.propertyId,
-  });
+  const itemsPromo = quote.lines.map((line) => ({ id: line.productId, name: line.name, price: line.price, quantity: line.quantity }));
+  const codigo = args.promoCode?.trim() ? normalizePromotionCode(args.promoCode) : null;
+  const auto = codigo
+    ? await cotizarConCodigo(repo, { organizationId: args.organizationId, codigo, orderTotal: quote.total, items: itemsPromo, canal, now: instante ?? new Date(), zonaHoraria, diaNegocio: reglas.diaNegocio, propertyId: branch.propertyId })
+    : selectAutomaticPromotion({
+        promotions: await repo.listAutoApplyPromotions(args.organizationId),
+        orderTotal: quote.total,
+        items: itemsPromo,
+        canal,
+        now: instante ?? new Date(),
+        zonaHoraria,
+        ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
+        propertyId: branch.propertyId,
+      });
   const descuento = auto.applied?.discount ?? 0;
   const nombreDeProducto = (id: string) => resolved.products.find((p) => p.id === id)?.name ?? null;
   return {
@@ -759,6 +766,37 @@ export async function quoteOrder(
     cierraA: reglas.apertura?.cierraA ?? null,
     ...(programadoPara ? { programadoPara } : {}),
   };
+}
+
+/** Cotiza con un CODIGO que dicto el cliente (misma validacion y calculo que `createOrder`): devuelve la forma de `selectAutomaticPromotion`
+ * con la promocion aplicada y sin sugerencias. Un codigo inexistente o que no vale hoy/en este canal lanza `OrderValidationError`. */
+async function cotizarConCodigo(
+  repo: RestaurantesRepository,
+  a: {
+    readonly organizationId: string;
+    readonly codigo: string;
+    readonly orderTotal: number;
+    readonly items: readonly PersistedOrderItem[];
+    readonly canal: CanalPedido;
+    readonly now: Date;
+    readonly zonaHoraria: string;
+    readonly diaNegocio: number | null;
+    readonly propertyId: string;
+  },
+): Promise<ReturnType<typeof selectAutomaticPromotion>> {
+  const promotion = await repo.findPromotionByCode(a.organizationId, a.codigo);
+  if (!promotion) throw new OrderValidationError(`El código "${a.codigo}" no existe.`);
+  const applied = applyPromotionToOrder({
+    promotion,
+    orderTotal: a.orderTotal,
+    items: a.items,
+    canal: a.canal,
+    now: a.now,
+    zonaHoraria: a.zonaHoraria,
+    ...(a.diaNegocio !== null ? { diaNegocio: a.diaNegocio } : {}),
+    propertyId: a.propertyId,
+  });
+  return { applied: { promotion, total: applied.total, discount: applied.discount }, suggestions: [] };
 }
 
 /** Promociones automaticas que acompanan a una cotizacion (PM PR-4). */
