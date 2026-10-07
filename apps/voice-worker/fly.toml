@@ -1,0 +1,41 @@
+# Despliegue del worker de voz en Fly.io (region Dallas: la mas cercana a Merida con LiveKit/Gemini en EE. UU. central).
+# NO se desplego nunca (no hay cuenta de Fly): se valida con `apps/voice-worker/tests/despliegue.spec.ts` y con `scripts/voz/desplegar-worker.sh`.
+#
+# Se despliega SIEMPRE con el script, desde la raiz del repo (el contexto de build es el monorepo completo, no esta carpeta):
+#   FLY_API_TOKEN=... LIVEKIT_URL=... (ver docs/VOZ-ACTIVACION.md) bash scripts/voz/desplegar-worker.sh --ejecutar
+#
+# UNA sola maquina siempre encendida: el worker sondea las salas de LiveKit y entra a las de su prefijo; dos instancias tomarian la misma sala. Por eso no hay
+# `[http_service]` (no atiende trafico entrante, asi Fly no la detiene por inactividad ni la escala) y el script usa `--ha=false`.
+app = "atiende-voice-worker"
+primary_region = "dfw"
+
+[build]
+  # Relativo a este archivo; el script pasa ademas `--dockerfile` y `--ignorefile` desde la raiz del repo.
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  VOICE_ASSETS_DIR = "/app/assets"
+  VOICE_TIMEZONE = "America/Merida"
+
+# 1 vCPU compartido y 1 GB: el worker solo puentea audio y re-muestrea (~US$6.70 al mes). Subir a `performance-1x` al pasar de ~20 llamadas simultaneas.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+
+# Fly reinicia la maquina si el proceso sale con error (el perro guardian del worker sale con 1 si el sondeo de LiveKit lleva 2 min sin responder).
+[[restart]]
+  policy = "always"
+  retries = 10
+
+# Latido: /salud da 200 solo si el worker esta configurado Y el ultimo sondeo exitoso de LiveKit es de hace menos de 60 s (503 con los motivos si no).
+# Las health checks de Fly informan, no reinician: el reinicio lo hace el perro guardian del worker.
+[checks.salud]
+  type = "http"
+  port = 8080
+  method = "GET"
+  path = "/salud"
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "20s"

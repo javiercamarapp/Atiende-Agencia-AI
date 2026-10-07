@@ -15,6 +15,7 @@ import { Hono } from "hono";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
 import { logEvent } from "../../logger.ts";
+import { alertarCronsSinLatidoBestEffort } from "../../salud/alerta-crons-sin-latido.ts";
 import { withHeartbeat } from "../../salud/with-heartbeat.ts";
 import { fechaAyerMexico } from "../../resumen-diario/motor.ts";
 import { generarYPersistirResumenDiario } from "../../resumen-diario/agregador.ts";
@@ -34,6 +35,8 @@ export function resumenDiarioRoutes(deps: AppDeps): Hono {
 
     return withHeartbeat(deps, RESUMEN_DIARIO_CRON_PATH, async () => {
       const fecha = fechaAyerMexico(new Date());
+      // Crons de alta frecuencia sin NINGUN latido (el scheduler no los invoca): aviso in-app diario, best-effort, antes de gastar el LLM.
+      await alertarCronsSinLatidoBestEffort(deps);
       const resultado = await generarYPersistirResumenDiario(deps, fecha);
 
       // "Migración pendiente" es el caso NORMAL de "código nuevo, base

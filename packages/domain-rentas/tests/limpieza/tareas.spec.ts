@@ -13,7 +13,7 @@ import {
   confirmarBloqueoMantenimiento,
   crearTareaLimpiezaPorCheckout,
   crearTareaOperativaManual,
-  procesarCheckoutsPendientes,
+  barrerLimpiezaPendiente,
   registrarIncidencia,
   reprogramarTareaPorCambioReserva,
 } from "../../src/limpieza/aplicacion/tareas.ts";
@@ -104,58 +104,71 @@ describe("reprogramarTareaPorCambioReserva / cancelarTareaPorCancelacionReserva"
   });
 });
 
-describe("procesarCheckoutsPendientes (reemplazo del consumidor de outbox_evento del origen)", () => {
-  // `asOfDate` explícito en las 3 pruebas de abajo -- nunca `Date.now()` -- mismo
-  // criterio que `hoteles-reservas.spec.ts::procesar-no-show`: un test que calcula
-  // "ayer"/"en un año" contra el reloj real es SIEMPRE correcto de casualidad (no
-  // ejercita el default `hoyFechaNegocio()`, ver la prueba dedicada de abajo para eso)
-  // y, tras este fix, quedaría además expuesto a la ventana 18:00-23:59 CDMX donde el
-  // día UTC y el día de negocio difieren.
+describe("barrerLimpiezaPendiente (red de seguridad del consumidor de outbox_evento del origen)", () => {
+  // Reloj fijo en TODAS las pruebas (nunca el reloj real): a las 18:00 UTC es mediodia en CDMX, el mismo dia de calendario
+  // en UTC y en CDMX. La prueba dedicada de abajo ejercita la ventana 18:00-23:59 CDMX donde el dia UTC y el de negocio difieren.
+  function conReloj(iso: string) {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(iso));
+  }
+
   it("crea una tarea de limpieza para una reserva confirmada cuyo checkout ya llegó y aún no tiene tarea vinculada", async () => {
-    const { ejecutor, unidad, seedOcupacionConfirmada, getTarea } = await crearFixtureLimpieza();
-    const { id: ocupacionId } = seedOcupacionConfirmada({ unidadId: unidad.id, inicio: "2020-01-01", fin: "2025-06-01" });
+    conReloj("2025-06-02T18:00:00.000Z");
+    try {
+      const { ejecutor, unidad, seedOcupacionConfirmada, getTarea } = await crearFixtureLimpieza();
+      const { id: ocupacionId } = seedOcupacionConfirmada({ unidadId: unidad.id, inicio: "2020-01-01", fin: "2025-06-01" });
 
-    const resultado = await procesarCheckoutsPendientes(ejecutor, 50, "2025-06-02");
+      const resultado = await barrerLimpiezaPendiente(ejecutor);
 
-    expect(resultado.procesados).toBe(1);
-    expect(resultado.tareasCreadas).toHaveLength(1);
-    const tarea = getTarea(resultado.tareasCreadas[0]!);
-    expect(tarea?.ocupacionUnidadId).toBe(ocupacionId);
+      expect(resultado.procesados).toBe(1);
+      expect(resultado.tareasCreadas).toHaveLength(1);
+      expect(getTarea(resultado.tareasCreadas[0]!)?.ocupacionUnidadId).toBe(ocupacionId);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("es idempotente: una segunda pasada no crea una tarea duplicada para la misma reserva", async () => {
-    const { ejecutor, unidad, seedOcupacionConfirmada } = await crearFixtureLimpieza();
-    seedOcupacionConfirmada({ unidadId: unidad.id, inicio: "2020-01-01", fin: "2025-06-01" });
+    conReloj("2025-06-02T18:00:00.000Z");
+    try {
+      const { ejecutor, unidad, seedOcupacionConfirmada, listTareas } = await crearFixtureLimpieza();
+      seedOcupacionConfirmada({ unidadId: unidad.id, inicio: "2020-01-01", fin: "2025-06-01" });
 
-    const primera = await procesarCheckoutsPendientes(ejecutor, 50, "2025-06-02");
-    const segunda = await procesarCheckoutsPendientes(ejecutor, 50, "2025-06-02");
+      const primera = await barrerLimpiezaPendiente(ejecutor);
+      const segunda = await barrerLimpiezaPendiente(ejecutor);
 
-    expect(primera.tareasCreadas).toHaveLength(1);
-    expect(segunda.tareasCreadas).toHaveLength(0);
+      expect(primera.tareasCreadas).toHaveLength(1);
+      expect(segunda.tareasCreadas).toHaveLength(0);
+      expect(listTareas()).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("ignora una reserva cuyo checkout todavía no llega", async () => {
-    const { ejecutor, unidad, seedOcupacionConfirmada } = await crearFixtureLimpieza();
-    seedOcupacionConfirmada({ unidadId: unidad.id, inicio: "2020-01-01", fin: "2026-06-01" });
+    conReloj("2025-06-02T18:00:00.000Z");
+    try {
+      const { ejecutor, unidad, seedOcupacionConfirmada } = await crearFixtureLimpieza();
+      seedOcupacionConfirmada({ unidadId: unidad.id, inicio: "2020-01-01", fin: "2026-06-01" });
 
-    const resultado = await procesarCheckoutsPendientes(ejecutor, 50, "2025-06-02");
-    expect(resultado.tareasCreadas).toHaveLength(0);
+      const resultado = await barrerLimpiezaPendiente(ejecutor);
+      expect(resultado.tareasCreadas).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  // REQ-r6/f2-current-date-fecha-negocio: sin `asOfDate` explícito (mismo caso que el
-  // cron real, `checkout-sweep-cron.ts`, siempre lo omite -- ver su comentario de
-  // cabecera), el default debe ser el día de NEGOCIO (`hoyFechaNegocio()`), nunca el
-  // día UTC crudo del proceso. A las 19:30 CDMX el día UTC YA es mañana -- si el sweep
-  // usara ese día UTC, procesaría un checkout que en CDMX todavía no llega.
-  it("sin asOfDate, a las 19:30 CDMX, NO procesa un checkout programado para MAÑANA (día de negocio), aunque el día UTC ya sea mañana", async () => {
-    const { ejecutor, unidad, seedOcupacionConfirmada } = await crearFixtureLimpieza();
+  // REQ-r6/f2-current-date-fecha-negocio: el cron real no pasa ninguna fecha; el "hoy" debe ser el día de NEGOCIO de la
+  // propiedad, nunca el día UTC crudo del proceso. A las 19:30 CDMX el día UTC YA es mañana -- si el barrido usara ese día
+  // UTC, procesaría un checkout que en CDMX todavía no llega.
+  it("a las 19:30 CDMX, NO procesa un checkout programado para MAÑANA (día de negocio), aunque el día UTC ya sea mañana", async () => {
     // 2026-01-02T01:30:00Z = 2026-01-01T19:30:00 en America/Mexico_City (UTC-6 fijo).
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-02T01:30:00.000Z"));
+    conReloj("2026-01-02T01:30:00.000Z");
     try {
+      const { ejecutor, unidad, seedOcupacionConfirmada } = await crearFixtureLimpieza();
       seedOcupacionConfirmada({ unidadId: unidad.id, inicio: "2026-01-01", fin: "2026-01-02" });
 
-      const resultado = await procesarCheckoutsPendientes(ejecutor);
+      const resultado = await barrerLimpiezaPendiente(ejecutor);
 
       expect(resultado.tareasCreadas).toHaveLength(0);
     } finally {

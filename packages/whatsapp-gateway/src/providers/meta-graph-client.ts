@@ -18,7 +18,7 @@
 // entrega y fuera Meta lo rechaza con un 4xx de negocio que el dispatcher marca `dead`, nunca `sent` fingido.
 // Crear y aprobar la plantilla en el Business Manager de Meta sigue siendo un paso externo (ver README).
 import { WhatsAppConfigError, WhatsAppInvalidPayloadError, WhatsAppSendError } from "../errors.ts";
-import type { OutboundTemplate, OutboundWhatsAppMessagePayload, WhatsAppGraphClient, WhatsAppSendResult } from "../types.ts";
+import type { EnviadoComo, OutboundTemplate, OutboundWhatsAppMessagePayload, WhatsAppGraphClient, WhatsAppSendResult } from "../types.ts";
 
 /** Versión de Graph API por defecto — estable, sin fecha de retiro anunciada al
  *  momento de escribir esto. Sobreescribible vía opción/env sin tocar código. */
@@ -73,6 +73,21 @@ function buildTemplateBody(to: string, template: OutboundTemplate): Record<strin
 }
 
 function buildRequestBody(message: OutboundWhatsAppMessagePayload, approvedTemplates: ReadonlySet<string>): Record<string, unknown> {
+  if (message.solicitarUbicacion === true) {
+    if ((message.buttons && message.buttons.length > 0) || message.template) {
+      throw new WhatsAppInvalidPayloadError("la solicitud de ubicacion no se combina con botones ni plantilla");
+    }
+    if (message.body.length === 0 || message.body.length > 1024) {
+      throw new WhatsAppInvalidPayloadError("el texto de la solicitud de ubicacion debe medir de 1 a 1024 caracteres");
+    }
+    return {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: message.to,
+      type: "interactive",
+      interactive: { type: "location_request_message", body: { text: message.body }, action: { name: "send_location" } },
+    };
+  }
   if (message.template && (message.templateApproved === true || approvedTemplates.has(message.template.name))) {
     return buildTemplateBody(message.to, message.template);
   }
@@ -104,6 +119,16 @@ function buildRequestBody(message: OutboundWhatsAppMessagePayload, approvedTempl
     };
   }
   return { messaging_product: "whatsapp", to: message.to, type: "text", text: { body: message.body, preview_url: false } };
+}
+
+/** Tipo real del cuerpo que se mando a Meta (para explicar despues un fallo de entrega). */
+function enviadoComoDe(body: Record<string, unknown>): EnviadoComo {
+  if (body.type === "template") return "plantilla";
+  if (body.type === "interactive") {
+    const tipo = (body.interactive as { type?: unknown } | undefined)?.type;
+    return tipo === "location_request_message" ? "ubicacion" : "botones";
+  }
+  return "texto";
 }
 
 export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
@@ -177,6 +202,6 @@ export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
       // finge éxito sin evidencia real de que el mensaje se aceptó.
       throw new WhatsAppSendError("Graph API respondió 2xx sin messages[0].id", false);
     }
-    return { providerMessageId };
+    return { providerMessageId, enviadoComo: enviadoComoDe(body) };
   }
 }

@@ -50,6 +50,8 @@ export function citasGoogleCalendarOAuthRoutes(deps: AppDeps): Hono<CoreAuthHono
 
     const provider = await citasRepo.findProvider(organizationId, providerId);
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+    // Solo el staff de la sucursal del proveedor inicia la conexion (un proveedor sin sucursal es de toda la organizacion); ver calendar-providers.ts.
+    if (provider.propertyId && provider.propertyId !== propertyId) throw Errors.notFound("Proveedor no encontrado.");
 
     const state = signGoogleCalendarOAuthState({ organizationId, providerId, propertyId }, deps.env.whatsappAppSecret);
     const url = new URL(GOOGLE_AUTHORIZE_ENDPOINT);
@@ -104,6 +106,8 @@ export function citasGoogleCalendarOAuthRoutes(deps: AppDeps): Hono<CoreAuthHono
       const citasRepo = deps.citasRepo(db);
       const provider = await citasRepo.findProvider(state.organizationId, state.providerId);
       if (!provider) throw Errors.notFound("El proveedor de esta conexión ya no existe.");
+      // El state se firmo al iniciar con la sucursal de la ruta (ya validada contra el proveedor); si el proveedor cambio de sucursal en el medio, no se conecta.
+      if (provider.propertyId && provider.propertyId !== state.propertyId) throw Errors.notFound("El proveedor de esta conexión ya no existe.");
 
       const account = await citasRepo.connectProviderCalendarAccount({
         organizationId: state.organizationId,

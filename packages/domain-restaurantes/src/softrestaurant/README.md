@@ -103,7 +103,18 @@ captura_manual / fallida / pendiente -> capturada_manual     (el staff la captur
 | `PUT .../config` `{ modo }` | owner/admin | cambia la bandera (bitacora `configuracion`) |
 | `GET .../comandas?estado=&branchId=&limit=&offset=` | owner/admin/staff | por defecto captura_manual, fallida, pendiente, enviada; con la comanda para capturarla a mano |
 | `POST .../comandas/:comandaId/capturada` `{ nota? }` | owner/admin/staff con acceso a la sucursal | marca capturada (bitacora `pedido`/`comanda.captura_manual`) |
+| `GET .../estados?orderIds=a,b,c` | owner/admin/staff | estado de la comanda de cada pedido (insignia de Pedidos), hasta 100 ids |
+| `PUT .../umbral-captura-manual` `{ branchId, minutos }` | owner/admin | minutos (1..240, 5 por omision) que una comanda puede esperar captura manual antes de avisar al staff (migracion 054; bitacora `configuracion`) |
 | `GET/POST /internal/restaurantes/softrestaurant-dispatch` | secreto de cron | drena el outbox; 503 sin adaptador real |
+
+## Captura asistida y alerta (migracion 054)
+
+Mientras no haya adaptador real, el pedido entra por voz, WhatsApp o web y alguien lo teclea en SoftRestaurant: la pantalla
+`/restaurantes/:orgSlug/comandas-pos` (apps/web, `pages/ComandasPos.tsx`) es esa cola (filtros por estado y sucursal, «Copiar para POS» con los codigos POS,
+«Marcar capturada» con el folio del POS opcional). Una comanda en `captura_manual` que pasa el umbral de su sucursal sin capturarse emite la notificacion
+`restaurantes.comanda.captura_manual_vencida` (una por comanda, sin PII) desde el tick `/internal/restaurantes/softrestaurant-dispatch`, **antes** de
+revisar el adaptador real (la captura asistida es justo el caso de "sin POS"); la logica vive en `alerta-vencida.ts` y los candidatos los decide la base
+(`restaurantes.pos_comandas_captura_manual_vencidas`, solo sistema).
 
 ## Compatibilidad con la base sin migrar
 

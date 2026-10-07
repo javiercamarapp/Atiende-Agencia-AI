@@ -198,15 +198,14 @@ export const GUIONES_ES_MX: readonly GuionLlamada[] = [
   },
   {
     id: "V09-silencio-abandono",
-    titulo: "El cliente no contesta: dos re-preguntas y despedida",
+    titulo: "El cliente no contesta: un solo \"¿sigue ahi?\" y despedida",
     rasgos: ["silencio", "abandono"],
     turnos: [
       { kind: "voz", cliente: "Bueno", agente: [dice("Buenas tardes, gracias por llamar a Los Taquitos de PM. ¿En qué le puedo ayudar?")] },
       { kind: "silencio", ms: 7500 },
       { kind: "silencio", ms: 7500 },
-      { kind: "silencio", ms: 7500 },
     ],
-    esperado: { resultado: "abandonado", sinPedido: true, pregrabados: ["silencio_reprompt", "silencio_reprompt", "silencio_despedida"] },
+    esperado: { resultado: "abandonado", sinPedido: true, pregrabados: ["silencio_reprompt", "silencio_despedida"] },
   },
   {
     id: "V10-ruido-no-se-entiende",
@@ -268,8 +267,8 @@ export const GUIONES_ES_MX: readonly GuionLlamada[] = [
     rasgos: ["limite de costo por llamada"],
     turnos: [
       { kind: "voz", cliente: "Hola, buenas tardes", agente: [dice("Buenas tardes, gracias por llamar a Los Taquitos de PM. ¿En qué le puedo ayudar?")] },
-      { kind: "costo", microUsd: 60_000 },
-      { kind: "costo", microUsd: 45_000 },
+      { kind: "costo", microUsd: 300_000 },
+      { kind: "costo", microUsd: 250_000 },
     ],
     esperado: { resultado: "escalado", sinPedido: true, callbacks: ["escalada:no_puedo_resolver"], pregrabados: ["limite_costo"] },
   },

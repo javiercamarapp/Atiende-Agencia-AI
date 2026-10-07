@@ -32,6 +32,8 @@ export interface SeedTenancyMembership {
   readonly propertyIds: readonly string[] | null;
   readonly platformRole: PlatformRole;
   readonly verticalRole: string;
+  /** `core.staff_user.full_name`, solo para `rentas.listar_asignables_limpieza`; sin el, se usa el id. */
+  readonly fullName?: string;
 }
 
 interface MembershipQueryRow {
@@ -43,6 +45,9 @@ interface MembershipQueryRow {
 function normalize(sql: string): string {
   return sql.replace(/\s+/g, " ").trim().toLowerCase();
 }
+
+/** Roles que `rentas.es_miembro_operativo_limpieza` (migracion 033) acepta como responsable/asignado de una tarea. */
+const ROLES_OPERATIVOS_LIMPIEZA: readonly string[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "limpieza"];
 
 export class InMemoryRentasTenancyEngine implements TenancyEngine {
   private readonly properties = new Map<string, SeedTenancyProperty>();
@@ -242,11 +247,12 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
         // funciones que apps/api/.../rentas/limpieza.ts invoca con el
         // `TenantDbSession` del request DIRECTO, mismo patrón que
         // crearBloqueo/cancelarOcupacion arriba), MÁS `crearTareaLimpiezaPorCheckout`/
-        // `procesarCheckoutsPendientes`/`crearTareaOperativaManual` (ronda que agregó
+        // `barrerLimpiezaPendiente`/`crearTareaOperativaManual` (ronda que agregó
         // apps/api/.../rentas/checkout-sweep-cron.ts y el POST manual de
-        // limpieza.ts). `reprogramarTareaPorCambioReserva`/
-        // `cancelarTareaPorCancelacionReserva` siguen SIN soportarse aquí a propósito -- ningún HTTP route las invoca todavía
-        // (ver README de este paquete, sección "Fuera de fase"); los tests que solo
+        // limpieza.ts) y, desde paridad3, el ciclo de la tarea ligada a la reserva
+        // (`crearTareaLimpiezaAlConfirmar`/`reprogramarTareaPorCambioReserva`/
+        // `cancelarTareaPorCancelacionReserva`, invocadas por `crearReservaConfirmada`/
+        // `modificarFechasReserva`/`cancelarOcupacion`). Los tests que solo
         // necesitan una tarea/inventario ya existente pueden seguir sembrándola
         // directo con `store.seedTareaOperativa`/`store.seedItemInventario`.
         // -------------------------------------------------------------------
@@ -301,20 +307,121 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
 
         // ---- UPDATE rentas.tarea_operativa SET buffer_ocupacion_id = $1 WHERE
         // id = $2 (crearTareaLimpiezaPorCheckout, tras crear el buffer aparte) ----
+        if (n.startsWith("update rentas.tarea_operativa set buffer_ocupacion_id = null")) {
+          const [tareaId] = params as [string];
+          store.actualizarBufferOcupacionTarea(tareaId, null);
+          return { rows: [] as R[] };
+        }
         if (n.startsWith("update rentas.tarea_operativa set buffer_ocupacion_id")) {
           const [bufferOcupacionId, tareaId] = params as [string | null, string];
           store.actualizarBufferOcupacionTarea(tareaId, bufferOcupacionId);
           return { rows: [] as R[] };
         }
 
-        // ---- procesarCheckoutsPendientes: poll de checkouts confirmados sin tarea de
-        // limpieza aún vinculada (ver findOcupacionesCheckoutPendientes). `asOfDate`
-        // ($2) llega ya resuelto en TS con `hoyFechaNegocio()` -- nunca se recalcula
-        // aquí con el reloj real (mismo criterio que el fix de Postgres real). ----
-        if (n.startsWith("select o.id as ocupacion_id")) {
-          const [limite, asOfDate] = params as [number, string];
-          const rows = store.findOcupacionesCheckoutPendientes(limite, asOfDate);
-          return { rows: rows.map((r) => ({ ocupacion_id: r.ocupacionId, unidad_id: r.unidadId, fin: r.fin })) as unknown as R[] };
+        // ---- ciclo de la tarea ligada a la reserva (ganchos de crearReservaConfirmada/modificarFechasReserva/
+        // cancelarOcupacion) ----
+        // Idempotencia de crearTareaLimpiezaPorCheckout: tarea de limpieza (cualquier estado) de una reserva.
+        if (n.startsWith("select id, asignado_a from rentas.tarea_operativa where tipo = 'limpieza'")) {
+          const [ocupacionId] = params as [string];
+          const fila = store.findTareaLimpiezaPorOcupacion(ocupacionId);
+          return { rows: (fila ? [fila] : []) as unknown as R[] };
+        }
+        // Responsable por omision vigente (funcion definer de la migracion 033): el default de la unidad solo vale mientras
+        // siga siendo miembro operativo con acceso a la propiedad -- espejo de `rentas.es_miembro_operativo_limpieza`.
+        if (n.startsWith("select rentas.responsable_limpieza_vigente")) {
+          const [unidadId] = params as [string];
+          const unidad = store.getUnidadById(unidadId);
+          const candidato = unidad?.responsableLimpiezaDefaultId ?? null;
+          const vigente =
+            unidad !== null &&
+            candidato !== null &&
+            this.memberships.some(
+              (m) => m.userId === candidato && m.organizationId === unidad.organizationId && ROLES_OPERATIVOS_LIMPIEZA.includes(m.verticalRole) && (m.propertyIds === null || m.propertyIds.includes(unidad.propertyId)),
+            );
+          return { rows: [{ responsable: vigente ? candidato : null }] as unknown as R[] };
+        }
+        // reprogramarTareaPorCambioReserva / cancelarTareaPorCancelacionReserva: tarea viva de la reserva.
+        if (n.includes("from rentas.tarea_operativa where ocupacion_unidad_id")) {
+          const [ocupacionId] = params as [string];
+          const fila = store.findTareaActivaPorOcupacion(ocupacionId);
+          if (!fila) return { rows: [] as R[] };
+          return { rows: [{ id: fila.id, organization_id: fila.organizationId, property_id: fila.propertyId, unidad_id: fila.unidadId, buffer_ocupacion_id: fila.bufferOcupacionId }] as unknown as R[] };
+        }
+        if (n.startsWith("update rentas.tarea_operativa set programada_para")) {
+          const [programadaPara, tareaId] = params as [string, string];
+          store.reprogramarTareaOperativa(tareaId, programadaPara);
+          return { rows: [] as R[] };
+        }
+        if (n.startsWith("update rentas.tarea_operativa set estado = 'cancelada'")) {
+          const [tareaId] = params as [string];
+          store.cancelarTareaOperativa(tareaId);
+          return { rows: [] as R[] };
+        }
+
+        // ---- migracion 033: validacion del asignado, lista de asignables y cola de avisos in-app ----
+        // `rentas.puede_operar_limpieza(propiedad, usuario)`: quien pregunta debe tener acceso a la propiedad y la persona debe ser miembro
+        // operativo de ella (espejo de la funcion definer; el verify de Postgres real prueba la version SQL).
+        if (n.startsWith("select rentas.puede_operar_limpieza")) {
+          const [propertyId, userId] = params as [string, string];
+          const property = this.properties.get(propertyId);
+          const quienPregunta = claims.userId === null ? undefined : this.memberships.find((m) => m.userId === claims.userId && property && m.organizationId === property.organizationId && (m.propertyIds === null || m.propertyIds.includes(propertyId)));
+          const ok =
+            property !== undefined &&
+            quienPregunta !== undefined &&
+            this.memberships.some((m) => m.userId === userId && m.organizationId === property.organizationId && ROLES_OPERATIVOS_LIMPIEZA.includes(m.verticalRole) && (m.propertyIds === null || m.propertyIds.includes(propertyId)));
+          return { rows: [{ ok }] as unknown as R[] };
+        }
+        if (n.startsWith("select user_id, full_name, vertical_role from rentas.listar_asignables_limpieza")) {
+          const [propertyId] = params as [string];
+          const property = this.properties.get(propertyId);
+          const yo = claims.userId === null || !property ? undefined : this.memberships.find((m) => m.userId === claims.userId && m.organizationId === property.organizationId && (m.propertyIds === null || m.propertyIds.includes(propertyId)));
+          if (!property || !yo || !["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"].includes(yo.verticalRole)) {
+            throw Object.assign(new Error("rentas.listar_asignables_limpieza: sin permiso para esta propiedad."), { code: "42501" });
+          }
+          const rows = this.memberships
+            .filter((m) => m.organizationId === property.organizationId && ROLES_OPERATIVOS_LIMPIEZA.includes(m.verticalRole) && (m.propertyIds === null || m.propertyIds.includes(propertyId)))
+            .map((m) => ({ user_id: m.userId, full_name: m.fullName ?? m.userId, vertical_role: m.verticalRole }));
+          return { rows: rows as unknown as R[] };
+        }
+        if (n.startsWith("select n.id as aviso_id, t.id as tarea_id")) {
+          const [limite] = params as [number];
+          return { rows: store.listAvisosAsignacionPendientes(limite) as unknown as R[] };
+        }
+        if (n.startsWith("update rentas.notificacion_tarea set notificada_in_app_en = now() where id = any")) {
+          const [ids] = params as [string[]];
+          store.marcarAvisosNotificados(ids);
+          return { rows: [] as R[] };
+        }
+        if (n.startsWith("update rentas.notificacion_tarea set notificada_in_app_en = now() where tarea_id")) {
+          const [tareaId] = params as [string];
+          store.marcarAvisosDeTareaNotificados(tareaId);
+          return { rows: [] as R[] };
+        }
+
+        // ---- barrerLimpiezaPendiente: fases 1-4 del barrido por propiedad ----
+        if (n.startsWith("select o.property_id, pc.zona_horaria, min(upper(o.rango))")) {
+          const [cota] = params as [string];
+          return { rows: store.propiedadesConCheckoutPendiente(cota) as unknown as R[] };
+        }
+        if (n.startsWith("select o.id as ocupacion_id, o.unidad_id, upper(o.rango)::text as fin from rentas.ocupacion o where o.property_id")) {
+          const [propertyId, hasta, limite] = params as [string, string, number];
+          return { rows: store.ocupacionesCheckoutPendientesDePropiedad(propertyId, hasta, limite) as unknown as R[] };
+        }
+        if (n.startsWith("select t.id as tarea_id, t.unidad_id, t.programada_para::text as fecha")) {
+          const [cota, limite] = params as [string, number];
+          return { rows: store.tareasLimpiezaSinBuffer(cota, limite) as unknown as R[] };
+        }
+        if (n.startsWith("select t.ocupacion_unidad_id as ocupacion_id from rentas.tarea_operativa t") && n.includes("o.estado = 'cancelado'")) {
+          const [limite] = params as [number];
+          return { rows: store.tareasDeReservaCancelada(limite) as unknown as R[] };
+        }
+        if (n.startsWith("select t.ocupacion_unidad_id as ocupacion_id, upper(o.rango)::text as fin")) {
+          const [limite] = params as [number];
+          return { rows: store.tareasDesfasadasDeSuReserva(limite) as unknown as R[] };
+        }
+        if (n.startsWith("select t.organization_id, t.property_id, pc.zona_horaria, t.programada_para::text as fecha, count(*)")) {
+          const [desde, hasta] = params as [string, string];
+          return { rows: store.tareasSinAsignarEnRango(desde, hasta) as unknown as R[] };
         }
 
         // ---- UPDATE rentas.tarea_operativa SET asignado_a = ... WHERE id = $1

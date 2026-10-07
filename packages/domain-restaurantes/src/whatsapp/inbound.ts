@@ -7,6 +7,7 @@
 import { redactarDatosDePago } from "@atiende/core-pii";
 import { actorHash, consumeRateLimit } from "../rate-limit.ts";
 import { lookupCustomerConPedidoReciente } from "../customers.ts";
+import { esSoloSticker } from "./channel-config.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
 import { matchesHighRiskOtherThan } from "./guards.ts";
@@ -14,6 +15,7 @@ import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/a
 import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
+import { PM_COPY } from "./perfil-pm.ts";
 import { resolverCuerpoConNotaDeVoz, type TranscripcionDeEntrada } from "./nota-de-voz.ts";
 
 // Hallazgo real de la auditoría adversarial del origen (3-sep-2026): el agente le
@@ -195,6 +197,12 @@ export async function handleInboundWhatsAppMessage(
         return { ok: true, retryable: false };
       }
 
+      // Un sticker (el «gracias» de siempre) tras un pedido ya cerrado no se contesta: el mensaje queda en el historial y procesado.
+      if (!arco && limite === null && (await stickerSobraTrasPedidoCerrado(repo, organizationId, phone, body))) {
+        await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+        return { ok: true, retryable: false };
+      }
+
       const turn = arco
         ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
         : apagado
@@ -207,6 +215,7 @@ export async function handleInboundWhatsAppMessage(
                 messages: messagesAfterUser,
                 customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
                 propertyId: propertyId ?? null,
+                messageId,
               });
 
       // PM PR-9 -- aviso de privacidad simplificado + "asistente virtual" en el PRIMER mensaje de
@@ -221,7 +230,7 @@ export async function handleInboundWhatsAppMessage(
         if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
       }
 
-      const assistantMessage: ConversationMessage = { role: "assistant", content: reply };
+      const assistantMessage: ConversationMessage = turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true } : { role: "assistant", content: reply };
       await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
 
       // R-21: el agente pidio una persona -> abre la toma de handoff (misma transaccion que la conversacion).
@@ -239,6 +248,7 @@ export async function handleInboundWhatsAppMessage(
           body: reply,
           transaccional: true, // SA-L-46: respuesta/confirmacion que el cliente pidio; la lista de supresion no la bloquea.
         });
+        if (turn.pedirUbicacion) await encolarSolicitudUbicacion(repo, organizationId, `inbound-ubicacion:${messageId}`, phone, phoneNumberId);
       }
 
       await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
@@ -249,6 +259,19 @@ export async function handleInboundWhatsAppMessage(
     await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "failed", errorClass);
     return { ok: false, retryable: true };
   }
+}
+
+/** §5: encola, ademas de la respuesta de texto, el mensaje interactivo `location_request_message` (el cliente comparte su ubicacion con un toque).
+ * Va en el mismo outbox y con el mismo `phone_number_id`: se envia dentro de la ventana de 24 h abierta por el mensaje del cliente. La llave de
+ * idempotencia deriva del id del mensaje de Meta, asi un reintento del turno no la duplica. */
+async function encolarSolicitudUbicacion(repo: RestaurantesRepository, organizationId: string, key: string, phone: string, phoneNumberId: string): Promise<void> {
+  await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", key, {
+    to: phone,
+    phone_number_id: phoneNumberId,
+    body: PM_COPY.pedirUbicacion,
+    solicitar_ubicacion: true,
+    transaccional: true,
+  });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -457,6 +480,7 @@ export async function responderTrasEspera(
         // Interruptor duro de la sucursal (053): sin modelo, texto fijo + toma de handoff; las pasadas siguientes las calla la propia toma abierta.
         const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId);
         if (apagado === "callar") return { salida: { ok: true, retryable: false }, silencio: true };
+        if (!arco && (await stickerSobraTrasPedidoCerrado(repo, organizationId, phone, textoPendiente))) return { salida: { ok: true, retryable: false }, silencio: true };
         const turn = arco
           ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
           : apagado
@@ -467,6 +491,7 @@ export async function responderTrasEspera(
                 messages: historial,
                 customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
                 propertyId: propertyId ?? null,
+                messageId,
                 ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
               });
         let reply = turn.reply;
@@ -477,7 +502,7 @@ export async function responderTrasEspera(
           const isFirstContact = claimed ?? !historial.some((m) => m.role === "assistant");
           if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
         }
-        await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: reply }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
+        await repo.whatsappAppendTurn(organizationId, phone, [turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true } : { role: "assistant", content: reply }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
         if (turn.escalacion && handoffGate) {
           await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
         }
@@ -488,6 +513,7 @@ export async function responderTrasEspera(
             body: reply,
             transaccional: true, // SA-L-46: respuesta que el cliente pidio; la lista de supresion no la bloquea.
           });
+          if (turn.pedirUbicacion) await encolarSolicitudUbicacion(repo, organizationId, pasada === 1 ? `inbound-ubicacion:${messageId}` : `inbound-ubicacion:${messageId}:p${pasada}`, phone, phoneNumberId);
         }
         return { salida: { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate) }, silencio: false };
       });
@@ -504,4 +530,15 @@ export async function responderTrasEspera(
     await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "failed", errorClass);
     return { ok: false, retryable: true };
   }
+}
+
+/** Minutos tras la confirmacion durante los que un sticker del cliente se considera el «gracias» de un pedido cerrado. */
+export const STICKER_VENTANA_PEDIDO_CERRADO_MIN = 240;
+
+/** Un sticker (y nada mas) con un pedido vigente confirmado hace poco: no se contesta. Sin pedido reciente el turno sigue y el agente lo toma como un gesto. */
+async function stickerSobraTrasPedidoCerrado(repo: RestaurantesRepository, organizationId: string, phone: string, texto: string): Promise<boolean> {
+  if (!esSoloSticker(texto)) return false;
+  const cliente = await lookupCustomerConPedidoReciente(repo, organizationId, phone);
+  const reciente = cliente.isNew ? undefined : cliente.pedidoReciente;
+  return reciente !== undefined && reciente !== null && reciente.minutosDesdeConfirmacion <= STICKER_VENTANA_PEDIDO_CERRADO_MIN;
 }

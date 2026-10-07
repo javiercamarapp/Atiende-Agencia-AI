@@ -38,6 +38,8 @@ import {
   esVozDeGemini,
   executeAgentToolSafely,
   firmarPreviewToken,
+  instruccionVozConReglas,
+  resolveAgentConfig,
   MARCADOR_SALUDO,
   resolverMarcadorSaludo,
   telefonoFicticioPreview,
@@ -224,6 +226,29 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     const voiceId = raw.voiceId ?? lectura.valor.voiceId;
     if (!provider.catalogoVoces().some((v) => v.id === voiceId)) throw Errors.validation("voiceId: no está en el catálogo de voces del proveedor.");
 
+    // 2b) Instruccion de la sesion (antes de crear la fila: un fallo aqui no deja una sesion huerfana).
+    // Perfil PM: las reglas duras van ANEXADAS al final del texto editable (el dueno no puede borrarlas); el saludo inicial ya
+    // viaja dentro de la instruccion, antes del bloque. Otros perfiles conservan el comportamiento editable tal cual.
+    const agente = await resolveAgentConfig(restaurantes, organizationId, propertyId);
+    // `{saludo}` se resuelve aqui con la zona horaria de la sucursal (tambien dentro de las reglas del perfil PM).
+    const mensajeInicial = lectura.valor.mensajeInicial.includes(MARCADOR_SALUDO)
+      ? resolverMarcadorSaludo(lectura.valor.mensajeInicial, (await restaurantes.findBranchZonaHoraria(propertyId)).zonaHoraria ?? "America/Merida", new Date())
+      : lectura.valor.mensajeInicial;
+    const comportamiento =
+      agente.perfil === "taqueria_pm"
+        ? instruccionVozConReglas({
+            comportamiento: lectura.valor.comportamiento,
+            mensajeInicial,
+            businessName: agente.businessName,
+            ...(agente.agentName ? { agentName: agente.agentName } : {}),
+            deliveryTimeText: agente.deliveryTimeText,
+            promosTexto: agente.promosText ?? null,
+            salsasTexto: agente.salsasText ?? null,
+            pedidoGrandeTexto: agente.largeOrderText ?? null,
+            motivosDesactivados: agente.motivosDesactivados ?? [],
+          })
+        : lectura.valor.comportamiento;
+
     // 3) Fila de sesión (la base valida organización, sucursal, vigencia y created_by = staff).
     const ttlSegundos = PREVIEW_TOKEN_TTL_POR_DEFECTO_SEGUNDOS;
     let sesion;
@@ -236,9 +261,6 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     // 4) Sesión con el proveedor + token propio firmado. El token fija las herramientas del registro unico (canal voz); las
     // ejecuta el servidor en modo preview (ruta `.../preview/:sesionId/herramienta`). `{saludo}` se resuelve aqui con la zona
     // horaria de la sucursal.
-    const mensajeInicial = lectura.valor.mensajeInicial.includes(MARCADOR_SALUDO)
-      ? resolverMarcadorSaludo(lectura.valor.mensajeInicial, (await restaurantes.findBranchZonaHoraria(propertyId)).zonaHoraria ?? "America/Merida", new Date())
-      : lectura.valor.mensajeInicial;
     // Conocimiento del negocio vigente HOY (053): va ANTES del comportamiento guardado para que las reglas duras (que viven en el comportamiento) queden
     // al final y ganen. Sin entradas o con la base sin migrar el texto es identico al guardado.
     const bloqueConocimiento = await bloqueConocimientoDelTurno(restaurantes, organizationId, propertyId, "America/Merida", new Date());
@@ -249,9 +271,10 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
         propertyId,
         sessionId: sesion.id,
         voiceId,
-        comportamiento: anteponerConocimiento(lectura.valor.comportamiento, bloqueConocimiento),
-        mensajeInicial,
+        comportamiento: anteponerConocimiento(comportamiento, bloqueConocimiento),
+        mensajeInicial: agente.perfil === "taqueria_pm" ? "" : mensajeInicial,
         ttlSegundos,
+        vertical: "restaurantes",
         herramientas: toolDefinitionsForChannel("voz").map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),
       });
     } catch (err) {

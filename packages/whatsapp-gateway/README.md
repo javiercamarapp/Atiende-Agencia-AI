@@ -114,3 +114,11 @@ Manager de Meta, enviarla a revisión y esperar la aprobación; después agregar
 `WHATSAPP_APPROVED_TEMPLATES`. Las plantillas de estado de pedido (nombre, idioma `es_MX`, variables
 `{{1}}` nombre, `{{2}}` sucursal, `{{3}}` total) están en `PLANTILLAS_ESTADO_PEDIDO` de
 `packages/domain-restaurantes/src/order-notifications.ts`.
+
+## wamid y estados de entrega
+
+`WhatsAppSendResult.providerMessageId` (el `messages[0].id` que devuelve Graph API) ya no se descarta: el despachador lo entrega a
+`MessagingOutboxPort.markSent(id, { providerMessageId, enviadoComo })`. Un puerto que no lo guarda (citas, hoteles y licitaciones hoy) lo ignora; restaurantes lo
+persiste (migracion 066) para que los `statuses` del webhook encuentren el mensaje. `extractMetaStatuses` (puro, `src/statuses.ts`) extrae esos `statuses` sin texto
+de mensaje, y `avanzarEstadoEntrega`/`motivoFalloEntrega` fijan el orden de los estados y la clasificacion de los codigos de error de Meta.
+

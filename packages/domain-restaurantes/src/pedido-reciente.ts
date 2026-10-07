@@ -10,7 +10,7 @@ export const VENTANA_PEDIDO_RECIENTE_MIN = 12 * 60;
 /** Sucursal sin zona horaria propia (`branch_detail.zona_horaria` nula): la del negocio (Los Taquitos de PM es de Merida). */
 const ZONA_POR_OMISION = "America/Merida";
 
-export type EstadoPedidoParaCliente = "preparando" | "salio" | "listo_para_recoger" | "entregado" | "programado" | "con_problema" | "no_recogido";
+export type EstadoPedidoParaCliente = "preparando" | "salio" | "listo_para_recoger" | "entregado" | "programado" | "con_problema" | "no_recogido" | "por_confirmar";
 
 export interface PedidoReciente {
   readonly estado: EstadoPedidoParaCliente;
@@ -40,6 +40,8 @@ export function estadoParaCliente(status: OrderStatus): EstadoPedidoParaCliente 
       return "con_problema";
     case "no_recogido":
       return "no_recogido";
+    case "por_aprobar":
+      return "por_confirmar";
     case "cancelado":
       return null;
   }
@@ -51,7 +53,7 @@ function horaLocal(iso: string, zona: string): string {
 
 /** Pedido mas reciente de este telefono dentro de la ventana; null = no hay; undefined = no se pudo leer (base sin migrar). Solo lee columnas de `orders` de las migraciones 001, 003 y 008
  * y `canal` por el camino que ya degrada contra la base sin migrar (`listOrderPickupInfo`). */
-export async function buscarPedidoReciente(repo: RestaurantesRepository, organizationId: string, phone: string, now: Date = new Date()): Promise<PedidoReciente | null | undefined> {
+export async function buscarPedidoRecienteConSucursal(repo: RestaurantesRepository, organizationId: string, phone: string, now: Date = new Date()): Promise<{ readonly reciente: PedidoReciente; readonly propertyId: string | null } | null | undefined> {
   const desde = new Date(now.getTime() - VENTANA_PEDIDO_RECIENTE_MIN * 60_000).toISOString();
   const order = await repo.findLatestOrderByPhone(organizationId, normalizePhone(phone), desde);
   if (order === undefined) return undefined; // la lectura no estuvo disponible: estado desconocido
@@ -60,10 +62,19 @@ export async function buscarPedidoReciente(repo: RestaurantesRepository, organiz
   if (!estado) return null;
   const [zona, info] = await Promise.all([repo.findBranchZonaHoraria(order.propertyId), repo.listOrderPickupInfo(organizationId, [order.id])]);
   return {
-    estado,
-    canal: info[0]?.canal ?? null,
-    sucursal: order.branch,
-    confirmadoHoraLocal: horaLocal(order.createdAt, zona.zonaHoraria ?? ZONA_POR_OMISION),
-    minutosDesdeConfirmacion: Math.max(0, Math.round((now.getTime() - Date.parse(order.createdAt)) / 60_000)),
+    propertyId: order.propertyId ?? null,
+    reciente: {
+      estado,
+      canal: info[0]?.canal ?? null,
+      sucursal: order.branch,
+      confirmadoHoraLocal: horaLocal(order.createdAt, zona.zonaHoraria ?? ZONA_POR_OMISION),
+      minutosDesdeConfirmacion: Math.max(0, Math.round((now.getTime() - Date.parse(order.createdAt)) / 60_000)),
+    },
   };
+}
+
+/** Igual que `buscarPedidoRecienteConSucursal` pero solo con lo que ve el cliente (sin el id de la sucursal). */
+export async function buscarPedidoReciente(repo: RestaurantesRepository, organizationId: string, phone: string, now: Date = new Date()): Promise<PedidoReciente | null | undefined> {
+  const r = await buscarPedidoRecienteConSucursal(repo, organizationId, phone, now);
+  return r === undefined || r === null ? r : r.reciente;
 }

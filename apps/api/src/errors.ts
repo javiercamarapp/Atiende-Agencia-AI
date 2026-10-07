@@ -22,6 +22,9 @@ export const Errors = {
   // ---- segundo factor / step-up / contrasena (L-01, L-02) ----
   // 422/403/429/503 a proposito, NUNCA 401: el cliente trata 401 como "sesion vencida" y
   // cerraria la sesion del usuario por escribir mal un codigo.
+  /** Datos de empresa (migración 036): `approvalStatus` ya no se escribe en alta/edición; se decide en .../approve|reject. */
+  companyDataApprovalNotWritable: () =>
+    new ApiError(422, "approval_status_not_writable", "approvalStatus no se puede escribir directamente: el registro nace pendiente y lo decide otra persona con rol de decisión en .../approve o .../reject."),
   secondFactorInvalid: () => new ApiError(422, "second_factor_invalid", "El código es incorrecto o ya se usó."),
   secondFactorLocked: (hasta: string) =>
     new ApiError(429, "second_factor_locked", `Demasiados intentos fallidos. La verificación en dos pasos está bloqueada hasta ${hasta}.`, { "Retry-After": "900" }),
@@ -54,6 +57,8 @@ export const Errors = {
   // ---- rentas (calendario/reservas, ver diseño Fase 1 rentas §4, Flujo 1) ----
   rentasUnidadNoDisponible: (conflictoId: string) =>
     new ApiError(409, "unidad_no_disponible", `La unidad no está disponible para el rango solicitado (conflicto registrado: ${conflictoId}).`),
+  // ---- rentas (limpieza: asignar una tarea, paridad3) ----
+  rentasAsignadoNoValido: () => new ApiError(422, "asignado_no_valido", "La persona elegida no es miembro con acceso a esta propiedad, o su rol no opera limpieza."),
   rentasReservaNoDirecta: () => new ApiError(409, "reserva_no_directa", "Esta reserva proviene de un canal externo: nunca se modifica/cancela desde aquí, solo reservas directas."),
   // ---- rentas (pricing CRUD, ver diseño Fase 2 rentas §3.6) ----
   rentasPricingSolapado: (nombreOtro: string, rango: { inicio: string; fin: string }) =>

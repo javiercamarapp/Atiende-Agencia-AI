@@ -20,17 +20,19 @@ export const DESTINOS: readonly Destino[] = [
   { sub: "", nombre: "Resumen", soloGestion: false },
   { sub: "/copiloto", nombre: "Copiloto", soloGestion: false },
   { sub: "/pedidos", nombre: "Pedidos", soloGestion: false },
+  { sub: "/comandas-pos", nombre: "Comandas al POS", soloGestion: false },
   { sub: "/conversaciones", nombre: "Conversaciones", soloGestion: false },
   { sub: "/turnos", nombre: "Turnos", soloGestion: false },
   { sub: "/historial", nombre: "Historial", soloGestion: false },
   { sub: "/avisos", nombre: "Avisos", soloGestion: false },
   { sub: "/cierres", nombre: "Cierre del día", soloGestion: true },
   { sub: "/productos", nombre: "Productos", soloGestion: false },
-  { sub: "/promociones", nombre: "Promociones", soloGestion: false },
+  { sub: "/promociones", nombre: "Promociones", soloGestion: true },
   { sub: "/clientes", nombre: "Clientes", soloGestion: false },
   { sub: "/sucursales", nombre: "Sucursales", soloGestion: false },
   { sub: "/agente-voz", nombre: "Agente de voz", soloGestion: true },
   { sub: "/agente-whatsapp", nombre: "Agente de WhatsApp", soloGestion: true },
+  { sub: "/agente-ajustes", nombre: "Ajustes del agente", soloGestion: true },
   { sub: "/primeros-pasos", nombre: "Primeros pasos", soloGestion: true },
   { sub: "/configuracion", nombre: "Configuración", soloGestion: true },
   { sub: "/staff", nombre: "Staff", soloGestion: true },
@@ -44,6 +46,8 @@ export const DESTINOS: readonly Destino[] = [
 export async function ir(page: Page, sub = ""): Promise<void> {
   await page.goto(`${BASE}${sub}`);
   await expect(page.locator("main#contenido-principal")).toBeVisible();
+  // R-37: la pantalla es un chunk perezoso; no seguir mientras se pinta el estado de carga de la ruta.
+  await expect(page.locator("[data-atiende-carga-ruta]")).toHaveCount(0);
 }
 
 /** Espera a que el mock reciba EXACTAMENTE `n` peticiones que coinciden y las devuelve (para afirmar metodo, ruta y cuerpo). */
@@ -65,13 +69,18 @@ export function cuerpoDe(p: RegistroPeticion | undefined): Record<string, unknow
 
 /**
  * Falla inyectada -> EstadoError con "Reintentar" -> al reintentar la pagina se recupera. `ruta` es la GET que carga la
- * pantalla; `listo` es algo visible solo cuando cargo bien. La falla se consume una sola vez (`veces: 1`).
+ * pantalla; `listo` es algo visible solo cuando cargo bien. La falla es PERSISTENTE hasta que aparece el error y entonces se
+ * retira: con `veces: 1` una pantalla que pide dos veces (el efecto se repite al llegar sucursal/token, o hay una peticion
+ * hermana con la misma subcadena, p. ej. /kpis/sales y /kpis/sales/trend) gastaba la falla en una peticion descartada y el
+ * error nunca se pintaba (flake del CI en /kpis/sales y /conversaciones). `ruta` debe ser lo bastante especifica (regex
+ * anclada) para no tumbar peticiones hermanas que pintarian un segundo EstadoError.
  */
 export async function afirmarErrorYReintento(page: Page, mock: ClienteMock, opciones: { sub: string; ruta: string | RegExp; listo: (page: Page) => Locator; status?: number; sinShell?: boolean }): Promise<void> {
-  await mock.inyectarFalla({ metodo: "GET", ruta: typeof opciones.ruta === "string" ? opciones.ruta : `/${opciones.ruta.source}/`, status: opciones.status ?? 503, veces: 1 });
+  await mock.inyectarFalla({ metodo: "GET", ruta: typeof opciones.ruta === "string" ? opciones.ruta : `/${opciones.ruta.source}/`, status: opciones.status ?? 503 });
   await page.goto(`${BASE}${opciones.sub}`);
   const alerta = page.getByRole("alert").filter({ has: page.getByRole("button", { name: "Reintentar" }) });
   await expect(alerta, `${opciones.sub || "/"}: la falla debe verse como EstadoError con Reintentar`).toBeVisible();
+  await mock.limpiarFallas();
   await alerta.getByRole("button", { name: "Reintentar" }).click();
   await expect(opciones.listo(page)).toBeVisible();
   await expect(alerta).toHaveCount(0);
