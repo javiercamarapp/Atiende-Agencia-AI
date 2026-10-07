@@ -100,6 +100,29 @@ describe("PruebaAgenteVoz (citas)", () => {
     expect(rendered.container.querySelector("[data-testid='chip-estado']")?.textContent).toContain("Vista previa");
   });
 
+  it("QA-citas-R1-botones-22: la llamada de prueba es un dialogo: role=dialog, el foco entra, Escape la cierra y el foco vuelve al boton", async () => {
+    stub(OPERATIVA);
+    rendered = montar();
+    await esperar();
+    const b = boton(rendered, "Hacer llamada de prueba")!;
+    b.focus();
+    await act(async () => {
+      click(b);
+      await flushMicrotasks();
+    });
+    const llamada = rendered.container.querySelector("[data-testid='llamada-de-prueba']")!;
+    const dialogo = llamada.querySelector("[role='dialog']") as HTMLElement | null;
+    expect(dialogo).not.toBeNull();
+    expect(dialogo!.getAttribute("aria-modal")).toBe("true");
+    expect(document.activeElement).toBe(dialogo);
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await flushMicrotasks();
+    });
+    expect(rendered.container.querySelector("[data-testid='llamada-de-prueba']")).toBeNull();
+    expect(document.activeElement).toBe(boton(rendered, "Hacer llamada de prueba"));
+  });
+
   it("si el estado no se puede leer: aviso honesto, sin boton", async () => {
     stub("error");
     rendered = montar();
