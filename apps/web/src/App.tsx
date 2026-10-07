@@ -121,6 +121,7 @@ const RentasDashboardPage = cargaPerezosa(() => import("./verticals/rentas/pages
 const RentasCalendarioPage = cargaPerezosa(() => import("./verticals/rentas/pages/Calendario.tsx"), "CalendarioPage");
 const RentasPreciosPage = cargaPerezosa(() => import("./verticals/rentas/pages/Precios.tsx"), "PreciosPage");
 const RentasAprobacionesPage = cargaPerezosa(() => import("./verticals/rentas/pages/Aprobaciones.tsx"), "AprobacionesPage");
+const RentasHiloPage = cargaPerezosa(() => import("./verticals/rentas/pages/aprobaciones/Hilo.tsx"), "HiloPage");
 const RentasFinanzasPage = cargaPerezosa(() => import("./verticals/rentas/pages/Finanzas.tsx"), "FinanzasPage");
 const RentasMisTareasPage = cargaPerezosa(() => import("./verticals/rentas/pages/MisTareas.tsx"), "MisTareasPage");
 const RentasIcalSyncPage = cargaPerezosa(() => import("./verticals/rentas/pages/IcalSync.tsx"), "IcalSyncPage");
@@ -757,6 +758,9 @@ const RentasPreciosRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <Re
  * que RentasCalendarioRoute/RentasPreciosRoute. */
 const RentasAprobacionesRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasAprobacionesPage {...ctx} />);
 
+/** Hilo de una conversación (Rn-P3-20): mensajes del huésped con sus borradores, dentro de Aprobaciones. */
+const RentasHiloRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasHiloPage {...ctx} />);
+
 /** Finanzas (Fase 16) — movimiento por reserva, owner statements, payouts/
  * conciliación. Cierra el hallazgo de auditoría ALTA "Finanzas sin UI para
  * admin_gestora ni contador". Mismo patrón de ruta hija que
@@ -1191,6 +1195,7 @@ export function App() {
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />
         <Route path="/rentas/:orgSlug/precios" element={<RentasPreciosRoute />} />
         <Route path="/rentas/:orgSlug/aprobaciones" element={<RentasAprobacionesRoute />} />
+        <Route path="/rentas/:orgSlug/aprobaciones/:conversacionId" element={<RentasHiloRoute />} />
         <Route path="/rentas/:orgSlug/finanzas" element={<RentasFinanzasRoute />} />
         <Route path="/rentas/:orgSlug/mis-tareas" element={<RentasMisTareasRoute />} />
         <Route path="/rentas/:orgSlug/ical-sync" element={<RentasIcalSyncRoute />} />

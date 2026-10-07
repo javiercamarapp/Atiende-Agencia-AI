@@ -12,6 +12,44 @@ const UNIDADES = [
   { id: "uni-2", nombre: "Depto Malecon 4B", duracionMinimaNoches: 1 },
 ];
 
+// Rn-P3-20/21: mensajeria con huesped (bandeja de Aprobaciones y su hilo). Forma = lib/mensajeria-client.ts. Una conversacion con un
+// mensaje que trae una emergencia (borrador ESCALADO, pendiente) y otro rutinario ya respondido; el estado se guarda por escenario para
+// que rechazar o generar se refleje en el GET siguiente. Solo existe en la API simulada de e2e.
+interface BorradorMock {
+  id: string;
+  conversacionId: string;
+  mensajeEntranteId: string | null;
+  canal: string;
+  texto: string;
+  estado: string;
+  generadoPor: string;
+  redactado: boolean;
+  necesitaEscalamiento: boolean;
+  senales: string[];
+  aprobadoPor: string | null;
+  aprobadoEn: string | null;
+  rechazadoPor: string | null;
+  rechazadoEn: string | null;
+  motivoRechazo: string | null;
+  mensajeEnviadoId: string | null;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+const CONV_ZAPATA = { id: "conv-1", organizationId: ORG.id, propertyId: PROP.id, unidadId: "uni-1", canal: "airbnb", ocupacionId: "ocu-1", huespedMinimoId: null, propiedadNombre: "Casa Playa Norte", huespedNombre: "Familia Zapata", fechaCheckIn: null, fechaCheckOut: null, reservaConfirmada: true, creadoEn: "2026-10-01T09:00:00.000Z" };
+const MENSAJES_ZAPATA = [
+  { id: "msg-1", conversacionId: "conv-1", direccion: "entrante", origen: "manual", texto: "Hola, ¿cuál es la clave del wifi?", redactado: false, creadoEn: "2026-10-01T10:00:00.000Z" },
+  { id: "msg-2", conversacionId: "conv-1", direccion: "saliente", origen: "simulador", texto: "Hola, la clave es la que aparece en la guía de la casa.", redactado: false, creadoEn: "2026-10-01T10:05:00.000Z" },
+  { id: "msg-3", conversacionId: "conv-1", direccion: "entrante", origen: "manual", texto: "Es una emergencia: huele a gas en la cocina", redactado: false, creadoEn: "2026-10-02T08:00:00.000Z" },
+];
+function borradoresSemilla(): BorradorMock[] {
+  const base = { conversacionId: "conv-1", canal: "airbnb", generadoPor: "motor_borrador", redactado: false, aprobadoPor: null, aprobadoEn: null, rechazadoPor: null, rechazadoEn: null, motivoRechazo: null, mensajeEnviadoId: null, actualizadoEn: "2026-10-02T08:01:00.000Z" };
+  return [
+    { ...base, id: "bor-1", mensajeEntranteId: "msg-1", texto: "Hola, la clave es la que aparece en la guía de la casa.", estado: "enviado", necesitaEscalamiento: false, senales: [], creadoEn: "2026-10-01T10:02:00.000Z", aprobadoPor: "00000000-0000-4000-8000-000000000001", aprobadoEn: "2026-10-01T10:05:00.000Z", mensajeEnviadoId: "msg-2" },
+    { ...base, id: "bor-2", mensajeEntranteId: "msg-3", texto: "Lamentamos lo ocurrido. Por favor sal de la casa y llama al 911; avisamos al equipo de inmediato.", estado: "pendiente_aprobacion", necesitaEscalamiento: true, senales: ["emergencia"], creadoEn: "2026-10-02T08:01:00.000Z" },
+  ];
+}
+const borradoresMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<BorradorMock[]>("rentas.mensajeria.borradores", borradoresSemilla);
+
 function dia(desdeHoy: number): string {
   return new Date(Date.now() + desdeHoy * 86_400_000).toISOString().slice(0, 10);
 }
@@ -279,6 +317,18 @@ export const rutasRentas: readonly Ruta[] = [
         feeds: { estado: "ok", activos: 0, con_problema: 0 },
         agentes: [],
       };
+    } },
+  // Rn-P3-20/21/22: bandeja de aprobacion e hilo de una conversacion.
+  { metodo: "GET", patron: `${R}/unidades/:uid/conversaciones`, manejador: (p) => ({ conversaciones: p.params.uid === "uni-1" ? [CONV_ZAPATA] : [] }) },
+  { metodo: "GET", patron: `${R}/conversaciones/:cid/borradores`, manejador: (p) => ({ borradores: borradoresMock(p).filter((b) => b.conversacionId === p.params.cid) }) },
+  { metodo: "GET", patron: `${R}/conversaciones/:cid/hilo`, manejador: (p) => (p.params.cid === CONV_ZAPATA.id ? { conversacion: CONV_ZAPATA, mensajes: MENSAJES_ZAPATA, borradores: borradoresMock(p).filter((b) => b.conversacionId === CONV_ZAPATA.id) } : fallo(404, "Conversación no encontrada en esta property.")) },
+  { metodo: "GET", patron: `${R}/mensajeria/politicas`, manejador: () => ({ politicas: [{ canal: "airbnb", maxCaracteres: 4000, permiteContactoDirectoPreReserva: false, permiteAutomatizacionPreReserva: true, accionAntePreReservaProhibida: "bloquear" }] }) },
+  { metodo: "POST", patron: `${R}/borradores/:bid/rechazar`, manejador: (p) => {
+      const b = borradoresMock(p).find((x) => x.id === p.params.bid);
+      if (!b) return fallo(404, "Borrador no encontrado en esta property.");
+      const motivo = (p.cuerpo as { motivo?: string } | null)?.motivo ?? "";
+      Object.assign(b, { estado: "rechazado", rechazadoPor: "00000000-0000-4000-8000-000000000001", rechazadoEn: new Date().toISOString(), motivoRechazo: motivo });
+      return b;
     } },
   { metodo: "POST", patron: `${R}/unidades/:uid/reservas/:oid/cancelar`, manejador: (p) => cancelar(p.estado.obtener("rentas.ocupaciones", ocupacionesSemilla), p.params.oid) },
   { metodo: "POST", patron: `${R}/unidades/:uid/bloqueos/:oid/cancelar`, manejador: (p) => cancelar(p.estado.obtener("rentas.ocupaciones", ocupacionesSemilla), p.params.oid) },
