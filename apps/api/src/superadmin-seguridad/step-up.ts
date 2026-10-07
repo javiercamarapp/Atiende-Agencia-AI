@@ -39,6 +39,8 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "POST", pattern: /^\/superadmin\/facturacion\/organizaciones\/[^/]+\/checkout$/, label: "crear checkout de suscripcion" },
   { method: "POST", pattern: /^\/superadmin\/mfa\/reset$/, label: "resetear MFA de otro superadmin" },
   { method: "PUT", pattern: /^\/superadmin\/interruptores$/, label: "cambiar un interruptor de plataforma" },
+  // Copiloto de superadmin (CHAT-17): confirmar la propuesta de apagar/encender un agente es el mismo efecto que PUT /superadmin/interruptores.
+  { method: "POST", pattern: /^\/superadmin\/copiloto\/acciones\/confirmar$/, label: "confirmar una accion propuesta por el Copiloto" },
   { method: "POST", pattern: /^\/superadmin\/organizaciones\/acciones\/[^/]+\/confirmar$/, label: "confirmar gestion de organizacion" },
   { method: "POST", pattern: /^\/superadmin\/organizaciones\/acciones\/[^/]+\/aprobar$/, label: "aprobar (doble control) la gestion de una organizacion" },
   // Alta del equipo inicial (SA-L-26): invitar, reenviar (token nuevo) y revocar dan o quitan acceso al panel de una organizacion.

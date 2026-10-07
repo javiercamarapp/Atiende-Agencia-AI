@@ -52,6 +52,7 @@ describe("las básicas de la comanda son del perfil taqueria_pm", () => {
       branch_slug: "fco-montejo",
       customer_name: "Cliente Sintético",
       customer_address: "Calle 50 #200",
+      colonia_entrega: "Centro",
       payment_method: "efectivo",
       canal: "domicilio",
       items: [{ product_id: f.products.tacosPastor, requested_quantity: 3, tortilla: "maiz" }],
@@ -73,6 +74,9 @@ describe("las básicas de la comanda son del perfil taqueria_pm", () => {
   it("con perfil taqueria_pm la comanda lleva «Básicas»", async () => {
     const f = buildRestaurantFixture();
     await f.repo.upsertWhatsAppAgentConfig(f.organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null });
+    // CR12: con perfil PM el domicilio exige zonas de reparto cargadas (o pin); la sucursal del fixture recibe una zona.
+    const zona = await f.repo.createKnownZone(f.organizationId, { name: "Centro", lat: 20.97, lng: -89.62 });
+    await f.repo.replaceBranchDeliveryZones(f.organizationId, f.propertyId, [zona.id]);
     const pm = await crear(f);
     expect(await notas(f, pm)).toMatch(/Básicas:/);
   });

@@ -151,7 +151,8 @@ describe("cargarOnboarding sobre el seed de PM (datos reales del repositorio)", 
     expect(item(c, "pedido_minimo").estado).toBe("hecho");
     // Pendientes reales del dueño (no se inventan).
     expect(item(c, "coordenadas")).toMatchObject({ estado: "parcial", faltantes: ["Pensiones"] });
-    expect(item(c, "zonas_de_entrega").estado).toBe("pendiente");
+    // Las colonias del piloto original dan cobertura a T1, T3 y T7 (propuesta; el mapa de zonas del dueño sigue pendiente, ver pendientes_dueno).
+    expect(item(c, "zonas_de_entrega").estado).toBe("hecho");
     expect(item(c, "whatsapp").estado).toBe("pendiente");
     expect(item(c, "cambio_de_turno").estado).toBe("pendiente");
     expect(item(c, "catalogo_pos").estado).toBe("externo");

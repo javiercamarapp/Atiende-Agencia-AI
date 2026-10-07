@@ -2,6 +2,7 @@
 import { conStatus, fallo, ndjson } from "../respuestas.ts";
 import { orgDe, personaDe, propiedadDe } from "../personas.ts";
 import type { Ruta } from "../tipos.ts";
+import { consumirStepUp, emitirStepUp } from "./step-up.ts";
 
 const PROP = propiedadDe("licitaciones");
 const ORG = orgDe("licitaciones");
@@ -141,7 +142,7 @@ const rutasCierre: readonly Ruta[] = [
       // `company_rate_approval` (L-P3-01): aprobar o rechazar una tarifa de la empresa.
       if (c.scope !== "expediente_approval" && c.scope !== "despachos_sensitive" && c.scope !== "contract_sensitive" && c.scope !== "company_rate_approval") return fallo(400, "scope desconocido.");
       if (c.code !== CODIGO_TOTP_VALIDO) return fallo(422, "El código es incorrecto o ya se usó.");
-      return { stepUpToken: `mock-step-up.${p.persona!.id}`, expiresInSeconds: 300 };
+      return { stepUpToken: emitirStepUp(p.estado, p.persona!.id), expiresInSeconds: 300 };
     },
   },
   { metodo: "GET", patron: `${L}/tenders/:tid`, manejador: (p) => CONVOCATORIAS.find((c) => c.id === p.params["tid"]) ?? fallo(404, "Convocatoria no encontrada.") },
@@ -165,7 +166,7 @@ const rutasCierre: readonly Ruta[] = [
       const stage = ((p.cuerpo ?? {}) as { stage?: string }).stage;
       if (stage !== "tecnica_legal" && stage !== "economica") return fallo(400, "stage requerido: tecnica_legal | economica.");
       // Sin el token de step-up del propio usuario no se aprueba (igual que `requireStepUp` en el servidor).
-      if (p.cabeceras["x-step-up-token"] !== `mock-step-up.${p.persona!.id}`) return fallo(403, "Esta acción requiere confirmar tu identidad con el código de tu app de autenticación.");
+      { const sinStepUp = consumirStepUp(p); if (sinStepUp) return fallo(403, sinStepUp); }
       const a = aprobacionesCierre(p);
       const otra: EtapaCierre = stage === "tecnica_legal" ? "economica" : "tecnica_legal";
       if (stage === "economica" && a.tecnica_legal === null) return fallo(409, "La aprobación económica (2/2) exige antes la aprobación técnico-legal (1/2) vigente para los insumos actuales del expediente.");
@@ -498,7 +499,7 @@ const rutasPostAdjudicacion: readonly Ruta[] = [
     patron: `${PA}/convenios`,
     manejador: (p) => {
       if (!permisosPostAward(p.persona!.rol).puedeDecidir) return fallo(403, "Tu rol (" + p.persona!.rol + ") no puede realizar esta acción.");
-      if (p.cabeceras["x-step-up-token"] !== `mock-step-up.${p.persona!.id}`) return fallo(403, "Esta acción requiere confirmar tu identidad con el código de tu app de autenticación.");
+      { const sinStepUp = consumirStepUp(p); if (sinStepUp) return fallo(403, sinStepUp); }
       const llave = llaveIdem(p.cabeceras);
       if (!llave) return fallo(400, "Falta el header Idempotency-Key, obligatorio para esta operación de dinero.");
       const s = postAward(p);

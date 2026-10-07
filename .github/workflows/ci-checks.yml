@@ -146,11 +146,17 @@ jobs:
       - name: Presupuesto de bundle (gzip por ruta)
         run: npm run verify:bundle-budget
 
-  unit:
-    name: test:unit
+  # test:unit partido en 3 shards de vitest (`--shard=i/3`): la suite completa ya
+  # tardaba ~24-25 min en un solo job y chocaba con el timeout. Mismas pruebas, mismos
+  # minutos totales; cada shard corre en paralelo (~8 min).
+  unit-shard:
+    name: test:unit (shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
-    # Medido 7.5-11.3 min en corridas recientes; 25 deja margen sin dejarlo ilimitado.
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -165,7 +171,27 @@ jobs:
         run: npm ci
 
       - name: Tests unitarios (vitest run, repositorios en memoria)
-        run: npm run test:unit
+        run: npm run test:unit -- --shard=${{ matrix.shard }}/3
+
+  # Conserva el nombre histórico "test:unit" como check propio: pasa solo si
+  # los 3 shards pasaron. if: always() para que un shard cancelado/fallido
+  # produzca rojo y no un "skipped" (que cuenta como éxito).
+  unit:
+    name: test:unit
+    needs: [unit-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Veredicto de los shards
+        env:
+          SHARDS: ${{ needs.unit-shard.result }}
+        run: |
+          echo "unit-shard=$SHARDS"
+          if [ "$SHARDS" != "success" ]; then
+            echo "::error::Algún shard de test:unit no terminó en success"
+            exit 1
+          fi
 
   # Agregador: mismo nombre que tenía el job único. if: always() para que un job
   # cancelado o fallido produzca un veredicto rojo en vez de quedar "skipped"

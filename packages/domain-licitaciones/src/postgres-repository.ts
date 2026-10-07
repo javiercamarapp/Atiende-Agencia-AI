@@ -4,6 +4,8 @@
 // `core-auth/src/middleware.ts`). Ejecuta las queries reales contra el
 // esquema `licitaciones` de migrations/001-003 (RLS real vía
 // `licitaciones.can_access_org`/`can_write_org`/`can_decide_org`).
+import { appendAuditoria as appendAuditoriaSql, listAuditoria as listAuditoriaSql, tenderCorrelationId as tenderCorrelationIdSql } from "./audit-trail.ts";
+import type { AuditTrailFilters, AuditTrailInput, AuditTrailPage } from "./audit-trail.ts";
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
@@ -1001,6 +1003,19 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     };
   }
 
+  // ---- L-P3-17: bitacora de escrituras (038) ----
+  appendAuditoria(organizationId: string, entry: AuditTrailInput): Promise<boolean> {
+    return appendAuditoriaSql(this.db, organizationId, entry);
+  }
+
+  findTenderCorrelationId(organizationId: string, tenderId: string): Promise<string | null> {
+    return tenderCorrelationIdSql(this.db, organizationId, tenderId);
+  }
+
+  listAuditoria(organizationId: string, filters: AuditTrailFilters, opts: { readonly limit?: number; readonly cursor?: string | null; readonly orden?: "asc" | "desc" } = {}): Promise<AuditTrailPage> {
+    return listAuditoriaSql(this.db, organizationId, filters, opts);
+  }
+
   // ---- Bitácora de auditoría de alta/actualización manual (f2-orden-total-bitacoras) ----
   async listTenderAuditLogPage(organizationId: string, tenderId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderAuditLogPage> {
     const { limit, offset } = opts;
@@ -1374,6 +1389,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     let created = 0;
     let updated = 0;
     const tenders: TenderRecord[] = [];
+    const createdIds: string[] = [];
 
     // Fase "flujos de sistema": `ingestTendersFromSource` SOLO se invoca hoy
     // bajo sesión de sistema (`apps/worker/src/jobs/licitaciones/discover-
@@ -1428,11 +1444,13 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
         status: row.out_status,
       });
       tenders.push(tender);
-      if (row.out_inserted) created += 1;
-      else updated += 1;
+      if (row.out_inserted) {
+        created += 1;
+        createdIds.push(tender.id);
+      } else updated += 1;
     }
 
-    return { created, updated, tenders };
+    return { created, updated, tenders, createdIds };
   }
 
   async listActiveOrganizations(): Promise<readonly { id: string }[]> {

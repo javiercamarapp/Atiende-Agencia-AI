@@ -36,7 +36,7 @@ Este PR no arregla nada de producción salvo los eventos de observabilidad por t
 | `0c0bebf` (grader de voz) | No existe un grader de voz que falle si se da el tiempo antes de crear | `R/casos-b1.spec.ts::0c0bebf / [lote C]` | it.fails (C) |
 | `03555e2` | Teléfono sin normalizar duplicaba clientes; `branch_slug` faltante caía a Fco. Montejo | `R/historial-busqueda-y-datos.spec.ts::X16 / 03555e2`; `R/historial-busqueda-y-datos.spec.ts::X44 / 03555e2` (ausente, vacío y desconocido en `buscar_producto`, `cotizar_pedido` y `crear_pedido`) | verde |
 | `3571c1c` | Búsqueda no tokenizada; prompt de respaldo desfasado | `R/historial-busqueda-y-datos.spec.ts::X10 / X14 / 3571c1c`; `R/historial-busqueda-y-datos.spec.ts::X39 / 3571c1c` | verde; el segundo: N/A (ya no hay prompt duplicado en BD, solo se prueba que el único conserva las reglas) |
-| `5710a5f` | Coordenadas viejas de una colonia → sucursal equivocada | `T/pm-bateria-reglas-duras.spec.ts::T-ZS09` (reporte de colonias a menos de 1 km) | it.todo (R2: lo cubre `rescate-orig-restaurantes-2`) |
+| `5710a5f` | Coordenadas viejas de una colonia → sucursal equivocada | `T/pm-bateria-reglas-duras.spec.ts::T-ZS09` (reporte de colonias a menos de 1 km) | verde |
 | `609c3d6` | Un cambio del prompt se revirtió en silencio con `ok:true` | `R/historial-turno-y-pedidos.spec.ts::X53 / 609c3d6: tras guardar`; `R/historial-turno-y-pedidos.spec.ts::X53 / 609c3d6: guardar con una version vieja` | verde |
 | `05a9798` / `6091e17` | Cascada barato → caro | `T/pm/fallas-llm.spec.ts::T-FP06`; `R/historial-turno-y-pedidos.spec.ts::X34 / 05a9798` (fallo de sistema → rol escalado) | verde |
 | `6091e17` (regla de negocio) | Un rechazo correcto de regla (mínimo, zona) también sube de rol | `R/historial-turno-y-pedidos.spec.ts::X34 / 6091e17 [lote B1, agentes-26]` | it.fails (B1) |
@@ -94,7 +94,7 @@ Este PR no arregla nada de producción salvo los eventos de observabilidad por t
 | X39 | Prompt de respaldo desfasado | `R/historial-busqueda-y-datos.spec.ts::X39 / 3571c1c` | N/A (ya no hay prompt duplicado en BD) |
 | X40 | Saludo por hora | `R/historial-busqueda-y-datos.spec.ts::X40 / 6d07364: WhatsApp a las`; `T/pm-bateria-agente-whatsapp.spec.ts::T-PC03` | verde |
 | X41 | "Alta Brisa" | `T/pm-bateria-reglas-duras.spec.ts::T-ZS01 / X41`; `R/historial-busqueda-y-datos.spec.ts::X41 / 6d07364` | verde |
-| X42 | Colonias con 2 sucursales a < 1 km | `T/pm-bateria-reglas-duras.spec.ts::T-ZS09 / X42` | it.todo (R2) |
+| X42 | Colonias con 2 sucursales a < 1 km | `T/pm-bateria-reglas-duras.spec.ts::T-ZS09 / X42` | verde |
 | X43 | Sucursal por Haversine | `T/nearest-branch.spec.ts::calcula una distancia real razonable` | verde |
 | X44 | `branch_slug` faltante no cae en silencio | `T/pm-bateria-reglas-duras.spec.ts::T-ZS08 / X44`; `R/historial-busqueda-y-datos.spec.ts::X44 / 03555e2` | verde |
 | X45 | Tools de voz con 401 por JWT | `A/pm-voz-seguridad.spec.ts::T-AB07` | N/A (token por llamada) |
