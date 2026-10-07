@@ -7,7 +7,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App.tsx";
-import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { esperarRutaCargada, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
 const SESSION = {
@@ -42,6 +42,7 @@ afterEach(() => {
 async function renderEn(ruta: string): Promise<HTMLElement> {
   window.history.pushState({}, "", ruta);
   rendered = renderComponent(<App />);
+  await esperarRutaCargada(rendered!.container);
   await act(async () => {
     await flushMicrotasks();
     await flushMicrotasks();

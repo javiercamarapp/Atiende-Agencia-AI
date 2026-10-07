@@ -11,6 +11,7 @@
 // Defensa en profundidad: las reglas duras (minimo de $200 a domicilio, alcohol a domicilio, zona, horario,
 // multiplos de "orden de N", propina solo con tarjeta, cotizar antes de confirmar) las aplican las
 // HERRAMIENTAS en el servidor; este prompt es la primera linea, nunca la unica.
+import { lineasCliente360 } from "../cliente-360/prompt.ts";
 import type { BranchSummary, CustomerLookupResult } from "../types.ts";
 
 export interface PerfilPmContexto {
@@ -108,6 +109,7 @@ const ESTADO_PEDIDO_TEXTO = {
   programado: "programado para más tarde",
   con_problema: "con una incidencia (pásela a la sucursal con escalar_a_humano)",
   no_recogido: "no recogido",
+  por_confirmar: "pendiente de confirmación por la sucursal (todavía no está en cocina; no prometa hora ni que ya va en camino)",
 } as const;
 
 /** Contexto del cliente SIN direccion completa (la direccion guardada no se inyecta en el prompt: el modelo la ve
@@ -129,6 +131,7 @@ export function pmCustomerContextBlock(customer: CustomerLookupResult): string {
   if (customer.addresses.length > 0) {
     lines.push("Tiene una dirección guardada: nunca la lea completa; pregunte si es la misma de siempre o si es otra.");
   }
+  lines.push(...lineasCliente360(customer));
   const pedido = customer.pedidoReciente;
   if (pedido) {
     const canal = pedido.canal === "domicilio" ? "a domicilio" : pedido.canal === "recoger" ? "para recoger" : "";

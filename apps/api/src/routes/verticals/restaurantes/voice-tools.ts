@@ -198,6 +198,37 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
     });
   });
 
+  // Cliente 360 — POST /v1/restaurantes/:orgSlug/customers/orders (historial_pedidos): ultimos pedidos del MISMO numero.
+  // Exige token de llamada: el telefono sale del token (nunca del cuerpo), asi que un modelo no puede pedir el historial de otro numero.
+  app.post("/v1/restaurantes/:orgSlug/customers/orders", async (c) => {
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
+    await readJsonCapped<Record<string, unknown>>(c.req.raw, 2 * 1024);
+    return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "historial_pedidos", accept: "required" }, async ({ repo, toolCtx }) => {
+      const outcome = await invokeAgentTool(repo, toolCtx, "historial_pedidos", {});
+      return c.json(outcome.result as object);
+    });
+  });
+
+  // Cliente 360 — POST /v1/restaurantes/:orgSlug/orders/repeat (repetir_pedido): re-cotiza un pedido anterior del mismo
+  // numero con los precios de HOY y entra a la misma maquina de estados que cotizar_pedido (quote_hash).
+  app.post("/v1/restaurantes/:orgSlug/orders/repeat", async (c) => {
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
+    const body = await readJsonCapped<{ branch_slug?: unknown; pedido_numero?: unknown; canal?: unknown; colonia_entrega?: unknown; payment_method?: unknown; adult_confirmed?: unknown }>(c.req.raw, 4 * 1024);
+    const branchSlug = typeof body.branch_slug === "string" ? body.branch_slug : "";
+    if (!branchSlug.trim()) throw Errors.validation("branch_slug es requerido");
+    return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "repetir_pedido", accept: "required" }, async ({ repo, toolCtx }) => {
+      const outcome = await invokeAgentTool(repo, toolCtx, "repetir_pedido", {
+        branch_slug: branchSlug,
+        pedido_numero: body.pedido_numero,
+        canal: body.canal,
+        colonia_entrega: body.colonia_entrega,
+        payment_method: body.payment_method,
+        adult_confirmed: body.adult_confirmed,
+      });
+      return c.json(outcome.result as object);
+    });
+  });
+
   // POST /v1/restaurantes/:orgSlug/orders/confirm (confirmar_resumen): registra que el cliente dijo si al
   // resumen. Exige token de llamada: el estado vive por llamada.
   app.post("/v1/restaurantes/:orgSlug/orders/confirm", async (c) => {
