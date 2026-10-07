@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { broadcastWaitlist, fetchWaitlist } from "../src/verticals/citas/lib/waitlist-client.ts";
+import { broadcastWaitlist, enrollWaitlist, fetchWaitlist } from "../src/verticals/citas/lib/waitlist-client.ts";
 
 describe("fetchWaitlist", () => {
   it("mapea la fila FIFO real, sin filtros", async () => {
@@ -106,5 +106,26 @@ describe("broadcastWaitlist", () => {
   it("400 -> error real (ej. provider_id que no pertenece al negocio)", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: 'provider_id: "x" no es un proveedor de este negocio.' }), { status: 400 })) as unknown as typeof fetch;
     await expect(broadcastWaitlist(fetchImpl, "http://api.local", "tok", "prop-1", { providerId: "x" })).rejects.toThrow("no es un proveedor");
+  });
+});
+
+describe("enrollWaitlist (QA-citas-R1-agentes-18)", () => {
+  const ENTRADA = { id: "wl-9", position: 3, customer_name: "Mario", customer_phone: "9991234567", provider_id: "p1", service_id: null, preferred_date_from: null, preferred_date_to: null, preferred_time_window: "any", notified_count: 0, created_at: "2026-10-01T10:00:00.000Z" };
+
+  it("POST con snake_case real y mapea la entrada y already_enrolled", async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/v1/citas/properties/prop-1/waitlist");
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(init!.body as string)).toEqual({ customer_name: "Mario", customer_phone: "9991234567", provider_id: "p1", preferred_time_window: "any" });
+      return new Response(JSON.stringify({ entry: ENTRADA, already_enrolled: false }), { status: 201 });
+    }) as unknown as typeof fetch;
+    const r = await enrollWaitlist(fetchImpl, "http://api.local", "tok", "prop-1", { customerName: "Mario", customerPhone: "9991234567", providerId: "p1", preferredTimeWindow: "any" });
+    expect(r.alreadyEnrolled).toBe(false);
+    expect(r.entry).toMatchObject({ id: "wl-9", position: 3, customerName: "Mario", providerId: "p1", serviceId: null });
+  });
+
+  it("400 -> error real con el motivo del servidor", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "customer_phone debe ser un teléfono válido" }), { status: 400 })) as unknown as typeof fetch;
+    await expect(enrollWaitlist(fetchImpl, "http://api.local", "tok", "prop-1", { customerName: "M", customerPhone: "1" })).rejects.toThrow("teléfono válido");
   });
 });

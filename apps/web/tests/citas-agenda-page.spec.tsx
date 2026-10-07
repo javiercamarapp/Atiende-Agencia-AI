@@ -81,6 +81,20 @@ const CITA_PENDING = {
   customer_phone: "5522223333",
 };
 
+const ENTRADA_ESPERA = {
+  id: "wl-nuevo",
+  position: 1,
+  customer_name: "Mario Chan",
+  customer_phone: "9991234567",
+  provider_id: "prov-1",
+  service_id: "svc-1",
+  preferred_date_from: null,
+  preferred_date_to: null,
+  preferred_time_window: "morning",
+  notified_count: 0,
+  created_at: "2026-10-01T10:00:00.000Z",
+};
+
 const PROVIDER = { id: "prov-1", propertyId: "prop-1", displayName: "Dra. López", roleLabel: "Doctora", isActive: true };
 const SERVICE = { id: "svc-1", name: "Consulta general", durationMinutes: 30, bufferMinutesBefore: 0, bufferMinutesAfter: 0, priceCents: 50000, isActive: true };
 
@@ -95,6 +109,8 @@ interface Handlers {
    * "not_available_yet"`) en vez del default (`queued: true`, base ya
    * migrada). */
   broadcastResponse?: unknown;
+  /** Respuesta (status, cuerpo) del POST de alta en la lista de espera. */
+  enrollResponse?: { readonly status: number; readonly body: unknown };
 }
 
 function stubFetch(handlers: Handlers) {
@@ -105,6 +121,10 @@ function stubFetch(handlers: Handlers) {
     // Corrección post-revisión de f2-citas-lista-de-espera (hallazgo B) — el
     // body real ya no trae `notified` (el efecto corre post-commit) y
     // `skipped_no_whatsapp_config` es `boolean`, no `number`.
+    if (method === "POST" && url.endsWith("/waitlist")) {
+      const r = handlers.enrollResponse ?? { status: 201, body: { entry: ENTRADA_ESPERA, already_enrolled: false } };
+      return { ok: r.status < 400, status: r.status, json: async () => r.body } as unknown as Response;
+    }
     if (url.includes("/waitlist/broadcast")) return jsonResponse(handlers.broadcastResponse ?? { queued: true, candidates_considered: 2, skipped_no_whatsapp_config: false });
     if (url.includes("/waitlist")) return jsonResponse({ waitlist: handlers.waitlist ?? [] });
     if (method === "GET" && url.includes("/appointments")) {
@@ -340,5 +360,66 @@ describe("AgendaPage (citas)", () => {
     const text = rendered.container.textContent!;
     expect(text).toContain("todavía no está disponible");
     expect(text).not.toContain("Aviso encolado");
+  });
+});
+
+
+describe("<AgendaPage /> -- anotar a un cliente en la lista de espera (QA-citas-R1-agentes-18)", () => {
+  async function abrirFormulario() {
+    const btn = [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Anotar cliente"))!;
+    await act(async () => {
+      btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+  }
+
+  it("POST /v1/citas/properties/prop-1/waitlist con el cuerpo real, avisa la posicion y recarga la lista", async () => {
+    stubFetch({ appointments: [], providers: [PROVIDER], services: [SERVICE] });
+    rendered = renderPage();
+    await esperarCarga();
+    await abrirFormulario();
+
+    const root = document.body;
+    changeValue(root.querySelector("#citas-espera-nombre") as HTMLInputElement, "Mario Chan");
+    changeValue(root.querySelector("#citas-espera-telefono") as HTMLInputElement, "9991234567");
+    changeValue(root.querySelector("#citas-espera-proveedor") as HTMLSelectElement, "prov-1");
+    changeValue(root.querySelector("#citas-espera-servicio-alta") as HTMLSelectElement, "svc-1");
+    changeValue(root.querySelector("#citas-espera-franja") as HTMLSelectElement, "morning");
+    const listasAntes = fetchMock.mock.calls.filter(([url, init]) => /\/waitlist(\?|$)/.test(url) && (init?.method ?? "GET") === "GET").length;
+    await submitForm(root.querySelector("#citas-espera-alta") as HTMLFormElement);
+    await esperarCarga();
+
+    const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/citas/properties/prop-1/waitlist" && init?.method === "POST");
+    expect(call).toBeDefined();
+    expect(JSON.parse(call![1].body as string)).toMatchObject({ customer_name: "Mario Chan", customer_phone: "9991234567", provider_id: "prov-1", service_id: "svc-1", preferred_time_window: "morning" });
+    expect(rendered!.container.textContent).toContain("Cliente anotado en la posición 1");
+    const listasDespues = fetchMock.mock.calls.filter(([url, init]) => /\/waitlist(\?|$)/.test(url) && (init?.method ?? "GET") === "GET").length;
+    expect(listasDespues).toBeGreaterThan(listasAntes);
+  });
+
+  it("un cliente que ya estaba anotado se dice tal cual, sin prometer una alta nueva", async () => {
+    stubFetch({ appointments: [], enrollResponse: { status: 200, body: { entry: ENTRADA_ESPERA, already_enrolled: true } } });
+    rendered = renderPage();
+    await esperarCarga();
+    await abrirFormulario();
+    const root = document.body;
+    changeValue(root.querySelector("#citas-espera-nombre") as HTMLInputElement, "Mario Chan");
+    changeValue(root.querySelector("#citas-espera-telefono") as HTMLInputElement, "9991234567");
+    await submitForm(root.querySelector("#citas-espera-alta") as HTMLFormElement);
+    await esperarCarga();
+    expect(rendered!.container.textContent).toContain("ya estaba en la lista de espera");
+  });
+
+  it("si el servidor rechaza el alta (400) el motivo aparece en el formulario, que sigue abierto con lo escrito", async () => {
+    stubFetch({ appointments: [], enrollResponse: { status: 400, body: { message: "customer_phone debe ser un teléfono válido (entre 7 y 15 dígitos)" } } });
+    rendered = renderPage();
+    await esperarCarga();
+    await abrirFormulario();
+    const root = document.body;
+    changeValue(root.querySelector("#citas-espera-nombre") as HTMLInputElement, "Mario Chan");
+    changeValue(root.querySelector("#citas-espera-telefono") as HTMLInputElement, "123");
+    await submitForm(root.querySelector("#citas-espera-alta") as HTMLFormElement);
+    await esperarCarga();
+    expect(root.querySelector("#citas-espera-alta [role='alert']")?.textContent).toMatch(/teléfono válido|No se pudo/);
+    expect((root.querySelector("#citas-espera-nombre") as HTMLInputElement).value).toBe("Mario Chan");
   });
 });
