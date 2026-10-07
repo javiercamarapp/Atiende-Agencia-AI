@@ -809,7 +809,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   if (!claimed) throw new OrderValidationError(CONFLICT_MESSAGE);
 
   try {
-    let outcome = await dispatchTool(repo, ctx, name, input, claimed.context.quotedPrices, { total: claimed.context.sessionTotal ?? 0, pesoKg: claimed.context.sessionPesoKg ?? 0, pedidos: claimed.context.sessionPedidos ?? 0 });
+    let outcome = await dispatchTool(repo, ctx, name, input, claimed.context.quotedPrices, { total: claimed.context.sessionTotal ?? 0, pesoKg: claimed.context.sessionPesoKg ?? 0, pedidos: claimed.context.sessionPedidos ?? 0, ...(claimed.context.sessionUltimoPedidoId ? { ultimoPedidoId: claimed.context.sessionUltimoPedidoId } : {}) });
     // Un pedido IDENTICO al ultimo de esta sesion (misma ventana de deduplicacion de 5 min) devuelve ese mismo pedido: el agente debe saber que NO se creo otro (QA-PM-R2-reglas-15).
     const repetido = outcome.orderId !== null && outcome.orderId === claimed.context.sessionUltimoPedidoId;
     if (repetido) {
@@ -881,7 +881,7 @@ async function dispatchTool(
   /** Huella de precios que el cliente confirmo (solo crear_pedido con maquina de estados activa). */
   expectedPrices?: string,
   /** Total y kilos de los pedidos ya creados en esta sesion (solo crear_pedido con maquina de estados activa): la guardia de pedido grande los suma. */
-  sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number },
+  sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number; readonly ultimoPedidoId?: string },
 ): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
@@ -1064,6 +1064,9 @@ async function dispatchTool(
       // Pedido grande con autopiloto disponible: se crea y se deja `por_aprobar` (ver `retener` abajo); si no, se lanza el aviso de siempre.
       const grandeAprobable: { error: PedidoGrandeRetenidoError | null } = { error: null };
       const idsEnMemoria = new Set<string>();
+      // El ultimo pedido de la sesion puede NO estar en la memoria (la memoria excluye `programado`) y aun asi `create_order_idempotent` lo deduplica ("otro igual"
+      // en < 5 min): se marca como ya aceptado para que `retener` no lo pase de `programado` a `por_aprobar`.
+      if (sesionPrevia?.ultimoPedidoId) idsEnMemoria.add(sesionPrevia.ultimoPedidoId);
       try {
         order = await createOrder(repo, createInput, {
           beforePersist: async (prepared) => {
