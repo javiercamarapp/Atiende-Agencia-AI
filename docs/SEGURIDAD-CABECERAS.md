@@ -24,6 +24,7 @@ Notas:
   misma respuesta, el navegador aplica la política más restrictiva.
 - HSTS va **sin `preload`** a propósito: entrar a la lista de preload del
   navegador es prácticamente irreversible y es una decisión de dominio.
+- `Permissions-Policy` del panel con llamada de prueba de voz (`/restaurantes/*`, `/hoteles/*`, `/citas/*`, solo SPA en `vercel.json`) lleva `microphone=(self)` en vez de `microphone=()`: la «llamada de prueba» usa `getUserMedia` + AudioWorklet y con `microphone=()` el navegador la bloquea sin siquiera preguntar. Solo `self` (nunca `*`); cámara, geolocalización, pagos y USB siguen denegados. El storefront (`/pedir/*`), las demás verticales y la API conservan `microphone=()`.
 - `Permissions-Policy` no bloquea `clipboard-write`: el panel copia enlaces y
   XML con `navigator.clipboard.writeText`.
 - `COOP: same-origin` es seguro hoy porque el login con Google es una
