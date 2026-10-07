@@ -29,4 +29,6 @@ export interface TelefoniaPort {
   /** Empieza a recibir llamadas; `alLlegar` se invoca una vez por llamada nueva. */
   escuchar(alLlegar: (llamada: LlamadaTelefonica) => void): Promise<void>;
   detener(): Promise<void>;
+  /** Epoch (ms) del ultimo sondeo EXITOSO de la telefonia (LiveKit: ultimo `listRooms` que respondio). null = nunca / la telefonia no sondea (la falsa). Alimenta el latido de /salud. */
+  latidoMs?(): number | null;
 }

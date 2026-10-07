@@ -123,6 +123,9 @@ export interface NewOrderRecord {
 export interface ConversationMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
+  /** Solo en el mensaje del asistente de un turno que dejo un pedido creado: marca el limite entre un pedido y el siguiente
+   * (el pin o link de Maps de antes de esa marca ya no pertenece al pedido en curso). Es metadato del historial: no se manda al modelo. */
+  readonly pedidoCreado?: true;
 }
 
 // ---- KPIs de admin (Fase 3, ver diseño §2) ----
@@ -452,6 +455,9 @@ export interface RestaurantesRepository {
    * forma de que un producto aparezca (o deje de aparecer) en
    * `listAvailableProductsForBranch`, y por tanto en búsqueda/cotización real. */
   upsertBranchProductState(propertyId: string, productId: string, price: number, isAvailable: boolean): Promise<BranchProductState>;
+  /** Solo `is_available` de una fila YA existente de `branch_products` (agotado/disponible, PL-23): nunca toca el precio ni da de alta.
+   *  `null` cuando el producto no esta dado de alta en esa sucursal. Es lo unico que puede escribir un `staff`. */
+  setBranchProductAvailability(propertyId: string, productId: string, isAvailable: boolean): Promise<BranchProductState | null>;
 
   findOrderById(organizationId: string, orderId: string): Promise<Order | null>;
   /** Pedido MAS RECIENTE (no cancelado) de un telefono (10 digitos, `normalizePhone`) creado desde `sinceIso`, o null. Para "¿ya salio?". */

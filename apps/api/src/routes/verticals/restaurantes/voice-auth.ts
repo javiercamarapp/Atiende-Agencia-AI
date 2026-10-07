@@ -31,6 +31,8 @@ export interface VoiceCaller {
   readonly callId: string | null;
   /** Telefono canonico de 10 digitos tomado del token (null sin token). */
   readonly phone: string | null;
+  /** El telefono del token lo dicto el cliente (no viene de la telefonia): no se le entregan datos personales asociados a ese numero. */
+  readonly phoneDeclared?: boolean;
 }
 
 export type VoiceAuthResult = { readonly ok: true; readonly caller: VoiceCaller } | { readonly ok: false; readonly response: Response };
@@ -106,7 +108,7 @@ export async function authenticateVoiceTool(
       await auditVoice(repo, org, null, opts.tool, "denied", "token_otra_organizacion");
       return { ok: false, response: deny(c, 401, "unauthorized", "Token de llamada inválido o expirado.") };
     }
-    return { ok: true, caller: { kind: "call_token", propertyId: verified.claims.prop, callId: verified.claims.call, phone: verified.claims.ph } };
+    return { ok: true, caller: { kind: "call_token", propertyId: verified.claims.prop, callId: verified.claims.call, phone: verified.claims.ph, phoneDeclared: verified.claims.decl === true } };
   }
 
   if (!secret) {

@@ -7,8 +7,8 @@
 //
 // Autorización: política, cobertura y WhatsApp son owner/admin (`STAFF_INVITE_ROLES`), mismo
 // umbral que `admin-config.ts` y que las policies de la migración (RLS es la autoridad; esta
-// capa da defensa en profundidad y un mejor mensaje). Las marcas no_domicilio son del catálogo
-// del día a día, así que usan `MANAGER_ROLES` como admin-catalog.ts. Todas corren en la sesión
+// capa da defensa en profundidad y un mejor mensaje). Las marcas no_domicilio (lectura) usan `MANAGER_ROLES`; escribirlas edita
+// products/categories, asi que exigen la accion `catalogo.precio` (owner/admin, PL-23). Todas corren en la sesión
 // de STAFF autenticado y respetan el alcance por membership (`resolveEffectivePropertyIds`):
 // un staff acotado a una sucursal nunca edita otra aunque la ruta cuelgue de su `:propertyId`.
 //
@@ -18,6 +18,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { assertAccion } from "./permisos-accion.ts";
 import { MANAGER_ROLES, OrderValidationError, RestaurantesConfigUnavailableError, STAFF_INVITE_ROLES, WhatsappNumberInUseError, horarioDePuente, validarExcepcionHorario, validarHorario } from "@atiende/domain-restaurantes";
 import type { BranchHoursException, BranchPolicy, PropinaPolitica } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
@@ -36,6 +37,26 @@ interface PoliticaBody {
   readonly pedidoMinimoDomicilio?: unknown;
   readonly pedidoMinimoRecoger?: unknown;
   readonly propinaPolitica?: unknown;
+  // Migracion 070: opcionales; si no vienen se conserva lo que la sucursal ya tenia.
+  readonly visibleEnDirectorio?: unknown;
+  readonly aceptaDomicilio?: unknown;
+  readonly diasDomicilio?: unknown;
+  readonly deTemporada?: unknown;
+}
+
+function optionalBool(value: unknown, field: string, previo: boolean): boolean {
+  if (value === undefined) return previo;
+  if (typeof value !== "boolean") throw Errors.validation(`${field}: debe ser true o false.`);
+  return value;
+}
+
+function parseDiasDomicilio(value: unknown, previo: readonly number[] | null): readonly number[] | null {
+  if (value === undefined) return previo;
+  if (value === null) return null;
+  if (!Array.isArray(value) || value.length === 0 || value.length > 7 || value.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
+    throw Errors.validation("diasDomicilio: debe ser una lista de 1 a 7 numeros 0 (domingo) a 6 (sabado), o null para todos los dias.");
+  }
+  return [...new Set(value as number[])].sort((a, b) => a - b);
 }
 
 function requiredNullableMoney(value: unknown, field: string): number | null {
@@ -49,7 +70,7 @@ function requiredNullableMoney(value: unknown, field: string): number | null {
 
 /** PUT reemplaza la política COMPLETA: cada campo es obligatorio (valor o null) para que un
  * cliente desactualizado nunca borre por omisión lo que no conoce. */
-function parsePolitica(raw: PoliticaBody): BranchPolicy {
+function parsePolitica(raw: PoliticaBody, previa: BranchPolicy): BranchPolicy {
   let horario: BranchPolicy["horario"];
   if (raw.horario === undefined) throw Errors.validation("horario: campo requerido (lista de turnos o null).");
   if (raw.horario === null) horario = null;
@@ -71,11 +92,24 @@ function parsePolitica(raw: PoliticaBody): BranchPolicy {
     pedidoMinimoDomicilio: requiredNullableMoney(raw.pedidoMinimoDomicilio, "pedidoMinimoDomicilio"),
     pedidoMinimoRecoger: requiredNullableMoney(raw.pedidoMinimoRecoger, "pedidoMinimoRecoger"),
     propinaPolitica,
+    visibleEnDirectorio: raw.visibleEnDirectorio === undefined ? (previa.visibleEnDirectorio ?? null) : raw.visibleEnDirectorio === null ? null : optionalBool(raw.visibleEnDirectorio, "visibleEnDirectorio", false),
+    aceptaDomicilio: optionalBool(raw.aceptaDomicilio, "aceptaDomicilio", previa.aceptaDomicilio ?? true),
+    diasDomicilio: parseDiasDomicilio(raw.diasDomicilio, previa.diasDomicilio ?? null),
+    deTemporada: optionalBool(raw.deTemporada, "deTemporada", previa.deTemporada ?? false),
   };
 }
 
 function serializePolitica(p: BranchPolicy) {
-  return { horario: p.horario, pedidoMinimoDomicilio: p.pedidoMinimoDomicilio, pedidoMinimoRecoger: p.pedidoMinimoRecoger, propinaPolitica: p.propinaPolitica };
+  return {
+    horario: p.horario,
+    pedidoMinimoDomicilio: p.pedidoMinimoDomicilio,
+    pedidoMinimoRecoger: p.pedidoMinimoRecoger,
+    propinaPolitica: p.propinaPolitica,
+    visibleEnDirectorio: p.visibleEnDirectorio ?? null,
+    aceptaDomicilio: p.aceptaDomicilio ?? true,
+    diasDomicilio: p.diasDomicilio ?? null,
+    deTemporada: p.deTemporada ?? false,
+  };
 }
 
 // ---- puentes (migracion 031): excepciones de horario por fecha ----
@@ -241,8 +275,8 @@ export function restaurantesAdminModeloPmRoutes(deps: AppDeps): Hono<CoreAuthHon
   app.put(politicaPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
     const { organizationId, branch, repo } = await resolveBranch(c);
-    const nueva = parsePolitica(await readJsonCapped<PoliticaBody>(c.req.raw, 16 * 1024));
     const anterior = await repo.findBranchPolicy(branch.propertyId);
+    const nueva = parsePolitica(await readJsonCapped<PoliticaBody>(c.req.raw, 16 * 1024), anterior);
 
     let guardada: BranchPolicy;
     try {
@@ -375,7 +409,8 @@ export function restaurantesAdminModeloPmRoutes(deps: AppDeps): Hono<CoreAuthHon
   });
 
   async function setMark(c: Context<CoreAuthHonoEnv>, kind: "producto" | "categoria", id: string) {
-    assertVerticalRole(c, MANAGER_ROLES);
+    // Escribe restaurantes.products/categories, que desde la 065 solo actualizan owner/admin: la misma accion que editar el catalogo.
+    assertAccion(c, "catalogo.precio");
     const organizationId = c.get("organizationId");
     const raw = await readJsonCapped<{ noDomicilio?: unknown }>(c.req.raw, 1024);
     if (typeof raw.noDomicilio !== "boolean") throw Errors.validation("noDomicilio: se esperaba true o false.");

@@ -8,7 +8,7 @@ import { crearProveedorCascadaLlamada } from "./llamada/cascada-openrouter.ts";
 import type { PuertoLlmVoz } from "./llamada/cascada-openrouter.ts";
 import { VozNoConfiguradaError } from "./provider.ts";
 import { crearProveedorGeminiLlamada } from "./llamada/gemini-live-sesion.ts";
-import type { CrearSocketLive } from "./llamada/gemini-live-sesion.ts";
+import type { CrearSocketLive, GeminiLiveSesionOpciones, VertexLiveOpciones } from "./llamada/gemini-live-sesion.ts";
 
 export interface CredencialesVoz {
   /** `GEMINI_API_KEY`: habilita el escalon 1. */
@@ -23,6 +23,12 @@ export interface DepsPlataformaVoz extends CredencialesVoz {
   readonly config?: ConfigPlataformaVoz;
   readonly fetchFn?: typeof fetch;
   readonly crearSocket?: CrearSocketLive;
+  /** Adaptador de Vertex AI en lugar de la Gemini API (`GEMINI_BACKEND=vertex`); la `geminiApiKey` deja de usarse para el escalon 1. */
+  readonly vertex?: VertexLiveOpciones;
+  /** Herramientas de solo lectura que el escalon de Gemini puede correr en paralelo (ver `GeminiLiveSesionOpciones.herramientasEnParalelo`). */
+  readonly herramientasEnParalelo?: ReadonlySet<string>;
+  /** Ajuste fino del VAD sin tocar codigo (`VOICE_VAD_*` en el worker). */
+  readonly vad?: GeminiLiveSesionOpciones["vad"];
 }
 
 export interface EstadoEscalonVoz {
@@ -41,11 +47,11 @@ export interface EstadoEscaleraVoz {
 const lleno = (v: string | null): boolean => v !== null && v.trim() !== "";
 
 /** Estado HONESTO de la escalera para el panel: que escalones tienen credencial. No abre sesiones ni gasta. */
-export function estadoEscalera(deps: Pick<DepsPlataformaVoz, "geminiApiKey" | "openrouterApiKey" | "llm">): EstadoEscaleraVoz {
-  const gemini = lleno(deps.geminiApiKey);
+export function estadoEscalera(deps: Pick<DepsPlataformaVoz, "geminiApiKey" | "openrouterApiKey" | "llm"> & { readonly vertex?: VertexLiveOpciones }): EstadoEscaleraVoz {
+  const gemini = deps.vertex ? true : lleno(deps.geminiApiKey);
   const cascada = lleno(deps.openrouterApiKey) && deps.llm !== null;
   const escalones: EstadoEscalonVoz[] = [
-    { escalon: "gemini-3.8-live", configurado: gemini, detalle: gemini ? "Credencial presente (no se probó la red)." : "Falta GEMINI_API_KEY." },
+    { escalon: "gemini-3.8-live", configurado: gemini, detalle: gemini ? (deps.vertex ? "Vertex AI configurado (no se probó la red)." : "Credencial presente (no se probó la red).") : "Falta GEMINI_API_KEY." },
     {
       escalon: "cascada-openrouter",
       configurado: cascada,
@@ -58,7 +64,7 @@ export function estadoEscalera(deps: Pick<DepsPlataformaVoz, "geminiApiKey" | "o
 /** Los escalones en el orden de la escalera de plataforma; los que no tienen credencial lanzan `VozNoConfiguradaError` y se saltan. */
 export function crearEscalonesPlataforma(deps: DepsPlataformaVoz): EscalonLlamada[] {
   const config = deps.config ?? VOZ_PLATAFORMA;
-  const gemini = crearProveedorGeminiLlamada({ apiKey: deps.geminiApiKey, model: config.gemini.modelo, ...(deps.crearSocket ? { crearSocket: deps.crearSocket } : {}) });
+  const gemini = crearProveedorGeminiLlamada({ apiKey: deps.geminiApiKey, model: config.gemini.modelo, ...(deps.vertex ? { vertex: deps.vertex } : {}), ...(deps.herramientasEnParalelo ? { herramientasEnParalelo: deps.herramientasEnParalelo } : {}), ...(deps.vad ? { vad: deps.vad } : {}), ...(deps.crearSocket ? { crearSocket: deps.crearSocket } : {}) });
   const cascada = crearProveedorCascadaLlamada({
     apiKey: deps.openrouterApiKey,
     llm: deps.llm ?? { completar: () => Promise.reject(new Error("sin gateway de texto")) },

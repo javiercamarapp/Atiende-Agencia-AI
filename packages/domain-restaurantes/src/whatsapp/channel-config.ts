@@ -81,7 +81,17 @@ const MEDIA_ID_RE = /^[0-9A-Za-z_-]{1,128}$/;
 /** Nota que antepone el servidor al texto de una edicion del cliente. */
 export const EDICION_NOTA = "(el cliente corrigió su mensaje anterior)";
 
-const UNSUPPORTED_KINDS = new Set(["audio", "voice", "image", "video", "document", "sticker", "location", "contacts"]);
+const UNSUPPORTED_KINDS = new Set(["audio", "voice", "image", "video", "document", "sticker", "location", "contacts", "unsupported"]);
+
+/** Marcador de un sticker (chats reales de T7: decenas de «gracias» en sticker tras cerrar el pedido). Contestarle «no puedo abrirlo, escríbalo»
+ * es absurdo: tras un pedido cerrado no se responde (ver `esSoloSticker` y el turno en inbound.ts); en medio de un pedido es un gesto, no una orden. */
+export const STICKER_MARKER = "[El cliente envió un sticker (no es un pedido ni una pregunta). Tómelo como un gesto de cortesía: no le pida que lo escriba; si hay un pedido en curso, siga con lo que falta.]";
+
+/** true si TODO lo que el cliente mando en este turno son stickers. */
+export function esSoloSticker(texto: string): boolean {
+  const lineas = texto.split("\n").map((l) => l.trim()).filter(Boolean);
+  return lineas.length > 0 && lineas.every((l) => l === STICKER_MARKER);
+}
 
 function unsupportedBody(type: string): string {
   if (type === "audio" || type === "voice") {
@@ -91,6 +101,14 @@ function unsupportedBody(type: string): string {
     // Una ubicacion con coordenadas validas ya se convirtio en marcador (ver extractMetaInboundMessages); aqui solo
     // llegan las invalidas (ausentes, no numericas o fuera de rango): nunca se repiten ni se mandan a buscar_sucursal_cercana.
     return "[El cliente compartió su ubicación pero no trae coordenadas utilizables: pídale su colonia o una referencia cercana por texto.]";
+  }
+  if (type === "sticker") return STICKER_MARKER;
+  if (type === "image") {
+    return "[El cliente envió una imagen que el asistente no puede ver: si es su ubicación pida el pin de WhatsApp; si es una referencia, pida que la describa en una línea.]";
+  }
+  if (type === "unsupported") {
+    // Meta entrega como `unsupported` lo que no puede reenviar (p. ej. un mensaje borrado o de un tipo nuevo). No se adivina su contenido.
+    return "[El cliente envió o borró un mensaje que el asistente no puede leer: si había pedido o cambiado algo en él, pregúntele qué quería antes de aplicarlo.]";
   }
   return `[El cliente envió un archivo (${type}) que este asistente no puede abrir. Pídale amablemente que escriba su mensaje por texto.]`;
 }

@@ -166,7 +166,8 @@ export const rutasRestaurantes: readonly Ruta[] = [
       return conStatus(204, undefined);
     },
   },
-  { metodo: "GET", patron: "/v1/restaurantes/:org/admin/branches", manejador: () => ({ branches: [{ propertyId: PROP.id, name: PROP.nombre, slug: "centro" }] }) },
+  // Lista en el estado del escenario: una prueba puede sembrar una segunda sucursal con `mock.agregarAEstado("rest.branches", ...)` y recargar.
+  { metodo: "GET", patron: "/v1/restaurantes/:org/admin/branches", manejador: (p) => ({ branches: p.estado.obtener("rest.branches", () => [{ propertyId: PROP.id, name: PROP.nombre, slug: "centro" }]) }) },
   { metodo: "GET", patron: `${B}/kpis/sales`, manejador: () => kpisVentas },
   { metodo: "GET", patron: `${B}/kpis/sales/trend`, manejador: () => ({ buckets: ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"].map((label, i) => ({ label, revenue: 2100 + i * 310, orders: 11 + i })) }) },
   { metodo: "GET", patron: `${B}/kpis/channels`, manejador: () => canales },
