@@ -12,6 +12,19 @@
 import type { SourceConnectorId } from "../connector-registry.ts";
 
 /**
+ * L-P3-08: un documento de bases que la fuente publica junto a la convocatoria (`tender.documents[]` de OCDS). Solo METADATOS
+ * (nunca el contenido): la URL es la que declara la fuente y el consumo (descarga a la bóveda) la valida contra la lista blanca
+ * de hosts del conector antes de tocar la red.
+ */
+export interface TenderSourceDocument {
+  readonly url: string;
+  readonly title: string | null;
+  readonly documentType: string | null;
+  /** ISO 8601 con offset explícito tal como lo publica la fuente, o `null`. */
+  readonly datePublished: string | null;
+}
+
+/**
  * Forma MÍNIMA que necesita `LicitacionesRepository.ingestTendersFromSource`
  * para dar de alta/actualizar una convocatoria vía un conector automatizado
  * — subconjunto de `TenderUpsertInput` (repository.ts) sin `actorId` (una
@@ -32,6 +45,8 @@ export interface TenderSourceIngestCandidate {
   readonly currency: string;
   readonly state: string | null;
   readonly procedureTypeRaw: string | null;
+  /** Documentos de bases publicados por la fuente (opcional: la mayoría de conectores no los traen). Alimentan el vigilante de cambios (versión de la convocatoria). */
+  readonly documents?: readonly TenderSourceDocument[];
 }
 
 /** Fila descartada durante el parseo/mapeo (SR-16/17/21 del origen): nunca desaparece en silencio, se reporta con su motivo. */

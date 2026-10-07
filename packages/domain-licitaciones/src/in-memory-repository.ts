@@ -88,6 +88,7 @@ import type {
   RecordTenderVersionResult,
   RequirementFulfillmentMappingRecord,
   RequirementItemRecord,
+  TenderBasesChange,
   TenderChangeNotificationRecord,
   TenderSourceIngestResult,
   TenderDeadlineReminderRecord,
@@ -97,6 +98,7 @@ import type {
 import type { TenderSourceIngestCandidate } from "./connectors/types.ts";
 import { buildGoNoGoDecision } from "./go-no-go.ts";
 import { TenderVersionRegistry, computeTenderSnapshotHash, toRequirementSnapshot } from "./tender-version-registry.ts";
+import { planIngestTenderVersion } from "./tender-ingest-versioning.ts";
 import type { PersistedTenderVersion, TenderVersionSnapshot } from "./tender-version-registry.ts";
 import { LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
 import type { SourceConnectorId } from "./connector-registry.ts";
@@ -650,6 +652,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     let updated = 0;
     const tenders: TenderRecord[] = [];
     const nowIso = new Date().toISOString();
+    const createdTenderIds: string[] = [];
+    const basesModificadas: TenderBasesChange[] = [];
 
     for (const rec of records) {
       const key = `${organizationId}:${source}:${rec.externalId}`;
@@ -672,6 +676,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
         this.tenders.set(existing.id, updatedTender);
         tenders.push(updatedTender);
         updated += 1;
+        const cambio = await this.vigilarVersionIngesta(organizationId, updatedTender, rec);
+        if (cambio) basesModificadas.push(cambio);
         continue;
       }
 
@@ -695,9 +701,56 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       this.tenderBySourceExternalKey.set(key, createdTender.id);
       tenders.push(createdTender);
       created += 1;
+      createdTenderIds.push(createdTender.id);
+      await this.vigilarVersionIngesta(organizationId, createdTender, rec);
     }
 
-    return { created, updated, tenders };
+    return { created, updated, tenders, createdTenderIds, basesModificadas };
+  }
+
+  /**
+   * L-P3-08: vigilante de cambios de la ingesta automatica (espejo en memoria de `system_record_ingested_tender_version`).
+   * Registra la version de la convocatoria si la fuente cambio algo versionable; devuelve el cambio solo cuando la version es
+   * un CAMBIO real (la primera captura y la "linea base" no avisan). Nunca revierte nada si el aviso posterior falla.
+   */
+  private async vigilarVersionIngesta(organizationId: string, tender: TenderRecord, rec: TenderSourceIngestCandidate): Promise<TenderBasesChange | null> {
+    const previous = await this.latestTenderVersion(organizationId, tender.id);
+    const plan = planIngestTenderVersion(previous, tender, rec.documents);
+    if (plan.action === "none") return null;
+
+    const key = `${organizationId}:${tender.id}`;
+    const registry = this.tenderVersionRegistries.get(key) ?? new TenderVersionRegistry();
+    this.tenderVersionRegistries.set(key, registry);
+    const version = registry.createVersion(plan.snapshot);
+    if (plan.action === "baseline") return null;
+
+    const proposal = await this.findProposal(organizationId, tender.id);
+    const invalidatedApprovalIds: string[] = [];
+    const invalidatedApproverIds = new Set<string>();
+    if (proposal) {
+      for (const c of plan.cascade) {
+        const covering = await this.activeApprovalsCovering(organizationId, proposal.id, c.scopeRef);
+        for (const a of covering) invalidatedApproverIds.add(a.approvedBy);
+        const change = await this.recordChange(organizationId, proposal.id, { scope: c.scope, scopeRef: c.scopeRef, reason: c.reason });
+        invalidatedApprovalIds.push(...change.invalidatedApprovalIds);
+      }
+    }
+    const notifications = this.tenderChangeNotifications.get(organizationId) ?? [];
+    notifications.push({
+      id: randomUUID(),
+      organizationId,
+      tenderId: tender.id,
+      tenderVersion: version.version,
+      reason: plan.reason,
+      changedFieldNames: plan.changedFieldNames,
+      affectedSectionKeys: plan.affectedSectionKeys,
+      notifiedRoles: WRITE_ROLES,
+      createdAt: version.createdAt,
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+    });
+    this.tenderChangeNotifications.set(organizationId, notifications);
+    return { tenderId: tender.id, version: version.version, changedFieldNames: plan.changedFieldNames, invalidatedApprovals: invalidatedApprovalIds.length, invalidatedApproverIds: [...invalidatedApproverIds] };
   }
 
   async listActiveOrganizations(): Promise<readonly { id: string }[]> {

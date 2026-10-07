@@ -178,10 +178,29 @@ export interface TenderChangeNotificationRecord {
 // no invoca ningún conector, no hay recordatorios automáticos de plazo").
 // ---------------------------------------------------------------------------
 
+/** L-P3-08: una convocatoria YA conocida cuya fuente cambio plazo, monto, bases o documentos; la ingesta registro una version nueva. */
+export interface TenderBasesChange {
+  readonly tenderId: string;
+  /** Numero de la version nueva (>= 2: la primera captura es linea base y nunca es un cambio). */
+  readonly version: number;
+  /** Campos de bases que cambiaron (nombres del snapshot, sin valores: el aviso no lleva texto de la convocatoria). */
+  readonly changedFieldNames: readonly string[];
+  /** Aprobaciones vigentes que la cascada invalido (conteo; 0 si no habia propuesta o aprobacion). */
+  readonly invalidatedApprovals: number;
+  /** Personas que habian aprobado lo invalidado (para avisarles). */
+  readonly invalidatedApproverIds: readonly string[];
+}
+
 export interface TenderSourceIngestResult {
   readonly created: number;
   readonly updated: number;
   readonly tenders: readonly TenderRecord[];
+  /** Ids de las convocatorias que esta corrida DIO DE ALTA (nuevas); insumo del "nuevo match". Ausente en implementaciones previas a L-P3-09. */
+  readonly createdTenderIds?: readonly string[];
+  /** Cambios de bases detectados por el vigilante. Ausente/vacio si ninguna convocatoria conocida cambio o si la base aun no tiene la migracion 039. */
+  readonly basesModificadas?: readonly TenderBasesChange[];
+  /** Si el vigilante no pudo registrar versiones (base sin la migracion 039), el motivo; la ingesta de convocatorias NO se pierde. */
+  readonly vigilanteNoDisponible?: string;
 }
 
 /** Recordatorio persistido de un vencimiento próximo (`submissionDeadline`) -- mismo criterio "honesto" que `TenderChangeNotificationRecord`: sin canal de envío real (email/SMS/WhatsApp), un registro consultable/reconocible (ver README del vertical para el gap declarado de integrar un canal real). */

@@ -8,7 +8,7 @@
 // (CDMX Tianguis Digital no expone un endpoint OCDS estable/respetuoso de
 // automatizar, verificado con peticiones reales antes de escribir código; su
 // fuente real accesible es un CSV plano, no OCDS).
-import type { TenderSourceIngestCandidate } from "../types.ts";
+import type { TenderSourceDocument, TenderSourceIngestCandidate } from "../types.ts";
 import type { OcdsClassification, OcdsRecord, OcdsRelease, OcdsTender } from "./types.ts";
 
 export interface MapOcdsReleaseResultOk {
@@ -110,6 +110,36 @@ function collectClassifierCodes(tender: OcdsTender): string[] {
   return [...codes];
 }
 
+/** Tope de documentos por convocatoria: una fuente defectuosa no puede inflar el snapshot de versiones. */
+export const MAX_TENDER_DOCUMENTS = 50;
+
+/**
+ * Mapea `tender.documents[]` (L-P3-08) a metadatos de documentos de bases. Solo se conservan URLs `https` absolutas y
+ * parseables (nunca `http`, `file:`, `data:` ni rutas relativas: la descarga posterior exige https), sin credenciales en la
+ * URL; el resto se descarta SIN fabricar nada. Deduplica por URL, conserva el orden de la fuente y respeta el tope.
+ */
+export function mapOcdsDocuments(tender: OcdsTender | null | undefined): TenderSourceDocument[] {
+  const out: TenderSourceDocument[] = [];
+  const seen = new Set<string>();
+  for (const raw of tender?.documents ?? []) {
+    const url = toStringId(raw?.url ?? null);
+    if (!url) continue;
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      continue;
+    }
+    if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "") continue;
+    if (seen.has(parsed.href)) continue;
+    seen.add(parsed.href);
+    const datePublished = typeof raw?.datePublished === "string" && isIsoWithOffset(raw.datePublished) ? raw.datePublished : null;
+    out.push({ url: parsed.href, title: raw?.title?.trim() || null, documentType: raw?.documentType?.trim() || null, datePublished });
+    if (out.length >= MAX_TENDER_DOCUMENTS) break;
+  }
+  return out;
+}
+
 export interface MapOcdsReleaseOptions {
   /** `TenderRecord.state` fijo de la instancia del conector (una federación/entidad OCDS no declara su propia entidad federativa dentro del release -- se conoce estructuralmente por CUÁL fuente se está consultando, mismo criterio que `compras-mx-historico.ts::publishingEntity`). `null` si la fuente no tiene un estado fijo conocido (p. ej. cobertura nacional). */
   readonly fixedState: string | null;
@@ -144,6 +174,7 @@ export function mapOcdsReleaseToCandidate(input: OcdsRelease | OcdsRecord, optio
   const cpvCodes = tender ? collectClassifierCodes(tender) : [];
   const budgetAmount = typeof tender?.value?.amount === "number" && Number.isFinite(tender.value.amount) ? tender.value.amount : null;
   const currency = tender?.value?.currency?.trim() || "MXN";
+  const documents = mapOcdsDocuments(tender);
   const procedureTypeRaw = tender?.procurementMethodDetails?.trim() || tender?.procurementMethod?.trim() || null;
 
   const candidate: TenderSourceIngestCandidate = {
@@ -156,6 +187,7 @@ export function mapOcdsReleaseToCandidate(input: OcdsRelease | OcdsRecord, optio
     currency,
     state: options.fixedState,
     procedureTypeRaw,
+    ...(documents.length > 0 ? { documents } : {}),
   };
   return { candidate };
 }

@@ -33,6 +33,7 @@ import type {
   RecordTenderVersionResult,
   TenderAuditLogEntry,
   TenderAuditLogPage,
+  TenderBasesChange,
   TenderChangeNotificationRecord,
   TenderResolutionCreateInput,
   TenderPage,
@@ -91,6 +92,7 @@ import type { RequirementFulfillmentMappingRecord, RequirementItemRecord } from 
 import { buildGoNoGoDecision } from "./go-no-go.ts";
 import { TenderVersionRegistry, computeTenderSnapshotHash, toRequirementSnapshot } from "./tender-version-registry.ts";
 import type { PersistedTenderVersion, TenderVersionDiff, TenderVersionSnapshot } from "./tender-version-registry.ts";
+import { planIngestTenderVersion } from "./tender-ingest-versioning.ts";
 import { LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
 import type { SourceConnectorId } from "./connector-registry.ts";
 import { evaluateSourceFreshness } from "./source-run.ts";
@@ -1374,6 +1376,10 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     let created = 0;
     let updated = 0;
     const tenders: TenderRecord[] = [];
+    const createdTenderIds: string[] = [];
+    const basesModificadas: TenderBasesChange[] = [];
+    // L-P3-08: si la base aun no tiene la migracion 039 el vigilante se apaga para el resto del lote (la ingesta SIGUE).
+    let vigilanteNoDisponible: string | undefined;
 
     // Fase "flujos de sistema": `ingestTendersFromSource` SOLO se invoca hoy
     // bajo sesión de sistema (`apps/worker/src/jobs/licitaciones/discover-
@@ -1428,11 +1434,81 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
         status: row.out_status,
       });
       tenders.push(tender);
-      if (row.out_inserted) created += 1;
-      else updated += 1;
+      if (row.out_inserted) {
+        created += 1;
+        createdTenderIds.push(tender.id);
+      } else updated += 1;
+
+      if (vigilanteNoDisponible === undefined) {
+        const resultado = await this.vigilarVersionIngesta(organizationId, tender, rec);
+        if (resultado.estado === "no_disponible") vigilanteNoDisponible = resultado.motivo;
+        else if (resultado.cambio) basesModificadas.push(resultado.cambio);
+      }
     }
 
-    return { created, updated, tenders };
+    return { created, updated, tenders, createdTenderIds, basesModificadas, ...(vigilanteNoDisponible !== undefined ? { vigilanteNoDisponible } : {}) };
+  }
+
+  /**
+   * L-P3-08: vigilante de cambios de la ingesta automatica. Bajo la sesion de SISTEMA (auth.uid() nulo) las tablas de la
+   * vertical no se leen ni se escriben por RLS: se usan las funciones definer de solo sistema de la migracion 039 (lectura de la
+   * ultima version y escritura atomica version + cascada + aviso). La decision de que versionar la toma `planIngestTenderVersion`
+   * (pura). Un fallo por base sin migrar (42883/42P01/42703) corre en SAVEPOINT y degrada a "no disponible": la convocatoria ya
+   * quedo guardada y NUNCA se revierte por esto. Cualquier otro error se propaga (la transaccion por fuente lo revierte entero,
+   * como cualquier fallo real de la ingesta).
+   */
+  private async vigilarVersionIngesta(
+    organizationId: string,
+    tender: TenderRecord,
+    rec: TenderSourceIngestCandidate,
+  ): Promise<{ estado: "ok"; cambio: TenderBasesChange | null } | { estado: "no_disponible"; motivo: string }> {
+    return runWithSavepointFallback<{ estado: "ok"; cambio: TenderBasesChange | null } | { estado: "no_disponible"; motivo: string }>({
+      session: this.db,
+      savepointName: "sp_vigilante_ingesta",
+      primary: async () => {
+        const { rows: prevRows } = await this.db.query<{ out_version: number; out_hash: string; out_snapshot: TenderVersionSnapshot }>(
+          `select * from licitaciones.system_latest_tender_version($1, $2);`,
+          [organizationId, tender.id],
+        );
+        const prev = prevRows[0];
+        const previous: PersistedTenderVersion | null = prev
+          ? { version: prev.out_version, hash: prev.out_hash, snapshot: prev.out_snapshot, diff: { fields: [], requirements: [], changedFieldNames: [], affectedSectionKeys: [], hasChanges: false }, createdAt: "" }
+          : null;
+        const plan = planIngestTenderVersion(previous, tender, rec.documents);
+        if (plan.action === "none") return { estado: "ok", cambio: null };
+
+        const { rows } = await this.db.query<{ out_version: number; out_created: boolean; out_notification_id: string | null; out_invalidated_approval_ids: string[]; out_invalidated_approver_ids: string[] }>(
+          `select * from licitaciones.system_record_ingested_tender_version($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8::text[], $9::text[], $10::text[], $11::jsonb);`,
+          [
+            organizationId,
+            tender.id,
+            plan.hash,
+            JSON.stringify(plan.snapshot),
+            JSON.stringify(plan.diff),
+            plan.action === "changed",
+            plan.reason,
+            plan.changedFieldNames,
+            plan.affectedSectionKeys,
+            WRITE_ROLES,
+            JSON.stringify(plan.cascade),
+          ],
+        );
+        const out = rows[0];
+        if (!out || !out.out_created || plan.action !== "changed") return { estado: "ok", cambio: null };
+        return {
+          estado: "ok",
+          cambio: {
+            tenderId: tender.id,
+            version: out.out_version,
+            changedFieldNames: plan.changedFieldNames,
+            invalidatedApprovals: out.out_invalidated_approval_ids.length,
+            invalidatedApproverIds: out.out_invalidated_approver_ids,
+          },
+        };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ estado: "no_disponible", motivo: "vigilante de cambios no disponible: falta aplicar la migracion 039_licitaciones_autopiloto (la ingesta de convocatorias no se ve afectada)." }),
+    });
   }
 
   async listActiveOrganizations(): Promise<readonly { id: string }[]> {
