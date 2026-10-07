@@ -25,6 +25,9 @@ const P12 = "¿Qué clientes tienen menor margen?";
 const P13 = "¿Qué clientes tienen el pago pendiente?";
 const P14 = "¿Qué contratos vencen en los próximos 60 días?";
 const P15 = "¿Cómo están las colas de mensajes?";
+const P16 = "¿Qué organizaciones gastan más en IA este mes?";
+const P17 = "¿Qué hoteles tengo y en qué estado están?";
+const P18 = "Compara restaurantes y hoteles este mes";
 
 const FASES: ReadonlyArray<readonly [number, string]> = [
   [0, "Leyendo la plataforma…"],
@@ -51,6 +54,9 @@ export const DIRECTAS_COPILOTO_SUPERADMIN: Readonly<Record<string, Directa>> = {
   [P13]: { tool: "facturacion_cobranza", args: { estado: "pago_pendiente" } },
   [P14]: { tool: "contratos_por_vencer", args: { dias: 60 } },
   [P15]: { tool: "salud_colas" },
+  [P16]: { tool: "ranking_organizaciones", args: { periodo: "este_mes", ordenar_por: "costo_ia" } },
+  [P17]: { tool: "buscar_organizacion", args: { vertical: "hoteles" } },
+  [P18]: { tool: "uso_por_vertical", args: { periodo: "este_mes" } },
 };
 
 export const DATOS_COPILOTO_SUPERADMIN = {
@@ -68,6 +74,7 @@ export const DATOS_COPILOTO_SUPERADMIN = {
     { titulo: "CFO y cobranza", preguntas: [P10, P11, P12, P13, P14] },
     { titulo: "Ventas y costos de IA", preguntas: [P2, P3, P5, P4] },
     { titulo: "Clientes, agentes y salud", preguntas: [P1, P8, P6, P7, P15] },
+    { titulo: "Varias organizaciones", preguntas: [P16, P17, P18] },
   ],
   directas: DIRECTAS_COPILOTO_SUPERADMIN,
   etiquetasHerramienta: {
@@ -83,6 +90,8 @@ export const DATOS_COPILOTO_SUPERADMIN = {
     eventos_seguridad: "Leyendo eventos de seguridad",
     prospectos: "Leyendo los prospectos",
     uso_copiloto: "Midiendo el uso del Copiloto",
+    buscar_organizacion: "Buscando la organización",
+    ranking_organizaciones: "Ordenando las organizaciones",
     mrr: "Calculando el MRR",
     margen_costos_unitarios: "Calculando márgenes y costos unitarios",
     pyl: "Armando el P&L",
@@ -103,6 +112,8 @@ export const DATOS_COPILOTO_SUPERADMIN = {
     eventos_seguridad: "/superadmin/seguridad",
     prospectos: "/superadmin/cerebro",
     uso_copiloto: "/superadmin/consumo-ia",
+    buscar_organizacion: "/superadmin/organizaciones",
+    ranking_organizaciones: "/superadmin/consumo-ia",
     mrr: "/superadmin/ejecutivo",
     margen_costos_unitarios: "/superadmin/costos-facturacion?tab=costos",
     pyl: "/superadmin/costos-facturacion?tab=pyl",
