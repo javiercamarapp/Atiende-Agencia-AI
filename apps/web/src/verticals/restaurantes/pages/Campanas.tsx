@@ -59,7 +59,7 @@ export function CampanasPage({ apiBaseUrl, token, propertyId, role, fetchImpl }:
     if (accion === "aprobar") {
       const ok = await confirmar({
         titulo: "Aprobar campaña",
-        descripcion: `Se enviará la promoción ${c.promoCodigo} por WhatsApp a ${c.conteo} clientes que dieron su consentimiento. Costo estimado de Meta: ${formatoMxn(c.costoEstimadoCentavos)}. Los mensajes salen en horario de atención.`,
+        descripcion: `Se enviará la promoción ${c.promoCodigo} por WhatsApp a unos ${c.conteo} clientes que dieron su consentimiento (la cifra exacta se recalcula al aprobar, solo con quienes sigan con consentimiento). Costo estimado de Meta (aprox.): ${formatoMxn(c.costoEstimadoCentavos)}. Los mensajes salen en horario de atención.`,
         confirmar: "Aprobar y enviar",
         cancelar: "Volver",
       });

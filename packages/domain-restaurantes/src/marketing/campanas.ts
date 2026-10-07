@@ -5,7 +5,7 @@
 // Base sin migrar (SQLSTATE 42883/42P01/42703): CADA llamada va en su propio SAVEPOINT (`runWithSavepointFallback`): una lectura devuelve
 // `disponible: false` con lista vacia (estado honesto "no disponible aun"), una escritura de sistema (consentimiento, borradores) devuelve
 // "no disponible" sin romper el pedido ni el webhook que la invoca, y las acciones del panel lanzan `MarketingNoDisponibleError` (503).
-// Los errores de negocio de la base (P0001: requiere_tarifa, requiere_plantilla_aprobada, requiere_whatsapp_conectado, tope_mensual_excedido,
+// Los errores de negocio de la base (P0001: requiere_tarifa, requiere_marketing_activo, requiere_nuevo_borrador, requiere_plantilla_aprobada, requiere_whatsapp_conectado, tope_mensual_excedido,
 // campana_no_aprobable) salen como `MarketingRechazadoError` con su codigo: el panel los muestra como "requiere X", nunca como un 500.
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { emitirNotificacion, isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
@@ -13,9 +13,9 @@ import { emitirNotificacion, isMigrationPendingError, runWithSavepointFallback }
 export const SEGMENTOS_MARKETING = ["inactivo_30", "inactivo_60", "inactivo_90"] as const;
 export type SegmentoMarketing = (typeof SEGMENTOS_MARKETING)[number];
 export type EstadoCampana = "borrador" | "aprobada" | "rechazada" | "expirada";
-export type CodigoRechazoMarketing = "requiere_tarifa" | "requiere_plantilla_aprobada" | "requiere_whatsapp_conectado" | "tope_mensual_excedido" | "campana_no_aprobable";
+export type CodigoRechazoMarketing = "requiere_tarifa" | "requiere_marketing_activo" | "requiere_nuevo_borrador" | "requiere_plantilla_aprobada" | "requiere_whatsapp_conectado" | "tope_mensual_excedido" | "campana_no_aprobable";
 
-const CODIGOS_RECHAZO: ReadonlySet<string> = new Set<CodigoRechazoMarketing>(["requiere_tarifa", "requiere_plantilla_aprobada", "requiere_whatsapp_conectado", "tope_mensual_excedido", "campana_no_aprobable"]);
+const CODIGOS_RECHAZO: ReadonlySet<string> = new Set<CodigoRechazoMarketing>(["requiere_tarifa", "requiere_marketing_activo", "requiere_nuevo_borrador", "requiere_plantilla_aprobada", "requiere_whatsapp_conectado", "tope_mensual_excedido", "campana_no_aprobable"]);
 
 export class MarketingNoDisponibleError extends Error {
   constructor() {

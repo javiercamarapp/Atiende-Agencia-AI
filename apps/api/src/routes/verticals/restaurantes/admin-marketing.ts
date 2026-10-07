@@ -28,9 +28,11 @@ import type { AppDeps } from "../../../deps.ts";
 
 const MENSAJE_RECHAZO: Readonly<Record<CodigoRechazoMarketing, string>> = {
   requiere_tarifa: "Configura la tarifa por mensaje de marketing de Meta antes de aprobar: el costo debe verse antes de enviar.",
+  requiere_marketing_activo: "Las campañas están desactivadas: actívalas en la configuración antes de aprobar (puedes rechazar este borrador).",
+  requiere_nuevo_borrador: "Este borrador se generó sin costo o con otra tarifa que la vigente: recházalo y espera el siguiente borrador para ver el costo correcto antes de aprobar.",
   requiere_plantilla_aprobada: "Requiere una plantilla de marketing aprobada por Meta (configúrala en Plantillas de WhatsApp) antes de enviar.",
   requiere_whatsapp_conectado: "Requiere el WhatsApp de la organización conectado antes de enviar.",
-  tope_mensual_excedido: "El costo estimado de esta campaña excede el tope mensual de marketing configurado.",
+  tope_mensual_excedido: "El costo estimado de esta campaña (recalculado con los clientes elegibles de hoy y la tarifa vigente) excede el tope mensual de marketing configurado.",
   campana_no_aprobable: "Esta campaña ya fue decidida o expiró; espera el siguiente borrador.",
 };
 
