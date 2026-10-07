@@ -69,6 +69,61 @@ export function importesHablados(texto: string): number[] {
   return importes;
 }
 
+// Palabras que pueden seguir a la cifra de un total sin cambiar su sentido ("ciento ochenta pesos", "doscientos en total", "ciento ochenta con envio").
+const COLA_DE_TOTAL: ReadonlySet<string> = new Set(["peso", "pesos", "mxn", "mn", "en", "total", "todo", "con", "mas", "incluido", "incluida", "incluyendo", "y", "nada"]);
+// Un total PARCIAL (antes del descuento, sin envio, subtotal) no es lo que paga el cliente.
+const PARCIAL = /\b(?:antes|sin|previo|parcial|subtotal|excluyendo)\b/;
+
+/**
+ * Importes que el agente presenta COMO TOTAL a pagar, con o sin la palabra "pesos" ("su total queda en ciento ochenta", "son 180 en total",
+ * "total: $179"). Una cifra cuenta solo si va pegada al marcador ("total", "a pagar", "queda en", "serian") dentro de la misma clausula y no es una
+ * cantidad ("el total de 3 tacos"). Es la lectura que `importesHablados` no hace: aquella exige "pesos" o "$", y por telefono casi nunca se dice.
+ */
+export function importesDeTotalHablado(texto: string): number[] {
+  const t = normalizar(texto).replace(/(\d),(?=\d{3}(?!\d))/g, "$1").replace(/:/g, " ");
+  const out: number[] = [];
+  for (const clausula of t.split(/[.,;!?¿¡\n]+/)) {
+    if (PARCIAL.test(clausula)) continue;
+    const tokens = clausula.split(/\s+/).filter((x) => x !== "");
+    const marca = tokens.findIndex((tk, i) => /^total$/.test(tk) || (tk === "a" && tokens[i + 1] === "pagar") || /^(?:queda|quedan|quedaria|quedarian|saldria|saldrian|seria|serian)$/.test(tk));
+    if (marca < 0) continue;
+    let i = marca + 1;
+    while (i < tokens.length) {
+      const tk = tokens[i]!;
+      const digitos = /^\$?(\d+(?:\.\d{1,2})?)$/.exec(tk);
+      if (digitos) {
+        const next = tokens[i + 1];
+        if (next === undefined || COLA_DE_TOTAL.has(next)) out.push(Number(digitos[1]));
+        break;
+      }
+      if (esPalabraNumero(tk) && tk !== "y") {
+        let j = i;
+        while (j < tokens.length && esPalabraNumero(tokens[j]!)) j += 1;
+        while (j > i && tokens[j - 1] === "y") j -= 1;
+        const v = numeroEnPalabras(tokens.slice(i, j));
+        const next = tokens[j];
+        if (v !== null && (next === undefined || COLA_DE_TOTAL.has(next))) out.push(v);
+        break;
+      }
+      i += 1;
+    }
+  }
+  return out;
+}
+
+/** Totales que devolvieron las herramientas: el campo `total` (no `line_total`, `subtotal` ni precios) a cualquier profundidad. */
+export function totalesDe(valor: unknown, acumulado: number[] = [], profundidad = 0): number[] {
+  if (profundidad > 8) return acumulado;
+  if (Array.isArray(valor)) for (const v of valor) totalesDe(v, acumulado, profundidad + 1);
+  else if (typeof valor === "object" && valor !== null) {
+    for (const [k, v] of Object.entries(valor)) {
+      if (k === "total" && typeof v === "number" && Number.isFinite(v)) acumulado.push(v);
+      else totalesDe(v, acumulado, profundidad + 1);
+    }
+  }
+  return acumulado;
+}
+
 /** Valores numericos de cualquier profundidad de lo que devolvio una herramienta (precios, totales, minimos). */
 export function numerosDe(valor: unknown, acumulado: number[] = [], profundidad = 0): number[] {
   if (profundidad > 8) return acumulado;

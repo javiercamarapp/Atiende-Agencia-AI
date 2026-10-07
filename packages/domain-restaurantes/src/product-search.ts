@@ -127,16 +127,20 @@ export function pesoDeProductoEnGramos(nombre: string): number | null {
  * explicitos) se vuelven UN token `peso:<gramos>` que `matchesProductSearch` compara EXACTO contra el peso del nombre del
  * producto: "1 kg" ya no encuentra tambien "1.5 kg".
  */
+/** Marcador de la consulta "nachos grandes / completos": el producto NO puede ser una media orden ("(1/2 orden)"). */
+export const ORDEN_COMPLETA = "orden:completa";
+
 export function tokenizeForProductSearch(query: string): string[] {
   const normalizada = normalizarPesosEnConsulta(
     normalizarUnidadesDeKilo(sinAcentos(query)).replace(/\bcero\s+punto\s+cero\b/g, "0.0"),
   )
     .replace(/\bmedia\s+orden\b/g, "1/2")
-    // Jerga de T7 (chats reales): "medios charros" = media orden de frijoles charros; "nachos grandes" = la orden completa (el catalogo
-    // solo distingue "(1/2 orden)"), asi que "grande(s)" junto a estos platillos no es parte del nombre.
+    // Jerga de T7 (chats reales): "medios charros" = media orden de frijoles charros; "nachos grandes" = la orden COMPLETA (el catalogo solo distingue
+    // "(1/2 orden)"). "grande(s)", "completa(s)" y "entera(s)" junto a estos platillos no son parte del nombre: piden la orden completa, asi que se vuelven
+    // el marcador `orden:completa` (matchesProductSearch descarta las medias ordenes) en vez de simplemente borrarse (QA-R2-AGREGADO-01).
     .replace(/\b(?:medios?|medias?)\s+(?=(?:frijoles?\s+)?charros?\b|frijoles?\b|nachos?\b)/g, "1/2 ")
-    .replace(/\b(nachos?|charros?|frijoles?)\s+grandes?\b/g, "$1")
-    .replace(/\bgrandes?\s+(?=nachos?\b|charros?\b|frijoles?\b)/g, "");
+    .replace(/\b(nachos?|charros?|frijoles?)\s+(?:grandes?|completos?|completas?|enteros?|enteras?)\b/g, "$1 ordencompleta")
+    .replace(/\b(?:grandes?|completos?|completas?|enteros?|enteras?)\s+(?:de\s+)?(?=nachos?\b|charros?\b|frijoles?\b)/g, " ordencompleta ");
 
   const raw = normalizada.split(/\s+/).filter((t) => t.length > 1 && !STOPWORDS_BUSQUEDA.has(t));
 
@@ -144,6 +148,10 @@ export function tokenizeForProductSearch(query: string): string[] {
   for (const t of raw) {
     if (t.startsWith("peso:")) {
       tokens.push(t);
+      continue;
+    }
+    if (t === "ordencompleta") {
+      tokens.push(ORDEN_COMPLETA);
       continue;
     }
     const singular = t.length > 4 && t.endsWith("s") ? t.slice(0, -1) : t;
@@ -222,6 +230,7 @@ export function matchesProductSearch(
   return tokens.every((t) => {
     if (t === "peso:cualquiera") return pesoProducto !== null;
     if (t.startsWith("peso:")) return pesoProducto !== null && pesoProducto === Number(t.slice(5));
+    if (t === ORDEN_COMPLETA) return !/\b1\s*\/\s*2\b|\bmedia\s+orden\b/.test(textoPlano);
     return textoPlano.includes(t) || alias.some((a) => a.includes(t)) || (t.length >= 6 && textoCompacto.includes(t));
   });
 }
