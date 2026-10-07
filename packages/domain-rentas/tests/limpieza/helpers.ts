@@ -11,32 +11,16 @@
 // tests/reservas.spec.ts) para no arriesgar ningún otro test de esa fixture.
 import { randomUUID } from "node:crypto";
 import type { EjecutorTransaccional } from "../../src/ejecutor.ts";
-import { InMemoryRentasCalendarStore } from "../../src/calendar-store.ts";
+import { InMemoryRentasCalendarStore, type StoredTareaOperativa } from "../../src/calendar-store.ts";
 import { InMemoryRentasTenancyEngine } from "../../src/in-memory-tenancy-engine.ts";
 import type { UnidadRecord } from "../../src/types.ts";
-import { CONFIGURACION_OPERATIVA_DEFECTO } from "../../src/limpieza/tipos.ts";
+import { CONFIGURACION_OPERATIVA_DEFECTO, type PrioridadTareaOperativa, type TipoTareaOperativa } from "../../src/limpieza/tipos.ts";
 
 function normalize(sql: string): string {
   return sql.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-interface TareaRow {
-  id: string;
-  organizationId: string;
-  propertyId: string;
-  unidadId: string;
-  ocupacionUnidadId: string | null;
-  tipo: string;
-  estado: string;
-  prioridad: string;
-  asignadoA: string | null;
-  esProveedorExterno: boolean;
-  programadaPara: string;
-  slaVenceEn: string | null;
-  bufferOcupacionId: string | null;
-  completadaEn: string | null;
-  creadoEn: string;
-}
+type TareaRow = StoredTareaOperativa;
 
 interface ChecklistItemRow {
   id: string;
@@ -95,7 +79,14 @@ export interface FixtureLimpieza {
   readonly organizationId: string;
   readonly propertyId: string;
   readonly unidad: UnidadRecord;
-  crearUnidad(duracionMinimaNoches?: number): UnidadRecord;
+  crearUnidad(duracionMinimaNoches?: number, donde?: { organizationId?: string; propertyId?: string }): UnidadRecord;
+  /** `rentas.property_config.zona_horaria` de una propiedad (sin fila, el barrido usa el default de plataforma). */
+  seedZonaHoraria(propertyId: string, zonaHoraria: string): void;
+  /** `rentas.unidad.responsable_limpieza_default` (migracion 033) de una unidad. En esta fixture no hay membresias: la
+   *  vigencia del responsable (miembro operativo con acceso) la prueban el verify de Postgres real y los tests de API. */
+  seedResponsablePorOmision(unidadId: string, userId: string | null): void;
+  /** Todas las tareas guardadas (para asserts de "no se duplico"). */
+  listTareas(): TareaRow[];
   seedPropertyConfig(propertyId: string, config: { bufferLimpiezaNoches: number; slaLimpiezaHoras: number; slaMantenimientoHoras: number }): void;
   seedItemInventario(row: { unidadId: string; nombre: string; categoria: string; cantidadActual: number; umbralMinimo: number }): { id: string };
   getItemInventario(id: string): ItemInventarioRow | undefined;
@@ -105,6 +96,8 @@ export interface FixtureLimpieza {
   listNotificaciones(tareaId: string): NotificacionRow[];
   getIncidencia(id: string): IncidenciaRow | undefined;
   seedOcupacionConfirmada(input: { unidadId: string; inicio: string; fin: string }): { id: string };
+  /** Cambia la fecha de salida de una reserva SIN pasar por el motor de reservas (como lo haria cualquier otro camino de escritura). */
+  moverSalidaPorFuera(ocupacionId: string, nuevaFin: string): void;
 }
 
 export async function crearFixtureLimpieza(): Promise<FixtureLimpieza> {
@@ -118,8 +111,8 @@ export async function crearFixtureLimpieza(): Promise<FixtureLimpieza> {
   const organizationId = randomUUID();
   const propertyId = randomUUID();
 
-  function crearUnidad(duracionMinimaNoches = 1): UnidadRecord {
-    const unidad: UnidadRecord = { id: randomUUID(), organizationId, propertyId, duracionMinimaNoches };
+  function crearUnidad(duracionMinimaNoches = 1, donde: { organizationId?: string; propertyId?: string } = {}): UnidadRecord {
+    const unidad: UnidadRecord = { id: randomUUID(), organizationId: donde.organizationId ?? organizationId, propertyId: donde.propertyId ?? propertyId, duracionMinimaNoches };
     store.seedUnidad(unidad);
     return unidad;
   }
@@ -127,7 +120,9 @@ export async function crearFixtureLimpieza(): Promise<FixtureLimpieza> {
   const unidad = crearUnidad();
 
   const propertyConfigs = new Map<string, { bufferLimpiezaNoches: number; slaLimpiezaHoras: number; slaMantenimientoHoras: number }>();
-  const tareas = new Map<string, TareaRow>();
+  // Comparten almacen con el motor de calendario: el SQL del barrido y de los ganchos que esta fixture NO intercepta se resuelve
+  // en `InMemoryRentasTenancyEngine` sobre las MISMAS filas.
+  const tareas = store.tareas;
   const checklistItems = new Map<string, ChecklistItemRow>();
   const itemsInventario = new Map<string, ItemInventarioRow>();
   const movimientos = new Map<string, MovimientoInventarioRow>();
@@ -136,6 +131,7 @@ export async function crearFixtureLimpieza(): Promise<FixtureLimpieza> {
 
   function seedPropertyConfig(id: string, config: { bufferLimpiezaNoches: number; slaLimpiezaHoras: number; slaMantenimientoHoras: number }): void {
     propertyConfigs.set(id, config);
+    store.seedConfiguracionOperativa(id, config);
   }
 
   function seedItemInventario(row: { unidadId: string; nombre: string; categoria: string; cantidadActual: number; umbralMinimo: number }): { id: string } {
@@ -145,9 +141,10 @@ export async function crearFixtureLimpieza(): Promise<FixtureLimpieza> {
   }
 
   function seedOcupacionConfirmada(input: { unidadId: string; inicio: string; fin: string }): { id: string } {
+    const duena = store.unidades.get(input.unidadId);
     return store.insertOcupacionReserva({
-      organizationId,
-      propertyId,
+      organizationId: duena?.organizationId ?? organizationId,
+      propertyId: duena?.propertyId ?? propertyId,
       unidadId: input.unidadId,
       inicio: input.inicio,
       fin: input.fin,
@@ -203,7 +200,7 @@ export async function crearFixtureLimpieza(): Promise<FixtureLimpieza> {
       if (n.startsWith("insert into rentas.tarea_operativa")) {
         const id = randomUUID();
         if (n.includes("'limpieza', 'pendiente'")) {
-          const [organization_id, property_id, unidad_id, ocupacion_unidad_id, prioridad, programada_para, sla_vence_en] = params as [string, string, string, string, string, string, string | null];
+          const [organization_id, property_id, unidad_id, ocupacion_unidad_id, prioridad, programada_para, sla_vence_en] = params as [string, string, string, string, PrioridadTareaOperativa, string, string | null];
           tareas.set(id, {
             id,
             organizationId: organization_id,
@@ -220,10 +217,11 @@ export async function crearFixtureLimpieza(): Promise<FixtureLimpieza> {
             bufferOcupacionId: null,
             completadaEn: null,
             creadoEn: new Date().toISOString(),
+            actualizadoEn: new Date().toISOString(),
           });
           return { rows: [{ id }] as unknown as T[] };
         }
-        const [organization_id, property_id, unidad_id, tipo, prioridad, programada_para, sla_vence_en] = params as [string, string, string, string, string, string, string | null];
+        const [organization_id, property_id, unidad_id, tipo, prioridad, programada_para, sla_vence_en] = params as [string, string, string, TipoTareaOperativa, PrioridadTareaOperativa, string, string | null];
         tareas.set(id, {
           id,
           organizationId: organization_id,
@@ -240,6 +238,7 @@ export async function crearFixtureLimpieza(): Promise<FixtureLimpieza> {
           bufferOcupacionId: null,
           completadaEn: null,
           creadoEn: new Date().toISOString(),
+          actualizadoEn: new Date().toISOString(),
         });
         return { rows: [{ id }] as unknown as T[] };
       }
@@ -324,20 +323,10 @@ export async function crearFixtureLimpieza(): Promise<FixtureLimpieza> {
         return { rows: [{ id: tareaId }] as unknown as T[] };
       }
 
-      // ---- Fase 8 (deviation): SELECT checkouts pendientes de rentas.ocupacion ----
-      // `hoy` llega como parámetro ($2, `asOfDate` ya resuelto en TS con
-      // `hoyFechaNegocio()` por `procesarCheckoutsPendientes`) -- nunca se recalcula
-      // aquí con el reloj real, para no reproducir el mismo bug de `current_date`/día
-      // UTC que el fix de Postgres real ya corrigió (paridad real, no solo de forma).
-      if (n.startsWith("select o.id as ocupacion_id")) {
-        const [limite, hoy] = params as [number, string];
-        const filas = [...store.ocupaciones.values()]
-          .filter((o) => o.capa === "reserva" && o.estado === "confirmado" && o.bloqueante && o.fin <= hoy)
-          .filter((o) => ![...tareas.values()].some((t) => t.tipo === "limpieza" && t.ocupacionUnidadId === o.id))
-          .sort((a, b) => (a.fin < b.fin ? -1 : 1))
-          .slice(0, limite)
-          .map((o) => ({ ocupacion_id: o.id, unidad_id: o.unidadId, fin: o.fin }));
-        return { rows: filas as unknown as T[] };
+      // ---- Responsable por omision (migracion 033): lo siembra `seedResponsablePorOmision`; sin membresias en esta fixture. ----
+      if (n.startsWith("select rentas.responsable_limpieza_vigente")) {
+        const [unidadId] = params as [string];
+        return { rows: [{ responsable: store.getUnidadById(unidadId)?.responsableLimpiezaDefaultId ?? null }] as unknown as T[] };
       }
 
       // ---- INSERT rentas.notificacion_tarea ----
@@ -471,13 +460,19 @@ export async function crearFixtureLimpieza(): Promise<FixtureLimpieza> {
     },
   };
 
-  return {
+  const fixture: FixtureLimpieza = {
     ejecutor,
     organizationId,
     propertyId,
     unidad,
     crearUnidad,
     seedPropertyConfig,
+    seedZonaHoraria: (id: string, zona: string) => store.seedZonaHoraria(id, zona),
+    seedResponsablePorOmision: (unidadId: string, userId: string | null) => {
+      const u = store.getUnidadById(unidadId);
+      if (u) store.seedUnidad({ ...u, responsableLimpiezaDefaultId: userId });
+    },
+    listTareas: () => [...tareas.values()],
     seedItemInventario,
     getItemInventario: (id: string) => itemsInventario.get(id),
     getTarea: (id: string) => tareas.get(id),
@@ -486,7 +481,12 @@ export async function crearFixtureLimpieza(): Promise<FixtureLimpieza> {
     listNotificaciones: (tareaId: string) => notificaciones.filter((n2) => n2.tareaId === tareaId),
     getIncidencia: (id: string) => incidencias.get(id),
     seedOcupacionConfirmada,
+    moverSalidaPorFuera: (ocupacionId: string, nuevaFin: string) => {
+      const o = store.ocupaciones.get(ocupacionId);
+      if (o) o.fin = nuevaFin;
+    },
   };
+  return fixture;
 }
 
 export { CONFIGURACION_OPERATIVA_DEFECTO };

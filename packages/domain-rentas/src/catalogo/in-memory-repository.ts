@@ -51,6 +51,7 @@ interface UnidadFila {
   nombre: string;
   duracionMinimaNoches: number;
   propietarioId: string | null;
+  responsableLimpiezaId?: string | null;
 }
 interface PropietarioFila {
   id: string;
@@ -76,6 +77,8 @@ function rechazo(motivo: MotivoRechazoCatalogo, mensaje: string): ResultadoCatal
 export class InMemoryRentasCatalogoRepository implements RentasCatalogoRepository {
   /** `false` simula la base real SIN la migracion 027: toda escritura responde `no_disponible`. */
   migracion027Disponible = true;
+  /** Migracion 033 (responsable de limpieza por omision): `false` simula la base sin migrar. */
+  migracion033Disponible = true;
   readonly propiedades = new Map<string, PropiedadFila>();
   readonly unidades = new Map<string, UnidadFila>();
   readonly propietarios = new Map<string, PropietarioFila>();
@@ -148,6 +151,7 @@ export class InMemoryRentasCatalogoRepository implements RentasCatalogoRepositor
         duracionMinimaNoches: u.duracionMinimaNoches,
         propietarioId: u.propietarioId,
         propietarioNombre: u.propietarioId ? (this.propietarios.get(u.propietarioId)?.nombre ?? null) : null,
+        responsableLimpiezaId: this.migracion033Disponible ? (u.responsableLimpiezaId ?? null) : null,
       }));
   }
 
@@ -265,6 +269,14 @@ export class InMemoryRentasCatalogoRepository implements RentasCatalogoRepositor
     if (e.nombre !== undefined) u.nombre = e.nombre;
     if (e.propietarioId !== undefined) u.propietarioId = e.propietarioId;
     if (e.duracionMinimaNoches !== undefined) u.duracionMinimaNoches = e.duracionMinimaNoches;
+    return { estado: "ok", valor: { id: unidadId } };
+  }
+
+  async fijarResponsableLimpieza(unidadId: string, responsableId: string | null): Promise<ResultadoCatalogo<{ id: string }>> {
+    if (!this.migracion033Disponible) return { estado: "no_disponible" };
+    const u = this.unidades.get(unidadId);
+    if (!u) return rechazo("no_encontrado", "unidad no encontrada.");
+    u.responsableLimpiezaId = responsableId;
     return { estado: "ok", valor: { id: unidadId } };
   }
 }
