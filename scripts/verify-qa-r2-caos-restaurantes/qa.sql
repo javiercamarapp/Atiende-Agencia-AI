@@ -51,3 +51,15 @@ select count(*) as frase_le_sigo_atendiendo_encolada_deberia_ser_0
   from restaurantes.messaging_outbox m
  where m.dedupe_key = 'handoff-regreso:00000000-0000-0000-0000-00000000c4f2';
 rollback;
+
+\echo '=== R2-caos-10 (SQL). Muestras del tiempo prometido para RECOGER: 20 pedidos de la semana pasada a esta hora, pedidos para pasar a recoger 90 min despues (hora elegida por el cliente) y listos en 15 ==='
+begin;
+insert into restaurantes.orders (organization_id, property_id, customer_name, customer_phone, total, status, items, source, created_at, delivered_at, canal, hora_recogida)
+select '00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50a2', 'Programa ' || g, '55990000' || lpad(g::text, 2, '0'), 90, 'entregado', '[]', 'whatsapp',
+       now() - interval '7 days', now() - interval '7 days' + interval '92 minutes', 'recoger', now() - interval '7 days' + interval '90 minutes'
+  from generate_series(1, 20) g;
+-- Lo que mide la muestra: minutos de alta -> entrega (incluye la espera que eligio el cliente). La cocina tardo 15.
+select (m->'muestras'->>0)::numeric >= 90 as muestra_mide_la_hora_elegida_por_el_cliente_deberia_ser_f,
+       jsonb_array_length(m->'muestras') as muestras
+  from (select restaurantes.tiempo_entrega_muestras('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50a2', 'recoger', now()) as m) x;
+rollback;
