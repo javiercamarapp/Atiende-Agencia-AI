@@ -150,6 +150,17 @@ describe("validación de rango y formato", () => {
 });
 
 describe("SucursalesPage — coordenadas", () => {
+  it("la zona horaria solo se pide al abrir la edición (no al cargar) y para ESA sucursal", async () => {
+    stubFetch([SIN_COORDS]);
+    rendered = renderPage();
+    await esperar();
+    const urls = () => fetchMock.mock.calls.map(([u]) => u as string);
+    expect(urls().some((u) => u.includes("zona-horaria"))).toBe(false);
+    await abrirEdicion();
+    await esperar();
+    expect(urls().filter((u) => u.includes("zona-horaria"))).toEqual(["https://api.test/v1/restaurantes/prop-1/admin/config/zona-horaria"]);
+  });
+
   it("avisa de las sucursales ACTIVAS sin coordenadas (no de las inactivas ni de las que ya tienen)", async () => {
     stubFetch([SIN_COORDS, CON_COORDS, INACTIVA_SIN]);
     rendered = renderPage();
@@ -325,8 +336,10 @@ describe("SucursalesPage — coordenadas", () => {
     await esperar();
     await abrirEdicion();
     await act(async () => changeValue(campo("sucursal-lat-prop-1"), "21.03"));
+    expect(rendered.container.textContent).not.toContain("Falta la longitud"); // aún no llega al campo
     await act(async () => click(boton("Guardar")!));
     expect(rendered.container.textContent).toContain("Falta la longitud");
+    expect(document.activeElement).toBe(campo("sucursal-lng-prop-1"));
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
   });
 

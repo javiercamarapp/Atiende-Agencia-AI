@@ -49,20 +49,14 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
     void load();
   }, [apiBaseUrl, token, propertyId]);
 
-  // Solo para el aviso no bloqueante de "fuera de Yucatán": si no se puede leer la zona, simplemente no hay aviso.
-  useEffect(() => {
-    let vivo = true;
-    fetchBranchTimezone(fetch, apiBaseUrl, token, propertyId).then(
-      (c) => vivo && setZonaHoraria(c.zonaHoraria),
-      () => undefined,
-    );
-    return () => {
-      vivo = false;
-    };
-  }, [apiBaseUrl, token, propertyId]);
-
   function startEditing(branch: BranchDetail) {
     setEditing(branch.propertyId);
+    // Zona horaria DE ESA sucursal, pedida solo al abrir la edición (solo dueño/admin llegan aquí): alimenta el aviso no bloqueante de "fuera de Yucatán".
+    setZonaHoraria(null);
+    fetchBranchTimezone(fetch, apiBaseUrl, token, branch.propertyId).then(
+      (c) => setZonaHoraria(c.zonaHoraria),
+      () => undefined,
+    );
     setDraft({ phone: branch.phone ?? "", address: branch.address ?? "", lat: textoCoordenada(branch.lat), lng: textoCoordenada(branch.lng) });
     setPegado("");
     setErrorPegado(null);
@@ -106,6 +100,8 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
     const coords = validacionDe(branch);
     if (coords.errorLat || coords.errorLng) {
       setIntentoGuardar(true);
+      // Foco al primer campo inválido para que el lector de pantalla lo anuncie con su error.
+      document.getElementById(`sucursal-${coords.errorLat ? "lat" : "lng"}-${branch.propertyId}`)?.focus();
       return;
     }
     setSaving(true);
@@ -151,7 +147,8 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
         {branches?.map((b) => {
           const validacion = validacionDe(b);
           // El error se anuncia al salir del campo o al intentar guardar, no en cada tecla.
-          const verErrores = intentoGuardar || tocados.lat || tocados.lng;
+          const verLat = intentoGuardar || tocados.lat;
+          const verLng = intentoGuardar || tocados.lng;
           const avisoYucatan = zonaHoraria === "America/Merida" && !validacion.errorLat && !validacion.errorLng && validacion.lat !== null && validacion.lng !== null && fueraDeYucatan(validacion.lat, validacion.lng);
           const hrefMapaDraft = validacion.errorLat || validacion.errorLng ? null : urlVerEnMapa(validacion.lat, validacion.lng);
           return (
@@ -211,7 +208,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
                       )}
                     </FormField>
                     <div className="grid grid-cols-2 gap-3">
-                      <FormField label="Latitud" id={`sucursal-lat-${b.propertyId}`} error={verErrores ? (validacion.errorLat ?? undefined) : undefined}>
+                      <FormField label="Latitud" id={`sucursal-lat-${b.propertyId}`} error={verLat ? (validacion.errorLat ?? undefined) : undefined}>
                         <Input
                           inputMode="decimal"
                           value={draft.lat}
@@ -219,7 +216,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
                           onBlur={() => setTocados((t) => ({ ...t, lat: true }))}
                         />
                       </FormField>
-                      <FormField label="Longitud" id={`sucursal-lng-${b.propertyId}`} error={verErrores ? (validacion.errorLng ?? undefined) : undefined}>
+                      <FormField label="Longitud" id={`sucursal-lng-${b.propertyId}`} error={verLng ? (validacion.errorLng ?? undefined) : undefined}>
                         <Input
                           inputMode="decimal"
                           value={draft.lng}
