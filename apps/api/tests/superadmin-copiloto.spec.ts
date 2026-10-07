@@ -14,6 +14,8 @@ import type { AppDeps } from "../src/deps.ts";
 import type { ConversacionDetalleDto, ConversacionResumenDto, FuenteReporte, ConversacionScope, ConversacionesRepository, MensajeGuardadoDto, ResultadoGuardado, TurnoAGuardar } from "../src/data-chat/conversaciones.ts";
 import { COPILOTO_NO_ACTIVADO } from "../src/routes/superadmin-copiloto.ts";
 import { crearLedgerMensual, type SuperadminCopilotoDeps } from "../src/superadmin-copiloto/deps.ts";
+import type { PinDto, PinOrigen, PinsPlataformaRepository, ResultadoAltaPin, ResultadoEdicionPin } from "../src/superadmin-copiloto/pins.ts";
+import { cleanPinTitle, plainArgs } from "../src/data-chat/pins.ts";
 import { fuentesDeProduccion, type FuentesPlataforma } from "../src/superadmin-copiloto/fuentes.ts";
 import { jsonRequestInit } from "./fixtures.ts";
 import { bearer, seguridadSetup } from "./superadmin-seguridad-fixtures.ts";
@@ -88,6 +90,48 @@ class RepoEnMemoria implements ConversacionesRepository {
   }
 }
 
+/** Doble en memoria de los fijados de plataforma: mismo alcance que la base (solo el autor, nunca compartidos, dedupe por herramienta + argumentos, tope de 50). */
+class PinsEnMemoria implements PinsPlataformaRepository {
+  readonly store: (PinDto & { userId: string })[] = [];
+  constructor(private readonly conv: RepoEnMemoria) {}
+  async list(userId: string) {
+    return { disponible: true, items: this.store.filter((p) => p.userId === userId) };
+  }
+  async get(userId: string, id: string) {
+    return this.store.find((p) => p.userId === userId && p.id === id) ?? null;
+  }
+  async origin(userId: string, conversationId: string, seq: number, bloque: number): Promise<PinOrigen | null> {
+    const c = this.conv.store.find((x) => x.id === conversationId && x.scope.userId === userId && x.scope.vertical === "plataforma");
+    const m = c?.mensajes.find((x) => x.seq === seq && x.role === "assistant");
+    const b = m?.blocks?.[bloque] as { tool?: string; title?: string } | undefined;
+    const call = c?.llamadas?.find((l) => l.tool === b?.tool);
+    if (!c || !b?.tool || !call) return null;
+    return { tool: b.tool, args: plainArgs(call.args), title: cleanPinTitle(b.title ?? b.tool) };
+  }
+  async create(input: { conversationId: string; seq: number; bloque: number; origin: PinOrigen }): Promise<ResultadoAltaPin> {
+    const userId = this.conv.store.find((c) => c.id === input.conversationId)?.scope.userId;
+    if (!userId) return { ok: false, motivo: "conversacion_no_encontrada" };
+    const igual = this.store.find((p) => p.userId === userId && p.herramienta === input.origin.tool && JSON.stringify(p.args) === JSON.stringify(input.origin.args));
+    if (igual) return { ok: true, id: igual.id };
+    if (this.store.filter((p) => p.userId === userId).length >= 50) return { ok: false, motivo: "limite" };
+    const id = randomUUID();
+    this.store.push({ id, userId, titulo: input.origin.title, herramienta: input.origin.tool, args: input.origin.args, compartido: false, propio: true, creadoEn: "2026-10-02T12:00:00.000Z" });
+    return { ok: true, id };
+  }
+  async rename(userId: string, id: string, titulo: string): Promise<ResultadoEdicionPin> {
+    const p = this.store.find((x) => x.userId === userId && x.id === id);
+    if (!p) return "no_encontrado";
+    (p as { titulo: string }).titulo = titulo;
+    return "ok";
+  }
+  async remove(userId: string, id: string): Promise<boolean> {
+    const i = this.store.findIndex((x) => x.userId === userId && x.id === id);
+    if (i < 0) return false;
+    this.store.splice(i, 1);
+    return true;
+  }
+}
+
 interface Opciones {
   readonly steps?: ScriptStep[];
   readonly sinProveedor?: boolean;
@@ -112,6 +156,7 @@ async function setup(o: Opciones = {}) {
   const limiter: { key: string; limit: number; windowMs: number }[] = [];
   const ledger = crearLedgerMensual();
   const falsas = fuentesFalsas(o.fuentes);
+  const pins = new PinsEnMemoria(conv);
   const deps: AppDeps = {
     ...s.deps,
     cfoRepo: () => cfo,
@@ -134,6 +179,7 @@ async function setup(o: Opciones = {}) {
       ...(o.topeMensualMicroUsd !== undefined ? { topeMensualMicroUsd: o.topeMensualMicroUsd } : {}),
       fuentes: (db, callerId) => (o.modo === "falsas" ? falsas : { ...fuentesDeProduccion(deps, db, callerId), ...(o.fuentes ?? {}) }),
       conversaciones: () => conv,
+      pins: () => pins,
       audit: () => ({
         record: async (e) => {
           bitacora.push(e);
@@ -166,7 +212,7 @@ async function setup(o: Opciones = {}) {
     return (await res.json()) as DataChatAnswer & { conversacionId?: string; conversationId?: string; seq?: number; guardado?: boolean };
   };
   const estado = (token: string, extra: Record<string, string> = {}) => app.request("/superadmin/copiloto/estado", { headers: bearer(token, extra) });
-  return { s, app, deps, zona, cfo, scripted, conv, bitacora, limiter, ledger, falsas, alta, activarMfa, post, turno, estado };
+  return { s, app, deps, zona, cfo, scripted, conv, pins, bitacora, limiter, ledger, falsas, alta, activarMfa, post, turno, estado };
 }
 
 const LLM_ORGANIZACIONES: ScriptStep[] = [{ toolCalls: [{ name: "organizaciones", argumentsJson: "{}" }] }, { text: "Hay 3 organizaciones y 1 activas." }];
@@ -847,5 +893,136 @@ describe("reporte PDF de un mensaje (paridad con las verticales)", () => {
     expect((await pdf(ctx, sa.token, t.conversationId!, t.seq!)).status).toBe(429);
     expect(ctx.bitacora.length).toBe(antes);
     expect(ctx.limiter.at(-1)).toMatchObject({ key: `superadmin:copiloto:reporte:u:${sa.id}`, limit: 6 });
+  });
+});
+
+
+describe("fijados del tablero (personales, sin organizacion)", () => {
+  const pedir = (ctx: Awaited<ReturnType<typeof setup>>, token: string, metodo: string, ruta: string, cuerpo?: unknown) =>
+    ctx.app.request(`/superadmin/copiloto/pins${ruta}`, cuerpo === undefined ? { method: metodo, headers: bearer(token) } : { ...jsonRequestInit(cuerpo, bearer(token)), method: metodo });
+
+  async function conUnaConsulta(opciones: Opciones = {}) {
+    const ctx = await setup({ modo: "falsas", sinProveedor: true, ...opciones });
+    const sa = await ctx.alta();
+    const t = await ctx.turno(sa.token, { tool: "ranking_actividad", args: { periodo: "este_mes" }, conversationId: "new" });
+    return { ctx, sa, t };
+  }
+
+  it("fijar guarda herramienta + argumentos (no cifras), lo lista el autor, nunca es compartido y se re-ejecuta sin modelo con el alcance de ahora", async () => {
+    const { ctx, sa, t } = await conUnaConsulta();
+    const alta = await pedir(ctx, sa.token, "POST", "", { conversationId: t.conversationId, seq: t.seq, bloque: 0 });
+    expect(alta.status).toBe(201);
+    const { id } = (await alta.json()) as { id: string };
+    const lista = (await (await pedir(ctx, sa.token, "GET", "")).json()) as { disponible: boolean; pins: { id: string; herramienta: string; args: Record<string, unknown>; compartido: boolean; propio: boolean }[] };
+    expect(lista).toMatchObject({ disponible: true, pins: [{ id, herramienta: "ranking_actividad", args: { periodo: "este_mes" }, compartido: false, propio: true }] });
+    ctx.falsas.accesosOrg.length = 0;
+    const res = await pedir(ctx, sa.token, "GET", `/${id}/resultado`);
+    expect(res.status).toBe(200);
+    const r = (await res.json()) as { status: string; blocks: { tool: string }[]; sources: { source: string }[] };
+    expect(r.status).toBe("ok");
+    expect(r.blocks[0]?.tool).toBe("ranking_actividad");
+    // reabrir el fijado es una lectura por organizacion: deja su fila de bitacora y no llama al modelo
+    expect(ctx.falsas.accesosOrg.map((a) => a.herramienta)).toEqual(["ranking_actividad"]);
+    expect(ctx.scripted.requests).toHaveLength(0);
+  });
+
+  it("fijar dos veces lo mismo no duplica; renombrar y quitar funcionan y un id ajeno o mal formado es 404", async () => {
+    const { ctx, sa, t } = await conUnaConsulta();
+    const cuerpo = { conversationId: t.conversationId, seq: t.seq, bloque: 0 };
+    const a = ((await (await pedir(ctx, sa.token, "POST", "", cuerpo)).json()) as { id: string }).id;
+    const b = ((await (await pedir(ctx, sa.token, "POST", "", cuerpo)).json()) as { id: string }).id;
+    expect(b).toBe(a);
+    expect(ctx.pins.store).toHaveLength(1);
+    expect((await pedir(ctx, sa.token, "PATCH", `/${a}`, { titulo: "Mi ranking" })).status).toBe(200);
+    expect(ctx.pins.store[0]?.titulo).toBe("Mi ranking");
+    expect((await pedir(ctx, sa.token, "DELETE", `/${a}`)).status).toBe(204);
+    expect((await pedir(ctx, sa.token, "DELETE", `/${a}`)).status).toBe(404);
+    expect((await pedir(ctx, sa.token, "GET", `/${randomUUID()}/resultado`)).status).toBe(404);
+    expect((await pedir(ctx, sa.token, "GET", "/no-es-un-id/resultado")).status).toBe(404);
+  });
+
+  it("no se puede compartir ni editar otra cosa que el titulo (400) y el cuerpo con campos de mas se rechaza", async () => {
+    const { ctx, sa, t } = await conUnaConsulta();
+    const id = ((await (await pedir(ctx, sa.token, "POST", "", { conversationId: t.conversationId, seq: t.seq, bloque: 0 })).json()) as { id: string }).id;
+    expect((await pedir(ctx, sa.token, "PATCH", `/${id}`, { compartido: true })).status).toBe(400);
+    expect((await pedir(ctx, sa.token, "PATCH", `/${id}`, { titulo: "ok", herramienta: "mrr" })).status).toBe(400);
+    expect((await pedir(ctx, sa.token, "POST", "", { conversationId: t.conversationId, seq: t.seq, bloque: 0, herramienta: "mrr" })).status).toBe(400);
+    expect(ctx.pins.store[0]?.compartido).toBe(false);
+  });
+
+  it("solo fija resultados de una conversacion PROPIA y de herramientas que siguen en el catalogo de su rol (una propuesta de accion o una herramienta inventada no se fijan)", async () => {
+    const { ctx, sa, t } = await conUnaConsulta();
+    expect((await pedir(ctx, sa.token, "POST", "", { conversationId: randomUUID(), seq: 2, bloque: 0 })).status).toBe(404);
+    ctx.conv.store[0]!.llamadas = [{ tool: "ranking_actividad", args: { periodo: "no_existe" } }];
+    expect((await pedir(ctx, sa.token, "POST", "", { conversationId: t.conversationId, seq: t.seq, bloque: 0 })).status).toBe(404);
+    const otro = await ctx.alta();
+    expect((await pedir(ctx, otro.token, "POST", "", { conversationId: t.conversationId, seq: t.seq, bloque: 0 })).status).toBe(404);
+    expect((await pedir(ctx, otro.token, "GET", "")).status).toBe(200);
+    expect(((await (await pedir(ctx, otro.token, "GET", "")).json()) as { pins: unknown[] }).pins).toEqual([]);
+  });
+
+  it("un fijado de otro superadmin no se lee, renombra ni borra (404)", async () => {
+    const { ctx, sa, t } = await conUnaConsulta();
+    const id = ((await (await pedir(ctx, sa.token, "POST", "", { conversationId: t.conversationId, seq: t.seq, bloque: 0 })).json()) as { id: string }).id;
+    const otro = await ctx.alta();
+    expect((await pedir(ctx, otro.token, "GET", `/${id}/resultado`)).status).toBe(404);
+    expect((await pedir(ctx, otro.token, "PATCH", `/${id}`, { titulo: "robado" })).status).toBe(404);
+    expect((await pedir(ctx, otro.token, "DELETE", `/${id}`)).status).toBe(404);
+    expect(ctx.pins.store).toHaveLength(1);
+  });
+
+  it("un fijado financiero exige step-up al abrirse (403 stepup_required ANTES de consultar) y con step-up responde", async () => {
+    const ctx = await setup({ modo: "falsas", sinProveedor: true });
+    const sa = await ctx.alta();
+    const stepUp = await ctx.activarMfa(sa);
+    const t = await ctx.turno(sa.token, { tool: "mrr", conversationId: "new" }, { "x-stepup-token": stepUp });
+    const alta = await ctx.app.request("/superadmin/copiloto/pins", jsonRequestInit({ conversationId: t.conversationId, seq: t.seq, bloque: 0 }, bearer(sa.token)));
+    expect(alta.status).toBe(201);
+    const { id } = (await alta.json()) as { id: string };
+    const sin = await ctx.app.request(`/superadmin/copiloto/pins/${id}/resultado`, { headers: bearer(sa.token) });
+    expect(sin.status).toBe(403);
+    expect(JSON.stringify(await sin.json())).toMatch(/stepup_required/);
+    expect(ctx.zona.entries().filter((e) => e.accion === "consulta").map((e) => e.recurso)).toEqual([]);
+    const con = await ctx.app.request(`/superadmin/copiloto/pins/${id}/resultado`, { headers: bearer(sa.token, { "x-stepup-token": stepUp }) });
+    expect(con.status).toBe(200);
+    expect(((await con.json()) as { status: string }).status).toBe("ok");
+  });
+
+  it("el rol finanzas (solo lectura) no usa el tablero: la zona CFO responde 403 en todas las rutas de fijados, incluso con step-up", async () => {
+    const ctx = await setup({ modo: "falsas", sinProveedor: true });
+    const fin = await ctx.alta({ finanzas: true });
+    const stepUp = await ctx.activarMfa(fin);
+    const t = await ctx.turno(fin.token, { tool: "mrr", conversationId: "new" }, { "x-stepup-token": stepUp });
+    const h = { "x-stepup-token": stepUp };
+    for (const res of [
+      await ctx.app.request("/superadmin/copiloto/pins", { headers: bearer(fin.token, h) }),
+      await ctx.app.request("/superadmin/copiloto/pins", jsonRequestInit({ conversationId: t.conversationId, seq: t.seq, bloque: 0 }, bearer(fin.token, h))),
+      await ctx.app.request(`/superadmin/copiloto/pins/${randomUUID()}/resultado`, { headers: bearer(fin.token, h) }),
+      await ctx.app.request(`/superadmin/copiloto/pins/${randomUUID()}`, { method: "DELETE", headers: bearer(fin.token, h) }),
+    ]) {
+      expect(res.status).toBe(403);
+      expect(JSON.stringify(await res.json())).toMatch(/rol_finanzas_solo_lectura/);
+    }
+    expect(ctx.pins.store).toEqual([]);
+  });
+
+  it("un staff comun recibe 403 y sin token 401 en todas las rutas de fijados", async () => {
+    const ctx = await setup();
+    const staff = await ctx.s.staff();
+    expect((await pedir(ctx, staff.token, "GET", "")).status).toBe(403);
+    expect((await pedir(ctx, staff.token, "POST", "", { conversationId: randomUUID(), seq: 2, bloque: 0 })).status).toBe(403);
+    expect((await ctx.app.request("/superadmin/copiloto/pins")).status).toBe(401);
+  });
+
+  it("con impersonacion activa la lista y la re-ejecucion responden 409 y las escrituras 403", async () => {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES });
+    const sa = await ctx.alta();
+    const imp = ctx.s.base.deps.impersonationRepo({} as never) as InMemoryImpersonationRepository;
+    imp.seedPlatformSuperadmin(sa.id, sa.email);
+    await imp.startSession(sa.id, ctx.s.base.organizationId, "Soporte del cliente: revisar el pedido 123 de ayer");
+    expect((await pedir(ctx, sa.token, "GET", "")).status).toBe(409);
+    expect((await pedir(ctx, sa.token, "GET", `/${randomUUID()}/resultado`)).status).toBe(409);
+    expect((await pedir(ctx, sa.token, "POST", "", { conversationId: randomUUID(), seq: 2, bloque: 0 })).status).toBe(403);
+    expect((await pedir(ctx, sa.token, "DELETE", `/${randomUUID()}`)).status).toBe(403);
   });
 });
