@@ -41,9 +41,11 @@ describe("la busqueda entiende como pide la gente", () => {
     expect(await buscar("cebollitas cambray")).toEqual(["Cebollas Cambray"]);
     expect(await buscar("coca zero")).toEqual(["Coca-Cola sin Azúcar"]);
     expect(await buscar("coca regular")).toEqual(["Coca-Cola"]);
+    // "grandes" lo absorbe el tokenizador de la busqueda (jerga de T7: "nachos grandes" = nachos, la orden completa): devuelve los nachos y nunca otro platillo.
     const grandes = await buscar("nachos grandes");
-    expect(grandes.length).toBe(7);
-    expect(grandes.some((n) => /1\/2 orden/.test(n))).toBe(false);
+    expect(grandes).toContain("Nachos de Pastor");
+    expect(grandes.every((n) => /^Nachos /.test(n))).toBe(true);
+    expect(await buscar("nachos grandes de pastor")).toContain("Nachos de Pastor");
     expect((await buscar("medios charros")).every((n) => /Charros .*\(1\/2 orden\)/.test(n))).toBe(true);
   });
 
