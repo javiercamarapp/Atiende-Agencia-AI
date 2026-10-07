@@ -39,6 +39,11 @@ export const ESTADO_BORRADOR_LABELS: Record<EstadoBorrador, string> = {
 
 export type GeneradoPorBorrador = "motor_borrador" | "agente_llm";
 
+/** Espejo de `SenalEscalamiento` (packages/domain-rentas/src/mensajeria/tipos.ts). */
+export type SenalEscalamiento = "queja" | "emergencia" | "reembolso" | "vip";
+export const SENALES_ESCALAMIENTO: readonly SenalEscalamiento[] = ["emergencia", "queja", "reembolso", "vip"];
+export const SENAL_LABELS: Record<SenalEscalamiento, string> = { queja: "Queja", emergencia: "Emergencia", reembolso: "Reembolso", vip: "VIP" };
+
 export interface ConversacionRecord {
   readonly id: string;
   readonly organizationId: string;
@@ -64,6 +69,9 @@ export interface BorradorRecord {
   readonly estado: EstadoBorrador;
   readonly generadoPor: GeneradoPorBorrador;
   readonly redactado: boolean;
+  /** Persistido al generar (migración rentas 034). Una base sin migrar responde `false` y `[]`. */
+  readonly necesitaEscalamiento: boolean;
+  readonly senales: readonly SenalEscalamiento[];
   readonly aprobadoPor: string | null;
   readonly aprobadoEn: string | null;
   readonly rechazadoPor: string | null;
@@ -89,6 +97,11 @@ export async function fetchConversaciones(
   return body.conversaciones;
 }
 
+/** Defensa ante una respuesta anterior a la migración 034 (o un API aún sin desplegar): sin los campos, "sin escalamiento". */
+function normalizarBorrador(b: BorradorRecord): BorradorRecord {
+  return { ...b, necesitaEscalamiento: b.necesitaEscalamiento === true, senales: Array.isArray(b.senales) ? b.senales : [] };
+}
+
 export async function fetchBorradores(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,
@@ -101,7 +114,62 @@ export async function fetchBorradores(
     `${apiBaseUrl}/rentas/${propertyId}/conversaciones/${conversacionId}/borradores`,
     token,
   );
-  return body.borradores;
+  return body.borradores.map(normalizarBorrador);
+}
+
+export type DireccionMensaje = "entrante" | "saliente";
+export type OrigenMensaje = "canal" | "simulador" | "manual";
+export const ORIGEN_MENSAJE_LABELS: Record<OrigenMensaje, string> = { canal: "Canal", simulador: "Simulador", manual: "Registro manual" };
+
+export interface MensajeRecord {
+  readonly id: string;
+  readonly conversacionId: string;
+  readonly direccion: DireccionMensaje;
+  readonly origen: OrigenMensaje;
+  readonly texto: string;
+  readonly redactado: boolean;
+  readonly creadoEn: string;
+}
+
+export interface HiloRecord {
+  readonly conversacion: ConversacionRecord;
+  readonly mensajes: readonly MensajeRecord[];
+  readonly borradores: readonly BorradorRecord[];
+}
+
+/** GET .../conversaciones/:conversacionId/hilo -- la conversación con sus mensajes (entrantes y salientes, en orden) y sus borradores.
+ * 404 si la conversación no es de esta property. */
+export async function fetchHilo(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, conversacionId: string): Promise<HiloRecord> {
+  const hilo = await fetchJson<HiloRecord>(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/conversaciones/${conversacionId}/hilo`, token);
+  return { ...hilo, borradores: hilo.borradores.map(normalizarBorrador) };
+}
+
+export interface PoliticaCanal {
+  readonly canal: CanalMensajeriaCodigo;
+  readonly maxCaracteres: number;
+  readonly permiteContactoDirectoPreReserva: boolean;
+  readonly permiteAutomatizacionPreReserva: boolean;
+  readonly accionAntePreReservaProhibida: "bloquear" | "redactar";
+}
+
+/** GET .../mensajeria/politicas -- lo que cada canal permite al aprobar un mensaje (límite, contacto antes de la reserva). */
+export async function fetchPoliticas(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<readonly PoliticaCanal[]> {
+  const body = await fetchJson<{ politicas: readonly PoliticaCanal[] }>(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/mensajeria/politicas`, token);
+  return body.politicas;
+}
+
+/** Aviso honesto de lo que el canal hace con el mensaje, derivado de su política (sin texto inventado: solo lo que la política declara). */
+export function avisoPoliticaCanal(p: PoliticaCanal): string {
+  const partes = [`${CANAL_LABELS[p.canal]}: límite de ${new Intl.NumberFormat("es-MX").format(p.maxCaracteres)} caracteres por mensaje.`];
+  if (!p.permiteContactoDirectoPreReserva) {
+    partes.push(
+      p.accionAntePreReservaProhibida === "bloquear"
+        ? "Antes de confirmar la reserva no se puede compartir contacto ni pago fuera de la plataforma: el mensaje se bloquea."
+        : "Antes de confirmar la reserva el contacto y los datos de pago se enmascaran en el mensaje.",
+    );
+  }
+  if (!p.permiteAutomatizacionPreReserva) partes.push("No se automatizan mensajes antes de que exista una reserva confirmada.");
+  return partes.join(" ");
 }
 
 /** POST .../borradores/:id/aprobar -- ÚNICA ruta que puede terminar en un mensaje
@@ -136,6 +204,72 @@ export interface ItemBandeja {
   readonly historial: readonly BorradorRecord[];
 }
 
+export type FiltroPendientes = "todas" | "con_pendientes";
+
+export interface FiltrosBandeja {
+  readonly canal: CanalMensajeriaCodigo | "";
+  readonly conPendientes: boolean;
+  readonly requiereAtencion: boolean;
+  readonly busqueda: string;
+}
+
+export const FILTROS_VACIOS: FiltrosBandeja = { canal: "", conPendientes: false, requiereAtencion: false, busqueda: "" };
+
+/** El estado de los filtros vive en la URL (query string): `canal`, `pendientes=1`, `atencion=1`, `q`. Un canal desconocido se ignora. */
+export function filtrosDesdeQuery(params: URLSearchParams): FiltrosBandeja {
+  const canal = params.get("canal") ?? "";
+  return {
+    canal: (CANALES_MENSAJERIA as readonly string[]).includes(canal) ? (canal as CanalMensajeriaCodigo) : "",
+    conPendientes: params.get("pendientes") === "1",
+    requiereAtencion: params.get("atencion") === "1",
+    busqueda: (params.get("q") ?? "").slice(0, 100),
+  };
+}
+
+export function filtrosAQuery(f: FiltrosBandeja): URLSearchParams {
+  const params = new URLSearchParams();
+  if (f.canal) params.set("canal", f.canal);
+  if (f.conPendientes) params.set("pendientes", "1");
+  if (f.requiereAtencion) params.set("atencion", "1");
+  if (f.busqueda.trim()) params.set("q", f.busqueda.trim());
+  return params;
+}
+
+/** Una conversación "requiere atención" si tiene un borrador PENDIENTE escalado (los ya decididos no urgen). */
+export function requiereAtencion(item: ItemBandeja): boolean {
+  return item.pendientes.some((b) => b.necesitaEscalamiento);
+}
+
+/** Señales distintas de los borradores pendientes de una conversación, en el orden de gravedad de SENALES_ESCALAMIENTO. */
+export function senalesPendientes(item: ItemBandeja): readonly SenalEscalamiento[] {
+  const presentes = new Set(item.pendientes.flatMap((b) => b.senales));
+  return SENALES_ESCALAMIENTO.filter((s) => presentes.has(s));
+}
+
+const sinAcentos = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+export function filtrarBandeja(items: readonly ItemBandeja[], f: FiltrosBandeja): readonly ItemBandeja[] {
+  const q = sinAcentos(f.busqueda.trim());
+  return items.filter((item) => {
+    if (f.canal && item.conversacion.canal !== f.canal) return false;
+    if (f.conPendientes && item.pendientes.length === 0) return false;
+    if (f.requiereAtencion && !requiereAtencion(item)) return false;
+    if (q && !sinAcentos(`${item.conversacion.huespedNombre ?? ""} ${item.unidad.nombre}`).includes(q)) return false;
+    return true;
+  });
+}
+
+/** Orden de la bandeja: primero lo que requiere atención humana, luego lo que tiene pendientes, luego lo más reciente. */
+export function ordenarBandeja(items: readonly ItemBandeja[]): ItemBandeja[] {
+  return [...items].sort((a, b) => {
+    const ea = requiereAtencion(a) ? 1 : 0;
+    const eb = requiereAtencion(b) ? 1 : 0;
+    if (ea !== eb) return eb - ea;
+    if (a.pendientes.length !== b.pendientes.length) return b.pendientes.length - a.pendientes.length;
+    return b.conversacion.creadoEn.localeCompare(a.conversacion.creadoEn);
+  });
+}
+
 export async function fetchBandejaAprobacion(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<readonly ItemBandeja[]> {
   const unidades = await fetchUnidades(fetchImpl, apiBaseUrl, token, propertyId);
   const items: ItemBandeja[] = [];
@@ -151,10 +285,6 @@ export async function fetchBandejaAprobacion(fetchImpl: typeof fetch, apiBaseUrl
     }
   }
 
-  // Conversaciones con al menos un pendiente primero -- es una bandeja de
-  // aprobación, no un log: lo que requiere acción va arriba.
-  return items.sort((a, b) => {
-    if (a.pendientes.length !== b.pendientes.length) return b.pendientes.length - a.pendientes.length;
-    return b.conversacion.creadoEn.localeCompare(a.conversacion.creadoEn);
-  });
+  // Es una bandeja de aprobación, no un log: lo escalado primero, luego lo que tiene pendientes.
+  return ordenarBandeja(items);
 }

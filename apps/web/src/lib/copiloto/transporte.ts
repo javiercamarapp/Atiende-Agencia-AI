@@ -40,6 +40,8 @@ export interface CopilotoTransporteConfig {
   readonly conAuth?: (hacer: (token: string) => Promise<Response>) => Promise<Response>;
   /** Entrega el PDF al usuario (por defecto, descarga del navegador). Inyectable: las pruebas nunca tocan el DOM. */
   readonly guardarArchivo?: (blob: Blob, nombre: string) => void;
+  /** `false` = esta ruta de chat NO tiene `/pins`: el transporte no ofrece "Fijar" (el boton no se pinta; nunca un boton que responde 404). Por defecto, `true`. */
+  readonly fijados?: boolean;
 }
 
 /** Nombre del archivo que sugiere el servidor (`attachment; filename="..."`), solo si es un `.pdf` simple y seguro. */
@@ -212,6 +214,13 @@ function errorHttp(res: Response): CopilotoErrorTransporte {
 }
 
 export function crearTransporteCopiloto(cfg: CopilotoTransporteConfig): CopilotoTransporteVertical {
+  const transporte = crearTransporteCompleto(cfg);
+  if (cfg.fijados !== false) return transporte;
+  const { fijar: _sinFijar, ...resto } = transporte;
+  return resto;
+}
+
+function crearTransporteCompleto(cfg: CopilotoTransporteConfig): CopilotoTransporteVertical {
   const conAuth = cfg.conAuth ?? ((hacer: (token: string) => Promise<Response>) => hacer(cfg.token));
   const url = (sufijo = ""): string => `${cfg.baseUrl}${sufijo}`;
   const idUrl = (id: string): string => url(`/conversaciones/${encodeURIComponent(id)}`);

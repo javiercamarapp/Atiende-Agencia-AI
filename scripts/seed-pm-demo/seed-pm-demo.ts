@@ -35,7 +35,8 @@ async function main(): Promise<number> {
   console.log(`  sucursales: ${s.branches} (${s.activeBranches} activas; T4 registrada e inactiva; T2, T7 y T8 sin catalogo hasta la respuesta P5)`);
   for (const b of plan.branches) console.log(`    - ${b.name} (${b.status}): ${b.catalogSize} productos`);
   console.log(`  productos: ${s.products} (${s.alcoholProducts} de alcohol => no_domicilio); precios por sucursal: ${s.branchProducts}`);
-  console.log(`  zonas conocidas: ${s.zones} (puntos de las sucursales con coordenadas; el mapa de colonias del dueño sigue pendiente)`);
+  console.log(`  zonas conocidas: ${s.zones} (puntos de las sucursales con coordenadas)`);
+  console.log(`  colonias del piloto (sin coordenadas): ${s.colonias}: ${s.coloniasAsignadas} con sucursal asignada (propuesta; el mapa de zonas del dueño sigue pendiente) y ${s.coloniasSinAsignar} sin asignar (ambiguas o sin dato, van al reporte de revision)`);
   console.log(`  promociones: ${s.promotions} cargada(s)`);
   for (const skipped of s.skippedPromotions) console.log(`  promocion NO cargada -> ${skipped}`);
   console.log(`  voz: se carga DESHABILITADA en las ${plan.voice.greetings.length} sucursales activas (sin gasto de proveedores)`);

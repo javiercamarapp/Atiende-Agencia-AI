@@ -46,12 +46,10 @@ export interface MensajeRecord {
   readonly creadoEn: string;
 }
 
-export type SenalEscalamiento = "queja" | "emergencia" | "reembolso" | "vip";
+export type { SenalEscalamiento } from "./mensajeria-client.ts";
 
-export interface BorradorGeneradoRecord extends BorradorRecord {
-  readonly necesitaEscalamiento: boolean;
-  readonly senales: readonly SenalEscalamiento[];
-}
+/** La respuesta de generar un borrador es el propio `BorradorRecord` (ya trae `necesitaEscalamiento` y `senales`). */
+export type BorradorGeneradoRecord = BorradorRecord;
 
 export interface NuevaConversacionInput {
   readonly canal: CanalMensajeriaCodigo;

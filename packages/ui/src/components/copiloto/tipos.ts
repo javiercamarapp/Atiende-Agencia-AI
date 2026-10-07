@@ -153,7 +153,57 @@ export interface CopilotoCategoria {
   readonly preguntas: readonly string[];
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Acciones propuestas (CHAT-17, solo Copiloto de superadmin). El modelo SOLO propone: la tarjeta pide confirmacion humana (con motivo y
+// verificacion MFA) y quien ejecuta es el servidor. Las verticales no pasan `acciones` y nunca ven una tarjeta.
+// ---------------------------------------------------------------------------------------------------------------
+
+export type CopilotoAccionEstado = "pendiente" | "ejecutada" | "fallida" | "cancelada" | "vencida" | "archivada";
+
+/** Lo que viaja en el bloque `proponer_accion` de la respuesta (una fila). */
+export interface CopilotoAccionPropuesta {
+  readonly propuesta: string;
+  readonly clase: "intent" | "interruptor";
+  readonly tipo: string;
+  /** Solo `interruptor`: rol del agente. */
+  readonly agente?: string;
+  /** Efecto legible calculado por el servidor (nunca por el modelo). */
+  readonly resumen: string;
+}
+
+export interface CopilotoAccionVista {
+  readonly estado: CopilotoAccionEstado;
+  readonly resumen: string;
+  readonly tipo: string;
+}
+
+export type CopilotoAccionFalla = "stepup_cancelado" | "conflicto" | "motivo" | "no_disponible" | "error";
+
+/** Error que un cliente de acciones lanza para que la tarjeta muestre el aviso honesto correcto. */
+export class CopilotoAccionError extends Error {
+  readonly tipo: CopilotoAccionFalla;
+  constructor(tipo: CopilotoAccionFalla, mensaje: string = tipo) {
+    super(mensaje);
+    this.name = "CopilotoAccionError";
+    this.tipo = tipo;
+  }
+}
+
+export interface CopilotoAccionesCliente {
+  /** Estado vigente de la propuesta en el servidor (al montar la tarjeta y al reabrir una conversacion). */
+  consultar(p: CopilotoAccionPropuesta, senal: AbortSignal): Promise<CopilotoAccionVista>;
+  /** Confirma. Pide la verificacion MFA ANTES de enviar nada si hace falta; si la persona la cancela rechaza con `stepup_cancelado` sin haber enviado la confirmacion.
+   *  `motivo` solo aplica a `interruptor` (20 caracteres como minimo). */
+  confirmar(p: CopilotoAccionPropuesta, motivo: string): Promise<{ readonly estado: "ejecutada" | "fallida"; readonly mensaje?: string }>;
+  /** Ruta interna de la bandeja de pendientes ("Ver pendientes"). */
+  readonly enlacePendientes: string;
+}
+
 export interface ChatDatosShellProps {
+  /** `pagina` (por defecto) llena la pagina; `panel` es la composicion compacta del panel lateral (400 px). */
+  readonly variante?: "pagina" | "panel";
+  /** Solo Copiloto de superadmin: con esto, los bloques `proponer_accion` se dibujan como tarjeta de accion. */
+  readonly acciones?: CopilotoAccionesCliente;
   readonly transporte: CopilotoTransporte;
   readonly textos: CopilotoTextos;
   /** Chips en reposo (maximo 5). */
