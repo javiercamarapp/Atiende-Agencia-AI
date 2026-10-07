@@ -10,7 +10,7 @@
 // Supabase Auth de usuario, el "service role" original se traduce aquí a una sesión
 // de sistema con userId:null + policies RLS explícitas para esa sesión).
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
+import { emitirNotificacion, isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import * as cliente360 from "./cliente-360/postgres.ts";
 import type { CustomerAddressChanges, CustomerPolicy, CustomerProfilePatch, OrderClosureInput, PreferenceAction } from "./cliente-360/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
@@ -97,7 +97,10 @@ import type {
   CustomerOverviewRow,
   EmailOutboxJobRow,
   KpiDateRange,
+  EstadoEntregaEntrante,
   MessagingOutboxRow,
+  MotivoFalloEntregaGuardado,
+  RegistroEstadoEntrega,
   NewOrderRecord,
   PromotedScheduledOrdersResult,
   RestaurantesRepository,
@@ -639,6 +642,13 @@ function mapRestaurantesAuditLogRow(row: RestaurantesAuditLogRowSql): Restaurant
 /** Tope de p_limit de restaurantes.clientes_cartera (migracion 054). */
 const CARTERA_LIMITE_SQL = 200;
 
+/** Evento de notificacion de un aviso de contacto. El aviso de llegada de quien recoge (`reason: cliente_llego`) es urgente y lleva su propio evento
+ * (critica, enlace a pedidos): la sucursal tiene a una persona esperando en el mostrador. R-43: una solicitud de evento/catering del storefront
+ * (reason = 'evento') avisa con su propio evento del catalogo. Ninguno emite ademas el aviso generico de «devolver llamada». */
+function eventoDeCallback(reason: string | null | undefined): "restaurantes.cliente.llego" | "restaurantes.evento.solicitud" | "restaurantes.callback.pendiente" {
+  return reason === "cliente_llego" ? "restaurantes.cliente.llego" : reason === "evento" ? "restaurantes.evento.solicitud" : "restaurantes.callback.pendiente";
+}
+
 export class PostgresRestaurantesRepository implements RestaurantesRepository {
   constructor(private readonly db: TenantDbSession) {}
 
@@ -1142,7 +1152,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       if (agente) {
         // Notificacion in-app (`restaurantes.callback.pendiente`) solo cuando el aviso es NUEVO: un reenvio o una nota agregada no vuelven a avisar.
         if (agente.registro === "nuevo") {
-          await emitirNotificacion(this.db, { evento: "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: agente.id, entidadTipo: "callback_request", entidadId: agente.id });
+          await emitirNotificacion(this.db, { evento: eventoDeCallback(input.reason), organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: agente.id, entidadTipo: "callback_request", entidadId: agente.id });
         }
         return agente;
       }
@@ -1185,8 +1195,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     });
     // Notificacion in-app (`restaurantes.callback.pendiente`): un contacto que el agente (voz o WhatsApp) dejo para devolver la
     // llamada. Uno por solicitud (clave = id), sin PII (ni nombre ni telefono viajan en el aviso). SAVEPOINT en emitirNotificacion.
-    // R-43: una solicitud de evento/catering del storefront (reason = 'evento') avisa con su propio evento del catalogo, no con el generico.
-    await emitirNotificacion(this.db, { evento: input.reason === "evento" ? "restaurantes.evento.solicitud" : "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
+    await emitirNotificacion(this.db, { evento: eventoDeCallback(input.reason), organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
     return { ...input, id: row.id, resolved: row.resolved, createdAt: row.created_at, registro: "nuevo" };
   }
 
@@ -1429,8 +1438,69 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload, organizationId: r.organization_id }));
   }
 
-  async markMessagingOutboxSent(id: string): Promise<void> {
-    await this.db.query(`select restaurantes.complete_messaging_outbox_sent($1);`, [id]);
+  async markMessagingOutboxSent(id: string, detalle?: { readonly providerMessageId: string; readonly enviadoComo?: "texto" | "plantilla" | "botones" | "ubicacion" }): Promise<void> {
+    if (!detalle || detalle.providerMessageId.length === 0) {
+      await this.db.query(`select restaurantes.complete_messaging_outbox_sent($1);`, [id]);
+      return;
+    }
+    // Migracion 066: guarda el wamid. Corre dentro de la transaccion corta del despachador: sin SAVEPOINT, un 42883 (base sin migrar) la dejaria
+    // abortada y el cierre de respaldo fallaria con 25P02 (el mensaje, ya entregado, se reenviaria al vencer su lease).
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_outbox_sent_wamid",
+      primary: async () => {
+        await this.db.query(`select restaurantes.complete_messaging_outbox_sent($1, $2, $3);`, [id, detalle.providerMessageId, detalle.enviadoComo ?? null]);
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => {
+        await this.db.query(`select restaurantes.complete_messaging_outbox_sent($1);`, [id]);
+      },
+    });
+  }
+
+  async registrarEstadoEntregaWhatsapp(organizationId: string, estado: EstadoEntregaEntrante): Promise<RegistroEstadoEntrega> {
+    interface Fila {
+      outbox_id: string | null;
+      resultado: "actualizado" | "sin_cambio" | "desconocido";
+      estado: RegistroEstadoEntrega["estado"];
+      event_type: string | null;
+      failure_reason: MotivoFalloEntregaGuardado | null;
+      order_id: string | null;
+      order_status: string | null;
+      fallidas_ultima_hora: number | string | null;
+      pedido_correo: string | null;
+      pedido_cliente: string | null;
+      pedido_sucursal: string | null;
+      pedido_total: number | string | null;
+    }
+    // El webhook comparte UNA transaccion para todo el lote: el SAVEPOINT evita que una base sin la 066 (42883/42P01/42703) la deje abortada.
+    return runWithSavepointFallback<RegistroEstadoEntrega>({
+      session: this.db,
+      savepointName: "sp_registrar_estado_entrega",
+      primary: async () => {
+        const { rows } = await this.db.query<Fila>(
+          `select outbox_id, resultado, estado, event_type, failure_reason, order_id, order_status, fallidas_ultima_hora,
+                  pedido_correo, pedido_cliente, pedido_sucursal, pedido_total
+             from restaurantes.registrar_estado_entrega_whatsapp($1, $2, $3, $4, $5);`,
+          [organizationId, estado.wamid, estado.status, estado.errorCode, estado.errorTitle],
+        );
+        const r = rows[0];
+        if (!r) return { resultado: "desconocido", outboxId: null, estado: null, eventType: null, motivoFallo: null, orderId: null, orderStatus: null, fallidasUltimaHora: 0, respaldoCorreo: null };
+        return {
+          resultado: r.resultado,
+          outboxId: r.outbox_id,
+          estado: r.estado,
+          eventType: r.event_type,
+          motivoFallo: r.failure_reason,
+          orderId: r.order_id,
+          orderStatus: r.order_status,
+          fallidasUltimaHora: Number(r.fallidas_ultima_hora ?? 0),
+          respaldoCorreo: r.pedido_correo ? { to: r.pedido_correo, clienteNombre: r.pedido_cliente ?? "", sucursal: r.pedido_sucursal, total: Number(r.pedido_total ?? 0) } : null,
+        };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ resultado: "no_disponible", outboxId: null, estado: null, eventType: null, motivoFallo: null, orderId: null, orderStatus: null, fallidasUltimaHora: 0, respaldoCorreo: null }),
+    });
   }
 
   async markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {
@@ -2285,6 +2355,16 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       [propertyId, productId, price, isAvailable],
     );
     return mapBranchProductState(rows[0]!);
+  }
+
+  async setBranchProductAvailability(propertyId: string, productId: string, isAvailable: boolean): Promise<BranchProductState | null> {
+    const { rows } = await this.db.query<BranchProductRow>(
+      `update restaurantes.branch_products set is_available = $3, updated_at = now()
+       where property_id = $1 and product_id = $2
+       returning property_id, product_id, price, is_available;`,
+      [propertyId, productId, isAvailable],
+    );
+    return rows[0] ? mapBranchProductState(rows[0]) : null;
   }
 
   async findOrderById(organizationId: string, orderId: string): Promise<Order | null> {

@@ -27,6 +27,7 @@ import {
   Mic,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Store,
   Tag,
@@ -41,6 +42,7 @@ import type { ChatDatosConexion } from "../../components/PanelChateaConTusDatos.
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { etiquetaRol } from "../../lib/roles.ts";
+import { puedeEn } from "./lib/permisos.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
 import { useDocumentTitle } from "../../shell/use-document-title.ts";
@@ -103,7 +105,7 @@ const COPILOTO_ROLES: ReadonlySet<string> = new Set(["owner", "admin", "staff"])
 // UNI-6: categorías en el orden de Likida (Operación, Catálogo, Clientes y, solo owner/admin, Agente y Configuración) con
 // "Resumen" como raíz sin título. Mismos destinos y roles que antes: ningún link se agrega ni se quita, solo se reagrupan
 // (Agente de voz y los de gestión siguen detrás de STAFF_NAV_ROLES).
-function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean): SidebarSection[] {
+function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true): SidebarSection[] {
   const base = `/restaurantes/${orgSlug}`;
   const sections: SidebarSection[] = [
     {
@@ -135,7 +137,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
       title: "Catálogo",
       items: [
         { to: `${base}/productos`, label: "Productos", icon: UtensilsCrossed },
-        { to: `${base}/promociones`, label: "Promociones", icon: Tag },
+        // PL-23: las promociones son de owner/admin (el servidor las rechaza con 403 para staff): no se muestra el enlace.
+        ...(canSeePromociones ? [{ to: `${base}/promociones`, label: "Promociones", icon: Tag }] : []),
       ],
     },
     {
@@ -155,6 +158,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
         { to: `${base}/agente-voz`, label: "Agente de voz", icon: Mic },
         // R-31: indicadores del agente de WhatsApp (conversaciones, conversión, handoff y costo LLM por día).
         { to: `${base}/agente-whatsapp`, label: "Agente de WhatsApp", icon: MessageCircle },
+        // Modelo, temperatura, voz, sonido de fondo y conocimiento automatico del agente (owner/admin).
+        { to: `${base}/agente-ajustes`, label: "Ajustes del agente", icon: SlidersHorizontal },
       ],
     });
     // FASE 3 (producto) — la bitácora de auditoría es de lectura SOLO owner/admin (mismo mandato que el servidor exige,
@@ -259,7 +264,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       vertical="restaurantes"
       copilotoHref={`/restaurantes/${orgSlug}/copiloto`}
       ocultarChat={!COPILOTO_ROLES.has(role)}
-      sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role), COPILOTO_ROLES.has(role))}
+      sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role), COPILOTO_ROLES.has(role), puedeEn(role, "promociones.ver"))}
       mobileItems={buildMobileItems(orgSlug)}
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}

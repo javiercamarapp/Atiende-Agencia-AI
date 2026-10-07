@@ -37,7 +37,7 @@ import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestauran
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
-import { latestSharedLocation } from "./location.ts";
+import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { afirmaHaberAvisado, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
@@ -171,6 +171,8 @@ export interface WhatsAppLlmAgentConfig {
   /** PM-C5 (solo perfil PM): umbral de pedido grande en texto corto y espera de rafagas en segundos (0/ausente = apagada). */
   readonly largeOrderText?: string;
   readonly replyDebounceSeconds?: number;
+  /** Enlace de facturación en línea (https) del negocio; viene de la configuración del despliegue, no de la base. Sin valor el agente no lo inventa. */
+  readonly invoiceUrl?: string;
 }
 
 /** Mismo valor que corría hardcodeado en el origen antes de que existiera
@@ -293,6 +295,7 @@ function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonl
       promosTexto: config.promosText ?? null,
       motivosDesactivados: config.motivosDesactivados ?? [],
       pedidoGrandeTexto: config.largeOrderText ?? null,
+      urlFacturacion: config.invoiceUrl ?? null,
       conocimientoBloque,
     });
   }
@@ -422,6 +425,11 @@ export interface WhatsAppLlmAgentOptions {
    * web: `encolarComandaParaPedido`). Ausente = comportamiento anterior. La comanda va ANTES de cobrar
    * y el agente solo puede decir lo que devuelve esta funcion (nunca un folio inventado). */
   readonly encolarComanda?: (pedido: PedidoParaComanda) => Promise<ResultadoEncolarPedido>;
+  /** Enlace de facturación en línea (https) para el perfil PM. Ausente = el agente dice que una persona se lo confirma. */
+  readonly urlFacturacion?: string | null;
+  /** Ajustes del agente de la organizacion (modelo elegido y temperatura efectiva). Ausente o `null` = el modelo y la temperatura de siempre. Nunca debe
+   * lanzar: un fallo aqui no puede tumbar el turno (el llamador degrada a los valores de siempre). */
+  readonly leerAjustes?: (organizationId: string) => Promise<{ readonly modelo: string | null; readonly temperatura: number } | null>;
   /** Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido. Ausente = comportamiento anterior. */
   readonly autopiloto?: AutopilotoTurnoHooks;
   /** R-PM-15: sumidero de eventos estructurados por turno y por tool (sin texto del cliente ni telefono en
@@ -511,11 +519,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const deadline = Math.min(Date.now() + turnBudgetMs, finTurnoMs ?? Number.POSITIVE_INFINITY);
       // `modo` y `configBorrador` solo los fija la ruta de preview del panel (servidor); el modelo nunca los ve.
       const preview = modo === "preview";
-      const config = preview && configBorrador ? aplicarFilaAConfig(configBorrador, organizationId) : await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
+      const configBase = preview && configBorrador ? aplicarFilaAConfig(configBorrador, organizationId) : await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
+      const config = options.urlFacturacion ? { ...configBase, invoiceUrl: options.urlFacturacion } : configBase;
       // Preview sin efectos: los contadores del agente viven en la conversacion real de la base, asi que en preview no se leen ni se escriben
       // (devuelven `null` = "no hay donde contar" y se usa la cuenta local del turno).
       const contar: typeof contarAgente = async (...a) => (preview ? null : contarAgente(...a));
       const modoCtx = preview ? { modo: "preview" as const, previewCustomerId: previewCustomerId ?? null } : {};
+      // Modelo y temperatura que eligio la organizacion (ajustes del agente). Si falla la lectura, el turno sigue con los de siempre.
+      const ajustes = options.leerAjustes ? await options.leerAjustes(organizationId).catch(() => null) : null;
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
       // El flujo de PM encadena mas llamadas por turno (cliente, zona, un producto por renglon, cotizar).
       const maxToolUseTurns = options.maxToolUseTurns ?? (perfil === "taqueria_pm" ? 8 : 4);
@@ -534,6 +545,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // exige que la confirmacion llegue en un turno posterior a la cotizacion).
       // Ultima ubicacion que el cliente compartio con el clip de WhatsApp (ver whatsapp/location.ts).
       const sharedLocation = latestSharedLocation(messages);
+      const ubicacionEntrega = latestDeliveryPin(ventanaDeHistorial(messages));
       const userTurn = String(messages.filter((m) => m.role === "user").length);
       let orderId: string | null = null;
       let propertyId: string | null = activeEntryBranch?.propertyId ?? null;
@@ -660,7 +672,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             runId: randomUUID(),
             lane: "interactive",
             role,
-            request: { system: systemPrompt, messages: working, tools: [...TOOLS], temperature: 0 },
+            // El modelo elegido solo aplica al rol por defecto: el reintento tras un fallo real de `crear_pedido` (rol escalado) sigue siendo el de la plataforma.
+            ...(ajustes?.modelo && role === options.defaultRole ? { preferredModel: ajustes.modelo } : {}),
+            request: { system: systemPrompt, messages: working, tools: [...TOOLS], temperature: ajustes && role === options.defaultRole ? ajustes.temperatura : 0 },
           });
         } catch {
           tele.resultado = "error_proveedor";
@@ -732,7 +746,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             rechazoDelFlujo = executed.rechazoDelFlujo;

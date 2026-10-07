@@ -12,8 +12,9 @@ Proceso de **larga vida** (Node) que atiende las llamadas reales de Los Taquitos
 | Lógica de la llamada (DNIS, token, privacidad, escalera, puente de audio, cierre con costo y latencia) | Hecha y probada de punta a punta **sin red** (telefonía falsa + proveedor guionado + la API real en proceso) |
 | Adaptador `LiveKitTelefonia` (`@livekit/rtc-node`) | Compila contra el SDK oficial; la lectura de atributos SIP está probada. **No se ha probado contra un servidor LiveKit real** (no hay cuenta ni número) |
 | Protocolo de Gemini Live y TTS/STT de OpenRouter | Heredados de `voice-core`: probados contra dobles, **no** contra las APIs reales |
-| Imagen Docker | Receta escrita; **no construida** en esta máquina |
-| Audios pregrabados | El generador está probado con `fetch` falso; **los 15 WAV no existen todavía** (los genera Javier con su llave, una sola vez) |
+| Imagen Docker | Etapas **replicadas con node** (`npm ci --workspace` + bundle de ~396 kB + instalación de runtime + arranque con `/salud` 503); sin `docker build` (daemon apagado); el binario nativo de LiveKit para Linux no se verificó |
+| Despliegue | `fly.toml` (Dallas, una máquina siempre encendida, latido en `/salud`) y `scripts/voz/desplegar-worker.sh` (ensayo por omisión), probados contra un `fly` falso; **sin cuenta de Fly no se ha desplegado** |
+| Audios pregrabados | Generador y verificador (`--verificar`) probados con `fetch` falso; **los 15 WAV no existen todavía** (los genera Javier con su llave, una sola vez; viven en `assets/*.wav`, ignorados por git, y viajan en la imagen) |
 
 Sin configuración completa el worker **arranca igual**, registra los motivos (nombres de variables, nunca valores), responde **503 en `/salud`** y **no
 contesta llamadas**: nunca atiende a medias.
@@ -22,10 +23,12 @@ contesta llamadas**: nunca atiende a medias.
 
 1. LiveKit crea una sala por llamada (regla de despacho SIP con prefijo `llamada-`); el worker la encuentra, entra y se suscribe al audio del llamante.
 2. **DNIS → sucursal**: el número marcado (`sip.trunkPhoneNumber`) se busca en `VOICE_DNIS_MAP`. Un número desconocido se cuelga sin tocar nada.
-3. **Teléfono** del llamante solo del SIP From (`extraerTelefonoSipFrom`). Un llamante **anónimo** no obtiene token ni herramientas: se le dice el
-   pregrabado de persona y la conversación queda cerrada como `escalado` para que el personal la vea (hueco de producto: no hay a dónde devolver la llamada).
-4. `POST /internal/restaurantes/voz/llamada/contexto` (secreto interno): interruptor de la sucursal, instrucción del agente (perfil de PM + sucursal marcada)
-   y gasto de voz del mes. `POST .../voice/call-token` (secreto de la sucursal): el token por llamada; el modelo nunca decide el teléfono ni la sucursal.
+3. **Teléfono** del llamante solo del SIP From (`extraerTelefonoSipFrom`) y solo si es **confiable** (`telefono-llamante.ts`): un From vacío, anónimo o que es un número puente, una línea de la sucursal
+   (`numerosSucursal`) o el número del encabezado de desvío (`Diversion` / `History-Info`) NO es del cliente (un desvío puede re-originar la llamada). En ese caso no se emite token: el agente **pide el
+   teléfono, lo repite en grupos y lo registra** con `confirmar_telefono_llamante` (herramienta solo del worker, una vez por llamada; mientras tanto ninguna otra herramienta corre); recién entonces se emite el token.
+4. `POST /internal/restaurantes/voz/llamada/contexto` (secreto interno): interruptor de la sucursal, instrucción del agente (perfil de PM + sucursal marcada, con las reglas H1-H18 al final)
+   y gasto de voz del mes. Después, **en paralelo**: la conversación, el aviso de privacidad y `POST .../voice/call-token` (secreto de la sucursal: el token por llamada). El modelo nunca decide la sucursal;
+   el teléfono sale del From confiable o de lo que el cliente dicta y confirma. Modo de entrada y aviso de tope corren en segundo plano (no retrasan el saludo: el arranque bajó de ~800 a ~335 ms con 150 ms por viaje).
 5. `evaluarInicioLlamada`: si la sucursal está **deshabilitada** (`voz_config.habilitado = false`) o el gasto del mes alcanzó el **tope mensual**, no se abre
    sesión con el proveedor: se dice el pregrabado (`saludo_respaldo_*` según la hora de Mérida, o `tope_mensual`) y se deja un callback.
 6. **Aviso de privacidad** (migración 030): el worker pide el guion de apertura (`privacidad/apertura`, que además guarda la evidencia de entrega) y le pide al
@@ -47,7 +50,10 @@ Logs solo con `eventoSinPII` (lista cerrada de campos; la llamada se correlacion
 | `ATIENDE_API_URL` | sí | URL base de la API de Atiende (la del despliegue en Vercel) |
 | `INTERNAL_SECRET` | sí | El mismo de la API: registra conversaciones, costos y contexto |
 | `GEMINI_API_KEY` y/o `OPENROUTER_API_KEY` | al menos una | Escalón 1 (Gemini Live) y/o escalón 2 (cascada, misma llave del texto) |
-| `VOICE_DNIS_MAP` | sí | JSON `{ "<número>": { "orgSlug", "organizationId", "propertyId", "branchSlug", "secretoEnv", "topeMensualUsd"?, "modoEntrada"? } }`. `secretoEnv` **nombra** la variable que trae el secreto de la sucursal (nunca va en el JSON) |
+| `VOICE_COSTO_MAX_LLAMADA_USD` | no | Tope de costo por llamada (por omisión US$0.50; máximo 20). El costo es el REAL de `usageMetadata` |
+| `VOICE_VAD_SILENCIO_MS`, `VOICE_VAD_SENSIBILIDAD_FIN` | no | VAD de Gemini: silencio que cierra el turno (100-3000, por omisión 500) y sensibilidad de fin (`alta`, `baja`, `omitir`) |
+| `GEMINI_BACKEND`, `VERTEX_PROJECT`, `VERTEX_LOCATION`, `VERTEX_SERVICE_ACCOUNT_JSON` | no | `GEMINI_BACKEND=vertex` mueve el escalón 1 a Vertex AI (cuenta de servicio; sin verificar; **no activar** hasta ~10 restaurantes) |
+| `VOICE_DNIS_MAP` | sí | JSON `{ "<número>": { "orgSlug", "organizationId", "propertyId", "branchSlug", "secretoEnv", "topeMensualUsd"?, "modoEntrada"?, "numerosSucursal"? } }` (`numerosSucursal`: líneas de la sucursal que desvían al puente). `secretoEnv` **nombra** la variable que trae el secreto de la sucursal (nunca va en el JSON) |
 | `<secretoEnv>` | sí, una por sucursal | Secreto de la sucursal (`POST /v1/restaurantes/:propertyId/admin/config/sucursales/:branchId/voz/secreto`, se muestra una vez) |
 | `VOICE_TOPE_MENSUAL_USD` | no | Tope de gasto de voz **de plataforma** por organización y mes. Sin valor no hay tope. Un `topeMensualUsd` en la tabla DNIS lo sobreescribe por organización |
 | `VOICE_ROOM_PREFIX` | no | Prefijo de las salas SIP (por defecto `llamada-`) |
@@ -64,31 +70,27 @@ VOICE_SECRET_FCO=<secreto de la sucursal>
 `modoEntrada`: `desborde` (desvío condicional del conmutador: toda llamada que llega es una que el personal no contestó), `total` o `prueba`. Si la llamada trae un
 encabezado de desvío (`Diversion` / `History-Info`) se marca `desborde` (salvo `prueba`). Alimenta el KPI «ventas recuperadas» del panel de voz.
 
-## Pasos para la primera llamada real (decisiones y credenciales de Javier)
+## Pasos para la primera llamada real
 
-1. Decidir **dónde vive** el proceso (abajo). No se contrata nada sin su OK.
-2. Generar los pregrabados: `OPENROUTER_API_KEY=... npm run voz:pregrabados -- --tope-usd=0.25` y **escuchar los 15 audios** (`assets/`). Es una sola vez.
-3. Twilio: número mexicano + Elastic SIP Trunk → LiveKit inbound trunk; LiveKit: regla de despacho **individual** con `roomPrefix: "llamada-"` y los encabezados SIP
-   como atributos (para leer el desvío). Detalle de Twilio/LiveKit: `docs/VOZ-PM.md` §3 y §6.
-4. Crear el secreto de la sucursal y llenar `VOICE_DNIS_MAP`; poner `VOICE_REQUIRE_CALL_TOKEN=true` en la API cuando se compruebe que el worker pide su token.
-5. Arrancar el worker y comprobar `GET /salud` → 200; hacer las 5 llamadas de prueba de `docs/VOZ-PM.md` §6 paso 8.
-6. Confirmar contra la primera llamada real los nombres de los atributos SIP (`sip.phoneNumber`, `sip.trunkPhoneNumber`, `sip.h.*`) y el protocolo de Gemini Live.
+Todo el recorrido, con cada llave, comando y verificación, está en **`docs/VOZ-ACTIVACION.md`** (checklist «pega aquí»). Resumen: pregrabados (`npm run voz:pregrabados`, luego `-- --verificar`) -> prueba ciega
+contra Gemini real -> `npm run voz:livekit` y `npm run voz:twilio` (ensayo y `--ejecutar`) -> `VOICE_DNIS_MAP` -> `bash scripts/voz/desplegar-worker.sh --ejecutar` -> 5 llamadas de prueba -> desvío condicional.
 
-## Dónde vive el proceso (decisión de Javier)
+## Dónde vive el proceso
 
-Es un proceso Node normal que **consulta las salas** de LiveKit y entra a las de su prefijo; no usa el framework `@livekit/agents`. Corre en cualquier host de
-procesos largos con **1 instancia mínima siempre encendida**:
+Es un proceso Node normal que **consulta las salas** de LiveKit y entra a las de su prefijo; no usa el framework `@livekit/agents`. **Decisión: Fly.io, región `dfw`**, **una sola máquina siempre encendida**
+(`fly.toml`: sin servicio HTTP público, reinicio siempre, health check de `/salud`). Dos instancias tomarían la misma sala: el script despliega con `--ha=false`. `/salud` da 200 solo si el worker está configurado
+**y** el último sondeo de LiveKit es de hace menos de 60 s; si el sondeo lleva 2 minutos mudo y no hay llamadas, el proceso sale con error y Fly lo reinicia (las health checks de Fly solo informan).
 
-- **Contenedor propio** (Fly.io, Railway, Cloud Run con instancia mínima 1, ECS o un VPS): `docker build -f apps/voice-worker/Dockerfile -t atiende-voice-worker .`
-  desde la raíz. La imagen es una receta sin verificar.
-- **Despliegue de agentes de LiveKit Cloud** (mismo proveedor ya elegido): exige envolver `atenderLlamada` en un entrypoint de `@livekit/agents` (un job por sala
-  en vez del sondeo). **No está construido**; es un paso corto, pero requiere cuenta y costo nuevos.
-
-Mientras se decide, todo se prueba sin host: `npx vitest run apps/voice-worker --maxWorkers=2`.
+- Despliegue: `bash scripts/voz/desplegar-worker.sh` (ensayo) y `--ejecutar`. Los secretos viajan por entrada estándar a `fly secrets import`, nunca como argumentos.
+- Otros hosts de contenedor (Railway, Cloud Run con instancia mínima 1) sirven con `docker build -f apps/voice-worker/Dockerfile -t atiende-voice-worker .` desde la raíz.
+- Si algún día se migra a Vertex, Cloud Run en `us-central1` queda junto al modelo.
 
 ## Comandos
 
 ```
+bash scripts/voz/desplegar-worker.sh        # ensayo del despliegue en Fly (--ejecutar para aplicar)
+npm run voz:livekit / npm run voz:twilio    # idempotentes; ensayo por omisión, --ejecutar para aplicar
+npm run voz:pregrabados -- --verificar      # comprueba los 15 WAV sin llave ni costo
 npm run bundle -w @atiende/voice-worker     # dist/main.mjs (los SDK de LiveKit quedan fuera; dist/package.json fija sus versiones)
 npm run start  -w @atiende/voice-worker     # node dist/main.mjs
 npm run voz:pregrabados -- --tope-usd=0.25  # desde la raíz: genera assets/*.wav una sola vez
@@ -100,6 +102,7 @@ node scripts/verify-real-postgres-ci/run-gate.mjs scripts/verify-restaurantes-vo
 
 - Latencia **por llamada** (p50/p95 de una conversación) solo queda en el log y como eventos ligados a la conversación; la vista por llamada en Conversaciones es el
   siguiente paso. El KPI por día sí está en el panel.
-- Los costos del escalón de Gemini usan el precio de lista por minuto (`VOZ_PLATAFORMA`); se concilian contra la factura en otra tarea.
+- El costo del escalón de Gemini sale de `usageMetadata` (real, `costo_estimado = false`); su forma (por turno o acumulada) está **sin verificar** y se concilia contra la primera factura (`docs/VOZ-ACTIVACION.md`, sección 6).
+- El turno del cliente (`x-atiende-call-turn`) no se reenvía a la API: la defensa «no confirmar en el mismo turno que se cotiza» no actúa en telefonía (hallazgo; activarlo exige una llamada real).
 - No se detecta ruido ni «no entendido» desde el audio (la máquina los admite, pero nadie los emite todavía); el silencio, el reloj, el barge-in y el DTMF sí.
 - WhatsApp Calling API como segundo canal de voz: idea de los informes 13/18, **no se construyó**.

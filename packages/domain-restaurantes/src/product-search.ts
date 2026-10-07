@@ -129,7 +129,13 @@ export function pesoDeProductoEnGramos(nombre: string): number | null {
 export function tokenizeForProductSearch(query: string): string[] {
   const normalizada = normalizarPesosEnConsulta(
     normalizarUnidadesDeKilo(sinAcentos(query)).replace(/\bcero\s+punto\s+cero\b/g, "0.0"),
-  ).replace(/\bmedia\s+orden\b/g, "1/2");
+  )
+    .replace(/\bmedia\s+orden\b/g, "1/2")
+    // Jerga de T7 (chats reales): "medios charros" = media orden de frijoles charros; "nachos grandes" = la orden completa (el catalogo
+    // solo distingue "(1/2 orden)"), asi que "grande(s)" junto a estos platillos no es parte del nombre.
+    .replace(/\b(?:medios?|medias?)\s+(?=(?:frijoles?\s+)?charros?\b|frijoles?\b|nachos?\b)/g, "1/2 ")
+    .replace(/\b(nachos?|charros?|frijoles?)\s+grandes?\b/g, "$1")
+    .replace(/\bgrandes?\s+(?=nachos?\b|charros?\b|frijoles?\b)/g, "");
 
   const raw = normalizada.split(/\s+/).filter((t) => t.length > 1 && !STOPWORDS_BUSQUEDA.has(t));
 

@@ -11,7 +11,7 @@ describe("opciones del modo real", () => {
     expect(() => opcionesRealVozDesdeEntorno({ VOZ_EVALS_REAL: "1" })).toThrow(/GEMINI_API_KEY/);
     expect(() => opcionesRealVozDesdeEntorno({ VOZ_EVALS_REAL: "1", GEMINI_API_KEY: "k", VOZ_EVALS_MAX_USD: "-1" })).toThrow(/MAX_USD/);
     const o = opcionesRealVozDesdeEntorno({ VOZ_EVALS_REAL: "1", GEMINI_API_KEY: "k", VOZ_EVALS_GUIONES: "V01, V03" });
-    expect(o).toMatchObject({ maxUsd: 1, usdPorMin: 0.04, model: "gemini-3.8-live", guiones: ["V01", "V03"] });
+    expect(o).toMatchObject({ maxUsd: 1, usdPorMin: 0.075, model: "gemini-3.8-live", guiones: ["V01", "V03"] });
   });
 });
 

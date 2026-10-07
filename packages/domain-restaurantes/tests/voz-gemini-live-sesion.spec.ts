@@ -39,7 +39,6 @@ function montar() {
   const proveedor = crearProveedorGeminiLlamada({
     apiKey: "clave-de-prueba-no-real",
     model: "gemini-3.8-live",
-    costoPorMilTokensMicroUsd: 1000,
     crearSocket: (url) => {
       const s = new SocketFalso(url);
       sockets.push(s);
@@ -124,12 +123,12 @@ describe("mensajes del servidor", () => {
     const s = sockets[0]!;
     s.servidor({ serverContent: { inputTranscription: { text: "hola buenas" } } });
     s.servidor({ serverContent: { outputTranscription: { text: "Buenas tardes." } } });
-    s.servidor({ usageMetadata: { totalTokenCount: 1500 } });
-    s.servidor({ usageMetadata: { totalTokenCount: 2000 } });
+    s.servidor({ usageMetadata: { promptTokensDetails: [{ modality: "AUDIO", tokenCount: 400 }], responseTokensDetails: [{ modality: "AUDIO", tokenCount: 25 }] } });
+    s.servidor({ usageMetadata: { promptTokensDetails: [{ modality: "AUDIO", tokenCount: 500 }, { modality: "TEXT", tokenCount: 400 }] } });
     s.servidor({ serverContent: { interrupted: true } });
     s.servidor({ serverContent: { turnComplete: true } });
     await idle;
-    expect(ev).toEqual(["usuario:hola buenas", "dice:Buenas tardes.", "costo:1500", "costo:500", "interrumpido", "termino"]);
+    expect(ev).toEqual(["usuario:hola buenas", "dice:Buenas tardes.", "costo:1500", "costo:1800", "interrumpido", "termino"]);
   });
 
   it("audio de entrada va en base64 PCM 16 kHz", async () => {
