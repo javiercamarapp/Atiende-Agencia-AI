@@ -525,6 +525,9 @@ export interface BranchProductState {
   readonly productId: string;
   readonly price: number;
   readonly isAvailable: boolean;
+  /** Autopiloto (migración 050): día de negocio (YYYY-MM-DD) en que el cron `agotados_reponer` lo devuelve a la venta. Solo lo
+   * trae `getBranchProductState`; `null` si no hay reposición programada o la base no tiene la 050. */
+  readonly agotadoHasta?: string | null;
 }
 
 /** `listo_para_recoger` y `no_recogido` (migracion 031) son los estados del canal recoger: el pedido

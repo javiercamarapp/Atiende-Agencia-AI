@@ -222,6 +222,12 @@ export function assertCantidadesWeb(cantidades: readonly unknown[]): void {
   }
 }
 
+/** Forma exacta de los codigos que emite `solicitud_resolver` (decision descuento_proximo): GRACIAS- y 8 caracteres hexadecimales en mayusculas. */
+export const CODIGO_COMPENSACION_RE = /^GRACIAS-[A-Z0-9]{8}$/;
+export function esCodigoDeCompensacion(code: string): boolean {
+  return CODIGO_COMPENSACION_RE.test(code.trim().toUpperCase());
+}
+
 export function assertWebOrderRules(input: CreateOrderInput): CreateOrderInput {
   const canal: CanalPedido = input.canal === "recoger" ? "recoger" : "domicilio";
   if (input.canal !== undefined && input.canal !== "recoger" && input.canal !== "domicilio") {
@@ -235,7 +241,9 @@ export function assertWebOrderRules(input: CreateOrderInput): CreateOrderInput {
   if (canal === "domicilio" && !(typeof input.customerAddress === "string" && input.customerAddress.trim())) {
     throw new OrderValidationError("Escribe la dirección completa de entrega.");
   }
-  if (canal === "domicilio" && typeof input.promoCode === "string" && input.promoCode.trim()) {
+  // Las promociones de PM valen solo para recoger. QA R2 features-07: el codigo de COMPENSACION (GRACIAS-XXXXXXXX, de un solo uso, lo emite
+  // el sistema tras una queja resuelta) si vale tambien a domicilio: el cliente lo recibe con el aviso «use el codigo en su proximo pedido».
+  if (canal === "domicilio" && typeof input.promoCode === "string" && input.promoCode.trim() && !esCodigoDeCompensacion(input.promoCode)) {
     throw new OrderValidationError("Las promociones solo aplican para pedidos que recoges en la sucursal.");
   }
   assertCantidadesWeb(input.items.map((i) => i.requestedQuantity ?? i.quantity));
@@ -258,7 +266,7 @@ export async function previewPromotion(
 ): Promise<PromotionPreview> {
   const codigo = normalizePromotionCode(args.rawCode);
   const invalida = (mensaje: string): PromotionPreview => ({ valida: false, codigo, descuento: 0, totalConDescuento: args.total, mensaje });
-  if (args.canal !== "recoger") return invalida("Las promociones solo aplican para pedidos que recoges en la sucursal.");
+  if (args.canal !== "recoger" && !esCodigoDeCompensacion(codigo)) return invalida("Las promociones solo aplican para pedidos que recoges en la sucursal.");
   const promotion = await repo.findPromotionByCode(args.organizationId, codigo);
   if (!promotion) return invalida(`El código "${codigo}" no existe.`);
   try {
