@@ -216,6 +216,17 @@ export { ejecutarCicloImportacion, exportarFeedParaUnidad } from "./sync/motor.t
 export type { ContextoExportacion, ContextoSincronizacion, EventoDescartadoPorError, ResultadoImportarCiclo, RevisionUidReciclado } from "./sync/motor.ts";
 export type { RentasCalendarSyncRepository } from "./sync/repository.ts";
 export type { BloqueoExportadoPrevio, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./sync/tipos.ts";
+export type {
+  FeedTokenEstado,
+  FeedTokenResuelto,
+  ResultadoListarFeedTokens,
+  ResultadoReclamoManual,
+  ResultadoResolverFeedToken,
+  ResultadoRotarFeedToken,
+  RotarFeedTokenInput,
+} from "./sync/tipos.ts";
+export { etagDeFeedIcs, extraerTokenDeSegmento, generarTokenFeed, hashesFeedIguales, hashFeedConFormatoValido, hashTokenFeed, rutaFeedPorToken, tokenFeedConFormatoValido } from "./ical/feed-token.ts";
+export type { TokenFeedGenerado } from "./ical/feed-token.ts";
 export { BACKOFF_FEED_BASE_SEGUNDOS, BACKOFF_FEED_MAX_SEGUNDOS, calcularBackoffFeedSegundos, eventosBitacoraDeCiclo, OPCIONES_RECLAMO_POR_DEFECTO } from "./sync/lease.ts";
 export type { EventoBitacora, FeedReclamado, OpcionesReclamo, ResultadoReclamo, SeveridadBitacora, TipoEventoBitacora } from "./sync/lease.ts";
 export { clasificarSaludFeed, UMBRAL_FEED_DESACTUALIZADO_MS } from "./sync/monitor.ts";
@@ -246,8 +257,8 @@ export {
   resumirSyncPorCanal,
 } from "./sync/conflictos.ts";
 export type { AccionConflicto, DecisionConflictoNormalizada, ResumenSyncCanal, VigenciaSolape } from "./sync/conflictos.ts";
-export { ejecutarLoteSync } from "./sync/lote.ts";
-export type { DepsLoteSync, OpcionesLoteSync, ResultadoFeedLote, ResultadoLoteSync } from "./sync/lote.ts";
+export { ejecutarLoteSync, ejecutarSincronizacionManualDeFeed, LEASE_SINCRONIZACION_MANUAL_SEGUNDOS } from "./sync/lote.ts";
+export type { DepsLoteSync, OpcionesLoteSync, ResultadoFeedLote, ResultadoLoteSync, ResultadoSincronizacionManual } from "./sync/lote.ts";
 export { InMemoryRentasCalendarSyncRepository } from "./sync/in-memory-repository.ts";
 export { PostgresRentasCalendarSyncRepository } from "./sync/postgres-repository.ts";
 

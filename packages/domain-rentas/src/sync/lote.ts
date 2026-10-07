@@ -149,3 +149,38 @@ export async function ejecutarLoteSync(deps: DepsLoteSync, opciones: OpcionesLot
 
   return { modo, feeds: filas, devueltosPorPresupuesto: devueltos };
 }
+
+/** Resultado de "Sincronizar ahora" de UN feed (Rn-P3-23). */
+export type ResultadoSincronizacionManual =
+  /** La base todavía no tiene la migración 037 (o la 024): no hay lease con qué coordinar, así que no se corre. */
+  | { readonly estado: "no_disponible" }
+  /** Otro proceso (el cron u otra petición) tiene el lease del feed, o el feed está inactivo. */
+  | { readonly estado: "ocupado" }
+  | { readonly estado: "sincronizado"; readonly fila: ResultadoFeedLote };
+
+/** Duración del lease de una sincronización manual: cubre el fetch (15 s) más el ciclo con holgura. */
+export const LEASE_SINCRONIZACION_MANUAL_SEGUNDOS = 120;
+
+/**
+ * Rn-P3-23 -- corre el ciclo de UN feed a petición del staff, con el MISMO lease y la MISMA bitácora que el lote
+ * periódico: si el cron (u otra petición) ya tiene el feed, responde `ocupado` sin tocarlo. Cada paso corre en su
+ * propia transacción de sistema (igual que `ejecutarLoteSync`): el claim, el ciclo, la bitácora y la liberación.
+ * Ignora el backoff del feed a propósito (el usuario pidió reintentar ya); el tope de una vez por minuto lo pone la ruta.
+ */
+export async function ejecutarSincronizacionManualDeFeed(deps: DepsLoteSync, feed: FeedExternoRecord): Promise<ResultadoSincronizacionManual> {
+  const reclamo = await deps.conSesionSistema((db) => deps.crearSyncRepo(db).reclamarFeedManual(feed.id, LEASE_SINCRONIZACION_MANUAL_SEGUNDOS));
+  if (!reclamo.disponible) return { estado: "no_disponible" };
+  if (reclamo.leaseToken === null) return { estado: "ocupado" };
+  const leaseToken = reclamo.leaseToken;
+
+  const { fila, ciclo } = await procesarFeed(deps, feed);
+  const eventos = ciclo
+    ? eventosBitacoraDeCiclo(ciclo)
+    : [{ tipo: "error_interno" as const, severidad: "aviso" as const, detalle: `error interno procesando el feed: ${fila.error ?? "desconocido"}`.slice(0, 500), eventosAplicados: 0, conflictos: 0 }];
+  for (const evento of eventos) {
+    await intentar("registrar bitácora (manual)", () => deps.conSesionSistema((db) => deps.crearSyncRepo(db).registrarEventoBitacora(feed.id, evento)));
+  }
+  const exito = ciclo !== null && ciclo.resultado !== "fallo_red" && ciclo.resultado !== "fallo_parseo";
+  await intentar("liberar lease (manual)", () => deps.conSesionSistema((db) => deps.crearSyncRepo(db).liberarFeed(feed.id, leaseToken, exito)));
+  return { estado: "sincronizado", fila };
+}
