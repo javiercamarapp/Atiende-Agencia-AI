@@ -253,8 +253,10 @@ describe("R2-caos-07: reimportar para corregir un mapeo de columnas equivocado",
 
     const bueno = prepararImportacionClientes([{ telefono: "9991230001", nombre: "José Peña", direccion: "Calle 1", colonia: "Itzimná", notas: "" }]);
     const mismoArchivo = await fx.repo.importarClientes(fx.organizationId, HUELLA, bueno.validas);
+    if (!mismoArchivo.disponible) throw new Error("importacion no disponible");
     expect(mismoArchivo.yaImportado).toBe(true); // "Este archivo ya se habia importado: no se volvio a escribir nada."
     const otroArchivo = await fx.repo.importarClientes(fx.organizationId, "b".repeat(64), bueno.validas);
+    if (!otroArchivo.disponible) throw new Error("importacion no disponible");
     expect(otroArchivo.sinCambios).toBe(1); // "nunca pisa el nombre conocido"
     // Actual: sigue "Itzimná" para siempre; el agente (Cliente 360) saluda "Hola Itzimná". Solo queda editar cliente por cliente (hasta 5,000).
     expect((await fx.repo.findCustomerByPhone(fx.organizationId, "9991230001"))?.name).toBe("José Peña");
