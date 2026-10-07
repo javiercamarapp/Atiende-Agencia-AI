@@ -10,6 +10,7 @@ import { LICENCIA_AVISO_DIAS, hoyUtc, notificarLicenciaRepartidor } from "@atien
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
+import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function restaurantesRepartidorLicenciasInternoRoutes(deps: AppDeps): Hono {
@@ -20,6 +21,8 @@ export function restaurantesRepartidorLicenciasInternoRoutes(deps: AppDeps): Hon
     if (!deps.repartidorPerfilRepo) throw Errors.serviceUnavailable("El perfil del repartidor no está disponible en este despliegue.");
     const perfilRepo = deps.repartidorPerfilRepo;
 
+    // QA R2 automatizacion-12: con latido, bitacora de corridas e interruptor por cron; un repartidor que falla deja la corrida en 'parcial'.
+    return withHeartbeat(deps, "/internal/restaurantes/repartidor-licencias", async () => {
     const lista = await deps.engine.withAppSession({ userId: null }, (db) => perfilRepo(db).licenciasPorVencer(LICENCIA_AVISO_DIAS));
     if (!lista.disponible) return c.json({ ok: true, status: "not_available", revisadas: 0, avisos: 0, fallos: 0 });
 
@@ -39,7 +42,10 @@ export function restaurantesRepartidorLicenciasInternoRoutes(deps: AppDeps): Hon
       }
     }
     logEvent(c, "info", "restaurantes_licencias_barrido", { revisadas: lista.valor.length, avisos, fallos });
-    return c.json({ ok: fallos === 0, status: "ok", revisadas: lista.valor.length, avisos, fallos });
+    const respuesta = c.json({ ok: fallos === 0, status: "ok", revisadas: lista.valor.length, avisos, fallos });
+    if (fallos > 0) throw new CronPartialFailureError(`${fallos} aviso(s) de licencia no se pudieron emitir`, respuesta);
+    return respuesta;
+    })();
   });
 
   return app;

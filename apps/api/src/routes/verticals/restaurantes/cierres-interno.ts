@@ -15,6 +15,7 @@ import type { BarridoSucursalResultado } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
+import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function restaurantesCierresInternoRoutes(deps: AppDeps): Hono {
@@ -32,6 +33,9 @@ export function restaurantesCierresInternoRoutes(deps: AppDeps): Hono {
       dias = Number(qDias);
     }
 
+    // QA R2 automatizacion-12: con latido (visible en /superadmin/salud), bitacora de corridas e interruptor por cron, como el resto de /internal/*.
+    // Una sucursal que falla deja la corrida en 'parcial' (CronPartialFailureError), no en 'ok'.
+    return withHeartbeat(deps, "/internal/restaurantes/cierres-dia", async () => {
     const ahora = new Date();
     const lista = await deps.engine.withAppSession({ userId: null }, (db) => cierreRepo(db).sucursalesParaBarrido());
     if (!lista.disponible) return c.json({ ok: true, status: "not_available", sucursales: 0, creados: 0, avisos: 0, fallos: [] });
@@ -54,7 +58,7 @@ export function restaurantesCierresInternoRoutes(deps: AppDeps): Hono {
     const creados = resultados.reduce((n, r) => n + r.creados, 0);
     const avisos = resultados.reduce((n, r) => n + r.avisos, 0);
     logEvent(c, "info", "restaurantes_cierre_barrido", { sucursales: lista.valor.length, creados, avisos, fallos: fallos.length });
-    return c.json({
+    const respuesta = c.json({
       ok: fallos.length === 0,
       status: noDisponible ? "not_available" : "ok",
       sucursales: lista.valor.length,
@@ -64,6 +68,9 @@ export function restaurantesCierresInternoRoutes(deps: AppDeps): Hono {
       avisos,
       fallos,
     });
+    if (fallos.length > 0) throw new CronPartialFailureError(`${fallos.length} sucursal(es) no pudieron cerrar el dia`, respuesta);
+    return respuesta;
+    })();
   });
 
   return app;

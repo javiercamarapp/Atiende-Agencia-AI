@@ -1,0 +1,1 @@
+- caos-06/08 hechos (0716b4b5). Siguiente: tick auto-06,07,09,12

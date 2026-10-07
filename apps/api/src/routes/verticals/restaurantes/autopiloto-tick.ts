@@ -4,12 +4,14 @@
 // o que dos instancias corran a la vez, no duplica ni transiciones ni avisos. Sin la migracion 050 cada paso responde `disponible: false`.
 import type { Context } from "hono";
 import {
+  aplicarAvancesPos,
   aplicarEstadosSinClic,
-  avanzarDesdePos,
+  consultarEstadosPos,
   devolverHandoffsVencidos,
   escalarSolicitudesVencidas,
   reponerAgotadosDelDia,
 } from "@atiende/domain-restaurantes";
+import type { ComandaParaAvance, EstadoPosConsultado } from "@atiende/domain-restaurantes";
 import type { AutopilotoServicioDeps } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos, crearResolverSucursalPos } from "@atiende/domain-restaurantes/softrestaurant";
 import { logEvent } from "../../../logger.ts";
@@ -24,11 +26,13 @@ export interface ResumenTickAutopiloto {
   readonly posSinAdaptadorReal: boolean;
   readonly handoffsDevueltos: number;
   readonly agotadosRepuestos: number;
+  /** Alertas de voz (costo del dia / tasa de error) disparadas por primera vez en esta corrida. */
+  readonly alertasVoz: number;
   readonly errores: number;
 }
 
 export async function barrerAutopilotoTick(deps: AppDeps, c: Context, ahora: Date): Promise<ResumenTickAutopiloto> {
-  const resumen = { disponible: false, escaladas: 0, estadosAplicados: 0, posAvanzadas: 0, posSinAdaptadorReal: false, handoffsDevueltos: 0, agotadosRepuestos: 0, errores: 0 };
+  const resumen = { disponible: false, escaladas: 0, estadosAplicados: 0, posAvanzadas: 0, posSinAdaptadorReal: false, handoffsDevueltos: 0, agotadosRepuestos: 0, alertasVoz: 0, errores: 0 };
   const autoFactory = deps.autopilotoRepo;
   if (!autoFactory) return resumen;
 
@@ -50,13 +54,39 @@ export async function barrerAutopilotoTick(deps: AppDeps, c: Context, ahora: Dat
     }
   }
 
+  async function avanzarDesdePosDelTick(): Promise<{ readonly consultadas: number; readonly avanzadas: number; readonly sinAdaptadorReal: boolean } | null> {
+    const port = softRestaurantPortFor(deps);
+    if (!port.esReal) return { consultadas: 0, avanzadas: 0, sinAdaptadorReal: true };
+    const resolver = deps.softRestaurantMapeo?.resolverSucursal ?? crearResolverSucursalPos();
+    const comandas = await paso("pos_leer", (s) => s.auto.comandasParaAvance(50));
+    if (!comandas || !comandas.disponible || comandas.valor.length === 0) return comandas ? { consultadas: 0, avanzadas: 0, sinAdaptadorReal: false } : null;
+    let consultadas = 0;
+    let estados: readonly EstadoPosConsultado[] = [];
+    try {
+      const r = await consultarEstadosPos(comandas.valor as readonly ComandaParaAvance[], port, (propertyId) => resolver({ propertyId, nombre: null }));
+      consultadas = r.consultadas;
+      estados = r.estados;
+    } catch (err) {
+      resumen.errores++;
+      logEvent(c, "error", "restaurantes_autopiloto_paso_fallido", { paso: "pos_consultar", error: err instanceof Error ? err.message : String(err) });
+    }
+    const avanzadas = estados.length > 0 ? await paso("pos_aplicar", (s) => aplicarAvancesPos(s, estados)) : 0;
+    return { consultadas, avanzadas: avanzadas ?? 0, sinAdaptadorReal: false };
+  }
+
   const escalado = await paso("escalar", (s) => escalarSolicitudesVencidas(s, ahora));
   const estados = await paso("estados", (s) => aplicarEstadosSinClic(s, ahora));
-  const pos = await paso("pos", (s) => avanzarDesdePos(s, softRestaurantPortFor(deps), (propertyId) => (deps.softRestaurantMapeo?.resolverSucursal ?? crearResolverSucursalPos())({ propertyId, nombre: null })));
+  // Avance desde el POS en TRES fases (QA R2 automatizacion-07): leer las comandas (sesion 1), preguntar al POS SIN transaccion abierta y con
+  // tope por consulta y presupuesto total (la red nunca va dentro de una transaccion), y aplicar lo consultado (sesion 2).
+  const pos = await avanzarDesdePosDelTick();
   const handoffs = await paso("handoffs", (s) => devolverHandoffsVencidos(s, ahora));
   const agotados = await paso("agotados", (s) => reponerAgotadosDelDia(s, ahora));
+  // Alertas de voz (paridad A21): se evaluan solas en este mismo tick, sin cron nuevo ni boton.
+  const evaluarVoz = deps.vozAlertasSistema;
+  const alertasVoz = evaluarVoz ? await paso("alertas_voz", (s) => evaluarVoz(s.db)) : null;
 
-  const disponible = [escalado, estados, handoffs, agotados].some((r) => r?.disponible === true);
+  if (alertasVoz && alertasVoz.errores > 0) resumen.errores++;
+  const disponible = [escalado, estados, handoffs, agotados, alertasVoz].some((r) => r?.disponible === true);
   const salida: ResumenTickAutopiloto = {
     disponible,
     escaladas: escalado?.escaladas ?? 0,
@@ -65,6 +95,7 @@ export async function barrerAutopilotoTick(deps: AppDeps, c: Context, ahora: Dat
     posSinAdaptadorReal: pos?.sinAdaptadorReal ?? false,
     handoffsDevueltos: handoffs?.devueltos ?? 0,
     agotadosRepuestos: agotados?.repuestos ?? 0,
+    alertasVoz: alertasVoz?.nuevas ?? 0,
     errores: resumen.errores,
   };
   logEvent(c, "info", "restaurantes_autopiloto_tick", { ...salida });
