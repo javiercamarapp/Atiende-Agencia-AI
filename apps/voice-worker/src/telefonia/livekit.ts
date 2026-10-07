@@ -109,6 +109,7 @@ export class LiveKitTelefonia implements TelefoniaPort {
   private temporizador: ReturnType<typeof setInterval> | null = null;
   private alLlegar: ((l: LlamadaTelefonica) => void) | null = null;
   private consultando = false;
+  private ultimoLatido: number | null = null;
   private activas = new Set<Room>();
 
   constructor(private readonly o: OpcionesLiveKit) {
@@ -120,6 +121,11 @@ export class LiveKitTelefonia implements TelefoniaPort {
     this.alLlegar = alLlegar;
     await this.consultar();
     this.temporizador = setInterval(() => void this.consultar(), this.o.intervaloMs ?? 1000);
+  }
+
+  /** Ultimo sondeo exitoso de salas: si deja de avanzar, LiveKit no responde o el sondeo murio y el worker no esta atendiendo (aunque el proceso viva). */
+  latidoMs(): number | null {
+    return this.ultimoLatido;
   }
 
   async detener(): Promise<void> {
@@ -134,6 +140,7 @@ export class LiveKitTelefonia implements TelefoniaPort {
     this.consultando = true;
     try {
       const salas = await this.servicio.listRooms();
+      this.ultimoLatido = Date.now();
       for (const sala of salas) {
         if (!sala.name.startsWith(this.prefijo) || this.atendidas.has(sala.name)) continue;
         this.atendidas.add(sala.name);
@@ -165,6 +172,9 @@ export class LiveKitTelefonia implements TelefoniaPort {
       await sala.disconnect();
       return;
     }
+    // Solo los NOMBRES de los atributos SIP (nunca los valores: traen telefonos): permiten confirmar en la primera llamada real que LiveKit entrega `sip.phoneNumber`,
+    // `sip.trunkPhoneNumber` y `sip.h.diversion` / `sip.h.history-info` (docs/VOZ-ACTIVACION.md, paso del INVITE).
+    this.o.log?.("sip_atributos", { claves: Object.keys(sip.attributes).filter((k) => k.startsWith("sip.")).sort().join(",").slice(0, 400) });
     const fuente = new AudioSource(HZ_SALIDA_LIVEKIT, 1);
     const pista = LocalAudioTrack.createAudioTrack("agente", fuente);
     await sala.localParticipant?.publishTrack(pista, new TrackPublishOptions({ source: TrackSource.SOURCE_MICROPHONE }));

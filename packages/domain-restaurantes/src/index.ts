@@ -1,3 +1,5 @@
+export { buildStorefrontDirectorio, enlaceComoLlegar, type StorefrontDirectorioItem } from "./storefront.ts";
+export { evaluarDomicilioSucursal, describirDiasDomicilio, insigniaDomicilio, mensajeDomicilioNoDisponible, type EstadoDomicilio } from "./domicilio-sucursal.ts";
 export type { StorefrontCatalogRow, StorefrontMarca, StorefrontMarcaInput, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
 export { buildStorefrontBranches, buildStorefrontMenu, groupStorefrontMenu, assertWebOrderRules, previewPromotion } from "./storefront.ts";
 export type { StorefrontBranchView, StorefrontMenuCategory, StorefrontMenuItem, PromotionPreview } from "./storefront.ts";
@@ -92,12 +94,12 @@ export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient, maskPhon
 export { prepararImportacionClientes, IMPORTACION_MAX_FILAS } from "./clientes-importacion.ts";
 export type { ErrorRenglonImportacion, PreparacionImportacion } from "./clientes-importacion.ts";
 
-export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole } from "./roles.ts";
-export type { RestaurantesRole } from "./roles.ts";
+export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole, ACCIONES_RESTAURANTES, ACCIONES_RESTAURANTES_LISTA, rolesParaAccion, puedeEjecutar, permisosEfectivos } from "./roles.ts";
+export type { RestaurantesRole, AccionRestaurantes } from "./roles.ts";
 
 export { tokenizeForProductSearch, matchesProductSearch, sinAcentos, requiresTortillaChoice, extraerPackSize, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, UUID_PATTERN } from "./product-search.ts";
 
-export { DEFAULT_COMPLEMENTS, TORTILLA_CHOICES, buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, findExtraSalsaProduct, isTortillaChoice } from "./order-quote.ts";
+export { DEFAULT_COMPLEMENTS, PM_BASIC_COMPLEMENTS, TORTILLA_CHOICES, buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, findExtraSalsaProduct, isTortillaChoice } from "./order-quote.ts";
 
 export type {
   RestaurantesRepository,
@@ -331,7 +333,7 @@ export {
 export type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowStore, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 export type { VoiceSecretMatch, VoiceToolAuditInput, VoiceToolAuditOutcome } from "./types.ts";
 
-export { formatLocationMessage, isValidCoordinate, latestSharedLocation, parseSharedLocation, type MetaLocationMessage, type SharedLocation } from "./whatsapp/location.ts";
+export { formatLocationMessage, formatUbicacionEntregaNota, isValidCoordinate, latestDeliveryPin, latestSharedLocation, parseMapsLink, parseSharedLocation, parseUbicacionEntregaNota, type MetaLocationMessage, type SharedLocation, type UbicacionEntrega } from "./whatsapp/location.ts";
 export type { MetaInboundMessage } from "./whatsapp/channel-config.ts";
 export * from "./privacidad/index.ts";
 export * from "./data-chat/index.ts";
@@ -376,6 +378,10 @@ export { diaMerida } from "./alertas-duenio/dia.ts";
 export { emitirAlertasProveedor, evaluarSaludProveedor, GRAPH_CODIGO_TOKEN_INVALIDO, UMBRAL_FALLAS_PROVEEDOR } from "./alertas-duenio/proveedor.ts";
 export type { DiagnosticoProveedorOrg, ItemDespachoOrg, ResultadoAlertasProveedor } from "./alertas-duenio/proveedor.ts";
 
+export * from "./encuesta-reglas.ts";
+export * from "./resenas-provider.ts";
+export * from "./mezcla-de-pago.ts";
+export * from "./sucursal-sugerida.ts";
 // Ajustes del agente por organizacion (modelo, temperatura, voz, fondo) y base de conocimiento automatica (equivalentes de lo que el original hacia con ElevenLabs).
 export * from "./ajustes-agente/index.ts";
 

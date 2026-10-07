@@ -81,7 +81,7 @@ export type SourceHealthState = (typeof SOURCE_HEALTH_STATES)[number];
 // de cabecera de ese archivo para el detalle completo). Se re-exportan aquí
 // tal cual para no romper ningún import existente (`source-run.ts`, tests,
 // `index.ts`).
-export { SourceNotConfiguredError, CaptchaDetectedError, InterfaceChangedError, RateLimitedError } from "./connector-errors.ts";
+export { SourceNotConfiguredError, CaptchaDetectedError, InterfaceChangedError, RateLimitedError, SourceUnavailableError } from "./connector-errors.ts";
 
 /** Cadencia declarada de una fuente (REQ-146): nunca una cifra universal, siempre documentada contra el límite real observado/recomendado de ESA fuente. */
 export interface SourceCadence {

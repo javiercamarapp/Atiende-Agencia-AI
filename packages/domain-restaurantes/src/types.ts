@@ -7,6 +7,7 @@ import type { CustomerAddressDetail, TasteProposal } from "./cliente-360/types.t
 import type { HorarioSucursal } from "./horarios.ts";
 
 import type { PedidoReciente } from "./pedido-reciente.ts";
+import type { UbicacionEntrega } from "./whatsapp/location.ts";
 
 export interface Branch {
   readonly propertyId: string;
@@ -100,7 +101,16 @@ export interface OrderQuote {
   readonly containsAlcohol: boolean;
 }
 
-export type RequestedComplement = "salsa_habanero" | "crema_ajo";
+/** Complementos que el cliente puede PEDIR (sin costo). `pina` es la piña picada que acompaña los tacos (gratis si se pide; la doble
+ * es el producto "Extra Piña" del catálogo, no un complemento); `salsa_habanero_soasado` es el habanero soasado ("sauceada"). */
+export type RequestedComplement =
+  | "salsa_habanero"
+  | "crema_ajo"
+  | "salsa_guacamolera"
+  | "salsa_mexicana"
+  | "salsa_pina"
+  | "pina"
+  | "salsa_habanero_soasado";
 /** Las 9 salsas/guarniciones incluidas sin costo (PM): roja, verde, mexicana, guacamolera, limones,
  * crema de ajo, cebolla con cilantro, pina y habanero (soasado o picado con limon). `cebolla` es el
  * nombre historico de `cebolla_cilantro` y se sigue aceptando al omitir. */
@@ -196,6 +206,20 @@ export interface CreateOrderInput {
   readonly adultConfirmed?: boolean;
   readonly requestedComplements?: readonly RequestedComplement[];
   readonly omitDefaultComplements?: readonly DefaultComplement[];
+  /** Perfil de básicas por omisión del negocio (PM: roja, verde, cebolla con cilantro y limones). Con valor, la comanda separa
+   * «Básicas» de «Pedidas»; sin valor (web/checkout histórico) imprime las 9 como incluidas, igual que antes. */
+  readonly basicComplements?: readonly DefaultComplement[];
+  /** Destino de entrega que dio el cliente (pin de WhatsApp o link de Maps). Viaja en las notas del pedido (sin columna nueva)
+   * y la vista del repartidor lo abre en Maps. Solo a domicilio. */
+  readonly ubicacionEntrega?: UbicacionEntrega;
+  /** Monto con el que paga en efectivo (>= total); la comanda imprime «Paga con» y el cambio que lleva el repartidor. */
+  readonly efectivoCon?: number;
+  /** El repartidor debe llevar terminal (pago con tarjeta a domicilio). */
+  readonly llevarTerminal?: boolean;
+  /** Indicaciones de acceso o aviso al llegar ("timbre del depto 6", "avísenme al llegar"); una sola línea, hasta 200 caracteres. */
+  readonly indicacionesAcceso?: string;
+  /** Segundo teléfono de contacto (10 dígitos). */
+  readonly telefonoAlterno?: string;
   /** Doble porcion de salsas (extra cobrado: una pieza del producto "Extra salsa" del catalogo por
    * cada salsa; si la sucursal no lo tiene en catalogo el pedido se rechaza con un mensaje claro). */
   readonly doubleSalsas?: readonly DoubleSalsa[];
@@ -239,6 +263,16 @@ export interface BranchPolicy {
   readonly pedidoMinimoDomicilio: number | null;
   readonly pedidoMinimoRecoger: number | null;
   readonly propinaPolitica: PropinaPolitica | null;
+  // Migracion 057 (directorio y domicilio por sucursal). Opcionales: ausentes en una base sin migrar y en
+  // quien construye una politica solo con los campos de 023; el valor por omision conserva el comportamiento anterior.
+  /** null = sigue a la sucursal activa; true = aparece en el directorio aunque este inactiva; false = oculta. */
+  readonly visibleEnDirectorio?: boolean | null;
+  /** false = la sucursal no reparte a domicilio (solo recoger). Por omision true. */
+  readonly aceptaDomicilio?: boolean;
+  /** Dias (0 = domingo .. 6 = sabado) en que reparte a domicilio; null = todos los dias. */
+  readonly diasDomicilio?: readonly number[] | null;
+  /** Insignia publica "Temporada". Por omision false. */
+  readonly deTemporada?: boolean;
 }
 
 /** Perfil del agente de WhatsApp: `generico` es el de siempre (tutea, domicilio); `taqueria_pm` es el de
@@ -296,7 +330,16 @@ export interface WhatsAppAgentConfigHistorialEntry {
   readonly creadoAt: string;
 }
 
-export const EMPTY_BRANCH_POLICY: BranchPolicy = { horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null };
+export const EMPTY_BRANCH_POLICY: BranchPolicy = {
+  horario: null,
+  pedidoMinimoDomicilio: null,
+  pedidoMinimoRecoger: null,
+  propinaPolitica: null,
+  visibleEnDirectorio: null,
+  aceptaDomicilio: true,
+  diasDomicilio: null,
+  deTemporada: false,
+};
 
 /** Resolucion del numero de WhatsApp que recibe un mensaje: organizacion y, cuando el
  * numero pertenece a una sucursal, esa sucursal (`null` = numero por defecto de la

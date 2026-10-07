@@ -24,6 +24,7 @@ import {
   OrderValidationError,
   StorefrontValidationError,
   buildStorefrontBranches,
+  buildStorefrontDirectorio,
   buildStorefrontMenu,
   buildStorefrontPromociones,
   consumeRateLimit,
@@ -32,6 +33,9 @@ import {
   registerCallbackRequest,
   redondearACentavos,
   registrarConsentimientoMarketing,
+  seccionEncargados,
+  sugerirSucursalPorColonia,
+  sugerirSucursalPorUbicacion,
   validarSolicitudEvento,
 } from "@atiende/domain-restaurantes";
 import type { AgentToolContext, CanalPedido, Order, RestaurantesRepository } from "@atiende/domain-restaurantes";
@@ -252,6 +256,77 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
         }
         throw err;
       }
+    });
+  });
+
+  // GET /v1/restaurantes/:orgSlug/storefront/directorio -- directorio publico: TODAS las sucursales visibles
+  // (activas o solo informativas) con direccion, telefono, horario e insignias. Solo campos publicos.
+  app.get("/v1/restaurantes/:orgSlug/storefront/directorio", async (c) => {
+    noStore(c);
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-read", 120, org.id);
+      return c.json({ restaurante: { slug: org.slug, nombre: org.name }, sucursales: await buildStorefrontDirectorio(repo, org.id) });
+    });
+  });
+
+  // GET /v1/restaurantes/:orgSlug/storefront/zonas -- nombres de las colonias/zonas conocidas (autocompletar de "¿Dónde está?").
+  // Solo nombres: nada de coordenadas ni ids.
+  app.get("/v1/restaurantes/:orgSlug/storefront/zonas", async (c) => {
+    noStore(c);
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-read", 120, org.id);
+      const nombres = (await repo.listKnownZones(org.id)).map((z) => z.name).sort((a, b) => a.localeCompare(b, "es"));
+      return c.json({ zonas: nombres.slice(0, 500) });
+    });
+  });
+
+  // POST /v1/restaurantes/:orgSlug/storefront/sucursal-sugerida -- sucursal sugerida por colonia {colonia} o por ubicacion {lat, lng}.
+  // POST y no GET a proposito: las coordenadas viajan en el cuerpo (no en la URL, que queda en los registros) y NUNCA se guardan ni se
+  // escriben en logs; se usan solo para calcular la distancia.
+  app.post("/v1/restaurantes/:orgSlug/storefront/sucursal-sugerida", async (c) => {
+    noStore(c);
+    assertOrigin(c);
+    const body = await readJsonCapped<{ colonia?: unknown; lat?: unknown; lng?: unknown }>(c.req.raw, 2 * 1024);
+    const colonia = strOrReject(body.colonia, 120, "La colonia");
+    const tieneUbicacion = body.lat !== undefined || body.lng !== undefined;
+    if (!colonia && !tieneUbicacion) throw Errors.validation("Indique una colonia o permita su ubicación.");
+    if (tieneUbicacion && (typeof body.lat !== "number" || typeof body.lng !== "number" || !Number.isFinite(body.lat) || !Number.isFinite(body.lng) || Math.abs(body.lat) > 90 || Math.abs(body.lng) > 180)) {
+      throw Errors.validation("La ubicación no es válida.");
+    }
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-read", 120, org.id);
+      const sugerencia = colonia ? await sugerirSucursalPorColonia(repo, org.id, colonia) : await sugerirSucursalPorUbicacion(repo, org.id, { lat: body.lat as number, lng: body.lng as number });
+      return c.json({ sugerencia });
+    });
+  });
+
+  // GET /v1/restaurantes/:orgSlug/storefront/privacidad -- seccion "Encargados y transferencias" del aviso (BORRADOR pendiente de
+  // revision legal): proveedores que de verdad usa la organizacion segun su configuracion (canal de WhatsApp conectado, voz habilitada).
+  app.get("/v1/restaurantes/:orgSlug/storefront/privacidad", async (c) => {
+    noStore(c);
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-read", 120, org.id);
+      const whatsappConectado = (await repo.getWhatsappChannelConfig(org.id)).phoneNumberId !== null;
+      let vozHabilitada = false;
+      if (deps.vozRepo) {
+        const voz = deps.vozRepo(db);
+        for (const branch of (await repo.listBranchesForOrganizationAdmin(org.id)).filter((b) => b.status === "active")) {
+          const lectura = await voz.getConfig(branch.propertyId);
+          if (lectura.disponible && lectura.valor.habilitado) {
+            vozHabilitada = true;
+            break;
+          }
+        }
+      }
+      return c.json({ encargados: seccionEncargados({ whatsappConectado, vozHabilitada }) });
     });
   });
 

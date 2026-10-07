@@ -84,6 +84,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
   // Autopiloto (migracion 050): pestana "Por aprobar" (pedido grande, cancelacion pedida por el cliente, quejas con compensacion) y reglas por sucursal.
   const [aprobaciones, setAprobaciones] = useState<SolicitudesRespuesta | null>(null);
   const [autoConfig, setAutoConfig] = useState<AutopilotoConfigRespuesta | null>(null);
+  // QA-restaurantes-R2-botones-02: si la carga de las reglas falla, el dialogo muestra el error con Reintentar en vez de 'Cargando reglas…' eterno.
+  const [autoConfigError, setAutoConfigError] = useState<string | null>(null);
   const [reglasAbiertas, setReglasAbiertas] = useState(false);
   // Historial de transiciones del pedido (A-03): quien lo movio, cuando y por que.
   const [historialDe, setHistorialDe] = useState<OrderSummary | null>(null);
@@ -301,11 +303,15 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
   }
 
   async function loadAutoConfig() {
+    setAutoConfigError(null);
     try {
       const r = await fetchAutopilotoConfig(fetch, apiBaseUrl, token, propertyId);
-      setAutoConfig(r?.config && Array.isArray(r.plantillas) ? r : null);
-    } catch {
+      const valida = r?.config && Array.isArray(r.plantillas);
+      setAutoConfig(valida ? r : null);
+      if (!valida) setAutoConfigError("No se pudieron cargar las reglas del autopiloto.");
+    } catch (err) {
       setAutoConfig(null);
+      setAutoConfigError(err instanceof Error ? err.message : "No se pudieron cargar las reglas del autopiloto.");
     }
   }
 
@@ -349,6 +355,10 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
   loadRef.current = load;
 
   useEffect(() => {
+    // QA-restaurantes-R2-botones-01: al cambiar de pestana o de sucursal se limpia la lista anterior; mientras carga se ve 'Cargando' y, si la
+    // carga falla, solo el EstadoError (nunca tarjetas de otra pestana con sus botones activos).
+    setOrders(null);
+    setProgramados(null);
     void load();
   }, [apiBaseUrl, token, propertyId, status]);
 
@@ -804,6 +814,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
         open={reglasAbiertas}
         onOpenChange={setReglasAbiertas}
         datos={autoConfig}
+        error={autoConfigError}
+        onReintentar={loadAutoConfig}
         apiBaseUrl={apiBaseUrl}
         token={token}
         propertyId={propertyId}

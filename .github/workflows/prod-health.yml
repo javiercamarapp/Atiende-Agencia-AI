@@ -1,12 +1,14 @@
 name: Prod health (sondeo programado de /health)
 
 # PL-12. Cada 15 minutos consulta el /health PUBLICO de Produccion (scripts/health-check/check.ts: 3 intentos,
-# falla si no responde 200 con {ok:true} o si tarda mas de 8 s). Si falla, el job queda en rojo (GitHub avisa por
+# falla si no responde 200 con {ok:true}, si tarda mas de 8 s, o si la senal `crons` del /health no es "ok" en dos
+# sondeos seguidos: los crons de Vercel no estan corriendo). Si falla, el job queda en rojo (GitHub avisa por
 # correo de workflows fallidos a quien tenga esas notificaciones activas) y deja el motivo en el resumen del job.
 #
 # Configuracion (variables del repositorio, NO secretos: Settings > Secrets and variables > Actions > Variables):
-# - PROD_BASE_URL            https://<tu-dominio-de-produccion>. Sin ella el job no hace nada (sale en verde con
-#                            un aviso en el resumen), para no dar falsos rojos en forks ni antes de configurarlo.
+# - PROD_BASE_URL            https://<tu-dominio-de-produccion>. Sin ella el job no sondea nada: sale en verde (para no dar
+#                            falsos rojos en forks ni antes de configurarlo) pero deja un ::warning:: visible en la corrida y
+#                            en el resumen, nunca un verde silencioso.
 # - PROD_HEALTH_OPEN_ISSUE   "true" para que, ademas, abra (o comente en) un issue "Salud de produccion" mientras
 #                            dure la caida y lo cierre al recuperarse. Apagado por defecto: un issue en un repo
 #                            publico anuncia la caida a cualquiera.
@@ -66,7 +68,8 @@ jobs:
         run: |
           set -uo pipefail
           if [ -z "${PROD_BASE_URL:-}" ]; then
-            echo "PROD_BASE_URL no esta configurada: no se sondea nada." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "::warning title=Sondeo de salud omitido::PROD_BASE_URL no esta configurada: no se sondea /health ni los crons de produccion. Define la variable de repo PROD_BASE_URL (Settings > Secrets and variables > Actions > Variables)."
+            echo "PROD_BASE_URL no esta configurada: no se sondea nada (ni /health ni los crons)." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "resultado=omitido" >> "$GITHUB_OUTPUT"
             exit 0
           fi
