@@ -30,6 +30,8 @@ export type EstadoCopilotoSuperadmin =
       readonly propone: boolean;
       /** El servidor ofrece el tablero de fijados (superadmin completo; `finanzas` no). */
       readonly fijados: boolean;
+      /** El servidor ofrece "Adjuntar archivo" (superadmin completo; `finanzas` no). */
+      readonly adjuntos: boolean;
       readonly stepUpRequerido: boolean;
     }
   | { readonly tipo: "sin_acceso" }
@@ -65,6 +67,7 @@ export async function consultarEstadoSuperadmin(apiBaseUrl: string, token: strin
       usoMensualPct: typeof gasto === "number" && Number.isFinite(gasto) ? Math.min(100, Math.max(0, gasto)) : null,
       propone: acciones === true,
       fijados: json["fijados"] === true,
+      adjuntos: json["adjuntos"] === true,
       stepUpRequerido: json["stepUpRequerido"] === true,
     };
   } catch {
@@ -74,9 +77,9 @@ export async function consultarEstadoSuperadmin(apiBaseUrl: string, token: strin
 
 /** Transporte del chat de plataforma: el generico, con step-up automatico (una consulta financiera sin MFA reciente abre el dialogo y se reintenta). "Fijar" solo se ofrece
  *  cuando el servidor lo declara (`fijados` del estado: superadmin completo); sin eso el boton no se pinta (nunca un boton que responde 403). */
-export function crearTransporteSuperadmin(apiBaseUrl: string, token: string, fetchImpl?: typeof fetch, conFijados = false): CopilotoTransporteVertical {
+export function crearTransporteSuperadmin(apiBaseUrl: string, token: string, fetchImpl?: typeof fetch, opciones: { readonly fijados?: boolean; readonly adjuntos?: boolean } = {}): CopilotoTransporteVertical {
   const conStepUp: typeof fetch = (input, init) => fetchConStepUp(apiBaseUrl, token, String(input), init ?? {});
-  return crearTransporteCopiloto({ baseUrl: `${base(apiBaseUrl)}${RUTA_COPILOTO}`, fetchImpl: fetchImpl ?? conStepUp, token, fijados: conFijados });
+  return crearTransporteCopiloto({ baseUrl: `${base(apiBaseUrl)}${RUTA_COPILOTO}`, fetchImpl: fetchImpl ?? conStepUp, token, fijados: opciones.fijados === true, adjuntos: opciones.adjuntos === true });
 }
 
 /** Cliente del tablero de fijados de plataforma (`/superadmin/copiloto/pins`): re-ejecuta cada fijado con el step-up de ahora (una consulta financiera sin MFA reciente abre el dialogo y se reintenta). */
