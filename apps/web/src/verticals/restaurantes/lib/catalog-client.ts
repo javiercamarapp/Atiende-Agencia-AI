@@ -14,6 +14,8 @@ export interface BranchProductState {
   readonly productId: string;
   readonly price: number;
   readonly isAvailable: boolean;
+  /** Autopiloto «agotado solo por hoy»: día (YYYY-MM-DD) en que vuelve a la venta solo. `null`/ausente = sin reposición programada. */
+  readonly agotadoHasta?: string | null;
 }
 
 export interface Product {
@@ -47,7 +49,7 @@ export async function updateCategory(
   token: string,
   propertyId: string,
   categoryId: string,
-  patch: { name?: string; slug?: string },
+  patch: { name?: string; slug?: string; displayOrder?: number },
 ): Promise<Category> {
   const body = await sendJson<{ category: Category }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/categories/${categoryId}`, token, "PATCH", patch);
   return body.category;
@@ -63,6 +65,7 @@ export interface NewProductInput {
   readonly price: number;
   readonly categoryId?: string | null;
   readonly description?: string | null;
+  readonly searchKeywords?: readonly string[];
 }
 
 export async function createProduct(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: NewProductInput): Promise<Product> {
@@ -76,7 +79,7 @@ export async function updateProduct(
   token: string,
   propertyId: string,
   productId: string,
-  patch: { name?: string; price?: number; categoryId?: string | null; description?: string | null; isPopular?: boolean },
+  patch: { name?: string; price?: number; categoryId?: string | null; description?: string | null; isPopular?: boolean; searchKeywords?: readonly string[] },
 ): Promise<Product> {
   const body = await sendJson<{ product: Product }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/products/${productId}`, token, "PATCH", patch);
   return body.product;

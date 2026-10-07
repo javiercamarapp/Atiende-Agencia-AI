@@ -99,13 +99,13 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000041
 do $do$
 declare r record; n_rows int := 0; tot numeric := 0; ords bigint := 0; b text;
 begin
-  for r in execute $q$select to_char(date_trunc($7::text, o.created_at at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
+  for r in execute $q$select to_char(date_trunc($7::text, coalesce(o.promovido_at, o.created_at) at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
     coalesce(sum(o.total), 0) as revenue, count(*) as orders
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by 1 order by 1 limit $6$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 'America/Merida'::text, 51::int, 'day'::text loop
     n_rows := n_rows + 1;
     b := r.bucket; tot := tot + r.revenue; ords := ords + r.orders;
@@ -120,13 +120,13 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000042
 do $do$
 declare r record; n_rows int := 0; tot numeric := 0; ords bigint := 0;
 begin
-  for r in execute $q$select to_char(date_trunc($7::text, o.created_at at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
+  for r in execute $q$select to_char(date_trunc($7::text, coalesce(o.promovido_at, o.created_at) at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
     coalesce(sum(o.total), 0) as revenue, count(*) as orders
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by 1 order by 1 limit $6$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, array['00000000-0000-0000-0000-00000000e001'::uuid]::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 'America/Merida'::text, 51::int, 'day'::text loop
     n_rows := n_rows + 1;
     tot := tot + r.revenue; ords := ords + r.orders;
@@ -141,13 +141,13 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000042
 do $do$
 declare r record; n_rows int := 0; tot numeric := 0; ords bigint := 0;
 begin
-  for r in execute $q$select to_char(date_trunc($7::text, o.created_at at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
+  for r in execute $q$select to_char(date_trunc($7::text, coalesce(o.promovido_at, o.created_at) at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
     coalesce(sum(o.total), 0) as revenue, count(*) as orders
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by 1 order by 1 limit $6$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 'America/Merida'::text, 51::int, 'day'::text loop
     n_rows := n_rows + 1;
     tot := tot + r.revenue; ords := ords + r.orders;
@@ -162,13 +162,13 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000042
 do $do$
 declare r record; n_rows int := 0;
 begin
-  for r in execute $q$select to_char(date_trunc($7::text, o.created_at at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
+  for r in execute $q$select to_char(date_trunc($7::text, coalesce(o.promovido_at, o.created_at) at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
     coalesce(sum(o.total), 0) as revenue, count(*) as orders
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by 1 order by 1 limit $6$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, array['00000000-0000-0000-0000-00000000e002'::uuid]::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 'America/Merida'::text, 51::int, 'day'::text loop
     n_rows := n_rows + 1;
     null;
@@ -183,13 +183,13 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000043
 do $do$
 declare r record; n_rows int := 0;
 begin
-  for r in execute $q$select to_char(date_trunc($7::text, o.created_at at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
+  for r in execute $q$select to_char(date_trunc($7::text, coalesce(o.promovido_at, o.created_at) at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
     coalesce(sum(o.total), 0) as revenue, count(*) as orders
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by 1 order by 1 limit $6$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 'America/Merida'::text, 51::int, 'day'::text loop
     n_rows := n_rows + 1;
     null;
@@ -204,7 +204,7 @@ begin
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by p.id, p.name order by revenue desc, p.name limit $5$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 51::int loop
     n_rows := n_rows + 1;
     null;
@@ -222,7 +222,7 @@ begin
   cross join lateral jsonb_array_elements(case when jsonb_typeof(o.items) = 'array' then o.items else '[]'::jsonb end) as it
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
     and (it->>'quantity') ~ '^[0-9]+(\.[0-9]+)?$' and (it->>'price') ~ '^[0-9]+(\.[0-9]+)?$' and (it->>'name') is not null
   group by 1 order by quantity desc, 1 limit $5$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 51::int loop
     n_rows := n_rows + 1;
@@ -238,7 +238,7 @@ begin
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by o.source order by orders desc, o.source limit $5$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 51::int loop
     n_rows := n_rows + 1;
     null;
@@ -248,13 +248,13 @@ end $do$;
 do $do$
 declare r record; n_rows int := 0;
 begin
-  for r in execute $q$select extract(hour from (o.created_at at time zone $5::text))::int as hour, count(*) as orders,
+  for r in execute $q$select extract(hour from (coalesce(o.promovido_at, o.created_at) at time zone $5::text))::int as hour, count(*) as orders,
     coalesce(sum(o.total), 0) as revenue
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by 1 order by orders desc, hour limit $6$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 'America/Merida'::text, 51::int loop
     n_rows := n_rows + 1;
     null;
@@ -264,14 +264,14 @@ end $do$;
 do $do$
 declare r record; n_rows int := 0; tot bigint := 0;
 begin
-  for r in execute $q$select count(*) filter (where o.status not in ('cancelado', 'no_recogido', 'programado')) as orders,
-    coalesce(sum(o.total) filter (where o.status not in ('cancelado', 'no_recogido', 'programado')), 0) as revenue,
+  for r in execute $q$select count(*) filter (where o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')) as orders,
+    coalesce(sum(o.total) filter (where o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')), 0) as revenue,
     count(*) filter (where o.status = 'cancelado') as cancelled
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4
   limit $5$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 51::int loop
     n_rows := n_rows + 1;
     tot := r.orders + r.cancelled;
@@ -287,14 +287,14 @@ begin
     join core.property p on p.id = o.property_id
     where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
     group by 1
   ), before_period as (
     select distinct coalesce(o.customer_id::text, o.customer_phone) as ckey
     from restaurantes.orders o
     join core.property p on p.id = o.property_id
     where o.organization_id = $1 and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-      and o.created_at < $3 and o.status not in ('cancelado', 'no_recogido', 'programado')
+      and coalesce(o.promovido_at, o.created_at) < $3 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   )
   select count(*) as customers,
     count(*) filter (where i.n >= 2 or b.ckey is not null) as recurring,
@@ -314,13 +314,13 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000041
 do $do$
 declare r record; n_rows int := 0;
 begin
-  for r in execute $q$select to_char(date_trunc($7::text, o.created_at at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
+  for r in execute $q$select to_char(date_trunc($7::text, coalesce(o.promovido_at, o.created_at) at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
     coalesce(sum(o.total), 0) as revenue, count(*) as orders
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by 1 order by 1 limit $6$q$ using '00000000-0000-0000-0000-00000000d002'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 'America/Merida'::text, 51::int, 'day'::text loop
     n_rows := n_rows + 1;
     null;
@@ -338,7 +338,7 @@ begin
   cross join lateral jsonb_array_elements(case when jsonb_typeof(o.items) = 'array' then o.items else '[]'::jsonb end) as it
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
     and (it->>'quantity') ~ '^[0-9]+(\.[0-9]+)?$' and (it->>'price') ~ '^[0-9]+(\.[0-9]+)?$' and (it->>'name') is not null
   group by 1 order by revenue desc, 1 limit $5$q$ using '00000000-0000-0000-0000-00000000d002'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 51::int loop
     n_rows := n_rows + 1;
@@ -354,13 +354,13 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000043
 do $do$
 declare r record; n_rows int := 0; tot numeric := 0;
 begin
-  for r in execute $q$select to_char(date_trunc($7::text, o.created_at at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
+  for r in execute $q$select to_char(date_trunc($7::text, coalesce(o.promovido_at, o.created_at) at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
     coalesce(sum(o.total), 0) as revenue, count(*) as orders
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by 1 order by 1 limit $6$q$ using '00000000-0000-0000-0000-00000000d002'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 'America/Merida'::text, 51::int, 'day'::text loop
     n_rows := n_rows + 1;
     tot := tot + r.revenue;
@@ -431,7 +431,7 @@ begin
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by p.id, p.name order by revenue desc, p.name limit $5$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 51::int loop
     n_rows := n_rows + 1;
     nombres := nombres || r.branch || ':' || r.revenue::text || ';';
@@ -454,7 +454,7 @@ begin
   cross join lateral jsonb_array_elements(case when jsonb_typeof(o.items) = 'array' then o.items else '[]'::jsonb end) as it
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
     and (it->>'quantity') ~ '^[0-9]+(\.[0-9]+)?$' and (it->>'price') ~ '^[0-9]+(\.[0-9]+)?$' and (it->>'name') is not null
   group by 1 order by quantity desc, 1 limit $5$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 51::int loop
     n_rows := n_rows + 1;
@@ -473,7 +473,7 @@ begin
   cross join lateral jsonb_array_elements(case when jsonb_typeof(o.items) = 'array' then o.items else '[]'::jsonb end) as it
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
     and (it->>'quantity') ~ '^[0-9]+(\.[0-9]+)?$' and (it->>'price') ~ '^[0-9]+(\.[0-9]+)?$' and (it->>'name') is not null
   group by 1 order by revenue desc, 1 limit $5$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 51::int loop
     n_rows := n_rows + 1;
@@ -489,14 +489,14 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000041
 do $do$
 declare r record; n_rows int := 0; o bigint; v numeric; c bigint;
 begin
-  for r in execute $q$select count(*) filter (where o.status not in ('cancelado', 'no_recogido', 'programado')) as orders,
-    coalesce(sum(o.total) filter (where o.status not in ('cancelado', 'no_recogido', 'programado')), 0) as revenue,
+  for r in execute $q$select count(*) filter (where o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')) as orders,
+    coalesce(sum(o.total) filter (where o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')), 0) as revenue,
     count(*) filter (where o.status = 'cancelado') as cancelled
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4
   limit $5$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 51::int loop
     n_rows := n_rows + 1;
     o := r.orders; v := r.revenue; c := r.cancelled;
@@ -510,14 +510,14 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000042
 do $do$
 declare r record; n_rows int := 0; o bigint; v numeric; c bigint;
 begin
-  for r in execute $q$select count(*) filter (where o.status not in ('cancelado', 'no_recogido', 'programado')) as orders,
-    coalesce(sum(o.total) filter (where o.status not in ('cancelado', 'no_recogido', 'programado')), 0) as revenue,
+  for r in execute $q$select count(*) filter (where o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')) as orders,
+    coalesce(sum(o.total) filter (where o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')), 0) as revenue,
     count(*) filter (where o.status = 'cancelado') as cancelled
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4
   limit $5$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 51::int loop
     n_rows := n_rows + 1;
     o := r.orders; v := r.revenue; c := r.cancelled;
@@ -537,7 +537,7 @@ begin
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by o.source order by orders desc, o.source limit $5$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 51::int loop
     n_rows := n_rows + 1;
     s := s || r.channel || ':' || r.orders::text || ':' || r.revenue::text || ';';
@@ -552,13 +552,13 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000041
 do $do$
 declare r record; n_rows int := 0; s text := '';
 begin
-  for r in execute $q$select extract(hour from (o.created_at at time zone $5::text))::int as hour, count(*) as orders,
+  for r in execute $q$select extract(hour from (coalesce(o.promovido_at, o.created_at) at time zone $5::text))::int as hour, count(*) as orders,
     coalesce(sum(o.total), 0) as revenue
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
   where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by 1 order by orders desc, hour limit $6$q$ using '00000000-0000-0000-0000-00000000d001'::uuid, null::uuid[], '2026-09-29T06:00:00Z'::timestamptz, '2026-09-30T06:00:00Z'::timestamptz, 'America/Merida'::text, 51::int loop
     n_rows := n_rows + 1;
     s := s || r.hour::text || ',';
@@ -579,14 +579,14 @@ begin
     join core.property p on p.id = o.property_id
     where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
     group by 1
   ), before_period as (
     select distinct coalesce(o.customer_id::text, o.customer_phone) as ckey
     from restaurantes.orders o
     join core.property p on p.id = o.property_id
     where o.organization_id = $1 and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-      and o.created_at < $3 and o.status not in ('cancelado', 'no_recogido', 'programado')
+      and coalesce(o.promovido_at, o.created_at) < $3 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   )
   select count(*) as customers,
     count(*) filter (where i.n >= 2 or b.ckey is not null) as recurring,
@@ -611,14 +611,14 @@ begin
     join core.property p on p.id = o.property_id
     where o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4 and o.status not in ('cancelado', 'no_recogido', 'programado')
+    and coalesce(o.promovido_at, o.created_at) >= $3 and coalesce(o.promovido_at, o.created_at) < $4 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
     group by 1
   ), before_period as (
     select distinct coalesce(o.customer_id::text, o.customer_phone) as ckey
     from restaurantes.orders o
     join core.property p on p.id = o.property_id
     where o.organization_id = $1 and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-      and o.created_at < $3 and o.status not in ('cancelado', 'no_recogido', 'programado')
+      and coalesce(o.promovido_at, o.created_at) < $3 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   )
   select count(*) as customers,
     count(*) filter (where i.n >= 2 or b.ckey is not null) as recurring,
