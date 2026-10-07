@@ -306,7 +306,7 @@ export const rutasHotelesConfiguracion: readonly Ruta[] = [
       if (!["owner", "gm", "frontdesk", "reservations", "housekeeping", "maintenance", "fnb", "accountant"].includes(String(b.verticalRole))) return fallo(400, "verticalRole inválido");
       const inv = { id: `inv-${c.invitaciones.length + 1}`, email: b.email.toLowerCase(), verticalRole: String(b.verticalRole), propertyIds: null, status: "pending", expiresAt: "2026-12-31T00:00:00.000Z", createdAt: new Date().toISOString() };
       c.invitaciones.push(inv);
-      return conStatus(201, { ...inv, inviteToken: "TOKEN-E2E-SOLO-SE-MUESTRA-UNA-VEZ" });
+      return conStatus(201, { ...inv, inviteToken: "token-de-ejemplo" });
     } },
   { metodo: "DELETE", patron: "/v1/hoteles/:id/admin/staff/invitaciones/:iid", roles: ROLES_ADMIN_HOTEL, manejador: (p) => {
       const inv = configHotel(p).invitaciones.find((i) => i.id === p.params.iid && i.status === "pending");

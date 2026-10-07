@@ -20,7 +20,7 @@ test.describe("hoteles configuracion y equipo @humo", () => {
     await page.getByLabel("Correo").fill("Recepcion.Nueva@hotel.test");
     await page.getByLabel("Rol").selectOption("frontdesk");
     await page.getByRole("button", { name: "Invitar" }).click();
-    await expect(page.getByText("TOKEN-E2E-SOLO-SE-MUESTRA-UNA-VEZ")).toBeVisible();
+    await expect(page.getByText("token-de-ejemplo")).toBeVisible();
     await expect(page.getByText("recepcion.nueva@hotel.test").first()).toBeVisible();
     const invitaciones = await mock.buscar({ metodo: "POST", ruta: "/admin/staff/invitaciones" });
     expect(invitaciones).toHaveLength(1);
