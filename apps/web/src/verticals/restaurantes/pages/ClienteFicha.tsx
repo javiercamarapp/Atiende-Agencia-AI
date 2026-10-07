@@ -3,7 +3,7 @@
 // `GET .../admin/customers/:id/ficha` y cada control escribe por su endpoint (rol, organizacion y bitacora en el servidor).
 // Contra una base sin la migracion 049 la ficha completa responde 503 "no disponible aun": se muestra ese estado honesto
 // y la ficha basica de siempre (nivel, direcciones, lo que mas pide), nunca datos inventados.
-import { useCallback, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -77,9 +77,18 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role,
   const [noDisponible, setNoDisponible] = useState(false);
   const [aviso, setAviso] = useState<{ tono: "success" | "danger"; texto: string } | null>(null);
   const [recarga, setRecarga] = useState(0);
+  // QA-restaurantes-R2-botones-08: una sola escritura de la ficha a la vez (candado en ref contra el doble clic + estado para deshabilitar los botones).
+  const [ocupado, setOcupado] = useState(false);
+  const enCursoRef = useRef(false);
   const puedeAdministrar = role === "owner" || role === "admin";
 
   const recargar = useCallback(() => setRecarga((n) => n + 1), []);
+  // QA-restaurantes-R2-botones-05: la falla de carga ofrece Reintentar (limpia el error y vuelve a pedir la ficha).
+  const reintentarCarga = useCallback(() => {
+    setError(null);
+    setNoDisponible(false);
+    setRecarga((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     let cancelado = false;
@@ -112,14 +121,25 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role,
   }, [apiBaseUrl, token, propertyId, customerId, recarga]);
 
   const ejecutar = useCallback(
-    async (tarea: () => Promise<unknown>, exito: string) => {
+    async (tarea: () => Promise<unknown>, exito: string, alFallar?: (mensaje: string) => void): Promise<boolean> => {
+      if (enCursoRef.current) return false;
+      enCursoRef.current = true;
+      setOcupado(true);
       setAviso(null);
       try {
         await tarea();
         setAviso({ tono: "success", texto: exito });
         recargar();
+        return true;
       } catch (err) {
-        setAviso({ tono: "danger", texto: mensajeDeError(err, "No se pudo guardar el cambio.") });
+        const mensaje = mensajeDeError(err, "No se pudo guardar el cambio.");
+        // Con `alFallar` el error se muestra junto al formulario que lo origino (no arriba de la pagina).
+        if (alFallar) alFallar(mensaje);
+        else setAviso({ tono: "danger", texto: mensaje });
+        return false;
+      } finally {
+        enCursoRef.current = false;
+        setOcupado(false);
       }
     },
     [recargar],
@@ -134,7 +154,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role,
         </Link>
       </Button>
 
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={reintentarCarga} />}
       {!ficha && !basica && !error && <EstadoCargando etiqueta="Cargando cliente…" />}
       {noDisponible && <Callout tone="warning">{MENSAJE_NO_DISPONIBLE}</Callout>}
       {aviso && (
@@ -145,19 +165,23 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role,
 
       {noDisponible && basica && <FichaBasica detalle={basica} />}
       {ficha && (
-        <FichaCompleta
-          ficha={ficha}
-          puedeAdministrar={puedeAdministrar}
-          ejecutar={ejecutar}
-          api={{ apiBaseUrl, token, propertyId, customerId }}
-        />
+        <OcupadoContext.Provider value={ocupado}>
+          <FichaCompleta
+            ficha={ficha}
+            puedeAdministrar={puedeAdministrar}
+            ejecutar={ejecutar}
+            api={{ apiBaseUrl, token, propertyId, customerId }}
+          />
+        </OcupadoContext.Provider>
       )}
     </PageContainer>
   );
 }
 
 type Api = { readonly apiBaseUrl: string; readonly token: string; readonly propertyId: string; readonly customerId: string };
-type Ejecutar = (tarea: () => Promise<unknown>, exito: string) => Promise<void>;
+type Ejecutar = (tarea: () => Promise<unknown>, exito: string, alFallar?: (mensaje: string) => void) => Promise<boolean>;
+/** true mientras una escritura de la ficha esta en curso: los botones que escriben se deshabilitan (anti doble clic). */
+const OcupadoContext = createContext(false);
 
 /** Ficha de siempre (nivel, direcciones, lo que mas pide): es la que se muestra mientras la migracion 049 no esta aplicada. */
 function FichaBasica({ detalle }: { readonly detalle: CustomerDetail }) {
@@ -292,6 +316,7 @@ function PerfilForm({ ficha, ejecutar, api }: { readonly ficha: FichaCliente; re
   const [notas, setNotas] = useState(c.staffNotes ?? "");
   const [dia, setDia] = useState(c.fechaNacimientoDia === null ? "" : String(c.fechaNacimientoDia));
   const [mes, setMes] = useState(c.fechaNacimientoMes === null ? "" : String(c.fechaNacimientoMes));
+  const ocupado = useContext(OcupadoContext);
 
   const guardar = (e: FormEvent) => {
     e.preventDefault();
@@ -331,7 +356,7 @@ function PerfilForm({ ficha, ejecutar, api }: { readonly ficha: FichaCliente; re
         <FormField label="Notas del restaurante" hint="Solo las ve el personal; no las lee el agente.">
           <Textarea value={notas} maxLength={1000} rows={3} onChange={(e) => setNotas(e.target.value)} />
         </FormField>
-        <Button type="submit" size="sm" className="self-start">
+        <Button type="submit" size="sm" className="self-start" disabled={ocupado}>
           Guardar datos
         </Button>
       </form>
@@ -345,15 +370,20 @@ function Domicilios({ domicilios, ejecutar, api, confirmar }: { readonly domicil
   const [editando, setEditando] = useState<string | "nuevo" | null>(null);
   const actual = domicilios.find((d) => d.id === editando) ?? null;
   const [form, setForm] = useState({ address: "", label: "", access: "", maps: "", colonia: "" });
+  const [errorForm, setErrorForm] = useState<string | null>(null);
+  const ocupado = useContext(OcupadoContext);
 
   const abrir = (id: string | "nuevo", d: DomicilioFicha | null) => {
+    setErrorForm(null);
     setForm({ address: d?.address ?? "", label: d?.label ?? "", access: d?.accessNotes ?? "", maps: d?.mapsUrl ?? "", colonia: d?.colonia ?? "" });
     setEditando(id);
   };
 
   const guardar = async (e: FormEvent) => {
     e.preventDefault();
-    await ejecutar(
+    setErrorForm(null);
+    // QA-restaurantes-R2-botones-04: el formulario solo se cierra si se guardo; si falla queda abierto con lo tecleado y el error a su lado.
+    const guardado = await ejecutar(
       () =>
         guardarDomicilio(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, editando === "nuevo" ? null : editando, {
           address: form.address,
@@ -363,8 +393,9 @@ function Domicilios({ domicilios, ejecutar, api, confirmar }: { readonly domicil
           colonia: form.colonia.trim() === "" ? null : form.colonia.trim(),
         }),
       "Domicilio guardado.",
+      setErrorForm,
     );
-    setEditando(null);
+    if (guardado) setEditando(null);
   };
 
   return (
@@ -399,7 +430,7 @@ function Domicilios({ domicilios, ejecutar, api, confirmar }: { readonly domicil
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {!d.isDefault && (
-                <Button size="sm" variant="outline" onClick={() => ejecutar(() => guardarDomicilio(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, d.id, { is_default: true }), "Domicilio principal actualizado.")}>
+                <Button size="sm" variant="outline" disabled={ocupado} onClick={() => ejecutar(() => guardarDomicilio(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, d.id, { is_default: true }), "Domicilio principal actualizado.")}>
                   Hacer principal
                 </Button>
               )}
@@ -409,6 +440,7 @@ function Domicilios({ domicilios, ejecutar, api, confirmar }: { readonly domicil
               <Button
                 size="sm"
                 variant="outline"
+                disabled={ocupado}
                 onClick={async () => {
                   if (await confirmar({ titulo: "Eliminar este domicilio", descripcion: "El cliente podrá volver a darlo en su próximo pedido.", tono: "danger", confirmar: "Eliminar" })) {
                     await ejecutar(() => borrarDomicilio(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, d.id), "Domicilio eliminado.");
@@ -441,13 +473,18 @@ function Domicilios({ domicilios, ejecutar, api, confirmar }: { readonly domicil
             <Input value={form.maps} maxLength={500} onChange={(e) => setForm({ ...form, maps: e.target.value })} />
           </FormField>
           <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={form.address.trim() === "" && actual === null}>
+            <Button type="submit" size="sm" disabled={ocupado || (form.address.trim() === "" && actual === null)}>
               Guardar domicilio
             </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setEditando(null)}>
+            <Button type="button" size="sm" variant="ghost" disabled={ocupado} onClick={() => setEditando(null)}>
               Cancelar
             </Button>
           </div>
+          {errorForm && (
+            <p role="alert" className="m-0 text-ui text-destructive">
+              {errorForm}
+            </p>
+          )}
         </form>
       )}
     </Seccion>
@@ -457,10 +494,12 @@ function Domicilios({ domicilios, ejecutar, api, confirmar }: { readonly domicil
 function Gustos({ gustos, ejecutar, api, confirmar }: { readonly gustos: readonly GustoFicha[]; readonly ejecutar: Ejecutar; readonly api: Api; readonly confirmar: Confirmar }) {
   const [kind, setKind] = useState<TipoGusto>("tortilla");
   const [value, setValue] = useState("");
+  const ocupado = useContext(OcupadoContext);
   const agregar = async (e: FormEvent) => {
     e.preventDefault();
-    await ejecutar(() => accionGusto(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, { accion: "agregar", kind, value: value.trim() }), "Gusto agregado.");
-    setValue("");
+    // Solo se limpia el campo si el gusto se guardo: ante una falla se conserva lo tecleado para reintentar.
+    const ok = await ejecutar(() => accionGusto(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, { accion: "agregar", kind, value: value.trim() }), "Gusto agregado.");
+    if (ok) setValue("");
   };
   return (
     <Seccion titulo="Gustos">
@@ -480,6 +519,7 @@ function Gustos({ gustos, ejecutar, api, confirmar }: { readonly gustos: readonl
                 <Button
                   size="sm"
                   variant="outline"
+                  disabled={ocupado}
                   onClick={() => ejecutar(() => accionGusto(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, { accion: g.status === "activa" ? "descartar" : "reactivar", prefId: g.id }), g.status === "activa" ? "Gusto descartado." : "Gusto reactivado.")}
                 >
                   {g.status === "activa" ? "Descartar" : "Reactivar"}
@@ -487,6 +527,7 @@ function Gustos({ gustos, ejecutar, api, confirmar }: { readonly gustos: readonl
                 <Button
                   size="sm"
                   variant="ghost"
+                  disabled={ocupado}
                   onClick={async () => {
                     if (await confirmar({ titulo: "Eliminar este gusto", tono: "danger", confirmar: "Eliminar" })) {
                       await ejecutar(() => accionGusto(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, { accion: "eliminar", prefId: g.id }), "Gusto eliminado.");
@@ -513,7 +554,7 @@ function Gustos({ gustos, ejecutar, api, confirmar }: { readonly gustos: readonl
         <FormField label="Valor">
           <Input value={value} maxLength={120} onChange={(e) => setValue(e.target.value)} />
         </FormField>
-        <Button type="submit" size="sm" disabled={value.trim() === ""}>
+        <Button type="submit" size="sm" disabled={ocupado || value.trim() === ""}>
           Agregar
         </Button>
       </form>
@@ -522,6 +563,7 @@ function Gustos({ gustos, ejecutar, api, confirmar }: { readonly gustos: readonl
 }
 
 function Pedidos({ pedidos, ejecutar, api }: { readonly pedidos: FichaCliente["orders"]; readonly ejecutar: Ejecutar; readonly api: Api }) {
+  const ocupado = useContext(OcupadoContext);
   return (
     <Seccion titulo="Historial de pedidos">
       {pedidos.length === 0 ? (
@@ -544,6 +586,7 @@ function Pedidos({ pedidos, ejecutar, api }: { readonly pedidos: FichaCliente["o
                 size="sm"
                 variant="outline"
                 className="mt-2"
+                disabled={ocupado}
                 onClick={() => ejecutar(() => marcarPedidoFalso(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, p.id, !p.pedidoFalso), p.pedidoFalso ? "Se quitó la marca de pedido falso." : "Pedido marcado como falso.")}
               >
                 {p.pedidoFalso ? "Quitar marca de falso" : "Marcar como falso"}
@@ -620,6 +663,7 @@ function Politica({ puedeAdministrar, api }: { readonly puedeAdministrar: boolea
 }
 
 function Arco({ api, ejecutar, confirmar }: { readonly api: Api; readonly ejecutar: Ejecutar; readonly confirmar: Confirmar }) {
+  const ocupado = useContext(OcupadoContext);
   const exportar = () =>
     ejecutar(async () => {
       const datos = await exportarDatosCliente(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId);
@@ -646,10 +690,10 @@ function Arco({ api, ejecutar, confirmar }: { readonly api: Api; readonly ejecut
     <Seccion titulo="Privacidad (ARCO)">
       <p className="m-0 mb-2 text-ui text-muted-foreground">Acceso: exporta todo lo que se guarda del titular, incluidos sus gustos. Cancelación: borra su memoria.</p>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" onClick={exportar}>
+        <Button size="sm" variant="outline" disabled={ocupado} onClick={exportar}>
           Exportar datos del cliente
         </Button>
-        <Button size="sm" variant="outline" onClick={borrar}>
+        <Button size="sm" variant="outline" disabled={ocupado} onClick={borrar}>
           Borrar memoria del cliente
         </Button>
       </div>
