@@ -16,6 +16,7 @@ import {
   CalendarCheck,
   ClipboardCheck,
   ClipboardList,
+  ClipboardPaste,
   History,
   Clock,
   LayoutDashboard,
@@ -26,6 +27,7 @@ import {
   Mic,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Store,
   Tag,
@@ -118,6 +120,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
       title: "Operación",
       items: [
         { to: `${base}/pedidos`, label: "Pedidos", icon: ClipboardList },
+        // Captura asistida de SoftRestaurant: la cola de comandas que alguien teclea en el POS (MANAGER_ROLES, igual que el servidor).
+        { to: `${base}/comandas-pos`, label: "Comandas al POS", icon: ClipboardPaste },
         // R-21: bandeja de conversaciones (WhatsApp y llamadas) con toma por una persona, y turnos de personal.
         { to: `${base}/conversaciones`, label: "Conversaciones", icon: MessageSquare },
         { to: `${base}/turnos`, label: "Turnos", icon: Clock },
@@ -152,6 +156,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
         { to: `${base}/agente-voz`, label: "Agente de voz", icon: Mic },
         // R-31: indicadores del agente de WhatsApp (conversaciones, conversión, handoff y costo LLM por día).
         { to: `${base}/agente-whatsapp`, label: "Agente de WhatsApp", icon: MessageCircle },
+        // Modelo, temperatura, voz, sonido de fondo y conocimiento automatico del agente (owner/admin).
+        { to: `${base}/agente-ajustes`, label: "Ajustes del agente", icon: SlidersHorizontal },
       ],
     });
     // FASE 3 (producto) — la bitácora de auditoría es de lectura SOLO owner/admin (mismo mandato que el servidor exige,

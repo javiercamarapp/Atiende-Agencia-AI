@@ -22,10 +22,14 @@
 // se protege de forma ESTRUCTURAL (idempotencyKey + dedupeFingerprint de 5
 // min en `createOrder`, ver orders.ts), no dependiendo de que el LLM relea su
 // propio historial de tool_calls.
+import { lineasCliente360 } from "../cliente-360/prompt.ts";
 import { randomUUID } from "node:crypto";
 import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@atiende/agent-core";
 import { vipNote } from "../customers.ts";
 import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
+import { subtipoQueja } from "../autopiloto/taxonomia.ts";
+import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from "./autopiloto-turno.ts";
+import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
@@ -123,6 +127,7 @@ export function customerContextBlock(customer: CustomerLookupResult): string {
   } else {
     lines.push("No tiene dirección guardada todavía — pídesela.");
   }
+  lines.push(...lineasCliente360(customer));
   if (customer.lastOrderItems && customer.lastOrderItems.length > 0) {
     const items = customer.lastOrderItems.map((i) => `${i.quantity}x ${sanitizeInlineText(i.name, 80)}`).join(", ");
     lines.push(`Su último pedido fue: ${items}.`);
@@ -417,6 +422,11 @@ export interface WhatsAppLlmAgentOptions {
    * web: `encolarComandaParaPedido`). Ausente = comportamiento anterior. La comanda va ANTES de cobrar
    * y el agente solo puede decir lo que devuelve esta funcion (nunca un folio inventado). */
   readonly encolarComanda?: (pedido: PedidoParaComanda) => Promise<ResultadoEncolarPedido>;
+  /** Ajustes del agente de la organizacion (modelo elegido y temperatura efectiva). Ausente o `null` = el modelo y la temperatura de siempre. Nunca debe
+   * lanzar: un fallo aqui no puede tumbar el turno (el llamador degrada a los valores de siempre). */
+  readonly leerAjustes?: (organizationId: string) => Promise<{ readonly modelo: string | null; readonly temperatura: number } | null>;
+  /** Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido. Ausente = comportamiento anterior. */
+  readonly autopiloto?: AutopilotoTurnoHooks;
   /** R-PM-15: sumidero de eventos estructurados por turno y por tool (sin texto del cliente ni telefono en
    * claro). Ausente = sin observabilidad; emitir nunca lanza ni retrasa el turno. */
   readonly observabilidad?: ObservabilidadTurno;
@@ -509,6 +519,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // (devuelven `null` = "no hay donde contar" y se usa la cuenta local del turno).
       const contar: typeof contarAgente = async (...a) => (preview ? null : contarAgente(...a));
       const modoCtx = preview ? { modo: "preview" as const, previewCustomerId: previewCustomerId ?? null } : {};
+      // Modelo y temperatura que eligio la organizacion (ajustes del agente). Si falla la lectura, el turno sigue con los de siempre.
+      const ajustes = options.leerAjustes ? await options.leerAjustes(organizationId).catch(() => null) : null;
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
       // El flujo de PM encadena mas llamadas por turno (cliente, zona, un producto por renglon, cotizar).
       const maxToolUseTurns = options.maxToolUseTurns ?? (perfil === "taqueria_pm" ? 8 : 4);
@@ -579,11 +591,19 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const riesgo = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), contextoDeCliente(customer));
       if (riesgo) {
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
+        // Autopiloto: con la bandera de la organizacion encendida, una cancelacion con pedido activo se resuelve con una solicitud de aprobacion (o la
+        // cancelacion automatica que la sucursal haya permitido); si no aplica, `null` y todo sigue por el camino de siempre.
+        if (riesgo.motivo === "cancelacion_modificacion" && options.autopiloto) {
+          const resuelta = await intentarCancelacionConAutopiloto(repo, options.autopiloto, { organizationId, phone, ahora: now(), texto: riesgo.text });
+          if (resuelta) return { reply: resuelta.reply, orderId: null, propertyId };
+        }
+        // El subtipo de la queja viaja en el resumen del aviso al equipo (lista cerrada).
+        const subtipoDeQueja = riesgo.motivo === "queja" && options.autopiloto ? subtipoQueja(riesgo.text) : null;
         const aviso = await executeAgentToolSafely(
           repo,
           { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
           "escalar_a_humano",
-          { customer_name: nombre, motivo: riesgo.motivo, resumen: riesgo.text.slice(0, 500) },
+          { customer_name: nombre, motivo: riesgo.motivo, resumen: `${subtipoDeQueja ? `[queja:${subtipoDeQueja}] ` : ""}${riesgo.text}`.slice(0, 500) },
         );
         // Honestidad: solo se dice "ya avisé al equipo" si el aviso quedó registrado de verdad.
         if (isToolErrorResult(aviso.result)) {
@@ -593,6 +613,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         // El aviso al equipo ya quedo registrado arriba; `escalacion` solo abre la toma de handoff (R-21),
         // igual que cuando el modelo llama a escalar_a_humano, sin duplicar el aviso.
         escalarMotivo = riesgo.motivo;
+        // Autopiloto: la queja queda ligada al ultimo pedido del telefono (solicitud de compensacion, decide una persona); no cambia la respuesta.
+        if (riesgo.motivo === "queja" && options.autopiloto) {
+          await registrarQuejaConAutopiloto(repo, options.autopiloto, { organizationId, phone, texto: riesgo.text, ahora: now() });
+        }
         tele.resultado = "escalado_alto_riesgo";
         tele.motivoEscalacion = riesgo.motivo;
         return done({ reply: riesgo.reply, orderId: null, propertyId });
@@ -641,7 +665,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             runId: randomUUID(),
             lane: "interactive",
             role,
-            request: { system: systemPrompt, messages: working, tools: [...TOOLS], temperature: 0 },
+            // El modelo elegido solo aplica al rol por defecto: el reintento tras un fallo real de `crear_pedido` (rol escalado) sigue siendo el de la plataforma.
+            ...(ajustes?.modelo && role === options.defaultRole ? { preferredModel: ajustes.modelo } : {}),
+            request: { system: systemPrompt, messages: working, tools: [...TOOLS], temperature: ajustes && role === options.defaultRole ? ajustes.temperatura : 0 },
           });
         } catch {
           tele.resultado = "error_proveedor";

@@ -1,0 +1,23 @@
+{
+  "name": "@atiende/voice-worker",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "bundle": "node scripts/bundle.mjs",
+    "start": "node dist/main.mjs",
+    "dev": "npm run bundle && npm run start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@atiende/agent-core": "*",
+    "@atiende/domain-restaurantes": "*",
+    "@atiende/voice-core": "*",
+    "@livekit/rtc-node": "^1.1.0",
+    "livekit-server-sdk": "^2.19.1"
+  }
+}

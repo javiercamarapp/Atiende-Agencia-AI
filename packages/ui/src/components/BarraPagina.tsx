@@ -46,7 +46,7 @@ export function BarraPagina({ icon, title, fecha, notificationBell, chatButton, 
       <div className="flex items-center gap-2">
         {chatButton}
         {notificationBell}
-        <span className="inline-flex items-center gap-1.5 text-ui font-medium px-3 h-8 rounded-lg border border-border bg-card shrink-0 text-foreground">
+        <span data-testid="barra-pagina-fecha" className="inline-flex items-center gap-1.5 text-ui font-medium px-3 h-8 rounded-lg border border-border bg-card shrink-0 text-foreground">
           <CalendarDays aria-hidden="true" className="size-[15px] text-muted-foreground" strokeWidth={1.75} />
           {fecha}
         </span>
