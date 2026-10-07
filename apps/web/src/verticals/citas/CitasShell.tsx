@@ -172,17 +172,14 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
 
   // Selector real, visible solo cuando hay más de una sucursal (si no, solo el nombre). Se ofrece en el bloque
   // de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
-  const branchSelector =
+  // Un mismo nodo no puede ir dos veces con el mismo id: la cabecera móvil usa su propio id (y su etiqueta apunta a él).
+  const crearSelectorSucursal = (id: string) =>
     branches.length > 1 ? (
       <div>
-        <label htmlFor="citas-sucursal-activa" className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
+        <label htmlFor={id} className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
           Sucursal activa
         </label>
-        <NativeSelect
-          id="citas-sucursal-activa"
-          value={propertyId}
-          onChange={(e) => s.selectBranch(e.target.value)}
-        >
+        <NativeSelect id={id} value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
           {branches.map((b) => (
             <option key={b.propertyId} value={b.propertyId}>
               {b.name}
@@ -193,6 +190,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
     ) : (
       <p className="text-xs text-muted-foreground truncate">{activeBranch.name}</p>
     );
+  const branchSelector = crearSelectorSucursal("citas-sucursal-activa");
 
   return (
     <VerticalShellConectado
@@ -207,7 +205,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
       loggingOut={s.loggingOut}
       header={{ icon: <CalendarClock className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Citas · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/citas/${orgSlug}/resumen` }}
       branchSelector={branchSelector}
-      mobileSelector={branches.length > 1 ? branchSelector : null}
+      mobileSelector={branches.length > 1 ? crearSelectorSucursal("citas-sucursal-activa-movil") : null}
       contentKey={propertyId}
       chat={crearChatConexionCitas(apiBaseUrl, session.token, propertyId)}
       copilotoHref={`/citas/${orgSlug}/copiloto`}

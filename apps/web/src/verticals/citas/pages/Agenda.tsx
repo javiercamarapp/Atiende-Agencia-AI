@@ -25,7 +25,7 @@
 // cancela/marca no-show — el momento real en que un horario se libera y vale la
 // pena avisar a quien está esperando; reusa el MISMO `providerFilter` de la
 // agenda para no duplicar el selector de proveedor.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { OpcionesConfirmar } from "@atiende/ui";
 import { CalendarPlus, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Megaphone, RefreshCw, TriangleAlert, UserX, X } from "lucide-react";
@@ -60,6 +60,8 @@ import {
 import { CITA_STATUS_TONES } from "../lib/status-tones.ts";
 import { cancelAppointment, completeAppointment, confirmAppointment, createAppointment, fetchAppointments, markAppointmentNoShow, retryAppointmentCalendarSync } from "../lib/appointments-client.ts";
 import type { AppointmentSummary } from "../lib/appointments-client.ts";
+import { CitasAdminError } from "../lib/admin-client.ts";
+import type { AlternativeSlot } from "../lib/admin-client.ts";
 import { fetchProviders } from "../lib/providers-client.ts";
 import type { ProviderSummary } from "../lib/providers-client.ts";
 import { fetchServices } from "../lib/services-client.ts";
@@ -117,6 +119,13 @@ function shiftAnchor(anchor: Date, view: ViewMode, direction: 1 | -1): Date {
   return d;
 }
 
+/** ISO -> valor de <input type="datetime-local"> (hora local del navegador, el mismo criterio con que el formulario lo vuelve a leer). */
+function toDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function groupByDay(appointments: readonly AppointmentSummary[]): ReadonlyArray<[string, AppointmentSummary[]]> {
   const groups = new Map<string, AppointmentSummary[]>();
   for (const apt of appointments) {
@@ -158,6 +167,11 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   const [providers, setProviders] = useState<readonly ProviderSummary[] | null>(null);
   const [providerFilter, setProviderFilter] = useState<string>("");
   const [appointments, setAppointments] = useState<readonly AppointmentSummary[] | null>(null);
+  // Rango+filtro al que pertenece `appointments`: las tarjetas solo se pintan si coinciden con lo que se está viendo,
+  // así una carga fallida o lenta de otro rango nunca deja citas viejas bajo la etiqueta del rango nuevo.
+  const [appointmentsKey, setAppointmentsKey] = useState<string | null>(null);
+  // Generación de la última carga pedida: una respuesta de una generación anterior se descarta.
+  const loadGeneration = useRef(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Una sola acción de ciclo de vida en vuelo a la vez, por cita — mismo criterio
@@ -195,6 +209,8 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   const [newNotes, setNewNotes] = useState("");
   const [creatingAppointment, setCreatingAppointment] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  // Horarios alternativos reales que manda el servidor cuando el horario pedido choca (409).
+  const [alternativeSlots, setAlternativeSlots] = useState<readonly AlternativeSlot[]>([]);
 
   const range = useMemo(() => computeRange(anchor, view), [anchor, view]);
 
@@ -249,16 +265,23 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
     }
   }
 
+  const currentKey = `${range.fromIso}|${range.toIso}|${providerFilter}`;
+
   async function load() {
+    const generation = ++loadGeneration.current;
+    const key = currentKey;
     setLoading(true);
     setError(null);
     try {
       const result = await fetchAppointments(fetch, apiBaseUrl, token, propertyId, { fromIso: range.fromIso, toIso: range.toIso, providerId: providerFilter || undefined });
+      if (generation !== loadGeneration.current) return;
       setAppointments(result);
+      setAppointmentsKey(key);
     } catch (err) {
+      if (generation !== loadGeneration.current) return;
       setError(err instanceof Error ? err.message : "No se pudieron cargar las citas.");
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }
 
@@ -336,6 +359,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
     if (!newProviderId || !newServiceId || !newCustomerName.trim() || !newCustomerPhone.trim() || !newStartsAt) return;
     setCreatingAppointment(true);
     setCreateError(null);
+    setAlternativeSlots([]);
     try {
       await createAppointment(fetch, apiBaseUrl, token, propertyId, {
         providerId: newProviderId,
@@ -360,12 +384,14 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
       await load();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "No se pudo crear la cita.");
+      if (err instanceof CitasAdminError) setAlternativeSlots(err.alternativeSlots);
     } finally {
       setCreatingAppointment(false);
     }
   }
 
-  const groups = appointments ? groupByDay(appointments) : [];
+  const visibleAppointments = appointmentsKey === currentKey ? appointments : null;
+  const groups = visibleAppointments ? groupByDay(visibleAppointments) : [];
 
 
   return (
@@ -486,14 +512,37 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
               {createError}
             </p>
           )}
+          {alternativeSlots.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">Horarios libres que sugiere el sistema:</p>
+              <div className="flex flex-wrap gap-2">
+                {alternativeSlots.map((slot) => (
+                  <Button
+                    key={slot.startsAt}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setNewStartsAt(toDatetimeLocalValue(slot.startsAt));
+                      setCreateError(null);
+                      setAlternativeSlots([]);
+                    }}
+                  >
+                    <Clock aria-hidden />
+                    {formatDateLong(slot.startsAt)} · {formatTimeRange(slot.startsAt, slot.endsAt)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
         </form>
       </FormDialog>
 
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
-      {loading && !appointments && <EstadoCargando etiqueta="Cargando citas…" />}
+      {loading && !visibleAppointments && !error && <EstadoCargando etiqueta="Cargando citas…" />}
 
-      {appointments && appointments.length === 0 && !loading && <EstadoVacio icon={CalendarX2} mensaje="No hay citas en este rango." />}
+      {visibleAppointments && visibleAppointments.length === 0 && !loading && <EstadoVacio icon={CalendarX2} mensaje="No hay citas en este rango." />}
 
       {groups.map(([day, dayAppointments]) => (
         <section key={day} className="flex flex-col gap-2">

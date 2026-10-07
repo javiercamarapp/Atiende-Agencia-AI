@@ -18,6 +18,7 @@ export function EstadoVacio({
   mensaje,
   accion,
   compacto = false,
+  tituloH1 = false,
   className,
 }: {
   icon?: IconType;
@@ -26,6 +27,8 @@ export function EstadoVacio({
   accion?: React.ReactNode;
   /** Relleno p-3 en lugar de p-4, para vacíos dentro de una tarjeta o tabla. */
   compacto?: boolean;
+  /** El título es el único encabezado de nivel 1 de la pantalla (p. ej. un 404 dentro del shell): se pinta como `<h1>` con el mismo aspecto. */
+  tituloH1?: boolean;
   className?: string;
 }) {
   return (
@@ -34,7 +37,7 @@ export function EstadoVacio({
         <Icon className="size-[17px] text-primary" strokeWidth={1.75} />
       </div>
       <div className="min-w-0 flex-1 pt-1 text-sm">
-        <p className="font-medium text-foreground">{titulo}</p>
+        {tituloH1 ? <h1 className="font-medium text-foreground">{titulo}</h1> : <p className="font-medium text-foreground">{titulo}</p>}
         <p className="mt-0.5 text-muted-foreground">{mensaje}</p>
         {accion ? <div className="mt-2">{accion}</div> : null}
       </div>

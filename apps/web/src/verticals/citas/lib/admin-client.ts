@@ -26,7 +26,32 @@ import type { LoginSession } from "./auth-client.ts";
 
 export { SessionExpiredError };
 
-export class CitasAdminError extends Error {}
+export interface AlternativeSlot {
+  readonly startsAt: string;
+  readonly endsAt: string;
+}
+
+export class CitasAdminError extends Error {
+  /** Horarios alternativos reales que el servidor manda en un 409 de choque (`alternative_slots`); vacío en cualquier otro error. */
+  readonly alternativeSlots: readonly AlternativeSlot[];
+  constructor(message: string, alternativeSlots: readonly AlternativeSlot[] = []) {
+    super(message);
+    this.alternativeSlots = alternativeSlots;
+  }
+}
+
+function parseAlternativeSlots(body: unknown): readonly AlternativeSlot[] {
+  const raw = (body as { alternative_slots?: unknown } | null)?.alternative_slots;
+  if (!Array.isArray(raw)) return [];
+  const out: AlternativeSlot[] = [];
+  for (const item of raw) {
+    const row = item as { starts_at?: unknown; ends_at?: unknown } | null;
+    if (typeof row?.starts_at === "string" && typeof row.ends_at === "string" && !Number.isNaN(new Date(row.starts_at).getTime())) {
+      out.push({ startsAt: row.starts_at, endsAt: row.ends_at });
+    }
+  }
+  return out;
+}
 
 export function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
   const storage = defaultBrowserStorage();
@@ -77,7 +102,10 @@ export async function sendJson<T>(
     }),
   );
   if (!res.ok) {
-    throw new CitasAdminError(await readWriteErrorMessage(res, `No se pudo completar la solicitud a ${url} (${res.status}).`));
+    // Mismo orden de mensaje que readWriteErrorMessage (`message`, luego `error`), pero leyendo el cuerpo una sola vez para también sacar `alternative_slots` del 409.
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    const alternativeSlots = res.status === 409 ? parseAlternativeSlots(body) : [];
+    throw new CitasAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`, alternativeSlots);
   }
   return (await res.json()) as T;
 }
