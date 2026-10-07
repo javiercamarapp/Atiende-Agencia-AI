@@ -7,18 +7,23 @@
 --                          (property_id, cuenta_padre) -> (property_id, codigo): el padre es de la MISMA property, nunca de otra.
 --   * `codigo_agrupador`   formato del SAT `ddd` o `ddd.d` / `ddd.dd`. NULL = «sin asignar».
 --
--- NO se inventa ningún valor: las cuentas que ya existen quedan con nivel 1, sin padre y SIN código agrupador (NULL). El generador
--- del XML se niega a producir el catálogo mientras haya cuentas sin código y devuelve la lista de las que faltan; el staff las
--- asigna en la pestaña Catálogo. La lista cerrada de códigos válidos (1080 valores del XSD CatalogosParaEsqContE 1.3) la valida la
+-- NO se inventa ningún valor: las cuentas que ya existen quedan con nivel 1, sin padre y SIN código agrupador (NULL), y NI la siembra del
+-- catálogo base NI la importación completan en silencio los datos de una cuenta que ya existe. El generador del XML se niega a producir el
+-- catálogo mientras haya cuentas sin código y devuelve la lista de las que faltan; el staff las asigna (o acepta la propuesta del catálogo
+-- base con una acción explícita) en la pestaña Catálogo. La lista cerrada de códigos válidos (1080 valores del XSD CatalogosParaEsqContE 1.3) la valida la
 -- API (normas/anexo-24-codigo-agrupador.yaml); aquí solo el CHECK de formato, porque la lista cambia con cada actualización del Anexo 24.
 --
 -- Funciones (reemplazan a las de la migración 020; mismas firmas de uso, con parámetros opcionales nuevos):
 --   * `libro_cuenta_guardar`          alta/edición de una cuenta; parámetros nuevos opcionales (NULL = no cambia). Se elimina la
 --                                      sobrecarga de 4 parámetros para que una llamada de 4 argumentos no sea ambigua; el código
 --                                      TypeScript que la usa sigue funcionando igual contra esta firma (y contra la base sin migrar).
---   * `libro_catalogo_sembrar`        la siembra del catálogo base ahora trae nivel/padre/código; en cuentas ya existentes SOLO completa
---                                      lo que está vacío (nunca pisa un código o una jerarquía ya capturados).
+--   * `libro_catalogo_sembrar`        la siembra del catálogo base ahora trae nivel/padre/código para las cuentas NUEVAS; las que ya existen
+--                                      no se tocan (mismo comportamiento de 020: insertar solo lo que falta).
 --   * `libro_cuenta_agrupador_asignar` (nueva) asigna el código agrupador a varias cuentas de un cliente en una sola operación.
+--   * `libro_poliza_rep` + `libro_poliza_registrar_rep` (nuevas) ligan UNA póliza vigente de cobro/pago a cada pago de complemento de pago
+--                                      (`pago_cfdi`), para que registrar el mismo REP dos veces no duplique el cobro (un CFDI PPD tiene varios pagos, así que no
+--                                      se puede usar `libro_poliza.invoice_id`). No se toca `libro_poliza_insertar` ni ninguna función de 020: la nueva compone
+--                                      `libro_poliza_registrar` por su nombre.
 --   * `libro_catalogo_importar`       (nueva) importa el catálogo XML 1.3 de otro proveedor con la semántica de `mergeCuentas`
 --                                      (REQ-MIG-017): mismo código = se actualiza; código nuevo = se agrega; NUNCA se borra una cuenta.
 --
@@ -34,6 +39,13 @@
 --      resuelven la organización desde `core.property` (nunca del cuerpo de la petición).
 --   4. Una cuenta con partidas no cambia de naturaleza (regla de 020, también en la importación).
 --   5. Topes: máximo 2000 cuentas por cliente y 500 por operación de importación o siembra.
+--   6. `libro_poliza_rep`: RLS habilitado, REVOKE de todo a public/anon/authenticated y SOLO `select` a `authenticated` con la policy
+--      `core.has_property_access` (el staff lee las ligas de SUS clientes y nada más; sin escritura directa: la hace la función definer).
+--      Llaves foráneas COMPUESTAS (poliza, organización, property) y (pago, organización, property): una liga no puede unir una póliza y un pago
+--      de properties u organizaciones distintas. `libro_poliza_registrar_rep` es `security definer` con `search_path` fijo, `revoke ... from public, anon`,
+--      EXECUTE solo a `authenticated`, exige `auth.uid()`, `cartera_puede_escribir(property)` y que el pago sea de ESA property; además amarra la póliza al
+--      pago (tipo según el flujo, fecha = fecha de pago, total = importe pagado + IVA), así que no se puede registrar una póliza arbitraria "a nombre" de
+--      un pago. Un pago con póliza vigente (no reversada) rechaza otra (23505); reversar la póliza libera al pago.
 --
 -- Compatibilidad con la base sin migrar: el TypeScript que consume esto captura 42883/42P01/42703 dentro de SAVEPOINT
 -- (runWithSavepointFallback) y responde «no disponible aún»; contra la base vieja la edición simple de una cuenta (4 argumentos)
@@ -105,9 +117,8 @@ begin
   if (select count(*) from despachos.libro_cuenta x where x.property_id = p_property_id) + v_nuevas > 2000 then
     raise exception 'libro_catalogo_sembrar: máximo 2000 cuentas por cliente' using errcode = '54000';
   end if;
-  -- Orden por nivel: el padre se inserta antes que sus subcuentas (el trigger de jerarquía lo exige). `nivel` ausente = 1.
-  -- En cuentas que YA existen solo se completa lo vacío: código agrupador si es NULL, y jerarquía si la cuenta sigue en nivel 1 sin
-  -- padre. Nunca se pisa una descripción, naturaleza, código o jerarquía ya capturados.
+  -- Orden por nivel: el padre se inserta antes que sus subcuentas (el trigger de jerarquía lo exige). `nivel` ausente = 1. Las cuentas que YA
+  -- existen no se modifican (ni código ni jerarquía): completar un código agrupador es una decisión del staff, nunca un efecto de la siembra.
   insert into despachos.libro_cuenta (property_id, organization_id, codigo, descripcion, naturaleza, nivel, cuenta_padre, codigo_agrupador)
   select p_property_id, v_org, d.codigo, d.descripcion, d.naturaleza, d.nivel, d.cuenta_padre, d.codigo_agrupador
   from (
@@ -117,13 +128,8 @@ begin
     order by btrim(c.codigo)
   ) d
   order by d.nivel, d.codigo
-  on conflict (property_id, codigo) do update set
-    codigo_agrupador = coalesce(despachos.libro_cuenta.codigo_agrupador, excluded.codigo_agrupador),
-    nivel = case when despachos.libro_cuenta.cuenta_padre is null and despachos.libro_cuenta.nivel = 1 and excluded.cuenta_padre is not null then excluded.nivel else despachos.libro_cuenta.nivel end,
-    cuenta_padre = case when despachos.libro_cuenta.cuenta_padre is null and despachos.libro_cuenta.nivel = 1 then excluded.cuenta_padre else despachos.libro_cuenta.cuenta_padre end
-  where despachos.libro_cuenta.codigo_agrupador is null
-     or (despachos.libro_cuenta.cuenta_padre is null and despachos.libro_cuenta.nivel = 1 and excluded.cuenta_padre is not null);
-  -- Devuelve cuántas cuentas NUEVAS se agregaron (completar metadatos de cuentas existentes no cuenta).
+  on conflict (property_id, codigo) do nothing;
+  -- Devuelve cuántas cuentas NUEVAS se agregaron.
   return v_nuevas;
 exception
   when check_violation or invalid_text_representation or datatype_mismatch or foreign_key_violation then
@@ -351,3 +357,98 @@ end;
 $$;
 revoke all on function despachos.libro_catalogo_importar(uuid, jsonb) from public, anon;
 grant execute on function despachos.libro_catalogo_importar(uuid, jsonb) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Pólizas de cobro / pago de un complemento de pago (REP): una póliza vigente por pago.
+-- ---------------------------------------------------------------------------
+-- Llave única compuesta para poder apuntar a un pago con (id, organización, property) -- misma técnica que `libro_poliza` (020).
+alter table despachos.pago_cfdi add constraint pago_cfdi_id_tenant_uk unique (id, organization_id, property_id);
+
+create table despachos.libro_poliza_rep (
+  poliza_id uuid primary key,
+  pago_cfdi_id uuid not null,
+  organization_id uuid not null,
+  property_id uuid not null,
+  created_at timestamptz not null default now(),
+  foreign key (poliza_id, organization_id, property_id)
+    references despachos.libro_poliza (id, organization_id, property_id) on delete cascade,
+  foreign key (pago_cfdi_id, organization_id, property_id)
+    references despachos.pago_cfdi (id, organization_id, property_id) on delete cascade
+);
+create index libro_poliza_rep_pago_idx on despachos.libro_poliza_rep (pago_cfdi_id);
+
+alter table despachos.libro_poliza_rep enable row level security;
+revoke all on despachos.libro_poliza_rep from public, anon, authenticated;
+create policy "staff ve las polizas de pago de sus clientes" on despachos.libro_poliza_rep for select
+  using (core.has_property_access(auth.uid(), property_id));
+grant select on despachos.libro_poliza_rep to authenticated;
+grant select, insert, update, delete on despachos.libro_poliza_rep to service_role;
+
+-- Registra la póliza de cobro (flujo trasladado -> ingreso) o de pago (flujo acreditable -> egreso) de UN pago de REP ya persistido y la liga a él.
+-- p_movimientos: [{cuenta, concepto, debe, haber}] en centavos, como `libro_poliza_registrar`.
+create or replace function despachos.libro_poliza_registrar_rep(
+  p_property_id uuid,
+  p_pago_cfdi_id uuid,
+  p_tipo text,
+  p_fecha date,
+  p_concepto text,
+  p_movimientos jsonb
+)
+returns table (out_poliza_id uuid, out_folio integer)
+language plpgsql
+security definer
+set search_path = despachos, pg_temp
+as $$
+declare
+  v_org uuid;
+  v_flujo text;
+  v_fecha_pago date;
+  v_importe bigint;
+  v_iva bigint;
+  v_debe bigint;
+  v_poliza uuid;
+  v_folio integer;
+begin
+  if auth.uid() is null or p_property_id is null or not despachos.cartera_puede_escribir(p_property_id) then
+    raise exception 'libro_poliza_registrar_rep: sin permiso sobre el cliente' using errcode = '42501';
+  end if;
+  if not exists (select 1 from core.property p where p.id = p_property_id and p.vertical = 'despachos') then
+    raise exception 'libro_poliza_registrar_rep: la property no es de despachos' using errcode = '42501';
+  end if;
+  if p_pago_cfdi_id is null or p_tipo is null or p_tipo not in ('ingreso', 'egreso') or p_fecha is null or p_movimientos is null or jsonb_typeof(p_movimientos) <> 'array' then
+    raise exception 'libro_poliza_registrar_rep: datos inválidos' using errcode = '22023';
+  end if;
+  -- El pago es de ESTA property (un pago de otro cliente no existe para quien llama: P0002, sin distinguir "no es tuyo").
+  select pc.organization_id, pc.flujo, pc.fecha_pago, pc.importe_pagado_centavos, pc.iva_centavos
+    into v_org, v_flujo, v_fecha_pago, v_importe, v_iva
+  from despachos.pago_cfdi pc where pc.id = p_pago_cfdi_id and pc.property_id = p_property_id;
+  if v_org is null then
+    raise exception 'libro_poliza_registrar_rep: pago no encontrado' using errcode = 'P0002';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('despachos.libro_poliza_rep:' || p_pago_cfdi_id::text, 0));
+  if exists (select 1 from despachos.libro_poliza_rep r join despachos.libro_poliza lp on lp.id = r.poliza_id where r.pago_cfdi_id = p_pago_cfdi_id and not lp.reversada) then
+    raise exception 'libro_poliza_registrar_rep: el pago ya tiene una póliza vigente' using errcode = '23505';
+  end if;
+  -- La póliza queda amarrada al pago: tipo según el flujo, fecha de pago y total = importe pagado + IVA traspasado.
+  if (v_flujo = 'trasladado' and p_tipo <> 'ingreso') or (v_flujo = 'acreditable' and p_tipo <> 'egreso') then
+    raise exception 'libro_poliza_registrar_rep: el tipo de póliza no corresponde al flujo del pago' using errcode = '22023';
+  end if;
+  if p_fecha <> v_fecha_pago then
+    raise exception 'libro_poliza_registrar_rep: la póliza se fecha en la fecha de pago del complemento' using errcode = '22023';
+  end if;
+  begin
+    select coalesce(sum(x.debe), 0) into v_debe from jsonb_to_recordset(p_movimientos) as x(cuenta text, concepto text, debe bigint, haber bigint);
+  exception when invalid_text_representation or numeric_value_out_of_range or datatype_mismatch then
+    raise exception 'libro_poliza_registrar_rep: las partidas deben traer montos enteros en centavos' using errcode = '22023';
+  end;
+  if v_debe <> v_importe + v_iva then
+    raise exception 'libro_poliza_registrar_rep: el total de la póliza (%) no es el importe pagado más el IVA del pago (%)', v_debe, v_importe + v_iva using errcode = '22023';
+  end if;
+  select r.out_poliza_id, r.out_folio into v_poliza, v_folio
+  from despachos.libro_poliza_registrar(p_property_id, p_tipo, p_fecha, p_concepto, p_movimientos, null) r;
+  insert into despachos.libro_poliza_rep (poliza_id, pago_cfdi_id, organization_id, property_id) values (v_poliza, p_pago_cfdi_id, v_org, p_property_id);
+  return query select v_poliza, v_folio;
+end;
+$$;
+revoke all on function despachos.libro_poliza_registrar_rep(uuid, uuid, text, date, text, jsonb) from public, anon;
+grant execute on function despachos.libro_poliza_registrar_rep(uuid, uuid, text, date, text, jsonb) to authenticated;
