@@ -36,9 +36,9 @@ export interface ConfigPlataformaVoz {
     /** Precio por MILLON de tokens (micro-USD por token) de `gemini-3.8-live`, nivel de pago: https://ai.google.dev/gemini-api/docs/pricing */
     readonly preciosTokenMicroUsd: { readonly textoEntrada: number; readonly audioEntrada: number; readonly textoSalida: number; readonly audioSalida: number };
     /** Como lee el worker `usageMetadata`: `por_turno` = cada mensaje trae los tokens de ESE turno (el prompt incluye el contexto acumulado, que Gemini vuelve a
-     * cobrar: la facturacion compuesta) y se SUMAN; `acumulado` = cada mensaje trae el total de la sesion y se resta el anterior. SUPUESTO sin verificar con la API
-     * real (la documentacion no lo dice sin ambiguedad): `por_turno`, que si se equivoca SOBREestima el costo. Se confirma con la primera llamada real
-     * (docs/VOZ-ACTIVACION.md, paso de conciliacion) y se cambia aqui, en un solo lugar. */
+     * cobrar: la facturacion compuesta) y se SUMAN; `acumulado` = cada mensaje trae el total de la sesion y se resta el anterior. VERIFICADO con la medicion cruda contra la API
+     * (work/voz/medicion, 7 llamadas; investigacion §6.2): cada `usageMetadata` trae TODO el contexto del turno (el prompt crece turno a turno), asi que es `por_turno`
+     * y NO se resta el anterior. No cambiar a `acumulado` por una conciliacion de factura sin revisar antes el desglose por modalidad. */
     readonly usoReportado: "por_turno" | "acumulado";
     /** Deteccion de actividad de voz del servidor. `silencioFinMs` cierra el turno del cliente; menos = responde antes pero corta al que hace pausas. */
     readonly vad: { readonly silencioFinMs: number; readonly prefijoMs: number; readonly sensibilidadFin: "END_SENSITIVITY_HIGH" | "END_SENSITIVITY_LOW" | null; readonly sensibilidadInicio: "START_SENSITIVITY_HIGH" | "START_SENSITIVITY_LOW" | null };

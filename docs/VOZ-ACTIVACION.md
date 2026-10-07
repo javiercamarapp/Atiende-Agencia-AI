@@ -136,8 +136,8 @@ Costo de Gemini por llamada con la facturación compuesta (cada turno vuelve a c
 | PM completo, 5 sucursales en desborde | ~3,000 | US$518 (311-973) | **US$750** | ~1.45x el medio; el aviso al 80 % (US$600) deja margen para revisar antes del corte |
 | Por llamada | — | US$0.17 | **US$0.50** (`VOICE_COSTO_MAX_LLAMADA_USD`) | ~3x una llamada media y por encima del caso alto; antes eran US$0.10, que cortaba una llamada media a la mitad |
 
-Ajusta con la **primera factura**: compara `core.usage_cost_event` (`costo_estimado = false`) con la factura de Gemini. Si el costo registrado queda ~2x o más sobre la factura, `usageMetadata` viene **acumulado** y no
-por turno: cambia `usoReportado` a `"acumulado"` en `packages/voice-core/src/config-plataforma.ts` (un solo lugar). El nivel 2 de la Gemini API aguanta unas 40 llamadas simultáneas por su tope de gasto de US$50 por
+Ajusta con la **primera factura**: compara `core.usage_cost_event` (`costo_estimado = false`) con la factura de Gemini. `usageMetadata` viene **por turno** (verificado con la medición cruda de 7 llamadas: cada mensaje trae todo el contexto del turno), así que `usoReportado` se queda en `"por_turno"`. Si aun así
+hay una diferencia grande, revisa primero el desglose por modalidad y los tokens sin desglose (se cobran a tarifa de audio) antes de tocar `usoReportado`. El nivel 2 de la Gemini API aguanta unas 40 llamadas simultáneas por su tope de gasto de US$50 por
 10 minutos; con más carga, nivel 3 o Vertex.
 
 ## 7. Meta (WhatsApp): confirma el método de pago

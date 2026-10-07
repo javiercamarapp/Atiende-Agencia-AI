@@ -5,7 +5,9 @@
 //        habilitado?, la instrucción armada con el perfil de PM, la memoria del cliente (por el teléfono del SIP From) y el gasto de voz del mes
 //        (para el tope mensual). No devuelve secretos ni el historial en bruto: solo la instrucción.
 //   POST /internal/restaurantes/voz/conversaciones/:id/costo             costo por escalón (Gemini Live / cascada) hacia core.usage_cost_event; los
-//        eventos los arma el servidor desde los TRAMOS (duración por escalón), el worker no manda importes libres.
+//        eventos los arma el servidor desde los TRAMOS (duración por escalón). El worker informa el costo reportado (tope por tramo) y, con `costoReal: true`, ese importe
+//        sale de los tokens `usageMetadata` del proveedor y se registra TAL CUAL aunque quede por debajo del piso por minuto (antes solo podía subirlo); la ruta exige el
+//        secreto interno, así que ese importe viene de un servicio de confianza.
 //   POST /internal/restaurantes/voz/conversaciones/:id/modo-entrada      desborde | total | prueba y la franja del día (migración 067).
 //   POST /internal/restaurantes/voz/tope-mensual                         aviso in-app al owner/admin: el gasto de voz del mes llegó al 80 % del tope o lo alcanzó
 //        (el tope vive en la configuración del worker, que es quien lo compara; aquí solo se emite el aviso, con dedupe por organización y mes).
