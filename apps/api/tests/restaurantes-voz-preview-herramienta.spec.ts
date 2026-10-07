@@ -130,7 +130,8 @@ describe("POST .../admin/voz/preview/sesion: herramientas y saludo", () => {
     await t.sesion();
     const emitida = t.provider.emitidas.at(-1)!;
     expect(emitida.herramientas?.map((h) => h.name)).toEqual(expect.arrayContaining(["buscar_producto", "cotizar_pedido", "confirmar_resumen", "crear_pedido"]));
-    for (const h of emitida.herramientas ?? []) expect(Object.keys(h.parameters.properties).join(",")).not.toMatch(/phone|telefono|modo/i);
+    // Excepcion documentada: `telefono_alterno` de crear_pedido solo se escribe en la comanda de ese pedido (ver agent-tools-registry.spec.ts).
+    for (const h of emitida.herramientas ?? []) expect(Object.keys(h.parameters.properties).filter((k) => !(h.name === "crear_pedido" && k === "telefono_alterno")).join(",")).not.toMatch(/phone|telefono|modo/i);
     expect(emitida.mensajeInicial).toMatch(/^(Buenos días|Buenas tardes|Buenas noches), le atiende Los Taquitos de PM\.$/);
     expect(emitida.mensajeInicial).not.toContain("{saludo}");
   });

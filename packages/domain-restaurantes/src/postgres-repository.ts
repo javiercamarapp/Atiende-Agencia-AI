@@ -637,6 +637,13 @@ function mapRestaurantesAuditLogRow(row: RestaurantesAuditLogRowSql): Restaurant
 /** Tope de p_limit de restaurantes.clientes_cartera (migracion 054). */
 const CARTERA_LIMITE_SQL = 200;
 
+/** Evento de notificacion de un aviso de contacto. El aviso de llegada de quien recoge (`reason: cliente_llego`) es urgente y lleva su propio evento
+ * (critica, enlace a pedidos): la sucursal tiene a una persona esperando en el mostrador. R-43: una solicitud de evento/catering del storefront
+ * (reason = 'evento') avisa con su propio evento del catalogo. Ninguno emite ademas el aviso generico de «devolver llamada». */
+function eventoDeCallback(reason: string | null | undefined): "restaurantes.cliente.llego" | "restaurantes.evento.solicitud" | "restaurantes.callback.pendiente" {
+  return reason === "cliente_llego" ? "restaurantes.cliente.llego" : reason === "evento" ? "restaurantes.evento.solicitud" : "restaurantes.callback.pendiente";
+}
+
 export class PostgresRestaurantesRepository implements RestaurantesRepository {
   constructor(private readonly db: TenantDbSession) {}
 
@@ -1099,7 +1106,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       if (agente) {
         // Notificacion in-app (`restaurantes.callback.pendiente`) solo cuando el aviso es NUEVO: un reenvio o una nota agregada no vuelven a avisar.
         if (agente.registro === "nuevo") {
-          await emitirNotificacion(this.db, { evento: "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: agente.id, entidadTipo: "callback_request", entidadId: agente.id });
+          await emitirNotificacion(this.db, { evento: eventoDeCallback(input.reason), organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: agente.id, entidadTipo: "callback_request", entidadId: agente.id });
         }
         return agente;
       }
@@ -1142,8 +1149,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     });
     // Notificacion in-app (`restaurantes.callback.pendiente`): un contacto que el agente (voz o WhatsApp) dejo para devolver la
     // llamada. Uno por solicitud (clave = id), sin PII (ni nombre ni telefono viajan en el aviso). SAVEPOINT en emitirNotificacion.
-    // R-43: una solicitud de evento/catering del storefront (reason = 'evento') avisa con su propio evento del catalogo, no con el generico.
-    await emitirNotificacion(this.db, { evento: input.reason === "evento" ? "restaurantes.evento.solicitud" : "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
+    await emitirNotificacion(this.db, { evento: eventoDeCallback(input.reason), organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
     return { ...input, id: row.id, resolved: row.resolved, createdAt: row.created_at, registro: "nuevo" };
   }
 
@@ -2303,6 +2309,16 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       [propertyId, productId, price, isAvailable],
     );
     return mapBranchProductState(rows[0]!);
+  }
+
+  async setBranchProductAvailability(propertyId: string, productId: string, isAvailable: boolean): Promise<BranchProductState | null> {
+    const { rows } = await this.db.query<BranchProductRow>(
+      `update restaurantes.branch_products set is_available = $3, updated_at = now()
+       where property_id = $1 and product_id = $2
+       returning property_id, product_id, price, is_available;`,
+      [propertyId, productId, isAvailable],
+    );
+    return rows[0] ? mapBranchProductState(rows[0]) : null;
   }
 
   async findOrderById(organizationId: string, orderId: string): Promise<Order | null> {

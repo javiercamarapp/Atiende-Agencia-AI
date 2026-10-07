@@ -1925,6 +1925,13 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return { propertyId, productId, price, isAvailable };
   }
 
+  async setBranchProductAvailability(propertyId: string, productId: string, isAvailable: boolean): Promise<BranchProductState | null> {
+    const existing = this.branchProducts.find((bp) => bp.propertyId === propertyId && bp.productId === productId);
+    if (!existing) return null;
+    existing.isAvailable = isAvailable;
+    return { propertyId, productId, price: existing.price, isAvailable };
+  }
+
   async findOrderById(organizationId: string, orderId: string): Promise<Order | null> {
     const order = this.orders.find((o) => o.id === orderId && o.organizationId === organizationId);
     return order ?? null;
