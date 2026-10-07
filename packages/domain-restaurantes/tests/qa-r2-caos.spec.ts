@@ -260,3 +260,53 @@ describe("R2-caos-07: reimportar para corregir un mapeo de columnas equivocado",
     expect((await fx.repo.findCustomerByPhone(fx.organizationId, "9991230001"))?.name).toBe("José Peña");
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------------------------------
+// R2-caos-09: "Cancelar" de una solicitud cuyo pedido ya salio (en_camino) -> se convierte en "mantener" en silencio
+// ---------------------------------------------------------------------------------------------------------------------------------------
+describe("R2-caos-09: el cliente pidio cancelar y el pedido ya salio cuando el gerente pulsa 'Cancelar'", () => {
+  // Pasos: pedido `preparando` -> el cliente pide cancelar por WhatsApp (solicitud cancelar/mantener) -> mientras el gerente lo ve, cocina lo pasa
+  // a `en_camino` -> el gerente pulsa "Cancelar" con motivo. La base cierra la solicitud como `mantener` (no_cancelable_en_camino) con aplicado=false.
+  it.fails("QA-R2-caos-09: al no poder cancelar, se avisa al cliente que su pedido sigue en camino (efecto de 'mantener'), no se queda sin respuesta", async () => {
+    const fx = buildRestaurantFixture();
+    fx.repo.seedWhatsAppChannel(fx.organizationId, "PNID-R2-CAOS");
+    const order = await createOrder(fx.repo, {
+      organizationId: fx.organizationId, branchSlug: "fco-montejo", customerName: "Deb", customerPhone: "9990001111", customerAddress: "Calle 80 #30 x 5 y 7, Centro",
+      paymentMethod: "efectivo", items: [{ productId: fx.products.cocaCola, requestedQuantity: 2 }], source: "whatsapp",
+    });
+    const auto = new InMemoryAutopilotoRepository();
+    const mem: PedidoMemoria = {
+      id: order.id, organizationId: fx.organizationId, propertyId: fx.propertyId, status: "preparando", total: order.total, clienteNombre: "Deb", telefono: "9990001111",
+      canal: "domicilio", numero: 1, renglones: [{ nombre: "Coca-Cola", cantidad: 2 }], comanda: { estado: "confirmada", folio: "T2-1" },
+    };
+    auto.pedidos.set(order.id, mem);
+    const s = await auto.crearSolicitud(fx.organizationId, fx.propertyId, "cancelacion", order.id, { origen: "cliente", estado: "preparando", motivo: "cliente_desistio" });
+    mem.status = "en_camino"; // cocina lo despacha mientras la tarjeta sigue en "Por aprobar"
+
+    const r = await resolverSolicitudAprobacion(
+      { auto, repo: fx.repo, db: null as unknown as TenantDbSession },
+      { organizationId: fx.organizationId, solicitudId: s.solicitudId!, decision: "cancelar", motivo: "cliente_desistio" },
+    );
+    expect(r?.resultado.decision).toBe("mantener");
+    // Actual: aplicado=false -> efectos [] -> 0 mensajes al cliente; el panel muestra "Esta solicitud ya estaba resuelta; no se repitió ningún aviso."
+    const avisos = fx.repo.getOutbox().filter((o) => o.eventType === "order.cancelacion_no_posible");
+    expect(avisos).toHaveLength(1);
+  });
+
+  it("PASA: si el gerente pulsa 'Mantener' el cliente SI recibe el aviso de que no se pudo cancelar (el arnes ve el outbox)", async () => {
+    const fx = buildRestaurantFixture();
+    fx.repo.seedWhatsAppChannel(fx.organizationId, "PNID-R2-CAOS");
+    const order = await createOrder(fx.repo, {
+      organizationId: fx.organizationId, branchSlug: "fco-montejo", customerName: "Deb", customerPhone: "9990001111", customerAddress: "Calle 80 #30 x 5 y 7, Centro",
+      paymentMethod: "efectivo", items: [{ productId: fx.products.cocaCola, requestedQuantity: 2 }], source: "whatsapp",
+    });
+    const auto = new InMemoryAutopilotoRepository();
+    auto.pedidos.set(order.id, {
+      id: order.id, organizationId: fx.organizationId, propertyId: fx.propertyId, status: "en_camino", total: order.total, clienteNombre: "Deb", telefono: "9990001111",
+      canal: "domicilio", numero: 1, renglones: [{ nombre: "Coca-Cola", cantidad: 2 }],
+    });
+    const s = await auto.crearSolicitud(fx.organizationId, fx.propertyId, "cancelacion", order.id, { origen: "cliente" });
+    await resolverSolicitudAprobacion({ auto, repo: fx.repo, db: null as unknown as TenantDbSession }, { organizationId: fx.organizationId, solicitudId: s.solicitudId!, decision: "mantener" });
+    expect(fx.repo.getOutbox().filter((o) => o.eventType === "order.cancelacion_no_posible")).toHaveLength(1);
+  });
+});
