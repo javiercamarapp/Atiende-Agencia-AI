@@ -128,6 +128,6 @@ describe("MantenimientoPage (hoteles) — cierre con dialogos", () => {
       click(crear());
       for (let i = 0; i < 6; i++) await flushMicrotasks();
     });
-    expect(posts()).toEqual([{ url: "/tickets", body: { titulo: "Fuga en baño", descripcion: "Gotea la llave", severidad: "media" } }]);
+    expect(posts()).toEqual([{ url: "/tickets", body: { titulo: "Fuga en baño", descripcion: "Gotea la llave", severidad: "media", origen: "staff" } }]);
   });
 });
