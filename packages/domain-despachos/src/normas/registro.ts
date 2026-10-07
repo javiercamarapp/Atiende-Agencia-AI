@@ -29,5 +29,6 @@ export const REGLAS_DEL_MOTOR: readonly ReglaDelMotor[] = [
   { id: "pagos-provisionales.engine", archivo: "src/pagos-provisionales/engine.ts", descripcion: "Pagos provisionales de ISR (601, 612, 626) e IVA por flujo.", fundamentos: ["lisr-14-17", "lisr-27-iii", "lisr-106", "lisr-113-e", "liva-1-b", "liva-1-a-5"] },
   { id: "pagos-provisionales.rep-pagos", archivo: "src/pagos-provisionales/rep-pagos.ts", descripcion: "Pagos persistidos a partir de un REP ya analizado.", fundamentos: ["rmf-2.7.1.29"] },
   { id: "libro.balanza", archivo: "src/libro/balanza.ts", descripcion: "Balanza y paquete de contabilidad electrónica desde el libro.", fundamentos: ["anexo-24", "rmf-2.8.1.6"] },
-  { id: "contabilidad-electronica.catalogo", archivo: "src/contabilidad-electronica/catalogo-cuentas.ts", descripcion: "Catálogo de cuentas en el formato del Anexo 24.", fundamentos: ["anexo-24"] },
+  { id: "contabilidad-electronica.catalogo", archivo: "src/contabilidad-electronica/catalogo-cuentas.ts", descripcion: "Catálogo de cuentas en el formato del Anexo 24, con código agrupador y cuenta padre.", fundamentos: ["anexo-24", "anexo-24-codigo-agrupador"] },
+  { id: "contabilidad-electronica.polizas-periodo", archivo: "src/contabilidad-electronica/polizas-periodo.ts", descripcion: "XML de pólizas del periodo (PolizasPeriodo 1.3) desde el libro.", fundamentos: ["anexo-24", "rmf-2.8.1.6"] },
 ];
