@@ -7,7 +7,20 @@ import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { runWithSavepointFallback, isMigrationPendingError } from "@atiende/db";
-import { FolioCerradoError, FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError, PropertyConfigUnavailableError, RateEngineUnavailableError, translateFolioTriggerError } from "./errors.ts";
+import { FolioCerradoError, FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError, PropertyConfigUnavailableError, HotelConfigUnavailableError, RateEngineUnavailableError, translateFolioTriggerError } from "./errors.ts";
+import { CANCELLATION_POLICY_DEFAULTS, TAX_CONFIG_DEFAULTS } from "./configuracion/types.ts";
+import type {
+  CancellationPolicySettings,
+  ConfigAuditEntry,
+  ListRatePlansQuery,
+  RatePlanRow,
+  RoomTypeOverbookingSettings,
+  SaveCancellationPolicyInput,
+  SaveRatePriceInput,
+  SaveRoomTypeOverbookingInput,
+  SaveTaxSettingsInput,
+  TaxSettings,
+} from "./configuracion/types.ts";
 import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
 import type {
   ActiveHotelProperty,
@@ -1792,6 +1805,265 @@ export class PostgresHotelesRepository implements HotelesRepository {
       fallback: () => {
         throw new PropertyConfigUnavailableError("upsertPropertyTimezone");
       },
+    });
+  }
+
+  // ---- H-P3-04 -- configuracion del hotel desde el panel (migrations/047_hoteles_configuracion_y_equipo.sql). Lecturas con
+  // SAVEPOINT + fallback a los valores por omision (42883/42P01/42703); escrituras por `hoteles.set_*` (security definer, owner/gm,
+  // con bitacora) -- sin la migracion lanzan `HotelConfigUnavailableError` (503), nunca un 500 crudo. Los rechazos reales de la
+  // funcion (42501/22023/P0002) se repropagan con su mensaje con prefijo estable para que la ruta los traduzca. ----
+
+  private writeConfig<T>(operation: string, run: () => Promise<T>): Promise<T> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: run,
+      isRecoverable: isMigrationPendingError,
+      fallback: () => {
+        throw new HotelConfigUnavailableError(operation);
+      },
+    });
+  }
+
+  async loadTaxSettings(propertyId: string): Promise<TaxSettings> {
+    const defaults: TaxSettings = { ...TAX_CONFIG_DEFAULTS, configurado: false };
+    type TaxRow = { iva_rate: string; ish_rate: string; discount_threshold: string; dsa_per_night?: string };
+    const map = (row: TaxRow | undefined): TaxSettings =>
+      row
+        ? {
+            ivaRate: Number(row.iva_rate),
+            ishRate: Number(row.ish_rate),
+            discountThreshold: Number(row.discount_threshold),
+            dsaPerNight: Number(row.dsa_per_night ?? 0),
+            configurado: true,
+          }
+        : defaults;
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<TaxRow>(
+          `select iva_rate, ish_rate, discount_threshold, dsa_per_night from hoteles.tax_config where property_id = $1;`,
+          [propertyId],
+        );
+        return map(rows[0]);
+      },
+      isRecoverable: isMigrationPendingError,
+      // Base sin la migracion 006 (columna dsa_per_night) o sin la tabla: lee sin DSA o cae a los valores por omision.
+      fallback: () =>
+        runWithSavepointFallback({
+          session: this.db,
+          primary: async () => {
+            const { rows } = await this.db.query<TaxRow>(`select iva_rate, ish_rate, discount_threshold from hoteles.tax_config where property_id = $1;`, [propertyId]);
+            return map(rows[0]);
+          },
+          isRecoverable: isMigrationPendingError,
+          fallback: () => Promise.resolve(defaults),
+        }),
+    });
+  }
+
+  async saveTaxSettings(input: SaveTaxSettingsInput): Promise<TaxSettings> {
+    return this.writeConfig("saveTaxSettings", async () => {
+      const { rows } = await this.db.query<{ iva_rate: string; ish_rate: string; discount_threshold: string; dsa_per_night: string }>(
+        `select iva_rate, ish_rate, discount_threshold, dsa_per_night from hoteles.set_tax_config($1, $2, $3, $4, $5);`,
+        [input.propertyId, input.ivaRate, input.ishRate, input.discountThreshold, input.dsaPerNight],
+      );
+      const row = rows[0]!;
+      return { ivaRate: Number(row.iva_rate), ishRate: Number(row.ish_rate), discountThreshold: Number(row.discount_threshold), dsaPerNight: Number(row.dsa_per_night), configurado: true };
+    });
+  }
+
+  async loadCancellationPolicySettings(propertyId: string): Promise<CancellationPolicySettings> {
+    const defaults: CancellationPolicySettings = { ...CANCELLATION_POLICY_DEFAULTS, configurado: false };
+    type PolicyRow = { free_until_hours: number; penalty_pct: string; guest_text?: string | null };
+    const map = (row: PolicyRow | undefined): CancellationPolicySettings =>
+      row ? { freeUntilHours: row.free_until_hours, penaltyPct: Number(row.penalty_pct), guestText: row.guest_text ?? null, configurado: true } : defaults;
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<PolicyRow>(`select free_until_hours, penalty_pct, guest_text from hoteles.cancellation_policy where property_id = $1;`, [propertyId]);
+        return map(rows[0]);
+      },
+      isRecoverable: isMigrationPendingError,
+      // Base sin la columna guest_text (migracion 047 pendiente): la politica sigue leyendose sin texto.
+      fallback: () =>
+        runWithSavepointFallback({
+          session: this.db,
+          primary: async () => {
+            const { rows } = await this.db.query<PolicyRow>(`select free_until_hours, penalty_pct from hoteles.cancellation_policy where property_id = $1;`, [propertyId]);
+            return map(rows[0]);
+          },
+          isRecoverable: isMigrationPendingError,
+          fallback: () => Promise.resolve(defaults),
+        }),
+    });
+  }
+
+  async saveCancellationPolicySettings(input: SaveCancellationPolicyInput): Promise<CancellationPolicySettings> {
+    return this.writeConfig("saveCancellationPolicySettings", async () => {
+      const { rows } = await this.db.query<{ free_until_hours: number; penalty_pct: string; guest_text: string | null }>(
+        `select free_until_hours, penalty_pct, guest_text from hoteles.set_cancellation_policy($1, $2, $3, $4);`,
+        [input.propertyId, input.freeUntilHours, input.penaltyPct, input.guestText],
+      );
+      const row = rows[0]!;
+      return { freeUntilHours: row.free_until_hours, penaltyPct: Number(row.penalty_pct), guestText: row.guest_text, configurado: true };
+    });
+  }
+
+  async listRoomTypeOverbooking(propertyId: string): Promise<readonly RoomTypeOverbookingSettings[]> {
+    const { rows } = await this.db.query<{ id: string; name: string; max_overbook_rooms: number; overbooking_occupancy_threshold_pct: string }>(
+      `select id, name, max_overbook_rooms, overbooking_occupancy_threshold_pct from hoteles.room_type where property_id = $1 order by name asc, id asc;`,
+      [propertyId],
+    );
+    return rows.map((r) => ({ roomTypeId: r.id, name: r.name, maxOverbookRooms: r.max_overbook_rooms, thresholdPct: Number(r.overbooking_occupancy_threshold_pct) }));
+  }
+
+  async saveRoomTypeOverbooking(input: SaveRoomTypeOverbookingInput): Promise<RoomTypeOverbookingSettings | null> {
+    try {
+      return await this.writeConfig("saveRoomTypeOverbooking", async () => {
+        const { rows } = await this.db.query<{ id: string; name: string; max_overbook_rooms: number; overbooking_occupancy_threshold_pct: string }>(
+          `select id, name, max_overbook_rooms, overbooking_occupancy_threshold_pct from hoteles.set_room_type_overbooking($1, $2, $3, $4);`,
+          [input.propertyId, input.roomTypeId, input.maxOverbookRooms, input.thresholdPct],
+        );
+        const r = rows[0]!;
+        return { roomTypeId: r.id, name: r.name, maxOverbookRooms: r.max_overbook_rooms, thresholdPct: Number(r.overbooking_occupancy_threshold_pct) };
+      });
+    } catch (err) {
+      // P0002 (tipo no encontrado en la property): el helper ya hizo ROLLBACK TO SAVEPOINT, la sesion sigue utilizable.
+      if ((err as { code?: string }).code === "P0002") return null;
+      throw err;
+    }
+  }
+
+  async listRatePlans(query: ListRatePlansQuery): Promise<readonly RatePlanRow[]> {
+    type RateRow = {
+      id: string;
+      room_type_id: string;
+      room_type_name: string;
+      date: string;
+      price: string;
+      currency: string;
+      min_stay: number;
+      closed_to_arrival: boolean;
+      closed_to_departure: boolean;
+      manual_price_at?: string | null;
+    };
+    const map = (r: RateRow): RatePlanRow => ({
+      id: r.id,
+      roomTypeId: r.room_type_id,
+      roomTypeName: r.room_type_name,
+      date: r.date,
+      price: Number(r.price),
+      currency: r.currency,
+      minStay: r.min_stay,
+      closedToArrival: r.closed_to_arrival,
+      closedToDeparture: r.closed_to_departure,
+      manualPriceAt: r.manual_price_at ?? null,
+    });
+    const base = `from hoteles.rate_plan rp join hoteles.room_type rt on rt.id = rp.room_type_id
+       where rp.property_id = $1 and rp.date >= $2::date and rp.date <= $3::date and ($4::uuid is null or rp.room_type_id = $4::uuid)
+       order by rp.date asc, rt.name asc, rp.id asc limit $5;`;
+    const params = [query.propertyId, query.from, query.to, query.roomTypeId, query.limit];
+    const cols = `rp.id, rp.room_type_id, rt.name as room_type_name, rp.date::text as date, rp.price, rp.currency, rp.min_stay, rp.closed_to_arrival, rp.closed_to_departure`;
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<RateRow>(`select ${cols}, rp.manual_price_at::text as manual_price_at ${base}`, params);
+        return rows.map(map);
+      },
+      isRecoverable: isMigrationPendingError,
+      // Base sin la columna manual_price_at (migracion 047 pendiente): la lista sigue funcionando, sin marca de precio manual.
+      fallback: async () => {
+        const { rows } = await this.db.query<RateRow>(`select ${cols} ${base}`, params);
+        return rows.map(map);
+      },
+    });
+  }
+
+  async saveRatePrice(input: SaveRatePriceInput): Promise<RatePlanRow | null> {
+    try {
+      return await this.writeConfig("saveRatePrice", async () => {
+        await this.db.query(`select id from hoteles.set_rate_price($1, $2, $3, $4);`, [input.propertyId, input.rateId, input.price, input.minStay]);
+        const { rows } = await this.db.query<{
+          id: string;
+          room_type_id: string;
+          room_type_name: string;
+          date: string;
+          price: string;
+          currency: string;
+          min_stay: number;
+          closed_to_arrival: boolean;
+          closed_to_departure: boolean;
+          manual_price_at: string | null;
+        }>(
+          `select rp.id, rp.room_type_id, rt.name as room_type_name, rp.date::text as date, rp.price, rp.currency, rp.min_stay,
+                  rp.closed_to_arrival, rp.closed_to_departure, rp.manual_price_at::text as manual_price_at
+           from hoteles.rate_plan rp join hoteles.room_type rt on rt.id = rp.room_type_id
+           where rp.id = $1 and rp.property_id = $2;`,
+          [input.rateId, input.propertyId],
+        );
+        const r = rows[0]!;
+        return {
+          id: r.id,
+          roomTypeId: r.room_type_id,
+          roomTypeName: r.room_type_name,
+          date: r.date,
+          price: Number(r.price),
+          currency: r.currency,
+          minStay: r.min_stay,
+          closedToArrival: r.closed_to_arrival,
+          closedToDeparture: r.closed_to_departure,
+          manualPriceAt: r.manual_price_at,
+        };
+      });
+    } catch (err) {
+      if ((err as { code?: string }).code === "P0002") return null;
+      throw err;
+    }
+  }
+
+  async listConfigAudit(propertyId: string, limit: number): Promise<readonly ConfigAuditEntry[]> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{
+          id: string;
+          area: ConfigAuditEntry["area"];
+          entity_id: string | null;
+          actor_user_id: string | null;
+          valor_anterior: Record<string, unknown> | null;
+          valor_nuevo: Record<string, unknown>;
+          created_at: string;
+        }>(
+          `select id, area, entity_id, actor_user_id, valor_anterior, valor_nuevo, created_at::text as created_at
+           from hoteles.config_audit_log where property_id = $1 order by created_at desc, id desc limit $2;`,
+          [propertyId, limit],
+        );
+        return rows.map((r) => ({
+          id: r.id,
+          area: r.area,
+          entityId: r.entity_id,
+          actorUserId: r.actor_user_id,
+          valorAnterior: r.valor_anterior,
+          valorNuevo: r.valor_nuevo,
+          createdAt: r.created_at,
+        }));
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: () => Promise.resolve([]),
+    });
+  }
+
+  async recordOnboardingSkip(propertyId: string, organizationId: string, actorUserId: string): Promise<boolean> {
+    void organizationId; // la funcion la deriva de core.property
+    void actorUserId; // la funcion toma auth.uid()
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        await this.db.query(`select hoteles.record_onboarding_skip($1);`, [propertyId]);
+        return true;
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: () => Promise.resolve(false),
     });
   }
 

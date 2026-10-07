@@ -97,9 +97,11 @@ export function hotelesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const collectionPath = "/v1/hoteles/:propertyId/admin/staff/invitaciones";
   const itemPath = "/v1/hoteles/:propertyId/admin/staff/invitaciones/:inviteId";
+  const membersPath = "/v1/hoteles/:propertyId/admin/staff/miembros";
 
   app.use(collectionPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(itemPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(membersPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.post(collectionPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
@@ -192,6 +194,14 @@ export function hotelesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const organizationId = c.get("organizationId");
     const invites = await deps.coreStaffRepo(c.get("db")).listPendingStaffInvites(organizationId);
     return c.json({ invitations: invites.map(serializeInvite) });
+  });
+
+  // Equipo activo (solo lectura): miembros ya aceptados de la organizacion con su rol, para la pagina Equipo. Cambiar el rol o dar de baja
+  // no se ofrece aqui (hueco conocido: requiere decidir la jerarquia de cambio de rol de hoteles).
+  app.get(membersPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const members = await deps.coreStaffRepo(c.get("db")).listOrgMembers(c.get("organizationId"));
+    return c.json({ miembros: members.map((m) => ({ id: m.userId, email: m.email, fullName: m.fullName, verticalRole: m.verticalRole, propertyIds: m.propertyIds })) });
   });
 
   app.delete(itemPath, async (c) => {

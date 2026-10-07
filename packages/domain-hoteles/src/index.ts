@@ -118,7 +118,7 @@ export type { HotelRole } from "./roles.ts";
 export { correoInvitacionStaff } from "./emails/staff-invite-template.ts";
 export type { StaffInviteCorreo } from "./emails/staff-invite-template.ts";
 
-export { IdempotencyConflictError, FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, RateEngineUnavailableError, PropertyConfigUnavailableError, FolioCerradoError, FolioCierreSaldoError, translateFolioTriggerError } from "./errors.ts";
+export { IdempotencyConflictError, FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, RateEngineUnavailableError, PropertyConfigUnavailableError, HotelConfigUnavailableError, FolioCerradoError, FolioCierreSaldoError, translateFolioTriggerError } from "./errors.ts";
 
 // ---- Fase 5 — H16-014/REQ-REC-014: fraude interno (SOLO los 2 patrones que operan
 // sobre folioEngine.ts ya portado; ver domain-hoteles/src/fraude/deteccion.ts para
@@ -557,3 +557,20 @@ export * from "./reservas-agente/index.ts";
 // Agente de VOZ de hoteles sobre @atiende/voice-core (perfil, registro de tools con maquina de reserva, transportes). El simulador y sus guiones salen por
 // `@atiende/domain-hoteles/voz/simulador` (solo pruebas y la prueba ciega manual).
 export * from "./voz/index.ts";
+
+export { TAX_CONFIG_DEFAULTS, CANCELLATION_POLICY_DEFAULTS } from "./configuracion/types.ts";
+export type {
+  TaxSettings,
+  SaveTaxSettingsInput,
+  CancellationPolicySettings,
+  SaveCancellationPolicyInput,
+  RoomTypeOverbookingSettings,
+  SaveRoomTypeOverbookingInput,
+  RatePlanRow,
+  ListRatePlansQuery,
+  SaveRatePriceInput,
+  ConfigAuditArea,
+  ConfigAuditEntry,
+} from "./configuracion/types.ts";
+export { buildHotelOnboardingChecklist, evaluarGateOnboarding, NOCHES_TARIFA_REQUERIDAS } from "./onboarding.ts";
+export type { OnboardingChecklist, OnboardingEstado, OnboardingGate, OnboardingItem, OnboardingPantalla, OnboardingResponsable, OnboardingSnapshot } from "./onboarding.ts";

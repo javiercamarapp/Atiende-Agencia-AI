@@ -22,6 +22,8 @@ import { hotelesPlRoutes } from "./pl.ts";
 import { hotelesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { hotelesAdminCatalogoRoutes } from "./admin-catalogo.ts";
 import { hotelesPropertyConfigRoutes } from "./property-config.ts";
+import { hotelesConfiguracionRoutes } from "./configuracion.ts";
+import { hotelesPrimerosPasosRoutes } from "./primeros-pasos.ts";
 import { hotelesMensajeriaConfigRoutes } from "./mensajeria-config.ts";
 import { hotelesAdminStaffRoutes } from "./admin-staff.ts";
 import { hotelesRevenueRoutes } from "./revenue.ts";
@@ -82,6 +84,10 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // /hoteles/:propertyId/configuracion (owner/gm), ver property-config.ts y
   // migrations/030_zona_horaria_property.sql.
   app.route("/", hotelesPropertyConfigRoutes(deps));
+  // H-P3-04 (P1) -- impuestos, politica de cancelacion, sobreventa y listar/editar tarifas desde el panel (owner/gm; accountant lee), migracion 047.
+  app.route("/", hotelesConfiguracionRoutes(deps));
+  // H-P3-06 (P1) -- "Primeros pasos": checklist con datos reales + gate (owner/gm), ver primeros-pasos.ts.
+  app.route("/", hotelesPrimerosPasosRoutes(deps));
   // H-29 -- canal WhatsApp y agente de voz editables desde el panel (owner/gm; el secreto de voz es write-only), ver mensajeria-config.ts.
   app.route("/", hotelesMensajeriaConfigRoutes(deps));
   // Fix hallazgo auditoría (rubro 1, "completitud funcional" — alta de cliente de

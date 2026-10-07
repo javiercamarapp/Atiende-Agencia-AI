@@ -6,6 +6,19 @@
 // rol que InMemoryRestaurantesRepository.
 import { createHash, randomUUID } from "node:crypto";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
+import { CANCELLATION_POLICY_DEFAULTS, TAX_CONFIG_DEFAULTS } from "./configuracion/types.ts";
+import type {
+  CancellationPolicySettings,
+  ConfigAuditEntry,
+  ListRatePlansQuery,
+  RatePlanRow,
+  RoomTypeOverbookingSettings,
+  SaveCancellationPolicyInput,
+  SaveRatePriceInput,
+  SaveRoomTypeOverbookingInput,
+  SaveTaxSettingsInput,
+  TaxSettings,
+} from "./configuracion/types.ts";
 import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
 import type {
   ActiveHotelProperty,
@@ -874,6 +887,12 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   }
 
   async upsertRatePlanRange(input: NewRatePlanRangeInput): Promise<{ datesWritten: number }> {
+    // Camino de STAFF (POST .../tarifas): como el trigger `rate_plan_manual_lock` de la migracion 047, el alta/carga de un rango NO marca la
+    // tarifa como manual (solo `saveRatePrice`, equivalente a `set_rate_price`, la marca). El motor sigue pudiendo aplicar esas fechas.
+    return this.writeRatePlanRange(input);
+  }
+
+  private async writeRatePlanRange(input: NewRatePlanRangeInput): Promise<{ datesWritten: number }> {
     const key = `${input.propertyId}:${input.roomTypeId}`;
     const existing = this.nightlyRates.get(key) ?? [];
     const byDate = new Map(existing.map((r) => [r.date, r]));
@@ -1555,6 +1574,144 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     // Postgres) -- solo si la property ya está sembrada como activa.
     const active = this.activeHotelProperties.get(propertyId);
     if (active) this.activeHotelProperties.set(propertyId, { ...active, timezone });
+  }
+
+  // ---- H-P3-04 -- configuracion del hotel (equivalente en memoria de migrations/047). Reproduce las validaciones y la bitacora de
+  // las funciones `hoteles.set_*` (los mismos prefijos de mensaje), sin RBAC: el rol lo decide la ruta. ----
+
+  private readonly dsaByProperty = new Map<string, number>();
+  private readonly taxConfigured = new Set<string>();
+  private readonly cancellationTextByProperty = new Map<string, string | null>();
+  private readonly rateMeta = new Map<string, { id: string; manualPriceAt: string | null }>(); // key: propertyId:roomTypeId:date
+  readonly configAuditLog: (ConfigAuditEntry & { readonly propertyId: string })[] = [];
+
+  private pushConfigAudit(propertyId: string, actorUserId: string, area: ConfigAuditEntry["area"], entityId: string, anterior: Record<string, unknown> | null, nuevo: Record<string, unknown>): void {
+    this.configAuditLog.push({ id: randomUUID(), propertyId, area, entityId, actorUserId, valorAnterior: anterior, valorNuevo: nuevo, createdAt: new Date().toISOString() });
+  }
+
+  async loadTaxSettings(propertyId: string): Promise<TaxSettings> {
+    const cfg = this.taxConfigByProperty.get(propertyId);
+    if (!cfg) return { ...TAX_CONFIG_DEFAULTS, configurado: false };
+    return { ivaRate: cfg.ivaRate, ishRate: cfg.ishRate, discountThreshold: cfg.discountThreshold, dsaPerNight: this.dsaByProperty.get(propertyId) ?? 0, configurado: true };
+  }
+
+  async saveTaxSettings(input: SaveTaxSettingsInput): Promise<TaxSettings> {
+    if (!(input.ivaRate >= 0 && input.ivaRate <= 1 && input.ishRate >= 0 && input.ishRate <= 1)) throw new Error("impuestos_invalidos: IVA e ISH deben estar entre 0 y 1");
+    if (!(input.discountThreshold >= 0 && input.dsaPerNight >= 0)) throw new Error("impuestos_invalidos: el umbral de descuento y el DSA no pueden ser negativos");
+    const before = this.taxConfigByProperty.has(input.propertyId) ? await this.loadTaxSettings(input.propertyId) : null;
+    this.taxConfigByProperty.set(input.propertyId, { ivaRate: input.ivaRate, ishRate: input.ishRate, discountThreshold: input.discountThreshold });
+    this.dsaByProperty.set(input.propertyId, input.dsaPerNight);
+    const after = await this.loadTaxSettings(input.propertyId);
+    const pick = (t: TaxSettings) => ({ ivaRate: t.ivaRate, ishRate: t.ishRate, discountThreshold: t.discountThreshold, dsaPerNight: t.dsaPerNight });
+    if (!before || JSON.stringify(pick(before)) !== JSON.stringify(pick(after))) {
+      this.pushConfigAudit(input.propertyId, input.actorUserId, "impuestos", input.propertyId, before ? pick(before) : null, pick(after));
+    }
+    return after;
+  }
+
+  async loadCancellationPolicySettings(propertyId: string): Promise<CancellationPolicySettings> {
+    const p = this.cancellationPolicies.get(propertyId);
+    if (!p) return { ...CANCELLATION_POLICY_DEFAULTS, configurado: false };
+    return { freeUntilHours: p.freeUntilHours, penaltyPct: p.penaltyPct, guestText: this.cancellationTextByProperty.get(propertyId) ?? null, configurado: true };
+  }
+
+  async saveCancellationPolicySettings(input: SaveCancellationPolicyInput): Promise<CancellationPolicySettings> {
+    if (!Number.isInteger(input.freeUntilHours) || input.freeUntilHours < 0 || input.freeUntilHours > 8760) throw new Error("politica_invalida: las horas libres deben estar entre 0 y 8760");
+    if (!(input.penaltyPct >= 0 && input.penaltyPct <= 1)) throw new Error("politica_invalida: la penalidad debe estar entre 0 y 1");
+    const text = input.guestText?.trim() ? input.guestText.trim() : null;
+    if (text && text.length > 1000) throw new Error("politica_invalida: el texto para el huesped admite hasta 1000 caracteres");
+    const before = this.cancellationPolicies.has(input.propertyId) ? await this.loadCancellationPolicySettings(input.propertyId) : null;
+    this.cancellationPolicies.set(input.propertyId, { freeUntilHours: input.freeUntilHours, penaltyPct: input.penaltyPct });
+    this.cancellationTextByProperty.set(input.propertyId, text);
+    const after = await this.loadCancellationPolicySettings(input.propertyId);
+    const pick = (t: CancellationPolicySettings) => ({ freeUntilHours: t.freeUntilHours, penaltyPct: t.penaltyPct, guestText: t.guestText });
+    if (!before || JSON.stringify(pick(before)) !== JSON.stringify(pick(after))) {
+      this.pushConfigAudit(input.propertyId, input.actorUserId, "politica_cancelacion", input.propertyId, before ? pick(before) : null, pick(after));
+    }
+    return after;
+  }
+
+  async listRoomTypeOverbooking(propertyId: string): Promise<readonly RoomTypeOverbookingSettings[]> {
+    return [...this.roomTypes.values()]
+      .filter((rt) => rt.propertyId === propertyId)
+      .map((rt) => ({ roomTypeId: rt.id, name: rt.name, maxOverbookRooms: rt.maxOverbookRooms, thresholdPct: rt.overbookingOccupancyThresholdPct }))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.roomTypeId.localeCompare(b.roomTypeId));
+  }
+
+  async saveRoomTypeOverbooking(input: SaveRoomTypeOverbookingInput): Promise<RoomTypeOverbookingSettings | null> {
+    const rt = this.roomTypes.get(input.roomTypeId);
+    if (!rt || rt.propertyId !== input.propertyId) return null;
+    if (!Number.isInteger(input.maxOverbookRooms) || input.maxOverbookRooms < 0 || input.maxOverbookRooms > 100) throw new Error("sobreventa_invalida: el maximo de habitaciones de sobreventa debe estar entre 0 y 100");
+    if (input.thresholdPct !== null && !(input.thresholdPct >= 0 && input.thresholdPct <= 100)) throw new Error("sobreventa_invalida: el umbral de ocupacion debe estar entre 0 y 100");
+    const before = { maxOverbookRooms: rt.maxOverbookRooms, thresholdPct: rt.overbookingOccupancyThresholdPct };
+    rt.maxOverbookRooms = input.maxOverbookRooms;
+    if (input.thresholdPct !== null) rt.overbookingOccupancyThresholdPct = input.thresholdPct;
+    const after = { maxOverbookRooms: rt.maxOverbookRooms, thresholdPct: rt.overbookingOccupancyThresholdPct };
+    if (JSON.stringify(before) !== JSON.stringify(after)) this.pushConfigAudit(input.propertyId, input.actorUserId, "sobreventa", rt.id, before, after);
+    return { roomTypeId: rt.id, name: rt.name, ...after };
+  }
+
+  private rateMetaFor(propertyId: string, roomTypeId: string, date: string): { id: string; manualPriceAt: string | null } {
+    const key = `${propertyId}:${roomTypeId}:${date}`;
+    let meta = this.rateMeta.get(key);
+    if (!meta) {
+      meta = { id: randomUUID(), manualPriceAt: null };
+      this.rateMeta.set(key, meta);
+    }
+    return meta;
+  }
+
+  async listRatePlans(query: ListRatePlansQuery): Promise<readonly RatePlanRow[]> {
+    const rows: RatePlanRow[] = [];
+    for (const rt of this.roomTypes.values()) {
+      if (rt.propertyId !== query.propertyId) continue;
+      if (query.roomTypeId && rt.id !== query.roomTypeId) continue;
+      for (const r of this.nightlyRates.get(`${query.propertyId}:${rt.id}`) ?? []) {
+        if (r.date < query.from || r.date > query.to) continue;
+        const meta = this.rateMetaFor(query.propertyId, rt.id, r.date);
+        rows.push({ id: meta.id, roomTypeId: rt.id, roomTypeName: rt.name, date: r.date, price: r.price, currency: "MXN", minStay: r.minStay, closedToArrival: r.closedToArrival, closedToDeparture: r.closedToDeparture, manualPriceAt: meta.manualPriceAt });
+      }
+    }
+    rows.sort((a, b) => a.date.localeCompare(b.date) || a.roomTypeName.localeCompare(b.roomTypeName) || a.id.localeCompare(b.id));
+    return rows.slice(0, query.limit);
+  }
+
+  async saveRatePrice(input: SaveRatePriceInput): Promise<RatePlanRow | null> {
+    if (!(input.price >= 0)) throw new Error("tarifa_invalida: el precio debe ser un numero mayor o igual a 0");
+    if (input.minStay !== null && (!Number.isInteger(input.minStay) || input.minStay < 1 || input.minStay > 365)) throw new Error("tarifa_invalida: la estancia minima debe estar entre 1 y 365");
+    for (const rt of this.roomTypes.values()) {
+      if (rt.propertyId !== input.propertyId) continue;
+      const rates = this.nightlyRates.get(`${input.propertyId}:${rt.id}`) ?? [];
+      const idx = rates.findIndex((r) => this.rateMetaFor(input.propertyId, rt.id, r.date).id === input.rateId);
+      if (idx === -1) continue;
+      const old = rates[idx]!;
+      const meta = this.rateMetaFor(input.propertyId, rt.id, old.date);
+      const minStay = input.minStay ?? old.minStay;
+      if (old.price !== input.price || old.minStay !== minStay) {
+        rates[idx] = { ...old, price: input.price, minStay };
+        this.nightlyRates.set(`${input.propertyId}:${rt.id}`, rates);
+        meta.manualPriceAt = new Date().toISOString();
+        this.pushConfigAudit(input.propertyId, input.actorUserId, "tarifa", input.rateId, { fecha: old.date, roomTypeId: rt.id, price: old.price, minStay: old.minStay }, { fecha: old.date, roomTypeId: rt.id, price: input.price, minStay });
+      }
+      const now = rates[idx]!;
+      return { id: meta.id, roomTypeId: rt.id, roomTypeName: rt.name, date: now.date, price: now.price, currency: "MXN", minStay: now.minStay, closedToArrival: now.closedToArrival, closedToDeparture: now.closedToDeparture, manualPriceAt: meta.manualPriceAt };
+    }
+    return null;
+  }
+
+  async recordOnboardingSkip(propertyId: string, organizationId: string, actorUserId: string): Promise<boolean> {
+    void organizationId;
+    this.pushConfigAudit(propertyId, actorUserId, "onboarding_omitido", propertyId, null, { omitido: true });
+    return true;
+  }
+
+  async listConfigAudit(propertyId: string, limit: number): Promise<readonly ConfigAuditEntry[]> {
+    return this.configAuditLog
+      .filter((e) => e.propertyId === propertyId)
+      .slice()
+      .reverse()
+      .slice(0, limit)
+      .map(({ propertyId: _p, ...entry }) => entry);
   }
 
   // ---- HotelesRepository: Fase 6 — H5/REQ-REV-013 night audit propio ----
@@ -2390,7 +2547,13 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     const key = `${existing.propertyId}:${existing.roomTypeId}`;
     const rates = this.nightlyRates.get(key) ?? [];
     const prior = rates.find((r) => r.date === existing.fecha);
-    await this.upsertRatePlanRange({
+    // Migracion 047: el motor no pisa una tarifa con precio fijado a mano (mismo rechazo que `system_apply_rate_recommendation`).
+    // Solo la aplicacion automatica (recomendacion 'pendiente') respeta la marca; una 'aprobada' por una persona se aplica y limpia la marca.
+    const metaKey = `${existing.propertyId}:${existing.roomTypeId}:${existing.fecha}`;
+    if (existing.estado === "pendiente" && prior && this.rateMeta.get(metaKey)?.manualPriceAt) {
+      throw new Error(`tarifa_manual_vigente: la tarifa del ${existing.fecha} tiene un precio fijado a mano; el motor no la sobreescribe`);
+    }
+    await this.writeRatePlanRange({
       organizationId: existing.organizationId,
       propertyId: existing.propertyId,
       roomTypeId: existing.roomTypeId,
@@ -2402,6 +2565,8 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       closedToArrival: prior?.closedToArrival ?? false,
       closedToDeparture: prior?.closedToDeparture ?? false,
     });
+    const meta = this.rateMeta.get(metaKey);
+    if (meta) meta.manualPriceAt = null;
     const updated: RateRecommendationRecord = { ...existing, estado: "aplicada", aplicadaPor: null, aplicadaEn: new Date().toISOString(), updatedAt: new Date().toISOString() };
     this.rateRecommendations.set(id, updated);
     return updated;

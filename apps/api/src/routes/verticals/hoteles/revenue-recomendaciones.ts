@@ -109,6 +109,7 @@ function translateRateRecommendationDomainError(err: unknown): never {
     "expiracion_prematura",
     "transicion_no_permitida",
     "datos_de_recomendacion_inmutables",
+    "tarifa_manual_vigente",
   ];
   if (forbiddenPrefixes.some((p) => message.includes(p))) throw Errors.forbidden(message);
   if (conflictPrefixes.some((p) => message.includes(p))) throw Errors.conflict(message);

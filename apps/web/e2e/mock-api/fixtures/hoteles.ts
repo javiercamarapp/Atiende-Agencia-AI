@@ -190,4 +190,131 @@ function serializarFolio(f: FolioMock) {
   return { id: f.id, estado: f.estado, reservationId: f.reservationId, etiqueta: f.etiqueta, esPrincipal: true, cerradoEn: f.cerradoEn, motivoCierre: f.motivoCierre, cargos: f.cargos, pagos: [], saldo: saldoFolio(f) };
 }
 
+// H-P3-04/05/06 -- configuracion del hotel, equipo y Primeros pasos con ESTADO por escenario: un PUT/POST se refleja en el GET siguiente y en el
+// checklist (que se calcula desde ese mismo estado, como el servidor real). Semilla: un hotel que ya opera con reservas y tiene todo lo obligatorio
+// hecho (el humo del Resumen no cambia); solo falta el equipo y los canales. Solo existe en la API simulada de e2e.
+const ROLES_ADMIN_HOTEL = ["owner", "admin"] as const;
+const AVISO_ISH_MOCK = "La tasa del ISH depende del estado y del municipio: verifícala con tu contador antes de guardarla.";
+interface ConfigHotelMock {
+  impuestos: { ivaRate: number; ishRate: number; discountThreshold: number; dsaPerNight: number; configurado: boolean };
+  politica: { freeUntilHours: number; penaltyPct: number; guestText: string | null; configurado: boolean };
+  sobreventa: { roomTypeId: string; name: string; maxOverbookRooms: number; thresholdPct: number }[];
+  tarifas: { id: string; roomTypeId: string; roomTypeName: string; date: string; price: number; currency: string; minStay: number; closedToArrival: boolean; closedToDeparture: boolean; manualPriceAt: string | null }[];
+  bitacora: { id: string; area: string; entityId: string | null; actorUserId: string | null; valorAnterior: Record<string, unknown> | null; valorNuevo: Record<string, unknown>; createdAt: string }[];
+  invitaciones: { id: string; email: string; verticalRole: string; propertyIds: null; status: string; expiresAt: string; createdAt: string }[];
+  omitido: boolean;
+}
+const TIPO_MOCK = "00000000-0000-4000-8000-0000000000a1";
+function configHotel(p: { estado: { obtener<T>(k: string, s: () => T): T } }): ConfigHotelMock {
+  return p.estado.obtener<ConfigHotelMock>("hoteles.configuracion", () => ({
+    impuestos: { ivaRate: 0.16, ishRate: 0.03, discountThreshold: 500, dsaPerNight: 0, configurado: true },
+    politica: { freeUntilHours: 24, penaltyPct: 0.5, guestText: "Cancelación gratis hasta 24 horas antes.", configurado: true },
+    sobreventa: [{ roomTypeId: TIPO_MOCK, name: "Doble vista al mar", maxOverbookRooms: 0, thresholdPct: 95 }],
+    tarifas: [1, 2, 3].map((n) => ({ id: `00000000-0000-4000-8000-0000000001${n}0`, roomTypeId: TIPO_MOCK, roomTypeName: "Doble vista al mar", date: `2026-12-0${n}`, price: 1500 + n * 50, currency: "MXN", minStay: 1, closedToArrival: false, closedToDeparture: false, manualPriceAt: null })),
+    bitacora: [],
+    invitaciones: [],
+    omitido: false,
+  }));
+}
+function registrarCambio(c: ConfigHotelMock, area: string, anterior: Record<string, unknown> | null, nuevo: Record<string, unknown>): void {
+  c.bitacora.unshift({ id: `bit-${c.bitacora.length + 1}`, area, entityId: null, actorUserId: "hoteles-owner", valorAnterior: anterior, valorNuevo: nuevo, createdAt: new Date().toISOString() });
+}
+function checklistMock(c: ConfigHotelMock) {
+  const equipo = c.invitaciones.filter((i) => i.status === "pending").length;
+  const items = [
+    { id: "tipos_habitacion", titulo: "Tipos de habitación", estado: "hecho", obligatorio: true, detalle: "1 tipo(s) de habitación creados.", responsable: "dueno", pantalla: "catalogo" },
+    { id: "habitaciones", titulo: "Habitaciones físicas", estado: "hecho", obligatorio: true, detalle: "12 habitación(es) registradas.", responsable: "dueno", pantalla: "catalogo" },
+    { id: "tarifas", titulo: "Tarifas para los próximos 30 días", estado: "hecho", obligatorio: true, detalle: "Todos los tipos tienen tarifa para las próximas 30 noches.", responsable: "dueno", pantalla: "configuracion", pestana: "tarifas" },
+    { id: "impuestos", titulo: "Impuestos revisados", estado: c.impuestos.configurado ? "hecho" : "pendiente", obligatorio: true, detalle: c.impuestos.configurado ? "IVA, ISH y umbral de descuento guardados por el hotel." : "Todavía no guardas tus impuestos.", responsable: "dueno", pantalla: "configuracion", pestana: "impuestos" },
+    { id: "politica_cancelacion", titulo: "Política de cancelación", estado: c.politica.configurado ? "hecho" : "pendiente", obligatorio: true, detalle: "Horas libres, penalidad y texto para el huésped guardados.", responsable: "dueno", pantalla: "configuracion", pestana: "cancelacion" },
+    { id: "whatsapp", titulo: "WhatsApp conectado", estado: "pendiente", obligatorio: false, detalle: "Sin número de WhatsApp: el agente no recibe mensajes de huéspedes. Requiere el número y las credenciales de Meta.", responsable: "meta", pantalla: "mensajeria" },
+    { id: "equipo", titulo: "Al menos un miembro del equipo", estado: equipo > 0 ? "parcial" : "pendiente", obligatorio: false, detalle: equipo > 0 ? `${equipo} invitación(es) pendiente(s) de aceptar.` : "Solo tú tienes acceso: invita a recepción, housekeeping o contabilidad.", responsable: "dueno", pantalla: "equipo" },
+    { id: "reserva_prueba", titulo: "Reserva de prueba", estado: "hecho", obligatorio: false, detalle: "8 reserva(s) registradas.", responsable: "dueno", pantalla: "reservas" },
+  ];
+  const hechos = items.filter((i) => i.estado === "hecho").length;
+  const obligatoriosPendientes = items.filter((i) => i.obligatorio && i.estado !== "hecho").length;
+  return { bloquea: false, obligatoriosPendientes, operaConReservas: true, listoParaOperar: obligatoriosPendientes === 0, nochesRequeridas: 30, resumen: { hechos, total: items.length, obligatoriosPendientes }, items };
+}
+
+export const rutasHotelesConfiguracion: readonly Ruta[] = [
+  { metodo: "GET", patron: `${H}/primeros-pasos`, roles: ROLES_ADMIN_HOTEL, manejador: (p) => checklistMock(configHotel(p)) },
+  { metodo: "POST", patron: `${H}/primeros-pasos/omitir`, roles: ROLES_ADMIN_HOTEL, manejador: (p) => {
+      const c = configHotel(p);
+      c.omitido = true;
+      registrarCambio(c, "onboarding_omitido", null, { omitido: true });
+      return { omitido: true, registrada: true };
+    } },
+  { metodo: "GET", patron: `${H}/configuracion/impuestos`, roles: ["owner", "admin", "finanzas"], manejador: (p) => ({ ...configHotel(p).impuestos, aviso: AVISO_ISH_MOCK }) },
+  { metodo: "PUT", patron: `${H}/configuracion/impuestos`, roles: ROLES_ADMIN_HOTEL, manejador: (p) => {
+      const c = configHotel(p);
+      const b = (p.cuerpo ?? {}) as { ivaRate?: number; ishRate?: number; discountThreshold?: number; dsaPerNight?: number };
+      const razon = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
+      if (!razon(b.ivaRate) || !razon(b.ishRate)) return fallo(400, "ivaRate debe ser un número entre 0 y 1 (ej. 0.16 para 16 %).");
+      if (typeof b.discountThreshold !== "number" || b.discountThreshold < 0) return fallo(400, "discountThreshold debe ser un número mayor o igual a 0.");
+      const antes = { ivaRate: c.impuestos.ivaRate, ishRate: c.impuestos.ishRate, discountThreshold: c.impuestos.discountThreshold, dsaPerNight: c.impuestos.dsaPerNight };
+      c.impuestos = { ivaRate: b.ivaRate as number, ishRate: b.ishRate as number, discountThreshold: b.discountThreshold, dsaPerNight: b.dsaPerNight ?? 0, configurado: true };
+      const despues = { ivaRate: c.impuestos.ivaRate, ishRate: c.impuestos.ishRate, discountThreshold: c.impuestos.discountThreshold, dsaPerNight: c.impuestos.dsaPerNight };
+      if (JSON.stringify(antes) !== JSON.stringify(despues)) registrarCambio(c, "impuestos", antes, despues);
+      return { ...c.impuestos, aviso: AVISO_ISH_MOCK };
+    } },
+  { metodo: "GET", patron: `${H}/configuracion/politica-cancelacion`, roles: ["owner", "admin", "finanzas"], manejador: (p) => configHotel(p).politica },
+  { metodo: "PUT", patron: `${H}/configuracion/politica-cancelacion`, roles: ROLES_ADMIN_HOTEL, manejador: (p) => {
+      const c = configHotel(p);
+      const b = (p.cuerpo ?? {}) as { freeUntilHours?: number; penaltyPct?: number; guestText?: string | null };
+      if (typeof b.freeUntilHours !== "number" || !Number.isInteger(b.freeUntilHours) || b.freeUntilHours < 0) return fallo(400, "freeUntilHours debe ser un entero de horas entre 0 y 8760.");
+      if (typeof b.penaltyPct !== "number" || b.penaltyPct < 0 || b.penaltyPct > 1) return fallo(400, "penaltyPct debe ser un número entre 0 y 1 (ej. 0.16 para 16 %).");
+      const antes = { freeUntilHours: c.politica.freeUntilHours, penaltyPct: c.politica.penaltyPct, guestText: c.politica.guestText };
+      c.politica = { freeUntilHours: b.freeUntilHours, penaltyPct: b.penaltyPct, guestText: b.guestText ?? null, configurado: true };
+      registrarCambio(c, "politica_cancelacion", antes, { freeUntilHours: c.politica.freeUntilHours, penaltyPct: c.politica.penaltyPct, guestText: c.politica.guestText });
+      return c.politica;
+    } },
+  { metodo: "GET", patron: `${H}/configuracion/sobreventa`, roles: ["owner", "admin", "finanzas"], manejador: (p) => ({ tipos: configHotel(p).sobreventa }) },
+  { metodo: "PUT", patron: `${H}/configuracion/sobreventa/:rt`, roles: ROLES_ADMIN_HOTEL, manejador: (p) => {
+      const c = configHotel(p);
+      const tipo = c.sobreventa.find((t) => t.roomTypeId === p.params.rt);
+      if (!tipo) return fallo(404, "Tipo de habitación no encontrado en esta property.");
+      const b = (p.cuerpo ?? {}) as { maxOverbookRooms?: number; thresholdPct?: number };
+      if (typeof b.maxOverbookRooms !== "number" || !Number.isInteger(b.maxOverbookRooms) || b.maxOverbookRooms < 0 || b.maxOverbookRooms > 100) return fallo(400, "maxOverbookRooms debe ser un entero entre 0 y 100 (0 = sin sobreventa).");
+      const antes = { maxOverbookRooms: tipo.maxOverbookRooms, thresholdPct: tipo.thresholdPct };
+      tipo.maxOverbookRooms = b.maxOverbookRooms;
+      if (typeof b.thresholdPct === "number") tipo.thresholdPct = b.thresholdPct;
+      registrarCambio(c, "sobreventa", antes, { maxOverbookRooms: tipo.maxOverbookRooms, thresholdPct: tipo.thresholdPct });
+      return tipo;
+    } },
+  { metodo: "GET", patron: `${H}/configuracion/bitacora`, roles: ROLES_ADMIN_HOTEL, manejador: (p) => ({ entradas: configHotel(p).bitacora }) },
+  { metodo: "GET", patron: `${H}/tipos-habitacion`, manejador: () => [{ id: TIPO_MOCK, nombre: "Doble vista al mar", capacidadMaxima: 2 }] },
+  { metodo: "GET", patron: `${H}/tarifas`, roles: ["owner", "admin", "finanzas"], manejador: (p) => ({ desde: p.query.get("desde") ?? "2026-12-01", hasta: p.query.get("hasta") ?? "2026-12-30", tarifas: configHotel(p).tarifas, truncado: false }) },
+  { metodo: "PUT", patron: `${H}/tarifas/:tid`, roles: ROLES_ADMIN_HOTEL, manejador: (p) => {
+      const c = configHotel(p);
+      const t = c.tarifas.find((x) => x.id === p.params.tid);
+      if (!t) return fallo(404, "Tarifa no encontrada en esta property.");
+      const b = (p.cuerpo ?? {}) as { precio?: number; estanciaMinima?: number };
+      if (typeof b.precio !== "number" || b.precio < 0) return fallo(400, "precio debe ser un número mayor o igual a 0.");
+      const antes = { fecha: t.date, roomTypeId: t.roomTypeId, price: t.price, minStay: t.minStay };
+      t.price = b.precio;
+      if (typeof b.estanciaMinima === "number") t.minStay = b.estanciaMinima;
+      t.manualPriceAt = new Date().toISOString();
+      registrarCambio(c, "tarifa", antes, { fecha: t.date, roomTypeId: t.roomTypeId, price: t.price, minStay: t.minStay });
+      return t;
+    } },
+  // Equipo (invitaciones reales del servidor: el token solo sale al crear).
+  { metodo: "GET", patron: "/v1/hoteles/:id/admin/staff/invitaciones", roles: ROLES_ADMIN_HOTEL, manejador: (p) => ({ invitations: configHotel(p).invitaciones.filter((i) => i.status === "pending") }) },
+  { metodo: "POST", patron: "/v1/hoteles/:id/admin/staff/invitaciones", roles: ROLES_ADMIN_HOTEL, manejador: (p) => {
+      const c = configHotel(p);
+      const b = (p.cuerpo ?? {}) as { email?: string; verticalRole?: string };
+      if (typeof b.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email)) return fallo(400, "email inválido");
+      if (!["owner", "gm", "frontdesk", "reservations", "housekeeping", "maintenance", "fnb", "accountant"].includes(String(b.verticalRole))) return fallo(400, "verticalRole inválido");
+      const inv = { id: `inv-${c.invitaciones.length + 1}`, email: b.email.toLowerCase(), verticalRole: String(b.verticalRole), propertyIds: null, status: "pending", expiresAt: "2026-12-31T00:00:00.000Z", createdAt: new Date().toISOString() };
+      c.invitaciones.push(inv);
+      return conStatus(201, { ...inv, inviteToken: "token-de-ejemplo" });
+    } },
+  { metodo: "DELETE", patron: "/v1/hoteles/:id/admin/staff/invitaciones/:iid", roles: ROLES_ADMIN_HOTEL, manejador: (p) => {
+      const inv = configHotel(p).invitaciones.find((i) => i.id === p.params.iid && i.status === "pending");
+      if (!inv) return fallo(404, "Invitación no encontrada, ya fue usada, o ya estaba revocada.");
+      inv.status = "revoked";
+      return { ok: true };
+    } },
+  { metodo: "GET", patron: "/v1/hoteles/:id/admin/staff/miembros", roles: ROLES_ADMIN_HOTEL, manejador: () => ({ miembros: [{ id: "u-owner", email: "owner.hoteles@example.test", fullName: "Owner hoteles", verticalRole: "owner", propertyIds: null }] }) },
+];
+
 export const hoteles = { orgSlug: ORG.slug, propertyId: PROP.id };

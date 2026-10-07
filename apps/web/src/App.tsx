@@ -114,6 +114,9 @@ const HotelesPlPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Pl.t
 const HotelesRevenuePage = cargaPerezosa(() => import("./verticals/hoteles/pages/Revenue.tsx"), "RevenuePage");
 const HotelesReputacionPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Reputacion.tsx"), "ReputacionPage");
 const HotelesCatalogoPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Catalogo.tsx"), "CatalogoPage");
+const HotelesConfiguracionPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Configuracion.tsx"), "ConfiguracionPage");
+const HotelesEquipoPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Equipo.tsx"), "EquipoPage");
+const HotelesPrimerosPasosPage = cargaPerezosa(() => import("./verticals/hoteles/pages/PrimerosPasos.tsx"), "PrimerosPasosPage");
 const PedidosFnbPage = cargaPerezosa(() => import("./verticals/hoteles/pages/PedidosFnb.tsx"), "PedidosFnbPage");
 const RentasLoginPage = cargaPerezosa(() => import("./verticals/rentas/pages/Login.tsx"), "RentasLoginPage");
 const RentasRegistroPage = cargaPerezosa(() => import("./verticals/rentas/pages/Registro.tsx"), "RentasRegistroPage");
@@ -700,6 +703,10 @@ const HotelesReputacionRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) 
  * navegue directo a esta URL ve el 403 real del servidor como mensaje de error
  * dentro de Catalogo.tsx). */
 const HotelesCatalogoRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesCatalogoPage {...ctx} />);
+// H-P3-04/05/06 -- Configuracion del hotel, Equipo y Primeros pasos (nav gateada cosmeticamente por rol en HotelesShell.tsx; el servidor manda).
+const HotelesConfiguracionRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesConfiguracionPage {...ctx} />);
+const HotelesEquipoRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesEquipoPage {...ctx} />);
+const HotelesPrimerosPasosRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesPrimerosPasosPage {...ctx} />);
 
 /** Fase 15 — hallazgo de auditoría (severidad ALTA, "Pedidos F&B con guardia de
  * alergias: backend real sin pantalla"): mismo patrón que
@@ -1189,6 +1196,9 @@ export function App() {
         <Route path="/hoteles/:orgSlug/revenue" element={<HotelesRevenueRoute />} />
         <Route path="/hoteles/:orgSlug/reputacion" element={<HotelesReputacionRoute />} />
         <Route path="/hoteles/:orgSlug/catalogo" element={<HotelesCatalogoRoute />} />
+        <Route path="/hoteles/:orgSlug/configuracion" element={<HotelesConfiguracionRoute />} />
+        <Route path="/hoteles/:orgSlug/equipo" element={<HotelesEquipoRoute />} />
+        <Route path="/hoteles/:orgSlug/primeros-pasos" element={<HotelesPrimerosPasosRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
         {/* PL-21: enlaces del correo de rentas (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
         <Route path="/rentas/restablecer-contrasena" element={<RestablecerContrasenaPage apiBaseUrl={API_BASE_URL} vertical="rentas" />} />

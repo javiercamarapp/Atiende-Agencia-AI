@@ -4,6 +4,18 @@
 // TenantDbSession, contra las migraciones de migrations/001-003). Ninguna función de
 // negocio de las rutas de apps/api toca SQL directamente — todas pasan por aquí.
 import type {
+  TaxSettings,
+  SaveTaxSettingsInput,
+  CancellationPolicySettings,
+  SaveCancellationPolicyInput,
+  RoomTypeOverbookingSettings,
+  SaveRoomTypeOverbookingInput,
+  RatePlanRow,
+  ListRatePlansQuery,
+  SaveRatePriceInput,
+  ConfigAuditEntry,
+} from "./configuracion/types.ts";
+import type {
   ActiveHotelProperty,
   AttendanceEventRecord,
   CancellationPolicyRecord,
@@ -431,6 +443,23 @@ export interface HotelesRepository {
    *  criterio que `citas/admin.ts::optionalTimeZone`) -- esta capa no vuelve a
    *  validar contenido. */
   upsertPropertyTimezone(propertyId: string, organizationId: string, timezone: string | null, actorUserId: string): Promise<void>;
+
+  // ---- H-P3-04 -- configuracion del hotel desde el panel (migrations/047). LECTURAS: degradan a los valores por omision / lista
+  // vacia si la migracion aun no esta aplicada (nunca lanzan). ESCRITURAS: pasan por `hoteles.set_*` (owner/gm, con bitacora) y
+  // lanzan `HotelConfigUnavailableError` si la migracion no esta aplicada. ----
+  loadTaxSettings(propertyId: string): Promise<TaxSettings>;
+  saveTaxSettings(input: SaveTaxSettingsInput): Promise<TaxSettings>;
+  loadCancellationPolicySettings(propertyId: string): Promise<CancellationPolicySettings>;
+  saveCancellationPolicySettings(input: SaveCancellationPolicyInput): Promise<CancellationPolicySettings>;
+  listRoomTypeOverbooking(propertyId: string): Promise<readonly RoomTypeOverbookingSettings[]>;
+  saveRoomTypeOverbooking(input: SaveRoomTypeOverbookingInput): Promise<RoomTypeOverbookingSettings | null>;
+  /** Tarifas por noche (una fila por tipo y fecha) en [from, to], orden total (fecha, tipo, id). */
+  listRatePlans(query: ListRatePlansQuery): Promise<readonly RatePlanRow[]>;
+  /** `null` si la tarifa no pertenece a la property. Idempotente: repetir el mismo valor no reescribe ni genera bitacora. */
+  saveRatePrice(input: SaveRatePriceInput): Promise<RatePlanRow | null>;
+  listConfigAudit(propertyId: string, limit: number): Promise<readonly ConfigAuditEntry[]>;
+  /** Registra en la bitacora que owner/gm omitio el gate de "Primeros pasos". `false` si la migracion 047 aun no esta aplicada (la omision sigue siendo valida en el navegador). */
+  recordOnboardingSkip(propertyId: string, organizationId: string, actorUserId: string): Promise<boolean>;
 
   // ---- Fase 6 — H5/REQ-REV-013: night audit propio ----
 

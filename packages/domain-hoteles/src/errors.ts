@@ -86,3 +86,13 @@ export function translateFolioTriggerError(err: unknown): FolioCerradoError | Fo
   if (e.message.startsWith("cierre_saldo_distinto_de_cero")) return new FolioCierreSaldoError();
   return null;
 }
+
+/** H-P3-04 -- una ESCRITURA de configuracion del hotel (impuestos, politica de cancelacion, sobreventa, tarifa) contra una base cuya
+ *  migracion 047 aun no esta aplicada (42883/42P01/42703). La LECTURA degrada a los valores por omision; una escritura no tiene camino
+ *  anterior. La ruta HTTP la mapea a 503, nunca a un 500 crudo. */
+export class HotelConfigUnavailableError extends Error {
+  constructor(operation: string) {
+    super(`La configuración del hotel aún no está disponible en esta base (migración pendiente) -- operación: ${operation}.`);
+    this.name = "HotelConfigUnavailableError";
+  }
+}
