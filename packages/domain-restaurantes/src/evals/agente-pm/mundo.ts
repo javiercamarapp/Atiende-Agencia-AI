@@ -24,6 +24,8 @@ export const MINIMO_DOMICILIO = 200;
 /** Nombres de las herramientas del registro unico (nunca los del prompt del experto). */
 export const HERRAMIENTAS_REGISTRO = [
   "buscar_cliente",
+  "historial_pedidos",
+  "repetir_pedido",
   "consultar_sucursal",
   "buscar_sucursal_cercana",
   "buscar_producto",
@@ -157,6 +159,10 @@ export class Mundo {
     switch (nombre) {
       case "buscar_cliente":
         return this.buscarCliente();
+      case "historial_pedidos":
+        return this.historialPedidos();
+      case "repetir_pedido":
+        return this.repetirPedido(args);
       case "consultar_sucursal":
         return this.consultarSucursal(String(args.branch_slug ?? ""));
       case "buscar_sucursal_cercana":
@@ -192,6 +198,36 @@ export class Mundo {
       frequentItems: c.ultimo_pedido.map((i) => ({ name: i.producto })),
       lastOrderItems: c.ultimo_pedido.map((i) => ({ name: i.producto, quantity: i.piezas })),
     };
+  }
+
+  /** Pedidos anteriores del cliente conocido (Cliente 360): en este arnes solo se conoce el ultimo pedido. */
+  private historialPedidos(): unknown {
+    const c = this.caso.contexto.cliente_conocido;
+    if (!c || c.telefono.replace(/\D/g, "") !== this.telefono) return { pedidos: [], total_pedidos_anteriores: 0 };
+    return {
+      pedidos: [{ numero: 1, fecha: "la ultima vez", canal: null, sucursal: null, total: null, productos: c.ultimo_pedido.map((i) => ({ name: i.producto, quantity: i.piezas })) }],
+      total_pedidos_anteriores: 1,
+    };
+  }
+
+  /** "Lo mismo de la vez pasada": vuelve a cotizar el ultimo pedido con los precios y la disponibilidad de HOY. */
+  private repetirPedido(args: Readonly<Record<string, unknown>>): unknown {
+    const c = this.caso.contexto.cliente_conocido;
+    if (!c || c.telefono.replace(/\D/g, "") !== this.telefono) throw new ErrorNegocio("Este cliente todavía no tiene pedidos anteriores que repetir.");
+    const sucursal = SUCURSAL_POR_SLUG(String(args.branch_slug ?? ""));
+    const cambios: { producto: string; motivo: "ya_no_disponible" }[] = [];
+    const items: Record<string, unknown>[] = [];
+    for (const previo of c.ultimo_pedido) {
+      const producto = this.menu.find((p) => normalizar(p.nombre) === normalizar(previo.producto));
+      if (!producto || !this.disponibleEn(producto, sucursal)) {
+        cambios.push({ producto: previo.producto, motivo: "ya_no_disponible" });
+        continue;
+      }
+      items.push({ product_id: this.idDe(producto), product_name: producto.nombre, requested_quantity: previo.piezas, ...(typeof args.tortilla === "string" ? { tortilla: args.tortilla } : {}) });
+    }
+    if (items.length === 0) throw new ErrorNegocio("Ninguno de los productos de ese pedido está disponible hoy en esa sucursal.");
+    const cotizado = this.cotizar({ ...args, items }) as Record<string, unknown>;
+    return { ...cotizado, repeticion: { pedido_numero: 1, cambios } };
   }
 
   private consultarSucursal(slug: string): unknown {
@@ -371,7 +407,7 @@ export class Mundo {
       promoId: q.promoId,
       cortesias: q.cortesias,
       propina: pago === "tarjeta" ? "en_terminal" : "no_aplica",
-      horaRecogerMin: canal === "recoger" ? minutosDeNotas(notas) : null,
+      horaRecogerMin: canal === "recoger" ? minutosDesdeHoraRecogida(args.hora_recogida, this.caso.contexto.hora_local) : null,
       totalMxn: q.total,
       colonia: typeof args.colonia_entrega === "string" ? args.colonia_entrega : null,
       direccion: typeof args.customer_address === "string" ? args.customer_address : null,
@@ -419,10 +455,13 @@ export function ajustesDeNotas(notas: string | null): string[] {
   return encontrados;
 }
 
-export function minutosDeNotas(notas: string | null): number | null {
-  if (!notas) return null;
-  const n = normalizar(notas);
-  if (/media hora/.test(n)) return 30;
-  const m = /(\d{1,3})\s*min/.exec(n);
-  return m ? Number(m[1]) : null;
+/** Minutos entre la hora local del caso y `hora_recogida` (ISO 8601 con zona, el parametro real de crear_pedido). Solo cuenta ese
+ * campo: el servidor real ignora la hora si va en `notes`, asi que el mundo tambien. Sin campo valido: null. */
+export function minutosDesdeHoraRecogida(horaRecogida: unknown, horaLocal: string): number | null {
+  if (typeof horaRecogida !== "string") return null;
+  const iso = /^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})/.exec(horaRecogida.trim());
+  const base = /^(\d{1,2}):(\d{2})/.exec(horaLocal);
+  if (!iso || !base) return null;
+  const delta = Number(iso[1]) * 60 + Number(iso[2]) - (Number(base[1]) * 60 + Number(base[2]));
+  return ((delta % 1440) + 1440) % 1440;
 }

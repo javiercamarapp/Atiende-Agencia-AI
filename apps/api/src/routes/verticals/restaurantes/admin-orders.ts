@@ -12,16 +12,16 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, assertOrderCanBeDispatched, avisarProgramadosPromovidos, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, MOTIVOS_CANCELACION, assertOrderCanBeDispatched, avisarProgramadosPromovidos, changeOrderStatus, esMotivoCancelacion, emitirAvisoProgramadoEnCocina, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
 import type { Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
-import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
+import { cortarComandaDePedidoCancelado, encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import { dispatchWhatsAppVertical, triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
-import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
+import { softRestaurantComandaDeps, softRestaurantStoreFor } from "./softrestaurant-wiring.ts";
 
 /** Canal, propina y hora de recogida (migracion 031). `null` en los tres cuando la base aun no esta migrada o
  * el pedido es anterior: los listados no seleccionan esas columnas, se leen aparte con SAVEPOINT. */
@@ -118,6 +118,8 @@ interface StatusBody {
   readonly status?: unknown;
   /** `false` = no avisar por WhatsApp al cliente de este cambio (aviso opcional de "listo para recoger"). */
   readonly notifyCustomer?: unknown;
+  /** Obligatorio al cancelar: motivo de la lista cerrada (`MOTIVOS_CANCELACION`); alimenta el historial de transiciones y el KPI de precision del agente. */
+  readonly motivo?: unknown;
   /** Nota de la incidencia (solo con `status: "problema"`; 1-2000 caracteres). */
   readonly incidentNote?: unknown;
 }
@@ -241,6 +243,12 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (typeof raw.status !== "string" || !isOrderStatus(raw.status)) {
       throw Errors.validation("status: valor de estado desconocido.");
     }
+    // Taxonomia cerrada de cancelacion (A-24/C-13): cancelar SIN motivo se rechaza antes de tocar el pedido.
+    let motivoCancelacion: string | null = null;
+    if (raw.status === "cancelado") {
+      if (!esMotivoCancelacion(raw.motivo)) throw Errors.validation(`motivo: obligatorio al cancelar; uno de ${MOTIVOS_CANCELACION.join(", ")}.`);
+      motivoCancelacion = raw.motivo;
+    }
 
     try {
       // Blocker A (revisión de PR #169) — `changeOrderStatus` ahora recibe
@@ -255,6 +263,15 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       // SAVEPOINT.
       // `notifyCustomer: false` salta el aviso por WhatsApp al cliente (aviso OPCIONAL de "listo para recoger").
       if (raw.notifyCustomer !== undefined && typeof raw.notifyCustomer !== "boolean") throw Errors.validation("notifyCustomer: se esperaba true o false.");
+      if (motivoCancelacion !== null) {
+        // El trigger de `order_status_events` (migracion 050) lee este setting LOCAL a la transaccion: el motivo queda en el historial en la
+        // misma transaccion del UPDATE. `set_config` no puede fallar por una base sin migrar; si la sesion no lo soporta (dobles de prueba) se omite.
+        try {
+          await c.get("db").query("select set_config('app.motivo', $1, true);", [motivoCancelacion]);
+        } catch {
+          // best-effort: el cambio de estado sigue su curso sin motivo en el historial
+        }
+      }
       if (raw.incidentNote !== undefined && raw.incidentNote !== null) {
         if (typeof raw.incidentNote !== "string" || raw.incidentNote.trim().length < 1 || raw.incidentNote.trim().length > 2000) throw Errors.validation("incidentNote: se esperaba un texto de 1 a 2000 caracteres.");
         if (raw.status !== "problema") throw Errors.validation('incidentNote solo aplica cuando status es "problema".');
@@ -294,6 +311,12 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       if (order.status === "programado" && updated.status === "pending") {
         const adelantado: Order = { ...updated, programadoPara: updated.programadoPara ?? order.programadoPara };
         c.get("postCommitTasks").push(async () => {
+          // Campana (entra a cocina, o atrasado): el adelanto manual solo emite la campana (la bandeja del staff es de la promocion automatica).
+          try {
+            await deps.engine.withAppSession({ userId: null }, (db) => emitirAvisoProgramadoEnCocina(db, adelantado));
+          } catch (err) {
+            logEvent(c, "warn", "restaurantes_programados_aviso_adelanto_fallido", { organizationId, error: err instanceof Error ? err.message : String(err) });
+          }
           await deps.engine.withAppSession({ userId: null }, (db) =>
             encolarComandasDePromovidos(softRestaurantComandaDeps(deps, db, deps.restaurantesRepo(db)), [adelantado]),
           );
@@ -320,6 +343,9 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
           antes: order.status,
           despues: "cancelado",
         });
+        // Un pedido cancelado antes de llegar al POS no debe llegar a cocina despues (POS lento/caido + reintento del despachador).
+        const corte = await cortarComandaDePedidoCancelado(softRestaurantStoreFor(deps, c.get("db")), organizationId, updated, c.get("userId"));
+        if (corte.cortadas > 0) logEvent(c, "info", "restaurantes_comanda_cortada_por_cancelacion", { actorUserId: c.get("userId"), organizationId, orderId, cortadas: corte.cortadas });
       }
 
       return c.json({ order: (await serializeOrders(repo, organizationId, [updated]))[0] });

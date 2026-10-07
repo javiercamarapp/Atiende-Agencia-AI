@@ -59,6 +59,8 @@ export interface DepsControlador<R extends string = string> {
   readonly instruccion: string;
   readonly voiceId: string;
   readonly limites?: LimitesLlamada;
+  /** `false` = el saludo del agente no se corta si el cliente habla encima (`branch_voice_config.mensaje_inicial_interrumpible`). Por omision `true`. */
+  readonly saludoInterrumpible?: boolean;
   /** Reproduce un mensaje pregrabado (audio local, independiente del proveedor). */
   readonly reproducir: (mensaje: MensajeId) => void | Promise<void>;
   /** Corta el audio que se este reproduciendo al cliente (barge-in). */
@@ -91,7 +93,7 @@ export class ControladorLlamada<R extends string = string> {
   private readonly ref: string;
 
   constructor(private readonly deps: DepsControlador<R>) {
-    this.maquina = new CallStateMachine<R>(deps.reglas, deps.limites ?? LIMITES_POR_DEFECTO);
+    this.maquina = new CallStateMachine<R>(deps.reglas, deps.limites ?? LIMITES_POR_DEFECTO, deps.saludoInterrumpible === undefined ? {} : { saludoInterrumpible: deps.saludoInterrumpible });
     this.terminada = new Promise((resolve) => {
       this.resolverFin = resolve;
     });

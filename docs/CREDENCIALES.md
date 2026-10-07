@@ -38,6 +38,10 @@ explícito, nunca a datos falsos.
 | `APP_BASE_URL` | tu dominio real de `apps/web`, p.ej. `https://app.atiende.ai` | No | Arma el link `/aceptar-invitacion?token=...` dentro del correo de invitación de staff | Default `https://app.atiende.ai` (nunca bloquea la invitación, solo afecta el link) | No |
 | `TRUSTED_PROXY_IP_HEADER` | nombre de un header, p.ej. `cf-connecting-ip` (minúsculas) | No | Declara qué header de IP confiar como PRIMARIO en `http-security.ts::requestActor` (usado por todo rate-limit por IP de este repo) — solo tiene efecto si un proxy real y confiable (ej. Cloudflare) está delante de Vercel y garantiza que ESE header no lo puede escribir el cliente final. Hoy este despliegue es Vercel directo (sin evidencia de ningún proxy así en `vercel.json`), así que se deja SIN configurar a propósito. | Sin ella, se usa el último salto de `X-Forwarded-For` (el que Vercel mismo agrega, no falsificable) con `X-Real-IP` como respaldo — nunca `cf-connecting-ip` por defecto (ver hallazgo de revisión del PR #167: ese header, sin un proxy real delante, lo escribe el cliente). | No |
 
+## Demostraciones públicas de agentes
+
+`PUBLIC_DEMO_AGENTS_ENABLED=true` habilita `/v1/demo-agentes/:solution` para los nueve perfiles ficticios de marketing. Es una bandera no secreta, opcional y desactivada por defecto. Reutiliza `OPENROUTER_API_KEY` (chat), `GEMINI_API_KEY` (voz) y `DATABASE_URL` (límites atómicos); no requiere una organización real ni herramientas de negocio. Si falta un proveedor o falla el contador, el canal falla cerrado. Límites y contrato en [demo-agents/README.md](../apps/api/src/demo-agents/README.md).
+
 ## Base de datos (Supabase Postgres)
 
 | Variable | Dónde se obtiene | Secreta | Habilita | Sin ella | Arranque |
@@ -211,7 +215,8 @@ callback. `gpt-live-1` salió de la escalera (pedía otra llave). El costo de ca
 escalon (`proveedor`). Hoteles autentica las tools del worker con el secreto POR PROPERTY (`hoteles.voice_agent_config`, rotación en el panel) y no usa
 `VOICE_TOOL_SECRET`; citas usa `VOICE_TOOL_SECRET` (secreto de plataforma) y el negocio sale del `orgSlug` de la ruta `/v1/citas/:orgSlug/voz/:herramienta`. Variables, orden de activación, métricas y rollback de restaurantes están en `docs/VOZ-PM.md`. Resumen: `GEMINI_API_KEY` y `VOICE_PREVIEW_TOKEN_SECRET` (API), `VOICE_TOOL_SECRET` solo para emitir el token por
 llamada, `VOICE_REQUIRE_CALL_TOKEN=true` al activar, y `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` más el trunk SIP de Twilio en el
-host del worker de telefonía (que aún no existe en el repo, ni para restaurantes, hoteles ni citas).
+host del worker de telefonía. Para **restaurantes** el worker existe en `apps/voice-worker` (variables `ATIENDE_API_URL`, `INTERNAL_SECRET`, `VOICE_DNIS_MAP` con un secreto por sucursal,
+`VOICE_TOPE_MENSUAL_USD`, `GEMINI_API_KEY`/`OPENROUTER_API_KEY`: ver `apps/voice-worker/README.md`; sin ellas responde 503 en `/salud` y no contesta); para hoteles y citas todavía no existe.
 
 ## Voz: sin ElevenLabs en ninguna vertical
 

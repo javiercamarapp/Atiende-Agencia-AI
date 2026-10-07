@@ -47,3 +47,13 @@ export function toWhatsAppRecipient(storedPhone: string): string | null {
   if (digits.length >= 11 && digits.length <= 15) return `+${digits}`;
   return null;
 }
+
+/**
+ * Telefono enmascarado para pantallas donde basta reconocerlo (no copiarlo): solo los ultimos 4 digitos
+ * ("******1234"). Menos de 4 digitos -> todo enmascarado. Nunca se usa para guardar ni para comparar.
+ */
+export function maskPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 4) return "*".repeat(Math.max(digits.length, 4));
+  return `${"*".repeat(digits.length - 4)}${digits.slice(-4)}`;
+}

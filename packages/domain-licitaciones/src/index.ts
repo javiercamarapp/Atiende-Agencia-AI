@@ -63,6 +63,8 @@ export type {
   EconomicProposalConfig,
 } from "./economic-proposal.ts";
 
+export { computeCompanyProfileHash } from "./company-profile-hash.ts";
+export type { CompanyProfileSnapshot } from "./company-profile-hash.ts";
 export { sealInputs, computeInputsHash, requireValidHashedInputs, InvalidInputsHashError } from "./sealed-inputs.ts";
 export type { InputsHash, HashedInputs, ExpedienteInputs, ExpedienteInputCompanyDocument, ExpedienteInputRate, ExpedienteInputTemplate } from "./sealed-inputs.ts";
 
@@ -373,6 +375,10 @@ export type {
   ScanRenewalAlertsResult,
   TenderResolutionCreateInput,
   CompanyDataApprovalStatus,
+  CompanyItemKind,
+  CompanyItemDecision,
+  CompanyItemDecisionOutcome,
+  CompanyItemDecisionInput,
   CompanyDocumentCreateInput,
   CompanyDocumentUpdateInput,
   ApprovedRateCreateInput,
