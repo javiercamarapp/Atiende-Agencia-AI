@@ -204,6 +204,8 @@ export interface VerticalShellProps {
   readonly organizationSelector?: React.ReactNode;
   /** Selector que ademas se muestra en el MobileHeader (solo si hay varias opciones). */
   readonly mobileSelector?: React.ReactNode;
+  /** Panel lateral derecho (p. ej. el Copiloto Cmd+J del superadmin): hermano de la columna de contenido; el propio panel anima su ancho. Sin el, nada cambia. */
+  readonly panelLateral?: React.ReactNode;
   /** `key` del <main>: al cambiar (sucursal activa) las paginas hijas se remontan. */
   readonly contentKey?: string;
   readonly children: React.ReactNode;
@@ -226,6 +228,7 @@ export function VerticalShell({
   mobileSelector,
   sidebarPie,
   contentKey,
+  panelLateral,
   children,
 }: VerticalShellProps) {
   const { pathname } = useLocation();
@@ -313,6 +316,8 @@ export function VerticalShell({
           </div>
         </main>
       </div>
+
+      {panelLateral}
 
       <BottomNav items={mobileItems} moreSections={sections} pie={sidebarPie} />
     </div>
