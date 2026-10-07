@@ -94,8 +94,70 @@ describe("R2 autopiloto: preguntas que mencionan 'cancelar' + 'pedido' NO cancel
     expect(r.reply).toBe("Listo, su pedido quedó cancelado.");
   });
 
-  it("control: ordenes reales de cancelar (aun con cortesias, motivos u horas) siguen cancelando", async () => {
-    for (const texto of ["Quiero cancelar mi pedido", "Cancela el pedido por favor, ya no lo quiero", "Ya no lo quiero, cancelen el pedido", "Si no es molestia, cancela mi pedido", "Cancelen mi pedido, es para las 3:30"]) {
+  it("tabla punta a punta (pending + cancelacion automatica): amenazas, correcciones y preguntas NO cancelan", async () => {
+    for (const texto of [
+    "Si no llega a las 3:30, cancelo el pedido",
+    "Si no está aquí a las 9:15, cancelo el pedido",
+    "Como no llegue en 10 minutos, cancelo el pedido",
+    "De no llegar en 10 min, cancelo el pedido",
+    "Si no llega en 10 min; cancelo el pedido",
+    "De no llegar a las 3:30, cancelo el pedido",
+    "Si no llega a las 15:30, cancelo el pedido",
+    "Si no llega a las 9:15, cancelo el pedido",
+    "Si no llega a las 3:30 hrs, cancelo el pedido",
+    "Si no llega a las 3 con 30, cancelo el pedido",
+    "Si no llega a las 3 y media, cancelo el pedido",
+    "Si para las 3:30 no ha llegado, cancelo el pedido",
+    "Si acaso no llega, cancelo el pedido",
+    "Por si no llega, cancelo el pedido",
+    "Cancelo el pedido si no llega a las 3:30",
+    "En caso de que no llegue en 10 minutos, cancelo el pedido",
+    "En caso de que no llegue a las 3:30, cancelen mi pedido",
+    "Cuando no llegue a las 3:30, cancelo el pedido",
+    "Al no llegar en 10 minutos, cancelo el pedido",
+    "Cancelen el pedido, no, perdón, me equivoqué",
+    "Cancelar mi pedido, no. Solo quiero cambiar la dirección",
+    "Cancelar mi pedido, no; solo cambiar la dirección",
+    "Cancelen mi pedido, no es cierto, ya llegó",
+    "Cancelar el pedido, nunca",
+    "Si no llega en los próximos 10 minutos, cancelo el pedido",
+    "Si no llega ya, voy a tener que cancelar el pedido",
+    "Si no me llega mi pedido antes de las 3:30, lo cancelo",
+    "Si no llega a las 3:30 p.m., cancelo el pedido",
+    "Si no llega a las 3.30, cancelo el pedido",
+    "Mientras no llegue mi pedido en 10 min, lo cancelo",
+    "Si no fuera molestia, cancela el pedido",
+    "De no ser molestia, cancelen el pedido",
+    "Si no hay repartidor, cancelen mi pedido",
+    "No lo quiero tener que cancelar el pedido",
+    "Ya no lo quiero cancelar",
+    "¿Puedo cancelar mi pedido?",
+    "¿Mi pedido se canceló?",
+    ]) {
+      const t = await montar("pending", { cancelacionAuto: true });
+      await t.turno(texto);
+      expect(t.mem.status, texto).toBe("pending");
+    }
+  });
+
+  it("tabla punta a punta: ordenes reales de cancelar (con cortesias, motivos u horas) SI cancelan", async () => {
+    for (const texto of [
+    "Quiero cancelar mi pedido",
+    "Cancela el pedido por favor, ya no lo quiero",
+    "Ya no lo quiero, cancelen el pedido",
+    "Si no es molestia, cancela mi pedido",
+    "Si no les molesta, cancela mi pedido",
+    "Si no hay problema, cancelen el pedido",
+    "Si no hay inconveniente, cancelen mi pedido",
+    "Cancelen mi pedido, es para las 3:30",
+    "Cancela mi pedido, no llegó a tiempo",
+    "No, cancelen el pedido",
+    "Ya no, cancelen mi pedido",
+    "No llegó, cancelen mi pedido",
+    "Como nunca llegó, cancelen mi pedido",
+    "Llevo una hora esperando y no llega, cancelen el pedido",
+    "Ya no lo necesito, cancelen mi pedido",
+    ]) {
       const t = await montar("pending", { cancelacionAuto: true });
       await t.turno(texto);
       expect(t.mem.status, texto).toBe("cancelado");
@@ -109,13 +171,6 @@ describe("R2 autopiloto: preguntas que mencionan 'cancelar' + 'pedido' NO cancel
       "Si no llega en 10 min, cancelo el pedido",
       "Si en 10 minutos no llega, cancelo el pedido",
       "Si no sale ya, cancelen mi pedido",
-      // Revision del PR #482: horas con ':' y otros disparadores condicionales ("como", "de no") tambien son amenazas.
-      "Si no llega a las 3:30, cancelo el pedido",
-      "Si no está aquí a las 9:15, cancelo el pedido",
-      "Como no llegue en 10 minutos, cancelo el pedido",
-      "De no llegar en 10 min, cancelo el pedido",
-      "De no llegar a las 3:30, cancelo el pedido",
-      "Si no llega en 10 min; cancelo el pedido",
     ]) {
       const t = await montar("pending", { cancelacionAuto: true });
       await t.turno(texto);

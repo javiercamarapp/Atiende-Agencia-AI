@@ -48,16 +48,23 @@ export function crearHooksAutopilotoTurnoPostgres(deps: Omit<AutopilotoServicioD
  * Con negacion cerca del verbo no se interviene (`null`): el turno sigue por el camino de siempre (aviso a una persona).
  */
 export function negacionDeCancelacion(texto: string): boolean {
-  // "Ya no lo quiero, cancelen el pedido" es la forma mas comun de CANCELAR: el "no" niega el deseo del platillo, no el verbo. Se quita esa frase antes de
-  // buscar la negacion (salvo "ya no lo quiero cancelar", que SI niega), y la negacion nunca cruza una coma ("no, cancelen el pedido" es una confirmacion).
-  // Cortesias ("si no es molestia, cancela mi pedido") tampoco son condicion. Las horas ("3:30") se colapsan para que ':' no corte el tramo condicional.
+  // Criterio asimetrico: cancelar por error un pedido real es lo caro, asi que POR DEFECTO la negacion cruza comas y cualquier forma desconocida NO cancela
+  // (pasa a una persona). Solo se EXIMEN (se quitan antes de buscar la negacion) formas explicitas que si son una orden de cancelar:
+  //  - "no, cancelen..." / "ya no, cancelen..." al inicio;
+  //  - "(ya) no lo/la quiero|necesito" como motivo ("ya no lo quiero, cancelen el pedido"), salvo "no lo quiero (tener que) cancelar";
+  //  - cortesias ("si no es molestia", "si no les molesta", "si no hay problema");
+  //  - motivos ya ocurridos ("no llego", "no ha llegado", "nunca llego", "llevo una hora esperando y no llega"), nunca tras un disparador condicional.
   const t = normalizarParaClasificar(texto)
-    .replace(/(\d):(\d)/g, "$1$2")
-    .replace(/\b(?:ya\s+)?no\s+(?:lo|la|los|las)\s+(?:quiero|necesito|voy\s+a\s+querer)\b(?!\s+cancelar\b)/g, " ")
-    .replace(/\bsi\s+no\s+(?:es\s+(?:mucha\s+)?molestia|(?:le|les|te)\s+(?:molesta|importa)|hay\s+(?:mayor\s+)?(?:problema|inconveniente)|es\s+(?:mucho\s+)?(?:problema|pedir))\b/g, " ");
-  // Condicional con coma o punto y coma ("si no llega en 10 min, cancelo el pedido", "como no llegue en 10 minutos, cancelo", "de no llegar a las 3:30, cancelo",
-  // "si en 10 minutos no llega, cancelen mi pedido"): es una amenaza, no una orden.
-  return /\b(?:si|como)\b[^.!?\n]{0,40}\bno\b[^.!?\n,;:]{0,30}[,;][^.!?\n,;:]{0,15}\bcancel\w*|\bde\s+no\b[^.!?\n,;:]{0,30}[,;][^.!?\n,;:]{0,15}\bcancel\w*|\b(?:no|nunca|ni|tampoco)\b[^.!?\n,;:]{0,25}\bcancel\w*|\bcancel\w*[^.!?\n,;:]{0,15}\b(?:no|nunca)\b|\bsin\s+cancelar\b|\bya\s+no\b[^.!?\n,;:]{0,20}\bcancel\w*/.test(t);
+    .replace(/\b([ap])\.\s?m\./g, "$1m")
+    .replace(/(\d)[:.](\d)/g, "$1$2")
+    .replace(/^\s*(?:ya\s+)?no\s*,\s*(?=cancel)/, " ")
+    .replace(/\b(?:ya\s+)?no\s+(?:lo|la|los|las)\s+(?:quiero|necesito|voy\s+a\s+querer)\b(?!\s+(?:tener\s+que\s+)?cancelar\b)/g, " ")
+    .replace(/\bsi\s+no\s+(?:es\s+(?:mucha\s+)?molestia|(?:le|les|te|me)\s+molesta|hay\s+(?:mayor\s+)?(?:problema|inconveniente)|es\s+mucho\s+pedir)\b/g, " ")
+    .replace(/\bllevo\s+[^.!?\n,]{0,25}\besperando\s+y\s+no\s+llega\b/g, " ")
+    // Un motivo ya ocurrido solo se exime si ninguna palabra condicional lo antecede en la frase ("si para las 3:30 no ha llegado, cancelo" sigue siendo amenaza).
+    .replace(/\b(?:ya\s+)?no\s+(?:llego|llegaron|ha\s+llegado|han\s+llegado)\b|\bnunca\s+(?:llego|llegaron)\b/g, (m, off: number, todo: string) =>
+      /\b(?:si|cuando|mientras|de|al|que|caso|acaso)\b/.test(todo.slice(Math.max(0, todo.slice(0, off).search(/[^.!?\n]*$/)), off)) ? m : " ");
+  return /\b(?:si|como|cuando|mientras|de|al|por\s+si|caso\s+de\s+que)\b[^.!?\n]{0,60}\bno\b[^.!?\n]{0,50}\bcancel\w*|\b(?:no|nunca|ni|tampoco)\b[^.!?\n]{0,25}\bcancel\w*|\bcancel\w*[^.!?\n]{0,30}\b(?:no|nunca)\b|\bsin\s+cancelar\b|\bya\s+no\b[^.!?\n]{0,20}\bcancel\w*/.test(t);
 }
 
 /**
