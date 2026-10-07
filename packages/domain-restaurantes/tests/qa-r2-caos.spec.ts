@@ -4,6 +4,7 @@
 // Cada `it.fails` es un defecto CONFIRMADO (QA-restaurantes-R2-caos-NN): al arreglarlo, el corrector cambia `it.fails` -> `it`.
 import { describe, expect, it } from "vitest";
 import { createOrder } from "../src/orders.ts";
+import { prepararImportacionClientes } from "../src/clientes-importacion.ts";
 import { AGENTE_APAGADO_TEXTO, handleInboundWhatsAppMessage } from "../src/whatsapp/inbound.ts";
 import type { WhatsAppTurnHandler } from "../src/whatsapp/turn-handler.ts";
 import { InMemoryConversacionesRepository, InMemoryHandoffAgentGate } from "../src/index.ts";
@@ -233,5 +234,29 @@ describe("R2-caos-05: piso del dueno al prometer tiempo (A-21/B-09: 'NUNCA prome
   // Pasos: el dueno no da numero para domicilio y si para recoger: "Domicilio segun la zona; para recoger 15-20 min".
   it.fails("QA-R2-caos-05b: el numero de RECOGER no se usa como piso de DOMICILIO", () => {
     expect(pisoMinutosDeTexto("Domicilio según la zona; para recoger 15-20 min", "domicilio")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------
+// R2-caos-07: importacion de cartera (#435) -- un mapeo equivocado no se puede corregir reimportando
+// ---------------------------------------------------------------------------------------------------------------------------------------
+describe("R2-caos-07: reimportar para corregir un mapeo de columnas equivocado", () => {
+  const HUELLA = "a".repeat(64); // sha-256 de los BYTES del archivo: no cambia al cambiar el mapeo en el dialogo
+
+  // Pasos: Clientes -> Importar -> el mapeo asistido (o la persona) deja "Nombre" apuntando a la columna "Colonia"; se importan los renglones.
+  // La persona ve el error en la lista de clientes, corrige el mapeo y vuelve a importar EL MISMO archivo; luego prueba con el archivo corregido.
+  it.fails("QA-R2-caos-07: reimportar con el mapeo corregido arregla los nombres (o el panel ofrece deshacer la importacion)", async () => {
+    const fx = buildRestaurantFixture();
+    const malo = prepararImportacionClientes([{ telefono: "9991230001", nombre: "Itzimná", direccion: "Calle 1", colonia: "", notas: "" }]);
+    await fx.repo.importarClientes(fx.organizationId, HUELLA, malo.validas);
+    expect((await fx.repo.findCustomerByPhone(fx.organizationId, "9991230001"))?.name).toBe("Itzimná");
+
+    const bueno = prepararImportacionClientes([{ telefono: "9991230001", nombre: "José Peña", direccion: "Calle 1", colonia: "Itzimná", notas: "" }]);
+    const mismoArchivo = await fx.repo.importarClientes(fx.organizationId, HUELLA, bueno.validas);
+    expect(mismoArchivo.yaImportado).toBe(true); // "Este archivo ya se habia importado: no se volvio a escribir nada."
+    const otroArchivo = await fx.repo.importarClientes(fx.organizationId, "b".repeat(64), bueno.validas);
+    expect(otroArchivo.sinCambios).toBe(1); // "nunca pisa el nombre conocido"
+    // Actual: sigue "Itzimná" para siempre; el agente (Cliente 360) saluda "Hola Itzimná". Solo queda editar cliente por cliente (hasta 5,000).
+    expect((await fx.repo.findCustomerByPhone(fx.organizationId, "9991230001"))?.name).toBe("José Peña");
   });
 });
