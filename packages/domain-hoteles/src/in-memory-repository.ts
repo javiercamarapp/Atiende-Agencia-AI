@@ -887,12 +887,19 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   }
 
   async upsertRatePlanRange(input: NewRatePlanRangeInput): Promise<{ datesWritten: number }> {
+    // Camino de STAFF (POST .../tarifas): como el trigger `rate_plan_manual_lock` de la migracion 047, un precio insertado o cambiado por una
+    // persona queda marcado como manual (el motor de revenue no lo sobreescribe ese dia).
+    return this.writeRatePlanRange(input, true);
+  }
+
+  private async writeRatePlanRange(input: NewRatePlanRangeInput, manual: boolean): Promise<{ datesWritten: number }> {
     const key = `${input.propertyId}:${input.roomTypeId}`;
     const existing = this.nightlyRates.get(key) ?? [];
     const byDate = new Map(existing.map((r) => [r.date, r]));
     let datesWritten = 0;
     for (let d = new Date(`${input.startDate}T00:00:00Z`); d.getTime() <= new Date(`${input.endDate}T00:00:00Z`).getTime(); d.setUTCDate(d.getUTCDate() + 1)) {
       const date = d.toISOString().slice(0, 10);
+      if (manual && byDate.get(date)?.price !== input.price) this.rateMetaFor(input.propertyId, input.roomTypeId, date).manualPriceAt = new Date().toISOString();
       byDate.set(date, { date, price: input.price, minStay: input.minStay, closedToArrival: input.closedToArrival, closedToDeparture: input.closedToDeparture });
       datesWritten += 1;
     }
@@ -2541,7 +2548,11 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     const key = `${existing.propertyId}:${existing.roomTypeId}`;
     const rates = this.nightlyRates.get(key) ?? [];
     const prior = rates.find((r) => r.date === existing.fecha);
-    await this.upsertRatePlanRange({
+    // Migracion 047: el motor no pisa una tarifa con precio fijado a mano (mismo rechazo que `system_apply_rate_recommendation`).
+    if (prior && this.rateMeta.get(`${existing.propertyId}:${existing.roomTypeId}:${existing.fecha}`)?.manualPriceAt) {
+      throw new Error(`tarifa_manual_vigente: la tarifa del ${existing.fecha} tiene un precio fijado a mano; el motor no la sobreescribe`);
+    }
+    await this.writeRatePlanRange({
       organizationId: existing.organizationId,
       propertyId: existing.propertyId,
       roomTypeId: existing.roomTypeId,
@@ -2552,7 +2563,7 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       minStay: existing.suggestedMinStay,
       closedToArrival: prior?.closedToArrival ?? false,
       closedToDeparture: prior?.closedToDeparture ?? false,
-    });
+    }, false);
     const updated: RateRecommendationRecord = { ...existing, estado: "aplicada", aplicadaPor: null, aplicadaEn: new Date().toISOString(), updatedAt: new Date().toISOString() };
     this.rateRecommendations.set(id, updated);
     return updated;

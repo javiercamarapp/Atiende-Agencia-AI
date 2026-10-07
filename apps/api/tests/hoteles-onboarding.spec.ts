@@ -33,7 +33,7 @@ async function nuevoHotel(opts: { migrated?: boolean } = {}) {
   // Property "vacia" del mismo hotel: sin tipos, habitaciones, tarifas, impuestos ni reservas.
   const propertyId = randomUUID();
   (ctx.deps.engine as unknown as { seedProperty(p: object): void }).seedProperty({ id: propertyId, organizationId: ctx.organizationId });
-  const checklist = async (token = ctx.staff.owner.token, pid = propertyId) => {
+  const checklist = async (token: string = ctx.staff.owner.token, pid: string = propertyId) => {
     const res = await app.request(`/hoteles/${pid}/primeros-pasos`, get(token));
     return { res, body: (await res.json()) as Checklist };
   };
