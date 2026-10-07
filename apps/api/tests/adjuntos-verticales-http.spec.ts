@@ -36,6 +36,7 @@ async function harness() {
     hotelesReader: () => reader,
     audit: () => ({ record: async (e) => void audit.push(e) }),
     rateLimiter: { allow: async () => true },
+    completion: undefined,
   };
   const app = buildApp({ ...ctx.deps, dataChat });
   const login = await app.request("/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "owner-ajeno@hotel-ajeno.mx", password }) });

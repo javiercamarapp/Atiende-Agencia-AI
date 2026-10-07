@@ -85,7 +85,7 @@ function detectarSeparador(primeraLinea: string): string {
 }
 
 export function parsearCsv(texto: string): string[][] {
-  const limpio = texto.replace(/^﻿/, "");
+  const limpio = texto.replace(/^\uFEFF/, "");
   const sep = detectarSeparador(limpio.split(/\r?\n/, 1)[0] ?? "");
   const filas: string[][] = [];
   let fila: string[] = [];
