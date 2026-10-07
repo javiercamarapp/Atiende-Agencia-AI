@@ -1276,12 +1276,16 @@ export class PostgresRentasRepository implements RentasRepository {
     // Rn-P3-10: la ventana se mide en horas contra el check-in de CADA reserva en la zona de SU property (un barrido global con una sola ventana de
     // fechas dejaba sin recordatorio a la reserva de ultimo minuto). Solo entran reservas con correo valido: el recordatorio sale por correo, y una
     // reserva de OTA sin correo no debe costar una transaccion por hora; en cuanto el pre-check-in captura el correo, entra sola.
+    // El rango de fechas acotado deja que el indice de ocupacion descarte las reservas pasadas (que nunca se marcan) y las lejanas. El JOIN a guest_minimo
+    // depende de la policy SELECT con escape `auth.uid() is null` de la migracion 036 (G): el cron corre con sub vacio. Antes de aplicar la 036 la lista sale
+    // vacia (el correo tampoco habria podido enviarse, findOcupacionParaCorreo leia el contacto en NULL); aplicar la 036 antes de esperar recordatorios.
     const { rows } = await this.db.query<{ id: string; organization_id: string }>(
       `select o.id, o.organization_id
          from rentas.ocupacion o
          join rentas.guest_minimo g on g.id = o.huesped_minimo_id
          left join rentas.property_config pc on pc.property_id = o.property_id
         where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and lower(o.rango) between ($1::timestamptz)::date - 1 and ($1::timestamptz)::date + 3
           and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$'
           and ((lower(o.rango) + $4::time) at time zone coalesce(pc.zona_horaria, $5)) between $1::timestamptz + make_interval(hours => $2::int) and $1::timestamptz + make_interval(hours => $3::int)
         order by lower(o.rango) asc, o.id asc;`,

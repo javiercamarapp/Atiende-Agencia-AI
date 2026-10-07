@@ -607,69 +607,111 @@ select count(*) as policies_abiertas_deberia_ser_0 from pg_policies where schema
 rollback;
 
 \echo ''
-\echo '=== H. consulta del recordatorio horario (PostgresRentasRepository.listReservasProximasACheckInVentana) ==='
+\echo '=== H. consulta del recordatorio horario (PostgresRentasRepository.listReservasProximasACheckInVentana), bajo la sesion real del cron: role authenticated con sub vacio (auth.uid() null) ==='
 \echo ''
 \echo '--- H1. la reserva con correo que llega manana a las 15:00 (Cancun) entra en la ventana de 2 a 48 h ---'
 begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
 select count(*) as con_correo_deberia_ser_1 from (select o.id
          from rentas.ocupacion o
          join rentas.guest_minimo g on g.id = o.huesped_minimo_id
          left join rentas.property_config pc on pc.property_id = o.property_id
         where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and lower(o.rango) between (now()::timestamptz)::date - 1 and (now()::timestamptz)::date + 3
           and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
           and ((lower(o.rango) + '15:00'::time) at time zone coalesce(pc.zona_horaria, 'America/Mexico_City')) between now()::timestamptz + make_interval(hours => 2::int) and now()::timestamptz + make_interval(hours => 48::int)) q where q.id = '00000000-0000-0000-0000-000000f36056';
 rollback;
 \echo '--- H2. la reserva cuyo huesped solo dejo un telefono NO es candidata ---'
 begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
 select count(*) as sin_correo_deberia_ser_0 from (select o.id
          from rentas.ocupacion o
          join rentas.guest_minimo g on g.id = o.huesped_minimo_id
          left join rentas.property_config pc on pc.property_id = o.property_id
         where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and lower(o.rango) between (now()::timestamptz)::date - 1 and (now()::timestamptz)::date + 3
           and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
           and ((lower(o.rango) + '15:00'::time) at time zone coalesce(pc.zona_horaria, 'America/Mexico_City')) between now()::timestamptz + make_interval(hours => 2::int) and now()::timestamptz + make_interval(hours => 48::int)) q where q.id = '00000000-0000-0000-0000-000000f36057';
 rollback;
 \echo '--- H3. una reserva de dentro de 20 dias queda fuera de la ventana ---'
 begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
 select count(*) as lejana_deberia_ser_0 from (select o.id
          from rentas.ocupacion o
          join rentas.guest_minimo g on g.id = o.huesped_minimo_id
          left join rentas.property_config pc on pc.property_id = o.property_id
         where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and lower(o.rango) between (now()::timestamptz)::date - 1 and (now()::timestamptz)::date + 3
           and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
           and ((lower(o.rango) + '15:00'::time) at time zone coalesce(pc.zona_horaria, 'America/Mexico_City')) between now()::timestamptz + make_interval(hours => 2::int) and now()::timestamptz + make_interval(hours => 48::int)) q where q.id = '00000000-0000-0000-0000-000000f36050';
 rollback;
 \echo '--- H4. con el reloj 40 h adelante la llegada de manana ya paso la ventana (menos de 2 h o ya ocurrio) ---'
 begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
 select count(*) as fuera_deberia_ser_0 from (select o.id
          from rentas.ocupacion o
          join rentas.guest_minimo g on g.id = o.huesped_minimo_id
          left join rentas.property_config pc on pc.property_id = o.property_id
         where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and lower(o.rango) between ((now() + interval '40 hours')::timestamptz)::date - 1 and ((now() + interval '40 hours')::timestamptz)::date + 3
           and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
           and ((lower(o.rango) + '15:00'::time) at time zone coalesce(pc.zona_horaria, 'America/Mexico_City')) between (now() + interval '40 hours')::timestamptz + make_interval(hours => 2::int) and (now() + interval '40 hours')::timestamptz + make_interval(hours => 48::int)) q where q.id = '00000000-0000-0000-0000-000000f36056';
 rollback;
 \echo '--- H5. una vez marcado el recordatorio como enviado deja de ser candidata (idempotencia) ---'
 begin;
 update rentas.ocupacion set recordatorio_checkin_enviado_en = now() where id = '00000000-0000-0000-0000-000000f36056';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
 select count(*) as ya_marcada_deberia_ser_0 from (select o.id
          from rentas.ocupacion o
          join rentas.guest_minimo g on g.id = o.huesped_minimo_id
          left join rentas.property_config pc on pc.property_id = o.property_id
         where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and lower(o.rango) between (now()::timestamptz)::date - 1 and (now()::timestamptz)::date + 3
           and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
           and ((lower(o.rango) + '15:00'::time) at time zone coalesce(pc.zona_horaria, 'America/Mexico_City')) between now()::timestamptz + make_interval(hours => 2::int) and now()::timestamptz + make_interval(hours => 48::int)) q where q.id = '00000000-0000-0000-0000-000000f36056';
 rollback;
 \echo '--- H6. una reserva cancelada no es candidata ---'
 begin;
 update rentas.ocupacion set estado = 'cancelado' where id = '00000000-0000-0000-0000-000000f36056';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
 select count(*) as cancelada_deberia_ser_0 from (select o.id
          from rentas.ocupacion o
          join rentas.guest_minimo g on g.id = o.huesped_minimo_id
          left join rentas.property_config pc on pc.property_id = o.property_id
         where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and lower(o.rango) between (now()::timestamptz)::date - 1 and (now()::timestamptz)::date + 3
           and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
           and ((lower(o.rango) + '15:00'::time) at time zone coalesce(pc.zona_horaria, 'America/Mexico_City')) between now()::timestamptz + make_interval(hours => 2::int) and now()::timestamptz + make_interval(hours => 48::int)) q where q.id = '00000000-0000-0000-0000-000000f36056';
+rollback;
+
+\echo '--- H7. bajo la sesion del cron guest_minimo es legible (antes de la correccion de RLS devolvia 0 filas) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as guest_visible_al_cron_deberia_ser_1 from rentas.guest_minimo where id = '00000000-0000-0000-0000-000000f36061';
+rollback;
+\echo '--- H8. un usuario real de OTRA organizacion sigue sin ver el guest_minimo (el escape solo aplica con auth.uid() nulo) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f36032', true);
+select count(*) as ajeno_deberia_ser_0 from rentas.guest_minimo where id = '00000000-0000-0000-0000-000000f36061';
+rollback;
+\echo '--- H9. un usuario real de la organizacion dueña lo sigue viendo ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f36030', true);
+select count(*) as propio_deberia_ser_1 from rentas.guest_minimo where id = '00000000-0000-0000-0000-000000f36061';
+rollback;
+\echo '--- H10. anon sigue sin privilegios sobre guest_minimo ---'
+begin;
+set local role anon;
+select count(*) as should_fail from rentas.guest_minimo;
 rollback;
 
 \echo ''

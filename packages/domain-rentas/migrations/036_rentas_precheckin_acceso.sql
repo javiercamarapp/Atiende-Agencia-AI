@@ -526,3 +526,18 @@ begin
 end;
 $$;
 revoke all on function rentas.system_purge_retencion(uuid, text, timestamptz, boolean, integer) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- G) Lectura de guest_minimo bajo la sesion de sistema (cron de recordatorios).
+-- ---------------------------------------------------------------------------
+-- Problema: el cron /internal/rentas/checkin-recordatorio corre con `set local role authenticated` y sub vacio (auth.uid() is null). La unica
+-- policy SELECT de rentas.guest_minimo exigia core.has_property_access(auth.uid(), ...), siempre falsa con auth.uid() null, asi que el cron
+-- no veia el correo del huesped: la lista de candidatas del recordatorio horario salia vacia y findOcupacionParaCorreo dejaba el contacto en NULL
+-- (la reserva salia como sin_correo aunque el pre-check-in hubiera capturado el correo).
+-- Solucion: el mismo escape `auth.uid() is null or ...` que 015 ya aplico a rentas.ocupacion, unidad y property_config.
+-- Seguridad: (1) solo SELECT; el GRANT a authenticated no cambia (select, insert) y anon sigue sin ningun privilegio sobre la tabla;
+-- (2) `auth.uid() is null` no es alcanzable desde un navegador: PostgREST/RLS siempre llevan el sub del JWT, y solo las sesiones de sistema del
+-- backend (withAppSession({ userId: null })) lo tienen vacio; (3) con un usuario real la regla es la misma de antes (has_property_access);
+-- (4) la policy de INSERT no se toca (no hay escape de escritura).
+alter policy "staff ve huéspedes mínimos de su property" on rentas.guest_minimo
+  using (auth.uid() is null or core.has_property_access(auth.uid(), property_id));
