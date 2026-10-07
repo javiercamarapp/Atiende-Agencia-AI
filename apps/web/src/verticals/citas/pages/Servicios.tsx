@@ -43,6 +43,7 @@ export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
   const [newDuration, setNewDuration] = useState("30");
   const [newPrice, setNewPrice] = useState("");
   const [creating, setCreating] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   function load() {
     setError(null);
@@ -58,7 +59,15 @@ export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     const duration = Number.parseInt(newDuration, 10);
-    if (!newName.trim() || !Number.isFinite(duration) || duration <= 0) return;
+    if (!newName.trim()) {
+      setFormError("El nombre del servicio es obligatorio.");
+      return;
+    }
+    if (!Number.isFinite(duration) || duration <= 0) {
+      setFormError("La duración debe ser un número de minutos mayor a cero.");
+      return;
+    }
+    setFormError(null);
     setCreating(true);
     setError(null);
     try {
@@ -78,7 +87,7 @@ export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
   return (
     <div className="flex flex-col gap-4">
       <h1 className="font-display text-xl font-semibold text-foreground">Servicios</h1>
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={load} />}
 
       <Card>
         <CardHeader className="pb-3">
@@ -111,6 +120,11 @@ export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
               {creating ? "Creando…" : "Crear servicio"}
             </Button>
           </form>
+          {formError && (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              {formError}
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -170,6 +184,19 @@ export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serv
     load();
   }, [apiBaseUrl, token, propertyId, serviceId]);
 
+  /** Cancelar descarta lo escrito: los campos vuelven al valor guardado. */
+  function handleCancelEdit() {
+    if (service) {
+      setEditName(service.name);
+      setEditDuration(String(service.durationMinutes));
+      setEditBufferBefore(String(service.bufferMinutesBefore));
+      setEditBufferAfter(String(service.bufferMinutesAfter));
+      setEditPrice(service.priceCents !== null ? String(service.priceCents / 100) : "");
+      setEditIsActive(service.isActive);
+    }
+    setEditing(false);
+  }
+
   async function handleSaveEdit(e: FormEvent) {
     e.preventDefault();
     const duration = Number.parseInt(editDuration, 10);
@@ -202,7 +229,7 @@ export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serv
           Volver a servicios
         </Link>
       </Button>
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={load} />}
       {!service && !error && <EstadoCargando etiqueta="Cargando servicio…" />}
       {service && !editing && (
         <>
@@ -276,7 +303,7 @@ export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serv
                 <Button type="submit" disabled={saving}>
                   {saving ? "Guardando…" : "Guardar cambios"}
                 </Button>
-                <Button type="button" variant="outline" onClick={() => setEditing(false)} disabled={saving}>
+                <Button type="button" variant="outline" onClick={handleCancelEdit} disabled={saving}>
                   Cancelar
                 </Button>
               </div>
