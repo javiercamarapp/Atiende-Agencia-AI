@@ -22,6 +22,7 @@ import { beginTurnPersistence, mountConversacionesRoutes } from "./conversacione
 import { mountPinsRoutes, type PinsTurnContext } from "./pins.ts";
 import { NO_LLM_COMPLETION, auxiliaryTurnOptions, directTurnOptions } from "./turno.ts";
 import { mountReporteRoutes } from "./reporte-routes.ts";
+import { mountAdjuntosRoutes } from "./adjuntos-routes.ts";
 
 export interface VerticalDataChatConfig {
   /** "hoteles" | "rentas" | "citas": prefijo de ruta (`/hoteles/:propertyId/chat-datos`) y etiqueta del alcance. */
@@ -110,6 +111,8 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
 
   mountConversacionesRoutes(app, deps, { base, vertical: cfg.vertical, roles: cfg.roles });
   mountPinsRoutes(app, deps, { base, vertical: cfg.vertical, roles: cfg.roles, turnContext });
+  // Adjuntar archivo (CSV / Excel / PDF): analisis determinista en el servidor, sin guardar el archivo.
+  mountAdjuntosRoutes(app, deps, { base, vertical: cfg.vertical, roles: cfg.roles, role: cfg.role });
   // CHAT-14: reporte PDF de un mensaje guardado, con el mismo alcance (membership, zona horaria, rol) que el chat.
   mountReporteRoutes(app, deps, {
     base,

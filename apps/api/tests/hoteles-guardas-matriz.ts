@@ -35,6 +35,7 @@ export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
   "DELETE /chat-datos/pins/:pinId": ["owner", "gm"],
   "GET /chat-datos/pins/:pinId/resultado": ["owner", "gm"],
   "POST /chat-datos/conversaciones/:conversationId/reporte": ["owner", "gm"],
+  "POST /chat-datos/adjuntos": ["owner", "gm"],
   "GET /pedidos-fnb": "todos",
   "POST /pedidos-fnb": ["owner", "gm", "frontdesk", "fnb"],
   "GET /pedidos-fnb/:orderId": "todos",

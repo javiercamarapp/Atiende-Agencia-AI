@@ -336,7 +336,23 @@ function dashboardCfo() {
 }
 
 export const rutasSuperadmin: readonly Ruta[] = [
-  { metodo: "GET", patron: "/superadmin/copiloto/estado", manejador: () => ({ disponible: true, permitido: true, motivo: null, rol: "superadmin", financierasDisponibles: true, stepUpRequerido: false, interruptor: { apagado: false, clave: null }, gastoMes: { usadoMicroUsd: 1000000, topeMicroUsd: 25000000, usoPct: 4, medidoEnBitacora: true }, acciones: { propone: true }, herramientas: [] }) },
+  { metodo: "GET", patron: "/superadmin/copiloto/estado", manejador: () => ({ disponible: true, permitido: true, motivo: null, rol: "superadmin", financierasDisponibles: true, stepUpRequerido: false, interruptor: { apagado: false, clave: null }, gastoMes: { usadoMicroUsd: 1000000, topeMicroUsd: 25000000, usoPct: 4, medidoEnBitacora: true }, acciones: { propone: true }, fijados: true, adjuntos: true, herramientas: [] }) },
+  { metodo: "GET", patron: "/superadmin/copiloto/pins", manejador: () => ({ disponible: true, pins: [] }) },
+  { metodo: "POST", patron: "/superadmin/copiloto/pins", manejador: () => conStatus(201, { id: "00000000-0000-4000-8000-0000000000f1" }) },
+  {
+    metodo: "POST",
+    patron: "/superadmin/copiloto/adjuntos",
+    manejador: (p) => {
+      const cuerpo = (p.cuerpo ?? {}) as { nombre?: string };
+      return {
+        status: "ok",
+        text: `«${String(cuerpo.nombre ?? "archivo")}» tiene 2 filas de datos y 2 columnas (1 numérica, 1 de texto).`,
+        blocks: [{ kind: "table", tool: "archivo_adjunto", title: "Perfil del archivo", columns: [{ key: "columna", label: "Columna", kind: "text" }, { key: "tipo", label: "Tipo", kind: "text" }], rows: [{ columna: "unidades", tipo: "numérica" }, { columna: "producto", tipo: "texto" }], truncated: false }],
+        sources: [{ tool: "archivo_adjunto", source: "Archivo adjunto analizado en el servidor del Copiloto (no se guarda)", scopeLabel: "Solo este archivo" }],
+        toolsUsed: ["archivo_adjunto"],
+      };
+    },
+  },
   {
     metodo: "POST",
     patron: "/superadmin/copiloto",

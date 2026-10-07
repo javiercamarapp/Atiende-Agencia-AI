@@ -14,6 +14,8 @@ import type { AppDeps } from "../src/deps.ts";
 import type { ConversacionDetalleDto, ConversacionResumenDto, FuenteReporte, ConversacionScope, ConversacionesRepository, MensajeGuardadoDto, ResultadoGuardado, TurnoAGuardar } from "../src/data-chat/conversaciones.ts";
 import { COPILOTO_NO_ACTIVADO } from "../src/routes/superadmin-copiloto.ts";
 import { crearLedgerMensual, type SuperadminCopilotoDeps } from "../src/superadmin-copiloto/deps.ts";
+import type { PinDto, PinOrigen, PinsPlataformaRepository, ResultadoAltaPin, ResultadoEdicionPin } from "../src/superadmin-copiloto/pins.ts";
+import { cleanPinTitle, plainArgs } from "../src/data-chat/pins.ts";
 import { fuentesDeProduccion, type FuentesPlataforma } from "../src/superadmin-copiloto/fuentes.ts";
 import { jsonRequestInit } from "./fixtures.ts";
 import { bearer, seguridadSetup } from "./superadmin-seguridad-fixtures.ts";
@@ -88,6 +90,48 @@ class RepoEnMemoria implements ConversacionesRepository {
   }
 }
 
+/** Doble en memoria de los fijados de plataforma: mismo alcance que la base (solo el autor, nunca compartidos, dedupe por herramienta + argumentos, tope de 50). */
+class PinsEnMemoria implements PinsPlataformaRepository {
+  readonly store: (PinDto & { userId: string })[] = [];
+  constructor(private readonly conv: RepoEnMemoria) {}
+  async list(userId: string) {
+    return { disponible: true, items: this.store.filter((p) => p.userId === userId) };
+  }
+  async get(userId: string, id: string) {
+    return this.store.find((p) => p.userId === userId && p.id === id) ?? null;
+  }
+  async origin(userId: string, conversationId: string, seq: number, bloque: number): Promise<PinOrigen | null> {
+    const c = this.conv.store.find((x) => x.id === conversationId && x.scope.userId === userId && x.scope.vertical === "plataforma");
+    const m = c?.mensajes.find((x) => x.seq === seq && x.role === "assistant");
+    const b = m?.blocks?.[bloque] as { tool?: string; title?: string } | undefined;
+    const call = c?.llamadas?.find((l) => l.tool === b?.tool);
+    if (!c || !b?.tool || !call) return null;
+    return { tool: b.tool, args: plainArgs(call.args), title: cleanPinTitle(b.title ?? b.tool) };
+  }
+  async create(input: { conversationId: string; seq: number; bloque: number; origin: PinOrigen }): Promise<ResultadoAltaPin> {
+    const userId = this.conv.store.find((c) => c.id === input.conversationId)?.scope.userId;
+    if (!userId) return { ok: false, motivo: "conversacion_no_encontrada" };
+    const igual = this.store.find((p) => p.userId === userId && p.herramienta === input.origin.tool && JSON.stringify(p.args) === JSON.stringify(input.origin.args));
+    if (igual) return { ok: true, id: igual.id };
+    if (this.store.filter((p) => p.userId === userId).length >= 50) return { ok: false, motivo: "limite" };
+    const id = randomUUID();
+    this.store.push({ id, userId, titulo: input.origin.title, herramienta: input.origin.tool, args: input.origin.args, compartido: false, propio: true, creadoEn: "2026-10-02T12:00:00.000Z" });
+    return { ok: true, id };
+  }
+  async rename(userId: string, id: string, titulo: string): Promise<ResultadoEdicionPin> {
+    const p = this.store.find((x) => x.userId === userId && x.id === id);
+    if (!p) return "no_encontrado";
+    (p as { titulo: string }).titulo = titulo;
+    return "ok";
+  }
+  async remove(userId: string, id: string): Promise<boolean> {
+    const i = this.store.findIndex((x) => x.userId === userId && x.id === id);
+    if (i < 0) return false;
+    this.store.splice(i, 1);
+    return true;
+  }
+}
+
 interface Opciones {
   readonly steps?: ScriptStep[];
   readonly sinProveedor?: boolean;
@@ -112,6 +156,7 @@ async function setup(o: Opciones = {}) {
   const limiter: { key: string; limit: number; windowMs: number }[] = [];
   const ledger = crearLedgerMensual();
   const falsas = fuentesFalsas(o.fuentes);
+  const pins = new PinsEnMemoria(conv);
   const deps: AppDeps = {
     ...s.deps,
     cfoRepo: () => cfo,
@@ -134,6 +179,7 @@ async function setup(o: Opciones = {}) {
       ...(o.topeMensualMicroUsd !== undefined ? { topeMensualMicroUsd: o.topeMensualMicroUsd } : {}),
       fuentes: (db, callerId) => (o.modo === "falsas" ? falsas : { ...fuentesDeProduccion(deps, db, callerId), ...(o.fuentes ?? {}) }),
       conversaciones: () => conv,
+      pins: () => pins,
       audit: () => ({
         record: async (e) => {
           bitacora.push(e);
@@ -166,7 +212,7 @@ async function setup(o: Opciones = {}) {
     return (await res.json()) as DataChatAnswer & { conversacionId?: string; conversationId?: string; seq?: number; guardado?: boolean };
   };
   const estado = (token: string, extra: Record<string, string> = {}) => app.request("/superadmin/copiloto/estado", { headers: bearer(token, extra) });
-  return { s, app, deps, zona, cfo, scripted, conv, bitacora, limiter, ledger, falsas, alta, activarMfa, post, turno, estado };
+  return { s, app, deps, zona, cfo, scripted, conv, pins, bitacora, limiter, ledger, falsas, alta, activarMfa, post, turno, estado };
 }
 
 const LLM_ORGANIZACIONES: ScriptStep[] = [{ toolCalls: [{ name: "organizaciones", argumentsJson: "{}" }] }, { text: "Hay 3 organizaciones y 1 activas." }];
@@ -183,14 +229,15 @@ describe("acceso: solo superadmin y finanzas", () => {
     expect(ctx.scripted.requests).toHaveLength(0);
   });
 
-  it("el superadmin completo ve las 19 herramientas en el estado; las financieras vienen marcadas", async () => {
+  it("el superadmin completo ve las 22 herramientas en el estado; las financieras vienen marcadas", async () => {
     const ctx = await setup();
     const sa = await ctx.alta();
     const res = await ctx.estado(sa.token);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { permitido: boolean; motivo: string | null; rol: string; herramientas: { nombre: string; financiera: boolean }[]; interruptor: { apagado: boolean }; gastoMes: { topeMicroUsd: number }; financierasDisponibles: boolean };
     expect(body).toMatchObject({ permitido: true, motivo: null, rol: "superadmin", financierasDisponibles: true, interruptor: { apagado: false } });
-    expect(body.herramientas).toHaveLength(19);
+    expect(body.herramientas).toHaveLength(22);
+    expect((body as unknown as { fijados: boolean }).fijados).toBe(true);
     expect(body.herramientas.filter((h) => h.financiera).map((h) => h.nombre).sort()).toEqual(["contratos_por_vencer", "facturacion_cobranza", "margen_costos_unitarios", "mrr", "pyl"]);
     expect(body.gastoMes.topeMicroUsd).toBe(25_000_000);
   });
@@ -273,7 +320,7 @@ describe("turno con LLM guionado", () => {
     expect(a.sources[0]?.scopeLabel).toBe("Toda la plataforma");
     // El modelo vio SOLO las herramientas del catalogo de plataforma (16) y el alcance en el prompt.
     const primera = ctx.scripted.requests[0]!;
-    expect(primera.tools?.map((t) => t.name).sort()).toHaveLength(20); // 19 de lectura + proponer_accion (CHAT-17: solo propone)
+    expect(primera.tools?.map((t) => t.name).sort()).toHaveLength(23); // 19 de lectura + proponer_accion (CHAT-17: solo propone)
     expect(primera.system).toMatch(/Plataforma completa \(superadmin\)/);
   });
 
@@ -349,7 +396,7 @@ describe("turno con LLM guionado", () => {
 });
 
 describe("cada herramienta del catalogo, elegida por un LLM guionado", () => {
-  const ARGS: Record<string, Record<string, string>> = { costos_ia: { periodo: "este_mes" }, uso_por_vertical: { periodo: "ultimos_7_dias" }, uso_copiloto: { periodo: "este_mes" }, ranking_organizaciones: { periodo: "este_mes" } };
+  const ARGS: Record<string, Record<string, string>> = { costos_ia: { periodo: "este_mes" }, uso_por_vertical: { periodo: "ultimos_7_dias" }, uso_copiloto: { periodo: "este_mes" }, ranking_organizaciones: { periodo: "este_mes" }, ranking_actividad: { periodo: "este_mes" }, operaciones_organizacion: { periodo: "este_mes", organizacion: "Taquería Don Beto" }, agentes_organizacion: { periodo: "este_mes", organizacion: "Taquería Don Beto" } };
 
   it.each([...HERRAMIENTAS_OPERATIVAS, ...HERRAMIENTAS_FINANCIERAS])("%s: el modelo la pide, el motor la ejecuta con alcance de plataforma y la respuesta lleva su tabla y su fuente", async (nombre) => {
     const ctx = await setup({ modo: "falsas", steps: [{ toolCalls: [{ name: nombre, argumentsJson: JSON.stringify(ARGS[nombre] ?? {}) }] }, { text: "Aquí está la consulta que pediste." }] });
@@ -361,9 +408,12 @@ describe("cada herramienta del catalogo, elegida por un LLM guionado", () => {
     expect(a.blocks[0]).toMatchObject({ kind: "table", tool: nombre });
     expect(a.blocks[0]!.rows.length).toBeGreaterThan(0);
     expect(a.sources[0]?.source).toContain(`«${nombre}»`);
-    expect(a.sources[0]?.scopeLabel).toBe("Toda la plataforma");
+    // Las lecturas de UNA organizacion citan esa organizacion y su vertical; el resto, toda la plataforma.
+    expect(a.sources[0]?.scopeLabel).toBe(["operaciones_organizacion", "agentes_organizacion"].includes(nombre) ? "Taquería Don Beto · restaurantes" : "Toda la plataforma");
     const cfo = HERRAMIENTAS_FINANCIERAS.includes(nombre);
     expect(ctx.falsas.accesosCfo.map((x) => x.recurso)).toEqual(cfo ? [`copiloto/${nombre}`] : []);
+    // Las lecturas por organizacion dejan SIEMPRE su fila de bitacora por organizacion; el resto, ninguna.
+    expect(ctx.falsas.accesosOrg.map((x) => x.herramienta)).toEqual(["operaciones_organizacion", "agentes_organizacion", "ranking_actividad"].includes(nombre) ? [nombre] : []);
   });
 });
 
@@ -563,8 +613,9 @@ describe("herramientas financieras: step-up, rol finanzas y huella en core.cfo_a
     const fin = await ctx.alta({ finanzas: true });
     const stepUp = await ctx.activarMfa(fin);
     const cab = { "x-stepup-token": stepUp };
-    const e = (await (await ctx.estado(fin.token, cab)).json()) as { rol: string; herramientas: { nombre: string; financiera: boolean }[]; financierasDisponibles: boolean };
+    const e = (await (await ctx.estado(fin.token, cab)).json()) as { rol: string; fijados: boolean; herramientas: { nombre: string; financiera: boolean }[]; financierasDisponibles: boolean };
     expect(e.rol).toBe("finanzas");
+    expect(e.fijados).toBe(false); // el tablero de fijados es del superadmin completo
     expect(e.financierasDisponibles).toBe(true);
     expect(e.herramientas.map((h) => h.nombre).sort()).toEqual(["contratos_por_vencer", "facturacion_cobranza", "margen_costos_unitarios", "mrr", "pyl"]);
     expect(e.herramientas.every((h) => h.financiera)).toBe(true);
@@ -844,5 +895,216 @@ describe("reporte PDF de un mensaje (paridad con las verticales)", () => {
     expect((await pdf(ctx, sa.token, t.conversationId!, t.seq!)).status).toBe(429);
     expect(ctx.bitacora.length).toBe(antes);
     expect(ctx.limiter.at(-1)).toMatchObject({ key: `superadmin:copiloto:reporte:u:${sa.id}`, limit: 6 });
+  });
+});
+
+
+describe("fijados del tablero (personales, sin organizacion)", () => {
+  const pedir = (ctx: Awaited<ReturnType<typeof setup>>, token: string, metodo: string, ruta: string, cuerpo?: unknown) =>
+    ctx.app.request(`/superadmin/copiloto/pins${ruta}`, cuerpo === undefined ? { method: metodo, headers: bearer(token) } : { ...jsonRequestInit(cuerpo, bearer(token)), method: metodo });
+
+  async function conUnaConsulta(opciones: Opciones = {}) {
+    const ctx = await setup({ modo: "falsas", sinProveedor: true, ...opciones });
+    const sa = await ctx.alta();
+    const t = await ctx.turno(sa.token, { tool: "ranking_actividad", args: { periodo: "este_mes" }, conversationId: "new" });
+    return { ctx, sa, t };
+  }
+
+  it("fijar guarda herramienta + argumentos (no cifras), lo lista el autor, nunca es compartido y se re-ejecuta sin modelo con el alcance de ahora", async () => {
+    const { ctx, sa, t } = await conUnaConsulta();
+    const alta = await pedir(ctx, sa.token, "POST", "", { conversationId: t.conversationId, seq: t.seq, bloque: 0 });
+    expect(alta.status).toBe(201);
+    const { id } = (await alta.json()) as { id: string };
+    const lista = (await (await pedir(ctx, sa.token, "GET", "")).json()) as { disponible: boolean; pins: { id: string; herramienta: string; args: Record<string, unknown>; compartido: boolean; propio: boolean }[] };
+    expect(lista).toMatchObject({ disponible: true, pins: [{ id, herramienta: "ranking_actividad", args: { periodo: "este_mes" }, compartido: false, propio: true }] });
+    ctx.falsas.accesosOrg.length = 0;
+    const res = await pedir(ctx, sa.token, "GET", `/${id}/resultado`);
+    expect(res.status).toBe(200);
+    const r = (await res.json()) as { status: string; blocks: { tool: string }[]; sources: { source: string }[] };
+    expect(r.status).toBe("ok");
+    expect(r.blocks[0]?.tool).toBe("ranking_actividad");
+    // reabrir el fijado es una lectura por organizacion: deja su fila de bitacora y no llama al modelo
+    expect(ctx.falsas.accesosOrg.map((a) => a.herramienta)).toEqual(["ranking_actividad"]);
+    expect(ctx.scripted.requests).toHaveLength(0);
+  });
+
+  it("fijar dos veces lo mismo no duplica; renombrar y quitar funcionan y un id ajeno o mal formado es 404", async () => {
+    const { ctx, sa, t } = await conUnaConsulta();
+    const cuerpo = { conversationId: t.conversationId, seq: t.seq, bloque: 0 };
+    const a = ((await (await pedir(ctx, sa.token, "POST", "", cuerpo)).json()) as { id: string }).id;
+    const b = ((await (await pedir(ctx, sa.token, "POST", "", cuerpo)).json()) as { id: string }).id;
+    expect(b).toBe(a);
+    expect(ctx.pins.store).toHaveLength(1);
+    expect((await pedir(ctx, sa.token, "PATCH", `/${a}`, { titulo: "Mi ranking" })).status).toBe(200);
+    expect(ctx.pins.store[0]?.titulo).toBe("Mi ranking");
+    expect((await pedir(ctx, sa.token, "DELETE", `/${a}`)).status).toBe(204);
+    expect((await pedir(ctx, sa.token, "DELETE", `/${a}`)).status).toBe(404);
+    expect((await pedir(ctx, sa.token, "GET", `/${randomUUID()}/resultado`)).status).toBe(404);
+    expect((await pedir(ctx, sa.token, "GET", "/no-es-un-id/resultado")).status).toBe(404);
+  });
+
+  it("no se puede compartir ni editar otra cosa que el titulo (400) y el cuerpo con campos de mas se rechaza", async () => {
+    const { ctx, sa, t } = await conUnaConsulta();
+    const id = ((await (await pedir(ctx, sa.token, "POST", "", { conversationId: t.conversationId, seq: t.seq, bloque: 0 })).json()) as { id: string }).id;
+    expect((await pedir(ctx, sa.token, "PATCH", `/${id}`, { compartido: true })).status).toBe(400);
+    expect((await pedir(ctx, sa.token, "PATCH", `/${id}`, { titulo: "ok", herramienta: "mrr" })).status).toBe(400);
+    expect((await pedir(ctx, sa.token, "POST", "", { conversationId: t.conversationId, seq: t.seq, bloque: 0, herramienta: "mrr" })).status).toBe(400);
+    expect(ctx.pins.store[0]?.compartido).toBe(false);
+  });
+
+  it("solo fija resultados de una conversacion PROPIA y de herramientas que siguen en el catalogo de su rol (una propuesta de accion o una herramienta inventada no se fijan)", async () => {
+    const { ctx, sa, t } = await conUnaConsulta();
+    expect((await pedir(ctx, sa.token, "POST", "", { conversationId: randomUUID(), seq: 2, bloque: 0 })).status).toBe(404);
+    ctx.conv.store[0]!.llamadas = [{ tool: "ranking_actividad", args: { periodo: "no_existe" } }];
+    expect((await pedir(ctx, sa.token, "POST", "", { conversationId: t.conversationId, seq: t.seq, bloque: 0 })).status).toBe(404);
+    const otro = await ctx.alta();
+    expect((await pedir(ctx, otro.token, "POST", "", { conversationId: t.conversationId, seq: t.seq, bloque: 0 })).status).toBe(404);
+    expect((await pedir(ctx, otro.token, "GET", "")).status).toBe(200);
+    expect(((await (await pedir(ctx, otro.token, "GET", "")).json()) as { pins: unknown[] }).pins).toEqual([]);
+  });
+
+  it("un fijado de otro superadmin no se lee, renombra ni borra (404)", async () => {
+    const { ctx, sa, t } = await conUnaConsulta();
+    const id = ((await (await pedir(ctx, sa.token, "POST", "", { conversationId: t.conversationId, seq: t.seq, bloque: 0 })).json()) as { id: string }).id;
+    const otro = await ctx.alta();
+    expect((await pedir(ctx, otro.token, "GET", `/${id}/resultado`)).status).toBe(404);
+    expect((await pedir(ctx, otro.token, "PATCH", `/${id}`, { titulo: "robado" })).status).toBe(404);
+    expect((await pedir(ctx, otro.token, "DELETE", `/${id}`)).status).toBe(404);
+    expect(ctx.pins.store).toHaveLength(1);
+  });
+
+  it("un fijado financiero exige step-up al abrirse (403 stepup_required ANTES de consultar) y con step-up responde", async () => {
+    const ctx = await setup({ modo: "falsas", sinProveedor: true });
+    const sa = await ctx.alta();
+    const stepUp = await ctx.activarMfa(sa);
+    const t = await ctx.turno(sa.token, { tool: "mrr", conversationId: "new" }, { "x-stepup-token": stepUp });
+    const alta = await ctx.app.request("/superadmin/copiloto/pins", jsonRequestInit({ conversationId: t.conversationId, seq: t.seq, bloque: 0 }, bearer(sa.token)));
+    expect(alta.status).toBe(201);
+    const { id } = (await alta.json()) as { id: string };
+    const sin = await ctx.app.request(`/superadmin/copiloto/pins/${id}/resultado`, { headers: bearer(sa.token) });
+    expect(sin.status).toBe(403);
+    expect(JSON.stringify(await sin.json())).toMatch(/stepup_required/);
+    expect(ctx.zona.entries().filter((e) => e.accion === "consulta").map((e) => e.recurso)).toEqual([]);
+    const con = await ctx.app.request(`/superadmin/copiloto/pins/${id}/resultado`, { headers: bearer(sa.token, { "x-stepup-token": stepUp }) });
+    expect(con.status).toBe(200);
+    expect(((await con.json()) as { status: string }).status).toBe("ok");
+  });
+
+  it("el rol finanzas (solo lectura) no usa el tablero: la zona CFO responde 403 en todas las rutas de fijados, incluso con step-up", async () => {
+    const ctx = await setup({ modo: "falsas", sinProveedor: true });
+    const fin = await ctx.alta({ finanzas: true });
+    const stepUp = await ctx.activarMfa(fin);
+    const t = await ctx.turno(fin.token, { tool: "mrr", conversationId: "new" }, { "x-stepup-token": stepUp });
+    const h = { "x-stepup-token": stepUp };
+    for (const res of [
+      await ctx.app.request("/superadmin/copiloto/pins", { headers: bearer(fin.token, h) }),
+      await ctx.app.request("/superadmin/copiloto/pins", jsonRequestInit({ conversationId: t.conversationId, seq: t.seq, bloque: 0 }, bearer(fin.token, h))),
+      await ctx.app.request(`/superadmin/copiloto/pins/${randomUUID()}/resultado`, { headers: bearer(fin.token, h) }),
+      await ctx.app.request(`/superadmin/copiloto/pins/${randomUUID()}`, { method: "DELETE", headers: bearer(fin.token, h) }),
+    ]) {
+      expect(res.status).toBe(403);
+      expect(JSON.stringify(await res.json())).toMatch(/rol_finanzas_solo_lectura/);
+    }
+    expect(ctx.pins.store).toEqual([]);
+  });
+
+  it("un staff comun recibe 403 y sin token 401 en todas las rutas de fijados", async () => {
+    const ctx = await setup();
+    const staff = await ctx.s.staff();
+    expect((await pedir(ctx, staff.token, "GET", "")).status).toBe(403);
+    expect((await pedir(ctx, staff.token, "POST", "", { conversationId: randomUUID(), seq: 2, bloque: 0 })).status).toBe(403);
+    expect((await ctx.app.request("/superadmin/copiloto/pins")).status).toBe(401);
+  });
+
+  it("con impersonacion activa la lista y la re-ejecucion responden 409 y las escrituras 403", async () => {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES });
+    const sa = await ctx.alta();
+    const imp = ctx.s.base.deps.impersonationRepo({} as never) as InMemoryImpersonationRepository;
+    imp.seedPlatformSuperadmin(sa.id, sa.email);
+    await imp.startSession(sa.id, ctx.s.base.organizationId, "Soporte del cliente: revisar el pedido 123 de ayer");
+    expect((await pedir(ctx, sa.token, "GET", "")).status).toBe(409);
+    expect((await pedir(ctx, sa.token, "GET", `/${randomUUID()}/resultado`)).status).toBe(409);
+    expect((await pedir(ctx, sa.token, "POST", "", { conversationId: randomUUID(), seq: 2, bloque: 0 })).status).toBe(403);
+    expect((await pedir(ctx, sa.token, "DELETE", `/${randomUUID()}`)).status).toBe(403);
+  });
+});
+
+
+describe("adjuntar archivo (POST /superadmin/copiloto/adjuntos)", () => {
+  const CSV = ["producto,unidades,telefono", "Taco,10,999 123 4567", "Torta,5,998 765 4321"].join("\n");
+  const b64 = (t: string): string => Buffer.from(t, "utf8").toString("base64");
+  const subir = (ctx: Awaited<ReturnType<typeof setup>>, token: string, cuerpo: unknown, extra: Record<string, string> = {}) =>
+    ctx.app.request("/superadmin/copiloto/adjuntos", jsonRequestInit(cuerpo, bearer(token, extra)));
+
+  it("analiza el CSV en el servidor, sin modelo ni guardar nada: perfil por columna, datos personales ocultos y una fila en la bitacora SIN nombre ni contenido", async () => {
+    const ctx = await setup({ modo: "falsas", steps: [{ text: "no deberia llamarse" }] });
+    const sa = await ctx.alta();
+    const res = await subir(ctx, sa.token, { nombre: "ventas-de-ana.csv", contenidoBase64: b64(CSV) });
+    expect(res.status).toBe(200);
+    const r = (await res.json()) as DataChatAnswer;
+    expect(r.status).toBe("ok");
+    expect(r.blocks[0]?.tool).toBe("archivo_adjunto");
+    expect(r.blocks[0]?.rows.find((x) => x["columna"] === "unidades")).toMatchObject({ tipo: "numérica", suma: 15 });
+    expect(r.blocks[0]?.rows.find((x) => x["columna"] === "telefono")).toMatchObject({ tipo: "personal", suma: null });
+    expect(JSON.stringify(r)).not.toMatch(/999 123|998 765/);
+    expect(ctx.scripted.requests).toHaveLength(0);
+    expect(ctx.conv.appended).toHaveLength(0); // el archivo no se guarda en ninguna conversacion
+    expect(ctx.bitacora).toHaveLength(1);
+    expect(ctx.bitacora[0]).toMatchObject({ tool: "archivo_adjunto", params: { tipo: "csv" }, outcome: "ok", rowCount: 2, userId: sa.id, vertical: "plataforma" });
+    expect(JSON.stringify(ctx.bitacora)).not.toContain("ventas-de-ana");
+  });
+
+  it("un archivo ilegible responde 200 con el motivo (invalid_input) y lo deja en la bitacora como error", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const sa = await ctx.alta();
+    const res = await subir(ctx, sa.token, { nombre: "virus.exe", contenidoBase64: b64("MZ") });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ status: "invalid_input", text: "Solo puedo leer archivos CSV, Excel (.xlsx) y PDF.", blocks: [] });
+    expect(ctx.bitacora[0]).toMatchObject({ tool: "archivo_adjunto", outcome: "error", rowCount: 0 });
+  });
+
+  it("cuerpo mal formado: JSON invalido, campos de mas, base64 invalido o sin nombre = 400; mas de 5 MB = 413; ningun caso llega a la bitacora", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const sa = await ctx.alta();
+    const ok = b64(CSV);
+    expect((await subir(ctx, sa.token, { nombre: "a.csv", contenidoBase64: ok, organizationId: "x" })).status).toBe(400);
+    expect((await subir(ctx, sa.token, { nombre: "a.csv", contenidoBase64: "no es base64!" })).status).toBe(400);
+    expect((await subir(ctx, sa.token, { nombre: "", contenidoBase64: ok })).status).toBe(400);
+    expect((await subir(ctx, sa.token, { contenidoBase64: ok })).status).toBe(400);
+    const roto = await ctx.app.request("/superadmin/copiloto/adjuntos", { method: "POST", headers: { ...bearer(sa.token), "content-type": "application/json" }, body: "{no json" });
+    expect(roto.status).toBe(400);
+    const grande = await subir(ctx, sa.token, { nombre: "a.csv", contenidoBase64: "A".repeat(8 * 1024 * 1024) });
+    expect(grande.status).toBe(413);
+    expect(ctx.bitacora).toHaveLength(0);
+  });
+
+  it("solo el superadmin completo: staff comun 403, sin token 401 y el rol finanzas (solo lectura) 403 aunque tenga step-up", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const staff = await ctx.s.staff();
+    expect((await subir(ctx, staff.token, { nombre: "a.csv", contenidoBase64: b64(CSV) })).status).toBe(403);
+    expect((await ctx.app.request("/superadmin/copiloto/adjuntos", jsonRequestInit({ nombre: "a.csv", contenidoBase64: b64(CSV) }))).status).toBe(401);
+    const fin = await ctx.alta({ finanzas: true });
+    const stepUp = await ctx.activarMfa(fin);
+    const res = await subir(ctx, fin.token, { nombre: "a.csv", contenidoBase64: b64(CSV) }, { "x-stepup-token": stepUp });
+    expect(res.status).toBe(403);
+    expect(ctx.bitacora).toHaveLength(0);
+  });
+
+  it("limite de 10 archivos por 10 minutos por persona (fail-closed): el 11o responde 429 y no se analiza", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const sa = await ctx.alta();
+    for (let i = 0; i < 10; i++) expect((await subir(ctx, sa.token, { nombre: "a.csv", contenidoBase64: b64(CSV) })).status).toBe(200);
+    expect((await subir(ctx, sa.token, { nombre: "a.csv", contenidoBase64: b64(CSV) })).status).toBe(429);
+    expect(ctx.bitacora).toHaveLength(10);
+  });
+
+  it("con impersonacion activa se rechaza (403 del guard comun de escrituras) y no se analiza nada", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const sa = await ctx.alta();
+    const imp = ctx.s.base.deps.impersonationRepo({} as never) as InMemoryImpersonationRepository;
+    imp.seedPlatformSuperadmin(sa.id, sa.email);
+    await imp.startSession(sa.id, ctx.s.base.organizationId, "Soporte del cliente: revisar el pedido 123 de ayer");
+    expect((await subir(ctx, sa.token, { nombre: "a.csv", contenidoBase64: b64(CSV) })).status).toBe(403);
+    expect(ctx.bitacora).toHaveLength(0);
   });
 });
