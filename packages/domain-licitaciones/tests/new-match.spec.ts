@@ -56,7 +56,10 @@ describe("evaluateNewMatch", () => {
   it("con umbral: avisa si la puntuacion lo alcanza y no incumple un requisito duro; no avisa bajo el umbral", () => {
     const score = evaluateNewMatch(tender(), ctx(), AHORA).score;
     expect(evaluateNewMatch(tender(), ctx({ minScore: score }), AHORA).notify).toBe(true);
-    expect(evaluateNewMatch(tender(), ctx({ minScore: Math.min(100, score + 1) }), AHORA)).toMatchObject({ notify: false, skipReason: "bajo_umbral" });
+    // misma elegibilidad (estado correcto) pero sin afinidad con las palabras clave: la puntuacion queda bajo el umbral
+    const lejana = evaluateNewMatch(tender({ title: "Compra de papeleria" }), ctx({ minScore: 90 }), AHORA);
+    expect(lejana.score).toBeLessThan(90);
+    expect(lejana).toMatchObject({ notify: false, skipReason: "bajo_umbral" });
     // aun con umbral 0, un requisito duro incumplido NUNCA avisa
     expect(evaluateNewMatch(tender({ state: "Oaxaca" }), ctx({ minScore: 0 }), AHORA)).toMatchObject({ notify: false, skipReason: "no_cumple" });
   });
