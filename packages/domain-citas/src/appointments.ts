@@ -391,6 +391,7 @@ export async function createAppointmentFromPanel(repo: CitasRepository, payload:
   if (!payload.customerPhone?.trim()) throw new AppointmentValidationError("customer_phone es requerido");
   if (!isUsablePhone(payload.customerPhone)) throw new AppointmentValidationError("customer_phone debe ser un teléfono válido (entre 7 y 15 dígitos)");
   if (payload.customerEmail?.trim() && !isUsableEmail(payload.customerEmail.trim())) throw new AppointmentValidationError("customer_email no tiene un formato de correo válido");
+  if (!isIsoInstantWithZone(payload.startsAt)) throw new AppointmentValidationError(STARTS_AT_SIN_ZONA_MENSAJE);
   const startsAt = new Date(payload.startsAt);
   if (Number.isNaN(startsAt.getTime())) throw new AppointmentValidationError("starts_at debe ser una fecha ISO 8601 válida");
 
