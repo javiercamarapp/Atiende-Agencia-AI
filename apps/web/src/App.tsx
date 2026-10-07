@@ -1,10 +1,10 @@
 // Shell mínimo de apps/web para esta fase — solo lo necesario para que la pantalla
 // de login del vertical restaurantes sea real y navegable, sin portar el resto del
 // dashboard visual (fuera de alcance explícito de Fase 1, ver el brief).
-import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { Suspense } from "react";
-import type { ComponentType, LazyExoticComponent, ReactElement, ReactNode } from "react";
+import { useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { Suspense, useCallback } from "react";
+import type { ComponentProps, ComponentType, LazyExoticComponent, ReactElement, ReactNode } from "react";
 import { REDIRECCIONES_SUPERADMIN } from "./superadmin/rutas.ts";
 import { cargaPerezosa, ErrorBoundaryRaiz } from "./lib/carga-perezosa.tsx";
 import { EstadoCargando, EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui";
@@ -57,6 +57,7 @@ const SuperAdminSaludPage = cargaPerezosa(() => import("./superadmin/pages/Salud
 const SuperAdminResumenPage = cargaPerezosa(() => import("./superadmin/pages/Resumen.tsx"), "SuperAdminResumenPage");
 const SuperAdminConsolaResumenPage = cargaPerezosa(() => import("./superadmin/pages/ConsolaResumen.tsx"), "SuperAdminConsolaResumenPage");
 const SuperAdminAccionesPage = cargaPerezosa(() => import("./superadmin/pages/Acciones.tsx"), "SuperAdminAccionesPage");
+const SuperAdminCopilotoPage = cargaPerezosa(() => import("./superadmin/pages/Copiloto.tsx"), "SuperAdminCopilotoPage");
 const SuperAdminSeguridadPage = cargaPerezosa(() => import("./superadmin/pages/Seguridad.tsx"), "SuperAdminSeguridadPage");
 const SuperAdminInterruptoresPage = cargaPerezosa(() => import("./superadmin/pages/Interruptores.tsx"), "SuperAdminInterruptoresPage");
 const SuperAdminPrivacidadPage = cargaPerezosa(() => import("./superadmin/pages/Privacidad.tsx"), "SuperAdminPrivacidadPage");
@@ -397,254 +398,173 @@ function GoogleCallbackRoute() {
   return <GoogleCallbackPage apiBaseUrl={API_BASE_URL} />;
 }
 
+/** Contexto que el layout del back office (`SuperAdminLayoutRoute`) entrega a cada pagina: API, token y datos de la sesion. */
+type SuperAdminCtx = Parameters<ComponentProps<typeof SuperAdminShell>["children"]>[0];
+function useSuperAdminCtx(): SuperAdminCtx {
+  return useOutletContext<SuperAdminCtx>();
+}
+
+/** Layout de TODAS las rutas /superadmin/*: el shell (sidebar, barra, banner de impersonacion, dialogo de step-up y el panel Cmd+J del Copiloto) se monta UNA
+ * sola vez y las paginas entran por el `Outlet`; navegar no lo desmonta, asi el panel conserva su conversacion (CHAT-17). */
+function SuperAdminLayoutRoute() {
+  const navigate = useNavigate();
+  const alPedirLogin = useCallback(() => navigate("/", { replace: true }), [navigate]);
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={alPedirLogin}>
+      {(ctx) => (
+        <Suspense fallback={<EstadoCargando variante="pantalla" />}>
+          <Outlet context={ctx} />
+        </Suspense>
+      )}
+    </SuperAdminShell>
+  );
+}
+
 /** Back office de plataforma — igual patrón de shell+ruta que cada vertical,
  * pero sin `orgSlug` (el superadmin no está dentro de ninguna organización). */
 function SuperAdminRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminConsolaResumenPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminConsolaResumenPage {...ctx} />;
 }
 
 /** El parte diario (antes en la raíz): ruta propia sin item de menú; el Resumen lo enlaza con "Ver parte diario". */
 function SuperAdminParteDiarioRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminResumenPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminResumenPage {...ctx} />;
 }
 
 /** SA-L-01: el listado de organizaciones (antes en la raíz /superadmin) vive en su propia ruta; la raíz es el Resumen. */
 function SuperAdminOrganizacionesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminOrganizacionesPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminOrganizacionesPage {...ctx} />;
 }
 
 /** SA-07: ficha 360 de una organizacion. */
 function SuperAdminOrganizacionFichaRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminOrganizacionFichaPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminOrganizacionFichaPage {...ctx} />;
 }
 
 function SuperAdminProspectosRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminProspectosPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminProspectosPage {...ctx} />;
 }
 
 /** SA-L-42: el mapa del Cerebro de ventas (el mundo virtual de la cartera). */
 function SuperAdminCerebroMapaRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminCerebroMapaPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminCerebroMapaPage {...ctx} />;
 }
 
 /** SA-L-43: la ficha de un prospecto del Cerebro. */
 function SuperAdminFichaProspectoRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminFichaProspectoPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminFichaProspectoPage {...ctx} />;
 }
 
 function SuperAdminPanelesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminPanelesPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminPanelesPage {...ctx} />;
 }
 
 function SuperAdminConsumoIaRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminConsumoIaPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminConsumoIaPage {...ctx} />;
 }
 
 function SuperAdminIntegracionesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminIntegracionesPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminIntegracionesPage {...ctx} />;
 }
 
 function SuperAdminSaludRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminSaludPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminSaludPage {...ctx} />;
+}
+
+function SuperAdminCopilotoRoute() {
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminCopilotoPage apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />;
 }
 
 function SuperAdminAccionesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminAccionesPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminAccionesPage {...ctx} />;
 }
 
 function SuperAdminSeguridadRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminSeguridadPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminSeguridadPage {...ctx} />;
 }
 
 function SuperAdminInterruptoresRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminInterruptoresPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminInterruptoresPage {...ctx} />;
 }
 
 function SuperAdminPrivacidadRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminPrivacidadPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminPrivacidadPage {...ctx} />;
 }
 
 function SuperAdminTaxonomiaRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminTaxonomiaPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminTaxonomiaPage {...ctx} />;
 }
 
 function SuperAdminSupresionRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminSupresionPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminSupresionPage {...ctx} />;
 }
 
 function SuperAdminAgentesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminAgentesPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminAgentesPage {...ctx} />;
 }
 
 function SuperAdminAgenteExtractorRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminAgenteExtractorPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminAgenteExtractorPage {...ctx} />;
 }
 
 function SuperAdminAgenteConciliacionRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminAgenteConciliacionPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminAgenteConciliacionPage {...ctx} />;
 }
 
 function SuperAdminAgenteWhatsappRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminAgenteWhatsappPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminAgenteWhatsappPage {...ctx} />;
 }
 
 function SuperAdminModelOpsRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminModelOpsPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminModelOpsPage {...ctx} />;
 }
 
 function SuperAdminEjecutivoRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminEjecutivoPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminEjecutivoPage {...ctx} />;
 }
 
 function SuperAdminZonaCfoRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminZonaCfoPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminZonaCfoPage {...ctx} />;
 }
 
 function SuperAdminCostosFacturacionRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminCostosFacturacionPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminCostosFacturacionPage {...ctx} />;
 }
 
 function SuperAdminPlanesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminPlanesPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminPlanesPage {...ctx} />;
 }
 
 function SuperAdminNotificacionesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <NotificacionesPagina {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <NotificacionesPagina {...ctx} />;
 }
 
 // Pagina de notificaciones (campana): una sola pagina compartida, montada en el shell de cada vertical.
@@ -670,30 +590,18 @@ const CitasSeguridadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <Seg
 const DespachosSeguridadRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosSeguridadPage {...ctx} />);
 
 function SuperAdminBreakGlassRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminBreakGlassPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminBreakGlassPage {...ctx} />;
 }
 
 function SuperAdminImpersonacionRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminImpersonacionPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminImpersonacionPage {...ctx} />;
 }
 
 function SuperAdminAuthzAuditoriaRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminAuthzAuditoriaPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminAuthzAuditoriaPage {...ctx} />;
 }
 
 function HotelesLoginRoute() {
@@ -1202,40 +1110,43 @@ export function App() {
         <Route path="/pedir/:orgSlug/eventos" element={<StorefrontEventosRoute />} />
         <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
         <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
-        <Route path="/superadmin" element={<SuperAdminRoute />} />
-        <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />
-        <Route path="/superadmin/cerebro" element={<SuperAdminProspectosRoute />} />
-        <Route path="/superadmin/cerebro/taxonomia" element={<SuperAdminTaxonomiaRoute />} />
-        <Route path="/superadmin/mapa-prospectos" element={<SuperAdminCerebroMapaRoute />} />
-        <Route path="/superadmin/mapa-prospectos/:id" element={<SuperAdminFichaProspectoRoute />} />
-        <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
-        <Route path="/superadmin/consumo-ia" element={<SuperAdminConsumoIaRoute />} />
-        <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
-        <Route path="/superadmin/organizaciones" element={<SuperAdminOrganizacionesRoute />} />
-        <Route path="/superadmin/organizaciones/:id" element={<SuperAdminOrganizacionFichaRoute />} />
+        <Route element={<SuperAdminLayoutRoute />}>
+          <Route path="/superadmin" element={<SuperAdminRoute />} />
+          <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />
+          <Route path="/superadmin/cerebro" element={<SuperAdminProspectosRoute />} />
+          <Route path="/superadmin/cerebro/taxonomia" element={<SuperAdminTaxonomiaRoute />} />
+          <Route path="/superadmin/mapa-prospectos" element={<SuperAdminCerebroMapaRoute />} />
+          <Route path="/superadmin/mapa-prospectos/:id" element={<SuperAdminFichaProspectoRoute />} />
+          <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
+          <Route path="/superadmin/consumo-ia" element={<SuperAdminConsumoIaRoute />} />
+          <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
+          <Route path="/superadmin/organizaciones" element={<SuperAdminOrganizacionesRoute />} />
+          <Route path="/superadmin/organizaciones/:id" element={<SuperAdminOrganizacionFichaRoute />} />
+          <Route path="/superadmin/acciones" element={<SuperAdminAccionesRoute />} />
+          <Route path="/superadmin/seguridad" element={<SuperAdminSeguridadRoute />} />
+          <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />
+          <Route path="/superadmin/privacidad" element={<SuperAdminPrivacidadRoute />} />
+          <Route path="/superadmin/supresion" element={<SuperAdminSupresionRoute />} />
+          <Route path="/superadmin/agentes" element={<SuperAdminAgentesRoute />} />
+          <Route path="/superadmin/agente-extractor" element={<SuperAdminAgenteExtractorRoute />} />
+          <Route path="/superadmin/agente-conciliacion" element={<SuperAdminAgenteConciliacionRoute />} />
+          <Route path="/superadmin/agente-whatsapp" element={<SuperAdminAgenteWhatsappRoute />} />
+          <Route path="/superadmin/model-ops" element={<SuperAdminModelOpsRoute />} />
+          <Route path="/superadmin/ejecutivo" element={<SuperAdminEjecutivoRoute />} />
+          <Route path="/superadmin/zona-cfo" element={<SuperAdminZonaCfoRoute />} />
+          <Route path="/superadmin/costos-facturacion" element={<SuperAdminCostosFacturacionRoute />} />
+          <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
+          <Route path="/superadmin/notificaciones" element={<SuperAdminNotificacionesRoute />} />
+          <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
+          <Route path="/superadmin/impersonacion" element={<SuperAdminImpersonacionRoute />} />
+          <Route path="/superadmin/auditoria-denegaciones" element={<SuperAdminAuthzAuditoriaRoute />} />
+          <Route path="/superadmin/integraciones" element={<SuperAdminIntegracionesRoute />} />
+          <Route path="/superadmin/copiloto" element={<SuperAdminCopilotoRoute />} />
+        </Route>
         {/* Rutas que cambiaron de lugar (SA-L-01): la vieja redirige a la nueva, sin 404. */}
         {Object.entries(REDIRECCIONES_SUPERADMIN).map(([desde, hacia]) => (
           <Route key={desde} path={desde} element={<Navigate to={hacia} replace />} />
         ))}
-        <Route path="/superadmin/acciones" element={<SuperAdminAccionesRoute />} />
-        <Route path="/superadmin/seguridad" element={<SuperAdminSeguridadRoute />} />
-        <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />
-        <Route path="/superadmin/privacidad" element={<SuperAdminPrivacidadRoute />} />
-        <Route path="/superadmin/supresion" element={<SuperAdminSupresionRoute />} />
-        <Route path="/superadmin/agentes" element={<SuperAdminAgentesRoute />} />
-        <Route path="/superadmin/agente-extractor" element={<SuperAdminAgenteExtractorRoute />} />
-        <Route path="/superadmin/agente-conciliacion" element={<SuperAdminAgenteConciliacionRoute />} />
-        <Route path="/superadmin/agente-whatsapp" element={<SuperAdminAgenteWhatsappRoute />} />
-        <Route path="/superadmin/model-ops" element={<SuperAdminModelOpsRoute />} />
-        <Route path="/superadmin/ejecutivo" element={<SuperAdminEjecutivoRoute />} />
-        <Route path="/superadmin/zona-cfo" element={<SuperAdminZonaCfoRoute />} />
-        <Route path="/superadmin/costos-facturacion" element={<SuperAdminCostosFacturacionRoute />} />
-        <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
-        <Route path="/superadmin/notificaciones" element={<SuperAdminNotificacionesRoute />} />
-        <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
-        <Route path="/superadmin/impersonacion" element={<SuperAdminImpersonacionRoute />} />
-        <Route path="/superadmin/auditoria-denegaciones" element={<SuperAdminAuthzAuditoriaRoute />} />
-        <Route path="/superadmin/integraciones" element={<SuperAdminIntegracionesRoute />} />
         <Route path="/:vertical/auth/google/callback" element={<GoogleCallbackRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
         {/* PL-21: enlaces del correo de hoteles (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}

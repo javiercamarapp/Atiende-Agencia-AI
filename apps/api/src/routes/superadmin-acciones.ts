@@ -20,16 +20,14 @@ import { Hono } from "hono";
 import { authMiddleware } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { rateLimit } from "@atiende/core-ratelimit";
-import type { AutomationActionLogRow, OutboxDeadMessageRow, OutboxQueueName, SuperadminActionIntentRow } from "@atiende/db";
+import type { AutomationActionLogRow, OutboxDeadMessageRow, SuperadminActionIntentRow } from "@atiende/db";
 import { Errors } from "../errors.ts";
 import { requestActor } from "../http-security.ts";
 import { esTipoIntentEjecutable, CATALOGO_ACCIONES } from "../superadmin-acciones/catalogo.ts";
 import { calcularSugerencias, type ProspectoNecesitaSeguimiento } from "../superadmin-acciones/sugerencias.ts";
-import { construirResumenCerrarProspecto, construirResumenEjecutarMantenimientoAhora, construirResumenReencolarMensajeMuerto } from "../superadmin-acciones/resumen.ts";
+import { componerResumenYPayload } from "../superadmin-acciones/componer.ts";
 import type { AppDeps } from "../deps.ts";
 
-const QUEUES_VALIDAS = new Set<OutboxQueueName>(["citas", "hoteles", "restaurantes", "despachos", "rentas", "licitaciones"]);
-const ESTADOS_CIERRE_VALIDOS = new Set(["perdido", "descartado"]);
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
@@ -70,33 +68,6 @@ function parseLimit(raw: string | undefined): number {
 interface CrearIntentBody {
   readonly tipo?: unknown;
   readonly payload?: unknown;
-}
-
-async function componerResumenYPayload(deps: AppDeps, callerId: string, tipo: string, payload: Record<string, unknown>): Promise<{ readonly resumen: string; readonly payloadValidado: Record<string, unknown> }> {
-  if (tipo === "reencolar_mensaje_muerto") {
-    const queue = typeof payload.queue === "string" ? payload.queue : "";
-    const mensajeId = typeof payload.mensajeId === "string" ? payload.mensajeId : "";
-    if (!QUEUES_VALIDAS.has(queue as OutboxQueueName) || mensajeId.length === 0) throw Errors.validation("payload inválido para reencolar_mensaje_muerto: requiere queue (una de las 6 verticales) y mensajeId.");
-    const detalle = await deps.accionesRepo.getOutboxDeadMessageForSuperadmin(callerId, queue as OutboxQueueName, mensajeId);
-    if (!detalle) throw Errors.notFound("No hay un mensaje en estado dead con ese id en esa cola (ya lo movieron, ya se reencoló, o nunca existió).");
-    return { resumen: construirResumenReencolarMensajeMuerto(detalle), payloadValidado: { queue, mensajeId } };
-  }
-
-  if (tipo === "cerrar_prospecto") {
-    const prospectoId = typeof payload.prospectoId === "string" ? payload.prospectoId : "";
-    const estadoDestino = typeof payload.estado === "string" ? payload.estado : "";
-    if (prospectoId.length === 0 || !ESTADOS_CIERRE_VALIDOS.has(estadoDestino)) throw Errors.validation("payload inválido para cerrar_prospecto: requiere prospectoId y estado en (perdido, descartado).");
-    const prospectos = await deps.coreRepo.listProspectosForSuperadmin(callerId);
-    const prospecto = prospectos.find((p) => p.id === prospectoId);
-    if (!prospecto) throw Errors.notFound("No se encontró ese prospecto.");
-    return { resumen: construirResumenCerrarProspecto(prospecto.empresa, prospecto.estado, estadoDestino as "perdido" | "descartado"), payloadValidado: { prospectoId, estado: estadoDestino } };
-  }
-
-  if (tipo === "ejecutar_mantenimiento_ahora") {
-    return { resumen: construirResumenEjecutarMantenimientoAhora(), payloadValidado: {} };
-  }
-
-  throw Errors.validation(`Tipo de acción desconocido o no disponible: ${tipo}. Ver el catálogo en GET /superadmin/acciones/catalogo.`);
 }
 
 export function superadminAccionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
