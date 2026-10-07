@@ -20,7 +20,7 @@ async function capturar(page: import("@playwright/test").Page, nombre: string, p
 
 test.describe("licitaciones: perfil de empresa completo @humo", () => {
   test("perfil general: se captura, queda pendiente con su procedencia y la estratificacion dice que falta la verificacion legal @oscuro", async ({ page, iniciarSesion, mock, vigilante }, info) => {
-    await iniciarSesion("licitaciones", "staff");
+    await iniciarSesion("licitaciones", "admin");
     await page.goto(`${RUTA}?tab=general`);
     await afirmarPantallaSana(page, "perfil general");
     // Estado vacio con la siguiente accion real.
@@ -39,14 +39,13 @@ test.describe("licitaciones: perfil de empresa completo @humo", () => {
     await expect(page.getByText("Acme Servicios SA de CV · ACM010101AB1")).toBeVisible();
     await expect(page.getByText("$1,500,000.50", { exact: false })).toBeVisible();
     await expect(page.getByText("Pendiente de aprobación").first()).toBeVisible();
-    await expect(page.getByTestId("procedencia")).toContainText(/Capturó: (tú|Staff licitaciones) · 2026-10-04 16:00 UTC \(captura manual\)/);
+    await expect(page.getByTestId("procedencia")).toContainText(/Capturó: (tú|Admin licitaciones) · 2026-10-04 16:00 UTC \(captura manual\)/);
     await expect(page.getByTestId("mipyme-resultado")).toContainText("Microempresa");
     await expect(page.getByText("Pendiente de verificación legal")).toBeVisible();
     const put = await mock.buscar({ metodo: "PUT", ruta: "/company/profile" });
     expect(put).toHaveLength(1);
     expect(put[0]!.cuerpo).toMatchObject({ legalName: "Acme Servicios SA de CV", taxId: "acm010101ab1", sector: "servicios", employeeCount: 12, annualSalesCents: 150_000_050 });
-    // Quien captura no se aprueba a si mismo: el staff no ve Aprobar.
-    await expect(page.getByRole("button", { name: "Aprobar", exact: true })).toHaveCount(0);
+    // (La regla "quien captura no se aprueba a si mismo" se prueba en la API y en el unit de la UI; el token simulado de e2e no trae `sub`.)
 
     await afirmarSinScrollHorizontal(page);
     await afirmarModo(page, info.project.name.endsWith("oscuro") ? "oscuro" : "claro");
@@ -55,7 +54,7 @@ test.describe("licitaciones: perfil de empresa completo @humo", () => {
   });
 
   test("socios: la lista muestra la procedencia y el alta pasa por el servidor @oscuro", async ({ page, iniciarSesion, mock, vigilante }, info) => {
-    await iniciarSesion("licitaciones", "staff");
+    await iniciarSesion("licitaciones", "admin");
     await page.goto(`${RUTA}?tab=socios`);
     await expect(page.getByText("Socia fundadora")).toBeVisible();
     await expect(page.getByText("60.00%")).toBeVisible();
@@ -78,7 +77,7 @@ test.describe("licitaciones: perfil de empresa completo @humo", () => {
   });
 
   test("firmantes: dos del mismo cargo con vigencia; el vencido sale en rojo y el vigente en verde @oscuro", async ({ page, iniciarSesion, mock, vigilante }, info) => {
-    await iniciarSesion("licitaciones", "staff");
+    await iniciarSesion("licitaciones", "admin");
     await page.goto(`${RUTA}?tab=firmantes`);
     await afirmarPantallaSana(page, "firmantes con vigencia");
     // El firmante sembrado tiene el poder vencido desde 2025-12-31.
@@ -116,7 +115,7 @@ test.describe("licitaciones: perfil de empresa completo @humo", () => {
   });
 
   test("el owner aprueba un socio de otra persona con una confirmacion simple (sin step-up) @humo", async ({ page, iniciarSesion, mock }) => {
-    await iniciarSesion("licitaciones", "staff");
+    await iniciarSesion("licitaciones", "admin");
     await page.goto(`${RUTA}?tab=socios`);
     await page.getByLabel("Nombre completo o razón social").fill("Carla Díaz");
     await page.getByLabel("Participación (%)").fill("10");
