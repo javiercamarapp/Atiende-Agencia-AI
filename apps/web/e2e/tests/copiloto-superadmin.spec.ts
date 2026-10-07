@@ -136,7 +136,7 @@ test.describe("copiloto de superadmin @copiloto", () => {
     await expect(page.getByRole("button", { name: "¿Cuál es mi MRR por vertical?" }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "¿Qué clientes tienen el pago pendiente?" }).first()).toBeVisible();
 
-    await page.getByRole("button", { name: CHIP }).click();
+    await page.getByRole("button", { name: CHIP }).first().click();
     await expect(page.getByText(TEXTO)).toBeVisible();
     // Copiar y CSV existen; Fijar NO (el servidor de plataforma no tiene /pins: nunca un boton que responde 404).
     await expect(page.getByRole("button", { name: "Copiar respuesta" })).toBeVisible();
