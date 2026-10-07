@@ -30,7 +30,10 @@ export {
   confirmarBloqueoMantenimiento,
   crearTareaLimpiezaPorCheckout,
   crearTareaOperativaManual,
-  procesarCheckoutsPendientes,
+  barrerLimpiezaPendiente,
+  cancelarTareaAlCancelarReserva,
+  crearTareaLimpiezaAlConfirmar,
+  reprogramarTareaAlModificarReserva,
   registrarIncidencia,
   reprogramarTareaPorCambioReserva,
 } from "./aplicacion/tareas.ts";
@@ -39,5 +42,8 @@ export type {
   ResultadoConfirmarBloqueoMantenimiento,
   ResultadoCrearTareaCheckout,
   ResultadoCrearTareaManual,
-  ResultadoProcesarCheckouts,
+  EntradaCrearTareaCheckout,
+  OpcionesBarridoLimpieza,
+  ResultadoBarridoLimpieza,
+  SinAsignarManana,
 } from "./aplicacion/tareas.ts";
