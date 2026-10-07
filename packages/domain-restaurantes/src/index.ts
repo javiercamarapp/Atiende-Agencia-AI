@@ -1,3 +1,5 @@
+export { buildStorefrontDirectorio, enlaceComoLlegar, type StorefrontDirectorioItem } from "./storefront.ts";
+export { evaluarDomicilioSucursal, describirDiasDomicilio, insigniaDomicilio, mensajeDomicilioNoDisponible, type EstadoDomicilio } from "./domicilio-sucursal.ts";
 export type { StorefrontCatalogRow, StorefrontMarca, StorefrontMarcaInput, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
 export { buildStorefrontBranches, buildStorefrontMenu, groupStorefrontMenu, assertWebOrderRules, previewPromotion } from "./storefront.ts";
 export type { StorefrontBranchView, StorefrontMenuCategory, StorefrontMenuItem, PromotionPreview } from "./storefront.ts";
@@ -374,6 +376,10 @@ export {
 export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
 export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operativos.ts";
 export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
+export * from "./encuesta-reglas.ts";
+export * from "./resenas-provider.ts";
+export * from "./mezcla-de-pago.ts";
+export * from "./sucursal-sugerida.ts";
 // Ajustes del agente por organizacion (modelo, temperatura, voz, fondo) y base de conocimiento automatica (equivalentes de lo que el original hacia con ElevenLabs).
 export * from "./ajustes-agente/index.ts";
 

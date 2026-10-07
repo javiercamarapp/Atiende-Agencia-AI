@@ -1,6 +1,6 @@
 # Crons de Vercel
 
-Fuente de verdad: `vercel.json::crons` (hoy **35** crons). Todos son rutas `GET|POST /internal/...` que
+Fuente de verdad: `vercel.json::crons` (hoy **40** crons). Todos son rutas `GET|POST /internal/...` que
 Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que `INTERNAL_SECRET`).
 
 ## Reglas
@@ -18,7 +18,7 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
   (`for update skip locked`, `attempts < 5`) y envía con `Idempotency-Key` por job, así que un solapamiento o reintento no duplica correos.
 - Kill switch: superadmin → Interruptores → cron `<path>` (o global `crons`). Pausado responde 200 `{"skipped":"kill_switch"}`.
 - Verificar a mano: `curl -H "Authorization: Bearer $CRON_SECRET" https://<dominio><path>`; o `vercel crons run <path>`.
-  Revisa el latido en `/superadmin/salud/crons`. **No lo hagas contra producción con WhatsApp/correo reales sin querer enviar mensajes.**
+  Revisa el latido en `/superadmin/salud/crons` (más señales en [Cómo saber que corren](#cómo-saber-que-corren)). **No lo hagas contra producción con WhatsApp/correo reales sin querer enviar mensajes.**
 
 ## Tabla de crons
 
@@ -61,8 +61,26 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/despachos/vencimientos-barrido` | `45 12 * * *` | D-26: por cada cliente con ficha genera las obligaciones fiscales del periodo en curso y escala las que vencen hoy/mañana o ya vencieron; avisa en la campana (`vencimiento_proximo`/`_vencido`, dedupe diario por property). Una transacción por cliente; idempotente |
 | `/internal/despachos/cfdi-estatus-sat` | `20 6 * * 0` | D-27 (semanal, domingo): consulta el estatus de los CFDI ante el servicio **público** del SAT, los más antiguos primero (tope de 60 por corrida y 22 s de presupuesto, 3 consultas en paralelo). Un timeout deja el CFDI como estaba; jamás "vigente" por error. Una cancelación avisa una sola vez (`despachos.cfdi.cancelado`). Una transacción por CFDI |
 | `/internal/despachos/efos-69b/descarga` | `40 7 3 * *` | D-28 (mensual, día 3): baja el CSV público de la lista 69-B (URL en `EFOS_69B_URL`), lo ingiere (idempotente por SHA-256 y periodo) y, si la edición es nueva o corregida, emite `despachos.efos.alerta` por cada CFDI ya ingerido que toca (dedupe por CFDI) |
+| `/internal/restaurantes/cierres-dia` | `20 8 * * *` | R-42: asegura el cierre del día (y, tras un domingo cerrado, el resumen semanal) de cada sucursal con SU fecha local de negocio; 08:20 UTC = 02:20 en Mérida, después del cierre de la 01:00. Mira los últimos 3 días cerrados (`?dias=N`, 1 a 14, solo a mano), así un día sin corrida se recupera en la siguiente. Una transacción por sucursal; avisa en la campana (`dia_listo`/`semana_lista`, dedupe por sucursal y fecha). Idempotente |
+| `/internal/restaurantes/repartidor-licencias` | `35 13 * * *` | R-15: avisa a owner/admin las licencias de repartidor vencidas o a menos de 30 días (dedupe mensual por repartidor). Una transacción por repartidor. Sin la migración correspondiente responde `not_available` |
+| `/internal/plataforma/prueba-avisos` | `0 14 * * *` | PL-16: avisos de fin de prueba a 7/3/1 días (campana + correo), cada aviso exactamente una vez, con el día contado en la zona de cada negocio. Sin la migración 0046 responde `disponible:false` |
 
 Todos tienen latido en el panel de salud (verifica el de cada path en `/superadmin/salud/crons`), el interruptor global `crons` y el interruptor por path (`SWITCHABLE_CRONS`; el test de contrato exige que cada cron de `vercel.json` esté ahí).
+
+## Cómo saber que corren
+
+Cuatro señales, de la más barata a la más detallada. Ninguna corre un cron ni toca datos.
+
+1. **`GET /health` (público, sin secreto).** Además de `ok` y `status` trae `crons`, una señal agregada sin nombres ni errores:
+   - `ok`: ningún latido atrasado y todos los crons de cadencia de 15 min o menos con al menos un latido (un cron diario que aún no tuvo su primera corrida no cuenta);
+   - `sin_latido`: algún cron de cadencia de 15 min o menos (`whatsapp/dispatch`, `promover-programados`, `email-dispatch`...) **nunca** dejó un latido: el scheduler no los invoca (típico: `CRON_SECRET` distinto de `INTERNAL_SECRET`, o plan sin crons frecuentes);
+   - `atrasados`: algún latido lleva más de 3 veces la cadencia de su cron sin renovarse;
+   - `sin_medir`: no se pudo leer la tabla de latidos (migración 0015 sin aplicar, error o más de 2 s de espera). Nunca se reporta `ok` por no poder medir.
+   El código HTTP no cambia (200 si la base responde): un cron sin latido no tumba el smoke del deploy. La lectura usa `core.list_cron_heartbeats_for_system()` y se cachea 5 s junto con el sondeo de la base.
+   Un cron que corre pero termina en error **no** vuelve `crons` a `atrasados`: eso lo cubren `/superadmin/salud/crons` y la alerta `superadmin.cron.fallo`.
+2. **Sondeo externo (`.github/workflows/prod-health.yml`, cada 15 min, sin cambios de frecuencia).** `scripts/health-check/check.ts` falla si `crons` no es `ok` en **dos sondeos seguidos** (6 s de separación) y el job queda en rojo. Con `PROD_HEALTH_OPEN_ISSUE=true` abre o comenta un issue "Salud de produccion". Sin la variable de repo `PROD_BASE_URL` no sondea y deja un `::warning::` visible.
+3. **Alerta en la campana de superadmin.** El cron diario de resumen emite `superadmin.salud.cron_sin_latido` (una por día) si algún cron de cadencia de 15 min o menos no tiene ningún latido.
+4. **Panel `/superadmin/salud/crons`:** estado, último latido y error de cada cron, con el kill switch.
 
 ## No agendados a propósito
 

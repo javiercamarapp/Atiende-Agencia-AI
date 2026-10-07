@@ -263,6 +263,16 @@ export interface BranchPolicy {
   readonly pedidoMinimoDomicilio: number | null;
   readonly pedidoMinimoRecoger: number | null;
   readonly propinaPolitica: PropinaPolitica | null;
+  // Migracion 057 (directorio y domicilio por sucursal). Opcionales: ausentes en una base sin migrar y en
+  // quien construye una politica solo con los campos de 023; el valor por omision conserva el comportamiento anterior.
+  /** null = sigue a la sucursal activa; true = aparece en el directorio aunque este inactiva; false = oculta. */
+  readonly visibleEnDirectorio?: boolean | null;
+  /** false = la sucursal no reparte a domicilio (solo recoger). Por omision true. */
+  readonly aceptaDomicilio?: boolean;
+  /** Dias (0 = domingo .. 6 = sabado) en que reparte a domicilio; null = todos los dias. */
+  readonly diasDomicilio?: readonly number[] | null;
+  /** Insignia publica "Temporada". Por omision false. */
+  readonly deTemporada?: boolean;
 }
 
 /** Perfil del agente de WhatsApp: `generico` es el de siempre (tutea, domicilio); `taqueria_pm` es el de
@@ -320,7 +330,16 @@ export interface WhatsAppAgentConfigHistorialEntry {
   readonly creadoAt: string;
 }
 
-export const EMPTY_BRANCH_POLICY: BranchPolicy = { horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null };
+export const EMPTY_BRANCH_POLICY: BranchPolicy = {
+  horario: null,
+  pedidoMinimoDomicilio: null,
+  pedidoMinimoRecoger: null,
+  propinaPolitica: null,
+  visibleEnDirectorio: null,
+  aceptaDomicilio: true,
+  diasDomicilio: null,
+  deTemporada: false,
+};
 
 /** Resolucion del numero de WhatsApp que recibe un mensaje: organizacion y, cuando el
  * numero pertenece a una sucursal, esa sucursal (`null` = numero por defecto de la
