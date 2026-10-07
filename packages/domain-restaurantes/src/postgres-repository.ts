@@ -2304,6 +2304,16 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return mapBranchProductState(rows[0]!);
   }
 
+  async setBranchProductAvailability(propertyId: string, productId: string, isAvailable: boolean): Promise<BranchProductState | null> {
+    const { rows } = await this.db.query<BranchProductRow>(
+      `update restaurantes.branch_products set is_available = $3, updated_at = now()
+       where property_id = $1 and product_id = $2
+       returning property_id, product_id, price, is_available;`,
+      [propertyId, productId, isAvailable],
+    );
+    return rows[0] ? mapBranchProductState(rows[0]) : null;
+  }
+
   async findOrderById(organizationId: string, orderId: string): Promise<Order | null> {
     const { rows } = await this.db.query<OrderRow>(
       `select ${ORDER_COLUMNS}

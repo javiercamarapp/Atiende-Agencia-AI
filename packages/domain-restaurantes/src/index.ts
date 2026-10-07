@@ -92,8 +92,8 @@ export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient, maskPhon
 export { prepararImportacionClientes, IMPORTACION_MAX_FILAS } from "./clientes-importacion.ts";
 export type { ErrorRenglonImportacion, PreparacionImportacion } from "./clientes-importacion.ts";
 
-export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole } from "./roles.ts";
-export type { RestaurantesRole } from "./roles.ts";
+export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole, ACCIONES_RESTAURANTES, ACCIONES_RESTAURANTES_LISTA, rolesParaAccion, puedeEjecutar, permisosEfectivos } from "./roles.ts";
+export type { RestaurantesRole, AccionRestaurantes } from "./roles.ts";
 
 export { tokenizeForProductSearch, matchesProductSearch, sinAcentos, requiresTortillaChoice, extraerPackSize, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, UUID_PATTERN } from "./product-search.ts";
 
