@@ -5,6 +5,7 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import type { EstadoModulosCierre } from "../cierre-mensual/piloto.ts";
+import type { CloseTask } from "../cierre-mensual/types.ts";
 import { AUTOMATIZACION_POR_OMISION, PilotoEntradaInvalidaError, PilotoNoDisponibleError, PilotoNoEncontradoError, PilotoSinAccesoError } from "./types.ts";
 import type {
   ArchivoEntregaMeta,
@@ -314,9 +315,9 @@ export class PostgresPilotoRepository implements PilotoRepository {
 
   crearSolicitudSistema(propertyId: string, ejercicio: number, mes: number): Promise<RegistroSolicitudSistema> {
     return this.escritura("sp_piloto_sol_crear_sistema", async () => {
-      const { rows } = await this.db.query<{ out_id: string; out_creada: boolean; out_organization_id: string; out_contacto_correo: string | null; out_cliente: string; out_renglones: number }>("select * from despachos.system_solicitud_crear($1, $2, $3);", [propertyId, ejercicio, mes]);
+      const { rows } = await this.db.query<{ out_id: string; out_creada: boolean; out_organization_id: string; out_contacto_correo: string | null; out_cliente: string; out_renglones: number; out_etiquetas: string[] | null }>("select * from despachos.system_solicitud_crear($1, $2, $3);", [propertyId, ejercicio, mes]);
       const r = rows[0]!;
-      return { id: r.out_id, creada: r.out_creada === true, organizationId: r.out_organization_id, contactoCorreo: r.out_contacto_correo, cliente: r.out_cliente, renglones: Number(r.out_renglones) };
+      return { id: r.out_id, creada: r.out_creada === true, organizationId: r.out_organization_id, contactoCorreo: r.out_contacto_correo, cliente: r.out_cliente, renglones: Number(r.out_renglones), etiquetas: r.out_etiquetas ?? [] };
     });
   }
 
@@ -348,6 +349,30 @@ export class PostgresPilotoRepository implements PilotoRepository {
     return this.lecturaNula("sp_piloto_periodos_abiertos", async () => {
       const { rows } = await this.db.query<{ out_periodo_id: string; out_organization_id: string; out_property_id: string; out_anio: number; out_mes: number }>("select * from despachos.system_periodos_cierre_abiertos($1);", [limite]);
       return rows.map((r) => ({ periodoId: r.out_periodo_id, organizationId: r.out_organization_id, propertyId: r.out_property_id, anio: Number(r.out_anio), mes: Number(r.out_mes) }));
+    });
+  }
+
+  tareasCierreSistema(periodoId: string): Promise<readonly CloseTask[]> {
+    return this.escritura("sp_piloto_tareas_sistema", async () => {
+      const { rows } = await this.db.query<{ out_id: string; out_template_key: string | null; out_title: string; out_description: string; out_category: CloseTask["category"]; out_status: CloseTask["status"]; out_depends_on: string[] | null; out_due_date: string | Date | null; out_auto_check_query: string | null; out_required: boolean }>(
+        "select * from despachos.system_cierre_tareas($1);",
+        [periodoId],
+      );
+      return rows.map((r) => ({
+        id: r.out_id,
+        periodId: periodoId,
+        templateKey: r.out_template_key,
+        title: r.out_title,
+        description: r.out_description,
+        category: r.out_category,
+        status: r.out_status,
+        dependsOn: r.out_depends_on ?? [],
+        dueDate: r.out_due_date === null ? null : r.out_due_date instanceof Date ? r.out_due_date.toISOString().slice(0, 10) : String(r.out_due_date).slice(0, 10),
+        autoCheckQuery: r.out_auto_check_query,
+        required: r.out_required === true,
+        completedAt: null,
+        completedBy: null,
+      })) as unknown as readonly CloseTask[];
     });
   }
 

@@ -6,7 +6,13 @@
 //  /internal/despachos/efos-69b/descarga          mensual  -- baja la lista 69-B (CSV publico), la ingiere (idempotente por SHA-256 y
 //                                                             periodo) y alerta los CFDI ya ingeridos que toca la edicion nueva.
 //  /internal/despachos/vencimientos-barrido       diario   -- genera las obligaciones del periodo en curso por cliente con ficha y
-//                                                             escala las que vencen hoy/manana o ya vencieron.
+//                                                             escala las que vencen hoy/manana o ya vencieron. Tras eso corre el PILOTO de
+//                                                             cierre y documentos (paridad3 D-31 / D-P3-15), que va aqui y no en un cron
+//                                                             nuevo porque vercel.json ya esta en el tope de 40 crons del plan Pro: crea y
+//                                                             recuerda las solicitudes de documentos al cliente (avisa en la campana con
+//                                                             despachos.solicitud.sin_completar a los 10 dias), auto-completa las tareas del
+//                                                             cierre desde el estado calculado en el servidor y avisa una vez con
+//                                                             despachos.cierre.listo_para_revisar. Nunca cierra un periodo ni presenta nada.
 //
 // Cada unidad de trabajo (un CFDI, un cliente, un grupo de alertas) corre en su PROPIA transaccion de sistema: un error SQL real en
 // una unidad no aborta ni revierte las demas. Compatibles con la base sin migrar: sin la migracion 022 responden `no_disponible`
@@ -15,10 +21,10 @@ import { Hono } from "hono";
 import { emitirNotificacion } from "@atiende/db";
 import type { EmitirNotificacionInput } from "@atiende/db";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
-import { ConsultaCfdiSatSoap, PostgresCronSatRepository } from "@atiende/domain-despachos";
+import { ConsultaCfdiSatSoap, PostgresCronSatRepository, PostgresPilotoRepository } from "@atiende/domain-despachos";
 import type { DespachosRepository } from "@atiende/domain-despachos";
-import { HttpEfos69bSource, runCfdiEstatusSatSweep, runEfos69bDescarga, runVencimientosBarridoSistema } from "@atiende/worker";
-import type { WithUnidadCronSat } from "@atiende/worker";
+import { HttpEfos69bSource, runCfdiEstatusSatSweep, runEfos69bDescarga, runPilotoCierreClienteSweep, runVencimientosBarridoSistema } from "@atiende/worker";
+import type { WithUnidadCronSat, WithUnidadPiloto } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
@@ -30,6 +36,15 @@ export function despachosCronSatRoutes(deps: AppDeps): Hono {
   const withUnidad: WithUnidadCronSat = (fn) =>
     deps.engine.withAppSession({ userId: null }, (db) =>
       fn({ repo: deps.cronSatRepo ? deps.cronSatRepo(db) : new PostgresCronSatRepository(db), notificar: (n) => emitirNotificacion(db, n as EmitirNotificacionInput) }),
+    );
+
+  const withUnidadPiloto: WithUnidadPiloto = (fn) =>
+    deps.engine.withAppSession({ userId: null }, (db) =>
+      fn({
+        piloto: deps.pilotoRepo ? deps.pilotoRepo(db) : new PostgresPilotoRepository(db),
+        encolarCorreo: (organizationId, eventType, dedupeKey, payload) => deps.despachosRepo(db).enqueueMessagingOutbox(organizationId, "email", eventType, dedupeKey, payload),
+        notificar: (n) => emitirNotificacion(db, n as EmitirNotificacionInput),
+      }),
     );
 
   app.on(["GET", "POST"], "/internal/despachos/cfdi-estatus-sat", async (c) => {
@@ -82,17 +97,23 @@ export function despachosCronSatRoutes(deps: AppDeps): Hono {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
     return withHeartbeat(deps, "/internal/despachos/vencimientos-barrido", async () => {
       const r = await runVencimientosBarridoSistema(withUnidad);
+      const piloto = await runPilotoCierreClienteSweep(withUnidadPiloto, { hoy: hoyFechaNegocio(), appBaseUrl: deps.env.appBaseUrl });
       const body = {
-        ok: r.fallidos.length === 0,
+        ok: r.fallidos.length === 0 && piloto.fallidos === 0,
         status: r.estado,
         clientes: r.clientes,
         creados: r.creados,
         escalados: r.escalados,
         ya_escalados: r.yaEscalados,
-        failures: r.fallidos.map((f) => ({ property_id: f.propertyId, error: f.error })),
+        failures: [...r.fallidos.map((f) => ({ property_id: f.propertyId, error: f.error })), ...[...piloto.solicitudes.fallidos, ...piloto.recordatorios.fallidos, ...piloto.cierre.fallidos].map((f) => ({ id: f.id, error: f.error }))],
+        piloto: {
+          solicitudes: { status: piloto.solicitudes.estado, creadas: piloto.solicitudes.creadas, ya_existian: piloto.solicitudes.yaExistian, correos_encolados: piloto.solicitudes.correosEncolados, sin_contacto: piloto.solicitudes.sinContacto },
+          recordatorios: { status: piloto.recordatorios.estado, enviados: piloto.recordatorios.enviados, sin_contacto: piloto.recordatorios.sinContacto, avisos_al_despacho: piloto.recordatorios.avisosAlDespacho },
+          cierre: { status: piloto.cierre.estado, periodos: piloto.cierre.periodos, tareas_completadas: piloto.cierre.tareasCompletadas, listos_para_revisar: piloto.cierre.listosParaRevisar },
+        },
       };
       const response = c.json(body, 200);
-      if (r.fallidos.length > 0) throw new CronPartialFailureError(`vencimientos-barrido: ${r.fallidos.length} de ${r.clientes} clientes fallaron`, response);
+      if (r.fallidos.length > 0 || piloto.fallidos > 0) throw new CronPartialFailureError(`vencimientos-barrido: ${r.fallidos.length} de ${r.clientes} clientes y ${piloto.fallidos} unidades del piloto fallaron`, response);
       return response;
     })();
   });

@@ -97,6 +97,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
   despachosRepo.seedDespachosProperty({ id: propertyId, organizationId, name: "Sede principal" });
   carteraRepo.sembrarCliente(organizationId, "Sede principal", undefined, propertyId);
   pilotoRepo.sembrarCliente({ organizationId, propertyId, razonSocial: "Sede principal" });
+  pilotoRepo.verificarCerrado = async (pid, periodoId) => (await despachosRepo.findPeriodoCierre(pid, periodoId))?.status === "closed";
 
   async function seedStaff(role: DespachosRole, label: string) {
     const id = randomUUID();

@@ -3,6 +3,7 @@
 // dias, cierre forzado solo para admin, entrega solo con opt-in y periodo cerrado, y el portal por hash de token.
 import { randomUUID } from "node:crypto";
 import type { EstadoModulosCierre } from "../cierre-mensual/piloto.ts";
+import type { CloseTask } from "../cierre-mensual/types.ts";
 import { AUTOMATIZACION_POR_OMISION, PilotoEntradaInvalidaError, PilotoNoDisponibleError, PilotoNoEncontradoError, PilotoSinAccesoError } from "./types.ts";
 import type {
   ArchivoEntregaMeta,
@@ -85,6 +86,11 @@ export class InMemoryPilotoRepository implements PilotoRepository {
   /** Propiedades a las que el actor staff NO tiene acceso (cross-tenant). */
   propiedadesAjenas = new Set<string>();
   ahora: () => number = Date.now;
+  /** Hook de pruebas: como la base real, la entrega y los artefactos solo se crean sobre un periodo CERRADO (por omision, el que marca `marcarPeriodoCerrado`). */
+  verificarCerrado: ((propertyId: string, periodoId: string) => Promise<boolean>) | null = null;
+  private async periodoCerrado(propertyId: string, periodoId: string): Promise<boolean> {
+    return this.verificarCerrado ? this.verificarCerrado(propertyId, periodoId) : (this.periodos.get(periodoId)?.cerrado ?? false);
+  }
 
   readonly clientes = new Map<string, ClienteSembradoPiloto>();
   readonly automatizacion = new Map<string, AutomatizacionCliente>();
@@ -289,7 +295,7 @@ export class InMemoryPilotoRepository implements PilotoRepository {
   async crearEntrega(propertyId: string, periodoId: string): Promise<EntregaCierre> {
     this.requerirEscritura(propertyId);
     const p = this.periodos.get(periodoId);
-    if (!p || p.propertyId !== propertyId || !p.cerrado) throw new PilotoNoEncontradoError();
+    if (!p || p.propertyId !== propertyId || !(await this.periodoCerrado(propertyId, periodoId))) throw new PilotoNoEncontradoError();
     const a = this.automatizacion.get(propertyId) ?? AUTOMATIZACION_POR_OMISION;
     if (!a.envioReportesCierre || a.contactoCorreo === null) throw new PilotoEntradaInvalidaError("el cliente no tiene activado el envío de reportes");
     const existente = this.entregas.find((e) => e.periodoId === periodoId);
@@ -317,7 +323,7 @@ export class InMemoryPilotoRepository implements PilotoRepository {
   async guardarArtefacto(propertyId: string, periodoId: string, tipo: TipoArtefactoCierre, nombre: string, contenido: Uint8Array): Promise<boolean> {
     this.requerirEscritura(propertyId);
     const p = this.periodos.get(periodoId);
-    if (!p || p.propertyId !== propertyId || !p.cerrado) throw new PilotoNoEncontradoError();
+    if (!p || p.propertyId !== propertyId || !(await this.periodoCerrado(propertyId, periodoId))) throw new PilotoNoEncontradoError();
     if (this.artefactos.some((a) => a.periodoCierreId === periodoId && a.tipo === tipo)) return false;
     this.artefactos.push({ id: randomUUID(), propertyId, periodoCierreId: periodoId, tipo, nombreArchivo: nombre, tamanoBytes: contenido.length, creadoEn: new Date(this.ahora()).toISOString(), contenido });
     return true;
@@ -357,7 +363,7 @@ export class InMemoryPilotoRepository implements PilotoRepository {
     if (!c) throw new PilotoEntradaInvalidaError("la property no tiene ficha de cliente");
     const { s, creada } = this.crearInterna(c.organizationId, propertyId, ejercicio, mes);
     const a = this.automatizacion.get(propertyId) ?? AUTOMATIZACION_POR_OMISION;
-    return { id: s.id, creada, organizationId: c.organizationId, contactoCorreo: a.contactoCorreo, cliente: c.razonSocial, renglones: s.renglones.length };
+    return { id: s.id, creada, organizationId: c.organizationId, contactoCorreo: a.contactoCorreo, cliente: c.razonSocial, renglones: s.renglones.length, etiquetas: s.renglones.map((r) => r.etiqueta) };
   }
   async crearEnlaceSistema(propertyId: string, tokenHash: string, etiqueta: string, dias: number): Promise<{ readonly id: string; readonly expiraEn: string }> {
     this.requerirDisponible();
@@ -394,9 +400,16 @@ export class InMemoryPilotoRepository implements PilotoRepository {
     if (!this.disponible) return null;
     return [...this.periodos.values()].filter((p) => !p.cerrado).slice(0, limite).map(({ cerrado: _c, ...p }) => p);
   }
+  readonly tareasPorPeriodo = new Map<string, CloseTask[]>();
+  async tareasCierreSistema(periodoId: string): Promise<readonly CloseTask[]> {
+    this.requerirDisponible();
+    return (this.tareasPorPeriodo.get(periodoId) ?? []).map((t) => ({ ...t }));
+  }
   async autocompletarTareasSistema(periodoId: string, tareaIds: readonly string[]): Promise<number> {
     this.requerirDisponible();
     this.tareasAutocompletadas.push({ periodoId, ids: tareaIds });
+    const tareas = this.tareasPorPeriodo.get(periodoId);
+    if (tareas) for (const t of tareas) if (tareaIds.includes(t.id)) Object.assign(t, { status: "done", completedAt: new Date(this.ahora()).toISOString(), completedBy: "sistema" });
     return tareaIds.length;
   }
 

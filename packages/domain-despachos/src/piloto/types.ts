@@ -1,5 +1,6 @@
 // paridad3 D-31 + D-P3-15 + D-P3-21 -- tipos y errores del piloto automatico de cierre y entrega al cliente (migracion 027).
 import type { EstadoModulosCierre } from "../cierre-mensual/piloto.ts";
+import type { CloseTask } from "../cierre-mensual/types.ts";
 
 /** `disponible: false` = la base aun no tiene la migracion 027 (42883/42P01/42703 dentro de un SAVEPOINT): "no disponible aun", nunca un 500. */
 export type PilotoDisponible<T> = { readonly disponible: true; readonly valor: T } | { readonly disponible: false };
@@ -111,6 +112,8 @@ export interface RegistroSolicitudSistema {
   readonly contactoCorreo: string | null;
   readonly cliente: string;
   readonly renglones: number;
+  /** Etiquetas de los renglones pedidos (cuentas enmascaradas): van en el correo al cliente. */
+  readonly etiquetas: readonly string[];
 }
 
 export interface SolicitudPorCrear {
@@ -219,6 +222,8 @@ export interface PilotoRepository {
   solicitudesParaRecordatorio(hoy: string, limite: number): Promise<readonly SolicitudParaRecordatorio[] | null>;
   marcarRecordatorio(solicitudId: string, nivel: 1 | 2 | 3): Promise<boolean>;
   periodosCierreAbiertos(limite: number): Promise<readonly PeriodoCierreAbierto[] | null>;
+  /** Todas las tareas de un periodo ABIERTO (el auto-check necesita las dependencias). */
+  tareasCierreSistema(periodoId: string): Promise<readonly CloseTask[]>;
   autocompletarTareasSistema(periodoId: string, tareaIds: readonly string[]): Promise<number>;
 
   // ---- PORTAL (sistema; recibe el HASH del token)
