@@ -326,6 +326,8 @@ function docFaq(d: DatosConocimiento): DocumentoAuto {
     lineas.push("P: ¿Se puede dejar propina?");
     lineas.push(`R: ${conPropina.map((s) => `${limpio(s.branch.name, 120)}: ${TEXTO_PROPINA[s.politica.propinaPolitica as PropinaPolitica]}`).join(" | ")}.`);
   }
+  // Para el prompt de voz la FAQ se reduce a lo UNICO que no esta ya en el documento de sucursales: la respuesta de colonias, en conteos y sin nombres.
+  let faqPrompt: string | undefined;
   if (d.zonas.length > 0) {
     const coberturaLeida = d.sucursales.filter(reparte).length > 0 && d.sucursales.filter(reparte).every((x) => x.zonaIdsReparto !== undefined);
     const conRepartoIds = new Set(d.zonas.filter((z) => {
@@ -340,17 +342,19 @@ function docFaq(d: DatosConocimiento): DocumentoAuto {
       const conReparto = limpias.filter((z) => conRepartoIds.has(z.id)).sort(porNombre);
       const porConfirmar = limpias.length - conReparto.length;
       const visibles = conReparto.slice(0, 40).map((z) => z.nombre);
+      faqPrompt = `P: ¿Entregan en mi colonia?\nR: Reconocemos ${limpias.length} colonias: ${conReparto.length} con reparto confirmado${porConfirmar > 0 ? `; ${porConfirmar} reconocidas con reparto por confirmar (no prometas la entrega: confirma con la sucursal)` : ""}. Si la colonia no está en la lista, usa buscar_sucursal_cercana.`;
       const lista = conReparto.length === 0 ? "" : conReparto.length > visibles.length ? ` (algunas: ${visibles.join(", ")})` : `: ${visibles.join(", ")}`;
       lineas.push(
         `R: Reconocemos ${limpias.length} colonias: ${conReparto.length} con reparto confirmado${lista}${porConfirmar > 0 ? `; ${porConfirmar} reconocidas con reparto por confirmar (no prometas la entrega: confirma con la sucursal)` : ""}. Si la colonia no está en la lista, pide una referencia cercana y confirma la sucursal.`,
       );
     } else {
+      faqPrompt = `P: ¿Entregan en mi colonia?\nR: Reconocemos ${limpias.length} colonias. Si la colonia no está en la lista, usa buscar_sucursal_cercana y confirma la sucursal.`;
       const nombres = limpias.sort(porNombre).map((z) => z.nombre);
       const visibles = nombres.slice(0, 40);
       lineas.push(`R: Reconocemos ${nombres.length} colonias${nombres.length > visibles.length ? ` (algunas: ${visibles.join(", ")})` : `: ${visibles.join(", ")}`}. Si la colonia no está en la lista, pide una referencia cercana y confirma la sucursal.`);
     }
   }
-  return envolver("faq", "Preguntas frecuentes", lineas, "Todavía no hay horarios, direcciones, políticas ni colonias de las que generar respuestas.");
+  return envolver("faq", "Preguntas frecuentes", lineas, "Todavía no hay horarios, direcciones, políticas ni colonias de las que generar respuestas.", faqPrompt);
 }
 
 function docMenu(d: DatosConocimiento): DocumentoAuto {

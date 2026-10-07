@@ -67,6 +67,8 @@ export interface DocumentoAutoVista {
   readonly huella: string;
   readonly vacio: boolean;
   readonly motivoVacio: string | null;
+  /** El documento pasaba del maximo y se recorto por renglones (el final del texto lo declara). */
+  readonly truncado?: boolean;
   /** Va dentro de la instruccion de voz (cabe en el tope); si no, el agente lo consulta en vivo con sus herramientas. */
   readonly enPrompt: boolean;
 }
