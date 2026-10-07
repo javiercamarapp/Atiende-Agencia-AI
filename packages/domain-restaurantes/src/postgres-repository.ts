@@ -2352,14 +2352,27 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async limpiarAgotadoHasta(propertyId: string, productId: string): Promise<void> {
-    // Corre dentro de la transacción única del request: contra una base sin la 050 (42703) el respaldo EXIGE SAVEPOINT (si no, 25P02).
+    // `authenticated` NO puede escribir `agotado_hasta` (migración 065: solo `grant update (price, is_available, updated_at)`; un
+    // `set agotado_hasta = null` da 42501). El trigger de la 050 (`branch_products_limpiar_agotado_hasta`) borra la fecha en CUALQUIER cambio de
+    // `is_available`, pero no al apagar algo ya apagado: por eso dos UPDATE de columnas permitidas, encendiendo y apagando de nuevo, en la
+    // MISMA transacción del request (nadie ve el estado intermedio hasta el COMMIT). Solo 42703 (base sin la 050) es un no-op; un 42501
+    // u otro error se propaga: tragarlo dejaría al cron reactivando el producto sin que nadie lo sepa.
+    // La condición `agotado_hasta is not null` en `to_jsonb` evita nombrar la columna (no falla sin la 050).
     await runWithSavepointFallback<void>({
       session: this.db,
       savepointName: "sp_restaurantes_limpiar_agotado_hasta",
       primary: async () => {
-        await this.db.query(`update restaurantes.branch_products set agotado_hasta = null where property_id = $1 and product_id = $2 and agotado_hasta is not null;`, [propertyId, productId]);
+        const donde = `property_id = $1 and product_id = $2`;
+        const { rows } = await this.db.query<{ id: string }>(
+          `update restaurantes.branch_products set is_available = true, updated_at = now()
+           where ${donde} and is_available = false and to_jsonb(branch_products)->>'agotado_hasta' is not null
+           returning product_id as id;`,
+          [propertyId, productId],
+        );
+        if (rows.length === 0) return;
+        await this.db.query(`update restaurantes.branch_products set is_available = false, updated_at = now() where ${donde} and is_available = true;`, [propertyId, productId]);
       },
-      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42703",
       fallback: async () => undefined,
     });
   }
