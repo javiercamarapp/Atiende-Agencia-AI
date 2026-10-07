@@ -86,8 +86,12 @@ describe("InMemoryHotelesRepository -- listado de insumos de escaneo de fraude",
 
   it("listReopenedFolioChargesForFraudScan detecta cargos creados DESPUÉS del cierre del folio", async () => {
     const repo = new InMemoryHotelesRepository();
-    repo.seedFolio({ id: FOLIO, organizationId: ORG, propertyId: PROPERTY, reservationId: "res-1", status: "cerrado", label: "Principal", isPrimary: true, closedAt: "2026-01-01T00:00:00.000Z", closeReason: "saldo_cero", arApprovedBy: null });
+    // Con la migracion 045 ya no se puede insertar un cargo en un folio cerrado: el caso que el escaneo detecta es el de
+    // historia previa a los triggers (cargo con created_at posterior al cierre), asi que se siembra abierto y se re-siembra cerrado.
+    const folioBase = { id: FOLIO, organizationId: ORG, propertyId: PROPERTY, reservationId: "res-1", label: "Principal", isPrimary: true, arApprovedBy: null } as const;
+    repo.seedFolio({ ...folioBase, status: "abierto", closedAt: null, closeReason: null });
     const charge = await repo.insertCharge({ organizationId: ORG, propertyId: PROPERTY, folioId: FOLIO, description: "cargo post-cierre", amount: 100, taxAmount: 16, concept: "otro" });
+    repo.seedFolio({ ...folioBase, status: "cerrado", closedAt: "2026-01-01T00:00:00.000Z", closeReason: "saldo_cero" });
 
     const rows = await repo.listReopenedFolioChargesForFraudScan(PROPERTY);
     expect(rows).toHaveLength(1);

@@ -427,6 +427,9 @@ export interface WhatsAppLlmAgentOptions {
   readonly encolarComanda?: (pedido: PedidoParaComanda) => Promise<ResultadoEncolarPedido>;
   /** Enlace de facturación en línea (https) para el perfil PM. Ausente = el agente dice que una persona se lo confirma. */
   readonly urlFacturacion?: string | null;
+  /** Ajustes del agente de la organizacion (modelo elegido y temperatura efectiva). Ausente o `null` = el modelo y la temperatura de siempre. Nunca debe
+   * lanzar: un fallo aqui no puede tumbar el turno (el llamador degrada a los valores de siempre). */
+  readonly leerAjustes?: (organizationId: string) => Promise<{ readonly modelo: string | null; readonly temperatura: number } | null>;
   /** Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido. Ausente = comportamiento anterior. */
   readonly autopiloto?: AutopilotoTurnoHooks;
   /** R-PM-15: sumidero de eventos estructurados por turno y por tool (sin texto del cliente ni telefono en
@@ -522,6 +525,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // (devuelven `null` = "no hay donde contar" y se usa la cuenta local del turno).
       const contar: typeof contarAgente = async (...a) => (preview ? null : contarAgente(...a));
       const modoCtx = preview ? { modo: "preview" as const, previewCustomerId: previewCustomerId ?? null } : {};
+      // Modelo y temperatura que eligio la organizacion (ajustes del agente). Si falla la lectura, el turno sigue con los de siempre.
+      const ajustes = options.leerAjustes ? await options.leerAjustes(organizationId).catch(() => null) : null;
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
       // El flujo de PM encadena mas llamadas por turno (cliente, zona, un producto por renglon, cotizar).
       const maxToolUseTurns = options.maxToolUseTurns ?? (perfil === "taqueria_pm" ? 8 : 4);
@@ -667,7 +672,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             runId: randomUUID(),
             lane: "interactive",
             role,
-            request: { system: systemPrompt, messages: working, tools: [...TOOLS], temperature: 0 },
+            // El modelo elegido solo aplica al rol por defecto: el reintento tras un fallo real de `crear_pedido` (rol escalado) sigue siendo el de la plataforma.
+            ...(ajustes?.modelo && role === options.defaultRole ? { preferredModel: ajustes.modelo } : {}),
+            request: { system: systemPrompt, messages: working, tools: [...TOOLS], temperature: ajustes && role === options.defaultRole ? ajustes.temperatura : 0 },
           });
         } catch {
           tele.resultado = "error_proveedor";

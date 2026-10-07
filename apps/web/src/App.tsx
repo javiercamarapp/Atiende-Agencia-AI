@@ -27,6 +27,7 @@ const PromocionesPage = cargaPerezosa(() => import("./verticals/restaurantes/pag
 const RestaurantesAuditoriaPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Auditoria.tsx"), "AuditoriaPage");
 const RestaurantesConfiguracionPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Configuracion.tsx"), "ConfiguracionPage");
 const RestaurantesAgenteVozPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/AgenteVoz.tsx"), "AgenteVozPage");
+const RestaurantesAjustesAgentePage = cargaPerezosa(() => import("./verticals/restaurantes/pages/AjustesAgente.tsx"), "AjustesAgentePage");
 const RestaurantesIndicadoresWhatsappPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/IndicadoresWhatsapp.tsx"), "IndicadoresWhatsappPage");
 const RestaurantesCierresPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Cierres.tsx"), "CierresPage");
 const RestaurantesPrivacidadPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Privacidad.tsx"), "PrivacidadPage");
@@ -308,6 +309,8 @@ const RestaurantesAuditoriaRoute = shellRoute(RestaurantesShell, "/restaurantes/
 const RestaurantesConfiguracionRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConfiguracionPage {...ctx} />);
 // Agente de voz (Gemini Live, sin ElevenLabs): config, vista previa y conversaciones.
 const RestaurantesAgenteVozRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAgenteVozPage {...ctx} />);
+// Ajustes del agente por organizacion (modelo, temperatura, voz, fondo, conocimiento automatico), owner/admin.
+const RestaurantesAjustesAgenteRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAjustesAgentePage {...ctx} />);
 // R-31: indicadores del agente de WhatsApp (owner/admin).
 const RestaurantesIndicadoresWhatsappRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesIndicadoresWhatsappPage {...ctx} />);
 const RestaurantesCierresRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCierresPage {...ctx} />);
@@ -1163,6 +1166,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/auditoria" element={<RestaurantesAuditoriaRoute />} />
         <Route path="/restaurantes/:orgSlug/configuracion" element={<RestaurantesConfiguracionRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-voz" element={<RestaurantesAgenteVozRoute />} />
+        <Route path="/restaurantes/:orgSlug/agente-ajustes" element={<RestaurantesAjustesAgenteRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-whatsapp" element={<RestaurantesIndicadoresWhatsappRoute />} />
         <Route path="/restaurantes/:orgSlug/cierres" element={<RestaurantesCierresRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad" element={<RestaurantesPrivacidadRoute />} />
