@@ -380,7 +380,12 @@ begin
     from core.membership m
     where m.organization_id = p_organization_id
       and (m.platform_role in ('owner', 'admin') or (p_roles is not null and m.vertical_role = any (p_roles)))
-      and (p_property_id is null or m.property_ids is null or p_property_id = any (m.property_ids));
+      and (p_property_id is null or m.property_ids is null or p_property_id = any (m.property_ids))
+      -- R-16: quien apago este tipo de aviso en sus preferencias no lo recibe (sin fila = encendido).
+      and not exists (
+        select 1 from core.notification_preference np
+        where np.organization_id = m.organization_id and np.user_id = m.user_id and np.tipo = p_tipo and np.enabled = false
+      );
   end if;
 
   v_inserted := 0;
