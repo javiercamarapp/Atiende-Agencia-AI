@@ -1,3 +1,4 @@
+import type { DemoAgentsDeps } from "./demo-agents/types.ts";
 import type {
   AgentRunRepository,
   AuthzAuditRepository,
@@ -115,6 +116,8 @@ import type { LlmRouteConfig } from "./production/llm-models.ts";
  * xRepoInstance` — ignora el argumento porque el repo en memoria no tiene ningún
  * concepto de sesión/RLS (ver apps/api/tests/fixtures.ts y fixtures por vertical). */
 export interface AppDeps {
+  /** Public marketing sandbox: no tenant records or mutation tools. */
+  readonly publicDemoAgents?: DemoAgentsDeps;
   readonly env: ApiEnv;
   readonly coreRepo: CoreRepository;
   /** Fase 10 — invitar/gestionar staff (crear/listar/revocar invitación), ver
