@@ -2,8 +2,9 @@
 -- referencia de respaldo, alertas operativas nuevas, cierre del dia por dia de negocio, alertas de voz evaluadas por el sistema y
 -- regreso del handoff con el agente apagado. Interno 076, prefijo de supabase/migrations 20240101000376.
 --
--- Todo es CREATE OR REPLACE de funciones existentes con la MISMA firma y el MISMO tipo de retorno (no se cambia ninguna firma, columna, tabla,
--- policy ni GRANT existente), mas dos helpers y una funcion de sistema nuevos. Requiere: 041 (generar_cierre), 043 (avisos), 050 (autopiloto,
+-- Todo es CREATE OR REPLACE de funciones existentes con la MISMA firma y el MISMO tipo de retorno (no se cambia ninguna firma, tabla, policy ni
+-- GRANT existente), mas dos helpers, funciones de sistema nuevas y TRES columnas aditivas (customers.import_nombre, customers.import_notas,
+-- customer_addresses.from_import). Requiere: 041 (generar_cierre), 043 (avisos), 050 (autopiloto,
 -- order_status_events), 023 (branch_policy), 035 (voz_kpis_diarios, voz_evaluar_alertas), 053 (whatsapp_sucursal_control).
 --
 -- Que corrige (ids de work/qa/restaurantes/ronda-2-defectos.json):
@@ -17,6 +18,8 @@
 --   automatizacion-11  tiempo_entrega_muestras: franja horaria circular (23:xx y 00:xx son vecinas) y dia de la semana de NEGOCIO.
 --   caos-01            handoffs_devolver_vencidos no devuelve al agente las tomas de una sucursal con el agente apagado.
 --   caos-03            no_recogido cuenta desde max(hora_recogida, momento en que quedo listo): re-marcar listo reinicia el plazo.
+--   caos-07            importar_clientes corrige lo que una importacion anterior escribio (nombre, nota, domicilio predeterminado) cuando se reimporta con otro
+--                      mapeo, sin pisar nada que una persona o el agente hayan cambiado despues (columnas de procedencia import_nombre/import_notas/from_import).
 --   caos-10            las muestras para RECOGER excluyen pedidos con hora de recogida elegida y miden hasta listo_para_recoger.
 --
 -- Dia de negocio: la hora de cierre mas tardia, despues de medianoche, de los turnos de branch_policy.horario que cruzan la medianoche
@@ -31,6 +34,10 @@
 --  * dia_negocio_corte / dia_negocio -- helpers de solo lectura, SECURITY DEFINER con search_path fijo porque branch_policy tiene RLS (staff
 --    o sistema). `revoke all` de public/anon/authenticated: NO son invocables por ningun cliente; solo las demas funciones definer (que corren
 --    como propietario) las llaman. No devuelven datos de la politica, solo un intervalo / una fecha.
+--  * importar_clientes -- MISMOS guards y GRANT (auth.uid() obligatorio, owner/admin/staff de ESA organizacion, huella sha-256, 1..5000 renglones, telefono de
+--    10 digitos). Cambia solo el calculo: una importacion puede corregir el nombre/nota que ELLA misma escribio (el valor actual sigue siendo igual al de
+--    import_nombre/import_notas) y nunca uno que una persona o el agente cambiaron despues. Las 3 columnas nuevas no llevan GRANT nuevo: authenticated solo
+--    las LEE con las policies de SELECT existentes (staff de la organizacion) y solo importar_clientes (definer) las escribe.
 --  * agotado_marcar, agotados_reponer, autopiloto_candidatos_estados, tiempo_entrega_muestras, handoffs_devolver_vencidos, generar_cierre,
 --    avisos_operativos_candidatos -- MISMOS guards, MISMOS GRANT/REVOKE que su version anterior (staff con alcance de sucursal, o sesion de
 --    sistema auth.uid() is null segun el caso); solo cambia el calculo. Ninguna acepta una organizacion/sucursal sin validarla contra core.property.
@@ -583,3 +590,155 @@ end;
 $$;
 revoke all on function restaurantes.voz_alertas_evaluar_sistema() from public, anon;
 grant execute on function restaurantes.voz_alertas_evaluar_sistema() to authenticated;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- I) Reimportar de cartera corrige lo que escribio una importacion anterior (caos-07)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Antes: importar_clientes NUNCA pisaba un nombre/nota conocido, asi que un mapeo de columnas equivocado (Nombre apuntando a Colonia) dejaba el nombre
+-- malo para siempre y el agente saludaba "Hola Itzimna". Ahora la importacion recuerda lo que ella escribio (import_nombre, import_notas) y solo ese
+-- valor se puede corregir: si una persona o el agente cambiaron el nombre despues, ya no coincide y NO se pisa. El domicilio importado marca
+-- from_import; una reimportacion cuyo domicilio es nuevo vuelve predeterminado al nuevo si el predeterminado actual tambien vino de una importacion.
+alter table restaurantes.customers add column if not exists import_nombre text;
+alter table restaurantes.customers add column if not exists import_notas text;
+alter table restaurantes.customers drop constraint if exists customers_import_len_check;
+alter table restaurantes.customers add constraint customers_import_len_check
+  check ((import_nombre is null or char_length(import_nombre) <= 120) and (import_notas is null or char_length(import_notas) <= 500));
+alter table restaurantes.customer_addresses add column if not exists from_import boolean not null default false;
+
+create or replace function restaurantes.importar_clientes(p_organization_id uuid, p_file_hash text, p_rows jsonb)
+returns table (ya_importado boolean, total integer, creados integer, actualizados integer, sin_cambios integer, rechazados integer)
+language plpgsql
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+#variable_conflict use_column
+declare
+  v_uid uuid := auth.uid();
+  v_import uuid;
+  v_total integer;
+  v_creados integer := 0;
+  v_actualizados integer := 0;
+  v_sin_cambios integer := 0;
+  v_rechazados integer := 0;
+  e jsonb;
+  v_phone text;
+  v_name text;
+  v_address text;
+  v_notes text;
+  v_c restaurantes.customers%rowtype;
+  v_id uuid;
+  v_nombre_final text;
+  v_nota_final text;
+  v_n integer;
+  v_vistos text[] := '{}';
+begin
+  if v_uid is null then
+    raise exception 'importar_clientes: requiere un usuario autenticado' using errcode = '42501';
+  end if;
+  if not exists (
+    select 1 from core.membership m
+    where m.organization_id = p_organization_id and m.user_id = v_uid and m.vertical_role in ('owner', 'admin', 'staff')
+  ) then
+    raise exception 'importar_clientes: rol sin permiso en la organizacion' using errcode = '42501';
+  end if;
+  if p_file_hash is null or p_file_hash !~ '^[0-9a-f]{64}$' then
+    raise exception 'importar_clientes: huella invalida' using errcode = '22023';
+  end if;
+  if p_rows is null or jsonb_typeof(p_rows) <> 'array' then
+    raise exception 'importar_clientes: se esperaba un arreglo de renglones' using errcode = '22023';
+  end if;
+  v_total := jsonb_array_length(p_rows);
+  if v_total < 1 or v_total > 5000 then
+    raise exception 'importar_clientes: entre 1 y 5000 renglones' using errcode = '22023';
+  end if;
+
+  -- Reclama la huella: el mismo archivo con el mismo mapeo dos veces (o dos peticiones simultaneas) no duplica ni vuelve a escribir.
+  insert into restaurantes.customer_imports (organization_id, file_hash, created_by, total)
+  values (p_organization_id, p_file_hash, v_uid, v_total)
+  on conflict (organization_id, file_hash) do nothing
+  returning id into v_import;
+  if v_import is null then
+    return query
+      select true, i.total, i.creados, i.actualizados, i.sin_cambios, i.rechazados
+      from restaurantes.customer_imports i
+      where i.organization_id = p_organization_id and i.file_hash = p_file_hash;
+    return;
+  end if;
+
+  for e in select x from jsonb_array_elements(p_rows) x loop
+    if jsonb_typeof(e) <> 'object' then
+      v_rechazados := v_rechazados + 1;
+      continue;
+    end if;
+    v_phone := e->>'phone';
+    if v_phone is null or v_phone !~ '^[0-9]{10}$' then
+      v_rechazados := v_rechazados + 1;
+      continue;
+    end if;
+    v_name := nullif(btrim(left(coalesce(e->>'name', ''), 120)), '');
+    v_address := nullif(btrim(left(coalesce(e->>'address', ''), 300)), '');
+    v_notes := nullif(btrim(left(coalesce(e->>'notes', ''), 500)), '');
+
+    select * into v_c from restaurantes.customers c where c.organization_id = p_organization_id and c.phone = v_phone for update;
+    if not found then
+      insert into restaurantes.customers (organization_id, phone, name, notes, import_nombre, import_notas)
+      values (p_organization_id, v_phone, v_name, v_notes, v_name, v_notes)
+      on conflict (organization_id, phone) do nothing
+      returning id into v_id;
+      if v_id is null then
+        -- Otra transaccion lo creo entre el select y el insert: no se pisa nada.
+        select c.id into v_id from restaurantes.customers c where c.organization_id = p_organization_id and c.phone = v_phone;
+        v_sin_cambios := v_sin_cambios + 1;
+      else
+        v_creados := v_creados + 1;
+      end if;
+    else
+      v_id := v_c.id;
+      -- Un valor se completa si estaba vacio y se CORRIGE solo si es el que escribio una importacion ANTERIOR y nadie lo cambio despues (un telefono
+      -- repetido dentro del MISMO archivo no se corrige a si mismo: gana el primer renglon, como siempre).
+      v_nombre_final := case
+        when v_name is null then v_c.name
+        when v_c.name is null then v_name
+        when v_phone <> all (v_vistos) and v_c.import_nombre is not null and v_c.name = v_c.import_nombre then v_name
+        else v_c.name end;
+      v_nota_final := case
+        when v_notes is null then v_c.notes
+        when v_c.notes is null then v_notes
+        when v_phone <> all (v_vistos) and v_c.import_notas is not null and v_c.notes = v_c.import_notas then v_notes
+        else v_c.notes end;
+      if v_nombre_final is distinct from v_c.name or v_nota_final is distinct from v_c.notes then
+        update restaurantes.customers set
+          name = v_nombre_final,
+          notes = v_nota_final,
+          import_nombre = case when v_nombre_final is distinct from v_c.name then v_nombre_final else import_nombre end,
+          import_notas = case when v_nota_final is distinct from v_c.notes then v_nota_final else import_notas end,
+          updated_at = now()
+        where id = v_id;
+        v_actualizados := v_actualizados + 1;
+      else
+        v_sin_cambios := v_sin_cambios + 1;
+      end if;
+    end if;
+
+    v_vistos := v_vistos || v_phone;
+    if v_address is not null then
+      insert into restaurantes.customer_addresses (customer_id, address, is_default, from_import)
+      values (v_id, v_address, not exists (select 1 from restaurantes.customer_addresses a where a.customer_id = v_id), true)
+      on conflict (customer_id, address) do nothing;
+      get diagnostics v_n = row_count;
+      -- Domicilio NUEVO de esta importacion: si el predeterminado actual tambien vino de una importacion (nadie lo confirmo), pasa a ser este.
+      if v_n = 1 and exists (
+        select 1 from restaurantes.customer_addresses a where a.customer_id = v_id and a.is_default and a.from_import and a.address <> v_address
+      ) then
+        update restaurantes.customer_addresses a set is_default = (a.address = v_address) where a.customer_id = v_id;
+      end if;
+    end if;
+  end loop;
+
+  update restaurantes.customer_imports
+  set creados = v_creados, actualizados = v_actualizados, sin_cambios = v_sin_cambios, rechazados = v_rechazados
+  where id = v_import;
+
+  return query select false, v_total, v_creados, v_actualizados, v_sin_cambios, v_rechazados;
+end;
+$$;
