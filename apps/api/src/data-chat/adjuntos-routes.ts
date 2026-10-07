@@ -66,7 +66,7 @@ export async function procesarAdjunto(c: Context<CoreAuthHonoEnv>, p: ProcesoAdj
       vertical: p.vertical,
       tool: "archivo_adjunto",
       params: r.ok ? { tipo: r.tipo } : {},
-      outcome: r.ok ? "ok" : r.status === "unavailable" ? "unavailable" : "error",
+      outcome: r.ok ? "ok" : "error",
       rowCount: r.ok ? r.filas : 0,
       durationMs: Date.now() - inicio,
       route: "directa",

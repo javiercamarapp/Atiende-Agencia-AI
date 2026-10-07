@@ -248,6 +248,8 @@ export function superadminCopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       acciones: { propone: rol === "superadmin" },
       // El tablero de fijados es personal y solo del superadmin completo (la zona CFO no deja pasar al rol `finanzas` por /pins).
       fijados: rol === "superadmin",
+      // Adjuntar archivo (CSV / Excel / PDF): solo el superadmin completo (la zona CFO no deja pasar a `finanzas` por /adjuntos).
+      adjuntos: rol === "superadmin",
       herramientas: catalogo.tools.map((t) => ({ nombre: t.name, etiqueta: t.label, descripcion: t.description, financiera: HERRAMIENTAS_FINANCIERAS.includes(t.name) })),
     });
   });

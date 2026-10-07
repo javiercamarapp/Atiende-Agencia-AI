@@ -46,7 +46,8 @@ export interface AdjuntoRespuesta {
 
 export type ResultadoAdjunto =
   | { readonly ok: true; readonly tipo: AdjuntoTipo; readonly filas: number; readonly respuesta: AdjuntoRespuesta }
-  | { readonly ok: false; readonly status: "invalid_input" | "unavailable"; readonly motivo: string };
+  /** `status` siempre `invalid_input`: el chat muestra su `motivo` tal cual (el aviso generico de `unavailable` ocultaria la razon real). */
+  | { readonly ok: false; readonly status: "invalid_input"; readonly motivo: string };
 
 export function tipoDeAdjunto(nombre: string, bytes: Uint8Array): AdjuntoTipo | null {
   const n = nombre.toLowerCase();
@@ -341,7 +342,7 @@ function respuestaDeTabla(nombre: string, tipo: "csv" | "xlsx", filas: readonly 
 
 async function respuestaDePdf(nombre: string, bytes: Uint8Array): Promise<ResultadoAdjunto> {
   const r = await extractDocumentText(Buffer.from(bytes), { mimeType: "application/pdf", filename: nombre });
-  if (r.status === "requires_ocr") return { ok: false, status: "unavailable", motivo: "Este PDF no tiene texto seleccionable (parece escaneado) y todavía no puedo leer imágenes. Súbelo con texto o expórtalo a CSV." };
+  if (r.status === "requires_ocr") return { ok: false, status: "invalid_input", motivo: "Este PDF no tiene texto seleccionable (parece escaneado) y todavía no puedo leer imágenes. Súbelo con texto o expórtalo a CSV." };
   if (r.status === "failed" || !r.pages) return { ok: false, status: "invalid_input", motivo: r.limitExceeded ? "El PDF es demasiado grande para analizarlo." : "No pude leer ese PDF (¿está dañado o protegido con contraseña?)." };
   const paginas = r.pages.map((p) => ({ pagina: p.page, caracteres: p.text.length, palabras: p.text.split(/\s+/).filter(Boolean).length }));
   const caracteres = paginas.reduce((a, p) => a + p.caracteres, 0);
