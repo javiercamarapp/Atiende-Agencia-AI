@@ -23,7 +23,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Mail, UserPlus } from "lucide-react";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone, useConfirm } from "@atiende/ui";
-import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
+import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, removeStaffMember, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
 import { INVITACION_STAFF_TONES } from "../lib/status-tones.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
 import { fetchTenantConfig, updateTenantConfigTimezone } from "../lib/admin-client.ts";
@@ -50,13 +50,14 @@ function statusLabel(status: string): string {
   return status;
 }
 
-export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
+export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role, staffEmail }: LicitacionesShellContext) {
   const canManage = STAFF_INVITE_ROLES.has(role);
   const { confirmar, dialogo } = useConfirm();
 
   const [invites, setInvites] = useState<readonly StaffInvite[] | null>(null);
   const [members, setMembers] = useState<readonly OrgMember[] | null>(null);
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // FASE 3 (producto) — zona horaria por negocio: UI mínima owner/admin (mismo
@@ -98,6 +99,28 @@ export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lici
       setError(err instanceof Error ? err.message : "No se pudo cambiar el rol de ese staff.");
     } finally {
       setSavingRoleId(null);
+    }
+  }
+
+  // El servidor (admin-staff.ts::DELETE miembros/:userId) es SIEMPRE el enforcement real (auto-baja, jerarquia, ultimo owner); este dialogo solo evita un
+  // clic accidental. Cancelar o cerrar NO escribe.
+  async function handleRemove(member: OrgMember) {
+    const ok = await confirmar({
+      titulo: `Quitar a ${member.fullName}`,
+      descripcion: "Pierde el acceso a esta organización en su siguiente petición. Para volver a darle acceso tendrás que invitarlo de nuevo.",
+      tono: "danger",
+      confirmar: "Quitar del staff",
+    });
+    if (!ok) return;
+    setRemovingId(member.id);
+    setError(null);
+    try {
+      await removeStaffMember(fetch, apiBaseUrl, token, propertyId, member.id);
+      setMembers((prev) => (prev ? prev.filter((m) => m.id !== member.id) : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo quitar a ese staff.");
+    } finally {
+      setRemovingId(null);
     }
   }
 
@@ -321,12 +344,15 @@ export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lici
             {members && members.length === 0 && <EstadoVacio mensaje="Todavía no hay ningún staff aceptado en esta empresa." />}
             {members && members.length > 0 && (
               <div className="flex flex-col gap-2">
-                {members.map((m) => (
+                {members.map((m) => {
+                  const esUnoMismo = m.email === staffEmail;
+                  return (
                   <div key={m.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-foreground">{m.fullName}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">{m.email}</p>
                     </div>
+                    <div className="flex flex-wrap items-center gap-2">
                     <NativeSelect
                       value={m.verticalRole}
                       disabled={savingRoleId === m.id}
@@ -340,8 +366,21 @@ export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lici
                         </option>
                       ))}
                     </NativeSelect>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive"
+                      onClick={() => void handleRemove(m)}
+                      disabled={esUnoMismo || removingId === m.id}
+                      title={esUnoMismo ? "No puedes quitarte a ti mismo." : undefined}
+                    >
+                      {removingId === m.id ? "Quitando…" : "Quitar"}
+                    </Button>
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>

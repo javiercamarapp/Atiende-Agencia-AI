@@ -1,5 +1,5 @@
 // Fixtures de licitaciones (Constructora Peninsular). Forma = apps/web/src/verticals/licitaciones/lib/*-client.ts.
-import { conStatus, fallo, ndjson } from "../respuestas.ts";
+import { conCabeceras, conStatus, fallo, ndjson } from "../respuestas.ts";
 import { orgDe, personaDe, propiedadDe } from "../personas.ts";
 import type { Ruta } from "../tipos.ts";
 
@@ -10,6 +10,71 @@ const L = "/licitaciones/:id";
 const CONVOCATORIAS = [
   { id: "tnd-1", organizationId: ORG.id, title: "Rehabilitacion de la avenida Reforma, tramo norte", submissionDeadline: "2026-10-20T17:00:00.000Z", updatedAt: "2026-09-29T15:00:00.000Z", source: "compranet", externalId: "LA-931037999-E12-2026", contractingBody: "Secretaria de Obras Publicas de Yucatan", cpvCodes: ["45233120"], budgetAmount: 18500000, currency: "MXN", state: "Yucatan", procedureTypeRaw: "Licitacion publica nacional", status: "in_review" },
   { id: "tnd-2", organizationId: ORG.id, title: "Suministro de luminarias LED para alumbrado publico", submissionDeadline: "2026-10-27T17:00:00.000Z", updatedAt: "2026-09-30T15:00:00.000Z", source: "compranet", externalId: "LA-931037999-E15-2026", contractingBody: "Ayuntamiento de Merida", cpvCodes: ["34928500"], budgetAmount: 4200000, currency: "MXN", state: "Yucatan", procedureTypeRaw: "Invitacion a cuando menos tres personas", status: "discovered" },
+];
+
+// Listado de convocatorias PAGINADO como el de la API real (GET .../tenders): limit/offset, filtros q/status/source/open/ids/plazo en el
+// "servidor" y total real en X-Total-Count. La lista vive en el estado del escenario para que una prueba agregue cientos (agregarVariosAEstado).
+const CLAVE_CONVOCATORIAS = "lic.convocatorias";
+type Convocatoria = (typeof CONVOCATORIAS)[number];
+const ESTADOS_CERRADOS = ["won", "lost", "cancelled", "no_go"];
+const convocatoriasDe = (p: { estado: { obtener<T>(k: string, s: () => T): T } }): Convocatoria[] => p.estado.obtener<Convocatoria[]>(CLAVE_CONVOCATORIAS, () => [...CONVOCATORIAS]);
+
+function filtrarConvocatorias(todas: readonly Convocatoria[], q: URLSearchParams): Convocatoria[] {
+  const texto = (q.get("q") ?? "").trim().toLowerCase();
+  const ids = q.get("ids")?.split(",").filter(Boolean);
+  const desde = q.get("deadlineFrom");
+  const hasta = q.get("deadlineTo");
+  return todas
+    .filter((t) => {
+      if (q.get("status") && t.status !== q.get("status")) return false;
+      if (q.get("source") && t.source !== q.get("source")) return false;
+      if (q.get("open") === "true" && ESTADOS_CERRADOS.includes(t.status)) return false;
+      if (ids && !ids.includes(t.id)) return false;
+      if (texto && ![t.title, t.externalId ?? "", t.contractingBody ?? ""].some((x) => x.toLowerCase().includes(texto))) return false;
+      if (desde && (t.submissionDeadline === null || t.submissionDeadline < desde)) return false;
+      if (hasta && (t.submissionDeadline === null || t.submissionDeadline > hasta)) return false;
+      return true;
+    })
+    .sort((a, b) => (a.updatedAt === b.updatedAt ? (a.id < b.id ? 1 : -1) : a.updatedAt < b.updatedAt ? 1 : -1));
+}
+
+function paginaConvocatorias(filtradas: readonly Convocatoria[], q: URLSearchParams): { items: Convocatoria[]; cabeceras: Record<string, string> } {
+  const limite = Math.min(Math.max(Number(q.get("limit") ?? 50) || 50, 1), 200);
+  const offset = Math.max(Number(q.get("offset") ?? 0) || 0, 0);
+  const items = filtradas.slice(offset, offset + limite);
+  const cabeceras: Record<string, string> = { "x-total-count": String(filtradas.length) };
+  if (offset + items.length < filtradas.length) cabeceras["x-next-offset"] = String(offset + items.length);
+  return { items, cabeceras };
+}
+
+/** Rutas ESTATICAS de `tenders/*`: deben ir antes de `tenders/:tid` o "summary"/"matching" se leerian como un id. */
+const rutasListadoConvocatorias: readonly Ruta[] = [
+  { metodo: "GET", patron: `${L}/tenders/summary`, manejador: (p) => {
+      const todas = convocatoriasDe(p);
+      const ventana = Number(p.query.get("windowDays") ?? 7) || 7;
+      const ahora = Date.now();
+      const porEstado: Record<string, number> = {};
+      let abiertas = 0;
+      let porVencer = 0;
+      for (const t of todas) {
+        porEstado[t.status] = (porEstado[t.status] ?? 0) + 1;
+        if (ESTADOS_CERRADOS.includes(t.status)) continue;
+        abiertas += 1;
+        if (t.status !== "submitted" && t.submissionDeadline) {
+          const ms = new Date(t.submissionDeadline).getTime() - ahora;
+          if (ms >= 0 && ms <= ventana * 86_400_000) porVencer += 1;
+        }
+      }
+      return { total: todas.length, open: abiertas, closingSoon: porVencer, windowDays: ventana, byStatus: porEstado };
+    } },
+  { metodo: "GET", patron: `${L}/tenders/matching`, manejador: (p) => {
+      const { items, cabeceras } = paginaConvocatorias(filtrarConvocatorias(convocatoriasDe(p), p.query), p.query);
+      return conCabeceras({ results: items.map((t) => ({ tenderId: t.id, score: 72, criteria: [], eligibility: { status: "cumple", criteria: [] } })) }, cabeceras);
+    } },
+  { metodo: "GET", patron: `${L}/tenders`, manejador: (p) => {
+      const { items, cabeceras } = paginaConvocatorias(filtrarConvocatorias(convocatoriasDe(p), p.query), p.query);
+      return conCabeceras({ tenders: items }, cabeceras);
+    } },
 ];
 
 interface AjustesWhatsapp {
@@ -144,7 +209,7 @@ const rutasCierre: readonly Ruta[] = [
       return { stepUpToken: `mock-step-up.${p.persona!.id}`, expiresInSeconds: 300 };
     },
   },
-  { metodo: "GET", patron: `${L}/tenders/:tid`, manejador: (p) => CONVOCATORIAS.find((c) => c.id === p.params["tid"]) ?? fallo(404, "Convocatoria no encontrada.") },
+  { metodo: "GET", patron: `${L}/tenders/:tid`, manejador: (p) => convocatoriasDe(p).find((c) => c.id === p.params["tid"]) ?? fallo(404, "Convocatoria no encontrada.") },
   // L-33: tnd-1 trae requisitos extraidos por IA (`llm`) y por reglas; tnd-2 solo por reglas (el aviso de IA NO debe aparecer).
   { metodo: "GET", patron: `${L}/tenders/:tid/requirements`, manejador: (p) => ({ items: requisitosMock(p.params["tid"] ?? "") }) },
   { metodo: "GET", patron: `${L}/tenders/:tid/proposal`, manejador: (p) => ({ id: `prop-${p.params["tid"]}`, tenderId: p.params["tid"], title: "Propuesta", ivaRate: 0.16, economicTotals: null, generationReport: null, correlationId: null, createdAt: "2026-09-30T15:00:00.000Z" }) },
@@ -516,13 +581,101 @@ const rutasPostAdjudicacion: readonly Ruta[] = [
   },
 ];
 
+// paridad3 L-P3-14/16 -- Versiones y fuentes de la convocatoria, bandeja de Expedientes y Staff (quitar miembro). Mismas formas que la API real.
+type EstadoMock = { estado: { obtener<T>(k: string, s: () => T): T } };
+const ESTADOS_EXPEDIENTE = ["go", "in_progress", "submitted"];
+const miembrosMock = (p: EstadoMock) =>
+  p.estado.obtener("lic.staff.miembros", () => [
+    ...(["owner", "admin", "staff"] as const).map((r) => {
+      const x = personaDe("licitaciones", r);
+      return { id: x.id, email: x.email, fullName: x.fullName, verticalRole: r === "staff" ? "analyst" : r, propertyIds: null as string[] | null };
+    }),
+  ]);
+
+const rutasVersionesExpedientesStaff: readonly Ruta[] = [
+  {
+    metodo: "GET",
+    patron: `${L}/tenders/:tid/versions`,
+    manejador: () => ({
+      versions: [
+        { version: 1, hash: "h1", createdAt: "2026-09-29T15:00:00.000Z", diff: { fields: [], requirements: [], changedFieldNames: [], affectedSectionKeys: [], hasChanges: false } },
+        {
+          version: 2,
+          hash: "h2",
+          createdAt: "2026-09-30T15:00:00.000Z",
+          diff: {
+            fields: [{ field: "submissionDeadline", status: "modificado", previous: "2026-10-13T17:00:00.000Z", current: "2026-10-20T17:00:00.000Z" }],
+            requirements: [{ key: "legal:text:acta", status: "nuevo", requirementKind: "legal", previous: null, current: { text: "Presentar acta constitutiva vigente" } }],
+            changedFieldNames: ["submissionDeadline"],
+            affectedSectionKeys: ["legal"],
+            hasChanges: true,
+          },
+        },
+      ],
+    }),
+  },
+  {
+    metodo: "GET",
+    patron: `${L}/tenders/:tid/sources`,
+    manejador: () => ({
+      sources: [
+        { source: "compranet", externalId: "LA-931037999-E12-2026", primary: true, firstSeenAt: null, lastSeenAt: "2026-09-30T15:00:00.000Z", conflicts: [] },
+        { source: "cdmx_ocds", externalId: "CDMX-77", primary: false, firstSeenAt: "2026-09-30T16:00:00.000Z", lastSeenAt: "2026-09-30T16:00:00.000Z", conflicts: [{ field: "budget_amount", current: 18500000, alternative: 19000000 }] },
+      ],
+    }),
+  },
+  {
+    metodo: "GET",
+    patron: `${L}/expedientes`,
+    manejador: (p) => {
+      const q = p.query;
+      const status = q.get("status");
+      const filtradas = convocatoriasDe(p).filter((t) => (status ? t.status === status : ESTADOS_EXPEDIENTE.includes(t.status)));
+      const { items, cabeceras } = paginaConvocatorias(filtradas.slice().sort((a, b) => (a.id < b.id ? -1 : 1)), q);
+      return conCabeceras(
+        {
+          expedientes: items.map((t, i) => ({
+            tenderId: t.id,
+            title: t.title,
+            status: t.status,
+            submissionDeadline: t.submissionDeadline,
+            requisitos: { total: 10, cumplidos: i % 10 },
+            redaccion: "hecho",
+            checklist: "ambar",
+            aprobacion: { modo: "doble", tecnicaLegal: true, economica: false, completa: false },
+            paquete: false,
+            presentada: t.status === "submitted",
+          })),
+        },
+        cabeceras,
+      );
+    },
+  },
+  { metodo: "GET", patron: "/v1/licitaciones/:org/admin/staff/miembros", roles: ["owner", "admin"], manejador: (p) => ({ miembros: miembrosMock(p) }) },
+  { metodo: "GET", patron: "/v1/licitaciones/:org/admin/staff/invitaciones", roles: ["owner", "admin"], manejador: () => ({ invitations: [] }) },
+  {
+    metodo: "DELETE",
+    patron: "/v1/licitaciones/:org/admin/staff/miembros/:uid",
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const lista = miembrosMock(p);
+      const i = lista.findIndex((m) => m.id === p.params["uid"]);
+      if (i < 0) return fallo(404, "Ese staff no pertenece a esta organización.");
+      if (p.params["uid"] === p.persona!.id) return fallo(400, "No puedes darte de baja a ti mismo.");
+      lista.splice(i, 1);
+      return { ok: true };
+    },
+  },
+];
+
 export const rutasLicitaciones: readonly Ruta[] = [
+  ...rutasListadoConvocatorias,
+  ...rutasVersionesExpedientesStaff,
   ...rutasCopiloto,
   ...rutasCierre,
   ...rutasPostAdjudicacion,
   ...rutasSalaGuerra,
   { metodo: "GET", patron: "/v1/licitaciones/:org/admin/branches", manejador: () => ({ branches: [{ propertyId: PROP.id, name: PROP.nombre }] }) },
-  { metodo: "GET", patron: `${L}/tenders`, manejador: () => ({ tenders: CONVOCATORIAS }) },
   // Lecturas del Resumen (Panel): mismas formas que lib/{sources,seguimiento,renewal-radar,company-data}-client.ts.
   { metodo: "GET", patron: `${L}/sources`, manejador: () => ({ connectors: [
       { id: "compranet", kind: "automated", label: "CompraNet", termsNote: "", cadence: { minIntervalMinutes: 60, note: "cada hora" }, liveVerification: { verified: true, note: "probada en vivo" } },

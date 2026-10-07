@@ -4,6 +4,7 @@
 // ZIP del expediente SÍ se escriben a disco real (bajo un directorio temporal
 // por defecto) — igual que el origen, que nunca modeló el ZIP como un blob de
 // base de datos (ver storage.ts).
+import { computeCrossSourceFingerprint, normalizeTenderText, type SourceFieldConflict, type TenderSourceLink } from "./cross-source-fingerprint.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,6 +12,8 @@ import { join } from "node:path";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
+import { compareTendersForList, matchesTenderFilter, summarizeTenderRecords } from "./tender-list-filter.ts";
+import type { TenderPageOptions, TenderSummaryCounts } from "./tender-list-filter.ts";
 import type {
   ApprovedRateCreateInput,
   ApprovedRateUpdateInput,
@@ -158,6 +161,24 @@ interface StoredProposalSection {
   content: string;
 }
 
+/** Campos en los que la fuente enlazada dice algo distinto de la convocatoria (que conserva el valor primario). Misma lista y normalizacion que SQL. */
+function computeFieldConflicts(tender: TenderRecord, rec: TenderSourceIngestCandidate): SourceFieldConflict[] {
+  const out: SourceFieldConflict[] = [];
+  const text = (field: string, current: string | null | undefined, alternative: string | null | undefined): void => {
+    if (normalizeTenderText(current) !== normalizeTenderText(alternative)) out.push({ field, current: normalizeTenderText(current), alternative: normalizeTenderText(alternative) });
+  };
+  const instant = (a: string | null | undefined, b: string | null | undefined): boolean => (a ? new Date(a).getTime() : null) === (b ? new Date(b).getTime() : null);
+  text("title", tender.title, rec.title);
+  text("contracting_body", tender.contractingBody, rec.contractingBody);
+  if (!instant(tender.submissionDeadline, rec.submissionDeadline)) out.push({ field: "submission_deadline", current: tender.submissionDeadline ?? null, alternative: rec.submissionDeadline });
+  if ((tender.budgetAmount ?? null) !== rec.budgetAmount) out.push({ field: "budget_amount", current: tender.budgetAmount ?? null, alternative: rec.budgetAmount });
+  if ((tender.currency ?? null) !== rec.currency) out.push({ field: "currency", current: tender.currency ?? null, alternative: rec.currency });
+  text("state", tender.state, rec.state);
+  text("procedure_type_raw", tender.procedureTypeRaw, rec.procedureTypeRaw);
+  if (JSON.stringify(tender.cpvCodes ?? []) !== JSON.stringify(rec.cpvCodes)) out.push({ field: "cpv_codes", current: [...(tender.cpvCodes ?? [])], alternative: [...rec.cpvCodes] });
+  return out;
+}
+
 type CompanyItemStatus = "aprobado" | "pendiente_aprobacion" | "rechazado";
 type CompanyDecidable = { id: string; approvalStatus: CompanyItemStatus; proposedBy?: string | null; approvedBy?: string | null; approvedAt?: string | null };
 
@@ -217,6 +238,9 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly lessonsLearned = new Map<string, CompanyLessonLearnedRecord[]>(); // orgId -> lecciones (historial, más reciente al final)
   private readonly renewalAlerts = new Map<string, RenewalAlertRecord[]>(); // orgId -> alertas (historial, más reciente al final)
   // ---- Fase 8: ingesta automática real + recordatorios de plazo ----
+  private readonly tenderFingerprintByTender = new Map<string, string>(); // tenderId -> huella cruzada (solo si hay procedimiento + convocante + plazo)
+  private readonly altSources = new Map<string, TenderSourceLink[]>(); // tenderId -> fuentes ADICIONALES enlazadas por huella (L-P3-14)
+  private readonly altSourceKeys = new Map<string, string>(); // `${orgId}:${source}:${externalId}` -> tenderId
   private readonly tenderBySourceExternalKey = new Map<string, string>(); // `${orgId}:${source}:${externalId}` -> tenderId (fuentes AUTOMATIZADAS -- "manual" sigue usando tenderByExternalKey arriba)
   private readonly deadlineReminders = new Map<string, TenderDeadlineReminderRecord>(); // reminderId -> recordatorio
   private readonly deadlineReminderDedupeKeys = new Set<string>(); // `${tenderId}:${fecha calendario del vencimiento}` -- ya se emitió un recordatorio para ese (tender, día)
@@ -388,13 +412,16 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     return [...this.tenders.values()].filter((t) => t.organizationId === organizationId);
   }
 
-  async listTendersPage(organizationId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderPage> {
-    const filtered = [...this.tenders.values()]
-      .filter((t) => t.organizationId === organizationId)
-      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  async listTendersPage(organizationId: string, opts: TenderPageOptions): Promise<TenderPage> {
+    const filtered = [...this.tenders.values()].filter((t) => t.organizationId === organizationId && matchesTenderFilter(t, opts)).sort(compareTendersForList);
     const items = filtered.slice(opts.offset, opts.offset + opts.limit);
     const nextOffset = opts.offset + items.length < filtered.length ? opts.offset + items.length : null;
     return { items, total: filtered.length, nextOffset };
+  }
+
+  async summarizeTenders(organizationId: string, opts: { readonly nowIso: string; readonly windowDays: number }): Promise<TenderSummaryCounts> {
+    const mine = [...this.tenders.values()].filter((t) => t.organizationId === organizationId);
+    return summarizeTenderRecords(mine, new Date(opts.nowIso).getTime(), opts.windowDays);
   }
 
   async upsertTenderManual(organizationId: string, input: TenderUpsertInput): Promise<TenderUpsertResult> {
@@ -648,6 +675,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     }
     let created = 0;
     let updated = 0;
+    let linked = 0;
+    let conflicts = 0;
     const tenders: TenderRecord[] = [];
     const nowIso = new Date().toISOString();
 
@@ -655,6 +684,29 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       const key = `${organizationId}:${source}:${rec.externalId}`;
       const existingId = this.tenderBySourceExternalKey.get(key);
       const existing = existingId ? this.tenders.get(existingId) : undefined;
+      const fingerprint = computeCrossSourceFingerprint({ procedureNumber: rec.procedureNumber, contractingBody: rec.contractingBody, submissionDeadline: rec.submissionDeadline });
+
+      if (!existing) {
+        // (b) ya enlazada como fuente adicional, o (c) otra fuente ya trajo el mismo procedimiento: enlaza en vez de crear.
+        const altTenderId = this.altSourceKeys.get(key);
+        const primaryOfFingerprint =
+          altTenderId === undefined && fingerprint !== null
+            ? [...this.tenders.values()].find((t) => t.organizationId === organizationId && t.source !== source && this.tenderFingerprintByTender.get(t.id) === fingerprint)
+            : undefined;
+        const target = altTenderId !== undefined ? this.tenders.get(altTenderId) : primaryOfFingerprint;
+        if (target) {
+          const found = computeFieldConflicts(target, rec);
+          const links = this.altSources.get(target.id) ?? [];
+          const prev = links.find((l) => l.source === source && l.externalId === rec.externalId);
+          const link: TenderSourceLink = { source, externalId: rec.externalId, primary: false, firstSeenAt: prev?.firstSeenAt ?? nowIso, lastSeenAt: nowIso, conflicts: found };
+          this.altSources.set(target.id, [...links.filter((l) => l !== prev), link]);
+          this.altSourceKeys.set(key, target.id);
+          tenders.push(target);
+          linked += 1;
+          conflicts += found.length;
+          continue;
+        }
+      }
 
       if (existing) {
         const updatedTender: TenderRecord = {
@@ -670,6 +722,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
           updatedAt: nowIso,
         };
         this.tenders.set(existing.id, updatedTender);
+        if (fingerprint !== null) this.tenderFingerprintByTender.set(existing.id, fingerprint);
         tenders.push(updatedTender);
         updated += 1;
         continue;
@@ -693,11 +746,19 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       };
       this.tenders.set(createdTender.id, createdTender);
       this.tenderBySourceExternalKey.set(key, createdTender.id);
+      if (fingerprint !== null) this.tenderFingerprintByTender.set(createdTender.id, fingerprint);
       tenders.push(createdTender);
       created += 1;
     }
 
-    return { created, updated, tenders };
+    return { created, updated, tenders, linked, conflicts };
+  }
+
+  async listTenderSources(organizationId: string, tenderId: string): Promise<readonly TenderSourceLink[]> {
+    const tender = this.tenders.get(tenderId);
+    if (!tender || tender.organizationId !== organizationId) return [];
+    const primary: TenderSourceLink = { source: tender.source ?? "manual", externalId: tender.externalId ?? "", primary: true, firstSeenAt: null, lastSeenAt: tender.updatedAt, conflicts: [] };
+    return [primary, ...(this.altSources.get(tenderId) ?? [])];
   }
 
   async listActiveOrganizations(): Promise<readonly { id: string }[]> {

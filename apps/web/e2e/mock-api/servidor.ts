@@ -132,14 +132,16 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
       "access-control-allow-origin": origen ?? "*",
       "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
       "access-control-allow-headers": "authorization,content-type,idempotency-key,x-requested-with,x-step-up-token",
+      // La SPA lee el total de los listados paginados de estas cabeceras (en produccion es mismo origen; en e2e la API vive en otro puerto).
+      "access-control-expose-headers": "x-total-count,x-next-offset",
       "access-control-max-age": "600",
       vary: "origin",
     };
   }
 
-  function enviar(res: ServerResponse, status: number, cuerpo: unknown, origen: string | undefined): void {
+  function enviar(res: ServerResponse, status: number, cuerpo: unknown, origen: string | undefined, extra: Readonly<Record<string, string>> = {}): void {
     const texto = cuerpo === undefined ? "" : JSON.stringify(cuerpo);
-    res.writeHead(status, { "content-type": "application/json; charset=utf-8", ...cabecerasCors(origen) });
+    res.writeHead(status, { "content-type": "application/json; charset=utf-8", ...extra, ...cabecerasCors(origen) });
     res.end(texto);
   }
 
@@ -181,11 +183,13 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
     if (m[2] === "estado") {
       // Solo del mock: agrega un elemento a una lista del estado del escenario (p. ej. un pedido nuevo que llega mientras la
       // prueba mira el panel: en produccion lo crea el storefront o WhatsApp, aqui no hay quien lo origine).
-      const dato = ((await leerCuerpo(req)) ?? {}) as { clave?: unknown; agregar?: unknown };
-      if (typeof dato.clave !== "string" || dato.clave === "" || dato.agregar === undefined) return enviar(res, 400, { message: "clave y agregar requeridos" }, origen);
+      const dato = ((await leerCuerpo(req)) ?? {}) as { clave?: unknown; agregar?: unknown; agregarVarios?: unknown };
+      const varios = Array.isArray(dato.agregarVarios) ? dato.agregarVarios : null;
+      if (typeof dato.clave !== "string" || dato.clave === "" || (dato.agregar === undefined && varios === null)) return enviar(res, 400, { message: "clave y agregar (o agregarVarios) requeridos" }, origen);
       const lista = e.datos.get(dato.clave) as unknown[] | undefined;
       if (!Array.isArray(lista)) return enviar(res, 409, { message: "la lista aun no existe: la pantalla debe cargarla primero" }, origen);
-      lista.push(dato.agregar);
+      if (varios !== null) lista.push(...varios);
+      else lista.push(dato.agregar);
       return enviar(res, 200, { ok: true, total: lista.length }, origen);
     }
     const cuerpo = ((await leerCuerpo(req)) ?? {}) as { latenciaMs?: number; fallas?: Falla[]; agregarFallas?: Falla[] };
@@ -264,7 +268,7 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
         if (esRespuestaMarcada(salida)) {
           registrar(salida.status, {});
           if (salida.crudo) return enviarCrudo(res, salida.status, salida.crudo.tipo, salida.crudo.texto, origen);
-          return enviar(res, salida.status, salida.cuerpo, origen);
+          return enviar(res, salida.status, salida.cuerpo, origen, salida.cabeceras);
         }
         registrar(200, {});
         return enviar(res, 200, salida, origen);

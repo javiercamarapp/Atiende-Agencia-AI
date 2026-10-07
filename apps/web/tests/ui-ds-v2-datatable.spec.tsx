@@ -140,6 +140,17 @@ describe("DataTable — paginacion", () => {
     expect(celdasDe(c, 0)[0]).toBe("H11"); // no cambia sola
   });
 
+  it("paginacion de servidor (total): no recorta filas, anuncia el rango real y pide la pagina al servidor", () => {
+    const onPaginaChange = vi.fn();
+    // `filas` es solo la pagina 2 (tamano 10) de un conjunto de 251: la tabla NO debe volver a cortarla ni decir "de 10".
+    const c = montar({ filas: MUCHAS.slice(0, 10), paginacion: { tamano: 10, pagina: 2, total: 251, onPaginaChange } });
+    expect(c.querySelectorAll("tbody tr")).toHaveLength(10);
+    expect(c.querySelector("[role=status]")!.textContent).toContain("Mostrando 11–20 de 251");
+    expect(c.textContent).toContain("Página 2 de 26");
+    click(btn(c, "Siguiente"));
+    expect(onPaginaChange).toHaveBeenCalledWith(3);
+  });
+
   it("paginacion={false} muestra todo sin navegacion", () => {
     const c = montar({ filas: MUCHAS, paginacion: false });
     expect(c.querySelectorAll("tbody tr")).toHaveLength(25);

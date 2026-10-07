@@ -6,11 +6,18 @@ export interface RespuestaMarcada {
   readonly cuerpo: unknown;
   /** Si viene, se envia tal cual con este Content-Type en lugar de serializar `cuerpo` como JSON (p. ej. un flujo NDJSON). */
   readonly crudo?: { readonly tipo: string; readonly texto: string };
+  /** Cabeceras extra de la respuesta (p. ej. `x-total-count` / `x-next-offset` de los listados paginados). */
+  readonly cabeceras?: Readonly<Record<string, string>>;
 }
 
 /** 200 con JSON (es el comportamiento por defecto de un manejador que devuelve un valor cualquiera). */
 export function ok(cuerpo: unknown): RespuestaMarcada {
   return { [MARCA_RESPUESTA]: true, status: 200, cuerpo };
+}
+
+/** 200 con JSON y cabeceras extra: los listados paginados de la API real anuncian el total en `X-Total-Count`. */
+export function conCabeceras(cuerpo: unknown, cabeceras: Readonly<Record<string, string>>): RespuestaMarcada {
+  return { [MARCA_RESPUESTA]: true, status: 200, cuerpo, cabeceras };
 }
 
 export function conStatus(status: number, cuerpo: unknown): RespuestaMarcada {

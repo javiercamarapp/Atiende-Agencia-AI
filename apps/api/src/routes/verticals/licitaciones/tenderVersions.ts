@@ -15,11 +15,13 @@ import { avisarCambioDeBases } from "./avisos-campana.ts";
 export function licitacionesTenderVersionsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const versionsBase = "/licitaciones/:propertyId/tenders/:tenderId/versions";
+  const sourcesBase = "/licitaciones/:propertyId/tenders/:tenderId/sources";
   const recomputeBase = "/licitaciones/:propertyId/tenders/:tenderId/versions/recompute";
   const notificationsBase = "/licitaciones/:propertyId/tender-change-notifications";
   const acknowledgeBase = "/licitaciones/:propertyId/tender-change-notifications/:notificationId/acknowledge";
 
   app.use(versionsBase, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(sourcesBase, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(recomputeBase, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(notificationsBase, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(acknowledgeBase, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -35,6 +37,18 @@ export function licitacionesTenderVersionsRoutes(deps: AppDeps): Hono<CoreAuthHo
     if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
     const versions = await repo.listTenderVersions(organizationId, tenderId);
     return c.json({ versions });
+  });
+
+  // Fuentes de la convocatoria (L-P3-14 / REQ-152): la primaria y las enlazadas por huella cruzada, con los conflictos de campos que cada una
+  // reporta. Solo lectura, abierta a cualquier miembro de la organizacion; en una base sin la migracion 037 devuelve solo la primaria.
+  app.get(sourcesBase, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const tenderId = c.req.param("tenderId");
+    const tender = await repo.findTender(organizationId, tenderId);
+    if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
+    const sources = await repo.listTenderSources(organizationId, tenderId);
+    return c.json({ sources });
   });
 
   // Fuerza un recálculo del snapshot actual (bases + requisitos vigentes)

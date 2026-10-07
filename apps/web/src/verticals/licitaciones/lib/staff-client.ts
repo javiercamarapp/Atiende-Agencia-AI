@@ -58,6 +58,12 @@ export async function revokeStaffInvite(fetchImpl: typeof fetch, apiBaseUrl: str
   await deleteJson<{ ok: true }>(fetchImpl, `${apiBaseUrl}/v1/licitaciones/${propertyId}/admin/staff/invitaciones/${inviteId}`, token);
 }
 
+/** Baja de un staff YA aceptado (L-P3-16). `admin-staff.ts::DELETE miembros/:userId` bloquea la auto-baja (400), la baja de alguien con mas alcance (403),
+ * al ultimo owner (409) y responde 503 si la funcion de baja aun no existe en la base: errores reales, nunca un exito fingido. */
+export async function removeStaffMember(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, userId: string): Promise<void> {
+  await deleteJson<{ ok: true }>(fetchImpl, `${apiBaseUrl}/v1/licitaciones/${propertyId}/admin/staff/miembros/${userId}`, token);
+}
+
 /** `OrgMember` SÍ trae `verticalRole` -- es el dato que la tabla "Staff activo"
  * necesita mostrar/editar. */
 export interface OrgMember {

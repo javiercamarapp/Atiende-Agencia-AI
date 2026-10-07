@@ -15,6 +15,7 @@ import { licitacionesGoNoGoRoutes } from "./goNoGo.ts";
 import { licitacionesSourcesRoutes } from "./sources.ts";
 import { licitacionesDiscoverRoutes } from "./discover.ts";
 import { licitacionesTenderVersionsRoutes } from "./tenderVersions.ts";
+import { licitacionesExpedientesRoutes } from "./expedientes.ts";
 import { licitacionesContractRoutes } from "./contracts.ts";
 import { licitacionesContractDocumentsRoutes } from "./contractDocuments.ts";
 import { licitacionesContractBillingRoutes } from "./contractBilling.ts";
@@ -48,6 +49,8 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // versiones de convocatoria + diff + cascada de invalidación (REQ-017/041/151..155).
   app.route("/", licitacionesSourcesRoutes(deps));
   app.route("/", licitacionesTenderVersionsRoutes(deps));
+  // paridad3 L-P3-16 — bandeja de expedientes (solo lectura).
+  app.route("/", licitacionesExpedientesRoutes(deps));
   // Fase 8 — ingesta automática real (compras_mx_historico) + recordatorios de plazo.
   app.route("/", licitacionesDiscoverRoutes(deps));
   // Fase 6 — seguimiento post-adjudicación (REQ-051..055): máquina de

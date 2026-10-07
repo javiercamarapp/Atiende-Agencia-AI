@@ -125,6 +125,8 @@ export const Errors = {
   staffRemovalAutoBaja: () => new ApiError(400, "staff_removal_auto_baja", "No puedes darte de baja a ti mismo."),
   staffRemovalSinOwner: () =>
     new ApiError(400, "staff_removal_sin_owner", "No puedes dejar la organización sin ningún owner."),
+  // paridad3 L-P3-16 (licitaciones): quitar al ultimo owner es un conflicto de estado (409), a diferencia del 400 de restaurantes/rentas.
+  staffRemovalUltimoOwner: () => new ApiError(409, "staff_removal_ultimo_owner", "No puedes quitar al último owner de la organización."),
   // ---- hoteles (motor de revenue management, Fase 9 -- REQ-REV-003/004/005/007) ----
   // El trigger real de Postgres (`revenue_engine_gate_transition_guard`) sigue siendo
   // la autoridad; esto solo traduce el mismo rechazo que `evaluateGateTransition`

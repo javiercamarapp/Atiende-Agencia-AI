@@ -8,8 +8,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelPage } from "../src/verticals/licitaciones/pages/Panel.tsx";
 import type { LicitacionesShellContext } from "../src/verticals/licitaciones/LicitacionesShell.tsx";
-import { cierranEnVentana, convocatoriasAbiertas, corridaKyc, corridaSeguimiento, fechaMasReciente, saludoEnZona, ultimaCorridaPorFuente, zonaEfectiva } from "../src/verticals/licitaciones/lib/resumen.ts";
-import type { TenderSummary } from "../src/verticals/licitaciones/lib/tenders-client.ts";
+import { corridaKyc, corridaSeguimiento, fechaMasReciente, saludoEnZona, ultimaCorridaPorFuente, zonaEfectiva } from "../src/verticals/licitaciones/lib/resumen.ts";
 import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
@@ -51,8 +50,6 @@ function mount(ctx: LicitacionesShellContext = CTX) {
   );
 }
 
-const hours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
-const tender = (id: string, status: string, deadline: string | null) => ({ id, title: `Conv ${id}`, submissionDeadline: deadline, status, contractingBody: "IMSS" });
 const texto = () => rendered?.container.textContent ?? "";
 /** Tarjeta enlazada (KPI o tile) por parte de su texto. */
 const enlace = (parte: string) => [...rendered!.container.querySelectorAll("a")].find((a) => a.textContent?.includes(parte));
@@ -67,7 +64,8 @@ const CORRIDAS = [
 ];
 
 const COMPLETAS: Routes = {
-  "GET /tenders": () => ({ body: { tenders: [tender("a", "go", hours(48)), tender("b", "won", hours(24)), tender("c", "discovered", null), tender("d", "in_progress", hours(24 * 30))] } }),
+  // Conteos que calcula el servidor sobre TODA la organizacion (4 convocatorias: go, won, discovered, in_progress; la ganada no cuenta como abierta).
+  "GET /tenders/summary?windowDays=7": () => ({ body: { total: 4, open: 3, closingSoon: 1, windowDays: 7, byStatus: { go: 1, won: 1, discovered: 1, in_progress: 1 } } }),
   "GET /sources/freshness": () => ({ body: { freshness: [{ source: "compranet", stale: true }, { source: "manual", stale: false }] } }),
   "GET /sources": () => ({ body: { connectors: CONECTORES } }),
   "GET /sources/runs?limit=50": () => ({ body: { runs: CORRIDAS } }),
@@ -152,8 +150,19 @@ describe("Resumen de licitaciones (PanelPage)", () => {
     expect(enlace("Recordatorios de plazo")?.textContent).toContain("1");
   });
 
+  it("las cifras son las del servidor sobre TODA la organizacion: 251 abiertas se ven como 251, no como 50", async () => {
+    const fetchMock = stubFetch({ ...COMPLETAS, "GET /tenders/summary?windowDays=7": () => ({ body: { total: 300, open: 251, closingSoon: 12, windowDays: 7, byStatus: { in_progress: 77, won: 49 } } }) });
+    mount();
+    await settle();
+    expect(texto()).toContain("251 convocatorias abiertas");
+    expect(enlace("Cierran en 7 días")?.textContent).toContain("12");
+    expect(enlace("Propuestas en preparación")?.textContent).toContain("77");
+    // Ya no baja el listado completo (la primera pagina de 50 filas mentia): solo pide los conteos.
+    expect(fetchMock.mock.calls.some(([u]) => u === "https://api.test/licitaciones/prop-1/tenders")).toBe(false);
+  });
+
   it("sin convocatorias legibles: odómetro y subtítulo dicen 'no disponible', no 0", async () => {
-    stubFetch({ ...COMPLETAS, "GET /tenders": () => ({ ok: false, body: {} }) });
+    stubFetch({ ...COMPLETAS, "GET /tenders/summary?windowDays=7": () => ({ ok: false, body: {} }) });
     mount();
     await settle();
     expect(texto()).toContain("convocatorias no disponibles");
@@ -273,23 +282,6 @@ describe("Resumen de licitaciones: ultima corrida de KYC 69-B y de seguimiento (
 });
 
 describe("helpers del Resumen de licitaciones", () => {
-  const t = (id: string, status: TenderSummary["status"], deadline: string | null) => ({ id, status, submissionDeadline: deadline }) as TenderSummary;
-
-  it("convocatorias abiertas excluye ganadas, perdidas, canceladas y no-go; la ventana de 7 días excluye pasadas y lejanas", () => {
-    const ahora = Date.parse("2026-10-03T12:00:00Z");
-    const todas = [t("1", "go", "2026-10-05T00:00:00Z"), t("2", "no_go", "2026-10-05T00:00:00Z"), t("3", "won", null), t("4", "lost", null), t("5", "cancelled", null), t("6", "in_review", "2026-10-02T00:00:00Z"), t("7", "discovered", "2026-11-01T00:00:00Z")];
-    const abiertas = convocatoriasAbiertas(todas);
-    expect(abiertas.map((x) => x.id)).toEqual(["1", "6", "7"]);
-    expect(cierranEnVentana(abiertas, ahora).map((x) => x.id)).toEqual(["1"]);
-  });
-
-  it("'cierran en 7 días' no cuenta propuestas ya presentadas (submitted)", () => {
-    const ahora = Date.parse("2026-10-03T12:00:00Z");
-    const abiertas = convocatoriasAbiertas([t("1", "submitted", "2026-10-05T00:00:00Z"), t("2", "in_progress", "2026-10-05T00:00:00Z")]);
-    expect(abiertas.map((x) => x.id)).toEqual(["1", "2"]); // siguen abiertas (sin resultado)...
-    expect(cierranEnVentana(abiertas, ahora).map((x) => x.id)).toEqual(["2"]); // ...pero su plazo ya no pide accion
-  });
-
   it("zonaEfectiva: configurada válida, null, vacía o inválida", () => {
     expect(zonaEfectiva("America/Tijuana")).toBe("America/Tijuana");
     expect(zonaEfectiva(null)).toBe("America/Mexico_City");

@@ -270,6 +270,15 @@ export type {
   LicitacionesTenantConfigPatch,
 } from "./repository.ts";
 export { InMemoryLicitacionesRepository } from "./in-memory-repository.ts";
+export {
+  TENDER_CLOSED_STATUSES,
+  TENDER_IDS_MAX,
+  escapeLikePattern,
+  matchesTenderFilter,
+  compareTendersForList,
+  summarizeTenderRecords,
+} from "./tender-list-filter.ts";
+export type { TenderListFilter, TenderPageOptions, TenderSummaryCounts } from "./tender-list-filter.ts";
 export { PostgresLicitacionesRepository, dateColumnToExplicitOffsetIso } from "./postgres-repository.ts";
 
 // ---- Fase 5 pieza 1: andamiaje de ingesta (REQ-004/005/146..150) ----
@@ -425,6 +434,7 @@ export type { AlertEmailEnqueueResult } from "./alert-notifications.ts";
 
 // "Chatea con tus datos": catalogo cerrado de herramientas de solo lectura (ver docs/DATA-CHAT.md).
 export * from "./data-chat/index.ts";
+export * from "./cross-source-fingerprint.ts";
 
 // ---- L-05: WhatsApp (avisos de plazos/convocatorias/fallos y decision go/no-go por boton) ----
 export {

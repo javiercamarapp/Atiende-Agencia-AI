@@ -33,6 +33,7 @@ import { fetchTenderResolutions, resolveTender } from "../lib/resolution-client.
 import type { TenderResolutionRecord, TenderResolutionValue } from "../lib/resolution-client.ts";
 import { formatComplianceResult, formatDate, formatDeadline, formatEligibility, formatMoney, formatTenderStatus } from "../lib/format.ts";
 import { BitacoraConvocatoria } from "../components/BitacoraConvocatoria.tsx";
+import { VersionesConvocatoria } from "../components/VersionesConvocatoria.tsx";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 const GO_NO_GO_ROLES = new Set(["owner", "admin", "analyst", "reviewer"]);
@@ -217,6 +218,7 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
           <TabsTrigger value="go-no-go">Go / No-go</TabsTrigger>
           <TabsTrigger value="resolucion">Resolución</TabsTrigger>
           {checklist && <TabsTrigger value="checklist">Checklist</TabsTrigger>}
+          <TabsTrigger value="versiones">Versiones</TabsTrigger>
           <TabsTrigger value="bitacora">Bitácora</TabsTrigger>
         </TabsList>
 
@@ -412,6 +414,10 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
             </Card>
           </TabsContent>
         )}
+
+        <TabsContent value="versiones">
+          {tenderId && <VersionesConvocatoria apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} tenderId={tenderId} />}
+        </TabsContent>
 
         <TabsContent value="bitacora">
           <BitacoraConvocatoria apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} tenderId={tenderId} />

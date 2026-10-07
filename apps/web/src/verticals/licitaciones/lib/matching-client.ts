@@ -32,8 +32,20 @@ export interface MatchResult {
   readonly eligibility: EligibilityResult;
 }
 
-export async function fetchMatchingList(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<readonly MatchResult[]> {
-  const body = await fetchJson<{ results: readonly MatchResult[] }>(fetchImpl, `${apiBaseUrl}/licitaciones/${propertyId}/tenders/matching`, token);
+/** Puntaje de las convocatorias pedidas (`ids`) o de una pagina de las de plazo vigente. El servidor lo acota (techo 200): pasa `ids` de la pagina que se pinta. */
+export async function fetchMatchingList(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  opts: { readonly ids?: readonly string[]; readonly limit?: number; readonly offset?: number } = {},
+): Promise<readonly MatchResult[]> {
+  const params = new URLSearchParams();
+  if (opts.ids && opts.ids.length > 0) params.set("ids", opts.ids.join(","));
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.offset !== undefined) params.set("offset", String(opts.offset));
+  const qs = params.toString();
+  const body = await fetchJson<{ results: readonly MatchResult[] }>(fetchImpl, `${apiBaseUrl}/licitaciones/${propertyId}/tenders/matching${qs ? `?${qs}` : ""}`, token);
   return body.results;
 }
 

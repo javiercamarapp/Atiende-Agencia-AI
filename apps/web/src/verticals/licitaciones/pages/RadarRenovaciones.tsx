@@ -37,7 +37,7 @@ import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Chec
 import { acknowledgeRenewalAlert, fetchRenewalAlerts, scanRenewalAlerts } from "../lib/renewal-radar-client.ts";
 import { ALERTA_RENOVACION_TONES, URGENCIA_RENOVACION_TONES } from "../lib/status-tones.ts";
 import type { RenewalAlertRecord, ScanRenewalAlertsResult } from "../lib/renewal-radar-client.ts";
-import { fetchTenders } from "../lib/tenders-client.ts";
+import { fetchTendersByIds } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { hoyFechaSolo, parseFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
@@ -117,9 +117,11 @@ export function RadarRenovacionesPage({ apiBaseUrl, token, propertyId, orgSlug, 
     setLoading(true);
     setError(null);
     try {
-      const [alertList, tenderList] = await Promise.all([fetchRenewalAlerts(fetch, apiBaseUrl, token, propertyId), fetchTenders(fetch, apiBaseUrl, token, propertyId)]);
+      const alertList = await fetchRenewalAlerts(fetch, apiBaseUrl, token, propertyId);
       setAlerts(alertList);
-      setTenders(tenderList);
+      // Solo las convocatorias de las alertas (por id), no "todas": el titulo y la entidad no se pierden al pasar de 50.
+      const ids = alertList.map((a) => a.tenderId);
+      setTenders(ids.length > 0 ? await fetchTendersByIds(fetch, apiBaseUrl, token, propertyId, ids).catch(() => []) : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudieron cargar las alertas de renovación.");
     } finally {

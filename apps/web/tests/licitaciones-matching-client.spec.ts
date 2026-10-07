@@ -19,6 +19,18 @@ describe("fetchMatchingList", () => {
   });
 });
 
+describe("fetchMatchingList acotado (paridad3)", () => {
+  it("manda ids/limit/offset para puntuar solo la pagina visible", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      const u = new URL(url);
+      expect(u.pathname).toBe("/licitaciones/prop-1/tenders/matching");
+      expect(Object.fromEntries(u.searchParams)).toEqual({ ids: "t1,t2", limit: "2", offset: "0" });
+      return new Response(JSON.stringify({ results: [MATCH_RESULT] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await fetchMatchingList(fetchImpl, "http://api.local", "tok", "prop-1", { ids: ["t1", "t2"], limit: 2, offset: 0 });
+  });
+});
+
 describe("fetchMatchingDetail", () => {
   it("pide GET .../tenders/:tenderId/matching y devuelve el MatchResult", async () => {
     const fetchImpl = vi.fn(async (url: string) => {

@@ -69,6 +69,8 @@ export interface DiscoverTendersSourceResult {
   readonly discovered: number;
   readonly created: number;
   readonly updated: number;
+  /** Registros enlazados a una convocatoria que ya existia por otra fuente (huella cruzada, 037). */
+  readonly linked?: number;
   readonly droppedRows: number;
   readonly message: string;
 }
@@ -121,14 +123,18 @@ export async function runDiscoverTendersForOrganization(
 
       const { ingest: ingestResult, runNotPersistedReason } = await withRepo(async (repo) => {
         const ingest = await repo.ingestTendersFromSource(organizationId, descriptor.id, candidates);
+        // REQ-169: con la huella cruzada (037) un registro ya conocido por otra fuente queda ENLAZADO, no creado ni actualizado;
+        // sigue siendo un resultado obtenido de esta fuente, asi que cuenta en la cobertura y en el mensaje.
+        const linked = ingest.linked ?? 0;
+        const linkedText = linked > 0 ? `, ${linked} enlazada(s) a otra fuente` : "";
         const run = await repo.recordSourceRun(organizationId, {
           source: descriptor.id,
           state: "ok",
           startedAt,
           finishedAt: now().toISOString(),
           evidence: {
-            message: `Ingesta automática: ${ingest.created} nueva(s), ${ingest.updated} actualizada(s)${droppedCount > 0 ? `, ${droppedCount} fila(s) descartada(s)` : ""}.`,
-            coverage: { expected: candidates.length, obtained: ingest.created + ingest.updated },
+            message: `Ingesta automática: ${ingest.created} nueva(s), ${ingest.updated} actualizada(s)${linkedText}${droppedCount > 0 ? `, ${droppedCount} fila(s) descartada(s)` : ""}.`,
+            coverage: { expected: candidates.length, obtained: ingest.created + ingest.updated + linked },
           },
           correlationId: null,
         });
@@ -148,7 +154,8 @@ export async function runDiscoverTendersForOrganization(
         created: ingestResult.created,
         updated: ingestResult.updated,
         droppedRows: droppedCount,
-        message: `${ingestResult.created} nueva(s), ${ingestResult.updated} actualizada(s).${runNotPersistedReason !== undefined ? ` [AVISO: ${runNotPersistedReason}]` : ""}`,
+        linked: ingestResult.linked ?? 0,
+        message: `${ingestResult.created} nueva(s), ${ingestResult.updated} actualizada(s)${(ingestResult.linked ?? 0) > 0 ? `, ${ingestResult.linked} enlazada(s) a otra fuente` : ""}.${runNotPersistedReason !== undefined ? ` [AVISO: ${runNotPersistedReason}]` : ""}`,
       });
     } catch (err) {
       const { state, message } = classifySourceFailure(err);
