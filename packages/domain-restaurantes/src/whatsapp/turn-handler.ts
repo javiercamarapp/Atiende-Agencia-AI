@@ -41,6 +41,9 @@ export interface WhatsAppTurnHandler {
     /** El agente pide la ubicacion del cliente con el boton nativo de WhatsApp (una sola vez por pedido): el webhook encola, ademas del
      * texto, un mensaje interactivo `location_request_message` (dentro de la ventana de 24 h del cliente). */
     readonly pedirUbicacion?: true;
+    /** B03: el turno termino mostrando el resumen de un pedido por confirmar. El webhook lo envia en UN mensaje interactivo con los botones «Confirmar pedido» y
+     * «Cambiar algo» atados a esta cotizacion (huella e instante); el «si» escrito sigue valiendo. Ausente = texto solo, como siempre. */
+    readonly pedirConfirmacion?: { readonly quoteHash: string; readonly quotedAtMs: number };
     /** Solo `preview`: el pedido SIMULADO que devolvio `crear_pedido` (no existe en la base). */
     readonly pedidoSimulado?: unknown;
   }>;
