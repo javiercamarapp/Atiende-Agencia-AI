@@ -90,6 +90,7 @@ describe("R2 'quiero una persona' (WhatsApp y voz comparten PIDE_UNA_PERSONA_RE)
 
   it("control: las formas ya cubiertas siguen detectandose y un pedido normal no", () => {
     for (const t of ["quiero hablar con una persona", "páseme con el gerente", "quiero un humano", "me pasa con alguien"]) expect(pideUnaPersona(t), t).toBe(true);
-    for (const t of ["quiero seis tacos de bistec", "a nombre de Juan Pérez"]) expect(pideUnaPersona(t), t).toBe(false);
+    for (const t of ["quiero seis tacos de bistec", "a nombre de Juan Pérez", "Un paquete para una persona por favor", "quiero nachos para una persona, por favor"]) expect(pideUnaPersona(t), t).toBe(false);
+    for (const t of ["un humano por favor", "una persona, por favor"]) expect(pideUnaPersona(t), t).toBe(true);
   });
 });

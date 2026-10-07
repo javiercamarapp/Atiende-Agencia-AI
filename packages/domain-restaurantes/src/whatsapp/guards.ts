@@ -156,7 +156,7 @@ export const PIDE_UNA_PERSONA_RE = (() => {
       `\\b(?:quiero|necesito|prefiero|busco|quisiera)\\s+(?:hablar\\s+con\\s+)?${det}(?:persona|humano)${fin}`,
       `\\b(?:puede|pueden|podr[ií]a|podr[ií]an|puedes)\\s+(?:atender(?:me)?|ayudar(?:me)?)\\s+${det}${quien}${fin}`,
       // "un humano por favor", "una persona, por favor"
-      `\\b(?:una?)\\s+(?:persona|humano)\\s*,?\\s+por\\s+favor${fin}`,
+      `(?<!\\bpara\\s)\\b(?:una?)\\s+(?:persona|humano)\\s*,?\\s+por\\s+favor${fin}`,
     ].join("|"),
     "i",
   );
