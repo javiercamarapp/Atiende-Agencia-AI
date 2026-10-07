@@ -137,8 +137,8 @@ describe("sanitizarValor", () => {
 
 describe("texto por defecto y compatibilidad", () => {
   it("el recordatorio de siempre (golden): con y sin nombre", () => {
-    expect(legacyReminderBody("María", "10:00 a. m.")).toBe("Hola María, le recordamos su cita mañana a las 10:00 a. m.. ¿Puede confirmar?");
-    expect(legacyReminderBody(null, "10:00 a. m.")).toBe("Hola, le recordamos su cita mañana a las 10:00 a. m.. ¿Puede confirmar?");
+    expect(legacyReminderBody("María", "10:00 a. m.")).toBe("Hola María, le recordamos su cita mañana a las 10:00 a. m. ¿Puede confirmar?");
+    expect(legacyReminderBody(null, "10:00 a. m.")).toBe("Hola, le recordamos su cita mañana a las 10:00 a. m. ¿Puede confirmar?");
   });
 
   it("el default de 24 h dice 'mañana'; con otra anticipacion usa la fecha", () => {

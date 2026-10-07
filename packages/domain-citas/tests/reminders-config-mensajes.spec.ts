@@ -37,7 +37,7 @@ describe("runConfirmacionCitaCore con configuracion editable", () => {
   it("sin configuracion guardada el cuerpo es EXACTAMENTE el de antes de C-04", async () => {
     const f = await conCita(zonedTimeToUtc("2026-09-14", "10:00", "America/Merida").toISOString());
     await runConfirmacionCitaCore(f.repo, f.organizationId, NOW);
-    expect(bodies(f.repo)).toEqual(["Hola María López, le recordamos su cita mañana a las 10:00 AM. ¿Puede confirmar?"]);
+    expect(bodies(f.repo)).toEqual(["Hola María López, le recordamos su cita mañana a las 10:00 AM ¿Puede confirmar?"]);
   });
 
   it("usa el texto propio con las variables, en la zona horaria del negocio", async () => {

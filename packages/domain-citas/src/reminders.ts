@@ -15,7 +15,7 @@ import { eventoRecordatorioFallido } from "./notification-events.ts";
 import type { EventoRecordatorioFallido } from "./notification-events.ts";
 import type { CitasRepository, WaitlistCandidateRow } from "./repository.ts";
 import { appointmentReminderButtons } from "./whatsapp/appointment-button-ids.ts";
-import { MENSAJES_CONFIG_POR_OMISION, ANTICIPACION_POR_OMISION_HORAS, sanitizarValor, dentroDelHorarioDeEnvio, legacyReminderBody, reservaMuyReciente, textoPropio, ventanaDeRecordatorio } from "./whatsapp/message-config.ts";
+import { MENSAJES_CONFIG_POR_OMISION, ANTICIPACION_POR_OMISION_HORAS, sanitizarValor, dentroDelHorarioDeEnvio, diaDelRecordatorio, legacyReminderBody, reservaMuyReciente, textoPropio, ventanaDeRecordatorio } from "./whatsapp/message-config.ts";
 import { armarMensaje, formatearFechaYHora, nuevoCacheValores, resolverValoresCita } from "./whatsapp/message-send.ts";
 
 /** Rate-limit real: nadie recibe más de esto por su entrada en la lista de espera. */
@@ -195,7 +195,7 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
             if (decision.canal === "sin_plantilla") {
               sinPlantillaLocal = true;
             } else {
-              const body = usaTextoDeSiempre ? legacyReminderBody(apt.customerName, formatearFechaYHora(apt.startsAt, timeZone).hora) : armarMensaje(config, "recordatorio", valores);
+              const body = usaTextoDeSiempre ? legacyReminderBody(apt.customerName, formatearFechaYHora(apt.startsAt, timeZone).hora, diaDelRecordatorio(apt.startsAt, now, timeZone)) : armarMensaje(config, "recordatorio", valores);
 
               await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "appointment.reminder_24h", `reminder-24h:${apt.appointmentId}`, {
                 to: apt.customerPhone,
