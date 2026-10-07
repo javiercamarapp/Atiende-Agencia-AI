@@ -53,6 +53,10 @@ export interface DocumentoAuto {
   /** Sin datos de los que generar nada (la pantalla dice por que). */
   readonly vacio: boolean;
   readonly motivoVacio: string | null;
+  /** Version COMPACTA para el prompt de voz (tope de caracteres); si no existe, el prompt usa `contenido`. El panel muestra `contenido`. */
+  readonly contenidoPrompt?: string;
+  /** `true` = el documento pasaba del maximo y se recorto por renglones (el final lo declara); nunca se corta a medias sin avisar. */
+  readonly truncado?: boolean;
 }
 
 export interface AlertaColonia {
@@ -105,11 +109,28 @@ const TEXTO_PROPINA: Readonly<Record<PropinaPolitica, string>> = {
   solo_tarjeta: "la propina solo se agrega en pagos con tarjeta",
 };
 
-function envolver(tipo: TipoDocumentoAuto, titulo: string, lineas: readonly string[], motivoVacio: string): DocumentoAuto {
+function envolver(tipo: TipoDocumentoAuto, titulo: string, lineas: readonly string[], motivoVacio: string, contenidoPrompt?: string): DocumentoAuto {
   if (lineas.length === 0) return { tipo, titulo, contenido: "", caracteres: 0, huella: sha(""), vacio: true, motivoVacio };
   let contenido = lineas.join("\n");
-  if (contenido.length > MAX_DOC_CARACTERES) contenido = `${contenido.slice(0, MAX_DOC_CARACTERES - 1).trimEnd()}…`;
-  return { tipo, titulo, contenido, caracteres: contenido.length, huella: sha(contenido), vacio: false, motivoVacio: null };
+  let truncado = false;
+  if (contenido.length > MAX_DOC_CARACTERES) {
+    // Se recorta por renglones completos y se DECLARA cuantos faltan (antes cortaba a media linea sin avisar).
+    truncado = true;
+    const conservadas: string[] = [];
+    let usados = 0;
+    for (const l of lineas) {
+      if (usados + l.length + 1 > MAX_DOC_CARACTERES - 90) break;
+      conservadas.push(l);
+      usados += l.length + 1;
+    }
+    contenido = `${conservadas.join("\n")}\n… (recortado por tamaño: faltan ${lineas.length - conservadas.length} renglones; la lista completa se consulta en vivo)`;
+  }
+  const huella = sha(contenidoPrompt === undefined ? contenido : `${contenido}\n--prompt--\n${contenidoPrompt}`);
+  return {
+    tipo, titulo, contenido, caracteres: contenido.length, huella, vacio: false, motivoVacio: null,
+    ...(contenidoPrompt === undefined ? {} : { contenidoPrompt }),
+    ...(truncado ? { truncado: true } : {}),
+  };
 }
 
 function docSucursales(d: DatosConocimiento): DocumentoAuto {
@@ -142,26 +163,41 @@ interface Asignacion {
   readonly segunda: OpcionSucursal | null;
   /** De donde sale la sucursal sugerida: calculo con coordenadas propias o referencia del piloto (migracion 056). */
   readonly origenKm: "calculada" | "piloto" | null;
-  /** Sucursales ACTIVAS que cubren la colonia hoy; `null` = no se leyo la cobertura. */
+  /** Sucursales que REPARTEN y cubren la colonia hoy (cobertura explicita); `null` = no se leyo, o la colonia tiene coordenadas y se atiende por km (no se dice nada de reparto). */
   readonly cubre: readonly string[] | null;
 }
 
+/** Sucursal que hoy puede repartir a domicilio: activa y que no es "solo recoger" (decision 7-oct: la mas cercana entre las que REPARTEN). */
+const reparte = (s: SucursalConocimiento): boolean => s.branch.status === "active" && s.politica.aceptaDomicilio !== false;
+
+/**
+ * Cobertura de una colonia, con la MISMA regla que `assignBranch`: la cobertura explicita (`branch_delivery_zone`) de las sucursales que reparten; una colonia
+ * CON coordenadas y sin cobertura explicita se atiende por km puros (la mas cercana que reparte), asi que no esta "por confirmar".
+ * `explicita` = nombres de las que la cubren; `null` = no se leyo la cobertura.
+ */
+function coberturaDeZona(d: DatosConocimiento, z: KnownZone): { readonly explicita: readonly string[] | null; readonly porKm: boolean } {
+  const repartidoras = d.sucursales.filter(reparte);
+  const leida = repartidoras.length > 0 && repartidoras.every((s) => s.zonaIdsReparto !== undefined);
+  const explicita = leida
+    ? repartidoras
+        .filter((s) => (s.zonaIdsReparto as readonly string[]).includes(z.id))
+        .map((s) => limpio(s.branch.name, 120))
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    : null;
+  const porKm = z.lat !== null && z.lng !== null && repartidoras.some((s) => s.branch.lat !== null && s.branch.lng !== null) && (explicita === null || explicita.length === 0);
+  return { explicita, porKm };
+}
+
 function asignarColonias(d: DatosConocimiento): { readonly asignaciones: readonly Asignacion[]; readonly sinSucursal: number } {
-  const activas = d.sucursales.filter((s) => s.branch.status === "active");
+  const activas = d.sucursales.filter(reparte);
   const candidatas = activas.filter((s) => s.branch.lat !== null && s.branch.lng !== null);
   const referencias = new Map((d.referencias ?? []).map((r) => [r.zoneId, r] as const));
   const porSlug = new Map(activas.map((s) => [s.branch.slug, s] as const));
-  // La cobertura solo se afirma si se leyo para TODAS las sucursales activas; si no, el documento no dice nada de reparto.
-  const coberturaLeida = activas.length > 0 && activas.every((s) => s.zonaIdsReparto !== undefined);
   const asignaciones: Asignacion[] = [];
   let sinSucursal = 0;
   for (const z of d.zonas) {
-    const cubre = coberturaLeida
-      ? activas
-          .filter((s) => (s.zonaIdsReparto as readonly string[]).includes(z.id))
-          .map((s) => limpio(s.branch.name, 120))
-          .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-      : null;
+    const { explicita, porKm } = coberturaDeZona(d, z);
+    const cubre = porKm ? null : explicita;
     let mas: OpcionSucursal | null = null;
     let segunda: OpcionSucursal | null = null;
     let origenKm: Asignacion["origenKm"] = null;
@@ -207,6 +243,25 @@ const conKm = (o: OpcionSucursal, origen: Asignacion["origenKm"]): string => {
 };
 const textoReparto = (cubre: readonly string[] | null): string => (cubre === null ? "" : cubre.length > 0 ? ` Reparto: cubre ${cubre.join(" y ")}.` : " Reparto por confirmar.");
 
+/**
+ * Version COMPACTA para el prompt de voz (tope de 6,000 caracteres): una linea por sucursal sugerida con sus colonias, `*` en las ambiguas (menos de 1 km entre la
+ * 1.a y la 2.a) y una linea final de reglas. El detalle (km, 2.a opcion, reparto) queda en el documento largo del panel y en la herramienta buscar_sucursal_cercana.
+ */
+function compactoParaPrompt(asignaciones: readonly Asignacion[]): string | undefined {
+  const porSucursal = new Map<string, string[]>();
+  for (const a of asignaciones) {
+    if (!a.mas) continue;
+    const ambigua = a.segunda !== null && a.mas.km !== null && a.segunda.km !== null && a.segunda.km - a.mas.km < UMBRAL_COLONIA_AMBIGUA_KM;
+    porSucursal.set(a.mas.nombre, [...(porSucursal.get(a.mas.nombre) ?? []), `${a.colonia}${ambigua ? "*" : ""}`]);
+  }
+  if (porSucursal.size === 0) return undefined;
+  const lineas = [...porSucursal.entries()]
+    .sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0))
+    .map(([sucursal, colonias]) => `${sucursal}: ${colonias.join(", ")}`);
+  lineas.push("Si la colonia no está en la lista, usa buscar_sucursal_cercana. * = ambigua (menos de 1 km entre las 2 más cercanas): confirma con el cliente. Es cercanía, no promete reparto.");
+  return lineas.join("\n");
+}
+
 function docColonias(
   asignaciones: readonly Asignacion[],
   sinSucursal: number,
@@ -230,7 +285,7 @@ function docColonias(
       : hayReferencias
         ? "Hay colonias, pero ninguna tiene coordenadas con sucursales activas con coordenadas ni referencia del piloto hacia una sucursal activa."
         : "Hay colonias, pero ninguna sucursal activa tiene coordenadas.";
-  return { doc: envolver("colonias_sucursal", "Colonia → sucursal más cercana", lineas, motivo), alertas };
+  return { doc: envolver("colonias_sucursal", "Colonia → sucursal más cercana", lineas, motivo, compactoParaPrompt(asignaciones)), alertas };
 }
 
 function docFaq(d: DatosConocimiento): DocumentoAuto {
@@ -272,15 +327,17 @@ function docFaq(d: DatosConocimiento): DocumentoAuto {
     lineas.push(`R: ${conPropina.map((s) => `${limpio(s.branch.name, 120)}: ${TEXTO_PROPINA[s.politica.propinaPolitica as PropinaPolitica]}`).join(" | ")}.`);
   }
   if (d.zonas.length > 0) {
-    const activasFaq = d.sucursales.filter((x) => x.branch.status === "active");
-    const coberturaLeida = activasFaq.length > 0 && activasFaq.every((x) => x.zonaIdsReparto !== undefined);
-    const cubiertas = new Set(coberturaLeida ? activasFaq.flatMap((x) => x.zonaIdsReparto as readonly string[]) : []);
+    const coberturaLeida = d.sucursales.filter(reparte).length > 0 && d.sucursales.filter(reparte).every((x) => x.zonaIdsReparto !== undefined);
+    const conRepartoIds = new Set(d.zonas.filter((z) => {
+      const c = coberturaDeZona(d, z);
+      return (c.explicita !== null && c.explicita.length > 0) || c.porKm;
+    }).map((z) => z.id));
     const limpias = d.zonas.map((z) => ({ id: z.id, nombre: limpio(z.name, 80) })).filter((z) => z.nombre !== "");
     const porNombre = (a: { nombre: string }, b: { nombre: string }): number => a.nombre.localeCompare(b.nombre, "es");
     lineas.push("P: ¿Entregan en mi colonia?");
     if (coberturaLeida) {
       // Se separan las colonias con reparto confirmado (alguna sucursal ACTIVA las cubre hoy) de las que quedan por confirmar; solo las primeras se nombran.
-      const conReparto = limpias.filter((z) => cubiertas.has(z.id)).sort(porNombre);
+      const conReparto = limpias.filter((z) => conRepartoIds.has(z.id)).sort(porNombre);
       const porConfirmar = limpias.length - conReparto.length;
       const visibles = conReparto.slice(0, 40).map((z) => z.nombre);
       const lista = conReparto.length === 0 ? "" : conReparto.length > visibles.length ? ` (algunas: ${visibles.join(", ")})` : `: ${visibles.join(", ")}`;
@@ -385,7 +442,7 @@ export function bloqueConocimientoParaPrompt(conocimiento: ConocimientoAuto, top
   for (const tipo of PRIORIDAD_PROMPT) {
     const d = porTipo.get(tipo);
     if (!d || d.vacio) continue;
-    const bloque = `\n\n### ${d.titulo}\n${d.contenido}`;
+    const bloque = `\n\n### ${d.titulo}\n${d.contenidoPrompt ?? d.contenido}`;
     if (usados + bloque.length > tope) {
       omitidos.push({ tipo, motivo: `No cabe en el tope de ${tope} caracteres del prompt; el agente lo consulta en vivo con sus herramientas.` });
       continue;
