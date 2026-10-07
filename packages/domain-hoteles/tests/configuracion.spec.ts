@@ -142,23 +142,39 @@ describe("adaptador en memoria: el motor de revenue no pisa un precio fijado a m
     return { repo, rec };
   }
 
-  it("una tarifa sembrada por el catalogo (staff) queda manual: aplicar la recomendacion lanza tarifa_manual_vigente y el precio no cambia", async () => {
+  async function conPrecioManual() {
     const { repo, rec } = await conRecomendacion();
+    const [fila] = await repo.listRatePlans({ propertyId: P, from: "2026-11-01", to: "2026-11-01", roomTypeId: null, limit: 10 });
+    await repo.saveRatePrice({ propertyId: P, organizationId: ORG, actorUserId: ACTOR, rateId: fila!.id, price: 1200, minStay: null });
+    return { repo, rec };
+  }
+
+  it("una tarifa cargada por el alta de rango del panel NO queda manual: el motor aplica la recomendacion", async () => {
+    const { repo, rec } = await conRecomendacion();
+    const [antes] = await repo.listRatePlans({ propertyId: P, from: "2026-11-01", to: "2026-11-01", roomTypeId: null, limit: 10 });
+    expect(antes?.manualPriceAt).toBeNull();
+    const r = await rec("2026-11-01");
+    await repo.applyRateRecommendationAsSystem(r.id);
+    const [fila] = await repo.listRatePlans({ propertyId: P, from: "2026-11-01", to: "2026-11-01", roomTypeId: null, limit: 10 });
+    expect(fila).toMatchObject({ price: 1100, manualPriceAt: null });
+  });
+
+  it("un precio fijado a mano con saveRatePrice bloquea la aplicacion automatica (pendiente): tarifa_manual_vigente y el precio no cambia", async () => {
+    const { repo, rec } = await conPrecioManual();
     const r = await rec("2026-11-01");
     await expect(repo.applyRateRecommendationAsSystem(r.id)).rejects.toThrow(/^tarifa_manual_vigente/);
     const [fila] = await repo.listRatePlans({ propertyId: P, from: "2026-11-01", to: "2026-11-01", roomTypeId: null, limit: 10 });
-    expect(fila?.price).toBe(1000);
+    expect(fila).toMatchObject({ price: 1200 });
+    expect(fila?.manualPriceAt).not.toBeNull();
   });
 
-  it("una fecha sin fila previa (sin precio manual) SI la aplica el motor y no la marca como manual", async () => {
-    const { repo, rec } = await conRecomendacion();
-    await repo.upsertRatePlanRange({ propertyId: P, organizationId: ORG, roomTypeId: RT, startDate: "2026-11-05", endDate: "2026-11-05", price: 1000, currency: "MXN", minStay: 1, closedToArrival: false, closedToDeparture: false });
-    const [antes] = await repo.listRatePlans({ propertyId: P, from: "2026-11-05", to: "2026-11-05", roomTypeId: null, limit: 10 });
-    expect(antes?.manualPriceAt).not.toBeNull(); // lo sembrado por staff si queda marcado
-    const r = await rec("2026-11-07");
+  it("la aprobacion humana explicita (aprobada) se aplica sobre un precio manual y limpia la marca", async () => {
+    const { repo, rec } = await conPrecioManual();
+    const r = await rec("2026-11-01");
+    await repo.approveRateRecommendation(r.id, ACTOR);
     await repo.applyRateRecommendationAsSystem(r.id);
-    const [aplicada] = await repo.listRatePlans({ propertyId: P, from: "2026-11-07", to: "2026-11-07", roomTypeId: null, limit: 10 });
-    expect(aplicada).toMatchObject({ price: 1100, manualPriceAt: null });
+    const [fila] = await repo.listRatePlans({ propertyId: P, from: "2026-11-01", to: "2026-11-01", roomTypeId: null, limit: 10 });
+    expect(fila).toMatchObject({ price: 1100, manualPriceAt: null });
   });
 });
 

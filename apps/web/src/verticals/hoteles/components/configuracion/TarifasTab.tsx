@@ -1,5 +1,5 @@
 // Pestana Tarifas: una fila por noche y tipo de habitacion en el rango elegido; editar el precio llama a `PUT .../tarifas/:id` (owner/gm,
-// con bitacora). Un precio fijado a mano queda marcado "Precio manual" y el motor de revenue no lo sobreescribe ese dia. Cancelar/Escape
+// con bitacora). Un precio fijado a mano queda marcado "Precio manual" y la aplicacion automatica del motor de revenue no lo sobreescribe (una recomendacion aprobada por una persona si). Cancelar/Escape
 // del dialogo solo cierran y nunca escriben. Dar de alta rangos nuevos sigue en Catalogo.
 import { useCallback, useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
@@ -154,7 +154,7 @@ export function TarifasTab({ apiBaseUrl, token, propertyId, puedeEscribir }: Pes
           if (!abierto && !guardando) setEditando(null);
         }}
         titulo={editando ? `Tarifa del ${formatFechaSolo(editando.date)}` : "Tarifa"}
-        subtitulo={editando ? `${editando.roomTypeName}. Un precio fijado a mano no lo sobreescribe el motor de revenue.` : undefined}
+        subtitulo={editando ? `${editando.roomTypeName}. Un precio fijado a mano no lo sobreescribe la aplicación automática del motor de revenue.` : undefined}
         anchoClase="max-w-2xl"
         anchoRiel="200px"
         onGuardar={() => void guardar()}
