@@ -42,6 +42,7 @@ import { afirmaHaberAvisado, branchAlreadyKnown, classifyHighRiskIntentInMessage
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
+import { contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
 import { emitirSeguro, telefonoHashSeguro } from "./observabilidad-turno.ts";
 import type { ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
 
@@ -481,8 +482,10 @@ export function ventanaDeHistorial(messages: readonly ConversationMessage[]): re
   return inicio === 0 ? messages : messages.slice(inicio);
 }
 
+/** Historial para el modelo. Los toques a los botones del resumen se leen como nota (nunca se le muestra el id): «Cambiar algo» siempre; «Confirmar pedido»
+ * solo se vuelve un «si» explicito despues de comprobar que el resumen sigue vigente (ver `confirmarVigente` y el turno). */
 function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
-  return ventanaDeHistorial(messages).map((m) => (m.role === "user" ? { role: "user" as const, content: m.content } : { role: "assistant" as const, content: m.content }));
+  return ventanaDeHistorial(messages).map((m) => (m.role === "user" ? { role: "user" as const, content: contenidoParaElModelo(m.content, { esElUltimo: false, confirmarVigente: false }) } : { role: "assistant" as const, content: m.content }));
 }
 
 /** 30 s de funcion menos el margen de cierre menos ~6 s para la ultima llamada al LLM que arranque antes del tope. */
@@ -564,11 +567,16 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // §5: pin con el boton nativo de WhatsApp. Se pide una sola vez por pedido (contador `ubicacion_solicitada`, se reinicia al crear el pedido)
       // y solo si el cliente aun no compartio su ubicacion y el turno no termino en una escalacion.
       let pedirUbicacionEnTurno = false;
-      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedirUbicacion?: true; readonly pedidoSimulado?: unknown } => ({
+      // B03: el turno termino mostrando el resumen de un pedido por confirmar (el webhook lo manda con los botones «Confirmar pedido» / «Cambiar algo»).
+      let pedirConfirmacionEnTurno: { readonly quoteHash: string; readonly quotedAtMs: number } | null = null;
+      // Huella de la ultima cotizacion EXITOSA de este turno (cotizar_pedido / repetir_pedido).
+      let cotizacionDelTurno: string | null = null;
+      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedirUbicacion?: true; readonly pedirConfirmacion?: { readonly quoteHash: string; readonly quotedAtMs: number }; readonly pedidoSimulado?: unknown } => ({
         ...r,
         ...(escalarMotivo ? { escalacion: { motivo: escalarMotivo } } : {}),
         ...(pedidoSimulado !== undefined ? { pedidoSimulado } : {}),
         ...(pedirUbicacionEnTurno && !escalarMotivo ? { pedirUbicacion: true as const } : {}),
+        ...(pedirConfirmacionEnTurno && !escalarMotivo ? { pedirConfirmacion: pedirConfirmacionEnTurno } : {}),
       });
       // Contadores deterministas (§3): "no entiendo" y "colonia no reconocida" seguidos. Cuenta el SERVIDOR entre turnos (migracion 047); sin donde
       // contar (base sin migrar) se cuenta solo dentro del turno. Al llegar al umbral escala por su cuenta con un texto fijo.
@@ -633,10 +641,24 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
       // La cotizacion vigente vive en la maquina de estados del servidor (no en una variable del turno): un turno posterior
       // sin herramientas ("¿cuanto era?") sigue corrigiendo un total alucinado. Base sin migrar -> null: solo el turno que cotiza.
-      const flowVigente = (await repo.readOrderFlow(organizationId, `wa:${phone}`))?.context ?? null;
+      const flowSnapshot = await repo.readOrderFlow(organizationId, `wa:${phone}`);
+      const flowVigente = flowSnapshot?.context ?? null;
       if (flowVigente && typeof flowVigente.quotedTotal === "number" && Number.isFinite(flowVigente.quotedTotal)) {
         lastQuoteTotal = flowVigente.quotedTotal;
         lastQuoteAmounts = flowVigente.quotedAmounts;
+      }
+
+      // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
+      // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
+      // (confirmar_resumen -> crear_pedido) y el servidor revalida precio, zona, horario y pedido grande.
+      const ultimoDelCliente = pendientes.at(-1);
+      const toqueUltimo = ultimoDelCliente ? toqueDeMensaje(ultimoDelCliente.content) : null;
+      if (ultimoDelCliente && toqueUltimo?.accion === "confirmar") {
+        const vigencia = vigenciaDelToque(flowSnapshot, toqueUltimo, Date.now());
+        const fija = respuestaDeToqueQueNoSigue(vigencia);
+        if (fija) return done({ reply: fija, orderId: null, propertyId });
+        const ultimoEnHistorial = working.findLastIndex((m) => m.role === "user");
+        if (ultimoEnHistorial >= 0) working[ultimoEnHistorial] = { role: "user", content: contenidoParaElModelo(ultimoDelCliente.content, { esElUltimo: true, confirmarVigente: true }) };
       }
 
       // Modo sin IA (interruptor de plataforma, tope de gasto agotado, proveedor caido o turno sin tiempo): si NO hay pedido creado, "problema
@@ -731,7 +753,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               tele.motivoEscalacion = "otro";
             }
           }
-          return done({ reply: safeReply(respuesta), orderId, propertyId });
+          const replyFinal = safeReply(respuesta);
+          // B03: resumen por confirmar (cotizacion de ESTE turno, aun sin pedido): el webhook agrega los botones. Si no se puede comprobar la cotizacion vigente en el
+          // servidor (base sin la maquina de estados) o no hay resumen con total, el cliente recibe el texto de siempre y contesta «si».
+          if (perfil === "taqueria_pm" && !preview && !orderId && !escalarMotivo && cotizacionDelTurno && pareceResumenParaConfirmar(replyFinal)) {
+            const vigente = await repo.readOrderFlow(organizationId, `wa:${phone}`);
+            if (vigente?.state === "cotizado" && vigente.context?.quoteHash === cotizacionDelTurno) pedirConfirmacionEnTurno = { quoteHash: vigente.context.quoteHash, quotedAtMs: vigente.context.quotedAtMs };
+          }
+          return done({ reply: replyFinal, orderId, propertyId });
         }
 
         working.push({ role: "assistant", content: completion.text ?? "", toolCalls });
@@ -753,6 +782,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             anyToolCalled = true;
+            if ((call.name === "cotizar_pedido" || call.name === "repetir_pedido") && !isToolErrorResult(result) && executed.quoteHash) cotizacionDelTurno = executed.quoteHash;
             if (call.name === "cotizar_pedido" && !isToolErrorResult(result)) {
               const q = (result as { quote?: { promocion_aplicada?: unknown; promociones_sugeridas?: readonly unknown[] } } | null)?.quote;
               lastQuoteRespaldaCortesia = q?.promocion_aplicada != null || (q?.promociones_sugeridas?.length ?? 0) > 0;
