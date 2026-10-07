@@ -51,3 +51,19 @@ El SAT tiene limites de frecuencia **no documentados** y la salida de red desde 
 (`decidirEscalamiento`). Emite `despachos.fiscal.vencimiento_proximo` / `_vencido` con dedupe diario por property. Una
 transaccion por cliente; idempotente. NO encola correo de escalamiento (solo avisos in-app): el correo sigue saliendo del
 boton del panel. Cron diario `/internal/despachos/vencimientos-barrido`.
+
+## piloto-cierre-cliente.ts (paridad3 D-31 + D-P3-15, documentos al cliente y cierre en piloto automatico)
+
+Paso del cron diario `/internal/despachos/vencimientos-barrido` (no hay un cron aparte: `vercel.json` esta en el tope de 40 crons del plan Pro).
+`runPilotoCierreClienteSweep(withUnidad, { hoy, appBaseUrl })` hace, cada uno en su propia transaccion de sistema por unidad (cliente, solicitud, periodo):
+
+1. **Solicitudes**: por cliente con ficha al que ya le toca (su dia, por omision el 1) crea la solicitud de documentos del mes anterior (idempotente por cliente y
+   periodo), con la plantilla del cliente (estados de cuenta por cuenta, XML emitidos/recibidos, nomina, otros), y manda el aviso por correo al contacto con un
+   enlace al portal (el token solo se guarda como hash). Sin correo de contacto la solicitud queda en el portal y no sale nada.
+2. **Recordatorios** a los 3, 7 y 10 dias mientras falten documentos del cliente; se detienen al completarse. A los 10 dias tambien avisa al despacho en la campana.
+3. **Cierre**: por periodo abierto calcula en el servidor el estado de los modulos (`despachos.cierre_estado_modulos`), auto-completa las tareas cuya senal se cumple
+   (atribuidas a `sistema`) y avisa una vez por periodo cuando ya termino y todas las validaciones pasan. NO cierra el periodo (irreversible, exige admin con segundo factor)
+   y NO presenta nada ante el SAT.
+
+Sin la migracion 027 cada paso responde `no_disponible` (200). Pruebas: `apps/worker/tests/despachos-piloto-cierre-cliente-job.spec.ts` y
+`apps/api/tests/despachos-crons-sat.spec.ts`.
