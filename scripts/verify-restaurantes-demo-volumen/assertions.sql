@@ -589,14 +589,14 @@ select count(*)::int as renglones_fuera_del_menu_deberia_ser_0
    and not exists (select 1 from restaurantes.products p join restaurantes.branch_products bp on bp.product_id = p.id and bp.property_id = o.property_id where p.organization_id = o.organization_id and p.name = i->>'name' and bp.price = (i->>'price')::numeric);
 rollback;
 
-\echo '=== V5. Solo las 3 sucursales activas (T1, T3 y T7) reciben pedidos; las inactivas (T2, T4, T5 y T8) ninguno ==='
+\echo '=== V5. Solo las 5 sucursales de despacho activas en la demo (T1, T2, T3, T7 y T8; T2 y T8 se crean activas con --demo) reciben pedidos; Galerias (T4) y Playa (T5) ninguno ==='
 begin;
 select public.seed_pm_demo_marcado();
 select public.seed_volumen();
 select (
-  (select count(distinct bd.slug) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm-demo')) = 3
-  and (select count(*) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm-demo') and bd.slug not in ('prol-montejo', 'pensiones', 'garcia-lavin')) = 0
-)::int as tres_sucursales_activas_y_las_demas_vacias_deberia_ser_1;
+  (select count(distinct bd.slug) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm-demo')) = 5
+  and (select count(*) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm-demo') and bd.slug not in ('prol-montejo', 'fco-montejo', 'pensiones', 'garcia-lavin', 'altabrisa')) = 0
+)::int as cinco_sucursales_con_pedidos_deberia_ser_1;
 rollback;
 
 \echo '=== V6. Reglas duras: ningun pedido a domicilio bajo $200 (antes de descuentos) ni con alcohol (no_domicilio) ==='
