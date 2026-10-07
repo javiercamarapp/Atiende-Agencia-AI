@@ -75,14 +75,22 @@ export const AGENTE_APAGADO_TEXTO = "En este momento le atiende una persona del 
 export const MOTIVO_AGENTE_APAGADO = "agente_apagado";
 export const AGENTE_APAGADO_AVISO_VENTANA_SEGUNDOS = 6 * 3600;
 
-/** `null` = agente encendido; `responder` = primera vez (texto fijo + handoff); `callar` = ya se aviso en esta ventana. */
-async function decisionAgenteApagado(repo: RestaurantesRepository, organizationId: string, phone: string, propertyId: string | null | undefined): Promise<"responder" | "callar" | null> {
+/**
+ * `null` = agente encendido; `responder` = texto fijo + toma de handoff; `callar` = ya se aviso en esta ventana.
+ *
+ * Con `puedeAbrirToma` (hay compuerta de handoff) se responde SIEMPRE que se llegue hasta aqui: una toma abierta (pendiente o tomada) ya callo al agente
+ * antes de esta decision, asi que llegar aqui significa que NADIE tiene la conversacion (primera vez, o la toma se devolvio / cerro con el agente
+ * todavia apagado) y hay que volver a abrir una toma para que regrese a la bandeja (QA R2 caos-01: antes el limitador de 6 h callaba al cliente tras
+ * un "Devolver" y la conversacion quedaba huerfana). Sin compuerta el limitador de aviso es la unica red contra repetir el texto.
+ */
+async function decisionAgenteApagado(repo: RestaurantesRepository, organizationId: string, phone: string, propertyId: string | null | undefined, puedeAbrirToma: boolean): Promise<"responder" | "callar" | null> {
   if (!propertyId) return null;
   try {
     if (await repo.findAgenteWhatsappActivo(propertyId)) return null;
   } catch {
     return null; // un fallo al leer el interruptor nunca deja a un cliente sin respuesta: el agente atiende como hasta hoy
   }
+  if (puedeAbrirToma) return "responder";
   try {
     const primera = await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-agente-apagado-aviso", `${organizationId}:${phone}`, 1, AGENTE_APAGADO_AVISO_VENTANA_SEGUNDOS));
     return primera.allowed ? "responder" : "callar";
@@ -186,7 +194,7 @@ export async function handleInboundWhatsAppMessage(
       // sucursal (compartido por todos sus clientes). Pasado el tope no se llama al modelo: se avisa UNA vez por ventana y despues se calla (el
       // mensaje ya quedo en el historial para quien atienda). El ARCO (obligacion legal) no se limita.
       // Interruptor duro de la sucursal (053): antes del limite y del modelo, sin costo de IA. El ARCO (obligacion legal) corre aunque el agente este apagado.
-      const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId);
+      const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId, handoffGate !== undefined);
       if (apagado === "callar") {
         await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
         return { ok: true, retryable: false };
@@ -478,7 +486,7 @@ export async function responderTrasEspera(
           }
         }
         // Interruptor duro de la sucursal (053): sin modelo, texto fijo + toma de handoff; las pasadas siguientes las calla la propia toma abierta.
-        const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId);
+        const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId, handoffGate !== undefined);
         if (apagado === "callar") return { salida: { ok: true, retryable: false }, silencio: true };
         if (!arco && (await stickerSobraTrasPedidoCerrado(repo, organizationId, phone, textoPendiente))) return { salida: { ok: true, retryable: false }, silencio: true };
         const turn = arco

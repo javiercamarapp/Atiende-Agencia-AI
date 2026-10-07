@@ -47,7 +47,7 @@ describe("R2-caos-01: agente de WhatsApp APAGADO y la toma se devuelve (tick de 
   // Pasos: agente apagado en la sucursal -> el cliente escribe (texto fijo + toma `agente_apagado`) -> una persona la TOMA y no alcanza a contestar
   // en 15 min -> el tick `handoffs_devolver_vencidos` la pasa a `devuelta` y manda "Gracias por esperar; le sigo atendiendo yo." (o la persona pulsa
   // "Devolver al agente"). El agente sigue APAGADO. El cliente vuelve a escribir.
-  it.fails("QA-R2-caos-01: tras devolver la toma con el agente apagado, el siguiente mensaje del cliente vuelve a la bandeja (o recibe respuesta), no se pierde", async () => {
+  it("QA-R2-caos-01: tras devolver la toma con el agente apagado, el siguiente mensaje del cliente vuelve a la bandeja (o recibe respuesta), no se pierde", async () => {
     const t = setup();
     await t.fixture.repo.fijarAgenteWhatsappActivo(t.fixture.organizationId, t.fixture.propertyId, STAFF, false);
     expect(await t.enviar("m1", "Quiero 3 ordenes de bistec")).toMatchObject({ reply: AGENTE_APAGADO_TEXTO });
@@ -148,11 +148,12 @@ describe("R2-caos-03: cocina retrasada y cliente que llega tarde contra el barri
   }
 
   // Pasos: el cliente pidio para recoger a las 13:00 (hora local); la cocina va atrasada y marca "Listo" a las 14:05; el tick de 5 min corre a las 14:05.
-  it.fails("QA-R2-caos-03: un pedido que se acaba de marcar listo NO se marca no_recogido en el siguiente tick", async () => {
+  it("QA-R2-caos-03: un pedido que se acaba de marcar listo NO se marca no_recogido en el siguiente tick", async () => {
     const auto = new InMemoryAutopilotoRepository();
     const p = pedidoRecoger(auto, new Date("2026-10-05T19:00:00.000Z")); // 13:00 en Merida
     const listoA = new Date("2026-10-05T20:05:00.000Z"); // 14:05: la cocina lo termina tarde
     p.status = "listo_para_recoger";
+    p.listoDesde = listoA; // la base lo deriva del ultimo evento a listo_para_recoger de order_status_events
     const candidatos = (await auto.candidatosEstados(listoA, 200)).valor;
     // Actual: [{ hacia: "no_recogido" }] -> la campana avisa "no recogido" y el pedido sale de "Listos" mientras el cliente va en camino.
     expect(candidatos.filter((c) => c.orderId === p.id)).toEqual([]);
@@ -160,12 +161,13 @@ describe("R2-caos-03: cocina retrasada y cliente que llega tarde contra el barri
 
   // Pasos: el cliente llega 70 min tarde (14:10) a un pedido ya marcado no_recogido. no_recogido solo puede volver a `preparando` (order-lifecycle);
   // el staff lo pasa a preparando -> listo para entregarlo, y el tick siguiente lo vuelve a tirar a no_recogido.
-  it.fails("QA-R2-caos-03b: re-marcar listo un pedido no_recogido (cliente en mostrador) no lo regresa a no_recogido en el siguiente tick", async () => {
+  it("QA-R2-caos-03b: re-marcar listo un pedido no_recogido (cliente en mostrador) no lo regresa a no_recogido en el siguiente tick", async () => {
     const auto = new InMemoryAutopilotoRepository();
     const p = pedidoRecoger(auto, new Date("2026-10-05T19:00:00.000Z"));
     p.status = "no_recogido";
     // El staff: no_recogido -> preparando -> listo_para_recoger (unico camino que permite order-lifecycle para entregarlo).
     p.status = "listo_para_recoger";
+    p.listoDesde = new Date("2026-10-05T20:10:00.000Z"); // re-marcado listo: el plazo se reinicia
     const tick = new Date("2026-10-05T20:12:00.000Z");
     const candidatos = (await auto.candidatosEstados(tick, 200)).valor;
     expect(candidatos.filter((c) => c.orderId === p.id && c.hacia === "no_recogido")).toEqual([]);
@@ -175,6 +177,7 @@ describe("R2-caos-03: cocina retrasada y cliente que llega tarde contra el barri
     const auto = new InMemoryAutopilotoRepository();
     const p = pedidoRecoger(auto, new Date("2026-10-05T19:00:00.000Z"));
     p.status = "listo_para_recoger";
+    p.listoDesde = new Date("2026-10-05T18:30:00.000Z"); // listo a tiempo, antes de la hora de recogida
     expect((await auto.candidatosEstados(new Date("2026-10-05T19:59:00.000Z"), 200)).valor).toEqual([]);
     expect((await auto.candidatosEstados(new Date("2026-10-05T20:00:00.000Z"), 200)).valor.map((c) => c.hacia)).toEqual(["no_recogido"]);
   });
@@ -344,5 +347,20 @@ describe("R2-caos-04/05 (bordes de las correcciones)", () => {
     expect(estimarTiempo({ textoFijo: "Domicilio de 1 a 2 horas", canal: "domicilio", muestras, abiertos: 0, saturacion: sat }).rango?.minimo).toBeGreaterThanOrEqual(60);
     const t = estimarTiempo({ textoFijo: "Domicilio según la zona; para recoger 15-20 min", canal: "domicilio", muestras, abiertos: 0, saturacion: sat });
     expect(t.origen).toBe("texto_fijo");
+  });
+});
+
+describe("R2-caos-01 (SQL en memoria): el regreso automatico del handoff respeta el interruptor del agente", () => {
+  it("la toma de una sucursal con el agente apagado no regresa al agente; con el agente encendido si", async () => {
+    const auto = new InMemoryAutopilotoRepository();
+    const org = "00000000-0000-4000-8000-00000000000a";
+    const apagada = "00000000-0000-4000-8000-00000000000b";
+    const encendida = "00000000-0000-4000-8000-00000000000c";
+    const base = { organizationId: org, conversationId: "c", telefono: "9991112233", estado: "tomada" as const, tomadaAt: new Date("2026-10-05T18:00:00Z"), ultimaHumanaAt: null, ultimoClienteAt: new Date("2026-10-05T18:00:00Z") };
+    auto.handoffs.push({ ...base, id: "h-apagada", propertyId: apagada }, { ...base, id: "h-encendida", propertyId: encendida });
+    auto.agentesApagados.add(apagada);
+    const r = (await auto.devolverHandoffsVencidos(new Date("2026-10-05T19:00:00Z"), 50)).valor;
+    expect(r.map((h) => h.handoffId)).toEqual(["h-encendida"]);
+    expect(auto.handoffs.find((h) => h.id === "h-apagada")?.estado).toBe("tomada");
   });
 });
