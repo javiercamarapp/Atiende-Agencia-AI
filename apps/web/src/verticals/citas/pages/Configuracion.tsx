@@ -32,7 +32,7 @@ import {
 import { syncTone } from "../lib/status-tones.ts";
 import { fetchProviderDetail, fetchProviders, requestGoogleCalendarConnectUrl } from "../lib/providers-client.ts";
 import type { GoogleCalendarStatus, ProviderSummary } from "../lib/providers-client.ts";
-import { fetchTenantConfig, RUBRO_OPTIONS, updateTenantConfig } from "../lib/tenant-config-client.ts";
+import { fetchTenantConfig, RUBRO_OPTIONS, updateTenantConfig, zonasHorariasDisponibles } from "../lib/tenant-config-client.ts";
 import type { TenantConfig } from "../lib/tenant-config-client.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
@@ -156,7 +156,13 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="citas-config-timezone">Zona horaria por defecto</Label>
-                <Input id="citas-config-timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="Ej. America/Mexico_City" />
+                <NativeSelect id="citas-config-timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+                  {zonasHorariasDisponibles(timezone).map((z) => (
+                    <option key={z} value={z}>
+                      {z}
+                    </option>
+                  ))}
+                </NativeSelect>
               </div>
 
               <div className="flex flex-col gap-1.5">
