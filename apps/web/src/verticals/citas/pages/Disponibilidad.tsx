@@ -34,6 +34,7 @@ import {
   TableRow,
   NativeSelect,
   Checkbox,
+  useConfirm,
 } from "@atiende/ui";
 import {
   createAvailabilityRule,
@@ -47,6 +48,7 @@ import {
 } from "../lib/providers-client.ts";
 import type { AvailabilityOverrideSummary, AvailabilityRuleSummary, ProviderDetail, ProviderSummary } from "../lib/providers-client.ts";
 import { formatDayOfWeek, formatHHMM } from "../lib/format.ts";
+import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
 const DAY_OPTIONS = Array.from({ length: 7 }, (_, i) => i);
@@ -64,6 +66,9 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
   const [detail, setDetail] = useState<ProviderDetail | null>(null);
   const [overrides, setOverrides] = useState<readonly AvailabilityOverrideSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Se incrementa con "Reintentar" para repetir las cargas que fallaron.
+  const [reintento, setReintento] = useState(0);
+  const { confirmar, dialogo } = useConfirm();
 
   // ---- alta de regla nueva ----
   const [newDayOfWeek, setNewDayOfWeek] = useState(1);
@@ -109,11 +114,13 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
         if (list.length > 0) setSelectedProviderId(list[0]!.id);
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "No se pudieron cargar los proveedores."));
-  }, [apiBaseUrl, token, propertyId]);
+  }, [apiBaseUrl, token, propertyId, reintento]);
 
   useEffect(() => {
     if (!selectedProviderId) return;
     let cancelado = false;
+    // El error de otro proveedor (o de una carga anterior) no se hereda al cambiar de proveedor.
+    setError(null);
     setDetail(null);
     setOverrides(null);
     setEditingRuleId(null);
@@ -126,7 +133,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
     return () => {
       cancelado = true;
     };
-  }, [apiBaseUrl, token, propertyId, selectedProviderId]);
+  }, [apiBaseUrl, token, propertyId, selectedProviderId, reintento]);
 
   async function handleCreateRule(e: FormEvent) {
     e.preventDefault();
@@ -168,6 +175,14 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
 
   async function handleDeleteRule(ruleId: string) {
     if (!selectedProviderId) return;
+    const aceptado = await confirmar({
+      titulo: "¿Quitar este horario?",
+      descripcion: "El proveedor deja de recibir citas en ese horario semanal. Las citas ya agendadas no se cancelan.",
+      tono: "danger",
+      confirmar: "Quitar horario",
+      cancelar: "Volver",
+    });
+    if (!aceptado) return;
     setDeletingRuleId(ruleId);
     setError(null);
     try {
@@ -204,6 +219,14 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
 
   async function handleDeleteOverride(overrideDate: string) {
     if (!selectedProviderId) return;
+    const aceptado = await confirmar({
+      titulo: "¿Quitar esta excepción?",
+      descripcion: `El ${formatFechaSolo(overrideDate)} vuelve a seguir el horario semanal normal.`,
+      tono: "danger",
+      confirmar: "Quitar excepción",
+      cancelar: "Volver",
+    });
+    if (!aceptado) return;
     setDeletingOverrideDate(overrideDate);
     setError(null);
     try {
@@ -229,7 +252,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
     <div className="flex max-w-2xl flex-col gap-4">
       <h1 className="font-display text-xl font-semibold text-foreground">Disponibilidad</h1>
 
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={() => setReintento((n) => n + 1)} />}
 
       {providers && providers.length === 0 && <EstadoVacio icon={UserRound} mensaje="Este negocio todavía no tiene proveedores activos." />}
 
@@ -369,7 +392,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
               <div className="flex flex-col gap-1.5">
                 {overrides.map((o) => (
                   <div key={o.overrideDate} className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="font-medium text-foreground">{o.overrideDate}</span>
+                    <span className="font-medium text-foreground">{formatFechaSolo(o.overrideDate)}</span>
                     {o.isClosed ? (
                       <StatusBadge tone="danger">Cerrado</StatusBadge>
                     ) : (
@@ -435,6 +458,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
           </CardContent>
         </Card>
       )}
+      {dialogo}
     </div>
   );
 }
