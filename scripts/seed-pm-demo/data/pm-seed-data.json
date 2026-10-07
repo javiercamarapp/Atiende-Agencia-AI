@@ -2688,6 +2688,14 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "cebolla",
+        "asada"
+      ],
+      "alias_piloto": {
+        "cebolla": "sentido_comun_aprobado",
+        "asada": "sentido_comun_aprobado"
       }
     },
     {
@@ -2778,6 +2786,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "wings"
+      ],
+      "alias_piloto": {
+        "wings": "sentido_comun_aprobado"
       }
     },
     {
@@ -2805,6 +2819,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "fritas"
+      ],
+      "alias_piloto": {
+        "fritas": "sentido_comun_aprobado"
       }
     },
     {
@@ -6191,6 +6211,14 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "natural",
+        "botella"
+      ],
+      "alias_piloto": {
+        "natural": "sentido_comun_aprobado",
+        "botella": "sentido_comun_aprobado"
       }
     },
     {
@@ -8218,6 +8246,12 @@
         "T1": "impreso",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5"
+      },
+      "alias": [
+        "pibil"
+      ],
+      "alias_piloto": {
+        "pibil": "cuestionario_web"
       }
     },
     {
@@ -8239,6 +8273,12 @@
         "T1": "impreso",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5"
+      },
+      "alias": [
+        "pibil"
+      ],
+      "alias_piloto": {
+        "pibil": "cuestionario_web"
       }
     },
     {
@@ -8260,6 +8300,12 @@
         "T1": "impreso",
         "T7": "lista_t1_2026",
         "T8": "provisional_P5"
+      },
+      "alias": [
+        "pibil"
+      ],
+      "alias_piloto": {
+        "pibil": "cuestionario_web"
       }
     },
     {
@@ -8283,6 +8329,14 @@
         "T8": "decision_2oct",
         "T3": "decision_2oct",
         "T5": "decision_2oct"
+      },
+      "alias": [
+        "ajo",
+        "guacamolera"
+      ],
+      "alias_piloto": {
+        "ajo": "chats_c3",
+        "guacamolera": "chats_c3"
       }
     },
     {
@@ -15920,7 +15974,30 @@
     }
   },
   "alias_piloto_meta": {
-    "fuente": "sinonimos.json exportado el 3-oct-2026 (PROPUESTA derivada de nombres y de la tabla de vocabulario de los chats; la base vieja no trae search_keywords reales)",
-    "criterio": "solo origenes chats_c3, derivado_nombre y cuestionario_pm; los sentido_comun_a_validar y cuestionario_web quedan fuera hasta que Javier los apruebe; solo los que la busqueda actual aun no encuentra (68 de 202 ya los encuentra la tokenizacion); las faltas de escritura bisctec y pok se normalizan en codigo (product-search.ts); las salsas y ajustes no son productos"
-  }
+    "fuente": "sinonimos.json exportado el 3-oct-2026 (PROPUESTA derivada de nombres y de la tabla de vocabulario de los chats; la base vieja no trae search_keywords reales). Los 436 pares estan en packages/domain-restaurantes/tests/fixtures/sinonimos-piloto-aprobados.json.",
+    "criterio": "los 436 pares estan APROBADOS: chats_c3, derivado_nombre y cuestionario_pm desde el inicio; los 73 de sentido_comun (64) y cuestionario_web (9) los aprobo Javier el 7-oct-2026 13:30. Solo se siembran como alias los que la busqueda aun no encuentra (423 de 436 ya los encuentra la tokenizacion o un alias previo; los otros 13 pares se agregan aqui con su origen; un alias es UNA palabra, asi que 'cebolla asada', 'agua natural', 'botella de agua', 'papas fritas', 'extra de ajo' y 'extra de guacamolera' entran como las palabras que faltan al nombre del producto); tests/sinonimos-cobertura-piloto.spec.ts recorre los 436 y verifica que buscar_producto encuentra el producto. Las faltas de escritura bisctec y pok se normalizan en codigo (product-search.ts); las salsas y ajustes no son productos; fracciones de kilo, ambiguos y fuera de catalogo van en sinonimos-y-faq-pendientes.json."
+  },
+  "conocimiento": [
+    {
+      "titulo": "Pedido incorrecto o con un problema",
+      "texto": "Si el pedido llegó equivocado o con un problema, la persona debe comunicarse a la brevedad con la misma sucursal donde lo hizo: ahí lo atiende el gerente de la sucursal.",
+      "tipo": "faq",
+      "prioridad": 50,
+      "fuente": "faq-pm.md sec. 1 (web /preguntas) y 6; el dueño: lo atiende el gerente de la sucursal"
+    },
+    {
+      "titulo": "Oficina matriz",
+      "texto": "La oficina matriz está en Calle 69 # 596 x 78 y 80, Col. Centro, Mérida, Yucatán, C.P. 97000. Teléfono de la oficina: 923 51 10.",
+      "tipo": "faq",
+      "prioridad": 40,
+      "fuente": "faq-pm.md sec. 4 (sitio publicado); el teléfono ya lo usa el perfil del agente"
+    },
+    {
+      "titulo": "Redes sociales",
+      "texto": "Los Taquitos de PM están en Facebook (facebook.com/lostaquitosdepm) e Instagram (instagram.com/taquitosdepm).",
+      "tipo": "faq",
+      "prioridad": 30,
+      "fuente": "faq-pm.md sec. 4 (sitio publicado)"
+    }
+  ]
 }

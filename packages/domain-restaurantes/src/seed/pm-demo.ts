@@ -26,6 +26,8 @@
 //   * Sin gasto de proveedores: la voz se carga DESHABILITADA (`habilitado = false`).
 //   * Sin secretos ni usuarios: nunca crea credenciales; la membresia del dueño es opcional y solo
 //     enlaza a un usuario de staff que YA existe.
+import { esTipoConocimiento, validarEntradaConocimiento } from "../conocimiento/dominio.ts";
+import { CONOCIMIENTO_TOPE_PROMPT } from "../conocimiento/types.ts";
 import { validarHorario } from "../horarios.ts";
 import { normalizeZoneText } from "../nearest-branch.ts";
 import { COMPORTAMIENTO_VOZ_MAX, comportamientoVozPm } from "../voz/perfil-voz-pm.ts";
@@ -129,6 +131,16 @@ export interface PmSeedPromotion {
   readonly sucursales?: readonly string[];
 }
 
+/** Entrada de conocimiento del negocio que el seed publica (`restaurantes.conocimiento_negocio`, migracion 053). */
+export interface PmSeedConocimiento {
+  readonly titulo: string;
+  readonly texto: string;
+  readonly tipo: "politica" | "faq" | "aviso_temporal";
+  readonly prioridad?: number;
+  /** Donde se dijo (documento del piloto y decision del dueño); solo trazabilidad, no se guarda. */
+  readonly fuente?: string;
+}
+
 /** Procedencia de la sucursal asignada a una colonia (`known_zone.asignacion_fuente`, migracion 056). `mas_cercana_v3` = sucursal de despacho mas cercana (<= 8 km) segun `colonias-v3`. */
 export type PmColoniaAsignacion = "mas_cercana_v3" | "chats_t7" | "direccion_sucursal" | "dueno_zona_centro" | "distancia_piloto" | "reasignada_desde_galerias" | "sin_asignar";
 const COLONIA_ASIGNACIONES: readonly string[] = ["mas_cercana_v3", "chats_t7", "direccion_sucursal", "dueno_zona_centro", "distancia_piloto", "reasignada_desde_galerias", "sin_asignar"];
@@ -137,6 +149,8 @@ export type PmColoniaPendiente = "fuera_de_8km" | "homonimo_discrepancia" | "sin
 const COLONIA_PENDIENTES: readonly string[] = ["fuera_de_8km", "homonimo_discrepancia", "sin_coordenada"];
 /** Sucursales que NO reparten a domicilio (Galerias, sin pedidos; Playa, solo recoger y de temporada): nunca reciben cobertura. */
 const SUCURSALES_SIN_REPARTO: readonly string[] = ["T4", "T5"];
+/** Origenes de alias del piloto aprobados. `sentido_comun_aprobado` y `cuestionario_web` son los 73 pares que Javier aprobo el 7-oct-2026 13:30; `sentido_comun_a_validar` sigue sin aprobarse. */
+const ORIGENES_ALIAS_APROBADOS = /^(chats_c3|derivado_nombre|cuestionario_pm|cuestionario_web|sentido_comun_aprobado)/;
 const COORDENADA_ORIGENES: readonly string[] = ["google", "osm", "promedio"];
 /** Caja de Yucatan central: una coordenada fuera de ella es un error de captura, no una colonia. */
 const LAT_RANGO: readonly [number, number] = [20.5, 21.6];
@@ -176,6 +190,8 @@ export interface PmSeedData {
   readonly horario_general: { readonly abre: string; readonly cierra: string; readonly dias: readonly number[] };
   /** Colonias del piloto original (`known_zone` sin coordenadas + `branch_delivery_zone`); ver `colonias_meta` para la regla de asignacion. */
   readonly colonias?: readonly PmSeedColonia[];
+  /** Fuente, regla y conteos de la lista de colonias (documentacion versionada junto a los datos; el plan no la usa). */
+  readonly colonias_meta?: Readonly<Record<string, unknown>>;
   readonly reglas: { readonly pedido_minimo_domicilio: number; readonly pedido_minimo_recoger: number | null; readonly propina_politica: "nunca" | "siempre" | "solo_tarjeta" };
   readonly categorias: readonly string[];
   readonly productos: readonly PmSeedProduct[];
@@ -204,6 +220,10 @@ export interface PmSeedData {
     readonly motivos_escalacion_apagados: readonly string[];
     readonly reglas_duras: readonly string[];
   };
+  /** Conocimiento publicado del negocio (migracion 053, el mismo que edita el dueño en el panel): preguntas frecuentes que el agente de WhatsApp y de voz
+   * consultan. Nunca precios ni productos (los valida `validarEntradaConocimiento`). El seed solo AGREGA lo que falta por titulo; no pisa lo que el dueño edito.
+   * No toca el documento [Auto] de colonias: ese se genera en vivo y no vive en esta tabla. */
+  readonly conocimiento?: readonly PmSeedConocimiento[];
   /** Datos que el dueño (o un tercero) aun no entrego y que NO se inventan: alimentan el checklist de onboarding (R-33). */
   readonly pendientes_dueno: readonly PmSeedPendiente[];
 }
@@ -372,6 +392,8 @@ export interface PmSeedPlan {
     readonly legacyDeliveryTimeTexts: readonly string[];
     readonly legacyPromosTexts: readonly string[];
   };
+  /** Conocimiento publicado que se agrega (por titulo) a `restaurantes.conocimiento_negocio`, para toda la organizacion. */
+  readonly conocimiento: readonly { readonly titulo: string; readonly texto: string; readonly tipo: string; readonly prioridad: number }[];
   /** Pendientes del dueño que NO se inventan (checklist R-33). */
   readonly pendientes: readonly PmSeedPendiente[];
   /** Presente solo con `{ demo: true }`: la organizacion queda marcada en `restaurantes.demo_organization` (migracion 037). */
@@ -393,6 +415,8 @@ export interface PmSeedPlan {
     readonly coberturasColonias: number;
     /** Colonias de la lista que SON el punto de referencia de una sucursal (p. ej. Francisco de Montejo): no se duplican, ya existen como zona. */
     readonly coloniasEnZonaDeSucursal: number;
+    /** Entradas de conocimiento del negocio que el seed publica. */
+    readonly conocimiento: number;
     readonly promotions: number;
     readonly skippedPromotions: readonly string[];
     /** Productos por id de sucursal. */
@@ -550,7 +574,7 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
     if (new Set(searchKeywords).size !== searchKeywords.length) fail(`Producto "${p.nombre}": alias duplicados.`);
     for (const [alias, origen] of Object.entries(p.alias_piloto ?? {})) {
       if (!searchKeywords.includes(alias)) fail(`Producto "${p.nombre}": alias del piloto "${alias}" no esta en alias.`);
-      if (!/^(chats_c3|derivado_nombre|cuestionario_pm)/.test(origen)) fail(`Producto "${p.nombre}": el alias "${alias}" viene de un origen no aprobado (${origen}); solo chats_c3, derivado_nombre y cuestionario_pm.`);
+      if (!ORIGENES_ALIAS_APROBADOS.test(origen)) fail(`Producto "${p.nombre}": el alias "${alias}" viene de un origen no aprobado (${origen}); solo chats_c3, derivado_nombre, cuestionario_pm, cuestionario_web y sentido_comun_aprobado.`);
     }
     for (const provisional of p.alias_provisional_P24 ?? []) {
       if (!searchKeywords.includes(provisional)) fail(`Producto "${p.nombre}": alias provisional "${provisional}" no esta en alias.`);
@@ -642,6 +666,23 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       },
     ];
   });
+
+  // --- conocimiento del negocio (preguntas frecuentes del piloto) --------------------------------------
+  const titulosConocimiento = new Set<string>();
+  let caracteresConocimiento = 0;
+  const conocimiento = (data.conocimiento ?? []).map((c) => {
+    if (!esTipoConocimiento(c.tipo)) fail(`Conocimiento "${c.titulo}": tipo invalido (${c.tipo}).`);
+    const v = validarEntradaConocimiento({ titulo: c.titulo, texto: c.texto }, [...productNames]);
+    if (!v.ok) fail(`Conocimiento "${c.titulo}": ${v.mensaje}`);
+    if (titulosConocimiento.has(v.titulo)) fail(`Conocimiento duplicado: ${v.titulo}`);
+    titulosConocimiento.add(v.titulo);
+    caracteresConocimiento += v.titulo.length + v.texto.length;
+    const prioridad = c.prioridad ?? 50;
+    if (!Number.isInteger(prioridad) || prioridad < 0 || prioridad > 100) fail(`Conocimiento "${c.titulo}": prioridad de 0 a 100.`);
+    return { titulo: v.titulo, texto: v.texto, tipo: c.tipo, prioridad };
+  });
+  // Cabe en el prompt junto con lo que el dueño agregue en el panel (tope total de caracteres del bloque).
+  if (caracteresConocimiento > CONOCIMIENTO_TOPE_PROMPT / 2) fail(`El conocimiento del seed (${caracteresConocimiento} caracteres) ocupa mas de la mitad del tope del prompt (${CONOCIMIENTO_TOPE_PROMPT}).`);
 
   // --- promociones ---------------------------------------------------------------------------------
   const codes = new Set<string>();
@@ -769,6 +810,7 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       legacyDeliveryTimeTexts: [...(aw.tiempo_entrega_anteriores_sembrados ?? [])],
       legacyPromosTexts: [...(aw.promociones_anteriores_sembradas ?? [])],
     },
+    conocimiento,
     pendientes: pendientes.map((p) => ({ ...p })),
     demo: demo ? { seedVersion: data.version } : null,
     summary: {
@@ -784,6 +826,7 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       coloniasCubiertasPorDos: colonias.filter((c) => c.branchIds.length > 1).length,
       coberturasColonias: colonias.reduce((n, c) => n + c.branchIds.length, 0),
       coloniasEnZonaDeSucursal: enZonaDeSucursal.size,
+      conocimiento: conocimiento.length,
       promotions: promotions.length,
       skippedPromotions: data.promociones_no_modeladas.map((p) => `${p.id}: ${p.motivo}`),
       productsByBranch,
@@ -810,6 +853,8 @@ export const PM_SEED_REQUIRED_SCHEMA: readonly { readonly table: string; readonl
   // Espera de rafagas y umbral de pedido grande: el seed siembra reply_debounce_seconds y copia large_order_text a la fila de sucursal.
   // Colonias sin coordenadas y su procedencia: el seed inserta known_zone con lat/lng nulos y estas columnas.
   { table: "restaurantes.known_zone", columns: ["fuente", "asignacion_fuente", "ref_sucursal_slug", "ref_km", "ref2_sucursal_slug", "ref2_km"], migration: "056_known_zone_colonias_sin_coordenadas.sql" },
+  // Conocimiento del negocio (preguntas frecuentes del piloto): el seed inserta en esta tabla.
+  { table: "restaurantes.conocimiento_negocio", columns: ["titulo", "texto", "tipo", "prioridad", "estado", "origen", "activo"], migration: "053_conocimiento_negocio_y_control_agente.sql" },
   { table: "restaurantes.whatsapp_agent_config", columns: ["large_order_text", "reply_debounce_seconds"], migration: "039_agente_config_umbral_y_rafagas.sql" },
   { table: "restaurantes.whatsapp_agent_config", columns: ["perfil", "agent_name", "business_name", "tone_style", "delivery_time_text", "greeting_text", "salsas_text", "promos_text", "escalation_reasons_off", "version"], migration: "033_agente_config_historial_y_callbacks_estado.sql" },
 ];
@@ -854,6 +899,7 @@ export function renderPmSeedPlpgsql(plan: PmSeedPlan, options: { readonly ownerE
     products: plan.products,
     zones: plan.zones,
     colonias: plan.colonias,
+    conocimiento: plan.conocimiento,
     policy: plan.policy,
     promotions: plan.promotions,
     voice: plan.voice,
@@ -998,6 +1044,14 @@ begin
     join restaurantes.known_zone z on z.organization_id = v_org and z.name = cov.zname
     where not exists (select 1 from restaurantes.branch_delivery_zone bz where bz.zone_id = z.id)
     on conflict do nothing;
+
+  -- 6d) conocimiento publicado del negocio (migracion 053): preguntas frecuentes del piloto, para toda la organizacion. Solo AGREGA lo que falta por
+  -- titulo: no pisa una entrada que el dueño edito en el panel ni la repone si la borro de otra forma que no sea volver a correr el seed. No toca el
+  -- documento [Auto] de colonias (se genera en vivo, no vive en esta tabla).
+  insert into restaurantes.conocimiento_negocio (organization_id, property_id, titulo, texto, tipo, prioridad, estado, origen, activo)
+    select v_org, null, x.titulo, x.texto, x.tipo, x.prioridad, 'publicado', 'importado', true
+    from jsonb_to_recordset(v->'conocimiento') as x(titulo text, texto text, tipo text, prioridad smallint)
+    where not exists (select 1 from restaurantes.conocimiento_negocio c where c.organization_id = v_org and c.property_id is null and c.titulo = x.titulo);
 
   -- 7) politica por sucursal: horario, minimos, propina
   insert into restaurantes.branch_policy (property_id, organization_id, horario, pedido_minimo_domicilio, pedido_minimo_recoger, propina_politica, visible_en_directorio, acepta_domicilio, dias_domicilio, de_temporada)

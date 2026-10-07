@@ -83,6 +83,10 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
     cubrir(c.name, c.branchIds, null, null, { fuente: c.fuente, asignacionFuente: c.asignacionFuente, refSucursalSlug: c.refSlug, refKm: c.refKm, ref2SucursalSlug: c.ref2Slug, ref2Km: c.ref2Km });
   }
   for (const [propertyId, ids] of coberturas) repo.seedBranchDeliveryZones(propertyId, ids);
+  // Conocimiento publicado del negocio (paso 6d del SQL): mismas entradas, para toda la organizacion, origen importado.
+  for (const c of plan.conocimiento) {
+    await repo.crearConocimiento(organizationId, newId("actor", "seed"), { titulo: c.titulo, texto: c.texto, tipo: c.tipo as "politica" | "faq" | "aviso_temporal", prioridad: c.prioridad, estado: "publicado", origen: "importado" });
+  }
   for (const promo of plan.promotions) {
     await repo.createPromotion(organizationId, {
       code: promo.code,

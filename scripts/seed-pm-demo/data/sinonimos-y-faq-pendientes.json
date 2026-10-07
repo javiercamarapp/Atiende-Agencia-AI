@@ -1,0 +1,87 @@
+{
+  "version": "2026-10-07",
+  "nota": "Lo que NO se carga como alias de producto y por que. Los 436 pares de sinonimos.json estan APROBADOS (los 73 de sentido comun y web, por Javier el 7-oct-2026 13:30) y se verifican en packages/domain-restaurantes/tests/sinonimos-cobertura-piloto.spec.ts; aqui queda lo que no es un sinonimo de producto o que sigue siendo una decision abierta. Tambien lista las preguntas de faq-pm.md que NO se cargan como conocimiento y por que.",
+  "pares_sin_aprobar": [],
+  "ambiguos_no_resolver_con_sinonimo": [
+    {
+      "frase": "frijol / frijoles",
+      "motivo": "Casi siempre Frijol con Tostada pero ambiguo con Frijoles Charros: el agente debe preguntar (los chats lo confirman). La prueba exige que 'frijol' siga devolviendo mas de un platillo."
+    },
+    {
+      "frase": "media orden de bistec",
+      "motivo": "Ambiguo: media orden o medio kilo. Preguntar."
+    },
+    {
+      "frase": "orden de pastor",
+      "motivo": "El pastor va por pieza: preguntar cuantos (o proponer 3)."
+    },
+    {
+      "frase": "alambre / alambre con queso",
+      "motivo": "Preguntar siempre con o sin queso. La prueba exige que 'alambre' siga devolviendo mas de un platillo."
+    }
+  ],
+  "fuera_de_catalogo_no_mapear": [
+    "BBQ",
+    "chipotle",
+    "salchichas",
+    "chistorra",
+    "longaniza",
+    "dedos de queso",
+    "sushi (control negativo: debe seguir sin resultados)"
+  ],
+  "salsas_y_ajustes_no_son_productos": "pico de gallo, xnipec, mexicana, sauceada/soasado, guacamolera, crema de ajo, naturales, con todo, mixta: son modificadores o salsas a peticion (codigo de modificadores), no search_keywords.",
+  "fracciones_de_kilo_no_son_sinonimos_de_producto": "Un cuarto / 1/4 / cuarto de kilo (250 g), medio kilo / 1/2 kilo / .5 kg (500 g), tres cuartos / 3/4 (750 g), kilo (1 kg), kilo y medio (1.5 kg), dos kilos (2 kg) se resuelven en el tokenizador (product-search.ts: frases de peso), no como alias (matchearian los 8 cortes a la vez).",
+  "brechas_conocidas_del_tokenizador": [
+    {
+      "caso": "plural en -es de una palabra del nombre (flanes, normales, pastores, cristales, especiales, individuales, champinones en algunos platillos)",
+      "causa": "tokenizeForProductSearch solo quita la s final: 'champinones' queda 'champinone', que no es subcadena de 'champinon'. 'tacos', 'flautas', 'chelas' y 'frijoles' si funcionan (la s final basta o hay alias).",
+      "estado": "Documentado con it.fails en tests/sinonimos-cobertura-piloto.spec.ts. No se toca product-search.ts en este cambio (lo modifico #482 y es codigo compartido); se arregla con un singularizador (-es tras consonante) cuando Javier lo pida."
+    },
+    {
+      "caso": "'cuarto kilo de bistec' (sin 'de' entre cuarto y kilo)",
+      "causa": "FRASES_DE_PESO solo reconoce 'cuarto de kilo' / 'un cuarto'; con 'cuarto kilo' el patron de 'kilo' gana: queda ['cuarto','peso:1000','bistec'] y devuelve 250 g y 750 g, no 1/4.",
+      "estado": "Documentado con it.fails en tests/sinonimos-cobertura-piloto.spec.ts; no se toca product-search.ts."
+    },
+    {
+      "caso": "'una cerveza' / 'un coctel' (todas las palabras son stopwords de categoria)",
+      "causa": "'cerveza' sola encuentra las cervezas (el respaldo busca la palabra contra la categoria), pero 'una cerveza' deja el respaldo con la frase entera y no coincide con nada.",
+      "estado": "Documentado con it.fails en tests/sinonimos-cobertura-piloto.spec.ts; no se toca product-search.ts."
+    }
+  ],
+  "decisiones_del_dueno_abiertas": [
+    {
+      "id": "P10",
+      "tema": "Flautas en T2 y T3 y Heineken Silver fuera de T5: siguen sin venderse en esas sucursales hasta que el dueño conteste."
+    }
+  ],
+  "faq_no_cargadas": [
+    {
+      "pregunta": "Lluvia: tiempo de entrega de 1 h a 1 h 20 min",
+      "motivo": "P-v2-20: es un dato nuevo del sitio, no esta en el cuestionario del dueño; decide el dueño."
+    },
+    {
+      "pregunta": "¿Mas salsas? «tienen un costo extra»",
+      "motivo": "Contradice al dueño (todas las salsas van incluidas; solo la porcion doble se cobra) y llevaria un precio, que el conocimiento no admite."
+    },
+    {
+      "pregunta": "Tiempo de entrega 40 a 50 minutos",
+      "motivo": "Ya vive en la configuracion del agente (delivery_time_text); duplicarlo la desactualizaria."
+    },
+    {
+      "pregunta": "Factura (persona fisica o moral con razon social y RFC), facturacion en linea, eventos y parrilla de 3 horas",
+      "motivo": "Ya estan en perfil-pm.ts (facturas@, eventos@, 923 51 10, parrilla de 3 h); el agente nunca pide ni guarda el RFC por chat."
+    },
+    {
+      "pregunta": "Formas de pago y pagar con tarjeta a domicilio",
+      "motivo": "Pendiente de confirmar con el dueño (la web dice tarjeta de credito, debito y contra entrega; el dueño, efectivo y tarjeta con transferencia solo con el gerente)."
+    },
+    {
+      "pregunta": "Horarios y telefonos de sucursal de la web",
+      "motivo": "El horario del dueño manda (12 pm a 1 am) y los telefonos de sucursal ya estan en el seed; la web esta desactualizada (diferencias.md)."
+    },
+    {
+      "pregunta": "Horario de oficina de 9 am a 6:30 pm",
+      "motivo": "Choca con el horario de facturacion del perfil (lunes a viernes de 9 a 17 h); falta confirmar vigencia con el dueño."
+    }
+  ]
+}

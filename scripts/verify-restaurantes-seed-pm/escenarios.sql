@@ -302,6 +302,19 @@ select (
 )::int as lista_unica_de_colonias_deberia_ser_1;
 rollback;
 
+\echo '=== B11c. Conocimiento del negocio (migracion 053): 3 entradas publicadas e importadas para toda la organizacion; re-ejecutar el seed no duplica ni pisa lo que el dueño edito ==='
+begin;
+select public.seed_pm_demo();
+update restaurantes.conocimiento_negocio set texto = 'Texto editado por el dueño' where titulo = 'Oficina matriz';
+select public.seed_pm_demo();
+select (
+  (select count(*) from restaurantes.conocimiento_negocio c join core.organization o on o.id = c.organization_id where o.slug = 'los-taquitos-de-pm') = 3
+  and (select count(*) from restaurantes.conocimiento_negocio c join core.organization o on o.id = c.organization_id
+        where o.slug = 'los-taquitos-de-pm' and c.property_id is null and c.tipo = 'faq' and c.estado = 'publicado' and c.origen = 'importado' and c.activo) = 3
+  and (select count(*) from restaurantes.conocimiento_negocio where titulo = 'Oficina matriz' and texto = 'Texto editado por el dueño') = 1
+)::int as conocimiento_publicado_y_sin_pisar_deberia_ser_1;
+rollback;
+
 \echo '=== B12. RECHAZADO (debe fallar): lat sin lng viola el check ambas-o-ninguna de la migracion 056 ==='
 begin;
 -- as should_fail (el insert de abajo viola el check y termina el escenario con ERROR)
