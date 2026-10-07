@@ -365,6 +365,9 @@ export interface Order {
   readonly dedupeFingerprint: string | null;
   readonly idempotencyKey: string | null;
   readonly createdAt: string;
+  /** Folio corto del pedido (`orders.order_number`). Solo viene en la fila de creacion (`create_order_idempotent` devuelve la fila completa); ausente en
+   * lecturas por columnas y en pedidos de prueba. Se usa para el aviso "Recibimos su pedido #folio". */
+  readonly orderNumber?: number;
   // ---- Fase 8 — superficie real del rol "repartidor" (ver roles.ts, migrations/008) ----
   /** `core.staff_user.id` del repartidor despachado a este pedido por un
    * MANAGER_ROLES (nunca lo pone el repartidor mismo) — null hasta que se
@@ -513,7 +516,9 @@ export type OrderStatus =
   | "listo_para_recoger"
   | "no_recogido"
   /** R-11 (migracion 034): pedido dejado para una hora futura; fuera de cocina hasta que se promueve a `pending`. */
-  | "programado";
+  | "programado"
+  /** Autopiloto (migracion 050): pedido grande retenido sin comanda ni cocina hasta que una persona lo aprueba (un clic) o lo rechaza. */
+  | "por_aprobar";
 
 export interface OrderListFilter {
   readonly propertyIds: readonly string[] | null;

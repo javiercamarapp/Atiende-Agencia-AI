@@ -193,7 +193,7 @@ describe("e2e WhatsApp: casos de negocio", () => {
     stack.setScript([say("Hola!")]);
     await stack.sim.deliverText("5219991230014", "Hola");
     const order = await createOrder(repo, { organizationId: stack.ctx.organizationId, branchSlug: "fco-montejo", customerName: "Cande", customerPhone: "9991230014", items: [{ productId: stack.products.coca, requestedQuantity: 5 }], source: "whatsapp", paymentMethod: "efectivo", canal: "recoger" });
-    const res = await fetch(stack.url(`/v1/restaurantes/${stack.propertyId}/admin/orders/${order.id}/status`), authedJson(stack.ctx.staff.owner.token, { status: "cancelado" }, "PATCH"));
+    const res = await fetch(stack.url(`/v1/restaurantes/${stack.propertyId}/admin/orders/${order.id}/status`), authedJson(stack.ctx.staff.owner.token, { status: "cancelado", motivo: "otro" }, "PATCH"));
     expect(res.status).toBe(200);
     await stack.dispatchWhatsApp();
     expect(stack.sim.lastSentTo("5219991230014")?.text).toMatch(/cancelado/);

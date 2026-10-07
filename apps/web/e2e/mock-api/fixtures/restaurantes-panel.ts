@@ -412,6 +412,9 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   { metodo: "PUT", patron: `${B}/config/whatsapp`, roles: ["owner", "admin"], manejador: (p) => { const v = String(((p.cuerpo ?? {}) as { phoneNumberId?: string }).phoneNumberId ?? ""); p.estado.guardar("rest.wa", v); return { phoneNumberId: v }; } },
   { metodo: "GET", patron: `${B}/config/zona-horaria`, roles: ["owner", "admin"], manejador: (p) => ({ zonaHoraria: p.estado.obtener<string | null>("rest.tz", () => "America/Merida") }) },
   { metodo: "PATCH", patron: `${B}/config/zona-horaria`, roles: ["owner", "admin"], manejador: (p) => { const v = ((p.cuerpo ?? {}) as { zona_horaria?: string | null }).zona_horaria ?? null; p.estado.guardar("rest.tz", v); return { zonaHoraria: v }; } },
+  // Sitio publico (Configuracion > Sitio publico): sin esta ruta la seccion pintaba un segundo EstadoError en el recorrido de errores.
+  { metodo: "GET", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: (p) => p.estado.obtener("rest.sitio", () => ({ marca: { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null }, guardada: false })) },
+  { metodo: "PUT", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: (p) => { const r = { marca: (p.cuerpo ?? {}) as Record<string, unknown>, guardada: true }; p.estado.guardar("rest.sitio", r); return r; } },
   { metodo: "GET", patron: `${B}/config/zonas`, roles: ["owner", "admin"], manejador: (p) => ({ zonas: lista(p, "rest.zonas", ZONAS_SEMILLA) }) },
   {
     metodo: "POST",
@@ -436,6 +439,27 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
       if (i < 0) return fallo(404, "Esa zona no existe");
       zonas.splice(i, 1);
       return { ok: true };
+    },
+  },
+
+  // ---------- Sitio publico (marca del storefront, R-38) ----------
+  {
+    metodo: "GET",
+    patron: `${B}/config/sitio-publico`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const marca = p.estado.obtener<Record<string, unknown> | null>("rest.marca", () => null);
+      return { marca: marca ?? { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null, updatedAt: null }, guardada: marca !== null };
+    },
+  },
+  {
+    metodo: "PUT",
+    patron: `${B}/config/sitio-publico`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const marca = { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null, ...((p.cuerpo ?? {}) as Record<string, unknown>), updatedAt: new Date().toISOString() };
+      p.estado.guardar("rest.marca", marca);
+      return { marca, guardada: true };
     },
   },
 
