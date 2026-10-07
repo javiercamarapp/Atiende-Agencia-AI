@@ -6,7 +6,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App.tsx";
-import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, esperarRutaCargada, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -44,6 +44,7 @@ const llamadas = (sufijo: string, metodo?: string) => fetchMock.mock.calls.filte
 
 async function llegarAlFormulario() {
   rendered = renderEn("/reservar/clinica-mayab");
+  await esperarRutaCargada(rendered.container);
   await esperar();
   act(() => click(boton("Cualquiera disponible")!));
   act(() => click(rendered!.container.querySelector<HTMLButtonElement>('button[aria-pressed][aria-label]')!));
