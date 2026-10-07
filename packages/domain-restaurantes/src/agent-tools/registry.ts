@@ -972,6 +972,7 @@ async function dispatchTool(
       let order: Order;
       // Pedido grande con autopiloto disponible: se crea y se deja `por_aprobar` (ver `retener` abajo); si no, se lanza el aviso de siempre.
       const grandeAprobable: { error: PedidoGrandeRetenidoError | null } = { error: null };
+      const idsEnMemoria = new Set<string>();
       try {
         order = await createOrder(repo, createInput, {
           beforePersist: async (prepared) => {
@@ -982,7 +983,7 @@ async function dispatchTool(
             }
             // Pedido grande (decision de PM, 2-oct): lo hace cumplir el SERVIDOR aunque el modelo olvide escalar.
             if (ctx.channel === "web") return;
-            const grande = await evaluarPedidoGrandeDelPedido(repo, prepared);
+            const grande = await evaluarPedidoGrandeDelPedido(repo, prepared, idsEnMemoria);
             if (!grande) return;
             if (ctx.pedidoGrande && (await ctx.pedidoGrande.disponible(prepared.payload.organizationId, prepared.branch.propertyId))) grandeAprobable.error = grande;
             else throw grande;
@@ -990,6 +991,12 @@ async function dispatchTool(
           retener: async (creado, prepared) => {
             const g = grandeAprobable.error;
             if (!g || !ctx.pedidoGrande) return false;
+            // `create_order_idempotent` deduplica ("otro igual" en menos de 5 min): devuelve el pedido YA existente, que ya estaba aceptado (y su comanda
+            // puede ir al POS). Ese NO se retiene: el acumulado que disparo la regla lo incluia a el mismo. Se devuelve tal cual, como cualquier reintento.
+            if (idsEnMemoria.has(creado.id)) {
+              grandeAprobable.error = null;
+              return false;
+            }
             const r = await ctx.pedidoGrande.retener({
               organizationId: prepared.payload.organizationId,
               orderId: creado.id,
@@ -1175,7 +1182,7 @@ async function retenerPedidoDeReincidente(repo: RestaurantesRepository, ctx: Age
  * perfil `taqueria_pm` y con el motivo `pedido_grande` encendido; sin configuracion (base sin migrar) no aplica. El umbral se evalua sobre lo ACUMULADO por el
  * mismo numero en las ultimas horas (`acumuladoReciente`): partir un pedido grande en varios chicos no lo evade, y los pedidos de esa ventana no cuentan como
  * historial. Sin la memoria del cliente (base sin migrar) se evalua el pedido solo, como antes. */
-async function evaluarPedidoGrandeDelPedido(repo: RestaurantesRepository, prepared: PreparedOrder): Promise<PedidoGrandeRetenidoError | null> {
+async function evaluarPedidoGrandeDelPedido(repo: RestaurantesRepository, prepared: PreparedOrder, idsEnMemoria?: Set<string>): Promise<PedidoGrandeRetenidoError | null> {
   const config = await repo.findWhatsAppAgentConfig(prepared.payload.organizationId, prepared.branch.propertyId);
   if (!config || config.perfil !== "taqueria_pm" || (config.escalationReasonsOff ?? []).includes("pedido_grande")) return null;
   const telefono = normalizePhone(prepared.payload.customerPhone);
@@ -1183,15 +1190,17 @@ async function evaluarPedidoGrandeDelPedido(repo: RestaurantesRepository, prepar
   const cliente = await repo.findCustomerByPhone(prepared.payload.organizationId, telefono);
   const memoria = await cargarMemoria(repo, prepared.payload.organizationId, telefono);
   const previos = memoria ? acumuladoReciente(memoria.orders, Date.now()) : { total: 0, pesoKg: 0, cuantos: 0 };
-  const pedidosPrevios = cliente?.orderCount ?? 0;
+  // Ids de los pedidos que ya sumaron al acumulado: si `create_order_idempotent` devuelve uno de ellos, fue una deduplicacion (no un pedido nuevo).
+  if (memoria && idsEnMemoria) for (const o of memoria.orders) idsEnMemoria.add(o.id);
   const total = Math.round((prepared.total + previos.total) * 100) / 100;
   const pesoAcumulado = pesoKg + previos.pesoKg;
   const motivo = evaluarPedidoGrande({
     total,
     pesoKg: pesoAcumulado,
     pagaEfectivo: prepared.payload.paymentMethod === "efectivo",
-    // Con la memoria: "sin historial" = todo lo que el numero ha pedido cae dentro de la ventana (no hay pedidos anteriores a ella).
-    sinHistorial: memoria ? pedidosPrevios <= previos.cuantos : !cliente || cliente.orderCount === 0,
+    // Con la memoria (que ya excluye cancelados): "sin historial" = TODOS los pedidos reales del numero caen dentro de la ventana (la memoria trae
+    // hasta 30; con 30 puede haber mas atras, asi que no se afirma). `orderCount` no sirve aqui: cuenta cancelados que la memoria no trae.
+    sinHistorial: memoria ? memoria.orders.length === previos.cuantos && memoria.orders.length < 30 : !cliente || cliente.orderCount === 0,
   });
   if (!motivo) return null;
   const resumen = resumenPedidoGrande({ motivo, total, pesoKg: pesoAcumulado, items: prepared.orderItems, canal: prepared.payload.canal, paymentMethod: prepared.payload.paymentMethod, pedidosPrevios: previos.cuantos });
