@@ -258,7 +258,7 @@ describe("QA R1 citas · WhatsApp · DEFECTOS confirmados", () => {
 
   // QA-citas-R1-agentes-05 (P1, privacidad): normalizePhone se queda con los ultimos 10 digitos sin pais: +1 551-234-5678 (EE. UU.) y
   // +52 55 1234 5678 (CDMX) son el MISMO cliente: uno ve (datos de salud) y puede cancelar las citas del otro.
-  it.fails("05 un numero de EE. UU. con los mismos 10 digitos que uno de CDMX NO ve ni cancela las citas del paciente mexicano", async () => {
+  it("05 un numero de EE. UU. con los mismos 10 digitos que uno de CDMX NO ve ni cancela las citas del paciente mexicano", async () => {
     const t = montarConsultorio();
     const mx = await createAppointment(t.repo, { organizationId: t.organizationId, providerId: t.providerId, serviceId: t.serviceId, customerName: "Paciente CDMX", customerPhone: "+5215512345678", startsAt: merida(t.lunes, "10:00"), source: "whatsapp" });
     const r = await executeToolCall(t.repo, { organizationId: t.organizationId, phone: "+15512345678", name: "buscar_mis_citas", input: {} });
