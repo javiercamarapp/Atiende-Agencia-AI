@@ -1,10 +1,17 @@
 // «Ya llegué, estoy afuera»: aviso urgente a la sucursal, validado contra un pedido real para recoger.
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createOrder } from "../src/orders.ts";
 import { MENSAJE_LLEGADA_REGISTRADA, MENSAJE_PEDIDO_TELEFONICO_REGISTRADO, invokeAgentTool } from "../src/agent-tools/registry.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 
 const PHONE = "5219991234567";
+
+// Reloj simulado (solo Date): martes 13:00 de Merida. Con el reloj real, +30 min cae en otro dia entre 05:30 y 06:00 UTC y -5 min entre 06:00 y 06:05 UTC.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-06T13:00:00-06:00"));
+});
+afterEach(() => vi.useRealTimers());
 
 async function pedido(f: ReturnType<typeof buildRestaurantFixture>, canal: "recoger" | "domicilio") {
   return createOrder(f.repo, {

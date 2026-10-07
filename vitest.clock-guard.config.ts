@@ -29,6 +29,10 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-restaurantes/tests/pm-r2-flujo-pedido-y-hora.spec.ts",
   "packages/domain-restaurantes/tests/pm-r2-prompt-y-reloj.spec.ts",
   "packages/domain-restaurantes/tests/recoger-estados-y-columnas.spec.ts",
+  // Hora de recogida (+30 min aceptado, -5/-11 min, +6/+8 dias): reloj fijo, sin depender de la hora UTC en que corra el CI.
+  "packages/domain-restaurantes/tests/qa-r2-caos.spec.ts",
+  "packages/domain-restaurantes/tests/cliente-llego-recoger.spec.ts",
+  "packages/domain-restaurantes/tests/evals-agente-pm-k.spec.ts",
   "apps/api/tests/pm-r2-voz-programado.spec.ts",
   "apps/api/tests/rentas-pricing-servidor-hoy.spec.ts",
   "apps/api/tests/rentas-cotizacion-servidor-hoy.spec.ts",
