@@ -121,7 +121,7 @@ afterEach(() => {
 });
 
 const tokensPedidos = (peticiones: readonly string[]): number => peticiones.filter((p) => p.includes("/voice/call-token")).length;
-const cuerposToken = (cuerpos: Map<string, unknown[]>) => [...cuerpos.entries()].filter(([k]) => k.endsWith("/voice/call-token")).flatMap(([, v]) => v as { caller_phone: string }[]);
+const cuerposToken = (cuerpos: Map<string, unknown[]>) => [...cuerpos.entries()].filter(([k]) => k.endsWith("/voice/call-token")).flatMap(([, v]) => v as { caller_phone: string; telefono_declarado?: boolean }[]);
 
 describe("de punta a punta: cliente directo", () => {
   it("el token se emite al abrir con el telefono del From, sin la herramienta del worker ni el anexo a la instruccion", async () => {
@@ -132,6 +132,7 @@ describe("de punta a punta: cliente directo", () => {
     await vi.waitFor(() => expect(agente.saludos).toBe(1), { timeout: 5_000, interval: 5 });
     await turnoCliente(llamada, api.reloj, () => agente.respondidos, 1);
     expect(cuerposToken(api.cuerpos).map((c) => normalizarNumero(c.caller_phone))).toEqual(["9993334444"]);
+    expect(cuerposToken(api.cuerpos).some((c) => c.telefono_declarado === true)).toBe(false);
     expect(agente.aperturas[0]!.herramientas.map((h) => h.name)).not.toContain(TOOL_CONFIRMAR_TELEFONO);
     expect(agente.aperturas[0]!.instruccion).not.toContain(INSTRUCCION_TELEFONO_NO_CONFIABLE);
     expect(agente.resultados[0]!.resultado).not.toMatchObject({ error: "telefono_pendiente" });
@@ -202,6 +203,8 @@ describe("de punta a punta: desvio SIN caller ID o con el de la sucursal", () =>
     expect(agente.resultados[2]!.resultado).not.toMatchObject({ error: "telefono_pendiente" });
     // Una sola emision, con el telefono canonico dictado; un segundo numero NO cambia la identidad de la llamada.
     expect(cuerposToken(api.cuerpos).map((c) => normalizarNumero(c.caller_phone))).toEqual(["9991234567"]);
+    // El telefono dictado viaja marcado: la API no le devuelve nombre, direcciones ni pedidos de ese numero (nadie verifico que sea del llamante).
+    expect(cuerposToken(api.cuerpos).every((c) => c.telefono_declarado === true)).toBe(true);
     expect(agente.resultados[3]!.resultado).toMatchObject({ ok: true, ya_registrado: true });
     llamada.clienteCuelga();
     await t.esperarFin();
