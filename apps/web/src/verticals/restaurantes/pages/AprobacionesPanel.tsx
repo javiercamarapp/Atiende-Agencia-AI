@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoVacio, FormDialog, FormField, NativeSelect, StatusBadge, formatMoney, notify } from "@atiende/ui";
 import { Clock } from "lucide-react";
-import { SOLICITUD_TIPO_ETIQUETAS, minutosEsperando, resolverSolicitud } from "../lib/autopiloto-client.ts";
+import { SOLICITUD_TIPO_ETIQUETAS, mensajeResultadoSolicitud, minutosEsperando, resolverSolicitud } from "../lib/autopiloto-client.ts";
 import type { MotivoCancelacion, ResolverEntrada, Solicitud, SolicitudesRespuesta } from "../lib/autopiloto-client.ts";
 import { MotivoDialogo } from "../components/MotivoDialogo.tsx";
 
@@ -56,11 +56,8 @@ export function AprobacionesPanel({
     setErrorDialogo(null);
     try {
       const r = await resolverSolicitud(fetch, apiBaseUrl, token, propertyId, s.id, entrada);
-      if (r.aplicado) {
-        notify.success(r.codigoDescuento ? `Listo. Código de descuento enviado al cliente: ${r.codigoDescuento}.` : "Listo: decisión aplicada y cliente avisado.");
-      } else {
-        notify.info("Esta solicitud ya estaba resuelta; no se repitió ningún aviso.");
-      }
+      const m = mensajeResultadoSolicitud(entrada, r);
+      notify[m.tono](m.texto);
       await onResuelta();
       return true;
     } catch (err) {

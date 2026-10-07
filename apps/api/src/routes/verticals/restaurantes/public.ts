@@ -11,6 +11,7 @@ import {
   canonicalizeMexicanPhone,
   consumeRateLimit,
   createOrder,
+  crearHookPedidoGrande,
   invokeAgentTool,
   OrderConflictError,
   OrderValidationError,
@@ -163,7 +164,8 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
 
       if (voiceAuth?.ok) {
         const { caller } = voiceAuth;
-        const toolCtx = voiceToolContext(org.id, caller, voiceTurnFromRequest(c));
+        // Pedido grande: con el autopiloto disponible el pedido se crea `por_aprobar` (la sucursal lo aprueba con un clic); sin el, el aviso de siempre.
+        const toolCtx = { ...voiceToolContext(org.id, caller, voiceTurnFromRequest(c)), ...(deps.autopilotoRepo ? { pedidoGrande: crearHookPedidoGrande({ auto: deps.autopilotoRepo(db), repo, db }) } : {}) };
         if (caller.kind === "legacy_secret") {
           const limited = await consumeRateLimit(repo, "create-order", requestActor(c.req.raw, typeof incoming.customer_phone === "string" ? incoming.customer_phone : ""), 120, 60);
           if (!limited.allowed) throw Errors.tooManyRequests();
@@ -190,6 +192,12 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
           // confirme. No hay pedido que correo-notificar ni comanda que encolar; el agente de voz recibe el resultado tal cual.
           if (outcome.orderId === null) {
             await auditVoice(repo, org, caller, "crear_pedido", "ok", "pedido_grande_retenido");
+            return c.json(outcome.result);
+          }
+          // Pedido grande con autopiloto: el pedido SI existe (`por_aprobar`) y su solicitud ya notifico a la sucursal. No hay comanda que encolar ni "recibido" que
+          // avisar: ambos salen al aprobarlo con un clic (resolverSolicitudAprobacion).
+          if (outcome.pedidoRetenido) {
+            await auditVoice(repo, org, caller, "crear_pedido", "ok", "pedido_grande_por_aprobar");
             return c.json(outcome.result);
           }
           await auditVoice(repo, org, caller, "crear_pedido", "ok", null);

@@ -177,6 +177,7 @@ export function restaurantesAjustesAgenteRoutes(deps: AppDeps): Hono<CoreAuthHon
         huella: d.huella,
         vacio: d.vacio,
         motivoVacio: d.motivoVacio,
+        truncado: d.truncado === true,
         enPrompt: bloque.incluidos.includes(d.tipo),
       })),
       prompt: { topeCaracteres: TOPE_CARACTERES_PROMPT, caracteresUsados: bloque.texto.length, omitidos: bloque.omitidos },

@@ -84,10 +84,31 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# Un push nuevo al mismo PR cancela el gate anterior de ese PR (cada update-branch/push lo
+# reiniciaba y acumulaba corridas de ~50 min). El grupo incluye el workflow y el número de PR,
+# así que PRs distintos nunca se cancelan entre sí. En push a main NO se cancela: cada commit
+# de main conserva su propio veredicto (mismo criterio que ci-checks.yml). workflow_dispatch
+# agrupa por ref y tampoco cancela.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Sharding del gate (ver .github/workflows/README.md, sección postgres-real-gate.yml, con la medición):
+# el job único aplicaba bootstrap.sql + ~300 migraciones UNA VEZ POR CARPETA (~16 s de ~18 s cada una) para
+# ~170 carpetas en serie (~3.100 s). Ahora:
+#   - run-gate.mjs construye una base plantilla por bootstrap.sql distinto y clona cada carpeta de ella.
+#   - `postgres-real-gate-shard` reparte las carpetas en 6 shards en paralelo (`--shard i/6`).
+#   - `postgres-real-gate` es el agregador que CONSERVA el nombre histórico del check: pasa solo si los 6
+#     shards pasaron Y si los reportes de los shards cubren EXACTAMENTE las carpetas descubiertas.
 jobs:
-  postgres-real-gate:
-    name: Migraciones reales + assertions RLS/GRANT contra Postgres real
+  postgres-real-gate-shard:
+    name: Gate Postgres real (shard ${{ matrix.shard }}/6)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
     services:
       postgres:
         image: postgres:16
@@ -142,8 +163,56 @@ jobs:
           echo "Postgres nunca quedó listo" >&2
           exit 1
 
-      - name: Migraciones reales + gate de assertions RLS/GRANT (todos los scripts/verify-*/)
-        run: node scripts/verify-real-postgres-ci/run-gate.mjs
+      - name: Migraciones reales + gate de assertions RLS/GRANT (shard ${{ matrix.shard }}/6 de scripts/verify-*/)
+        run: node scripts/verify-real-postgres-ci/run-gate.mjs --shard ${{ matrix.shard }}/6 --report "$RUNNER_TEMP/shard-report.json"
+
+      # Se sube aunque el paso anterior falle: el agregador necesita el reporte de CADA shard para demostrar la cobertura.
+      - name: Subir reporte del shard
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: postgres-gate-report-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-report.json
+          if-no-files-found: warn
+          retention-days: 3
+
+  # Conserva el nombre histórico del check. if: always() para que un shard fallido/cancelado/omitido produzca
+  # rojo y no un "skipped" (que cuenta como éxito para la protección de rama).
+  postgres-real-gate:
+    name: Migraciones reales + assertions RLS/GRANT contra Postgres real
+    needs: [postgres-real-gate-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Veredicto de los shards
+        env:
+          SHARDS: ${{ needs.postgres-real-gate-shard.result }}
+        run: |
+          echo "postgres-real-gate-shard=$SHARDS"
+          if [ "$SHARDS" != "success" ]; then
+            echo "::error::Algún shard del gate de Postgres real no terminó en success"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Descargar reportes de los shards
+        uses: actions/download-artifact@v7
+        with:
+          pattern: postgres-gate-report-*
+          path: ${{ runner.temp }}/reportes
+
+      # Cobertura idéntica: la unión de lo EJECUTADO por los 6 shards debe ser exactamente lo que descubre
+      # run-gate.mjs (cada scripts/verify-*/ con los 3 archivos, una sola vez), con los 6 reportes presentes.
+      - name: Cobertura exacta (reportes de shards == carpetas descubiertas)
+        run: node scripts/verify-real-postgres-ci/run-gate.mjs --verify-reports "$RUNNER_TEMP/reportes"
 
   fallback-savepoint-gate:
     name: SAVEPOINT real para fallback por SQLSTATE (scripts/verify-fallback-savepoint)

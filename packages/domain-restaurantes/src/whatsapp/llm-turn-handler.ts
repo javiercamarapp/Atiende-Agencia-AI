@@ -748,7 +748,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             rechazoDelFlujo = executed.rechazoDelFlujo;
@@ -773,7 +773,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             if (executed.orderId) {
               orderId = executed.orderId;
               propertyId = executed.propertyId;
-              if (call.name === "crear_pedido" && options.encolarComanda && executed.raw) {
+              if (call.name === "crear_pedido" && options.encolarComanda && executed.raw && !executed.pedidoRetenido) {
                 const comanda = await encolarComandaDelTurno(options.encolarComanda, executed.raw as Order, input);
                 if (comanda) result = { ...(result as object), comanda };
               }
@@ -783,8 +783,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             escalarMotivo = typeof input.motivo === "string" ? input.motivo : "otro";
             tele.motivoEscalacion = escalarMotivo;
           }
-          // Pedido grande retenido por el servidor: el aviso ya quedo registrado; solo se abre la toma de handoff (R-21).
-          if (call.name === "crear_pedido" && (result as { pedido_grande?: unknown } | null)?.pedido_grande === true) escalarMotivo = "pedido_grande";
+          // Pedido grande retenido por el servidor: el aviso ya quedo registrado; solo se abre la toma de handoff (R-21). Si el pedido quedo `por_aprobar`
+          // (autopiloto) NO se abre toma: ya esta en el sistema y la sucursal lo aprueba con un clic; el agente sigue atendiendo al cliente.
+          if (call.name === "crear_pedido" && (result as { pedido_grande?: unknown; por_aprobar?: unknown } | null)?.pedido_grande === true && (result as { por_aprobar?: unknown }).por_aprobar !== true) escalarMotivo = "pedido_grande";
           tele.tools.push({ tool: call.name, latenciaMs: Date.now() - toolInicio, resultado: isToolErrorResult(result) ? (fallaSistema ? "error_sistema" : "error_regla") : "ok", vuelta: tele.vueltas });
           const esDomicilio = call.name === "buscar_sucursal_cercana" || (call.name === "cotizar_pedido" && input.canal === "domicilio");
           if (perfil === "taqueria_pm" && esDomicilio && !isToolErrorResult(result) && !sharedLocation && !pedirUbicacionEnTurno) {

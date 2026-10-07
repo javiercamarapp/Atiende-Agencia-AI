@@ -5,6 +5,7 @@
 // endpoint REAL: aqui se afirma la peticion exacta y el efecto en pantalla, no solo que el boton exista.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { notify } from "@atiende/ui";
 import { PedidosPage } from "../src/verticals/restaurantes/pages/Pedidos.tsx";
 import { ProductosPage } from "../src/verticals/restaurantes/pages/Productos.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
@@ -49,6 +50,8 @@ interface Estado {
   saturado?: boolean;
   historialDisponible?: boolean;
   pedidosPendientes?: unknown[];
+  /** Campos que la API devuelve al resolver (sobre `aplicado: true`): para simular `aplicado: false`, un cierre como "mantener", etc. */
+  respuestaResolver?: Record<string, unknown>;
 }
 
 function stub(estado: Estado) {
@@ -61,7 +64,7 @@ function stub(estado: Estado) {
       const id = url.split("/").slice(-2)[0];
       solicitudes.current = solicitudes.current.filter((s) => (s as { id: string }).id !== id);
       const body = JSON.parse(String(init?.body));
-      return json({ aplicado: true, tipo: "pedido_grande", decision: body.decision, estadoPedido: "pending", codigoDescuento: body.decision === "descuento_proximo" ? "GRACIAS-AB12CD34" : null, reposicionOrderId: null, efectos: [] });
+      return json({ aplicado: true, tipo: "pedido_grande", decision: body.decision, estadoPedido: "pending", codigoDescuento: body.decision === "descuento_proximo" ? "GRACIAS-AB12CD34" : null, reposicionOrderId: null, efectos: [], ...(estado.respuestaResolver ?? {}) });
     }
     if (method === "GET" && url === `${BASE}/autopiloto/config`) {
       return json({
@@ -176,6 +179,36 @@ describe("Pedidos: pestana Por aprobar", () => {
     click(boton("Mantener el pedido")!);
     await esperar();
     expect(cuerpo()).toEqual({ decision: "mantener" });
+  });
+
+  // QA R2 caos-09: el panel dice lo que REALMENTE paso, no un "ya estaba resuelta" unico y enganoso.
+  it("Cancelar un pedido que ya salio: la solicitud se cierra como mantener y el panel avisa que NO se pudo cancelar (no 'ya estaba resuelta')", async () => {
+    const aviso = vi.spyOn(notify, "warning").mockImplementation(() => "t");
+    const info = vi.spyOn(notify, "info").mockImplementation(() => "t");
+    stub({ solicitudes: [CANCELACION], disponible: true, respuestaResolver: { aplicado: true, tipo: "cancelacion", decision: "mantener", estadoPedido: "en_camino", motivo: "no_cancelable_en_camino" } });
+    await abrirPorAprobar();
+    click(boton("Cancelar el pedido")!);
+    await esperar();
+    const dialogo = document.body.querySelector('[role="dialog"]') as HTMLElement;
+    changeValue(dialogo.querySelector("select") as HTMLSelectElement, "cliente_desistio");
+    await esperar();
+    click([...document.body.querySelectorAll('[role="dialog"] button')].find((b) => /^Cancelar pedido$/.test(b.textContent?.trim() ?? ""))!);
+    await esperar();
+    expect(cuerpo()).toEqual({ decision: "cancelar", motivo: "cliente_desistio" });
+    expect(aviso).toHaveBeenCalledWith(expect.stringMatching(/No se pudo cancelar: el pedido ya salió.*En camino/));
+    expect(info).not.toHaveBeenCalled();
+    aviso.mockRestore();
+    info.mockRestore();
+  });
+
+  it("Aprobar un pedido grande que ya no estaba por aprobar explica el motivo en vez de 'ya estaba resuelta'", async () => {
+    const aviso = vi.spyOn(notify, "warning").mockImplementation(() => "t");
+    stub({ solicitudes: [GRANDE], disponible: true, respuestaResolver: { aplicado: false, estadoPedido: "cancelado", motivo: "pedido_ya_no_estaba_por_aprobar" } });
+    await abrirPorAprobar();
+    click(boton("Aprobar")!);
+    await esperar();
+    expect(aviso).toHaveBeenCalledWith(expect.stringMatching(/ya no estaba por aprobar.*Cancelado/));
+    aviso.mockRestore();
   });
 
   it("Compensacion: Sin compensacion, Reponer producto (renglones elegidos) y Descuento (con el tope de la sucursal)", async () => {
@@ -298,7 +331,7 @@ describe("Reglas del autopiloto", () => {
     expect(cajas.every((c) => !c.checked)).toBe(true);
     expect(dialogo.textContent).toContain("Plantillas de WhatsApp sin aprobar en Meta: pedido_aprobado");
     expect(dialogo.textContent).toContain("requiere la API de SoftRestaurant");
-    expect(dialogo.textContent).toContain("Pedidos grandes y cancelaciones por voz: todavía sin efecto");
+    expect(dialogo.textContent).toContain("Los pedidos grandes de WhatsApp y de voz llegan a «Por aprobar»");
   });
 
   it("valida rangos antes de llamar y guarda con PUT .../autopiloto/config", async () => {

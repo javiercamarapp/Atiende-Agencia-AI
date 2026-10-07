@@ -494,7 +494,13 @@ export async function createOrder(
   /** `beforePersist`: gancho que ve el pedido YA cotizado contra el catalogo vigente y puede rechazarlo (lanzando)
    * antes de escribir nada. Lo usa la maquina de estados del pedido para exigir que los precios sigan siendo los
    * que el cliente confirmo. */
-  options: { readonly beforePersist?: (prepared: PreparedOrder) => void | Promise<void> } = {},
+  options: {
+    readonly beforePersist?: (prepared: PreparedOrder) => void | Promise<void>;
+    /** `retener`: gancho que corre justo despues de persistir el pedido (misma transaccion). Si devuelve `true` el pedido quedo RETENIDO (p. ej. pedido grande
+     * `por_aprobar`): no sale el aviso "nuevo pedido" ni el correo de confirmacion (todavia no esta confirmado) y el pedido devuelto lleva ese estado. Si lanza,
+     * la transaccion (o el SAVEPOINT de la herramienta) revierte tambien el pedido: nunca queda un pedido grande en `pending` rumbo a cocina. */
+    readonly retener?: (order: Order, prepared: PreparedOrder) => Promise<boolean>;
+  } = {},
 ): Promise<Order> {
   const prepared = await prepareCreateOrder(repo, rawInput);
   await options.beforePersist?.(prepared);
@@ -596,14 +602,15 @@ export async function createOrder(
   // idempotente por (organizationId, orderId, eventType) -- un reintento real de
   // create_order_idempotent que devuelve el MISMO pedido (misma idempotencyKey o
   // dedupeFingerprint) nunca duplica la notificación.
-  await tryNotifyStaffNewOrder(repo, order);
+  const retenido = options.retener ? await options.retener(order, prepared) : false;
+  if (!retenido) await tryNotifyStaffNewOrder(repo, order);
 
   // Fase de correo — confirmación de pedido por correo real, best-effort e
   // idempotente por (organizationId, channel, dedupeKey) igual que la línea de
   // arriba: cuando el cliente no dejó correo (voz/WhatsApp, o web sin llenarlo),
   // `notifyCustomerOrderConfirmationEmailCore` simplemente no encola nada — ver
   // order-notifications.ts.
-  await tryNotifyCustomerOrderConfirmationEmail(repo, order);
+  if (!retenido) await tryNotifyCustomerOrderConfirmationEmail(repo, order);
 
   // Cliente 360 (migracion 049): cierre automatico del ciclo con el cliente. Domicilio (alta o "usado otra vez") y gustos
   // se actualizan a partir de lo que el cliente CONFIRMO en este pedido; idempotente por pedido (un reintento que devuelve
@@ -621,10 +628,11 @@ export async function createOrder(
   // pedidos reales con el mismo código, y no hay forma barata de diferenciarlos
   // sin una tabla de uso por pedido, fuera de alcance de esta fase). Best-effort:
   // nunca revierte un pedido real ya creado por esto.
+  // Nota: un pedido RETENIDO (`por_aprobar`) tambien consume el uso de la promocion: si la sucursal lo rechaza despues, el uso queda consumido (no se devuelve).
   if (appliedPromotion) {
     await tryIncrementPromotionUses(repo, payload.organizationId, appliedPromotion.id);
   }
-  return order;
+  return retenido ? { ...order, status: "por_aprobar" } : order;
 }
 
 /**
@@ -658,6 +666,9 @@ export async function quoteOrder(
     /** R-11: hora programada (ISO con zona). Se valida con las MISMAS reglas que `createOrder`: ventana
      * (anticipacion minima/maxima), horario de la sucursal en esa hora y zona horaria de la sucursal. */
     readonly programadoPara?: string;
+    /** QA R2 features-07: codigo de promocion (p. ej. el GRACIAS-XXXX de una compensacion) que el cliente dicta por WhatsApp o voz.
+     * Cuando viene, REEMPLAZA a la promocion automatica (igual que en `createOrder`) y un codigo invalido lanza `PromotionError`. */
+    readonly promoCode?: string;
     /** Solo canal "recoger": hora a la que pasara el cliente (ISO con zona). Se valida con el reloj del servidor, igual que al crear. */
     readonly horaRecogida?: string;
   },
@@ -706,16 +717,20 @@ export async function quoteOrder(
   // que ya valen hoy pero a las que el pedido aun no llega se devuelven como sugerencias para que el agente
   // las ofrezca (p. ej. el martes: "con los nachos de pastor van 2 aguas de cortesia, ¿cuales?").
   const zonaHoraria = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
-  const auto = selectAutomaticPromotion({
-    promotions: await repo.listAutoApplyPromotions(args.organizationId),
-    orderTotal: quote.total,
-    items: quote.lines.map((line) => ({ id: line.productId, name: line.name, price: line.price, quantity: line.quantity })),
-    canal,
-    now: instante ?? new Date(),
-    zonaHoraria,
-    ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
-    propertyId: branch.propertyId,
-  });
+  const itemsPromo = quote.lines.map((line) => ({ id: line.productId, name: line.name, price: line.price, quantity: line.quantity }));
+  const codigo = args.promoCode?.trim() ? normalizePromotionCode(args.promoCode) : null;
+  const auto = codigo
+    ? await cotizarConCodigo(repo, { organizationId: args.organizationId, codigo, orderTotal: quote.total, items: itemsPromo, canal, now: instante ?? new Date(), zonaHoraria, diaNegocio: reglas.diaNegocio, propertyId: branch.propertyId })
+    : selectAutomaticPromotion({
+        promotions: await repo.listAutoApplyPromotions(args.organizationId),
+        orderTotal: quote.total,
+        items: itemsPromo,
+        canal,
+        now: instante ?? new Date(),
+        zonaHoraria,
+        ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
+        propertyId: branch.propertyId,
+      });
   const descuento = auto.applied?.discount ?? 0;
   const nombreDeProducto = (id: string) => resolved.products.find((p) => p.id === id)?.name ?? null;
   return {
@@ -751,6 +766,37 @@ export async function quoteOrder(
     cierraA: reglas.apertura?.cierraA ?? null,
     ...(programadoPara ? { programadoPara } : {}),
   };
+}
+
+/** Cotiza con un CODIGO que dicto el cliente (misma validacion y calculo que `createOrder`): devuelve la forma de `selectAutomaticPromotion`
+ * con la promocion aplicada y sin sugerencias. Un codigo inexistente o que no vale hoy/en este canal lanza `OrderValidationError`. */
+async function cotizarConCodigo(
+  repo: RestaurantesRepository,
+  a: {
+    readonly organizationId: string;
+    readonly codigo: string;
+    readonly orderTotal: number;
+    readonly items: readonly PersistedOrderItem[];
+    readonly canal: CanalPedido;
+    readonly now: Date;
+    readonly zonaHoraria: string;
+    readonly diaNegocio: number | null;
+    readonly propertyId: string;
+  },
+): Promise<ReturnType<typeof selectAutomaticPromotion>> {
+  const promotion = await repo.findPromotionByCode(a.organizationId, a.codigo);
+  if (!promotion) throw new OrderValidationError(`El código "${a.codigo}" no existe.`);
+  const applied = applyPromotionToOrder({
+    promotion,
+    orderTotal: a.orderTotal,
+    items: a.items,
+    canal: a.canal,
+    now: a.now,
+    zonaHoraria: a.zonaHoraria,
+    ...(a.diaNegocio !== null ? { diaNegocio: a.diaNegocio } : {}),
+    propertyId: a.propertyId,
+  });
+  return { applied: { promotion, total: applied.total, discount: applied.discount }, suggestions: [] };
 }
 
 /** Promociones automaticas que acompanan a una cotizacion (PM PR-4). */

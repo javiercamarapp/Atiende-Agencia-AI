@@ -448,10 +448,12 @@ interface BranchProductRow {
   readonly product_id: string;
   readonly price: string;
   readonly is_available: boolean;
+  readonly agotado_hasta?: string | null;
 }
 
 function mapBranchProductState(row: BranchProductRow): BranchProductState {
-  return { propertyId: row.property_id, productId: row.product_id, price: Number(row.price), isAvailable: row.is_available };
+  const base = { propertyId: row.property_id, productId: row.product_id, price: Number(row.price), isAvailable: row.is_available };
+  return row.agotado_hasta === undefined ? base : { ...base, agotadoHasta: row.agotado_hasta ?? null };
 }
 
 // ---------------------------------------------------------------------------
@@ -1653,23 +1655,33 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
   async getSalesBucketedStats(organizationId: string, propertyIds: readonly string[] | null, buckets: readonly KpiDateRange[]): Promise<readonly SalesBucketRow[]> {
     if (buckets.length === 0) return [];
-    const { rows } = await this.db.query<{ idx: number; revenue: string; order_count: string; customer_count: string }>(
-      // QA R1 viaje-09: consulta directa (no la funcion `orders_bucketed_stats`, cuya definicion en la base solo
-      // excluye cancelados y no puede cambiar sin migracion). Misma forma y alcance (RLS del usuario, organizacion
-      // y sucursales); una venta NO es un pedido cancelado, `no_recogido` (no se cobro) ni `programado` (aun no es
-      // venta). Funciona igual contra la base sin migrar: solo lee `restaurantes.orders`.
+    // QA R1 viaje-09: consulta directa (no la funcion `orders_bucketed_stats`, cuya definicion en la base solo
+    // excluye cancelados y no puede cambiar sin migracion). Misma forma y alcance (RLS del usuario, organizacion
+    // y sucursales); una venta NO es un pedido cancelado, `no_recogido` (no se cobro), `programado` (aun no es
+    // venta) ni `por_aprobar` (retenido sin aprobar; QA R2 viaje-04). QA R2 viaje-03: el dia de un pedido es
+    // `coalesce(promovido_at, created_at)` (igual que el Cierre del dia): un programado cuenta el dia en que se promueve.
+    // `promovido_at` es de la migracion 034: contra la base sin migrar (42703) se reintenta con `created_at` dentro de un
+    // SAVEPOINT (la transaccion de la request no queda abortada).
+    const consulta = (fecha: string): string =>
       `select b.idx, coalesce(sum(o.total), 0) as revenue, count(o.id) as order_count, count(distinct o.customer_id) as customer_count
        from unnest($3::timestamptz[], $4::timestamptz[]) with ordinality as b(bucket_start, bucket_end, idx)
        left join restaurantes.orders o
          on o.organization_id = $1
-         and o.status not in ('cancelado', 'no_recogido', 'programado')
+         and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
          and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-         and o.created_at >= b.bucket_start
-         and o.created_at < b.bucket_end
+         and ${fecha} >= b.bucket_start
+         and ${fecha} < b.bucket_end
        group by b.idx
-       order by b.idx;`,
-      [organizationId, propertyIds ? [...propertyIds] : null, buckets.map((b) => b.start.toISOString()), buckets.map((b) => b.end.toISOString())],
-    );
+       order by b.idx;`;
+    const params = [organizationId, propertyIds ? [...propertyIds] : null, buckets.map((b) => b.start.toISOString()), buckets.map((b) => b.end.toISOString())];
+    type Fila = { idx: number; revenue: string; order_count: string; customer_count: string };
+    const { rows } = await runWithSavepointFallback<{ rows: Fila[] }>({
+      session: this.db,
+      savepointName: "sp_restaurantes_ventas_por_dia_negocio",
+      primary: () => this.db.query<Fila>(consulta("coalesce(o.promovido_at, o.created_at)"), params),
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42703",
+      fallback: () => this.db.query<Fila>(consulta("o.created_at"), params),
+    });
     const byIdx = new Map(rows.map((row) => [Number(row.idx), { revenue: Number(row.revenue), orderCount: Number(row.order_count), customerCount: Number(row.customer_count) }]));
     return buckets.map((_, i) => byIdx.get(i + 1) ?? { revenue: 0, orderCount: 0, customerCount: 0 });
   }
@@ -2023,6 +2035,19 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return (await this.queryPromotions("organization_id = $1 and code = $2", [organizationId, code]))[0] ?? null;
   }
 
+  async findCompensationCode(organizationId: string, phone: string): Promise<string | null> {
+    return runWithSavepointFallback<string | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_compensacion_codigo",
+      primary: async () => {
+        const { rows } = await this.db.query<{ codigo: string | null }>("select restaurantes.compensacion_codigo_disponible($1::uuid, $2) as codigo;", [organizationId, phone]);
+        return rows[0]?.codigo ?? null;
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: async () => null,
+    });
+  }
+
   async createPromotion(organizationId: string, input: NewPromotionInput): Promise<Promotion> {
     const base = [
       organizationId,
@@ -2340,11 +2365,39 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async getBranchProductState(propertyId: string, productId: string): Promise<BranchProductState | null> {
-    const { rows } = await this.db.query<BranchProductRow>(`select property_id, product_id, price, is_available from restaurantes.branch_products where property_id = $1 and product_id = $2;`, [
-      propertyId,
-      productId,
-    ]);
+    // `to_jsonb(bp)->>'agotado_hasta'` no falla en una base SIN la migración 050 (no existe la columna: da null), así que no hace falta SAVEPOINT.
+    const { rows } = await this.db.query<BranchProductRow>(
+      `select bp.property_id, bp.product_id, bp.price, bp.is_available, to_jsonb(bp)->>'agotado_hasta' as agotado_hasta
+       from restaurantes.branch_products bp where bp.property_id = $1 and bp.product_id = $2;`,
+      [propertyId, productId],
+    );
     return rows[0] ? mapBranchProductState(rows[0]) : null;
+  }
+
+  async limpiarAgotadoHasta(propertyId: string, productId: string): Promise<void> {
+    // `authenticated` NO puede escribir `agotado_hasta` (migración 065: solo `grant update (price, is_available, updated_at)`; un
+    // `set agotado_hasta = null` da 42501). El trigger de la 050 (`branch_products_limpiar_agotado_hasta`) borra la fecha en CUALQUIER cambio de
+    // `is_available`, pero no al apagar algo ya apagado: por eso dos UPDATE de columnas permitidas, encendiendo y apagando de nuevo, en la
+    // MISMA transacción del request (nadie ve el estado intermedio hasta el COMMIT). Solo 42703 (base sin la 050) es un no-op; un 42501
+    // u otro error se propaga: tragarlo dejaría al cron reactivando el producto sin que nadie lo sepa.
+    // La condición `agotado_hasta is not null` en `to_jsonb` evita nombrar la columna (no falla sin la 050).
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_restaurantes_limpiar_agotado_hasta",
+      primary: async () => {
+        const donde = `property_id = $1 and product_id = $2`;
+        const { rows } = await this.db.query<{ id: string }>(
+          `update restaurantes.branch_products set is_available = true, updated_at = now()
+           where ${donde} and is_available = false and to_jsonb(branch_products)->>'agotado_hasta' is not null
+           returning product_id as id;`,
+          [propertyId, productId],
+        );
+        if (rows.length === 0) return;
+        await this.db.query(`update restaurantes.branch_products set is_available = false, updated_at = now() where ${donde} and is_available = true;`, [propertyId, productId]);
+      },
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42703",
+      fallback: async () => undefined,
+    });
   }
 
   async upsertBranchProductState(propertyId: string, productId: string, price: number, isAvailable: boolean): Promise<BranchProductState> {
@@ -2369,6 +2422,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async findOrderById(organizationId: string, orderId: string): Promise<Order | null> {
+    // QA R2 features-04: un id de ruta que no es uuid ("no-uuid") llegaba a la columna uuid y Postgres lanzaba 22P02 (-> 500 en el panel). Un id
+    // que no puede existir es "no encontrado" (404), igual que en el repositorio en memoria; ni siquiera se consulta.
+    if (!UUID_TEXT.test(orderId)) return null;
     // Migracion 071: la sesion de sistema (voz: reintento de crear_pedido -> `ya_registrado`) no ve `orders` por RLS.
     return runWithSavepointFallback<Order | null>({
       session: this.db,
@@ -2556,6 +2612,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async findAssignedOrderById(organizationId: string, repartidorId: string, orderId: string): Promise<Order | null> {
+    if (!UUID_TEXT.test(orderId)) return null; // QA R2 features-04: ver findOrderById
     const { rows } = await this.db.query<OrderRow>(
       `select ${ORDER_COLUMNS}
        from restaurantes.orders
@@ -2588,6 +2645,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async findCustomerById(organizationId: string, customerId: string): Promise<Customer | null> {
+    if (!UUID_TEXT.test(customerId)) return null; // QA R2 features-04: ver findOrderById
     const { rows } = await this.db.query<CustomerRow>(
       `select id, organization_id, phone, name, order_count from restaurantes.customers where organization_id = $1 and id = $2;`,
       [organizationId, customerId],

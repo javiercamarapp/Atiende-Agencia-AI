@@ -37,7 +37,7 @@ import {
 import type { TicketCocina } from "@atiende/ui";
 import { AlertTriangle, Clock, Printer, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { fetchAvisos, sonidoPedidoNuevoPermitido } from "../lib/avisos-client.ts";
-import { fetchAutopilotoConfig, fetchSolicitudes, fetchTiempoPrometido } from "../lib/autopiloto-client.ts";
+import { fetchAutopilotoConfig, fetchSolicitudes, fetchTiempoPrometido, registrarTicketImpreso } from "../lib/autopiloto-client.ts";
 import type { AutopilotoConfigRespuesta, MotivoCancelacion, SolicitudesRespuesta, TiempoPrometido } from "../lib/autopiloto-client.ts";
 import { assignRepartidor, fetchOrders, fetchRepartidorSugerido, fetchScheduledOrders, nextStatusesForCanal, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary, RepartidorSugerido } from "../lib/orders-client.ts";
@@ -190,6 +190,16 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
     return () => window.removeEventListener("storage", alCambiarStorage);
   }, [orgSlug, propertyId]);
 
+  // Sin POS, imprimir el ticket es lo que habilita la aceptacion automatica (QA R2 features-05): se avisa al servidor de cada pedido PENDIENTE impreso.
+  // Es de mejor esfuerzo: si falla, el ticket ya salio y el pedido sigue pendiente (se acepta a mano); se dice, no se calla.
+  async function avisarTicketsImpresos(pedidos: readonly OrderSummary[]): Promise<void> {
+    const pendientes = pedidos.filter((o) => o.status === "pending");
+    const resultados = await Promise.allSettled(pendientes.map((o) => registrarTicketImpreso(fetch, apiBaseUrl, token, propertyId, o.id)));
+    if (resultados.some((r) => r.status === "rejected")) {
+      setAvisoImpresion("El ticket salió, pero no se pudo avisar al sistema: la aceptación automática no se activará para ese pedido; acéptelo a mano.");
+    }
+  }
+
   function imprimirPedido(order: OrderSummary): void {
     const base = prefsActuales();
     const yaImpreso = base.impresos.includes(order.id);
@@ -201,6 +211,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
     }
     setAvisoImpresion(null);
     actualizarPrefs(yaImpreso ? registrarReimpresion(base, order.id) : marcarImpresos(base, [order.id]));
+    void avisarTicketsImpresos([order]);
   }
 
   async function activarAutoImpresion(): Promise<void> {
@@ -256,6 +267,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
         if (imprimirTicketsCocina(nuevos.map((o) => construirTicketCocina(o)))) {
           if (!st) actualizarPrefs(marcarImpresos(prefsRef.current, nuevos.map((o) => o.id)));
           setAvisoImpresion(null);
+          await avisarTicketsImpresos(nuevos);
           void loadRef.current();
         } else {
           if (st) {
