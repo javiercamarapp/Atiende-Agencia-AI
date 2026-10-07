@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { registrarEscalacionCrisis } from "../crisis-guardrail.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
+import { redactSensitiveInfo } from "../redaction.ts";
 import type { CitasRepository } from "../repository.ts";
 import { CRISIS_KEYWORDS, crisisGuardActivaPara } from "../vertical-config.ts";
 import { executeToolCall } from "../whatsapp/llm-turn-handler.ts";
@@ -65,8 +66,10 @@ export interface ResultadoDerivacion {
   readonly mensaje: string;
 }
 
+/** Texto libre del modelo (motivo/resumen) que viaja al WhatsApp del dueño: se redacta ANTES de recortar (un recorte podria dejar un numero de tarjeta
+ * a medias sin redactar), igual que ya hace el canal de WhatsApp. */
 function limpiar(v: unknown, max: number): string {
-  return typeof v === "string" ? v.replace(/[\r\n\t]+/g, " ").trim().slice(0, max) : "";
+  return typeof v === "string" ? redactSensitiveInfo(v).replace(/[\r\n\t]+/g, " ").trim().slice(0, max) : "";
 }
 
 /** derivar_a_humano: deja constancia para una persona. Una CRISIS (motivo fijo `crisis`, solo en rubros de salud) registra la escalacion real
