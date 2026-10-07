@@ -64,3 +64,25 @@ export class RateLimitedError extends Error {
     this.name = "RateLimitedError";
   }
 }
+
+/**
+ * La fuente externa NO está disponible por causas ajenas al código y a la
+ * configuración de Atiende: la bloquea un WAF (403 "Access Denied"), la
+ * retiraron (404/410, host inexistente), su certificado TLS es inválido o
+ * está vencido, o no es alcanzable desde el entorno de ejecución. Es un fallo
+ * HONESTO de la fuente (queda en `source_run` como `down`, con su aviso y su
+ * obsolescencia visibles), pero el cron `discover-tenders` NO lo cuenta como
+ * fallo real de toda la corrida: no hay nada que corregir en este repo y
+ * marcar el latido en rojo cada día tapa los fallos que sí lo son.
+ * Jamás se desactiva la verificación TLS ni se evade un WAF para "arreglarlo".
+ */
+export type SourceUnavailableReason = "blocked" | "not_found" | "tls_invalid" | "unreachable";
+
+export class SourceUnavailableError extends Error {
+  readonly reason: SourceUnavailableReason;
+  constructor(reason: SourceUnavailableReason, message: string) {
+    super(message);
+    this.name = "SourceUnavailableError";
+    this.reason = reason;
+  }
+}
