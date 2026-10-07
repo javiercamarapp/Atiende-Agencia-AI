@@ -41,7 +41,7 @@ export class InMemoryHousekeepingResidualRepository implements HousekeepingResid
   }
 
   private defaultConfig(propertyId: string): HousekeepingConfig {
-    return { propertyId, ...DEFAULT_HOUSEKEEPING_CONFIG, personalizada: false, updatedAt: null };
+    return { propertyId, ...DEFAULT_HOUSEKEEPING_CONFIG, startHourDisponible: this.migrated, personalizada: false, updatedAt: null };
   }
 
   async getConfig(propertyId: string) {
@@ -53,7 +53,7 @@ export class InMemoryHousekeepingResidualRepository implements HousekeepingResid
     this.requireMigrated("saveConfig");
     const current = this.configs.get(propertyId) ?? this.defaultConfig(propertyId);
     const base: HousekeepingConfigValues = current;
-    const next: HousekeepingConfig = { propertyId, ...mergeHousekeepingConfig(base, patch), personalizada: true, updatedAt: new Date().toISOString() };
+    const next: HousekeepingConfig = { propertyId, ...mergeHousekeepingConfig(base, patch), startHourDisponible: true, personalizada: true, updatedAt: new Date().toISOString() };
     this.configs.set(propertyId, next);
     return next;
   }
