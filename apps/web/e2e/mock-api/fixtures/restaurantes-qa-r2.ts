@@ -91,4 +91,10 @@ export const rutasRestaurantesQaR2: readonly Ruta[] = [
     patron: `${B}/autopiloto/pedidos/:orderId/historial`,
     manejador: () => ({ disponible: true, eventos: [{ desde: null, hacia: "pending", actor: "agente", motivo: null, at: "2026-09-30T18:20:00.000Z" }] }),
   },
+  // ---------- Ticket de cocina impreso (QA R2 features-05): habilita la aceptacion automatica sin POS ----------
+  {
+    metodo: "POST",
+    patron: `${B}/autopiloto/pedidos/:orderId/ticket-impreso`,
+    manejador: () => ({ disponible: true, registrado: true }),
+  },
 ];

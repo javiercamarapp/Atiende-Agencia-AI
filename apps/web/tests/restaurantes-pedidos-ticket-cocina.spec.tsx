@@ -197,4 +197,56 @@ describe("PedidosPage -- ticket de cocina", () => {
     expect(folios).toEqual(["BBBBB2"]);
     expect(window.localStorage.getItem("atiende.restaurantes.ticketCocina.demo.prop-1")).not.toContain("ord-otra");
   });
+
+  // QA R2 features-05: sin POS, imprimir el ticket es lo que habilita la aceptacion automatica -> se avisa al servidor de cada pedido PENDIENTE impreso.
+  describe("aviso de ticket impreso al servidor (aceptacion automatica sin POS)", () => {
+    const llamadasTicket = () =>
+      (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+        .filter((c) => String(c[0]).includes("/ticket-impreso"))
+        .map((c) => ({ url: String(c[0]), method: (c[1] as { method?: string } | undefined)?.method }));
+
+    it("Imprimir un pedido pendiente registra el ticket en el servidor (POST) una vez", async () => {
+      rendered = renderComponent(<PedidosPage {...CTX} />);
+      await flush();
+      await clic(boton("Imprimir ticket"));
+      await flush();
+      expect(llamadasTicket()).toEqual([{ url: "https://api.test/v1/restaurantes/prop-1/admin/autopiloto/pedidos/ord-aaaaaa1/ticket-impreso", method: "POST" }]);
+    });
+
+    it("la auto-impresion avisa SOLO de los pedidos nuevos que imprimio, no del rezago de la linea base", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      rendered = renderComponent(<PedidosPage {...CTX} />);
+      await flush();
+      await act(async () => {
+        (document.getElementById("auto-imprimir-cocina") as HTMLInputElement).click();
+        await flushMicrotasks();
+      });
+      await flush();
+      expect(llamadasTicket()).toHaveLength(0);
+      pendientes = [pedido("ord-aaaaaa1"), pedido("ord-bbbbbb2", { createdAt: "2026-09-19T10:05:00.000Z" })];
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      await flush();
+      expect(llamadasTicket().map((l) => l.url)).toEqual(["https://api.test/v1/restaurantes/prop-1/admin/autopiloto/pedidos/ord-bbbbbb2/ticket-impreso"]);
+    });
+
+    it("si el aviso falla, el ticket ya salio y la pantalla lo dice (no se calla el fallo)", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          if (url.includes("/ticket-impreso")) throw new Error("sin red");
+          if (url.includes("/admin/staff/repartidores")) return { ok: true, status: 200, json: async () => ({ repartidores: [] }) } as unknown as Response;
+          const status = new URL(url).searchParams.get("status");
+          return { ok: true, status: 200, json: async () => ({ orders: status === "pending" ? pendientes : [], nextCursor: null }) } as unknown as Response;
+        }),
+      );
+      rendered = renderComponent(<PedidosPage {...CTX} />);
+      await flush();
+      await clic(boton("Imprimir ticket"));
+      await flush();
+      expect(imprimir).toHaveBeenCalledTimes(1);
+      expect(document.body.textContent).toContain("no se pudo avisar al sistema");
+    });
+  });
 });
