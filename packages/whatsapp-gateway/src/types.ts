@@ -63,12 +63,16 @@ export interface OutboundWhatsAppMessagePayload {
   readonly solicitarUbicacion?: boolean;
 }
 
+/** Como salio de verdad el mensaje hacia Meta. Sirve para explicar un fallo de entrega: un 131047 (fuera de la ventana de 24 h) con
+ *  `texto` y una plantilla disponible en el payload significa "habia plantilla pero no se uso" (no estaba declarada aprobada). */
+export type EnviadoComo = "texto" | "plantilla" | "botones" | "ubicacion";
+
 export interface WhatsAppSendResult {
-  /** `messages[0].id` que devuelve Graph API en un envío exitoso — se guarda solo
-   *  para trazabilidad/logging, el dispatcher no lo persiste todavía (fuera de
-   *  alcance: ligarlo a `messaging_outbox` requeriría una columna nueva, ver
-   *  README de este paquete). */
+  /** `messages[0].id` (wamid) que devuelve Graph API en un envío exitoso. El despachador lo entrega a `MessagingOutboxPort.markSent`
+   *  para guardarlo en el outbox: es la llave con la que los `statuses` del webhook (delivered/read/failed) encuentran el mensaje. */
   readonly providerMessageId: string;
+  /** Tipo de mensaje que se envio. Opcional: un cliente que no lo informa (dobles de prueba antiguos) no rompe nada. */
+  readonly enviadoComo?: EnviadoComo;
 }
 
 /** Puerto que el dispatcher consume — `MetaGraphWhatsAppClient` es el adaptador de

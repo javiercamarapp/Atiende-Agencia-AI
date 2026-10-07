@@ -54,6 +54,9 @@ de las 6 verticales no cambian. La lectura y la escritura pasan por `core.list_n
 | `restaurantes.pedido.programado_en_cocina` | operacion | atencion | owner/admin, staff | CalendarRange | `/restaurantes/{orgSlug}/pedidos` | un aviso por pedido (clave = id del pedido) | 3 d | conectado: `packages/domain-restaurantes/src/pedidos-programados-avisos.ts` (sale al promover el pedido a pending: cron promover-programados, el panel de pedidos al consultar o el adelanto manual) |
 | `restaurantes.pedido.programado_atrasado` | operacion | atencion | owner/admin, staff | TriangleAlert | `/restaurantes/{orgSlug}/pedidos` | un aviso por pedido atrasado (clave = id del pedido); sustituye al aviso normal de entrada a cocina | 3 d | conectado: `packages/domain-restaurantes/src/pedidos-programados-avisos.ts` (sale en lugar del aviso normal si el pedido entra a cocina con mas de 1 h de retraso (cron promover-programados, promocion al consultar el panel o adelanto manual)) |
 | `restaurantes.whatsapp.mensaje_muerto` | salud | atencion | owner/admin, staff | MessageSquareWarning | `/restaurantes/{orgSlug}/pedidos` | un aviso por mensaje muerto (clave = id del mensaje del outbox) | 3 d | conectado: `apps/api/src/routes/internal/whatsapp-dispatch.ts` |
+| `restaurantes.whatsapp.entrega_fallida_pedido` | salud | atencion | owner/admin, staff | MessageSquareWarning | `/restaurantes/{orgSlug}/pedidos` | un aviso por mensaje fallido (clave = id del mensaje del outbox) | 3 d | conectado: `apps/api/src/routes/verticals/restaurantes/whatsapp.ts` (sale cuando Meta reporta `failed` por el webhook (statuses); el aviso de estado de un pedido tambien se respalda por correo si el cliente dejo uno) |
+| `restaurantes.whatsapp.entrega_fallida` | salud | atencion | owner/admin, staff | MessageSquareWarning | `/restaurantes/{orgSlug}/conversaciones` | un aviso por mensaje fallido (clave = id del mensaje del outbox) | 3 d | conectado: `apps/api/src/routes/verticals/restaurantes/whatsapp.ts` (mismo productor que el aviso de pedido, para los mensajes que no son un aviso de estado de pedido) |
+| `restaurantes.whatsapp.entregas_fallidas_varias` | salud | critica | owner/admin, staff | MessageSquareWarning | `/restaurantes/{orgSlug}/agente-whatsapp` | un aviso por organizacion por hora (clave = organizacion + hora UTC); sustituye a los avisos individuales cuando hay mas de 5 fallos en una hora | 3 d | conectado: `apps/api/src/routes/verticals/restaurantes/whatsapp.ts` (agrupa los fallos de entrega para no inundar la campana) |
 | `restaurantes.handoff.solicitado` | agentes | atencion | owner/admin, staff | UserRoundCog | `/restaurantes/{orgSlug}/conversaciones` | una por conversacion derivada | 3 d | conectado: `packages/domain-restaurantes/src/conversaciones/postgres-repository.ts` (`PostgresHandoffAgentGate.solicitarHumano`: la toma abierta por el agente de WhatsApp real o por el widget de la demo) |
 | `restaurantes.voz.llamada_escalada` | agentes | atencion | owner/admin, staff | PhoneCall | `/restaurantes/{orgSlug}/agente-voz` | una por llamada | 3 d | conectado: `apps/api/src/routes/verticals/restaurantes/voz-interno.ts` |
 | `restaurantes.voz.proveedor_con_fallas` | salud | atencion | owner/admin | TriangleAlert | `/restaurantes/{orgSlug}/agente-voz` | una por sucursal por hora | 2 d | conectado: `apps/api/src/routes/verticals/restaurantes/voz-interno.ts` |
@@ -219,6 +222,14 @@ Idénticas a Likida (`admin/notificaciones.tsx`, `dashboard/notificaciones/lista
   cálculo en vivo; aquí cada aviso es una fila real).
 - **Sin migrar**: la lectura cae a las funciones de 0013 (ver Modelo); en esa base las filas no traen categoría, severidad ni
   enlace, así que la página las muestra como «Aviso» sin «Resolver».
+
+## Entrega de WhatsApp de restaurantes
+
+Tres eventos (`restaurantes.whatsapp.entrega_fallida_pedido`, `restaurantes.whatsapp.entrega_fallida` y `restaurantes.whatsapp.entregas_fallidas_varias`) los emite
+`apps/api/src/routes/verticals/restaurantes/whatsapp.ts` cuando Meta reporta `failed` por el webhook (statuses). Dedupe por mensaje (clave = id del mensaje del
+outbox); con mas de 5 fallos en una hora de la misma organizacion sale solo el aviso agrupado (una fila por destinatario y hora UTC). El texto lleva unicamente un
+codigo de motivo o un conteo. Detalle de los motivos y del respaldo por correo en `docs/PLANTILLAS-WHATSAPP.md` ("Estados de entrega"). No se emite nada si la
+base no tiene la migracion `066` (la emision y el registro del status degradan con SAVEPOINT).
 
 ## Estado
 
