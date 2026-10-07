@@ -47,7 +47,7 @@ describe("Public agent sandbox", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ entorno: "demostracion", accionesReales: false });
     expect(chat).toHaveBeenCalledWith({ solution, sessionId: body.sessionId, locale: "es", mensajes: body.mensajes });
-    expect(consume.mock.calls).toHaveLength(3);
+    expect(consume.mock.calls).toHaveLength(4);
   });
   it("handles OPTIONS with a specific origin and no billable action", async () => {
     const { app, chat, voice, consume } = setup();
@@ -117,7 +117,52 @@ describe("Public agent sandbox", () => {
     const res = await post("hoteles/voz/sesion");
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ tokenProveedor: "ephemeral-demo", duracionMaxSegundos: 60, entorno: "demostracion", accionesReales: false });
-    expect(consume.mock.calls).toHaveLength(3);
+    expect(consume.mock.calls).toHaveLength(4);
+  });
+});
+
+describe("Public sandbox quota fairness (QA-restaurantes-R2-agentes-13)", () => {
+  // Contadores durables simulados: cada (scope, actor) cuenta hasta su limite DENTRO de la ventana de la prueba (la ventana corta se reinicia entre rafagas).
+  function cuota() {
+    const usados = new Map<string, number>();
+    return {
+      usados,
+      consume: async (scope: string, actor: string, limit: number) => {
+        const k = `${scope}|${actor}`;
+        const n = (usados.get(k) ?? 0) + 1;
+        if (n > limit) return false;
+        usados.set(k, n);
+        return true;
+      },
+      reiniciarVentanaCorta: () => { for (const k of [...usados.keys()]) if (k.startsWith("chat-ip|") || k.startsWith("voz-ip|")) usados.delete(k); },
+    };
+  }
+  const desde = (ip: string, deps: DemoAgentsDeps) => {
+    const app = new Hono();
+    app.onError((error, c) => error instanceof ApiError ? new Response(JSON.stringify({ code: error.code }), { status: error.status }) : c.json({ code: "error" }, 500));
+    app.route("/", demoAgentsRoutes(deps));
+    return () => app.request("/v1/demo-agentes/restaurantes/chat", { method: "POST", headers: { "content-type": "application/json", origin: ORIGIN, "x-forwarded-for": ip }, body: JSON.stringify(valid()) });
+  };
+
+  it("una sola IP que rota sessionId y espera cada ventana corta NO agota el cupo global del dia: otra IP sigue atendida", async () => {
+    const c = cuota();
+    const { deps } = setup({ consume: c.consume });
+    const abusivo = desde("203.0.113.9", deps);
+    let aceptados = 0;
+    for (let ronda = 0; ronda < 30; ronda++) {
+      c.reiniciarVentanaCorta();
+      for (let i = 0; i < 12; i++) if ((await abusivo()).status === 200) aceptados++;
+    }
+    expect(aceptados).toBe(40);
+    expect(c.usados.get("chat-platform|all") ?? 0).toBeLessThanOrEqual(40);
+    expect((await desde("198.51.100.7", deps)()).status).toBe(200);
+  });
+
+  it("un visitante legitimo conserva su conversacion completa de 12 turnos en una ventana", async () => {
+    const c = cuota();
+    const { deps } = setup({ consume: c.consume });
+    const normal = desde("203.0.113.20", deps);
+    for (let i = 0; i < 12; i++) expect((await normal()).status).toBe(200);
   });
 });
 
