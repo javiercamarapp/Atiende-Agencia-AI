@@ -16,6 +16,7 @@ import { rentasOwnerPortalInviteRoutes } from "./owner-portal-invite.ts";
 import { rentasOwnerPortalRoutes } from "./owner-portal.ts";
 import { rentasIcalSyncRoutes } from "./ical-sync.ts";
 import { rentasIcalFeedPublicoRoutes } from "./ical-feed-publico.ts";
+import { rentasPrecheckinPublicoRoutes } from "./precheckin-publico.ts";
 import { rentasIcalSyncCronRoutes } from "./ical-sync-cron.ts";
 import { rentasIcalMonitorRoutes } from "./ical-monitor.ts";
 import { rentasReportesRoutes } from "./reportes.ts";
@@ -67,6 +68,10 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // requirePropertyMembership, así que montarla temprano evita cualquier ambigüedad
   // de forma con el patrón wildcard de las rutas de staff de abajo.
   app.route("/", rentasIcalFeedPublicoRoutes(deps));
+
+  // Rn-P3-08 -- pre-check-in publico del huesped (sin sesion de staff). Mismo criterio de orden: `/rentas/precheckin/:propertyId/...` tambien calza por
+  // forma contra `/rentas/:propertyId/...` de staff con propertyId="precheckin"; montarla temprano hace que su handler exacto la resuelva primero.
+  app.route("/", rentasPrecheckinPublicoRoutes(deps));
 
   // Fase 11 -- onboarding self-serve del tenant (POST /rentas/onboarding/registro,
   // sin sesión, ver onboarding.ts) -- ruta literal, mismo criterio de orden que las

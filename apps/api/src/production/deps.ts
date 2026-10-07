@@ -82,6 +82,7 @@ import {
   PostgresRentasRepository,
   PostgresRentasCalendarSyncRepository,
   PostgresRentasAccesoRepository,
+  PostgresRentasPrecheckinRepository,
   PostgresRentasCatalogoRepository,
   PostgresRentasReportesRepository,
   PostgresRentasMensajeriaRepository,
@@ -539,6 +540,7 @@ export function buildProductionDeps(): AppDeps {
       const { cipher, error } = cifradorAccesoDeEntorno(env);
       return new PostgresRentasAccesoRepository(db, cipher, error);
     },
+    rentasPrecheckinRepo: (db) => new PostgresRentasPrecheckinRepository(db),
     rentasCatalogoRepo: (db) => new PostgresRentasCatalogoRepository(db),
     rentasIcalFeedPort: new RealIcalFeedPort(),
     // Fase 7 -- mismo criterio que rentasRepo/rentasCalendarSyncRepo: sesión RLS
