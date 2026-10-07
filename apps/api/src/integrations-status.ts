@@ -325,6 +325,8 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "HOTELES_IDENTITY_KEY_VERSION",
   // Rn-29 -- version de la llave del cifrado del acceso de rentas (default 1): metadato por fila para la rotacion futura.
   "RENTAS_ACCESS_KEY_VERSION",
+  // Rn-13 -- interruptor de la URL de exportación iCal por UUID (deprecada): "off" la apaga (410). Opcional, encendida por omisión, nunca bloquea el arranque.
+  "RENTAS_ICAL_FEED_UUID_LEGACY",
   "OPENROUTER_COUNTRY_OF_RESIDENCE",
   // Gateway LLM: modelos por rol (JSON) y ZDR global; opcionales, ver docs/LLM-GATEWAY.md.
   "LLM_MODELS_JSON",

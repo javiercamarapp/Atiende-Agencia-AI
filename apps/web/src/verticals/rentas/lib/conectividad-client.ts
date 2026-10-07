@@ -7,6 +7,7 @@
 //   - rotarFeedToken         -> POST /rentas/:propertyId/unidades/:unidadId/canales/:canalCodigo/feed-token/rotar
 //   - probarUrlFeed          -> POST /rentas/:propertyId/unidades/:unidadId/ical-feeds/probar
 //   - sincronizarFeedAhora   -> POST /rentas/:propertyId/unidades/:unidadId/ical-feeds/:canalCodigo/sincronizar
+import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import { fetchJson, sendJson } from "./admin-client.ts";
 
 export type ViaIcal = "disponible" | "sin_evidencia" | "no_disponible";
@@ -250,7 +251,7 @@ export interface PasoAsistente {
 }
 
 function fechaLegible(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString("es-MX") : "nunca";
+  return iso ? fechaHoraEsMx(iso) : "nunca";
 }
 
 /**

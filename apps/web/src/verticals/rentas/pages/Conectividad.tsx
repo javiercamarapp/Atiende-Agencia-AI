@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Circle, ExternalLink, Network, RefreshCcw } from "lucide-react";
 import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge, statusTone, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import { ETIQUETA_ESTADO_CELDA, fetchCatalogoCanales, fetchMatrizConectividad, pasosAsistente } from "../lib/conectividad-client.ts";
 import type { CanalCatalogo, CeldaConectividad, MatrizConectividad, ViaHoy } from "../lib/conectividad-client.ts";
 import { CELDA_CONECTIVIDAD_TONES } from "../lib/status-tones.ts";
@@ -32,7 +33,7 @@ const TONO_VIA_HOY: Record<ViaHoy, "success" | "warning" | "neutral"> = { ical: 
 const ETIQUETA_CONFIANZA = { alta: "alta", media: "media", baja: "baja", sin_evidencia: "sin evidencia" } as const;
 
 function fechaCorta(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString("es-MX") : "nunca";
+  return iso ? fechaHoraEsMx(iso) : "nunca";
 }
 
 function detalleCelda(c: CeldaConectividad): string | null {
