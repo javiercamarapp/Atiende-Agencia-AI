@@ -287,26 +287,48 @@ export interface TenderResolutionCreateInput {
 // `listCompanySigners`) -- sin forma de capturar el dato real, toda propuesta
 // (técnica o económica) que dependiera de él quedaba PENDIENTE para siempre
 // (ver `company-data.ts::CompanyDataService`: dato ausente -> "missing"
-// explícito, nunca inventado). `approvalStatus` es escribible por las mismas
-// WRITE_ROLES que el resto de la captura (mismo criterio EXACTO que la
-// migración 009 -- "aprobado" aquí es una marca de captura correcta, no una
-// decisión de riesgo, a diferencia de aprobar el expediente completo).
+// explícito, nunca inventado). Capturar/editar es WRITE_ROLES, pero el
+// `approvalStatus` YA NO se escribe por create/update (migración 036): siempre
+// nace 'pendiente_aprobacion', editar un dato aprobado lo regresa a pendiente
+// y aprobar/rechazar es `decideCompanyItem` (DECISION_ROLES; tarifas owner/admin
+// con step-up, autor distinto del aprobador).
 // ---------------------------------------------------------------------
 export type CompanyDataApprovalStatus = "aprobado" | "pendiente_aprobacion" | "rechazado";
 
+/** Los cinco recursos de "datos de empresa" que se aprueban (migración 036, `licitaciones.decide_company_item`). */
+export type CompanyItemKind = "rate" | "document" | "capability" | "experience" | "signer";
+export type CompanyItemDecision = "aprobado" | "rechazado";
+/**
+ * `ok`; `not_found` (no existe en la organización); `conflict` (ya no estaba pendiente: decidido por otra persona/petición);
+ * `autor` (quien propuso o editó por última vez no puede decidir); `rol` (rol sin permiso de decisión);
+ * `no_disponible` (la base aún no tiene la migración 036 y el recurso no tenía aprobación antes: firmantes).
+ */
+export type CompanyItemDecisionOutcome = "ok" | "not_found" | "conflict" | "autor" | "rol" | "no_disponible";
+export interface CompanyItemDecisionInput {
+  readonly kind: CompanyItemKind;
+  readonly itemId: string;
+  readonly decision: CompanyItemDecision;
+  readonly actorId: string;
+  /** Rol vertical del actor. Postgres lo re-valida por membresía; en base sin migrar y en memoria es la única barrera. */
+  readonly actorRole: string;
+}
+
 export interface CompanyDocumentCreateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly type: string;
   readonly label: string;
   readonly expiresAt: string | null;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 export interface CompanyDocumentUpdateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly label?: string;
   readonly expiresAt?: string | null;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 
 export interface ApprovedRateCreateInput {
+  readonly actorId?: string;
   readonly concept: string;
   readonly unitPrice: DecimalString;
   /** Default cuando el caller la omite: el día de NEGOCIO
@@ -315,44 +337,51 @@ export interface ApprovedRateCreateInput {
    *  ver comentario de cabecera de `PostgresLicitacionesRepository.createApprovedRate`). */
   readonly validFrom?: string;
   readonly validUntil?: string | null;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 export interface ApprovedRateUpdateInput {
+  readonly actorId?: string;
   readonly unitPrice?: DecimalString;
   readonly validFrom?: string;
   readonly validUntil?: string | null;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 
 export interface CompanyCapabilityCreateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly name: string;
   readonly description: string;
   readonly evidenceDocId?: string | null;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 export interface CompanyCapabilityUpdateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly description?: string;
   readonly evidenceDocId?: string | null;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 
 export interface CompanyExperienceCreateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly description: string;
   readonly evidenceDocId: string;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 export interface CompanyExperienceUpdateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly description?: string;
   readonly evidenceDocId?: string;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 
 export interface CompanySignerCreateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly name: string;
   readonly role: string;
   readonly authorized?: boolean;
 }
 export interface CompanySignerUpdateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly name?: string;
   readonly authorized?: boolean;
 }
@@ -1001,6 +1030,8 @@ export interface LicitacionesRepository {
   updateCompanyExperience(organizationId: string, experienceId: string, input: CompanyExperienceUpdateInput): Promise<CompanyExperienceItemRecord>;
   createCompanySigner(organizationId: string, input: CompanySignerCreateInput): Promise<CompanySignerRecord>;
   updateCompanySigner(organizationId: string, signerId: string, input: CompanySignerUpdateInput): Promise<CompanySignerRecord>;
+  /** Aprueba/rechaza un dato de empresa de forma atómica y condicional (solo desde 'pendiente_aprobacion'), con autor distinto del aprobador y bitácora. Ver `CompanyItemDecisionOutcome`. */
+  decideCompanyItem(organizationId: string, input: CompanyItemDecisionInput): Promise<CompanyItemDecisionOutcome>;
 }
 
 export type {

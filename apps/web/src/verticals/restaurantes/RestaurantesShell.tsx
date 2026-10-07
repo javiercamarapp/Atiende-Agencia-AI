@@ -16,6 +16,7 @@ import {
   CalendarCheck,
   ClipboardCheck,
   ClipboardList,
+  ClipboardPaste,
   History,
   Clock,
   LayoutDashboard,
@@ -118,6 +119,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
       title: "Operación",
       items: [
         { to: `${base}/pedidos`, label: "Pedidos", icon: ClipboardList },
+        // Captura asistida de SoftRestaurant: la cola de comandas que alguien teclea en el POS (MANAGER_ROLES, igual que el servidor).
+        { to: `${base}/comandas-pos`, label: "Comandas al POS", icon: ClipboardPaste },
         // R-21: bandeja de conversaciones (WhatsApp y llamadas) con toma por una persona, y turnos de personal.
         { to: `${base}/conversaciones`, label: "Conversaciones", icon: MessageSquare },
         { to: `${base}/turnos`, label: "Turnos", icon: Clock },

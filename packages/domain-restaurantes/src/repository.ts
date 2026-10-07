@@ -12,6 +12,15 @@ import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type {
+  CustomerAddressChanges,
+  CustomerFicha,
+  CustomerMemory,
+  CustomerPolicy,
+  CustomerProfilePatch,
+  OrderClosureInput,
+  PreferenceAction,
+} from "./cliente-360/types.ts";
+import type {
   Branch,
   BranchHoursException,
   CanalPedido,
@@ -33,7 +42,10 @@ import type {
   Customer,
   CustomerAddress,
   CustomerListFilter,
+  CarteraKpis,
   CustomerListPage,
+  FilaImportacionCliente,
+  ResultadoImportacionClientes,
   CustomerTier,
   KnownZone,
   NearestBranchMatch,
@@ -220,6 +232,32 @@ export interface RestaurantesRepository {
    * en_camino/entregado/completado — nunca cancelado/problema), orden desc. */
   listEligibleOrderHistory(customerId: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>>;
   calcCustomerTier(organizationId: string, customerId: string): Promise<CustomerTier | null>;
+
+  // ---- Cliente 360 (migracion 049, ver cliente-360/) ----
+  /** Memoria del cliente por telefono de 10 digitos: domicilios, pedidos anteriores, gustos y reincidencia. `null` = cliente
+   * nuevo; `undefined` = la base todavia no la ofrece (migracion 049 sin aplicar): el llamador cae al camino anterior. */
+  getCustomerMemory(organizationId: string, phone: string): Promise<CustomerMemory | null | undefined>;
+  /** Cierre del ciclo tras crear un pedido (domicilio y gustos). Idempotente por pedido. `undefined` = base sin migrar. */
+  registerOrderClosure(input: OrderClosureInput): Promise<{ readonly applied: boolean } | undefined>;
+  /** Ficha del cliente para el staff. `null` si no existe en la organizacion. Lanza `ClienteMemoriaNoDisponibleError` sin la 049. */
+  getCustomerFicha(organizationId: string, customerId: string): Promise<Omit<CustomerFicha, "tier"> | null>;
+  updateCustomerProfile(organizationId: string, customerId: string, patch: CustomerProfilePatch): Promise<void>;
+  /** Alta (`addressId` null) o edicion de un domicilio del cliente. Devuelve el id. */
+  saveCustomerAddress(organizationId: string, customerId: string, addressId: string | null, changes: CustomerAddressChanges): Promise<string>;
+  deleteCustomerAddress(organizationId: string, customerId: string, addressId: string): Promise<boolean>;
+  applyCustomerPreferenceAction(
+    organizationId: string,
+    customerId: string,
+    action: PreferenceAction,
+    args: { readonly prefId?: string | null; readonly kind?: string | null; readonly value?: string | null },
+  ): Promise<string>;
+  /** Marca o desmarca un pedido como falso (cuenta para la reincidencia). */
+  markOrderFake(organizationId: string, orderId: string, falso: boolean): Promise<boolean>;
+  exportCustomerData(organizationId: string, customerId: string): Promise<Record<string, unknown> | null>;
+  deleteCustomerMemory(organizationId: string, customerId: string): Promise<{ readonly domiciliosBorrados: number; readonly gustosBorrados: number }>;
+  /** Politica de reincidencia; sin la 049 devuelve los valores por omision (2 en 90 dias). */
+  getCustomerPolicy(organizationId: string): Promise<CustomerPolicy>;
+  saveCustomerPolicy(organizationId: string, policy: CustomerPolicy): Promise<CustomerPolicy>;
 
   /** Equivalente a create_order_idempotent: dos niveles de idempotencia
    * (idempotencyKey explícito y dedupeFingerprint automático de 5 min sobre pedidos
@@ -438,6 +476,15 @@ export interface RestaurantesRepository {
 
   findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
   listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;
+  /** Migracion 054. Sin ella: `{ disponible: false }` (nunca un error). */
+  getCarteraKpis(organizationId: string): Promise<CarteraKpis>;
+  /**
+   * Migracion 054: importa la cartera (filas ya normalizadas, hasta 5,000), upsert por (organizacion, telefono) que NO pisa el nombre ni la nota
+   * conocidos, SIN crear pedidos y SIN mandar mensajes. Idempotente por `huella` (sha-256 hex del archivo). Sin la migracion: `{ disponible: false }`.
+   */
+  importarClientes(organizationId: string, huella: string, filas: readonly FilaImportacionCliente[]): Promise<ResultadoImportacionClientes>;
+  /** Nota interna del cliente (migracion 054, columna `notes`); `null` si no hay o la base aun no la tiene. */
+  getCustomerNotes(organizationId: string, customerId: string): Promise<string | null>;
 
   // ---- Fase 8 — superficie real del rol "repartidor" (ver diseño, domain-restaurantes/
   // src/roles.ts::REPARTIDOR_ROLES). Todos estos métodos acotan la consulta a

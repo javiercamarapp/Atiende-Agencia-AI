@@ -1,3 +1,4 @@
+import type { CustomerAddressDetail, TasteProposal } from "./cliente-360/types.ts";
 // Tipos de dominio de restaurantes — port de las formas de
 // restaurantes/supabase/functions/_shared/create-order-core.ts, renombrando
 // restaurant_id -> organizationId y branch_id -> propertyId para integrar con el
@@ -146,7 +147,26 @@ export type CustomerLookupResult =
       readonly agentNotes: readonly string[];
       /** Pedido de las ultimas 12 h de este telefono con el estado que marco la sucursal (para "¿ya salio?"); ausente/null si no hay. */
       readonly pedidoReciente?: PedidoReciente | null;
+      /** Cliente 360 (migracion 049). Ausentes contra una base sin migrar: el agente se comporta como antes. */
+      /** Domicilios con etiqueta y referencias, el ULTIMO USADO primero. */
+      readonly domicilios?: readonly CustomerAddressDetail[];
+      /** Gustos que se le pueden PROPONER (aprendidos de pedidos confirmados; el cliente puede cambiarlos). */
+      readonly gustos?: readonly TasteProposal[];
+      /** Ultimos pedidos (sin cancelados), el mas reciente primero, para "lo mismo de la vez pasada". */
+      readonly pedidosAnteriores?: readonly PedidoAnteriorResumen[];
+      /** true = en los ultimos pedidos hubo "no recogido"/pedido falso por encima del umbral: la sucursal confirma el siguiente. */
+      readonly requiereConfirmacionSucursal?: boolean;
     };
+
+/** Resumen de un pedido anterior para el agente: sin telefono ni direccion completa. */
+export interface PedidoAnteriorResumen {
+  readonly numero: number | null;
+  readonly fecha: string;
+  readonly canal: CanalPedido | null;
+  readonly sucursal: string | null;
+  readonly total: number;
+  readonly productos: readonly OrderHistoryItem[];
+}
 
 export interface CreateOrderItemInput {
   readonly productId?: string;
@@ -201,6 +221,11 @@ export interface CreateOrderInput {
    * dentro del horario de la sucursal (en SU zona horaria) y dentro de la ventana permitida (ver
    * pedidos-programados.ts). Sin esto el pedido es inmediato, como siempre. */
   readonly programadoPara?: string;
+  /** Cliente 360 (migracion 049): datos opcionales del domicilio que el cliente dio al confirmar. Solo alimentan la ficha
+   * del cliente (cierre del ciclo); no cambian el total ni el dedupe del pedido. */
+  readonly addressLabel?: string;
+  readonly accessNotes?: string;
+  readonly mapsUrl?: string;
 }
 
 export type CanalPedido = "domicilio" | "recoger";
@@ -316,6 +341,9 @@ export interface Order {
   readonly dedupeFingerprint: string | null;
   readonly idempotencyKey: string | null;
   readonly createdAt: string;
+  /** Folio corto del pedido (`orders.order_number`). Solo viene en la fila de creacion (`create_order_idempotent` devuelve la fila completa); ausente en
+   * lecturas por columnas y en pedidos de prueba. Se usa para el aviso "Recibimos su pedido #folio". */
+  readonly orderNumber?: number;
   // ---- Fase 8 — superficie real del rol "repartidor" (ver roles.ts, migrations/008) ----
   /** `core.staff_user.id` del repartidor despachado a este pedido por un
    * MANAGER_ROLES (nunca lo pone el repartidor mismo) — null hasta que se
@@ -464,7 +492,9 @@ export type OrderStatus =
   | "listo_para_recoger"
   | "no_recogido"
   /** R-11 (migracion 034): pedido dejado para una hora futura; fuera de cocina hasta que se promueve a `pending`. */
-  | "programado";
+  | "programado"
+  /** Autopiloto (migracion 050): pedido grande retenido sin comanda ni cocina hasta que una persona lo aprueba (un clic) o lo rechaza. */
+  | "por_aprobar";
 
 export interface OrderListFilter {
   readonly propertyIds: readonly string[] | null;
@@ -480,16 +510,71 @@ export interface OrderListPage {
   readonly nextCursor: string | null;
 }
 
+/** Frecuencia de la cartera: `una_vez` = exactamente 1 pedido; `recurrentes` = 2 o mas. */
+export type CustomerFrecuencia = "una_vez" | "recurrentes";
+export const CUSTOMER_FRECUENCIAS: readonly CustomerFrecuencia[] = ["una_vez", "recurrentes"];
+export const CUSTOMER_TIERS: readonly CustomerTier[] = ["BLACK", "PLATINUM", "GOLD", "BLUE"];
+
 export interface CustomerListFilter {
   readonly search?: string;
   readonly limit: number;
   readonly cursor?: string;
+  /** Migracion 054: nivel (`calc_customer_tier`). Sin la migracion, la pagina responde `filtrosDisponibles: false`. */
+  readonly nivel?: CustomerTier;
+  readonly frecuencia?: CustomerFrecuencia;
+  /** Sin pedir en los ultimos N dias (quien nunca ha pedido cuenta). */
+  readonly inactivoDias?: number;
+  /** Clientes que han pedido en esa sucursal. */
+  readonly propertyId?: string;
+}
+
+/** Un cliente del listado de cartera. `tier`/`lastOrderAt` salen de la migracion 054; sin ella son `null`. */
+export interface CustomerListItem extends Customer {
+  readonly tier: CustomerTier | null;
+  readonly lastOrderAt: string | null;
 }
 
 export interface CustomerListPage {
-  readonly customers: readonly Customer[];
+  readonly customers: readonly CustomerListItem[];
   readonly nextCursor: string | null;
+  /** `false` solo cuando se pidio un filtro nuevo y la base aun no tiene la migracion 054 (lista vacia + estado "no disponible aun"). */
+  readonly filtrosDisponibles: boolean;
 }
+
+/** KPIs de la cartera (migracion 054). `disponible: false` = la base aun no la tiene. */
+export type CarteraKpis =
+  | { readonly disponible: false }
+  | {
+      readonly disponible: true;
+      readonly total: number;
+      readonly recurrentes: number;
+      /** Promedio del total de pedidos vigentes con cliente conocido; `null` si aun no hay pedidos. */
+      readonly ticketPromedio: number | null;
+      /** Cliente con mas pedidos; `null` si nadie ha pedido. */
+      readonly masFrecuente: { readonly customerId: string; readonly orderCount: number; readonly ultimoPedidoEn: string | null } | null;
+    };
+
+/** Un renglon YA normalizado de la importacion de cartera (`importar_clientes`, migracion 054). */
+export interface FilaImportacionCliente {
+  /** 10 digitos (`canonicalizeMexicanPhone`). */
+  readonly phone: string;
+  readonly name: string | null;
+  readonly address: string | null;
+  readonly notes: string | null;
+}
+
+export type ResultadoImportacionClientes =
+  | { readonly disponible: false }
+  | {
+      readonly disponible: true;
+      /** El archivo (misma huella) ya se habia importado: nada se volvio a escribir; las cifras son las de la primera vez. */
+      readonly yaImportado: boolean;
+      readonly total: number;
+      readonly creados: number;
+      readonly actualizados: number;
+      readonly sinCambios: number;
+      readonly rechazados: number;
+    };
 
 export interface CallbackRequestInput {
   readonly organizationId: string;

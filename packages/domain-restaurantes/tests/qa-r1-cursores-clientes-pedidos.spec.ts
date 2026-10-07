@@ -63,10 +63,12 @@ describe("listOrders: cursor de pagina", () => {
 });
 
 describe("listCustomers: cursor y busqueda", () => {
+  // Migracion 054: el listado pasa por restaurantes.clientes_cartera($1 org, $2 nivel, $3 frecuencia, $4 dias, $5 sucursal, $6 busqueda, $7 limite, $8 cursor).
   it("un cursor que no es uuid se ignora", async () => {
     const { session, calls } = fakeSession([]);
     await new PostgresRestaurantesRepository(session).listCustomers(ORG, { limit: 5, cursor: "pagina-2" });
-    expect(calls[0]!.sql).not.toContain("id >");
+    expect(calls[0]!.sql).toContain("restaurantes.clientes_cartera");
+    expect(calls[0]!.params[7]).toBeNull();
     expect(calls[0]!.params).not.toContain("pagina-2");
   });
 
@@ -74,8 +76,7 @@ describe("listCustomers: cursor y busqueda", () => {
     const { session, calls } = fakeSession([]);
     const id = "00000000-0000-4000-8000-000000000009";
     await new PostgresRestaurantesRepository(session).listCustomers(ORG, { limit: 5, cursor: id });
-    expect(calls[0]!.sql).toContain("id >");
-    expect(calls[0]!.params).toContain(id);
+    expect(calls[0]!.params[7]).toBe(id);
   });
 
   it("% _ y \\ en la busqueda son literales (se escapan)", async () => {
@@ -83,8 +84,8 @@ describe("listCustomers: cursor y busqueda", () => {
     const repo = new PostgresRestaurantesRepository(session);
     await repo.listCustomers(ORG, { limit: 5, search: "%" });
     await repo.listCustomers(ORG, { limit: 5, search: "a_b\\c" });
-    expect(calls[0]!.params[1]).toBe("%\\%%");
-    expect(calls[1]!.params[1]).toBe("%a\\_b\\\\c%");
+    expect(calls[0]!.params[5]).toBe("\\%");
+    expect(calls[1]!.params[5]).toBe("a\\_b\\\\c");
   });
 });
 

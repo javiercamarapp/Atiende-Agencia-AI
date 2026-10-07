@@ -1,3 +1,4 @@
+import { buildDemoAgents } from "../demo-agents/production.ts";
 // buildProductionDeps — ensambla el `AppDeps` real que consume el handler de Vercel
 // (`../../api/index.ts` en la raíz del repo). Ver `not-ready.ts` para el detalle
 // completo de qué NO es un adaptador de producción todavía y por qué.
@@ -56,7 +57,7 @@ import { PostgresAgentesRepository, PostgresHotelesRepository, PostgresReservasA
 import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { ObservabilidadTurno, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs } from "@atiende/domain-restaurantes";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
@@ -165,6 +166,8 @@ export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gate
     defaultRole: RESTAURANTES_WHATSAPP_AGENT_ROLE,
     escalatedRole: RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
     encolarComanda: (pedido) => encolarComandaParaPedido(softRestaurantComandaDeps(softRestaurantDeps, db, repo), pedido),
+    // Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido; degrada a "no disponible" sin la 050.
+    autopiloto: crearHooksAutopilotoTurnoPostgres({ repo, db }),
     ...(observabilidad ? { observabilidad } : {}),
   });
 }
@@ -339,6 +342,7 @@ export function buildProductionDeps(): AppDeps {
   const modelosLlm = loadLlmModelsConfig(env);
 
   cached = {
+    publicDemoAgents: buildDemoAgents(env, engine),
     env,
     engine,
     coreRepo: new ProductionCoreRepository(engine),
@@ -355,10 +359,13 @@ export function buildProductionDeps(): AppDeps {
     // Voz de restaurantes (migración 025): el adaptador de Gemini solo emite sesiones con
     // GEMINI_API_KEY; sin ella `salud()` no está ok y las rutas responden 503 "voz no configurada".
     vozRepo: (db) => new PostgresVozRepository(db),
+    vozLlamadaRepo: (db) => new PostgresVozLlamadaRepository(db),
     // KPI de voz, costo y alertas (migración 035): cada consulta degrada con SAVEPOINT contra la base sin migrar.
     vozKpiRepo: (db) => new PostgresVozKpiRepository(db),
     whatsappKpiRepo: (db) => new PostgresWhatsappKpiRepository(db),
     cierreRepo: (db) => new PostgresCierreRepository(db),
+    // Autopiloto (migración 050): cada operación degrada con SAVEPOINT a "no disponible" contra la base sin migrar.
+    autopilotoRepo: (db) => new PostgresAutopilotoRepository(db),
     repartidorPerfilRepo: (db) => new PostgresRepartidorPerfilRepository(db),
     // Privacidad (migración 030): ARCO, aviso simplificado y retención; cada operación degrada con SAVEPOINT.
     privacidadRepo: (db) => new PostgresPrivacidadRepository(db),
