@@ -32,6 +32,8 @@ import {
   SQL_TOP_PRODUCTS_BY_QUANTITY,
   SQL_TOP_PRODUCTS_BY_REVENUE,
   SQL_VISIBLE_BRANCHES,
+  FECHA_PEDIDO,
+  FECHA_PEDIDO_LEGADA,
 } from "./sql.ts";
 
 function isMissingSchemaObject(err: unknown): boolean {
@@ -59,7 +61,21 @@ export class PostgresRestaurantesDataChatReader implements RestaurantesDataChatR
       session: this.db,
       primary: async () => (await this.db.query<R>(sql, params)).rows,
       isRecoverable: isMissingSchemaObject,
-      fallback: async () => {
+      fallback: async (err) => {
+        // Base sin la migracion 034 (no existe `promovido_at`): el dia del pedido vuelve a ser `created_at` (comportamiento
+        // anterior) en vez de dejar el chat "no disponible". Corre tras el ROLLBACK TO SAVEPOINT de runWithSavepointFallback.
+        if (sql.includes(FECHA_PEDIDO) && isUndefinedColumnError(err)) {
+          const legacy = sql.split(FECHA_PEDIDO).join(FECHA_PEDIDO_LEGADA);
+          return runWithSavepointFallback<R[]>({
+            session: this.db,
+            savepointName: "sp_data_chat_legado",
+            primary: async () => (await this.db.query<R>(legacy, params)).rows,
+            isRecoverable: isMissingSchemaObject,
+            fallback: async () => {
+              throw new DataChatUnavailableError(what);
+            },
+          });
+        }
         throw new DataChatUnavailableError(what);
       },
     });

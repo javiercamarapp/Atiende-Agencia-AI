@@ -1030,8 +1030,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         if (o.organizationId !== organizationId) return false;
         if (scope !== null && !scope.has(o.propertyId)) return false;
         // R-30 + QA R1 viaje-09: ventas netas; un pedido cancelado, no recogido (no se cobro) o programado (aun no es venta) no cuenta.
-        if (o.status === "cancelado" || o.status === "no_recogido" || o.status === "programado") return false;
-        const createdMs = Date.parse(o.createdAt);
+        // QA R2 viaje-04: un pedido retenido (por_aprobar) tampoco es venta. QA R2 viaje-03: el dia es el de la promocion si la hay.
+        if (o.status === "cancelado" || o.status === "no_recogido" || o.status === "programado" || o.status === "por_aprobar") return false;
+        const createdMs = Date.parse(o.promovidoAt ?? o.createdAt);
         return createdMs >= startMs && createdMs < endMs;
       });
       const revenue = enRango.reduce((sum, o) => sum + o.total, 0);
