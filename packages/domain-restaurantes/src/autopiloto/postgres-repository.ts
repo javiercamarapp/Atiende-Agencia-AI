@@ -243,12 +243,23 @@ export class PostgresAutopilotoRepository implements AutopilotoRepository {
     return r.valor;
   }
 
-  async marcarAgotado(organizationId: string, propertyId: string, productId: string, hasta: string): Promise<{ readonly disponible: boolean; readonly aplicado: boolean }> {
-    const r = await this.lectura("agotado_marcar", false, async () => {
-      const { rows } = await this.db.query<{ ok: boolean }>("select restaurantes.agotado_marcar($1::uuid, $2::uuid, $3::uuid, $4::date) as ok;", [organizationId, propertyId, productId, hasta]).catch(traducir);
-      return rows[0]?.ok === true;
-    });
-    return { disponible: r.disponible, aplicado: r.valor };
+  async marcarAgotado(organizationId: string, propertyId: string, productId: string, hasta: string, hastaCalendario?: string): Promise<{ readonly disponible: boolean; readonly aplicado: boolean }> {
+    const intentar = async (fecha: string) => {
+      const r = await this.lectura("agotado_marcar", false, async () => {
+        const { rows } = await this.db.query<{ ok: boolean }>("select restaurantes.agotado_marcar($1::uuid, $2::uuid, $3::uuid, $4::date) as ok;", [organizationId, propertyId, productId, fecha]).catch(traducir);
+        return rows[0]?.ok === true;
+      });
+      return { disponible: r.disponible, aplicado: r.valor };
+    };
+    try {
+      return await intentar(hasta);
+    } catch (err) {
+      // QA R2 (compatibilidad con la base sin migrar): la funcion de la 050 compara `hasta` con la fecha CALENDARIO y rechaza (22023) un
+      // dia de negocio que aun es "hoy" en calendario (p. ej. 00:30 del domingo con turno que cruza medianoche). Se reintenta con calendario + 1
+      // (el comportamiento de antes). `lectura` ya revirtio su SAVEPOINT, asi que la sesion sigue utilizable para el reintento.
+      if (err instanceof AutopilotoValidacionError && hastaCalendario !== undefined && hastaCalendario > hasta) return intentar(hastaCalendario);
+      throw err;
+    }
   }
 
   async reponerAgotados(ahora: Date): Promise<Lectura<readonly AgotadoRepuesto[]>> {

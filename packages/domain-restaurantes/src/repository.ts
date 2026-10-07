@@ -231,10 +231,11 @@ export interface RestaurantesRepository {
   upsertCustomer(organizationId: string, phone: string, name: string): Promise<Customer>;
   /** `organizationId` es obligatorio: la escritura real (funcion solo-sistema de la migracion 048) exige que el cliente pertenezca a esa organizacion. */
   addCustomerAddressIfNew(customerId: string, address: string, organizationId: string): Promise<void>;
-  listCustomerAddresses(customerId: string): Promise<readonly CustomerAddress[]>;
+  /** `organizationId` (migracion 071): la sesion de sistema de los agentes solo ve las direcciones por la funcion solo-sistema, que lo exige. Sin el, lectura directa. */
+  listCustomerAddresses(customerId: string, organizationId?: string): Promise<readonly CustomerAddress[]>;
   /** Historial de pedidos ELEGIBLES para memoria/recomendación (pending/preparando/
    * en_camino/entregado/completado — nunca cancelado/problema), orden desc. */
-  listEligibleOrderHistory(customerId: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>>;
+  listEligibleOrderHistory(customerId: string, organizationId?: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>>;
   calcCustomerTier(organizationId: string, customerId: string): Promise<CustomerTier | null>;
 
   // ---- Cliente 360 (migracion 049, ver cliente-360/) ----

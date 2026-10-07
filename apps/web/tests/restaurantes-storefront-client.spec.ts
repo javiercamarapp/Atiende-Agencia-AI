@@ -57,6 +57,18 @@ describe("crearClienteStorefront", () => {
     expect(JSON.parse((f.mock.calls[0]![1] as RequestInit).body as string).acepta_aviso_privacidad).toBe(false);
   });
 
+  it("crearPedido: la casilla opcional de promociones solo viaja cuando esta marcada (por omision NO se manda nada)", async () => {
+    const f = vi.fn().mockResolvedValue(res({ rastreo_token: "t" }));
+    const c = crearClienteStorefront("https://api.test", "demo", f as unknown as typeof fetch);
+    const cuerpoDe = (i: number) => JSON.parse((f.mock.calls[i]![1] as RequestInit).body as string);
+    await c.crearPedido("centro", DATOS, { nombre: "Ana", telefono: "9991234567", aceptaAviso: true }, null);
+    await c.crearPedido("centro", DATOS, { nombre: "Ana", telefono: "9991234567", aceptaAviso: true, aceptaPromociones: false }, null);
+    await c.crearPedido("centro", DATOS, { nombre: "Ana", telefono: "9991234567", aceptaAviso: true, aceptaPromociones: true }, null);
+    expect(cuerpoDe(0).acepta_promociones).toBeUndefined();
+    expect(cuerpoDe(1).acepta_promociones).toBeUndefined();
+    expect(cuerpoDe(2).acepta_promociones).toBe(true);
+  });
+
   it("propaga el mensaje real del servidor y el motivo de la maquina de estados", async () => {
     const f = vi.fn().mockResolvedValue(res({ code: "validation_error", message: "La cotización ya venció.", motivo: "cotizacion_vencida" }, 400));
     const c = crearClienteStorefront("https://api.test", "demo", f as unknown as typeof fetch);

@@ -35,6 +35,7 @@ import type { InconformidadFundamento, InconformidadViability } from "./inconfor
 import type { CriteriaComparisonItem, OwnProposalStatus } from "./fallo-autopsy.ts";
 import type { TenderSourceIngestCandidate } from "./connectors/types.ts";
 import type { TenderResolution } from "./tender-resolution.ts";
+import type { DocumentExtractionStatus, TenderDocumentRecord, TenderDocumentType, TenderDocumentWithPages } from "./document-vault.ts";
 
 // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
 // Formas de registro deliberadamente con uniones de string LITERALES (no
@@ -58,6 +59,120 @@ export interface RequirementItemRecord {
   readonly status: "pendiente" | "en_progreso" | "cumplido" | "bloqueado" | "no_evaluable";
   readonly confidence: number | null;
 }
+
+// ---- paridad3 (L-P3-05/06/07): boveda de bases, matriz estable, conflictos persistidos, revision con comentarios ----
+
+/** Requisito con los campos de la matriz estable (migracion 037). Sin la migracion, los campos nuevos llegan en su valor neutro. */
+export interface RequirementItemDetail extends RequirementItemRecord {
+  readonly stableKey: string | null;
+  readonly assignedTo: string | null;
+  /** Causa de desechamiento (REQ-101): incumplirlo descalifica la propuesta. */
+  readonly disqualifying: boolean;
+  readonly manuallyEditedAt: string | null;
+  /** Retirado (ya no aparece en las bases vigentes): nunca se borra en silencio. */
+  readonly retiredAt: string | null;
+  readonly retiredInVersion: number | null;
+}
+
+/** Entrada del upsert estable: el registro mas el documento de origen (linaje de la boveda o etiqueta del documento). */
+export interface RequirementUpsertItem extends RequirementItemRecord {
+  readonly documentRef: string;
+}
+
+export interface RequirementUpsertResult {
+  /** `estable` = migracion 037 (upsert por clave estable); `reemplazo` = base sin migrar (camino anterior, borra y reinserta). */
+  readonly mode: "estable" | "reemplazo";
+  /** Requisitos ACTIVOS tras el upsert, con los ids persistidos. */
+  readonly items: readonly RequirementItemDetail[];
+  /** id de la entrada (generado por el extractor) -> id persistido. */
+  readonly idByInputId: Readonly<Record<string, string>>;
+  readonly created: number;
+  readonly updated: number;
+  readonly unchanged: number;
+  readonly retired: number;
+}
+
+export interface RequirementItemPatch {
+  readonly responsibleRole?: string;
+  readonly status?: "pendiente" | "en_progreso" | "cumplido" | "no_evaluable";
+  readonly assignedTo?: string | null;
+  readonly disqualifying?: boolean;
+}
+
+export type RequirementConflictStatus = "abierto" | "resuelto";
+
+export interface RequirementConflictRecord {
+  readonly id: string;
+  readonly tenderId: string;
+  readonly kind: "deadline_mismatch" | "obligatoriedad_mismatch" | "duplicate_ambiguous";
+  readonly topicKey: string | null;
+  readonly description: string;
+  readonly itemIds: readonly string[];
+  readonly status: RequirementConflictStatus;
+  readonly resolutionNotes: string | null;
+  readonly resolvedBy: string | null;
+  readonly resolvedAt: string | null;
+  readonly createdAt: string;
+}
+
+export interface DetectedRequirementConflict {
+  readonly kind: RequirementConflictRecord["kind"];
+  readonly topicKey: string | null;
+  readonly description: string;
+  readonly itemIds: readonly string[];
+  readonly stableKeys: readonly string[];
+}
+
+export interface TenderDocumentUploadInput {
+  readonly documentType: TenderDocumentType;
+  readonly title: string | null;
+  readonly filename: string | null;
+  readonly mimeType: string | null;
+  readonly buffer: Uint8Array;
+  readonly extractionStatus: DocumentExtractionStatus;
+  readonly extractionDetail: string | null;
+  readonly pageCount: number | null;
+  readonly pages: readonly { readonly page: number; readonly text: string }[] | null;
+  readonly actorId: string;
+  /** Si se indica, el documento es una VERSION NUEVA del linaje de ese documento. */
+  readonly replacesDocumentId: string | null;
+}
+
+export type ProposalCommentScope = "seccion" | "expediente";
+export type ProposalCommentKind = "comentario" | "solicitud_revision";
+
+export interface ProposalCommentRecord {
+  readonly id: string;
+  readonly proposalId: string;
+  readonly scope: ProposalCommentScope;
+  readonly scopeRef: string;
+  readonly kind: ProposalCommentKind;
+  readonly body: string;
+  readonly authorId: string;
+  readonly authorRole: string;
+  readonly createdAt: string;
+}
+
+export interface ProposalSectionRecord {
+  readonly sectionKey: string;
+  readonly label: string;
+  readonly content: string;
+  readonly version: number;
+  /** Cuantas personas distintas han redactado/editado la seccion (AE-11); nunca se expone quienes. */
+  readonly authorCount: number;
+  /** `true` si quien consulta es autor de la seccion: no puede aprobarla ni aprobar el expediente (AE-11). */
+  readonly authoredByViewer: boolean;
+}
+
+export interface SectionEditResult {
+  readonly section: ProposalSectionRecord;
+  /** `false` si el contenido nuevo es identico al vigente: no se toca nada y no se invalida ninguna aprobacion. */
+  readonly changed: boolean;
+  /** Cambio detectado (con las aprobaciones invalidadas) cuando `changed`; `null` si no cambio o no habia aprobaciones. */
+  readonly invalidated: ChangeDetected | null;
+}
+
+export type TenderAuditAction = "document.uploaded" | "requirements.extracted" | "requirement.edited" | "requirement.conflict_resolved" | "section.edited";
 
 export interface RequirementFulfillmentMappingRecord {
   readonly id: string;
@@ -828,6 +943,48 @@ export interface LicitacionesRepository {
   /** Sustituye TODOS los `requirement_item` de `tenderId` por `items` (mismo criterio de reemplazo completo que `replaceComplianceItems` -- nunca acumula historial de corridas de extracción). */
   replaceRequirementItems(organizationId: string, tenderId: string, items: readonly RequirementItemRecord[]): Promise<void>;
   listRequirementItems(organizationId: string, tenderId: string): Promise<readonly RequirementItemRecord[]>;
+  /** Rastro en la bitacora de la convocatoria (`tender_audit_log`). Mejor esfuerzo: sin la migracion 037 el CHECK de acciones lo rechaza y se ignora. */
+  recordTenderAuditEvent(organizationId: string, tenderId: string, action: TenderAuditAction, actorId: string): Promise<void>;
+
+  // ---- paridad3 (L-P3-05): boveda de documentos de la convocatoria ----
+  /** Guarda el archivo (file_blob) y la fila de `tender_document`. Lanza `BovedaRevisionNoDisponibleError("documentos")` sin la migracion 037. */
+  createTenderDocument(organizationId: string, tenderId: string, input: TenderDocumentUploadInput): Promise<TenderDocumentRecord>;
+  /** Documentos de la convocatoria (todas las versiones, la mas reciente de cada linaje marcada `latest`). `disponible: false` = base sin la 037. */
+  listTenderDocuments(organizationId: string, tenderId: string): Promise<{ readonly disponible: boolean; readonly documents: readonly TenderDocumentRecord[] }>;
+  /** Un documento con su texto por pagina (para re-extraer y para el visor de la cita). `null` si no existe en esa convocatoria. */
+  getTenderDocument(organizationId: string, tenderId: string, documentId: string): Promise<TenderDocumentWithPages | null>;
+
+  // ---- paridad3 (L-P3-06): matriz estable ----
+  /** Upsert por clave estable: conserva responsable/estado/asignacion hechos a mano y marca `retirado` lo que desaparecio del alcance (nunca borra). */
+  upsertRequirementItems(
+    organizationId: string,
+    tenderId: string,
+    items: readonly RequirementUpsertItem[],
+    opts: { readonly actorId: string; readonly scope: { readonly lineageIds: readonly string[]; readonly includeUnlinked: boolean }; readonly retiredInVersion: number | null },
+  ): Promise<RequirementUpsertResult>;
+  /** Matriz con los campos nuevos; `includeRetired` agrega los retirados. `migrated: false` = base sin la 037 (campos nuevos en valor neutro, sin retirados). */
+  listRequirementMatrix(organizationId: string, tenderId: string, opts: { readonly includeRetired: boolean }): Promise<{ readonly migrated: boolean; readonly items: readonly RequirementItemDetail[] }>;
+  /** Personas de la organizacion a las que se puede asignar un requisito (vacio si la base no tiene el catalogo). */
+  listRequirementAssignees(organizationId: string): Promise<readonly { readonly userId: string; readonly nombre: string; readonly rol: string }[]>;
+  /** Edicion humana de un requisito (responsable, estado, asignado, causa de desechamiento). `null` si no existe. */
+  updateRequirementItem(organizationId: string, tenderId: string, itemId: string, patch: RequirementItemPatch, actorId: string): Promise<RequirementItemDetail | null>;
+
+  // ---- paridad3 (L-P3-06): conflictos persistidos ----
+  /** Persiste los conflictos detectados (idempotente por huella), cierra los abiertos que ya no se detectan y bloquea/desbloquea sus requisitos. Sin la 037: `disponible: false`. */
+  syncRequirementConflicts(organizationId: string, tenderId: string, detected: readonly DetectedRequirementConflict[]): Promise<{ readonly disponible: boolean; readonly conflicts: readonly RequirementConflictRecord[] }>;
+  listRequirementConflicts(organizationId: string, tenderId: string): Promise<{ readonly disponible: boolean; readonly conflicts: readonly RequirementConflictRecord[] }>;
+  /** Resuelve un conflicto abierto (notas obligatorias). `null` si no existe o ya estaba resuelto. */
+  resolveRequirementConflict(organizationId: string, tenderId: string, conflictId: string, input: { readonly actorId: string; readonly notes: string }): Promise<RequirementConflictRecord | null>;
+  /** Conflictos abiertos de la convocatoria; 0 si la base no tiene la 037. Bloquea el checklist de integridad. */
+  countOpenRequirementConflicts(organizationId: string, tenderId: string): Promise<number>;
+
+  // ---- paridad3 (L-P3-07): revision con comentarios y editor humano de secciones ----
+  addProposalComment(organizationId: string, proposalId: string, input: { readonly scope: ProposalCommentScope; readonly scopeRef: string; readonly kind: ProposalCommentKind; readonly body: string; readonly authorId: string; readonly authorRole: string }): Promise<ProposalCommentRecord>;
+  listProposalComments(organizationId: string, proposalId: string): Promise<{ readonly disponible: boolean; readonly comments: readonly ProposalCommentRecord[] }>;
+  listProposalSections(organizationId: string, proposalId: string, viewerId: string): Promise<readonly ProposalSectionRecord[]>;
+  /** Edicion humana: registra la autoria (AE-11); si el contenido cambio invalida las aprobaciones de esa seccion y del expediente (AE-02); si es el mismo texto no toca nada. `null` si la seccion no existe. */
+  editProposalSection(organizationId: string, proposalId: string, sectionKey: string, input: { readonly content: string; readonly actorId: string }): Promise<SectionEditResult | null>;
+
   listFulfillmentMappings(organizationId: string): Promise<readonly RequirementFulfillmentMappingRecord[]>;
   /** Configura (o reemplaza) el mapeo requisito->dato-de-empresa para un `topicKey` -- editable por DECISION_ROLES (decidir de qué dato se redacta un requisito es una decisión editorial/de riesgo, no redacción). */
   upsertFulfillmentMapping(organizationId: string, input: { topicKey: string; kind: RequirementFulfillmentMappingRecord["kind"]; refKey: string; statementTemplate: string }): Promise<RequirementFulfillmentMappingRecord>;

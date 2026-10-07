@@ -72,6 +72,8 @@ export interface ProductoEncontrado {
   /** El renglon exige elegir tortilla (maiz, harina o mixta): tacos y los platillos que el menu describe "de maiz o harina".
    * Ausente = se decide por el nombre ("taco"), como antes de PM-C4. */
   readonly requiresTortilla?: boolean;
+  /** Categoria del menu (para reglas por tipo de producto, p. ej. la doble salsa no aplica a un pedido de solo bebidas). Ausente en filas antiguas. */
+  readonly categoryName?: string | null;
 }
 
 export interface RequestedOrderItemInput {

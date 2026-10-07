@@ -38,6 +38,8 @@ export interface AperturaLlamada {
   readonly modeloLlm?: string | null;
   /** Handle de reanudacion de una sesion previa (reconexion). */
   readonly reanudarHandle?: string | null;
+  /** Conversacion hasta la caida (ya redactada) para sembrar una sesion NUEVA cuando no hay handle de reanudacion: la sesion continua en vez de arrancar de cero. */
+  readonly historial?: readonly { readonly rol: "cliente" | "agente"; readonly texto: string }[];
   /** Nombres y apodos del menu que el STT de la cascada recibe como pista de vocabulario (tope `cascada.vocabularioMax`). Gemini Live no lo usa. */
   readonly vocabulario?: readonly string[];
 }

@@ -25,6 +25,11 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-restaurantes/tests/pm-c4-herramientas.spec.ts",
   "packages/domain-restaurantes/tests/pm-c5-escenarios-t7.spec.ts",
   "packages/domain-restaurantes/tests/pm-c5-pedido-reciente.spec.ts",
+  // Ronda 2 del loop de PM: hora de recogida y programado validados contra el reloj del servidor; reloj local de consultar_sucursal.
+  "packages/domain-restaurantes/tests/pm-r2-flujo-pedido-y-hora.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r2-prompt-y-reloj.spec.ts",
+  "packages/domain-restaurantes/tests/recoger-estados-y-columnas.spec.ts",
+  "apps/api/tests/pm-r2-voz-programado.spec.ts",
   "apps/api/tests/rentas-pricing-servidor-hoy.spec.ts",
   "apps/api/tests/rentas-cotizacion-servidor-hoy.spec.ts",
   "apps/api/tests/hoteles-night-audit-servidor-hoy.spec.ts",
@@ -48,6 +53,12 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "apps/api/tests/e2e-ciclo/programado-pos-ciclo.spec.ts",
   // R-16: alertas operativas (entrega tardia / programado por vencer) del tick de programados: reloj fijo en Merida/Cancun/CDMX.
   "apps/api/tests/restaurantes-avisos-operativos-tick.spec.ts",
+  // Autopiloto 2: alertas al dueno (dedupe por dia de Merida con reloj fijo en Merida/Cancun/CDMX) y borradores de campana del tick.
+  "packages/domain-restaurantes/tests/alertas-duenio-proveedor.spec.ts",
+  "packages/domain-restaurantes/tests/alertas-duenio-silencio.spec.ts",
+  "apps/api/tests/restaurantes-marketing-tick.spec.ts",
+  "apps/api/tests/restaurantes-silencio-tick.spec.ts",
+  "apps/api/tests/restaurantes-presupuesto-ia-duenio.spec.ts",
 ] as const;
 
 // `coverage` (y su umbral) se queda como en la config base: solo se evalua con `--coverage`, que este guard no usa.
