@@ -544,6 +544,37 @@ describe("paridad con el chat de las verticales", () => {
     expect(post?.body).toEqual({ conversationId: ID_CONV, seq: 2, bloque: 0 });
   });
 
+  it("Adjuntar archivo: sin `adjuntos` en el estado no hay clip; con el, el CSV se sube con POST real a /superadmin/copiloto/adjuntos y el perfil se pinta en el chat", async () => {
+    instalarFetch(() => json(200, estadoOk()));
+    const sinClip = await montarPagina();
+    expect(sinClip.querySelector('[aria-label="Adjuntar archivo"]')).toBeNull();
+    rendered?.unmount();
+    llamadas = [];
+    instalarFetch(
+      () => json(200, estadoOk({ adjuntos: true })),
+      (url, init) =>
+        url.endsWith("/superadmin/copiloto/adjuntos") && init.method === "POST"
+          ? json(200, { status: "ok", text: "«ventas.csv» tiene 2 filas de datos y 2 columnas.", blocks: [{ kind: "table", tool: "archivo_adjunto", title: "Perfil del archivo", columns: [{ key: "columna", label: "Columna", kind: "text" }], rows: [{ columna: "unidades" }], truncated: false }], sources: [{ tool: "archivo_adjunto", source: "Archivo adjunto analizado en el servidor del Copiloto (no se guarda)", scopeLabel: "Solo este archivo" }], toolsUsed: ["archivo_adjunto"] })
+          : undefined,
+    );
+    const root = await montarPagina();
+    const input = root.querySelector<HTMLInputElement>('[data-testid="copiloto-adjunto-input"]')!;
+    expect(input).not.toBeNull();
+    Object.defineProperty(input, "files", { configurable: true, value: [new File(["producto,unidades\nTaco,10"], "ventas.csv", { type: "text/csv" })] });
+    await act(async () => {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await esperar(60);
+    const post = llamadas.find((l) => l.url === `${API}/superadmin/copiloto/adjuntos`);
+    expect(post?.method).toBe("POST");
+    expect(post?.headers["authorization"]).toBe(`Bearer ${TOKEN}`);
+    expect(post?.body).toEqual({ nombre: "ventas.csv", contenidoBase64: btoa("producto,unidades\nTaco,10") });
+    expect(root.textContent).toContain("Adjunté «ventas.csv»");
+    expect(root.textContent).toContain("tiene 2 filas de datos");
+    // el archivo no es una pregunta: no pasa por el chat ni por el modelo
+    expect(llamadas.some((l) => l.url.endsWith("/superadmin/copiloto") && l.method === "POST")).toBe(false);
+  });
+
   it("un fallo del reporte (422 sin cifras, 429, 503) se dice con un mensaje honesto, nunca un 500 crudo", async () => {
     URL.createObjectURL = () => "blob:x";
     instalarFetch(undefined, (url) => (url.includes("/reporte") ? json(429, { code: "too_many_requests" }) : undefined), FIN_TABLA);

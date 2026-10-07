@@ -158,7 +158,7 @@ describe("analizarAdjunto: PDF", () => {
 
   it("un PDF sin capa de texto (escaneado) se declara como tal, no como vacio", async () => {
     const r = await analizarAdjunto("escaneo.pdf", await pdf(["", ""]));
-    expect(r).toMatchObject({ ok: false, status: "unavailable" });
+    expect(r).toMatchObject({ ok: false, status: "invalid_input" });
     expect(!r.ok && r.motivo).toContain("escaneado");
   });
 
