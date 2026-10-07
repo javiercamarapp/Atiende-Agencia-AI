@@ -7,8 +7,8 @@
 --                          (property_id, cuenta_padre) -> (property_id, codigo): el padre es de la MISMA property, nunca de otra.
 --   * `codigo_agrupador`   formato del SAT `ddd` o `ddd.d` / `ddd.dd`. NULL = «sin asignar».
 --
--- NO se inventa ningún valor: las cuentas que ya existen quedan con nivel 1, sin padre y SIN código agrupador (NULL), y NI la siembra del
--- catálogo base NI la importación completan en silencio los datos de una cuenta que ya existe. El generador del XML se niega a producir el
+-- NO se inventa ningún valor: las cuentas que ya existen quedan con nivel 1, sin padre y SIN código agrupador (NULL), y la siembra del
+-- catálogo base completa en silencio los datos de una cuenta que ya existe. El generador del XML se niega a producir el
 -- catálogo mientras haya cuentas sin código y devuelve la lista de las que faltan; el staff las asigna (o acepta la propuesta del catálogo
 -- base con una acción explícita) en la pestaña Catálogo. La lista cerrada de códigos válidos (1080 valores del XSD CatalogosParaEsqContE 1.3) la valida la
 -- API (normas/anexo-24-codigo-agrupador.yaml); aquí solo el CHECK de formato, porque la lista cambia con cada actualización del Anexo 24.
