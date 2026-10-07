@@ -82,7 +82,8 @@ de quien lo construyó. Corre en tres jobs sobre `ubuntu-latest` (sin matriz):
 | Job | Nombre del check | Pasos | `timeout-minutes` |
 |---|---|---|---|
 | `estatico` | `typecheck + lint + build de apps/web` | `npm ci` → typecheck → lint → trinquete de lint → build de `apps/web` | 15 |
-| `unit` | `test:unit` | `npm ci` → `npm run test:unit` | 25 |
+| `unit-shard` (x3) | `test:unit (shard i/3)` | `npm ci` → `npm run test:unit -- --shard=i/3` (matrix, en paralelo) | 25 |
+| `unit` | `test:unit` | agregador de los 3 shards (`if: always()`) | 5 |
 | `ci-checks` | `typecheck + lint + test:unit + build de apps/web` | agregador (`needs` de los dos anteriores, `if: always()`): falla si alguno no terminó en `success` | 5 |
 
 El job agregador conserva el nombre histórico del check, de modo que una
