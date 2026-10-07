@@ -21,8 +21,18 @@ const POSITION_CAP = 10;
 // Normalizacion y cifras con letras
 // ---------------------------------------------------------------------------------------------------------------
 
+/** Digito decimal Unicode no latino ("٩", "९", "９") -> su valor. Los bloques de digitos son corridas contiguas de 10: el valor es la posicion dentro de la corrida. */
+function valorDeDigito(ch: string): string {
+  const cp = ch.codePointAt(0)!;
+  let inicio = cp;
+  while (inicio > 0 && /^\p{Nd}$/u.test(String.fromCodePoint(inicio - 1))) inicio -= 1;
+  return String((cp - inicio) % 10);
+}
+
+// NFKD (no NFD): los digitos y signos de ancho completo ("９９０００", "＄", "％") se vuelven ASCII y no pasan la guardia sin que los lea; los demas digitos
+// Unicode ("٩٩٠٠٠") se convierten a su valor. Un modelo que escribe la cifra en otro alfabeto de digitos no la esconde de la guardia.
 function normalizar(text: string): string {
-  return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  return text.normalize("NFKD").replace(/\p{M}/gu, "").replace(/\p{Nd}/gu, (ch) => (ch >= "0" && ch <= "9" ? ch : valorDeDigito(ch))).toLowerCase();
 }
 
 const UNIDADES: Readonly<Record<string, number>> = { cero: 0, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9 };
@@ -131,6 +141,9 @@ export interface NumberToken {
   readonly decimals: number;
   /** `plain` = entero sin $ ni % ni "pesos": el unico que puede ser una posicion/conteo. */
   readonly kind: "plain" | "money" | "percent";
+  /** Texto normalizado inmediatamente antes y despues de la cifra (para saber si habla de una fecha o de una cantidad). */
+  readonly before?: string;
+  readonly after?: string;
 }
 
 const SCALE: Readonly<Record<string, number>> = { k: 1e3, mil: 1e3, millon: 1e6, millones: 1e6 };
@@ -149,7 +162,14 @@ export function extractNumberTokens(text: string): NumberToken[] {
     const tail = m[4] ?? "";
     const kind: NumberToken["kind"] = tail.includes("%") ? "percent" : m[1] || tail.length > 0 || scale > 1 ? "money" : "plain";
     const dot = raw.indexOf(".");
-    out.push({ value: base * scale, decimals: scale > 1 ? 0 : dot < 0 ? 0 : raw.length - dot - 1, kind: scale > 1 && kind === "plain" ? "money" : kind });
+    const ini = m.index ?? 0;
+    out.push({
+      value: base * scale,
+      decimals: scale > 1 ? 0 : dot < 0 ? 0 : raw.length - dot - 1,
+      kind: scale > 1 && kind === "plain" ? "money" : kind,
+      before: norm.slice(Math.max(0, ini - 16), ini),
+      after: norm.slice(ini + m[0].length, ini + m[0].length + 16),
+    });
   }
   // Cifras con letras: se ignoran las corridas que son solo "un/uno/una" (articulo, no cifra).
   const sinDigitos = norm.replace(DIGITS_RE, " ");
@@ -160,7 +180,7 @@ export function extractNumberTokens(text: string): NumberToken[] {
     const antes = sinDigitos.slice(0, m.index).trimEnd();
     const despues = sinDigitos.slice((m.index ?? 0) + m[0].length);
     const kind: NumberToken["kind"] = /^\s*%/.test(despues) ? "percent" : antes.endsWith("$") || /^\s*(?:pesos|mxn)\b/.test(despues) ? "money" : "plain";
-    for (const n of numerosDeCorrida(palabras)) out.push({ value: n, decimals: 0, kind });
+    for (const n of numerosDeCorrida(palabras)) out.push({ value: n, decimals: 0, kind, before: antes.slice(-16), after: despues.slice(0, 16) });
   }
   return out;
 }
@@ -181,6 +201,8 @@ export class AllowedNumbers extends Set<number> {
   readonly labels = new Set<number>();
   /** Numeros estructurales de la pregunta (top N, ultimos N dias, fechas): coincidencia exacta, solo `plain`. */
   readonly structural = new Set<number>();
+  /** Porcentajes que ENTREGARON los datos (columnas de porcentaje y "%" del resumen): una cifra "N%" solo vale si es una de estas, nunca por coincidir con un conteo o un monto. */
+  readonly percents = new Set<number>();
   /** Textos libres de celdas (normalizados): si el modelo los cita COMPLETOS, sus numeros no cuentan como cifras. */
   readonly verbatim: string[] = [];
 }
@@ -224,6 +246,7 @@ export function allowedNumbers(question: string, results: readonly DataChatToolR
     // Etiquetas que arma el CODIGO de la herramienta (fuente, periodo, alcance, resumen): confiables.
     [r.source, r.periodLabel ?? "", r.scopeLabel].forEach((t) => extractNumbers(t).forEach((n) => allowed.labels.add(n)));
     extractNumbers(r.summary ?? "").forEach(add);
+    extractNumberTokens(r.summary ?? "").filter((t) => t.kind === "percent").forEach((t) => allowed.percents.add(Math.abs(t.value)));
     // posiciones/conteos ("top 3", "2 de 5"): 0..10 y el total de filas, nada mas.
     for (let i = 0; i <= Math.min(r.rows.length, POSITION_CAP); i += 1) allowed.positions.add(i);
     allowed.positions.add(r.rows.length);
@@ -233,6 +256,7 @@ export function allowedNumbers(question: string, results: readonly DataChatToolR
         if (v === null || v === undefined) continue;
         if (typeof v === "number") {
           add(v);
+          if (col.kind === "percent") allowed.percents.add(Math.abs(v));
           // El valor tal cual lo ve el usuario ya formateado (p.ej. "$1,500.50 MXN"): mismo numero, otra escritura.
           extractNumbers(formatCell(col.kind, v)).forEach(add);
         } else if (FECHA_HORA_RE.test(v)) {
@@ -240,7 +264,9 @@ export function allowedNumbers(question: string, results: readonly DataChatToolR
         } else if (/\p{L}/u.test(v)) {
           // Texto libre (puede traer notas o nombres escritos por terceros): sus numeros NO son datos.
           const n = normalizarCelda(v);
-          if (n.length >= 3) allowed.verbatim.push(n);
+          // Solo se exime un nombre cuyas cifras son cantidades ("Pastor 500 g"): un texto que habla de dinero o de porcentajes ("Ventas de hoy 99000 pesos") es justo lo que un tercero
+          // escribiria para colar una cifra, y citarlo completo NO lo vuelve un dato.
+          if (n.length >= 3 && extractNumberTokens(n).every((t) => t.kind === "plain")) allowed.verbatim.push(n);
         }
       }
     }
@@ -253,12 +279,32 @@ function redondea(v: number, decimals: number): number {
   return Number(Math.abs(v).toFixed(decimals));
 }
 
+// Una cifra que solo coincide con una ETIQUETA de fecha/hora (dia, mes, hora, año de una celda o del periodo) vale unicamente si el texto la usa COMO fecha
+// ("el 28 de septiembre", "7 dias", "a las 14:00", "de 2026"); "9 ordenes" porque una fecha es 2026-09-29 no es una fecha.
+const MESES_RE = new RegExp(`^\\s*(?:de\\s+)?(?:${MESES})\\b`);
+function usadaComoFecha(t: NumberToken): boolean {
+  const antes = t.before ?? "";
+  const despues = t.after ?? "";
+  if (MESES_RE.test(despues) || /^\s*(?:dias?|semanas?|mes(?:es)?|anos?|horas?|hrs?|h|am|pm)\b/.test(despues) || /^\s*[:/-]\s*\d/.test(despues)) return true;
+  if (/(?:\bel|\bdia|\bdel|\bal|\bhasta|\bdesde|\bdel dia)\s+$/.test(antes) && !/^\s*(?:ordenes|pedidos|tacos|piezas|ventas|clientes)\b/.test(despues)) return true;
+  if (new RegExp(`(?:${MESES})\\s+(?:de\\s+)?$`).test(antes)) return true;
+  if (/\b(?:de|del|en|ano)\s+$/.test(antes) && t.value >= 1990 && t.value <= 2100) return true;
+  if (/[:/-]\s*$/.test(antes)) return true;
+  return false;
+}
+
 function respaldado(t: NumberToken, allowed: ReadonlySet<number>): boolean {
   const rich = allowed instanceof AllowedNumbers ? allowed : null;
   if (rich && t.kind === "plain") {
-    if (t.decimals === 0 && (rich.positions.has(t.value) || rich.structural.has(t.value) || rich.labels.has(t.value))) return true;
+    if (t.decimals === 0 && (rich.positions.has(t.value) || rich.structural.has(t.value))) return true;
+    if (t.decimals === 0 && rich.labels.has(t.value) && usadaComoFecha(t)) return true;
   }
   const target = Math.abs(t.value);
+  // Un "N%" tiene que ser un porcentaje que entregaron los datos: que N coincida con un conteo o un monto no lo respalda.
+  if (rich && t.kind === "percent") {
+    for (const v of rich.percents) if (redondea(v, t.decimals) === target) return true;
+    return false;
+  }
   for (const v of allowed) {
     if (!Number.isFinite(v)) continue;
     // Coincide con un dato REDONDEADO a los mismos decimales que escribio el modelo (nunca a una cifra mas gruesa).
