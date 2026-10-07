@@ -34,6 +34,12 @@ describe("prompt de WhatsApp: reglas nuevas de la ronda 2", () => {
     expect(p).toMatch(/"es este mismo" o "mi número es este", no vuelva a preguntarlo/);
     expect(p).toMatch(/como máximo DOS datos por mensaje/);
   });
+  it("R2W28: si a la pregunta del numero del chat contesta otra cosa, se da por bueno el numero y no se repregunta", () => {
+    expect(p).toMatch(/contesta otra cosa, como "no, es todo" o "sí" sin referirse al número, dé por bueno el número de este chat/);
+  });
+  it("VX13: tras una llamada cortada, un pedido_reciente con lo mismo ya esta registrado y no se crea otro (bloque de voz)", () => {
+    expect(bloqueReglasVozPm()).toMatch(/LLAMADA CORTADA: .*pedido_reciente .*YA está registrado: dígaselo y NO cree otro/);
+  });
   it("reglas-07: 2 kilos es UN renglon de 2 kg con requested_quantity 1", () => {
     expect(p).toMatch(/"2 kilos" es UN renglón del producto de 2 kg con requested_quantity 1/);
   });
