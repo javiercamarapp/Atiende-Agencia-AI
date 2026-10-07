@@ -416,7 +416,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4511', true);
 select public.t_esperar_error($q$select * from restaurantes.marketing_decidir_campana((select id from restaurantes.marketing_campana where segmento = 'inactivo_30'), true)$q$, 'P0001');
 reset role;
-select (select count(*) from restaurantes.messaging_outbox where event_type = 'marketing_reactivacion') as encolados_deberia_ser_0, (select estado from restaurantes.marketing_campana where segmento = 'inactivo_30') as sigue_borrador;
+select ((select count(*) from restaurantes.messaging_outbox where event_type = 'marketing_reactivacion') = 0 and (select estado from restaurantes.marketing_campana where segmento = 'inactivo_30') = 'borrador')::int as sin_encolar_y_sigue_borrador_deberia_ser_1;
 rollback;
 
 \echo '=== D9d. tarifa cambiada entre el borrador y el clic -> requiere_nuevo_borrador (P0001) ==='
