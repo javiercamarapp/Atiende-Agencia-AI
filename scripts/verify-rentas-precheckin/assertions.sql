@@ -64,6 +64,20 @@ insert into rentas.precheckin_captura (ocupacion_id, organization_id, property_i
   ('00000000-0000-0000-0000-000000f36053', '00000000-0000-0000-0000-000000f36001', '00000000-0000-0000-0000-000000f36010', '9987654321', now(), 'v1')
 on conflict do nothing;
 
+
+-- Rn-P3-10: reservas para la ventana horaria del recordatorio (llegada MANANA a las 15:00 en Cancun: siempre entre 15 y 39 h de ahora).
+insert into rentas.unidad (id, organization_id, property_id, name, duracion_minima_noches) values
+  ('00000000-0000-0000-0000-000000f36022', '00000000-0000-0000-0000-000000f36001', '00000000-0000-0000-0000-000000f36010', 'Unidad A2', 1)
+on conflict do nothing;
+insert into rentas.guest_minimo (id, organization_id, property_id, nombre, contacto) values
+  ('00000000-0000-0000-0000-000000f36061', '00000000-0000-0000-0000-000000f36001', '00000000-0000-0000-0000-000000f36010', 'Con correo', 'huesped-recordatorio@example.com'),
+  ('00000000-0000-0000-0000-000000f36062', '00000000-0000-0000-0000-000000f36001', '00000000-0000-0000-0000-000000f36010', 'Solo telefono', '9981112233')
+on conflict do nothing;
+insert into rentas.ocupacion (id, organization_id, property_id, unidad_id, rango, capa, razon, estado, bloqueante, canal_origen_id, external_id, huesped_minimo_id) values
+  ('00000000-0000-0000-0000-000000f36056', '00000000-0000-0000-0000-000000f36001', '00000000-0000-0000-0000-000000f36010', '00000000-0000-0000-0000-000000f36020', daterange((now() at time zone 'America/Cancun')::date + 1, (now() at time zone 'America/Cancun')::date + 3, '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true, (select id from rentas.canal where codigo = 'airbnb'), 'uid-o6', '00000000-0000-0000-0000-000000f36061'),
+  ('00000000-0000-0000-0000-000000f36057', '00000000-0000-0000-0000-000000f36001', '00000000-0000-0000-0000-000000f36010', '00000000-0000-0000-0000-000000f36022', daterange((now() at time zone 'America/Cancun')::date + 1, (now() at time zone 'America/Cancun')::date + 3, '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true, (select id from rentas.canal where codigo = 'airbnb'), 'uid-o7', '00000000-0000-0000-0000-000000f36062')
+on conflict do nothing;
+
 \echo ''
 \echo '=== A. funciones de sistema ==='
 \echo ''
@@ -590,6 +604,72 @@ rollback;
 \echo '--- G5. ninguna policy nueva usa using (true) ---'
 begin;
 select count(*) as policies_abiertas_deberia_ser_0 from pg_policies where schemaname = 'rentas' and tablename like 'precheckin%' and (qual = 'true' or with_check = 'true');
+rollback;
+
+\echo ''
+\echo '=== H. consulta del recordatorio horario (PostgresRentasRepository.listReservasProximasACheckInVentana) ==='
+\echo ''
+\echo '--- H1. la reserva con correo que llega manana a las 15:00 (Cancun) entra en la ventana de 2 a 48 h ---'
+begin;
+select count(*) as con_correo_deberia_ser_1 from (select o.id
+         from rentas.ocupacion o
+         join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+         left join rentas.property_config pc on pc.property_id = o.property_id
+        where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+          and ((lower(o.rango) + '15:00'::time) at time zone coalesce(pc.zona_horaria, 'America/Mexico_City')) between now()::timestamptz + make_interval(hours => 2::int) and now()::timestamptz + make_interval(hours => 48::int)) q where q.id = '00000000-0000-0000-0000-000000f36056';
+rollback;
+\echo '--- H2. la reserva cuyo huesped solo dejo un telefono NO es candidata ---'
+begin;
+select count(*) as sin_correo_deberia_ser_0 from (select o.id
+         from rentas.ocupacion o
+         join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+         left join rentas.property_config pc on pc.property_id = o.property_id
+        where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+          and ((lower(o.rango) + '15:00'::time) at time zone coalesce(pc.zona_horaria, 'America/Mexico_City')) between now()::timestamptz + make_interval(hours => 2::int) and now()::timestamptz + make_interval(hours => 48::int)) q where q.id = '00000000-0000-0000-0000-000000f36057';
+rollback;
+\echo '--- H3. una reserva de dentro de 20 dias queda fuera de la ventana ---'
+begin;
+select count(*) as lejana_deberia_ser_0 from (select o.id
+         from rentas.ocupacion o
+         join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+         left join rentas.property_config pc on pc.property_id = o.property_id
+        where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+          and ((lower(o.rango) + '15:00'::time) at time zone coalesce(pc.zona_horaria, 'America/Mexico_City')) between now()::timestamptz + make_interval(hours => 2::int) and now()::timestamptz + make_interval(hours => 48::int)) q where q.id = '00000000-0000-0000-0000-000000f36050';
+rollback;
+\echo '--- H4. con el reloj 40 h adelante la llegada de manana ya paso la ventana (menos de 2 h o ya ocurrio) ---'
+begin;
+select count(*) as fuera_deberia_ser_0 from (select o.id
+         from rentas.ocupacion o
+         join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+         left join rentas.property_config pc on pc.property_id = o.property_id
+        where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+          and ((lower(o.rango) + '15:00'::time) at time zone coalesce(pc.zona_horaria, 'America/Mexico_City')) between (now() + interval '40 hours')::timestamptz + make_interval(hours => 2::int) and (now() + interval '40 hours')::timestamptz + make_interval(hours => 48::int)) q where q.id = '00000000-0000-0000-0000-000000f36056';
+rollback;
+\echo '--- H5. una vez marcado el recordatorio como enviado deja de ser candidata (idempotencia) ---'
+begin;
+update rentas.ocupacion set recordatorio_checkin_enviado_en = now() where id = '00000000-0000-0000-0000-000000f36056';
+select count(*) as ya_marcada_deberia_ser_0 from (select o.id
+         from rentas.ocupacion o
+         join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+         left join rentas.property_config pc on pc.property_id = o.property_id
+        where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+          and ((lower(o.rango) + '15:00'::time) at time zone coalesce(pc.zona_horaria, 'America/Mexico_City')) between now()::timestamptz + make_interval(hours => 2::int) and now()::timestamptz + make_interval(hours => 48::int)) q where q.id = '00000000-0000-0000-0000-000000f36056';
+rollback;
+\echo '--- H6. una reserva cancelada no es candidata ---'
+begin;
+update rentas.ocupacion set estado = 'cancelado' where id = '00000000-0000-0000-0000-000000f36056';
+select count(*) as cancelada_deberia_ser_0 from (select o.id
+         from rentas.ocupacion o
+         join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+         left join rentas.property_config pc on pc.property_id = o.property_id
+        where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+          and ((lower(o.rango) + '15:00'::time) at time zone coalesce(pc.zona_horaria, 'America/Mexico_City')) between now()::timestamptz + make_interval(hours => 2::int) and now()::timestamptz + make_interval(hours => 48::int)) q where q.id = '00000000-0000-0000-0000-000000f36056';
 rollback;
 
 \echo ''

@@ -1,6 +1,6 @@
 // Pruebas de runRecordatorioCheckInCore — verifica: (1) encuentra reservas cuyo
-// check-in cae en la ventana 24-48h (mañana o pasado mañana), (2) ignora las que
-// están fuera de la ventana (hoy mismo, o más de 2 días), (3) nunca reenvía dos
+// check-in cae en la ventana horaria de 2 a 48 h (Rn-P3-10, en la zona de su property), (2) ignora las que
+// están fuera de la ventana (menos de 2 h, o más de 48 h), (3) nunca reenvía dos
 // veces la misma reserva (recordatorio_checkin_enviado_en), (4) sin correo real del
 // huésped no marca como enviado (para que una corrida futura la reintente), (5)
 // nunca procesa un bloqueo ni una reserva 'provisional'/'conflicto_pendiente'.
@@ -106,23 +106,65 @@ describe("runRecordatorioCheckInCore", () => {
     expect(summary.enviados).toBe(1);
   });
 
-  it("check-in pasado mañana (48h): también entra en la ventana", async () => {
+  // Rn-P3-10: la ventana ya no es de dias de calendario sino de HORAS contra el check-in (15:00 en la zona de la property). AHORA = 06:00 en CDMX.
+  it("check-in pasado mañana 15:00 (57 h): todavía fuera de la ventana de 48 h, no se procesa", async () => {
     const fixture = await crearFixture();
-    const pasadoManana = sumarDias(HOY, 2);
-    await fixture.crearReserva(pasadoManana);
+    await fixture.crearReserva(sumarDias(HOY, 2));
+
+    const summary = await runRecordatorioCheckInCore(fixture.withRepo, AHORA);
+    expect(summary.procesadas).toBe(0);
+  });
+
+  it("check-in HOY a las 15:00 (9 h): entra en la ventana de 2 a 48 h (antes se perdía: el barrido diario solo veía mañana y pasado mañana)", async () => {
+    const fixture = await crearFixture();
+    await fixture.crearReserva(HOY);
 
     const summary = await runRecordatorioCheckInCore(fixture.withRepo, AHORA);
     expect(summary.procesadas).toBe(1);
     expect(summary.enviados).toBe(1);
   });
 
-  it("check-in HOY: fuera de la ventana 24-48h, no se procesa", async () => {
+  it("check-in en menos de 2 h: ya no se manda un recordatorio inútil", async () => {
     const fixture = await crearFixture();
     await fixture.crearReserva(HOY);
 
-    const summary = await runRecordatorioCheckInCore(fixture.withRepo, AHORA);
+    // 13:30 en CDMX: faltan 1 h 30 min para las 15:00.
+    const summary = await runRecordatorioCheckInCore(fixture.withRepo, new Date("2026-09-14T19:30:00Z"));
     expect(summary.procesadas).toBe(0);
-    expect(fixture.repo.getMessagingOutbox()).toHaveLength(0);
+  });
+
+  // Rn-P3-10: el caso que motivó el cambio. Una reserva de último minuto (creada ~20 h antes de la llegada, a las 23:30 en Cancún) recibe su
+  // recordatorio en la corrida horaria siguiente, con reloj fijo.
+  it("reserva de último minuto: 23:30 en Cancún, creada 20 h antes de la llegada (llegada a las 15:00 local → faltan 15 h 30 min) recibe su recordatorio", async () => {
+    const fixture = await crearFixture();
+    fixture.store.seedZonaHoraria(fixture.propertyId, "America/Cancun"); // UTC-5, sin horario de verano
+    await fixture.crearReserva("2026-09-15");
+
+    // 2026-09-14 23:30 Cancún = 2026-09-15 04:30 UTC.
+    const summary = await runRecordatorioCheckInCore(fixture.withRepo, new Date("2026-09-15T04:30:00Z"));
+    expect(summary.procesadas).toBe(1);
+    expect(summary.enviados).toBe(1);
+  });
+
+  it("la ventana se mide en la zona de CADA property: la misma hora UTC cae dentro para una y fuera para otra", async () => {
+    const fixture = await crearFixture();
+    // Llegada 2026-09-16 15:00. En Tijuana (UTC-7 en septiembre) = 22:00Z del 16; en Cancún (UTC-5) = 20:00Z del 16.
+    fixture.store.seedZonaHoraria(fixture.propertyId, "America/Tijuana");
+    await fixture.crearReserva("2026-09-16");
+    // 48 h antes de las 22:00Z del 16 es 22:00Z del 14: a las 21:00Z del 14 todavía faltan 49 h (fuera); a las 22:30Z faltan 47 h 30 min (dentro).
+    expect((await runRecordatorioCheckInCore(fixture.withRepo, new Date("2026-09-14T21:00:00Z"))).procesadas).toBe(0);
+    expect((await runRecordatorioCheckInCore(fixture.withRepo, new Date("2026-09-14T22:30:00Z"))).procesadas).toBe(1);
+  });
+
+  it("idempotencia entre corridas horarias: dos corridas seguidas dentro de la ventana mandan UN solo recordatorio", async () => {
+    const fixture = await crearFixture();
+    await fixture.crearReserva(sumarDias(HOY, 1));
+
+    const primera = await runRecordatorioCheckInCore(fixture.withRepo, AHORA);
+    const siguienteHora = await runRecordatorioCheckInCore(fixture.withRepo, new Date(AHORA.getTime() + 3_600_000));
+    expect(primera.enviados).toBe(1);
+    expect(siguienteHora.procesadas).toBe(0);
+    expect(fixture.repo.getMessagingOutbox().filter((o) => o.eventType === "reserva.recordatorio_checkin")).toHaveLength(1);
   });
 
   it("check-in en 5 días: demasiado lejos todavía, no se procesa", async () => {
@@ -148,18 +190,22 @@ describe("runRecordatorioCheckInCore", () => {
     expect(fixture.repo.getMessagingOutbox().filter((o) => o.eventType === "reserva.recordatorio_checkin")).toHaveLength(1);
   });
 
-  it("sin correo real del huésped: se cuenta como sinCorreo y NO se marca enviado (una corrida futura la reintenta)", async () => {
+  it("sin correo real del huésped: ni siquiera es candidata (no cuesta una transacción por hora), NO se marca enviada y entra sola cuando el pre-check-in captura el correo", async () => {
     const fixture = await crearFixture();
     const ocupacionId = await fixture.crearReserva(sumarDias(HOY, 1), "9998887766"); // solo teléfono, no email
 
-    const summary = await runRecordatorioCheckInCore(fixture.withRepo, AHORA);
-    expect(summary.procesadas).toBe(1);
-    expect(summary.enviados).toBe(0);
-    expect(summary.sinCorreo).toBe(1);
+    const sin = await runRecordatorioCheckInCore(fixture.withRepo, AHORA);
+    expect(sin.procesadas).toBe(0);
+    expect(sin.enviados).toBe(0);
     expect(fixture.repo.getMessagingOutbox()).toHaveLength(0);
+    expect(fixture.store.getOcupacion(ocupacionId)?.recordatorioCheckinEnviadoEn).toBeNull();
 
-    const fila = fixture.store.getOcupacion(ocupacionId);
-    expect(fila?.recordatorioCheckinEnviadoEn).toBeNull();
+    // Rn-P3-08: el huésped deja su correo en el pre-check-in; la siguiente corrida horaria la encuentra.
+    const huesped = await fixture.repo.insertGuestMinimo({ organizationId: fixture.organizationId, propertyId: fixture.propertyId, nombre: null, contacto: "huesped@example.com" });
+    await fixture.repo.attachGuestToOcupacion(ocupacionId, huesped.id);
+    const con = await runRecordatorioCheckInCore(fixture.withRepo, new Date(AHORA.getTime() + 3_600_000));
+    expect(con.procesadas).toBe(1);
+    expect(con.enviados).toBe(1);
   });
 });
 
