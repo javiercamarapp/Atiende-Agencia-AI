@@ -13,6 +13,11 @@
 // fuente de verdad; esta pantalla solo oculta/deshabilita lo que el servidor rechazaría igual. Editar un dato aprobado lo
 // regresa a pendiente (y cambia el hash del perfil, que invalida la aprobación del expediente).
 //
+// L-P3-03/04 (REQ-141/142/109/145): el perfil se completa con General (razón social, RFC, sector, trabajadores, ventas + estratificación
+// MIPyME pendiente de verificación legal), Productos y servicios, Ubicaciones, Socios y Restricciones (ColeccionPerfil.tsx), y los firmantes
+// llevan vigencia del poder con semáforo, documento de identidad y límites de actuación. Cada dato muestra quién lo capturó y cuándo
+// (procedencia); un dato del perfil sin procedencia se declara bloqueado. Con la base sin la migración 040 esas pestañas dicen "no disponible aún".
+//
 // Fase "sistema de diseño real" (contenido) — las 5 secciones apiladas pasan a
 // `Tabs` reales (una pestaña por tabla: documentos/tarifas/capacidades/
 // experiencia/firmantes), sus tarjetas a `Card`, los pills de aprobación a
@@ -21,7 +26,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, PageContainer, StatusBadge, statusTone, Tabs, TabsContent, TabsList, TabsTrigger, useConfirm } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone, Tabs, TabsContent, TabsList, TabsTrigger, useConfirm } from "@atiende/ui";
 import {
   createApprovedRate,
   createCompanyCapability,
@@ -32,10 +37,16 @@ import {
   fetchCompanyCapabilities,
   fetchCompanyDocuments,
   fetchCompanyExperience,
-  fetchCompanySigners,
+  fetchCompanySignersView,
   updateCompanySigner,
 } from "../lib/company-data-client.ts";
 import { DecisionButtons, useCompanyDecision } from "../components/DecisionActions.tsx";
+import { ColeccionPerfil } from "../components/ColeccionPerfil.tsx";
+import type { CampoDef } from "../components/ColeccionPerfil.tsx";
+import { PerfilGeneral } from "../components/PerfilGeneral.tsx";
+import { ProcedenciaLinea } from "../components/ProcedenciaLinea.tsx";
+import { hoyLocal, PODER_LABEL, PODER_TONE, poderEstado } from "../lib/firmante-poder.ts";
+import type { CompanyLocation, CompanyProductService, CompanyRestriction, CompanyStakeholder } from "../lib/company-profile-client.ts";
 import { authorshipLine, userIdFromToken } from "../lib/company-decision.ts";
 import { APROBACION_DATO_TONES } from "../lib/status-tones.ts";
 import type { ApprovedRate, CompanyCapability, CompanyDataApprovalStatus, CompanyDocument, CompanyExperienceItem, CompanySigner } from "../lib/company-data-client.ts";
@@ -83,22 +94,64 @@ const FILA = "flex flex-wrap items-center justify-between gap-3 border-b border-
 /** Formulario de alta al pie de cada sección. Antes era un `style` inline. */
 const FORM_ALTA = "flex flex-wrap items-end gap-2 pt-1";
 
-const TABS_VALIDAS: ReadonlySet<string> = new Set(["documentos", "tarifas", "capacidades", "experiencia", "firmantes"]);
+const TABS_VALIDAS: ReadonlySet<string> = new Set(["general", "productos", "ubicaciones", "socios", "restricciones", "documentos", "tarifas", "capacidades", "experiencia", "firmantes"]);
+
+const KIND_PRODUCTO = [{ value: "servicio", label: "Servicio" }, { value: "producto", label: "Producto" }] as const;
+const KIND_UBICACION = [{ value: "matriz", label: "Matriz" }, { value: "sucursal", label: "Sucursal" }, { value: "bodega", label: "Bodega" }, { value: "planta", label: "Planta" }] as const;
+const KIND_RESTRICCION = [
+  { value: "sancion", label: "Sanción" },
+  { value: "inhabilitacion", label: "Inhabilitación" },
+  { value: "conflicto_interes", label: "Conflicto de interés" },
+  { value: "otra", label: "Otra" },
+] as const;
+const KIND_SOCIO = [{ value: "socio", label: "Socio" }, { value: "representante", label: "Representante" }] as const;
+const labelDe = (opciones: ReadonlyArray<{ value: string; label: string }>, value: string) => opciones.find((o) => o.value === value)?.label ?? value;
+
+const CAMPOS_PRODUCTOS: readonly CampoDef[] = [
+  { key: "kind", label: "Tipo", tipo: "select", requerido: true, opciones: KIND_PRODUCTO, soloAlta: true },
+  { key: "name", label: "Nombre", tipo: "texto", requerido: true, placeholder: "p. ej. Mantenimiento de flotilla" },
+  { key: "description", label: "Descripción", tipo: "texto" },
+  { key: "classifierCode", label: "Clasificador (CPV/CUCoP)", tipo: "texto", placeholder: "p. ej. 50111100" },
+];
+const CAMPOS_UBICACIONES: readonly CampoDef[] = [
+  { key: "kind", label: "Tipo", tipo: "select", requerido: true, opciones: KIND_UBICACION },
+  { key: "name", label: "Nombre", tipo: "texto", requerido: true, placeholder: "p. ej. Oficinas centrales" },
+  { key: "state", label: "Entidad federativa", tipo: "texto", requerido: true, placeholder: "p. ej. Yucatán" },
+  { key: "municipality", label: "Municipio", tipo: "texto" },
+  { key: "address", label: "Domicilio", tipo: "texto" },
+];
+const CAMPOS_RESTRICCIONES: readonly CampoDef[] = [
+  { key: "kind", label: "Tipo", tipo: "select", requerido: true, opciones: KIND_RESTRICCION },
+  { key: "description", label: "Descripción", tipo: "texto", requerido: true },
+  { key: "validFrom", label: "Vigente desde", tipo: "fecha", requerido: true },
+  { key: "validUntil", label: "Vigente hasta", tipo: "fecha", ayuda: "Vacío = sin fecha de término conocida." },
+];
+const CAMPOS_SOCIOS: readonly CampoDef[] = [
+  { key: "kind", label: "Tipo", tipo: "select", requerido: true, opciones: KIND_SOCIO, soloAlta: true },
+  { key: "fullName", label: "Nombre completo o razón social", tipo: "texto", requerido: true },
+  { key: "rfc", label: "RFC", tipo: "texto", placeholder: "p. ej. PEPA800101AB1" },
+  { key: "participationPct", label: "Participación (%)", tipo: "texto", requerido: true, placeholder: "p. ej. 33.33", visible: (f) => f.kind === "socio", ayuda: "De 0 a 100 con dos decimales; la suma de los socios no pasa de 100." },
+];
 
 export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: LicitacionesShellContext) {
   const canWrite = WRITE_ROLES.has(role);
-  const { confirmar, dialogo } = useConfirm();
+  const { confirmar, pedirTexto, dialogo } = useConfirm();
+  const hoy = hoyLocal();
   const userId = userIdFromToken(token);
   // `?tab=firmantes` (etc.) abre directo esa pestaña -- lo usan /firmantes y el Panel; un valor desconocido cae a "documentos".
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
-  const tabInicial = tabParam && TABS_VALIDAS.has(tabParam) ? tabParam : "documentos";
+  const tabInicial = tabParam && TABS_VALIDAS.has(tabParam) ? tabParam : "general";
 
   const [documents, setDocuments] = useState<readonly CompanyDocument[]>([]);
   const [rates, setRates] = useState<readonly ApprovedRate[]>([]);
   const [capabilities, setCapabilities] = useState<readonly CompanyCapability[]>([]);
   const [experience, setExperience] = useState<readonly CompanyExperienceItem[]>([]);
   const [signers, setSigners] = useState<readonly CompanySigner[]>([]);
+  // La base ya soporta la vigencia del poder (migracion 040). Sin ella el formulario de firmantes no la ofrece.
+  const [vigenciaDisponible, setVigenciaDisponible] = useState(false);
+  // Sube cuando una decision o un cambio de las pestañas del perfil obliga a recargarlas.
+  const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -107,7 +160,7 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
   const [rateForm, setRateForm] = useState({ concept: "", unitPrice: "" });
   const [capabilityForm, setCapabilityForm] = useState({ name: "", description: "" });
   const [experienceForm, setExperienceForm] = useState({ description: "", evidenceDocId: "" });
-  const [signerForm, setSignerForm] = useState({ name: "", role: "" });
+  const [signerForm, setSignerForm] = useState({ name: "", role: "", validFrom: "", validUntil: "", identityDocId: "", actionLimits: "" });
   const [submittingSection, setSubmittingSection] = useState<string | null>(null);
 
   async function load() {
@@ -119,13 +172,14 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
         fetchApprovedRates(fetch, apiBaseUrl, token, propertyId),
         fetchCompanyCapabilities(fetch, apiBaseUrl, token, propertyId),
         fetchCompanyExperience(fetch, apiBaseUrl, token, propertyId),
-        fetchCompanySigners(fetch, apiBaseUrl, token, propertyId),
+        fetchCompanySignersView(fetch, apiBaseUrl, token, propertyId),
       ]);
       setDocuments(d);
       setRates(r);
       setCapabilities(c);
       setExperience(e);
-      setSigners(s);
+      setSigners(s.signers);
+      setVigenciaDisponible(s.vigenciaDisponible);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudieron cargar los datos de la empresa.");
     } finally {
@@ -167,8 +221,24 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
     await withAction(`signer-${s.id}`, () => updateCompanySigner(fetch, apiBaseUrl, token, propertyId, s.id, { authorized: !s.authorized }).then(() => undefined));
   }
 
-  const decision = useCompanyDecision({ apiBaseUrl, token, propertyId, onChanged: load, onError: setActionError });
   const busy = submittingSection !== null;
+  const recargarTodo = async () => {
+    await load();
+    setRefreshKey((k) => k + 1);
+  };
+  const decision = useCompanyDecision({ apiBaseUrl, token, propertyId, onChanged: recargarTodo, onError: setActionError });
+  const comunes = { apiBaseUrl, token, propertyId, role, userId, canWrite, decision, confirmar, refreshKey, onChanged: () => setRefreshKey((k) => k + 1), busy };
+
+  async function renovarPoder(s: CompanySigner) {
+    const texto = await pedirTexto({
+      titulo: `Renovar el poder de ${s.name}`,
+      descripcion: "Escribe la nueva fecha en que vence el poder. Queda pendiente de aprobación otra vez.",
+      confirmar: "Renovar poder",
+      campo: { etiqueta: "Vence el (AAAA-MM-DD)", placeholder: "p. ej. 2027-12-31", requerido: true, validar: (v) => (/^\d{4}-\d{2}-\d{2}$/u.test(v.trim()) ? null : "Escribe la fecha como AAAA-MM-DD.") },
+    });
+    if (texto === null) return;
+    await withAction(`signer-${s.id}`, () => updateCompanySigner(fetch, apiBaseUrl, token, propertyId, s.id, { validUntil: texto.trim() }).then(() => undefined));
+  }
 
   if (loading && documents.length === 0 && rates.length === 0) return <EstadoCargando etiqueta="Cargando datos de la empresa…" />;
 
@@ -177,7 +247,7 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Datos de la empresa</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Documentos, tarifas aprobadas, capacidades, experiencia y firmantes autorizados. Las propuestas técnica y económica solo usan lo que aquí está en estado "Aprobado" y vigente -- un dato ausente o sin aprobar queda "PENDIENTE" en la propuesta, nunca inventado.
+          Perfil general, productos y servicios, ubicaciones, socios, restricciones, documentos, tarifas aprobadas, capacidades, experiencia y firmantes con la vigencia de su poder. Las propuestas técnica y económica solo usan lo que aquí está en estado "Aprobado" y vigente -- un dato ausente, sin aprobar o sin procedencia queda "PENDIENTE" o bloqueado en la propuesta, nunca inventado.
           Quien captura o edita un dato no lo aprueba: lo decide otra persona con rol de decisión (las tarifas, además, con verificación en dos pasos). Editar un dato aprobado lo regresa a pendiente.
         </p>
       </header>
@@ -192,12 +262,117 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
 
       <Tabs defaultValue={tabInicial} className="w-full">
         <TabsList className="flex-wrap">
+          <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="productos">Productos y servicios</TabsTrigger>
+          <TabsTrigger value="ubicaciones">Ubicaciones</TabsTrigger>
+          <TabsTrigger value="socios">Socios</TabsTrigger>
+          <TabsTrigger value="restricciones">Restricciones</TabsTrigger>
           <TabsTrigger value="documentos">Documentos</TabsTrigger>
           <TabsTrigger value="tarifas">Tarifas</TabsTrigger>
           <TabsTrigger value="capacidades">Capacidades</TabsTrigger>
           <TabsTrigger value="experiencia">Experiencia</TabsTrigger>
           <TabsTrigger value="firmantes">Firmantes</TabsTrigger>
         </TabsList>
+
+        {/* ---- General (perfil + MIPyME) ---- */}
+        <TabsContent value="general">
+          <PerfilGeneral {...comunes} />
+        </TabsContent>
+
+        {/* ---- Productos y servicios ---- */}
+        <TabsContent value="productos">
+          <ColeccionPerfil
+            {...comunes}
+            name="products"
+            kind="product"
+            titulo="Productos y servicios"
+            descripcion="Lo que la empresa vende. Alimenta el expediente y, con el clasificador, la búsqueda de convocatorias."
+            vacio="Aún no capturas productos ni servicios. Agrega el primero abajo: nombre, tipo y, si lo conoces, su clasificador."
+            campos={CAMPOS_PRODUCTOS}
+            singular="producto o servicio"
+            canDelete={canWrite}
+            etiqueta={(i: CompanyProductService) => i.name}
+            resumen={(i: CompanyProductService) => (
+              <>
+                <strong>{i.name}</strong> — {labelDe(KIND_PRODUCTO, i.kind)}
+                {i.classifierCode && <span className="text-muted-foreground"> · clasificador {i.classifierCode}</span>}
+                {i.description && <div className="text-xs text-muted-foreground">{i.description}</div>}
+              </>
+            )}
+          />
+        </TabsContent>
+
+        {/* ---- Ubicaciones ---- */}
+        <TabsContent value="ubicaciones">
+          <ColeccionPerfil
+            {...comunes}
+            name="locations"
+            kind="location"
+            titulo="Ubicaciones"
+            descripcion="Matriz, sucursales, bodegas y plantas. Muchas convocatorias exigen domicilio o presencia en una entidad."
+            vacio="Aún no capturas ubicaciones. Agrega la matriz abajo: nombre y entidad federativa."
+            campos={CAMPOS_UBICACIONES}
+            singular="ubicación"
+            canDelete={canWrite}
+            etiqueta={(i: CompanyLocation) => i.name}
+            resumen={(i: CompanyLocation) => (
+              <>
+                <strong>{i.name}</strong> — {labelDe(KIND_UBICACION, i.kind)} · {i.state}
+                {i.municipality && <span className="text-muted-foreground"> · {i.municipality}</span>}
+                {i.address && <div className="text-xs text-muted-foreground">{i.address}</div>}
+              </>
+            )}
+          />
+        </TabsContent>
+
+        {/* ---- Socios y representantes ---- */}
+        <TabsContent value="socios">
+          <ColeccionPerfil
+            {...comunes}
+            name="stakeholders"
+            kind="stakeholder"
+            titulo="Socios y representantes"
+            descripcion="Quién es dueño y quién representa a la empresa. Es la base para detectar interpósita persona. Eliminar un socio o representante lo decide un rol de decisión."
+            vacio="Aún no capturas socios ni representantes. Agrega a cada socio con su RFC y su participación."
+            campos={CAMPOS_SOCIOS}
+            singular="socio o representante"
+            canDelete={canWrite && ["owner", "admin", "analyst"].includes(role)}
+            etiqueta={(i: CompanyStakeholder) => i.fullName}
+            resumen={(i: CompanyStakeholder) => (
+              <>
+                <strong>{i.fullName}</strong> — {labelDe(KIND_SOCIO, i.kind)}
+                {i.participationPct !== null && <span className="text-muted-foreground"> · {i.participationPct}%</span>}
+                {i.rfc && <span className="text-muted-foreground"> · {i.rfc}</span>}
+              </>
+            )}
+          />
+        </TabsContent>
+
+        {/* ---- Restricciones ---- */}
+        <TabsContent value="restricciones">
+          <ColeccionPerfil
+            {...comunes}
+            name="restrictions"
+            kind="restriction"
+            titulo="Restricciones"
+            descripcion="Sanciones, inhabilitaciones y conflictos de interés vigentes. Una sanción o inhabilitación aprobada y con procedencia vuelve no elegible a la empresa en el matching. Eliminar una restricción lo decide un rol de decisión."
+            vacio="No hay restricciones capturadas. Si la empresa no tiene ninguna, no hace falta capturar nada; si tiene una, regístrala con su vigencia."
+            campos={CAMPOS_RESTRICCIONES}
+            singular="restricción"
+            canDelete={canWrite && ["owner", "admin", "analyst"].includes(role)}
+            etiqueta={(i: CompanyRestriction) => labelDe(KIND_RESTRICCION, i.kind)}
+            resumen={(i: CompanyRestriction) => (
+              <>
+                <strong>{labelDe(KIND_RESTRICCION, i.kind)}</strong> — {i.description}
+                <span className="text-muted-foreground">
+                  {" "}
+                  · desde {i.validFrom}
+                  {i.validUntil ? ` hasta ${i.validUntil}` : " (sin fecha de término)"}
+                </span>
+              </>
+            )}
+          />
+        </TabsContent>
 
         {/* ---- Documentos ---- */}
         <TabsContent value="documentos">
@@ -413,42 +588,79 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Firmantes autorizados</CardTitle>
+              <CardDescription>
+                Puede haber varios firmantes por cargo. Cada uno declara desde cuándo y hasta cuándo rige su poder: la propuesta usa al que esté vigente en la fecha límite de la convocatoria, no a la de hoy. Si ninguno lo está, el requisito queda pendiente.
+              </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2.5">
-              {signers.length === 0 && <EstadoVacio mensaje="Sin firmantes capturados todavía." />}
-              {signers.map((s) => (
-                <div key={s.id} className={FILA}>
-                  <div className="min-w-0 text-foreground">
-                    <strong>{s.name}</strong> — {s.role}
-                    <Autoria item={{ ...s, approvalStatus: s.approvalStatus ?? "aprobado" }} userId={userId} />
+              {!vigenciaDisponible && signers.length > 0 && (
+                <p className="text-xs text-muted-foreground">No disponible aún: la vigencia del poder requiere la migración 040 en tu base de datos. Mientras tanto los firmantes se usan sin evaluar vigencia.</p>
+              )}
+              {signers.length === 0 && <EstadoVacio mensaje="Aún no registras firmantes. Agrega al representante legal con la vigencia de su poder para poder firmar propuestas." compacto />}
+              {signers.map((s) => {
+                const estado = vigenciaDisponible || s.validFrom !== undefined ? poderEstado(s.validFrom, s.validUntil, hoy) : null;
+                const documento = s.identityDocId ? documents.find((d) => d.id === s.identityDocId) : undefined;
+                return (
+                  <div key={s.id} className={FILA}>
+                    <div className="min-w-0 text-foreground">
+                      <strong>{s.name}</strong> — {s.role}
+                      {estado && estado !== "sin_vigencia" && (
+                        <div className="text-xs text-muted-foreground">
+                          Poder desde {s.validFrom}
+                          {s.validUntil ? ` hasta ${s.validUntil}` : " (sin fecha de vencimiento)"}
+                          {documento ? ` · documento: ${documento.label}` : ""}
+                        </div>
+                      )}
+                      {s.actionLimits && <div className="text-xs text-muted-foreground">Límites de actuación: {s.actionLimits}</div>}
+                      <Autoria item={{ ...s, approvalStatus: s.approvalStatus ?? "aprobado" }} userId={userId} />
+                      <ProcedenciaLinea item={s} userId={userId} />
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {estado && <StatusBadge tone={PODER_TONE[estado]}>{PODER_LABEL[estado]}</StatusBadge>}
+                      <ApprovalBadge status={s.approvalStatus ?? "aprobado"} />
+                      <StatusBadge tone={s.authorized ? "success" : "danger"}>{s.authorized ? "Autorizado" : "No autorizado"}</StatusBadge>
+                      <DecisionButtons kind="signer" id={s.id} etiqueta={s.name} item={{ ...s, approvalStatus: s.approvalStatus ?? "aprobado" }} role={role} userId={userId} decision={decision} busy={busy} />
+                      {canWrite && vigenciaDisponible && (
+                        <Button type="button" variant="outline" size="sm" disabled={submittingSection !== null} onClick={() => void renovarPoder(s)}>
+                          Renovar poder
+                        </Button>
+                      )}
+                      {canWrite && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={s.authorized ? "text-destructive" : undefined}
+                          disabled={submittingSection !== null}
+                          onClick={() => void toggleSigner(s)}
+                        >
+                          {s.authorized ? "Revocar" : "Autorizar"}
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <ApprovalBadge status={s.approvalStatus ?? "aprobado"} />
-                    <StatusBadge tone={s.authorized ? "success" : "danger"}>{s.authorized ? "Autorizado" : "No autorizado"}</StatusBadge>
-                    <DecisionButtons kind="signer" id={s.id} etiqueta={s.name} item={{ ...s, approvalStatus: s.approvalStatus ?? "aprobado" }} role={role} userId={userId} decision={decision} busy={busy} />
-                    {canWrite && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className={s.authorized ? "text-destructive" : undefined}
-                        disabled={submittingSection !== null}
-                        onClick={() => void toggleSigner(s)}
-                      >
-                        {s.authorized ? "Revocar" : "Autorizar"}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {canWrite && (
                 <form
                   className={FORM_ALTA}
                   onSubmit={(e) => {
                     e.preventDefault();
                     void withAction("signer-new", async () => {
-                      await createCompanySigner(fetch, apiBaseUrl, token, propertyId, { name: signerForm.name, role: signerForm.role, authorized: true });
-                      setSignerForm({ name: "", role: "" });
+                      await createCompanySigner(fetch, apiBaseUrl, token, propertyId, {
+                        name: signerForm.name,
+                        role: signerForm.role,
+                        authorized: true,
+                        ...(vigenciaDisponible
+                          ? {
+                              validFrom: signerForm.validFrom,
+                              validUntil: signerForm.validUntil || null,
+                              identityDocId: signerForm.identityDocId || null,
+                              actionLimits: signerForm.actionLimits.trim() || null,
+                            }
+                          : {}),
+                      });
+                      setSignerForm({ name: "", role: "", validFrom: "", validUntil: "", identityDocId: "", actionLimits: "" });
                     });
                   }}
                 >
@@ -457,9 +669,36 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
                     <Input id="firmante-nombre" required placeholder="Nombre" value={signerForm.name} onChange={(e) => setSignerForm({ ...signerForm, name: e.target.value })} />
                   </div>
                   <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
-                    <Label htmlFor="firmante-rol">Rol</Label>
+                    <Label htmlFor="firmante-rol">Cargo</Label>
                     <Input id="firmante-rol" required placeholder="p. ej. representante_legal" value={signerForm.role} onChange={(e) => setSignerForm({ ...signerForm, role: e.target.value })} />
                   </div>
+                  {vigenciaDisponible && (
+                    <>
+                      <div className="flex min-w-[160px] flex-col gap-1.5">
+                        <Label htmlFor="firmante-desde">Poder vigente desde</Label>
+                        <Input id="firmante-desde" type="date" required value={signerForm.validFrom} onChange={(e) => setSignerForm({ ...signerForm, validFrom: e.target.value })} />
+                      </div>
+                      <div className="flex min-w-[160px] flex-col gap-1.5">
+                        <Label htmlFor="firmante-hasta">Vigente hasta (opcional)</Label>
+                        <Input id="firmante-hasta" type="date" value={signerForm.validUntil} onChange={(e) => setSignerForm({ ...signerForm, validUntil: e.target.value })} />
+                      </div>
+                      <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
+                        <Label htmlFor="firmante-documento">Documento de identidad o poder (opcional)</Label>
+                        <NativeSelect id="firmante-documento" value={signerForm.identityDocId} onChange={(e) => setSignerForm({ ...signerForm, identityDocId: e.target.value })}>
+                          <option value="">Sin documento</option>
+                          {documents.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.label}
+                            </option>
+                          ))}
+                        </NativeSelect>
+                      </div>
+                      <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
+                        <Label htmlFor="firmante-limites">Límites de actuación (opcional)</Label>
+                        <Input id="firmante-limites" placeholder="p. ej. contratos hasta 5 millones" value={signerForm.actionLimits} onChange={(e) => setSignerForm({ ...signerForm, actionLimits: e.target.value })} />
+                      </div>
+                    </>
+                  )}
                   <Button type="submit" size="sm" disabled={submittingSection !== null}>
                     <Plus />
                     {submittingSection === "signer-new" ? "Guardando…" : "Agregar firmante (autorizado)"}

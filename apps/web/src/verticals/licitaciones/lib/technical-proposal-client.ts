@@ -191,7 +191,7 @@ export async function generateEconomicProposal(
   );
 }
 
-export type RequirementFulfillmentMappingKind = "capability" | "experience" | "document" | "signer";
+export type RequirementFulfillmentMappingKind = "capability" | "experience" | "document" | "signer" | "profile" | "stakeholders" | "restrictions" | "locations" | "products";
 
 /** Espejo de `RequirementFulfillmentMappingRecord` (domain-licitaciones/repository.ts) -- lo que devuelve el PUT tras guardar. */
 export interface RequirementFulfillmentMappingRecord {

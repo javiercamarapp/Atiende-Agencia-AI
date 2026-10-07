@@ -1,5 +1,7 @@
 // Aprobaciones (L-03) -- bandeja unica de los datos de empresa que esperan
-// aprobacion (documentos, tarifas, capacidades, experiencia). Sin esta
+// aprobacion (documentos, tarifas, capacidades, experiencia, firmantes y, desde la
+// migracion 040, perfil general, productos y servicios, ubicaciones, restricciones
+// y socios). Sin esta
 // aprobacion las propuestas tecnica y economica no pueden usar el dato (un
 // requisito sin dato aprobado queda PENDIENTE; nunca se rellena). Aprobar o
 // rechazar es una DECISION (migracion 036): nunca de quien propuso o edito el
@@ -10,13 +12,15 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge } from "@atiende/ui";
-import { fetchApprovedRates, fetchCompanyCapabilities, fetchCompanyDocuments, fetchCompanyExperience } from "../lib/company-data-client.ts";
+import { fetchApprovedRates, fetchCompanyCapabilities, fetchCompanyDocuments, fetchCompanyExperience, fetchCompanySigners } from "../lib/company-data-client.ts";
+import { fetchCompanyProfile, fetchProfileCollection } from "../lib/company-profile-client.ts";
+import type { CompanyLocation, CompanyProductService, CompanyRestriction, CompanyStakeholder } from "../lib/company-profile-client.ts";
 import type { CompanyDataApprovalStatus, CompanyDataAuthorship, CompanyItemKind } from "../lib/company-data-client.ts";
 import { DecisionButtons, useCompanyDecision } from "../components/DecisionActions.tsx";
 import { authorshipLine, userIdFromToken } from "../lib/company-decision.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
-type Kind = "documento" | "tarifa" | "capacidad" | "experiencia";
+type Kind = "documento" | "tarifa" | "capacidad" | "experiencia" | "firmante" | "perfil" | "producto" | "ubicacion" | "restriccion" | "socio";
 
 interface PendingItem extends CompanyDataAuthorship {
   readonly key: string;
@@ -27,8 +31,30 @@ interface PendingItem extends CompanyDataAuthorship {
   readonly status: CompanyDataApprovalStatus;
 }
 
-const KIND_LABEL: Record<Kind, string> = { documento: "Documento", tarifa: "Tarifa", capacidad: "Capacidad", experiencia: "Experiencia" };
-const DECISION_KIND: Record<Kind, CompanyItemKind> = { documento: "document", tarifa: "rate", capacidad: "capability", experiencia: "experience" };
+const KIND_LABEL: Record<Kind, string> = {
+  documento: "Documento",
+  tarifa: "Tarifa",
+  capacidad: "Capacidad",
+  experiencia: "Experiencia",
+  firmante: "Firmante",
+  perfil: "Perfil general",
+  producto: "Producto o servicio",
+  ubicacion: "Ubicación",
+  restriccion: "Restricción",
+  socio: "Socio o representante",
+};
+const DECISION_KIND: Record<Kind, CompanyItemKind> = {
+  documento: "document",
+  tarifa: "rate",
+  capacidad: "capability",
+  experiencia: "experience",
+  firmante: "signer",
+  perfil: "profile",
+  producto: "product",
+  ubicacion: "location",
+  restriccion: "restriction",
+  socio: "stakeholder",
+};
 
 export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
   const userId = userIdFromToken(token);
@@ -39,11 +65,17 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
   async function load() {
     setLoading(true);
-    const [docs, rates, caps, exps] = await Promise.allSettled([
+    const [docs, rates, caps, exps, signers, perfil, productos, ubicaciones, restricciones, socios] = await Promise.allSettled([
       fetchCompanyDocuments(fetch, apiBaseUrl, token, propertyId),
       fetchApprovedRates(fetch, apiBaseUrl, token, propertyId),
       fetchCompanyCapabilities(fetch, apiBaseUrl, token, propertyId),
       fetchCompanyExperience(fetch, apiBaseUrl, token, propertyId),
+      fetchCompanySigners(fetch, apiBaseUrl, token, propertyId),
+      fetchCompanyProfile(fetch, apiBaseUrl, token, propertyId),
+      fetchProfileCollection<CompanyProductService>(fetch, apiBaseUrl, token, propertyId, "products"),
+      fetchProfileCollection<CompanyLocation>(fetch, apiBaseUrl, token, propertyId, "locations"),
+      fetchProfileCollection<CompanyRestriction>(fetch, apiBaseUrl, token, propertyId, "restrictions"),
+      fetchProfileCollection<CompanyStakeholder>(fetch, apiBaseUrl, token, propertyId, "stakeholders"),
     ]);
     const all: PendingItem[] = [];
     const errs: string[] = [];
@@ -56,6 +88,22 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
     else fail("Capacidades", caps.reason);
     if (exps.status === "fulfilled") exps.value.forEach((e) => all.push({ key: `exp-${e.id}`, kind: "experiencia", id: e.id, title: e.description, detail: `Evidencia: ${e.evidenceDocId}`, status: e.approvalStatus, proposedBy: e.proposedBy, approvedBy: e.approvedBy, proposedByName: e.proposedByName, approvedByName: e.approvedByName }));
     else fail("Experiencia", exps.reason);
+    const aut = (x: CompanyDataAuthorship) => ({ proposedBy: x.proposedBy, approvedBy: x.approvedBy, proposedByName: x.proposedByName, approvedByName: x.approvedByName });
+    if (signers.status === "fulfilled") signers.value.forEach((g) => all.push({ key: `sig-${g.id}`, kind: "firmante", id: g.id, title: g.name, detail: `${g.role}${g.validFrom ? ` · poder ${g.validFrom}${g.validUntil ? ` a ${g.validUntil}` : ""}` : ""}`, status: g.approvalStatus ?? "aprobado", ...aut(g) }));
+    else fail("Firmantes", signers.reason);
+    // Perfil completo (040): una base sin la migracion responde vacio con `disponible: false`, no un error.
+    if (perfil.status === "fulfilled") {
+      const p = perfil.value.profile;
+      if (p) all.push({ key: `perfil-${p.id}`, kind: "perfil", id: p.id, title: p.legalName, detail: `RFC ${p.taxId}`, status: p.approvalStatus, ...aut(p) });
+    } else fail("Perfil general", perfil.reason);
+    if (productos.status === "fulfilled") productos.value.items.forEach((x) => all.push({ key: `prod-${x.id}`, kind: "producto", id: x.id, title: x.name, detail: x.kind === "servicio" ? "Servicio" : "Producto", status: x.approvalStatus, ...aut(x) }));
+    else fail("Productos y servicios", productos.reason);
+    if (ubicaciones.status === "fulfilled") ubicaciones.value.items.forEach((x) => all.push({ key: `ubi-${x.id}`, kind: "ubicacion", id: x.id, title: x.name, detail: x.state, status: x.approvalStatus, ...aut(x) }));
+    else fail("Ubicaciones", ubicaciones.reason);
+    if (restricciones.status === "fulfilled") restricciones.value.items.forEach((x) => all.push({ key: `res-${x.id}`, kind: "restriccion", id: x.id, title: x.description, detail: `${x.kind} · desde ${x.validFrom}${x.validUntil ? ` hasta ${x.validUntil}` : ""}`, status: x.approvalStatus, ...aut(x) }));
+    else fail("Restricciones", restricciones.reason);
+    if (socios.status === "fulfilled") socios.value.items.forEach((x) => all.push({ key: `soc-${x.id}`, kind: "socio", id: x.id, title: x.fullName, detail: `${x.kind === "socio" ? "Socio" : "Representante"}${x.participationPct ? ` · ${x.participationPct}%` : ""}`, status: x.approvalStatus, ...aut(x) }));
+    else fail("Socios y representantes", socios.reason);
     setItems(all);
     setLoadErrors(errs);
     setLoading(false);

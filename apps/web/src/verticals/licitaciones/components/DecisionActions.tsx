@@ -11,7 +11,18 @@ import { canDecideKind, decisionBlockedReason, requiresStepUp } from "../lib/com
 import { TWO_FACTOR_UNAVAILABLE, fetchTwoFactorStatus, requestStepUpToken, secondFactorFromText } from "../lib/two-factor-client.ts";
 import type { TwoFactorStatus } from "../lib/two-factor-client.ts";
 
-const KIND_LABEL: Readonly<Record<CompanyItemKind, string>> = { rate: "la tarifa", document: "el documento", capability: "la capacidad", experience: "la experiencia", signer: "el firmante" };
+const KIND_LABEL: Readonly<Record<CompanyItemKind, string>> = {
+  rate: "la tarifa",
+  document: "el documento",
+  capability: "la capacidad",
+  experience: "la experiencia",
+  signer: "el firmante",
+  profile: "el perfil de la empresa",
+  product: "el producto o servicio",
+  location: "la ubicación",
+  restriction: "la restricción",
+  stakeholder: "el socio o representante",
+};
 
 export interface UseCompanyDecisionInput {
   readonly apiBaseUrl: string;
