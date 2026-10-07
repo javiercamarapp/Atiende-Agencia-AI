@@ -808,11 +808,22 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       session: this.db,
       savepointName: "sp_licitaciones_find_tenant_config",
       primary: async () => {
-        const { rows } = await this.db.query<{ timezone: string | null }>(`select timezone from licitaciones.tenant_config where organization_id = $1;`, [organizationId]);
-        return { organizationId, timezone: rows[0]?.timezone ?? null };
+        const { rows } = await this.db.query<{ timezone: string | null; new_match_min_score: number | null }>(`select timezone, new_match_min_score from licitaciones.tenant_config where organization_id = $1;`, [organizationId]);
+        return { organizationId, timezone: rows[0]?.timezone ?? null, newMatchMinScore: rows[0]?.new_match_min_score ?? null };
       },
       isRecoverable: (err) => isMigrationPendingError(err),
-      fallback: async () => ({ organizationId, timezone: null }),
+      // Base sin la 039 (falta la columna del umbral) pero CON la 027: se lee solo la zona horaria, como antes. Sin tabla -> vacio honesto.
+      fallback: async () =>
+        runWithSavepointFallback<LicitacionesTenantConfigRecord>({
+          session: this.db,
+          savepointName: "sp_licitaciones_find_tenant_config_027",
+          primary: async () => {
+            const { rows } = await this.db.query<{ timezone: string | null }>(`select timezone from licitaciones.tenant_config where organization_id = $1;`, [organizationId]);
+            return { organizationId, timezone: rows[0]?.timezone ?? null, newMatchMinScore: null };
+          },
+          isRecoverable: (err) => isMigrationPendingError(err),
+          fallback: async () => ({ organizationId, timezone: null, newMatchMinScore: null }),
+        }),
     });
   }
 
@@ -828,6 +839,19 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       session: this.db,
       savepointName: "sp_licitaciones_upsert_tenant_config",
       primary: async () => {
+        if ("newMatchMinScore" in patch) {
+          // L-P3-09: con el umbral en el patch se usa la columna de la 039 (sin ella: 42703 -> TenantConfigNotMigratedError, nunca un 200 falso).
+          const { rows } = await this.db.query<{ timezone: string | null; new_match_min_score: number | null }>(
+            `insert into licitaciones.tenant_config (organization_id, timezone, new_match_min_score) values ($1, $2, $4)
+             on conflict (organization_id) do update
+               set timezone = case when $3::boolean then $2 else licitaciones.tenant_config.timezone end,
+                   new_match_min_score = $4,
+                   updated_at = now()
+             returning timezone, new_match_min_score;`,
+            [organizationId, patch.timezone ?? null, "timezone" in patch, patch.newMatchMinScore ?? null],
+          );
+          return { organizationId, timezone: rows[0]?.timezone ?? null, newMatchMinScore: rows[0]?.new_match_min_score ?? null };
+        }
         const { rows } = await this.db.query<{ timezone: string | null }>(
           `insert into licitaciones.tenant_config (organization_id, timezone) values ($1, $2)
            on conflict (organization_id) do update
@@ -836,7 +860,8 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
            returning timezone;`,
           [organizationId, patch.timezone ?? null, "timezone" in patch],
         );
-        return { organizationId, timezone: rows[0]?.timezone ?? null };
+        // El umbral guardado (si la base tiene la 039) no se toca ni se relee aqui: la lectura es `findTenantConfig`.
+        return { organizationId, timezone: rows[0]?.timezone ?? null, newMatchMinScore: null };
       },
       isRecoverable: (err) => isMigrationPendingError(err),
       fallback: async (err) => {

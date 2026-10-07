@@ -143,3 +143,35 @@ describe("PostgresLicitacionesRepository -- nuevo match contra la base SIN la mi
     expect(await new PostgresLicitacionesRepository(sinPerfil).getNewMatchContext(ORG)).toEqual({ minScore: null, profile: null });
   });
 });
+
+describe("tenant_config con el umbral (L-P3-09) contra la base SIN la migracion 039", () => {
+  const sinColumna = Object.assign(new Error('column "new_match_min_score" does not exist'), { code: "42703" });
+
+  it("leer: sin la columna cae a la zona horaria de la 027 (umbral null) y la sesion sigue utilizable", async () => {
+    let n = 0;
+    const session = new AbortAwareFakeSession([
+      { match: /select timezone, new_match_min_score/, respond: () => sinColumna },
+      { match: /select timezone from licitaciones.tenant_config/, respond: () => (++n, [{ timezone: "America/Tijuana" }]) },
+      { match: /select 1/, respond: () => [{ ok: 1 }] },
+    ]);
+    expect(await new PostgresLicitacionesRepository(session).findTenantConfig(ORG)).toEqual({ organizationId: ORG, timezone: "America/Tijuana", newMatchMinScore: null });
+    expect(n).toBe(1);
+    await expect(session.query("select 1")).resolves.toEqual({ rows: [{ ok: 1 }] });
+  });
+
+  it("leer: sin tabla (ni la 027) el vacio honesto", async () => {
+    const sinTabla = Object.assign(new Error('relation "licitaciones.tenant_config" does not exist'), { code: "42P01" });
+    const session = new AbortAwareFakeSession([{ match: /tenant_config/, respond: () => sinTabla }]);
+    expect(await new PostgresLicitacionesRepository(session).findTenantConfig(ORG)).toEqual({ organizationId: ORG, timezone: null, newMatchMinScore: null });
+  });
+
+  it("guardar el umbral sin la columna lanza TenantConfigNotMigratedError; guardar SOLO la zona usa la sentencia de siempre (sin la columna nueva)", async () => {
+    const { TenantConfigNotMigratedError } = await import("../src/errors.ts");
+    const conUmbral = new AbortAwareFakeSession([{ match: /new_match_min_score/, respond: () => sinColumna }]);
+    await expect(new PostgresLicitacionesRepository(conUmbral).upsertTenantConfig(ORG, { newMatchMinScore: 60 })).rejects.toBeInstanceOf(TenantConfigNotMigratedError);
+
+    const soloZona = new AbortAwareFakeSession([{ match: /insert into licitaciones.tenant_config \(organization_id, timezone\) values/, respond: () => [{ timezone: "America/Tijuana" }] }]);
+    expect(await new PostgresLicitacionesRepository(soloZona).upsertTenantConfig(ORG, { timezone: "America/Tijuana" })).toMatchObject({ timezone: "America/Tijuana" });
+    expect(soloZona.calls.some((c) => c.includes("new_match_min_score"))).toBe(false);
+  });
+});

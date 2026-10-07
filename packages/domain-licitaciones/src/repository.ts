@@ -635,6 +635,8 @@ export interface OverdueContractInvoiceAlert {
 export interface LicitacionesTenantConfigRecord {
   readonly organizationId: string;
   readonly timezone: string | null;
+  /** L-P3-09 (migracion 039): umbral 0-100 del aviso de "nuevo match"; `null` = solo las convocatorias elegibles. */
+  readonly newMatchMinScore: number | null;
 }
 
 /** Patch parcial de `licitaciones.tenant_config` (panel admin, owner/admin
@@ -646,6 +648,8 @@ export interface LicitacionesTenantConfigRecord {
  * domain-citas). */
 export interface LicitacionesTenantConfigPatch {
   readonly timezone?: string | null;
+  /** Entero 0-100 o `null` (= solo elegibles). Ausente = no se toca. Exige la migracion 039 (sin ella el upsert lanza `TenantConfigNotMigratedError`). */
+  readonly newMatchMinScore?: number | null;
 }
 
 export interface LicitacionesRepository {

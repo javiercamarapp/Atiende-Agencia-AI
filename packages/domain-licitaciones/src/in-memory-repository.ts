@@ -327,14 +327,15 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   // ---- FASE 3 (producto) — zona horaria por negocio ----
 
   async findTenantConfig(organizationId: string): Promise<LicitacionesTenantConfigRecord> {
-    return { organizationId, timezone: this.tenantConfigs.get(organizationId) ?? null };
+    return { organizationId, timezone: this.tenantConfigs.get(organizationId) ?? null, newMatchMinScore: this.newMatchMinScores.get(organizationId) ?? null };
   }
 
   async upsertTenantConfig(organizationId: string, patch: LicitacionesTenantConfigPatch): Promise<LicitacionesTenantConfigRecord> {
     const current = this.tenantConfigs.get(organizationId) ?? null;
     const timezone = "timezone" in patch ? (patch.timezone ?? null) : current;
     this.tenantConfigs.set(organizationId, timezone);
-    return { organizationId, timezone };
+    if ("newMatchMinScore" in patch) this.newMatchMinScores.set(organizationId, patch.newMatchMinScore ?? null);
+    return { organizationId, timezone, newMatchMinScore: this.newMatchMinScores.get(organizationId) ?? null };
   }
 
   /** Único punto que llaman `createApprovedRate`/`createContractInvoice`/
