@@ -4,7 +4,7 @@
 //
 // Convencion: `it` = comportamiento correcto confirmado; `it.fails` = DEFECTO confirmado (describe lo ESPERADO y hoy falla).
 import { describe, expect, it } from "vitest";
-import { CRISIS_ESCALATION_MESSAGE } from "../../src/vertical-config.ts";
+import { CRISIS_ESCALATION_MESSAGE, CRISIS_VOICE_MESSAGE } from "../../src/vertical-config.ts";
 import { evaluarCrisisVoz } from "../../src/voz/guardia-crisis.ts";
 import { MaquinaCitaVoz } from "../../src/voz/maquina-cita.ts";
 import { obtenerContextoLlamadaVoz } from "../../src/voz/contexto-llamada.ts";
@@ -68,7 +68,7 @@ describe("QA R1 citas · voz · lo que SI funciona", () => {
 
   it("guardia de crisis por voz: 'ya no aguanto, quiero morirme' -> mensaje fijo y escalacion de crisis con solo la palabra clave (sin transcripcion)", async () => {
     const decision = evaluarCrisisVoz("ya no aguanto, quiero morirme");
-    expect(decision).toMatchObject({ texto: CRISIS_ESCALATION_MESSAGE, motivo: "crisis" });
+    expect(decision).toMatchObject({ texto: CRISIS_VOICE_MESSAGE, motivo: "crisis" });
     const { t, ctx } = llamada();
     await derivarAHumanoVoz(ctx, { motivo: decision!.motivo, resumen: decision!.resumen });
     const escalaciones = t.repo.getEmergencyEscalations();
@@ -115,7 +115,7 @@ describe("QA R1 citas · voz · DEFECTOS confirmados", () => {
   });
 
   // QA-citas-R1-agentes-02 (P1, voz): la guardia de voz usa la misma lista; "me quiero morir" dicho por telefono no la dispara.
-  it.fails("02b por voz, 'me quiero morir' y 'me voy a suicidar' disparan la guardia", () => {
+  it("02b por voz, 'me quiero morir' y 'me voy a suicidar' disparan la guardia", () => {
     expect(evaluarCrisisVoz("me quiero morir")).not.toBeNull();
     expect(evaluarCrisisVoz("me voy a suicidar")).not.toBeNull();
   });

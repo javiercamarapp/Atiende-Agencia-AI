@@ -35,7 +35,7 @@ describe("QA R1 citas · chat de datos · lo que SI funciona", () => {
 
 describe("QA R1 citas · chat de datos · DEFECTOS confirmados", () => {
   // QA-citas-R1-agentes-16 (P2): la guardia de cifras solo mira DIGITOS: una cifra inventada escrita con letras pasa intacta al dueño.
-  it.fails("16a 'hubo doce citas' (inventado; el dato real es 9) no llega al dueño", async () => {
+  it("16a 'hubo doce citas' (inventado; el dato real es 9) no llega al dueño", async () => {
     const a = await turno("¿cuántas citas tengo esta semana?", [CALL("citas_por_dia", { periodo: "esta_semana" }), { text: "Esta semana hubo doce citas en total." }]);
     expect(a.text).not.toContain("doce");
   });

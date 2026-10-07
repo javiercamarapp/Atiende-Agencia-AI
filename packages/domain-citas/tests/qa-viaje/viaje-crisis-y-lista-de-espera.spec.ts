@@ -35,7 +35,7 @@ describe("viaje crisis (WhatsApp, rubro de salud)", () => {
     ["QA-citas-R1-viaje-07b", "¿Me corto las uñas antes de la cirugía o no hace falta?"],
     ["QA-citas-R1-viaje-07c", "Ya no puedo más con este dolor de la endodoncia, ¿hay lugar mañana?"],
   ] as const) {
-    it.fails(`${id}: "${frase}" en una clinica dental sigue al agente de agenda (no es crisis)`, async () => {
+    it(`${id}: "${frase}" en una clinica dental sigue al agente de agenda (no es crisis)`, async () => {
       const mundo = clinicaDental({ rubro: "dental" });
       const wa = canalWhatsapp(mundo);
       const r = await wa.escribe(TEL_PACIENTE, frase, () => texto("Con gusto le busco un horario."));
@@ -51,7 +51,7 @@ describe("viaje crisis (WhatsApp, rubro de salud)", () => {
     ["QA-citas-R1-viaje-08c", "Estoy pensando en quitarme la vida"],
     ["QA-citas-R1-viaje-08d", "Me voy a matar"],
   ] as const) {
-    it.fails(`${id}: "${frase}" a un psicologo dispara la guardia de crisis`, async () => {
+    it(`${id}: "${frase}" a un psicologo dispara la guardia de crisis`, async () => {
       const mundo = clinicaDental({ rubro: "psicologo" });
       const wa = canalWhatsapp(mundo);
       const r = await wa.escribe(TEL_PACIENTE, frase, () => texto("¿Para qué día quiere su cita?"));

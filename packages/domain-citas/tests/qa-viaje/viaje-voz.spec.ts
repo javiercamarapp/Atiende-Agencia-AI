@@ -2,7 +2,7 @@
 // FALSO guionado (sin red ni credenciales) contra el nucleo real de la llamada y el motor real de agenda en memoria.
 import { describe, expect, it } from "vitest";
 import { correrGuionConAdaptador } from "@atiende/voice-core/simulador";
-import { CRISIS_ESCALATION_MESSAGE } from "../../src/vertical-config.ts";
+import { CRISIS_VOICE_MESSAGE } from "../../src/vertical-config.ts";
 import { crearAdaptadorSimuladorCitas } from "../../src/voz/simulador/correr-guion.ts";
 import { crearMundoVozCitas, DIA_LUNES } from "../../src/voz/simulador/mundo-voz.ts";
 import { GUIONES_ES_MX, correrGuion } from "../../src/voz/simulador/index.ts";
@@ -64,17 +64,17 @@ describe("viaje voz: guardia de crisis", () => {
   it("una crisis dicha en la llamada se atiende con el mensaje de ayuda y la llamada se escala (X01)", async () => {
     const l = await correrGuion(GUIONES_ES_MX.find((g) => g.id.startsWith("X01"))!);
     expect(l.resultado).toBe("escalado");
-    expect(l.textosGuardia).toContain(CRISIS_ESCALATION_MESSAGE);
+    expect(l.textosGuardia).toContain(CRISIS_VOICE_MESSAGE);
   });
 
-  it.fails("QA-citas-R1-viaje-12: el mensaje de crisis que se LEE en voz trata de usted y no contiene 'solo/a' (el TTS lo pronuncia literal)", async () => {
+  it("QA-citas-R1-viaje-12: el mensaje de crisis que se LEE en voz trata de usted y no contiene 'solo/a' (el TTS lo pronuncia literal)", async () => {
     const l = await correrGuion(GUIONES_ES_MX.find((g) => g.id.startsWith("X01"))!);
     const dicho = l.textosGuardia?.[0] ?? "";
     expect(dicho).not.toMatch(/\/a\b/);
     expect(dicho).not.toMatch(/\bestás\b|\bcontacta\b/);
   });
 
-  it.fails("QA-citas-R1-viaje-08 (voz): 'me quiero morir' dicho al psicologo escala la llamada", async () => {
+  it("QA-citas-R1-viaje-08 (voz): 'me quiero morir' dicho al psicologo escala la llamada", async () => {
     const guion: GuionLlamada = {
       id: "QA-V02-me-quiero-morir",
       titulo: "Frase de crisis comun que no esta en la lista fija",

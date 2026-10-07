@@ -211,7 +211,7 @@ describe("QA R1 citas · WhatsApp · DEFECTOS confirmados", () => {
   });
 
   // QA-citas-R1-agentes-02 (P1): frases de crisis muy comunes en Mexico no disparan la guardia (lista de subcadenas exactas).
-  it.fails("02 la guardia detecta frases de crisis es-MX frecuentes, con jerga y errores de dedo", () => {
+  it("02 la guardia detecta frases de crisis es-MX frecuentes, con jerga y errores de dedo", () => {
     const frases = [
       "me quiero morir",
       "ya me quiero morir, no puedo con esto",
@@ -230,7 +230,7 @@ describe("QA R1 citas · WhatsApp · DEFECTOS confirmados", () => {
 
   // QA-citas-R1-agentes-03 (P1): falsos positivos de la guardia en un consultorio dental: frases cotidianas disparan la crisis, abren un handoff
   // y el agente se CALLA hasta que una persona cierre la toma (el paciente se queda sin agendar).
-  it.fails("03 'se me cortó la llamada' / 'la ortodoncia me lastimó' / 'ya no puedo más tarde' NO son crisis y el agente sigue atendiendo", async () => {
+  it("03 'se me cortó la llamada' / 'la ortodoncia me lastimó' / 'ya no puedo más tarde' NO son crisis y el agente sigue atendiendo", async () => {
     const t = montarConsultorio();
     t.modelo.encolar(pasos.di("Claro, le repito los horarios."), pasos.di("Lamento la molestia, ¿agendamos revisión?"), pasos.di("¿Le acomoda a las 4?"));
     const r1 = await t.entrante("perdon se me cortó la llamada, me repite los horarios?");
