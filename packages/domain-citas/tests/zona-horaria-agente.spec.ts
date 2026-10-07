@@ -1,6 +1,6 @@
 // Regresion QA R1 (citas): lo que ve el agente de WhatsApp y de voz lleva la hora LOCAL del negocio, y un starts_at sin zona ya no se lee en la zona del servidor.
 // Ids: QA-citas-R1-seguridad-08, agentes-01, features-01/02/03, viaje-01/02/09, automatizacion-04.
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAppointment, rescheduleAppointment } from "../src/appointments.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { lookupCitasCustomer } from "../src/customers.ts";
@@ -104,14 +104,12 @@ describe("QA-citas-R1-features-02 / viaje-02: el CONTEXTO DEL CLIENTE lista las 
 });
 
 describe("QA-citas-R1-features-03: un starts_at sin zona ya no se interpreta en la zona del servidor", () => {
-  let tzPrevia: string | undefined;
+  // Servidor en UTC (como Vercel): vi.stubEnv fija TZ y lo restaura (sin leer la variable directamente: el guard de inventario de entorno la veria como credencial).
   beforeEach(() => {
-    tzPrevia = process.env.TZ;
-    process.env.TZ = "UTC";
+    vi.stubEnv("TZ", "UTC");
   });
   afterEach(() => {
-    if (tzPrevia === undefined) delete process.env.TZ;
-    else process.env.TZ = tzPrevia;
+    vi.unstubAllEnvs();
   });
 
   it("crear_cita con '2027-09-13T16:00:00' (sin zona) devuelve error de validacion y no agenda nada", async () => {
