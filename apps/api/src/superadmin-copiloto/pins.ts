@@ -1,11 +1,12 @@
 // Fijados del Copiloto de PLATAFORMA ("Fijar en el tablero"), seguimiento de CHAT-17. Mismo contrato que los fijados de las verticales (data-chat/pins.ts):
 // un fijado NO guarda cifras, guarda la herramienta del catalogo cerrado y sus argumentos tipados, y se RE-EJECUTA por la ruta directa (sin modelo) con el rol y el
 // step-up ACTUALES de su autor. Diferencias: sin organizacion (core.copiloto_pin con vertical 'plataforma', migracion 0056), nunca compartido (el tablero es
-// personal) y solo para el superadmin (completo o `finanzas`, cada quien dentro de su catalogo).
+// personal) y solo para el superadmin completo (el alta SQL exige core.cfo_zone_resolve_role = 'superadmin'; la zona CFO tampoco expone /pins).
 //
 // COMPATIBILIDAD CON LA BASE SIN MIGRAR (0056 pendiente): cada acceso corre en SAVEPOINT sobre la MISMA sesion del request (`runWithSavepointFallback`, nunca
-// Promise.all). Sin tabla o funcion (42P01/42883/42703) o con el CHECK viejo (23514) la lista responde `{ disponible: false, pins: [] }`, el alta 503 honesto y
-// editar/borrar 404; nunca un 500 ni una transaccion abortada (25P02).
+// Promise.all). Sin la tabla (42P01/42703) la lista responde `{ disponible: false, pins: [] }`; con la 0045 aplicada y la 0056 NO, la tabla existe y la lista responde
+// `disponible: true` y vacia (la consulta no depende de la 0056), y el alta falla con 42883 (funcion) o 23514 (CHECK de vertical viejo) -> 503 honesto
+// `no_disponible`; editar/borrar 404. Nunca un 500 ni una transaccion abortada (25P02).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import { cleanPinTitle, plainArgs, type PinDto, type PinOrigen, type ResultadoAltaPin, type ResultadoEdicionPin } from "../data-chat/pins.ts";
