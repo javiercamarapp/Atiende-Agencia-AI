@@ -24,7 +24,7 @@ import {
   resolverSolicitudAprobacion,
   sumarDiasFecha,
 } from "@atiende/domain-restaurantes";
-import type { AutopilotoRepository, SolicitudDecision } from "@atiende/domain-restaurantes";
+import type { AutopilotoRepository, SolicitudDecision, SolicitudTipo } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -86,6 +86,14 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   }
 
   /** Traduce los errores de regla de la base: 403 sin acceso, 422 regla de negocio. */
+  // QA R2 seguridad-03: reponer producto (pedido de $0 a cocina) y emitir un codigo de descuento mueven dinero: solo owner/admin. La base
+  // (solicitud_resolver, 075) lo exige tambien; aqui se rechaza antes con un mensaje claro y la lista de decisiones se acota al rol para
+  // que el panel no ofrezca botones que el servidor negaria.
+  const DECISIONES_DE_DINERO: readonly SolicitudDecision[] = ["reponer_producto", "descuento_proximo"];
+  const esDuenoOAdmin = (rol: string | undefined): boolean => (STAFF_INVITE_ROLES as readonly string[]).includes(rol ?? "");
+  const decisionesParaRol = (tipo: SolicitudTipo, rol: string | undefined): readonly SolicitudDecision[] =>
+    esDuenoOAdmin(rol) ? DECISIONES_POR_TIPO[tipo] : DECISIONES_POR_TIPO[tipo].filter((d) => !DECISIONES_DE_DINERO.includes(d));
+
   function traducir(err: unknown): never {
     if (err instanceof AutopilotoAccesoError) throw Errors.forbidden("No tienes acceso a esta solicitud.");
     if (err instanceof AutopilotoValidacionError) throw Errors.validation(err.message);
@@ -101,7 +109,7 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const r = await repoAuto(c).listarSolicitudes(organizationId, { propertyIds: scope, estado, limite: estado === "pendiente" ? 100 : 50 });
     return c.json({
       disponible: r.disponible,
-      solicitudes: r.valor.map((s) => ({ ...s, decisionesPosibles: DECISIONES_POR_TIPO[s.tipo] })),
+      solicitudes: r.valor.map((s) => ({ ...s, decisionesPosibles: decisionesParaRol(s.tipo, c.get("verticalRole")) })),
     });
   });
 
@@ -113,6 +121,9 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const raw = await readJsonCapped<ResolverBody>(c.req.raw, 4 * 1024);
     if (typeof raw.decision !== "string" || !Object.values(DECISIONES_POR_TIPO).some((l) => (l as readonly string[]).includes(raw.decision as string))) throw Errors.validation("decision: valor desconocido.");
     if (raw.motivo !== undefined && raw.motivo !== null && (typeof raw.motivo !== "string" || raw.motivo.length > 200)) throw Errors.validation("motivo: texto de hasta 200 caracteres.");
+    if (DECISIONES_DE_DINERO.includes(raw.decision as SolicitudDecision) && !esDuenoOAdmin(c.get("verticalRole"))) {
+      throw Errors.forbidden("Reponer producto o dar un descuento lo decide un dueño o administrador.");
+    }
     const valor = raw.valor === undefined || raw.valor === null ? null : entero(raw.valor, "valor", 1, 100);
     let indices: number[] | null = null;
     if (raw.indices !== undefined && raw.indices !== null) {
