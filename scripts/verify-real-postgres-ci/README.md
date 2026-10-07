@@ -39,6 +39,20 @@ este script ni el workflow. También se puede apuntar a uno solo:
 node scripts/verify-real-postgres-ci/run-gate.mjs scripts/verify-outbox-grants
 ```
 
+## Plantillas, shards y cobertura (7-oct-2026)
+
+- **Plantillas**: bootstrap.sql + migraciones son idénticos para las carpetas que
+  comparten `bootstrap.sql`; se aplican una vez por variante en una base plantilla
+  (`atiende_ci_tpl_<hash>`) y cada carpeta la clona con `create database … template`.
+  `--no-template` usa el camino antiguo (todo por carpeta).
+- **`--shard i/N`**: corre solo la parte i de N (reparto determinista por costo). Sin
+  `--shard` corre todo, como antes. `--report archivo.json` escribe qué carpetas se
+  ejecutaron y cuántos escenarios pasaron.
+- **`--list-shards N`**: imprime el reparto y comprueba que es una partición exacta
+  (no usa Postgres).
+- **`--verify-reports dir`**: lo usa el job agregador de CI; exige que los reportes de
+  los N shards cubran exactamente las carpetas descubiertas.
+
 ## Cómo deriva el resultado esperado de cada escenario
 
 Estas convenciones **ya existían** en los `assertions.sql` (no las inventó este
