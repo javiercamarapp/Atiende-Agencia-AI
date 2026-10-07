@@ -38,10 +38,25 @@ describe("pideUnaPersona: sin falsos positivos (QA-PM-R2-voz-02 / whatsapp-06)",
     expect(pideUnaPersona("Voy a pasar con alguien a recogerlo como en cuarenta minutos")).toBe(false);
     expect(evaluarPersonaVoz("Voy a pasar con alguien a recogerlo como en cuarenta minutos")).toBeNull();
   });
-  it("una peticion mezclada con un pedido no se traga el pedido (R2W43)", () => {
-    const t = "quiero hablar con alguien de recursos humanos por la vacante, y de paso me apartas 4 tacos de pastor para recoger";
-    expect(pideUnaPersona(t)).toBe(false);
-    expect(classifyHighRiskIntent(t)).toBeNull();
+  it("una peticion mezclada con un pedido SIEMPRE escala (la persona retoma el pedido)", () => {
+    for (const t of [
+      "quiero 3 tacos y que me hable una persona",
+      "quiero hablar con alguien de recursos humanos por la vacante, y de paso me apartas 4 tacos de pastor para recoger",
+      "ponme dos kilos de pastor y pásame con el gerente",
+      "páseme con alguien, no quiero el bot",
+      "no quiero el bot pásame con alguien",
+      "no sé si quiero hablar con alguien o seguir con el bot, mejor sí, pásame con una persona",
+      "no quiero hablar con un bot",
+    ]) {
+      expect(pideUnaPersona(t), t).toBe(true);
+      expect(classifyHighRiskIntent(t)?.intent, t).toBe("cliente_lo_pide");
+      expect(evaluarPersonaVoz(t)?.motivo, t).toBe("cliente_lo_pide");
+    }
+  });
+  it("la negacion pegada al verbo sigue sin escalar aunque venga con un pedido", () => {
+    for (const t of ["no quiero hablar con una persona, con usted está bien, quiero 3 tacos", "no necesito que me hable nadie, ponme 2 tacos", "no hace falta que me pases con el gerente"]) {
+      expect(pideUnaPersona(t), t).toBe(false);
+    }
   });
   it("una peticion pura escala con el motivo cliente_lo_pide", () => {
     expect(classifyHighRiskIntent("quiero hablar con una persona")?.intent).toBe("cliente_lo_pide");

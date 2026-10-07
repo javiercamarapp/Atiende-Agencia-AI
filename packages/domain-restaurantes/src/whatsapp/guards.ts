@@ -129,26 +129,19 @@ export interface HighRiskMatch {
 
 /** El cliente pide a una persona: infinitivo, imperativo con o sin acento ("comuníqueme", "pásame", "páseme") y "quiero una persona". Sirve a WhatsApp y a voz. */
 export const PIDE_UNA_PERSONA_RE =
-  /\b(?:hablar|comunicar(?:me)?|comun[ií]que(?:me|se)?|comun[ií]came|pasar(?:me)?|p[aá]sa(?:me)?|p[aá]se(?:me)?|conectar(?:me)?|con[eé]cta(?:me)?|con[eé]cte(?:me)?|transferir(?:me)?|transf[ií]er[ea]?(?:me)?)\s+(?:con|a)\s+(?:una?\s+|el\s+|la\s+)?(?:persona|humano|gerente|encargad[oa]|alguien|asesor|agente)\b|\bquiero\s+(?:una\s+|un\s+)?(?:persona|humano)\b/i;
+  /\b(?:hablar|comunicar(?:me)?|comun[ií]que(?:me|se)?|comun[ií]came|pasar(?:me)?|p[aá]sa(?:me)?|p[aá]se(?:me)?|conectar(?:me)?|con[eé]cta(?:me)?|con[eé]cte(?:me)?|transferir(?:me)?|transf[ií]er[ea]?(?:me)?)\s+(?:con|a)\s+(?:una?\s+|el\s+|la\s+)?(?:persona|humano|gerente|encargad[oa]|alguien|asesor|agente)\b|\bquiero\s+(?:una\s+|un\s+)?(?:persona|humano)\b|\bque\s+(?:me\s+)?(?:hable|habl[eé]|llame|llam[eé]|contacte|atienda|marque|responda|conteste|escriba)\s+(?:una?\s+|el\s+|la\s+)?(?:persona|humano|gerente|encargad[oa]|alguien|asesor|agente)\b|\bno\s+quiero\s+(?:hablar\s+con\s+)?(?:con\s+)?(?:el\s+|un\s+|la\s+|una\s+)?(?:bot|robot|m[aá]quina|inteligencia\s+artificial)\b/i;
 
 const PIDE_UNA_PERSONA_GLOBAL = new RegExp(PIDE_UNA_PERSONA_RE.source, "gi");
 /** Marco de peticion que hace de "pasar con X" un pedido de transferencia ("quiero pasar con el gerente") y no un "voy a pasar con alguien a recogerlo". */
 const MARCO_DE_PETICION = /\b(?:quiero|quisiera|necesito|puedes|puede|podr[ií]as?|podr[ií]an|favor|por\s+favor|me\s+puede|me\s+pueden|le\s+pido|les\s+pido)\b/i;
-const NEGACION_AL_FINAL = /\b(?:no|ni|nunca|jam[aá]s|tampoco)\b(?:\s+\S+){0,4}\s*$/i;
-/** Habla de armar un pedido en el mismo mensaje (cantidad + producto, o un verbo de pedir): una peticion de persona MEZCLADA con un pedido no debe tragarse el pedido. */
-const TRAE_PEDIDO =
-  /\b(?:\d+|un|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|doce|medio|media)\s+(?:ordenes?\s+de\s+)?(?:tacos?|kilos?|kg|nachos?|quesadillas?|gringas?|alambres?|horchatas?|refrescos?|cocas?|cervezas?|aguas?|bistec|pastor|arrachera|pollo|cochinita|frijoles|guacamole|papas?|tortas?|hamburguesas?|platillos?)\b|\b(?:apart(?:a|ame|as|ar)|ap[aá]rtame|ponme|p[oó]nme|anota(?:me)?|quiero\s+(?:pedir|ordenar|hacer\s+un\s+pedido)|me\s+das|me\s+mandas?)\b/i;
-
-/** ¿El texto trae un pedido (cantidad + producto o un verbo de pedir)? */
-export function traePedido(text: string): boolean {
-  return TRAE_PEDIDO.test(text);
-}
-
+/** Negacion pegada al verbo de la peticion ("no quiero", "no necesito", "no hace falta", "no es necesario", "no voy a"): solo cuenta si el "no" va JUSTO antes de
+ * "hablar con...". Un "no" lejano ("no se si quiero hablar con alguien", "no quiero el bot, pasame con alguien") ya no anula una peticion real. */
+const NEGACION_AL_FINAL =
+  /\b(?:no|ni|nunca|jam[aá]s|tampoco)\s+(?:(?:es\s+necesario|hace\s+falta|hay\s+que|quiero|quisiera|necesito|ocupo|requiero|deseo|tengo\s+que|voy\s+a|vayas?\s+a|me\s+interesa|pienso)\s*(?:que\s+)?(?:me\s+|se\s+)?)?$/i;
 /** Pura: ¿el cliente pide hablar con una persona? (independiente de otros motivos de riesgo del mismo texto). NO cuenta: la negacion ("no quiero hablar con
  * una persona, con usted esta bien"), "pasar con alguien" como visita ("voy a pasar con alguien a recogerlo") ni una peticion mezclada con un pedido
- * ("quiero hablar con alguien de recursos humanos y de paso me apartas 4 tacos": el pedido sigue su camino y el modelo escala lo otro). */
+ * (la peticion de una persona SIEMPRE escala, aunque venga con un pedido: "quiero 3 tacos y que me hable una persona"; el pedido lo retoma la persona). */
 export function pideUnaPersona(text: string): boolean {
-  if (traePedido(text)) return false;
   for (const m of text.matchAll(PIDE_UNA_PERSONA_GLOBAL)) {
     const idx = m.index ?? 0;
     const antes = text.slice(Math.max(0, idx - 60), idx);
