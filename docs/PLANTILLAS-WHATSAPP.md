@@ -48,6 +48,12 @@ Restaurantes (aviso de estado de pedido, ya existente): `pedido_confirmado`, `pe
 `pedido_cancelado`, con `{{1}}` nombre, `{{2}}` sucursal y `{{3}}` total (ver `PLANTILLAS_ESTADO_PEDIDO`). Se declaran en `WHATSAPP_APPROVED_TEMPLATES`;
 este PR no agrega pantalla para ellas.
 
+Restaurantes, autopiloto del ciclo del pedido (`PLANTILLAS_AUTOPILOTO`, `packages/domain-restaurantes/src/autopiloto/servicio.ts`): todas con `{{1}}` nombre del
+cliente, `{{2}}` sucursal y `{{3}}` detalle. `pedido_aprobado` (detalle = total), `pedido_no_confirmado` (rechazo de un pedido grande), `cancelacion_no_posible`
+(el pedido ya esta en proceso), `compensacion_sin_costo_extra`, `compensacion_reposicion`, `compensacion_descuento` (detalle = codigo de un solo uso) y
+`pedido_recibido` (detalle = folio y tiempo estimado; confirmacion inmediata de voz y web). Sin la plantilla declarada el aviso solo sale dentro de la ventana
+de 24 h; `pedido_recibido` es la excepcion: sin plantilla aprobada NO se envia (estado `plantilla_no_aprobada`, visible en "Reglas del autopiloto").
+
 ## Huecos declarados
 
 - La aprobacion en Meta Business Manager es un paso externo (credencial de Javier): el panel solo registra el estado que el dueno confirma.

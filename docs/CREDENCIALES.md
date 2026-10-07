@@ -38,6 +38,10 @@ explícito, nunca a datos falsos.
 | `APP_BASE_URL` | el origen real de `apps/web`, `https://...` (p.ej. `https://app.tudominio.com`) | **Sí en producción** (`VERCEL_ENV=production`) | Arma los enlaces de invitación, restablecimiento de contraseña y magic link, y es origen de confianza del guard de Origin | En producción no hay valor por omisión: si falta o no es `https://`, la API no arranca. Fuera de producción: `https://$VERCEL_URL` y, si no hay, `http://localhost:5173` | No |
 | `TRUSTED_PROXY_IP_HEADER` | nombre de un header, p.ej. `cf-connecting-ip` (minúsculas) | No | Declara qué header de IP confiar como PRIMARIO en `http-security.ts::requestActor` (usado por todo rate-limit por IP de este repo) — solo tiene efecto si un proxy real y confiable (ej. Cloudflare) está delante de Vercel y garantiza que ESE header no lo puede escribir el cliente final. Hoy este despliegue es Vercel directo (sin evidencia de ningún proxy así en `vercel.json`), así que se deja SIN configurar a propósito. | Sin ella, se usa el último salto de `X-Forwarded-For` (el que Vercel mismo agrega, no falsificable) con `X-Real-IP` como respaldo — nunca `cf-connecting-ip` por defecto (ver hallazgo de revisión del PR #167: ese header, sin un proxy real delante, lo escribe el cliente). | No |
 
+## Demostraciones públicas de agentes
+
+`PUBLIC_DEMO_AGENTS_ENABLED=true` habilita `/v1/demo-agentes/:solution` para los nueve perfiles ficticios de marketing. Es una bandera no secreta, opcional y desactivada por defecto. Reutiliza `OPENROUTER_API_KEY` (chat), `GEMINI_API_KEY` (voz) y `DATABASE_URL` (límites atómicos); no requiere una organización real ni herramientas de negocio. Si falta un proveedor o falla el contador, el canal falla cerrado. Límites y contrato en [demo-agents/README.md](../apps/api/src/demo-agents/README.md).
+
 ## Base de datos (Supabase Postgres)
 
 | Variable | Dónde se obtiene | Secreta | Habilita | Sin ella | Arranque |
