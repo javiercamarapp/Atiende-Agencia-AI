@@ -16,8 +16,8 @@ Qué vigilar y qué hacer cuando algo falla en el ciclo de restaurantes (WhatsAp
 | `/internal/restaurantes/email-dispatch` | cada 15 min | Drena el outbox de correo (confirmación de pedido) | No salen correos de confirmación |
 | `/internal/restaurantes/privacidad-retencion` | diario 08:30 | Purga conversaciones y transcripciones vencidas por la política de retención | Se acumulan datos más allá de la retención configurada |
 
-El cierre del día (`/internal/restaurantes/cierres-dia`) **no** está agendado en `vercel.json`: hasta que se agende, los cierres se generan con el botón de
-*Cierre del día*. Estado y latido de cada cron: `/superadmin/salud/crons`. Cada cron se puede pausar con el interruptor de superadmin (responde 200
+El cierre del día (`/internal/restaurantes/cierres-dia`) corre a diario desde `vercel.json` (08:20 UTC = 02:20 en Mérida) y recupera hasta 3 días sin corrida; el botón de
+*Cierre del día* sigue generándolo a demanda. Estado y latido de cada cron: `/superadmin/salud/crons`. Cada cron se puede pausar con el interruptor de superadmin (responde 200
 `skipped: kill_switch`).
 
 ## 2. Señales que hay que mirar

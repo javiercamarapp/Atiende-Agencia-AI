@@ -27,8 +27,10 @@ describe("registro unico de tools", () => {
   });
 
   it("ninguna tool acepta un telefono como argumento (el modelo no puede elegir de quien es el historial)", () => {
+    // Unica excepcion documentada: `telefono_alterno` de crear_pedido es un dato de contacto que el cliente da para ESE pedido; solo se
+    // escribe en la comanda, nunca identifica al cliente, ni selecciona historial, ni se lee de vuelta.
     for (const tool of AGENT_TOOL_DEFINITIONS) {
-      const props = Object.keys(tool.parameters.properties).join(",");
+      const props = Object.keys(tool.parameters.properties).filter((k) => !(tool.name === "crear_pedido" && k === "telefono_alterno")).join(",");
       expect(props, tool.name).not.toMatch(/phone|telefono|tel\b/i);
     }
   });

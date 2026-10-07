@@ -5,12 +5,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Callout, Checkbox, ConfirmDialog, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, NativeSelect, StatusBadge, Textarea, notify } from "@atiende/ui";
-import { agregar, aItemsApi, avisos, cambiarCantidad, formatoPesos, hayAlcohol, nuevoIdSesion, propinaPermitida, subtotal, type Carrito } from "./carrito.ts";
+import { Button, Callout, Checkbox, ConfirmDialog, Dialog, DialogContent, DialogHeader, DialogTitle, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, NativeSelect, StatusBadge, Textarea, notify } from "@atiende/ui";
+import { agregar, aItemsApi, avisos, cambiarCantidad, filtrarMenu, formatoPesos, hayAlcohol, nuevoIdSesion, propinaPermitida, subtotal, totalArticulos, type Carrito } from "./carrito.ts";
 import { crearClienteStorefront, StorefrontError, type CategoriaMenu, type Canal, type MarcaPublica, type Cotizacion, type MetodoPago, type ProductoMenu, type SucursalPublica, type Tortilla } from "./storefront-client.ts";
 import { textoApertura } from "./RestaurantePage.tsx";
 import { StorefrontLayout } from "./StorefrontLayout.tsx";
 import { useMetaPublica } from "./meta-publica.ts";
+import { usePantallaAncha } from "./use-pantalla-ancha.ts";
 
 const REFRESCO_MENU_MS = 60_000;
 
@@ -20,6 +21,11 @@ function almacen(): Storage | null {
   } catch {
     return null;
   }
+}
+
+/** Id del titulo de una categoria (destino del salto y del scroll-spy). */
+function idCategoria(c: CategoriaMenu): string {
+  return `cat-${c.id ?? "otros"}`;
 }
 
 /** Solo ids y cantidades: el carrito guardado nunca lleva datos personales. */
@@ -55,10 +61,11 @@ interface FormularioCliente {
   codigoPromo: string;
   propina: string;
   mayorDeEdad: boolean;
+  promociones: boolean;
   acepta: boolean;
 }
 
-const FORM_VACIO: FormularioCliente = { nombre: "", telefono: "", correo: "", direccion: "", colonia: "", notas: "", codigoPromo: "", propina: "", mayorDeEdad: false, acepta: false };
+const FORM_VACIO: FormularioCliente = { nombre: "", telefono: "", correo: "", direccion: "", colonia: "", notas: "", codigoPromo: "", propina: "", mayorDeEdad: false, promociones: false, acepta: false };
 
 export function validarFormulario(f: FormularioCliente, canal: Canal, pago: MetodoPago | null, alcohol: boolean, hayZonas: boolean): Partial<Record<keyof FormularioCliente | "pago", string>> {
   const e: Partial<Record<keyof FormularioCliente | "pago", string>> = {};
@@ -94,6 +101,10 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
   const [cotizando, setCotizando] = useState(false);
   const [dialogoAbierto, setDialogoAbierto] = useState(false);
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [hojaAbierta, setHojaAbierta] = useState(false);
+  const [categoriaActiva, setCategoriaActiva] = useState<string | null>(null);
+  const ancha = usePantallaAncha();
   const sessionId = useRef<string>("");
   const carritoHidratado = useRef(false);
 
@@ -138,6 +149,11 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
     return () => clearInterval(t);
   }, [cargarMenu]);
 
+  // R-37: NO se precarga el chunk de rastreo al abrir la confirmación. El helper de precarga de Vite emite
+  // `vite:preloadError` aunque el import tenga su propio .catch, y el manejador global recarga la página: con el
+  // diálogo abierto se perderían nombre, teléfono y dirección (no se persisten) o se cortaría el POST del pedido.
+  // Si el chunk de rastreo falla tras un despliegue, la recarga ocurre ya en la URL de rastreo, sin daño.
+
   useEffect(() => {
     if (!carritoHidratado.current) return;
     try {
@@ -156,6 +172,35 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
     imagen: marca?.portadaUrl ?? marca?.logoUrl,
   });
 
+  const categoriasMenu = useMemo(() => (typeof menu === "object" && "categorias" in menu ? menu.categorias : []), [menu]);
+  const categoriasFiltradas = useMemo(() => filtrarMenu(categoriasMenu, busqueda), [categoriasMenu, busqueda]);
+  const idsCategorias = categoriasFiltradas.map((c) => idCategoria(c)).join("|");
+
+  // Scroll-spy: la categoria cuyo titulo esta en la franja alta de la pantalla queda activa en la barra.
+  useEffect(() => {
+    const ids = idsCategorias ? idsCategorias.split("|") : [];
+    setCategoriaActiva(ids[0] ?? null);
+    if (ids.length === 0 || typeof IntersectionObserver === "undefined") return;
+    const observador = new IntersectionObserver(
+      (entradas) => {
+        const visible = entradas.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (visible) setCategoriaActiva(visible.target.id);
+      },
+      { rootMargin: "-10% 0px -75% 0px" },
+    );
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (el) observador.observe(el);
+    }
+    return () => observador.disconnect();
+  }, [idsCategorias]);
+
+  function irACategoria(id: string) {
+    setCategoriaActiva(id);
+    const el = document.getElementById(id);
+    if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   const alcohol = hayAlcohol(carrito);
   const minimoDom = sucursal?.pedidoMinimoDomicilio ?? null;
   const minimoRec = sucursal?.pedidoMinimoRecoger ?? null;
@@ -164,6 +209,7 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
   const puedePropina = propinaPermitida(sucursal?.propinaPolitica ?? null, pago);
   const zonas = sucursal?.zonasReparto ?? [];
   const cerrada = sucursal?.abiertoAhora === false;
+  const sinDomicilio = sucursal?.aceptaDomicilio === false;
 
   const cambiar = <K extends keyof FormularioCliente>(campo: K, valor: FormularioCliente[K]) => {
     setForm((f) => ({ ...f, [campo]: valor }));
@@ -214,7 +260,7 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
     try {
       await cliente.confirmar(branchSlug, sessionId.current, cotizacion?.quote_hash ?? null);
       const propina = form.propina.trim() && puedePropina ? Number(form.propina) : undefined;
-      const creado = await cliente.crearPedido(branchSlug, datosPedido(), { nombre: form.nombre, telefono: form.telefono, correo: form.correo, direccion: form.direccion, notas: form.notas, propina, aceptaAviso: form.acepta }, cotizacion?.quote_hash ?? null);
+      const creado = await cliente.crearPedido(branchSlug, datosPedido(), { nombre: form.nombre, telefono: form.telefono, correo: form.correo, direccion: form.direccion, notas: form.notas, propina, aceptaAviso: form.acepta, aceptaPromociones: form.promociones }, cotizacion?.quote_hash ?? null);
       limpiarSesion();
       notify.success(creado.ya_registrado ? "Tu pedido ya estaba registrado." : "¡Pedido recibido!");
       navigate(`/pedir/${orgSlug}/pedido/${encodeURIComponent(creado.rastreo_token)}`);
@@ -243,6 +289,191 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
     );
   }
 
+  const formularioPedido = (conTitulo: boolean) => (
+  <form onSubmit={revisar} noValidate className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4">
+    {conTitulo && <h2 className="text-lg font-semibold">Tu pedido</h2>}
+    {carrito.length === 0 ? (
+      <p className="text-sm text-muted-foreground">Aún no agregas nada. Elige productos del menú.</p>
+    ) : (
+      <ul className="flex flex-col gap-2" aria-live="polite">
+        {carrito.map((r) => (
+          <li key={`${r.producto.id}|${r.tortilla ?? ""}`} className="flex items-center justify-between gap-2 text-sm">
+            <span className="min-w-0 flex-1">
+              {r.producto.name}
+              {r.tortilla ? ` (tortilla ${r.tortilla})` : ""}
+            </span>
+            <span className="flex items-center gap-1">
+              <Button type="button" size="icon-sm" variant="outline" aria-label={`Quitar una unidad de ${r.producto.name}`} onClick={() => setCarrito((c) => cambiarCantidad(c, r.producto.id, r.tortilla, r.cantidad - 1))}>
+                −
+              </Button>
+              <span aria-label={`Cantidad: ${r.cantidad}`} className="w-6 text-center tabular-nums">
+                {r.cantidad}
+              </span>
+              <Button type="button" size="icon-sm" variant="outline" aria-label={`Agregar una unidad de ${r.producto.name}`} onClick={() => setCarrito((c) => cambiarCantidad(c, r.producto.id, r.tortilla, r.cantidad + 1))}>
+                +
+              </Button>
+            </span>
+            <span className="w-16 text-right tabular-nums">{formatoPesos(r.producto.price * r.cantidad)}</span>
+          </li>
+        ))}
+        <li className="flex justify-between border-t border-border pt-2 font-semibold">
+          <span>Subtotal</span>
+          <span className="tabular-nums">{formatoPesos(subtotal(carrito))}</span>
+        </li>
+      </ul>
+    )}
+
+    <fieldset className="grid gap-2">
+      <legend className="text-sm font-medium">¿Cómo lo quieres?</legend>
+      <div className="flex gap-2">
+        {(["recoger", "domicilio"] as const).map((c) => (
+          <label key={c} className={`flex flex-1 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5 ${c === "domicilio" && sinDomicilio ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+            <input
+              type="radio"
+              name="canal"
+              value={c}
+              disabled={c === "domicilio" && sinDomicilio}
+              checked={canal === c}
+              onChange={() => {
+                setCanal(c);
+                setCotizacion(null);
+              }}
+            />
+            {c === "recoger" ? "Recoger en sucursal" : "A domicilio"}
+          </label>
+        ))}
+      </div>
+      {sinDomicilio && <p className="text-xs text-muted-foreground">Esta sucursal solo atiende pedidos para recoger.</p>}
+      {!sinDomicilio && sucursal?.domicilioTexto && <p className="text-xs text-muted-foreground">{sucursal.domicilioTexto}.</p>}
+    </fieldset>
+
+    {avisosCanal
+      .filter((a) => a.codigo !== "vacio")
+      .map((a) => (
+        <Callout key={a.codigo} tone="warning">
+          {a.mensaje}
+        </Callout>
+      ))}
+
+    <FormField label="Nombre" required error={errores.nombre}>
+      <Input autoComplete="name" value={form.nombre} onChange={(e) => cambiar("nombre", e.target.value)} maxLength={160} />
+    </FormField>
+    <FormField label="Teléfono" required hint="10 dígitos, para avisarte de tu pedido." error={errores.telefono}>
+      <Input type="tel" inputMode="tel" autoComplete="tel" value={form.telefono} onChange={(e) => cambiar("telefono", e.target.value)} maxLength={20} />
+    </FormField>
+    <FormField label="Correo (opcional)" hint="Solo si quieres la confirmación por correo." error={errores.correo}>
+      <Input type="email" autoComplete="email" value={form.correo} onChange={(e) => cambiar("correo", e.target.value)} maxLength={320} />
+    </FormField>
+
+    {canal === "domicilio" && (
+      <>
+        <FormField label="Colonia o zona" required error={errores.colonia}>
+          {zonas.length > 0 ? (
+            <NativeSelect value={form.colonia} onChange={(e) => cambiar("colonia", e.target.value)}>
+              <option value="">Elige tu zona</option>
+              {zonas.map((z) => (
+                <option key={z} value={z}>
+                  {z}
+                </option>
+              ))}
+            </NativeSelect>
+          ) : (
+            <Input value={form.colonia} onChange={(e) => cambiar("colonia", e.target.value)} maxLength={200} />
+          )}
+        </FormField>
+        <FormField label="Dirección completa" required error={errores.direccion}>
+          <Textarea autoComplete="street-address" rows={2} value={form.direccion} onChange={(e) => cambiar("direccion", e.target.value)} maxLength={1000} />
+        </FormField>
+      </>
+    )}
+
+    <fieldset className="grid gap-2" aria-describedby={errores.pago ? "error-pago" : undefined}>
+      <legend className="text-sm font-medium">
+        Forma de pago <span className="font-normal text-muted-foreground">(se paga en la sucursal{canal === "domicilio" ? " o al repartidor" : ""})</span>
+      </legend>
+      <div className="flex gap-2">
+        {(["efectivo", "tarjeta"] as const).map((m) => (
+          <label key={m} className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+            <input
+              type="radio"
+              name="pago"
+              value={m}
+              checked={pago === m}
+              onChange={() => {
+                setPago(m);
+                setCotizacion(null);
+              }}
+            />
+            {m === "efectivo" ? "Efectivo" : "Tarjeta"}
+          </label>
+        ))}
+      </div>
+      {errores.pago && (
+        <p id="error-pago" role="alert" className="text-xs text-destructive">
+          {errores.pago}
+        </p>
+      )}
+    </fieldset>
+
+    {puedePropina && (
+      <FormField label="Propina (opcional)" hint="Solo con tarjeta; se registra aparte y no suma al total." error={errores.propina}>
+        <Input inputMode="decimal" value={form.propina} onChange={(e) => cambiar("propina", e.target.value)} />
+      </FormField>
+    )}
+    {canal === "recoger" && (
+      <FormField label="Código de promoción (opcional)" hint="Las promociones solo aplican al recoger en sucursal.">
+        <Input value={form.codigoPromo} onChange={(e) => cambiar("codigoPromo", e.target.value)} maxLength={40} autoCapitalize="characters" />
+      </FormField>
+    )}
+    <FormField label="Notas (opcional)">
+      <Textarea rows={2} value={form.notas} onChange={(e) => cambiar("notas", e.target.value)} maxLength={500} />
+    </FormField>
+
+    {alcohol && (
+      <FormField label="Mayoría de edad" error={errores.mayorDeEdad}>
+        {(p) => (
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox {...p} checked={form.mayorDeEdad} onChange={(e) => cambiar("mayorDeEdad", e.target.checked)} />
+            Confirmo que quien recibe el pedido es mayor de edad (tu pedido incluye alcohol).
+          </label>
+        )}
+      </FormField>
+    )}
+    <FormField label="Promociones (opcional)">
+      {(p) => (
+        <label className="flex items-start gap-2 text-sm">
+          <Checkbox {...p} checked={form.promociones} onChange={(e) => cambiar("promociones", e.target.checked)} />
+          <span>Quiero recibir promociones por WhatsApp. Puedes darte de baja cuando quieras escribiendo BAJA.</span>
+        </label>
+      )}
+    </FormField>
+
+    <FormField label="Aviso de privacidad" error={errores.acepta}>
+      {(p) => (
+        <label className="flex items-start gap-2 text-sm">
+          <Checkbox {...p} checked={form.acepta} onChange={(e) => cambiar("acepta", e.target.checked)} />
+          <span>
+            Leí el{" "}
+            <a href={`/pedir/${orgSlug}/privacidad`} target="_blank" rel="noreferrer" className="underline">
+              aviso de privacidad
+            </a>
+            .
+          </span>
+        </label>
+      )}
+    </FormField>
+
+    {errorServidor && (
+      <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+        {errorServidor}
+      </div>
+    )}
+    <Button type="submit" loading={cotizando} disabled={carrito.length === 0 || bloqueos.length > 0 || cerrada}>
+      Revisar pedido
+    </Button>
+  </form>
+  );
+
   const ap = sucursal ? textoApertura(sucursal) : null;
 
   return (
@@ -260,12 +491,37 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
         </Callout>
       )}
 
-      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className={`mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] ${!ancha && carrito.length > 0 ? "pb-24" : ""}`}>
         <div>
+          {menu.categorias.length > 0 && (
+            <>
+              <div className="mb-3">
+                <label htmlFor="buscar-menu" className="sr-only">
+                  Buscar en el menú
+                </label>
+                <Input id="buscar-menu" type="search" placeholder="Buscar en el menú" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} maxLength={80} autoComplete="off" />
+              </div>
+              <nav aria-label="Categorías del menú" className="sticky top-0 z-20 -mx-4 mb-4 overflow-x-auto border-b border-border bg-background px-4 py-2 sm:-mx-6 sm:px-6">
+                <ul className="flex gap-2">
+                  {categoriasFiltradas.map((cat) => {
+                    const id = idCategoria(cat);
+                    return (
+                      <li key={id} className="shrink-0">
+                        <Button type="button" size="sm" variant={categoriaActiva === id ? "default" : "outline"} aria-current={categoriaActiva === id ? "true" : undefined} onClick={() => irACategoria(id)}>
+                          {cat.name}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </nav>
+            </>
+          )}
           {menu.categorias.length === 0 && <EstadoVacio titulo="Menú no disponible" mensaje="Esta sucursal todavía no tiene productos publicados." />}
-          {menu.categorias.map((cat) => (
-            <section key={cat.id ?? cat.name} aria-labelledby={`cat-${cat.id ?? "otros"}`} className="mb-8">
-              <h2 id={`cat-${cat.id ?? "otros"}`} className="mb-3 text-lg font-semibold">
+          {menu.categorias.length > 0 && categoriasFiltradas.length === 0 && <EstadoVacio titulo="Sin resultados" mensaje={`Ningún producto coincide con “${busqueda.trim()}”.`} />}
+          {categoriasFiltradas.map((cat) => (
+            <section key={cat.id ?? cat.name} aria-labelledby={idCategoria(cat)} className="mb-8">
+              <h2 id={idCategoria(cat)} className="mb-3 scroll-mt-16 text-lg font-semibold">
                 {cat.name}
               </h2>
               <ul className="grid gap-3">
@@ -277,179 +533,35 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
           ))}
         </div>
 
-        <aside aria-label="Tu pedido" className="lg:sticky lg:top-4 lg:self-start">
-          <form onSubmit={revisar} noValidate className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4">
-            <h2 className="text-lg font-semibold">Tu pedido</h2>
-            {carrito.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aún no agregas nada. Elige productos del menú.</p>
-            ) : (
-              <ul className="flex flex-col gap-2" aria-live="polite">
-                {carrito.map((r) => (
-                  <li key={`${r.producto.id}|${r.tortilla ?? ""}`} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="min-w-0 flex-1">
-                      {r.producto.name}
-                      {r.tortilla ? ` (tortilla ${r.tortilla})` : ""}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Button type="button" size="icon-sm" variant="outline" aria-label={`Quitar una unidad de ${r.producto.name}`} onClick={() => setCarrito((c) => cambiarCantidad(c, r.producto.id, r.tortilla, r.cantidad - 1))}>
-                        −
-                      </Button>
-                      <span aria-label={`Cantidad: ${r.cantidad}`} className="w-6 text-center tabular-nums">
-                        {r.cantidad}
-                      </span>
-                      <Button type="button" size="icon-sm" variant="outline" aria-label={`Agregar una unidad de ${r.producto.name}`} onClick={() => setCarrito((c) => cambiarCantidad(c, r.producto.id, r.tortilla, r.cantidad + 1))}>
-                        +
-                      </Button>
-                    </span>
-                    <span className="w-16 text-right tabular-nums">{formatoPesos(r.producto.price * r.cantidad)}</span>
-                  </li>
-                ))}
-                <li className="flex justify-between border-t border-border pt-2 font-semibold">
-                  <span>Subtotal</span>
-                  <span className="tabular-nums">{formatoPesos(subtotal(carrito))}</span>
-                </li>
-              </ul>
-            )}
-
-            <fieldset className="grid gap-2">
-              <legend className="text-sm font-medium">¿Cómo lo quieres?</legend>
-              <div className="flex gap-2">
-                {(["recoger", "domicilio"] as const).map((c) => (
-                  <label key={c} className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5">
-                    <input
-                      type="radio"
-                      name="canal"
-                      value={c}
-                      checked={canal === c}
-                      onChange={() => {
-                        setCanal(c);
-                        setCotizacion(null);
-                      }}
-                    />
-                    {c === "recoger" ? "Recoger en sucursal" : "A domicilio"}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-
-            {avisosCanal
-              .filter((a) => a.codigo !== "vacio")
-              .map((a) => (
-                <Callout key={a.codigo} tone="warning">
-                  {a.mensaje}
-                </Callout>
-              ))}
-
-            <FormField label="Nombre" required error={errores.nombre}>
-              <Input autoComplete="name" value={form.nombre} onChange={(e) => cambiar("nombre", e.target.value)} maxLength={160} />
-            </FormField>
-            <FormField label="Teléfono" required hint="10 dígitos, para avisarte de tu pedido." error={errores.telefono}>
-              <Input type="tel" inputMode="tel" autoComplete="tel" value={form.telefono} onChange={(e) => cambiar("telefono", e.target.value)} maxLength={20} />
-            </FormField>
-            <FormField label="Correo (opcional)" hint="Solo si quieres la confirmación por correo." error={errores.correo}>
-              <Input type="email" autoComplete="email" value={form.correo} onChange={(e) => cambiar("correo", e.target.value)} maxLength={320} />
-            </FormField>
-
-            {canal === "domicilio" && (
-              <>
-                <FormField label="Colonia o zona" required error={errores.colonia}>
-                  {zonas.length > 0 ? (
-                    <NativeSelect value={form.colonia} onChange={(e) => cambiar("colonia", e.target.value)}>
-                      <option value="">Elige tu zona</option>
-                      {zonas.map((z) => (
-                        <option key={z} value={z}>
-                          {z}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  ) : (
-                    <Input value={form.colonia} onChange={(e) => cambiar("colonia", e.target.value)} maxLength={200} />
-                  )}
-                </FormField>
-                <FormField label="Dirección completa" required error={errores.direccion}>
-                  <Textarea autoComplete="street-address" rows={2} value={form.direccion} onChange={(e) => cambiar("direccion", e.target.value)} maxLength={1000} />
-                </FormField>
-              </>
-            )}
-
-            <fieldset className="grid gap-2" aria-describedby={errores.pago ? "error-pago" : undefined}>
-              <legend className="text-sm font-medium">
-                Forma de pago <span className="font-normal text-muted-foreground">(se paga en la sucursal{canal === "domicilio" ? " o al repartidor" : ""})</span>
-              </legend>
-              <div className="flex gap-2">
-                {(["efectivo", "tarjeta"] as const).map((m) => (
-                  <label key={m} className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5">
-                    <input
-                      type="radio"
-                      name="pago"
-                      value={m}
-                      checked={pago === m}
-                      onChange={() => {
-                        setPago(m);
-                        setCotizacion(null);
-                      }}
-                    />
-                    {m === "efectivo" ? "Efectivo" : "Tarjeta"}
-                  </label>
-                ))}
-              </div>
-              {errores.pago && (
-                <p id="error-pago" role="alert" className="text-xs text-destructive">
-                  {errores.pago}
-                </p>
-              )}
-            </fieldset>
-
-            {puedePropina && (
-              <FormField label="Propina (opcional)" hint="Solo con tarjeta; se registra aparte y no suma al total." error={errores.propina}>
-                <Input inputMode="decimal" value={form.propina} onChange={(e) => cambiar("propina", e.target.value)} />
-              </FormField>
-            )}
-            {canal === "recoger" && (
-              <FormField label="Código de promoción (opcional)" hint="Las promociones solo aplican al recoger en sucursal.">
-                <Input value={form.codigoPromo} onChange={(e) => cambiar("codigoPromo", e.target.value)} maxLength={40} autoCapitalize="characters" />
-              </FormField>
-            )}
-            <FormField label="Notas (opcional)">
-              <Textarea rows={2} value={form.notas} onChange={(e) => cambiar("notas", e.target.value)} maxLength={500} />
-            </FormField>
-
-            {alcohol && (
-              <FormField label="Mayoría de edad" error={errores.mayorDeEdad}>
-                {(p) => (
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox {...p} checked={form.mayorDeEdad} onChange={(e) => cambiar("mayorDeEdad", e.target.checked)} />
-                    Confirmo que quien recibe el pedido es mayor de edad (tu pedido incluye alcohol).
-                  </label>
-                )}
-              </FormField>
-            )}
-            <FormField label="Aviso de privacidad" error={errores.acepta}>
-              {(p) => (
-                <label className="flex items-start gap-2 text-sm">
-                  <Checkbox {...p} checked={form.acepta} onChange={(e) => cambiar("acepta", e.target.checked)} />
-                  <span>
-                    Leí el{" "}
-                    <a href={`/pedir/${orgSlug}/privacidad`} target="_blank" rel="noreferrer" className="underline">
-                      aviso de privacidad
-                    </a>
-                    .
-                  </span>
-                </label>
-              )}
-            </FormField>
-
-            {errorServidor && (
-              <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                {errorServidor}
-              </div>
-            )}
-            <Button type="submit" loading={cotizando} disabled={carrito.length === 0 || bloqueos.length > 0 || cerrada}>
-              Revisar pedido
-            </Button>
-          </form>
-        </aside>
+        {ancha && (
+          <aside aria-label="Tu pedido" className="lg:sticky lg:top-4 lg:self-start">
+            {formularioPedido(true)}
+          </aside>
+        )}
       </div>
+
+      {!ancha && carrito.length > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card px-4 pb-[calc(0.75rem+var(--safe-area-bottom,0px))] pt-3 shadow-elevated">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <p className="text-sm" aria-live="polite">
+              <span className="font-semibold tabular-nums">{totalArticulos(carrito)}</span> {totalArticulos(carrito) === 1 ? "producto" : "productos"} · <span className="font-semibold tabular-nums">{formatoPesos(subtotal(carrito))}</span>
+            </p>
+            <Button type="button" onClick={() => setHojaAbierta(true)}>
+              Ver pedido
+            </Button>
+          </div>
+        </div>
+      )}
+      {!ancha && (
+        <Dialog open={hojaAbierta} onOpenChange={setHojaAbierta}>
+          <DialogContent className="max-h-[90dvh]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Tu pedido</DialogTitle>
+            </DialogHeader>
+            {formularioPedido(false)}
+          </DialogContent>
+        </Dialog>
+      )}
 
       <ConfirmDialog
         open={dialogoAbierto}

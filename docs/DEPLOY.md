@@ -407,6 +407,14 @@ confirmar el conteo vigente en cualquier momento) dispara un GET real a cada
 sin esa variable configurada, el cron sigue disparándose pero la ruta responde 401
 (fail-closed, nunca despacha nada sin autenticarse).
 
+**Checklist para que los crons corran de verdad (hoy `core.cron_heartbeat` tiene 0 filas: ningún cron ha dejado latido):**
+
+- [ ] El proyecto de Vercel es **Pro** (los crons de cada 5, 10, 15 y 30 minutos no caben en Hobby; ver la advertencia de abajo).
+- [ ] `CRON_SECRET` = `INTERNAL_SECRET` en el entorno Production. Sin él, cada cron responde 401 y no deja latido.
+- [ ] Vercel → Project → Settings → Cron Jobs lista los 38 crons de `vercel.json`.
+- [ ] Variable de **repositorio** (no secreto) `PROD_BASE_URL` = `https://<dominio de producción>` en GitHub → Settings → Secrets and variables → Actions → Variables. Sin ella `prod-health.yml` no sondea y deja un `::warning::` en cada corrida. Opcional: `PROD_HEALTH_OPEN_ISSUE=true` para que además abra un issue mientras dure la falla.
+- [ ] Al desplegar, `GET /health` anónimo trae `"crons"`: pasa de `sin_latido` a `ok` en cuanto cada cron corre una vez (los de 5 minutos, en minutos). Detalle en [`docs/CRONS.md`](./CRONS.md#cómo-saber-que-corren).
+
 **ADVERTENCIA: estos 30 crons requieren Vercel Pro (Hobby: 2 crons diarios; el deploy falla con crons más frecuentes). Sin verificar desde este repo — revisar en el dashboard antes de
 confiar en que estos 29 crons realmente corran:** la documentación pública de
 Vercel para el plan Hobby (gratis) históricamente limita no solo la frecuencia

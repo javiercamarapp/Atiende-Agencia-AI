@@ -1,4 +1,4 @@
-// Casos de la atencion de una llamada: llamante anonimo, numero desconocido, interruptor por sucursal, tope mensual, DTMF, silencio, API caida,
+// Casos de la atencion de una llamada: numero desconocido, interruptor por sucursal, tope mensual, DTMF, silencio, API caida,
 // base sin migrar y caida de escalon a mitad de llamada. Cada caso corre contra la API real en proceso y afirma EFECTOS (que se pidio a la API, que
 // sono, que se guardo), no solo estados.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,33 +25,7 @@ afterEach(() => {
 const sonidos = (l: LlamadaFalsa): (MensajeId | null)[] => l.salida.map((t) => mensajeQueSono(t.pcm, t.hz));
 const pregrabadosQueSonaron = (l: LlamadaFalsa): MensajeId[] => sonidos(l).filter((m): m is MensajeId => m !== null);
 
-describe("llamante anonimo (sin caller ID)", () => {
-  it("no pide token, no abre sesion con el proveedor, dice el pregrabado, cuelga y deja la conversacion cerrada como escalada", async () => {
-    const api = await crearMundoApi();
-    const agente = new AgenteGuionado([]);
-    const t = await escenario(api, () => [agente.escalon()]);
-    const llamada = t.telefonia.llamar({ id: "llamada-anon", dnis: NUMERO_SUCURSAL, desde: null });
-    await t.esperarFin();
-
-    expect(api.peticiones.some((p) => p.includes("/voice/call-token"))).toBe(false);
-    expect(agente.aperturasPedidas).toBe(0);
-    expect(pregrabadosQueSonaron(llamada)).toEqual(["handoff"]);
-    expect(llamada.colgadaPorSistema).toBe(true);
-    expect(t.worker.resumenes[0]).toMatchObject({ resultado: "anonima", costoMicroUsd: 0 });
-    const conv = (await api.voz.listConversaciones(api.mundo.organizationId, api.mundo.propertyId, {})).valor.items;
-    expect(conv).toHaveLength(1);
-    expect(conv[0]).toMatchObject({ resultado: "escalado", canal: "llamada" });
-    expect(await api.mundo.pedidos()).toHaveLength(0);
-  });
-
-  it.each(["anonymous", "unavailable", "restricted"])("el origen '%s' tampoco obtiene token", async (valor) => {
-    const api = await crearMundoApi();
-    const t = await escenario(api, () => [new AgenteGuionado([]).escalon()]);
-    t.telefonia.llamar({ id: `llamada-${valor}`, dnis: NUMERO_SUCURSAL, desde: valor });
-    await t.esperarFin();
-    expect(api.peticiones.some((p) => p.includes("/voice/call-token"))).toBe(false);
-  });
-});
+// El llamante sin caller ID / con un caller ID que no es del cliente se cubre en `telefono-llamante.spec.ts` (el agente pide y confirma el telefono).
 
 describe("numero marcado (DNIS) desconocido", () => {
   it("cuelga sin tocar la API ni abrir sesion: no se sabe a que restaurante pertenece", async () => {

@@ -39,4 +39,6 @@ export interface RentasCatalogoRepository {
   actualizarPropietario(organizationId: string, propietarioId: string, entrada: EntradaActualizarPropietario): Promise<ResultadoCatalogo<{ id: string }>>;
   crearUnidad(propertyId: string, entrada: EntradaCrearUnidad): Promise<ResultadoCatalogo<{ id: string }>>;
   actualizarUnidad(unidadId: string, entrada: EntradaActualizarUnidad): Promise<ResultadoCatalogo<{ id: string }>>;
+  /** Responsable de limpieza por omision de la unidad (`null` lo quita). Funcion SQL de la migracion 033: `no_disponible` si aun no se aplica. */
+  fijarResponsableLimpieza(unidadId: string, responsableId: string | null): Promise<ResultadoCatalogo<{ id: string }>>;
 }

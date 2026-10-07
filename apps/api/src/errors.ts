@@ -52,6 +52,8 @@ export const Errors = {
   // ---- rentas (calendario/reservas, ver diseño Fase 1 rentas §4, Flujo 1) ----
   rentasUnidadNoDisponible: (conflictoId: string) =>
     new ApiError(409, "unidad_no_disponible", `La unidad no está disponible para el rango solicitado (conflicto registrado: ${conflictoId}).`),
+  // ---- rentas (limpieza: asignar una tarea, paridad3) ----
+  rentasAsignadoNoValido: () => new ApiError(422, "asignado_no_valido", "La persona elegida no es miembro con acceso a esta propiedad, o su rol no opera limpieza."),
   rentasReservaNoDirecta: () => new ApiError(409, "reserva_no_directa", "Esta reserva proviene de un canal externo: nunca se modifica/cancela desde aquí, solo reservas directas."),
   // ---- rentas (pricing CRUD, ver diseño Fase 2 rentas §3.6) ----
   rentasPricingSolapado: (nombreOtro: string, rango: { inicio: string; fin: string }) =>

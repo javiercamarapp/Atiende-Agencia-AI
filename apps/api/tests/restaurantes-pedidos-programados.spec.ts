@@ -116,7 +116,7 @@ describe("PATCH .../status de un pedido programado", () => {
     const b = programado(ctx.propertyIdA, 600);
     const salto = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${b.id}/status`, authedJson(ctx.staff.owner.token, { status: "preparando" }, "PATCH"));
     expect(salto.status).toBe(409);
-    const cancel = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${a.id}/status`, authedJson(ctx.staff.owner.token, { status: "cancelado" }, "PATCH"));
+    const cancel = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${a.id}/status`, authedJson(ctx.staff.owner.token, { status: "cancelado", motivo: "otro" }, "PATCH"));
     expect(cancel.status).toBe(200);
     const adelanto = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${b.id}/status`, authedJson(ctx.staff.owner.token, { status: "pending" }, "PATCH"));
     expect(adelanto.status).toBe(200);

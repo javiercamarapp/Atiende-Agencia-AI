@@ -98,7 +98,8 @@ describe("limite de duracion y de costo", () => {
     ]);
   });
   it("el costo acumulado que llega al tope corta la llamada; abajo del tope no", () => {
-    const { acciones, m } = correr([conectada, { tipo: "costo", microUsd: 60_000 }, { tipo: "costo", microUsd: 39_999 }]);
+    const tope = LIMITES_POR_DEFECTO.costoMaxMicroUsd;
+    const { acciones, m } = correr([conectada, { tipo: "costo", microUsd: 60_000 }, { tipo: "costo", microUsd: tope - 60_001 }]);
     expect(acciones).toEqual([]);
     expect(m.recibir({ tipo: "costo", microUsd: 1 })).toEqual([
       { tipo: "decir", mensaje: "limite_costo" },

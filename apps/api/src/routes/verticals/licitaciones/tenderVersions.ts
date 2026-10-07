@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { WRITE_ROLES } from "@atiende/domain-licitaciones";
+import { auditar, correlationParaConvocatoria } from "./auditoria.ts";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { avisarCambioDeBases } from "./avisos-campana.ts";
@@ -53,6 +54,17 @@ export function licitacionesTenderVersionsRoutes(deps: AppDeps): Hono<CoreAuthHo
     const tender = await repo.findTender(organizationId, tenderId);
     if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
     const result = await repo.recordTenderVersion(organizationId, tenderId, actorId);
+    // L-P3-17: una version nueva queda en la bitacora con la correlacion de origen de la convocatoria (herencia).
+    if (result.created) {
+      await auditar(deps, c, {
+        entity: "convocatoria",
+        entityId: tenderId,
+        action: "convocatoria.version_registrada",
+        before: null,
+        after: { version: result.version.version },
+        correlationId: await correlationParaConvocatoria(c, repo, tenderId),
+      });
+    }
     // L-30: aviso in-app solo si el recalculo creo una version nueva sobre una convocatoria ya versionada (created: false no emite).
     await avisarCambioDeBases(c.get("db"), { organizationId, tenderId, version: result.created && result.version.version > 1 ? result.version.version : null });
     return c.json(result, result.created ? 201 : 200);

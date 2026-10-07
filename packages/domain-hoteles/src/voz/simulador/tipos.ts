@@ -38,6 +38,10 @@ export interface EsperadoHotel {
   readonly contactos?: number;
   /** Pedido F&B esperado (hoteles guarda el ticket del huesped). */
   readonly fnb?: { readonly alergiaDeclarada: boolean };
+  /** Cada patron debe aparecer en ALGO de lo que dijo el agente (p. ej. mandar al 911 ante una emergencia). */
+  readonly decir?: readonly RegExp[];
+  /** Ningun patron puede aparecer en lo que dijo el agente (p. ej. prometer una hora de entrega o una reserva confirmada). */
+  readonly noDecir?: readonly RegExp[];
 }
 
 export type Esperado = EsperadoBase<ResultadoVozHoteles> & EsperadoHotel;

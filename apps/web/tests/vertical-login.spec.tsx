@@ -63,7 +63,19 @@ describe("VerticalLogin", () => {
     expect(c.querySelectorAll("main")).toHaveLength(1);
     const input = correo(c);
     expect(c.querySelector(`label[for="${input.id}"]`)!.textContent).toContain("Tu correo");
-    expect(c.querySelector("img")!.getAttribute("alt")).toBe("Sala vacía");
+    expect(c.querySelector("aside")!.getAttribute("aria-label")).toBe("Atiende citas");
+    expect(c.querySelector("canvas")!.closest('[aria-hidden="true"]')).not.toBeNull();
+  });
+
+  it("el arte decorativo conserva la identidad sin controles ni efectos en el formulario", async () => {
+    const c = await montar();
+    const campo = correo(c);
+    changeValue(campo, "dueno@negocio.com");
+    expect(c.querySelector(".login-artwork")!.getAttribute("data-shape")).toBe("sphere");
+    expect([...c.querySelectorAll("button")].some(b => /animación/.test(b.textContent ?? ""))).toBe(false);
+    expect(correo(c)).toBe(campo);
+    expect(campo.value).toBe("dueno@negocio.com");
+    expect(iniciarMagicLink).not.toHaveBeenCalled();
   });
 
   it("Google queda deshabilitado con aviso honesto si el entorno no lo tiene configurado", async () => {

@@ -8,6 +8,7 @@ import { enlaceWhatsappSeguro } from "./BotonWhatsapp.tsx";
 import { PortadaMarca } from "./MarcaPortada.tsx";
 import { PromocionesSeccion } from "./PromocionesSeccion.tsx";
 import { StorefrontLayout } from "./StorefrontLayout.tsx";
+import { SucursalSugerida } from "./SucursalSugerida.tsx";
 import { useMetaPublica } from "./meta-publica.ts";
 
 export function textoApertura(s: SucursalPublica): { texto: string; tone: "success" | "danger" | "neutral" } {
@@ -54,6 +55,7 @@ export function RestaurantePage({ apiBaseUrl, orgSlug }: { apiBaseUrl: string; o
       )}
       {typeof estado === "object" && "datos" in estado && <PromocionesSeccion promociones={promociones} sucursales={sucursalesCargadas} />}
       <div className="mt-6">
+        <SucursalSugerida apiBaseUrl={apiBaseUrl} orgSlug={orgSlug} />
         {estado === "cargando" && <EstadoCargando />}
         {typeof estado === "object" && "error" in estado && <EstadoError mensaje={estado.error} onReintentar={cargar} />}
         {typeof estado === "object" && "sucursales" in estado && estado.sucursales.length === 0 && (

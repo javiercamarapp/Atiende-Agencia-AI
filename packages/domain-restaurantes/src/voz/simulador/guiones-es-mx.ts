@@ -267,8 +267,8 @@ export const GUIONES_ES_MX: readonly GuionLlamada[] = [
     rasgos: ["limite de costo por llamada"],
     turnos: [
       { kind: "voz", cliente: "Hola, buenas tardes", agente: [dice("Buenas tardes, gracias por llamar a Los Taquitos de PM. ¿En qué le puedo ayudar?")] },
-      { kind: "costo", microUsd: 60_000 },
-      { kind: "costo", microUsd: 45_000 },
+      { kind: "costo", microUsd: 300_000 },
+      { kind: "costo", microUsd: 250_000 },
     ],
     esperado: { resultado: "escalado", sinPedido: true, callbacks: ["escalada:no_puedo_resolver"], pregrabados: ["limite_costo"] },
   },

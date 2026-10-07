@@ -40,6 +40,9 @@ export function StorefrontLayout({
         {children}
       </main>
       <footer className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-1 px-4 pb-20 pt-4 text-xs text-muted-foreground sm:px-6">
+        <Link to={`/pedir/${orgSlug}/sucursales`} className="underline underline-offset-2">
+          Sucursales
+        </Link>
         <Link to={`/pedir/${orgSlug}/eventos`} className="underline underline-offset-2">
           Eventos y catering
         </Link>

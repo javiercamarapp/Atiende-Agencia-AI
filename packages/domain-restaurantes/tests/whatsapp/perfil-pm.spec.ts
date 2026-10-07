@@ -43,7 +43,7 @@ describe("prompt de PM", () => {
     const p = promptPm();
     expect(p).not.toMatch(/habanero y la crema de ajo solo si/);
     expect(p).toMatch(/Por omisión van solo las básicas \(roja, verde, cebolla con cilantro y limones\)/);
-    expect(p).toMatch(/Las demás \(crema de ajo, guacamolera, mexicana \(pico de gallo\) y habanero picado o soasado\) van sin costo, pero solo si el cliente las pide/);
+    expect(p).toMatch(/Las demás \(crema de ajo, guacamolera, mexicana \(pico de gallo, también le dicen xnipec[^)]*\), piña picada \([^)]*\) y habanero picado o soasado \(le dicen sauceada\)\) van sin costo, pero solo si el cliente las pide/);
   });
 
   it("saluda con el nombre de la sucursal y sigue el orden del cuestionario", () => {
@@ -287,7 +287,7 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
 
   it("nunca inventar folio, lluvia, repartidor, precio viejo, presentaciones y alias", () => {
     expect(p).toMatch(/Nunca invente un folio/);
-    expect(p).toMatch(/Si el cliente dice que llueve, avísele que con lluvia puede tardar de 1 hora a 1 hora 20 minutos/);
+    expect(p).toMatch(/Si el cliente dice que llueve, avísele que con lluvia puede tardar un poco más que lo normal: el tiempo de la sucursal \(paso 8\) más unos 20 minutos/);
     expect(p).toMatch(/no la mencione por su cuenta/);
     expect(p).toMatch(/El cliente no elige repartidor/);
     expect(p).toContain("El precio vigente es de $X");

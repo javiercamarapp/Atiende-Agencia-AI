@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { Button, Checkbox, EstadoCargando, EstadoError, Input, Label, NativeSelect, useConfirm } from "@atiende/ui";
 import { fetchKnownZones } from "../lib/config-client.ts";
+import { ColoniasAmbiguas } from "./ColoniasAmbiguas.tsx";
 import type { KnownZone } from "../lib/config-client.ts";
 import {
   NOMBRES_DIAS,
@@ -358,7 +359,7 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
       <section className="flex flex-col gap-2">
         <h3 className="m-0 text-sm font-semibold text-foreground">Zonas de reparto</h3>
         <p className="m-0 text-xs text-muted-foreground">
-          Sin zonas marcadas = sin restricción. Con zonas marcadas, los pedidos a domicilio fuera de ellas se rechazan. Las zonas se dan de alta en Configuración.
+          Con zonas marcadas, los pedidos a domicilio fuera de ellas se rechazan. Sin zonas marcadas no se valida la colonia; en Los Taquitos de PM el agente entonces pide el pin de ubicación o pasa el pedido a una persona. Las zonas se dan de alta en Configuración.
         </p>
         {zonas.length === 0 ? (
           <p className="m-0 text-xs text-muted-foreground">Todavía no hay zonas conocidas.</p>
@@ -383,6 +384,8 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
           </div>
         )}
       </section>
+
+      <ColoniasAmbiguas apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
 
       <div>
         <Button type="button" size="sm" onClick={() => void handleGuardarReglas()} loading={saving}>

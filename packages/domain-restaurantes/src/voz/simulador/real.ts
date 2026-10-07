@@ -2,13 +2,14 @@
 // Gemini Live de verdad (sesion de texto con transcripcion). Protecciones:
 //   * exige VOZ_EVALS_REAL=1 y GEMINI_API_KEY (sin ellas lanza antes de abrir ninguna conexion);
 //   * tope de gasto ESTIMADO (VOZ_EVALS_MAX_USD, por omision 1): costo = minutos de pared de cada guion x VOZ_EVALS_USD_POR_MIN
-//     (por omision 0.04, la estimacion del ADR); se corta al alcanzarlo y lista los guiones sin correr;
+//     (por omision US$0.075, el punto medio de la facturacion compuesta); se corta al alcanzarlo y lista los guiones sin correr;
 //   * el modelo sale de GEMINI_LIVE_MODEL (por omision el del ADR, SIN verificar contra la API real);
 //   * se omiten los guiones `soloFalso` (dependen de provocar fallas del proveedor).
 // Uso: VOZ_EVALS_REAL=1 GEMINI_API_KEY=... npm run evals:voz:real -w @atiende/domain-restaurantes
 import { crearProveedorGeminiLlamada } from "../llamada/gemini-live-sesion.ts";
 import type { CrearSocketLive } from "../llamada/gemini-live-sesion.ts";
 import { GEMINI_LIVE_MODELO } from "../gemini-live-provider.ts";
+import { VOZ_PLATAFORMA } from "@atiende/voice-core";
 import { correrGuion } from "./correr-guion.ts";
 import { evaluarLlamada } from "./graders-voz.ts";
 import { GUIONES_ES_MX } from "./guiones-es-mx.ts";
@@ -31,7 +32,8 @@ export function opcionesRealVozDesdeEntorno(env: Readonly<Record<string, string 
   if (env.VOZ_EVALS_REAL !== "1") throw new Error("Modo real apagado: define VOZ_EVALS_REAL=1 (cuesta dinero; nunca corre en CI).");
   if (!env.GEMINI_API_KEY) throw new Error("Falta GEMINI_API_KEY.");
   const maxUsd = Number(env.VOZ_EVALS_MAX_USD ?? "1");
-  const usdPorMin = Number(env.VOZ_EVALS_USD_POR_MIN ?? "0.04");
+  // Por omision el punto medio de la facturacion compuesta de Gemini Live (US$0.075/min; src/costo-gemini.ts), no el US$0.04 lineal del ADR.
+  const usdPorMin = Number(env.VOZ_EVALS_USD_POR_MIN ?? String(VOZ_PLATAFORMA.gemini.precioMicroUsdPorMinuto / 1_000_000));
   if (!Number.isFinite(maxUsd) || maxUsd <= 0) throw new Error("VOZ_EVALS_MAX_USD debe ser un numero positivo.");
   if (!Number.isFinite(usdPorMin) || usdPorMin <= 0) throw new Error("VOZ_EVALS_USD_POR_MIN debe ser un numero positivo.");
   return {

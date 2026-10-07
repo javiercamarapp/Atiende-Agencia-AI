@@ -4,6 +4,8 @@
 // ZIP del expediente SÍ se escriben a disco real (bajo un directorio temporal
 // por defecto) — igual que el origen, que nunca modeló el ZIP como un blob de
 // base de datos (ver storage.ts).
+import { AUDIT_DEFAULT_LIMIT, AUDIT_MAX_LIMIT } from "./audit-trail.ts";
+import type { AuditTrailEntry, AuditTrailFilters, AuditTrailInput, AuditTrailPage } from "./audit-trail.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -620,6 +622,61 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   }
 
   /** Solo pruebas/inspección -- no forma parte de `LicitacionesRepository` (ningún endpoint de Fase 3 la expone, ver diseño §6/§9). */
+  // ---- L-P3-17: bitacora de escrituras (misma semantica que `licitaciones.audit_trail`) ----
+  /** Solo para pruebas del doble: `false` simula la base sin la migracion 038. */
+  auditTrailAvailable = true;
+  private readonly auditTrail: (AuditTrailEntry & { organizationId: string })[] = [];
+  private auditTrailSeq = 0;
+
+  async appendAuditoria(organizationId: string, entry: AuditTrailInput): Promise<boolean> {
+    if (!this.auditTrailAvailable) return false;
+    this.auditTrailSeq += 1;
+    this.auditTrail.push({
+      organizationId,
+      id: randomUUID(),
+      seq: String(this.auditTrailSeq),
+      entity: entry.entity,
+      entityId: entry.entityId,
+      action: entry.action,
+      before: entry.before ?? null,
+      after: entry.after ?? null,
+      actorId: entry.actorId,
+      correlationId: entry.correlationId,
+      createdAt: new Date().toISOString(),
+    });
+    return true;
+  }
+
+  async findTenderCorrelationId(organizationId: string, tenderId: string): Promise<string | null> {
+    if (!this.auditTrailAvailable) return null;
+    return this.auditTrail.find((r) => r.organizationId === organizationId && r.entity === "convocatoria" && r.entityId === tenderId && r.correlationId !== null)?.correlationId ?? null;
+  }
+
+  async listAuditoria(organizationId: string, filters: AuditTrailFilters, opts: { readonly limit?: number; readonly cursor?: string | null; readonly orden?: "asc" | "desc" } = {}): Promise<AuditTrailPage> {
+    if (!this.auditTrailAvailable) return { items: [], nextCursor: null, available: false };
+    const limit = Math.min(Math.max(Math.trunc(opts.limit ?? AUDIT_DEFAULT_LIMIT), 1), AUDIT_MAX_LIMIT);
+    const asc = opts.orden === "asc";
+    const cursor = opts.cursor && /^\d{1,18}$/u.test(opts.cursor) ? Number(opts.cursor) : null;
+    const origenes = filters.tenderId
+      ? this.auditTrail.filter((r) => r.organizationId === organizationId && r.entity === "convocatoria" && r.entityId === filters.tenderId && r.correlationId !== null).map((r) => r.correlationId as string)
+      : [];
+    let rows = this.auditTrail.filter(
+      (r) =>
+        r.organizationId === organizationId &&
+        (!filters.entity || r.entity === filters.entity) &&
+        (!filters.entityId || r.entityId === filters.entityId) &&
+        (!filters.actorId || r.actorId === filters.actorId) &&
+        (!filters.correlationId || r.correlationId === filters.correlationId) &&
+        (!filters.tenderId || r.entityId === filters.tenderId || (origenes.length > 0 && r.correlationId !== null && origenes.includes(r.correlationId))) &&
+        (!filters.desde || r.createdAt >= new Date(filters.desde).toISOString()) &&
+        (!filters.hasta || r.createdAt <= new Date(filters.hasta).toISOString()) &&
+        (cursor === null || (asc ? Number(r.seq) > cursor : Number(r.seq) < cursor)),
+    );
+    rows = rows.sort((a, b) => (asc ? Number(a.seq) - Number(b.seq) : Number(b.seq) - Number(a.seq)));
+    const page = rows.slice(0, limit).map(({ organizationId: _o, ...rest }) => rest);
+    return { items: page, nextCursor: rows.length > limit ? (page[page.length - 1]?.seq ?? null) : null, available: true };
+  }
+
   listTenderAuditLogForTests(tenderId: string): readonly { action: string; actorId: string; createdAt: string }[] {
     return this.tenderAuditLog.get(tenderId) ?? [];
   }
@@ -649,6 +706,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     let created = 0;
     let updated = 0;
     const tenders: TenderRecord[] = [];
+    const createdIds: string[] = [];
     const nowIso = new Date().toISOString();
 
     for (const rec of records) {
@@ -694,10 +752,11 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       this.tenders.set(createdTender.id, createdTender);
       this.tenderBySourceExternalKey.set(key, createdTender.id);
       tenders.push(createdTender);
+      createdIds.push(createdTender.id);
       created += 1;
     }
 
-    return { created, updated, tenders };
+    return { created, updated, tenders, createdIds };
   }
 
   async listActiveOrganizations(): Promise<readonly { id: string }[]> {

@@ -11,7 +11,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { SuperAdminShell } from "../src/superadmin/SuperAdminShell.tsx";
-import { MOVIL_SUPERADMIN, PARTE_DIARIO, PENDIENTES, PIE_SUPERADMIN, REDIRECCIONES_SUPERADMIN, RESUMEN, RUTAS_SIN_MENU, SECCIONES, TODAS_LAS_RUTAS } from "../src/superadmin/rutas.ts";
+import { COPILOTO, MOVIL_SUPERADMIN, PARTE_DIARIO, PENDIENTES, PIE_SUPERADMIN, REDIRECCIONES_SUPERADMIN, RESUMEN, RUTAS_SIN_MENU, SECCIONES, TODAS_LAS_RUTAS } from "../src/superadmin/rutas.ts";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
@@ -54,7 +54,7 @@ describe("mapa de rutas del superadmin (rutas.ts)", () => {
     expect(new Set(titulos).size).toBe(titulos.length);
   });
 
-  it("una seccion sin paginas reales no se pinta; Agentes tiene el Panel (SA-L-08), las tres fichas (SA-L-09) y Model Ops (SA-L-10)", () => {
+  it("una seccion sin paginas reales no se pinta; Agentes ya no tiene el Copiloto (CHAT-17 lo pone bajo Resumen): el Panel (SA-L-08), las tres fichas (SA-L-09) y Model Ops (SA-L-10)", () => {
     expect(SECCIONES.every((s) => s.items.length > 0)).toBe(true);
     const agentes = SECCIONES.find((s) => s.title === "Agentes");
     expect(agentes?.items.map((i) => i.to)).toEqual([
@@ -66,9 +66,11 @@ describe("mapa de rutas del superadmin (rutas.ts)", () => {
     ]);
   });
 
-  it("cada ruta es unica, cuelga de /superadmin y Resumen va primero", () => {
+  it("cada ruta es unica, cuelga de /superadmin y Resumen va primero con el Copiloto justo debajo", () => {
     const rutas = TODAS_LAS_RUTAS.map((r) => r.to);
     expect(rutas[0]).toBe(RESUMEN.to);
+    expect(rutas[1]).toBe("/superadmin/copiloto");
+    expect(COPILOTO.label).toBe("Copiloto");
     expect(new Set(rutas).size).toBe(rutas.length);
     expect(rutas.every((r) => r === "/superadmin" || r.startsWith("/superadmin/"))).toBe(true);
   });
@@ -133,9 +135,10 @@ describe("sidebar del superadmin (SuperAdminShell)", () => {
     const abiertas = [...aside.querySelectorAll('button[aria-expanded="true"]')].map((b) => b.textContent?.trim());
     expect(abiertas).toEqual(["Control"]);
     const enlaces = [...aside.querySelectorAll("nav a")].map((a) => a.getAttribute("href"));
-    expect(enlaces[0]).toBe("/superadmin");
+    // Resumen y, justo debajo, el Copiloto (CHAT-17): primera seccion, siempre visibles.
+    expect(enlaces.slice(0, 2)).toEqual(["/superadmin", "/superadmin/copiloto"]);
     const control = SECCIONES.find((s) => s.title === "Control")!;
-    expect(enlaces.slice(1)).toEqual(control.items.map((i) => i.to));
+    expect(enlaces.slice(2)).toEqual(control.items.map((i) => i.to));
   });
 
   it("el acordeon es exclusivo: abrir Sistema cierra Control", async () => {

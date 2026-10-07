@@ -1,5 +1,5 @@
 // Fixtures del back office de plataforma (/superadmin/*). Solo la persona `plataforma-superadmin` ve estas rutas.
-import { fallo } from "../respuestas.ts";
+import { conStatus, fallo, ndjson } from "../respuestas.ts";
 import { orgDe } from "../personas.ts";
 import type { Ruta, Vertical } from "../tipos.ts";
 import { rutasCerebro } from "./cerebro.ts";
@@ -214,6 +214,36 @@ const CORRIDAS_AGENTES = [
   { id: "run-2", agente: "/internal/rentas/ical-sync", vertical: "rentas", organizationId: null, disparo: "cron", estado: "fallo", tareasHechas: null, tareasTotal: null, costoUsd: null, error: "timeout del proveedor de calendario", iniciadoEn: "2026-09-30T17:45:00.000Z", terminadoEn: "2026-09-30T17:45:01.000Z", duracionMs: 900 },
 ];
 
+
+// Copiloto de plataforma (CHAT-17): misma forma que apps/api/src/routes/superadmin-copiloto.ts. Solo existe en la API simulada de e2e.
+interface ConvCopilotoMock {
+  id: string;
+  titulo: string;
+  actualizadaEn: string;
+  mensajes: Array<Record<string, unknown>>;
+}
+const AGENTE_COPILOTO = "restaurantes:whatsapp_agent";
+const PROPUESTA_COPILOTO = "bcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrst";
+const TEXTO_ORGS_COPILOTO = "Hay 6 organizaciones, 5 activas.";
+const BLOQUE_ORGS_COPILOTO = {
+  tool: "organizaciones",
+  title: "Organizaciones y personal",
+  columns: [{ key: "organizacion", label: "Organización", kind: "text" }, { key: "vertical", label: "Vertical", kind: "text" }],
+  rows: [{ organizacion: "Taqueria El Faro", vertical: "restaurantes" }, { organizacion: "Hotel Brisa", vertical: "hoteles" }],
+  truncated: false,
+};
+const FUENTE_ORGS_COPILOTO = { tool: "organizaciones", source: "Organizaciones de la plataforma", scopeLabel: "Toda la plataforma" };
+const TEXTO_PROPUESTA_COPILOTO = "Preparé la propuesta; confírmala en la tarjeta.";
+const RESUMEN_PROPUESTA_COPILOTO = `Apagar el agente ${AGENTE_COPILOTO}: deja de llamar al modelo de IA en toda la plataforma hasta que alguien lo encienda. Se revierte desde Interruptores o desde el Copiloto.`;
+const BLOQUE_PROPUESTA_COPILOTO = {
+  tool: "proponer_accion",
+  title: "Proponer una acción",
+  columns: [{ key: "propuesta", label: "Propuesta", kind: "text" }],
+  rows: [{ propuesta: PROPUESTA_COPILOTO, clase: "interruptor", tipo: "apagar_agente", objetivo: AGENTE_COPILOTO, resumen: RESUMEN_PROPUESTA_COPILOTO, vence: "2026-09-30T18:05:00.000Z", agente: AGENTE_COPILOTO }],
+  truncated: false,
+};
+const convsCopiloto = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConvCopilotoMock[]>("sa.copiloto.conversaciones", () => []);
+
 // Organizaciones / Clientes y Ficha 360 (SA-L-20 / SA-07): misma forma que apps/api/src/routes/superadmin-organizaciones-ficha.ts. Solo existe en la
 // API simulada de e2e; en produccion sale de las funciones core.get_orgs_metricas_for_superadmin / get_org_ficha_for_superadmin.
 const campoOrg = <T,>(valor: T) => ({ valor, razon: null });
@@ -306,6 +336,95 @@ function dashboardCfo() {
 }
 
 export const rutasSuperadmin: readonly Ruta[] = [
+  { metodo: "GET", patron: "/superadmin/copiloto/estado", manejador: () => ({ disponible: true, permitido: true, motivo: null, rol: "superadmin", financierasDisponibles: true, stepUpRequerido: false, interruptor: { apagado: false, clave: null }, gastoMes: { usadoMicroUsd: 1000000, topeMicroUsd: 25000000, usoPct: 4, medidoEnBitacora: true }, acciones: { propone: true }, fijados: true, adjuntos: true, herramientas: [] }) },
+  { metodo: "GET", patron: "/superadmin/copiloto/pins", manejador: () => ({ disponible: true, pins: [] }) },
+  { metodo: "POST", patron: "/superadmin/copiloto/pins", manejador: () => conStatus(201, { id: "00000000-0000-4000-8000-0000000000f1" }) },
+  {
+    metodo: "POST",
+    patron: "/superadmin/copiloto/adjuntos",
+    manejador: (p) => {
+      const cuerpo = (p.cuerpo ?? {}) as { nombre?: string };
+      return {
+        status: "ok",
+        text: `«${String(cuerpo.nombre ?? "archivo")}» tiene 2 filas de datos y 2 columnas (1 numérica, 1 de texto).`,
+        blocks: [{ kind: "table", tool: "archivo_adjunto", title: "Perfil del archivo", columns: [{ key: "columna", label: "Columna", kind: "text" }, { key: "tipo", label: "Tipo", kind: "text" }], rows: [{ columna: "unidades", tipo: "numérica" }, { columna: "producto", tipo: "texto" }], truncated: false }],
+        sources: [{ tool: "archivo_adjunto", source: "Archivo adjunto analizado en el servidor del Copiloto (no se guarda)", scopeLabel: "Solo este archivo" }],
+        toolsUsed: ["archivo_adjunto"],
+      };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: "/superadmin/copiloto",
+    manejador: (p) => {
+      const cuerpo = (p.cuerpo ?? {}) as { question?: string; label?: string; conversationId?: string };
+      const pregunta = String(cuerpo.question ?? cuerpo.label ?? "");
+      const lista = convsCopiloto(p);
+      let conv = lista.find((c) => c.id === cuerpo.conversationId);
+      if (!conv) {
+        conv = { id: `00000000-0000-4000-8000-${String(lista.length + 1).padStart(12, "0")}`, titulo: pregunta.slice(0, 60), actualizadaEn: new Date().toISOString(), mensajes: [] };
+        lista.unshift(conv);
+      }
+      const propone = /apaga/i.test(pregunta);
+      const tool = propone ? "proponer_accion" : "organizaciones";
+      const texto = propone ? TEXTO_PROPUESTA_COPILOTO : TEXTO_ORGS_COPILOTO;
+      const blocks = propone ? [BLOQUE_PROPUESTA_COPILOTO] : [BLOQUE_ORGS_COPILOTO];
+      const sources = propone ? [] : [FUENTE_ORGS_COPILOTO];
+      const seq = conv.mensajes.length + 2;
+      conv.mensajes.push({ id: `m-${seq - 1}`, role: "user", text: pregunta, seq: seq - 1 });
+      conv.mensajes.push({ id: `m-${seq}`, role: "assistant", text: texto, status: "ok", blocks, sources, seq });
+      conv.actualizadaEn = new Date().toISOString();
+      return ndjson([
+        { t: "paso", fase: "inicio", herramienta: tool },
+        { t: "paso", fase: "fin", herramienta: tool },
+        { t: "fin", conversacionId: conv.id, seq, respuesta: { status: "ok", text: texto, blocks, sources, toolsUsed: [tool] } },
+      ]);
+    },
+  },
+  { metodo: "GET", patron: "/superadmin/copiloto/conversaciones", manejador: (p) => ({ disponible: true, conversaciones: convsCopiloto(p).map((c) => ({ id: c.id, titulo: c.titulo, actualizadaEn: c.actualizadaEn, mensajes: c.mensajes.length })) }) },
+  { metodo: "GET", patron: "/superadmin/copiloto/conversaciones/:cid", manejador: (p) => convsCopiloto(p).find((c) => c.id === p.params["cid"]) ?? fallo(404, "Conversación no encontrada.") },
+  {
+    metodo: "PATCH",
+    patron: "/superadmin/copiloto/conversaciones/:cid",
+    manejador: (p) => {
+      const c = convsCopiloto(p).find((x) => x.id === p.params["cid"]);
+      if (!c) return fallo(404, "Conversación no encontrada.");
+      c.titulo = String(((p.cuerpo ?? {}) as { titulo?: string }).titulo ?? c.titulo);
+      return { id: c.id, titulo: c.titulo };
+    },
+  },
+  {
+    metodo: "DELETE",
+    patron: "/superadmin/copiloto/conversaciones/:cid",
+    manejador: (p) => {
+      const lista = convsCopiloto(p);
+      const i = lista.findIndex((x) => x.id === p.params["cid"]);
+      if (i < 0) return fallo(404, "Conversación no encontrada.");
+      lista.splice(i, 1);
+      return conStatus(204, undefined);
+    },
+  },
+  {
+    metodo: "GET",
+    patron: "/superadmin/copiloto/acciones/:propuesta",
+    manejador: (p) => {
+      const ejecutada = p.estado.obtener("sa.copiloto.accion.ejecutada", () => ({ valor: false }));
+      return { propuesta: p.params["propuesta"], clase: "interruptor", tipo: "apagar_agente", resumen: RESUMEN_PROPUESTA_COPILOTO, estado: ejecutada.valor ? "ejecutada" : "pendiente", venceEn: "2026-09-30T18:05:00.000Z", agente: AGENTE_COPILOTO, bloquear: true };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: "/superadmin/copiloto/acciones/confirmar",
+    manejador: (p) => {
+      const cuerpo = (p.cuerpo ?? {}) as { propuesta?: string; agente?: string; motivo?: string };
+      if (cuerpo.propuesta !== PROPUESTA_COPILOTO || cuerpo.agente !== AGENTE_COPILOTO) return fallo(404, "No encontré esa propuesta.");
+      if (String(cuerpo.motivo ?? "").trim().length < 20) return fallo(400, "motivo obligatorio (mínimo 20 caracteres).");
+      const ejecutada = p.estado.obtener("sa.copiloto.accion.ejecutada", () => ({ valor: false }));
+      if (ejecutada.valor) return fallo(409, "Esta propuesta ya se usó.");
+      ejecutada.valor = true;
+      return { estado: "ejecutada", interruptor: { scope: "agente", target: AGENTE_COPILOTO, bloqueado: true, motivo: cuerpo.motivo, actualizadoPor: "mock", actualizadoEnMs: 1 } };
+    },
+  },
   { metodo: "GET", patron: "/superadmin/impersonacion/activa", manejador: () => ({ available: true, session: null }) },
   // Parte diario (/superadmin/parte-diario): sin resumenes generados todavia; la pagina pinta su vacio honesto.
   { metodo: "GET", patron: "/superadmin/resumen", manejador: () => ({ disponible: true, resumenes: [] }) },

@@ -8,6 +8,12 @@
 // alcance. Es sin estado (no se marca como usado): la ventana corta y el atado a
 // usuario+organizacion+alcance son el limite; las transiciones quedan ademas en la
 // bitacora con el actor.
+//
+// UN SOLO USO (R5-09 del suelto): el token lleva un `jti` unico. El token por si solo sigue
+// sin estado; el consumo (insertar el `jti` en `core.step_up_consumption`, dentro de la
+// MISMA transaccion de la accion) lo hace `requireStepUp` en apps/api, de modo que repetir
+// una peticion capturada o reutilizar un solo codigo TOTP para varias acciones da 403.
+import { randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify, errors as joseErrors } from "jose";
 import { TokenExpiredError, TokenInvalidError } from "./jwt.ts";
 
@@ -21,6 +27,9 @@ export interface StepUpClaims {
   readonly org: string;
   readonly scope: StepUpScope;
   readonly type: "step_up";
+  /** Identificador unico del token (UUID): llave de consumo de un solo uso. */
+  readonly jti?: string;
+  readonly exp?: number;
 }
 
 function key(secret: string): Uint8Array {
@@ -35,6 +44,7 @@ export async function signContractStepUpToken(
   return new SignJWT({ org: input.organizationId, scope: input.scope, type: "step_up" })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
+    .setJti(randomUUID())
     .setExpirationTime(`${ttlSeconds}s`)
     .setSubject(input.userId)
     .sign(key(secret));
@@ -51,6 +61,10 @@ export async function verifyContractStepUpToken(
     if (payload.type !== "step_up") throw new TokenInvalidError("No es un token de step-up.");
     if (payload.sub !== expected.userId || payload.org !== expected.organizationId || payload.scope !== expected.scope) {
       throw new TokenInvalidError("El token de step-up no corresponde a esta accion.");
+    }
+    // Sin `jti` no hay llave de consumo: un token asi (emitido antes del uso unico) no se acepta.
+    if (typeof payload.jti !== "string" || payload.jti.length === 0 || typeof payload.exp !== "number") {
+      throw new TokenInvalidError("El token de step-up no trae identificador.");
     }
     return payload as unknown as StepUpClaims;
   } catch (err) {

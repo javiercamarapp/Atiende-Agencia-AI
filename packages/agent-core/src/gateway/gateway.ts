@@ -97,6 +97,11 @@ export interface GatewayCallOptions {
    *  es por llamada vía `residency`). */
   role: string;
   request: LlmCompletionRequest;
+  /** Modelo preferido para ESTA llamada (p.ej. el que eligio la organizacion en sus ajustes). Solo vale si ese modelo esta
+   *  registrado para el rol: en la escalera del rol o en `registerAlternatives`. Pasa al frente y el resto de la escalera
+   *  queda detras como respaldo; un modelo no registrado se IGNORA (nunca se llama a un modelo no listado). El rol, el
+   *  interruptor de plataforma, el tope diario y el registro de uso siguen siendo los del rol: elegir modelo no los esquiva. */
+  preferredModel?: string;
   /** Sobreescribe la política de residencia por defecto del gateway SOLO
    *  para esta llamada (p.ej. un tenant de licitación de gobierno la activa,
    *  el resto de las verticales no). */
@@ -123,6 +128,8 @@ export class LlmGateway {
   private readonly usageRecorder: UsageRecorder;
   private readonly killSwitch: GatewayKillSwitch | undefined;
   private readonly laddersByRole = new Map<string, LlmProvider[]>();
+  /** Modelos elegibles por rol que NO van en la escalera por defecto (rol -> modelo -> proveedor). */
+  private readonly alternativesByRole = new Map<string, Map<string, LlmProvider>>();
 
   constructor(opts: LlmGatewayOptions) {
     this.breaker = opts.breaker;
@@ -144,9 +151,32 @@ export class LlmGateway {
     this.laddersByRole.set(role, providers);
   }
 
+  /** Registra modelos que un rol puede usar SOLO cuando el llamador los pide con `preferredModel`; nunca entran a la
+   *  escalera por defecto (un fallo no cae a ellos). La clave es el `model` del proveedor. Si el modelo tambien esta en la
+   *  escalera del rol, al elegirlo se usa ESTA alternativa y no el escalon (se quita de la escalera para no repetirlo). */
+  registerAlternatives(role: string, providers: LlmProvider[]): void {
+    const porModelo = new Map<string, LlmProvider>();
+    for (const p of providers) {
+      if (!p.model) throw new Error(`gateway: una alternativa del rol "${role}" debe declarar su modelo`);
+      porModelo.set(p.model, p);
+    }
+    this.alternativesByRole.set(role, porModelo);
+  }
+
+  /** Escalera efectiva de una llamada: la del rol, con el modelo preferido (si esta registrado) al frente. */
+  private ladderFor(role: string, preferredModel: string | undefined): LlmProvider[] {
+    const base = this.laddersByRole.get(role);
+    if (!base) throw new Error(`gateway: sin proveedores registrados para el rol "${role}" (llamar registerLadder primero)`);
+    if (!preferredModel) return base;
+    // La alternativa registrada manda sobre un escalon de la escalera con el mismo modelo: es la que el rol declaro para ELEGIR ese modelo
+    // (p.ej. con la temperatura habilitada, que los escalones por defecto omiten).
+    const elegido = this.alternativesByRole.get(role)?.get(preferredModel) ?? base.find((p) => p.model === preferredModel);
+    if (!elegido) return base;
+    return [elegido, ...base.filter((p) => p !== elegido && p.model !== elegido.model)];
+  }
+
   async complete(opts: GatewayCallOptions): Promise<GatewayCallResult> {
-    const ladder = this.laddersByRole.get(opts.role);
-    if (!ladder) throw new Error(`gateway: sin proveedores registrados para el rol "${opts.role}" (llamar registerLadder primero)`);
+    const ladder = this.ladderFor(opts.role, opts.preferredModel);
 
     // Interruptor de plataforma: ANTES de residencia, breaker, presupuesto y red.
     // Un fallo del propio puerto es fail-open (nunca tumba a los agentes por un

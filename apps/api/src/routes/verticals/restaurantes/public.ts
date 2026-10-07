@@ -18,11 +18,12 @@ import {
   assertWebOrderRules,
   redondearACentavos,
 } from "@atiende/domain-restaurantes";
-import type { CreateOrderInput, RestaurantesRepository } from "@atiende/domain-restaurantes";
+import type { CreateOrderInput, Order, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
 import { encolarComandaParaPedido, type ResultadoEncolarPedido } from "@atiende/domain-restaurantes/softrestaurant";
 import { efectosPostCommitDePedido, type ComandaVisible } from "./efectos-post-commit.ts";
+import { avisarPedidoRecibido } from "./autopiloto-recibido.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import { auditVoice, authenticateVoiceTool, enforceVoiceLimits, hasVoiceCredentials } from "./voice-auth.ts";
 import { runVoiceToolRoute, voiceToolContext, voiceTurnFromRequest } from "./voice-tools.ts";
@@ -200,6 +201,8 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
             colonia: voiceInput.colonia,
             propina: voiceInput.propina,
           });
+          // Autopiloto: confirmacion inmediata al cliente de voz (solo con plantilla aprobada; idempotente por pedido).
+          await avisarPedidoRecibido(deps, db, repo, outcome.raw as Order);
           if (comanda.modo === "activo") {
             return c.json({ order: outcome.raw, comanda: { estado: comanda.agente.estado, folio: comanda.agente.folio, mensaje: comanda.agente.mensaje } });
           }
@@ -234,6 +237,8 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
             ? { modo: "apagado", fila: null, agente: null, motivo: "bandera_apagada" }
             : await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), { order, tipo: input.canal, colonia: input.colonia, propina: input.propina, envioEnLinea: false });
         // El agente solo puede decir un folio si el POS lo devolvio; si no, "pendiente de confirmar".
+        // Autopiloto: confirmacion inmediata al cliente web (solo con plantilla aprobada; idempotente por pedido).
+        await avisarPedidoRecibido(deps, db, repo, order);
         diferido.efectos = { encolada, armar: (comanda) => (comanda ? c.json({ order, comanda }) : c.json({ order })) };
         return c.json({ order });
       } catch (err) {

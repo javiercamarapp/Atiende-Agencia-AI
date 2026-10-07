@@ -108,4 +108,6 @@ export async function irASeccion(page: Page, enlace: EnlaceNav): Promise<void> {
     await (await abrirGrupoDe(page, enlace.href)).click();
   }
   await expect(page).toHaveURL(new RegExp(`${enlace.href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
+  // R-37: las pantallas son chunks perezosos; la URL cambia primero y la ruta se confirma (contenido, barra y h1) al bajar el chunk.
+  await expect(page.locator(`[data-ruta-confirmada="${enlace.href}"]`)).toBeAttached();
 }

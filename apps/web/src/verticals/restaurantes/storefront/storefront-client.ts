@@ -21,6 +21,41 @@ export interface SucursalPublica {
   readonly pedidoMinimoRecoger: number | null;
   readonly propinaPolitica: "nunca" | "siempre" | "solo_tarjeta" | null;
   readonly zonasReparto: readonly string[];
+  /** false = la sucursal no reparte (solo recoger). Ausente en un servidor anterior: se asume que reparte. */
+  readonly aceptaDomicilio?: boolean;
+  /** "Domicilio vie-dom" cuando reparte solo algunos dias. */
+  readonly domicilioTexto?: string | null;
+}
+
+/** Una sucursal del directorio publico (`/pedir/:org/sucursales`). */
+export interface SucursalDirectorio {
+  readonly slug: string;
+  readonly name: string;
+  readonly address: string | null;
+  readonly phone: string | null;
+  readonly horario: ReadonlyArray<{ readonly dias: readonly number[]; readonly abre: string; readonly cierra: string }> | null;
+  readonly abiertoAhora: boolean | null;
+  readonly pideEnLinea: boolean;
+  readonly soloRecoger: boolean;
+  readonly insigniaDomicilio: string | null;
+  readonly deTemporada: boolean;
+  readonly soloInformativa: boolean;
+  readonly comoLlegarUrl: string | null;
+}
+
+/** Respuesta de `POST .../sucursal-sugerida`. */
+export type SugerenciaSucursal =
+  | { readonly tipo: "reparte"; readonly sucursal: { readonly slug: string; readonly name: string }; readonly zona: string; readonly distanciaKm: number; readonly mensaje: string }
+  | { readonly tipo: "solo_recoger"; readonly sucursal: { readonly slug: string; readonly name: string }; readonly zona: string; readonly distanciaKm: number; readonly mensaje: string }
+  | { readonly tipo: "cercana"; readonly sucursal: { readonly slug: string; readonly name: string }; readonly distanciaKm: number; readonly mensaje: string }
+  | { readonly tipo: "sin_resultado"; readonly mensaje: string };
+
+/** Seccion "Encargados y transferencias" del aviso de privacidad (BORRADOR pendiente de revision legal). */
+export interface SeccionEncargados {
+  readonly borrador: true;
+  readonly revisionLegalPendiente: true;
+  readonly aviso: string;
+  readonly encargados: ReadonlyArray<{ readonly id: string; readonly proveedor: string; readonly finalidad: string; readonly pais: string }>;
 }
 
 /** Marca publica del restaurante (R-38). Todo opcional: sin marca guardada la portada es generica con el nombre. */
@@ -174,6 +209,8 @@ export interface DatosCliente {
   readonly propina?: number;
   /** Casilla del aviso de privacidad: el servidor la exige y guarda la evidencia (version del aviso, fecha, canal `web`). */
   readonly aceptaAviso: boolean;
+  /** Casilla OPCIONAL y desmarcada: promociones por WhatsApp (consentimiento de marketing). Solo `true` se envia. */
+  readonly aceptaPromociones?: boolean;
 }
 
 function enc(v: string): string {
@@ -247,6 +284,19 @@ export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetc
     async sucursales(): Promise<RestaurantePublico> {
       return leer(await get(""), "No pudimos cargar el restaurante.");
     },
+    async directorio(): Promise<{ restaurante: { slug: string; nombre: string }; sucursales: SucursalDirectorio[] }> {
+      return leer(await get("/directorio"), "No pudimos cargar las sucursales.");
+    },
+    async zonas(): Promise<{ zonas: string[] }> {
+      return leer(await get("/zonas"), "No pudimos cargar las colonias.");
+    },
+    /** Las coordenadas viajan en el cuerpo del POST (nunca en la URL) y el servidor no las guarda. */
+    async sucursalSugerida(entrada: { colonia: string } | { lat: number; lng: number }): Promise<{ sugerencia: SugerenciaSucursal }> {
+      return leer(await post("/sucursal-sugerida", entrada), "No pudimos sugerir una sucursal.");
+    },
+    async privacidad(): Promise<{ encargados: SeccionEncargados }> {
+      return leer(await get("/privacidad"), "No pudimos cargar los encargados del aviso de privacidad.");
+    },
     async menu(branchSlug: string): Promise<{ sucursal: SucursalPublica | null; categorias: CategoriaMenu[]; marca?: MarcaPublica }> {
       return leer(await get(`/${enc(branchSlug)}/menu`), "No pudimos cargar el menú.");
     },
@@ -268,6 +318,7 @@ export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetc
           notes: cliente.notas?.trim() || undefined,
           propina: cliente.propina !== undefined && cliente.propina > 0 ? cliente.propina : undefined,
           acepta_aviso_privacidad: cliente.aceptaAviso === true,
+          acepta_promociones: cliente.aceptaPromociones === true ? true : undefined,
         }),
         "No pudimos registrar tu pedido.",
       );

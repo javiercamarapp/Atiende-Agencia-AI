@@ -21,6 +21,10 @@ export interface HkConfig {
   readonly minutosPorTipo: Readonly<Record<TareaTipo, number>>;
   readonly fotosObligatoriasEnInspeccion: boolean;
   readonly maxFotosPorTarea: number;
+  /** Hora local (0..23) a la que el cron arranca el dia de housekeeping. */
+  readonly horaArranque: number;
+  /** false = la base aun no tiene la migracion 045: se muestra el 7 por omision y no se puede cambiar. */
+  readonly horaArranqueDisponible: boolean;
   readonly actualizadoEn: string | null;
   readonly vision: { readonly disponible: boolean; readonly requiere: string };
 }
@@ -32,6 +36,7 @@ export type HkConfigPatch = Partial<{
   minutosPorTipo: Partial<Record<TareaTipo, number>>;
   fotosObligatoriasEnInspeccion: boolean;
   maxFotosPorTarea: number;
+  horaArranque: number;
 }>;
 
 export function fetchConfigHk(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<HkConfig> {

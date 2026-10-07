@@ -3,7 +3,7 @@
 import type { DataChatToolContext, DataChatToolResult } from "@atiende/agent-core/data-chat";
 import type { CfoOrgRow } from "@atiende/db";
 import { alcanceDelMotor, type PlatformScope } from "../src/superadmin-copiloto/alcance.ts";
-import type { Fuente, FuentesPlataforma } from "../src/superadmin-copiloto/fuentes.ts";
+import type { Fuente, FuentesPlataforma, OperacionOrganizacionRow } from "../src/superadmin-copiloto/fuentes.ts";
 
 export const AHORA = new Date("2026-10-02T15:00:00.000Z");
 
@@ -43,8 +43,18 @@ export const FILA_CFO: CfoOrgRow = {
 
 export const FILA_CFO_HOTEL: CfoOrgRow = { ...FILA_CFO, organizationId: "org-b", organizationName: "Hotel Bahía", organizationSlug: "hotel-bahia", vertical: "hoteles", sucursalesActivas: 1, llmMicroUsd: 90_000_000, mensajes: 50 };
 
+/** Filas agregadas por organizacion del doble: org-a (restaurantes, con actividad), org-b (hoteles, con actividad), org-c (hoteles, SIN actividad), org-d (despachos, sin migrar). */
+export const OPERACIONES_POR_ORG: readonly OperacionOrganizacionRow[] = [
+  { organizationId: "org-a", vertical: "restaurantes", operaciones: 40, ingresos: 12_500.5, escalaciones: 3, abiertos: 2, vencidos: null, razon: null },
+  { organizationId: "org-b", vertical: "hoteles", operaciones: 12, ingresos: 30_000, escalaciones: null, abiertos: 5, vencidos: null, razon: null },
+  { organizationId: "org-c", vertical: "hoteles", operaciones: 0, ingresos: 0, escalaciones: null, abiertos: 0, vencidos: null, razon: null },
+  { organizationId: "org-d", vertical: "despachos", operaciones: null, ingresos: null, escalaciones: null, abiertos: null, vencidos: null, razon: "fuente_no_migrada" },
+];
+
 /** Fuentes en memoria: cada metodo devuelve datos de ejemplo; `sobre` reemplaza los que cada prueba necesite. Registra las llamadas a `registrarAccesoCfo`. */
-export function fuentesFalsas(sobre: Partial<FuentesPlataforma> = {}): FuentesPlataforma & { readonly accesosCfo: { accion: string; recurso: string; filtros: Readonly<Record<string, unknown>> }[] } {
+export function fuentesFalsas(sobre: Partial<FuentesPlataforma> = {}): FuentesPlataforma & { readonly accesosCfo: { accion: string; recurso: string; filtros: Readonly<Record<string, unknown>> }[]; readonly accesosOrg: { ids: string[]; herramienta: string; filtros: Readonly<Record<string, unknown>> }[]; readonly llamadasOperaciones: { desde: string; hasta: string; hoy: string; organizationId: string | null }[] } {
+  const accesosOrg: { ids: string[]; herramienta: string; filtros: Readonly<Record<string, unknown>> }[] = [];
+  const llamadasOperaciones: { desde: string; hasta: string; hoy: string; organizationId: string | null }[] = [];
   const accesosCfo: { accion: string; recurso: string; filtros: Readonly<Record<string, unknown>> }[] = [];
   const base: FuentesPlataforma = {
     organizaciones: async () =>
@@ -160,12 +170,26 @@ export function fuentesFalsas(sobre: Partial<FuentesPlataforma> = {}): FuentesPl
         { id: "v3", contractId: "c2", organizationId: "org-b", organizationName: "Hotel Bahía", version: 1, vigenteDesde: "2025-10-01", vigenteHasta: "2026-10-25", moneda: "MXN" as const, baseCentavos: 250_000, porSucursalCentavos: 0, sucursalesIncluidas: 1, bolsaMinutos: 0, excedenteCentavosMinuto: 0, instalacionCentavos: 0, descuentoBp: 0, descuentoFijoCentavos: 0, motivo: "Alta", creadoPor: "u-1", creadoPorCorreo: null, creadoEnMs: 3 },
         { id: "v4", contractId: "c3", organizationId: "org-c", organizationName: "Posada Sol", version: 1, vigenteDesde: "2025-10-01", vigenteHasta: null, moneda: "MXN" as const, baseCentavos: 90_000, porSucursalCentavos: 0, sucursalesIncluidas: 1, bolsaMinutos: 0, excedenteCentavosMinuto: 0, instalacionCentavos: 0, descuentoBp: 0, descuentoFijoCentavos: 0, motivo: "Alta", creadoPor: "u-1", creadoPorCorreo: null, creadoEnMs: 4 },
       ]),
+    facturacion: async () =>
+      ok([
+        { organizationId: "org-a", vertical: "restaurantes", name: "Taquería Don Beto", slug: "taqueria-don-beto", orgStatus: "active" as const, createdAt: "2026-03-01T10:00:00.000Z", billingStatus: "activa" as const, seats: 3, staffCount: 4, priceId: "price_x", stripeCustomerId: "cus_secreto", stripeSubscriptionId: "sub_secreto", currentPeriodEnd: "2026-10-28T00:00:00.000Z", lastAppliedEventUnix: null },
+        { organizationId: "org-b", vertical: "hoteles", name: "Hotel Bahía", slug: "hotel-bahia", orgStatus: "active" as const, createdAt: "2026-04-01T10:00:00.000Z", billingStatus: "pago_pendiente" as const, seats: 1, staffCount: 2, priceId: "price_y", stripeCustomerId: "cus_otro", stripeSubscriptionId: "sub_otro", currentPeriodEnd: "2026-10-05T00:00:00.000Z", lastAppliedEventUnix: null },
+        { organizationId: "org-c", vertical: "hoteles", name: "Posada Sol", slug: "posada-sol", orgStatus: "trial" as const, createdAt: "2026-09-01T10:00:00.000Z", billingStatus: "sin_suscripcion" as const, seats: 0, staffCount: 1, priceId: null, stripeCustomerId: null, stripeSubscriptionId: null, currentPeriodEnd: null, lastAppliedEventUnix: null },
+      ]),
+    operacionesPorOrganizacion: async (_desde, _hasta, _hoy, organizationId) => {
+      llamadasOperaciones.push({ desde: _desde, hasta: _hasta, hoy: _hoy, organizationId: organizationId ?? null });
+      return ok(OPERACIONES_POR_ORG.filter((x) => !organizationId || x.organizationId === organizationId));
+    },
+    registrarAccesoOrganizaciones: async (ids, herramienta, filtros) => {
+      accesosOrg.push({ ids: [...ids], herramienta, filtros });
+      return "ok";
+    },
     registrarAccesoCfo: async (accion, recurso, filtros) => {
       accesosCfo.push({ accion, recurso, filtros });
       return "ok";
     },
   };
-  return Object.assign({ ...base, ...sobre }, { accesosCfo });
+  return Object.assign({ ...base, ...sobre }, { accesosCfo, accesosOrg, llamadasOperaciones });
 }
 
 export const SCOPE_SUPERADMIN: PlatformScope = { userId: "u-sa", rol: "superadmin", stepUp: true, timezone: "America/Mexico_City" };

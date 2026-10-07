@@ -32,6 +32,7 @@ import { licitacionesChatDatosRoutes } from "./chat-datos.ts";
 import { licitacionesDiasInhabilesRoutes } from "./diasInhabiles.ts";
 import { licitacionesKyc69bRoutes } from "./kyc69b.ts";
 import { licitacionesPostAdjudicacionRoutes } from "./postAdjudicacion.ts";
+import { licitacionesBitacoraOrganizacionRoutes } from "./bitacoraOrganizacion.ts";
 
 export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -84,6 +85,8 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", licitacionesKyc69bRoutes(deps));
   // L-27 — garantias, hitos, convenios modificatorios y plazos de firma/entrega de garantia por contrato.
   app.route("/", licitacionesPostAdjudicacionRoutes(deps));
+  // L-P3-17 -- vista de la bitacora de escrituras de la organizacion (owner/admin).
+  app.route("/", licitacionesBitacoraOrganizacionRoutes(deps));
   // L-22 — calendario de dias inhabiles (oficiales 2026-2027 + los de la organizacion/convocatoria).
   app.route("/", licitacionesDiasInhabilesRoutes(deps));
   // "Chatea con tus datos" (motor compartido + catalogo cerrado de licitaciones).

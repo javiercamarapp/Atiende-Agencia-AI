@@ -167,12 +167,12 @@ select count(*)::int as pedidos_visibles_cross_tenant_deberia_ser_0 from restaur
 rollback;
 
 -- ===========================================================================
--- B. promotions
+-- B. promotions (PL-23: crear promociones es de owner/admin; la 065 niega al staff, por eso estos escenarios usan al owner)
 -- ===========================================================================
-\echo '=== B1. POSITIVO: staff de A crea una promocion automatica 2x1 solo para recoger ==='
+\echo '=== B1. POSITIVO: owner de A crea una promocion automatica 2x1 solo para recoger ==='
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0013', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0011', true);
 insert into restaurantes.promotions (organization_id, code, name, type, value, days_of_week, channels, auto_apply)
   values ('00000000-0000-0000-0000-0000000d0001', 'LUNES2X1B', 'Lunes 2x1', 'bogo', 1, array[1]::smallint[], array['recoger'], true)
   returning code, auto_apply, channels;
@@ -181,7 +181,7 @@ rollback;
 \echo '=== B2. POSITIVO: combo de cortesia (martes nachos de pastor + 2 aguas) con listas y cantidad ==='
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0013', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0011', true);
 insert into restaurantes.promotions (organization_id, code, name, type, value, days_of_week, channels, auto_apply, product_ids, courtesy_product_ids, courtesy_quantity)
   values ('00000000-0000-0000-0000-0000000d0001', 'MARTESNACHOS', 'Martes nachos', 'cortesia', 1, array[2]::smallint[], array['recoger'], true,
           array['00000000-0000-0000-0000-0000000d0f01']::uuid[], array['00000000-0000-0000-0000-0000000d0f02']::uuid[], 2)
@@ -191,7 +191,7 @@ rollback;
 \echo '=== B3. RECHAZADO (debe fallar): una promocion automatica SIN canales explicitos (podria aplicar a domicilio) ==='
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0013', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0011', true);
 insert into restaurantes.promotions (organization_id, code, name, type, value, auto_apply)
   values ('00000000-0000-0000-0000-0000000d0001', 'SINCANAL', 'Sin canal', 'bogo', 1, true) returning 1 as should_fail;
 rollback;
@@ -199,7 +199,7 @@ rollback;
 \echo '=== B4. RECHAZADO (debe fallar): cortesia sin lista de cortesia ni cantidad ==='
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0013', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0011', true);
 insert into restaurantes.promotions (organization_id, code, name, type, value, product_ids)
   values ('00000000-0000-0000-0000-0000000d0001', 'CORTESIAROTA', 'Cortesia rota', 'cortesia', 1, array['00000000-0000-0000-0000-0000000d0f01']::uuid[]) returning 1 as should_fail;
 rollback;
@@ -207,7 +207,7 @@ rollback;
 \echo '=== B5. RECHAZADO (debe fallar): cortesia con value distinto de 1 ==='
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0013', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0011', true);
 insert into restaurantes.promotions (organization_id, code, name, type, value, product_ids, courtesy_product_ids, courtesy_quantity)
   values ('00000000-0000-0000-0000-0000000d0001', 'CORTESIAV2', 'Cortesia v2', 'cortesia', 2,
           array['00000000-0000-0000-0000-0000000d0f01']::uuid[], array['00000000-0000-0000-0000-0000000d0f02']::uuid[], 2) returning 1 as should_fail;
@@ -216,7 +216,7 @@ rollback;
 \echo '=== B6. RECHAZADO (debe fallar): cantidad de cortesia fuera de 1..10 ==='
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0013', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0011', true);
 insert into restaurantes.promotions (organization_id, code, name, type, value, product_ids, courtesy_product_ids, courtesy_quantity)
   values ('00000000-0000-0000-0000-0000000d0001', 'CORTESIA11', 'Cortesia 11', 'cortesia', 1,
           array['00000000-0000-0000-0000-0000000d0f01']::uuid[], array['00000000-0000-0000-0000-0000000d0f02']::uuid[], 11) returning 1 as should_fail;
@@ -225,7 +225,7 @@ rollback;
 \echo '=== B7. RECHAZADO (debe fallar): un tipo inventado sigue prohibido ==='
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0013', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0011', true);
 insert into restaurantes.promotions (organization_id, code, name, type, value)
   values ('00000000-0000-0000-0000-0000000d0001', 'TIPOMALO', 'Tipo malo', 'regalo', 1) returning 1 as should_fail;
 rollback;

@@ -5,6 +5,7 @@
 //   POST  /v1/rentas/:propertyId/admin/catalogo/propiedades            propiedad nueva de la misma organizacion
 //   POST  /v1/rentas/:propertyId/admin/catalogo/unidades               unidad nueva en la propiedad
 //   PATCH /v1/rentas/:propertyId/admin/catalogo/unidades/:unidadId
+//   PUT   /v1/rentas/:propertyId/admin/catalogo/unidades/:unidadId/responsable-limpieza   (paridad3: responsable por omision)
 //   POST  /v1/rentas/:propertyId/admin/catalogo/propietarios
 //   PATCH /v1/rentas/:propertyId/admin/catalogo/propietarios/:propietarioId
 //
@@ -20,6 +21,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
   CATALOGO_ESCRITURA_ROLES,
   CATALOGO_LECTURA_ROLES,
+  LIMPIEZA_RESPONSABLE_ROLES,
   MONEDAS_PERMITIDAS,
   validarEntradaActualizarPropiedad,
   validarEntradaActualizarPropietario,
@@ -33,8 +35,10 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { catalogoRepo, valorOError } from "./catalogo-http.ts";
+import { esMiembroAsignable } from "./limpieza.ts";
 
 const MAX_BODY = 4 * 1024;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** `a=1 b=2` de los campos presentes: resumen minimo para la bitacora, nunca una fila completa. */
 function pares(o: Record<string, unknown>): string {
@@ -47,7 +51,7 @@ function pares(o: Record<string, unknown>): string {
 export function rentasAdminCatalogoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const raiz = "/v1/rentas/:propertyId/admin/catalogo";
-  const rutas = [raiz, `${raiz}/propiedad`, `${raiz}/propiedades`, `${raiz}/unidades`, `${raiz}/unidades/:unidadId`, `${raiz}/propietarios`, `${raiz}/propietarios/:propietarioId`];
+  const rutas = [raiz, `${raiz}/propiedad`, `${raiz}/propiedades`, `${raiz}/unidades`, `${raiz}/unidades/:unidadId`, `${raiz}/unidades/:unidadId/responsable-limpieza`, `${raiz}/propietarios`, `${raiz}/propietarios/:propietarioId`];
   for (const path of rutas) app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   async function auditar(
@@ -129,6 +133,28 @@ export function rentasAdminCatalogoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
       pares({ ...validada.valor }),
     );
     return c.json({ id: unidadId });
+  });
+
+  // Responsable de limpieza por omision de la unidad (paridad3, migracion 033): la tarea de limpieza de cada checkout nace asignada a el.
+  // admin_gestora y operador:acceso_total (LIMPIEZA_RESPONSABLE_ROLES, espejo de la funcion SQL, que es la autoridad real). Cuerpo
+  // `{ responsableId: uuid | null }` (null lo quita). La persona debe ser miembro con acceso a la propiedad (422 si no).
+  app.put(`${raiz}/unidades/:unidadId/responsable-limpieza`, async (c) => {
+    assertVerticalRole(c, LIMPIEZA_RESPONSABLE_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const unidadId = c.req.param("unidadId");
+    const raw = await readJsonCapped<{ responsableId?: unknown }>(c.req.raw, MAX_BODY);
+    if (raw.responsableId !== null && (typeof raw.responsableId !== "string" || !UUID_RE.test(raw.responsableId))) {
+      throw Errors.validation("responsableId: se esperaba el id de una persona del equipo o null para quitarlo.");
+    }
+    const responsableId = raw.responsableId;
+    const repo = catalogoRepo(deps, c.get("db"));
+    // Solo unidades de ESTA propiedad: una de otra propiedad (o de otra organizacion) responde 404, igual que una inexistente.
+    const previa = (await repo.listarUnidades(propertyId)).find((u) => u.id === unidadId);
+    if (!previa) throw Errors.notFound("Unidad no encontrada en esta propiedad.");
+    if (responsableId !== null && (await esMiembroAsignable(c.get("db"), propertyId, responsableId)) === false) throw Errors.rentasAsignadoNoValido();
+    valorOError(await repo.fijarResponsableLimpieza(unidadId, responsableId), "Fijar el responsable de limpieza", "033");
+    await auditar(c, "unidad", "unidad.responsable_limpieza", unidadId, "responsableLimpiezaId", previa.responsableLimpiezaId, responsableId);
+    return c.json({ id: unidadId, responsableLimpiezaId: responsableId });
   });
 
   app.post(`${raiz}/propietarios`, async (c) => {

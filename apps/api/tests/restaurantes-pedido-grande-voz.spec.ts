@@ -8,6 +8,8 @@ const TOOL_SECRET_HEADERS = { "x-atiende-tool-secret": "test-voice-tool-secret" 
 const ORG_SLUG = "los-taquitos-de-pm";
 
 describe("POST /orders de voz: pedido grande de PM", () => {
+  // CR12: un domicilio de PM por voz sin zonas de reparto cargadas exige pin o persona antes de cualquier otra regla; este caso prueba el
+  // pedido grande, que no depende de la zona, y por eso es para recoger.
   it("100 Coca-Cola ($4,500) en efectivo de un numero sin historial: no se crea, queda el aviso para la sucursal", async () => {
     const { deps, restaurantesRepo, organizationId, products } = await buildTestDeps();
     await restaurantesRepo.upsertWhatsAppAgentConfig(organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: "Los Taquitos de PM", toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
@@ -21,7 +23,7 @@ describe("POST /orders de voz: pedido grande de PM", () => {
     const res = await app.request(
       `/v1/restaurantes/${ORG_SLUG}/orders`,
       jsonRequestInit(
-        { branch_slug: "fco-montejo", customer_name: "Evento", customer_phone: "9991230001", customer_address: "Calle 20 #300, Mérida", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 100 }], payment_method: "efectivo" },
+        { branch_slug: "fco-montejo", customer_name: "Evento", customer_phone: "9991230001", customer_address: "Calle 20 #300, Mérida", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 100 }], payment_method: "efectivo", canal: "recoger" },
         TOOL_SECRET_HEADERS,
       ),
     );
@@ -32,6 +34,19 @@ describe("POST /orders de voz: pedido grande de PM", () => {
     expect(body.estado).toBe("por_confirmar_por_la_sucursal");
     expect((await restaurantesRepo.listOrders(organizationId, { propertyIds: null, limit: 10 })).orders).toHaveLength(0);
     expect(avisos.some((c) => c.reason === "escalada:pedido_grande")).toBe(true);
+  });
+
+  it("CR12: domicilio de PM por voz sin zonas de reparto cargadas se rechaza pidiendo pin o persona (400), no se crea", async () => {
+    const { deps, restaurantesRepo, organizationId, products } = await buildTestDeps();
+    await restaurantesRepo.upsertWhatsAppAgentConfig(organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: "Los Taquitos de PM", toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
+    const app = buildApp(deps);
+    const res = await app.request(
+      `/v1/restaurantes/${ORG_SLUG}/orders`,
+      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "Evento", customer_phone: "9991230001", customer_address: "Calle 20 #300, Mérida", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 1 }], payment_method: "efectivo" }, TOOL_SECRET_HEADERS),
+    );
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(await res.json())).toMatch(/pin|ubicaci/i);
+    expect((await restaurantesRepo.listOrders(organizationId, { propertyIds: null, limit: 10 })).orders).toHaveLength(0);
   });
 
   it("sin perfil de PM (organizacion generica) el mismo pedido se crea como siempre", async () => {

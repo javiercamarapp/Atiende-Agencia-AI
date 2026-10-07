@@ -47,6 +47,7 @@ import type {
   FilaImportacionCliente,
   ResultadoImportacionClientes,
   CustomerTier,
+  ColoniasReferenciaLectura,
   KnownZone,
   NearestBranchMatch,
   NewCategoryInput,
@@ -123,6 +124,9 @@ export interface NewOrderRecord {
 export interface ConversationMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
+  /** Solo en el mensaje del asistente de un turno que dejo un pedido creado: marca el limite entre un pedido y el siguiente
+   * (el pin o link de Maps de antes de esa marca ya no pertenece al pedido en curso). Es metadato del historial: no se manda al modelo. */
+  readonly pedidoCreado?: true;
 }
 
 // ---- KPIs de admin (Fase 3, ver diseño §2) ----
@@ -370,7 +374,12 @@ export interface RestaurantesRepository {
   // encolaba para envío real (ver @atiende/whatsapp-gateway/README.md). ----
   enqueueMessagingOutbox(organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
   claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]>;
-  markMessagingOutboxSent(id: string): Promise<void>;
+  /** `detalle` (wamid y tipo de envio) llega del despachador: con la migracion 066 se guarda para que los `statuses` de Meta encuentren el
+   *  mensaje; contra una base sin ella se cierra como siempre, sin wamid. */
+  markMessagingOutboxSent(id: string, detalle?: { readonly providerMessageId: string; readonly enviadoComo?: "texto" | "plantilla" | "botones" | "ubicacion" }): Promise<void>;
+  /** Avanza el estado de entrega (migracion 066) de un mensaje saliente por su wamid. Solo sesion de sistema (el webhook). Contra una base sin
+   *  la migracion NO lanza ni aborta la transaccion: devuelve `resultado: "no_disponible"`. */
+  registrarEstadoEntregaWhatsapp(organizationId: string, estado: EstadoEntregaEntrante): Promise<RegistroEstadoEntrega>;
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
   // ---- Dispatcher real de correo (migrations/011_email_outbox_dispatch.sql) —
@@ -447,6 +456,9 @@ export interface RestaurantesRepository {
    * forma de que un producto aparezca (o deje de aparecer) en
    * `listAvailableProductsForBranch`, y por tanto en búsqueda/cotización real. */
   upsertBranchProductState(propertyId: string, productId: string, price: number, isAvailable: boolean): Promise<BranchProductState>;
+  /** Solo `is_available` de una fila YA existente de `branch_products` (agotado/disponible, PL-23): nunca toca el precio ni da de alta.
+   *  `null` cuando el producto no esta dado de alta en esa sucursal. Es lo unico que puede escribir un `staff`. */
+  setBranchProductAvailability(propertyId: string, productId: string, isAvailable: boolean): Promise<BranchProductState | null>;
 
   findOrderById(organizationId: string, orderId: string): Promise<Order | null>;
   /** Pedido MAS RECIENTE (no cancelado) de un telefono (10 digitos, `normalizePhone`) creado desde `sinceIso`, o null. Para "¿ya salio?". */
@@ -595,6 +607,9 @@ export interface RestaurantesRepository {
    *  criterio de desempate que `restaurantes.audit_log` para paginación estable). */
   listKnownZones(organizationId: string): Promise<readonly KnownZone[]>;
   createKnownZone(organizationId: string, input: NewKnownZoneInput): Promise<KnownZone>;
+  /** Colonias con la referencia del piloto original (migracion 056) para el reporte de colonias ambiguas. Contra la base sin migrar
+   *  devuelve `{ disponible: false, zonas: [] }` (con SAVEPOINT: nunca aborta la transaccion del request). */
+  listColoniasReferencia(organizationId: string): Promise<ColoniasReferenciaLectura>;
   /** `true` si borró una zona de ESTA organización; `false` si no existía o
    *  pertenecía a otra organización (nunca lanza por "no encontrado" -- el
    *  caller decide el 404, mismo contrato que `revokeStaffInvite`). */
@@ -747,6 +762,34 @@ export class RestaurantesConfigUnavailableError extends Error {
     super("Esta configuración todavía no se puede editar en esta base de datos.");
     this.name = "RestaurantesConfigUnavailableError";
   }
+}
+
+/** Un status de Meta ya filtrado por el extractor: solo lo necesario, sin telefono ni texto. */
+export interface EstadoEntregaEntrante {
+  readonly wamid: string;
+  readonly status: "sent" | "delivered" | "read" | "failed";
+  readonly errorCode: number | null;
+  readonly errorTitle: string | null;
+}
+
+export type MotivoFalloEntregaGuardado = "fuera_de_ventana" | "fuera_de_ventana_plantilla_sin_usar" | "numero_no_entregable" | "plantilla" | "limite_marketing" | "otro";
+
+/** Resultado de `registrarEstadoEntregaWhatsapp`. `desconocido` = ningun mensaje de ESTA organizacion con ese wamid; `no_disponible` = base sin la
+ *  migracion 066 (el webhook sigue respondiendo 200). */
+export interface RegistroEstadoEntrega {
+  readonly resultado: "actualizado" | "sin_cambio" | "desconocido" | "no_disponible";
+  readonly outboxId: string | null;
+  readonly estado: "sent" | "delivered" | "read" | "failed" | null;
+  readonly eventType: string | null;
+  readonly motivoFallo: MotivoFalloEntregaGuardado | null;
+  /** Solo si el mensaje era un aviso de estado de pedido. */
+  readonly orderId: string | null;
+  readonly orderStatus: string | null;
+  /** Mensajes de la organizacion con entrega fallida en la ultima hora (incluye este). */
+  readonly fallidasUltimaHora: number;
+  /** Datos del pedido para el respaldo por correo: SOLO cuando este status hace pasar un aviso de pedido a `failed` y el cliente dejo correo (la
+   *  sesion de sistema no puede leer `orders`, asi que los entrega la funcion SQL ya acotada por organizacion). */
+  readonly respaldoCorreo: { readonly to: string; readonly clienteNombre: string; readonly sucursal: string | null; readonly total: number } | null;
 }
 
 /** Fila de `restaurantes.messaging_outbox` reclamada para despacho real — mismo

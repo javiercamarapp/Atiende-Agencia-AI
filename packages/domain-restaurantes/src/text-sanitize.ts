@@ -15,7 +15,7 @@ export function sanitizeInlineText(value: string, maxLength = 1000): string {
 }
 
 // Lineas que el sistema agrega a `orders.notes`: una nota del cliente no puede hacerse pasar por ellas.
-const LINEA_DE_SISTEMA = /^\s*(?:canal|propina|promoci[oó]n aplicada|recepci[oó]n de alcohol|complementos incluidos|complementos solicitados|no enviar complementos)\b/i;
+const LINEA_DE_SISTEMA = /^\s*(?:canal|propina|promoci[oó]n aplicada|recepci[oó]n de alcohol|complementos incluidos|complementos solicitados|no enviar complementos|b[aá]sicas|pedidas|ubicaci[oó]n de entrega|paga con|llevar terminal|indicaciones de acceso|tel[eé]fono alterno|hora de recogida|pedido programado)\b/i;
 
 /** Notas multilinea: conserva los saltos de linea reales pero quita controles y neutraliza las lineas que imitan al sistema. */
 export function sanitizeNotes(value: string): string {

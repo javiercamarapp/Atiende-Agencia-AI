@@ -65,6 +65,9 @@ export function serializeConfig(config: HousekeepingConfig) {
     minutosPorTipo: config.minutesByType,
     fotosObligatoriasEnInspeccion: config.photosRequiredOnInspection,
     maxFotosPorTarea: config.maxPhotosPerTask,
+    // H-P3-04: hora local a la que el cron arranca el dia (default 7); `horaArranqueDisponible: false` = base sin la migracion 045.
+    horaArranque: config.startHour,
+    horaArranqueDisponible: config.startHourDisponible,
     actualizadoEn: config.updatedAt,
   };
 }

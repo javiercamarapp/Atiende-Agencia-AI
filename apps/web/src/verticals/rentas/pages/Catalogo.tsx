@@ -7,7 +7,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Building2, Pencil, Plus, UserRound } from "lucide-react";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
-import { crearPropiedad, crearPropietario, crearUnidad, editarPropiedad, editarPropietario, editarUnidad, fetchCatalogo, MONEDAS } from "../lib/catalogo-client.ts";
+import { crearPropiedad, crearPropietario, crearUnidad, editarPropiedad, editarPropietario, editarUnidad, fetchCatalogo, fijarResponsableLimpieza, MONEDAS } from "../lib/catalogo-client.ts";
+import { fetchAsignables } from "../lib/limpieza-client.ts";
+import type { AsignableLimpieza } from "../lib/limpieza-client.ts";
 import type { Catalogo, Moneda, Propietario, UnidadCatalogo } from "../lib/catalogo-client.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
@@ -18,7 +20,7 @@ const ROLES_LECTURA = new Set(["admin_gestora", "operador:acceso_total", "contad
 type Formulario =
   | { readonly tipo: "propiedad-editar"; readonly nombre: string; readonly zonaHoraria: string; readonly moneda: Moneda }
   | { readonly tipo: "propiedad-nueva"; readonly nombre: string; readonly zonaHoraria: string; readonly moneda: Moneda }
-  | { readonly tipo: "unidad"; readonly id: string | null; readonly nombre: string; readonly propietarioId: string; readonly noches: string }
+  | { readonly tipo: "unidad"; readonly id: string | null; readonly nombre: string; readonly propietarioId: string; readonly noches: string; readonly responsableId: string; readonly responsableOriginal: string }
   | { readonly tipo: "propietario"; readonly id: string | null; readonly nombre: string; readonly email: string };
 
 function aMoneda(valor: string | null): Moneda {
@@ -36,6 +38,9 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
   const [form, setForm] = useState<Formulario | null>(null);
   const [errorForm, setErrorForm] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  // Personas del equipo que pueden ser responsables de limpieza (solo quien edita el catálogo las pide; sin lista, el campo se oculta).
+  const [equipo, setEquipo] = useState<readonly AsignableLimpieza[]>([]);
+  const [equipoDisponible, setEquipoDisponible] = useState(false);
 
   useEffect(() => {
     if (!puedeVer) return;
@@ -53,6 +58,26 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
       cancelado = true;
     };
   }, [apiBaseUrl, token, propertyId, puedeVer, recarga]);
+
+  const puedeEditarCatalogo = catalogo?.puedeEditar === true;
+  useEffect(() => {
+    if (!puedeEditarCatalogo) return;
+    let cancelado = false;
+    fetchAsignables(fetch, apiBaseUrl, token, propertyId).then(
+      (r) => {
+        if (cancelado) return;
+        setEquipo(r.asignables);
+        setEquipoDisponible(r.disponible);
+      },
+      () => {
+        // Sin la lista no hay a quién ofrecer como responsable: el campo se oculta (nunca un selector vacío que parezca funcional).
+        if (!cancelado) setEquipoDisponible(false);
+      },
+    );
+    return () => {
+      cancelado = true;
+    };
+  }, [puedeEditarCatalogo, apiBaseUrl, token, propertyId]);
 
   const abrir = useCallback((f: Formulario) => {
     setErrorForm(null);
@@ -75,8 +100,13 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
           return;
         }
         const propietarioId = form.propietarioId === "" ? null : form.propietarioId;
-        if (form.id) await editarUnidad(fetch, apiBaseUrl, token, propertyId, form.id, { nombre: form.nombre.trim(), propietarioId, duracionMinimaNoches: noches });
-        else await crearUnidad(fetch, apiBaseUrl, token, propertyId, { nombre: form.nombre.trim(), propietarioId, duracionMinimaNoches: noches });
+        if (form.id) {
+          await editarUnidad(fetch, apiBaseUrl, token, propertyId, form.id, { nombre: form.nombre.trim(), propietarioId, duracionMinimaNoches: noches });
+          // Responsable de limpieza por omisión: solo si el campo se ofreció (hay lista del equipo) y cambió.
+          if (equipoDisponible && form.responsableId !== form.responsableOriginal) {
+            await fijarResponsableLimpieza(fetch, apiBaseUrl, token, propertyId, form.id, form.responsableId === "" ? null : form.responsableId);
+          }
+        } else await crearUnidad(fetch, apiBaseUrl, token, propertyId, { nombre: form.nombre.trim(), propietarioId, duracionMinimaNoches: noches });
       } else {
         const email = form.email.trim() === "" ? null : form.email.trim();
         if (form.id) await editarPropietario(fetch, apiBaseUrl, token, propertyId, form.id, { nombre: form.nombre.trim(), email });
@@ -91,7 +121,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
     } finally {
       setGuardando(false);
     }
-  }, [form, apiBaseUrl, token, propertyId]);
+  }, [form, apiBaseUrl, token, propertyId, equipoDisponible]);
 
   if (!puedeVer) {
     return (
@@ -108,7 +138,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
   const unidades = catalogo?.unidades ?? [];
 
   function editarUnidadForm(u: UnidadCatalogo) {
-    abrir({ tipo: "unidad", id: u.id, nombre: u.nombre, propietarioId: u.propietarioId ?? "", noches: String(u.duracionMinimaNoches) });
+    abrir({ tipo: "unidad", id: u.id, nombre: u.nombre, propietarioId: u.propietarioId ?? "", noches: String(u.duracionMinimaNoches), responsableId: u.responsableLimpiezaId ?? "", responsableOriginal: u.responsableLimpiezaId ?? "" });
   }
   function editarPropietarioForm(p: Propietario) {
     abrir({ tipo: "propietario", id: p.id, nombre: p.nombre, email: p.email ?? "" });
@@ -194,7 +224,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <CardTitle className="text-base">Unidades de esta propiedad</CardTitle>
                 {puedeEditar && (
-                  <Button type="button" size="sm" onClick={() => abrir({ tipo: "unidad", id: null, nombre: "", propietarioId: "", noches: "1" })}>
+                  <Button type="button" size="sm" onClick={() => abrir({ tipo: "unidad", id: null, nombre: "", propietarioId: "", noches: "1", responsableId: "", responsableOriginal: "" })}>
                     <Plus /> Nueva unidad
                   </Button>
                 )}
@@ -211,6 +241,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
                       <TableHead>Nombre</TableHead>
                       <TableHead>Propietario</TableHead>
                       <TableHead>Estancia mínima</TableHead>
+                      {equipoDisponible && <TableHead>Responsable de limpieza</TableHead>}
                       {puedeEditar && <TableHead className="text-right">Acciones</TableHead>}
                     </TableRow>
                   </TableHeader>
@@ -220,6 +251,9 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
                         <TableCell className="font-medium">{u.nombre}</TableCell>
                         <TableCell>{u.propietarioNombre ?? <span className="text-muted-foreground">Sin propietario</span>}</TableCell>
                         <TableCell>{u.duracionMinimaNoches} {u.duracionMinimaNoches === 1 ? "noche" : "noches"}</TableCell>
+                        {equipoDisponible && (
+                          <TableCell>{u.responsableLimpiezaId ? (equipo.find((p) => p.id === u.responsableLimpiezaId)?.nombre || "Persona asignada") : <span className="text-muted-foreground">Sin asignar</span>}</TableCell>
+                        )}
                         {puedeEditar && (
                           <TableCell className="text-right">
                             <Button type="button" size="sm" variant="outline" aria-label={`Editar la unidad ${u.nombre}`} onClick={() => editarUnidadForm(u)}>
@@ -348,6 +382,20 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
               Estancia mínima (noches)
               <Input type="number" inputMode="numeric" value={form.noches} onChange={(e) => setForm({ ...form, noches: e.target.value })} />
             </Label>
+            {form.id && equipoDisponible && (
+              <Label className={LABEL_CLASES}>
+                Responsable de limpieza por omisión
+                <NativeSelect value={form.responsableId} onChange={(e) => setForm({ ...form, responsableId: e.target.value })}>
+                  <option value="">Sin responsable (cola «Sin asignar»)</option>
+                  {equipo.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nombre || "Persona sin nombre"}
+                    </option>
+                  ))}
+                </NativeSelect>
+                <span className="text-xs text-muted-foreground">La tarea de limpieza de cada salida de esta unidad nace asignada a esta persona.</span>
+              </Label>
+            )}
             {errorForm && (
               <p role="alert" className="m-0 text-sm text-destructive">
                 {errorForm}

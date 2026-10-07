@@ -7,7 +7,7 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App.tsx";
 import { validarFormulario } from "../src/verticals/restaurantes/storefront/SucursalPage.tsx";
-import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
+import { esperarHasta, esperarRutaCargada, changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -22,17 +22,21 @@ function json(body: unknown, status = 200): Response {
   return { ok: status < 400, status, json: async () => body } as unknown as Response;
 }
 
-function esperar(): Promise<void> {
-  return act(async () => {
+async function esperar(): Promise<void> {
+  await act(async () => {
     await flushMicrotasks();
     await flushMicrotasks();
     await flushMicrotasks();
   });
+  // R-37: tras navegar (p. ej. al seguimiento del pedido) la pantalla destino es un chunk lazy.
+  await esperarRutaCargada(document.body);
 }
 
-function renderEn(ruta: string): RenderedComponent {
+async function renderEn(ruta: string): Promise<RenderedComponent> {
   window.history.pushState({}, "", ruta);
-  return renderComponent(<App />);
+  const r = renderComponent(<App />);
+  await esperarRutaCargada(r.container);
+  return r;
 }
 
 const q = <T extends Element>(sel: string): T => rendered!.container.querySelector<T>(sel) as T;
@@ -51,7 +55,7 @@ afterEach(() => {
 });
 
 describe("validarFormulario", () => {
-  const ok = { nombre: "Ana", telefono: "999 123 4567", correo: "", direccion: "Calle 1", colonia: "Vista Alegre", notas: "", codigoPromo: "", propina: "", mayorDeEdad: false, acepta: true };
+  const ok = { nombre: "Ana", telefono: "999 123 4567", correo: "", direccion: "Calle 1", colonia: "Vista Alegre", notas: "", codigoPromo: "", propina: "", mayorDeEdad: false, promociones: false, acepta: true };
   it("acepta un formulario completo", () => {
     expect(validarFormulario(ok, "domicilio", "efectivo", false, true)).toEqual({});
   });
@@ -73,7 +77,7 @@ describe("menu de la sucursal", () => {
   beforeEach(() => fetchMock.mockImplementation(async (url: string) => (String(url).endsWith("/menu") ? json(MENU) : json({}, 404))));
 
   it("muestra categorias, precios de la sucursal, 'Hoy no hay' deshabilitado y las notas de reglas duras", async () => {
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     const texto = rendered.container.textContent ?? "";
     expect(texto).toContain("Tacos de bistec (orden de 3)");
@@ -89,7 +93,7 @@ describe("menu de la sucursal", () => {
   });
 
   it("los tacos exigen tortilla antes de poder agregarse", async () => {
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     const agregar = q<HTMLButtonElement>('button[aria-label="Agregar Tacos de bistec (orden de 3) al carrito"]');
     expect(agregar.disabled).toBe(true);
@@ -101,7 +105,7 @@ describe("menu de la sucursal", () => {
   });
 
   it("carrito mixto a domicilio: el alcohol bloquea el envio con el mensaje; al recoger se habilita", async () => {
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     act(() => click(q('button[aria-label="Agregar Sol al carrito"]')));
     const enviar = botonPorTexto("Revisar pedido", q("aside"))!;
@@ -115,7 +119,7 @@ describe("menu de la sucursal", () => {
   });
 
   it("a domicilio bajo el minimo de $200 se avisa el faltante y no se puede enviar", async () => {
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     act(() => changeValue(q<HTMLSelectElement>('select[aria-label^="Tortilla para"]'), "maiz"));
     act(() => click(q('button[aria-label^="Agregar Tacos"]')));
@@ -125,7 +129,7 @@ describe("menu de la sucursal", () => {
   });
 
   it("propina solo aparece con tarjeta y el codigo de promocion solo al recoger", async () => {
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     expect(q("aside").textContent).toContain("Código de promoción");
     expect(q("aside").textContent).not.toContain("Propina");
@@ -138,7 +142,7 @@ describe("menu de la sucursal", () => {
   });
 
   it("a11y: cada campo tiene etiqueta asociada y los botones del carrito nombre accesible", async () => {
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     const campos = Array.from(rendered.container.querySelectorAll<HTMLElement>("aside input:not([type=radio]):not([type=checkbox]), aside textarea, aside select"));
     expect(campos.length).toBeGreaterThan(3);
@@ -152,7 +156,7 @@ describe("menu de la sucursal", () => {
 
   it("error de carga: estado de error con reintento", async () => {
     fetchMock.mockImplementation(async () => json({ message: "Sucursal no encontrada." }, 404));
-    rendered = renderEn("/pedir/demo/inexistente");
+    rendered = await renderEn("/pedir/demo/inexistente");
     await esperar();
     expect(rendered.container.textContent).toContain("Sucursal no encontrada.");
     expect(botonPorTexto("Reintentar")).toBeDefined();
@@ -172,7 +176,7 @@ describe("checkout completo", () => {
       if (String(url).includes("/track/")) return json({ disponible: true, pedido: { status: "preparando", branch: "Centro", total: 66, paymentMethod: "efectivo", canal: "recoger", createdAt: "2026-09-30T20:00:00Z", items: [{ name: "Sol", quantity: 1, tortilla: null }] } });
       return json({}, 404);
     });
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     act(() => click(q('button[aria-label="Agregar Sol al carrito"]')));
     act(() => click(q('input[name="pago"][value="efectivo"]')));
@@ -182,7 +186,7 @@ describe("checkout completo", () => {
     act(() => changeValue(campo("Teléfono"), "999 123 4567"));
     act(() => click(aside.querySelector<HTMLInputElement>("input[type=checkbox]:not([id*=none])")!)); // mayoria de edad
     const checks = aside.querySelectorAll<HTMLInputElement>("input[type=checkbox]");
-    act(() => click(checks[1]!)); // privacidad
+    act(() => click(checks[checks.length - 1]!)); // privacidad (siempre el ultimo; antes va la casilla opcional de promociones)
     await act(async () => submitForm(aside.querySelector("form")!));
     await esperar();
     const cot = llamadas.find((l) => l.url.endsWith("/quote"))!;
@@ -194,12 +198,16 @@ describe("checkout completo", () => {
     await esperar();
     const orden = llamadas.find((l) => l.url.endsWith("/orders"))!;
     expect(orden.body).toMatchObject({ customer_name: "Ana Pérez", customer_phone: "999 123 4567", quote_hash: "a".repeat(32), acepta_aviso_privacidad: true });
+    // La casilla de promociones por WhatsApp nace DESMARCADA: sin que la persona la marque no viaja ningun consentimiento de marketing.
+    expect(orden.body).not.toHaveProperty("acepta_promociones");
+    expect(aside.textContent).toContain("Quiero recibir promociones por WhatsApp");
     expect(llamadas.map((l) => l.url.split("/").pop())).toEqual(expect.arrayContaining(["quote", "confirm", "orders"]));
     expect(window.location.pathname).toBe("/pedir/demo/pedido/t1.abc.def");
     expect(window.location.href).not.toMatch(/Ana|9991234567|999/);
     await esperar();
-    expect(rendered.container.textContent).toContain("Preparando tu pedido");
-    expect(rendered.container.textContent).not.toContain("Ana");
+    await esperarHasta(() => (rendered!.container.textContent ?? "").includes("Preparando tu pedido"), "la pantalla de seguimiento (chunk lazy)");
+    expect(rendered!.container.textContent).toContain("Preparando tu pedido");
+    expect(rendered!.container.textContent).not.toContain("Ana");
     // el carrito guardado se limpio
     expect(globalThis.sessionStorage.getItem("atiende.storefront.carrito.demo.centro")).toBeNull();
   });
@@ -210,7 +218,7 @@ describe("checkout completo", () => {
       if (String(url).endsWith("/quote")) return json({ code: "validation_error", message: "La sucursal Centro está cerrada en este momento; abre hoy a las 18:00." }, 400);
       return json({}, 404);
     });
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     act(() => click(q('button[aria-label="Agregar Sol al carrito"]')));
     act(() => click(q('input[name="pago"][value="efectivo"]')));
@@ -219,8 +227,8 @@ describe("checkout completo", () => {
     act(() => changeValue(campo("Nombre"), "Ana"));
     act(() => changeValue(campo("Teléfono"), "9991234567"));
     const checks = aside.querySelectorAll<HTMLInputElement>("input[type=checkbox]");
-    act(() => click(checks[0]!));
-    act(() => click(checks[1]!));
+    act(() => click(checks[0]!)); // mayoria de edad
+    act(() => click(checks[checks.length - 1]!)); // privacidad (la casilla opcional de promociones va antes)
     await act(async () => submitForm(aside.querySelector("form")!));
     await esperar();
     expect(aside.querySelector('[role="alert"]')?.textContent).toContain("cerrada en este momento");
@@ -231,7 +239,7 @@ describe("checkout completo", () => {
 describe("seguimiento por token", () => {
   it("token invalido: mensaje uniforme sin datos del pedido", async () => {
     fetchMock.mockResolvedValue(json({ code: "not_found", message: "No encontramos ese pedido." }, 404));
-    rendered = renderEn("/pedir/demo/pedido/basura");
+    rendered = await renderEn("/pedir/demo/pedido/basura");
     await esperar();
     expect(rendered.container.textContent).toContain("No encontramos ese pedido");
     expect(String(fetchMock.mock.calls[0]![0])).toBe("http://localhost:8787/v1/restaurantes/demo/storefront/track/basura");
@@ -239,7 +247,7 @@ describe("seguimiento por token", () => {
 
   it("base sin migrar (disponible:false): mensaje honesto, no 'no encontrado'", async () => {
     fetchMock.mockResolvedValue(json({ disponible: false, mensaje: "El rastreo en línea todavía no está disponible. Llama a la sucursal." }));
-    rendered = renderEn("/pedir/demo/pedido/t1.a.b");
+    rendered = await renderEn("/pedir/demo/pedido/t1.a.b");
     await esperar();
     expect(rendered.container.textContent).toContain("no disponible por ahora");
     expect(rendered.container.textContent).not.toContain("No encontramos");
@@ -249,7 +257,7 @@ describe("seguimiento por token", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     try {
       fetchMock.mockResolvedValue(json({ disponible: true, pedido: { status: "entregado", branch: "Centro", total: 90, paymentMethod: "tarjeta", canal: "domicilio", createdAt: "2026-09-30T20:00:00Z", items: [{ name: "Coca-Cola", quantity: 2, tortilla: null }] } }));
-      rendered = renderEn("/pedir/demo/pedido/t1.a.b");
+      rendered = await renderEn("/pedir/demo/pedido/t1.a.b");
       await esperar();
       expect(rendered.container.textContent).toContain("Entregado");
       expect(document.querySelector('meta[name="robots"]')?.getAttribute("content")).toBe("noindex,nofollow");
@@ -267,7 +275,7 @@ describe("seguimiento por token", () => {
 
 describe("aviso de privacidad y lista de sucursales", () => {
   it("el aviso simplificado explica datos, uso y derechos", async () => {
-    rendered = renderEn("/pedir/demo/privacidad");
+    rendered = await renderEn("/pedir/demo/privacidad");
     await esperar();
     const t = rendered.container.textContent ?? "";
     expect(t).toContain("Aviso de privacidad");
@@ -276,9 +284,37 @@ describe("aviso de privacidad y lista de sucursales", () => {
     expect(document.title).toContain("Aviso de privacidad");
   });
 
+  it("muestra 'Encargados y transferencias' (borrador) con la configuracion real que manda el servidor", async () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).endsWith("/privacidad")
+        ? json({ encargados: { borrador: true, revisionLegalPendiente: true, aviso: "BORRADOR pendiente de revisión legal. Algunos proveedores tratan sus datos.", encargados: [{ id: "meta_whatsapp", proveedor: "Meta (WhatsApp)", finalidad: "Enviar y recibir los mensajes de WhatsApp.", pais: "Estados Unidos" }] } })
+        : json({}, 404),
+    );
+    rendered = await renderEn("/pedir/demo/privacidad");
+    await esperar();
+    const t = rendered.container.textContent ?? "";
+    expect(t).toContain("Encargados y transferencias");
+    expect(t).toContain("Borrador pendiente de revisión legal.");
+    expect(t).toContain("Meta (WhatsApp) (Estados Unidos): Enviar y recibir los mensajes de WhatsApp.");
+  });
+
+  it("sin encargados (o si el servidor falla) la seccion no aparece y el aviso simplificado sigue completo", async () => {
+    fetchMock.mockImplementation(async () => json({ encargados: { borrador: true, revisionLegalPendiente: true, aviso: "x", encargados: [] } }));
+    rendered = await renderEn("/pedir/demo/privacidad");
+    await esperar();
+    expect(rendered.container.textContent).not.toContain("Encargados y transferencias");
+    expect(rendered.container.textContent).toContain("Tus derechos");
+    rendered.unmount();
+    fetchMock.mockImplementation(async () => json({ message: "falla" }, 500));
+    rendered = await renderEn("/pedir/demo/privacidad");
+    await esperar();
+    expect(rendered.container.textContent).not.toContain("Encargados y transferencias");
+    expect(rendered.container.textContent).toContain("Tus derechos");
+  });
+
   it("lista las sucursales con apertura y enlaza a su menu; titulo e indexable para SEO", async () => {
     fetchMock.mockResolvedValue(json({ restaurante: { slug: "demo", nombre: "Los Taquitos" }, sucursales: [SUCURSAL, { ...SUCURSAL, slug: "norte", name: "Norte", abiertoAhora: false, cierraA: null, proximaApertura: { dia: "martes", hora: "12:00", hoy: false } }] }));
-    rendered = renderEn("/pedir/demo");
+    rendered = await renderEn("/pedir/demo");
     await esperar();
     const t = rendered.container.textContent ?? "";
     expect(t).toContain("Pide en Los Taquitos");

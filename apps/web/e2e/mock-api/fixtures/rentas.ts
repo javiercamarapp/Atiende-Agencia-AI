@@ -12,6 +12,44 @@ const UNIDADES = [
   { id: "uni-2", nombre: "Depto Malecon 4B", duracionMinimaNoches: 1 },
 ];
 
+// Rn-P3-20/21: mensajeria con huesped (bandeja de Aprobaciones y su hilo). Forma = lib/mensajeria-client.ts. Una conversacion con un
+// mensaje que trae una emergencia (borrador ESCALADO, pendiente) y otro rutinario ya respondido; el estado se guarda por escenario para
+// que rechazar o generar se refleje en el GET siguiente. Solo existe en la API simulada de e2e.
+interface BorradorMock {
+  id: string;
+  conversacionId: string;
+  mensajeEntranteId: string | null;
+  canal: string;
+  texto: string;
+  estado: string;
+  generadoPor: string;
+  redactado: boolean;
+  necesitaEscalamiento: boolean;
+  senales: string[];
+  aprobadoPor: string | null;
+  aprobadoEn: string | null;
+  rechazadoPor: string | null;
+  rechazadoEn: string | null;
+  motivoRechazo: string | null;
+  mensajeEnviadoId: string | null;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+const CONV_ZAPATA = { id: "conv-1", organizationId: ORG.id, propertyId: PROP.id, unidadId: "uni-1", canal: "airbnb", ocupacionId: "ocu-1", huespedMinimoId: null, propiedadNombre: "Casa Playa Norte", huespedNombre: "Familia Zapata", fechaCheckIn: null, fechaCheckOut: null, reservaConfirmada: true, creadoEn: "2026-10-01T09:00:00.000Z" };
+const MENSAJES_ZAPATA = [
+  { id: "msg-1", conversacionId: "conv-1", direccion: "entrante", origen: "manual", texto: "Hola, ¿cuál es la clave del wifi?", redactado: false, creadoEn: "2026-10-01T10:00:00.000Z" },
+  { id: "msg-2", conversacionId: "conv-1", direccion: "saliente", origen: "simulador", texto: "Hola, la clave es la que aparece en la guía de la casa.", redactado: false, creadoEn: "2026-10-01T10:05:00.000Z" },
+  { id: "msg-3", conversacionId: "conv-1", direccion: "entrante", origen: "manual", texto: "Es una emergencia: huele a gas en la cocina", redactado: false, creadoEn: "2026-10-02T08:00:00.000Z" },
+];
+function borradoresSemilla(): BorradorMock[] {
+  const base = { conversacionId: "conv-1", canal: "airbnb", generadoPor: "motor_borrador", redactado: false, aprobadoPor: null, aprobadoEn: null, rechazadoPor: null, rechazadoEn: null, motivoRechazo: null, mensajeEnviadoId: null, actualizadoEn: "2026-10-02T08:01:00.000Z" };
+  return [
+    { ...base, id: "bor-1", mensajeEntranteId: "msg-1", texto: "Hola, la clave es la que aparece en la guía de la casa.", estado: "enviado", necesitaEscalamiento: false, senales: [], creadoEn: "2026-10-01T10:02:00.000Z", aprobadoPor: "00000000-0000-4000-8000-000000000001", aprobadoEn: "2026-10-01T10:05:00.000Z", mensajeEnviadoId: "msg-2" },
+    { ...base, id: "bor-2", mensajeEntranteId: "msg-3", texto: "Lamentamos lo ocurrido. Por favor sal de la casa y llama al 911; avisamos al equipo de inmediato.", estado: "pendiente_aprobacion", necesitaEscalamiento: true, senales: ["emergencia"], creadoEn: "2026-10-02T08:01:00.000Z" },
+  ];
+}
+const borradoresMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<BorradorMock[]>("rentas.mensajeria.borradores", borradoresSemilla);
+
 function dia(desdeHoy: number): string {
   return new Date(Date.now() + desdeHoy * 86_400_000).toISOString().slice(0, 10);
 }
@@ -67,7 +105,130 @@ const TEXTO_INGRESOS = "Este mes ingresaste $53,400 MXN brutos en 16 reservas, l
 const FUENTE_INGRESOS = { tool: "ingresos_por_canal", source: "Reservas con llegada en el periodo", periodLabel: "este mes", scopeLabel: "todas tus propiedades" };
 const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("rentas.copiloto.conversaciones", () => []);
 
+
+// paridad3 -- limpieza: tareas con checklist, personas asignables, reparto y completar. Solo la administradora ("admin" = admin_gestora)
+// opera el panel en la API simulada; el resto recibe 403 como en la API real. El estado vive por escenario: un POST se refleja en el GET
+// siguiente (reparto, checklist, completar), igual que en el servidor. Solo existe en la API simulada de e2e.
+interface TareaMock {
+  id: string;
+  propertyId: string;
+  unidadId: string;
+  unidadNombre: string;
+  tipo: "limpieza";
+  estado: "pendiente" | "asignada" | "bloqueada" | "completada";
+  prioridad: "media";
+  asignadoA: string | null;
+  esProveedorExterno: boolean;
+  programadaPara: string;
+  slaVenceEn: string | null;
+  completadaEn: string | null;
+  creadoEn: string;
+  checklist: { id: string; tareaId: string; descripcion: string; orden: number; completado: boolean; completadoEn: string | null; completadoPor: string | null }[];
+}
+const ASIGNABLES = [
+  { id: "per-ana", nombre: "Ana Limpieza", rol: "limpieza" },
+  { id: "per-beto", nombre: "Beto Operador", rol: "operador:acceso_total" },
+];
+const MOCK_ROLES_LIMPIEZA = ["admin"] as const;
+function tareaSemilla(id: string, unidadId: string, unidadNombre: string, desdeHoy: number, extra: Partial<TareaMock>, items: string[]): TareaMock {
+  return {
+    id,
+    propertyId: PROP.id,
+    unidadId,
+    unidadNombre,
+    tipo: "limpieza",
+    estado: "pendiente",
+    prioridad: "media",
+    asignadoA: null,
+    esProveedorExterno: false,
+    programadaPara: dia(desdeHoy),
+    slaVenceEn: null,
+    completadaEn: null,
+    creadoEn: "2026-09-30T15:00:00.000Z",
+    checklist: items.map((descripcion, i) => ({ id: `${id}-i${i + 1}`, tareaId: id, descripcion, orden: i, completado: false, completadoEn: null, completadoPor: null })),
+    ...extra,
+  };
+}
+const tareasSemilla = (): TareaMock[] => [
+  tareaSemilla("tar-1", "uni-1", "Casa Playa Norte", 1, {}, ["Cambiar sábanas", "Limpiar baño", "Reponer amenidades"]),
+  tareaSemilla("tar-2", "uni-2", "Depto Malecon 4B", 2, { asignadoA: "per-beto", estado: "asignada", esProveedorExterno: true }, ["Limpieza general", "Revisar inventario"]),
+];
+const tareasMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<TareaMock[]>("rentas.tareas", tareasSemilla);
+const sinChecklist = ({ checklist: _c, ...tarea }: TareaMock) => tarea;
+
+export const rutasRentasLimpieza: readonly Ruta[] = [
+  { metodo: "GET", patron: `${R}/tareas/asignables`, roles: MOCK_ROLES_LIMPIEZA, manejador: () => ({ asignables: ASIGNABLES, disponible: true }) },
+  {
+    metodo: "GET",
+    patron: `${R}/tareas`,
+    roles: MOCK_ROLES_LIMPIEZA,
+    manejador: (p) => {
+      const asignadoA = p.query.get("asignadoA");
+      const estados = p.query.get("estado")?.split(",");
+      const desde = p.query.get("desde");
+      const hasta = p.query.get("hasta");
+      return {
+        tareas: tareasMock(p)
+          .filter((t) => (asignadoA === null ? true : asignadoA === "me" ? t.asignadoA === p.persona?.id : asignadoA === "sin_asignar" ? t.asignadoA === null : t.asignadoA === asignadoA))
+          .filter((t) => !estados || estados.includes(t.estado))
+          .filter((t) => (!desde || t.programadaPara >= desde) && (!hasta || t.programadaPara <= hasta))
+          .map(sinChecklist),
+      };
+    },
+  },
+  { metodo: "GET", patron: `${R}/tareas/:tid`, roles: MOCK_ROLES_LIMPIEZA, manejador: (p) => { const t = tareasMock(p).find((x) => x.id === p.params.tid); return t ? { tarea: t } : fallo(404, "Tarea no encontrada en esta property."); } },
+  {
+    metodo: "POST",
+    patron: `${R}/tareas/:tid/asignar`,
+    roles: MOCK_ROLES_LIMPIEZA,
+    manejador: (p) => {
+      const t = tareasMock(p).find((x) => x.id === p.params.tid);
+      if (!t) return fallo(404, "Tarea no encontrada en esta property.");
+      const cuerpo = (p.cuerpo ?? {}) as { asignadoA?: string; esProveedorExterno?: boolean };
+      const asignadoA = cuerpo.asignadoA ?? p.persona?.id ?? null;
+      if (asignadoA !== p.persona?.id && !ASIGNABLES.some((a) => a.id === asignadoA)) return fallo(422, "La persona elegida no es miembro con acceso a esta propiedad, o su rol no opera limpieza.");
+      t.asignadoA = asignadoA;
+      t.esProveedorExterno = cuerpo.esProveedorExterno === true;
+      if (t.estado === "pendiente") t.estado = "asignada";
+      return { tarea: t };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${R}/tareas/:tid/checklist/:iid/completar`,
+    roles: MOCK_ROLES_LIMPIEZA,
+    manejador: (p) => {
+      const t = tareasMock(p).find((x) => x.id === p.params.tid);
+      const item = t?.checklist.find((i) => i.id === p.params.iid);
+      if (!t || !item) return fallo(404, "Ítem de checklist no encontrado en esta tarea.");
+      item.completado = true;
+      item.completadoEn = new Date().toISOString();
+      item.completadoPor = p.persona?.id ?? null;
+      return { tarea: t };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${R}/tareas/:tid/completar`,
+    roles: MOCK_ROLES_LIMPIEZA,
+    manejador: (p) => {
+      const t = tareasMock(p).find((x) => x.id === p.params.tid);
+      if (!t) return fallo(404, "Tarea no encontrada en esta property.");
+      if (t.checklist.some((i) => !i.completado)) {
+        t.estado = "bloqueada";
+        return fallo(409, "No se puede completar la tarea con ítems de checklist pendientes.");
+      }
+      t.estado = "completada";
+      t.completadaEn = new Date().toISOString();
+      return { id: t.id, estado: "completada", alertasStockBajo: [] };
+    },
+  },
+  { metodo: "GET", patron: `${R}/unidades/:uid/inventario`, roles: MOCK_ROLES_LIMPIEZA, manejador: () => ({ items: [] }) },
+  { metodo: "GET", patron: `${R}/unidades/:uid/incidencias`, roles: MOCK_ROLES_LIMPIEZA, manejador: () => ({ incidencias: [] }) },
+];
+
 export const rutasRentas: readonly Ruta[] = [
+  ...rutasRentasLimpieza,
   { metodo: "GET", patron: `${R}/chat-datos/pins`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ disponible: true, pins: [] }) },
   { metodo: "GET", patron: `${R}/chat-datos/estado`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }) },
   {
@@ -156,6 +317,18 @@ export const rutasRentas: readonly Ruta[] = [
         feeds: { estado: "ok", activos: 0, con_problema: 0 },
         agentes: [],
       };
+    } },
+  // Rn-P3-20/21/22: bandeja de aprobacion e hilo de una conversacion.
+  { metodo: "GET", patron: `${R}/unidades/:uid/conversaciones`, manejador: (p) => ({ conversaciones: p.params.uid === "uni-1" ? [CONV_ZAPATA] : [] }) },
+  { metodo: "GET", patron: `${R}/conversaciones/:cid/borradores`, manejador: (p) => ({ borradores: borradoresMock(p).filter((b) => b.conversacionId === p.params.cid) }) },
+  { metodo: "GET", patron: `${R}/conversaciones/:cid/hilo`, manejador: (p) => (p.params.cid === CONV_ZAPATA.id ? { conversacion: CONV_ZAPATA, mensajes: MENSAJES_ZAPATA, borradores: borradoresMock(p).filter((b) => b.conversacionId === CONV_ZAPATA.id) } : fallo(404, "Conversación no encontrada en esta property.")) },
+  { metodo: "GET", patron: `${R}/mensajeria/politicas`, manejador: () => ({ politicas: [{ canal: "airbnb", maxCaracteres: 4000, permiteContactoDirectoPreReserva: false, permiteAutomatizacionPreReserva: true, accionAntePreReservaProhibida: "bloquear" }] }) },
+  { metodo: "POST", patron: `${R}/borradores/:bid/rechazar`, manejador: (p) => {
+      const b = borradoresMock(p).find((x) => x.id === p.params.bid);
+      if (!b) return fallo(404, "Borrador no encontrado en esta property.");
+      const motivo = (p.cuerpo as { motivo?: string } | null)?.motivo ?? "";
+      Object.assign(b, { estado: "rechazado", rechazadoPor: "00000000-0000-4000-8000-000000000001", rechazadoEn: new Date().toISOString(), motivoRechazo: motivo });
+      return b;
     } },
   { metodo: "POST", patron: `${R}/unidades/:uid/reservas/:oid/cancelar`, manejador: (p) => cancelar(p.estado.obtener("rentas.ocupaciones", ocupacionesSemilla), p.params.oid) },
   { metodo: "POST", patron: `${R}/unidades/:uid/bloqueos/:oid/cancelar`, manejador: (p) => cancelar(p.estado.obtener("rentas.ocupaciones", ocupacionesSemilla), p.params.oid) },

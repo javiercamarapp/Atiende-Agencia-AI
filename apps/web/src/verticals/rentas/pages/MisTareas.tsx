@@ -24,13 +24,14 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { AlertTriangle, ClipboardList, Plus } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone, Textarea, cn } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone, Textarea, cn, useConfirm } from "@atiende/ui";
 import {
   asignarTarea,
   completarChecklistItem,
   completarTarea,
   crearTareaManual,
   ESTADO_TAREA_LABELS,
+  fetchAsignables,
   fetchInventario,
   fetchTareaDetalle,
   fetchTareas,
@@ -42,8 +43,9 @@ import {
   SEVERIDAD_LABELS,
   TIPO_TAREA_LABELS,
 } from "../lib/limpieza-client.ts";
-import type { IncidenciaMantenimiento, ItemInventario, PrioridadTareaOperativa, SeveridadIncidencia, TareaOperativa, TareaOperativaDetalle, TipoTareaOperativa, UnidadOption } from "../lib/limpieza-client.ts";
+import type { AsignableLimpieza, IncidenciaMantenimiento, ItemInventario, PrioridadTareaOperativa, SeveridadIncidencia, TareaOperativa, TareaOperativaDetalle, TipoTareaOperativa, UnidadOption } from "../lib/limpieza-client.ts";
 import { ESTADO_TAREA_TONES } from "../lib/status-tones.ts";
+import { TareasSemana } from "../components/TareasSemana.tsx";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
 const LIMPIEZA_OPERACION_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "limpieza"]);
@@ -52,6 +54,9 @@ const LIMPIEZA_OPERACION_ROLES = new Set(["admin_gestora", "operador:acceso_tota
 // (que sí puede operar la tarea una vez creada). Mismo criterio de "gate en el
 // cliente solo por UX" que el resto del archivo: el servidor siempre re-valida.
 const LIMPIEZA_CREACION_MANUAL_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
+// Espejo de LIMPIEZA_ASIGNAR_A_OTROS_ROLES (paridad3): repartir el trabajo y ver el tablero de turnos del equipo es de gestión; el rol
+// `limpieza` solo se asigna a sí mismo (el servidor responde 403 con cualquier otra persona).
+const LIMPIEZA_ASIGNAR_A_OTROS_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
 // Espejo de LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES (Rn-05): quien reporta (limpieza) nunca confirma el bloqueo.
 const LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
 // Incidencias graves cuyo bloqueo de mantenimiento aún no se confirmó ni se cerró.
@@ -99,7 +104,10 @@ function TareaCard({ tarea, activo, onClick, accion }: { tarea: TareaOperativa; 
         <strong className="text-sm text-foreground">
           {TIPO_TAREA_LABELS[tarea.tipo]} — {tarea.unidadNombre}
         </strong>
-        {vencida ? <StatusBadge tone="danger">SLA vencido</StatusBadge> : <StatusBadge tone={statusTone(ESTADO_TAREA_TONES, tarea.estado)}>{ESTADO_TAREA_LABELS[tarea.estado]}</StatusBadge>}
+        <span className="flex flex-wrap items-center gap-1.5">
+          {tarea.esProveedorExterno && <StatusBadge tone="info">Proveedor externo</StatusBadge>}
+          {vencida ? <StatusBadge tone="danger">SLA vencido</StatusBadge> : <StatusBadge tone={statusTone(ESTADO_TAREA_TONES, tarea.estado)}>{ESTADO_TAREA_LABELS[tarea.estado]}</StatusBadge>}
+        </span>
       </div>
       <span className="text-xs text-muted-foreground">
         Programada: {tarea.programadaPara} · Prioridad: {PRIORIDAD_LABELS[tarea.prioridad]}
@@ -114,6 +122,8 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
   const puedeOperar = org ? LIMPIEZA_OPERACION_ROLES.has(org.rol) : false;
   const puedeCrearManual = org ? LIMPIEZA_CREACION_MANUAL_ROLES.has(org.rol) : false;
   const puedeConfirmarBloqueo = org ? LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES.has(org.rol) : false;
+  const puedeAsignarAOtros = org ? LIMPIEZA_ASIGNAR_A_OTROS_ROLES.has(org.rol) : false;
+  const { confirmar, dialogo } = useConfirm();
 
   const [misTareas, setMisTareas] = useState<readonly TareaOperativa[] | null>(null);
   const [sinAsignar, setSinAsignar] = useState<readonly TareaOperativa[] | null>(null);
@@ -142,6 +152,14 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
   const [bloqueoEnCurso, setBloqueoEnCurso] = useState<string | null>(null);
   const [bloqueoError, setBloqueoError] = useState<string | null>(null);
   const [bloqueoAviso, setBloqueoAviso] = useState<string | null>(null);
+
+  // Reparto del trabajo (solo gestión): personas asignables, la elegida, "proveedor externo" y la señal de recarga del tablero.
+  const [asignables, setAsignables] = useState<readonly AsignableLimpieza[]>([]);
+  const [asignablesDisponible, setAsignablesDisponible] = useState(true);
+  const [asignablesError, setAsignablesError] = useState<string | null>(null);
+  const [asignarA, setAsignarA] = useState("");
+  const [asignarProveedor, setAsignarProveedor] = useState(false);
+  const [recargaSemana, setRecargaSemana] = useState(0);
 
   const [mostrarFormNueva, setMostrarFormNueva] = useState(false);
   const [nuevaUnidadId, setNuevaUnidadId] = useState("");
@@ -182,6 +200,27 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
       });
   }, [puedeOperar, cargarListas, apiBaseUrl, token, propertyId]);
 
+  useEffect(() => {
+    if (!puedeOperar || !puedeAsignarAOtros) return;
+    let cancelado = false;
+    setAsignablesError(null);
+    fetchAsignables(fetch, apiBaseUrl, token, propertyId).then(
+      (r) => {
+        if (cancelado) return;
+        setAsignables(r.asignables);
+        setAsignablesDisponible(r.disponible);
+      },
+      (err: unknown) => {
+        if (cancelado) return;
+        setAsignables([]);
+        setAsignablesError(err instanceof Error ? err.message : "No se pudo cargar la lista de personas del equipo.");
+      },
+    );
+    return () => {
+      cancelado = true;
+    };
+  }, [puedeOperar, puedeAsignarAOtros, apiBaseUrl, token, propertyId]);
+
   const cargarDetalle = useCallback(
     async (tareaId: string) => {
       setDetalleError(null);
@@ -190,6 +229,8 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
         const t = await fetchTareaDetalle(fetch, apiBaseUrl, token, propertyId, tareaId);
         setDetalle(t);
         setConsumos([]);
+        setAsignarA(t.asignadoA ?? "");
+        setAsignarProveedor(t.esProveedorExterno);
         const items = await fetchInventario(fetch, apiBaseUrl, token, propertyId, t.unidadId);
         setInventario(items);
       } catch (err) {
@@ -204,11 +245,44 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
     void cargarDetalle(tareaId);
   }
 
+  const nombreDe = useCallback((id: string | null): string => (id === null ? "Sin asignar" : (asignables.find((a) => a.id === id)?.nombre || "Persona asignada")), [asignables]);
+
+  // Repartir la tarea a OTRA persona (solo gestión). Reasignar una tarea que YA tiene responsable pide confirmación: el dialogo
+  // descartado (Cancelar, cerrar o Escape) nunca llama al servidor. El 403/422 del servidor (rol, persona sin acceso) se muestra tal cual.
+  async function handleAsignarAOtro() {
+    if (!tareaSeleccionadaId || !detalle || !asignarA) return;
+    const cambiaPersona = detalle.asignadoA !== null && detalle.asignadoA !== asignarA;
+    if (cambiaPersona) {
+      const ok = await confirmar({
+        titulo: `Reasignar la tarea de ${detalle.unidadNombre}`,
+        descripcion: `Hoy la tiene ${nombreDe(detalle.asignadoA)}. Pasará a ${nombreDe(asignarA)}, que recibirá el aviso.`,
+        confirmar: "Reasignar",
+        cancelar: "Cancelar",
+      });
+      if (!ok) return;
+    }
+    setAccionEnCurso(true);
+    setDetalleError(null);
+    setAviso(null);
+    try {
+      const t = await asignarTarea(fetch, apiBaseUrl, token, propertyId, tareaSeleccionadaId, { asignadoA: asignarA, esProveedorExterno: asignarProveedor });
+      setDetalle(t);
+      setAviso(`Tarea asignada a ${nombreDe(asignarA)}.`);
+      await cargarListas();
+      setRecargaSemana((n) => n + 1);
+    } catch (err) {
+      setDetalleError(err instanceof Error ? err.message : "No se pudo asignar la tarea.");
+    } finally {
+      setAccionEnCurso(false);
+    }
+  }
+
   async function handleAsignarme(tareaId: string) {
     setAccionEnCurso(true);
     setListaError(null);
     try {
       await asignarTarea(fetch, apiBaseUrl, token, propertyId, tareaId, {});
+      setRecargaSemana((n) => n + 1);
       await cargarListas();
       handleSeleccionar(tareaId);
     } catch (err) {
@@ -250,13 +324,15 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
         .filter((c) => c.itemInventarioId && Number(c.cantidad) > 0)
         .map((c) => ({ itemInventarioId: c.itemInventarioId, cantidad: Number(c.cantidad) }));
       const resultado = await completarTarea(fetch, apiBaseUrl, token, propertyId, tareaSeleccionadaId, entradas);
+      await cargarListas();
+      // `cargarDetalle` limpia el aviso al empezar: el mensaje de exito se pone DESPUES de recargar (antes se borraba al instante y la
+      // persona no veia ninguna confirmacion de que la tarea quedo completada).
+      await cargarDetalle(tareaSeleccionadaId);
       setAviso(
         resultado.alertasStockBajo.length > 0
           ? `Tarea completada. Aviso: ${resultado.alertasStockBajo.length} ítem(s) de inventario cruzaron su umbral mínimo.`
           : "Tarea completada.",
       );
-      await cargarListas();
-      await cargarDetalle(tareaSeleccionadaId);
     } catch (err) {
       // El 409 real de "checklist_incompleto" (o cualquier otro error del servidor)
       // se muestra tal cual — nunca se silencia ni se finge éxito.
@@ -287,6 +363,7 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
       setNuevaUnidadId("");
       setNuevaProgramadaPara("");
       setMostrarFormNueva(false);
+      setRecargaSemana((n) => n + 1);
       await cargarListas();
       handleSeleccionar(tarea.id);
     } catch (err) {
@@ -479,6 +556,8 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
         </FormDialog>
       )}
 
+      {puedeAsignarAOtros && <TareasSemana apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} recarga={recargaSemana} />}
+
       <div className="flex gap-4 flex-wrap">
         <Card className="flex-[1_1_320px]">
           <CardHeader className="p-4 pb-2">
@@ -545,7 +624,47 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
                 </p>
                 <p className="m-0 text-sm text-foreground">
                   Estado: <strong>{ESTADO_TAREA_LABELS[detalle.estado]}</strong>
+                  {puedeAsignarAOtros && asignablesDisponible && (
+                    <>
+                      {" "}
+                      · Responsable: <strong>{nombreDe(detalle.asignadoA)}</strong>
+                    </>
+                  )}
+                  {detalle.esProveedorExterno && " · Proveedor externo"}
                 </p>
+
+                {puedeAsignarAOtros && detalle.estado !== "completada" && detalle.estado !== "cancelada" && (
+                  <div className="flex flex-col gap-2 rounded-lg border border-border p-2.5">
+                    <h3 className="m-0 text-sm font-semibold text-foreground">Asignar a…</h3>
+                    {asignablesError && (
+                      <p role="alert" className="m-0 text-sm text-destructive">
+                        {asignablesError}
+                      </p>
+                    )}
+                    {!asignablesError && !asignablesDisponible && (
+                      <p className="m-0 text-xs text-muted-foreground">No disponible aún: repartir tareas a otra persona requiere la migración 033 de rentas. Mientras tanto cada persona puede asignarse la suya.</p>
+                    )}
+                    {!asignablesError && asignablesDisponible && (
+                      <div className="flex flex-wrap items-end gap-2">
+                        <Label className={cn(LABEL_CLASES, "min-w-[14rem] flex-1")}>
+                          Persona
+                          <NativeSelect value={asignarA} onChange={(e) => setAsignarA(e.target.value)}>
+                            <option value="">Selecciona a quién asignar…</option>
+                            {asignables.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.nombre || "Persona sin nombre"}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                        </Label>
+                        <Checkbox checked={asignarProveedor} onChange={(e) => setAsignarProveedor(e.target.checked)} label={<span className="text-sm text-foreground">Proveedor externo</span>} />
+                        <Button type="button" size="sm" disabled={accionEnCurso || !asignarA} onClick={() => void handleAsignarAOtro()}>
+                          Asignar
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div>
                   <h3 className="text-sm font-semibold text-foreground mt-0 mb-2">Checklist</h3>
@@ -707,6 +826,7 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
           </CardContent>
         </Card>
       )}
+      {dialogo}
     </PageContainer>
   );
 }

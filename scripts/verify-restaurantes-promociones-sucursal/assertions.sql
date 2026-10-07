@@ -179,7 +179,8 @@ rollback;
 
 \echo '=== E1. BASE SIN MIGRAR: sin property_ids la lectura real del repositorio falla con 42703 y SAVEPOINT recupera la transaccion ==='
 begin;
-alter table restaurantes.promotions drop column property_ids;
+-- cascade: las policies de la migracion 042 dependen de property_ids; en una base sin migrar (sin 038 ni 041) no existen.
+alter table restaurantes.promotions drop column property_ids cascade;
 savepoint sp_verify_promociones_sucursal_lectura;
 do $$
 declare
@@ -202,7 +203,8 @@ rollback;
 
 \echo '=== E2. BASE SIN MIGRAR: crear una promocion con alcance falla con 42703 y SAVEPOINT recupera la transaccion ==='
 begin;
-alter table restaurantes.promotions drop column property_ids;
+-- cascade: las policies de la migracion 042 dependen de property_ids; en una base sin migrar (sin 038 ni 041) no existen.
+alter table restaurantes.promotions drop column property_ids cascade;
 savepoint sp_verify_promociones_sucursal_alta;
 do $$
 declare

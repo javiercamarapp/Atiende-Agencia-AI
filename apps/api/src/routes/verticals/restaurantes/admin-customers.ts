@@ -361,11 +361,15 @@ export function restaurantesAdminCustomersRoutes(deps: AppDeps): Hono<CoreAuthHo
   app.post("/v1/restaurantes/:propertyId/admin/customers/:customerId/orders/:orderId/falso", async (c) => {
     assertVerticalRole(c, MANAGER_ROLES);
     const repo = deps.restaurantesRepo(c.get("db"));
-    requireUuid(c.req.param("customerId"), "customerId");
+    const customerId = requireUuid(c.req.param("customerId"), "customerId");
     const orderId = requireUuid(c.req.param("orderId"), "orderId");
     const body = await readJsonCapped<Record<string, unknown>>(c.req.raw, 1024);
     if (typeof body.falso !== "boolean") throw Errors.validation("falso: se esperaba verdadero o falso.");
     try {
+      // QA R2 seguridad-05: el pedido debe ser de ESE cliente (antes el customerId de la URL solo se validaba como uuid). El alcance por
+      // sucursal de la membresia lo exige la base (cliente_marcar_pedido_falso, 075): fuera de alcance responde 404 igual que un pedido ajeno.
+      const ficha = await repo.getCustomerFicha(c.get("organizationId"), customerId);
+      if (!ficha || !ficha.orders.some((o) => o.id === orderId)) throw Errors.notFound("No encontrado.");
       const falso = await repo.markOrderFake(c.get("organizationId"), orderId, body.falso);
       await repo.registrarAuditoria({ organizationId: c.get("organizationId"), actorUserId: c.get("userId"), action: falso ? "pedido.marcado_falso" : "pedido.desmarcado_falso", entityType: "pedido", entityId: orderId, campo: "pedido_falso", antes: null, despues: falso ? "falso" : "normal" });
       return c.json({ falso });

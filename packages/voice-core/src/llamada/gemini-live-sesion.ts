@@ -9,7 +9,8 @@
 //
 // Seguridad: la API key va en la URL del WebSocket (asi lo pide el endpoint de servidor); la URL NUNCA se loguea. Los errores
 // que suben al controlador llevan un codigo corto, nunca el cuerpo del mensaje del proveedor.
-import { VOZ_PLATAFORMA } from "../config-plataforma.ts";
+import { VOZ_PLATAFORMA, costoDeUsoGeminiMicroUsd } from "../config-plataforma.ts";
+import type { ConfigPlataformaVoz, UsoGemini } from "../config-plataforma.ts";
 import { VozNoConfiguradaError, VozProveedorError } from "../provider.ts";
 import type { ToolDefinicion } from "./ejecutor-tools.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "./sesion.ts";
@@ -25,17 +26,44 @@ export interface SocketLive {
   /** Node >= 26 entrega los mensajes binarios como `Blob` por defecto; con "arraybuffer" llegan ya decodificables. */
   binaryType?: string;
 }
-export type CrearSocketLive = (url: string) => SocketLive;
+/** Opciones del socket: el WebSocket global de Node (undici) acepta `headers`; el endpoint de Vertex pide `Authorization: Bearer`. */
+export interface OpcionesSocketLive {
+  readonly headers?: Readonly<Record<string, string>>;
+}
+export type CrearSocketLive = (url: string, opciones?: OpcionesSocketLive) => SocketLive;
 
 export const GEMINI_LIVE_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 const MIME_AUDIO_ENTRADA = "audio/pcm;rate=16000";
 
+/** Adaptador de Vertex AI (listo y configurable, NO activado: hoy la llamada va por la Gemini API de pago). Se activa con `GEMINI_BACKEND=vertex` en el worker.
+ * Sin verificar contra Vertex real (no hay proyecto de GCP): URL, nombre de recurso del modelo y cabecera salen de la documentacion publica. */
+export interface VertexLiveOpciones {
+  readonly project: string;
+  readonly location: string;
+  /** Token de acceso OAuth vigente (cuenta de servicio / ADC); se pide al abrir CADA sesion para no usar uno vencido. */
+  readonly accessToken: () => Promise<string> | string;
+}
+
+export function vertexLiveWsUrl(location: string): string {
+  return `wss://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
+}
+
+export function vertexModelPath(v: Pick<VertexLiveOpciones, "project" | "location">, model: string): string {
+  return `projects/${v.project}/locations/${v.location}/publishers/google/models/${model}`;
+}
+
 export interface GeminiLiveSesionOpciones {
   readonly apiKey: string | null;
   readonly model: string;
+  /** Nombres de herramientas de SOLO LECTURA que pueden correr en paralelo cuando el modelo las pide juntas al inicio de un turno (el resto sigue en serie). */
+  readonly herramientasEnParalelo?: ReadonlySet<string>;
+  /** Sobreescribe el VAD de `VOZ_PLATAFORMA.gemini.vad` (campos sueltos; los demas conservan el valor de la plataforma). */
+  readonly vad?: Partial<ConfigPlataformaVoz["gemini"]["vad"]>;
+  /** Sobreescribe `VOZ_PLATAFORMA.gemini.usoReportado` (como se lee `usageMetadata`); por omision el de la plataforma. */
+  readonly usoReportado?: "por_turno" | "acumulado";
+  /** Presente = Vertex AI en lugar de la Gemini API (la `apiKey` no se usa). */
+  readonly vertex?: VertexLiveOpciones;
   readonly crearSocket?: CrearSocketLive;
-  /** Costo estimado por 1,000 tokens (micro-USD) para reportar `costo` desde `usageMetadata`; sin valor no se reporta costo. */
-  readonly costoPorMilTokensMicroUsd?: number;
   /** Tope de espera del `setupComplete`. */
   readonly setupTimeoutMs?: number;
 }
@@ -48,20 +76,36 @@ export function declaracionesDeHerramientas(defs: readonly ToolDefinicion[]) {
   });
 }
 
-export function mensajeSetup(model: string, apertura: AperturaLlamada) {
+/** Ruta de recurso del modelo en el setup: `models/<id>` en la Gemini API; `projects/.../publishers/google/models/<id>` en Vertex. */
+export function mensajeSetup(model: string, apertura: AperturaLlamada, vertex?: Pick<VertexLiveOpciones, "project" | "location">, vadOverride?: Partial<ConfigPlataformaVoz["gemini"]["vad"]>) {
+  const g = VOZ_PLATAFORMA.gemini;
+  // Gemini API: los modelos de audio nativo eligen el idioma solos y NO admiten `languageCode` (idioma = null, no se manda): el espanol de Mexico se fija
+  // en la instruccion. Vertex si lo admite (`idiomaVertex`, se manda). `languageCode` solo se incluye si la plataforma lo fija. `thinkingConfig` NUNCA se manda: `gemini-3.8-live` no admite `thinkingLevel` (solo la variante extended-thinking).
+  const languageCode = vertex ? g.idiomaVertex : g.idioma;
+  const vad = { ...g.vad, ...vadOverride };
   return {
     setup: {
-      model: `models/${model}`,
+      model: vertex ? vertexModelPath(vertex, model) : `models/${model}`,
       generationConfig: {
         responseModalities: ["AUDIO"],
-        // temperatura 0 (VOZ_PLATAFORMA): el agente vivo de PM corre determinista; `languageCode` solo si la plataforma lo fija.
-        temperature: VOZ_PLATAFORMA.gemini.temperatura,
+        // Temperatura de la organizacion (ajustes del agente); sin ajuste, 0 (VOZ_PLATAFORMA): el agente vivo de PM corre determinista.
+        temperature: typeof apertura.temperatura === "number" ? apertura.temperatura : g.temperatura,
         speechConfig: {
-          ...(VOZ_PLATAFORMA.gemini.idioma ? { languageCode: VOZ_PLATAFORMA.gemini.idioma } : {}),
+          ...(languageCode ? { languageCode } : {}),
           voiceConfig: { prebuiltVoiceConfig: { voiceName: apertura.voiceId } },
         },
       },
-      systemInstruction: { parts: [{ text: apertura.instruccion }] },
+      systemInstruction: { parts: [{ text: `${g.instruccionIdioma}\n\n${apertura.instruccion}` }] },
+      // VAD del servidor afinado para latencia: cierra el turno del cliente antes (`silenceDurationMs`) sin tocar el inicio de habla (barge-in).
+      realtimeInputConfig: {
+        automaticActivityDetection: {
+          disabled: false,
+          ...(vad.sensibilidadInicio ? { startOfSpeechSensitivity: vad.sensibilidadInicio } : {}),
+          ...(vad.sensibilidadFin ? { endOfSpeechSensitivity: vad.sensibilidadFin } : {}),
+          prefixPaddingMs: vad.prefijoMs,
+          silenceDurationMs: vad.silencioFinMs,
+        },
+      },
       tools: [{ functionDeclarations: declaracionesDeHerramientas(apertura.herramientas) }],
       inputAudioTranscription: {},
       outputAudioTranscription: {},
@@ -84,7 +128,7 @@ class SesionGemini implements VozSesionLlamada {
   private handle: string | null;
   private cerradaPorNosotros = false;
   private caidaAvisada = false;
-  private ultimoTotalTokens = 0;
+  private ultimoCostoAcumulado = 0;
   private esperando: (() => void)[] = [];
   private pendiente = false;
   private salidaAgente = "";
@@ -109,7 +153,7 @@ class SesionGemini implements VozSesionLlamada {
           reject(new VozProveedorError("Gemini no respondió al abrir la sesión (tiempo agotado)."));
         }
       }, this.opts.setupTimeoutMs ?? 10_000);
-      this.socket.onopen = () => this.socket.send(JSON.stringify(mensajeSetup(this.opts.model, apertura)));
+      this.socket.onopen = () => this.socket.send(JSON.stringify(mensajeSetup(this.opts.model, apertura, this.opts.vertex, this.opts.vad)));
       this.socket.onerror = () => {
         if (!listo) {
           clearTimeout(t);
@@ -231,12 +275,20 @@ class SesionGemini implements VozSesionLlamada {
     }
     const reanudacion = msg.sessionResumptionUpdate as { newHandle?: string; resumable?: boolean } | undefined;
     if (reanudacion?.newHandle && reanudacion.resumable !== false) this.handle = reanudacion.newHandle;
-    const uso = msg.usageMetadata as { totalTokenCount?: number } | undefined;
-    if (uso && typeof uso.totalTokenCount === "number" && this.opts.costoPorMilTokensMicroUsd !== undefined) {
-      const delta = Math.max(0, uso.totalTokenCount - this.ultimoTotalTokens);
-      this.ultimoTotalTokens = uso.totalTokenCount;
-      if (delta > 0) this.h.costo?.(Math.round((delta / 1000) * this.opts.costoPorMilTokensMicroUsd));
+    const uso = msg.usageMetadata as UsoGemini | undefined;
+    if (uso && typeof uso === "object") this.registrarUso(uso);
+  }
+
+  /** Costo REAL del turno desde `usageMetadata` (tokens que el proveedor informo; ver `VOZ_PLATAFORMA.gemini.usoReportado`). */
+  private registrarUso(uso: UsoGemini): void {
+    const config = VOZ_PLATAFORMA;
+    const costo = costoDeUsoGeminiMicroUsd(uso, config);
+    let delta = costo;
+    if ((this.opts.usoReportado ?? config.gemini.usoReportado) === "acumulado") {
+      delta = Math.max(0, costo - this.ultimoCostoAcumulado);
+      this.ultimoCostoAcumulado = Math.max(this.ultimoCostoAcumulado, costo);
     }
+    if (delta > 0) this.h.costo?.(delta, true);
   }
 
   private agenteDice(texto: string): void {
@@ -246,19 +298,24 @@ class SesionGemini implements VozSesionLlamada {
 
   private async herramientas(llamadas: { id?: string; name?: string; args?: Record<string, unknown> }[]): Promise<void> {
     this.pendiente = true;
-    // En SERIE y en el orden que pidio el modelo (equivale a `parallel_tool_calls: false` del agente vivo): una cotizacion y un
-    // crear_pedido pedidos juntos nunca corren a la vez ni compiten por el mismo estado del pedido.
-    const respuestas: { id: string; name: string; response: { output: unknown } | { error: string } }[] = [];
-    for (const [i, c] of llamadas.entries()) {
+    const ejecutarUna = async (c: { id?: string; name?: string; args?: Record<string, unknown> }, i: number): Promise<{ id: string; name: string; response: { output: unknown } | { error: string } }> => {
       const id = c.id ?? `call-${i}`;
       const nombre = c.name ?? "";
       try {
         const salida = await this.h.ejecutarTool({ id, nombre, args: c.args ?? {} });
-        respuestas.push({ id, name: nombre, response: { output: salida } });
+        return { id, name: nombre, response: { output: salida } };
       } catch {
-        respuestas.push({ id, name: nombre, response: { error: "Error interno al ejecutar la herramienta" } });
+        return { id, name: nombre, response: { error: "Error interno al ejecutar la herramienta" } };
       }
-    }
+    };
+    // En SERIE y en el orden que pidio el modelo (equivale a `parallel_tool_calls: false` del agente vivo): una cotizacion y un crear_pedido pedidos juntos nunca
+    // corren a la vez ni compiten por el mismo estado del pedido. UNICA excepcion (latencia): la racha INICIAL de herramientas de solo lectura declaradas en
+    // `herramientasEnParalelo` (buscar cliente / sucursal / producto, sin estado compartido ni dependencia entre si) corre en paralelo; las respuestas conservan el orden pedido.
+    const paralelas = this.opts.herramientasEnParalelo;
+    let racha = 0;
+    while (paralelas && racha < llamadas.length && paralelas.has(llamadas[racha]?.name ?? "")) racha++;
+    const respuestas = racha > 1 ? await Promise.all(llamadas.slice(0, racha).map((c, i) => ejecutarUna(c, i))) : [];
+    for (let i = respuestas.length; i < llamadas.length; i++) respuestas.push(await ejecutarUna(llamadas[i] as { id?: string; name?: string; args?: Record<string, unknown> }, i));
     if (this.cerradaPorNosotros) return;
     this.socket.send(JSON.stringify({ toolResponse: { functionResponses: respuestas } }));
   }
@@ -297,9 +354,21 @@ export interface ProveedorGeminiLlamada {
 export function crearProveedorGeminiLlamada(opts: GeminiLiveSesionOpciones): ProveedorGeminiLlamada {
   let actual: SesionGemini | null = null;
   const abrirSesion: AbrirSesionLlamada = async (apertura, manejadores) => {
-    if (!opts.apiKey) throw new VozNoConfiguradaError("Voz no configurada: falta GEMINI_API_KEY.");
     const crear = opts.crearSocket ?? crearSocketGlobal;
-    const socket = crear(`${GEMINI_LIVE_WS_URL}?key=${encodeURIComponent(opts.apiKey)}`);
+    let socket: SocketLive;
+    if (opts.vertex) {
+      let token: string;
+      try {
+        token = await opts.vertex.accessToken();
+      } catch {
+        throw new VozNoConfiguradaError("Voz no configurada: no se pudo obtener el token de acceso de Vertex AI.");
+      }
+      if (!token) throw new VozNoConfiguradaError("Voz no configurada: falta el token de acceso de Vertex AI.");
+      socket = crear(vertexLiveWsUrl(opts.vertex.location), { headers: { Authorization: `Bearer ${token}` } });
+    } else {
+      if (!opts.apiKey) throw new VozNoConfiguradaError("Voz no configurada: falta GEMINI_API_KEY.");
+      socket = crear(`${GEMINI_LIVE_WS_URL}?key=${encodeURIComponent(opts.apiKey)}`);
+    }
     const sesion = new SesionGemini(socket, manejadores, opts, apertura.reanudarHandle ?? null);
     await sesion.conectar(apertura);
     actual = sesion;
@@ -308,8 +377,9 @@ export function crearProveedorGeminiLlamada(opts: GeminiLiveSesionOpciones): Pro
   return { abrirSesion, inactivo: () => actual?.inactivo() ?? Promise.resolve() };
 }
 
-function crearSocketGlobal(url: string): SocketLive {
-  const WS = (globalThis as { WebSocket?: new (url: string) => SocketLive }).WebSocket;
+function crearSocketGlobal(url: string, opciones?: OpcionesSocketLive): SocketLive {
+  const WS = (globalThis as { WebSocket?: new (url: string, init?: unknown) => SocketLive }).WebSocket;
   if (!WS) throw new VozProveedorError("Este entorno no trae WebSocket (se requiere Node 22 o superior).");
-  return new WS(url);
+  // `headers` es la extension de undici (Node >= 22): sin cabeceras se usa la firma estandar.
+  return opciones?.headers ? new WS(url, { headers: opciones.headers }) : new WS(url);
 }

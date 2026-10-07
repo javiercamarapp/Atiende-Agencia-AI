@@ -139,6 +139,25 @@ export async function fetchTareas(fetchImpl: typeof fetch, apiBaseUrl: string, t
   return body.tareas;
 }
 
+/** Persona a quien se puede repartir una tarea de esta propiedad (miembro operativo con acceso a ella). */
+export interface AsignableLimpieza {
+  readonly id: string;
+  readonly nombre: string;
+  readonly rol: string;
+}
+
+export interface AsignablesRespuesta {
+  readonly asignables: readonly AsignableLimpieza[];
+  /** `false` si la base aun no tiene la migracion 033: no hay lista de personas (estado honesto, no un error). */
+  readonly disponible: boolean;
+}
+
+/** Personas asignables (selector "Asignar a..." y nombres del tablero de turnos). Solo gestion: limpieza recibe 403. */
+export async function fetchAsignables(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<AsignablesRespuesta> {
+  const body = await fetchJson<Partial<AsignablesRespuesta>>(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/tareas/asignables`, token);
+  return { asignables: body.asignables ?? [], disponible: body.disponible !== false };
+}
+
 export async function fetchTareaDetalle(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tareaId: string): Promise<TareaOperativaDetalle> {
   const body = await fetchJson<{ tarea: TareaOperativaDetalle }>(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/tareas/${tareaId}`, token);
   return body.tarea;
@@ -163,7 +182,8 @@ export async function crearTareaManual(fetchImpl: typeof fetch, apiBaseUrl: stri
 }
 
 /** Sin `input.asignadoA`, el servidor auto-asigna a quien llama (botón "Asignarme"
- *  de la cola "sin asignar"). */
+ *  de la cola "sin asignar"). Con `asignadoA` de OTRA persona: solo gestion (403 para `limpieza`) y la persona debe ser miembro con
+ *  acceso a la propiedad (422). */
 export async function asignarTarea(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,

@@ -46,6 +46,9 @@ export interface UnidadCatalogoRecord {
   readonly duracionMinimaNoches: number;
   readonly propietarioId: string | null;
   readonly propietarioNombre: string | null;
+  /** Responsable de limpieza por omision (`rentas.unidad.responsable_limpieza_default`, migracion 033): la tarea de limpieza de cada
+   *  checkout nace asignada a el. `null` = cola "Sin asignar". Base sin migrar: siempre `null`. */
+  readonly responsableLimpiezaId: string | null;
 }
 
 export type MotivoRechazoCatalogo = "sin_permiso" | "invalido" | "duplicado" | "regla_integridad" | "no_encontrado";

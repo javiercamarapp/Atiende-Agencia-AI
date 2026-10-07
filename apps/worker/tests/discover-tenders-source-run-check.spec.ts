@@ -24,7 +24,7 @@ function stubConnector(id: SourceConnectorId): LicitacionesSourceConnector {
 }
 
 /** Motor fake: una "transacción" por withRepo; committed solo si la sesión no quedó abortada. */
-function makeDb(opts: { migrated: boolean }) {
+function makeDb(opts: { migrated: boolean; auditMigrated?: boolean }) {
   const committedTenders: string[] = [];
   const committedRuns: string[] = [];
   const withRepo = async <T>(fn: (repo: LicitacionesRepository) => Promise<T>): Promise<T> => {
@@ -38,6 +38,18 @@ function makeDb(opts: { migrated: boolean }) {
           n += 1;
           pendingTenders.push(`t${n}`);
           return [{ out_id: `t${n}`, out_organization_id: ORG, out_title: "x", out_submission_deadline: null, out_updated_at: "2026-09-30T10:00:00.000Z", out_source: "yucatan_ocds", out_external_id: "e", out_contracting_body: null, out_cpv_codes: [], out_budget_amount: null, out_currency: "MXN", out_state: null, out_procedure_type_raw: null, out_status: "new", out_inserted: true }];
+        },
+      },
+      {
+        // L-P3-17: el alta de cada convocatoria nueva se anota en la bitacora (038). Sin la 038 la funcion no existe (42883) y el SAVEPOINT recupera.
+        match: /licitaciones\.append_audit/,
+        respond: () => {
+          if (opts.auditMigrated === false) {
+            const err = new Error("function licitaciones.append_audit(uuid, uuid, text, text, text, jsonb, jsonb, text) does not exist") as Error & { code: string };
+            err.code = "42883";
+            return err;
+          }
+          return [{ append_audit: "audit-1" }];
         },
       },
       {
@@ -75,6 +87,15 @@ function spyRegistry() {
 afterEach(() => vi.restoreAllMocks());
 
 describe("discover-tenders con yucatan_ocds/guadalajara_ocds", () => {
+  it("L-P3-17: base con 028 pero SIN la 038 (bitacora): los tenders y las corridas se PERSISTEN igual (SAVEPOINT, nunca 25P02)", async () => {
+    spyRegistry();
+    const db = makeDb({ migrated: true, auditMigrated: false });
+    const results = await runDiscoverTendersForOrganization(db.withRepo, ORG);
+    expect(db.committedTenders).toHaveLength(2);
+    expect(db.committedRuns).toHaveLength(2);
+    expect(results.every((r) => r.state === "ok")).toBe(true);
+  });
+
   it("base SIN migrar: los tenders de ambas fuentes se PERSISTEN, no hay source_run y el aviso es explícito (log + resultado)", async () => {
     spyRegistry();
     const db = makeDb({ migrated: false });

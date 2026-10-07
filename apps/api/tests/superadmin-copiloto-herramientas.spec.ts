@@ -24,7 +24,7 @@ const fila = (r: DataChatToolResult, i = 0): Record<string, string | number | nu
 const columna = (r: DataChatToolResult, key: string): (string | number | null)[] => r.rows.map((x) => (x as Record<string, string | number | null>)[key] ?? null);
 
 describe("catalogo de plataforma", () => {
-  it("el superadmin ve las 12 operativas y las 4 financieras; finanzas SOLO las 4 financieras", () => {
+  it("el superadmin ve las 17 operativas y las 5 financieras; finanzas SOLO las financieras", () => {
     const f = fuentesFalsas();
     const sa = buildCatalogoPlataforma(f, SCOPE_SUPERADMIN);
     expect(sa.vertical).toBe("plataforma");
@@ -49,6 +49,91 @@ describe("catalogo de plataforma", () => {
     await expect(c.describeScope!({ organizationId: "plataforma", userId: "u", vertical: "plataforma", verticalRole: "superadmin", allowedPropertyIds: null, timezone: "America/Mexico_City" }, new AbortController().signal)).resolves.toMatch(/Plataforma completa/);
     const fin = buildCatalogoPlataforma(fuentesFalsas(), SCOPE_FINANZAS);
     await expect(fin.describeScope!({ organizationId: "plataforma", userId: "u", vertical: "plataforma", verticalRole: "finanzas", allowedPropertyIds: null, timezone: "America/Mexico_City" }, new AbortController().signal)).resolves.toMatch(/solo lectura/);
+  });
+});
+
+describe("alcance multi-organizacion", () => {
+  const fuentesPm = () =>
+    fuentesFalsas({
+      organizaciones: async () =>
+        ok([
+          { id: "org-pm1", vertical: "restaurantes", name: "Los Taquitos de PM", slug: "los-taquitos-de-pm", status: "active" as const, createdAt: "2026-03-01T10:00:00.000Z", staffCount: 3 },
+          { id: "org-h1", vertical: "hoteles", name: "Hotel Mérida Centro", slug: "hotel-merida-centro", status: "active" as const, createdAt: "2026-04-01T10:00:00.000Z", staffCount: 2 },
+          { id: "org-h2", vertical: "hoteles", name: "Hotel Mérida Norte", slug: "hotel-merida-norte", status: "trial" as const, createdAt: "2026-05-01T10:00:00.000Z", staffCount: 1 },
+          { id: "org-r1", vertical: "restaurantes", name: "Cafe Merida", slug: "cafe-merida", status: "active" as const, createdAt: "2026-05-01T10:00:00.000Z", staffCount: 1 },
+        ]),
+    });
+
+  it("buscar_organizacion: «PM» resuelve la organizacion sin importar mayusculas y no expone ids ni contacto", async () => {
+    const r = await correr(fuentesPm(), "buscar_organizacion", { nombre: "PM" });
+    expect(columna(r, "organizacion")).toEqual(["Los Taquitos de PM"]);
+    expect(r.summary).toMatch(/^Una organización coincide/);
+    expect(r.columns.map((c) => c.key)).toEqual(["organizacion", "vertical", "estado", "personal", "alta"]);
+    expect(JSON.stringify(r)).not.toMatch(/org-pm1|slug|@|telefono/i);
+  });
+
+  it("buscar_organizacion: «el hotel de Mérida» acota la vertical por la palabra y es insensible a acentos; varias coincidencias piden elegir", async () => {
+    const r = await correr(fuentesPm(), "buscar_organizacion", { nombre: "el hotel de Merida" });
+    expect(columna(r, "organizacion")).toEqual(["Hotel Mérida Centro", "Hotel Mérida Norte"]);
+    expect(r.summary).toMatch(/pide al usuario que elija/);
+    const una = await correr(fuentesPm(), "buscar_organizacion", { nombre: "hotel Mérida", estado: "trial" });
+    expect(columna(una, "organizacion")).toEqual(["Hotel Mérida Norte"]);
+  });
+
+  it("buscar_organizacion: sin coincidencias dice que ninguna coincide (no inventa) y sin fuente es 'no tengo el dato'", async () => {
+    const r = await correr(fuentesPm(), "buscar_organizacion", { nombre: "Inexistente" });
+    expect(r.status).toBe("empty");
+    expect(r.summary).toMatch(/^Ninguna organización coincide/);
+    const sin = await correr(fuentesFalsas({ organizaciones: async () => ({ ok: false, razon: "no_migrado" as RazonFuente }) }), "buscar_organizacion", { nombre: "PM" });
+    expect(sin.status).toBe("unavailable");
+    expect(sin.message).toMatch(/^No tengo el dato/);
+  });
+
+  it("ranking_organizaciones: ordena por costo de IA, por llamadas o por personal, totaliza por vertical y respeta el limite", async () => {
+    const f = fuentesFalsas();
+    const costo = await correr(f, "ranking_organizaciones", { periodo: "este_mes" });
+    // Posada Sol existe pero no tiene gasto de IA: aparece con 0 y el resumen separa "organizaciones" de "con gasto de IA".
+    expect(columna(costo, "organizacion")).toEqual(["Taquería Don Beto", "Hotel Bahía", "Posada Sol"]);
+    expect(columna(costo, "posicion")).toEqual([1, 2, 3]);
+    expect(fila(costo, 2)["costo_usd"]).toBe(0);
+    expect(fila(costo, 2)["llamadas_ia"]).toBe(0);
+    expect(costo.summary).toBe("3 organizaciones, 2 con gasto de IA en el periodo. Por vertical: restaurantes: 3.5 USD en 1 organización; hoteles: 1.5 USD en 2 organizaciones.");
+    const personal = await correr(f, "ranking_organizaciones", { periodo: "este_mes", ordenar_por: "personal", limite: 1 });
+    expect(columna(personal, "organizacion")).toEqual(["Taquería Don Beto"]);
+    const hoteles = await correr(f, "ranking_organizaciones", { periodo: "este_mes", vertical: "hoteles" });
+    expect(columna(hoteles, "organizacion")).toEqual(["Hotel Bahía", "Posada Sol"]);
+    expect(JSON.stringify(costo)).not.toMatch(/org-a|org-b/);
+  });
+
+  it("ranking_organizaciones: sin la lista de organizaciones dice 'no tengo el dato' (no ofrece un ranking parcial)", async () => {
+    const r = await correr(fuentesFalsas({ organizaciones: async () => ({ ok: false, razon: "no_migrado" as RazonFuente }) }), "ranking_organizaciones", { periodo: "este_mes" });
+    expect(r.status).toBe("unavailable");
+  });
+
+  it("buscar_organizacion: la palabra de vertical tambien cuenta como nombre cuando esta en el nombre de otra vertical", async () => {
+    const f = fuentesFalsas({
+      organizaciones: async () =>
+        ok([
+          { id: "o1", vertical: "restaurantes", name: "Hotel Rosa Café", slug: "hotel-rosa-cafe", status: "active" as const, createdAt: "2026-03-01T10:00:00.000Z", staffCount: 1 },
+          { id: "o2", vertical: "hoteles", name: "Casa Rosa", slug: "casa-rosa", status: "active" as const, createdAt: "2026-03-02T10:00:00.000Z", staffCount: 1 },
+          { id: "o3", vertical: "restaurantes", name: "Rosa Taqueria", slug: "rosa-taqueria", status: "active" as const, createdAt: "2026-03-03T10:00:00.000Z", staffCount: 1 },
+        ]),
+    });
+    const r = await correr(f, "buscar_organizacion", { nombre: "hotel Rosa" });
+    expect(columna(r, "organizacion")).toEqual(["Casa Rosa", "Hotel Rosa Café"]);
+    const explicita = await correr(f, "buscar_organizacion", { nombre: "hotel Rosa", vertical: "hoteles" });
+    expect(columna(explicita, "organizacion")).toEqual(["Casa Rosa"]);
+  });
+
+  it("ranking_organizaciones: sin la fuente de gasto dice 'no tengo el dato'", async () => {
+    const r = await correr(fuentesFalsas({ llmPorOrganizacion: async () => ({ ok: false, razon: "error" as RazonFuente }) }), "ranking_organizaciones", { periodo: "este_mes" });
+    expect(r.status).toBe("unavailable");
+  });
+
+  it("el rol finanzas no ve las herramientas multi-organizacion", () => {
+    const nombres = buildCatalogoPlataforma(fuentesFalsas(), SCOPE_FINANZAS).tools.map((t) => t.name);
+    expect(nombres).not.toContain("buscar_organizacion");
+    expect(nombres).not.toContain("ranking_organizaciones");
   });
 });
 
@@ -263,7 +348,8 @@ describe("herramientas operativas", () => {
       prospectos: rota,
     });
     for (const nombre of HERRAMIENTAS_OPERATIVAS) {
-      const r = await correr(f, nombre, nombre === "costos_ia" || nombre === "uso_por_vertical" || nombre === "uso_copiloto" ? { periodo: "hoy" } : {});
+      const conPeriodo = ["costos_ia", "uso_por_vertical", "uso_copiloto", "ranking_organizaciones", "ranking_actividad", "operaciones_organizacion", "agentes_organizacion"].includes(nombre);
+      const r = await correr(f, nombre, { ...(conPeriodo ? { periodo: "hoy" } : {}), ...(nombre === "operaciones_organizacion" || nombre === "agentes_organizacion" ? { organizacion: "Taquería Don Beto" } : {}) });
       expect(r.status, nombre).toBe("unavailable");
       expect(r.message, nombre).toMatch(/^No tengo el dato/);
       expect(r.rows, nombre).toEqual([]);
@@ -358,6 +444,22 @@ describe("herramientas financieras (Copiloto CFO)", () => {
     expect(rota.message).toMatch(/^No tengo el dato/);
   });
 
+  it("facturacion_cobranza: cuenta por estado de cobro, pone primero el pago pendiente y NO expone correos ni ids de Stripe", async () => {
+    const r = await correr(fuentesFalsas(), "facturacion_cobranza");
+    expect(r.status).toBe("ok");
+    expect(r.summary).toBe("3 organizaciones: 1 con suscripción activa, 1 con pago pendiente, 0 canceladas y 1 sin suscripción.");
+    expect(r.rows).toHaveLength(3);
+    expect(fila(r)).toMatchObject({ organizacion: "Hotel Bahía", estado_cobro: "pago_pendiente", asientos: 1, periodo_hasta: "2026-10-05" });
+    expect(r.columns.map((c) => c.key)).toEqual(["organizacion", "vertical", "estado_cobro", "asientos", "periodo_hasta"]);
+    expect(JSON.stringify(r)).not.toMatch(/cus_|sub_|price_/);
+    const morosas = await correr(fuentesFalsas(), "facturacion_cobranza", { estado: "pago_pendiente" });
+    expect(morosas.rows).toHaveLength(1);
+    expect(morosas.source).toMatch(/estado=pago_pendiente/);
+    const rota = await correr(fuentesFalsas({ facturacion: async () => ({ ok: false, razon: "no_migrado" }) }), "facturacion_cobranza");
+    expect(rota.status).toBe("unavailable");
+    expect(rota.message).toMatch(/^No tengo el dato/);
+  });
+
   it("SIN step-up ninguna herramienta financiera devuelve cifras: deja una fila 'denegado' y NO una de 'consulta'", async () => {
     const f = fuentesFalsas();
     const sinStepUp = { ...SCOPE_SUPERADMIN, stepUp: false };
@@ -367,7 +469,7 @@ describe("herramientas financieras (Copiloto CFO)", () => {
       expect(r.message, nombre).toMatch(/^No tengo el dato: las consultas financieras exigen verificar tu código MFA/);
       expect(r.rows, nombre).toEqual([]);
     }
-    expect(f.accesosCfo.map((a) => a.accion)).toEqual(["denegado", "denegado", "denegado", "denegado"]);
+    expect(f.accesosCfo.map((a) => a.accion)).toEqual(HERRAMIENTAS_FINANCIERAS.map(() => "denegado"));
     expect(f.accesosCfo.map((a) => a.recurso)).toEqual(HERRAMIENTAS_FINANCIERAS.map((n) => `copiloto/${n} (sin step-up)`));
   });
 

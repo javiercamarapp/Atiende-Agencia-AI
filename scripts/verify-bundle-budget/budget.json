@@ -1,0 +1,10 @@
+{
+  "_comentario": "Presupuesto de JS por ruta, en bytes gzip nivel 6: entrada + imports estaticos + el chunk propio (lo que el navegador descarga ANTES de poder pintar la ruta). Medido el 4-oct-2026 tras la carga perezosa por ruta (R-37); cada tope deja ~10% de margen. Subirlo exige justificarlo en el PR.",
+  "rutas": [
+    { "clave": "index.html", "nombre": "entrada (toda ruta)", "maxGzipBytes": 165000 },
+    { "clave": "src/verticals/restaurantes/storefront/RestaurantePage.tsx", "nombre": "storefront /pedir/:orgSlug", "maxGzipBytes": 170000 },
+    { "clave": "src/verticals/restaurantes/storefront/SucursalPage.tsx", "nombre": "storefront /pedir/:orgSlug/:branchSlug", "maxGzipBytes": 178000 },
+    { "clave": "src/verticals/restaurantes/storefront/RastreoPage.tsx", "nombre": "storefront rastreo de pedido", "maxGzipBytes": 170000 },
+    { "clave": "src/verticals/restaurantes/storefront/PrivacidadStorefront.tsx", "nombre": "storefront privacidad", "maxGzipBytes": 166000 }
+  ]
+}

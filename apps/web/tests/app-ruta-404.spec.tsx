@@ -6,7 +6,7 @@
 // sobre la URL de jsdom) y se verifica el comportamiento de ruteo.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "../src/App.tsx";
-import { renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { esperarRutaCargada, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
 let rendered: RenderedComponent | undefined;
@@ -22,14 +22,16 @@ afterEach(() => {
   window.history.pushState({}, "", "/");
 });
 
-function renderEn(ruta: string): RenderedComponent {
+async function renderEn(ruta: string): Promise<RenderedComponent> {
   window.history.pushState({}, "", ruta);
-  return renderComponent(<App />);
+  const r = renderComponent(<App />);
+  await esperarRutaCargada(r.container);
+  return r;
 }
 
 describe("App — ruta 404", () => {
-  it.each(["/configuracion", "/no-existe", "/hoteles/demo/ruta-que-no-existe"])("%s muestra la pantalla 404 con enlace real de vuelta", (ruta) => {
-    rendered = renderEn(ruta);
+  it.each(["/configuracion", "/no-existe", "/hoteles/demo/ruta-que-no-existe"])("%s muestra la pantalla 404 con enlace real de vuelta", async (ruta) => {
+    rendered = await renderEn(ruta);
     const h1 = rendered.container.querySelector("h1");
     expect(h1?.textContent).toBe("No encontramos esta página");
     expect(rendered.container.textContent).toContain(ruta);
@@ -37,8 +39,8 @@ describe("App — ruta 404", () => {
     expect(volver?.getAttribute("href")).toBe("/");
   });
 
-  it("las rutas reales siguen resolviendo a su pagina (/terminos no cae en 404)", () => {
-    rendered = renderEn("/terminos");
+  it("las rutas reales siguen resolviendo a su pagina (/terminos no cae en 404)", async () => {
+    rendered = await renderEn("/terminos");
     expect(rendered.container.querySelector("h1")?.textContent).toBe("Términos de Servicio");
   });
 });

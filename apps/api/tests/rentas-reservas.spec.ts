@@ -212,6 +212,52 @@ describe("POST /rentas/:propertyId/unidades/:unidadId/reservas/:ocupacionId/canc
     expect(body.estadoAnterior).toBe("confirmado");
   });
 
+  it("Rn-P3-29 (adversarial): NUNCA cancela una reserva de canal externo -- 409 reserva_no_directa y las noches siguen ocupadas", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const canalAirbnb = ctx.engine.calendarStore.findCanalPorCodigo("airbnb")!;
+    const externa = await ctx.engine.withAppSession({ userId: null }, (session: TenantDbSession) =>
+      crearReservaConfirmada(session, {
+        organizationId: ctx.organizationId,
+        propertyId: ctx.propertyId,
+        unidadId: ctx.unidadId,
+        rango: { inicio: "2026-07-01", fin: "2026-07-05" },
+        estado: "confirmado",
+        bloqueante: true,
+        canalOrigenId: canalAirbnb.id,
+        externalId: "airbnb-externa-cancelar",
+      }),
+    );
+
+    const res = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/reservas/${externa.ocupacionId}/cancelar`, authedJson(ctx.staff.adminGestora.token, {}));
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code: string }).code).toBe("reserva_no_directa");
+
+    // La reserva sigue confirmada: un segundo intento de reservar las mismas noches sigue chocando.
+    const solape = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/reservas`, authedJson(ctx.staff.adminGestora.token, { rango: { inicio: "2026-07-02", fin: "2026-07-04" } }));
+    expect(solape.status).toBe(409);
+  });
+
+  it("Rn-P3-29: una reserva del canal 'manual' SI se cancela -- 200", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const canalManual = ctx.engine.calendarStore.findCanalPorCodigo("manual")!;
+    const directa = await ctx.engine.withAppSession({ userId: null }, (session: TenantDbSession) =>
+      crearReservaConfirmada(session, {
+        organizationId: ctx.organizationId,
+        propertyId: ctx.propertyId,
+        unidadId: ctx.unidadId,
+        rango: { inicio: "2026-09-01", fin: "2026-09-05" },
+        estado: "confirmado",
+        bloqueante: true,
+        canalOrigenId: canalManual.id,
+        externalId: null,
+      }),
+    );
+    const res = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/reservas/${directa.ocupacionId}/cancelar`, authedJson(ctx.staff.adminGestora.token, {}));
+    expect(res.status).toBe(200);
+  });
+
   it("cancelar exige el rol más estricto (H-018): operador:solo_calendario NO puede cancelar -- 403", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const app = buildApp(ctx.deps);

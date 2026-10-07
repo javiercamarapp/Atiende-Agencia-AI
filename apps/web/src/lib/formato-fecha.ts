@@ -3,8 +3,11 @@
 // propio `toLocaleDateString` (mismo criterio de "un solo lugar" que
 // `useNotifications.ts`). `BarraPagina` en sí NO formatea fechas a
 // propósito (ver su comentario de cabecera) -- esto vive aquí, no ahí.
-export function fechaCortaEsMx(fecha: Date = new Date()): string {
-  return fecha.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
+//
+// Se formatea en la zona del negocio (default de plataforma `America/Mexico_City`, igual que `fechaHoraEsMx`), NO en la del
+// navegador: a las 7 p. m. de Ciudad de Mexico el UTC ya es "mañana" y un navegador en otra zona mostraria otro dia.
+export function fechaCortaEsMx(fecha: Date = new Date(), zonaHoraria: string = "America/Mexico_City"): string {
+  return fecha.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: zonaHoraria });
 }
 
 // Fecha y hora real de un timestamp (con hora), en la zona del negocio ("2 oct 2026, 8:15 p.m."). Compartida por la

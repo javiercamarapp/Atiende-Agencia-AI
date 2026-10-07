@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App.tsx";
 import { crearClienteStorefront, MENSAJE_RED, MENSAJE_RESPUESTA_INVALIDA, MENSAJE_TIEMPO_AGOTADO, StorefrontError } from "../src/verticals/restaurantes/storefront/storefront-client.ts";
 import { textoPago } from "../src/verticals/restaurantes/storefront/RastreoPage.tsx";
-import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
+import { esperarRutaCargada, changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -90,17 +90,21 @@ describe("textoPago (caos-12)", () => {
   });
 });
 
-function esperar(): Promise<void> {
-  return act(async () => {
+async function esperar(): Promise<void> {
+  await act(async () => {
     await flushMicrotasks();
     await flushMicrotasks();
     await flushMicrotasks();
   });
+  // R-37: tras navegar (p. ej. al seguimiento del pedido) la pantalla destino es un chunk lazy.
+  await esperarRutaCargada(document.body);
 }
 
-function renderEn(ruta: string): RenderedComponent {
+async function renderEn(ruta: string): Promise<RenderedComponent> {
   window.history.pushState({}, "", ruta);
-  return renderComponent(<App />);
+  const r = renderComponent(<App />);
+  await esperarRutaCargada(r.container);
+  return r;
 }
 
 const SUCURSAL = { slug: "centro", name: "Centro", address: "Calle 1 #100", phone: null, abiertoAhora: true, cierraA: "01:00", proximaApertura: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null, zonasReparto: [] };
@@ -125,7 +129,7 @@ afterEach(() => {
 describe("rastreo publico", () => {
   it("caos-10: un pedido listo_para_recoger muestra 'Listo para recoger', nunca la clave interna", async () => {
     fetchMock.mockResolvedValue(json(pedido({ status: "listo_para_recoger" })));
-    rendered = renderEn("/pedir/demo/pedido/t1.a.b");
+    rendered = await renderEn("/pedir/demo/pedido/t1.a.b");
     await esperar();
     const texto = rendered.container.textContent ?? "";
     expect(texto).toContain("Listo para recoger");
@@ -136,7 +140,7 @@ describe("rastreo publico", () => {
   it("caos-10: no_recogido y programado tambien tienen etiqueta en espanol", async () => {
     for (const [status, etiqueta] of [["no_recogido", "No se recogió a tiempo"], ["programado", "Programado"]] as const) {
       fetchMock.mockResolvedValue(json(pedido({ status })));
-      rendered = renderEn("/pedir/demo/pedido/t1.a.b");
+      rendered = await renderEn("/pedir/demo/pedido/t1.a.b");
       await esperar();
       expect(rendered.container.textContent).toContain(etiqueta);
       expect(rendered.container.textContent).not.toContain(status);
@@ -147,7 +151,7 @@ describe("rastreo publico", () => {
 
   it("caos-12: a domicilio dice que se paga al repartidor, no 'en la sucursal'", async () => {
     fetchMock.mockResolvedValue(json(pedido({ status: "en_camino", canal: "domicilio", total: 250 })));
-    rendered = renderEn("/pedir/demo/pedido/t1.a.b");
+    rendered = await renderEn("/pedir/demo/pedido/t1.a.b");
     await esperar();
     const texto = rendered.container.textContent ?? "";
     expect(texto).toContain("Va a domicilio.");
@@ -158,7 +162,7 @@ describe("rastreo publico", () => {
   it("caos-11: un fallo transitorio del sondeo conserva el ultimo estado conocido con un aviso discreto, y se recupera solo", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     fetchMock.mockResolvedValueOnce(json(pedido({ status: "preparando" }))).mockResolvedValueOnce(json({ message: "Servicio no disponible" }, 503)).mockResolvedValue(json(pedido({ status: "listo_para_recoger" })));
-    rendered = renderEn("/pedir/demo/pedido/t1.a.b");
+    rendered = await renderEn("/pedir/demo/pedido/t1.a.b");
     await esperar();
     expect(rendered.container.textContent).toContain("Preparando tu pedido");
     await act(async () => {
@@ -182,7 +186,7 @@ describe("rastreo publico", () => {
 
   it("si el PRIMER sondeo falla (nunca se mostro el pedido) si se muestra el error con reintento", async () => {
     fetchMock.mockResolvedValue(json({ message: "Servicio no disponible" }, 503));
-    rendered = renderEn("/pedir/demo/pedido/t1.a.b");
+    rendered = await renderEn("/pedir/demo/pedido/t1.a.b");
     await esperar();
     expect(rendered.container.textContent).toContain("Servicio no disponible");
   });
@@ -190,7 +194,7 @@ describe("rastreo publico", () => {
 
 describe("checkout: errores de red y pedido ya registrado", () => {
   async function llenarYRevisar(): Promise<HTMLElement> {
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     act(() => click(rendered!.container.querySelector<HTMLButtonElement>('button[aria-label="Agregar Sol al carrito"]')!));
     act(() => click(rendered!.container.querySelector<HTMLInputElement>('input[name="pago"][value="efectivo"]')!));
@@ -198,7 +202,8 @@ describe("checkout: errores de red y pedido ya registrado", () => {
     const campo = (label: string) => aside.querySelector<HTMLInputElement>(`#${(Array.from(aside.querySelectorAll("label")).find((l) => l.textContent?.startsWith(label)) as HTMLLabelElement).htmlFor}`)!;
     act(() => changeValue(campo("Nombre"), "Ana Pérez"));
     act(() => changeValue(campo("Teléfono"), "999 123 4567"));
-    act(() => click(aside.querySelectorAll<HTMLInputElement>("input[type=checkbox]")[0]!));
+    // El aviso de privacidad es SIEMPRE el ultimo checkbox (antes va, opcional y desmarcada, la casilla de promociones).
+    act(() => click([...aside.querySelectorAll<HTMLInputElement>("input[type=checkbox]")].at(-1)!));
     await act(async () => submitForm(aside.querySelector("form")!));
     await esperar();
     return aside;

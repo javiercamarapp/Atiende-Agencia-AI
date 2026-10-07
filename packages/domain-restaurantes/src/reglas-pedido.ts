@@ -6,15 +6,24 @@
 // Las lecturas van por `repo.find*`/`repo.list*`, que degradan con SAVEPOINT contra la base
 // sin migrar (ver PostgresRestaurantesRepository): este modulo nunca captura SQLSTATE por
 // su cuenta porque corre dentro de la transaccion unica del request.
-import { aperturaConExcepciones, fechaAnterior, fechaLocal, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
+import { aperturaConExcepciones, componentesLocales, fechaAnterior, fechaLocal, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { normalizeZoneText } from "./nearest-branch.ts";
 import type { RestaurantesRepository } from "./repository.ts";
+import { evaluarDomicilioSucursal, mensajeDomicilioNoDisponible } from "./domicilio-sucursal.ts";
 import type { Branch, BranchPolicy, CanalPedido, KnownZone, PropinaPolitica } from "./types.ts";
 
 export const COLONIA_FUERA_DE_VERIFICACION_MENSAJE =
   "No reconozco esa colonia para verificar la zona de reparto: pida otra referencia cercana (colonia vecina, cruce de calles o plaza conocida) e inténtelo de nuevo.";
+
+/** ¿Alguna sucursal de la organizacion tiene la zona en su cobertura de entrega? */
+async function algunaSucursalCubre(repo: RestaurantesRepository, organizationId: string, zoneId: string): Promise<boolean> {
+  for (const b of await repo.listBranchesForOrganizationAdmin(organizationId)) {
+    if ((await repo.listBranchDeliveryZoneIds(b.propertyId)).includes(zoneId)) return true;
+  }
+  return false;
+}
 
 /** `undefined` -> "domicilio" (comportamiento historico); cualquier otro valor fuera del
  * catalogo se rechaza en vez de caer en silencio a un canal. */
@@ -44,6 +53,9 @@ export function matchKnownZone(zones: readonly KnownZone[], colonia: string): Kn
   for (const zone of zones) {
     const name = normalizeZoneText(zone.name);
     if (!name) continue;
+    // La zona cuyo nombre normalizado ES lo dicho gana siempre (misma regla que la funcion SQL, migracion 056): sin esto "Centro" caia en
+    // "Centro Chichi Suarez" y "Montebello" en "Montebello II" solo por tener el nombre mas largo.
+    if (name === input) return zone;
     // La colonia escrita contiene la zona conocida (zona >= 3 letras), o la zona contiene lo escrito (fragmento >= LARGO_MIN_COLONIA).
     if ((name.length >= 3 && input.includes(name)) || (input.length >= LARGO_MIN_COLONIA && name.includes(input))) {
       if (!best || zone.name.length > best.name.length) best = zone;
@@ -113,6 +125,14 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
     }
   }
 
+  // Migracion 057: domicilio por sucursal (solo recoger o solo ciertos dias). El dia es el de NEGOCIO de la sucursal
+  // (en su zona horaria; la cola de un turno que cruza la medianoche cuenta para el dia en que empezo).
+  if (canal === "domicilio") {
+    const diaEntrega = diaNegocio ?? componentesLocales(ahora, zona).dia;
+    const estadoDomicilio = evaluarDomicilioSucursal(policy, diaEntrega);
+    if (!estadoDomicilio.acepta) throw new OrderValidationError(mensajeDomicilioNoDisponible(branch.name, policy, estadoDomicilio));
+  }
+
   const pedidoMinimo = canal === "domicilio" ? policy.pedidoMinimoDomicilio : policy.pedidoMinimoRecoger;
   if (pedidoMinimo !== null && subtotal < pedidoMinimo) {
     const faltante = Math.round((pedidoMinimo - subtotal) * 100) / 100;
@@ -135,6 +155,14 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
       const match = matchKnownZone(zones, colonia);
       if (!match) throw new OrderValidationError(COLONIA_FUERA_DE_VERIFICACION_MENSAJE);
       if (!zoneIds.includes(match.id)) {
+        // Colonia conocida que NINGUNA sucursal cubre todavia (ambigua entre dos sucursales o sin asignar): no es "fuera de zona", es una zona
+        // por confirmar. No se rechaza como si el cliente estuviera lejos: se ofrece recoger o se pasa a una persona.
+        if (!(await algunaSucursalCubre(repo, branch.organizationId, match.id))) {
+          throw new OrderValidationError(
+            `${match.name} está fuera de la zona de reparto de ${branch.name}: todavía no tiene una sucursal de reparto asignada, así que no puedo confirmar el domicilio a esa colonia. ` +
+              `Ofrezca recoger en sucursal o pase el pedido con una persona del negocio para que confirme la zona.`,
+          );
+        }
         throw new OrderValidationError(
           `${match.name} está fuera de la zona de reparto de ${branch.name}: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.`,
         );

@@ -10,12 +10,23 @@ interface Regla {
 }
 const config = JSON.parse(readFileSync(resolve(__dirname, "../../../vercel.json"), "utf8")) as { headers?: Regla[] };
 const reglas = config.headers ?? [];
-const todas = new Map(reglas.flatMap((r) => r.headers.map((h) => [h.key.toLowerCase(), h.value] as const)));
+// Reglas globales (todas las rutas); la unica excepcion declarada es /pedir/* (ver abajo).
+const reglasGlobales = reglas.filter((r) => r.source === "/(.*)");
+const todas = new Map(reglasGlobales.flatMap((r) => r.headers.map((h) => [h.key.toLowerCase(), h.value] as const)));
 
 describe("vercel.json headers", () => {
-  it("aplica a todas las rutas", () => {
-    expect(reglas.length).toBeGreaterThan(0);
-    expect(reglas.every((r) => r.source === "/(.*)")).toBe(true);
+  it("aplica a todas las rutas, salvo la excepcion de geolocalizacion de /pedir/*", () => {
+    expect(reglasGlobales.length).toBeGreaterThan(0);
+    expect(reglas.filter((r) => r.source !== "/(.*)").map((r) => r.source)).toEqual(["/pedir/(.*)"]);
+  });
+
+  it("geolocation esta deshabilitada en todo el sitio y solo /pedir/* la permite a su propia pagina, sin tocar nada mas", () => {
+    expect(todas.get("permissions-policy")).toContain("geolocation=()");
+    const pedir = reglas.find((r) => r.source === "/pedir/(.*)")!;
+    expect(pedir.headers.map((h) => h.key)).toEqual(["Permissions-Policy"]);
+    expect(pedir.headers[0]!.value).toContain("geolocation=(self)");
+    expect(pedir.headers[0]!.value).toContain("camera=()");
+    expect(pedir.headers[0]!.value).toContain("microphone=()");
   });
 
   it("HSTS, nosniff, anti-framing, Referrer-Policy, Permissions-Policy y COOP van enforcing", () => {

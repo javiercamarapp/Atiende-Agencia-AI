@@ -80,6 +80,18 @@ const G_TEXTO_AGENTE: Grader = (l) => {
   return ok("G_TEXTO_AGENTE");
 };
 
+/** Lo que el guion exige (`decir`) o prohibe (`noDecir`) en las palabras del agente; sin esas claves no evalua nada. Mira solo lo que DIJO el agente. */
+const G_TEXTO_ESPERADO: Grader = (l) => {
+  const { decir, noDecir } = l.guion.esperado;
+  const dicho = l.transcripcion.filter((t) => t.rol === "agente").map((t) => t.texto);
+  for (const re of noDecir ?? []) {
+    const t = dicho.find((x) => re.test(x));
+    if (t !== undefined) return mal("G_TEXTO_ESPERADO", `el agente dijo algo prohibido (${re}): ${t.slice(0, 100)}`);
+  }
+  for (const re of decir ?? []) if (!dicho.some((x) => re.test(x))) return mal("G_TEXTO_ESPERADO", `el agente no dijo lo esperado (${re})`);
+  return ok("G_TEXTO_ESPERADO");
+};
+
 const G_TOOLS = graderTools(DEFINICIONES_VOZ_HOTELES.map((t) => t.name));
 const G_SIN_PII_LOG = graderSinPiiLog(TELEFONO_LLAMANTE);
 
@@ -91,6 +103,7 @@ export const GRADERS_VOZ: readonly Grader[] = [
   G_CONTACTOS,
   G_FNB,
   G_TEXTO_AGENTE,
+  G_TEXTO_ESPERADO,
   G_PREGRABADOS,
   G_BARGE_IN,
   G_TOOLS,

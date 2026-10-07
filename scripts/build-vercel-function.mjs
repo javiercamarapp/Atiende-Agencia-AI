@@ -25,9 +25,21 @@
 // anterior falló exactamente así). Este script SIEMPRE sobreescribe ese placeholder
 // con el bundle real.
 import { build } from "esbuild";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 
 mkdirSync("api", { recursive: true });
+
+// Vista previa al compartir de /pedir/* (apps/api/src/routes/verticals/restaurantes/storefront-meta.ts): la funcion
+// sirve el MISMO index.html del panel con las meta de la organizacion ya inyectadas. buildCommand construye apps/web
+// ANTES de este script, asi que aqui el HTML ya existe; se embebe en el bundle (con los nombres hasheados de los
+// assets de ESTE deploy). Si no existe (build local sin web), la funcion cae a leerlo del CDN en runtime.
+const INDEX_HTML = "apps/web/dist/index.html";
+let indexHtmlEmbebido;
+if (existsSync(INDEX_HTML)) {
+  indexHtmlEmbebido = readFileSync(INDEX_HTML, "utf8");
+} else {
+  console.warn(`build-vercel-function: ${INDEX_HTML} no existe; /pedir/* leera el index.html del CDN en runtime.`);
+}
 
 await build({
   entryPoints: ["apps/api/src/vercel.ts"],
@@ -36,6 +48,7 @@ await build({
   format: "esm",
   target: "node22",
   outfile: "api/index.js",
+  define: indexHtmlEmbebido ? { __ATIENDE_INDEX_HTML__: JSON.stringify(indexHtmlEmbebido) } : {},
   // Todo se empaqueta -- incluidos los paquetes del workspace (@atiende/*), que de
   // otro modo esbuild trataría como "externos" por resolverse vía node_modules
   // (symlinks de npm workspaces) y dejaría sin compilar, reintroduciendo el mismo

@@ -115,11 +115,11 @@ export class ClienteApi {
   }
 
   /** Alta de llamada: el token por llamada. `callerPhone` sale del SIP From (nunca del modelo). */
-  async pedirToken(e: { orgSlug: string; secreto: string; callId: string; callerPhone: string; branchSlug: string }): Promise<string> {
+  async pedirToken(e: { orgSlug: string; secreto: string; callId: string; callerPhone: string; branchSlug: string; telefonoDeclarado?: boolean }): Promise<string> {
     const r = await this.post<{ call_token?: unknown }>(
       "call_token",
       `/v1/restaurantes/${encodeURIComponent(e.orgSlug)}/voice/call-token`,
-      { call_id: e.callId, caller_phone: e.callerPhone, branch_slug: e.branchSlug },
+      { call_id: e.callId, caller_phone: e.callerPhone, branch_slug: e.branchSlug, ...(e.telefonoDeclarado ? { telefono_declarado: true } : {}) },
       { "x-atiende-tool-secret": e.secreto },
       2,
     );

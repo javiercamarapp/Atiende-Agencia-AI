@@ -17,6 +17,7 @@ export const ORDER_STATUS_TONES: Readonly<Record<string, StatusTone>> = {
   problema: "danger",
   no_recogido: "danger",
   programado: "info",
+  por_aprobar: "warning",
 };
 
 /** Estado de una conversacion tomada por una persona (handoff). */

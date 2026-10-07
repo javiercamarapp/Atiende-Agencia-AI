@@ -9,8 +9,10 @@ import { OrderValidationError } from "./errors.ts";
 import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { ADDRESS_MASK_MARKER, ADDRESS_OMITTED_MARKER, sanitizeInlineText, sanitizeNotes } from "./text-sanitize.ts";
+import { formatUbicacionEntregaNota } from "./whatsapp/location.ts";
 import { cerrarCicloDelCliente } from "./cliente-360/memoria.ts";
 import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice, MAX_PIEZAS_POR_RENGLON, mensajeCantidadInvalida } from "./order-quote.ts";
+import { exigirPinSiPmSinZonas } from "./pin-reparto.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
@@ -138,6 +140,17 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
   ) {
     throw new OrderValidationError("La doble porción solo aplica a las salsas incluidas del menú.");
   }
+  if (raw.efectivoCon !== undefined) {
+    if (raw.paymentMethod !== "efectivo") throw new OrderValidationError("El monto con el que paga solo aplica a pedidos en efectivo.");
+    if (typeof raw.efectivoCon !== "number" || !Number.isFinite(raw.efectivoCon) || raw.efectivoCon <= 0 || raw.efectivoCon > 100000) {
+      throw new OrderValidationError("El monto con el que paga debe ser una cantidad en pesos mayor a 0.");
+    }
+  }
+  if (raw.indicacionesAcceso !== undefined && (typeof raw.indicacionesAcceso !== "string" || raw.indicacionesAcceso.length > 1000)) {
+    throw new OrderValidationError("Las indicaciones de acceso exceden el tamaño permitido");
+  }
+  const telefonoAlterno = raw.telefonoAlterno === undefined ? undefined : typeof raw.telefonoAlterno === "string" ? canonicalizeMexicanPhone(raw.telefonoAlterno) : null;
+  if (telefonoAlterno === null) throw new OrderValidationError("El teléfono alterno debe tener exactamente 10 dígitos.");
   if (raw.horaRecogida !== undefined) {
     if (canal !== "recoger") throw new OrderValidationError("La hora de recogida solo aplica a pedidos para recoger.");
     if (typeof raw.horaRecogida !== "string" || raw.horaRecogida.length > 40 || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw.horaRecogida) || Number.isNaN(Date.parse(raw.horaRecogida))) {
@@ -206,6 +219,9 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     ...(raw.propina !== undefined ? { propina: redondearACentavos(raw.propina) } : {}),
     notes: typeof raw.notes === "string" ? sanitizeNotes(raw.notes) || undefined : raw.notes,
     colonia: raw.colonia ? sanitizeInlineText(raw.colonia, 200) || undefined : undefined,
+    ...(raw.efectivoCon !== undefined ? { efectivoCon: redondearACentavos(raw.efectivoCon) } : {}),
+    indicacionesAcceso: raw.indicacionesAcceso ? sanitizeInlineText(raw.indicacionesAcceso, 200) || undefined : undefined,
+    telefonoAlterno: telefonoAlterno ?? undefined,
     customerEmail: raw.customerEmail?.trim() ? raw.customerEmail.trim().toLowerCase() : undefined,
     promoCode: raw.promoCode?.trim() ? normalizePromotionCode(raw.promoCode) : undefined,
     programadoPara,
@@ -323,6 +339,8 @@ export async function prepareCreateOrder(
         ? { now: options.asOf }
         : {}),
   });
+  // CR12: PM sin zonas cargadas no acepta "cualquier colonia" a domicilio: exige el pin (asigna por distancia) o una persona.
+  await exigirPinSiPmSinZonas(repo, { branch, canal: normalizarCanal(payload.canal), source: payload.source, ubicacion: payload.ubicacion });
 
   // Fase 11 — promociones/marketing (ver promotions.ts para el porqué de este
   // gap y por qué es deliberadamente nuevo respecto al original). Se aplica DESPUÉS
@@ -442,7 +460,7 @@ export async function createOrder(
   if (payload.customerAddress) await repo.addCustomerAddressIfNew(customer.id, payload.customerAddress, payload.organizationId);
 
   const itemsOrdenados = [...orderItems].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-  const complementNotes = buildComplementNotes(payload.notes, [...new Set(payload.requestedComplements ?? [])].sort(), [...new Set(payload.omitDefaultComplements ?? [])].sort());
+  const complementNotes = buildComplementNotes(payload.notes, [...new Set(payload.requestedComplements ?? [])].sort(), [...new Set(payload.omitDefaultComplements ?? [])].sort(), payload.basicComplements);
   const notesWithAlcohol = containsAlcohol ? [complementNotes, "Recepción de alcohol: mayoría de edad confirmada por el cliente."].join("\n") : complementNotes;
   // Fase 11 — el descuento real ya está restado de `total` (ver prepareCreateOrder);
   // esta nota es solo auditoría legible por el staff en el panel de pedidos, nunca
@@ -453,6 +471,16 @@ export async function createOrder(
   const canalLines: string[] = [];
   if (payload.canal) canalLines.push(payload.canal === "recoger" ? "Canal: recoger en sucursal." : "Canal: domicilio.");
   if (payload.propina !== undefined && payload.propina > 0) canalLines.push(`Propina: $${payload.propina.toFixed(2)} (no incluida en el total).`);
+  // Pago y acceso: lineas del servidor (sin columna dedicada). `efectivoCon` se valida contra el total YA calculado: pagar con menos que el total no es un pedido valido.
+  if (payload.efectivoCon !== undefined) {
+    if (payload.efectivoCon < total) throw new OrderValidationError(`El monto con el que paga ($${payload.efectivoCon.toFixed(2)}) es menor al total del pedido ($${total.toFixed(2)}): pregúntele con cuánto va a pagar.`);
+    canalLines.push(`Paga con: $${payload.efectivoCon.toFixed(2)} (cambio: $${(Math.round((payload.efectivoCon - total) * 100) / 100).toFixed(2)}).`);
+  }
+  if (payload.llevarTerminal === true && payload.paymentMethod === "tarjeta" && (payload.canal ?? "domicilio") === "domicilio") canalLines.push("Llevar terminal.");
+  if (payload.indicacionesAcceso && (payload.canal ?? "domicilio") === "domicilio") canalLines.push(`Indicaciones de acceso: ${payload.indicacionesAcceso}.`);
+  if (payload.telefonoAlterno) canalLines.push(`Teléfono alterno: ${payload.telefonoAlterno}.`);
+  // Destino de entrega (pin de WhatsApp o link de Maps) para el repartidor; solo a domicilio (recoger no lo usa).
+  if (payload.ubicacionEntrega && (payload.canal ?? "domicilio") === "domicilio") canalLines.push(formatUbicacionEntregaNota(payload.ubicacionEntrega));
   if (payload.horaRecogida) canalLines.push(`Hora de recogida: ${payload.horaRecogida}.`);
   if (payload.programadoPara) {
     const zona = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
@@ -474,6 +502,7 @@ export async function createOrder(
       items: itemsOrdenados.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity, tortilla: item.tortilla ?? null })),
       requested_complements: [...(payload.requestedComplements ?? [])].sort(),
       omit_default_complements: [...(payload.omitDefaultComplements ?? [])].sort(),
+      ...(payload.basicComplements ? { basic_complements: [...payload.basicComplements].sort() } : {}),
       // Solo entra al hash cuando hay doble porcion: el hash de pedidos sin ella no cambia.
       ...(payload.doubleSalsas && payload.doubleSalsas.length > 0 ? { double_salsas: [...new Set(payload.doubleSalsas)].sort() } : {}),
       // Solo entra al hash cuando el pedido es programado: el hash de pedidos normales no cambia.
@@ -574,6 +603,9 @@ export async function quoteOrder(
      * (solo para decidir si corresponde preguntar propina). */
     readonly canal?: CanalPedido;
     readonly colonia?: string;
+    /** Pin compartido por el cliente y canal de origen (CR12, `pin-reparto.ts`); solo los pone el servidor. */
+    readonly ubicacion?: { readonly lat: number; readonly lng: number };
+    readonly source?: "web" | "voice" | "whatsapp" | "admin";
     readonly paymentMethod?: "efectivo" | "tarjeta";
     /** Doble porcion de salsas (extra cobrado, ver `buildDoubleSalsaLine`). */
     readonly doubleSalsas?: readonly DoubleSalsa[];
@@ -609,6 +641,7 @@ export async function quoteOrder(
     paymentMethod: args.paymentMethod,
     ...(instante ? { now: instante, exigirAbierto: true, mensajeCerrado: mensajeCerradoProgramado(branch.name, programadoPara!) } : {}),
   });
+  await exigirPinSiPmSinZonas(repo, { branch, canal, source: args.source, ubicacion: args.ubicacion });
 
   // PM PR-4: promociones automaticas por dia y canal. `total` pasa a ser el TOTAL A PAGAR (ya con el
   // descuento) y `subtotal` conserva el de renglones; sin promocion aplicada nada cambia. Las promociones

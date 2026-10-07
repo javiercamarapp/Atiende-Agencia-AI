@@ -14,6 +14,7 @@ export const ORDEN_ESTADO_ETIQUETAS: Readonly<Record<OrderStatus, string>> = {
   listo_para_recoger: "Listo para recoger",
   no_recogido: "No recogido",
   programado: "Programado",
+  por_aprobar: "Por aprobar",
 };
 
 export const ORDEN_CANAL_ETIQUETAS: Readonly<Record<Order["source"], string>> = { web: "Pedido en línea", whatsapp: "WhatsApp", voice: "Llamada", admin: "Capturado por el equipo" };

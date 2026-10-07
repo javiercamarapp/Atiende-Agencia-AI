@@ -47,6 +47,17 @@ export function normalizePhone(phone: string): string {
   return phone.trim();
 }
 
+/** Un telefono utilizable: entre 7 y 15 digitos (el minimo con el que `normalizePhone` lo reconoce y el maximo de E.164). "hola" o "123" no lo son. */
+export function isUsablePhone(phone: string): boolean {
+  const digits = phone.replace(/\D/g, "").length;
+  return digits >= 7 && digits <= 15;
+}
+
+/** Formato basico de correo (algo@dominio.tld sin espacios, hasta 320 caracteres): suficiente para no encolar correos que terminan en `dead`. */
+export function isUsableEmail(email: string): boolean {
+  return email.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 function invalidOptionalString(value: unknown, maxLength: number): boolean {
   return value !== undefined && value !== null && (typeof value !== "string" || value.length > maxLength);
 }
@@ -229,6 +240,9 @@ export function validateCreateAppointmentPayload(raw: CreateAppointmentPayload):
   if (raw.source !== undefined && !["voice", "whatsapp", "web", "manual"].includes(raw.source)) {
     throw new AppointmentValidationError("source inválido");
   }
+  if (!isUsablePhone(raw.customerPhone)) throw new AppointmentValidationError("customer_phone debe ser un teléfono válido (entre 7 y 15 dígitos)");
+  const email = raw.customerEmail?.trim();
+  if (email && !isUsableEmail(email)) throw new AppointmentValidationError("customer_email no tiene un formato de correo válido");
   return {
     ...raw,
     customerName: raw.customerName.trim(),
@@ -294,7 +308,8 @@ export async function prepareCreateAppointment(repo: CitasRepository, rawPayload
 export async function createAppointment(repo: CitasRepository, rawPayload: CreateAppointmentPayload): Promise<AppointmentRecord> {
   const { payload, provider, service, startsAt, endsAt } = await prepareCreateAppointment(repo, rawPayload);
 
-  const customer = await repo.upsertCustomer(payload.organizationId, payload.customerPhone, payload.customerName, payload.customerEmail ?? null);
+  // Canal web: el telefono no esta verificado, asi que el correo capturado no se asigna al expediente de un paciente que ya existe (ver UpsertCustomerOptions).
+  const customer = await repo.upsertCustomer(payload.organizationId, payload.customerPhone, payload.customerName, payload.customerEmail ?? null, { emailOnlyIfNew: payload.source === "web" });
 
   const dedupeFingerprint = sha256Hex(
     JSON.stringify({
@@ -370,6 +385,8 @@ export async function createAppointmentFromPanel(repo: CitasRepository, payload:
   }
   if (!payload.customerName?.trim()) throw new AppointmentValidationError("customer_name es requerido");
   if (!payload.customerPhone?.trim()) throw new AppointmentValidationError("customer_phone es requerido");
+  if (!isUsablePhone(payload.customerPhone)) throw new AppointmentValidationError("customer_phone debe ser un teléfono válido (entre 7 y 15 dígitos)");
+  if (payload.customerEmail?.trim() && !isUsableEmail(payload.customerEmail.trim())) throw new AppointmentValidationError("customer_email no tiene un formato de correo válido");
   const startsAt = new Date(payload.startsAt);
   if (Number.isNaN(startsAt.getTime())) throw new AppointmentValidationError("starts_at debe ser una fecha ISO 8601 válida");
 
@@ -382,7 +399,8 @@ export async function createAppointmentFromPanel(repo: CitasRepository, payload:
     providerId: provider.id,
     serviceId: service.id,
     customerName: payload.customerName.trim(),
-    customerPhone: payload.customerPhone.trim(),
+    // Misma llave que el agente y la web (ultimos 10 digitos): sin esto el paciente no ve ni cancela por WhatsApp/voz la cita capturada en el panel y su expediente se duplica.
+    customerPhone: normalizePhone(payload.customerPhone),
     customerEmail: payload.customerEmail?.trim() || null,
     startsAt: startsAt.toISOString(),
     endsAt: endsAt.toISOString(),

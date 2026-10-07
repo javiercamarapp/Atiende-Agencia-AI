@@ -7,6 +7,7 @@
 //   - Calendario: cancelar una reserva (POST .../reservas/:id/cancelar).
 //   - Sincronizacion iCal: desconectar un canal (DELETE .../canales/:canal/ical-sync), confirmacion NUEVA en este PR.
 import { act } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AprobacionesPage } from "../src/verticals/rentas/pages/Aprobaciones.tsx";
 import { CalendarioPage } from "../src/verticals/rentas/pages/Calendario.tsx";
@@ -58,6 +59,7 @@ describe("Aprobaciones — rechazar un borrador", () => {
     fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       if (method === "POST" && url.endsWith("/borradores/b1/rechazar")) return rechazar();
+      if (url.endsWith("/mensajeria/politicas")) return res({ politicas: [] });
       if (url.endsWith("/unidades")) return res({ unidades: [UNIDAD] });
       if (url.endsWith("/unidades/u1/conversaciones")) return res({ conversaciones: [CONVERSACION] });
       if (url.endsWith("/conversaciones/c1/borradores")) return res({ borradores: [BORRADOR] });
@@ -67,7 +69,11 @@ describe("Aprobaciones — rechazar un borrador", () => {
   }
 
   async function abrir(): Promise<RenderedComponent> {
-    const r = renderComponent(<AprobacionesPage {...CTX} />);
+    const r = renderComponent(
+      <MemoryRouter>
+        <AprobacionesPage {...CTX} />
+      </MemoryRouter>,
+    );
     await esperar();
     click(botonPagina(r, "Rechazar"));
     await esperar();

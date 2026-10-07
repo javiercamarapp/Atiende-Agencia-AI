@@ -141,14 +141,14 @@ describe("POST .../conversaciones/:id/costo", () => {
     expect(llamada.eventos).toHaveLength(0);
   });
 
-  it("registra UN evento por escalon con el costo calculado en el servidor (90 s de Gemini = 27 000 micro-USD) y es idempotente por llamada", async () => {
+  it("registra UN evento por escalon con el costo calculado en el servidor (90 s de Gemini = 112 500 micro-USD a US$0.075/min) y es idempotente por llamada", async () => {
     const { ctx, llamada, app } = await construir();
     const tramos = [TRAMO, { escalon: "cascada-openrouter", duracionS: 30, costoReportadoMicroUsd: 0 }];
     const res = await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos }));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ registrados: 2, repetidos: 0 });
     expect(llamada.eventos.map((e) => [e.proveedor, e.costoMicroUsd, e.refId, e.refTipo, e.categoria])).toEqual([
-      ["gemini-3.8-live", 27_000, "llamada-1:gemini-3.8-live", "voz_restaurantes", "voz"],
+      ["gemini-3.8-live", 112_500, "llamada-1:gemini-3.8-live", "voz_restaurantes", "voz"],
       ["cascada-openrouter", 7_000, "llamada-1:cascada-openrouter", "voz_restaurantes", "voz"],
     ]);
     const otra = await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos }));
@@ -158,8 +158,22 @@ describe("POST .../conversaciones/:id/costo", () => {
 
   it("el costo que reporta el escalon solo puede SUBIR la estimacion por minuto, nunca bajarla", async () => {
     const { ctx, llamada, app } = await construir();
-    await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [{ ...TRAMO, costoReportadoMicroUsd: 90_000 }] }));
-    expect(llamada.eventos[0]?.costoMicroUsd).toBe(90_000);
+    await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [{ ...TRAMO, costoReportadoMicroUsd: 200_000 }] }));
+    expect(llamada.eventos[0]?.costoMicroUsd).toBe(200_000);
+    expect(llamada.eventos[0]?.costoEstimado).toBe(true);
+  });
+
+  it("un tramo con costoReal (tokens del proveedor) se registra tal cual, por debajo incluso de la tarifa por minuto, con costo_estimado = false", async () => {
+    const { ctx, llamada, app } = await construir();
+    const res = await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [{ ...TRAMO, costoReportadoMicroUsd: 90_000, costoReal: true }] }));
+    expect(res.status).toBe(200);
+    expect(llamada.eventos[0]).toMatchObject({ costoMicroUsd: 90_000, costoEstimado: false });
+  });
+
+  it("un worker anterior (sin costoReal) sigue siendo valido: el costo queda estimado", async () => {
+    const { ctx, llamada, app } = await construir();
+    expect((await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [TRAMO] }))).status).toBe(200);
+    expect(llamada.eventos[0]?.costoEstimado).toBe(true);
   });
 
   it.each([

@@ -7,6 +7,7 @@ import type { CustomerAddressDetail, TasteProposal } from "./cliente-360/types.t
 import type { HorarioSucursal } from "./horarios.ts";
 
 import type { PedidoReciente } from "./pedido-reciente.ts";
+import type { UbicacionEntrega } from "./whatsapp/location.ts";
 
 export interface Branch {
   readonly propertyId: string;
@@ -100,7 +101,16 @@ export interface OrderQuote {
   readonly containsAlcohol: boolean;
 }
 
-export type RequestedComplement = "salsa_habanero" | "crema_ajo";
+/** Complementos que el cliente puede PEDIR (sin costo). `pina` es la piña picada que acompaña los tacos (gratis si se pide; la doble
+ * es el producto "Extra Piña" del catálogo, no un complemento); `salsa_habanero_soasado` es el habanero soasado ("sauceada"). */
+export type RequestedComplement =
+  | "salsa_habanero"
+  | "crema_ajo"
+  | "salsa_guacamolera"
+  | "salsa_mexicana"
+  | "salsa_pina"
+  | "pina"
+  | "salsa_habanero_soasado";
 /** Las 9 salsas/guarniciones incluidas sin costo (PM): roja, verde, mexicana, guacamolera, limones,
  * crema de ajo, cebolla con cilantro, pina y habanero (soasado o picado con limon). `cebolla` es el
  * nombre historico de `cebolla_cilantro` y se sigue aceptando al omitir. */
@@ -196,6 +206,20 @@ export interface CreateOrderInput {
   readonly adultConfirmed?: boolean;
   readonly requestedComplements?: readonly RequestedComplement[];
   readonly omitDefaultComplements?: readonly DefaultComplement[];
+  /** Perfil de básicas por omisión del negocio (PM: roja, verde, cebolla con cilantro y limones). Con valor, la comanda separa
+   * «Básicas» de «Pedidas»; sin valor (web/checkout histórico) imprime las 9 como incluidas, igual que antes. */
+  readonly basicComplements?: readonly DefaultComplement[];
+  /** Destino de entrega que dio el cliente (pin de WhatsApp o link de Maps). Viaja en las notas del pedido (sin columna nueva)
+   * y la vista del repartidor lo abre en Maps. Solo a domicilio. */
+  readonly ubicacionEntrega?: UbicacionEntrega;
+  /** Monto con el que paga en efectivo (>= total); la comanda imprime «Paga con» y el cambio que lleva el repartidor. */
+  readonly efectivoCon?: number;
+  /** El repartidor debe llevar terminal (pago con tarjeta a domicilio). */
+  readonly llevarTerminal?: boolean;
+  /** Indicaciones de acceso o aviso al llegar ("timbre del depto 6", "avísenme al llegar"); una sola línea, hasta 200 caracteres. */
+  readonly indicacionesAcceso?: string;
+  /** Segundo teléfono de contacto (10 dígitos). */
+  readonly telefonoAlterno?: string;
   /** Doble porcion de salsas (extra cobrado: una pieza del producto "Extra salsa" del catalogo por
    * cada salsa; si la sucursal no lo tiene en catalogo el pedido se rechaza con un mensaje claro). */
   readonly doubleSalsas?: readonly DoubleSalsa[];
@@ -211,6 +235,9 @@ export interface CreateOrderInput {
   /** Colonia/zona de entrega que dio el cliente (se empareja con `known_zone`). Solo se
    * exige cuando la sucursal tiene cobertura de entrega configurada. */
   readonly colonia?: string;
+  /** Pin de ubicacion que el cliente compartio por WhatsApp. Lo pone el SERVIDOR (contexto del turno), nunca el modelo: sirve para
+   * asignar por distancia un domicilio de PM cuando la sucursal no tiene zonas cargadas (`pin-reparto.ts`, CR12). */
+  readonly ubicacion?: { readonly lat: number; readonly lng: number };
   /** Propina en pesos capturada en terminal. Solo se acepta si la politica de la sucursal
    * lo permite (PM: solo con tarjeta); no modifica `total`, se registra en las notas. */
   readonly propina?: number;
@@ -239,6 +266,16 @@ export interface BranchPolicy {
   readonly pedidoMinimoDomicilio: number | null;
   readonly pedidoMinimoRecoger: number | null;
   readonly propinaPolitica: PropinaPolitica | null;
+  // Migracion 057 (directorio y domicilio por sucursal). Opcionales: ausentes en una base sin migrar y en
+  // quien construye una politica solo con los campos de 023; el valor por omision conserva el comportamiento anterior.
+  /** null = sigue a la sucursal activa; true = aparece en el directorio aunque este inactiva; false = oculta. */
+  readonly visibleEnDirectorio?: boolean | null;
+  /** false = la sucursal no reparte a domicilio (solo recoger). Por omision true. */
+  readonly aceptaDomicilio?: boolean;
+  /** Dias (0 = domingo .. 6 = sabado) en que reparte a domicilio; null = todos los dias. */
+  readonly diasDomicilio?: readonly number[] | null;
+  /** Insignia publica "Temporada". Por omision false. */
+  readonly deTemporada?: boolean;
 }
 
 /** Perfil del agente de WhatsApp: `generico` es el de siempre (tutea, domicilio); `taqueria_pm` es el de
@@ -296,7 +333,16 @@ export interface WhatsAppAgentConfigHistorialEntry {
   readonly creadoAt: string;
 }
 
-export const EMPTY_BRANCH_POLICY: BranchPolicy = { horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null };
+export const EMPTY_BRANCH_POLICY: BranchPolicy = {
+  horario: null,
+  pedidoMinimoDomicilio: null,
+  pedidoMinimoRecoger: null,
+  propinaPolitica: null,
+  visibleEnDirectorio: null,
+  aceptaDomicilio: true,
+  diasDomicilio: null,
+  deTemporada: false,
+};
 
 /** Resolucion del numero de WhatsApp que recibe un mensaje: organizacion y, cuando el
  * numero pertenece a una sucursal, esa sucursal (`null` = numero por defecto de la
@@ -341,6 +387,9 @@ export interface Order {
   readonly dedupeFingerprint: string | null;
   readonly idempotencyKey: string | null;
   readonly createdAt: string;
+  /** Folio corto del pedido (`orders.order_number`). Solo viene en la fila de creacion (`create_order_idempotent` devuelve la fila completa); ausente en
+   * lecturas por columnas y en pedidos de prueba. Se usa para el aviso "Recibimos su pedido #folio". */
+  readonly orderNumber?: number;
   // ---- Fase 8 — superficie real del rol "repartidor" (ver roles.ts, migrations/008) ----
   /** `core.staff_user.id` del repartidor despachado a este pedido por un
    * MANAGER_ROLES (nunca lo pone el repartidor mismo) — null hasta que se
@@ -489,7 +538,9 @@ export type OrderStatus =
   | "listo_para_recoger"
   | "no_recogido"
   /** R-11 (migracion 034): pedido dejado para una hora futura; fuera de cocina hasta que se promueve a `pending`. */
-  | "programado";
+  | "programado"
+  /** Autopiloto (migracion 050): pedido grande retenido sin comanda ni cocina hasta que una persona lo aprueba (un clic) o lo rechaza. */
+  | "por_aprobar";
 
 export interface OrderListFilter {
   readonly propertyIds: readonly string[] | null;
@@ -827,9 +878,31 @@ export interface KnownZone {
   readonly id: string;
   readonly organizationId: string;
   readonly name: string;
-  readonly lat: number;
-  readonly lng: number;
+  /** `null` = colonia sin coordenadas propias (migracion 056: las colonias del piloto original vienen sin lat/lng y NO se inventan).
+   * Empareja el nombre y cuenta para la cobertura de entrega, pero no sirve de punto para calcular distancias. Ambas o ninguna. */
+  readonly lat: number | null;
+  readonly lng: number | null;
   readonly createdAt: string;
+}
+
+/** Lo que el piloto original dijo de una colonia (migracion 056): sucursal mas cercana y segunda con sus km, y como se asigno hoy. Solo lectura. */
+export interface ColoniaReferencia {
+  readonly zoneId: string;
+  readonly name: string;
+  readonly lat: number | null;
+  readonly lng: number | null;
+  readonly fuente: string | null;
+  readonly asignacionFuente: string | null;
+  readonly refSucursalSlug: string | null;
+  readonly refKm: number | null;
+  readonly ref2SucursalSlug: string | null;
+  readonly ref2Km: number | null;
+}
+
+/** `disponible:false` = la base todavia no tiene la migracion 056 (el reporte lo dice, nunca finge una lista vacia). */
+export interface ColoniasReferenciaLectura {
+  readonly disponible: boolean;
+  readonly zonas: readonly ColoniaReferencia[];
 }
 
 export interface NewKnownZoneInput {

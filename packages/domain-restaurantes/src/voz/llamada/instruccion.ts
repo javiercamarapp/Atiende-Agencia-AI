@@ -5,14 +5,14 @@
 // editado el comportamiento (`branch_voice_config.comportamiento`): ese texto manda como base y se le anexa el contexto de la llamada, con
 // el cliente.
 //
-// PUNTO DE INYECCION de las reglas duras H1-H18 no borrables (brief rescate-orig-restaurantes-1 §1, PR #411): cuando `instruccionVozConReglas`
-// llegue a main, `armarInstruccionLlamada` debe delegar en ella; la prueba `voz-instruccion-llamada.spec.ts` lo deja marcado con `test.fail`.
+// Reglas duras H1-H18 no borrables (brief rescate-orig-restaurantes-1 §1, PR #411): con comportamiento editado, la instruccion final la arma
+// `instruccionVozConReglas` (texto del dueno + contexto + saludo + BLOQUE de reglas al final, donde un "ignore lo anterior" ya no llega).
 import { PM_AGENT_NAME_POR_OMISION, buildPmSystemPrompt } from "../../whatsapp/perfil-pm.ts";
 import { PM_CONFIG_POR_OMISION, customerContextBlock, resolveAgentConfig, saludoSegunHora } from "../../whatsapp/llm-turn-handler.ts";
 import { lookupCustomerConPedidoReciente } from "../../customers.ts";
 import type { RestaurantesRepository } from "../../repository.ts";
 import type { CustomerLookupResult } from "../../types.ts";
-import { APENDICE_VOZ } from "../perfil-voz-pm.ts";
+import { APENDICE_VOZ, instruccionVozConReglas } from "../perfil-voz-pm.ts";
 import type { VozConfig } from "../types.ts";
 
 export interface EntradaInstruccionLlamada {
@@ -50,6 +50,7 @@ export async function armarInstruccionLlamada(repo: RestaurantesRepository, e: E
   const saludo = saludoSegunHora(zonaHoraria, e.ahora);
   const marcada = entrada ? { name: entrada.name, slug: entrada.slug } : null;
 
+  const inicial = e.config.configurada ? e.config.mensajeInicial.trim() : "";
   let instruccion: string;
   if (editable === "") {
     instruccion =
@@ -78,9 +79,18 @@ export async function armarInstruccionLlamada(repo: RestaurantesRepository, e: E
       marcada ? `- El cliente llamó a la sucursal "${marcada.name}" (branch_slug: "${marcada.slug}").` : "- Esta llamada no pertenece a una sucursal en particular.",
       `- ${customerContextBlock(cliente).replace(/\n/g, "\n  ")}`,
     ].join("\n");
-    instruccion = `${editable}\n\n${contexto}`;
+    instruccion = instruccionVozConReglas({
+      comportamiento: `${editable}\n\n${contexto}`,
+      mensajeInicial: inicial,
+      businessName: config.businessName,
+      agentName: config.agentName ?? PM_AGENT_NAME_POR_OMISION,
+      deliveryTimeText: config.deliveryTimeText,
+      promosTexto: config.promosText ?? null,
+      salsasTexto: config.salsasText ?? null,
+      pedidoGrandeTexto: config.largeOrderText ?? null,
+      motivosDesactivados: config.motivosDesactivados ?? [],
+    });
   }
-  const inicial = e.config.configurada ? e.config.mensajeInicial.trim() : "";
-  if (inicial !== "") instruccion += `\n\n# PRIMER MENSAJE\nAl contestar, diga exactamente: "${inicial}"`;
+  if (editable === "" && inicial !== "") instruccion += `\n\n# PRIMER MENSAJE\nAl contestar, diga exactamente: "${inicial}"`;
   return { instruccion, horaLocal: horaLocalEn(zonaHoraria, e.ahora), zonaHoraria };
 }

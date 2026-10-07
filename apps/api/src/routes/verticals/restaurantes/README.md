@@ -30,7 +30,7 @@ KPIs — ver `restaurantes-admin-kpis.spec.ts`).
 
 Fase 5 agrega el back-office CORE (CRUD real, con `authMiddleware` +
 `requirePropertyMembership` + `assertVerticalRole(MANAGER_ROLES)`, mismo patrón que
-`admin-kpis.ts`):
+`admin-kpis.ts`; desde PL-23 `admin-catalog.ts`, `admin-promotions.ts` y `admin-branches.ts` piden una **acción** de la matriz de abajo con `assertAccion`):
 
 - `admin-catalog.ts` — categorías (`GET/POST .../admin/categories`,
   `PATCH .../admin/categories/:categoryId`) y productos (`GET/POST
@@ -269,7 +269,7 @@ crea igual; un fallo real se registra y no tumba un pedido ya creado. SQL verifi
   guarda QUÉ campos cambiaron, nunca los valores; la corrección del propio repartidor solo se registra en el log de la API.
 - Aviso a la campana de owner/admin (sin PII, dedupe mensual por repartidor): `restaurantes.repartidor.licencia_por_vencer` / `licencia_vencida`, al guardar
   un perfil con licencia a menos de 30 días y en `GET|POST /internal/restaurantes/repartidor-licencias` (secreto interno o `Bearer <CRON_SECRET>`, una
-  transacción por repartidor). NO está en `vercel.json` (decisión de costo: sin crons nuevos): agendarlo es una decisión de despliegue.
+  transacción por repartidor). Agendado en `vercel.json` (diario, 13:35 UTC), con latido y kill switch; el de cierres corre a diario a las 08:20 UTC (02:20 en Mérida).
 - Base sin migrar: `disponible: false` en la lectura, 503 honesto en la escritura y `status: "not_available"` en el barrido (SAVEPOINT en el repositorio;
   `packages/domain-restaurantes/tests/repartidor-perfil.spec.ts`). SQL y permisos en `scripts/verify-restaurantes-repartidor-perfil/`. Pruebas HTTP:
   `apps/api/tests/restaurantes-repartidor-perfil.spec.ts`.
@@ -289,3 +289,25 @@ crea igual; un fallo real se registra y no tumba un pedido ya creado. SQL verifi
 - Bitácora (tipo `exportacion`, migración 044 amplía el CHECK de `audit_log.entity_type`): `historial.exportado` / `clientes.exportado` con formato y número de filas,
   nunca nombres, teléfonos ni el texto de búsqueda. Contra una base sin la 044 la fila de bitácora se omite (con aviso en el log) y la exportación funciona igual.
 - PII: teléfonos completos solo para owner/admin; el staff de piso y el repartidor reciben 403.
+- Autopiloto (`autopiloto.ts`, migración 050; staff con alcance a la sucursal): `GET .../admin/autopiloto/solicitudes?estado=pendiente|resuelta` (aprobaciones «Por aprobar»),
+  `POST .../admin/autopiloto/solicitudes/:id/resolver` `{ decision, motivo?, valor?, indices? }` (aprobar/rechazar/cancelar/mantener/compensar con un clic; idempotente; 400 motivo fuera de la lista
+  cerrada; 403 sin alcance; 503 base sin migrar), `GET|PUT .../admin/autopiloto/config` (PUT solo owner/admin), `POST .../admin/autopiloto/agotado` (agotado hasta mañana),
+  `GET .../admin/autopiloto/tiempo?canal=` (tiempo prometido hoy) y `GET .../admin/autopiloto/pedidos/:orderId/historial`. `PATCH .../admin/orders/:id/status` exige `motivo` (lista cerrada) al cancelar
+  y rechaza mover un pedido `por_aprobar` (409). El tick `autopiloto-tick.ts` corre dentro de `/internal/restaurantes/promover-programados`.
+
+## Permisos por acción (PL-23)
+
+Fuente única: `ACCIONES_RESTAURANTES` en `packages/domain-restaurantes/src/roles.ts`; las rutas la aplican con `assertAccion` (`permisos-accion.ts`).
+Una acción fuera de la matriz se niega a todos y `restaurantes-permisos-accion-guard.spec.ts` impide listas sueltas de roles en estas rutas.
+
+| Acción | Ruta | owner | admin | staff | repartidor |
+|---|---|---|---|---|---|
+| `catalogo.ver` | `GET .../admin/categories`, `GET .../admin/products` | sí | sí | sí | no |
+| `catalogo.disponibilidad` | `PATCH .../admin/products/:id/branch-availability` con solo `isAvailable` (fila ya dada de alta) | sí | sí | sí | no |
+| `catalogo.precio` | `POST/PATCH .../admin/categories`, `POST/PATCH .../admin/products`, `branch-availability` con `price` o para dar de alta | sí | sí | no | no |
+| `promociones.ver` / `promociones.editar` | `GET/POST/PATCH .../admin/promotions` | sí | sí | no | no |
+| `sucursal.ver` | `GET .../admin/sucursales[/:id]` | sí | sí | sí | no |
+| `sucursal.editar` | `PATCH .../admin/sucursales/:id` | sí | sí | no | no |
+| `pedidos.gestionar` | sin cambio (`MANAGER_ROLES` en `admin-orders.ts`) | sí | sí | sí | no |
+
+Defensa en profundidad en la base: migración `065_permisos_por_accion_escritura.sql` (verify: `scripts/verify-restaurantes-permisos-accion`).

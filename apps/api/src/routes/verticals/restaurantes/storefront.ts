@@ -24,6 +24,7 @@ import {
   OrderValidationError,
   StorefrontValidationError,
   buildStorefrontBranches,
+  buildStorefrontDirectorio,
   buildStorefrontMenu,
   buildStorefrontPromociones,
   consumeRateLimit,
@@ -31,6 +32,10 @@ import {
   previewPromotion,
   registerCallbackRequest,
   redondearACentavos,
+  registrarConsentimientoMarketing,
+  seccionEncargados,
+  sugerirSucursalPorColonia,
+  sugerirSucursalPorUbicacion,
   validarSolicitudEvento,
 } from "@atiende/domain-restaurantes";
 import type { AgentToolContext, CanalPedido, Order, RestaurantesRepository } from "@atiende/domain-restaurantes";
@@ -40,6 +45,7 @@ import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
 import { issueStorefrontTrackingToken, storefrontTrackingKey, verifyStorefrontTrackingToken } from "../../../storefront-tracking-token.ts";
 import { efectosPostCommitDePedido } from "./efectos-post-commit.ts";
+import { avisarPedidoRecibido } from "./autopiloto-recibido.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -72,6 +78,8 @@ interface StorefrontBody {
   readonly propina?: unknown;
   /** Aceptacion del aviso de privacidad (casilla del checkout): sin `true` el servidor no crea el pedido. */
   readonly acepta_aviso_privacidad?: unknown;
+  /** Casilla OPCIONAL y desmarcada de promociones por WhatsApp: solo el booleano `true` registra el consentimiento de marketing. */
+  readonly acepta_promociones?: unknown;
   readonly programado_para?: unknown;
 }
 
@@ -251,6 +259,77 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
     });
   });
 
+  // GET /v1/restaurantes/:orgSlug/storefront/directorio -- directorio publico: TODAS las sucursales visibles
+  // (activas o solo informativas) con direccion, telefono, horario e insignias. Solo campos publicos.
+  app.get("/v1/restaurantes/:orgSlug/storefront/directorio", async (c) => {
+    noStore(c);
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-read", 120, org.id);
+      return c.json({ restaurante: { slug: org.slug, nombre: org.name }, sucursales: await buildStorefrontDirectorio(repo, org.id) });
+    });
+  });
+
+  // GET /v1/restaurantes/:orgSlug/storefront/zonas -- nombres de las colonias/zonas conocidas (autocompletar de "¿Dónde está?").
+  // Solo nombres: nada de coordenadas ni ids.
+  app.get("/v1/restaurantes/:orgSlug/storefront/zonas", async (c) => {
+    noStore(c);
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-read", 120, org.id);
+      const nombres = (await repo.listKnownZones(org.id)).map((z) => z.name).sort((a, b) => a.localeCompare(b, "es"));
+      return c.json({ zonas: nombres.slice(0, 500) });
+    });
+  });
+
+  // POST /v1/restaurantes/:orgSlug/storefront/sucursal-sugerida -- sucursal sugerida por colonia {colonia} o por ubicacion {lat, lng}.
+  // POST y no GET a proposito: las coordenadas viajan en el cuerpo (no en la URL, que queda en los registros) y NUNCA se guardan ni se
+  // escriben en logs; se usan solo para calcular la distancia.
+  app.post("/v1/restaurantes/:orgSlug/storefront/sucursal-sugerida", async (c) => {
+    noStore(c);
+    assertOrigin(c);
+    const body = await readJsonCapped<{ colonia?: unknown; lat?: unknown; lng?: unknown }>(c.req.raw, 2 * 1024);
+    const colonia = strOrReject(body.colonia, 120, "La colonia");
+    const tieneUbicacion = body.lat !== undefined || body.lng !== undefined;
+    if (!colonia && !tieneUbicacion) throw Errors.validation("Indique una colonia o permita su ubicación.");
+    if (tieneUbicacion && (typeof body.lat !== "number" || typeof body.lng !== "number" || !Number.isFinite(body.lat) || !Number.isFinite(body.lng) || Math.abs(body.lat) > 90 || Math.abs(body.lng) > 180)) {
+      throw Errors.validation("La ubicación no es válida.");
+    }
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-read", 120, org.id);
+      const sugerencia = colonia ? await sugerirSucursalPorColonia(repo, org.id, colonia) : await sugerirSucursalPorUbicacion(repo, org.id, { lat: body.lat as number, lng: body.lng as number });
+      return c.json({ sugerencia });
+    });
+  });
+
+  // GET /v1/restaurantes/:orgSlug/storefront/privacidad -- seccion "Encargados y transferencias" del aviso (BORRADOR pendiente de
+  // revision legal): proveedores que de verdad usa la organizacion segun su configuracion (canal de WhatsApp conectado, voz habilitada).
+  app.get("/v1/restaurantes/:orgSlug/storefront/privacidad", async (c) => {
+    noStore(c);
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-read", 120, org.id);
+      const whatsappConectado = (await repo.getWhatsappChannelConfig(org.id)).phoneNumberId !== null;
+      let vozHabilitada = false;
+      if (deps.vozRepo) {
+        const voz = deps.vozRepo(db);
+        for (const branch of (await repo.listBranchesForOrganizationAdmin(org.id)).filter((b) => b.status === "active")) {
+          const lectura = await voz.getConfig(branch.propertyId);
+          if (lectura.disponible && lectura.valor.habilitado) {
+            vozHabilitada = true;
+            break;
+          }
+        }
+      }
+      return c.json({ encargados: seccionEncargados({ whatsappConectado, vozHabilitada }) });
+    });
+  });
+
   // GET /v1/restaurantes/:orgSlug/storefront/:branchSlug/menu -- menu por categorias con precios y disponibilidad en vivo.
   app.get("/v1/restaurantes/:orgSlug/storefront/:branchSlug/menu", async (c) => {
     noStore(c);
@@ -399,6 +478,11 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
         // Evidencia del consentimiento (version del aviso vigente, fecha, canal `web`; sin PII). Best-effort con SAVEPOINT: base sin la
         // migracion 063 -> "no_disponible"; cualquier otro fallo se registra y NUNCA tumba un pedido ya creado.
         await registrarConsentimiento(db, repo, org.id, order.id);
+        // Casilla opcional de promociones por WhatsApp (autopiloto 2): evidencia con fecha, fuente `checkout_web` y la version del aviso que decide
+        // la base. Best-effort en su propio SAVEPOINT: base sin la migracion 052 -> "no_disponible"; nunca tumba un pedido ya creado.
+        if (body.acepta_promociones === true && order.customerId) {
+          await registrarConsentimientoMarketing(db, { organizationId: org.id, customerId: order.customerId, otorgar: true, fuente: "checkout_web" });
+        }
         const encolada = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), {
           order,
           tipo: canal === "recoger" ? "recoger" : "domicilio",
@@ -406,6 +490,8 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
           propina: cliente.propina,
           envioEnLinea: false,
         });
+        // Autopiloto: "Recibimos su pedido #folio, tiempo estimado X" por WhatsApp (solo con plantilla aprobada; idempotente por pedido).
+        await avisarPedidoRecibido(deps, db, repo, order);
         return { order, orgId: org.id, encolada };
       } catch (err) {
         if (err instanceof OrderFlowViolationError && err.code === "pedido_ya_creado") {

@@ -19,5 +19,6 @@ export async function exigirStepUpDespachos(deps: AppDeps, c: Context<CoreAuthHo
     organizationId: c.get("organizationId"),
     scope: "despachos_sensitive",
     token: c.req.header("x-step-up-token"),
+    db: c.get("db"),
   });
 }

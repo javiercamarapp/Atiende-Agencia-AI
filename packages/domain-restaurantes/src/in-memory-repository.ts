@@ -5,6 +5,7 @@
 // conversación). Sirve como fixture de seed para tests determinísticos y como
 // fallback dev/CI sin Postgres real — mismo rol que InMemoryStateStore en
 // @atiende/core-conversation.
+import { avanzarEstadoEntrega } from "@atiende/whatsapp-gateway";
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
@@ -43,6 +44,7 @@ import type {
   FilaImportacionCliente,
   ResultadoImportacionClientes,
   CustomerTier,
+  ColoniasReferenciaLectura,
   KnownZone,
   NearestBranchMatch,
   NewCategoryInput,
@@ -82,7 +84,10 @@ import type {
   CustomerOverviewRow,
   EmailOutboxJobRow,
   KpiDateRange,
+  EstadoEntregaEntrante,
   MessagingOutboxRow,
+  MotivoFalloEntregaGuardado,
+  RegistroEstadoEntrega,
   NewOrderRecord,
   PromotedScheduledOrdersResult,
   RestaurantesRepository,
@@ -244,9 +249,16 @@ interface StoredKnownZone {
   readonly id?: string;
   readonly organizationId: string;
   readonly name: string;
-  readonly lat: number;
-  readonly lng: number;
+  readonly lat: number | null;
+  readonly lng: number | null;
   readonly createdAt?: string;
+  /** Procedencia y referencia del piloto original (migracion 056); solo las siembran los mundos de prueba del seed. */
+  readonly fuente?: string | null;
+  readonly asignacionFuente?: string | null;
+  readonly refSucursalSlug?: string | null;
+  readonly refKm?: number | null;
+  readonly ref2SucursalSlug?: string | null;
+  readonly ref2Km?: number | null;
 }
 
 interface StoredWhatsAppEvent {
@@ -281,6 +293,14 @@ interface InMemoryOutboxRow {
   claimedAt: number | null;
   nextAttemptAt: number;
   lastErrorClass: string | null;
+  /** Migracion 066: wamid y estado de entrega (espejo de las columnas nuevas). */
+  providerMessageId?: string | null;
+  enviadoComo?: "texto" | "plantilla" | "botones" | "ubicacion" | null;
+  deliveryStatus?: "sent" | "delivered" | "read" | "failed" | null;
+  deliveryUpdatedAt?: number | null;
+  deliveryErrorCode?: number | null;
+  deliveryErrorTitle?: string | null;
+  deliveryFailureReason?: MotivoFalloEntregaGuardado | null;
 }
 
 /** Ventana en que un aviso abierto del mismo canal, telefono y motivo absorbe al siguiente (misma que `callback_registrar_agente`: 2 h). */
@@ -503,6 +523,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     let bestZone: StoredKnownZone | null = null;
     for (const zone of this.knownZones) {
       if (zone.organizationId !== organizationId) continue;
+      // Una colonia sin coordenadas (migracion 056) no sirve de punto para medir distancias: la funcion SQL tampoco la considera.
+      if (zone.lat === null || zone.lng === null) continue;
       const zoneNorm = normalizeZoneText(zone.name);
       if (!zoneNorm) continue;
       if (inputNorm.includes(zoneNorm) || zoneNorm.includes(inputNorm)) {
@@ -516,7 +538,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     for (const branch of this.branches.values()) {
       if (branch.organizationId !== organizationId || branch.status !== "active") continue;
       if (branch.lat === null || branch.lng === null) continue;
-      const distance = haversineKm(bestZone.lat, bestZone.lng, branch.lat, branch.lng);
+      const distance = haversineKm(bestZone.lat as number, bestZone.lng as number, branch.lat, branch.lng);
       if (distance < nearestDistance) {
         nearestDistance = distance;
         nearestBranch = branch;
@@ -1503,10 +1525,62 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return eligible.map((row) => ({ id: row.id, attempts: row.attempts, payload: row.payload, organizationId: row.organizationId }));
   }
 
-  async markMessagingOutboxSent(id: string): Promise<void> {
+  /** false simula la base sin la migracion 066: el wamid no se guarda y registrarEstadoEntregaWhatsapp responde `no_disponible`. */
+  estadosEntregaDisponibles = true;
+
+  async markMessagingOutboxSent(id: string, detalle?: { readonly providerMessageId: string; readonly enviadoComo?: "texto" | "plantilla" | "botones" | "ubicacion" }): Promise<void> {
     const row = this.outbox.get(id);
     if (!row || row.status !== "processing") return;
     row.status = "sent";
+    if (!this.estadosEntregaDisponibles || !detalle || detalle.providerMessageId.length === 0) return;
+    // Indice unico parcial (organizacion, wamid): un wamid repetido cierra el mensaje sin guardarlo.
+    const repetido = [...this.outbox.values()].some((o) => o.organizationId === row.organizationId && o.providerMessageId === detalle.providerMessageId);
+    if (repetido) return;
+    row.providerMessageId = detalle.providerMessageId.slice(0, 255);
+    row.enviadoComo = detalle.enviadoComo ?? null;
+    row.deliveryStatus = "sent";
+    row.deliveryUpdatedAt = Date.now();
+  }
+
+  /** Espejo de `restaurantes.registrar_estado_entrega_whatsapp` (066): mismo avance, mismo motivo, misma llave (organizacion + wamid). */
+  async registrarEstadoEntregaWhatsapp(organizationId: string, estado: EstadoEntregaEntrante): Promise<RegistroEstadoEntrega> {
+    const vacio = { outboxId: null, estado: null, eventType: null, motivoFallo: null, orderId: null, orderStatus: null, fallidasUltimaHora: 0, respaldoCorreo: null } as const;
+    if (!this.estadosEntregaDisponibles) return { resultado: "no_disponible", ...vacio };
+    const row = [...this.outbox.values()].find((o) => o.organizationId === organizationId && o.channel === "whatsapp" && o.providerMessageId === estado.wamid);
+    if (!row) return { resultado: "desconocido", ...vacio };
+    const nuevo = avanzarEstadoEntrega(row.deliveryStatus ?? null, estado.status);
+    const cambia = nuevo !== (row.deliveryStatus ?? null);
+    if (cambia) {
+      if (nuevo === "failed") {
+        const plantillaDisponible = typeof (row.payload as { template?: unknown } | null)?.template === "object" && (row.payload as { template?: unknown }).template !== null;
+        const codigo = estado.errorCode;
+        row.deliveryFailureReason =
+          codigo === 131047 ? (row.enviadoComo === "texto" && plantillaDisponible ? "fuera_de_ventana_plantilla_sin_usar" : "fuera_de_ventana")
+          : codigo === 131026 ? "numero_no_entregable"
+          : codigo === 131049 ? "limite_marketing"
+          : codigo !== null && codigo >= 132000 && codigo <= 132999 ? "plantilla"
+          : "otro";
+        row.deliveryErrorCode = codigo;
+        row.deliveryErrorTitle = estado.errorTitle ? estado.errorTitle.slice(0, 120) : null;
+      }
+      row.deliveryStatus = nuevo;
+      row.deliveryUpdatedAt = Date.now();
+    }
+    const m = /^order-status:([0-9a-fA-F-]{36}):(.+)$/.exec(row.dedupeKey);
+    const hora = Date.now() - 3_600_000;
+    // Como la funcion SQL: los datos del correo solo salen cuando ESTE status hace pasar un aviso de pedido a failed.
+    const pedido = cambia && nuevo === "failed" && row.eventType.startsWith("order.status.") && m?.[1] ? await this.findOrderById(organizationId, m[1]) : null;
+    return {
+      resultado: cambia ? "actualizado" : "sin_cambio",
+      outboxId: row.id,
+      estado: nuevo,
+      eventType: row.eventType,
+      motivoFallo: nuevo === "failed" ? (row.deliveryFailureReason ?? null) : null,
+      orderId: row.eventType.startsWith("order.status.") && m ? (m[1] ?? null) : null,
+      orderStatus: row.eventType.startsWith("order.status.") && m ? (m[2] ?? null) : null,
+      fallidasUltimaHora: [...this.outbox.values()].filter((o) => o.organizationId === organizationId && o.deliveryStatus === "failed" && (o.deliveryUpdatedAt ?? 0) > hora).length,
+      respaldoCorreo: pedido?.customerEmail ? { to: pedido.customerEmail, clienteNombre: pedido.customerName, sucursal: pedido.branch ?? null, total: pedido.total } : null,
+    };
   }
 
   async markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {
@@ -1851,6 +1925,13 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return { propertyId, productId, price, isAvailable };
   }
 
+  async setBranchProductAvailability(propertyId: string, productId: string, isAvailable: boolean): Promise<BranchProductState | null> {
+    const existing = this.branchProducts.find((bp) => bp.propertyId === propertyId && bp.productId === productId);
+    if (!existing) return null;
+    existing.isAvailable = isAvailable;
+    return { propertyId, productId, price: existing.price, isAvailable };
+  }
+
   async findOrderById(organizationId: string, orderId: string): Promise<Order | null> {
     const order = this.orders.find((o) => o.id === orderId && o.organizationId === organizationId);
     return order ?? null;
@@ -2182,8 +2263,29 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : b.id.localeCompare(a.id)));
   }
 
+  async listColoniasReferencia(organizationId: string): Promise<ColoniasReferenciaLectura> {
+    return {
+      disponible: true,
+      zonas: this.knownZones
+        .filter((z) => z.organizationId === organizationId)
+        .map((z) => ({
+          zoneId: z.id!,
+          name: z.name,
+          lat: z.lat,
+          lng: z.lng,
+          fuente: z.fuente ?? null,
+          asignacionFuente: z.asignacionFuente ?? null,
+          refSucursalSlug: z.refSucursalSlug ?? null,
+          refKm: z.refKm ?? null,
+          ref2SucursalSlug: z.ref2SucursalSlug ?? null,
+          ref2Km: z.ref2Km ?? null,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, "es")),
+    };
+  }
+
   async createKnownZone(organizationId: string, input: NewKnownZoneInput): Promise<KnownZone> {
-    const zone: Required<StoredKnownZone> = { id: randomUUID(), organizationId, name: input.name, lat: input.lat, lng: input.lng, createdAt: new Date().toISOString() };
+    const zone: StoredKnownZone & { readonly id: string; readonly createdAt: string } = { id: randomUUID(), organizationId, name: input.name, lat: input.lat, lng: input.lng, createdAt: new Date().toISOString() };
     this.knownZones.push(zone);
     return zone;
   }

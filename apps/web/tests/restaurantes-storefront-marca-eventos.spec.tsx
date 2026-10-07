@@ -13,7 +13,7 @@ import { enlaceWhatsappSeguro } from "../src/verticals/restaurantes/storefront/B
 import { imagenOgValida } from "../src/verticals/restaurantes/storefront/meta-publica.ts";
 import { hayCambios, formDesdeMarca, marcaDesdeForm } from "../src/verticals/restaurantes/lib/sitio-publico-client.ts";
 import { textoMotivoCallback } from "../src/verticals/restaurantes/lib/conversaciones-client.ts";
-import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, esperarRutaCargada, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -26,10 +26,14 @@ async function esperar(): Promise<void> {
   await act(async () => {
     for (let i = 0; i < 4; i += 1) await flushMicrotasks();
   });
+  // R-37: las pantallas de la App son chunks lazy; espera a que termine el estado de carga de pantalla.
+  await esperarRutaCargada(document.body);
 }
-function renderEn(ruta: string): RenderedComponent {
+async function renderEn(ruta: string): Promise<RenderedComponent> {
   window.history.pushState({}, "", ruta);
-  return renderComponent(<App />);
+  const r = renderComponent(<App />);
+  await esperarRutaCargada(r.container);
+  return r;
 }
 const texto = () => rendered!.container.textContent ?? "";
 const meta = (clave: string, atributo = "property") => document.head.querySelector(`meta[${atributo}="${clave}"]`)?.getAttribute("content") ?? null;
@@ -66,7 +70,7 @@ afterEach(() => {
 describe("pagina del restaurante: portada de marca, promociones, WhatsApp y OG", () => {
   it("muestra titular, eslogan, descripcion, imagen de portada con tamano y carga prioritaria, logo diferido y redes con rel seguro", async () => {
     fetchMock.mockResolvedValue(json(restaurante()));
-    rendered = renderEn("/pedir/demo");
+    rendered = await renderEn("/pedir/demo");
     await esperar();
     expect(texto()).toContain("Tacos con historia");
     expect(texto()).toContain("Desde 1980");
@@ -80,12 +84,12 @@ describe("pagina del restaurante: portada de marca, promociones, WhatsApp y OG",
     const ig = Array.from(rendered.container.querySelectorAll("a")).find((a) => a.getAttribute("href") === "https://instagram.com/lostaquitos")!;
     expect(ig.getAttribute("rel")).toBe("noopener noreferrer");
     expect(ig.getAttribute("target")).toBe("_blank");
-    expect(String(fetchMock.mock.calls[0]![0])).toBe("http://localhost:8787/v1/restaurantes/demo/storefront");
+    expect(fetchMock.mock.calls.map((c) => String(c[0]))).toContain("http://localhost:8787/v1/restaurantes/demo/storefront");
   });
 
   it("lista las promociones con sus condiciones reales (solo recoger, dia, vigencia, sucursal) y la sucursal sigue disponible", async () => {
     fetchMock.mockResolvedValue(json(restaurante()));
-    rendered = renderEn("/pedir/demo");
+    rendered = await renderEn("/pedir/demo");
     await esperar();
     const t = texto();
     expect(t).toContain("Promociones");
@@ -100,7 +104,7 @@ describe("pagina del restaurante: portada de marca, promociones, WhatsApp y OG",
 
   it("sin promociones no aparece la seccion; sin marca la portada es generica con el nombre (nada inventado) y sin imagenes", async () => {
     fetchMock.mockResolvedValue(json(restaurante({ marca: MARCA_VACIA, promociones: [] })));
-    rendered = renderEn("/pedir/demo");
+    rendered = await renderEn("/pedir/demo");
     await esperar();
     expect(texto()).not.toContain("Promociones");
     expect(texto()).toContain("Pide en Los Taquitos de PM");
@@ -109,7 +113,7 @@ describe("pagina del restaurante: portada de marca, promociones, WhatsApp y OG",
 
   it("un servidor anterior a R-38 (sin marca ni promociones) sigue mostrando las sucursales", async () => {
     fetchMock.mockResolvedValue(json({ restaurante: { slug: "demo", nombre: "Los Taquitos de PM" }, sucursales: [CENTRO] }));
-    rendered = renderEn("/pedir/demo");
+    rendered = await renderEn("/pedir/demo");
     await esperar();
     expect(texto()).toContain("Ver menú y pedir en Centro");
     expect(texto()).toContain("Pide en Los Taquitos de PM");
@@ -117,21 +121,21 @@ describe("pagina del restaurante: portada de marca, promociones, WhatsApp y OG",
 
   it("con UNA sucursal con numero: boton flotante a wa.me de esa sucursal; sin numero valido no hay boton", async () => {
     fetchMock.mockResolvedValue(json(restaurante()));
-    rendered = renderEn("/pedir/demo");
+    rendered = await renderEn("/pedir/demo");
     await esperar();
     const wa = rendered.container.querySelector<HTMLAnchorElement>('[data-testid="boton-whatsapp"]')!;
     expect(wa.getAttribute("href")).toBe(WA);
     expect(wa.getAttribute("rel")).toBe("noopener noreferrer");
     rendered.unmount();
     fetchMock.mockResolvedValue(json(restaurante({ sucursales: [{ ...CENTRO, whatsappUrl: null }] })));
-    rendered = renderEn("/pedir/demo");
+    rendered = await renderEn("/pedir/demo");
     await esperar();
     expect(rendered.container.querySelector('[data-testid="boton-whatsapp"]')).toBeNull();
   });
 
   it("con VARIAS sucursales no hay flotante ambiguo: cada tarjeta trae su enlace de WhatsApp", async () => {
     fetchMock.mockResolvedValue(json(restaurante({ sucursales: [CENTRO, NORTE] })));
-    rendered = renderEn("/pedir/demo");
+    rendered = await renderEn("/pedir/demo");
     await esperar();
     expect(rendered.container.querySelector('[data-testid="boton-whatsapp"]')).toBeNull();
     const enlaces = Array.from(rendered.container.querySelectorAll("a")).filter((a) => (a.textContent ?? "").startsWith("Escribir por WhatsApp"));
@@ -140,7 +144,7 @@ describe("pagina del restaurante: portada de marca, promociones, WhatsApp y OG",
 
   it("publica Open Graph (titulo, descripcion, tipo e imagen https) y lo retira al salir", async () => {
     fetchMock.mockResolvedValue(json(restaurante()));
-    rendered = renderEn("/pedir/demo");
+    rendered = await renderEn("/pedir/demo");
     await esperar();
     expect(meta("og:title")).toBe("Tacos con historia · Los Taquitos de PM");
     expect(meta("og:description")).toBe("Somos de Mérida");
@@ -154,16 +158,16 @@ describe("pagina del restaurante: portada de marca, promociones, WhatsApp y OG",
 
   it("la pagina de la sucursal muestra el boton flotante de ESA sucursal y el pie enlaza eventos y redes", async () => {
     fetchMock.mockImplementation(async (url: string) => (String(url).endsWith("/menu") ? json({ sucursal: CENTRO, categorias: [], marca: MARCA }) : json({}, 404)));
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     expect(rendered.container.querySelector('[data-testid="boton-whatsapp"]')!.getAttribute("href")).toBe(WA);
-    expect(Array.from(rendered.container.querySelectorAll("footer a")).map((a) => a.getAttribute("href"))).toEqual(["/pedir/demo/eventos", "/pedir/demo/privacidad", "https://instagram.com/lostaquitos"]);
+    expect(Array.from(rendered.container.querySelectorAll("footer a")).map((a) => a.getAttribute("href"))).toEqual(["/pedir/demo/sucursales", "/pedir/demo/eventos", "/pedir/demo/privacidad", "https://instagram.com/lostaquitos"]);
     expect(meta("og:image")).toBe("https://cdn.example.com/portada.jpg");
   });
 
   it("rastreo y checkout siguen noindex (la meta de la pagina de rastreo no cambia)", async () => {
     fetchMock.mockResolvedValue(json({ disponible: true, pedido: { status: "pending", branch: "Centro", total: 10, paymentMethod: "efectivo", canal: "recoger", createdAt: "2026-10-03T10:00:00Z", items: [] } }));
-    rendered = renderEn("/pedir/demo/pedido/tok");
+    rendered = await renderEn("/pedir/demo/pedido/tok");
     await esperar();
     expect(meta("robots", "name")).toBe("noindex,nofollow");
   });
@@ -209,7 +213,7 @@ describe("formulario publico de eventos (R-43)", () => {
       if (String(url).endsWith("/storefront/eventos")) return respuestaEvento?.(init) ?? json({ recibido: true });
       return json(restaurante({ sucursales: [CENTRO, NORTE] }));
     });
-    rendered = renderEn("/pedir/demo/eventos");
+    rendered = await renderEn("/pedir/demo/eventos");
     await esperar();
   }
   const llenar = () => {
@@ -227,7 +231,7 @@ describe("formulario publico de eventos (R-43)", () => {
   it("la ruta /pedir/:org/eventos no se confunde con una sucursal; sin llenar nada muestra errores y NO envia", async () => {
     await abrir();
     expect(texto()).toContain("Eventos y catering");
-    expect(String(fetchMock.mock.calls[0]![0])).toBe("http://localhost:8787/v1/restaurantes/demo/storefront");
+    expect(fetchMock.mock.calls.map((c) => String(c[0]))).toContain("http://localhost:8787/v1/restaurantes/demo/storefront");
     await submitForm(formulario());
     expect(texto()).toContain("Escribe tu nombre.");
     expect(texto()).toContain("Elige la sucursal.");
@@ -272,7 +276,7 @@ describe("formulario publico de eventos (R-43)", () => {
 
   it("restaurante sin sucursales: estado vacio honesto, sin formulario", async () => {
     fetchMock.mockResolvedValue(json(restaurante({ sucursales: [] })));
-    rendered = renderEn("/pedir/demo/eventos");
+    rendered = await renderEn("/pedir/demo/eventos");
     await esperar();
     expect(texto()).toContain("Sin sucursales disponibles");
     expect(rendered.container.querySelector("form")).toBeNull();
@@ -280,7 +284,7 @@ describe("formulario publico de eventos (R-43)", () => {
 
   it("falla de red al cargar: error con reintento", async () => {
     fetchMock.mockRejectedValue(new Error("sin red"));
-    rendered = renderEn("/pedir/demo/eventos");
+    rendered = await renderEn("/pedir/demo/eventos");
     await esperar();
     expect(texto()).toContain("No pudimos conectar con el restaurante");
     expect(texto()).toContain("Reintentar");
@@ -310,6 +314,14 @@ describe("Configuracion > Sitio publico (R-38)", () => {
     // Dentro del panel la vista previa no es el titulo de la pagina: el panel ya tiene su <h1> (un solo <h1> por pantalla).
     expect(rendered!.container.querySelectorAll("h1")).toHaveLength(0);
     expect(rendered!.container.querySelector('[data-testid="portada-marca"] h2')!.textContent).toBe("Tacos con historia");
+  });
+
+  it("la vista previa del panel no agrega un <h1> (la pagina de Configuracion ya tiene el suyo): el titular es <h2>", async () => {
+    montar();
+    await esperar();
+    const portada = rendered!.container.querySelector('[data-testid="portada-marca"]')!;
+    expect(portada.querySelector("h1")).toBeNull();
+    expect(portada.querySelector("h2")!.textContent).toBe("Tacos con historia");
   });
 
   it("editar actualiza la vista previa en vivo y guarda por PUT con vacios como null; luego muestra 'Guardado'", async () => {

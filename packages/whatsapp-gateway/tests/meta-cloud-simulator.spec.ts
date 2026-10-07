@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHmac } from "node:crypto";
 import { MetaGraphWhatsAppClient } from "../src/providers/meta-graph-client.ts";
 import { WhatsAppSendError } from "../src/errors.ts";
+import { extractMetaStatuses } from "../src/statuses.ts";
 import { createSimulatorFetch, MetaCloudSimulator, ResendSink, serveFetchHandler, WINDOW_24H_MS } from "../src/testing/index.ts";
 import type { RunningServer } from "../src/testing/index.ts";
 
@@ -52,6 +53,16 @@ describe("MetaCloudSimulator (R-35)", () => {
     expect(received[1]!.signature).toBe(received[0]!.signature);
     expect(await sim.verifyWebhookHandshake("vt", "abc")).toEqual({ status: 200, body: "abc" });
     expect((await sim.verifyWebhookHandshake("otro")).status).toBe(403);
+  });
+
+  it("el wamid que devuelve el envio vuelve en los statuses del webhook, incluido un failed con errors[] que extractMetaStatuses entiende", async () => {
+    await sim.deliverText("5219991230000", "abre la ventana de 24 h");
+    const enviado = await client.sendMessage({ to: "5219991230000", phoneNumberId: PNID, body: "hola" });
+    expect(enviado.enviadoComo).toBe("texto");
+    await sim.deliverStatus(enviado.providerMessageId, "delivered");
+    await sim.deliverStatus(enviado.providerMessageId, "failed", { code: 131047, title: "Re-engagement message" });
+    const estados = received.flatMap((r) => extractMetaStatuses(JSON.parse(r.body) as unknown));
+    expect(estados.map((e) => [e.wamid, e.status, e.errorCode])).toEqual([[enviado.providerMessageId, "delivered", null], [enviado.providerMessageId, "failed", 131047]]);
   });
 
   it("rechaza un token invalido con 401 y el cliente real lo trata como no reintentable", async () => {

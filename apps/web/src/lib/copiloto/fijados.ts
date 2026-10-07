@@ -16,6 +16,8 @@ function esObjeto(v: unknown): v is Record<string, unknown> {
 }
 
 function falla(res: Response, ctx: "leer" | "compartir"): FijadosErrorCliente {
+  // 409 = el Copiloto de plataforma no se usa mientras el superadmin impersona: igual que un rol sin Copiloto, el tablero no se pinta.
+  if (res.status === 409) return new FijadosErrorCliente("sin_acceso");
   if (res.status === 403) return new FijadosErrorCliente(ctx === "compartir" ? "sin_permiso" : "sin_acceso");
   if (res.status === 503) return new FijadosErrorCliente("no_disponible");
   return new FijadosErrorCliente("error");

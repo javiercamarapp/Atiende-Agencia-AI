@@ -84,6 +84,40 @@ function classifyCalendarProviderError(err: unknown): ReturnType<typeof Errors.c
   return Errors.citasCalendarProviderNoDisponible("No se pudo contactar al proveedor (red o tiempo de espera agotado) — inténtalo de nuevo en unos minutos.");
 }
 
+/**
+ * Un staff acotado a una sucursal solo opera los calendarios de los proveedores de ESA sucursal: la ruta trae `:propertyId` (que
+ * `requirePropertyMembership` ya valido contra la membership), pero el `:providerId` lo manda el cliente y `findProvider` solo filtra por
+ * organizacion. Sin esta comparacion, el staff de la sucursal 1 conectaba un calendario propio al proveedor de la sucursal 2 y las citas
+ * (servicio, nombre, telefono y notas del paciente) se sincronizaban hacia ese calendario. Un proveedor sin sucursal (negocio de una sola
+ * ubicacion) es de toda la organizacion, igual que `citas.membership_covers_property` en SQL. 404 y no 403: no revela que el proveedor existe.
+ */
+function assertProviderBelongsToProperty(provider: { readonly propertyId: string | null }, propertyId: string): void {
+  if (provider.propertyId && provider.propertyId !== propertyId) throw Errors.notFound("Proveedor no encontrado.");
+}
+
+/** SQLSTATE del error de Postgres (los errores de `pg` traen `code`); undefined para cualquier otro error. */
+function sqlState(err: unknown): string | undefined {
+  return typeof err === "object" && err !== null && typeof (err as { code?: unknown }).code === "string" ? (err as { code: string }).code : undefined;
+}
+
+/**
+ * Conectar guarda el secreto (API key / contrasena) en Vault con `citas.set_provider_calendar_refresh_token`, funcion de SOLO sistema
+ * (`auth.uid() is null`, ver 017): llamada desde la sesion del staff recibe 42501 y la conexion nunca funcionaba contra Postgres real. La
+ * autorizacion del staff (JWT, membership de la sucursal, proveedor de esa sucursal, validacion SSRF) ya ocurrio en la ruta; solo la escritura
+ * se hace en una sesion de sistema propia, como el callback de Google Calendar. Base sin migrar (032): sin la policy de sistema de las cuentas
+ * Cal.com/CalDAV esa escritura es rechazada (42501) y se responde un 503 honesto en vez de un 500.
+ */
+async function connectEnSesionDeSistema<T>(deps: AppDeps, connect: (repo: ReturnType<AppDeps["citasRepo"]>) => Promise<T>): Promise<T> {
+  try {
+    return await deps.engine.withAppSession({ userId: null }, (db) => connect(deps.citasRepo(db)));
+  } catch (err) {
+    if (sqlState(err) === "42501") {
+      throw Errors.serviceUnavailable("Conectar este calendario no esta disponible aun: requiere aplicar la migracion 032 de citas en la base de datos.");
+    }
+    throw err;
+  }
+}
+
 export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
@@ -103,10 +137,12 @@ export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   app.post("/v1/citas/properties/:propertyId/providers/:providerId/calcom/connect", async (c) => {
     const organizationId = c.get("organizationId");
     const providerId = c.req.param("providerId");
+    const propertyId = c.req.param("propertyId");
     const citasRepo = deps.citasRepo(c.get("db"));
 
     const provider = await citasRepo.findProvider(organizationId, providerId);
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+    assertProviderBelongsToProperty(provider, propertyId);
 
     const body = await readJsonCapped<CalComConnectBody>(c.req.raw, 8 * 1024);
     const apiKey = typeof body.api_key === "string" ? body.api_key.trim() : "";
@@ -123,17 +159,19 @@ export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       baseUrl = baseUrlRaw;
     }
 
-    const account = await citasRepo.connectProviderCalComAccount({ organizationId, providerId, calcomEventTypeId: eventTypeId, apiKey, baseUrl });
+    const account = await connectEnSesionDeSistema(deps, (repo) => repo.connectProviderCalComAccount({ organizationId, providerId, calcomEventTypeId: eventTypeId, apiKey, baseUrl }));
     return c.json({ connected: true, provider_id: account.providerId, calcom_event_type_id: account.calcomEventTypeId, calcom_base_url: account.baseUrl, sync_status: account.syncStatus });
   });
 
   app.post("/v1/citas/properties/:propertyId/providers/:providerId/calcom/disconnect", async (c) => {
     const organizationId = c.get("organizationId");
     const providerId = c.req.param("providerId");
+    const propertyId = c.req.param("propertyId");
     const citasRepo = deps.citasRepo(c.get("db"));
 
     const provider = await citasRepo.findProvider(organizationId, providerId);
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+    assertProviderBelongsToProperty(provider, propertyId);
 
     await citasRepo.disconnectProviderCalComAccount(providerId);
     return c.json({ connected: false });
@@ -142,10 +180,12 @@ export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   app.get("/v1/citas/properties/:propertyId/providers/:providerId/calcom/status", async (c) => {
     const organizationId = c.get("organizationId");
     const providerId = c.req.param("providerId");
+    const propertyId = c.req.param("propertyId");
     const citasRepo = deps.citasRepo(c.get("db"));
 
     const provider = await citasRepo.findProvider(organizationId, providerId);
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+    assertProviderBelongsToProperty(provider, propertyId);
 
     const account = await citasRepo.findProviderCalComAccount(providerId);
     // Fase 6 §2 (seguimiento) — resumen de "sincronizaciones con problema" (citas
@@ -171,10 +211,12 @@ export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   app.post("/v1/citas/properties/:propertyId/providers/:providerId/calcom/test-connection", async (c) => {
     const organizationId = c.get("organizationId");
     const providerId = c.req.param("providerId");
+    const propertyId = c.req.param("propertyId");
     const citasRepo = deps.citasRepo(c.get("db"));
 
     const provider = await citasRepo.findProvider(organizationId, providerId);
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+    assertProviderBelongsToProperty(provider, propertyId);
 
     // Hace una llamada de red real al proveedor -- limitado por actor+proveedor
     // (mismo orden de magnitud que cancel/reschedule/reassign-appointment, ver
@@ -205,10 +247,12 @@ export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   app.post("/v1/citas/properties/:propertyId/providers/:providerId/caldav/connect", async (c) => {
     const organizationId = c.get("organizationId");
     const providerId = c.req.param("providerId");
+    const propertyId = c.req.param("propertyId");
     const citasRepo = deps.citasRepo(c.get("db"));
 
     const provider = await citasRepo.findProvider(organizationId, providerId);
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+    assertProviderBelongsToProperty(provider, propertyId);
 
     const body = await readJsonCapped<CalDavConnectBody>(c.req.raw, 8 * 1024);
     const calendarCollectionUrl = typeof body.calendar_collection_url === "string" ? body.calendar_collection_url.trim() : "";
@@ -225,17 +269,19 @@ export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const validacionUrl = await deps.citasCaldavUrlValidator(calendarCollectionUrl);
     if (!validacionUrl.permitida) throw Errors.validation(validacionUrl.motivo ?? "calendar_collection_url no es una URL permitida.");
 
-    const account = await citasRepo.connectProviderCalDavAccount({ organizationId, providerId, calendarCollectionUrl, username, password });
+    const account = await connectEnSesionDeSistema(deps, (repo) => repo.connectProviderCalDavAccount({ organizationId, providerId, calendarCollectionUrl, username, password }));
     return c.json({ connected: true, provider_id: account.providerId, calendar_collection_url: account.calendarCollectionUrl, username: account.username, sync_status: account.syncStatus });
   });
 
   app.post("/v1/citas/properties/:propertyId/providers/:providerId/caldav/disconnect", async (c) => {
     const organizationId = c.get("organizationId");
     const providerId = c.req.param("providerId");
+    const propertyId = c.req.param("propertyId");
     const citasRepo = deps.citasRepo(c.get("db"));
 
     const provider = await citasRepo.findProvider(organizationId, providerId);
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+    assertProviderBelongsToProperty(provider, propertyId);
 
     await citasRepo.disconnectProviderCalDavAccount(providerId);
     return c.json({ connected: false });
@@ -244,10 +290,12 @@ export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   app.get("/v1/citas/properties/:propertyId/providers/:providerId/caldav/status", async (c) => {
     const organizationId = c.get("organizationId");
     const providerId = c.req.param("providerId");
+    const propertyId = c.req.param("propertyId");
     const citasRepo = deps.citasRepo(c.get("db"));
 
     const provider = await citasRepo.findProvider(organizationId, providerId);
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+    assertProviderBelongsToProperty(provider, propertyId);
 
     const account = await citasRepo.findProviderCalDavAccount(providerId);
     const syncIssues = await citasRepo.loadProviderCalendarSyncIssues(providerId);
@@ -266,10 +314,12 @@ export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   app.post("/v1/citas/properties/:propertyId/providers/:providerId/caldav/test-connection", async (c) => {
     const organizationId = c.get("organizationId");
     const providerId = c.req.param("providerId");
+    const propertyId = c.req.param("propertyId");
     const citasRepo = deps.citasRepo(c.get("db"));
 
     const provider = await citasRepo.findProvider(organizationId, providerId);
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+    assertProviderBelongsToProperty(provider, propertyId);
 
     const limited = await consumeRateLimit(citasRepo, "citas-calendar-test-connection", requestActor(c.req.raw, providerId), 20, 60);
     if (!limited.allowed) throw Errors.tooManyRequests();

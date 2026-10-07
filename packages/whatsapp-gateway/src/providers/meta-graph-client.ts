@@ -18,7 +18,7 @@
 // entrega y fuera Meta lo rechaza con un 4xx de negocio que el dispatcher marca `dead`, nunca `sent` fingido.
 // Crear y aprobar la plantilla en el Business Manager de Meta sigue siendo un paso externo (ver README).
 import { WhatsAppConfigError, WhatsAppInvalidPayloadError, WhatsAppSendError } from "../errors.ts";
-import type { OutboundTemplate, OutboundWhatsAppMessagePayload, WhatsAppGraphClient, WhatsAppSendResult } from "../types.ts";
+import type { EnviadoComo, OutboundTemplate, OutboundWhatsAppMessagePayload, WhatsAppGraphClient, WhatsAppSendResult } from "../types.ts";
 
 /** Versión de Graph API por defecto — estable, sin fecha de retiro anunciada al
  *  momento de escribir esto. Sobreescribible vía opción/env sin tocar código. */
@@ -121,6 +121,16 @@ function buildRequestBody(message: OutboundWhatsAppMessagePayload, approvedTempl
   return { messaging_product: "whatsapp", to: message.to, type: "text", text: { body: message.body, preview_url: false } };
 }
 
+/** Tipo real del cuerpo que se mando a Meta (para explicar despues un fallo de entrega). */
+function enviadoComoDe(body: Record<string, unknown>): EnviadoComo {
+  if (body.type === "template") return "plantilla";
+  if (body.type === "interactive") {
+    const tipo = (body.interactive as { type?: unknown } | undefined)?.type;
+    return tipo === "location_request_message" ? "ubicacion" : "botones";
+  }
+  return "texto";
+}
+
 export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
   private readonly accessToken: string;
   private readonly apiVersion: string;
@@ -159,7 +169,7 @@ export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
     } catch (err) {
       // Fallo de red (DNS, timeout, conexión rechazada) — siempre reintentable,
       // nunca es culpa del mensaje en sí.
-      throw new WhatsAppSendError(`fallo de red al llamar Graph API: ${err instanceof Error ? err.message : String(err)}`, true);
+      throw new WhatsAppSendError(`fallo de red al llamar Graph API: ${err instanceof Error ? err.message : String(err)}`, true, { proveedor: true });
     }
 
     if (!response.ok) {
@@ -176,7 +186,11 @@ export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
       // sin cambiar nada solo repite el mismo error, así que se marca no
       // reintentable (el dispatcher lo manda a `dead` de inmediato).
       const retryable = response.status === 429 || response.status >= 500;
-      throw new WhatsAppSendError(`Graph API respondió ${response.status}: ${detail}`, retryable);
+      const graphCode = typeof parsed?.error?.code === "number" ? parsed.error.code : undefined;
+      // Solo cuenta como falla del PROVEEDOR (base de la alerta de proveedor caido) lo que no es culpa del mensaje: 429, 5xx y el token invalido (190).
+      // Un 4xx causado por el mensaje (numero invalido, parametro de plantilla malo) no es proveedor caido: se informa httpStatus/graphCode sin la marca.
+      const proveedor = retryable || graphCode === 190;
+      throw new WhatsAppSendError(`Graph API respondió ${response.status}: ${detail}`, retryable, { proveedor, httpStatus: response.status, ...(graphCode !== undefined ? { graphCode } : {}) });
     }
 
     let success: GraphApiSuccessBody;
@@ -192,6 +206,6 @@ export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
       // finge éxito sin evidencia real de que el mensaje se aceptó.
       throw new WhatsAppSendError("Graph API respondió 2xx sin messages[0].id", false);
     }
-    return { providerMessageId };
+    return { providerMessageId, enviadoComo: enviadoComoDe(body) };
   }
 }

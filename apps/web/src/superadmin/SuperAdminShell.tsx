@@ -4,21 +4,26 @@
 // con "Saltar al contenido" -- vive en `VerticalShell` de @atiende/ui. Lo propio de la
 // plataforma se queda aqui: la sesion del superadmin (`atiende.superadmin.session`, sin
 // organizacion ni sucursal activa: el superadmin ve TODAS a la vez), el mapa de navegacion,
-// el banner de impersonacion, el dialogo de step-up y la ausencia de "Chatea con tus datos"
-// (no aplica a un panel de plataforma).
-import { useEffect, useState } from "react";
+// el banner de impersonacion, el dialogo de step-up y el Copiloto de plataforma (CHAT-17): el boton
+// "Chatea con tus datos" de la barra y el panel lateral Cmd+J. El shell es un LAYOUT (App.tsx lo monta una
+// sola vez para todas las rutas /superadmin/*), asi que el panel no se desmonta al navegar y conserva su
+// conversacion.
+import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { LayoutGrid } from "lucide-react";
-import { NotificationBell, VerticalShell, VerticalShellEstado } from "@atiende/ui";
+import { useLocation } from "react-router-dom";
+import { LayoutGrid, MessageCircle } from "lucide-react";
+import { Button, NotificationBell, SheetClose, VerticalShell, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarPiePildora, SidebarSection } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../lib/formato-fecha.ts";
 import { useNotifications } from "../lib/useNotifications.ts";
 import { clearSuperadminSession, readPersistedSuperadminSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
+import { CopilotoPanel, ID_PANEL_COPILOTO } from "./components/CopilotoPanel.tsx";
 import { ImpersonacionBanner } from "./components/ImpersonacionBanner.tsx";
 import { StepUpDialog } from "./components/StepUpDialog.tsx";
-import { MOVIL_SUPERADMIN, PIE_SUPERADMIN, RESUMEN, SECCIONES } from "./rutas.ts";
+import { RUTA_COPILOTO } from "./lib/copiloto-cliente.ts";
+import { COPILOTO, MOVIL_SUPERADMIN, PIE_SUPERADMIN, RESUMEN, SECCIONES } from "./rutas.ts";
 import { limpiarStepUp } from "./lib/stepup.ts";
 
 export interface SuperAdminShellProps {
@@ -29,7 +34,7 @@ export interface SuperAdminShellProps {
 
 // Resumen arriba (raiz, sin cabecera) + las secciones de Likida con paginas reales (rutas.ts, fuente unica).
 const SECTIONS: SidebarSection[] = [
-  { title: "Resumen", siempreAbierto: true, items: [{ ...RESUMEN }] },
+  { title: "Resumen", siempreAbierto: true, items: [{ ...RESUMEN }, { ...COPILOTO }] },
   ...SECCIONES.map((s) => ({ title: s.title, items: s.items.map((i) => ({ ...i })) })),
 ];
 
@@ -42,6 +47,25 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   const [session, setSession] = useState<LoginSession | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [resuelto, setResuelto] = useState(false);
+  const [copilotoAbierto, setCopilotoAbierto] = useState(false);
+  const { pathname } = useLocation();
+  // En la pagina completa del Copiloto el panel sobra (seria el mismo chat dos veces): ni boton, ni atajo, ni panel.
+  const enPaginaCopiloto = pathname === RUTA_COPILOTO;
+  const alternarCopiloto = useCallback(() => setCopilotoAbierto((v) => !v), []);
+  const cerrarCopiloto = useCallback(() => setCopilotoAbierto(false), []);
+
+  // Cmd+J (macOS) / Ctrl+J abre y cierra el panel desde cualquier pagina del back office.
+  useEffect(() => {
+    if (enPaginaCopiloto) return undefined;
+    const alTeclear = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        alternarCopiloto();
+      }
+    };
+    window.addEventListener("keydown", alTeclear);
+    return () => window.removeEventListener("keydown", alTeclear);
+  }, [enPaginaCopiloto, alternarCopiloto]);
 
   useEffect(() => {
     const s = readPersistedSuperadminSession(window.localStorage);
@@ -77,6 +101,27 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
     <NotificationBell className={className} href="/superadmin/notificaciones" hayNoLeidas={notif.hayNoLeidas} />
   );
 
+  /** `enHoja` = el boton vive en la hoja del menu de cuenta movil: al pulsarlo la hoja se cierra y el panel (pantalla completa) queda a la vista. */
+  const botonCopiloto = (className?: string, enHoja = false) => {
+    if (enPaginaCopiloto) return null;
+    const boton = (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-expanded={copilotoAbierto}
+        aria-controls={ID_PANEL_COPILOTO}
+        onClick={alternarCopiloto}
+        className={`h-8 rounded-full text-sm shrink-0 ${className ?? ""}`}
+      >
+        <MessageCircle className="w-3.5 h-3.5" />
+        Chatea con tus datos
+        <kbd className="hidden font-mono text-2xs text-muted-foreground md:inline">⌘J</kbd>
+      </Button>
+    );
+    return enHoja ? <SheetClose asChild>{boton}</SheetClose> : boton;
+  };
+
   return (
     <VerticalShell
       vertical="superadmin"
@@ -89,6 +134,9 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
       header={{ icon: <LayoutGrid className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: "Consola de Atiende", fecha: fechaCortaEsMx(), resumenTo: "/superadmin" }}
       notificationBell={campana()}
       mobileNotificationBell={campana("w-10 h-10")}
+      chatButton={botonCopiloto()}
+      mobileChatButton={botonCopiloto("h-10 w-full justify-center", true)}
+      panelLateral={<CopilotoPanel abierto={copilotoAbierto && !enPaginaCopiloto} onCerrar={cerrarCopiloto} apiBaseUrl={apiBaseUrl} token={session.token} />}
     >
       <div className="grid min-w-0 gap-4">
         <ImpersonacionBanner apiBaseUrl={apiBaseUrl} token={session.token} />

@@ -138,4 +138,49 @@ describe("<IndicadoresWhatsappPage />", () => {
     expect(texto()).toContain("Solo los roles");
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  describe("entrega y lectura de los avisos de pedido (migración 066)", () => {
+    const entrega = (parcial: Record<string, unknown> = {}) => ({
+      disponible: true,
+      resumen: { dias: 2, enviados: 10, entregados: 6, leidos: 3, fallidos: 3, sinEstado: 1, entregaPct: 60, lecturaPct: 50, fallosPorMotivo: { fuera_de_ventana: 2, numero_no_entregable: 1 } },
+      serie: [
+        { fecha: "2026-03-09", enviados: 4, entregados: 3, leidos: 1, fallidos: 1, sinEstado: 0, fallosPorMotivo: { fuera_de_ventana: 1 } },
+        { fecha: "2026-03-10", enviados: 6, entregados: 3, leidos: 2, fallidos: 2, sinEstado: 1, fallosPorMotivo: { fuera_de_ventana: 1, numero_no_entregable: 1 } },
+      ],
+      ...parcial,
+    });
+
+    it("muestra tasa de entrega y de lectura, los avisos no entregados con sus motivos y la serie diaria (más reciente primero)", async () => {
+      await pintar(stub({ 14: { status: 200, body: kpi({ entrega: entrega() }) } }));
+      const t = texto();
+      expect(t).toContain("Tasa de entrega");
+      expect(t).toContain("60%");
+      expect(t).toContain("6 de 10 llegaron al teléfono del cliente · 1 sin confirmación todavía");
+      expect(t).toContain("Tasa de lectura");
+      expect(t).toContain("3 de 6 entregados fueron leídos");
+      expect(t).toContain("Avisos no entregados");
+      expect(rendered!.container.querySelector("[data-testid=entrega-motivos]")?.textContent).toBe("Motivos de fallo: Fuera de la ventana de 24 h (2) · Número no entregable (1).");
+      const filas = Array.from(rendered!.container.querySelectorAll("tr[data-dia-entrega]")).map((f) => f.getAttribute("data-dia-entrega"));
+      expect(filas).toEqual(["2026-03-10", "2026-03-09"]);
+      expect(t).not.toMatch(/\+52|wamid|teléfono:/i);
+    });
+
+    it("sin avisos enviados: guiones con su razón, nunca 0%", async () => {
+      await pintar(stub({ 14: { status: 200, body: kpi({ entrega: entrega({ resumen: { dias: 2, enviados: 0, entregados: 0, leidos: 0, fallidos: 0, sinEstado: 0, entregaPct: null, lecturaPct: null, fallosPorMotivo: {} }, serie: [] }) }) } }));
+      const t = texto();
+      expect(t).toContain("Sin avisos enviados en el periodo.");
+      expect(t).toContain("Todavía no hay avisos entregados.");
+      expect(rendered!.container.querySelector("[data-testid=entrega-motivos]")).toBeNull();
+    });
+
+    it("base sin la 066 (entrega.disponible=false) o API sin el bloque: estado honesto 'no disponible aún' y el KPI de conversaciones sigue", async () => {
+      await pintar(stub({ 14: { status: 200, body: kpi({ entrega: entrega({ disponible: false, serie: [] }) }) } }));
+      expect(rendered!.container.querySelector("[data-testid=entrega-no-disponible]")?.textContent).toContain("no disponible aún");
+      expect(texto()).toContain("Conversión a pedido");
+      expect(rendered!.container.querySelector("[data-testid=entrega-avisos]")).toBeNull();
+      rendered!.unmount();
+      await pintar(stub({ 14: { status: 200, body: kpi() } }));
+      expect(rendered!.container.querySelector("[data-testid=entrega-no-disponible]")).not.toBeNull();
+    });
+  });
 });

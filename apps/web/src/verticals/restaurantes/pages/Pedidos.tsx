@@ -33,16 +33,21 @@ import {
   imprimirTicketsCocina,
   pedidosPorImprimir,
   statusTone,
-  useConfirm,
 } from "@atiende/ui";
 import type { TicketCocina } from "@atiende/ui";
-import { AlertTriangle, Clock, Printer, RefreshCw } from "lucide-react";
+import { AlertTriangle, Clock, Printer, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { fetchAvisos, sonidoPedidoNuevoPermitido } from "../lib/avisos-client.ts";
-import { assignRepartidor, fetchOrders, fetchScheduledOrders, nextStatusesForCanal, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
-import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
+import { fetchAutopilotoConfig, fetchSolicitudes, fetchTiempoPrometido } from "../lib/autopiloto-client.ts";
+import type { AutopilotoConfigRespuesta, MotivoCancelacion, SolicitudesRespuesta, TiempoPrometido } from "../lib/autopiloto-client.ts";
+import { assignRepartidor, fetchOrders, fetchRepartidorSugerido, fetchScheduledOrders, nextStatusesForCanal, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
+import type { OrderStatus, OrderSummary, RepartidorSugerido } from "../lib/orders-client.ts";
 import { guardarSonido, idsNuevos, leerSonido, etiquetaActualizado, reproducirAviso, SONDEO_BASE_MS } from "../lib/sondeo-pedidos.ts";
 import { useSondeoPedidos } from "../lib/use-sondeo-pedidos.ts";
 import { ProgramadosPanel } from "./ProgramadosPanel.tsx";
+import { AprobacionesPanel } from "./AprobacionesPanel.tsx";
+import { AutopilotoReglasDialogo } from "../components/AutopilotoReglasDialogo.tsx";
+import { HistorialPedidoDialogo } from "../components/HistorialPedidoDialogo.tsx";
+import { MotivoDialogo } from "../components/MotivoDialogo.tsx";
 import { ETIQUETA_ESTADO_COMANDA, TONO_ESTADO_COMANDA, etiquetaInsigniaPedido, fetchEstadosComandaPorPedido } from "../lib/pos-comandas-client.ts";
 import type { EstadoComandaWire } from "../lib/pos-comandas-client.ts";
 import { fetchRepartidores } from "../lib/staff-client.ts";
@@ -68,10 +73,7 @@ function storageLocal(): Storage | null {
   }
 }
 
-export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
-  // Estado de la comanda al POS de cada pedido de la lista (lectura liviana, solo ids). Sin respuesta (base sin migrar, error de red) no se pinta
-  // ninguna insignia: nunca bloquea ni tumba la lista de pedidos.
-  const [comandaEstados, setComandaEstados] = useState<Readonly<Record<string, EstadoComandaWire>>>({});
+export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: RestaurantesShellContext) {
   const [status, setStatus] = useState<PestanaPedidos>("todos");
   const [orders, setOrders] = useState<readonly OrderSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +81,19 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   // R-11: pestana Programados + tiempo real (sondeo). `programadosDisponible=false` = base sin la migracion 034.
   const [programados, setProgramados] = useState<readonly OrderSummary[] | null>(null);
   const [programadosDisponible, setProgramadosDisponible] = useState(true);
+  // Autopiloto (migracion 050): pestana "Por aprobar" (pedido grande, cancelacion pedida por el cliente, quejas con compensacion) y reglas por sucursal.
+  const [aprobaciones, setAprobaciones] = useState<SolicitudesRespuesta | null>(null);
+  const [autoConfig, setAutoConfig] = useState<AutopilotoConfigRespuesta | null>(null);
+  // QA-restaurantes-R2-botones-02: si la carga de las reglas falla, el dialogo muestra el error con Reintentar en vez de 'Cargando reglas…' eterno.
+  const [autoConfigError, setAutoConfigError] = useState<string | null>(null);
+  const [reglasAbiertas, setReglasAbiertas] = useState(false);
+  // Historial de transiciones del pedido (A-03): quien lo movio, cuando y por que.
+  const [historialDe, setHistorialDe] = useState<OrderSummary | null>(null);
+  // Tiempo prometido hoy por canal (aprendido de las entregas de la franja, nunca menos que el piso del dueno). Un fallo solo oculta la linea.
+  const [tiempos, setTiempos] = useState<{ readonly domicilio: TiempoPrometido; readonly recoger: TiempoPrometido } | null>(null);
+  // Cancelar un pedido exige un motivo de la lista cerrada (taxonomia de cancelacion): el dialogo guarda el pedido a cancelar.
+  const [cancelando, setCancelando] = useState<OrderSummary | null>(null);
+  const [errorCancelar, setErrorCancelar] = useState<string | null>(null);
   const [sonido, setSonido] = useState<boolean>(() => leerSonido(storageLocal(), orgSlug, propertyId));
   // R-16: la preferencia de la persona (Avisos) manda sobre la casilla local: con el aviso de pedido nuevo o su sonido apagados no suena.
   // Sin respuesta (base sin migrar, error de red) conserva el comportamiento de siempre.
@@ -95,6 +110,12 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   const [repartidores, setRepartidores] = useState<readonly RepartidorMember[] | null>(null);
   const [repartidoresError, setRepartidoresError] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
+  // Autopiloto (semiautomatico): repartidor SUGERIDO por el servidor para los pedidos a domicilio en preparando sin repartidor.
+  // Solo sugiere: asignar es un clic del gerente (el mismo PATCH assign-repartidor). Si el fetch falla no se muestra nada.
+  const [sugeridos, setSugeridos] = useState<Readonly<Record<string, RepartidorSugerido>>>({});
+  // Estado de la comanda al POS de cada pedido de la lista (lectura liviana, solo ids). Sin respuesta (base sin migrar, error de red) no se pinta
+  // ninguna insignia: nunca bloquea ni tumba la lista de pedidos.
+  const [comandaEstados, setComandaEstados] = useState<Readonly<Record<string, EstadoComandaWire>>>({});
   // Insignia "En POS" / "Capturar a mano" / "Falló": se consulta cada vez que cambia el conjunto de pedidos visibles.
   const idsVisibles = orders ? [...new Set(orders.map((o) => o.id))].join(",") : "";
   useEffect(() => {
@@ -110,8 +131,6 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
       cancelado = true;
     };
   }, [apiBaseUrl, token, propertyId, idsVisibles]);
-  // Confirmación de cancelación (ver `handleChangeStatus`): el diálogo lo monta `dialogo` al final del JSX.
-  const { confirmar, dialogo } = useConfirm();
   // Aviso OPCIONAL por WhatsApp al marcar "listo para recoger" (por defecto sí avisa; el staff puede apagarlo
   // por pedido, p. ej. si el cliente ya está en mostrador).
   const [sinAvisoPorPedido, setSinAvisoPorPedido] = useState<ReadonlySet<string>>(new Set());
@@ -260,11 +279,51 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
     };
   }, [prefs.autoImprimir, apiBaseUrl, token, propertyId, orgSlug]);
 
+  /** Aprobaciones pendientes de la sucursal (tambien alimentan la insignia de la pestana). Un fallo nunca tumba la lista de pedidos. */
+  async function loadAprobaciones() {
+    try {
+      const r = await fetchSolicitudes(fetch, apiBaseUrl, token, propertyId, "pendiente");
+      // Una respuesta que no tiene la forma esperada (despliegue viejo) se trata como "no disponible", nunca rompe la pantalla.
+      setAprobaciones(r && Array.isArray(r.solicitudes) ? r : { disponible: false, solicitudes: [] });
+    } catch {
+      setAprobaciones((previa) => previa ?? { disponible: false, solicitudes: [] });
+    }
+  }
+
+  async function loadTiempos() {
+    try {
+      const [domicilio, recoger] = await Promise.all([
+        fetchTiempoPrometido(fetch, apiBaseUrl, token, propertyId, "domicilio"),
+        fetchTiempoPrometido(fetch, apiBaseUrl, token, propertyId, "recoger"),
+      ]);
+      setTiempos(domicilio?.texto && recoger?.texto ? { domicilio, recoger } : null);
+    } catch {
+      setTiempos(null);
+    }
+  }
+
+  async function loadAutoConfig() {
+    setAutoConfigError(null);
+    try {
+      const r = await fetchAutopilotoConfig(fetch, apiBaseUrl, token, propertyId);
+      const valida = r?.config && Array.isArray(r.plantillas);
+      setAutoConfig(valida ? r : null);
+      if (!valida) setAutoConfigError("No se pudieron cargar las reglas del autopiloto.");
+    } catch (err) {
+      setAutoConfig(null);
+      setAutoConfigError(err instanceof Error ? err.message : "No se pudieron cargar las reglas del autopiloto.");
+    }
+  }
+
   async function load() {
     const gen = ++cargaGenRef.current;
     setError(null);
+    void loadAprobaciones();
     try {
-      if (status === "programados") {
+      if (status === "por_aprobar") {
+        // La lista de aprobaciones ya se pidio arriba; no hay lista de pedidos en esta pestana.
+        setOrders([]);
+      } else if (status === "programados") {
         const page = await fetchScheduledOrders(fetch, apiBaseUrl, token, propertyId, { limit: 100 });
         if (gen !== cargaGenRef.current) return;
         setProgramadosDisponible(page.disponible);
@@ -296,8 +355,17 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   loadRef.current = load;
 
   useEffect(() => {
+    // QA-restaurantes-R2-botones-01: al cambiar de pestana o de sucursal se limpia la lista anterior; mientras carga se ve 'Cargando' y, si la
+    // carga falla, solo el EstadoError (nunca tarjetas de otra pestana con sus botones activos).
+    setOrders(null);
+    setProgramados(null);
     void load();
   }, [apiBaseUrl, token, propertyId, status]);
+
+  useEffect(() => {
+    void loadAutoConfig();
+    void loadTiempos();
+  }, [apiBaseUrl, token, propertyId]);
 
   // Al cambiar de sucursal u organizacion se recarga la preferencia de sonido y se reinicia la linea base de
   // "pedidos ya vistos" (el primer sondeo no suena por el rezago).
@@ -350,6 +418,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
         setNuevosAviso((n) => n + nuevos.length);
         if (sonido && sonidoPermitido) reproducirAviso();
       }
+      void loadAprobaciones();
       if (cambio || status === "programados") await loadRef.current();
     },
   });
@@ -368,15 +437,39 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
     void loadRepartidores();
   }, [apiBaseUrl, token, propertyId]);
 
-  async function aplicarCambioEstado(order: OrderSummary, nextStatus: OrderStatus) {
+  // Pide las sugerencias de los pedidos visibles que las admiten (a domicilio, preparando, sin repartidor) cada vez que cambia la lista.
+  useEffect(() => {
+    const ids = (orders ?? []).filter((o) => o.status === "preparando" && o.canal !== "recoger" && !o.assignedRepartidorId).map((o) => o.id);
+    if (ids.length === 0) {
+      setSugeridos({});
+      return;
+    }
+    let cancelado = false;
+    fetchRepartidorSugerido(fetch, apiBaseUrl, token, propertyId, ids.slice(0, 30))
+      .then((r) => {
+        if (!cancelado) setSugeridos(r);
+      })
+      .catch(() => {
+        if (!cancelado) setSugeridos({});
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [orders, apiBaseUrl, token, propertyId]);
+
+  async function aplicarCambioEstado(order: OrderSummary, nextStatus: OrderStatus, motivo?: MotivoCancelacion): Promise<boolean> {
     setChangingId(order.id);
     setError(null);
     try {
       const sinAviso = nextStatus === "listo_para_recoger" && sinAvisoPorPedido.has(order.id);
-      await updateOrderStatus(fetch, apiBaseUrl, token, propertyId, order.id, nextStatus, sinAviso ? { notifyCustomer: false } : {});
+      await updateOrderStatus(fetch, apiBaseUrl, token, propertyId, order.id, nextStatus, { ...(sinAviso ? { notifyCustomer: false } : {}), ...(motivo ? { motivo } : {}) });
       await load();
+      return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cambiar el estado del pedido.");
+      const mensaje = err instanceof Error ? err.message : "No se pudo cambiar el estado del pedido.";
+      setError(mensaje);
+      if (motivo) setErrorCancelar(mensaje);
+      return false;
     } finally {
       setChangingId(null);
     }
@@ -392,14 +485,10 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   // el MISMO de siempre; lo pinta `useConfirm` (Cancelar o Escape no llaman al API).
   async function handleChangeStatus(order: OrderSummary, nextStatus: OrderStatus) {
     if (nextStatus === "cancelado") {
-      const confirmado = await confirmar({
-        titulo: "Cancelar pedido",
-        descripcion: `¿Cancelar el pedido de ${order.customerName}? Esta acción no se puede deshacer.`,
-        tono: "danger",
-        confirmar: "Cancelar el pedido",
-        cancelar: "Volver",
-      });
-      if (!confirmado) return;
+      // Taxonomia cerrada: el servidor rechaza cancelar sin motivo. El dialogo pide el motivo y confirma la cancelacion.
+      setErrorCancelar(null);
+      setCancelando(order);
+      return;
     }
     await aplicarCambioEstado(order, nextStatus);
   }
@@ -430,13 +519,24 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
         <h1 className="sr-only">Pedidos en operación</h1>
         <Tabs value={status} onValueChange={(v) => setStatus(v as PestanaPedidos)}>
           <TabsList className="flex-wrap">
-            {(["todos", ...OPERATIVE_STATUSES, "programados"] as const).map((s) => (
+            {(["todos", "por_aprobar", ...OPERATIVE_STATUSES, "programados"] as const).map((s) => (
               <TabsTrigger key={s} value={s}>
                 {s === "todos" ? "Todos" : s === "programados" ? "Programados" : ORDER_STATUS_LABELS[s]}
+                {s === "por_aprobar" && aprobaciones && aprobaciones.solicitudes.length > 0 && (
+                  <StatusBadge tone="warning" dot={false} className="ml-1.5" data-testid="insignia-por-aprobar">
+                    {aprobaciones.solicitudes.length}
+                  </StatusBadge>
+                )}
               </TabsTrigger>
             ))}
           </TabsList>
         </Tabs>
+        {(role === "owner" || role === "admin") && (
+          <Button type="button" size="sm" variant="outline" onClick={() => setReglasAbiertas(true)}>
+            <SlidersHorizontal className="mr-1 h-3.5 w-3.5" strokeWidth={1.75} />
+            Reglas del autopiloto
+          </Button>
+        )}
       </header>
 
       {/* R-11: indicador de actualizacion (sondeo con backoff, en pausa con la pestana oculta) y sonido opcional. */}
@@ -471,6 +571,14 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
         />
       </div>
 
+      {tiempos && (
+        <p className="m-0 text-xs text-muted-foreground" data-testid="tiempo-prometido">
+          Tiempo prometido hoy: domicilio {tiempos.domicilio.texto}; recoger {tiempos.recoger.texto}
+          {tiempos.domicilio.origen === "aprendido" || tiempos.recoger.origen === "aprendido" ? " (aprendido de las entregas recientes; nunca menos que el tiempo que fijó el dueño)" : " (el tiempo que fijó el dueño; aún no hay entregas suficientes para aprender)"}
+          {tiempos.domicilio.saturacion !== "normal" || tiempos.recoger.saturacion !== "normal" ? ". Hay alta carga: se está alargando el tiempo prometido." : "."}
+        </p>
+      )}
+
       <div className="flex flex-wrap items-center gap-2 text-xs text-foreground">
         <Checkbox
           id="auto-imprimir-cocina"
@@ -495,7 +603,20 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
           No se pudo cargar la lista de repartidores: {repartidoresError}
         </p>
       )}
-      {status === "programados" ? (
+      {status === "por_aprobar" ? (
+        <AprobacionesPanel
+          datos={aprobaciones}
+          ahoraMs={ahoraMs}
+          apiBaseUrl={apiBaseUrl}
+          token={token}
+          propertyId={propertyId}
+          topeDescuentoPct={autoConfig?.config.compensacionTopePct ?? 20}
+          onResuelta={async () => {
+            await loadAprobaciones();
+            await loadRef.current();
+          }}
+        />
+      ) : status === "programados" ? (
         programados ? (
           <ProgramadosPanel
             orders={programados}
@@ -576,6 +697,11 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                     </option>
                   ))}
                 </NativeSelect>
+                {!o.assignedRepartidorId && sugeridos[o.id] && (
+                  <Button type="button" size="sm" variant="outline" disabled={assigningId === o.id} onClick={() => void handleAssignRepartidor(o, sugeridos[o.id]!.repartidorId)} data-testid={`asignar-sugerido-${o.id}`}>
+                    Asignar a {sugeridos[o.id]!.nombre}
+                  </Button>
+                )}
                 {assigningId === o.id && <span className="text-xs text-muted-foreground">Asignando…</span>}
                 {o.estimatedDeliveryAt && (
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
@@ -605,6 +731,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                   onClick={() => setVistaPrevia({ ticket: construirTicketCocina(o, { reimpresion: prefs.impresos.includes(o.id) ? (prefs.reimpresiones[o.id] ?? 0) + 1 : 0 }), orderId: o.id })}
                 >
                   Vista previa
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setHistorialDe(o)}>
+                  Historial
                 </Button>
               </div>
 
@@ -657,7 +786,42 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
         }}
       />
 
-      {dialogo}
+      <MotivoDialogo
+        open={cancelando !== null}
+        onOpenChange={(o) => !o && setCancelando(null)}
+        titulo="Cancelar pedido"
+        subtitulo={cancelando ? `¿Cancelar el pedido de ${cancelando.customerName}? Se avisa al cliente y no se puede deshacer.` : undefined}
+        textoConfirmar="Cancelar el pedido"
+        tonoPeligro
+        error={errorCancelar}
+        enCurso={changingId !== null}
+        onConfirmar={(motivo) => {
+          if (!cancelando) return;
+          void aplicarCambioEstado(cancelando, "cancelado", motivo).then((ok) => ok && setCancelando(null));
+        }}
+      />
+
+      <HistorialPedidoDialogo
+        orderId={historialDe?.id ?? null}
+        titulo={historialDe ? `${historialDe.customerName} · $${formatMoney(historialDe.total)}` : ""}
+        onClose={() => setHistorialDe(null)}
+        apiBaseUrl={apiBaseUrl}
+        token={token}
+        propertyId={propertyId}
+      />
+
+      <AutopilotoReglasDialogo
+        open={reglasAbiertas}
+        onOpenChange={setReglasAbiertas}
+        datos={autoConfig}
+        error={autoConfigError}
+        onReintentar={loadAutoConfig}
+        apiBaseUrl={apiBaseUrl}
+        token={token}
+        propertyId={propertyId}
+        onGuardado={loadAutoConfig}
+      />
+
     </PageContainer>
   );
 }

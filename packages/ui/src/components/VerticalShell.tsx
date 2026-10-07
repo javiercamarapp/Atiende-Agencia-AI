@@ -11,6 +11,7 @@
 // en movil, MobileHeader fijo (logo + nombre de la pagina) y BottomNav de 63 px, con los paddings de
 // safe-area (`--safe-area-*`, que valen algo gracias a `viewport-fit=cover` en index.html).
 import * as React from "react";
+import { flushSync } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 import { Compass } from "lucide-react";
 import { AtiendeWordmark } from "./AtiendeLogo";
@@ -203,6 +204,8 @@ export interface VerticalShellProps {
   readonly organizationSelector?: React.ReactNode;
   /** Selector que ademas se muestra en el MobileHeader (solo si hay varias opciones). */
   readonly mobileSelector?: React.ReactNode;
+  /** Panel lateral derecho (p. ej. el Copiloto Cmd+J del superadmin): hermano de la columna de contenido; el propio panel anima su ancho. Sin el, nada cambia. */
+  readonly panelLateral?: React.ReactNode;
   /** `key` del <main>: al cambiar (sucursal activa) las paginas hijas se remontan. */
   readonly contentKey?: string;
   readonly children: React.ReactNode;
@@ -225,6 +228,7 @@ export function VerticalShell({
   mobileSelector,
   sidebarPie,
   contentKey,
+  panelLateral,
   children,
 }: VerticalShellProps) {
   const { pathname } = useLocation();
@@ -236,7 +240,9 @@ export function VerticalShell({
     if (!main) return undefined;
     const medir = () => setSinH1(main.querySelector('h1, [role="heading"][aria-level="1"]') === null);
     medir();
-    const observador = new MutationObserver(medir);
+    // Sincrono (flushSync): si el cambio se aplicara en una tarea posterior, entre que la pagina pinta su <h1> (p. ej. al bajar
+    // su chunk perezoso o sus datos) y que la barra deja de hacer de nivel 1 habria un instante con DOS encabezados de nivel 1.
+    const observador = new MutationObserver(() => flushSync(medir));
     observador.observe(main, { childList: true, subtree: true });
     return () => observador.disconnect();
   }, [pathname, contentKey]);
@@ -310,6 +316,8 @@ export function VerticalShell({
           </div>
         </main>
       </div>
+
+      {panelLateral}
 
       <BottomNav items={mobileItems} moreSections={sections} pie={sidebarPie} />
     </div>

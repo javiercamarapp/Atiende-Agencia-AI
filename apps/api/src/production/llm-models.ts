@@ -24,6 +24,7 @@
 //   * El gateway NUNCA cae a un modelo no listado: una variable mal formada se ignora (con un
 //     error estructurado en logs) y se usan los defaults.
 import type { OpenRouterModelParams, OpenRouterRouting } from "@atiende/agent-core";
+import { MODELOS_AGENTE, modeloAgentePorId } from "@atiende/domain-restaurantes";
 
 export const SUPERADMIN_COPILOTO_ROLE = "superadmin:copiloto";
 
@@ -208,6 +209,32 @@ const MUSE_SPARK: LlmRungConfig = { model: "meta/muse-spark-1.3", reasoningEffor
 const SONNET_MEDIUM: LlmRungConfig = { model: "anthropic/claude-sonnet-5.5", reasoningEffort: "medium", temperature: "omit", minMaxTokens: 3000, supportsStructuredOutput: true };
 const QWEN_235B: LlmRungConfig = { model: "qwen/qwen3-235b-a22b-2507", temperature: "omit", minMaxTokens: 3000, supportsStructuredOutput: true };
 const GEMINI_38_FLASH: LlmRungConfig = { model: "google/gemini-3.8-flash", reasoningEffort: "low", temperature: "omit", minMaxTokens: 4000, supportsStructuredOutput: true };
+
+/** Escalon para un modelo ELEGIDO por una organizacion de restaurantes (lista permitida `MODELOS_AGENTE` de domain-restaurantes): los mismos
+ *  parametros de razonamiento/tokens que el escalon por defecto del modelo, pero con la temperatura HABILITADA solo si el modelo la admite
+ *  (`aceptaTemperatura`: verificado en los endpoints permitidos de OpenRouter el 2026-10-04) y 'omit' si no (con `require_parameters` mandarla a
+ *  Luna o Sonnet deja la ruta sin endpoints). Sin `temperature` el escalon usa la de la peticion. `undefined` = el id no esta en la lista. */
+const BASE_RUNG_MODELO_AGENTE: Readonly<Record<string, LlmRungConfig>> = {
+  [LUNA_LOW.model]: LUNA_LOW,
+  [DEEPSEEK_FLASH.model]: DEEPSEEK_FLASH,
+  [FLASH_LITE_25.model]: FLASH_LITE_25,
+  [MUSE_SPARK.model]: MUSE_SPARK,
+  [GEMINI_38_FLASH.model]: GEMINI_38_FLASH,
+  [SONNET_MEDIUM.model]: SONNET_MEDIUM,
+};
+
+export function rungParaModeloAgente(modeloId: string): LlmRungConfig | undefined {
+  const modelo = modeloAgentePorId(modeloId);
+  const base = BASE_RUNG_MODELO_AGENTE[modeloId];
+  if (!modelo || !base) return undefined;
+  const { temperature: _omitida, ...resto } = base;
+  return modelo.aceptaTemperatura ? resto : { ...resto, temperature: "omit" };
+}
+
+/** Todos los modelos elegibles por una organizacion, con su escalon (la lista de domain-restaurantes manda; un test exige que cada uno tenga escalon). */
+export function rungsDeModelosAgente(): readonly LlmRungConfig[] {
+  return MODELOS_AGENTE.map((m) => rungParaModeloAgente(m.id)).filter((r): r is LlmRungConfig => r !== undefined);
+}
 
 /** Perfil por defecto (data-chat de las 6 verticales, agentes de WhatsApp, extractores, borradores,
  *  conciliacion): barato y rapido. Luna -> DeepSeek V4.1 Flash -> Gemini 2.5 Flash-Lite -> Muse Spark 1.3;

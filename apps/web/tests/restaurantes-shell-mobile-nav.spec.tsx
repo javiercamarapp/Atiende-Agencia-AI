@@ -113,9 +113,11 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
       "Productos",
       "Promociones",
       "Clientes",
+      "Campañas", // autopiloto 2 (owner/admin)
       "Sucursales",
       "Agente de voz",
       "Agente de WhatsApp",
+      "Ajustes del agente",
       "Primeros pasos",
       "Configuración",
       "Staff",

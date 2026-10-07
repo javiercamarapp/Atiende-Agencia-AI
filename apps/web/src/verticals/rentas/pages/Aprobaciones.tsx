@@ -41,15 +41,17 @@
 // que la referencia real). CERO cambios de lógica.
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Check, Inbox, MessageSquarePlus, X } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Inbox, MessageSquarePlus, MessagesSquare } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  ConfirmDialog,
+  Checkbox,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -58,15 +60,30 @@ import {
   NativeSelect,
   PageContainer,
   StatusBadge,
-  statusTone,
   Textarea,
 } from "@atiende/ui";
-import type { StatusTone } from "@atiende/ui";
-import { aprobarBorrador, CANAL_LABELS, CANALES_MENSAJERIA, fetchBandejaAprobacion, fetchConversaciones, fetchUnidades, rechazarBorrador } from "../lib/mensajeria-client.ts";
-import type { BorradorRecord, CanalMensajeriaCodigo, ConversacionRecord, ItemBandeja, UnidadOption } from "../lib/mensajeria-client.ts";
+import {
+  aprobarBorrador,
+  avisoPoliticaCanal,
+  CANAL_LABELS,
+  CANALES_MENSAJERIA,
+  fetchBandejaAprobacion,
+  fetchConversaciones,
+  fetchPoliticas,
+  fetchUnidades,
+  filtrarBandeja,
+  filtrosAQuery,
+  filtrosDesdeQuery,
+  FILTROS_VACIOS,
+  rechazarBorrador,
+  requiereAtencion,
+  senalesPendientes,
+} from "../lib/mensajeria-client.ts";
+import type { CanalMensajeriaCodigo, ConversacionRecord, FiltrosBandeja, ItemBandeja, PoliticaCanal, UnidadOption } from "../lib/mensajeria-client.ts";
 import { crearConversacion, generarBorrador, registrarMensajeEntrante } from "../lib/mensajeria-conversaciones-client.ts";
-import { BORRADOR_HISTORIAL_TONES } from "../lib/status-tones.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
+import { BorradorPendienteCard, historialBadge } from "./aprobaciones/BorradorPendienteCard.tsx";
+import { SenalesBadges } from "./aprobaciones/SenalesBadges.tsx";
 
 const MENSAJERIA_ESCRITURA_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
 
@@ -82,73 +99,6 @@ function contextoLinea(item: ItemBandeja): string {
   }
   if (item.conversacion.reservaConfirmada) partes.push("reserva confirmada");
   return partes.join(" · ");
-}
-
-/** Etiqueta y tono del borrador ya decidido (enviado = verde, rechazado = rojo, aprobado = azul). */
-function historialBadge(b: BorradorRecord): { tono: StatusTone; label: string } {
-  if (b.estado === "enviado") return { tono: statusTone(BORRADOR_HISTORIAL_TONES, "enviado"), label: "Enviado" };
-  if (b.estado === "rechazado") return { tono: statusTone(BORRADOR_HISTORIAL_TONES, "rechazado"), label: "Rechazado" };
-  return { tono: statusTone(BORRADOR_HISTORIAL_TONES, "aprobado"), label: "Aprobado" };
-}
-
-interface BorradorCardProps {
-  readonly item: ItemBandeja;
-  readonly borrador: BorradorRecord;
-  readonly puedeEscribir: boolean;
-  readonly busy: boolean;
-  readonly onAprobar: (borradorId: string) => void;
-  /** Debe rechazar la promesa si el servidor falla: asi el dialogo de rechazo queda abierto con el motivo escrito. */
-  readonly onRechazar: (borradorId: string, motivo: string) => Promise<void>;
-}
-
-function BorradorPendienteCard({ item, borrador, puedeEscribir, busy, onAprobar, onRechazar }: BorradorCardProps) {
-  const [rechazando, setRechazando] = useState(false);
-
-  return (
-    <Card className="border-dashed bg-muted/40">
-      <CardContent className="p-3 flex flex-col gap-2">
-        <div className="flex justify-between gap-2 flex-wrap">
-          <span className="text-xs text-muted-foreground">
-            {borrador.generadoPor === "agente_llm" ? "Generado por agente IA" : "Generado por motor de plantillas"} · {new Date(borrador.creadoEn).toLocaleString("es-MX")}
-          </span>
-          <StatusBadge tone="warning">Pendiente de aprobación</StatusBadge>
-        </div>
-        <p className="m-0 text-sm text-foreground whitespace-pre-wrap">{borrador.texto}</p>
-        {puedeEscribir ? (
-          <>
-            <div className="flex gap-2">
-              <Button type="button" size="sm" onClick={() => onAprobar(borrador.id)} disabled={busy}>
-                <Check className="w-4 h-4" strokeWidth={1.75} />
-                {busy ? "Aprobando…" : "Aprobar y enviar"}
-              </Button>
-              <Button type="button" variant="destructive" size="sm" onClick={() => setRechazando(true)} disabled={busy}>
-                <X className="w-4 h-4" strokeWidth={1.75} />
-                Rechazar
-              </Button>
-            </div>
-
-            {/* Paso 2 del rechazo: el motivo sigue siendo obligatorio y la llamada al servidor solo sale de "Confirmar
-                rechazo"; Cancelar, Escape o clic fuera cierran sin rechazar nada. Si el servidor falla, el dialogo queda
-                abierto con el motivo escrito. */}
-            <ConfirmDialog
-              open={rechazando}
-              onOpenChange={setRechazando}
-              tono="danger"
-              titulo="Rechazar este borrador"
-              descripcion="El motivo queda registrado en el historial de la conversación y es obligatorio."
-              confirmar="Confirmar rechazo"
-              campo={{ etiqueta: "Motivo del rechazo", multilinea: true, placeholder: "Por qué se rechaza este borrador" }}
-              onConfirm={(motivo) => onRechazar(borrador.id, motivo ?? "")}
-            />
-          </>
-        ) : (
-          <p className="m-0 text-xs text-muted-foreground">
-            Tu rol no puede aprobar ni rechazar mensajería. Contacta a un admin_gestora u operador con acceso a calendario/mensajería. (Conversación: {item.conversacion.id})
-          </p>
-        )}
-      </CardContent>
-    </Card>
-  );
 }
 
 interface SimuladorMensajeEntranteProps {
@@ -366,6 +316,11 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, sessi
   const [notice, setNotice] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [expandidoHistorial, setExpandidoHistorial] = useState<Record<string, boolean>>({});
+  const [politicas, setPoliticas] = useState<readonly PoliticaCanal[]>([]);
+  // Rn-P3-22: el estado de los filtros vive en la URL (?canal=&pendientes=1&atencion=1&q=) para que se pueda compartir y recargar.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filtros = filtrosDesdeQuery(searchParams);
+  const cambiarFiltros = (cambio: Partial<FiltrosBandeja>) => setSearchParams(filtrosAQuery({ ...filtros, ...cambio }), { replace: true });
 
   const cargar = useCallback(async () => {
     setError(null);
@@ -381,6 +336,21 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, sessi
     setItems(null);
     void cargar();
   }, [cargar]);
+
+  // El aviso de política por canal es contexto, no condición: si no carga, la bandeja se sigue mostrando sin él.
+  useEffect(() => {
+    let cancelado = false;
+    fetchPoliticas(fetch, apiBaseUrl, token, propertyId)
+      .then((lista) => {
+        if (!cancelado) setPoliticas(lista);
+      })
+      .catch(() => {
+        if (!cancelado) setPoliticas([]);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId]);
 
   async function handleAprobar(borradorId: string) {
     setBusyId(borradorId);
@@ -411,7 +381,12 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, sessi
     }
   }
 
-  const totalPendientes = items?.reduce((acc, item) => acc + item.pendientes.length, 0) ?? 0;
+  const visibles = items ? filtrarBandeja(items, filtros) : null;
+  const totalPendientes = visibles?.reduce((acc, item) => acc + item.pendientes.length, 0) ?? 0;
+  const hayFiltros = filtros.canal !== "" || filtros.conPendientes || filtros.requiereAtencion || filtros.busqueda.trim() !== "";
+  // Aviso de política solo de los canales que aparecen en lo que se está viendo.
+  const canalesVisibles = new Set(visibles?.map((i) => i.conversacion.canal) ?? []);
+  const avisos = politicas.filter((p) => canalesVisibles.has(p.canal)).map(avisoPoliticaCanal);
 
   return (
     <PageContainer padding="none" size="lg" className="gap-4 [&>*]:min-w-0">
@@ -446,24 +421,77 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, sessi
         <EstadoVacio icon={Inbox} titulo="Sin conversaciones" mensaje="No hay ninguna conversación con mensajería en esta propiedad todavía." />
       )}
       {items && items.length > 0 && (
+        <div className="flex flex-wrap items-end gap-3" role="search" aria-label="Filtros de la bandeja">
+          <Label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Canal
+            <NativeSelect value={filtros.canal} onChange={(e) => cambiarFiltros({ canal: e.target.value as CanalMensajeriaCodigo | "" })}>
+              <option value="">Todos los canales</option>
+              {CANALES_MENSAJERIA.map((c) => (
+                <option key={c} value={c}>
+                  {CANAL_LABELS[c]}
+                </option>
+              ))}
+            </NativeSelect>
+          </Label>
+          <Label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Huésped o unidad
+            <Input type="search" value={filtros.busqueda} onChange={(e) => cambiarFiltros({ busqueda: e.target.value })} placeholder="Buscar" maxLength={100} />
+          </Label>
+          <Label className="flex items-center gap-2 text-sm text-foreground">
+            <Checkbox checked={filtros.conPendientes} onChange={(e) => cambiarFiltros({ conPendientes: e.target.checked })} />
+            Con pendientes
+          </Label>
+          <Label className="flex items-center gap-2 text-sm text-foreground">
+            <Checkbox checked={filtros.requiereAtencion} onChange={(e) => cambiarFiltros({ requiereAtencion: e.target.checked })} />
+            Requiere atención
+          </Label>
+          {hayFiltros && (
+            <Button type="button" variant="ghost" size="sm" onClick={() => cambiarFiltros(FILTROS_VACIOS)}>
+              Limpiar filtros
+            </Button>
+          )}
+        </div>
+      )}
+      {avisos.length > 0 && (
+        <Callout tone="info" titulo="Política del canal">
+          <ul className="m-0 pl-4 flex flex-col gap-1">
+            {avisos.map((a) => (
+              <li key={a}>{a}</li>
+            ))}
+          </ul>
+        </Callout>
+      )}
+      {visibles && visibles.length > 0 && (
         <p className={totalPendientes > 0 ? "m-0 text-sm font-medium text-foreground" : "m-0 text-sm text-muted-foreground"}>
           {totalPendientes > 0 ? `${totalPendientes} borrador(es) esperando aprobación.` : "No hay ningún borrador pendiente de aprobación en este momento."}
         </p>
       )}
+      {items && items.length > 0 && visibles && visibles.length === 0 && (
+        <EstadoVacio icon={Inbox} titulo="Ninguna conversación coincide" mensaje="Ajusta o limpia los filtros para ver más conversaciones." />
+      )}
 
       <div className="flex flex-col gap-3">
-        {items?.map((item) => (
+        {visibles?.map((item) => (
           <Card key={item.conversacion.id}>
             <CardContent className="p-4 flex flex-col gap-2.5">
               <div className="flex justify-between flex-wrap gap-2">
                 <p className="m-0 text-sm font-semibold text-foreground">{contextoLinea(item)}</p>
-                {item.pendientes.length === 0 && <StatusBadge tone="neutral">Sin pendientes</StatusBadge>}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {item.pendientes.length === 0 && <StatusBadge tone="neutral">Sin pendientes</StatusBadge>}
+                  <Button asChild variant="outline" size="sm" className="h-8 px-3 text-xs">
+                    <Link to={`/rentas/${orgSlug}/aprobaciones/${item.conversacion.id}`}>
+                      <MessagesSquare className="w-4 h-4" strokeWidth={1.75} />
+                      Ver hilo
+                    </Link>
+                  </Button>
+                </div>
               </div>
+              {requiereAtencion(item) && <SenalesBadges senales={senalesPendientes(item)} />}
 
               {item.pendientes.map((borrador) => (
                 <BorradorPendienteCard
                   key={borrador.id}
-                  item={item}
+                  conversacionId={item.conversacion.id}
                   borrador={borrador}
                   puedeEscribir={puedeEscribir}
                   busy={busyId === borrador.id}

@@ -51,6 +51,7 @@ interface UnidadFila {
   nombre: string;
   duracionMinimaNoches: number;
   propietarioId: string | null;
+  responsableLimpiezaId?: string | null;
 }
 interface PropietarioFila {
   id: string;
@@ -76,12 +77,16 @@ function rechazo(motivo: MotivoRechazoCatalogo, mensaje: string): ResultadoCatal
 export class InMemoryRentasCatalogoRepository implements RentasCatalogoRepository {
   /** `false` simula la base real SIN la migracion 027: toda escritura responde `no_disponible`. */
   migracion027Disponible = true;
+  /** Migracion 033 (responsable de limpieza por omision): `false` simula la base sin migrar. */
+  migracion033Disponible = true;
   readonly propiedades = new Map<string, PropiedadFila>();
   readonly unidades = new Map<string, UnidadFila>();
   readonly propietarios = new Map<string, PropietarioFila>();
   readonly reglas = new Map<string, ReglaFila>();
   /** Propiedades con movimientos financieros (la moneda deja de poder cambiarse). */
   readonly propiedadesConMovimientos = new Set<string>();
+  /** Propiedades con reservas o bloqueos vigentes (no cancelados, con fin >= hoy): la zona horaria deja de poder cambiarse (D-DSD-07). */
+  readonly propiedadesConOcupacionesActivas = new Set<string>();
 
   seedPropiedad(p: { organizationId: string; propertyId: string; nombre: string; zonaHoraria?: string; moneda?: string }): void {
     this.propiedades.set(p.propertyId, { zonaHoraria: "America/Mexico_City", moneda: "MXN", ...p });
@@ -148,6 +153,7 @@ export class InMemoryRentasCatalogoRepository implements RentasCatalogoRepositor
         duracionMinimaNoches: u.duracionMinimaNoches,
         propietarioId: u.propietarioId,
         propietarioNombre: u.propietarioId ? (this.propietarios.get(u.propietarioId)?.nombre ?? null) : null,
+        responsableLimpiezaId: this.migracion033Disponible ? (u.responsableLimpiezaId ?? null) : null,
       }));
   }
 
@@ -204,6 +210,9 @@ export class InMemoryRentasCatalogoRepository implements RentasCatalogoRepositor
     if (!p) return rechazo("no_encontrado", "propiedad no encontrada.");
     if (e.nombre !== undefined && [...this.propiedades.values()].some((o) => o.organizationId === p.organizationId && o.propertyId !== propertyId && o.nombre.toLowerCase() === e.nombre!.toLowerCase())) {
       return rechazo("duplicado", "ya existe una propiedad con ese nombre.");
+    }
+    if (e.zonaHoraria !== undefined && e.zonaHoraria !== p.zonaHoraria && this.propiedadesConOcupacionesActivas.has(propertyId)) {
+      return rechazo("regla_integridad", "no se puede cambiar la zona horaria con reservas o bloqueos activos.");
     }
     if (e.moneda !== undefined && e.moneda !== p.moneda && this.propiedadesConMovimientos.has(propertyId)) {
       return rechazo("regla_integridad", "la propiedad ya tiene movimientos financieros; no se puede cambiar su moneda.");
@@ -265,6 +274,14 @@ export class InMemoryRentasCatalogoRepository implements RentasCatalogoRepositor
     if (e.nombre !== undefined) u.nombre = e.nombre;
     if (e.propietarioId !== undefined) u.propietarioId = e.propietarioId;
     if (e.duracionMinimaNoches !== undefined) u.duracionMinimaNoches = e.duracionMinimaNoches;
+    return { estado: "ok", valor: { id: unidadId } };
+  }
+
+  async fijarResponsableLimpieza(unidadId: string, responsableId: string | null): Promise<ResultadoCatalogo<{ id: string }>> {
+    if (!this.migracion033Disponible) return { estado: "no_disponible" };
+    const u = this.unidades.get(unidadId);
+    if (!u) return rechazo("no_encontrado", "unidad no encontrada.");
+    u.responsableLimpiezaId = responsableId;
     return { estado: "ok", valor: { id: unidadId } };
   }
 }

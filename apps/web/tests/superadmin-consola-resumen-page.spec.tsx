@@ -110,6 +110,8 @@ interface Opciones {
   agentes?: Record<string, unknown> | "fallo";
   organizaciones?: unknown[] | "fallo";
   post?: (cuerpo: unknown) => Response;
+  /** Tablero de fijados del Copiloto de plataforma: lista de `GET /superadmin/copiloto/pins`, o el estado HTTP con que responde (403 = sin tablero). Por defecto, sin fijados. */
+  fijados?: unknown[] | number;
 }
 
 function stubApi(o: Opciones = {}) {
@@ -119,6 +121,8 @@ function stubApi(o: Opciones = {}) {
       if (ruta !== "/superadmin/impersonacion/sesiones") throw new Error(`POST inesperado: ${ruta}`);
       return o.post ? o.post(JSON.parse(String(init.body))) : json({ session: { id: "s1" } }, 201);
     }
+    if (ruta === "/superadmin/copiloto/pins") return typeof o.fijados === "number" ? json({ message: "x" }, o.fijados) : json({ disponible: true, pins: o.fijados ?? [] });
+    if (/^\/superadmin\/copiloto\/pins\/[^/]+\/resultado$/.test(ruta)) return json({ id: "p1", titulo: "Actividad por negocio", status: "ok", text: "3 organizaciones, 2 con actividad", blocks: [], sources: [] });
     if (ruta === "/superadmin/consola/resumen") return o.resumen === "fallo" ? json({ message: "boom" }, 500) : json(o.resumen ?? resumenBase());
     if (ruta === "/superadmin/consola/agentes-actividad") return o.agentes === "fallo" ? json({ message: "boom" }, 500) : json(o.agentes ?? agentesBase());
     if (ruta === "/superadmin/organizations") return o.organizaciones === "fallo" ? json({ message: "boom" }, 500) : json({ organizations: o.organizaciones ?? ORGS });
@@ -174,6 +178,37 @@ describe("saludo en hora de Mexico (reloj fijo)", () => {
     stubApi();
     rendered = await montar({ staffEmail: "ana.torres@example.com" });
     expect(rendered.container.querySelector("h1")!.textContent).toBe("Buenos días, ana.torres");
+  });
+});
+
+describe("tablero de fijados del Copiloto de plataforma", () => {
+  it("pide GET /superadmin/copiloto/pins con el token, re-ejecuta cada fijado y NO ofrece Compartir (el tablero es personal)", async () => {
+    const m = stubApi({ fijados: [{ id: "p1", titulo: "Actividad por negocio", herramienta: "ranking_actividad", args: {}, compartido: false, propio: true }] });
+    rendered = await montar();
+    const urls = m.mock.calls.map((c) => new URL(c[0] as string).pathname);
+    expect(urls).toContain("/superadmin/copiloto/pins");
+    expect(urls).toContain("/superadmin/copiloto/pins/p1/resultado");
+    const headers = (m.mock.calls.find((c) => String(c[0]).endsWith("/superadmin/copiloto/pins"))![1] as RequestInit).headers as Record<string, string>;
+    expect(headers["authorization"]).toBe("Bearer tok-123");
+    expect(texto()).toContain("Fijados del Copiloto");
+    expect(texto()).toContain("3 organizaciones, 2 con actividad");
+    expect(rendered.container.querySelector("[aria-label='Quitar Actividad por negocio del tablero']")).not.toBeNull();
+    expect(rendered.container.querySelector("[aria-label^='Compartir']")).toBeNull();
+  });
+
+  it("sin fijados lo dice y enlaza al Copiloto; con 403 (rol finanzas) o 409 (impersonando) la seccion no se pinta", async () => {
+    stubApi({ fijados: [] });
+    rendered = await montar();
+    expect(texto()).toContain("Aún no fijas nada");
+    expect([...rendered.container.querySelectorAll("a")].some((a) => a.getAttribute("href") === "/superadmin/copiloto")).toBe(true);
+    rendered.unmount();
+    stubApi({ fijados: 403 });
+    rendered = await montar();
+    expect(texto()).not.toContain("Fijados del Copiloto");
+    rendered.unmount();
+    stubApi({ fijados: 409 });
+    rendered = await montar();
+    expect(texto()).not.toContain("Fijados del Copiloto");
   });
 });
 
@@ -283,7 +318,7 @@ describe("error por bloque", () => {
 });
 
 describe("orquestacion y ultima corrida", () => {
-  it("las 4 tarjetas dan su linea real; las 3 fichas (SA-L-09) enlazan a su ruta y el Copiloto (sin pagina) NO lleva enlace", async () => {
+  it("las 4 tarjetas dan su linea real; las 3 fichas (SA-L-09) enlazan a su ruta y el Copiloto (CHAT-17, ya con pagina) tambien", async () => {
     stubApi();
     rendered = await montar();
     const enlaces = [...rendered.container.querySelectorAll<HTMLAnchorElement>('a[href^="/superadmin/agente-"]')];
@@ -292,11 +327,11 @@ describe("orquestacion y ultima corrida", () => {
     expect(por("Agente de WhatsApp y voz").textContent).toContain("2,000 llamadas al modelo · US$22.50 — histórico");
     expect(por("Agente de conciliación").textContent).toContain("140 llamadas al modelo · US$2.20 — histórico");
     expect(por("Agente extractor").textContent).toContain("Sin corridas registradas.");
-    const sinRuta = [...rendered.container.querySelectorAll('[data-testid="tarjeta-agente"]')];
-    expect(sinRuta).toHaveLength(1);
-    expect(sinRuta[0]!.textContent).toContain("Copiloto");
-    expect(sinRuta[0]!.textContent).toContain("Sin corridas registradas.");
-    expect(sinRuta[0]!.querySelector("a")).toBeNull();
+    // CHAT-17: el Copiloto ya tiene pagina real, asi que su tarjeta es un enlace (ninguna tarjeta queda sin ruta).
+    expect(rendered.container.querySelectorAll('[data-testid="tarjeta-agente"]')).toHaveLength(0);
+    const copiloto = rendered.container.querySelector<HTMLAnchorElement>('a[href="/superadmin/copiloto"]')!;
+    expect(copiloto.textContent).toContain("Copiloto");
+    expect(copiloto.textContent).toContain("Sin corridas registradas.");
   });
 
   it("cada cron es una AgentRunCard con badge OK/Fallo, fecha, vertical, 'tareas: no medido' y 'ver detalle' hacia /superadmin/salud", async () => {
@@ -344,7 +379,7 @@ describe("enlaces solo a rutas reales", () => {
     expect(rutaExiste("/superadmin/consumo-ia")).toBe(true);
     expect(rutaExiste(PARTE_DIARIO)).toBe(true);
     expect(rutaExiste("/superadmin/analitica")).toBe(false);
-    expect(rutaExiste("/superadmin/copiloto")).toBe(false);
+    expect(rutaExiste("/superadmin/copiloto")).toBe(true);
   });
 
   it("el filtro 7/30/todo recorta la serie a 7 dias o muestra los 14 que entrega el endpoint", () => {

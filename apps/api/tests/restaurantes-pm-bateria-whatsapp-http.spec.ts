@@ -85,7 +85,7 @@ describe("POST /v1/restaurantes/whatsapp/webhook -- bateria PM", () => {
     await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payload));
     await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payload));
     expect(vistos).toHaveLength(1);
-    expect(vistos[0]!.ultimo).toMatch(/archivo \(image\)/);
+    expect(vistos[0]!.ultimo).toMatch(/imagen que el asistente no puede ver/);
   });
 
   it("reacciones, mensajes de sistema, ids vacios y remitentes invalidos se ignoran (no hay a quien contestar)", async () => {

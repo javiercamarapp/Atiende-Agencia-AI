@@ -37,6 +37,7 @@ interface TramoAbierto {
   readonly inicioMs: number;
   finMs: number | null;
   reportado: number;
+  real: boolean;
 }
 
 export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts: OpcionesEscalera = {}): EscaleraLlamada {
@@ -55,7 +56,7 @@ export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts:
     let ultimoError: unknown = new Error("Ningun escalon de voz esta configurado.");
     for (const escalon of escalones) {
       if (fallidos.includes(escalon.id)) continue;
-      const tramo: TramoAbierto = { escalon: escalon.id, inicioMs: ahora(), finMs: null, reportado: 0 };
+      const tramo: TramoAbierto = { escalon: escalon.id, inicioMs: ahora(), finMs: null, reportado: 0, real: false };
       const envueltos: ManejadoresSesion = {
         ...manejadores,
         agenteDijo: (texto) => {
@@ -66,9 +67,10 @@ export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts:
           dicho.push(`Cliente: ${texto}`);
           manejadores.usuarioDijo?.(texto);
         },
-        costo: (microUsd) => {
+        costo: (microUsd, real) => {
           tramo.reportado += microUsd;
-          manejadores.costo?.(microUsd);
+          if (real === true) tramo.real = true;
+          manejadores.costo?.(microUsd, real);
         },
         caido: (razon, handle) => {
           // El escalon que atendia se cayo: se cierra su tramo y NO se reintenta en esta llamada.
@@ -103,7 +105,7 @@ export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts:
     tramos: () =>
       tramos.map((t) => {
         cerrarTramo(t);
-        return { escalon: t.escalon, duracionS: Math.max(0, ((t.finMs ?? t.inicioMs) - t.inicioMs) / 1000), costoReportadoMicroUsd: t.reportado };
+        return { escalon: t.escalon, duracionS: Math.max(0, ((t.finMs ?? t.inicioMs) - t.inicioMs) / 1000), costoReportadoMicroUsd: t.reportado, ...(t.real ? { costoReal: true } : {}) };
       }),
   };
 }

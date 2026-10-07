@@ -7,6 +7,7 @@
 import { redactarDatosDePago } from "@atiende/core-pii";
 import { actorHash, consumeRateLimit } from "../rate-limit.ts";
 import { lookupCustomerConPedidoReciente } from "../customers.ts";
+import { esSoloSticker } from "./channel-config.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
 import { matchesHighRiskOtherThan } from "./guards.ts";
@@ -196,6 +197,12 @@ export async function handleInboundWhatsAppMessage(
         return { ok: true, retryable: false };
       }
 
+      // Un sticker (el «gracias» de siempre) tras un pedido ya cerrado no se contesta: el mensaje queda en el historial y procesado.
+      if (!arco && limite === null && (await stickerSobraTrasPedidoCerrado(repo, organizationId, phone, body))) {
+        await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+        return { ok: true, retryable: false };
+      }
+
       const turn = arco
         ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
         : apagado
@@ -223,7 +230,7 @@ export async function handleInboundWhatsAppMessage(
         if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
       }
 
-      const assistantMessage: ConversationMessage = { role: "assistant", content: reply };
+      const assistantMessage: ConversationMessage = turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true } : { role: "assistant", content: reply };
       await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
 
       // R-21: el agente pidio una persona -> abre la toma de handoff (misma transaccion que la conversacion).
@@ -473,6 +480,7 @@ export async function responderTrasEspera(
         // Interruptor duro de la sucursal (053): sin modelo, texto fijo + toma de handoff; las pasadas siguientes las calla la propia toma abierta.
         const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId);
         if (apagado === "callar") return { salida: { ok: true, retryable: false }, silencio: true };
+        if (!arco && (await stickerSobraTrasPedidoCerrado(repo, organizationId, phone, textoPendiente))) return { salida: { ok: true, retryable: false }, silencio: true };
         const turn = arco
           ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
           : apagado
@@ -494,7 +502,7 @@ export async function responderTrasEspera(
           const isFirstContact = claimed ?? !historial.some((m) => m.role === "assistant");
           if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
         }
-        await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: reply }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
+        await repo.whatsappAppendTurn(organizationId, phone, [turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true } : { role: "assistant", content: reply }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
         if (turn.escalacion && handoffGate) {
           await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
         }
@@ -522,4 +530,15 @@ export async function responderTrasEspera(
     await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "failed", errorClass);
     return { ok: false, retryable: true };
   }
+}
+
+/** Minutos tras la confirmacion durante los que un sticker del cliente se considera el «gracias» de un pedido cerrado. */
+export const STICKER_VENTANA_PEDIDO_CERRADO_MIN = 240;
+
+/** Un sticker (y nada mas) con un pedido vigente confirmado hace poco: no se contesta. Sin pedido reciente el turno sigue y el agente lo toma como un gesto. */
+async function stickerSobraTrasPedidoCerrado(repo: RestaurantesRepository, organizationId: string, phone: string, texto: string): Promise<boolean> {
+  if (!esSoloSticker(texto)) return false;
+  const cliente = await lookupCustomerConPedidoReciente(repo, organizationId, phone);
+  const reciente = cliente.isNew ? undefined : cliente.pedidoReciente;
+  return reciente !== undefined && reciente !== null && reciente.minutosDesdeConfirmacion <= STICKER_VENTANA_PEDIDO_CERRADO_MIN;
 }

@@ -81,6 +81,8 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
   const [branchId, setBranchId] = useState<string>("");
   const [cola, setCola] = useState<ComandasWire | null>(null);
   const [colaError, setColaError] = useState<string | null>(null);
+  // Los contadores de las pestanas sobreviven al cambio de filtro (la cola no): vienen del ultimo `resumen` recibido.
+  const [resumen, setResumen] = useState<ComandasWire["resumen"] | null>(null);
   const [ahoraMs, setAhoraMs] = useState<number>(() => Date.now());
   const [cargando, setCargando] = useState(false);
   const [ocupado, setOcupado] = useState<string | null>(null);
@@ -124,6 +126,13 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
     };
   }, [apiBaseUrl, token, orgSlug]);
 
+  // QA-restaurantes-R2-botones-03: al cambiar de filtro o de sucursal se descarta la cola anterior (y su error); si la nueva carga falla solo se
+  // ve el EstadoError, nunca comandas de otro filtro con sus botones activos. El refresco de 30 s y 'Actualizar' no la vacian.
+  useEffect(() => {
+    setCola(null);
+    setColaError(null);
+  }, [apiBaseUrl, token, propertyId, filtro, branchId]);
+
   // La cola: con el filtro y la sucursal elegidos; se vuelve a consultar sola cada 30 s mientras la pantalla esta abierta.
   useEffect(() => {
     let cancelado = false;
@@ -134,6 +143,7 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
         const r = await fetchComandas(fetch, apiBaseUrl, token, propertyId, { estados, branchId: branchId || undefined, limit: 50 });
         if (cancelado) return;
         setCola(r);
+        setResumen(r.resumen);
         setColaError(null);
         setAhoraMs(Date.now());
       } catch (err) {
@@ -278,7 +288,7 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
               {FILTROS.map((f) => (
                 <TabsTrigger key={f.valor} value={f.valor}>
                   {f.etiqueta}
-                  {f.valor !== "activas" && f.valor !== "resueltas" && cola ? ` (${cola.resumen[f.valor] ?? 0})` : ""}
+                  {f.valor !== "activas" && f.valor !== "resueltas" && resumen ? ` (${resumen[f.valor] ?? 0})` : ""}
                 </TabsTrigger>
               ))}
             </TabsList>

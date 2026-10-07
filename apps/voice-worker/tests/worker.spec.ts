@@ -1,6 +1,7 @@
 // Ciclo de vida del worker: estado honesto en /salud (503 con motivos si no esta configurado, y NUNCA contesta a medias), recepcion de llamadas y apagado ordenado.
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { crearEscaleraLlamada } from "@atiende/voice-core";
 import { cargarConfig } from "../src/config.ts";
 import { TelefoniaFalsa } from "../src/telefonia/falsa.ts";
 import { Worker, crearServidorSalud } from "../src/worker.ts";
@@ -113,5 +114,51 @@ describe("apagado ordenado (SIGTERM)", () => {
     const t = await escenario(api, () => [new AgenteGuionado([]).escalon()]);
     await t.worker.detener(10_000);
     expect(t.telefonia.detenida).toBe(true);
+  });
+});
+
+describe("latido del sondeo de la telefonia (Fly solo informa con las health checks: el proceso se reinicia solo)", () => {
+  class TelefoniaConLatido extends TelefoniaFalsa {
+    latido: number | null = null;
+    latidoMs(): number | null {
+      return this.latido;
+    }
+  }
+  async function armar(latido: number | null) {
+    const api = await crearMundoApi();
+    const telefonia = new TelefoniaConLatido();
+    telefonia.latido = latido;
+    const worker = new Worker({ config: api.config, telefonia, log: () => undefined, deps: api.depsAtencion({ crearEscalera: () => crearEscaleraLlamada([new AgenteGuionado([]).escalon()], { ahora: api.reloj.ahora }) }) });
+    expect(await worker.iniciar()).toBe(true);
+    return { worker, telefonia };
+  }
+
+  it("con latido reciente /salud es 200 y reporta cuanto hace del ultimo sondeo", async () => {
+    const { worker } = await armar(Date.now() - 2_000);
+    const r = await pedirSalud(worker);
+    expect(r.status).toBe(200);
+    expect(r.cuerpo).toMatchObject({ sano: true });
+    expect(worker.salud().latidoHaceMs).toBeGreaterThanOrEqual(2_000);
+  });
+
+  it("con el sondeo sin responder mas de 60 s /salud es 503 aunque el proceso este vivo y configurado", async () => {
+    const { worker } = await armar(Date.now() - 61_000);
+    const r = await pedirSalud(worker);
+    expect(r.status).toBe(503);
+    expect(r.cuerpo).toMatchObject({ estado: "configurado", sano: false });
+  });
+
+  it("sin latido (telefonia que no sondea o primer sondeo pendiente) no se penaliza", async () => {
+    const { worker } = await armar(null);
+    expect(worker.salud()).toMatchObject({ sano: true, latidoHaceMs: null });
+  });
+
+  it("latidoVencido: solo con sondeo muerto mas de 2 min Y sin llamadas activas (nunca reinicia en medio de una llamada)", async () => {
+    const { worker, telefonia } = await armar(Date.now() - 30_000);
+    expect(worker.latidoVencido()).toBe(false);
+    telefonia.latido = Date.now() - 121_000;
+    expect(worker.latidoVencido()).toBe(true);
+    telefonia.latido = null;
+    expect(worker.latidoVencido()).toBe(false);
   });
 });

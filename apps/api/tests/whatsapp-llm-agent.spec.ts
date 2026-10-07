@@ -327,7 +327,8 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
       expect(message).toHaveProperty("role");
       expect(message).toHaveProperty("content");
       expect(typeof message.content).toBe("string");
-      expect(Object.keys(message)).toEqual(["role", "content"]); // nunca toolCalls/toolCallId aquí.
+      // nunca toolCalls/toolCallId aquí; solo el mensaje del asistente que cierra un pedido lleva ademas el metadato `pedidoCreado`.
+      expect(Object.keys(message)).toEqual(message.role === "assistant" && "pedidoCreado" in message ? ["role", "content", "pedidoCreado"] : ["role", "content"]);
     }
 
     void propertyId;

@@ -122,6 +122,13 @@ export function rentasBloqueosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // de "reserva no directa".
     if (ocupacion.capa !== "bloqueo") throw Errors.validation("Esta ruta solo cancela bloqueos; usa /reservas/:ocupacionId/cancelar para una reserva.");
 
+    // Rn-P3-29 -- un bloqueo con canal de origen externo (no manual) no se cancela
+    // desde aquí: el canal es su fuente de verdad (mismo criterio que reservas.ts).
+    const canalManual = await repo.findCanalPorCodigo("manual");
+    if (ocupacion.canalOrigenId !== null && ocupacion.canalOrigenId !== canalManual?.id) {
+      throw Errors.rentasReservaNoDirecta();
+    }
+
     try {
       const resultado = await cancelarOcupacion(db, ocupacionId);
       // f3-rentas-bitacora-y-guards -- bitácora de auditoría: "cancelar un bloqueo

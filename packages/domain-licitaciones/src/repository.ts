@@ -1,6 +1,7 @@
 // Puerto de acceso a datos de domain-licitaciones — mismo patrón dual de
 // adaptador que domain-hoteles/domain-restaurantes (ver diseño Fase 1 §3.2).
 // Ningún flujo de apps/api toca SQL directamente — todo pasa por aquí.
+import type { AuditTrailFilters, AuditTrailInput, AuditTrailPage } from "./audit-trail.ts";
 import type { CalendarioPlazos } from "./dias-inhabiles.ts";
 import type {
   TenderRecord,
@@ -182,6 +183,8 @@ export interface TenderSourceIngestResult {
   readonly created: number;
   readonly updated: number;
   readonly tenders: readonly TenderRecord[];
+  /** Ids de las convocatorias NUEVAS de esta corrida (L-P3-17: la bitacora anota solo el alta, no cada reescritura idempotente). */
+  readonly createdIds?: readonly string[];
 }
 
 /** Recordatorio persistido de un vencimiento próximo (`submissionDeadline`) -- mismo criterio "honesto" que `TenderChangeNotificationRecord`: sin canal de envío real (email/SMS/WhatsApp), un registro consultable/reconocible (ver README del vertical para el gap declarado de integrar un canal real). */
@@ -701,6 +704,15 @@ export interface LicitacionesRepository {
    * solo agrega el lado de lectura, hoy sin caller HTTP -- queda lista para un
    * futuro panel de auditoría de convocatorias. */
   listTenderAuditLogPage(organizationId: string, tenderId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderAuditLogPage>;
+
+  // ---- L-P3-17: bitacora de escrituras con antes/despues y correlacion (038, `licitaciones.audit_trail`) ----
+  /** Anota una escritura en la MISMA transaccion que la escritura de negocio. `false` = la migracion 038 aun no esta aplicada (la escritura sigue sin renglon). */
+  appendAuditoria(organizationId: string, entry: AuditTrailInput): Promise<boolean>;
+  /** Lectura paginada por llave (owner/admin por RLS). `available: false` = 038 pendiente. */
+  listAuditoria(organizationId: string, filters: AuditTrailFilters, opts?: { readonly limit?: number; readonly cursor?: string | null; readonly orden?: "asc" | "desc" }): Promise<AuditTrailPage>;
+
+  /** `correlation_id` con que nacio la convocatoria (primer renglon de bitacora con correlacion), para que aprobaciones y manifiesto lo hereden; `null` si no hay. */
+  findTenderCorrelationId(organizationId: string, tenderId: string): Promise<string | null>;
 
   // ---- Fase 3 pieza 2: perfil de matching de la organización (§5) ----
   findMatchingProfile(organizationId: string): Promise<MatchingProfileRecord | null>;

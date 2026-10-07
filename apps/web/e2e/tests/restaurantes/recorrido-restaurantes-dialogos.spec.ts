@@ -16,14 +16,18 @@ test.describe("restaurantes: dialogos, Cancelar y Escape nunca ejecutan @recorri
     await iniciarSesion("restaurantes", "owner");
   });
 
-  test("Pedidos > Marcar Cancelado: Volver y Escape no escriben; confirmar hace un PATCH cancelado", async ({ page, mock, vigilante }) => {
+  test("Pedidos > Marcar Cancelado: Volver y Escape no escriben; confirmar (con motivo) hace un PATCH cancelado", async ({ page, mock, vigilante }) => {
     await ir(page, "/pedidos");
     const cancelar = main(page).getByRole("button", { name: "Marcar Cancelado" }).first();
     await afirmarCancelarNoEscribe(page, mock, cancelar, { nombre: "Cancelar pedido", botonCancelar: "Volver", ...SIN_FOCO });
     await cancelar.click();
-    await dialogo(page, "Cancelar pedido").getByRole("button", { name: "Cancelar el pedido" }).click();
+    const dlg = dialogo(page, "Cancelar pedido");
+    // Con el autopiloto el boton queda desactivado hasta elegir un motivo de la lista cerrada y el PATCH lo lleva.
+    await expect(dlg.getByRole("button", { name: "Cancelar el pedido" })).toBeDisabled();
+    await dlg.getByRole("combobox").selectOption("cliente_desistio");
+    await dlg.getByRole("button", { name: "Cancelar el pedido" }).click();
     const [patch] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/orders/ord-1001/status" });
-    expect(cuerpoDe(patch)).toEqual({ status: "cancelado" });
+    expect(cuerpoDe(patch)).toEqual({ status: "cancelado", motivo: "cliente_desistio" });
     vigilante.verificar();
   });
 

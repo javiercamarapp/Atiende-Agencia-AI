@@ -9,7 +9,7 @@ const href = (sub: string): string => `${BASE}${sub}`;
 
 test.describe("restaurantes: recorrido por rol @recorrido", () => {
   for (const rol of ["owner", "admin"] as const) {
-    test(`${rol}: el menu lista los 22 destinos y cada uno pinta sano`, async ({ page, iniciarSesion, vigilante }) => {
+    test(`${rol}: el menu lista los 23 destinos y cada uno pinta sano`, async ({ page, iniciarSesion, vigilante }) => {
       await iniciarSesion("restaurantes", rol);
       const secciones = await seccionesDelPanel(page);
       expect(secciones.map((s) => s.href).sort()).toEqual(DESTINOS.map((d) => href(d.sub)).sort());

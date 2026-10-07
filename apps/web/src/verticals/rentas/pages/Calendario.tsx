@@ -63,6 +63,13 @@ function esReservaDirecta(o: OcupacionCalendario): boolean {
   return o.capa === "reserva" && (o.canalCodigo === null || o.canalCodigo === "manual");
 }
 
+/** Rn-P3-29: una reserva importada de un canal externo no se cancela desde Atiende
+ *  (la API responde 409 reserva_no_directa): se cancela en el canal y el siguiente
+ *  sync la libera aquí. */
+function esReservaDeCanal(o: OcupacionCalendario): boolean {
+  return o.capa === "reserva" && o.canalCodigo !== null && o.canalCodigo !== "manual";
+}
+
 /** Rn-06: la página abre en el calendario visual (mes / línea de tiempo / agenda móvil); la lista de gestión de abajo
  * (crear, modificar y cancelar reservas y bloqueos de UNA unidad) sigue intacta como segunda pestaña y se alcanza también
  * desde el detalle de cualquier día o barra del calendario. */
@@ -413,7 +420,8 @@ function CalendarioLista({ apiBaseUrl, token, propertyId, unidadInicial }: Renta
       <div className="flex flex-col gap-2.5">
         {ocupaciones?.map((o) => {
           const puedeEditar = esReservaDirecta(o) && o.estado === "confirmado";
-          const puedeCancelar = o.estado !== "cancelado" && (o.capa === "bloqueo" || o.capa === "reserva");
+          const puedeCancelar = o.estado !== "cancelado" && (o.capa === "bloqueo" || esReservaDirecta(o));
+          const avisoCancelarEnCanal = o.estado !== "cancelado" && esReservaDeCanal(o);
           return (
             <Card key={o.id}>
               <CardContent className="p-4">
@@ -468,6 +476,11 @@ function CalendarioLista({ apiBaseUrl, token, propertyId, unidadInicial }: Renta
                       <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmandoCancelarId(o.id)} disabled={busyId === o.id}>
                         {o.capa === "reserva" ? "Cancelar reserva" : "Liberar bloqueo"}
                       </Button>
+                    )}
+                    {avisoCancelarEnCanal && (
+                      <p className="m-0 text-xs text-muted-foreground">
+                        Esta reserva viene de {o.canalCodigo}: cancélala allá; Atiende la liberará en el siguiente sync.
+                      </p>
                     )}
                   </div>
                 )}

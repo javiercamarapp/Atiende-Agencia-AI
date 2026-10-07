@@ -4,6 +4,7 @@ import type { Page, TestInfo } from "@playwright/test";
 import { ClienteMock } from "../mock-api/cliente.ts";
 import { personaDe, SUPERADMIN } from "../mock-api/personas.ts";
 import type { Rol, Vertical } from "../mock-api/tipos.ts";
+import { barraMovil, sidebar } from "./navegacion.ts";
 import { VigilanteConsola } from "./vigilante.ts";
 
 export const URL_API = `http://127.0.0.1:${process.env.E2E_API_PORT ?? "8788"}`;
@@ -65,10 +66,12 @@ export const test = base.extend<Fixtures>({
       const puente = objetivo === "superadmin" ? "restaurantes" : objetivo;
       await page.goto(`/${puente}/auth/google/callback?code=${encodeURIComponent(mock.codigoLogin(persona.id))}`);
       await page.waitForURL((url) => !url.pathname.includes("/auth/google/callback"), { timeout: 15_000 });
-      // Hasta que el shell pinto (sesion y sucursales ya cargadas): si no, una falla inyectada justo despues del login
-      // podria consumirla la carga inicial en vez de la accion que la prueba quiere ejercitar (flake visto en CI).
-      // El repartidor aterriza en /repartidor, que no es parte del shell y no tiene <main> (BUG-E2E-REST-001): espera su encabezado.
-      await page.locator("main").or(page.getByRole("heading", { name: "Mis entregas" })).first().waitFor({ state: "visible", timeout: 15_000 });
+      // Hasta que el shell REAL pinto (menu lateral en escritorio, barra inferior en movil; sesion y sucursales ya cargadas): si no, una falla
+      // inyectada justo despues del login podria consumirla la carga inicial en vez de la accion que la prueba quiere ejercitar (flake visto en CI)
+      // y `seccionesDelPanel` leeria 0 enlaces. QA-restaurantes-R2-botones-09: antes bastaba con el primer <main> visible, que tambien es el de las
+      // pantallas de paso (carga de sesion) anteriores al shell. El repartidor aterriza en /repartidor, que no es parte del shell y no tiene <main>
+      // (BUG-E2E-REST-001): espera su encabezado.
+      await sidebar(page).or(barraMovil(page)).or(page.getByRole("heading", { name: "Mis entregas" })).first().waitFor({ state: "visible", timeout: 15_000 });
       return new URL(page.url()).pathname;
     });
   },

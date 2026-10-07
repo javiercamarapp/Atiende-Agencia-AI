@@ -55,3 +55,45 @@ export function esViolacionExclusion(error: unknown): boolean {
 export async function bloquearOwnerStatementEnTransaccion(ejecutor: EjecutorTransaccional, ownerId: string, propertyId: string, periodoInicio: string, periodoFin: string): Promise<void> {
   await ejecutor.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`owner_statement:${ownerId}:${propertyId}:${periodoInicio}:${periodoFin}`]);
 }
+
+/**
+ * Corre `fn` aislada por un `SAVEPOINT` propio: si lanza, hace `ROLLBACK TO SAVEPOINT` + `RELEASE` (la transaccion
+ * COMPARTIDA del request o del barrido queda utilizable, nunca abortada con 25P02) y vuelve a lanzar el error
+ * original. Para quien quiere ademas tragarse el error, ver `conSavepointMejorEsfuerzo`.
+ */
+export async function conSavepoint<T>(ejecutor: EjecutorTransaccional, nombre: string, fn: () => Promise<T>): Promise<T> {
+  await ejecutor.exec(`SAVEPOINT ${nombre}`);
+  try {
+    const valor = await fn();
+    await ejecutor.exec(`RELEASE SAVEPOINT ${nombre}`);
+    return valor;
+  } catch (error) {
+    await ejecutor.exec(`ROLLBACK TO SAVEPOINT ${nombre}`);
+    await ejecutor.exec(`RELEASE SAVEPOINT ${nombre}`);
+    throw error;
+  }
+}
+
+/**
+ * Efecto accesorio que NUNCA debe romper el flujo principal (p. ej. la tarea de limpieza de una reserva recien
+ * confirmada: el barrido de checkouts es la red de seguridad). Corre `fn` dentro de un `SAVEPOINT`; ante cualquier
+ * error de Postgres revierte solo ese intento y devuelve `{ ok: false, error }`. Un fallo del propio
+ * `ROLLBACK TO SAVEPOINT` (conexion caida) si se propaga: no se finge una recuperacion que no ocurrio.
+ */
+export async function conSavepointMejorEsfuerzo<T>(
+  ejecutor: EjecutorTransaccional,
+  nombre: string,
+  fn: () => Promise<T>,
+): Promise<{ ok: true; valor: T } | { ok: false; error: unknown }> {
+  await ejecutor.exec(`SAVEPOINT ${nombre}`);
+  let valor: T;
+  try {
+    valor = await fn();
+  } catch (error) {
+    await ejecutor.exec(`ROLLBACK TO SAVEPOINT ${nombre}`);
+    await ejecutor.exec(`RELEASE SAVEPOINT ${nombre}`);
+    return { ok: false, error };
+  }
+  await ejecutor.exec(`RELEASE SAVEPOINT ${nombre}`);
+  return { ok: true, valor };
+}

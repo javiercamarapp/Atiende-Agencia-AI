@@ -55,6 +55,7 @@ import type { LoginSession } from "../../../lib/auth-client.ts";
 import { fetchBranches } from "../dashboard-client.ts";
 import { fetchAssignedOrders, isSessionExpiredEventForRepartidor, REPARTIDOR_NEXT_STATUS, updateAssignedOrderStatus } from "../lib/repartidor-client.ts";
 import type { RepartidorOrder, RepartidorOrderStatus } from "../lib/repartidor-client.ts";
+import { destinoEsPin, urlDestinoMapa } from "../lib/destino-mapa.ts";
 import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
 import { HistorialDiaTab, MiPerfilTab } from "../components/RepartidorPestanas.tsx";
 import { SESSION_EXPIRED_EVENT } from "../../../lib/authed-fetch.ts";
@@ -193,15 +194,11 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
               )}
 
               <div className="mt-2.5 flex flex-wrap gap-2">
-                {o.customerAddress && (
+                {urlDestinoMapa(o.notes, o.customerAddress) && (
                   <Button asChild variant="outline">
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.customerAddress)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <a href={urlDestinoMapa(o.notes, o.customerAddress) ?? undefined} target="_blank" rel="noreferrer">
                       <MapIcon />
-                      Mapa
+                      {destinoEsPin(o.notes) ? "Mapa (pin del cliente)" : "Mapa"}
                     </a>
                   </Button>
                 )}

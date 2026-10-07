@@ -64,6 +64,17 @@ describe("configuracion", () => {
     expect(await (await s.call("GET", "/configuracion", s.ctx.staff.frontdesk.token)).json()).toMatchObject({ asignacionAutomatica: true });
   });
 
+  it("hora de arranque del dia (H-P3-04): default 7, owner/gm la cambian (0..23), el resto 403 y fuera de rango 400", async () => {
+    const s = await setup();
+    expect(await (await s.call("GET", "/configuracion", s.ctx.staff.owner.token)).json()).toMatchObject({ horaArranque: 7, horaArranqueDisponible: true });
+    for (const t of [s.ctx.staff.frontdesk.token, s.ctx.staff.housekeeping.token]) expect((await s.call("PUT", "/configuracion", t, { horaArranque: 6 })).status).toBe(403);
+    for (const malo of [24, -1, 6.5, "6"]) expect((await s.call("PUT", "/configuracion", s.ctx.staff.owner.token, { horaArranque: malo })).status).toBe(400);
+    const ok = await s.call("PUT", "/configuracion", s.ctx.staff.gm.token, { horaArranque: 6 });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ horaArranque: 6, personalizada: true });
+    expect(await (await s.call("GET", "/configuracion", s.ctx.staff.frontdesk.token)).json()).toMatchObject({ horaArranque: 6 });
+  });
+
   it("base sin migrar: GET degrada (disponible:false) y PUT responde 503", async () => {
     const s = await setup({ migrated: false });
     expect(await (await s.call("GET", "/configuracion", s.ctx.staff.owner.token)).json()).toMatchObject({ disponible: false, personalizada: false });

@@ -2,7 +2,7 @@
 // puro, sin id/timestamps) igual que domain-rentas/src/types.ts separa
 // UnidadRecord/OcupacionResumen de ./tipos.ts (tipos de calendario). Consumidos por
 // ./repository.ts y sus dos adaptadores.
-import type { CanalMensajeriaCodigo, DireccionMensaje, EstadoBorrador, EventoPlantilla, IdiomaMensaje, OrigenMensaje } from "./tipos.ts";
+import type { CanalMensajeriaCodigo, DireccionMensaje, EstadoBorrador, EventoPlantilla, IdiomaMensaje, OrigenMensaje, SenalEscalamiento } from "./tipos.ts";
 
 export interface ConversacionRecord {
   readonly id: string;
@@ -68,6 +68,9 @@ export interface BorradorRecord {
   readonly estado: EstadoBorrador;
   readonly generadoPor: GeneradoPorBorrador;
   readonly redactado: boolean;
+  /** Rn-P3-21: persistido al generar (migración rentas 034). Contra la base sin migrar, `false` y `[]`. */
+  readonly necesitaEscalamiento: boolean;
+  readonly senales: readonly SenalEscalamiento[];
   readonly aprobadoPor: string | null;
   readonly aprobadoEn: string | null;
   readonly rechazadoPor: string | null;
@@ -84,6 +87,9 @@ export interface NewBorradorInput {
   readonly canal: CanalMensajeriaCodigo;
   readonly texto: string;
   readonly generadoPor: GeneradoPorBorrador;
+  /** Lo que el generador ya devolvió; por omisión, sin escalamiento. */
+  readonly necesitaEscalamiento?: boolean;
+  readonly senales?: readonly SenalEscalamiento[];
 }
 
 export interface MarcarBorradorAprobadoYEnviadoInput {

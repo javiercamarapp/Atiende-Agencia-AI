@@ -30,6 +30,8 @@ export interface PeticionLlmVoz {
   readonly system: string;
   readonly mensajes: readonly MensajeLlmVoz[];
   readonly herramientas: readonly ToolDefinicion[];
+  /** Modelo de texto elegido por la organizacion (de la lista permitida); el puerto lo manda al gateway como modelo preferido. */
+  readonly modeloPreferido?: string;
   readonly senal?: AbortSignal;
   /** Temperatura que debe usar el puerto (`VOZ_PLATAFORMA.cascada.temperatura`). */
   readonly temperatura?: number;
@@ -270,7 +272,15 @@ class SesionCascada implements VozSesionLlamada {
 
   private async completar(senal: AbortSignal): Promise<RespuestaLlmVoz> {
     try {
-      return await this.o.llm.completar({ system: this.apertura.instruccion, mensajes: this.mensajes, herramientas: this.apertura.herramientas, senal, temperatura: this.o.config.cascada.temperatura });
+      return await this.o.llm.completar({
+        system: this.apertura.instruccion,
+        mensajes: this.mensajes,
+        herramientas: this.apertura.herramientas,
+        ...(this.apertura.modeloLlm ? { modeloPreferido: this.apertura.modeloLlm } : {}),
+        // Temperatura de la organizacion (ajustes del agente); sin ajuste, la de la plataforma.
+        temperatura: typeof this.apertura.temperatura === "number" ? this.apertura.temperatura : this.o.config.cascada.temperatura,
+        senal,
+      });
     } catch {
       throw new ErrorEtapa("llm");
     }

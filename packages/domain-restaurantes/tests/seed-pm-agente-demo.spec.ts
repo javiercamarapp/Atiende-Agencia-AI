@@ -180,7 +180,8 @@ describe("la promocion 2x1 del lunes se carga AUTOMATICA (el agente no manda cod
       branchSlug,
       customerName: "Cliente Prueba",
       customerPhone: "0001000001",
-      ...(canal === "domicilio" ? { customerAddress: "Calle 34 #382-C, Emiliano Zapata Norte" } : {}),
+      // Con cobertura cargada (colonias del piloto) el domicilio exige una colonia de la zona de la sucursal.
+      ...(canal === "domicilio" ? { customerAddress: "Calle 34 #382-C, Emiliano Zapata Norte", colonia: plan.colonias.find((c) => c.branchId === (branchSlug === "pensiones" ? "T3" : branchSlug === "prol-montejo" ? "T1" : "T7"))!.name } : {}),
       canal,
       source: "web" as const,
       items: [

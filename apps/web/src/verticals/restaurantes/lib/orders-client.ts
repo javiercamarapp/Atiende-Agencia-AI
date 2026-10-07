@@ -4,7 +4,7 @@
 // (migrations/001_restaurantes_schema.sql) — nunca inventados.
 import { fetchJson, sendJson } from "./admin-client.ts";
 
-export type OrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema" | "listo_para_recoger" | "no_recogido" | "programado";
+export type OrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema" | "listo_para_recoger" | "no_recogido" | "programado" | "por_aprobar";
 
 export type OrderCanal = "domicilio" | "recoger";
 
@@ -19,6 +19,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   listo_para_recoger: "Listo para recoger",
   no_recogido: "No recogido",
   programado: "Programado",
+  por_aprobar: "Por aprobar",
 };
 
 /** Próximos estados que SÍ aplican al canal del pedido: un pedido para recoger no sale "en_camino" y los estados
@@ -40,6 +41,8 @@ export function nextStatusesForCanal(status: OrderStatus, canal: OrderCanal | nu
 export const NEXT_STATUSES: Record<OrderStatus, readonly OrderStatus[]> = {
   // R-11: un programado espera fuera de cocina; "pending" lo adelanta a cocina, "cancelado" lo descarta.
   programado: ["pending", "cancelado"],
+  // Autopiloto: un pedido grande retenido se aprueba o rechaza desde "Por aprobar" (su solicitud), nunca con un cambio de estado manual.
+  por_aprobar: [],
   pending: ["preparando", "cancelado", "problema"],
   preparando: ["en_camino", "listo_para_recoger", "cancelado", "problema"],
   en_camino: ["entregado", "problema"],
@@ -127,12 +130,19 @@ export async function updateOrderStatus(
   orderId: string,
   status: OrderStatus,
   /** `false` = no avisar por WhatsApp al cliente (aviso opcional de "listo para recoger"). Omitido = comportamiento de siempre. */
-  options: { readonly notifyCustomer?: boolean; /** Nota de la incidencia (solo con `status: "problema"`). */ readonly incidentNote?: string } = {},
+  options: {
+    readonly notifyCustomer?: boolean;
+    /** Nota de la incidencia (solo con `status: "problema"`). */
+    readonly incidentNote?: string;
+    /** Obligatorio al cancelar: motivo de la lista cerrada (`MOTIVOS_CANCELACION`). */
+    readonly motivo?: string;
+  } = {},
 ): Promise<OrderSummary> {
   const payload = {
     status,
     ...(options.notifyCustomer === false ? { notifyCustomer: false } : {}),
     ...(options.incidentNote !== undefined ? { incidentNote: options.incidentNote } : {}),
+    ...(options.motivo ? { motivo: options.motivo } : {}),
   };
   const body = await sendJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${orderId}/status`, token, "PATCH", payload);
   return body.order;
@@ -155,6 +165,21 @@ export async function assignRepartidor(
   if (estimatedDeliveryAt !== undefined) payload.estimatedDeliveryAt = estimatedDeliveryAt;
   const body = await sendJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${orderId}/assign-repartidor`, token, "PATCH", payload);
   return body.order;
+}
+
+/** Repartidor sugerido por el servidor (carga y tiempo sin recibir pedido). Solo lectura: asignar sigue siendo `assignRepartidor`. */
+export interface RepartidorSugerido {
+  readonly repartidorId: string;
+  readonly nombre: string;
+  /** Pedidos `en_camino` que ya lleva. */
+  readonly enCamino: number;
+}
+
+/** `GET .../admin/repartidor-sugerido?orderIds=`: sugerencias por id de pedido (a domicilio, en `preparando`, sin repartidor). Los pedidos sin sugerencia no aparecen. */
+export async function fetchRepartidorSugerido(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, orderIds: readonly string[]): Promise<Readonly<Record<string, RepartidorSugerido>>> {
+  if (orderIds.length === 0) return {};
+  const body = await fetchJson<{ sugerencias: Record<string, RepartidorSugerido> }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/repartidor-sugerido?orderIds=${orderIds.map(encodeURIComponent).join(",")}`, token);
+  return body.sugerencias ?? {};
 }
 
 /** Respuesta de la pestaña Programados. `disponible:false` = la base aún no tiene la migración 034. */

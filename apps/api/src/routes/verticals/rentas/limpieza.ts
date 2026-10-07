@@ -40,6 +40,8 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import type { TenantDbSession } from "@atiende/core-tenancy";
+import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import {
   asignarTarea,
   completarChecklistItem,
@@ -47,6 +49,7 @@ import {
   confirmarBloqueoMantenimiento,
   crearTareaOperativaManual,
   esFechaCalendario,
+  LIMPIEZA_ASIGNAR_A_OTROS_ROLES,
   LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES,
   LIMPIEZA_CREACION_MANUAL_ROLES,
   LIMPIEZA_OPERACION_ROLES,
@@ -57,6 +60,7 @@ import type { ConsumoInventario, EstadoTareaOperativa, PrioridadTareaOperativa, 
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { avisarTareaAsignada, marcarAvisosDeTarea } from "./limpieza-avisos.ts";
 import { mapRentasDomainError } from "./reservas.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -205,10 +209,32 @@ function requireOptionalPrioridad(value: unknown): PrioridadTareaOperativa | und
   return value as PrioridadTareaOperativa;
 }
 
+/** `true`/`false` si la persona es miembro operativo con acceso a la propiedad (`rentas.puede_operar_limpieza`, migracion 033);
+ *  `null` si la base aun no tiene la funcion (42883): ahi solo queda el FK a core.staff_user de siempre. Dentro de un SAVEPOINT:
+ *  la sesion es UNA transaccion por request y el error de la base vieja la dejaria abortada. */
+export async function esMiembroAsignable(db: TenantDbSession, propertyId: string, userId: string): Promise<boolean | null> {
+  return runWithSavepointFallback<boolean | null>({
+    session: db,
+    primary: async () => {
+      const { rows } = await db.query<{ ok: boolean }>(`select rentas.puede_operar_limpieza($1::uuid, $2::uuid) as ok`, [propertyId, userId]);
+      return rows[0]?.ok === true;
+    },
+    isRecoverable: (err) => isMigrationPendingError(err, "rentas.puede_operar_limpieza"),
+    fallback: async () => null,
+  });
+}
+
+export interface AsignableLimpieza {
+  readonly id: string;
+  readonly nombre: string;
+  readonly rol: string;
+}
+
 export function rentasLimpiezaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
   const tareasBase = "/rentas/:propertyId/tareas";
+  const asignablesPath = "/rentas/:propertyId/tareas/asignables";
   const tareaDetallePath = "/rentas/:propertyId/tareas/:tareaId";
   const asignarPath = "/rentas/:propertyId/tareas/:tareaId/asignar";
   const checklistCompletarPath = "/rentas/:propertyId/tareas/:tareaId/checklist/:itemId/completar";
@@ -217,7 +243,7 @@ export function rentasLimpiezaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const incidenciasPath = "/rentas/:propertyId/unidades/:unidadId/incidencias";
   const confirmarBloqueoPath = "/rentas/:propertyId/unidades/:unidadId/incidencias/:incidenciaId/confirmar-bloqueo";
 
-  for (const path of [tareasBase, tareaDetallePath, asignarPath, checklistCompletarPath, completarTareaPath, inventarioPath, incidenciasPath, confirmarBloqueoPath]) {
+  for (const path of [tareasBase, asignablesPath, tareaDetallePath, asignarPath, checklistCompletarPath, completarTareaPath, inventarioPath, incidenciasPath, confirmarBloqueoPath]) {
     app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   }
 
@@ -244,8 +270,33 @@ export function rentasLimpiezaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         }
       : undefined;
 
+    // `limpieza` solo ve LO SUYO y la cola sin asignar: la vista del equipo completo (tablero de turnos) es de gestion. Pedir las tareas de
+    // otra persona es 403; sin filtro de asignacion (p. ej. el calendario visual) se le devuelven solo las suyas y las libres.
+    const soloLoSuyo = c.get("verticalRole") === "limpieza";
+    const propio = c.get("userId");
+    if (soloLoSuyo && asignadoA !== undefined && asignadoA !== null && asignadoA !== propio) throw Errors.forbidden("Solo puedes ver tus tareas y la cola sin asignar.");
+
     const tareas = await repo.listTareas(propertyId, filtro);
-    return c.json({ tareas }, 200);
+    return c.json({ tareas: soloLoSuyo && asignadoA === undefined ? tareas.filter((t) => t.asignadoA === null || t.asignadoA === propio) : tareas }, 200);
+  });
+
+  // ---- GET .../tareas/asignables: personas a quienes se puede repartir una tarea de esta propiedad (selector "Asignar a..." y
+  // tablero de turnos). Solo gestion (LIMPIEZA_ASIGNAR_A_OTROS_ROLES); `rentas.listar_asignables_limpieza` (migracion 033) vuelve a
+  // validar rol y alcance en SQL. Base sin migrar: lista vacia con `disponible: false` (estado honesto, nunca un 500). ----
+  app.get(asignablesPath, async (c) => {
+    assertVerticalRole(c, LIMPIEZA_ASIGNAR_A_OTROS_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const db = c.get("db");
+    const asignables = await runWithSavepointFallback<AsignableLimpieza[] | null>({
+      session: db,
+      primary: async () => {
+        const { rows } = await db.query<{ user_id: string; full_name: string | null; vertical_role: string }>(`select user_id, full_name, vertical_role from rentas.listar_asignables_limpieza($1::uuid)`, [propertyId]);
+        return rows.map((r) => ({ id: r.user_id, nombre: r.full_name ?? "", rol: r.vertical_role }));
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "rentas.listar_asignables_limpieza"),
+      fallback: async () => null,
+    });
+    return c.json({ asignables: asignables ?? [], disponible: asignables !== null }, 200);
   });
 
   // ---- POST .../tareas: creación MANUAL de una tarea (limpieza/mantenimiento/
@@ -307,11 +358,21 @@ export function rentasLimpiezaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (!existente) throw Errors.notFound("Tarea no encontrada en esta property.");
 
     const raw = await readJsonCapped<AsignarTareaBody>(c.req.raw, 2 * 1024);
-    const asignadoA = requireOptionalString(raw.asignadoA, "asignadoA", 100) ?? c.get("userId");
+    const userId = c.get("userId");
+    const asignadoA = requireOptionalString(raw.asignadoA, "asignadoA", 100) ?? userId;
     if (raw.esProveedorExterno !== undefined && typeof raw.esProveedorExterno !== "boolean") {
       throw Errors.validation("esProveedorExterno: se esperaba un booleano.");
     }
     const esProveedorExterno = raw.esProveedorExterno === true;
+
+    // Repartir el trabajo es de gestion: el rol `limpieza` solo puede asignarse a SI MISMO (403 con cualquier otra persona).
+    const asignaAOtro = asignadoA !== userId;
+    if (asignaAOtro) {
+      if (!(LIMPIEZA_ASIGNAR_A_OTROS_ROLES as readonly string[]).includes(c.get("verticalRole") ?? "")) throw Errors.forbidden("Solo puedes asignarte las tareas a ti.");
+      // La persona debe ser miembro con acceso a ESTA propiedad y rol operativo (antes solo se validaba el FK a core.staff_user): 422 si no.
+      // Base sin migrar (`null`): se conserva el comportamiento anterior (el FK sigue protegiendo contra un id inexistente).
+      if ((await esMiembroAsignable(db, propertyId, asignadoA)) === false) throw Errors.rentasAsignadoNoValido();
+    }
 
     try {
       await asignarTarea(db, { tareaId, asignadoA, esProveedorExterno });
@@ -319,6 +380,10 @@ export function rentasLimpiezaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       if (err instanceof RentasDomainError) throw mapRentasDomainError(err);
       throw err;
     }
+    // Aviso in-app al instante cuando se reparte a otra persona (best-effort: `emitirNotificacion` nunca lanza); la fila de la cola
+    // `rentas.notificacion_tarea` que dejo `asignarTarea` se marca atendida para que el barrido no la repita. Si te asignas a ti mismo no hay aviso.
+    if (asignaAOtro) await avisarTareaAsignada(db, { organizationId: c.get("organizationId"), propertyId, tareaId, asignadoA });
+    await marcarAvisosDeTarea(db, tareaId);
     const actualizada = await repo.findTareaDetalle(propertyId, tareaId);
     return c.json({ tarea: actualizada }, 200);
   });

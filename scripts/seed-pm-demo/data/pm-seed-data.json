@@ -42,7 +42,11 @@
       "coordenadas_pendientes_de_verificar": "Calle 11 No. 371 x Av. 32, San Damián, Mérida (direccion del dueño; tel. 999 987 5410). Sin ficha de Google Maps ni otra fuente citable verificada: lat/lng quedan en null.",
       "activa": true,
       "zona_cliente": "poniente",
-      "nota": "Catalogo = lista T1-2026 sin comida regional ni flautas (cuestionario l.76 y l.104-105: 'precios iguales en todas'; correccion CR01/CR02 del 3-oct-2026: antes llevaba la lista 2025). Sin coordenadas: no se inventan (P7, P9), asi que T3 NO participa en la asignacion de sucursal por distancia hasta que se verifiquen."
+      "nota": "Catalogo = lista T1-2026 sin comida regional ni flautas (cuestionario l.76 y l.104-105: 'precios iguales en todas'; correccion CR01/CR02 del 3-oct-2026: antes llevaba la lista 2025). Sin coordenadas: no se inventan (P7, P9), asi que T3 NO participa en la asignacion de sucursal por distancia hasta que se verifiquen.",
+      "directorio": {
+        "dias_domicilio": null,
+        "nota": "PREGUNTA B13 (work/base-vieja-pm/diferencias.md): la web vieja dice que Pensiones reparte solo de viernes a domingo. Hasta que el dueño lo confirme se deja null (todos los dias); para activarlo, dias_domicilio = [5, 6, 0]."
+      }
     },
     {
       "id": "T4",
@@ -56,7 +60,11 @@
       "lat": null,
       "lng": null,
       "activa": false,
-      "nota": "Registrada sin pedidos (el cuestionario la lista con 0 a domicilio y 0 para llevar, P9): inactiva y sin catalogo. Direccion y telefono de la web. Sin coordenadas en el seed."
+      "nota": "Registrada sin pedidos (el cuestionario la lista con 0 a domicilio y 0 para llevar, P9): inactiva y sin catalogo. Direccion y telefono de la web. Sin coordenadas en el seed.",
+      "directorio": {
+        "visible": true,
+        "nota": "Visible en el directorio como solo informativa (esta inactiva y sin catalogo: no lleva a pedir)."
+      }
     },
     {
       "id": "T5",
@@ -68,7 +76,13 @@
       "lng": -89.602,
       "activa": false,
       "coordenadas_aproximadas": true,
-      "nota": "Solo para recoger. Cerrada fuera de temporada (abre en Semana Santa y en julio-agosto, de 18:00 a 01:00; el horario por sucursal sigue pendiente de P1). Telefono y WhatsApp de la web: 969 688 4195. Coordenadas aproximadas del repo, no entran en known_zone. Catalogo y precios del menu impreso T5-2026."
+      "nota": "Solo para recoger. Cerrada fuera de temporada (abre en Semana Santa y en julio-agosto, de 18:00 a 01:00; el horario por sucursal sigue pendiente de P1). Telefono y WhatsApp de la web: 969 688 4195. Coordenadas aproximadas del repo, no entran en known_zone. Catalogo y precios del menu impreso T5-2026.",
+      "directorio": {
+        "visible": true,
+        "acepta_domicilio": false,
+        "de_temporada": true,
+        "nota": "Chicxulub: solo recoger y de temporada (abre en Semana Santa y en julio-agosto)."
+      }
     },
     {
       "id": "T7",
@@ -2567,8 +2581,12 @@
       "alias": [
         "frijoles",
         "frijolito",
-        "botanero"
-      ]
+        "botanero",
+        "totopos"
+      ],
+      "alias_piloto": {
+        "totopos": "chats_c3"
+      }
     },
     {
       "nombre": "Guacamole",
@@ -2649,6 +2667,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "cebollitas"
+      ],
+      "alias_piloto": {
+        "cebollitas": "chats_c3"
       }
     },
     {
@@ -2787,6 +2811,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "medios"
+      ],
+      "alias_piloto": {
+        "medios": "chats_c3"
       }
     },
     {
@@ -2841,6 +2871,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "medios"
+      ],
+      "alias_piloto": {
+        "medios": "chats_c3"
       }
     },
     {
@@ -2895,6 +2931,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "medios"
+      ],
+      "alias_piloto": {
+        "medios": "chats_c3"
       }
     },
     {
@@ -3177,6 +3219,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "grandes"
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
       }
     },
     {
@@ -3233,11 +3281,15 @@
         "T2": "provisional_P5"
       },
       "alias": [
-        "champi"
+        "champi",
+        "grandes"
       ],
       "alias_provisional_P24": [
         "champi"
-      ]
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
+      }
     },
     {
       "nombre": "Nachos de Champiñón (1/2 orden)",
@@ -3301,13 +3353,17 @@
       "alias": [
         "bitek",
         "bistek",
-        "bisté"
+        "bisté",
+        "grandes"
       ],
       "alias_provisional_P24": [
         "bitek",
         "bistek",
         "bisté"
-      ]
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
+      }
     },
     {
       "nombre": "Nachos de Bistec (1/2 orden)",
@@ -3371,6 +3427,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "grandes"
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
       }
     },
     {
@@ -3425,6 +3487,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "grandes"
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
       }
     },
     {
@@ -3479,6 +3547,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "grandes"
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
       }
     },
     {
@@ -3533,6 +3607,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "grandes"
+      ],
+      "alias_piloto": {
+        "grandes": "chats_c3"
       }
     },
     {
@@ -5812,6 +5892,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "regular"
+      ],
+      "alias_piloto": {
+        "regular": "chats_c3+cuestionario_pm"
       }
     },
     {
@@ -5866,6 +5952,12 @@
         "T7": "lista_t1_2026",
         "T8": "provisional_P5",
         "T2": "provisional_P5"
+      },
+      "alias": [
+        "zero"
+      ],
+      "alias_piloto": {
+        "zero": "chats_c3"
       }
     },
     {
@@ -8267,7 +8359,7 @@
     {
       "id": "mapa_colonias",
       "titulo": "Mapa de colonias por sucursal",
-      "detalle": "Las colonias de reparto de cada sucursal no estan cargadas: no hay cobertura de entrega configurada ni zonas por colonia; solo el punto de cada sucursal.",
+      "detalle": "Las colonias de reparto de cada sucursal salen de una PROPUESTA: el piloto original dio la sucursal mas cercana por colonia (sin coordenadas, con posibles errores de coordenadas viejas) y los chats de T7 fijan 10 colonias. Las ambiguas (menos de 1 km entre dos sucursales) quedan sin asignar y aparecen en el reporte de colonias ambiguas de la pagina de Reglas. El dueño debe entregar el mapa de zonas por sucursal para reemplazar la propuesta.",
       "quien": "dueno",
       "pantalla": "configuracion",
       "estado": "abierta"
@@ -8512,5 +8604,2491 @@
       "pantalla": "sucursales",
       "estado": "abierta"
     }
-  ]
+  ],
+  "colonias": [
+    {
+      "nombre": "Alcala Martin",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 2.6,
+        "segunda": "T3",
+        "segunda_km": 2.9,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Alemán",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 2.5,
+        "segunda": "T7",
+        "segunda_km": 4.6,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Algarrobos Residencial",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 2.5,
+        "segunda": "T8",
+        "segunda_km": 3.3,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Altabrisa",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 1.1,
+        "segunda": "T7",
+        "segunda_km": 2.4,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Andalucia",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 2.2,
+        "segunda": "T7",
+        "segunda_km": 3.5,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T7",
+      "asignacion": "reasignada_desde_galerias"
+    },
+    {
+      "nombre": "Andria",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 4.1,
+        "segunda": "T7",
+        "segunda_km": 7.4,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Arboledas",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 3.5,
+        "segunda": "T3",
+        "segunda_km": 4.7,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Aurea Residencial",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 0.5,
+        "segunda": "T2",
+        "segunda_km": 1.7,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T2",
+      "asignacion": "reasignada_desde_galerias"
+    },
+    {
+      "nombre": "Azcorra",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 6.6,
+        "segunda": "T1",
+        "segunda_km": 6.8,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Benito Juárez Norte",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 1.3,
+        "segunda": "T1",
+        "segunda_km": 1.4,
+        "alerta_ambigua": true
+      },
+      "sucursal": "T7",
+      "asignacion": "chats_t7"
+    },
+    {
+      "nombre": "Benito Juárez Oriente",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 7.5,
+        "segunda": "T8",
+        "segunda_km": 7.8,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Bojórquez",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 1.6,
+        "segunda": "T1",
+        "segunda_km": 5.5,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Buenavista",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 1.3,
+        "segunda": "T1",
+        "segunda_km": 3.2,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Cabo Norte",
+      "fuente": "chats_t7",
+      "referencia": null,
+      "sucursal": "T7",
+      "asignacion": "chats_t7"
+    },
+    {
+      "nombre": "Camara de Comercio Norte",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 1.9,
+        "segunda": "T1",
+        "segunda_km": 2.3,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Campestre",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 0.6,
+        "segunda": "T7",
+        "segunda_km": 2.6,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Caucel",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 1.8,
+        "segunda": "T2",
+        "segunda_km": 4.8,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Cecilio Chi",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 9.5,
+        "segunda": "T1",
+        "segunda_km": 10.0,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Ceiba II",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 7.9,
+        "segunda": "T7",
+        "segunda_km": 8.0,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Centro",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 3.8,
+        "segunda": "T1",
+        "segunda_km": 5.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "dueno_zona_centro"
+    },
+    {
+      "nombre": "Centro Chichi Suarez",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 4.1,
+        "segunda": "T1",
+        "segunda_km": 6.7,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Centro Histórico",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 3.8,
+        "segunda": "T1",
+        "segunda_km": 5.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "dueno_zona_centro"
+    },
+    {
+      "nombre": "Cerrada Lombardia",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 3.8,
+        "segunda": "T7",
+        "segunda_km": 7.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Cerrada Piemonte",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 3.7,
+        "segunda": "T7",
+        "segunda_km": 7.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Cerrada Veneto",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 4.0,
+        "segunda": "T7",
+        "segunda_km": 7.3,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Cerradas de Gran Santa Fe",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T2",
+        "km": 4.8,
+        "segunda": "T3",
+        "segunda_km": 4.9,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Chablekal",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 7.8,
+        "segunda": "T7",
+        "segunda_km": 7.8,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Chichi Suarez",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 3.8,
+        "segunda": "T1",
+        "segunda_km": 6.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Chicxulub",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T5",
+        "km": 0.6,
+        "segunda": "T4",
+        "segunda_km": 28.7,
+        "alerta_ambigua": false
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "zona_de_playa_no_reparte"
+    },
+    {
+      "nombre": "Chicxulub Puerto",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T5",
+        "km": 0.6,
+        "segunda": "T4",
+        "segunda_km": 28.7,
+        "alerta_ambigua": false
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "zona_de_playa_no_reparte"
+    },
+    {
+      "nombre": "Cholul",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 2.6,
+        "segunda": "T7",
+        "segunda_km": 4.5,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Chuburná",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T2",
+        "km": 2.0,
+        "segunda": "T3",
+        "segunda_km": 2.0,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Chuminópolis",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 3.1,
+        "segunda": "T2",
+        "segunda_km": 6.8,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Ciudad Caucel",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 1.8,
+        "segunda": "T2",
+        "segunda_km": 4.8,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Cloverleaf",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 3.0,
+        "segunda": "T7",
+        "segunda_km": 6.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Del Norte",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 1.0,
+        "segunda": "T7",
+        "segunda_km": 2.9,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Delio Moreno Canton",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.8,
+        "segunda": "T1",
+        "segunda_km": 8.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Dolores Otero",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 6.2,
+        "segunda": "T1",
+        "segunda_km": 7.9,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Dzitya",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 3.9,
+        "segunda": "T2",
+        "segunda_km": 4.7,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Dzitya Poligono Chuburna",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 1.7,
+        "segunda": "T2",
+        "segunda_km": 3.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T2",
+      "asignacion": "reasignada_desde_galerias"
+    },
+    {
+      "nombre": "El Fenix",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 3.7,
+        "segunda": "T3",
+        "segunda_km": 5.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Emiliano Zapata Norte",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 0.6,
+        "segunda": "T1",
+        "segunda_km": 1.8,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "direccion_sucursal"
+    },
+    {
+      "nombre": "Ferrocarrilera Hector Victoria Aguilar",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 3.5,
+        "segunda": "T3",
+        "segunda_km": 4.2,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Floresta Residencial",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 2.9,
+        "segunda": "T7",
+        "segunda_km": 6.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Fraccionamiento Francisco de Montejo",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 0.4,
+        "segunda": "T1",
+        "segunda_km": 2.7,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T7",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "García Ginerés",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 3.0,
+        "segunda": "T1",
+        "segunda_km": 5.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Gonzalo Guerrero",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 1.9,
+        "segunda": "T4",
+        "segunda_km": 1.9,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Gran Herradura Norte",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.4,
+        "segunda": "T2",
+        "segunda_km": 7.2,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Gran Santa Fe",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 4.0,
+        "segunda": "T2",
+        "segunda_km": 4.4,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Gran Santa Fe II",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T2",
+        "km": 4.4,
+        "segunda": "T3",
+        "segunda_km": 5.0,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Guadalupe",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 1.3,
+        "segunda": "T7",
+        "segunda_km": 3.7,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Hacienda Xcumpich",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T2",
+        "km": 1.0,
+        "segunda": "T4",
+        "segunda_km": 1.1,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Inalambrica",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 1.3,
+        "segunda": "T1",
+        "segunda_km": 4.6,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Itzimná",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 2.7,
+        "segunda": "T1",
+        "segunda_km": 3.3,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Jardines de Mérida",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.4,
+        "segunda": "T1",
+        "segunda_km": 9.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Jardines de Miraflores",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 5.7,
+        "segunda": "T3",
+        "segunda_km": 6.2,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Jardines de Vista Alegre I",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 2.0,
+        "segunda": "T1",
+        "segunda_km": 3.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Jardines de Vista Alegre II",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 1.9,
+        "segunda": "T1",
+        "segunda_km": 3.3,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Jesús Carranza",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 2.9,
+        "segunda": "T3",
+        "segunda_km": 4.4,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Juan Pablo II",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 4.1,
+        "segunda": "T2",
+        "segunda_km": 7.7,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Komchen",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 6.3,
+        "segunda": "T2",
+        "segunda_km": 7.1,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "La Castellana",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 0.5,
+        "segunda": "T2",
+        "segunda_km": 2.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T2",
+      "asignacion": "reasignada_desde_galerias"
+    },
+    {
+      "nombre": "La Ceiba",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.9,
+        "segunda": "T1",
+        "segunda_km": 8.3,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "La Ciudadela",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 3.9,
+        "segunda": "T2",
+        "segunda_km": 5.2,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "La Huerta",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 3.2,
+        "segunda": "T3",
+        "segunda_km": 3.9,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Las Américas",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 2.6,
+        "segunda": "T8",
+        "segunda_km": 3.3,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "variantes_con_sucursal_distinta_en_el_piloto"
+    },
+    {
+      "nombre": "Las Americas II",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 5.3,
+        "segunda": "T2",
+        "segunda_km": 6.0,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Las Americas Merida",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 4.1,
+        "segunda": "T2",
+        "segunda_km": 4.7,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Leandro Valle",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 3.8,
+        "segunda": "T1",
+        "segunda_km": 5.4,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Lomas del Sur",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.1,
+        "segunda": "T1",
+        "segunda_km": 8.2,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Los Heroes",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 5.9,
+        "segunda": "T1",
+        "segunda_km": 8.5,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Los Pinos",
+      "fuente": "chats_t7",
+      "referencia": null,
+      "sucursal": "T8",
+      "asignacion": "chats_t7"
+    },
+    {
+      "nombre": "Los Reyes",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 4.6,
+        "segunda": "T1",
+        "segunda_km": 7.5,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Lourdes",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.5,
+        "segunda": "T1",
+        "segunda_km": 5.7,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Lourdes Industrial",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 3.9,
+        "segunda": "T3",
+        "segunda_km": 4.6,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Mallorca",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 2.4,
+        "segunda": "T7",
+        "segunda_km": 5.6,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Manzana 115",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.2,
+        "segunda": "T1",
+        "segunda_km": 8.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Maximo Ancona",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 3.8,
+        "segunda": "T3",
+        "segunda_km": 5.3,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Meliton Salazar",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.5,
+        "segunda": "T1",
+        "segunda_km": 8.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "México",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 1.1,
+        "segunda": "T7",
+        "segunda_km": 3.3,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "chats_t7"
+    },
+    {
+      "nombre": "México Norte",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 1.5,
+        "segunda": "T1",
+        "segunda_km": 3.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Mexico Oriente",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 1.1,
+        "segunda": "T7",
+        "segunda_km": 3.3,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "México Poniente",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 0.5,
+        "segunda": "T1",
+        "segunda_km": 4.2,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Miguel Hidalgo",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 3.6,
+        "segunda": "T1",
+        "segunda_km": 7.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Miraflores",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 6.7,
+        "segunda": "T3",
+        "segunda_km": 7.2,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Montealban",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 1.4,
+        "segunda": "T7",
+        "segunda_km": 1.5,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Montebello",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 2.4,
+        "segunda": "T1",
+        "segunda_km": 3.9,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T7",
+      "asignacion": "chats_t7"
+    },
+    {
+      "nombre": "Montebello II",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 1.4,
+        "segunda": "T7",
+        "segunda_km": 1.9,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Montecarlo",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 0.7,
+        "segunda": "T7",
+        "segunda_km": 2.6,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Montecristo",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 1.7,
+        "segunda": "T7",
+        "segunda_km": 2.2,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Montereal",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 1.6,
+        "segunda": "T1",
+        "segunda_km": 1.7,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Montes de Ame",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 1.1,
+        "segunda": "T4",
+        "segunda_km": 1.7,
+        "alerta_ambigua": true
+      },
+      "sucursal": "T7",
+      "asignacion": "chats_t7"
+    },
+    {
+      "nombre": "Montevideo",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 2.0,
+        "segunda": "T1",
+        "segunda_km": 2.3,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Morelos Oriente",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 7.4,
+        "segunda": "T3",
+        "segunda_km": 7.5,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Mulchechen",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 8.6,
+        "segunda": "T1",
+        "segunda_km": 8.8,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Mulsay",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 1.0,
+        "segunda": "T7",
+        "segunda_km": 2.4,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Nucleo Sodzil",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 1.8,
+        "segunda": "T7",
+        "segunda_km": 3.4,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T7",
+      "asignacion": "reasignada_desde_galerias"
+    },
+    {
+      "nombre": "Nueva Alemán",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 2.5,
+        "segunda": "T7",
+        "segunda_km": 4.6,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Nueva Reforma Agraria",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.6,
+        "segunda": "T2",
+        "segunda_km": 9.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Nueva Salvador Alvarado Sur",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 8.5,
+        "segunda": "T1",
+        "segunda_km": 8.7,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Nuevo Yucatan",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 3.2,
+        "segunda": "T1",
+        "segunda_km": 3.4,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Obrera",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.0,
+        "segunda": "T1",
+        "segunda_km": 7.9,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Olivos",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 5.2,
+        "segunda": "T7",
+        "segunda_km": 8.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Opichen",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.7,
+        "segunda": "T2",
+        "segunda_km": 9.3,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Paraiso Santa Fe",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T2",
+        "km": 4.1,
+        "segunda": "T3",
+        "segunda_km": 4.1,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Parque Central",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 3.6,
+        "segunda": "T7",
+        "segunda_km": 6.8,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Parque Industrial",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 3.5,
+        "segunda": "T2",
+        "segunda_km": 4.8,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T2",
+      "asignacion": "reasignada_desde_galerias"
+    },
+    {
+      "nombre": "Parque Natura",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 3.4,
+        "segunda": "T7",
+        "segunda_km": 6.6,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Pedregales de Circuito",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.7,
+        "segunda": "T1",
+        "segunda_km": 8.6,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Pedregales las Americas",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 4.5,
+        "segunda": "T2",
+        "segunda_km": 4.7,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Piedrasul",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 1.0,
+        "segunda": "T2",
+        "segunda_km": 1.2,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Plan de Ayala",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 1.4,
+        "segunda": "T7",
+        "segunda_km": 2.3,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Privada del Carmen",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 1.7,
+        "segunda": "T1",
+        "segunda_km": 5.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Privada las Acacias",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 4.4,
+        "segunda": "T1",
+        "segunda_km": 7.4,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Progreso",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T5",
+        "km": 6.3,
+        "segunda": "T4",
+        "segunda_km": 27.4,
+        "alerta_ambigua": false
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "zona_de_playa_no_reparte"
+    },
+    {
+      "nombre": "Puerta de Piedra Dzitya",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T2",
+        "km": 2.5,
+        "segunda": "T4",
+        "segunda_km": 3.3,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Punta Esmeralda",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 5.2,
+        "segunda": "T1",
+        "segunda_km": 7.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Quinta Real",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 6.8,
+        "segunda": "T7",
+        "segunda_km": 7.8,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T7",
+      "asignacion": "reasignada_desde_galerias"
+    },
+    {
+      "nombre": "Real de Dzitya",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T2",
+        "km": 3.6,
+        "segunda": "T4",
+        "segunda_km": 4.1,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Real Montejo",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T2",
+        "km": 2.6,
+        "segunda": "T4",
+        "segunda_km": 4.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T7",
+      "asignacion": "chats_t7"
+    },
+    {
+      "nombre": "Real San Jose",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 7.3,
+        "segunda": "T3",
+        "segunda_km": 7.9,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Reparto Dolores Patron Peniche",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 2.5,
+        "segunda": "T1",
+        "segunda_km": 2.8,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Residencial Pensiones",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 2.4,
+        "segunda": "T1",
+        "segunda_km": 4.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Residencial San Antonio",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 1.3,
+        "segunda": "T1",
+        "segunda_km": 1.7,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Revolucion",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 0.5,
+        "segunda": "T7",
+        "segunda_km": 2.3,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T7",
+      "asignacion": "reasignada_desde_galerias"
+    },
+    {
+      "nombre": "Revolución Cordemex",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 0.0,
+        "segunda": "T2",
+        "segunda_km": 2.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T2",
+      "asignacion": "reasignada_desde_galerias"
+    },
+    {
+      "nombre": "Rinconada de Chuburna",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T2",
+        "km": 1.6,
+        "segunda": "T4",
+        "segunda_km": 2.0,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Roble Agrícola",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 9.3,
+        "segunda": "T1",
+        "segunda_km": 13.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Royal del Parque",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 2.5,
+        "segunda": "T2",
+        "segunda_km": 3.8,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T2",
+      "asignacion": "reasignada_desde_galerias"
+    },
+    {
+      "nombre": "Salvador Alvarado Sur",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 8.2,
+        "segunda": "T1",
+        "segunda_km": 8.6,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Sambula",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 4.1,
+        "segunda": "T1",
+        "segunda_km": 7.4,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "San Angel",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 4.6,
+        "segunda": "T1",
+        "segunda_km": 6.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "San Antonio Cinta",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 0.9,
+        "segunda": "T7",
+        "segunda_km": 2.3,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "San Antonio Cucul",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 1.1,
+        "segunda": "T1",
+        "segunda_km": 1.4,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "San Antonio Xluch",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 8.3,
+        "segunda": "T1",
+        "segunda_km": 10.7,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "San Aroldo",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 9.6,
+        "segunda": "T1",
+        "segunda_km": 9.9,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "San Diego Cutz",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 6.8,
+        "segunda": "T7",
+        "segunda_km": 7.6,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "San Esteban",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 2.6,
+        "segunda": "T8",
+        "segunda_km": 3.9,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "San Jose",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 6.4,
+        "segunda": "T1",
+        "segunda_km": 7.1,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "San Jose Tzal",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 9.0,
+        "segunda": "T1",
+        "segunda_km": 9.3,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "San Jose Vergel",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 6.9,
+        "segunda": "T3",
+        "segunda_km": 7.6,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "San Lorenzo",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 2.6,
+        "segunda": "T1",
+        "segunda_km": 6.2,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "San Luis",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 3.5,
+        "segunda": "T3",
+        "segunda_km": 5.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "San Pedro Cholul",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 2.8,
+        "segunda": "T7",
+        "segunda_km": 6.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "San Pedro Noh Pat",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 8.8,
+        "segunda": "T1",
+        "segunda_km": 9.1,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "San Ramon",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 1.0,
+        "segunda": "T7",
+        "segunda_km": 1.4,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "San Ramon Norte",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 1.0,
+        "segunda": "T7",
+        "segunda_km": 1.5,
+        "alerta_ambigua": true
+      },
+      "sucursal": "T7",
+      "asignacion": "chats_t7"
+    },
+    {
+      "nombre": "Santa Cecilia",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 3.4,
+        "segunda": "T3",
+        "segunda_km": 3.9,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Santa Gertrudis",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 1.3,
+        "segunda": "T8",
+        "segunda_km": 3.2,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T7",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Santa Gertrudis Copo",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 1.3,
+        "segunda": "T7",
+        "segunda_km": 3.6,
+        "alerta_ambigua": false
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "partida_entre_t7_y_t8_P7"
+    },
+    {
+      "nombre": "Santa Maria Chi",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 3.2,
+        "segunda": "T1",
+        "segunda_km": 5.7,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Santa Maria de Guadalupe",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 4.9,
+        "segunda": "T1",
+        "segunda_km": 7.8,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Santa Rosa",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.6,
+        "segunda": "T1",
+        "segunda_km": 6.9,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Serapio Rendón",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 7.5,
+        "segunda": "T1",
+        "segunda_km": 8.9,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Sitpach",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 5.7,
+        "segunda": "T7",
+        "segunda_km": 9.0,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Sodzil",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 1.1,
+        "segunda": "T7",
+        "segunda_km": 1.7,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Sodzil Norte",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 1.1,
+        "segunda": "T7",
+        "segunda_km": 2.0,
+        "alerta_ambigua": true
+      },
+      "sucursal": "T7",
+      "asignacion": "chats_t7"
+    },
+    {
+      "nombre": "Sol Campestre",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 1.1,
+        "segunda": "T1",
+        "segunda_km": 1.7,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Susula",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.4,
+        "segunda": "T2",
+        "segunda_km": 7.9,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Tamarindos",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T2",
+        "km": 2.3,
+        "segunda": "T4",
+        "segunda_km": 2.4,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Tecnologico",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 1.1,
+        "segunda": "T7",
+        "segunda_km": 2.9,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T1",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Temozón Norte",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 1.7,
+        "segunda": "T8",
+        "segunda_km": 1.8,
+        "alerta_ambigua": true
+      },
+      "sucursal": "T7",
+      "asignacion": "chats_t7"
+    },
+    {
+      "nombre": "Tixcuytun",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 4.8,
+        "segunda": "T7",
+        "segunda_km": 5.6,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Vergel",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 6.2,
+        "segunda": "T3",
+        "segunda_km": 7.1,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Vergel II",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 7.1,
+        "segunda": "T3",
+        "segunda_km": 8.0,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Via Montejo",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 0.6,
+        "segunda": "T2",
+        "segunda_km": 2.5,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T2",
+      "asignacion": "reasignada_desde_galerias"
+    },
+    {
+      "nombre": "Vicente Solis",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 6.4,
+        "segunda": "T1",
+        "segunda_km": 6.8,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Villa Fontana",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 4.4,
+        "segunda": "T3",
+        "segunda_km": 4.8,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Villa Magna",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 5.1,
+        "segunda": "T2",
+        "segunda_km": 8.6,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Villareal",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 0.5,
+        "segunda": "T1",
+        "segunda_km": 2.8,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T7",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Villas Cholul",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 4.2,
+        "segunda": "T7",
+        "segunda_km": 7.1,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Villas del Rey",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 0.9,
+        "segunda": "T7",
+        "segunda_km": 1.8,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Villas la Hacienda",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 0.8,
+        "segunda": "T7",
+        "segunda_km": 1.5,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Vista Alegre",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 1.5,
+        "segunda": "T7",
+        "segunda_km": 2.0,
+        "alerta_ambigua": true
+      },
+      "sucursal": "T8",
+      "asignacion": "direccion_sucursal"
+    },
+    {
+      "nombre": "Vista Alegre Norte",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 0.0,
+        "segunda": "T7",
+        "segunda_km": 3.3,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Waspa",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T1",
+        "km": 4.7,
+        "segunda": "T3",
+        "segunda_km": 5.1,
+        "alerta_ambigua": true
+      },
+      "sucursal": null,
+      "asignacion": "sin_asignar",
+      "motivo_sin_asignar": "ambigua_menos_de_1_km"
+    },
+    {
+      "nombre": "Xaman Kab",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 0.3,
+        "segunda": "T1",
+        "segunda_km": 2.6,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T7",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Xaman Tan",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T7",
+        "km": 0.5,
+        "segunda": "T1",
+        "segunda_km": 2.6,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T7",
+      "asignacion": "direccion_sucursal"
+    },
+    {
+      "nombre": "Xcanatun",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 4.0,
+        "segunda": "T7",
+        "segunda_km": 5.4,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T7",
+      "asignacion": "reasignada_desde_galerias"
+    },
+    {
+      "nombre": "Xcumpich",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T8",
+        "km": 1.1,
+        "segunda": "T7",
+        "segunda_km": 2.8,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T8",
+      "asignacion": "distancia_piloto"
+    },
+    {
+      "nombre": "Xo Tik",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T4",
+        "km": 2.6,
+        "segunda": "T2",
+        "segunda_km": 3.6,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T2",
+      "asignacion": "reasignada_desde_galerias"
+    },
+    {
+      "nombre": "Yucalpeten",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 1.8,
+        "segunda": "T2",
+        "segunda_km": 5.4,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    },
+    {
+      "nombre": "Yucatán",
+      "fuente": "piloto_original_merida_colonias",
+      "referencia": {
+        "sucursal": "T3",
+        "km": 2.4,
+        "segunda": "T1",
+        "segunda_km": 4.7,
+        "alerta_ambigua": false
+      },
+      "sucursal": "T3",
+      "asignacion": "distancia_piloto",
+      "advertencia": "distancia_calculada_desde_otra_direccion_de_pensiones"
+    }
+  ],
+  "colonias_meta": {
+    "fuente": "colonias.json exportado el 3-oct-2026 de la base de conocimiento de ElevenLabs del agente viejo (solo lectura; no Supabase). Sin lat/lng: solo nombre, sucursal mas cercana y km segun el piloto.",
+    "regla_asignacion": "Reparten T1, T2, T3, T7 y T8 (el dueño: 5 con domicilio; Galerias T4 y Playa T5 no). Orden: (1) chats_t7 manda (lista parcial de T7 de pendientes_dueno.P7, Los Pinos a T8, Mexico a T1); (2) colonia propia de la direccion de una sucursal que reparte (direccion_sucursal); (3) sin asignar si las dos sucursales mas cercanas del piloto difieren menos de 1 km, si el piloto da sucursales distintas para variantes del mismo nombre, o si cae en Playa; (4) las que el piloto mando a Galerias pasan a la segunda sucursal si reparte y esta a 8 km o menos (reasignada_desde_galerias); (5) el resto, la sucursal mas cercana del piloto. Las distancias del piloto pueden tener errores (coordenadas viejas); el reporte de colonias ambiguas las marca para revisar y manda el mapa de zonas del dueño (A4).",
+    "asignaciones_son_propuesta": true
+  },
+  "alias_piloto_meta": {
+    "fuente": "sinonimos.json exportado el 3-oct-2026 (PROPUESTA derivada de nombres y de la tabla de vocabulario de los chats; la base vieja no trae search_keywords reales)",
+    "criterio": "solo origenes chats_c3, derivado_nombre y cuestionario_pm; los sentido_comun_a_validar y cuestionario_web quedan fuera hasta que Javier los apruebe; solo los que la busqueda actual aun no encuentra (68 de 202 ya los encuentra la tokenizacion); las faltas de escritura bisctec y pok se normalizan en codigo (product-search.ts); las salsas y ajustes no son productos"
+  }
 }

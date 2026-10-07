@@ -3,10 +3,10 @@
 // Rótulos veraces: el costo LLM es de la ORGANIZACIÓN (la base lo guarda por día y rol, no por conversación ni sucursal), así que
 // "Costo LLM promedio por pedido" es un promedio del periodo, no el costo real de cada pedido. Sin dato = "—" con su razón.
 import { useCallback, useEffect, useState } from "react";
-import { Activity, DollarSign, Headset, MessageSquare, ShoppingBag, TrendingUp } from "lucide-react";
+import { Activity, CheckCheck, DollarSign, Headset, MessageSquare, MessageSquareWarning, Send, ShoppingBag, TrendingUp } from "lucide-react";
 import { Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, NativeSelect, PageContainer, StatCard } from "@atiende/ui";
 import { fetchWhatsappKpi } from "../lib/whatsapp-kpi-client.ts";
-import type { WhatsappKpi, WhatsappKpiDiaSerie, WhatsappKpiResumen } from "../lib/whatsapp-kpi-client.ts";
+import type { WhatsappEntrega, WhatsappEntregaDiaSerie, WhatsappKpi, WhatsappKpiDiaSerie, WhatsappKpiResumen } from "../lib/whatsapp-kpi-client.ts";
 import { desdeError } from "../voz/carga.ts";
 import type { Carga } from "../voz/carga.ts";
 import { formatoDia, formatoMxn, formatoPct } from "../voz/formato-kpi.ts";
@@ -34,6 +34,75 @@ function razonSinCostoTotal(r: WhatsappKpiResumen): string | null {
   if (r.orgEsDemo) return "Organización de demostración: no se muestra el costo.";
   if (r.pedidosOrg === null) return "Solo se muestra con acceso a toda la organización.";
   return "Falta el tipo de cambio de algún día para convertir a pesos.";
+}
+
+/** Motivos de fallo de entrega (los mismos codigos que guarda la base). Texto de la plataforma, nunca del cliente. */
+const MOTIVOS_FALLO: Readonly<Record<string, string>> = {
+  fuera_de_ventana: "Fuera de la ventana de 24 h",
+  fuera_de_ventana_plantilla_sin_usar: "Fuera de la ventana de 24 h, con plantilla disponible sin usar",
+  numero_no_entregable: "Número no entregable",
+  plantilla: "Plantilla pausada o con parámetros incorrectos",
+  limite_marketing: "Límite de mensajes de marketing",
+  otro: "Otro motivo",
+};
+
+function EntregaAvisos({ entrega }: { readonly entrega: WhatsappEntrega | undefined }) {
+  if (!entrega || !entrega.disponible) {
+    return (
+      <Callout tone="info" data-testid="entrega-no-disponible">
+        Entrega de avisos de pedido: no disponible aún. Requiere la actualización de base de datos pendiente (migración 066); mientras tanto no se muestran cifras.
+      </Callout>
+    );
+  }
+  const r = entrega.resumen;
+  const motivos = Object.entries(r.fallosPorMotivo).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  return (
+    <div className="space-y-2.5" data-testid="entrega-avisos">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <StatCard icon={Send} label="Avisos de pedido enviados" value={String(r.enviados)} nota="Estados del pedido por WhatsApp que Meta aceptó" />
+        <StatCard
+          icon={CheckCheck}
+          label="Tasa de entrega"
+          value={formatoPct(r.entregaPct)}
+          {...(r.entregaPct === null ? { sinDato: "Sin avisos enviados en el periodo." } : { nota: `${r.entregados} de ${r.enviados} llegaron al teléfono del cliente${r.sinEstado > 0 ? ` · ${r.sinEstado} sin confirmación todavía` : ""}` })}
+        />
+        <StatCard
+          icon={MessageSquare}
+          label="Tasa de lectura"
+          value={formatoPct(r.lecturaPct)}
+          {...(r.lecturaPct === null ? { sinDato: "Todavía no hay avisos entregados." } : { nota: `${r.leidos} de ${r.entregados} entregados fueron leídos; quien desactivó la confirmación de lectura no cuenta` })}
+        />
+        <StatCard icon={MessageSquareWarning} label="Avisos no entregados" value={String(r.fallidos)} nota="Meta reportó fallo; el cliente no los recibió" />
+      </div>
+      {motivos.length > 0 ? (
+        <p className="text-xs text-muted-foreground" data-testid="entrega-motivos">
+          Motivos de fallo: {motivos.map(([motivo, n]) => `${MOTIVOS_FALLO[motivo] ?? MOTIVOS_FALLO.otro} (${n})`).join(" · ")}.
+        </p>
+      ) : null}
+      <Card>
+        <CardHeader className="p-3 pb-2">
+          <CardTitle>Entrega de avisos por día</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <DataTable<WhatsappEntregaDiaSerie>
+            etiqueta="Entrega de avisos de pedido por día"
+            filas={[...entrega.serie].reverse()}
+            obtenerId={(d) => d.fecha}
+            atributosFila={(d) => ({ "data-dia-entrega": d.fecha })}
+            vacio={{ titulo: "Sin días con datos", mensaje: "Todavía no hay avisos de pedido enviados en este periodo." }}
+            paginacion={false}
+            columnas={[
+              { id: "dia", encabezado: "Día", principal: true, celda: (d) => formatoDia(d.fecha) },
+              { id: "enviados", encabezado: "Enviados", alinear: "right", className: "tabular-nums", celda: (d) => d.enviados },
+              { id: "entregados", encabezado: "Entregados", alinear: "right", className: "tabular-nums", celda: (d) => d.entregados },
+              { id: "leidos", encabezado: "Leídos", alinear: "right", className: "tabular-nums", celda: (d) => d.leidos },
+              { id: "fallidos", encabezado: "No entregados", alinear: "right", className: "tabular-nums", celda: (d) => d.fallidos },
+            ]}
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, fetchImpl }: RestaurantesShellContext & { readonly fetchImpl?: typeof fetch }) {
@@ -174,9 +243,12 @@ function Contenido({ kpi }: { readonly kpi: WhatsappKpi }) {
         </CardContent>
       </Card>
 
+      <h2 className="font-display pt-1 text-base font-semibold">Entrega de avisos de pedido</h2>
+      <EntregaAvisos entrega={kpi.entrega} />
+
       <p className="text-xs text-muted-foreground" data-testid="notas-definiciones">
         Definiciones: una conversación nueva cuenta en el día local del primer mensaje del cliente a esta sucursal (un cliente que ya existía y vuelve a escribir no suma). La conversión y el handoff se miden sobre esas mismas conversaciones nuevas. Los pedidos son los de
-        canal WhatsApp no cancelados creados ese día. El costo LLM viene de un registro diario de toda la organización (no por conversación ni por sucursal) y no incluye los modelos de apoyo de la plataforma.
+        canal WhatsApp no cancelados creados ese día. El costo LLM viene de un registro diario de toda la organización (no por conversación ni por sucursal) y no incluye los modelos de apoyo de la plataforma. La entrega y la lectura cuentan los avisos de estado de pedido por WhatsApp según los estados que reporta Meta (un aviso en el día local de su envío); un aviso sin estado todavía no cuenta como entregado.
       </p>
     </div>
   );

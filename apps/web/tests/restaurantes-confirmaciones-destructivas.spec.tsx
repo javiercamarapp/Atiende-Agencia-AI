@@ -175,7 +175,7 @@ describe("Configuracion (restaurantes) — quitar zona con ConfirmDialog", () =>
 });
 
 
-describe("Pedidos (restaurantes) — cancelar pedido con useConfirm", () => {
+describe("Pedidos (restaurantes) — cancelar pedido con motivo de la lista cerrada", () => {
   const PEDIDO = {
     id: "ord-1",
     propertyId: "prop-1",
@@ -198,6 +198,8 @@ describe("Pedidos (restaurantes) — cancelar pedido con useConfirm", () => {
   };
 
   const patches = () => fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith("/status") && (init as RequestInit | undefined)?.method === "PATCH");
+  /** El motivo se pide en un dialogo de formulario (role=dialog), no en un alertdialog: la cancelacion exige una opcion de la lista cerrada. */
+  const dialogoMotivo = () => document.body.querySelector('[role="dialog"]') as HTMLElement | null;
 
   async function abrirCancelar(): Promise<void> {
     stubFetch((method, url) => {
@@ -216,37 +218,55 @@ describe("Pedidos (restaurantes) — cancelar pedido con useConfirm", () => {
     await esperar();
   }
 
-  it("abre un alertdialog con el nombre del cliente, sin window.confirm ni escritura", async () => {
+  async function pulsar(texto: string): Promise<void> {
+    const boton = [...dialogoMotivo()!.querySelectorAll("button")].find((b) => b.textContent?.trim() === texto)!;
+    await act(async () => {
+      boton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      for (let i = 0; i < 6; i++) await flushMicrotasks();
+    });
+  }
+
+  it("abre el dialogo con el nombre del cliente, sin window.confirm ni escritura", async () => {
     await abrirCancelar();
-    expect(dialogo()).not.toBeNull();
-    expect(dialogo()!.textContent).toContain("¿Cancelar el pedido de Juan Pérez?");
+    expect(dialogoMotivo()).not.toBeNull();
+    expect(dialogoMotivo()!.textContent).toContain("¿Cancelar el pedido de Juan Pérez?");
     expect(confirmMock).not.toHaveBeenCalled();
     expect(patches()).toHaveLength(0);
   });
 
   it("Volver no llama al API y el pedido sigue en la lista", async () => {
     await abrirCancelar();
-    await pulsarEnDialogo("Volver");
+    await pulsar("Volver");
     expect(patches()).toHaveLength(0);
-    expect(dialogo()).toBeNull();
+    expect(dialogoMotivo()).toBeNull();
     expect(rendered!.container.textContent).toContain("Juan Pérez");
   });
 
   it("Escape tampoco llama al API", async () => {
     await abrirCancelar();
     await act(async () => {
-      keydown(dialogo()!, "Escape");
+      keydown(dialogoMotivo()!, "Escape");
       for (let i = 0; i < 6; i++) await flushMicrotasks();
     });
     expect(patches()).toHaveLength(0);
-    expect(dialogo()).toBeNull();
+    expect(dialogoMotivo()).toBeNull();
   });
 
-  it("Cancelar el pedido manda PATCH .../status con {status:'cancelado'}", async () => {
+  it("sin elegir motivo el boton de cancelar esta deshabilitado y no escribe", async () => {
     await abrirCancelar();
-    await pulsarEnDialogo("Cancelar el pedido");
+    const confirmar = [...dialogoMotivo()!.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Cancelar el pedido") as HTMLButtonElement;
+    expect(confirmar.disabled).toBe(true);
+    await pulsar("Cancelar el pedido");
+    expect(patches()).toHaveLength(0);
+  });
+
+  it("con un motivo de la lista manda PATCH .../status con {status:'cancelado', motivo}", async () => {
+    await abrirCancelar();
+    changeValue(dialogoMotivo()!.querySelector("select") as HTMLSelectElement, "sin_producto");
+    await esperar();
+    await pulsar("Cancelar el pedido");
     expect(patches()).toHaveLength(1);
-    expect(JSON.parse((patches()[0]![1] as RequestInit).body as string)).toEqual({ status: "cancelado" });
+    expect(JSON.parse((patches()[0]![1] as RequestInit).body as string)).toEqual({ status: "cancelado", motivo: "sin_producto" });
   });
 });
 

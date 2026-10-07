@@ -162,12 +162,37 @@ Configura sucursales, catálogo, horario y mínimos (modelo PM), zonas de repart
 WhatsApp (perfil, tono, historial de cambios), la voz por sucursal, el modo de SoftRestaurant (apagado / sombra /
 activo) y consulta KPIs, voz y auditoría. El e2e ejercita el efecto de esas reglas, no las pantallas.
 
+## 7 bis. Quién puede cambiar qué (permisos por acción, PL-23)
+
+Un `staff` (cajero o cocina) marca productos agotados pero no cambia precios, no toca promociones y no edita la sucursal; esa es la respuesta por
+omisión del dueño de PM (P-v2-53 y P-v2-31). La matriz vive en un solo sitio, `ACCIONES_RESTAURANTES` de `packages/domain-restaurantes/src/roles.ts`;
+una acción fuera de la matriz se niega a todos (fail-closed) y un test-guard (`restaurantes-permisos-accion-guard.spec.ts`) falla si las rutas de
+catálogo, promociones o sucursales piden roles con una lista suelta en lugar de la matriz.
+
+| Acción | owner | admin | staff | repartidor |
+|---|---|---|---|---|
+| `catalogo.ver` (ver el menú y su estado en la sucursal) | sí | sí | sí | no |
+| `catalogo.disponibilidad` (marcar agotado / disponible en la sucursal; el panel manda solo `isAvailable`) | sí | sí | sí | no |
+| `catalogo.precio` (crear/editar producto o categoría, cambiar precio base o por sucursal, dar de alta un producto en la sucursal) | sí | sí | no | no |
+| `promociones.ver` / `promociones.editar` | sí | sí | no | no |
+| `sucursal.ver` | sí | sí | sí | no |
+| `sucursal.editar` (dirección, teléfono, coordenadas, slug, orden) | sí | sí | no | no |
+| `pedidos.gestionar` (aceptar, avanzar, cancelar, asignar repartidor; sin cambio) | sí | sí | sí | no |
+
+Tres capas, la misma regla: la API (`assertAccion`, 403 con "Solo el dueño o un administrador puede cambiar precios..."), la base (migración 065: policies por rol,
+GRANT de `UPDATE` por columna en `branch_products` y un trigger que devuelve `42501` si un staff cambia el precio; verificado en
+`scripts/verify-restaurantes-permisos-accion`) y el panel (el staff no ve altas ni edición de precio, y Promociones y la edición de Sucursales no
+aparecen para él). Los cambios de precio, de disponibilidad, de promociones, de categorías, el alta de productos y la edición de sucursal quedan en la
+bitácora (`restaurantes.audit_log`) con antes y después. Si la base todavía no tiene la 065 el panel y la API se comportan igual que antes en lo demás:
+la regla de la API ya aplica y solo falta la defensa en profundidad de la base. No se crearon roles nuevos: cajero, cocina y gerente siguen siendo
+`staff`/`admin`; si el dueño necesita distinguir cajero de cocina, es una decisión de producto pendiente.
+
 ## 8. Superadmin y automatizaciones
 
 Los crons del ciclo (`vercel.json`): `/internal/whatsapp/dispatch` (5 min), `/internal/restaurantes/softrestaurant-dispatch`
 (5 min), `/internal/restaurantes/promover-programados` (5 min), `/internal/restaurantes/email-dispatch` (15 min) y
-`/internal/restaurantes/privacidad-retencion` (diario). Los barridos `/internal/restaurantes/cierres-dia` y `/internal/restaurantes/repartidor-licencias`
-existen pero **no** están en `vercel.json` (decisión de costo): hasta agendarlos, el cierre se genera con el botón del panel. Los crons reportan latido al panel de salud de superadmin (`withHeartbeat`). Además del cron, el webhook y
+`/internal/restaurantes/privacidad-retencion` (diario), `/internal/restaurantes/cierres-dia` (diario, 08:20 UTC = 02:20 en Mérida) y
+`/internal/restaurantes/repartidor-licencias` (diario, 13:35 UTC); el botón del panel sigue generando el cierre a demanda. Los crons reportan latido al panel de salud de superadmin (`withHeartbeat`). Además del cron, el webhook y
 las rutas de staff drenan el outbox "inline" para no esperar al siguiente tick.
 
 ## Cómo se verifica
@@ -211,5 +236,6 @@ npx vitest run packages/whatsapp-gateway --maxWorkers=2     # los simuladores mi
 | Cancelar un pedido cuya comanda YA está en el POS | **Hueco**: el puerto `SoftRestaurantPort` no expone cancelar; solo se corta la comanda que aún no salió (ver Cocina, 3 bis). Cocina debe avisarse por el POS |
 | Encuesta post-entrega | **No está en main** (PR #409, abierto): este banco no la cubre hasta que se fusione |
 | Recorrido de NAVEGADOR (Playwright) del ciclo completo | **Cerrado** (PR #397, fusionado): recorrido de navegador en `apps/web/e2e` (ver `docs/QA-E2E.md`), contra su API simulada; este banco es de API real con repos en memoria |
+| "Agotado solo por hoy" | **Hueco**: hoy el agotado dura hasta que alguien lo vuelve a marcar disponible; no existe una fecha de vencimiento por producto y sucursal (requiere una columna nueva y una decisión de producto) |
 | Comandas del POS en el panel | **Hueco**: solo hay API (`.../admin/softrestaurant/comandas`); no hay pantalla |
 | Postgres real (RLS, GRANT, definer) | No cubierto por este banco: lo cubren los `scripts/verify-restaurantes-*` (incluye `verify-restaurantes-sql`, `-storefront`, `-pedidos-programados` y `-consentimiento-aviso`), que corren en el gate de CI |

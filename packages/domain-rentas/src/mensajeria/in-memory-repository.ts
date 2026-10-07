@@ -103,6 +103,8 @@ export class InMemoryRentasMensajeriaRepository implements RentasMensajeriaRepos
       estado: "pendiente_aprobacion",
       generadoPor: input.generadoPor,
       redactado: false,
+      necesitaEscalamiento: input.necesitaEscalamiento === true || (input.senales?.length ?? 0) > 0,
+      senales: [...(input.senales ?? [])],
       aprobadoPor: null,
       aprobadoEn: null,
       rechazadoPor: null,

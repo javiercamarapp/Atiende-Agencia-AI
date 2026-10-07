@@ -112,3 +112,12 @@ Huecos conocidos de esta lista (por eso es Report-Only):
   migración (fuera del alcance de este PR). `evaluarCrons` ya reutiliza
   `juzgarLatido` y solo falta inyectar el lector (`healthRoutes(deps, { leerLatidos })`).
 - Base sin migrar: la única consulta es `select 1`; no depende de ninguna tabla.
+
+## Excepción: páginas de entrada del storefront (`/pedir/:org[/:sucursal]`)
+
+Estas dos rutas las sirve la función de la API (meta de vista previa en servidor) pero devuelven el `index.html` de la SPA, que necesita su script y sus estilos. Por eso:
+
+- El middleware `cabecerasSeguridadApi` NO añade la CSP restrictiva (`default-src 'none'`) a ninguna respuesta `text/html`.
+- La ruta fija la CSP de la SPA como `Content-Security-Policy-Report-Only` (misma que `vercel.json`, constante `CSP_SPA_REPORT_ONLY`; un test comprueba que coinciden).
+- `Permissions-Policy` de `/pedir/*` permite `geolocation=(self)` (función «Usar mi ubicación»; las coordenadas no se guardan). El resto del sitio sigue con `geolocation=()`.
+- Si cae a meta genéricas (límite de tasa o falla de la base) la respuesta va con `Cache-Control: no-store`.

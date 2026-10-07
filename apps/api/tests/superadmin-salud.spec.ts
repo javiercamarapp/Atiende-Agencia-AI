@@ -6,6 +6,9 @@
 // autorización real vive en la función SQL; aquí se verifica el
 // comportamiento equivalente en memoria).
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemorySaludRepository } from "@atiende/db";
 import { signAccessToken } from "@atiende/core-auth";
@@ -59,7 +62,9 @@ describe("GET /superadmin/salud", () => {
     const res = await app.request("/superadmin/salud/crons", { headers: { authorization: `Bearer ${token}` } });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { crons: Array<{ cronName: string; estado: string; heartbeat: unknown }> };
-    expect(body.crons.length).toBe(35);
+    // El total se lee de vercel.json: agregar un cron ya no obliga a tocar este numero.
+    const vercel = JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "vercel.json"), "utf8")) as { crons: unknown[] };
+    expect(body.crons.length).toBe(vercel.crons.length);
     for (const cron of body.crons) {
       expect(cron.estado).toBe("sin_latido");
       expect(cron.heartbeat).toBeNull();

@@ -35,3 +35,15 @@ para un juez (LLM o persona): no se evaluan con graders deterministas ni corren 
   prueba `tests/pm-c5-escenarios-t7.spec.ts` lo vigila con patrones. Nunca copies aqui texto de la muestra cruda.
 - La prueba tambien ata las cifras que citan los escenarios (fracciones de kilo, extras a $19, totales) al motor real de pedidos sobre el
   catalogo sembrado de T7.
+
+## Escenarios K y KH (lo que enseñan los chats reales de T7 y los huecos finales)
+`escenarios-k.json` (+ `escenarios-k.ts`): 22 escenarios K y 10 KH, todos SINTETICOS (ningun texto, nombre ni telefono sale de los chats privados;
+`tests/evals-agente-pm-k.spec.ts` lo vigila con patrones). Mismos campos de texto libre que `escenarios-t7.json`, mas:
+- `verificacion: determinista`: el escenario esta atado en esa prueba a una comprobacion REAL contra el servidor (registro de herramientas, motor de pedidos,
+  busqueda, entrada de Meta, prompt). Hoy son 20 (K01-K20).
+- `verificacion: juez`: texto libre para un LLM o una persona (KH09 activo; los demas jueces estan pendientes de construccion).
+- `estado: pendiente_construccion` + `depende_de`: depende de algo que main aun no tiene (cobertura por turnos en
+  servidor, descripciones del menu en el seed, venta sugerida con interruptor, rastreo, subtipos de queja, cliente-360, botones de Meta). Se listan
+  como `it.todo` citando de que dependen; no fallan el CI ni se fingen como aprobados.
+- Falta (hueco conocido): un corredor que pase los 71 escenarios T7 y los K por el agente con un LLM guionado en CI, y un grader de juez; los T7 siguen
+  validando solo su estructura.

@@ -27,7 +27,7 @@ describe("extractMetaInboundMessages", () => {
     // Minimizacion: el nombre y la direccion que manda Meta no se guardan en el historial.
     expect(out[1]!.body).not.toMatch(/Mi casa|Calle 5/);
     expect(parseSharedLocation(out[1]!.body)).toEqual({ lat: 21.0165, lng: -89.596 });
-    expect(out[2]!.body).toMatch(/archivo \(image\)/);
+    expect(out[2]!.body).toMatch(/imagen que el asistente no puede ver/);
   });
 
   it("ubicaciones con coordenadas invalidas, fuera de rango o no numericas NO producen marcador: cae a la nota honesta, nunca adivina", () => {

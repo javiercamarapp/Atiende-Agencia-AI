@@ -75,27 +75,28 @@ describe("POST /hoteles/:propertyId/fraude/escaneos", () => {
   });
 
   it("detecta un folio reabierto después de cerrado (cargo posterior a closedAt)", async () => {
-    ctx.hotelesRepo.seedFolio({
+    // Con la migracion 045 un cargo nuevo ya no entra en un folio cerrado (el repo lo rechaza igual que el trigger):
+    // el escaneo sigue detectando la historia previa a los triggers, asi que se siembra abierto, se carga y se re-siembra cerrado.
+    const folioBase = {
       id: "folio-cerrado",
       organizationId: ctx.organizationId,
       propertyId: ctx.propertyId,
       reservationId: ctx.reservationId,
-      status: "cerrado",
       label: "Secundario cerrado",
       isPrimary: false,
-      closedAt: "2026-01-01T00:00:00.000Z",
-      closeReason: "saldo_cero",
       arApprovedBy: null,
-    });
+    } as const;
+    ctx.hotelesRepo.seedFolio({ ...folioBase, status: "abierto", closedAt: null, closeReason: null });
     const charge = await ctx.hotelesRepo.insertCharge({
       organizationId: ctx.organizationId,
       propertyId: ctx.propertyId,
       folioId: "folio-cerrado",
-      description: "Cargo posterior al cierre (bypass)",
+      description: "Cargo posterior al cierre (historia previa a la migracion 045)",
       amount: 100,
       taxAmount: 16,
       concept: "otro",
     });
+    ctx.hotelesRepo.seedFolio({ ...folioBase, status: "cerrado", closedAt: "2026-01-01T00:00:00.000Z", closeReason: "saldo_cero" });
 
     const app = buildApp(ctx.deps);
     const res = await app.request(`/hoteles/${ctx.propertyId}/fraude/escaneos`, authedJson(ctx.staff.owner.token, {}));

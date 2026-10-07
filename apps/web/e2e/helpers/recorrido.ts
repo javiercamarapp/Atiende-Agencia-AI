@@ -27,11 +27,13 @@ export const DESTINOS: readonly Destino[] = [
   { sub: "/avisos", nombre: "Avisos", soloGestion: false },
   { sub: "/cierres", nombre: "Cierre del día", soloGestion: true },
   { sub: "/productos", nombre: "Productos", soloGestion: false },
-  { sub: "/promociones", nombre: "Promociones", soloGestion: false },
+  { sub: "/promociones", nombre: "Promociones", soloGestion: true },
   { sub: "/clientes", nombre: "Clientes", soloGestion: false },
+  { sub: "/campanas", nombre: "Campañas", soloGestion: true },
   { sub: "/sucursales", nombre: "Sucursales", soloGestion: false },
   { sub: "/agente-voz", nombre: "Agente de voz", soloGestion: true },
   { sub: "/agente-whatsapp", nombre: "Agente de WhatsApp", soloGestion: true },
+  { sub: "/agente-ajustes", nombre: "Ajustes del agente", soloGestion: true },
   { sub: "/primeros-pasos", nombre: "Primeros pasos", soloGestion: true },
   { sub: "/configuracion", nombre: "Configuración", soloGestion: true },
   { sub: "/staff", nombre: "Staff", soloGestion: true },
@@ -45,6 +47,8 @@ export const DESTINOS: readonly Destino[] = [
 export async function ir(page: Page, sub = ""): Promise<void> {
   await page.goto(`${BASE}${sub}`);
   await expect(page.locator("main#contenido-principal")).toBeVisible();
+  // R-37: la pantalla es un chunk perezoso; no seguir mientras se pinta el estado de carga de la ruta.
+  await expect(page.locator("[data-atiende-carga-ruta]")).toHaveCount(0);
 }
 
 /** Espera a que el mock reciba EXACTAMENTE `n` peticiones que coinciden y las devuelve (para afirmar metodo, ruta y cuerpo). */

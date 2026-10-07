@@ -34,11 +34,13 @@ function FijadoTarjeta({
   cliente,
   onQuitado,
   onCompartido,
+  sinCompartir,
 }: {
   fijado: FijadoResumen;
   cliente: FijadosCliente;
   onQuitado: (id: string) => void;
   onCompartido: (id: string, compartido: boolean) => void;
+  sinCompartir: boolean;
 }) {
   const [carga, setCarga] = useState<CargaResultado>({ fase: "cargando" });
   const [intento, setIntento] = useState(0);
@@ -111,10 +113,12 @@ function FijadoTarjeta({
         ) : null}
         {fijado.propio ? (
           <>
-            <Button type="button" variant="ghost" size="xs" className={BOTON_ACCION} disabled={ocupado} onClick={() => void compartir()} aria-label={fijado.compartido ? `Dejar de compartir ${fijado.titulo}` : `Compartir ${fijado.titulo}`}>
-              <Share2 aria-hidden />
-              {fijado.compartido ? "Dejar de compartir" : "Compartir"}
-            </Button>
+            {sinCompartir ? null : (
+              <Button type="button" variant="ghost" size="xs" className={BOTON_ACCION} disabled={ocupado} onClick={() => void compartir()} aria-label={fijado.compartido ? `Dejar de compartir ${fijado.titulo}` : `Compartir ${fijado.titulo}`}>
+                <Share2 aria-hidden />
+                {fijado.compartido ? "Dejar de compartir" : "Compartir"}
+              </Button>
+            )}
             <Button type="button" variant="ghost" size="xs" className={BOTON_ACCION} disabled={ocupado} onClick={() => void quitar()} aria-label={`Quitar ${fijado.titulo} del tablero`}>
               <PinOff aria-hidden />
               Quitar
@@ -136,9 +140,11 @@ export interface SeccionFijadosCopilotoProps {
   /** Ruta interna del Copiloto de la vertical: se ofrece cuando todavia no hay fijados (solo rutas que empiezan con "/"). */
   readonly rutaCopiloto?: string;
   readonly className?: string;
+  /** El tablero es personal (p. ej. el del Copiloto de plataforma): no se ofrece «Compartir», porque el servidor no lo admite. */
+  readonly sinCompartir?: boolean;
 }
 
-export function SeccionFijadosCopiloto({ cliente, rutaCopiloto, className }: SeccionFijadosCopilotoProps) {
+export function SeccionFijadosCopiloto({ cliente, rutaCopiloto, className, sinCompartir = false }: SeccionFijadosCopilotoProps) {
   const [carga, setCarga] = useState<CargaLista>({ fase: "cargando" });
   const [intento, setIntento] = useState(0);
   const idTitulo = useId();
@@ -190,7 +196,7 @@ export function SeccionFijadosCopiloto({ cliente, rutaCopiloto, className }: Sec
         {carga.fase === "listo" && carga.fijados.length > 0 ? (
           <ul className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
             {carga.fijados.map((f) => (
-              <FijadoTarjeta key={f.id} fijado={f} cliente={cliente} onQuitado={alQuitar} onCompartido={alCompartir} />
+              <FijadoTarjeta key={f.id} fijado={f} cliente={cliente} onQuitado={alQuitar} onCompartido={alCompartir} sinCompartir={sinCompartir} />
             ))}
           </ul>
         ) : null}

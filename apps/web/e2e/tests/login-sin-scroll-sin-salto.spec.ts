@@ -40,6 +40,7 @@ async function abrir(page: Page, ruta: string, tema: (typeof TEMAS)[number], vie
   });
   await page.goto(ruta);
   await expect(page.locator("main")).toHaveCount(1);
+  // R-37: la pantalla es un chunk perezoso; se espera a que no haya cargas en vuelo (chunk, estilos, fuentes) antes de medir.
   // Las tipografias vienen de Google Fonts (login.css las importa): el CSS y luego cada archivo llegan DESPUES de que
   // `document.fonts.ready` ya resolvio (aun no habia caras registradas), y su cambio (swap) mueve el texto ~1 px y suma
   // CLS en mitad de la prueba. Se espera a que la red quede en reposo (sin Google Fonts accesible, las peticiones

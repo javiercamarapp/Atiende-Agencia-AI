@@ -13,8 +13,11 @@ import type { ConfigPlataformaVoz, EscalonVoz } from "./config-plataforma.ts";
 export interface TramoLlamada {
   readonly escalon: EscalonVoz;
   readonly duracionS: number;
-  /** Costo que el propio escalon reporto durante el tramo (tokens, turnos); solo puede SUBIR la estimacion por minuto, nunca bajarla. */
+  /** Costo que el propio escalon reporto durante el tramo (tokens, turnos). Si `costoReal` es false solo puede SUBIR la estimacion por minuto, nunca bajarla. */
   readonly costoReportadoMicroUsd: number;
+  /** El costo reportado sale de los tokens que el PROVEEDOR informo (`usageMetadata` de Gemini Live), no de una tarifa por minuto: entonces ES el costo del
+   * tramo (no se le aplica el piso estimado) y el evento se registra con `costo_estimado = false`. Ausente = estimado. */
+  readonly costoReal?: boolean;
 }
 
 /** Argumentos de `core.record_usage_cost_event(p_organization_id, p_property_id, p_occurred_at, p_categoria, p_proveedor, p_unidad, p_cantidad,
@@ -28,7 +31,8 @@ export interface EventoCostoUso {
   readonly unidad: "segundo";
   readonly cantidad: number;
   readonly costoMicroUsd: number;
-  readonly costoEstimado: true;
+  /** false solo cuando el costo sale de los tokens que reporto el proveedor; conciliar contra su factura. */
+  readonly costoEstimado: boolean;
   readonly refTipo: string;
   readonly refId: string;
 }
@@ -49,15 +53,16 @@ const VERTICAL_RE = /^[a-z][a-z0-9_]{0,30}$/;
 /** Un evento por escalon (si Gemini cayo y la cascada siguio, salen dos). Los tramos sin duracion ni costo no generan evento. */
 export function eventosCostoLlamada(entrada: EntradaEventosCosto): EventoCostoUso[] {
   if (!VERTICAL_RE.test(entrada.vertical)) throw new Error(`eventosCostoLlamada: vertical invalida (${entrada.vertical}).`);
-  const porEscalon = new Map<EscalonVoz, { duracionS: number; reportado: number }>();
+  const porEscalon = new Map<EscalonVoz, { duracionS: number; reportado: number; real: boolean }>();
   for (const t of entrada.tramos) {
-    const previo = porEscalon.get(t.escalon) ?? { duracionS: 0, reportado: 0 };
-    porEscalon.set(t.escalon, { duracionS: previo.duracionS + Math.max(0, t.duracionS), reportado: previo.reportado + Math.max(0, t.costoReportadoMicroUsd) });
+    const previo = porEscalon.get(t.escalon) ?? { duracionS: 0, reportado: 0, real: false };
+    porEscalon.set(t.escalon, { duracionS: previo.duracionS + Math.max(0, t.duracionS), reportado: previo.reportado + Math.max(0, t.costoReportadoMicroUsd), real: previo.real || (t.costoReal === true && t.costoReportadoMicroUsd > 0) });
   }
   const eventos: EventoCostoUso[] = [];
   for (const [escalon, acum] of porEscalon) {
     const estimado = costoEstimadoMicroUsd(escalon, acum.duracionS, entrada.config);
-    const costoMicroUsd = Math.max(estimado, Math.ceil(acum.reportado));
+    // Costo REAL (tokens del proveedor) manda sobre la tarifa por minuto: la facturacion compuesta de Gemini Live puede quedar por encima O por debajo.
+    const costoMicroUsd = acum.real ? Math.ceil(acum.reportado) : Math.max(estimado, Math.ceil(acum.reportado));
     if (acum.duracionS <= 0 && costoMicroUsd <= 0) continue;
     eventos.push({
       organizationId: entrada.organizationId,
@@ -68,7 +73,7 @@ export function eventosCostoLlamada(entrada: EntradaEventosCosto): EventoCostoUs
       unidad: "segundo",
       cantidad: Math.round(acum.duracionS * 1000) / 1000,
       costoMicroUsd,
-      costoEstimado: true,
+      costoEstimado: !acum.real,
       refTipo: `voz_${entrada.vertical}`,
       refId: `${entrada.llamadaId}:${escalon}`.slice(0, 200),
     });
