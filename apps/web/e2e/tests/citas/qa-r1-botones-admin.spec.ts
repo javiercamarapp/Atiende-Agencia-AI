@@ -215,7 +215,6 @@ test.describe("citas QA R1 botones: WhatsApp y voz", () => {
   });
 
   test("QA-citas-R1-botones-22: la llamada de prueba de voz no es un dialogo: Escape no la cierra y el foco no entra", async ({ page, iniciarSesion, mock }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-22: LlamadaDePrueba (voz/PruebaAgenteVoz.tsx) es un div fixed inset-0 sin role=dialog, sin Escape ni trampa de foco");
     await abrir(page, iniciarSesion, "agente-whatsapp");
     await mock.agregarAEstado("citas.qa.banderas", "voz-preview");
     await page.reload();

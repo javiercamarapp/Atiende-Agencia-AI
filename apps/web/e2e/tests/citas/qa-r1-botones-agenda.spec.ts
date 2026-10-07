@@ -203,8 +203,14 @@ test.describe("citas QA R1 botones: agenda", () => {
     }
     const d = dialogo(page, "Nueva cita");
     await expect(d.getByRole("alert")).toBeVisible();
-    // El servidor sugirio 13:00 (fin de la cita que choca + colchon): el dialogo deberia ofrecerlo.
-    await expect(d.getByText(/13:00/)).toBeVisible({ timeout: 2_000 });
+    // El servidor sugirio 13:00 (fin de la cita que choca + colchon): el dialogo lo ofrece (el panel pinta las horas en 12 h, "01:00 p.m.").
+    const sugerencia = d.getByRole("button", { name: /01:00\s*p\.\s*m\./ });
+    await expect(sugerencia).toBeVisible({ timeout: 2_000 });
+    // Elegirla rellena la hora y el siguiente intento ya no choca.
+    await sugerencia.click();
+    await expect(d.getByLabel("Fecha y hora")).toHaveValue(`${fecha}T13:00`);
+    await d.getByRole("button", { name: "Crear cita" }).click();
+    await expect(d).toBeHidden();
   });
 
   test("filtro de proveedor: pide solo sus citas y la lista de espera usa el mismo filtro", async ({ page, iniciarSesion, mock, vigilante }) => {

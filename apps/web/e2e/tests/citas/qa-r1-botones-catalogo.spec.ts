@@ -243,7 +243,7 @@ test.describe("citas QA R1 botones: disponibilidad", () => {
 
   test("QA-citas-R1-botones-15: Quitar un horario o una excepcion borra con un clic, sin confirmar", async ({ page, iniciarSesion, mock }) => {
     await abrir(page, iniciarSesion, "disponibilidad");
-    await expect(page.getByText("2026-12-25")).toBeVisible();
+    await expect(page.getByText(/25 dic/)).toBeVisible();
     await mock.limpiarRegistro();
     await page.getByRole("table").getByRole("row", { name: /Lunes/ }).getByRole("button", { name: "Quitar" }).click();
     await expect(page.getByRole("alertdialog")).toBeVisible({ timeout: 2_000 });
