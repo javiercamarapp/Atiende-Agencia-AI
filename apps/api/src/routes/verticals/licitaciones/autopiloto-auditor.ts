@@ -8,7 +8,7 @@
 //      correo a owner/admin.
 //   2. Clasifica el checklist persistido (`clasificarExpediente`): sin bloqueos = corrido al menos una vez y ninguna dimension en
 //      rojo. Si pasa de "con bloqueos" (o nunca auditado) a "sin bloqueos" y las aprobaciones aun no estan completas, avisa:
-//      campana `licitaciones.expediente.listo_para_aprobar` + correo. Guarda el ultimo estado (migracion 039).
+//      campana `licitaciones.expediente.listo_para_aprobar` + correo. Guarda el ultimo estado (migracion 039); sin esa tabla no avisa.
 // NADA se aprueba solo: la aprobacion sigue siendo humana, con rol de decision y step-up (REQ-044). Sin PII: la campana lleva solo
 // ids y el prefijo del hash de insumos; el correo (a miembros de la organizacion) lleva el titulo de la convocatoria.
 //
@@ -26,7 +26,7 @@ export interface AuditoriaExpedienteResultado {
   readonly estado: "con_bloqueos" | "sin_bloqueos" | null;
   readonly aprobacionInvalidada: boolean;
   readonly listoParaAprobar: boolean;
-  /** La base aun no tiene la tabla `expediente_auditoria` (migracion 039): se avisa solo con la clave de dedupe de la campana. */
+  /** La base aun no tiene la tabla `expediente_auditoria` (migracion 039): no se emite el aviso de listo para aprobar. */
   readonly sinRegistroPersistente: boolean;
 }
 
@@ -82,7 +82,9 @@ export async function auditarExpediente(deps: AppDeps, db: TenantDbSession, inpu
       const items = await repo.listComplianceItems(organizationId, proposal.id);
       const { estado, bloqueos } = clasificarExpediente(items);
       const previo = await repo.getExpedienteAuditoria(organizationId, proposal.id);
-      const transicion = transicionDeExpediente(previo.registro?.estado ?? null, estado);
+      // Base sin la 039: no hay donde recordar el ultimo estado, y sin el no se puede distinguir una transicion real de "nunca auditado"
+      // (cada cambio de hash volveria a avisar). Vacio honesto: no se emite listo_para_aprobar ni su correo hasta que exista la tabla.
+      const transicion = previo.disponible ? transicionDeExpediente(previo.registro?.estado ?? null, estado) : "sin_cambio";
 
       // Si las aprobaciones ya estan completas para este hash no hay nada que pedir.
       const snapshot = await repo.listExpedienteStageApprovals(organizationId, proposal.id);

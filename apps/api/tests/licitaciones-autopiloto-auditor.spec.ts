@@ -96,11 +96,12 @@ describe("auditor del expediente (L-P3-11)", () => {
     consola.mockRestore();
   });
 
-  it("base sin la migracion 039: el aviso sigue saliendo con su clave de dedupe y el estado no se persiste", async () => {
+  it("base sin la migracion 039: no se emite listo_para_aprobar ni su correo (vacio honesto) y el checklist responde 200", async () => {
     const t = await armar();
     vi.spyOn(t.ctx.repo, "getExpedienteAuditoria").mockResolvedValue({ disponible: false, registro: null });
     vi.spyOn(t.ctx.repo, "saveExpedienteAuditoria").mockResolvedValue(false);
     expect((await t.correrChecklist(VERDE)).status).toBe(200);
-    expect(t.tipos("licitaciones.expediente.listo_para_aprobar")).toHaveLength(1);
+    expect(t.tipos("licitaciones.expediente.listo_para_aprobar")).toHaveLength(0);
+    expect(t.ctx.repo.getMessagingOutbox().filter((o) => o.eventType === "expediente.listo_para_aprobar")).toHaveLength(0);
   });
 });
