@@ -157,7 +157,7 @@ interface DatosMovimientoDirecto {
 
 /** Rn-P3-07 -- crea el `reserva_financiero` de una reserva directa con la regla del canal `manual` (0 pb por defecto, o la configurada).
  *  La columna `origen` es de la migracion 035: contra la base sin migrar se reintenta SIN ella (SAVEPOINT; el movimiento se crea igual). */
-async function crearMovimientoDeReservaDirecta(db: Parameters<typeof runWithSavepointFallback>[0]["session"], repo: RentasRepository, d: DatosMovimientoDirecto) {
+export async function crearMovimientoDeReservaDirecta(db: Parameters<typeof runWithSavepointFallback>[0]["session"], repo: RentasRepository, d: DatosMovimientoDirecto) {
   const comisionCanal = await repo.findReglaComisionCanal(d.propertyId, d.canalId);
   const calculo = calcularMovimientoReserva({
     ocupacionUnidadId: d.ocupacionId,
