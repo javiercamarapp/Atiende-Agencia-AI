@@ -78,3 +78,19 @@ export async function fetchConStepUp(apiBaseUrl: string, accessToken: string, ur
   }
   return fetch(url, conStepUp(init, accessToken));
 }
+
+/**
+ * Pide la verificacion MFA ANTES de enviar una accion sensible (CHAT-17: la tarjeta de accion del Copiloto no manda la confirmacion hasta tener el
+ * step-up, para que cancelar el dialogo no deje ninguna peticion de confirmacion). `true` = ya hay un step-up vigente o se verifico ahora;
+ * `false` = la persona cancelo el dialogo (o no hay dialogo registrado). El servidor sigue exigiendo el step-up por su cuenta.
+ */
+export async function solicitarStepUp(apiBaseUrl: string, accessToken: string): Promise<boolean> {
+  if (stepUpVigente(accessToken)) return true;
+  if (!prompter) return false;
+  try {
+    await prompter({ apiBaseUrl, accessToken });
+    return stepUpVigente(accessToken) !== null;
+  } catch {
+    return false;
+  }
+}

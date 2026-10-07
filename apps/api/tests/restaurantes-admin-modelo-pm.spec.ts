@@ -227,6 +227,79 @@ describe("marcas no_domicilio — .../admin/config/no-domicilio", () => {
   });
 });
 
+describe("reporte de colonias ambiguas — GET .../admin/config/colonias-ambiguas (X42)", () => {
+  async function conColonias() {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const zonaAmbigua = randomUUID();
+    const zonaClara = randomUUID();
+    ctx.restaurantesRepo.seedKnownZone({
+      id: zonaAmbigua,
+      organizationId: ctx.organizationId,
+      name: "Temozón Norte",
+      lat: null,
+      lng: null,
+      fuente: "chats_t7",
+      asignacionFuente: "chats_t7",
+      refSucursalSlug: "centro",
+      refKm: 1.7,
+      ref2SucursalSlug: "fco-montejo",
+      ref2Km: 1.8,
+    });
+    ctx.restaurantesRepo.seedKnownZone({ id: zonaClara, organizationId: ctx.organizationId, name: "Colonia Clara", lat: null, lng: null, fuente: "piloto_original_merida_colonias", asignacionFuente: "distancia_piloto", refSucursalSlug: "centro", refKm: 0.4, ref2SucursalSlug: "fco-montejo", ref2Km: 3.2 });
+    ctx.restaurantesRepo.seedBranchDeliveryZones(ctx.propertyIdB, [zonaAmbigua, zonaClara]);
+    // Colonia de OTRA organizacion: nunca aparece.
+    ctx.restaurantesRepo.seedKnownZone({ organizationId: ctx.otherOrganizationId, name: "Colonia Ajena", lat: null, lng: null, fuente: "chats_t7", refSucursalSlug: "unica", refKm: 1, ref2SucursalSlug: "unica", ref2Km: 1.1 });
+    return ctx;
+  }
+  const url = (propertyId: string) => `/v1/restaurantes/${propertyId}/admin/config/colonias-ambiguas`;
+
+  it("owner y admin ven el reporte: colonia, sucursal asignada, km, segunda sucursal, diferencia y marca 'revisar'; solo de su organizacion", async () => {
+    const ctx = await conColonias();
+    const app = buildApp(ctx.deps);
+    for (const token of [ctx.staff.owner.token, ctx.staff.admin.token]) {
+      const res = await app.request(url(ctx.propertyIdA), authedGet(token));
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { disponible: boolean; total: number; paraRevisar: number; filas: Array<{ colonia: string; sucursalAsignada: { slug: string } | null; kmAsignada: number | null; segundaSucursal: { slug: string } | null; diferenciaKm: number | null; revisar: boolean; motivos: string[] }> };
+      expect(body.disponible).toBe(true);
+      expect(body.total).toBe(2);
+      expect(body.filas.map((f) => f.colonia)).toEqual(["Temozón Norte", "Colonia Clara"]);
+      expect(body.filas[0]).toMatchObject({ sucursalAsignada: { slug: "centro" }, kmAsignada: 1.7, segundaSucursal: { slug: "fco-montejo" }, diferenciaKm: 0.1, revisar: true });
+      expect(body.filas[0]!.motivos).toContain("ambigua");
+      expect(body.filas[1]).toMatchObject({ revisar: false, motivos: [] });
+      expect(body.paraRevisar).toBe(1);
+      expect(JSON.stringify(body)).not.toContain("Colonia Ajena");
+    }
+  });
+
+  it("403: rol sin permiso (repartidor), staff acotado a una sucursal y staff de otra organizacion; 401 sin token", async () => {
+    const ctx = await conColonias();
+    const app = buildApp(ctx.deps);
+    for (const token of [ctx.staff.repartidor.token, ctx.staff.staffSucursalA.token]) {
+      expect((await app.request(url(ctx.propertyIdA), authedGet(token))).status).toBe(403);
+    }
+    expect((await app.request(url(ctx.propertyIdA), authedGet(ctx.staff.otroOrgOwner.token))).status).toBe(403);
+    expect((await app.request(url(ctx.propertyIdA))).status).toBe(401);
+  });
+
+  it("es de solo lectura: no hay POST/PUT/DELETE", async () => {
+    const ctx = await conColonias();
+    const app = buildApp(ctx.deps);
+    for (const method of ["POST", "PUT", "DELETE"]) {
+      const res = await app.request(url(ctx.propertyIdA), authedJson(ctx.staff.owner.token, {}, method as "PUT"));
+      expect([404, 405]).toContain(res.status);
+    }
+  });
+
+  it("base sin la migracion 056: 200 con disponible=false y lista vacia (nunca 500)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const sinMigrar = Object.assign(Object.create(ctx.restaurantesRepo), { listColoniasReferencia: async () => ({ disponible: false, zonas: [] }) }) as RestaurantesRepository;
+    const app = buildApp({ ...ctx.deps, restaurantesRepo: () => sinMigrar });
+    const res = await app.request(url(ctx.propertyIdA), authedGet(ctx.staff.owner.token));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ disponible: false, total: 0, paraRevisar: 0, sinAsignar: 0, ambiguas: 0, filas: [] });
+  });
+});
+
 describe("domicilio y directorio por sucursal (migracion 057) — PUT .../politica y GET storefront/directorio", () => {
   it("guarda dias de domicilio, solo recoger, directorio y temporada; PUT sin esos campos los conserva", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);

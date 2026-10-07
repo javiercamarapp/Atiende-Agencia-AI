@@ -13,7 +13,8 @@ import {
   verifyContractStepUpToken,
   verifyStaffTotp,
 } from "@atiende/core-auth";
-import type { StepUpScope } from "@atiende/core-auth";
+import type { StepUpClaims, StepUpScope } from "@atiende/core-auth";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { StaffSecurityUnavailableError } from "@atiende/db";
 import type { StaffSecurityRepository } from "@atiende/db";
 import { Errors } from "./errors.ts";
@@ -81,29 +82,62 @@ export function throwForSecondFactor(result: Exclude<SecondFactorResult, "ok">, 
 }
 
 /**
- * Guardia de step-up para una accion sensible. Compatibilidad con la base sin migrar (regla
- * dura del repo): sin puerto, o con la migracion pendiente, NO exige nada (queda el control
- * por rol que la ruta ya aplico). Con 2FA disponible: el usuario debe tenerlo activo y
- * presentar un token de step-up vigente, atado a su usuario+organizacion+alcance.
+ * Guardia de step-up para una accion sensible, de UN SOLO USO. Con 2FA disponible: el usuario debe tenerlo activo y presentar un token de
+ * step-up vigente, atado a su usuario+organizacion+alcance, y el `jti` del token se CONSUME en la sesion de la accion (`input.db`: la
+ * misma transaccion; si la accion falla y se revierte el token no se gasta). Reusar el token (o repetir una peticion capturada) da 403
+ * `step_up_required` "vuelve a confirmar"; con dos peticiones concurrentes con el mismo token exactamente una pasa.
+ *
+ * Sin puerto de 2FA o con su migracion pendiente: en PRODUCCION (`env.production`) falla cerrado con 503; en desarrollo y pruebas no
+ * exige nada (queda el control por rol que la ruta ya aplico). Con el puerto y 0026 pero SIN la migracion 038 (tabla de consumo) se
+ * conserva el token sin estado de siempre (compatibilidad con la base sin migrar; el uso unico rige al aplicar 038).
  */
 export async function requireStepUp(
   deps: AppDeps,
-  input: { readonly userId: string; readonly organizationId: string; readonly scope: StepUpScope; readonly token: string | undefined },
+  input: {
+    readonly userId: string;
+    readonly organizationId: string;
+    readonly scope: StepUpScope;
+    readonly token: string | undefined;
+    /** Sesion de la accion (misma transaccion que el trabajo que el token autoriza). */
+    readonly db: TenantDbSession;
+  },
 ): Promise<void> {
+  const production = deps.env.production === true;
   const repo = deps.staffSecurityRepo;
-  if (!repo) return;
+  if (!repo) {
+    if (production) throw Errors.twoFactorUnavailable();
+    return;
+  }
   let enrolled: boolean;
   try {
     enrolled = (await repo.getTotpStatus(input.userId)).enrolled;
   } catch (err) {
-    if (err instanceof StaffSecurityUnavailableError) return;
+    if (err instanceof StaffSecurityUnavailableError) {
+      if (production) throw Errors.twoFactorUnavailable();
+      return;
+    }
     throw err;
   }
   if (!enrolled) throw Errors.stepUpEnrollmentRequired();
   if (!input.token) throw Errors.stepUpRequired();
+  let claims: StepUpClaims;
   try {
-    await verifyContractStepUpToken(input.token, deps.env.jwtSecret, { userId: input.userId, organizationId: input.organizationId, scope: input.scope });
+    claims = await verifyContractStepUpToken(input.token, deps.env.jwtSecret, { userId: input.userId, organizationId: input.organizationId, scope: input.scope });
   } catch {
     throw Errors.stepUpRequired("La confirmación de identidad expiró o no corresponde a esta acción. Vuelve a confirmar con tu código.");
   }
+  let firstUse: boolean;
+  try {
+    firstUse = await repo.consumeStepUpToken(input.db, {
+      jti: claims.jti ?? "",
+      userId: input.userId,
+      organizationId: input.organizationId,
+      scope: input.scope,
+      expiresAt: new Date((claims.exp ?? 0) * 1000).toISOString(),
+    });
+  } catch (err) {
+    if (err instanceof StaffSecurityUnavailableError) return; // 038 pendiente: token sin estado (compatibilidad)
+    throw err;
+  }
+  if (!firstUse) throw Errors.stepUpRequired("Esta confirmación ya se usó. Vuelve a confirmar con tu código para esta acción.");
 }

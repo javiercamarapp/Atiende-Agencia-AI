@@ -85,6 +85,8 @@ export {
   fechaAnterior,
 } from "./horarios.ts";
 export type { TurnoHorario, HorarioSucursal, EstadoApertura, ApreturaConExcepciones } from "./horarios.ts";
+export { reporteColoniasAmbiguas, UMBRAL_AMBIGUA_KM } from "./colonias-ambiguas.ts";
+export type { FilaColoniaAmbigua, MotivoRevisionColonia, ReporteColoniasAmbiguas } from "./colonias-ambiguas.ts";
 export { aplicarReglasDeSucursal, normalizarCanal, debePreguntarPropina, matchKnownZone, COLONIA_FUERA_DE_VERIFICACION_MENSAJE } from "./reglas-pedido.ts";
 export type { ReglasSucursalArgs, ReglasSucursalResultado } from "./reglas-pedido.ts";
 
