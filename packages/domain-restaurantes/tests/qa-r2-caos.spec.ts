@@ -201,12 +201,12 @@ describe("R2-caos-04: hora_recogida fuera de rango", () => {
 
   // Pasos: el modelo manda hora_recogida con la fecha de AYER (o con "Z" en vez de -06:00, que la corre 6 h hacia atras), como ya paso con fechas
   // en los chats reales. Combinado con R2-caos-03, el pedido se marca no_recogido en cuanto cocina lo termina.
-  it.fails("QA-R2-caos-04: una hora de recogida de hace 3 horas se rechaza (o se corrige) en vez de guardarse tal cual", async () => {
+  it("QA-R2-caos-04: una hora de recogida de hace 3 horas se rechaza (o se corrige) en vez de guardarse tal cual", async () => {
     const hace3h = new Date(Date.now() - 3 * 3_600_000).toISOString().replace(/\.\d{3}Z$/, "Z");
     await expect(crearRecoger(hace3h)).rejects.toThrow();
   });
 
-  it.fails("QA-R2-caos-04b: una hora de recogida de dentro de 9 dias se rechaza (no es 'hoy')", async () => {
+  it("QA-R2-caos-04b: una hora de recogida de dentro de 9 dias se rechaza (no es 'hoy')", async () => {
     const en9dias = new Date(Date.now() + 9 * 86_400_000).toISOString().replace(/\.\d{3}Z$/, "Z");
     await expect(crearRecoger(en9dias)).rejects.toThrow();
   });
@@ -225,14 +225,14 @@ describe("R2-caos-05: piso del dueno al prometer tiempo (A-21/B-09: 'NUNCA prome
   });
 
   // Pasos: el dueno escribe su tiempo en HORAS (domingo de mucha demanda): "Domicilio de 1 a 2 horas". Hay >= 20 entregas de 35 min en la franja.
-  it.fails("QA-R2-caos-05: 'Domicilio de 1 a 2 horas' nunca promete menos de 60 minutos", () => {
+  it("QA-R2-caos-05: 'Domicilio de 1 a 2 horas' nunca promete menos de 60 minutos", () => {
     const t = estimarTiempo({ textoFijo: "Domicilio de 1 a 2 horas", canal: "domicilio", muestras: muestras35, abiertos: 0, saturacion: SIN_SATURACION });
     // Actual: piso = 1 (minuto) y el texto al cliente es "de 30 a 40 minutos".
     expect(t.rango === null || t.rango.minimo >= 60).toBe(true);
   });
 
   // Pasos: el dueno no da numero para domicilio y si para recoger: "Domicilio segun la zona; para recoger 15-20 min".
-  it.fails("QA-R2-caos-05b: el numero de RECOGER no se usa como piso de DOMICILIO", () => {
+  it("QA-R2-caos-05b: el numero de RECOGER no se usa como piso de DOMICILIO", () => {
     expect(pisoMinutosDeTexto("Domicilio según la zona; para recoger 15-20 min", "domicilio")).toBeNull();
   });
 });
@@ -310,5 +310,39 @@ describe("R2-caos-09: el cliente pidio cancelar y el pedido ya salio cuando el g
     const s = await auto.crearSolicitud(fx.organizationId, fx.propertyId, "cancelacion", order.id, { origen: "cliente" });
     await resolverSolicitudAprobacion({ auto, repo: fx.repo, db: null as unknown as TenantDbSession }, { organizationId: fx.organizationId, solicitudId: s.solicitudId!, decision: "mantener" });
     expect(fx.repo.getOutbox().filter((o) => o.eventType === "order.cancelacion_no_posible")).toHaveLength(1);
+  });
+});
+
+describe("R2-caos-04/05 (bordes de las correcciones)", () => {
+  it("hora_recogida: 5 minutos atras se tolera (el modelo redondea 'paso ya'); 11 atras y 8 dias adelante no", async () => {
+    const fx = buildRestaurantFixture();
+    const crear = (offsetMin: number) =>
+      createOrder(fx.repo, {
+        organizationId: fx.organizationId, branchSlug: "fco-montejo", customerName: "Ana", customerPhone: "9991112233", paymentMethod: "efectivo", canal: "recoger",
+        horaRecogida: new Date(Date.now() + offsetMin * 60_000).toISOString().replace(/\.\d{3}Z$/, "Z"),
+        items: [{ productId: fx.products.cocaCola, requestedQuantity: 1 }], source: "whatsapp",
+      });
+    await expect(crear(-5)).resolves.toBeDefined();
+    await expect(crear(-11)).rejects.toThrow(/ya pasó/);
+    await expect(crear(8 * 24 * 60)).rejects.toThrow(/próximos 7 días/);
+    await expect(crear(6 * 24 * 60)).resolves.toBeDefined();
+  });
+
+  it("pisoMinutosDeTexto entiende horas, 'media hora' y no usa numeros ambiguos sin unidad", () => {
+    expect(pisoMinutosDeTexto("Domicilio de 1 a 2 horas", "domicilio")).toBe(60);
+    expect(pisoMinutosDeTexto("Domicilio 1.5 horas, recoger 20 min", "domicilio")).toBe(90);
+    expect(pisoMinutosDeTexto("Domicilio 1.5 horas, recoger 20 min", "recoger")).toBe(20);
+    expect(pisoMinutosDeTexto("Recoger media hora; domicilio una hora", "recoger")).toBe(30);
+    expect(pisoMinutosDeTexto("Recoger media hora; domicilio una hora", "domicilio")).toBe(60);
+    expect(pisoMinutosDeTexto("Domicilio 2", "domicilio")).toBeNull();
+    expect(pisoMinutosDeTexto("Domicilio 40", "domicilio")).toBe(40);
+  });
+
+  it("estimarTiempo con texto en horas nunca promete menos del piso; con numero de otro canal usa el texto fijo", () => {
+    const sat = { umbral1: null, umbral2: null, extraMinutos: 15 };
+    const muestras = Array.from({ length: 25 }, () => 35);
+    expect(estimarTiempo({ textoFijo: "Domicilio de 1 a 2 horas", canal: "domicilio", muestras, abiertos: 0, saturacion: sat }).rango?.minimo).toBeGreaterThanOrEqual(60);
+    const t = estimarTiempo({ textoFijo: "Domicilio según la zona; para recoger 15-20 min", canal: "domicilio", muestras, abiertos: 0, saturacion: sat });
+    expect(t.origen).toBe("texto_fijo");
   });
 });
