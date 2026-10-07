@@ -148,12 +148,21 @@ function columnaDe(ref: string): number {
   return n - 1;
 }
 
+/** Parte de la API de flujos de JSZip (`internalStream`) que se usa: existe en tiempo de ejecucion pero no en sus tipos publicos. */
+interface FlujoJszip {
+  on(evento: "data", cb: (trozo: Uint8Array) => void): FlujoJszip;
+  on(evento: "error", cb: (e: Error) => void): FlujoJszip;
+  on(evento: "end", cb: () => void): FlujoJszip;
+  pause(): FlujoJszip;
+  resume(): FlujoJszip;
+}
+
 /** Descomprime una entrada del zip por trozos y CORTA al pasar el tope: un zip pequeno que se expande a gigabytes ("bomba") nunca llena la memoria (el tamano declarado en el zip no se usa: puede mentir). */
 function leerAcotado(entrada: JSZip.JSZipObject): Promise<string> {
   return new Promise((resolve, reject) => {
     const trozos: Uint8Array[] = [];
     let total = 0;
-    const flujo = entrada.internalStream("uint8array");
+    const flujo = (entrada as unknown as { internalStream(tipo: "uint8array"): FlujoJszip }).internalStream("uint8array");
     flujo
       .on("data", (trozo: Uint8Array) => {
         total += trozo.length;
