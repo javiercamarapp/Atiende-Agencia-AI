@@ -415,3 +415,30 @@ begin;
 set local role anon;
 select public.t_esperar_error($q$select restaurantes.compensacion_codigo_disponible('00000000-0000-0000-0000-0000000e7701', '5511112222')$q$, '42501');
 rollback;
+
+\echo '=== V1. las TRES pantallas dan las mismas ventas del dia con un pedido programado: Cierre, Resumen (getSalesBucketedStats) y Copiloto (SQL_ORDER_STATS) ==='
+begin;
+insert into restaurantes.orders (id, organization_id, property_id, customer_name, customer_phone, total, status, items, source, created_at, promovido_at, delivered_at, canal, programado_para) values
+  ('00000000-0000-0000-0000-0000000e77b9', '00000000-0000-0000-0000-0000000e7701', '00000000-0000-0000-0000-0000000e77a1', 'Prog', '5500002001', 200, 'completado', '[]', 'whatsapp', timestamptz '2026-03-09 18:00:00+00', timestamptz '2026-03-10 18:30:00+00', timestamptz '2026-03-10 19:00:00+00', 'domicilio', timestamptz '2026-03-10 18:30:00+00');
+insert into restaurantes.orders (id, organization_id, property_id, customer_name, customer_phone, total, status, items, source, created_at, delivered_at, canal) values
+  ('00000000-0000-0000-0000-0000000e77ba', '00000000-0000-0000-0000-0000000e7701', '00000000-0000-0000-0000-0000000e77a1', 'N1', '5500002002', 100, 'entregado', '[]', 'web', timestamptz '2026-03-10 17:00:00+00', timestamptz '2026-03-10 17:40:00+00', 'domicilio'),
+  ('00000000-0000-0000-0000-0000000e77bb', '00000000-0000-0000-0000-0000000e7701', '00000000-0000-0000-0000-0000000e77a1', 'N2', '5500002003', 300, 'entregado', '[]', 'web', timestamptz '2026-03-10 20:00:00+00', timestamptz '2026-03-10 20:40:00+00', 'domicilio'),
+  ('00000000-0000-0000-0000-0000000e77bc', '00000000-0000-0000-0000-0000000e7701', '00000000-0000-0000-0000-0000000e77a1', 'GRANDE', '5500002004', 4500, 'por_aprobar', '[]', 'whatsapp', timestamptz '2026-03-10 21:00:00+00', null, 'domicilio');
+-- Resumen: misma consulta que PostgresRestaurantesRepository.getSalesBucketedStats (ventana del 10-mar local de Merida = 06:00Z a 06:00Z).
+select public.t_afirmar((select count(o.id) from restaurantes.orders o
+   where o.organization_id = '00000000-0000-0000-0000-0000000e7701' and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
+     and coalesce(o.promovido_at, o.created_at) >= timestamptz '2026-03-10 06:00:00+00' and coalesce(o.promovido_at, o.created_at) < timestamptz '2026-03-11 06:00:00+00') = 3, 'resumen_pedidos');
+select public.t_afirmar((select coalesce(sum(o.total), 0) from restaurantes.orders o
+   where o.organization_id = '00000000-0000-0000-0000-0000000e7701' and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
+     and coalesce(o.promovido_at, o.created_at) >= timestamptz '2026-03-10 06:00:00+00' and coalesce(o.promovido_at, o.created_at) < timestamptz '2026-03-11 06:00:00+00') = 600, 'resumen_ventas');
+-- Copiloto: SQL_ORDER_STATS de data-chat/sql.ts.
+select public.t_afirmar((select count(*) filter (where o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar'))
+   from restaurantes.orders o join core.property p on p.id = o.property_id
+   where o.organization_id = '00000000-0000-0000-0000-0000000e7701' and (null::uuid[] is null or o.property_id = any(null::uuid[]))
+     and coalesce(o.promovido_at, o.created_at) >= timestamptz '2026-03-10 06:00:00+00' and coalesce(o.promovido_at, o.created_at) < timestamptz '2026-03-11 06:00:00+00') = 3, 'copiloto_pedidos');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e7711', true);
+-- Cierre del dia: las mismas 3 ventas y $600.
+select public.t_afirmar((select (datos ->> 'pedidos')::int from restaurantes.generar_cierre('00000000-0000-0000-0000-0000000e7701', '00000000-0000-0000-0000-0000000e77a1', 'dia', date '2026-03-10')) = 3, 'cierre_pedidos');
+select public.t_afirmar((select (datos ->> 'ventas_centavos')::int from restaurantes.generar_cierre('00000000-0000-0000-0000-0000000e7701', '00000000-0000-0000-0000-0000000e77a1', 'dia', date '2026-03-10')) = 60000, 'cierre_ventas');
+rollback;
