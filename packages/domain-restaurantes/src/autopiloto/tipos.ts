@@ -120,6 +120,8 @@ export interface ResultadoResolver {
   readonly estadoPedido: OrderStatus | null;
   readonly codigoDescuento: string | null;
   readonly reposicionOrderId: string | null;
+  /** Por que se cerro asi (codigo de lista cerrada, `no_cancelable_<estado>` o `pedido_ya_no_estaba_por_aprobar`). `null`/ausente = sin motivo o base con la 050 original (sin la 073). */
+  readonly motivo?: string | null;
 }
 
 export interface SolicitudPorEscalar {

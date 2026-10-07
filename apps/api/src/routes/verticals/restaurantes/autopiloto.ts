@@ -167,7 +167,7 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       logEvent(c, "info", "restaurantes_autopiloto_solicitud_resuelta", {
         actorUserId: c.get("userId"), organizationId, solicitudId, tipo: r.resultado.tipo, decision: r.resultado.decision, aplicado: r.resultado.aplicado, efectos: r.efectos,
       });
-      return c.json({ aplicado: r.resultado.aplicado, tipo: r.resultado.tipo, decision: r.resultado.decision, estadoPedido: r.resultado.estadoPedido, codigoDescuento: r.resultado.codigoDescuento, reposicionOrderId: r.resultado.reposicionOrderId, efectos: r.efectos });
+      return c.json({ aplicado: r.resultado.aplicado, tipo: r.resultado.tipo, decision: r.resultado.decision, estadoPedido: r.resultado.estadoPedido, codigoDescuento: r.resultado.codigoDescuento, reposicionOrderId: r.resultado.reposicionOrderId, motivo: r.resultado.motivo ?? null, efectos: r.efectos });
     } catch (err) {
       return traducir(err);
     }
