@@ -412,3 +412,17 @@ export * from "./mensajes-automaticos/index.ts";
 
 // ---- Rn-07: solicitudes ARCO propias de rentas (migracion 028) ----
 export * from "./privacidad/index.ts";
+
+// Paridad3 Rn-P3-15 -- catálogo honesto de canales de México (datos, sin red ni base).
+export { CATALOGO_CANALES_MX, buscarCanalCatalogo, buscarCanalCatalogoPorCanalAtiende } from "./canales/catalogo.ts";
+export type {
+  BloqueoCanal,
+  CanalCatalogo,
+  CapacidadesConPartner,
+  CapacidadesHoy,
+  CodigoCanalCatalogo,
+  ConfianzaLatencia,
+  LatenciaDeclarada,
+  ViaHoy,
+  ViaIcal,
+} from "./canales/catalogo.ts";
