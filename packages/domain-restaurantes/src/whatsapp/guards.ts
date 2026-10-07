@@ -108,6 +108,40 @@ export function knownAmountsOfQuote(quote: {
   return [...new Set(out)];
 }
 
+/** El texto del agente dice que YA AVISO (o avisara) al gerente/equipo/sucursal. Sirve a la guardia de honestidad: solo se puede decir si el aviso existe
+ * (QA-PM-R2-whatsapp-04: 12 de 48 conversaciones del juez eran "ya avise al gerente" sin llamar a escalar_a_humano). Un aviso de preparacion
+ * ("le aviso a la sucursal para que tenga listo su pedido") es parte del flujo normal del pedido, no un aviso al gerente: no cuenta. */
+export function afirmaHaberAvisado(reply: string): boolean {
+  const t = normalizarParaClasificar(reply);
+  return /\bavis(?:e|are|o)\s+(?:ya\s+)?(?:a|al|a\s+la|a\s+los)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal|encargad[oa]|restaurante|personal)\b(?![^.!?]*\blist[oa]s?\b)|\bnotific(?:ue|are)\s+(?:al|a\s+la)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal)\b/.test(t);
+}
+
+/** Frase que ofrece algo "de cortesia" como parte del pedido (afirmacion), no una explicacion de la regla de la promocion ("solo para recoger", "los martes", "si pide...", "no hay aguas de cortesia"). */
+function afirmaCortesia(frase: string): boolean {
+  const t = normalizarParaClasificar(frase);
+  if (!/\bcortesia\b/.test(t)) return false;
+  return !/\b(?:no|solo|unicamente|si|cuando|martes|lunes|promocion|aplica|valido|media\s+orden)\b/.test(t);
+}
+
+/** Guardia de honestidad de la promocion: "de cortesia" solo si `cotizar_pedido` devolvio `promocion_aplicada` (H13). Sin promocion en la cotizacion del turno, se quitan las frases
+ * que afirman una cortesia; si no queda nada, se aclara que el total es el cotizado. */
+export function quitarCortesiaNoRespaldada(reply: string): string {
+  const frases = reply.split(/(?<=[.!?])\s+/);
+  if (!frases.some(afirmaCortesia)) return reply;
+  const resto = frases.filter((f) => !afirmaCortesia(f)).join(" ").trim();
+  return resto || "Por ahora su pedido no lleva ninguna promoción aplicada; el total es el de la cotización.";
+}
+
+/** Quita la afirmacion de aviso cuando no se pudo dejar el aviso. */
+export function quitarAfirmacionDeAviso(reply: string): string {
+  const sinFrase = reply
+    .split(/(?<=[.!?])\s+/)
+    .filter((frase) => !afirmaHaberAvisado(frase))
+    .join(" ")
+    .trim();
+  return `${sinFrase} Por ahora no pude dejar el aviso al equipo; si lo necesita, inténtelo de nuevo en unos minutos.`.trim();
+}
+
 export function pendingQuestionForMissingData(branchKnown: boolean, orderId: string | null): string | null {
   if (orderId) return null;
   if (!branchKnown) return "¿Me comparte su colonia o una referencia cercana para ubicar la sucursal más cercana?";
@@ -157,14 +191,35 @@ export const PIDE_UNA_PERSONA_RE = (() => {
       `\\b(?:puede|pueden|podr[ií]a|podr[ií]an|puedes)\\s+(?:atender(?:me)?|ayudar(?:me)?)\\s+${det}${quien}${fin}`,
       // "un humano por favor", "una persona, por favor"
       `(?<!\\bpara\\s)\\b(?:una?)\\s+(?:persona|humano)\\s*,?\\s+por\\s+favor${fin}`,
+      // "que me hable / llame / atienda una persona" (main)
+      `\\bque\\s+(?:me\\s+)?(?:hable|habl[eé]|llame|llam[eé]|contacte|atienda|marque|responda|conteste|escriba)\\s+${det}${quien}${fin}`,
+      // "no quiero hablar con el bot" (main)
+      `\\bno\\s+quiero\\s+(?:hablar\\s+con\\s+)?(?:con\\s+)?(?:el\\s+|un\\s+|la\\s+|una\\s+)?(?:bot|robot|m[aá]quina|inteligencia\\s+artificial)${fin}`,
     ].join("|"),
     "i",
   );
 })();
 
-/** Pura: ¿el cliente pide hablar con una persona? (independiente de otros motivos de riesgo del mismo texto). */
+const PIDE_UNA_PERSONA_GLOBAL = new RegExp(PIDE_UNA_PERSONA_RE.source, "gi");
+/** Marco de peticion que hace de "pasar con X" un pedido de transferencia ("quiero pasar con el gerente") y no un "voy a pasar con alguien a recogerlo". */
+const MARCO_DE_PETICION = /\b(?:quiero|quisiera|necesito|puedes|puede|podr[ií]as?|podr[ií]an|favor|por\s+favor|me\s+puede|me\s+pueden|le\s+pido|les\s+pido)\b/i;
+/** Negacion pegada al verbo de la peticion ("no quiero", "no necesito", "no hace falta", "no es necesario", "no voy a"): solo cuenta si el "no" va JUSTO antes de
+ * "hablar con...". Un "no" lejano ("no se si quiero hablar con alguien", "no quiero el bot, pasame con alguien") ya no anula una peticion real. */
+const NEGACION_AL_FINAL =
+  /\b(?:no|ni|nunca|jam[aá]s|tampoco)\s+(?:(?:es\s+necesario|hace\s+falta|hay\s+que|quiero|quisiera|necesito|ocupo|requiero|deseo|tengo\s+que|voy\s+a|vayas?\s+a|me\s+interesa|pienso)\s*(?:que\s+)?(?:me\s+|se\s+)?)?$/i;
+/** Pura: ¿el cliente pide hablar con una persona? (independiente de otros motivos de riesgo del mismo texto). NO cuenta: la negacion ("no quiero hablar con
+ * una persona, con usted esta bien"), "pasar con alguien" como visita ("voy a pasar con alguien a recogerlo") ni una peticion mezclada con un pedido
+ * (la peticion de una persona SIEMPRE escala, aunque venga con un pedido: "quiero 3 tacos y que me hable una persona"; el pedido lo retoma la persona). */
 export function pideUnaPersona(text: string): boolean {
-  return PIDE_UNA_PERSONA_RE.test(text);
+  for (const m of text.matchAll(PIDE_UNA_PERSONA_GLOBAL)) {
+    const idx = m.index ?? 0;
+    const antes = text.slice(Math.max(0, idx - 60), idx);
+    const segmento = antes.slice(Math.max(antes.lastIndexOf("."), antes.lastIndexOf(","), antes.lastIndexOf(";"), antes.lastIndexOf("!"), antes.lastIndexOf("?")) + 1);
+    if (NEGACION_AL_FINAL.test(segmento)) continue;
+    if (/^pasar\b/i.test(m[0]) && !MARCO_DE_PETICION.test(segmento)) continue;
+    return true;
+  }
+  return false;
 }
 
 /** Lo que el clasificador necesita saber del cliente para NO confundir un ajuste del carrito con una cancelacion o una queja. */
@@ -277,6 +332,7 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
   {
     intent: "cliente_lo_pide",
     pattern: PIDE_UNA_PERSONA_RE,
+    cuando: (texto) => pideUnaPersona(texto),
     reply: "Con gusto. Ya avisé al equipo del restaurante para que una persona lo contacte lo antes posible.",
   },
 ];

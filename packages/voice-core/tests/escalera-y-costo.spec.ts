@@ -229,3 +229,44 @@ describe("estado honesto de la escalera", () => {
     expect(JSON.stringify(estadoEscalera({ geminiApiKey: "AIza-secreta", openrouterApiKey: "sk-or-secreta", llm }))).not.toMatch(/secreta/);
   });
 });
+
+describe("reintentosPorEscalon (reconexion al MISMO escalon, voz-05)", () => {
+  const manejadores = { caido: () => undefined } as unknown as ManejadoresSesion;
+  it("por omision un escalon caido no se reabre (comportamiento original)", async () => {
+    const gemini = escalon("gemini-3.8-live");
+    const e = crearEscaleraLlamada([gemini]);
+    await e.abrirSesion(APERTURA, manejadores);
+    gemini.caer("ws_1011");
+    await expect(e.abrirSesion(APERTURA, manejadores)).rejects.toThrow();
+    expect(e.fallidos()).toEqual(["gemini-3.8-live"]);
+  });
+  it("con reintentos, la caida reabre el mismo escalon sin darlo por fallido y sin saltar a la cascada", async () => {
+    const gemini = escalon("gemini-3.8-live");
+    const cascada = escalon("cascada-openrouter");
+    const e = crearEscaleraLlamada([gemini, cascada], { reintentosPorEscalon: 2 });
+    await e.abrirSesion(APERTURA, manejadores);
+    gemini.caer("ws_1011");
+    expect(e.fallidos()).toEqual([]);
+    await e.abrirSesion(APERTURA, manejadores);
+    expect(e.escalonActual()).toBe("gemini-3.8-live");
+    expect(gemini.aperturas).toHaveLength(2);
+    expect(cascada.aperturas).toHaveLength(0);
+  });
+  it("un fallo al abrir con reintentos pendientes hace fallar el intento (el controlador espera y reintenta); agotados, pasa a la cascada", async () => {
+    const falla = escalon("gemini-3.8-live", { falla: new Error("ws_1011") });
+    const cascada = escalon("cascada-openrouter");
+    const e = crearEscaleraLlamada([falla, cascada], { reintentosPorEscalon: 1 });
+    await expect(e.abrirSesion(APERTURA, manejadores)).rejects.toThrow("ws_1011");
+    expect(e.fallidos()).toEqual([]);
+    await e.abrirSesion(APERTURA, manejadores);
+    expect(e.fallidos()).toEqual(["gemini-3.8-live"]);
+    expect(e.escalonActual()).toBe("cascada-openrouter");
+  });
+  it("sin credencial (VozNoConfiguradaError) no se reintenta aunque haya reintentos", async () => {
+    const gemini = escalon("gemini-3.8-live", { falla: new VozNoConfiguradaError("falta GEMINI_API_KEY") });
+    const cascada = escalon("cascada-openrouter");
+    const e = crearEscaleraLlamada([gemini, cascada], { reintentosPorEscalon: 3 });
+    await e.abrirSesion(APERTURA, manejadores);
+    expect(e.escalonActual()).toBe("cascada-openrouter");
+  });
+});

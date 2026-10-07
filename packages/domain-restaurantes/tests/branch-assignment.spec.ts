@@ -1,7 +1,7 @@
 // R-02 -- asignacion de sucursal por cercania en km (Haversine) con zonas conocidas como ajuste.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { assignBranch, rankBranchesByKm } from "../src/branch-assignment.ts";
+import { assignBranch, RADIO_MAXIMO_REPARTO_KM, rankBranchesByKm } from "../src/branch-assignment.ts";
 import { InMemoryRestaurantesRepository } from "../src/in-memory-repository.ts";
 import { OrderValidationError } from "../src/errors.ts";
 import type { Branch } from "../src/types.ts";
@@ -83,9 +83,27 @@ describe("assignBranch -- coordenadas", () => {
     const { repo, organizationId } = seed();
     for (const [lat, lng] of [[90, 0], [-90, 180], [0, -180]] as const) {
       const r = await assignBranch(repo, { organizationId, lat, lng });
-      expect(r.estado).toBe("asignada");
-      if (r.estado === "asignada") expect(Number.isFinite(r.distanceKm)).toBe(true);
+      // Los polos quedan a miles de km: con el tope duro de reparto son `fuera_de_zona`, pero el calculo no se rompe (distancia finita).
+      expect(["asignada", "fuera_de_zona"]).toContain(r.estado);
+      if (r.estado === "asignada" || r.estado === "fuera_de_zona") expect(Number.isFinite(r.distanceKm)).toBe(true);
     }
+  });
+
+  it("QA-PM-R2-whatsapp-08: un pin a 28.8 km (Progreso) es fuera_de_zona aunque el modelo mande max_km 500 o nada", async () => {
+    const { repo, organizationId } = seed();
+    const progreso = { lat: 21.2817, lng: -89.665 };
+    for (const maxKm of [undefined, 500, 100]) {
+      const r = await assignBranch(repo, { organizationId, ...progreso, ...(maxKm === undefined ? {} : { maxKm }) });
+      expect(r.estado).toBe("fuera_de_zona");
+      if (r.estado === "fuera_de_zona") expect(r.maxKm).toBe(RADIO_MAXIMO_REPARTO_KM);
+    }
+  });
+
+  it("el modelo puede BAJAR el radio pero no subirlo", async () => {
+    const { repo, organizationId } = seed();
+    const punto = { lat: 21.0156, lng: -89.5882 };
+    expect((await assignBranch(repo, { organizationId, ...punto, maxKm: 0.5 })).estado).toBe("fuera_de_zona");
+    expect((await assignBranch(repo, { organizationId, ...punto })).estado).toBe("asignada");
   });
 });
 

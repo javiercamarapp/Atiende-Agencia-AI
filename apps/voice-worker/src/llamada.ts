@@ -11,7 +11,7 @@
 //   5. Escalera, puente de audio, controlador. Al terminar: se vacia la despedida, se cuelga, se registran turnos, costo por escalon y cierre.
 //
 // El worker nunca contesta a medias: sin contexto de la API (o sin token) dice el pregrabado de falla y cuelga, sin abrir sesion con el proveedor.
-import { ControladorLlamada, canonicalizeMexicanPhone, crearEjecutorTools, crearGuardiaPersonaVoz, transporteHttp, LIMITES_POR_DEFECTO } from "@atiende/domain-restaurantes";
+import { ControladorLlamada, canonicalizeMexicanPhone, crearEjecutorTools, crearGuardiaPersonaVoz, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
 import type { AbrirSesionLlamada, EjecutorTools, MensajeId, SumideroLog, TransporteTools, VozResultado } from "@atiende/domain-restaurantes";
 import { costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
 import type { EscaleraLlamada, LimitesLlamada, VozSesionLlamada } from "@atiende/voice-core";
@@ -49,7 +49,11 @@ export interface DepsAtencion {
   readonly ahora?: () => number;
   /** Programa una tarea periodica y devuelve como cancelarla. Por omision `setInterval`; las pruebas pasan tiempo manual. */
   readonly programar?: (tarea: () => void, ms: number) => () => void;
+  /** Limites de la llamada. Por omision los de PM (`LIMITES_VOZ_PM`: un solo "¿sigue ahi?", 3 reconexiones con espera creciente): antes el worker caia en
+   * los de plataforma y la reconexion y el silencio de PM nunca llegaban a produccion (QA-PM-R2-voz-05). */
   readonly limites?: LimitesLlamada;
+  /** Silencio maximo del agente tras el resultado de una herramienta antes de decir "un momento, por favor" (ms). Por omision `VIGILAR_SILENCIO_AGENTE_MS`. */
+  readonly vigilarSilencioAgenteMs?: number;
   /** Cada cuanto se vuelcan los turnos nuevos al registrador (ms). */
   readonly volcadoTurnosMs?: number;
 }
@@ -63,6 +67,13 @@ export interface ResumenAtencion {
   readonly latenciasMs: readonly number[];
   readonly modoEntrada: string | null;
 }
+
+/** Si el modelo no dice nada 12 s despues de recibir el resultado de una herramienta, el cliente oye "un momento, por favor" (QA-PM-R2-voz-06: en la corrida real el
+ * modelo se colgo 55 a 105 s). 12 s deja pasar una pausa normal del modelo con una herramienta lenta (cotizar tarda 1-4 s) sin dejar al cliente en silencio. */
+export const VIGILAR_SILENCIO_AGENTE_MS = 12_000;
+
+/** Opciones de la escalera de proveedores del worker: un escalon caido se reabre tantas veces como reconexiones de PM (la espera creciente la pone el controlador). */
+export const OPCIONES_ESCALERA_PM = { reintentosPorEscalon: LIMITES_VOZ_PM.reconexionesMax } as const;
 
 const programarPorDefecto = (tarea: () => void, ms: number): (() => void) => {
   const id = setInterval(tarea, ms);
@@ -180,7 +191,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   }
 
   // 5) Controlador + escalera + puente.
-  const limites = deps.limites ?? LIMITES_POR_DEFECTO;
+  const limites = deps.limites ?? LIMITES_VOZ_PM;
   const escalera = deps.crearEscalera();
   let orderId: string | null = null;
   // El transporte se arma cuando hay token (de inmediato con caller ID confiable; tras `confirmarTelefono` si no).
@@ -301,6 +312,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     instruccion: telefonoPendiente ? `${contexto.instruccion}\n\n${INSTRUCCION_TELEFONO_NO_CONFIABLE}` : contexto.instruccion,
     voiceId: contexto.voiceId,
     limites,
+    vigilarSilencioAgenteMs: deps.vigilarSilencioAgenteMs ?? VIGILAR_SILENCIO_AGENTE_MS,
     reproducir: async (id) => {
       const a = deps.pregrabados.get(id);
       if (!a) {

@@ -655,12 +655,12 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     this.addresses.set(customerId, list);
   }
 
-  async listCustomerAddresses(customerId: string): Promise<readonly CustomerAddress[]> {
+  async listCustomerAddresses(customerId: string, _organizationId?: string): Promise<readonly CustomerAddress[]> {
     const list = this.addresses.get(customerId) ?? [];
     return [...list].sort((a, b) => Number(b.isDefault) - Number(a.isDefault)).map((a) => ({ address: a.address, label: a.label, isDefault: a.isDefault }));
   }
 
-  async listEligibleOrderHistory(customerId: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>> {
+  async listEligibleOrderHistory(customerId: string, _organizationId?: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>> {
     const eligibleStatuses = new Set(["pending", "preparando", "en_camino", "entregado", "completado"]);
     return this.orders
       .filter((o) => o.customerId === customerId && eligibleStatuses.has(o.status))
@@ -2117,6 +2117,10 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   }
 
   private readonly customerNotes = new Map<string, string>();
+  /** Lo que escribio una importacion (procedencia: customers.import_nombre / import_notas / customer_addresses.from_import). */
+  private readonly importNombre = new Map<string, string>();
+  private readonly importNotas = new Map<string, string>();
+  private readonly direccionesImportadas = new Set<string>();
   private readonly importacionesClientes = new Map<string, Extract<ResultadoImportacionClientes, { disponible: true }>>();
 
   async importarClientes(organizationId: string, huella: string, filas: readonly FilaImportacionCliente[]): Promise<ResultadoImportacionClientes> {
@@ -2128,6 +2132,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     let actualizados = 0;
     let sinCambios = 0;
     let rechazados = 0;
+    const vistos = new Set<string>();
     for (const f of filas) {
       if (!/^[0-9]{10}$/.test(f.phone)) {
         rechazados += 1;
@@ -2140,20 +2145,44 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         id = randomUUID();
         this.customers.set(id, { id, organizationId, phone: f.phone, name: f.name, orderCount: 0 });
         this.customerIdByOrgPhone.set(key, id);
-        if (f.notes) this.customerNotes.set(id, f.notes);
+        if (f.name) this.importNombre.set(id, f.name);
+        if (f.notes) {
+          this.customerNotes.set(id, f.notes);
+          this.importNotas.set(id, f.notes);
+        }
         creados += 1;
       } else {
         id = existenteId;
         const actual = this.customers.get(id)!;
-        // Nunca pisa el nombre ni la nota conocidos: solo completa lo vacio.
-        const completaNombre = actual.name === null && f.name !== null;
-        const completaNota = !this.customerNotes.has(id) && f.notes !== null;
-        if (completaNombre) this.customers.set(id, { ...actual, name: f.name });
-        if (completaNota) this.customerNotes.set(id, f.notes!);
-        if (completaNombre || completaNota) actualizados += 1;
+        // Completa lo vacio y CORRIGE solo lo que una importacion anterior escribio y nadie cambio despues (mismo contrato que la funcion SQL).
+        const nota = this.customerNotes.get(id) ?? null;
+        const repetido = vistos.has(f.phone); // un telefono repetido dentro del MISMO archivo no se corrige a si mismo
+        const nombreFinal = f.name === null ? actual.name : actual.name === null ? f.name : !repetido && this.importNombre.get(id) === actual.name ? f.name : actual.name;
+        const notaFinal = f.notes === null ? nota : nota === null ? f.notes : !repetido && this.importNotas.get(id) === nota ? f.notes : nota;
+        if (nombreFinal !== actual.name) {
+          this.customers.set(id, { ...actual, name: nombreFinal });
+          if (nombreFinal) this.importNombre.set(id, nombreFinal);
+        }
+        if (notaFinal !== nota && notaFinal !== null) {
+          this.customerNotes.set(id, notaFinal);
+          this.importNotas.set(id, notaFinal);
+        }
+        if (nombreFinal !== actual.name || notaFinal !== nota) actualizados += 1;
         else sinCambios += 1;
       }
-      if (f.address) await this.addCustomerAddressIfNew(id, f.address, organizationId);
+      vistos.add(f.phone);
+      if (f.address) {
+        const existia = (this.addresses.get(id) ?? []).some((a) => a.address === f.address);
+        await this.addCustomerAddressIfNew(id, f.address, organizationId);
+        if (!existia) {
+          this.direccionesImportadas.add(`${id}|${f.address}`);
+          const lista = this.addresses.get(id) ?? [];
+          // Domicilio nuevo de esta importacion: si el predeterminado actual tambien vino de una importacion, pasa a ser este.
+          if (lista.some((a) => a.isDefault && a.address !== f.address && this.direccionesImportadas.has(`${id}|${a.address}`))) {
+            this.addresses.set(id, lista.map((a) => ({ ...a, isDefault: a.address === f.address })));
+          }
+        }
+      }
     }
     const resultado = { disponible: true as const, yaImportado: false, total: filas.length, creados, actualizados, sinCambios, rechazados };
     this.importacionesClientes.set(clave, resultado);

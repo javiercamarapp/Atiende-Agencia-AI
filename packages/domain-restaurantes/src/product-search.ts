@@ -81,11 +81,14 @@ export function sinAcentos(texto: string): string {
  * lo mas especifico primero ("kilo y medio" antes que "medio"; "1/4 de bistec" sin unidad es un cuarto de kilo, pero "1/2" sin
  * unidad NO es peso porque tambien es la "media orden"). */
 const FRASES_DE_PESO: ReadonlyArray<readonly [RegExp, number]> = [
-  [/\btres\s+cuartos?\s+de\s+kilo\b|\b3\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.75\s*(?:kg|kilos?)\b|(?<![\d.])0?\.750\b/g, 750],
-  [/\bcuarto\s+de\s+kilo\b|\bun\s+cuarto\b|\b1\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.25\s*(?:kg|kilos?)\b|(?<![\d.])0?\.250\b/g, 250],
+  [/\btres\s+cuartos?(?:\s+de\s+kilo)?\b|\b3\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.75\s*(?:kg|kilos?)\b|(?<![\d.])0?\.750\b/g, 750],
+  [/\b(?:un\s+)?cuarto\s+de\s+kilo\b|\bun\s+cuarto\b|\bcuarto\b(?=\s+de\s)|\b1\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.25\s*(?:kg|kilos?)\b|(?<![\d.])0?\.250\b/g, 250],
   [/\bkilo\s+y\s+medio\b|(?<![\d.])1[.,]5\s*(?:kg|kilos?)\b|\b1\s+1\s*\/\s*2\s*(?:kg|kilos?)\b/g, 1500],
-  [/\bmedio\s+kilo\b|\b1\s*\/\s*2\s*(?:de\s+)?(?:kg|kilos?)\b|(?<![\d.])0?\.5\s*(?:kg|kilos?)\b|(?<![\d.])0?\.500\b/g, 500],
+  [/\bmedio\s+kilo\b|\bmedio\b(?=\s+de\s)|\b1\s*\/\s*2\s*(?:de\s+)?(?:kg|kilos?)\b|(?<![\d.])0?\.5\s*(?:kg|kilos?)\b|(?<![\d.])0?\.500\b/g, 500],
   [/\bdos\s+kilos?\b|\b2\s*(?:kg|kilos?)\b/g, 2000],
+  // "3 kilos", "5 kg": no hay producto de ese peso (se venden 1/4 a 2 kg): el numero no es un peso exacto; se buscan todos los pesos del producto (`peso:cualquiera`) y el agente
+  // arma el total con renglones de 2 kg y de 1 kg (nunca 3 piezas del de 1 kg). Va ANTES del patron generico de "kilo".
+  [/(?<![\d./])(?:[3-9]|[1-9]\d)\s*(?:kg|kilos?)\b/g, 0],
   [/(?<![\d./])(\d{2,4})\s*(?:gr|g|gramos)\b/g, -1],
   [/\b1\s*(?:kg|kilo)\b|\bun\s+kilo\b|\bkilos?\b|\bkg\b/g, 1000],
 ];
@@ -103,7 +106,7 @@ function normalizarUnidadesDeKilo(texto: string): string {
 export function normalizarPesosEnConsulta(textoSinAcentos: string): string {
   let texto = textoSinAcentos;
   for (const [patron, gramos] of FRASES_DE_PESO) {
-    texto = texto.replace(patron, (...args: unknown[]) => ` peso:${gramos === -1 ? String(args[1]) : gramos} `);
+    texto = texto.replace(patron, (...args: unknown[]) => ` peso:${gramos === 0 ? "cualquiera" : gramos === -1 ? String(args[1]) : gramos} `);
   }
   return texto;
 }
@@ -157,6 +160,61 @@ export function tokenizeForProductSearch(query: string): string[] {
   return tokens.length > 0 ? tokens : [sinAcentos(query)];
 }
 
+/** Palabras que identifican un platillo (sin "de/la", sin "(orden de 3)", sin el peso "— 500 g"): sirve para saber si un producto es una
+ * VARIANTE de otro ("Margarita sin Alcohol" de "Margarita", "Bistec de Res Encebollado" de "Bistec de Res"). */
+function palabrasNucleo(nombre: string): Set<string> {
+  const base = sinAcentos(nombre).replace(/\([^)]*\)/g, " ").replace(/\s[—-]\s.*$/, " ");
+  return new Set(base.split(/[^a-z0-9.]+/).filter((w) => w && !STOPWORDS_BUSQUEDA.has(w)));
+}
+
+const CALIFICADORES_DE_VARIANTE = new Set(["encebollado", "especial", "especiales", "sin", "light"]);
+/** Palabras que marcan la version NORMAL de un platillo con variantes ("Frijoles Charros Normal" vs "con Queso"): ganan al empatar si el cliente no pidio otra. */
+const PALABRAS_DE_VERSION_NORMAL = new Set(["normal", "regular"]);
+
+/** Puntaje de relevancia de UN producto que ya hizo match: palabra completa o alias exacto (4) > inicio de palabra, p. ej. el plural (3) >
+ * subcadena del nombre (1.5) > descripcion/categoria (0.5); "orden de ..." prefiere los renglones "(orden de N)". */
+export function puntajeDeBusqueda(
+  tokens: readonly string[],
+  fields: { readonly name: string; readonly searchKeywords?: readonly string[] },
+  consultaCruda = "",
+): number {
+  const nombre = sinAcentos(fields.name);
+  const palabras = nombre.split(/[^a-z0-9.]+/).filter(Boolean);
+  const alias = (fields.searchKeywords ?? []).map(sinAcentos);
+  let puntaje = 0;
+  for (const t of tokens) {
+    if (t.startsWith("peso:")) continue;
+    if (palabras.includes(t) || alias.some((a) => a === t || a.split(/[^a-z0-9.]+/).includes(t))) puntaje += 4;
+    else if (palabras.some((w) => w.startsWith(t))) puntaje += 3;
+    else if (nombre.includes(t)) puntaje += 1.5;
+    else puntaje += 0.5;
+  }
+  if (/\b(?:una?|la|las)\s+orden(?:es)?\b|^orden(?:es)?\b/.test(sinAcentos(consultaCruda)) && /\(orden de \d+/.test(nombre)) puntaje += 2;
+  // El producto "base" gana al calificado cuando el cliente no pidio el calificativo ("bistec" no es "bistec encebollado").
+  if (palabras.some((w) => PALABRAS_DE_VERSION_NORMAL.has(w)) && !tokens.some((t) => PALABRAS_DE_VERSION_NORMAL.has(t))) puntaje += 0.5;
+  if (palabras.some((w) => CALIFICADORES_DE_VARIANTE.has(w) && !tokens.some((t) => w.startsWith(t) || t.startsWith(w)))) puntaje -= 0.5;
+  return puntaje;
+}
+
+/** Ordena los productos que hicieron match de mayor a menor relevancia. Estable (a igualdad queda el orden del catalogo). Una VARIANTE
+ * (su nucleo contiene al de otro resultado) baja un punto frente al producto base. */
+export function ordenarPorRelevancia<T extends { readonly name: string; readonly searchKeywords?: readonly string[] }>(
+  tokens: readonly string[],
+  encontrados: readonly T[],
+  consultaCruda: string,
+): T[] {
+  const nucleos = encontrados.map((p) => palabrasNucleo(p.name));
+  // Solo se comparan renglones de la MISMA presentacion: "Bistec de Res — 500 g" vs "Bistec de Res Encebollado — 500 g", no vs unos tacos.
+  const forma = (n: string) => sinAcentos(n).replace(/^[^(—]*?(?=\(|\s—|$)/, "").trim();
+  const formas = encontrados.map((p) => forma(p.name));
+  const esVariante = (i: number) =>
+    nucleos.some((otro, j) => j !== i && formas[j] === formas[i] && otro.size > 0 && otro.size < nucleos[i]!.size && [...otro].every((w) => nucleos[i]!.has(w)));
+  return encontrados
+    .map((p, i) => ({ p, i, s: puntajeDeBusqueda(tokens, p, consultaCruda) - (esVariante(i) ? 1 : 0) }))
+    .sort((x, y) => y.s - x.s || x.i - y.i)
+    .map((x) => x.p);
+}
+
 /** Determina si un texto de búsqueda hace match contra un producto — un token hace
  * match si aparece en name, description, categoría, o cualquier search_keywords
  * (todos los tokens son obligatorios, AND, igual que el origen). */
@@ -170,6 +228,7 @@ export function matchesProductSearch(
   const textoCompacto = textoPlano.replace(/[\s-]/g, "");
   const pesoProducto = pesoDeProductoEnGramos(fields.name);
   return tokens.every((t) => {
+    if (t === "peso:cualquiera") return pesoProducto !== null;
     if (t.startsWith("peso:")) return pesoProducto !== null && pesoProducto === Number(t.slice(5));
     if (t === ORDEN_COMPLETA) return !/\b1\s*\/\s*2\b|\bmedia\s+orden\b/.test(textoPlano);
     return textoPlano.includes(t) || alias.some((a) => a.includes(t)) || (t.length >= 6 && textoCompacto.includes(t));

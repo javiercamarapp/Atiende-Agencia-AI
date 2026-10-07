@@ -21,6 +21,11 @@ import { matchKnownZone } from "./reglas-pedido.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, KnownZone } from "./types.ts";
 
+/** Tope DURO de reparto POR OMISION del perfil `taqueria_pm`, decidido por el SERVIDOR (QA-PM-R2-whatsapp-08): un pin en Progreso a 28.8 km se asignaba a Prolongacion
+ * Montejo porque el modelo mandaba `max_km: 500` y sin tope no habia limite. El modelo solo puede bajarlo (un radio del negocio menor), nunca subirlo. Valor
+ * provisional hasta que el negocio fije su radio de reparto. Las organizaciones de otro perfil NO heredan este tope (ver `radioMaximoKm`). */
+export const RADIO_MAXIMO_REPARTO_KM = 20;
+
 export const FUERA_DE_ZONA_MENSAJE = "Ese domicilio queda fuera de la zona de reparto: no se envía. Ofrezca recoger en sucursal.";
 
 export interface AssignBranchInput {
@@ -29,8 +34,10 @@ export interface AssignBranchInput {
   readonly lng?: number;
   /** Colonia/referencia tal como la dijo el cliente (se empareja con `known_zone`). */
   readonly colonia?: string;
-  /** Radio maximo de reparto en km; sin valor = sin tope. */
+  /** Radio maximo de reparto en km que pide el modelo; solo puede ser MENOR que el tope de la organizacion (`radioMaximoKm`): el servidor lo recorta. */
   readonly maxKm?: number;
+  /** Tope DURO de la organizacion, fijado por el servidor (no por el modelo): ausente = `RADIO_MAXIMO_REPARTO_KM`; `null` = la organizacion no tiene tope duro. */
+  readonly radioMaximoKm?: number | null;
 }
 
 export type BranchAssignmentVia = "coordenadas" | "zona";
@@ -145,8 +152,10 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
   }
 
   const distanceKm = redondear1(chosen.km);
-  if (input.maxKm !== undefined && chosen.km > input.maxKm) {
-    return { estado: "fuera_de_zona", branchSlug: chosen.branch.slug, branchName: chosen.branch.name, distanceKm, maxKm: input.maxKm, message: FUERA_DE_ZONA_MENSAJE };
+  const radioOrg = input.radioMaximoKm === undefined ? RADIO_MAXIMO_REPARTO_KM : input.radioMaximoKm;
+  const tope = radioOrg === null ? (input.maxKm ?? Number.POSITIVE_INFINITY) : Math.min(input.maxKm ?? radioOrg, radioOrg);
+  if (chosen.km > tope) {
+    return { estado: "fuera_de_zona", branchSlug: chosen.branch.slug, branchName: chosen.branch.name, distanceKm, maxKm: tope, message: FUERA_DE_ZONA_MENSAJE };
   }
   return {
     estado: "asignada",

@@ -32,19 +32,30 @@ export function medianaMinutos(valores: readonly number[]): number | null {
 
 /**
  * Limite inferior (minutos) que el dueno fijo en su texto para el canal, p. ej. "Domicilio 30-45 min, recoger 15-25 min" -> 30 (domicilio)
- * y 15 (recoger). Busca el primer rango o numero despues de la palabra del canal; `null` si no se puede leer con certeza (entonces se usa el
- * texto fijo tal cual, sin estimar).
+ * y 15 (recoger). Solo lee el tramo de texto del CANAL pedido (hasta la palabra del otro canal, un punto y coma o un punto): el numero de
+ * recoger nunca es el piso de domicilio. Entiende minutos y horas ("1 a 2 horas" -> 60, "media hora" -> 30). Un numero sin unidad menor a 5
+ * es ambiguo (podria ser horas) y no se usa. `null` si no se puede leer con certeza (entonces se usa el texto fijo tal cual, sin estimar).
  */
 export function pisoMinutosDeTexto(texto: string | null | undefined, canal: CanalPedido): number | null {
   if (!texto) return null;
-  const palabra = canal === "domicilio" ? /domicilio/i : /recoger|recoge|mostrador/i;
-  const m = palabra.exec(texto);
+  const propia = canal === "domicilio" ? /domicilio/i : /recoger|recoge|mostrador/i;
+  const ajena = canal === "domicilio" ? /recoger|recoge|mostrador/gi : /domicilio/gi;
+  const m = propia.exec(texto);
   if (!m) return null;
-  const resto = texto.slice(m.index + m[0].length);
-  const num = /(\d{1,3})\s*(?:-|–|a)?\s*(\d{1,3})?\s*(?:min|minutos)?/i.exec(resto);
+  let tramo = texto.slice(m.index + m[0].length);
+  ajena.lastIndex = 0;
+  const corte = [tramo.search(ajena), tramo.search(/[;\n]|\.\s/)].filter((i) => i >= 0);
+  if (corte.length > 0) tramo = tramo.slice(0, Math.min(...corte));
+  if (/\bmedia\s+hora\b/i.test(tramo)) return 30;
+  if (/\buna\s+hora\b/i.test(tramo)) return 60;
+  const num = /(\d{1,3}(?:[.,]\d)?)\s*(?:-|–|a|y)?\s*(\d{1,3}(?:[.,]\d)?)?\s*(horas?|hrs?\b|h\b|minutos?|mins?\b|min\b)?/i.exec(tramo);
   if (!num) return null;
-  const a = Number(num[1]);
-  return Number.isFinite(a) && a > 0 ? a : null;
+  const a = Number(num[1]!.replace(",", "."));
+  const unidad = num[3]?.toLowerCase();
+  if (!Number.isFinite(a) || a <= 0) return null;
+  if (unidad === undefined) return a >= 5 ? Math.round(a) : null;
+  const minutos = /^h/.test(unidad) ? Math.round(a * 60) : Math.round(a);
+  return minutos > 0 ? minutos : null;
 }
 
 export interface EstimarTiempoInput {

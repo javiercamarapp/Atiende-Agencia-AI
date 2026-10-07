@@ -55,11 +55,10 @@ export async function lookupCustomer(repo: RestaurantesRepository, organizationI
   const customer = await repo.findCustomerByPhone(organizationId, phoneKey);
   if (!customer) return { isNew: true };
 
-  const [addresses, history, tier] = await Promise.all([
-    repo.listCustomerAddresses(customer.id),
-    repo.listEligibleOrderHistory(customer.id),
-    repo.calcCustomerTier(organizationId, customer.id),
-  ]);
+  // En serie (no Promise.all): cada lectura corre en su propio SAVEPOINT sobre la MISMA sesion y los savepoints intercalados se pisarian.
+  const addresses = await repo.listCustomerAddresses(customer.id, organizationId);
+  const history = await repo.listEligibleOrderHistory(customer.id, organizationId);
+  const tier = await repo.calcCustomerTier(organizationId, customer.id);
 
   const lastOrder = history[0] ?? null;
   const frequentItems = countFrequentItems(history);
@@ -108,11 +107,10 @@ export async function getCustomerDetailById(repo: RestaurantesRepository, organi
   const customer = await repo.findCustomerById(organizationId, customerId);
   if (!customer) return null;
 
-  const [addresses, history, tier] = await Promise.all([
-    repo.listCustomerAddresses(customer.id),
-    repo.listEligibleOrderHistory(customer.id),
-    repo.calcCustomerTier(organizationId, customer.id),
-  ]);
+  // En serie (no Promise.all): cada lectura corre en su propio SAVEPOINT sobre la MISMA sesion y los savepoints intercalados se pisarian.
+  const addresses = await repo.listCustomerAddresses(customer.id, organizationId);
+  const history = await repo.listEligibleOrderHistory(customer.id, organizationId);
+  const tier = await repo.calcCustomerTier(organizationId, customer.id);
 
   const lastOrder = history[0] ?? null;
   const frequentItems = countFrequentItems(history);

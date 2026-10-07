@@ -123,9 +123,20 @@ export const G_TONO_USTED: Grader = (l) => {
 export const G_PRECIO_HABLADO: Grader = (l) => {
   const permitidos = l.tools.flatMap((t) => numerosDe(t.resultado));
   const coincide = (dicho: number): boolean => permitidos.some((p) => Math.abs(p - dicho) < 0.005 || Math.floor(p + 1e-9) === dicho);
+  // Gemini Live entrega la transcripcion del agente en FRAGMENTOS ("...ciento" + " sesenta y ocho pesos"): se unen los fragmentos consecutivos de un mismo turno
+  // del agente antes de buscar importes; fragmento por fragmento reprobaba llamadas correctas ($68, $2, $9...) con falsas fallas (QA-PM-R2-voz-15).
+  const turnos: string[] = [];
+  let abierto = false;
   for (const t of l.transcripcion) {
-    if (t.rol !== "agente") continue;
-    for (const dicho of importesHablados(t.texto)) {
+    if (t.rol === "agente") {
+      if (abierto) turnos[turnos.length - 1] += t.texto;
+      else turnos.push(t.texto);
+      abierto = true;
+    } else if (t.rol === "cliente") abierto = false;
+    // una herramienta entre fragmentos no corta el turno del agente
+  }
+  for (const texto of turnos) {
+    for (const dicho of importesHablados(texto)) {
       if (!coincide(dicho)) return mal("G_PRECIO_HABLADO", `el agente dijo $${dicho} y ninguna herramienta devolvio ese importe en la llamada`);
     }
   }
