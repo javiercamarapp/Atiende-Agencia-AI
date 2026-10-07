@@ -593,10 +593,12 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     // (una organizacion con otro perfil conserva las 9 incluidas). El checkout web siempre conserva las 9.
     basicComplements: ctx.channel === "web" ? undefined : PM_BASIC_COMPLEMENTS,
     ubicacionEntrega: ctx.ubicacionEntrega ?? undefined,
-    efectivoCon: typeof input.efectivo_con === "number" ? input.efectivo_con : undefined,
+    // Los agentes (no el checkout web) rellenan los opcionales que no tienen con 0 o "" (efectivo_con 0, telefono_alterno ""): eso es "sin dato", no un dato invalido
+    // (despues de fusionar efectivo_con y telefono_alterno, 15 crear_pedido de la medida fallaban por ese relleno y el cliente se quedaba sin pedido).
+    efectivoCon: typeof input.efectivo_con === "number" && (ctx.channel === "web" || (input.efectivo_con > 0 && input.payment_method === "efectivo")) ? input.efectivo_con : undefined,
     llevarTerminal: input.llevar_terminal === true ? true : undefined,
     indicacionesAcceso: str(input.indicaciones_acceso),
-    telefonoAlterno: str(input.telefono_alterno),
+    telefonoAlterno: ctx.channel === "web" ? str(input.telefono_alterno) : textoOpcional(input.telefono_alterno)?.trim() || undefined,
     doubleSalsas: toDoubleSalsas(input.doble_salsas),
     canal: toCanal(input.canal),
     colonia: str(input.colonia_entrega),

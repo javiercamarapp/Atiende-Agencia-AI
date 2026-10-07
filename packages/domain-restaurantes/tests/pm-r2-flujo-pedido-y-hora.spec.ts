@@ -58,6 +58,24 @@ describe.each(["whatsapp", "voz"] as const)("%s: re-cotizar el MISMO carrito en 
     expect((siguiente.result as { siguiente_paso: string }).siguiente_paso).toContain("confirmar_resumen");
   });
 
+  it("el relleno del modelo en los opcionales (efectivo_con 0, telefono_alterno vacio) es 'sin dato' y no impide crear el pedido", async () => {
+    const s = setup(channel);
+    await s.quote();
+    s.nextTurn();
+    await s.confirm();
+    const creado = await s.create({ efectivo_con: 0, telefono_alterno: "", indicaciones_acceso: "" });
+    expect(creado.orderId).not.toBeNull();
+  });
+
+  it("efectivo_con con tarjeta tambien es relleno (se ignora, no rechaza el pedido)", async () => {
+    const s = setup(channel);
+    await s.quote({ payment_method: "tarjeta" });
+    s.nextTurn();
+    await s.confirm();
+    const creado = await s.create({ payment_method: "tarjeta", efectivo_con: 500 });
+    expect(creado.orderId).not.toBeNull();
+  });
+
   it("si cambia el carrito al re-cotizar, es una cotizacion NUEVA y confirmar en ese mismo turno sigue rechazado", async () => {
     const s = setup(channel);
     await s.quote();
