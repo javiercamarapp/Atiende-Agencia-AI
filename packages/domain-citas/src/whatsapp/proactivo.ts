@@ -8,6 +8,7 @@
 //      el llamador usa el correo si hay y deja el estado honesto.
 // BASE SIN MIGRAR (0050): el repositorio devuelve `undefined` ("no se puede saber") y se conserva el comportamiento anterior.
 import { correoListaEsperaCupo } from "../emails/appointment-templates.ts";
+import { normalizePhone } from "../appointments.ts";
 import type { CitasRepository } from "../repository.ts";
 
 /** Ventana de servicio de Meta (24 h) menos 1 h de margen. */
@@ -38,13 +39,16 @@ export type DecisionProactivo = { readonly canal: "whatsapp"; readonly template?
  * Formatos con que el MISMO telefono puede estar en el ledger de entradas (`citas.whatsapp_inbound_events.phone_hash` = sha256 del
  * telefono tal como el webhook lo recibio: "+" + wa_id de Meta, p. ej. +5219981110001 o +529981110001) frente a como lo guarda
  * `citas.customers` (los ULTIMOS 10 DIGITOS, ver `normalizePhone`). Se prueban todos para no declarar "fuera de la ventana" a quien
- * acaba de escribir (el error contrario, declarar "dentro", nunca ocurre: un hash distinto no coincide con nada).
+ * acaba de escribir. Las variantes +52/+521 se agregan SOLO si el telefono es mexicano segun `normalizePhone` (llave de 10 digitos): un
+ * numero de otro pais (p. ej. 15512345678) comparte sus ultimos 10 digitos con un movil mexicano y no debe heredar su ventana de 24 h
+ * (Meta rechazaria el mensaje libre).
  */
 export function variantesTelefonoEntrante(phone: string): readonly string[] {
   const digitos = phone.replace(/\D/gu, "");
   const ultimos10 = digitos.slice(-10);
   const variantes = [phone.trim(), digitos, `+${digitos}`];
-  if (ultimos10.length === 10) variantes.push(`+52${ultimos10}`, `+521${ultimos10}`, `52${ultimos10}`, `521${ultimos10}`, ultimos10);
+  const esMexicano = normalizePhone(phone).replace(/\D/gu, "").length <= 10;
+  if (esMexicano && ultimos10.length === 10) variantes.push(`+52${ultimos10}`, `+521${ultimos10}`, `52${ultimos10}`, `521${ultimos10}`, ultimos10);
   return [...new Set(variantes.filter((v) => v.length > 0))];
 }
 
