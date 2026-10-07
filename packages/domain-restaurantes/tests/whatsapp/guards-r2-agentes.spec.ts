@@ -55,4 +55,23 @@ describe("cancelacion: preguntas vs pedidos", () => {
     expect(negacionDeCancelacion("No cancelen mi pedido")).toBe(true);
     expect(negacionDeCancelacion("ya llegó, no hace falta cancelar")).toBe(true);
   });
+  it.each([
+    "Si no llega a las 3:30, cancelo el pedido",
+    "Si no está aquí a las 9:15, cancelo el pedido",
+    "Como no llegue en 10 minutos, cancelo el pedido",
+    "De no llegar en 10 min, cancelo el pedido",
+    "De no llegar a las 3:30, cancelo el pedido",
+    "Si no llega en 10 min; cancelo el pedido",
+    "Si no llega en 10 min, cancelo el pedido",
+    "Si en 10 minutos no llega, cancelen mi pedido",
+    "Ya no lo quiero cancelar",
+  ])("negacion (amenaza condicional): %s", (t) => {
+    expect(negacionDeCancelacion(t)).toBe(true);
+  });
+  it.each(["Quiero cancelar mi pedido", "Cancela por favor, ya no lo quiero", "Si no es molestia, cancela mi pedido", "Cancelen mi pedido, es para las 3:30", "Como ya no lo quiero, cancelen el pedido"])(
+    "no es negacion: %s",
+    (t) => {
+      expect(negacionDeCancelacion(t)).toBe(false);
+    },
+  );
 });

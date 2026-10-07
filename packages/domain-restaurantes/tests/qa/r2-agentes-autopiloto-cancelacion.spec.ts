@@ -94,6 +94,14 @@ describe("R2 autopiloto: preguntas que mencionan 'cancelar' + 'pedido' NO cancel
     expect(r.reply).toBe("Listo, su pedido quedó cancelado.");
   });
 
+  it("control: ordenes reales de cancelar (aun con cortesias, motivos u horas) siguen cancelando", async () => {
+    for (const texto of ["Quiero cancelar mi pedido", "Cancela el pedido por favor, ya no lo quiero", "Ya no lo quiero, cancelen el pedido", "Si no es molestia, cancela mi pedido", "Cancelen mi pedido, es para las 3:30"]) {
+      const t = await montar("pending", { cancelacionAuto: true });
+      await t.turno(texto);
+      expect(t.mem.status, texto).toBe("cancelado");
+    }
+  });
+
   it("control: negacion cerca del verbo ('no cancelen mi pedido', 'si no llega en 10 min, cancelo el pedido') no cancela", async () => {
     for (const texto of [
       "No cancelen mi pedido, ya voy por él",
@@ -101,6 +109,13 @@ describe("R2 autopiloto: preguntas que mencionan 'cancelar' + 'pedido' NO cancel
       "Si no llega en 10 min, cancelo el pedido",
       "Si en 10 minutos no llega, cancelo el pedido",
       "Si no sale ya, cancelen mi pedido",
+      // Revision del PR #482: horas con ':' y otros disparadores condicionales ("como", "de no") tambien son amenazas.
+      "Si no llega a las 3:30, cancelo el pedido",
+      "Si no está aquí a las 9:15, cancelo el pedido",
+      "Como no llegue en 10 minutos, cancelo el pedido",
+      "De no llegar en 10 min, cancelo el pedido",
+      "De no llegar a las 3:30, cancelo el pedido",
+      "Si no llega en 10 min; cancelo el pedido",
     ]) {
       const t = await montar("pending", { cancelacionAuto: true });
       await t.turno(texto);

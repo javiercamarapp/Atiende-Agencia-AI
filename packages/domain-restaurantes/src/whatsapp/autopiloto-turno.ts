@@ -49,10 +49,15 @@ export function crearHooksAutopilotoTurnoPostgres(deps: Omit<AutopilotoServicioD
  */
 export function negacionDeCancelacion(texto: string): boolean {
   // "Ya no lo quiero, cancelen el pedido" es la forma mas comun de CANCELAR: el "no" niega el deseo del platillo, no el verbo. Se quita esa frase antes de
-  // buscar la negacion, y la negacion nunca cruza una coma ("no, cancelen el pedido" es una confirmacion).
-  const t = normalizarParaClasificar(texto).replace(/\bya\s+no\s+(?:lo|la|los|las)\s+(?:quiero|necesito|voy\s+a\s+querer)\b/g, " ");
-  // Condicional con coma ("si no llega en 10 min, cancelo el pedido", "si en 10 minutos no llega, cancelen mi pedido"): es una amenaza, no una orden.
-  return /\bsi\b[^.!?\n]{0,40}\bno\b[^.!?\n,;:]{0,30},[^.!?\n,;:]{0,15}\bcancel\w*|\b(?:no|nunca|ni|tampoco)\b[^.!?\n,;:]{0,25}\bcancel\w*|\bcancel\w*[^.!?\n,;:]{0,15}\b(?:no|nunca)\b|\bsin\s+cancelar\b|\bya\s+no\b[^.!?\n,;:]{0,20}\bcancel\w*/.test(t);
+  // buscar la negacion (salvo "ya no lo quiero cancelar", que SI niega), y la negacion nunca cruza una coma ("no, cancelen el pedido" es una confirmacion).
+  // Cortesias ("si no es molestia, cancela mi pedido") tampoco son condicion. Las horas ("3:30") se colapsan para que ':' no corte el tramo condicional.
+  const t = normalizarParaClasificar(texto)
+    .replace(/(\d):(\d)/g, "$1$2")
+    .replace(/\b(?:ya\s+)?no\s+(?:lo|la|los|las)\s+(?:quiero|necesito|voy\s+a\s+querer)\b(?!\s+cancelar\b)/g, " ")
+    .replace(/\bsi\s+no\s+(?:es\s+(?:mucha\s+)?molestia|(?:le|les|te)\s+(?:molesta|importa)|hay\s+(?:mayor\s+)?(?:problema|inconveniente)|es\s+(?:mucho\s+)?(?:problema|pedir))\b/g, " ");
+  // Condicional con coma o punto y coma ("si no llega en 10 min, cancelo el pedido", "como no llegue en 10 minutos, cancelo", "de no llegar a las 3:30, cancelo",
+  // "si en 10 minutos no llega, cancelen mi pedido"): es una amenaza, no una orden.
+  return /\b(?:si|como)\b[^.!?\n]{0,40}\bno\b[^.!?\n,;:]{0,30}[,;][^.!?\n,;:]{0,15}\bcancel\w*|\bde\s+no\b[^.!?\n,;:]{0,30}[,;][^.!?\n,;:]{0,15}\bcancel\w*|\b(?:no|nunca|ni|tampoco)\b[^.!?\n,;:]{0,25}\bcancel\w*|\bcancel\w*[^.!?\n,;:]{0,15}\b(?:no|nunca)\b|\bsin\s+cancelar\b|\bya\s+no\b[^.!?\n,;:]{0,20}\bcancel\w*/.test(t);
 }
 
 /**
