@@ -266,3 +266,122 @@ export async function importarPayout(fetchImpl: typeof fetch, apiBaseUrl: string
 export async function fetchPayoutDetalle(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, payoutId: string): Promise<PayoutDetalle> {
   return fetchJson<PayoutDetalle>(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/payouts/${payoutId}`, token);
 }
+
+// ---------------------------------------------------------------------------
+// Rn-P3-06/07 -- importar el reporte de pagos de la OTA (CSV), cola de pendientes, reservas sin movimiento y movimientos en revision.
+// Endpoints de apps/api/.../rentas/finanzas-importacion.ts. Los tipos se redeclaran aqui (apps/web no depende de domain-*).
+// ---------------------------------------------------------------------------
+
+/** Canales con reporte de pagos: solo Airbnb tiene parser; el resto responde "formato no soportado todavia" (422). */
+export const CANALES_REPORTE_CSV: readonly { codigo: string; nombre: string; soportado: boolean }[] = [
+  { codigo: "airbnb", nombre: "Airbnb", soportado: true },
+  { codigo: "booking", nombre: "Booking.com", soportado: false },
+  { codigo: "vrbo", nombre: "Vrbo", soportado: false },
+];
+
+/** Tope del archivo (espejo de LIMITES_REPORTE.maxBytes del dominio). */
+export const MAX_BYTES_REPORTE_CSV = 2 * 1024 * 1024;
+
+export type ResultadoLineaImportacion = "creada" | "conciliada" | "discrepancia" | "pendiente" | "ya_importada";
+
+export interface LineaResultadoImportacion {
+  readonly fila: number;
+  readonly tipoLinea: "reserva" | "ajuste";
+  readonly codigoConfirmacion: string | null;
+  readonly moneda: string;
+  readonly montoNetoCentavos: number;
+  readonly resultado: ResultadoLineaImportacion;
+  readonly nota: string | null;
+  readonly ocupacionId: string | null;
+}
+
+export interface ResumenImportacion {
+  readonly totalLineas: number;
+  readonly creadas: number;
+  readonly conciliadas: number;
+  readonly discrepancias: number;
+  readonly pendientes: number;
+  readonly yaImportadas: number;
+  readonly ignoradas: number;
+  readonly errores: number;
+}
+
+export interface ResultadoImportacionPagos {
+  readonly aplicado: boolean;
+  readonly importacionId: string | null;
+  readonly resumen: ResumenImportacion;
+  readonly lineas: readonly LineaResultadoImportacion[];
+  readonly errores: readonly { readonly fila: number; readonly motivo: string }[];
+}
+
+export interface ImportarPagosInput {
+  readonly canalCodigo: string;
+  readonly contenidoCsv: string;
+  readonly aplicar: boolean;
+  readonly comisionGestorBasisPoints: number;
+  readonly comisionGestorBase: BaseComisionGestor;
+}
+
+/** `aplicar:false` = vista previa (no escribe); `aplicar:true` = confirma. */
+export async function importarReportePagos(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: ImportarPagosInput): Promise<ResultadoImportacionPagos> {
+  return sendJson(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/payouts/importar-csv`, token, "POST", input);
+}
+
+export interface LineaColaImportacion {
+  readonly id: string;
+  readonly canalCodigo: string;
+  readonly codigoConfirmacion: string | null;
+  readonly tipoLinea: "reserva" | "ajuste";
+  readonly moneda: string;
+  readonly montoNetoCentavos: number;
+  readonly resultado: "pendiente" | "discrepancia";
+  readonly nota: string | null;
+  readonly creadaEn: string;
+}
+
+export type ListadoDisponible<T> = { readonly disponible: true; readonly items: readonly T[] } | { readonly disponible: false; readonly motivo: string; readonly items: readonly never[] };
+
+export async function fetchColaImportacion(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<ListadoDisponible<LineaColaImportacion>> {
+  return fetchJson(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/finanzas/cola-importacion`, token);
+}
+
+export interface ReservaSinMovimiento {
+  readonly ocupacionId: string;
+  readonly unidadId: string;
+  readonly inicio: string;
+  readonly fin: string;
+  readonly canalCodigo: string | null;
+}
+
+export interface SinMovimientoPeriodo {
+  readonly periodo: string;
+  readonly total: number;
+  readonly items: readonly ReservaSinMovimiento[];
+}
+
+export async function fetchSinMovimiento(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodo: string): Promise<SinMovimientoPeriodo> {
+  return fetchJson(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/finanzas/sin-movimiento?periodo=${encodeURIComponent(periodo)}`, token);
+}
+
+export type MotivoRevisionMovimiento = "reserva_modificada" | "reserva_cancelada" | "comision_gestor_pendiente" | "discrepancia_importacion";
+
+export interface MovimientoEnRevision {
+  readonly ocupacionId: string;
+  readonly motivo: MotivoRevisionMovimiento;
+  readonly moneda: string;
+  readonly netoCentavos: number;
+  readonly origen: "manual" | "directa_automatica" | "importacion_csv";
+}
+
+export async function fetchMovimientosEnRevision(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<ListadoDisponible<MovimientoEnRevision>> {
+  return fetchJson(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/finanzas/movimientos-en-revision`, token);
+}
+
+export async function marcarMovimientoRevisado(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, ocupacionId: string): Promise<{ ocupacionId: string; requiereRevision: false }> {
+  return sendJson(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/reservas/${ocupacionId}/movimiento/revisado`, token, "POST", {});
+}
+
+/** `YYYY-MM` del mes en curso en la zona del navegador del usuario. */
+export function periodoActual(ahora: Date = new Date()): string {
+  return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`;
+}

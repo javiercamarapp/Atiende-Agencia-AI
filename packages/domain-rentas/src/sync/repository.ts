@@ -61,6 +61,10 @@ export interface RentasCalendarSyncRepository {
    * perdido tras un crash entre el COMMIT de `crearReservaConfirmada` y el de
    * `upsertEventoImportado` (no son atómicos entre sí, ver ./motor.ts). */
   buscarOcupacionActivaParaRecuperarBookkeeping(unidadId: string, canalId: string, externalId: string, rango: RangoFechas): Promise<string | null>;
+  /** Rn-P3-05 -- guarda en la ocupacion el codigo de confirmacion del canal y los ultimos 4 digitos del telefono que trae el feed.
+   *  Solo escribe valores no nulos y solo si cambian (no pisa un dato con null). Degrada sin lanzar contra una base sin la migracion
+   *  035 (SAVEPOINT + 42703): el dato simplemente no se guarda todavia. Devuelve `true` si guardo algo. */
+  guardarDatosCanalOcupacion(ocupacionId: string, datos: { readonly codigoConfirmacion: string | null; readonly telefonoUltimos4: string | null }): Promise<boolean>;
   /** Nº de ocupaciones activas bloqueantes de capa='reserva' creadas por ESTE canal —
    * señal de "¿esta unidad tenía eventos activos DE ESTE CANAL?" para la heurística de
    * "vacío inesperado" de cuarentena.ts. */

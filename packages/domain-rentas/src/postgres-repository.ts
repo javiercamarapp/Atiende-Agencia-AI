@@ -24,7 +24,19 @@ import type {
   IncidenciaMantenimientoRecord,
   ItemInventarioRecord,
   MessagingOutboxChannel,
+  MotivoRevisionMovimiento,
   MovimientoFinancieroReserva,
+  ActualizarLineaImportadaInput,
+  CandidataImportacion,
+  LineaColaImportacion,
+  LineaImportadaExistente,
+  MovimientoEnRevision,
+  NewImportacionPagosInput,
+  NewLineaImportadaInput,
+  OrganizacionConReservasSinMovimiento,
+  OrigenMovimiento,
+  ReservaSinMovimiento,
+  ResultadoLineaImportacion,
   NewDescuentoDuracionInput,
   NewGuestMinimoInput,
   NewOwnerStatementInput,
@@ -581,13 +593,23 @@ export class PostgresRentasRepository implements RentasRepository {
   }
 
   async insertReservaFinanciero(input: NewReservaFinancieroInput): Promise<{ id: string; createdAt: string }> {
+    // Las columnas de la migracion 035 (origen, requiere_revision, motivo_revision) SOLO se incluyen cuando el llamador las pide: el
+    // alta manual de siempre sigue funcionando contra la base sin migrar.
+    const extras: Array<[string, unknown]> = [];
+    if (input.origen !== undefined && input.origen !== "manual") extras.push(["origen", input.origen]);
+    if (input.requiereRevision) {
+      extras.push(["requiere_revision", true]);
+      extras.push(["motivo_revision", input.motivoRevision ?? null]);
+    }
+    const columnasExtra = extras.map(([c]) => `, ${c}`).join("");
+    const placeholdersExtra = extras.map((_e, i) => `, $${18 + i}`).join("");
     const { rows } = await this.db.query<{ id: string; created_at: string }>(
       `insert into rentas.reserva_financiero
          (organization_id, property_id, ocupacion_id, moneda, monto_bruto_centavos, ya_neto_de_comision,
           comision_canal_basis_points, comision_canal_fuente, comision_canal_centavos,
           comision_gestor_basis_points, comision_gestor_base, comision_gestor_centavos,
-          monto_recibido_centavos, gastos_centavos, impuestos_centavos, neto_centavos, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          monto_recibido_centavos, gastos_centavos, impuestos_centavos, neto_centavos, created_by${columnasExtra})
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17${placeholdersExtra})
        returning id, created_at::text as created_at;`,
       [
         input.organizationId,
@@ -607,6 +629,7 @@ export class PostgresRentasRepository implements RentasRepository {
         input.impuestosCentavos,
         input.netoCentavos,
         input.createdBy,
+        ...extras.map(([, v]) => v),
       ],
     );
     const reservaFinancieroId = rows[0]!.id;
@@ -1009,6 +1032,107 @@ export class PostgresRentasRepository implements RentasRepository {
       lineas,
       motivoVersion: s.motivo_version,
     };
+  }
+
+  // ---- Importacion del reporte de pagos y aviso de sin movimiento (Rn-P3-06/07; migracion 035) ----
+
+  async bloquearImportacionPagos(propertyId: string, canalId: string): Promise<void> {
+    await this.db.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`importacion_pagos:${propertyId}:${canalId}`]);
+  }
+
+  async findCandidatasImportacion(propertyId: string, canalId: string, codigos: readonly string[]): Promise<readonly CandidataImportacion[]> {
+    const { rows } = await this.db.query<{ ocupacion_id: string; codigo: string; estado: string; moneda: string | null; tiene: boolean; recibido: string | null }>(
+      `select o.id as ocupacion_id, o.codigo_confirmacion as codigo, o.estado, rf.moneda::text as moneda,
+              (rf.id is not null) as tiene, rf.monto_recibido_centavos::text as recibido
+         from rentas.ocupacion o
+         left join rentas.reserva_financiero rf on rf.ocupacion_id = o.id
+        where o.property_id = $1 and o.canal_origen_id = $2 and o.capa = 'reserva' and o.codigo_confirmacion = any($3::text[]);`,
+      [propertyId, canalId, [...codigos]],
+    );
+    return rows.map((r) => ({ ocupacionId: r.ocupacion_id, codigoConfirmacion: r.codigo, estado: r.estado, moneda: r.moneda, tieneMovimiento: r.tiene, montoRecibidoCentavos: r.recibido === null ? null : Number(r.recibido) }));
+  }
+
+  async findLineasImportadas(propertyId: string, canalId: string, huellas: readonly string[]): Promise<readonly LineaImportadaExistente[]> {
+    const { rows } = await this.db.query<{ id: string; huella: string; resultado: ResultadoLineaImportacion; nota: string | null }>(
+      `select id, huella, resultado, nota from rentas.importacion_pagos_linea where property_id = $1 and canal_id = $2 and huella = any($3::text[]);`,
+      [propertyId, canalId, [...huellas]],
+    );
+    return rows.map((r) => ({ id: r.id, huella: r.huella, resultado: r.resultado, nota: r.nota }));
+  }
+
+  async insertImportacionPagos(input: NewImportacionPagosInput): Promise<{ id: string; creadoEn: string }> {
+    const { rows } = await this.db.query<{ id: string; creado_en: string }>(
+      `insert into rentas.importacion_pagos
+         (organization_id, property_id, canal_id, archivo_sha256, lineas_total, creadas, conciliadas, discrepancias, pendientes, ya_importadas, ignoradas, creado_por)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning id, creado_en::text as creado_en;`,
+      [input.organizationId, input.propertyId, input.canalId, input.archivoSha256, input.lineasTotal, input.creadas, input.conciliadas, input.discrepancias, input.pendientes, input.yaImportadas, input.ignoradas, input.createdBy],
+    );
+    return { id: rows[0]!.id, creadoEn: rows[0]!.creado_en };
+  }
+
+  async insertLineaImportada(input: NewLineaImportadaInput): Promise<void> {
+    await this.db.query(
+      `insert into rentas.importacion_pagos_linea
+         (importacion_id, organization_id, property_id, canal_id, huella, codigo_confirmacion, tipo_linea, fecha, moneda,
+          monto_neto_centavos, monto_bruto_centavos, comision_canal_centavos, ocupacion_id, resultado, nota)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15);`,
+      [input.importacionId, input.organizationId, input.propertyId, input.canalId, input.huella, input.codigoConfirmacion, input.tipoLinea, input.fecha, input.moneda, input.montoNetoCentavos, input.montoBrutoCentavos, input.comisionCanalCentavos, input.ocupacionId, input.resultado, input.nota],
+    );
+  }
+
+  async actualizarLineaImportada(input: ActualizarLineaImportadaInput): Promise<void> {
+    await this.db.query(`update rentas.importacion_pagos_linea set ocupacion_id = $2, resultado = $3, nota = $4, actualizado_en = now() where id = $1;`, [input.id, input.ocupacionId, input.resultado, input.nota]);
+  }
+
+  async listColaImportacion(propertyId: string, limit: number): Promise<readonly LineaColaImportacion[]> {
+    const { rows } = await this.db.query<{ id: string; canal: string; codigo: string | null; tipo: "reserva" | "ajuste"; fecha: string | null; moneda: string; neto: string; resultado: "pendiente" | "discrepancia"; nota: string | null; ocupacion_id: string | null; creada: string }>(
+      `select l.id, c.codigo as canal, l.codigo_confirmacion as codigo, l.tipo_linea as tipo, l.fecha::text as fecha, l.moneda::text as moneda,
+              l.monto_neto_centavos::text as neto, l.resultado, l.nota, l.ocupacion_id, l.creado_en::text as creada
+         from rentas.importacion_pagos_linea l join rentas.canal c on c.id = l.canal_id
+        where l.property_id = $1 and l.resultado in ('pendiente', 'discrepancia')
+        order by l.creado_en desc, l.id limit $2;`,
+      [propertyId, limit],
+    );
+    return rows.map((r) => ({ id: r.id, canalCodigo: r.canal, codigoConfirmacion: r.codigo, tipoLinea: r.tipo, fecha: r.fecha, moneda: r.moneda, montoNetoCentavos: Number(r.neto), resultado: r.resultado, nota: r.nota, ocupacionId: r.ocupacion_id, creadaEn: r.creada }));
+  }
+
+  async listReservasSinMovimiento(propertyId: string, desde: string, hasta: string, limit: number): Promise<{ readonly total: number; readonly items: readonly ReservaSinMovimiento[] }> {
+    const filtro = `from rentas.ocupacion o
+        left join rentas.canal c on c.id = o.canal_origen_id
+        where o.property_id = $1 and o.capa = 'reserva' and o.estado = 'confirmado'
+          and lower(o.rango) >= $2::date and lower(o.rango) < $3::date
+          and not exists (select 1 from rentas.reserva_financiero rf where rf.ocupacion_id = o.id)`;
+    const total = await this.db.query<{ n: string }>(`select count(*)::text as n ${filtro};`, [propertyId, desde, hasta]);
+    const { rows } = await this.db.query<{ id: string; unidad_id: string; inicio: string; fin: string; canal: string | null }>(
+      `select o.id, o.unidad_id, lower(o.rango)::text as inicio, upper(o.rango)::text as fin, c.codigo as canal ${filtro} order by lower(o.rango), o.id limit $4;`,
+      [propertyId, desde, hasta, limit],
+    );
+    return { total: Number(total.rows[0]?.n ?? 0), items: rows.map((r) => ({ ocupacionId: r.id, unidadId: r.unidad_id, inicio: r.inicio, fin: r.fin, canalCodigo: r.canal })) };
+  }
+
+  async listMovimientosEnRevision(propertyId: string, limit: number): Promise<readonly MovimientoEnRevision[]> {
+    const { rows } = await this.db.query<{ ocupacion_id: string; motivo: MotivoRevisionMovimiento; moneda: string; neto: string; origen: OrigenMovimiento }>(
+      `select ocupacion_id, motivo_revision as motivo, moneda::text as moneda, neto_centavos::text as neto, origen
+         from rentas.reserva_financiero where property_id = $1 and requiere_revision and motivo_revision is not null
+        order by updated_at desc, id limit $2;`,
+      [propertyId, limit],
+    );
+    return rows.map((r) => ({ ocupacionId: r.ocupacion_id, motivo: r.motivo, moneda: r.moneda, netoCentavos: Number(r.neto), origen: r.origen }));
+  }
+
+  async marcarMovimientoRevisado(propertyId: string, ocupacionId: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `update rentas.reserva_financiero set requiere_revision = false, motivo_revision = null, updated_at = now()
+        where property_id = $1 and ocupacion_id = $2 and requiere_revision returning id;`,
+      [propertyId, ocupacionId],
+    );
+    return rows.length > 0;
+  }
+
+  async listOrganizacionesConReservasSinMovimiento(desde: string, hasta: string): Promise<readonly OrganizacionConReservasSinMovimiento[]> {
+    // Funcion de sistema (migracion 035): las policies de reserva_financiero dependen de auth.uid(), que en la sesion de sistema es NULL.
+    const { rows } = await this.db.query<{ organization_id: string; cantidad: number }>(`select organization_id, cantidad from rentas.system_reservas_sin_movimiento($1::date, $2::date);`, [desde, hasta]);
+    return rows.map((r) => ({ organizationId: r.organization_id, cantidad: Number(r.cantidad) }));
   }
 
   // ---- Payout / conciliación (flujo 6, Fase 2, alcance recortado) ----
