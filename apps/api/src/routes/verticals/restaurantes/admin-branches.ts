@@ -49,11 +49,13 @@ function optionalNullableString(value: unknown, field: string, maxLength: number
   return value;
 }
 
-function optionalNullableCoordinate(value: unknown, field: string): number | null | undefined {
+function optionalNullableCoordinate(value: unknown, field: "lat" | "lng"): number | null | undefined {
   if (value === undefined) return undefined;
   if (value === null) return null;
-  if (typeof value !== "number" || !Number.isFinite(value) || value < -180 || value > 180) {
-    throw Errors.validation(`${field}: se esperaba una coordenada numérica válida o null.`);
+  // Latitud en [-90, 90] y longitud en [-180, 180]: antes la latitud aceptaba hasta 180, un punto que no existe.
+  const limite = field === "lat" ? 90 : 180;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < -limite || value > limite) {
+    throw Errors.validation(`${field}: se esperaba una coordenada numérica entre -${limite} y ${limite}, o null.`);
   }
   return value;
 }
@@ -124,6 +126,10 @@ export function restaurantesAdminBranchesRoutes(deps: AppDeps): Hono<CoreAuthHon
       slug: optionalSlug(raw.slug),
       displayOrder: optionalDisplayOrder(raw.displayOrder),
     };
+    // Si el cuerpo trae los dos ejes, van juntos o ninguno: un solo eje no ubica nada y la asignación por distancia lo descartaría.
+    if (patch.lat !== undefined && patch.lng !== undefined && (patch.lat === null) !== (patch.lng === null)) {
+      throw Errors.validation("lat/lng: mándalas las dos con valor o las dos en null.");
+    }
     const antes = await repo.findBranchById(organizationId, branchId);
     const updated = await repo.updateBranchDetail(organizationId, branchId, patch);
     if (!updated) throw Errors.notFound("Sucursal no encontrada.");

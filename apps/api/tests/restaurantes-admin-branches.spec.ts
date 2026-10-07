@@ -69,6 +69,48 @@ describe("GET/PATCH /v1/restaurantes/:propertyId/admin/sucursales/:branchId", ()
     expect(res.status).toBe(400);
   });
 
+  it("owner guarda lat/lng y se leen de vuelta; se puede volver a null", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const url = `/v1/restaurantes/${ctx.propertyIdA}/admin/sucursales/${ctx.propertyIdA}`;
+    const res = await app.request(url, authedJson(ctx.staff.owner.token, { lat: 21.028, lng: -89.61 }, "PATCH"));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { branch: { lat: number; lng: number } }).branch).toMatchObject({ lat: 21.028, lng: -89.61 });
+    const reread = await app.request(url, authedGet(ctx.staff.owner.token));
+    expect(((await reread.json()) as { branch: { lat: number; lng: number } }).branch).toMatchObject({ lat: 21.028, lng: -89.61 });
+    const borrar = await app.request(url, authedJson(ctx.staff.owner.token, { lat: null, lng: null }, "PATCH"));
+    expect(borrar.status).toBe(200);
+    expect(((await borrar.json()) as { branch: { lat: null; lng: null } }).branch).toMatchObject({ lat: null, lng: null });
+  });
+
+  it("latitud entre 90 y 180 (no existe) -> 400; longitud -181 -> 400; texto -> 400", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const url = `/v1/restaurantes/${ctx.propertyIdA}/admin/sucursales/${ctx.propertyIdA}`;
+    for (const body of [{ lat: 91 }, { lat: -90.5 }, { lng: -181 }, { lng: 181 }, { lat: "21.03" }]) {
+      const res = await app.request(url, authedJson(ctx.staff.owner.token, body, "PATCH"));
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it("un solo eje en null y el otro con valor en el mismo cuerpo -> 400", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/sucursales/${ctx.propertyIdA}`, authedJson(ctx.staff.owner.token, { lat: 21.03, lng: null }, "PATCH"));
+    expect(res.status).toBe(400);
+  });
+
+  it("repartidor y staff sin permiso de edición NO pueden poner coordenadas; la sucursal no cambia", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const url = `/v1/restaurantes/${ctx.propertyIdA}/admin/sucursales/${ctx.propertyIdA}`;
+    const antes = (await (await app.request(url, authedGet(ctx.staff.owner.token))).json()) as { branch: { lat: number | null } };
+    const res = await app.request(url, authedJson(ctx.staff.repartidor.token, { lat: 21.03, lng: -89.6 }, "PATCH"));
+    expect(res.status).toBe(403);
+    const despues = (await (await app.request(url, authedGet(ctx.staff.owner.token))).json()) as { branch: { lat: number | null } };
+    expect(despues.branch.lat).toBe(antes.branch.lat);
+  });
+
   it("slug inválido -> 400", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const app = buildApp(ctx.deps);
