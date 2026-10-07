@@ -139,7 +139,7 @@ export class InMemoryRentasPrecheckinRepository implements RentasPrecheckinRepos
     return { disponible: true, valor: this.configs.get(propertyId) ?? { propertyId, reglamento: null, reglamentoVersion: 1 } };
   }
 
-  async guardarReglamento(_org: string, propertyId: string, reglamento: string | null): Promise<ResultadoPrecheckin<ConfigPrecheckin>> {
+  async guardarReglamento(_org: string, propertyId: string, reglamento: string | null, _actorId: string): Promise<ResultadoPrecheckin<ConfigPrecheckin>> {
     if (!this.migracion036Disponible) return { disponible: false };
     const previa = this.configs.get(propertyId);
     const version = previa ? (previa.reglamento !== reglamento ? previa.reglamentoVersion + 1 : previa.reglamentoVersion) : 1;
