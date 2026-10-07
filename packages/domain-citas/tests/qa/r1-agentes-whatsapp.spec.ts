@@ -326,7 +326,7 @@ describe("QA R1 citas · WhatsApp · DEFECTOS confirmados", () => {
   });
 
   // QA-citas-R1-agentes-12 (P3): falso positivo ARCO: pedir el aviso de privacidad registra una solicitud de ACCESO (folio) en vez de mandarlo.
-  it.fails("12 'me pasan su aviso de privacidad?' / 'quiero ver el aviso de privacidad' no son solicitudes ARCO", () => {
+  it("12 'me pasan su aviso de privacidad?' / 'quiero ver el aviso de privacidad' no son solicitudes ARCO", () => {
     expect(detectArcoIntent("me pasan su aviso de privacidad?")).toBeNull();
     expect(detectArcoIntent("quiero ver el aviso de privacidad")).toBeNull();
   });

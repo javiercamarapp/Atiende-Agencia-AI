@@ -200,7 +200,7 @@ describe("viaje WhatsApp: paciente nuevo agenda, consulta, reagenda y cancela", 
     expect((await findAppointmentsForCustomerPhone(mundo.repo, mundo.organizationId, TEL_PACIENTE, new Date(0))).appointments).toHaveLength(0);
   });
 
-  it.fails("QA-citas-R1-viaje-06: 'ya tienen mis datos, quiero cancelar mi cita' cancela la CITA, no abre una solicitud ARCO de borrado de datos", async () => {
+  it("QA-citas-R1-viaje-06: 'ya tienen mis datos, quiero cancelar mi cita' cancela la CITA, no abre una solicitud ARCO de borrado de datos", async () => {
     const mundo = clinicaDental();
     const martes = proximoDia(2, 2);
     const cita = await createAppointment(mundo.repo, { organizationId: mundo.organizationId, providerId: mundo.drPaola, serviceId: mundo.limpieza, customerName: "Ana Pech", customerPhone: TEL_PACIENTE, startsAt: zonedTimeToUtc(martes, "10:00", ZONA).toISOString(), source: "whatsapp" });
