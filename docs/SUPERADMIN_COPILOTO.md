@@ -28,6 +28,8 @@ Operativas (superadmin completo): `organizaciones`, `costos_ia` (por organizaci�
 del Copiloto), `uso_por_vertical` (consola SA-L-05/06), `agentes_interruptores`, `ultimas_corridas` (latidos de crons), `errores` (crons, colas muertas, fuentes de
 licitaciones, denegaciones), `salud_colas`, `planes_y_topes`, `eventos_seguridad`, `prospectos` (sin contacto: ni nombre, ni teléfono, ni correo, ni notas) y `uso_copiloto`.
 
+Por organización (migración 0056, solo superadmin completo; ver «Todo de todos los negocios» más abajo): `operaciones_organizacion`, `agentes_organizacion` y `ranking_actividad`.
+
 Financieras, Copiloto CFO (SA-33): `mrr`, `margen_costos_unitarios`, `pyl`, `contratos_por_vencer` y `facturacion_cobranza` (estado de cobro por organización: activa, pago pendiente, cancelada o sin suscripción, con asientos y fin del periodo; sin correos ni ids de Stripe).
 
 * Las ve el superadmin y el rol `finanzas` (solo lectura). `finanzas` **solo** ve estas cinco y su catálogo no contiene ninguna operativa.
@@ -47,6 +49,23 @@ acumulador en memoria de la instancia (cubre la base sin migrar). Al llegar al 8
 
 Usa un gateway **dedicado** (`buildSuperadminCopilotoLlmGateway`): su propio circuit breaker, topes de corrida y día en memoria, interruptor de plataforma y la escalera del rol
 `superadmin:copiloto` (Claude Sonnet 5.5, respaldo DeepSeek V4 Pro). El rol ya es apagable (`SWITCHABLE_AGENT_ROLES`) y aparece en el panel de agentes (semilla de la migración).
+
+## Todo de todos los negocios (migración 0056)
+
+Orden de Javier (4-oct): preguntarle al Copiloto «todo de todos los negocios». Tres herramientas leen la **operación de cada organización**, siempre como **agregados** (conteos y sumas; ninguna columna es un dato personal de un cliente final):
+
+| Herramienta | Qué responde |
+| --- | --- |
+| `operaciones_organizacion` | Una organización (por nombre o parte del nombre; si es ambiguo o no existe pide aclarar, nunca adivina): pedidos y ventas (restaurantes), reservas e importe (hoteles), reservas de canal (rentas), citas, CFDI y vencimientos fiscales abiertos y vencidos (despachos) o convocatorias (licitaciones), más escalaciones a una persona (solo restaurantes las guardan) y lo abierto ahora. |
+| `ranking_actividad` | TODAS las organizaciones ordenadas por operaciones, ingresos, escalaciones o abiertos, con las que no tuvieron actividad en 0. El resumen separa «N organizaciones, M con actividad»; las organizaciones cuya vertical no guarda la métrica (p. ej. ingresos de citas) se cuentan aparte, **no** como 0. |
+| `agentes_organizacion` | Qué agentes de IA usó una organización (llamadas, fallbacks, costo en USD) y sus escalaciones. |
+
+* Fuente: `core.get_operaciones_por_organizacion_for_superadmin` (security definer, `auth.uid() = p_caller_id`, superadmin completo; `finanzas`, miembros de una organización, `anon` y la sesión de sistema reciben cero filas). Cada vertical se lee con `EXCEPTION WHEN undefined_table/undefined_column`: si su migración no está aplicada, sus organizaciones salen con `razon = fuente_no_migrada` y la herramienta lo dice.
+* **Bitácora por organización** (`core.superadmin_org_access_log`, append-only, sin GRANT directo): antes de leer, una fila por organización consultada con quién, qué organización (id resuelto), qué herramienta y cuándo (`core.log_superadmin_org_access`, transacción propia). Si no se puede escribir, la consulta no se ejecuta. `core.list_superadmin_org_access_for_superadmin` la lee (superadmin completo).
+* **Datos personales**: el resultado nunca incluye nombres, teléfonos, direcciones ni correos de clientes finales; la persona suprimida u anonimizada (ARCO) sigue contando como una operación sin identidad. El rol `finanzas` no recibe estas herramientas.
+* Por qué no break-glass/impersonación: esas rutas abren una ventana con la identidad de un miembro y devuelven filas de negocio completas (con datos de clientes finales) para soporte puntual; el Copiloto necesita lo opuesto (rankings en bloque y sin datos personales), así que una función de agregados con bitácora propia es más estrecha.
+* Base sin migrar: si falta la 0056, las tres herramientas responden «No tengo el dato: falta aplicar una actualización de la base de datos», sin 500 ni cifras inventadas.
+* Verificación contra Postgres real: `scripts/verify-copiloto-multi-negocio/`.
 
 ## Datos
 
