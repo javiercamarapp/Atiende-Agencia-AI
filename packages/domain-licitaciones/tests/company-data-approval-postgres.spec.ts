@@ -54,6 +54,7 @@ describe("updateApprovedRate contra la base sin migrar (DB-03 en la misma senten
     const session = new AbortAwareFakeSession([
       { match: /proposed_by, approved_by/, respond: missingColumn },
       { match: /case when \(unit_price is distinct from/, respond: () => [{ ...rateLegacy, approval_status: "pendiente_aprobacion" }] },
+      { match: /record_field_provenance/, respond: () => [{ record_field_provenance: 2 }] },
     ]);
     const rate = await new PostgresLicitacionesRepository(session).updateApprovedRate(ORG, ITEM, { unitPrice: "20.00" });
     expect(rate.approvalStatus).toBe("pendiente_aprobacion");

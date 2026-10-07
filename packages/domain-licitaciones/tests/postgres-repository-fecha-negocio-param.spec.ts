@@ -66,12 +66,13 @@ describe("PostgresLicitacionesRepository.createApprovedRate -- el parámetro rea
           { id: "rate-1", concept: "consultoria_hora", unit_price: "500.00", approval_status: "pendiente_aprobacion", valid_from: "2026-01-01", valid_until: null },
         ],
       },
+      { rows: [] }, // record_field_provenance (REQ-142), misma sesion que el insert
     ]);
     const repo = new PostgresLicitacionesRepository(session);
 
     await repo.createApprovedRate("org-1", { concept: "consultoria_hora", unitPrice: "500.00" });
 
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(4);
     const insertCall = calls[2]!;
     expect(insertCall.sql.toLowerCase()).toContain("insert into licitaciones.approved_rate");
     // Orden real de params en el insert: [organizationId, concept, unitPrice,
@@ -100,6 +101,7 @@ describe("PostgresLicitacionesRepository.createApprovedRate -- el parámetro rea
           { id: "rate-2", concept: "supervision_obra", unit_price: "1200.00", approval_status: "pendiente_aprobacion", valid_from: "2030-06-15", valid_until: null },
         ],
       },
+      { rows: [] }, // record_field_provenance (REQ-142)
     ]);
     const repo = new PostgresLicitacionesRepository(session);
 

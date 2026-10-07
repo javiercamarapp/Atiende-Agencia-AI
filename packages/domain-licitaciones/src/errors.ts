@@ -191,3 +191,11 @@ export class TenantConfigNotMigratedError extends Error {
     this.name = "TenantConfigNotMigratedError";
   }
 }
+
+/** La base aun no tiene la migracion 040 (perfil de empresa completo): una ESCRITURA no puede continuar y la API responde "no disponible aun" (409), nunca un 500. */
+export class CompanyProfileNotAvailableError extends Error {
+  constructor() {
+    super("No disponible aún: el perfil completo de la empresa requiere la migración 040 en esta base.");
+    this.name = "CompanyProfileNotAvailableError";
+  }
+}
