@@ -15,7 +15,7 @@ import type { Order, OrderPickupInfo, OrderStatus } from "./types.ts";
 
 export class OrderStatusTransitionError extends Error {}
 
-export const ORDER_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema", "listo_para_recoger", "no_recogido", "programado"];
+export const ORDER_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema", "listo_para_recoger", "no_recogido", "programado", "por_aprobar"];
 
 /** Estados exclusivos del canal recoger (migracion 031). */
 export const PICKUP_ONLY_STATUSES: readonly OrderStatus[] = ["listo_para_recoger", "no_recogido"];
@@ -38,6 +38,9 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   // R-11: un pedido programado espera fuera de cocina; pasa a `pending` (promocion automatica o a mano para
   // adelantarlo) o se cancela. Nunca salta directo a preparacion/entrega.
   programado: ["pending", "cancelado"],
+  // Autopiloto: un pedido grande retenido espera UNA decision humana. Solo se aprueba (pending, o programado si es para mas tarde) o se
+  // rechaza (cancelado) por la solicitud de aprobacion (`resolverSolicitudAprobacion`): `changeOrderStatus` rechaza el atajo manual.
+  por_aprobar: ["pending", "programado", "cancelado"],
   pending: ["preparando", "cancelado", "problema"],
   // Un pedido para recoger sale de cocina como `listo_para_recoger` (no `en_camino`): la regla de canal
   // se aplica en `changeOrderStatus`, que conoce el canal del pedido.
@@ -103,6 +106,10 @@ export async function changeOrderStatus(
     readonly incidentNote?: string | null;
   } = {},
 ): Promise<Order> {
+  if (order.status === "por_aprobar") {
+    // Mover el pedido a mano dejaria la solicitud de aprobacion pendiente y sin bitacora de la decision.
+    throw new OrderStatusTransitionError('Un pedido "por_aprobar" se aprueba o se rechaza desde la pestaña "Por aprobar", no con un cambio de estado.');
+  }
   assertValidOrderStatusTransition(order.status, nextStatus);
   const incidentNote = options.incidentNote === undefined || options.incidentNote === null ? null : options.incidentNote.trim();
   if (incidentNote !== null) {

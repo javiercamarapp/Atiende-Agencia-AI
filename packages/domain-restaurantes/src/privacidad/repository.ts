@@ -17,7 +17,14 @@ export interface PurgeOutcome {
   readonly disponible: boolean;
   readonly conversationsCleared: number;
   readonly voiceTurnsDeleted: number;
+  /** Llamadas PROCESADAS del lote (con o sin `caller_hash`) desde la 046; antes solo contaba las que tenian hash. */
   readonly voiceCallsAnonymized: number;
+  /** Desde la 046 (QA-restaurantes-R1-automatizacion-05): pedidos a los que se les vacio transcripcion/URL de grabacion. */
+  readonly ordersVoiceCleared?: number;
+  /** Desde la 046: filas de `messaging_outbox` terminadas cuyo payload (telefono y texto) se reemplazo. */
+  readonly outboxPayloadsErased?: number;
+  /** Desde la 046: avisos de la bandeja del staff cuyo texto (nombre del cliente) se reemplazo. */
+  readonly staffNotificationsErased?: number;
 }
 
 export type UpdatePrivacyConfigResult = { readonly outcome: "updated" } | { readonly outcome: "forbidden" } | { readonly outcome: "unavailable" };

@@ -16,7 +16,7 @@
 // guarda en claro: solo su sha256.
 import { createHash } from "node:crypto";
 import { Hono } from "hono";
-import { emitirNotificacion } from "@atiende/db";
+import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import {
   VOZ_EVENTO_TIPOS,
   VOZ_PROVEEDORES,
@@ -63,6 +63,19 @@ function mapErrorDeVoz(err: unknown): never {
   if (err instanceof VozNoDisponibleError) throw Errors.serviceUnavailable(err.message);
   if (err instanceof VozRechazadaError) throw Errors.notFound("El recurso no existe para esa organización o ya no admite cambios.");
   throw err;
+}
+
+/** CHECK que una base con la 035 pero SIN la 067 viola al recibir 'latencia_voz': la lista de tipos (`voice_event_tipo_check`) o la regla de campos por
+ *  tipo autogenerada (`voice_event_check`, `voice_event_check1`...). Cualquier OTRO CHECK (p. ej. el rango de latencia_ms) es un error real y NO se enmascara. */
+const CHECK_TIPO_SIN_MIGRAR = /\bvoice_event_(tipo_check|check\d*)\b/;
+
+function esLatenciaSinMigrar(err: unknown): boolean {
+  if (err instanceof VozNoDisponibleError) return true;
+  const e = err as { code?: unknown; constraint?: unknown; message?: unknown } | null;
+  const code = String(e?.code ?? "");
+  if (["42703", "42883", "42P01"].includes(code)) return true;
+  if (code !== "23514") return false;
+  return CHECK_TIPO_SIN_MIGRAR.test(`${String(e?.constraint ?? "")} ${String(e?.message ?? "")}`);
 }
 
 export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
@@ -193,6 +206,9 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
     if (tipo === "error_proveedor") {
       if (typeof body.proveedor !== "string" || !(VOZ_PROVEEDORES_FALLO as readonly string[]).includes(body.proveedor)) throw Errors.validation(`proveedor: debe ser uno de ${VOZ_PROVEEDORES_FALLO.join(", ")}.`);
       proveedor = body.proveedor as VozProveedorFallo;
+    } else if (tipo === "latencia_voz") {
+      // Latencia de voz a voz de UNA respuesta del agente (migración 067): solo el número, sin texto ni herramienta.
+      if (latenciaMs === null) throw Errors.validation("latenciaMs: obligatorio en latencia_voz.");
     } else {
       if (typeof body.herramienta !== "string" || body.herramienta.length < 1 || body.herramienta.length > 80) throw Errors.validation("herramienta: se esperaba texto de 1 a 80 caracteres.");
       if (latenciaMs === null) throw Errors.validation("latenciaMs: obligatorio en tool_call.");
@@ -204,7 +220,23 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       if (!deps.vozKpiRepo) throw Errors.serviceUnavailable("Los KPI de voz no están disponibles en este despliegue.");
       try {
-        await deps.vozKpiRepo(db).registrarEvento({ organizationId, propertyId, conversationId, tipo, proveedor, herramienta, latenciaMs, codigo: typeof body.codigo === "string" ? body.codigo : null, ocurridoAt });
+        const evento = { organizationId, propertyId, conversationId, tipo, proveedor, herramienta, latenciaMs, codigo: typeof body.codigo === "string" ? body.codigo : null, ocurridoAt };
+        if (tipo === "latencia_voz") {
+          // Base con la 035 pero SIN la 067: el CHECK del tipo rechaza 'latencia_voz' (23514). SAVEPOINT: nunca aborta la transacción del request
+          // ni da un 500; la latencia queda "no disponible aun" (202) y la llamada, que ya ocurrio, no se ve afectada.
+          const registrado = await runWithSavepointFallback<boolean>({
+            session: db,
+            savepointName: "sp_voz_evento_latencia",
+            primary: async () => {
+              await deps.vozKpiRepo!(db).registrarEvento(evento);
+              return true;
+            },
+            isRecoverable: esLatenciaSinMigrar,
+            fallback: async () => false,
+          });
+          return registrado ? c.json({ registrado: true }, 201) : c.json({ registrado: false, disponible: false }, 202);
+        }
+        await deps.vozKpiRepo(db).registrarEvento(evento);
         // Un error del proveedor de voz avisa al owner/admin (best-effort, sin PII, una por sucursal por hora).
         if (tipo === "error_proveedor") {
           const hora = (ocurridoAt ?? new Date().toISOString()).replace(/\D/g, "").slice(0, 10);

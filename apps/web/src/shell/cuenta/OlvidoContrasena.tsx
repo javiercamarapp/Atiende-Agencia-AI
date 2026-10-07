@@ -15,12 +15,14 @@ export interface OlvidoContrasenaProps {
   readonly vertical: VerticalCuenta;
   /** Correo ya escrito en el formulario de acceso, para no pedirlo dos veces. */
   readonly correoInicial?: string;
+  readonly locale?: "es" | "en";
   readonly onVolver: () => void;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function OlvidoContrasena({ apiBaseUrl, vertical, correoInicial = "", onVolver }: OlvidoContrasenaProps) {
+export function OlvidoContrasena({ apiBaseUrl, vertical, correoInicial = "", locale = "es", onVolver }: OlvidoContrasenaProps) {
+  const tr = (es: string, en: string) => locale === "en" ? en : es;
   const [correo, setCorreo] = useState(correoInicial);
   const [errorCorreo, setErrorCorreo] = useState<string | null>(null);
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null);
@@ -32,7 +34,7 @@ export function OlvidoContrasena({ apiBaseUrl, vertical, correoInicial = "", onV
     event.preventDefault();
     if (enviando) return;
     if (!EMAIL_RE.test(correo.trim())) {
-      setErrorCorreo("Escribe un correo válido, por ejemplo tu@negocio.com.");
+      setErrorCorreo(tr("Escribe un correo válido, por ejemplo tu@negocio.com.", "Enter a valid email, such as you@business.com."));
       return;
     }
     setErrorCorreo(null);
@@ -52,16 +54,16 @@ export function OlvidoContrasena({ apiBaseUrl, vertical, correoInicial = "", onV
   return (
     <div className="login-entra login-olvido mt-8 flex flex-col gap-3">
       <div>
-        <p className="login-cuerpo font-semibold text-foreground">Restablece tu contraseña</p>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">Escribe tu correo y, si tiene una cuenta, te enviamos un enlace para elegir otra.</p>
+        <p className="login-cuerpo font-semibold text-foreground">{tr("Restablece tu contraseña", "Reset your password")}</p>
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{tr("Escribe tu correo y, si tiene una cuenta, te enviamos un enlace para elegir otra.", "Enter your email. If it has an account, we’ll send a password reset link.")}</p>
       </div>
 
       <form onSubmit={enviar} className="flex flex-col gap-3" noValidate>
-        <FormField label={<span className="sr-only">Tu correo</span>}>
+        <FormField label={<span className="sr-only">{tr("Tu correo", "Your email")}</span>}>
           {(campo) => <input {...campo} type="email" placeholder="tu@negocio.com" autoComplete="email" aria-required="true" aria-invalid={errorCorreo ? true : undefined} aria-describedby={errorCorreo ? idAlerta : undefined} value={correo} onChange={(e) => setCorreo(e.target.value)} className="login-campo" />}
         </FormField>
         <button type="submit" disabled={enviando} aria-busy={enviando || undefined} className="login-btn login-btn-tinta mt-1">
-          <EtiquetaBoton ocupado={enviando} reposo="Enviarme el enlace" enCurso="Enviando…" />
+          <EtiquetaBoton ocupado={enviando} reposo={tr("Enviarme el enlace", "Send me a link")} enCurso={tr("Enviando…", "Sending…")} />
         </button>
       </form>
 
@@ -69,9 +71,9 @@ export function OlvidoContrasena({ apiBaseUrl, vertical, correoInicial = "", onV
       <div className="login-estado">
         {enviadoA && !errorCorreo && !errorEnvio && (
           <div role="status">
-            <p className="login-cuerpo font-semibold text-foreground">Revisa tu correo.</p>
+            <p className="login-cuerpo font-semibold text-foreground">{tr("Revisa tu correo.", "Check your email.")}</p>
             <p className="line-clamp-2 text-sm text-muted-foreground">
-              Si <span className="break-all font-semibold text-foreground">{enviadoA}</span> tiene una cuenta, te enviamos un enlace. Expira en 1 hora y solo funciona una vez.
+              {tr("Si", "If")} <span className="break-all font-semibold text-foreground">{enviadoA}</span> {tr("tiene una cuenta, te enviamos un enlace. Expira en 1 hora y solo funciona una vez.", "has an account, we sent a link. It expires in 1 hour and can be used once.")}
             </p>
           </div>
         )}
@@ -83,7 +85,7 @@ export function OlvidoContrasena({ apiBaseUrl, vertical, correoInicial = "", onV
       </div>
 
       <button type="button" onClick={onVolver} className="self-start text-sm underline underline-offset-2 text-foreground transition-opacity hover:opacity-70">
-        Volver a iniciar sesión
+        {tr("Volver a iniciar sesión", "Back to sign in")}
       </button>
     </div>
   );

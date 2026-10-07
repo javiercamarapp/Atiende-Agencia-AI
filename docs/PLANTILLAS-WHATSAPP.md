@@ -48,6 +48,12 @@ Restaurantes (aviso de estado de pedido, ya existente): `pedido_confirmado`, `pe
 `pedido_cancelado`, con `{{1}}` nombre, `{{2}}` sucursal y `{{3}}` total (ver `PLANTILLAS_ESTADO_PEDIDO`). Se declaran en `WHATSAPP_APPROVED_TEMPLATES`;
 este PR no agrega pantalla para ellas.
 
+Restaurantes, autopiloto del ciclo del pedido (`PLANTILLAS_AUTOPILOTO`, `packages/domain-restaurantes/src/autopiloto/servicio.ts`): todas con `{{1}}` nombre del
+cliente, `{{2}}` sucursal y `{{3}}` detalle. `pedido_aprobado` (detalle = total), `pedido_no_confirmado` (rechazo de un pedido grande), `cancelacion_no_posible`
+(el pedido ya esta en proceso), `compensacion_sin_costo_extra`, `compensacion_reposicion`, `compensacion_descuento` (detalle = codigo de un solo uso) y
+`pedido_recibido` (detalle = folio y tiempo estimado; confirmacion inmediata de voz y web). Sin la plantilla declarada el aviso solo sale dentro de la ventana
+de 24 h; `pedido_recibido` es la excepcion: sin plantilla aprobada NO se envia (estado `plantilla_no_aprobada`, visible en "Reglas del autopiloto").
+
 ## Huecos declarados
 
 - La aprobacion en Meta Business Manager es un paso externo (credencial de Javier): el panel solo registra el estado que el dueno confirma.
@@ -55,3 +61,40 @@ este PR no agrega pantalla para ellas.
 - Hoteles: hoy no encola ningun aviso proactivo de WhatsApp al huesped (solo respuestas dentro de la conversacion y correo), asi que no hay productor que convertir.
   Restaurantes conserva sus plantillas por variable de entorno (el catalogo por organizacion tambien se consulta al despachar, pero no hay pantalla).
 - Un recordatorio con plantilla pierde los botones Confirmar/Cancelar/Reagendar (la plantilla registrada no los define).
+
+## Estados de entrega (restaurantes)
+
+Meta acepta un envio con 200 y un `wamid`, pero muchos fallos llegan DESPUES por el webhook como `entry[].changes[].value.statuses[]`. Restaurantes los
+procesa en `POST /v1/restaurantes/whatsapp/webhook` (migracion `066_whatsapp_estados_entrega.sql`):
+
+- **Al enviar**: el despachador guarda el `wamid` y como salio el mensaje (texto, plantilla, botones o ubicacion) en `restaurantes.messaging_outbox`
+  (`provider_message_id`, `enviado_como`), con indice unico parcial por organizacion y wamid. Citas, hoteles y licitaciones siguen sin guardarlo (huecos
+  declarados: su puerto ignora el wamid).
+- **Al recibir un status**: la organizacion sale del `phone_number_id` firmado y la funcion de solo-sistema `restaurantes.registrar_estado_entrega_whatsapp`
+  avanza el estado por wamid: `sent` -> `delivered` -> `read`, nunca hacia atras, `failed` gana y conserva su PRIMER error, y repetir un status no cambia
+  nada (Meta reintenta). Un webhook que solo trae statuses responde 200 sin tocar el ledger de mensajes entrantes ni el turno del agente.
+- **`failed`**: guarda el codigo y el titulo de Meta (nunca el telefono ni el texto) y un motivo:
+
+  | Codigo de Meta | Motivo guardado |
+  | --- | --- |
+  | 131047 (mas de 24 h desde el ultimo mensaje del cliente) | `fuera_de_ventana`; si el mensaje salio como texto libre pero el payload traia una plantilla, `fuera_de_ventana_plantilla_sin_usar` (la plantilla no estaba declarada aprobada) |
+  | 131026 (numero no entregable) | `numero_no_entregable` |
+  | 132000-132999 (plantilla pausada, inexistente o con parametros mal) | `plantilla` |
+  | 131049 (limite de marketing) | `limite_marketing` |
+  | cualquier otro | `otro` |
+
+  Emite la notificacion in-app `restaurantes.whatsapp.entrega_fallida_pedido` (aviso de estado de pedido, enlace a Pedidos) o
+  `restaurantes.whatsapp.entrega_fallida` (otro mensaje, enlace a Conversaciones), con dedupe por mensaje y sin PII. Con mas de 5 entregas fallidas en la
+  ultima hora de la misma organizacion emite UN aviso agrupado por hora (`restaurantes.whatsapp.entregas_fallidas_varias`, enlace a Agente de WhatsApp).
+  Si era el aviso de estado de un pedido y el cliente dejo correo al hacerlo, encola el respaldo por correo (`order.status.whatsapp_fallido.email`,
+  una vez por pedido y estado). **No reintenta** el WhatsApp fallido: 131047 y 131026 son errores de negocio, solo se avisa.
+- **KPI**: `GET /v1/restaurantes/:propertyId/admin/whatsapp/kpi` trae el bloque `entrega` (enviados, entregados, leidos, fallidos, sin confirmacion y fallos
+  por motivo, por dia local de la sucursal del pedido) y la pantalla Agente de WhatsApp lo muestra. Tasa de entrega = entregados / enviados; tasa de
+  lectura = leidos / entregados (quien desactivo la confirmacion de lectura nunca cuenta como leido). Solo conteos.
+- **Retencion**: el estado de entrega no vive mas que el payload. Cuando la purga de privacidad reemplaza el payload de una fila (180 dias por defecto), el
+  mismo UPDATE borra su wamid y su estado de entrega (trigger de la 066); pasada la retencion ese aviso deja de contar en el KPI.
+
+Huecos conocidos: (1) un status que llega ANTES de que el despachador confirme el envio (el commit del cierre del mensaje) no encuentra el wamid y se
+ignora con 200 (queda como `desconocido`); la ventana es de milisegundos pero existe. (2) Sin la migracion 066 el wamid no se guarda y los statuses se
+ignoran con 200. (3) El respaldo por correo solo cubre avisos de estado de pedido de clientes con correo (hoy solo el canal web lo captura).
+

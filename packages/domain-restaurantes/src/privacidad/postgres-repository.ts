@@ -223,16 +223,24 @@ export class PostgresPrivacidadRepository implements PrivacidadRepository {
       session: this.db,
       savepointName: "sp_privacy_purge",
       primary: async () => {
-        const { rows } = await this.db.query<{ out_conversations_cleared: number; out_voice_turns_deleted: number; out_voice_calls_anonymized: number }>(
-          `select out_conversations_cleared, out_voice_turns_deleted, out_voice_calls_anonymized from restaurantes.system_purge_expired_privacy_data($1);`,
-          [limit],
-        );
+        // `select *`: contra la base con la 030 pero sin la 046 la funcion solo trae 3 columnas; las nuevas llegan como undefined.
+        const { rows } = await this.db.query<{
+          out_conversations_cleared: number;
+          out_voice_turns_deleted: number;
+          out_voice_calls_anonymized: number;
+          out_orders_voice_cleared?: number;
+          out_outbox_payloads_erased?: number;
+          out_staff_notifications_erased?: number;
+        }>(`select * from restaurantes.system_purge_expired_privacy_data($1);`, [limit]);
         const row = rows[0];
         return {
           disponible: true,
           conversationsCleared: Number(row?.out_conversations_cleared ?? 0),
           voiceTurnsDeleted: Number(row?.out_voice_turns_deleted ?? 0),
           voiceCallsAnonymized: Number(row?.out_voice_calls_anonymized ?? 0),
+          ordersVoiceCleared: Number(row?.out_orders_voice_cleared ?? 0),
+          outboxPayloadsErased: Number(row?.out_outbox_payloads_erased ?? 0),
+          staffNotificationsErased: Number(row?.out_staff_notifications_erased ?? 0),
         };
       },
       isRecoverable: (err) => isMigrationPendingError(err, "restaurantes.system_purge_expired_privacy_data"),

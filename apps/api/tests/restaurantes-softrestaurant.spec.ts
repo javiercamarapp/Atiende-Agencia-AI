@@ -148,7 +148,12 @@ describe("rutas de staff de SoftRestaurant", () => {
     const t = await setup();
     const res = await t.app.request(`${t.base}/config`, authedGet(t.ctx.staff.staffSucursalA.token));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ modo: "apagado", disponible: true, adaptador: { nombre: "fake", esReal: false } });
+    expect(await res.json()).toEqual({
+      modo: "apagado",
+      disponible: true,
+      adaptador: { nombre: "fake", esReal: false },
+      umbralCapturaManual: { porOmisionMin: 5, minimo: 1, maximo: 240, disponible: true, porSucursal: {} },
+    });
     expect((await t.app.request(`${t.base}/config`, authedGet(t.ctx.staff.repartidor.token))).status).toBe(403);
     expect((await t.app.request(`${t.base}/config`)).status).toBe(401);
   });

@@ -74,3 +74,30 @@ export function correoConfirmacionPedido(c: PedidoCorreo): Correo {
     texto: `Hola ${c.clienteNombre}, recibimos tu pedido${c.branch ? ` en ${c.branch}` : ""}.\n${textoItems}\nTotal: ${formatMxn(c.total)}${c.customerAddress ? `\nEntrega: ${c.customerAddress}` : ""}`,
   };
 }
+
+export interface RespaldoEstadoPedidoCorreo {
+  readonly clienteNombre: string;
+  readonly branch: string | null;
+  /** Frase del aviso que WhatsApp no pudo entregar (la misma que salio por WhatsApp, sin saludo). Texto de la plataforma, nunca del cliente. */
+  readonly mensaje: string;
+  readonly total: number;
+}
+
+/** Respaldo por correo de un aviso de estado de pedido cuyo WhatsApp Meta reporto como NO entregado (131047, 131026, ...). Mismo marco que la
+ * confirmacion; el nombre del cliente pasa por escapeHtml como en `correoConfirmacionPedido`. */
+export function correoRespaldoEstadoPedido(c: RespaldoEstadoPedidoCorreo): Correo {
+  const html = renderCorreo({
+    titulo: "Novedad sobre tu pedido",
+    preheader: `${c.mensaje}`,
+    etiqueta: { texto: "Estado del pedido", color: "#1D4ED8" },
+    parrafosHtml: [`Hola ${escapeHtml(c.clienteNombre)}, ${escapeHtml(c.mensaje)}`],
+    tabla: { filas: [{ etiqueta: "Total", valor: formatMxn(c.total) }] },
+    nota: "Te escribimos por correo porque no pudimos entregarte este aviso por WhatsApp.",
+    piePorQueLlego: "Recibes este correo porque dejaste tu correo al hacer un pedido en atiende.",
+  });
+  return {
+    asunto: `Novedad sobre tu pedido${c.branch ? ` · ${c.branch}` : ""}`,
+    html,
+    texto: `Hola ${c.clienteNombre}, ${c.mensaje}\nTotal: ${formatMxn(c.total)}\nTe escribimos por correo porque no pudimos entregarte este aviso por WhatsApp.`,
+  };
+}

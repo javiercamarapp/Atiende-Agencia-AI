@@ -206,3 +206,15 @@ describe("fechaCortaEsMx -- sigue existiendo, sin cambios de comportamiento", ()
     expect(fechaCortaEsMx(new Date("2026-08-15T18:00:00Z"))).toContain("2026");
   });
 });
+
+describe("fechaCortaEsMx -- zona horaria del negocio (chip de fecha de la barra superior)", () => {
+  // 2026-10-05T03:00Z son las 9 p. m. del 4 de octubre en Ciudad de Mexico: el dia NO lo decide la zona del navegador.
+  const instante = new Date("2026-10-05T03:00:00Z");
+  it("por defecto usa America/Mexico_City", () => {
+    expect(fechaCortaEsMx(instante)).toContain("4");
+    expect(fechaCortaEsMx(instante)).toContain("oct");
+  });
+  it("acepta la zona de la organizacion", () => {
+    expect(fechaCortaEsMx(instante, "Asia/Tokyo")).toContain("5");
+  });
+});

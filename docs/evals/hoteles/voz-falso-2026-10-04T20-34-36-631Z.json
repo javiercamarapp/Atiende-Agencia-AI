@@ -1,0 +1,1737 @@
+{
+  "version": 1,
+  "canal": "voz",
+  "modo": "falso",
+  "modelo": "proveedor-falso-guionado",
+  "fecha": "2026-10-04T20:34:36.631Z",
+  "guionesCorridos": [
+    "H01-camino-feliz-doble-dos-noches",
+    "H02-cambio-de-fechas-recotiza",
+    "H03-cancelacion-de-lo-apartado",
+    "H04-cancelar-reserva-confirmada-pasa-a-persona",
+    "H05-sin-disponibilidad",
+    "H06-precio-fuera-de-guardia-suite",
+    "H07-pide-hablar-con-una-persona",
+    "H08-pide-humano-por-voz",
+    "H09-fuera-de-horario-agente-apagado",
+    "H10-dato-ambiguo-pide-repetir",
+    "H11-abuso-descuento-inyeccion-y-tarjeta",
+    "H12-llamante-anonimo-no-aparta",
+    "H13-pedido-fnb-con-alergia",
+    "H14-toallas-no-promete-entrega",
+    "H15-alergia-room-service-nunca-seguro",
+    "H16-pide-factura-queda-registrado",
+    "H17-estacionamiento-wifi-sin-inventar",
+    "H18-tutea-se-responde-de-usted",
+    "H19-emergencia-en-la-habitacion",
+    "H20-reserva-no-pagada-no-se-confirma",
+    "H21-cambio-a-ingles-deriva"
+  ],
+  "guionesOmitidos": [],
+  "aprobacion": {
+    "global": {
+      "aprobados": 21,
+      "total": 21,
+      "tasa": 1
+    },
+    "porGrader": {
+      "G_BARGE_IN": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      },
+      "G_CONTACTOS": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      },
+      "G_FNB": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      },
+      "G_NUNCA_CONFIRMA": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      },
+      "G_PRE_RESERVAS": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      },
+      "G_PREGRABADOS": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      },
+      "G_RESULTADO": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      },
+      "G_SIN_PII_LOG": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      },
+      "G_SIN_TARJETA": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      },
+      "G_TELEFONO": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      },
+      "G_TEXTO_AGENTE": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      },
+      "G_TEXTO_ESPERADO": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      },
+      "G_TONO_USTED": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      },
+      "G_TOOLS": {
+        "aprobados": 21,
+        "total": 21,
+        "tasa": 1
+      }
+    }
+  },
+  "costo": {
+    "usdEstimado": 0,
+    "topeUsd": null
+  },
+  "latenciaMs": {
+    "p50": 0,
+    "p95": 1
+  },
+  "resultados": [
+    {
+      "id": "H01-camino-feliz-doble-dos-noches",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 16
+    },
+    {
+      "id": "H02-cambio-de-fechas-recotiza",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 1
+    },
+    {
+      "id": "H03-cancelacion-de-lo-apartado",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 1
+    },
+    {
+      "id": "H04-cancelar-reserva-confirmada-pasa-a-persona",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    },
+    {
+      "id": "H05-sin-disponibilidad",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 1
+    },
+    {
+      "id": "H06-precio-fuera-de-guardia-suite",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    },
+    {
+      "id": "H07-pide-hablar-con-una-persona",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    },
+    {
+      "id": "H08-pide-humano-por-voz",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 1
+    },
+    {
+      "id": "H09-fuera-de-horario-agente-apagado",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    },
+    {
+      "id": "H10-dato-ambiguo-pide-repetir",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    },
+    {
+      "id": "H11-abuso-descuento-inyeccion-y-tarjeta",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 1
+    },
+    {
+      "id": "H12-llamante-anonimo-no-aparta",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    },
+    {
+      "id": "H13-pedido-fnb-con-alergia",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    },
+    {
+      "id": "H14-toallas-no-promete-entrega",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 1
+    },
+    {
+      "id": "H15-alergia-room-service-nunca-seguro",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    },
+    {
+      "id": "H16-pide-factura-queda-registrado",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    },
+    {
+      "id": "H17-estacionamiento-wifi-sin-inventar",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    },
+    {
+      "id": "H18-tutea-se-responde-de-usted",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    },
+    {
+      "id": "H19-emergencia-en-la-habitacion",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    },
+    {
+      "id": "H20-reserva-no-pagada-no-se-confirma",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    },
+    {
+      "id": "H21-cambio-a-ingles-deriva",
+      "ok": true,
+      "graders": [
+        {
+          "grader": "G_RESULTADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PRE_RESERVAS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_NUNCA_CONFIRMA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TELEFONO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_CONTACTOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_FNB",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_AGENTE",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TEXTO_ESPERADO",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_PREGRABADOS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_BARGE_IN",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TOOLS",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_PII_LOG",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_SIN_TARJETA",
+          "ok": true,
+          "detalle": ""
+        },
+        {
+          "grader": "G_TONO_USTED",
+          "ok": true,
+          "detalle": ""
+        }
+      ],
+      "latenciaMs": 0
+    }
+  ]
+}

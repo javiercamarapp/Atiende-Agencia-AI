@@ -74,6 +74,46 @@ const TEXTO_VENTAS = "En los últimos 7 días vendiste $18,450 MXN en 96 pedidos
 const FUENTE_VENTAS = { tool: "ventas_por_dia", source: "Pedidos completados", periodLabel: "últimos 7 días", scopeLabel: "todas tus sucursales" };
 const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("rest.copiloto.conversaciones", () => []);
 
+
+// ---- Comandas al POS (captura asistida) y cartera de clientes: estado mutable por escenario --------------------------------------------------
+// Solo existe en la API simulada de e2e. La comanda de ord-1001 empieza en "captura_manual" (el POS aun no esta conectado).
+interface ComandaMock { id: string; propertyId: string; orderId: string; estado: string; intentos: number; maxIntentos: number; folio: string | null; ultimoError: string | null; notaCaptura: string | null; capturadoEn: string | null; creadoEn: string; totalPedido: number | null; comanda: unknown }
+const comandasMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) =>
+  p.estado.obtener<ComandaMock[]>("rest.comandas", () => [
+    {
+      id: "cmd-3001", propertyId: PROP.id, orderId: "ord-1001", estado: "captura_manual", intentos: 5, maxIntentos: 5, folio: null, ultimoError: "rechazada:producto_sin_codigo_pos", notaCaptura: null, capturadoEn: null,
+      creadoEn: new Date(Date.now() - 12 * 60_000).toISOString(), totalPedido: 286,
+      comanda: { sucursal: "T1", tipo: "domicilio", cliente: { nombre: "Marisol Pech", telefono: "9995550101" }, direccion: { texto: "Calle 60 #412, Centro" }, formaPago: "efectivo", items: [{ codigo: "TAQ-PASTOR", cantidad: 2, nombre: "Tacos al pastor (orden)", modificadores: [] }, { codigo: "BEB-HORCHATA", cantidad: 2, nombre: "Horchata", modificadores: [] }] },
+    },
+  ]);
+const DIA_MS = 86_400_000;
+interface ClienteMock { id: string; name: string | null; phone: string; orderCount: number; tier: string | null; lastOrderAt: string | null }
+const clientesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) =>
+  p.estado.obtener<ClienteMock[]>("rest.clientes", () => [
+    { id: "cli-1", name: "Marisol Pech", phone: "+529995550101", orderCount: 9, tier: "BLACK", lastOrderAt: new Date(Date.now() - 2 * DIA_MS).toISOString() },
+    { id: "cli-2", name: "Jorge Canul", phone: "+529995550102", orderCount: 3, tier: "BLUE", lastOrderAt: new Date(Date.now() - 5 * DIA_MS).toISOString() },
+  ]);
+/** Misma regla que el servidor (canonicalizeMexicanPhone): 10 digitos; +52 y 521 se aceptan; 11 digitos se rechaza. */
+function telefonoMock(crudo: unknown): string | null {
+  const d = String(crudo ?? "").replace(/\D/g, "");
+  if (d.length === 10) return d;
+  if (d.length === 12 && d.startsWith("52")) return d.slice(2);
+  if (d.length === 13 && d.startsWith("521")) return d.slice(3);
+  return null;
+}
+type FilaImportMock = { telefono?: unknown; nombre?: unknown };
+function prepararImportMock(filas: readonly FilaImportMock[]) {
+  const validas: Array<{ phone: string; name: string | null }> = [];
+  const errores: Array<{ renglon: number; motivo: string }> = [];
+  filas.forEach((f, i) => {
+    const phone = telefonoMock(f.telefono);
+    if (phone === null) errores.push({ renglon: i + 1, motivo: "Telefono invalido: se esperan 10 digitos (se acepta +52 o 521 al inicio)." });
+    else validas.push({ phone, name: String(f.nombre ?? "").trim() || null });
+  });
+  return { validas, errores };
+}
+const enmascarar = (tel: string) => `${"*".repeat(Math.max(0, tel.length - 4))}${tel.slice(-4)}`;
+
 export const rutasRestaurantes: readonly Ruta[] = [
   { metodo: "GET", patron: `${B}/chat-datos/pins`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ disponible: true, pins: [] }) },
   { metodo: "GET", patron: `${B}/chat-datos/estado`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }) },
@@ -134,7 +174,75 @@ export const rutasRestaurantes: readonly Ruta[] = [
 
   { metodo: "GET", patron: `${B}/scheduled-orders`, manejador: () => ({ disponible: true, orders: [], promovidos: [], serverNow: "2026-09-30T19:00:00.000Z" }) },
 
-  { metodo: "GET", patron: `${B}/customers`, manejador: () => ({ customers: [{ id: "cli-1", name: "Marisol Pech", phone: "+529995550101", orderCount: 9 }, { id: "cli-2", name: "Jorge Canul", phone: "+529995550102", orderCount: 3 }], nextCursor: null }) },
+  { metodo: "GET", patron: `${B}/customers`, manejador: (p) => {
+      const nivel = p.query.get("nivel");
+      const frecuencia = p.query.get("frecuencia");
+      const dias = Number(p.query.get("inactivoDias") ?? 0);
+      const buscar = (p.query.get("search") ?? "").toLowerCase();
+      const customers = clientesMock(p).filter((c) => {
+        if (nivel && c.tier !== nivel) return false;
+        if (frecuencia === "una_vez" && c.orderCount !== 1) return false;
+        if (frecuencia === "recurrentes" && c.orderCount < 2) return false;
+        if (dias > 0 && c.lastOrderAt !== null && Date.parse(c.lastOrderAt) >= Date.now() - dias * DIA_MS) return false;
+        if (buscar && !`${c.name ?? ""} ${c.phone}`.toLowerCase().includes(buscar)) return false;
+        return true;
+      });
+      return { customers, nextCursor: null, filtrosDisponibles: true };
+    } },
+  { metodo: "GET", patron: `${B}/customers/kpis`, manejador: (p) => {
+      const todos = clientesMock(p);
+      return { disponible: true, total: todos.length, recurrentes: todos.filter((c) => c.orderCount >= 2).length, ticketPromedio: 192.2, masFrecuente: { nombre: "Marisol Pech", telefonoEnmascarado: "********0101", pedidos: 9, diasDesdeUltimoPedido: 2 } };
+    } },
+  { metodo: "POST", patron: `${B}/customers/import/preview`, roles: ["owner", "admin", "staff"], manejador: (p) => {
+      const { filas } = (p.cuerpo ?? {}) as { filas?: FilaImportMock[] };
+      const { validas, errores } = prepararImportMock(filas ?? []);
+      return { total: (filas ?? []).length, validos: validas.length, duplicadosEnArchivo: 0, totalErrores: errores.length, errores, muestra: validas.slice(0, 5).map((v) => ({ nombre: v.name, telefonoEnmascarado: enmascarar(v.phone), direccion: null, notas: null })) };
+    } },
+  { metodo: "POST", patron: `${B}/customers/import`, roles: ["owner", "admin", "staff"], manejador: (p) => {
+      const { huella, filas } = (p.cuerpo ?? {}) as { huella?: string; filas?: FilaImportMock[] };
+      const hechas = p.estado.obtener<Record<string, unknown>>("rest.importaciones", () => ({}));
+      const clave = String(huella);
+      if (hechas[clave]) return { resultado: { ...(hechas[clave] as object), yaImportado: true } };
+      const { validas, errores } = prepararImportMock(filas ?? []);
+      const clientes = clientesMock(p);
+      let creados = 0;
+      let sinCambios = 0;
+      for (const v of validas) {
+        if (clientes.some((c) => c.phone.endsWith(v.phone))) {
+          sinCambios += 1;
+          continue;
+        }
+        clientes.push({ id: `cli-imp-${clientes.length + 1}`, name: v.name, phone: v.phone, orderCount: 0, tier: null, lastOrderAt: null });
+        creados += 1;
+      }
+      const resultado = { yaImportado: false, total: (filas ?? []).length, creados, actualizados: 0, sinCambios, rechazados: errores.length, errores };
+      hechas[clave] = resultado;
+      return { resultado };
+    } },
+  { metodo: "GET", patron: `${B}/softrestaurant/config`, manejador: () => ({ modo: "apagado", disponible: true, adaptador: { nombre: "no-configurado", esReal: false }, umbralCapturaManual: { porOmisionMin: 5, minimo: 1, maximo: 240, disponible: true, porSucursal: {} } }) },
+  { metodo: "GET", patron: `${B}/softrestaurant/comandas`, manejador: (p) => {
+      const estados = (p.query.get("estado") ?? "captura_manual,fallida,pendiente,enviada").split(",");
+      const todas = comandasMock(p);
+      const resumen: Record<string, number> = { pendiente: 0, enviada: 0, confirmada: 0, fallida: 0, captura_manual: 0, capturada_manual: 0 };
+      for (const c of todas) resumen[c.estado] = (resumen[c.estado] ?? 0) + 1;
+      return { disponible: true, comandas: todas.filter((c) => estados.includes(c.estado)), resumen, requierenAtencion: (resumen["captura_manual"] ?? 0) + (resumen["fallida"] ?? 0) };
+    } },
+  { metodo: "POST", patron: `${B}/softrestaurant/comandas/:comandaId/capturada`, roles: ["owner", "admin", "staff"], manejador: (p) => {
+      const c = comandasMock(p).find((x) => x.id === p.params["comandaId"]);
+      if (!c) return fallo(404, "Comanda no encontrada.");
+      if (!["pendiente", "fallida", "captura_manual"].includes(c.estado)) return fallo(409, `La comanda esta en estado '${c.estado}' y ya no admite captura manual.`);
+      c.estado = "capturada_manual";
+      c.notaCaptura = String(((p.cuerpo ?? {}) as { nota?: string }).nota ?? "") || null;
+      c.capturadoEn = new Date().toISOString();
+      return { comanda: c };
+    } },
+  { metodo: "GET", patron: `${B}/softrestaurant/estados`, manejador: (p) => {
+      const ids = new Set((p.query.get("orderIds") ?? "").split(",").filter(Boolean));
+      const estados: Record<string, string> = {};
+      for (const c of comandasMock(p)) if (ids.has(c.orderId)) estados[c.orderId] = c.estado;
+      return { disponible: true, estados };
+    } },
+  { metodo: "PUT", patron: `${B}/softrestaurant/umbral-captura-manual`, roles: ["owner", "admin"], manejador: (p) => ({ branchId: (p.cuerpo as { branchId?: string } | undefined)?.branchId, minutos: (p.cuerpo as { minutos?: number } | undefined)?.minutos }) },
 
   // Staff: gestion solo owner/admin (el servidor es la autoridad; la SPA solo oculta controles).
   { metodo: "GET", patron: `${B}/staff/repartidores`, manejador: () => ({ repartidores: [{ id: "usr-2", email: "ramon.uc@example.test", fullName: "Ramon Uc" }] }) },
@@ -171,6 +279,90 @@ export const rutasRestaurantes: readonly Ruta[] = [
       }
       return { order: e };
     } },
+
+  // Ajustes del agente (owner/admin): PUT completo con la misma validacion del servidor (lista permitida; temperatura solo si el modelo la admite).
+  { metodo: "GET", patron: `${B}/agente/ajustes`, roles: ["owner", "admin"], manejador: (p) => {
+      const g = p.estado.obtener<{ ajustes: AjustesMock; configurados: boolean }>("rest.ajustes-agente", () => ({ ajustes: { ...AJUSTES_POR_OMISION }, configurados: false }));
+      return vistaAjustes(g.ajustes, g.configurados);
+    } },
+  { metodo: "PUT", patron: `${B}/agente/ajustes`, roles: ["owner", "admin"], manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as Partial<AjustesMock>;
+      for (const k of Object.keys(AJUSTES_POR_OMISION)) if (!(k in c)) return fallo(400, `${k}: campo requerido (los ajustes se guardan completos para no borrar por omision lo que un cliente desactualizado no conoce).`);
+      const lista = MODELOS_AJUSTES.map((m) => m.id);
+      if (c.whatsappModelo !== null && !lista.includes(String(c.whatsappModelo))) return fallo(400, "whatsappModelo: no esta en la lista de modelos permitidos.");
+      const efectivo = MODELOS_AJUSTES.find((m) => m.id === (c.whatsappModelo ?? "openai/gpt-6-luna"));
+      if (c.whatsappTemperatura !== null && efectivo && !efectivo.aceptaTemperatura) return fallo(400, `whatsappTemperatura: ${efectivo.etiqueta} no admite temperatura; elige otro modelo o deja la temperatura en automatica.`);
+      const nuevos = { ...AJUSTES_POR_OMISION, ...c } as AjustesMock;
+      p.estado.guardar("rest.ajustes-agente", { ajustes: nuevos, configurados: true });
+      return vistaAjustes(nuevos, true);
+    } },
+  { metodo: "GET", patron: `${B}/agente/conocimiento`, roles: ["owner", "admin"], manejador: () => CONOCIMIENTO_MOCK },
+  { metodo: "GET", patron: `${B}/voz/config`, roles: ["owner", "admin"], manejador: (p) => p.estado.obtener("rest.voz-config", () => ({ ...VOZ_CONFIG_MOCK })) },
+  { metodo: "PUT", patron: `${B}/voz/config`, roles: ["owner", "admin"], manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { habilitado?: boolean; voiceId?: string; comportamiento?: string; mensajeInicial?: string };
+      if (typeof c.voiceId !== "string" || c.voiceId === "") return fallo(400, "voiceId: campo requerido (1 a 64 caracteres).");
+      const nueva = { ...VOZ_CONFIG_MOCK, habilitado: Boolean(c.habilitado), voiceId: c.voiceId, comportamiento: c.comportamiento ?? "", mensajeInicial: c.mensajeInicial ?? "" };
+      p.estado.guardar("rest.voz-config", nueva);
+      return nueva;
+    } },
 ];
+
+// ---- Ajustes del agente (migración 055) y conocimiento automatico. Solo existe en la API simulada de e2e: reproduce el contrato de
+// apps/api/src/routes/verticals/restaurantes/ajustes-agente.ts (PUT completo, lista permitida, temperatura solo donde el modelo la admite). ----
+const MODELOS_AJUSTES = [
+  { id: "openai/gpt-6-luna", etiqueta: "GPT-6 Luna", nivel: "economico", descripcion: "El predeterminado de la plataforma: rapido y barato; sigue bien las reglas.", aceptaTemperatura: false, predeterminado: true, costoWhatsappMicroUsdPorMensaje: 800, costoVozMicroUsdPorMinuto: 1850, precioVerificadoEn: "2026-10-01" },
+  { id: "deepseek/deepseek-v4.1-flash", etiqueta: "DeepSeek V4.1 Flash", nivel: "economico", descripcion: "Economico, servido solo desde proveedores de EE.UU. con retencion cero.", aceptaTemperatura: true, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 1440, costoVozMicroUsdPorMinuto: 2640, precioVerificadoEn: "2026-10-02" },
+  { id: "google/gemini-2.5-flash-lite", etiqueta: "Gemini 2.5 Flash-Lite", nivel: "economico", descripcion: "El mas barato; respuestas cortas y directas.", aceptaTemperatura: true, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 760, costoVozMicroUsdPorMinuto: 1400, precioVerificadoEn: "2026-10-02" },
+  { id: "anthropic/claude-sonnet-5.5", etiqueta: "Claude Sonnet 5.5", nivel: "premium", descripcion: "El de mayor calidad y el mas caro; solo si el volumen es bajo.", aceptaTemperatura: false, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 16000, costoVozMicroUsdPorMinuto: 29000, precioVerificadoEn: "2026-10-01" },
+];
+const AJUSTES_POR_OMISION = { whatsappModelo: null as string | null, whatsappTemperatura: null as number | null, vozModeloCascada: null as string | null, vozTemperatura: null as number | null, vozRitmo: "normal", vozEstilo: "neutro", vozFondoActivo: false, vozFondoVolumen: 8 };
+type AjustesMock = typeof AJUSTES_POR_OMISION;
+
+function vistaAjustes(a: AjustesMock, configurados: boolean) {
+  return {
+    disponible: true,
+    configurados,
+    actualizadoEn: configurados ? "2026-10-04T10:00:00.000Z" : null,
+    ajustes: a,
+    modelos: MODELOS_AJUSTES,
+    supuestosCosto: { whatsappMensaje: { tokensEntrada: 6000, tokensSalida: 400 }, vozCascadaMinuto: { tokensEntrada: 12000, tokensSalida: 500 }, nota: "Estimacion con precios de lista y un uso tipico; el costo real lo reporta OpenRouter por llamada. No es una factura." },
+    temperatura: { min: 0, max: 1, paso: 0.1 },
+    habla: { ritmos: ["pausado", "normal", "agil"], estilos: ["neutro", "calido", "sobrio", "animado"], nota: "Gemini Live no tiene un control numerico de velocidad ni de estabilidad: el ritmo y el estilo se piden al modelo por instruccion. La temperatura si es un parametro real." },
+    fondo: { volumenMax: 20, porOmision: "apagado" },
+    escaleraVoz: { principal: "gemini-3.8-live", respaldo: "cascada por OpenRouter" },
+    aplicaEn: {
+      whatsappModeloYTemperatura: "ahora",
+      vozTemperaturaYHabla: "vista previa ahora; llamadas reales cuando se despliegue el servicio de llamadas",
+      vozModeloCascada: "llamadas reales cuando se despliegue el servicio de llamadas (la cascada solo atiende llamadas)",
+      vozFondo: "llamadas reales cuando se despliegue el servicio de llamadas (la mezcla ya esta probada en aislado)",
+    },
+    clonacionDeVoz: { disponible: false, motivo: "No disponible con el proveedor actual: Gemini Live solo ofrece las 30 voces del catalogo y no clona voces.", decision: "Clonar una voz exigiria contratar un proveedor de voz aparte (decision de Javier: costo, consentimiento de la persona clonada y una llave nueva)." },
+    documentosOmitidos: [
+      { tipo: "ventas", motivo: "El agente que atiende al cliente no necesita cifras de ventas para tomar un pedido; las preguntas de ventas del dueno las responde el Copiloto con datos en vivo." },
+      { tipo: "personal", motivo: "El personal es informacion de personas (nombres, turnos, contacto): no es conocimiento del agente." },
+    ],
+  };
+}
+
+const CONOCIMIENTO_MOCK = {
+  generadoEn: "2026-10-04T10:00:00.000Z",
+  huella: "9f2c4a7be1d03a55",
+  nota: "Estos documentos se generan al momento desde los datos de tu cuenta (sucursales, horarios, menu, colonias). No hay copia que se desactualice: al cambiar un dato, el documento cambia solo.",
+  documentos: [
+    { tipo: "sucursales_horarios", titulo: "Sucursales y horarios", contenido: `## ${PROP.nombre}\nDireccion: Calle 60 #400, Centro, Merida\nHorario: lunes a viernes de 12:00 a 22:00`, caracteres: 96, huella: "a1b2c3d4e5f6", vacio: false, motivoVacio: null, enPrompt: true },
+    { tipo: "colonias_sucursal", titulo: "Colonia → sucursal más cercana", contenido: "", caracteres: 0, huella: "e3b0c442", vacio: true, motivoVacio: "No hay colonias conocidas configuradas.", enPrompt: false },
+    { tipo: "faq", titulo: "Preguntas frecuentes", contenido: "P: ¿Dónde están?\nR: Calle 60 #400, Centro, Merida.", caracteres: 44, huella: "0f1e2d3c4b5a", vacio: false, motivoVacio: null, enPrompt: true },
+    { tipo: "menu_precios", titulo: "Menú y precios", contenido: "- Tacos al pastor (orden): $95\n- Horchata: $48", caracteres: 41, huella: "5a4b3c2d1e0f", vacio: false, motivoVacio: null, enPrompt: true },
+  ],
+  prompt: { topeCaracteres: 6000, caracteresUsados: 310, omitidos: [] },
+  alertasColonias: { umbralKm: 1, items: [], sinSucursal: 0 },
+  documentosOmitidos: [
+    { tipo: "ventas", motivo: "El agente que atiende al cliente no necesita cifras de ventas para tomar un pedido; las preguntas de ventas del dueno las responde el Copiloto con datos en vivo." },
+    { tipo: "personal", motivo: "El personal es informacion de personas (nombres, turnos, contacto): no es conocimiento del agente." },
+  ],
+};
+
+const VOZ_CONFIG_MOCK = { disponible: true, configurada: true, habilitado: false, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "", mensajeInicial: "Hola, le atiende el asistente virtual de Taqueria El Faro." };
+
 
 export const restaurantes = { orgSlug: ORG.slug, propertyId: PROP.id };
