@@ -8,7 +8,7 @@
 // `validarConAbogado: true`; ninguna ficha de este registro esta en `verificado_fuente_primaria`
 // porque ninguna se contrasto contra el texto oficial al crearlo. Esto NO es asesoria legal.
 
-export type NormaLey = "LAASSP" | "CFF" | "RLAASSP";
+export type NormaLey = "LAASSP" | "CFF" | "RLAASSP" | "LDCMIPYME";
 
 /**
  * - `verificado_fuente_primaria`: alguien contrasto el texto vigente en la fuente oficial (se anota fecha y quien).
@@ -46,6 +46,12 @@ export interface NormaFicha {
   /** Citas normalizadas ("LAASSP 73", "CFF 69-B") que esta ficha respalda. Vacio si la ficha no se cita por numero. */
   readonly citas: readonly string[];
   readonly usadoEnCodigo: readonly NormaCitaEnCodigo[];
+  /**
+   * Cifras o parametros que el codigo toma de esta ficha en vez de fijarlos en su fuente (p. ej. los topes de la
+   * estratificacion MIPyME). Heredan el `estadoVerificacion` de la ficha: mientras sea `sin_verificar`, cualquier
+   * resultado calculado con ellos se muestra como "pendiente de verificacion legal".
+   */
+  readonly parametros?: Readonly<Record<string, unknown>>;
 }
 
 const ORIGEN = "docs/legal/verificacion-legal.md del repo original de licitaciones (dato heredado; no se re-contrasto contra el texto oficial al crear esta ficha)";
@@ -213,6 +219,34 @@ export const NORMAS_LICITACIONES: readonly NormaFicha[] = [
       { archivo: `${DOM}/kyc-69b.ts`, texto: "69-B" },
       { archivo: "apps/web/src/verticals/licitaciones/pages/Kyc69b.tsx", texto: "69-B" },
     ],
+  },
+  {
+    id: "ldcmipyme-estratificacion",
+    ley: "LDCMIPYME",
+    instrumento: "Ley para el Desarrollo de la Competitividad de la Micro, Pequena y Mediana Empresa y acuerdo de estratificacion publicado en el DOF",
+    articulo: null,
+    titulo: "Estratificacion de empresas por numero de trabajadores y ventas anuales (REQ-109)",
+    vigencia: "por_confirmar",
+    publicacionDof: null,
+    entradaEnVigor: null,
+    queAsumeElCodigo:
+      "El tamano se calcula con un puntaje combinado = trabajadores x peso_trabajadores + ventas anuales (millones de pesos) x peso_ventas, y la empresa cae en el primer estrato cuyo tope de trabajadores, de ventas y de puntaje combinado cumple; si no cumple ninguno, es grande. Los pesos y los topes salen de `parametros`, no del codigo.",
+    estadoVerificacion: "sin_verificar",
+    validarConAbogado: true,
+    fuente: "Sin fuente consultada al crear la ficha: los pesos y topes de `parametros` los capturo quien escribio esta ficha de memoria del acuerdo de 2009 y NO se contrastaron contra el texto vigente.",
+    nota: "Confirmar con abogado (a) que el acuerdo de estratificacion sigue vigente, (b) cada peso y tope por sector y (c) como se combinan los rangos con el tope combinado. Hasta entonces la pantalla muestra el resultado como pendiente de verificacion legal y el manifiesto MIPyME no debe presentarse sin esa revision.",
+    citas: [],
+    usadoEnCodigo: [{ archivo: `${DOM}/mipyme.ts`, texto: "ldcmipyme-estratificacion" }],
+    parametros: {
+      pesoTrabajadores: "0.10",
+      pesoVentas: "0.90",
+      /** Orden de evaluacion: del estrato mas chico al mas grande. `ventasMaxMdp` y `topeCombinado` en millones de pesos. */
+      estratos: [
+        { estrato: "micro", porSector: { industria: { trabajadoresMax: 10, ventasMaxMdp: "4", topeCombinado: "4.6" }, comercio: { trabajadoresMax: 10, ventasMaxMdp: "4", topeCombinado: "4.6" }, servicios: { trabajadoresMax: 10, ventasMaxMdp: "4", topeCombinado: "4.6" } } },
+        { estrato: "pequena", porSector: { industria: { trabajadoresMax: 50, ventasMaxMdp: "100", topeCombinado: "95" }, comercio: { trabajadoresMax: 30, ventasMaxMdp: "100", topeCombinado: "93" }, servicios: { trabajadoresMax: 50, ventasMaxMdp: "100", topeCombinado: "95" } } },
+        { estrato: "mediana", porSector: { industria: { trabajadoresMax: 250, ventasMaxMdp: "250", topeCombinado: "250" }, comercio: { trabajadoresMax: 100, ventasMaxMdp: "250", topeCombinado: "235" }, servicios: { trabajadoresMax: 100, ventasMaxMdp: "250", topeCombinado: "235" } } },
+      ],
+    },
   },
   {
     id: "rlaassp-reglamento",

@@ -321,6 +321,8 @@ export {
 } from "./regimen-legal.ts";
 export type { RegimenLegalId, RegimenFuente, RegimenLegalResolucion, PaymentDeadlineByRegimeResult, InconformidadDeadlineByRegime } from "./regimen-legal.ts";
 export { NORMAS_LICITACIONES, fichaNormaPorId, fichasParaCita, extraerCitasNormativas } from "./normas.ts";
+export { estratificarMipyme, isMipymeSector, MIPYME_SECTORES, MIPYME_FICHA_ID } from "./mipyme.ts";
+export type { MipymeSector, MipymeEstrato, MipymeInput, MipymeResultado } from "./mipyme.ts";
 export type { NormaFicha, NormaLey, NormaEstadoVerificacion, NormaVigencia, NormaCitaEnCodigo } from "./normas.ts";
 
 export { CONTRACT_FIELD_KEYS, extractContractFields } from "./contract-extraction.ts";
