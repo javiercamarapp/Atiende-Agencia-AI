@@ -87,6 +87,16 @@ export interface ResultadoRetener {
   readonly propertyId: string | null;
 }
 
+/**
+ * Lo que `crear_pedido` (WhatsApp y voz) necesita del autopiloto para dejar un pedido grande en `por_aprobar` en vez de mandarlo a cocina.
+ * `disponible` se consulta ANTES de crear el pedido (base sin la migracion 050 = `false`: el agente sigue por el aviso de siempre); `retener` corre
+ * DESPUES de crearlo, en la misma transaccion, y si falla se revierte tambien el pedido.
+ */
+export interface PedidoGrandeHook {
+  disponible(organizationId: string, propertyId: string): Promise<boolean>;
+  retener(input: { readonly organizationId: string; readonly orderId: string; readonly detalle: Readonly<Record<string, unknown>> }): Promise<{ readonly estado: "por_aprobar"; readonly solicitudId: string } | { readonly estado: "no_disponible" }>;
+}
+
 export interface ResultadoCrearSolicitud {
   readonly estado: "creada" | "existente" | "no_disponible";
   readonly solicitudId: string | null;
@@ -110,6 +120,8 @@ export interface ResultadoResolver {
   readonly estadoPedido: OrderStatus | null;
   readonly codigoDescuento: string | null;
   readonly reposicionOrderId: string | null;
+  /** Por que se cerro asi (codigo de lista cerrada, `no_cancelable_<estado>` o `pedido_ya_no_estaba_por_aprobar`). `null`/ausente = sin motivo o base con la 050 original (sin la 073). */
+  readonly motivo?: string | null;
 }
 
 export interface SolicitudPorEscalar {

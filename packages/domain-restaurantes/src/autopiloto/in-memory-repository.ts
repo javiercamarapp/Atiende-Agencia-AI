@@ -188,7 +188,7 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
     const p = s.orderId ? this.pedidos.get(s.orderId) : undefined;
     const base = (aplicado: boolean, extra: Partial<ResultadoResolver> = {}): ResultadoResolver => ({
       aplicado, tipo: s.tipo, decision: s.decision, orderId: s.orderId, propertyId: s.propertyId, estadoPedido: p?.status ?? null, codigoDescuento: s.codigoDescuento,
-      reposicionOrderId: s.reposicionOrderId, ...extra,
+      reposicionOrderId: s.reposicionOrderId, motivo: s.motivoResolucion, ...extra,
     });
     if (s.estado === "resuelta") return base(false);
     if (!DECISIONES_POR_TIPO[s.tipo].includes(decision)) throw new AutopilotoValidacionError(`decision invalida para ${s.tipo}`);
@@ -199,7 +199,7 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
     if (s.tipo === "pedido_grande" && p) {
       if (p.status !== "por_aprobar") {
         cerrar({ motivoResolucion: "pedido_ya_no_estaba_por_aprobar" });
-        return base(false);
+        return base(false, { motivo: "pedido_ya_no_estaba_por_aprobar" });
       }
       if (decision === "aprobar") {
         this.mover(p, p.programadoPara && p.programadoPara > this.ahora() ? "programado" : "pending", "staff", "aprobado");
@@ -213,8 +213,9 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
     if (s.tipo === "cancelacion" && decision === "cancelar" && p) {
       if (!motivoOk) throw new AutopilotoValidacionError("cancelar exige un motivo de la lista cerrada");
       if (!["pending", "programado", "preparando", "listo_para_recoger", "no_recogido", "problema", "por_aprobar"].includes(p.status)) {
+        // La decision SI se aplico en esta llamada (se cerro como "mantener"): aplicado = true para que salga el aviso al cliente (migracion 073).
         cerrar({ decision: "mantener", motivoResolucion: `no_cancelable_${p.status}` });
-        return base(false, { decision: "mantener" });
+        return base(true, { decision: "mantener", motivo: `no_cancelable_${p.status}` });
       }
       this.mover(p, "cancelado", "staff", o.motivo ?? null);
       cerrar();

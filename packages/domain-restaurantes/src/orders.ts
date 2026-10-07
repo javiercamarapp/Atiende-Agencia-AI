@@ -494,7 +494,13 @@ export async function createOrder(
   /** `beforePersist`: gancho que ve el pedido YA cotizado contra el catalogo vigente y puede rechazarlo (lanzando)
    * antes de escribir nada. Lo usa la maquina de estados del pedido para exigir que los precios sigan siendo los
    * que el cliente confirmo. */
-  options: { readonly beforePersist?: (prepared: PreparedOrder) => void | Promise<void> } = {},
+  options: {
+    readonly beforePersist?: (prepared: PreparedOrder) => void | Promise<void>;
+    /** `retener`: gancho que corre justo despues de persistir el pedido (misma transaccion). Si devuelve `true` el pedido quedo RETENIDO (p. ej. pedido grande
+     * `por_aprobar`): no sale el aviso "nuevo pedido" ni el correo de confirmacion (todavia no esta confirmado) y el pedido devuelto lleva ese estado. Si lanza,
+     * la transaccion (o el SAVEPOINT de la herramienta) revierte tambien el pedido: nunca queda un pedido grande en `pending` rumbo a cocina. */
+    readonly retener?: (order: Order, prepared: PreparedOrder) => Promise<boolean>;
+  } = {},
 ): Promise<Order> {
   const prepared = await prepareCreateOrder(repo, rawInput);
   await options.beforePersist?.(prepared);
@@ -596,14 +602,15 @@ export async function createOrder(
   // idempotente por (organizationId, orderId, eventType) -- un reintento real de
   // create_order_idempotent que devuelve el MISMO pedido (misma idempotencyKey o
   // dedupeFingerprint) nunca duplica la notificación.
-  await tryNotifyStaffNewOrder(repo, order);
+  const retenido = options.retener ? await options.retener(order, prepared) : false;
+  if (!retenido) await tryNotifyStaffNewOrder(repo, order);
 
   // Fase de correo — confirmación de pedido por correo real, best-effort e
   // idempotente por (organizationId, channel, dedupeKey) igual que la línea de
   // arriba: cuando el cliente no dejó correo (voz/WhatsApp, o web sin llenarlo),
   // `notifyCustomerOrderConfirmationEmailCore` simplemente no encola nada — ver
   // order-notifications.ts.
-  await tryNotifyCustomerOrderConfirmationEmail(repo, order);
+  if (!retenido) await tryNotifyCustomerOrderConfirmationEmail(repo, order);
 
   // Cliente 360 (migracion 049): cierre automatico del ciclo con el cliente. Domicilio (alta o "usado otra vez") y gustos
   // se actualizan a partir de lo que el cliente CONFIRMO en este pedido; idempotente por pedido (un reintento que devuelve
@@ -621,10 +628,11 @@ export async function createOrder(
   // pedidos reales con el mismo código, y no hay forma barata de diferenciarlos
   // sin una tabla de uso por pedido, fuera de alcance de esta fase). Best-effort:
   // nunca revierte un pedido real ya creado por esto.
+  // Nota: un pedido RETENIDO (`por_aprobar`) tambien consume el uso de la promocion: si la sucursal lo rechaza despues, el uso queda consumido (no se devuelve).
   if (appliedPromotion) {
     await tryIncrementPromotionUses(repo, payload.organizationId, appliedPromotion.id);
   }
-  return order;
+  return retenido ? { ...order, status: "por_aprobar" } : order;
 }
 
 /**

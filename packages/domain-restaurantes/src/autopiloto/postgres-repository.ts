@@ -191,6 +191,8 @@ export class PostgresAutopilotoRepository implements AutopilotoRepository {
         estadoPedido: (f.estado_pedido as OrderStatus | null) ?? null,
         codigoDescuento: (f.codigo_descuento as string | null) ?? null,
         reposicionOrderId: f.reposicion_order_id === null ? null : String(f.reposicion_order_id),
+        // Columna agregada por la migracion 079: contra la 050 original no viene (undefined -> null).
+        motivo: typeof f.motivo_resolucion === "string" ? f.motivo_resolucion : null,
       };
     });
     return r.valor;

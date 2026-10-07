@@ -29,7 +29,8 @@ import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/l
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
 import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { assertCantidadesWeb, assertWebOrderRules } from "../storefront.ts";
-import { evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
+import { acumuladoReciente, evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
+import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
 import { RestaurantesConfigUnavailableError, type RestaurantesRepository } from "../repository.ts";
 import { parsearProgramadoPara } from "../pedidos-programados.ts";
 import {
@@ -144,6 +145,9 @@ export interface AgentToolContext {
   /** Solo `preview`: cliente de la organizacion que el panel eligio para «simular cliente conocido». `buscar_cliente`
    * lo resuelve con `getCustomerDetailById` (solo lectura, acotado a la organizacion). */
   readonly previewCustomerId?: string | null;
+  /** Autopiloto: con el, un pedido grande de WhatsApp/voz se CREA y queda `por_aprobar` (la sucursal lo aprueba con un clic). Sin el (o con la base sin la
+   * migracion 050) `crear_pedido` sigue por el aviso `escalada:pedido_grande` de siempre. Solo lo fija el servidor. */
+  readonly pedidoGrande?: PedidoGrandeHook;
 }
 
 export interface AgentToolOutcome {
@@ -163,6 +167,9 @@ export interface AgentToolOutcome {
   readonly quoteHash?: string;
   /** crear_pedido de VOZ repetido tras un intento incierto (timeout del worker): devuelve el pedido ya registrado, sin crear otro. */
   readonly yaRegistrado?: boolean;
+  /** crear_pedido: el pedido SI se creo pero quedo retenido (`por_aprobar`, pedido grande). Quien llama NO debe encolar su comanda al POS ni avisar "recibido":
+   * eso lo hace la aprobacion con un clic. */
+  readonly pedidoRetenido?: boolean;
   /** Codigo de la violacion de la maquina de estados que el SERVIDOR rechazo a proposito (solo `executeAgentToolSafely`, con `{error}`). */
   readonly rechazoDelFlujo?: OrderFlowViolationCode;
 }
@@ -802,7 +809,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   if (!claimed) throw new OrderValidationError(CONFLICT_MESSAGE);
 
   try {
-    let outcome = await dispatchTool(repo, ctx, name, input, claimed.context.quotedPrices, { total: claimed.context.sessionTotal ?? 0, pesoKg: claimed.context.sessionPesoKg ?? 0, pedidos: claimed.context.sessionPedidos ?? 0 });
+    let outcome = await dispatchTool(repo, ctx, name, input, claimed.context.quotedPrices, { total: claimed.context.sessionTotal ?? 0, pesoKg: claimed.context.sessionPesoKg ?? 0, pedidos: claimed.context.sessionPedidos ?? 0, ...(claimed.context.sessionUltimoPedidoId ? { ultimoPedidoId: claimed.context.sessionUltimoPedidoId } : {}) });
     // Un pedido IDENTICO al ultimo de esta sesion (misma ventana de deduplicacion de 5 min) devuelve ese mismo pedido: el agente debe saber que NO se creo otro (QA-PM-R2-reglas-15).
     const repetido = outcome.orderId !== null && outcome.orderId === claimed.context.sessionUltimoPedidoId;
     if (repetido) {
@@ -874,7 +881,7 @@ async function dispatchTool(
   /** Huella de precios que el cliente confirmo (solo crear_pedido con maquina de estados activa). */
   expectedPrices?: string,
   /** Total y kilos de los pedidos ya creados en esta sesion (solo crear_pedido con maquina de estados activa): la guardia de pedido grande los suma. */
-  sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number },
+  sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number; readonly ultimoPedidoId?: string },
 ): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
@@ -1054,6 +1061,12 @@ async function dispatchTool(
       const retenido = await retenerPedidoDeReincidente(repo, ctx, createInput);
       if (retenido) return retenido;
       let order: Order;
+      // Pedido grande con autopiloto disponible: se crea y se deja `por_aprobar` (ver `retener` abajo); si no, se lanza el aviso de siempre.
+      const grandeAprobable: { error: PedidoGrandeRetenidoError | null } = { error: null };
+      const idsEnMemoria = new Set<string>();
+      // El ultimo pedido de la sesion puede NO estar en la memoria (la memoria excluye `programado`) y aun asi `create_order_idempotent` lo deduplica ("otro igual"
+      // en < 5 min): se marca como ya aceptado para que `retener` no lo pase de `programado` a `por_aprobar`.
+      if (sesionPrevia?.ultimoPedidoId) idsEnMemoria.add(sesionPrevia.ultimoPedidoId);
       try {
         order = await createOrder(repo, createInput, {
           beforePersist: async (prepared) => {
@@ -1063,7 +1076,30 @@ async function dispatchTool(
               throw new OrderFlowViolationError("precio_cambio", "Los precios del menú cambiaron después de que confirmaste. Vuelve a revisar tu pedido para ver el total actualizado.");
             }
             // Pedido grande (decision de PM, 2-oct): lo hace cumplir el SERVIDOR aunque el modelo olvide escalar.
-            if (ctx.channel !== "web") await assertNoEsPedidoGrande(repo, prepared, sesionPrevia);
+            if (ctx.channel === "web") return;
+            const grande = await evaluarPedidoGrandeDelPedido(repo, prepared, idsEnMemoria, sesionPrevia);
+            if (!grande) return;
+            if (ctx.pedidoGrande && (await ctx.pedidoGrande.disponible(prepared.payload.organizationId, prepared.branch.propertyId))) grandeAprobable.error = grande;
+            else throw grande;
+          },
+          retener: async (creado, prepared) => {
+            const g = grandeAprobable.error;
+            if (!g || !ctx.pedidoGrande) return false;
+            // `create_order_idempotent` deduplica ("otro igual" en menos de 5 min): devuelve el pedido YA existente, que ya estaba aceptado (y su comanda
+            // puede ir al POS). Ese NO se retiene: el acumulado que disparo la regla lo incluia a el mismo. Se devuelve tal cual, como cualquier reintento.
+            if (idsEnMemoria.has(creado.id)) {
+              grandeAprobable.error = null;
+              return false;
+            }
+            const r = await ctx.pedidoGrande.retener({
+              organizationId: prepared.payload.organizationId,
+              orderId: creado.id,
+              // Solo codigos y cifras (la solicitud se lee en el panel; sin nombres ni telefonos).
+              detalle: { motivo: g.motivo, total: g.total, peso_kg: g.pesoKg, canal: prepared.payload.canal ?? "domicilio", pago: prepared.payload.paymentMethod ?? null },
+            });
+            // Si la retencion no quedo registrada se lanza: el SAVEPOINT de la herramienta revierte tambien el pedido (nunca queda uno `pending` rumbo a cocina).
+            if (r.estado !== "por_aprobar") throw new Error("pedido grande: no se pudo dejar por aprobar; se revierte el pedido");
+            return true;
           },
         });
       } catch (err) {
@@ -1073,6 +1109,17 @@ async function dispatchTool(
           throw new OrderValidationError(PROGRAMADOS_NO_DISPONIBLES);
         }
         throw err;
+      }
+      if (grandeAprobable.error) {
+        const result = {
+          pedido_grande: true,
+          por_aprobar: true,
+          estado: "por_aprobar",
+          order: orderToWire(order),
+          mensaje:
+            "Este pedido supera el umbral de pedido grande: quedó REGISTRADO pero NO se mandó a cocina todavía. La sucursal lo confirma con un clic y, cuando lo haga, el cliente recibe un WhatsApp. Dígale al cliente, de usted, que la sucursal confirmará su pedido en breve y le avisará por WhatsApp; no le prometa hora ni le diga que ya está en preparación, y no vuelva a llamar crear_pedido.",
+        };
+        return { result, raw: order, orderId: order.id, propertyId: order.propertyId, pedidoRetenido: true };
       }
       return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
     }
@@ -1225,25 +1272,61 @@ async function retenerPedidoDeReincidente(repo: RestaurantesRepository, ctx: Age
   return { result, raw: result, orderId: null, propertyId: prepared.branch.propertyId };
 }
 
-/** Lanza `PedidoGrandeRetenidoError` si el pedido ya cotizado supera el umbral de pedido grande de PM. Solo organizaciones con
- * perfil `taqueria_pm` y con el motivo `pedido_grande` encendido; sin configuracion (base sin migrar) no aplica. */
-async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: PreparedOrder, sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number }): Promise<void> {
+/** Devuelve el `PedidoGrandeRetenidoError` (sin lanzarlo) si el pedido ya cotizado supera el umbral de pedido grande de PM, o `null`. Solo organizaciones con
+ * perfil `taqueria_pm` y con el motivo `pedido_grande` encendido; sin configuracion (base sin migrar) no aplica. El umbral se evalua sobre lo ACUMULADO por el
+ * mismo numero: (a) los pedidos de las ultimas horas en la memoria del cliente (`acumuladoReciente`) y (b) los que esta misma conversacion/llamada ya creo
+ * (`sesionPrevia`). Partir un pedido grande en varios chicos no lo evade. Los pedidos de la sesion tambien estan en la memoria, asi que NO se suman dos
+ * veces: se toma el mayor de los dos acumulados. Sin la memoria del cliente (base sin migrar) manda la sesion; sin ninguno se evalua el pedido solo. */
+async function evaluarPedidoGrandeDelPedido(
+  repo: RestaurantesRepository,
+  prepared: PreparedOrder,
+  idsEnMemoria?: Set<string>,
+  sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number },
+): Promise<PedidoGrandeRetenidoError | null> {
   const config = await repo.findWhatsAppAgentConfig(prepared.payload.organizationId, prepared.branch.propertyId);
-  if (!config || config.perfil !== "taqueria_pm" || (config.escalationReasonsOff ?? []).includes("pedido_grande")) return;
-  // Se suman los pedidos que esta misma conversacion/llamada ya creo: partir un pedido grande en dos no esquiva la regla.
-  const pesoKg = pesoTotalKg(prepared.orderItems) + (sesionPrevia?.pesoKg ?? 0);
-  const totalSesion = prepared.total + (sesionPrevia?.total ?? 0);
-  const cliente = await repo.findCustomerByPhone(prepared.payload.organizationId, normalizePhone(prepared.payload.customerPhone));
+  if (!config || config.perfil !== "taqueria_pm" || (config.escalationReasonsOff ?? []).includes("pedido_grande")) return null;
+  const telefono = normalizePhone(prepared.payload.customerPhone);
+  const pesoKg = pesoTotalKg(prepared.orderItems);
+  const cliente = await repo.findCustomerByPhone(prepared.payload.organizationId, telefono);
+  const memoria = await cargarMemoria(repo, prepared.payload.organizationId, telefono);
+  const deMemoria = memoria ? acumuladoReciente(memoria.orders, Date.now()) : { total: 0, pesoKg: 0, cuantos: 0 };
+  // Ids de los pedidos que ya sumaron al acumulado: si `create_order_idempotent` devuelve uno de ellos, fue una deduplicacion (no un pedido nuevo).
+  if (memoria && idsEnMemoria) for (const o of memoria.orders) idsEnMemoria.add(o.id);
+  const previos = {
+    total: Math.max(deMemoria.total, sesionPrevia?.total ?? 0),
+    pesoKg: Math.max(deMemoria.pesoKg, sesionPrevia?.pesoKg ?? 0),
+    cuantos: Math.max(deMemoria.cuantos, sesionPrevia?.pedidos ?? 0),
+  };
+  const pedidosPrevios = cliente?.orderCount ?? 0;
+  const total = Math.round((prepared.total + previos.total) * 100) / 100;
+  const pesoAcumulado = pesoKg + previos.pesoKg;
   const motivo = evaluarPedidoGrande({
-    total: totalSesion,
-    pesoKg,
+    total,
+    pesoKg: pesoAcumulado,
     pagaEfectivo: prepared.payload.paymentMethod === "efectivo",
-    // Los pedidos creados en ESTA sesion no son historial (R90: un pedido de $126 de hace segundos no apaga la regla de $2,500 en efectivo).
-    sinHistorial: !cliente || cliente.orderCount - (sesionPrevia?.pedidos ?? 0) <= 0,
+    // Con la memoria: "sin historial" = todo lo que el numero ha pedido cae dentro de la ventana (no hay pedidos anteriores a ella). Los pedidos creados
+    // en ESTA sesion tampoco son historial (R90: un pedido de $126 de hace segundos no apaga la regla de $2,500 en efectivo).
+    // Limitacion conocida: `orderCount` puede incluir cancelados que `previos.cuantos` no cuenta.
+    sinHistorial: memoria ? pedidosPrevios <= previos.cuantos : !cliente || cliente.orderCount - (sesionPrevia?.pedidos ?? 0) <= 0,
   });
-  if (!motivo) return;
-  const resumen = resumenPedidoGrande({ motivo, total: totalSesion, totalDeEstePedido: prepared.total, pesoKg, items: prepared.orderItems, canal: prepared.payload.canal, paymentMethod: prepared.payload.paymentMethod });
-  throw new PedidoGrandeRetenidoError(motivo, totalSesion, pesoKg, resumen);
+  if (!motivo) return null;
+  const resumen = resumenPedidoGrande({
+    motivo,
+    total,
+    totalDeEstePedido: prepared.total,
+    pesoKg: pesoAcumulado,
+    items: prepared.orderItems,
+    canal: prepared.payload.canal,
+    paymentMethod: prepared.payload.paymentMethod,
+    pedidosPrevios: previos.cuantos,
+  });
+  return new PedidoGrandeRetenidoError(motivo, total, pesoAcumulado, resumen);
+}
+
+/** Lanza el error de pedido grande si aplica (preview y camino de aviso). */
+async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: PreparedOrder, sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number }): Promise<void> {
+  const grande = await evaluarPedidoGrandeDelPedido(repo, prepared, undefined, sesionPrevia);
+  if (grande) throw grande;
 }
 
 /** En vez de crear el pedido: deja el aviso `escalada:pedido_grande` (con el resumen) para que la sucursal lo confirme y contacte al

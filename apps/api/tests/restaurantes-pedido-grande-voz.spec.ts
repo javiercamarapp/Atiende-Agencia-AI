@@ -1,6 +1,8 @@
 // QA R1 (viaje-05, canal de voz por HTTP): el checkout de voz (POST /orders con el secreto de voz) tambien retiene el pedido grande de PM
 // en el servidor: NO crea el pedido, deja el aviso `escalada:pedido_grande` y responde 200 con el resultado de la retencion (sin `order`).
 import { describe, expect, it } from "vitest";
+import { InMemoryAutopilotoRepository } from "@atiende/domain-restaurantes";
+import { InMemoryComandaOutboxStore, FakeSoftRestaurantAdapter, type SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import { buildApp } from "../src/app.ts";
 import { buildTestDeps, jsonRequestInit } from "./fixtures.ts";
 
@@ -62,5 +64,39 @@ describe("POST /orders de voz: pedido grande de PM", () => {
     expect(res.status).toBe(200);
     expect(((await res.json()) as { order: { total: number } }).order.total).toBe(4500);
     expect((await restaurantesRepo.listOrders(organizationId, { propertyIds: null, limit: 10 })).orders).toHaveLength(1);
+  });
+
+  // QA R2 (automatizacion-01, voz): con el autopiloto disponible el pedido grande SI se crea (`por_aprobar`) y la ruta corta antes de la comanda del POS.
+  // CR12 (056/326): un domicilio PM por voz sin zonas cargadas se rechaza; el pedido grande no depende de la zona, asi que va para recoger.
+  it("CON autopiloto: 100 Coca-Cola en efectivo queda por_aprobar con su solicitud y SIN comanda en el POS ni 'recibido'", async () => {
+    const base = await buildTestDeps();
+    const { restaurantesRepo, organizationId, products } = base;
+    await restaurantesRepo.upsertWhatsAppAgentConfig(organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: "Los Taquitos de PM", toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
+    const auto = new InMemoryAutopilotoRepository();
+    // El repo del autopiloto en memoria necesita ver el pedido que acaba de crear el repo principal (en la base real es la misma tabla).
+    const retener = auto.retenerPedidoGrande.bind(auto);
+    auto.retenerPedidoGrande = async (org, orderId, detalle) => {
+      const o = await restaurantesRepo.findOrderById(org, orderId);
+      if (o) auto.pedidos.set(o.id, { id: o.id, organizationId: o.organizationId, propertyId: o.propertyId, status: "pending", total: o.total, clienteNombre: o.customerName, telefono: o.customerPhone, canal: "recoger", numero: o.orderNumber ?? 1, renglones: [] });
+      return retener(org, orderId, detalle);
+    };
+    const store = new InMemoryComandaOutboxStore({ disponible: true });
+    store.ponerModo(organizationId, "activo");
+    const app = buildApp({ ...base.deps, autopilotoRepo: () => auto, softRestaurantStore: () => store, softRestaurantPort: new FakeSoftRestaurantAdapter() as unknown as SoftRestaurantPort });
+    const res = await app.request(
+      `/v1/restaurantes/${ORG_SLUG}/orders`,
+      jsonRequestInit(
+        { branch_slug: "fco-montejo", customer_name: "Evento", customer_phone: "9991230003", customer_address: "Calle 20 #300, Mérida", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 100 }], payment_method: "efectivo", canal: "recoger" },
+        TOOL_SECRET_HEADERS,
+      ),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { pedido_grande?: boolean; por_aprobar?: boolean; estado?: string; comanda?: unknown };
+    expect(body).toMatchObject({ pedido_grande: true, por_aprobar: true, estado: "por_aprobar" });
+    expect(body.comanda).toBeUndefined();
+    const { orders } = await restaurantesRepo.listOrders(organizationId, { propertyIds: null, limit: 10 });
+    expect(orders).toHaveLength(1);
+    expect(store.todas()).toHaveLength(0);
+    expect((auto as unknown as { solicitudes: { tipo: string; estado: string }[] }).solicitudes).toMatchObject([{ tipo: "pedido_grande", estado: "pendiente" }]);
   });
 });

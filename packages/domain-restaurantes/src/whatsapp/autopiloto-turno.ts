@@ -10,11 +10,11 @@ import { normalizePhone } from "../phone.ts";
 import { esConsultaDeCancelacion, normalizarParaClasificar } from "./guards.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import { PostgresAutopilotoRepository } from "../autopiloto/postgres-repository.ts";
-import { registrarQuejaConPedido, solicitarCancelacion } from "../autopiloto/servicio.ts";
+import { crearHookPedidoGrande, registrarQuejaConPedido, solicitarCancelacion } from "../autopiloto/servicio.ts";
 import type { AutopilotoServicioDeps, ResultadoSolicitarCancelacion } from "../autopiloto/servicio.ts";
 import { subtipoQueja } from "../autopiloto/taxonomia.ts";
 import type { MotivoQueja } from "../autopiloto/taxonomia.ts";
-import type { AutopilotoRepository } from "../autopiloto/tipos.ts";
+import type { AutopilotoRepository, PedidoGrandeHook } from "../autopiloto/tipos.ts";
 
 /** Hasta donde atras se busca el pedido del cliente al cancelar o quejarse. */
 export const VENTANA_PEDIDO_AUTOPILOTO_MS = 24 * 3_600_000;
@@ -23,11 +23,14 @@ export interface AutopilotoTurnoHooks {
   cancelacionActiva(organizationId: string): Promise<boolean>;
   solicitarCancelacion(input: { readonly organizationId: string; readonly customerPhone: string; readonly ahora: Date }): Promise<ResultadoSolicitarCancelacion>;
   registrarQueja(input: { readonly organizationId: string; readonly customerPhone: string; readonly subtipo: MotivoQueja; readonly ahora: Date }): Promise<unknown>;
+  /** Pedido grande: `crear_pedido` lo deja `por_aprobar` (la sucursal lo aprueba con un clic) en vez de solo avisar. Ausente = camino del aviso de siempre. */
+  readonly pedidoGrande?: PedidoGrandeHook;
 }
 
 /** Hooks reales sobre UNA sesion (los usa `buildRestaurantesTurnHandlerForSession`). Cada llamada degrada a "no disponible" contra la base sin migrar. */
 export function crearHooksAutopilotoTurno(deps: AutopilotoServicioDeps): AutopilotoTurnoHooks {
   return {
+    pedidoGrande: crearHookPedidoGrande(deps),
     async cancelacionActiva(organizationId) {
       return (await deps.auto.leerConfigOrg(organizationId)).valor.cancelacionAgente;
     },

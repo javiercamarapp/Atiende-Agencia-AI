@@ -481,11 +481,59 @@ select decision from restaurantes.solicitud_resolver('00000000-0000-0000-0000-00
 select count(*) as cancelado_deberia_ser_1 from restaurantes.orders where id = '00000000-0000-0000-0000-0000000e50d3' and status = 'cancelado';
 rollback;
 
-\echo '=== D20. cancelacion: un pedido que ya salio NO se cancela (queda mantener) ==='
+\echo '=== D20. cancelacion: un pedido que ya salio NO se cancela (queda mantener) y la decision SI se aplica en esta llamada (079) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
-select aplicado::int as aplicado_deberia_ser_0 from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5112', 'cancelar', 'cliente_desistio');
+-- QA R2 caos-09: aplicado = TRUE (antes false, indistinguible de un doble clic: el cliente nunca recibia el aviso "no se pudo cancelar").
+select aplicado::int as aplicado_deberia_ser_1 from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5112', 'cancelar', 'cliente_desistio');
+rollback;
+
+\echo '=== D20b. cancelacion de un pedido que ya salio: decision mantener, motivo no_cancelable_en_camino y el pedido sigue en camino ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
+select count(*) as mantener_con_motivo_deberia_ser_1 from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5112', 'cancelar', 'cliente_desistio') r
+  where r.aplicado and r.decision = 'mantener' and r.motivo_resolucion = 'no_cancelable_en_camino' and r.estado_pedido = 'en_camino';
+select count(*) as pedido_sigue_en_camino_deberia_ser_1 from restaurantes.orders where id = '00000000-0000-0000-0000-0000000e50d4' and status = 'en_camino';
+-- El segundo clic SI es un doble clic: aplicado = false, mismo motivo, sin repetir nada.
+select count(*) as segundo_clic_no_aplicado_deberia_ser_1 from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5112', 'cancelar', 'cliente_desistio') r2
+  where not r2.aplicado and r2.motivo_resolucion = 'no_cancelable_en_camino';
+rollback;
+
+\echo '=== D20c. pedido grande cuyo pedido ya no estaba por aprobar: aplicado = false con motivo pedido_ya_no_estaba_por_aprobar (el panel lo explica) ==='
+begin;
+update restaurantes.orders set status = 'pending' where id = '00000000-0000-0000-0000-0000000e5da2';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
+select count(*) as pedido_ya_no_por_aprobar_deberia_ser_1 from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5102', 'aprobar', null) r
+  where not r.aplicado and r.motivo_resolucion = 'pedido_ya_no_estaba_por_aprobar' and r.estado_pedido = 'pending';
+rollback;
+
+\echo '=== D20d. el motivo de resolucion nunca guarda texto libre del staff: aprobar con un nombre/telefono devuelve motivo null ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
+select count(*) as motivo_libre_no_se_expone_deberia_ser_1 from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5101', 'aprobar', 'llamo Juan al 5512345678') r where r.aplicado and r.motivo_resolucion is null;
+rollback;
+
+\echo '=== D20e. anon no ejecuta solicitud_resolver tras el DROP + CREATE de la 079 (los permisos se re-otorgaron solo a authenticated) ==='
+select (not has_function_privilege('anon', 'restaurantes.solicitud_resolver(uuid, uuid, text, text, integer, integer[])', 'execute'))::int as anon_sin_permiso_deberia_ser_1;
+select has_function_privilege('authenticated', 'restaurantes.solicitud_resolver(uuid, uuid, text, text, integer, integer[])', 'execute')::int as authenticated_con_permiso_deberia_ser_1;
+
+\echo '=== D20f. la 079 CONSERVA las guardas de dinero de la 075: staff NO repone ni da descuento (42501); owner SI; sin compensacion sigue abierto al staff ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
+select public.t_esperar_error($q$select * from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5122', 'reponer_producto', null, null, array[0])$q$, '42501');
+select public.t_esperar_error($q$select * from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5122', 'descuento_proximo', null, 10)$q$, '42501');
+select count(*) as solicitud_sigue_pendiente_deberia_ser_1 from restaurantes.solicitud_aprobacion where id = '00000000-0000-0000-0000-0000000e5122' and estado = 'pendiente';
+rollback;
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5011', true);
+select count(*) as owner_descuento_con_motivo_null_deberia_ser_1 from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5122', 'descuento_proximo', null, 10) r
+  where r.aplicado and r.codigo_descuento like 'GRACIAS-%' and r.motivo_resolucion is null;
 rollback;
 
 \echo '=== D21. cancelacion: el pedido en camino sigue en camino ==='
@@ -605,6 +653,18 @@ insert into restaurantes.autopiloto_config (property_id, organization_id, aproba
 update restaurantes.solicitud_aprobacion set solicitada_at = now() - interval '6 minutes' where id = '00000000-0000-0000-0000-0000000e5101';
 set local role authenticated;
 select count(*) as escaladas_con_5_min_deberia_ser_2 from restaurantes.solicitudes_por_escalar(now(), 100) where organization_id = '00000000-0000-0000-0000-0000000e5001';
+rollback;
+
+\echo '=== E5. QA R2 automatizacion-10: si la alerta falla y la transaccion de la unidad revierte, la solicitud vuelve a salir en el siguiente tick ==='
+begin;
+set local role authenticated;
+savepoint tick1;
+select count(*) as primer_tick_reclama_deberia_ser_1 from restaurantes.solicitudes_por_escalar(now(), 100) where organization_id = '00000000-0000-0000-0000-0000000e5001';
+-- La alerta fallo (p. ej. 55P03) y el codigo lanzo: la transaccion de la unidad revierte la marca escalada_at.
+rollback to savepoint tick1;
+select count(*) as segundo_tick_reintenta_deberia_ser_1 from restaurantes.solicitudes_por_escalar(now(), 100) where organization_id = '00000000-0000-0000-0000-0000000e5001';
+-- Y una vez confirmada la marca, ya no sale de nuevo.
+select count(*) as tras_confirmar_ya_no_sale_deberia_ser_0 from restaurantes.solicitudes_por_escalar(now(), 100) where organization_id = '00000000-0000-0000-0000-0000000e5001';
 rollback;
 
 \echo '=== F1. candidatos: el entregado de hace 6+ horas pasa a completado ==='

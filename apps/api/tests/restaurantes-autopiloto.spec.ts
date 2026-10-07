@@ -347,3 +347,40 @@ describe("GET .../pedidos/:orderId/historial", () => {
     expect((await t.app.request(`${t.base()}/pedidos/no-uuid/historial`, authedGet(t.ctx.staff.owner.token))).status).toBe(400);
   });
 });
+
+// QA R2 caos-02: cancelar o rechazar desde "Por aprobar" corta la comanda pendiente en el POS, igual que el cambio de estado a cancelado (R-34).
+describe("POST .../solicitudes/:id/resolver: comanda pendiente de un pedido que se cancela", () => {
+  async function conComandaPendiente(t: Awaited<ReturnType<typeof construir>>, orderId: string, propertyId: string) {
+    const r = await t.store.encolar({ organizationId: t.ctx.organizationId, propertyId, orderId, idempotencyKey: `sr:${orderId}`, modo: "sombra", payload: {} as never, maxIntentos: 5 });
+    if (!r.disponible) throw new Error("outbox no disponible");
+    return r.fila;
+  }
+
+  it("rechazar un pedido grande con comanda fallida/pendiente la pasa a capturada_manual con la nota de corte: no llega a cocina si el POS vuelve", async () => {
+    const t = await construir();
+    const r = await t.retenido();
+    const fila = await conComandaPendiente(t, r.id, t.ctx.propertyIdA);
+    const res = await t.app.request(`${t.base()}/solicitudes/${r.solicitudId}/resolver`, authedJson(t.ctx.staff.owner.token, { decision: "rechazar", motivo: "cliente_desistio" }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).efectos).toContain("comanda_cortada");
+    const despues = t.store.todas().find((f) => f.id === fila.id);
+    expect(despues?.estado).toBe("capturada_manual");
+    expect(despues?.notaCaptura).toMatch(/cancel/i);
+  });
+
+  it("cancelar a peticion del cliente (solicitud de cancelacion) corta la comanda; mantener NO la toca", async () => {
+    const t = await construir();
+    const a = t.pedido(t.ctx.propertyIdA, "pending");
+    const filaA = await conComandaPendiente(t, a.id, t.ctx.propertyIdA);
+    const sa = await t.auto.crearSolicitud(t.ctx.organizationId, t.ctx.propertyIdA, "cancelacion", a.id, { origen: "cliente" });
+    const ok = await t.app.request(`${t.base()}/solicitudes/${sa.solicitudId}/resolver`, authedJson(t.ctx.staff.owner.token, { decision: "cancelar", motivo: "cliente_desistio" }));
+    expect(ok.status).toBe(200);
+    expect(t.store.todas().find((f) => f.id === filaA.id)?.estado).toBe("capturada_manual");
+
+    const b = t.pedido(t.ctx.propertyIdA, "pending");
+    const filaB = await conComandaPendiente(t, b.id, t.ctx.propertyIdA);
+    const sb = await t.auto.crearSolicitud(t.ctx.organizationId, t.ctx.propertyIdA, "cancelacion", b.id, { origen: "cliente" });
+    await t.app.request(`${t.base()}/solicitudes/${sb.solicitudId}/resolver`, authedJson(t.ctx.staff.owner.token, { decision: "mantener" }));
+    expect(t.store.todas().find((f) => f.id === filaB.id)?.estado).toBe("pendiente");
+  });
+});
