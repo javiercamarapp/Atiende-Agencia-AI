@@ -2344,6 +2344,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async findOrderById(organizationId: string, orderId: string): Promise<Order | null> {
+    // QA R2 features-04: un id de ruta que no es uuid ("no-uuid") llegaba a la columna uuid y Postgres lanzaba 22P02 (-> 500 en el panel). Un id
+    // que no puede existir es "no encontrado" (404), igual que en el repositorio en memoria; ni siquiera se consulta.
+    if (!UUID_TEXT.test(orderId)) return null;
     const { rows } = await this.db.query<OrderRow>(
       `select ${ORDER_COLUMNS}
        from restaurantes.orders where id = $1 and organization_id = $2;`,
@@ -2506,6 +2509,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async findAssignedOrderById(organizationId: string, repartidorId: string, orderId: string): Promise<Order | null> {
+    if (!UUID_TEXT.test(orderId)) return null; // QA R2 features-04: ver findOrderById
     const { rows } = await this.db.query<OrderRow>(
       `select ${ORDER_COLUMNS}
        from restaurantes.orders
@@ -2538,6 +2542,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async findCustomerById(organizationId: string, customerId: string): Promise<Customer | null> {
+    if (!UUID_TEXT.test(customerId)) return null; // QA R2 features-04: ver findOrderById
     const { rows } = await this.db.query<CustomerRow>(
       `select id, organization_id, phone, name, order_count from restaurantes.customers where organization_id = $1 and id = $2;`,
       [organizationId, customerId],
