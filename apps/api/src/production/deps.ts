@@ -57,7 +57,7 @@ import { PostgresAgentesRepository, PostgresHotelesRepository, PostgresReservasA
 import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { ObservabilidadTurno, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp } from "@atiende/domain-restaurantes";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
@@ -132,6 +132,7 @@ import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "
 import { createPlatformSwitchGuard } from "../platform-switches.ts";
 import { crearDespachadorAlertas, configAlertasDesdeEnv } from "../alertas/index.ts";
 import { notProductionReady } from "./not-ready.ts";
+import { conAjustesDeVoz, resolverAjustesVozPostgres } from "./voz-con-ajustes.ts";
 import { conBitacoraDeTurno } from "../agentes/corridas.ts";
 import { resolveRoleRoute } from "./llm-models.ts";
 import { buildProductionDataChat } from "../data-chat/deps.ts";
@@ -169,6 +170,11 @@ export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gate
     // Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido; degrada a "no disponible" sin la 050.
     autopiloto: crearHooksAutopilotoTurnoPostgres({ repo, db }),
     ...(observabilidad ? { observabilidad } : {}),
+    // Ajustes del agente (modelo y temperatura elegidos por la organizacion). El repositorio degrada con SAVEPOINT contra la base sin migrar.
+    leerAjustes: async (organizationId) => {
+      const lectura = await new PostgresAjustesAgenteRepository(db).leer(organizationId);
+      return lectura.configurados ? { modelo: lectura.valor.whatsappModelo, temperatura: temperaturaEfectivaWhatsapp(lectura.valor) } : null;
+    },
   });
 }
 
@@ -359,6 +365,7 @@ export function buildProductionDeps(): AppDeps {
     // Voz de restaurantes (migración 025): el adaptador de Gemini solo emite sesiones con
     // GEMINI_API_KEY; sin ella `salud()` no está ok y las rutas responden 503 "voz no configurada".
     vozRepo: (db) => new PostgresVozRepository(db),
+    ajustesAgenteRepo: (db) => new PostgresAjustesAgenteRepository(db),
     vozLlamadaRepo: (db) => new PostgresVozLlamadaRepository(db),
     // KPI de voz, costo y alertas (migración 035): cada consulta degrada con SAVEPOINT contra la base sin migrar.
     vozKpiRepo: (db) => new PostgresVozKpiRepository(db),
@@ -373,7 +380,8 @@ export function buildProductionDeps(): AppDeps {
     handoffGate: (db) => new PostgresHandoffAgentGate(db),
     // R-19: marca de organizacion demo (migración 037) para el widget publico de chat sin Meta; degrada con SAVEPOINT.
     demoRepo: (db) => new PostgresDemoRepository(db),
-    voiceProvider: new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }),
+    // La vista previa aplica los ajustes de la organizacion (temperatura, ritmo/estilo, conocimiento automatico) sin tocar las rutas de voz.
+    voiceProvider: conAjustesDeVoz(new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }), resolverAjustesVozPostgres(engine)),
     dataChat: buildProductionDataChat(llmGateway, engine),
     turnHandler: llmGateway
       ? conBitacoraDeTurno(buildRealRestaurantesTurnHandler(engine, llmGateway, observabilidadTurnosRestaurantes(env.whatsappAppSecret)), { deps: depsBitacora, agente: RESTAURANTES_WHATSAPP_AGENT_ROLE, vertical: "restaurantes" })
