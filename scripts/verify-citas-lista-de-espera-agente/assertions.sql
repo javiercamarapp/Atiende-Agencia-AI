@@ -187,10 +187,10 @@ set local role anon;
 select verify_support.expect_sqlstate($q$select * from citas.system_enroll_waitlist('00000000-0000-0000-0000-00000000aa01', '9997770001', null, null, null, null, null, 'any', 5)$q$, '42501') as expect_ok;
 rollback;
 
-\echo '--- 13. [CONTROL] el EXECUTE de anon y de public esta revocado ---'
+\echo '--- 13. [CONTROL] anon no tiene EXECUTE (consulta de privilegios) ---'
 begin;
 set local role authenticated;
-select count(*) as anon_o_public_ejecutan_deberia_ser_0 from (select 1 where has_function_privilege('anon', 'citas.system_enroll_waitlist(uuid,text,text,uuid,uuid,date,date,text,integer)', 'execute')) t;
+select count(*) as anon_ejecuta_deberia_ser_0 from (select 1 where has_function_privilege('anon', 'citas.system_enroll_waitlist(uuid,text,text,uuid,uuid,date,date,text,integer)', 'execute')) t;
 rollback;
 
 \echo '--- 14. [CONTROL] la funcion es security definer con search_path fijo ---'
