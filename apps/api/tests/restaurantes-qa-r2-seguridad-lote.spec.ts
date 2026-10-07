@@ -1,6 +1,5 @@
 // QA restaurantes R2, lote seguridad (R2-seguridad-03 y 05): contrato HTTP de la separacion de funciones en compensaciones y del pedido
 // falso ligado al cliente. La semantica real de RLS/rol/sucursal la prueba scripts/verify-restaurantes-qa-seguridad-r2 contra Postgres real.
-import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { InMemoryAutopilotoRepository } from "@atiende/domain-restaurantes";
 import type { PedidoMemoria } from "@atiende/domain-restaurantes";
@@ -68,6 +67,5 @@ describe("R2-seguridad-05: el pedido falso debe ser del cliente de la URL", () =
     expect(res.status).toBe(404);
     expect((await ctx.restaurantesRepo.getCustomerFicha(ctx.organizationId, beto.id))?.reliability.pedidosFalsos).toBe(0);
     expect((await app.request(`${base}/${beto.id}/orders/${pedidoDeBeto.id}/falso`, authedJson(ctx.staff.owner.token, { falso: true }, "POST"))).status).toBe(200);
-    expect(randomUUID()).toBeTruthy();
   });
 });
