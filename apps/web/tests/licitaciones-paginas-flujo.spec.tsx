@@ -149,18 +149,29 @@ describe("AprobacionesPage", () => {
     "GET /company/experience": () => ({ body: { experience: [] } }),
   };
 
-  it("aprobar un documento hace PATCH real con approvalStatus y lo saca de pendientes", async () => {
-    stubFetch({ ...routes, "PATCH /company/documents/d1": (init) => ({ body: { id: "d1", ...JSON.parse(init!.body as string) } }) });
+  it("aprobar un documento hace POST real a .../approve (tras confirmar) y lo saca de pendientes", async () => {
+    stubFetch({
+      ...routes,
+      "GET /company/documents": () => ({ body: { documents: [{ id: "d1", type: "acta", label: "Acta constitutiva", expiresAt: null, approvalStatus: "pendiente_aprobacion" }, { id: "d2", type: "rfc", label: "Constancia", expiresAt: null, approvalStatus: "aprobado" }] } }),
+      "POST /company/documents/d1/approve": () => ({ body: { id: "d1", approvalStatus: "aprobado" } }),
+    });
     mount(<AprobacionesPage {...CTX} />);
     await settle();
     expect(rendered!.container.textContent).toContain("Pendientes de aprobación (1)");
     expect(rendered!.container.textContent).toContain("Rechazados (1)");
     click([...rendered!.container.querySelectorAll("button")].find((b) => b.textContent === "Aprobar")!);
     await settle();
-    const patch = fetchMock.mock.calls.find(([, i]) => (i as RequestInit | undefined)?.method === "PATCH")!;
-    expect(patch[0]).toBe("https://api.test/licitaciones/prop-1/company/documents/d1");
-    expect(JSON.parse((patch[1] as RequestInit).body as string)).toEqual({ approvalStatus: "aprobado" });
-    expect(rendered!.container.textContent).toContain("Pendientes de aprobación (0)");
+    // el primer clic solo abre la confirmacion: ninguna escritura todavia
+    expect(fetchMock.mock.calls.some(([, i]) => (i as RequestInit | undefined)?.method === "POST")).toBe(false);
+    const confirmar = [...document.body.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent?.includes("Aprobar")) as HTMLButtonElement;
+    await act(async () => {
+      click(confirmar);
+      for (let i = 0; i < 8; i++) await flushMicrotasks();
+    });
+    await settle();
+    const post = fetchMock.mock.calls.find(([, i]) => (i as RequestInit | undefined)?.method === "POST")!;
+    expect(post[0]).toBe("https://api.test/licitaciones/prop-1/company/documents/d1/approve");
+    expect(fetchMock.mock.calls.some(([, i]) => (i as RequestInit | undefined)?.method === "PATCH")).toBe(false);
   });
 
   it("si una lectura falla lo dice y un viewer no ve botones", async () => {

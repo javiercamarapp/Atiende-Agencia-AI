@@ -1,6 +1,7 @@
 // PM-C5 -- lo aprendido de 104 chats reales de T7 queda escrito en el prompt del agente (WhatsApp) y, donde cabe, en la version compacta de
 // voz. El prompt es la primera linea de defensa (las herramientas aplican las reglas duras), asi que aqui se fija cada recomendacion y se ata
 // cada familia de escenarios de `escenarios-t7.json` con la regla del prompt que la cubre.
+import { AGENT_TOOL_DEFINITIONS } from "../src/agent-tools/registry.ts";
 import { describe, expect, it } from "vitest";
 import { cargarEscenariosT7 } from "../src/evals/agente-pm/escenarios-t7.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
@@ -45,9 +46,12 @@ describe("1. aclarar lo ambiguo antes de cotizar", () => {
   });
   it("antes del total repite el pedido en lista con salsas y forma de pago, y pregunta '¿Algo más?' una vez", () => {
     expect(p).toMatch(/pregunte "¿Algo más\?" una sola vez/);
+    // Regresion del eval real: un mensaje aparte con "¿Algo más?" alargaba la conversacion; va dentro del resumen.
+    expect(p).toMatch(/DENTRO del mismo mensaje del resumen, nunca en un mensaje aparte/);
+    expect(p).toMatch(/termine el resumen con "¿Es correcto o desea agregar algo más\?"/);
     expect(p).toMatch(/en LISTA \(un renglón por producto\)/);
     expect(p).toMatch(/salsas \(las básicas más las que pidió\)/);
-    expect(p).toMatch(/si es efectivo, con cuánto paga; si es tarjeta, "llevar terminal"/);
+    expect(p).toMatch(/forma de pago \(efectivo, o tarjeta con "llevar terminal"; solo diga con cuánto paga si el cliente ya lo dijo\)/);
   });
   it("con salsas personalizadas por el dueño no se mezclan con las del perfil", () => {
     const personalizado = prompt({ salsasTexto: "roja, verde y de la casa" });
@@ -68,7 +72,7 @@ describe("3. tiempos configurables por sucursal en lugar del 40 a 50 fijo", () =
     expect(p).toMatch(/si el cliente pregunta antes de pedir, dele los dos \(domicilio y recoger\) y deje que elija/);
   });
   it("el horario de entrega de H16 usa el tiempo de la sucursal, no uno fijo", () => {
-    expect(p).toMatch(/A domicilio, solo si la entrega \(con el tiempo de la sucursal, ver paso 8\) cae antes del cierre/);
+    expect(p).toMatch(/a domicilio tome el pedido solo si la entrega \(con el tiempo de la sucursal, ver paso 8\) cae antes de esa hora/);
   });
 });
 
@@ -84,19 +88,28 @@ describe("4. cliente recurrente", () => {
   });
 });
 
-describe("5. pin a reparto", () => {
-  it("se pide una sola vez, antes de confirmar, con privada o edificio, casa o depto y referencia, y se anota en el pedido", () => {
-    expect(p).toMatch(/PIN A REPARTO: pida el pin .* UNA SOLA VEZ y ANTES de confirmar el pedido/);
-    expect(p).toMatch(/privada o edificio, casa o depto y una referencia visible/);
-    expect(p).toMatch(/Anótelo en las notas del pedido/);
-    expect(p).toMatch(/"avisar al llegar" o "tocar en \[depto\]"/);
+describe("5. pin a reparto: ayuda opcional, nunca requisito", () => {
+  it("la direccion escrita (calle, numero y colonia) basta; el pin se ofrece una sola vez antes de confirmar y se guarda solo en el pedido", () => {
+    expect(p).toMatch(/DIRECCIÓN ESCRITA: con calle, número y colonia basta/);
+    expect(p).toMatch(/PIN A REPARTO \(ayuda opcional, no requisito\): ofrézcalo UNA SOLA VEZ y ANTES de confirmar el pedido/);
+    expect(p).toMatch(/NUNCA condicione el pedido al pin/);
+    expect(p).toMatch(/el pin o el link se guardan solos en el pedido y le llegan al repartidor: no los repita ni los anote en notes/);
+    expect(p).toMatch(/van en indicaciones_acceso de crear_pedido/);
+    expect(p).toMatch(/"timbre del depto 6", "avisar al llegar" o "tocar en \[depto\]"/);
+  });
+  it("regresion del eval real (12/68): ya no exige pin, casa o depto, referencia ni con cuanto paga para cerrar", () => {
+    expect(p).not.toMatch(/pida el pin .* UNA SOLA VEZ y ANTES de confirmar el pedido, junto con privada o edificio/);
+    expect(p).not.toMatch(/casa o depto y una referencia visible/);
+    expect(p).toMatch(/OBJETIVO: cerrar el pedido\. Lo INDISPENSABLE es:/);
+    expect(p).toMatch(/NO condicione el pedido a nada más: no exija pin de ubicación, casa o depto, referencias, con cuánto paga ni propina en efectivo/);
   });
 });
 
 describe("6. saludo y despedida cortos de usted", () => {
   it("saludo de la plantilla del analisis con el nombre de la sucursal", () => {
     expect(p).toContain('"Buenas noches. Gracias por escribir a Los Taquitos de PM, sucursal García Lavín (Victory Platz), le atiende el asistente virtual. ¿Es para recoger o a domicilio?"');
-    expect(p).toMatch(/NO mande el saludo ni la bienvenida larga: vaya directo a lo que falta/);
+    expect(p).toMatch(/abra siempre su primer mensaje con una frase breve de usted/);
+    expect(p).toMatch(/NO mande la bienvenida larga ni la presentación completa: tras esa frase vaya directo a lo que falta/);
   });
   it("despedida distinta para domicilio y para recoger; la de domicilio nunca en un pedido para recoger", () => {
     expect(p).toContain("¡Gracias por elegirnos! Su pedido llega en aproximadamente [X] minutos. En Los Taquitos de PM servimos el mejor pastor 🌮");
@@ -161,7 +174,7 @@ describe("13 y 14. queja por faltante y factura", () => {
     expect(p).toMatch(/no prometa reposición, cambio ni descuento/);
   });
   it("factura: enlace en linea y QR del ticket, sin pedir RFC", () => {
-    expect(p).toMatch(/FACTURA: no pida ni guarde RFC\. Dé el enlace de facturación en línea .* código QR/);
+    expect(p).toMatch(/FACTURA: no pida ni guarde RFC\. No tiene el enlace de facturación: NO lo invente .* código QR/);
   });
 });
 
@@ -206,5 +219,50 @@ describe("cada familia de escenarios de T7 tiene su regla en el prompt", () => {
     const cubiertos = suite.escenarios.filter((e) => COBERTURA.some(([intencion]) => intencion.test(e.intencion)));
     expect(cubiertos.length).toBeGreaterThanOrEqual(40);
     for (const [, regla] of COBERTURA) expect(p, String(regla)).toMatch(regla);
+  });
+});
+
+describe("7. nunca sustituir ni elegir por el cliente (eval real: C04, C11, L05, L10)", () => {
+  it("WhatsApp: sin coincidencia exacta o con varias parecidas, pregunta con opciones y no ajusta cifras", () => {
+    expect(p).toMatch(/NUNCA SUSTITUYA NI ELIJA POR EL CLIENTE: cotice solo el renglón de buscar_producto cuyo nombre coincide con lo que el cliente pidió/);
+    expect(p).toMatch(/pregunte con 2 o 3 opciones de la lista/);
+    expect(p).toMatch(/Las cifras \(cantidades, piezas, kilos\) las dice el cliente, nunca las ajuste usted/);
+  });
+  it("voz: la misma regla en version compacta", () => {
+    const voz = prompt({ canal: "voz" });
+    expect(voz).toMatch(/Cotice solo el renglón que coincide exacto; si no hay o hay varios parecidos, pregunte con 2 o 3 opciones, sin cambiar producto, carne ni cantidad/);
+  });
+  it("la herramienta buscar_producto lo repite en su descripcion (segunda linea de defensa)", () => {
+    const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === "buscar_producto")!;
+    expect(def.description).toMatch(/no elijas ni sustituyas por él/);
+  });
+});
+
+describe("8. P2 del eval real: escalacion, hora de recogida, nombre y promociones", () => {
+  it("el aviso al cliente va antes y en el mismo turno de escalar_a_humano; las llamadas pendientes tambien se escalan", () => {
+    expect(p).toMatch(/el aviso va ANTES y en el MISMO turno de la llamada/);
+    expect(p).toMatch(/nunca llame la herramienta sin haber escrito ese aviso en ese turno/);
+    expect(p).toMatch(/va por escalar_a_humano; no use registrar_contacto para eso/);
+    expect(prompt({ canal: "voz" })).toMatch(/Avise primero al cliente que consulta al gerente y, en ese mismo turno, llame escalar_a_humano/);
+  });
+  it("la hora que dice el cliente se acepta y va en hora_recogida: no se escala por 'paso en 20 minutos'", () => {
+    expect(p).toMatch(/La hora a la que el cliente dice que pasará es suya: acéptela tal cual y mándela en hora_recogida; no escale por ella/);
+    expect(p).toMatch(/Solo si el cliente EXIGE una hora garantizada o un tiempo menor al normal de la sucursal, escale \(tiempos_entrega\)/);
+  });
+  it("el nombre completo va en customer_name; el alambre pedido de pastor no se cambia por el suizo", () => {
+    expect(p).toMatch(/mande el nombre COMPLETO tal como lo dio el cliente/);
+    expect(p).toMatch(/si pidió "alambre de pastor", es el Alambre de Pastor y no se lo cambie por el suizo/);
+  });
+  it("H2 explica el alcohol con la palabra 'alcohol'; H3 no escala por insistir en el 2x1 a domicilio", () => {
+    expect(p).toMatch(/explíquele con la palabra "alcohol" que no se toma por este medio/);
+    expect(p).toMatch(/si el cliente insiste, repita con amabilidad que es solo para recoger y ofrezca recoger; no escale/);
+    expect(p).not.toMatch(/si el cliente insiste, escale con motivo "otro"/);
+  });
+  it("las presentaciones del prompt son una guia: manda el pack_size de la herramienta", () => {
+    expect(p).toMatch(/Presentaciones \(guía: si buscar_producto trae otro pack_size/);
+  });
+  it("producto agotado: alternativa primero y se espera la respuesta; escalar_a_humano una sola vez por conversacion", () => {
+    expect(p).toMatch(/ofrezca una alternativa y ESPERE su respuesta: no escale antes de que conteste ni si la acepta/);
+    expect(p).toMatch(/UNA SOLA VEZ por conversación \(si el cliente insiste después, repita con calma que la sucursal ya fue avisada\)/);
   });
 });

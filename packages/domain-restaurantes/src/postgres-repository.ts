@@ -10,8 +10,21 @@
 // Supabase Auth de usuario, el "service role" original se traduce aquí a una sesión
 // de sistema con userId:null + policies RLS explícitas para esa sesión).
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
+import { emitirNotificacion, isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import * as cliente360 from "./cliente-360/postgres.ts";
+import type { CustomerAddressChanges, CustomerPolicy, CustomerProfilePatch, OrderClosureInput, PreferenceAction } from "./cliente-360/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
+import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
+import {
+  pgActualizarConocimiento,
+  pgAgenteWhatsappActivo,
+  pgBorrarConocimiento,
+  pgCrearConocimiento,
+  pgFijarAgenteWhatsappActivo,
+  pgListarAgentesApagados,
+  pgListarConocimiento,
+  pgListarConocimientoPublicado,
+} from "./conocimiento/postgres.ts";
 import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type {
@@ -31,13 +44,18 @@ import type {
   BranchSummary,
   BranchTimezoneConfig,
   CallbackRequest,
+  CallbackRegistro,
   CallbackRequestInput,
   Category,
   CategoryPatch,
   Customer,
   CustomerAddress,
   CustomerListFilter,
+  CarteraKpis,
+  CustomerListItem,
   CustomerListPage,
+  FilaImportacionCliente,
+  ResultadoImportacionClientes,
   CustomerTier,
   KnownZone,
   NearestBranchMatch,
@@ -69,6 +87,7 @@ import type {
   StorefrontOrderTracking,
   StorefrontTrackingResult,
 } from "./types.ts";
+import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import { EMPTY_BRANCH_POLICY, MOTIVOS_ESCALACION_DESACTIVABLES, TONOS_AGENTE_WHATSAPP, type TonoAgenteWhatsApp } from "./types.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { leerHorarioPersistido } from "./horarios.ts";
@@ -78,7 +97,10 @@ import type {
   CustomerOverviewRow,
   EmailOutboxJobRow,
   KpiDateRange,
+  EstadoEntregaEntrante,
   MessagingOutboxRow,
+  MotivoFalloEntregaGuardado,
+  RegistroEstadoEntrega,
   NewOrderRecord,
   PromotedScheduledOrdersResult,
   RestaurantesRepository,
@@ -172,6 +194,36 @@ function mapCustomer(row: CustomerRow): Customer {
   return { id: row.id, organizationId: row.organization_id, phone: row.phone, name: row.name, orderCount: row.order_count };
 }
 
+interface CustomerCarteraRow {
+  readonly customer_id: string;
+  readonly phone: string;
+  readonly name: string | null;
+  readonly order_count: number;
+  readonly last_order_at: unknown;
+  readonly tier: string | null;
+}
+
+function isoOrNullCustomer(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  return v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString();
+}
+
+function mapCustomerCartera(organizationId: string, r: CustomerCarteraRow): CustomerListItem {
+  const tier = r.tier === "BLACK" || r.tier === "PLATINUM" || r.tier === "GOLD" || r.tier === "BLUE" ? r.tier : null;
+  return { id: r.customer_id, organizationId, phone: r.phone, name: r.name, orderCount: r.order_count, tier, lastOrderAt: isoOrNullCustomer(r.last_order_at) };
+}
+
+/** `%` `_` `\` del texto buscado son literales, no comodines (el listado anterior ya lo hacia). */
+function escapeLike(texto: string): string {
+  return texto.replace(/[\\%_]/g, "\\$&");
+}
+
+/** SQLSTATE de funcion/tabla/columna inexistente = la base aun no tiene la migracion 054. */
+function esErrorBaseSinMigrar054(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code;
+  return code === "42883" || code === "42P01" || code === "42703";
+}
+
 interface OrderRow {
   readonly created_at_cursor?: string;
   readonly id: string;
@@ -197,6 +249,8 @@ interface OrderRow {
   readonly assigned_repartidor_id: string | null;
   readonly estimated_delivery_at: string | null;
   readonly incident_note: string | null;
+  /** Folio (`order_number`): solo viene en la fila de `create_order_idempotent` (`to_jsonb` de la fila completa). */
+  readonly order_number?: string | number | null;
   /** Migracion 031 -- solo vienen en la fila de `create_order_idempotent` con la base migrada. */
   readonly canal?: CanalPedido | null;
   readonly propina?: string | null;
@@ -240,6 +294,7 @@ function mapOrder(row: OrderRow): Order {
     assignedRepartidorId: row.assigned_repartidor_id,
     estimatedDeliveryAt: row.estimated_delivery_at,
     incidentNote: row.incident_note,
+    ...(row.order_number !== undefined && row.order_number !== null ? { orderNumber: Number(row.order_number) } : {}),
     ...(row.canal !== undefined ? { canal: row.canal } : {}),
     ...(row.propina !== undefined ? { propina: row.propina === null ? null : Number(row.propina) } : {}),
     ...(row.hora_recogida !== undefined ? { horaRecogida: row.hora_recogida } : {}),
@@ -578,6 +633,16 @@ function mapRestaurantesAuditLogRow(row: RestaurantesAuditLogRowSql): Restaurant
   };
 }
 
+/** Tope de p_limit de restaurantes.clientes_cartera (migracion 054). */
+const CARTERA_LIMITE_SQL = 200;
+
+/** Evento de notificacion de un aviso de contacto. El aviso de llegada de quien recoge (`reason: cliente_llego`) es urgente y lleva su propio evento
+ * (critica, enlace a pedidos): la sucursal tiene a una persona esperando en el mostrador. R-43: una solicitud de evento/catering del storefront
+ * (reason = 'evento') avisa con su propio evento del catalogo. Ninguno emite ademas el aviso generico de «devolver llamada». */
+function eventoDeCallback(reason: string | null | undefined): "restaurantes.cliente.llego" | "restaurantes.evento.solicitud" | "restaurantes.callback.pendiente" {
+  return reason === "cliente_llego" ? "restaurantes.cliente.llego" : reason === "evento" ? "restaurantes.evento.solicitud" : "restaurantes.callback.pendiente";
+}
+
 export class PostgresRestaurantesRepository implements RestaurantesRepository {
   constructor(private readonly db: TenantDbSession) {}
 
@@ -903,6 +968,44 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows.map((row) => ({ items: row.items, createdAt: row.created_at }));
   }
 
+  // ---- Cliente 360 (migracion 049): delegan en cliente-360/postgres.ts (funciones security definer + SAVEPOINT) ----
+  getCustomerMemory(organizationId: string, phone: string) {
+    return cliente360.getCustomerMemory(this.db, organizationId, phone);
+  }
+  registerOrderClosure(input: OrderClosureInput) {
+    return cliente360.registerOrderClosure(this.db, input);
+  }
+  getCustomerFicha(organizationId: string, customerId: string) {
+    return cliente360.getCustomerFicha(this.db, organizationId, customerId);
+  }
+  updateCustomerProfile(organizationId: string, customerId: string, patch: CustomerProfilePatch) {
+    return cliente360.updateCustomerProfile(this.db, organizationId, customerId, patch);
+  }
+  saveCustomerAddress(organizationId: string, customerId: string, addressId: string | null, changes: CustomerAddressChanges) {
+    return cliente360.saveCustomerAddress(this.db, organizationId, customerId, addressId, changes);
+  }
+  deleteCustomerAddress(organizationId: string, customerId: string, addressId: string) {
+    return cliente360.deleteCustomerAddress(this.db, organizationId, customerId, addressId);
+  }
+  applyCustomerPreferenceAction(organizationId: string, customerId: string, action: PreferenceAction, args: { readonly prefId?: string | null; readonly kind?: string | null; readonly value?: string | null }) {
+    return cliente360.applyCustomerPreferenceAction(this.db, organizationId, customerId, action, args);
+  }
+  markOrderFake(organizationId: string, orderId: string, falso: boolean) {
+    return cliente360.markOrderFake(this.db, organizationId, orderId, falso);
+  }
+  exportCustomerData(organizationId: string, customerId: string) {
+    return cliente360.exportCustomerData(this.db, organizationId, customerId);
+  }
+  deleteCustomerMemory(organizationId: string, customerId: string) {
+    return cliente360.deleteCustomerMemory(this.db, organizationId, customerId);
+  }
+  getCustomerPolicy(organizationId: string) {
+    return cliente360.getCustomerPolicy(this.db, organizationId);
+  }
+  saveCustomerPolicy(organizationId: string, policy: CustomerPolicy) {
+    return cliente360.saveCustomerPolicy(this.db, organizationId, policy);
+  }
+
   async calcCustomerTier(organizationId: string, customerId: string): Promise<CustomerTier | null> {
     const { rows } = await this.db.query<{ tier: CustomerTier | null }>(
       `select (restaurantes.calc_customer_tier($1, $2)->>'tier') as tier;`,
@@ -980,6 +1083,33 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
+    // Avisos del AGENTE (voz y WhatsApp): idempotentes por evento y por motivo (migracion 047, `callback_registrar_agente`). Corre dentro
+    // de la transaccion unica del request/turno: contra una base SIN migrar la funcion no existe (42883) y el respaldo al INSERT de
+    // siempre EXIGE SAVEPOINT (un try/catch simple dejaria la transaccion abortada, 25P02). Solo 42883 degrada: un 42501 es un rechazo real.
+    if (input.source === "voice" || input.source === "whatsapp") {
+      const agente = await runWithSavepointFallback<CallbackRequest | null>({
+        session: this.db,
+        savepointName: "sp_restaurantes_callback_agente",
+        primary: async () => {
+          const { rows } = await this.db.query<{ callback_id: string; resuelto: boolean; creado_at: string; registro: CallbackRegistro }>(
+            `select callback_id, resuelto, creado_at, registro
+             from restaurantes.callback_registrar_agente($1, $2, $3, $4, $5, $6, $7, $8);`,
+            [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source, input.sourceEventId ?? null],
+          );
+          const fila = rows[0]!;
+          return { ...input, id: fila.callback_id, resolved: fila.resuelto, createdAt: fila.creado_at, registro: fila.registro };
+        },
+        isRecoverable: (err) => (err as { code?: string } | null)?.code === "42883",
+        fallback: async () => null,
+      });
+      if (agente) {
+        // Notificacion in-app (`restaurantes.callback.pendiente`) solo cuando el aviso es NUEVO: un reenvio o una nota agregada no vuelven a avisar.
+        if (agente.registro === "nuevo") {
+          await emitirNotificacion(this.db, { evento: eventoDeCallback(input.reason), organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: agente.id, entidadTipo: "callback_request", entidadId: agente.id });
+        }
+        return agente;
+      }
+    }
     const params = [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source];
     // Migracion 048 (ver `upsertCustomer`): funcion solo-sistema; sin ella (42883) cae al INSERT directo anterior.
     const row = await runWithSavepointFallback<{ id: string; resolved: boolean; created_at: string }>({
@@ -1018,9 +1148,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     });
     // Notificacion in-app (`restaurantes.callback.pendiente`): un contacto que el agente (voz o WhatsApp) dejo para devolver la
     // llamada. Uno por solicitud (clave = id), sin PII (ni nombre ni telefono viajan en el aviso). SAVEPOINT en emitirNotificacion.
-    // R-43: una solicitud de evento/catering del storefront (reason = 'evento') avisa con su propio evento del catalogo, no con el generico.
-    await emitirNotificacion(this.db, { evento: input.reason === "evento" ? "restaurantes.evento.solicitud" : "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
-    return { ...input, id: row.id, resolved: row.resolved, createdAt: row.created_at };
+    await emitirNotificacion(this.db, { evento: eventoDeCallback(input.reason), organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
+    return { ...input, id: row.id, resolved: row.resolved, createdAt: row.created_at, registro: "nuevo" };
   }
 
   async consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean> {
@@ -1037,6 +1166,21 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       [phoneNumberId],
     );
     return rows[0]?.organization_id ?? null;
+  }
+
+  async contadorAgenteWhatsApp(organizationId: string, phone: string, clave: ClaveContadorAgente, accion: "incrementar" | "reiniciar"): Promise<number | null> {
+    // Base SIN migrar: la funcion (42883) o la columna (42703) no existen. Corre dentro de la transaccion del turno: respaldo con SAVEPOINT
+    // (un try/catch simple la dejaria abortada, 25P02). Sin contador el agente sigue como antes (solo cuenta dentro del turno).
+    return runWithSavepointFallback<number | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_contador_agente",
+      primary: async () => {
+        const { rows } = await this.db.query<{ n: number | null }>(`select restaurantes.whatsapp_contador_agente($1, $2, $3, $4) as n;`, [organizationId, phone, clave, accion]);
+        return rows[0]?.n ?? null;
+      },
+      isRecoverable: (err) => ["42883", "42703", "42P01"].includes((err as { code?: string } | null)?.code ?? ""),
+      fallback: async () => null,
+    });
   }
 
   async claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean> {
@@ -1247,8 +1391,69 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload, organizationId: r.organization_id }));
   }
 
-  async markMessagingOutboxSent(id: string): Promise<void> {
-    await this.db.query(`select restaurantes.complete_messaging_outbox_sent($1);`, [id]);
+  async markMessagingOutboxSent(id: string, detalle?: { readonly providerMessageId: string; readonly enviadoComo?: "texto" | "plantilla" | "botones" | "ubicacion" }): Promise<void> {
+    if (!detalle || detalle.providerMessageId.length === 0) {
+      await this.db.query(`select restaurantes.complete_messaging_outbox_sent($1);`, [id]);
+      return;
+    }
+    // Migracion 066: guarda el wamid. Corre dentro de la transaccion corta del despachador: sin SAVEPOINT, un 42883 (base sin migrar) la dejaria
+    // abortada y el cierre de respaldo fallaria con 25P02 (el mensaje, ya entregado, se reenviaria al vencer su lease).
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_outbox_sent_wamid",
+      primary: async () => {
+        await this.db.query(`select restaurantes.complete_messaging_outbox_sent($1, $2, $3);`, [id, detalle.providerMessageId, detalle.enviadoComo ?? null]);
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => {
+        await this.db.query(`select restaurantes.complete_messaging_outbox_sent($1);`, [id]);
+      },
+    });
+  }
+
+  async registrarEstadoEntregaWhatsapp(organizationId: string, estado: EstadoEntregaEntrante): Promise<RegistroEstadoEntrega> {
+    interface Fila {
+      outbox_id: string | null;
+      resultado: "actualizado" | "sin_cambio" | "desconocido";
+      estado: RegistroEstadoEntrega["estado"];
+      event_type: string | null;
+      failure_reason: MotivoFalloEntregaGuardado | null;
+      order_id: string | null;
+      order_status: string | null;
+      fallidas_ultima_hora: number | string | null;
+      pedido_correo: string | null;
+      pedido_cliente: string | null;
+      pedido_sucursal: string | null;
+      pedido_total: number | string | null;
+    }
+    // El webhook comparte UNA transaccion para todo el lote: el SAVEPOINT evita que una base sin la 066 (42883/42P01/42703) la deje abortada.
+    return runWithSavepointFallback<RegistroEstadoEntrega>({
+      session: this.db,
+      savepointName: "sp_registrar_estado_entrega",
+      primary: async () => {
+        const { rows } = await this.db.query<Fila>(
+          `select outbox_id, resultado, estado, event_type, failure_reason, order_id, order_status, fallidas_ultima_hora,
+                  pedido_correo, pedido_cliente, pedido_sucursal, pedido_total
+             from restaurantes.registrar_estado_entrega_whatsapp($1, $2, $3, $4, $5);`,
+          [organizationId, estado.wamid, estado.status, estado.errorCode, estado.errorTitle],
+        );
+        const r = rows[0];
+        if (!r) return { resultado: "desconocido", outboxId: null, estado: null, eventType: null, motivoFallo: null, orderId: null, orderStatus: null, fallidasUltimaHora: 0, respaldoCorreo: null };
+        return {
+          resultado: r.resultado,
+          outboxId: r.outbox_id,
+          estado: r.estado,
+          eventType: r.event_type,
+          motivoFallo: r.failure_reason,
+          orderId: r.order_id,
+          orderStatus: r.order_status,
+          fallidasUltimaHora: Number(r.fallidas_ultima_hora ?? 0),
+          respaldoCorreo: r.pedido_correo ? { to: r.pedido_correo, clienteNombre: r.pedido_cliente ?? "", sucursal: r.pedido_sucursal, total: Number(r.pedido_total ?? 0) } : null,
+        };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ resultado: "no_disponible", outboxId: null, estado: null, eventType: null, motivoFallo: null, orderId: null, orderStatus: null, fallidasUltimaHora: 0, respaldoCorreo: null }),
+    });
   }
 
   async markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {
@@ -2105,6 +2310,16 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return mapBranchProductState(rows[0]!);
   }
 
+  async setBranchProductAvailability(propertyId: string, productId: string, isAvailable: boolean): Promise<BranchProductState | null> {
+    const { rows } = await this.db.query<BranchProductRow>(
+      `update restaurantes.branch_products set is_available = $3, updated_at = now()
+       where property_id = $1 and product_id = $2
+       returning property_id, product_id, price, is_available;`,
+      [propertyId, productId, isAvailable],
+    );
+    return rows[0] ? mapBranchProductState(rows[0]) : null;
+  }
+
   async findOrderById(organizationId: string, orderId: string): Promise<Order | null> {
     const { rows } = await this.db.query<OrderRow>(
       `select ${ORDER_COLUMNS}
@@ -2308,6 +2523,45 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage> {
+    // Migracion 054: `clientes_cartera` resuelve nivel / frecuencia / dias sin pedir / sucursal en el servidor y trae el nivel de cada cliente.
+    // SAVEPOINT (la sesion es UNA transaccion por request): sin la migracion cae al listado de siempre (sin nivel) y, si se pidio un filtro
+    // nuevo, a una lista vacia con `filtrosDisponibles: false` (estado honesto, nunca un 500).
+    const search = filter.search?.trim();
+    const cursor = filter.cursor && UUID_TEXT.test(filter.cursor) ? filter.cursor : null;
+    const pidioFiltroNuevo = filter.nivel !== undefined || filter.frecuencia !== undefined || filter.inactivoDias !== undefined || filter.propertyId !== undefined;
+    return runWithSavepointFallback<CustomerListPage>({
+      session: this.db,
+      primary: async () => {
+        // La funcion SQL rechaza p_limit > 200 (22023): se pagina por dentro en bloques de <= 200 (cursor por id), de modo
+        // que un llamador con limit 500 (exportaciones) siga funcionando. Todos los bloques corren en el mismo SAVEPOINT.
+        const quiero = filter.limit + 1;
+        const rows: CustomerCarteraRow[] = [];
+        let cursorBloque = cursor;
+        while (rows.length < quiero) {
+          const pedir = Math.min(CARTERA_LIMITE_SQL, quiero - rows.length);
+          const { rows: bloque } = await this.db.query<CustomerCarteraRow>(
+            `select customer_id, phone, name, order_count, last_order_at, tier
+               from restaurantes.clientes_cartera($1::uuid, $2::text, $3::text, $4::int, $5::uuid, $6::text, $7::int, $8::uuid);`,
+            [organizationId, filter.nivel ?? null, filter.frecuencia ?? null, filter.inactivoDias ?? null, filter.propertyId ?? null, search ? escapeLike(search) : null, pedir, cursorBloque],
+          );
+          rows.push(...bloque);
+          if (bloque.length < pedir) break;
+          cursorBloque = bloque[bloque.length - 1]!.customer_id;
+        }
+        const hasMore = rows.length > filter.limit;
+        const page = rows.slice(0, filter.limit).map((r) => mapCustomerCartera(organizationId, r));
+        return { customers: page, nextCursor: hasMore ? page[page.length - 1]!.id : null, filtrosDisponibles: true };
+      },
+      isRecoverable: esErrorBaseSinMigrar054,
+      fallback: async () => {
+        if (pidioFiltroNuevo) return { customers: [], nextCursor: null, filtrosDisponibles: false };
+        return this.listCustomersSinMigracion054(organizationId, filter);
+      },
+    });
+  }
+
+  /** El listado anterior a la migracion 054 (sin nivel ni filtros nuevos). */
+  private async listCustomersSinMigracion054(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage> {
     const conditions: string[] = [`organization_id = $1`];
     const params: unknown[] = [organizationId];
 
@@ -2324,8 +2578,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     }
 
     params.push(filter.limit + 1);
-    const { rows } = await this.db.query<CustomerRow>(
-      `select id, organization_id, phone, name, order_count from restaurantes.customers
+    const { rows } = await this.db.query<CustomerRow & { readonly last_order_at: unknown }>(
+      `select id, organization_id, phone, name, order_count, last_order_at from restaurantes.customers
        where ${conditions.join(" and ")}
        order by id asc
        limit $${params.length};`,
@@ -2333,9 +2587,65 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     );
 
     const hasMore = rows.length > filter.limit;
-    const page = rows.slice(0, filter.limit).map(mapCustomer);
+    const page = rows.slice(0, filter.limit).map((r) => ({ ...mapCustomer(r), tier: null, lastOrderAt: isoOrNullCustomer(r.last_order_at) }));
     const nextCursor = hasMore ? page[page.length - 1]!.id : null;
-    return { customers: page, nextCursor };
+    return { customers: page, nextCursor, filtrosDisponibles: true };
+  }
+
+  async getCarteraKpis(organizationId: string): Promise<CarteraKpis> {
+    return runWithSavepointFallback<CarteraKpis>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{
+          total: string | number;
+          recurrentes: string | number;
+          ticket_promedio: string | number | null;
+          top_customer_id: string | null;
+          top_order_count: number | null;
+          top_last_order_at: unknown;
+        }>(`select total, recurrentes, ticket_promedio, top_customer_id, top_order_count, top_last_order_at from restaurantes.cartera_kpis($1::uuid);`, [organizationId]);
+        const r = rows[0];
+        if (!r) return { disponible: true, total: 0, recurrentes: 0, ticketPromedio: null, masFrecuente: null };
+        return {
+          disponible: true,
+          total: Number(r.total),
+          recurrentes: Number(r.recurrentes),
+          ticketPromedio: r.ticket_promedio === null ? null : Number(r.ticket_promedio),
+          masFrecuente: r.top_customer_id ? { customerId: r.top_customer_id, orderCount: Number(r.top_order_count ?? 0), ultimoPedidoEn: isoOrNullCustomer(r.top_last_order_at) } : null,
+        };
+      },
+      isRecoverable: esErrorBaseSinMigrar054,
+      fallback: async () => ({ disponible: false }),
+    });
+  }
+
+  async importarClientes(organizationId: string, huella: string, filas: readonly FilaImportacionCliente[]): Promise<ResultadoImportacionClientes> {
+    return runWithSavepointFallback<ResultadoImportacionClientes>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ ya_importado: boolean; total: number; creados: number; actualizados: number; sin_cambios: number; rechazados: number }>(
+          `select ya_importado, total, creados, actualizados, sin_cambios, rechazados from restaurantes.importar_clientes($1::uuid, $2, $3::jsonb);`,
+          [organizationId, huella, JSON.stringify(filas.map((f) => ({ phone: f.phone, name: f.name, address: f.address, notes: f.notes })))],
+        );
+        const r = rows[0];
+        if (!r) throw new Error("importar_clientes no devolvio resultado");
+        return { disponible: true, yaImportado: r.ya_importado, total: Number(r.total), creados: Number(r.creados), actualizados: Number(r.actualizados), sinCambios: Number(r.sin_cambios), rechazados: Number(r.rechazados) };
+      },
+      isRecoverable: esErrorBaseSinMigrar054,
+      fallback: async () => ({ disponible: false }),
+    });
+  }
+
+  async getCustomerNotes(organizationId: string, customerId: string): Promise<string | null> {
+    return runWithSavepointFallback<string | null>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ notes: string | null }>(`select notes from restaurantes.customers where organization_id = $1 and id = $2;`, [organizationId, customerId]);
+        return rows[0]?.notes ?? null;
+      },
+      isRecoverable: esErrorBaseSinMigrar054,
+      fallback: async () => null,
+    });
   }
 
   // ---- FASE 3 (producto) -- bitácora de auditoría del staff ----
@@ -3014,6 +3324,38 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
+  async listarConocimiento(organizationId: string): Promise<ConocimientoLectura> {
+    return pgListarConocimiento(this.db, organizationId);
+  }
+
+  async listarConocimientoPublicado(organizationId: string, propertyId: string | null): Promise<readonly ConocimientoEntrada[]> {
+    return pgListarConocimientoPublicado(this.db, organizationId, propertyId);
+  }
+
+  async crearConocimiento(organizationId: string, actorId: string, input: NuevaConocimientoEntrada): Promise<ConocimientoEntrada> {
+    return pgCrearConocimiento(this.db, organizationId, actorId, input);
+  }
+
+  async actualizarConocimiento(organizationId: string, actorId: string, id: string, patch: ConocimientoPatch): Promise<ConocimientoEntrada | null> {
+    return pgActualizarConocimiento(this.db, organizationId, actorId, id, patch);
+  }
+
+  async borrarConocimiento(organizationId: string, id: string): Promise<boolean> {
+    return pgBorrarConocimiento(this.db, organizationId, id);
+  }
+
+  async findAgenteWhatsappActivo(propertyId: string): Promise<boolean> {
+    return pgAgenteWhatsappActivo(this.db, propertyId);
+  }
+
+  async listarAgentesWhatsappApagados(organizationId: string): Promise<{ readonly disponible: boolean; readonly propertyIdsApagados: readonly string[] }> {
+    return pgListarAgentesApagados(this.db, organizationId);
+  }
+
+  async fijarAgenteWhatsappActivo(organizationId: string, propertyId: string, actorId: string, activo: boolean): Promise<void> {
+    return pgFijarAgenteWhatsappActivo(this.db, organizationId, propertyId, actorId, activo);
+  }
+
   async findBranchPolicy(propertyId: string): Promise<BranchPolicy> {
     return runWithSavepointFallback<BranchPolicy>({
       session: this.db,
@@ -3208,6 +3550,20 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       },
       isRecoverable: esErrorBaseSinMigrarProgramados,
       fallback: async () => ({ disponible: false, promoted: [] }),
+    });
+  }
+
+  async listPromotedOrdersWithoutComanda(options: { readonly hours: number; readonly limit: number }): Promise<readonly Order[]> {
+    return runWithSavepointFallback<readonly Order[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_promovidos_sin_comanda",
+      primary: async () => {
+        const { rows } = await this.db.query<OrderRow>(`select * from restaurantes.pos_comanda_promovidos_sin_comanda($1::int, $2::int);`, [options.hours, options.limit]);
+        return rows.map(mapOrder);
+      },
+      // Base sin la 046 (funcion 42883) o sin la 024/034 (tabla 42P01, columna 42703): no hay nada que reconciliar.
+      isRecoverable: esErrorBaseSinMigrarProgramados,
+      fallback: async () => [],
     });
   }
 

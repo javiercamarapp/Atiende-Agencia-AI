@@ -266,6 +266,36 @@ update hoteles.rate_recommendation set estado = 'aprobada' where id = '00000000-
   returning estado, aprobada_por;
 rollback;
 
+\echo '--- 13b. H-P3-02: en "propone" con backtest vigente que pasa, lo APROBADO por el owner lo aplica el sistema de verdad: escribe hoteles.rate_plan y el estado queda "aplicada" por el sistema ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000041', true);
+update hoteles.revenue_engine_gate set gate = 'propone' where property_id = '00000000-0000-0000-0000-0000000000f3';
+select set_config('request.jwt.claim.sub', '', true);
+insert into hoteles.rate_recommendation (id, property_id, room_type_id, fecha, current_bar_price, recommended_price, suggested_min_stay, desglose)
+values ('00000000-0000-0000-0000-0000000001b1', '00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-0000000000f5', current_date + 34, 2000, 2100, 1, '{}'::jsonb);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000041', true);
+update hoteles.rate_recommendation set estado = 'aprobada' where id = '00000000-0000-0000-0000-0000000001b1';
+select set_config('request.jwt.claim.sub', '', true);
+select hoteles.system_apply_rate_recommendation('00000000-0000-0000-0000-0000000001b1');
+reset role;
+select (price = 2100.00)::int as tarifa_bar_escrita_deberia_ser_1
+from hoteles.rate_plan where room_type_id = '00000000-0000-0000-0000-0000000000f5' and date = current_date + 34;
+rollback;
+
+\echo '--- 13c. H-P3-02: en "propone" SIN backtest que pase, la aprobada NO se aplica (el trigger la rechaza: queda visible y el cron la cuenta como aplicacionRechazada) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+insert into hoteles.rate_recommendation (id, property_id, room_type_id, fecha, current_bar_price, recommended_price, suggested_min_stay, desglose)
+values ('00000000-0000-0000-0000-0000000001b2', '00000000-0000-0000-0000-0000000000f8', '00000000-0000-0000-0000-0000000000f9', current_date + 35, 2000, 2100, 1, '{}'::jsonb);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000041', true);
+update hoteles.rate_recommendation set estado = 'aprobada' where id = '00000000-0000-0000-0000-0000000001b2';
+select set_config('request.jwt.claim.sub', '', true);
+-- as should_fail
+select hoteles.system_apply_rate_recommendation('00000000-0000-0000-0000-0000000001b2');
+rollback;
+
 \echo ''
 \echo '=== 8) integracion con el backtest: "autopilot" sin backtest que pase -- RECHAZADO ==='
 \echo ''

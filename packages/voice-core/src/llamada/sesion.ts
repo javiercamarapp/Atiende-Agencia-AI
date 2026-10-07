@@ -32,8 +32,14 @@ export interface AperturaLlamada {
   readonly instruccion: string;
   readonly voiceId: string;
   readonly herramientas: readonly ToolDefinicion[];
+  /** `temperature` de la organizacion (0..1) para el modelo de voz; sin valor, el del proveedor. */
+  readonly temperatura?: number | null;
+  /** Modelo de TEXTO que la organizacion eligio para la cascada (id de OpenRouter, de la lista permitida). Lo resuelve el puerto del LLM. */
+  readonly modeloLlm?: string | null;
   /** Handle de reanudacion de una sesion previa (reconexion). */
   readonly reanudarHandle?: string | null;
+  /** Nombres y apodos del menu que el STT de la cascada recibe como pista de vocabulario (tope `cascada.vocabularioMax`). Gemini Live no lo usa. */
+  readonly vocabulario?: readonly string[];
 }
 
 export interface VozSesionLlamada {

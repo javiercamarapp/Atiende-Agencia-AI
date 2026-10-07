@@ -25,6 +25,10 @@ import type {
   CompanyExperienceUpdateInput,
   CompanySignerCreateInput,
   CompanySignerUpdateInput,
+  CompanyItemKind,
+  CompanyItemDecision,
+  CompanyItemDecisionInput,
+  CompanyItemDecisionOutcome,
   GoNoGoDecisionCreateInput,
   IdempotencyParams,
   IdempotentResult,
@@ -76,6 +80,7 @@ import { readPackageZip, storeFile, writePackageZip } from "./storage.ts";
 import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
 import { isoNow, sha256Hex } from "./types.ts";
+import { computeCompanyProfileHash } from "./company-profile-hash.ts";
 import { ApprovalWorkflow } from "./approval-workflow.ts";
 import type { Approval, ApprovalScope, ChangeDetected, ExpedienteApprovalStage } from "./approval-workflow.ts";
 import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
@@ -173,6 +178,9 @@ function computeFieldConflicts(tender: TenderRecord, rec: TenderSourceIngestCand
   if (JSON.stringify(tender.cpvCodes ?? []) !== JSON.stringify(rec.cpvCodes)) out.push({ field: "cpv_codes", current: [...(tender.cpvCodes ?? [])], alternative: [...rec.cpvCodes] });
   return out;
 }
+
+type CompanyItemStatus = "aprobado" | "pendiente_aprobacion" | "rechazado";
+type CompanyDecidable = { id: string; approvalStatus: CompanyItemStatus; proposedBy?: string | null; approvedBy?: string | null; approvedAt?: string | null };
 
 export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly storageDir: string;
@@ -967,8 +975,31 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   // porqué -- sin esto, toda propuesta que dependiera de un dato ausente
   // quedaba PENDIENTE para siempre, sin ningún camino real para capturarlo). ----
 
+  /**
+   * Regla DB-03 (paridad con el trigger de la migración 036): si el patch cambia algún DATO, el registro vuelve a
+   * 'pendiente_aprobacion', se limpian `approvedBy`/`approvedAt` y `proposedBy` pasa a quien editó.
+   */
+  private editCompanyRecord<T extends { approvalStatus: CompanyItemStatus; proposedBy?: string | null; approvedBy?: string | null; approvedAt?: string | null }>(
+    existing: T,
+    input: { readonly actorId?: string },
+  ): T {
+    const { actorId, ...patch } = input as { actorId?: string } & Record<string, unknown>;
+    const changed = Object.entries(patch).some(([key, value]) => value !== undefined && (existing as Record<string, unknown>)[key] !== value);
+    const merged = { ...existing } as T;
+    for (const [key, value] of Object.entries(patch)) if (value !== undefined) (merged as Record<string, unknown>)[key] = value;
+    if (!changed) return merged;
+    return { ...merged, approvalStatus: "pendiente_aprobacion", approvedBy: null, approvedAt: null, proposedBy: actorId ?? existing.proposedBy ?? null };
+  }
+
+  private newCompanyAuthorship(actorId: string | undefined): { proposedBy: string | null; approvedBy: null; approvedAt: null } {
+    return { proposedBy: actorId ?? null, approvedBy: null, approvedAt: null };
+  }
+
+  /** Bitácora de decisiones (paridad con `licitaciones.company_data_audit`); solo para pruebas. */
+  readonly companyDataAudit: { organizationId: string; kind: CompanyItemKind; itemId: string; decision: CompanyItemDecision; actorId: string; createdAt: string }[] = [];
+
   async createCompanyDocument(organizationId: string, input: CompanyDocumentCreateInput): Promise<CompanyDocumentRecord> {
-    const record: CompanyDocumentRecord = { id: randomUUID(), type: input.type, label: input.label, expiresAt: input.expiresAt, approvalStatus: input.approvalStatus ?? "pendiente_aprobacion" };
+    const record: CompanyDocumentRecord = { id: randomUUID(), type: input.type, label: input.label, expiresAt: input.expiresAt, approvalStatus: "pendiente_aprobacion", ...this.newCompanyAuthorship(input.actorId) };
     const list = this.companyDocuments.get(organizationId) ?? [];
     this.companyDocuments.set(organizationId, [...list, record]);
     return record;
@@ -978,7 +1009,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const list = this.companyDocuments.get(organizationId) ?? [];
     const index = list.findIndex((d) => d.id === documentId);
     if (index === -1) throw new CompanyDataNotFoundError("Documento de empresa", documentId);
-    const updated: CompanyDocumentRecord = { ...list[index]!, ...input };
+    const updated = this.editCompanyRecord(list[index]!, input);
     const next = [...list];
     next[index] = updated;
     this.companyDocuments.set(organizationId, next);
@@ -993,7 +1024,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       concept: input.concept,
       unitPrice: input.unitPrice,
       currency: "MXN",
-      approvalStatus: input.approvalStatus ?? "pendiente_aprobacion",
+      approvalStatus: "pendiente_aprobacion",
+      ...this.newCompanyAuthorship(input.actorId),
       // Paridad con `PostgresLicitacionesRepository.createApprovedRate` (ver su
       // comentario de cabecera): el default de `validFrom` es el día de NEGOCIO
       // de ESTA organización (`this.todayForOrg`, que resuelve `resolverZonaHorariaNegocio`
@@ -1020,7 +1052,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const list = this.approvedRates.get(organizationId) ?? [];
     const index = list.findIndex((r) => r.id === rateId);
     if (index === -1) throw new CompanyDataNotFoundError("Tarifa aprobada", rateId);
-    const updated: ApprovedRateRecord = { ...list[index]!, ...input };
+    const updated = this.editCompanyRecord(list[index]!, input);
     const next = [...list];
     next[index] = updated;
     this.approvedRates.set(organizationId, next);
@@ -1039,7 +1071,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       name: input.name,
       description: input.description,
       evidenceDocId: input.evidenceDocId ?? null,
-      approvalStatus: input.approvalStatus ?? "pendiente_aprobacion",
+      approvalStatus: "pendiente_aprobacion",
+      ...this.newCompanyAuthorship(input.actorId),
     };
     this.companyCapabilities.set(organizationId, [...list, record]);
     return record;
@@ -1049,7 +1082,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const list = this.companyCapabilities.get(organizationId) ?? [];
     const index = list.findIndex((c) => c.id === capabilityId);
     if (index === -1) throw new CompanyDataNotFoundError("Capacidad", capabilityId);
-    const updated: CompanyCapabilityRecord = { ...list[index]!, ...input };
+    const updated = this.editCompanyRecord(list[index]!, input);
     const next = [...list];
     next[index] = updated;
     this.companyCapabilities.set(organizationId, next);
@@ -1057,7 +1090,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   }
 
   async createCompanyExperience(organizationId: string, input: CompanyExperienceCreateInput): Promise<CompanyExperienceItemRecord> {
-    const record: CompanyExperienceItemRecord = { id: randomUUID(), description: input.description, evidenceDocId: input.evidenceDocId, approvalStatus: input.approvalStatus ?? "pendiente_aprobacion" };
+    const record: CompanyExperienceItemRecord = { id: randomUUID(), description: input.description, evidenceDocId: input.evidenceDocId, approvalStatus: "pendiente_aprobacion", ...this.newCompanyAuthorship(input.actorId) };
     const list = this.companyExperience.get(organizationId) ?? [];
     this.companyExperience.set(organizationId, [...list, record]);
     return record;
@@ -1067,7 +1100,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const list = this.companyExperience.get(organizationId) ?? [];
     const index = list.findIndex((e) => e.id === experienceId);
     if (index === -1) throw new CompanyDataNotFoundError("Experiencia", experienceId);
-    const updated: CompanyExperienceItemRecord = { ...list[index]!, ...input };
+    const updated = this.editCompanyRecord(list[index]!, input);
     const next = [...list];
     next[index] = updated;
     this.companyExperience.set(organizationId, next);
@@ -1077,7 +1110,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   async createCompanySigner(organizationId: string, input: CompanySignerCreateInput): Promise<CompanySignerRecord> {
     const list = this.companySigners.get(organizationId) ?? [];
     if (list.some((s) => s.role === input.role)) throw new CompanyDataDuplicateKeyError("firmante", input.role);
-    const record: CompanySignerRecord = { id: randomUUID(), name: input.name, role: input.role, authorized: input.authorized ?? false };
+    const record: CompanySignerRecord = { id: randomUUID(), name: input.name, role: input.role, authorized: input.authorized ?? false, approvalStatus: "pendiente_aprobacion", ...this.newCompanyAuthorship(input.actorId) };
     this.companySigners.set(organizationId, [...list, record]);
     return record;
   }
@@ -1086,11 +1119,35 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const list = this.companySigners.get(organizationId) ?? [];
     const index = list.findIndex((s) => s.id === signerId);
     if (index === -1) throw new CompanyDataNotFoundError("Firmante", signerId);
-    const updated: CompanySignerRecord = { ...list[index]!, ...input };
+    const updated = this.editCompanyRecord(list[index]!, input);
     const next = [...list];
     next[index] = updated;
     this.companySigners.set(organizationId, next);
     return updated;
+  }
+
+  async decideCompanyItem(organizationId: string, input: CompanyItemDecisionInput): Promise<CompanyItemDecisionOutcome> {
+    const store = {
+      rate: this.approvedRates,
+      document: this.companyDocuments,
+      capability: this.companyCapabilities,
+      experience: this.companyExperience,
+      signer: this.companySigners,
+    }[input.kind] as Map<string, (CompanyDecidable)[]>;
+    const decisionRoles = input.kind === "rate" ? ["owner", "admin"] : ["owner", "admin", "analyst"];
+    if (!decisionRoles.includes(input.actorRole)) return "rol";
+    const list = store.get(organizationId) ?? [];
+    const index = list.findIndex((r) => r.id === input.itemId);
+    if (index === -1) return "not_found";
+    const current = list[index]!;
+    if (current.approvalStatus !== "pendiente_aprobacion") return "conflict";
+    if (current.proposedBy === input.actorId) return "autor";
+    const now = isoNow();
+    const next = [...list];
+    next[index] = { ...current, approvalStatus: input.decision, approvedBy: input.actorId, approvedAt: now };
+    store.set(organizationId, next);
+    this.companyDataAudit.push({ organizationId, kind: input.kind, itemId: input.itemId, decision: input.decision, actorId: input.actorId, createdAt: now });
+    return "ok";
   }
 
   // ---- Flujo 2: propuesta económica ----
@@ -1184,10 +1241,14 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
     const raw: ExpedienteInputs = {
       tenderVersionHash: sha256Hex({ updatedAt: tender.updatedAt, submissionDeadline: tender.submissionDeadline }),
-      // Fase 1 §3.3: sin `company_profiles` portado, hash trivial fijo (no
-      // inventa datos: simplemente no distingue perfiles de empresa entre sí
-      // todavía — limitación conocida y documentada, no un dato fabricado).
-      companyProfileHash: sha256Hex("licitaciones:fase1:company-profile-fijo"),
+      // AE-08 / REQ-162: hash REAL de todo el perfil (documentos, capacidades, experiencia, firmantes y su estado de
+      // aprobación). Cambiar cualquiera de ellos invalida la aprobación del expediente.
+      companyProfileHash: computeCompanyProfileHash({
+        documents,
+        capabilities: this.companyCapabilities.get(organizationId) ?? [],
+        experience: this.companyExperience.get(organizationId) ?? [],
+        signers: this.companySigners.get(organizationId) ?? [],
+      }),
       companyDocuments: usedCompanyDocumentIds.map((id) => {
         const doc = documents.find((d) => d.id === id);
         return { documentId: id, hash: sha256Hex(doc ?? null), vigenteHasta: doc?.expiresAt ?? null };

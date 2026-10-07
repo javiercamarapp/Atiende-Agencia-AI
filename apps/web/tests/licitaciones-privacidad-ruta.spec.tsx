@@ -7,7 +7,7 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App.tsx";
 import type { BranchOption } from "../src/verticals/licitaciones/lib/admin-client.ts";
-import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { esperarHasta, esperarRutaCargada, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
 vi.mock("../src/verticals/licitaciones/lib/admin-client.ts", async (importOriginal) => {
@@ -55,6 +55,14 @@ async function abrirPrivacidad(rol: string) {
   vi.stubGlobal("fetch", fetchMock);
   window.history.pushState({}, "", "/licitaciones/demo/privacidad");
   rendered = renderComponent(<App />);
+  await esperarRutaCargada(rendered!.container);
+  await act(async () => {
+    for (let i = 0; i < 12; i++) await flushMicrotasks();
+  });
+  // La página de privacidad es otro chunk lazy que el shell monta recién cuando la sesión está lista.
+  await esperarRutaCargada(rendered.container);
+  const contenedor = rendered.container;
+  await esperarHasta(() => /Privacidad de la organización|Solo el owner o un admin/.test(contenedor.textContent ?? ""), "la página de privacidad (chunk lazy)");
   await act(async () => {
     for (let i = 0; i < 12; i++) await flushMicrotasks();
   });

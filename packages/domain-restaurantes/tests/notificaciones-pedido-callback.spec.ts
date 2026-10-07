@@ -11,6 +11,8 @@ const ORDER_ID = "00000000-0000-4000-8000-0000000000d1";
 const CALLBACK_ID = "00000000-0000-4000-8000-0000000000e1";
 const EMITIR = /core\.emit_notification/i;
 const CREAR_PEDIDO = /restaurantes\.create_order_idempotent/i;
+const REGISTRAR_AGENTE = /restaurantes\.callback_registrar_agente/i;
+const AVISO_NUEVO = { callback_id: CALLBACK_ID, resuelto: false, creado_at: "2026-10-01T10:00:00.000Z", registro: "nuevo" };
 const INSERT_CALLBACK = /select restaurantes\.create_callback_request/i;
 const SIGUIENTE: FakeSessionHandler = { match: /select 1 as siguiente/, respond: () => [{ ok: true }] };
 
@@ -113,7 +115,7 @@ describe("restaurantes.callback.pendiente", () => {
 
   it("un contacto anotado por el agente emite UN aviso con la clave de la solicitud; ni nombre, ni telefono ni mensaje viajan", async () => {
     const { session, vistos } = conRegistro([
-      { match: INSERT_CALLBACK, respond: () => [{ callback: { id: CALLBACK_ID, resolved: false, created_at: "2026-10-01T10:00:00.000Z" } }] },
+      { match: REGISTRAR_AGENTE, respond: () => [AVISO_NUEVO] },
       { match: EMITIR, respond: () => [{ emit_notification: 1 }] },
     ]);
     const r = await new PostgresRestaurantesRepository(session).createCallbackRequest(INPUT);
@@ -127,13 +129,26 @@ describe("restaurantes.callback.pendiente", () => {
 
   it("base sin migrar (42883): el contacto queda anotado y la sesion sigue viva", async () => {
     const session = new AbortAwareFakeSession([
-      { match: INSERT_CALLBACK, respond: () => [{ callback: { id: CALLBACK_ID, resolved: false, created_at: "2026-10-01T10:00:00.000Z" } }] },
+      { match: REGISTRAR_AGENTE, respond: () => [AVISO_NUEVO] },
       { match: EMITIR, respond: () => pgError("42883", "function core.emit_notification does not exist") },
       SIGUIENTE,
     ]);
     const r = await new PostgresRestaurantesRepository(session).createCallbackRequest(INPUT);
     expect(r.id).toBe(CALLBACK_ID);
     await expect(session.query("select 1 as siguiente;")).resolves.toEqual({ rows: [{ ok: true }] });
+  });
+
+  it("reason cliente_llego emite el aviso URGENTE propio (restaurantes.cliente.llego, enlace a pedidos) y NO el generico; sin PII", async () => {
+    const { session, vistos } = conRegistro([
+      { match: REGISTRAR_AGENTE, respond: () => [AVISO_NUEVO] },
+      { match: EMITIR, respond: () => [{ emit_notification: 1 }] },
+    ]);
+    await new PostgresRestaurantesRepository(session).createCallbackRequest({ ...INPUT, reason: "cliente_llego", message: "auto gris afuera", source: "whatsapp" });
+    expect(vistos).toHaveLength(1);
+    expect(vistos[0]![2]).toBe("restaurantes.cliente.llego");
+    expect(vistos[0]![10]).toBe(`restaurantes.cliente.llego:${CALLBACK_ID}`);
+    expect(vistos[0]![7]).toBe("/restaurantes/{orgSlug}/pedidos");
+    expect(JSON.stringify(vistos[0])).not.toMatch(/Ana|5500000000|auto gris/);
   });
 });
 

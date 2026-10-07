@@ -16,7 +16,7 @@ El set pide dos cosas que el servidor aun no tiene: tortilla `mixta` (PR-3) y pr
 actual solo fallan C06, C14, L02, L07 y L30.
 
 ## Modo LLM real (manual, NO corre en CI)
-`PM_EVALS_REAL=1 OPENROUTER_API_KEY=... PM_EVALS_MODEL=<id de OpenRouter, p.ej. openai/gpt-6-luna> [PM_EVALS_MAX_USD=2] [PM_EVALS_K=1] [PM_EVALS_CASOS=L01,C05] [PM_EVALS_TEMPERATURE=0] [PM_EVALS_REASONING=low] npm run evals:pm:real -w @atiende/domain-restaurantes`
+`PM_EVALS_REAL=1 OPENROUTER_API_KEY=... PM_EVALS_MODEL=<id de OpenRouter, p.ej. openai/gpt-6-luna> [PM_EVALS_MAX_USD=2] [PM_EVALS_K=1] [PM_EVALS_CASOS=L01,C05] [PM_EVALS_TEMPERATURE=0] [PM_EVALS_REASONING=low] npm run evals:pm:real -w @atiende/domain-restaurantes` (corre con `vite-node`: `node --experimental-strip-types` no resuelve los imports `.js` -> `.ts` de agent-core en Node 26)
 
 Pasa por el `OpenRouterProvider` del gateway (el mismo que produccion; ver `docs/LLM-GATEWAY.md`): tool calling real y costo real de OpenRouter. Con una sola llave se barre cualquier modelo. Por omision NO se manda `temperature` (GPT-6, Claude 5.x y Gemini Flash-Lite la rechazan o no la soportan). La llave se lee del entorno (p.ej. `OPENROUTER_API_KEY=$(cat ~/.atiende-secrets/OPENROUTER_API_KEY.txt)` en un subshell): nunca la imprimas ni la commitees.
 
@@ -35,3 +35,15 @@ para un juez (LLM o persona): no se evaluan con graders deterministas ni corren 
   prueba `tests/pm-c5-escenarios-t7.spec.ts` lo vigila con patrones. Nunca copies aqui texto de la muestra cruda.
 - La prueba tambien ata las cifras que citan los escenarios (fracciones de kilo, extras a $19, totales) al motor real de pedidos sobre el
   catalogo sembrado de T7.
+
+## Escenarios K y KH (lo que enseñan los chats reales de T7 y los huecos finales)
+`escenarios-k.json` (+ `escenarios-k.ts`): 22 escenarios K y 10 KH, todos SINTETICOS (ningun texto, nombre ni telefono sale de los chats privados;
+`tests/evals-agente-pm-k.spec.ts` lo vigila con patrones). Mismos campos de texto libre que `escenarios-t7.json`, mas:
+- `verificacion: determinista`: el escenario esta atado en esa prueba a una comprobacion REAL contra el servidor (registro de herramientas, motor de pedidos,
+  busqueda, entrada de Meta, prompt). Hoy son 20 (K01-K20).
+- `verificacion: juez`: texto libre para un LLM o una persona (KH09 activo; los demas jueces estan pendientes de construccion).
+- `estado: pendiente_construccion` + `depende_de`: depende de algo que main aun no tiene (cobertura por turnos en
+  servidor, descripciones del menu en el seed, venta sugerida con interruptor, rastreo, subtipos de queja, cliente-360, botones de Meta). Se listan
+  como `it.todo` citando de que dependen; no fallan el CI ni se fingen como aprobados.
+- Falta (hueco conocido): un corredor que pase los 71 escenarios T7 y los K por el agente con un LLM guionado en CI, y un grader de juez; los T7 siguen
+  validando solo su estructura.

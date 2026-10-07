@@ -120,6 +120,12 @@ organización/mes y una de plataforma/mes) y cuando más del 5 % de las llamadas
 
 Todos reciben solo texto ya redactado (`redactPii`) y, ante cualquier fallo o respuesta ambigua, el flujo es el de siempre.
 
+## Modelo elegido por una organización (restaurantes)
+
+`LlmGateway.complete({ preferredModel })` pone un modelo registrado al frente de la escalera del MISMO rol y deja el resto como respaldo; `registerAlternatives(role, providers)`
+registra modelos elegibles que no entran a la escalera por defecto. Hoy lo usa el agente de WhatsApp de restaurantes con la lista cerrada `MODELOS_AGENTE`
+(`docs/AJUSTES-AGENTE-RESTAURANTES.md`). Un modelo no registrado se ignora; el interruptor, el tope y el registro de uso son los del rol.
+
 ## Cómo cambiar un modelo (sin tocar código)
 
 1. En Vercel (proyecto de la API), variable `LLM_MODELS_JSON`, JSON con la forma:

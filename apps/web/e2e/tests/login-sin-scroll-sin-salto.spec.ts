@@ -40,6 +40,12 @@ async function abrir(page: Page, ruta: string, tema: (typeof TEMAS)[number], vie
   });
   await page.goto(ruta);
   await expect(page.locator("main")).toHaveCount(1);
+  // R-37: la pantalla es un chunk perezoso; se espera a que no haya cargas en vuelo (chunk, estilos, fuentes) antes de medir.
+  // Las tipografias vienen de Google Fonts (login.css las importa): el CSS y luego cada archivo llegan DESPUES de que
+  // `document.fonts.ready` ya resolvio (aun no habia caras registradas), y su cambio (swap) mueve el texto ~1 px y suma
+  // CLS en mitad de la prueba. Se espera a que la red quede en reposo (sin Google Fonts accesible, las peticiones
+  // fallan rapido y el reposo llega igual) y solo entonces a `fonts.ready`.
+  await page.waitForLoadState("networkidle");
   await page.evaluate(() => document.fonts.ready);
   // La carga de tipografias puede mover el texto UNA vez al abrir; el CLS que se exige es el de los cambios de estado.
   await page.evaluate(() => ((window as unknown as { __cls: number }).__cls = 0));
@@ -187,4 +193,38 @@ test.describe("login sin saltos @humo", () => {
     const { contenido, ventana } = await altoPagina(page);
     expect(contenido).toBeLessThanOrEqual(ventana);
   });
+});
+
+// Carga con tipografias LENTAS (1.2 s por archivo de fuente, propias y de Google): el usuario no debe ver ningun salto
+// al abrir el login aunque la fuente llegue tarde (fuentes propias precargadas + caras de respaldo con las metricas de
+// la fuente real, ver pages/login.css). Medido sin reiniciar el CLS: se mide la CARGA completa.
+const MOVILES = VIEWPORTS.filter((v) => v.nombre.startsWith("iPhone SE") || v.nombre.startsWith("Android"));
+test.describe("login: carga con fuentes lentas @humo", () => {
+  for (const v of MOVILES) {
+    test(`ningun desplazamiento visible al cargar el login con las fuentes retrasadas 1.2 s en ${v.nombre}`, async ({ page }) => {
+      await page.setViewportSize(v);
+      await page.route(/\/fonts\/.*\.woff2|fonts\.(googleapis|gstatic)\.com/, async (ruta) => {
+        await new Promise((r) => setTimeout(r, 1200));
+        await ruta.continue();
+      });
+      await page.addInitScript(() => {
+        const w = window as unknown as { __cls: number; __pie: number[] };
+        w.__cls = 0;
+        new PerformanceObserver((lista) => {
+          for (const e of lista.getEntries() as unknown as Array<{ value: number; hadRecentInput: boolean }>) if (!e.hadRecentInput) w.__cls += e.value;
+        }).observe({ type: "layout-shift", buffered: true });
+      });
+      await page.goto("/citas/login");
+      await expect(page.locator("main")).toHaveCount(1);
+      // Ya pinto con la fuente de respaldo: el pie (lo mas bajo de la pagina) no puede moverse cuando llegue la real.
+      const pieAntes = await page.locator(".login-pie").first().boundingBox();
+      await page.waitForLoadState("networkidle");
+      await page.evaluate(() => document.fonts.ready);
+      await expect.poll(() => page.evaluate(() => document.fonts.check("400 44px Fraunces")), { timeout: 10_000 }).toBe(true);
+      const pieDespues = await page.locator(".login-pie").first().boundingBox();
+      expect(Math.abs(pieDespues!.y - pieAntes!.y), "el pie bajo/subio al llegar la fuente real").toBeLessThanOrEqual(1);
+      const cls = await page.evaluate(() => (window as unknown as { __cls: number }).__cls);
+      expect(cls, "CLS de la carga con fuentes lentas").toBe(0);
+    });
+  }
 });

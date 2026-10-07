@@ -32,6 +32,8 @@ export interface VozConfig {
   readonly voiceId: string;
   readonly comportamiento: string;
   readonly mensajeInicial: string;
+  /** `false` = el saludo no se corta si el cliente habla encima (migracion 053). Ausente = `true` (como siempre). */
+  readonly mensajeInicialInterrumpible?: boolean;
   /** `false` cuando la sucursal nunca guardo configuracion (o la base no esta migrada): los
    * demas campos son los valores iniciales del formulario. */
   readonly configurada: boolean;

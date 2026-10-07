@@ -5,6 +5,9 @@
 // across TODO su historial real) y tier (percentil real, calc_customer_tier). Esta es
 // la "memoria de cliente por teléfono" que el brief pide preservar explícitamente.
 import { buscarPedidoReciente } from "./pedido-reciente.ts";
+import { proponerGustos } from "./cliente-360/gustos.ts";
+import { cargarMemoria, evaluarReincidencia } from "./cliente-360/memoria.ts";
+import type { CustomerMemory } from "./cliente-360/types.ts";
 import { normalizePhone } from "./phone.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { CustomerLookupResult, CustomerTier, OrderHistoryItem, PersistedOrderItem } from "./types.ts";
@@ -42,7 +45,14 @@ function countFrequentItems(orders: ReadonlyArray<{ items: readonly PersistedOrd
  * inyectar en un prompt o mostrar al staff. Un cliente nunca visto -> { isNew: true }.
  */
 export async function lookupCustomer(repo: RestaurantesRepository, organizationId: string, phone: string): Promise<CustomerLookupResult> {
-  const customer = await repo.findCustomerByPhone(organizationId, normalizePhone(phone));
+  const phoneKey = normalizePhone(phone);
+  // Cliente 360 (migracion 049): la memoria completa llega por UNA funcion de sistema (la sesion de sistema no puede leer
+  // `customers`/`orders` por RLS). `undefined` = la base todavia no la ofrece: se usa el camino anterior, que sigue intacto.
+  const memoria = await cargarMemoria(repo, organizationId, phoneKey);
+  if (memoria === null) return { isNew: true };
+  if (memoria !== undefined) return resultadoDesdeMemoria(repo, organizationId, memoria);
+
+  const customer = await repo.findCustomerByPhone(organizationId, phoneKey);
   if (!customer) return { isNew: true };
 
   const [addresses, history, tier] = await Promise.all([
@@ -126,5 +136,53 @@ export async function getCustomerDetailById(repo: RestaurantesRepository, organi
     frequentItems,
     tier,
     agentNotes,
+  };
+}
+
+/** Pedidos que cuentan para "lo de siempre" (mismo criterio que `listEligibleOrderHistory`). */
+const ESTADOS_ELEGIBLES = new Set(["pending", "preparando", "en_camino", "entregado", "completado"]);
+
+/**
+ * Arma el resultado del agente a partir de la memoria completa (migracion 049): los mismos campos de siempre
+ * (nombre, direcciones, "lo de siempre", nivel, notas) mas domicilios con etiqueta (el ultimo usado primero), gustos
+ * propuestos, pedidos anteriores y la marca de reincidencia. `frequentItems` se cuenta sobre los ultimos 30 pedidos.
+ */
+async function resultadoDesdeMemoria(repo: RestaurantesRepository, organizationId: string, memoria: CustomerMemory): Promise<CustomerLookupResult> {
+  const tier = memoria.tier !== undefined ? memoria.tier : await repo.calcCustomerTier(organizationId, memoria.customer.id);
+  const history = memoria.orders.filter((o) => ESTADOS_ELEGIBLES.has(o.status));
+  const lastOrder = history[0] ?? null;
+  const frequentItems = countFrequentItems(history);
+
+  const agentNotes: string[] = [];
+  const nota = vipNote(tier);
+  if (nota) agentNotes.push(nota);
+  if (frequentItems.length > 0) {
+    const items = frequentItems.map((i) => i.name).join(", ");
+    agentNotes.push(
+      `Lo que más pide across todo su historial real (no solo su último pedido): ${items}. Puedes ofrecer "¿lo de siempre?" con confianza usando esto, incluso si su último pedido fue distinto.`,
+    );
+  }
+  const reincidencia = evaluarReincidencia(memoria.reliability);
+
+  return {
+    isNew: false,
+    name: memoria.customer.name,
+    orderCount: memoria.customer.orderCount,
+    addresses: memoria.addresses.map((a) => ({ address: a.address, label: a.label, isDefault: a.isDefault })),
+    lastOrderItems: lastOrder ? lastOrder.items.map((i) => ({ name: i.name, quantity: i.quantity })) : null,
+    frequentItems,
+    tier,
+    agentNotes,
+    domicilios: memoria.addresses,
+    gustos: proponerGustos(memoria.preferences),
+    pedidosAnteriores: memoria.orders.slice(0, 5).map((o) => ({
+      numero: o.orderNumber,
+      fecha: o.createdAt,
+      canal: o.canal,
+      sucursal: o.branch,
+      total: o.total,
+      productos: o.items.map((i) => ({ name: i.name, quantity: i.quantity })),
+    })),
+    ...(reincidencia.requiereConfirmacion ? { requiereConfirmacionSucursal: true } : {}),
   };
 }
