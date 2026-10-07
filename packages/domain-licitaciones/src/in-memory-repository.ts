@@ -99,6 +99,7 @@ import type { TenderSourceIngestCandidate } from "./connectors/types.ts";
 import { buildGoNoGoDecision } from "./go-no-go.ts";
 import { TenderVersionRegistry, computeTenderSnapshotHash, toRequirementSnapshot } from "./tender-version-registry.ts";
 import { planIngestTenderVersion } from "./tender-ingest-versioning.ts";
+import type { NewMatchContext, NewMatchNoticeRecord } from "./new-match.ts";
 import type { PersistedTenderVersion, TenderVersionSnapshot } from "./tender-version-registry.ts";
 import { LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
 import type { SourceConnectorId } from "./connector-registry.ts";
@@ -191,6 +192,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   // (migración 027). Ausente en el mapa = misma fila inexistente que
   // `findTenantConfig` ve contra Postgres real (`timezone: null`).
   private readonly tenantConfigs = new Map<string, string | null>(); // orgId -> timezone
+  private readonly newMatchMinScores = new Map<string, number | null>(); // orgId -> umbral de nuevo match (L-P3-09; null = solo elegibles)
+  private readonly newMatchNotices = new Map<string, Map<string, NewMatchNoticeRecord>>(); // orgId -> (tenderId -> aviso)
   // ---- Fase 3: matching/scoring y go/no-go ----
   private readonly tenderByExternalKey = new Map<string, string>(); // `${orgId}:manual:${externalId}` -> tenderId (mismo alcance que tender_org_source_external_idx)
   // f2-orden-total-bitacoras -- `id`/`organizationId`/`createdAtMs`/`seq` agregados
@@ -751,6 +754,33 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     });
     this.tenderChangeNotifications.set(organizationId, notifications);
     return { tenderId: tender.id, version: version.version, changedFieldNames: plan.changedFieldNames, invalidatedApprovals: invalidatedApprovalIds.length, invalidatedApproverIds: [...invalidatedApproverIds] };
+  }
+
+  async getNewMatchContext(organizationId: string): Promise<NewMatchContext | null> {
+    return { minScore: this.newMatchMinScores.get(organizationId) ?? null, profile: this.matchingProfiles.get(organizationId) ?? null };
+  }
+
+  /** Solo para pruebas/semillas: el umbral real lo escribe `upsertTenantConfig` (panel de configuracion). */
+  setNewMatchMinScoreForTests(organizationId: string, minScore: number | null): void {
+    this.newMatchMinScores.set(organizationId, minScore);
+  }
+
+  async recordNewMatch(organizationId: string, tenderId: string, input: { readonly score: number; readonly eligible: boolean }): Promise<boolean | null> {
+    const tender = this.tenders.get(tenderId);
+    if (!tender || tender.organizationId !== organizationId) throw new Error("recordNewMatch: la convocatoria no pertenece a la organizacion.");
+    const mine = this.newMatchNotices.get(organizationId) ?? new Map<string, NewMatchNoticeRecord>();
+    this.newMatchNotices.set(organizationId, mine);
+    if (mine.has(tenderId)) return false;
+    mine.set(tenderId, { tenderId, score: Math.max(0, Math.min(100, Math.round(input.score))), eligible: input.eligible, createdAt: new Date().toISOString() });
+    return true;
+  }
+
+  async listNewMatches(organizationId: string, sinceIso: string, limit: number): Promise<readonly NewMatchNoticeRecord[] | null> {
+    const since = new Date(sinceIso).getTime();
+    return [...(this.newMatchNotices.get(organizationId)?.values() ?? [])]
+      .filter((n) => new Date(n.createdAt).getTime() >= since)
+      .sort((a, b) => b.score - a.score || b.createdAt.localeCompare(a.createdAt))
+      .slice(0, Math.max(1, Math.min(limit, 50)));
   }
 
   async listActiveOrganizations(): Promise<readonly { id: string }[]> {

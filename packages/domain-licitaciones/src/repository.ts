@@ -34,6 +34,7 @@ import type { InconformidadFundamento, InconformidadViability } from "./inconfor
 import type { CriteriaComparisonItem, OwnProposalStatus } from "./fallo-autopsy.ts";
 import type { TenderSourceIngestCandidate } from "./connectors/types.ts";
 import type { TenderResolution } from "./tender-resolution.ts";
+import type { NewMatchContext, NewMatchNoticeRecord } from "./new-match.ts";
 
 // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
 // Formas de registro deliberadamente con uniones de string LITERALES (no
@@ -912,6 +913,13 @@ export interface LicitacionesRepository {
    * conector automatizado puede traer cientos de filas por corrida).
    */
   ingestTendersFromSource(organizationId: string, source: SourceConnectorId, records: readonly TenderSourceIngestCandidate[]): Promise<TenderSourceIngestResult>;
+  // ---- L-P3-09: nuevo match (sesion de SISTEMA; migracion 039). `null` = la base aun no tiene la migracion: se degrada a "no disponible", nunca a un error. ----
+  /** Umbral + perfil de matching de la organizacion (fila siempre que la organizacion sea de licitaciones y este activa). */
+  getNewMatchContext(organizationId: string): Promise<NewMatchContext | null>;
+  /** Registra el aviso de nuevo match de (organizacion, convocatoria). `true` solo la PRIMERA vez (dedupe); `false` si ya existia; `null` si la base no esta migrada. */
+  recordNewMatch(organizationId: string, tenderId: string, input: { readonly score: number; readonly eligible: boolean }): Promise<boolean | null>;
+  /** Mejores avisos de nuevo match desde `sinceIso`, por puntuacion descendente. `null` si la base no esta migrada. */
+  listNewMatches(organizationId: string, sinceIso: string, limit: number): Promise<readonly NewMatchNoticeRecord[] | null>;
   /** Organizaciones activas del vertical `licitaciones` -- mismo rol que `CitasRepository.listActiveOrganizations()`/`HotelesRepository.listActiveHotelProperties()` para el barrido de un scheduler externo (ver `apps/worker/src/jobs/licitaciones/discover-tenders.ts`, `deadline-reminders.ts`). */
   listActiveOrganizations(): Promise<readonly { id: string }[]>;
   /** Escanea `tender.submissionDeadline` de la organización y persiste un recordatorio nuevo por cada (convocatoria, fecha calendario de vencimiento) que no exista todavía -- idempotente: reescanear dentro de la misma ventana nunca duplica (mismo criterio que `scanRenewalAlerts`/`enqueueUpcomingDeadlineReminders` del repo origen). Excluye convocatorias en un estado terminal (`cancelled`/`lost`/`won`/`submitted`) -- ya no tiene sentido recordarles un plazo. */

@@ -93,6 +93,7 @@ import { buildGoNoGoDecision } from "./go-no-go.ts";
 import { TenderVersionRegistry, computeTenderSnapshotHash, toRequirementSnapshot } from "./tender-version-registry.ts";
 import type { PersistedTenderVersion, TenderVersionDiff, TenderVersionSnapshot } from "./tender-version-registry.ts";
 import { planIngestTenderVersion } from "./tender-ingest-versioning.ts";
+import type { NewMatchContext, NewMatchNoticeRecord } from "./new-match.ts";
 import { LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
 import type { SourceConnectorId } from "./connector-registry.ts";
 import { evaluateSourceFreshness } from "./source-run.ts";
@@ -1508,6 +1509,81 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       },
       isRecoverable: (err) => isMigrationPendingError(err),
       fallback: async () => ({ estado: "no_disponible", motivo: "vigilante de cambios no disponible: falta aplicar la migracion 039_licitaciones_autopiloto (la ingesta de convocatorias no se ve afectada)." }),
+    });
+  }
+
+  async getNewMatchContext(organizationId: string): Promise<NewMatchContext | null> {
+    return runWithSavepointFallback<NewMatchContext | null>({
+      session: this.db,
+      savepointName: "sp_new_match_context",
+      primary: async () => {
+        const { rows } = await this.db.query<{
+          out_min_score: number | null;
+          out_has_profile: boolean;
+          out_keywords: string[];
+          out_excluded_keywords: string[];
+          out_classifier_codes: string[];
+          out_entities: string[];
+          out_states: string[];
+          out_budget_min: string | null;
+          out_budget_max: string | null;
+        }>(`select * from licitaciones.system_get_new_match_context($1);`, [organizationId]);
+        const r = rows[0];
+        if (!r) return { minScore: null, profile: null };
+        return {
+          minScore: r.out_min_score,
+          profile: r.out_has_profile
+            ? {
+                organizationId,
+                keywords: r.out_keywords,
+                excludedKeywords: r.out_excluded_keywords,
+                classifierCodes: r.out_classifier_codes,
+                entities: r.out_entities,
+                states: r.out_states,
+                budgetMin: r.out_budget_min === null ? null : Number(r.out_budget_min),
+                budgetMax: r.out_budget_max === null ? null : Number(r.out_budget_max),
+                updatedBy: null,
+                updatedAt: "",
+              }
+            : null,
+        };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => null,
+    });
+  }
+
+  async recordNewMatch(organizationId: string, tenderId: string, input: { readonly score: number; readonly eligible: boolean }): Promise<boolean | null> {
+    return runWithSavepointFallback<boolean | null>({
+      session: this.db,
+      savepointName: "sp_record_new_match",
+      primary: async () => {
+        const { rows } = await this.db.query<{ system_record_new_match: boolean }>(`select licitaciones.system_record_new_match($1, $2, $3, $4) as system_record_new_match;`, [
+          organizationId,
+          tenderId,
+          Math.round(input.score),
+          input.eligible,
+        ]);
+        return rows[0]?.system_record_new_match === true;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => null,
+    });
+  }
+
+  async listNewMatches(organizationId: string, sinceIso: string, limit: number): Promise<readonly NewMatchNoticeRecord[] | null> {
+    return runWithSavepointFallback<readonly NewMatchNoticeRecord[] | null>({
+      session: this.db,
+      savepointName: "sp_list_new_matches",
+      primary: async () => {
+        const { rows } = await this.db.query<{ out_tender_id: string; out_score: number; out_eligible: boolean; out_created_at: string }>(
+          `select * from licitaciones.system_list_new_matches($1, $2::timestamptz, $3);`,
+          [organizationId, sinceIso, limit],
+        );
+        return rows.map((r) => ({ tenderId: r.out_tender_id, score: r.out_score, eligible: r.out_eligible, createdAt: r.out_created_at }));
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => null,
     });
   }
 

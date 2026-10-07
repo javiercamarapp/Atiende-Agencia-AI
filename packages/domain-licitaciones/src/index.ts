@@ -281,6 +281,8 @@ export type { SourceRunInput, SourceRunRecord, SourceRunEvidence, SourceFreshnes
 // ---- Fase 5 pieza 2: historial de versiones de convocatoria (REQ-017/041/151..155) ----
 export { TenderVersionRegistry, computeTenderSnapshotHash, requirementNaturalKey, toRequirementSnapshot, canonicalDocumentLine } from "./tender-version-registry.ts";
 export { planIngestTenderVersion } from "./tender-ingest-versioning.ts";
+export { evaluateNewMatch } from "./new-match.ts";
+export type { NewMatchContext, NewMatchEvaluation, NewMatchNoticeRecord } from "./new-match.ts";
 export type { IngestVersionPlan, IngestVersionCascade } from "./tender-ingest-versioning.ts";
 export type {
   TenderDiffStatus,
