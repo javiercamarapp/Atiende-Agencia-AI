@@ -44,7 +44,12 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
     const propertyId = newId("sucursal", b.slug);
     propertyBySlug.set(b.slug, propertyId);
     repo.seedBranch({ propertyId, organizationId, name: b.name, slug: b.slug, status: b.status, phone: b.phone, address: b.address, lat: b.lat, lng: b.lng });
-    if (b.catalogSize === 0) continue;
+    // Directorio y domicilio (migracion 057): se siembran aunque la sucursal no tenga catalogo (Galerias es solo informativa).
+    const directorio = { visibleEnDirectorio: b.visibleEnDirectorio, aceptaDomicilio: b.aceptaDomicilio, diasDomicilio: b.diasDomicilio, deTemporada: b.deTemporada };
+    if (b.catalogSize === 0) {
+      repo.seedBranchPolicy(propertyId, directorio);
+      continue;
+    }
     // Precio y disponibilidad POR SUCURSAL: sin llave en branchPrices el producto no existe en esa sucursal.
     for (const p of plan.products) {
       const price = p.branchPrices[b.id];
@@ -55,6 +60,7 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
       pedidoMinimoDomicilio: plan.policy.pedidoMinimoDomicilio,
       pedidoMinimoRecoger: plan.policy.pedidoMinimoRecoger,
       propinaPolitica: plan.policy.propinaPolitica as never,
+      ...directorio,
     });
   }
   // Zonas conocidas y cobertura de entrega, igual que el SQL del seed (pasos 6, 6b y 6c): puntos de las sucursales con coordenadas y colonias sin

@@ -42,7 +42,11 @@
       "coordenadas_pendientes_de_verificar": "Calle 11 No. 371 x Av. 32, San Damián, Mérida (direccion del dueño; tel. 999 987 5410). Sin ficha de Google Maps ni otra fuente citable verificada: lat/lng quedan en null.",
       "activa": true,
       "zona_cliente": "poniente",
-      "nota": "Catalogo = lista T1-2026 sin comida regional ni flautas (cuestionario l.76 y l.104-105: 'precios iguales en todas'; correccion CR01/CR02 del 3-oct-2026: antes llevaba la lista 2025). Sin coordenadas: no se inventan (P7, P9), asi que T3 NO participa en la asignacion de sucursal por distancia hasta que se verifiquen."
+      "nota": "Catalogo = lista T1-2026 sin comida regional ni flautas (cuestionario l.76 y l.104-105: 'precios iguales en todas'; correccion CR01/CR02 del 3-oct-2026: antes llevaba la lista 2025). Sin coordenadas: no se inventan (P7, P9), asi que T3 NO participa en la asignacion de sucursal por distancia hasta que se verifiquen.",
+      "directorio": {
+        "dias_domicilio": null,
+        "nota": "PREGUNTA B13 (work/base-vieja-pm/diferencias.md): la web vieja dice que Pensiones reparte solo de viernes a domingo. Hasta que el dueño lo confirme se deja null (todos los dias); para activarlo, dias_domicilio = [5, 6, 0]."
+      }
     },
     {
       "id": "T4",
@@ -56,7 +60,11 @@
       "lat": null,
       "lng": null,
       "activa": false,
-      "nota": "Registrada sin pedidos (el cuestionario la lista con 0 a domicilio y 0 para llevar, P9): inactiva y sin catalogo. Direccion y telefono de la web. Sin coordenadas en el seed."
+      "nota": "Registrada sin pedidos (el cuestionario la lista con 0 a domicilio y 0 para llevar, P9): inactiva y sin catalogo. Direccion y telefono de la web. Sin coordenadas en el seed.",
+      "directorio": {
+        "visible": true,
+        "nota": "Visible en el directorio como solo informativa (esta inactiva y sin catalogo: no lleva a pedir)."
+      }
     },
     {
       "id": "T5",
@@ -68,7 +76,13 @@
       "lng": -89.602,
       "activa": false,
       "coordenadas_aproximadas": true,
-      "nota": "Solo para recoger. Cerrada fuera de temporada (abre en Semana Santa y en julio-agosto, de 18:00 a 01:00; el horario por sucursal sigue pendiente de P1). Telefono y WhatsApp de la web: 969 688 4195. Coordenadas aproximadas del repo, no entran en known_zone. Catalogo y precios del menu impreso T5-2026."
+      "nota": "Solo para recoger. Cerrada fuera de temporada (abre en Semana Santa y en julio-agosto, de 18:00 a 01:00; el horario por sucursal sigue pendiente de P1). Telefono y WhatsApp de la web: 969 688 4195. Coordenadas aproximadas del repo, no entran en known_zone. Catalogo y precios del menu impreso T5-2026.",
+      "directorio": {
+        "visible": true,
+        "acepta_domicilio": false,
+        "de_temporada": true,
+        "nota": "Chicxulub: solo recoger y de temporada (abre en Semana Santa y en julio-agosto)."
+      }
     },
     {
       "id": "T7",
