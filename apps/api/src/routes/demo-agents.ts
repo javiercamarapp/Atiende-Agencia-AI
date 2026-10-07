@@ -3,7 +3,7 @@ import { ApiError } from "@atiende/core-auth";
 import { Errors } from "../errors.ts";
 import { readJsonCapped, requestActor } from "../http-security.ts";
 import { isDemoSolution } from "../demo-agents/profiles.ts";
-import { DEMO_CONTEXT, DEMO_LIMITS, type DemoAgentsDeps, type DemoInput, type DemoMessage } from "../demo-agents/types.ts";
+import { DEMO_CONTEXT, DEMO_LIMITS, DEMO_TOPES, type DemoAgentsDeps, type DemoInput, type DemoMessage } from "../demo-agents/types.ts";
 
 const BASE = "/v1/demo-agentes/:solution";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -75,10 +75,14 @@ export function demoAgentsRoutes(deps?: DemoAgentsDeps): Hono {
 
   async function guard(channel: "chat" | "voz", input: DemoInput, request: Request) {
     if (!deps?.enabled || !(channel === "chat" ? deps.chat : deps.voice)) throw unavailable();
-    // Global bucket spans every solution and instance. Committed independently, before billable calls.
-    await consume(`${channel}-ip`, requestActor(request), channel === "chat" ? 12 : 3, channel === "chat" ? 600 : 3600);
-    await consume(`${channel}-session`, input.sessionId, channel === "chat" ? 12 : 2, 86400);
-    await consume(`${channel}-platform`, "all", channel === "chat" ? 200 : 30, 86400);
+    const topes = DEMO_TOPES[channel];
+    const ip = requestActor(request);
+    // El orden importa: los topes que un visitante puede agotar solo (ventana corta y dia por IP) se cobran ANTES del cupo global, asi un abuso de una IP
+    // se detiene en su propio cubo y no consume el cupo de los demas. Cada cubo se confirma por separado, antes de cualquier llamada con costo.
+    await consume(`${channel}-ip`, ip, topes.ipVentana.limite, topes.ipVentana.segundos);
+    await consume(`${channel}-ip-dia`, ip, topes.ipDia.limite, topes.ipDia.segundos);
+    await consume(`${channel}-session`, input.sessionId, topes.sesion.limite, topes.sesion.segundos);
+    await consume(`${channel}-platform`, "all", topes.plataforma.limite, topes.plataforma.segundos);
   }
 
   app.post(`${BASE}/chat`, async (c) => {
