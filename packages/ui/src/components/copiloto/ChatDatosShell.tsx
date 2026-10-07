@@ -25,6 +25,8 @@ function movimientoReducido(): boolean {
 }
 
 export function ChatDatosShell({
+  variante = "pagina",
+  acciones,
   transporte,
   textos,
   sugerencias,
@@ -61,6 +63,7 @@ export function ChatDatosShell({
   const idCategorias = useId();
   const idEntrada = useId();
   const puedeHistorial = Boolean(transporte.listar);
+  const panel = variante === "panel";
   const hayConversacion = mensajes.length > 0 || abriendo || errorAbrir;
 
   const abrirHistorial = () => {
@@ -107,7 +110,11 @@ export function ChatDatosShell({
   const contador = total >= TOPE_HISTORIAL ? `${TOPE_HISTORIAL}+` : total > 0 ? String(total) : null;
 
   return (
-    <div className="copiloto relative min-h-[calc(100dvh-8rem)] overflow-hidden px-4 pt-4" data-testid="copiloto-shell">
+    <div
+      className={panel ? "copiloto relative h-full min-h-0 overflow-y-auto overflow-x-hidden px-3 pt-3" : "copiloto relative min-h-[calc(100dvh-8rem)] overflow-hidden px-4 pt-4"}
+      data-testid="copiloto-shell"
+      data-variante={variante}
+    >
       <CampoPixeles color="hsl(var(--copiloto-acento))" />
 
       {puedeHistorial ? (
@@ -128,11 +135,15 @@ export function ChatDatosShell({
         </div>
       ) : null}
 
-      <div className={`relative flex flex-col items-center px-4 pb-8 ${hayConversacion ? "min-h-[calc(100dvh-8rem)] justify-end" : "pt-16 md:pt-24"}`}>
-        {!hayConversacion ? <CopilotoPortada textos={textos} /> : null}
+      <div
+        className={`relative flex flex-col items-center ${panel ? "px-1 pb-4" : "px-4 pb-8"} ${
+          hayConversacion ? (panel ? "min-h-[calc(100%-3rem)] justify-end" : "min-h-[calc(100dvh-8rem)] justify-end") : panel ? "pt-6" : "pt-16 md:pt-24"
+        }`}
+      >
+        {!hayConversacion ? <CopilotoPortada textos={textos} compacta={panel} /> : null}
 
         {hayConversacion ? (
-          <div ref={hilo} role="log" aria-live="polite" aria-label="Conversación con el Copiloto" className="w-full max-w-2xl space-y-5 mb-6">
+          <div ref={hilo} role="log" aria-live="polite" aria-label="Conversación con el Copiloto" className={`w-full ${panel ? "max-w-full" : "max-w-2xl"} space-y-5 mb-6`}>
             {abriendo ? (
               <p className="text-sm text-muted-foreground" role="status">
                 Abriendo conversación…
@@ -156,15 +167,16 @@ export function ChatDatosShell({
                 onRegenerar={copiloto.regenerar}
                 onPreguntar={preguntarChip}
                 vertical={vertical}
+                {...(acciones ? { acciones } : {})}
               />
             ))}
             {enviando ? <CopilotoPensando fase={fase} pasos={pasos} etiquetas={etiquetasHerramienta} /> : null}
           </div>
         ) : null}
 
-        {!hayConversacion && categoriasVisibles ? <CopilotoCategorias id={idCategorias} categorias={categorias} onElegir={preguntarChip} /> : null}
+        {!hayConversacion && categoriasVisibles ? <CopilotoCategorias id={idCategorias} categorias={categorias} onElegir={preguntarChip} compacta={panel} /> : null}
 
-        <div className="w-full flex justify-center sticky bottom-[calc(63px+var(--safe-area-bottom))] md:bottom-0">
+        <div className={`w-full flex justify-center sticky ${panel ? "bottom-0" : "bottom-[calc(63px+var(--safe-area-bottom))] md:bottom-0"}`}>
           <CopilotoCompositor
             valor={texto}
             onCambia={setTexto}

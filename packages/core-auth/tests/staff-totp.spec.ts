@@ -125,6 +125,22 @@ describe("token de step-up", () => {
     await expect(verifyContractStepUpToken(vencido, secret, expected)).rejects.toBeInstanceOf(TokenExpiredError);
   });
 
+  it("cada token trae un jti unico y vigencia (llave del consumo de un solo uso)", async () => {
+    const a = await verifyContractStepUpToken(await signContractStepUpToken(expected, secret), secret, expected);
+    const b = await verifyContractStepUpToken(await signContractStepUpToken(expected, secret), secret, expected);
+    expect(a.jti).toMatch(/^[0-9a-f-]{36}$/);
+    expect(a.jti).not.toBe(b.jti);
+    expect(typeof a.exp).toBe("number");
+  });
+
+  it("un token sin jti (emitido antes del uso unico) no se acepta", async () => {
+    const { SignJWT } = await import("jose");
+    const sinJti = await new SignJWT({ org: "o1", scope: "contract_sensitive", type: "step_up" })
+      .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("60s").setSubject("u1")
+      .sign(new TextEncoder().encode(`step-up:${secret}`));
+    await expect(verifyContractStepUpToken(sinJti, secret, expected)).rejects.toBeInstanceOf(TokenInvalidError);
+  });
+
   it("un access token no sirve como step-up ni al reves", async () => {
     const access = await signAccessToken({ sub: "u1", org_id: "o1", vertical: "licitaciones", property_ids: null, email: "a@b.mx" }, secret, 60);
     await expect(verifyContractStepUpToken(access, secret, expected)).rejects.toBeInstanceOf(TokenInvalidError);

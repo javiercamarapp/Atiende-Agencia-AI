@@ -487,6 +487,17 @@ export async function* generarVolumenDemo(repoBase: RestaurantesRepository, opti
   const zona = resolverZonaHorariaNegocio(zonaCruda);
   const hoy = fechaLocal(ahora, zona);
 
+  // Colonias de cada sucursal: las de su cobertura de entrega cargada (el seed de PM las carga; sin ellas un domicilio de PM no se valida y el
+  // agente exige el pin), y solo si la sucursal no tiene cobertura se usan las de ejemplo de este generador.
+  const zonasDeLaOrg = await repo.listKnownZones(organizationId);
+  const coloniasPorSucursal = new Map<string, readonly string[]>();
+  for (const b of branches) {
+    const cubiertas = new Set(await repo.listBranchDeliveryZoneIds(b.propertyId));
+    const nombres = zonasDeLaOrg.filter((z) => cubiertas.has(z.id) && z.lat === null).map((z) => z.name).sort((a, c) => a.localeCompare(c, "es"));
+    if (nombres.length > 0) coloniasPorSucursal.set(b.slug, nombres);
+  }
+  const coloniasDe = (slug: string): readonly string[] => coloniasPorSucursal.get(slug) ?? COLONIAS_POR_SUCURSAL[slug] ?? COLONIAS_POR_OMISION;
+
   // --- clientes ---------------------------------------------------------------------------------------------------
   const plan = perfil ? planificarPerfilT7(rng, options.dias, hoy) : null;
   const totalEsperado = options.dias * pedidosPorDia;
@@ -497,7 +508,7 @@ export async function* generarVolumenDemo(repoBase: RestaurantesRepository, opti
       clientes.push({
         phone10: demoPhone(DEMO_PHONE_PREFIX_VOLUME, i).slice(3),
         name: `${rng.pick(NOMBRES)} ${rng.pick(APELLIDOS)} ${String(i + 1).padStart(4, "0")}`.slice(0, 60),
-        address: `Privada ${rng.pick(PRIVADAS_T7)} casa ${rng.int(2, 48)}, Col. ${rng.pick(COLONIAS_POR_SUCURSAL[DEMO_PERFIL_T7.sucursal]!)}, Mérida`,
+        address: `Privada ${rng.pick(PRIVADAS_T7)} casa ${rng.int(2, 48)}, Col. ${rng.pick(coloniasDe(DEMO_PERFIL_T7.sucursal))}, Mérida`,
         homeSlug: DEMO_PERFIL_T7.sucursal,
         firstOrderAt: null,
         lastWhatsapp: null,
@@ -505,7 +516,7 @@ export async function* generarVolumenDemo(repoBase: RestaurantesRepository, opti
       continue;
     }
     const home = rng.weighted(branches, (b) => PESO_SUCURSAL[b.slug] ?? 0.2);
-    const colonia = rng.pick(COLONIAS_POR_SUCURSAL[home.slug] ?? COLONIAS_POR_OMISION);
+    const colonia = rng.pick(coloniasDe(home.slug));
     clientes.push({
       phone10: demoPhone(DEMO_PHONE_PREFIX_VOLUME, i).slice(3),
       name: `${rng.pick(NOMBRES)} ${rng.pick(APELLIDOS)} ${String(i + 1).padStart(4, "0")}`.slice(0, 60),

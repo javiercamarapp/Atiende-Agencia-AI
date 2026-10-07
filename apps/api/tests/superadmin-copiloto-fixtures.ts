@@ -160,6 +160,12 @@ export function fuentesFalsas(sobre: Partial<FuentesPlataforma> = {}): FuentesPl
         { id: "v3", contractId: "c2", organizationId: "org-b", organizationName: "Hotel Bahía", version: 1, vigenteDesde: "2025-10-01", vigenteHasta: "2026-10-25", moneda: "MXN" as const, baseCentavos: 250_000, porSucursalCentavos: 0, sucursalesIncluidas: 1, bolsaMinutos: 0, excedenteCentavosMinuto: 0, instalacionCentavos: 0, descuentoBp: 0, descuentoFijoCentavos: 0, motivo: "Alta", creadoPor: "u-1", creadoPorCorreo: null, creadoEnMs: 3 },
         { id: "v4", contractId: "c3", organizationId: "org-c", organizationName: "Posada Sol", version: 1, vigenteDesde: "2025-10-01", vigenteHasta: null, moneda: "MXN" as const, baseCentavos: 90_000, porSucursalCentavos: 0, sucursalesIncluidas: 1, bolsaMinutos: 0, excedenteCentavosMinuto: 0, instalacionCentavos: 0, descuentoBp: 0, descuentoFijoCentavos: 0, motivo: "Alta", creadoPor: "u-1", creadoPorCorreo: null, creadoEnMs: 4 },
       ]),
+    facturacion: async () =>
+      ok([
+        { organizationId: "org-a", vertical: "restaurantes", name: "Taquería Don Beto", slug: "taqueria-don-beto", orgStatus: "active" as const, createdAt: "2026-03-01T10:00:00.000Z", billingStatus: "activa" as const, seats: 3, staffCount: 4, priceId: "price_x", stripeCustomerId: "cus_secreto", stripeSubscriptionId: "sub_secreto", currentPeriodEnd: "2026-10-28T00:00:00.000Z", lastAppliedEventUnix: null },
+        { organizationId: "org-b", vertical: "hoteles", name: "Hotel Bahía", slug: "hotel-bahia", orgStatus: "active" as const, createdAt: "2026-04-01T10:00:00.000Z", billingStatus: "pago_pendiente" as const, seats: 1, staffCount: 2, priceId: "price_y", stripeCustomerId: "cus_otro", stripeSubscriptionId: "sub_otro", currentPeriodEnd: "2026-10-05T00:00:00.000Z", lastAppliedEventUnix: null },
+        { organizationId: "org-c", vertical: "hoteles", name: "Posada Sol", slug: "posada-sol", orgStatus: "trial" as const, createdAt: "2026-09-01T10:00:00.000Z", billingStatus: "sin_suscripcion" as const, seats: 0, staffCount: 1, priceId: null, stripeCustomerId: null, stripeSubscriptionId: null, currentPeriodEnd: null, lastAppliedEventUnix: null },
+      ]),
     registrarAccesoCfo: async (accion, recurso, filtros) => {
       accesosCfo.push({ accion, recurso, filtros });
       return "ok";

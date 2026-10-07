@@ -21,6 +21,7 @@ import {
   GeneradorBorradorIA,
   GeneradorBorradorPlantillas,
   MENSAJERIA_ESCRITURA_ROLES,
+  MENSAJERIA_LECTURA_ROLES,
   MensajeExcedeLongitudError,
   TransicionBorradorInvalidaError,
   aprobarBorrador,
@@ -89,18 +90,22 @@ export function rentasMensajeriaBorradoresRoutes(deps: AppDeps): Hono<CoreAuthHo
   const app = new Hono<CoreAuthHonoEnv>();
 
   const baseGenerar = "/rentas/:propertyId/conversaciones/:conversacionId/borradores";
+  const baseHilo = "/rentas/:propertyId/conversaciones/:conversacionId/hilo";
   const baseAprobar = "/rentas/:propertyId/borradores/:id/aprobar";
   const baseRechazar = "/rentas/:propertyId/borradores/:id/rechazar";
   const baseIntentoAutomatico = "/rentas/:propertyId/borradores/:id/intento-automatico";
 
   app.use(baseGenerar, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(baseHilo, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(baseAprobar, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(baseRechazar, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(baseIntentoAutomatico, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
-  // GET .../conversaciones/:conversacionId/borradores -- lectura abierta a cualquier
-  // staff con acceso a la property (mismo criterio que GET de conversaciones).
+  // GET .../conversaciones/:conversacionId/borradores -- lectura abierta a quien ve
+  // mensajería (MENSAJERIA_LECTURA_ROLES: todo el staff menos `limpieza`, que no tiene por
+  // qué leer lo que escribe el huésped; mismo criterio que GET de conversaciones).
   app.get(baseGenerar, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"), async (c) => {
+    assertVerticalRole(c, MENSAJERIA_LECTURA_ROLES);
     const propertyId = c.req.param("propertyId");
     const conversacionId = c.req.param("conversacionId");
     const db = c.get("db");
@@ -109,6 +114,23 @@ export function rentasMensajeriaBorradoresRoutes(deps: AppDeps): Hono<CoreAuthHo
     if (!conversacion) throw Errors.notFound("Conversación no encontrada en esta property.");
     const borradores = await mensajeriaRepo.listBorradores(propertyId, conversacionId);
     return c.json({ borradores }, 200);
+  });
+
+  // GET .../conversaciones/:conversacionId/hilo -- el hilo completo de UNA conversación en una sola
+  // llamada (Rn-P3-20): la conversación, sus mensajes (entrantes y salientes, en orden) y sus
+  // borradores, para que quien aprueba vea lo que escribió el huésped. Se resuelve por id de
+  // conversación (la ruta del hilo en la web no conoce la unidad) y SIEMPRE acotado a la property de
+  // la sesión: una conversación de otra property da 404, nunca su contenido. Lectura = MENSAJERIA_LECTURA_ROLES.
+  app.get(baseHilo, async (c) => {
+    assertVerticalRole(c, MENSAJERIA_LECTURA_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const conversacionId = c.req.param("conversacionId");
+    const mensajeriaRepo = deps.rentasMensajeriaRepo(c.get("db"));
+    const conversacion = await mensajeriaRepo.findConversacion(propertyId, conversacionId);
+    if (!conversacion) throw Errors.notFound("Conversación no encontrada en esta property.");
+    const mensajes = await mensajeriaRepo.listMensajes(conversacionId);
+    const borradores = await mensajeriaRepo.listBorradores(propertyId, conversacionId);
+    return c.json({ conversacion, mensajes, borradores }, 200);
   });
 
   // POST .../conversaciones/:conversacionId/borradores -- genera un borrador (H-059)
@@ -168,11 +190,25 @@ export function rentasMensajeriaBorradoresRoutes(deps: AppDeps): Hono<CoreAuthHo
       throw traducirErrorMensajeria(err);
     }
 
-    const borrador = await mensajeriaRepo.insertBorrador({ conversacionId, mensajeEntranteId, canal: conversacion.canal, texto: generado.texto, generadoPor });
+    const borrador = await mensajeriaRepo.insertBorrador({
+      conversacionId,
+      mensajeEntranteId,
+      canal: conversacion.canal,
+      texto: generado.texto,
+      generadoPor,
+      necesitaEscalamiento: generado.necesitaEscalamiento,
+      senales: generado.senales,
+    });
     // Aviso in-app (campana): un borrador SIEMPRE nace 'pendiente_aprobacion' y nada sale al huesped sin decision humana, asi que cada
     // uno es "una aprobacion pendiente". Uno por borrador (clave = id), sin PII (ni el texto del huesped ni el del borrador viajan).
-    // Dentro de un SAVEPOINT (emitirNotificacion): contra la base sin migrar no aborta la transaccion del request.
-    await emitirNotificacion(db, { evento: "rentas.aprobacion.pendiente", organizationId, propertyId, clave: borrador.id, entidadTipo: "borrador_mensaje", entidadId: borrador.id });
+    // Si el generador lo marco como escalado (queja, emergencia, reembolso o VIP) se emite en su lugar `rentas.aprobacion.urgente`
+    // (critica, enlace a la conversacion): nunca los dos para el mismo borrador. Dentro de un SAVEPOINT (emitirNotificacion): contra
+    // la base sin migrar no aborta la transaccion del request.
+    if (generado.necesitaEscalamiento) {
+      await emitirNotificacion(db, { evento: "rentas.aprobacion.urgente", organizationId, propertyId, clave: borrador.id, entidadTipo: "conversacion", entidadId: conversacionId });
+    } else {
+      await emitirNotificacion(db, { evento: "rentas.aprobacion.pendiente", organizationId, propertyId, clave: borrador.id, entidadTipo: "borrador_mensaje", entidadId: borrador.id });
+    }
 
     logEvent(c, "info", "rentas_borrador_generado", {
       borradorId: borrador.id,
