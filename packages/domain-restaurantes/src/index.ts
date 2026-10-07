@@ -1,3 +1,5 @@
+export { buildStorefrontDirectorio, enlaceComoLlegar, type StorefrontDirectorioItem } from "./storefront.ts";
+export { evaluarDomicilioSucursal, describirDiasDomicilio, insigniaDomicilio, mensajeDomicilioNoDisponible, type EstadoDomicilio } from "./domicilio-sucursal.ts";
 export type { StorefrontCatalogRow, StorefrontMarca, StorefrontMarcaInput, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
 export { buildStorefrontBranches, buildStorefrontMenu, groupStorefrontMenu, assertWebOrderRules, previewPromotion } from "./storefront.ts";
 export type { StorefrontBranchView, StorefrontMenuCategory, StorefrontMenuItem, PromotionPreview } from "./storefront.ts";
@@ -92,12 +94,12 @@ export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient, maskPhon
 export { prepararImportacionClientes, IMPORTACION_MAX_FILAS } from "./clientes-importacion.ts";
 export type { ErrorRenglonImportacion, PreparacionImportacion } from "./clientes-importacion.ts";
 
-export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole } from "./roles.ts";
-export type { RestaurantesRole } from "./roles.ts";
+export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole, ACCIONES_RESTAURANTES, ACCIONES_RESTAURANTES_LISTA, rolesParaAccion, puedeEjecutar, permisosEfectivos } from "./roles.ts";
+export type { RestaurantesRole, AccionRestaurantes } from "./roles.ts";
 
 export { tokenizeForProductSearch, matchesProductSearch, sinAcentos, requiresTortillaChoice, extraerPackSize, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, UUID_PATTERN } from "./product-search.ts";
 
-export { DEFAULT_COMPLEMENTS, TORTILLA_CHOICES, buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, findExtraSalsaProduct, isTortillaChoice } from "./order-quote.ts";
+export { DEFAULT_COMPLEMENTS, PM_BASIC_COMPLEMENTS, TORTILLA_CHOICES, buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, findExtraSalsaProduct, isTortillaChoice } from "./order-quote.ts";
 
 export type {
   RestaurantesRepository,
@@ -213,6 +215,9 @@ export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEsp
 export type { RecepcionConEspera } from "./whatsapp/inbound.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
 export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
+export { UMBRAL_AVISOS_AGRUPADOS, procesarEstadosEntrega } from "./whatsapp/estados-entrega.ts";
+export type { EmisionEntregaFallida, EventoEntregaFallida, ProcesarEstadosEntregaOptions, ResumenEstadosEntrega } from "./whatsapp/estados-entrega.ts";
+export type { EstadoEntregaEntrante, MotivoFalloEntregaGuardado, RegistroEstadoEntrega } from "./repository.ts";
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 
@@ -240,6 +245,7 @@ export type { OpcionesTramos, StatsPeriod, TrendBucket, ComparisonPeriods, Sales
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";
+export * from "./autopiloto/index.ts";
 export * from "./repartidor-perfil/index.ts";
 export * from "./exportar/index.ts";
 export { PM_COPY, buildPmSystemPrompt, pmCustomerContextBlock, saludoPorHora } from "./whatsapp/perfil-pm.ts";
@@ -327,7 +333,7 @@ export {
 export type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowStore, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 export type { VoiceSecretMatch, VoiceToolAuditInput, VoiceToolAuditOutcome } from "./types.ts";
 
-export { formatLocationMessage, isValidCoordinate, latestSharedLocation, parseSharedLocation, type MetaLocationMessage, type SharedLocation } from "./whatsapp/location.ts";
+export { formatLocationMessage, formatUbicacionEntregaNota, isValidCoordinate, latestDeliveryPin, latestSharedLocation, parseMapsLink, parseSharedLocation, parseUbicacionEntregaNota, type MetaLocationMessage, type SharedLocation, type UbicacionEntrega } from "./whatsapp/location.ts";
 export type { MetaInboundMessage } from "./whatsapp/channel-config.ts";
 export * from "./privacidad/index.ts";
 export * from "./data-chat/index.ts";
@@ -368,5 +374,11 @@ export {
 export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
 export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operativos.ts";
 export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
+export * from "./encuesta-reglas.ts";
+export * from "./resenas-provider.ts";
+export * from "./mezcla-de-pago.ts";
+export * from "./sucursal-sugerida.ts";
+// Ajustes del agente por organizacion (modelo, temperatura, voz, fondo) y base de conocimiento automatica (equivalentes de lo que el original hacia con ElevenLabs).
+export * from "./ajustes-agente/index.ts";
 
 export * from "./conocimiento/index.ts";

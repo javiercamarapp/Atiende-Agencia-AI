@@ -1,6 +1,6 @@
 # Crons de Vercel
 
-Fuente de verdad: `vercel.json::crons` (hoy **35** crons). Todos son rutas `GET|POST /internal/...` que
+Fuente de verdad: `vercel.json::crons` (hoy **40** crons). Todos son rutas `GET|POST /internal/...` que
 Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que `INTERNAL_SECRET`).
 
 ## Reglas
@@ -18,7 +18,7 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
   (`for update skip locked`, `attempts < 5`) y envía con `Idempotency-Key` por job, así que un solapamiento o reintento no duplica correos.
 - Kill switch: superadmin → Interruptores → cron `<path>` (o global `crons`). Pausado responde 200 `{"skipped":"kill_switch"}`.
 - Verificar a mano: `curl -H "Authorization: Bearer $CRON_SECRET" https://<dominio><path>`; o `vercel crons run <path>`.
-  Revisa el latido en `/superadmin/salud/crons`. **No lo hagas contra producción con WhatsApp/correo reales sin querer enviar mensajes.**
+  Revisa el latido en `/superadmin/salud/crons` (más señales en [Cómo saber que corren](#cómo-saber-que-corren)). **No lo hagas contra producción con WhatsApp/correo reales sin querer enviar mensajes.**
 
 ## Tabla de crons
 
@@ -40,13 +40,13 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/rentas/email-dispatch` | `*/15 * * * *` | Drena el outbox de correo |
 | `/internal/rentas/checkin-recordatorio` | `40 14 * * *` | Recordatorio de check-in |
 | `/internal/rentas/ical-sync` | `*/15 * * * *` | Sincroniza feeds iCal (lease por feed, piso de 10 min, backoff) |
-| `/internal/rentas/checkout-sweep` | `50 14 * * *` | Barrido de check-out |
+| `/internal/rentas/checkout-sweep` | `*/15 * * * *` | Barrido de limpieza por propiedad (red de seguridad de la tarea que nace al confirmar la reserva: crea las faltantes, buffer del día del checkout, cancela/reprograma desfasadas) y avisos in-app de asignación y de mañana sin responsable |
 | `/internal/whatsapp/dispatch` | `*/5 * * * *` | Drena el outbox de WhatsApp de citas/hoteles/restaurantes/licitaciones (503 sin WHATSAPP_ACCESS_TOKEN) |
 | `/internal/superadmin/resumen-diario` | `0 15 * * *` | Resumen diario al superadmin |
 | `/internal/superadmin/mantenimiento` | `5 15 * * *` | Mantenimiento de plataforma |
 | `/internal/superadmin/alertas-cfo` | `15 15 * * *` | Alertas del CFO |
 | `/internal/hoteles/revenue-recommendations` | `10 15 * * *` | Barrido de recomendaciones de revenue |
-| `/internal/restaurantes/promover-programados` | `*/5 * * * *` | Promueve a pending los pedidos programados dentro de su anticipación (SQL solo actualiza filas en estado programado). R-16: el mismo tick barre, en una sesión de sistema independiente, las alertas in-app `restaurantes.pedido.entrega_tardia` y `restaurantes.pedido.programado_por_vencer` (una por pedido, sin cron nuevo) |
+| `/internal/restaurantes/promover-programados` | `*/5 * * * *` | Promueve a pending los pedidos programados dentro de su anticipación (SQL solo actualiza filas en estado programado). R-16: el mismo tick barre, en una sesión de sistema independiente, las alertas in-app `restaurantes.pedido.entrega_tardia` y `restaurantes.pedido.programado_por_vencer` (una por pedido, sin cron nuevo). Autopiloto (migración 050, también sin cron nuevo, cada paso en su propia sesión de sistema): escala a owner/admin las aprobaciones sin respuesta (`restaurantes.aprobacion.vencida`, nunca aprueba solas), pasa `entregado` a `completado` y `listo_para_recoger` a `no_recogido` por tiempo, acepta solo `pending` con comanda capturada si la sucursal lo activó, avanza estados desde el POS (solo con adaptador real), devuelve al agente los handoffs sin respuesta humana y repone los «agotado hasta mañana» al cambiar el día de la sucursal |
 | `/internal/restaurantes/softrestaurant-dispatch` | `*/5 * * * *` | Drena el outbox de comandas a SoftRestaurant (503 sin adaptador real, no reclama nada). Antes de revisar el adaptador barre las comandas en `captura_manual` que pasaron el umbral de su sucursal (5 min por omision) y emite `restaurantes.comanda.captura_manual_vencida`; sin la migracion 054 no hace nada |
 | `/internal/restaurantes/voz-huerfanas` | `*/30 * * * *` | Cierra como `abandonado` las llamadas de voz abiertas hace más de 2 h (el worker murió antes de /cerrar); sin la migración 060 responde `not_available` y no toca nada |
 | `/internal/hoteles/tickets-sla` | `*/10 * * * *` | Escala tickets con SLA vencido y avisa al 75 % del SLA (idempotente en SQL) |
@@ -54,13 +54,33 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/rentas/acceso-huesped` | `10 * * * *` | Libera instrucciones de acceso (una transacción por reserva, dedupe_key en el outbox, tope de 50) |
 | `/internal/rentas/mensajes-automaticos` | `40 * * * *` | Crea borradores `pendiente_aprobacion` (nunca envía) desde plantillas aprobadas por evento: pre-llegada, check-in, check-out, reseña (una transacción por reserva, marca de idempotencia por reserva+evento, ventana de 24 h en la zona de la propiedad, tope de 50) |
 | `/internal/hoteles/grupos-liberacion` | `30 9 * * *` | Libera bloqueos de grupos por cutoff (zona de la property) y vence cotizaciones (idempotente en SQL) |
+| `/internal/hoteles/holds-vencidos` | `*/15 * * * *` | H-P3-03: libera el inventario de las pre-reservas (holds) del agente de reservas cuyo plazo venció, aunque el agente no se use (una transacción por property, reloj inyectable, idempotente; base sin la migración 037: la property se omite) |
+| `/internal/hoteles/housekeeping-dia` | `5 * * * *` | H-P3-04: arranca solo el día de housekeeping de cada property cuya hora local alcanzó la hora de arranque configurada (07:00 por omisión; ventana de recuperación de 3 h): genera las tareas del día (respeta opt-out), asigna con la asignación automática si está encendida y avisa en la campana (`hoteles.housekeeping.dia_generado`). Idempotente por (property, fecha) con un ledger; una transacción por property; base sin la migración 045: la property se omite |
 | `/internal/restaurantes/privacidad-retencion` | `30 8 * * *` | Purga por retención de conversaciones de WhatsApp y voz (lotes de 500, máx. 10 por corrida) |
 | `/internal/plataforma/privacidad-retencion` | `50 8 * * *` | PL-35: purga por retención de la plataforma (GET con `Authorization: Bearer` ejecuta; otro GET solo simula). Lote acotado: 4 páginas de 25 organizaciones por corrida (sin cursor persistente) |
 | `/internal/despachos/vencimientos-barrido` | `45 12 * * *` | D-26: por cada cliente con ficha genera las obligaciones fiscales del periodo en curso y escala las que vencen hoy/mañana o ya vencieron; avisa en la campana (`vencimiento_proximo`/`_vencido`, dedupe diario por property). Una transacción por cliente; idempotente |
 | `/internal/despachos/cfdi-estatus-sat` | `20 6 * * 0` | D-27 (semanal, domingo): consulta el estatus de los CFDI ante el servicio **público** del SAT, los más antiguos primero (tope de 60 por corrida y 22 s de presupuesto, 3 consultas en paralelo). Un timeout deja el CFDI como estaba; jamás "vigente" por error. Una cancelación avisa una sola vez (`despachos.cfdi.cancelado`). Una transacción por CFDI |
 | `/internal/despachos/efos-69b/descarga` | `40 7 3 * *` | D-28 (mensual, día 3): baja el CSV público de la lista 69-B (URL en `EFOS_69B_URL`), lo ingiere (idempotente por SHA-256 y periodo) y, si la edición es nueva o corregida, emite `despachos.efos.alerta` por cada CFDI ya ingerido que toca (dedupe por CFDI) |
+| `/internal/restaurantes/cierres-dia` | `20 8 * * *` | R-42: asegura el cierre del día (y, tras un domingo cerrado, el resumen semanal) de cada sucursal con SU fecha local de negocio; 08:20 UTC = 02:20 en Mérida, después del cierre de la 01:00. Mira los últimos 3 días cerrados (`?dias=N`, 1 a 14, solo a mano), así un día sin corrida se recupera en la siguiente. Una transacción por sucursal; avisa en la campana (`dia_listo`/`semana_lista`, dedupe por sucursal y fecha). Idempotente |
+| `/internal/restaurantes/repartidor-licencias` | `35 13 * * *` | R-15: avisa a owner/admin las licencias de repartidor vencidas o a menos de 30 días (dedupe mensual por repartidor). Una transacción por repartidor. Sin la migración correspondiente responde `not_available` |
+| `/internal/plataforma/prueba-avisos` | `0 14 * * *` | PL-16: avisos de fin de prueba a 7/3/1 días (campana + correo), cada aviso exactamente una vez, con el día contado en la zona de cada negocio. Sin la migración 0046 responde `disponible:false` |
 
 Todos tienen latido en el panel de salud (verifica el de cada path en `/superadmin/salud/crons`), el interruptor global `crons` y el interruptor por path (`SWITCHABLE_CRONS`; el test de contrato exige que cada cron de `vercel.json` esté ahí).
+
+## Cómo saber que corren
+
+Cuatro señales, de la más barata a la más detallada. Ninguna corre un cron ni toca datos.
+
+1. **`GET /health` (público, sin secreto).** Además de `ok` y `status` trae `crons`, una señal agregada sin nombres ni errores:
+   - `ok`: ningún latido atrasado y todos los crons de cadencia de 15 min o menos con al menos un latido (un cron diario que aún no tuvo su primera corrida no cuenta);
+   - `sin_latido`: algún cron de cadencia de 15 min o menos (`whatsapp/dispatch`, `promover-programados`, `email-dispatch`...) **nunca** dejó un latido: el scheduler no los invoca (típico: `CRON_SECRET` distinto de `INTERNAL_SECRET`, o plan sin crons frecuentes);
+   - `atrasados`: algún latido lleva más de 3 veces la cadencia de su cron sin renovarse;
+   - `sin_medir`: no se pudo leer la tabla de latidos (migración 0015 sin aplicar, error o más de 2 s de espera). Nunca se reporta `ok` por no poder medir.
+   El código HTTP no cambia (200 si la base responde): un cron sin latido no tumba el smoke del deploy. La lectura usa `core.list_cron_heartbeats_for_system()` y se cachea 5 s junto con el sondeo de la base.
+   Un cron que corre pero termina en error **no** vuelve `crons` a `atrasados`: eso lo cubren `/superadmin/salud/crons` y la alerta `superadmin.cron.fallo`.
+2. **Sondeo externo (`.github/workflows/prod-health.yml`, cada 15 min, sin cambios de frecuencia).** `scripts/health-check/check.ts` falla si `crons` no es `ok` en **dos sondeos seguidos** (6 s de separación) y el job queda en rojo. Con `PROD_HEALTH_OPEN_ISSUE=true` abre o comenta un issue "Salud de produccion". Sin la variable de repo `PROD_BASE_URL` no sondea y deja un `::warning::` visible.
+3. **Alerta en la campana de superadmin.** El cron diario de resumen emite `superadmin.salud.cron_sin_latido` (una por día) si algún cron de cadencia de 15 min o menos no tiene ningún latido.
+4. **Panel `/superadmin/salud/crons`:** estado, último latido y error de cada cron, con el kill switch.
 
 ## No agendados a propósito
 

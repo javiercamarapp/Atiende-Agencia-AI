@@ -20,6 +20,8 @@ export interface UnidadCatalogo {
   readonly duracionMinimaNoches: number;
   readonly propietarioId: string | null;
   readonly propietarioNombre: string | null;
+  /** Responsable de limpieza por omision: la tarea de cada checkout nace asignada a el (`null` = cola "Sin asignar"). */
+  readonly responsableLimpiezaId?: string | null;
 }
 
 export interface Propietario {
@@ -98,4 +100,17 @@ export function editarPropietario(
   cambios: { readonly nombre?: string; readonly email?: string | null },
 ): Promise<{ id: string }> {
   return sendJson(fetchImpl, `${raiz(apiBaseUrl, propertyId)}/propietarios/${propietarioId}`, token, "PATCH", cambios);
+}
+
+/** Responsable de limpieza por omision de la unidad (`null` lo quita). admin_gestora y operador:acceso_total; la persona debe ser
+ *  miembro con acceso a la propiedad (422). Base sin la migracion 033: 503 con la migracion que falta. */
+export function fijarResponsableLimpieza(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  unidadId: string,
+  responsableId: string | null,
+): Promise<{ id: string; responsableLimpiezaId: string | null }> {
+  return sendJson(fetchImpl, `${raiz(apiBaseUrl, propertyId)}/unidades/${unidadId}/responsable-limpieza`, token, "PUT", { responsableId });
 }

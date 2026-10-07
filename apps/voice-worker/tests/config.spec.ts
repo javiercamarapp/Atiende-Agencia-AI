@@ -158,3 +158,54 @@ describe("modo de entrada de la llamada", () => {
     expect([4, 5, 11, 12, 18, 19, 23].map(franjaDeHora)).toEqual(["noche", "manana", "manana", "tarde", "tarde", "noche", "noche"]);
   });
 });
+
+describe("Vertex AI y tope de costo por llamada (variables nuevas, todas opcionales)", () => {
+  const MAPA = JSON.stringify({ "+52 999 111 0001": { orgSlug: "los-taquitos-de-pm", organizationId: "00000000-0000-4000-8000-000000000001", propertyId: "00000000-0000-4000-8000-0000000000a1", branchSlug: "fco-montejo", secretoEnv: "VOICE_SECRET_FCO" } });
+  const base = { LIVEKIT_URL: "wss://x.invalid", LIVEKIT_API_KEY: "k", LIVEKIT_API_SECRET: "s", ATIENDE_API_URL: "http://a.invalid", INTERNAL_SECRET: "i", GEMINI_API_KEY: "g", VOICE_SECRET_FCO: "s", VOICE_DNIS_MAP: MAPA };
+
+  it("por omision: Gemini API, sin Vertex y con el tope de la plataforma", () => {
+    expect(cargarConfig(base)).toMatchObject({ estado: "configurado", geminiBackend: "api", vertex: null, costoMaxLlamadaMicroUsd: null });
+  });
+
+  it("VOICE_COSTO_MAX_LLAMADA_USD se convierte a micro-USD y se valida (0, negativo, texto y mas de US$20 son motivos)", () => {
+    expect(cargarConfig({ ...base, VOICE_COSTO_MAX_LLAMADA_USD: "0.75" }).costoMaxLlamadaMicroUsd).toBe(750_000);
+    for (const malo of ["0", "-1", "abc", "21"]) {
+      const c = cargarConfig({ ...base, VOICE_COSTO_MAX_LLAMADA_USD: malo });
+      expect(c.estado).toBe("no_configurado");
+      expect(c.motivos.join(" ")).toContain("VOICE_COSTO_MAX_LLAMADA_USD");
+    }
+  });
+
+  it("GEMINI_BACKEND=vertex exige proyecto y cuenta de servicio (solo nombres de variables en los motivos) y no necesita GEMINI_API_KEY", () => {
+    const sinNada = cargarConfig({ ...base, GEMINI_API_KEY: "", GEMINI_BACKEND: "vertex" });
+    expect(sinNada.estado).toBe("no_configurado");
+    expect(sinNada.motivos.join(" ")).toContain("VERTEX_PROJECT");
+    expect(sinNada.motivos.join(" ")).toContain("VERTEX_SERVICE_ACCOUNT_JSON");
+    const ok = cargarConfig({ ...base, GEMINI_API_KEY: "", GEMINI_BACKEND: "vertex", VERTEX_PROJECT: "mi-proyecto", VERTEX_SERVICE_ACCOUNT_JSON: '{"cuenta":"de-servicio"}' });
+    expect(ok.estado).toBe("configurado");
+    expect(ok.vertex).toEqual({ project: "mi-proyecto", location: "us-central1", serviceAccountJson: '{"cuenta":"de-servicio"}' });
+    expect(ok.motivos.join(" ")).not.toContain("cuenta");
+  });
+
+  it("un GEMINI_BACKEND desconocido o una region que no lo parece dejan al worker sin configurar", () => {
+    expect(cargarConfig({ ...base, GEMINI_BACKEND: "azure" }).motivos.join(" ")).toContain("GEMINI_BACKEND");
+    expect(cargarConfig({ ...base, GEMINI_BACKEND: "vertex", VERTEX_PROJECT: "p", VERTEX_SERVICE_ACCOUNT_JSON: "{}", VERTEX_LOCATION: "no es region" }).motivos.join(" ")).toContain("VERTEX_LOCATION");
+  });
+});
+
+describe("VAD por variable (VOICE_VAD_SILENCIO_MS, VOICE_VAD_SENSIBILIDAD_FIN)", () => {
+  const MAPA = JSON.stringify({ "+52 999 111 0001": { orgSlug: "los-taquitos-de-pm", organizationId: "00000000-0000-4000-8000-000000000001", propertyId: "00000000-0000-4000-8000-0000000000a1", branchSlug: "fco-montejo", secretoEnv: "VOICE_SECRET_FCO" } });
+  const base = { LIVEKIT_URL: "wss://x.invalid", LIVEKIT_API_KEY: "k", LIVEKIT_API_SECRET: "s", ATIENDE_API_URL: "http://a.invalid", INTERNAL_SECRET: "i", GEMINI_API_KEY: "g", VOICE_SECRET_FCO: "s", VOICE_DNIS_MAP: MAPA };
+  it("sin variables el VAD queda vacio (manda el de la plataforma)", () => {
+    expect(cargarConfig(base).vad).toEqual({});
+  });
+  it("traduce el silencio y la sensibilidad", () => {
+    expect(cargarConfig({ ...base, VOICE_VAD_SILENCIO_MS: "700", VOICE_VAD_SENSIBILIDAD_FIN: "baja" }).vad).toEqual({ silencioFinMs: 700, sensibilidadFin: "END_SENSITIVITY_LOW" });
+    expect(cargarConfig({ ...base, VOICE_VAD_SENSIBILIDAD_FIN: "omitir" }).vad).toEqual({ sensibilidadFin: null });
+  });
+  it.each([["VOICE_VAD_SILENCIO_MS", "50"], ["VOICE_VAD_SILENCIO_MS", "abc"], ["VOICE_VAD_SILENCIO_MS", "5000"], ["VOICE_VAD_SENSIBILIDAD_FIN", "media"]])("%s=%s deja al worker sin configurar", (nombre, valor) => {
+    const c = cargarConfig({ ...base, [nombre]: valor });
+    expect(c.estado).toBe("no_configurado");
+    expect(c.motivos.join(" ")).toContain(nombre);
+  });
+});

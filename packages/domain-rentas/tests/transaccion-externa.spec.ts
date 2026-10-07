@@ -117,13 +117,16 @@ describe("regresión end-to-end: las operaciones que antes hacían BEGIN/COMMIT 
         externalId: "e2e-reserva",
       });
       expect(reserva.conflicto).toBeNull();
+      // Desde paridad3 confirmar la reserva ya deja su tarea de limpieza en esta MISMA transaccion (gancho aislado por SAVEPOINT).
+      expect(reserva.tareaLimpiezaId).not.toBeNull();
 
       // Buffer por defecto (CONFIGURACION_OPERATIVA_DEFECTO) = 1 noche -> crea el
       // bloqueo BUFFER_LIMPIEZA en [2026-06-05, 2026-06-06), justo después del
       // checkout -- sin solapar la reserva ni el bloqueo de mantenimiento de abajo.
       const tareaLimpieza = await crearTareaLimpiezaPorCheckout(session, {
         unidadId: unidad.id,
-        ocupacionUnidadId: reserva.ocupacionId,
+        // Ocupacion distinta de la reserva (que ya tiene su tarea): ejercita la creacion CON buffer del barrido.
+        ocupacionUnidadId: randomUUID(),
         fechaCheckout: "2026-06-05",
       });
       expect(tareaLimpieza.bufferOcupacionId).not.toBeNull();

@@ -67,6 +67,17 @@ function assertNotInThePast(startsAt: Date, now: Date, mensaje: string): void {
   if (startsAt.getTime() < now.getTime()) throw new AppointmentConflictError(mensaje);
 }
 
+/** Un telefono utilizable: entre 7 y 15 digitos (el minimo con el que `normalizePhone` lo reconoce y el maximo de E.164). "hola" o "123" no lo son. */
+export function isUsablePhone(phone: string): boolean {
+  const digits = phone.replace(/\D/g, "").length;
+  return digits >= 7 && digits <= 15;
+}
+
+/** Formato basico de correo (algo@dominio.tld sin espacios, hasta 320 caracteres): suficiente para no encolar correos que terminan en `dead`. */
+export function isUsableEmail(email: string): boolean {
+  return email.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 function invalidOptionalString(value: unknown, maxLength: number): boolean {
   return value !== undefined && value !== null && (typeof value !== "string" || value.length > maxLength);
 }
@@ -251,6 +262,9 @@ export function validateCreateAppointmentPayload(raw: CreateAppointmentPayload):
   if (raw.source !== undefined && !["voice", "whatsapp", "web", "manual"].includes(raw.source)) {
     throw new AppointmentValidationError("source inválido");
   }
+  if (!isUsablePhone(raw.customerPhone)) throw new AppointmentValidationError("customer_phone debe ser un teléfono válido (entre 7 y 15 dígitos)");
+  const email = raw.customerEmail?.trim();
+  if (email && !isUsableEmail(email)) throw new AppointmentValidationError("customer_email no tiene un formato de correo válido");
   return {
     ...raw,
     customerName: raw.customerName.trim(),
@@ -317,7 +331,8 @@ export async function prepareCreateAppointment(repo: CitasRepository, rawPayload
 export async function createAppointment(repo: CitasRepository, rawPayload: CreateAppointmentPayload, now: Date = new Date()): Promise<AppointmentRecord> {
   const { payload, provider, service, startsAt, endsAt } = await prepareCreateAppointment(repo, rawPayload, now);
 
-  const customer = await repo.upsertCustomer(payload.organizationId, payload.customerPhone, payload.customerName, payload.customerEmail ?? null);
+  // Canal web: el telefono no esta verificado, asi que el correo capturado no se asigna al expediente de un paciente que ya existe (ver UpsertCustomerOptions).
+  const customer = await repo.upsertCustomer(payload.organizationId, payload.customerPhone, payload.customerName, payload.customerEmail ?? null, { emailOnlyIfNew: payload.source === "web" });
 
   const dedupeFingerprint = sha256Hex(
     JSON.stringify({
@@ -402,6 +417,8 @@ export async function createAppointmentFromPanel(repo: CitasRepository, payload:
   if (hasNulByte(payload.customerName, payload.customerPhone, payload.customerEmail, payload.notes)) {
     throw new AppointmentValidationError("Los textos no pueden contener caracteres de control nulos");
   }
+  if (!isUsablePhone(payload.customerPhone)) throw new AppointmentValidationError("customer_phone debe ser un teléfono válido (entre 7 y 15 dígitos)");
+  if (payload.customerEmail?.trim() && !isUsableEmail(payload.customerEmail.trim())) throw new AppointmentValidationError("customer_email no tiene un formato de correo válido");
   const startsAt = new Date(payload.startsAt);
 
   const { provider, service } = await resolveProviderAndService(repo, payload.organizationId, payload.providerId, payload.serviceId);
@@ -417,7 +434,8 @@ export async function createAppointmentFromPanel(repo: CitasRepository, payload:
     providerId: provider.id,
     serviceId: service.id,
     customerName: payload.customerName.trim(),
-    customerPhone: payload.customerPhone.trim(),
+    // Misma llave que el agente y la web (ultimos 10 digitos): sin esto el paciente no ve ni cancela por WhatsApp/voz la cita capturada en el panel y su expediente se duplica.
+    customerPhone: normalizePhone(payload.customerPhone),
     customerEmail: payload.customerEmail?.trim() || null,
     startsAt: startsAt.toISOString(),
     endsAt: endsAt.toISOString(),
@@ -428,7 +446,7 @@ export async function createAppointmentFromPanel(repo: CitasRepository, payload:
     // Reintento de la MISMA solicitud (respuesta perdida): con llave de idempotencia, la cita que ya ocupa el horario es la que este mismo cliente
     // acaba de crear -> se devuelve esa, no un 409 contra la propia cita. Sin llave, o con otro cliente, el 409 honesto de siempre.
     if (payload.idempotencyKey?.trim()) {
-      const misma = await findSameIntentPanelAppointment(repo, payload.organizationId, provider.id, startsAt.toISOString(), payload.customerPhone.trim());
+      const misma = await findSameIntentPanelAppointment(repo, payload.organizationId, provider.id, startsAt.toISOString(), normalizePhone(payload.customerPhone));
       if (misma) return misma;
     }
     throw new AppointmentConflictError("Ese horario ya no está disponible para este proveedor -- alguien más lo tomó primero.");
@@ -439,7 +457,11 @@ export async function createAppointmentFromPanel(repo: CitasRepository, payload:
   return result.appointment;
 }
 
-/** La cita activa de este proveedor en este horario exacto que ya es de este cliente (por telefono), o null. */
+/**
+ * La cita activa de este proveedor en este horario exacto que ya es de este cliente (por telefono), o null. `customerPhone` debe venir YA normalizado
+ * (`normalizePhone`), igual que se guarda al crear. Criterio de "misma intencion": no compara la llave de idempotencia, solo telefono + proveedor +
+ * horario, asi que cualquier reintento con llave para esa misma combinacion devuelve la cita existente.
+ */
 async function findSameIntentPanelAppointment(repo: CitasRepository, organizationId: string, providerId: string, startsAtIso: string, customerPhone: string): Promise<AppointmentRecord | null> {
   const customer = await repo.findCustomerByPhone(organizationId, customerPhone);
   if (!customer) return null;

@@ -28,6 +28,24 @@ describe("POST/PATCH /v1/restaurantes/:propertyId/admin/promotions", () => {
     expect(res.status).toBe(403);
   });
 
+  it("admin con membresia acotada a una sucursal: 403 claro al crear y al editar una promocion de toda la organizacion (no 503)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const url = `/v1/restaurantes/${ctx.propertyIdA}/admin/promotions`;
+    const body = { code: "ALCANCE10", name: "Alcance", type: "percentage", value: 10 };
+    const acotado = await app.request(url, authedJson(ctx.staff.adminSucursalA.token, body));
+    expect(acotado.status).toBe(403);
+    expect(JSON.stringify(await acotado.json())).toContain("sucursales");
+
+    const creada = await app.request(url, authedJson(ctx.staff.admin.token, body));
+    expect(creada.status).toBe(201);
+    const id = ((await creada.json()) as { promotion: { id: string } }).promotion.id;
+    const editada = await app.request(`${url}/${id}`, authedJson(ctx.staff.adminSucursalA.token, { name: "Otro" }, "PATCH"));
+    expect(editada.status).toBe(403);
+    const completo = await app.request(`${url}/${id}`, authedJson(ctx.staff.admin.token, { name: "Otro" }, "PATCH"));
+    expect(completo.status).toBe(200);
+  });
+
   it("owner crea un código porcentual real, luego lo edita (desactivar = mismo PATCH)", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const app = buildApp(ctx.deps);

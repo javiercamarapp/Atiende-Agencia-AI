@@ -274,6 +274,7 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
         comportamiento: anteponerConocimiento(comportamiento, bloqueConocimiento),
         mensajeInicial: agente.perfil === "taqueria_pm" ? "" : mensajeInicial,
         ttlSegundos,
+        vertical: "restaurantes",
         herramientas: toolDefinitionsForChannel("voz").map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),
       });
     } catch (err) {
