@@ -34,7 +34,7 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow, NativeSelect } from "@atiende/ui";
+  TableRow, NativeSelect, useConfirm } from "@atiende/ui";
 import { INVITE_STATUS_TONES } from "../lib/status-tones.ts";
 import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
@@ -50,6 +50,13 @@ const ROLE_LABELS: Record<StaffVerticalRole, string> = {
 
 const ROLE_OPTIONS: readonly StaffVerticalRole[] = ["admin", "staff", "owner"];
 
+// Alcance de cada rol: nadie puede tocar el rol de alguien con más alcance que el suyo ni asignar uno por encima del suyo.
+const ROLE_RANK: Record<StaffVerticalRole, number> = { staff: 1, admin: 2, owner: 3 };
+
+function rankOf(role: string): number {
+  return ROLE_RANK[role as StaffVerticalRole] ?? 0;
+}
+
 function statusLabel(status: string): string {
   if (status === "pending") return "Pendiente";
   if (status === "accepted") return "Aceptada";
@@ -58,7 +65,8 @@ function statusLabel(status: string): string {
   return status;
 }
 
-export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellContext) {
+export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: CitasShellContext) {
+  const { confirmar, dialogo } = useConfirm();
   const canManage = STAFF_INVITE_ROLES.has(role);
 
   const [invites, setInvites] = useState<readonly StaffInvite[] | null>(null);
@@ -86,7 +94,16 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
     }
   }
 
-  async function handleRoleChange(memberId: string, nextRole: StaffVerticalRole) {
+  async function handleRoleChange(member: OrgMember, nextRole: StaffVerticalRole) {
+    if (nextRole === member.verticalRole) return;
+    const aceptado = await confirmar({
+      titulo: "¿Cambiar el rol de esta persona?",
+      descripcion: `${member.fullName} pasa de ${ROLE_LABELS[member.verticalRole]} a ${ROLE_LABELS[nextRole]} y sus permisos cambian de inmediato.`,
+      confirmar: "Cambiar rol",
+      cancelar: "Volver",
+    });
+    if (!aceptado) return;
+    const memberId = member.id;
     setSavingRoleId(memberId);
     setError(null);
     try {
@@ -122,6 +139,14 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
   }
 
   async function handleRevoke(inviteId: string) {
+    const aceptado = await confirmar({
+      titulo: "¿Revocar esta invitación?",
+      descripcion: "El enlace de la invitación deja de funcionar. Si quieres volver a invitar a esa persona, tendrás que crear otra.",
+      tono: "danger",
+      confirmar: "Revocar invitación",
+      cancelar: "Volver",
+    });
+    if (!aceptado) return;
     setRevokingId(inviteId);
     setError(null);
     try {
@@ -139,7 +164,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
     <div className="flex max-w-3xl flex-col gap-5">
       <h1 className="font-display text-xl font-semibold text-foreground">Staff</h1>
 
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       {!canManage && (
         <Card className="bg-muted/40">
@@ -268,7 +293,12 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {members.map((m) => (
+                  {members.map((m) => {
+                    // El servidor siempre rechaza cambiar tu propio rol o el de alguien con más alcance: el panel ni lo ofrece.
+                    const esPropio = m.email.toLowerCase() === staffEmail.toLowerCase();
+                    const sinAlcance = rankOf(m.verticalRole) > rankOf(role);
+                    const opciones = ROLE_OPTIONS.filter((r) => rankOf(r) <= rankOf(role) || r === m.verticalRole);
+                    return (
                     <TableRow key={m.id}>
                       <TableCell className="font-semibold text-foreground">
                         {m.fullName}
@@ -281,10 +311,10 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
                         <NativeSelect
                           id={`citas-staff-rol-${m.id}`}
                           value={m.verticalRole}
-                          disabled={savingRoleId === m.id}
-                          onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
+                          disabled={savingRoleId === m.id || esPropio || sinAlcance}
+                          onChange={(e) => void handleRoleChange(m, e.target.value as StaffVerticalRole)}
                         >
-                          {ROLE_OPTIONS.map((r) => (
+                          {opciones.map((r) => (
                             <option key={r} value={r}>
                               {ROLE_LABELS[r]}
                             </option>
@@ -292,13 +322,15 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
                         </NativeSelect>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
           </CardContent>
         </Card>
       )}
+      {dialogo}
     </div>
   );
 }
