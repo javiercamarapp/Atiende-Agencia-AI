@@ -49,21 +49,28 @@ export function crearHooksAutopilotoTurnoPostgres(deps: Omit<AutopilotoServicioD
  */
 export function negacionDeCancelacion(texto: string): boolean {
   // Criterio asimetrico: cancelar por error un pedido real es lo caro, asi que POR DEFECTO la negacion cruza comas y cualquier forma desconocida NO cancela
-  // (pasa a una persona). Solo se EXIMEN (se quitan antes de buscar la negacion) formas explicitas que si son una orden de cancelar:
-  //  - "no, cancelen..." / "ya no, cancelen..." al inicio;
-  //  - "(ya) no lo/la quiero|necesito" como motivo ("ya no lo quiero, cancelen el pedido"), salvo "no lo quiero (tener que) cancelar";
-  //  - cortesias ("si no es molestia", "si no les molesta", "si no hay problema");
-  //  - motivos ya ocurridos ("no llego", "no ha llegado", "nunca llego", "llevo una hora esperando y no llega"), nunca tras un disparador condicional.
+  // (pasa a una persona). Solo se EXIMEN (se quitan antes de buscar la negacion) formas explicitas que si son una orden de cancelar, y NINGUNA exencion
+  // aplica si una palabra condicional antecede en la frase ("si llega frio ya no lo quiero, cancelo" es una amenaza, no una orden):
+  //  - "no, cancelen..." / "ya no, cancelen..." al inicio (no si sigue jamas/para nada/ni de chiste/nunca);
+  //  - "(ya) no lo/la quiero|necesito|voy a querer" como motivo, salvo "no lo quiero (tener que) cancelar";
+  //  - cortesias ("si no es molestia", "si no les molesta", "si no hay problema"), salvo "si no les molesta esperar, cancelo";
+  //  - motivos ya ocurridos ("no llego", "no ha llegado", "nunca llego", "llevo una hora esperando y no llega").
+  const CONDICIONAL = /\b(?:si|como|cuando|mientras|de|al|sino|a\s+menos\s+que|en\s+cuanto|caso\s+de\s+que)\b/;
+  const eximir = (extra?: (resto: string) => boolean) => (m: string, ...args: unknown[]): string => {
+    const off = args[args.length - 2] as number;
+    const todo = args[args.length - 1] as string;
+    const frase = todo.slice(0, off).split(/[.!?\n]/).pop() ?? "";
+    const condicionalPrevio = CONDICIONAL.test(frase);
+    return condicionalPrevio || (extra?.(todo.slice(off + m.length)) ?? false) ? m : " ";
+  };
   const t = normalizarParaClasificar(texto)
     .replace(/\b([ap])\.\s?m\./g, "$1m")
     .replace(/(\d)[:.](\d)/g, "$1$2")
-    .replace(/^\s*(?:ya\s+)?no\s*,\s*(?=cancel)/, " ")
-    .replace(/\b(?:ya\s+)?no\s+(?:lo|la|los|las)\s+(?:quiero|necesito|voy\s+a\s+querer)\b(?!\s+(?:tener\s+que\s+)?cancelar\b)/g, " ")
-    .replace(/\bsi\s+no\s+(?:es\s+(?:mucha\s+)?molestia|(?:le|les|te|me)\s+molesta|hay\s+(?:mayor\s+)?(?:problema|inconveniente)|es\s+mucho\s+pedir)\b/g, " ")
-    .replace(/\bllevo\s+[^.!?\n,]{0,25}\besperando\s+y\s+no\s+llega\b/g, " ")
-    // Un motivo ya ocurrido solo se exime si ninguna palabra condicional lo antecede en la frase ("si para las 3:30 no ha llegado, cancelo" sigue siendo amenaza).
-    .replace(/\b(?:ya\s+)?no\s+(?:llego|llegaron|ha\s+llegado|han\s+llegado)\b|\bnunca\s+(?:llego|llegaron)\b/g, (m, off: number, todo: string) =>
-      /\b(?:si|cuando|mientras|de|al|que|caso|acaso)\b/.test(todo.slice(Math.max(0, todo.slice(0, off).search(/[^.!?\n]*$/)), off)) ? m : " ");
+    .replace(/^\s*(?:ya\s+)?no\s*,\s*(?=cancel)(?![^.!?\n]*\b(?:jamas|para\s+nada|ni\s+de\s+chiste|ni\s+de\s+broma|nunca)\b)/, " ")
+    .replace(/\b(?:ya\s+)?no\s+(?:lo|la|los|las)\s+(?:quiero|necesito|voy\s+a\s+querer)\b(?!\s+(?:tener\s+que\s+)?cancelar\b)/g, eximir())
+    .replace(/\bsi\s+no\s+(?:es\s+(?:mucha\s+)?molestia|(?:le|les|te|me)\s+molesta|hay\s+(?:mayor\s+)?(?:problema|inconveniente)|es\s+mucho\s+pedir)\b/g, eximir((resto) => /^[^,.!?\n]*\besperar\b/.test(resto)))
+    .replace(/\bllevo\s+[^.!?\n,]{0,25}\besperando\s+y\s+no\s+llega\b/g, eximir())
+    .replace(/\b(?:ya\s+)?no\s+(?:llego|llegaron|ha\s+llegado|han\s+llegado)\b|\bnunca\s+(?:llego|llegaron)\b/g, eximir());
   return /\b(?:si|como|cuando|mientras|de|al|por\s+si|caso\s+de\s+que)\b[^.!?\n]{0,60}\bno\b[^.!?\n]{0,50}\bcancel\w*|\b(?:no|nunca|ni|tampoco)\b[^.!?\n]{0,25}\bcancel\w*|\bcancel\w*[^.!?\n]{0,30}\b(?:no|nunca)\b|\bsin\s+cancelar\b|\bya\s+no\b[^.!?\n]{0,20}\bcancel\w*/.test(t);
 }
 
