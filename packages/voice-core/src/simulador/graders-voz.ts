@@ -2,7 +2,7 @@
 // y los logs. Corren igual contra el proveedor falso y contra uno real. Los que dependen del mundo de la vertical (el pedido
 // guardado, la reserva apartada, los callbacks) los pone la vertical con los mismos tipos (`Grader`).
 import { redactarPII } from "../llamada/log-sin-pii.ts";
-import { importesHablados, numerosDe } from "./importes-hablados.ts";
+import { importesDeTotalHablado, importesHablados, numerosDe, totalesDe } from "./importes-hablados.ts";
 import type { LlamadaSimulada, ResultadoGrader } from "./tipos.ts";
 
 export const ok = (grader: string): ResultadoGrader => ({ grader, ok: true, detalle: "" });
@@ -138,6 +138,18 @@ export const G_PRECIO_HABLADO: Grader = (l) => {
   for (const texto of turnos) {
     for (const dicho of importesHablados(texto)) {
       if (!coincide(dicho)) return mal("G_PRECIO_HABLADO", `el agente dijo $${dicho} y ninguna herramienta devolvio ese importe en la llamada`);
+    }
+  }
+  // El TOTAL que el agente presenta (con o sin "pesos") tiene que ser uno de los totales cotizados en la llamada: que "su total es de cuarenta y dos pesos"
+  // sea el precio de UN taco, o "en total son doscientos" el minimo de la sucursal, no basta aunque algun numero coincida con alguna herramienta.
+  const totales = l.tools.flatMap((t) => totalesDe(t.resultado));
+  if (totales.length > 0) {
+    const esTotalCotizado = (dicho: number): boolean => totales.some((p) => Math.abs(p - dicho) < 0.005 || Math.floor(p + 1e-9) === dicho);
+    for (const t of l.transcripcion) {
+      if (t.rol !== "agente") continue;
+      for (const dicho of importesDeTotalHablado(t.texto)) {
+        if (!esTotalCotizado(dicho)) return mal("G_PRECIO_HABLADO", `el agente presento $${dicho} como total y el total cotizado en la llamada es ${totales.map((x) => `$${x}`).join(" / ")}`);
+      }
     }
   }
   return ok("G_PRECIO_HABLADO");
