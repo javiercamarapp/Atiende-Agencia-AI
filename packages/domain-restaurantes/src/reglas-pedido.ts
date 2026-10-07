@@ -6,11 +6,12 @@
 // Las lecturas van por `repo.find*`/`repo.list*`, que degradan con SAVEPOINT contra la base
 // sin migrar (ver PostgresRestaurantesRepository): este modulo nunca captura SQLSTATE por
 // su cuenta porque corre dentro de la transaccion unica del request.
-import { aperturaConExcepciones, etiquetaHoraLocal, fechaAnterior, fechaLocal, mensajeProgramadoFueraDeHorario, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
+import { aperturaConExcepciones, componentesLocales, etiquetaHoraLocal, fechaAnterior, fechaLocal, mensajeProgramadoFueraDeHorario, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { normalizeZoneText } from "./nearest-branch.ts";
 import type { RestaurantesRepository } from "./repository.ts";
+import { evaluarDomicilioSucursal, mensajeDomicilioNoDisponible } from "./domicilio-sucursal.ts";
 import type { Branch, BranchPolicy, CanalPedido, KnownZone, PropinaPolitica } from "./types.ts";
 
 export const COLONIA_FUERA_DE_VERIFICACION_MENSAJE =
@@ -135,6 +136,14 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
 
   if (args.horaRecogida && canal === "recoger") {
     await validarHoraRecogida(repo, { branch, horarioBase, ahora, zonaCruda, zona, aperturaAhora: apertura, diaNegocioAhora: diaNegocio, horaRecogida: args.horaRecogida });
+  }
+
+  // Migracion 057: domicilio por sucursal (solo recoger o solo ciertos dias). El dia es el de NEGOCIO de la sucursal
+  // (en su zona horaria; la cola de un turno que cruza la medianoche cuenta para el dia en que empezo).
+  if (canal === "domicilio") {
+    const diaEntrega = diaNegocio ?? componentesLocales(ahora, zona).dia;
+    const estadoDomicilio = evaluarDomicilioSucursal(policy, diaEntrega);
+    if (!estadoDomicilio.acepta) throw new OrderValidationError(mensajeDomicilioNoDisponible(branch.name, policy, estadoDomicilio));
   }
 
   const pedidoMinimo = canal === "domicilio" ? policy.pedidoMinimoDomicilio : policy.pedidoMinimoRecoger;

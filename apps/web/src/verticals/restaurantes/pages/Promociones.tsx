@@ -168,7 +168,15 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
     e.preventDefault();
     const sinValor = form.type === "bogo" || form.type === "cortesia";
     const value = sinValor ? 1 : Number(form.value);
-    if (!form.code.trim() || !form.name.trim() || !Number.isFinite(value) || value <= 0) return;
+    // QA-restaurantes-R2-botones-07: cada rechazo local explica por que no se creo (antes el boton parecia muerto).
+    if (!form.code.trim() || !form.name.trim()) {
+      setErrorCrear("Escribe el código y el nombre para el staff: no pueden quedar vacíos ni solo con espacios.");
+      return;
+    }
+    if (!Number.isFinite(value) || value <= 0) {
+      setErrorCrear(form.type === "percentage" ? "El valor del descuento debe ser mayor que 0 (y hasta 100)." : "El valor del descuento debe ser mayor que 0.");
+      return;
+    }
     // Mismas reglas que el servidor (que re-valida): automatica exige canal; cortesia exige listas y cantidad.
     if (form.autoApply && form.canal === "") {
       setErrorCrear("Una promoción automática necesita un canal (por ejemplo, solo recoger).");
