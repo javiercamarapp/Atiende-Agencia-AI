@@ -253,7 +253,6 @@ export async function guardarBorradorPapel(deps: AppDeps, db: TenantDbSession, p
 export function despachosPagosProvisionalesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const repoDeApp = (db: TenantDbSession): PagosProvisionalesRepository => repoDe(deps, db);
-  const carteraDeApp = (db: TenantDbSession): CarteraRepository => carteraDe(deps, db);
 
   app.use("/despachos/:propertyId/pagos-provisionales/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 

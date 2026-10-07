@@ -43,7 +43,10 @@ export const UMBRAL_CONCILIACION_BANCARIA = 0.8;
 export const TOLERANCIA_BALANZA_PESOS = 1;
 
 function pesos(centavos: number): string {
-  return (centavos / 100).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Formato es-MX sin toLocale (guard PL-19): separador de miles "," y decimal ".".
+  const abs = Math.abs(Math.round(centavos));
+  const entero = Math.floor(abs / 100).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${centavos < 0 ? "-" : ""}${entero}.${(abs % 100).toString().padStart(2, "0")}`;
 }
 
 /** El papel de pagos provisionales del mes solo aplica a clientes mensuales; un cliente bimestral lo genera en los meses pares. */
