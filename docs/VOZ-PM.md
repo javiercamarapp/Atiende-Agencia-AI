@@ -5,6 +5,9 @@ escalera de degradación es **Gemini 3.8 Live -> gpt-live-1 -> persona / buzón 
 (hoteles y citas tienen su propio agente sobre `packages/voice-core`).
 
 > Honestidad primero: este runbook separa lo que **ya está en el repo y probado** de lo que **falta para recibir la primera llamada real**.
+>
+> **Para encender la voz, empieza por `docs/VOZ-ACTIVACION.md`** (checklist «pega aquí» con cada llave, el orden de activación, el guion del desvío, las 5 llamadas de prueba, cómo apagarlo y el tope
+> mensual). Este documento es la referencia de diseño.
 
 ## 1. Qué hay y qué falta
 
@@ -13,12 +16,12 @@ escalera de degradación es **Gemini 3.8 Live -> gpt-live-1 -> persona / buzón 
 | Registro único de herramientas (WhatsApp y voz) con máquina de estados del pedido (cotizado -> confirmado -> creado) | Hecho (ya en main) | `packages/domain-restaurantes/src/agent-tools/` |
 | Token por llamada firmado (caller ID del SIP From, sucursal, callId), secretos por sucursal, bitácora | Hecho (ya en main) | `apps/api/src/voice-call-token.ts`, `.../restaurantes/voice-auth.ts` |
 | Núcleo de la llamada: máquina de estados con barge-in, silencio, ruido, DTMF, límites de duración/costo, reanudación, escalada | Hecho en este PR | `packages/voice-core/src/llamada/` (esqueleto compartido, extraido de restaurantes) |
-| Sesión de llamada con Gemini Live (WebSocket, herramientas, transcripciones, reanudación) | Hecho en este PR; **protocolo sin verificar contra la API real** | `.../voz/llamada/gemini-live-sesion.ts` |
+| Sesión de llamada con Gemini Live (WebSocket, herramientas, transcripciones, reanudación) | Hecho; protocolo corregido con la investigación del 4-oct (idioma por instrucción, sin `thinkingLevel`, VAD afinado, costo real por `usageMetadata`, adaptador de Vertex AI listo y sin activar); **sigue sin verificarse contra la API real** | `packages/voice-core/src/llamada/gemini-live-sesion.ts` |
 | Simulador local de llamadas + prueba ciega es-MX (21 guiones, 11 graders), en CI contra el proveedor falso | Hecho en este PR | `.../voz/simulador/`, `tests/voz-simulador-*.spec.ts` |
 | Corrida de la prueba ciega contra Gemini real (manual) | Hecho en este PR; **sin ejecutar (no hay `GEMINI_API_KEY` en este entorno)** | `npm run evals:voz:real -w @atiende/domain-restaurantes` |
 | Llamada de prueba desde el panel (orbe, token efímero, estado honesto) | Hecho en este PR; **sin probar en un navegador con credencial real** | `apps/web/src/verticals/restaurantes/voz/` |
-| Mensajes pregrabados | Textos listos; el generador de los 15 audios existe (`npm run voz:pregrabados`, probado con `fetch` falso); **los WAV no se han generado** (los genera Javier con su llave, una vez) | `.../voz/llamada/mensajes.ts`, `scripts/voz-pregrabados.ts` |
-| **Worker de telefonía** (proceso de larga vida que recibe el SIP de LiveKit, puentea el audio y conduce `ControladorLlamada`) | Hecho en este PR y probado de punta a punta **sin red** (telefonía falsa + proveedor guionado + la API real en proceso); el adaptador de LiveKit compila pero **no se probó contra un servidor real**; la imagen Docker es una receta sin construir. **Dónde corre lo decide Javier** | `apps/voice-worker` (README propio), ADR-PM-001 |
+| Mensajes pregrabados | Textos listos; generador (`npm run voz:pregrabados`) y verificador (`-- --verificar`) probados con `fetch` falso; **los WAV no se han generado** (los genera Javier con su llave, una vez; viven en la imagen del worker, ignorados por git) | `.../voz/llamada/mensajes.ts`, `scripts/voz-pregrabados.ts` |
+| **Worker de telefonía** (proceso de larga vida que recibe el SIP de LiveKit, puentea el audio y conduce `ControladorLlamada`) | Hecho en este PR y probado de punta a punta **sin red** (telefonía falsa + proveedor guionado + la API real en proceso); el adaptador de LiveKit compila pero **no se probó contra un servidor real**; la imagen Docker se verificó replicando sus etapas con node (sin daemon). **Dónde corre: Fly.io `dfw`** (`apps/voice-worker/fly.toml`, `scripts/voz/desplegar-worker.sh`; sin cuenta, no se ha desplegado) | `apps/voice-worker` (README propio), ADR-PM-001 |
 | Adaptador de gpt-live-1 | **NO existe**: solo el contrato (`VoiceAgentProvider.abrirLlamada`) y el `FakeVoiceProvider` | |
 | Tope mensual de gasto de voz | Lectura del gasto del mes: hecha (`restaurantes.voz_gasto_mes_micro_usd`, migración 067, suma `core.usage_cost_event` de categoría `voz`). Tope: de plataforma (`VOICE_TOPE_MENSUAL_USD`, sin valor = sin tope) con sobreescritura por organización en la tabla DNIS del worker (`topeMensualUsd`). **Sin tabla de topes por organización**: guardarlos en la base para editarlos desde el panel es el siguiente paso | `apps/voice-worker/src/config.ts` |
 
@@ -55,14 +58,15 @@ Ningún valor real vive en el repo. Nombres, de dónde sale cada uno y dónde se
 | Tope mensual (US$) | Decisión de Javier | `VOICE_TOPE_MENSUAL_USD` (plataforma) y `topeMensualUsd` en `VOICE_DNIS_MAP` (por organización) | Argumento `topeMensualMicroUsd` de `evaluarInicioLlamada`; el gasto sale de la base (migración 067) |
 
 El número y la sucursal de cada llamada salen de la telefonía (DNIS y SIP From), nunca del modelo: `extraerTelefonoSipFrom` convierte el From
-en el teléfono del token firmado; un llamante anónimo no tiene teléfono y por eso no obtiene token (ver huecos).
+en el teléfono del token firmado. Si el From **no es confiable** (vacío, anónimo, o es un número puente, una línea de la sucursal declarada en `numerosSucursal` o el número del encabezado
+de desvío) el worker no emite token: el agente pide el teléfono, lo confirma y lo registra con `confirmar_telefono_llamante` (una vez por llamada; mientras tanto ninguna otra herramienta corre).
 
 ## 4. Política por llamada (valores por defecto, `LIMITES_POR_DEFECTO`)
 
 | Política | Valor | Qué pasa al cumplirse |
 |---|---|---|
 | Duración máxima | 8 min (aviso a los 7) | Pregrabado + callback a una persona (`no_puedo_resolver`) y cuelga; con pedido ya creado solo se despide |
-| Costo máximo por llamada | US$0.10 (100 000 micro-USD) | Igual que la duración |
+| Costo máximo por llamada | US$0.50 (500 000 micro-USD; `VOICE_COSTO_MAX_LLAMADA_USD`). Antes US$0.10, que con la facturación compuesta de Gemini Live cortaba una llamada media (~US$0.17) | Igual que la duración |
 | Silencio del cliente | 7 s, 1 re-pregunta (`LIMITES_VOZ_PM`; voice-core deja 2 para las otras verticales) | Al segundo silencio se despide (resultado `abandonado`) |
 | Ruido | 3 eventos sin habla inteligible = 1 malentendido | Pide repetir |
 | Malentendidos seguidos | 2 | Pasa a una persona (`no_entiende`) |
@@ -80,14 +84,19 @@ redactados.
   proveedor la arma el servidor con `instruccionVozConReglas` (`voz/perfil-voz-pm.ts`): texto editable + saludo inicial + **bloque al final** con las
   reglas H1-H18, el flujo y la seguridad del mismo perfil que WhatsApp, las reglas vivas del agente (precios solo de herramientas de ESTA llamada, un
   solo "¿sigue ahi?", no repetir datos, reintento honesto de `crear_pedido`, reservaciones) y el apendice de la llamada. El bloque no cuenta para el tope
-  del panel. Hoy lo usa la vista previa del panel (solo organizaciones con perfil `taqueria_pm`; las demas conservan su texto tal cual). **El worker de
-  telefonia debe llamar a la misma funcion al abrir la llamada** (pendiente: el worker no existe).
+  del panel. Lo usa la vista previa del panel (solo organizaciones con perfil `taqueria_pm`; las demas conservan su texto tal cual) **y la instruccion de la llamada real**:
+  `armarInstruccionLlamada` delega en ella cuando el dueno edito el comportamiento (el bloque de reglas va despues de su texto).
 - **Temperatura 0** (`VOZ_PLATAFORMA.gemini.temperatura` y `.cascada.temperatura`): va en `generationConfig` del setup de Gemini Live y en la peticion del
   LLM de la cascada (`PeticionLlmVoz.temperatura`; el puerto que la implemente debe respetarla).
-- **Idioma:** `speechConfig.languageCode = "es-US"` (`VOZ_PLATAFORMA.gemini.idioma`; `null` lo omite). **No verificado contra la API real**: si Gemini rechaza el
-  campo con el modelo configurado, la primera corrida real (prueba ciega B) falla al abrir; poner `idioma: null` en un solo lugar lo quita.
+- **Idioma:** los modelos de audio nativo de la **Gemini API** eligen el idioma solos y no admiten `languageCode` (investigación 4-oct): `VOZ_PLATAFORMA.gemini.idioma` es `null` y el español de México
+  y el trato de usted van en la primera línea de la instrucción (`instruccionIdioma`). El adaptador de **Vertex AI** sí manda `es-US`. `gemini-3.8-live` no admite `thinkingLevel`: el setup nunca lo manda
+  (prueba en `parametros-voz.spec.ts`). **Sin verificar contra la API real.**
+- **VAD del servidor:** `silenceDurationMs` 500, `prefixPaddingMs` 60 y sensibilidad de fin alta (`VOZ_PLATAFORMA.gemini.vad`; `VOICE_VAD_SILENCIO_MS` y `VOICE_VAD_SENSIBILIDAD_FIN` lo ajustan sin tocar código).
+- **Costo real:** cada mensaje `usageMetadata` se cobra por modalidad (`costoDeUsoGeminiMicroUsd`: audio entrada US$3, texto entrada US$0.75, audio salida US$12, texto salida US$4.50 por millón de tokens) y llega
+  a `core.usage_cost_event` con `costo_estimado = false`; sin `usageMetadata` queda el piso de US$0.075 por minuto (`precioMicroUsdPorMinuto`, el caso medio de la facturación compuesta).
 - **Herramientas en serie** (equivale a `parallel_tool_calls: false` del agente vivo): `gemini-live-sesion.ts` ejecuta los `functionCalls` de un turno uno tras
-  otro, en el orden pedido (antes `Promise.all`), igual que la cascada. Lo fija `packages/voice-core/tests/parametros-voz.spec.ts`.
+  otro, en el orden pedido, igual que la cascada. **Única excepción (latencia):** la racha inicial de herramientas de solo lectura (`HERRAMIENTAS_VOZ_SOLO_LECTURA`: buscar cliente/sucursal/producto,
+  historial y consultar sucursal) corre en paralelo; cotizar, confirmar, crear y repetir pedido nunca. Lo fija `packages/voice-core/tests/parametros-voz.spec.ts`.
 - **Vocabulario para el STT de la cascada:** `AperturaLlamada.vocabulario` (nombres y apodos del menu, sin repetidos, hasta
   `VOZ_PLATAFORMA.cascada.vocabularioMax` = 200) viaja como `prompt` de `/audio/transcriptions`. **No probado contra OpenRouter real**; el worker debe llenar el
   campo con el menu de la sucursal.
@@ -162,7 +171,7 @@ Se miran en Agente de voz > Indicadores (hoy y mes) y en las alertas de costo/er
 | Pasadas a una persona (handoff) | revisar motivos; `no_entiende` y `falla_sistema` no deben dominar | `falla_sistema` > 5 % de las llamadas |
 | Errores de proveedor / llamadas | < 3 % | > 10 % en un día |
 | p95 de herramientas | <= 1.5 s | > 4 s sostenido |
-| Costo por llamada | <= US$0.10 | > US$0.15 promedio |
+| Costo por llamada (Gemini real) | <= US$0.25 (el caso medio de la investigación es ~US$0.17) | > US$0.35 promedio |
 | Violaciones de reglas duras (alcohol a domicilio, promo a domicilio, mínimo $200) | **0** | cualquiera: apagar de inmediato |
 
 Los umbrales numéricos son una propuesta inicial; se ajustan con los datos del piloto.
@@ -180,9 +189,11 @@ y las sesiones nuevas dejan de emitirse con 503 honesto); (4) revertir el despli
   decide por la configuración de la sucursal o por el encabezado de desvío de la llamada (`Diversion` / `History-Info`; nombres sin confirmar contra la primera llamada real).
 - El protocolo de Gemini Live y el nombre del modelo no están verificados contra la API real.
 - La llamada de prueba del panel no se ha probado en un navegador con credencial real (micrófono y reproducción detrás de `entorno-navegador.ts`).
-- Un llamante anónimo (sin caller ID) no tiene teléfono: `POST .../voice/call-token` exige un teléfono válido, así que no puede usar herramientas,
-  dejar callback ni consultar historial. El worker debe mandarlo directo a una persona o al buzón (decisión de producto pendiente: pedir el
-  teléfono hablado con confirmación, que hoy el servidor no admite porque el teléfono solo sale del token).
+- Un llamante sin caller ID confiable (anónimo, vacío o el número de la sucursal tras un desvío) ya no se manda a una persona: el agente le **pide el teléfono**, lo confirma y el worker emite el token con ESE
+  número (una vez por llamada). El teléfono dictado es una declaración del cliente, no una verificación (como en cualquier pedido telefónico); un llamante que invente un número ajeno solo ve lo que
+  `buscar_cliente` devuelve para ese número. Si el cliente no quiere darlo, el agente se despide sin tomar el pedido (sin teléfono no hay callback).
+- El worker **no reenvía** el turno del cliente (`x-atiende-call-turn`) a la API (comportamiento heredado): la defensa «no confirmar en el mismo turno que se cotiza» no actúa en telefonía. Activarlo exige comprobar
+  con una llamada real que la transcripción de entrada de Gemini llega antes que la herramienta.
 - Una llamada queda fijada a la sucursal que marcó el cliente: si su colonia es de otra sucursal, las herramientas no operan en la otra (el agente
   pasa a una persona con `zona_ambigua`). Lo cierra la decisión de producto sobre el número único o el traspaso entre sucursales.
 - Tope mensual por organización sin tabla (vive en la configuración del worker). Notificaciones in-app: conectadas "llamada pasó a una persona" y "el proveedor de voz registra errores"

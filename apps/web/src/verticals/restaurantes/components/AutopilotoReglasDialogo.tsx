@@ -2,7 +2,7 @@
 // automatica APAGADAS (las decide el dueno). Tambien muestra, sin fingir, lo que todavia no esta disponible: plantillas de WhatsApp sin aprobar en
 // Meta (los avisos fuera de la ventana de 24 h no saldran) y el avance desde el POS (requiere la API de SoftRestaurant).
 import { useEffect, useState } from "react";
-import { Button, Callout, Checkbox, FormDialog, FormField, Input, notify } from "@atiende/ui";
+import { Button, Callout, Checkbox, EstadoError, FormDialog, FormField, Input, notify } from "@atiende/ui";
 import { guardarAutopilotoConfig } from "../lib/autopiloto-client.ts";
 import type { AutopilotoConfigRespuesta } from "../lib/autopiloto-client.ts";
 
@@ -48,6 +48,8 @@ export function AutopilotoReglasDialogo({
   open,
   onOpenChange,
   datos,
+  error = null,
+  onReintentar,
   apiBaseUrl,
   token,
   propertyId,
@@ -56,6 +58,9 @@ export function AutopilotoReglasDialogo({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly datos: AutopilotoConfigRespuesta | null;
+  /** Falla de la carga de las reglas: se muestra con Reintentar en lugar de 'Cargando reglas…'. */
+  readonly error?: string | null;
+  readonly onReintentar?: () => Promise<void> | void;
   readonly apiBaseUrl: string;
   readonly token: string;
   readonly propertyId: string;
@@ -77,7 +82,7 @@ export function AutopilotoReglasDialogo({
   if (!datos || !form) {
     return (
       <FormDialog open={open} onOpenChange={onOpenChange} titulo="Reglas del autopiloto" anchoClase="max-w-2xl" footer={<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cerrar</Button>}>
-        <p className="text-sm text-muted-foreground">Cargando reglas…</p>
+        {error ? <EstadoError mensaje={error} onReintentar={onReintentar ? () => void onReintentar() : undefined} /> : <p className="text-sm text-muted-foreground">Cargando reglas…</p>}
       </FormDialog>
     );
   }

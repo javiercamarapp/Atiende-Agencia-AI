@@ -85,6 +85,8 @@ export class InMemoryRentasCatalogoRepository implements RentasCatalogoRepositor
   readonly reglas = new Map<string, ReglaFila>();
   /** Propiedades con movimientos financieros (la moneda deja de poder cambiarse). */
   readonly propiedadesConMovimientos = new Set<string>();
+  /** Propiedades con reservas o bloqueos vigentes (no cancelados, con fin >= hoy): la zona horaria deja de poder cambiarse (D-DSD-07). */
+  readonly propiedadesConOcupacionesActivas = new Set<string>();
 
   seedPropiedad(p: { organizationId: string; propertyId: string; nombre: string; zonaHoraria?: string; moneda?: string }): void {
     this.propiedades.set(p.propertyId, { zonaHoraria: "America/Mexico_City", moneda: "MXN", ...p });
@@ -208,6 +210,9 @@ export class InMemoryRentasCatalogoRepository implements RentasCatalogoRepositor
     if (!p) return rechazo("no_encontrado", "propiedad no encontrada.");
     if (e.nombre !== undefined && [...this.propiedades.values()].some((o) => o.organizationId === p.organizationId && o.propertyId !== propertyId && o.nombre.toLowerCase() === e.nombre!.toLowerCase())) {
       return rechazo("duplicado", "ya existe una propiedad con ese nombre.");
+    }
+    if (e.zonaHoraria !== undefined && e.zonaHoraria !== p.zonaHoraria && this.propiedadesConOcupacionesActivas.has(propertyId)) {
+      return rechazo("regla_integridad", "no se puede cambiar la zona horaria con reservas o bloqueos activos.");
     }
     if (e.moneda !== undefined && e.moneda !== p.moneda && this.propiedadesConMovimientos.has(propertyId)) {
       return rechazo("regla_integridad", "la propiedad ya tiene movimientos financieros; no se puede cambiar su moneda.");

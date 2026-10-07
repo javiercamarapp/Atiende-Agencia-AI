@@ -167,6 +167,7 @@ export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gate
     defaultRole: RESTAURANTES_WHATSAPP_AGENT_ROLE,
     escalatedRole: RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
     encolarComanda: (pedido) => encolarComandaParaPedido(softRestaurantComandaDeps(softRestaurantDeps, db, repo), pedido),
+    urlFacturacion: urlFacturacionDeEntorno(),
     // Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido; degrada a "no disponible" sin la 050.
     autopiloto: crearHooksAutopilotoTurnoPostgres({ repo, db }),
     ...(observabilidad ? { observabilidad } : {}),
@@ -176,6 +177,17 @@ export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gate
       return lectura.configurados ? { modelo: lectura.valor.whatsappModelo, temperatura: temperaturaEfectivaWhatsapp(lectura.valor) } : null;
     },
   });
+}
+
+/** Enlace de facturación en línea del negocio (variable `PM_URL_FACTURACION`, solo https). Sin ella el agente no inventa uno. */
+export function urlFacturacionDeEntorno(env: NodeJS.ProcessEnv = process.env): string | null {
+  const valor = env.PM_URL_FACTURACION?.trim();
+  if (!valor || valor.length > 300) return null;
+  try {
+    return new URL(valor).protocol === "https:" ? valor : null;
+  } catch {
+    return null;
+  }
 }
 
 /** R-PM-15: eventos por turno de WhatsApp a stdout (linea JSON, mismo transporte que `logEvent`) pasando por el
