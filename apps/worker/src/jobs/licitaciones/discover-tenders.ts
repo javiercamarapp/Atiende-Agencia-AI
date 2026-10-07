@@ -110,8 +110,8 @@ export async function runDiscoverTendersForOrganization(
   for (const descriptor of connectors) {
     const startedAt = now().toISOString();
     let droppedCount = 0;
-    // L-P3-17: un `correlation_id` por corrida (organizacion + fuente): une el `source_run`, el alta de cada convocatoria nueva y, mas tarde, sus versiones,
-    // aprobaciones y manifiesto (se heredan de la convocatoria).
+    // L-P3-17: `correlation_id` de la corrida (organizacion + fuente) para el `source_run`. Cada convocatoria NUEVA recibe ademas SU PROPIA correlacion
+    // (version, aprobaciones y manifiesto la heredan): compartir una sola entre todas las altas de la corrida mezclaba sus trazas.
     const correlationId = newCorrelationId();
 
     try {
@@ -133,9 +133,9 @@ export async function runDiscoverTendersForOrganization(
             entityId: tender.id,
             action: "convocatoria.ingerida",
             before: null,
-            after: { externalId: tender.externalId ?? null, source: descriptor.id, title: tender.title, submissionDeadline: tender.submissionDeadline },
+            after: { externalId: tender.externalId ?? null, source: descriptor.id, title: tender.title, submissionDeadline: tender.submissionDeadline, runCorrelationId: correlationId },
             actorId: null,
-            correlationId,
+            correlationId: newCorrelationId(),
           });
         }
         const run = await repo.recordSourceRun(organizationId, {

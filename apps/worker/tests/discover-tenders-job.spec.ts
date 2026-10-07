@@ -63,12 +63,23 @@ describe("runDiscoverTendersForOrganization", () => {
     const filas = (await repo.listAuditoria(organizationId, {}, { orden: "asc" })).items;
     expect(filas.map((f) => f.action)).toEqual(["convocatoria.ingerida", "convocatoria.ingerida"]);
     expect(filas.every((f) => f.actorId === null && /^c-[0-9a-f-]{36}$/.test(f.correlationId ?? ""))).toBe(true);
-    expect(new Set(filas.map((f) => f.correlationId)).size).toBe(1);
+    // cada alta lleva SU PROPIA correlacion (no se comparte entre convocatorias de la corrida)...
+    expect(new Set(filas.map((f) => f.correlationId)).size).toBe(2);
     const [run] = await repo.listSourceRuns(organizationId, { source: "compras_mx_historico" });
-    expect(run!.correlationId).toBe(filas[0]!.correlationId);
-    // cada convocatoria nueva hereda esa correlacion
+    expect(filas.every((f) => f.correlationId !== run!.correlationId)).toBe(true);
+    // ...y el renglon enlaza con la correlacion de la corrida (source_run) en `despues`
+    expect(filas.every((f) => (f.after as { runCorrelationId?: string } | null)?.runCorrelationId === run!.correlationId)).toBe(true);
+    // cada convocatoria nueva hereda la suya
     const tenders = (await repo.listTenders(organizationId)).filter((t) => t.source === "compras_mx_historico");
-    for (const t of tenders) expect(await repo.findTenderCorrelationId(organizationId, t.id)).toBe(filas[0]!.correlationId);
+    for (const t of tenders) {
+      const alta = filas.find((f) => f.entityId === t.id)!;
+      expect(await repo.findTenderCorrelationId(organizationId, t.id)).toBe(alta.correlationId);
+    }
+    // la traza de A no incluye nada de B
+    const [a, b] = tenders;
+    const trazaA = (await repo.listAuditoria(organizationId, { tenderId: a!.id }, { orden: "asc" })).items;
+    expect(trazaA.length).toBeGreaterThan(0);
+    expect(trazaA.every((f) => f.entityId !== b!.id)).toBe(true);
     // la segunda corrida solo actualiza: no hay altas nuevas, no hay renglones nuevos
     await runDiscoverTendersForOrganization((fn) => fn(repo), organizationId);
     expect((await repo.listAuditoria(organizationId, {})).items).toHaveLength(2);
