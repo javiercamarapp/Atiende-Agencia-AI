@@ -12,6 +12,44 @@ const UNIDADES = [
   { id: "uni-2", nombre: "Depto Malecon 4B", duracionMinimaNoches: 1 },
 ];
 
+// Rn-33 -- datos equivalentes a los del seed demo de rentas (scripts/seed-rentas-demo): feeds iCal (uno en cuarentena), un conflicto abierto,
+// tareas de limpieza (una vencida) y borradores por aprobar. El Resumen y el checklist de onboarding salen de ESTAS mismas constantes para
+// que el mock no se contradiga (misma idea que las ocupaciones). Solo existe en la API simulada de e2e.
+const FEEDS_DEMO = [
+  { unidadId: "uni-1", canal: "airbnb", enCuarentena: false, sincronizado: true },
+  { unidadId: "uni-1", canal: "booking", enCuarentena: false, sincronizado: true },
+  { unidadId: "uni-2", canal: "vrbo", enCuarentena: true, sincronizado: true },
+] as const;
+const CONFLICTOS_ABIERTOS_DEMO = 1;
+const TAREAS_DEMO = { pendientes: 2, vencidas: 1 } as const;
+const BORRADORES_PENDIENTES_DEMO = 2;
+// Estado del checklist (Rn-36) del escenario: reglas de comision aun sugeridas, politica de acceso inactiva y ninguna plantilla aprobada.
+const CHECKLIST_DEMO = { unidades: UNIDADES.length, unidadesConTarifa: UNIDADES.length, reglasConfirmadas: 0, propiedadesConAccesoActivo: 0, miembros: 5, invitacionesPendientes: 0, propietarios: 2, plantillasAprobadas: 0 } as const;
+
+function plural(n: number, uno: string, varios: string): string {
+  return `${n} ${n === 1 ? uno : varios}`;
+}
+
+/** Misma forma que GET /v1/rentas/:propertyId/admin/onboarding (calculada por el servidor con datos reales). */
+function checklistOnboardingMock() {
+  const c = CHECKLIST_DEMO;
+  const activos = FEEDS_DEMO.length;
+  const enCuarentena = FEEDS_DEMO.filter((f) => f.enCuarentena).length;
+  const sincronizados = FEEDS_DEMO.filter((f) => !f.enCuarentena && f.sincronizado).length;
+  const punto = (clave: string, titulo: string, descripcion: string, hecho: boolean, detalle: string, pantalla: string, obligatorio: boolean) => ({ clave, titulo, descripcion, estado: hecho ? "hecho" : "pendiente", detalle, pantalla, obligatorio });
+  const puntos = [
+    punto("ical", "Conectar un calendario iCal", "Importa las reservas de Airbnb, Vrbo o Booking para evitar dobles reservas.", activos - enCuarentena > 0, `${plural(activos, "feed activo", "feeds activos")}, ${sincronizados} ya sincronizado${sincronizados === 1 ? "" : "s"}${enCuarentena > 0 ? `, ${enCuarentena} en cuarentena` : ""}`, "ical-sync", true),
+    punto("tarifa_base", "Definir la tarifa base", "Cada unidad necesita un precio por noche para cotizar y calcular ingresos.", c.unidadesConTarifa >= c.unidades, `${c.unidadesConTarifa} de ${plural(c.unidades, "unidad", "unidades")} con tarifa`, "precios", true),
+    punto("reglas_comision", "Confirmar las reglas de comisión", "Los valores sugeridos de cada canal hay que confirmarlos o editarlos: alimentan el movimiento por reserva y el estado de cuenta.", c.reglasConfirmadas > 0, c.reglasConfirmadas === 0 ? "Solo valores sugeridos sin confirmar" : plural(c.reglasConfirmadas, "regla confirmada", "reglas confirmadas"), "finanzas", true),
+    punto("acceso_huesped", "Definir la política de acceso al huésped", "Cuándo y bajo qué condiciones se liberan las instrucciones de llegada.", c.propiedadesConAccesoActivo > 0, c.propiedadesConAccesoActivo === 0 ? "Política inactiva" : "Política activa", "acceso-huesped", false),
+    punto("staff", "Invitar al equipo", "Operadores, limpieza y contador con el rol que les corresponde.", c.miembros > 1 || c.invitacionesPendientes > 0, `${plural(c.miembros, "miembro", "miembros")}, ${plural(c.invitacionesPendientes, "invitación pendiente", "invitaciones pendientes")}`, "equipo", false),
+    punto("propietarios", "Dar de alta a los propietarios", "Cada unidad se liga a su propietario para liquidar y mostrarle su portal.", c.propietarios > 0, plural(c.propietarios, "propietario", "propietarios"), "catalogo", true),
+    punto("plantilla", "Aprobar una plantilla de mensaje", "Solo las plantillas aprobadas se programan para salir automáticamente.", c.plantillasAprobadas > 0, c.plantillasAprobadas === 0 ? "Ninguna plantilla aprobada" : plural(c.plantillasAprobadas, "plantilla aprobada", "plantillas aprobadas"), "plantillas", false),
+  ];
+  const hechos = puntos.filter((p) => p.estado === "hecho").length;
+  return { puntos, medibles: puntos.length, hechos, porcentaje: Math.round((hechos / puntos.length) * 100), listoParaOperar: puntos.filter((p) => p.obligatorio).every((p) => p.estado === "hecho") };
+}
+
 function dia(desdeHoy: number): string {
   return new Date(Date.now() + desdeHoy * 86_400_000).toISOString().slice(0, 10);
 }
@@ -120,6 +158,8 @@ export const rutasRentas: readonly Ruta[] = [
     },
   },
   { metodo: "GET", patron: "/v1/rentas/:org/admin/propiedades", manejador: () => ({ propiedades: [{ propertyId: PROP.id, nombre: PROP.nombre }] }) },
+  // Rn-36 -- checklist de onboarding (solo admin_gestora, que en la API simulada es el rol `admin`); solo lectura.
+  { metodo: "GET", patron: "/v1/rentas/:org/admin/onboarding", roles: ["admin"], manejador: () => checklistOnboardingMock() },
   { metodo: "GET", patron: `${R}/unidades`, manejador: () => ({ unidades: UNIDADES }) },
   { metodo: "GET", patron: `${R}/unidades/:uid/ocupaciones`, manejador: (p) => ({ ocupaciones: p.estado.obtener("rentas.ocupaciones", ocupacionesSemilla).filter((o) => o.unidadId === p.params.uid) }) },
   { metodo: "GET", patron: `${R}/calendario`, manejador: (p) => ({
@@ -150,11 +190,14 @@ export const rutasRentas: readonly Ruta[] = [
         hoy,
         llegadas_salidas: { estado: "ok", llegadas: reservas.filter((o) => o.rango.inicio === hoy).length, salidas: reservas.filter((o) => o.rango.fin === hoy).length },
         ocupacion_mes: { estado: "ok", periodo: { desde: inicioMes, hasta: inicioSiguiente }, ocupacion_basis_points: Math.round((noches / disponibles) * 10000), noches_ocupadas: noches, noches_disponibles: disponibles, unidades: UNIDADES.length },
-        conflictos: { estado: "ok", abiertos: 0 },
-        limpieza: { estado: "ok", pendientes: 0, vencidas: 0 },
-        aprobaciones: { estado: "ok", pendientes: 0 },
-        feeds: { estado: "ok", activos: 0, con_problema: 0 },
-        agentes: [],
+        conflictos: { estado: "ok", abiertos: CONFLICTOS_ABIERTOS_DEMO },
+        limpieza: { estado: "ok", pendientes: TAREAS_DEMO.pendientes, vencidas: TAREAS_DEMO.vencidas },
+        aprobaciones: { estado: "ok", pendientes: BORRADORES_PENDIENTES_DEMO },
+        feeds: { estado: "ok", activos: FEEDS_DEMO.length, con_problema: FEEDS_DEMO.filter((f) => f.enCuarentena).length },
+        agentes: [
+          { clave: "sync_ical", nombre: "Sincronización iCal", ultima_corrida_en: new Date(ahora.getTime() - 25 * 60_000).toISOString(), estado: "atencion", detalle: plural(FEEDS_DEMO.length, "feed activo", "feeds activos") },
+          { clave: "borradores_ia", nombre: "Borradores de mensajería con IA", ultima_corrida_en: new Date(ahora.getTime() - 3 * 3_600_000).toISOString(), estado: "ok", detalle: "Último borrador generado" },
+        ],
       };
     } },
   { metodo: "POST", patron: `${R}/unidades/:uid/reservas/:oid/cancelar`, manejador: (p) => cancelar(p.estado.obtener("rentas.ocupaciones", ocupacionesSemilla), p.params.oid) },

@@ -409,3 +409,6 @@ export * from "./mensajes-automaticos/index.ts";
 
 // ---- Rn-07: solicitudes ARCO propias de rentas (migracion 028) ----
 export * from "./privacidad/index.ts";
+
+// ---- Rn-36: checklist de onboarding calculado con datos reales ----
+export * from "./onboarding-checklist/index.ts";
