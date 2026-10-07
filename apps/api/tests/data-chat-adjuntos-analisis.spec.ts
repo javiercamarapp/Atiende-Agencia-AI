@@ -125,6 +125,14 @@ describe("analizarAdjunto: Excel", () => {
     expect(r.ok && r.respuesta.text).toContain("primera hoja");
   });
 
+  it("una bomba de descompresion (zip pequeno que se expande a mas de 30 MB) se corta y se rechaza sin llenar la memoria", async () => {
+    const zip = new JSZip();
+    zip.file("xl/workbook.xml", "0".repeat(32_000_000));
+    const bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE", compressionOptions: { level: 9 } });
+    expect(bytes.byteLength).toBeLessThan(ADJUNTO_MAX_BYTES);
+    expect(await analizarAdjunto("bomba.xlsx", bytes)).toMatchObject({ ok: false, status: "invalid_input", motivo: "La hoja de Excel es demasiado grande para analizarla." });
+  });
+
   it("un zip que no es un libro de Excel o un archivo dañado se rechazan sin lanzar", async () => {
     const zip = new JSZip();
     zip.file("otra-cosa.txt", "hola");
