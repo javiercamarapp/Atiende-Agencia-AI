@@ -450,6 +450,19 @@ export type { ClosePeriodStatus, TaskStatus, TaskCategory, CloseTask, ClosePerio
 export type { NuevaTareaCierre, AutoCheckResultado, EstadoPeriodoCierre, DecisionCierre, ReporteCierre } from "./cierre-mensual/engine.ts";
 export type { ValidationResult as ValidacionCierreResult } from "./cierre-mensual/validaciones.ts";
 export type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts";
+// paridad3 D-P3-15: cierre en piloto automatico (validaciones derivadas del estado de modulos calculado en el servidor).
+export {
+  evaluarValidacionesCierre,
+  validacionesFallidas,
+  moduleStateDesdeEstado,
+  autoCheckHastaPuntoFijo,
+  requierePagosProvisionales,
+  UMBRAL_CONCILIACION_BANCARIA,
+  TOLERANCIA_BALANZA_PESOS,
+} from "./cierre-mensual/piloto.ts";
+export type { EstadoModulosCierre, ClaveValidacionCierre, ValidacionCierre } from "./cierre-mensual/piloto.ts";
+// paridad3 D-31 / D-P3-15 / D-P3-21: solicitudes de documentos, cierre en piloto y entrega al cliente (migracion 027).
+export * from "./piloto/index.ts";
 
 export type {
   TipoComprobante,
