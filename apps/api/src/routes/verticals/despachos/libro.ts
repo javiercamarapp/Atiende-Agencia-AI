@@ -355,7 +355,8 @@ export function despachosLibroRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   /** Errores del generador de XML -> respuesta: cuentas sin código agrupador = 409 con la lista (el staff las asigna en la pestaña Catálogo); datos que el XSD no admite = 409. */
   function respuestaErrorXml(c: Context<CoreAuthHonoEnv>, err: unknown): Response {
     if (err instanceof CatalogoSinCodigoAgrupadorError) {
-      return c.json({ code: "catalogo_sin_codigo_agrupador", message: err.message, cuentasSinCodigo: err.cuentas.slice(0, 200), total: err.cuentas.length }, 409);
+      const lista = err.cuentas.slice(0, 15).map((x) => x.codigo).join(", ");
+      return c.json({ code: "catalogo_sin_codigo_agrupador", message: `${err.message} Cuentas: ${lista}${err.cuentas.length > 15 ? ", ..." : ""}.`, cuentasSinCodigo: err.cuentas.slice(0, 200), total: err.cuentas.length }, 409);
     }
     if (err instanceof ContabilidadElectronicaDatosInvalidosError) throw Errors.conflict(err.message);
     if (err instanceof Error && /^Catálogo inválido/.test(err.message)) throw Errors.conflict(err.message);
