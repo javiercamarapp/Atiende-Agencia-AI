@@ -15,7 +15,7 @@ function bytesWindows1252(texto: string): Uint8Array<ArrayBuffer> {
 describe("R2-caos-06: CSV de Excel en espanol (Windows-1252)", () => {
   // Pasos: Clientes -> Importar -> elegir el CSV que exporto Excel de Windows en espanol ("CSV (delimitado por comas)", codificacion ANSI/1252)
   // con "José Peña" y "Muñoz". La vista previa y la importacion usan esos nombres; el agente saluda al cliente con su nombre (Cliente 360).
-  it.fails("QA-R2-caos-06: los acentos y la ñ de un CSV en Windows-1252 se leen bien (o se avisa del problema de codificacion antes de importar)", async () => {
+  it("QA-R2-caos-06: los acentos y la ñ de un CSV en Windows-1252 se leen bien (o se avisa del problema de codificacion antes de importar)", async () => {
     const bytes = bytesWindows1252("nombre,telefono,colonia\nJosé Peña,9991230001,Itzimná\nMaría Muñoz,9991230002,García Ginerés\n");
     const leido = await leerArchivoClientes(new File([bytes], "clientes.csv", { type: "text/csv" }));
     // Actual: "Jos� Pe�a" (caracter de reemplazo) en silencio; la funcion SQL nunca pisa un nombre ya conocido, asi que el error queda
@@ -33,7 +33,7 @@ describe("R2-caos-06: CSV de Excel en espanol (Windows-1252)", () => {
 describe("R2-caos-08: .xlsx con prefijo de espacio de nombres (exportaciones .NET / OpenXML SDK)", () => {
   // Pasos: importar un .xlsx valido cuyo XML usa prefijo (`<x:worksheet><x:sheetData><x:row><x:c>`), como lo escriben el OpenXML SDK y varios
   // sistemas de punto de venta de Windows. Excel lo abre sin problema.
-  it.fails("QA-R2-caos-08: un .xlsx con elementos prefijados (x:row, x:c) se lee igual que uno sin prefijo", () => {
+  it("QA-R2-caos-08: un .xlsx con elementos prefijados (x:row, x:c) se lee igual que uno sin prefijo", () => {
     const ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
     const hoja =
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><x:worksheet xmlns:x="${ns}"><x:sheetData>` +
