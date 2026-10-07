@@ -34,8 +34,8 @@ const MONEY_WITH_TOTAL_TAIL = new RegExp(`(${MONEY_TOKEN})(\\s*(?:pesos\\s+)?(?:
 
 /** Importe de un token de dinero en cualquiera de los formatos habituales: "$1,500.00", "$1.500,00", "$1 500", "150 MXN", "150 pesos". */
 export function parseMoneyToken(token: string): number {
-  const num = /\d[\d,.   ]*\d|\d/.exec(token)?.[0] ?? "";
-  const compact = num.replace(/[   ]/g, "");
+  const num = /\d[\d,.\u00a0\u202f ]*\d|\d/.exec(token)?.[0] ?? "";
+  const compact = num.replace(/[\u00a0\u202f ]/g, "");
   const lastComma = compact.lastIndexOf(",");
   const lastDot = compact.lastIndexOf(".");
   let normalized: string;
