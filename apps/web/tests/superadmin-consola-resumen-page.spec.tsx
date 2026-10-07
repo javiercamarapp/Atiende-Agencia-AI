@@ -283,7 +283,7 @@ describe("error por bloque", () => {
 });
 
 describe("orquestacion y ultima corrida", () => {
-  it("las 4 tarjetas dan su linea real; las 3 fichas (SA-L-09) enlazan a su ruta y el Copiloto (sin pagina) NO lleva enlace", async () => {
+  it("las 4 tarjetas dan su linea real; las 3 fichas (SA-L-09) enlazan a su ruta y el Copiloto (CHAT-17, ya con pagina) tambien", async () => {
     stubApi();
     rendered = await montar();
     const enlaces = [...rendered.container.querySelectorAll<HTMLAnchorElement>('a[href^="/superadmin/agente-"]')];
@@ -292,11 +292,11 @@ describe("orquestacion y ultima corrida", () => {
     expect(por("Agente de WhatsApp y voz").textContent).toContain("2,000 llamadas al modelo · US$22.50 — histórico");
     expect(por("Agente de conciliación").textContent).toContain("140 llamadas al modelo · US$2.20 — histórico");
     expect(por("Agente extractor").textContent).toContain("Sin corridas registradas.");
-    const sinRuta = [...rendered.container.querySelectorAll('[data-testid="tarjeta-agente"]')];
-    expect(sinRuta).toHaveLength(1);
-    expect(sinRuta[0]!.textContent).toContain("Copiloto");
-    expect(sinRuta[0]!.textContent).toContain("Sin corridas registradas.");
-    expect(sinRuta[0]!.querySelector("a")).toBeNull();
+    // CHAT-17: el Copiloto ya tiene pagina real, asi que su tarjeta es un enlace (ninguna tarjeta queda sin ruta).
+    expect(rendered.container.querySelectorAll('[data-testid="tarjeta-agente"]')).toHaveLength(0);
+    const copiloto = rendered.container.querySelector<HTMLAnchorElement>('a[href="/superadmin/copiloto"]')!;
+    expect(copiloto.textContent).toContain("Copiloto");
+    expect(copiloto.textContent).toContain("Sin corridas registradas.");
   });
 
   it("cada cron es una AgentRunCard con badge OK/Fallo, fecha, vertical, 'tareas: no medido' y 'ver detalle' hacia /superadmin/salud", async () => {
@@ -344,7 +344,7 @@ describe("enlaces solo a rutas reales", () => {
     expect(rutaExiste("/superadmin/consumo-ia")).toBe(true);
     expect(rutaExiste(PARTE_DIARIO)).toBe(true);
     expect(rutaExiste("/superadmin/analitica")).toBe(false);
-    expect(rutaExiste("/superadmin/copiloto")).toBe(false);
+    expect(rutaExiste("/superadmin/copiloto")).toBe(true);
   });
 
   it("el filtro 7/30/todo recorta la serie a 7 dias o muestra los 14 que entrega el endpoint", () => {

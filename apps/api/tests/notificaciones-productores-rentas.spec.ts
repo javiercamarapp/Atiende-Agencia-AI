@@ -126,3 +126,61 @@ describe("rentas.aprobacion.pendiente", () => {
     expect((await app.request(`/rentas/${ctx.propertyId}/conversaciones/${conv.id}/borradores`, authedJson(ctx.staff.adminGestora.token, {}))).status).toBe(201);
   });
 });
+
+describe("rentas.aprobacion.urgente", () => {
+  async function conversacion(app: ReturnType<typeof buildApp>, ctx: Awaited<ReturnType<typeof contexto>>["ctx"]) {
+    const res = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/conversaciones`, authedJson(ctx.staff.adminGestora.token, { canal: "airbnb", propiedadNombre: "Casa Sol" }));
+    expect(res.status).toBe(201);
+    return (await res.json()) as { id: string };
+  }
+  async function generar(app: ReturnType<typeof buildApp>, ctx: Awaited<ReturnType<typeof contexto>>["ctx"], conversacionId: string, textoHuesped: string) {
+    const msg = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/conversaciones/${conversacionId}/mensajes`, authedJson(ctx.staff.adminGestora.token, { texto: textoHuesped }));
+    const { id } = (await msg.json()) as { id: string };
+    const res = await app.request(`/rentas/${ctx.propertyId}/conversaciones/${conversacionId}/borradores`, authedJson(ctx.staff.adminGestora.token, { mensajeEntranteId: id }));
+    expect(res.status).toBe(201);
+    return (await res.json()) as { id: string; texto: string };
+  }
+
+  it("un borrador escalado emite UN aviso critico urgente (con enlace a la conversacion, sin PII) EN LUGAR del pendiente", async () => {
+    const { ctx, app, emisiones } = await contexto();
+    const conv = await conversacion(app, ctx);
+    const borrador = await generar(app, ctx, conv.id, "Esto es una emergencia, hay una fuga de gas");
+    const urgentes = emisiones.filter((e) => e.evento === "rentas.aprobacion.urgente");
+    expect(urgentes).toHaveLength(1);
+    expect(urgentes[0]).toMatchObject({
+      organizationId: ctx.organizationId,
+      propertyId: ctx.propertyId,
+      severidad: "critica",
+      categoria: "aprobaciones",
+      enlace: `/rentas/{orgSlug}/aprobaciones/${conv.id}`,
+      dedupeKey: `rentas.aprobacion.urgente:${borrador.id}`,
+      roles: ["admin_gestora", "operador:calendario_mensajeria"],
+    });
+    expect(JSON.stringify(urgentes[0])).not.toContain("fuga");
+    expect(JSON.stringify(urgentes[0])).not.toContain(borrador.texto.slice(0, 20));
+    expect(emisiones.filter((e) => e.evento === "rentas.aprobacion.pendiente")).toHaveLength(0);
+  });
+
+  it("un borrador rutinario emite solo el pendiente, y dos borradores escalados emiten un urgente cada uno (clave por borrador)", async () => {
+    const { ctx, app, emisiones } = await contexto();
+    const conv = await conversacion(app, ctx);
+    await generar(app, ctx, conv.id, "¿Cuál es la clave del wifi?");
+    expect(emisiones.filter((e) => e.evento === "rentas.aprobacion.pendiente")).toHaveLength(1);
+    expect(emisiones.filter((e) => e.evento === "rentas.aprobacion.urgente")).toHaveLength(0);
+    const a = await generar(app, ctx, conv.id, "Quiero un reembolso");
+    const b = await generar(app, ctx, conv.id, "Quiero un reembolso otra vez");
+    const urgentes = emisiones.filter((e) => e.evento === "rentas.aprobacion.urgente");
+    expect(urgentes.map((e) => e.dedupeKey)).toEqual([`rentas.aprobacion.urgente:${a.id}`, `rentas.aprobacion.urgente:${b.id}`]);
+    expect(emisiones.filter((e) => e.evento === "rentas.aprobacion.pendiente")).toHaveLength(1);
+  });
+
+  it("una emision que falla (base sin migrar) no cambia el 201 del borrador escalado", async () => {
+    const { ctx, app } = await contexto({
+      alEmitir: () => {
+        throw Object.assign(new Error("function core.emit_notification does not exist"), { code: "42883" });
+      },
+    });
+    const conv = await conversacion(app, ctx);
+    await generar(app, ctx, conv.id, "Hay una emergencia");
+  });
+});

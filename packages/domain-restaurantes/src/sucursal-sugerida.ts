@@ -46,6 +46,8 @@ export async function sugerirSucursalPorColonia(repo: RestaurantesRepository, or
   if (!texto) return { tipo: "sin_resultado", mensaje: MENSAJE_COLONIA_NO_RECONOCIDA };
   const zona = matchKnownZone(await repo.listKnownZones(organizationId), texto);
   if (!zona) return { tipo: "sin_resultado", mensaje: MENSAJE_COLONIA_NO_RECONOCIDA };
+  // Colonia sin coordenadas propias (migracion 056): no hay distancia que calcular y no se inventan coordenadas; se pide otra referencia o elegir de la lista.
+  if (zona.lat === null || zona.lng === null) return { tipo: "sin_resultado", mensaje: MENSAJE_COLONIA_NO_RECONOCIDA };
   const candidatas = await sucursalesConUbicacion(repo, organizationId, { lat: zona.lat, lng: zona.lng });
   if (candidatas.length === 0) return { tipo: "sin_resultado", mensaje: MENSAJE_SIN_SUCURSAL };
   for (const c of candidatas) {

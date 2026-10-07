@@ -30,6 +30,9 @@ export const TIPO_CONFLICTO_TONES: Readonly<Record<ConflictoCalendario["tipo"], 
 /** Estado de un borrador de mensajeria ya decidido (la bandeja de aprobacion). */
 export const BORRADOR_HISTORIAL_TONES: Tabla = { enviado: "success", rechazado: "danger", aprobado: "info" };
 
+/** Senal de escalamiento de un borrador (Rn-P3-21): la emergencia es lo urgente; queja y reembolso, atencion; VIP, informativo. */
+export const SENAL_ESCALAMIENTO_TONES: Tabla = { emergencia: "danger", queja: "warning", reembolso: "warning", vip: "info" };
+
 /** Estado de conciliacion de una linea de payout. */
 export const CONCILIACION_TONES: Tabla = { conciliado: "success", discrepancia: "danger", pendiente: "warning" };
 
