@@ -14,6 +14,7 @@
 --      `hoteles.system_apply_rate_recommendation` (migracion 029) se redefine para NO pisar una tarifa con precio manual: lanza
 --      `tarifa_manual_vigente` (P0001) y la recomendacion queda en su estado; el cron ya cuenta y notifica esos rechazos.
 --   4. `hoteles.set_tax_config`, `hoteles.set_cancellation_policy`, `hoteles.set_room_type_overbooking`, `hoteles.set_rate_price`.
+--   5. `hoteles.record_onboarding_skip`: deja en la bitacora que owner/gm omitio el gate de "Primeros pasos" (H-P3-06).
 --
 -- ---------------------------------------------------------------------------------------------------------------------
 -- JUSTIFICACION DE SEGURIDAD (cada GRANT, policy, trigger y funcion nueva)
@@ -26,6 +27,8 @@
 --    frontdesk/accountant o una sesion de sistema reciben 42501. La organizacion se deriva de `core.property`, nunca de un
 --    parametro del cliente; `set_room_type_overbooking` y `set_rate_price` ademas exigen que el tipo/la tarifa pertenezcan a la
 --    property indicada (no se puede tocar un id de otro hotel aunque se conozca). Validan rangos en la propia funcion (22023).
+--  * `hoteles.record_onboarding_skip(property)`: misma `security definer` + `search_path` fijo + `revoke ... from public, anon` + guard owner/gm (42501 a cualquier otro) que
+--    las `set_*`; solo inserta UNA fila de bitacora (area `onboarding_omitido`, sin datos personales) y devuelve su id. No cambia ninguna configuracion.
 --  * `hoteles.config_audit_log`: RLS con SELECT solo para owner/gm de la property (`can_manage_catalog`); SIN GRANT de
 --    insert/update/delete a `authenticated` ni a `anon`: solo las funciones `set_*` (security definer) escriben, y solo cuando
 --    algo cambio de verdad (una llamada idempotente que no cambia nada no genera ruido). La bitacora guarda valores de
@@ -50,7 +53,7 @@ create table hoteles.config_audit_log (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references core.organization(id) on delete cascade,
   property_id uuid not null references core.property(id) on delete cascade,
-  area text not null check (area in ('impuestos', 'politica_cancelacion', 'sobreventa', 'tarifa')),
+  area text not null check (area in ('impuestos', 'politica_cancelacion', 'sobreventa', 'tarifa', 'onboarding_omitido')),
   entity_id uuid,
   actor_user_id uuid references core.staff_user(id) on delete set null,
   valor_anterior jsonb,
@@ -340,3 +343,26 @@ grant execute on function hoteles.set_tax_config(uuid, numeric, numeric, numeric
 grant execute on function hoteles.set_cancellation_policy(uuid, integer, numeric, text) to authenticated;
 grant execute on function hoteles.set_room_type_overbooking(uuid, uuid, integer, numeric) to authenticated;
 grant execute on function hoteles.set_rate_price(uuid, uuid, numeric, integer) to authenticated;
+
+create or replace function hoteles.record_onboarding_skip(p_property_id uuid)
+returns uuid
+language plpgsql security definer set search_path = core, hoteles, pg_temp as $$
+declare
+  v_org uuid;
+  v_id uuid;
+begin
+  if auth.uid() is null or not hoteles.can_manage_catalog(p_property_id) then
+    raise exception 'configuracion_requiere_owner_gm: solo owner/gm de la property puede omitir los primeros pasos' using errcode = '42501';
+  end if;
+  select organization_id into v_org from core.property where id = p_property_id;
+  if v_org is null then
+    raise exception 'property_invalida: la property % no existe', p_property_id using errcode = '23503';
+  end if;
+  insert into hoteles.config_audit_log (organization_id, property_id, area, entity_id, actor_user_id, valor_anterior, valor_nuevo)
+  values (v_org, p_property_id, 'onboarding_omitido', p_property_id, auth.uid(), null, jsonb_build_object('omitido', true))
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+revoke execute on function hoteles.record_onboarding_skip(uuid) from public, anon;
+grant execute on function hoteles.record_onboarding_skip(uuid) to authenticated;

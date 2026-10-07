@@ -7,7 +7,7 @@ Verificación contra un Postgres real (mismo patrón que `scripts/verify-hoteles
 Uso: `scripts/verify-hoteles-configuracion/run.sh` (Postgres local con `initdb`/`pg_ctl`/`psql`), o el gate de CI
 (`scripts/verify-real-postgres-ci/run-gate.mjs`, que lo descubre solo).
 
-Qué prueba (23 escenarios): owner/gm escriben y dejan valor anterior y nuevo en la bitácora; una llamada repetida no duplica la
+Qué prueba (25 escenarios): owner/gm escriben y dejan valor anterior y nuevo en la bitácora; una llamada repetida no duplica la
 bitácora; frontdesk, accountant, owner de otra organización, anon y la sesión de sistema no escriben; rangos inválidos (22023);
 UPDATE directo a `tax_config` y escritura directa a la bitácora rechazados; la bitácora no se lee cross-tenant; la sobreventa editada
 se respeta en `hoteles.book_availability`; el precio manual de staff bloquea al motor de revenue (`tarifa_manual_vigente`) y el

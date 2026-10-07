@@ -544,5 +544,37 @@ release savepoint sp_verify_guest_text;
 select free_until_hours from hoteles.cancellation_policy limit 1;
 rollback;
 
+
+\echo '=== 24. owner omite el gate de Primeros pasos: queda una fila en la bitacora; frontdesk y cross-tenant reciben 42501 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0a01', true);
+select hoteles.record_onboarding_skip('00000000-0000-0000-0000-0000000c1a01') is not null as registrado;
+select count(*) as deberia_ser_1 from hoteles.config_audit_log where property_id = '00000000-0000-0000-0000-0000000c1a01' and area = 'onboarding_omitido';
+rollback;
+
+\echo '=== 25. omitir primeros pasos: frontdesk y owner de otra organizacion NO pueden (42501) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0a03', true);
+do $$
+begin
+  begin
+    perform hoteles.record_onboarding_skip('00000000-0000-0000-0000-0000000c1a01');
+    raise exception 'se esperaba insufficient_privilege';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0b01', true);
+do $$
+begin
+  begin
+    perform hoteles.record_onboarding_skip('00000000-0000-0000-0000-0000000c1a01');
+    raise exception 'se esperaba insufficient_privilege';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+rollback;
+
 \echo ''
-\echo '=== listo: 23 escenarios (los "deberia_ser_N" y los do-blocks deben terminar sin error) ==='
+\echo '=== listo: 25 escenarios (los "deberia_ser_N" y los do-blocks deben terminar sin error) ==='
