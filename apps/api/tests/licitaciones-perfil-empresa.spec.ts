@@ -23,7 +23,6 @@ async function setup() {
   const json = async <T>(res: Response | Promise<Response>): Promise<T> => (await res).json() as Promise<T>;
   return { ctx, app, base, t, emisiones, json };
 }
-type S = Awaited<ReturnType<typeof setup>>;
 
 const perfil = { legalName: "Acme Servicios SA de CV", taxId: "acm010101ab1", sector: "servicios", employeeCount: 12, annualSalesCents: 150_000_000, foundedYear: 2010, website: "https://acme.example.mx" };
 
