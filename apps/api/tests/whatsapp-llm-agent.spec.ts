@@ -11,11 +11,12 @@
 // agent-core/src/gateway/providers/fake-provider.ts) y el repositorio en
 // memoria en vez de Postgres real (mismo criterio que el resto de la suite).
 import { randomUUID, createHmac } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import {
   InMemoryRestaurantesRepository,
   createLlmWhatsAppTurnHandler,
+  fingerprintOrder,
   type WhatsAppTurnHandler,
 } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
@@ -334,7 +335,7 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
     void propertyId;
   });
 
-  it("si crear_pedido falla, el turno siguiente escala al modelo caro (whatsapp-agent-escalated) — nunca reintenta en silencio en el mismo modelo barato", async () => {
+  it("si crear_pedido FALLA (error de sistema), el turno siguiente escala al modelo caro (whatsapp-agent-escalated) — nunca reintenta en silencio en el mismo modelo barato", async () => {
     let step = 0;
     const defaultCalls: string[] = [];
     const escalatedCalls: string[] = [];
@@ -347,6 +348,11 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
     restaurantesRepo.seedBranch({ propertyId, organizationId, name: "Altabrisa", slug: "altabrisa", status: "active", phone: null, address: null, lat: null, lng: null });
     restaurantesRepo.seedWhatsAppChannel(organizationId, "1234567890");
     coreRepo.addOrganization({ id: organizationId, slug: "los-taquitos-de-pm", name: "Los Taquitos de PM", vertical: "restaurantes" });
+    // B04: la escalera sube solo ante un FALLO. Se siembra la cotizacion confirmada (para pasar la maquina de estados) y la base cae al buscar la sucursal al crear.
+    const items = [{ productId: "00000000-0000-4000-8000-000000000000", productName: "Producto Fantasma", requestedQuantity: 1 }];
+    const ahora = Date.now();
+    await restaurantesRepo.writeOrderFlow(organizationId, `wa:+${CUSTOMER_PHONE_WA_ID}`, 0, { state: "confirmado", context: { quoteHash: fingerprintOrder({ branchSlug: "altabrisa", canal: "domicilio", items }), quotedAtMs: ahora, quotedTurn: "0", confirmedAtMs: ahora } }, 3600);
+    vi.spyOn(restaurantesRepo, "findBranch").mockRejectedValue(new Error("base caida"));
 
     const gateway = new LlmGateway({
       breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()),
@@ -359,8 +365,7 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
         defaultCalls.push("default");
         const current = step++;
         if (current === 0) {
-          // product_id inexistente -> crear_pedido responde con error real
-          // (rechazo anti-alucinación, product-search.ts) -> huboFalloDeHerramienta.
+          // La base cae al crear el pedido -> error de sistema -> huboFalloDeHerramienta.
           return toolCallTurn("call_1", "crear_pedido", {
             branch_slug: "altabrisa",
             customer_name: "X",
@@ -377,9 +382,8 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
       script: (request) => {
         escalatedCalls.push("escalated");
         const failed = lastToolResult(request) as { error: string };
-        // Sin cotizacion/confirmacion previas el servidor lo rechaza (maquina de estados); el producto
-        // fantasma tambien se rechazaria. Lo que prueba este caso es que CUALQUIER fallo de crear_pedido escala.
-        expect(failed.error).toMatch(/no disponible|cotizaci[oó]n/i);
+        // Error interno de la herramienta (no una regla): lo que prueba este caso es que un FALLO de crear_pedido escala.
+        expect(failed.error).toMatch(/error interno/i);
         return textTurn("Se me complicó ese producto, ¿puedes confirmarlo de nuevo?");
       },
     });
