@@ -1,7 +1,7 @@
 // Tests reales del recordatorio 24h (fix de timezone real preservado) y del aviso
 // best-effort a lista de espera tras reagendar.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAppointment, rescheduleAppointment } from "../src/appointments.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { MAX_LISTA_ESPERA_LIMIT, notifyWaitlistAfterReschedule, previewListaEspera, runConfirmacionCitaCore, runListaEsperaCore } from "../src/reminders.ts";
@@ -99,6 +99,15 @@ describe("runConfirmacionCitaCore", () => {
 });
 
 describe("notifyWaitlistAfterReschedule", () => {
+  // El optimizador ya no ofrece huecos pasados: el reloj se fija ANTES de los horarios del escenario (los huecos son del 14-sep-2026).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("avisa al primer candidato FIFO de la lista de espera cuando el hueco VIEJO (no el nuevo) coincide con sus preferencias", async () => {
     const fixture = buildCitasFixture();
     const appointment = await createAppointment(fixture.repo, {

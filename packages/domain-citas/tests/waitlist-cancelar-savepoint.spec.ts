@@ -43,7 +43,7 @@
 // corrección). `resolveActiveWhatsAppPhoneNumberIdAsSystem` ahora llama
 // `citas.system_resolve_active_whatsapp_phone_number_id` (migración 021) --
 // los mocks de abajo simulan esa RPC nueva, nunca el SELECT plano.
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PostgresCitasRepository } from "../src/postgres-repository.ts";
 import { tryNotifyWaitlistOfFreedSlot } from "../src/reminders.ts";
 import { tryEnqueueAppointmentEmail } from "../src/appointment-email-notifications.ts";
@@ -75,6 +75,15 @@ async function expectSessionRecovered(session: AbortAwareFakeSession): Promise<v
 }
 
 describe("tryNotifyWaitlistOfFreedSlot / tryEnqueueAppointmentEmail — SAVEPOINT (fix auditoría a3, hallazgo confirmado #1)", () => {
+  // El optimizador ya no ofrece huecos pasados: el reloj se fija ANTES de los horarios del escenario (el hueco es del 2-ene-2026).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T12:00:00.000Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("claim_waitlist_notification_slot lanza 42501 (sesión de staff) -- best-effort devuelve null y la sesión de negocio queda utilizable después (antes de este fix: 25P02 permanente)", async () => {
     const session = new AbortAwareFakeSession([
       { match: /citas\.system_load_live_waitlist_candidates/, respond: () => [{ out_id: WAITLIST_ID, out_customer_phone: "5215500000001", out_customer_name: "Candidato", out_notified_count: 0, out_provider_id: PROVIDER_ID, out_service_id: null, out_preferred_date_from: null, out_preferred_date_to: null, out_preferred_time_window: "any", out_created_at: "2026-01-01T00:00:00.000Z" }] },

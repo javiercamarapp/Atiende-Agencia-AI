@@ -287,8 +287,10 @@ function matchesWaitlistPreferences(row: WaitlistCandidateRow, providerId: strin
  * `type: "template"` — ver el comentario de ese hallazgo (arriba) para el detalle
  * completo.
  */
-export async function runOptimizadorCore(repo: CitasRepository, organizationId: string, timeZone: string, event: { readonly providerId: string; readonly serviceId?: string; readonly startsAt: string }): Promise<OptimizadorResult> {
+export async function runOptimizadorCore(repo: CitasRepository, organizationId: string, timeZone: string, event: { readonly providerId: string; readonly serviceId?: string; readonly startsAt: string }, now: Date = new Date()): Promise<OptimizadorResult> {
   const slotDate = new Date(event.startsAt);
+  // Un hueco que ya empezo (o ya paso) no se ofrece: gastaria un aviso del cliente por algo que no puede reservar.
+  if (!(slotDate.getTime() > now.getTime())) return { matched: false, reason: "no_match" };
   const slotDateStr = slotDate.toISOString().slice(0, 10);
   const window = timeWindowFor(slotDate, timeZone);
 
@@ -327,7 +329,11 @@ export async function runOptimizadorCore(repo: CitasRepository, organizationId: 
     valores: async () => ({ nombre: sanitizarValor(winner.customerName, 60) || "cliente", negocio: sanitizarValor((await repo.findOrganizationById(organizationId))?.name, 120) || "nuestro negocio" }),
     now: new Date(),
   });
-  const dedupeKey = `waitlist-offer:${winner.id}:${event.startsAt}`;
+  // Cada oferta lleva su propia clave: el cupo de aviso (`claimWaitlistNotificationSlot`) se consume ANTES de encolar y
+  // `enqueue_messaging_outbox` no hace nada sobre una fila ya `sent`; con una clave solo por (entrada, hueco), liberar el mismo
+  // hueco dos veces gastaba un aviso del cliente sin mandarle mensaje (QA R1 automatizacion 06). Claim y encolado van en la
+  // misma transaccion, asi que un aviso consumido es siempre exactamente un mensaje encolado.
+  const dedupeKey = `waitlist-offer:${winner.id}:${event.startsAt}:${globalThis.crypto.randomUUID()}`;
   if (decision.canal === "sin_plantilla") {
     const cliente = await repo.findCustomerByPhone(organizationId, winner.customerPhone);
     if (!cliente?.email) return { matched: false, reason: "sin_plantilla" };
