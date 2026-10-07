@@ -521,7 +521,8 @@ describe("paridad con el chat de las verticales", () => {
     expect(root.querySelector('[aria-label="Regenerar respuesta"]')).not.toBeNull();
     expect(root.querySelector('[aria-label^="Fijar"]')).toBeNull();
     click(root.querySelector('[aria-label="Descargar PDF"]')!);
-    await esperar();
+    // Sondeo en vez de una espera fija: bajo la carga del CI la descarga tarda mas de 30 ms.
+    for (let i = 0; i < 100 && descargas.length === 0; i++) await esperar(20);
     const pdf = llamadas.find((l) => l.url.includes("/reporte"));
     expect(pdf?.method).toBe("POST");
     expect(pdf?.url).toBe(`${API}/superadmin/copiloto/conversaciones/${ID_CONV}/reporte?seq=2`);
