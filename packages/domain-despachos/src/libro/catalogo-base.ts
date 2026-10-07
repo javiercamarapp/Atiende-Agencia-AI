@@ -9,6 +9,24 @@ import type { CuentaLibro } from "./types.ts";
 const NATURALEZA_EXCEPCION: Readonly<Record<string, "D" | "A">> = {
   "4020000": "D", // Devoluciones sobre ventas: minora el ingreso, saldo deudor.
   "2600300": "D", // IVA acreditable: a favor del contribuyente, saldo deudor.
+  "2600310": "D", // IVA acreditable pagado: a favor del contribuyente, saldo deudor.
+  "2600320": "D", // IEPS acreditable: a favor del contribuyente, saldo deudor.
+};
+
+/**
+ * Cuentas que el libro agrega al catálogo del SAT de bookkeeping (que es un puerto exacto del origen y no se toca): impuestos retenidos, IEPS
+ * y el par cobrado/no cobrado de IVA que exigen las pólizas de retenciones, IEPS y complemento de pago (D-P3-17). PENDIENTE DE VALIDAR CON EL
+ * FISCALISTA: nombres, números y códigos agrupadores son supuestos del catálogo base; cada cliente puede cambiarlos.
+ */
+const CUENTAS_ADICIONALES: Readonly<Record<string, string>> = {
+  "1140100": "ISR retenido a favor",
+  "1140200": "IVA retenido a favor",
+  "2600310": "IVA acreditable pagado",
+  "2600320": "IEPS acreditable",
+  "2600410": "IVA trasladado cobrado",
+  "2600600": "ISR retenido por pagar",
+  "2600700": "IVA retenido por pagar",
+  "2600800": "IEPS por pagar",
 };
 
 export function naturalezaPorDefecto(codigo: string): "D" | "A" {
@@ -31,7 +49,11 @@ export const CODIGO_AGRUPADOR_BASE: Readonly<Record<string, string>> = {
   "1500000": "151", "1520000": "152", "1540000": "153", "1560000": "155", "1580000": "154", "1600000": "156",
   "1900000": "190",
   "2010000": "201.01", "2020000": "201.02", "2050000": "202", "2080000": "204",
-  "2600000": "213", "2600100": "213.01", "2600200": "213.01", "2600300": "118.01", "2600400": "208.01", "2600500": "216.01",
+  "2600000": "213", "2600100": "213.01", "2600200": "213.01",
+  // IVA: acreditable PENDIENTE de pago (2600300) -> 119.01 y PAGADO (2600310) -> 118.01; trasladado NO cobrado (2600400) -> 209.01 y COBRADO (2600410) -> 208.01.
+  "2600300": "119.01", "2600310": "118.01", "2600320": "118.03", "2600400": "209.01", "2600410": "208.01",
+  "2600500": "216.01", "2600600": "216.01", "2600700": "216.02", "2600800": "213.05",
+  "1140100": "113.01", "1140200": "113.02",
   "2670000": "210",
   "3010000": "301", "3040000": "305", "3050000": "306",
   "4010000": "401", "4020000": "402", "4080000": "401.01", "4100000": "401",
@@ -52,7 +74,7 @@ function padreBase(codigo: string): string | null {
 }
 
 export function construirCatalogoBase(): readonly CuentaLibro[] {
-  return Object.entries(CATALOGO_CUENTAS_SAT)
+  return Object.entries({ ...CATALOGO_CUENTAS_SAT, ...CUENTAS_ADICIONALES })
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([codigo, descripcion]) => {
       const cuentaPadre = padreBase(codigo);
@@ -68,3 +90,13 @@ export const CUENTA_INGRESOS_SERVICIOS = "4080000";
 export const CUENTA_DEVOLUCIONES_VENTAS = "4020000";
 export const CUENTA_IVA_TRASLADADO = "2600400";
 export const CUENTA_IVA_ACREDITABLE = "2600300";
+export const CUENTA_BANCOS = "1020000";
+export const CUENTA_PROVEEDORES = "2010000";
+export const CUENTA_IVA_ACREDITABLE_PAGADO = "2600310";
+export const CUENTA_IEPS_ACREDITABLE = "2600320";
+export const CUENTA_IVA_TRASLADADO_COBRADO = "2600410";
+export const CUENTA_ISR_RETENIDO_POR_PAGAR = "2600600";
+export const CUENTA_IVA_RETENIDO_POR_PAGAR = "2600700";
+export const CUENTA_IEPS_POR_PAGAR = "2600800";
+export const CUENTA_ISR_RETENIDO_A_FAVOR = "1140100";
+export const CUENTA_IVA_RETENIDO_A_FAVOR = "1140200";
