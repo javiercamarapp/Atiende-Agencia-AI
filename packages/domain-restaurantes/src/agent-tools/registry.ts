@@ -1192,15 +1192,16 @@ async function evaluarPedidoGrandeDelPedido(repo: RestaurantesRepository, prepar
   const previos = memoria ? acumuladoReciente(memoria.orders, Date.now()) : { total: 0, pesoKg: 0, cuantos: 0 };
   // Ids de los pedidos que ya sumaron al acumulado: si `create_order_idempotent` devuelve uno de ellos, fue una deduplicacion (no un pedido nuevo).
   if (memoria && idsEnMemoria) for (const o of memoria.orders) idsEnMemoria.add(o.id);
+  const pedidosPrevios = cliente?.orderCount ?? 0;
   const total = Math.round((prepared.total + previos.total) * 100) / 100;
   const pesoAcumulado = pesoKg + previos.pesoKg;
   const motivo = evaluarPedidoGrande({
     total,
     pesoKg: pesoAcumulado,
     pagaEfectivo: prepared.payload.paymentMethod === "efectivo",
-    // Con la memoria (que ya excluye cancelados): "sin historial" = TODOS los pedidos reales del numero caen dentro de la ventana (la memoria trae
-    // hasta 30; con 30 puede haber mas atras, asi que no se afirma). `orderCount` no sirve aqui: cuenta cancelados que la memoria no trae.
-    sinHistorial: memoria ? memoria.orders.length === previos.cuantos && memoria.orders.length < 30 : !cliente || cliente.orderCount === 0,
+    // Con la memoria: "sin historial" = todo lo que el numero ha pedido cae dentro de la ventana (no hay pedidos anteriores a ella).
+    // Limitacion conocida: `orderCount` puede incluir cancelados que `previos.cuantos` no cuenta.
+    sinHistorial: memoria ? pedidosPrevios <= previos.cuantos : !cliente || cliente.orderCount === 0,
   });
   if (!motivo) return null;
   const resumen = resumenPedidoGrande({ motivo, total, pesoKg: pesoAcumulado, items: prepared.orderItems, canal: prepared.payload.canal, paymentMethod: prepared.payload.paymentMethod, pedidosPrevios: previos.cuantos });
