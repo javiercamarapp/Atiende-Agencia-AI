@@ -318,11 +318,17 @@ begin
   update restaurantes.marketing_campana k set estado = 'expirada' where k.estado = 'borrador' and k.creada_at < p_now - interval '3 days';
 
   for v_cfg in select * from restaurantes.marketing_config c where c.activo order by c.organization_id loop
+    -- Sin tarifa configurada no hay borrador: el costo debe poder mostrarse antes de aprobar (nunca un borrador con costo NULL).
+    if v_cfg.tarifa_centavos is null then
+      continue;
+    end if;
     -- Promocion vigente: nunca se inventa un descuento. Sin promocion no hay borrador.
     select * into v_promo from restaurantes.promotions p
       where p.organization_id = v_cfg.organization_id and p.is_active
         and (p.starts_at is null or p.starts_at <= p_now) and (p.ends_at is null or p.ends_at > p_now)
         and (p.max_uses is null or p.times_used < p.max_uses)
+        -- Solo promociones de TODA la organizacion: una promocion acotada a sucursales (property_ids) no se ofrece a clientes de otras.
+        and p.property_ids is null
       order by p.created_at desc, p.id limit 1;
     if not found then
       continue;
@@ -414,7 +420,7 @@ begin
   hay_promocion_vigente := exists (
     select 1 from restaurantes.promotions p
     where p.organization_id = p_organization_id and p.is_active and (p.starts_at is null or p.starts_at <= now()) and (p.ends_at is null or p.ends_at > now())
-      and (p.max_uses is null or p.times_used < p.max_uses));
+      and (p.max_uses is null or p.times_used < p.max_uses) and p.property_ids is null);
   plantilla_aprobada := v_cfg.plantilla_nombre is not null and exists (
     select 1 from core.whatsapp_plantilla w where w.organization_id = p_organization_id and w.nombre = v_cfg.plantilla_nombre and w.estado = 'aprobada');
   whatsapp_conectado := exists (select 1 from restaurantes.whatsapp_channel_config w where w.organization_id = p_organization_id);
@@ -432,7 +438,8 @@ grant execute on function restaurantes.marketing_config_leer(uuid) to authentica
 -- ---------------------------------------------------------------------------
 -- Rechazar solo cambia el estado: no envia nada. Aprobar revalida TODO en ese instante y encola en messaging_outbox (idempotente por
 -- (campana, cliente)); un segundo clic o dos conexiones a la vez devuelven el mismo resultado sin duplicar. Errores de negocio (P0001):
--- requiere_tarifa, requiere_plantilla_aprobada, requiere_whatsapp_conectado, tope_mensual_excedido, campana_no_aprobable.
+-- requiere_tarifa, requiere_marketing_activo, requiere_nuevo_borrador (borrador sin costo o con otra tarifa que la vigente), requiere_plantilla_aprobada,
+-- requiere_whatsapp_conectado, tope_mensual_excedido (costo REAL re-evaluado al aprobar, a la tarifa vigente), campana_no_aprobable (incluye borrador de mas de 3 dias).
 create or replace function restaurantes.marketing_decidir_campana(p_campana_id uuid, p_aprobar boolean)
 returns table (estado text, encolados integer, control integer)
 language plpgsql security definer set search_path = restaurantes, core, pg_temp as $$
@@ -445,6 +452,7 @@ declare
   v_local timestamp;
   v_siguiente timestamptz;
   v_gastado bigint;
+  v_reales integer;
   v_elegible record;
   v_outbox uuid;
   v_enc integer := 0;
@@ -452,10 +460,13 @@ declare
   v_params jsonb;
   v_body text;
 begin
-  select * into v_k from restaurantes.marketing_campana k where k.id = p_campana_id for update;
+  -- Primero una lectura SIN bloqueo para comprobar el acceso: una persona de otra organizacion nunca llega a bloquear la fila ajena.
+  select * into v_k from restaurantes.marketing_campana k where k.id = p_campana_id;
   if not found or not restaurantes.marketing_es_gestor(v_k.organization_id) then
     raise exception 'marketing_decidir_campana: campana inexistente o sin acceso' using errcode = '42501';
   end if;
+  -- Con el acceso ya comprobado, se bloquea y se relee (decisiones concurrentes se serializan).
+  select * into v_k from restaurantes.marketing_campana k where k.id = p_campana_id for update;
   if p_aprobar is null then
     raise exception 'marketing_decidir_campana: parametros invalidos' using errcode = '22023';
   end if;
@@ -478,6 +489,18 @@ begin
   if not found or v_cfg.tarifa_centavos is null then
     raise exception 'requiere_tarifa' using errcode = 'P0001';
   end if;
+  -- Marketing apagado: un borrador ya abierto no se puede aprobar (rechazar si se puede).
+  if not v_cfg.activo then
+    raise exception 'requiere_marketing_activo' using errcode = 'P0001';
+  end if;
+  -- El costo se muestra ANTES de aprobar: un borrador sin costo (generado sin tarifa) o con otra tarifa que la vigente no se aprueba; el tick genera uno nuevo.
+  if v_k.tarifa_centavos is null or v_k.costo_estimado_centavos is null or v_k.tarifa_centavos <> v_cfg.tarifa_centavos then
+    raise exception 'requiere_nuevo_borrador' using errcode = 'P0001';
+  end if;
+  -- Un borrador de mas de 3 dias expira aunque el tick aun no lo haya marcado.
+  if v_k.creada_at < now() - interval '3 days' then
+    raise exception 'campana_no_aprobable' using errcode = 'P0001';
+  end if;
   if v_cfg.plantilla_nombre is null or not exists (
        select 1 from core.whatsapp_plantilla w where w.organization_id = v_k.organization_id and w.nombre = v_cfg.plantilla_nombre and w.estado = 'aprobada') then
     raise exception 'requiere_plantilla_aprobada' using errcode = 'P0001';
@@ -489,7 +512,11 @@ begin
   if v_cfg.tope_mensual_centavos is not null then
     select coalesce(sum(k.costo_estimado_centavos), 0) into v_gastado from restaurantes.marketing_campana k
       where k.organization_id = v_k.organization_id and k.estado = 'aprobada' and k.decidida_at >= date_trunc('month', now());
-    if v_gastado + coalesce(v_k.costo_estimado_centavos, 0) > v_cfg.tope_mensual_centavos then
+    -- Costo REAL a la tarifa vigente: los elegibles se re-evaluan ahora (mismos 1000 maximo que se encolaran), no se usa el conteo del borrador.
+    select count(*) into v_reales from (
+      select e.control from restaurantes.marketing_elegibles(v_k.organization_id, v_k.dias_min, v_k.dias_max, now()) e order by e.customer_id limit 1000
+    ) r where not r.control;
+    if v_gastado + v_reales::bigint * v_cfg.tarifa_centavos > v_cfg.tope_mensual_centavos then
       raise exception 'tope_mensual_excedido' using errcode = 'P0001';
     end if;
   end if;
@@ -531,6 +558,10 @@ begin
     end if;
   end loop;
 
+  -- Defensa en profundidad: si lo realmente encolado supera el tope, la excepcion deshace TODO (outbox, envios) en esta transaccion.
+  if v_cfg.tope_mensual_centavos is not null and v_gastado + v_enc::bigint * v_cfg.tarifa_centavos > v_cfg.tope_mensual_centavos then
+    raise exception 'tope_mensual_excedido' using errcode = 'P0001';
+  end if;
   update restaurantes.marketing_campana k
      set estado = 'aprobada', decidida_at = now(), decidida_por = auth.uid(), encolados = v_enc, conteo_control = v_ctl,
          plantilla_nombre = v_cfg.plantilla_nombre, plantilla_idioma = v_cfg.plantilla_idioma, tarifa_centavos = v_cfg.tarifa_centavos,
