@@ -224,8 +224,9 @@ export class MetaCloudSimulator {
     return this.postSigned(delivery.rawBody);
   }
 
-  /** Estado de un mensaje saliente aceptado (sent/delivered/read/failed) hacia el webhook. */
-  async deliverStatus(messageId: string, status: "sent" | "delivered" | "read" | "failed"): Promise<WebhookDelivery> {
+  /** Estado de un mensaje saliente aceptado (sent/delivered/read/failed) hacia el webhook. Un `failed` puede llevar `error` (forma documentada por Meta:
+   *  `statuses[].errors[]` con `code` y `title`, p. ej. 131047 "Re-engagement message"). */
+  async deliverStatus(messageId: string, status: "sent" | "delivered" | "read" | "failed", error?: { readonly code: number; readonly title: string }): Promise<WebhookDelivery> {
     const sent = this.accepted.find((m) => m.id === messageId);
     if (!sent) throw new Error(`MetaCloudSimulator: el mensaje ${messageId} no fue aceptado por este simulador`);
     const payload = {
@@ -239,7 +240,7 @@ export class MetaCloudSimulator {
               value: {
                 messaging_product: "whatsapp",
                 metadata: { display_phone_number: "5219990000000", phone_number_id: this.opts.phoneNumberId },
-                statuses: [{ id: messageId, status, timestamp: String(Math.floor(this.now() / 1000)), recipient_id: normalizeWaId(sent.to) }],
+                statuses: [{ id: messageId, status, timestamp: String(Math.floor(this.now() / 1000)), recipient_id: normalizeWaId(sent.to), ...(error ? { errors: [{ code: error.code, title: error.title, message: error.title, error_data: { details: error.title } }] } : {}) }],
               },
             },
           ],
@@ -331,10 +332,15 @@ export class MetaCloudSimulator {
       text = ((body.text as { body?: unknown } | undefined)?.body as string | undefined) ?? null;
       if (!text) return graphError(400, 100, "text.body es obligatorio.");
     } else if (type === "interactive") {
-      const interactive = body.interactive as { body?: { text?: string }; action?: { buttons?: { reply?: { id: string; title: string } }[] } } | undefined;
+      const interactive = body.interactive as { type?: string; body?: { text?: string }; action?: { name?: string; buttons?: { reply?: { id: string; title: string } }[] } } | undefined;
       text = interactive?.body?.text ?? null;
-      buttons = (interactive?.action?.buttons ?? []).map((b) => b.reply).filter((r): r is { id: string; title: string } => !!r);
-      if (!text || buttons.length === 0 || buttons.length > 3) return graphError(400, 100, "interactive/button invalido (1-3 botones y body.text).");
+      if (interactive?.type === "location_request_message") {
+        // Solicitud de ubicacion: solo texto + `action.name = send_location` (un toque del cliente), sin botones de respuesta.
+        if (!text || interactive.action?.name !== "send_location") return graphError(400, 100, "interactive/location_request_message invalido (body.text y action.name = send_location).");
+      } else {
+        buttons = (interactive?.action?.buttons ?? []).map((b) => b.reply).filter((r): r is { id: string; title: string } => !!r);
+        if (!text || buttons.length === 0 || buttons.length > 3) return graphError(400, 100, "interactive/button invalido (1-3 botones y body.text).");
+      }
     } else {
       templateName = ((body.template as { name?: unknown } | undefined)?.name as string | undefined) ?? null;
       if (!templateName) return graphError(400, 100, "template.name es obligatorio.");

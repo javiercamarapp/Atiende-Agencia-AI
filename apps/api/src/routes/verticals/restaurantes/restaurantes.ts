@@ -19,6 +19,7 @@ import { restaurantesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { restaurantesProgramadosInternoRoutes } from "./programados-interno.ts";
 import { restaurantesVozHuerfanasRoutes } from "./voz-huerfanas.ts";
 import { restaurantesCierresRoutes } from "./cierres.ts";
+import { restaurantesAutopilotoRoutes } from "./autopiloto.ts";
 import { restaurantesCierresInternoRoutes } from "./cierres-interno.ts";
 import { restaurantesRepartidorPerfilRoutes } from "./repartidor-perfil.ts";
 import { restaurantesRepartidorHistorialRoutes } from "./repartidor-historial.ts";
@@ -28,10 +29,13 @@ import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminSitioPublicoRoutes } from "./admin-sitio-publico.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
+import { restaurantesAdminConocimientoRoutes } from "./admin-conocimiento.ts";
 import { restaurantesAdminOnboardingRoutes } from "./admin-onboarding.ts";
+import { restaurantesAjustesAgenteRoutes, restaurantesAjustesLlamadaInternoRoutes } from "./ajustes-agente.ts";
 import { restaurantesVozAdminRoutes } from "./voz-admin.ts";
 import { restaurantesAgentePreviewRoutes } from "./agente-preview.ts";
 import { restaurantesVozInternoRoutes } from "./voz-interno.ts";
+import { restaurantesVozLlamadaRoutes } from "./voz-llamada.ts";
 import { restaurantesVozKpiRoutes } from "./voz-kpi.ts";
 import { restaurantesWhatsappKpiRoutes } from "./whatsapp-kpi.ts";
 import { restaurantesConversacionesAdminRoutes } from "./conversaciones-admin.ts";
@@ -71,6 +75,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesVozHuerfanasRoutes(deps));
   app.route("/", restaurantesCierresInternoRoutes(deps));
   app.route("/", restaurantesCierresRoutes(deps));
+  app.route("/", restaurantesAutopilotoRoutes(deps));
   // R-15 (migración 044): perfil operativo del repartidor + barrido interno de licencias por vencer.
   app.route("/", restaurantesRepartidorPerfilRoutes(deps));
   app.route("/", restaurantesRepartidorHistorialRoutes(deps));
@@ -87,6 +92,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesAdminSitioPublicoRoutes(deps));
   // Modelo PM (migración 023) — política/cobertura/WhatsApp por sucursal y marcas no_domicilio.
   app.route("/", restaurantesAdminModeloPmRoutes(deps));
+  app.route("/", restaurantesAdminConocimientoRoutes(deps));
   // R-33: checklist de onboarding calculado con datos reales (solo lectura, owner/admin).
   app.route("/", restaurantesAdminOnboardingRoutes(deps));
   // Voz propia (migración 025): config por sucursal, preview, conversaciones (panel) y registrador
@@ -95,6 +101,11 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // «Probar agente» del panel: chat de prueba SIN efectos (modo preview del registro de tools), sin persistir la conversacion.
   app.route("/", restaurantesAgentePreviewRoutes(deps));
   app.route("/", restaurantesVozInternoRoutes(deps));
+  // Ajustes del agente por organizacion (migración 055: modelo, temperatura, voz, fondo) + conocimiento automatico + lado sistema del servicio de llamadas.
+  app.route("/", restaurantesAjustesAgenteRoutes(deps));
+  app.route("/", restaurantesAjustesLlamadaInternoRoutes(deps));
+  // Worker de telefonía (migración 067): contexto de la llamada, costo por escalón, modo de entrada y KPI de desborde/latencia.
+  app.route("/", restaurantesVozLlamadaRoutes(deps));
   // R-13 (migración 035): KPI de voz, costo por día y alertas operativas internas (panel + bitácora).
   app.route("/", restaurantesVozKpiRoutes(deps));
   app.route("/", restaurantesWhatsappKpiRoutes(deps));

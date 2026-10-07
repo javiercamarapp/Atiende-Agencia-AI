@@ -141,6 +141,7 @@ export { OAUTH_STATE_TTL_MS, signGoogleCalendarOAuthState, verifyGoogleCalendarO
 export type { GoogleCalendarOAuthState } from "./google-calendar-oauth-state.ts";
 
 export {
+  assertCustomerOwnsAppointment,
   BUSY_APPOINTMENT_STATUSES,
   cancelAppointment,
   cancelAppointmentFromPanel,
@@ -149,6 +150,7 @@ export {
   createAppointment,
   createAppointmentFromPanel,
   findAppointmentsForCustomerPhone,
+  isUsablePhone,
   isValidVoiceConversationId,
   markAppointmentNoShowFromPanel,
   normalizePhone,

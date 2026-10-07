@@ -70,6 +70,9 @@ export function restaurantesPrivacidadInternoRoutes(deps: AppDeps): Hono {
       let conversaciones = 0;
       let turnosVoz = 0;
       let llamadasAnonimizadas = 0;
+      let pedidosConVozLimpiados = 0;
+      let payloadsOutboxBorrados = 0;
+      let avisosStaffBorrados = 0;
       let lotes = 0;
       // Una transaccion POR lote: un lote con datos raros no revierte los ya purgados.
       for (let i = 0; i < PURGE_MAX_BATCHES; i++) {
@@ -82,10 +85,15 @@ export function restaurantesPrivacidadInternoRoutes(deps: AppDeps): Hono {
         conversaciones += outcome.conversationsCleared;
         turnosVoz += outcome.voiceTurnsDeleted;
         llamadasAnonimizadas += outcome.voiceCallsAnonymized;
-        // El lote se acota por tabla: si ninguna lleno su tope, ya no queda nada vencido.
-        if (outcome.conversationsCleared < PURGE_BATCH && outcome.voiceCallsAnonymized < PURGE_BATCH) break;
+        pedidosConVozLimpiados += outcome.ordersVoiceCleared ?? 0;
+        payloadsOutboxBorrados += outcome.outboxPayloadsErased ?? 0;
+        avisosStaffBorrados += outcome.staffNotificationsErased ?? 0;
+        // El lote se acota por tabla: si ninguna lleno su tope, ya no queda nada vencido. Desde la 046
+        // `voiceCallsAnonymized` cuenta las llamadas procesadas (con o sin caller_hash): QA-restaurantes-R1-automatizacion-04.
+        const llenoElLote = [outcome.conversationsCleared, outcome.voiceCallsAnonymized, outcome.ordersVoiceCleared ?? 0, outcome.outboxPayloadsErased ?? 0, outcome.staffNotificationsErased ?? 0].some((n) => n >= PURGE_BATCH);
+        if (!llenoElLote) break;
       }
-      return c.json({ ok: true, disponible, lotes, conversacionesVaciadas: conversaciones, turnosDeVozBorrados: turnosVoz, llamadasAnonimizadas });
+      return c.json({ ok: true, disponible, lotes, conversacionesVaciadas: conversaciones, turnosDeVozBorrados: turnosVoz, llamadasAnonimizadas, pedidosConVozLimpiados, payloadsOutboxBorrados, avisosStaffBorrados });
     })();
   });
 

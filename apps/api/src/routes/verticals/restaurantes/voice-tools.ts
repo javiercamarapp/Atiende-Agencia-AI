@@ -64,7 +64,7 @@ export function voiceToolContext(orgId: string, caller: VoiceCaller, turn: strin
     lockedPropertyId: caller.propertyId,
     // Maquina de estados del pedido: solo con llamada identificada (token). Sin token (camino legado)
     // no hay callId confiable sobre el que llevar estado.
-    ...(caller.callId ? { flow: { key: `call:${caller.callId}`, turn } } : {}),
+    ...(caller.callId ? { flow: { key: `call:${caller.callId}`, turn }, sourceEventId: `call:${caller.callId}` } : {}),
   };
 }
 
@@ -191,6 +191,37 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
       // PM PR-4: `total` es el TOTAL A PAGAR (ya con la promocion automatica del dia, si aplica);
       // `subtotal`, `descuento`, `promocionAplicada` y `promocionesSugeridas` son campos aditivos.
       return c.json({ quote: outcome.raw, ...(outcome.quoteHash ? { quote_hash: outcome.quoteHash } : {}) });
+    });
+  });
+
+  // Cliente 360 — POST /v1/restaurantes/:orgSlug/customers/orders (historial_pedidos): ultimos pedidos del MISMO numero.
+  // Exige token de llamada: el telefono sale del token (nunca del cuerpo), asi que un modelo no puede pedir el historial de otro numero.
+  app.post("/v1/restaurantes/:orgSlug/customers/orders", async (c) => {
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
+    await readJsonCapped<Record<string, unknown>>(c.req.raw, 2 * 1024);
+    return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "historial_pedidos", accept: "required" }, async ({ repo, toolCtx }) => {
+      const outcome = await invokeAgentTool(repo, toolCtx, "historial_pedidos", {});
+      return c.json(outcome.result as object);
+    });
+  });
+
+  // Cliente 360 — POST /v1/restaurantes/:orgSlug/orders/repeat (repetir_pedido): re-cotiza un pedido anterior del mismo
+  // numero con los precios de HOY y entra a la misma maquina de estados que cotizar_pedido (quote_hash).
+  app.post("/v1/restaurantes/:orgSlug/orders/repeat", async (c) => {
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
+    const body = await readJsonCapped<{ branch_slug?: unknown; pedido_numero?: unknown; canal?: unknown; colonia_entrega?: unknown; payment_method?: unknown; adult_confirmed?: unknown }>(c.req.raw, 4 * 1024);
+    const branchSlug = typeof body.branch_slug === "string" ? body.branch_slug : "";
+    if (!branchSlug.trim()) throw Errors.validation("branch_slug es requerido");
+    return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "repetir_pedido", accept: "required" }, async ({ repo, toolCtx }) => {
+      const outcome = await invokeAgentTool(repo, toolCtx, "repetir_pedido", {
+        branch_slug: branchSlug,
+        pedido_numero: body.pedido_numero,
+        canal: body.canal,
+        colonia_entrega: body.colonia_entrega,
+        payment_method: body.payment_method,
+        adult_confirmed: body.adult_confirmed,
+      });
+      return c.json(outcome.result as object);
     });
   });
 

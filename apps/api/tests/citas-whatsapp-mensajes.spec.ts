@@ -192,7 +192,8 @@ describe("avisos opt-in al cancelar o confirmar desde el panel", () => {
     const canc = waOutbox(ctx, "appointment.cancelled");
     expect(conf).toHaveLength(1);
     expect(canc).toHaveLength(1);
-    expect(conf[0]!.payload).toMatchObject({ to: "5215500000000", phone_number_id: "1234567890" });
+    // El telefono del panel se guarda con la misma llave que el agente y la web (ultimos 10 digitos, QA-citas-R1-seguridad-09).
+    expect(conf[0]!.payload).toMatchObject({ to: "5500000000", phone_number_id: "1234567890" });
     expect((conf[0]!.payload as { body: string }).body).toContain("Confirmada: Consulta general a las");
     expect((canc[0]!.payload as { body: string }).body).toBe("Cancelada Paciente de Prueba");
   });

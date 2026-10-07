@@ -21,6 +21,10 @@ export interface ConfigPlataformaVoz {
   readonly escalera: readonly EscalonVoz[];
   readonly gemini: {
     readonly modelo: string;
+    /** Temperatura de generacion (0 = determinista: el agente vivo de PM corre asi, sin variar precios ni reglas). */
+    readonly temperatura: number;
+    /** `speechConfig.languageCode` del setup de Gemini Live (BCP-47); `null` = no enviarlo y dejar que el proveedor detecte. */
+    readonly idioma: string | null;
     /** Precio estimado por minuto de llamada (audio entrada + salida), micro-USD. */
     readonly precioMicroUsdPorMinuto: number;
   };
@@ -30,6 +34,10 @@ export interface ConfigPlataformaVoz {
     /** Modelo de texto: el que resuelva el gateway de agent-core para el rol de voz (la cascada solo lo nombra para el costo). */
     readonly modeloLlm: string;
     readonly modeloTts: string;
+    /** Temperatura del modelo de texto de la cascada (mismo criterio que `gemini.temperatura`). */
+    readonly temperatura: number;
+    /** Tope de terminos de vocabulario (nombres y apodos del menu) que se pasan al STT como pista. */
+    readonly vocabularioMax: number;
     /** Precio estimado por minuto de llamada, micro-USD (STT + LLM + TTS). Es el que usa el evento de costo. */
     readonly precioMicroUsdPorMinuto: number;
     /** Desglose de referencia (la cascada reporta costo por turno con estos). */
@@ -42,12 +50,14 @@ export interface ConfigPlataformaVoz {
 
 export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
   escalera: ESCALERA_VOZ,
-  gemini: Object.freeze({ modelo: "gemini-3.8-live", precioMicroUsdPorMinuto: 18_000 }),
+  gemini: Object.freeze({ modelo: "gemini-3.8-live", temperatura: 0, idioma: "es-US", precioMicroUsdPorMinuto: 18_000 }),
   cascada: Object.freeze({
     baseUrl: "https://openrouter.ai/api/v1",
     modeloStt: "openai/whisper-large-v3-turbo",
     modeloLlm: "google/gemini-3.8-flash",
     modeloTts: "google/gemini-3.8-flash-tts",
+    temperatura: 0,
+    vocabularioMax: 200,
     precioMicroUsdPorMinuto: 14_000,
     sttMicroUsdPorSegundoAudio: 70,
     ttsMicroUsdPorMilCaracteres: 15_000,

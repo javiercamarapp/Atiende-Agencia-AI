@@ -6,7 +6,7 @@ import type { Locator, Page } from "@playwright/test";
 
 interface Caso {
   readonly sub: string;
-  readonly ruta: string;
+  readonly ruta: string | RegExp;
   readonly listo: (page: Page) => Locator;
   /** 503 en las rutas de voz/WhatsApp significa "servicio no disponible aun" (estado honesto por diseno): ahi la falla es un 500. */
   readonly status?: number;
@@ -16,7 +16,7 @@ interface Caso {
 }
 
 const CASOS: readonly Caso[] = [
-  { sub: "", ruta: "/kpis/sales", listo: (p) => p.getByText("Número de órdenes") },
+  { sub: "", ruta: /\/kpis\/sales(\?|$)/, listo: (p) => p.getByText("Número de órdenes") },
   { sub: "/pedidos", ruta: "/orders?status=pending", listo: (p) => p.getByText("Marisol Pech").first() },
   { sub: "/historial", ruta: "/orders", listo: (p) => p.getByText("Marisol Pech").first() },
   { sub: "/productos", ruta: "/products", listo: (p) => p.getByText("Tacos al pastor (orden)").first() },
@@ -27,7 +27,9 @@ const CASOS: readonly Caso[] = [
   { sub: "/sucursales", ruta: "/sucursales", listo: (p) => p.getByText("Calle 60 #400") },
   { sub: "/staff", ruta: "/staff/miembros", listo: (p) => p.getByText("Lucia Xool").first() },
   { sub: "/auditoria", ruta: "/auditoria", listo: (p) => p.getByTitle("producto.precio_actualizado") },
-  { sub: "/primeros-pasos", ruta: "/onboarding", listo: (p) => p.getByText("Faltan puntos obligatorios") },
+  // Ancla al final: "/onboarding/gate" (la puerta del shell) tambien contiene "/onboarding" y, al cargar el shell antes que la pagina
+  // (pantallas perezosas), consumia la unica falla inyectada dejando la pagina sana.
+  { sub: "/primeros-pasos", ruta: "/\\/onboarding$/", listo: (p) => p.getByText("Faltan puntos obligatorios") },
   { sub: "/turnos", ruta: "/turnos", listo: (p) => p.getByRole("button", { name: "Guardar turnos" }) },
   { sub: "/conversaciones", ruta: "/conversaciones?", listo: (p) => p.getByRole("button", { name: /WhatsApp · \+529995550101/ }) },
   { sub: "/privacidad", ruta: "/privacidad/configuracion", listo: (p) => p.getByRole("button", { name: "Guardar configuración" }), bug: "BUG-E2E-REST-003: Privacidad muestra la falla de carga de la configuracion como texto suelto, sin EstadoError ni Reintentar (pages/Privacidad.tsx:119)" },
