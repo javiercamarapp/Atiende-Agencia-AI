@@ -23,11 +23,11 @@ describe("viaje: acuse al cliente mientras la toma sigue pendiente", () => {
   it("recien escalada: el agente calla (no repite 'ya avise' a cada mensaje)", async () => {
     const v = await escalado();
     expect((await v.escribe("hola?")).reply).toBeUndefined();
-    avanza(min(0.5));
+    avanza(min(10));
     expect((await v.escribe("???")).reply).toBeUndefined();
   });
 
-  it("pasado el minuto de espera sin que nadie la tome: UN acuse (queda en el historial y en el outbox); los siguientes mensajes callan", async () => {
+  it("a los 15 min sin que nadie la tome: UN acuse (queda en el historial y en el outbox); los siguientes mensajes callan", async () => {
     const v = await escalado();
     avanza(min(20));
     const r = await v.escribe("¿alguien me atiende?");
