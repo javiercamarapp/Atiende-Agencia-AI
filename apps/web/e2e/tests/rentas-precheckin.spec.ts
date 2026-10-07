@@ -10,6 +10,8 @@ test.describe("pre-check-in publico @humo", () => {
   test("el huesped encuentra su reserva, deja su correo y acepta el aviso y el reglamento; una segunda verificacion ya lo ve capturado", async ({ page, vigilante }) => {
     const anon = new ClienteMock(URL_API, "anon");
     const codigo = codigoUnico();
+    // Correo unico por prueba: las peticiones sin sesion comparten el escenario "anon" entre el proyecto de escritorio y el movil.
+    const correo = `huesped.${codigo.toLowerCase()}@example.test`;
     await page.goto(`/rentas/precheckin/${rentas.propertyId}`);
     await expect(page.getByRole("heading", { level: 1, name: "Pre-check-in" })).toBeVisible();
     await afirmarUnSoloMain(page);
@@ -19,7 +21,7 @@ test.describe("pre-check-in publico @humo", () => {
     await page.getByRole("button", { name: "Continuar" }).click();
     await expect(page.getByText("Casa Playa Norte", { exact: false }).first()).toBeVisible();
 
-    await page.getByLabel("Correo electrónico").fill("huesped.e2e@example.test");
+    await page.getByLabel("Correo electrónico").fill(correo);
     await page.getByLabel("WhatsApp (opcional)").fill("998 123 4567");
     // Sin aceptar el aviso ni el reglamento, enviar esta deshabilitado.
     await expect(page.getByRole("button", { name: "Enviar" })).toBeDisabled();
@@ -29,9 +31,9 @@ test.describe("pre-check-in publico @humo", () => {
     await page.getByRole("button", { name: "Enviar" }).click();
     await expect(page.getByText("instrucciones de acceso por correo")).toBeVisible();
 
-    const capturas = (await anon.buscar({ metodo: "POST", ruta: "/capturar" })).filter((p) => JSON.stringify(p.cuerpo).includes("huesped.e2e@example.test"));
+    const capturas = (await anon.buscar({ metodo: "POST", ruta: "/capturar" })).filter((p) => JSON.stringify(p.cuerpo).includes(correo));
     expect(capturas).toHaveLength(1);
-    expect(capturas[0]!.cuerpo).toMatchObject({ correo: "huesped.e2e@example.test", aceptaPrivacidad: true, aceptaReglamento: true });
+    expect(capturas[0]!.cuerpo).toMatchObject({ correo, aceptaPrivacidad: true, aceptaReglamento: true });
 
     // La reserva ya tiene contacto: volver a verificar la reconoce y no vuelve a pedir datos.
     await page.reload();
