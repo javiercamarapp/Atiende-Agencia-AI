@@ -19,7 +19,7 @@ async function conDosSucursales(page: Page, mock: { agregarAEstado(c: string, v:
 
 /** El selector de sucursal visible en este viewport (Sidebar en escritorio, cabecera en movil). */
 function selectorVisible(page: Page) {
-  return page.locator("select[id^="citas-sucursal-activa"]:visible");
+  return page.locator('select[id^="citas-sucursal-activa"]:visible');
 }
 
 test.describe("citas QA R1 botones: shell", () => {

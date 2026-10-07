@@ -102,8 +102,10 @@ export async function sendJson<T>(
     }),
   );
   if (!res.ok) {
-    const alternativeSlots = res.status === 409 ? parseAlternativeSlots(await res.clone().json().catch(() => null)) : [];
-    throw new CitasAdminError(await readWriteErrorMessage(res, `No se pudo completar la solicitud a ${url} (${res.status}).`), alternativeSlots);
+    // Mismo orden de mensaje que readWriteErrorMessage (`message`, luego `error`), pero leyendo el cuerpo una sola vez para también sacar `alternative_slots` del 409.
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    const alternativeSlots = res.status === 409 ? parseAlternativeSlots(body) : [];
+    throw new CitasAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`, alternativeSlots);
   }
   return (await res.json()) as T;
 }
