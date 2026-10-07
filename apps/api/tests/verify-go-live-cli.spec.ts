@@ -121,4 +121,12 @@ describe("reporte y codigo de salida", () => {
     expect(codigoDeSalida(r)).toBe(1);
     expect(codigoDeSalida({ ...r, resumen: { ...r.resumen, falta: 0, pendientes: 0, listo: true } })).toBe(0);
   });
+
+  it("sin 'falta' pero con una fuente sin leer sale 1 y el reporte dice NO LISTO por la fuente", async () => {
+    const entrada = await leerEntrada(doble(), ARGS, ENV);
+    const r = evaluarPreflight(entrada);
+    const sinLeer = { ...r, resumen: { ...r.resumen, falta: 0, pendientes: 0, listo: false } };
+    expect(codigoDeSalida(sinLeer)).toBe(1);
+    expect(formatearReporte(entrada, sinLeer)).toContain("NO LISTO: alguna fuente no se pudo leer");
+  });
 });

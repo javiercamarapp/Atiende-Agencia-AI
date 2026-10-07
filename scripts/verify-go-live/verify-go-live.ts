@@ -166,12 +166,18 @@ export function formatearReporte(entrada: PreflightEntrada, r: ResultadoPrefligh
   }
   const s = r.resumen;
   lineas.push(`${s.ok} en orden, ${s.falta} faltan, ${s.aviso} avisos, ${s.no_aplica} no aplican (de ${s.total}).`);
-  lineas.push(s.listo ? "LISTO: ninguna verificacion bloquea el go-live." : `NO LISTO: ${s.pendientes} pendiente(s) bloquean el go-live.`);
+  lineas.push(
+    s.listo
+      ? "LISTO: ninguna verificacion bloquea el go-live."
+      : s.pendientes > 0
+        ? `NO LISTO: ${s.pendientes} pendiente(s) bloquean el go-live.`
+        : "NO LISTO: alguna fuente no se pudo leer por completo (ver los avisos); no se puede dar por listo lo que no se midio.",
+  );
   return lineas.join("\n");
 }
 
 export function codigoDeSalida(r: ResultadoPreflight): 0 | 1 {
-  return r.resumen.falta > 0 ? 1 : 0;
+  return r.resumen.listo ? 0 : 1;
 }
 
 async function main(): Promise<number> {

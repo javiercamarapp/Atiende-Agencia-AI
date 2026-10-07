@@ -116,7 +116,7 @@ function verificacionesEntorno(entrada: PreflightEntrada, estados: readonly Inte
     area: "entorno",
     titulo: "El entorno verificado es producción",
     estado: prod ? "ok" : "aviso",
-    detalle: prod ? "VERCEL_ENV=production." : "Este despliegue no es producción: la lista describe SU entorno, no el de producción.",
+    detalle: prod ? (((env.VERCEL_ENV ?? "").trim() === "") ? "NODE_ENV=production (sin VERCEL_ENV)." : "VERCEL_ENV=production.") : "Este despliegue no es producción: la lista describe SU entorno, no el de producción.",
     como_resolver: { texto: "Corre la verificación contra el entorno de producción.", enlace: null },
   });
 
@@ -546,5 +546,9 @@ export function evaluarPreflight(entrada: PreflightEntrada): ResultadoPreflight 
   ];
   const cuenta = (e: PreflightEstado) => verificaciones.filter((v) => v.estado === e).length;
   const falta = cuenta("falta");
-  return { verificaciones, resumen: { total: verificaciones.length, ok: cuenta("ok"), falta, aviso: cuenta("aviso"), no_aplica: cuenta("no_aplica"), pendientes: falta, listo: falta === 0 } };
+  // Fail-closed: una fuente que no se pudo leer (0053/0057 sin aplicar, fallo de lectura, latidos ilegibles u organizacion
+  // no encontrada) deja verificaciones en `aviso`, que no cuentan como `falta`; sin esta condicion el resumen diria "listo"
+  // sin haber medido equipo, canal, privacidad, voz ni datos.
+  const fuentesLeidas = entrada.equipo.estado === "ok" && entrada.hechos.estado === "ok" && hechos !== null && entrada.crons !== null;
+  return { verificaciones, resumen: { total: verificaciones.length, ok: cuenta("ok"), falta, aviso: cuenta("aviso"), no_aplica: cuenta("no_aplica"), pendientes: falta, listo: falta === 0 && fuentesLeidas } };
 }

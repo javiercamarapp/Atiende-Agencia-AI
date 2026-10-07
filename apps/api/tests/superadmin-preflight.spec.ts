@@ -114,6 +114,25 @@ const evaluar = (parche: Partial<PreflightEntrada> = {}) => evaluarPreflight(ent
 const sinVoz = (h: OrgPreflightHechos): OrgPreflightHechos => ({ ...h, restaurantes: { ...h.restaurantes!, sucursales: h.restaurantes!.sucursales!.map((s) => ({ ...s, voz: "deshabilitada" as const })) } });
 
 describe("preflight: organizacion lista", () => {
+  it("una fuente sin leer (0053/0057 sin aplicar o lectura fallida) nunca da 'listo' aunque no haya 'falta'", () => {
+    for (const parche of [
+      { hechos: { estado: "no_migrado" } },
+      { hechos: { estado: "error" } },
+      { equipo: { estado: "no_migrado" } },
+      { crons: null },
+    ] as Partial<PreflightEntrada>[]) {
+      const r = evaluarPreflight(entrada(parche));
+      expect(r.resumen.falta).toBe(0);
+      expect(r.resumen.listo).toBe(false);
+    }
+  });
+
+  it("entorno.contexto nombra la variable que decidio produccion", () => {
+    const sinVercel = evaluar({ env: { ...ENV_COMPLETO, VERCEL_ENV: "", NODE_ENV: "production" } as PreflightEntrada["env"] });
+    expect(porId(sinVercel, "entorno.contexto").detalle).toBe("NODE_ENV=production (sin VERCEL_ENV).");
+    expect(porId(evaluar(), "entorno.contexto").detalle).toBe("VERCEL_ENV=production.");
+  });
+
   it("con todo en orden no hay ningun 'falta' y la lista dice listo", () => {
     const r = evaluarPreflight(entrada());
     expect(r.resumen.falta).toBe(0);

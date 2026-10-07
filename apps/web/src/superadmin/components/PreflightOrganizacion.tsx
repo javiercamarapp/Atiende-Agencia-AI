@@ -58,7 +58,7 @@ export function PreflightOrganizacion({ apiBaseUrl, token, organizacionId }: { r
           icon={CircleAlert}
           label="Pendientes"
           value={String(resumen.pendientes)}
-          nota={resumen.listo ? "Nada bloquea el go-live." : "Bloquean el go-live hasta resolverse."}
+          nota={resumen.listo ? "Nada bloquea el go-live." : resumen.pendientes === 0 ? "Sin pendientes, pero hay fuentes sin leer." : "Bloquean el go-live hasta resolverse."}
         />
         <StatCard variante="neutra" icon={TriangleAlert} label="Avisos" value={String(resumen.aviso)} nota="No bloquean, conviene revisarlos." />
         <StatCard variante="neutra" icon={CircleCheck} label="En orden" value={String(resumen.ok)} nota={`de ${resumen.total - resumen.no_aplica} verificaciones que aplican`} />
