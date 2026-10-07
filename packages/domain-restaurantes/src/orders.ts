@@ -14,7 +14,7 @@ import { cerrarCicloDelCliente } from "./cliente-360/memoria.ts";
 import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice, MAX_PIEZAS_POR_RENGLON, mensajeCantidadInvalida } from "./order-quote.ts";
 import { exigirPinSiPmSinZonas } from "./pin-reparto.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
-import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion } from "./pedidos-programados.ts";
+import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion, PROGRAMACION_MAXIMA_DIAS } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
 import { applyPromotionToOrder, normalizePromotionCode, selectAutomaticPromotion } from "./promotions.ts";
 import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
@@ -241,6 +241,22 @@ export interface PreparedOrder {
   readonly discount: number;
 }
 
+/** Tolerancia (minutos) para una hora de recogida "de ahora mismo": el cliente dice "paso en 5 minutos" y el modelo la redondea hacia atras. */
+const TOLERANCIA_HORA_RECOGIDA_PASADA_MIN = 10;
+
+/** Rechaza (con un mensaje que el agente puede leer y corregir) una hora de recogida ya pasada o mas alla de la ventana de programacion. */
+export function validarHoraRecogida(horaRecogida: string, ahora: Date): void {
+  const minutos = (Date.parse(horaRecogida) - ahora.getTime()) / 60_000;
+  if (minutos < -TOLERANCIA_HORA_RECOGIDA_PASADA_MIN) {
+    throw new OrderValidationError(
+      "La hora de recogida ya pasó. Confirme con el cliente a qué hora de hoy pasará y mándela con la zona horaria de la sucursal (por ejemplo -06:00); si pasa de inmediato, omita hora_recogida.",
+    );
+  }
+  if (minutos > PROGRAMACION_MAXIMA_DIAS * 24 * 60) {
+    throw new OrderValidationError(`La hora de recogida debe caer dentro de los próximos ${PROGRAMACION_MAXIMA_DIAS} días. Confirme la fecha con el cliente.`);
+  }
+}
+
 /** Cotiza un pedido completo contra el catálogo real, SIN persistir — usado también
  * por el modo de vista previa. Precio y disponibilidad siempre vienen de
  * branch_products, la fuente real por sucursal. */
@@ -261,6 +277,9 @@ export async function prepareCreateOrder(
   // R-11: pedido programado -- el horario y las promociones se evaluan en la hora ELEGIDA (no en este instante).
   const programado = payload.programadoPara ? new Date(payload.programadoPara) : null;
   if (programado) validarVentanaProgramacion(payload.programadoPara!, new Date());
+  // QA R2 caos-04: la hora de recogida que elige el cliente no puede estar en el pasado ni fuera de la ventana de programacion
+  // (un modelo que manda la fecha de ayer, o "Z" en lugar de -06:00, la corre horas atras y el pedido nacia ya vencido).
+  if (payload.horaRecogida) validarHoraRecogida(payload.horaRecogida, options.asOf ?? new Date());
   const instanteDelPedido = programado ?? options.asOf ?? new Date();
 
   const resolved = await resolveBranchOrderItems(

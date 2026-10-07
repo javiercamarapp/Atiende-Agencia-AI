@@ -195,7 +195,7 @@ export interface AutopilotoRepository {
   comandasParaAvance(limite: number): Promise<Lectura<readonly ComandaParaAvance[]>>;
   devolverHandoffsVencidos(ahora: Date, limite: number): Promise<Lectura<readonly HandoffDevuelto[]>>;
   cancelarPorCliente(organizationId: string, orderId: string, motivo: string): Promise<ResultadoCancelarCliente>;
-  marcarAgotado(organizationId: string, propertyId: string, productId: string, hasta: string): Promise<{ readonly disponible: boolean; readonly aplicado: boolean }>;
+  marcarAgotado(organizationId: string, propertyId: string, productId: string, hasta: string, hastaCalendario?: string): Promise<{ readonly disponible: boolean; readonly aplicado: boolean }>;
   reponerAgotados(ahora: Date): Promise<Lectura<readonly AgotadoRepuesto[]>>;
   muestrasTiempo(organizationId: string, propertyId: string, canal: CanalPedido, ahora: Date): Promise<Lectura<MuestrasTiempo>>;
   historialEstados(organizationId: string, orderId: string): Promise<Lectura<readonly EventoEstadoPedido[]>>;

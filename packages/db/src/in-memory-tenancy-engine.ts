@@ -111,6 +111,13 @@ export class InMemoryTenancyEngine implements TenancyEngine {
           err.code = "42883";
           throw err;
         }
+        // QA R2 automatizacion-06: el tick de restaurantes cuenta como error de la corrida un barrido de avisos que LANZA. Este motor no tiene la
+        // migracion 043 (candidatos de avisos operativos, core.emit_notification): se comporta como una base sin migrar (42883 => `disponible: false`, sin error), igual que arriba.
+        if (sql.includes("restaurantes.avisos_operativos_candidatos") || sql.includes("core.emit_notification")) {
+          const err = new Error("function restaurantes.avisos_operativos_candidatos() does not exist") as Error & { code: string };
+          err.code = "42883";
+          throw err;
+        }
         throw new Error(
           `InMemoryTenancyEngine: consulta SQL no soportada (alcance angosto a propósito, ver comentario de archivo): ${sql}`,
         );

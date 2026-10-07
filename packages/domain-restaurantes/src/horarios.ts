@@ -281,3 +281,25 @@ export function aperturaConExcepciones(
   const diaNegocio = estado.abierto && enColaDeAyer && !horarioHoy.some((t) => t.dias.includes(dia) && minutos >= aMinutos(t.abre)) ? diaAnterior : dia;
   return { estado, diaNegocio, fechaNegocio: diaNegocio === dia ? hoy : ayer };
 }
+
+// ---------------------------------------------------------------------------
+// Dia de negocio por CORTE (QA R2 automatizacion-02/08/11). Misma regla que `restaurantes.dia_negocio` de la migracion 076:
+// el corte es la hora de cierre mas tardia, despues de medianoche, de los turnos que cruzan la medianoche (PM 12:00-01:00 => 60 min) y el dia de
+// negocio de un instante es la fecha local de (instante - corte). No considera excepciones por fecha (igual que SQL).
+// ---------------------------------------------------------------------------
+
+/** Minutos despues de medianoche en que termina el dia de negocio (0 si ningun turno cruza la medianoche). */
+export function corteDiaNegocioMinutos(horario: HorarioSucursal | null | undefined): number {
+  let corte = 0;
+  for (const t of horario ?? []) {
+    const cierra = aMinutos(t.cierra);
+    if (cierra <= aMinutos(t.abre)) corte = Math.max(corte, cierra);
+  }
+  return corte;
+}
+
+/** Dia de negocio (YYYY-MM-DD) de un instante en la zona de la sucursal: el turno que cierra a la 01:00 sigue siendo el dia anterior. */
+export function diaDeNegocio(instante: Date, zonaHoraria: string | null | undefined, horario: HorarioSucursal | null | undefined): string {
+  const zona = resolverZonaHorariaNegocio(zonaHoraria);
+  return fechaLocal(new Date(instante.getTime() - corteDiaNegocioMinutos(horario) * 60_000), zona);
+}
