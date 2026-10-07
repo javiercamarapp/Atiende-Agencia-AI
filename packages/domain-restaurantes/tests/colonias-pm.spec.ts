@@ -22,8 +22,10 @@ async function sucursalQueCubre(world: Awaited<ReturnType<typeof buildInMemoryPm
 }
 
 describe("colonias del piloto en el plan del seed", () => {
-  it("carga ~180 colonias sin coordenadas (no se inventan) y reporta cuantas quedan sin asignar", () => {
-    expect(plan.colonias.length).toBeGreaterThan(150);
+  it("carga la lista unica de colonias sin coordenadas en known_zone (no se inventan) y reporta cuantas quedan sin asignar", () => {
+    // 186 en los datos: Francisco de Montejo ES el punto de T2 (ya existe como zona) y no se duplica.
+    expect(plan.colonias.length).toBe(185);
+    expect(plan.summary.coloniasEnZonaDeSucursal).toBe(1);
     expect(plan.summary).toMatchObject({ colonias: plan.colonias.length });
     expect(plan.summary.coloniasAsignadas + plan.summary.coloniasSinAsignar).toBe(plan.colonias.length);
     expect(plan.summary.coloniasSinAsignar).toBeGreaterThan(0);
@@ -32,13 +34,19 @@ describe("colonias del piloto en el plan del seed", () => {
   });
 
   it("nunca asigna una colonia a Galerias (T4) ni a Playa (T5): no reparten", () => {
-    expect(plan.colonias.filter((c) => c.branchId === "T4" || c.branchId === "T5")).toEqual([]);
+    expect(plan.colonias.filter((c) => c.branchIds.includes("T4") || c.branchIds.includes("T5"))).toEqual([]);
   });
 
-  it("las ambiguas (menos de 1 km entre las dos sucursales mas cercanas del piloto) quedan SIN asignar: no se adivina", () => {
-    const ambiguas = (data.colonias ?? []).filter((c) => c.referencia?.alerta_ambigua && c.asignacion !== "chats_t7" && c.asignacion !== "direccion_sucursal" && c.asignacion !== "dueno_zona_centro");
-    expect(ambiguas.length).toBeGreaterThan(20);
-    for (const c of ambiguas) expect(c.sucursal, c.nombre).toBeNull();
+  it("lo que queda SIN asignar es exactamente lo PENDIENTE del dueño (fuera de 8 km, homonimo con discrepancia, sin coordenada): una ambigua de menos de 1 km ya no se deja sin asignar, va a la mas cercana", () => {
+    const sinAsignar = (data.colonias ?? []).filter((c) => (c.sucursales ?? []).length === 0);
+    expect(sinAsignar.length).toBe(28);
+    for (const c of sinAsignar) {
+      expect(c.asignacion, c.nombre).toBe("sin_asignar");
+      expect(c.pendiente_dueno?.length, c.nombre).toBeGreaterThan(0);
+      expect(c.motivo_sin_asignar, c.nombre).toBe(c.pendiente_dueno?.[0]);
+    }
+    // Alcala Martin: T1 a 2.12 km y T3 a 2.92 km (ambigua para el piloto, 0.2 km de diferencia con su ficha): decide la regla de Javier.
+    expect((data.colonias ?? []).find((c) => c.nombre === "Alcala Martin")).toMatchObject({ sucursales: ["T1"], asignacion: "mas_cercana_v3" });
   });
 
   it("el SQL del seed carga las colonias sin coordenadas y la cobertura solo a zonas sin cobertura previa (no pisa al dueño)", () => {
@@ -48,8 +56,14 @@ describe("colonias del piloto en el plan del seed", () => {
     expect(sql).toMatch(/z\.fuente in \('piloto_original_merida_colonias', 'chats_t7'\)/);
   });
 
-  it("rechaza datos invalidos: sucursal que no reparte, nombre repetido, asignacion incoherente", () => {
+  it("rechaza datos invalidos: sucursal que no reparte, nombre repetido, asignacion incoherente, coordenada inventada", () => {
     const con = (c: Partial<NonNullable<PmSeedData["colonias"]>[number]>[]): PmSeedData => ({ ...data, colonias: [...(data.colonias ?? []), ...c.map((x) => ({ nombre: "Colonia Nueva", fuente: "chats_t7" as const, sucursal: "T7", asignacion: "chats_t7" as const, referencia: null, ...x }))] });
+    expect(() => buildPmSeedPlan(con([{ sucursal: undefined, sucursales: ["T7", "T7"] }]), agent)).toThrow(/repetida/);
+    expect(() => buildPmSeedPlan(con([{ sucursal: undefined, sucursales: ["T7", "T5"] }]), agent)).toThrow(/no reparte/);
+    const lat = 21.02;
+    expect(() => buildPmSeedPlan(con([{ coordenada: { lat, lng: -89.6, origen: "google", confianza: "alta" }, google: null, osm: null }]), agent)).toThrow(/inventadas/);
+    expect(() => buildPmSeedPlan(con([{ coordenada: { lat: 40, lng: -89.6, origen: "osm", confianza: "alta" }, osm: { lat: 40, lng: -89.6 } }]), agent)).toThrow(/fuera de Yucatan/);
+    expect(() => buildPmSeedPlan(con([{ pendiente_dueno: ["inventado" as never] }]), agent)).toThrow(/pendiente_dueno invalido/);
     expect(() => buildPmSeedPlan(con([{ sucursal: "T4" }]), agent)).toThrow(PmSeedError);
     expect(() => buildPmSeedPlan(con([{}, {}]), agent)).toThrow(/duplicada/);
     expect(() => buildPmSeedPlan(con([{ sucursal: null }]), agent)).toThrow(/sin_asignar/);
@@ -67,11 +81,14 @@ describe("agente de PM con las colonias cargadas (mundo en memoria del seed)", (
     vi.useRealTimers();
   });
 
-  it("las 8 colonias que confirman los chats son de T7; Los Pinos de T8; Mexico de T1", async () => {
+  it("de las 8 colonias que confirman los chats, 6 siguen en T7 (coinciden con la mas cercana) y 2 pasan a su sucursal mas cercana (decision de Javier); Los Pinos de T8; Mexico de T1", async () => {
     const world = await buildInMemoryPmWorld(plan);
-    for (const colonia of ["Temozón Norte", "Montebello", "Benito Juárez Norte", "Montes de Amé", "San Ramón Norte", "Sodzil Norte", "Cabo Norte", "Real Montejo"]) {
+    for (const colonia of ["Temozón Norte", "Montebello", "Montes de Amé", "San Ramón Norte", "Sodzil Norte", "Cabo Norte"]) {
       expect(await sucursalQueCubre(world, colonia), colonia).toBe("garcia-lavin");
     }
+    // Divergencias con los chats, documentadas en `advertencia` de los datos: la regla de la mas cercana manda.
+    expect(await sucursalQueCubre(world, "Benito Juárez Norte")).toBe("prol-montejo");
+    expect(await sucursalQueCubre(world, "Real Montejo")).toBe("fco-montejo");
     expect(await sucursalQueCubre(world, "Los Pinos")).toBe("altabrisa");
     expect(await sucursalQueCubre(world, "México")).toBe("prol-montejo");
   });
@@ -81,10 +98,11 @@ describe("agente de PM con las colonias cargadas (mundo en memoria del seed)", (
     for (const colonia of ["Alta Brisa", "Casa Altabrisa", "Plaza Alta Brisa", "Victory Altabrisa"]) expect(await sucursalQueCubre(world, colonia), colonia).toBe("altabrisa");
   });
 
-  it("'Centro' es de T1 (zona centro y norte del dueño) y gana el emparejamiento exacto sobre 'Centro Chichi Suarez'", async () => {
+  it("'Centro' va a la sucursal de despacho mas cercana (T3 a 3.5 km; antes T1 por la zona del dueño: divergencia documentada) y gana el emparejamiento exacto sobre 'Centro Chichi Suarez' (T8)", async () => {
     const world = await buildInMemoryPmWorld(plan);
-    expect(await sucursalQueCubre(world, "Centro")).toBe("prol-montejo");
-    expect(await sucursalQueCubre(world, "centro")).toBe("prol-montejo");
+    expect(await sucursalQueCubre(world, "Centro")).toBe("pensiones");
+    expect(await sucursalQueCubre(world, "centro")).toBe("pensiones");
+    expect(await sucursalQueCubre(world, "Centro Chichi Suarez")).toBe("altabrisa");
   });
 
   it("cotizar a domicilio desde T7: una colonia de T7 pasa; una de otra zona se rechaza como fuera de zona", async () => {
@@ -98,7 +116,7 @@ describe("agente de PM con las colonias cargadas (mundo en memoria del seed)", (
 
   it("una colonia conocida SIN sucursal asignada (ambigua) no se rechaza como 'fuera de zona': se manda a una persona", async () => {
     const world = await buildInMemoryPmWorld(plan);
-    const ambigua = plan.colonias.find((c) => c.branchId === null && c.name === "Alcala Martin")!;
+    const ambigua = plan.colonias.find((c) => c.branchIds.length === 0 && c.name === "Chicxulub")!;
     expect(ambigua).toBeDefined();
     const base = { organizationId: world.organizationId, branchSlug: "garcia-lavin", canal: "domicilio" as const, items: [{ productId: world.productIds.get("Coca-Cola")!, requestedQuantity: 6 }] };
     const error = await quoteOrder(world.repo, { ...base, colonia: ambigua.name }).catch((e: unknown) => e);
@@ -110,7 +128,9 @@ describe("agente de PM con las colonias cargadas (mundo en memoria del seed)", (
   it("buscar_sucursal_cercana: una colonia asignada a una sucursal ACTIVA devuelve esa sucursal sin inventar distancia", async () => {
     const world = await buildInMemoryPmWorld(plan);
     expect(await assignBranch(world.repo, { organizationId: world.organizationId, colonia: "Temozón Norte" })).toMatchObject({ estado: "asignada", branchSlug: "garcia-lavin", distanceKm: null });
-    // Una colonia ambigua no se adivina.
-    expect(await assignBranch(world.repo, { organizationId: world.organizationId, colonia: "Alcala Martin" })).toMatchObject({ estado: "no_reconocida" });
+    // Una colonia PENDIENTE del dueño (Chicxulub: a 29 km de la sucursal de despacho mas cercana) no se adivina.
+    expect(await assignBranch(world.repo, { organizationId: world.organizationId, colonia: "Chicxulub" })).toMatchObject({ estado: "no_reconocida" });
+    // Con la regla de la mas cercana, Alcala Martin (antes ambigua) va a T1.
+    expect(await sucursalQueCubre(world, "Alcala Martin")).toBe("prol-montejo");
   });
 });

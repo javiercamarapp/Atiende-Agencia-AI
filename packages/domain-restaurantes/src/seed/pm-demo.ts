@@ -47,6 +47,16 @@ export interface PmSeedBranch {
   /** Direccion (del dueño) cuyas coordenadas aun NO se verificaron en una fuente citable: `lat`/`lng` siguen en null y la sucursal no
    * participa en la asignacion por distancia (no se inventan coordenadas). */
   readonly coordenadas_pendientes_de_verificar?: string;
+  /** Pin de Google Maps (ficha de negocio) propuesto para esta sucursal. Se guarda APARTE de `lat`/`lng` vigentes y el plan NO lo usa: lo adopta el dueño
+   * al confirmarlo (hasta entonces las coordenadas vigentes siguen desviadas; la desviacion queda documentada en `tests/colonias-pm-datos.spec.ts`). */
+  readonly coordenadas_propuestas?: {
+    readonly lat: number;
+    readonly lng: number;
+    readonly fuente: string;
+    readonly vigentes_de_main?: readonly [number, number] | null;
+    readonly estado: string;
+    readonly pendiente_dueno?: string;
+  };
   /** Slugs con los que esta sucursal se sembro en versiones ANTERIORES del seed (p. ej. "t4-pendiente" antes de llamarse
    * "galerias"): el seed re-ejecutado sobre una base vieja la reconoce por slug (estable), la RENOMBRA y no crea una segunda
    * fila que choque con `unique (organization_id, slug)`. */
@@ -119,23 +129,44 @@ export interface PmSeedPromotion {
   readonly sucursales?: readonly string[];
 }
 
-/** Procedencia de la sucursal asignada a una colonia (`known_zone.asignacion_fuente`, migracion 056). */
-export type PmColoniaAsignacion = "chats_t7" | "direccion_sucursal" | "dueno_zona_centro" | "distancia_piloto" | "reasignada_desde_galerias" | "sin_asignar";
-const COLONIA_ASIGNACIONES: readonly string[] = ["chats_t7", "direccion_sucursal", "dueno_zona_centro", "distancia_piloto", "reasignada_desde_galerias", "sin_asignar"];
+/** Procedencia de la sucursal asignada a una colonia (`known_zone.asignacion_fuente`, migracion 056). `mas_cercana_v3` = sucursal de despacho mas cercana (<= 8 km) segun `colonias-v3`. */
+export type PmColoniaAsignacion = "mas_cercana_v3" | "chats_t7" | "direccion_sucursal" | "dueno_zona_centro" | "distancia_piloto" | "reasignada_desde_galerias" | "sin_asignar";
+const COLONIA_ASIGNACIONES: readonly string[] = ["mas_cercana_v3", "chats_t7", "direccion_sucursal", "dueno_zona_centro", "distancia_piloto", "reasignada_desde_galerias", "sin_asignar"];
+/** Motivos por los que una colonia queda SIN ASIGNAR esperando una decision del dueño. */
+export type PmColoniaPendiente = "fuera_de_8km" | "homonimo_discrepancia" | "sin_coordenada";
+const COLONIA_PENDIENTES: readonly string[] = ["fuera_de_8km", "homonimo_discrepancia", "sin_coordenada"];
 /** Sucursales que NO reparten a domicilio (Galerias, sin pedidos; Playa, solo recoger y de temporada): nunca reciben cobertura. */
 const SUCURSALES_SIN_REPARTO: readonly string[] = ["T4", "T5"];
+const COORDENADA_ORIGENES: readonly string[] = ["google", "osm", "promedio"];
+/** Caja de Yucatan central: una coordenada fuera de ella es un error de captura, no una colonia. */
+const LAT_RANGO: readonly [number, number] = [20.5, 21.6];
+const LNG_RANGO: readonly [number, number] = [-90.3, -89.2];
 
-/** Colonia del piloto original (exportada sin lat/lng: no se inventan) con la sucursal que la atiende segun el seed. */
+/** Colonia del piloto original con la(s) sucursal(es) que la atienden segun el seed. */
 export interface PmSeedColonia {
   readonly nombre: string;
   readonly fuente: "piloto_original_merida_colonias" | "chats_t7";
-  /** id de sucursal (T1...) que la atiende; `null` = sin asignar (ambigua o sin dato): el agente no la valida y el reporte la marca. */
-  readonly sucursal: string | null;
+  /** ids de sucursal (T1...) que la atienden: una o varias (cobertura multiple); vacio = sin asignar (pendiente o ambigua): el agente no la valida y la pasa a una persona. */
+  readonly sucursales?: readonly string[];
+  /** Compatibilidad con el formato anterior (una sola sucursal; `null` = sin asignar). Si viene `sucursales`, manda `sucursales`. */
+  readonly sucursal?: string | null;
   readonly asignacion: PmColoniaAsignacion;
   readonly motivo_sin_asignar?: string;
+  /** Decisiones del dueño que siguen abiertas para esta colonia (una colonia SIN asignar por esto no se asigna hasta que las resuelva). */
+  readonly pendiente_dueno?: readonly PmColoniaPendiente[];
   readonly advertencia?: string;
   /** Lo que dio el piloto: sucursal mas cercana y segunda con sus km. `null` = la colonia no estaba en el export (viene de los chats). */
   readonly referencia: { readonly sucursal: string; readonly km: number; readonly segunda: string; readonly segunda_km: number; readonly alerta_ambigua: boolean } | null;
+  /** Coordenada FINAL elegida (Google, OSM o promedio de ambos) con su confianza. Solo documentacion/auditoria: NO se escribe en `known_zone` (ver `colonias_meta`). `null` = sin coordenada. */
+  readonly coordenada?: { readonly lat: number; readonly lng: number; readonly origen: "google" | "osm" | "promedio"; readonly confianza: string } | null;
+  /** Las dos lecturas crudas de las que sale `coordenada` (para que se pueda comprobar que no se invento ninguna). */
+  readonly google?: { readonly lat: number; readonly lng: number } | null;
+  readonly osm?: { readonly lat: number; readonly lng: number } | null;
+  /** Sucursal de despacho mas cercana (Haversine desde el pin de Google) con sus km y la segunda. */
+  readonly mas_cercana?: { readonly sucursal: string; readonly km: number; readonly segunda: string; readonly segunda_km: number; readonly fuera_de_8km: boolean } | null;
+  readonly revisar?: boolean;
+  /** Cobertura que hoy tiene la base real (zonas-pm-v1 + v2b, 169 filas): el seed no la modifica; sirve para detectar divergencias. */
+  readonly cobertura_base_real?: readonly string[];
 }
 
 export interface PmSeedData {
@@ -292,12 +323,12 @@ export interface PmSeedPlan {
   }[];
   /** Puntos de referencia de las sucursales con coordenadas reales; cada uno cubre SU sucursal (`branchId`). */
   readonly zones: readonly { readonly name: string; readonly lat: number; readonly lng: number; readonly branchId: string }[];
-  /** Colonias sin coordenadas (migracion 056) con la sucursal que las cubre (`branchId`; null = sin asignar) y lo que dio el piloto. */
+  /** Colonias sin coordenadas (migracion 056) con las sucursales que las cubren (`branchIds`; vacio = sin asignar) y lo que dio el piloto. */
   readonly colonias: readonly {
     readonly name: string;
     readonly fuente: string;
     readonly asignacionFuente: PmColoniaAsignacion;
-    readonly branchId: string | null;
+    readonly branchIds: readonly string[];
     readonly refSlug: string | null;
     readonly refKm: number | null;
     readonly ref2Slug: string | null;
@@ -356,6 +387,12 @@ export interface PmSeedPlan {
     readonly colonias: number;
     readonly coloniasAsignadas: number;
     readonly coloniasSinAsignar: number;
+    /** Colonias cubiertas por dos o mas sucursales (cobertura multiple). */
+    readonly coloniasCubiertasPorDos: number;
+    /** Filas de `branch_delivery_zone` que aportan las colonias (una por colonia y sucursal; sin contar los puntos de sucursal). */
+    readonly coberturasColonias: number;
+    /** Colonias de la lista que SON el punto de referencia de una sucursal (p. ej. Francisco de Montejo): no se duplican, ya existen como zona. */
+    readonly coloniasEnZonaDeSucursal: number;
     readonly promotions: number;
     readonly skippedPromotions: readonly string[];
     /** Productos por id de sucursal. */
@@ -420,6 +457,10 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
     nombres.add(b.nombre);
     for (const anterior of b.slugs_anteriores ?? []) {
       if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(anterior)) fail(`${b.nombre}: slug anterior invalido: ${anterior}`);
+    }
+    const prop = b.coordenadas_propuestas;
+    if (prop && (!Number.isFinite(prop.lat) || !Number.isFinite(prop.lng) || prop.lat < LAT_RANGO[0] || prop.lat > LAT_RANGO[1] || prop.lng < LNG_RANGO[0] || prop.lng > LNG_RANGO[1])) {
+      fail(`${b.nombre}: coordenadas_propuestas fuera de Yucatan.`);
     }
     const dias = b.directorio?.dias_domicilio;
     if (dias && (dias.length === 0 || dias.length > 7 || dias.some((x) => !Number.isInteger(x) || x < 0 || x > 6))) fail(`${b.nombre}: directorio.dias_domicilio debe ser una lista de 1 a 7 dias entre 0 (domingo) y 6 (sabado), o null.`);
@@ -548,32 +589,58 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
 
   // --- colonias del piloto original: SIN coordenadas (no se inventan), con la sucursal que las cubre ----------------
   const slugPorId = new Map(data.sucursales.map((b) => [b.id, b.slug] as const));
-  const nombresNormalizados = new Set<string>([...data.sucursales.map((b) => normalizeZoneText(b.nombre))]);
-  const colonias = (data.colonias ?? []).map((c) => {
+  const zonasDePunto = new Map(zones.map((z) => [normalizeZoneText(z.name), z] as const));
+  // Una colonia puede llamarse como una sucursal SIN punto de referencia (Pensiones, Galerias): es la colonia, no la zona de la sucursal.
+  const nombresNormalizados = new Set<string>(zonasDePunto.keys());
+  const enZonaDeSucursal = new Set<string>();
+  const colonias = (data.colonias ?? []).flatMap((c) => {
     if (typeof c.nombre !== "string" || c.nombre.trim().length === 0 || c.nombre.length > 120) fail(`Colonia invalida: ${JSON.stringify(c.nombre)}`);
     const clave = normalizeZoneText(c.nombre);
     if (clave.length < 4) fail(`Colonia "${c.nombre}": el nombre normalizado debe tener al menos 4 caracteres.`);
-    if (nombresNormalizados.has(clave)) fail(`Colonia duplicada (o igual al nombre de una sucursal): ${c.nombre}`);
-    nombresNormalizados.add(clave);
     if (!COLONIA_ASIGNACIONES.includes(c.asignacion)) fail(`Colonia "${c.nombre}": asignacion invalida (${c.asignacion}).`);
-    if ((c.sucursal === null) !== (c.asignacion === "sin_asignar")) fail(`Colonia "${c.nombre}": sin_asignar y sucursal nula deben coincidir.`);
-    if (c.sucursal !== null && (!branchIds.has(c.sucursal) || SUCURSALES_SIN_REPARTO.includes(c.sucursal))) fail(`Colonia "${c.nombre}": la sucursal ${c.sucursal} no existe o no reparte a domicilio.`);
+    const sucursales = c.sucursales ?? (c.sucursal ? [c.sucursal] : []);
+    if (new Set(sucursales).size !== sucursales.length) fail(`Colonia "${c.nombre}": sucursal repetida en la cobertura.`);
+    if ((sucursales.length === 0) !== (c.asignacion === "sin_asignar")) fail(`Colonia "${c.nombre}": sin_asignar y sin sucursales deben coincidir.`);
+    for (const id of sucursales) if (!branchIds.has(id) || SUCURSALES_SIN_REPARTO.includes(id)) fail(`Colonia "${c.nombre}": la sucursal ${id} no existe o no reparte a domicilio.`);
     if (c.fuente !== "piloto_original_merida_colonias" && c.fuente !== "chats_t7") fail(`Colonia "${c.nombre}": fuente invalida.`);
+    for (const m of c.pendiente_dueno ?? []) if (!COLONIA_PENDIENTES.includes(m)) fail(`Colonia "${c.nombre}": pendiente_dueno invalido (${m}).`);
+    if (c.coordenada) {
+      const { lat, lng, origen } = c.coordenada;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < LAT_RANGO[0] || lat > LAT_RANGO[1] || lng < LNG_RANGO[0] || lng > LNG_RANGO[1]) fail(`Colonia "${c.nombre}": coordenada fuera de Yucatan.`);
+      if (!COORDENADA_ORIGENES.includes(origen)) fail(`Colonia "${c.nombre}": origen de coordenada invalido (${origen}).`);
+      // Ninguna coordenada se inventa: sale de una de las dos lecturas crudas o del punto medio de ambas.
+      const igual = (x: { lat: number; lng: number } | null | undefined, lat2: number, lng2: number) => x != null && Math.abs(x.lat - lat2) < 1e-6 && Math.abs(x.lng - lng2) < 1e-6;
+      const ok =
+        origen === "google" ? igual(c.google, lat, lng) : origen === "osm" ? igual(c.osm, lat, lng) : c.google != null && c.osm != null && igual({ lat: (c.google.lat + c.osm.lat) / 2, lng: (c.google.lng + c.osm.lng) / 2 }, lat, lng);
+      if (!ok) fail(`Colonia "${c.nombre}": la coordenada no coincide con su lectura de ${origen}; no se aceptan coordenadas inventadas.`);
+    }
     const ref = c.referencia;
     if (ref !== null) {
       if (!slugPorId.has(ref.sucursal) || !slugPorId.has(ref.segunda)) fail(`Colonia "${c.nombre}": la referencia del piloto nombra una sucursal que no existe.`);
       if (!(ref.km >= 0) || !(ref.segunda_km >= 0)) fail(`Colonia "${c.nombre}": los km del piloto no pueden ser negativos.`);
     }
-    return {
-      name: c.nombre.trim(),
-      fuente: c.fuente,
-      asignacionFuente: c.asignacion,
-      branchId: c.sucursal,
-      refSlug: ref ? slugPorId.get(ref.sucursal)! : null,
-      refKm: ref ? ref.km : null,
-      ref2Slug: ref ? slugPorId.get(ref.segunda)! : null,
-      ref2Km: ref ? ref.segunda_km : null,
-    };
+    const zonaPunto = zonasDePunto.get(clave);
+    if (zonaPunto) {
+      // La colonia ES el punto de referencia de una sucursal: ya existe como zona (paso 6) y esa sucursal la cubre. Solo se admite si coincide.
+      if (sucursales.length !== 1 || sucursales[0] !== zonaPunto.branchId) fail(`Colonia "${c.nombre}": coincide con el punto de la sucursal ${zonaPunto.branchId} y debe cubrirla solo esa sucursal.`);
+      if (enZonaDeSucursal.has(clave)) fail(`Colonia duplicada (o igual al nombre de una sucursal): ${c.nombre}`);
+      enZonaDeSucursal.add(clave);
+      return [];
+    }
+    if (nombresNormalizados.has(clave)) fail(`Colonia duplicada (o igual al nombre de una sucursal): ${c.nombre}`);
+    nombresNormalizados.add(clave);
+    return [
+      {
+        name: c.nombre.trim(),
+        fuente: c.fuente,
+        asignacionFuente: c.asignacion,
+        branchIds: sucursales,
+        refSlug: ref ? slugPorId.get(ref.sucursal)! : null,
+        refKm: ref ? ref.km : null,
+        ref2Slug: ref ? slugPorId.get(ref.segunda)! : null,
+        ref2Km: ref ? ref.segunda_km : null,
+      },
+    ];
   });
 
   // --- promociones ---------------------------------------------------------------------------------
@@ -712,8 +779,11 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       branchProducts,
       zones: zones.length,
       colonias: colonias.length,
-      coloniasAsignadas: colonias.filter((c) => c.branchId !== null).length,
-      coloniasSinAsignar: colonias.filter((c) => c.branchId === null).length,
+      coloniasAsignadas: colonias.filter((c) => c.branchIds.length > 0).length,
+      coloniasSinAsignar: colonias.filter((c) => c.branchIds.length === 0).length,
+      coloniasCubiertasPorDos: colonias.filter((c) => c.branchIds.length > 1).length,
+      coberturasColonias: colonias.reduce((n, c) => n + c.branchIds.length, 0),
+      coloniasEnZonaDeSucursal: enZonaDeSucursal.size,
       promotions: promotions.length,
       skippedPromotions: data.promociones_no_modeladas.map((p) => `${p.id}: ${p.motivo}`),
       productsByBranch,
@@ -912,16 +982,16 @@ begin
       ref2_sucursal_slug = x."ref2Slug", ref2_km = x."ref2Km"
     from jsonb_to_recordset(v->'colonias') as x(name text, fuente text, "asignacionFuente" text, "refSlug" text, "refKm" numeric, "ref2Slug" text, "ref2Km" numeric)
     where z.organization_id = v_org and z.name = x.name and z.fuente in ('piloto_original_merida_colonias', 'chats_t7');
-  -- 6c) cobertura de entrega (branch_delivery_zone): el punto de referencia de cada sucursal cubre SU sucursal y cada colonia asignada cubre la suya.
+  -- 6c) cobertura de entrega (branch_delivery_zone): el punto de referencia de cada sucursal cubre SU sucursal y cada colonia asignada cubre la suya (o las suyas: cobertura multiple, una fila por sucursal).
   -- Solo se agrega a una zona que NO tiene ninguna cobertura todavia: una colonia que el dueño MOVIO a otra sucursal en la pantalla de Reglas de la
-  -- sucursal no se repone en la original (si la dejo sin ninguna sucursal, el seed la vuelve a asignar). Una colonia SIN asignar (branchId nulo) no
+  -- sucursal no se repone en la original (si la dejo sin ninguna sucursal, el seed la vuelve a asignar). Una colonia SIN asignar (sin sucursales) no
   -- recibe ninguna: el agente no la valida y la pasa a una persona.
   insert into restaurantes.branch_delivery_zone (property_id, zone_id, organization_id)
     select p.id, z.id, v_org
     from (
       select x.name as zname, x."branchId" as bid from jsonb_to_recordset(v->'zones') as x(name text, "branchId" text)
       union all
-      select c.name, c."branchId" from jsonb_to_recordset(v->'colonias') as c(name text, "branchId" text) where c."branchId" is not null
+      select c.name, cb.id from jsonb_to_recordset(v->'colonias') as c(name text, "branchIds" jsonb), jsonb_array_elements_text(c."branchIds") as cb(id)
     ) cov
     join jsonb_to_recordset(v->'branches') as b(id text, name text) on b.id = cov.bid
     join core.property p on p.organization_id = v_org and p.name = b.name
