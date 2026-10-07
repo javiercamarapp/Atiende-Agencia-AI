@@ -213,6 +213,9 @@ export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEsp
 export type { RecepcionConEspera } from "./whatsapp/inbound.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
 export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
+export { UMBRAL_AVISOS_AGRUPADOS, procesarEstadosEntrega } from "./whatsapp/estados-entrega.ts";
+export type { EmisionEntregaFallida, EventoEntregaFallida, ProcesarEstadosEntregaOptions, ResumenEstadosEntrega } from "./whatsapp/estados-entrega.ts";
+export type { EstadoEntregaEntrante, MotivoFalloEntregaGuardado, RegistroEstadoEntrega } from "./repository.ts";
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 

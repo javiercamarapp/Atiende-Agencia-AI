@@ -345,9 +345,9 @@ export class WhatsAppOutboundDispatcher {
     }
 
     try {
-      await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}), ...(templateApproved ? { templateApproved: true } : {}), ...(payload.solicitar_ubicacion ? { solicitarUbicacion: true } : {}) });
+      const enviado = await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}), ...(templateApproved ? { templateApproved: true } : {}), ...(payload.solicitar_ubicacion ? { solicitarUbicacion: true } : {}) });
       await this.breaker?.reportSuccess(payload.phone_number_id);
-      await port.markSent(item.id);
+      await port.markSent(item.id, { providerMessageId: enviado.providerMessageId, ...(enviado.enviadoComo ? { enviadoComo: enviado.enviadoComo } : {}) });
       if (medidor && medicion) {
         try {
           await medidor.despuesDeEnviar(medicion);

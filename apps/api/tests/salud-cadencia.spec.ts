@@ -4,6 +4,9 @@
 // realmente los 21 crons declarados en vercel.json (falla si alguien agrega
 // un cron a vercel.json sin que este módulo sepa derivar su cadencia, o si
 // alguien borra un cron de vercel.json sin darse cuenta).
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { cadenciaMinutosPorRuta, minutosEsperadosDeCron, rutasDeCronDeclaradas } from "../src/salud/cadencia.ts";
 
@@ -49,9 +52,10 @@ describe("minutosEsperadosDeCron", () => {
 });
 
 describe("cadenciaMinutosPorRuta / rutasDeCronDeclaradas", () => {
-  it("cubre los 35 crons reales de vercel.json, todos con cadencia determinable (> 0)", () => {
+  it("cubre TODOS los crons reales de vercel.json (el total se lee del archivo: agregar un cron ya no obliga a tocar este numero), todos con cadencia determinable (> 0)", () => {
     const rutas = rutasDeCronDeclaradas();
-    expect(rutas.length).toBe(35);
+    const vercel = JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "vercel.json"), "utf8")) as { crons: unknown[] };
+    expect(rutas.length).toBe(vercel.crons.length);
 
     const mapa = cadenciaMinutosPorRuta();
     for (const ruta of rutas) {
