@@ -716,7 +716,10 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
       if (snap === null) return { result: { confirmado: true, aviso: "confirmación no registrada por el servidor todavía" }, orderId: null, propertyId: null };
-      const cited = typeof input.quote_hash === "string" ? input.quote_hash : undefined;
+      // El historial de WhatsApp no trae los resultados de las herramientas: el modelo no recuerda el hash y manda relleno ("N/A", "", "pendiente"), que rechazaba la confirmacion
+      // ("no es el de la ultima cotizacion") y terminaba en falla_sistema con un si claro (R2W11, R2W21). Solo se compara un hash con forma de hash; el pedido que se crea sigue
+      // atado a la cotizacion por su huella (assertCanCreate) y la confirmacion exige un turno distinto al de la cotizacion.
+      const cited = typeof input.quote_hash === "string" && /^[0-9a-f]{32}$/i.test(input.quote_hash.trim()) ? input.quote_hash.trim().toLowerCase() : undefined;
       const current = assertCanConfirm(snap, { now: flowNow(flow), turn: flow.turn, quoteHashCited: cited });
       if (snap.state !== "cotizado") {
         return { result: { confirmado: true, quote_hash: current.quoteHash }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
