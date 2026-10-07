@@ -134,7 +134,9 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
     patron: `${B}/orders`,
     manejador: (p) => {
       const estado = p.query.get("status");
-      return { orders: ordenes(p).filter((o) => (estado ? o.status === estado : true)), nextCursor: null };
+      // Con varias sucursales sembradas (qa-r2-botones) cada sucursal ve solo sus pedidos, como el servidor real con branchId/propertyId.
+      const multisucursal = p.estado.obtener<unknown[]>("rest.branches", () => [{ propertyId: PROP.id, name: PROP.nombre, slug: "centro" }]).length > 1;
+      return { orders: ordenes(p).filter((o) => (estado ? o.status === estado : true) && (!multisucursal || o.propertyId === p.params["id"])), nextCursor: null };
     },
   },
   {
@@ -494,7 +496,7 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   { metodo: "POST", patron: `${B}/handoffs/:handoffId/cerrar`, manejador: (p) => { p.estado.guardar("rest.handoff-estado", "cerrada"); return { estado: "cerrada", cambio: true }; } },
   { metodo: "POST", patron: `${B}/handoffs/:handoffId/notas`, manejador: (p) => { const notas = p.estado.obtener("rest.handoff-notas", () => [] as unknown[]); const texto = String(((p.cuerpo ?? {}) as { texto?: string }).texto ?? ""); notas.push({ id: `nota-${notas.length + 1}`, autor: "Owner restaurantes", texto, creadoEn: new Date().toISOString() }); return { id: `nota-${notas.length}` }; } },
   { metodo: "POST", patron: `${B}/handoffs/:handoffId/responder`, manejador: () => ({ encolado: true }) },
-  { metodo: "GET", patron: `${B}/callbacks`, manejador: () => ({ disponible: true, items: [] }) },
+  { metodo: "GET", patron: `${B}/callbacks`, manejador: (p) => ({ disponible: true, items: p.estado.obtener("rest.callbacks", () => [] as unknown[]) }) },
   { metodo: "GET", patron: `${B}/turnos`, manejador: (p) => ({ disponible: true, turnos: p.estado.obtener("rest.turnos", () => [{ id: "turno-1", nombre: "Comida", dias: [1, 2, 3, 4, 5, 6], inicia: "12:00", termina: "01:00", miembros: [{ userId: "usr-1", nombre: "Lucia Xool", orden: 1 }] }]), cobertura: COBERTURA }) },
   { metodo: "PUT", patron: `${B}/turnos`, manejador: (p) => { const t = ((p.cuerpo ?? {}) as { turnos?: unknown[] }).turnos ?? []; p.estado.guardar("rest.turnos", t); return { disponible: true }; } },
 
