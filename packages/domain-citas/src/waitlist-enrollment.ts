@@ -1,6 +1,9 @@
 // Inscripcion en la lista de espera (QA R1 features-12): hasta ahora la lista solo se LEIA (aviso al liberar un horario, broadcast) pero nadie podia
-// anotarse: ni el staff desde el panel ni el agente de WhatsApp/voz. Una sola funcion para los tres canales; no requiere migracion (la tabla
-// `citas.appointment_waitlist`, su politica de staff y el grant de insercion existen desde 003; el agente corre en sesion de sistema).
+// anotarse: ni el staff desde el panel ni el agente de WhatsApp/voz. Una sola funcion para los tres canales.
+//   * Panel (sesion de staff): INSERT directo; lo autoriza la politica de RLS de staff de `citas.appointment_waitlist` (003).
+//   * Agente de WhatsApp/voz (`sistema: true`): la sesion de sistema es el rol `authenticated` con `auth.uid()` NULL, SUJETO a RLS (no es service_role ni
+//     BYPASSRLS), y la unica politica de la tabla es la de staff, asi que no puede leer ni insertar directo. Usa la funcion `security definer` de
+//     solo-sistema `citas.system_enroll_waitlist` (migracion 034). Sin esa migracion, la inscripcion del agente responde "no disponible aun".
 import { AppointmentConflictError, AppointmentNotFoundError, AppointmentValidationError } from "./errors.ts";
 import type { CitasRepository, WaitlistCandidateRow } from "./repository.ts";
 
@@ -57,7 +60,7 @@ export interface WaitlistEnrollment {
 }
 
 /** Anota a un cliente en la lista de espera (o devuelve su anotacion vigente identica: reintentar no duplica). */
-export async function enrollInWaitlist(repo: CitasRepository, raw: WaitlistEnrollmentPayload): Promise<WaitlistEnrollment> {
+export async function enrollInWaitlist(repo: CitasRepository, raw: WaitlistEnrollmentPayload, opciones: { readonly sistema?: boolean } = {}): Promise<WaitlistEnrollment> {
   const phone = typeof raw.customerPhone === "string" ? raw.customerPhone.trim() : "";
   if (!raw.organizationId?.trim() || !phone || phone.length > 32) throw new AppointmentValidationError("customer_phone es requerido (máximo 32 caracteres).");
   const name = opcional(raw.customerName);
@@ -80,10 +83,13 @@ export async function enrollInWaitlist(repo: CitasRepository, raw: WaitlistEnrol
   if (providerId !== null && !(await repo.findProvider(raw.organizationId, providerId))) throw new AppointmentNotFoundError("Proveedor no encontrado.");
   if (serviceId !== null && !(await repo.findService(raw.organizationId, serviceId))) throw new AppointmentNotFoundError("Servicio no encontrado.");
 
-  const result = await repo.insertWaitlistEntry(
-    { organizationId: raw.organizationId, customerPhone: phone, customerName: name, providerId, serviceId, preferredDateFrom: from, preferredDateTo: to, preferredTimeWindow: franja as FranjaListaEspera },
-    MAX_LISTA_ESPERA_ACTIVAS_POR_TELEFONO,
-  );
+  const entrada: NewWaitlistEntryInput = { organizationId: raw.organizationId, customerPhone: phone, customerName: name, providerId, serviceId, preferredDateFrom: from, preferredDateTo: to, preferredTimeWindow: franja as FranjaListaEspera };
+  const result = opciones.sistema
+    ? await repo.insertWaitlistEntryAsSystem(entrada, MAX_LISTA_ESPERA_ACTIVAS_POR_TELEFONO)
+    : await repo.insertWaitlistEntry(entrada, MAX_LISTA_ESPERA_ACTIVAS_POR_TELEFONO);
+  if (result.outcome === "unavailable") {
+    throw new AppointmentConflictError("La lista de espera automática aún no está disponible en este negocio. Ofrece otro horario o pasa a la persona con alguien del equipo.");
+  }
   if (result.outcome === "too_many") {
     throw new AppointmentConflictError(`Este número ya tiene ${MAX_LISTA_ESPERA_ACTIVAS_POR_TELEFONO} anotaciones activas en la lista de espera. Espera a que se atienda alguna.`);
   }

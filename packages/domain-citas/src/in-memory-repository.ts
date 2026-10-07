@@ -1275,6 +1275,10 @@ export class InMemoryCitasRepository implements CitasRepository {
     row.claimedAt = null;
   }
 
+  async insertWaitlistEntryAsSystem(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult | { readonly outcome: "unavailable" }> {
+    return this.insertWaitlistEntry(input, maxActivePerPhone);
+  }
+
   async insertWaitlistEntry(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult> {
     const vivas = [...this.waitlist.values()].filter((w) => w.organizationId === input.organizationId && w.customerPhone === input.customerPhone && w.status === "active" && Date.parse(w.expiresAt) > Date.now());
     const identica = vivas.find(

@@ -1536,6 +1536,61 @@ export class PostgresCitasRepository implements CitasRepository {
     return { outcome: "created", entry: aFila(rows[0]!) };
   }
 
+  async insertWaitlistEntryAsSystem(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult | { readonly outcome: "unavailable" }> {
+    return runWithSavepointFallback<InsertWaitlistResult | { readonly outcome: "unavailable" }>({
+      session: this.db,
+      savepointName: "sp_citas_system_enroll_waitlist",
+      primary: async () => {
+        const { rows } = await this.db.query<{
+          out_outcome: "created" | "already_waiting" | "too_many";
+          out_id: string | null;
+          out_customer_phone: string | null;
+          out_customer_name: string | null;
+          out_notified_count: number | null;
+          out_provider_id: string | null;
+          out_service_id: string | null;
+          out_preferred_date_from: string | null;
+          out_preferred_date_to: string | null;
+          out_preferred_time_window: "morning" | "afternoon" | "evening" | "any" | null;
+          out_created_at: string | null;
+        }>(`select * from citas.system_enroll_waitlist($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9);`, [
+          input.organizationId,
+          input.customerPhone,
+          input.customerName,
+          input.providerId,
+          input.serviceId,
+          input.preferredDateFrom,
+          input.preferredDateTo,
+          input.preferredTimeWindow,
+          maxActivePerPhone,
+        ]);
+        const row = rows[0];
+        if (!row) return { outcome: "unavailable" as const };
+        if (row.out_outcome === "too_many") return { outcome: "too_many" as const };
+        return {
+          outcome: row.out_outcome,
+          entry: {
+            id: row.out_id!,
+            customerPhone: row.out_customer_phone!,
+            customerName: row.out_customer_name,
+            notifiedCount: row.out_notified_count ?? 0,
+            providerId: row.out_provider_id,
+            serviceId: row.out_service_id,
+            preferredDateFrom: row.out_preferred_date_from,
+            preferredDateTo: row.out_preferred_date_to,
+            preferredTimeWindow: row.out_preferred_time_window ?? "any",
+            createdAt: row.out_created_at!,
+          },
+        };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.system_enroll_waitlist"),
+      fallback: (err) => {
+        console.warn("insertWaitlistEntryAsSystem: citas.system_enroll_waitlist no existe todavía (migración 034 pendiente de aplicar) -- lista de espera del agente no disponible aún:", err instanceof Error ? err.message : err);
+        return Promise.resolve({ outcome: "unavailable" as const });
+      },
+    });
+  }
+
   async loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]> {
     const { rows } = await this.db.query<{
       id: string;

@@ -748,6 +748,11 @@ export interface CitasRepository {
   /** QA R1 features-12 -- anota a un cliente en `citas.appointment_waitlist` (existe desde 003, sin migracion nueva). Idempotente: una anotacion ACTIVA identica
    * (mismo telefono, proveedor, servicio, fechas y franja) se devuelve tal cual (`already_waiting`); mas de `maxActivePerPhone` activas por telefono -> `too_many`. */
   insertWaitlistEntry(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult>;
+  /** Igual que `insertWaitlistEntry`, pero para la sesion de SISTEMA (agente de WhatsApp/voz: rol `authenticated` con `auth.uid()` NULL, sujeto a RLS). La
+   * unica politica de `citas.appointment_waitlist` es la de staff, asi que el SELECT/INSERT directo no funciona ahi: se hace con la funcion `security definer`
+   * de solo-sistema `citas.system_enroll_waitlist` (migracion 034), que ademas serializa por (organizacion, telefono). Si la migracion 034 aun no esta aplicada
+   * (42883/42P01/42703) devuelve `{ outcome: "unavailable" }` bajo SAVEPOINT (nunca un 500 ni una transaccion abortada). */
+  insertWaitlistEntryAsSystem(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult | { readonly outcome: "unavailable" }>;
   /** f2-citas-lista-de-espera — igual que `loadLiveWaitlistCandidates`, pero para
    * sesión de SISTEMA (`auth.uid()` null): `citas.appointment_waitlist` solo tiene
    * policy de RLS de staff (membership), así que el SELECT plano de

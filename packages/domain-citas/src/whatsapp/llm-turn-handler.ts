@@ -467,7 +467,7 @@ export async function executeToolCall(
             preferredDateFrom: str(input.date_from),
             preferredDateTo: str(input.date_to),
             preferredTimeWindow: str(input.time_window),
-          });
+          }, { sistema: true });
           return { result: { waitlist: { id: entry.id, already_on_list: !created } }, ...noFailure };
         }
         default:
