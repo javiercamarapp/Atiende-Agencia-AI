@@ -39,6 +39,10 @@ describe("ids de ruta que no son uuid -> null (404), sin consultar la base", () 
   it("un uuid valido SI consulta la base (el atajo no esconde pedidos reales)", async () => {
     const session = new AbortAwareFakeSession([{ match: /from restaurantes\.orders/, respond: () => [] }]);
     expect(await new PostgresRestaurantesRepository(session).findOrderById(ORG, ID_VALIDO)).toBeNull();
-    expect(session.calls.length).toBe(1);
+    // Desde #467 findOrderById pasa primero por restaurantes.sistema_pedido_por_id (en SAVEPOINT) y, sin resultado, cae a la consulta directa:
+    // lo que importa es que un uuid valido SI llega a la base (funcion y consulta directa), a diferencia de uno que no es uuid (0 llamadas).
+    expect(session.calls.length).toBeGreaterThan(0);
+    expect(session.calls.some((c) => /sistema_pedido_por_id/.test(c))).toBe(true);
+    expect(session.calls.some((c) => /^select id, organization_id, property_id/.test(c))).toBe(true);
   });
 });
