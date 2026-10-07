@@ -1,6 +1,6 @@
 # XSD oficial del complemento Nómina 1.2
 
-Descargados de los URL oficiales del SAT (sat.gob.mx/sitio_internet/cfd/...). Usados por `tests/nomina-xml-xsd.spec.ts` con `xmllint`.
+Descargados de los URL oficiales del SAT (sat.gob.mx/sitio_internet/cfd/...). Usados por `tests/nomina-xml-xsd.spec.ts` con `xmllint-wasm` (libxml2 en WebAssembly, dependencia de desarrollo de domain-despachos).
 
 | Archivo | Origen | Cambio |
 |---|---|---|

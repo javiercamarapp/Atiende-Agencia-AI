@@ -1,19 +1,18 @@
 // El complemento nomina12:Nomina generado se valida contra el XSD oficial del SAT (nomina12.xsd, rev vigente) vendorizado
-// en tests/fixtures/xsd-nomina12 (ver su README: catCFDI se recorta a c_Estado, único tipo que nomina12 usa). Usa xmllint.
-// Localmente se omite si no hay xmllint; en CI (CI=true) su ausencia es un fallo, no un salto silencioso.
-import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+// en tests/fixtures/xsd-nomina12 (ver su README: catCFDI se recorta a c_Estado, único tipo que nomina12 usa). Usa xmllint-wasm
+// (libxml2 en WebAssembly): corre igual en cualquier maquina y en CI, sin binarios del sistema.
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { validateXML } from "xmllint-wasm";
 import { describe, expect, it } from "vitest";
 import { generarXmlCfdiNomina } from "../src/nomina/xml-nomina.ts";
 import { procesarNomina } from "../src/nomina/payroll-engine.ts";
 import type { EmployeePayrollInput } from "../src/nomina/types.ts";
 
-const XSD = fileURLToPath(new URL("./fixtures/xsd-nomina12/nomina12.xsd", import.meta.url));
-const hayXmllint = spawnSync("xmllint", ["--version"]).error === undefined;
-const enCi = process.env["CI"] === "true";
+const DIR = fileURLToPath(new URL("./fixtures/xsd-nomina12/", import.meta.url));
+const leer = (f: string) => readFileSync(DIR + f, "utf8");
+const SCHEMA = leer("nomina12.xsd");
+const PRELOAD = ["catNomina.xsd", "tdCFDI.xsd", "catCFDI.c_Estado.xsd"].map((fileName) => ({ fileName, contents: leer(fileName) }));
 
 /** Extrae el nodo nomina12:Nomina del comprobante y lo deja como documento independiente con su namespace. */
 function complemento(xml: string): string {
@@ -22,12 +21,9 @@ function complemento(xml: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>\n${m[0].replace("<nomina12:Nomina ", '<nomina12:Nomina xmlns:nomina12="http://www.sat.gob.mx/nomina12" ')}`;
 }
 
-function validar(xml: string): { ok: boolean; salida: string } {
-  const dir = mkdtempSync(join(tmpdir(), "nomina-xsd-"));
-  const f = join(dir, "n.xml");
-  writeFileSync(f, complemento(xml));
-  const r = spawnSync("xmllint", ["--noout", "--schema", XSD, f], { encoding: "utf8" });
-  return { ok: r.status === 0, salida: `${r.stdout}${r.stderr}` };
+async function validar(xml: string): Promise<{ ok: boolean; salida: string }> {
+  const r = await validateXML({ xml: [{ fileName: "nomina.xml", contents: complemento(xml) }], schema: [SCHEMA], preload: PRELOAD });
+  return { ok: r.valid, salida: r.errors.map((e) => e.message).join("\n") };
 }
 
 const emisor = { rfc: "DESP010101AB1", nombre: "DESPACHO SA DE CV", regimenFiscal: "601", lugarExpedicion: "06600", registroPatronal: "A1234567891" };
@@ -39,40 +35,42 @@ function xmlDe(emp: EmployeePayrollInput, month = 2, periodo: Record<string, unk
   return generarXmlCfdiNomina(p.employees[0]!, emisor, receptor, { year: 2026, month, diasPagados: 30, folio: "F1", ...periodo }, laborales);
 }
 
-describe.skipIf(!hayXmllint && !enCi)("XML Nómina 1.2 contra el XSD oficial", () => {
-  it("hay xmllint (en CI es obligatorio)", () => {
-    expect(hayXmllint).toBe(true);
-    expect(execFileSync("xmllint", ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).length).toBeGreaterThanOrEqual(0);
-  });
-
-  it("sanidad: un complemento roto SÍ falla la validación", () => {
+describe("XML Nómina 1.2 contra el XSD oficial", () => {
+  it("sanidad: un complemento roto SÍ falla la validación", async () => {
     const roto = xmlDe({ salarioBruto: 15000 }).replace('Version="1.2"', 'Version="1.1"');
-    expect(validar(roto).ok).toBe(false);
+    const r = await validar(roto);
+    expect(r.ok).toBe(false);
+    expect(r.salida).toContain("1.2");
   });
 
-  it("salario medio sin subsidio", () => {
-    const r = validar(xmlDe({ salarioBruto: 15000, fechaInicioRelLaboral: "2020-03-01" }));
-    expect(r.salida).toContain("validates");
+  it("salario medio sin subsidio", async () => {
+    const r = await validar(xmlDe({ salarioBruto: 15000, fechaInicioRelLaboral: "2020-03-01" }));
+    expect(r.salida).toBe("");
+    expect(r.ok).toBe(true);
   });
 
-  it("salario bajo con subsidio: OtroPago 002 con SubsidioAlEmpleo/@SubsidioCausado como elemento hijo", () => {
+  it("salario bajo con subsidio: OtroPago 002 con SubsidioAlEmpleo/@SubsidioCausado como elemento hijo", async () => {
     const xml = xmlDe({ salarioBruto: 9000 });
     expect(xml).toContain('<nomina12:OtroPago TipoOtroPago="002"');
     expect(xml).toContain('<nomina12:SubsidioAlEmpleo SubsidioCausado="535.65"/>');
     expect(xml).toContain('TotalOtrosPagos="0.00"');
-    expect(validar(xml).salida).toContain("validates");
+    const r = await validar(xml);
+    expect(r.salida).toBe("");
+    expect(r.ok).toBe(true);
   });
 
-  it("emisor con registro patronal, receptor con NSS, antigüedad en semanas, SBC, SDI y riesgo de puesto", () => {
+  it("emisor con registro patronal, receptor con NSS, antigüedad en semanas, SBC, SDI y riesgo de puesto", async () => {
     const xml = xmlDe({ salarioBruto: 15000 });
     expect(xml).toContain('<nomina12:Emisor RegistroPatronal="A1234567891"/>');
     expect(xml).toMatch(/NumSeguridadSocial="12345678901" FechaInicioRelLaboral="2020-03-01" Antigüedad="P\d+W"/);
     expect(xml).toContain('RiesgoPuesto="1"');
     expect(xml).toContain('SalarioBaseCotApor="524.65" SalarioDiarioIntegrado="524.65"');
-    expect(validar(xml).salida).toContain("validates");
+    const r = await validar(xml);
+    expect(r.salida).toBe("");
+    expect(r.ok).toBe(true);
   });
 
-  it("aguinaldo, prima vacacional, PTU, horas extra (019 con HorasExtra) e incapacidad separan gravado y exento", () => {
+  it("aguinaldo, prima vacacional, PTU, horas extra (019 con HorasExtra) e incapacidad separan gravado y exento", async () => {
     const xml = xmlDe(
       {
         salarioBruto: 15000,
@@ -92,12 +90,15 @@ describe.skipIf(!hayXmllint && !enCi)("XML Nómina 1.2 contra el XSD oficial", (
     expect(xml).toContain('<nomina12:HorasExtra Dias="2" TipoHoras="01" HorasExtra="6" ImportePagado="600.00"/>');
     expect(xml).toContain('<nomina12:Incapacidad DiasIncapacidad="2" TipoIncapacidad="02" ImporteMonetario="800.00"/>');
     expect(xml).toContain('TipoDeduccion="006"');
-    const r = validar(xml);
-    expect(r.salida, r.salida).toContain("validates");
+    const r = await validar(xml);
+    expect(r.salida).toBe("");
+    expect(r.ok).toBe(true);
   });
 
-  it("quincena con fechas reales", () => {
+  it("quincena con fechas reales", async () => {
     const xml = xmlDe({ salarioBruto: 9000 }, 2, { fechaPago: "2026-02-15", fechaInicialPago: "2026-02-01", fechaFinalPago: "2026-02-15", diasPagados: 15 });
-    expect(validar(xml).salida).toContain("validates");
+    const r = await validar(xml);
+    expect(r.salida).toBe("");
+    expect(r.ok).toBe(true);
   });
 });
