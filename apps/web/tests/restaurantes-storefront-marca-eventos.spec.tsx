@@ -84,7 +84,7 @@ describe("pagina del restaurante: portada de marca, promociones, WhatsApp y OG",
     const ig = Array.from(rendered.container.querySelectorAll("a")).find((a) => a.getAttribute("href") === "https://instagram.com/lostaquitos")!;
     expect(ig.getAttribute("rel")).toBe("noopener noreferrer");
     expect(ig.getAttribute("target")).toBe("_blank");
-    expect(String(fetchMock.mock.calls[0]![0])).toBe("http://localhost:8787/v1/restaurantes/demo/storefront");
+    expect(fetchMock.mock.calls.map((c) => String(c[0]))).toContain("http://localhost:8787/v1/restaurantes/demo/storefront");
   });
 
   it("lista las promociones con sus condiciones reales (solo recoger, dia, vigencia, sucursal) y la sucursal sigue disponible", async () => {
@@ -161,7 +161,7 @@ describe("pagina del restaurante: portada de marca, promociones, WhatsApp y OG",
     rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     expect(rendered.container.querySelector('[data-testid="boton-whatsapp"]')!.getAttribute("href")).toBe(WA);
-    expect(Array.from(rendered.container.querySelectorAll("footer a")).map((a) => a.getAttribute("href"))).toEqual(["/pedir/demo/eventos", "/pedir/demo/privacidad", "https://instagram.com/lostaquitos"]);
+    expect(Array.from(rendered.container.querySelectorAll("footer a")).map((a) => a.getAttribute("href"))).toEqual(["/pedir/demo/sucursales", "/pedir/demo/eventos", "/pedir/demo/privacidad", "https://instagram.com/lostaquitos"]);
     expect(meta("og:image")).toBe("https://cdn.example.com/portada.jpg");
   });
 
@@ -231,7 +231,7 @@ describe("formulario publico de eventos (R-43)", () => {
   it("la ruta /pedir/:org/eventos no se confunde con una sucursal; sin llenar nada muestra errores y NO envia", async () => {
     await abrir();
     expect(texto()).toContain("Eventos y catering");
-    expect(String(fetchMock.mock.calls[0]![0])).toBe("http://localhost:8787/v1/restaurantes/demo/storefront");
+    expect(fetchMock.mock.calls.map((c) => String(c[0]))).toContain("http://localhost:8787/v1/restaurantes/demo/storefront");
     await submitForm(formulario());
     expect(texto()).toContain("Escribe tu nombre.");
     expect(texto()).toContain("Elige la sucursal.");

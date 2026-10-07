@@ -2,7 +2,7 @@
 // tortilla de tacos, avisos de reglas duras ANTES de cotizar (el servidor las vuelve a aplicar siempre:
 // esto solo evita ofrecer un boton que el servidor rechazaria). Los totales de aqui son una ESTIMACION de
 // pantalla; el total que se cobra es el que devuelve la cotizacion del servidor.
-import type { Canal, MetodoPago, ProductoMenu, Tortilla } from "./storefront-client.ts";
+import type { CategoriaMenu, Canal, MetodoPago, ProductoMenu, Tortilla } from "./storefront-client.ts";
 
 export interface RenglonCarrito {
   readonly producto: ProductoMenu;
@@ -114,3 +114,28 @@ export const ETIQUETA_ESTADO: Record<string, string> = {
   no_recogido: "No se recogió a tiempo",
   programado: "Programado",
 };
+
+/** Minusculas y sin acentos, para buscar "jamon" y encontrar "Jamón". */
+export function normalizarBusqueda(texto: string): string {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+/** Total de piezas del carrito (suma de cantidades), para el contador de la barra inferior. */
+export function totalArticulos(carrito: Carrito): number {
+  return carrito.reduce((suma, r) => suma + r.cantidad, 0);
+}
+
+/**
+ * Filtro LOCAL del menu (sin red) por nombre y descripcion. Cada palabra del texto debe aparecer; las categorias sin
+ * coincidencias desaparecen. Texto vacio = el menu completo.
+ */
+export function filtrarMenu(categorias: readonly CategoriaMenu[], texto: string): CategoriaMenu[] {
+  const palabras = normalizarBusqueda(texto).split(/\s+/).filter(Boolean);
+  if (palabras.length === 0) return [...categorias];
+  return categorias
+    .map((c) => ({ ...c, items: c.items.filter((p) => {
+      const pajar = normalizarBusqueda(`${p.name} ${p.description ?? ""}`);
+      return palabras.every((w) => pajar.includes(w));
+    }) }))
+    .filter((c) => c.items.length > 0);
+}

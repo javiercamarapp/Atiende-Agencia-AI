@@ -61,6 +61,8 @@ export interface OpcionesMundoApi {
   /** Sobreescritura del tope mensual de la organizacion en la tabla DNIS (USD). */
   readonly topeMensualUsd?: number;
   readonly modoEntrada?: "desborde" | "total" | "prueba";
+  /** Lineas propias de la sucursal que desvian al numero puente (`numerosSucursal` de la tabla DNIS). */
+  readonly numerosSucursal?: readonly string[];
   /** `true` = la API no tiene el repositorio de voz (contexto 503). */
   readonly sinVozRepo?: boolean;
   /** `true` = la API no tiene el repositorio de privacidad (503 en apertura): el worker debe atender sin aviso y sin grabar. */
@@ -141,7 +143,7 @@ export async function crearMundoApi(opts: OpcionesMundoApi = {}): Promise<MundoA
     INTERNAL_SECRET: INTERNAL_SECRET_PRUEBA,
     GEMINI_API_KEY: "llave-gemini",
     VOICE_SECRET_FCO: SECRETO_VOZ_PRUEBA,
-    VOICE_DNIS_MAP: JSON.stringify({ [NUMERO_SUCURSAL]: { orgSlug: "los-taquitos-de-pm", organizationId: mundo.organizationId, propertyId: mundo.propertyId, branchSlug: BRANCH_SLUG_PRINCIPAL, secretoEnv: "VOICE_SECRET_FCO", ...(opts.topeMensualUsd ? { topeMensualUsd: opts.topeMensualUsd } : {}), ...(opts.modoEntrada ? { modoEntrada: opts.modoEntrada } : {}) } }),
+    VOICE_DNIS_MAP: JSON.stringify({ [NUMERO_SUCURSAL]: { orgSlug: "los-taquitos-de-pm", organizationId: mundo.organizationId, propertyId: mundo.propertyId, branchSlug: BRANCH_SLUG_PRINCIPAL, secretoEnv: "VOICE_SECRET_FCO", ...(opts.topeMensualUsd ? { topeMensualUsd: opts.topeMensualUsd } : {}), ...(opts.modoEntrada ? { modoEntrada: opts.modoEntrada } : {}), ...(opts.numerosSucursal ? { numerosSucursal: opts.numerosSucursal } : {}) } }),
     ...opts.envExtra,
   };
   const config = cargarConfig(env);

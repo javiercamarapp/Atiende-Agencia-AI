@@ -74,6 +74,7 @@
 //      del vertical.
 import type { SourceConnectorId } from "../connector-registry.ts";
 import { streamCsvRows } from "./csv.ts";
+import { guardedFetch, throwIfSourceUnavailable } from "./fetch-guard.ts";
 import { assertLegitimateCsvBody } from "./response-classifier.ts";
 import type { ConnectorContext, DiscoverParams, DroppedRowInfo, LicitacionesSourceConnector, TenderSourceIngestCandidate } from "./types.ts";
 
@@ -170,7 +171,8 @@ export function createComprasMxHistoricoConnector(config: ComprasMxHistoricoConn
     id: COMPRAS_MX_HISTORICO_ID,
 
     async *discover(params: DiscoverParams, ctx: ConnectorContext): AsyncGenerator<TenderSourceIngestCandidate> {
-      const response = await fetchImpl(csvUrl);
+      const response = await guardedFetch(fetchImpl, csvUrl, undefined, "CSV histórico de ComprasMX");
+      throwIfSourceUnavailable(response.status, "CSV histórico de ComprasMX", csvUrl);
       if (!response.ok) {
         throw new Error(`CSV histórico de ComprasMX respondió ${response.status} en ${csvUrl}.`);
       }

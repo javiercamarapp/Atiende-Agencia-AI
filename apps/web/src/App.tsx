@@ -75,6 +75,7 @@ const SuperAdminPlanesPage = cargaPerezosa(() => import("./superadmin/pages/Plan
 const NotificacionesPagina = cargaPerezosa(() => import("./components/NotificacionesPagina.tsx"), "NotificacionesPagina");
 const PlanYUsoPagina = cargaPerezosa(() => import("./components/PlanYUsoPagina.tsx"), "PlanYUsoPagina");
 const StorefrontRestaurantePage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/RestaurantePage.tsx"), "RestaurantePage");
+const StorefrontSucursalesPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/SucursalesPage.tsx"), "SucursalesPage");
 const StorefrontSucursalPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/SucursalPage.tsx"), "SucursalPage");
 const StorefrontRastreoPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/RastreoPage.tsx"), "RastreoPage");
 const ReservarPage = cargaPerezosa(() => import("./verticals/citas/reserva/ReservarPage.tsx"), "ReservarPage");
@@ -333,6 +334,10 @@ function StorefrontRestauranteRoute() {
   const { orgSlug = "" } = useParams();
   return <StorefrontRestaurantePage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
+function StorefrontSucursalesRoute() {
+  const { orgSlug = "" } = useParams();
+  return <StorefrontSucursalesPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
 function StorefrontSucursalRoute() {
   const { orgSlug = "", branchSlug = "" } = useParams();
   return <StorefrontSucursalPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} branchSlug={branchSlug} />;
@@ -366,7 +371,7 @@ function StorefrontEventosRoute() {
 }
 function StorefrontPrivacidadRoute() {
   const { orgSlug = "" } = useParams();
-  return <PrivacidadStorefrontPage orgSlug={orgSlug} />;
+  return <PrivacidadStorefrontPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
 
 /** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
@@ -1097,6 +1102,8 @@ export function App() {
         <Route path="/reservar/:orgSlug" element={<ReservarCitasRoute />} />
         <Route path="/pedir/:orgSlug" element={<StorefrontRestauranteRoute />} />
         <Route path="/pedir/:orgSlug/privacidad" element={<StorefrontPrivacidadRoute />} />
+        {/* Directorio publico: va ANTES de :branchSlug (una sucursal con slug "sucursales" no se puede abrir; el slug esta reservado). */}
+        <Route path="/pedir/:orgSlug/sucursales" element={<StorefrontSucursalesRoute />} />
         <Route path="/pedir/:orgSlug/eventos" element={<StorefrontEventosRoute />} />
         <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
         <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />

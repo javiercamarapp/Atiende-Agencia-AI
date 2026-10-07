@@ -88,6 +88,7 @@
 // declarado, no oculto.
 import type { SourceConnectorId } from "../../connector-registry.ts";
 import { RateLimitedError } from "../../connector-errors.ts";
+import { guardedFetch, throwIfSourceUnavailable } from "../fetch-guard.ts";
 import { assertLegitimateJsonBody } from "../response-classifier.ts";
 import type { ConnectorContext, DiscoverParams, LicitacionesSourceConnector, TenderSourceIngestCandidate } from "../types.ts";
 import { isDroppedResult, isVigenteTender, mapOcdsReleaseToCandidate } from "./map-ocds-release.ts";
@@ -156,7 +157,7 @@ export function createContratacionesAbiertasConnector(config: ContratacionesAbie
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetchImpl(url, { headers: { "User-Agent": USER_AGENT, Accept: "application/json" }, signal: controller.signal });
+      const response = await guardedFetch(fetchImpl, url, { headers: { "User-Agent": USER_AGENT, Accept: "application/json" }, signal: controller.signal }, `API de contrataciones abiertas de ${sourceLabel}`);
       const text = await response.text();
       return { status: response.status, text };
     } finally {
@@ -176,6 +177,7 @@ export function createContratacionesAbiertasConnector(config: ContratacionesAbie
       if (fiscalYearsResp.status === 429) {
         throw new RateLimitedError(`API de contrataciones abiertas de ${sourceLabel} respondió 429 (Too Many Requests) en ${fiscalYearsUrl} -- corrida detenida, el backoff real ocurre en la próxima corrida programada.`);
       }
+      throwIfSourceUnavailable(fiscalYearsResp.status, `API de contrataciones abiertas de ${sourceLabel}`, fiscalYearsUrl);
       if (fiscalYearsResp.status !== 200) {
         throw new Error(`API de contrataciones abiertas de ${sourceLabel} respondió ${fiscalYearsResp.status} en ${fiscalYearsUrl}.`);
       }
@@ -205,6 +207,7 @@ export function createContratacionesAbiertasConnector(config: ContratacionesAbie
           ctx.logger?.warn(`API de contrataciones abiertas de ${sourceLabel}: año fiscal ${year} sin datos todavía (404 en ${url}).`, { source: id, year });
           continue;
         }
+        throwIfSourceUnavailable(resp.status, `API de contrataciones abiertas de ${sourceLabel}`, url);
         if (resp.status !== 200) {
           throw new Error(`API de contrataciones abiertas de ${sourceLabel} respondió ${resp.status} en ${url}.`);
         }
