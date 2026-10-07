@@ -164,35 +164,30 @@ function DesgloseImss({ empleado }: { empleado: EmployeePayroll }) {
         IMSS por rama -- {empleado.nombre || empleado.employeeId || "empleado"} (SBC {formatMoney(im.sbcDiario)}
         {im.sbcTopado ? ", topado a 25 UMA" : ""}, UMA {formatMoney(im.umaDiaria)})
       </summary>
-      <Table className="mt-2">
-        <TableCaption className="sr-only">Cuotas IMSS por rama de {empleado.nombre || empleado.employeeId}</TableCaption>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="h-9">Rama</TableHead>
-            <TableHead className="h-9 text-right">Obrero</TableHead>
-            <TableHead className="h-9 text-right">Patronal</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {RAMAS.map((r) => (
-            <TableRow key={r.etiqueta}>
-              <TableCell>{r.etiqueta}</TableCell>
-              <TableCell className="text-right tabular-nums">{r.obrero ? formatMoney(im.obrero[r.obrero]) : "—"}</TableCell>
-              <TableCell className="text-right tabular-nums">{r.patronal ? formatMoney(im.patronal[r.patronal]) : "—"}</TableCell>
-            </TableRow>
-          ))}
-          <TableRow>
-            <TableCell className="font-bold">Total IMSS</TableCell>
-            <TableCell className="text-right font-bold tabular-nums">{formatMoney(im.obrero.total)}</TableCell>
-            <TableCell className="text-right font-bold tabular-nums">{formatMoney(im.patronal.total)}</TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell>INFONAVIT (aportación patronal)</TableCell>
-            <TableCell className="text-right tabular-nums">—</TableCell>
-            <TableCell className="text-right tabular-nums">{formatMoney(im.infonavit)}</TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
+      <div role="table" aria-label={`Cuotas IMSS por rama de ${empleado.nombre || empleado.employeeId}`} className="mt-2 grid grid-cols-[1fr_auto_auto] gap-x-6 gap-y-1 text-sm">
+        <div role="row" className="contents text-xs font-medium text-muted-foreground">
+          <span role="columnheader">Rama</span>
+          <span role="columnheader" className="text-right">Obrero</span>
+          <span role="columnheader" className="text-right">Patronal</span>
+        </div>
+        {RAMAS.map((r) => (
+          <div role="row" className="contents" key={r.etiqueta}>
+            <span role="cell">{r.etiqueta}</span>
+            <span role="cell" className="text-right tabular-nums">{r.obrero ? formatMoney(im.obrero[r.obrero]) : "—"}</span>
+            <span role="cell" className="text-right tabular-nums">{r.patronal ? formatMoney(im.patronal[r.patronal]) : "—"}</span>
+          </div>
+        ))}
+        <div role="row" className="contents font-bold">
+          <span role="cell">Total IMSS</span>
+          <span role="cell" className="text-right tabular-nums">{formatMoney(im.obrero.total)}</span>
+          <span role="cell" className="text-right tabular-nums">{formatMoney(im.patronal.total)}</span>
+        </div>
+        <div role="row" className="contents">
+          <span role="cell">INFONAVIT (aportación patronal)</span>
+          <span role="cell" className="text-right tabular-nums">—</span>
+          <span role="cell" className="text-right tabular-nums">{formatMoney(im.infonavit)}</span>
+        </div>
+      </div>
     </details>
   );
 }
@@ -521,7 +516,7 @@ export function NominaPage(ctx: DespachosShellContext) {
           </Card>
 
           <div className="overflow-x-auto">
-            <Table className="min-w-[640px]">
+            <Table className="min-w-[1280px]">
               <TableCaption className="sr-only">Captura de percepciones y deducciones de nómina</TableCaption>
               <TableHeader>
                 <TableRow>
@@ -530,6 +525,13 @@ export function NominaPage(ctx: DespachosShellContext) {
                   <TableHead className="h-9">Salario bruto</TableHead>
                   <TableHead className="h-9">Percepciones</TableHead>
                   <TableHead className="h-9">Salario diario</TableHead>
+                  <TableHead className="h-9">Inicio de relación laboral</TableHead>
+                  <TableHead className="h-9">Antigüedad (años)</TableHead>
+                  <TableHead className="h-9">SBC diario</TableHead>
+                  <TableHead className="h-9">Prima RT (%)</TableHead>
+                  <TableHead className="h-9">Aguinaldo</TableHead>
+                  <TableHead className="h-9">Prima vacacional</TableHead>
+                  <TableHead className="h-9">PTU</TableHead>
                   <TableHead className="h-9" />
                 </TableRow>
               </TableHeader>
@@ -566,36 +568,6 @@ export function NominaPage(ctx: DespachosShellContext) {
                       </Label>
                       <Input id={`nomina-diario-${f.key}`} type="number" step="0.01" value={f.salarioDiario} onChange={(e) => actualizarFila(f.key, { salarioDiario: e.target.value })} placeholder="Opcional" className="h-9 text-sm" />
                     </TableCell>
-                    <TableCell className="p-1.5">
-                      <Button type="button" variant="ghost" size="sm" className="h-9 px-3 text-xs text-destructive hover:text-destructive" onClick={() => quitarFila(f.key)} disabled={empleados.length <= 1}>
-                        <Trash2 />
-                        Quitar
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <div className="overflow-x-auto">
-            <Table className="min-w-[900px]">
-              <TableCaption className="sr-only">Antigüedad, SBC, prima de riesgo y prestaciones del periodo por empleado</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="sticky left-0 z-10 bg-canvas h-9">Empleado</TableHead>
-                  <TableHead className="h-9">Inicio de relación laboral</TableHead>
-                  <TableHead className="h-9">Antigüedad (años)</TableHead>
-                  <TableHead className="h-9">SBC diario</TableHead>
-                  <TableHead className="h-9">Prima RT (%)</TableHead>
-                  <TableHead className="h-9">Aguinaldo</TableHead>
-                  <TableHead className="h-9">Prima vacacional</TableHead>
-                  <TableHead className="h-9">PTU</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {empleados.map((f) => (
-                  <TableRow key={f.key}>
-                    <TableCell className="sticky left-0 z-10 bg-card p-1.5">{f.nombre || f.employeeId || "—"}</TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`nomina-inicio-${f.key}`} className="sr-only">
                         Inicio de relación laboral
@@ -637,6 +609,12 @@ export function NominaPage(ctx: DespachosShellContext) {
                         PTU
                       </Label>
                       <Input id={`nomina-ptu-${f.key}`} type="number" step="0.01" value={f.ptu} onChange={(e) => actualizarFila(f.key, { ptu: e.target.value })} placeholder="Opcional" className="h-9 text-sm" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Button type="button" variant="ghost" size="sm" className="h-9 px-3 text-xs text-destructive hover:text-destructive" onClick={() => quitarFila(f.key)} disabled={empleados.length <= 1}>
+                        <Trash2 />
+                        Quitar
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
