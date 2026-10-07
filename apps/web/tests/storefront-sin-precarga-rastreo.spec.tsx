@@ -61,7 +61,9 @@ describe("confirmación del pedido sin precarga de rastreo", () => {
     const campo = (label: string) => aside.querySelector<HTMLInputElement>(`#${(Array.from(aside.querySelectorAll("label")).find((l) => l.textContent?.startsWith(label)) as HTMLLabelElement).htmlFor}`)!;
     act(() => changeValue(campo("Nombre"), "Ana Pérez"));
     act(() => changeValue(campo("Teléfono"), "999 123 4567"));
-    act(() => click(aside.querySelectorAll<HTMLInputElement>("input[type=checkbox]")[0]!));
+    // El aviso de privacidad es el ULTIMO checkbox (la casilla opcional de promociones va antes y no se marca).
+    const casillas = aside.querySelectorAll<HTMLInputElement>("input[type=checkbox]");
+    act(() => click(casillas[casillas.length - 1]!));
     await act(async () => submitForm(aside.querySelector("form")!));
     await esperar();
     expect(document.body.textContent).toContain("Confirma tu pedido");
