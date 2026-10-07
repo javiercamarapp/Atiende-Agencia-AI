@@ -550,6 +550,10 @@ export interface RestaurantesRepository {
    * principio que `updateOrderStatus`: el repositorio solo resuelve datos, nunca
    * decide reglas de negocio). */
   findPromotionByCode(organizationId: string, code: string): Promise<Promotion | null>;
+  /** QA R2 features-07: codigo de compensacion («Descuento en el proximo pedido», GRACIAS-XXXXXXXX) que el dueno emitio a ESTE telefono y que
+   * sigue vigente y sin usar; `null` si no hay. Solo la sesion de sistema (agentes): el modelo nunca lo dicta. Contra la base sin migrar
+   * (funcion de la migracion 077 ausente) devuelve `null` dentro de un SAVEPOINT, nunca aborta la transaccion de la request. */
+  findCompensationCode(organizationId: string, phone: string): Promise<string | null>;
   /** Promociones ACTIVAS con `auto_apply` (migracion 031) para aplicarlas sin codigo. `[]` contra la base
    * sin migrar (SAVEPOINT): nunca lanza ni deja la transaccion abortada. */
   listAutoApplyPromotions(organizationId: string): Promise<readonly Promotion[]>;

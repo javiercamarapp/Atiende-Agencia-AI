@@ -106,3 +106,43 @@ describe("PostgresRestaurantesDataChatReader — base sin migrar", () => {
     expect(seen[0]![1]).toEqual(["p1", "p2"]);
   });
 });
+
+/** AbortAwareFakeSession solo guarda la primera linea: se registra el SQL completo de cada query. */
+function espiarSql(session: AbortAwareFakeSession): string[] {
+  const vistas: string[] = [];
+  const original = session.query.bind(session);
+  session.query = (async (sql: string, params?: unknown[]) => {
+    vistas.push(sql);
+    return original(sql, params);
+  }) as typeof session.query;
+  return vistas;
+}
+
+describe("PostgresRestaurantesDataChatReader — dia de venta con promovido_at (QA R2 viaje-03)", () => {
+  it("con la migracion 034 la consulta cuenta el dia por coalesce(promovido_at, created_at) y excluye por_aprobar", async () => {
+    const session = new AbortAwareFakeSession([SET_TIMEOUT, { match: /from restaurantes\.orders/i, respond: () => [{ orders: "3", revenue: "600", cancelled: "0" }] }]);
+    const vistas = espiarSql(session);
+    const stats = await new PostgresRestaurantesDataChatReader(session).orderStats(WINDOW);
+    expect(stats.orders).toBe(3);
+    const sql = vistas.find((c) => /from restaurantes\.orders/i.test(c)) ?? "";
+    expect(sql).toContain("coalesce(o.promovido_at, o.created_at)");
+    expect(sql).toContain("'por_aprobar'");
+  });
+
+  it("base SIN la migracion 034 (42703 en promovido_at): reintenta con created_at en vez de 'no disponible', y la sesion sigue sana", async () => {
+    const session = new AbortAwareFakeSession([
+      SET_TIMEOUT,
+      { match: /promovido_at/i, respond: () => pgError("42703", "column o.promovido_at does not exist") },
+      { match: /from restaurantes\.orders/i, respond: () => [{ orders: "2", revenue: "400", cancelled: "0" }] },
+      { match: /select 1 as siguiente_query_del_request/i, respond: () => [{ ok: true }] },
+    ]);
+    const vistas = espiarSql(session);
+    const stats = await new PostgresRestaurantesDataChatReader(session).orderStats(WINDOW);
+    expect(stats.orders).toBe(2);
+    const ordenes = vistas.filter((c) => /from restaurantes\.orders/i.test(c));
+    expect(ordenes).toHaveLength(2);
+    expect(ordenes[0]).toContain("promovido_at");
+    expect(ordenes[1]).not.toContain("promovido_at");
+    await expect(session.query("select 1 as siguiente_query_del_request")).resolves.toBeDefined();
+  });
+});

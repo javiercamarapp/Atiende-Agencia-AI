@@ -160,6 +160,14 @@ export function marcarAgotadoHastaManana(fetchImpl: typeof fetch, apiBaseUrl: st
   return sendJson(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/autopiloto/agotado`, token, "POST", { productId });
 }
 
+/**
+ * El staff imprimio el ticket de cocina de un pedido pendiente (QA R2 features-05): sin POS, es lo que habilita la aceptacion automatica
+ * (Recibido -> Preparando en el siguiente tick, solo si la sucursal activo la regla). `disponible: false` = base sin la migracion 077.
+ */
+export function registrarTicketImpreso(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, orderId: string): Promise<{ readonly disponible: boolean; readonly registrado: boolean }> {
+  return sendJson(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/autopiloto/pedidos/${orderId}/ticket-impreso`, token, "POST", {});
+}
+
 /** Minutos que lleva una solicitud esperando (para ordenar la urgencia en pantalla). */
 export function minutosEsperando(solicitadaAt: string, ahoraMs: number): number {
   return Math.max(0, Math.floor((ahoraMs - Date.parse(solicitadaAt)) / 60_000));

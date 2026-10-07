@@ -1040,8 +1040,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         if (o.organizationId !== organizationId) return false;
         if (scope !== null && !scope.has(o.propertyId)) return false;
         // R-30 + QA R1 viaje-09: ventas netas; un pedido cancelado, no recogido (no se cobro) o programado (aun no es venta) no cuenta.
-        if (o.status === "cancelado" || o.status === "no_recogido" || o.status === "programado") return false;
-        const createdMs = Date.parse(o.createdAt);
+        // QA R2 viaje-04: un pedido retenido (por_aprobar) tampoco es venta. QA R2 viaje-03: el dia es el de la promocion si la hay.
+        if (o.status === "cancelado" || o.status === "no_recogido" || o.status === "programado" || o.status === "por_aprobar") return false;
+        const createdMs = Date.parse(o.promovidoAt ?? o.createdAt);
         return createdMs >= startMs && createdMs < endMs;
       });
       const revenue = enRango.reduce((sum, o) => sum + o.total, 0);
@@ -1827,6 +1828,23 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   async findPromotionByCode(organizationId: string, code: string): Promise<Promotion | null> {
     const found = [...this.promotions.values()].find((p) => p.organizationId === organizationId && p.code === code);
     return found ? { ...found } : null;
+  }
+
+  private readonly compensationCodes = new Map<string, string>();
+
+  /** Solo pruebas: emite a `phone` un codigo de compensacion (espejo de solicitud_resolver con `descuento_proximo`). */
+  seedCompensationCode(organizationId: string, phone: string, code: string): void {
+    this.compensationCodes.set(`${organizationId}:${phone.replace(/\D/g, "").slice(-10)}`, code);
+  }
+
+  async findCompensationCode(organizationId: string, phone: string): Promise<string | null> {
+    const code = this.compensationCodes.get(`${organizationId}:${phone.replace(/\D/g, "").slice(-10)}`);
+    if (!code) return null;
+    const p = await this.findPromotionByCode(organizationId, code);
+    const now = Date.now();
+    if (!p || !p.isActive || (p.maxUses !== null && p.timesUsed >= p.maxUses)) return null;
+    if ((p.startsAt && Date.parse(p.startsAt) > now) || (p.endsAt && Date.parse(p.endsAt) < now)) return null;
+    return code;
   }
 
   async listAutoApplyPromotions(organizationId: string): Promise<readonly Promotion[]> {

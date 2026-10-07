@@ -1653,23 +1653,33 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
   async getSalesBucketedStats(organizationId: string, propertyIds: readonly string[] | null, buckets: readonly KpiDateRange[]): Promise<readonly SalesBucketRow[]> {
     if (buckets.length === 0) return [];
-    const { rows } = await this.db.query<{ idx: number; revenue: string; order_count: string; customer_count: string }>(
-      // QA R1 viaje-09: consulta directa (no la funcion `orders_bucketed_stats`, cuya definicion en la base solo
-      // excluye cancelados y no puede cambiar sin migracion). Misma forma y alcance (RLS del usuario, organizacion
-      // y sucursales); una venta NO es un pedido cancelado, `no_recogido` (no se cobro) ni `programado` (aun no es
-      // venta). Funciona igual contra la base sin migrar: solo lee `restaurantes.orders`.
+    // QA R1 viaje-09: consulta directa (no la funcion `orders_bucketed_stats`, cuya definicion en la base solo
+    // excluye cancelados y no puede cambiar sin migracion). Misma forma y alcance (RLS del usuario, organizacion
+    // y sucursales); una venta NO es un pedido cancelado, `no_recogido` (no se cobro), `programado` (aun no es
+    // venta) ni `por_aprobar` (retenido sin aprobar; QA R2 viaje-04). QA R2 viaje-03: el dia de un pedido es
+    // `coalesce(promovido_at, created_at)` (igual que el Cierre del dia): un programado cuenta el dia en que se promueve.
+    // `promovido_at` es de la migracion 034: contra la base sin migrar (42703) se reintenta con `created_at` dentro de un
+    // SAVEPOINT (la transaccion de la request no queda abortada).
+    const consulta = (fecha: string): string =>
       `select b.idx, coalesce(sum(o.total), 0) as revenue, count(o.id) as order_count, count(distinct o.customer_id) as customer_count
        from unnest($3::timestamptz[], $4::timestamptz[]) with ordinality as b(bucket_start, bucket_end, idx)
        left join restaurantes.orders o
          on o.organization_id = $1
-         and o.status not in ('cancelado', 'no_recogido', 'programado')
+         and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
          and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-         and o.created_at >= b.bucket_start
-         and o.created_at < b.bucket_end
+         and ${fecha} >= b.bucket_start
+         and ${fecha} < b.bucket_end
        group by b.idx
-       order by b.idx;`,
-      [organizationId, propertyIds ? [...propertyIds] : null, buckets.map((b) => b.start.toISOString()), buckets.map((b) => b.end.toISOString())],
-    );
+       order by b.idx;`;
+    const params = [organizationId, propertyIds ? [...propertyIds] : null, buckets.map((b) => b.start.toISOString()), buckets.map((b) => b.end.toISOString())];
+    type Fila = { idx: number; revenue: string; order_count: string; customer_count: string };
+    const { rows } = await runWithSavepointFallback<{ rows: Fila[] }>({
+      session: this.db,
+      savepointName: "sp_restaurantes_ventas_por_dia_negocio",
+      primary: () => this.db.query<Fila>(consulta("coalesce(o.promovido_at, o.created_at)"), params),
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42703",
+      fallback: () => this.db.query<Fila>(consulta("o.created_at"), params),
+    });
     const byIdx = new Map(rows.map((row) => [Number(row.idx), { revenue: Number(row.revenue), orderCount: Number(row.order_count), customerCount: Number(row.customer_count) }]));
     return buckets.map((_, i) => byIdx.get(i + 1) ?? { revenue: 0, orderCount: 0, customerCount: 0 });
   }
@@ -2023,6 +2033,19 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return (await this.queryPromotions("organization_id = $1 and code = $2", [organizationId, code]))[0] ?? null;
   }
 
+  async findCompensationCode(organizationId: string, phone: string): Promise<string | null> {
+    return runWithSavepointFallback<string | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_compensacion_codigo",
+      primary: async () => {
+        const { rows } = await this.db.query<{ codigo: string | null }>("select restaurantes.compensacion_codigo_disponible($1::uuid, $2) as codigo;", [organizationId, phone]);
+        return rows[0]?.codigo ?? null;
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: async () => null,
+    });
+  }
+
   async createPromotion(organizationId: string, input: NewPromotionInput): Promise<Promotion> {
     const base = [
       organizationId,
@@ -2369,6 +2392,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async findOrderById(organizationId: string, orderId: string): Promise<Order | null> {
+    // QA R2 features-04: un id de ruta que no es uuid ("no-uuid") llegaba a la columna uuid y Postgres lanzaba 22P02 (-> 500 en el panel). Un id
+    // que no puede existir es "no encontrado" (404), igual que en el repositorio en memoria; ni siquiera se consulta.
+    if (!UUID_TEXT.test(orderId)) return null;
     // Migracion 071: la sesion de sistema (voz: reintento de crear_pedido -> `ya_registrado`) no ve `orders` por RLS.
     return runWithSavepointFallback<Order | null>({
       session: this.db,
@@ -2556,6 +2582,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async findAssignedOrderById(organizationId: string, repartidorId: string, orderId: string): Promise<Order | null> {
+    if (!UUID_TEXT.test(orderId)) return null; // QA R2 features-04: ver findOrderById
     const { rows } = await this.db.query<OrderRow>(
       `select ${ORDER_COLUMNS}
        from restaurantes.orders
@@ -2588,6 +2615,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async findCustomerById(organizationId: string, customerId: string): Promise<Customer | null> {
+    if (!UUID_TEXT.test(customerId)) return null; // QA R2 features-04: ver findOrderById
     const { rows } = await this.db.query<CustomerRow>(
       `select id, organization_id, phone, name, order_count from restaurantes.customers where organization_id = $1 and id = $2;`,
       [organizationId, customerId],

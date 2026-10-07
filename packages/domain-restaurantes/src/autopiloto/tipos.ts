@@ -161,6 +161,16 @@ export interface HandoffDevuelto {
   readonly avisado: boolean;
 }
 
+/** Toma de conversacion PENDIENTE (nadie la tomo) que ya paso el umbral: se avisa al owner una sola vez (QA R2 viaje-06). */
+export interface HandoffPendienteSinTomar {
+  readonly handoffId: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly conversationId: string;
+  readonly canal: "whatsapp" | "voz";
+  readonly minutos: number;
+}
+
 export interface AgotadoRepuesto {
   readonly organizationId: string;
   readonly propertyId: string;
@@ -206,7 +216,13 @@ export interface AutopilotoRepository {
   aplicarTransicion(organizationId: string, orderId: string, desde: OrderStatus, hacia: OrderStatus, actor: "agente" | "pos" | "sistema", motivo: string): Promise<boolean>;
   comandasParaAvance(limite: number): Promise<Lectura<readonly ComandaParaAvance[]>>;
   devolverHandoffsVencidos(ahora: Date, limite: number): Promise<Lectura<readonly HandoffDevuelto[]>>;
+  /** Solo sistema: marca (una sola vez) las tomas PENDIENTES que llevan N minutos sin que nadie las tome y las devuelve para avisar al owner. */
+  handoffsPendientesPorEscalar(ahora: Date, limite: number): Promise<Lectura<readonly HandoffPendienteSinTomar[]>>;
   cancelarPorCliente(organizationId: string, orderId: string, motivo: string): Promise<ResultadoCancelarCliente>;
+  /** Dia de NEGOCIO de la sucursal (YYYY-MM-DD): la cola de un turno que cruza la medianoche es del dia en que empezo. `null` = base sin migrar. */
+  diaNegocio(organizationId: string, propertyId: string): Promise<string | null>;
+  /** El staff imprimio el ticket de cocina de un pedido pending: habilita la aceptacion automatica sin POS. `disponible: false` = base sin migrar. */
+  registrarTicketImpreso(organizationId: string, orderId: string): Promise<{ readonly disponible: boolean; readonly registrado: boolean }>;
   marcarAgotado(organizationId: string, propertyId: string, productId: string, hasta: string, hastaCalendario?: string): Promise<{ readonly disponible: boolean; readonly aplicado: boolean }>;
   reponerAgotados(ahora: Date): Promise<Lectura<readonly AgotadoRepuesto[]>>;
   muestrasTiempo(organizationId: string, propertyId: string, canal: CanalPedido, ahora: Date): Promise<Lectura<MuestrasTiempo>>;

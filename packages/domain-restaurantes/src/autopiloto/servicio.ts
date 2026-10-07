@@ -532,6 +532,33 @@ export async function devolverHandoffsVencidos(deps: AutopilotoServicioDeps, aho
   return { disponible: true, devueltos: r.valor.length };
 }
 
+export interface ResumenHandoffsSinTomar {
+  readonly disponible: boolean;
+  readonly escalados: number;
+}
+
+/**
+ * QA R2 viaje-06: una toma PENDIENTE (el agente pidio una persona y nadie la tomo) que pasa el umbral de la sucursal avisa al owner una sola
+ * vez en la campana (critica), igual que las aprobaciones sin respuesta. NUNCA devuelve la conversacion al agente por su cuenta: el cliente
+ * ya fue derivado a una persona y devolverla reabriria el mismo motivo de escalacion. Sin la migracion 077 devuelve "no disponible".
+ */
+export async function escalarHandoffsSinTomar(deps: AutopilotoServicioDeps, ahora: Date): Promise<ResumenHandoffsSinTomar> {
+  const r = await deps.auto.handoffsPendientesPorEscalar(ahora, 50);
+  if (!r.disponible) return { disponible: false, escalados: 0 };
+  for (const h of r.valor) {
+    await emitirNotificacion(deps.db, {
+      evento: "restaurantes.handoff.sin_tomar",
+      organizationId: h.organizationId,
+      propertyId: h.propertyId,
+      clave: h.handoffId,
+      parametros: { minutos: h.minutos },
+      entidadTipo: "conversation_handoff",
+      entidadId: h.handoffId,
+    });
+  }
+  return { disponible: true, escalados: r.valor.length };
+}
+
 export interface ResumenAgotados {
   readonly disponible: boolean;
   readonly repuestos: number;

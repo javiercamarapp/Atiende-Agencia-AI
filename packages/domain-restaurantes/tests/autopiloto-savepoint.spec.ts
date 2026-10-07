@@ -137,6 +137,47 @@ describe("PostgresAutopilotoRepository contra la base sin migrar", () => {
   });
 });
 
+describe("PostgresAutopilotoRepository: funciones de la migracion 077 contra la base sin migrar (QA R2 features/viaje)", () => {
+  it.each(["42883", "42P01", "42703"])("handoffsPendientesPorEscalar (%s): lista vacia, disponible=false y la sesion sigue viva", async (code) => {
+    const s = new AbortAwareFakeSession([{ match: /handoffs_pendientes_por_escalar/, respond: () => pgError(code, "does not exist") }, SIGUIENTE]);
+    expect(await new PostgresAutopilotoRepository(s).handoffsPendientesPorEscalar(new Date(), 50)).toEqual({ disponible: false, valor: [] });
+    await sesionViva(s);
+    expect(s.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
+  });
+
+  it("handoffsPendientesPorEscalar: base migrada devuelve las tomas con su canal y minutos", async () => {
+    const s = new AbortAwareFakeSession([{ match: /handoffs_pendientes_por_escalar/, respond: () => [{ handoff_id: "h1", organization_id: ORG, property_id: PROP, conversation_id: "c1", canal: "voz", minutos: "22" }] }]);
+    const r = await new PostgresAutopilotoRepository(s).handoffsPendientesPorEscalar(new Date(), 50);
+    expect(r.disponible).toBe(true);
+    expect(r.valor).toEqual([{ handoffId: "h1", organizationId: ORG, propertyId: PROP, conversationId: "c1", canal: "voz", minutos: 22 }]);
+  });
+
+  it("diaNegocio: base sin la 077 => null (el panel cae al dia calendario) y la sesion sigue viva; migrada => la fecha", async () => {
+    const viejo = new AbortAwareFakeSession([{ match: /dia_negocio_sucursal_actual/, respond: () => pgError("42883", "function does not exist") }, SIGUIENTE]);
+    expect(await new PostgresAutopilotoRepository(viejo).diaNegocio(ORG, PROP)).toBeNull();
+    await sesionViva(viejo);
+    const nuevo = new AbortAwareFakeSession([{ match: /dia_negocio_sucursal_actual/, respond: () => [{ dia: "2026-10-07" }] }]);
+    expect(await new PostgresAutopilotoRepository(nuevo).diaNegocio(ORG, PROP)).toBe("2026-10-07");
+  });
+
+  it("diaNegocio: 42501 (sucursal ajena o sin alcance) => 403 tipado, sesion viva", async () => {
+    const s = new AbortAwareFakeSession([{ match: /dia_negocio_sucursal_actual/, respond: () => pgError("42501", "sin acceso") }, SIGUIENTE]);
+    await expect(new PostgresAutopilotoRepository(s).diaNegocio(ORG, PROP)).rejects.toBeInstanceOf(AutopilotoAccesoError);
+    await sesionViva(s);
+  });
+
+  it("registrarTicketImpreso: sin la 077 => no disponible; migrada => registrado; 42501 => 403", async () => {
+    const viejo = new AbortAwareFakeSession([{ match: /pedido_ticket_impreso_registrar/, respond: () => pgError("42883", "function does not exist") }, SIGUIENTE]);
+    expect(await new PostgresAutopilotoRepository(viejo).registrarTicketImpreso(ORG, ORDER)).toEqual({ disponible: false, registrado: false });
+    await sesionViva(viejo);
+    const nuevo = new AbortAwareFakeSession([{ match: /pedido_ticket_impreso_registrar/, respond: () => [{ ok: true }] }]);
+    expect(await new PostgresAutopilotoRepository(nuevo).registrarTicketImpreso(ORG, ORDER)).toEqual({ disponible: true, registrado: true });
+    const ajeno = new AbortAwareFakeSession([{ match: /pedido_ticket_impreso_registrar/, respond: () => pgError("42501", "fuera de su sucursal") }, SIGUIENTE]);
+    await expect(new PostgresAutopilotoRepository(ajeno).registrarTicketImpreso(ORG, ORDER)).rejects.toBeInstanceOf(AutopilotoAccesoError);
+    await sesionViva(ajeno);
+  });
+});
+
 describe("marcarAgotado contra la funcion vieja de la 050 (compara con la fecha calendario)", () => {
   /** Sesion que ademas registra los parametros de cada consulta, para comprobar la fecha del reintento. */
   class SesionConParametros extends AbortAwareFakeSession {
