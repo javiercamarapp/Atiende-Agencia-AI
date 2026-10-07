@@ -611,6 +611,8 @@ export type {
 } from "./post-adjudicacion.ts";
 export { InMemoryPostAdjudicacionRepository, PostgresPostAdjudicacionRepository } from "./post-adjudicacion-repository.ts";
 export type { GarantiaCreate, InMemoryPostAdjudicacionOptions, PostAdjudicacionActor, PostAdjudicacionRepository } from "./post-adjudicacion-repository.ts";
+export { AUDIT_ENTITIES, AUDIT_DEFAULT_LIMIT, AUDIT_MAX_LIMIT, isAuditEntity, sanitizeCorrelationId, newCorrelationId, pickAuditFields, appendAuditoria, listAuditoria } from "./audit-trail.ts";
+export type { AuditEntity, AuditTrailInput, AuditTrailEntry, AuditTrailFilters, AuditTrailPage } from "./audit-trail.ts";
 
 // ---- paridad3 (L-P3-05/06/07): boveda de bases, matriz estable, conflictos persistidos y revision ----
 export { TENDER_DOCUMENT_TYPES, TENDER_DOCUMENT_TYPE_LABELS, isTenderDocumentType, validateDocumentUpload, sha256OfBytes, requirementStableKey, conflictStableKey } from "./document-vault.ts";

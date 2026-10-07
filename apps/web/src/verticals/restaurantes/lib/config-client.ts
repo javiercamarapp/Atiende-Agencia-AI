@@ -23,8 +23,9 @@ export async function updateWhatsappConfig(fetchImpl: typeof fetch, apiBaseUrl: 
 export interface KnownZone {
   readonly id: string;
   readonly name: string;
-  readonly lat: number;
-  readonly lng: number;
+  /** `null` = colonia sin coordenadas propias (colonias del piloto original): no se inventan. */
+  readonly lat: number | null;
+  readonly lng: number | null;
   readonly createdAt: string;
 }
 
