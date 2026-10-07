@@ -28,7 +28,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import type { OpcionesConfirmar } from "@atiende/ui";
-import { CalendarPlus, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Megaphone, RefreshCw, TriangleAlert, UserX, X } from "lucide-react";
+import { CalendarPlus, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Megaphone, RefreshCw, TriangleAlert, UserPlus, UserX, X } from "lucide-react";
 import {
   StatusBadge,
   statusTone,
@@ -64,8 +64,8 @@ import { fetchProviders } from "../lib/providers-client.ts";
 import type { ProviderSummary } from "../lib/providers-client.ts";
 import { fetchServices } from "../lib/services-client.ts";
 import type { ServiceSummary } from "../lib/services-client.ts";
-import { broadcastWaitlist, fetchWaitlist } from "../lib/waitlist-client.ts";
-import type { WaitlistBroadcastSummary, WaitlistCandidate } from "../lib/waitlist-client.ts";
+import { broadcastWaitlist, enrollWaitlist, fetchWaitlist } from "../lib/waitlist-client.ts";
+import type { WaitlistBroadcastSummary, WaitlistCandidate, WaitlistTimeWindow } from "../lib/waitlist-client.ts";
 import { formatAppointmentSource, formatAppointmentStatus, formatDateLong, formatGoogleSyncStatus, formatTimeRange, googleSyncStatusNeedsAttention } from "../lib/format.ts";
 import { subscribeToAppointmentChanges } from "../lib/realtime-client.ts";
 import { hoyFechaSolo, parseFechaSolo } from "../../../lib/formato-fecha.ts";
@@ -180,6 +180,19 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   // post-commit, best-effort, en segundo plano) y `skippedNoWhatsappConfig` es
   // `boolean`, no `number` — ver el comentario largo de `waitlist-client.ts`.
   const [broadcastSummary, setBroadcastSummary] = useState<WaitlistBroadcastSummary | null>(null);
+
+  // ---- Anotar a un cliente en la lista de espera (QA-citas-R1-agentes-18): hasta ahora nada la llenaba. ----
+  const [showWaitlistForm, setShowWaitlistForm] = useState(false);
+  const [wlName, setWlName] = useState("");
+  const [wlPhone, setWlPhone] = useState("");
+  const [wlProviderId, setWlProviderId] = useState("");
+  const [wlServiceId, setWlServiceId] = useState("");
+  const [wlFrom, setWlFrom] = useState("");
+  const [wlTo, setWlTo] = useState("");
+  const [wlWindow, setWlWindow] = useState<WaitlistTimeWindow>("any");
+  const [wlSaving, setWlSaving] = useState(false);
+  const [wlError, setWlError] = useState<string | null>(null);
+  const [wlNotice, setWlNotice] = useState<string | null>(null);
 
   // ---- Fase 12 — hallazgo de auditoría (ALTO, "Staff no puede crear citas
   // manualmente desde la Agenda"): alta manual real (POST .../appointments, ver
@@ -365,6 +378,39 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
     }
   }
 
+  async function handleEnrollWaitlist(e: FormEvent) {
+    e.preventDefault();
+    if (!wlName.trim() || !wlPhone.trim()) return;
+    setWlSaving(true);
+    setWlError(null);
+    setWlNotice(null);
+    try {
+      const result = await enrollWaitlist(fetch, apiBaseUrl, token, propertyId, {
+        customerName: wlName.trim(),
+        customerPhone: wlPhone.trim(),
+        providerId: wlProviderId || undefined,
+        serviceId: wlServiceId || undefined,
+        preferredDateFrom: wlFrom || undefined,
+        preferredDateTo: wlTo || undefined,
+        preferredTimeWindow: wlWindow,
+      });
+      setWlNotice(result.alreadyEnrolled ? "Ese cliente ya estaba en la lista de espera con esas preferencias." : `Cliente anotado en la posición ${result.entry.position} de la lista de espera.`);
+      setWlName("");
+      setWlPhone("");
+      setWlProviderId("");
+      setWlServiceId("");
+      setWlFrom("");
+      setWlTo("");
+      setWlWindow("any");
+      setShowWaitlistForm(false);
+      await loadWaitlist();
+    } catch (err) {
+      setWlError(err instanceof Error ? err.message : "No se pudo anotar al cliente en la lista de espera.");
+    } finally {
+      setWlSaving(false);
+    }
+  }
+
   const groups = appointments ? groupByDay(appointments) : [];
 
 
@@ -489,6 +535,76 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
         </form>
       </FormDialog>
 
+      <FormDialog
+        open={showWaitlistForm}
+        onOpenChange={setShowWaitlistForm}
+        titulo="Anotar en la lista de espera"
+        subtitulo="Cuando se libere un horario que coincida, se le avisa en el orden en que se anotó."
+        anchoClase="max-w-3xl"
+        footer={
+          <Button type="submit" form="citas-espera-alta" disabled={wlSaving}>
+            {wlSaving ? "Anotando…" : "Anotar en la lista"}
+          </Button>
+        }
+      >
+        <form id="citas-espera-alta" onSubmit={handleEnrollWaitlist} className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-espera-nombre">Nombre del cliente</Label>
+              <Input id="citas-espera-nombre" required maxLength={160} placeholder="Nombre del cliente" value={wlName} onChange={(e) => setWlName(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-espera-telefono">Teléfono</Label>
+              <Input id="citas-espera-telefono" required inputMode="tel" placeholder="Teléfono con WhatsApp" value={wlPhone} onChange={(e) => setWlPhone(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-espera-proveedor">Proveedor (opcional)</Label>
+              <NativeSelect id="citas-espera-proveedor" value={wlProviderId} onChange={(e) => setWlProviderId(e.target.value)}>
+                <option value="">Cualquiera</option>
+                {providers?.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.displayName}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-espera-servicio-alta">Servicio (opcional)</Label>
+              <NativeSelect id="citas-espera-servicio-alta" value={wlServiceId} onChange={(e) => setWlServiceId(e.target.value)}>
+                <option value="">Cualquiera</option>
+                {services?.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-espera-desde">Desde (opcional)</Label>
+              <Input id="citas-espera-desde" type="date" value={wlFrom} onChange={(e) => setWlFrom(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-espera-hasta">Hasta (opcional)</Label>
+              <Input id="citas-espera-hasta" type="date" min={wlFrom || undefined} value={wlTo} onChange={(e) => setWlTo(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <Label htmlFor="citas-espera-franja">Horario preferido</Label>
+              <NativeSelect id="citas-espera-franja" value={wlWindow} onChange={(e) => setWlWindow(e.target.value as WaitlistTimeWindow)}>
+                <option value="any">Cualquier horario</option>
+                <option value="morning">Mañana</option>
+                <option value="afternoon">Tarde</option>
+                <option value="evening">Noche</option>
+              </NativeSelect>
+            </div>
+          </div>
+          {wlError && (
+            <p role="alert" className="text-sm text-destructive">
+              {wlError}
+            </p>
+          )}
+        </form>
+      </FormDialog>
+
       {error && <EstadoError mensaje={error} />}
 
       {loading && !appointments && <EstadoCargando etiqueta="Cargando citas…" />}
@@ -588,6 +704,10 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
                 </option>
               ))}
             </NativeSelect>
+            <Button variant="outline" size="sm" onClick={() => setShowWaitlistForm(true)}>
+              <UserPlus aria-hidden />
+              Anotar cliente
+            </Button>
             <Button
               size="sm"
               onClick={() => void handleBroadcastWaitlist()}
@@ -604,6 +724,12 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
           </p>
 
           {waitlistError && <EstadoError mensaje={waitlistError} />}
+
+          {wlNotice && (
+            <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">
+              {wlNotice}
+            </p>
+          )}
 
           {broadcastSummary && !broadcastSummary.queued && (
             // Corrección bloqueante de la ronda 2 de revisión del PR #180 — la

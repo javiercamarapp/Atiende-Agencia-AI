@@ -404,4 +404,6 @@ export type {
 
 // ---- Agente de VOZ de citas sobre @atiende/voice-core (VOZ-CIT) ----
 // El simulador y sus guiones es-MX se importan desde `@atiende/domain-citas/voz/simulador` (solo pruebas y la prueba ciega manual).
+export { MAX_WAITLIST_ENTRIES_PER_PHONE, WAITLIST_TIME_WINDOWS, enrollWaitlistEntry } from "./waitlist-enrollment.ts";
+export type { EnrollWaitlistInput, EnrollWaitlistOutcome, WaitlistTimeWindow } from "./waitlist-enrollment.ts";
 export * from "./voz/index.ts";

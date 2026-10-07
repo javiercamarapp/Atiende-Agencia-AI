@@ -266,6 +266,18 @@ export interface WaitlistCandidateRow {
   readonly createdAt: string;
 }
 
+export interface InsertWaitlistEntryInput {
+  readonly organizationId: string;
+  readonly customerPhone: string;
+  readonly customerName: string;
+  readonly providerId: string | null;
+  readonly serviceId: string | null;
+  /** AAAA-MM-DD o null (sin preferencia). */
+  readonly preferredDateFrom: string | null;
+  readonly preferredDateTo: string | null;
+  readonly preferredTimeWindow: "morning" | "afternoon" | "evening" | "any";
+}
+
 /** Fila de `citas.messaging_outbox` reclamada para despacho real — ver
  * migrations/007_messaging_outbox_dispatch.sql y
  * @atiende/whatsapp-gateway::MessagingOutboxPort (el puerto que
@@ -738,6 +750,9 @@ export interface CitasRepository {
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
   loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]>;
+  /** Inscribe a un cliente en `citas.appointment_waitlist` (sesion de STAFF: la policy de RLS exige membresia; el alta del agente en sesion de sistema
+   * necesitaria una funcion `security definer` que NO existe todavia, ver el PR). El telefono llega ya normalizado. */
+  insertWaitlistEntry(input: InsertWaitlistEntryInput): Promise<WaitlistCandidateRow>;
   /** f2-citas-lista-de-espera — igual que `loadLiveWaitlistCandidates`, pero para
    * sesión de SISTEMA (`auth.uid()` null): `citas.appointment_waitlist` solo tiene
    * policy de RLS de staff (membership), así que el SELECT plano de

@@ -96,6 +96,7 @@ import type {
   SetEscalacionSeguimientoResult,
   TenantConfigPatch,
   TenantConfigRecord,
+  InsertWaitlistEntryInput,
   WaitlistCandidateRow,
   UpsertCustomerOptions,
 } from "./repository.ts";
@@ -1533,6 +1534,40 @@ export class PostgresCitasRepository implements CitasRepository {
       preferredTimeWindow: r.preferred_time_window,
       createdAt: r.created_at,
     }));
+  }
+
+  /** Alta en la lista de espera desde el panel (sesion de staff: policy de RLS por membresia, grant de insert a `authenticated` desde la migracion 003). */
+  async insertWaitlistEntry(input: InsertWaitlistEntryInput): Promise<WaitlistCandidateRow> {
+    const { rows } = await this.db.query<{
+      id: string;
+      customer_phone: string;
+      customer_name: string | null;
+      notified_count: number;
+      provider_id: string | null;
+      service_id: string | null;
+      preferred_date_from: string | null;
+      preferred_date_to: string | null;
+      preferred_time_window: "morning" | "afternoon" | "evening" | "any";
+      created_at: string;
+    }>(
+      `insert into citas.appointment_waitlist (organization_id, customer_phone, customer_name, provider_id, service_id, preferred_date_from, preferred_date_to, preferred_time_window)
+       values ($1, $2, $3, $4::uuid, $5::uuid, $6::date, $7::date, $8)
+       returning id, customer_phone, customer_name, notified_count, provider_id, service_id, preferred_date_from::text, preferred_date_to::text, preferred_time_window, created_at;`,
+      [input.organizationId, input.customerPhone, input.customerName, input.providerId, input.serviceId, input.preferredDateFrom, input.preferredDateTo, input.preferredTimeWindow],
+    );
+    const r = rows[0]!;
+    return {
+      id: r.id,
+      customerPhone: r.customer_phone,
+      customerName: r.customer_name,
+      notifiedCount: r.notified_count,
+      providerId: r.provider_id,
+      serviceId: r.service_id,
+      preferredDateFrom: r.preferred_date_from,
+      preferredDateTo: r.preferred_date_to,
+      preferredTimeWindow: r.preferred_time_window,
+      createdAt: r.created_at,
+    };
   }
 
   /** f2-citas-lista-de-espera, hallazgo (A) — ver el comentario largo de
