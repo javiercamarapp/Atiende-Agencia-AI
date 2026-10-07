@@ -80,10 +80,27 @@ export function knownAmountsOfQuote(quote: {
 }
 
 /** El texto del agente dice que YA AVISO (o avisara) al gerente/equipo/sucursal. Sirve a la guardia de honestidad: solo se puede decir si el aviso existe
- * (QA-PM-R2-whatsapp-04: 12 de 48 conversaciones del juez eran "ya avise al gerente" sin llamar a escalar_a_humano). */
+ * (QA-PM-R2-whatsapp-04: 12 de 48 conversaciones del juez eran "ya avise al gerente" sin llamar a escalar_a_humano). Un aviso de preparacion
+ * ("le aviso a la sucursal para que tenga listo su pedido") es parte del flujo normal del pedido, no un aviso al gerente: no cuenta. */
 export function afirmaHaberAvisado(reply: string): boolean {
   const t = normalizarParaClasificar(reply);
-  return /\bavis(?:e|are|o)\s+(?:ya\s+)?(?:a|al|a\s+la|a\s+los)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal|encargad[oa]|restaurante|personal)\b|\bnotific(?:ue|are)\s+(?:al|a\s+la)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal)\b/.test(t);
+  return /\bavis(?:e|are|o)\s+(?:ya\s+)?(?:a|al|a\s+la|a\s+los)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal|encargad[oa]|restaurante|personal)\b(?![^.!?]*\blist[oa]s?\b)|\bnotific(?:ue|are)\s+(?:al|a\s+la)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal)\b/.test(t);
+}
+
+/** Frase que ofrece algo "de cortesia" como parte del pedido (afirmacion), no una explicacion de la regla de la promocion ("solo para recoger", "los martes", "si pide...", "no hay aguas de cortesia"). */
+function afirmaCortesia(frase: string): boolean {
+  const t = normalizarParaClasificar(frase);
+  if (!/\bcortesia\b/.test(t)) return false;
+  return !/\b(?:no|solo|unicamente|si|cuando|martes|lunes|promocion|aplica|valido|media\s+orden)\b/.test(t);
+}
+
+/** Guardia de honestidad de la promocion: "de cortesia" solo si `cotizar_pedido` devolvio `promocion_aplicada` (H13). Sin promocion en la cotizacion del turno, se quitan las frases
+ * que afirman una cortesia; si no queda nada, se aclara que el total es el cotizado. */
+export function quitarCortesiaNoRespaldada(reply: string): string {
+  const frases = reply.split(/(?<=[.!?])\s+/);
+  if (!frases.some(afirmaCortesia)) return reply;
+  const resto = frases.filter((f) => !afirmaCortesia(f)).join(" ").trim();
+  return resto || "Por ahora su pedido no lleva ninguna promoción aplicada; el total es el de la cotización.";
 }
 
 /** Quita la afirmacion de aviso cuando no se pudo dejar el aviso. */

@@ -36,6 +36,8 @@ export interface OrderFlowContext {
    * confirmo si el catalogo cambia entre confirmar y crear. Ausente en filas guardadas antes de este campo.
    */
   readonly quotedPrices?: string;
+  /** Hora de recogida (ISO UTC al minuto) con la que se cotizo, si la llevaba: `crear_pedido` con otra hora distinta ya no coincide con la huella. */
+  readonly horaRecogida?: string;
   /** Total a pagar de la cotizacion vigente y cifras legitimas que el cliente vio (precios, importes, subtotal, descuento).
    * Lo lee el agente de WhatsApp en el turno SIGUIENTE para que su guardia de cifras siga corrigiendo un total alucinado
    * aunque ese turno no llame ninguna herramienta. Ausente en filas guardadas antes de este campo (guardia entonces solo en el turno que cotiza). */
@@ -103,6 +105,8 @@ export function fingerprintOrder(input: {
   readonly doubleSalsas?: readonly string[];
   /** R-11: hora programada normalizada (ISO UTC). Cambiarla tras confirmar obliga a re-cotizar; solo entra a la huella si existe. */
   readonly programadoPara?: string;
+  /** Hora de recogida normalizada al minuto (ISO UTC); solo entra a la huella si la cotizacion la llevaba: cambiarla tras confirmar obliga a re-cotizar. */
+  readonly horaRecogida?: string;
 }): string {
   const items = input.items
     .map((i) => ({
@@ -111,7 +115,7 @@ export function fingerprintOrder(input: {
       t: i.tortilla ?? null,
     }))
     .sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : a.q - b.q));
-  const canonical = JSON.stringify({ b: input.branchSlug.trim(), c: input.canal === "recoger" ? "recoger" : "domicilio", a: input.adultConfirmed === true, i: items, ...(input.doubleSalsas && input.doubleSalsas.length > 0 ? { d: [...new Set(input.doubleSalsas)].sort() } : {}), ...(input.programadoPara ? { p: input.programadoPara } : {}) });
+  const canonical = JSON.stringify({ b: input.branchSlug.trim(), c: input.canal === "recoger" ? "recoger" : "domicilio", a: input.adultConfirmed === true, i: items, ...(input.doubleSalsas && input.doubleSalsas.length > 0 ? { d: [...new Set(input.doubleSalsas)].sort() } : {}), ...(input.programadoPara ? { p: input.programadoPara } : {}), ...(input.horaRecogida ? { h: input.horaRecogida } : {}) });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
 

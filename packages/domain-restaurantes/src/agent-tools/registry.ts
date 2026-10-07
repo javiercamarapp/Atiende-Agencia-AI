@@ -24,7 +24,7 @@ import { normalizePhone } from "../phone.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
-import { assignBranch } from "../branch-assignment.ts";
+import { assignBranch, RADIO_MAXIMO_REPARTO_KM } from "../branch-assignment.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
 import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
@@ -518,6 +518,14 @@ function toProgramadoPara(raw: unknown): string | undefined {
   return parsearProgramadoPara(raw);
 }
 
+/** Hora de recogida normalizada al minuto en ISO UTC (para la huella del pedido); texto que no es fecha se compara tal cual. `undefined` si no vino. */
+function toHoraRecogida(raw: unknown): string | undefined {
+  const t = textoOpcional(raw)?.trim();
+  if (!t) return undefined;
+  const ms = Date.parse(t);
+  return Number.isNaN(ms) ? t.toLowerCase() : new Date(ms).toISOString().slice(0, 16);
+}
+
 /** Texto en blanco = ausente (el modelo manda "" en vez de omitir el campo). */
 function textoOpcional(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() !== "" ? v : undefined;
@@ -699,6 +707,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       items: toRequestedItems(input.items, lenient),
       doubleSalsas: toDoubleSalsas(input.doble_salsas),
       programadoPara: toProgramadoPara(input.programado_para),
+      horaRecogida: toHoraRecogida(input.hora_recogida),
     });
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
@@ -727,6 +736,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         quotedAtMs: flowNow(flow),
         quotedTurn: flow.turn,
         quotedPrices,
+        ...(toHoraRecogida(input.hora_recogida) ? { horaRecogida: toHoraRecogida(input.hora_recogida) } : {}),
         quotedTotal: quotedQuote.total,
         quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
         ...(snap.context?.sessionTotal ? { sessionTotal: snap.context.sessionTotal, sessionPesoKg: snap.context.sessionPesoKg ?? 0, sessionPedidos: snap.context.sessionPedidos ?? 0, ...(snap.context.sessionUltimoPedidoId ? { sessionUltimoPedidoId: snap.context.sessionUltimoPedidoId } : {}) } : {}),
@@ -758,18 +768,24 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
 
   // crear_pedido: reclamo atomico (confirmado -> creando) ANTES de crear, para que dos llamadas
   // concurrentes no creen dos pedidos.
-  const fingerprint = fingerprintOrder({
-    branchSlug: String(input.branch_slug ?? ""),
-    canal: canalOf(input.canal),
-    adultConfirmed: input.adult_confirmed === true,
-    items: toRequestedItems(input.items, lenient),
-    doubleSalsas: toDoubleSalsas(input.doble_salsas),
-    programadoPara: toProgramadoPara(input.programado_para),
-  });
+  const huellaConHora = (horaRecogida: string | undefined): string =>
+    fingerprintOrder({
+      branchSlug: String(input.branch_slug ?? ""),
+      canal: canalOf(input.canal),
+      adultConfirmed: input.adult_confirmed === true,
+      items: toRequestedItems(input.items, lenient),
+      doubleSalsas: toDoubleSalsas(input.doble_salsas),
+      programadoPara: toProgramadoPara(input.programado_para),
+      horaRecogida,
+    });
   let claimed: { version: number; context: OrderFlowContext } | null = null;
   for (let attempt = 0; attempt < 3 && !claimed; attempt++) {
     const snap = await readFlow(repo, ctx, flow);
     if (snap === null) return dispatchTool(repo, ctx, name, input); // base sin migrar: camino anterior
+    // La hora de recogida solo cuenta si la cotizacion la llevaba (una hora que el modelo agrega al crear la valida el servidor, pero no cambia lo que el cliente vio);
+    // si crear la omite se entiende la cotizada. Una hora DISTINTA a la cotizada obliga a re-cotizar.
+    const horaCotizada = snap.context?.horaRecogida;
+    const fingerprint = huellaConHora(horaCotizada ? (toHoraRecogida(input.hora_recogida) ?? horaCotizada) : undefined);
     // Voz: un reintento del MISMO pedido ya creado (el worker corto la espera y el servidor si lo registro) devuelve el pedido
     // existente con su id, para que la llamada cuente el objetivo y el agente no le diga al cliente que fallo.
     if (ctx.channel === "voz" && snap.state === "creado" && snap.context?.orderId && snap.context.quoteHash === fingerprint) {
@@ -955,8 +971,11 @@ async function dispatchTool(
         lat = ctx.sharedLocation.lat;
         lng = ctx.sharedLocation.lng;
       }
+      // El tope duro de 20 km es del perfil `taqueria_pm` (QA-PM-R2-whatsapp-08); otro perfil, o una base sin la config del agente, no lo hereda.
+      const perfilAgente = (await repo.findWhatsAppAgentConfig(organizationId, null))?.perfil ?? "generico";
       const match = await assignBranch(repo, {
         organizationId,
+        radioMaximoKm: perfilAgente === "taqueria_pm" ? RADIO_MAXIMO_REPARTO_KM : null,
         colonia: typeof input.colonia === "string" ? input.colonia : undefined,
         ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
         ...(typeof input.max_km === "number" && Number.isFinite(input.max_km) && input.max_km > 0 ? { maxKm: input.max_km } : {}),
