@@ -51,7 +51,6 @@ test.describe("restaurantes R2 botones: Comandas al POS @recorrido", () => {
   });
 
   test("QA-R2-botones-03: al cambiar de filtro y fallar la carga, la cola NO conserva las comandas del filtro anterior", async ({ page, mock, vigilante }) => {
-    test.fail(true, "QA-restaurantes-R2-botones-03: ComandasPos deja visible la cola del filtro anterior (con su boton Marcar capturada) bajo el filtro nuevo cuando la carga falla");
     vigilante.permitirRespuesta5xx(/softrestaurant\/comandas/);
     await ir(page, "/comandas-pos");
     await expect(page.getByTestId("comanda-cmd-3001")).toBeVisible();
@@ -105,7 +104,6 @@ test.describe("restaurantes R2 botones: Cliente 360 @recorrido", () => {
   });
 
   test("QA-R2-botones-08: doble clic en 'Guardar domicilio' crea UN solo domicilio", async ({ page, mock }) => {
-    test.fail(true, "QA-restaurantes-R2-botones-08: los formularios de la ficha (Guardar domicilio, Agregar gusto, Guardar datos, Marcar como falso, Exportar) no se deshabilitan mientras guardan: un doble clic manda dos POST y crea dos domicilios");
     await ir(page, "/clientes/cli-1");
     await main(page).getByRole("button", { name: "Agregar domicilio" }).click();
     await main(page).getByLabel("Dirección completa").fill("Calle 21 #100, Itzimna");
@@ -118,7 +116,6 @@ test.describe("restaurantes R2 botones: Cliente 360 @recorrido", () => {
   });
 
   test("QA-R2-botones-04: si guardar un domicilio falla, el formulario NO se cierra ni se pierde lo escrito", async ({ page, mock, vigilante }) => {
-    test.fail(true, "QA-restaurantes-R2-botones-04: Domicilios.guardar llama setEditando(null) aunque ejecutar() haya fallado: el formulario se cierra y se pierde la direccion tecleada");
     vigilante.permitirRespuesta5xx(/addresses/);
     await ir(page, "/clientes/cli-1");
     await mock.inyectarFalla({ metodo: "POST", ruta: "/addresses", status: 503, veces: 1 });
@@ -130,7 +127,6 @@ test.describe("restaurantes R2 botones: Cliente 360 @recorrido", () => {
   });
 
   test("QA-R2-botones-05: la falla de carga de la ficha ofrece Reintentar y se recupera", async ({ page, mock, vigilante }) => {
-    test.fail(true, "QA-restaurantes-R2-botones-05: ClienteFicha pinta <EstadoError mensaje={error} /> sin onReintentar: no hay como recuperar sin recargar la pagina");
     vigilante.permitirRespuesta5xx(/\/ficha/);
     await mock.inyectarFalla({ metodo: "GET", ruta: "/customers/cli-1/ficha", status: 500 });
     await page.goto(`${BASE}/clientes/cli-1`);

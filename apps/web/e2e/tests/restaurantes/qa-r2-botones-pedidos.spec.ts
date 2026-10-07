@@ -1,7 +1,7 @@
 // QA adversarial ronda 2 (lente botones y paginas) -- Pedidos de restaurantes: el corazon del flujo de PM (pedido entra -> cocina -> repartidor ->
 // entrega -> cierre). Cada control se ejerce contra la API simulada y se afirma sobre el REGISTRO de peticiones: carreras de pestanas, pedido que
 // llega antes del primer sondeo, doble clic, dialogos que no deben escribir con Cancelar/Escape, reglas del autopiloto y aprobaciones.
-// Un defecto confirmado y sin corregir queda como `test.fail(true, "<ID>")`: la prueba avisa (falla) cuando alguien lo corrige.
+// Los defectos R2-01..08 estaban como `test.fail`; se corrigieron y estas pruebas son su regresion (fallan sin el arreglo).
 import type { Page } from "@playwright/test";
 import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
@@ -66,7 +66,6 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
   });
 
   test("QA-R2-botones-01: al cambiar de pestana y fallar la carga, NO se quedan los pedidos de la pestana anterior", async ({ page, mock, vigilante }) => {
-    test.fail(true, "QA-restaurantes-R2-botones-01: Pedidos conserva la lista de la pestana anterior bajo la pestana nueva cuando su carga falla (y mientras carga)");
     vigilante.permitirRespuesta5xx(/status=en_camino/);
     await ir(page, "/pedidos");
     await expect(tarjeta(page, "Marisol Pech")).toBeVisible();
@@ -203,7 +202,6 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
   });
 
   test("QA-R2-botones-02: si la carga de las reglas del autopiloto falla, el dialogo NO se queda en 'Cargando reglas…' para siempre", async ({ page, mock, vigilante }) => {
-    test.fail(true, "QA-restaurantes-R2-botones-02: fetchAutopilotoConfig fallido deja autoConfig=null y el dialogo muestra 'Cargando reglas…' sin error ni Reintentar");
     vigilante.permitirRespuesta5xx(/autopiloto\/config/);
     await mock.inyectarFalla({ metodo: "GET", ruta: "/autopiloto/config", status: 503 });
     await ir(page, "/pedidos");

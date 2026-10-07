@@ -96,7 +96,6 @@ test.describe("restaurantes R2 botones: Conversaciones y Callbacks @recorrido", 
   });
 
   test("QA-R2-botones-06: doble clic en un resultado de intento ('No contestó') registra UN solo intento", async ({ page, mock }) => {
-    test.fail(true, "QA-restaurantes-R2-botones-06: los botones de CallbacksPanel (Tomar, intentos, Liberar, Reabrir, Asignar) no se deshabilitan mientras corre la peticion: un doble clic registra dos intentos");
     await ir(page, "/conversaciones");
     await main(page).getByRole("tab", { name: "Callbacks" }).click();
     await expect(main(page).getByText("Sin callbacks")).toBeVisible();
@@ -139,16 +138,15 @@ test.describe("restaurantes R2 botones: Promociones y Turnos @recorrido", () => 
   });
 
   test("QA-R2-botones-07: 'Crear código' con valor 0 (el campo acepta min=0) avisa por que no se crea", async ({ page, mock }) => {
-    test.fail(true, "QA-restaurantes-R2-botones-07: handleCreate hace `return` en silencio si value <= 0 o el codigo/nombre son solo espacios: el boton parece muerto");
     const d = await abrirCrear(page);
     await d.getByLabel("Valor").fill("0");
     await mock.limpiarRegistro();
     await d.getByRole("button", { name: "Crear código" }).click();
     await afirmarSinEscrituras(mock, "valor 0");
     await expect(d, "el dialogo sigue abierto").toBeVisible();
-    // Ni alerta propia ni mensaje de validacion del navegador: el campo es valido para HTML (min=0) y el submit se descarta en silencio.
-    expect(await d.locator("#promocion-valor").evaluate((el) => (el as HTMLInputElement).validationMessage), "el navegador no marca el campo").toBe("");
+    // El campo es valido para HTML (min=0), asi que el navegador no lo marca: la explicacion la da el dialogo con una alerta propia.
     await expect(d.getByRole("alert"), "debe explicar por que no se creo").toBeVisible({ timeout: 3000 });
+    await expect(d.getByRole("alert")).toContainText("mayor que 0");
   });
 
   test("R1-botones-05/08 (verifican cierre): Turnos valida en el cliente y no repite el nombre tras Quitar", async ({ page, mock, vigilante }) => {
