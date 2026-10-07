@@ -145,8 +145,8 @@ export interface RentasCalendarSyncRepository {
   /** Revoca el token vigente de (unidad, canal) y crea uno nuevo con `tokenHash`, atómicamente. Staff (sesión por
    * request): la base exige acceso a la property y un rol de escritura de calendario. */
   rotarFeedToken(input: RotarFeedTokenInput): Promise<ResultadoRotarFeedToken>;
-  /** Tokens vigentes de las unidades de la property para `unidadId` (uno por canal), sin hash ni valor en claro. */
-  listarFeedTokens(propertyId: string, unidadId: string): Promise<ResultadoListarFeedTokens>;
+  /** Tokens vigentes (uno por unidad y canal) de la property, o solo de `unidadId`; sin hash ni valor en claro. */
+  listarFeedTokens(propertyId: string, unidadId?: string): Promise<ResultadoListarFeedTokens>;
   /** SOLO SISTEMA (ruta pública del feed, auth.uid() NULL): resuelve un hash a (unidad, canal) y registra el último
    * acceso (a lo más una escritura por minuto y token). Ignora los tokens revocados. */
   resolverFeedToken(tokenHash: string): Promise<ResultadoResolverFeedToken>;

@@ -437,3 +437,11 @@ export type {
   ViaHoy,
   ViaIcal,
 } from "./canales/catalogo.ts";
+
+// Paridad3 Rn-P3-16 -- matriz de conectividad por unidad y canal (función pura sobre datos reales del monitor).
+export { calcularMatrizConectividad } from "./canales/matriz.ts";
+export type { CeldaMatriz, EntradaMatrizConectividad, EstadoCeldaMatriz, EstadoExportMatriz, EstadoImportMatriz, UnidadMatriz } from "./canales/matriz.ts";
+
+// Paridad3 Rn-P3-17 -- resumen de un .ics para "Probar URL" (sin guardar nada).
+export { resumirFeedIcs } from "./ical/probar-feed.ts";
+export type { ResumenFeedIcs } from "./ical/probar-feed.ts";

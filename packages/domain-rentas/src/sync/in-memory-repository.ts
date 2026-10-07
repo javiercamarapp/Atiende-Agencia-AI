@@ -396,18 +396,19 @@ export class InMemoryRentasCalendarSyncRepository implements RentasCalendarSyncR
     return { disponible: true, tokenId: nuevo.id, creadoEn: this.iso(ahora) };
   }
 
-  async listarFeedTokens(propertyId: string, unidadId: string): Promise<ResultadoListarFeedTokens> {
+  async listarFeedTokens(propertyId: string, unidadId?: string): Promise<ResultadoListarFeedTokens> {
     if (!this.migracion037Disponible) return { disponible: false };
     const tokens = [...this.feedTokens.values()]
-      .filter((t) => t.propertyId === propertyId && t.unidadId === unidadId && t.revocadoEn === null)
+      .filter((t) => t.propertyId === propertyId && (unidadId === undefined || t.unidadId === unidadId) && t.revocadoEn === null)
       .map((t) => ({
         tokenId: t.id,
+        unidadId: t.unidadId,
         canalId: t.canalId,
         canalCodigo: [...this.calendarStore.canales.values()].find((c) => c.id === t.canalId)?.codigo ?? "desconocido",
         creadoEn: this.iso(t.creadoEn),
         ultimoAccesoEn: t.ultimoAccesoEn === null ? null : this.iso(t.ultimoAccesoEn),
       }))
-      .sort((a, b) => (a.canalCodigo < b.canalCodigo ? -1 : 1));
+      .sort((a, b) => (a.unidadId < b.unidadId ? -1 : a.unidadId > b.unidadId ? 1 : a.canalCodigo < b.canalCodigo ? -1 : 1));
     return { disponible: true, tokens };
   }
 

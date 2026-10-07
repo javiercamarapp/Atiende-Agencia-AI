@@ -650,9 +650,10 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
     });
   }
 
-  async listarFeedTokens(propertyId: string, unidadId: string): Promise<ResultadoListarFeedTokens> {
+  async listarFeedTokens(propertyId: string, unidadId?: string): Promise<ResultadoListarFeedTokens> {
     interface TokenRow {
       id: string;
+      unidad_id: string;
       canal_id: string;
       canal_codigo: string;
       creado_en: string;
@@ -663,16 +664,16 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
       savepointName: "sp_rentas_feed_token_listar",
       primary: async () => {
         const filas = await this.db.query<TokenRow>(
-          `SELECT t.id, t.canal_id, c.codigo AS canal_codigo,
+          `SELECT t.id, t.unidad_id, t.canal_id, c.codigo AS canal_codigo,
                   to_char(t.creado_en AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS creado_en,
                   to_char(t.ultimo_acceso_en AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ultimo_acceso_en
            FROM rentas.feed_export_token t
            JOIN rentas.canal c ON c.id = t.canal_id
-           WHERE t.property_id = $1 AND t.unidad_id = $2 AND t.revocado_en IS NULL
-           ORDER BY c.codigo`,
-          [propertyId, unidadId],
+           WHERE t.property_id = $1 AND ($2::uuid IS NULL OR t.unidad_id = $2::uuid) AND t.revocado_en IS NULL
+           ORDER BY t.unidad_id, c.codigo`,
+          [propertyId, unidadId ?? null],
         );
-        const tokens: FeedTokenEstado[] = filas.rows.map((f) => ({ tokenId: f.id, canalId: f.canal_id, canalCodigo: f.canal_codigo, creadoEn: f.creado_en, ultimoAccesoEn: f.ultimo_acceso_en }));
+        const tokens: FeedTokenEstado[] = filas.rows.map((f) => ({ tokenId: f.id, unidadId: f.unidad_id, canalId: f.canal_id, canalCodigo: f.canal_codigo, creadoEn: f.creado_en, ultimoAccesoEn: f.ultimo_acceso_en }));
         return { disponible: true, tokens };
       },
       isRecoverable: (err) => isMigrationPendingError(err),

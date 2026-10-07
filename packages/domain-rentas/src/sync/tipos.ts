@@ -79,6 +79,7 @@ export interface EntradaUpsertBloqueoExportado {
 /** Token vigente de exportación de una (unidad, canal), tal como lo ve el staff (nunca el hash ni el valor en claro). */
 export interface FeedTokenEstado {
   readonly tokenId: string;
+  readonly unidadId: string;
   readonly canalId: string;
   readonly canalCodigo: string;
   readonly creadoEn: string;
