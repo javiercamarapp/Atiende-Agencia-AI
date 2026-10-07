@@ -13,6 +13,8 @@ export type FakeProviderScript = (request: LlmCompletionRequest) => LlmCompletio
 
 export interface FakeLlmProviderOptions {
   id: string;
+  /** Modelo que declara el proveedor (para probar el modelo preferido y el estimador de costo). */
+  model?: string;
   countryOfResidence?: string;
   /** Si se da, `complete` LANZA este error en vez de responder — para
    *  simular un proveedor caído en pruebas de fallback/breaker. */
@@ -22,6 +24,7 @@ export interface FakeLlmProviderOptions {
 
 export class FakeLlmProvider implements LlmProvider {
   readonly id: string;
+  readonly model?: string;
   readonly countryOfResidence: string;
   /** Número de veces que `complete` fue invocado — para que las pruebas
    *  verifiquen que un proveedor bloqueado por el gate de residencia o por
@@ -30,6 +33,7 @@ export class FakeLlmProvider implements LlmProvider {
 
   constructor(private readonly opts: FakeLlmProviderOptions) {
     this.id = opts.id;
+    if (opts.model !== undefined) this.model = opts.model;
     this.countryOfResidence = opts.countryOfResidence ?? 'US';
   }
 
