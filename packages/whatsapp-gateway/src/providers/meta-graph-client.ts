@@ -187,7 +187,10 @@ export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
       // reintentable (el dispatcher lo manda a `dead` de inmediato).
       const retryable = response.status === 429 || response.status >= 500;
       const graphCode = typeof parsed?.error?.code === "number" ? parsed.error.code : undefined;
-      throw new WhatsAppSendError(`Graph API respondió ${response.status}: ${detail}`, retryable, { proveedor: true, httpStatus: response.status, ...(graphCode !== undefined ? { graphCode } : {}) });
+      // Solo cuenta como falla del PROVEEDOR (base de la alerta de proveedor caido) lo que no es culpa del mensaje: 429, 5xx y el token invalido (190).
+      // Un 4xx causado por el mensaje (numero invalido, parametro de plantilla malo) no es proveedor caido: se informa httpStatus/graphCode sin la marca.
+      const proveedor = retryable || graphCode === 190;
+      throw new WhatsAppSendError(`Graph API respondió ${response.status}: ${detail}`, retryable, { proveedor, httpStatus: response.status, ...(graphCode !== undefined ? { graphCode } : {}) });
     }
 
     let success: GraphApiSuccessBody;

@@ -126,6 +126,12 @@ describe("MetaGraphWhatsAppClient", () => {
     const caido = await send(() => jsonResponse({}, 503)).catch((e: unknown) => e);
     expect((caido as WhatsAppSendError).info).toEqual({ proveedor: true, httpStatus: 503 });
 
+    // 4xx causado por el mensaje (numero invalido, parametro de plantilla malo): NO es falla del proveedor.
+    const numero = await send(() => jsonResponse({ error: { message: "numero invalido", type: "OAuthException", code: 131030 } }, 400)).catch((e: unknown) => e);
+    expect((numero as WhatsAppSendError).info).toEqual({ proveedor: false, httpStatus: 400, graphCode: 131030 });
+    const limite = await send(() => jsonResponse({}, 429)).catch((e: unknown) => e);
+    expect((limite as WhatsAppSendError).info).toEqual({ proveedor: true, httpStatus: 429 });
+
     const red = await send(() => {
       throw new Error("ECONNRESET");
     }).catch((e: unknown) => e);
