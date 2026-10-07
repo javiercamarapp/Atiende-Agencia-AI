@@ -287,7 +287,7 @@ describe("aviso de privacidad y lista de sucursales", () => {
         ? json({ encargados: { borrador: true, revisionLegalPendiente: true, aviso: "BORRADOR pendiente de revisión legal. Algunos proveedores tratan sus datos.", encargados: [{ id: "meta_whatsapp", proveedor: "Meta (WhatsApp)", finalidad: "Enviar y recibir los mensajes de WhatsApp.", pais: "Estados Unidos" }] } })
         : json({}, 404),
     );
-    rendered = renderEn("/pedir/demo/privacidad");
+    rendered = await renderEn("/pedir/demo/privacidad");
     await esperar();
     const t = rendered.container.textContent ?? "";
     expect(t).toContain("Encargados y transferencias");
@@ -297,13 +297,13 @@ describe("aviso de privacidad y lista de sucursales", () => {
 
   it("sin encargados (o si el servidor falla) la seccion no aparece y el aviso simplificado sigue completo", async () => {
     fetchMock.mockImplementation(async () => json({ encargados: { borrador: true, revisionLegalPendiente: true, aviso: "x", encargados: [] } }));
-    rendered = renderEn("/pedir/demo/privacidad");
+    rendered = await renderEn("/pedir/demo/privacidad");
     await esperar();
     expect(rendered.container.textContent).not.toContain("Encargados y transferencias");
     expect(rendered.container.textContent).toContain("Tus derechos");
     rendered.unmount();
     fetchMock.mockImplementation(async () => json({ message: "falla" }, 500));
-    rendered = renderEn("/pedir/demo/privacidad");
+    rendered = await renderEn("/pedir/demo/privacidad");
     await esperar();
     expect(rendered.container.textContent).not.toContain("Encargados y transferencias");
     expect(rendered.container.textContent).toContain("Tus derechos");

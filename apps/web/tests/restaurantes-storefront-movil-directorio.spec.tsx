@@ -9,7 +9,7 @@ import { filtrarMenu, totalArticulos } from "../src/verticals/restaurantes/store
 import { enlaceTel, lineasHorario, textoDias } from "../src/verticals/restaurantes/storefront/horario-texto.ts";
 import { insigniasDe } from "../src/verticals/restaurantes/storefront/SucursalesPage.tsx";
 import type { CategoriaMenu, SucursalDirectorio } from "../src/verticals/restaurantes/storefront/storefront-client.ts";
-import { changeValue, click, flushMicrotasks, keydown, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, esperarRutaCargada, flushMicrotasks, keydown, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -25,16 +25,20 @@ const MENU = { sucursal: SUCURSAL, categorias: CATEGORIAS };
 function json(body: unknown, status = 200): Response {
   return { ok: status < 400, status, json: async () => body } as unknown as Response;
 }
-function esperar(): Promise<void> {
-  return act(async () => {
+async function esperar(): Promise<void> {
+  await act(async () => {
     await flushMicrotasks();
     await flushMicrotasks();
     await flushMicrotasks();
   });
+  // Las pantallas del storefront son chunks lazy: espera a que termine la carga de ruta.
+  await esperarRutaCargada(document.body);
 }
-function renderEn(ruta: string): RenderedComponent {
+async function renderEn(ruta: string): Promise<RenderedComponent> {
   window.history.pushState({}, "", ruta);
-  return renderComponent(<App />);
+  const r = renderComponent(<App />);
+  await esperarRutaCargada(r.container);
+  return r;
 }
 const q = <T extends Element>(sel: string, raiz: ParentNode = document): T => raiz.querySelector<T>(sel) as T;
 const botonPorTexto = (texto: string, raiz: ParentNode = document.body) => Array.from(raiz.querySelectorAll("button")).find((b) => b.textContent?.includes(texto)) as HTMLButtonElement | undefined;
@@ -90,7 +94,7 @@ describe("storefront en el telefono (375 px)", () => {
   });
 
   it("sin productos no hay barra; al agregar aparece con contador y total, y se actualiza", async () => {
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     expect(document.querySelector("aside")).toBeNull();
     expect(botonPorTexto("Ver pedido")).toBeUndefined();
@@ -104,7 +108,7 @@ describe("storefront en el telefono (375 px)", () => {
   });
 
   it("'Ver pedido' abre la hoja inferior (dialogo accesible con foco dentro) y Esc la cierra", async () => {
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     act(() => click(q('button[aria-label="Agregar Horchata al carrito"]')));
     act(() => click(botonPorTexto("Ver pedido")!));
@@ -124,7 +128,7 @@ describe("storefront en el telefono (375 px)", () => {
   });
 
   it("la hoja tiene boton de cierre accesible", async () => {
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     act(() => click(q('button[aria-label="Agregar Horchata al carrito"]')));
     act(() => click(botonPorTexto("Ver pedido")!));
@@ -139,7 +143,7 @@ describe("storefront en el telefono (375 px)", () => {
   it("barra de categorias: un boton por categoria y el salto lleva a la seccion", async () => {
     const scroll = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scroll });
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     const nav = q<HTMLElement>('nav[aria-label="Categorías del menú"]');
     const botones = Array.from(nav.querySelectorAll("button"));
@@ -153,7 +157,7 @@ describe("storefront en el telefono (375 px)", () => {
   });
 
   it("buscador: filtra local sin red, muestra vacio honesto y vuelve al menu completo", async () => {
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     const llamadas = fetchMock.mock.calls.length;
     const input = q<HTMLInputElement>("#buscar-menu");
@@ -169,7 +173,7 @@ describe("storefront en el telefono (375 px)", () => {
 
   it("sucursal solo-recoger: domicilio deshabilitado con el motivo", async () => {
     fetchMock.mockImplementation(async (url: string) => (String(url).endsWith("/menu") ? json({ ...MENU, sucursal: { ...SUCURSAL, aceptaDomicilio: false } }) : json({}, 404)));
-    rendered = renderEn("/pedir/demo/centro");
+    rendered = await renderEn("/pedir/demo/centro");
     await esperar();
     act(() => click(q('button[aria-label="Agregar Horchata al carrito"]')));
     act(() => click(botonPorTexto("Ver pedido")!));
@@ -199,7 +203,7 @@ describe("directorio publico de sucursales", () => {
 
   it("lista todas las visibles con direccion, horario, tel: y Como llegar; solo las activas llevan a pedir", async () => {
     fetchMock.mockImplementation(async (url: string) => (String(url).endsWith("/directorio") ? json(DIRECTORIO) : json({}, 404)));
-    rendered = renderEn("/pedir/demo/sucursales");
+    rendered = await renderEn("/pedir/demo/sucursales");
     await esperar();
     expect(fetchMock.mock.calls.map((c) => String(c[0]))).toContain("http://localhost:8787/v1/restaurantes/demo/storefront/directorio");
     const texto = rendered.container.textContent ?? "";
@@ -222,13 +226,13 @@ describe("directorio publico de sucursales", () => {
 
   it("error del servidor: estado de error con reintento; vacio: mensaje honesto", async () => {
     fetchMock.mockImplementation(async () => json({ message: "Restaurante no encontrado." }, 404));
-    rendered = renderEn("/pedir/demo/sucursales");
+    rendered = await renderEn("/pedir/demo/sucursales");
     await esperar();
     expect(rendered.container.textContent).toContain("Restaurante no encontrado.");
     expect(botonPorTexto("Reintentar")).toBeDefined();
     rendered.unmount();
     fetchMock.mockImplementation(async () => json({ restaurante: { slug: "demo", nombre: "X" }, sucursales: [] }));
-    rendered = renderEn("/pedir/demo/sucursales");
+    rendered = await renderEn("/pedir/demo/sucursales");
     await esperar();
     expect(rendered.container.textContent).toContain("Sin sucursales publicadas");
   });
@@ -260,7 +264,7 @@ describe("¿Dónde está? (sucursal sugerida)", () => {
 
   it("autocompleta con las zonas del servidor, sugiere la sucursal, la recuerda y 'Cambiar' la olvida", async () => {
     const posts = api({ tipo: "reparte", sucursal: { slug: "t7", name: "García Lavín" }, zona: "Montebello", distanciaKm: 2.1, mensaje: "García Lavín le reparte en Montebello." });
-    rendered = renderEn("/pedir/demo/sucursales");
+    rendered = await renderEn("/pedir/demo/sucursales");
     await esperar();
     const opciones = Array.from(document.querySelectorAll("datalist option")).map((o) => o.getAttribute("value"));
     expect(opciones).toEqual(["Montebello", "Vista Alegre"]);
@@ -282,7 +286,7 @@ describe("¿Dónde está? (sucursal sugerida)", () => {
   it("recuerda la eleccion al volver (leida de localStorage)", async () => {
     memoria.set("atiende.storefront.sucursal.demo", JSON.stringify({ slug: "t3", name: "Pensiones" }));
     api({ tipo: "sin_resultado", mensaje: "x" });
-    rendered = renderEn("/pedir/demo/sucursales");
+    rendered = await renderEn("/pedir/demo/sucursales");
     await esperar();
     expect(document.body.textContent).toContain("Su sucursal: Pensiones");
     expect(q<HTMLAnchorElement>('a[href="/pedir/demo/t3"]')).not.toBeNull();
@@ -291,7 +295,7 @@ describe("¿Dónde está? (sucursal sugerida)", () => {
   it("un valor corrupto en localStorage se ignora (no rompe la pagina)", async () => {
     memoria.set("atiende.storefront.sucursal.demo", "{basura");
     api({ tipo: "sin_resultado", mensaje: "x" });
-    rendered = renderEn("/pedir/demo/sucursales");
+    rendered = await renderEn("/pedir/demo/sucursales");
     await esperar();
     expect(document.body.textContent).not.toContain("Su sucursal:");
     expect(document.body.textContent).toContain("¿Dónde está?");
@@ -299,7 +303,7 @@ describe("¿Dónde está? (sucursal sugerida)", () => {
 
   it("colonia desconocida: aviso honesto, no se recuerda nada; colonia vacia: pide escribirla sin llamar al servidor", async () => {
     const posts = api({ tipo: "sin_resultado", mensaje: "No reconocemos esa colonia. Pruebe con otra referencia cercana o elija una sucursal de la lista." });
-    rendered = renderEn("/pedir/demo/sucursales");
+    rendered = await renderEn("/pedir/demo/sucursales");
     await esperar();
     await act(async () => {
       botonPorTexto("Buscar sucursal")!.click();
@@ -317,7 +321,7 @@ describe("¿Dónde está? (sucursal sugerida)", () => {
 
   it("solo recoger: ofrece recoger en la sucursal mas cercana", async () => {
     api({ tipo: "solo_recoger", sucursal: { slug: "t1", name: "Prol. Montejo" }, zona: "Cholul", distanciaKm: 9, mensaje: "Esa colonia no está en nuestras zonas de reparto; puede recoger en Prol. Montejo." });
-    rendered = renderEn("/pedir/demo/sucursales");
+    rendered = await renderEn("/pedir/demo/sucursales");
     await esperar();
     act(() => changeValue(q<HTMLInputElement>("input[list]"), "Cholul"));
     await act(async () => {
@@ -331,7 +335,7 @@ describe("¿Dónde está? (sucursal sugerida)", () => {
   it("usar mi ubicacion: pide permiso al navegador y manda las coordenadas en el CUERPO del POST, nunca en la URL", async () => {
     const posts = api({ tipo: "cercana", sucursal: { slug: "t7", name: "García Lavín" }, distanciaKm: 1.2, mensaje: "La sucursal más cercana es García Lavín, a 1.2 km." });
     vi.stubGlobal("navigator", { geolocation: { getCurrentPosition: (ok: (p: { coords: { latitude: number; longitude: number } }) => void) => ok({ coords: { latitude: 21.02, longitude: -89.6 } }) } });
-    rendered = renderEn("/pedir/demo/sucursales");
+    rendered = await renderEn("/pedir/demo/sucursales");
     await esperar();
     await act(async () => {
       botonPorTexto("Usar mi ubicación")!.click();
@@ -346,7 +350,7 @@ describe("¿Dónde está? (sucursal sugerida)", () => {
   it("si el navegador niega la ubicacion: mensaje honesto y la colonia sigue disponible", async () => {
     api({ tipo: "sin_resultado", mensaje: "x" });
     vi.stubGlobal("navigator", { geolocation: { getCurrentPosition: (_ok: unknown, fallo: () => void) => fallo() } });
-    rendered = renderEn("/pedir/demo/sucursales");
+    rendered = await renderEn("/pedir/demo/sucursales");
     await esperar();
     await act(async () => {
       botonPorTexto("Usar mi ubicación")!.click();
