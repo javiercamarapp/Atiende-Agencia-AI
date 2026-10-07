@@ -115,7 +115,7 @@ describe("enteros chicos: solo como posicion o conteo de filas (QA-citas-R1-agen
     expect(ok("Va en el 1 de 2.")).toEqual([]);
   });
   it("referencias a la propia tabla ('Tabla 2, fila 3') y numeracion de listas son posiciones", () => {
-    const tres = res([{ dia: "a", ventas: 6, pct: 1 }, { dia: "b", ventas: 4, pct: 0 }, { dia: "c", ventas: 5, pct: 2 }]);
+    const tres = res([{ dia: "a", ventas: 6, pct: 1 }, { dia: "b", ventas: 4, pct: 0 }, { dia: "c", ventas: 5, pct: 7 }]);
     const allowed = allowedNumbers("x", [tres, tres]);
     expect(unsupportedNumbers("Tabla 2, fila 3: ventas 5.", allowed)).toEqual([]);
     expect(unsupportedNumbers("1. Ana\n2. Beto\n3) Carla", allowed)).toEqual([]);
