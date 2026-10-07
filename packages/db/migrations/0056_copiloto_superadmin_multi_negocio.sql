@@ -371,6 +371,10 @@ alter table core.copiloto_pin
   add constraint copiloto_pin_plataforma_no_compartido
   check (vertical <> 'plataforma' or not shared);
 
+-- El UNIQUE (author_id, organization_id, tool, args) de la 0045 no aplica con organization_id NULL (Postgres trata los NULL como distintos): este indice parcial
+-- da la deduplicacion de los fijados de plataforma a nivel de datos, ademas del advisory lock y el SELECT previo de la funcion de alta.
+create unique index if not exists copiloto_pin_plataforma_uniq on core.copiloto_pin (author_id, tool, args) where vertical = 'plataforma';
+
 create policy "superadmin lee sus fijados de plataforma" on core.copiloto_pin for select
   using (vertical = 'plataforma' and author_id = auth.uid() and core.is_platform_superadmin(auth.uid()));
 
@@ -405,8 +409,10 @@ begin
     raise exception 'core.copiloto_pin_create_plataforma: requiere un actor autenticado (auth.uid() es NULL) -- nunca corre desde la sesion de sistema.'
       using errcode = '28000';
   end if;
-  if not core.is_platform_superadmin(v_actor) then
-    raise exception 'core.copiloto_pin_create_plataforma: el actor no es superadmin de plataforma.' using errcode = '42501';
+  if not core.is_platform_superadmin(v_actor) or core.cfo_zone_resolve_role(v_actor) is distinct from 'superadmin' then
+    -- Mismo guard que las demas funciones de la 0056: el superadmin restringido a `finanzas` no fija en el tablero de plataforma (defensa en profundidad:
+    -- la zona CFO ya no expone /pins, y un fijado se re-ejecuta con el rol vigente).
+    raise exception 'core.copiloto_pin_create_plataforma: el actor no es superadmin completo de plataforma.' using errcode = '42501';
   end if;
   if p_tool is null or p_tool !~ '^[a-z0-9_]{1,80}$' or jsonb_typeof(v_args) <> 'object' or pg_column_size(v_args) > 2000 or v_title = '' then
     raise exception 'core.copiloto_pin_create_plataforma: argumentos invalidos.' using errcode = '22023';

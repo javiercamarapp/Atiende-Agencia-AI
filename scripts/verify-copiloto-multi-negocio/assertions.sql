@@ -14,7 +14,9 @@ insert into core.organization (id, vertical, name, slug) values
   ('00000000-0000-0000-0000-0000000a5d03', 'hoteles', 'Hotel H1', 'hotel-h1-multi'),
   ('00000000-0000-0000-0000-0000000a5d04', 'hoteles', 'Hotel H2 sin reservas', 'hotel-h2-multi'),
   ('00000000-0000-0000-0000-0000000a5d05', 'licitaciones', 'Licitadora L1', 'licitadora-l1-multi'),
-  ('00000000-0000-0000-0000-0000000a5d06', 'despachos', 'Despacho D1', 'despacho-d1-multi')
+  ('00000000-0000-0000-0000-0000000a5d06', 'despachos', 'Despacho D1', 'despacho-d1-multi'),
+  ('00000000-0000-0000-0000-0000000a5d07', 'rentas', 'Renta RE1', 'renta-re1-multi'),
+  ('00000000-0000-0000-0000-0000000a5d08', 'citas', 'Clinica CI1', 'clinica-ci1-multi')
 on conflict do nothing;
 insert into core.property (id, organization_id, vertical, name) values
   ('00000000-0000-0000-0000-0000000a5e01', '00000000-0000-0000-0000-0000000a5d01', 'restaurantes', 'R1 centro'),
@@ -69,6 +71,14 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c01', true);
 select count(*)::int as filas_deberia_ser_6 from core.get_operaciones_por_organizacion_for_superadmin('00000000-0000-0000-0000-0000000a5c01', '2026-09-01','2026-09-30','2026-09-30') where organization_id in ('00000000-0000-0000-0000-0000000a5d01','00000000-0000-0000-0000-0000000a5d02','00000000-0000-0000-0000-0000000a5d03','00000000-0000-0000-0000-0000000a5d04','00000000-0000-0000-0000-0000000a5d05','00000000-0000-0000-0000-0000000a5d06');
+rollback;
+
+\echo '1b. las 6 verticales se leen de verdad: ninguna organizacion sembrada cae a razon = fuente_no_migrada (un error de columna no se degrada en silencio)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c01', true);
+select count(*)::int as sin_razon_deberia_ser_8 from core.get_operaciones_por_organizacion_for_superadmin('00000000-0000-0000-0000-0000000a5c01', '2026-09-01','2026-09-30','2026-09-30') where organization_id in ('00000000-0000-0000-0000-0000000a5d01','00000000-0000-0000-0000-0000000a5d02','00000000-0000-0000-0000-0000000a5d03','00000000-0000-0000-0000-0000000a5d04','00000000-0000-0000-0000-0000000a5d05','00000000-0000-0000-0000-0000000a5d06','00000000-0000-0000-0000-0000000a5d07','00000000-0000-0000-0000-0000000a5d08') and razon is null;
+select count(*)::int as con_razon_deberia_ser_0 from core.get_operaciones_por_organizacion_for_superadmin('00000000-0000-0000-0000-0000000a5c01', '2026-09-01','2026-09-30','2026-09-30') where razon is not null;
 rollback;
 
 \echo '2. R1: 2 pedidos (los cancelados no cuentan), ingresos 300, 1 escalacion y 1 pedido abierto'
@@ -434,4 +444,17 @@ delete from core.platform_superadmin where staff_user_id = '00000000-0000-0000-0
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c02', true);
 select count(*)::int as degradado_deberia_ser_0 from core.copiloto_pin;
+rollback;
+
+\echo '50. el superadmin restringido a finanzas no fija en el tablero de plataforma (mismo guard que las demas funciones de la 0056)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a5c02', true);
+select core.copiloto_pin_create_plataforma('00000000-0000-0000-0000-0000000a5b02', 1, 0, 'organizaciones', '{}'::jsonb, 'De finanzas') as should_fail;
+rollback;
+
+\echo '51. el indice parcial rechaza un fijado de plataforma duplicado aunque no pase por la funcion de alta (organization_id NULL no deduplica por el UNIQUE de la 0045)'
+begin;
+insert into core.copiloto_pin (organization_id, vertical, author_id, tool, args, title) values (null, 'plataforma', '00000000-0000-0000-0000-0000000a5c01', 'organizaciones', '{}', 'Uno');
+insert into core.copiloto_pin (organization_id, vertical, author_id, tool, args, title) values (null, 'plataforma', '00000000-0000-0000-0000-0000000a5c01', 'organizaciones', '{}', 'Dos') returning 1 as should_fail;
 rollback;
