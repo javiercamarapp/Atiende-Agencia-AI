@@ -89,6 +89,7 @@ import type {
   RetryCalendarSyncResult,
   TenantConfigPatch,
   TenantConfigRecord,
+  InsertWaitlistEntryInput,
   WaitlistCandidateRow,
   UpsertCustomerOptions,
 } from "./repository.ts";
@@ -364,7 +365,7 @@ export class InMemoryCitasRepository implements CitasRepository {
     }
   }
 
-  getOutbox(): readonly { id: string; organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown; status: string; attempts: number }[] {
+  getOutbox(): readonly { id: string; organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown; status: string; attempts: number; lastErrorClass?: string | null; lastError?: string | null }[] {
     return [...this.outbox.values()];
   }
 
@@ -1285,6 +1286,37 @@ export class InMemoryCitasRepository implements CitasRepository {
         preferredTimeWindow: row.preferredTimeWindow,
         createdAt: row.createdAt,
       }));
+  }
+
+  private ultimaAltaEnEspera = 0;
+
+  async insertWaitlistEntry(input: InsertWaitlistEntryInput): Promise<WaitlistCandidateRow> {
+    // Postgres da a cada alta un `created_at` propio (microsegundos); en memoria dos altas del mismo milisegundo empatarian y el FIFO decidiria por id.
+    this.ultimaAltaEnEspera = Math.max(Date.now(), this.ultimaAltaEnEspera + 1);
+    const id = this.seedWaitlistEntry({
+      createdAt: new Date(this.ultimaAltaEnEspera).toISOString(),
+      organizationId: input.organizationId,
+      customerPhone: input.customerPhone,
+      customerName: input.customerName,
+      providerId: input.providerId,
+      serviceId: input.serviceId,
+      preferredDateFrom: input.preferredDateFrom,
+      preferredDateTo: input.preferredDateTo,
+      preferredTimeWindow: input.preferredTimeWindow,
+    });
+    const row = this.waitlist.get(id)!;
+    return {
+      id,
+      customerPhone: row.customerPhone,
+      customerName: row.customerName,
+      notifiedCount: row.notifiedCount,
+      providerId: row.providerId,
+      serviceId: row.serviceId,
+      preferredDateFrom: row.preferredDateFrom,
+      preferredDateTo: row.preferredDateTo,
+      preferredTimeWindow: row.preferredTimeWindow,
+      createdAt: row.createdAt,
+    };
   }
 
   /** f2-citas-lista-de-espera — el doble en memoria no tiene RLS que simular:

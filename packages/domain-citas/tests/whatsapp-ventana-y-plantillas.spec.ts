@@ -61,6 +61,13 @@ describe("variantesTelefonoEntrante", () => {
   it("un telefono con lada y '+' conserva su formato original", () => {
     expect(variantesTelefonoEntrante("+5219981110001")).toContain("+5219981110001");
   });
+  it("un numero de otro pais no hereda las variantes mexicanas que comparten sus ultimos 10 digitos", () => {
+    const v = variantesTelefonoEntrante("+19981110001");
+    expect(v).toContain("+19981110001");
+    expect(v).not.toContain("+529981110001");
+    expect(v).not.toContain("+5219981110001");
+    expect(v).not.toContain("9981110001");
+  });
 });
 
 describe("decidirEnvioProactivo", () => {

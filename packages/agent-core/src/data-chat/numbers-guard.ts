@@ -131,6 +131,14 @@ export interface NumberToken {
   readonly decimals: number;
   /** `plain` = entero sin $ ni % ni "pesos": el unico que puede ser una posicion/conteo. */
   readonly kind: "plain" | "money" | "percent";
+  /** Texto normalizado inmediatamente antes y despues de la cifra (hasta 30 caracteres): lo usa la guardia para distinguir "top 3" de "2 inasistencias". */
+  readonly before: string;
+  readonly after: string;
+}
+
+const CONTEXTO = 30;
+function contextoDe(texto: string, inicio: number, fin: number): { before: string; after: string } {
+  return { before: texto.slice(Math.max(0, inicio - CONTEXTO), inicio), after: texto.slice(fin, fin + CONTEXTO) };
 }
 
 const SCALE: Readonly<Record<string, number>> = { k: 1e3, mil: 1e3, millon: 1e6, millones: 1e6 };
@@ -149,7 +157,8 @@ export function extractNumberTokens(text: string): NumberToken[] {
     const tail = m[4] ?? "";
     const kind: NumberToken["kind"] = tail.includes("%") ? "percent" : m[1] || tail.length > 0 || scale > 1 ? "money" : "plain";
     const dot = raw.indexOf(".");
-    out.push({ value: base * scale, decimals: scale > 1 ? 0 : dot < 0 ? 0 : raw.length - dot - 1, kind: scale > 1 && kind === "plain" ? "money" : kind });
+    const inicio = m.index ?? 0;
+    out.push({ value: base * scale, decimals: scale > 1 ? 0 : dot < 0 ? 0 : raw.length - dot - 1, kind: scale > 1 && kind === "plain" ? "money" : kind, ...contextoDe(norm, inicio + (m[1]?.length ?? 0), inicio + m[0].length) });
   }
   // Cifras con letras: se ignoran las corridas que son solo "un/uno/una" (articulo, no cifra).
   const sinDigitos = norm.replace(DIGITS_RE, " ");
@@ -160,7 +169,8 @@ export function extractNumberTokens(text: string): NumberToken[] {
     const antes = sinDigitos.slice(0, m.index).trimEnd();
     const despues = sinDigitos.slice((m.index ?? 0) + m[0].length);
     const kind: NumberToken["kind"] = /^\s*%/.test(despues) ? "percent" : antes.endsWith("$") || /^\s*(?:pesos|mxn)\b/.test(despues) ? "money" : "plain";
-    for (const n of numerosDeCorrida(palabras)) out.push({ value: n, decimals: 0, kind });
+    const ctx = contextoDe(sinDigitos, m.index ?? 0, (m.index ?? 0) + m[0].length);
+    for (const n of numerosDeCorrida(palabras)) out.push({ value: n, decimals: 0, kind, ...ctx });
   }
   return out;
 }
@@ -175,8 +185,10 @@ export function extractNumbers(text: string): number[] {
 
 /** Conjunto de valores de DATOS (celdas numericas, fuente, periodo, alcance, resumen) mas lo estructural. */
 export class AllowedNumbers extends Set<number> {
-  /** Posiciones/conteos pequenos (0..10 y el total de filas): solo para cifras `plain`. */
+  /** Posiciones pequenas (0..10, acotadas por el numero de filas): solo para cifras `plain` en contexto de posicion ("top 3", "2 de 5", "el primer lugar"). */
   readonly positions = new Set<number>();
+  /** Numero de filas de cada resultado: vale en contexto de posicion o seguido de lo que cuenta la tabla ("7 dias", "2 profesionales"), NUNCA como conteo de una medida ("2 inasistencias"). */
+  readonly rowCounts = new Set<number>();
   /** Numeros de ETIQUETAS (fecha/hora de una celda, periodo, fuente, alcance): solo valen como cifra `plain` (un dia, un año, "7 días"), nunca como % ni monto. */
   readonly labels = new Set<number>();
   /** Numeros estructurales de la pregunta (top N, ultimos N dias, fechas): coincidencia exacta, solo `plain`. */
@@ -226,7 +238,7 @@ export function allowedNumbers(question: string, results: readonly DataChatToolR
     extractNumbers(r.summary ?? "").forEach(add);
     // posiciones/conteos ("top 3", "2 de 5"): 0..10 y el total de filas, nada mas.
     for (let i = 0; i <= Math.min(r.rows.length, POSITION_CAP); i += 1) allowed.positions.add(i);
-    allowed.positions.add(r.rows.length);
+    allowed.rowCounts.add(r.rows.length);
     for (const row of r.rows) {
       for (const col of r.columns) {
         const v = row[col.key];
@@ -253,10 +265,25 @@ function redondea(v: number, decimals: number): number {
   return Number(Math.abs(v).toFixed(decimals));
 }
 
+/** "top 3", "los primeros 3", "2 de 5", "el 1o lugar", "3 mejores": la cifra es una posicion u orden, no una medida. */
+const POSICION_ANTES_RE = /(?:^|[\s(])(?:top|primer[oa]?s?|ultim[oa]s?|mejor(?:es)?|peor(?:es)?|principal(?:es)?|numero|lugar|puesto|posicion|fila|filas|tabla|tablas|renglon|columna|linea|paso|punto|seccion|grafica|item)\s*$|#\s*$|\d\s+de\s*$/;
+/** Numeracion de una lista ("1. Ana", "2) Beto") al inicio de linea. */
+const MARCADOR_DE_LISTA_RE = /^\s*[.)]\s/;
+const POSICION_DESPUES_RE = /^\s*(?:de\s+\d|[ºo°]\b|lugar\b|puesto\b|mejor|peor|primer|ultim|principal)/;
+function enContextoDePosicion(t: NumberToken): boolean {
+  return POSICION_ANTES_RE.test(t.before) || POSICION_DESPUES_RE.test(t.after) || (/(?:^|\n)\s*$/.test(t.before) && MARCADOR_DE_LISTA_RE.test(t.after));
+}
+/** Lo que cuentan las filas de una tabla: "7 dias", "2 profesionales", "3 filas". */
+const FILA_DESPUES_RE = /^\s*(?:dias?|semanas?|meses|mes|horas?|filas?|renglones|registros?|profesionales?|proveedores?|servicios?|clientes?|pacientes?|sucursales|sucursal|productos?|categorias?|canales|canal|empleados?|turnos?)\b/;
+
 function respaldado(t: NumberToken, allowed: ReadonlySet<number>): boolean {
   const rich = allowed instanceof AllowedNumbers ? allowed : null;
-  if (rich && t.kind === "plain") {
-    if (t.decimals === 0 && (rich.positions.has(t.value) || rich.structural.has(t.value) || rich.labels.has(t.value))) return true;
+  if (rich && t.kind === "plain" && t.decimals === 0) {
+    if (rich.structural.has(t.value) || rich.labels.has(t.value)) return true;
+    // Un entero chico solo se acepta como POSICION o como conteo de filas; antes cualquier entero 0..#filas pasaba siempre y un conteo mal atribuido
+    // ("Beto Ruiz tuvo 2 inasistencias", dato real 0) llegaba al dueño.
+    if (rich.positions.has(t.value) && enContextoDePosicion(t)) return true;
+    if (rich.rowCounts.has(t.value) && (enContextoDePosicion(t) || FILA_DESPUES_RE.test(t.after))) return true;
   }
   const target = Math.abs(t.value);
   for (const v of allowed) {

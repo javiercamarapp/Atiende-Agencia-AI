@@ -125,3 +125,36 @@ export async function broadcastWaitlist(fetchImpl: typeof fetch, apiBaseUrl: str
   });
   return { queued: body.queued, reason: body.reason ?? null, candidatesConsidered: body.candidates_considered, skippedNoWhatsappConfig: body.skipped_no_whatsapp_config };
 }
+
+export type WaitlistTimeWindow = "any" | "morning" | "afternoon" | "evening";
+
+export interface WaitlistEnrollInput {
+  readonly customerName: string;
+  readonly customerPhone: string;
+  readonly providerId?: string;
+  readonly serviceId?: string;
+  /** AAAA-MM-DD, sin preferencia si se omite. */
+  readonly preferredDateFrom?: string;
+  readonly preferredDateTo?: string;
+  readonly preferredTimeWindow?: WaitlistTimeWindow;
+}
+
+export interface WaitlistEnrollResult {
+  readonly entry: WaitlistCandidate;
+  /** true si ese mismo cliente ya estaba anotado con las mismas preferencias: no se duplico. */
+  readonly alreadyEnrolled: boolean;
+}
+
+/** POST real que anota a un cliente en la lista de espera (admin.ts::POST .../waitlist). */
+export async function enrollWaitlist(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: WaitlistEnrollInput): Promise<WaitlistEnrollResult> {
+  const body = await postJson<{ entry: WaitlistCandidateApiRow; already_enrolled: boolean }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/waitlist`, token, {
+    customer_name: input.customerName,
+    customer_phone: input.customerPhone,
+    provider_id: input.providerId,
+    service_id: input.serviceId,
+    preferred_date_from: input.preferredDateFrom,
+    preferred_date_to: input.preferredDateTo,
+    preferred_time_window: input.preferredTimeWindow,
+  });
+  return { entry: mapCandidate(body.entry), alreadyEnrolled: body.already_enrolled };
+}

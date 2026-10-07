@@ -9,9 +9,10 @@
 // error real de Postgres aquí (deadlock, timeout) se traga con SAVEPOINT + ROLLBACK TO
 // SAVEPOINT: la cancelación/cambio ya hecho NUNCA se revierte por un efecto secundario.
 import { tryEnqueueAppointmentEmail } from "./appointment-email-notifications.ts";
-import { tryNotifyWaitlistOfFreedSlot } from "./reminders.ts";
+import { notifyWaitlistAfterReschedule, tryNotifyWaitlistOfFreedSlot } from "./reminders.ts";
 import type { CitasRepository } from "./repository.ts";
 import type { AppointmentRecord } from "./types.ts";
+import { tryEnqueueAppointmentWhatsapp } from "./whatsapp/message-send.ts";
 
 const DEFAULT_TIME_ZONE = "America/Mexico_City";
 
@@ -46,4 +47,27 @@ export async function runAfterReassignEffects(
   const tz = await resolveProviderTimeZone(repo, organizationId, outcome.previousProviderId);
   await tryNotifyWaitlistOfFreedSlot(repo, organizationId, tz, { providerId: outcome.previousProviderId, serviceId: outcome.previousServiceId, startsAt: outcome.appointment.startsAt });
   await tryEnqueueAppointmentEmail(repo, organizationId, "appointment.modified", outcome.appointment.id);
+}
+
+/** Tras CANCELAR por el AGENTE (WhatsApp o voz): lo mismo que el boton de cancelar (lista de espera + correo) mas el aviso de WhatsApp opt-in
+ * (apagado por defecto) que ya mandan las rutas del panel. Antes la cancelacion por el agente no avisaba a nadie. */
+export async function runAfterAgentCancelEffects(repo: CitasRepository, organizationId: string, cancelled: AppointmentRecord): Promise<void> {
+  await runAfterCancelEffects(repo, organizationId, cancelled);
+  await tryEnqueueAppointmentWhatsapp(repo, organizationId, "appointment.cancelled", cancelled.id);
+}
+
+/** Tras REAGENDAR por el agente: el horario VIEJO queda libre -> lista de espera, y correo + WhatsApp opt-in de "cita reagendada". */
+export async function runAfterRescheduleEffects(
+  repo: CitasRepository,
+  organizationId: string,
+  outcome: { readonly appointment: AppointmentRecord; readonly previousStartsAt: string },
+): Promise<void> {
+  const tz = await resolveProviderTimeZone(repo, organizationId, outcome.appointment.providerId, outcome.appointment.propertyId);
+  try {
+    await notifyWaitlistAfterReschedule(repo, organizationId, tz, { providerId: outcome.appointment.providerId, serviceId: outcome.appointment.serviceId, previousStartsAt: outcome.previousStartsAt, newStartsAt: outcome.appointment.startsAt });
+  } catch (err) {
+    console.error("appointment-effects: aviso de lista de espera tras reagendar fallo (best-effort):", err);
+  }
+  await tryEnqueueAppointmentEmail(repo, organizationId, "appointment.rescheduled", outcome.appointment.id, { previousStartsAt: outcome.previousStartsAt });
+  await tryEnqueueAppointmentWhatsapp(repo, organizationId, "appointment.rescheduled", outcome.appointment.id, { previousStartsAt: outcome.previousStartsAt });
 }

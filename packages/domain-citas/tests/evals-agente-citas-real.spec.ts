@@ -5,6 +5,7 @@ import { MAX_USD_PERMITIDO, calcularMetricas, correrConversacion, ejecutarSuiteR
 import type { Llamador } from "../src/evals/agente-citas/real.ts";
 import { cargarSuite, localAIso } from "../src/evals/agente-citas/mundo.ts";
 import { evaluarCaso } from "../src/evals/agente-citas/graders.ts";
+import { TOOLS } from "../src/whatsapp/llm-turn-handler.ts";
 
 const ENV = { OPENROUTER_API_KEY: "llave-de-prueba-generada" };
 
@@ -52,7 +53,7 @@ describe("conversacion y metricas con un llamador falso", () => {
     });
     expect(vistos[0]!.system).toContain("REGLAS DURAS");
     expect(vistos[0]!.system).toContain("Clinica Dental Sonrisa");
-    expect(vistos[0]!.tools).toHaveLength(8);
+    expect(vistos[0]!.tools).toHaveLength(TOOLS.length);
     expect(llamadas).toBe(7);
     expect(costoUsd).toBeCloseTo(0.07, 6);
     expect(evaluarCaso(traza).graders.find((g) => g.grader === "escribe_con_slot_real")?.ok).toBe(true);

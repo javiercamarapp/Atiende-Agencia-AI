@@ -35,7 +35,28 @@ describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de 
 
   it("menciona ARCO/privacidad sin un derecho concreto -> menú, sin registrar nada", () => {
     expect(detectArcoIntent("Quiero ejercer mis derechos ARCO")).toEqual({ kind: "menu" });
-    expect(detectArcoIntent("tienen aviso de privacidad?")).toEqual({ kind: "menu" });
+    // QA-citas-R1-agentes-12: pedir o querer ver el aviso de privacidad NO es una solicitud ARCO (antes abria el menu o una de acceso con folio).
+    expect(detectArcoIntent("tienen aviso de privacidad?")).toBeNull();
+  });
+
+  it("QA-citas-R1-agentes-12: el aviso de privacidad solo cuenta si pide un derecho concreto (borrar, corregir, oponerse)", () => {
+    expect(detectArcoIntent("me pasan su aviso de privacidad?")).toBeNull();
+    expect(detectArcoIntent("quiero ver el aviso de privacidad")).toBeNull();
+    expect(detectArcoIntent("por privacidad quiero que borren mis datos")).toEqual({ kind: "request", right: "cancelacion" });
+  });
+
+  it("'quiero cancelar mi cita, mis datos son Ana' sigue siendo la CITA (el verbo debe ir pegado a 'datos')", () => {
+    expect(detectArcoIntent("quiero cancelar mi cita, mis datos son Ana")).toBeNull();
+    expect(detectArcoIntent("cancelar mi cita y por favor borren mis datos")).toEqual({ kind: "request", right: "cancelacion", conCita: true });
+  });
+  it("QA-citas-R1-viaje-06: 'ya tienen mis datos... quiero cancelar mi cita' habla de la CITA, no de borrar datos", () => {
+    expect(detectArcoIntent("Hola, ya tienen mis datos de la vez pasada. Quiero cancelar mi cita del martes")).toBeNull();
+    expect(detectArcoIntent("tienen mis datos, quiero eliminar mi cita del lunes")).toBeNull();
+    expect(detectArcoIntent("ya tienen mis datos, me pueden dar de baja mi cita")).toBeNull();
+  });
+
+  it("QA-citas-R1-agentes-12: cancelar la cita Y pedir borrar los datos es una solicitud ARCO marcada con cita (la cita no se pierde en silencio)", () => {
+    expect(detectArcoIntent("cancelar mi cita y que borren mis datos")).toEqual({ kind: "request", right: "cancelacion", conCita: true });
   });
 
   it("varios derechos específicos en un solo mensaje -> menú (se pide elegir uno)", () => {
@@ -91,6 +112,19 @@ describe("runArcoFastPath -- flujo guiado de punta a punta (repositorio en memor
     expect(repo.dataRightsRequests).toHaveLength(1);
     expect(repo.dataRightsRequests[0]).toMatchObject({ organizationId: ORG, customerPhone: PHONE, rightType: "acceso", status: "pendiente_confirmacion", channel: "whatsapp" });
     expect(result?.reply).not.toContain(PHONE);
+  });
+
+  it("QA-citas-R1-agentes-12: 'cancelar mi cita y que borren mis datos' registra la solicitud y avisa que la cita sigue como estaba", async () => {
+    const result = await runArcoFastPath(repo, ORG, PHONE, "cancelar mi cita y que borren mis datos");
+    expect(result?.reply).toContain("CONFIRMO");
+    expect(result?.reply).toContain("Tu cita no se modificó con esta solicitud");
+    expect(repo.dataRightsRequests).toHaveLength(1);
+    expect(repo.dataRightsRequests[0]).toMatchObject({ rightType: "cancelacion", status: "pendiente_confirmacion" });
+  });
+
+  it("QA-citas-R1-viaje-06: 'ya tienen mis datos... quiero cancelar mi cita' no registra nada y sigue al agente", async () => {
+    expect(await runArcoFastPath(repo, ORG, PHONE, "Hola, ya tienen mis datos de la vez pasada. Quiero cancelar mi cita del martes")).toBeNull();
+    expect(repo.dataRightsRequests).toHaveLength(0);
   });
 
   it("repetir el mismo derecho es idempotente (no abre una segunda solicitud)", async () => {

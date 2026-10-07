@@ -184,8 +184,8 @@ export type { AppointmentButtonAction } from "./whatsapp/appointment-button-ids.
 export { formatAppointmentWhen, resolveAppointmentButton } from "./whatsapp/appointment-buttons.ts";
 export type { AppointmentButtonOutcome } from "./whatsapp/appointment-buttons.ts";
 export { extractMetaInboundMessages, extractMetaPhoneNumberId, extractMetaTextMessages, resolveOrganizationByPhoneNumberId } from "./whatsapp/channel-config.ts";
-export type { MetaInboundMessage, MetaInteractiveReply, MetaTextMessage } from "./whatsapp/channel-config.ts";
-export { createDefaultConversationGuard, handleInboundWhatsAppMessage, redactSensitiveInfo } from "./whatsapp/inbound.ts";
+export type { MetaInboundMessage, MetaInteractiveReply, MetaTextMessage, TipoMensajeNoSoportado } from "./whatsapp/channel-config.ts";
+export { createDefaultConversationGuard, handleInboundWhatsAppMessage, handleUnsupportedWhatsAppMessage, redactSensitiveInfo } from "./whatsapp/inbound.ts";
 export type { CitasConversationGuard, InboundMessageOutcome } from "./whatsapp/inbound.ts";
 export { createCitasMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
 export {
@@ -404,4 +404,6 @@ export type {
 
 // ---- Agente de VOZ de citas sobre @atiende/voice-core (VOZ-CIT) ----
 // El simulador y sus guiones es-MX se importan desde `@atiende/domain-citas/voz/simulador` (solo pruebas y la prueba ciega manual).
+export { MAX_WAITLIST_ENTRIES_PER_PHONE, WAITLIST_TIME_WINDOWS, enrollWaitlistEntry } from "./waitlist-enrollment.ts";
+export type { EnrollWaitlistInput, EnrollWaitlistOutcome, WaitlistTimeWindow } from "./waitlist-enrollment.ts";
 export * from "./voz/index.ts";

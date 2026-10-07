@@ -36,10 +36,106 @@ import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
 
 import { redactSensitiveInfo } from "../redaction.ts";
-import type { MetaInteractiveReply } from "./channel-config.ts";
+import type { MetaInteractiveReply, TipoMensajeNoSoportado } from "./channel-config.ts";
 import { resolveAppointmentButton } from "./appointment-buttons.ts";
 
 export { redactSensitiveInfo };
+
+/** Tope de turnos de MODELO por remitente (antes del LLM): el limite del webhook es por numero del NEGOCIO y un solo remitente podia gastar el cupo de
+ * todos los pacientes. 20 turnos por 10 minutos alcanzan de sobra para una conversacion real. */
+export const TOPE_TURNOS_POR_REMITENTE = { max: 20, ventanaSegundos: 600 } as const;
+const AVISO_TOPE_REMITENTE = "Recibimos varios mensajes seguidos y por ahora no puedo atender más. Espere unos minutos y escríbanos de nuevo, o llame directamente al negocio.";
+
+/** `true` si este remitente aun puede usar un turno de modelo. Falla ABIERTO ante un error de infraestructura (con SAVEPOINT: la sesion sigue
+ * utilizable): un limite que falla nunca debe dejar a un paciente sin atencion. */
+export async function consumirTurnoDeRemitente(repo: CitasRepository, organizationId: string, phoneHash: string): Promise<boolean> {
+  try {
+    return await repo.runWithRowSavepoint(() => repo.consumeRateLimit("wa-sender-turns", actorHash(`${organizationId}:${phoneHash}`), TOPE_TURNOS_POR_REMITENTE.max, TOPE_TURNOS_POR_REMITENTE.ventanaSegundos));
+  } catch (err) {
+    console.error("whatsapp: tope por remitente no disponible (se deja pasar):", err instanceof Error ? err.constructor.name : "error");
+    return true;
+  }
+}
+
+/** UN aviso por ventana al remitente que excedio el tope (o mando algo ilegible): las respuestas de aviso no pueden convertirse en spam saliente. */
+async function consumirAvisoDeRemitente(repo: CitasRepository, organizationId: string, phoneHash: string): Promise<boolean> {
+  try {
+    return await repo.runWithRowSavepoint(() => repo.consumeRateLimit("wa-sender-aviso", actorHash(`${organizationId}:${phoneHash}`), 1, TOPE_TURNOS_POR_REMITENTE.ventanaSegundos));
+  } catch {
+    return true;
+  }
+}
+
+const AVISO_NO_SOPORTADO: Readonly<Record<TipoMensajeNoSoportado, string>> = {
+  audio: "Por ahora no puedo escuchar notas de voz. ¿Me escribe su mensaje, por favor? Si es algo urgente, llame directamente al negocio.",
+  imagen: "Por ahora solo puedo leer mensajes de texto, no imágenes. ¿Me lo escribe, por favor? Si necesita enviar un documento, llame directamente al negocio.",
+  video: "Por ahora solo puedo leer mensajes de texto, no videos. ¿Me lo escribe, por favor? Si es algo urgente, llame directamente al negocio.",
+  documento: "Por ahora solo puedo leer mensajes de texto, no archivos. ¿Me lo escribe, por favor? Si necesita enviar un documento, llame directamente al negocio.",
+  sticker: "Por ahora solo puedo leer mensajes de texto. ¿Me escribe en qué le ayudo, por favor?",
+  ubicacion: "Por ahora solo puedo leer mensajes de texto. ¿Me escribe en qué le ayudo, por favor?",
+  contacto: "Por ahora solo puedo leer mensajes de texto. ¿Me escribe en qué le ayudo, por favor?",
+};
+
+/** Rastro en el historial cuando el paciente manda contenido no soportado a una conversacion con toma humana: solo el tipo, nunca el contenido. */
+const RASTRO_NO_SOPORTADO: Record<TipoMensajeNoSoportado, string> = {
+  audio: "[El paciente envió una nota de voz]",
+  imagen: "[El paciente envió una imagen]",
+  video: "[El paciente envió un video]",
+  documento: "[El paciente envió un archivo]",
+  sticker: "[El paciente envió un sticker]",
+  ubicacion: "[El paciente envió una ubicación]",
+  contacto: "[El paciente envió un contacto]",
+};
+
+/**
+ * Un mensaje que el agente no puede leer (nota de voz, imagen, archivo, ubicacion...): antes el webhook lo ignoraba y respondia 200 sin que nadie
+ * contestara. Ahora se acusa recibo (dedupe at-least-once igual que el texto) y el paciente recibe un aviso fijo para que escriba; el aviso sale como
+ * mucho una vez por ventana. No se guarda ni se interpreta el contenido.
+ */
+export async function handleUnsupportedWhatsAppMessage(
+  repo: CitasRepository,
+  args: {
+    readonly organizationId: string;
+    readonly messageId: string;
+    readonly phone: string;
+    readonly phoneNumberId: string;
+    readonly tipo: TipoMensajeNoSoportado;
+    /** C-11: con una toma humana abierta el bot calla tambien ante contenido no soportado. Sin puerto (o base sin migrar) responde el aviso fijo como siempre. */
+    readonly handoffGate?: HandoffAgentGate;
+  },
+): Promise<InboundMessageOutcome> {
+  const { organizationId, messageId, phone, phoneNumberId, tipo, handoffGate } = args;
+  const phoneHash = actorHash(phone);
+  const claimed = await repo.claimWhatsAppMessage(organizationId, messageId, phoneHash);
+  if (!claimed) return { ok: true, retryable: false };
+  try {
+    const aviso = await repo.runWithRowSavepoint(async () => {
+      // Con una persona atendiendo la conversacion el bot NO contesta (ni gasta el aviso de la ventana), pero deja un rastro de texto fijo en el
+      // historial para que quien atiende sepa que llego un audio o una imagen. No se guarda ni se interpreta el contenido.
+      if (handoffGate && (await handoffGate.estadoParaAgente(organizationId, phone))) {
+        await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: RASTRO_NO_SOPORTADO[tipo] });
+        await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+        return false;
+      }
+      const permitido = await consumirAvisoDeRemitente(repo, organizationId, phoneHash);
+      if (permitido) {
+        await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_no_soportado", `inbound-no-soportado:${messageId}`, {
+          to: phone,
+          phone_number_id: phoneNumberId,
+          body: AVISO_NO_SOPORTADO[tipo],
+          transaccional: true,
+        });
+      }
+      await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+      return permitido;
+    });
+    return { ok: true, retryable: false, ...(aviso ? { reply: AVISO_NO_SOPORTADO[tipo] } : {}) };
+  } catch (err) {
+    const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
+    await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "failed", errorClass);
+    return { ok: false, retryable: true };
+  }
+}
 
 export interface InboundMessageOutcome {
   readonly ok: boolean;
@@ -192,13 +288,33 @@ export async function handleInboundWhatsAppMessage(
             await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
             return null;
           }
-          const turn = crisisCheck.triggered
+          // Tope por remitente ANTES del modelo (crisis, ARCO y botones son deterministas y no gastan modelo, asi que no cuentan).
+          if (!aDeterminista) {
+            if (!(await consumirTurnoDeRemitente(repo, organizationId, phoneHash))) {
+              if (!(await consumirAvisoDeRemitente(repo, organizationId, phoneHash))) {
+                await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+                return null;
+              }
+              await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_tope", `inbound-tope:${messageId}`, { to: phone, phone_number_id: phoneNumberId, body: AVISO_TOPE_REMITENTE, transaccional: true });
+              await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+              return { reply: AVISO_TOPE_REMITENTE, appointmentId: null, propertyId: null };
+            }
+          }
+          const turnoBase = crisisCheck.triggered
             ? { reply: crisisCheck.reply!, appointmentId: null, propertyId: null }
             : button?.kind === "reply"
               ? { reply: button.reply, appointmentId: null, propertyId: null }
               : arco
               ? { reply: arco.reply, appointmentId: null, propertyId: null }
               : await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer: await lookupCitasCustomer(repo, organizationId, phone) });
+
+          // El turno pidio pasar a una persona (el paciente lo pidio, o el asistente no estuvo disponible): se abre la toma pendiente (con su
+          // notificacion in-app) y la respuesta lo dice. Si no hay forma de abrirla (sin puerto o base sin migrar) la respuesta NUNCA promete una persona.
+          let turn: { readonly reply: string; readonly appointmentId: string | null; readonly propertyId: string | null } = turnoBase;
+          if ("humano" in turnoBase && turnoBase.humano) {
+            const handoffId = handoffGate ? await handoffGate.solicitarHumano({ organizationId, phone, motivo: turnoBase.humano.motivo, crisis: false }) : null;
+            turn = { reply: handoffId ? turnoBase.humano.replyAbierto : turnoBase.humano.replySinHandoff, appointmentId: turnoBase.appointmentId, propertyId: turnoBase.propertyId };
+          }
 
           const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
           await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.appointmentId ? "completed" : "active", turn.appointmentId, turn.propertyId);

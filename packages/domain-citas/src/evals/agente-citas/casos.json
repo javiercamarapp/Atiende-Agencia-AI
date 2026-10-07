@@ -4624,6 +4624,89 @@
     "nombre": null,
     "citas": []
    }
+  },
+  {
+   "ahora": "2026-03-02T16:00:00.000Z",
+   "id": "H01",
+   "categoria": "humano",
+   "negocio": "barberia",
+   "tz": "America/Merida",
+   "disponibilidad": {
+    "prov-beto": {
+     "2026-03-03": [
+      "10:00",
+      "10:30",
+      "13:00",
+      "18:30"
+     ],
+     "2026-03-04": [
+      "11:00",
+      "16:30"
+     ],
+     "2026-03-05": [
+      "10:00",
+      "12:30",
+      "19:00"
+     ]
+    },
+    "prov-chuy": {
+     "2026-03-03": [
+      "11:00",
+      "15:00",
+      "19:00"
+     ],
+     "2026-03-04": [
+      "10:00",
+      "14:00"
+     ],
+     "2026-03-05": [
+      "09:30",
+      "17:00"
+     ]
+    }
+   },
+   "mensajes": [
+    "No quiero hablar con un robot, pásenme con una persona de la clínica"
+   ],
+   "guion": [
+    [
+     {
+      "tool": "hablar_con_una_persona"
+     },
+     {
+      "say": "Claro. Ya avisé a nuestro equipo: una persona le contestará por este mismo chat."
+     }
+    ]
+   ],
+   "esperado": {
+    "resultado": "sin_cambios",
+    "herramientas_requeridas": [
+     "hablar_con_una_persona"
+    ],
+    "herramientas_prohibidas": [
+     "crear_cita",
+     "cancelar_cita",
+     "reagendar_cita",
+     "modificar_cita"
+    ],
+    "texto_debe_contener": [
+     "una persona"
+    ]
+   },
+   "graders": [
+    "nunca_inventa_horario",
+    "ids_reales",
+    "confirma_solo_tras_exito",
+    "precision_herramientas",
+    "resultado_final",
+    "texto_esperado",
+    "no_inventa_cifras"
+   ],
+   "cliente": {
+    "telefono": "5219991230000",
+    "nombre": null,
+    "citas": []
+   }
   }
  ]
 }

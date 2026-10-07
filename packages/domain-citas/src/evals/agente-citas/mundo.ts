@@ -31,6 +31,7 @@ export const HERRAMIENTAS_MUNDO: readonly string[] = [
   "cancelar_cita",
   "reagendar_cita",
   "modificar_cita",
+  "hablar_con_una_persona",
 ];
 
 export const CATALOGO: Readonly<Record<Negocio, { readonly nombre: string; readonly rubro: string; readonly servicios: readonly { id: string; name: string; duration_minutes: number; price_cents: number }[]; readonly proveedores: readonly { id: string; display_name: string; role_label: string }[] }>> = {
@@ -276,6 +277,8 @@ export class Mundo {
         c.ends_at = new Date(new Date(c.starts_at).getTime() + duracionMs(this.caso.negocio, nSvc)).toISOString();
         return { appointment: aWire(c) };
       }
+      case "hablar_con_una_persona":
+        return { ok: true, mensaje: "Se avisó al equipo." };
       default:
         return { error: `Herramienta desconocida: ${nombre}` };
     }

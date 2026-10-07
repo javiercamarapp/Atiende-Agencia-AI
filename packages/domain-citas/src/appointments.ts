@@ -39,12 +39,24 @@ export function isValidVoiceConversationId(value: unknown): value is string {
 
 // El mismo cliente real llega con el teléfono en formatos distintos según el canal
 // (voz transcribe lo que oye, WhatsApp manda el wa_id, el panel deja que el staff
-// teclee lo que sea) — normalizamos a los últimos 10 dígitos, mismo criterio que
-// domain-restaurantes/src/phone.ts::normalizePhone.
+// teclee lo que sea). Llave canónica del cliente:
+//   - México (el mercado de este motor): los ÚLTIMOS 10 dígitos, con o sin "+52"/"+521"/"01"/"044"/"045" delante. Es la llave con la que ya
+//     están guardados los clientes, así que no cambia.
+//   - Cualquier otro país (+1 de EE. UU./Canadá, etc.): TODOS los dígitos con su código de país. Antes se recortaba también a 10 y
+//     +1 551-234-5678 quedaba como el MISMO paciente que +52 55 1234 5678 (veía y podía cancelar sus citas).
+//   - Un número local de 7 a 10 dígitos sin país se asume mexicano.
+//   - Limitacion conocida: un movil mexicano marcado con el '1' antiguo SIN +52 (11 digitos, "1 55 1234 5678") o con "0052" delante no se
+//     reconoce como mexicano (es indistinguible de un numero +1 de EE. UU./Canada con 11 digitos) y queda con todos sus digitos, como otro
+//     cliente. Los canales reales traen el codigo de pais (el wa_id de WhatsApp siempre lo lleva); el panel y la voz deben capturarlo.
 export function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
-  if (digits.length >= 7) return digits.slice(-10);
-  return phone.trim();
+  if (digits.length < 7) return phone.trim();
+  if (digits.length <= 10) return digits;
+  if (digits.startsWith("521") && digits.length === 13) return digits.slice(-10);
+  if (digits.startsWith("52") && digits.length === 12) return digits.slice(-10);
+  // Prefijos locales de marcación mexicana: 01 (larga distancia), 044/045 (celular).
+  if (/^0(1|44|45)/.test(digits) && digits.length >= 12 && digits.length <= 13) return digits.slice(-10);
+  return digits;
 }
 
 /** Un telefono utilizable: entre 7 y 15 digitos (el minimo con el que `normalizePhone` lo reconoce y el maximo de E.164). "hola" o "123" no lo son. */
@@ -250,6 +262,18 @@ export function validateCreateAppointmentPayload(raw: CreateAppointmentPayload):
     customerEmail: raw.customerEmail?.trim() || undefined,
     notes: raw.notes?.trim() || undefined,
   };
+}
+
+/**
+ * Un horario que ya paso no se puede pedir al AGENTE (WhatsApp o voz): "el lunes" mal resuelto a la semana pasada quedaba como cita real, porque
+ * la revision de disponibilidad solo mira el horario de atencion. Lo usa `executeToolCall` (crear_cita y reagendar_cita). El panel conserva la
+ * libertad de registrar una cita ya ocurrida (alta manual), por eso la regla NO vive en `createAppointment`.
+ */
+export function assertHorarioFuturo(startsAtIso: string, now: Date = new Date()): void {
+  const t = Date.parse(startsAtIso);
+  if (!Number.isNaN(t) && t <= now.getTime()) {
+    throw new AppointmentValidationError("Ese horario ya pasó. Vuelve a consultar disponibilidad y ofrece uno de los horarios que aún están por venir.");
+  }
 }
 
 export interface PreparedAppointment {

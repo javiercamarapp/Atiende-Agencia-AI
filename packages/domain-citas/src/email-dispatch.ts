@@ -24,6 +24,7 @@
 // `apiKey`, `dispatchPendingEmailJobs` devuelve `{ ...summary vacío,
 // notConfigured: true }` de inmediato, SIN llamar al claim -- cero jobs
 // reclamados, cero intentos quemados.
+import { citaSigueActiva } from "./cita-activa.ts";
 import type { CitasRepository, EmailOutboxJobRow } from "./repository.ts";
 
 export const MAX_EMAIL_DISPATCH_ATTEMPTS = 5;
@@ -42,6 +43,9 @@ export const MAX_EMAIL_DISPATCH_ATTEMPTS = 5;
  * intento individual y dispara el mismo camino de reintento/backoff que
  * cualquier otro fallo de Resend. */
 export const RESEND_FETCH_TIMEOUT_MS = 4_000;
+
+/** Motivo con que se descarta el correo de recordatorio de una cita que ya se cancelo o cerro. Sin reintento. */
+export const EMAIL_CITA_INACTIVA_ERROR = "cita_inactiva";
 
 /** SA-L-46: motivo con que un correo suprimido se marca no enviado (`last_error` del outbox). Sin reintento. */
 export const EMAIL_SUPPRESSED_ERROR = "suprimido";
@@ -110,6 +114,8 @@ export interface EmailDispatchSummary {
   notConfigured: boolean;
   /** SA-L-46: correos proactivos no enviados por la lista de supresion de plataforma. Solo presente cuando es mayor que 0. */
   suppressed?: number;
+  /** Recordatorios descartados porque su cita ya se cancelo o cerro. Solo presente cuando es mayor que 0. */
+  omitidosCitaInactiva?: number;
 }
 
 function emptySummary(): EmailDispatchSummary {
@@ -142,6 +148,13 @@ export async function dispatchPendingEmailJobs(repo: CitasRepository, config: Re
 
   for (const job of jobs) {
     try {
+      // Un recordatorio encolado cuya cita ya se cancelo o cerro no se entrega (fail-open si el estado no se puede leer).
+      const citaId = job.payload?.solo_si_activa === true && typeof job.payload?.appointment_id === "string" ? job.payload.appointment_id : null;
+      if (citaId && !(await citaSigueActiva(repo, job.organizationId, citaId))) {
+        await repo.completeEmailOutboxJob(job.id, "dead", EMAIL_CITA_INACTIVA_ERROR);
+        summary.omitidosCitaInactiva = (summary.omitidosCitaInactiva ?? 0) + 1;
+        continue;
+      }
       // SA-L-46: lista de supresion de plataforma. Solo avisos proactivos: `payload.transaccional === true` (la
       // respuesta que el cliente pidio) se exenta. Una lectura que falla NO envia (fail-closed).
       const destino = job.payload?.to;

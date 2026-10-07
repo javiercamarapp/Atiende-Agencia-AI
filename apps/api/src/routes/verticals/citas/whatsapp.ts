@@ -11,7 +11,7 @@
 // del que Meta realmente firmó). Por eso este archivo nunca importa ni usa
 // `c.req.json()`.
 import { Hono } from "hono";
-import { extractMetaInboundMessages, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, verifyMetaSignature } from "@atiende/domain-citas";
+import { extractMetaInboundMessages, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, handleUnsupportedWhatsAppMessage, verifyMetaSignature } from "@atiende/domain-citas";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerCitasWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
@@ -109,6 +109,12 @@ export function citasWhatsAppRoutes(deps: AppDeps): Hono {
 
       let hadRetryableFailure = false;
       for (const message of incomingMessages) {
+        // Nota de voz, imagen, archivo, ubicacion...: el agente no la puede leer. Se responde un aviso fijo (antes se ignoraba y nadie contestaba).
+        if (message.noSoportado) {
+          const sinSoporte = await handleUnsupportedWhatsAppMessage(citasRepo, { organizationId, messageId: message.id, phone: `+${message.from}`, phoneNumberId, tipo: message.noSoportado, ...(deps.citasHandoffGate ? { handoffGate: deps.citasHandoffGate(db) } : {}) });
+          if (sinSoporte.retryable) hadRetryableFailure = true;
+          continue;
+        }
         // SA-L-46: BAJA / STOP (mensaje de texto completo) -> lista de supresion de plataforma + UNA confirmacion; PL-32: ALTA la reactiva.
         // No pasa al agente. Base sin la migracion 0042: sigue el camino anterior (handleInboundWhatsAppMessage).
         if (!message.interactive) {

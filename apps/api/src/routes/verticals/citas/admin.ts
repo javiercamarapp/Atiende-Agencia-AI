@@ -32,6 +32,7 @@ import {
   computeCitasResumen,
   createAppointmentFromPanel,
   DEFAULT_LISTA_ESPERA_LIMIT,
+  enrollWaitlistEntry,
   MAX_LISTA_ESPERA_LIMIT,
   previewListaEspera,
   runListaEsperaCore,
@@ -1196,6 +1197,70 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         .filter((row) => !serviceId || row.serviceId === null || row.serviceId === serviceId),
     );
     return c.json({ waitlist: filtered.map((row, i) => serializeWaitlistCandidate(row, i + 1)) });
+  });
+
+  interface WaitlistEnrollBody {
+    readonly customer_name?: unknown;
+    readonly customer_phone?: unknown;
+    readonly provider_id?: unknown;
+    readonly service_id?: unknown;
+    readonly preferred_date_from?: unknown;
+    readonly preferred_date_to?: unknown;
+    readonly preferred_time_window?: unknown;
+  }
+
+  // ---- QA-citas-R1-agentes-18 — la PUERTA DE ENTRADA de la lista de espera: hasta ahora nada inscribia a nadie en `citas.appointment_waitlist` (el
+  // optimizador ofrecia los huecos liberados a una lista siempre vacia). Sesion de STAFF (RLS por membresia). El alta desde el agente de
+  // WhatsApp/voz necesita una funcion `security definer` de solo-sistema que aun no existe (ver el PR). Idempotente: repetir el mismo alta devuelve
+  // la entrada ya existente (200) en vez de duplicarla. ----
+  app.post("/v1/citas/properties/:propertyId/waitlist", async (c) => {
+    const organizationId = c.get("organizationId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const raw = await readJsonCapped<WaitlistEnrollBody>(c.req.raw, 4 * 1024);
+
+    const customerName = requireNonEmptyString(raw.customer_name, "customer_name", 160);
+    const customerPhone = requireNonEmptyString(raw.customer_phone, "customer_phone", 32);
+    const providerId = optionalNonEmptyString(raw.provider_id, "provider_id", 100);
+    const serviceId = optionalNonEmptyString(raw.service_id, "service_id", 100);
+    const dateFrom = optionalNonEmptyString(raw.preferred_date_from, "preferred_date_from", 10);
+    const dateTo = optionalNonEmptyString(raw.preferred_date_to, "preferred_date_to", 10);
+    const timeWindow = optionalNonEmptyString(raw.preferred_time_window, "preferred_time_window", 20);
+
+    // "Hoy" en la zona horaria REAL de la sucursal (nunca la del servidor ni UTC).
+    const timeZone = resolverZonaHorariaNegocio(await citasRepo.findPropertyTimezone(c.req.param("propertyId"), organizationId));
+    try {
+      const { entry, alreadyEnrolled } = await enrollWaitlistEntry(citasRepo, {
+        organizationId,
+        customerName,
+        customerPhone,
+        providerId: providerId ?? null,
+        serviceId: serviceId ?? null,
+        preferredDateFrom: dateFrom ?? null,
+        preferredDateTo: dateTo ?? null,
+        preferredTimeWindow: timeWindow ?? null,
+        today: hoyFechaNegocio(timeZone),
+      });
+      if (!alreadyEnrolled) {
+        // Bitacora sin PII: ni nombre ni telefono, solo a que proveedor/servicio se anoto.
+        await citasRepo.registrarAuditoria({
+          organizationId,
+          actorUserId: c.get("userId"),
+          action: "lista_espera.alta_manual",
+          entityType: "lista_espera",
+          entityId: entry.id,
+          campo: `providerId=${providerId ?? "cualquiera"} serviceId=${serviceId ?? "cualquiera"}`,
+          antes: null,
+          despues: `ventana=${entry.preferredTimeWindow}`,
+        });
+      }
+      const vivas = sortWaitlistByPosition(await citasRepo.loadLiveWaitlistCandidates(organizationId));
+      const position = vivas.findIndex((row) => row.id === entry.id) + 1;
+      return c.json({ entry: serializeWaitlistCandidate(entry, position > 0 ? position : vivas.length), already_enrolled: alreadyEnrolled }, alreadyEnrolled ? 200 : 201);
+    } catch (err) {
+      if (err instanceof AppointmentNotFoundError) throw Errors.validation(err.message);
+      if (err instanceof AppointmentValidationError) throw Errors.validation(err.message);
+      throw err;
+    }
   });
 
   interface WaitlistBroadcastBody {
