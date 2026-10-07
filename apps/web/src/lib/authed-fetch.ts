@@ -263,7 +263,8 @@ async function refrescarCompartido<S extends AuthedSession>(fetchImpl: typeof fe
  *
  * 1. Lee la sesión persistida de `ctx.store`. Si su access token YA es otro (otra
  *    petición refrescó mientras esta volaba, o la pantalla guardó un token viejo),
- *    reintenta UNA vez con ese token vigente, sin refrescar de nuevo.
+ *    reintenta UNA vez con ese token vigente, sin refrescar de nuevo. Si ese
+ *    reintento TAMBIÉN responde 401, sigue al paso 2 (refrescar o expirar).
  * 2. Si no, refresca vía POST /auth/refresh COMPARTIENDO el refresh en vuelo con
  *    cualquier otra petición que tenga el mismo refresh token (single-flight).
  * 3. Si funciona: la sesión nueva completa ya quedó persistida (access token nuevo
@@ -285,7 +286,11 @@ export async function withAuthRefresh<S extends AuthedSession>(
   if (first.status !== 401) return first;
 
   const previous = ctx.store.read();
-  if (previous && previous.token !== currentToken) return makeRequest(previous.token);
+  if (previous && previous.token !== currentToken) {
+    const retry = await makeRequest(previous.token);
+    // Si el token persistido tambien esta vencido (401), no se entrega ese 401 al caller: se refresca o se expira la sesion como en el caso normal.
+    if (retry.status !== 401) return retry;
+  }
 
   const refreshed = previous ? await refrescarCompartido<S>(fetchImpl, apiBaseUrl, ctx, previous) : null;
 
