@@ -122,10 +122,20 @@ describe("QA R1 citas · voz · DEFECTOS confirmados", () => {
 
   // QA-citas-R1-agentes-15 (P2, privacidad): derivar_a_humano copia el `resumen` libre del modelo al WhatsApp del dueño SIN redactar datos de pago
   // (WhatsApp si redacta con redactSensitiveInfo); si el paciente dicto su tarjeta y el modelo la resume, viaja en claro al telefono de avisos.
-  it.fails("15 el aviso de callback al dueño no lleva el numero de tarjeta que dicto el paciente", async () => {
+  it("15 el aviso de callback al dueño no lleva el numero de tarjeta que dicto el paciente", async () => {
     const { t, ctx } = llamada("dental");
     await derivarAHumanoVoz(ctx, { motivo: "quiere pagar el anticipo", resumen: "dicto su tarjeta 4111 1111 1111 1111 vence 12/29 para el anticipo" });
     const aviso = t.repo.getOutbox().find((o) => o.eventType === "voz.callback")!;
     expect((aviso.payload as { body: string }).body).not.toMatch(/4111[ -]?1111/);
+  });
+});
+
+describe("QA R1 citas · voz · aviso al dueño sin datos de pago (agentes-15, refuerzo)", () => {
+  it("el motivo tambien se redacta, y la tarjeta cortada por el recorte no queda a medias", async () => {
+    const { t, ctx } = llamada("dental");
+    await derivarAHumanoVoz(ctx, { motivo: "pago con tarjeta 4111 1111 1111 1111", resumen: `${"x".repeat(270)} 4111 1111 1111 1111` });
+    const body = (t.repo.getOutbox().find((o) => o.eventType === "voz.callback")!.payload as { body: string }).body;
+    expect(body).not.toMatch(/4111/);
+    expect(body).not.toMatch(/\d{12,}/);
   });
 });

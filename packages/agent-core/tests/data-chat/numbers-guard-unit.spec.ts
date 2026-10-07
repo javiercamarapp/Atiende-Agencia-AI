@@ -99,3 +99,22 @@ describe("guardia de cifras: cifras con letras y montos tipo año (revision de #
     expect(unsupportedNumbers("Vendiste $2,480.50", a)).toEqual([]);
   });
 });
+
+describe("enteros chicos: solo como posicion o conteo de filas (QA-citas-R1-agentes-16b)", () => {
+  const dos = res([{ dia: "Ana Pérez", ventas: 6, pct: 1 }, { dia: "Beto Ruiz", ventas: 4, pct: 0 }]);
+  const ok = (texto: string) => unsupportedNumbers(texto, allowedNumbers("¿cómo voy?", [dos]));
+
+  it("un conteo de una medida que no esta en los datos NO pasa aunque sea igual al numero de filas", () => {
+    expect(ok("Beto Ruiz tuvo 2 inasistencias esta semana.")).toEqual([2]);
+    expect(ok("Hubo 3 cancelaciones.")).toEqual([3]);
+  });
+  it("posiciones (top, primeros, 2 de 5) y conteo de lo que listan las filas si pasan", () => {
+    expect(ok("Los top 2 de la semana.")).toEqual([]);
+    expect(ok("Estos son los 2 profesionales.")).toEqual([]);
+    expect(ok("Ocupa el lugar 2.")).toEqual([]);
+    expect(ok("Va en el 1 de 2.")).toEqual([]);
+  });
+  it("un valor que si esta en los datos sigue pasando en cualquier contexto", () => {
+    expect(ok("Ana Pérez tuvo 6 citas y Beto Ruiz 4 citas.")).toEqual([]);
+  });
+});

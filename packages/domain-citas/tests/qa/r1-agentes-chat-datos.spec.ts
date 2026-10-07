@@ -42,7 +42,7 @@ describe("QA R1 citas · chat de datos · DEFECTOS confirmados", () => {
 
   // QA-citas-R1-agentes-16 (P2): todo entero entre 0 y el numero de filas se acepta siempre ("top 3", "2 de 5"), asi que un conteo pequeño mal
   // atribuido pasa: el lector dice que Beto Ruiz tuvo 0 inasistencias y la narrativa dice 2.
-  it.fails("16b 'Beto Ruiz tuvo 2 inasistencias' (dato real: 0) no llega al dueño", async () => {
+  it("16b 'Beto Ruiz tuvo 2 inasistencias' (dato real: 0) no llega al dueño", async () => {
     const a = await turno("¿cuántos no-shows tuvo cada profesional esta semana?", [CALL("no_shows_y_cancelaciones", { periodo: "esta_semana" }), { text: "Beto Ruiz tuvo 2 inasistencias esta semana." }]);
     expect(a.text).not.toContain("2 inasistencias");
   });
