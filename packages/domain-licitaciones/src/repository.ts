@@ -35,6 +35,7 @@ import type { CriteriaComparisonItem, OwnProposalStatus } from "./fallo-autopsy.
 import type { TenderSourceIngestCandidate } from "./connectors/types.ts";
 import type { TenderResolution } from "./tender-resolution.ts";
 import type { NewMatchContext, NewMatchNoticeRecord } from "./new-match.ts";
+import type { ExpedienteAuditoriaEstado, ExpedienteAuditoriaRecord } from "./expediente-auditoria.ts";
 
 // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
 // Formas de registro deliberadamente con uniones de string LITERALES (no
@@ -915,6 +916,11 @@ export interface LicitacionesRepository {
    * conector automatizado puede traer cientos de filas por corrida).
    */
   ingestTendersFromSource(organizationId: string, source: SourceConnectorId, records: readonly TenderSourceIngestCandidate[]): Promise<TenderSourceIngestResult>;
+  // ---- L-P3-11: auditor determinista del expediente (migracion 039). `disponible: false` = la base aun no tiene la tabla: el auditor degrada a la clave de dedupe de la campana. ----
+  getExpedienteAuditoria(organizationId: string, proposalId: string): Promise<{ readonly disponible: boolean; readonly registro: ExpedienteAuditoriaRecord | null }>;
+  /** Guarda el ultimo estado auditado (upsert por propuesta). `false` si la base no esta migrada. */
+  saveExpedienteAuditoria(organizationId: string, input: { readonly proposalId: string; readonly tenderId: string; readonly estado: ExpedienteAuditoriaEstado; readonly bloqueos: number; readonly inputsHash: string }): Promise<boolean>;
+
   // ---- L-P3-09: nuevo match (sesion de SISTEMA; migracion 039). `null` = la base aun no tiene la migracion: se degrada a "no disponible", nunca a un error. ----
   /** Umbral + perfil de matching de la organizacion (fila siempre que la organizacion sea de licitaciones y este activa). */
   getNewMatchContext(organizationId: string): Promise<NewMatchContext | null>;

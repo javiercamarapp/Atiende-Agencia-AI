@@ -94,6 +94,7 @@ import { TenderVersionRegistry, computeTenderSnapshotHash, toRequirementSnapshot
 import type { PersistedTenderVersion, TenderVersionDiff, TenderVersionSnapshot } from "./tender-version-registry.ts";
 import { planIngestTenderVersion } from "./tender-ingest-versioning.ts";
 import type { NewMatchContext, NewMatchNoticeRecord } from "./new-match.ts";
+import type { ExpedienteAuditoriaEstado, ExpedienteAuditoriaRecord } from "./expediente-auditoria.ts";
 import { LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
 import type { SourceConnectorId } from "./connector-registry.ts";
 import { evaluateSourceFreshness } from "./source-run.ts";
@@ -1510,6 +1511,41 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       },
       isRecoverable: (err) => isMigrationPendingError(err),
       fallback: async () => ({ estado: "no_disponible", motivo: "vigilante de cambios no disponible: falta aplicar la migracion 039_licitaciones_autopiloto (la ingesta de convocatorias no se ve afectada)." }),
+    });
+  }
+
+  async getExpedienteAuditoria(organizationId: string, proposalId: string): Promise<{ disponible: boolean; registro: ExpedienteAuditoriaRecord | null }> {
+    return runWithSavepointFallback<{ disponible: boolean; registro: ExpedienteAuditoriaRecord | null }>({
+      session: this.db,
+      savepointName: "sp_expediente_auditoria_leer",
+      primary: async () => {
+        const { rows } = await this.db.query<{ proposal_id: string; estado: ExpedienteAuditoriaEstado; bloqueos: number; inputs_hash: string; revisado_en: string }>(
+          `select proposal_id, estado, bloqueos, inputs_hash, revisado_en::text as revisado_en from licitaciones.expediente_auditoria where organization_id = $1 and proposal_id = $2;`,
+          [organizationId, proposalId],
+        );
+        const r = rows[0];
+        return { disponible: true, registro: r ? { proposalId: r.proposal_id, estado: r.estado, bloqueos: r.bloqueos, inputsHash: r.inputs_hash, revisadoEn: r.revisado_en } : null };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ disponible: false, registro: null }),
+    });
+  }
+
+  async saveExpedienteAuditoria(organizationId: string, input: { proposalId: string; tenderId: string; estado: ExpedienteAuditoriaEstado; bloqueos: number; inputsHash: string }): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_expediente_auditoria_guardar",
+      primary: async () => {
+        await this.db.query(
+          `insert into licitaciones.expediente_auditoria (proposal_id, organization_id, tender_id, estado, bloqueos, inputs_hash)
+           values ($1, $2, $3, $4, $5, $6)
+           on conflict (proposal_id) do update set estado = excluded.estado, bloqueos = excluded.bloqueos, inputs_hash = excluded.inputs_hash, revisado_en = now();`,
+          [input.proposalId, organizationId, input.tenderId, input.estado, input.bloqueos, input.inputsHash],
+        );
+        return true;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => false,
     });
   }
 

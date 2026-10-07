@@ -100,6 +100,7 @@ import { buildGoNoGoDecision } from "./go-no-go.ts";
 import { TenderVersionRegistry, computeTenderSnapshotHash, toRequirementSnapshot } from "./tender-version-registry.ts";
 import { planIngestTenderVersion } from "./tender-ingest-versioning.ts";
 import type { NewMatchContext, NewMatchNoticeRecord } from "./new-match.ts";
+import type { ExpedienteAuditoriaEstado, ExpedienteAuditoriaRecord } from "./expediente-auditoria.ts";
 import type { PersistedTenderVersion, TenderVersionSnapshot } from "./tender-version-registry.ts";
 import { LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
 import type { SourceConnectorId } from "./connector-registry.ts";
@@ -193,6 +194,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   // `findTenantConfig` ve contra Postgres real (`timezone: null`).
   private readonly tenantConfigs = new Map<string, string | null>(); // orgId -> timezone
   private readonly newMatchMinScores = new Map<string, number | null>(); // orgId -> umbral de nuevo match (L-P3-09; null = solo elegibles)
+  private readonly expedienteAuditoria = new Map<string, ExpedienteAuditoriaRecord>(); // proposalId -> ultimo estado auditado (L-P3-11)
   private readonly newMatchNotices = new Map<string, Map<string, NewMatchNoticeRecord>>(); // orgId -> (tenderId -> aviso)
   // ---- Fase 3: matching/scoring y go/no-go ----
   private readonly tenderByExternalKey = new Map<string, string>(); // `${orgId}:manual:${externalId}` -> tenderId (mismo alcance que tender_org_source_external_idx)
@@ -754,6 +756,17 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     });
     this.tenderChangeNotifications.set(organizationId, notifications);
     return { tenderId: tender.id, tenderTitle: tender.title, version: version.version, changedFieldNames: plan.changedFieldNames, invalidatedApprovals: invalidatedApprovalIds.length, invalidatedApproverIds: [...invalidatedApproverIds] };
+  }
+
+  async getExpedienteAuditoria(organizationId: string, proposalId: string): Promise<{ disponible: boolean; registro: ExpedienteAuditoriaRecord | null }> {
+    this.assertProposalOwnership(organizationId, proposalId);
+    return { disponible: true, registro: this.expedienteAuditoria.get(proposalId) ?? null };
+  }
+
+  async saveExpedienteAuditoria(organizationId: string, input: { proposalId: string; tenderId: string; estado: ExpedienteAuditoriaEstado; bloqueos: number; inputsHash: string }): Promise<boolean> {
+    this.assertProposalOwnership(organizationId, input.proposalId);
+    this.expedienteAuditoria.set(input.proposalId, { proposalId: input.proposalId, estado: input.estado, bloqueos: input.bloqueos, inputsHash: input.inputsHash, revisadoEn: new Date().toISOString() });
+    return true;
   }
 
   async getNewMatchContext(organizationId: string): Promise<NewMatchContext | null> {

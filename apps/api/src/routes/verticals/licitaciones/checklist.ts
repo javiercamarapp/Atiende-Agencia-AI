@@ -12,6 +12,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { IdempotencyConflictError, IntegrityChecklist, resolveExpedienteAsOfIso, SubmissionDeadlineUnknownError, WRITE_ROLES } from "@atiende/domain-licitaciones";
 import type { ChecklistItemResult, EconomicProposalResult, FileArtifact, FormatLimitsConfig, SignatureRequirement } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
+import { auditarExpediente } from "./autopiloto-auditor.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -173,6 +174,8 @@ export function licitacionesChecklistRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
 
         return { status: 200, body: { overallStatus: checklistResult.overallStatus, items: records } };
       });
+      // L-P3-11: el auditor determinista re-evalua el expediente tras el cambio de insumo (nunca falla la escritura).
+      await auditarExpediente(deps, c.get("db"), { organizationId, tenderId });
       return c.json(result.body, result.status as 200);
     } catch (err) {
       if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();

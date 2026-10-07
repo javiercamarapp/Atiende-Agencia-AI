@@ -282,6 +282,8 @@ export type { SourceRunInput, SourceRunRecord, SourceRunEvidence, SourceFreshnes
 export { TenderVersionRegistry, computeTenderSnapshotHash, requirementNaturalKey, toRequirementSnapshot, canonicalDocumentLine } from "./tender-version-registry.ts";
 export { planIngestTenderVersion } from "./tender-ingest-versioning.ts";
 export { evaluateNewMatch } from "./new-match.ts";
+export { clasificarExpediente, transicionDeExpediente } from "./expediente-auditoria.ts";
+export type { ExpedienteAuditoriaEstado, ExpedienteAuditoriaRecord, ExpedienteAuditoriaEstadoCalculado, ExpedienteTransicion } from "./expediente-auditoria.ts";
 export { correoBasesModificadas, correoNuevoMatch, correoExpedienteListo, correoAprobacionInvalidada, correoResumenSemanal, etiquetaCampoBases } from "./emails/autopiloto-templates.ts";
 export type { BasesModificadasCorreoDatos, NuevoMatchItem, NuevoMatchCorreoDatos, ResumenSemanalCorreoDatos } from "./emails/autopiloto-templates.ts";
 export type { NewMatchContext, NewMatchEvaluation, NewMatchNoticeRecord } from "./new-match.ts";
