@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button, Callout, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, StatusBadge, ThemeSelector } from "@atiende/ui";
-import { useMetaPublica } from "../../restaurantes/storefront/meta-publica.ts";
+import { useMetaPublica } from "../../../lib/meta-publica.ts";
 import {
   crearClienteReserva,
   diasDisponibles,
