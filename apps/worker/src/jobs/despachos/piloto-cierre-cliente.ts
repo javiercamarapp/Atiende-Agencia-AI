@@ -56,7 +56,8 @@ export async function runPilotoCierreClienteSweep(withUnidad: WithUnidadPiloto, 
   const limite = opciones.limite ?? TOPE_DEFECTO;
   const vigencia = opciones.vigenciaEnlaceDias ?? 35;
   const nuevoToken = opciones.generarToken ?? generarTokenPortal;
-  const base = opciones.appBaseUrl.replace(/\/+$/, "");
+  let base = opciones.appBaseUrl;
+  while (base.endsWith("/")) base = base.slice(0, -1);
 
   /** Enlace del portal para un aviso; si no se puede crear (tope, sin admin al que atribuirlo) el aviso sale sin enlace, honesto. */
   async function enlaceDelPortal(u: UnidadPiloto, propertyId: string, etiqueta: string): Promise<string | null> {

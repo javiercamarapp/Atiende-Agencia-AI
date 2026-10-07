@@ -211,7 +211,7 @@ export class InMemoryPilotoRepository implements PilotoRepository {
   }
   async guardarAutomatizacion(propertyId: string, a: AutomatizacionCliente): Promise<void> {
     this.requerirEscritura(propertyId);
-    if (a.contactoCorreo !== null && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a.contactoCorreo)) throw new PilotoEntradaInvalidaError("correo de contacto inválido");
+    if (a.contactoCorreo !== null && !correoValido(a.contactoCorreo)) throw new PilotoEntradaInvalidaError("correo de contacto inválido");
     if (a.envioReportesCierre && a.contactoCorreo === null) throw new PilotoEntradaInvalidaError("para enviar reportes al cerrar captura un correo de contacto");
     if (a.solicitudDia < 1 || a.solicitudDia > 28) throw new PilotoEntradaInvalidaError("el día de la solicitud va de 1 a 28");
     this.automatizacion.set(propertyId, { ...a, contactoCorreo: a.contactoCorreo === null ? null : a.contactoCorreo.toLowerCase() });
@@ -466,4 +466,14 @@ export class InMemoryPilotoRepository implements PilotoRepository {
     }
     throw new PilotoNoEncontradoError();
   }
+}
+
+/** Correo sin regex de backtracking (CodeQL js/polynomial-redos): una sola arroba, dominio con punto y sin espacios, tope de 254. */
+function correoValido(correo: string): boolean {
+  if (correo.length > 254 || /\s/.test(correo)) return false;
+  const partes = correo.split("@");
+  if (partes.length !== 2) return false;
+  const [local, dominio] = partes as [string, string];
+  const punto = dominio.lastIndexOf(".");
+  return local.length > 0 && punto > 0 && punto < dominio.length - 1;
 }
