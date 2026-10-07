@@ -114,6 +114,14 @@ describe("enteros chicos: solo como posicion o conteo de filas (QA-citas-R1-agen
     expect(ok("Ocupa el lugar 2.")).toEqual([]);
     expect(ok("Va en el 1 de 2.")).toEqual([]);
   });
+  it("referencias a la propia tabla ('Tabla 2, fila 3') y numeracion de listas son posiciones", () => {
+    const tres = res([{ dia: "a", ventas: 6, pct: 1 }, { dia: "b", ventas: 4, pct: 0 }, { dia: "c", ventas: 5, pct: 2 }]);
+    const allowed = allowedNumbers("x", [tres, tres]);
+    expect(unsupportedNumbers("Tabla 2, fila 3: ventas 5.", allowed)).toEqual([]);
+    expect(unsupportedNumbers("1. Ana\n2. Beto\n3) Carla", allowed)).toEqual([]);
+    expect(unsupportedNumbers("Beto tuvo 2 inasistencias.", allowed)).toEqual([2]);
+  });
+
   it("un valor que si esta en los datos sigue pasando en cualquier contexto", () => {
     expect(ok("Ana Pérez tuvo 6 citas y Beto Ruiz 4 citas.")).toEqual([]);
   });
