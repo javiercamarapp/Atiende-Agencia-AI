@@ -25,11 +25,11 @@ import {
   Input,
   NativeSelect,
   PageContainer,
+  Textarea,
   formatMoney,
   notify,
-  StatusBadge,
 } from "@atiende/ui";
-import { FolderPlus, Plus } from "lucide-react";
+import { FolderPlus, Pencil, Plus } from "lucide-react";
 import {
   createCategory,
   createProduct,
@@ -39,6 +39,9 @@ import {
   updateProduct,
 } from "../lib/catalog-client.ts";
 import type { Category, Product } from "../lib/catalog-client.ts";
+import { AliasChips } from "../components/AliasChips.tsx";
+import { CategoriasCatalogo } from "../components/CategoriasCatalogo.tsx";
+import { EditarProductoDialog } from "../components/EditarProductoDialog.tsx";
 import { marcarAgotadoHastaManana } from "../lib/autopiloto-client.ts";
 import { fetchNoDomicilio, setNoDomicilio } from "../lib/modelo-pm-client.ts";
 import type { NoDomicilioMarks } from "../lib/modelo-pm-client.ts";
@@ -68,6 +71,10 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
   const [newProdName, setNewProdName] = useState("");
   const [newProdPrice, setNewProdPrice] = useState("");
   const [newProdCategoryId, setNewProdCategoryId] = useState("");
+  const [newProdDescription, setNewProdDescription] = useState("");
+  const [newProdAlias, setNewProdAlias] = useState<readonly string[]>([]);
+  // Producto abierto en el diálogo de edición (nombre, descripción, categoría, alias, disponibilidad).
+  const [productoEditando, setProductoEditando] = useState<Product | null>(null);
   const [creatingProduct, setCreatingProduct] = useState(false);
   const [dialogoProducto, setDialogoProducto] = useState(false);
   const [errorProducto, setErrorProducto] = useState<string | null>(null);
@@ -124,6 +131,8 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
     setNewProdName("");
     setNewProdPrice("");
     setNewProdCategoryId("");
+    setNewProdDescription("");
+    setNewProdAlias([]);
     setErrorProducto(null);
     setErroresProducto({});
     setDialogoProducto(true);
@@ -141,10 +150,18 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
     setErrorProducto(null);
     setError(null);
     try {
-      await createProduct(fetch, apiBaseUrl, token, propertyId, { name: newProdName.trim(), price, categoryId: newProdCategoryId || null });
+      await createProduct(fetch, apiBaseUrl, token, propertyId, {
+        name: newProdName.trim(),
+        price,
+        categoryId: newProdCategoryId || null,
+        ...(newProdDescription.trim() ? { description: newProdDescription.trim() } : {}),
+        ...(newProdAlias.length > 0 ? { searchKeywords: newProdAlias } : {}),
+      });
       setNewProdName("");
       setNewProdPrice("");
       setNewProdCategoryId("");
+      setNewProdDescription("");
+      setNewProdAlias([]);
       setDialogoProducto(false);
       await load();
     } catch (err) {
@@ -247,20 +264,25 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
         <Callout tone="info">Puedes marcar productos como agotados o disponibles en esta sucursal. Solo el dueño o un administrador cambia precios y edita el catálogo.</Callout>
       )}
 
-      {categories && categories.length > 0 && (
+      {categories && (puedeEditarCatalogo || categories.length > 0) && (
         <Card>
           <CardHeader className="p-4 pb-3">
             <CardTitle>Categorías</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="flex flex-wrap gap-1.5">
-              {categories.map((c) => (
-                <StatusBadge key={c.id} tone="neutral" dot={false}>
-                  {c.name}
-                </StatusBadge>
-              ))}
-            </div>
-            {marks && (
+            {categories.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Todavía no hay categorías. Crea la primera con «Nueva categoría».</p>
+            ) : (
+              <CategoriasCatalogo
+                categorias={categories}
+                puedeEditar={puedeEditarCatalogo}
+                apiBaseUrl={apiBaseUrl}
+                token={token}
+                propertyId={propertyId}
+                onCambio={load}
+              />
+            )}
+            {marks && categories.length > 0 && (
               <fieldset className="mt-3 flex flex-col gap-1.5 border-0 p-0">
                 <legend className="mb-1 p-0 text-xs text-muted-foreground">No se vende a domicilio (aplica a todos los productos de la categoría)</legend>
                 <div className="flex flex-wrap gap-3">
@@ -358,6 +380,19 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
                   encabezado: "Popular",
                   celda: (p) => <Checkbox aria-label={`Marcar ${p.name} como popular`} checked={p.isPopular} onChange={() => void handleTogglePopular(p)} disabled={savingId === p.id || !puedeEditarCatalogo} />,
                 },
+                ...(puedeEditarCatalogo
+                  ? [
+                      {
+                        id: "editar",
+                        encabezado: "Editar",
+                        celda: (p: Product) => (
+                          <Button type="button" size="icon-sm" variant="ghost" aria-label={`Editar ${p.name}`} disabled={savingId === p.id} onClick={() => setProductoEditando(p)}>
+                            <Pencil className="h-4 w-4" strokeWidth={1.75} />
+                          </Button>
+                        ),
+                      },
+                    ]
+                  : []),
                 ...(marks
                   ? [
                       {
@@ -421,6 +456,9 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
           <FormField label="Precio base" required error={erroresProducto.precio}>
             <Input placeholder="Precio base" type="number" min={0} step="0.01" value={newProdPrice} onChange={(e) => setNewProdPrice(e.target.value)} />
           </FormField>
+          <FormField label="Descripción" hint="Qué lleva o cómo se sirve. El agente también busca aquí.">
+            <Textarea rows={3} value={newProdDescription} onChange={(e) => setNewProdDescription(e.target.value)} />
+          </FormField>
           <FormField label="Categoría">
             <NativeSelect value={newProdCategoryId} onChange={(e) => setNewProdCategoryId(e.target.value)}>
               <option value="">Sin categoría</option>
@@ -431,8 +469,19 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
               ))}
             </NativeSelect>
           </FormField>
+          <AliasChips alias={newProdAlias} onChange={setNewProdAlias} disabled={creatingProduct} />
         </div>
       </FormDialog>
+
+      <EditarProductoDialog
+        producto={productoEditando}
+        categorias={categories ?? []}
+        apiBaseUrl={apiBaseUrl}
+        token={token}
+        propertyId={propertyId}
+        onCerrar={() => setProductoEditando(null)}
+        onGuardado={load}
+      />
     </PageContainer>
   );
 }
