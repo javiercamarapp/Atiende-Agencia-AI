@@ -140,6 +140,7 @@ const NO_SHOW_STATUSES = new Set(["pending", "confirmed"]);
 type LifecycleAction = "cancel" | "confirm" | "complete" | "no_show" | "retry_sync";
 
 /** Borrador del alta manual: vive FUERA del componente porque cambiar de sucursal remonta la pagina (contentKey = propertyId) y se perdia lo escrito.
+ * Su llave es organizacion + correo del staff (`orgId` guarda esa llave): otra persona que inicie sesion en la misma pestana no ve datos del cliente del turno anterior.
  * Solo texto del cliente y la hora; proveedor y servicio son de cada sucursal y no se arrastran. */
 const BORRADOR_VACIO = { orgId: "", name: "", phone: "", email: "", notes: "", startsAt: "" };
 let borradorNuevaCita = { ...BORRADOR_VACIO };
@@ -206,8 +207,9 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   const [showNewForm, setShowNewForm] = useState(false);
   const [newProviderId, setNewProviderId] = useState("");
   const [newServiceId, setNewServiceId] = useState("");
-  // El borrador es de UNA organizacion: otra distinta en la misma pestana (otro negocio, otro staff) nunca lo ve.
-  if (borradorNuevaCita.orgId !== orgId) borradorNuevaCita = { ...BORRADOR_VACIO, orgId };
+  // El borrador es de UNA persona de UNA organizacion: otro negocio u otro staff que inicie sesion en la misma pestana (computadora compartida) nunca lo ve.
+  const claveBorrador = `${orgId}\u0000${(staffEmail ?? "").trim().toLowerCase()}`;
+  if (borradorNuevaCita.orgId !== claveBorrador) borradorNuevaCita = { ...BORRADOR_VACIO, orgId: claveBorrador };
   const [newCustomerName, setNewCustomerName] = useState(borradorNuevaCita.name);
   const [newCustomerPhone, setNewCustomerPhone] = useState(borradorNuevaCita.phone);
   const [newCustomerEmail, setNewCustomerEmail] = useState(borradorNuevaCita.email);
@@ -219,7 +221,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
 
   // Lo escrito sobrevive al cambio de sucursal (ver `borradorNuevaCita`); cualquier edicion invalida la llave de idempotencia (ya es otra solicitud).
   useEffect(() => {
-    borradorNuevaCita = { orgId, name: newCustomerName, phone: newCustomerPhone, email: newCustomerEmail, notes: newNotes, startsAt: newStartsAt };
+    borradorNuevaCita = { orgId: claveBorrador, name: newCustomerName, phone: newCustomerPhone, email: newCustomerEmail, notes: newNotes, startsAt: newStartsAt };
     claveAlta.current = null;
   }, [newProviderId, newServiceId, newCustomerName, newCustomerPhone, newCustomerEmail, newNotes, newStartsAt]);
 
@@ -408,7 +410,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
       setNewCustomerEmail("");
       setNewStartsAt("");
       setNewNotes("");
-      borradorNuevaCita = { ...BORRADOR_VACIO, orgId };
+      borradorNuevaCita = { ...BORRADOR_VACIO, orgId: claveBorrador };
       setShowNewForm(false);
       await load();
     } catch (err) {
