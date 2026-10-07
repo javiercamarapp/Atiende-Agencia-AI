@@ -242,7 +242,7 @@ export async function handleInboundWhatsAppMessage(
       await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
 
       // R-21: el agente pidio una persona -> abre la toma de handoff (misma transaccion que la conversacion).
-      if (turn.escalacion && handoffGate) {
+      if (turn.escalacion && handoffGate && !MOTIVOS_QUE_NO_ABREN_TOMA.has(turn.escalacion.motivo)) {
         await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
       }
 
@@ -260,7 +260,7 @@ export async function handleInboundWhatsAppMessage(
       }
 
       await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
-      return { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate) };
+      return { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate && !MOTIVOS_QUE_NO_ABREN_TOMA.has(turn.escalacion.motivo)) };
     });
   } catch (err) {
     const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
@@ -312,6 +312,11 @@ export const ACUSE_PENDIENTE_ESPERA_MIN = 15;
 export const ACUSE_PENDIENTE_REPETIR_MIN = 60;
 export const ACUSE_HANDOFF_PENDIENTE =
   "Seguimos esperando a que una persona del equipo tome su conversación; su aviso ya está registrado y no se perdió. Si lo prefiere, puede dejar aquí los detalles de su pedido para que los vean en cuanto la atiendan.";
+
+/** Escalaciones INFORMATIVAS: el aviso al gerente queda registrado, pero el cliente sigue pidiendo (acepto el precio, cambio de pago, otro platillo). Abrir la toma de
+ * handoff callaba al agente y el pedido se perdia (QA-PM-R2-whatsapp-05: reposicion_descuento...). Las demas (queja, alergia, cancelacion, cobro,
+ * ARCO, "una persona", falla del sistema, pedido grande, zona/no entiendo por contador) si ceden la conversacion a una persona. */
+export const MOTIVOS_QUE_NO_ABREN_TOMA: ReadonlySet<string> = new Set(["reposicion_descuento", "producto_agotado", "tiempos_entrega", "pedido_especial", "zona_ambigua", "otro"]);
 
 /** Vida maxima de la funcion del webhook (`maxDuration` de vercel.json). */
 export const FUNCION_MAX_MS = 30_000;
@@ -511,7 +516,7 @@ export async function responderTrasEspera(
           if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
         }
         await repo.whatsappAppendTurn(organizationId, phone, [turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true } : { role: "assistant", content: reply }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
-        if (turn.escalacion && handoffGate) {
+        if (turn.escalacion && handoffGate && !MOTIVOS_QUE_NO_ABREN_TOMA.has(turn.escalacion.motivo)) {
           await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
         }
         if (deliverReply) {
@@ -523,7 +528,7 @@ export async function responderTrasEspera(
           });
           if (turn.pedirUbicacion) await encolarSolicitudUbicacion(repo, organizationId, pasada === 1 ? `inbound-ubicacion:${messageId}` : `inbound-ubicacion:${messageId}:p${pasada}`, phone, phoneNumberId);
         }
-        return { salida: { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate) }, silencio: false };
+        return { salida: { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate && !MOTIVOS_QUE_NO_ABREN_TOMA.has(turn.escalacion.motivo)) }, silencio: false };
       });
       ultimo = turnoDePasada.salida;
       // Todo lo que el turno vio ya tuvo su respuesta; lo que llegue mientras tanto es lo siguiente.

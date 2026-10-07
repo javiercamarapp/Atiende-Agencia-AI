@@ -1,0 +1,1992 @@
+[
+{
+"name": "Patito Oscura",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Taco Al Pastor (individual)",
+"description": "Orden individual",
+"category": "Tacos",
+"keywords": [
+"trompo"
+]
+},
+{
+"name": "Taco de Rajas (individual)",
+"description": "Orden individual",
+"category": "Tacos",
+"keywords": []
+},
+{
+"name": "Taco de Champiñones (individual)",
+"description": "Orden individual",
+"category": "Tacos",
+"keywords": [
+"champi"
+]
+},
+{
+"name": "Tacos de Chorizo (orden de 3)",
+"description": "Orden de 3 tacos",
+"category": "Tacos",
+"keywords": []
+},
+{
+"name": "Tacos de Bistec de Res (orden de 3)",
+"description": "Orden de 3 tacos",
+"category": "Tacos",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Tacos de Pechuga de Pollo (orden de 3)",
+"description": "Orden de 3 tacos",
+"category": "Tacos",
+"keywords": []
+},
+{
+"name": "Tacos de Chuleta de Cerdo (orden de 3)",
+"description": "Orden de 3 tacos",
+"category": "Tacos",
+"keywords": []
+},
+{
+"name": "Tacos de Costilla de Res (orden de 3)",
+"description": "Orden de 3 tacos",
+"category": "Tacos",
+"keywords": []
+},
+{
+"name": "Tacos de Arrachera (orden de 3)",
+"description": "Orden de 3 tacos",
+"category": "Tacos",
+"keywords": []
+},
+{
+"name": "Tacos de Poc-Chuc (orden de 3)",
+"description": "Orden de 3 tacos",
+"category": "Tacos",
+"keywords": [
+"pocchuc"
+]
+},
+{
+"name": "Tacos de Bistec Encebollado (orden de 3)",
+"description": "Orden de 3 tacos",
+"category": "Tacos",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Gringa de Pastor",
+"description": "Orden de 2 tacos",
+"category": "Gringas",
+"keywords": []
+},
+{
+"name": "Gringa de Bistec",
+"description": "Orden de 2 tacos",
+"category": "Gringas",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Gringa de Pechuga de Pollo",
+"description": "Orden de 2 tacos",
+"category": "Gringas",
+"keywords": []
+},
+{
+"name": "Gringa de Chuleta",
+"description": "Orden de 2 tacos",
+"category": "Gringas",
+"keywords": []
+},
+{
+"name": "Gringa de Costilla",
+"description": "Orden de 2 tacos",
+"category": "Gringas",
+"keywords": []
+},
+{
+"name": "Gringa de Arrachera",
+"description": "Orden de 2 tacos",
+"category": "Gringas",
+"keywords": []
+},
+{
+"name": "Gringa de Poc-Chuc",
+"description": "Orden de 2 tacos",
+"category": "Gringas",
+"keywords": [
+"pocchuc"
+]
+},
+{
+"name": "Mestiza de Pastor",
+"description": "Orden de 2 tacos",
+"category": "Mestizas",
+"keywords": []
+},
+{
+"name": "Mestiza de Poc-Chuc",
+"description": "Orden de 2 tacos",
+"category": "Mestizas",
+"keywords": [
+"pocchuc"
+]
+},
+{
+"name": "Mestiza de Bistec",
+"description": "Orden de 2 tacos",
+"category": "Mestizas",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Mestiza de Pechuga",
+"description": "Orden de 2 tacos",
+"category": "Mestizas",
+"keywords": []
+},
+{
+"name": "Mestiza de Chuleta",
+"description": "Orden de 2 tacos",
+"category": "Mestizas",
+"keywords": []
+},
+{
+"name": "Mestiza de Costilla",
+"description": "Orden de 2 tacos",
+"category": "Mestizas",
+"keywords": []
+},
+{
+"name": "Mestiza de Arrachera",
+"description": "Orden de 2 tacos",
+"category": "Mestizas",
+"keywords": []
+},
+{
+"name": "Alambre de Pastor",
+"description": "Orden de 5 tacos",
+"category": "Alambre",
+"keywords": []
+},
+{
+"name": "Alambre de Bistec",
+"description": "Orden de 5 tacos",
+"category": "Alambre",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Alambre de Pechuga",
+"description": "Orden de 5 tacos",
+"category": "Alambre",
+"keywords": []
+},
+{
+"name": "Alambre de Chuleta",
+"description": "Orden de 5 tacos",
+"category": "Alambre",
+"keywords": []
+},
+{
+"name": "Alambre de Costilla",
+"description": "Orden de 5 tacos",
+"category": "Alambre",
+"keywords": []
+},
+{
+"name": "Alambre de Arrachera",
+"description": "Orden de 5 tacos",
+"category": "Alambre",
+"keywords": []
+},
+{
+"name": "Suizo de Pastor",
+"description": "Orden de 5 tacos",
+"category": "Tacos Suizos",
+"keywords": []
+},
+{
+"name": "Suizo de Bistec",
+"description": "Orden de 5 tacos",
+"category": "Tacos Suizos",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Suizo de Chuleta",
+"description": "Orden de 5 tacos",
+"category": "Tacos Suizos",
+"keywords": []
+},
+{
+"name": "Suizo de Pechuga",
+"description": "Orden de 5 tacos",
+"category": "Tacos Suizos",
+"keywords": []
+},
+{
+"name": "Suizo de Costilla",
+"description": "Orden de 5 tacos",
+"category": "Tacos Suizos",
+"keywords": []
+},
+{
+"name": "Suizo de Arrachera",
+"description": "Orden de 5 tacos",
+"category": "Tacos Suizos",
+"keywords": []
+},
+{
+"name": "Suizo de Poc-Chuc",
+"description": "Orden de 5 tacos",
+"category": "Tacos Suizos",
+"keywords": [
+"pocchuc"
+]
+},
+{
+"name": "Suizo de Chorizo",
+"description": "Orden de 5 tacos",
+"category": "Tacos Suizos",
+"keywords": []
+},
+{
+"name": "Suizo de Chile Poblano",
+"description": "Orden de 5 tacos",
+"category": "Tacos Suizos",
+"keywords": []
+},
+{
+"name": "Alambre Suizo de Pastor",
+"description": null,
+"category": "Tacos Suizos",
+"keywords": [
+"queso"
+]
+},
+{
+"name": "Alambre Suizo de Bistec",
+"description": null,
+"category": "Tacos Suizos",
+"keywords": [
+"bisté",
+"bistek",
+"bitek",
+"queso"
+]
+},
+{
+"name": "Alambre Suizo de Pechuga",
+"description": null,
+"category": "Tacos Suizos",
+"keywords": [
+"queso"
+]
+},
+{
+"name": "Alambre Suizo de Chuleta",
+"description": null,
+"category": "Tacos Suizos",
+"keywords": [
+"queso"
+]
+},
+{
+"name": "Alambre Suizo de Costilla",
+"description": null,
+"category": "Tacos Suizos",
+"keywords": [
+"queso"
+]
+},
+{
+"name": "Alambre Suizo de Arrachera",
+"description": null,
+"category": "Tacos Suizos",
+"keywords": [
+"queso"
+]
+},
+{
+"name": "Tacos Suizos de Chile Poblano y Bistec",
+"description": null,
+"category": "Tacos Suizos",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Tacos Suizos de Chile Poblano y Arrachera",
+"description": null,
+"category": "Tacos Suizos",
+"keywords": []
+},
+{
+"name": "Boyo-Hamburguesa Sencilla",
+"description": null,
+"category": "Boyo-Hamburguesas",
+"keywords": []
+},
+{
+"name": "Boyo-Hamburguesa con Queso",
+"description": null,
+"category": "Boyo-Hamburguesas",
+"keywords": []
+},
+{
+"name": "Boyo-Hamburguesa con Queso y Tocino",
+"description": null,
+"category": "Boyo-Hamburguesas",
+"keywords": []
+},
+{
+"name": "Flauta de Pastor",
+"description": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+"category": "Flautas de PM",
+"keywords": []
+},
+{
+"name": "Flauta de Bistec de Res",
+"description": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+"category": "Flautas de PM",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Flauta de Chuleta de Cerdo",
+"description": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+"category": "Flautas de PM",
+"keywords": []
+},
+{
+"name": "Flauta de Pechuga",
+"description": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+"category": "Flautas de PM",
+"keywords": []
+},
+{
+"name": "Flauta de Costilla de Res",
+"description": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+"category": "Flautas de PM",
+"keywords": []
+},
+{
+"name": "Flauta de Arrachera",
+"description": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+"category": "Flautas de PM",
+"keywords": []
+},
+{
+"name": "Flauta de Poc-Chuc",
+"description": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+"category": "Flautas de PM",
+"keywords": [
+"pocchuc"
+]
+},
+{
+"name": "Chetaco de Pastor",
+"description": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+"category": "Chetacos",
+"keywords": [
+"burrito",
+"burro"
+]
+},
+{
+"name": "Chetaco de Champiñón",
+"description": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+"category": "Chetacos",
+"keywords": [
+"burrito",
+"burro",
+"champi"
+]
+},
+{
+"name": "Chetaco de Bistec de Res",
+"description": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+"category": "Chetacos",
+"keywords": [
+"bisté",
+"bistek",
+"bitek",
+"burrito",
+"burro"
+]
+},
+{
+"name": "Chetaco de Chuleta de Cerdo",
+"description": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+"category": "Chetacos",
+"keywords": [
+"burrito",
+"burro"
+]
+},
+{
+"name": "Chetaco de Pechuga",
+"description": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+"category": "Chetacos",
+"keywords": [
+"burrito",
+"burro"
+]
+},
+{
+"name": "Chetaco de Costilla de Res",
+"description": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+"category": "Chetacos",
+"keywords": [
+"burrito",
+"burro"
+]
+},
+{
+"name": "Chetaco de Poc-Chuc",
+"description": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+"category": "Chetacos",
+"keywords": [
+"burrito",
+"burro",
+"pocchuc"
+]
+},
+{
+"name": "Chetaco de Arrachera",
+"description": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+"category": "Chetacos",
+"keywords": [
+"burrito",
+"burro"
+]
+},
+{
+"name": "Papa Tradicional",
+"description": "Papa rellena",
+"category": "Papas de PM",
+"keywords": [
+"rellena",
+"rellenas"
+]
+},
+{
+"name": "Papa Pastor",
+"description": "Papa rellena",
+"category": "Papas de PM",
+"keywords": [
+"rellena",
+"rellenas"
+]
+},
+{
+"name": "Papa Bistec",
+"description": "Papa rellena",
+"category": "Papas de PM",
+"keywords": [
+"bisté",
+"bistek",
+"bitek",
+"rellena",
+"rellenas"
+]
+},
+{
+"name": "Papa Chuleta",
+"description": "Papa rellena",
+"category": "Papas de PM",
+"keywords": [
+"rellena",
+"rellenas"
+]
+},
+{
+"name": "Papa Pechuga",
+"description": "Papa rellena",
+"category": "Papas de PM",
+"keywords": [
+"rellena",
+"rellenas"
+]
+},
+{
+"name": "Papa Costilla",
+"description": "Papa rellena",
+"category": "Papas de PM",
+"keywords": [
+"rellena",
+"rellenas"
+]
+},
+{
+"name": "Papa Arrachera",
+"description": "Papa rellena",
+"category": "Papas de PM",
+"keywords": [
+"rellena",
+"rellenas"
+]
+},
+{
+"name": "Francés Suizo de Pastor",
+"description": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+"category": "Francés Suizo",
+"keywords": [
+"torta"
+]
+},
+{
+"name": "Francés Suizo de Champiñón",
+"description": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+"category": "Francés Suizo",
+"keywords": [
+"champi",
+"torta"
+]
+},
+{
+"name": "Francés Suizo de Bistec de Res",
+"description": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+"category": "Francés Suizo",
+"keywords": [
+"bisté",
+"bistek",
+"bitek",
+"torta"
+]
+},
+{
+"name": "Francés Suizo de Chuleta de Cerdo",
+"description": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+"category": "Francés Suizo",
+"keywords": [
+"torta"
+]
+},
+{
+"name": "Francés Suizo de Pechuga",
+"description": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+"category": "Francés Suizo",
+"keywords": [
+"torta"
+]
+},
+{
+"name": "Francés Suizo de Costilla de Res",
+"description": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+"category": "Francés Suizo",
+"keywords": [
+"torta"
+]
+},
+{
+"name": "Francés Suizo de Poc-Chuc",
+"description": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+"category": "Francés Suizo",
+"keywords": [
+"pocchuc",
+"torta"
+]
+},
+{
+"name": "Francés Suizo de Arrachera",
+"description": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+"category": "Francés Suizo",
+"keywords": [
+"torta"
+]
+},
+{
+"name": "Frijol con Tostada",
+"description": null,
+"category": "Entradas",
+"keywords": [
+"botanero",
+"frijoles",
+"frijolito"
+]
+},
+{
+"name": "Guacamole",
+"description": null,
+"category": "Entradas",
+"keywords": []
+},
+{
+"name": "Carbolla",
+"description": null,
+"category": "Entradas",
+"keywords": []
+},
+{
+"name": "Cebollas Cambray",
+"description": null,
+"category": "Entradas",
+"keywords": []
+},
+{
+"name": "Chicharrón de Queso",
+"description": null,
+"category": "Entradas",
+"keywords": [
+"costra"
+]
+},
+{
+"name": "Alitas de Pollo",
+"description": null,
+"category": "Entradas",
+"keywords": []
+},
+{
+"name": "Papas a la Francesa",
+"description": null,
+"category": "Entradas",
+"keywords": []
+},
+{
+"name": "Frijoles Charros Normal",
+"description": null,
+"category": "Frijoles Charros",
+"keywords": []
+},
+{
+"name": "Frijoles Charros Normal (1/2 orden)",
+"description": null,
+"category": "Frijoles Charros",
+"keywords": []
+},
+{
+"name": "Frijoles Charros con Queso",
+"description": null,
+"category": "Frijoles Charros",
+"keywords": []
+},
+{
+"name": "Frijoles Charros con Queso (1/2 orden)",
+"description": null,
+"category": "Frijoles Charros",
+"keywords": []
+},
+{
+"name": "Frijoles Charros Especiales",
+"description": null,
+"category": "Frijoles Charros",
+"keywords": []
+},
+{
+"name": "Frijoles Charros Especiales (1/2 orden)",
+"description": null,
+"category": "Frijoles Charros",
+"keywords": []
+},
+{
+"name": "Quesadilla de Natural",
+"description": "Orden de 3 quesadillas. De maíz o harina",
+"category": "Quesadillas",
+"keywords": []
+},
+{
+"name": "Quesadilla de Rajas",
+"description": "Orden de 3 quesadillas. De maíz o harina",
+"category": "Quesadillas",
+"keywords": []
+},
+{
+"name": "Quesadilla de Champiñones",
+"description": "Orden de 3 quesadillas. De maíz o harina",
+"category": "Quesadillas",
+"keywords": [
+"champi"
+]
+},
+{
+"name": "Quesadilla de Chorizo",
+"description": "Orden de 3 quesadillas. De maíz o harina",
+"category": "Quesadillas",
+"keywords": []
+},
+{
+"name": "Queso Fundido Natural",
+"description": null,
+"category": "Queso Fundido",
+"keywords": []
+},
+{
+"name": "Queso Fundido Rajas",
+"description": null,
+"category": "Queso Fundido",
+"keywords": []
+},
+{
+"name": "Queso Fundido Champiñones",
+"description": null,
+"category": "Queso Fundido",
+"keywords": [
+"champi"
+]
+},
+{
+"name": "Queso Fundido Tocino",
+"description": null,
+"category": "Queso Fundido",
+"keywords": []
+},
+{
+"name": "Queso Fundido Chorizo",
+"description": null,
+"category": "Queso Fundido",
+"keywords": []
+},
+{
+"name": "Nachos de Pastor",
+"description": null,
+"category": "Nachos",
+"keywords": []
+},
+{
+"name": "Nachos de Pastor (1/2 orden)",
+"description": null,
+"category": "Nachos",
+"keywords": []
+},
+{
+"name": "Nachos de Champiñón",
+"description": null,
+"category": "Nachos",
+"keywords": [
+"champi"
+]
+},
+{
+"name": "Nachos de Champiñón (1/2 orden)",
+"description": null,
+"category": "Nachos",
+"keywords": [
+"champi"
+]
+},
+{
+"name": "Nachos de Bistec",
+"description": null,
+"category": "Nachos",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Nachos de Bistec (1/2 orden)",
+"description": null,
+"category": "Nachos",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Nachos de Pechuga",
+"description": null,
+"category": "Nachos",
+"keywords": []
+},
+{
+"name": "Nachos de Pechuga (1/2 orden)",
+"description": null,
+"category": "Nachos",
+"keywords": []
+},
+{
+"name": "Nachos de Chuleta",
+"description": null,
+"category": "Nachos",
+"keywords": []
+},
+{
+"name": "Nachos de Chuleta (1/2 orden)",
+"description": null,
+"category": "Nachos",
+"keywords": []
+},
+{
+"name": "Nachos de Costilla",
+"description": null,
+"category": "Nachos",
+"keywords": []
+},
+{
+"name": "Nachos de Costilla (1/2 orden)",
+"description": null,
+"category": "Nachos",
+"keywords": []
+},
+{
+"name": "Nachos de Arrachera",
+"description": null,
+"category": "Nachos",
+"keywords": []
+},
+{
+"name": "Nachos de Arrachera (1/2 orden)",
+"description": null,
+"category": "Nachos",
+"keywords": []
+},
+{
+"name": "Quesobich de Queso",
+"description": "Pizza individual, orilla rellena de queso",
+"category": "Pizza Quesobich",
+"keywords": [
+"pizza"
+]
+},
+{
+"name": "Quesobich de Pastor",
+"description": "Pastor con piña",
+"category": "Pizza Quesobich",
+"keywords": [
+"pizza"
+]
+},
+{
+"name": "Quesobich de Bistec",
+"description": null,
+"category": "Pizza Quesobich",
+"keywords": [
+"bisté",
+"bistek",
+"bitek",
+"pizza"
+]
+},
+{
+"name": "Quesobich de Pollo",
+"description": null,
+"category": "Pizza Quesobich",
+"keywords": [
+"pizza"
+]
+},
+{
+"name": "Quesobich de Chuleta de Cerdo",
+"description": null,
+"category": "Pizza Quesobich",
+"keywords": [
+"pizza"
+]
+},
+{
+"name": "Quesobich de Costilla de Res",
+"description": null,
+"category": "Pizza Quesobich",
+"keywords": [
+"pizza"
+]
+},
+{
+"name": "Quesobich de Arrachera",
+"description": null,
+"category": "Pizza Quesobich",
+"keywords": [
+"pizza"
+]
+},
+{
+"name": "Quesobich Vegetariana",
+"description": "Champiñones, cebolla y rajas de chile poblano",
+"category": "Pizza Quesobich",
+"keywords": [
+"pizza"
+]
+},
+{
+"name": "Crujientes de Pechuga de Pollo",
+"description": "* No incluye guarniciones estándar",
+"category": "Platillos PM",
+"keywords": [
+"empanizado",
+"tiras"
+]
+},
+{
+"name": "Platillo de Pastor",
+"description": null,
+"category": "Platillos PM",
+"keywords": []
+},
+{
+"name": "Platillo de Bistec",
+"description": null,
+"category": "Platillos PM",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Platillo de Pechuga de Pollo",
+"description": null,
+"category": "Platillos PM",
+"keywords": []
+},
+{
+"name": "Platillo de Chuleta de Cerdo",
+"description": null,
+"category": "Platillos PM",
+"keywords": []
+},
+{
+"name": "Platillo de Costilla de Res",
+"description": null,
+"category": "Platillos PM",
+"keywords": []
+},
+{
+"name": "Platillo de Arrachera",
+"description": null,
+"category": "Platillos PM",
+"keywords": []
+},
+{
+"name": "Platillo de Poc-Chuc",
+"description": "* No incluye guarniciones estándar",
+"category": "Platillos PM",
+"keywords": [
+"pocchuc"
+]
+},
+{
+"name": "Fajitas de Bistec",
+"description": "* No incluye guarniciones estándar",
+"category": "Platillos PM",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Fajitas de Pechuga",
+"description": "* No incluye guarniciones estándar",
+"category": "Platillos PM",
+"keywords": []
+},
+{
+"name": "Fajitas de Arrachera",
+"description": "* No incluye guarniciones estándar",
+"category": "Platillos PM",
+"keywords": []
+},
+{
+"name": "Parrillada para 2",
+"description": "* No incluye guarniciones estándar",
+"category": "Platillos PM",
+"keywords": []
+},
+{
+"name": "Parrillada para 4",
+"description": "* No incluye guarniciones estándar",
+"category": "Platillos PM",
+"keywords": []
+},
+{
+"name": "Pastor — 1 kg",
+"description": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Pastor — 250 g",
+"description": "Cuarto de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Pastor — 500 g",
+"description": "Medio kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Pastor — 750 g",
+"description": "Tres cuartos de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Pastor — 1.5 kg",
+"description": "Kilo y medio al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Pastor — 2 kg",
+"description": "Dos kilos al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Bistec de Res — 1 kg",
+"description": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Bistec de Res — 250 g",
+"description": "Cuarto de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Bistec de Res — 500 g",
+"description": "Medio kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Bistec de Res — 750 g",
+"description": "Tres cuartos de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Bistec de Res — 1.5 kg",
+"description": "Kilo y medio al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Bistec de Res — 2 kg",
+"description": "Dos kilos al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Bistec de Res Encebollado — 1 kg",
+"description": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Bistec de Res Encebollado — 250 g",
+"description": "Cuarto de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Bistec de Res Encebollado — 500 g",
+"description": "Medio kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Ceiba Stout",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Bistec de Res Encebollado — 750 g",
+"description": "Tres cuartos de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Bistec de Res Encebollado — 1.5 kg",
+"description": "Kilo y medio al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Bistec de Res Encebollado — 2 kg",
+"description": "Dos kilos al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"bisté",
+"bistek",
+"bitek"
+]
+},
+{
+"name": "Chuleta de Cerdo — 1 kg",
+"description": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Chuleta de Cerdo — 250 g",
+"description": "Cuarto de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Chuleta de Cerdo — 500 g",
+"description": "Medio kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Chuleta de Cerdo — 750 g",
+"description": "Tres cuartos de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Chuleta de Cerdo — 1.5 kg",
+"description": "Kilo y medio al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Chuleta de Cerdo — 2 kg",
+"description": "Dos kilos al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Pechuga de Pollo — 1 kg",
+"description": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Pechuga de Pollo — 250 g",
+"description": "Cuarto de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Pechuga de Pollo — 500 g",
+"description": "Medio kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Pechuga de Pollo — 750 g",
+"description": "Tres cuartos de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Pechuga de Pollo — 1.5 kg",
+"description": "Kilo y medio al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Pechuga de Pollo — 2 kg",
+"description": "Dos kilos al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Poc-Chuc — 1 kg",
+"description": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"pocchuc"
+]
+},
+{
+"name": "Poc-Chuc — 250 g",
+"description": "Cuarto de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"pocchuc"
+]
+},
+{
+"name": "Poc-Chuc — 500 g",
+"description": "Medio kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"pocchuc"
+]
+},
+{
+"name": "Poc-Chuc — 750 g",
+"description": "Tres cuartos de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"pocchuc"
+]
+},
+{
+"name": "Poc-Chuc — 1.5 kg",
+"description": "Kilo y medio al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"pocchuc"
+]
+},
+{
+"name": "Poc-Chuc — 2 kg",
+"description": "Dos kilos al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": [
+"pocchuc"
+]
+},
+{
+"name": "Arrachera — 1 kg",
+"description": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Arrachera — 250 g",
+"description": "Cuarto de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Arrachera — 500 g",
+"description": "Medio kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Arrachera — 750 g",
+"description": "Tres cuartos de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Arrachera — 1.5 kg",
+"description": "Kilo y medio al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Arrachera — 2 kg",
+"description": "Dos kilos al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Costilla de Res — 1 kg",
+"description": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Costilla de Res — 250 g",
+"description": "Cuarto de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Costilla de Res — 500 g",
+"description": "Medio kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Costilla de Res — 750 g",
+"description": "Tres cuartos de kilo al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Costilla de Res — 1.5 kg",
+"description": "Kilo y medio al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Costilla de Res — 2 kg",
+"description": "Dos kilos al precio proporcional del kilo. Incluye salsa roja, salsa verde, limones y tortillas.",
+"category": "Kilos a Domicilio",
+"keywords": []
+},
+{
+"name": "Crema Española",
+"description": null,
+"category": "Postres",
+"keywords": []
+},
+{
+"name": "Crema de Coco",
+"description": null,
+"category": "Postres",
+"keywords": []
+},
+{
+"name": "Jericallas",
+"description": "Postre típico de Guadalajara a base de huevo, leche y vainilla",
+"category": "Postres",
+"keywords": []
+},
+{
+"name": "Flan",
+"description": null,
+"category": "Postres",
+"keywords": []
+},
+{
+"name": "Café",
+"description": "Café con leche: $11 adicionales (según el menú impreso)",
+"category": "Postres",
+"keywords": []
+},
+{
+"name": "Queso Napolitano",
+"description": "Receta de la casa",
+"category": "Postres",
+"keywords": [
+"flan-napolitano"
+]
+},
+{
+"name": "Coca-Cola",
+"description": "Botella o lata",
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Coca-Cola Light",
+"description": "Botella o lata",
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Coca-Cola sin Azúcar",
+"description": "Botella o lata",
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Toronja Cristal",
+"description": null,
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Fanta",
+"description": "Botella",
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Sprite",
+"description": "Lata",
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Sprite Cero",
+"description": "Lata",
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Sidral Mundet",
+"description": "Botella",
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Agua Mineral Cristal",
+"description": "300ml",
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Agua Purificada",
+"description": "600ml",
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Topo Chico",
+"description": "355ml",
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Limonada",
+"description": null,
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Limonada con Soda",
+"description": null,
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Limonada con Topo Chico",
+"description": null,
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Naranjada",
+"description": null,
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Naranjada con Soda",
+"description": null,
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Naranjada con Topo Chico",
+"description": null,
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Suero con Soda",
+"description": null,
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Suero con Topo Chico",
+"description": null,
+"category": "Refrescos",
+"keywords": []
+},
+{
+"name": "Agua de Jamaica",
+"description": null,
+"category": "Aguas Frescas",
+"keywords": []
+},
+{
+"name": "Horchata",
+"description": null,
+"category": "Aguas Frescas",
+"keywords": []
+},
+{
+"name": "Té",
+"description": null,
+"category": "Aguas Frescas",
+"keywords": []
+},
+{
+"name": "Sol",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Superior",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Tecate Light",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Heineken 0.0",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Heineken",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Heineken Silver",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Indio",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "XX Lager",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "XX Ámbar",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Amstel Ultra",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Bohemia Clara",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Bohemia Oscura",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Ceiba Dorada Premium",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Ceiba Light Lager",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Ceiba Mestiza",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Patito Lager",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Ojo Rojo",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Vaso de Chelada",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Vaso de Michelada",
+"description": null,
+"category": "Cervezas",
+"keywords": [
+"chela",
+"cheve"
+]
+},
+{
+"name": "Ron Appleton Especial",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Ron Bacardí Añejo",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Ron Bacardí Blanco",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Ron Bacardí Solera",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Tequila Don Julio Reposado",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Tequila Herradura Reposado",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Tequila Jimador",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Tequila Tradicional",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Vodka Absolut",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Vodka Smirnoff",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Whisky Buchanan's",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Whisky Chivas Regal",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Whisky J.W. Etiqueta Negra",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Caribe Cooler",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Conga",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Conga sin Alcohol",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Daiquiri",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Daiquiri sin Alcohol",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Limonada Eléctrica",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Margarita",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Margarita sin Alcohol",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Piñada",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Piña Colada",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Sangría",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Sangría sin Alcohol",
+"description": null,
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Vino Tinto Selección (copa)",
+"description": "En Pensiones (T3) se sirve Concha y Toro",
+"category": "Licores y Cocktails",
+"keywords": []
+},
+{
+"name": "Extra Champiñón",
+"description": null,
+"category": "Guarniciones Extra",
+"keywords": [
+"champi"
+]
+},
+{
+"name": "Extra Chile Poblano",
+"description": null,
+"category": "Guarniciones Extra",
+"keywords": []
+},
+{
+"name": "Extra Chorizo",
+"description": null,
+"category": "Guarniciones Extra",
+"keywords": []
+},
+{
+"name": "Extra Guacamole",
+"description": null,
+"category": "Guarniciones Extra",
+"keywords": []
+},
+{
+"name": "Extra Rajas",
+"description": null,
+"category": "Guarniciones Extra",
+"keywords": []
+},
+{
+"name": "Extra Tocino",
+"description": null,
+"category": "Guarniciones Extra",
+"keywords": []
+},
+{
+"name": "Orden Tortilla de Harina",
+"description": null,
+"category": "Guarniciones Extra",
+"keywords": []
+},
+{
+"name": "Orden Tortilla de Maíz",
+"description": null,
+"category": "Guarniciones Extra",
+"keywords": []
+},
+{
+"name": "Extra Queso",
+"description": null,
+"category": "Guarniciones Extra",
+"keywords": []
+},
+{
+"name": "Ensalada de PM",
+"description": null,
+"category": "Entradas",
+"keywords": []
+},
+{
+"name": "Sopa de Lima",
+"description": null,
+"category": "Comida Regional",
+"keywords": []
+},
+{
+"name": "Papadzules (orden de 5)",
+"description": null,
+"category": "Comida Regional",
+"keywords": []
+},
+{
+"name": "Codzitos (orden de 4)",
+"description": null,
+"category": "Comida Regional",
+"keywords": []
+},
+{
+"name": "Platillo de Cochinita",
+"description": null,
+"category": "Comida Regional",
+"keywords": []
+},
+{
+"name": "Tacos de Cochinita (orden de 4)",
+"description": null,
+"category": "Comida Regional",
+"keywords": []
+},
+{
+"name": "Francés de Cochinita",
+"description": null,
+"category": "Comida Regional",
+"keywords": []
+},
+{
+"name": "Extra Salsa",
+"description": "Porcion extra de una salsa (doble porcion).",
+"category": "Guarniciones Extra",
+"keywords": []
+},
+{
+"name": "Extra Piña",
+"description": "Porcion extra de piña (por ejemplo para el francés).",
+"category": "Guarniciones Extra",
+"keywords": []
+}
+]

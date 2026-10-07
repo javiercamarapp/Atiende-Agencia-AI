@@ -48,7 +48,8 @@ describe("instruccion de voz = texto editable + bloque de reglas al FINAL", () =
 describe("limites de la llamada de PM", () => {
   it("restaurantes usa UN solo '¿sigue ahi?' (silenciosMax 1) y voice-core conserva 2 para las demas verticales", () => {
     expect(LIMITES_VOZ_PM.silenciosMax).toBe(1);
-    expect(LIMITES_VOZ_PM).toEqual({ ...LIMITES_POR_DEFECTO, silenciosMax: 1 });
+    // QA-PM-R2-voz-05: la voz de PM reintenta 3 veces la reconexion con espera creciente (antes 1 a los 400 ms: fallaba 5/5 ante un ws_1011).
+    expect(LIMITES_VOZ_PM).toEqual({ ...LIMITES_POR_DEFECTO, silenciosMax: 1, reconexionesMax: 3, reconexionEsperaMs: [400, 1500, 3500] });
     expect(LIMITES_CORE.silenciosMax).toBe(2);
     expect(LIMITES_POR_DEFECTO.silenciosMax).toBe(2);
   });

@@ -25,6 +25,11 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-restaurantes/tests/pm-c4-herramientas.spec.ts",
   "packages/domain-restaurantes/tests/pm-c5-escenarios-t7.spec.ts",
   "packages/domain-restaurantes/tests/pm-c5-pedido-reciente.spec.ts",
+  // Ronda 2 del loop de PM: hora de recogida y programado validados contra el reloj del servidor; reloj local de consultar_sucursal.
+  "packages/domain-restaurantes/tests/pm-r2-flujo-pedido-y-hora.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r2-prompt-y-reloj.spec.ts",
+  "packages/domain-restaurantes/tests/recoger-estados-y-columnas.spec.ts",
+  "apps/api/tests/pm-r2-voz-programado.spec.ts",
   "apps/api/tests/rentas-pricing-servidor-hoy.spec.ts",
   "apps/api/tests/rentas-cotizacion-servidor-hoy.spec.ts",
   "apps/api/tests/hoteles-night-audit-servidor-hoy.spec.ts",

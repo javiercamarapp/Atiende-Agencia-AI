@@ -655,12 +655,12 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     this.addresses.set(customerId, list);
   }
 
-  async listCustomerAddresses(customerId: string): Promise<readonly CustomerAddress[]> {
+  async listCustomerAddresses(customerId: string, _organizationId?: string): Promise<readonly CustomerAddress[]> {
     const list = this.addresses.get(customerId) ?? [];
     return [...list].sort((a, b) => Number(b.isDefault) - Number(a.isDefault)).map((a) => ({ address: a.address, label: a.label, isDefault: a.isDefault }));
   }
 
-  async listEligibleOrderHistory(customerId: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>> {
+  async listEligibleOrderHistory(customerId: string, _organizationId?: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>> {
     const eligibleStatuses = new Set(["pending", "preparando", "en_camino", "entregado", "completado"]);
     return this.orders
       .filter((o) => o.customerId === customerId && eligibleStatuses.has(o.status))

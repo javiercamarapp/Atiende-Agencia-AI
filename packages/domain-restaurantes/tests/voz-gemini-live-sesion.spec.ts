@@ -198,8 +198,11 @@ describe("caidas y reanudacion", () => {
     expect((sockets[1]!.enviados[0] as { setup: { sessionResumption: unknown } }).setup.sessionResumption).toEqual({ handle: "h-77" });
     expect(ctrl.maquina.estadoActual).toBe("activa");
 
-    // segunda caida: ya no hay reanudacion -> pregrabado, callback y colgar
-    sockets[1]!.caer(1011);
+    // caidas siguientes: la voz de PM reintenta hasta 3 veces (reconexionesMax 3); agotadas -> pregrabado, callback y colgar
+    for (let i = 1; i <= 3; i++) {
+      sockets[i]!.caer(1011);
+      await ctrl.vacio();
+    }
     const r = await ctrl.terminada;
     expect(r.resultado).toBe("escalado");
     expect(reproducidos).toContain("proveedor_caido");

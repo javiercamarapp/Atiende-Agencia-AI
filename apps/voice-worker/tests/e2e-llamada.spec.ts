@@ -74,10 +74,11 @@ async function armar(opts: { agente: () => AgenteGuionado; mundo?: MundoApi; log
   const llamar = async (id: string, recurrente: boolean) => {
     const agente = new AgenteGuionado(guionPedido(recurrente));
     agenteActual = agente;
+    // Se cuenta ANTES de llamar: tras crear el pedido la despedida del agente cuelga la llamada (QA-PM-R2-voz-16) y la llamada puede cerrar antes que el cliente.
+    const antes = worker.salud().llamadasAtendidas;
     const llamada = telefonia.llamar({ id, dnis: NUMERO_SUCURSAL, desde: SIP_DESDE });
     await vi.waitFor(() => expect(agente.saludos).toBe(1), { timeout: 5_000, interval: 5 });
     for (let i = 1; i <= agente.turnos.length; i++) await turnoCliente(llamada, api.reloj, () => agente.respondidos, i);
-    const antes = worker.salud().llamadasAtendidas;
     llamada.clienteCuelga();
     await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 5_000, interval: 5 });
     return { agente };
@@ -217,7 +218,8 @@ describe("llamada de punta a punta (telefonia falsa + proveedor guionado + API r
     const t = await armar({ agente: () => new AgenteGuionado([]), log: ({ evento, campos }) => void lineas.push(JSON.stringify({ evento, ...campos })) });
     await t.llamar("llamada-E", false);
     expect(lineas.length).toBeGreaterThan(5);
-    const todo = lineas.join("\n");
+    // Los UUID de organizacion y sucursal son aleatorios y pueden contener "412" por azar: no son el numero de la direccion.
+    const todo = lineas.join("\n").replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, "<uuid>");
     for (const sensible of [TELEFONO, "Ana Pech", "calle sesenta", "Calle 63", "412", "ana@ejemplo.invalid", "autorizo", "bistec", SIP_DESDE]) expect(todo, sensible).not.toContain(sensible);
     // La llamada se correlaciona por una referencia opaca (hash), nunca por el id de la sala ni del proveedor.
     expect(todo).not.toContain("llamada-E");

@@ -189,6 +189,11 @@ class SesionGemini implements VozSesionLlamada {
           if (msg.setupComplete !== undefined) {
             listo = true;
             clearTimeout(t);
+            // Reconexion sin handle: se siembra el contexto de la conversacion (turnos de historial, sin pedir respuesta todavia).
+            if (apertura.historial && apertura.historial.length > 0) {
+              const turns = apertura.historial.map((h) => ({ role: h.rol === "cliente" ? "user" : "model", parts: [{ text: h.texto }] }));
+              this.socket.send(JSON.stringify({ clientContent: { turns, turnComplete: false } }));
+            }
             resolve();
           }
           return;

@@ -489,6 +489,12 @@ function esFuncionSistema048NoDisponible(err: unknown): boolean {
   return (err as { code?: string } | null)?.code === "42883";
 }
 
+/** Migracion 071 (lecturas de sistema): funcion inexistente (base sin migrar, 42883) o sesion de staff (la funcion es solo-sistema, 42501): se lee directo. */
+function esLecturaSistema071NoDisponible(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code;
+  return code === "42883" || code === "42501";
+}
+
 // Compatibilidad con la base SIN migrar para la migracion 026 (estado del pedido / secretos por
 // sucursal / bitacora de voz): funcion o tabla inexistente.
 function esErrorBaseSinMigrar026(err: unknown): boolean {
@@ -834,11 +840,23 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async findCustomerByPhone(organizationId: string, phone: string): Promise<Customer | null> {
-    const { rows } = await this.db.query<CustomerRow>(
-      `select id, organization_id, phone, name, order_count from restaurantes.customers where organization_id = $1 and phone = $2;`,
-      [organizationId, phone],
-    );
-    return rows[0] ? mapCustomer(rows[0]) : null;
+    // Migracion 071: la sesion de sistema (agentes) no ve `customers` por RLS (0 filas sin error): la lectura va por la funcion solo-sistema.
+    return runWithSavepointFallback<Customer | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_sistema_cliente_por_telefono",
+      primary: async () => {
+        const { rows } = await this.db.query<{ cliente: CustomerRow | null }>(`select restaurantes.sistema_buscar_cliente_por_telefono($1, $2) as cliente;`, [organizationId, phone]);
+        return rows[0]?.cliente ? mapCustomer(rows[0].cliente) : null;
+      },
+      isRecoverable: esLecturaSistema071NoDisponible,
+      fallback: async () => {
+        const { rows } = await this.db.query<CustomerRow>(
+          `select id, organization_id, phone, name, order_count from restaurantes.customers where organization_id = $1 and phone = $2;`,
+          [organizationId, phone],
+        );
+        return rows[0] ? mapCustomer(rows[0]) : null;
+      },
+    });
   }
 
   async upsertCustomer(organizationId: string, phone: string, name: string): Promise<Customer> {
@@ -950,23 +968,52 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     );
   }
 
-  async listCustomerAddresses(customerId: string): Promise<readonly CustomerAddress[]> {
-    const { rows } = await this.db.query<{ address: string; label: string | null; is_default: boolean }>(
-      `select address, label, is_default from restaurantes.customer_addresses where customer_id = $1 order by is_default desc;`,
-      [customerId],
-    );
-    return rows.map((row) => ({ address: row.address, label: row.label, isDefault: row.is_default }));
+  async listCustomerAddresses(customerId: string, organizationId?: string): Promise<readonly CustomerAddress[]> {
+    type Fila = { address: string; label: string | null; is_default: boolean };
+    const mapear = (rows: readonly Fila[]): readonly CustomerAddress[] => rows.map((row) => ({ address: row.address, label: row.label, isDefault: row.is_default }));
+    const directo = async () => {
+      const { rows } = await this.db.query<Fila>(`select address, label, is_default from restaurantes.customer_addresses where customer_id = $1 order by is_default desc;`, [customerId]);
+      return mapear(rows);
+    };
+    if (!organizationId) return directo();
+    // Migracion 071: la sesion de sistema no ve customer_addresses por RLS; lectura por la funcion solo-sistema.
+    return runWithSavepointFallback<readonly CustomerAddress[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_sistema_direcciones_cliente",
+      primary: async () => {
+        const { rows } = await this.db.query<{ direcciones: Fila[] | null }>(`select restaurantes.sistema_direcciones_cliente($1, $2) as direcciones;`, [organizationId, customerId]);
+        return mapear(rows[0]?.direcciones ?? []);
+      },
+      isRecoverable: esLecturaSistema071NoDisponible,
+      fallback: directo,
+    });
   }
 
-  async listEligibleOrderHistory(customerId: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>> {
-    const { rows } = await this.db.query<{ items: readonly PersistedOrderItem[]; created_at: string }>(
-      `select items, created_at from restaurantes.orders
-       where customer_id = $1
-         and status in ('pending', 'preparando', 'en_camino', 'entregado', 'completado')
-       order by created_at desc;`,
-      [customerId],
-    );
-    return rows.map((row) => ({ items: row.items, createdAt: row.created_at }));
+  async listEligibleOrderHistory(customerId: string, organizationId?: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>> {
+    type Fila = { items: readonly PersistedOrderItem[]; created_at: string };
+    const mapear = (rows: readonly Fila[]) => rows.map((row) => ({ items: row.items, createdAt: row.created_at }));
+    const directo = async () => {
+      const { rows } = await this.db.query<Fila>(
+        `select items, created_at from restaurantes.orders
+         where customer_id = $1
+           and status in ('pending', 'preparando', 'en_camino', 'entregado', 'completado')
+         order by created_at desc;`,
+        [customerId],
+      );
+      return mapear(rows);
+    };
+    if (!organizationId) return directo();
+    // Migracion 071: la sesion de sistema no ve `orders` por RLS; el historial del cliente va por la funcion solo-sistema.
+    return runWithSavepointFallback<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>>({
+      session: this.db,
+      savepointName: "sp_restaurantes_sistema_historial_cliente",
+      primary: async () => {
+        const { rows } = await this.db.query<{ historial: Fila[] | null }>(`select restaurantes.sistema_historial_pedidos_cliente($1, $2) as historial;`, [organizationId, customerId]);
+        return mapear(rows[0]?.historial ?? []);
+      },
+      isRecoverable: esLecturaSistema071NoDisponible,
+      fallback: directo,
+    });
   }
 
   // ---- Cliente 360 (migracion 049): delegan en cliente-360/postgres.ts (funciones security definer + SAVEPOINT) ----
@@ -2322,12 +2369,24 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async findOrderById(organizationId: string, orderId: string): Promise<Order | null> {
-    const { rows } = await this.db.query<OrderRow>(
-      `select ${ORDER_COLUMNS}
-       from restaurantes.orders where id = $1 and organization_id = $2;`,
-      [orderId, organizationId],
-    );
-    return rows[0] ? mapOrder(rows[0]) : null;
+    // Migracion 071: la sesion de sistema (voz: reintento de crear_pedido -> `ya_registrado`) no ve `orders` por RLS.
+    return runWithSavepointFallback<Order | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_sistema_pedido_por_id",
+      primary: async () => {
+        const { rows } = await this.db.query<{ pedido: OrderRow | null }>(`select restaurantes.sistema_pedido_por_id($1, $2) as pedido;`, [organizationId, orderId]);
+        return rows[0]?.pedido ? mapOrder(rows[0].pedido) : null;
+      },
+      isRecoverable: esLecturaSistema071NoDisponible,
+      fallback: async () => {
+        const { rows } = await this.db.query<OrderRow>(
+          `select ${ORDER_COLUMNS}
+           from restaurantes.orders where id = $1 and organization_id = $2;`,
+          [orderId, organizationId],
+        );
+        return rows[0] ? mapOrder(rows[0]) : null;
+      },
+    });
   }
 
   async findLatestOrderByPhone(organizationId: string, customerPhone: string, sinceIso: string): Promise<Order | null | undefined> {
@@ -2338,6 +2397,19 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       session: this.db,
       savepointName: "sp_restaurantes_pedido_reciente",
       primary: async () => {
+        // Migracion 071: la sesion de sistema no ve `orders` por RLS (devolvia SIEMPRE "no hay pedido reciente"). Primero la funcion solo-sistema,
+        // en su propio SAVEPOINT; si no existe (base sin migrar) o es una sesion de staff, la lectura directa de siempre.
+        const viaFuncion = await runWithSavepointFallback<{ readonly fila: OrderRow | null } | null>({
+          session: this.db,
+          savepointName: "sp_restaurantes_sistema_pedido_reciente_fn",
+          primary: async () => {
+            const { rows } = await this.db.query<{ pedido: OrderRow | null }>(`select restaurantes.sistema_pedido_reciente_por_telefono($1, $2, $3::timestamptz) as pedido;`, [organizationId, customerPhone, sinceIso]);
+            return { fila: rows[0]?.pedido ?? null };
+          },
+          isRecoverable: esLecturaSistema071NoDisponible,
+          fallback: async () => null,
+        });
+        if (viaFuncion) return viaFuncion.fila ? mapOrder(viaFuncion.fila) : null;
         const { rows } = await this.db.query<OrderRow>(
           `select ${ORDER_COLUMNS}
            from restaurantes.orders
