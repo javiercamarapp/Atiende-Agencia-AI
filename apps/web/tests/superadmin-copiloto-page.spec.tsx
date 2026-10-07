@@ -510,7 +510,7 @@ describe("paridad con el chat de las verticales", () => {
       undefined,
       (url, init) =>
         url.includes(`/superadmin/copiloto/conversaciones/${ID_CONV}/reporte?seq=2`) && init.method === "POST"
-          ? new Response(new Blob(["%PDF-1.4"]), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": 'attachment; filename="reporte-plataforma-2026-10-04.pdf"' } })
+          ? new Response("%PDF-1.4", { status: 200, headers: { "content-type": "application/pdf", "content-disposition": 'attachment; filename="reporte-plataforma-2026-10-04.pdf"' } })
           : undefined,
       FIN_TABLA,
     );
