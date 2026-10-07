@@ -24,16 +24,19 @@ import {
   Fingerprint,
   Gauge,
   LayoutDashboard,
+  ListChecks,
   LifeBuoy,
   MessageCircle,
   MessagesSquare,
   Receipt,
   ShieldAlert,
+  SlidersHorizontal,
   Sparkles,
   Star,
   Tags,
   TrendingUp,
   UserRound,
+  UserCog,
   UsersRound,
   UtensilsCrossed,
   Wrench,
@@ -52,6 +55,7 @@ import { COPILOTO_HOTELES_ROLES } from "./pages/Copiloto.tsx";
 import { fetchProperties, resolveActivePropertyId } from "./lib/discovery-client.ts";
 import type { PropertyOption } from "./lib/discovery-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
+import { PuertaOnboarding } from "./PuertaOnboarding.tsx";
 
 /** Hotel (property) con el `name` que exige `useVerticalSession`; `nombre` sigue siendo el campo del API. */
 type HotelOption = PropertyOption & { readonly name: string };
@@ -158,6 +162,10 @@ const CONVERSACIONES_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "f
 // todas formas (403 en housekeeping.ts); frontdesk/maintenance/etc. lo ven según este set.
 // H-29 -- Mensajeria (canal WhatsApp + voz): mismo MENSAJERIA_CONFIG_ROLES (owner/gm) que domain-hoteles/src/roles.ts; cosmetico, el servidor manda (403).
 const MENSAJERIA_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm"]);
+// H-P3-04/05/06 -- Configuracion (owner/gm escriben, accountant lee), Equipo y Primeros pasos (owner/gm). Cosmetico: el servidor manda (403).
+const CONFIGURACION_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "accountant"]);
+const EQUIPO_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm"]);
+const PRIMEROS_PASOS_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm"]);
 const HOUSEKEEPING_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "housekeeping", "maintenance"]);
 
 export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
@@ -237,6 +245,9 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       items: [
         ...(CATALOGO_NAV_ROLES.has(role) ? [{ to: `${base}/catalogo`, label: "Catálogo", icon: Tags }] : []),
         ...(MENSAJERIA_NAV_ROLES.has(role) ? [{ to: `${base}/mensajeria`, label: "Mensajería", icon: MessageCircle }] : []),
+        ...(CONFIGURACION_NAV_ROLES.has(role) ? [{ to: `${base}/configuracion`, label: "Configuración del hotel", icon: SlidersHorizontal }] : []),
+        ...(EQUIPO_NAV_ROLES.has(role) ? [{ to: `${base}/equipo`, label: "Equipo", icon: UserCog }] : []),
+        ...(PRIMEROS_PASOS_NAV_ROLES.has(role) ? [{ to: `${base}/primeros-pasos`, label: "Primeros pasos", icon: ListChecks }] : []),
       ],
     },
   ].filter((sec) => sec.items.length > 0);
@@ -289,7 +300,9 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       mobileSelector={branches.length > 1 ? hotelSelector : null}
       contentKey={propertyId}
     >
-      {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email, propertyName: activeBranch.nombre })}
+      <PuertaOnboarding apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} orgSlug={orgSlug} role={role}>
+        {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email, propertyName: activeBranch.nombre })}
+      </PuertaOnboarding>
     </VerticalShellConectado>
   );
 }
