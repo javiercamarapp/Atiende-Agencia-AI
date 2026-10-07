@@ -43,7 +43,7 @@ test.describe("licitaciones: aprobacion de datos de empresa @humo", () => {
 
   test("un documento se aprueba con una confirmacion simple (sin step-up) y Cancelar no escribe", async ({ page, iniciarSesion, mock }) => {
     await iniciarSesion("licitaciones", "admin");
-    await page.goto(RUTA);
+    await page.goto(`${RUTA}?tab=documentos`);
     await expect(page.getByText("Acta constitutiva")).toBeVisible();
     const rechazar = page.getByRole("button", { name: "Rechazar", exact: true });
     await afirmarCancelarNoEscribe(page, mock, rechazar, { nombre: /Rechazar el documento/, verificarFoco: false });

@@ -3,6 +3,19 @@
 // Ningún flujo de apps/api toca SQL directamente — todo pasa por aquí.
 import type { AuditTrailFilters, AuditTrailInput, AuditTrailPage } from "./audit-trail.ts";
 import type { CalendarioPlazos } from "./dias-inhabiles.ts";
+import type { MipymeSector } from "./mipyme.ts";
+import type {
+  CompanyLocationRecord,
+  CompanyProductServiceRecord,
+  CompanyProfileRecord,
+  CompanyRestrictionRecord,
+  CompanyStakeholderRecord,
+  FieldProvenanceRecord,
+  LocationKind,
+  ProductServiceKind,
+  RestrictionKind,
+  StakeholderKind,
+} from "./company-profile.ts";
 import type {
   TenderRecord,
   ProposalRecord,
@@ -59,10 +72,12 @@ export interface RequirementItemRecord {
   readonly confidence: number | null;
 }
 
+import type { FulfillmentMappingKind } from "./technical-proposal.ts";
+
 export interface RequirementFulfillmentMappingRecord {
   readonly id: string;
   readonly topicKey: string;
-  readonly kind: "capability" | "experience" | "document" | "signer";
+  readonly kind: FulfillmentMappingKind;
   readonly refKey: string;
   readonly statementTemplate: string;
 }
@@ -298,8 +313,8 @@ export interface TenderResolutionCreateInput {
 // ---------------------------------------------------------------------
 export type CompanyDataApprovalStatus = "aprobado" | "pendiente_aprobacion" | "rechazado";
 
-/** Los cinco recursos de "datos de empresa" que se aprueban (migración 036, `licitaciones.decide_company_item`). */
-export type CompanyItemKind = "rate" | "document" | "capability" | "experience" | "signer";
+/** Los recursos de "datos de empresa" que se aprueban: los cinco de la migración 036 y los cinco del perfil completo (040), todos por `licitaciones.decide_company_item`. */
+export type CompanyItemKind = "rate" | "document" | "capability" | "experience" | "signer" | "profile" | "product" | "location" | "restriction" | "stakeholder";
 export type CompanyItemDecision = "aprobado" | "rechazado";
 /**
  * `ok`; `not_found` (no existe en la organización); `conflict` (ya no estaba pendiente: decidido por otra persona/petición);
@@ -381,13 +396,77 @@ export interface CompanySignerCreateInput {
   readonly name: string;
   readonly role: string;
   readonly authorized?: boolean;
+  /** Vigencia del poder (migracion 040), fechas de negocio "YYYY-MM-DD". */
+  readonly validFrom?: string | null;
+  readonly validUntil?: string | null;
+  /** `company_document.id` del documento de identidad o poder. */
+  readonly identityDocId?: string | null;
+  readonly actionLimits?: string | null;
 }
 export interface CompanySignerUpdateInput {
   /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
   readonly actorId?: string;
   readonly name?: string;
   readonly authorized?: boolean;
+  readonly validFrom?: string | null;
+  readonly validUntil?: string | null;
+  readonly identityDocId?: string | null;
+  readonly actionLimits?: string | null;
 }
+
+// ---- Perfil de empresa completo (migracion 040, REQ-141) ----
+// Cada alta o edicion registra su procedencia (REQ-142) EN LA MISMA transaccion: en Postgres, la funcion
+// `licitaciones.record_field_provenance` corre en la misma sesion (una transaccion por request) y un error NO se traga, asi
+// que si la procedencia falla se revierte tambien el dato; el repositorio en memoria lo imita (deshace el dato si falla).
+export interface CompanyProfileUpsertInput {
+  readonly actorId?: string;
+  readonly legalName: string;
+  /** RFC ya normalizado y validado por la capa de API. */
+  readonly taxId: string;
+  readonly tradeName?: string | null;
+  readonly sector?: MipymeSector | null;
+  readonly foundedYear?: number | null;
+  readonly employeeCount?: number | null;
+  readonly annualSalesCents?: number | null;
+  readonly website?: string | null;
+}
+export interface CompanyProductServiceCreateInput {
+  readonly actorId?: string;
+  readonly kind: ProductServiceKind;
+  readonly name: string;
+  readonly description?: string | null;
+  readonly classifierCode?: string | null;
+}
+export type CompanyProductServiceUpdateInput = Partial<Omit<CompanyProductServiceCreateInput, "kind">>;
+export interface CompanyLocationCreateInput {
+  readonly actorId?: string;
+  readonly kind: LocationKind;
+  readonly name: string;
+  readonly state: string;
+  readonly municipality?: string | null;
+  readonly address?: string | null;
+}
+export type CompanyLocationUpdateInput = Partial<CompanyLocationCreateInput>;
+export interface CompanyRestrictionCreateInput {
+  readonly actorId?: string;
+  readonly kind: RestrictionKind;
+  readonly description: string;
+  readonly validFrom: string;
+  readonly validUntil?: string | null;
+}
+export type CompanyRestrictionUpdateInput = Partial<CompanyRestrictionCreateInput>;
+export interface CompanyStakeholderCreateInput {
+  readonly actorId?: string;
+  readonly kind: StakeholderKind;
+  readonly fullName: string;
+  /** RFC ya normalizado y validado. */
+  readonly rfc?: string | null;
+  /** Porcentaje con dos decimales ("33.33"). */
+  readonly participationPct?: string | null;
+}
+export type CompanyStakeholderUpdateInput = Partial<Omit<CompanyStakeholderCreateInput, "kind">>;
+/** Colecciones del perfil que admiten baja (el perfil general no se borra y los firmantes se desautorizan). */
+export type CompanyProfileCollectionKind = "product" | "location" | "restriction" | "stakeholder";
 
 export interface ContractDocumentRecord {
   readonly id: string;
@@ -1044,6 +1123,29 @@ export interface LicitacionesRepository {
   updateCompanySigner(organizationId: string, signerId: string, input: CompanySignerUpdateInput): Promise<CompanySignerRecord>;
   /** Aprueba/rechaza un dato de empresa de forma atómica y condicional (solo desde 'pendiente_aprobacion'), con autor distinto del aprobador y bitácora. Ver `CompanyItemDecisionOutcome`. */
   decideCompanyItem(organizationId: string, input: CompanyItemDecisionInput): Promise<CompanyItemDecisionOutcome>;
+
+  // ---- Perfil de empresa completo (migracion 040). Base sin migrar: las listas devuelven [] y `getCompanyProfile` null (vacio honesto). ----
+  /** `false` si la base aun no tiene la migracion 040: la API oculta los controles nuevos y responde "no disponible aun". */
+  isCompanyProfileAvailable(): Promise<boolean>;
+  getCompanyProfile(organizationId: string): Promise<CompanyProfileRecord | null>;
+  /** Uno por organizacion: crea o edita. Editar un dato aprobado lo regresa a pendiente. Lanza `CompanyProfileNotAvailableError` si la base aun no tiene la migracion 040. */
+  upsertCompanyProfile(organizationId: string, input: CompanyProfileUpsertInput): Promise<CompanyProfileRecord>;
+  listCompanyProductsServices(organizationId: string): Promise<readonly CompanyProductServiceRecord[]>;
+  createCompanyProductService(organizationId: string, input: CompanyProductServiceCreateInput): Promise<CompanyProductServiceRecord>;
+  updateCompanyProductService(organizationId: string, id: string, input: CompanyProductServiceUpdateInput): Promise<CompanyProductServiceRecord>;
+  listCompanyLocations(organizationId: string): Promise<readonly CompanyLocationRecord[]>;
+  createCompanyLocation(organizationId: string, input: CompanyLocationCreateInput): Promise<CompanyLocationRecord>;
+  updateCompanyLocation(organizationId: string, id: string, input: CompanyLocationUpdateInput): Promise<CompanyLocationRecord>;
+  listCompanyRestrictions(organizationId: string): Promise<readonly CompanyRestrictionRecord[]>;
+  createCompanyRestriction(organizationId: string, input: CompanyRestrictionCreateInput): Promise<CompanyRestrictionRecord>;
+  updateCompanyRestriction(organizationId: string, id: string, input: CompanyRestrictionUpdateInput): Promise<CompanyRestrictionRecord>;
+  listCompanyStakeholders(organizationId: string): Promise<readonly CompanyStakeholderRecord[]>;
+  createCompanyStakeholder(organizationId: string, input: CompanyStakeholderCreateInput): Promise<CompanyStakeholderRecord>;
+  updateCompanyStakeholder(organizationId: string, id: string, input: CompanyStakeholderUpdateInput): Promise<CompanyStakeholderRecord>;
+  /** Da de baja un elemento de una coleccion del perfil. `false` si no existe en la organizacion. */
+  deleteCompanyProfileItem(organizationId: string, kind: CompanyProfileCollectionKind, id: string): Promise<boolean>;
+  /** Procedencia por campo de TODO el perfil de la organizacion (REQ-142). Base sin migrar: []. */
+  listFieldProvenance(organizationId: string): Promise<readonly FieldProvenanceRecord[]>;
 }
 
 export type {

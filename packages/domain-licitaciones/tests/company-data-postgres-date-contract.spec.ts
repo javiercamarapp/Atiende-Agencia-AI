@@ -222,6 +222,7 @@ describe("PostgresLicitacionesRepository -- call site real (protege contra quita
     const repo = new PostgresLicitacionesRepository(
       fakeSessionWithResponses([
         { rows: [{ id: "doc-2", document_type: "constancia_situacion_fiscal", label: "CSF", expires_at: "2030-12-31", approval_status: "pendiente_aprobacion" }] },
+        { rows: [] }, // record_field_provenance (REQ-142)
       ]),
     );
     const doc = await repo.createCompanyDocument(ORG_ID, { type: "constancia_situacion_fiscal", label: "CSF", expiresAt: "2030-12-31" });
@@ -232,6 +233,7 @@ describe("PostgresLicitacionesRepository -- call site real (protege contra quita
     const repo = new PostgresLicitacionesRepository(
       fakeSessionWithResponses([
         { rows: [{ id: "doc-3", document_type: "opinion_cumplimiento", label: "Opinión", expires_at: "2027-05-01", approval_status: "aprobado" }] },
+        { rows: [] }, // record_field_provenance (REQ-142)
       ]),
     );
     const doc = await repo.updateCompanyDocument(ORG_ID, "doc-3", { expiresAt: "2027-05-01" });
@@ -243,6 +245,7 @@ describe("PostgresLicitacionesRepository -- call site real (protege contra quita
       fakeSessionWithResponses([
         { rows: [] }, // select de duplicados: no hay
         { rows: [{ id: "rate-2", concept: "supervision_obra", unit_price: "1200.00", approval_status: "pendiente_aprobacion", valid_from: "2026-01-01", valid_until: null }] },
+        { rows: [] }, // record_field_provenance (REQ-142)
       ]),
     );
     const rate = await repo.createApprovedRate(ORG_ID, { concept: "supervision_obra", unitPrice: "1200.00", validFrom: "2026-01-01" });
@@ -253,6 +256,7 @@ describe("PostgresLicitacionesRepository -- call site real (protege contra quita
     const repo = new PostgresLicitacionesRepository(
       fakeSessionWithResponses([
         { rows: [{ id: "rate-3", concept: "supervision_obra", unit_price: "1200.00", approval_status: "aprobado", valid_from: "2026-01-01", valid_until: "2028-01-01" }] },
+        { rows: [] }, // record_field_provenance (REQ-142)
       ]),
     );
     const rate = await repo.updateApprovedRate(ORG_ID, "rate-3", { validUntil: "2028-01-01" });

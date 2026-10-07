@@ -84,7 +84,16 @@ const MAPPING_KIND_OPTIONS: ReadonlyArray<{ value: RequirementFulfillmentMapping
   { value: "capability", label: "Capacidad / especialidad" },
   { value: "experience", label: "Experiencia previa" },
   { value: "signer", label: "Firmante autorizado" },
+  // Perfil completo de la empresa (migración 040): sin procedencia o sin aprobar el dato bloquea el requisito.
+  { value: "profile", label: "Perfil general de la empresa" },
+  { value: "stakeholders", label: "Socios y representantes" },
+  { value: "restrictions", label: "Restricciones de la empresa" },
+  { value: "locations", label: "Ubicaciones de la empresa" },
+  { value: "products", label: "Productos y servicios" },
 ];
+
+/** Fuentes que salen del perfil completo: leen todo el conjunto, el identificador solo documenta el mapeo. */
+const PROFILE_KINDS: ReadonlySet<RequirementFulfillmentMappingKind> = new Set(["profile", "stakeholders", "restrictions", "locations", "products"]);
 
 type ConditionChoice = "sin_evaluar" | "aplica" | "no_aplica";
 
@@ -490,7 +499,7 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
                               id={`mapeo-refkey-${topicKey}`}
                               value={form.refKey}
                               onChange={(e) => updateMappingForm(topicKey, { refKey: e.target.value })}
-                              placeholder={form.kind === "document" ? "acta_constitutiva" : form.kind === "signer" ? "representante_legal" : "nombre o id"}
+                              placeholder={form.kind === "document" ? "acta_constitutiva" : form.kind === "signer" ? "representante_legal" : PROFILE_KINDS.has(form.kind) ? "general (sin identificador propio)" : "nombre o id"}
                             />
                           </div>
                         </div>

@@ -37,6 +37,8 @@ export interface AvisosSistemaRepository {
   retamizarCarteraKyc(): Promise<KycRetamizadoResultado>;
   /** `null` = no disponible aun (migracion 034 pendiente). `dias` entre 1 y 365; `hoyIso` = "YYYY-MM-DD". */
   contarDocumentosPorVencer(organizationId: string, hoyIso: string, dias: number): Promise<number | null>;
+  /** Firmantes APROBADOS y autorizados cuyo poder vence dentro de la ventana (migracion 040). `null` = no disponible aun. */
+  contarPoderesPorVencer(organizationId: string, hoyIso: string, dias: number): Promise<number | null>;
 }
 
 interface RetamizadoRow {
@@ -78,6 +80,18 @@ export class PostgresAvisosSistemaRepository implements AvisosSistemaRepository 
         return Number(rows[0]?.n ?? 0);
       },
       isRecoverable: (err) => isMigrationPendingError(err, "system_count_company_documents_expiring"),
+      fallback: async () => null,
+    });
+  }
+
+  async contarPoderesPorVencer(organizationId: string, hoyIso: string, dias: number): Promise<number | null> {
+    return runWithSavepointFallback<number | null>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ n: number }>(`select licitaciones.system_count_signer_powers_expiring($1::uuid, $2::date, $3::int) as n;`, [organizationId, hoyIso, dias]);
+        return Number(rows[0]?.n ?? 0);
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "system_count_signer_powers_expiring"),
       fallback: async () => null,
     });
   }

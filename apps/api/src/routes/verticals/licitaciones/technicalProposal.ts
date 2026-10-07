@@ -82,6 +82,10 @@ import {
   TechnicalProposalBuilder,
   CompanyDataService,
   InMemoryCompanyDataResolver,
+  ProvenanceIndex,
+  FULFILLMENT_MAPPING_KINDS,
+  PROFILE_MAPPING_KINDS,
+  dateOnlyToMexicoCityIso,
   extractNotApplicableRequirements,
   resolveExpedienteAsOfIso,
   SubmissionDeadlineUnknownError,
@@ -95,6 +99,7 @@ import type {
   CompanyDocument,
   CompanyExperienceRecord,
   CompanySigner,
+  FulfillmentMappingKind,
   ProposalSection,
   RequirementExtractor,
   RequirementFulfillmentMapping,
@@ -279,6 +284,22 @@ function parseConditionEvaluations(raw: unknown): Record<string, boolean> {
   return out;
 }
 
+/** Texto que sustituye a "{value}": etiqueta del dato, o (perfil completo, 040) nombres legibles; sin RFC ni otros datos sensibles. */
+function describeFulfillmentValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => describeFulfillmentValue(v))
+      .filter((t) => t.length > 0)
+      .join(", ");
+  }
+  if (typeof value === "object" && value !== null) {
+    const o = value as Record<string, unknown>;
+    for (const key of ["label", "legalName", "fullName", "name"] as const) if (typeof o[key] === "string") return o[key] as string;
+    if (typeof o.description === "string") return o.description;
+  }
+  return String(value);
+}
+
 function buildFulfillmentMapping(record: RequirementFulfillmentMappingRecord, requirementId: string): RequirementFulfillmentMapping {
   return {
     requirementId,
@@ -286,7 +307,7 @@ function buildFulfillmentMapping(record: RequirementFulfillmentMappingRecord, re
     refKey: record.refKey,
     // Interpolación DELIBERADAMENTE simple (reemplazo literal de "{value}",
     // nunca un motor de plantillas) -- ver migración 006.
-    statementText: (value: unknown) => record.statementTemplate.replace("{value}", typeof value === "object" && value !== null && "label" in value ? String((value as { label: unknown }).label) : String(value)),
+    statementText: (value: unknown) => record.statementTemplate.replace("{value}", describeFulfillmentValue(value)),
   };
 }
 
@@ -454,10 +475,31 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
         const resolverExperience: CompanyExperienceRecord[] = companyExperience.map((e) => ({ id: e.id, companyId: organizationId, description: e.description, evidenceDocId: e.evidenceDocId, approvalStatus: e.approvalStatus }));
 
         const companySigners = await repo.listCompanySigners(organizationId);
-        const resolverSigners: CompanySigner[] = companySigners.map((s) => ({ id: s.id, companyId: organizationId, name: s.name, role: s.role, authorized: s.authorized, approvalStatus: s.approvalStatus }));
+        // REQ-145: la vigencia del poder se evalua a la fecha del acto (asOfIso, derivada de la fecha limite), nunca a "hoy". Las fechas del
+        // repositorio son de negocio ("YYYY-MM-DD"): el inicio rige desde el comienzo de ese dia y el termino hasta el final (hora de Mexico).
+        const resolverSigners: CompanySigner[] = companySigners.map((s) => ({
+          id: s.id,
+          companyId: organizationId,
+          name: s.name,
+          role: s.role,
+          authorized: s.authorized,
+          approvalStatus: s.approvalStatus,
+          validFrom: dateOnlyToMexicoCityIso(s.validFrom ?? null, "start"),
+          validUntil: dateOnlyToMexicoCityIso(s.validUntil ?? null, "end"),
+          identityDocId: s.identityDocId ?? null,
+          actionLimits: s.actionLimits ?? null,
+        }));
+
+        // Perfil completo (040) y su procedencia (REQ-142). Base sin migrar: vacio, y un requisito mapeado a estos datos queda pendiente.
+        const profile = await repo.getCompanyProfile(organizationId);
+        const productsServices = await repo.listCompanyProductsServices(organizationId);
+        const locations = await repo.listCompanyLocations(organizationId);
+        const restrictions = await repo.listCompanyRestrictions(organizationId);
+        const stakeholders = await repo.listCompanyStakeholders(organizationId);
+        const provenance = new ProvenanceIndex(await repo.listFieldProvenance(organizationId));
 
         const companyData = new CompanyDataService(
-          new InMemoryCompanyDataResolver({ documents: resolverDocuments, capabilities: resolverCapabilities, experience: resolverExperience, signers: resolverSigners }),
+          new InMemoryCompanyDataResolver({ documents: resolverDocuments, capabilities: resolverCapabilities, experience: resolverExperience, signers: resolverSigners, profile, productsServices: [...productsServices], locations: [...locations], restrictions: [...restrictions], stakeholders: [...stakeholders], provenance }),
         );
 
         const technicalProposal = new TechnicalProposalBuilder(companyData).build(organizationId, items, mappings, asOfIso, conditionEvaluations);
@@ -512,13 +554,18 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
     const topicKey = c.req.param("topicKey");
     const raw = await readJsonCapped<{ kind?: unknown; refKey?: unknown; statementTemplate?: unknown }>(c.req.raw, 16 * 1024);
 
-    if (raw.kind !== "capability" && raw.kind !== "experience" && raw.kind !== "document" && raw.kind !== "signer") {
-      throw Errors.validation('kind: se esperaba "capability" | "experience" | "document" | "signer".');
+    if (typeof raw.kind !== "string" || !(FULFILLMENT_MAPPING_KINDS as readonly string[]).includes(raw.kind)) {
+      throw Errors.validation(`kind: se esperaba ${FULFILLMENT_MAPPING_KINDS.map((k) => `"${k}"`).join(" | ")}.`);
+    }
+    const kind = raw.kind as FulfillmentMappingKind;
+    // Los tipos del perfil completo solo existen con la migracion 040: sin ella el CHECK de la tabla los rechazaria (500). Honesto: 409.
+    if (PROFILE_MAPPING_KINDS.includes(kind) && !(await repo.isCompanyProfileAvailable())) {
+      throw Errors.conflict("No disponible aún: mapear un requisito al perfil completo de la empresa requiere la migración 040 en esta base.");
     }
     if (typeof raw.refKey !== "string" || raw.refKey.length === 0) throw Errors.validation("refKey requerido.");
     if (typeof raw.statementTemplate !== "string" || raw.statementTemplate.length === 0) throw Errors.validation("statementTemplate requerido.");
 
-    const mapping = await repo.upsertFulfillmentMapping(organizationId, { topicKey, kind: raw.kind, refKey: raw.refKey, statementTemplate: raw.statementTemplate });
+    const mapping = await repo.upsertFulfillmentMapping(organizationId, { topicKey, kind, refKey: raw.refKey, statementTemplate: raw.statementTemplate });
     return c.json(mapping, 200);
   });
 

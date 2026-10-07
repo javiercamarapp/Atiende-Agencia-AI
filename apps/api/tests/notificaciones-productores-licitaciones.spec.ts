@@ -64,13 +64,18 @@ const hoy = () => new Date().toISOString().slice(0, 10);
 const ORG_B = "00000000-0000-0000-0000-00000000bb02";
 
 describe("avisos del barrido /internal/licitaciones/alert-notifications (L-30)", () => {
-  async function setup(opciones: { alEmitir?: () => number; documentos?: (orgId: string) => number | null | Error } = {}) {
+  async function setup(opciones: { alEmitir?: () => number; documentos?: (orgId: string) => number | null | Error; poderes?: (orgId: string) => number | null | Error } = {}) {
     const ctx = await buildLicitacionesTestContext(buildApp, { submissionDeadline: null });
     const base = conEmisiones(ctx.deps, opciones);
     const avisos: AvisosSistemaRepository = {
       retamizarCarteraKyc: async () => ({ disponible: false, organizaciones: [] }),
       contarDocumentosPorVencer: async (orgId) => {
         const r = opciones.documentos ? opciones.documentos(orgId) : 0;
+        if (r instanceof Error) throw r;
+        return r;
+      },
+      contarPoderesPorVencer: async (orgId) => {
+        const r = opciones.poderes ? opciones.poderes(orgId) : 0;
         if (r instanceof Error) throw r;
         return r;
       },
@@ -144,6 +149,28 @@ describe("avisos del barrido /internal/licitaciones/alert-notifications (L-30)",
       expect((await sin.cron()).status).toBe(200);
       expect(sin.emisiones.filter((e) => e.evento === "licitaciones.documentos.por_vencer")).toHaveLength(0);
     }
+  });
+
+  it("poder de firmante por vencer (L-P3-04): emite el conteo con clave semanal y enlace a la pestana de firmantes; sin poderes o sin migracion 040 (null) no emite; un error no rompe el barrido", async () => {
+    const con = await setup({ poderes: () => 3 });
+    expect((await con.cron()).status).toBe(200);
+    const poderes = con.emisiones.filter((e) => e.evento === "licitaciones.firmante.poder_por_vencer");
+    expect(poderes).toHaveLength(1);
+    expect(poderes[0]).toMatchObject({ categoria: "operacion", severidad: "atencion", enlace: "/licitaciones/{orgSlug}/datos-empresa?tab=firmantes", roles: ["analyst", "writer"] });
+    expect(poderes[0]!.cuerpo).toContain("por vencer: 3.");
+    expect(poderes[0]!.dedupeKey).toBe(`licitaciones.firmante.poder_por_vencer:${con.ctx.organizationId}:${inicioDeSemana(hoy())}`);
+    // sin nombres ni ids de firmantes: solo el conteo
+    expect(JSON.stringify(poderes)).not.toMatch(/Ana|firmante-/);
+
+    for (const n of [0, null]) {
+      const sin = await setup({ poderes: () => n });
+      expect((await sin.cron()).status).toBe(200);
+      expect(sin.emisiones.filter((e) => e.evento === "licitaciones.firmante.poder_por_vencer")).toHaveLength(0);
+    }
+    const roto = await setup({ poderes: () => Object.assign(new Error("boom"), { code: "XX000" }), documentos: () => 1 });
+    const res = await roto.cron();
+    expect(res.status).toBe(200);
+    expect(roto.emisiones.some((e) => e.evento === "licitaciones.documentos.por_vencer")).toBe(true);
   });
 
   it("un error de Postgres al contar documentos o al emitir deja el barrido intacto (200, ok) y no arrastra los demas avisos", async () => {
@@ -243,6 +270,7 @@ describe("licitaciones.kyc.proveedor_empeoro: re-tamizado de la cartera (L-32)",
       const avisos: AvisosSistemaRepository = {
         retamizarCarteraKyc: async () => resultados[Math.min(llamada++, resultados.length - 1)]!,
         contarDocumentosPorVencer: async () => 0,
+        contarPoderesPorVencer: async () => 0,
       };
       const app = buildApp({ ...base.deps, licitacionesAvisosRepo: () => avisos });
       const run = (headers: Record<string, string> = { "x-atiende-internal-secret": ctx.deps.env.internalSecret }) => app.request("/internal/licitaciones/kyc-69b/retamizar", { method: "POST", headers });

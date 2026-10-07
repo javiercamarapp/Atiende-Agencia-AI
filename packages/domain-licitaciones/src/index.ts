@@ -321,6 +321,39 @@ export {
 } from "./regimen-legal.ts";
 export type { RegimenLegalId, RegimenFuente, RegimenLegalResolucion, PaymentDeadlineByRegimeResult, InconformidadDeadlineByRegime } from "./regimen-legal.ts";
 export { NORMAS_LICITACIONES, fichaNormaPorId, fichasParaCita, extraerCitasNormativas } from "./normas.ts";
+export {
+  PROVENANCE_ENTITIES,
+  PROVENANCE_SOURCES,
+  PROVENANCE_REQUIRED_ENTITIES,
+  PRODUCT_SERVICE_KINDS,
+  LOCATION_KINDS,
+  RESTRICTION_KINDS,
+  STAKEHOLDER_KINDS,
+  ProvenanceIndex,
+  normalizeParticipationPct,
+} from "./company-profile.ts";
+export type {
+  CompanyProfileRecord,
+  CompanyProductServiceRecord,
+  CompanyLocationRecord,
+  CompanyRestrictionRecord,
+  CompanyStakeholderRecord,
+  FieldProvenanceRecord,
+  ProvenanceEntity,
+  ProvenanceSource,
+  ProductServiceKind,
+  LocationKind,
+  RestrictionKind,
+  StakeholderKind,
+  ProfileApprovalStatus,
+} from "./company-profile.ts";
+export { InMemoryCompanyProfileStore } from "./company-profile-memory.ts";
+export { loadCompanyMatchingContext, matchingAsOfDate } from "./company-matching-context.ts";
+export type { CompanyMatchingContext } from "./matching-engine.ts";
+export { FULFILLMENT_MAPPING_KINDS, PROFILE_MAPPING_KINDS } from "./technical-proposal.ts";
+export type { FulfillmentMappingKind } from "./technical-proposal.ts";
+export { estratificarMipyme, isMipymeSector, MIPYME_SECTORES, MIPYME_FICHA_ID } from "./mipyme.ts";
+export type { MipymeSector, MipymeEstrato, MipymeInput, MipymeResultado } from "./mipyme.ts";
 export type { NormaFicha, NormaLey, NormaEstadoVerificacion, NormaVigencia, NormaCitaEnCodigo } from "./normas.ts";
 
 export { CONTRACT_FIELD_KEYS, extractContractFields } from "./contract-extraction.ts";
@@ -347,7 +380,7 @@ export { DEFAULT_RENEWAL_LEAD_DAYS, daysBetween as renewalDaysBetween, computeRe
 export type { RenewalCandidateContract, RenewalAlertCandidate, RenewalUrgency, RenewalUpcomingCandidate } from "./renewal-radar.ts";
 
 export { INCONFORMIDAD_REVIEW_ROLES } from "./roles.ts";
-export { ContractTransitionRejectedError, TenderResolutionRejectedError, CompanyDataDuplicateKeyError, CompanyDataNotFoundError } from "./errors.ts";
+export { ContractTransitionRejectedError, TenderResolutionRejectedError, CompanyDataDuplicateKeyError, CompanyDataNotFoundError, CompanyProfileNotAvailableError } from "./errors.ts";
 
 // ---- Fase 16: resolución won/lost + escritura de "datos de empresa" ----
 export { TENDER_RESOLUTIONS, TENDER_RESOLVABLE_FROM_STATUSES, isTenderResolution, checkTenderResolution } from "./tender-resolution.ts";
@@ -389,6 +422,16 @@ export type {
   CompanyExperienceUpdateInput,
   CompanySignerCreateInput,
   CompanySignerUpdateInput,
+  CompanyProfileUpsertInput,
+  CompanyProductServiceCreateInput,
+  CompanyProductServiceUpdateInput,
+  CompanyLocationCreateInput,
+  CompanyLocationUpdateInput,
+  CompanyRestrictionCreateInput,
+  CompanyRestrictionUpdateInput,
+  CompanyStakeholderCreateInput,
+  CompanyStakeholderUpdateInput,
+  CompanyProfileCollectionKind,
 } from "./repository.ts";
 
 // ---- Fase 8: ingesta automática real (compras_mx_historico) + recordatorios de plazo ----

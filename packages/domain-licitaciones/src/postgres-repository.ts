@@ -10,8 +10,10 @@ import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
-import { ApprovalRejectedError, CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenantConfigNotMigratedError, TenderResolutionRejectedError } from "./errors.ts";
+import { ApprovalRejectedError, CompanyDataDuplicateKeyError, CompanyDataNotFoundError, CompanyProfileNotAvailableError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenantConfigNotMigratedError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
+import { PostgresCompanyProfileStore } from "./company-profile-postgres.ts";
+import type { ProvenanceEntity } from "./company-profile.ts";
 import type {
   ApprovedRateCreateInput,
   ApprovedRateUpdateInput,
@@ -23,6 +25,16 @@ import type {
   CompanyExperienceUpdateInput,
   CompanySignerCreateInput,
   CompanySignerUpdateInput,
+  CompanyLocationCreateInput,
+  CompanyLocationUpdateInput,
+  CompanyProductServiceCreateInput,
+  CompanyProductServiceUpdateInput,
+  CompanyProfileCollectionKind,
+  CompanyProfileUpsertInput,
+  CompanyRestrictionCreateInput,
+  CompanyRestrictionUpdateInput,
+  CompanyStakeholderCreateInput,
+  CompanyStakeholderUpdateInput,
   CompanyItemDecisionInput,
   CompanyItemDecisionOutcome,
   GoNoGoDecisionCreateInput,
@@ -162,7 +174,7 @@ interface DocumentRow extends AuthorshipColumns { id: string; document_type: str
 interface RateRow extends AuthorshipColumns { id: string; concept: string; unit_price: string; approval_status: ApprovalStatusColumn; valid_from: string; valid_until: string | null }
 interface CapabilityRow extends AuthorshipColumns { id: string; name: string; description: string; evidence_doc_id: string | null; approval_status: ApprovalStatusColumn }
 interface ExperienceRow extends AuthorshipColumns { id: string; description: string; evidence_doc_id: string; approval_status: ApprovalStatusColumn }
-interface SignerRow extends AuthorshipColumns { id: string; name: string; role: string; authorized: boolean; approval_status?: ApprovalStatusColumn }
+interface SignerRow extends AuthorshipColumns { id: string; name: string; role: string; authorized: boolean; approval_status?: ApprovalStatusColumn; valid_from?: string | null; valid_until?: string | null; identity_doc_id?: string | null; action_limits?: string | null }
 
 function authorship(r: AuthorshipColumns): { proposedBy?: string | null; approvedBy?: string | null; approvedAt?: string | null } {
   if (r.proposed_by === undefined) return {};
@@ -182,7 +194,9 @@ function mapExperienceRow(r: ExperienceRow): CompanyExperienceItemRecord {
 }
 /** Sin columna `approval_status` (base sin migrar) un firmante cuenta como 'aprobado': es lo que respalda la migración 036 y el comportamiento anterior. */
 function mapSignerRow(r: SignerRow): CompanySignerRecord {
-  return { id: r.id, name: r.name, role: r.role, authorized: r.authorized, approvalStatus: r.approval_status ?? "aprobado", ...authorship(r) };
+  // Migracion 040: las columnas de vigencia solo vienen en la consulta nueva; sin ellas (base sin migrar) quedan indefinidas.
+  const poder = r.valid_from === undefined ? {} : { validFrom: r.valid_from, validUntil: r.valid_until ?? null, identityDocId: r.identity_doc_id ?? null, actionLimits: r.action_limits ?? null };
+  return { id: r.id, name: r.name, role: r.role, authorized: r.authorized, approvalStatus: r.approval_status ?? "aprobado", ...poder, ...authorship(r) };
 }
 /** Tablas con `approval_status` antes de la 036 (camino anterior de `decideCompanyItem`); los firmantes no tenían aprobación. */
 const LEGACY_DECISION_TABLE: Record<CompanyItemDecisionInput["kind"], string | null> = {
@@ -191,6 +205,12 @@ const LEGACY_DECISION_TABLE: Record<CompanyItemDecisionInput["kind"], string | n
   capability: "company_capability",
   experience: "company_experience",
   signer: null,
+  // Perfil completo (migracion 040): no existian antes, asi que sin la funcion no hay camino anterior.
+  profile: null,
+  product: null,
+  location: null,
+  restriction: null,
+  stakeholder: null,
 };
 
 function hashBody(body: unknown): string {
@@ -750,7 +770,16 @@ function esViolacionCheckSourceRunSource(err: unknown): boolean {
 }
 
 export class PostgresLicitacionesRepository implements LicitacionesRepository {
-  constructor(private readonly db: TenantDbSession) {}
+  private readonly profileStore: PostgresCompanyProfileStore;
+
+  constructor(private readonly db: TenantDbSession) {
+    this.profileStore = new PostgresCompanyProfileStore(db);
+  }
+
+  /** `fields` = las claves de `input` que SI vienen (undefined = no se toco). REQ-142: procedencia en la misma sesion del dato. */
+  private async recordProvenance(organizationId: string, entity: ProvenanceEntity, entityId: string, input: object, keys: readonly string[]): Promise<void> {
+    await this.profileStore.recordProvenance(organizationId, entity, entityId, keys.filter((k) => (input as Record<string, unknown>)[k] !== undefined));
+  }
 
   // ---- Fase 7 pieza 1: organización/property (panel web) — mismo patrón exacto
   // que `PostgresCitasRepository.findOrganizationBySlug`/`listPropertiesForOrganization`:
@@ -1666,7 +1695,9 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
        returning id, document_type, label, expires_at::text as expires_at, approval_status;`,
       [organizationId, input.type, input.label, input.expiresAt],
     );
-    return mapDocumentRow(rows[0]!);
+    const created = mapDocumentRow(rows[0]!);
+    await this.recordProvenance(organizationId, "document", created.id, input, ["type", "label", "expiresAt"]);
+    return created;
   }
 
   async updateCompanyDocument(organizationId: string, documentId: string, input: CompanyDocumentUpdateInput): Promise<CompanyDocumentRecord> {
@@ -1701,6 +1732,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     });
     const row = rows[0];
     if (!row) throw new CompanyDataNotFoundError("Documento de empresa", documentId);
+    await this.recordProvenance(organizationId, "document", documentId, input, ["label", "expiresAt"]);
     return mapDocumentRow(row);
   }
 
@@ -1724,7 +1756,9 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
        returning id, concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until;`,
       [organizationId, input.concept, input.unitPrice, validFrom, input.validUntil ?? null],
     );
-    return mapRateRow(rows[0]!);
+    const created = mapRateRow(rows[0]!);
+    await this.recordProvenance(organizationId, "rate", created.id, input, ["concept", "unitPrice", "validFrom", "validUntil"]);
+    return created;
   }
 
   async updateApprovedRate(organizationId: string, rateId: string, input: ApprovedRateUpdateInput): Promise<ApprovedRateRecord> {
@@ -1762,6 +1796,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     });
     const row = rows[0];
     if (!row) throw new CompanyDataNotFoundError("Tarifa aprobada", rateId);
+    await this.recordProvenance(organizationId, "rate", rateId, input, ["unitPrice", "validFrom", "validUntil"]);
     return mapRateRow(row);
   }
 
@@ -1798,7 +1833,9 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
        returning id, name, description, evidence_doc_id, approval_status;`,
       [organizationId, input.name, input.description, input.evidenceDocId ?? null],
     );
-    return mapCapabilityRow(rows[0]!);
+    const created = mapCapabilityRow(rows[0]!);
+    await this.recordProvenance(organizationId, "capability", created.id, input, ["name", "description", "evidenceDocId"]);
+    return created;
   }
 
   async updateCompanyCapability(organizationId: string, capabilityId: string, input: CompanyCapabilityUpdateInput): Promise<CompanyCapabilityRecord> {
@@ -1833,6 +1870,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     });
     const row = rows[0];
     if (!row) throw new CompanyDataNotFoundError("Capacidad", capabilityId);
+    await this.recordProvenance(organizationId, "capability", capabilityId, input, ["description", "evidenceDocId"]);
     return mapCapabilityRow(row);
   }
 
@@ -1843,7 +1881,9 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
        returning id, description, evidence_doc_id, approval_status;`,
       [organizationId, input.description, input.evidenceDocId],
     );
-    return mapExperienceRow(rows[0]!);
+    const created = mapExperienceRow(rows[0]!);
+    await this.recordProvenance(organizationId, "experience", created.id, input, ["description", "evidenceDocId"]);
+    return created;
   }
 
   async updateCompanyExperience(organizationId: string, experienceId: string, input: CompanyExperienceUpdateInput): Promise<CompanyExperienceItemRecord> {
@@ -1878,46 +1918,127 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     });
     const row = rows[0];
     if (!row) throw new CompanyDataNotFoundError("Experiencia", experienceId);
+    await this.recordProvenance(organizationId, "experience", experienceId, input, ["description", "evidenceDocId"]);
     return mapExperienceRow(row);
   }
 
+  /** Varios firmantes por cargo (migracion 040 quita el unico). Solo se rechaza repetir EXACTAMENTE el mismo nombre en el mismo cargo (doble envio). */
   async createCompanySigner(organizationId: string, input: CompanySignerCreateInput): Promise<CompanySignerRecord> {
-    const existing = await this.db.query<{ id: string }>(`select id from licitaciones.company_signer where organization_id = $1 and role = $2;`, [organizationId, input.role]);
-    if (existing.rows.length > 0) throw new CompanyDataDuplicateKeyError("firmante", input.role);
+    const existing = await this.db.query<{ id: string }>(`select id from licitaciones.company_signer where organization_id = $1 and role = $2 and lower(btrim(name)) = lower(btrim($3));`, [organizationId, input.role, input.name]);
+    if (existing.rows.length > 0) throw new CompanyDataDuplicateKeyError("firmante", `${input.role} / ${input.name}`);
 
     const params = [organizationId, input.name, input.role, input.authorized ?? false];
+    const poderParams = [...params, input.validFrom ?? null, input.validUntil ?? null, input.identityDocId ?? null, input.actionLimits ?? null];
+    const tienePoder = input.validFrom != null || input.validUntil != null || input.identityDocId != null || input.actionLimits != null;
     const rows = await runWithSavepointFallback<SignerRow[]>({
       session: this.db,
-      savepointName: "sp_licitaciones_create_company_signer",
+      savepointName: "sp_licitaciones_create_company_signer_040",
       primary: async () =>
-        (await this.db.query<SignerRow>(`insert into licitaciones.company_signer (organization_id, name, role, authorized) values ($1, $2, $3, $4) returning id, name, role, authorized, approval_status;`, params)).rows,
+        (
+          await this.db.query<SignerRow>(
+            `insert into licitaciones.company_signer (organization_id, name, role, authorized, valid_from, valid_until, identity_doc_id, action_limits)
+             values ($1, $2, $3, $4, $5::date, $6::date, $7::uuid, $8)
+             returning id, name, role, authorized, approval_status, valid_from::text as valid_from, valid_until::text as valid_until, identity_doc_id, action_limits;`,
+            poderParams,
+          )
+        ).rows,
       isRecoverable: isMigrationPendingError,
-      fallback: async () => (await this.db.query<SignerRow>(`insert into licitaciones.company_signer (organization_id, name, role, authorized) values ($1, $2, $3, $4) returning id, name, role, authorized;`, params)).rows,
+      fallback: async () => {
+        // Base sin la 040: no hay donde guardar la vigencia. Pedirla es una escritura imposible (no se descarta en silencio).
+        if (tienePoder) throw new CompanyProfileNotAvailableError();
+        return runWithSavepointFallback<SignerRow[]>({
+          session: this.db,
+          savepointName: "sp_licitaciones_create_company_signer",
+          primary: async () =>
+            (await this.db.query<SignerRow>(`insert into licitaciones.company_signer (organization_id, name, role, authorized) values ($1, $2, $3, $4) returning id, name, role, authorized, approval_status;`, params)).rows,
+          isRecoverable: isMigrationPendingError,
+          fallback: async () => (await this.db.query<SignerRow>(`insert into licitaciones.company_signer (organization_id, name, role, authorized) values ($1, $2, $3, $4) returning id, name, role, authorized;`, params)).rows,
+        });
+      },
     });
-    return mapSignerRow(rows[0]!);
+    const created = mapSignerRow(rows[0]!);
+    await this.recordProvenance(organizationId, "signer", created.id, input, ["name", "role", "authorized", "validFrom", "validUntil", "identityDocId", "actionLimits"]);
+    return created;
   }
 
   async updateCompanySigner(organizationId: string, signerId: string, input: CompanySignerUpdateInput): Promise<CompanySignerRecord> {
     const params = [signerId, organizationId, input.name ?? null, input.authorized ?? null];
+    const poderParams = [
+      ...params,
+      "validFrom" in input,
+      input.validFrom ?? null,
+      "validUntil" in input,
+      input.validUntil ?? null,
+      "identityDocId" in input,
+      input.identityDocId ?? null,
+      "actionLimits" in input,
+      input.actionLimits ?? null,
+    ];
+    const tienePoder = (["validFrom", "validUntil", "identityDocId", "actionLimits"] as const).some((k) => input[k] !== undefined);
     const rows = await runWithSavepointFallback<SignerRow[]>({
       session: this.db,
-      savepointName: "sp_licitaciones_update_company_signer",
+      savepointName: "sp_licitaciones_update_company_signer_040",
       primary: async () =>
         (
           await this.db.query<SignerRow>(
-            `update licitaciones.company_signer set name = coalesce($3, name), authorized = coalesce($4, authorized) where id = $1 and organization_id = $2
-             returning id, name, role, authorized, approval_status, proposed_by, approved_by, approved_at::text as approved_at;`,
-            params,
+            `update licitaciones.company_signer set
+               name = coalesce($3, name),
+               authorized = coalesce($4, authorized),
+               valid_from = case when $5::boolean then $6::date else valid_from end,
+               valid_until = case when $7::boolean then $8::date else valid_until end,
+               identity_doc_id = case when $9::boolean then $10::uuid else identity_doc_id end,
+               action_limits = case when $11::boolean then $12 else action_limits end
+             where id = $1 and organization_id = $2
+             returning id, name, role, authorized, approval_status, proposed_by, approved_by, approved_at::text as approved_at,
+               valid_from::text as valid_from, valid_until::text as valid_until, identity_doc_id, action_limits;`,
+            poderParams,
           )
         ).rows,
       isRecoverable: isMigrationPendingError,
-      fallback: async () =>
-        (await this.db.query<SignerRow>(`update licitaciones.company_signer set name = coalesce($3, name), authorized = coalesce($4, authorized) where id = $1 and organization_id = $2 returning id, name, role, authorized;`, params)).rows,
+      fallback: async () => {
+        if (tienePoder) throw new CompanyProfileNotAvailableError();
+        return runWithSavepointFallback<SignerRow[]>({
+          session: this.db,
+          savepointName: "sp_licitaciones_update_company_signer",
+          primary: async () =>
+            (
+              await this.db.query<SignerRow>(
+                `update licitaciones.company_signer set name = coalesce($3, name), authorized = coalesce($4, authorized) where id = $1 and organization_id = $2
+                 returning id, name, role, authorized, approval_status, proposed_by, approved_by, approved_at::text as approved_at;`,
+                params,
+              )
+            ).rows,
+          isRecoverable: isMigrationPendingError,
+          fallback: async () =>
+            (await this.db.query<SignerRow>(`update licitaciones.company_signer set name = coalesce($3, name), authorized = coalesce($4, authorized) where id = $1 and organization_id = $2 returning id, name, role, authorized;`, params)).rows,
+        });
+      },
     });
     const row = rows[0];
     if (!row) throw new CompanyDataNotFoundError("Firmante", signerId);
+    await this.recordProvenance(organizationId, "signer", signerId, input, ["name", "authorized", "validFrom", "validUntil", "identityDocId", "actionLimits"]);
     return mapSignerRow(row);
   }
+
+  // ---- Perfil de empresa completo (migracion 040): delegado a `PostgresCompanyProfileStore` ----
+
+  isCompanyProfileAvailable() { return this.profileStore.isAvailable(); }
+  getCompanyProfile(organizationId: string) { return this.profileStore.getProfile(organizationId); }
+  upsertCompanyProfile(organizationId: string, input: CompanyProfileUpsertInput) { return this.profileStore.upsertProfile(organizationId, input); }
+  listCompanyProductsServices(organizationId: string) { return this.profileStore.listProducts(organizationId); }
+  createCompanyProductService(organizationId: string, input: CompanyProductServiceCreateInput) { return this.profileStore.createProduct(organizationId, input); }
+  updateCompanyProductService(organizationId: string, id: string, input: CompanyProductServiceUpdateInput) { return this.profileStore.updateProduct(organizationId, id, input); }
+  listCompanyLocations(organizationId: string) { return this.profileStore.listLocations(organizationId); }
+  createCompanyLocation(organizationId: string, input: CompanyLocationCreateInput) { return this.profileStore.createLocation(organizationId, input); }
+  updateCompanyLocation(organizationId: string, id: string, input: CompanyLocationUpdateInput) { return this.profileStore.updateLocation(organizationId, id, input); }
+  listCompanyRestrictions(organizationId: string) { return this.profileStore.listRestrictions(organizationId); }
+  createCompanyRestriction(organizationId: string, input: CompanyRestrictionCreateInput) { return this.profileStore.createRestriction(organizationId, input); }
+  updateCompanyRestriction(organizationId: string, id: string, input: CompanyRestrictionUpdateInput) { return this.profileStore.updateRestriction(organizationId, id, input); }
+  listCompanyStakeholders(organizationId: string) { return this.profileStore.listStakeholders(organizationId); }
+  createCompanyStakeholder(organizationId: string, input: CompanyStakeholderCreateInput) { return this.profileStore.createStakeholder(organizationId, input); }
+  updateCompanyStakeholder(organizationId: string, id: string, input: CompanyStakeholderUpdateInput) { return this.profileStore.updateStakeholder(organizationId, id, input); }
+  deleteCompanyProfileItem(organizationId: string, kind: CompanyProfileCollectionKind, id: string) { return this.profileStore.remove(kind, organizationId, id); }
+  listFieldProvenance(organizationId: string) { return this.profileStore.listFieldProvenance(organizationId); }
 
   async decideCompanyItem(organizationId: string, input: CompanyItemDecisionInput): Promise<CompanyItemDecisionOutcome> {
     try {
@@ -2041,16 +2162,31 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   async listCompanySigners(organizationId: string): Promise<readonly CompanySignerRecord[]> {
     const rows = await runWithSavepointFallback<SignerRow[]>({
       session: this.db,
-      savepointName: "sp_licitaciones_list_company_signers",
+      savepointName: "sp_licitaciones_list_company_signers_040",
       primary: async () =>
         (
           await this.db.query<SignerRow>(
-            `select id, name, role, authorized, approval_status, proposed_by, approved_by, approved_at::text as approved_at from licitaciones.company_signer where organization_id = $1;`,
+            `select id, name, role, authorized, approval_status, proposed_by, approved_by, approved_at::text as approved_at,
+                    valid_from::text as valid_from, valid_until::text as valid_until, identity_doc_id, action_limits
+               from licitaciones.company_signer where organization_id = $1 order by role asc, name asc;`,
             [organizationId],
           )
         ).rows,
       isRecoverable: isMigrationPendingError,
-      fallback: async () => (await this.db.query<SignerRow>(`select id, name, role, authorized from licitaciones.company_signer where organization_id = $1;`, [organizationId])).rows,
+      fallback: async () =>
+        runWithSavepointFallback<SignerRow[]>({
+          session: this.db,
+          savepointName: "sp_licitaciones_list_company_signers",
+          primary: async () =>
+            (
+              await this.db.query<SignerRow>(
+                `select id, name, role, authorized, approval_status, proposed_by, approved_by, approved_at::text as approved_at from licitaciones.company_signer where organization_id = $1;`,
+                [organizationId],
+              )
+            ).rows,
+          isRecoverable: isMigrationPendingError,
+          fallback: async () => (await this.db.query<SignerRow>(`select id, name, role, authorized from licitaciones.company_signer where organization_id = $1;`, [organizationId])).rows,
+        }),
     });
     return rows.map(mapSignerRow);
   }
@@ -2163,11 +2299,17 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     const capabilities = await this.listCompanyCapabilities(organizationId);
     const experience = await this.listCompanyExperience(organizationId);
     const signers = await this.listCompanySigners(organizationId);
+    // Perfil completo (040): base sin migrar -> vacio, y vacio no cambia el hash (ver company-profile-hash.ts).
+    const profile = await this.getCompanyProfile(organizationId);
+    const productsServices = await this.listCompanyProductsServices(organizationId);
+    const locations = await this.listCompanyLocations(organizationId);
+    const restrictions = await this.listCompanyRestrictions(organizationId);
+    const stakeholders = await this.listCompanyStakeholders(organizationId);
 
     const raw: ExpedienteInputs = {
       tenderVersionHash: sha256Hex({ updatedAt: tender.updatedAt, submissionDeadline: tender.submissionDeadline }),
       // AE-08 / REQ-162: hash REAL de todo el perfil (documentos, capacidades, experiencia, firmantes y su estado de aprobación).
-      companyProfileHash: computeCompanyProfileHash({ documents: allDocuments, capabilities, experience, signers }),
+      companyProfileHash: computeCompanyProfileHash({ documents: allDocuments, capabilities, experience, signers, profile, productsServices, locations, restrictions, stakeholders }),
       companyDocuments: usedCompanyDocumentIds.map((id) => {
         const doc = documents.find((d) => d.id === id);
         return { documentId: id, hash: sha256Hex(doc ?? null), vigenteHasta: doc?.expires_at ?? null };

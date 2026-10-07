@@ -26,6 +26,7 @@ import { licitacionesAdminStaffRoutes } from "./admin-staff.ts";
 import { licitacionesAlertNotificationsRoutes } from "./alertNotifications.ts";
 import { licitacionesResolutionRoutes } from "./resolution.ts";
 import { licitacionesCompanyDataRoutes } from "./companyData.ts";
+import { licitacionesCompanyProfileRoutes } from "./companyProfile.ts";
 import { licitacionesSalaGuerraRoutes } from "./salaGuerra.ts";
 import { licitacionesWhatsAppRoutes } from "./whatsapp.ts";
 import { licitacionesChatDatosRoutes } from "./chat-datos.ts";
@@ -77,6 +78,7 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // PENDIENTE por no tener dónde capturar el dato real).
   app.route("/", licitacionesResolutionRoutes(deps));
   app.route("/", licitacionesCompanyDataRoutes(deps));
+  app.route("/", licitacionesCompanyProfileRoutes(deps));
   // L-04 — sala de guerra por convocatoria + preguntas de la junta de aclaraciones.
   app.route("/", licitacionesSalaGuerraRoutes(deps));
   // L-05 — WhatsApp: webhook firmado (opt-in/out + decision go/no-go por boton), configuracion del contacto y solicitud de decision.

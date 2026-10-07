@@ -4,6 +4,8 @@
 //   * licitaciones.renovacion.por_vencer / licitaciones.cobranza.factura_vencida / licitaciones.documentos.por_vencer:
 //     despues del barrido `/internal/licitaciones/alert-notifications` (el cron YA agendado en vercel.json). Solo
 //     conteos; una transaccion propia por organizacion.
+//   * licitaciones.firmante.poder_por_vencer (L-P3-04): en el mismo barrido, un entero (firmantes aprobados con el poder por vencer
+//     en la ventana), clave semanal; con la base sin la migracion 040 no emite.
 //   * licitaciones.contrato.garantia_por_vencer / garantia_no_entregada / hito_vencido (L-27): tambien despues del barrido
 //     `/internal/licitaciones/alert-notifications`, UN aviso por garantia o hito y fecha (clave = id + fecha), con enlace a
 //     la pantalla de post-adjudicacion de la convocatoria. Sin crons nuevos; con la base sin la migracion 035 no emiten.
@@ -24,6 +26,8 @@ import type { AppDeps } from "../../../deps.ts";
 
 /** Ventana de "por vencer" de los documentos de empresa (dias). */
 export const DOCUMENTOS_POR_VENCER_DIAS = 30;
+/** Ventana de "por vencer" del poder de un firmante (dias). */
+export const PODERES_POR_VENCER_DIAS = 30;
 
 /** Lunes (UTC) de la semana de `hoyIso` ("YYYY-MM-DD"): clave de dedupe semanal estable para eventos que se re-detectan a diario. */
 export function inicioDeSemana(hoyIso: string): string {
@@ -45,6 +49,7 @@ export interface AvisosBarridoResultado {
   readonly renovacion: number;
   readonly cobranza: number;
   readonly documentos: number;
+  readonly poderes: number;
 }
 
 /**
@@ -56,6 +61,7 @@ export async function avisarAlertasDelBarrido(deps: AppDeps, sweep: readonly Res
   let renovacion = 0;
   let cobranza = 0;
   let documentos = 0;
+  let poderes = 0;
   for (const r of sweep) {
     if (r.error != null) continue;
     const org = r.organizationId;
@@ -85,9 +91,18 @@ export async function avisarAlertasDelBarrido(deps: AppDeps, sweep: readonly Res
           if (e.estado === "emitida") documentos += 1;
         })
         .catch(() => undefined);
+      // Poder de firmante por vencer (migracion 040): transaccion propia, mismo contrato que los documentos.
+      await deps.engine
+        .withAppSession({ userId: null }, async (db) => {
+          const n = await avisosFactory(db).contarPoderesPorVencer(org, hoyIso, PODERES_POR_VENCER_DIAS);
+          if (n === null || n <= 0) return;
+          const e = await emitirNotificacion(db, { evento: "licitaciones.firmante.poder_por_vencer", organizationId: org, clave: `${org}:${semana}`, parametros: { cantidad: n } });
+          if (e.estado === "emitida") poderes += 1;
+        })
+        .catch(() => undefined);
     }
   }
-  return { renovacion, cobranza, documentos };
+  return { renovacion, cobranza, documentos, poderes };
 }
 
 /** Evento del catalogo por cada tipo de candidato de la post-adjudicacion (L-27). */

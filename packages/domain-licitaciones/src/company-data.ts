@@ -14,6 +14,16 @@
 // `PostgresLicitacionesRepository.listCompanyCapabilities/listCompanyExperience/
 // listCompanySigners`.
 import { assertExplicitOffset, isPast } from "./types.ts";
+import { PROVENANCE_REQUIRED_ENTITIES, ProvenanceIndex } from "./company-profile.ts";
+import type {
+  CompanyLocationRecord,
+  CompanyProductServiceRecord,
+  CompanyProfileRecord,
+  CompanyRestrictionRecord,
+  CompanyStakeholderRecord,
+  ProfileApprovalStatus,
+  ProvenanceEntity,
+} from "./company-profile.ts";
 
 export type ApprovalStatus = "aprobado" | "pendiente_aprobacion" | "rechazado";
 
@@ -53,6 +63,13 @@ export interface CompanySigner {
   readonly authorized: boolean;
   /** Ausente = comportamiento anterior (solo `authorized`). Presente y distinto de "aprobado" bloquea. */
   readonly approvalStatus?: ApprovalStatus;
+  /** Vigencia del poder (migracion 040). `undefined`/`null` = sin vigencia capturada (comportamiento anterior: no se evalua). Fechas con offset explicito. */
+  readonly validFrom?: string | null;
+  readonly validUntil?: string | null;
+  /** Documento de identidad o poder (evidencia en `company_document`). */
+  readonly identityDocId?: string | null;
+  /** Limites de actuacion del poder, como texto. */
+  readonly actionLimits?: string | null;
 }
 
 export interface ApprovedRate {
@@ -75,6 +92,15 @@ export interface CompanyDataResolver {
   getDocuments(companyId: string): CompanyDocument[];
   getSigners(companyId: string): CompanySigner[];
   getApprovedRates(companyId: string): ApprovedRate[];
+  // Perfil completo (migracion 040). Opcionales: un resolvedor anterior (o una base sin migrar) no las implementa y el
+  // servicio responde "missing" -- nunca un valor inventado.
+  getProfile?(companyId: string): CompanyProfileRecord | null;
+  getProductsServices?(companyId: string): readonly CompanyProductServiceRecord[];
+  getLocations?(companyId: string): readonly CompanyLocationRecord[];
+  getRestrictions?(companyId: string): readonly CompanyRestrictionRecord[];
+  getStakeholders?(companyId: string): readonly CompanyStakeholderRecord[];
+  /** Procedencia por campo (REQ-142). Sin ella, el dato de las entidades que la exigen queda bloqueado. */
+  getProvenance?(companyId: string): ProvenanceIndex;
 }
 
 export class InMemoryCompanyDataResolver implements CompanyDataResolver {
@@ -89,8 +115,33 @@ export class InMemoryCompanyDataResolver implements CompanyDataResolver {
       capabilities?: CompanyCapability[];
       experience?: CompanyExperienceRecord[];
       signers?: CompanySigner[];
+      profile?: CompanyProfileRecord | null;
+      productsServices?: CompanyProductServiceRecord[];
+      locations?: CompanyLocationRecord[];
+      restrictions?: CompanyRestrictionRecord[];
+      stakeholders?: CompanyStakeholderRecord[];
+      provenance?: ProvenanceIndex;
     },
   ) {}
+
+  getProfile(_companyId: string): CompanyProfileRecord | null {
+    return this.data.profile ?? null;
+  }
+  getProductsServices(_companyId: string): readonly CompanyProductServiceRecord[] {
+    return this.data.productsServices ?? [];
+  }
+  getLocations(_companyId: string): readonly CompanyLocationRecord[] {
+    return this.data.locations ?? [];
+  }
+  getRestrictions(_companyId: string): readonly CompanyRestrictionRecord[] {
+    return this.data.restrictions ?? [];
+  }
+  getStakeholders(_companyId: string): readonly CompanyStakeholderRecord[] {
+    return this.data.stakeholders ?? [];
+  }
+  getProvenance(_companyId: string): ProvenanceIndex {
+    return this.data.provenance ?? new ProvenanceIndex();
+  }
 
   getCapabilities(companyId: string): CompanyCapability[] {
     return (this.data.capabilities ?? []).filter((c) => c.companyId === companyId);
@@ -120,7 +171,11 @@ export type BlockingReasonCode =
   | "firmante_no_aprobado"
   | "capacidad_no_aprobada"
   | "experiencia_no_aprobada"
-  | "evidencia_no_verificable";
+  | "evidencia_no_verificable"
+  | "firmante_poder_no_vigente"
+  | "firmante_poder_vencido"
+  | "procedencia_ausente"
+  | "dato_no_aprobado";
 
 export interface FieldResolutionOk<T> {
   readonly status: "ok";
@@ -229,16 +284,104 @@ export class CompanyDataService {
     return { status: "ok", field, value: record, sourceRef: { docId: evidenceDocId, capturedAt: record.id } };
   }
 
-  resolveAuthorizedSigner(companyId: string, role: string): FieldResolution<CompanySigner> {
+  /**
+   * Firmante vigente para `role`. Con varios firmantes por cargo (migracion 040 quita el unico por cargo) se elige el
+   * primero que cumple TODO: aprobado, autorizado y con el poder vigente a `asOfIso` (la fecha del acto, misma regla que las
+   * tarifas; nunca "hoy" salvo que el llamador lo pase). Sin ninguno vigente el requisito queda bloqueado o pendiente con
+   * el motivo mas especifico; nunca se rellena con un firmante cuyo poder no cubre la fecha.
+   * Sin `asOfIso` o sin vigencia capturada en el firmante se conserva el comportamiento anterior (no se evalua la vigencia).
+   */
+  resolveAuthorizedSigner(companyId: string, role: string, asOfIso?: string): FieldResolution<CompanySigner> {
     const field = `firmante:${role}`;
-    const signer = this.resolver.getSigners(companyId).find((s) => s.role === role);
-    if (!signer) return { status: "missing", field };
+    if (asOfIso !== undefined) assertExplicitOffset(asOfIso, `asOfIso al resolver firmante "${role}"`);
+    const candidates = this.resolver.getSigners(companyId).filter((s) => s.role === role);
+    if (candidates.length === 0) return { status: "missing", field };
+
+    const verdicts = candidates.map((signer) => ({ signer, blocked: this.signerBlock(signer, role, asOfIso, field) }));
+    const ok = verdicts.find((v) => v.blocked === null);
+    if (ok) return { status: "ok", field, value: ok.signer, sourceRef: { docId: ok.signer.id, capturedAt: ok.signer.id } };
+    // Ninguno sirve: el motivo mas especifico gana (poder vencido o aun no vigente informa mas que "no aprobado").
+    const prioridad: BlockingReasonCode[] = ["firmante_poder_vencido", "firmante_poder_no_vigente", "firmante_no_aprobado", "firmante_no_autorizado"];
+    const peor = [...verdicts].sort((a, b) => prioridad.indexOf(a.blocked!.reason) - prioridad.indexOf(b.blocked!.reason))[0]!;
+    return peor.blocked!;
+  }
+
+  private signerBlock(signer: CompanySigner, role: string, asOfIso: string | undefined, field: string): FieldResolutionBlocked | null {
     if (signer.approvalStatus !== undefined && signer.approvalStatus !== "aprobado") {
       return { status: "blocked", field, reason: "firmante_no_aprobado", detail: `Firmante "${signer.name}" en estado "${signer.approvalStatus}", no "aprobado".` };
     }
     if (!signer.authorized) {
       return { status: "blocked", field, reason: "firmante_no_autorizado", detail: `Firmante "${signer.name}" no está autorizado para el rol "${role}".` };
     }
-    return { status: "ok", field, value: signer, sourceRef: { docId: signer.id, capturedAt: signer.id } };
+    if (asOfIso !== undefined) {
+      if (signer.validFrom) {
+        assertExplicitOffset(signer.validFrom, `firmante "${signer.name}".validFrom`);
+        if (new Date(signer.validFrom).getTime() > new Date(asOfIso).getTime()) {
+          return { status: "blocked", field, reason: "firmante_poder_no_vigente", detail: `El poder de "${signer.name}" rige desde ${signer.validFrom}, posterior a la fecha del acto (${asOfIso}).` };
+        }
+      }
+      if (signer.validUntil) {
+        assertExplicitOffset(signer.validUntil, `firmante "${signer.name}".validUntil`);
+        if (isPast(signer.validUntil, asOfIso)) {
+          return { status: "blocked", field, reason: "firmante_poder_vencido", detail: `El poder de "${signer.name}" venció el ${signer.validUntil}, antes de la fecha del acto (${asOfIso}).` };
+        }
+      }
+    }
+    return null;
+  }
+
+  // ---- Perfil completo (migracion 040) y procedencia (REQ-142) ----
+
+  /**
+   * Un dato de una entidad que exige procedencia (`PROVENANCE_REQUIRED_ENTITIES`) y no la tiene queda BLOQUEADO con su
+   * motivo, aunque este aprobado: una fila insertada fuera de la API (por SQL) nunca tiene procedencia y no cuenta.
+   */
+  private gateItem(entity: ProvenanceEntity, field: string, companyId: string, item: { id: string; approvalStatus: ProfileApprovalStatus }, label: string): FieldResolutionBlocked | null {
+    if (PROVENANCE_REQUIRED_ENTITIES.includes(entity) && !(this.resolver.getProvenance?.(companyId) ?? new ProvenanceIndex()).has(entity, item.id)) {
+      return { status: "blocked", field, reason: "procedencia_ausente", detail: `${label} no tiene procedencia registrada (quién lo capturó y cuándo); un dato sin procedencia no se usa.` };
+    }
+    if (item.approvalStatus !== "aprobado") {
+      return { status: "blocked", field, reason: "dato_no_aprobado", detail: `${label} en estado "${item.approvalStatus}", no "aprobado".` };
+    }
+    return null;
+  }
+
+  resolveProfile(companyId: string): FieldResolution<CompanyProfileRecord> {
+    const field = "perfil:general";
+    const profile = this.resolver.getProfile?.(companyId) ?? null;
+    if (!profile) return { status: "missing", field };
+    const blocked = this.gateItem("profile", field, companyId, profile, "El perfil general de la empresa");
+    if (blocked) return blocked;
+    return { status: "ok", field, value: profile, sourceRef: { docId: profile.id, capturedAt: this.resolver.getProvenance?.(companyId).get("profile", profile.id)?.capturedAt ?? "" } };
+  }
+
+  /** Lista completa o nada: si algun elemento (no rechazado) esta sin procedencia o sin aprobar, la lista entera queda bloqueada (no se oculta un socio o una restriccion). */
+  private resolveList<T extends { id: string; approvalStatus: ProfileApprovalStatus }>(
+    companyId: string,
+    entity: ProvenanceEntity,
+    field: string,
+    label: string,
+    items: readonly T[],
+  ): FieldResolution<readonly T[]> {
+    const vivos = items.filter((i) => i.approvalStatus !== "rechazado");
+    if (vivos.length === 0) return { status: "missing", field };
+    for (const item of vivos) {
+      const blocked = this.gateItem(entity, field, companyId, item, label);
+      if (blocked) return blocked;
+    }
+    return { status: "ok", field, value: vivos, sourceRef: { docId: vivos[0]!.id, capturedAt: this.resolver.getProvenance?.(companyId).get(entity, vivos[0]!.id)?.capturedAt ?? "" } };
+  }
+
+  resolveStakeholders(companyId: string): FieldResolution<readonly CompanyStakeholderRecord[]> {
+    return this.resolveList(companyId, "stakeholder", "perfil:socios", "Un socio o representante", this.resolver.getStakeholders?.(companyId) ?? []);
+  }
+  resolveRestrictions(companyId: string): FieldResolution<readonly CompanyRestrictionRecord[]> {
+    return this.resolveList(companyId, "restriction", "perfil:restricciones", "Una restricción", this.resolver.getRestrictions?.(companyId) ?? []);
+  }
+  resolveLocations(companyId: string): FieldResolution<readonly CompanyLocationRecord[]> {
+    return this.resolveList(companyId, "location", "perfil:ubicaciones", "Una ubicación", this.resolver.getLocations?.(companyId) ?? []);
+  }
+  resolveProductsServices(companyId: string): FieldResolution<readonly CompanyProductServiceRecord[]> {
+    return this.resolveList(companyId, "product", "perfil:productos_servicios", "Un producto o servicio", this.resolver.getProductsServices?.(companyId) ?? []);
   }
 }

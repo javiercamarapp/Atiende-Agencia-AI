@@ -98,3 +98,37 @@ describe("InMemoryLicitacionesRepository.computeCurrentInputsHash -- companyProf
     expect((raw as { companyProfileHash: string }).companyProfileHash).not.toBe(sha256Hex("licitaciones:fase1:company-profile-fijo"));
   });
 });
+
+describe("computeCompanyProfileHash con el perfil completo (migracion 040)", () => {
+  const perfil = { legalName: "Acme SA", taxId: "ACM010101AB1", tradeName: null, sector: "servicios" as const, foundedYear: 2010, employeeCount: 12, annualSalesCents: 5_000_000, website: null, approvalStatus: "aprobado" as const };
+
+  it("las listas nuevas VACIAS y sin vigencia no cambian el hash anterior (migrar no invalida expedientes aprobados)", () => {
+    const h = computeCompanyProfileHash(base);
+    expect(computeCompanyProfileHash({ ...base, profile: null, productsServices: [], locations: [], restrictions: [], stakeholders: [] })).toBe(h);
+    expect(computeCompanyProfileHash({ ...base, signers: base.signers.map((s) => ({ ...s, validFrom: null, validUntil: null, identityDocId: null, actionLimits: null })) })).toBe(h);
+  });
+
+  it("perfil, productos, ubicaciones, restricciones y socios entran al hash y su aprobacion tambien", () => {
+    const h = computeCompanyProfileHash(base);
+    const conPerfil = computeCompanyProfileHash({ ...base, profile: perfil });
+    expect(conPerfil).not.toBe(h);
+    expect(computeCompanyProfileHash({ ...base, profile: { ...perfil, employeeCount: 13 } })).not.toBe(conPerfil);
+    expect(computeCompanyProfileHash({ ...base, profile: { ...perfil, approvalStatus: "pendiente_aprobacion" } })).not.toBe(conPerfil);
+    const socio = { kind: "socio" as const, fullName: "Ana", rfc: null, participationPct: "50.00", approvalStatus: "aprobado" as const };
+    const conSocio = computeCompanyProfileHash({ ...base, stakeholders: [socio] });
+    expect(conSocio).not.toBe(h);
+    expect(computeCompanyProfileHash({ ...base, stakeholders: [{ ...socio, participationPct: "51.00" }] })).not.toBe(conSocio);
+    expect(computeCompanyProfileHash({ ...base, restrictions: [{ kind: "sancion", description: "x", validFrom: "2026-01-01", validUntil: null, approvalStatus: "aprobado" }] })).not.toBe(h);
+    expect(computeCompanyProfileHash({ ...base, locations: [{ kind: "matriz", name: "HQ", state: "Yucatán", municipality: null, address: null, approvalStatus: "aprobado" }] })).not.toBe(h);
+    expect(computeCompanyProfileHash({ ...base, productsServices: [{ kind: "servicio", name: "Consultoría", description: null, classifierCode: null, approvalStatus: "aprobado" }] })).not.toBe(h);
+  });
+
+  it("la vigencia del poder, el documento de identidad y los limites del firmante cambian el hash", () => {
+    const h = computeCompanyProfileHash(base);
+    const conPoder = (extra: object) => computeCompanyProfileHash({ ...base, signers: [{ ...base.signers[0]!, ...extra }, base.signers[1]!] });
+    expect(conPoder({ validUntil: "2027-01-01" })).not.toBe(h);
+    expect(conPoder({ validUntil: "2027-01-01" })).not.toBe(conPoder({ validUntil: "2027-06-01" }));
+    expect(conPoder({ identityDocId: "d1" })).not.toBe(h);
+    expect(conPoder({ actionLimits: "hasta 1 mdp" })).not.toBe(h);
+  });
+});

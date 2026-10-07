@@ -7,6 +7,14 @@
 // "PENDIENTE" para siempre, sin ningún camino real de captura.
 import { fetchJson, patchJson, postJson } from "./admin-client.ts";
 
+/** Procedencia (REQ-142): quien capturo el dato, como y cuando. `byName` sale del mapa `people` del listado. */
+export interface ProvenanceView {
+  readonly by: string;
+  readonly source: string;
+  readonly at: string;
+  readonly byName?: string | null;
+}
+
 export type CompanyDataApprovalStatus = "aprobado" | "pendiente_aprobacion" | "rechazado";
 
 /**
@@ -19,6 +27,8 @@ export interface CompanyDataAuthorship {
   readonly approvedAt?: string | null;
   readonly proposedByName?: string | null;
   readonly approvedByName?: string | null;
+  /** Procedencia del registro (REQ-142). Ausente = el servidor no tiene registro de quien lo capturo. */
+  readonly procedencia?: ProvenanceView;
 }
 
 export interface CompanyDocument extends CompanyDataAuthorship {
@@ -61,14 +71,36 @@ export interface CompanySigner extends CompanyDataAuthorship {
   readonly authorized: boolean;
   /** Ausente en una base sin migrar: ahi un firmante existente cuenta como aprobado. */
   readonly approvalStatus?: CompanyDataApprovalStatus;
+  /** Vigencia del poder (migracion 040), fechas "AAAA-MM-DD". `undefined` = base sin migrar; `null` = sin vigencia capturada. */
+  readonly validFrom?: string | null;
+  readonly validUntil?: string | null;
+  /** Documento de identidad o poder (`CompanyDocument.id`). */
+  readonly identityDocId?: string | null;
+  readonly actionLimits?: string | null;
 }
 
-type WithPeople<K extends string, T> = { readonly [P in K]: readonly T[] } & { readonly people?: Readonly<Record<string, string>> };
+export type WithPeople<K extends string, T> = { readonly [P in K]: readonly T[] } & {
+  readonly people?: Readonly<Record<string, string>>;
+  /** Procedencia del registro completo por id del dato (REQ-142). */
+  readonly provenance?: Readonly<Record<string, { readonly by: string; readonly source: string; readonly at: string }>>;
+};
 
-/** Agrega `proposedByName`/`approvedByName` a cada registro con el mapa `people` del listado (mejor esfuerzo). */
-function withNames<T extends CompanyDataAuthorship>(items: readonly T[], people: Readonly<Record<string, string>> | undefined): readonly T[] {
-  if (!people) return items;
-  return items.map((item) => ({ ...item, proposedByName: item.proposedBy ? (people[item.proposedBy] ?? null) : null, approvedByName: item.approvedBy ? (people[item.approvedBy] ?? null) : null }));
+/** Agrega `proposedByName`/`approvedByName` y la procedencia a cada registro con los mapas del listado (mejor esfuerzo). */
+export function withNames<T extends CompanyDataAuthorship & { readonly id: string }>(
+  items: readonly T[],
+  people: Readonly<Record<string, string>> | undefined,
+  provenance?: Readonly<Record<string, { readonly by: string; readonly source: string; readonly at: string }>>,
+): readonly T[] {
+  if (!people && !provenance) return items;
+  return items.map((item) => {
+    const p = provenance?.[item.id];
+    return {
+      ...item,
+      proposedByName: people && item.proposedBy ? (people[item.proposedBy] ?? null) : null,
+      approvedByName: people && item.approvedBy ? (people[item.approvedBy] ?? null) : null,
+      ...(p ? { procedencia: { ...p, byName: people?.[p.by] ?? null } } : {}),
+    };
+  });
 }
 
 function base(apiBaseUrl: string, propertyId: string, resource: string): string {
@@ -79,7 +111,7 @@ function base(apiBaseUrl: string, propertyId: string, resource: string): string 
 
 export async function fetchCompanyDocuments(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<readonly CompanyDocument[]> {
   const body = await fetchJson<WithPeople<"documents", CompanyDocument>>(fetchImpl, base(apiBaseUrl, propertyId, "documents"), token);
-  return withNames(body.documents, body.people);
+  return withNames(body.documents, body.people, body.provenance);
 }
 
 export async function createCompanyDocument(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: { type: string; label: string; expiresAt: string | null }): Promise<CompanyDocument> {
@@ -101,7 +133,7 @@ export async function updateCompanyDocument(
 
 export async function fetchApprovedRates(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<readonly ApprovedRate[]> {
   const body = await fetchJson<WithPeople<"rates", ApprovedRate>>(fetchImpl, base(apiBaseUrl, propertyId, "rates"), token);
-  return withNames(body.rates, body.people);
+  return withNames(body.rates, body.people, body.provenance);
 }
 
 export async function createApprovedRate(
@@ -129,7 +161,7 @@ export async function updateApprovedRate(
 
 export async function fetchCompanyCapabilities(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<readonly CompanyCapability[]> {
   const body = await fetchJson<WithPeople<"capabilities", CompanyCapability>>(fetchImpl, base(apiBaseUrl, propertyId, "capabilities"), token);
-  return withNames(body.capabilities, body.people);
+  return withNames(body.capabilities, body.people, body.provenance);
 }
 
 export async function createCompanyCapability(
@@ -157,7 +189,7 @@ export async function updateCompanyCapability(
 
 export async function fetchCompanyExperience(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<readonly CompanyExperienceItem[]> {
   const body = await fetchJson<WithPeople<"experience", CompanyExperienceItem>>(fetchImpl, base(apiBaseUrl, propertyId, "experience"), token);
-  return withNames(body.experience, body.people);
+  return withNames(body.experience, body.people, body.provenance);
 }
 
 export async function createCompanyExperience(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: { description: string; evidenceDocId: string }): Promise<CompanyExperienceItem> {
@@ -178,11 +210,27 @@ export async function updateCompanyExperience(
 // ---- Firmantes autorizados ----
 
 export async function fetchCompanySigners(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<readonly CompanySigner[]> {
-  const body = await fetchJson<WithPeople<"signers", CompanySigner>>(fetchImpl, base(apiBaseUrl, propertyId, "signers"), token);
-  return withNames(body.signers, body.people);
+  return (await fetchCompanySignersView(fetchImpl, apiBaseUrl, token, propertyId)).signers;
 }
 
-export async function createCompanySigner(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: { name: string; role: string; authorized?: boolean }): Promise<CompanySigner> {
+/** Firmantes + si la base ya soporta la vigencia del poder (`vigenciaDisponible`: migracion 040). */
+export async function fetchCompanySignersView(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<{ readonly signers: readonly CompanySigner[]; readonly vigenciaDisponible: boolean }> {
+  const body = await fetchJson<WithPeople<"signers", CompanySigner> & { readonly vigenciaDisponible?: boolean }>(fetchImpl, base(apiBaseUrl, propertyId, "signers"), token);
+  return { signers: withNames(body.signers, body.people, body.provenance), vigenciaDisponible: body.vigenciaDisponible === true };
+}
+
+export interface CompanySignerInput {
+  readonly name: string;
+  readonly role: string;
+  readonly authorized?: boolean;
+  /** "AAAA-MM-DD". Obligatorio cuando la base soporta vigencia. */
+  readonly validFrom?: string;
+  readonly validUntil?: string | null;
+  readonly identityDocId?: string | null;
+  readonly actionLimits?: string | null;
+}
+
+export async function createCompanySigner(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: CompanySignerInput): Promise<CompanySigner> {
   return postJson<CompanySigner>(fetchImpl, base(apiBaseUrl, propertyId, "signers"), token, input);
 }
 
@@ -192,16 +240,27 @@ export async function updateCompanySigner(
   token: string,
   propertyId: string,
   signerId: string,
-  input: { name?: string; authorized?: boolean },
+  input: Partial<Omit<CompanySignerInput, "role">>,
 ): Promise<CompanySigner> {
   return patchJson<CompanySigner>(fetchImpl, `${base(apiBaseUrl, propertyId, "signers")}/${signerId}`, token, input);
 }
 
 // ---- Decision: aprobar / rechazar (migracion 036) ----
 
-export type CompanyItemKind = "rate" | "document" | "capability" | "experience" | "signer";
+export type CompanyItemKind = "rate" | "document" | "capability" | "experience" | "signer" | "profile" | "product" | "location" | "restriction" | "stakeholder";
 
-const DECISION_RESOURCE: Readonly<Record<CompanyItemKind, string>> = { rate: "rates", document: "documents", capability: "capabilities", experience: "experience", signer: "signers" };
+const DECISION_RESOURCE: Readonly<Record<CompanyItemKind, string>> = {
+  rate: "rates",
+  document: "documents",
+  capability: "capabilities",
+  experience: "experience",
+  signer: "signers",
+  profile: "profile",
+  product: "products-services",
+  location: "locations",
+  restriction: "restrictions",
+  stakeholder: "stakeholders",
+};
 
 /**
  * `POST .../company/<recurso>/:id/approve|reject`. Las tarifas exigen el token de step-up (`company_rate_approval`) en

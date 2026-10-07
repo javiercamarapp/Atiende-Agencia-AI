@@ -11,7 +11,9 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
-import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
+import { InMemoryCompanyProfileStore } from "./company-profile-memory.ts";
+import type { CompanyLocationRecord, CompanyProductServiceRecord, CompanyRestrictionRecord, CompanyStakeholderRecord, ProvenanceEntity } from "./company-profile.ts";
+import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, CompanyProfileNotAvailableError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import type {
   ApprovedRateCreateInput,
@@ -24,6 +26,16 @@ import type {
   CompanyExperienceUpdateInput,
   CompanySignerCreateInput,
   CompanySignerUpdateInput,
+  CompanyLocationCreateInput,
+  CompanyLocationUpdateInput,
+  CompanyProductServiceCreateInput,
+  CompanyProductServiceUpdateInput,
+  CompanyProfileCollectionKind,
+  CompanyProfileUpsertInput,
+  CompanyRestrictionCreateInput,
+  CompanyRestrictionUpdateInput,
+  CompanyStakeholderCreateInput,
+  CompanyStakeholderUpdateInput,
   CompanyItemKind,
   CompanyItemDecision,
   CompanyItemDecisionInput,
@@ -993,17 +1005,28 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     return { proposedBy: actorId ?? null, approvedBy: null, approvedAt: null };
   }
 
+  /** Perfil completo (migración 040) y procedencia por campo: doble en memoria. Se expone para que las pruebas simulen fallos de procedencia y datos sembrados por SQL. */
+  readonly companyProfile = new InMemoryCompanyProfileStore();
+
+  /** REQ-142: registra la procedencia de un dato de las tablas anteriores. Primero comprueba que se PUEDE escribir (si falla, el alta/edición no ocurre: equivale al rollback de Postgres). */
+  private noteProvenance(organizationId: string, entity: ProvenanceEntity, entityId: string, input: { readonly actorId?: string }, keys: readonly string[]): void {
+    this.companyProfile.recordProvenance(organizationId, entity, entityId, keys.filter((k) => (input as Record<string, unknown>)[k] !== undefined), input.actorId);
+  }
+
   /** Bitácora de decisiones (paridad con `licitaciones.company_data_audit`); solo para pruebas. */
   readonly companyDataAudit: { organizationId: string; kind: CompanyItemKind; itemId: string; decision: CompanyItemDecision; actorId: string; createdAt: string }[] = [];
 
   async createCompanyDocument(organizationId: string, input: CompanyDocumentCreateInput): Promise<CompanyDocumentRecord> {
+    this.companyProfile.assertProvenanceWritable();
     const record: CompanyDocumentRecord = { id: randomUUID(), type: input.type, label: input.label, expiresAt: input.expiresAt, approvalStatus: "pendiente_aprobacion", ...this.newCompanyAuthorship(input.actorId) };
     const list = this.companyDocuments.get(organizationId) ?? [];
     this.companyDocuments.set(organizationId, [...list, record]);
+    this.noteProvenance(organizationId, "document", record.id, input, ["type", "label", "expiresAt"]);
     return record;
   }
 
   async updateCompanyDocument(organizationId: string, documentId: string, input: CompanyDocumentUpdateInput): Promise<CompanyDocumentRecord> {
+    this.companyProfile.assertProvenanceWritable();
     const list = this.companyDocuments.get(organizationId) ?? [];
     const index = list.findIndex((d) => d.id === documentId);
     if (index === -1) throw new CompanyDataNotFoundError("Documento de empresa", documentId);
@@ -1011,10 +1034,12 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const next = [...list];
     next[index] = updated;
     this.companyDocuments.set(organizationId, next);
+    this.noteProvenance(organizationId, "document", documentId, input, ["label", "expiresAt"]);
     return updated;
   }
 
   async createApprovedRate(organizationId: string, input: ApprovedRateCreateInput): Promise<ApprovedRateRecord> {
+    this.companyProfile.assertProvenanceWritable();
     const list = this.approvedRates.get(organizationId) ?? [];
     if (list.some((r) => r.concept === input.concept)) throw new CompanyDataDuplicateKeyError("tarifa aprobada", input.concept);
     const record: ApprovedRateRecord = {
@@ -1043,10 +1068,12 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       validUntil: input.validUntil ?? null,
     };
     this.approvedRates.set(organizationId, [...list, record]);
+    this.noteProvenance(organizationId, "rate", record.id, input, ["concept", "unitPrice", "validFrom", "validUntil"]);
     return record;
   }
 
   async updateApprovedRate(organizationId: string, rateId: string, input: ApprovedRateUpdateInput): Promise<ApprovedRateRecord> {
+    this.companyProfile.assertProvenanceWritable();
     const list = this.approvedRates.get(organizationId) ?? [];
     const index = list.findIndex((r) => r.id === rateId);
     if (index === -1) throw new CompanyDataNotFoundError("Tarifa aprobada", rateId);
@@ -1054,6 +1081,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const next = [...list];
     next[index] = updated;
     this.approvedRates.set(organizationId, next);
+    this.noteProvenance(organizationId, "rate", rateId, input, ["unitPrice", "validFrom", "validUntil"]);
     return updated;
   }
 
@@ -1062,6 +1090,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   }
 
   async createCompanyCapability(organizationId: string, input: CompanyCapabilityCreateInput): Promise<CompanyCapabilityRecord> {
+    this.companyProfile.assertProvenanceWritable();
     const list = this.companyCapabilities.get(organizationId) ?? [];
     if (list.some((c) => c.name === input.name)) throw new CompanyDataDuplicateKeyError("capacidad", input.name);
     const record: CompanyCapabilityRecord = {
@@ -1073,10 +1102,12 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       ...this.newCompanyAuthorship(input.actorId),
     };
     this.companyCapabilities.set(organizationId, [...list, record]);
+    this.noteProvenance(organizationId, "capability", record.id, input, ["name", "description", "evidenceDocId"]);
     return record;
   }
 
   async updateCompanyCapability(organizationId: string, capabilityId: string, input: CompanyCapabilityUpdateInput): Promise<CompanyCapabilityRecord> {
+    this.companyProfile.assertProvenanceWritable();
     const list = this.companyCapabilities.get(organizationId) ?? [];
     const index = list.findIndex((c) => c.id === capabilityId);
     if (index === -1) throw new CompanyDataNotFoundError("Capacidad", capabilityId);
@@ -1084,17 +1115,21 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const next = [...list];
     next[index] = updated;
     this.companyCapabilities.set(organizationId, next);
+    this.noteProvenance(organizationId, "capability", capabilityId, input, ["description", "evidenceDocId"]);
     return updated;
   }
 
   async createCompanyExperience(organizationId: string, input: CompanyExperienceCreateInput): Promise<CompanyExperienceItemRecord> {
+    this.companyProfile.assertProvenanceWritable();
     const record: CompanyExperienceItemRecord = { id: randomUUID(), description: input.description, evidenceDocId: input.evidenceDocId, approvalStatus: "pendiente_aprobacion", ...this.newCompanyAuthorship(input.actorId) };
     const list = this.companyExperience.get(organizationId) ?? [];
     this.companyExperience.set(organizationId, [...list, record]);
+    this.noteProvenance(organizationId, "experience", record.id, input, ["description", "evidenceDocId"]);
     return record;
   }
 
   async updateCompanyExperience(organizationId: string, experienceId: string, input: CompanyExperienceUpdateInput): Promise<CompanyExperienceItemRecord> {
+    this.companyProfile.assertProvenanceWritable();
     const list = this.companyExperience.get(organizationId) ?? [];
     const index = list.findIndex((e) => e.id === experienceId);
     if (index === -1) throw new CompanyDataNotFoundError("Experiencia", experienceId);
@@ -1102,18 +1137,37 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const next = [...list];
     next[index] = updated;
     this.companyExperience.set(organizationId, next);
+    this.noteProvenance(organizationId, "experience", experienceId, input, ["description", "evidenceDocId"]);
     return updated;
   }
 
   async createCompanySigner(organizationId: string, input: CompanySignerCreateInput): Promise<CompanySignerRecord> {
+    // Base sin la 040 (simulada): no hay donde guardar la vigencia del poder; pedirla no se descarta en silencio.
+    if (!this.companyProfileAvailable && (input.validFrom != null || input.validUntil != null || input.identityDocId != null || input.actionLimits != null)) throw new CompanyProfileNotAvailableError();
+    this.companyProfile.assertProvenanceWritable();
     const list = this.companySigners.get(organizationId) ?? [];
-    if (list.some((s) => s.role === input.role)) throw new CompanyDataDuplicateKeyError("firmante", input.role);
-    const record: CompanySignerRecord = { id: randomUUID(), name: input.name, role: input.role, authorized: input.authorized ?? false, approvalStatus: "pendiente_aprobacion", ...this.newCompanyAuthorship(input.actorId) };
+    // Varios firmantes por cargo (migración 040); solo se rechaza repetir el mismo nombre en el mismo cargo (doble envío).
+    if (list.some((s) => s.role === input.role && s.name.trim().toLowerCase() === input.name.trim().toLowerCase())) throw new CompanyDataDuplicateKeyError("firmante", `${input.role} / ${input.name}`);
+    const record: CompanySignerRecord = {
+      id: randomUUID(),
+      name: input.name,
+      role: input.role,
+      authorized: input.authorized ?? false,
+      validFrom: input.validFrom ?? null,
+      validUntil: input.validUntil ?? null,
+      identityDocId: input.identityDocId ?? null,
+      actionLimits: input.actionLimits ?? null,
+      approvalStatus: "pendiente_aprobacion",
+      ...this.newCompanyAuthorship(input.actorId),
+    };
     this.companySigners.set(organizationId, [...list, record]);
+    this.noteProvenance(organizationId, "signer", record.id, input, ["name", "role", "authorized", "validFrom", "validUntil", "identityDocId", "actionLimits"]);
     return record;
   }
 
   async updateCompanySigner(organizationId: string, signerId: string, input: CompanySignerUpdateInput): Promise<CompanySignerRecord> {
+    if (!this.companyProfileAvailable && (["validFrom", "validUntil", "identityDocId", "actionLimits"] as const).some((k) => input[k] !== undefined)) throw new CompanyProfileNotAvailableError();
+    this.companyProfile.assertProvenanceWritable();
     const list = this.companySigners.get(organizationId) ?? [];
     const index = list.findIndex((s) => s.id === signerId);
     if (index === -1) throw new CompanyDataNotFoundError("Firmante", signerId);
@@ -1121,20 +1175,53 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const next = [...list];
     next[index] = updated;
     this.companySigners.set(organizationId, next);
+    this.noteProvenance(organizationId, "signer", signerId, input, ["name", "authorized", "validFrom", "validUntil", "identityDocId", "actionLimits"]);
     return updated;
   }
 
+  // ---- Perfil de empresa completo (migración 040): delegado a `InMemoryCompanyProfileStore` ----
+
+  /** Solo pruebas: `false` simula la base sin migrar (la API responde \"no disponible aun\"). */
+  companyProfileAvailable = true;
+  async isCompanyProfileAvailable() { return this.companyProfileAvailable; }
+  private requireProfileTables(): void {
+    if (!this.companyProfileAvailable) throw new CompanyProfileNotAvailableError();
+  }
+
+  async getCompanyProfile(organizationId: string) { return this.companyProfileAvailable ? this.companyProfile.getProfile(organizationId) : null; }
+  async upsertCompanyProfile(organizationId: string, input: CompanyProfileUpsertInput) { this.requireProfileTables(); return this.companyProfile.upsertProfile(organizationId, input); }
+  async listCompanyProductsServices(organizationId: string) { return this.companyProfileAvailable ? this.companyProfile.list<CompanyProductServiceRecord>("product", organizationId) : []; }
+  async createCompanyProductService(organizationId: string, input: CompanyProductServiceCreateInput) { this.requireProfileTables(); return this.companyProfile.createProduct(organizationId, input); }
+  async updateCompanyProductService(organizationId: string, id: string, input: CompanyProductServiceUpdateInput) { this.requireProfileTables(); return this.companyProfile.updateProduct(organizationId, id, input); }
+  async listCompanyLocations(organizationId: string) { return this.companyProfileAvailable ? this.companyProfile.list<CompanyLocationRecord>("location", organizationId) : []; }
+  async createCompanyLocation(organizationId: string, input: CompanyLocationCreateInput) { this.requireProfileTables(); return this.companyProfile.createLocation(organizationId, input); }
+  async updateCompanyLocation(organizationId: string, id: string, input: CompanyLocationUpdateInput) { this.requireProfileTables(); return this.companyProfile.updateLocation(organizationId, id, input); }
+  async listCompanyRestrictions(organizationId: string) { return this.companyProfileAvailable ? this.companyProfile.list<CompanyRestrictionRecord>("restriction", organizationId) : []; }
+  async createCompanyRestriction(organizationId: string, input: CompanyRestrictionCreateInput) { this.requireProfileTables(); return this.companyProfile.createRestriction(organizationId, input); }
+  async updateCompanyRestriction(organizationId: string, id: string, input: CompanyRestrictionUpdateInput) { this.requireProfileTables(); return this.companyProfile.updateRestriction(organizationId, id, input); }
+  async listCompanyStakeholders(organizationId: string) { return this.companyProfileAvailable ? this.companyProfile.list<CompanyStakeholderRecord>("stakeholder", organizationId) : []; }
+  async createCompanyStakeholder(organizationId: string, input: CompanyStakeholderCreateInput) { this.requireProfileTables(); return this.companyProfile.createStakeholder(organizationId, input); }
+  async updateCompanyStakeholder(organizationId: string, id: string, input: CompanyStakeholderUpdateInput) { this.requireProfileTables(); return this.companyProfile.updateStakeholder(organizationId, id, input); }
+  async deleteCompanyProfileItem(organizationId: string, kind: CompanyProfileCollectionKind, id: string) { this.requireProfileTables(); return this.companyProfile.remove(kind, organizationId, id); }
+  async listFieldProvenance(organizationId: string) { return this.companyProfileAvailable ? this.companyProfile.listFieldProvenance(organizationId) : []; }
+
   async decideCompanyItem(organizationId: string, input: CompanyItemDecisionInput): Promise<CompanyItemDecisionOutcome> {
+    const legacy: Partial<Record<CompanyItemKind, Map<string, CompanyDecidable[]>>> = {
+      rate: this.approvedRates as Map<string, CompanyDecidable[]>,
+      document: this.companyDocuments as Map<string, CompanyDecidable[]>,
+      capability: this.companyCapabilities as Map<string, CompanyDecidable[]>,
+      experience: this.companyExperience as Map<string, CompanyDecidable[]>,
+      signer: this.companySigners as Map<string, CompanyDecidable[]>,
+    };
+    const legacyStore = legacy[input.kind];
+    const profileStore = legacyStore ? null : this.companyProfile.decidable(input.kind as "profile" | CompanyProfileCollectionKind, organizationId);
     const store = {
-      rate: this.approvedRates,
-      document: this.companyDocuments,
-      capability: this.companyCapabilities,
-      experience: this.companyExperience,
-      signer: this.companySigners,
-    }[input.kind] as Map<string, (CompanyDecidable)[]>;
+      get: () => (legacyStore ? legacyStore.get(organizationId) ?? [] : profileStore!.list) as readonly CompanyDecidable[],
+      set: (next: CompanyDecidable[]) => (legacyStore ? legacyStore.set(organizationId, next) : profileStore!.set(next)),
+    };
     const decisionRoles = input.kind === "rate" ? ["owner", "admin"] : ["owner", "admin", "analyst"];
     if (!decisionRoles.includes(input.actorRole)) return "rol";
-    const list = store.get(organizationId) ?? [];
+    const list = store.get();
     const index = list.findIndex((r) => r.id === input.itemId);
     if (index === -1) return "not_found";
     const current = list[index]!;
@@ -1143,7 +1230,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const now = isoNow();
     const next = [...list];
     next[index] = { ...current, approvalStatus: input.decision, approvedBy: input.actorId, approvedAt: now };
-    store.set(organizationId, next);
+    store.set(next);
     this.companyDataAudit.push({ organizationId, kind: input.kind, itemId: input.itemId, decision: input.decision, actorId: input.actorId, createdAt: now });
     return "ok";
   }
@@ -1246,6 +1333,11 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
         capabilities: this.companyCapabilities.get(organizationId) ?? [],
         experience: this.companyExperience.get(organizationId) ?? [],
         signers: this.companySigners.get(organizationId) ?? [],
+        profile: this.companyProfile.getProfile(organizationId),
+        productsServices: this.companyProfile.list<CompanyProductServiceRecord>("product", organizationId),
+        locations: this.companyProfile.list<CompanyLocationRecord>("location", organizationId),
+        restrictions: this.companyProfile.list<CompanyRestrictionRecord>("restriction", organizationId),
+        stakeholders: this.companyProfile.list<CompanyStakeholderRecord>("stakeholder", organizationId),
       }),
       companyDocuments: usedCompanyDocumentIds.map((id) => {
         const doc = documents.find((d) => d.id === id);

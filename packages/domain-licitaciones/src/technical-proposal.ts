@@ -71,10 +71,16 @@ export function extractNotApplicableRequirements(proposal: TechnicalProposal): {
  * DECISION_ROLES, o cae a un mapeo por defecto derivado de `RequirementType`
  * si no hay configuración explícita).
  */
+/** Datos de empresa de los que se puede redactar un requisito. Los cinco ultimos salen del perfil completo (migracion 040) y exigen procedencia (REQ-142). */
+export const FULFILLMENT_MAPPING_KINDS = ["capability", "experience", "document", "signer", "profile", "stakeholders", "restrictions", "locations", "products"] as const;
+export type FulfillmentMappingKind = (typeof FULFILLMENT_MAPPING_KINDS)[number];
+/** Los tipos que solo existen con la migracion 040 (en una base sin migrar el mapeo no se puede guardar ni resolver). */
+export const PROFILE_MAPPING_KINDS: readonly FulfillmentMappingKind[] = ["profile", "stakeholders", "restrictions", "locations", "products"];
+
 export interface RequirementFulfillmentMapping {
   readonly requirementId: string;
   /** Tipo de dato de empresa a resolver para este requisito. */
-  readonly kind: "capability" | "experience" | "document" | "signer";
+  readonly kind: FulfillmentMappingKind;
   /** Nombre/tipo/rol/id a resolver según `kind`. */
   readonly refKey: string;
   /** Texto de la afirmación a incluir si el dato resuelve OK; se le antepone contexto del requisito. */
@@ -227,7 +233,18 @@ export class TechnicalProposalBuilder {
       case "document":
         return this.companyData.resolveDocumentByType(companyId, mapping.refKey, asOfIso);
       case "signer":
-        return this.companyData.resolveAuthorizedSigner(companyId, mapping.refKey);
+        return this.companyData.resolveAuthorizedSigner(companyId, mapping.refKey, asOfIso);
+      // Perfil completo (040): sin procedencia o sin aprobar el dato queda bloqueado (REQ-142); sin dato, pendiente.
+      case "profile":
+        return this.companyData.resolveProfile(companyId);
+      case "stakeholders":
+        return this.companyData.resolveStakeholders(companyId);
+      case "restrictions":
+        return this.companyData.resolveRestrictions(companyId);
+      case "locations":
+        return this.companyData.resolveLocations(companyId);
+      case "products":
+        return this.companyData.resolveProductsServices(companyId);
       default:
         return { status: "missing", field: mapping.refKey };
     }

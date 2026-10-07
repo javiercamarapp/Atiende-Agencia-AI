@@ -364,6 +364,13 @@ export interface CompanySignerRecord {
   readonly name: string;
   readonly role: string;
   readonly authorized: boolean;
+  /** Vigencia del poder (migracion 040), fechas de negocio "YYYY-MM-DD". `undefined` = base sin migrar; `null` = sin vigencia capturada. */
+  readonly validFrom?: string | null;
+  readonly validUntil?: string | null;
+  /** Documento de identidad o poder (`company_document.id`). */
+  readonly identityDocId?: string | null;
+  /** Limites de actuacion del poder, como texto. */
+  readonly actionLimits?: string | null;
   /** Base sin migrar (036): sin columna, un firmante existente cuenta como 'aprobado' (comportamiento anterior). */
   readonly approvalStatus: "aprobado" | "pendiente_aprobacion" | "rechazado";
   /** Autoria/decision (migracion 036). `undefined` = base sin migrar. `proposedBy` = quien propuso o edito por ultima vez. */

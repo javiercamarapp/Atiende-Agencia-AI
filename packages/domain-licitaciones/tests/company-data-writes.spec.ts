@@ -111,10 +111,12 @@ describe("InMemoryLicitacionesRepository -- escritura de company_capability/comp
     expect(updated.description).toBe("Proyecto X (corregido)");
   });
 
-  it("createCompanySigner con 'role' duplicado lanza CompanyDataDuplicateKeyError -- un solo firmante autorizado vigente por rol", async () => {
+  it("createCompanySigner permite varios firmantes por cargo (migración 040) y rechaza solo repetir el mismo nombre en el mismo cargo (doble envío)", async () => {
     const repo = new InMemoryLicitacionesRepository();
     await repo.createCompanySigner(ORG, { name: "Juan Pérez", role: "representante_legal", authorized: true });
-    await expect(repo.createCompanySigner(ORG, { name: "Otra Persona", role: "representante_legal" })).rejects.toBeInstanceOf(CompanyDataDuplicateKeyError);
+    await expect(repo.createCompanySigner(ORG, { name: "Otra Persona", role: "representante_legal" })).resolves.toMatchObject({ role: "representante_legal", name: "Otra Persona" });
+    await expect(repo.createCompanySigner(ORG, { name: " juan pérez ", role: "representante_legal" })).rejects.toBeInstanceOf(CompanyDataDuplicateKeyError);
+    expect(await repo.listCompanySigners(ORG)).toHaveLength(2);
   });
 
   it("updateCompanySigner revoca/autoriza por id", async () => {
