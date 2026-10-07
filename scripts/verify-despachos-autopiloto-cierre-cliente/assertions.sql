@@ -424,7 +424,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select despachos.portal_cliente_solicitud_vincular(repeat('c', 64), '00000000-0000-0000-0000-00000000fd01', gen_random_uuid()) as should_fail;
 rollback;
 
-\echo '42. portal: no se puede ligar el documento de OTRO cliente (otro enlace/property) a un renglon propio'
+\echo '42. portal: no se puede ligar el documento de OTRO cliente (otra property) a un renglon propio'
 begin;
 select * from despachos.solicitud_crear_interna('00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000fa01', 2026, 6);
 insert into despachos.portal_cliente_enlace (id, organization_id, property_id, token_hash, etiqueta, creado_por, expira_en) values
@@ -1099,4 +1099,20 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
 select cardinality(out_etiquetas) as etiquetas_deberia_ser_3 from despachos.system_solicitud_crear('00000000-0000-0000-0000-00000000fa01', 2026, 6);
+rollback;
+
+\echo '116. portal: reenviar el mismo archivo con un enlace nuevo de la misma property SI se puede ligar (un recordatorio crea un enlace nuevo)'
+begin;
+select * from despachos.solicitud_crear_interna('00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000fa01', 2026, 6);
+insert into despachos.portal_cliente_enlace (id, organization_id, property_id, token_hash, etiqueta, creado_por, expira_en) values
+  ('00000000-0000-0000-0000-00000000ff01', '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000fa01', repeat('a', 64), 'Enlace viejo', '00000000-0000-0000-0000-00000000fb01', now() + interval '10 days'),
+  ('00000000-0000-0000-0000-00000000ff03', '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000fa01', repeat('b', 64), 'Enlace nuevo', '00000000-0000-0000-0000-00000000fb01', now() + interval '10 days');
+insert into despachos.portal_cliente_documento (id, organization_id, property_id, enlace_id, tipo, nombre_archivo, mime_type, tamano_bytes, sha256, contenido) values
+  ('00000000-0000-0000-0000-00000000fd01', '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000ff01', 'pdf', 'edo.pdf', 'application/pdf', 5, repeat('c', 64), '\x255044462d'::bytea);
+select set_config('t.rid', (select id::text from despachos.solicitud_documentos_renglon where clave = 'estado_cuenta'), true);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select despachos.portal_cliente_solicitud_vincular(repeat('b', 64), '00000000-0000-0000-0000-00000000fd01', current_setting('t.rid')::uuid);
+reset role;
+select count(*) as ligado_deberia_ser_1 from despachos.solicitud_documentos_renglon where clave = 'estado_cuenta' and documento_id = '00000000-0000-0000-0000-00000000fd01';
 rollback;

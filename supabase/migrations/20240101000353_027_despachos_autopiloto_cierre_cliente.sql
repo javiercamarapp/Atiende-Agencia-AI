@@ -31,7 +31,7 @@
 --   5. Portal (`portal_cliente_solicitudes`, `portal_cliente_solicitud_vincular`, `portal_cliente_reportes`,
 --      `portal_cliente_reporte_contenido`): SOLO SISTEMA, reciben el HASH del token, validan enlace vigente con
 --      `portal_cliente_enlace_resolver` y derivan la property de ahi; un token invalido produce el mismo error (P0002
---      `enlace_no_valido`). El cliente solo puede vincular un documento SUYO (subido por ese mismo enlace) a un renglon de SU property.
+--      `enlace_no_valido`). El cliente solo puede vincular un documento de SU property a un renglon de SU property.
 --   6. Trigger `portal_cliente_documento_marca_renglon`: definer, solo reacciona al cambio de `estado` de un documento ya
 --      vinculado; no abre ninguna superficie nueva (los privilegios del trigger son los de su dueno, fijos).
 --   7. Correo de contacto: dato personal. Solo lo leen el staff de la property (select) y el job de sistema para encolar el correo;
@@ -816,7 +816,8 @@ $$;
 revoke all on function despachos.portal_cliente_solicitudes(text) from public, anon;
 grant execute on function despachos.portal_cliente_solicitudes(text) to authenticated;
 
--- PORTAL (sistema): el cliente liga un documento que EL subio por este mismo enlace a un renglon de su solicitud.
+-- PORTAL (sistema): el cliente liga un documento de SU cliente (cualquier enlace de la misma property: un recordatorio crea un enlace nuevo y
+-- reenviar el mismo archivo es un replay del documento existente) a un renglon de su solicitud.
 create or replace function despachos.portal_cliente_solicitud_vincular(p_token_hash text, p_documento_id uuid, p_renglon_id uuid)
 returns text
 language plpgsql
@@ -834,7 +835,7 @@ begin
   end if;
   v := despachos.portal_cliente_enlace_resolver(p_token_hash);
   select d.estado into v_estado_doc from despachos.portal_cliente_documento d
-   where d.id = p_documento_id and d.property_id = v.property_id and d.enlace_id = v.id;
+   where d.id = p_documento_id and d.property_id = v.property_id;
   if v_estado_doc is null or v_estado_doc = 'rechazado' then
     raise exception 'solicitud_no_valida' using errcode = 'P0002';
   end if;

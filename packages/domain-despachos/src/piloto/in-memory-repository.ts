@@ -45,7 +45,7 @@ interface EnlaceMem {
   expiraEn: number;
   revocado: boolean;
 }
-interface DocumentoMem {
+export interface DocumentoMem {
   id: string;
   propertyId: string;
   tokenHash: string;
@@ -88,6 +88,11 @@ export class InMemoryPilotoRepository implements PilotoRepository {
   ahora: () => number = Date.now;
   /** Hook de pruebas: como la base real, la entrega y los artefactos solo se crean sobre un periodo CERRADO (por omision, el que marca `marcarPeriodoCerrado`). */
   verificarCerrado: ((propertyId: string, periodoId: string) => Promise<boolean>) | null = null;
+  /** Hook de pruebas: documentos que vive el portal (otro doble) y el piloto debe poder ligar. */
+  buscarDocumentoPortal: ((documentoId: string) => DocumentoMem | undefined) | null = null;
+  private docPortal(id: string): DocumentoMem | undefined {
+    return this.documentos.get(id) ?? this.buscarDocumentoPortal?.(id);
+  }
   private async periodoCerrado(propertyId: string, periodoId: string): Promise<boolean> {
     return this.verificarCerrado ? this.verificarCerrado(propertyId, periodoId) : (this.periodos.get(periodoId)?.cerrado ?? false);
   }
@@ -121,8 +126,7 @@ export class InMemoryPilotoRepository implements PilotoRepository {
   /** Simula el trigger de la base: el staff acepta o rechaza el documento del portal. */
   resolverDocumentoPortal(documentoId: string, estado: "aceptado" | "rechazado"): void {
     const d = this.documentos.get(documentoId);
-    if (!d) return;
-    d.estado = estado;
+    if (d) d.estado = estado;
     for (const s of this.solicitudes) {
       for (const r of s.renglones) {
         if (r.documentoId !== documentoId) continue;
@@ -256,7 +260,7 @@ export class InMemoryPilotoRepository implements PilotoRepository {
   }
   async vincularDocumentoStaff(propertyId: string, renglonId: string, documentoId: string): Promise<EstadoRenglonSolicitud> {
     this.requerirEscritura(propertyId);
-    const d = this.documentos.get(documentoId);
+    const d = this.docPortal(documentoId);
     if (!d || d.propertyId !== propertyId) throw new PilotoNoEncontradoError();
     if (d.estado === "rechazado") throw new PilotoEntradaInvalidaError("un documento rechazado no cubre un renglón");
     const x = this.buscarRenglon(propertyId, renglonId);
@@ -434,8 +438,8 @@ export class InMemoryPilotoRepository implements PilotoRepository {
   async portalVincular(tokenHash: string, documentoId: string, renglonId: string): Promise<PilotoDisponible<EstadoRenglonSolicitud>> {
     if (!this.disponible) return { disponible: false };
     const e = this.enlaceVigente(tokenHash);
-    const d = this.documentos.get(documentoId);
-    if (!d || d.propertyId !== e.propertyId || d.tokenHash !== tokenHash || d.estado === "rechazado") throw new PilotoNoEncontradoError();
+    const d = this.docPortal(documentoId);
+    if (!d || d.propertyId !== e.propertyId || d.estado === "rechazado") throw new PilotoNoEncontradoError();
     const x = this.buscarRenglon(e.propertyId, renglonId);
     if (!x || (x.r.estado !== "pendiente" && x.r.estado !== "en_revision")) throw new PilotoNoEncontradoError();
     x.r.documentoId = documentoId;
