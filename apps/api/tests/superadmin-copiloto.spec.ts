@@ -1028,3 +1028,83 @@ describe("fijados del tablero (personales, sin organizacion)", () => {
     expect((await pedir(ctx, sa.token, "DELETE", `/${randomUUID()}`)).status).toBe(403);
   });
 });
+
+
+describe("adjuntar archivo (POST /superadmin/copiloto/adjuntos)", () => {
+  const CSV = ["producto,unidades,telefono", "Taco,10,999 123 4567", "Torta,5,998 765 4321"].join("\n");
+  const b64 = (t: string): string => Buffer.from(t, "utf8").toString("base64");
+  const subir = (ctx: Awaited<ReturnType<typeof setup>>, token: string, cuerpo: unknown, extra: Record<string, string> = {}) =>
+    ctx.app.request("/superadmin/copiloto/adjuntos", jsonRequestInit(cuerpo, bearer(token, extra)));
+
+  it("analiza el CSV en el servidor, sin modelo ni guardar nada: perfil por columna, datos personales ocultos y una fila en la bitacora SIN nombre ni contenido", async () => {
+    const ctx = await setup({ modo: "falsas", steps: [{ text: "no deberia llamarse" }] });
+    const sa = await ctx.alta();
+    const res = await subir(ctx, sa.token, { nombre: "ventas-de-ana.csv", contenidoBase64: b64(CSV) });
+    expect(res.status).toBe(200);
+    const r = (await res.json()) as DataChatAnswer;
+    expect(r.status).toBe("ok");
+    expect(r.blocks[0]?.tool).toBe("archivo_adjunto");
+    expect(r.blocks[0]?.rows.find((x) => x["columna"] === "unidades")).toMatchObject({ tipo: "numérica", suma: 15 });
+    expect(r.blocks[0]?.rows.find((x) => x["columna"] === "telefono")).toMatchObject({ tipo: "personal", suma: null });
+    expect(JSON.stringify(r)).not.toMatch(/999 123|998 765/);
+    expect(ctx.scripted.requests).toHaveLength(0);
+    expect(ctx.conv.appended).toHaveLength(0); // el archivo no se guarda en ninguna conversacion
+    expect(ctx.bitacora).toHaveLength(1);
+    expect(ctx.bitacora[0]).toMatchObject({ tool: "archivo_adjunto", params: { tipo: "csv" }, outcome: "ok", rowCount: 2, userId: sa.id, vertical: "plataforma" });
+    expect(JSON.stringify(ctx.bitacora)).not.toContain("ventas-de-ana");
+  });
+
+  it("un archivo ilegible responde 200 con el motivo (invalid_input) y lo deja en la bitacora como error", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const sa = await ctx.alta();
+    const res = await subir(ctx, sa.token, { nombre: "virus.exe", contenidoBase64: b64("MZ") });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ status: "invalid_input", text: "Solo puedo leer archivos CSV, Excel (.xlsx) y PDF.", blocks: [] });
+    expect(ctx.bitacora[0]).toMatchObject({ tool: "archivo_adjunto", outcome: "error", rowCount: 0 });
+  });
+
+  it("cuerpo mal formado: JSON invalido, campos de mas, base64 invalido o sin nombre = 400; mas de 5 MB = 413; ningun caso llega a la bitacora", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const sa = await ctx.alta();
+    const ok = b64(CSV);
+    expect((await subir(ctx, sa.token, { nombre: "a.csv", contenidoBase64: ok, organizationId: "x" })).status).toBe(400);
+    expect((await subir(ctx, sa.token, { nombre: "a.csv", contenidoBase64: "no es base64!" })).status).toBe(400);
+    expect((await subir(ctx, sa.token, { nombre: "", contenidoBase64: ok })).status).toBe(400);
+    expect((await subir(ctx, sa.token, { contenidoBase64: ok })).status).toBe(400);
+    const roto = await ctx.app.request("/superadmin/copiloto/adjuntos", { method: "POST", headers: { ...bearer(sa.token), "content-type": "application/json" }, body: "{no json" });
+    expect(roto.status).toBe(400);
+    const grande = await subir(ctx, sa.token, { nombre: "a.csv", contenidoBase64: "A".repeat(8 * 1024 * 1024) });
+    expect(grande.status).toBe(413);
+    expect(ctx.bitacora).toHaveLength(0);
+  });
+
+  it("solo el superadmin completo: staff comun 403, sin token 401 y el rol finanzas (solo lectura) 403 aunque tenga step-up", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const staff = await ctx.s.staff();
+    expect((await subir(ctx, staff.token, { nombre: "a.csv", contenidoBase64: b64(CSV) })).status).toBe(403);
+    expect((await ctx.app.request("/superadmin/copiloto/adjuntos", jsonRequestInit({ nombre: "a.csv", contenidoBase64: b64(CSV) }))).status).toBe(401);
+    const fin = await ctx.alta({ finanzas: true });
+    const stepUp = await ctx.activarMfa(fin);
+    const res = await subir(ctx, fin.token, { nombre: "a.csv", contenidoBase64: b64(CSV) }, { "x-stepup-token": stepUp });
+    expect(res.status).toBe(403);
+    expect(ctx.bitacora).toHaveLength(0);
+  });
+
+  it("limite de 10 archivos por 10 minutos por persona (fail-closed): el 11o responde 429 y no se analiza", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const sa = await ctx.alta();
+    for (let i = 0; i < 10; i++) expect((await subir(ctx, sa.token, { nombre: "a.csv", contenidoBase64: b64(CSV) })).status).toBe(200);
+    expect((await subir(ctx, sa.token, { nombre: "a.csv", contenidoBase64: b64(CSV) })).status).toBe(429);
+    expect(ctx.bitacora).toHaveLength(10);
+  });
+
+  it("con impersonacion activa se rechaza (403 del guard comun de escrituras) y no se analiza nada", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const sa = await ctx.alta();
+    const imp = ctx.s.base.deps.impersonationRepo({} as never) as InMemoryImpersonationRepository;
+    imp.seedPlatformSuperadmin(sa.id, sa.email);
+    await imp.startSession(sa.id, ctx.s.base.organizationId, "Soporte del cliente: revisar el pedido 123 de ayer");
+    expect((await subir(ctx, sa.token, { nombre: "a.csv", contenidoBase64: b64(CSV) })).status).toBe(403);
+    expect(ctx.bitacora).toHaveLength(0);
+  });
+});
