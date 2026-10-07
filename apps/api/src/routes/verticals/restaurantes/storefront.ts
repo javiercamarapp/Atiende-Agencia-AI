@@ -32,6 +32,7 @@ import {
   previewPromotion,
   registerCallbackRequest,
   redondearACentavos,
+  registrarConsentimientoMarketing,
   seccionEncargados,
   sugerirSucursalPorColonia,
   sugerirSucursalPorUbicacion,
@@ -77,6 +78,8 @@ interface StorefrontBody {
   readonly propina?: unknown;
   /** Aceptacion del aviso de privacidad (casilla del checkout): sin `true` el servidor no crea el pedido. */
   readonly acepta_aviso_privacidad?: unknown;
+  /** Casilla OPCIONAL y desmarcada de promociones por WhatsApp: solo el booleano `true` registra el consentimiento de marketing. */
+  readonly acepta_promociones?: unknown;
   readonly programado_para?: unknown;
 }
 
@@ -475,6 +478,11 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
         // Evidencia del consentimiento (version del aviso vigente, fecha, canal `web`; sin PII). Best-effort con SAVEPOINT: base sin la
         // migracion 063 -> "no_disponible"; cualquier otro fallo se registra y NUNCA tumba un pedido ya creado.
         await registrarConsentimiento(db, repo, org.id, order.id);
+        // Casilla opcional de promociones por WhatsApp (autopiloto 2): evidencia con fecha, fuente `checkout_web` y la version del aviso que decide
+        // la base. Best-effort en su propio SAVEPOINT: base sin la migracion 052 -> "no_disponible"; nunca tumba un pedido ya creado.
+        if (body.acepta_promociones === true && order.customerId) {
+          await registrarConsentimientoMarketing(db, { organizationId: org.id, customerId: order.customerId, otorgar: true, fuente: "checkout_web" });
+        }
         const encolada = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), {
           order,
           tipo: canal === "recoger" ? "recoger" : "domicilio",

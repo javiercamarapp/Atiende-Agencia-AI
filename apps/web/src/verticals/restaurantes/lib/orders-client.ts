@@ -167,6 +167,21 @@ export async function assignRepartidor(
   return body.order;
 }
 
+/** Repartidor sugerido por el servidor (carga y tiempo sin recibir pedido). Solo lectura: asignar sigue siendo `assignRepartidor`. */
+export interface RepartidorSugerido {
+  readonly repartidorId: string;
+  readonly nombre: string;
+  /** Pedidos `en_camino` que ya lleva. */
+  readonly enCamino: number;
+}
+
+/** `GET .../admin/repartidor-sugerido?orderIds=`: sugerencias por id de pedido (a domicilio, en `preparando`, sin repartidor). Los pedidos sin sugerencia no aparecen. */
+export async function fetchRepartidorSugerido(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, orderIds: readonly string[]): Promise<Readonly<Record<string, RepartidorSugerido>>> {
+  if (orderIds.length === 0) return {};
+  const body = await fetchJson<{ sugerencias: Record<string, RepartidorSugerido> }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/repartidor-sugerido?orderIds=${orderIds.map(encodeURIComponent).join(",")}`, token);
+  return body.sugerencias ?? {};
+}
+
 /** Respuesta de la pestaña Programados. `disponible:false` = la base aún no tiene la migración 034. */
 export interface ScheduledOrdersPage {
   readonly disponible: boolean;
