@@ -630,7 +630,7 @@ grant execute on function despachos.system_solicitudes_por_crear(date, integer) 
 
 -- SISTEMA: crea la solicitud de un cliente y devuelve lo necesario para avisar (correo de contacto, nombre del cliente).
 create or replace function despachos.system_solicitud_crear(p_property_id uuid, p_ejercicio integer, p_mes integer)
-returns table (out_id uuid, out_creada boolean, out_organization_id uuid, out_contacto_correo text, out_cliente text, out_renglones integer)
+returns table (out_id uuid, out_creada boolean, out_organization_id uuid, out_contacto_correo text, out_cliente text, out_renglones integer, out_etiquetas text[])
 language plpgsql
 security definer
 set search_path = despachos, pg_temp
@@ -654,7 +654,8 @@ begin
   select s.out_id, s.out_creada into v_id, v_creada from despachos.solicitud_crear_interna(v_org, p_property_id, p_ejercicio, p_mes) s;
   return query
     select v_id, v_creada, v_org, a.contacto_correo, v_nombre,
-           (select count(*)::int from despachos.solicitud_documentos_renglon r where r.solicitud_id = v_id)
+           (select count(*)::int from despachos.solicitud_documentos_renglon r where r.solicitud_id = v_id),
+           (select coalesce(array_agg(r.etiqueta order by r.tipo, r.etiqueta), '{}') from despachos.solicitud_documentos_renglon r where r.solicitud_id = v_id)
     from (select 1) x left join despachos.cliente_automatizacion a on a.property_id = p_property_id;
 end;
 $$;
@@ -663,7 +664,8 @@ grant execute on function despachos.system_solicitud_crear(uuid, integer, intege
 
 -- SISTEMA: enlace de portal para el aviso al cliente (el token solo se guarda como hash; lo genera la API).
 -- `creado_por` es obligatorio en el enlace: se atribuye al responsable de la ficha o, si no tiene, a un admin de la organizacion.
--- Revoca los enlaces automaticos previos con la misma etiqueta y respeta el tope de 20 vigentes retirando los automaticos mas viejos.
+-- Los enlaces de avisos previos siguen vigentes hasta su vencimiento (un correo viejo no debe quedar muerto); el tope de 20 vigentes se respeta
+-- retirando primero los automaticos mas viejos (nunca los que creo el staff a mano).
 create or replace function despachos.system_portal_enlace_crear(p_property_id uuid, p_token_hash text, p_etiqueta text, p_dias integer)
 returns table (out_id uuid, out_expira_en timestamptz)
 language plpgsql
@@ -701,8 +703,6 @@ begin
     raise exception 'system_portal_enlace_crear: la organización no tiene un admin al que atribuir el enlace' using errcode = 'P0002';
   end if;
   perform pg_advisory_xact_lock(hashtextextended('despachos.portal_cliente_enlace:' || p_property_id::text, 0));
-  update despachos.portal_cliente_enlace set revocado_en = now()
-   where property_id = p_property_id and etiqueta = p_etiqueta and revocado_en is null;
   update despachos.portal_cliente_enlace set revocado_en = now()
    where id in (
      select e.id from despachos.portal_cliente_enlace e
@@ -953,6 +953,33 @@ end;
 $$;
 revoke all on function despachos.system_periodos_cierre_abiertos(integer) from public, anon;
 grant execute on function despachos.system_periodos_cierre_abiertos(integer) to authenticated;
+
+-- SISTEMA: tareas de un periodo ABIERTO (todas, para resolver dependencias) para el auto-check diario.
+create or replace function despachos.system_cierre_tareas(p_periodo_id uuid)
+returns table (
+  out_id uuid, out_template_key text, out_title text, out_description text, out_category text, out_status text,
+  out_depends_on uuid[], out_due_date date, out_auto_check_query text, out_required boolean
+)
+language plpgsql
+stable
+security definer
+set search_path = despachos, pg_temp
+as $$
+begin
+  if auth.uid() is not null then
+    raise exception 'system_cierre_tareas es solo para la sesión de sistema' using errcode = '42501';
+  end if;
+  return query
+    select t.id, t.template_key, t.title, t.description, t.category, t.status, t.depends_on, t.due_date, t.auto_check_query, t.required
+    from despachos.periodo_cierre_tarea t
+    join despachos.periodo_cierre c on c.id = t.periodo_cierre_id
+    where t.periodo_cierre_id = p_periodo_id and c.status in ('open', 'overdue')
+    order by t.id
+    limit 100;
+end;
+$$;
+revoke all on function despachos.system_cierre_tareas(uuid) from public, anon;
+grant execute on function despachos.system_cierre_tareas(uuid) to authenticated;
 
 -- SISTEMA: completa tareas con auto-check (nunca una tarea manual) y desbloquea a sus dependientes. Atribuye `sistema`.
 create or replace function despachos.system_cierre_tareas_autocompletar(p_periodo_id uuid, p_tarea_ids uuid[])

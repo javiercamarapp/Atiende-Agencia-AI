@@ -646,3 +646,6 @@ export * from "./cron-sat/index.ts";
 
 // D-13: carga masiva de CFDI (contrato del resultado por archivo, totales, enrutado por tipo de comprobante).
 export * from "./cfdi/lote.ts";
+
+export { correoSolicitudDocumentos, correoRecordatorioDocumentos, correoEntregaReportes, nombrePeriodo } from "./emails/piloto-templates.ts";
+export type { SolicitudDocumentosCorreo, RecordatorioDocumentosCorreo, EntregaReportesCorreo } from "./emails/piloto-templates.ts";

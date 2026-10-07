@@ -46,7 +46,7 @@ import type {
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import type { AvisosSistemaRepository, DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, PostAdjudicacionRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
-import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, ConsultaCfdiSatPort, CronSatRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
+import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, ConsultaCfdiSatPort, CronSatRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PilotoRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type { Efos69bSource } from "@atiende/worker";
 import type {
   BreakGlassAuditRepository,
@@ -388,6 +388,8 @@ export interface AppDeps {
   readonly consultaCfdiSat?: ConsultaCfdiSatPort;
   /** D-26/D-27/D-28 -- repositorio de SOLO SISTEMA de los crons de despachos (migracion 022). OPCIONAL a proposito: los crons caen a `PostgresCronSatRepository` sobre la sesion de sistema y los tests inyectan el doble en memoria. */
   readonly cronSatRepo?: (db: TenantDbSession) => CronSatRepository;
+  /** paridad3 D-31/D-P3-15/D-P3-21 -- piloto automatico de cierre y entrega al cliente (migracion 027: solicitudes de documentos, estado de modulos, cierre forzado, entrega, portal). OPCIONAL a proposito: las rutas y el cron caen a `PostgresPilotoRepository` sobre la sesion del request/de sistema y los tests inyectan el doble en memoria. */
+  readonly pilotoRepo?: (db: TenantDbSession) => PilotoRepository;
   /** D-28 -- fuente de la lista 69-B del SAT para el cron mensual. OPCIONAL a proposito: sin ella el cron usa `HttpEfos69bSource` (URL de `EFOS_69B_URL`); los tests inyectan una fuente fija. */
   readonly efos69bSource?: Efos69bSource;
   /** D-11 -- cola de cobranza (migracion 017: gestiones, consentimiento de WhatsApp y outbox). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresColaCobranzaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */

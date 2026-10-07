@@ -265,10 +265,11 @@ export class InMemoryPilotoRepository implements PilotoRepository {
   async estadoModulosCierre(propertyId: string, anio: number, mes: number): Promise<PilotoDisponible<EstadoModulosCierre>> {
     if (!this.disponible) return { disponible: false };
     if (this.propiedadesAjenas.has(propertyId)) throw new PilotoSinAccesoError();
+    // Sin siembra: un periodo «sano» (nada pendiente, papel de pagos provisionales generado) para que las pruebas que no son del cierre sigan cerrando.
     const e = this.estadosModulos.get(`${propertyId}:${anio}-${mes}`);
     return {
       disponible: true,
-      valor: e ?? { debeCentavos: 0, haberCentavos: 0, polizas: 0, polizasDescuadradas: 0, cfdiTotal: 0, cfdiSinPoliza: 0, cfdiInvalidos: 0, conciliacionSesiones: 0, conciliacionAbiertas: 0, movimientos: 0, movimientosConciliados: 0, pagosProvisionales: 0, solicitudEstado: null, solicitudPendientes: 0, periodicidad: "mensual" },
+      valor: e ?? { debeCentavos: 0, haberCentavos: 0, polizas: 0, polizasDescuadradas: 0, cfdiTotal: 0, cfdiSinPoliza: 0, cfdiInvalidos: 0, conciliacionSesiones: 0, conciliacionAbiertas: 0, movimientos: 0, movimientosConciliados: 0, pagosProvisionales: 1, solicitudEstado: null, solicitudPendientes: 0, periodicidad: "mensual" },
     };
   }
   async forzarCierre(propertyId: string, periodoId: string, motivo: string, validaciones: readonly string[]): Promise<boolean> {

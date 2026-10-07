@@ -561,14 +561,26 @@ reset role;
 select count(*) as enlace_admin_deberia_ser_1 from despachos.portal_cliente_enlace where token_hash = repeat('1', 64) and creado_por = '00000000-0000-0000-0000-00000000fb01';
 rollback;
 
-\echo '57. enlace del aviso: uno nuevo con la misma etiqueta revoca el anterior'
+\echo '57. enlace del aviso: el correo anterior sigue vivo (dos enlaces de la misma etiqueta conviven hasta su vencimiento)'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
 select * from despachos.system_portal_enlace_crear('00000000-0000-0000-0000-00000000fa01', repeat('1', 64), 'Solicitud 2026-06', 35);
 select * from despachos.system_portal_enlace_crear('00000000-0000-0000-0000-00000000fa01', repeat('2', 64), 'Solicitud 2026-06', 35);
 reset role;
-select count(*) as vigentes_deberia_ser_1 from despachos.portal_cliente_enlace where property_id = '00000000-0000-0000-0000-00000000fa01' and revocado_en is null;
+select count(*) as vigentes_deberia_ser_2 from despachos.portal_cliente_enlace where property_id = '00000000-0000-0000-0000-00000000fa01' and revocado_en is null;
+rollback;
+
+\echo '57b. enlace del aviso: con 20 vigentes se retiran los automaticos mas viejos, nunca los creados a mano por el staff'
+begin;
+insert into despachos.portal_cliente_enlace (organization_id, property_id, token_hash, etiqueta, creado_por, expira_en)
+  select '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000fa01', md5(g::text) || md5(g::text), case when g = 1 then 'Enlace manual' else 'Solicitud 2026-05' end, '00000000-0000-0000-0000-00000000fb01', now() + interval '10 days'
+  from generate_series(1, 20) g;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select * from despachos.system_portal_enlace_crear('00000000-0000-0000-0000-00000000fa01', repeat('3', 64), 'Solicitud 2026-06', 35);
+reset role;
+select count(*) as manual_sigue_vivo_deberia_ser_1 from despachos.portal_cliente_enlace where etiqueta = 'Enlace manual' and revocado_en is null;
 rollback;
 
 \echo '58. enlace del aviso: etiqueta fuera del patron -> error'
@@ -1058,4 +1070,33 @@ insert into despachos.cierre_artefacto (organization_id, property_id, periodo_ci
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb02', true);
 select count(*) as artefactos_ajenos_deberia_ser_0 from (select id from despachos.cierre_artefacto) x;
+rollback;
+
+\echo '112. sistema: lee las tareas de un periodo abierto (3) para el auto-check; staff NO'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as tareas_deberia_ser_3 from despachos.system_cierre_tareas('00000000-0000-0000-0000-00000000f601');
+rollback;
+
+\echo '113. staff NO puede leer las tareas por la via de sistema'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb01', true);
+select * from despachos.system_cierre_tareas('00000000-0000-0000-0000-00000000f601') as should_fail;
+rollback;
+
+\echo '114. sistema: un periodo cerrado ya no devuelve tareas'
+begin;
+update despachos.periodo_cierre set status = 'closed', closed_at = now() where id = '00000000-0000-0000-0000-00000000f601';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as tareas_cerrado_deberia_ser_0 from despachos.system_cierre_tareas('00000000-0000-0000-0000-00000000f601');
+rollback;
+
+\echo '115. sistema: system_solicitud_crear devuelve las etiquetas de los renglones (para el correo)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select cardinality(out_etiquetas) as etiquetas_deberia_ser_3 from despachos.system_solicitud_crear('00000000-0000-0000-0000-00000000fa01', 2026, 6);
 rollback;
