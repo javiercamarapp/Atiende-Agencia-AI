@@ -379,6 +379,22 @@ export { PostgresRentasAccesoRepository } from "./acceso/postgres-repository.ts"
 export { accesoAad, createAccesoCipher, parseAccesoKey, resolverCipherAcceso } from "./acceso/cipher.ts";
 export type { AccesoCipher, CampoAcceso } from "./acceso/cipher.ts";
 export { AccesoDescifradoError, AccesoNoDisponibleError } from "./acceso/errores.ts";
+// Rn-P3-09 -- mensaje manual para la OTA y lista de accesos pendientes de entregar.
+export { mensajeAccesoParaOta } from "./acceso/mensaje-ota.ts";
+export type { PendienteEntregaOta, ReservaParaMensajeOta, ResultadoEntregaManual } from "./acceso/tipos.ts";
+// Rn-P3-08 -- pre-check-in publico por reserva (codigo de confirmacion + ultimos 4 digitos del telefono).
+export { AVISO_PRECHECKIN_VERSION, PRECHECKIN_BLOQUEO_MINUTOS, PRECHECKIN_MAX_FALLOS, PRECHECKIN_TOKEN_MINUTOS } from "./precheckin/tipos.ts";
+export type { ConfigPrecheckin, EntradaCapturaDb, InfoPrecheckin, ResultadoCapturaDb, ResultadoCapturar, ResultadoPrecheckin, ResultadoVerificar, VerificacionPrecheckinDb } from "./precheckin/tipos.ts";
+export { normalizarCodigo, normalizarWhatsapp, validarCaptura, validarReglamento, validarVerificacion } from "./precheckin/validacion.ts";
+export type { EntradaCaptura, EntradaVerificacion, Validacion } from "./precheckin/validacion.ts";
+export { claveIntento, generarToken, hashToken } from "./precheckin/claves.ts";
+export { avisoPrivacidadPrecheckin, textoSugeridoPrecheckin } from "./precheckin/textos.ts";
+export type { AvisoPrecheckin } from "./precheckin/textos.ts";
+export { capturarPrecheckin, verificarPrecheckin } from "./precheckin/servicio.ts";
+export type { RentasPrecheckinRepository } from "./precheckin/repository.ts";
+export { InMemoryRentasPrecheckinRepository } from "./precheckin/in-memory-repository.ts";
+export type { CapturaGuardada, ReservaPrecheckinSembrada } from "./precheckin/in-memory-repository.ts";
+export { PostgresRentasPrecheckinRepository } from "./precheckin/postgres-repository.ts";
 
 // ---- Rn-18 / Rn-19: reglas de comision de canal y catalogo (propiedades, unidades, propietarios) ----
 export { InMemoryRentasCatalogoRepository } from "./catalogo/in-memory-repository.ts";
