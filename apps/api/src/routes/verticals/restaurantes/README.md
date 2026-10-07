@@ -269,7 +269,7 @@ crea igual; un fallo real se registra y no tumba un pedido ya creado. SQL verifi
   guarda QUÉ campos cambiaron, nunca los valores; la corrección del propio repartidor solo se registra en el log de la API.
 - Aviso a la campana de owner/admin (sin PII, dedupe mensual por repartidor): `restaurantes.repartidor.licencia_por_vencer` / `licencia_vencida`, al guardar
   un perfil con licencia a menos de 30 días y en `GET|POST /internal/restaurantes/repartidor-licencias` (secreto interno o `Bearer <CRON_SECRET>`, una
-  transacción por repartidor). NO está en `vercel.json` (decisión de costo: sin crons nuevos): agendarlo es una decisión de despliegue.
+  transacción por repartidor). Agendado en `vercel.json` (diario, 13:35 UTC), con latido y kill switch; el de cierres corre a diario a las 08:20 UTC (02:20 en Mérida).
 - Base sin migrar: `disponible: false` en la lectura, 503 honesto en la escritura y `status: "not_available"` en el barrido (SAVEPOINT en el repositorio;
   `packages/domain-restaurantes/tests/repartidor-perfil.spec.ts`). SQL y permisos en `scripts/verify-restaurantes-repartidor-perfil/`. Pruebas HTTP:
   `apps/api/tests/restaurantes-repartidor-perfil.spec.ts`.

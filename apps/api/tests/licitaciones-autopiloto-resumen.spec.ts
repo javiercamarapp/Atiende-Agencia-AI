@@ -81,3 +81,48 @@ describe("resumen semanal (L-P3-11)", () => {
     consola.mockRestore();
   });
 });
+
+describe("respaldo diario del re-tamizado KYC dentro del barrido (L-P3-10)", () => {
+  const org = "00000000-0000-0000-0000-00000000aa01";
+  const armarKyc = async (resultados: { disponible: boolean; organizaciones: { organizationId: string; periodo: string; evaluadas: number; empeoradas: number; proveedoresEmpeorados: number }[] }[], alEmitir?: () => number) => {
+    const ctx = await buildLicitacionesTestContext(buildApp, { submissionDeadline: null });
+    let n = 0;
+    const { deps, emisiones } = conEmisiones({ ...ctx.deps, licitacionesAvisosRepo: () => ({ retamizarCarteraKyc: async () => resultados[Math.min(n++, resultados.length - 1)]!, contarDocumentosPorVencer: async () => 0 }) }, alEmitir ? { alEmitir } : {});
+    const app = buildApp(deps);
+    const correr = async () => {
+      const res = await app.request(RUTA, { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
+      return { res, body: (await res.json()) as Record<string, any> };
+    };
+    return { correr, emisiones, llamadas: () => n };
+  };
+
+  it("el barrido diario corre el re-tamizado y emite la alerta KYC una vez; al dia siguiente (misma edicion) no repite", async () => {
+    const t = await armarKyc([{ disponible: true, organizaciones: [{ organizationId: org, periodo: "2026-10", evaluadas: 3, empeoradas: 1, proveedoresEmpeorados: 1 }] }, { disponible: true, organizaciones: [] }]);
+    const primera = await t.correr();
+    expect(primera.res.status).toBe(200);
+    expect(primera.body.kyc_retamizado).toEqual({ disponible: true, organizaciones: 1, fichas_evaluadas: 3, alertas_emitidas: 1, error: null });
+    expect(t.emisiones.filter((e) => e.evento === "licitaciones.kyc.proveedor_empeoro")).toHaveLength(1);
+    const segunda = await t.correr();
+    expect(segunda.body.kyc_retamizado).toMatchObject({ organizaciones: 0, alertas_emitidas: 0, error: null });
+    expect(t.emisiones.filter((e) => e.evento === "licitaciones.kyc.proveedor_empeoro")).toHaveLength(1);
+  });
+
+  it("si el aviso KYC no se pudo emitir el barrido responde 200 (ok) con el error del respaldo y se reintenta en la siguiente corrida", async () => {
+    const consola = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const t = await armarKyc([{ disponible: true, organizaciones: [{ organizationId: org, periodo: "2026-10", evaluadas: 1, empeoradas: 1, proveedoresEmpeorados: 1 }] }], () => {
+      throw Object.assign(new Error("function core.emit_notification does not exist"), { code: "42883" });
+    });
+    const { res, body } = await t.correr();
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.kyc_retamizado.error).toMatch(/no se emitio/);
+    consola.mockRestore();
+  });
+
+  it("base sin la migracion 034: el respaldo declara disponible=false y el barrido sigue igual", async () => {
+    const t = await armarKyc([{ disponible: false, organizaciones: [] }]);
+    const { res, body } = await t.correr();
+    expect(res.status).toBe(200);
+    expect(body.kyc_retamizado).toMatchObject({ disponible: false, error: null });
+  });
+});

@@ -11,7 +11,6 @@ export const AGENTES_CRON: Readonly<Record<string, CronAgente>> = {
   "/internal/licitaciones/deadline-reminders": { vertical: "licitaciones", nombre: "Recordatorios de fecha límite" },
   "/internal/licitaciones/alert-notifications": { vertical: "licitaciones", nombre: "Avisos de licitaciones" },
   "/internal/licitaciones/email-dispatch": { vertical: "licitaciones", nombre: "Despacho de correo de licitaciones" },
-  "/internal/licitaciones/kyc-69b/retamizar": { vertical: "licitaciones", nombre: "Re-tamizado KYC de proveedores (69-B)" },
   "/internal/hoteles/identidad-purga": { vertical: "hoteles", nombre: "Purga de identidades de huéspedes" },
   "/internal/hoteles/night-audit": { vertical: "hoteles", nombre: "Auditoría nocturna de hoteles" },
   "/internal/hoteles/email-dispatch": { vertical: "hoteles", nombre: "Despacho de correo de hoteles" },
@@ -28,6 +27,8 @@ export const AGENTES_CRON: Readonly<Record<string, CronAgente>> = {
   "/internal/restaurantes/promover-programados": { vertical: "restaurantes", nombre: "Promoción de pedidos programados" },
   "/internal/restaurantes/softrestaurant-dispatch": { vertical: "restaurantes", nombre: "Envío a SoftRestaurant" },
   "/internal/restaurantes/voz-huerfanas": { vertical: "restaurantes", nombre: "Cierre de llamadas de voz sin cierre" },
+  "/internal/restaurantes/cierres-dia": { vertical: "restaurantes", nombre: "Cierre del día y resumen semanal" },
+  "/internal/restaurantes/repartidor-licencias": { vertical: "restaurantes", nombre: "Aviso de licencias de repartidor por vencer" },
   "/internal/restaurantes/privacidad-retencion": { vertical: "restaurantes", nombre: "Retención de privacidad de restaurantes" },
   "/internal/despachos/cobranza-reminders": { vertical: "despachos", nombre: "Recordatorios de cobranza" },
   "/internal/despachos/email-dispatch": { vertical: "despachos", nombre: "Despacho de correo de despachos" },
@@ -44,5 +45,6 @@ export const AGENTES_CRON: Readonly<Record<string, CronAgente>> = {
   "/internal/superadmin/resumen-diario": { vertical: "plataforma", nombre: "Parte diario" },
   "/internal/superadmin/mantenimiento": { vertical: "plataforma", nombre: "Mantenimiento de plataforma" },
   "/internal/superadmin/alertas-cfo": { vertical: "plataforma", nombre: "Alertas CFO" },
+  "/internal/plataforma/prueba-avisos": { vertical: "plataforma", nombre: "Avisos de fin de prueba" },
   "/internal/plataforma/privacidad-retencion": { vertical: "plataforma", nombre: "Retención de privacidad de la plataforma" },
 };
