@@ -159,8 +159,8 @@ describe("pagina /superadmin/copiloto", () => {
     expect(root.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("4");
   });
 
-  it("las categorias son CFO Y COBRANZA, VENTAS Y COSTOS DE IA y CLIENTES, AGENTES Y SALUD, con 4-5 preguntas, y las fases arrancan con 'Leyendo la plataforma…'", () => {
-    expect(COPILOTO_SUPERADMIN.categorias.map((c) => c.titulo)).toEqual(["CFO y cobranza", "Ventas y costos de IA", "Clientes, agentes y salud"]);
+  it("las categorias son CFO Y COBRANZA, VENTAS Y COSTOS DE IA y CLIENTES, AGENTES Y SALUD y VARIAS ORGANIZACIONES, con 4-5 preguntas, y las fases arrancan con 'Leyendo la plataforma…'", () => {
+    expect(COPILOTO_SUPERADMIN.categorias.map((c) => c.titulo)).toEqual(["CFO y cobranza", "Ventas y costos de IA", "Clientes, agentes y salud", "Varias organizaciones"]);
     for (const c of COPILOTO_SUPERADMIN.categorias) {
       expect(c.preguntas.length).toBeGreaterThanOrEqual(4);
       expect(c.preguntas.length).toBeLessThanOrEqual(5);

@@ -27,6 +27,7 @@ const P14 = "¿Qué contratos vencen en los próximos 60 días?";
 const P15 = "¿Cómo están las colas de mensajes?";
 const P16 = "¿Qué organizaciones gastan más en IA este mes?";
 const P17 = "¿Qué hoteles tengo y en qué estado están?";
+const P19 = "¿Qué restaurantes tengo activos?";
 const P18 = "Compara restaurantes y hoteles este mes";
 
 const FASES: ReadonlyArray<readonly [number, string]> = [
@@ -56,6 +57,7 @@ export const DIRECTAS_COPILOTO_SUPERADMIN: Readonly<Record<string, Directa>> = {
   [P15]: { tool: "salud_colas" },
   [P16]: { tool: "ranking_organizaciones", args: { periodo: "este_mes", ordenar_por: "costo_ia" } },
   [P17]: { tool: "buscar_organizacion", args: { vertical: "hoteles" } },
+  [P19]: { tool: "buscar_organizacion", args: { vertical: "restaurantes", estado: "active" } },
   [P18]: { tool: "uso_por_vertical", args: { periodo: "este_mes" } },
 };
 
@@ -74,7 +76,7 @@ export const DATOS_COPILOTO_SUPERADMIN = {
     { titulo: "CFO y cobranza", preguntas: [P10, P11, P12, P13, P14] },
     { titulo: "Ventas y costos de IA", preguntas: [P2, P3, P5, P4] },
     { titulo: "Clientes, agentes y salud", preguntas: [P1, P8, P6, P7, P15] },
-    { titulo: "Varias organizaciones", preguntas: [P16, P17, P18] },
+    { titulo: "Varias organizaciones", preguntas: [P16, P17, P19, P18] },
   ],
   directas: DIRECTAS_COPILOTO_SUPERADMIN,
   etiquetasHerramienta: {
