@@ -159,6 +159,7 @@ export function VerticalNoEncontrado({ volverA, volverEtiqueta = "Volver al pane
     <EstadoVacio
       icon={Compass}
       titulo="Página no encontrada"
+      tituloH1
       mensaje="La dirección que abriste no existe en este panel o cambió de lugar."
       accion={
         <Button asChild variant="outline" size="sm">
