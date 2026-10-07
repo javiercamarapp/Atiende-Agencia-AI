@@ -6,13 +6,17 @@
 // Compatibilidad con la base sin migrar: las lecturas devuelven los valores por omision con `configurado: false` (o una lista vacia);
 // las escrituras responden 503 "migracion pendiente", nunca un 500 (ver `HotelConfigUnavailableError`).
 //
-// Autopilot: una tarifa editada a mano queda marcada (`manualPriceAt`) y el motor de revenue no la sobreescribe ese dia
-// (`hoteles.system_apply_rate_recommendation` rechaza con `tarifa_manual_vigente`; el cron cuenta y avisa ese rechazo).
+// Autopilot: una tarifa editada a mano con PUT .../tarifas/:id queda marcada (`manualPriceAt`) y la aplicacion AUTOMATICA del motor de
+// revenue no la sobreescribe (`hoteles.system_apply_rate_recommendation` rechaza con `tarifa_manual_vigente` una recomendacion
+// 'pendiente'; el cron cuenta y avisa ese rechazo). El alta de rango (POST .../tarifas) no marca, y una recomendacion 'aprobada' por una
+// persona se aplica y limpia la marca. PUT .../tarifas/:id es idempotente de forma natural (un precio absoluto; repetir el mismo valor
+// no reescribe la fila ni duplica la bitacora): por decision, sin cabecera Idempotency-Key.
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { emitirNotificacion } from "@atiende/db";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { ADMIN_ROLES, HotelConfigUnavailableError, type HotelRole } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -99,7 +103,8 @@ export function hotelesConfiguracionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
   const base = "/hoteles/:propertyId/configuracion";
   const paths = [`${base}/impuestos`, `${base}/politica-cancelacion`, `${base}/sobreventa`, `${base}/sobreventa/:roomTypeId`, `${base}/bitacora`, "/hoteles/:propertyId/tarifas/:rateId"];
   for (const p of paths) app.use(p, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
-  // `/hoteles/:propertyId/tarifas` ya tiene sus middlewares en admin-catalogo.ts (POST); el GET de esta lista los reutiliza.
+  // `/hoteles/:propertyId/tarifas` ya tiene sus middlewares en admin-catalogo.ts (POST); el GET de esta lista los reutiliza. No se
+  // registran de nuevo aqui (anidaria una segunda transaccion por request): el GET falla cerrado si la sesion no esta montada.
   const tarifasPath = "/hoteles/:propertyId/tarifas";
 
   // ---- Impuestos ----
@@ -217,8 +222,9 @@ export function hotelesConfiguracionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
 
   // ---- Tarifas por noche: listar y editar ----
   app.get(tarifasPath, async (c) => {
+    if (!c.get("db") || !c.get("userId")) throw Errors.unauthorized();
     assertVerticalRole(c, CONFIG_READ_ROLES);
-    const desde = c.req.query("desde") ?? new Date().toISOString().slice(0, 10);
+    const desde = c.req.query("desde") ?? hoyFechaNegocio(resolverZonaHorariaNegocio(await deps.hotelesRepo(c.get("db")).findPropertyTimezone(c.req.param("propertyId"))));
     const hasta = c.req.query("hasta") ?? new Date(Date.parse(`${desde}T00:00:00Z`) + 29 * 86_400_000).toISOString().slice(0, 10);
     if (!isIsoDate(desde) || !isIsoDate(hasta)) throw Errors.validation("desde y hasta deben tener formato YYYY-MM-DD.");
     if (hasta < desde) throw Errors.validation("hasta debe ser igual o posterior a desde.");
