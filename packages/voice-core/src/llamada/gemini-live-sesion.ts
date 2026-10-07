@@ -54,8 +54,9 @@ export function mensajeSetup(model: string, apertura: AperturaLlamada) {
       model: `models/${model}`,
       generationConfig: {
         responseModalities: ["AUDIO"],
-        // temperatura 0 (VOZ_PLATAFORMA): el agente vivo de PM corre determinista; `languageCode` solo si la plataforma lo fija.
-        temperature: VOZ_PLATAFORMA.gemini.temperatura,
+        // Temperatura de la organizacion (ajustes del agente); sin ajuste, 0 (VOZ_PLATAFORMA): el agente vivo de PM corre determinista.
+        // `languageCode` solo si la plataforma lo fija.
+        temperature: typeof apertura.temperatura === "number" ? apertura.temperatura : VOZ_PLATAFORMA.gemini.temperatura,
         speechConfig: {
           ...(VOZ_PLATAFORMA.gemini.idioma ? { languageCode: VOZ_PLATAFORMA.gemini.idioma } : {}),
           voiceConfig: { prebuiltVoiceConfig: { voiceName: apertura.voiceId } },

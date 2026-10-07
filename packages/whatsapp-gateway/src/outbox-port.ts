@@ -16,6 +16,8 @@
 // parte por property), así que el punto de unificación real es este puerto TS,
 // no una tabla compartida entre schemas de Postgres (eso violaría el aislamiento
 // por vertical que el resto del monorepo ya establece).
+import type { EnviadoComo } from "./types.ts";
+
 export interface MessagingOutboxItem {
   readonly id: string;
   /** Cuántas veces YA se intentó entregar este mensaje antes de este intento
@@ -28,6 +30,13 @@ export interface MessagingOutboxItem {
   /** Organizacion duena del mensaje, cuando la vertical la conoce (PL-16: medidor mensual de mensajes por plan). Sin ella el
    *  dispatcher envia sin medir, igual que antes. */
   readonly organizationId?: string;
+}
+
+/** Lo que Graph API devolvio al aceptar el envio. Un puerto que no guarda el wamid (citas, hoteles, licitaciones hoy) lo ignora. */
+export interface MensajeEnviadoDetalle {
+  /** wamid (`messages[0].id`): llave de los `statuses` del webhook. */
+  readonly providerMessageId: string;
+  readonly enviadoComo?: EnviadoComo;
 }
 
 export interface MessagingOutboxPort {
@@ -48,7 +57,7 @@ export interface MessagingOutboxPort {
   /** Envío confirmado — `status = 'sent'`. Un mensaje en este estado nunca vuelve a
    *  ser elegible para `claimBatch`, sea cual sea el número de corridas futuras del
    *  job (la garantía de idempotencia central de este paquete). */
-  markSent(id: string): Promise<void>;
+  markSent(id: string, detalle?: MensajeEnviadoDetalle): Promise<void>;
 
   /** Falla reintentable, todavía dentro del tope de intentos — vuelve a
    *  `status = 'pending'` con `attempts = attempts` (el valor YA incrementado por

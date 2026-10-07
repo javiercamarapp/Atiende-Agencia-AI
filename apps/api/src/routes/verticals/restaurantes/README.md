@@ -30,7 +30,7 @@ KPIs — ver `restaurantes-admin-kpis.spec.ts`).
 
 Fase 5 agrega el back-office CORE (CRUD real, con `authMiddleware` +
 `requirePropertyMembership` + `assertVerticalRole(MANAGER_ROLES)`, mismo patrón que
-`admin-kpis.ts`):
+`admin-kpis.ts`; desde PL-23 `admin-catalog.ts`, `admin-promotions.ts` y `admin-branches.ts` piden una **acción** de la matriz de abajo con `assertAccion`):
 
 - `admin-catalog.ts` — categorías (`GET/POST .../admin/categories`,
   `PATCH .../admin/categories/:categoryId`) y productos (`GET/POST
@@ -48,8 +48,11 @@ Fase 5 agrega el back-office CORE (CRUD real, con `authMiddleware` +
   por cursor) y cambio de estado real (`PATCH
   .../admin/orders/:orderId/status`, validado por la máquina de estados de
   `@atiende/domain-restaurantes::order-lifecycle.ts`).
-- `admin-customers.ts` — listado/búsqueda (`GET .../admin/customers`) y ficha
-  (`GET .../admin/customers/:customerId`, mismo shape que `lookupCustomer`).
+- `admin-customers.ts` — listado/búsqueda (`GET .../admin/customers`, con `nivel`, `frecuencia`, `inactivoDias` y `branchId` resueltos en el
+  servidor por la migración 054), KPIs de cartera (`GET .../admin/customers/kpis`, teléfono del cliente más frecuente enmascarado), importación de
+  cartera (`POST .../admin/customers/import/preview` no escribe; `POST .../admin/customers/import`: tope de 5,000 renglones, idempotente por la huella
+  SHA-256 del archivo, bitácora, 503 honesto sin la migración 054) y ficha (`GET .../admin/customers/:customerId`, mismo shape que `lookupCustomer`
+  más la nota interna).
 
 Cuentas/accesos de staff, notificaciones, promociones/marketing, panel de
 superadmin, "pregunta a tus datos" y configuración del agente de voz/WhatsApp
@@ -242,6 +245,18 @@ crea igual; un fallo real se registra y no tumba un pedido ya creado. SQL verifi
   repositorio; `packages/domain-restaurantes/tests/cierres-savepoint.spec.ts`). SQL y permisos verificados contra Postgres real en
   `scripts/verify-restaurantes-cierre-dia/`. Pruebas HTTP: `apps/api/tests/restaurantes-cierres.spec.ts`.
 
+## Cliente 360 (migración 049)
+
+- Panel (`admin-customers.ts`, MANAGER_ROLES salvo lo marcado; todas las escrituras dejan huella en la bitácora sin PII):
+  `GET .../admin/customers/:id/ficha`, `PATCH .../admin/customers/:id` (nombre, notas, cumpleaños día+mes),
+  `POST|PATCH|DELETE .../admin/customers/:id/addresses[/:addressId]`, `POST .../admin/customers/:id/preferences` (`accion`: agregar, descartar,
+  reactivar, eliminar), `POST .../admin/customers/:id/orders/:orderId/falso`, `GET .../admin/customers/policy` y `PUT` (solo owner/admin),
+  `GET .../admin/customers/:id/arco-export` y `POST .../borrar-memoria` (solo owner/admin). Cada función SQL vuelve a validar rol y organización;
+  un id de otra organización responde 404. Base sin migrar: 503 "no disponible aún".
+- Voz (`voice-tools.ts`, exigen token de llamada: el teléfono sale del token): `POST /v1/restaurantes/:orgSlug/customers/orders`
+  (`historial_pedidos`) y `POST .../orders/repeat` (`repetir_pedido`).
+- Pruebas: `apps/api/tests/restaurantes-admin-ficha-cliente.spec.ts`.
+
 ## Perfil operativo del repartidor (R-15, migración 044)
 
 - Propio (`repartidor-perfil.ts`, solo rol `repartidor`): `GET|PUT /v1/restaurantes/:propertyId/repartidor/perfil` lee y corrige SU perfil
@@ -274,3 +289,25 @@ crea igual; un fallo real se registra y no tumba un pedido ya creado. SQL verifi
 - Bitácora (tipo `exportacion`, migración 044 amplía el CHECK de `audit_log.entity_type`): `historial.exportado` / `clientes.exportado` con formato y número de filas,
   nunca nombres, teléfonos ni el texto de búsqueda. Contra una base sin la 044 la fila de bitácora se omite (con aviso en el log) y la exportación funciona igual.
 - PII: teléfonos completos solo para owner/admin; el staff de piso y el repartidor reciben 403.
+- Autopiloto (`autopiloto.ts`, migración 050; staff con alcance a la sucursal): `GET .../admin/autopiloto/solicitudes?estado=pendiente|resuelta` (aprobaciones «Por aprobar»),
+  `POST .../admin/autopiloto/solicitudes/:id/resolver` `{ decision, motivo?, valor?, indices? }` (aprobar/rechazar/cancelar/mantener/compensar con un clic; idempotente; 400 motivo fuera de la lista
+  cerrada; 403 sin alcance; 503 base sin migrar), `GET|PUT .../admin/autopiloto/config` (PUT solo owner/admin), `POST .../admin/autopiloto/agotado` (agotado hasta mañana),
+  `GET .../admin/autopiloto/tiempo?canal=` (tiempo prometido hoy) y `GET .../admin/autopiloto/pedidos/:orderId/historial`. `PATCH .../admin/orders/:id/status` exige `motivo` (lista cerrada) al cancelar
+  y rechaza mover un pedido `por_aprobar` (409). El tick `autopiloto-tick.ts` corre dentro de `/internal/restaurantes/promover-programados`.
+
+## Permisos por acción (PL-23)
+
+Fuente única: `ACCIONES_RESTAURANTES` en `packages/domain-restaurantes/src/roles.ts`; las rutas la aplican con `assertAccion` (`permisos-accion.ts`).
+Una acción fuera de la matriz se niega a todos y `restaurantes-permisos-accion-guard.spec.ts` impide listas sueltas de roles en estas rutas.
+
+| Acción | Ruta | owner | admin | staff | repartidor |
+|---|---|---|---|---|---|
+| `catalogo.ver` | `GET .../admin/categories`, `GET .../admin/products` | sí | sí | sí | no |
+| `catalogo.disponibilidad` | `PATCH .../admin/products/:id/branch-availability` con solo `isAvailable` (fila ya dada de alta) | sí | sí | sí | no |
+| `catalogo.precio` | `POST/PATCH .../admin/categories`, `POST/PATCH .../admin/products`, `branch-availability` con `price` o para dar de alta | sí | sí | no | no |
+| `promociones.ver` / `promociones.editar` | `GET/POST/PATCH .../admin/promotions` | sí | sí | no | no |
+| `sucursal.ver` | `GET .../admin/sucursales[/:id]` | sí | sí | sí | no |
+| `sucursal.editar` | `PATCH .../admin/sucursales/:id` | sí | sí | no | no |
+| `pedidos.gestionar` | sin cambio (`MANAGER_ROLES` en `admin-orders.ts`) | sí | sí | sí | no |
+
+Defensa en profundidad en la base: migración `065_permisos_por_accion_escritura.sql` (verify: `scripts/verify-restaurantes-permisos-accion`).

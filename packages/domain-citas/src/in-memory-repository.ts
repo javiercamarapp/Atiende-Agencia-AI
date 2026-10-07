@@ -90,6 +90,7 @@ import type {
   TenantConfigPatch,
   TenantConfigRecord,
   WaitlistCandidateRow,
+  UpsertCustomerOptions,
 } from "./repository.ts";
 
 // FASE 3 (producto) -- mismos límites que el CHECK de `citas.audit_log` (ver
@@ -598,7 +599,7 @@ export class InMemoryCitasRepository implements CitasRepository {
     return busy;
   }
 
-  async upsertCustomer(organizationId: string, phone: string, name: string, email?: string | null): Promise<CustomerRecord> {
+  async upsertCustomer(organizationId: string, phone: string, name: string, email?: string | null, options: UpsertCustomerOptions = {}): Promise<CustomerRecord> {
     // Serializado por (organizationId, phone) — equivalente en memoria del UNIQUE
     // real + recuperación de 23505 del origen.
     return this.customerLock.run(`${organizationId}:${phone}`, async () => {
@@ -606,7 +607,8 @@ export class InMemoryCitasRepository implements CitasRepository {
       const existingId = this.customerIdByOrgPhone.get(key);
       if (existingId) {
         const existing = this.customers.get(existingId)!;
-        const updated: CustomerRecord = { ...existing, email: email ?? existing.email };
+        // Misma regla que el coalesce de Postgres: un correo ya guardado nunca se pisa (antes el doble en memoria lo sobrescribia siempre).
+        const updated: CustomerRecord = { ...existing, email: options.emailOnlyIfNew ? existing.email : (existing.email ?? email ?? null) };
         this.customers.set(existingId, updated);
         return updated;
       }

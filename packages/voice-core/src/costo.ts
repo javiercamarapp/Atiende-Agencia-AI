@@ -2,6 +2,10 @@
 // Capa pura: arma los argumentos de `core.record_usage_cost_event` (funcion de solo sistema, `auth.uid() is null`); quien escribe en la base es el
 // repositorio de cada vertical. Un evento por escalon que atendio la llamada, asi el desglose por proveedor queda en la tabla
 // (`proveedor` = 'gemini-3.8-live' | 'cascada-openrouter'). `ref_id` = `<llamada>:<escalon>` hace idempotente el reintento (unique ref_tipo+ref_id).
+// SUPUESTO DOCUMENTADO: esa unicidad es GLOBAL (sin organizacion), asi que `llamadaId` debe ser unico entre llamadas y organizaciones. El worker usa
+// el nombre de sala de LiveKit; con la regla de despacho 'individual' (apps/voice-worker/README.md) LiveKit le anade un sufijo aleatorio por llamada. Si
+// una instalacion REUTILIZARA nombres de sala, el costo de la segunda llamada se contaria como 'repetido' y no se registraria. Quien llame a este
+// contrato debe garantizar un `llamadaId` irrepetible.
 import { costoEstimadoMicroUsd } from "./config-plataforma.ts";
 import type { ConfigPlataformaVoz, EscalonVoz } from "./config-plataforma.ts";
 

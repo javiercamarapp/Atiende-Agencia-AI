@@ -138,6 +138,14 @@ export const LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES: readonly RentasVerticalRole[] = [
 // comparten alcance por ahora.
 export const LIMPIEZA_CREACION_MANUAL_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"];
 
+// Asignar una tarea a OTRA persona y ver el tablero de turnos de TODO el equipo (paridad3): reparto del trabajo, decision de gestion
+// (mismos 3 roles que crear una tarea a mano). El rol `limpieza` solo puede asignarse a si mismo y solo ve lo suyo y la cola sin asignar.
+export const LIMPIEZA_ASIGNAR_A_OTROS_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"];
+
+// Fijar el responsable de limpieza por omision de una unidad (paridad3, migracion 033): espejo de
+// rentas.fijar_responsable_limpieza_unidad, que es la autoridad real (admin_gestora u operador:acceso_total).
+export const LIMPIEZA_RESPONSABLE_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total"];
+
 // Acceso al huésped (Rn-04): las instrucciones de acceso (código de cerradura, dirección
 // exacta) son el secreto físico de la propiedad. Solo admin_gestora y operador:acceso_total
 // las configuran/leen y confirman el pago que habilita su liberación -- espejo de

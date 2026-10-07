@@ -19,8 +19,13 @@ export type {
   CreateOrderItemInput,
   Customer,
   CustomerAddress,
+  CarteraKpis,
+  CustomerFrecuencia,
   CustomerListFilter,
+  CustomerListItem,
   CustomerListPage,
+  FilaImportacionCliente,
+  ResultadoImportacionClientes,
   CustomerLookupResult,
   CustomerTier,
   DefaultComplement,
@@ -63,7 +68,7 @@ export type {
   WhatsappBranchChannel,
   WhatsappChannelConfig,
 } from "./types.ts";
-export { EMPTY_BRANCH_POLICY } from "./types.ts";
+export { EMPTY_BRANCH_POLICY, CUSTOMER_FRECUENCIAS, CUSTOMER_TIERS } from "./types.ts";
 
 export { OrderConflictError, OrderValidationError, PromotionError, WhatsappNumberInUseError } from "./errors.ts";
 
@@ -85,10 +90,12 @@ export type { ReglasSucursalArgs, ReglasSucursalResultado } from "./reglas-pedid
 
 export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, applyPromotionToOrder, computeBogoDiscount, computeCortesiaDiscount, selectAutomaticPromotion, PROMOTION_CODE_PATTERN } from "./promotions.ts";
 
-export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient } from "./phone.ts";
+export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient, maskPhone } from "./phone.ts";
+export { prepararImportacionClientes, IMPORTACION_MAX_FILAS } from "./clientes-importacion.ts";
+export type { ErrorRenglonImportacion, PreparacionImportacion } from "./clientes-importacion.ts";
 
-export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole } from "./roles.ts";
-export type { RestaurantesRole } from "./roles.ts";
+export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole, ACCIONES_RESTAURANTES, ACCIONES_RESTAURANTES_LISTA, rolesParaAccion, puedeEjecutar, permisosEfectivos } from "./roles.ts";
+export type { RestaurantesRole, AccionRestaurantes } from "./roles.ts";
 
 export { tokenizeForProductSearch, matchesProductSearch, sinAcentos, requiresTortillaChoice, extraerPackSize, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, UUID_PATTERN } from "./product-search.ts";
 
@@ -208,6 +215,9 @@ export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEsp
 export type { RecepcionConEspera } from "./whatsapp/inbound.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
 export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
+export { UMBRAL_AVISOS_AGRUPADOS, procesarEstadosEntrega } from "./whatsapp/estados-entrega.ts";
+export type { EmisionEntregaFallida, EventoEntregaFallida, ProcesarEstadosEntregaOptions, ResumenEstadosEntrega } from "./whatsapp/estados-entrega.ts";
+export type { EstadoEntregaEntrante, MotivoFalloEntregaGuardado, RegistroEstadoEntrega } from "./repository.ts";
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 
@@ -235,6 +245,7 @@ export type { OpcionesTramos, StatsPeriod, TrendBucket, ComparisonPeriods, Sales
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";
+export * from "./autopiloto/index.ts";
 export * from "./repartidor-perfil/index.ts";
 export * from "./exportar/index.ts";
 export { PM_COPY, buildPmSystemPrompt, pmCustomerContextBlock, saludoPorHora } from "./whatsapp/perfil-pm.ts";
@@ -249,7 +260,33 @@ export type {
   WhatsAppAgentConfigInput,
   WhatsAppAgentConfigRow,
 } from "./types.ts";
-export { WhatsAppAgentConfigConflictError } from "./errors.ts";
+export { WhatsAppAgentConfigConflictError, ClienteMemoriaNoDisponibleError } from "./errors.ts";
+
+// Cliente 360 (migracion 049): memoria del cliente, gustos, repetir pedido y ficha del staff.
+export { PREFERENCE_KINDS, isPreferenceKind, POLITICA_POR_OMISION } from "./cliente-360/types.ts";
+export type {
+  ClosureAddress,
+  ClosureObservation,
+  CustomerAddressChanges,
+  CustomerAddressDetail,
+  CustomerFicha,
+  CustomerMemory,
+  CustomerPolicy,
+  CustomerPreference,
+  CustomerProfilePatch,
+  CustomerReliability,
+  OrderClosureInput,
+  PastOrder,
+  PreferenceAction,
+  PreferenceKind,
+  TasteProposal,
+} from "./cliente-360/types.ts";
+export { extraerObservaciones, extraerDomicilio, proponerGustos, describirGusto, MIN_VECES_PARA_PROPONER } from "./cliente-360/gustos.ts";
+export { repetirPedido, elegirPedido } from "./cliente-360/repetir.ts";
+export type { CambioDeRepeticion, PedidoRepetido, RenglonRepetido } from "./cliente-360/repetir.ts";
+export { cargarMemoria, cerrarCicloDelCliente, evaluarReincidencia } from "./cliente-360/memoria.ts";
+export type { DecisionReincidencia } from "./cliente-360/memoria.ts";
+export type { PedidoAnteriorResumen } from "./types.ts";
 export {
   AGENTE_LIMITES,
   ESPERA_RAFAGAS_MAX_SEGUNDOS,
@@ -337,9 +374,14 @@ export {
 export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
 export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operativos.ts";
 export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
+<<<<<<< HEAD
 export * from "./encuesta-reglas.ts";
 export * from "./resenas-provider.ts";
 export * from "./mezcla-de-pago.ts";
 export * from "./sucursal-sugerida.ts";
+=======
+// Ajustes del agente por organizacion (modelo, temperatura, voz, fondo) y base de conocimiento automatica (equivalentes de lo que el original hacia con ElevenLabs).
+export * from "./ajustes-agente/index.ts";
+>>>>>>> origin/main
 
 export * from "./conocimiento/index.ts";
