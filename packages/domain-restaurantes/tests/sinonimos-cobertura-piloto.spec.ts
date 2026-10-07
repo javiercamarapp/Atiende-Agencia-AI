@@ -135,7 +135,7 @@ describe("casos que la ronda 2 (A10) mostro que el agente negaba", () => {
 
 describe("brechas conocidas del tokenizador (documentadas, no arregladas aqui: product-search.ts es codigo compartido)", () => {
   it("quedan listadas en sinonimos-y-faq-pendientes.json", () => {
-    expect(pendientes.brechas_conocidas_del_tokenizador.length).toBe(3);
+    expect(pendientes.brechas_conocidas_del_tokenizador.length).toBe(6);
   });
 
   // `it.fails` pasa mientras la brecha exista y FALLA cuando alguien la arregle: ese dia hay que convertirlo en `it` normal y quitarlo de los pendientes.
@@ -151,8 +151,21 @@ describe("brechas conocidas del tokenizador (documentadas, no arregladas aqui: p
     expect((await buscar("una cerveza")).length).toBeGreaterThan(0);
   });
 
-  it.fails("'cuarto kilo de bistec' (sin 'de') pide 250 g (hoy lo lee como 1 kg y suma 'cuarto')", async () => {
+  it.fails("'cuarto kilo de bistec' (sin 'de') pide 250 g (hoy lo lee como 1 kg y suma el token 'cuarto': devuelve 250 g y 750 g, no solo 250 g)", async () => {
     expect(await buscar("cuarto kilo de bistec")).toEqual(["Bistec de Res — 250 g", "Bistec de Res Encebollado — 250 g"]);
+  });
+
+  it.fails("'un cuarto kilo de bistec' pide 250 g (hoy mezcla peso:250 y peso:1000 y no devuelve bistec por peso, sino tacos y platillos de bistec)", async () => {
+    expect(await buscar("un cuarto kilo de bistec")).toEqual(["Bistec de Res — 250 g", "Bistec de Res Encebollado — 250 g"]);
+  });
+
+  it.fails("'media orden de bistec' no debe devolver un producto equivocado (hoy: Nachos de Bistec (1/2 orden)); el pendiente dice preguntar si es media orden o medio kilo", async () => {
+    expect((await buscar("media orden de bistec")).some((n) => /^Nachos/.test(n))).toBe(false);
+  });
+
+  it.fails("'cerveza sin alcohol' y 'heineken sin alcohol' encuentran la cerveza sin alcohol (hoy: solo coctel sin alcohol / vacio; el menu la escribe 'Heineken 0.0')", async () => {
+    expect(await buscar("cerveza sin alcohol")).toContain("Heineken 0.0");
+    expect(await buscar("heineken sin alcohol")).toContain("Heineken 0.0");
   });
 
   it("lo que SI cubre: plural con s final (tacos, flautas, chelas, papas, quesadillas) y 'frijoles' por alias", async () => {

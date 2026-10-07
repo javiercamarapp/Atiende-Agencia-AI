@@ -81,14 +81,11 @@ describe("agente de PM con las colonias cargadas (mundo en memoria del seed)", (
     vi.useRealTimers();
   });
 
-  it("de las 8 colonias que confirman los chats, 6 siguen en T7 (coinciden con la mas cercana) y 2 pasan a su sucursal mas cercana (decision de Javier); Los Pinos de T8; Mexico de T1", async () => {
+  it("las 8 colonias que confirman los chats son de T7 (incluidas Benito Juarez Norte y Real Montejo, que la regla de la mas cercana mandaria a T1 y T2: conflicto marcado para Javier); Los Pinos de T8; Mexico de T1", async () => {
     const world = await buildInMemoryPmWorld(plan);
-    for (const colonia of ["Temozón Norte", "Montebello", "Montes de Amé", "San Ramón Norte", "Sodzil Norte", "Cabo Norte"]) {
+    for (const colonia of ["Temozón Norte", "Montebello", "Benito Juárez Norte", "Montes de Amé", "San Ramón Norte", "Sodzil Norte", "Cabo Norte", "Real Montejo"]) {
       expect(await sucursalQueCubre(world, colonia), colonia).toBe("garcia-lavin");
     }
-    // Divergencias con los chats, documentadas en `advertencia` de los datos: la regla de la mas cercana manda.
-    expect(await sucursalQueCubre(world, "Benito Juárez Norte")).toBe("prol-montejo");
-    expect(await sucursalQueCubre(world, "Real Montejo")).toBe("fco-montejo");
     expect(await sucursalQueCubre(world, "Los Pinos")).toBe("altabrisa");
     expect(await sucursalQueCubre(world, "México")).toBe("prol-montejo");
   });
@@ -98,10 +95,11 @@ describe("agente de PM con las colonias cargadas (mundo en memoria del seed)", (
     for (const colonia of ["Alta Brisa", "Casa Altabrisa", "Plaza Alta Brisa", "Victory Altabrisa"]) expect(await sucursalQueCubre(world, colonia), colonia).toBe("altabrisa");
   });
 
-  it("'Centro' va a la sucursal de despacho mas cercana (T3 a 3.5 km; antes T1 por la zona del dueño: divergencia documentada) y gana el emparejamiento exacto sobre 'Centro Chichi Suarez' (T8)", async () => {
+  it("'Centro' es de T1 (zona centro y norte del dueño; la mas cercana seria T3: conflicto marcado) y gana el emparejamiento exacto sobre 'Centro Chichi Suarez' (T8)", async () => {
     const world = await buildInMemoryPmWorld(plan);
-    expect(await sucursalQueCubre(world, "Centro")).toBe("pensiones");
-    expect(await sucursalQueCubre(world, "centro")).toBe("pensiones");
+    expect(await sucursalQueCubre(world, "Centro")).toBe("prol-montejo");
+    expect(await sucursalQueCubre(world, "centro")).toBe("prol-montejo");
+    expect(await sucursalQueCubre(world, "Centro Histórico")).toBe("prol-montejo");
     expect(await sucursalQueCubre(world, "Centro Chichi Suarez")).toBe("altabrisa");
   });
 

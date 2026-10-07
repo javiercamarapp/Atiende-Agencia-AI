@@ -39,13 +39,28 @@
     },
     {
       "caso": "'cuarto kilo de bistec' (sin 'de' entre cuarto y kilo)",
-      "causa": "FRASES_DE_PESO solo reconoce 'cuarto de kilo' / 'un cuarto'; con 'cuarto kilo' el patron de 'kilo' gana: queda ['cuarto','peso:1000','bistec'] y devuelve 250 g y 750 g, no 1/4.",
+      "causa": "FRASES_DE_PESO solo reconoce 'cuarto de kilo' / 'un cuarto'; con 'cuarto kilo' el patron de 'kilo' gana: queda ['cuarto','peso:1000','bistec'] y devuelve 250 g y 750 g (no 1 kg), no solo 1/4.",
       "estado": "Documentado con it.fails en tests/sinonimos-cobertura-piloto.spec.ts; no se toca product-search.ts."
     },
     {
       "caso": "'una cerveza' / 'un coctel' (todas las palabras son stopwords de categoria)",
       "causa": "'cerveza' sola encuentra las cervezas (el respaldo busca la palabra contra la categoria), pero 'una cerveza' deja el respaldo con la frase entera y no coincide con nada.",
       "estado": "Documentado con it.fails en tests/sinonimos-cobertura-piloto.spec.ts; no se toca product-search.ts."
+    },
+    {
+      "caso": "'un cuarto kilo de bistec'",
+      "causa": "Se leen dos pesos a la vez ('un cuarto' = 250 y 'kilo' = 1000): ningun producto de bistec por peso cumple ambos y devuelve tacos y platillos de bistec.",
+      "estado": "it.fails en tests/sinonimos-cobertura-piloto.spec.ts; no se toca product-search.ts."
+    },
+    {
+      "caso": "'media orden de bistec'",
+      "causa": "Se normaliza a '1/2 bistec' y el unico producto que cumple es 'Nachos de Bistec (1/2 orden)': producto equivocado. El pendiente del piloto dice preguntar (media orden o medio kilo).",
+      "estado": "it.fails en tests/sinonimos-cobertura-piloto.spec.ts; el agente debe preguntar."
+    },
+    {
+      "caso": "'cerveza sin alcohol' / 'heineken sin alcohol'",
+      "causa": "'cerveza' es stopword y 'sin alcohol' encuentra los cocteles sin alcohol; 'heineken sin alcohol' no encuentra nada porque el menu la escribe 'Heineken 0.0' (sin alias).",
+      "estado": "it.fails en tests/sinonimos-cobertura-piloto.spec.ts; requeriria un alias nuevo del dueño o ajuste del tokenizador."
     }
   ],
   "decisiones_del_dueno_abiertas": [

@@ -177,7 +177,7 @@ describe("las cifras del guion salen del motor real sobre el catalogo de T7", ()
       const marcador = formatLocationMessage({ latitude: pin.lat, longitude: pin.lng });
       expect(parseSharedLocation(marcador)).toEqual({ lat: pin.lat, lng: pin.lng });
       expect(seccion(pin.escenario), `escenario ${pin.escenario} escribe el marcador exacto`).toContain(marcador);
-      const r = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", { colonia: "Vergel", lat: pin.lat, lng: pin.lng }));
+      const r = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", { colonia: "Cumbres de Montejo", lat: pin.lat, lng: pin.lng }));
       expect((r as { result: unknown }).result).toMatchObject({ encontrada: true, branch_slug: pin.sucursal, via: "coordenadas" });
       if (pin.telefono) {
         expect(seccion(pin.escenario)).toContain(pin.telefono);
@@ -187,14 +187,14 @@ describe("las cifras del guion salen del motor real sobre el catalogo de T7", ()
   });
 
   it("sin pin, una colonia que el negocio aun no cargo NO se reconoce (por eso el agente pide el pin): la nota honesta del guion es cierta", async () => {
-    const r = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", { colonia: "Vergel" }));
+    const r = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", { colonia: "Cumbres de Montejo" }));
     expect((r as { result: unknown }).result).toMatchObject({ encontrada: false, estado: "no_reconocida" });
     expect(guion).toContain("mapa de colonias");
   });
 
   it("QA-PM-R2: el relleno del modelo (lat 0, lng 0, max_km 0) se ignora: ni cae a 9,967 km (fuera de zona) ni rechaza el radio; manda la colonia", async () => {
-    const relleno = { colonia: "Vergel", lat: 0, lng: 0, max_km: 0 };
-    const sinRelleno = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", { colonia: "Vergel" }));
+    const relleno = { colonia: "Cumbres de Montejo", lat: 0, lng: 0, max_km: 0 };
+    const sinRelleno = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", { colonia: "Cumbres de Montejo" }));
     const conRelleno = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", relleno));
     expect((conRelleno as { result: unknown }).result).toEqual((sinRelleno as { result: unknown }).result);
   });

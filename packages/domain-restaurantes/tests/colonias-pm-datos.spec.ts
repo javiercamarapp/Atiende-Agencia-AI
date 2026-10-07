@@ -3,6 +3,7 @@
 // que ninguna coordenada se invento, que lo PENDIENTE del dueño no se asigna, la coherencia con la cobertura que ya existe en la base real (169 filas)
 // y la desviacion documentada de las coordenadas vigentes de las sucursales (que NO se cambian sin que el dueño confirme).
 import { describe, expect, it } from "vitest";
+import { assignBranch } from "../src/branch-assignment.ts";
 import { normalizeZoneText } from "../src/nearest-branch.ts";
 import { buildPmSeedPlan, renderPmSeedPlpgsql, type PmSeedColonia } from "../src/seed/pm-demo.ts";
 import { buildInMemoryPmWorld } from "../src/seed/pm-world.ts";
@@ -27,6 +28,13 @@ const masCercana = (p: { lat: number; lng: number }) => DESPACHO.map((id) => ({ 
 const HOMONIMOS_CONSERVADOS = ["Temozón Norte", "Vista Alegre"];
 /** Colonias que solo aparecen en los chats del dueño (sin fila en colonias-v3): sin coordenada, asignadas por esa evidencia. */
 const SOLO_CHATS = ["Cabo Norte", "Los Pinos"];
+/** Conflicto regla-vs-dueño: la evidencia directa del dueño/chats PREVALECE sobre la regla geometrica y decide Javier (nombre -> [sucursal del dueño, la mas cercana]). */
+const CONFLICTOS_CON_EL_DUENO: Readonly<Record<string, readonly [string, string]>> = {
+  Centro: ["T1", "T3"],
+  "Centro Histórico": ["T1", "T3"],
+  "Benito Juárez Norte": ["T7", "T1"],
+  "Real Montejo": ["T7", "T2"],
+};
 
 describe("lista unica de colonias (B02)", () => {
   it("186 colonias unicas: 184 de colonias-v3 + 2 de los chats; 185 entran a known_zone (Francisco de Montejo ES el punto de T2)", () => {
@@ -61,7 +69,7 @@ describe("lista unica de colonias (B02)", () => {
 
   it("cada colonia asignada va a su sucursal de despacho MAS CERCANA, a 8 km o menos (recalculado con Haversine desde los pines de Google)", () => {
     let comprobadas = 0;
-    for (const c of colonias.filter((x) => x.coordenada && (x.sucursales ?? []).length > 0)) {
+    for (const c of colonias.filter((x) => x.coordenada && (x.sucursales ?? []).length > 0 && !(x.nombre in CONFLICTOS_CON_EL_DUENO))) {
       const [primera] = masCercana(c.coordenada!);
       expect(c.sucursales, c.nombre).toEqual([primera!.id]);
       expect(primera!.km, c.nombre).toBeLessThanOrEqual(RADIO_KM);
@@ -70,7 +78,19 @@ describe("lista unica de colonias (B02)", () => {
       expect(c.sucursales!.every((id) => !["T4", "T5"].includes(id)), c.nombre).toBe(true);
       comprobadas++;
     }
-    expect(comprobadas).toBe(156);
+    expect(comprobadas).toBe(152);
+  });
+
+  it("la evidencia directa del dueño/chats PREVALECE sobre la regla: Centro, Centro Historico, Benito Juarez Norte y Real Montejo conservan su asignacion original y quedan marcadas para que decida Javier", () => {
+    for (const [nombre, [delDueno, masCercana]] of Object.entries(CONFLICTOS_CON_EL_DUENO)) {
+      const c = colonias.find((x) => x.nombre === nombre)!;
+      expect(c.sucursales, nombre).toEqual([delDueno]);
+      expect(c.asignacion, nombre).toBe(nombre.startsWith("Centro") ? "dueno_zona_centro" : "chats_t7");
+      expect(c.pendiente_dueno, nombre).toEqual(["conflicto_regla_vs_dueno"]);
+      expect(c.mas_cercana?.sucursal, nombre).toBe(masCercana);
+      expect(c.cobertura_base_real, nombre).toEqual([delDueno]);
+      expect(c.advertencia, nombre).toMatch(/CONFLICTO regla-vs-dueño, decide Javier/);
+    }
   });
 
   it("lo PENDIENTE del dueño NO se asigna: fuera de 8 km (13), homonimos con discrepancia mayor a 1 km (9 + Mulchechen) y sin coordenada (6)", () => {
@@ -105,7 +125,7 @@ describe("lista unica de colonias (B02)", () => {
     // 166 filas en esta lista + 3 puntos de sucursal (T1, T7, T8) = 169.
     expect(colonias.reduce((n, c) => n + (c.cobertura_base_real?.length ?? 0), 0) + 3).toBe(169);
     const divergentes = colonias.filter((c) => (c.sucursales ?? []).length > 0 && (c.cobertura_base_real ?? []).length > 0 && !c.sucursales!.every((id) => c.cobertura_base_real!.includes(id)));
-    expect(divergentes.map((c) => c.nombre).sort()).toEqual(["Andalucia", "Benito Juárez Norte", "Buenavista", "Caucel", "Centro", "Centro Histórico", "Guadalupe", "Mulsay", "Paraiso Santa Fe", "Real Montejo", "Revolucion"].sort());
+    expect(divergentes.map((c) => c.nombre).sort()).toEqual(["Andalucia", "Buenavista", "Caucel", "Guadalupe", "Paraiso Santa Fe", "Revolucion"].sort());
     for (const c of divergentes) expect(c.advertencia, c.nombre).toMatch(/Hoy la base real la cubre/);
     const pendientesYaCubiertas = colonias.filter((c) => (c.sucursales ?? []).length === 0 && (c.cobertura_base_real ?? []).length > 0);
     expect(pendientesYaCubiertas.map((c) => c.nombre).sort()).toEqual(["Arboledas", "Chuburná", "Los Reyes", "Mulchechen", "Revolución Cordemex", "Salvador Alvarado Sur", "San Angel", "San Luis", "Santa Maria Chi", "Vergel", "Yucalpeten", "Yucatán"].sort());
@@ -114,9 +134,20 @@ describe("lista unica de colonias (B02)", () => {
     const nuevas = colonias.filter((c) => (c.sucursales ?? []).length > 0 && (c.cobertura_base_real ?? []).length === 0);
     expect(nuevas.length).toBe(18);
     const iguales = colonias.filter((c) => (c.sucursales ?? []).length > 0 && (c.cobertura_base_real ?? []).length > 0).length - divergentes.length;
-    expect(iguales).toBe(129);
+    expect(iguales).toBe(134);
     // 158 asignadas (incluye Francisco de Montejo, que es el punto de T2).
     expect(divergentes.length + nuevas.length + iguales).toBe(158);
+  });
+
+  it("garantias de re-ejecucion sobre la cuenta real: el SQL no cambia el estado de sucursales existentes ni la procedencia de zonas con cobertura", () => {
+    const sql = renderPmSeedPlpgsql(plan);
+    expect(sql).not.toMatch(/update core\.property p set status/);
+    // La unica actualizacion de known_zone con colonias es la de zonas que ACABAN de recibir su primera cobertura (CTE `nuevas`).
+    const updates = sql.match(/update restaurantes\.known_zone z set [^\n]*/g) ?? [];
+    expect(updates.some((u) => /set fuente =/.test(u))).toBe(false);
+    expect(sql).toMatch(/with nuevas as \(/);
+    expect(sql).toMatch(/from nuevas n, jsonb_to_recordset\(v->'colonias'\)/);
+    expect(sql).toMatch(/z\.id = n\.zone_id/);
   });
 
   it("el SQL del seed inserta una fila de cobertura por colonia y sucursal (multicobertura) sin tocar coordenadas", () => {
@@ -173,5 +204,26 @@ describe("coordenadas de las sucursales: propuestas de Google SEPARADAS de las v
     expect(t8.coordenadas_propuestas?.pendiente_dueno).toMatch(/C\. 4 279.*Calle 7 No\. 270 local 20/);
     expect(t8.coordenadas_propuestas?.estado).toMatch(/PENDIENTE/);
     expect(data.pendientes_dueno.map((p) => p.id)).toEqual(expect.arrayContaining(["coordenadas_sucursales_google", "colonias_pendientes_dueno", "mapa_colonias", "coordenadas_t3"]));
+  });
+});
+
+describe("carga DEMO: T2 y T8 se crean activas y el agente reconoce todas las colonias asignadas (assignBranch, no solo la cobertura)", () => {
+  it("las 157 colonias asignadas devuelven estado 'asignada' con su sucursal; las 28 pendientes no se asignan", async () => {
+    const planDemo = buildPmSeedPlan(data, agent, { demo: true });
+    expect(planDemo.branches.filter((b) => b.status === "active").map((b) => b.slug).sort()).toEqual(["altabrisa", "fco-montejo", "garcia-lavin", "pensiones", "prol-montejo"]);
+    // Sin demo siguen inactivas (cuenta normal) y el dato no cambia el plan normal.
+    expect(plan.branches.filter((b) => b.status === "active").map((b) => b.slug).sort()).toEqual(["garcia-lavin", "pensiones", "prol-montejo"]);
+    const world = await buildInMemoryPmWorld(planDemo);
+    const slugDe = new Map(planDemo.branches.map((b) => [b.id, b.slug] as const));
+    const noReconocidas: string[] = [];
+    for (const c of planDemo.colonias) {
+      const r = await assignBranch(world.repo, { organizationId: world.organizationId, colonia: c.name });
+      if (c.branchIds.length > 0) {
+        if (r.estado !== "asignada" || r.branchSlug !== slugDe.get(c.branchIds[0]!)) noReconocidas.push(`${c.name}: ${r.estado}`);
+      } else {
+        expect(r.estado, c.name).not.toBe("asignada");
+      }
+    }
+    expect(noReconocidas).toEqual([]);
   });
 });

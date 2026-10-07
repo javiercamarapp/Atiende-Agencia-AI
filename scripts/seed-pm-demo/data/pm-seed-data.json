@@ -49,7 +49,8 @@
           -89.605
         ],
         "estado": "PENDIENTE de confirmar por el dueño; NO reemplaza a lat/lng vigentes"
-      }
+      },
+      "activa_en_demo": true
     },
     {
       "id": "T3",
@@ -154,7 +155,8 @@
         ],
         "estado": "PENDIENTE de confirmar por el dueño; NO reemplaza a lat/lng vigentes",
         "pendiente_dueno": "La ficha de Google muestra la direccion como «C. 4 279, Vista Alegre Nte»; el seed dice «Calle 7 No. 270 local 20»: confirmar cual es antes de adoptar el pin."
-      }
+      },
+      "activa_en_demo": true
     }
   ],
   "horario_general": {
@@ -8461,7 +8463,7 @@
     {
       "id": "mapa_colonias",
       "titulo": "Mapa de colonias por sucursal",
-      "detalle": "Una sola lista versionada de 186 colonias (colonias_meta): cada una a la sucursal de despacho mas cercana (<= 8 km); 28 quedan SIN ASIGNAR por decision del dueño (fuera de 8 km, homonimos con discrepancia, sin coordenada) y aparecen en el reporte de colonias ambiguas. El dueño debe resolverlas (P-v2-16) y confirmar las colonias cuya cobertura actual difiere de la mas cercana.",
+      "detalle": "Una sola lista versionada de 186 colonias (colonias_meta): cada una a la sucursal de despacho mas cercana (<= 8 km); 28 quedan SIN ASIGNAR por decision del dueño (fuera de 8 km, homonimos con discrepancia, sin coordenada) y aparecen en el reporte de colonias ambiguas. El dueño debe resolverlas (P-v2-16) y confirmar las colonias cuya cobertura actual difiere de la mas cercana. Cuatro colonias (Centro, Centro Historico, Benito Juarez Norte, Real Montejo) conservan la asignacion del dueño/chats aunque la regla de la mas cercana daria otra: Javier decide.",
       "quien": "dueno",
       "pantalla": "configuracion",
       "estado": "abierta"
@@ -9084,9 +9086,9 @@
       "nombre": "Benito Juárez Norte",
       "fuente": "piloto_original_merida_colonias",
       "sucursales": [
-        "T1"
+        "T7"
       ],
-      "asignacion": "mas_cercana_v3",
+      "asignacion": "chats_t7",
       "referencia": {
         "sucursal": "T7",
         "km": 1.3,
@@ -9119,7 +9121,10 @@
       "cobertura_base_real": [
         "T7"
       ],
-      "advertencia": "Hoy la base real la cubre T7; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T1. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "CONFLICTO regla-vs-dueño, decide Javier: la evidencia directa del dueño (chats de T7 (evidencia directa)) la asigna a T7 y la regla de la sucursal de despacho mas cercana da T1 (1.6 km). Prevalece la evidencia del dueño; la base real la conserva en T7.",
+      "pendiente_dueno": [
+        "conflicto_regla_vs_dueno"
+      ]
     },
     {
       "nombre": "Benito Juárez Oriente",
@@ -9445,9 +9450,9 @@
       "nombre": "Centro",
       "fuente": "piloto_original_merida_colonias",
       "sucursales": [
-        "T3"
+        "T1"
       ],
-      "asignacion": "mas_cercana_v3",
+      "asignacion": "dueno_zona_centro",
       "referencia": {
         "sucursal": "T3",
         "km": 3.8,
@@ -9480,7 +9485,10 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "Hoy la base real la cubre T1; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T3. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "CONFLICTO regla-vs-dueño, decide Javier: la evidencia directa del dueño (dueño: «Prolongación Montejo.- zona centro, norte» (cuestionario l.153; diferencias.md B22 manda el dueño)) la asigna a T1 y la regla de la sucursal de despacho mas cercana da T3 (3.5 km). Prevalece la evidencia del dueño; la base real la conserva en T1.",
+      "pendiente_dueno": [
+        "conflicto_regla_vs_dueno"
+      ]
     },
     {
       "nombre": "Centro Chichi Suarez",
@@ -9523,9 +9531,9 @@
       "nombre": "Centro Histórico",
       "fuente": "piloto_original_merida_colonias",
       "sucursales": [
-        "T3"
+        "T1"
       ],
-      "asignacion": "mas_cercana_v3",
+      "asignacion": "dueno_zona_centro",
       "referencia": {
         "sucursal": "T3",
         "km": 3.8,
@@ -9558,7 +9566,10 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "Hoy la base real la cubre T1; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T3. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "CONFLICTO regla-vs-dueño, decide Javier: la evidencia directa del dueño (dueño: «Prolongación Montejo.- zona centro, norte» (cuestionario l.153; diferencias.md B22 manda el dueño)) la asigna a T1 y la regla de la sucursal de despacho mas cercana da T3 (4.0 km). Prevalece la evidencia del dueño; la base real la conserva en T1.",
+      "pendiente_dueno": [
+        "conflicto_regla_vs_dueno"
+      ]
     },
     {
       "nombre": "Cerrada Lombardia",
@@ -12457,9 +12468,8 @@
       },
       "revisar": false,
       "cobertura_base_real": [
-        "T8"
-      ],
-      "advertencia": "Hoy la base real la cubre T8; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T3. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+        "T3"
+      ]
     },
     {
       "nombre": "Nucleo Sodzil",
@@ -13340,9 +13350,9 @@
       "nombre": "Real Montejo",
       "fuente": "piloto_original_merida_colonias",
       "sucursales": [
-        "T2"
+        "T7"
       ],
-      "asignacion": "mas_cercana_v3",
+      "asignacion": "chats_t7",
       "referencia": {
         "sucursal": "T2",
         "km": 2.6,
@@ -13375,7 +13385,10 @@
       "cobertura_base_real": [
         "T7"
       ],
-      "advertencia": "Hoy la base real la cubre T7; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T2. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "CONFLICTO regla-vs-dueño, decide Javier: la evidencia directa del dueño (chats de T7 (evidencia directa)) la asigna a T7 y la regla de la sucursal de despacho mas cercana da T2 (2.4 km). Prevalece la evidencia del dueño; la base real la conserva en T7.",
+      "pendiente_dueno": [
+        "conflicto_regla_vs_dueno"
+      ]
     },
     {
       "nombre": "Real San Jose",
@@ -15948,7 +15961,7 @@
   ],
   "colonias_meta": {
     "fuente": "work/pm-cuenta-real/colonias-v3.json (7-oct-2026): lista del piloto original (colonias.json de la base de conocimiento de ElevenLabs, 3-oct) + coordenadas de Google Maps (139) / OpenStreetMap (36) / promedio (3) y la regla de 8 km. Una sola lista: reemplaza a la del seed anterior (183: 113 asignadas / 70 sin asignar) y a zonas-pm-v1.sql (185). Cada colonia trae su coordenada con origen y confianza, las dos lecturas crudas (google, osm) para poder auditarla, la sucursal de despacho mas cercana con km y la cobertura que hoy tiene la base real (v1 + v2b = 169 filas de cobertura).",
-    "regla_asignacion": "Decision de Javier (7-oct 13:30 y 17:50): cada colonia usa la sucursal de DESPACHO mas cercana (T1, T2, T3, T7, T8; Galerias T4 y Chicxulub T5 no reparten) a 8 km o menos en linea recta (Haversine desde el pin de Google de la sucursal). Sin asignar (PENDIENTE del dueño, el agente no las valida y las pasa a una persona): (1) fuera de 8 km, (2) homonimos con discrepancia mayor a 1 km entre Google y OSM, (3) sin coordenada. Excepcion documentada: un homonimo con evidencia directa del dueño (chats de T7, direccion de la sucursal) que coincide con la mas cercana se mantiene. Cabo Norte y Los Pinos solo existen en los chats del dueño (sin fila en colonias-v3): sin coordenada, asignadas por esa evidencia.",
+    "regla_asignacion": "Decision de Javier (7-oct 13:30 y 17:50): cada colonia usa la sucursal de DESPACHO mas cercana (T1, T2, T3, T7, T8; Galerias T4 y Chicxulub T5 no reparten) a 8 km o menos en linea recta (Haversine desde el pin de Google de la sucursal). Sin asignar (PENDIENTE del dueño, el agente no las valida y las pasa a una persona): (1) fuera de 8 km, (2) homonimos con discrepancia mayor a 1 km entre Google y OSM, (3) sin coordenada. Precedencia: la evidencia DIRECTA del dueño o de los chats PREVALECE sobre la regla geometrica; las 4 colonias donde chocan (Centro y Centro Historico: zona centro del dueño, T1; Benito Juarez Norte y Real Montejo: chats de T7, T7) conservan su asignacion original y llevan pendiente_dueno conflicto_regla_vs_dueno para que decida Javier (la regla da T3, T1, T2 y T2). Excepcion documentada: un homonimo con evidencia directa del dueño (chats de T7, direccion de la sucursal) que coincide con la mas cercana se mantiene. Cabo Norte y Los Pinos solo existen en los chats del dueño (sin fila en colonias-v3): sin coordenada, asignadas por esa evidencia.",
     "radio_reparto_km": 8,
     "sucursales_despacho": [
       "T1",

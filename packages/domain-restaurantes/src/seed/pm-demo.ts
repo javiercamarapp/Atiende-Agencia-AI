@@ -45,6 +45,9 @@ export interface PmSeedBranch {
   readonly coordenadas_aproximadas?: boolean;
   /** Una sucursal activa necesita su catalogo (>= `MIN_PRODUCTOS_SUCURSAL_ACTIVA` productos). */
   readonly activa: boolean;
+  /** Solo en la carga como DEMO (`--demo`): la sucursal se crea activa aunque en los datos este inactiva, para que las colonias que le tocan se puedan
+   * probar de punta a punta. No afecta a una carga normal ni cambia el estado de una sucursal que ya existe. */
+  readonly activa_en_demo?: boolean;
   readonly zona_cliente?: string;
   /** Direccion (del dueño) cuyas coordenadas aun NO se verificaron en una fuente citable: `lat`/`lng` siguen en null y la sucursal no
    * participa en la asignacion por distancia (no se inventan coordenadas). */
@@ -145,8 +148,8 @@ export interface PmSeedConocimiento {
 export type PmColoniaAsignacion = "mas_cercana_v3" | "chats_t7" | "direccion_sucursal" | "dueno_zona_centro" | "distancia_piloto" | "reasignada_desde_galerias" | "sin_asignar";
 const COLONIA_ASIGNACIONES: readonly string[] = ["mas_cercana_v3", "chats_t7", "direccion_sucursal", "dueno_zona_centro", "distancia_piloto", "reasignada_desde_galerias", "sin_asignar"];
 /** Motivos por los que una colonia queda SIN ASIGNAR esperando una decision del dueño. */
-export type PmColoniaPendiente = "fuera_de_8km" | "homonimo_discrepancia" | "sin_coordenada";
-const COLONIA_PENDIENTES: readonly string[] = ["fuera_de_8km", "homonimo_discrepancia", "sin_coordenada"];
+export type PmColoniaPendiente = "fuera_de_8km" | "homonimo_discrepancia" | "sin_coordenada" | "conflicto_regla_vs_dueno";
+const COLONIA_PENDIENTES: readonly string[] = ["fuera_de_8km", "homonimo_discrepancia", "sin_coordenada", "conflicto_regla_vs_dueno"];
 /** Sucursales que NO reparten a domicilio (Galerias, sin pedidos; Playa, solo recoger y de temporada): nunca reciben cobertura. */
 const SUCURSALES_SIN_REPARTO: readonly string[] = ["T4", "T5"];
 /** Origenes de alias del piloto aprobados. `sentido_comun_aprobado` y `cuestionario_web` son los 73 pares que Javier aprobo el 7-oct-2026 13:30; `sentido_comun_a_validar` sigue sin aprobarse. */
@@ -457,7 +460,8 @@ const EXCLUSIONES_POR_SUCURSAL: Readonly<Record<string, { readonly categorias: r
   T5: { categorias: ["Comida Regional", "Flautas de PM"], nombres: ["Sprite", "Sprite Cero"] },
 };
 
-export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: PmSeedOptions = {}): PmSeedPlan {
+export function buildPmSeedPlan(datos: PmSeedData, agent: PmAgentFiles, options: PmSeedOptions = {}): PmSeedPlan {
+  const data: PmSeedData = options.demo ? { ...datos, sucursales: datos.sucursales.map((b) => (b.activa_en_demo ? { ...b, activa: true } : b)) } : datos;
   validarArchivosAgente(agent);
 
   if (!data.organizacion?.nombre || !/^[a-z0-9]([a-z0-9-]{0,98}[a-z0-9])?$/.test(data.organizacion.slug)) fail("Organizacion invalida (nombre o slug).");
@@ -954,9 +958,8 @@ begin
     from jsonb_to_recordset(v->'branches') as b(name text, slug text, status text)
     where not exists (select 1 from core.property p where p.organization_id = v_org and p.name = b.name)
       and not exists (select 1 from restaurantes.branch_detail d where d.organization_id = v_org and d.slug = b.slug);
-  update core.property p set status = b.status
-    from jsonb_to_recordset(v->'branches') as b(name text, status text)
-    where p.organization_id = v_org and p.name = b.name and p.status is distinct from b.status;
+  -- El estado (activa/inactiva) SOLO se fija al crear la sucursal: re-ejecutar el seed sobre una cuenta que ya existe NO lo cambia (en la cuenta real T2 y T8
+  -- estan activas y los datos las traen inactivas; activar o desactivar una sucursal es decision del dueño en el panel).
   insert into restaurantes.branch_detail (property_id, organization_id, slug, phone, address, lat, lng, display_order, zona_horaria)
     select p.id, v_org, b.slug, b.phone, b.address, b.lat, b.lng, b."displayOrder", v->'organization'->>'timezone'
     from jsonb_to_recordset(v->'branches') as b(name text, slug text, phone text, address text, lat numeric, lng numeric, "displayOrder" int)
@@ -1018,20 +1021,16 @@ begin
     from jsonb_to_recordset(v->'zones') as x(name text, lat numeric, lng numeric)
     where not exists (select 1 from restaurantes.known_zone z where z.organization_id = v_org and z.name = x.name);
   -- 6b) colonias del piloto original, SIN coordenadas (migracion 056). Insertar solo si el nombre no existe (no pisa una zona del dueño con
-  -- coordenadas); re-ejecutar solo repara la procedencia y la referencia de las filas que este seed creo (fuente propia), nunca el nombre ni las
-  -- coordenadas.
+  -- coordenadas); re-ejecutar NUNCA modifica una zona que ya existe (ni su procedencia, referencia, nombre o coordenadas).
   insert into restaurantes.known_zone (organization_id, name, lat, lng, fuente, asignacion_fuente, ref_sucursal_slug, ref_km, ref2_sucursal_slug, ref2_km)
     select v_org, x.name, null, null, x.fuente, x."asignacionFuente", x."refSlug", x."refKm", x."ref2Slug", x."ref2Km"
     from jsonb_to_recordset(v->'colonias') as x(name text, fuente text, "asignacionFuente" text, "refSlug" text, "refKm" numeric, "ref2Slug" text, "ref2Km" numeric)
     where not exists (select 1 from restaurantes.known_zone z where z.organization_id = v_org and z.name = x.name);
-  update restaurantes.known_zone z set fuente = x.fuente, asignacion_fuente = x."asignacionFuente", ref_sucursal_slug = x."refSlug", ref_km = x."refKm",
-      ref2_sucursal_slug = x."ref2Slug", ref2_km = x."ref2Km"
-    from jsonb_to_recordset(v->'colonias') as x(name text, fuente text, "asignacionFuente" text, "refSlug" text, "refKm" numeric, "ref2Slug" text, "ref2Km" numeric)
-    where z.organization_id = v_org and z.name = x.name and z.fuente in ('piloto_original_merida_colonias', 'chats_t7');
   -- 6c) cobertura de entrega (branch_delivery_zone): el punto de referencia de cada sucursal cubre SU sucursal y cada colonia asignada cubre la suya (o las suyas: cobertura multiple, una fila por sucursal).
   -- Solo se agrega a una zona que NO tiene ninguna cobertura todavia: una colonia que el dueño MOVIO a otra sucursal en la pantalla de Reglas de la
   -- sucursal no se repone en la original (si la dejo sin ninguna sucursal, el seed la vuelve a asignar). Una colonia SIN asignar (sin sucursales) no
   -- recibe ninguna: el agente no la valida y la pasa a una persona.
+  with nuevas as (
   insert into restaurantes.branch_delivery_zone (property_id, zone_id, organization_id)
     select p.id, z.id, v_org
     from (
@@ -1043,7 +1042,13 @@ begin
     join core.property p on p.organization_id = v_org and p.name = b.name
     join restaurantes.known_zone z on z.organization_id = v_org and z.name = cov.zname
     where not exists (select 1 from restaurantes.branch_delivery_zone bz where bz.zone_id = z.id)
-    on conflict do nothing;
+    on conflict do nothing
+    returning zone_id
+  )
+  -- Solo a las zonas que ACABAN de recibir su primera cobertura se les pone la procedencia de esa cobertura (una zona con cobertura previa no se toca).
+  update restaurantes.known_zone z set asignacion_fuente = x."asignacionFuente"
+    from nuevas n, jsonb_to_recordset(v->'colonias') as x(name text, fuente text, "asignacionFuente" text)
+    where z.id = n.zone_id and z.organization_id = v_org and z.name = x.name and z.fuente in ('piloto_original_merida_colonias', 'chats_t7');
 
   -- 6d) conocimiento publicado del negocio (migracion 053): preguntas frecuentes del piloto, para toda la organizacion. Solo AGREGA lo que falta por
   -- titulo: no pisa una entrada que el dueño edito en el panel ni la repone si la borro de otra forma que no sea volver a correr el seed. No toca el
