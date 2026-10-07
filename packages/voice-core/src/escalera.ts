@@ -5,6 +5,7 @@
 // Es POR LLAMADA (lleva estado: quien ya fallo, el tramo de cada escalon y lo que se dijo): se crea una por llamada con `crearEscaleraLlamada`.
 // Al cambiar de escalon a media llamada la nueva sesion recibe, junto con la instruccion de la vertical, un resumen REDACTADO de lo ya dicho (la
 // cascada no tiene el handle de reanudacion de Gemini) para no volver a saludar ni repreguntar.
+import { VozNoConfiguradaError } from "./provider.ts";
 import type { EscalonVoz } from "./config-plataforma.ts";
 import type { TramoLlamada } from "./costo.ts";
 import { redactarTranscripcion } from "./transcripcion.ts";
@@ -30,6 +31,10 @@ export interface OpcionesEscalera {
   readonly ahora?: () => number;
   /** Cuantas lineas recientes se resumen al cambiar de escalon. */
   readonly lineasContexto?: number;
+  /** Cuantas veces MAS puede reintentarse un escalon que se cayo a media llamada o fallo al abrir antes de darlo por perdido y pasar al siguiente (por omision 0:
+   * el escalon que falla no se reintenta, comportamiento original). PM lo sube a sus reconexiones: con el 1011 intermitente de Gemini, reabrir el MISMO
+   * escalon con espera creciente recupera la llamada (QA-PM-R2-voz-05); el controlador ya espacia los intentos con `reconexionEsperaMs`. */
+  readonly reintentosPorEscalon?: number;
 }
 
 interface TramoAbierto {
@@ -43,6 +48,16 @@ interface TramoAbierto {
 export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts: OpcionesEscalera = {}): EscaleraLlamada {
   const ahora = opts.ahora ?? (() => Date.now());
   const lineasContexto = opts.lineasContexto ?? 12;
+  const reintentos = Math.max(0, opts.reintentosPorEscalon ?? 0);
+  const fallos = new Map<EscalonVoz, number>();
+  /** Cuenta un fallo del escalon; `true` = ya agoto sus reintentos y queda fuera de esta llamada. */
+  const registrarFallo = (id: EscalonVoz, definitivo = false): boolean => {
+    const n = (fallos.get(id) ?? 0) + 1;
+    fallos.set(id, n);
+    if (!definitivo && n <= reintentos) return false;
+    if (!fallidos.includes(id)) fallidos.push(id);
+    return true;
+  };
   const fallidos: EscalonVoz[] = [];
   const dicho: string[] = [];
   const tramos: TramoAbierto[] = [];
@@ -73,9 +88,9 @@ export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts:
           manejadores.costo?.(microUsd, real);
         },
         caido: (razon, handle) => {
-          // El escalon que atendia se cayo: se cierra su tramo y NO se reintenta en esta llamada.
+          // El escalon que atendia se cayo: se cierra su tramo y, agotados sus reintentos (por omision ninguno), NO se reintenta en esta llamada.
           cerrarTramo(tramo);
-          if (!fallidos.includes(escalon.id)) fallidos.push(escalon.id);
+          registrarFallo(escalon.id);
           manejadores.caido(razon, handle);
         },
       };
@@ -91,8 +106,10 @@ export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts:
         actual = escalon.id;
         return envolverSesion(sesion, tramo, cerrarTramo);
       } catch (err) {
-        fallidos.push(escalon.id);
         ultimoError = err;
+        // Con reintentos pendientes el intento falla aqui (el controlador espera y vuelve a llamar) en vez de saltar de inmediato al siguiente escalon.
+        // Sin credencial no hay nada que reintentar.
+        if (!registrarFallo(escalon.id, err instanceof VozNoConfiguradaError)) throw err;
       }
     }
     throw ultimoError;
