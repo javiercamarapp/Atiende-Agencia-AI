@@ -126,8 +126,8 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   //    solo sirve para esto; con telefono no confiable NO se emite aun: lo emite `confirmarTelefono`). El token y el aviso se piden DESPUES del contexto, nunca
   //    antes: si el contexto falla no se deja evidencia de un aviso que no se dijo.
   let callToken: string | null = null;
-  const emitirToken = async (callerPhone: string): Promise<void> => {
-    callToken = await deps.api.pedirToken({ orgSlug: entrada.orgSlug, secreto: entrada.secreto, callId, callerPhone, branchSlug: entrada.branchSlug });
+  const emitirToken = async (callerPhone: string, telefonoDeclarado = false): Promise<void> => {
+    callToken = await deps.api.pedirToken({ orgSlug: entrada.orgSlug, secreto: entrada.secreto, callId, callerPhone, branchSlug: entrada.branchSlug, ...(telefonoDeclarado ? { telefonoDeclarado: true } : {}) });
   };
   const codigoDe = (err: unknown): string => (err instanceof ErrorApi ? String(err.estado ?? "red") : "error");
   const [convR, avisoR, tokenR] = await Promise.allSettled([
@@ -261,7 +261,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     return sesion;
   };
   // Telefono dictado por el cliente cuando el caller ID no sirve. UNA sola vez por llamada (cambiarlo despues dejaria enumerar clientes ajenos con
-  // `buscar_cliente`), nunca un numero puente o de la sucursal, y la ultima palabra la tiene la API: el token se emite con ESE telefono canonico.
+  // `buscar_cliente`), nunca un numero puente o de la sucursal, y la ultima palabra la tiene la API: el token se emite con ESE telefono canonico y marcado `telefono_declarado`: nadie verifico que sea del llamante, asi que la API no le devuelve nombre, direcciones ni pedidos de ese numero (Cliente 360 lo trata como cliente nuevo).
   const confirmarTelefono = async (args: Readonly<Record<string, unknown>>): Promise<unknown> => {
     if (callToken !== null) return { ok: true, ya_registrado: true, mensaje: "El teléfono ya quedó registrado; continúe con el pedido." };
     const crudo = typeof args.numero === "string" ? args.numero : "";
@@ -270,7 +270,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     const clave = normalizarNumero(numero);
     if (clave !== null && (numerosPuente.has(clave) || entrada.numerosSucursal.includes(clave))) return { error: "telefono_no_valido", mensaje: "Ese es un número del restaurante. Pídale al cliente su teléfono personal." };
     try {
-      await emitirToken(numero);
+      await emitirToken(numero, true);
     } catch (err) {
       log("token_fallo", { codigo: err instanceof ErrorApi ? String(err.estado ?? "red") : "error", tras: "confirmar_telefono" });
       return { error: "no_se_pudo_registrar", mensaje: "No se pudo registrar el teléfono. Intente una vez más o pase con una persona." };

@@ -62,7 +62,7 @@ export const TOOL_CONFIRMAR_TELEFONO = "confirmar_telefono_llamante";
 export const DEFINICION_CONFIRMAR_TELEFONO = {
   name: TOOL_CONFIRMAR_TELEFONO,
   description:
-    "Registra el teléfono de 10 dígitos que el CLIENTE le dictó y que ya le repitió y confirmó. Úsela UNA vez, antes de cualquier otra herramienta. Sin esto, buscar_cliente, cotizar y crear_pedido no funcionan en esta llamada.",
+    "Registra el teléfono de 10 dígitos que el CLIENTE le dictó y que ya le repitió y confirmó. Úsela UNA vez, antes de cualquier otra herramienta. Sin esto, cotizar y crear_pedido no funcionan en esta llamada. El número dictado sirve para el pedido y el aviso, pero NO identifica al cliente: buscar_cliente y historial_pedidos responden como cliente nuevo y no hay pedidos que repetir.",
   parameters: {
     type: "object",
     properties: { numero: { type: "string", description: "Los 10 dígitos que dictó el cliente, sin lada de país (ej. 9991234567)." } },
@@ -76,4 +76,4 @@ La línea no nos dio el teléfono del cliente. Después del saludo y del aviso, 
 1. Pídale su número a 10 dígitos para el pedido.
 2. Repítaselo en grupos de 3-3-4 y pídale que lo confirme.
 3. Con su confirmación, llame ${TOOL_CONFIRMAR_TELEFONO} con ese número.
-Mientras no lo registre, ninguna otra herramienta funciona. Si el cliente no quiere dar su teléfono, dígale con amabilidad que sin él no puede tomar el pedido por teléfono y despídase.`;
+Ese número solo sirve para el pedido y el aviso: no identifica al cliente, así que no ofrezca "lo de siempre" ni mencione direcciones o pedidos anteriores. Mientras no lo registre, ninguna otra herramienta funciona. Si el cliente no quiere dar su teléfono, dígale con amabilidad que sin él no puede tomar el pedido por teléfono y despídase.`;
