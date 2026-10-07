@@ -9,6 +9,7 @@
 //   GET/PATCH/DELETE <baseUrl>/conversaciones/:id
 //   POST <baseUrl>/pins { conversationId, seq, bloque }   (fijar; el servidor deriva herramienta y argumentos del mensaje guardado)
 //   POST <baseUrl>/conversaciones/:id/reporte?seq=N -> application/pdf (reporte del mensaje; "Descargar PDF")
+//   POST <baseUrl>/adjuntos { nombre, contenidoBase64 } -> perfil del archivo (CSV / Excel / PDF analizado en el servidor; no se guarda)
 //
 // Reglas: el cliente solo manda la pregunta y el `conversationId` ("new" la primera vez, el uuid despues); el alcance
 // (organizacion, sucursales, rol) lo decide SIEMPRE el servidor. Nada se inventa: cualquier fallo se traduce a un
@@ -29,6 +30,8 @@ import {
 export const MAX_HISTORIAL_LOCAL = 12;
 export const MAX_CARACTERES_TURNO = 600;
 export const TEXTO_SIN_ACCESO = "Tu rol no tiene acceso al Copiloto. Pídele acceso al dueño.";
+/** Adjuntar archivo: lo que el servidor sabe leer y su tope (el mismo de `ADJUNTO_MAX_BYTES` en apps/api). */
+export const ADJUNTOS_CONFIG = { accept: ".csv,.tsv,.txt,.xlsx,.pdf", maxBytes: 5 * 1024 * 1024 } as const;
 
 export interface CopilotoTransporteConfig {
   /** URL completa de la ruta de chat de la vertical, sin barra final (`.../chat-datos`). */
@@ -42,6 +45,8 @@ export interface CopilotoTransporteConfig {
   readonly guardarArchivo?: (blob: Blob, nombre: string) => void;
   /** `false` = esta ruta de chat NO tiene `/pins`: el transporte no ofrece "Fijar" (el boton no se pinta; nunca un boton que responde 404). Por defecto, `true`. */
   readonly fijados?: boolean;
+  /** `false` = esta ruta de chat NO tiene `/adjuntos`: el transporte no declara `adjuntos` y el compositor no pinta el clip. Por defecto, `true`. */
+  readonly adjuntos?: boolean;
 }
 
 /** Nombre del archivo que sugiere el servidor (`attachment; filename="..."`), solo si es un `.pdf` simple y seguro. */
@@ -214,10 +219,24 @@ function errorHttp(res: Response): CopilotoErrorTransporte {
 }
 
 export function crearTransporteCopiloto(cfg: CopilotoTransporteConfig): CopilotoTransporteVertical {
-  const transporte = crearTransporteCompleto(cfg);
-  if (cfg.fijados !== false) return transporte;
-  const { fijar: _sinFijar, ...resto } = transporte;
-  return resto;
+  let transporte = crearTransporteCompleto(cfg);
+  if (cfg.fijados === false) {
+    const { fijar: _sinFijar, ...resto } = transporte;
+    transporte = resto;
+  }
+  if (cfg.adjuntos === false) {
+    const { adjuntos: _sinAdjuntos, ...resto } = transporte;
+    transporte = resto;
+  }
+  return transporte;
+}
+
+/** Archivo -> base64 sin reventar la pila (por trozos). */
+async function aBase64(archivo: File): Promise<string> {
+  const bytes = new Uint8Array(await archivo.arrayBuffer());
+  let binario = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binario += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binario);
 }
 
 function crearTransporteCompleto(cfg: CopilotoTransporteConfig): CopilotoTransporteVertical {
@@ -239,12 +258,38 @@ function crearTransporteCompleto(cfg: CopilotoTransporteConfig): CopilotoTranspo
     }
   }
 
+  // Adjuntar archivo: el servidor lo analiza (sin modelo) y responde con la forma de siempre; no entra al hilo local ni a la conversacion guardada.
+  async function enviarAdjunto(adjunto: File, senal: AbortSignal, onEvento: (e: CopilotoEvento) => void): Promise<CopilotoRespuesta> {
+    if (adjunto.size > ADJUNTOS_CONFIG.maxBytes) throw new CopilotoErrorTransporte("invalid_input", "El archivo supera los 5 MB.");
+    const contenidoBase64 = await aBase64(adjunto);
+    const res = await llamar((t) =>
+      cfg.fetchImpl(url("/adjuntos"), { method: "POST", headers: cabecera(t, { "content-type": "application/json" }), body: JSON.stringify({ nombre: adjunto.name, contenidoBase64 }), signal: senal }),
+    );
+    if (res.status === 413) throw new CopilotoErrorTransporte("invalid_input", "El archivo supera los 5 MB.");
+    // Los avisos de `invalid_input` muestran el texto del error tal cual (el de `unavailable`/`rate_limited` es generico y hablaria de "preguntas").
+    if (res.status === 404 || res.status === 503) throw new CopilotoErrorTransporte("invalid_input", "Adjuntar archivos todavía no está disponible en tu cuenta.");
+    if (res.status === 429) throw new CopilotoErrorTransporte("invalid_input", "Adjuntaste muchos archivos en poco tiempo. Espera unos minutos e inténtalo de nuevo.");
+    if (!res.ok) throw errorHttp(res);
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch {
+      throw new CopilotoErrorTransporte("unavailable", "La respuesta del servidor no se pudo leer. Inténtalo de nuevo.");
+    }
+    const respuesta = normalizarRespuesta(json);
+    onEvento({ t: "fin", respuesta });
+    return respuesta;
+  }
+
   return {
+    adjuntos: ADJUNTOS_CONFIG,
+
     reiniciar() {
       hilo = [];
     },
 
-    async enviar({ pregunta, conversacionId, directa, senal, onEvento }) {
+    async enviar({ pregunta, conversacionId, directa, adjunto, senal, onEvento }) {
+      if (adjunto) return enviarAdjunto(adjunto, senal, onEvento);
       // Consulta directa (chip): el servidor ejecuta la herramienta SIN modelo; `label` es solo el texto del mensaje del usuario.
       const cuerpo: Record<string, unknown> = directa ? { tool: directa.tool, ...(directa.args ? { args: directa.args } : {}), label: pregunta } : { question: pregunta };
       if (conversacionId) cuerpo["conversationId"] = conversacionId;

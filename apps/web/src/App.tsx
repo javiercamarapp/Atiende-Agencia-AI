@@ -30,6 +30,7 @@ const RestaurantesAgenteVozPage = cargaPerezosa(() => import("./verticals/restau
 const RestaurantesAjustesAgentePage = cargaPerezosa(() => import("./verticals/restaurantes/pages/AjustesAgente.tsx"), "AjustesAgentePage");
 const RestaurantesIndicadoresWhatsappPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/IndicadoresWhatsapp.tsx"), "IndicadoresWhatsappPage");
 const RestaurantesCierresPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Cierres.tsx"), "CierresPage");
+const RestaurantesCampanasPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Campanas.tsx"), "CampanasPage");
 const RestaurantesPrivacidadPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Privacidad.tsx"), "PrivacidadPage");
 const RestaurantesConversacionesPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Conversaciones.tsx"), "ConversacionesPage");
 const RestaurantesTurnosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Turnos.tsx"), "TurnosPage");
@@ -318,6 +319,7 @@ const RestaurantesAjustesAgenteRoute = shellRoute(RestaurantesShell, "/restauran
 // R-31: indicadores del agente de WhatsApp (owner/admin).
 const RestaurantesIndicadoresWhatsappRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesIndicadoresWhatsappPage {...ctx} />);
 const RestaurantesCierresRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCierresPage {...ctx} />);
+const RestaurantesCampanasRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCampanasPage {...ctx} />);
 // PM PR-9 -- privacidad (solicitudes ARCO + aviso/retención/grabación), owner/admin.
 const RestaurantesPrivacidadRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrivacidadPage {...ctx} />);
 // PL-13 -- privacidad de la organizacion (ARCO de todos los verticales, retencion, bloqueo de purga, aviso versionado).
@@ -1089,6 +1091,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/agente-ajustes" element={<RestaurantesAjustesAgenteRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-whatsapp" element={<RestaurantesIndicadoresWhatsappRoute />} />
         <Route path="/restaurantes/:orgSlug/cierres" element={<RestaurantesCierresRoute />} />
+        <Route path="/restaurantes/:orgSlug/campanas" element={<RestaurantesCampanasRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad" element={<RestaurantesPrivacidadRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad-organizacion" element={<RestaurantesPrivacidadOrganizacionRoute />} />
         <Route path="/restaurantes/:orgSlug/conversaciones" element={<RestaurantesConversacionesRoute />} />

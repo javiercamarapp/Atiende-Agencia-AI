@@ -22,6 +22,7 @@ import {
   LayoutDashboard,
   ListChecks,
   Lock,
+  Megaphone,
   MessageSquare,
   MessageCircle,
   Mic,
@@ -145,6 +146,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
       title: "Clientes",
       items: [
         { to: `${base}/clientes`, label: "Clientes", icon: Users },
+        // Autopiloto 2: campañas de reactivación de clientes inactivos (solo owner/admin: el servidor exige el mismo umbral).
+        ...(canSeeStaff ? [{ to: `${base}/campanas`, label: "Campañas", icon: Megaphone }] : []),
         { to: `${base}/sucursales`, label: "Sucursales", icon: Store },
       ],
     },

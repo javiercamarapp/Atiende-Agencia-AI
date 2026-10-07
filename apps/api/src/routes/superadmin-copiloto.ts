@@ -5,6 +5,8 @@
 //   GET  /superadmin/copiloto/conversaciones[/:id]         -> conversaciones propias (scope plataforma)
 //   PATCH/DELETE /superadmin/copiloto/conversaciones/:id   -> renombrar / borrar una conversacion propia
 //   POST /superadmin/copiloto/conversaciones/:id/reporte?seq=N -> reporte PDF del mensaje (mismo pipeline que las verticales: re-consulta con el alcance actual; paridad CHAT-14)
+//   GET/POST /superadmin/copiloto/pins, PATCH/DELETE /superadmin/copiloto/pins/:pinId, GET .../pins/:pinId/resultado -> fijados del tablero (personales, sin organizacion; migracion 0056)
+//   POST /superadmin/copiloto/adjuntos                     -> adjuntar archivo (CSV / Excel / PDF): perfil determinista en el servidor, sin guardar el archivo (superadmin completo)
 //   GET  /superadmin/copiloto/acciones/:propuesta          -> estado y vista previa de una propuesta de `proponer_accion` (CHAT-17)
 //   POST /superadmin/copiloto/acciones/confirmar           -> confirma una propuesta de apagar/encender agente (step-up + motivo); los intents se confirman en /superadmin/acciones
 //
@@ -71,6 +73,11 @@ import {
 import { HERRAMIENTAS_ACCION, HERRAMIENTAS_FINANCIERAS, buildCatalogoPlataforma } from "../superadmin-copiloto/catalogo.ts";
 import { TOPE_MENSUAL_COPILOTO_MICRO_USD, type SuperadminCopilotoDeps } from "../superadmin-copiloto/deps.ts";
 import { fuentesDeProduccion, type FuentesPlataforma } from "../superadmin-copiloto/fuentes.ts";
+import { PostgresPinsPlataformaRepository, type PinsPlataformaRepository } from "../superadmin-copiloto/pins.ts";
+import { cleanPinTitle, parseCreatePin } from "../data-chat/pins.ts";
+import { procesarAdjunto } from "../data-chat/adjuntos-routes.ts";
+import { NO_LLM_COMPLETION } from "../data-chat/turno.ts";
+import { parseArgs } from "@atiende/agent-core/data-chat";
 
 /** Ruta exacta del chat: el guard de escrituras bajo impersonacion la exime para devolver el 409 propio (ver routes/superadmin.ts). */
 export const COPILOTO_CHAT_PATH_RE = /^\/superadmin\/copiloto$/;
@@ -100,6 +107,7 @@ export function superadminCopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const cfg = (): SuperadminCopilotoDeps | undefined => deps.superadminCopiloto;
   const fuentesDe = (db: TenantDbSession, callerId: string): FuentesPlataforma => cfg()?.fuentes?.(db, callerId) ?? fuentesDeProduccion(deps, db, callerId);
   const repoDe = (db: TenantDbSession): ConversacionesRepository => cfg()?.conversaciones?.(db) ?? new PostgresConversacionesRepository(db);
+  const pinsDe = (db: TenantDbSession): PinsPlataformaRepository => cfg()?.pins?.(db) ?? new PostgresPinsPlataformaRepository(db);
   const tope = (): number => cfg()?.topeMensualMicroUsd ?? TOPE_MENSUAL_COPILOTO_MICRO_USD;
 
   /** 409 con impersonacion activa (mismo criterio que el guard de routes/superadmin.ts). */
@@ -238,6 +246,10 @@ export function superadminCopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       gastoMes: { usadoMicroUsd: usado, topeMicroUsd: limite, usoPct: usado === null ? null : Math.min(100, Math.round((usado / limite) * 100)), medidoEnBitacora: medido.ok },
       // CHAT-17: el superadmin completo puede pedirle al Copiloto que PROPONGA acciones (nunca las ejecuta); `finanzas`, de solo lectura, no.
       acciones: { propone: rol === "superadmin" },
+      // El tablero de fijados es personal y solo del superadmin completo (la zona CFO no deja pasar al rol `finanzas` por /pins).
+      fijados: rol === "superadmin",
+      // Adjuntar archivo (CSV / Excel / PDF): solo el superadmin completo (la zona CFO no deja pasar a `finanzas` por /adjuntos).
+      adjuntos: rol === "superadmin",
       herramientas: catalogo.tools.map((t) => ({ nombre: t.name, etiqueta: t.label, descripcion: t.description, financiera: HERRAMIENTAS_FINANCIERAS.includes(t.name) })),
     });
   });
@@ -496,6 +508,128 @@ export function superadminCopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     } finally {
       raw.removeEventListener("abort", onAbort);
     }
+  });
+
+  // ------------------------------------------------------------------------------------------------------------------------------
+  // Fijados del tablero (personales, sin organizacion; migracion 0056). El alta deriva herramienta y argumentos del mensaje GUARDADO de una conversacion propia (el
+  // cliente solo manda conversacion + posicion + bloque) y exige que sigan siendo validos en el catalogo ACTUAL del rol del autor. Los fijados no guardan cifras:
+  // al abrirlos se re-ejecutan sin modelo con el rol y el step-up de ahora; una herramienta financiera sin step-up responde 403 `stepup_required` ANTES de consultar.
+  const pinIdDe = (c: Context<CoreAuthHonoEnv>): string => {
+    const id = c.req.param("pinId") ?? "";
+    // Un id mal formado jamas llega a la base (22P02) y es indistinguible de uno inexistente.
+    if (!CONVERSACION_ID_RE.test(id)) throw Errors.notFound("Fijado no encontrado.");
+    return id.toLowerCase();
+  };
+  const jsonDe = async (c: Context<CoreAuthHonoEnv>): Promise<Record<string, unknown>> => {
+    const raw: unknown = await c.req.json().catch(() => {
+      throw Errors.validation("Cuerpo inválido: se esperaba JSON.");
+    });
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw Errors.validation("Cuerpo inválido: se esperaba un objeto JSON.");
+    return raw as Record<string, unknown>;
+  };
+
+  app.get("/superadmin/copiloto/pins", async (c) => {
+    const callerId = c.get("userId");
+    await rechazarSiImpersona(callerId);
+    const { disponible, items } = await pinsDe(c.get("db")).list(callerId);
+    return c.json({ disponible, pins: items });
+  });
+
+  app.post("/superadmin/copiloto/pins", async (c) => {
+    const callerId = c.get("userId");
+    await rechazarSiImpersona(callerId);
+    const input = parseCreatePin(await jsonDe(c));
+    const db = c.get("db");
+    const repo = pinsDe(db);
+    const origin = await repo.origin(callerId, input.conversationId, input.seq, input.bloque);
+    if (!origin) throw Errors.notFound("No encontré ese resultado para fijarlo.");
+    // La herramienta y sus argumentos deben seguir siendo validos en el catalogo ACTUAL del rol (`proponer_accion` nunca esta: no se pasa `acciones`).
+    const rol = await resolverRol(callerId);
+    const catalogo = buildCatalogoPlataforma(fuentesDe(db, callerId), scopeDe(callerId, rol, false));
+    const tool = catalogo.tools.find((t) => t.name === origin.tool);
+    if (!tool || !parseArgs(tool.params, origin.args).ok) throw Errors.notFound("Esa consulta ya no se puede fijar.");
+    const creado = await repo.create({ ...input, origin });
+    if (creado.ok) return c.json({ id: creado.id }, 201);
+    switch (creado.motivo) {
+      case "limite":
+        throw Errors.conflict("Llegaste al límite de 50 fijados. Quita alguno para fijar otro.");
+      case "no_disponible":
+        throw Errors.serviceUnavailable("Los fijados todavía no están disponibles en este ambiente (migración pendiente).");
+      case "sin_acceso":
+        throw Errors.forbidden();
+      case "conversacion_no_encontrada":
+        throw Errors.notFound("No encontré ese resultado para fijarlo.");
+      default:
+        throw Errors.serviceUnavailable("No pude fijar el resultado en este momento. Inténtalo de nuevo.");
+    }
+  });
+
+  app.patch("/superadmin/copiloto/pins/:pinId", async (c) => {
+    const callerId = c.get("userId");
+    await rechazarSiImpersona(callerId);
+    const id = pinIdDe(c);
+    const raw = await jsonDe(c);
+    for (const key of Object.keys(raw)) if (key !== "titulo") throw Errors.validation(`Campo no permitido: ${key.slice(0, 40)}.`);
+    if (typeof raw["titulo"] !== "string") throw Errors.validation("titulo: se esperaba texto.");
+    const titulo = cleanPinTitle(raw["titulo"]);
+    if (titulo.length === 0) throw Errors.validation("titulo: no puede estar vacío.");
+    if ((await pinsDe(c.get("db")).rename(callerId, id, titulo)) !== "ok") throw Errors.notFound("Fijado no encontrado.");
+    return c.json({ id, titulo });
+  });
+
+  app.delete("/superadmin/copiloto/pins/:pinId", async (c) => {
+    const callerId = c.get("userId");
+    await rechazarSiImpersona(callerId);
+    if (!(await pinsDe(c.get("db")).remove(callerId, pinIdDe(c)))) throw Errors.notFound("Fijado no encontrado.");
+    return c.body(null, 204);
+  });
+
+  app.get("/superadmin/copiloto/pins/:pinId/resultado", async (c) => {
+    const callerId = c.get("userId");
+    await rechazarSiImpersona(callerId);
+    const id = pinIdDe(c);
+    const db = c.get("db");
+    const pin = await pinsDe(db).get(callerId, id);
+    if (!pin) throw Errors.notFound("Fijado no encontrado.");
+    const rol = await resolverRol(callerId);
+    const stepUp = await evaluarStepUp(c, rol);
+    if (!stepUp.ok && (rol === "finanzas" || HERRAMIENTAS_FINANCIERAS.includes(pin.herramienta))) {
+      await registrarDenegado(callerId, `GET copiloto/pins/:id/resultado (sin step-up)`);
+      throw stepUp.error;
+    }
+    const config = cfg();
+    if (!config) return c.json({ id: pin.id, titulo: pin.titulo, status: "unavailable", text: "El Copiloto de plataforma todavía no está activado en este despliegue.", blocks: [], sources: [] });
+    const scope = scopeDe(callerId, rol, stepUp.ok);
+    const catalogo = buildCatalogoPlataforma(fuentesDe(db, callerId), scope, { topeCopilotoMicroUsd: tope() });
+    const respuesta = await runDataChatTurn({
+      catalog: catalogo,
+      scope: alcanceDelMotor(scope),
+      question: "",
+      directTool: pin.herramienta,
+      directArgs: pin.args,
+      complete: NO_LLM_COMPLETION,
+      audit: config.audit?.(db) ?? new PostgresPlataformaAuditSink(db),
+      auditRole: SUPERADMIN_COPILOTO_ROLE,
+      onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "superadmin_copiloto_pin_error", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
+    });
+    return c.json({ id: pin.id, titulo: pin.titulo, status: respuesta.status, text: respuesta.text, blocks: respuesta.blocks, sources: respuesta.sources });
+  });
+
+  // ------------------------------------------------------------------------------------------------------------------------------
+  // Adjuntar archivo (CSV / Excel / PDF). Analisis determinista (sin modelo, sin guardar el archivo) con la bitacora del Copiloto. Solo el superadmin completo:
+  // el rol `finanzas` (solo lectura) no tiene esta ruta (la zona CFO no la deja pasar) y aqui se vuelve a comprobar.
+  app.post("/superadmin/copiloto/adjuntos", async (c) => {
+    const callerId = c.get("userId");
+    await rechazarSiImpersona(callerId);
+    if ((await resolverRol(callerId)) !== "superadmin") throw Errors.forbidden("Tu rol es de solo lectura: no puede adjuntar archivos.");
+    const db = c.get("db");
+    return procesarAdjunto(c, {
+      organizationId: alcanceDelMotor(scopeDe(callerId, "superadmin", false)).organizationId,
+      userId: callerId,
+      vertical: PLATAFORMA_VERTICAL,
+      role: SUPERADMIN_COPILOTO_ROLE,
+      audit: cfg()?.audit?.(db) ?? new PostgresPlataformaAuditSink(db),
+    });
   });
 
   // ------------------------------------------------------------------------------------------------------------------------------

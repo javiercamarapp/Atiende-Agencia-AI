@@ -101,6 +101,14 @@ export interface CopilotoDirecta {
   readonly args?: Readonly<Record<string, string | number>>;
 }
 
+/** "Adjuntar archivo": el transporte lo ofrece solo si su servidor tiene la ruta (CSV / Excel / PDF analizados en el backend, sin guardar el archivo). */
+export interface CopilotoAdjuntosConfig {
+  /** Valor del atributo `accept` del selector de archivos (extensiones permitidas, p. ej. ".csv,.xlsx,.pdf"). */
+  readonly accept: string;
+  /** Tamano maximo en bytes: el shell lo comprueba ANTES de subir (el servidor lo vuelve a comprobar). */
+  readonly maxBytes: number;
+}
+
 export interface CopilotoTransporte {
   /** Envia una pregunta. Debe reportar `paso`/`fin`/`error` por `onEvento` (NDJSON) y/o devolver la respuesta final.
    *  Con `directa`, `pregunta` es la etiqueta del chip y la consulta se resuelve sin modelo. */
@@ -108,9 +116,13 @@ export interface CopilotoTransporte {
     pregunta: string;
     conversacionId?: string;
     directa?: CopilotoDirecta;
+    /** Archivo adjunto (solo si el transporte declara `adjuntos`): el servidor lo analiza y responde con el perfil del archivo; `pregunta` es la etiqueta del mensaje. */
+    adjunto?: File;
     senal: AbortSignal;
     onEvento: (e: CopilotoEvento) => void;
   }): Promise<CopilotoRespuesta>;
+  /** Sin `adjuntos`, el compositor no muestra el clip (nunca un boton que no hace nada). */
+  readonly adjuntos?: CopilotoAdjuntosConfig;
   /** Sin `listar`, el boton Historial no se muestra (no hay historial persistido que ofrecer). */
   listar?(senal: AbortSignal): Promise<readonly ConversacionResumen[]>;
   abrir?(id: string, senal: AbortSignal): Promise<ConversacionCompleta>;

@@ -110,6 +110,8 @@ interface Opciones {
   agentes?: Record<string, unknown> | "fallo";
   organizaciones?: unknown[] | "fallo";
   post?: (cuerpo: unknown) => Response;
+  /** Tablero de fijados del Copiloto de plataforma: lista de `GET /superadmin/copiloto/pins`, o el estado HTTP con que responde (403 = sin tablero). Por defecto, sin fijados. */
+  fijados?: unknown[] | number;
 }
 
 function stubApi(o: Opciones = {}) {
@@ -119,6 +121,8 @@ function stubApi(o: Opciones = {}) {
       if (ruta !== "/superadmin/impersonacion/sesiones") throw new Error(`POST inesperado: ${ruta}`);
       return o.post ? o.post(JSON.parse(String(init.body))) : json({ session: { id: "s1" } }, 201);
     }
+    if (ruta === "/superadmin/copiloto/pins") return typeof o.fijados === "number" ? json({ message: "x" }, o.fijados) : json({ disponible: true, pins: o.fijados ?? [] });
+    if (/^\/superadmin\/copiloto\/pins\/[^/]+\/resultado$/.test(ruta)) return json({ id: "p1", titulo: "Actividad por negocio", status: "ok", text: "3 organizaciones, 2 con actividad", blocks: [], sources: [] });
     if (ruta === "/superadmin/consola/resumen") return o.resumen === "fallo" ? json({ message: "boom" }, 500) : json(o.resumen ?? resumenBase());
     if (ruta === "/superadmin/consola/agentes-actividad") return o.agentes === "fallo" ? json({ message: "boom" }, 500) : json(o.agentes ?? agentesBase());
     if (ruta === "/superadmin/organizations") return o.organizaciones === "fallo" ? json({ message: "boom" }, 500) : json({ organizations: o.organizaciones ?? ORGS });
@@ -174,6 +178,37 @@ describe("saludo en hora de Mexico (reloj fijo)", () => {
     stubApi();
     rendered = await montar({ staffEmail: "ana.torres@example.com" });
     expect(rendered.container.querySelector("h1")!.textContent).toBe("Buenos días, ana.torres");
+  });
+});
+
+describe("tablero de fijados del Copiloto de plataforma", () => {
+  it("pide GET /superadmin/copiloto/pins con el token, re-ejecuta cada fijado y NO ofrece Compartir (el tablero es personal)", async () => {
+    const m = stubApi({ fijados: [{ id: "p1", titulo: "Actividad por negocio", herramienta: "ranking_actividad", args: {}, compartido: false, propio: true }] });
+    rendered = await montar();
+    const urls = m.mock.calls.map((c) => new URL(c[0] as string).pathname);
+    expect(urls).toContain("/superadmin/copiloto/pins");
+    expect(urls).toContain("/superadmin/copiloto/pins/p1/resultado");
+    const headers = (m.mock.calls.find((c) => String(c[0]).endsWith("/superadmin/copiloto/pins"))![1] as RequestInit).headers as Record<string, string>;
+    expect(headers["authorization"]).toBe("Bearer tok-123");
+    expect(texto()).toContain("Fijados del Copiloto");
+    expect(texto()).toContain("3 organizaciones, 2 con actividad");
+    expect(rendered.container.querySelector("[aria-label='Quitar Actividad por negocio del tablero']")).not.toBeNull();
+    expect(rendered.container.querySelector("[aria-label^='Compartir']")).toBeNull();
+  });
+
+  it("sin fijados lo dice y enlaza al Copiloto; con 403 (rol finanzas) o 409 (impersonando) la seccion no se pinta", async () => {
+    stubApi({ fijados: [] });
+    rendered = await montar();
+    expect(texto()).toContain("Aún no fijas nada");
+    expect([...rendered.container.querySelectorAll("a")].some((a) => a.getAttribute("href") === "/superadmin/copiloto")).toBe(true);
+    rendered.unmount();
+    stubApi({ fijados: 403 });
+    rendered = await montar();
+    expect(texto()).not.toContain("Fijados del Copiloto");
+    rendered.unmount();
+    stubApi({ fijados: 409 });
+    rendered = await montar();
+    expect(texto()).not.toContain("Fijados del Copiloto");
   });
 });
 

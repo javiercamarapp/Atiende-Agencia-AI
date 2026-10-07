@@ -199,6 +199,21 @@ describe("WhatsAppOutboundDispatcher", () => {
     expect(port.rows.get(id)?.attempts).toBe(1); // no agotó los 5 intentos, murió al primero
   });
 
+  it("el resultado por mensaje distingue la falla del proveedor (con error 190 de Graph API) de la falla local, sin datos del mensaje", async () => {
+    port.enqueue(validPayload());
+    port.enqueue({ to: "+52999", body: "sin phone_number_id" });
+    const client = new FakeWhatsAppGraphClient({ onSend: () => new WhatsAppSendError("Graph API respondió 401: token vencido", false, { proveedor: true, httpStatus: 401, graphCode: 190 }) });
+    const dispatcher = new WhatsAppOutboundDispatcher({ graphClient: client });
+
+    const result = await dispatcher.dispatchPending(port);
+    const proveedor = result.items.filter((i) => i.proveedor === true);
+    expect(proveedor).toHaveLength(1);
+    expect(proveedor[0]).toMatchObject({ outcome: "dead", graphCode: 190 });
+    const local = result.items.filter((i) => i.proveedor === undefined);
+    expect(local).toHaveLength(1);
+    expect(local[0]!.graphCode).toBeUndefined();
+  });
+
   it("un payload con forma inválida se marca dead sin tocar la red", async () => {
     port.enqueue({ to: "+52999", body: "sin phone_number_id" });
     const client = new FakeWhatsAppGraphClient();
