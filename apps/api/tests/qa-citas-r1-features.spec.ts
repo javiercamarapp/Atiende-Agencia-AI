@@ -131,7 +131,7 @@ describe("QA R1 features citas -- validacion temporal del ciclo de la cita", () 
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const created = (await (await crearCitaWeb(app, ctx, LUNES_10_MERIDA)).json()) as { appointment: { id: string } };
-    const res = await app.request(`/v1/citas/${SLUG}/appointments/${created.appointment.id}/reschedule`, jsonRequestInit({ new_starts_at: LUNES_PASADO_10_MERIDA }, tool(ctx)));
+    const res = await app.request(`/v1/citas/${SLUG}/appointments/${created.appointment.id}/reschedule`, jsonRequestInit({ new_starts_at: LUNES_PASADO_10_MERIDA, customer_phone: "9991112233" }, tool(ctx)));
     expect(res.status).toBe(409);
   });
 
@@ -157,7 +157,7 @@ describe("QA R1 features citas -- validacion temporal del ciclo de la cita", () 
     const app = buildApp(ctx.deps);
     const created = (await (await crearCitaWeb(app, ctx, LUNES_10_MERIDA)).json()) as { appointment: { id: string } };
     const id = created.appointment.id;
-    const re = await app.request(`/v1/citas/${SLUG}/appointments/${id}/reschedule`, jsonRequestInit({ new_starts_at: LUNES_1030_MERIDA, actor_channel: "whatsapp" }, tool(ctx)));
+    const re = await app.request(`/v1/citas/${SLUG}/appointments/${id}/reschedule`, jsonRequestInit({ new_starts_at: LUNES_1030_MERIDA, actor_channel: "whatsapp", customer_phone: "9991112233" }, tool(ctx)));
     expect(re.status).toBe(200);
     expect(((await re.json()) as { appointment: { id: string; starts_at: string } }).appointment).toMatchObject({ id, starts_at: LUNES_1030_MERIDA });
     const conf = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${id}/confirm`, authedJson(ctx.staff.staffMember.token, {}));
@@ -210,7 +210,7 @@ describe("QA R1 features citas -- dobles reservas e idempotencia por API", () =>
     const app = buildApp(ctx.deps);
     const created = (await (await crearCitaWeb(app, ctx, LUNES_10_MERIDA)).json()) as { appointment: { id: string } };
     const url = `/v1/citas/${SLUG}/appointments/${created.appointment.id}/cancel`;
-    const [a, b] = await Promise.all([app.request(url, jsonRequestInit({}, tool(ctx))), app.request(url, jsonRequestInit({}, tool(ctx)))]);
+    const [a, b] = await Promise.all([app.request(url, jsonRequestInit({ customer_phone: "9991112233" }, tool(ctx))), app.request(url, jsonRequestInit({ customer_phone: "9991112233" }, tool(ctx)))]);
     expect([a.status, b.status]).toEqual([200, 200]);
   });
 });
@@ -290,7 +290,7 @@ describe("QA R1 features citas -- validacion de entrada y contrato de errores", 
       const url = `/v1/citas/${SLUG}/appointments/${idB}/${accion}`;
       expect((await app.request(url, jsonRequestInit({ new_starts_at: LUNES_10_MERIDA }))).status).toBe(401);
       expect((await app.request(url, jsonRequestInit({ new_starts_at: LUNES_10_MERIDA }, { "x-atiende-tool-secret": "no-es-el-secreto" }))).status).toBe(401);
-      const cruzado = await app.request(url, jsonRequestInit({ new_starts_at: LUNES_10_MERIDA, new_provider_id: ctx.providerId }, tool(ctx)));
+      const cruzado = await app.request(url, jsonRequestInit({ new_starts_at: LUNES_10_MERIDA, new_provider_id: ctx.providerId, customer_phone: "5551112233" }, tool(ctx)));
       expect({ accion, status: cruzado.status }).toEqual({ accion, status: 404 });
     }
   });
