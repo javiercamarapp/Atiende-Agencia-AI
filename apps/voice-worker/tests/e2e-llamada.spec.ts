@@ -74,10 +74,11 @@ async function armar(opts: { agente: () => AgenteGuionado; mundo?: MundoApi; log
   const llamar = async (id: string, recurrente: boolean) => {
     const agente = new AgenteGuionado(guionPedido(recurrente));
     agenteActual = agente;
+    // Se cuenta ANTES de llamar: tras crear el pedido la despedida del agente cuelga la llamada (QA-PM-R2-voz-16) y la llamada puede cerrar antes que el cliente.
+    const antes = worker.salud().llamadasAtendidas;
     const llamada = telefonia.llamar({ id, dnis: NUMERO_SUCURSAL, desde: SIP_DESDE });
     await vi.waitFor(() => expect(agente.saludos).toBe(1), { timeout: 5_000, interval: 5 });
     for (let i = 1; i <= agente.turnos.length; i++) await turnoCliente(llamada, api.reloj, () => agente.respondidos, i);
-    const antes = worker.salud().llamadasAtendidas;
     llamada.clienteCuelga();
     await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 5_000, interval: 5 });
     return { agente };
