@@ -1500,6 +1500,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
           estado: "ok",
           cambio: {
             tenderId: tender.id,
+            tenderTitle: tender.title,
             version: out.out_version,
             changedFieldNames: plan.changedFieldNames,
             invalidatedApprovals: out.out_invalidated_approval_ids.length,

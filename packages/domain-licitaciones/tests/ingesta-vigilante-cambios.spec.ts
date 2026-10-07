@@ -142,7 +142,7 @@ describe("InMemoryLicitacionesRepository.ingestTendersFromSource -- vigilante de
 
     expect(segunda.created).toBe(0);
     expect(segunda.createdTenderIds).toEqual([]);
-    expect(segunda.basesModificadas).toEqual([{ tenderId, version: 2, changedFieldNames: ["submissionDeadline"], invalidatedApprovals: 1, invalidatedApproverIds: ["owner-1"] }]);
+    expect(segunda.basesModificadas).toEqual([{ tenderId, tenderTitle: "Servicio de limpieza", version: 2, changedFieldNames: ["submissionDeadline"], invalidatedApprovals: 1, invalidatedApproverIds: ["owner-1"] }]);
     expect(await repo.activeApprovalsCovering(ORG, proposal.id, "expediente")).toHaveLength(0);
     const [aviso] = await repo.listTenderChangeNotifications(ORG, tenderId);
     expect(aviso).toMatchObject({ reason: "convocatoria_actualizada:v2", changedFieldNames: ["submissionDeadline"] });

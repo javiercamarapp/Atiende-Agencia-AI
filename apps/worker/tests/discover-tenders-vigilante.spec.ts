@@ -64,7 +64,7 @@ describe("discover-tenders: vigilante de cambios (L-P3-08)", () => {
     actual = candidato({ submissionDeadline: "2026-12-30T18:00:00-06:00" });
     const [segunda] = await runDiscoverTendersForOrganization((fn) => fn(repo), org);
     expect(segunda).toMatchObject({ state: "ok", created: 0, updated: 1, createdTenders: [] });
-    expect(segunda!.basesModificadas).toEqual([{ tenderId, version: 2, changedFieldNames: ["submissionDeadline"], invalidatedApprovals: 1, invalidatedApproverIds: ["owner-1"] }]);
+    expect(segunda!.basesModificadas).toEqual([{ tenderId, tenderTitle: "Servicio de limpieza", version: 2, changedFieldNames: ["submissionDeadline"], invalidatedApprovals: 1, invalidatedApproverIds: ["owner-1"] }]);
     // la version y la cascada YA estan persistidas: un fallo posterior del canal de aviso no las revierte
     expect(await repo.listTenderVersions(org, tenderId)).toHaveLength(2);
     expect(await repo.activeApprovalsCovering(org, proposal.id, "expediente")).toHaveLength(0);

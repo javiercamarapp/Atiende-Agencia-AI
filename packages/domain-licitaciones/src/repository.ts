@@ -182,6 +182,8 @@ export interface TenderChangeNotificationRecord {
 /** L-P3-08: una convocatoria YA conocida cuya fuente cambio plazo, monto, bases o documentos; la ingesta registro una version nueva. */
 export interface TenderBasesChange {
   readonly tenderId: string;
+  /** Titulo de la convocatoria (para el CORREO a la organizacion duena; la campana nunca lo lleva). */
+  readonly tenderTitle: string;
   /** Numero de la version nueva (>= 2: la primera captura es linea base y nunca es un cambio). */
   readonly version: number;
   /** Campos de bases que cambiaron (nombres del snapshot, sin valores: el aviso no lleva texto de la convocatoria). */

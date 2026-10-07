@@ -753,7 +753,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       acknowledgedBy: null,
     });
     this.tenderChangeNotifications.set(organizationId, notifications);
-    return { tenderId: tender.id, version: version.version, changedFieldNames: plan.changedFieldNames, invalidatedApprovals: invalidatedApprovalIds.length, invalidatedApproverIds: [...invalidatedApproverIds] };
+    return { tenderId: tender.id, tenderTitle: tender.title, version: version.version, changedFieldNames: plan.changedFieldNames, invalidatedApprovals: invalidatedApprovalIds.length, invalidatedApproverIds: [...invalidatedApproverIds] };
   }
 
   async getNewMatchContext(organizationId: string): Promise<NewMatchContext | null> {
