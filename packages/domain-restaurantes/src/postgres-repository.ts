@@ -1985,6 +1985,19 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return (await this.queryPromotions("organization_id = $1 and code = $2", [organizationId, code]))[0] ?? null;
   }
 
+  async findCompensationCode(organizationId: string, phone: string): Promise<string | null> {
+    return runWithSavepointFallback<string | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_compensacion_codigo",
+      primary: async () => {
+        const { rows } = await this.db.query<{ codigo: string | null }>("select restaurantes.compensacion_codigo_disponible($1::uuid, $2) as codigo;", [organizationId, phone]);
+        return rows[0]?.codigo ?? null;
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: async () => null,
+    });
+  }
+
   async createPromotion(organizationId: string, input: NewPromotionInput): Promise<Promotion> {
     const base = [
       organizationId,

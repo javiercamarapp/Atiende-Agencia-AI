@@ -1820,6 +1820,23 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return found ? { ...found } : null;
   }
 
+  private readonly compensationCodes = new Map<string, string>();
+
+  /** Solo pruebas: emite a `phone` un codigo de compensacion (espejo de solicitud_resolver con `descuento_proximo`). */
+  seedCompensationCode(organizationId: string, phone: string, code: string): void {
+    this.compensationCodes.set(`${organizationId}:${phone.replace(/\D/g, "").slice(-10)}`, code);
+  }
+
+  async findCompensationCode(organizationId: string, phone: string): Promise<string | null> {
+    const code = this.compensationCodes.get(`${organizationId}:${phone.replace(/\D/g, "").slice(-10)}`);
+    if (!code) return null;
+    const p = await this.findPromotionByCode(organizationId, code);
+    const now = Date.now();
+    if (!p || !p.isActive || (p.maxUses !== null && p.timesUsed >= p.maxUses)) return null;
+    if ((p.startsAt && Date.parse(p.startsAt) > now) || (p.endsAt && Date.parse(p.endsAt) < now)) return null;
+    return code;
+  }
+
   async listAutoApplyPromotions(organizationId: string): Promise<readonly Promotion[]> {
     return [...this.promotions.values()]
       .filter((p) => p.organizationId === organizationId && p.autoApply && p.isActive)
