@@ -1,6 +1,6 @@
 # Crons de Vercel
 
-Fuente de verdad: `vercel.json::crons` (hoy **38** crons). Todos son rutas `GET|POST /internal/...` que
+Fuente de verdad: `vercel.json::crons` (hoy **40** crons). Todos son rutas `GET|POST /internal/...` que
 Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que `INTERNAL_SECRET`).
 
 ## Reglas
