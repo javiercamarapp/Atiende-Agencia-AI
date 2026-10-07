@@ -907,8 +907,11 @@ async function dispatchTool(
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "buscar_sucursal_cercana": {
-      let lat = typeof input.lat === "number" ? input.lat : undefined;
-      let lng = typeof input.lng === "number" ? input.lng : undefined;
+      // El modelo manda relleno cuando solo tiene la colonia (lat 0, lng 0, max_km 0): (0,0) no es un pin (caia a 9,967 km y la zona salia "fuera de zona", R2W36) y un
+      // max_km no positivo no es un radio (34 errores por medida). Se ignoran como si no vinieran.
+      const coordenadasValidas = typeof input.lat === "number" && typeof input.lng === "number" && Number.isFinite(input.lat) && Number.isFinite(input.lng) && !(input.lat === 0 && input.lng === 0);
+      let lat = coordenadasValidas ? (input.lat as number) : undefined;
+      let lng = coordenadasValidas ? (input.lng as number) : undefined;
       // Ubicacion compartida por WhatsApp: se usa solo si el modelo no mando coordenadas ni una colonia
       // explicita (una colonia dicha por el cliente despues de compartir manda).
       const coloniaDicha = typeof input.colonia === "string" && input.colonia.trim() !== "";
@@ -920,7 +923,7 @@ async function dispatchTool(
         organizationId,
         colonia: typeof input.colonia === "string" ? input.colonia : undefined,
         ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
-        ...(typeof input.max_km === "number" ? { maxKm: input.max_km } : {}),
+        ...(typeof input.max_km === "number" && Number.isFinite(input.max_km) && input.max_km > 0 ? { maxKm: input.max_km } : {}),
       });
       const result =
         match.estado === "asignada"
