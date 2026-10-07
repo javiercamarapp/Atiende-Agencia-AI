@@ -1,7 +1,7 @@
 // R-12: bandeja de callbacks con estado (nuevo / en curso / resuelto), motivo, canal, sucursal, asignacion y SLA simple.
 // Vive como pestana de Conversaciones (R-21): NO es otra bandeja. Contrato: lib/conversaciones-client.ts.
 // Base sin la migracion 033: `gestionable: false` -> se ve el listado de siempre (abierto/resuelto) sin botones de estado.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
 import { Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, NativeSelect, StatusBadge, useConfirm } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
@@ -56,6 +56,21 @@ export function CallbacksPanel({ ctx }: { ctx: RestaurantesShellContext }) {
   const [aviso, setAviso] = useState<string | null>(null);
   const [miembros, setMiembros] = useState<readonly OrgMember[]>([]);
   const [asignando, setAsignando] = useState<Readonly<Record<string, string>>>({});
+  // QA-restaurantes-R2-botones-06: una sola accion a la vez POR callback (candado en ref contra el doble clic + estado para deshabilitar sus botones).
+  const [ocupados, setOcupados] = useState<ReadonlySet<string>>(new Set());
+  const ocupadosRef = useRef<Set<string>>(new Set());
+
+  async function conCandado(id: string, tarea: () => Promise<void>): Promise<void> {
+    if (ocupadosRef.current.has(id)) return;
+    ocupadosRef.current.add(id);
+    setOcupados(new Set(ocupadosRef.current));
+    try {
+      await tarea();
+    } finally {
+      ocupadosRef.current.delete(id);
+      setOcupados(new Set(ocupadosRef.current));
+    }
+  }
 
   useEffect(() => {
     let cancelado = false;
@@ -95,17 +110,19 @@ export function CallbacksPanel({ ctx }: { ctx: RestaurantesShellContext }) {
     };
   }, [apiBaseUrl, token, propertyId, esGestor]);
 
-  async function intento(cb: CallbackWire, resultado: CallbackResultado) {
-    setAviso(null);
-    try {
-      await registrarIntento(fetch, apiBaseUrl, token, propertyId, cb.id, { resultado });
-      setVersion((n) => n + 1);
-    } catch (err) {
-      setAviso(mensaje(err, "No se pudo registrar el intento."));
-    }
+  function intento(cb: CallbackWire, resultado: CallbackResultado): Promise<void> {
+    return conCandado(cb.id, async () => {
+      setAviso(null);
+      try {
+        await registrarIntento(fetch, apiBaseUrl, token, propertyId, cb.id, { resultado });
+        setVersion((n) => n + 1);
+      } catch (err) {
+        setAviso(mensaje(err, "No se pudo registrar el intento."));
+      }
+    });
   }
 
-  async function cambiar(cb: CallbackWire, accion: CallbackAccion, extra: { asignadoA?: string; nota?: string } = {}) {
+  async function ejecutarCambio(cb: CallbackWire, accion: CallbackAccion, extra: { asignadoA?: string; nota?: string }) {
     setAviso(null);
     try {
       await actualizarCallback(fetch, apiBaseUrl, token, propertyId, cb.id, { accion, ...extra });
@@ -116,15 +133,22 @@ export function CallbacksPanel({ ctx }: { ctx: RestaurantesShellContext }) {
     }
   }
 
-  async function resolver(cb: CallbackWire) {
-    const nota = await pedirTexto({
-      titulo: `Resolver el callback de ${cb.nombre}`,
-      descripcion: "Anote cómo quedó (opcional). Queda guardado junto con quién lo resolvió y cuándo.",
-      confirmar: "Marcar como resuelto",
-      campo: { etiqueta: "Nota de resolución", multilinea: true, requerido: false, maxLength: 1000 },
+  function cambiar(cb: CallbackWire, accion: CallbackAccion, extra: { asignadoA?: string; nota?: string } = {}): Promise<void> {
+    return conCandado(cb.id, () => ejecutarCambio(cb, accion, extra));
+  }
+
+  // Resolver pide una nota en un dialogo: el candado cubre el dialogo Y la escritura (no se abre dos veces ni se manda dos veces).
+  function resolver(cb: CallbackWire): Promise<void> {
+    return conCandado(cb.id, async () => {
+      const nota = await pedirTexto({
+        titulo: `Resolver el callback de ${cb.nombre}`,
+        descripcion: "Anote cómo quedó (opcional). Queda guardado junto con quién lo resolvió y cuándo.",
+        confirmar: "Marcar como resuelto",
+        campo: { etiqueta: "Nota de resolución", multilinea: true, requerido: false, maxLength: 1000 },
+      });
+      if (nota === null) return;
+      await ejecutarCambio(cb, "resolver", nota ? { nota } : {});
     });
-    if (nota === null) return;
-    await cambiar(cb, "resolver", nota ? { nota } : {});
   }
 
   if (error) return <EstadoError mensaje={error} onReintentar={() => setVersion((n) => n + 1)} />;
@@ -153,6 +177,7 @@ export function CallbacksPanel({ ctx }: { ctx: RestaurantesShellContext }) {
       {items.length === 0 && <EstadoVacio icon={MessageSquare} titulo="Sin callbacks" mensaje="No hay llamadas por devolver con este filtro." />}
       {items.map((cb) => {
         const persona = asignando[cb.id] ?? "";
+        const ocupado = ocupados.has(cb.id);
         return (
           <Card key={cb.id}>
             <CardContent className="flex flex-col gap-2 pt-4 text-sm">
@@ -187,22 +212,22 @@ export function CallbacksPanel({ ctx }: { ctx: RestaurantesShellContext }) {
               {cb.estado !== "resuelto" && !cb.resuelto && (
                 <div className="flex flex-wrap gap-2">
                   {cb.gestionable && cb.estado === "nuevo" && (
-                    <Button size="sm" onClick={() => void cambiar(cb, "tomar")}>
+                    <Button size="sm" disabled={ocupado} onClick={() => void cambiar(cb, "tomar")}>
                       Tomar
                     </Button>
                   )}
                   {cb.gestionable && cb.estado === "en_curso" && (
                     <>
-                      <Button size="sm" onClick={() => void resolver(cb)}>
+                      <Button size="sm" disabled={ocupado} onClick={() => void resolver(cb)}>
                         Resolver
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => void cambiar(cb, "liberar")}>
+                      <Button size="sm" variant="outline" disabled={ocupado} onClick={() => void cambiar(cb, "liberar")}>
                         Liberar
                       </Button>
                     </>
                   )}
                   {(Object.keys(CALLBACK_RESULTADO_LABEL) as CallbackResultado[]).map((r) => (
-                    <Button key={r} size="sm" variant="outline" onClick={() => void intento(cb, r)}>
+                    <Button key={r} size="sm" variant="outline" disabled={ocupado} onClick={() => void intento(cb, r)}>
                       {CALLBACK_RESULTADO_LABEL[r]}
                     </Button>
                   ))}
@@ -218,14 +243,14 @@ export function CallbacksPanel({ ctx }: { ctx: RestaurantesShellContext }) {
                       </option>
                     ))}
                   </NativeSelect>
-                  <Button size="sm" variant="outline" disabled={persona === ""} onClick={() => void cambiar(cb, "asignar", { asignadoA: persona })}>
+                  <Button size="sm" variant="outline" disabled={ocupado || persona === ""} onClick={() => void cambiar(cb, "asignar", { asignadoA: persona })}>
                     Asignar
                   </Button>
                 </div>
               )}
               {cb.gestionable && esGestor && cb.estado === "resuelto" && (
                 <div>
-                  <Button size="sm" variant="outline" onClick={() => void cambiar(cb, "reabrir")}>
+                  <Button size="sm" variant="outline" disabled={ocupado} onClick={() => void cambiar(cb, "reabrir")}>
                     Reabrir
                   </Button>
                 </div>

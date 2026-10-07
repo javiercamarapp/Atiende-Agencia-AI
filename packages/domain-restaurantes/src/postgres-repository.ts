@@ -57,6 +57,7 @@ import type {
   FilaImportacionCliente,
   ResultadoImportacionClientes,
   CustomerTier,
+  ColoniasReferenciaLectura,
   KnownZone,
   NearestBranchMatch,
   NewCategoryInput,
@@ -591,8 +592,8 @@ interface KnownZoneRowSql {
   id: string;
   organization_id: string;
   name: string;
-  lat: string | number;
-  lng: string | number;
+  lat: string | number | null;
+  lng: string | number | null;
   created_at: string;
 }
 
@@ -601,8 +602,8 @@ function mapKnownZoneRow(row: KnownZoneRowSql): KnownZone {
     id: row.id,
     organizationId: row.organization_id,
     name: row.name,
-    lat: Number(row.lat),
-    lng: Number(row.lng),
+    lat: row.lat === null ? null : Number(row.lat),
+    lng: row.lng === null ? null : Number(row.lng),
     createdAt: row.created_at,
   };
 }
@@ -635,6 +636,13 @@ function mapRestaurantesAuditLogRow(row: RestaurantesAuditLogRowSql): Restaurant
 
 /** Tope de p_limit de restaurantes.clientes_cartera (migracion 054). */
 const CARTERA_LIMITE_SQL = 200;
+
+/** Evento de notificacion de un aviso de contacto. El aviso de llegada de quien recoge (`reason: cliente_llego`) es urgente y lleva su propio evento
+ * (critica, enlace a pedidos): la sucursal tiene a una persona esperando en el mostrador. R-43: una solicitud de evento/catering del storefront
+ * (reason = 'evento') avisa con su propio evento del catalogo. Ninguno emite ademas el aviso generico de «devolver llamada». */
+function eventoDeCallback(reason: string | null | undefined): "restaurantes.cliente.llego" | "restaurantes.evento.solicitud" | "restaurantes.callback.pendiente" {
+  return reason === "cliente_llego" ? "restaurantes.cliente.llego" : reason === "evento" ? "restaurantes.evento.solicitud" : "restaurantes.callback.pendiente";
+}
 
 export class PostgresRestaurantesRepository implements RestaurantesRepository {
   constructor(private readonly db: TenantDbSession) {}
@@ -1098,7 +1106,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       if (agente) {
         // Notificacion in-app (`restaurantes.callback.pendiente`) solo cuando el aviso es NUEVO: un reenvio o una nota agregada no vuelven a avisar.
         if (agente.registro === "nuevo") {
-          await emitirNotificacion(this.db, { evento: "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: agente.id, entidadTipo: "callback_request", entidadId: agente.id });
+          await emitirNotificacion(this.db, { evento: eventoDeCallback(input.reason), organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: agente.id, entidadTipo: "callback_request", entidadId: agente.id });
         }
         return agente;
       }
@@ -1141,8 +1149,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     });
     // Notificacion in-app (`restaurantes.callback.pendiente`): un contacto que el agente (voz o WhatsApp) dejo para devolver la
     // llamada. Uno por solicitud (clave = id), sin PII (ni nombre ni telefono viajan en el aviso). SAVEPOINT en emitirNotificacion.
-    // R-43: una solicitud de evento/catering del storefront (reason = 'evento') avisa con su propio evento del catalogo, no con el generico.
-    await emitirNotificacion(this.db, { evento: input.reason === "evento" ? "restaurantes.evento.solicitud" : "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
+    await emitirNotificacion(this.db, { evento: eventoDeCallback(input.reason), organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
     return { ...input, id: row.id, resolved: row.resolved, createdAt: row.created_at, registro: "nuevo" };
   }
 
@@ -2856,6 +2863,49 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows.map(mapKnownZoneRow);
   }
 
+  async listColoniasReferencia(organizationId: string): Promise<ColoniasReferenciaLectura> {
+    // Columnas de la migracion 056: contra la base sin migrar (42703) el reporte dice "no disponible", sin abortar la transaccion del request.
+    return runWithSavepointFallback<ColoniasReferenciaLectura>({
+      session: this.db,
+      savepointName: "sp_restaurantes_colonias_referencia",
+      primary: async () => {
+        const { rows } = await this.db.query<{
+          id: string;
+          name: string;
+          lat: string | number | null;
+          lng: string | number | null;
+          fuente: string | null;
+          asignacion_fuente: string | null;
+          ref_sucursal_slug: string | null;
+          ref_km: string | number | null;
+          ref2_sucursal_slug: string | null;
+          ref2_km: string | number | null;
+        }>(
+          `select id, name, lat, lng, fuente, asignacion_fuente, ref_sucursal_slug, ref_km, ref2_sucursal_slug, ref2_km
+             from restaurantes.known_zone where organization_id = $1 order by name asc, id asc;`,
+          [organizationId],
+        );
+        return {
+          disponible: true,
+          zonas: rows.map((r) => ({
+            zoneId: r.id,
+            name: r.name,
+            lat: r.lat === null ? null : Number(r.lat),
+            lng: r.lng === null ? null : Number(r.lng),
+            fuente: r.fuente,
+            asignacionFuente: r.asignacion_fuente,
+            refSucursalSlug: r.ref_sucursal_slug,
+            refKm: r.ref_km === null ? null : Number(r.ref_km),
+            ref2SucursalSlug: r.ref2_sucursal_slug,
+            ref2Km: r.ref2_km === null ? null : Number(r.ref2_km),
+          })),
+        };
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => ({ disponible: false, zonas: [] }),
+    });
+  }
+
   async createKnownZone(organizationId: string, input: NewKnownZoneInput): Promise<KnownZone> {
     return runWithSavepointFallback<KnownZone>({
       session: this.db,
@@ -3356,6 +3406,26 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       savepointName: "sp_restaurantes_branch_policy_read",
       primary: async () => {
         const { rows } = await this.db.query<BranchPolicyRowSql>(
+          `select horario, pedido_minimo_domicilio, pedido_minimo_recoger, propina_politica,
+                  visible_en_directorio, acepta_domicilio, dias_domicilio, de_temporada
+             from restaurantes.branch_policy where property_id = $1;`,
+          [propertyId],
+        );
+        return rows[0] ? mapBranchPolicyRow(rows[0]) : EMPTY_BRANCH_POLICY;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      // Base sin la migracion 057: se lee la politica de 023 (horario, minimos, propina) sin perderla.
+      fallback: () => this.findBranchPolicyLegacy(propertyId),
+    });
+  }
+
+  /** Lectura de `branch_policy` con las columnas de la migracion 023 (base sin la 057). */
+  private async findBranchPolicyLegacy(propertyId: string): Promise<BranchPolicy> {
+    return runWithSavepointFallback<BranchPolicy>({
+      session: this.db,
+      savepointName: "sp_restaurantes_branch_policy_read_023",
+      primary: async () => {
+        const { rows } = await this.db.query<BranchPolicyRowSql>(
           `select horario, pedido_minimo_domicilio, pedido_minimo_recoger, propina_politica from restaurantes.branch_policy where property_id = $1;`,
           [propertyId],
         );
@@ -3567,6 +3637,56 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       savepointName: "sp_restaurantes_branch_policy_write",
       primary: async () => {
         const { rows } = await this.db.query<BranchPolicyRowSql>(
+          `insert into restaurantes.branch_policy (property_id, organization_id, horario, pedido_minimo_domicilio, pedido_minimo_recoger, propina_politica,
+                                                   visible_en_directorio, acepta_domicilio, dias_domicilio, de_temporada, updated_at)
+           values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9::smallint[], $10, now())
+           on conflict (property_id) do update set
+             horario = excluded.horario,
+             pedido_minimo_domicilio = excluded.pedido_minimo_domicilio,
+             pedido_minimo_recoger = excluded.pedido_minimo_recoger,
+             propina_politica = excluded.propina_politica,
+             visible_en_directorio = excluded.visible_en_directorio,
+             acepta_domicilio = excluded.acepta_domicilio,
+             dias_domicilio = excluded.dias_domicilio,
+             de_temporada = excluded.de_temporada,
+             updated_at = excluded.updated_at
+           returning horario, pedido_minimo_domicilio, pedido_minimo_recoger, propina_politica,
+                     visible_en_directorio, acepta_domicilio, dias_domicilio, de_temporada;`,
+          [
+            propertyId,
+            organizationId,
+            policy.horario === null ? null : JSON.stringify(policy.horario),
+            policy.pedidoMinimoDomicilio,
+            policy.pedidoMinimoRecoger,
+            policy.propinaPolitica,
+            policy.visibleEnDirectorio ?? null,
+            policy.aceptaDomicilio ?? true,
+            policy.diasDomicilio ? `{${policy.diasDomicilio.join(",")}}` : null,
+            policy.deTemporada ?? false,
+          ],
+        );
+        return mapBranchPolicyRow(rows[0]!);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        // Base sin la 057: solo se puede guardar la politica de 023. Si el cambio trae una restriccion de
+        // domicilio o de directorio, NO se descarta en silencio: la configuracion no esta disponible aun.
+        if (!politicaSoloCampos023(policy)) {
+          advertirModeloPmNoDisponible("branch_policy", err, "057_sucursal_directorio_y_domicilio.sql");
+          throw new RestaurantesConfigUnavailableError();
+        }
+        return this.upsertBranchPolicyLegacy(organizationId, propertyId, policy);
+      },
+    });
+  }
+
+  /** Escritura de `branch_policy` con las columnas de la migracion 023 (base sin la 057). */
+  private async upsertBranchPolicyLegacy(organizationId: string, propertyId: string, policy: BranchPolicy): Promise<BranchPolicy> {
+    return runWithSavepointFallback<BranchPolicy>({
+      session: this.db,
+      savepointName: "sp_restaurantes_branch_policy_write_023",
+      primary: async () => {
+        const { rows } = await this.db.query<BranchPolicyRowSql>(
           `insert into restaurantes.branch_policy (property_id, organization_id, horario, pedido_minimo_domicilio, pedido_minimo_recoger, propina_politica, updated_at)
            values ($1, $2, $3::jsonb, $4, $5, $6, now())
            on conflict (property_id) do update set
@@ -3576,14 +3696,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
              propina_politica = excluded.propina_politica,
              updated_at = excluded.updated_at
            returning horario, pedido_minimo_domicilio, pedido_minimo_recoger, propina_politica;`,
-          [
-            propertyId,
-            organizationId,
-            policy.horario === null ? null : JSON.stringify(policy.horario),
-            policy.pedidoMinimoDomicilio,
-            policy.pedidoMinimoRecoger,
-            policy.propinaPolitica,
-          ],
+          [propertyId, organizationId, policy.horario === null ? null : JSON.stringify(policy.horario), policy.pedidoMinimoDomicilio, policy.pedidoMinimoRecoger, policy.propinaPolitica],
         );
         return mapBranchPolicyRow(rows[0]!);
       },
@@ -3756,6 +3869,30 @@ interface BranchPolicyRowSql {
   pedido_minimo_domicilio: string | number | null;
   pedido_minimo_recoger: string | number | null;
   propina_politica: string | null;
+  // Migracion 057: ausentes cuando se consulto con el SELECT de 023.
+  visible_en_directorio?: boolean | null;
+  acepta_domicilio?: boolean | null;
+  dias_domicilio?: number[] | string | null;
+  de_temporada?: boolean | null;
+}
+
+/** `smallint[]` llega como arreglo (pg) o como literal "{5,6,0}" segun el driver. */
+function leerDiasDomicilio(raw: number[] | string | null | undefined): readonly number[] | null {
+  if (raw === null || raw === undefined) return null;
+  const lista = Array.isArray(raw) ? raw.map(Number) : raw.replace(/[{}]/g, "").split(",").filter((x) => x.trim() !== "").map(Number);
+  const dias = lista.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+  // Un dato ilegible o vacio nunca bloquea el domicilio: se trata como "todos los dias".
+  return dias.length > 0 ? [...new Set(dias)].sort((a, b) => a - b) : null;
+}
+
+/** true cuando la politica no usa ninguna columna de la migracion 057 (se puede guardar en una base sin ella). */
+function politicaSoloCampos023(policy: BranchPolicy): boolean {
+  return (
+    (policy.visibleEnDirectorio ?? null) === null &&
+    (policy.aceptaDomicilio ?? true) === true &&
+    (policy.diasDomicilio ?? null) === null &&
+    (policy.deTemporada ?? false) === false
+  );
 }
 
 function mapBranchPolicyRow(row: BranchPolicyRowSql): BranchPolicy {
@@ -3765,6 +3902,10 @@ function mapBranchPolicyRow(row: BranchPolicyRowSql): BranchPolicy {
     pedidoMinimoDomicilio: row.pedido_minimo_domicilio === null ? null : Number(row.pedido_minimo_domicilio),
     pedidoMinimoRecoger: row.pedido_minimo_recoger === null ? null : Number(row.pedido_minimo_recoger),
     propinaPolitica: propina === "nunca" || propina === "siempre" || propina === "solo_tarjeta" ? propina : null,
+    visibleEnDirectorio: row.visible_en_directorio ?? null,
+    aceptaDomicilio: row.acepta_domicilio ?? true,
+    diasDomicilio: leerDiasDomicilio(row.dias_domicilio),
+    deTemporada: row.de_temporada ?? false,
   };
 }
 

@@ -75,6 +75,7 @@ const SuperAdminPlanesPage = cargaPerezosa(() => import("./superadmin/pages/Plan
 const NotificacionesPagina = cargaPerezosa(() => import("./components/NotificacionesPagina.tsx"), "NotificacionesPagina");
 const PlanYUsoPagina = cargaPerezosa(() => import("./components/PlanYUsoPagina.tsx"), "PlanYUsoPagina");
 const StorefrontRestaurantePage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/RestaurantePage.tsx"), "RestaurantePage");
+const StorefrontSucursalesPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/SucursalesPage.tsx"), "SucursalesPage");
 const StorefrontSucursalPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/SucursalPage.tsx"), "SucursalPage");
 const StorefrontRastreoPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/RastreoPage.tsx"), "RastreoPage");
 const ReservarPage = cargaPerezosa(() => import("./verticals/citas/reserva/ReservarPage.tsx"), "ReservarPage");
@@ -172,6 +173,7 @@ const RadarRenovacionesPage = cargaPerezosa(() => import("./verticals/licitacion
 const PerfilMatchingPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/PerfilMatching.tsx"), "PerfilMatchingPage");
 const DatosEmpresaPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/DatosEmpresa.tsx"), "DatosEmpresaPage");
 const LicitacionesStaffPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Staff.tsx"), "StaffPage");
+const LicitacionesBitacoraPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Bitacora.tsx"), "BitacoraPage");
 const LicitacionesSeguridadPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Seguridad.tsx"), "SeguridadPage");
 const LicitacionesWhatsappPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Whatsapp.tsx"), "WhatsappPage");
 const LicitacionesDiasInhabilesPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/DiasInhabiles.tsx"), "DiasInhabilesPage");
@@ -333,6 +335,10 @@ function StorefrontRestauranteRoute() {
   const { orgSlug = "" } = useParams();
   return <StorefrontRestaurantePage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
+function StorefrontSucursalesRoute() {
+  const { orgSlug = "" } = useParams();
+  return <StorefrontSucursalesPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
 function StorefrontSucursalRoute() {
   const { orgSlug = "", branchSlug = "" } = useParams();
   return <StorefrontSucursalPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} branchSlug={branchSlug} />;
@@ -366,7 +372,7 @@ function StorefrontEventosRoute() {
 }
 function StorefrontPrivacidadRoute() {
   const { orgSlug = "" } = useParams();
-  return <PrivacidadStorefrontPage orgSlug={orgSlug} />;
+  return <PrivacidadStorefrontPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
 
 /** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
@@ -966,6 +972,8 @@ const LicitacionesPrivacidadRoute = shellRoute(LicitacionesShell, "/licitaciones
 const LicitacionesWhatsappRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesWhatsappPage {...ctx} />);
 // L-08: KYC negativo contra la lista 69-B del SAT (proveedores y competidores).
 const LicitacionesKyc69bRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesKyc69bPage {...ctx} />);
+// L-P3-17: bitácora de escrituras de la organización (solo owner/admin; el servidor y la RLS lo exigen).
+const LicitacionesBitacoraRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesBitacoraPage {...ctx} />);
 const LicitacionesDiasInhabilesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesDiasInhabilesPage {...ctx} />);
 
 // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
@@ -1097,6 +1105,8 @@ export function App() {
         <Route path="/reservar/:orgSlug" element={<ReservarCitasRoute />} />
         <Route path="/pedir/:orgSlug" element={<StorefrontRestauranteRoute />} />
         <Route path="/pedir/:orgSlug/privacidad" element={<StorefrontPrivacidadRoute />} />
+        {/* Directorio publico: va ANTES de :branchSlug (una sucursal con slug "sucursales" no se puede abrir; el slug esta reservado). */}
+        <Route path="/pedir/:orgSlug/sucursales" element={<StorefrontSucursalesRoute />} />
         <Route path="/pedir/:orgSlug/eventos" element={<StorefrontEventosRoute />} />
         <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
         <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
@@ -1254,6 +1264,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/licitaciones/:orgSlug/datos-empresa" element={<LicitacionesDatosEmpresaRoute />} />
         <Route path="/licitaciones/:orgSlug/staff" element={<LicitacionesStaffRoute />} />
+        <Route path="/licitaciones/:orgSlug/bitacora" element={<LicitacionesBitacoraRoute />} />
         <Route path="/licitaciones/:orgSlug/notificaciones" element={<LicitacionesNotificacionesRoute />} />
         <Route path="/licitaciones/:orgSlug/plan" element={<LicitacionesPlanRoute />} />
         <Route path="/licitaciones/:orgSlug/seguridad" element={<LicitacionesSeguridadRoute />} />

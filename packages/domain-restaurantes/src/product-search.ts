@@ -91,7 +91,8 @@ const FRASES_DE_PESO: ReadonlyArray<readonly [RegExp, number]> = [
 ];
 
 /** Escrituras comunes de una misma palabra ("bisteck", "bistek", "biftec") que el catalogo escribe "bistec". Se aplica al token ya singular. */
-const ALIAS_DE_ESCRITURA: Readonly<Record<string, string>> = { bisteck: "bistec", bistek: "bistec", bisteak: "bistec", biftec: "bistec", biftek: "bistec" };
+// "bisctec" (chats reales de T7) y "pok" ("pok chuc", del piloto original) son faltas de escritura de "bistec" y "poc".
+const ALIAS_DE_ESCRITURA: Readonly<Record<string, string>> = { bisteck: "bistec", bistek: "bistec", bisteak: "bistec", biftec: "bistec", biftek: "bistec", bisctec: "bistec", pok: "poc" };
 
 /** "kgs", "kgr", "kgrs" y "kilogramos" son "kg": sin esto "2 kgs de pastor" no se reconoce como peso y la busqueda devuelve vacio. */
 function normalizarUnidadesDeKilo(texto: string): string {
@@ -126,7 +127,13 @@ export function pesoDeProductoEnGramos(nombre: string): number | null {
 export function tokenizeForProductSearch(query: string): string[] {
   const normalizada = normalizarPesosEnConsulta(
     normalizarUnidadesDeKilo(sinAcentos(query)).replace(/\bcero\s+punto\s+cero\b/g, "0.0"),
-  ).replace(/\bmedia\s+orden\b/g, "1/2");
+  )
+    .replace(/\bmedia\s+orden\b/g, "1/2")
+    // Jerga de T7 (chats reales): "medios charros" = media orden de frijoles charros; "nachos grandes" = la orden completa (el catalogo
+    // solo distingue "(1/2 orden)"), asi que "grande(s)" junto a estos platillos no es parte del nombre.
+    .replace(/\b(?:medios?|medias?)\s+(?=(?:frijoles?\s+)?charros?\b|frijoles?\b|nachos?\b)/g, "1/2 ")
+    .replace(/\b(nachos?|charros?|frijoles?)\s+grandes?\b/g, "$1")
+    .replace(/\bgrandes?\s+(?=nachos?\b|charros?\b|frijoles?\b)/g, "");
 
   const raw = normalizada.split(/\s+/).filter((t) => t.length > 1 && !STOPWORDS_BUSQUEDA.has(t));
 

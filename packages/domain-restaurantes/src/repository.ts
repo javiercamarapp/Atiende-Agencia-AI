@@ -47,6 +47,7 @@ import type {
   FilaImportacionCliente,
   ResultadoImportacionClientes,
   CustomerTier,
+  ColoniasReferenciaLectura,
   KnownZone,
   NearestBranchMatch,
   NewCategoryInput,
@@ -123,6 +124,9 @@ export interface NewOrderRecord {
 export interface ConversationMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
+  /** Solo en el mensaje del asistente de un turno que dejo un pedido creado: marca el limite entre un pedido y el siguiente
+   * (el pin o link de Maps de antes de esa marca ya no pertenece al pedido en curso). Es metadato del historial: no se manda al modelo. */
+  readonly pedidoCreado?: true;
 }
 
 // ---- KPIs de admin (Fase 3, ver diseño §2) ----
@@ -603,6 +607,9 @@ export interface RestaurantesRepository {
    *  criterio de desempate que `restaurantes.audit_log` para paginación estable). */
   listKnownZones(organizationId: string): Promise<readonly KnownZone[]>;
   createKnownZone(organizationId: string, input: NewKnownZoneInput): Promise<KnownZone>;
+  /** Colonias con la referencia del piloto original (migracion 056) para el reporte de colonias ambiguas. Contra la base sin migrar
+   *  devuelve `{ disponible: false, zonas: [] }` (con SAVEPOINT: nunca aborta la transaccion del request). */
+  listColoniasReferencia(organizationId: string): Promise<ColoniasReferenciaLectura>;
   /** `true` si borró una zona de ESTA organización; `false` si no existía o
    *  pertenecía a otra organización (nunca lanza por "no encontrado" -- el
    *  caller decide el 404, mismo contrato que `revokeStaffInvite`). */

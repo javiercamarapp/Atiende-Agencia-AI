@@ -19,7 +19,7 @@ import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { assertAccion } from "./permisos-accion.ts";
-import { MANAGER_ROLES, OrderValidationError, RestaurantesConfigUnavailableError, STAFF_INVITE_ROLES, WhatsappNumberInUseError, horarioDePuente, validarExcepcionHorario, validarHorario } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, OrderValidationError, reporteColoniasAmbiguas, RestaurantesConfigUnavailableError, STAFF_INVITE_ROLES, WhatsappNumberInUseError, horarioDePuente, validarExcepcionHorario, validarHorario } from "@atiende/domain-restaurantes";
 import type { BranchHoursException, BranchPolicy, PropinaPolitica } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -37,6 +37,26 @@ interface PoliticaBody {
   readonly pedidoMinimoDomicilio?: unknown;
   readonly pedidoMinimoRecoger?: unknown;
   readonly propinaPolitica?: unknown;
+  // Migracion 070: opcionales; si no vienen se conserva lo que la sucursal ya tenia.
+  readonly visibleEnDirectorio?: unknown;
+  readonly aceptaDomicilio?: unknown;
+  readonly diasDomicilio?: unknown;
+  readonly deTemporada?: unknown;
+}
+
+function optionalBool(value: unknown, field: string, previo: boolean): boolean {
+  if (value === undefined) return previo;
+  if (typeof value !== "boolean") throw Errors.validation(`${field}: debe ser true o false.`);
+  return value;
+}
+
+function parseDiasDomicilio(value: unknown, previo: readonly number[] | null): readonly number[] | null {
+  if (value === undefined) return previo;
+  if (value === null) return null;
+  if (!Array.isArray(value) || value.length === 0 || value.length > 7 || value.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
+    throw Errors.validation("diasDomicilio: debe ser una lista de 1 a 7 numeros 0 (domingo) a 6 (sabado), o null para todos los dias.");
+  }
+  return [...new Set(value as number[])].sort((a, b) => a - b);
 }
 
 function requiredNullableMoney(value: unknown, field: string): number | null {
@@ -50,7 +70,7 @@ function requiredNullableMoney(value: unknown, field: string): number | null {
 
 /** PUT reemplaza la política COMPLETA: cada campo es obligatorio (valor o null) para que un
  * cliente desactualizado nunca borre por omisión lo que no conoce. */
-function parsePolitica(raw: PoliticaBody): BranchPolicy {
+function parsePolitica(raw: PoliticaBody, previa: BranchPolicy): BranchPolicy {
   let horario: BranchPolicy["horario"];
   if (raw.horario === undefined) throw Errors.validation("horario: campo requerido (lista de turnos o null).");
   if (raw.horario === null) horario = null;
@@ -72,11 +92,24 @@ function parsePolitica(raw: PoliticaBody): BranchPolicy {
     pedidoMinimoDomicilio: requiredNullableMoney(raw.pedidoMinimoDomicilio, "pedidoMinimoDomicilio"),
     pedidoMinimoRecoger: requiredNullableMoney(raw.pedidoMinimoRecoger, "pedidoMinimoRecoger"),
     propinaPolitica,
+    visibleEnDirectorio: raw.visibleEnDirectorio === undefined ? (previa.visibleEnDirectorio ?? null) : raw.visibleEnDirectorio === null ? null : optionalBool(raw.visibleEnDirectorio, "visibleEnDirectorio", false),
+    aceptaDomicilio: optionalBool(raw.aceptaDomicilio, "aceptaDomicilio", previa.aceptaDomicilio ?? true),
+    diasDomicilio: parseDiasDomicilio(raw.diasDomicilio, previa.diasDomicilio ?? null),
+    deTemporada: optionalBool(raw.deTemporada, "deTemporada", previa.deTemporada ?? false),
   };
 }
 
 function serializePolitica(p: BranchPolicy) {
-  return { horario: p.horario, pedidoMinimoDomicilio: p.pedidoMinimoDomicilio, pedidoMinimoRecoger: p.pedidoMinimoRecoger, propinaPolitica: p.propinaPolitica };
+  return {
+    horario: p.horario,
+    pedidoMinimoDomicilio: p.pedidoMinimoDomicilio,
+    pedidoMinimoRecoger: p.pedidoMinimoRecoger,
+    propinaPolitica: p.propinaPolitica,
+    visibleEnDirectorio: p.visibleEnDirectorio ?? null,
+    aceptaDomicilio: p.aceptaDomicilio ?? true,
+    diasDomicilio: p.diasDomicilio ?? null,
+    deTemporada: p.deTemporada ?? false,
+  };
 }
 
 // ---- puentes (migracion 031): excepciones de horario por fecha ----
@@ -138,13 +171,14 @@ export function restaurantesAdminModeloPmRoutes(deps: AppDeps): Hono<CoreAuthHon
   const politicaPath = `${branchBase}/politica`;
   const zonasRepartoPath = `${branchBase}/zonas-reparto`;
   const whatsappPath = `${branchBase}/whatsapp`;
+  const coloniasAmbiguasPath = "/v1/restaurantes/:propertyId/admin/config/colonias-ambiguas";
   const puentesPath = "/v1/restaurantes/:propertyId/admin/config/puentes";
   const puentePath = `${puentesPath}/:exceptionId`;
   const noDomicilioPath = "/v1/restaurantes/:propertyId/admin/config/no-domicilio";
   const noDomicilioProductoPath = `${noDomicilioPath}/productos/:productId`;
   const noDomicilioCategoriaPath = `${noDomicilioPath}/categorias/:categoryId`;
 
-  for (const path of [politicaPath, zonasRepartoPath, whatsappPath, puentesPath, puentePath, noDomicilioPath, noDomicilioProductoPath, noDomicilioCategoriaPath]) {
+  for (const path of [politicaPath, zonasRepartoPath, whatsappPath, coloniasAmbiguasPath, puentesPath, puentePath, noDomicilioPath, noDomicilioProductoPath, noDomicilioCategoriaPath]) {
     app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   }
 
@@ -242,8 +276,8 @@ export function restaurantesAdminModeloPmRoutes(deps: AppDeps): Hono<CoreAuthHon
   app.put(politicaPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
     const { organizationId, branch, repo } = await resolveBranch(c);
-    const nueva = parsePolitica(await readJsonCapped<PoliticaBody>(c.req.raw, 16 * 1024));
     const anterior = await repo.findBranchPolicy(branch.propertyId);
+    const nueva = parsePolitica(await readJsonCapped<PoliticaBody>(c.req.raw, 16 * 1024), anterior);
 
     let guardada: BranchPolicy;
     try {
@@ -304,6 +338,17 @@ export function restaurantesAdminModeloPmRoutes(deps: AppDeps): Hono<CoreAuthHon
       despues: String(guardadas.length),
     });
     return c.json({ zoneIds: guardadas });
+  });
+
+  // ---- reporte de colonias ambiguas (X42): solo lectura, owner/admin sin alcance acotado a una sucursal ----
+  // Muestra, por colonia, la sucursal que la cubre, los km del piloto original o calculados, la segunda sucursal y la marca "revisar". No
+  // escribe nada y no trae datos personales. Contra la base sin la migracion 056 responde 200 con `disponible: false` (vacio honesto).
+  app.get(coloniasAmbiguasPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+    if (scope !== null) throw Errors.forbidden("El reporte de colonias abarca todas las sucursales: solo lo ve el staff sin alcance acotado a una sucursal.");
+    return c.json(await reporteColoniasAmbiguas(deps.restaurantesRepo(c.get("db")), organizationId));
   });
 
   // ---- WhatsApp de la sucursal ----

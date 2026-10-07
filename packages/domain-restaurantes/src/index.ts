@@ -1,3 +1,5 @@
+export { buildStorefrontDirectorio, enlaceComoLlegar, type StorefrontDirectorioItem } from "./storefront.ts";
+export { evaluarDomicilioSucursal, describirDiasDomicilio, insigniaDomicilio, mensajeDomicilioNoDisponible, type EstadoDomicilio } from "./domicilio-sucursal.ts";
 export type { StorefrontCatalogRow, StorefrontMarca, StorefrontMarcaInput, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
 export { buildStorefrontBranches, buildStorefrontMenu, groupStorefrontMenu, assertWebOrderRules, previewPromotion } from "./storefront.ts";
 export type { StorefrontBranchView, StorefrontMenuCategory, StorefrontMenuItem, PromotionPreview } from "./storefront.ts";
@@ -83,6 +85,8 @@ export {
   fechaAnterior,
 } from "./horarios.ts";
 export type { TurnoHorario, HorarioSucursal, EstadoApertura, ApreturaConExcepciones } from "./horarios.ts";
+export { reporteColoniasAmbiguas, UMBRAL_AMBIGUA_KM } from "./colonias-ambiguas.ts";
+export type { FilaColoniaAmbigua, MotivoRevisionColonia, ReporteColoniasAmbiguas } from "./colonias-ambiguas.ts";
 export { aplicarReglasDeSucursal, normalizarCanal, debePreguntarPropina, matchKnownZone, COLONIA_FUERA_DE_VERIFICACION_MENSAJE } from "./reglas-pedido.ts";
 export type { ReglasSucursalArgs, ReglasSucursalResultado } from "./reglas-pedido.ts";
 
@@ -97,7 +101,7 @@ export type { RestaurantesRole, AccionRestaurantes } from "./roles.ts";
 
 export { tokenizeForProductSearch, matchesProductSearch, sinAcentos, requiresTortillaChoice, extraerPackSize, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, UUID_PATTERN } from "./product-search.ts";
 
-export { DEFAULT_COMPLEMENTS, TORTILLA_CHOICES, buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, findExtraSalsaProduct, isTortillaChoice } from "./order-quote.ts";
+export { DEFAULT_COMPLEMENTS, PM_BASIC_COMPLEMENTS, TORTILLA_CHOICES, buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, findExtraSalsaProduct, isTortillaChoice } from "./order-quote.ts";
 
 export type {
   RestaurantesRepository,
@@ -331,7 +335,7 @@ export {
 export type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowStore, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 export type { VoiceSecretMatch, VoiceToolAuditInput, VoiceToolAuditOutcome } from "./types.ts";
 
-export { formatLocationMessage, isValidCoordinate, latestSharedLocation, parseSharedLocation, type MetaLocationMessage, type SharedLocation } from "./whatsapp/location.ts";
+export { formatLocationMessage, formatUbicacionEntregaNota, isValidCoordinate, latestDeliveryPin, latestSharedLocation, parseMapsLink, parseSharedLocation, parseUbicacionEntregaNota, type MetaLocationMessage, type SharedLocation, type UbicacionEntrega } from "./whatsapp/location.ts";
 export type { MetaInboundMessage } from "./whatsapp/channel-config.ts";
 export * from "./privacidad/index.ts";
 export * from "./data-chat/index.ts";
@@ -372,6 +376,10 @@ export {
 export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
 export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operativos.ts";
 export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
+export * from "./encuesta-reglas.ts";
+export * from "./resenas-provider.ts";
+export * from "./mezcla-de-pago.ts";
+export * from "./sucursal-sugerida.ts";
 // Ajustes del agente por organizacion (modelo, temperatura, voz, fondo) y base de conocimiento automatica (equivalentes de lo que el original hacia con ElevenLabs).
 export * from "./ajustes-agente/index.ts";
 
