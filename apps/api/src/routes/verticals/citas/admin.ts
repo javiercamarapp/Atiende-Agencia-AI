@@ -29,6 +29,7 @@ import {
   AppointmentForbiddenError,
   AppointmentNotFoundError,
   AppointmentValidationError,
+  canonicalizarTelefonoCitas,
   computeCitasResumen,
   enrollInWaitlist,
   createAppointmentFromPanel,
@@ -1229,7 +1230,10 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const organizationId = c.get("organizationId");
     const citasRepo = deps.citasRepo(c.get("db"));
     const raw = await readJsonCapped<WaitlistEnrollBody>(c.req.raw, 4 * 1024);
-    const customerPhone = requireNonEmptyString(raw.customer_phone, "customer_phone", 32);
+    const customerPhoneCrudo = requireNonEmptyString(raw.customer_phone, "customer_phone", 32);
+    // Misma llave que el agente, la voz y las citas del panel (ultimos 10 digitos): el aviso al liberar un horario sale a ESE telefono y queda en la conversacion real del cliente.
+    const customerPhone = canonicalizarTelefonoCitas(customerPhoneCrudo);
+    if (!customerPhone) throw Errors.validation("customer_phone: no es un número de teléfono válido.");
     const customerName = optionalNonEmptyString(raw.customer_name, "customer_name", 160);
     const providerId = optionalNonEmptyString(raw.provider_id, "provider_id", 100);
     const serviceId = optionalNonEmptyString(raw.service_id, "service_id", 100);
@@ -1240,6 +1244,7 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       const { created, entry } = await enrollInWaitlist(citasRepo, {
         organizationId,
         customerPhone,
+        propertyId: c.req.param("propertyId"),
         customerName: customerName ?? null,
         providerId: providerId ?? null,
         serviceId: serviceId ?? null,

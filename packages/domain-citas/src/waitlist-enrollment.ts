@@ -17,6 +17,8 @@ export interface WaitlistEnrollmentPayload {
   readonly organizationId: string;
   readonly customerPhone: string;
   readonly customerName?: string | null;
+  /** Sucursal de la ruta del panel: si viene, el proveedor debe ser de esa sucursal (misma regla que el alta de citas del panel). */
+  readonly propertyId?: string | null;
   readonly providerId?: string | null;
   readonly serviceId?: string | null;
   /** YYYY-MM-DD, dia civil del negocio. */
@@ -80,7 +82,13 @@ export async function enrollInWaitlist(repo: CitasRepository, raw: WaitlistEnrol
   // Un id que no es UUID nunca llega a Postgres (22P02 abortaria la transaccion compartida del turno).
   if (providerId !== null && !UUID_RE.test(providerId)) throw new AppointmentNotFoundError("Proveedor no encontrado.");
   if (serviceId !== null && !UUID_RE.test(serviceId)) throw new AppointmentNotFoundError("Servicio no encontrado.");
-  if (providerId !== null && !(await repo.findProvider(raw.organizationId, providerId))) throw new AppointmentNotFoundError("Proveedor no encontrado.");
+  if (providerId !== null) {
+    const provider = await repo.findProvider(raw.organizationId, providerId);
+    if (!provider) throw new AppointmentNotFoundError("Proveedor no encontrado.");
+    if (raw.propertyId && provider.propertyId !== null && provider.propertyId !== raw.propertyId) {
+      throw new AppointmentValidationError("provider_id: ese proveedor no pertenece a esta sucursal.");
+    }
+  }
   if (serviceId !== null && !(await repo.findService(raw.organizationId, serviceId))) throw new AppointmentNotFoundError("Servicio no encontrado.");
 
   const entrada: NewWaitlistEntryInput = { organizationId: raw.organizationId, customerPhone: phone, customerName: name, providerId, serviceId, preferredDateFrom: from, preferredDateTo: to, preferredTimeWindow: franja as FranjaListaEspera };
