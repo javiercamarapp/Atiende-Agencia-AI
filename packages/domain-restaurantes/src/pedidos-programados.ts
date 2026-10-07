@@ -40,7 +40,7 @@ export function validarVentanaProgramacion(programadoPara: string, ahora: Date):
   const minutos = (Date.parse(programadoPara) - ahora.getTime()) / 60_000;
   if (minutos < PROGRAMACION_MINIMA_MIN) {
     throw new OrderValidationError(
-      `Un pedido programado debe ser para dentro de al menos ${PROGRAMACION_MINIMA_MIN} minutos; para antes, haga un pedido normal.`,
+      `Un pedido programado debe ser para dentro de al menos ${PROGRAMACION_MINIMA_MIN} minutos; para antes, haga un pedido normal (sin programado_para) y, si es para recoger, mande la hora en hora_recogida.`,
     );
   }
   if (minutos > PROGRAMACION_MAXIMA_DIAS * 24 * 60) {

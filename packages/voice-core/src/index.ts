@@ -26,7 +26,7 @@ export { eventoSinPII, redactarPII, referenciaLlamada } from "./llamada/log-sin-
 export type { SumideroLog } from "./llamada/log-sin-pii.ts";
 export { CABECERA_TURNO_LLAMADA, crearEjecutorTools, sanearArgumentos, transporteHttp } from "./llamada/ejecutor-tools.ts";
 export type { ContextoEjecucionTool, EjecutorTools, EjecutorToolsOpciones, RegistroToolsVoz, ResultadoTool, ToolDefinicion, ToolJsonSchema, TransporteHttpOpciones, TransporteTools } from "./llamada/ejecutor-tools.ts";
-export { ControladorLlamada } from "./llamada/controlador.ts";
+export { ControladorLlamada, limpiarTextoAgente } from "./llamada/controlador.ts";
 export type { DecisionGuardiaCliente, DepsControlador, EventoKpiLlamada, GuardiaCliente, ResultadoLlamada, TurnoTranscrito } from "./llamada/controlador.ts";
 export type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, ToolCallPedida, VozSesionLlamada } from "./llamada/sesion.ts";
 export { GEMINI_LIVE_WS_URL, crearProveedorGeminiLlamada, declaracionesDeHerramientas, mensajeSetup, vertexLiveWsUrl, vertexModelPath } from "./llamada/gemini-live-sesion.ts";

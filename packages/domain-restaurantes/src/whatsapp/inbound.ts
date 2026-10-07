@@ -75,14 +75,22 @@ export const AGENTE_APAGADO_TEXTO = "En este momento le atiende una persona del 
 export const MOTIVO_AGENTE_APAGADO = "agente_apagado";
 export const AGENTE_APAGADO_AVISO_VENTANA_SEGUNDOS = 6 * 3600;
 
-/** `null` = agente encendido; `responder` = primera vez (texto fijo + handoff); `callar` = ya se aviso en esta ventana. */
-async function decisionAgenteApagado(repo: RestaurantesRepository, organizationId: string, phone: string, propertyId: string | null | undefined): Promise<"responder" | "callar" | null> {
+/**
+ * `null` = agente encendido; `responder` = texto fijo + toma de handoff; `callar` = ya se aviso en esta ventana.
+ *
+ * Con `puedeAbrirToma` (hay compuerta de handoff) se responde SIEMPRE que se llegue hasta aqui: una toma abierta (pendiente o tomada) ya callo al agente
+ * antes de esta decision, asi que llegar aqui significa que NADIE tiene la conversacion (primera vez, o la toma se devolvio / cerro con el agente
+ * todavia apagado) y hay que volver a abrir una toma para que regrese a la bandeja (QA R2 caos-01: antes el limitador de 6 h callaba al cliente tras
+ * un "Devolver" y la conversacion quedaba huerfana). Sin compuerta el limitador de aviso es la unica red contra repetir el texto.
+ */
+async function decisionAgenteApagado(repo: RestaurantesRepository, organizationId: string, phone: string, propertyId: string | null | undefined, puedeAbrirToma: boolean): Promise<"responder" | "callar" | null> {
   if (!propertyId) return null;
   try {
     if (await repo.findAgenteWhatsappActivo(propertyId)) return null;
   } catch {
     return null; // un fallo al leer el interruptor nunca deja a un cliente sin respuesta: el agente atiende como hasta hoy
   }
+  if (puedeAbrirToma) return "responder";
   try {
     const primera = await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-agente-apagado-aviso", `${organizationId}:${phone}`, 1, AGENTE_APAGADO_AVISO_VENTANA_SEGUNDOS));
     return primera.allowed ? "responder" : "callar";
@@ -186,7 +194,7 @@ export async function handleInboundWhatsAppMessage(
       // sucursal (compartido por todos sus clientes). Pasado el tope no se llama al modelo: se avisa UNA vez por ventana y despues se calla (el
       // mensaje ya quedo en el historial para quien atienda). El ARCO (obligacion legal) no se limita.
       // Interruptor duro de la sucursal (053): antes del limite y del modelo, sin costo de IA. El ARCO (obligacion legal) corre aunque el agente este apagado.
-      const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId);
+      const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId, handoffGate !== undefined);
       if (apagado === "callar") {
         await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
         return { ok: true, retryable: false };
@@ -234,7 +242,7 @@ export async function handleInboundWhatsAppMessage(
       await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
 
       // R-21: el agente pidio una persona -> abre la toma de handoff (misma transaccion que la conversacion).
-      if (turn.escalacion && handoffGate) {
+      if (turn.escalacion && handoffGate && !MOTIVOS_QUE_NO_ABREN_TOMA.has(turn.escalacion.motivo)) {
         await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
       }
 
@@ -252,7 +260,7 @@ export async function handleInboundWhatsAppMessage(
       }
 
       await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
-      return { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate) };
+      return { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate && !MOTIVOS_QUE_NO_ABREN_TOMA.has(turn.escalacion.motivo)) };
     });
   } catch (err) {
     const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
@@ -304,6 +312,11 @@ export const ACUSE_PENDIENTE_ESPERA_MIN = 15;
 export const ACUSE_PENDIENTE_REPETIR_MIN = 60;
 export const ACUSE_HANDOFF_PENDIENTE =
   "Seguimos esperando a que una persona del equipo tome su conversación; su aviso ya está registrado y no se perdió. Si lo prefiere, puede dejar aquí los detalles de su pedido para que los vean en cuanto la atiendan.";
+
+/** Escalaciones INFORMATIVAS: el aviso al gerente queda registrado, pero el cliente sigue pidiendo (acepto el precio, cambio de pago, otro platillo). Abrir la toma de
+ * handoff callaba al agente y el pedido se perdia (QA-PM-R2-whatsapp-05: reposicion_descuento...). Las demas (queja, alergia, cancelacion, cobro,
+ * ARCO, "una persona", falla del sistema, pedido grande, zona/no entiendo por contador) si ceden la conversacion a una persona. */
+export const MOTIVOS_QUE_NO_ABREN_TOMA: ReadonlySet<string> = new Set(["reposicion_descuento", "producto_agotado", "tiempos_entrega", "pedido_especial", "zona_ambigua", "otro"]);
 
 /** Vida maxima de la funcion del webhook (`maxDuration` de vercel.json). */
 export const FUNCION_MAX_MS = 30_000;
@@ -478,7 +491,7 @@ export async function responderTrasEspera(
           }
         }
         // Interruptor duro de la sucursal (053): sin modelo, texto fijo + toma de handoff; las pasadas siguientes las calla la propia toma abierta.
-        const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId);
+        const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId, handoffGate !== undefined);
         if (apagado === "callar") return { salida: { ok: true, retryable: false }, silencio: true };
         if (!arco && (await stickerSobraTrasPedidoCerrado(repo, organizationId, phone, textoPendiente))) return { salida: { ok: true, retryable: false }, silencio: true };
         const turn = arco
@@ -503,7 +516,7 @@ export async function responderTrasEspera(
           if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
         }
         await repo.whatsappAppendTurn(organizationId, phone, [turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true } : { role: "assistant", content: reply }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
-        if (turn.escalacion && handoffGate) {
+        if (turn.escalacion && handoffGate && !MOTIVOS_QUE_NO_ABREN_TOMA.has(turn.escalacion.motivo)) {
           await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
         }
         if (deliverReply) {
@@ -515,7 +528,7 @@ export async function responderTrasEspera(
           });
           if (turn.pedirUbicacion) await encolarSolicitudUbicacion(repo, organizationId, pasada === 1 ? `inbound-ubicacion:${messageId}` : `inbound-ubicacion:${messageId}:p${pasada}`, phone, phoneNumberId);
         }
-        return { salida: { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate) }, silencio: false };
+        return { salida: { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate && !MOTIVOS_QUE_NO_ABREN_TOMA.has(turn.escalacion.motivo)) }, silencio: false };
       });
       ultimo = turnoDePasada.salida;
       // Todo lo que el turno vio ya tuvo su respuesta; lo que llegue mientras tanto es lo siguiente.

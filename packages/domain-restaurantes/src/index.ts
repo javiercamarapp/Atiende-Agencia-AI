@@ -83,6 +83,8 @@ export {
   validarExcepcionHorario,
   fechaLocal,
   fechaAnterior,
+  corteDiaNegocioMinutos,
+  diaDeNegocio,
 } from "./horarios.ts";
 export type { TurnoHorario, HorarioSucursal, EstadoApertura, ApreturaConExcepciones } from "./horarios.ts";
 export { reporteColoniasAmbiguas, UMBRAL_AMBIGUA_KM } from "./colonias-ambiguas.ts";

@@ -60,7 +60,10 @@ export async function buscarPedidoRecienteConSucursal(repo: RestaurantesReposito
   if (!order) return null;
   const estado = estadoParaCliente(order.status);
   if (!estado) return null;
-  const [zona, info] = await Promise.all([repo.findBranchZonaHoraria(order.propertyId), repo.listOrderPickupInfo(organizationId, [order.id])]);
+  // En serie (no Promise.all): cada lectura corre en su propio SAVEPOINT sobre la MISMA sesion; intercalados, el RELEASE de uno liberaba el del otro y el turno terminaba en 500
+  // (savepoint "sp_restaurantes_order_pickup_info" does not exist) para todo cliente con un pedido reciente.
+  const zona = await repo.findBranchZonaHoraria(order.propertyId);
+  const info = await repo.listOrderPickupInfo(organizationId, [order.id]);
   return {
     propertyId: order.propertyId ?? null,
     reciente: {

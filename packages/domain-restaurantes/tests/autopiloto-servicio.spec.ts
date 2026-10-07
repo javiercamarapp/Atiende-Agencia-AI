@@ -425,11 +425,10 @@ describe("avance de estados sin clic", () => {
     const t = await montar();
     const { mem } = await t.pedido({ status: "listo_para_recoger", canal: "recoger" });
     mem.horaRecogida = null;
-    t.auto.eventos.push({ orderId: mem.id, desde: "preparando", hacia: "listo_para_recoger", actor: "staff:x", motivo: null, at: new Date(ahora.getTime() - 59 * 60_000).toISOString() });
+    mem.listoDesde = new Date(ahora.getTime() - 59 * 60_000);
     await aplicarEstadosSinClic(t.deps, ahora);
     expect(mem.status).toBe("listo_para_recoger");
-    t.auto.eventos.length = 0;
-    t.auto.eventos.push({ orderId: mem.id, desde: "preparando", hacia: "listo_para_recoger", actor: "staff:x", motivo: null, at: new Date(ahora.getTime() - 70 * 60_000).toISOString() });
+    mem.listoDesde = new Date(ahora.getTime() - 70 * 60_000);
     await aplicarEstadosSinClic(t.deps, ahora);
     expect(mem.status).toBe("no_recogido");
   });

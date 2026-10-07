@@ -88,7 +88,11 @@ export function crearEjecutorTools(opts: EjecutorToolsOpciones): EjecutorTools {
   const inciertas = new Set<string>(opts.registro.herramientasInciertas);
   return {
     definiciones: () => opts.registro.definiciones(),
-    async ejecutar(nombre, args, contexto) {
+    ejecutar: (nombre, args, contexto) => ejecutarUna(nombre, args, contexto),
+  };
+
+  async function ejecutarUna(nombre: string, args: unknown, contexto?: ContextoEjecucionTool): Promise<ResultadoTool> {
+    {
       const t0 = ahora();
       if (!permitidas.has(nombre)) {
         return { resultado: { error: `Herramienta desconocida: ${nombre}` }, ok: false, timeout: false, entidadId: null, latenciaMs: 0 };
@@ -127,13 +131,23 @@ export function crearEjecutorTools(opts: EjecutorToolsOpciones): EjecutorTools {
         opts.registro.alResultado?.(nombre, limpios, salida.resultado, !conError);
         return { resultado: salida.resultado, ok: !conError, timeout: false, entidadId: conError ? null : salida.entidadId, latenciaMs };
       } catch {
-        if (control.signal.aborted) return { resultado: { error: "La herramienta tardó demasiado.", timeout: true }, ok: false, timeout: true, entidadId: null, latenciaMs: Math.max(0, ahora() - t0) };
+        if (control.signal.aborted) {
+          // El transporte rechazo por el aborto ANTES de que ganara la carrera del timeout: sigue siendo un timeout, y una escritura sigue siendo INCIERTA.
+          const incierto = inciertas.has(nombre);
+          return {
+            resultado: { error: incierto ? opts.registro.mensajeIncierto : "La herramienta tardó demasiado.", timeout: true, ...(incierto ? { incierto: true } : {}) },
+            ok: false,
+            timeout: true,
+            entidadId: null,
+            latenciaMs: Math.max(0, ahora() - t0),
+          };
+        }
         return { resultado: { error: "Error interno al ejecutar la herramienta" }, ok: false, timeout: false, entidadId: null, latenciaMs: Math.max(0, ahora() - t0) };
       } finally {
         if (temporizador) clearTimeout(temporizador);
       }
-    },
-  };
+    }
+  }
 }
 
 export interface TransporteHttpOpciones {

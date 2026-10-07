@@ -49,6 +49,11 @@ export const Errors = {
   // procesa una matriz de requisitos vacía como si las bases no tuvieran requisitos.
   licitacionesNoExtractableDocuments: (skipped: readonly { documentLabel: string; status: string }[]) =>
     new ApiError(422, "no_extractable_documents", `Ningún documento produjo texto extraíble: ${skipped.map((s) => `"${s.documentLabel}" (${s.status})`).join("; ")}. Suba el texto ya extraído manualmente (campo "pages") o un archivo distinto -- no hay OCR de imagen disponible en este monorepo.`),
+  // ---- licitaciones (paridad3: boveda de bases, matriz estable y revision, migracion 037) ----
+  /** AE-03/AE-05: el archivo se rechaza por su CONTENIDO (ZIP, ejecutable, PDF sin %%EOF o con contenido tras el fin). */
+  licitacionesDocumentoRechazado: (reason: string, message: string) => new ApiError(422, "documento_rechazado", `${message} (${reason})`),
+  /** Base sin la migracion 037: la escritura no se puede fingir; las lecturas devuelven un vacio con `disponible: false`. */
+  licitacionesBovedaNoDisponible: (funcion: string) => new ApiError(503, "boveda_no_disponible", `No disponible aún: requiere la migración 037 (${funcion}).`),
   // ---- rentas (calendario/reservas, ver diseño Fase 1 rentas §4, Flujo 1) ----
   rentasUnidadNoDisponible: (conflictoId: string) =>
     new ApiError(409, "unidad_no_disponible", `La unidad no está disponible para el rango solicitado (conflicto registrado: ${conflictoId}).`),

@@ -9,7 +9,14 @@ export { LIMITES_POR_DEFECTO };
 
 /** Limites de la llamada de PM: los de la plataforma salvo `silenciosMax: 1` (el agente vivo hace UN solo "¿sigue ahi?" y se despide;
  * el valor por omision de voice-core, 2, queda igual para las otras verticales). */
-export const LIMITES_VOZ_PM: LimitesLlamada = Object.freeze({ ...LIMITES_POR_DEFECTO, silenciosMax: 1 });
+export const LIMITES_VOZ_PM: LimitesLlamada = Object.freeze({
+  ...LIMITES_POR_DEFECTO,
+  silenciosMax: 1,
+  // QA-PM-R2-voz-05: con UNA sola reconexion a los 400 ms, una caida de Gemini (ws_1011, intermitente: 5 de 38 llamadas) fallaba 5/5 y se perdian las ventas.
+  // Tres intentos con espera creciente: el 1011 suele durar unos segundos.
+  reconexionesMax: 3,
+  reconexionEsperaMs: [400, 1500, 3500],
+});
 export type { EstadoLlamada, LimitesLlamada, OpcionesMaquinaLlamada };
 
 /** Reglas de cierre de restaurantes: un pedido creado logra la llamada; el agente pasa a una persona con `escalar_a_humano`. */

@@ -211,7 +211,7 @@ export interface AutopilotoRepository {
   diaNegocio(organizationId: string, propertyId: string): Promise<string | null>;
   /** El staff imprimio el ticket de cocina de un pedido pending: habilita la aceptacion automatica sin POS. `disponible: false` = base sin migrar. */
   registrarTicketImpreso(organizationId: string, orderId: string): Promise<{ readonly disponible: boolean; readonly registrado: boolean }>;
-  marcarAgotado(organizationId: string, propertyId: string, productId: string, hasta: string): Promise<{ readonly disponible: boolean; readonly aplicado: boolean }>;
+  marcarAgotado(organizationId: string, propertyId: string, productId: string, hasta: string, hastaCalendario?: string): Promise<{ readonly disponible: boolean; readonly aplicado: boolean }>;
   reponerAgotados(ahora: Date): Promise<Lectura<readonly AgotadoRepuesto[]>>;
   muestrasTiempo(organizationId: string, propertyId: string, canal: CanalPedido, ahora: Date): Promise<Lectura<MuestrasTiempo>>;
   historialEstados(organizationId: string, orderId: string): Promise<Lectura<readonly EventoEstadoPedido[]>>;

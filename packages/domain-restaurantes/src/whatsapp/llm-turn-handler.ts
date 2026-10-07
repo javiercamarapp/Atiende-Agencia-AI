@@ -38,7 +38,7 @@ import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
-import { branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote } from "./guards.ts";
+import { afirmaHaberAvisado, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarCortesiaNoRespaldada } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -552,11 +552,13 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let huboFalloDeHerramienta = false;
       let lastQuoteTotal: number | null = null;
       let lastQuoteAmounts: readonly number[] | undefined;
+      /** Si la ultima cotizacion DE ESTE TURNO traia `promocion_aplicada` o una promocion sugerida con cortesias (null = no se cotizo en este turno: no se puede verificar). */
+      let lastQuoteRespaldaCortesia: boolean | null = null;
       let anyToolCalled = false;
       // Preview: el pedido SIMULADO de `crear_pedido` (para la tarjeta del panel).
       let pedidoSimulado: unknown;
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
-      const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(reply, working), lastQuoteTotal, lastQuoteAmounts);
+      const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(lastQuoteRespaldaCortesia === false ? quitarCortesiaNoRespaldada(reply) : reply, working), lastQuoteTotal, lastQuoteAmounts);
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
       // §5: pin con el boton nativo de WhatsApp. Se pide una sola vez por pedido (contador `ubicacion_solicitada`, se reinicia al crear el pedido)
@@ -709,7 +711,27 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
                 ),
                 orderId,
               );
-          return done({ reply: safeReply(conPregunta), orderId, propertyId });
+          // Honestidad (QA-PM-R2-whatsapp-04): "ya avise al gerente" solo si el aviso existe. Sin llamada a escalar_a_humano/registrar_contacto en este turno
+          // (ni una promesa anterior ya respaldada), el servidor deja el aviso de verdad; si no puede, quita la frase en vez de mentir.
+          let respuesta = conPregunta;
+          const promesaPrevia = [...messages].reverse().find((m) => m.role === "assistant");
+          const avisoDelTurno = tele.tools.some((t) => (t.tool === "escalar_a_humano" || t.tool === "registrar_contacto") && t.resultado === "ok");
+          if (afirmaHaberAvisado(respuesta) && !escalarMotivo && !avisoDelTurno && !(promesaPrevia && afirmaHaberAvisado(promesaPrevia.content))) {
+            const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
+            const ultimo = [...messages].reverse().find((m) => m.role === "user");
+            const aviso = await executeAgentToolSafely(
+              repo,
+              { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+              "escalar_a_humano",
+              { customer_name: nombre, motivo: "otro", resumen: `El asistente le dijo al cliente que avisaria al equipo; se deja el aviso para que alguien lo revise. Ultimo mensaje del cliente: ${(ultimo?.content ?? "").slice(0, 400)}` },
+            );
+            if (isToolErrorResult(aviso.result)) respuesta = quitarAfirmacionDeAviso(respuesta);
+            else {
+              escalarMotivo = "otro";
+              tele.motivoEscalacion = "otro";
+            }
+          }
+          return done({ reply: safeReply(respuesta), orderId, propertyId });
         }
 
         working.push({ role: "assistant", content: completion.text ?? "", toolCalls });
@@ -731,6 +753,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             fallaSistema = executed.fallaSistema === true;
             rechazoDelFlujo = executed.rechazoDelFlujo;
             anyToolCalled = true;
+            if (call.name === "cotizar_pedido" && !isToolErrorResult(result)) {
+              const q = (result as { quote?: { promocion_aplicada?: unknown; promociones_sugeridas?: readonly unknown[] } } | null)?.quote;
+              lastQuoteRespaldaCortesia = q?.promocion_aplicada != null || (q?.promociones_sugeridas?.length ?? 0) > 0;
+            }
             const quoted = (result as { quote?: Parameters<typeof knownAmountsOfQuote>[0]; order?: { total?: unknown; items?: readonly { price?: unknown; quantity?: unknown }[] } } | null) ?? null;
             if (call.name === "cotizar_pedido" && typeof quoted?.quote?.total === "number") {
               lastQuoteTotal = quoted.quote.total;

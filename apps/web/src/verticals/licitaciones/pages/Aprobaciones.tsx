@@ -8,12 +8,17 @@
 // de cada seccion de la propuesta es por convocatoria (pagina Cierre), no se
 // duplica aqui.
 import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge } from "@atiende/ui";
+import { Send } from "lucide-react";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Label, NativeSelect, PageContainer, StatusBadge, Textarea } from "@atiende/ui";
 import { fetchApprovedRates, fetchCompanyCapabilities, fetchCompanyDocuments, fetchCompanyExperience } from "../lib/company-data-client.ts";
 import type { CompanyDataApprovalStatus, CompanyDataAuthorship, CompanyItemKind } from "../lib/company-data-client.ts";
 import { DecisionButtons, useCompanyDecision } from "../components/DecisionActions.tsx";
 import { authorshipLine, userIdFromToken } from "../lib/company-decision.ts";
+import { fetchTenders } from "../lib/tenders-client.ts";
+import type { TenderSummary } from "../lib/tenders-client.ts";
+import { requestReview } from "../lib/revision-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 type Kind = "documento" | "tarifa" | "capacidad" | "experiencia";
@@ -30,12 +35,50 @@ interface PendingItem extends CompanyDataAuthorship {
 const KIND_LABEL: Record<Kind, string> = { documento: "Documento", tarifa: "Tarifa", capacidad: "Capacidad", experiencia: "Experiencia" };
 const DECISION_KIND: Record<Kind, CompanyItemKind> = { documento: "document", tarifa: "rate", capacidad: "capability", experiencia: "experience" };
 
+// Quién puede enviar a revisión (SUBMITTER_ROLES del servidor); cosmético, el servidor decide.
+const SUBMITTER_ROLES = new Set(["owner", "admin", "analyst", "writer"]);
+
 export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
   const userId = userIdFromToken(token);
   const [items, setItems] = useState<readonly PendingItem[] | null>(null);
   const [loadErrors, setLoadErrors] = useState<readonly string[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const canRequestReview = SUBMITTER_ROLES.has(role);
+
+  // paridad3 (L-P3-07): pedir la revisión del expediente de una convocatoria (avisa a los revisores por la campana).
+  const [tenders, setTenders] = useState<readonly TenderSummary[] | null>(null);
+  const [reviewTenderId, setReviewTenderId] = useState("");
+  const [reviewNote, setReviewNote] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewMsg, setReviewMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!canRequestReview) return;
+    fetchTenders(fetch, apiBaseUrl, token, propertyId)
+      .then((list) => setTenders(list))
+      .catch(() => setTenders([]));
+  }, [apiBaseUrl, token, propertyId, canRequestReview]);
+
+  async function handleRequestReview(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (reviewTenderId === "") {
+      setReviewMsg({ tone: "error", text: "Elige la convocatoria cuyo expediente quieres enviar a revisión." });
+      return;
+    }
+    setReviewBusy(true);
+    setReviewMsg(null);
+    try {
+      await requestReview(fetch, apiBaseUrl, token, propertyId, reviewTenderId, { sectionKey: null, note: reviewNote.trim() });
+      setReviewMsg({ tone: "ok", text: "Revisión solicitada: los revisores recibieron el aviso en la campana. Quien la pide no puede aprobar el expediente." });
+      setReviewNote("");
+    } catch (err) {
+      setReviewMsg({ tone: "error", text: err instanceof Error ? err.message : "No se pudo pedir la revisión." });
+    } finally {
+      setReviewBusy(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -94,6 +137,43 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
         <EstadoError key={e} mensaje={e} onReintentar={() => void load()} />
       ))}
       {loading && !items && <EstadoCargando etiqueta="Cargando aprobaciones…" />}
+
+      {canRequestReview && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pedir revisión de un expediente</CardTitle>
+            <CardDescription>Envía el expediente de una convocatoria a revisión: los revisores reciben un aviso y la solicitud queda en el hilo de la propuesta. Quien la pide no puede aprobar ese alcance.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={(e) => void handleRequestReview(e)} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="revision-convocatoria">Convocatoria</Label>
+                <NativeSelect id="revision-convocatoria" value={reviewTenderId} onChange={(e) => setReviewTenderId(e.target.value)} disabled={tenders === null}>
+                  <option value="">{tenders === null ? "Cargando…" : tenders.length === 0 ? "No hay convocatorias" : "Elige una convocatoria"}</option>
+                  {(tenders ?? []).map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="revision-nota">Nota para el revisor (opcional)</Label>
+                <Textarea id="revision-nota" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2} maxLength={4000} />
+              </div>
+              {reviewMsg && (
+                <p role={reviewMsg.tone === "error" ? "alert" : "status"} className={reviewMsg.tone === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
+                  {reviewMsg.text}
+                </p>
+              )}
+              <Button type="submit" size="sm" className="self-start" disabled={reviewBusy || reviewTenderId === ""}>
+                <Send />
+                {reviewBusy ? "Enviando…" : "Pedir revisión"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       {items && (
         <Card>

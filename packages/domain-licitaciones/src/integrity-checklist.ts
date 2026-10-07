@@ -67,6 +67,12 @@ export interface IntegrityChecklistInput {
   readonly economicResult: EconomicProposalResult | null;
   /** Totales a comparar entre "documentos" del expediente (carta vs. anexo económico, etc.) para consistencia cruzada. */
   readonly crossDocumentTotals: readonly { documentLabel: string; total: string }[];
+  /**
+   * Conflictos de requisitos ABIERTOS de la convocatoria (regla vs LLM, o entre documentos de las bases): mientras
+   * haya uno sin resolver, la consistencia cruzada es "rojo" -- ninguna de las dos lecturas se aplica en silencio.
+   * Ausente = 0 (base sin la migracion 037).
+   */
+  readonly openRequirementConflicts?: number;
 }
 
 function overallFrom(items: ChecklistItemResult[]): ChecklistResultStatus {
@@ -195,6 +201,15 @@ export class IntegrityChecklist {
    * "verde": eso fabricaría una consistencia que no existe realmente.
    */
   private checkConsistenciaCruzada(input: IntegrityChecklistInput): ChecklistItemResult {
+    const abiertos = input.openRequirementConflicts ?? 0;
+    if (abiertos > 0) {
+      return {
+        dimension: "consistencia_cruzada",
+        status: "rojo",
+        detail: `Hay ${abiertos} conflicto(s) de requisitos sin resolver entre los documentos de las bases: resuélvelos en Requisitos de la convocatoria antes de cerrar el expediente.`,
+        evidence: [`conflictos_abiertos:${abiertos}`],
+      };
+    }
     if (input.crossDocumentTotals.length < 2) {
       return { dimension: "consistencia_cruzada", status: "ambar", detail: "No hay suficientes documentos para verificar consistencia cruzada.", evidence: [] };
     }

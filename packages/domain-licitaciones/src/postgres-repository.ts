@@ -12,6 +12,8 @@ import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenan
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import { ApprovalRejectedError, CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenantConfigNotMigratedError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
+import * as boveda from "./postgres-boveda-revision.ts";
+import type { TenderDocumentRecord, TenderDocumentWithPages } from "./document-vault.ts";
 import type {
   ApprovedRateCreateInput,
   ApprovedRateUpdateInput,
@@ -89,7 +91,23 @@ import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-v
 import type { PersistedProposalVersion, ProposalInputRecord } from "./proposal-version-registry.ts";
 import { WRITE_ROLES } from "./roles.ts";
 import type { LicitacionesRole } from "./roles.ts";
-import type { RequirementFulfillmentMappingRecord, RequirementItemRecord } from "./repository.ts";
+import type {
+  DetectedRequirementConflict,
+  ProposalCommentKind,
+  ProposalCommentRecord,
+  ProposalCommentScope,
+  ProposalSectionRecord,
+  RequirementConflictRecord,
+  RequirementFulfillmentMappingRecord,
+  RequirementItemDetail,
+  RequirementItemPatch,
+  RequirementItemRecord,
+  RequirementUpsertItem,
+  RequirementUpsertResult,
+  SectionEditResult,
+  TenderAuditAction,
+  TenderDocumentUploadInput,
+} from "./repository.ts";
 import { buildGoNoGoDecision } from "./go-no-go.ts";
 import { TenderVersionRegistry, computeTenderSnapshotHash, toRequirementSnapshot } from "./tender-version-registry.ts";
 import type { PersistedTenderVersion, TenderVersionDiff, TenderVersionSnapshot } from "./tender-version-registry.ts";
@@ -2253,6 +2271,127 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     }));
   }
 
+  // ---- paridad3 (L-P3-05/06/07): boveda, matriz estable, conflictos y revision (delegan en postgres-boveda-revision.ts) ----
+
+  async recordTenderAuditEvent(organizationId: string, tenderId: string, action: TenderAuditAction, actorId: string): Promise<void> {
+    await boveda.recordTenderAuditEvent(this.db, organizationId, tenderId, action, actorId);
+  }
+
+  async createTenderDocument(organizationId: string, tenderId: string, input: TenderDocumentUploadInput): Promise<TenderDocumentRecord> {
+    return boveda.createTenderDocument(this.db, organizationId, tenderId, input);
+  }
+
+  async listTenderDocuments(organizationId: string, tenderId: string): Promise<{ disponible: boolean; documents: readonly TenderDocumentRecord[] }> {
+    return boveda.listTenderDocuments(this.db, organizationId, tenderId);
+  }
+
+  async getTenderDocument(organizationId: string, tenderId: string, documentId: string): Promise<TenderDocumentWithPages | null> {
+    return boveda.getTenderDocument(this.db, organizationId, tenderId, documentId);
+  }
+
+  async upsertRequirementItems(
+    organizationId: string,
+    tenderId: string,
+    items: readonly RequirementUpsertItem[],
+    opts: { actorId: string; scope: { lineageIds: readonly string[]; includeUnlinked: boolean }; retiredInVersion: number | null },
+  ): Promise<RequirementUpsertResult> {
+    return boveda.upsertRequirementItems(
+      this.db,
+      organizationId,
+      tenderId,
+      items,
+      opts,
+      (records) => this.replaceRequirementItems(organizationId, tenderId, records),
+      () => this.listRequirementItems(organizationId, tenderId),
+    );
+  }
+
+  async listRequirementMatrix(organizationId: string, tenderId: string, opts: { includeRetired: boolean }): Promise<{ migrated: boolean; items: readonly RequirementItemDetail[] }> {
+    return boveda.listRequirementMatrix(this.db, organizationId, tenderId, opts.includeRetired, () => this.listRequirementItems(organizationId, tenderId));
+  }
+
+  async listRequirementAssignees(organizationId: string): Promise<readonly { userId: string; nombre: string; rol: string }[]> {
+    return boveda.listRequirementAssignees(this.db, organizationId);
+  }
+
+  async updateRequirementItem(organizationId: string, tenderId: string, itemId: string, patch: RequirementItemPatch, actorId: string): Promise<RequirementItemDetail | null> {
+    return boveda.updateRequirementItem(this.db, organizationId, tenderId, itemId, patch, actorId, async (sets) => {
+      const { rows } = await this.db.query<{ id: string }>(
+        `update licitaciones.requirement_item
+         set responsible_role = coalesce($4, responsible_role), status = coalesce($5, status)
+         where organization_id = $1 and tender_id = $2 and id = $3 and invalidated_at is null returning id;`,
+        [organizationId, tenderId, itemId, sets.responsibleRole ?? null, sets.status ?? null],
+      );
+      return rows.length > 0;
+    });
+  }
+
+  async syncRequirementConflicts(organizationId: string, tenderId: string, detected: readonly DetectedRequirementConflict[]): Promise<{ disponible: boolean; conflicts: readonly RequirementConflictRecord[] }> {
+    return boveda.syncRequirementConflicts(this.db, organizationId, tenderId, detected);
+  }
+
+  async listRequirementConflicts(organizationId: string, tenderId: string): Promise<{ disponible: boolean; conflicts: readonly RequirementConflictRecord[] }> {
+    return boveda.listRequirementConflicts(this.db, organizationId, tenderId);
+  }
+
+  async resolveRequirementConflict(organizationId: string, tenderId: string, conflictId: string, input: { actorId: string; notes: string }): Promise<RequirementConflictRecord | null> {
+    return boveda.resolveRequirementConflict(this.db, organizationId, tenderId, conflictId, input);
+  }
+
+  async countOpenRequirementConflicts(organizationId: string, tenderId: string): Promise<number> {
+    return boveda.countOpenRequirementConflicts(this.db, organizationId, tenderId);
+  }
+
+  async addProposalComment(organizationId: string, proposalId: string, input: { scope: ProposalCommentScope; scopeRef: string; kind: ProposalCommentKind; body: string; authorId: string; authorRole: string }): Promise<ProposalCommentRecord> {
+    return boveda.addProposalComment(this.db, organizationId, proposalId, input);
+  }
+
+  async listProposalComments(organizationId: string, proposalId: string): Promise<{ disponible: boolean; comments: readonly ProposalCommentRecord[] }> {
+    return boveda.listProposalComments(this.db, organizationId, proposalId);
+  }
+
+  async listProposalSections(organizationId: string, proposalId: string, viewerId: string): Promise<readonly ProposalSectionRecord[]> {
+    const { rows } = await this.db.query<{ section_key: string; label: string; content: string; version: number; author_count: string; authored_by_viewer: boolean }>(
+      `select s.section_key, s.label, s.content, s.version,
+              (select count(*)::text from licitaciones.section_author a where a.proposal_id = s.proposal_id and a.section_key = s.section_key) as author_count,
+              exists (select 1 from licitaciones.section_author a where a.proposal_id = s.proposal_id and a.section_key = s.section_key and a.actor_id = $3) as authored_by_viewer
+       from licitaciones.proposal_section s where s.organization_id = $1 and s.proposal_id = $2 order by s.section_key asc;`,
+      [organizationId, proposalId, viewerId],
+    );
+    return rows.map((r) => ({ sectionKey: r.section_key, label: r.label, content: r.content, version: r.version, authorCount: Number(r.author_count), authoredByViewer: r.authored_by_viewer }));
+  }
+
+  private async isSectionAuthor(proposalId: string, sectionKey: string, actorId: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ ok: boolean }>(`select exists (select 1 from licitaciones.section_author where proposal_id = $1 and section_key = $2 and actor_id = $3) as ok;`, [proposalId, sectionKey, actorId]);
+    return rows[0]?.ok ?? false;
+  }
+
+  async editProposalSection(organizationId: string, proposalId: string, sectionKey: string, input: { content: string; actorId: string }): Promise<SectionEditResult | null> {
+    const { rows: existing } = await this.db.query<{ label: string; content: string; version: number }>(
+      `select label, content, version from licitaciones.proposal_section where organization_id = $1 and proposal_id = $2 and section_key = $3 for update;`,
+      [organizationId, proposalId, sectionKey],
+    );
+    const current = existing[0];
+    if (!current) return null;
+    const authorCountOf = async (): Promise<number> => {
+      const { rows } = await this.db.query<{ n: string }>(`select count(*)::text as n from licitaciones.section_author where proposal_id = $1 and section_key = $2;`, [proposalId, sectionKey]);
+      return Number(rows[0]?.n ?? 0);
+    };
+    // AE-02: el mismo texto no cambia nada ni invalida ninguna aprobacion.
+    if (current.content === input.content) {
+      return { section: { sectionKey, label: current.label, content: current.content, version: current.version, authorCount: await authorCountOf(), authoredByViewer: await this.isSectionAuthor(proposalId, sectionKey, input.actorId) }, changed: false, invalidated: null };
+    }
+    const { rows } = await this.db.query<{ version: number }>(
+      `update licitaciones.proposal_section set content = $4, version = version + 1, updated_at = now()
+       where organization_id = $1 and proposal_id = $2 and section_key = $3 returning version;`,
+      [organizationId, proposalId, sectionKey, input.content],
+    );
+    // AE-11: la autoria queda registrada con la sesion autenticada.
+    await this.recordSectionAuthor(organizationId, proposalId, sectionKey, input.actorId);
+    const change = await this.recordChange(organizationId, proposalId, { scope: "seccion", scopeRef: `seccion:${sectionKey}`, reason: `seccion_editada:${sectionKey}` });
+    return { section: { sectionKey, label: current.label, content: input.content, version: rows[0]!.version, authorCount: await authorCountOf(), authoredByViewer: true }, changed: true, invalidated: change };
+  }
+
   async listFulfillmentMappings(organizationId: string): Promise<readonly RequirementFulfillmentMappingRecord[]> {
     const { rows } = await this.db.query<{ id: string; topic_key: string; kind: RequirementFulfillmentMappingRecord["kind"]; ref_key: string; statement_template: string }>(
       `select id, topic_key, kind, ref_key, statement_template from licitaciones.requirement_fulfillment_mapping where organization_id = $1;`,
@@ -2350,7 +2489,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
 
     // Lanza `ApprovalRejectedError` si la regla rechaza (rol no autorizado,
     // AE-02, autoaprobación AE-11, o las reglas de etapa de L-26) -- ninguna fila se toca en ese caso.
-    new ApprovalWorkflow({ sectionAuthors, approvals: stageSnapshot }).approve({ scope: input.scope, scopeRef: input.scopeRef, actorId: input.actorId, actorRole: input.actorRole, inputsHash: input.inputsHash, stage: input.stage });
+    new ApprovalWorkflow({ sectionAuthors, approvals: stageSnapshot, submitters: await boveda.loadReviewSubmitters(this.db, organizationId, proposalId) }).approve({ scope: input.scope, scopeRef: input.scopeRef, actorId: input.actorId, actorRole: input.actorRole, inputsHash: input.inputsHash, stage: input.stage });
 
     if (input.stage !== undefined) return this.insertStagedApproval(organizationId, proposalId, input as typeof input & { stage: ExpedienteApprovalStage });
 

@@ -331,10 +331,10 @@ set local role authenticated;
 select count(*)::int as l4_deberia_ser_0 from restaurantes.avisos_operativos_candidatos() where order_id = '00000000-0000-0000-0000-0000000a16e4';
 rollback;
 
-\echo '--- 33. entrega tardia: L5 en pending y L6 entregado NO ---'
+\echo '--- 33. entrega tardia: L5 en pending y L6 entregado NO (L5 si es un pedido sin aceptar: ver scenario QA R2) ---'
 begin;
 set local role authenticated;
-select count(*)::int as l5_l6_deberia_ser_0 from restaurantes.avisos_operativos_candidatos() where order_id in ('00000000-0000-0000-0000-0000000a16e5', '00000000-0000-0000-0000-0000000a16e6');
+select count(*)::int as l5_l6_deberia_ser_0 from restaurantes.avisos_operativos_candidatos() where order_id in ('00000000-0000-0000-0000-0000000a16e5', '00000000-0000-0000-0000-0000000a16e6') and tipo = 'restaurantes.pedido.entrega_tardia';
 rollback;
 
 \echo '--- 34. entrega tardia: L7 (prometido hace 30 h, fuera de la ventana de 24 h) NO ---'
@@ -358,7 +358,7 @@ rollback;
 \echo '--- 37. programado por vencer: P2 lejano, P4 recoger, P5 con repartidor y P6 cancelado NO ---'
 begin;
 set local role authenticated;
-select count(*)::int as resto_deberia_ser_0 from restaurantes.avisos_operativos_candidatos() where order_id in ('00000000-0000-0000-0000-0000000a16f2', '00000000-0000-0000-0000-0000000a16f4', '00000000-0000-0000-0000-0000000a16f5', '00000000-0000-0000-0000-0000000a16f6');
+select count(*)::int as resto_deberia_ser_0 from restaurantes.avisos_operativos_candidatos() where order_id in ('00000000-0000-0000-0000-0000000a16f2', '00000000-0000-0000-0000-0000000a16f4', '00000000-0000-0000-0000-0000000a16f5', '00000000-0000-0000-0000-0000000a16f6') and tipo = 'restaurantes.pedido.programado_por_vencer';
 rollback;
 
 \echo '--- 38. cross-tenant: LB1 (Org B) es candidato con SU organization_id, nunca con el de la Org A ---'

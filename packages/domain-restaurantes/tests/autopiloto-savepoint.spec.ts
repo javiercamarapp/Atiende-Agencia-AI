@@ -177,3 +177,41 @@ describe("PostgresAutopilotoRepository: funciones de la migracion 077 contra la 
     await sesionViva(ajeno);
   });
 });
+
+describe("marcarAgotado contra la funcion vieja de la 050 (compara con la fecha calendario)", () => {
+  /** Sesion que ademas registra los parametros de cada consulta, para comprobar la fecha del reintento. */
+  class SesionConParametros extends AbortAwareFakeSession {
+    readonly parametros: unknown[][] = [];
+    override async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      this.parametros.push(params ?? []);
+      return super.query<T>(sql, params);
+    }
+  }
+  const vieja = (): FakeSessionHandler => {
+    let n = 0;
+    return { match: /restaurantes\.agotado_marcar/, respond: () => (++n === 1 ? pgError("22023", "p_hasta debe ser posterior a hoy") : [{ ok: true }]) };
+  };
+
+  it("22023 con el dia de negocio igual a hoy en calendario: reintenta con calendario + 1 dentro del savepoint y la sesion sigue viva", async () => {
+    // Domingo 00:30 con turno que cruza medianoche: dia de negocio = sabado, hasta = domingo; calendario + 1 = lunes.
+    const s = new SesionConParametros([vieja(), SIGUIENTE]);
+    const r = await new PostgresAutopilotoRepository(s).marcarAgotado(ORG, PROP, "p1", "2026-03-15", "2026-03-16");
+    expect(r).toEqual({ disponible: true, aplicado: true });
+    expect(s.parametros.map((p) => p[3])).toEqual(["2026-03-15", "2026-03-16"]);
+    await sesionViva(s);
+    expect(s.calls.filter((c) => c.startsWith("rollback to savepoint"))).toHaveLength(1);
+  });
+
+  it("sin fecha de respaldo mayor, el 22023 sigue siendo un error de validacion (no reintenta a ciegas)", async () => {
+    const s = new SesionConParametros([vieja(), SIGUIENTE]);
+    await expect(new PostgresAutopilotoRepository(s).marcarAgotado(ORG, PROP, "p1", "2026-03-15", "2026-03-15")).rejects.toBeInstanceOf(AutopilotoValidacionError);
+    expect(s.parametros).toHaveLength(1);
+    await sesionViva(s);
+  });
+
+  it("con la 076 aplicada (sin error) usa solo el dia de negocio", async () => {
+    const s = new SesionConParametros([{ match: /restaurantes\.agotado_marcar/, respond: () => [{ ok: true }] }]);
+    await new PostgresAutopilotoRepository(s).marcarAgotado(ORG, PROP, "p1", "2026-03-15", "2026-03-16");
+    expect(s.parametros.map((p) => p[3])).toEqual(["2026-03-15"]);
+  });
+});

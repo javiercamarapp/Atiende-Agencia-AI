@@ -1,7 +1,7 @@
 -- QA restaurantes ronda 2, lote features-y-viaje -- escenarios contra Postgres REAL (RLS + GRANT + auth.uid() reales) de
 -- packages/domain-restaurantes/migrations/077_features_viaje_r2_dia_negocio_cierre_handoff.sql.
 --
---   N. nearest_branch_by_colonia (R2-features-08): una colonia de 1-3 letras no asigna sucursal; las reales si.
+--   N. nearest_branch_by_colonia (R2-features-08): una colonia de menos de 3 letras no asigna sucursal; las reales si.
 --   D. dia de negocio y agotados (R2-features-03): la cola de un turno 12:00-01:00 es del dia anterior; no se repone a las 00:00; alcance y anon.
 --   T. ticket impreso y aceptacion sin POS (R2-features-05): alcance por sucursal, cross-tenant, anon, idempotencia, bandera apagada.
 --   R. no_recogido sin hora de recogida (R2-viaje-05).
@@ -95,7 +95,7 @@ insert into restaurantes.autopiloto_config (property_id, organization_id, acepta
   ('00000000-0000-0000-0000-0000000e77a1', '00000000-0000-0000-0000-0000000e7701', true)
 on conflict (property_id) do update set aceptacion_auto = true;
 
-\echo '=== N1. colonias de 1-3 letras no asignan sucursal (a, mo, ab) ==='
+\echo '=== N1. colonias de menos de 3 letras no asignan sucursal (a, mo, ab) ==='
 begin;
 set local role authenticated;
 select public.t_afirmar((select count(*) from restaurantes.nearest_branch_by_colonia('00000000-0000-0000-0000-0000000e7701', 'a')) = 0, 'colonia_a');

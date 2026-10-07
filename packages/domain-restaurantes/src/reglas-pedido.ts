@@ -6,7 +6,7 @@
 // Las lecturas van por `repo.find*`/`repo.list*`, que degradan con SAVEPOINT contra la base
 // sin migrar (ver PostgresRestaurantesRepository): este modulo nunca captura SQLSTATE por
 // su cuenta porque corre dentro de la transaccion unica del request.
-import { aperturaConExcepciones, componentesLocales, fechaAnterior, fechaLocal, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
+import { aperturaConExcepciones, componentesLocales, etiquetaHoraLocal, fechaAnterior, fechaLocal, mensajeProgramadoFueraDeHorario, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { normalizeZoneText } from "./nearest-branch.ts";
@@ -40,26 +40,39 @@ export function debePreguntarPropina(politica: PropinaPolitica | null, paymentMe
   return false;
 }
 
-/** Mismo emparejamiento que `restaurantes.nearest_branch_by_colonia` (migracion 005): texto
- * normalizado de ambos lados, la zona mas especifica (nombre mas largo) gana. */
 /** Largo minimo (texto normalizado, sin espacios) para que un fragmento cuente como colonia: una o dos letras ("a", "co") son
  * subcadena de casi cualquier zona y harian pasar un domicilio sin colonia real. */
 export const LARGO_MIN_COLONIA = 4;
 
+/** Quita lo que va entre parentesis ("García Lavín (Victory Platz)" -> "García Lavín") con un solo recorrido (sin expresion regular: el nombre de una zona es dato de la cuenta). */
+function sinAclaracionEntreParentesis(nombre: string): string {
+  let profundidad = 0;
+  let salida = "";
+  for (const ch of nombre) {
+    if (ch === "(") profundidad += 1;
+    else if (ch === ")" && profundidad > 0) profundidad -= 1;
+    else if (profundidad === 0) salida += ch;
+  }
+  return salida.split(" ").filter((t) => t !== "").join(" ");
+}
+
+/** Mismo emparejamiento que `restaurantes.nearest_branch_by_colonia` (migracion 005): texto
+ * normalizado de ambos lados, la zona mas especifica (nombre mas largo) gana. */
 export function matchKnownZone(zones: readonly KnownZone[], colonia: string): KnownZone | null {
   const input = normalizeZoneText(colonia);
   if (!input) return null;
   let best: KnownZone | null = null;
   for (const zone of zones) {
-    const name = normalizeZoneText(zone.name);
-    if (!name) continue;
+    // Una zona con aclaracion entre parentesis ("García Lavín (Victory Platz)") tambien se llama por su nombre corto: el modelo manda la direccion completa
+    // en `colonia` ("Calle 32 #345 x 20 y 22, García Lavín") y el nombre largo nunca estaba contenido (QA-PM-R2-voz-07).
+    const nombres = [zone.name, sinAclaracionEntreParentesis(zone.name)].map(normalizeZoneText).filter((n) => n.length > 0);
+    if (nombres.length === 0) continue;
     // La zona cuyo nombre normalizado ES lo dicho gana siempre (misma regla que la funcion SQL, migracion 056): sin esto "Centro" caia en
     // "Centro Chichi Suarez" y "Montebello" en "Montebello II" solo por tener el nombre mas largo.
-    if (name === input) return zone;
+    if (nombres.includes(input)) return zone;
     // La colonia escrita contiene la zona conocida (zona >= 3 letras), o la zona contiene lo escrito (fragmento >= LARGO_MIN_COLONIA).
-    if ((name.length >= 3 && input.includes(name)) || (input.length >= LARGO_MIN_COLONIA && name.includes(input))) {
-      if (!best || zone.name.length > best.name.length) best = zone;
-    }
+    const coincide = nombres.some((name) => (name.length >= 3 && input.includes(name)) || (input.length >= LARGO_MIN_COLONIA && name.includes(input)));
+    if (coincide && (!best || zone.name.length > best.name.length)) best = zone;
   }
   return best;
 }
@@ -84,7 +97,15 @@ export interface ReglasSucursalArgs {
   readonly exigirAbierto?: boolean;
   /** Mensaje de cierre propio (pedido programado: "no atiende a la hora elegida"). */
   readonly mensajeCerrado?: (apertura: EstadoApertura, zonaHoraria: string) => string;
+  /** Solo canal "recoger": hora (ISO con zona) a la que el cliente pasara. Se valida contra el RELOJ del servidor: ni pasada, ni de otro dia
+   * de negocio, ni despues del cierre (la voz y el LLM calculan "en 40 minutos" con la hora UTC y la guardaban 6 h tarde o dos dias atras). */
+  readonly horaRecogida?: string;
 }
+
+/** Tolerancia hacia atras: el cliente dijo "paso a las 2" y el reloj ya marca 2:05. */
+export const HORA_RECOGIDA_GRACIA_MIN = 10;
+/** Una recogida mas lejana que esto ya no es "hoy": se pide un pedido programado. */
+export const HORA_RECOGIDA_MAX_HORAS = 12;
 
 export interface ReglasSucursalResultado {
   readonly policy: BranchPolicy;
@@ -123,6 +144,10 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
     if (!apertura.abierto && (args.source !== "admin" || args.exigirAbierto === true)) {
       throw new OrderValidationError(args.mensajeCerrado ? args.mensajeCerrado(apertura, zona) : mensajeSucursalCerrada(branch.name, apertura));
     }
+  }
+
+  if (args.horaRecogida && canal === "recoger") {
+    await validarHoraRecogida(repo, { branch, horarioBase, ahora, zonaCruda, zona, aperturaAhora: apertura, diaNegocioAhora: diaNegocio, horaRecogida: args.horaRecogida });
   }
 
   // Migracion 057: domicilio por sucursal (solo recoger o solo ciertos dias). El dia es el de NEGOCIO de la sucursal
@@ -185,4 +210,53 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
   }
 
   return { policy, apertura, pedidoMinimo, preguntarPropina, diaNegocio };
+}
+
+/** QA-PM-R2-reglas-05 / voz-03 / wa-15: la hora de recogida la valida el SERVIDOR. Lanza `OrderValidationError` con un mensaje accionable
+ * (incluye la hora local actual de la sucursal, que el modelo no sabia). */
+async function validarHoraRecogida(
+  repo: RestaurantesRepository,
+  a: {
+    readonly branch: Branch;
+    readonly horarioBase: BranchPolicy["horario"] | null;
+    readonly ahora: Date;
+    readonly zonaCruda: string | null | undefined;
+    readonly zona: string;
+    readonly aperturaAhora: EstadoApertura | null;
+    readonly diaNegocioAhora: number | null;
+    readonly horaRecogida: string;
+  },
+): Promise<void> {
+  const pickup = new Date(a.horaRecogida);
+  const etiquetaAhora = etiquetaHoraLocal(a.ahora, a.zona);
+  const etiquetaPickup = etiquetaHoraLocal(pickup, a.zona);
+  const minutos = (pickup.getTime() - a.ahora.getTime()) / 60_000;
+  if (minutos < -HORA_RECOGIDA_GRACIA_MIN) {
+    throw new OrderValidationError(
+      `La hora de recogida (${etiquetaPickup}) ya pasó: ahora son las ${etiquetaAhora} en la sucursal. Calcule la hora a partir de esa hora local (no de UTC) y confirme con el cliente a qué hora pasará.`,
+    );
+  }
+  if (minutos > HORA_RECOGIDA_MAX_HORAS * 60) {
+    throw new OrderValidationError(
+      `La hora de recogida (${etiquetaPickup}) está a más de ${HORA_RECOGIDA_MAX_HORAS} horas (ahora son las ${etiquetaAhora}). Para otro día use un pedido programado (programado_para); aquí solo se acepta una recogida de hoy.`,
+    );
+  }
+  const hoyLocal = fechaLocal(a.ahora, a.zona);
+  const fechaPickup = fechaLocal(pickup, a.zona);
+  const excepciones = await repo.listBranchHoursExceptions(a.branch.propertyId, fechaAnterior(fechaPickup), fechaPickup);
+  const cubrePickup = excepciones.some((e) => e.fechaDesde <= fechaPickup && fechaPickup <= e.fechaHasta);
+  if (a.horarioBase || cubrePickup) {
+    const r = aperturaConExcepciones(a.horarioBase ?? [], excepciones, pickup, a.zonaCruda);
+    if (!r.estado.abierto) {
+      const cierre = a.aperturaAhora?.cierraA ? ` Hoy cierra a las ${a.aperturaAhora.cierraA}: ofrezca pasar antes.` : "";
+      throw new OrderValidationError(`${mensajeProgramadoFueraDeHorario(a.branch.name, etiquetaPickup, r.estado)}${cierre}`);
+    }
+    if (a.diaNegocioAhora !== null && r.diaNegocio !== a.diaNegocioAhora) {
+      throw new OrderValidationError(
+        `La hora de recogida (${etiquetaPickup}) cae en otro día de negocio (ahora son las ${etiquetaAhora}). Para otro día use un pedido programado (programado_para).`,
+      );
+    }
+  } else if (fechaPickup !== hoyLocal) {
+    throw new OrderValidationError(`La hora de recogida (${etiquetaPickup}) no es de hoy (ahora son las ${etiquetaAhora}). Para otro día use un pedido programado (programado_para).`);
+  }
 }

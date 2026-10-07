@@ -1,7 +1,7 @@
 -- QA restaurantes ronda 2, lote features-y-viaje (QA-restaurantes-R2-features-03/05/06/07/08 y R2-viaje-02/04/05/06).
 -- Correcciones por causa raiz de funciones y tablas de 005, 041 y 050; ninguna cambia una firma publica ya usada por el TypeScript
 -- (solo se agregan funciones nuevas). Requiere: 005 (nearest_branch_by_colonia), 023 (branch_policy), 028 (conversation_handoff,
--- handoff_actor_en_sucursal), 031 (branch_hours_exception), 035 (voz_zona_horaria), 041 (cierre_agregados), 050 (autopiloto).
+-- handoff_actor_en_sucursal), 035 (voz_zona_horaria), 041 (cierre_agregados), 050 (autopiloto).
 --
 -- Compatibilidad con la base sin migrar: el TypeScript que llama a las funciones NUEVAS (dia_negocio_sucursal_actual,
 -- pedido_ticket_impreso_registrar, handoffs_pendientes_por_escalar, compensacion_codigo_disponible) cae a un vacio honesto contra una base
@@ -78,7 +78,7 @@ declare
   v_zone_name text;
   v_input_norm text := regexp_replace(unaccent(lower(coalesce(p_colonia, ''))), '[^a-z0-9]', '', 'g');
 begin
-  -- Una colonia vacia o de 1-3 letras no identifica nada: cero filas, nunca una sucursal adivinada.
+  -- Una colonia vacia o de menos de 3 letras no identifica nada: cero filas, nunca una sucursal adivinada.
   if char_length(v_input_norm) < 3 then
     return;
   end if;
