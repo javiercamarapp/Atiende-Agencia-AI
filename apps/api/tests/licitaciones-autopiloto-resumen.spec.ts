@@ -9,6 +9,12 @@ import { conEmisiones } from "./support/emisiones.ts";
 
 const RUTA = "/internal/licitaciones/alert-notifications";
 
+interface CuerpoBarrido {
+  readonly ok: boolean;
+  readonly resumen_semanal: { readonly organizacionesConResumen: number; readonly correosEncolados: number; readonly errores: number };
+  readonly kyc_retamizado: { readonly disponible: boolean; readonly error: string | null };
+}
+
 async function armar() {
   const ctx = await buildLicitacionesTestContext(buildApp, { submissionDeadline: null });
   ctx.repo.seedNotificationRecipient(ctx.organizationId, { email: "dueno@example.com", fullName: "Dueno" });
@@ -16,7 +22,7 @@ async function armar() {
   const app = buildApp(deps);
   const correr = async () => {
     const res = await app.request(RUTA, { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
-    return { res, body: (await res.json()) as Record<string, any> };
+    return { res, body: (await res.json()) as CuerpoBarrido };
   };
   const resumenes = () => emisiones.filter((e) => e.evento === "licitaciones.resumen.semanal");
   const correos = () => ctx.repo.getMessagingOutbox().filter((o) => o.eventType === "tender.resumen_semanal");
@@ -91,7 +97,7 @@ describe("respaldo diario del re-tamizado KYC dentro del barrido (L-P3-10)", () 
     const app = buildApp(deps);
     const correr = async () => {
       const res = await app.request(RUTA, { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
-      return { res, body: (await res.json()) as Record<string, any> };
+      return { res, body: (await res.json()) as CuerpoBarrido };
     };
     return { correr, emisiones, llamadas: () => n };
   };

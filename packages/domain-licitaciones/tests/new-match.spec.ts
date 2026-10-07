@@ -122,7 +122,7 @@ describe("PostgresLicitacionesRepository -- nuevo match contra la base SIN la mi
     ["listNewMatches", /system_list_new_matches/, (r: PostgresLicitacionesRepository) => r.listNewMatches(ORG, "2026-01-01T00:00:00Z", 5)],
   ])("%s: 42883 degrada a null con SAVEPOINT y deja la sesion utilizable", async (_n, match, llamar) => {
     const session = new AbortAwareFakeSession([
-      { match, respond: () => sinMigrar(String(match).replace(/[\/]/g, "")) },
+      { match, respond: () => sinMigrar(String(match).replaceAll("/", "")) },
       { match: /select 1/, respond: () => [{ ok: 1 }] },
     ]);
     expect(await llamar(new PostgresLicitacionesRepository(session))).toBeNull();

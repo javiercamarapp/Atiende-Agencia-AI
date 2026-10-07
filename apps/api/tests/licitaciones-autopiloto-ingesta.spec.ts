@@ -57,7 +57,7 @@ async function armar(opts: { alEmitir?: () => number; perfil?: boolean; umbral?:
   const app = buildApp(deps);
   const correr = async () => {
     const res = await app.request(RUTA, { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
-    return { res, body: (await res.json()) as Record<string, any> };
+    return { res, body: (await res.json()) as { autopiloto: Record<string, number> | null } };
   };
   const tipos = (e: string) => emisiones.filter((x) => x.evento === e);
   return { ctx, emisiones, correr, tipos };
