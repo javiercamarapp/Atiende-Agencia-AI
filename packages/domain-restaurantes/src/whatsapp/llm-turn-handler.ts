@@ -740,18 +740,18 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           let input: Record<string, unknown> = {};
           let result: unknown;
           let fallaSistema = false;
+          let argumentosInvalidos = false;
           const toolInicio = Date.now();
-          let rechazoDelFlujo: string | undefined;
           try {
             input = JSON.parse(call.argumentsJson || "{}") as Record<string, unknown>;
           } catch {
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
+            argumentosInvalidos = true;
           }
           if (result === undefined) {
             const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
-            rechazoDelFlujo = executed.rechazoDelFlujo;
             anyToolCalled = true;
             if (call.name === "cotizar_pedido" && !isToolErrorResult(result)) {
               const q = (result as { quote?: { promocion_aplicada?: unknown; promociones_sugeridas?: readonly unknown[] } } | null)?.quote;
@@ -803,9 +803,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               await contar(repo, organizationId, phone, "colonia_no_reconocida", "reiniciar");
             }
           }
-          // El rechazo de un duplicado (`pedido_ya_creado`) o de un reintento simultaneo (`pedido_en_proceso`) es el servidor haciendo su trabajo,
-          // no un fallo del modelo barato: no justifica pagar el escalon caro.
-          if (call.name === "crear_pedido" && isToolErrorResult(result) && rechazoDelFlujo !== "pedido_ya_creado" && rechazoDelFlujo !== "pedido_en_proceso") {
+          // B04: la escalera sube al modelo caro solo ante un FALLO (error de sistema al crear el pedido, o argumentos que el modelo barato no supo armar). Un RECHAZO DE
+          // REGLA (`OrderValidationError`: minimo a domicilio, zona, horario, cantidad, y los rechazos de la maquina de estados como un duplicado o un reintento
+          // simultaneo) es el servidor haciendo su trabajo: la respuesta correcta es explicarlo, y pagar el modelo caro solo suma latencia y costo en el turno donde mas
+          // se pierde el pedido.
+          if (call.name === "crear_pedido" && isToolErrorResult(result) && (fallaSistema || argumentosInvalidos)) {
             huboFalloDeHerramienta = true;
           }
           working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
