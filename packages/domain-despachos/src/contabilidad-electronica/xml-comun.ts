@@ -33,16 +33,20 @@ export function mesDosDigitos(mes: number): string {
   return String(mes).padStart(2, "0");
 }
 
+/** Caracteres que XML 1.0 prohíbe: controles salvo tabulador, salto de línea y retorno, y U+FFFE/U+FFFF. */
+function esCaracterXmlProhibido(code: number): boolean {
+  return (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) || code === 0xfffe || code === 0xffff;
+}
+
 /** Escapa un valor de atributo XML. Quita los caracteres de control que XML 1.0 prohíbe y normaliza saltos/tabuladores a espacio. */
 export function escaparAtributoXml(valor: string): string {
-  return valor
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, "")
-    .replace(/[\t\n\r]/g, " ")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+  let limpio = "";
+  for (const ch of valor) {
+    const code = ch.codePointAt(0) as number;
+    if (esCaracterXmlProhibido(code)) continue;
+    limpio += code === 0x09 || code === 0x0a || code === 0x0d ? " " : ch;
+  }
+  return limpio.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
 /** Recorta un texto libre al máximo que fija el XSD (sin cortar un par sustituto a la mitad). */

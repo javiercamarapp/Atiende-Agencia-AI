@@ -3,7 +3,7 @@ export { construirCatalogoBase, naturalezaPorDefecto, CODIGO_AGRUPADOR_BASE, CUE
 export { validarPolizaEntrada, construirPolizaDesdeCfdi, esFechaValida, centavosATexto, MAX_PARTIDAS_POLIZA } from "./poliza.ts";
 export type { ErrorCampoLibro, ResultadoValidacion, ResultadoPolizaCfdi } from "./poliza.ts";
 export { construirPolizaDesdeRep, polizaEmitidoConImpuestos, polizaRecibidoConImpuestos } from "./poliza-impuestos.ts";
-export type { PagoRepContable, OpcionesPolizaRep, OpcionesPolizaCfdi, ResultadoPolizaImpuestos, MontosCfdi } from "./poliza-impuestos.ts";
+export type { OpcionesPolizaRep, OpcionesPolizaCfdi, ResultadoPolizaImpuestos, MontosCfdi } from "./poliza-impuestos.ts";
 export { totalesBalanza, catalogoLibroAAnexo24, generarPaqueteDesdeLibro } from "./balanza.ts";
 export type { TotalesBalanzaLibro } from "./balanza.ts";
 export { PostgresLibroRepository, traducirErrorLibro } from "./postgres-repository.ts";

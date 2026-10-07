@@ -79,6 +79,13 @@ describe("catálogo de cuentas contra CatalogoCuentas_1_3.xsd", () => {
     expect((await validarContraXsd(xml, "CatalogoCuentas_1_3")).errores).toEqual([]);
   });
 
+  it("quita los caracteres de control que XML 1.0 prohíbe y normaliza saltos de línea en los atributos; el XML sigue siendo válido", async () => {
+    const cuentas: CuentaAnexo24[] = [{ codigo: "1000", descripcion: "Gastos\u0000 con\u0007 control\ny\ttab", nivel: 1, naturaleza: "D", grupo: "", codAgrup: "100" }];
+    const xml = generarXmlCatalogo(cuentas, { rfc: RFC, ejercicio: 2026, mes: 1 });
+    expect(xml).toContain('Desc="Gastos con control y tab"');
+    expect((await validarContraXsd(xml, "CatalogoCuentas_1_3")).errores).toEqual([]);
+  });
+
   it("se NIEGA a generar mientras haya cuentas sin código agrupador y devuelve la lista de las que faltan", () => {
     const cuentas: CuentaAnexo24[] = [
       { codigo: "1000", descripcion: "ACTIVO", nivel: 1, naturaleza: "D", grupo: "", codAgrup: "100" },

@@ -134,9 +134,11 @@ describe("importeACentavos", () => {
     ["5", 500],
     ["0.00", 0],
     ["-0.01", -1],
-    ["999999999999999.99", 99999999999999999],
   ])("%s -> %i", (entrada, esperado) => {
-    expect(importeACentavos(entrada)).toBe(esperado === 99999999999999999 ? null : esperado);
+    expect(importeACentavos(entrada)).toBe(esperado);
+  });
+  it("un importe fuera del rango entero seguro se rechaza", () => {
+    expect(importeACentavos("999999999999999.99")).toBeNull();
   });
   it.each(["", "abc", "1.234", "1,234.50", "1e3", "--1", ".5", "1."])("rechaza %j", (v) => {
     expect(importeACentavos(v)).toBeNull();
