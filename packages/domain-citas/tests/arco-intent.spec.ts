@@ -45,6 +45,10 @@ describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de 
     expect(detectArcoIntent("por privacidad quiero que borren mis datos")).toEqual({ kind: "request", right: "cancelacion" });
   });
 
+  it("'quiero cancelar mi cita, mis datos son Ana' sigue siendo la CITA (el verbo debe ir pegado a 'datos')", () => {
+    expect(detectArcoIntent("quiero cancelar mi cita, mis datos son Ana")).toBeNull();
+    expect(detectArcoIntent("cancelar mi cita y por favor borren mis datos")).toEqual({ kind: "request", right: "cancelacion", conCita: true });
+  });
   it("QA-citas-R1-viaje-06: 'ya tienen mis datos... quiero cancelar mi cita' habla de la CITA, no de borrar datos", () => {
     expect(detectArcoIntent("Hola, ya tienen mis datos de la vez pasada. Quiero cancelar mi cita del martes")).toBeNull();
     expect(detectArcoIntent("tienen mis datos, quiero eliminar mi cita del lunes")).toBeNull();

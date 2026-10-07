@@ -56,9 +56,10 @@ const PERSONAL_DATA_RE = /\b(datos personales|mis datos|mi informacion personal|
 // pedir o querer ver el aviso NO es una solicitud ARCO (antes abria una de ACCESO con folio).
 const PRIVACIDAD_RE = /\b(aviso de privacidad|privacidad)\b/;
 // Palabras de agenda: "cancelar mi cita" no es "cancelar mis datos". Con una de ellas, un verbo suelto (cancelar, borrar, eliminar, dar de baja) se
-// lee como accion sobre la CITA; el derecho de cancelacion de datos exige entonces el verbo pegado a "datos"/"informacion personal".
+// lee como accion sobre la CITA; el derecho de cancelacion de datos exige entonces el verbo pegado a "datos"/"informacion personal" (solo se admite "por favor" en medio:
+// 'quiero cancelar mi cita mis datos son Ana' ya no se lee como borrado de datos).
 const CITA_RE = /\b(cita|citas|turno|reservacion|appointment)\b/;
-const BORRAR_DATOS_RE = /\b(borr\w*|elimin\w*|suprim\w*|olvid\w*|cancel\w*)\b(?:\s+\w+){0,3}\s+(?:(?:mis|los|todos mis)\s+)?(?:datos|informacion personal)\b|\bcancelacion de (?:mis )?datos\b/;
+const BORRAR_DATOS_RE = /\b(borr\w*|elimin\w*|suprim\w*|olvid\w*|cancel\w*)\b(?:\s+por favor)?\s+(?:(?:mis|los|todos mis)\s+)?(?:datos|informacion personal)\b|\bcancelacion de (?:mis )?datos\b/;
 const THIRD_PARTY_RE =
   /\b(de|del) (mi|su|otro|otra|un|una|el|la) (esposa|esposo|pareja|mama|papa|madre|padre|hij[oa]|hermano|hermana|amig[oa]|cliente|paciente|vecin[oa]|persona|jefe|jefa|ex|novio|novia|senor|senora|familiar)\b|\bde (otra persona|alguien mas|un tercero|terceros)\b/;
 
