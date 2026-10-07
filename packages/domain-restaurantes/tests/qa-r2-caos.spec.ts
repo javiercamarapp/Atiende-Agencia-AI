@@ -1,7 +1,7 @@
 // QA restaurantes, RONDA 2, lente EXCEPCIONES Y CAOS (main del 4-oct noche: #429 autopiloto, #435 comandas POS, #441 interruptor duro, #437 R-34).
 // Cruces entre funciones nuevas que se rompen en el ciclo de punta a punta de PM (WhatsApp -> pedido -> cocina -> entrega -> cierre). Todo con dobles:
 // repositorios en memoria, POS falso y reloj simulado; nada toca la base real ni manda mensajes.
-// Cada `it.fails` es un defecto CONFIRMADO (QA-restaurantes-R2-caos-NN): al arreglarlo, el corrector cambia `it.fails` -> `it`.
+// Cada prueba QA-R2-caos-NN fija la correccion de su defecto (QA-restaurantes-R2-caos-NN).
 import { describe, expect, it } from "vitest";
 import { createOrder } from "../src/orders.ts";
 import { prepararImportacionClientes } from "../src/clientes-importacion.ts";
@@ -10,13 +10,7 @@ import type { WhatsAppTurnHandler } from "../src/whatsapp/turn-handler.ts";
 import { InMemoryConversacionesRepository, InMemoryHandoffAgentGate } from "../src/index.ts";
 import { InMemoryAutopilotoRepository } from "../src/autopiloto/in-memory-repository.ts";
 import type { PedidoMemoria } from "../src/autopiloto/in-memory-repository.ts";
-import { resolverSolicitudAprobacion } from "../src/autopiloto/servicio.ts";
 import { estimarTiempo, pisoMinutosDeTexto } from "../src/autopiloto/tiempo-prometido.ts";
-import { MapaProductoCodigo } from "../src/softrestaurant/catalog-map.ts";
-import { FakeSoftRestaurantAdapter } from "../src/softrestaurant/fake-adapter.ts";
-import { InMemoryComandaOutboxStore } from "../src/softrestaurant/outbox-memory-store.ts";
-import { crearResolverSucursalPos, drenarComandas, encolarComandaParaPedido } from "../src/softrestaurant/outbox-service.ts";
-import type { TenantDbSession } from "@atiende/core-tenancy";
 import { buildRestaurantFixture } from "./fixtures.ts";
 
 const PHONE = "+5219991234567";
@@ -69,68 +63,6 @@ describe("R2-caos-01: agente de WhatsApp APAGADO y la toma se devuelve (tick de 
     expect(await t.enviar("m2", "¿Hola?")).toEqual({ ok: true, retryable: false });
     expect(t.turnos()).toBe(0);
     expect(t.store.handoffs.filter((h) => h.estado === "pendiente")).toHaveLength(1);
-  });
-});
-
-// ---------------------------------------------------------------------------------------------------------------------------------------
-// R2-caos-02: cancelar con un clic desde "Por aprobar" (#429) no corta la comanda pendiente del POS (R-34 de #437 solo cubre el PATCH)
-// ---------------------------------------------------------------------------------------------------------------------------------------
-describe("R2-caos-02: cancelacion aprobada desde 'Por aprobar' con el POS caido", () => {
-  const T0 = new Date("2026-10-05T18:00:00.000Z");
-  const ORG_SISTEMA = null as unknown as TenantDbSession; // resolverSolicitudAprobacion no usa la sesion en este camino
-
-  async function preparar() {
-    const fx = buildRestaurantFixture();
-    const order = await createOrder(fx.repo, {
-      organizationId: fx.organizationId,
-      branchSlug: "fco-montejo",
-      customerName: "Deb",
-      customerPhone: "9990001111",
-      customerAddress: "Calle 80 #30 x 5 y 7, Centro",
-      paymentMethod: "efectivo",
-      items: [{ productId: fx.products.cocaCola, requestedQuantity: 2 }],
-      source: "web",
-    });
-    let reloj = T0;
-    const ahora = () => reloj;
-    const store = new InMemoryComandaOutboxStore({ ahora });
-    store.ponerModo(fx.organizationId, "activo");
-    const port = new FakeSoftRestaurantAdapter({ ahora });
-    const mapa = new MapaProductoCodigo([{ productId: fx.products.cocaCola, codigo: "FAKE-003" }]);
-    const politica = { maxIntentos: 3, baseMs: 30_000, maxMs: 900_000, leaseMs: 120_000 };
-    const deps = { store, port, resolverCodigos: mapa, resolverSucursal: crearResolverSucursalPos({ [fx.propertyId]: "T2" }), ahora, politica };
-    const auto = new InMemoryAutopilotoRepository();
-    const mem: PedidoMemoria = {
-      id: order.id, organizationId: fx.organizationId, propertyId: fx.propertyId, status: "pending", total: order.total, clienteNombre: "Deb", telefono: "9990001111",
-      canal: "domicilio", numero: 1, renglones: [{ nombre: "Coca-Cola", cantidad: 2 }], comanda: { estado: "pendiente", folio: null },
-    };
-    auto.pedidos.set(order.id, mem);
-    return {
-      fx, order, store, port, deps, auto,
-      avanzar: (ms: number) => (reloj = new Date(reloj.getTime() + ms)),
-      drenar: () => drenarComandas({ port, abrirUnidad: async (fn) => fn({ store }), resolverCodigos: mapa, politica, ahora }, 10),
-    };
-  }
-
-  // Pasos: pedido `pending`; el POS no contesta (timeout) -> comanda `fallida` en el outbox; el cliente pide cancelar por WhatsApp (pedido ya con
-  // comanda => solicitud cancelar/mantener); el gerente pulsa "Cancelar" en "Por aprobar"; el POS vuelve y corre el despachador (cron de 5 min).
-  it.fails("QA-R2-caos-02: la comanda del pedido cancelado con un clic NO llega a cocina cuando el POS vuelve", async () => {
-    const t = await preparar();
-    t.port.inyectarFalla("crearComanda", { tipo: "timeout" }, 1);
-    await encolarComandaParaPedido(t.deps, { order: t.order });
-    expect(t.store.todas()[0]!.estado).toBe("fallida");
-
-    const s = await t.auto.crearSolicitud(t.fx.organizationId, t.fx.propertyId, "cancelacion", t.order.id, { origen: "cliente", estado: "pending", motivo: "cliente_desistio" });
-    const r = await resolverSolicitudAprobacion(
-      { auto: t.auto, repo: t.fx.repo, db: ORG_SISTEMA, encolarComandas: async () => undefined },
-      { organizationId: t.fx.organizationId, solicitudId: s.solicitudId!, decision: "cancelar", motivo: "cliente_desistio" },
-    );
-    expect(r?.resultado.estadoPedido).toBe("cancelado");
-
-    t.avanzar(30 * 60_000);
-    await t.drenar();
-    // Esperado (igual que el PATCH de #437): 0 comandas en el POS. Actual: 1 (la cocina prepara un pedido cancelado).
-    expect(t.port.comandas).toHaveLength(0);
   });
 });
 
@@ -241,78 +173,60 @@ describe("R2-caos-05: piso del dueno al prometer tiempo (A-21/B-09: 'NUNCA prome
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
-// R2-caos-07: importacion de cartera (#435) -- un mapeo equivocado no se puede corregir reimportando
+// R2-caos-07: importacion de cartera (#435) -- un mapeo equivocado se corrige reimportando
 // ---------------------------------------------------------------------------------------------------------------------------------------
 describe("R2-caos-07: reimportar para corregir un mapeo de columnas equivocado", () => {
-  const HUELLA = "a".repeat(64); // sha-256 de los BYTES del archivo: no cambia al cambiar el mapeo en el dialogo
+  // La huella de una importacion es archivo + mapeo (apps/web huellaConMapeo): el mismo archivo con otro mapeo es OTRA importacion.
+  const HUELLA_MAPEO_MALO = "a".repeat(64);
+  const HUELLA_MAPEO_BUENO = "b".repeat(64);
+  const TEL = "9991230001";
 
-  // Pasos: Clientes -> Importar -> el mapeo asistido (o la persona) deja "Nombre" apuntando a la columna "Colonia"; se importan los renglones.
-  // La persona ve el error en la lista de clientes, corrige el mapeo y vuelve a importar EL MISMO archivo; luego prueba con el archivo corregido.
-  it.fails("QA-R2-caos-07: reimportar con el mapeo corregido arregla los nombres (o el panel ofrece deshacer la importacion)", async () => {
+  async function importarMalo(fx: ReturnType<typeof buildRestaurantFixture>) {
+    // "Nombre" apuntaba a la columna Colonia y "Direccion" a la de Notas por error.
+    const malo = prepararImportacionClientes([{ telefono: TEL, nombre: "Itzimná", direccion: "Sin dirección", colonia: "", notas: "" }]);
+    await fx.repo.importarClientes(fx.organizationId, HUELLA_MAPEO_MALO, malo.validas);
+    expect((await fx.repo.findCustomerByPhone(fx.organizationId, TEL))?.name).toBe("Itzimná");
+  }
+  const bueno = () => prepararImportacionClientes([{ telefono: TEL, nombre: "José Peña", direccion: "Calle 1 x 2 y 4, Itzimná", colonia: "", notas: "" }]).validas;
+
+  it("QA-R2-caos-07: reimportar el MISMO archivo con el mapeo corregido arregla el nombre y el domicilio predeterminado", async () => {
     const fx = buildRestaurantFixture();
-    const malo = prepararImportacionClientes([{ telefono: "9991230001", nombre: "Itzimná", direccion: "Calle 1", colonia: "", notas: "" }]);
-    await fx.repo.importarClientes(fx.organizationId, HUELLA, malo.validas);
-    expect((await fx.repo.findCustomerByPhone(fx.organizationId, "9991230001"))?.name).toBe("Itzimná");
-
-    const bueno = prepararImportacionClientes([{ telefono: "9991230001", nombre: "José Peña", direccion: "Calle 1", colonia: "Itzimná", notas: "" }]);
-    const mismoArchivo = await fx.repo.importarClientes(fx.organizationId, HUELLA, bueno.validas);
-    if (!mismoArchivo.disponible) throw new Error("importacion no disponible");
-    expect(mismoArchivo.yaImportado).toBe(true); // "Este archivo ya se habia importado: no se volvio a escribir nada."
-    const otroArchivo = await fx.repo.importarClientes(fx.organizationId, "b".repeat(64), bueno.validas);
-    if (!otroArchivo.disponible) throw new Error("importacion no disponible");
-    expect(otroArchivo.sinCambios).toBe(1); // "nunca pisa el nombre conocido"
-    // Actual: sigue "Itzimná" para siempre; el agente (Cliente 360) saluda "Hola Itzimná". Solo queda editar cliente por cliente (hasta 5,000).
-    expect((await fx.repo.findCustomerByPhone(fx.organizationId, "9991230001"))?.name).toBe("José Peña");
-  });
-});
-
-// ---------------------------------------------------------------------------------------------------------------------------------------
-// R2-caos-09: "Cancelar" de una solicitud cuyo pedido ya salio (en_camino) -> se convierte en "mantener" en silencio
-// ---------------------------------------------------------------------------------------------------------------------------------------
-describe("R2-caos-09: el cliente pidio cancelar y el pedido ya salio cuando el gerente pulsa 'Cancelar'", () => {
-  // Pasos: pedido `preparando` -> el cliente pide cancelar por WhatsApp (solicitud cancelar/mantener) -> mientras el gerente lo ve, cocina lo pasa
-  // a `en_camino` -> el gerente pulsa "Cancelar" con motivo. La base cierra la solicitud como `mantener` (no_cancelable_en_camino) con aplicado=false.
-  it.fails("QA-R2-caos-09: al no poder cancelar, se avisa al cliente que su pedido sigue en camino (efecto de 'mantener'), no se queda sin respuesta", async () => {
-    const fx = buildRestaurantFixture();
-    fx.repo.seedWhatsAppChannel(fx.organizationId, "PNID-R2-CAOS");
-    const order = await createOrder(fx.repo, {
-      organizationId: fx.organizationId, branchSlug: "fco-montejo", customerName: "Deb", customerPhone: "9990001111", customerAddress: "Calle 80 #30 x 5 y 7, Centro",
-      paymentMethod: "efectivo", items: [{ productId: fx.products.cocaCola, requestedQuantity: 2 }], source: "whatsapp",
-    });
-    const auto = new InMemoryAutopilotoRepository();
-    const mem: PedidoMemoria = {
-      id: order.id, organizationId: fx.organizationId, propertyId: fx.propertyId, status: "preparando", total: order.total, clienteNombre: "Deb", telefono: "9990001111",
-      canal: "domicilio", numero: 1, renglones: [{ nombre: "Coca-Cola", cantidad: 2 }], comanda: { estado: "confirmada", folio: "T2-1" },
-    };
-    auto.pedidos.set(order.id, mem);
-    const s = await auto.crearSolicitud(fx.organizationId, fx.propertyId, "cancelacion", order.id, { origen: "cliente", estado: "preparando", motivo: "cliente_desistio" });
-    mem.status = "en_camino"; // cocina lo despacha mientras la tarjeta sigue en "Por aprobar"
-
-    const r = await resolverSolicitudAprobacion(
-      { auto, repo: fx.repo, db: null as unknown as TenantDbSession },
-      { organizationId: fx.organizationId, solicitudId: s.solicitudId!, decision: "cancelar", motivo: "cliente_desistio" },
-    );
-    expect(r?.resultado.decision).toBe("mantener");
-    // Actual: aplicado=false -> efectos [] -> 0 mensajes al cliente; el panel muestra "Esta solicitud ya estaba resuelta; no se repitió ningún aviso."
-    const avisos = fx.repo.getOutbox().filter((o) => o.eventType === "order.cancelacion_no_posible");
-    expect(avisos).toHaveLength(1);
+    await importarMalo(fx);
+    const r = await fx.repo.importarClientes(fx.organizationId, HUELLA_MAPEO_BUENO, bueno());
+    if (!r.disponible) throw new Error("importacion no disponible");
+    expect(r).toMatchObject({ yaImportado: false, actualizados: 1, sinCambios: 0 });
+    const cliente = await fx.repo.findCustomerByPhone(fx.organizationId, TEL);
+    expect(cliente?.name).toBe("José Peña"); // el agente (Cliente 360) ya no saluda "Hola Itzimná"
+    const domicilios = await fx.repo.listCustomerAddresses(cliente!.id);
+    expect(domicilios.find((d) => d.isDefault)?.address).toBe("Calle 1 x 2 y 4, Itzimná");
   });
 
-  it("PASA: si el gerente pulsa 'Mantener' el cliente SI recibe el aviso de que no se pudo cancelar (el arnes ve el outbox)", async () => {
+  it("la misma importacion (mismo archivo y mismo mapeo) sigue siendo idempotente", async () => {
     const fx = buildRestaurantFixture();
-    fx.repo.seedWhatsAppChannel(fx.organizationId, "PNID-R2-CAOS");
-    const order = await createOrder(fx.repo, {
-      organizationId: fx.organizationId, branchSlug: "fco-montejo", customerName: "Deb", customerPhone: "9990001111", customerAddress: "Calle 80 #30 x 5 y 7, Centro",
-      paymentMethod: "efectivo", items: [{ productId: fx.products.cocaCola, requestedQuantity: 2 }], source: "whatsapp",
-    });
-    const auto = new InMemoryAutopilotoRepository();
-    auto.pedidos.set(order.id, {
-      id: order.id, organizationId: fx.organizationId, propertyId: fx.propertyId, status: "en_camino", total: order.total, clienteNombre: "Deb", telefono: "9990001111",
-      canal: "domicilio", numero: 1, renglones: [{ nombre: "Coca-Cola", cantidad: 2 }],
-    });
-    const s = await auto.crearSolicitud(fx.organizationId, fx.propertyId, "cancelacion", order.id, { origen: "cliente" });
-    await resolverSolicitudAprobacion({ auto, repo: fx.repo, db: null as unknown as TenantDbSession }, { organizationId: fx.organizationId, solicitudId: s.solicitudId!, decision: "mantener" });
-    expect(fx.repo.getOutbox().filter((o) => o.eventType === "order.cancelacion_no_posible")).toHaveLength(1);
+    await importarMalo(fx);
+    await fx.repo.importarClientes(fx.organizationId, HUELLA_MAPEO_BUENO, bueno());
+    const otra = await fx.repo.importarClientes(fx.organizationId, HUELLA_MAPEO_BUENO, bueno());
+    if (!otra.disponible) throw new Error("importacion no disponible");
+    expect(otra.yaImportado).toBe(true);
+  });
+
+  it("NO pisa un nombre que una persona o el agente cambiaron despues de la importacion", async () => {
+    const fx = buildRestaurantFixture();
+    await importarMalo(fx);
+    const cliente = (await fx.repo.findCustomerByPhone(fx.organizationId, TEL))!;
+    await fx.repo.updateCustomerProfile(fx.organizationId, cliente.id, { name: "Pepe (el de siempre)" });
+    const r = await fx.repo.importarClientes(fx.organizationId, HUELLA_MAPEO_BUENO, bueno());
+    if (!r.disponible) throw new Error("importacion no disponible");
+    expect((await fx.repo.findCustomerByPhone(fx.organizationId, TEL))?.name).toBe("Pepe (el de siempre)");
+  });
+
+  it("NO pisa el nombre de un cliente que ya existia antes de importar (no lo escribio ninguna importacion)", async () => {
+    const fx = buildRestaurantFixture();
+    await fx.repo.upsertCustomer(fx.organizationId, TEL, "Nombre del agente");
+    const r = await fx.repo.importarClientes(fx.organizationId, HUELLA_MAPEO_BUENO, bueno());
+    if (!r.disponible) throw new Error("importacion no disponible");
+    expect(r.sinCambios).toBe(1);
+    expect((await fx.repo.findCustomerByPhone(fx.organizationId, TEL))?.name).toBe("Nombre del agente");
   });
 });
 

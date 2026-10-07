@@ -10,6 +10,7 @@ import {
   ETIQUETA_CAMPO,
   IMPORTACION_MAX_FILAS,
   construirFilas,
+  huellaConMapeo,
   leerArchivoClientes,
   sugerirMapeo,
 } from "../lib/clientes-importacion.ts";
@@ -98,7 +99,7 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
     setError(null);
     setTrabajando(true);
     try {
-      setVista(await vistaPreviaImportacionClientes(fetch, apiBaseUrl, token, propertyId, archivo.huella, construirFilas(filasDatos, mapeo)));
+      setVista(await vistaPreviaImportacionClientes(fetch, apiBaseUrl, token, propertyId, await huellaConMapeo(archivo.huella, mapeo), construirFilas(filasDatos, mapeo)));
     } catch (err) {
       setVista(null);
       setError(mensaje(err, "No se pudo revisar el archivo."));
@@ -112,9 +113,9 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
     setError(null);
     setTrabajando(true);
     try {
-      const r = await importarClientes(fetch, apiBaseUrl, token, propertyId, archivo.huella, construirFilas(filasDatos, mapeo));
+      const r = await importarClientes(fetch, apiBaseUrl, token, propertyId, await huellaConMapeo(archivo.huella, mapeo), construirFilas(filasDatos, mapeo));
       setResultado(r);
-      if (r.yaImportado) notify.info("Este archivo ya se había importado: no se volvió a escribir nada.");
+      if (r.yaImportado) notify.info("Este archivo con estas mismas columnas ya se había importado: no se volvió a escribir nada.");
       else notify.success(`Importación terminada: ${r.creados} clientes nuevos.`);
       onTerminado();
     } catch (err) {
@@ -253,7 +254,7 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
 
         {resultado && (
           <div className="flex flex-col gap-2" data-testid="importar-resultado">
-            {resultado.yaImportado && <Callout tone="info">Este archivo ya se había importado antes: no se volvió a escribir nada. Estas son las cifras de la primera vez.</Callout>}
+            {resultado.yaImportado && <Callout tone="info">Este archivo con estas mismas columnas ya se había importado antes: no se volvió a escribir nada. Estas son las cifras de la primera vez.</Callout>}
             <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
               <dt className="text-muted-foreground">Clientes nuevos</dt>
               <dd className="m-0 font-semibold text-foreground">{resultado.creados}</dd>

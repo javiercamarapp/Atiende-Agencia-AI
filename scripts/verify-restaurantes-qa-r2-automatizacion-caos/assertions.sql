@@ -10,6 +10,8 @@
 --   E. Muestras del tiempo prometido: franja circular a medianoche con dia de negocio; recoger con hora elegida no mide la hora del cliente.
 --   F. Cierre del dia por dia de negocio (el turno que cruza la medianoche queda completo; sin horario sigue por dia calendario).
 --   G. Regreso del handoff: no con el agente de WhatsApp apagado (si con el agente encendido).
+--   I. Reimportar de cartera: corrige lo que una importacion anterior escribio (nombre, domicilio predeterminado), no pisa lo que una persona
+--      cambio ni un cliente que ya existia; idempotente por huella; owner de otra organizacion, anon y sistema rechazados.
 --   H. Alertas de voz del sistema: se evaluan solas, idempotentes, sin audit_log; autorizacion (usuario, anon, cross-tenant, helpers cerrados).
 --
 -- Convenciones del gate (run-gate.mjs): cada escenario es `begin; ... rollback;`; el alias con sufijo deberia_ser_N marca el valor esperado;
@@ -474,6 +476,100 @@ insert into restaurantes.conversation_handoff (id, organization_id, property_id,
 values ('00000000-0000-0000-0000-0000000e76f2', '00000000-0000-0000-0000-0000000e7601', '00000000-0000-0000-0000-0000000e76a1', 'whatsapp', '00000000-0000-0000-0000-0000000e76f1',
         'tomada', 'agente', 'escalacion', timestamptz '2026-10-07 11:20:00+00', timestamptz '2026-10-07 11:30:00+00', timestamptz '2026-10-07 11:30:00+00');
 select count(*) as devuelta_con_agente_encendido_deberia_ser_1 from restaurantes.handoffs_devolver_vencidos(timestamptz '2026-10-07 12:00:00+00', 200) d where d.handoff_id = '00000000-0000-0000-0000-0000000e76f2';
+rollback;
+
+-- =====================================================================================================================
+-- I. Reimportar de cartera (caos-07)
+-- =====================================================================================================================
+\echo '=== I1. mapeo equivocado: reimportar con OTRA huella (otro mapeo) corrige el nombre que escribio la primera importacion ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e7611', true);
+select ya_importado, creados, actualizados, sin_cambios from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '[{"phone":"9991230001","name":"Itzimná","address":"Sin dirección","notes":""}]'::jsonb);
+select ya_importado, creados, actualizados, sin_cambios from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '[{"phone":"9991230001","name":"José Peña","address":"Calle 1 x 2 y 4, Itzimná","notes":""}]'::jsonb);
+reset role;
+select count(*) as nombre_corregido_deberia_ser_1 from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e7601' and phone = '9991230001' and name = 'José Peña';
+rollback;
+
+\echo '=== I2. ...y el domicilio importado por error deja de ser el predeterminado (queda el nuevo) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e7611', true);
+select ya_importado, creados, actualizados, sin_cambios from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '[{"phone":"9991230001","name":"Itzimná","address":"Sin dirección","notes":""}]'::jsonb);
+select ya_importado, creados, actualizados, sin_cambios from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '[{"phone":"9991230001","name":"José Peña","address":"Calle 1 x 2 y 4, Itzimná","notes":""}]'::jsonb);
+reset role;
+select count(*) as predeterminado_nuevo_deberia_ser_1 from restaurantes.customer_addresses a join restaurantes.customers c on c.id = a.customer_id where c.organization_id = '00000000-0000-0000-0000-0000000e7601' and c.phone = '9991230001' and a.is_default and a.address = 'Calle 1 x 2 y 4, Itzimná';
+rollback;
+
+\echo '=== I3. ...sin dejar dos predeterminados ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e7611', true);
+select ya_importado, creados, actualizados, sin_cambios from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '[{"phone":"9991230001","name":"Itzimná","address":"Sin dirección","notes":""}]'::jsonb);
+select ya_importado, creados, actualizados, sin_cambios from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '[{"phone":"9991230001","name":"José Peña","address":"Calle 1 x 2 y 4, Itzimná","notes":""}]'::jsonb);
+reset role;
+select count(*) as predeterminados_deberia_ser_1 from restaurantes.customer_addresses a join restaurantes.customers c on c.id = a.customer_id where c.organization_id = '00000000-0000-0000-0000-0000000e7601' and c.phone = '9991230001' and a.is_default;
+rollback;
+
+\echo '=== I4. la misma importacion (misma huella) es idempotente: ya_importado = true y no escribe nada ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e7611', true);
+select ya_importado, creados, actualizados, sin_cambios from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '[{"phone":"9991230001","name":"Itzimná","address":"Sin dirección","notes":""}]'::jsonb);
+select (select ya_importado from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '[{"phone":"9991230001","name":"Otro","address":"","notes":""}]'::jsonb))::int as ya_importado_deberia_ser_1;
+rollback;
+
+\echo '=== I5. NO pisa un nombre que una persona cambio despues de la importacion ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e7611', true);
+select ya_importado, creados, actualizados, sin_cambios from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '[{"phone":"9991230001","name":"Itzimná","address":"Sin dirección","notes":""}]'::jsonb);
+reset role;
+update restaurantes.customers set name = 'Pepe (el de siempre)' where organization_id = '00000000-0000-0000-0000-0000000e7601' and phone = '9991230001';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e7611', true);
+select ya_importado, creados, actualizados, sin_cambios from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '[{"phone":"9991230001","name":"José Peña","address":"Calle 1 x 2 y 4, Itzimná","notes":""}]'::jsonb);
+reset role;
+select count(*) as nombre_de_persona_intacto_deberia_ser_1 from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e7601' and phone = '9991230001' and name = 'Pepe (el de siempre)';
+rollback;
+
+\echo '=== I6. NO pisa el nombre de un cliente que ya existia (lo escribio otro flujo, no una importacion) ==='
+begin;
+insert into restaurantes.customers (organization_id, phone, name) values ('00000000-0000-0000-0000-0000000e7601', '9991230001', 'Nombre del agente');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e7611', true);
+select ya_importado, creados, actualizados, sin_cambios from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '[{"phone":"9991230001","name":"José Peña","address":"Calle 1 x 2 y 4, Itzimná","notes":""}]'::jsonb);
+reset role;
+select count(*) as nombre_previo_intacto_deberia_ser_1 from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e7601' and phone = '9991230001' and name = 'Nombre del agente';
+rollback;
+
+\echo '=== I7. un domicilio confirmado por el cliente (no vino de una importacion) sigue siendo el predeterminado ==='
+begin;
+insert into restaurantes.customers (id, organization_id, phone, name) values ('00000000-0000-0000-0000-0000000e76c9', '00000000-0000-0000-0000-0000000e7601', '9991230001', 'Ana');
+insert into restaurantes.customer_addresses (customer_id, address, is_default) values ('00000000-0000-0000-0000-0000000e76c9', 'Casa de Ana', true);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e7611', true);
+select ya_importado, creados, actualizados, sin_cambios from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '[{"phone":"9991230001","name":"Ana","address":"Calle 1 x 2 y 4, Itzimná","notes":""}]'::jsonb);
+reset role;
+select count(*) as domicilio_confirmado_sigue_deberia_ser_1 from restaurantes.customer_addresses where customer_id = '00000000-0000-0000-0000-0000000e76c9' and is_default and address = 'Casa de Ana';
+rollback;
+
+\echo '=== I8. cross-tenant: el owner de B no importa clientes a la organizacion A (42501) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e7615', true);
+select public.t_esperar_error($q$select * from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '[{"phone":"9991230001","name":"X","address":"","notes":""}]'::jsonb)$q$, '42501');
+rollback;
+
+\echo '=== I9. la sesion de sistema y anon no importan clientes (42501) ==='
+begin;
+set local role authenticated;
+select public.t_esperar_error($q$select * from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '[{"phone":"9991230001","name":"X","address":"","notes":""}]'::jsonb)$q$, '42501');
+rollback;
+
+begin;
+set local role anon;
+select public.t_esperar_error($q$select * from restaurantes.importar_clientes('00000000-0000-0000-0000-0000000e7601', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '[{"phone":"9991230001","name":"X","address":"","notes":""}]'::jsonb)$q$, '42501');
 rollback;
 
 -- =====================================================================================================================

@@ -153,6 +153,15 @@ export async function huellaSha256(bytes: ArrayBuffer): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * Huella de UNA importacion: el archivo + el mapeo de columnas con que se importa (QA R2 caos-07). El mismo archivo con otro mapeo es otra importacion:
+ * asi se puede corregir un mapeo equivocado reimportando, y el mismo archivo con el MISMO mapeo sigue siendo idempotente.
+ */
+export async function huellaConMapeo(huellaArchivo: string, mapeo: MapeoColumnas): Promise<string> {
+  const bytes = new TextEncoder().encode(`${huellaArchivo}|${CAMPOS_IMPORTACION.map((c) => `${c}=${mapeo[c] ?? "-"}`).join(",")}`);
+  return huellaSha256(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+}
+
 export interface ArchivoLeido {
   readonly nombre: string;
   readonly huella: string;

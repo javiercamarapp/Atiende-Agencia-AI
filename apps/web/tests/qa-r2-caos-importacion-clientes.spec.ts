@@ -2,10 +2,10 @@
 //
 // QA restaurantes, RONDA 2, lente EXCEPCIONES Y CAOS: importacion de cartera (#435) con archivos reales "sucios" del mundo de PM
 // (Excel en espanol de Windows, exportaciones de sistemas .NET). Solo lectura en el navegador; no se manda nada a ninguna base.
-// Cada `it.fails` es un defecto CONFIRMADO (QA-restaurantes-R2-caos-NN): al arreglarlo, el corrector cambia `it.fails` -> `it`.
+// Cada prueba QA-R2-caos-NN fija la correccion de su defecto (QA-restaurantes-R2-caos-NN).
 import { zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
-import { leerArchivoClientes, parsearXlsx } from "../src/verticals/restaurantes/lib/clientes-importacion.ts";
+import { huellaConMapeo, leerArchivoClientes, parsearXlsx } from "../src/verticals/restaurantes/lib/clientes-importacion.ts";
 
 /** Texto en Windows-1252 (lo que guarda Excel en espanol con "CSV (delimitado por comas)"): cada caracter Latin-1 es un byte. */
 function bytesWindows1252(texto: string): Uint8Array<ArrayBuffer> {
@@ -46,5 +46,19 @@ describe("R2-caos-08: .xlsx con prefijo de espacio de nombres (exportaciones .NE
       ["nombre", "telefono"],
       ["Ana", "9991230001"],
     ]);
+  });
+});
+
+describe("R2-caos-07: la huella de una importacion es archivo + mapeo", () => {
+  const MAPEO_A = { telefono: 1, nombre: 0, direccion: null, colonia: null, notas: null } as const;
+  const MAPEO_B = { telefono: 1, nombre: 2, direccion: null, colonia: null, notas: null } as const;
+
+  it("el mismo archivo con otro mapeo tiene otra huella; con el mismo mapeo, la misma", async () => {
+    const huella = "c".repeat(64);
+    const a = await huellaConMapeo(huella, MAPEO_A);
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    expect(await huellaConMapeo(huella, MAPEO_A)).toBe(a);
+    expect(await huellaConMapeo(huella, MAPEO_B)).not.toBe(a);
+    expect(await huellaConMapeo("d".repeat(64), MAPEO_A)).not.toBe(a);
   });
 });
