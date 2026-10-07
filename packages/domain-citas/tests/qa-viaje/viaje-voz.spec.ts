@@ -43,7 +43,7 @@ describe("viaje voz: cancelar por telefono", () => {
     expect((await l.mundo.cita(l.mundo.citaOtroClienteId))?.status).toBe("confirmed");
   });
 
-  it.fails("QA-citas-R1-viaje-11: cancelar por VOZ avisa a la lista de espera del hueco liberado (regresion de la migracion a voice-core: las rutas de voz ya no pasan por appointments-lifecycle)", async () => {
+  it("QA-citas-R1-viaje-11: cancelar por VOZ avisa a la lista de espera del hueco liberado (regresion de la migracion a voice-core: las rutas de voz ya no pasan por appointments-lifecycle)", async () => {
     const l = await correrGuionConAdaptador(adaptadorConListaDeEspera(), CANCELA, {});
     expect((await l.mundo.cita(l.mundo.citaSembradaId))?.status).toBe("cancelled");
     expect(l.mundo.repo.getOutbox().filter((o) => o.eventType === "waitlist.slot_offered")).toHaveLength(1);

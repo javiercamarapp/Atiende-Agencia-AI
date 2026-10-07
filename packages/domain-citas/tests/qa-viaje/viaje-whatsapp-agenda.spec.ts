@@ -140,7 +140,7 @@ describe("viaje WhatsApp: paciente nuevo agenda, consulta, reagenda y cancela", 
     expect(prompt).not.toMatch(/T\d{2}:\d{2}:\d{2}\.\d{3}Z/);
   });
 
-  it.fails("QA-citas-R1-viaje-03: cancelar la cita POR EL AGENTE avisa a la lista de espera del horario liberado (como ya lo hace el boton Cancelar)", async () => {
+  it("QA-citas-R1-viaje-03: cancelar la cita POR EL AGENTE avisa a la lista de espera del horario liberado (como ya lo hace el boton Cancelar)", async () => {
     const mundo = clinicaDental();
     const martes = proximoDia(2, 2);
     const cita = await createAppointment(mundo.repo, { organizationId: mundo.organizationId, providerId: mundo.drPaola, serviceId: mundo.limpieza, customerName: "Ana Pech", customerPhone: TEL_PACIENTE, startsAt: zonedTimeToUtc(martes, "10:00", ZONA).toISOString(), source: "whatsapp" });
@@ -167,7 +167,7 @@ describe("viaje WhatsApp: paciente nuevo agenda, consulta, reagenda y cancela", 
     expect(mundo.repo.getOutbox().filter((o) => o.eventType === "waitlist.slot_offered")).toHaveLength(1);
   });
 
-  it.fails("QA-citas-R1-viaje-04: reagendar POR EL AGENTE avisa a la lista de espera del horario viejo liberado", async () => {
+  it("QA-citas-R1-viaje-04: reagendar POR EL AGENTE avisa a la lista de espera del horario viejo liberado", async () => {
     const mundo = clinicaDental();
     const martes = proximoDia(2, 2);
     const cita = await createAppointment(mundo.repo, { organizationId: mundo.organizationId, providerId: mundo.drPaola, serviceId: mundo.limpieza, customerName: "Ana Pech", customerPhone: TEL_PACIENTE, startsAt: zonedTimeToUtc(martes, "10:00", ZONA).toISOString(), source: "whatsapp" });

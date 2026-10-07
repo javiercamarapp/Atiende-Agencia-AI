@@ -57,7 +57,7 @@ describe("QA R1 caos citas -- LLM caido a medio turno", () => {
     expect((await fixture.repo.findAppointmentForOrganization(fixture.organizationId, apt.id))?.status).toBe("pending");
   });
 
-  it.fails("QA-citas-R1-caos-14: cancelar_cita se aplico y el LLM se cae -> el paciente NO debe leer 'Tu cita ya quedó registrada'", async () => {
+  it("QA-citas-R1-caos-14: cancelar_cita se aplico y el LLM se cae -> el paciente NO debe leer 'Tu cita ya quedó registrada'", async () => {
     const fixture = buildCitasFixture();
     const apt = await citaExistente(fixture);
     const handler = handlerQueSeCae(fixture, [() => toolTurn("c1", "buscar_mis_citas", {}), () => toolTurn("c2", "cancelar_cita", { appointment_id: apt.id })]);
@@ -68,7 +68,7 @@ describe("QA R1 caos citas -- LLM caido a medio turno", () => {
     expect(r.reply).toMatch(/cancel/i);
   });
 
-  it.fails("QA-citas-R1-caos-14b: reagendar_cita se aplico y el LLM se cae -> el aviso menciona el cambio (no 'registrada' a secas)", async () => {
+  it("QA-citas-R1-caos-14b: reagendar_cita se aplico y el LLM se cae -> el aviso menciona el cambio (no 'registrada' a secas)", async () => {
     const fixture = buildCitasFixture();
     const apt = await citaExistente(fixture);
     const nuevo = zonedTimeToUtc(nextWeekdayDateStr(new Date(), 2), "12:00", "America/Merida").toISOString();
