@@ -231,7 +231,7 @@ describe("R2-caos-07: reimportar para corregir un mapeo de columnas equivocado",
 });
 
 describe("R2-caos-04/05 (bordes de las correcciones)", () => {
-  it("hora_recogida: 5 minutos atras se tolera (el modelo redondea 'paso ya'); 11 atras y 8 dias adelante no", async () => {
+  it("hora_recogida: 5 minutos atras se tolera (el modelo redondea 'paso ya'); 11 atras, 8 dias y 6 dias adelante no (otro dia = programado_para)", async () => {
     const fx = buildRestaurantFixture();
     const crear = (offsetMin: number) =>
       createOrder(fx.repo, {
@@ -242,7 +242,10 @@ describe("R2-caos-04/05 (bordes de las correcciones)", () => {
     await expect(crear(-5)).resolves.toBeDefined();
     await expect(crear(-11)).rejects.toThrow(/ya pasó/);
     await expect(crear(8 * 24 * 60)).rejects.toThrow(/próximos 7 días/);
-    await expect(crear(6 * 24 * 60)).resolves.toBeDefined();
+    // PR #467 (PM agente loop R2) fijo que hora_recogida es SOLO "de hoy" (maximo 12 h; reglas-pedido.ts): una recogida a 6 dias ya no se acepta
+    // como hora_recogida, para otro dia se usa programado_para. El borde de 7 dias de este test sigue protegiendo (orders.ts, se evalua antes).
+    await expect(crear(6 * 24 * 60)).rejects.toThrow(/12 horas/);
+    await expect(crear(30)).resolves.toBeDefined();
   });
 
   it("pisoMinutosDeTexto entiende horas, 'media hora' y no usa numeros ambiguos sin unidad", () => {
