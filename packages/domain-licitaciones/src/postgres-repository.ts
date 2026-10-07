@@ -2022,6 +2022,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
 
   // ---- Perfil de empresa completo (migracion 040): delegado a `PostgresCompanyProfileStore` ----
 
+  isCompanyProfileAvailable() { return this.profileStore.isAvailable(); }
   getCompanyProfile(organizationId: string) { return this.profileStore.getProfile(organizationId); }
   upsertCompanyProfile(organizationId: string, input: CompanyProfileUpsertInput) { return this.profileStore.upsertProfile(organizationId, input); }
   listCompanyProductsServices(organizationId: string) { return this.profileStore.listProducts(organizationId); }

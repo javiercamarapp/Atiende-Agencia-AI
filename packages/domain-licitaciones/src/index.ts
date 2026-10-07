@@ -350,6 +350,8 @@ export type {
 export { InMemoryCompanyProfileStore } from "./company-profile-memory.ts";
 export { loadCompanyMatchingContext, matchingAsOfDate } from "./company-matching-context.ts";
 export type { CompanyMatchingContext } from "./matching-engine.ts";
+export { FULFILLMENT_MAPPING_KINDS, PROFILE_MAPPING_KINDS } from "./technical-proposal.ts";
+export type { FulfillmentMappingKind } from "./technical-proposal.ts";
 export { estratificarMipyme, isMipymeSector, MIPYME_SECTORES, MIPYME_FICHA_ID } from "./mipyme.ts";
 export type { MipymeSector, MipymeEstrato, MipymeInput, MipymeResultado } from "./mipyme.ts";
 export type { NormaFicha, NormaLey, NormaEstadoVerificacion, NormaVigencia, NormaCitaEnCodigo } from "./normas.ts";

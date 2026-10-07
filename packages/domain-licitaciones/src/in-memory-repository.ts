@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { InMemoryCompanyProfileStore } from "./company-profile-memory.ts";
 import type { CompanyLocationRecord, CompanyProductServiceRecord, CompanyRestrictionRecord, CompanyStakeholderRecord, ProvenanceEntity } from "./company-profile.ts";
-import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
+import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, CompanyProfileNotAvailableError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import type {
   ApprovedRateCreateInput,
@@ -1142,6 +1142,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   }
 
   async createCompanySigner(organizationId: string, input: CompanySignerCreateInput): Promise<CompanySignerRecord> {
+    // Base sin la 040 (simulada): no hay donde guardar la vigencia del poder; pedirla no se descarta en silencio.
+    if (!this.companyProfileAvailable && (input.validFrom != null || input.validUntil != null || input.identityDocId != null || input.actionLimits != null)) throw new CompanyProfileNotAvailableError();
     this.companyProfile.assertProvenanceWritable();
     const list = this.companySigners.get(organizationId) ?? [];
     // Varios firmantes por cargo (migración 040); solo se rechaza repetir el mismo nombre en el mismo cargo (doble envío).
@@ -1164,6 +1166,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   }
 
   async updateCompanySigner(organizationId: string, signerId: string, input: CompanySignerUpdateInput): Promise<CompanySignerRecord> {
+    if (!this.companyProfileAvailable && (["validFrom", "validUntil", "identityDocId", "actionLimits"] as const).some((k) => input[k] !== undefined)) throw new CompanyProfileNotAvailableError();
     this.companyProfile.assertProvenanceWritable();
     const list = this.companySigners.get(organizationId) ?? [];
     const index = list.findIndex((s) => s.id === signerId);
@@ -1178,22 +1181,29 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
   // ---- Perfil de empresa completo (migración 040): delegado a `InMemoryCompanyProfileStore` ----
 
-  async getCompanyProfile(organizationId: string) { return this.companyProfile.getProfile(organizationId); }
-  async upsertCompanyProfile(organizationId: string, input: CompanyProfileUpsertInput) { return this.companyProfile.upsertProfile(organizationId, input); }
-  async listCompanyProductsServices(organizationId: string) { return this.companyProfile.list<CompanyProductServiceRecord>("product", organizationId); }
-  async createCompanyProductService(organizationId: string, input: CompanyProductServiceCreateInput) { return this.companyProfile.createProduct(organizationId, input); }
-  async updateCompanyProductService(organizationId: string, id: string, input: CompanyProductServiceUpdateInput) { return this.companyProfile.updateProduct(organizationId, id, input); }
-  async listCompanyLocations(organizationId: string) { return this.companyProfile.list<CompanyLocationRecord>("location", organizationId); }
-  async createCompanyLocation(organizationId: string, input: CompanyLocationCreateInput) { return this.companyProfile.createLocation(organizationId, input); }
-  async updateCompanyLocation(organizationId: string, id: string, input: CompanyLocationUpdateInput) { return this.companyProfile.updateLocation(organizationId, id, input); }
-  async listCompanyRestrictions(organizationId: string) { return this.companyProfile.list<CompanyRestrictionRecord>("restriction", organizationId); }
-  async createCompanyRestriction(organizationId: string, input: CompanyRestrictionCreateInput) { return this.companyProfile.createRestriction(organizationId, input); }
-  async updateCompanyRestriction(organizationId: string, id: string, input: CompanyRestrictionUpdateInput) { return this.companyProfile.updateRestriction(organizationId, id, input); }
-  async listCompanyStakeholders(organizationId: string) { return this.companyProfile.list<CompanyStakeholderRecord>("stakeholder", organizationId); }
-  async createCompanyStakeholder(organizationId: string, input: CompanyStakeholderCreateInput) { return this.companyProfile.createStakeholder(organizationId, input); }
-  async updateCompanyStakeholder(organizationId: string, id: string, input: CompanyStakeholderUpdateInput) { return this.companyProfile.updateStakeholder(organizationId, id, input); }
-  async deleteCompanyProfileItem(organizationId: string, kind: CompanyProfileCollectionKind, id: string) { return this.companyProfile.remove(kind, organizationId, id); }
-  async listFieldProvenance(organizationId: string) { return this.companyProfile.listFieldProvenance(organizationId); }
+  /** Solo pruebas: `false` simula la base sin migrar (la API responde \"no disponible aun\"). */
+  companyProfileAvailable = true;
+  async isCompanyProfileAvailable() { return this.companyProfileAvailable; }
+  private requireProfileTables(): void {
+    if (!this.companyProfileAvailable) throw new CompanyProfileNotAvailableError();
+  }
+
+  async getCompanyProfile(organizationId: string) { return this.companyProfileAvailable ? this.companyProfile.getProfile(organizationId) : null; }
+  async upsertCompanyProfile(organizationId: string, input: CompanyProfileUpsertInput) { this.requireProfileTables(); return this.companyProfile.upsertProfile(organizationId, input); }
+  async listCompanyProductsServices(organizationId: string) { return this.companyProfileAvailable ? this.companyProfile.list<CompanyProductServiceRecord>("product", organizationId) : []; }
+  async createCompanyProductService(organizationId: string, input: CompanyProductServiceCreateInput) { this.requireProfileTables(); return this.companyProfile.createProduct(organizationId, input); }
+  async updateCompanyProductService(organizationId: string, id: string, input: CompanyProductServiceUpdateInput) { this.requireProfileTables(); return this.companyProfile.updateProduct(organizationId, id, input); }
+  async listCompanyLocations(organizationId: string) { return this.companyProfileAvailable ? this.companyProfile.list<CompanyLocationRecord>("location", organizationId) : []; }
+  async createCompanyLocation(organizationId: string, input: CompanyLocationCreateInput) { this.requireProfileTables(); return this.companyProfile.createLocation(organizationId, input); }
+  async updateCompanyLocation(organizationId: string, id: string, input: CompanyLocationUpdateInput) { this.requireProfileTables(); return this.companyProfile.updateLocation(organizationId, id, input); }
+  async listCompanyRestrictions(organizationId: string) { return this.companyProfileAvailable ? this.companyProfile.list<CompanyRestrictionRecord>("restriction", organizationId) : []; }
+  async createCompanyRestriction(organizationId: string, input: CompanyRestrictionCreateInput) { this.requireProfileTables(); return this.companyProfile.createRestriction(organizationId, input); }
+  async updateCompanyRestriction(organizationId: string, id: string, input: CompanyRestrictionUpdateInput) { this.requireProfileTables(); return this.companyProfile.updateRestriction(organizationId, id, input); }
+  async listCompanyStakeholders(organizationId: string) { return this.companyProfileAvailable ? this.companyProfile.list<CompanyStakeholderRecord>("stakeholder", organizationId) : []; }
+  async createCompanyStakeholder(organizationId: string, input: CompanyStakeholderCreateInput) { this.requireProfileTables(); return this.companyProfile.createStakeholder(organizationId, input); }
+  async updateCompanyStakeholder(organizationId: string, id: string, input: CompanyStakeholderUpdateInput) { this.requireProfileTables(); return this.companyProfile.updateStakeholder(organizationId, id, input); }
+  async deleteCompanyProfileItem(organizationId: string, kind: CompanyProfileCollectionKind, id: string) { this.requireProfileTables(); return this.companyProfile.remove(kind, organizationId, id); }
+  async listFieldProvenance(organizationId: string) { return this.companyProfileAvailable ? this.companyProfile.listFieldProvenance(organizationId) : []; }
 
   async decideCompanyItem(organizationId: string, input: CompanyItemDecisionInput): Promise<CompanyItemDecisionOutcome> {
     const legacy: Partial<Record<CompanyItemKind, Map<string, CompanyDecidable[]>>> = {

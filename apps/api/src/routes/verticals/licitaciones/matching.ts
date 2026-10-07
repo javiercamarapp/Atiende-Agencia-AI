@@ -10,7 +10,8 @@
 import { Hono } from "hono";
 import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MatchingEngine, toOrganizationMatchingProfile } from "@atiende/domain-licitaciones";
+import { MatchingEngine, ProvenanceIndex, loadCompanyMatchingContext, matchingAsOfDate, toOrganizationMatchingProfile } from "@atiende/domain-licitaciones";
+import type { CompanyMatchingContext } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -28,7 +29,13 @@ export function licitacionesMatchingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     const organizationId = c.get("organizationId");
     const [tenders, profileRecord] = await Promise.all([repo.listTenders(organizationId), repo.findMatchingProfile(organizationId)]);
     const profile = toOrganizationMatchingProfile(profileRecord, organizationId);
-    const results = tenders.map((tender) => engine.score(tender, profile));
+    // REQ-142: las restricciones de la empresa (con procedencia) entran a la elegibilidad. Se leen UNA vez; solo la fecha del acto cambia por convocatoria.
+    const restrictions = await repo.listCompanyRestrictions(organizationId);
+    const provenance = restrictions.length > 0 ? new ProvenanceIndex(await repo.listFieldProvenance(organizationId)) : null;
+    const results = tenders.map((tender) => {
+      const company: CompanyMatchingContext | undefined = provenance ? { restrictions, provenance, asOfDate: matchingAsOfDate(tender) } : undefined;
+      return engine.score(tender, profile, company);
+    });
     return c.json({ results });
   });
 
@@ -40,7 +47,8 @@ export function licitacionesMatchingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
     const profileRecord = await repo.findMatchingProfile(organizationId);
     const profile = toOrganizationMatchingProfile(profileRecord, organizationId);
-    return c.json(engine.score(tender, profile));
+    const company = (await loadCompanyMatchingContext(repo, organizationId, tender)) ?? undefined;
+    return c.json(engine.score(tender, profile, company));
   });
 
   return app;

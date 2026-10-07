@@ -76,6 +76,7 @@ describe("PATCH .../tenant-config cambia de verdad el 'hoy' de negocio -- efecto
         { rows: [] }, // select de duplicados: no hay
         { rows: timezoneRow ? [timezoneRow] : [] }, // select timezone de tenant_config
         { rows: [{ id: "rate-x", concept: "c", unit_price: "1.00", approval_status: "pendiente_aprobacion", valid_from: "PLACEHOLDER", valid_until: null }] },
+        { rows: [] }, // record_field_provenance (REQ-142), misma sesion que el insert
       ];
       return {
         async query<T>(sql: string, params: unknown[] = []) {

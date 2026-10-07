@@ -72,10 +72,12 @@ export interface RequirementItemRecord {
   readonly confidence: number | null;
 }
 
+import type { FulfillmentMappingKind } from "./technical-proposal.ts";
+
 export interface RequirementFulfillmentMappingRecord {
   readonly id: string;
   readonly topicKey: string;
-  readonly kind: "capability" | "experience" | "document" | "signer";
+  readonly kind: FulfillmentMappingKind;
   readonly refKey: string;
   readonly statementTemplate: string;
 }
@@ -1123,6 +1125,8 @@ export interface LicitacionesRepository {
   decideCompanyItem(organizationId: string, input: CompanyItemDecisionInput): Promise<CompanyItemDecisionOutcome>;
 
   // ---- Perfil de empresa completo (migracion 040). Base sin migrar: las listas devuelven [] y `getCompanyProfile` null (vacio honesto). ----
+  /** `false` si la base aun no tiene la migracion 040: la API oculta los controles nuevos y responde "no disponible aun". */
+  isCompanyProfileAvailable(): Promise<boolean>;
   getCompanyProfile(organizationId: string): Promise<CompanyProfileRecord | null>;
   /** Uno por organizacion: crea o edita. Editar un dato aprobado lo regresa a pendiente. Lanza `CompanyProfileNotAvailableError` si la base aun no tiene la migracion 040. */
   upsertCompanyProfile(organizationId: string, input: CompanyProfileUpsertInput): Promise<CompanyProfileRecord>;

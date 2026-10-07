@@ -19,7 +19,9 @@
 --      procedencia y, para las entidades que la exigen, el dato queda bloqueado en el expediente y no evaluable en el matching.
 --   4. `decide_company_item` (036) se redefine para aceptar los cinco tipos nuevos (mismos roles que el resto: owner/admin/analyst, autor
 --      distinto del aprobador, transicion atomica y condicional) y `company_data_audit.kind` admite los tipos nuevos.
---   5. `system_count_signer_powers_expiring`: solo sistema, cuenta firmantes aprobados y autorizados cuyo poder vence en la ventana (alimenta el
+--   5. `requirement_fulfillment_mapping.kind` admite los datos nuevos (perfil, socios, restricciones, ubicaciones, productos) para que un
+--      requisito del expediente se redacte desde ellos y, sin procedencia, quede bloqueado.
+--   6. `system_count_signer_powers_expiring`: solo sistema, cuenta firmantes aprobados y autorizados cuyo poder vence en la ventana (alimenta el
 --      aviso in-app "poder de firmante por vencer" desde el barrido existente; un entero, sin nombres).
 --
 -- Justificacion de cada GRANT/policy/funcion:
@@ -415,3 +417,13 @@ end;
 $$;
 revoke all on function licitaciones.system_count_signer_powers_expiring(uuid, date, integer) from public, anon;
 grant execute on function licitaciones.system_count_signer_powers_expiring(uuid, date, integer) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 6. Mapeos de cumplimiento hacia los datos nuevos del perfil
+-- ---------------------------------------------------------------------------
+-- Un requisito del expediente puede redactarse desde el perfil general, los socios, las restricciones, las ubicaciones o los productos y
+-- servicios. Solo se amplia la lista cerrada de `kind`; las policies y los GRANT de la tabla no cambian (006).
+alter table licitaciones.requirement_fulfillment_mapping drop constraint if exists requirement_fulfillment_mapping_kind_check;
+alter table licitaciones.requirement_fulfillment_mapping
+  add constraint requirement_fulfillment_mapping_kind_check
+  check (kind in ('capability', 'experience', 'document', 'signer', 'profile', 'stakeholders', 'restrictions', 'locations', 'products'));

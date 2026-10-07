@@ -32,8 +32,8 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { Context } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, DECISION_ROLES, WRITE_ROLES, assertExplicitOffset, assertValidDecimalString, isoNow } from "@atiende/domain-licitaciones";
-import type { CompanyItemDecision, CompanyItemKind, CompanyItemDecisionOutcome, LicitacionesRole } from "@atiende/domain-licitaciones";
+import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, CompanyProfileNotAvailableError, DECISION_ROLES, WRITE_ROLES, assertExplicitOffset, assertValidDecimalString, isoNow } from "@atiende/domain-licitaciones";
+import type { CompanyItemDecision, CompanyItemKind, CompanyItemDecisionOutcome, LicitacionesRepository, LicitacionesRole, ProvenanceEntity } from "@atiende/domain-licitaciones";
 import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import { requireStepUp } from "../../../second-factor.ts";
 import { Errors } from "../../../errors.ts";
@@ -43,17 +43,17 @@ import type { AuditEntity } from "@atiende/domain-licitaciones";
 import type { AppDeps } from "../../../deps.ts";
 
 /** `approvalStatus` en el cuerpo de un alta/edición es un intento de auto-aprobación: se rechaza (422), nunca se ignora en silencio. */
-function rejectApprovalStatusInBody(raw: { approvalStatus?: unknown }): void {
+export function rejectApprovalStatusInBody(raw: { approvalStatus?: unknown }): void {
   if (raw.approvalStatus !== undefined) throw Errors.companyDataApprovalNotWritable();
 }
 
-function parseRequiredString(raw: unknown, field: string): string {
+export function parseRequiredString(raw: unknown, field: string): string {
   if (typeof raw !== "string" || raw.trim().length === 0) throw Errors.validation(`${field} requerido.`);
   return raw;
 }
 
 /** `undefined` = campo ausente del body (no tocar); `null`/string = valor explícito (incluye "borrar" con `null` donde el campo lo admite). */
-function parseOptionalNullableString(raw: unknown, field: string): string | null | undefined {
+export function parseOptionalNullableString(raw: unknown, field: string): string | null | undefined {
   if (raw === undefined) return undefined;
   if (raw === null) return null;
   if (typeof raw !== "string" || raw.trim().length === 0) throw Errors.validation(`${field}: se esperaba una cadena no vacía o null.`);
@@ -97,28 +97,32 @@ function parseOptionalExplicitOffsetDate(raw: unknown, field: string): string | 
  * como 500 genérico ("Error interno") sin filtrar el mensaje interno de la
  * base de datos.
  */
-function mapDuplicateOrThrow(err: unknown): never {
+export function mapDuplicateOrThrow(err: unknown): never {
   if (err instanceof CompanyDataDuplicateKeyError) throw Errors.conflict(err.message);
   if (err instanceof CompanyDataNotFoundError) throw Errors.notFound(err.message);
+  // Perfil completo / vigencia del poder sin la migracion 040: honesto (409 "no disponible aun"), nunca un 500.
+  if (err instanceof CompanyProfileNotAvailableError) throw Errors.conflict(err.message);
   throw err;
 }
 
 /** Roles que deciden por recurso: las tarifas (decisión económica) solo owner/admin; el resto, `DECISION_ROLES` (roles.ts, única fuente de verdad). */
 const RATE_DECISION_ROLES: readonly LicitacionesRole[] = ["owner", "admin"];
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Nombres de quienes propusieron/decidieron (para "Propuso: X · Aprobó: Y"). Mejor esfuerzo y SIN PII extra: solo `userId -> nombre`
  * de los ids que aparecen en la lista. `listOrgMembers` corre en SAVEPOINT (la transacción del request es compartida); si no está
  * disponible o el rol no puede listar al equipo, devuelve `{}` y la pantalla muestra "otra persona del equipo".
  */
-async function resolvePeople(
+export async function resolvePeople(
   deps: AppDeps,
   c: { get(key: "db"): TenantDbSession; get(key: "organizationId"): string },
   records: readonly { readonly proposedBy?: string | null; readonly approvedBy?: string | null }[],
+  /** Otras personas a nombrar (p. ej. quien capturo cada dato segun la procedencia). */
+  extraIds: Iterable<string> = [],
 ): Promise<Record<string, string>> {
-  const ids = new Set<string>();
+  const ids = new Set<string>(extraIds);
   for (const r of records) {
     if (r.proposedBy) ids.add(r.proposedBy);
     if (r.approvedBy) ids.add(r.approvedBy);
@@ -140,7 +144,7 @@ async function resolvePeople(
 }
 
 /** Aviso in-app (catálogo) de que un dato de empresa espera decisión. Mejor esfuerzo, sin PII (solo tipo + id + hora para dedupe). */
-async function avisarAprobacionPendiente(db: TenantDbSession, organizationId: string, kind: CompanyItemKind, itemId: string): Promise<void> {
+export async function avisarAprobacionPendiente(db: TenantDbSession, organizationId: string, kind: CompanyItemKind, itemId: string): Promise<void> {
   await emitirNotificacion(db, {
     evento: "licitaciones.datos_empresa.aprobacion_pendiente",
     organizationId,
@@ -150,7 +154,67 @@ async function avisarAprobacionPendiente(db: TenantDbSession, organizationId: st
   });
 }
 
-function decisionStatus(outcome: Exclude<CompanyItemDecisionOutcome, "ok">): never {
+/** Procedencia de un dato en la respuesta: quien lo capturo (`by`, id de usuario; el nombre sale de `people`), como (`source`) y cuando (`at`). */
+export interface ProvenanceView {
+  readonly by: string;
+  readonly source: string;
+  readonly at: string;
+}
+
+/** Procedencia del registro completo (`*`) de cada dato de una entidad, indexada por id. Base sin migrar: {} (la pantalla lo declara). */
+export async function provenanceOf(repo: LicitacionesRepository, organizationId: string, entity: ProvenanceEntity): Promise<Record<string, ProvenanceView>> {
+  const out: Record<string, ProvenanceView> = {};
+  for (const r of await repo.listFieldProvenance(organizationId)) {
+    if (r.entity === entity && r.field === "*") out[r.entityId] = { by: r.ownerUserId, source: r.source, at: r.capturedAt };
+  }
+  return out;
+}
+
+/** `{ people, provenance }` de una lista: nombres de quienes propusieron, decidieron o capturaron, y la procedencia por id. */
+export async function peopleAndProvenance(
+  deps: AppDeps,
+  c: { get(key: "db"): TenantDbSession; get(key: "organizationId"): string },
+  repo: LicitacionesRepository,
+  entity: ProvenanceEntity,
+  records: readonly { readonly proposedBy?: string | null; readonly approvedBy?: string | null }[],
+): Promise<{ people: Record<string, string>; provenance: Record<string, ProvenanceView> }> {
+  const provenance = await provenanceOf(repo, c.get("organizationId"), entity);
+  const people = await resolvePeople(deps, c, records, Object.values(provenance).map((p) => p.by));
+  return { people, provenance };
+}
+
+/** Fecha de negocio "YYYY-MM-DD" valida en el calendario. `undefined` = ausente del cuerpo; `null` = explicito (borrar). */
+export function parseDateOnly(raw: unknown, field: string): string | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  if (typeof raw !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) throw Errors.validation(`${field}: se esperaba una fecha "AAAA-MM-DD".`);
+  const d = new Date(`${raw}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== raw) throw Errors.validation(`${field}: la fecha no existe en el calendario.`);
+  return raw;
+}
+
+/** Texto opcional acotado; `undefined` = ausente, `null` = borrar. */
+export function parseOptionalText(raw: unknown, field: string, max: number): string | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  if (typeof raw !== "string") throw Errors.validation(`${field}: se esperaba texto o null.`);
+  const text = raw.trim();
+  if (text.length === 0) return null;
+  if (text.length > max) throw Errors.validation(`${field}: máximo ${max} caracteres.`);
+  return text;
+}
+
+/** Documento de identidad o poder: debe existir en la bóveda de ESTA organización (si no, 422; la base lo exige tambien por trigger). */
+async function parseIdentityDoc(repo: LicitacionesRepository, organizationId: string, raw: unknown): Promise<string | null | undefined> {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  if (typeof raw !== "string" || !UUID_RE.test(raw)) throw Errors.validation("identityDocId: se esperaba el id de un documento de la bóveda.");
+  const docs = await repo.listCompanyDocuments(organizationId, isoNow());
+  if (!docs.some((d) => d.id === raw)) throw Errors.validation("identityDocId: ese documento no existe en la bóveda de tu organización.");
+  return raw;
+}
+
+export function decisionStatus(outcome: Exclude<CompanyItemDecisionOutcome, "ok">): never {
   switch (outcome) {
     case "not_found":
       throw Errors.notFound("Dato de empresa no encontrado.");
@@ -166,7 +230,7 @@ function decisionStatus(outcome: Exclude<CompanyItemDecisionOutcome, "ok">): nev
 }
 
 /** Estado ANTERIOR de un dato de empresa (para el `antes` de la bitacora). `null` si no existe (el update lanzara su 404 propio). */
-async function antesDe(deps: AppDeps, c: Context<CoreAuthHonoEnv>, kind: CompanyItemKind, id: string): Promise<object | null> {
+export async function antesDe(deps: AppDeps, c: Context<CoreAuthHonoEnv>, kind: CompanyItemKind, id: string): Promise<object | null> {
   const repo = deps.licitacionesRepo(c.get("db"));
   const organizationId = c.get("organizationId");
   const lista: readonly { readonly id: string }[] =
@@ -182,7 +246,18 @@ async function antesDe(deps: AppDeps, c: Context<CoreAuthHonoEnv>, kind: Company
   return lista.find((r) => r.id === id) ?? null;
 }
 
-const ENTIDAD_DE: Readonly<Record<CompanyItemKind, AuditEntity>> = { rate: "tarifa", document: "documento_empresa", capability: "capacidad", experience: "experiencia", signer: "firmante" };
+export const ENTIDAD_DE: Readonly<Record<CompanyItemKind, AuditEntity>> = {
+  rate: "tarifa",
+  document: "documento_empresa",
+  capability: "capacidad",
+  experience: "experiencia",
+  signer: "firmante",
+  profile: "perfil_empresa",
+  product: "producto_servicio",
+  location: "ubicacion_empresa",
+  restriction: "restriccion_empresa",
+  stakeholder: "socio_empresa",
+};
 
 export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -210,7 +285,7 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
   app.get(documentsBase, async (c) => {
     const repo = deps.licitacionesRepo(c.get("db"));
     const documents = await repo.listCompanyDocuments(c.get("organizationId"), isoNow());
-    return c.json({ documents, people: await resolvePeople(deps, c, documents) });
+    return c.json({ documents, ...(await peopleAndProvenance(deps, c, repo, "document", documents)) });
   });
 
   app.post(documentsBase, async (c) => {
@@ -251,7 +326,7 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
   app.get(ratesBase, async (c) => {
     const repo = deps.licitacionesRepo(c.get("db"));
     const rates = await repo.listAllApprovedRates(c.get("organizationId"));
-    return c.json({ rates, people: await resolvePeople(deps, c, rates) });
+    return c.json({ rates, ...(await peopleAndProvenance(deps, c, repo, "rate", rates)) });
   });
 
   app.post(ratesBase, async (c) => {
@@ -312,7 +387,7 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
   app.get(capabilitiesBase, async (c) => {
     const repo = deps.licitacionesRepo(c.get("db"));
     const capabilities = await repo.listCompanyCapabilities(c.get("organizationId"));
-    return c.json({ capabilities, people: await resolvePeople(deps, c, capabilities) });
+    return c.json({ capabilities, ...(await peopleAndProvenance(deps, c, repo, "capability", capabilities)) });
   });
 
   app.post(capabilitiesBase, async (c) => {
@@ -357,7 +432,7 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
   app.get(experienceBase, async (c) => {
     const repo = deps.licitacionesRepo(c.get("db"));
     const experience = await repo.listCompanyExperience(c.get("organizationId"));
-    return c.json({ experience, people: await resolvePeople(deps, c, experience) });
+    return c.json({ experience, ...(await peopleAndProvenance(deps, c, repo, "experience", experience)) });
   });
 
   app.post(experienceBase, async (c) => {
@@ -401,21 +476,31 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
   app.get(signersBase, async (c) => {
     const repo = deps.licitacionesRepo(c.get("db"));
     const signers = await repo.listCompanySigners(c.get("organizationId"));
-    return c.json({ signers, people: await resolvePeople(deps, c, signers) });
+    // `vigenciaDisponible`: la base ya tiene la migracion 040 (la pantalla pide vigencia del poder solo si es true).
+    return c.json({ signers, vigenciaDisponible: await repo.isCompanyProfileAvailable(), ...(await peopleAndProvenance(deps, c, repo, "signer", signers)) });
   });
 
   app.post(signersBase, async (c) => {
     const repo = deps.licitacionesRepo(c.get("db"));
     assertVerticalRole(c, WRITE_ROLES);
-    const raw = await readJsonCapped<{ name?: unknown; role?: unknown; authorized?: unknown; approvalStatus?: unknown }>(c.req.raw, 16 * 1024);
+    const raw = await readJsonCapped<{ name?: unknown; role?: unknown; authorized?: unknown; approvalStatus?: unknown; validFrom?: unknown; validUntil?: unknown; identityDocId?: unknown; actionLimits?: unknown }>(c.req.raw, 16 * 1024);
     rejectApprovalStatusInBody(raw);
     const name = parseRequiredString(raw.name, "name");
     const role = parseRequiredString(raw.role, "role");
     if (raw.authorized !== undefined && typeof raw.authorized !== "boolean") throw Errors.validation("authorized: se esperaba un booleano.");
+    const organizationId = c.get("organizationId");
+    // REQ-145: un firmante nuevo declara desde cuando rige su poder (si la base ya soporta vigencia). Sin eso no hay forma de saber si
+    // firma validamente el dia de la presentacion, y nunca se rellena. Con la base sin migrar el firmante se crea como antes.
+    const validFrom = parseDateOnly(raw.validFrom, "validFrom");
+    if ((validFrom === undefined || validFrom === null) && (await repo.isCompanyProfileAvailable())) throw Errors.validation("validFrom requerido: indica desde cuándo rige el poder del firmante (AAAA-MM-DD).");
+    const validUntil = parseDateOnly(raw.validUntil, "validUntil");
+    if (validFrom && validUntil && validUntil < validFrom) throw Errors.validation("validUntil: el poder no puede vencer antes de empezar.");
+    const identityDocId = await parseIdentityDoc(repo, organizationId, raw.identityDocId);
+    const actionLimits = parseOptionalText(raw.actionLimits, "actionLimits", 1000);
     try {
-      const signer = await repo.createCompanySigner(c.get("organizationId"), { name, role, authorized: raw.authorized as boolean | undefined, actorId: c.get("userId") });
+      const signer = await repo.createCompanySigner(organizationId, { name, role, authorized: raw.authorized as boolean | undefined, validFrom, validUntil, identityDocId, actionLimits, actorId: c.get("userId") });
       await auditar(deps, c, { entity: ENTIDAD_DE.signer, entityId: signer.id, action: `${ENTIDAD_DE.signer}.creado`, before: null, after: signer });
-      await avisarAprobacionPendiente(c.get("db"), c.get("organizationId"), "signer", signer.id);
+      await avisarAprobacionPendiente(c.get("db"), organizationId, "signer", signer.id);
       return c.json(signer, 201);
     } catch (err) {
       mapDuplicateOrThrow(err);
@@ -425,19 +510,30 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
   app.patch(signerBase, async (c) => {
     const repo = deps.licitacionesRepo(c.get("db"));
     assertVerticalRole(c, WRITE_ROLES);
-    const raw = await readJsonCapped<{ name?: unknown; authorized?: unknown; approvalStatus?: unknown }>(c.req.raw, 16 * 1024);
+    const raw = await readJsonCapped<{ name?: unknown; authorized?: unknown; approvalStatus?: unknown; validFrom?: unknown; validUntil?: unknown; identityDocId?: unknown; actionLimits?: unknown }>(c.req.raw, 16 * 1024);
     rejectApprovalStatusInBody(raw);
-    const input: { name?: string; authorized?: boolean } = {};
+    const organizationId = c.get("organizationId");
+    const input: { name?: string; authorized?: boolean; validFrom?: string; validUntil?: string | null; identityDocId?: string | null; actionLimits?: string | null } = {};
     if (raw.name !== undefined) input.name = parseRequiredString(raw.name, "name");
     if (raw.authorized !== undefined) {
       if (typeof raw.authorized !== "boolean") throw Errors.validation("authorized: se esperaba un booleano.");
       input.authorized = raw.authorized;
     }
+    const validFrom = parseDateOnly(raw.validFrom, "validFrom");
+    if (validFrom === null) throw Errors.validation("validFrom no se puede borrar: un poder siempre declara desde cuándo rige.");
+    if (validFrom !== undefined) input.validFrom = validFrom;
+    const validUntil = parseDateOnly(raw.validUntil, "validUntil");
+    if (validUntil !== undefined) input.validUntil = validUntil;
+    if (raw.identityDocId !== undefined) input.identityDocId = await parseIdentityDoc(repo, organizationId, raw.identityDocId);
+    if (raw.actionLimits !== undefined) input.actionLimits = parseOptionalText(raw.actionLimits, "actionLimits", 1000);
     try {
-      const antes = await antesDe(deps, c, "signer", c.req.param("signerId") ?? "");
-      const signer = await repo.updateCompanySigner(c.get("organizationId"), c.req.param("signerId"), { ...input, actorId: c.get("userId") });
+      const antes = (await antesDe(deps, c, "signer", c.req.param("signerId") ?? "")) as { validFrom?: string | null; validUntil?: string | null } | null;
+      const desde = input.validFrom ?? antes?.validFrom ?? null;
+      const hasta = input.validUntil !== undefined ? input.validUntil : (antes?.validUntil ?? null);
+      if (desde && hasta && hasta < desde) throw Errors.validation("validUntil: el poder no puede vencer antes de empezar.");
+      const signer = await repo.updateCompanySigner(organizationId, c.req.param("signerId"), { ...input, actorId: c.get("userId") });
       await auditar(deps, c, { entity: ENTIDAD_DE.signer, entityId: signer.id, action: `${ENTIDAD_DE.signer}.editado`, before: antes, after: signer });
-      await avisarAprobacionPendiente(c.get("db"), c.get("organizationId"), "signer", signer.id);
+      await avisarAprobacionPendiente(c.get("db"), organizationId, "signer", signer.id);
       return c.json(signer, 200);
     } catch (err) {
       mapDuplicateOrThrow(err);

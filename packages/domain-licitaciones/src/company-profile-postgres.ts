@@ -141,6 +141,20 @@ export class PostgresCompanyProfileStore {
     return rows.map((r) => ({ id: r.id, entity: r.entity, entityId: r.entity_id, field: r.field, ownerUserId: r.owner_user_id ?? "", source: r.source, capturedAt: r.captured_at }));
   }
 
+  /** `false` si falta la migracion 040 (la tabla del perfil no existe). Sin tocar datos. */
+  async isAvailable(): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_licitaciones_profile_available",
+      primary: async () => {
+        await this.db.query(`select 1 from licitaciones.company_profile limit 0;`);
+        return true;
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: async () => false,
+    });
+  }
+
   // ---- Perfil general (uno por organizacion) ----
 
   async getProfile(organizationId: string): Promise<CompanyProfileRecord | null> {

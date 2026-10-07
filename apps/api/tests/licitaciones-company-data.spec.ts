@@ -137,15 +137,19 @@ describe("POST/PATCH /licitaciones/:propertyId/company/{capabilities,experience,
     expect(res.status).toBe(400);
   });
 
-  it("firmante con 'role' duplicado -> 409; autorizar/revocar por PATCH", async () => {
+  it("firmantes: varios por cargo (201), repetir nombre y cargo -> 409; autorizar/revocar por PATCH", async () => {
     const ctx = await buildLicitacionesTestContext(buildApp);
     const app = buildApp(ctx.deps);
-    const created = await app.request(`/licitaciones/${ctx.propertyId}/company/signers`, authedJson(ctx.staff.writer.token, { name: "Juan Pérez", role: "representante_legal", authorized: true }));
+    const created = await app.request(`/licitaciones/${ctx.propertyId}/company/signers`, authedJson(ctx.staff.writer.token, { name: "Juan Pérez", role: "representante_legal", authorized: true, validFrom: "2026-01-01" }));
     expect(created.status).toBe(201);
     const createdBody = (await created.json()) as { id: string; authorized: boolean };
     expect(createdBody.authorized).toBe(true);
 
-    const duplicate = await app.request(`/licitaciones/${ctx.propertyId}/company/signers`, authedJson(ctx.staff.writer.token, { name: "Otra Persona", role: "representante_legal" }));
+    // L-P3-04: el unico (organizacion, cargo) desaparece -- caben dos firmantes del mismo cargo.
+    const otro = await app.request(`/licitaciones/${ctx.propertyId}/company/signers`, authedJson(ctx.staff.writer.token, { name: "Otra Persona", role: "representante_legal", validFrom: "2026-06-01" }));
+    expect(otro.status).toBe(201);
+    // ... pero el doble envio (mismo nombre y cargo) sigue siendo 409.
+    const duplicate = await app.request(`/licitaciones/${ctx.propertyId}/company/signers`, authedJson(ctx.staff.writer.token, { name: " juan pérez ", role: "representante_legal", validFrom: "2026-01-01" }));
     expect(duplicate.status).toBe(409);
 
     const revoked = await app.request(`/licitaciones/${ctx.propertyId}/company/signers/${createdBody.id}`, patchJson(ctx.staff.writer.token, { authorized: false }));

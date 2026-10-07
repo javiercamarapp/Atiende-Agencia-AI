@@ -68,7 +68,7 @@ describe("alta y edición ya no escriben approvalStatus (WI-04)", () => {
     const doc = ((await (await s.app.request(`${s.base}/documents`, authedJson(s.ctx.staff.writer.token, { type: "t", label: "l", expiresAt: null }))).json()) as { id: string }).id;
     const cap = ((await (await s.app.request(`${s.base}/capabilities`, authedJson(s.ctx.staff.writer.token, { name: "n", description: "d" }))).json()) as { id: string }).id;
     const exp = ((await (await s.app.request(`${s.base}/experience`, authedJson(s.ctx.staff.writer.token, { description: "e", evidenceDocId: doc }))).json()) as { id: string }).id;
-    const sig = ((await (await s.app.request(`${s.base}/signers`, authedJson(s.ctx.staff.writer.token, { name: "Ana", role: "rep", authorized: true }))).json()) as { id: string }).id;
+    const sig = ((await (await s.app.request(`${s.base}/signers`, authedJson(s.ctx.staff.writer.token, { name: "Ana", role: "rep", authorized: true, validFrom: "2026-01-01" }))).json()) as { id: string }).id;
     for (const [path, extra] of [[`rates/${id}`, {}], [`documents/${doc}`, {}], [`capabilities/${cap}`, {}], [`experience/${exp}`, {}], [`signers/${sig}`, {}]] as const) {
       expect((await s.app.request(`${s.base}/${path}`, patchJson(s.ctx.staff.writer.token, { ...extra, approvalStatus: "aprobado" }))).status).toBe(422);
     }
@@ -202,7 +202,7 @@ describe("approve/reject del resto de datos de empresa (DECISION_ROLES, sin step
     const doc = await mk("documents", { type: "t", label: "l", expiresAt: null });
     const cap = await mk("capabilities", { name: "n", description: "d" });
     const exp = await mk("experience", { description: "e", evidenceDocId: doc });
-    const sig = await mk("signers", { name: "Ana", role: "rep", authorized: true });
+    const sig = await mk("signers", { name: "Ana", role: "rep", authorized: true, validFrom: "2026-01-01" });
     for (const path of [`documents/${doc}`, `capabilities/${cap}`, `experience/${exp}`, `signers/${sig}`]) {
       expect((await post(s, `${s.base}/${path}/approve`, s.ctx.staff.writer.token)).status).toBe(403);
       expect((await post(s, `${s.base}/${path}/approve`, owner)).status).toBe(403); // el autor
@@ -224,7 +224,7 @@ describe("approve/reject del resto de datos de empresa (DECISION_ROLES, sin step
 
   it("un firmante pendiente o rechazado NO resuelve como firmante autorizado de la propuesta técnica", async () => {
     const s = await setup();
-    const sig = ((await (await s.app.request(`${s.base}/signers`, authedJson(s.ctx.staff.writer.token, { name: "Ana", role: "rep", authorized: true }))).json()) as { id: string }).id;
+    const sig = ((await (await s.app.request(`${s.base}/signers`, authedJson(s.ctx.staff.writer.token, { name: "Ana", role: "rep", authorized: true, validFrom: "2026-01-01" }))).json()) as { id: string }).id;
     const lista = async () => ((await (await s.app.request(`${s.base}/signers`, authedJson(s.ctx.staff.viewer.token))).json()) as { signers: { approvalStatus: string }[] }).signers[0]!.approvalStatus;
     expect(await lista()).toBe("pendiente_aprobacion");
     await post(s, `${s.base}/signers/${sig}/reject`, s.ctx.staff.owner.token);
@@ -254,7 +254,7 @@ describe("el perfil de empresa entra al hash del expediente (AE-08, REQ-162)", (
     const url = (suffix: string) => `/licitaciones/${s.ctx.propertyId}/tenders/${s.ctx.tenderId}/${suffix}`;
     expect((await s.app.request(url("proposal"), authedJson(s.ctx.staff.writer.token))).status).toBeLessThan(300);
     s.ctx.repo.seedApprovedRates(s.ctx.organizationId, [{ id: "r1", concept: "consultoria_hora", unitPrice: "500.00", currency: "MXN", approvalStatus: "aprobado", validFrom: "2026-01-01T00:00:00-06:00", validUntil: null }]);
-    const signer = (await (await s.app.request(`${s.base}/signers`, authedJson(s.ctx.staff.writer.token, { name: "Ana", role: "representante_legal", authorized: true }))).json()) as { id: string };
+    const signer = (await (await s.app.request(`${s.base}/signers`, authedJson(s.ctx.staff.writer.token, { name: "Ana", role: "representante_legal", authorized: true, validFrom: "2026-01-01" }))).json()) as { id: string };
     expect((await s.app.request(url("proposal/economic/generate"), authedJson(s.ctx.staff.writer.token, { lineItems: [{ concept: "consultoria_hora", quantity: 10 }] }, { "idempotency-key": "e1" }))).status).toBe(200);
     expect((await s.app.request(url("checklist/run"), authedJson(s.ctx.staff.writer.token, GREEN, { "idempotency-key": "c1" }))).status).toBe(200);
     expect((await s.app.request(url("expediente/approval"), authedJson(s.ctx.staff.analyst.token, { stage: "tecnica_legal" }))).status).toBe(201);

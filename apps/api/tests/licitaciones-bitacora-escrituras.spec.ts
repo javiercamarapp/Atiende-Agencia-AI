@@ -45,7 +45,7 @@ describe("cada escritura de datos de empresa deja un renglon con antes y despues
     expect((await app.request(`${company}/capabilities/${cap}`, patch(w, { description: "d2" }))).status).toBe(200);
     const exp = ((await (await app.request(`${company}/experience`, authedJson(w, { description: "e", evidenceDocId: doc }))).json()) as { id: string }).id;
     expect((await app.request(`${company}/experience/${exp}`, patch(w, { description: "e2" }))).status).toBe(200);
-    const sg = ((await (await app.request(`${company}/signers`, authedJson(w, { name: "Ana Perez", role: "Apoderada" }))).json()) as { id: string }).id;
+    const sg = ((await (await app.request(`${company}/signers`, authedJson(w, { name: "Ana Perez", role: "Apoderada", validFrom: "2026-01-01" }))).json()) as { id: string }).id;
     expect((await app.request(`${company}/signers/${sg}`, patch(w, { authorized: true }))).status).toBe(200);
     const todas = await trail();
     expect(todas.map((f) => f.action)).toEqual([
