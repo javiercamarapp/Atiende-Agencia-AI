@@ -16,17 +16,43 @@
 import type { PedidoReciente } from "../pedido-reciente.ts";
 import type { BranchSummary, CustomerLookupResult } from "../types.ts";
 
-const MONEY_TOKEN = "\\$\\s?\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?|\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?\\s*pesos\\b";
+// Numero con separadores de miles (coma, punto o espacio) y decimales con punto o coma: "1500", "1,500.00", "1.500,00", "1 500". El separador de
+// miles exige grupos de EXACTAMENTE tres digitos para no devorar "$179 3 tacos".
+const NUM = "(?:\\d{1,3}(?:[,.\\u00a0\\u202f ]\\d{3})+(?:[.,]\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)(?![\\d])";
+const DIVISA = "(?:MXN|M\\.N\\.|MN)";
+const MONEY_TOKEN = `\\$\\s?${NUM}(?:\\s*${DIVISA}(?![\\p{L}]))?|${NUM}\\s*(?:pesos|${DIVISA}(?![\\p{L}]))(?![\\p{L}])`;
 // "total" como palabra completa: "Subtotal" NO es un total (con la promo 2x1 el subtotal legitimo difiere del total). El tramo entre
 // la palabra y la cifra no cruza el fin de la oracion: "total; el medio kilo va en $450" no reescribe el $450.
 const TOTAL_WITH_MONEY = new RegExp(`((?<![\\p{L}\\p{N}])total[^$\\d.;!?\\n]{0,40})(${MONEY_TOKEN})`, "giu");
+// Un "total" PARCIAL (de un renglon, "antes del descuento", "sin envio") no es lo que paga el cliente: si su cifra es una de las legitimas de la
+// cotizacion se conserva. Se reconoce por el calificador entre la palabra y la cifra o porque va entre parentesis (importe del renglon).
+const TOTAL_PARCIAL = /\b(?:antes|sin|previo|parcial|excluy\w*|renglon|rengl[oó]n|por\s+(?:pieza|unidad|orden))\b/i;
 // Redacciones que presentan una cifra como LO QUE PAGA el cliente sin decir "total" ("le queda en $300", "$300 en total").
 const AMOUNT_INTENT = "(?:(?:le\\s+)?queda(?:n)?\\s+en|saldr[ií]a(?:n)?\\s+en)\\s+(?:un\\s+total\\s+de\\s+)?";
 const INTENT_WITH_MONEY = new RegExp(`(${AMOUNT_INTENT})(${MONEY_TOKEN})`, "giu");
 const MONEY_WITH_TOTAL_TAIL = new RegExp(`(${MONEY_TOKEN})(\\s*(?:pesos\\s+)?(?:en\\s+total|todo|total)(?![\\p{L}\\p{N}]))`, "giu");
 
-function parseMoneyToken(token: string): number {
-  return Number(token.replace(/[^\d.]/g, ""));
+/** Importe de un token de dinero en cualquiera de los formatos habituales: "$1,500.00", "$1.500,00", "$1 500", "150 MXN", "150 pesos". */
+export function parseMoneyToken(token: string): number {
+  const num = /\d[\d,.\u00a0\u202f ]*\d|\d/.exec(token)?.[0] ?? "";
+  const compact = num.replace(/[\u00a0\u202f ]/g, "");
+  const lastComma = compact.lastIndexOf(",");
+  const lastDot = compact.lastIndexOf(".");
+  let normalized: string;
+  if (lastComma >= 0 && lastDot >= 0) {
+    // Ambos: el ultimo es el decimal, el otro agrupa miles.
+    const dec = Math.max(lastComma, lastDot);
+    normalized = `${compact.slice(0, dec).replace(/[,.]/g, "")}.${compact.slice(dec + 1)}`;
+  } else if (lastComma >= 0 || lastDot >= 0) {
+    const sep = lastComma >= 0 ? "," : ".";
+    const parts = compact.split(sep);
+    // "1,500" / "1.500" / "1,500,000": grupos de tres digitos = miles; "150,5" / "150.50" = decimales.
+    const esMiles = parts.length > 2 || parts[parts.length - 1]!.length === 3;
+    normalized = esMiles ? parts.join("") : `${parts[0]}.${parts[1]}`;
+  } else {
+    normalized = compact;
+  }
+  return Number(normalized);
 }
 
 function formatMoney(value: number): string {
@@ -41,9 +67,12 @@ function formatMoney(value: number): string {
 export function enforceQuotedTotal(reply: string, lastQuoteTotal: number | null, knownAmounts?: readonly number[]): string {
   if (lastQuoteTotal === null || !Number.isFinite(lastQuoteTotal)) return reply;
   const isKnown = (stated: number) => Math.abs(stated - lastQuoteTotal) < 0.01 || (knownAmounts ?? []).some((a) => Math.abs(stated - a) < 0.01);
-  const porTotal = reply.replace(TOTAL_WITH_MONEY, (full: string, prefix: string, moneyToken: string) => {
+  const porTotal = reply.replace(TOTAL_WITH_MONEY, (full: string, prefix: string, moneyToken: string, offset: number) => {
     const stated = parseMoneyToken(moneyToken);
     if (!Number.isFinite(stated) || Math.abs(stated - lastQuoteTotal) < 0.01) return full;
+    // Total parcial legitimo (renglon, "antes del descuento", "sin envio"): su cifra es de la cotizacion, no se toca.
+    const entreParentesis = /\(\s*$/.test(reply.slice(Math.max(0, offset - 3), offset));
+    if (knownAmounts && knownAmounts.length > 0 && (entreParentesis || TOTAL_PARCIAL.test(prefix)) && isKnown(stated)) return full;
     return `${prefix}${formatMoney(lastQuoteTotal)}`;
   });
   if (!knownAmounts || knownAmounts.length === 0) return porTotal;
@@ -145,8 +174,31 @@ export interface HighRiskMatch {
 }
 
 /** El cliente pide a una persona: infinitivo, imperativo con o sin acento ("comuníqueme", "pásame", "páseme") y "quiero una persona". Sirve a WhatsApp y a voz. */
-export const PIDE_UNA_PERSONA_RE =
-  /\b(?:hablar|comunicar(?:me)?|comun[ií]que(?:me|se)?|comun[ií]came|pasar(?:me)?|p[aá]sa(?:me)?|p[aá]se(?:me)?|conectar(?:me)?|con[eé]cta(?:me)?|con[eé]cte(?:me)?|transferir(?:me)?|transf[ií]er[ea]?(?:me)?)\s+(?:con|a)\s+(?:una?\s+|el\s+|la\s+)?(?:persona|humano|gerente|encargad[oa]|alguien|asesor|agente)\b|\bquiero\s+(?:una\s+|un\s+)?(?:persona|humano)\b|\bque\s+(?:me\s+)?(?:hable|habl[eé]|llame|llam[eé]|contacte|atienda|marque|responda|conteste|escriba)\s+(?:una?\s+|el\s+|la\s+)?(?:persona|humano|gerente|encargad[oa]|alguien|asesor|agente)\b|\bno\s+quiero\s+(?:hablar\s+con\s+)?(?:con\s+)?(?:el\s+|un\s+|la\s+|una\s+)?(?:bot|robot|m[aá]quina|inteligencia\s+artificial)\b/i;
+export const PIDE_UNA_PERSONA_RE = (() => {
+  // A quien se pide (con "ñ" y sin ella: el clasificador de WhatsApp corre sobre texto sin acentos).
+  const quien =
+    "(?:persona|humano|gerente|encargad[oa]|alguien|asesor|agente|supervisor(?:a)?|due(?:ñ|n)[oa]|jefe|jefa|operador(?:a)?|representante|responsable|administrador(?:a)?|recepcionista)";
+  const det = "(?:una?\\s+|el\\s+|la\\s+|su\\s+|mi\\s+|alg[uú]n(?:a)?\\s+)?";
+  const verbo =
+    "(?:hablar|comunicar(?:me)?|comun[ií]que(?:me|se)?|comun[ií]came|pasar(?:me)?|p[aá]sa(?:me)?|p[aá]se(?:me)?|conectar(?:me)?|con[eé]cta(?:me)?|con[eé]cte(?:me)?|transferir(?:me)?|transf[ií]er[ea]?(?:me)?)";
+  const fin = "(?![a-záéíóúñ])";
+  return new RegExp(
+    [
+      // "hablar / comuníqueme / páseme con (su) supervisor"
+      `\\b${verbo}\\s+(?:con|a)\\s+${det}${quien}${fin}`,
+      // "quiero / necesito / prefiero una persona" y "¿me puede atender una persona?"
+      `\\b(?:quiero|necesito|prefiero|busco|quisiera)\\s+(?:hablar\\s+con\\s+)?${det}(?:persona|humano)${fin}`,
+      `\\b(?:puede|pueden|podr[ií]a|podr[ií]an|puedes)\\s+(?:atender(?:me)?|ayudar(?:me)?)\\s+${det}${quien}${fin}`,
+      // "un humano por favor", "una persona, por favor"
+      `(?<!\\bpara\\s)\\b(?:una?)\\s+(?:persona|humano)\\s*,?\\s+por\\s+favor${fin}`,
+      // "que me hable / llame / atienda una persona" (main)
+      `\\bque\\s+(?:me\\s+)?(?:hable|habl[eé]|llame|llam[eé]|contacte|atienda|marque|responda|conteste|escriba)\\s+${det}${quien}${fin}`,
+      // "no quiero hablar con el bot" (main)
+      `\\bno\\s+quiero\\s+(?:hablar\\s+con\\s+)?(?:con\\s+)?(?:el\\s+|un\\s+|la\\s+|una\\s+)?(?:bot|robot|m[aá]quina|inteligencia\\s+artificial)${fin}`,
+    ].join("|"),
+    "i",
+  );
+})();
 
 const PIDE_UNA_PERSONA_GLOBAL = new RegExp(PIDE_UNA_PERSONA_RE.source, "gi");
 /** Marco de peticion que hace de "pasar con X" un pedido de transferencia ("quiero pasar con el gerente") y no un "voy a pasar con alguien a recogerlo". */
@@ -188,7 +240,19 @@ const INFINITIVO = "[a-z]{2,}(?:ar|er|ir)(?:le|les|me|se|lo|la|los|las|selo)?";
 const CORRECCION_DE_CARRITO = /\bmejor\b|\ben\s+(?:vez|lugar)\s+de\b|\bponme\b|\bponmanos\b|\bcambi(?:a|ame|alo|ala)\b/;
 // El mensaje habla del pedido que YA existe (no de uno que se esta armando).
 const HABLA_DE_SU_PEDIDO = /\b(?:mi|su|el|ese|este)\s+pedido\b|\bmi\s+orden\b|\bya\s+(?:viene|sale|salio|llego|casi)\b|\bcuanto\s+(?:tarda|falta|se\s+tarda)\b/;
-const ME_FALTO = new RegExp(`\\bme\\s+falto\\b\\s*(?<resto>.*)$`);
+const ME_FALTO = new RegExp(`\\bme\\s+falt(?:o|aron)\\b\\s*(?<resto>.*)$`);
+// El mensaje describe un pedido NUEVO que se esta armando ("quiero hacer mi pedido urgente", "mi pedido: 5 tacos de pastor"): "urgente" es enfasis, no una emergencia.
+const ARMA_UN_PEDIDO_NUEVO = /\bquiero\s+(?:hacer|levantar|realizar|armar|mandar)\s+(?:mi|un|el)\s+pedido\b|\b(?:hacer|levantar|realizar)\s+(?:mi|un)\s+pedido\b|\bmi\s+pedido\s*:|\bpedido\s*:\s*\d/;
+// Quejas de "algo no llego / llego mal" que solo son queja si se habla de un pedido ya hecho (el mismo criterio que "me falto").
+const QUEJA_DE_ENTREGA = /\bno\s+me\s+(?:llego|llegaron|trajeron|mandaron|dieron)\b|\bvino\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada|aguado|revuelto)\b|\bme\s+(?:llego|llegaron|trajeron|mandaron)\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada)\b/;
+// Pregunta de estado o de politica sobre cancelar ("¿mi pedido se cancelo?", "¿si cancelo me cobran algo?", "¿hasta que hora se puede cancelar?"): NO pide cancelar nada.
+const CONSULTA_DE_CANCELACION =
+  /\b(?:se|ya\s+se|me)\s+cancel(?:o|aron)\b|\bcancelaron\b|\bsi\s+cancel(?:o|amos|aron|an|ara|aran)\b|\bhasta\s+(?:que\s+)?hora\b[^.!?\n]{0,40}\bcancel|\bse\s+puede\s+cancel|\bpuedo\s+cancel|\bpodria\s+cancel(?:ar)?\s+(?:mi|el)\s+pedido\s*\?|\bcomo\s+(?:se\s+)?cancel|\b(?:cobran|cobra|cobro|cargo|penaliz\w*|politica)\b[^.!?\n]{0,40}\bcancel|\bcancel\w*[^.!?\n]{0,40}\b(?:cobran|cobra|cobro|cargo|penaliz\w*|politica)\b/;
+
+/** Pura: el texto PREGUNTA por la cancelacion (estado, politica, horario) en vez de pedirla. Las preguntas no cancelan ni abren solicitudes. */
+export function esConsultaDeCancelacion(text: string): boolean {
+  return CONSULTA_DE_CANCELACION.test(normalizarParaClasificar(text));
+}
 
 interface Patron {
   readonly intent: HighRiskIntent;
@@ -224,7 +288,9 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
     // opinion y el telefono no tiene un pedido ya creado, es el carrito y va al agente; un pedido ya creado SI justifica el aviso al equipo.
     intent: "cancelacion_modificacion",
     pattern: /\bcancel(?:ar|o|a|e|en)\b[^.!?\n]{0,40}\bpedido\b|\bpedido\b[^.!?\n]{0,40}\bcancel(?:ar|o|a|e|en)\b|\bcancelarme\s+(?:el|mi)\s+pedido\b/,
-    cuando: (texto, ctx) => !CORRECCION_DE_CARRITO.test(texto) || (ctx.pedidoReciente ?? null) !== null,
+    // Sin pedido (el servidor ya sabe que el telefono no tiene uno reciente) no hay nada que cancelar: "olvidelo, cancele el pedido" es abandonar el carrito.
+    // Una PREGUNTA sobre cancelar ("¿mi pedido se cancelo?", "¿hasta que hora se puede cancelar?") va al agente, que si puede contestarla.
+    cuando: (texto, ctx) => ctx.pedidoReciente !== null && !CONSULTA_DE_CANCELACION.test(texto) && (!CORRECCION_DE_CARRITO.test(texto) || (ctx.pedidoReciente ?? null) !== null),
     reply:
       "Entendido, desea cancelar su pedido. Eso solo lo puede confirmar alguien del restaurante directamente, porque depende de si ya se empezó a preparar. Ya avisé al equipo para que lo contacte lo antes posible.",
   },
@@ -236,11 +302,19 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
   },
   {
     intent: "queja",
-    pattern: /\bqueja\b|\bllego\s+(?:todo\s+|muy\s+)?(?:frio|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\bme\s+falto\b|\bmal\s+armado\b/,
+    pattern: new RegExp(
+      `${/\bqueja\b|\bllego\s+(?:todo\s+|muy\s+)?(?:frio|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\bme\s+falt(?:o|aron)\b|\bmal\s+armado\b/.source}|${QUEJA_DE_ENTREGA.source}`,
+    ),
     // "me falto" es queja solo si habla de algo que NO llego ("me falto la bebida de mi pedido"); "me falto pedir otra coca" es el carrito.
     cuando: (texto, ctx) => {
-      if (!/\bme\s+falto\b/.test(texto)) return true;
+      // Quejas inequivocas (siempre escalan).
       if (/\bqueja\b|\bllego\s+(?:todo\s+|muy\s+)?(?:frio|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\bmal\s+armado\b/.test(texto)) return true;
+      // "no me llego la coca" / "vino frio todo": queja solo si habla de un pedido ya hecho.
+      if (QUEJA_DE_ENTREGA.test(texto) && !/\bme\s+falt(?:o|aron)\b/.test(texto)) {
+        const estadoEntrega = ctx.pedidoReciente?.estado;
+        return estadoEntrega === "entregado" || estadoEntrega === "salio" || HABLA_DE_SU_PEDIDO.test(texto);
+      }
+      if (!/\bme\s+falt(?:o|aron)\b/.test(texto)) return true;
       const resto = ME_FALTO.exec(texto)?.groups?.resto ?? "";
       if (new RegExp(`^(?:a\\s+)?${INFINITIVO}\\b`).test(resto)) return false;
       const estado = ctx.pedidoReciente?.estado;
@@ -252,7 +326,7 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
     // "urgente" como enfasis de un pedido nuevo ("medio kilo de pastor, lo necesito urgente") NO es una emergencia: solo escala cuando habla del pedido que ya existe.
     intent: "urgencia",
     pattern: /\burgen(?:te|cia)\b/,
-    cuando: (texto) => HABLA_DE_SU_PEDIDO.test(texto),
+    cuando: (texto, ctx) => HABLA_DE_SU_PEDIDO.test(texto) && !ARMA_UN_PEDIDO_NUEVO.test(texto) && ctx.pedidoReciente !== null,
     reply: "Entendido, es urgente. Ya avisé al equipo para que lo contacte de inmediato.",
   },
   {
