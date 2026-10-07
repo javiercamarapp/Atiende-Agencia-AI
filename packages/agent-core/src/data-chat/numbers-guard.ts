@@ -266,7 +266,7 @@ function redondea(v: number, decimals: number): number {
 }
 
 /** "top 3", "los primeros 3", "2 de 5", "el 1o lugar", "3 mejores": la cifra es una posicion u orden, no una medida. */
-const POSICION_ANTES_RE = /(?:^|[\s(])(?:top|primer[oa]?s?|ultim[oa]s?|mejor(?:es)?|peor(?:es)?|principal(?:es)?|numero|lugar|puesto|posicion)\s*$|#\s*$/;
+const POSICION_ANTES_RE = /(?:^|[\s(])(?:top|primer[oa]?s?|ultim[oa]s?|mejor(?:es)?|peor(?:es)?|principal(?:es)?|numero|lugar|puesto|posicion)\s*$|#\s*$|\d\s+de\s*$/;
 const POSICION_DESPUES_RE = /^\s*(?:de\s+\d|[ºo°]\b|lugar\b|puesto\b|mejor|peor|primer|ultim|principal)/;
 function enContextoDePosicion(t: NumberToken): boolean {
   return POSICION_ANTES_RE.test(t.before) || POSICION_DESPUES_RE.test(t.after);
