@@ -140,17 +140,24 @@ export function AprobacionesPanel({
                     <Button type="button" size="sm" variant="outline" loading={ocupada} disabled={ocupada} onClick={() => void enviar(s, { decision: "sin_compensacion" })}>
                       Sin compensación
                     </Button>
-                    <Button type="button" size="sm" variant="outline" disabled={ocupada || !s.pedido || s.pedido.renglones.length === 0} onClick={() => abrir({ tipo: "reponer", solicitud: s })}>
-                      Reponer producto
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" disabled={ocupada} onClick={() => abrir({ tipo: "descuento", solicitud: s })}>
-                      Descuento en el próximo pedido
-                    </Button>
+                    {s.decisionesPosibles.includes("reponer_producto") && (
+                      <Button type="button" size="sm" variant="outline" disabled={ocupada || !s.pedido || s.pedido.renglones.length === 0} onClick={() => abrir({ tipo: "reponer", solicitud: s })}>
+                        Reponer producto
+                      </Button>
+                    )}
+                    {s.decisionesPosibles.includes("descuento_proximo") && (
+                      <Button type="button" size="sm" variant="outline" disabled={ocupada} onClick={() => abrir({ tipo: "descuento", solicitud: s })}>
+                        Descuento en el próximo pedido
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
               {s.tipo === "compensacion" && (
-                <p className="mt-2 text-xs text-muted-foreground">La devolución de dinero (efectivo o tarjeta) no se ejecuta desde aquí: se acuerda con el cliente y se registra aparte.</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  La devolución de dinero (efectivo o tarjeta) no se ejecuta desde aquí: se acuerda con el cliente y se registra aparte.
+                  {!s.decisionesPosibles.includes("reponer_producto") ? " Reponer producto o dar un descuento lo decide un dueño o administrador." : ""}
+                </p>
               )}
             </CardContent>
           </Card>

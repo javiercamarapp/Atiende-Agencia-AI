@@ -133,7 +133,7 @@ describe("caos-09: cancelar un pedido que ya salio avisa al cliente que no se pu
 describe("compatibilidad: PostgresAutopilotoRepository.resolverSolicitud con y sin la columna motivo_resolucion de la 073", () => {
   const fila = { aplicado: true, tipo: "cancelacion", decision: "mantener", order_id: "o1", property_id: "p1", estado_pedido: "en_camino", codigo_descuento: null, reposicion_order_id: null };
   const sesion = (row: Record<string, unknown>): TenantDbSession => ({ async query<T>() { return { rows: [row as T] }; }, async exec() {} });
-  it("contra la 073 lee el motivo; contra la 050 original (sin la columna) lo deja en null y no falla", async () => {
+  it("contra la 079 lee el motivo; contra la 050 original (sin la columna) lo deja en null y no falla", async () => {
     const nueva = await new PostgresAutopilotoRepository(sesion({ ...fila, motivo_resolucion: "no_cancelable_en_camino" })).resolverSolicitud("org", "s", "cancelar", { motivo: "otro" });
     expect(nueva).toMatchObject({ aplicado: true, decision: "mantener", motivo: "no_cancelable_en_camino" });
     const vieja = await new PostgresAutopilotoRepository(sesion(fila)).resolverSolicitud("org", "s", "cancelar", { motivo: "otro" });

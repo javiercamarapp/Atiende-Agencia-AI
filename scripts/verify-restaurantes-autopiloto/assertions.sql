@@ -479,7 +479,7 @@ select decision from restaurantes.solicitud_resolver('00000000-0000-0000-0000-00
 select count(*) as cancelado_deberia_ser_1 from restaurantes.orders where id = '00000000-0000-0000-0000-0000000e50d3' and status = 'cancelado';
 rollback;
 
-\echo '=== D20. cancelacion: un pedido que ya salio NO se cancela (queda mantener) y la decision SI se aplica en esta llamada (073) ==='
+\echo '=== D20. cancelacion: un pedido que ya salio NO se cancela (queda mantener) y la decision SI se aplica en esta llamada (079) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
@@ -515,9 +515,24 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013
 select count(*) as motivo_libre_no_se_expone_deberia_ser_1 from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5101', 'aprobar', 'llamo Juan al 5512345678') r where r.aplicado and r.motivo_resolucion is null;
 rollback;
 
-\echo '=== D20e. anon no ejecuta solicitud_resolver tras el DROP + CREATE de la 073 (los permisos se re-otorgaron solo a authenticated) ==='
+\echo '=== D20e. anon no ejecuta solicitud_resolver tras el DROP + CREATE de la 079 (los permisos se re-otorgaron solo a authenticated) ==='
 select (not has_function_privilege('anon', 'restaurantes.solicitud_resolver(uuid, uuid, text, text, integer, integer[])', 'execute'))::int as anon_sin_permiso_deberia_ser_1;
 select has_function_privilege('authenticated', 'restaurantes.solicitud_resolver(uuid, uuid, text, text, integer, integer[])', 'execute')::int as authenticated_con_permiso_deberia_ser_1;
+
+\echo '=== D20f. la 079 CONSERVA las guardas de dinero de la 075: staff NO repone ni da descuento (42501); owner SI; sin compensacion sigue abierto al staff ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
+select public.t_esperar_error($q$select * from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5122', 'reponer_producto', null, null, array[0])$q$, '42501');
+select public.t_esperar_error($q$select * from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5122', 'descuento_proximo', null, 10)$q$, '42501');
+select count(*) as solicitud_sigue_pendiente_deberia_ser_1 from restaurantes.solicitud_aprobacion where id = '00000000-0000-0000-0000-0000000e5122' and estado = 'pendiente';
+rollback;
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5011', true);
+select count(*) as owner_descuento_con_motivo_null_deberia_ser_1 from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5122', 'descuento_proximo', null, 10) r
+  where r.aplicado and r.codigo_descuento like 'GRACIAS-%' and r.motivo_resolucion is null;
+rollback;
 
 \echo '=== D21. cancelacion: el pedido en camino sigue en camino ==='
 begin;
@@ -538,7 +553,7 @@ rollback;
 \echo '=== D23. compensacion descuento: crea un codigo de UN solo uso ==='
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5011', true);
 select codigo_descuento from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5123', 'descuento_proximo', null, 10) r;
 select count(*) as codigo_un_uso_deberia_ser_1 from restaurantes.promotions where organization_id = '00000000-0000-0000-0000-0000000e5001' and code like 'GRACIAS-%' and max_uses = 1 and value = 10 and type = 'percentage';
 rollback;
@@ -546,7 +561,7 @@ rollback;
 \echo '=== D24. compensacion descuento: sobre el tope de la sucursal -> 22023 ==='
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5011', true);
 select public.t_esperar_error($q$select * from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5123', 'descuento_proximo', null, 50)$q$, '22023');
 select public.t_esperar_error($q$select * from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5123', 'descuento_proximo', null, null)$q$, '22023');
 rollback;
@@ -554,7 +569,7 @@ rollback;
 \echo '=== D25. compensacion reponer: crea UN pedido de $0 a cocina con los renglones elegidos ==='
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5011', true);
 select reposicion_order_id from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5121', 'reponer_producto', null, null, array[1]) r;
 select count(*) as reposicion_deberia_ser_1 from restaurantes.orders where organization_id = '00000000-0000-0000-0000-0000000e5001' and total = 0 and status = 'pending' and source = 'admin' and notes like 'Reposicion sin costo%' and (items->0->>'price')::numeric = 0 and items->0->>'name' = 'Agua';
 rollback;
@@ -562,7 +577,7 @@ rollback;
 \echo '=== D26. compensacion reponer: doble clic no duplica la reposicion ==='
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5011', true);
 select reposicion_order_id from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5121', 'reponer_producto', null, null, array[0, 1]) r1;
 select reposicion_order_id from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5121', 'reponer_producto', null, null, array[0, 1]) r2;
 select count(*) as reposiciones_deberia_ser_1 from restaurantes.orders where organization_id = '00000000-0000-0000-0000-0000000e5001' and total = 0 and notes like 'Reposicion sin costo%';
@@ -571,7 +586,7 @@ rollback;
 \echo '=== D27. compensacion reponer: sin renglones o con indices invalidos -> 22023 ==='
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5011', true);
 select public.t_esperar_error($q$select * from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5121', 'reponer_producto', null, null, null)$q$, '22023');
 select public.t_esperar_error($q$select * from restaurantes.solicitud_resolver('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e5121', 'reponer_producto', null, null, array[9])$q$, '22023');
 rollback;

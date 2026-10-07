@@ -1,20 +1,18 @@
--- 073_autopiloto_resolver_cierre_honesto.sql
--- QA R2 (restaurantes, caos-09): cuando la sucursal pulsa "Cancelar" en una solicitud de cancelacion de un pedido que YA salio de cocina
--- (en_camino, entregado...), `solicitud_resolver` cerraba la solicitud como "mantener" pero devolvia aplicado = false: el codigo lo trataba como un
--- doble clic (0 efectos, 0 WhatsApp al cliente) y el panel decia "ya estaba resuelta". Ahora:
---   * Ese cierre devuelve aplicado = true con decision = 'mantener': SI se aplico en esta llamada, asi que sale el aviso al cliente "no se pudo
---     cancelar, sigue en proceso" y queda en la bitacora. Un doble clic posterior sigue devolviendo aplicado = false (la solicitud ya estaba
---     resuelta), sin repetir nada.
+-- 079_autopiloto_resolver_cierre_honesto.sql
+-- QA R2 (restaurantes, caos-09, PR #470) -- cierre honesto de una solicitud de cancelacion, SOBRE la 075 de seguridad (#474, ya aplicada).
+-- (Antes vivia en la 073, que hacia DROP + CREATE de `solicitud_resolver` y habria borrado las guardas de la 075; la 073 se elimino y esta migracion
+-- es POSTERIOR a la 075 y contiene UN solo cuerpo: el de la 075 LITERAL mas lo de abajo.)
+--   * Cancelar un pedido que YA salio de cocina (en_camino, entregado...) cierra la solicitud como "mantener" y devuelve aplicado = true (la decision SI
+--     se aplico en esta llamada: sale el aviso al cliente "no se pudo cancelar, sigue en proceso" y queda en la bitacora). Un doble clic posterior sigue
+--     devolviendo aplicado = false, sin repetir nada.
 --   * Nueva columna de salida `motivo_resolucion` (codigo de la lista cerrada o 'no_cancelable_<estado>' / 'pedido_ya_no_estaba_por_aprobar'): el panel
---     distingue "ya estaba resuelta" de "el pedido ya no estaba por aprobar" y de "ya salio, no se pudo cancelar", en vez de un mensaje unico engañoso.
---
--- Seguridad (sin cambios de superficie): se reemplaza SOLO la funcion `restaurantes.solicitud_resolver` (la firma de entrada es identica; cambia el tipo de
--- retorno por la columna nueva, por eso DROP + CREATE). Mismas guardas que la 050: `security definer`, `set search_path` fijo, exige una persona
--- autenticada (auth.uid() no nulo) con alcance a la sucursal (handoff_actor_en_sucursal), solicitud y pedido de la MISMA organizacion, decision de la
--- lista cerrada por tipo, motivo de lista cerrada al cancelar/rechazar. `revoke all ... from public, anon` y `grant execute ... to authenticated` se
--- repiten abajo porque el DROP descarta los permisos anteriores; nada se otorga a anon. `motivo_resolucion` solo expone un codigo de lista cerrada o
--- un estado del pedido: ningun texto libre del staff ni datos personales.
--- Compatibilidad con la base sin migrar: el codigo TypeScript lee la columna nueva como opcional (undefined contra la 050 original).
+--     distingue "ya estaba resuelta", "el pedido ya no estaba por aprobar" y "ya salio, no se pudo cancelar". Solo expone codigos de lista cerrada o un
+--     estado del pedido: nunca texto libre del staff ni datos personales.
+--   * Se CONSERVAN TODAS las guardas de la 075: reponer_producto y descuento_proximo solo para owner/admin con alcance (42501), un solo codigo de
+--     compensacion y una sola reposicion por pedido, tope de 20 unidades por reposicion, mas las de la 050 (security definer, search_path fijo, auth.uid(),
+--     alcance a la sucursal, misma organizacion, decision y motivo de listas cerradas).
+-- Cambia el tipo de retorno (columna nueva), por eso DROP + CREATE; la firma de entrada es identica. El revoke/grant se repite porque el DROP descarta los
+-- permisos: nada a anon. Compatibilidad con la base sin migrar: el codigo TypeScript lee la columna nueva como opcional.
 
 drop function if exists restaurantes.solicitud_resolver(uuid, uuid, text, text, integer, integer[]);
 
@@ -63,6 +61,12 @@ begin
   if v_motivo is not null and char_length(v_motivo) > 200 then
     raise exception 'solicitud_resolver: motivo demasiado largo' using errcode = '22023';
   end if;
+  -- QA R2 seguridad-03: reponer producto (pedido de $0 a cocina) y emitir un codigo de descuento son decisiones de dinero: solo owner/admin
+  -- con alcance a la sucursal. "Sin compensacion" y las decisiones de pedido grande/cancelacion siguen abiertas al staff con alcance.
+  if v_s.tipo = 'compensacion' and p_decision in ('reponer_producto', 'descuento_proximo')
+     and not restaurantes.handoff_actor_en_sucursal(p_organization_id, v_s.property_id, true) then
+    raise exception 'solicitud_resolver: reponer o descontar solo lo decide un owner/admin' using errcode = '42501';
+  end if;
 
   if v_s.order_id is not null then
     select * into v_o from restaurantes.orders o where o.id = v_s.order_id and o.organization_id = p_organization_id for update;
@@ -97,8 +101,8 @@ begin
       -- Ya salio o ya cerro: no se puede cancelar; la decision queda como mantener.
       update restaurantes.solicitud_aprobacion s set estado = 'resuelta', decision = 'mantener', motivo_resolucion = 'no_cancelable_' || v_o.status,
         resuelta_at = now(), resuelta_por = v_uid where s.id = v_s.id;
-      -- CAMBIO de la 073: la decision SI se aplico en esta llamada (la solicitud se cerro como "mantener" ahora mismo), asi que el llamador debe disparar el
-      -- aviso al cliente "no se pudo cancelar" y la bitacora. Antes devolvia aplicado = false (indistinguible de un doble clic) y el cliente nunca se enteraba.
+      -- CAMBIO de la 079 (cierre honesto de #470): la decision SI se aplico en esta llamada (la solicitud se cerro como "mantener" ahora mismo), asi que el
+      -- llamador debe disparar el aviso al cliente "no se pudo cancelar" y la bitacora. Antes devolvia aplicado = false (indistinguible de un doble clic).
       return query select true, 'resuelta'::text, 'mantener'::text, v_s.tipo, v_s.order_id, v_s.property_id, v_o.status, null::text, null::uuid, ('no_cancelable_' || v_o.status)::text;
       return;
     end if;
@@ -107,6 +111,11 @@ begin
     perform set_config('app.motivo', '', true);
     v_o.status := 'cancelado';
   elsif v_s.tipo = 'compensacion' and p_decision = 'descuento_proximo' then
+    -- QA R2 seguridad-03: un solo codigo de compensacion por pedido (sin esto, cada nueva queja del mismo pedido emitia otro).
+    if exists (select 1 from restaurantes.solicitud_aprobacion x
+                where x.organization_id = p_organization_id and x.order_id = v_s.order_id and x.id <> v_s.id and x.codigo_descuento is not null) then
+      raise exception 'solicitud_resolver: este pedido ya recibio un codigo de compensacion' using errcode = '22023';
+    end if;
     select c.compensacion_tope_pct into v_tope from restaurantes.autopiloto_config_leer(p_organization_id, v_s.property_id) c;
     if p_valor is null or p_valor < 1 or p_valor > coalesce(v_tope, 20) then
       raise exception 'solicitud_resolver: el descuento debe ser de 1 a % por ciento', coalesce(v_tope, 20) using errcode = '22023';
@@ -119,6 +128,11 @@ begin
     if v_o.id is null then
       raise exception 'solicitud_resolver: la compensacion no tiene pedido' using errcode = '22023';
     end if;
+    -- QA R2 seguridad-03: una sola reposicion sin costo por pedido original.
+    if exists (select 1 from restaurantes.solicitud_aprobacion x
+                where x.organization_id = p_organization_id and x.order_id = v_s.order_id and x.id <> v_s.id and x.reposicion_order_id is not null) then
+      raise exception 'solicitud_resolver: este pedido ya tuvo una reposicion sin costo' using errcode = '22023';
+    end if;
     if p_item_indices is null or cardinality(p_item_indices) = 0 or cardinality(p_item_indices) > 20 then
       raise exception 'solicitud_resolver: elija al menos un renglon a reponer' using errcode = '22023';
     end if;
@@ -127,6 +141,11 @@ begin
      where (it.ord - 1)::integer = any (p_item_indices);
     if jsonb_array_length(v_items) = 0 then
       raise exception 'solicitud_resolver: renglones a reponer invalidos' using errcode = '22023';
+    end if;
+    -- QA R2 seguridad-03: tope de unidades por reposicion sin costo (un renglon de cantidad enorme no se repone entero).
+    if (select coalesce(sum(case when jsonb_typeof(e -> 'quantity') = 'number' then (e ->> 'quantity')::numeric else 1 end), 0)
+          from jsonb_array_elements(v_items) as e) > 20 then
+      raise exception 'solicitud_resolver: la reposicion sin costo admite hasta 20 unidades' using errcode = '22023';
     end if;
     insert into restaurantes.orders (organization_id, property_id, customer_id, customer_name, customer_phone, customer_address, branch, total,
                                      status, items, source, notes, payment_method, canal, idempotency_key)
