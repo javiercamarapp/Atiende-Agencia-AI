@@ -156,7 +156,7 @@ export function calcularImpuestosNomina(opts: OpcionesImpuestosNomina): PayrollT
 }
 
 /** Procesa la nómina de un periodo. `idempotencyKey` con tenantId ausente usa el literal "None" (compatibilidad). */
-export function procesarNomina(period: PayrollPeriodInput, employees: readonly EmployeePayrollInput[], tenantId: number | null = null): PayrollPeriod {
+export function procesarNomina(period: PayrollPeriodInput, employees: readonly EmployeePayrollInput[], tenantId: number | null = null, propertyId: string | null = null): PayrollPeriod {
   const month = period.month ?? 1;
   const year = period.year ?? 2026;
   if (!Number.isInteger(month) || month < 1 || month > 12) throw new NominaInvalidaError("period.month debe estar entre 1 y 12.");
@@ -240,7 +240,8 @@ export function procesarNomina(period: PayrollPeriodInput, employees: readonly E
     humanReviewReason,
     referenciaLegal: "CFF Art. 105, LISR Art. 96, LSS, LFT",
     supuesto: "Procesamiento de nómina con ISR, subsidio (% UMA), IMSS por rama e INFONAVIT",
-    idempotencyKey: `nomina-${year}-${String(month).padStart(2, "0")}-${tenantId === null || tenantId === undefined ? "None" : tenantId}`,
+    // D-P3-50: la clave incluye la PROPERTY de la ruta (dos clientes del mismo despacho no comparten clave). Sin `propertyId` se conserva la clave original.
+    idempotencyKey: `nomina-${year}-${String(month).padStart(2, "0")}-${propertyId ?? (tenantId === null || tenantId === undefined ? "None" : tenantId)}`,
   };
 }
 
