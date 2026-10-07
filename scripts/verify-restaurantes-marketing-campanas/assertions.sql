@@ -381,17 +381,110 @@ select restaurantes.marketing_revocar_por_telefono('00000000-0000-0000-0000-0000
 select (count(*) = 1 and bool_and(o.status = 'dead' and o.last_error_class = 'baja_marketing'))::int as baja_deberia_ser_1 from restaurantes.marketing_campana_envio e join restaurantes.messaging_outbox o on o.id = e.outbox_id where e.estado = 'cancelado_baja';
 rollback;
 
-\echo '=== D9. REQUISITO honesto: sin tarifa configurada no se puede aprobar (el costo debe verse antes) -> P0001 ==='
+\echo '=== D9. sin tarifa configurada NO se genera borrador (el costo debe poder mostrarse antes de aprobar) ==='
 begin;
 insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, otorgado_at) select organization_id, id, 'whatsapp', 'otorgado', 'checkout_web', 'v2', now() from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e4501';
-
-insert into restaurantes.marketing_config (organization_id, activo, minimo_segmento, plantilla_nombre) values ('00000000-0000-0000-0000-0000000e4501', true, 3, 'reactivacion_promo');
+insert into restaurantes.marketing_config (organization_id, activo, tope_mensual_centavos, minimo_segmento, plantilla_nombre) values ('00000000-0000-0000-0000-0000000e4501', true, null, 3, 'reactivacion_promo');
 set local role authenticated;
 select count(*) from restaurantes.marketing_generar_borradores(now());
 reset role;
+select (count(*) = 0)::int as borradores_sin_tarifa_deberia_ser_1 from restaurantes.marketing_campana where organization_id = '00000000-0000-0000-0000-0000000e4501';
+rollback;
+
+\echo '=== D9b. tarifa quitada despues del borrador -> requiere_tarifa (P0001) ==='
+begin;
+insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, otorgado_at) select organization_id, id, 'whatsapp', 'otorgado', 'checkout_web', 'v2', now() from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e4501';
+insert into restaurantes.marketing_config (organization_id, activo, tarifa_centavos, tope_mensual_centavos, minimo_segmento, plantilla_nombre) values ('00000000-0000-0000-0000-0000000e4501', true, 80, null, 5, 'reactivacion_promo');
+set local role authenticated;
+select count(*) from restaurantes.marketing_generar_borradores(now());
+reset role;
+update restaurantes.marketing_config set tarifa_centavos = null where organization_id = '00000000-0000-0000-0000-0000000e4501';
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4511', true);
 select public.t_esperar_error($q$select * from restaurantes.marketing_decidir_campana((select id from restaurantes.marketing_campana where segmento = 'inactivo_30'), true)$q$, 'P0001');
+rollback;
+
+\echo '=== D9c. borrador heredado SIN costo (tarifa NULL) con tarifa fijada despues -> requiere_nuevo_borrador (P0001), no se encola nada y el tope no se salta ==='
+begin;
+insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, otorgado_at) select organization_id, id, 'whatsapp', 'otorgado', 'checkout_web', 'v2', now() from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e4501';
+insert into restaurantes.marketing_config (organization_id, activo, tarifa_centavos, tope_mensual_centavos, minimo_segmento, plantilla_nombre) values ('00000000-0000-0000-0000-0000000e4501', true, 80, 100, 5, 'reactivacion_promo');
+set local role authenticated;
+select count(*) from restaurantes.marketing_generar_borradores(now());
+reset role;
+update restaurantes.marketing_campana set tarifa_centavos = null, costo_estimado_centavos = null where segmento = 'inactivo_30';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4511', true);
+select public.t_esperar_error($q$select * from restaurantes.marketing_decidir_campana((select id from restaurantes.marketing_campana where segmento = 'inactivo_30'), true)$q$, 'P0001');
+reset role;
+select (select count(*) from restaurantes.messaging_outbox where event_type = 'marketing_reactivacion') as encolados_deberia_ser_0, (select estado from restaurantes.marketing_campana where segmento = 'inactivo_30') as sigue_borrador;
+rollback;
+
+\echo '=== D9d. tarifa cambiada entre el borrador y el clic -> requiere_nuevo_borrador (P0001) ==='
+begin;
+insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, otorgado_at) select organization_id, id, 'whatsapp', 'otorgado', 'checkout_web', 'v2', now() from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e4501';
+insert into restaurantes.marketing_config (organization_id, activo, tarifa_centavos, tope_mensual_centavos, minimo_segmento, plantilla_nombre) values ('00000000-0000-0000-0000-0000000e4501', true, 80, null, 5, 'reactivacion_promo');
+set local role authenticated;
+select count(*) from restaurantes.marketing_generar_borradores(now());
+reset role;
+update restaurantes.marketing_config set tarifa_centavos = 120 where organization_id = '00000000-0000-0000-0000-0000000e4501';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4511', true);
+select public.t_esperar_error($q$select * from restaurantes.marketing_decidir_campana((select id from restaurantes.marketing_campana where segmento = 'inactivo_30'), true)$q$, 'P0001');
+rollback;
+
+\echo '=== D9e. el tope se valida con el costo REAL (elegibles de hoy x tarifa vigente), no con el conteo del borrador: elegibles que crecen tras el borrador -> tope_mensual_excedido y nada encolado ==='
+begin;
+insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, otorgado_at) select organization_id, id, 'whatsapp', 'otorgado', 'checkout_web', 'v2', now() from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e4501';
+insert into restaurantes.marketing_config (organization_id, activo, tarifa_centavos, tope_mensual_centavos, minimo_segmento, plantilla_nombre) values ('00000000-0000-0000-0000-0000000e4501', true, 80, 500, 3, 'reactivacion_promo');
+update restaurantes.marketing_consentimiento set estado = 'revocado', revocado_at = now() where customer_id in (select id from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e4501' and phone in ('+52551000004', '+52551000005'));
+set local role authenticated;
+select count(*) from restaurantes.marketing_generar_borradores(now());
+reset role;
+update restaurantes.marketing_consentimiento set estado = 'otorgado', revocado_at = null where customer_id in (select id from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e4501' and phone in ('+52551000004', '+52551000005'));
+update restaurantes.marketing_config set tope_mensual_centavos = (select costo_estimado_centavos from restaurantes.marketing_campana where segmento = 'inactivo_30') where organization_id = '00000000-0000-0000-0000-0000000e4501';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4511', true);
+select public.t_esperar_error($q$select * from restaurantes.marketing_decidir_campana((select id from restaurantes.marketing_campana where segmento = 'inactivo_30'), true)$q$, 'P0001');
+reset role;
+select (select count(*) from restaurantes.messaging_outbox where event_type = 'marketing_reactivacion') as encolados_deberia_ser_0;
+rollback;
+
+\echo '=== D9f. marketing desactivado despues del borrador -> requiere_marketing_activo (P0001); rechazar sigue permitido ==='
+begin;
+insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, otorgado_at) select organization_id, id, 'whatsapp', 'otorgado', 'checkout_web', 'v2', now() from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e4501';
+insert into restaurantes.marketing_config (organization_id, activo, tarifa_centavos, tope_mensual_centavos, minimo_segmento, plantilla_nombre) values ('00000000-0000-0000-0000-0000000e4501', true, 80, null, 5, 'reactivacion_promo');
+set local role authenticated;
+select count(*) from restaurantes.marketing_generar_borradores(now());
+reset role;
+update restaurantes.marketing_config set activo = false where organization_id = '00000000-0000-0000-0000-0000000e4501';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4511', true);
+select public.t_esperar_error($q$select * from restaurantes.marketing_decidir_campana((select id from restaurantes.marketing_campana where segmento = 'inactivo_30'), true)$q$, 'P0001');
+select estado from restaurantes.marketing_decidir_campana((select id from restaurantes.marketing_campana where segmento = 'inactivo_30'), false);
+rollback;
+
+\echo '=== D9g. borrador de mas de 3 dias aunque el tick no lo haya expirado -> campana_no_aprobable (P0001) ==='
+begin;
+insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, otorgado_at) select organization_id, id, 'whatsapp', 'otorgado', 'checkout_web', 'v2', now() from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e4501';
+insert into restaurantes.marketing_config (organization_id, activo, tarifa_centavos, tope_mensual_centavos, minimo_segmento, plantilla_nombre) values ('00000000-0000-0000-0000-0000000e4501', true, 80, null, 5, 'reactivacion_promo');
+set local role authenticated;
+select count(*) from restaurantes.marketing_generar_borradores(now());
+reset role;
+update restaurantes.marketing_campana set creada_at = now() - interval '4 days' where segmento = 'inactivo_30';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4511', true);
+select public.t_esperar_error($q$select * from restaurantes.marketing_decidir_campana((select id from restaurantes.marketing_campana where segmento = 'inactivo_30'), true)$q$, 'P0001');
+rollback;
+
+\echo '=== D9h. una promocion acotada a una sucursal NO genera borrador para toda la organizacion ==='
+begin;
+insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, otorgado_at) select organization_id, id, 'whatsapp', 'otorgado', 'checkout_web', 'v2', now() from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000e4501';
+insert into restaurantes.marketing_config (organization_id, activo, tarifa_centavos, tope_mensual_centavos, minimo_segmento, plantilla_nombre) values ('00000000-0000-0000-0000-0000000e4501', true, 80, null, 5, 'reactivacion_promo');
+update restaurantes.promotions set property_ids = array(select id from core.property where organization_id = '00000000-0000-0000-0000-0000000e4501' limit 1) where organization_id = '00000000-0000-0000-0000-0000000e4501';
+set local role authenticated;
+select count(*) from restaurantes.marketing_generar_borradores(now());
+reset role;
+select (count(*) = 0)::int as borradores_con_promo_de_sucursal_deberia_ser_1 from restaurantes.marketing_campana where organization_id = '00000000-0000-0000-0000-0000000e4501';
 rollback;
 
 \echo '=== D10. REQUISITO honesto: plantilla NO aprobada -> P0001 (no se encola nada) ==='
