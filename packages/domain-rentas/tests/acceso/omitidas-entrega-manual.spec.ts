@@ -81,8 +81,8 @@ describe("aviso de acceso omitido por falta de correo (liberacion horaria)", () 
     const antes = await m.acceso.listarPendientesEntrega(PROP, 10);
     expect(antes.disponible && antes.valor.map((p) => p.ocupacionId)).toEqual([OC]);
 
-    expect(await m.acceso.marcarEntregadaManual(OC)).toBe("entregada");
-    expect(await m.acceso.marcarEntregadaManual(OC)).toBe("ya_entregada");
+    expect(await m.acceso.marcarEntregadaManual(OC, PROP)).toBe("entregada");
+    expect(await m.acceso.marcarEntregadaManual(OC, PROP)).toBe("ya_entregada");
     const despues = await m.acceso.listarPendientesEntrega(PROP, 10);
     expect(despues.disponible && despues.valor).toEqual([]);
     expect(m.acceso.bitacora.filter((b) => b.evento === "entregada_manual")).toHaveLength(1);
@@ -91,7 +91,15 @@ describe("aviso de acceso omitido por falta de correo (liberacion horaria)", () 
   });
 
   it("marcarEntregadaManual de una reserva desconocida es no_encontrada", async () => {
-    expect(await new InMemoryRentasAccesoRepository().marcarEntregadaManual(OC)).toBe("no_encontrada");
+    expect(await new InMemoryRentasAccesoRepository().marcarEntregadaManual(OC, PROP)).toBe("no_encontrada");
+  });
+
+  it("marcarEntregadaManual desde la property equivocada es no_encontrada y no registra nada", async () => {
+    const m = montar();
+    m.acceso.pendientes.push(pendiente());
+    m.acceso.reservasConocidas.add(OC);
+    expect(await m.acceso.marcarEntregadaManual(OC, "otra-property")).toBe("no_encontrada");
+    expect(m.acceso.bitacora.filter((b) => b.evento === "entregada_manual")).toHaveLength(0);
   });
 });
 
@@ -136,6 +144,7 @@ describe("PostgresRentasAccesoRepository -- Rn-P3-09", () => {
     expect(llamadas).toHaveLength(1);
     const p = llamadas[0]!;
     expect(p[0]).toBe(ORG);
+    expect(p[1]).toBe(PROP);
     expect(p[2]).toBe("rentas.acceso.omitido_sin_contacto");
     expect(p[10]).toBe(`rentas.acceso.omitido_sin_contacto:${OC}`);
     expect(p[11]).toEqual(["admin_gestora", "operador:acceso_total"]);
@@ -154,14 +163,16 @@ describe("PostgresRentasAccesoRepository -- Rn-P3-09", () => {
   });
 
   it("marcarEntregadaManual: true -> entregada, false -> ya_entregada, P0002 -> no_encontrada, 42883 -> no_disponible; la sesion sigue utilizable", async () => {
-    const mk = (respond: () => unknown) => new AbortAwareFakeSession([{ match: /acceso_marcar_entregada_manual/, respond }, { match: /select 1 as vivo/, respond: () => [{ vivo: 1 }] }]);
-    expect(await new PostgresRentasAccesoRepository(mk(() => [{ nueva: true }])).marcarEntregadaManual(OC)).toBe("entregada");
-    expect(await new PostgresRentasAccesoRepository(mk(() => [{ nueva: false }])).marcarEntregadaManual(OC)).toBe("ya_entregada");
+    const mk = (respond: () => unknown, propia = true) => new AbortAwareFakeSession([{ match: /from rentas\.ocupacion where id/, respond: () => (propia ? [{ "?column?": 1 }] : []) }, { match: /acceso_marcar_entregada_manual/, respond }, { match: /select 1 as vivo/, respond: () => [{ vivo: 1 }] }]);
+    expect(await new PostgresRentasAccesoRepository(mk(() => [{ nueva: true }])).marcarEntregadaManual(OC, PROP)).toBe("entregada");
+    expect(await new PostgresRentasAccesoRepository(mk(() => [{ nueva: false }])).marcarEntregadaManual(OC, PROP)).toBe("ya_entregada");
     const noExiste = mk(() => pgError("P0002", "reserva no encontrada"));
-    expect(await new PostgresRentasAccesoRepository(noExiste).marcarEntregadaManual(OC)).toBe("no_encontrada");
+    expect(await new PostgresRentasAccesoRepository(noExiste).marcarEntregadaManual(OC, PROP)).toBe("no_encontrada");
     await expect(noExiste.query("select 1 as vivo")).resolves.toBeDefined();
+    // Reserva de otra property (no es la de la ruta): no_encontrada sin llamar a la funcion que escribe.
+    expect(await new PostgresRentasAccesoRepository(mk(() => [{ nueva: true }], false)).marcarEntregadaManual(OC, "otra-property")).toBe("no_encontrada");
     const sinMigrar = mk(() => pgError("42883", "function rentas.acceso_marcar_entregada_manual(uuid) does not exist"));
-    expect(await new PostgresRentasAccesoRepository(sinMigrar).marcarEntregadaManual(OC)).toBe("no_disponible");
+    expect(await new PostgresRentasAccesoRepository(sinMigrar).marcarEntregadaManual(OC, PROP)).toBe("no_disponible");
   });
 
   it("listarPendientesEntrega y obtenerReservaParaMensaje degradan contra una base sin migrar y mapean las filas", async () => {

@@ -319,11 +319,14 @@ export class PostgresRentasAccesoRepository implements RentasAccesoRepository {
     });
   }
 
-  async marcarEntregadaManual(ocupacionId: string): Promise<ResultadoEntregaManual> {
+  async marcarEntregadaManual(ocupacionId: string, propertyId: string): Promise<ResultadoEntregaManual> {
     return runWithSavepointFallback<ResultadoEntregaManual>({
       session: this.db,
       savepointName: "sp_acceso_entregada_manual",
       primary: async () => {
+        // La funcion SQL deriva la property de la ocupacion; aqui se amarra la reserva a la property de la ruta (un staff con acceso a A y B no marca una de B desde A).
+        const propia = await this.db.query(`select 1 from rentas.ocupacion where id = $1::uuid and property_id = $2::uuid;`, [ocupacionId, propertyId]);
+        if (propia.rows.length === 0) return "no_encontrada";
         const { rows } = await this.db.query<{ nueva: boolean }>(`select rentas.acceso_marcar_entregada_manual($1::uuid) as nueva;`, [ocupacionId]);
         return rows[0]?.nueva === true ? "entregada" : "ya_entregada";
       },
@@ -333,11 +336,11 @@ export class PostgresRentasAccesoRepository implements RentasAccesoRepository {
     });
   }
 
-  async avisarOmitidaSinContacto(ocupacionId: string, organizationId: string, _propertyId: string): Promise<boolean> {
+  async avisarOmitidaSinContacto(ocupacionId: string, organizationId: string, propertyId: string): Promise<boolean> {
     // Rn-P3-09: aviso in-app, dedupe por reserva (clave = id de la reserva), sin PII en el texto. emitirNotificacion corre bajo SAVEPOINT y devuelve un
     // estado (nunca lanza por una base sin core.emit_notification); aun asi se protege: el aviso jamas puede romper la liberacion de otras reservas.
     try {
-      const r = await emitirNotificacion(this.db, { evento: "rentas.acceso.omitido_sin_contacto", organizationId, clave: ocupacionId, entidadTipo: "ocupacion", entidadId: ocupacionId });
+      const r = await emitirNotificacion(this.db, { evento: "rentas.acceso.omitido_sin_contacto", organizationId, propertyId, clave: ocupacionId, entidadTipo: "ocupacion", entidadId: ocupacionId });
       return r.estado === "emitida";
     } catch {
       return false;

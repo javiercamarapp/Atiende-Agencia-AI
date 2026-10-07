@@ -173,9 +173,11 @@ export class InMemoryRentasAccesoRepository implements RentasAccesoRepository {
     return { disponible: true, valor };
   }
 
-  async marcarEntregadaManual(ocupacionId: string): Promise<ResultadoEntregaManual> {
+  async marcarEntregadaManual(ocupacionId: string, propertyId: string): Promise<ResultadoEntregaManual> {
     if (!this.migracion025Disponible) return "no_disponible";
     if (!this.reservasConocidas.has(ocupacionId)) return "no_encontrada";
+    const propiedad = this.propertyDeReserva(ocupacionId);
+    if (propiedad !== "" && propiedad !== propertyId) return "no_encontrada";
     if (this.entregadasManual.has(ocupacionId) || this.liberadas.has(ocupacionId)) return "ya_entregada";
     this.entregadasManual.add(ocupacionId);
     const r = this.reservasProximas.find((x) => x.ocupacionId === ocupacionId);

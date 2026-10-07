@@ -246,7 +246,7 @@ export function rentasAccesoHuespedRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
   app.post("/rentas/:propertyId/reservas/:ocupacionId/entrega-manual", async (c) => {
     assertVerticalRole(c, ACCESO_HUESPED_ROLES);
     const ocupacionId = requireUuid(c.req.param("ocupacionId"), "ocupacionId");
-    const r = await accesoRepo(c.get("db")).marcarEntregadaManual(ocupacionId);
+    const r = await accesoRepo(c.get("db")).marcarEntregadaManual(ocupacionId, c.req.param("propertyId"));
     if (r === "no_disponible") throw Errors.conflict("La entrega manual aún no está disponible en este ambiente (migración pendiente).");
     if (r === "no_encontrada") throw Errors.notFound("Reserva no encontrada en esta property.");
     return c.json({ reserva_id: ocupacionId, entregada: true, nueva: r === "entregada" }, 200);

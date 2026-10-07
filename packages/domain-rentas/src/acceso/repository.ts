@@ -22,7 +22,7 @@ export interface RentasAccesoRepository {
   /** Datos de UNA reserva confirmada de la property para el mensaje manual; `valor: null` si no existe o es de otra property. */
   obtenerReservaParaMensaje(propertyId: string, ocupacionId: string): Promise<ResultadoAcceso<ReservaParaMensajeOta | null>>;
   /** Rn-P3-09: registra `entregada_manual` y saca la reserva de la liberacion automatica. Idempotente. */
-  marcarEntregadaManual(ocupacionId: string): Promise<ResultadoEntregaManual>;
+  marcarEntregadaManual(ocupacionId: string, propertyId: string): Promise<ResultadoEntregaManual>;
 
   // ---- sistema (cron: sesión con auth.uid() NULL, una transacción por reserva) ----
   /** La siguiente reserva a liberar ahora; `null` si no hay más. Lanza (SQLSTATE 42883/42P01/42703) contra una base sin migrar. */
