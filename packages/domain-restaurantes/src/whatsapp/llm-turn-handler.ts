@@ -732,7 +732,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             rechazoDelFlujo = executed.rechazoDelFlujo;

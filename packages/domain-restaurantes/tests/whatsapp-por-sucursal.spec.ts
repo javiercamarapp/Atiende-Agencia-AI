@@ -192,6 +192,24 @@ describe("agente de WhatsApp con sucursal de entrada", () => {
     expect(turn.orderId).toBeNull();
     expect((toolResults[0] as { error: string }).error).toContain("El pedido mínimo a domicilio en Francisco de Montejo es de $200");
   });
+
+  it("QA-PM-R2-reglas-12 (H17): desde el chat de una sucursal el servidor rechaza cotizar para OTRA sucursal (no depende del prompt)", async () => {
+    const f = dosSucursales();
+    const toolResults: unknown[] = [];
+    let paso = 0;
+    const handler = scriptedHandler(f.repo, (req) => {
+      const tool = [...req.messages].reverse().find((m) => m.role === "tool");
+      if (tool && tool.role === "tool") toolResults.push(JSON.parse(tool.content));
+      paso += 1;
+      if (paso === 1) {
+        return { text: "", toolCalls: [{ id: "c1", name: "cotizar_pedido", argumentsJson: JSON.stringify({ branch_slug: "altabrisa", items: [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 2 }] }) }], model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 };
+      }
+      return { text: "Ese pedido le toca a otra sucursal.", model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 };
+    });
+    const turn = await handler.handleInboundMessage({ organizationId: f.organizationId, phone: "+5219997654322", messages: mensajes, customer: { isNew: true }, propertyId: f.propertyId });
+    expect(turn.orderId).toBeNull();
+    expect((toolResults[0] as { error: string }).error).toContain("pertenece a otra sucursal");
+  });
 });
 
 describe("branchChannelRules", () => {
