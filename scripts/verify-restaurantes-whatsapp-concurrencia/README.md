@@ -2,7 +2,7 @@
 
 Verificacion de **concurrencia real** (dos o mas conexiones `psql` simultaneas) del WhatsApp y de los pedidos de
 restaurantes, contra un Postgres real con las migraciones reales de `supabase/migrations/`. Rescata del repo original
-(`atiende-restaurantes`) `order_idempotency_concurrency.sh` y la prueba de mensajes casi simultaneos del commit `0a346be`.
+(`atiende-restaurantes`) `order_idempotency_concurrency.sh`, la prueba de mensajes casi simultaneos del commit `0a346be` y `messaging_outbox_concurrency.sh` (escenario 10).
 
 Por que existe: los tests de `packages/domain-restaurantes` corren contra el repositorio en memoria y
 `scripts/verify-restaurantes-sql` ejecuta cada escenario en UNA conexion (la "concurrencia" del escenario 17 es dos llamadas
@@ -24,6 +24,7 @@ esperan, y se liberan juntos).
 | 7 | 3 mensajes distintos del mismo cliente a la vez | exactamente un lease; los otros reintentables |
 | 8 | 3 mensajes del mismo cliente anexados en paralelo | el historial conserva los 3 textos |
 | 9 | Control negativo | mensajes, clientes y pedidos distintos no se bloquean entre si |
+| 10 | Outbox de mensajeria (`claim_messaging_outbox_batch` WhatsApp y `claim_email_outbox_batch` correo), 3-4 conexiones con lotes de 10 y la transaccion abierta 0.4 s | cada fila se reclama exactamente una vez (sin repeticiones entre conexiones), ninguna queda pendiente, las huerfanas con lease vencido se reclaman una sola vez y las de lease vigente no; el reclamo de WhatsApp no toca el correo |
 
 ## Uso
 
