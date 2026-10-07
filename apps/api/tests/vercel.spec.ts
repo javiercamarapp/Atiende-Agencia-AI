@@ -46,7 +46,7 @@ describe("apps/api/src/vercel.ts — handler exportado para Vercel", () => {
     const { default: handler } = await import("../src/vercel.ts");
     const res = await handler.fetch(new Request("https://example.com/health"));
     expect(res.status).toBe(503);
-    await expect(res.json()).resolves.toEqual({ ok: false, status: "degradado" });
+    await expect(res.json()).resolves.toEqual({ ok: false, status: "degradado", crons: "sin_medir" });
   });
 
   it("coreRepo/engine están conectados a un motor de Postgres real (ManagedPostgresEngine) — no en memoria", async () => {
