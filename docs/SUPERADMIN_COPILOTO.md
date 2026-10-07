@@ -13,6 +13,8 @@ Van detrás de la cadena de `routes/superadmin.ts` (autenticación, gateo de sup
 | `POST /superadmin/copiloto` | Turno del chat. JSON, o NDJSON con `Accept: application/x-ndjson` (se aborta si el cliente corta). Cuerpo: `question`, `history`, `conversationId`, o `tool` + `args` (consulta directa sin modelo). Cualquier otro campo es 400. |
 | `GET /superadmin/copiloto/estado` | Disponibilidad, rol (`superadmin` o `finanzas`), si hay step-up, estado del interruptor, gasto del mes frente al tope y herramientas visibles. |
 | `GET/PATCH/DELETE /superadmin/copiloto/conversaciones[/:id]` | Conversaciones propias (scope plataforma). Solo el autor las ve; ajena o inexistente = 404. |
+| `GET/POST /superadmin/copiloto/pins`, `PATCH/DELETE .../pins/:pinId`, `GET .../pins/:pinId/resultado` | Fijados del tablero (personales, sin organización; migración 0056; ver «Fijados» más abajo). El rol `finanzas` no los usa (403 de la zona CFO). |
+| `POST /superadmin/copiloto/adjuntos` | Adjuntar archivo (CSV, Excel o PDF): perfil determinista en el servidor, sin guardar el archivo (ver «Adjuntar archivo» más abajo). Solo superadmin completo. |
 | `POST /superadmin/copiloto/conversaciones/:id/reporte?seq=N` | Reporte PDF del mensaje (el «Descargar PDF» de las verticales, CHAT-14). Re-ejecuta las herramientas del mensaje con el alcance actual (jamás `proponer_accion`); las financieras exigen step-up (403 `stepup_required` antes de consultar) y dejan huella en `core.cfo_access_log`; 6 por 10 min por usuario (fail-closed); `finanzas` puede pedir el de su propia conversación. Sin IA, con el interruptor apagado o el tope agotado, el PDF sale solo con datos (`x-reporte-narrativa: no_disponible`). |
 
 Reglas del turno, en orden: impersonación activa -> **409** (chat y estado; el guard común de escrituras exime solo `POST /superadmin/copiloto` para que el rechazo sea este
@@ -67,6 +69,18 @@ Orden de Javier (4-oct): preguntarle al Copiloto «todo de todos los negocios».
 * Base sin migrar: si falta la 0056, las tres herramientas responden «No tengo el dato: falta aplicar una actualización de la base de datos», sin 500 ni cifras inventadas.
 * Verificación contra Postgres real: `scripts/verify-copiloto-multi-negocio/`.
 
+## Fijados del tablero (migración 0056)
+
+«Fijar» guarda la herramienta del catálogo y sus argumentos tipados (no cifras) en `core.copiloto_pin` con `vertical = 'plataforma'` y organización NULL; el Resumen del superadmin (`SeccionFijadosCopiloto`, sin «Compartir») los **re-ejecuta sin modelo** con el rol y el step-up de ese momento (una consulta financiera sin MFA reciente abre el diálogo). El alta deriva herramienta y argumentos del mensaje guardado de una conversación propia y exige que sigan siendo válidos en el catálogo actual (`proponer_accion` nunca se fija). Solo el autor los ve (policies nuevas ligadas a `auth.uid()` y superadmin vigente), nunca se comparten (CHECK) y hay tope de 50. Con la base sin migrar la lista responde «no disponible» y el alta 503. El estado del Copiloto declara `fijados` y `adjuntos` (solo superadmin completo) y la UI no pinta los botones sin eso.
+
+## Adjuntar archivo (CSV, Excel, PDF)
+
+El clip del compositor (`ChatDatosShell`, compartido con las seis verticales y la plataforma) aparece solo si el transporte declara `adjuntos` (su servidor tiene `POST <base>/adjuntos`). El archivo (máx. 5 MB, 10 por 10 minutos por persona) viaja en base64, se analiza **en el servidor, sin modelo y sin guardarse**, y la respuesta es el perfil del archivo con la forma de siempre:
+
+* CSV/TSV/TXT y Excel (.xlsx, primera hoja): por columna, con dato, distintos, suma, promedio, mínimo y máximo. Las columnas con **datos personales** (por encabezado o por contenido: nombre, teléfono, correo, dirección, RFC…) solo cuentan celdas con dato; jamás se listan valores ni agregados. Límites: 50,000 filas y 200 columnas.
+* PDF con texto: páginas, palabras y caracteres, y un extracto con teléfonos, correos y enlaces ocultos. Un PDF escaneado se declara como tal (sin OCR).
+* Cada archivo deja una fila en la bitácora del chat (herramienta `archivo_adjunto`, solo tipo y número de filas; nunca el nombre ni el contenido). El rol `finanzas` y la impersonación no tienen esta ruta.
+
 ## Datos
 
 * `core.data_chat_query_log` admite filas de plataforma (sin organización) escritas solo por `core.record_data_chat_query` (superadmin vigente); ninguna policy las expone directo.
@@ -76,8 +90,8 @@ Orden de Javier (4-oct): preguntarle al Copiloto «todo de todos los negocios».
 ## Huecos conocidos
 
 * SA-44: presupuesto real de gasto del Copiloto en producción (queda para Javier).
-* **Fijados en el tablero**: las verticales fijan resultados (`core.copiloto_pin`, por organización). El Copiloto de plataforma NO ofrece «Fijar» (el transporte se crea con `fijados: false`) porque ese servidor no tiene `/pins` ni hay dónde pintar el tablero en el Resumen; requiere migración propia (fijados por superadmin, sin organización) + script verify + sección en el Resumen.
-* **Adjuntar archivo**: el chat de las verticales (`ChatDatosShell`) no tiene adjuntos; por eso el de plataforma tampoco. Si se quiere analizar CSV/Excel/PDF en ambos, es una función nueva y común (decisión de producto).
+* **Fijados**: ya existen (migración 0056). Quedan fuera: compartirlos (el tablero de plataforma es personal) y que `finanzas` fije (la zona CFO solo le abre chat, estado, conversaciones y reporte).
+* **Adjuntar archivo**: el archivo se analiza pero NO se conversa sobre él con el modelo (decisión de producto pendiente: qué parte de un archivo con datos de clientes puede ver un proveedor de IA). Tampoco hay OCR, ni fórmulas de Excel (se lee el último valor guardado), ni más de una hoja.
 * `prospectos` solo cubre el modelo actual del cerebro de ventas.
 * Tu turno (SA-L-19) todavía no existe: la tarjeta de acción enlaza a la bandeja de pendientes actual (`/superadmin/acciones`) hasta que exista.
 * Las acciones del catálogo que no están implementadas siguen apareciendo como «no disponible» en `/superadmin/acciones`; el Copiloto no puede proponerlas (el esquema de `proponer_accion` es cerrado).
