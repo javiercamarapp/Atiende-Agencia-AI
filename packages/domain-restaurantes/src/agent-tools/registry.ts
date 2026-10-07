@@ -346,7 +346,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         llevar_terminal: { type: "boolean", description: "true si el cliente pide que lleven terminal (pago con tarjeta a domicilio)." },
         indicaciones_acceso: { type: "string", description: "Solo domicilio, una línea corta (máx. 200 caracteres): cómo llegar o avisar ('timbre del depto 6', 'avísenme al llegar'). No pongas aquí la ubicación: el pin ya se guarda solo." },
         telefono_alterno: { type: "string", description: "Segundo teléfono de contacto, 10 dígitos, si el cliente lo da." },
-        hora_recogida: { type: "string", description: "Solo canal 'recoger': hora a la que el cliente pasará, en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00)." },
+        hora_recogida: { type: "string", description: "Solo canal 'recoger': hora a la que el cliente pasará, en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00). Si el cliente dijo una hora o un plazo (\"en 40 minutos\", \"a las 2\") MÁNDELA igual que en cotizar_pedido; nunca vacía: omítala solo si pasa 'en cuanto esté'." },
         direccion_etiqueta: { type: "string", description: "Opcional: como llama el cliente a este domicilio (casa, oficina...). Solo si lo dijo." },
         referencias_acceso: { type: "string", description: "Opcional: referencias para llegar (porton, timbre, entre calles). Solo si las dio el cliente." },
         maps_url: { type: "string", description: "Opcional: link de Google Maps/Waze que el cliente mando por escrito (https). Nunca lo inventes." },
@@ -595,7 +595,7 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     ubicacionEntrega: ctx.ubicacionEntrega ?? undefined,
     // Los agentes (no el checkout web) rellenan los opcionales que no tienen con 0 o "" (efectivo_con 0, telefono_alterno ""): eso es "sin dato", no un dato invalido
     // (despues de fusionar efectivo_con y telefono_alterno, 15 crear_pedido de la medida fallaban por ese relleno y el cliente se quedaba sin pedido).
-    efectivoCon: typeof input.efectivo_con === "number" && (ctx.channel === "web" || (input.efectivo_con > 0 && input.payment_method === "efectivo")) ? input.efectivo_con : undefined,
+    efectivoCon: typeof input.efectivo_con === "number" && (ctx.channel === "web" || (input.efectivo_con > 0 && input.payment_method !== "tarjeta")) ? input.efectivo_con : undefined,
     llevarTerminal: input.llevar_terminal === true ? true : undefined,
     indicacionesAcceso: str(input.indicaciones_acceso),
     telefonoAlterno: ctx.channel === "web" ? str(input.telefono_alterno) : textoOpcional(input.telefono_alterno)?.trim() || undefined,
