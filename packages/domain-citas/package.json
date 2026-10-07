@@ -10,7 +10,7 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "evals:citas:real": "node --experimental-strip-types src/evals/agente-citas/real-cli.ts"
+    "evals:citas:real": "vite-node src/evals/agente-citas/real-cli.ts"
   },
   "dependencies": {
     "@atiende/agent-core": "*",
