@@ -94,8 +94,14 @@ describe("R2 autopiloto: preguntas que mencionan 'cancelar' + 'pedido' NO cancel
     expect(r.reply).toBe("Listo, su pedido quedó cancelado.");
   });
 
-  it("control: negacion cerca del verbo ('no cancelen mi pedido', 'si no llega en 10 min cancelo el pedido') no cancela", async () => {
-    for (const texto of ["No cancelen mi pedido, ya voy por él", "Si no llega en 10 min cancelo el pedido"]) {
+  it("control: negacion cerca del verbo ('no cancelen mi pedido', 'si no llega en 10 min, cancelo el pedido') no cancela", async () => {
+    for (const texto of [
+      "No cancelen mi pedido, ya voy por él",
+      "Si no llega en 10 min cancelo el pedido",
+      "Si no llega en 10 min, cancelo el pedido",
+      "Si en 10 minutos no llega, cancelo el pedido",
+      "Si no sale ya, cancelen mi pedido",
+    ]) {
       const t = await montar("pending", { cancelacionAuto: true });
       await t.turno(texto);
       expect(t.mem.status, texto).toBe("pending");

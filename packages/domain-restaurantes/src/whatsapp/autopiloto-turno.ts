@@ -51,7 +51,8 @@ export function negacionDeCancelacion(texto: string): boolean {
   // "Ya no lo quiero, cancelen el pedido" es la forma mas comun de CANCELAR: el "no" niega el deseo del platillo, no el verbo. Se quita esa frase antes de
   // buscar la negacion, y la negacion nunca cruza una coma ("no, cancelen el pedido" es una confirmacion).
   const t = normalizarParaClasificar(texto).replace(/\bya\s+no\s+(?:lo|la|los|las)\s+(?:quiero|necesito|voy\s+a\s+querer)\b/g, " ");
-  return /\b(?:no|nunca|ni|tampoco)\b[^.!?\n,;:]{0,25}\bcancel\w*|\bcancel\w*[^.!?\n,;:]{0,15}\b(?:no|nunca)\b|\bsin\s+cancelar\b|\bya\s+no\b[^.!?\n,;:]{0,20}\bcancel\w*/.test(t);
+  // Condicional con coma ("si no llega en 10 min, cancelo el pedido", "si en 10 minutos no llega, cancelen mi pedido"): es una amenaza, no una orden.
+  return /\bsi\b[^.!?\n]{0,40}\bno\b[^.!?\n,;:]{0,30},[^.!?\n,;:]{0,15}\bcancel\w*|\b(?:no|nunca|ni|tampoco)\b[^.!?\n,;:]{0,25}\bcancel\w*|\bcancel\w*[^.!?\n,;:]{0,15}\b(?:no|nunca)\b|\bsin\s+cancelar\b|\bya\s+no\b[^.!?\n,;:]{0,20}\bcancel\w*/.test(t);
 }
 
 /**
