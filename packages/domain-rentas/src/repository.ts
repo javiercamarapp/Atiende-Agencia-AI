@@ -216,6 +216,10 @@ export interface RentasRepository {
    *  criterio que `rentasIcalSyncCronRoutes::listFeedsActivos`), nunca acotado a un
    *  solo tenant. */
   listReservasProximasACheckIn(desdeFecha: string, hastaFecha: string): Promise<readonly ReservaProximaCheckIn[]>;
+  /** Rn-P3-10 -- recordatorio horario: reservas confirmadas CON correo valido del huesped y sin recordatorio cuyo check-in (a las `horaCheckIn`, `HH:MM`, en la
+   *  zona horaria de SU property; `zonaPorDefecto` si la property no tiene configuracion) cae entre `ahora + desdeHoras` y `ahora + hastaHoras`.
+   *  Barrido GLOBAL de la plataforma, igual que `listReservasProximasACheckIn`. */
+  listReservasProximasACheckInVentana(ahora: Date, desdeHoras: number, hastaHoras: number, horaCheckIn: string, zonaPorDefecto: string): Promise<readonly ReservaProximaCheckIn[]>;
   marcarRecordatorioCheckInEnviado(ocupacionId: string, enviadoEnIso: string): Promise<void>;
   enqueueMessagingOutbox(propertyId: string, organizationId: string, channel: MessagingOutboxChannel, eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
   claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;

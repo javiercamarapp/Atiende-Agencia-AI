@@ -40,6 +40,7 @@ import type {
   TareaOperativaRecord,
   UnidadRecord,
 } from "./types.ts";
+import { instanteDeParedLocal } from "./zona-horaria.ts";
 import type { ChecklistItemTarea, EstadoIncidencia, EstadoTareaOperativa, PrioridadTareaOperativa, SeveridadIncidencia, TipoTareaOperativa } from "./limpieza/tipos.ts";
 
 export interface StoredOcupacion {
@@ -557,6 +558,23 @@ export class InMemoryRentasCalendarStore {
   listReservasProximasACheckIn(desdeFecha: string, hastaFecha: string): { id: string; organizationId: string }[] {
     return [...this.ocupaciones.values()]
       .filter((o) => o.capa === "reserva" && o.estado === "confirmado" && o.recordatorioCheckinEnviadoEn === null && o.inicio >= desdeFecha && o.inicio <= hastaFecha)
+      .sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : 0))
+      .map((o) => ({ id: o.id, organizationId: o.organizationId }));
+  }
+
+  /** Rn-P3-10 -- reservas confirmadas con correo valido del huesped cuyo check-in (a `horaCheckIn`, en la zona de SU property) cae entre `ahora + desdeHoras`
+   *  y `ahora + hastaHoras` (ambos inclusivos) y que todavia no recibieron el recordatorio. Mismo filtro que `PostgresRentasRepository.listReservasProximasACheckInVentana`. */
+  listReservasProximasACheckInVentana(ahora: Date, desdeHoras: number, hastaHoras: number, horaCheckIn: string, zonaPorDefecto: string): { id: string; organizationId: string }[] {
+    const desde = ahora.getTime() + desdeHoras * 3_600_000;
+    const hasta = ahora.getTime() + hastaHoras * 3_600_000;
+    return [...this.ocupaciones.values()]
+      .filter((o) => {
+        if (o.capa !== "reserva" || o.estado !== "confirmado" || o.recordatorioCheckinEnviadoEn !== null) return false;
+        const contacto = o.huespedMinimoId ? (this.huespedes.get(o.huespedMinimoId)?.contacto ?? null) : null;
+        if (!contacto || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contacto)) return false;
+        const t = instanteDeParedLocal(o.inicio, horaCheckIn, this.zonasHorarias.get(o.propertyId) ?? zonaPorDefecto);
+        return t >= desde && t <= hasta;
+      })
       .sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : 0))
       .map((o) => ({ id: o.id, organizationId: o.organizationId }));
   }

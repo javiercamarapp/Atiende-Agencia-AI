@@ -1272,6 +1272,24 @@ export class PostgresRentasRepository implements RentasRepository {
     return rows.map((r) => ({ ocupacionId: r.id, organizationId: r.organization_id }));
   }
 
+  async listReservasProximasACheckInVentana(ahora: Date, desdeHoras: number, hastaHoras: number, horaCheckIn: string, zonaPorDefecto: string): Promise<readonly ReservaProximaCheckIn[]> {
+    // Rn-P3-10: la ventana se mide en horas contra el check-in de CADA reserva en la zona de SU property (un barrido global con una sola ventana de
+    // fechas dejaba sin recordatorio a la reserva de ultimo minuto). Solo entran reservas con correo valido: el recordatorio sale por correo, y una
+    // reserva de OTA sin correo no debe costar una transaccion por hora; en cuanto el pre-check-in captura el correo, entra sola.
+    const { rows } = await this.db.query<{ id: string; organization_id: string }>(
+      `select o.id, o.organization_id
+         from rentas.ocupacion o
+         join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+         left join rentas.property_config pc on pc.property_id = o.property_id
+        where o.capa = 'reserva' and o.estado = 'confirmado' and o.recordatorio_checkin_enviado_en is null
+          and g.contacto ~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$'
+          and ((lower(o.rango) + $4::time) at time zone coalesce(pc.zona_horaria, $5)) between $1::timestamptz + make_interval(hours => $2::int) and $1::timestamptz + make_interval(hours => $3::int)
+        order by lower(o.rango) asc, o.id asc;`,
+      [ahora.toISOString(), desdeHoras, hastaHoras, horaCheckIn, zonaPorDefecto],
+    );
+    return rows.map((r) => ({ ocupacionId: r.id, organizationId: r.organization_id }));
+  }
+
   async marcarRecordatorioCheckInEnviado(ocupacionId: string, enviadoEnIso: string): Promise<void> {
     await this.db.query(`update rentas.ocupacion set recordatorio_checkin_enviado_en = $2 where id = $1;`, [ocupacionId, enviadoEnIso]);
   }

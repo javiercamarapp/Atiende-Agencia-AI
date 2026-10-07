@@ -1,3 +1,9 @@
+// Rn-P3-10 (ventana horaria): el barrido corre CADA HORA y la ventana es "llegadas entre ahora+2 h y ahora+48 h" medida contra el check-in de cada
+// reserva (15:00 en la zona horaria de SU property), no contra dias de calendario. Antes corria una vez al dia con `[hoy+1, hoy+2]` y una reserva
+// hecha despues del barrido para llegar al dia siguiente nunca recibia recordatorio. La idempotencia sigue siendo `recordatorio_checkin_enviado_en`
+// (se marca en la MISMA transaccion que encola, y el dedupe_key del outbox lo respalda): nadie recibe dos. Solo entran reservas con correo valido
+// del huesped; las de OTA sin correo entran solas cuando el pre-check-in lo captura. El texto historico de abajo describe el diseno diario original.
+//
 // Recordatorio de check-in 24-48h antes -- job periódico real que cierra la segunda
 // mitad del gap de auditoría (la primera es reserva-email-notifications.ts::
 // "reserva.creada", encolada al crear la reserva). Mismo patrón que
@@ -45,9 +51,7 @@
 // anteriores.
 import { ZONA_HORARIA_NEGOCIO_DEFAULT } from "@atiende/core-tenancy";
 import { enqueueReservaEmailCore } from "./reserva-email-notifications.ts";
-import { sumarDias } from "./fechas.ts";
 import type { RentasRepository } from "./repository.ts";
-import type { FechaLocal } from "./tipos.ts";
 
 export type WithRentasRepo = <T>(fn: (repo: RentasRepository) => Promise<T>) => Promise<T>;
 
@@ -58,39 +62,16 @@ export interface RecordatorioCheckInSummary {
   fallos: number;
 }
 
-// auditoría f3-zona-horaria-citas-rentas -- bug real confirmado: "hoy" para la
-// ventana `[hoy+1, hoy+2]` de este barrido usaba el día UTC CRUDO del proceso
-// (`now.toISOString().slice(0,10)`, la función se llamaba literal `hoyUtc`) --
-// exactamente el mismo bug de fondo que documenta `@atiende/core-tenancy::
-// fecha-negocio.ts` (entre las 18:00 y las 23:59 CDMX, el día UTC ya es MAÑANA),
-// nunca corregido en este archivo pese a que el resto del paquete ya usa
-// `hoyFechaNegocio()`. No se llama a `hoyFechaNegocio()` directo porque ese
-// helper SIEMPRE lee `new Date()` internamente (no acepta un `now` inyectado) y
-// este archivo depende de poder inyectar `now` para sus pruebas con reloj falso
-// (ver checkin-reminders.spec.ts) -- se reimplementa aquí el mismo criterio
-// (`Intl.DateTimeFormat` "en-CA", nunca `toISOString()`), aplicado al `now`
-// inyectado en vez de a un `new Date()` interno.
-//
-// Zona real POR PROPERTY: `listReservasProximasACheckIn` es un barrido GLOBAL de
-// la plataforma con una ÚNICA ventana de fechas para TODAS las organizaciones en
-// una sola query (ver el comentario de cabecera de ese método) -- `ReservaProximaCheckIn`
-// no expone `propertyId` ni la fecha real de check-in de cada candidata, así que
-// hoy no hay forma de resolver una zona por-property ANTES de esta query sin
-// agregar esas columnas y re-filtrar cada candidata después de traerla (rediseño
-// real del barrido, fuera de alcance de este fix puntual -- ver knownGaps del
-// PR). Se usa el default de plataforma (`ZONA_HORARIA_NEGOCIO_DEFAULT`), que es
-// estrictamente mejor que el día UTC crudo para CUALQUIER property (CDMX o no).
-const FORMATTER_HOY_DE_NEGOCIO = new Intl.DateTimeFormat("en-CA", { timeZone: ZONA_HORARIA_NEGOCIO_DEFAULT, year: "numeric", month: "2-digit", day: "2-digit" });
-
-function hoyDeNegocio(now: Date): FechaLocal {
-  return FORMATTER_HOY_DE_NEGOCIO.format(now);
-}
+/** Hora local de check-in que se asume para medir la ventana (las reservas de OTA no traen la hora; es la misma por omision que usa la politica de acceso). */
+export const HORA_CHECKIN_RECORDATORIO = "15:00";
+/** El recordatorio sale cuando faltan entre 2 y 48 horas para el check-in. */
+export const RECORDATORIO_DESDE_HORAS = 2;
+export const RECORDATORIO_HASTA_HORAS = 48;
 
 /**
- * Corrida real: encuentra toda reserva directa confirmada cuyo check-in caiga entre
- * mañana y pasado mañana (`[hoy+1, hoy+2]`, la ventana de 24-48h antes expresada en
- * fechas de calendario) y que todavía no recibió el recordatorio, y encola el correo
- * real vía `enqueueReservaEmailCore`.
+ * Corrida real: encuentra toda reserva confirmada con correo del huésped cuyo check-in
+ * (15:00 en la zona de su property) caiga entre `now + 2 h` y `now + 48 h` y que todavía
+ * no recibió el recordatorio, y encola el correo real vía `enqueueReservaEmailCore`.
  *
  * `marcarRecordatorioCheckInEnviado` SOLO se llama tras encolar con éxito (`enqueued
  * === true`) -- mismo criterio que `runConfirmacionCitaCore::markReminderSent`: una
@@ -105,11 +86,7 @@ function hoyDeNegocio(now: Date): FechaLocal {
  * corre en su propia transacción corta, y CADA candidata corre la suya.
  */
 export async function runRecordatorioCheckInCore(withRepo: WithRentasRepo, now: Date = new Date()): Promise<RecordatorioCheckInSummary> {
-  const hoy = hoyDeNegocio(now);
-  const desdeFecha = sumarDias(hoy, 1);
-  const hastaFecha = sumarDias(hoy, 2);
-
-  const candidatas = await withRepo((repo) => repo.listReservasProximasACheckIn(desdeFecha, hastaFecha));
+  const candidatas = await withRepo((repo) => repo.listReservasProximasACheckInVentana(now, RECORDATORIO_DESDE_HORAS, RECORDATORIO_HASTA_HORAS, HORA_CHECKIN_RECORDATORIO, ZONA_HORARIA_NEGOCIO_DEFAULT));
   const summary: RecordatorioCheckInSummary = { procesadas: candidatas.length, enviados: 0, sinCorreo: 0, fallos: 0 };
 
   for (const candidata of candidatas) {

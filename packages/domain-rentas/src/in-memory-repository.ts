@@ -999,6 +999,10 @@ export class InMemoryRentasRepository implements RentasRepository {
     return this.calendarStore.listReservasProximasACheckIn(desdeFecha, hastaFecha).map((r) => ({ ocupacionId: r.id, organizationId: r.organizationId }));
   }
 
+  async listReservasProximasACheckInVentana(ahora: Date, desdeHoras: number, hastaHoras: number, horaCheckIn: string, zonaPorDefecto: string): Promise<readonly ReservaProximaCheckIn[]> {
+    return this.calendarStore.listReservasProximasACheckInVentana(ahora, desdeHoras, hastaHoras, horaCheckIn, zonaPorDefecto).map((r) => ({ ocupacionId: r.id, organizationId: r.organizationId }));
+  }
+
   async marcarRecordatorioCheckInEnviado(ocupacionId: string, enviadoEnIso: string): Promise<void> {
     this.calendarStore.marcarRecordatorioCheckInEnviado(ocupacionId, enviadoEnIso);
   }
