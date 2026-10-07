@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MonthlyBudgetExceededError } from "@atiende/agent-core";
 import type { TenancyEngine } from "@atiende/core-tenancy";
-import { ProductionOrgMonthlyBudgetStore, notificarPresupuestoIaDuenioBestEffort } from "../src/production/llm-usage-gateway-adapters.ts";
+import { BanderaConTtl, ProductionOrgMonthlyBudgetStore, notificarPresupuestoIaDuenioBestEffort } from "../src/production/llm-usage-gateway-adapters.ts";
 import { conEmisiones } from "./support/emisiones.ts";
 
 type Responder = (sql: string, params: unknown[]) => { rows: unknown[] };
@@ -104,6 +104,19 @@ describe("notificarPresupuestoIaDuenioBestEffort: nunca lanza ni altera la reser
     expect(m.emisiones).toEqual([]);
     expect(recordado.size).toBe(0);
     await notificarPresupuestoIaDuenioBestEffort(m.engine, recordado, "org-1", 80, ahora);
+    expect(m.sql.filter((s) => /es_organizacion_restaurantes/.test(s))).toHaveLength(2);
+  });
+
+  it("con la bandera con TTL: tras un no_disponible no abre mas sesiones hasta que vence el TTL", async () => {
+    const sinMigrar = Object.assign(new Error("function restaurantes.es_organizacion_restaurantes(uuid) does not exist"), { code: "42883" });
+    const m = motor(esRestaurantes(sinMigrar));
+    let reloj = 1_000;
+    const bandera = new BanderaConTtl(60_000, () => reloj);
+    await notificarPresupuestoIaDuenioBestEffort(m.engine, new Set(), "org-1", 80, ahora, bandera);
+    await notificarPresupuestoIaDuenioBestEffort(m.engine, new Set(), "org-1", 80, ahora, bandera);
+    expect(m.sql.filter((s) => /es_organizacion_restaurantes/.test(s))).toHaveLength(1);
+    reloj += 61_000;
+    await notificarPresupuestoIaDuenioBestEffort(m.engine, new Set(), "org-1", 80, ahora, bandera);
     expect(m.sql.filter((s) => /es_organizacion_restaurantes/.test(s))).toHaveLength(2);
   });
 
