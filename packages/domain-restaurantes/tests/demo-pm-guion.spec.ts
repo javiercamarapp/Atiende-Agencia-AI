@@ -191,6 +191,13 @@ describe("las cifras del guion salen del motor real sobre el catalogo de T7", ()
     expect((r as { result: unknown }).result).toMatchObject({ encontrada: false, estado: "no_reconocida" });
     expect(guion).toContain("mapa de colonias");
   });
+
+  it("QA-PM-R2: el relleno del modelo (lat 0, lng 0, max_km 0) se ignora: ni cae a 9,967 km (fuera de zona) ni rechaza el radio; manda la colonia", async () => {
+    const relleno = { colonia: "Santa Gertrudis Copó", lat: 0, lng: 0, max_km: 0 };
+    const sinRelleno = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", { colonia: "Santa Gertrudis Copó" }));
+    const conRelleno = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", relleno));
+    expect((conRelleno as { result: unknown }).result).toEqual((sinRelleno as { result: unknown }).result);
+  });
 });
 
 describe("lo que el guion atribuye al agente esta en su prompt y en sus datos", () => {

@@ -19,7 +19,7 @@ import {
   MANAGER_ROLES,
   PLANTILLAS_AUTOPILOTO,
   STAFF_INVITE_ROLES,
-  diaLocalSucursal,
+  diaDeNegocio,
   estimarTiempoSucursal,
   resolverSolicitudAprobacion,
   sumarDiasFecha,
@@ -262,10 +262,16 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     if (typeof raw.productId !== "string" || !UUID_RE.test(raw.productId)) throw Errors.validation("productId inválido.");
     const repo = deps.restaurantesRepo(c.get("db"));
     const { zonaHoraria } = await repo.findBranchZonaHoraria(propertyId);
-    const hoy = diaLocalSucursal(new Date(), zonaHoraria).fecha;
+    // QA R2 automatizacion-02: "hasta manana" es el dia de NEGOCIO + 1, no el calendario: PM cierra a la 01:00, asi que a las 00:30 del domingo
+    // todavia es el turno del sabado y el producto debe volver el domingo (no el lunes). Sin horario (o sin turnos que cruzan) el dia de negocio
+    // es el calendario, como siempre.
+    const policy = await repo.findBranchPolicy(propertyId);
+    const hoy = diaDeNegocio(new Date(), zonaHoraria, policy.horario);
     const hasta = sumarDiasFecha(hoy, 1);
+    // Respaldo para la base sin la 076: la funcion de la 050 exige `hasta` > fecha calendario de hoy.
+    const hastaCalendario = sumarDiasFecha(diaDeNegocio(new Date(), zonaHoraria, null), 1);
     try {
-      const r = await repoAuto(c).marcarAgotado(organizationId, propertyId, raw.productId, hasta);
+      const r = await repoAuto(c).marcarAgotado(organizationId, propertyId, raw.productId, hasta, hastaCalendario);
       if (!r.disponible) throw Errors.serviceUnavailable("«Agotado hasta mañana» todavía no está disponible en esta base de datos (falta aplicar la migración 050).");
       if (!r.aplicado) throw Errors.notFound("El producto no está dado de alta en esta sucursal.");
       await repo.registrarAuditoria({

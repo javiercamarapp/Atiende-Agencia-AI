@@ -96,10 +96,13 @@ export function resumenPedidoGrande(args: {
   readonly paymentMethod: string | null | undefined;
   /** Pedidos recientes del mismo numero que se sumaron al umbral (0 = el pedido solo). */
   readonly pedidosPrevios?: number;
+  /** Total de ESTE pedido cuando `total` ya incluye pedidos anteriores de la misma conversacion (pedido partido en dos). */
+  readonly totalDeEstePedido?: number;
 }): string {
   const motivo = args.motivo === "total" ? `total de $${args.total.toFixed(2)} (mas de $${PEDIDO_GRANDE_TOTAL_MXN})` : args.motivo === "peso" ? `${args.pesoKg} kg (mas de ${PEDIDO_GRANDE_KG} kg)` : `numero sin historial que paga en efectivo, total de $${args.total.toFixed(2)} (mas de $${PEDIDO_GRANDE_SIN_HISTORIAL_EFECTIVO_MXN})`;
   const renglones = args.items.map((i) => `${i.quantity} x ${i.name}`).join("; ");
   const acumulado = args.pedidosPrevios && args.pedidosPrevios > 0 ? ` Suma ${args.pedidosPrevios} pedido(s) previo(s) del mismo numero en las ultimas ${PEDIDO_GRANDE_VENTANA_ACUMULADO_MS / 3_600_000} h.` : "";
-  const texto = `Pedido grande por confirmar (NO se mando a cocina): ${motivo}.${acumulado} Total $${args.total.toFixed(2)}; pago ${args.paymentMethod ?? "sin definir"}; canal ${args.canal ?? "domicilio"}. Renglones: ${renglones}.`;
+  const previo = args.totalDeEstePedido !== undefined && args.totalDeEstePedido < args.total ? ` (este pedido: $${args.totalDeEstePedido.toFixed(2)}; el resto son pedidos anteriores del mismo numero)` : "";
+  const texto = `Pedido grande por confirmar (NO se mando a cocina): ${motivo}.${acumulado} Total $${args.total.toFixed(2)}${previo}; pago ${args.paymentMethod ?? "sin definir"}; canal ${args.canal ?? "domicilio"}. Renglones: ${renglones}.`;
   return texto.length > 900 ? `${texto.slice(0, 897)}...` : texto;
 }

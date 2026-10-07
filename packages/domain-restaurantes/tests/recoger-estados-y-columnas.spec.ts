@@ -1,6 +1,6 @@
 // PM PR-3 (b)(d): estados del canal recoger (listo_para_recoger / no_recogido -> vuelve a cocina), aviso
 // opcional al cliente, y canal / propina / hora de recogida como datos del pedido.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { OrderValidationError } from "../src/errors.ts";
 import { assertValidOrderStatusTransition, changeOrderStatus, esPedidoParaRecoger, nextValidStatuses, OrderStatusTransitionError } from "../src/order-lifecycle.ts";
 import { createOrder, validateCreateOrderPayload } from "../src/orders.ts";
@@ -98,14 +98,18 @@ describe("changeOrderStatus con pedidos de recoger", () => {
 });
 
 describe("canal, propina y hora de recogida como datos del pedido", () => {
+  afterEach(() => vi.useRealTimers());
   it("se persisten como columnas (ademas de las notas) y se leen con listOrderPickupInfo", async () => {
+    // La hora de recogida ahora se valida contra el reloj del servidor (no pasada): se fija "ahora" a las 19:30 del dia del pedido.
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-09-30T19:30:00-06:00") });
     const f = buildRestaurantFixture();
     f.repo.seedBranchPolicy(f.propertyId, { propinaPolitica: "solo_tarjeta" });
-    const order = await createOrder(f.repo, input(f, { propina: 12.5, horaRecogida: "2026-09-30T20:30:00-06:00" }));
-    expect(order).toMatchObject({ canal: "recoger", propina: 12.5, horaRecogida: "2026-09-30T20:30:00-06:00" });
+    const hora = new Date(Date.now() + 45 * 60_000).toISOString().replace(/\.\d{3}Z$/, "+00:00");
+    const order = await createOrder(f.repo, input(f, { propina: 12.5, horaRecogida: hora }));
+    expect(order).toMatchObject({ canal: "recoger", propina: 12.5, horaRecogida: hora });
     expect(order.notes).toMatch(/Propina: \$12\.50/);
-    expect(order.notes).toMatch(/Hora de recogida: 2026-09-30T20:30:00-06:00/);
-    expect(await f.repo.listOrderPickupInfo(f.organizationId, [order.id])).toEqual([{ orderId: order.id, canal: "recoger", propina: 12.5, horaRecogida: "2026-09-30T20:30:00-06:00" }]);
+    expect(order.notes).toContain(`Hora de recogida: ${hora}`);
+    expect(await f.repo.listOrderPickupInfo(f.organizationId, [order.id])).toEqual([{ orderId: order.id, canal: "recoger", propina: 12.5, horaRecogida: hora }]);
   });
 
   it("un pedido sin canal explicito queda con canal null y propina null (historico)", async () => {

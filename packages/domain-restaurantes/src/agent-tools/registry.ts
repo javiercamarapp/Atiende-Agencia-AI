@@ -22,8 +22,9 @@ import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError } from "../errors.ts";
 import { normalizePhone } from "../phone.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
-import { estaAbiertoAhora } from "../horarios.ts";
-import { assignBranch } from "../branch-assignment.ts";
+import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
+import { assignBranch, RADIO_MAXIMO_REPARTO_KM } from "../branch-assignment.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
 import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
@@ -36,6 +37,7 @@ import {
   assertCanConfirm,
   assertCanCreate,
   FLOW_ROW_TTL_SECONDS,
+  QUOTE_TTL_MS,
   fingerprintOrder,
   priceSignature,
   OrderFlowViolationError,
@@ -311,7 +313,8 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega que dio el cliente (solo a domicilio); la herramienta verifica que esté dentro de la zona de reparto de la sucursal." },
         payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida, solo para saber si corresponde preguntar propina." },
         doble_salsas: DOBLE_SALSAS_SCHEMA,
-        programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después: fecha y hora ISO 8601 con zona (por ejemplo 2026-10-03T14:00:00-06:00), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar." },
+        programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después (otro día o dentro de MÁS de 30 minutos con hora exacta): fecha y hora ISO 8601 con zona (por ejemplo 2026-10-03T14:00:00-06:00), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar. Si el cliente pasa 'en cuanto esté', 'ahorita' o 'en 20 minutos', NO mandes este campo (omítelo; no mandes texto vacío)." },
+        hora_recogida: { type: "string", description: "Solo canal 'recoger' y SIN programado_para: la hora a la que pasará el cliente (por ejemplo 'en 40 minutos'), en ISO 8601 con zona, calculada con la HORA LOCAL de la sucursal (no UTC). El servidor la valida (no pasada, de hoy, dentro del horario). Omítela si pasa 'en cuanto esté'." },
       },
       required: ["branch_slug", "items"],
     },
@@ -350,7 +353,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         llevar_terminal: { type: "boolean", description: "true si el cliente pide que lleven terminal (pago con tarjeta a domicilio)." },
         indicaciones_acceso: { type: "string", description: "Solo domicilio, una línea corta (máx. 200 caracteres): cómo llegar o avisar ('timbre del depto 6', 'avísenme al llegar'). No pongas aquí la ubicación: el pin ya se guarda solo." },
         telefono_alterno: { type: "string", description: "Segundo teléfono de contacto, 10 dígitos, si el cliente lo da." },
-        hora_recogida: { type: "string", description: "Solo canal 'recoger': hora a la que el cliente pasará, en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00)." },
+        hora_recogida: { type: "string", description: "Solo canal 'recoger': hora a la que el cliente pasará, en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00). Si el cliente dijo una hora o un plazo (\"en 40 minutos\", \"a las 2\") MÁNDELA igual que en cotizar_pedido; nunca vacía: omítala solo si pasa 'en cuanto esté'." },
         direccion_etiqueta: { type: "string", description: "Opcional: como llama el cliente a este domicilio (casa, oficina...). Solo si lo dijo." },
         referencias_acceso: { type: "string", description: "Opcional: referencias para llegar (porton, timbre, entre calles). Solo si las dio el cliente." },
         maps_url: { type: "string", description: "Opcional: link de Google Maps/Waze que el cliente mando por escrito (https). Nunca lo inventes." },
@@ -517,7 +520,22 @@ function toDoubleSalsas(raw: unknown): readonly DoubleSalsa[] | undefined {
 /** `undefined` si no vino; si vino, se valida y normaliza a ISO UTC (lanza `OrderValidationError`) para que la huella
  * de cotizar y la de crear comparen el mismo instante aunque el modelo cambie el offset. */
 function toProgramadoPara(raw: unknown): string | undefined {
-  return raw === undefined || raw === null ? undefined : parsearProgramadoPara(raw);
+  // El modelo manda "" cuando no hay hora programada: es "sin programar", no una hora invalida (QA-PM-R2-reglas-02).
+  if (raw === undefined || raw === null || (typeof raw === "string" && raw.trim() === "")) return undefined;
+  return parsearProgramadoPara(raw);
+}
+
+/** Hora de recogida normalizada al minuto en ISO UTC (para la huella del pedido); texto que no es fecha se compara tal cual. `undefined` si no vino. */
+function toHoraRecogida(raw: unknown): string | undefined {
+  const t = textoOpcional(raw)?.trim();
+  if (!t) return undefined;
+  const ms = Date.parse(t);
+  return Number.isNaN(ms) ? t.toLowerCase() : new Date(ms).toISOString().slice(0, 16);
+}
+
+/** Texto en blanco = ausente (el modelo manda "" en vez de omitir el campo). */
+function textoOpcional(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim() !== "" ? v : undefined;
 }
 
 const PROGRAMADOS_NO_DISPONIBLES = "Los pedidos programados todavía no están disponibles en este restaurante. Ofrece un pedido normal o pasa la conversación a una persona.";
@@ -590,21 +608,23 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     // (una organizacion con otro perfil conserva las 9 incluidas). El checkout web siempre conserva las 9.
     basicComplements: ctx.channel === "web" ? undefined : PM_BASIC_COMPLEMENTS,
     ubicacionEntrega: ctx.ubicacionEntrega ?? undefined,
-    efectivoCon: typeof input.efectivo_con === "number" ? input.efectivo_con : undefined,
+    // Los agentes (no el checkout web) rellenan los opcionales que no tienen con 0 o "" (efectivo_con 0, telefono_alterno ""): eso es "sin dato", no un dato invalido
+    // (despues de fusionar efectivo_con y telefono_alterno, 15 crear_pedido de la medida fallaban por ese relleno y el cliente se quedaba sin pedido).
+    efectivoCon: typeof input.efectivo_con === "number" && (ctx.channel === "web" || (input.efectivo_con > 0 && input.payment_method !== "tarjeta")) ? input.efectivo_con : undefined,
     llevarTerminal: input.llevar_terminal === true ? true : undefined,
     indicacionesAcceso: str(input.indicaciones_acceso),
-    telefonoAlterno: str(input.telefono_alterno),
+    telefonoAlterno: ctx.channel === "web" ? str(input.telefono_alterno) : textoOpcional(input.telefono_alterno)?.trim() || undefined,
     doubleSalsas: toDoubleSalsas(input.doble_salsas),
     canal: toCanal(input.canal),
     colonia: str(input.colonia_entrega),
     ...(ctx.sharedLocation && ctx.channel === "whatsapp" ? { ubicacion: { lat: ctx.sharedLocation.lat, lng: ctx.sharedLocation.lng } } : {}),
     propina: typeof input.propina === "number" ? input.propina : undefined,
-    horaRecogida: str(input.hora_recogida),
+    horaRecogida: textoOpcional(input.hora_recogida),
     // Cliente 360: datos opcionales del domicilio (solo alimentan la ficha; nunca cambian el total).
     addressLabel: str(input.direccion_etiqueta),
     accessNotes: str(input.referencias_acceso),
     mapsUrl: str(input.maps_url) ?? (input.usar_ubicacion_compartida === true && ctx.sharedLocation ? `https://www.google.com/maps?q=${ctx.sharedLocation.lat},${ctx.sharedLocation.lng}` : undefined),
-    programadoPara: str(input.programado_para),
+    programadoPara: textoOpcional(input.programado_para),
   };
   if (lenient) return base;
   // Campos que solo trae el canal de voz/checkout (correo, transcripcion, promo, idempotencia, nombre de sucursal).
@@ -659,6 +679,10 @@ async function writeFlow(
 
 const CONFLICT_MESSAGE = "La conversación se está procesando en otro lugar; vuelve a intentar en un momento.";
 
+/** Texto que acompana a una re-cotizacion identica de una cotizacion que el cliente ya vio (ver `runWithOrderFlow`). */
+const SIGUIENTE_PASO_COTIZACION_REPETIDA =
+  "Esta cotización es idéntica a la de un mensaje anterior. Si el último mensaje del cliente es un sí claro (o el botón de confirmar) a un resumen que usted ya le mostró completo, llame confirmar_resumen y enseguida crear_pedido con estos mismos datos, SIN repetir el resumen. Si todavía no le ha mostrado el resumen completo o el cliente cambió algo, atiéndalo normalmente.";
+
 /** Aplica la maquina de estados alrededor de cotizar/confirmar/crear. Base sin migrar => camino anterior. */
 async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolContext, flow: OrderFlowRef, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   const lenient = ctx.channel === "whatsapp";
@@ -691,17 +715,39 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       items: toRequestedItems(input.items, lenient),
       doubleSalsas: toDoubleSalsas(input.doble_salsas),
       programadoPara: toProgramadoPara(input.programado_para),
+      horaRecogida: toHoraRecogida(input.hora_recogida),
     });
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
       if (snap === null) return outcome; // base sin migrar: camino anterior
+      // QA-PM-R2-whatsapp-01 (P0): el modelo vuelve a cotizar el MISMO carrito en el turno del "si" (para "refrescar" el resumen). Reescribir
+      // `quotedTurn` con el turno actual hacia que confirmar_resumen rechazara `confirmacion_mismo_turno` y ningun pedido cerraba (0/36).
+      // Una re-cotizacion identica (mismos renglones, mismos precios, mismo total) y todavia vigente CONSERVA la cotizacion y su turno: el
+      // cliente ya vio ese resumen. Si algo cambio (carrito, precio, total, hora), si es una cotizacion nueva y el cliente debe volver a aceptar.
+      const previo = snap.context;
+      if (
+        previo &&
+        (snap.state === "cotizado" || snap.state === "confirmado") &&
+        previo.quoteHash === quoteHash &&
+        previo.quotedPrices === quotedPrices &&
+        previo.quotedTotal === quotedQuote.total &&
+        flowNow(flow) - previo.quotedAtMs <= QUOTE_TTL_MS
+      ) {
+        // El historial de WhatsApp no trae los resultados de herramientas: en el turno del "si" el modelo busca y cotiza de nuevo y despues repite el resumen
+        // en vez de cerrar (R2W14: 4 turnos de resumen sin crear). Si esta cotizacion YA se mostro en un turno anterior, se le dice el siguiente paso.
+        const yaMostrada = previo.quotedTurn !== null && flow.turn !== null && previo.quotedTurn !== flow.turn;
+        const aviso = yaMostrada ? { ya_mostrada_al_cliente: true, siguiente_paso: SIGUIENTE_PASO_COTIZACION_REPETIDA } : {};
+        return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash, ...aviso }, quoteHash };
+      }
       const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", {
         quoteHash,
         quotedAtMs: flowNow(flow),
         quotedTurn: flow.turn,
         quotedPrices,
+        ...(toHoraRecogida(input.hora_recogida) ? { horaRecogida: toHoraRecogida(input.hora_recogida) } : {}),
         quotedTotal: quotedQuote.total,
         quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
+        ...(snap.context?.sessionTotal ? { sessionTotal: snap.context.sessionTotal, sessionPesoKg: snap.context.sessionPesoKg ?? 0, sessionPedidos: snap.context.sessionPedidos ?? 0, ...(snap.context.sessionUltimoPedidoId ? { sessionUltimoPedidoId: snap.context.sessionUltimoPedidoId } : {}) } : {}),
       });
       if (res === "written") return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash }, quoteHash };
       if (res === "unavailable") return outcome;
@@ -713,7 +759,10 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
       if (snap === null) return { result: { confirmado: true, aviso: "confirmación no registrada por el servidor todavía" }, orderId: null, propertyId: null };
-      const cited = typeof input.quote_hash === "string" ? input.quote_hash : undefined;
+      // El historial de WhatsApp no trae los resultados de las herramientas: el modelo no recuerda el hash y manda relleno ("N/A", "", "pendiente"), que rechazaba la confirmacion
+      // ("no es el de la ultima cotizacion") y terminaba en falla_sistema con un si claro (R2W11, R2W21). Solo se compara un hash con forma de hash; el pedido que se crea sigue
+      // atado a la cotizacion por su huella (assertCanCreate) y la confirmacion exige un turno distinto al de la cotizacion.
+      const cited = typeof input.quote_hash === "string" && /^[0-9a-f]{32}$/i.test(input.quote_hash.trim()) ? input.quote_hash.trim().toLowerCase() : undefined;
       const current = assertCanConfirm(snap, { now: flowNow(flow), turn: flow.turn, quoteHashCited: cited });
       if (snap.state !== "cotizado") {
         return { result: { confirmado: true, quote_hash: current.quoteHash }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
@@ -727,18 +776,24 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
 
   // crear_pedido: reclamo atomico (confirmado -> creando) ANTES de crear, para que dos llamadas
   // concurrentes no creen dos pedidos.
-  const fingerprint = fingerprintOrder({
-    branchSlug: String(input.branch_slug ?? ""),
-    canal: canalOf(input.canal),
-    adultConfirmed: input.adult_confirmed === true,
-    items: toRequestedItems(input.items, lenient),
-    doubleSalsas: toDoubleSalsas(input.doble_salsas),
-    programadoPara: toProgramadoPara(input.programado_para),
-  });
+  const huellaConHora = (horaRecogida: string | undefined): string =>
+    fingerprintOrder({
+      branchSlug: String(input.branch_slug ?? ""),
+      canal: canalOf(input.canal),
+      adultConfirmed: input.adult_confirmed === true,
+      items: toRequestedItems(input.items, lenient),
+      doubleSalsas: toDoubleSalsas(input.doble_salsas),
+      programadoPara: toProgramadoPara(input.programado_para),
+      horaRecogida,
+    });
   let claimed: { version: number; context: OrderFlowContext } | null = null;
   for (let attempt = 0; attempt < 3 && !claimed; attempt++) {
     const snap = await readFlow(repo, ctx, flow);
     if (snap === null) return dispatchTool(repo, ctx, name, input); // base sin migrar: camino anterior
+    // La hora de recogida solo cuenta si la cotizacion la llevaba (una hora que el modelo agrega al crear la valida el servidor, pero no cambia lo que el cliente vio);
+    // si crear la omite se entiende la cotizada. Una hora DISTINTA a la cotizada obliga a re-cotizar.
+    const horaCotizada = snap.context?.horaRecogida;
+    const fingerprint = huellaConHora(horaCotizada ? (toHoraRecogida(input.hora_recogida) ?? horaCotizada) : undefined);
     // Voz: un reintento del MISMO pedido ya creado (el worker corto la espera y el servidor si lo registro) devuelve el pedido
     // existente con su id, para que la llamada cuente el objetivo y el agente no le diga al cliente que fallo.
     if (ctx.channel === "voz" && snap.state === "creado" && snap.context?.orderId && snap.context.quoteHash === fingerprint) {
@@ -754,8 +809,22 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   if (!claimed) throw new OrderValidationError(CONFLICT_MESSAGE);
 
   try {
-    const outcome = await dispatchTool(repo, ctx, name, input, claimed.context.quotedPrices);
-    await writeFlow(repo, ctx, flow, claimed.version, "creado", { ...claimed.context, orderId: outcome.orderId ?? undefined });
+    let outcome = await dispatchTool(repo, ctx, name, input, claimed.context.quotedPrices, { total: claimed.context.sessionTotal ?? 0, pesoKg: claimed.context.sessionPesoKg ?? 0, pedidos: claimed.context.sessionPedidos ?? 0 });
+    // Un pedido IDENTICO al ultimo de esta sesion (misma ventana de deduplicacion de 5 min) devuelve ese mismo pedido: el agente debe saber que NO se creo otro (QA-PM-R2-reglas-15).
+    const repetido = outcome.orderId !== null && outcome.orderId === claimed.context.sessionUltimoPedidoId;
+    if (repetido) {
+      outcome = {
+        ...outcome,
+        result: { ...(outcome.result as object), ya_registrado: true, aviso: "Este pedido idéntico ya estaba registrado hace unos minutos: NO se creó otro (en cocina hay uno solo). Dígaselo al cliente; si quiere dos, pase con una persona (escalar_a_humano)." },
+        yaRegistrado: true,
+      };
+    }
+    // Un pedido realmente creado suma a lo acumulado de la sesion (un pedido grande retenido o simulado no: no tiene orderId).
+    const creado = outcome.orderId ? (outcome.raw as { total?: unknown; items?: readonly { name: string; quantity: number }[] } | undefined) : undefined;
+    const acumulado = creado
+      ? { sessionTotal: (claimed.context.sessionTotal ?? 0) + (repetido ? 0 : typeof creado.total === "number" ? creado.total : 0), sessionPesoKg: (claimed.context.sessionPesoKg ?? 0) + (repetido ? 0 : pesoTotalKg(creado.items ?? [])), sessionPedidos: (claimed.context.sessionPedidos ?? 0) + (repetido ? 0 : 1), sessionUltimoPedidoId: outcome.orderId ?? undefined }
+      : {};
+    await writeFlow(repo, ctx, flow, claimed.version, "creado", { ...claimed.context, ...acumulado, orderId: outcome.orderId ?? undefined });
     return outcome;
   } catch (err) {
     // Error de negocio (horario, zona, minimo...): vuelve a "confirmado" para poder corregir/reintentar.
@@ -811,6 +880,8 @@ async function dispatchTool(
   input: Record<string, unknown>,
   /** Huella de precios que el cliente confirmo (solo crear_pedido con maquina de estados activa). */
   expectedPrices?: string,
+  /** Total y kilos de los pedidos ya creados en esta sesion (solo crear_pedido con maquina de estados activa): la guardia de pedido grande los suma. */
+  sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number },
 ): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
@@ -866,13 +937,23 @@ async function dispatchTool(
       const policy = await repo.findBranchPolicy(branch.propertyId);
       let abierto: boolean | null = null;
       let cierraA: string | null = null;
+      const zonaCruda = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
+      const ahora = new Date();
       if (policy.horario && policy.horario.length > 0) {
-        const zona = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
-        const estado = estaAbiertoAhora(policy.horario, new Date(), zona);
+        const estado = estaAbiertoAhora(policy.horario, ahora, zonaCruda);
         abierto = estado.abierto;
         cierraA = estado.cierraA;
       }
+      // Reloj LOCAL de la sucursal: el modelo (sobre todo el de voz, que no trae la hora en su prompt) calculaba "en 40 minutos" con la hora UTC y guardaba
+      // la recogida 6 h tarde, o "hoy" dos dias atras (QA-PM-R2-voz-03 / reglas-04). Con esto calcula sobre la hora de la sucursal.
+      const zona = resolverZonaHorariaNegocio(zonaCruda);
+      const parte = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("es-MX", { timeZone: zona, hourCycle: "h23", ...opts }).format(ahora);
       const result = {
+        hora_local: parte({ hour: "2-digit", minute: "2-digit" }),
+        fecha_local: fechaLocal(ahora, zona),
+        dia_semana: parte({ weekday: "long" }),
+        zona_horaria: zona,
+        utc_offset: parte({ timeZoneName: "longOffset" }).replace(/^.*GMT/, "GMT"),
         branch_slug: branch.slug,
         branch_name: branch.name,
         direccion: branch.address,
@@ -886,8 +967,11 @@ async function dispatchTool(
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "buscar_sucursal_cercana": {
-      let lat = typeof input.lat === "number" ? input.lat : undefined;
-      let lng = typeof input.lng === "number" ? input.lng : undefined;
+      // El modelo manda relleno cuando solo tiene la colonia (lat 0, lng 0, max_km 0): (0,0) no es un pin (caia a 9,967 km y la zona salia "fuera de zona", R2W36) y un
+      // max_km no positivo no es un radio (34 errores por medida). Se ignoran como si no vinieran.
+      const coordenadasValidas = typeof input.lat === "number" && typeof input.lng === "number" && Number.isFinite(input.lat) && Number.isFinite(input.lng) && !(input.lat === 0 && input.lng === 0);
+      let lat = coordenadasValidas ? (input.lat as number) : undefined;
+      let lng = coordenadasValidas ? (input.lng as number) : undefined;
       // Ubicacion compartida por WhatsApp: se usa solo si el modelo no mando coordenadas ni una colonia
       // explicita (una colonia dicha por el cliente despues de compartir manda).
       const coloniaDicha = typeof input.colonia === "string" && input.colonia.trim() !== "";
@@ -895,11 +979,14 @@ async function dispatchTool(
         lat = ctx.sharedLocation.lat;
         lng = ctx.sharedLocation.lng;
       }
+      // El tope duro de 20 km es del perfil `taqueria_pm` (QA-PM-R2-whatsapp-08); otro perfil, o una base sin la config del agente, no lo hereda.
+      const perfilAgente = (await repo.findWhatsAppAgentConfig(organizationId, null))?.perfil ?? "generico";
       const match = await assignBranch(repo, {
         organizationId,
+        radioMaximoKm: perfilAgente === "taqueria_pm" ? RADIO_MAXIMO_REPARTO_KM : null,
         colonia: typeof input.colonia === "string" ? input.colonia : undefined,
         ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
-        ...(typeof input.max_km === "number" ? { maxKm: input.max_km } : {}),
+        ...(typeof input.max_km === "number" && Number.isFinite(input.max_km) && input.max_km > 0 ? { maxKm: input.max_km } : {}),
       });
       const result =
         match.estado === "asignada"
@@ -943,6 +1030,7 @@ async function dispatchTool(
         paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
         doubleSalsas: toDoubleSalsas(input.doble_salsas),
         programadoPara: toProgramadoPara(input.programado_para),
+        horaRecogida: textoOpcional(input.hora_recogida),
       }).catch((err: unknown) => {
         throw err instanceof RestaurantesConfigUnavailableError ? new OrderValidationError(PROGRAMADOS_NO_DISPONIBLES) : err;
       });
@@ -986,7 +1074,7 @@ async function dispatchTool(
             }
             // Pedido grande (decision de PM, 2-oct): lo hace cumplir el SERVIDOR aunque el modelo olvide escalar.
             if (ctx.channel === "web") return;
-            const grande = await evaluarPedidoGrandeDelPedido(repo, prepared, idsEnMemoria);
+            const grande = await evaluarPedidoGrandeDelPedido(repo, prepared, idsEnMemoria, sesionPrevia);
             if (!grande) return;
             if (ctx.pedidoGrande && (await ctx.pedidoGrande.disponible(prepared.payload.organizationId, prepared.branch.propertyId))) grandeAprobable.error = grande;
             else throw grande;
@@ -1049,7 +1137,7 @@ async function dispatchTool(
       await registerCallbackRequest(repo, {
         organizationId,
         propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
-        customerName: String(input.customer_name ?? "Cliente"),
+        customerName: textoOpcional(input.customer_name)?.trim() || "Cliente", // "" (el modelo no sabe el nombre) -> "Cliente": antes lanzaba y el cliente leia "Error interno"
         customerPhone: ctx.phone,
         reason,
         sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:${reason ?? ""}`.slice(0, 255) : null,
@@ -1183,18 +1271,29 @@ async function retenerPedidoDeReincidente(repo: RestaurantesRepository, ctx: Age
 
 /** Devuelve el `PedidoGrandeRetenidoError` (sin lanzarlo) si el pedido ya cotizado supera el umbral de pedido grande de PM, o `null`. Solo organizaciones con
  * perfil `taqueria_pm` y con el motivo `pedido_grande` encendido; sin configuracion (base sin migrar) no aplica. El umbral se evalua sobre lo ACUMULADO por el
- * mismo numero en las ultimas horas (`acumuladoReciente`): partir un pedido grande en varios chicos no lo evade, y los pedidos de esa ventana no cuentan como
- * historial. Sin la memoria del cliente (base sin migrar) se evalua el pedido solo, como antes. */
-async function evaluarPedidoGrandeDelPedido(repo: RestaurantesRepository, prepared: PreparedOrder, idsEnMemoria?: Set<string>): Promise<PedidoGrandeRetenidoError | null> {
+ * mismo numero: (a) los pedidos de las ultimas horas en la memoria del cliente (`acumuladoReciente`) y (b) los que esta misma conversacion/llamada ya creo
+ * (`sesionPrevia`). Partir un pedido grande en varios chicos no lo evade. Los pedidos de la sesion tambien estan en la memoria, asi que NO se suman dos
+ * veces: se toma el mayor de los dos acumulados. Sin la memoria del cliente (base sin migrar) manda la sesion; sin ninguno se evalua el pedido solo. */
+async function evaluarPedidoGrandeDelPedido(
+  repo: RestaurantesRepository,
+  prepared: PreparedOrder,
+  idsEnMemoria?: Set<string>,
+  sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number },
+): Promise<PedidoGrandeRetenidoError | null> {
   const config = await repo.findWhatsAppAgentConfig(prepared.payload.organizationId, prepared.branch.propertyId);
   if (!config || config.perfil !== "taqueria_pm" || (config.escalationReasonsOff ?? []).includes("pedido_grande")) return null;
   const telefono = normalizePhone(prepared.payload.customerPhone);
   const pesoKg = pesoTotalKg(prepared.orderItems);
   const cliente = await repo.findCustomerByPhone(prepared.payload.organizationId, telefono);
   const memoria = await cargarMemoria(repo, prepared.payload.organizationId, telefono);
-  const previos = memoria ? acumuladoReciente(memoria.orders, Date.now()) : { total: 0, pesoKg: 0, cuantos: 0 };
+  const deMemoria = memoria ? acumuladoReciente(memoria.orders, Date.now()) : { total: 0, pesoKg: 0, cuantos: 0 };
   // Ids de los pedidos que ya sumaron al acumulado: si `create_order_idempotent` devuelve uno de ellos, fue una deduplicacion (no un pedido nuevo).
   if (memoria && idsEnMemoria) for (const o of memoria.orders) idsEnMemoria.add(o.id);
+  const previos = {
+    total: Math.max(deMemoria.total, sesionPrevia?.total ?? 0),
+    pesoKg: Math.max(deMemoria.pesoKg, sesionPrevia?.pesoKg ?? 0),
+    cuantos: Math.max(deMemoria.cuantos, sesionPrevia?.pedidos ?? 0),
+  };
   const pedidosPrevios = cliente?.orderCount ?? 0;
   const total = Math.round((prepared.total + previos.total) * 100) / 100;
   const pesoAcumulado = pesoKg + previos.pesoKg;
@@ -1202,18 +1301,28 @@ async function evaluarPedidoGrandeDelPedido(repo: RestaurantesRepository, prepar
     total,
     pesoKg: pesoAcumulado,
     pagaEfectivo: prepared.payload.paymentMethod === "efectivo",
-    // Con la memoria: "sin historial" = todo lo que el numero ha pedido cae dentro de la ventana (no hay pedidos anteriores a ella).
+    // Con la memoria: "sin historial" = todo lo que el numero ha pedido cae dentro de la ventana (no hay pedidos anteriores a ella). Los pedidos creados
+    // en ESTA sesion tampoco son historial (R90: un pedido de $126 de hace segundos no apaga la regla de $2,500 en efectivo).
     // Limitacion conocida: `orderCount` puede incluir cancelados que `previos.cuantos` no cuenta.
-    sinHistorial: memoria ? pedidosPrevios <= previos.cuantos : !cliente || cliente.orderCount === 0,
+    sinHistorial: memoria ? pedidosPrevios <= previos.cuantos : !cliente || cliente.orderCount - (sesionPrevia?.pedidos ?? 0) <= 0,
   });
   if (!motivo) return null;
-  const resumen = resumenPedidoGrande({ motivo, total, pesoKg: pesoAcumulado, items: prepared.orderItems, canal: prepared.payload.canal, paymentMethod: prepared.payload.paymentMethod, pedidosPrevios: previos.cuantos });
+  const resumen = resumenPedidoGrande({
+    motivo,
+    total,
+    totalDeEstePedido: prepared.total,
+    pesoKg: pesoAcumulado,
+    items: prepared.orderItems,
+    canal: prepared.payload.canal,
+    paymentMethod: prepared.payload.paymentMethod,
+    pedidosPrevios: previos.cuantos,
+  });
   return new PedidoGrandeRetenidoError(motivo, total, pesoAcumulado, resumen);
 }
 
 /** Lanza el error de pedido grande si aplica (preview y camino de aviso). */
-async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: PreparedOrder): Promise<void> {
-  const grande = await evaluarPedidoGrandeDelPedido(repo, prepared);
+async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: PreparedOrder, sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number }): Promise<void> {
+  const grande = await evaluarPedidoGrandeDelPedido(repo, prepared, undefined, sesionPrevia);
   if (grande) throw grande;
 }
 

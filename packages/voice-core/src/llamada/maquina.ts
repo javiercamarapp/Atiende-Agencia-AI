@@ -87,7 +87,19 @@ export type EventoLlamada =
   | { readonly tipo: "ruido" }
   | { readonly tipo: "no_entendido" }
   | { readonly tipo: "dtmf"; readonly digito: string }
-  | { readonly tipo: "tool_resultado"; readonly nombre: string; readonly ok: boolean; readonly entidadId?: string | null; readonly timeout?: boolean }
+  | {
+      readonly tipo: "tool_resultado";
+      readonly nombre: string;
+      readonly ok: boolean;
+      readonly entidadId?: string | null;
+      readonly timeout?: boolean;
+      /** La herramienta objetivo salio bien pero NO creo la entidad: el servidor retuvo el pedido para que una persona lo confirme (pedido grande). La llamada termina `escalado`. */
+      readonly retenido?: boolean;
+      /** El timeout de una herramienta de escritura dejo el resultado INCIERTO (el servidor pudo haberla registrado). */
+      readonly incierto?: boolean;
+    }
+  /** El agente ya se despidio (el controlador lo detecta en su texto): si el objetivo esta logrado, la llamada cuelga al terminar ese turno (checklist C02 / X51). */
+  | { readonly tipo: "despedida_dicha" }
   /** Costo adicional estimado (micro-USD) desde el ultimo evento de costo. */
   | { readonly tipo: "costo"; readonly microUsd: number }
   /** Segundos transcurridos desde que se conecto la llamada. */
@@ -127,6 +139,8 @@ export class CallStateMachine<R extends string = string> {
   private saludoDicho = false;
   /** El agente ya paso a la persona por su cuenta: la llamada termina cuando acabe de despedirse. */
   private cerrarAlTerminar = false;
+  /** Ya se dejo el aviso de un resultado incierto de la herramienta objetivo (una sola vez). */
+  private avisoIncierto = false;
   private resultadoFinal: R | VozResultadoBase | null = null;
 
   constructor(
@@ -191,6 +205,9 @@ export class CallStateMachine<R extends string = string> {
         return this.dtmf(ev.digito);
       case "tool_resultado":
         return this.herramienta(ev);
+      case "despedida_dicha":
+        if (this.objetivoLogrado) this.cerrarAlTerminar = true;
+        return [];
       case "costo":
         this.costo += Math.max(0, ev.microUsd);
         return this.costo >= this.limites.costoMaxMicroUsd ? this.cortar("limite_costo") : [];
@@ -260,10 +277,19 @@ export class CallStateMachine<R extends string = string> {
     if (ev.timeout) {
       this.timeouts += 1;
       if (this.timeouts >= this.limites.timeoutsMax) return this.aPersona("falla_sistema", "proveedor_caido");
+      // QA-PM-R2-voz-04: el timeout de la herramienta objetivo deja un resultado INCIERTO (el pedido pudo quedar en cocina). Se promete "una persona le confirma",
+      // asi que esa persona SI debe enterarse: aviso inmediato (sin colgar) para que verifique, y la llamada termina `escalado`, no `abandonado`.
+      if (ev.incierto && this.esObjetivo(ev.nombre) && !this.objetivoLogrado && !this.avisoIncierto) {
+        this.avisoIncierto = true;
+        this.escalado = true;
+        return [{ tipo: "decir", mensaje: "tool_timeout" }, { tipo: "escalar", motivo: "falla_sistema" }];
+      }
       return [{ tipo: "decir", mensaje: "tool_timeout" }];
     }
     this.timeouts = 0;
     if (ev.ok && ev.entidadId && this.esObjetivo(ev.nombre)) this.objetivoLogrado = true;
+    // Pedido grande retenido por el servidor: el aviso ya existe; la llamada es `escalado` en los KPI (antes quedaba `abandonado`).
+    if (ev.ok && !ev.entidadId && ev.retenido && this.esObjetivo(ev.nombre)) this.escalado = true;
     if (ev.ok && ev.nombre === this.reglas.herramientaEscalar) {
       this.escalado = true;
       this.cerrarAlTerminar = !this.objetivoLogrado;

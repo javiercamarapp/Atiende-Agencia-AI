@@ -55,6 +55,8 @@ export async function barrerCierresSucursal(input: {
       noDisponible = true;
       break;
     }
+    // El dia de negocio todavia no termina (turno que cruza la medianoche): se asegura en la siguiente corrida, sin error.
+    if (g.estado === "periodo_abierto") continue;
     if (g.estado === "sin_actividad") sinActividad++;
     else if (g.estado === "existente") existentes++;
     else {

@@ -1,7 +1,8 @@
 // Punto de entrada del worker (proceso de larga vida): `node --experimental-strip-types src/main.ts`.
 // Lee el entorno, arma la telefonia LiveKit y la escalera de voz de la plataforma y escucha llamadas. Ver README.md.
 import { crearEscaleraPlataforma } from "@atiende/voice-core";
-import { HERRAMIENTAS_VOZ_SOLO_LECTURA, LIMITES_POR_DEFECTO } from "@atiende/domain-restaurantes";
+import { OPCIONES_ESCALERA_PM } from "./llamada.ts";
+import { HERRAMIENTAS_VOZ_SOLO_LECTURA, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
 import type { SumideroLog } from "@atiende/domain-restaurantes";
 import { ClienteApi } from "./api-cliente.ts";
 import { cargarConfig } from "./config.ts";
@@ -38,8 +39,8 @@ async function main(): Promise<void> {
         pregrabados: pregrabados.audios,
         api,
         log: sumidero,
-        crearEscalera: () => crearEscaleraPlataforma({ geminiApiKey: config.geminiApiKey, openrouterApiKey: config.openrouterApiKey, llm, herramientasEnParalelo: HERRAMIENTAS_VOZ_SOLO_LECTURA, ...(Object.keys(config.vad).length > 0 ? { vad: config.vad } : {}), ...(vertex ? { vertex } : {}) }),
-        ...(config.costoMaxLlamadaMicroUsd !== null ? { limites: { ...LIMITES_POR_DEFECTO, costoMaxMicroUsd: config.costoMaxLlamadaMicroUsd } } : {}),
+        crearEscalera: () => crearEscaleraPlataforma({ geminiApiKey: config.geminiApiKey, openrouterApiKey: config.openrouterApiKey, llm, herramientasEnParalelo: HERRAMIENTAS_VOZ_SOLO_LECTURA, ...(Object.keys(config.vad).length > 0 ? { vad: config.vad } : {}), ...(vertex ? { vertex } : {}) }, OPCIONES_ESCALERA_PM),
+        ...(config.costoMaxLlamadaMicroUsd !== null ? { limites: { ...LIMITES_VOZ_PM, costoMaxMicroUsd: config.costoMaxLlamadaMicroUsd } } : {}),
       },
     });
   } else {

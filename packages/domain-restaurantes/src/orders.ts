@@ -14,10 +14,10 @@ import { cerrarCicloDelCliente } from "./cliente-360/memoria.ts";
 import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice, MAX_PIEZAS_POR_RENGLON, mensajeCantidadInvalida } from "./order-quote.ts";
 import { exigirPinSiPmSinZonas } from "./pin-reparto.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
-import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion } from "./pedidos-programados.ts";
+import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion, PROGRAMACION_MAXIMA_DIAS } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
 import { applyPromotionToOrder, normalizePromotionCode, selectAutomaticPromotion } from "./promotions.ts";
-import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
+import { extraerPackSize, matchesProductSearch, ordenarPorRelevancia, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
 
@@ -44,8 +44,22 @@ function toProductoEncontrado(product: { id: string; name: string; description: 
     packSize: extraerPackSize(product.name, product.description),
     requiresAdultConfirmation: requiresAdultConfirmation(product.name, product.categoryName),
     requiresTortilla: requiresTortillaChoice(product.name, product.description),
+    categoryName: product.categoryName,
     ...(product.noDomicilio === true ? { noDomicilio: true } : {}),
   };
+}
+
+/** Categorias que NO traen las 9 salsas incluidas: un pedido solo de ellas no tiene salsa que duplicar (QA-PM-R2-reglas-14: 2 Coca-Cola con doble salsa
+ * cobraban un Extra Salsa de $19). */
+const CATEGORIAS_SIN_SALSA = /^(?:bebidas?|aguas frescas|refrescos|cervezas|licores y cocktails|postres|guarniciones extra)$/i;
+
+/** La doble porcion de salsa exige al menos un platillo que traiga salsas incluidas. */
+export function assertDobleSalsaAplica(products: readonly ProductoEncontrado[], orderedProductIds: readonly string[], doubleSalsas: readonly unknown[] | undefined): void {
+  if (!doubleSalsas || doubleSalsas.length === 0) return;
+  const ordenados = orderedProductIds.map((id) => products.find((p) => p.id === id)).filter((p): p is ProductoEncontrado => p !== undefined);
+  if (ordenados.length > 0 && ordenados.every((p) => p.categoryName !== null && p.categoryName !== undefined && CATEGORIAS_SIN_SALSA.test(p.categoryName))) {
+    throw new OrderValidationError("La doble porción de salsa solo aplica a platillos que ya traen salsas incluidas; este pedido es solo de bebidas o postres. Quite la doble salsa y vuelva a cotizar.");
+  }
 }
 
 /** Búsqueda real de productos disponibles en una sucursal — port literal de
@@ -62,7 +76,9 @@ export async function searchProducts(repo: RestaurantesRepository, args: { reado
     const sinPeso = tokens.filter((t) => !t.startsWith("peso:"));
     if (sinPeso.length > 0) encontrados = buscar(sinPeso);
   }
-  return encontrados.slice(0, 8).map(toProductoEncontrado);
+  // "heineken cero": el menu escribe "0.0".
+  if (encontrados.length === 0 && tokens.includes("cero")) encontrados = buscar(tokens.map((t) => (t === "cero" ? "0.0" : t)));
+  return ordenarPorRelevancia(tokens, encontrados, args.query).slice(0, 8).map(toProductoEncontrado);
 }
 
 /**
@@ -100,6 +116,14 @@ interface ValidatedCreateOrderInput extends CreateOrderInput {
 
 function invalidOptionalString(value: unknown, maxLength: number): boolean {
   return value !== undefined && value !== null && (typeof value !== "string" || value.length > maxLength);
+}
+
+/** Forma de la hora de recogida (ISO con zona). El reloj, el horario y el dia los valida `aplicarReglasDeSucursal`. */
+export function validarTextoHoraRecogida(valor: unknown): void {
+  if (typeof valor !== "string" || valor.length > 40 || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(valor) || Number.isNaN(Date.parse(valor))) {
+    throw new OrderValidationError("La hora de recogida debe ser una fecha y hora ISO 8601 con zona horaria.");
+  }
+  if (!/(Z|[+-]\d{2}:?\d{2})$/.test(valor)) throw new OrderValidationError("La hora de recogida debe incluir la zona horaria (por ejemplo -06:00).");
 }
 
 /** Port literal de validateCreateOrderPayload — contrato único para pedidos reales
@@ -153,10 +177,7 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
   if (telefonoAlterno === null) throw new OrderValidationError("El teléfono alterno debe tener exactamente 10 dígitos.");
   if (raw.horaRecogida !== undefined) {
     if (canal !== "recoger") throw new OrderValidationError("La hora de recogida solo aplica a pedidos para recoger.");
-    if (typeof raw.horaRecogida !== "string" || raw.horaRecogida.length > 40 || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw.horaRecogida) || Number.isNaN(Date.parse(raw.horaRecogida))) {
-      throw new OrderValidationError("La hora de recogida debe ser una fecha y hora ISO 8601 con zona horaria.");
-    }
-    if (!/(Z|[+-]\d{2}:?\d{2})$/.test(raw.horaRecogida)) throw new OrderValidationError("La hora de recogida debe incluir la zona horaria (por ejemplo -06:00).");
+    validarTextoHoraRecogida(raw.horaRecogida);
   }
   // R-11: hora programada (ISO con zona, normalizada a UTC). La ventana y el horario se validan al cotizar.
   const programadoPara = raw.programadoPara === undefined ? undefined : parsearProgramadoPara(raw.programadoPara);
@@ -241,6 +262,22 @@ export interface PreparedOrder {
   readonly discount: number;
 }
 
+/** Tolerancia (minutos) para una hora de recogida "de ahora mismo": el cliente dice "paso en 5 minutos" y el modelo la redondea hacia atras. */
+const TOLERANCIA_HORA_RECOGIDA_PASADA_MIN = 10;
+
+/** Rechaza (con un mensaje que el agente puede leer y corregir) una hora de recogida ya pasada o mas alla de la ventana de programacion. */
+export function validarHoraRecogida(horaRecogida: string, ahora: Date): void {
+  const minutos = (Date.parse(horaRecogida) - ahora.getTime()) / 60_000;
+  if (minutos < -TOLERANCIA_HORA_RECOGIDA_PASADA_MIN) {
+    throw new OrderValidationError(
+      "La hora de recogida ya pasó. Confirme con el cliente a qué hora de hoy pasará y mándela con la zona horaria de la sucursal (por ejemplo -06:00); si pasa de inmediato, omita hora_recogida.",
+    );
+  }
+  if (minutos > PROGRAMACION_MAXIMA_DIAS * 24 * 60) {
+    throw new OrderValidationError(`La hora de recogida debe caer dentro de los próximos ${PROGRAMACION_MAXIMA_DIAS} días. Confirme la fecha con el cliente.`);
+  }
+}
+
 /** Cotiza un pedido completo contra el catálogo real, SIN persistir — usado también
  * por el modo de vista previa. Precio y disponibilidad siempre vienen de
  * branch_products, la fuente real por sucursal. */
@@ -261,7 +298,14 @@ export async function prepareCreateOrder(
   // R-11: pedido programado -- el horario y las promociones se evaluan en la hora ELEGIDA (no en este instante).
   const programado = payload.programadoPara ? new Date(payload.programadoPara) : null;
   if (programado) validarVentanaProgramacion(payload.programadoPara!, new Date());
+  // QA R2 caos-04: la hora de recogida que elige el cliente no puede estar en el pasado ni fuera de la ventana de programacion
+  // (un modelo que manda la fecha de ayer, o "Z" en lugar de -06:00, la corre horas atras y el pedido nacia ya vencido).
+  if (payload.horaRecogida) validarHoraRecogida(payload.horaRecogida, options.asOf ?? new Date());
   const instanteDelPedido = programado ?? options.asOf ?? new Date();
+  // Una hora de recogida y una hora programada distintas en el mismo pedido se contradicen (la comanda decia 14:00 y 20:00 a la vez).
+  if (programado && payload.horaRecogida && Math.abs(Date.parse(payload.horaRecogida) - programado.getTime()) > 60_000) {
+    throw new OrderValidationError("La hora de recogida y la hora programada son distintas. Use una sola: para recoger más tarde use programado_para con esa hora y no mande hora_recogida.");
+  }
 
   const resolved = await resolveBranchOrderItems(
     repo,
@@ -317,6 +361,7 @@ export async function prepareCreateOrder(
 
   // Doble porcion de salsas: extra COBRADO (producto "Extra salsa" del catalogo, precio de catalogo).
   const doubleSalsaLine = buildDoubleSalsaLine(resolved.products, payload.doubleSalsas ?? []);
+  assertDobleSalsaAplica(resolved.products, resolved.items.map((i) => i.productId), payload.doubleSalsas);
   if (doubleSalsaLine) {
     total = Math.round((total + doubleSalsaLine.lineTotal) * 100) / 100;
     orderItems.push({ id: doubleSalsaLine.productId, name: doubleSalsaLine.name, price: doubleSalsaLine.price, quantity: doubleSalsaLine.quantity });
@@ -338,6 +383,7 @@ export async function prepareCreateOrder(
       : options.asOf
         ? { now: options.asOf }
         : {}),
+    ...(payload.horaRecogida && !programado ? { horaRecogida: payload.horaRecogida } : {}),
   });
   // CR12: PM sin zonas cargadas no acepta "cualquier colonia" a domicilio: exige el pin (asigna por distancia) o una persona.
   await exigirPinSiPmSinZonas(repo, { branch, canal: normalizarCanal(payload.canal), source: payload.source, ubicacion: payload.ubicacion });
@@ -620,6 +666,8 @@ export async function quoteOrder(
     /** R-11: hora programada (ISO con zona). Se valida con las MISMAS reglas que `createOrder`: ventana
      * (anticipacion minima/maxima), horario de la sucursal en esa hora y zona horaria de la sucursal. */
     readonly programadoPara?: string;
+    /** Solo canal "recoger": hora a la que pasara el cliente (ISO con zona). Se valida con el reloj del servidor, igual que al crear. */
+    readonly horaRecogida?: string;
   },
 ): Promise<OrderQuote & QuotePolicyInfo & QuotePromotionInfo> {
   const branch = await repo.findBranch(args.organizationId, { slug: args.branchSlug });
@@ -627,6 +675,10 @@ export async function quoteOrder(
     throw new OrderValidationError(`Sucursal '${args.branchSlug}' no encontrada o inactiva`);
   }
   const canal = normalizarCanal(args.canal);
+  if (args.horaRecogida !== undefined) {
+    if (canal !== "recoger") throw new OrderValidationError("La hora de recogida solo aplica a pedidos para recoger.");
+    validarTextoHoraRecogida(args.horaRecogida);
+  }
   // R-11: cotizar un pedido programado aplica la misma ventana y el mismo horario que crearlo, para que el
   // cliente no confirme un resumen que despues se rechazaria. Contra una base sin la migracion 034 se rechaza.
   const programadoPara = args.programadoPara === undefined ? undefined : parsearProgramadoPara(args.programadoPara);
@@ -637,7 +689,12 @@ export async function quoteOrder(
   const instante = programadoPara ? new Date(programadoPara) : null;
   const resolved = await resolveBranchOrderItems(repo, branch.propertyId, args.items);
   const baseQuote = buildOrderQuoteFromProducts(resolved.items, resolved.products, { adultConfirmed: args.adultConfirmed, canal });
+  // Misma validacion que al crear: una doble salsa fuera del catalogo (R07) se cotizaba y despues crear_pedido la rechazaba.
+  if (args.doubleSalsas !== undefined && (!Array.isArray(args.doubleSalsas) || args.doubleSalsas.length > DEFAULT_COMPLEMENTS.length || args.doubleSalsas.some((salsa) => !(DEFAULT_COMPLEMENTS as readonly string[]).includes(salsa)))) {
+    throw new OrderValidationError("La doble porción solo aplica a las salsas incluidas del menú.");
+  }
   const doubleSalsaLine = buildDoubleSalsaLine(resolved.products, args.doubleSalsas ?? []);
+  assertDobleSalsaAplica(resolved.products, resolved.items.map((i) => i.productId), args.doubleSalsas);
   const quote: OrderQuote = doubleSalsaLine
     ? { ...baseQuote, lines: [...baseQuote.lines, doubleSalsaLine], total: Math.round((baseQuote.total + doubleSalsaLine.lineTotal) * 100) / 100 }
     : baseQuote;
@@ -648,6 +705,7 @@ export async function quoteOrder(
     colonia: args.colonia,
     paymentMethod: args.paymentMethod,
     ...(instante ? { now: instante, exigirAbierto: true, mensajeCerrado: mensajeCerradoProgramado(branch.name, programadoPara!) } : {}),
+    ...(args.horaRecogida && !instante && canal === "recoger" ? { horaRecogida: args.horaRecogida } : {}),
   });
   await exigirPinSiPmSinZonas(repo, { branch, canal, source: args.source, ubicacion: args.ubicacion });
 

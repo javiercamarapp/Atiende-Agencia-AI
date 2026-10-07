@@ -89,6 +89,8 @@ insert into restaurantes.orders (id, organization_id, property_id, customer_name
   ('00000000-0000-0000-0000-0000000e5d72', '00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50a1', 'C11', '5511111120', 200, 'entregado', '[{"id":"p1","name":"Taco de pastor","price":50,"quantity":2}]', 'whatsapp', now() - interval '1 hour', now() - interval '10 minutes', 'domicilio', null, null),
   ('00000000-0000-0000-0000-0000000e5d73', '00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50a1', 'C12', '5511111121', 200, 'entregado', '[{"id":"p1","name":"Taco de pastor","price":50,"quantity":2}]', 'whatsapp', now() - interval '1 hour', now() - interval '10 minutes', 'domicilio', null, null),
   ('00000000-0000-0000-0000-0000000e50e1', '00000000-0000-0000-0000-0000000e5002', '00000000-0000-0000-0000-0000000e50b1', 'CB', '5599999999', 100, 'pending', '[]', 'web', now(), null, 'domicilio', null, null);
+-- QA R2 caos-03: el plazo de no_recogido cuenta desde max(hora de recogida, cuando quedo listo). C6 quedo listo hace 2 h (el evento nace con la fila).
+update restaurantes.order_status_events set at = now() - interval '2 hours' where order_id = '00000000-0000-0000-0000-0000000e50d6' and to_status = 'listo_para_recoger';
 
 -- Pedidos ya retenidos (por_aprobar) con su solicitud pendiente.
 insert into restaurantes.orders (id, organization_id, property_id, customer_name, customer_phone, total, status, items, source, canal, programado_para) values

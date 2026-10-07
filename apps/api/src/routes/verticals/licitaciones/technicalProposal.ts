@@ -89,6 +89,10 @@ import {
   extractDocumentText,
   decodeBase64Content,
   InvalidFileContentError,
+  BovedaRevisionNoDisponibleError,
+  detectConflicts,
+  sha256OfBytes,
+  validateDocumentUpload,
 } from "@atiende/domain-licitaciones";
 import type {
   CompanyCapability,
@@ -101,13 +105,18 @@ import type {
   RequirementFulfillmentMappingRecord,
   RequirementItem,
   RequirementItemRecord,
+  DetectedRequirementConflict,
+  RequirementItemDetail,
   RequirementType,
+  RequirementUpsertItem,
+  TenderDocumentRecord,
   TenderDocumentText,
 } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { avisarCambioDeBases } from "./avisos-campana.ts";
+import { avisarConflictosAbiertos } from "./avisos-revision.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
 // POST .../requirements/extract
@@ -115,6 +124,20 @@ import { avisarCambioDeBases } from "./avisos-campana.ts";
 
 interface ExtractBody {
   readonly documents?: unknown;
+  /** paridad3: ids de documentos YA guardados en la boveda (`POST .../documents`); se extrae su texto guardado, sin volver a subir. */
+  readonly documentIds?: unknown;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseDocumentIds(raw: unknown): string[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw) || raw.length > 50) throw Errors.validation("documentIds: se esperaba un arreglo de hasta 50 ids.");
+  const ids = raw.map((v, i) => {
+    if (typeof v !== "string" || !UUID_RE.test(v)) throw Errors.validation(`documentIds[${i}]: se esperaba el id de un documento de la bóveda.`);
+    return v;
+  });
+  return [...new Set(ids)];
 }
 
 /** `pages` ya extraído (contrato original de esta ruta) O `contentBase64` (bytes reales del archivo, Fase 11) -- nunca ambos requeridos, `parseDocuments` acepta cualquiera de los dos por documento. */
@@ -194,22 +217,50 @@ export interface SkippedDocument {
   readonly detail: string | null;
 }
 
+/** De donde salio cada documento de esta corrida: `vaultId` si vive en la boveda (su `lineageId` sostiene la clave estable), o solo la referencia que mando el cliente. */
+interface DocumentOrigin {
+  readonly vaultId: string | null;
+  readonly lineageId: string | null;
+  readonly ref: string;
+  readonly label: string;
+}
+
 /**
- * Resuelve cada documento crudo a `TenderDocumentText` (texto por página
- * real): los de `kind:"pages"` pasan tal cual; los de `kind:"content"`
- * corren por `extractDocumentText` (Fase 11, `@atiende/domain-licitaciones`)
- * -- un documento cuyo estado no sea `"extracted"` se EXCLUYE de la matriz y
- * se reporta en `skipped`, nunca se inventa texto vacío para que pase.
+ * Resuelve cada documento a `TenderDocumentText` (texto por pagina real): los ya extraidos (`pages`) pasan tal cual; los de
+ * `contentBase64` se validan por contenido (AE-03/AE-05), se guardan en la boveda (deduplicados por sha256) y se extraen con
+ * `extractDocumentText`; los `documentIds` leen el texto ya guardado. Un documento cuyo estado no sea `"extracted"` se EXCLUYE de
+ * la matriz y se reporta en `skipped`, nunca se inventa texto vacio para que pase (REQ-166).
  */
-async function resolveDocuments(inputs: readonly RawDocumentInput[]): Promise<{ documents: TenderDocumentText[]; skipped: SkippedDocument[] }> {
+async function resolveDocuments(
+  inputs: readonly RawDocumentInput[],
+  vault: { readonly byId: readonly TenderDocumentRecordWithPages[]; readonly save: (input: RawDocumentContent, extraction: Awaited<ReturnType<typeof extractDocumentText>>) => Promise<TenderDocumentRecord | null> },
+): Promise<{ documents: TenderDocumentText[]; skipped: SkippedDocument[]; origins: Map<string, DocumentOrigin> }> {
   const documents: TenderDocumentText[] = [];
   const skipped: SkippedDocument[] = [];
+  const origins = new Map<string, DocumentOrigin>();
+
+  for (const doc of vault.byId) {
+    const label = doc.title ?? doc.filename ?? "Documento";
+    origins.set(doc.id, { vaultId: doc.id, lineageId: doc.lineageId, ref: doc.lineageId, label });
+    if (doc.extractionStatus === "extracted" && doc.pages && doc.pages.length > 0) {
+      documents.push({ documentId: doc.id, documentLabel: label, publishedAt: doc.createdAt, pages: doc.pages });
+    } else {
+      skipped.push({ documentId: doc.id, documentLabel: label, status: doc.extractionStatus === "requires_ocr" ? "requires_ocr" : "failed", detail: doc.extractionDetail ?? "El documento de la bóveda no tiene texto extraído." });
+    }
+  }
+
   for (const input of inputs) {
     if (input.kind === "pages") {
+      origins.set(input.documentId, { vaultId: null, lineageId: null, ref: input.documentId, label: input.documentLabel });
       documents.push({ documentId: input.documentId, documentLabel: input.documentLabel, publishedAt: input.publishedAt, pages: input.pages });
       continue;
     }
+    // AE-03/AE-05: se valida el CONTENIDO (magic bytes en todo el buffer) antes de extraer o guardar nada.
+    const verdict = validateDocumentUpload(input.buffer);
+    if (!verdict.ok) throw Errors.licitacionesDocumentoRechazado(verdict.reason, verdict.message);
     const extraction = await extractDocumentText(input.buffer, { mimeType: input.mimeType, filename: input.filename });
+    const saved = await vault.save(input, extraction);
+    origins.set(input.documentId, saved ? { vaultId: saved.id, lineageId: saved.lineageId, ref: saved.lineageId, label: input.documentLabel } : { vaultId: null, lineageId: null, ref: input.documentId, label: input.documentLabel });
     if (extraction.status !== "extracted" || !extraction.pages) {
       skipped.push({
         documentId: input.documentId,
@@ -221,8 +272,10 @@ async function resolveDocuments(inputs: readonly RawDocumentInput[]): Promise<{ 
     }
     documents.push({ documentId: input.documentId, documentLabel: input.documentLabel, publishedAt: input.publishedAt, pages: extraction.pages });
   }
-  return { documents, skipped };
+  return { documents, skipped, origins };
 }
+
+type TenderDocumentRecordWithPages = TenderDocumentRecord & { readonly pages: readonly { page: number; text: string }[] | null };
 
 function toRequirementItemRecord(item: RequirementItem): RequirementItemRecord {
   return {
@@ -324,8 +377,11 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
     const tenderId = c.req.param("tenderId");
     const tender = await repo.findTender(organizationId, tenderId);
     if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
-    const items = await repo.listRequirementItems(organizationId, tenderId);
-    return c.json({ items });
+    // paridad3: la matriz trae los campos de la edicion humana (asignado, causa de desechamiento, retirado). `?includeRetired=1`
+    // agrega los requisitos retirados (ya no estan en las bases vigentes; nunca se borran). `migrated:false` = base sin la 037.
+    const includeRetired = c.req.query("includeRetired") === "1";
+    const { migrated, items } = await repo.listRequirementMatrix(organizationId, tenderId, { includeRetired });
+    return c.json({ items, migrated });
   });
 
   app.post(`${propertyBase}/requirements/extract`, async (c) => {
@@ -335,33 +391,82 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
     if (!idempotencyKey) throw Errors.idempotencyRequired();
 
     const organizationId = c.get("organizationId");
+    const userId = c.get("userId");
     const tenderId = c.req.param("tenderId");
     // Fase 11: el cuerpo puede traer bytes reales de archivo en base64
     // (`contentBase64`) además de (o en vez de) `pages` ya extraído -- mismo
     // límite ~22MB decodificado por archivo que `storage.ts::MAX_BASE64_LENGTH`
     // (este cap acota el REQUEST completo, mismo criterio que
     // `cierre.ts::submission/declare`, que también acepta un archivo en base64).
+    // paridad3: ademas puede referirse a documentos ya guardados en la boveda con `documentIds`.
     const raw = await readJsonCapped<ExtractBody>(c.req.raw, 30 * 1024 * 1024);
-    const rawDocuments = parseDocuments(raw.documents);
+    const rawDocuments = raw.documents === undefined ? [] : parseDocuments(raw.documents);
+    const documentIds = parseDocumentIds(raw.documentIds);
+    if (rawDocuments.length === 0 && documentIds.length === 0) throw Errors.validation("documents: se esperaba un arreglo no vacío (o documentIds con documentos de la bóveda).");
 
     const tender = await repo.findTender(organizationId, tenderId);
     if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
 
+    const vaultById: TenderDocumentRecordWithPages[] = [];
+    for (const id of documentIds) {
+      const doc = await repo.getTenderDocument(organizationId, tenderId, id);
+      if (!doc) throw Errors.notFound("Un documento indicado no existe en esta convocatoria.");
+      vaultById.push(doc);
+    }
+    // Los bytes subidos en base64 tambien se guardan en la boveda (deduplicados por sha256 dentro de la convocatoria): es el
+    // escritor que le faltaba a `tender_document`. Sin la migracion 037 se sigue como antes, sin guardar nada.
+    let vaultAvailable = true;
+    const savedBySha = new Map<string, TenderDocumentRecord>();
+    const listed = await repo.listTenderDocuments(organizationId, tenderId);
+    if (!listed.disponible) vaultAvailable = false;
+    for (const d of listed.documents) if (d.sha256 && d.latest && !savedBySha.has(d.sha256)) savedBySha.set(d.sha256, d);
+
     // Fase 11: resuelve cada documento a texto por página REAL (motor
     // `extractDocumentText`, `@atiende/domain-licitaciones`) ANTES de
     // construir la matriz -- ver `resolveDocuments`. Corre FUERA de
-    // `withIdempotency` (determinista, no toca DB) para que el cuerpo
+    // `withIdempotency` (determinista, no toca DB salvo guardar el original) para que el cuerpo
     // hasheado por idempotencia siga siendo el payload crudo del cliente, no
     // el resultado de un motor de extracción cuya versión podría cambiar.
     // Un documento sin texto extraíble (PDF escaneado -> "requires_ocr";
     // formato no soportado/corrupto -> "failed") se EXCLUYE de la matriz,
     // nunca se inventa texto vacío para que pase -- si NINGÚN documento
     // produjo texto, se rechaza explícito (REQ-166) sin persistir nada.
-    const { documents, skipped } = await resolveDocuments(rawDocuments);
+    const { documents, skipped, origins } = await resolveDocuments(rawDocuments, {
+      byId: vaultById,
+      save: async (input, extraction) => {
+        if (!vaultAvailable) return null;
+        const sha = sha256OfBytes(input.buffer);
+        const existing = savedBySha.get(sha);
+        if (existing) return existing;
+        try {
+          const created = await repo.createTenderDocument(organizationId, tenderId, {
+            documentType: "bases",
+            title: input.documentLabel,
+            filename: input.filename,
+            mimeType: input.mimeType,
+            buffer: input.buffer,
+            extractionStatus: extraction.status,
+            extractionDetail: extraction.detail ?? null,
+            pageCount: extraction.pageCount ?? (extraction.pages ? extraction.pages.length : null),
+            pages: extraction.pages ? extraction.pages.map((p) => ({ page: p.page, text: p.text })) : null,
+            actorId: userId,
+            replacesDocumentId: null,
+          });
+          savedBySha.set(sha, created);
+          return created;
+        } catch (err) {
+          if (err instanceof BovedaRevisionNoDisponibleError) {
+            vaultAvailable = false;
+            return null;
+          }
+          throw err;
+        }
+      },
+    });
     if (documents.length === 0) throw Errors.licitacionesNoExtractableDocuments(skipped);
 
     try {
-      const result = await repo.withIdempotency({ organizationId, scope: "requirements.extract", key: idempotencyKey, body: { tenderId, documents: raw.documents } }, async () => {
+      const result = await repo.withIdempotency({ organizationId, scope: "requirements.extract", key: idempotencyKey, body: { tenderId, documents: raw.documents ?? null, documentIds } }, async () => {
         // RuleBasedExtractor SIEMPRE corre. LlmRequirementExtractor se suma SOLO SI
         // `deps.llmGateway` existe (al menos una API key de proveedor configurada,
         // ver nota de cabecera del archivo) -- fail-closed explícito, nunca fingir
@@ -371,27 +476,69 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
           extractors.push(new LlmRequirementExtractor(deps.llmGateway, { tenantId: organizationId }));
         }
         const { items, conflicts } = await new RequirementMatrixBuilder(extractors).build(documents);
-        await repo.replaceRequirementItems(organizationId, tenderId, items.map(toRequirementItemRecord));
+
+        // paridad3 (L-P3-06): upsert por clave estable en vez de borrar y reinsertar. Conserva responsable, estado y asignacion
+        // hechos a mano; lo que desaparece de las bases queda "retirado" con la version (nunca se borra en silencio).
+        const upsertItems: RequirementUpsertItem[] = items.map((item) => {
+          const origin = origins.get(item.source.documentId);
+          return { ...toRequirementItemRecord(item), documentId: origin?.vaultId ?? null, documentRef: origin?.ref ?? item.source.documentId };
+        });
+        const involvedOrigins = documents.map((d) => origins.get(d.documentId)).filter((o): o is DocumentOrigin => o !== undefined);
+        const latestVersion = await repo.latestTenderVersion(organizationId, tenderId);
+        const upsert = await repo.upsertRequirementItems(organizationId, tenderId, upsertItems, {
+          actorId: userId,
+          scope: { lineageIds: involvedOrigins.flatMap((o) => (o.lineageId ? [o.lineageId] : [])), includeUnlinked: involvedOrigins.some((o) => o.lineageId === null) },
+          retiredInVersion: (latestVersion?.version ?? 0) + 1,
+        });
+
+        // Conflictos PERSISTIDOS (regla vs LLM, o entre documentos): se detectan sobre TODA la matriz vigente (no solo los documentos de
+        // esta corrida) y se guardan con estado abierto/resuelto. Sin la 037 siguen viajando solo en la respuesta, como antes.
+        const labelOf = (record: RequirementItemDetail): string => (record.documentId ? (origins.get(record.documentId)?.label ?? "documento") : "documento");
+        const activeItems = upsert.items.map((r) => fromRequirementItemRecord(r, labelOf(r)));
+        let responseConflicts: { id: string; kind: string; topicKey: string | null; description: string; status: string; itemIds: readonly string[] }[];
+        let conflictsPersisted = false;
+        if (upsert.mode === "estable") {
+          const stableKeyById = new Map(upsert.items.map((r) => [r.id, r.stableKey ?? r.id]));
+          const detected: DetectedRequirementConflict[] = detectConflicts(activeItems).map((conf) => ({
+            kind: conf.kind,
+            topicKey: conf.topicKey,
+            description: conf.description,
+            itemIds: conf.items.map((i) => i.id),
+            stableKeys: conf.items.map((i) => stableKeyById.get(i.id) ?? i.id),
+          }));
+          const synced = await repo.syncRequirementConflicts(organizationId, tenderId, detected);
+          conflictsPersisted = synced.disponible;
+          responseConflicts = synced.disponible
+            ? synced.conflicts.map((conf) => ({ id: conf.id, kind: conf.kind, topicKey: conf.topicKey, description: conf.description, status: conf.status, itemIds: conf.itemIds }))
+            : detected.map((d, i) => ({ id: `conflict-${i + 1}`, kind: d.kind, topicKey: d.topicKey, description: d.description, status: "abierto", itemIds: d.itemIds }));
+        } else {
+          responseConflicts = conflicts.map((conf) => ({ id: conf.id, kind: conf.kind, topicKey: conf.topicKey, description: conf.description, status: conf.status, itemIds: conf.items.map((i) => upsert.idByInputId[i.id] ?? i.id) }));
+        }
+        await repo.recordTenderAuditEvent(organizationId, tenderId, "requirements.extracted", userId);
         // Fase 5 pieza 2 (REQ-041): una re-extracción de requisitos es
         // exactamente el caso de "acta de junta de aclaraciones" que cambia
         // los requisitos de una convocatoria ya versionada -- versiona la
         // convocatoria de nuevo aquí para que el diff/cascada/notificación
         // (ver `recordTenderVersion`) también cubran este camino, no solo el
         // alta manual de `tenders.ts`.
-        const nuevaVersion = await repo.recordTenderVersion(organizationId, tenderId, c.get("userId"));
+        const nuevaVersion = await repo.recordTenderVersion(organizationId, tenderId, userId);
         // L-30: aviso in-app solo si esta re-extraccion creo una version nueva sobre una convocatoria ya versionada.
         await avisarCambioDeBases(c.get("db"), { organizationId, tenderId, version: nuevaVersion.created && nuevaVersion.version.version > 1 ? nuevaVersion.version.version : null });
+        if (conflictsPersisted) await avisarConflictosAbiertos(c.get("db"), { organizationId, tenderId, openConflictIds: responseConflicts.filter((x) => x.status === "abierto").map((x) => x.id) });
 
         return {
           status: 200,
           body: {
-            items,
-            conflicts: conflicts.map((conf) => ({ id: conf.id, kind: conf.kind, topicKey: conf.topicKey, description: conf.description, status: conf.status, itemIds: conf.items.map((i) => i.id) })),
+            // Contrato de siempre: los requisitos de ESTA corrida (con su `source` original), ahora con el id persistido.
+            items: items.map((item) => ({ ...item, id: upsert.idByInputId[item.id] ?? item.id })),
+            conflicts: responseConflicts,
             // Fase 11: documentos subidos como bytes (`contentBase64`) que se
             // excluyeron de esta extracción por no tener texto extraíble --
             // vacío cuando todos los documentos eran `pages` ya extraído o
             // todos se extrajeron con éxito.
             skippedDocuments: skipped,
+            // paridad3: que hizo la matriz estable en esta corrida.
+            matrix: { mode: upsert.mode, created: upsert.created, updated: upsert.updated, unchanged: upsert.unchanged, retired: upsert.retired },
           },
         };
       });

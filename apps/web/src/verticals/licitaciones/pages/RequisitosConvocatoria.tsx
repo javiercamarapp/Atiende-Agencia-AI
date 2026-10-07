@@ -18,16 +18,33 @@
 // `Card` + `Input`/`Label`/`Button`, la tabla de requisitos a `Table`, los
 // pills de estatus a `Badge` y los estados de carga/error/vacío a
 // `EstadoCargando`/`EstadoError`/`EstadoVacio`. Cero cambios de lógica.
+// paridad3 (L-P3-05/06): pestañas Requisitos / Documentos / Conflictos. Documentos = bóveda real (subir, estado de extracción,
+// versión nueva, re-extraer sin volver a subir); Conflictos = persistidos, con Resolver (notas obligatorias); la tabla de
+// requisitos edita responsable, estado, asignado y causa de desechamiento (REQ-101) contra la API, filtra por causa de
+// desechamiento, muestra los retirados y abre el visor de la cita (página y extracto).
 import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, FileUp, X } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Input, Label, PageContainer, StatusBadge, statusTone } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, DataTable, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
-import { extractRequirements, fetchRequirementItems, fileToBase64, MAX_UPLOAD_FILE_BYTES } from "../lib/requirements-client.ts";
+import {
+  extractRequirements,
+  fetchRequirementAssignees,
+  fetchRequirementConflicts,
+  fetchRequirementMatrix,
+  fileToBase64,
+  MAX_UPLOAD_FILE_BYTES,
+  updateRequirement,
+} from "../lib/requirements-client.ts";
+import { fetchTenderDocuments } from "../lib/documents-client.ts";
+import type { TenderDocument } from "../lib/documents-client.ts";
+import { DocumentosBases } from "../components/DocumentosBases.tsx";
+import { ConflictosRequisitos } from "../components/ConflictosRequisitos.tsx";
+import { VisorCita } from "../components/VisorCita.tsx";
 import { REQUISITO_STATUS_TONES } from "../lib/status-tones.ts";
-import type { ExtractDocumentInput, RequirementItemRecord, SkippedDocument } from "../lib/requirements-client.ts";
+import type { ExtractDocumentInput, PersistedRequirementConflict, RequirementAssignee, RequirementMatrixItem, RequirementPatch, SkippedDocument } from "../lib/requirements-client.ts";
 import { formatDate, formatObligatoriedad, formatRequirementKind, formatRequirementStatus } from "../lib/format.ts";
 import { AvisoIa } from "../components/AvisoIa.tsx";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
@@ -63,7 +80,18 @@ function RequirementStatusBadge({ status }: { status: string }) {
 export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
   const { tenderId } = useParams<{ tenderId: string }>();
   const [tender, setTender] = useState<TenderSummary | null>(null);
-  const [items, setItems] = useState<readonly RequirementItemRecord[] | null>(null);
+  const [items, setItems] = useState<readonly RequirementMatrixItem[] | null>(null);
+  const [migrated, setMigrated] = useState(false);
+  const [includeRetired, setIncludeRetired] = useState(false);
+  const [soloDesechamiento, setSoloDesechamiento] = useState(false);
+  const [assignees, setAssignees] = useState<readonly RequirementAssignee[]>([]);
+  const [conflicts, setConflicts] = useState<readonly PersistedRequirementConflict[]>([]);
+  const [conflictsDisponible, setConflictsDisponible] = useState(false);
+  const [documents, setDocuments] = useState<readonly TenderDocument[]>([]);
+  const [documentsDisponible, setDocumentsDisponible] = useState(false);
+  const [rowBusyId, setRowBusyId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
+  const [visor, setVisor] = useState<{ documentId: string; page: number; clause: string | null; extracto: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -72,17 +100,43 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
   const [extractError, setExtractError] = useState<string | null>(null);
   const [lastSkipped, setLastSkipped] = useState<readonly SkippedDocument[]>([]);
 
-  async function load(id: string) {
+  async function load(id: string, retired: boolean = includeRetired) {
     setLoading(true);
     setLoadError(null);
     try {
-      const [tenderData, itemsData] = await Promise.all([fetchTender(fetch, apiBaseUrl, token, propertyId, id), fetchRequirementItems(fetch, apiBaseUrl, token, propertyId, id)]);
+      const [tenderData, matrix] = await Promise.all([fetchTender(fetch, apiBaseUrl, token, propertyId, id), fetchRequirementMatrix(fetch, apiBaseUrl, token, propertyId, id, retired)]);
       setTender(tenderData);
-      setItems(itemsData);
+      setItems(matrix.items);
+      setMigrated(matrix.migrated);
+      // Lo nuevo (bóveda, conflictos, asignables) nunca tumba la pantalla: una base sin la migración 037 los deja "no disponibles".
+      const [docs, confs, people] = await Promise.allSettled([
+        fetchTenderDocuments(fetch, apiBaseUrl, token, propertyId, id),
+        fetchRequirementConflicts(fetch, apiBaseUrl, token, propertyId, id),
+        fetchRequirementAssignees(fetch, apiBaseUrl, token, propertyId, id),
+      ]);
+      setDocuments(docs.status === "fulfilled" ? docs.value.documents : []);
+      setDocumentsDisponible(docs.status === "fulfilled" && docs.value.disponible);
+      setConflicts(confs.status === "fulfilled" ? confs.value.conflicts : []);
+      setConflictsDisponible(confs.status === "fulfilled" && confs.value.disponible);
+      setAssignees(people.status === "fulfilled" ? people.value : []);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "No se pudo cargar la convocatoria.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleEdit(item: RequirementMatrixItem, patch: RequirementPatch) {
+    if (!tenderId) return;
+    setRowError(null);
+    setRowBusyId(item.id);
+    try {
+      const updated = await updateRequirement(fetch, apiBaseUrl, token, propertyId, tenderId, item.id, patch);
+      setItems((prev) => (prev ? prev.map((x) => (x.id === item.id ? { ...x, ...updated } : x)) : prev));
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : "No se pudo guardar el cambio.");
+    } finally {
+      setRowBusyId(null);
     }
   }
 
@@ -164,6 +218,11 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
   const canUpload = WRITE_ROLES.has(role);
   // L-33: solo se declara IA cuando la API devolvió requisitos extraídos por el modelo; los extraídos por reglas no la llevan.
   const extraidosConIa = (items ?? []).filter((item) => item.extractedBy === "llm").length;
+  const abiertos = conflicts.filter((c) => c.status === "abierto").length;
+  const visibles = (items ?? []).filter((i) => (soloDesechamiento ? i.disqualifying === true : true));
+  const activos = (items ?? []).filter((i) => !i.retiredAt).length;
+  const roleOptions = (current: string) => [...new Set(["licitador", "legal", "finanzas", "tecnico", "administrativo", current])];
+  const editable = (item: RequirementMatrixItem) => canUpload && !item.retiredAt;
 
   return (
     <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
@@ -178,7 +237,7 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
         </p>
       </div>
 
-      {canUpload ? (
+      {canUpload && !documentsDisponible ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Cargar bases</CardTitle>
@@ -246,9 +305,8 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
             </form>
           </CardContent>
         </Card>
-      ) : (
-        <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede subir documentos de bases -- solo lectura de los requisitos ya extraídos.</p>
-      )}
+      ) : null}
+      {!canUpload && <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede subir documentos de bases ni editar requisitos -- solo lectura.</p>}
 
       {lastSkipped.length > 0 && (
         <Callout tone="warning" titulo={`${lastSkipped.length} documento(s) no produjeron texto extraíble y se excluyeron de esta extracción:`}>
@@ -267,58 +325,173 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
         <AvisoIa proposito={`${extraidosConIa === 1 ? "1 requisito fue extraído" : `${extraidosConIa} requisitos fueron extraídos`} de las bases con inteligencia artificial (columna Origen: LLM); el resto se extrajo con reglas.`} />
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Requisitos extraídos ({items?.length ?? 0})</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {items && items.length === 0 && <EstadoVacio mensaje="Todavía no hay requisitos extraídos para esta convocatoria -- sube un documento de bases arriba." />}
-          {items && items.length > 0 && (
-            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/propuesta-tecnica`} className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-foreground no-underline hover:underline">
-              Generar propuesta técnica y mapear requisitos →
-            </Link>
+      <Tabs defaultValue="requisitos" className="w-full">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="requisitos">Requisitos ({activos})</TabsTrigger>
+          <TabsTrigger value="documentos">Documentos ({documents.length})</TabsTrigger>
+          <TabsTrigger value="conflictos">Conflictos ({abiertos})</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="requisitos" className="flex flex-col gap-4">
+          {abiertos > 0 && (
+            <Callout tone="warning" titulo={`${abiertos} conflicto(s) entre documentos sin resolver`}>
+              Mientras estén abiertos, el checklist del expediente queda en rojo. Resuélvelos en la pestaña Conflictos.
+            </Callout>
           )}
-          {items && items.length > 0 && (
-            <DataTable
-              etiqueta="Requisitos extraídos"
-              obtenerId={(item) => item.id}
-              filas={items}
-              paginacion={false}
-              columnas={[
-                {
-                  id: "requisito",
-                  encabezado: "Requisito",
-                  principal: true,
-                  className: "max-w-80",
-                  celda: (item) => (
-                    <>
-                      <p className="font-normal text-foreground">{item.text}</p>
-                      {item.requiredEvidence.length > 0 && <p className="mt-1 text-xs font-normal text-muted-foreground">Evidencia requerida: {item.requiredEvidence.join(", ")}</p>}
-                    </>
-                  ),
-                },
-                { id: "tipo", encabezado: "Tipo", celda: (item) => <span className="text-muted-foreground">{formatRequirementKind(item.requirementKind)}</span> },
-                { id: "obligatoriedad", encabezado: "Obligatoriedad", celda: (item) => <span className="text-muted-foreground">{formatObligatoriedad(item.obligatoriedad)}</span> },
-                { id: "estatus", encabezado: "Estatus", celda: (item) => <RequirementStatusBadge status={item.status} /> },
-                { id: "fecha", encabezado: "Fecha límite", celda: (item) => <span className="text-muted-foreground">{item.deadline ? formatDate(item.deadline) : "—"}</span> },
-                {
-                  id: "origen",
-                  encabezado: "Origen",
-                  celda: (item) => (
-                    <span className="text-xs text-muted-foreground">
-                      {item.page ? `pág. ${item.page}` : "—"}
-                      {item.clause ? ` · ${item.clause}` : ""}
-                      <br />
-                      {item.extractedBy === "llm" ? "LLM" : "reglas"}
-                      {typeof item.confidence === "number" ? ` (${Math.round(item.confidence * 100)}%)` : ""}
-                    </span>
-                  ),
-                },
-              ]}
-            />
-          )}
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Requisitos extraídos ({activos})</CardTitle>
+              <CardDescription>
+                {migrated ? "Edita responsable, estado, asignado y causa de desechamiento: una re-extracción los conserva. Lo que desaparece de las bases queda retirado, nunca se borra." : "Esta base aún no tiene la migración 037: la edición de asignado y causa de desechamiento no está disponible."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                {migrated && <Checkbox label="Solo causa de desechamiento" checked={soloDesechamiento} onChange={(e) => setSoloDesechamiento(e.target.checked)} />}
+                {migrated && (
+                  <Checkbox
+                    label="Ver retirados"
+                    checked={includeRetired}
+                    onChange={(e) => {
+                      setIncludeRetired(e.target.checked);
+                      if (tenderId) void load(tenderId, e.target.checked);
+                    }}
+                  />
+                )}
+              </div>
+              {rowError && (
+                <p role="alert" className="text-sm text-destructive">
+                  {rowError}
+                </p>
+              )}
+              {visor && tenderId && <VisorCita apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} tenderId={tenderId} documentId={visor.documentId} page={visor.page} clause={visor.clause} extracto={visor.extracto} onClose={() => setVisor(null)} />}
+              {items && visibles.length === 0 && <EstadoVacio mensaje={soloDesechamiento ? "Ningún requisito está marcado como causa de desechamiento." : "Todavía no hay requisitos extraídos para esta convocatoria -- sube un documento de bases."} />}
+              {items && items.length > 0 && (
+                <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/propuesta-tecnica`} className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-foreground no-underline hover:underline">
+                  Generar propuesta técnica y mapear requisitos →
+                </Link>
+              )}
+              {items && visibles.length > 0 && (
+                <DataTable
+                  etiqueta="Requisitos extraídos"
+                  obtenerId={(item) => item.id}
+                  filas={visibles}
+                  paginacion={false}
+                  atributosFila={(item) => ({ "data-requisito": item.id })}
+                  columnas={[
+                    {
+                      id: "requisito",
+                      encabezado: "Requisito",
+                      principal: true,
+                      className: "max-w-80",
+                      celda: (item) => (
+                        <>
+                          <p className={item.retiredAt ? "font-normal text-muted-foreground line-through" : "font-normal text-foreground"}>{item.text}</p>
+                          {item.requiredEvidence.length > 0 && <p className="mt-1 text-xs font-normal text-muted-foreground">Evidencia requerida: {item.requiredEvidence.join(", ")}</p>}
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {item.disqualifying && <StatusBadge tone="danger" dot={false}>Causa de desechamiento</StatusBadge>}
+                            {item.retiredAt && <StatusBadge tone="neutral" dot={false}>Retirado{item.retiredInVersion ? ` (v${item.retiredInVersion})` : ""}</StatusBadge>}
+                          </div>
+                        </>
+                      ),
+                    },
+                    { id: "tipo", encabezado: "Tipo", celda: (item) => <span className="text-muted-foreground">{formatRequirementKind(item.requirementKind)}</span> },
+                    { id: "obligatoriedad", encabezado: "Obligatoriedad", celda: (item) => <span className="text-muted-foreground">{formatObligatoriedad(item.obligatoriedad)}</span> },
+                    {
+                      id: "estatus",
+                      encabezado: "Estatus",
+                      celda: (item) =>
+                        editable(item) && item.status !== "bloqueado" ? (
+                          <NativeSelect aria-label={`Estatus de: ${item.text.slice(0, 40)}`} value={item.status} disabled={rowBusyId === item.id} onChange={(e) => void handleEdit(item, { status: e.target.value as RequirementPatch["status"] })} className="h-9 min-w-[130px]">
+                            {(["pendiente", "en_progreso", "cumplido", "no_evaluable"] as const).map((st) => (
+                              <option key={st} value={st}>
+                                {formatRequirementStatus(st)}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                        ) : (
+                          <RequirementStatusBadge status={item.status} />
+                        ),
+                    },
+                    {
+                      id: "responsable",
+                      encabezado: "Responsable",
+                      celda: (item) =>
+                        editable(item) ? (
+                          <div className="flex min-w-[140px] flex-col gap-1.5">
+                            <NativeSelect aria-label={`Rol responsable de: ${item.text.slice(0, 40)}`} value={item.responsibleRole} disabled={rowBusyId === item.id} onChange={(e) => void handleEdit(item, { responsibleRole: e.target.value })} className="h-9">
+                              {roleOptions(item.responsibleRole).map((r) => (
+                                <option key={r} value={r}>
+                                  {r}
+                                </option>
+                              ))}
+                            </NativeSelect>
+                            {migrated && assignees.length > 0 && (
+                              <NativeSelect aria-label={`Persona asignada a: ${item.text.slice(0, 40)}`} value={item.assignedTo ?? ""} disabled={rowBusyId === item.id} onChange={(e) => void handleEdit(item, { assignedTo: e.target.value === "" ? null : e.target.value })} className="h-9">
+                                <option value="">Sin asignar</option>
+                                {assignees.map((a) => (
+                                  <option key={a.userId} value={a.userId}>
+                                    {a.nombre}
+                                  </option>
+                                ))}
+                              </NativeSelect>
+                            )}
+                            {migrated && <Checkbox label="Causa de desechamiento" checked={item.disqualifying === true} disabled={rowBusyId === item.id} onChange={(e) => void handleEdit(item, { disqualifying: e.target.checked })} />}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            {item.responsibleRole}
+                            {item.assignedTo ? ` · ${assignees.find((a) => a.userId === item.assignedTo)?.nombre ?? "asignado"}` : ""}
+                          </span>
+                        ),
+                    },
+                    { id: "fecha", encabezado: "Fecha límite", celda: (item) => <span className="text-muted-foreground">{item.deadline ? formatDate(item.deadline) : "—"}</span> },
+                    {
+                      id: "origen",
+                      encabezado: "Origen",
+                      celda: (item) => (
+                        <span className="text-xs text-muted-foreground">
+                          {item.page && item.documentId ? (
+                            <Button type="button" size="sm" variant="ghost" className="h-auto px-1 py-0 text-xs underline" onClick={() => setVisor({ documentId: item.documentId!, page: item.page!, clause: item.clause, extracto: item.text })}>
+                              Ver cita · pág. {item.page}
+                            </Button>
+                          ) : item.page ? (
+                            `pág. ${item.page}`
+                          ) : (
+                            "—"
+                          )}
+                          {item.clause ? ` · ${item.clause}` : ""}
+                          <br />
+                          {item.extractedBy === "llm" ? "LLM" : "reglas"}
+                          {typeof item.confidence === "number" ? ` (${Math.round(item.confidence * 100)}%)` : ""}
+                        </span>
+                      ),
+                    },
+                  ]}
+                />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="documentos">
+          <DocumentosBases
+            apiBaseUrl={apiBaseUrl}
+            token={token}
+            propertyId={propertyId}
+            tenderId={tenderId}
+            canWrite={canUpload}
+            disponible={documentsDisponible}
+            documents={documents}
+            onChanged={() => load(tenderId)}
+            onSkipped={setLastSkipped}
+          />
+        </TabsContent>
+
+        <TabsContent value="conflictos">
+          <ConflictosRequisitos apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} tenderId={tenderId} canWrite={canUpload} disponible={conflictsDisponible} conflicts={conflicts} onResolved={() => load(tenderId)} />
+        </TabsContent>
+      </Tabs>
     </PageContainer>
   );
 }

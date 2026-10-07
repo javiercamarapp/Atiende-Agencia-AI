@@ -17,7 +17,7 @@ import type { MotivoCancelacion } from "./taxonomia.ts";
 import { estimarTiempo } from "./tiempo-prometido.ts";
 import type { TiempoEstimado } from "./tiempo-prometido.ts";
 import { AUTOPILOTO_CONFIG_POR_OMISION } from "./tipos.ts";
-import type { AutopilotoRepository, OpcionesResolver, PedidoGrandeHook, ResultadoResolver, SolicitudDecision } from "./tipos.ts";
+import type { AutopilotoRepository, ComandaParaAvance, OpcionesResolver, PedidoGrandeHook, ResultadoResolver, SolicitudDecision } from "./tipos.ts";
 
 export interface AutopilotoServicioDeps {
   readonly auto: AutopilotoRepository;
@@ -404,29 +404,78 @@ export interface ResumenAvancePos {
   readonly sinAdaptadorReal: boolean;
 }
 
+/** Tope por consulta al POS y presupuesto total del paso (la funcion de Vercel muere a los 30 s: el paso debe rendirse antes y seguir). */
+export const TIMEOUT_CONSULTA_POS_MS = 3_000;
+export const PRESUPUESTO_PASO_POS_MS = 12_000;
+const CONCURRENCIA_CONSULTA_POS = 5;
+
+export interface OpcionesAvancePos {
+  readonly timeoutConsultaMs?: number;
+  readonly presupuestoMs?: number;
+  readonly ahoraMs?: () => number;
+}
+
+export interface EstadoPosConsultado {
+  readonly comanda: ComandaParaAvance;
+  readonly estadoPos: string;
+}
+
+function conTimeoutPos<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limite = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`el POS no respondio en ${ms} ms`)), ms);
+  });
+  return Promise.race([p, limite]).finally(() => clearTimeout(timer));
+}
+
 /**
- * Avance desde el POS: consulta `obtenerEstadoComanda` de las comandas confirmadas y mueve el pedido (con aviso al cliente por el productor de
- * estados). Sin adaptador REAL (`port.esReal = false`) no consulta nada: estado honesto "requiere API de SoftRestaurant".
+ * Fase 1 del avance (SIN base de datos): pregunta al POS el estado de cada comanda con un tope por consulta y un presupuesto total del paso
+ * (QA R2 automatizacion-07). Hasta 5 consultas en paralelo; al agotarse el presupuesto ya no se lanzan mas y las comandas restantes quedan
+ * para el siguiente tick. Una consulta lenta o fallida se salta (se reintenta en el siguiente tick), nunca cuelga al resto del tick. El tick
+ * la corre FUERA de cualquier transaccion: una llamada de red no debe tener abierta una transaccion de base de datos.
  */
-export async function avanzarDesdePos(deps: AutopilotoServicioDeps, port: SoftRestaurantPort, sucursalPos: (propertyId: string) => SucursalPos | null, limite = 50): Promise<ResumenAvancePos> {
-  if (!port.esReal) return { disponible: true, consultadas: 0, avanzadas: 0, sinAdaptadorReal: true };
-  const c = await deps.auto.comandasParaAvance(limite);
-  if (!c.disponible) return { disponible: false, consultadas: 0, avanzadas: 0, sinAdaptadorReal: false };
+export async function consultarEstadosPos(
+  comandas: readonly ComandaParaAvance[],
+  port: SoftRestaurantPort,
+  sucursalPos: (propertyId: string) => SucursalPos | null,
+  opciones: OpcionesAvancePos = {},
+): Promise<{ readonly consultadas: number; readonly estados: readonly EstadoPosConsultado[] }> {
+  const timeoutMs = opciones.timeoutConsultaMs ?? TIMEOUT_CONSULTA_POS_MS;
+  const presupuestoMs = opciones.presupuestoMs ?? PRESUPUESTO_PASO_POS_MS;
+  const ahora = opciones.ahoraMs ?? Date.now;
+  const inicio = ahora();
+  const estados: EstadoPosConsultado[] = [];
   let consultadas = 0;
+  let siguiente = 0;
+  async function trabajador(): Promise<void> {
+    while (siguiente < comandas.length && ahora() - inicio < presupuestoMs) {
+      const cm = comandas[siguiente++]!;
+      const sucursal = sucursalPos(cm.propertyId);
+      if (!sucursal) continue;
+      consultadas++;
+      try {
+        const e = await conTimeoutPos(port.obtenerEstadoComanda({ sucursal, folio: cm.folio }), timeoutMs);
+        if (e.encontrada) estados.push({ comanda: cm, estadoPos: e.estado });
+      } catch (err) {
+        console.error("autopiloto: consulta al POS fallo (se reintenta en el siguiente tick):", err instanceof Error ? err.message : err);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCIA_CONSULTA_POS, comandas.length) }, () => trabajador()));
+  return { consultadas, estados };
+}
+
+/** Fase 2 del avance (con base de datos): mueve cada pedido segun el estado del POS (compare-and-set, aviso al cliente por el productor de estados). */
+export async function aplicarAvancesPos(deps: AutopilotoServicioDeps, estados: readonly EstadoPosConsultado[]): Promise<number> {
   let avanzadas = 0;
-  for (const cm of c.valor) {
-    const sucursal = sucursalPos(cm.propertyId);
-    if (!sucursal) continue;
-    consultadas++;
+  for (const { comanda: cm, estadoPos } of estados) {
     try {
-      const e = await port.obtenerEstadoComanda({ sucursal, folio: cm.folio });
-      if (!e.encontrada) continue;
-      const destino = destinoDesdeEstadoPos(e.estado, cm.canal);
+      const destino = destinoDesdeEstadoPos(estadoPos, cm.canal);
       if (!destino) continue;
       const pasos: OrderStatus[] = cm.status === "pending" ? ["preparando", ...(destino === "preparando" ? [] : [destino])] : destino === "preparando" ? [] : [destino];
       let actual: OrderStatus = cm.status;
       for (const paso of pasos) {
-        const ok = await deps.repo.runWithRowSavepoint(() => deps.auto.aplicarTransicion(cm.organizationId, cm.orderId, actual, paso, "pos", `pos:${e.estado}`));
+        const ok = await deps.repo.runWithRowSavepoint(() => deps.auto.aplicarTransicion(cm.organizationId, cm.orderId, actual, paso, "pos", `pos:${estadoPos}`));
         if (!ok) break;
         actual = paso;
         avanzadas++;
@@ -434,9 +483,29 @@ export async function avanzarDesdePos(deps: AutopilotoServicioDeps, port: SoftRe
         if (order) await deps.repo.runWithRowSavepoint(async () => notifyCustomerOnOrderStatusChangeCore(deps.repo, { ...order, status: paso }));
       }
     } catch (err) {
-      console.error("autopiloto: consulta/avance desde el POS fallo (se reintenta en el siguiente tick):", err instanceof Error ? err.message : err);
+      console.error("autopiloto: avance desde el POS fallo (se reintenta en el siguiente tick):", err instanceof Error ? err.message : err);
     }
   }
+  return avanzadas;
+}
+
+/**
+ * Avance desde el POS: consulta `obtenerEstadoComanda` de las comandas confirmadas y mueve el pedido (con aviso al cliente por el productor de
+ * estados). Sin adaptador REAL (`port.esReal = false`) no consulta nada: estado honesto "requiere API de SoftRestaurant". Version de una sola
+ * sesion (pruebas); el tick usa `consultarEstadosPos` fuera de la transaccion y `aplicarAvancesPos` en otra.
+ */
+export async function avanzarDesdePos(
+  deps: AutopilotoServicioDeps,
+  port: SoftRestaurantPort,
+  sucursalPos: (propertyId: string) => SucursalPos | null,
+  limite = 50,
+  opciones: OpcionesAvancePos = {},
+): Promise<ResumenAvancePos> {
+  if (!port.esReal) return { disponible: true, consultadas: 0, avanzadas: 0, sinAdaptadorReal: true };
+  const c = await deps.auto.comandasParaAvance(limite);
+  if (!c.disponible) return { disponible: false, consultadas: 0, avanzadas: 0, sinAdaptadorReal: false };
+  const { consultadas, estados } = await consultarEstadosPos(c.valor, port, sucursalPos, opciones);
+  const avanzadas = await aplicarAvancesPos(deps, estados);
   return { disponible: true, consultadas, avanzadas, sinAdaptadorReal: false };
 }
 

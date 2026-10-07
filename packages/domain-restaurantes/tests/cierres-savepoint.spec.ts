@@ -40,6 +40,19 @@ describe("PostgresCierreRepository", () => {
     expect((await new PostgresCierreRepository(s).generar(ORG, PROP, "dia", "2026-03-10", { omitirSinActividad: true })).estado).toBe("sin_actividad");
   });
 
+  it("generar: el dia de negocio aun abierto (22023 'aun no termina') => periodo_abierto con la sesion viva (QA R2 automatizacion-08)", async () => {
+    const s = new AbortAwareFakeSession([{ match: /generar_cierre/, respond: () => pgError("22023", "generar_cierre: el periodo aun no termina en la zona de la sucursal") }, SIGUIENTE]);
+    const r = await new PostgresCierreRepository(s).generar(ORG, PROP, "dia", "2026-03-10");
+    expect(r.estado).toBe("periodo_abierto");
+    await expect(s.query("select 1 as siguiente_query_del_request;")).resolves.toEqual({ rows: [{ ok: true }] });
+    expect(s.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
+  });
+
+  it("generar: cualquier OTRO 22023 (fecha invalida) sigue propagandose", async () => {
+    const s = new AbortAwareFakeSession([{ match: /generar_cierre/, respond: () => pgError("22023", "generar_cierre: tipo o fecha invalidos") }]);
+    await expect(new PostgresCierreRepository(s).generar(ORG, PROP, "dia", "2026-03-10")).rejects.toThrow(/invalidos/);
+  });
+
   it.each(["42883", "42P01", "42703"])("generar: base SIN migrar (%s) => no_disponible y la sesion sigue viva", async (code) => {
     const s = new AbortAwareFakeSession([{ match: /generar_cierre/, respond: () => pgError(code, "does not exist") }, SIGUIENTE]);
     const r = await new PostgresCierreRepository(s).generar(ORG, PROP, "dia", "2026-03-10");
