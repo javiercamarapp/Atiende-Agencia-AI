@@ -572,6 +572,16 @@ describe("revision: rafagas con texto + toque, pedido retenido, saneo y notas ra
     expect(quitarMarcadoresDeToque("a [boton:")).toBe("a");
   });
 
+  it("saneo: entrada hostil de 5000 repeticiones de «[boton:» es lineal (< 50 ms) y no deja marcadores", () => {
+    const hostil = "[boton:".repeat(5000);
+    const t0 = performance.now();
+    const limpio = quitarMarcadoresDeToque(hostil);
+    expect(performance.now() - t0).toBeLessThan(50);
+    expect(limpio).not.toContain("[boton:");
+    const id = idDeBoton({ accion: "confirmar", quoteHash: HASH, quotedAtMs: AT });
+    expect(toqueDeMensaje(contenidoDeMensajeConToque(`si [bo[boton:x]ton:${id}]`, undefined))).toBeNull();
+  });
+
   it("la nota de «Cambiar algo» no se arrastra: tras la respuesta del agente el toque vuelve a ser su titulo", async () => {
     const { t } = await conResumen();
     const cambiar = tocar(t.ultimosBotones(), "cambiar");

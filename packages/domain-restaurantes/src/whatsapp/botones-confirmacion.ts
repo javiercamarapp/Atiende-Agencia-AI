@@ -124,7 +124,7 @@ export function quitarMarcadoresDeToque(texto: string): string {
   let actual = texto;
   for (let previo = ""; previo !== actual; ) {
     previo = actual;
-    actual = actual.replace(/\[boton:[^\]\n]*\]/g, "");
+    actual = actual.replace(/\[boton:[^\]\n[]*\]/g, "");
   }
   return actual.replace(/\[boton:/g, "").trim();
 }
