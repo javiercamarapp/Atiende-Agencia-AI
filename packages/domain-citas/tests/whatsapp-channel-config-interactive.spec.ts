@@ -49,7 +49,7 @@ describe("extractMetaInboundMessages", () => {
         { id: "6", from: FROM, type: "interactive", interactive: { type: "nfm_reply", nfm_reply: { name: "flow" } } },
         { id: "7", from: "abc", type: "interactive", interactive: { type: "button_reply", button_reply: { id: "x", title: "Ok" } } },
         { id: "", from: FROM, type: "interactive", interactive: { type: "button_reply", button_reply: { id: "x", title: "Ok" } } },
-        { id: "9", from: FROM, type: "image" },
+        { id: "9", from: FROM, type: "reaction" },
         null,
         "basura",
       ]),

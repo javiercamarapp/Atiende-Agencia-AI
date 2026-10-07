@@ -309,7 +309,7 @@ describe("QA R1 citas · WhatsApp · DEFECTOS confirmados", () => {
 
   // QA-citas-R1-agentes-10 (P2): notas de voz, imagenes (receta, credencial), ubicacion, stickers y textos >4000 se descartan EN SILENCIO: el
   // paciente no recibe nada (ni "no puedo escuchar audios, escribame").
-  it.fails("10 una nota de voz, una imagen y un texto de 4001 caracteres producen algo que atender (no se descartan en silencio)", () => {
+  it("10 una nota de voz, una imagen y un texto de 4001 caracteres producen algo que atender (no se descartan en silencio)", () => {
     const msg = (m: Record<string, unknown>) => ({ entry: [{ changes: [{ value: { messages: [{ id: `wamid.${randomUUID()}`, from: "5219991234567", ...m }] } }] }] });
     const audio = extractMetaInboundMessages(msg({ type: "audio", audio: { id: "media1", mime_type: "audio/ogg" } }));
     const imagen = extractMetaInboundMessages(msg({ type: "image", image: { id: "media2" } }));
@@ -319,7 +319,7 @@ describe("QA R1 citas · WhatsApp · DEFECTOS confirmados", () => {
 
   // QA-citas-R1-agentes-11 (P2): sin tope por remitente antes del LLM: el limite del webhook es por numero del NEGOCIO (120/min compartido por
   // todos los pacientes); un solo remitente puede gastar 40 turnos de modelo seguidos (y agotar el cupo de los demas).
-  it.fails("11 40 mensajes del mismo telefono en ráfaga no producen 40 llamadas al modelo", async () => {
+  it("11 40 mensajes del mismo telefono en ráfaga no producen 40 llamadas al modelo", async () => {
     const t = montarConsultorio();
     for (let i = 0; i < 40; i++) await t.entrante(`hola ${i}`);
     expect(t.modelo.llamadas()).toBeLessThan(40);
