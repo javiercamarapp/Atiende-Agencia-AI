@@ -49,5 +49,7 @@ las migraciones 0053 (equipo) o 0057 (datos del preflight), esas verificaciones 
 
 - `APP_BASE_URL`: en producción (`VERCEL_ENV=production`, o `NODE_ENV=production` sin `VERCEL_ENV`) es obligatoria y debe ser `https://`;
   sin ella la API no arranca con un mensaje claro. Fuera de producción: `https://$VERCEL_URL` y, si no hay, `http://localhost:5173`.
+  Ojo: si el proyecto de Vercel no expone las System Environment Variables, `VERCEL_ENV` llega vacío y `NODE_ENV=production` hace que los despliegues Preview
+  también cuenten como producción (y no arranquen sin `APP_BASE_URL`); activa «Automatically expose System Environment Variables» o define `APP_BASE_URL` también en Preview.
 - `RESEND_FROM_EMAIL`: en producción, con `RESEND_API_KEY` pero sin remitente el correo queda **no configurado** (cada envío falla explícito),
   no se inventa un remitente. Fuera de producción: el remitente de pruebas de Resend (`onboarding@resend.dev`).
