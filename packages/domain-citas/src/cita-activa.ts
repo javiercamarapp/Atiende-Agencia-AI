@@ -5,6 +5,12 @@
 // referencia que ese aviso lleva es el id de la cita (en los botones de WhatsApp o en `appointment_id` del correo): aqui se vuelve a leer su estado.
 //
 // FAIL-OPEN a proposito: si la lectura falla o la cita no aparece, el aviso se entrega como siempre; solo un estado INACTIVO explicito lo frena.
+//
+// LIMITACION CONOCIDA (hueco abierto, QA-citas-R1-automatizacion-02): la lectura usa `findAppointmentForOrganization`, un SELECT plano sobre
+// `citas.appointments` cuya unica policy de lectura es de staff (`auth.uid()` con membresia). Los dos despachadores corren en sesion de SISTEMA
+// (`auth.uid()` nulo), asi que contra Postgres real la lectura devuelve 0 filas, `cita` queda en null y esta funcion devuelve true (se entrega).
+// Solo frena de verdad con un repositorio sin RLS (pruebas en memoria) o una sesion con membresia. Cerrarlo requiere una funcion `security
+// definer` de solo-sistema (`auth.uid() is null`, `set search_path`, revoke de public) y su verify, es decir SQL con prefijo de migracion.
 import type { CitasRepository } from "./repository.ts";
 import type { MessagingOutboxRow } from "./repository.ts";
 import { parseAppointmentButtonId } from "./whatsapp/appointment-button-ids.ts";

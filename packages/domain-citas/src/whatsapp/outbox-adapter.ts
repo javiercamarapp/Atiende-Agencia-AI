@@ -20,6 +20,7 @@ export function createCitasMessagingOutboxPort(repo: CitasRepository): Messaging
       const reclamados = await repo.claimMessagingOutboxBatch(limit, leaseSeconds);
       // Un recordatorio que se quedo en el outbox (Meta caido, backoff...) NO se entrega si su cita ya se cancelo o cerro: se marca `dead`
       // con motivo `cita_inactiva` (el patron del dispatcher para "no enviar nunca") y el resto del lote sigue.
+      // OJO: contra la base real esta lectura corre en sesion de sistema bajo una RLS solo de staff y no ve la cita (fail-open, se entrega); ver cita-activa.ts.
       const { entregables, descartados } = await filtrarRecordatoriosDeCitasInactivas(repo, reclamados);
       for (const id of descartados) {
         const original = reclamados.find((r) => r.id === id);

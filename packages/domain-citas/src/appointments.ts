@@ -45,6 +45,9 @@ export function isValidVoiceConversationId(value: unknown): value is string {
 //   - Cualquier otro país (+1 de EE. UU./Canadá, etc.): TODOS los dígitos con su código de país. Antes se recortaba también a 10 y
 //     +1 551-234-5678 quedaba como el MISMO paciente que +52 55 1234 5678 (veía y podía cancelar sus citas).
 //   - Un número local de 7 a 10 dígitos sin país se asume mexicano.
+//   - Limitacion conocida: un movil mexicano marcado con el '1' antiguo SIN +52 (11 digitos, "1 55 1234 5678") o con "0052" delante no se
+//     reconoce como mexicano (es indistinguible de un numero +1 de EE. UU./Canada con 11 digitos) y queda con todos sus digitos, como otro
+//     cliente. Los canales reales traen el codigo de pais (el wa_id de WhatsApp siempre lo lleva); el panel y la voz deben capturarlo.
 export function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 7) return phone.trim();
