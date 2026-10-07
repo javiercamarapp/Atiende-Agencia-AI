@@ -365,7 +365,7 @@ export class InMemoryCitasRepository implements CitasRepository {
     }
   }
 
-  getOutbox(): readonly { id: string; organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown; status: string; attempts: number }[] {
+  getOutbox(): readonly { id: string; organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown; status: string; attempts: number; lastErrorClass?: string | null; lastError?: string | null }[] {
     return [...this.outbox.values()];
   }
 
