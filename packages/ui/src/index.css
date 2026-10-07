@@ -519,6 +519,20 @@
 }
 .copiloto-panel-entra { animation: copiloto-panel-entra 480ms var(--ease-out) both; }
 .copiloto-panel-sale { animation: copiloto-panel-sale 480ms var(--ease-out) both; }
+/* Panel lateral del Copiloto de superadmin (Cmd+J): width y margin animados en 480 ms con la curva de Likida. Cerrado = ancho 0 (el aside queda
+   montado e `inert`; el contenido interior mide 400 px fijos y no se reacomoda durante la animacion). En movil (< 768 px) abierto es una lamina a
+   pantalla completa y cerrado se oculta sin desmontarse. */
+.copiloto-panel-lateral {
+  width: 0;
+  margin-left: 0;
+  margin-right: 0;
+  transition: width 480ms var(--ease-out), margin 480ms var(--ease-out);
+}
+.copiloto-panel-lateral[data-abierto="true"] { width: 400px; margin-right: 16px; }
+@media (max-width: 767px) {
+  .copiloto-panel-lateral[data-abierto="true"] { position: fixed; inset: 0; z-index: 40; width: 100%; margin: 0; }
+  .copiloto-panel-lateral[data-abierto="false"] { display: none; }
+}
 /* Categorias y mensajes nuevos: opacidad 0->1 y translateY(10px)->0 en 250 ms (el
    framer-motion de atiende-restaurantes, sin dependencia). */
 @keyframes copiloto-categorias-entra {
@@ -538,6 +552,7 @@
   .copiloto-panel-entra,
   .copiloto-panel-sale,
   .copiloto-categorias-entra { animation: none; }
+  .copiloto-panel-lateral { transition: none; }
 }
 
 /* ---------------------------------------------------------------------------

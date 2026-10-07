@@ -35,6 +35,7 @@ import type {
   PlatformSwitchRow,
   ProspectoRow,
   SecurityEventRow,
+  SuperadminOrganizationBillingRow,
   SuperadminOrganizationRow,
 } from "@atiende/db";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
@@ -92,6 +93,8 @@ export interface FuentesPlataforma {
   cfoFotos(desde: string, hasta: string): Promise<Fuente<readonly BillingSnapshotRow[]>>;
   infra(desde: string, hasta: string): Promise<Fuente<readonly InfraCostRow[]>>;
   contratos(): Promise<Fuente<readonly ContratoVersionRow[]>>;
+  /** Facturacion por organizacion (core.list_organization_billing_for_superadmin): estado de la suscripcion, asientos y fin del periodo. Sin correos ni ids de Stripe en el catalogo. */
+  facturacion(): Promise<Fuente<readonly SuperadminOrganizationBillingRow[]>>;
   /** Registra el acceso en core.cfo_access_log (transaccion PROPIA, confirmada antes de leer el dato). */
   registrarAccesoCfo(accion: AccionAccesoCfo, recurso: string, filtros: Readonly<Record<string, unknown>>): Promise<ResultadoAccesoCfo>;
 }
@@ -237,6 +240,7 @@ export function fuentesDeProduccion(deps: AppDeps, db: TenantDbSession, callerId
             return conDisponibilidad(r, () => r.versions);
           })
         : Promise.resolve(SIN_REPO),
+    facturacion: () => propio(() => deps.coreRepo.listOrganizationBillingForSuperadmin(callerId)),
     async registrarAccesoCfo(accion, recurso, filtros) {
       const repo = deps.cfoZoneRepo;
       // Sin repositorio de la zona CFO no hay rol restringido ni bitacora (mismo criterio que zona-cfo.ts: comportamiento anterior).
