@@ -72,6 +72,11 @@ describe("providerFailureReply fiel a la accion (QA-citas-R1-agentes-04 / caos-1
     expect(providerFailureReply("a", { accion: "modificar", startsAt: iso }, "America/Merida")).toMatch(/actualizada.*10:00/);
     expect(providerFailureReply(null)).toMatch(/problema técnico/);
   });
+
+  it("la hora sale en la zona de la sucursal de la cita (aplicada.timeZone), no en la del negocio", () => {
+    const iso = "2026-03-02T16:00:00.000Z"; // 10:00 en Merida, 08:00 en Tijuana (UTC-8)
+    expect(providerFailureReply("a", { accion: "reagendar", startsAt: iso, timeZone: "America/Tijuana" }, "America/Merida")).toMatch(/08:00/);
+  });
 });
 
 describe("ventana de historial (QA-citas-R1-agentes-07)", () => {

@@ -90,7 +90,7 @@ const NOMBRE_MAX_LARGO = 40;
 
 /**
  * El nombre lo dicta el propio paciente (`crear_cita.customer_name`, hasta 160 caracteres) y se vuelve a pegar en el system prompt de sus
- * conversaciones siguientes: se trata como DATO, no como texto libre. Solo letras (con acentos), espacios, apostrofe, guion y punto,
+ * conversaciones siguientes: se trata como DATO, no como texto libre. Solo letras (con acentos), espacios, apostrofe y guion (el punto se descarta),
  * como mucho 4 palabras y 40 caracteres: un nombre real cabe, una instruccion larga no. null si no queda nada utilizable.
  */
 export function nombreParaPrompt(nombre: string | null | undefined): string | null {
@@ -228,6 +228,8 @@ export type AccionAgenda = "crear" | "cancelar" | "reagendar" | "modificar";
 export interface CitaAplicada {
   readonly accion: AccionAgenda;
   readonly startsAt: string;
+  /** Zona de la sucursal/proveedor de la cita (la que debe usar el aviso de fecha); sin ella se usa la del negocio. */
+  readonly timeZone?: string;
 }
 
 const TEXTO_PROBLEMA_TECNICO = "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.";
@@ -248,7 +250,7 @@ function cuando(startsAt: string, timeZone: string): string | null {
  */
 export function providerFailureReply(appointmentId: string | null, aplicada: CitaAplicada | null = appointmentId ? { accion: "crear", startsAt: "" } : null, timeZone: string = FALLBACK_CONFIG.timezone): string {
   if (!appointmentId || !aplicada) return TEXTO_PROBLEMA_TECNICO;
-  const fecha = aplicada.startsAt ? cuando(aplicada.startsAt, timeZone) : null;
+  const fecha = aplicada.startsAt ? cuando(aplicada.startsAt, aplicada.timeZone ?? timeZone) : null;
   switch (aplicada.accion) {
     case "cancelar":
       return "Tu cita quedó cancelada. Si quieres agendar otra, escríbeme.";
@@ -526,7 +528,7 @@ export async function executeToolCall(
           try {
             const outcome = await rescheduleAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? ""), newStartsAt: String(input.new_starts_at ?? ""), actorChannel: canal });
             await runAfterRescheduleEffects(repo, organizationId, outcome);
-            return { result: { appointment: appointmentToWire(outcome.appointment) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false, aplicada: { accion: "reagendar", startsAt: outcome.appointment.startsAt } };
+            return { result: { appointment: appointmentToWire(outcome.appointment) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false, aplicada: { accion: "reagendar", startsAt: outcome.appointment.startsAt, timeZone: await resolveProviderTimeZone(repo, organizationId, outcome.appointment.providerId, outcome.appointment.propertyId) } };
           } catch (err) {
             if (err instanceof AppointmentAlternativesError) {
               return { result: { error: err.message, alternative_slots: err.alternativeSlots.map((s) => ({ starts_at: s.startsAt, ends_at: s.endsAt })) }, appointmentId: null, propertyId: null, isEscalatingFailure: true };
@@ -547,7 +549,7 @@ export async function executeToolCall(
             // Efectos best-effort (lista de espera del hueco viejo + correo), cada uno con
             // su SAVEPOINT: nunca revierten el cambio ya hecho (ver appointment-effects.ts).
             await runAfterReassignEffects(repo, organizationId, outcome);
-            return { result: { appointment: appointmentToWire(outcome.appointment) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false, aplicada: { accion: "modificar", startsAt: outcome.appointment.startsAt } };
+            return { result: { appointment: appointmentToWire(outcome.appointment) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false, aplicada: { accion: "modificar", startsAt: outcome.appointment.startsAt, timeZone: await resolveProviderTimeZone(repo, organizationId, outcome.appointment.providerId, outcome.appointment.propertyId) } };
           } catch (err) {
             if (err instanceof AppointmentAlternativesError) {
               return { result: { error: err.message, alternative_slots: err.alternativeSlots.map((s) => ({ starts_at: s.startsAt, ends_at: s.endsAt })) }, appointmentId: null, propertyId: null, isEscalatingFailure: true };
