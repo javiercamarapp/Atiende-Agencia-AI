@@ -482,7 +482,7 @@ reset role;
 select count(*) as deberia_ser_1 from hoteles.rate_plan where id = '00000000-0000-0000-0000-0000000c3a01' and price = 1500;
 rollback;
 
-\echo '=== 21. el trigger de precio manual no se deja falsificar: una sesion de staff no puede escribir manual_price_by de otra persona; el motor (sistema) no marca ==='
+\echo '=== 21. el trigger de precio manual no se deja falsificar y un alta de staff NO marca: manual_price_by/at quedan nulos aunque el cliente los escriba; el motor (sistema) no marca ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0a01', true);
@@ -492,7 +492,10 @@ do $$
 declare v_by uuid;
 begin
   select manual_price_by into v_by from hoteles.rate_plan where room_type_id = '00000000-0000-0000-0000-0000000c2a01' and date = current_date + 20;
-  if v_by is distinct from '00000000-0000-0000-0000-0000000c0a01'::uuid then raise exception 'manual_price_by falsificable: %', v_by; end if;
+  if v_by is not null then raise exception 'manual_price_by falsificable o marcado por un alta: %', v_by; end if;
+  if exists (select 1 from hoteles.rate_plan where room_type_id = '00000000-0000-0000-0000-0000000c2a01' and date = current_date + 20 and manual_price_at is not null) then
+    raise exception 'un alta de staff no debe marcar la tarifa como manual';
+  end if;
 end $$;
 reset role;
 select set_config('request.jwt.claim.sub', '', true);
@@ -576,5 +579,58 @@ begin
 end $$;
 rollback;
 
+-- Fixtures del motor para los escenarios 26 y 27 (mismo camino real que scripts/verify-hoteles-motor-tarifas): gate shadow -> propone
+-- (90+ dias en shadow) -> aprobacion de owner -> backtest que pasa -> autopilot.
+insert into hoteles.revenue_engine_gate (organization_id, property_id, gate, shadow_started_at) values
+  ('00000000-0000-0000-0000-00000000c0a1', '00000000-0000-0000-0000-0000000c1a01', 'shadow', now() - interval '91 days')
+on conflict do nothing;
+update hoteles.revenue_engine_gate set gate = 'propone' where property_id = '00000000-0000-0000-0000-0000000c1a01';
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0a01', false);
+update hoteles.revenue_engine_gate set owner_approved_autopilot_at = now() where property_id = '00000000-0000-0000-0000-0000000c1a01';
+select set_config('request.jwt.claim.sub', '', false);
+insert into hoteles.revenue_backtest_run (
+  organization_id, property_id, counterfactual_method, windows_evaluated, windows_engine_won,
+  engine_total_revenue, baseline_total_revenue, improvement_pct, passes, failure_reasons
+) values (
+  '00000000-0000-0000-0000-00000000c0a1', '00000000-0000-0000-0000-0000000c1a01', 'misma_tarifa_periodo_anterior', 10, 8,
+  120000.00, 100000.00, 20.0, true, '[]'::jsonb
+);
+update hoteles.revenue_engine_gate set gate = 'autopilot' where property_id = '00000000-0000-0000-0000-0000000c1a01';
+
+\echo '=== 26. MOTOR: una tarifa dada de alta por staff (sin edicion manual) SI la aplica el motor sobre una recomendacion pendiente ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0a01', true);
+insert into hoteles.rate_plan (organization_id, property_id, room_type_id, date, price)
+values ('00000000-0000-0000-0000-00000000c0a1', '00000000-0000-0000-0000-0000000c1a01', '00000000-0000-0000-0000-0000000c2a01', current_date + 5, 1000)
+on conflict (room_type_id, date) do update set price = excluded.price;
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select estado from hoteles.system_apply_rate_recommendation('00000000-0000-0000-0000-0000000c4a01');
+reset role;
+select count(*) as deberia_ser_1 from hoteles.rate_plan where room_type_id = '00000000-0000-0000-0000-0000000c2a01' and date = current_date + 5 and price = 1100 and manual_price_at is null;
+rollback;
+
+\echo '=== 27. MOTOR: la aprobacion humana explicita se aplica aunque haya precio manual y limpia la marca ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0a01', true);
+insert into hoteles.rate_plan (organization_id, property_id, room_type_id, date, price)
+values ('00000000-0000-0000-0000-00000000c0a1', '00000000-0000-0000-0000-0000000c1a01', '00000000-0000-0000-0000-0000000c2a01', current_date + 5, 1000)
+on conflict (room_type_id, date) do update set price = excluded.price;
+select price from hoteles.set_rate_price('00000000-0000-0000-0000-0000000c1a01',
+  (select id from hoteles.rate_plan where room_type_id = '00000000-0000-0000-0000-0000000c2a01' and date = current_date + 5), 1300, null);
+reset role;
+update hoteles.revenue_engine_gate set gate = 'propone' where property_id = '00000000-0000-0000-0000-0000000c1a01';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0a01', true);
+update hoteles.rate_recommendation set estado = 'aprobada' where id = '00000000-0000-0000-0000-0000000c4a01';
+select set_config('request.jwt.claim.sub', '', true);
+select estado from hoteles.system_apply_rate_recommendation('00000000-0000-0000-0000-0000000c4a01');
+reset role;
+select count(*) as deberia_ser_1 from hoteles.rate_plan where room_type_id = '00000000-0000-0000-0000-0000000c2a01' and date = current_date + 5 and price = 1100 and manual_price_at is null;
+rollback;
+
 \echo ''
-\echo '=== listo: 25 escenarios (los "deberia_ser_N" y los do-blocks deben terminar sin error) ==='
+\echo '=== listo: 27 escenarios (los "deberia_ser_N" y los do-blocks deben terminar sin error) ==='

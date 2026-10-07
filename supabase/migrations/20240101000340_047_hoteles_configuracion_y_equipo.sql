@@ -9,10 +9,11 @@
 -- Que hace:
 --   1. `hoteles.config_audit_log`: bitacora de cambios de configuracion (impuestos, politica de cancelacion, sobreventa, tarifa).
 --   2. `hoteles.cancellation_policy.guest_text`: texto de la politica para el huesped (opcional, hasta 1000 caracteres).
---   3. `hoteles.rate_plan.manual_price_at/manual_price_by` + trigger `rate_plan_manual_lock_trg`: cuando una sesion de STAFF
---      (auth.uid() no nulo) inserta una tarifa o cambia su precio, la fila queda marcada como "precio manual".
---      `hoteles.system_apply_rate_recommendation` (migracion 029) se redefine para NO pisar una tarifa con precio manual: lanza
---      `tarifa_manual_vigente` (P0001) y la recomendacion queda en su estado; el cron ya cuenta y notifica esos rechazos.
+--   3. `hoteles.rate_plan.manual_price_at/manual_price_by` + trigger `rate_plan_manual_lock_trg`: cuando `hoteles.set_rate_price`
+--      (edicion puntual de un dia por owner/gm) cambia el precio, la fila queda marcada como "precio manual"; el alta de rango
+--      de tarifas del panel NO marca. `hoteles.system_apply_rate_recommendation` (migracion 029) se redefine para que la
+--      aplicacion automatica (recomendacion 'pendiente') NO pise una tarifa con precio manual: lanza `tarifa_manual_vigente`
+--      (P0001) y la recomendacion queda en su estado; la aprobacion humana explicita ('aprobada') si se aplica y limpia la marca.
 --   4. `hoteles.set_tax_config`, `hoteles.set_cancellation_policy`, `hoteles.set_room_type_overbooking`, `hoteles.set_rate_price`.
 --   5. `hoteles.record_onboarding_skip`: deja en la bitacora que owner/gm omitio el gate de "Primeros pasos" (H-P3-06).
 --
@@ -33,8 +34,12 @@
 --    insert/update/delete a `authenticated` ni a `anon`: solo las funciones `set_*` (security definer) escriben, y solo cuando
 --    algo cambio de verdad (una llamada idempotente que no cambia nada no genera ruido). La bitacora guarda valores de
 --    configuracion (tasas, horas, precios, cantidades), nunca datos personales.
---  * `rate_plan.manual_price_*`: las fija el trigger `rate_plan_manual_lock` (security invoker, sin parametros del cliente); en un
---    UPDATE que no cambia el precio conserva el valor anterior y una sesion de sistema (el motor) nunca las marca. El GRANT UPDATE
+--  * `rate_plan.manual_price_*`: las fija el trigger `rate_plan_manual_lock` (security invoker, sin parametros del cliente) SOLO
+--    cuando `hoteles.set_rate_price` cambia el precio (variable local de transaccion `hoteles.rate_manual_edit`); un INSERT (alta de
+--    rango del panel) nunca marca y una sesion de sistema nunca marca. Solo la aplicacion automatica (recomendacion 'pendiente')
+--    respeta la marca; la aprobacion humana explicita ('aprobada') se aplica y limpia la marca. Un cliente que fije la variable
+--    por su cuenta no obtiene nada: sin ser set_rate_price el UPDATE directo ya conserva el valor anterior salvo el modo 'set',
+--    que solo marca al propio actor (auth.uid()) y no concede ningun permiso adicional. El GRANT UPDATE
 --    de `rate_plan` ya existente (018, owner/gm por policy) no cambia; el trigger sobreescribe cualquier valor que el cliente
 --    intente escribir en estas dos columnas.
 --  * `system_apply_rate_recommendation` se redefine con el MISMO cuerpo, `security definer`, `search_path`, guard
@@ -87,16 +92,26 @@ returns trigger
 language plpgsql
 set search_path = hoteles, pg_temp
 as $$
+declare
+  v_modo text := coalesce(current_setting('hoteles.rate_manual_edit', true), '');
 begin
-  if auth.uid() is not null and (tg_op = 'INSERT' or new.price is distinct from old.price) then
-    new.manual_price_at := now();
-    new.manual_price_by := auth.uid();
-  elsif tg_op = 'UPDATE' then
-    new.manual_price_at := old.manual_price_at;
-    new.manual_price_by := old.manual_price_by;
-  else
+  -- La marca de "precio manual" la pone SOLO una edicion puntual de precio (hoteles.set_rate_price, que activa la variable local de
+  -- transaccion `hoteles.rate_manual_edit = 'set'`) o la limpia la aprobacion humana explicita aplicada por el sistema
+  -- (system_apply_rate_recommendation, modo 'clear'). Un INSERT (alta de rango de tarifas del panel, siembra) o un UPDATE de
+  -- cualquier otro camino NO marca: cargar tarifas no es "fijar a mano" y no debe bloquear al motor. Nunca se acepta el valor
+  -- que el cliente escriba en estas columnas: en INSERT quedan nulas y en UPDATE se conserva el valor anterior.
+  if tg_op = 'INSERT' then
     new.manual_price_at := null;
     new.manual_price_by := null;
+  elsif v_modo = 'set' and auth.uid() is not null and new.price is distinct from old.price then
+    new.manual_price_at := now();
+    new.manual_price_by := auth.uid();
+  elsif v_modo = 'clear' and auth.uid() is null then
+    new.manual_price_at := null;
+    new.manual_price_by := null;
+  else
+    new.manual_price_at := old.manual_price_at;
+    new.manual_price_by := old.manual_price_by;
   end if;
   return new;
 end;
@@ -126,17 +141,23 @@ begin
     raise exception 'estado_no_aplicable: la recomendacion % esta en estado "%", no se puede aplicar', p_recommendation_id, v_rec.estado using errcode = 'P0001';
   end if;
 
-  if exists (
+  -- Solo la aplicacion AUTOMATICA (estado 'pendiente', autopilot) respeta el precio fijado a mano. Una recomendacion 'aprobada'
+  -- la aprobo una persona de forma explicita: se aplica y limpia la marca manual de esa fecha.
+  if v_rec.estado = 'pendiente' and exists (
     select 1 from hoteles.rate_plan rp
     where rp.room_type_id = v_rec.room_type_id and rp.date = v_rec.fecha and rp.manual_price_at is not null
   ) then
     raise exception 'tarifa_manual_vigente: la tarifa del % tiene un precio fijado a mano; el motor no la sobreescribe', v_rec.fecha using errcode = 'P0001';
   end if;
 
+  perform set_config('hoteles.rate_manual_edit', 'clear', true);
+
   insert into hoteles.rate_plan (organization_id, property_id, room_type_id, date, price, min_stay)
   values (v_rec.organization_id, v_rec.property_id, v_rec.room_type_id, v_rec.fecha, v_rec.recommended_price, v_rec.suggested_min_stay)
   on conflict (room_type_id, date) do update
     set price = excluded.price, min_stay = excluded.min_stay, updated_at = now();
+
+  perform set_config('hoteles.rate_manual_edit', '', true);
 
   update hoteles.rate_recommendation set estado = 'aplicada' where id = p_recommendation_id
     returning * into v_rec;
@@ -180,7 +201,7 @@ begin
   end if;
 
   select jsonb_build_object('ivaRate', iva_rate, 'ishRate', ish_rate, 'discountThreshold', discount_threshold, 'dsaPerNight', dsa_per_night)
-    into v_old from hoteles.tax_config where property_id = p_property_id;
+    into v_old from hoteles.tax_config where property_id = p_property_id for update;
 
   insert into hoteles.tax_config (property_id, organization_id, iva_rate, ish_rate, discount_threshold, dsa_per_night)
   values (p_property_id, v_org, p_iva_rate, p_ish_rate, p_discount_threshold, coalesce(p_dsa_per_night, 0))
@@ -231,7 +252,7 @@ begin
   end if;
 
   select jsonb_build_object('freeUntilHours', free_until_hours, 'penaltyPct', penalty_pct, 'guestText', guest_text)
-    into v_old from hoteles.cancellation_policy where property_id = p_property_id;
+    into v_old from hoteles.cancellation_policy where property_id = p_property_id for update;
 
   insert into hoteles.cancellation_policy (property_id, organization_id, free_until_hours, penalty_pct, guest_text)
   values (p_property_id, v_org, p_free_until_hours, p_penalty_pct, v_text)
@@ -322,10 +343,12 @@ begin
     return v_old;
   end if;
 
+  perform set_config('hoteles.rate_manual_edit', 'set', true);
   update hoteles.rate_plan
     set price = p_price, min_stay = coalesce(p_min_stay, min_stay), updated_at = now()
     where id = p_rate_id
     returning * into v_row;
+  perform set_config('hoteles.rate_manual_edit', '', true);
 
   insert into hoteles.config_audit_log (organization_id, property_id, area, entity_id, actor_user_id, valor_anterior, valor_nuevo)
   values (v_row.organization_id, p_property_id, 'tarifa', p_rate_id, auth.uid(),
