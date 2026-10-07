@@ -105,6 +105,7 @@ import type {
   TenderDocumentText,
 } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
+import { auditarExpediente } from "./autopiloto-auditor.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { avisarCambioDeBases } from "./avisos-campana.ts";
@@ -395,6 +396,8 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
           },
         };
       });
+      // L-P3-11: el auditor determinista re-evalua el expediente tras el cambio de insumo (nunca falla la escritura).
+      await auditarExpediente(deps, c.get("db"), { organizationId, tenderId });
       return c.json(result.body, result.status as 200);
     } catch (err) {
       if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();
@@ -498,6 +501,8 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
           },
         };
       });
+      // L-P3-11: el auditor determinista re-evalua el expediente tras el cambio de insumo (nunca falla la escritura).
+      await auditarExpediente(deps, c.get("db"), { organizationId, tenderId });
       return c.json(result.body, result.status as 200);
     } catch (err) {
       if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();

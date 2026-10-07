@@ -44,6 +44,8 @@ import type {
   LicitacionesRepository,
   SourceConnectorId,
   SourceHealthState,
+  TenderBasesChange,
+  TenderRecord,
   TenderSourceIngestCandidate,
 } from "@atiende/domain-licitaciones";
 
@@ -71,6 +73,12 @@ export interface DiscoverTendersSourceResult {
   readonly updated: number;
   readonly droppedRows: number;
   readonly message: string;
+  /** L-P3-09: convocatorias que ESTA corrida dio de alta (nuevas), insumo del "nuevo match". Vacio en una fuente que fallo. */
+  readonly createdTenders: readonly TenderRecord[];
+  /** L-P3-08: convocatorias YA conocidas cuya fuente cambio plazo, monto, bases o documentos (la version ya quedo registrada). */
+  readonly basesModificadas: readonly TenderBasesChange[];
+  /** Motivo si el vigilante no pudo registrar versiones (base sin la migracion 039); la ingesta NO se pierde. */
+  readonly vigilanteNoDisponible?: string;
   /** `true` cuando la fuente externa no está disponible por causas ajenas (WAF/retirada/TLS/red): queda `down` con su aviso, pero no es un fallo real de la corrida (ver `SourceUnavailableError`). */
   readonly unavailable?: boolean;
 }
@@ -143,6 +151,10 @@ export async function runDiscoverTendersForOrganization(
       if (runNotPersistedReason !== undefined) {
         options.logger?.warn(`discover-tenders: ${runNotPersistedReason}`, { organizationId, source: descriptor.id });
       }
+      if (ingestResult.vigilanteNoDisponible !== undefined) {
+        options.logger?.warn(`discover-tenders: ${ingestResult.vigilanteNoDisponible}`, { organizationId, source: descriptor.id });
+      }
+      const idsNuevas = new Set(ingestResult.createdTenderIds ?? []);
       results.push({
         source: descriptor.id,
         state: "ok",
@@ -151,6 +163,9 @@ export async function runDiscoverTendersForOrganization(
         updated: ingestResult.updated,
         droppedRows: droppedCount,
         message: `${ingestResult.created} nueva(s), ${ingestResult.updated} actualizada(s).${runNotPersistedReason !== undefined ? ` [AVISO: ${runNotPersistedReason}]` : ""}`,
+        createdTenders: ingestResult.tenders.filter((t) => idsNuevas.has(t.id)),
+        basesModificadas: ingestResult.basesModificadas ?? [],
+        ...(ingestResult.vigilanteNoDisponible !== undefined ? { vigilanteNoDisponible: ingestResult.vigilanteNoDisponible } : {}),
       });
     } catch (err) {
       const { state, message, unavailable } = classifySourceFailure(err);
@@ -181,7 +196,7 @@ export async function runDiscoverTendersForOrganization(
         });
         resultMessage = `${message} [ADEMÁS no se pudo registrar la corrida fallida en source_run: ${recordErrMessage}]`;
       }
-      results.push({ source: descriptor.id, state, discovered: 0, created: 0, updated: 0, droppedRows: droppedCount, message: resultMessage, ...(unavailable ? { unavailable: true } : {}) });
+      results.push({ source: descriptor.id, state, discovered: 0, created: 0, updated: 0, droppedRows: droppedCount, message: resultMessage, createdTenders: [], basesModificadas: [], ...(unavailable ? { unavailable: true } : {}) });
     }
   }
 

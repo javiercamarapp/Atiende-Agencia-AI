@@ -46,6 +46,15 @@ export interface OcdsItem {
   readonly additionalClassifications?: readonly OcdsClassification[] | null;
 }
 
+/** `tender.documents[]` de OCDS (solo los campos de metadatos que usa el mapeo; la fuente puede omitir cualquiera). */
+export interface OcdsDocument {
+  readonly id?: string | number | null;
+  readonly documentType?: string | null;
+  readonly title?: string | null;
+  readonly url?: string | null;
+  readonly datePublished?: string | null;
+}
+
 export interface OcdsTender {
   readonly id?: string | number | null;
   readonly title?: string | null;
@@ -57,6 +66,7 @@ export interface OcdsTender {
   readonly value?: OcdsAmount | null;
   readonly items?: readonly OcdsItem[] | null;
   readonly tenderPeriod?: OcdsPeriod | null;
+  readonly documents?: readonly OcdsDocument[] | null;
 }
 
 /** Un release OCDS individual (evento incremental) -- forma que devuelve `/api/releases` de Nuevo León. */

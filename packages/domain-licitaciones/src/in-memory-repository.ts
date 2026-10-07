@@ -88,6 +88,7 @@ import type {
   RecordTenderVersionResult,
   RequirementFulfillmentMappingRecord,
   RequirementItemRecord,
+  TenderBasesChange,
   TenderChangeNotificationRecord,
   TenderSourceIngestResult,
   TenderDeadlineReminderRecord,
@@ -97,6 +98,9 @@ import type {
 import type { TenderSourceIngestCandidate } from "./connectors/types.ts";
 import { buildGoNoGoDecision } from "./go-no-go.ts";
 import { TenderVersionRegistry, computeTenderSnapshotHash, toRequirementSnapshot } from "./tender-version-registry.ts";
+import { planIngestTenderVersion } from "./tender-ingest-versioning.ts";
+import type { NewMatchContext, NewMatchNoticeRecord } from "./new-match.ts";
+import type { ExpedienteAuditoriaEstado, ExpedienteAuditoriaRecord } from "./expediente-auditoria.ts";
 import type { PersistedTenderVersion, TenderVersionSnapshot } from "./tender-version-registry.ts";
 import { LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
 import type { SourceConnectorId } from "./connector-registry.ts";
@@ -189,6 +193,9 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   // (migración 027). Ausente en el mapa = misma fila inexistente que
   // `findTenantConfig` ve contra Postgres real (`timezone: null`).
   private readonly tenantConfigs = new Map<string, string | null>(); // orgId -> timezone
+  private readonly newMatchMinScores = new Map<string, number | null>(); // orgId -> umbral de nuevo match (L-P3-09; null = solo elegibles)
+  private readonly expedienteAuditoria = new Map<string, ExpedienteAuditoriaRecord>(); // proposalId -> ultimo estado auditado (L-P3-11)
+  private readonly newMatchNotices = new Map<string, Map<string, NewMatchNoticeRecord>>(); // orgId -> (tenderId -> aviso)
   // ---- Fase 3: matching/scoring y go/no-go ----
   private readonly tenderByExternalKey = new Map<string, string>(); // `${orgId}:manual:${externalId}` -> tenderId (mismo alcance que tender_org_source_external_idx)
   // f2-orden-total-bitacoras -- `id`/`organizationId`/`createdAtMs`/`seq` agregados
@@ -320,14 +327,15 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   // ---- FASE 3 (producto) — zona horaria por negocio ----
 
   async findTenantConfig(organizationId: string): Promise<LicitacionesTenantConfigRecord> {
-    return { organizationId, timezone: this.tenantConfigs.get(organizationId) ?? null };
+    return { organizationId, timezone: this.tenantConfigs.get(organizationId) ?? null, newMatchMinScore: this.newMatchMinScores.get(organizationId) ?? null };
   }
 
   async upsertTenantConfig(organizationId: string, patch: LicitacionesTenantConfigPatch): Promise<LicitacionesTenantConfigRecord> {
     const current = this.tenantConfigs.get(organizationId) ?? null;
     const timezone = "timezone" in patch ? (patch.timezone ?? null) : current;
     this.tenantConfigs.set(organizationId, timezone);
-    return { organizationId, timezone };
+    if ("newMatchMinScore" in patch) this.newMatchMinScores.set(organizationId, patch.newMatchMinScore ?? null);
+    return { organizationId, timezone, newMatchMinScore: this.newMatchMinScores.get(organizationId) ?? null };
   }
 
   /** Único punto que llaman `createApprovedRate`/`createContractInvoice`/
@@ -650,6 +658,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     let updated = 0;
     const tenders: TenderRecord[] = [];
     const nowIso = new Date().toISOString();
+    const createdTenderIds: string[] = [];
+    const basesModificadas: TenderBasesChange[] = [];
 
     for (const rec of records) {
       const key = `${organizationId}:${source}:${rec.externalId}`;
@@ -672,6 +682,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
         this.tenders.set(existing.id, updatedTender);
         tenders.push(updatedTender);
         updated += 1;
+        const cambio = await this.vigilarVersionIngesta(organizationId, updatedTender, rec);
+        if (cambio) basesModificadas.push(cambio);
         continue;
       }
 
@@ -695,9 +707,94 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       this.tenderBySourceExternalKey.set(key, createdTender.id);
       tenders.push(createdTender);
       created += 1;
+      createdTenderIds.push(createdTender.id);
+      await this.vigilarVersionIngesta(organizationId, createdTender, rec);
     }
 
-    return { created, updated, tenders };
+    return { created, updated, tenders, createdTenderIds, basesModificadas };
+  }
+
+  /**
+   * L-P3-08: vigilante de cambios de la ingesta automatica (espejo en memoria de `system_record_ingested_tender_version`).
+   * Registra la version de la convocatoria si la fuente cambio algo versionable; devuelve el cambio solo cuando la version es
+   * un CAMBIO real (la primera captura y la "linea base" no avisan). Nunca revierte nada si el aviso posterior falla.
+   */
+  private async vigilarVersionIngesta(organizationId: string, tender: TenderRecord, rec: TenderSourceIngestCandidate): Promise<TenderBasesChange | null> {
+    const previous = await this.latestTenderVersion(organizationId, tender.id);
+    const plan = planIngestTenderVersion(previous, tender, rec.documents);
+    if (plan.action === "none") return null;
+
+    const key = `${organizationId}:${tender.id}`;
+    const registry = this.tenderVersionRegistries.get(key) ?? new TenderVersionRegistry();
+    this.tenderVersionRegistries.set(key, registry);
+    const version = registry.createVersion(plan.snapshot);
+    if (plan.action === "baseline") return null;
+
+    const proposal = await this.findProposal(organizationId, tender.id);
+    const invalidatedApprovalIds: string[] = [];
+    const invalidatedApproverIds = new Set<string>();
+    if (proposal) {
+      for (const c of plan.cascade) {
+        const covering = await this.activeApprovalsCovering(organizationId, proposal.id, c.scopeRef);
+        for (const a of covering) invalidatedApproverIds.add(a.approvedBy);
+        const change = await this.recordChange(organizationId, proposal.id, { scope: c.scope, scopeRef: c.scopeRef, reason: c.reason });
+        invalidatedApprovalIds.push(...change.invalidatedApprovalIds);
+      }
+    }
+    const notifications = this.tenderChangeNotifications.get(organizationId) ?? [];
+    notifications.push({
+      id: randomUUID(),
+      organizationId,
+      tenderId: tender.id,
+      tenderVersion: version.version,
+      reason: plan.reason,
+      changedFieldNames: plan.changedFieldNames,
+      affectedSectionKeys: plan.affectedSectionKeys,
+      notifiedRoles: WRITE_ROLES,
+      createdAt: version.createdAt,
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+    });
+    this.tenderChangeNotifications.set(organizationId, notifications);
+    return { tenderId: tender.id, tenderTitle: tender.title, version: version.version, changedFieldNames: plan.changedFieldNames, invalidatedApprovals: invalidatedApprovalIds.length, invalidatedApproverIds: [...invalidatedApproverIds] };
+  }
+
+  async getExpedienteAuditoria(organizationId: string, proposalId: string): Promise<{ disponible: boolean; registro: ExpedienteAuditoriaRecord | null }> {
+    this.assertProposalOwnership(organizationId, proposalId);
+    return { disponible: true, registro: this.expedienteAuditoria.get(proposalId) ?? null };
+  }
+
+  async saveExpedienteAuditoria(organizationId: string, input: { proposalId: string; tenderId: string; estado: ExpedienteAuditoriaEstado; bloqueos: number; inputsHash: string }): Promise<boolean> {
+    this.assertProposalOwnership(organizationId, input.proposalId);
+    this.expedienteAuditoria.set(input.proposalId, { proposalId: input.proposalId, estado: input.estado, bloqueos: input.bloqueos, inputsHash: input.inputsHash, revisadoEn: new Date().toISOString() });
+    return true;
+  }
+
+  async getNewMatchContext(organizationId: string): Promise<NewMatchContext | null> {
+    return { minScore: this.newMatchMinScores.get(organizationId) ?? null, profile: this.matchingProfiles.get(organizationId) ?? null };
+  }
+
+  /** Solo para pruebas/semillas: el umbral real lo escribe `upsertTenantConfig` (panel de configuracion). */
+  setNewMatchMinScoreForTests(organizationId: string, minScore: number | null): void {
+    this.newMatchMinScores.set(organizationId, minScore);
+  }
+
+  async recordNewMatch(organizationId: string, tenderId: string, input: { readonly score: number; readonly eligible: boolean }): Promise<boolean | null> {
+    const tender = this.tenders.get(tenderId);
+    if (!tender || tender.organizationId !== organizationId) throw new Error("recordNewMatch: la convocatoria no pertenece a la organizacion.");
+    const mine = this.newMatchNotices.get(organizationId) ?? new Map<string, NewMatchNoticeRecord>();
+    this.newMatchNotices.set(organizationId, mine);
+    if (mine.has(tenderId)) return false;
+    mine.set(tenderId, { tenderId, tenderTitle: tender.title, score: Math.max(0, Math.min(100, Math.round(input.score))), eligible: input.eligible, createdAt: new Date().toISOString() });
+    return true;
+  }
+
+  async listNewMatches(organizationId: string, sinceIso: string, limit: number): Promise<readonly NewMatchNoticeRecord[] | null> {
+    const since = new Date(sinceIso).getTime();
+    return [...(this.newMatchNotices.get(organizationId)?.values() ?? [])]
+      .filter((n) => new Date(n.createdAt).getTime() >= since)
+      .sort((a, b) => b.score - a.score || b.createdAt.localeCompare(a.createdAt))
+      .slice(0, Math.max(1, Math.min(limit, 50)));
   }
 
   async listActiveOrganizations(): Promise<readonly { id: string }[]> {
@@ -705,6 +802,19 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   }
 
   private static readonly DEADLINE_REMINDER_EXCLUDED_STATUSES = new Set(["cancelled", "lost", "won", "submitted"]);
+
+  async listUpcomingDeadlines(organizationId: string, nowIso: string, windowDays: number): Promise<readonly { tenderId: string; title: string; submissionDeadline: string }[]> {
+    const now = new Date(nowIso).getTime();
+    const end = now + windowDays * 24 * 60 * 60 * 1000;
+    return [...this.tenders.values()]
+      .filter((t) => {
+        if (t.organizationId !== organizationId || !t.submissionDeadline) return false;
+        const ms = new Date(t.submissionDeadline).getTime();
+        return !Number.isNaN(ms) && ms > now && ms <= end && !InMemoryLicitacionesRepository.DEADLINE_REMINDER_EXCLUDED_STATUSES.has(t.status ?? "discovered");
+      })
+      .sort((a, b) => a.submissionDeadline!.localeCompare(b.submissionDeadline!))
+      .map((t) => ({ tenderId: t.id, title: t.title, submissionDeadline: t.submissionDeadline! }));
+  }
 
   async scanUpcomingDeadlineReminders(organizationId: string, input: ScanDeadlineRemindersInput = {}): Promise<ScanDeadlineRemindersResult> {
     const windowDays = input.windowDays ?? 3;

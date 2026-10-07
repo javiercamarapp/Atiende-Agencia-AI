@@ -387,6 +387,8 @@ export interface AppDeps {
   readonly cronSatRepo?: (db: TenantDbSession) => CronSatRepository;
   /** D-28 -- fuente de la lista 69-B del SAT para el cron mensual. OPCIONAL a proposito: sin ella el cron usa `HttpEfos69bSource` (URL de `EFOS_69B_URL`); los tests inyectan una fuente fija. */
   readonly efos69bSource?: Efos69bSource;
+  /** Gancho OPCIONAL (paridad3 L-P3-10): se invoca DESPUES de que la descarga mensual de la lista 69-B ingirio una edicion NUEVA o corregida (`insertada`/`reemplazada`). Despachos no conoce a nadie: `production/deps.ts` lo cablea al re-tamizado de la cartera KYC de licitaciones. Un fallo del gancho nunca cambia la respuesta ni el latido de la descarga (el barrido diario de alert-notifications lo reintenta). */
+  readonly alIngerirEdicionEfos69b?: (deps: AppDeps, evento: { readonly periodo: string; readonly resultado: "insertada" | "reemplazada" }) => Promise<void>;
   /** D-11 -- cola de cobranza (migracion 017: gestiones, consentimiento de WhatsApp y outbox). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresColaCobranzaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly colaCobranzaRepo?: (db: TenantDbSession) => ColaCobranzaRepository;
   /** Auditoría de acciones de escritura de despachos: completar tarea/cerrar un

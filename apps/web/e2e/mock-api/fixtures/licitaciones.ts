@@ -55,6 +55,13 @@ const BLOQUE_SEMAFORO = {
 };
 const TEXTO_SEMAFORO = "Tienes 7 convocatorias abiertas: 1 en rojo, 2 en amarillo y 4 en verde.";
 const FUENTE_SEMAFORO = { tool: "plazos_semaforo", source: "Convocatorias de la organización con fecha límite vigente", periodLabel: "hoy", scopeLabel: "toda tu organización" };
+interface ConfigOrganizacion {
+  organization_id: string;
+  timezone: string | null;
+  new_match_min_score: number | null;
+}
+const configOrganizacion = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConfigOrganizacion>("lic.tenantConfig", () => ({ organization_id: ORG.id, timezone: "America/Tijuana", new_match_min_score: null }));
+
 const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("licitaciones.copiloto.conversaciones", () => []);
 
 const rutasCopiloto: readonly Ruta[] = [
@@ -544,7 +551,20 @@ export const rutasLicitaciones: readonly Ruta[] = [
   { metodo: "GET", patron: `${L}/company/rates`, manejador: () => ({ rates: [] }) },
   { metodo: "GET", patron: `${L}/company/capabilities`, manejador: () => ({ capabilities: [] }) },
   { metodo: "GET", patron: `${L}/company/experience`, manejador: () => ({ experience: [] }) },
-  { metodo: "GET", patron: "/v1/licitaciones/:org/admin/tenant-config", manejador: () => ({ tenant_config: { organization_id: ORG.id, timezone: "America/Tijuana" } }) },
+  // L-P3-09: la configuracion de la organizacion (zona horaria + umbral del aviso de nuevo match) vive en el estado del escenario; el
+  // PATCH valida como el servidor real (solo owner/admin, entero 0-100 o null) y la lectura devuelve siempre lo guardado.
+  { metodo: "GET", patron: "/v1/licitaciones/:org/admin/tenant-config", manejador: (p) => ({ tenant_config: configOrganizacion(p) }) },
+  { metodo: "PATCH", patron: "/v1/licitaciones/:org/admin/tenant-config", roles: ["owner", "admin"], manejador: (p) => {
+      const cuerpo = (p.cuerpo ?? {}) as Record<string, unknown>;
+      const actual = configOrganizacion(p);
+      if ("new_match_min_score" in cuerpo) {
+        const v = cuerpo["new_match_min_score"];
+        if (v !== null && (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 100)) return fallo(400, "new_match_min_score: se esperaba un entero de 0 a 100, o null (solo convocatorias elegibles).");
+        actual.new_match_min_score = v as number | null;
+      }
+      if ("timezone" in cuerpo) actual.timezone = cuerpo["timezone"] as string | null;
+      return { tenant_config: actual };
+    } },
   { metodo: "GET", patron: `${L}/kyc-69b`, manejador: () => ({ available: true, lista: { periodo: "2026-09", filas: 1200, ingestadoEn: "2026-09-30T16:00:00.000Z" }, listaDisponible: true, periodo: "2026-09", fichas: [], alertas: [] }) },
   { metodo: "GET", patron: `${L}/company/signers`, manejador: () => ({ signers: [{ id: "sig-1", name: "Representante legal", role: "Apoderado", authorized: true }] }) },
   { metodo: "GET", patron: `${L}/whatsapp/settings`, manejador: (p) => p.estado.obtener("lic.whatsapp", ajustesSemilla) },

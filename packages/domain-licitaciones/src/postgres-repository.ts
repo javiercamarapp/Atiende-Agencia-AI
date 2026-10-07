@@ -33,6 +33,7 @@ import type {
   RecordTenderVersionResult,
   TenderAuditLogEntry,
   TenderAuditLogPage,
+  TenderBasesChange,
   TenderChangeNotificationRecord,
   TenderResolutionCreateInput,
   TenderPage,
@@ -91,6 +92,9 @@ import type { RequirementFulfillmentMappingRecord, RequirementItemRecord } from 
 import { buildGoNoGoDecision } from "./go-no-go.ts";
 import { TenderVersionRegistry, computeTenderSnapshotHash, toRequirementSnapshot } from "./tender-version-registry.ts";
 import type { PersistedTenderVersion, TenderVersionDiff, TenderVersionSnapshot } from "./tender-version-registry.ts";
+import { planIngestTenderVersion } from "./tender-ingest-versioning.ts";
+import type { NewMatchContext, NewMatchNoticeRecord } from "./new-match.ts";
+import type { ExpedienteAuditoriaEstado, ExpedienteAuditoriaRecord } from "./expediente-auditoria.ts";
 import { LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
 import type { SourceConnectorId } from "./connector-registry.ts";
 import { evaluateSourceFreshness } from "./source-run.ts";
@@ -804,11 +808,22 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       session: this.db,
       savepointName: "sp_licitaciones_find_tenant_config",
       primary: async () => {
-        const { rows } = await this.db.query<{ timezone: string | null }>(`select timezone from licitaciones.tenant_config where organization_id = $1;`, [organizationId]);
-        return { organizationId, timezone: rows[0]?.timezone ?? null };
+        const { rows } = await this.db.query<{ timezone: string | null; new_match_min_score: number | null }>(`select timezone, new_match_min_score from licitaciones.tenant_config where organization_id = $1;`, [organizationId]);
+        return { organizationId, timezone: rows[0]?.timezone ?? null, newMatchMinScore: rows[0]?.new_match_min_score ?? null };
       },
       isRecoverable: (err) => isMigrationPendingError(err),
-      fallback: async () => ({ organizationId, timezone: null }),
+      // Base sin la 039 (falta la columna del umbral) pero CON la 027: se lee solo la zona horaria, como antes. Sin tabla -> vacio honesto.
+      fallback: async () =>
+        runWithSavepointFallback<LicitacionesTenantConfigRecord>({
+          session: this.db,
+          savepointName: "sp_licitaciones_find_tenant_config_027",
+          primary: async () => {
+            const { rows } = await this.db.query<{ timezone: string | null }>(`select timezone from licitaciones.tenant_config where organization_id = $1;`, [organizationId]);
+            return { organizationId, timezone: rows[0]?.timezone ?? null, newMatchMinScore: null };
+          },
+          isRecoverable: (err) => isMigrationPendingError(err),
+          fallback: async () => ({ organizationId, timezone: null, newMatchMinScore: null }),
+        }),
     });
   }
 
@@ -824,6 +839,19 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       session: this.db,
       savepointName: "sp_licitaciones_upsert_tenant_config",
       primary: async () => {
+        if ("newMatchMinScore" in patch) {
+          // L-P3-09: con el umbral en el patch se usa la columna de la 039 (sin ella: 42703 -> TenantConfigNotMigratedError, nunca un 200 falso).
+          const { rows } = await this.db.query<{ timezone: string | null; new_match_min_score: number | null }>(
+            `insert into licitaciones.tenant_config (organization_id, timezone, new_match_min_score) values ($1, $2, $4)
+             on conflict (organization_id) do update
+               set timezone = case when $3::boolean then $2 else licitaciones.tenant_config.timezone end,
+                   new_match_min_score = $4,
+                   updated_at = now()
+             returning timezone, new_match_min_score;`,
+            [organizationId, patch.timezone ?? null, "timezone" in patch, patch.newMatchMinScore ?? null],
+          );
+          return { organizationId, timezone: rows[0]?.timezone ?? null, newMatchMinScore: rows[0]?.new_match_min_score ?? null };
+        }
         const { rows } = await this.db.query<{ timezone: string | null }>(
           `insert into licitaciones.tenant_config (organization_id, timezone) values ($1, $2)
            on conflict (organization_id) do update
@@ -832,7 +860,8 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
            returning timezone;`,
           [organizationId, patch.timezone ?? null, "timezone" in patch],
         );
-        return { organizationId, timezone: rows[0]?.timezone ?? null };
+        // El umbral guardado (si la base tiene la 039) no se toca ni se relee aqui: la lectura es `findTenantConfig`.
+        return { organizationId, timezone: rows[0]?.timezone ?? null, newMatchMinScore: null };
       },
       isRecoverable: (err) => isMigrationPendingError(err),
       fallback: async (err) => {
@@ -1374,6 +1403,10 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     let created = 0;
     let updated = 0;
     const tenders: TenderRecord[] = [];
+    const createdTenderIds: string[] = [];
+    const basesModificadas: TenderBasesChange[] = [];
+    // L-P3-08: si la base aun no tiene la migracion 039 el vigilante se apaga para el resto del lote (la ingesta SIGUE).
+    let vigilanteNoDisponible: string | undefined;
 
     // Fase "flujos de sistema": `ingestTendersFromSource` SOLO se invoca hoy
     // bajo sesión de sistema (`apps/worker/src/jobs/licitaciones/discover-
@@ -1428,16 +1461,208 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
         status: row.out_status,
       });
       tenders.push(tender);
-      if (row.out_inserted) created += 1;
-      else updated += 1;
+      if (row.out_inserted) {
+        created += 1;
+        createdTenderIds.push(tender.id);
+      } else updated += 1;
+
+      if (vigilanteNoDisponible === undefined) {
+        const resultado = await this.vigilarVersionIngesta(organizationId, tender, rec);
+        if (resultado.estado === "no_disponible") vigilanteNoDisponible = resultado.motivo;
+        else if (resultado.cambio) basesModificadas.push(resultado.cambio);
+      }
     }
 
-    return { created, updated, tenders };
+    return { created, updated, tenders, createdTenderIds, basesModificadas, ...(vigilanteNoDisponible !== undefined ? { vigilanteNoDisponible } : {}) };
+  }
+
+  /**
+   * L-P3-08: vigilante de cambios de la ingesta automatica. Bajo la sesion de SISTEMA (auth.uid() nulo) las tablas de la
+   * vertical no se leen ni se escriben por RLS: se usan las funciones definer de solo sistema de la migracion 039 (lectura de la
+   * ultima version y escritura atomica version + cascada + aviso). La decision de que versionar la toma `planIngestTenderVersion`
+   * (pura). Un fallo por base sin migrar (42883/42P01/42703) corre en SAVEPOINT y degrada a "no disponible": la convocatoria ya
+   * quedo guardada y NUNCA se revierte por esto. Cualquier otro error se propaga (la transaccion por fuente lo revierte entero,
+   * como cualquier fallo real de la ingesta).
+   */
+  private async vigilarVersionIngesta(
+    organizationId: string,
+    tender: TenderRecord,
+    rec: TenderSourceIngestCandidate,
+  ): Promise<{ estado: "ok"; cambio: TenderBasesChange | null } | { estado: "no_disponible"; motivo: string }> {
+    return runWithSavepointFallback<{ estado: "ok"; cambio: TenderBasesChange | null } | { estado: "no_disponible"; motivo: string }>({
+      session: this.db,
+      savepointName: "sp_vigilante_ingesta",
+      primary: async () => {
+        const { rows: prevRows } = await this.db.query<{ out_version: number; out_hash: string; out_snapshot: TenderVersionSnapshot }>(
+          `select * from licitaciones.system_latest_tender_version($1, $2);`,
+          [organizationId, tender.id],
+        );
+        const prev = prevRows[0];
+        const previous: PersistedTenderVersion | null = prev
+          ? { version: prev.out_version, hash: prev.out_hash, snapshot: prev.out_snapshot, diff: { fields: [], requirements: [], changedFieldNames: [], affectedSectionKeys: [], hasChanges: false }, createdAt: "" }
+          : null;
+        const plan = planIngestTenderVersion(previous, tender, rec.documents);
+        if (plan.action === "none") return { estado: "ok", cambio: null };
+
+        const { rows } = await this.db.query<{ out_version: number; out_created: boolean; out_notification_id: string | null; out_invalidated_approval_ids: string[]; out_invalidated_approver_ids: string[] }>(
+          `select * from licitaciones.system_record_ingested_tender_version($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8::text[], $9::text[], $10::text[], $11::jsonb);`,
+          [
+            organizationId,
+            tender.id,
+            plan.hash,
+            JSON.stringify(plan.snapshot),
+            JSON.stringify(plan.diff),
+            plan.action === "changed",
+            plan.reason,
+            plan.changedFieldNames,
+            plan.affectedSectionKeys,
+            WRITE_ROLES,
+            JSON.stringify(plan.cascade),
+          ],
+        );
+        const out = rows[0];
+        if (!out || !out.out_created || plan.action !== "changed") return { estado: "ok", cambio: null };
+        return {
+          estado: "ok",
+          cambio: {
+            tenderId: tender.id,
+            tenderTitle: tender.title,
+            version: out.out_version,
+            changedFieldNames: plan.changedFieldNames,
+            invalidatedApprovals: out.out_invalidated_approval_ids.length,
+            invalidatedApproverIds: out.out_invalidated_approver_ids,
+          },
+        };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ estado: "no_disponible", motivo: "vigilante de cambios no disponible: falta aplicar la migracion 039_licitaciones_autopiloto (la ingesta de convocatorias no se ve afectada)." }),
+    });
+  }
+
+  async getExpedienteAuditoria(organizationId: string, proposalId: string): Promise<{ disponible: boolean; registro: ExpedienteAuditoriaRecord | null }> {
+    return runWithSavepointFallback<{ disponible: boolean; registro: ExpedienteAuditoriaRecord | null }>({
+      session: this.db,
+      savepointName: "sp_expediente_auditoria_leer",
+      primary: async () => {
+        const { rows } = await this.db.query<{ proposal_id: string; estado: ExpedienteAuditoriaEstado; bloqueos: number; inputs_hash: string; revisado_en: string }>(
+          `select proposal_id, estado, bloqueos, inputs_hash, revisado_en::text as revisado_en from licitaciones.expediente_auditoria where organization_id = $1 and proposal_id = $2;`,
+          [organizationId, proposalId],
+        );
+        const r = rows[0];
+        return { disponible: true, registro: r ? { proposalId: r.proposal_id, estado: r.estado, bloqueos: r.bloqueos, inputsHash: r.inputs_hash, revisadoEn: r.revisado_en } : null };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ disponible: false, registro: null }),
+    });
+  }
+
+  async saveExpedienteAuditoria(organizationId: string, input: { proposalId: string; tenderId: string; estado: ExpedienteAuditoriaEstado; bloqueos: number; inputsHash: string }): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_expediente_auditoria_guardar",
+      primary: async () => {
+        await this.db.query(
+          `insert into licitaciones.expediente_auditoria (proposal_id, organization_id, tender_id, estado, bloqueos, inputs_hash)
+           values ($1, $2, $3, $4, $5, $6)
+           on conflict (proposal_id) do update set estado = excluded.estado, bloqueos = excluded.bloqueos, inputs_hash = excluded.inputs_hash, revisado_en = now();`,
+          [input.proposalId, organizationId, input.tenderId, input.estado, input.bloqueos, input.inputsHash],
+        );
+        return true;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => false,
+    });
+  }
+
+  async getNewMatchContext(organizationId: string): Promise<NewMatchContext | null> {
+    return runWithSavepointFallback<NewMatchContext | null>({
+      session: this.db,
+      savepointName: "sp_new_match_context",
+      primary: async () => {
+        const { rows } = await this.db.query<{
+          out_min_score: number | null;
+          out_has_profile: boolean;
+          out_keywords: string[];
+          out_excluded_keywords: string[];
+          out_classifier_codes: string[];
+          out_entities: string[];
+          out_states: string[];
+          out_budget_min: string | null;
+          out_budget_max: string | null;
+        }>(`select * from licitaciones.system_get_new_match_context($1);`, [organizationId]);
+        const r = rows[0];
+        if (!r) return { minScore: null, profile: null };
+        return {
+          minScore: r.out_min_score,
+          profile: r.out_has_profile
+            ? {
+                organizationId,
+                keywords: r.out_keywords,
+                excludedKeywords: r.out_excluded_keywords,
+                classifierCodes: r.out_classifier_codes,
+                entities: r.out_entities,
+                states: r.out_states,
+                budgetMin: r.out_budget_min === null ? null : Number(r.out_budget_min),
+                budgetMax: r.out_budget_max === null ? null : Number(r.out_budget_max),
+                updatedBy: null,
+                updatedAt: "",
+              }
+            : null,
+        };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => null,
+    });
+  }
+
+  async recordNewMatch(organizationId: string, tenderId: string, input: { readonly score: number; readonly eligible: boolean }): Promise<boolean | null> {
+    return runWithSavepointFallback<boolean | null>({
+      session: this.db,
+      savepointName: "sp_record_new_match",
+      primary: async () => {
+        const { rows } = await this.db.query<{ system_record_new_match: boolean }>(`select licitaciones.system_record_new_match($1, $2, $3, $4) as system_record_new_match;`, [
+          organizationId,
+          tenderId,
+          Math.round(input.score),
+          input.eligible,
+        ]);
+        return rows[0]?.system_record_new_match === true;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => null,
+    });
+  }
+
+  async listNewMatches(organizationId: string, sinceIso: string, limit: number): Promise<readonly NewMatchNoticeRecord[] | null> {
+    return runWithSavepointFallback<readonly NewMatchNoticeRecord[] | null>({
+      session: this.db,
+      savepointName: "sp_list_new_matches",
+      primary: async () => {
+        const { rows } = await this.db.query<{ out_tender_id: string; out_score: number; out_eligible: boolean; out_created_at: string; out_title: string }>(
+          `select * from licitaciones.system_list_new_matches($1, $2::timestamptz, $3);`,
+          [organizationId, sinceIso, limit],
+        );
+        return rows.map((r) => ({ tenderId: r.out_tender_id, tenderTitle: r.out_title, score: r.out_score, eligible: r.out_eligible, createdAt: r.out_created_at }));
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => null,
+    });
   }
 
   async listActiveOrganizations(): Promise<readonly { id: string }[]> {
     const { rows } = await this.db.query<{ id: string }>(`select id from core.organization where vertical = 'licitaciones' and status = 'active';`);
     return rows.map((r) => ({ id: r.id }));
+  }
+
+  async listUpcomingDeadlines(organizationId: string, nowIso: string, windowDays: number): Promise<readonly { tenderId: string; title: string; submissionDeadline: string }[]> {
+    // Misma funcion de sistema (024) que el barrido de recordatorios, pero SOLO lectura: no inserta nada.
+    const now = new Date(nowIso);
+    const end = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
+    const { rows } = await this.db.query<{ out_id: string; out_title: string; out_submission_deadline: string }>(
+      `select * from licitaciones.system_list_tenders_with_upcoming_deadline($1, $2, $3);`,
+      [organizationId, now.toISOString(), end.toISOString()],
+    );
+    return rows.map((r) => ({ tenderId: r.out_id, title: r.out_title, submissionDeadline: r.out_submission_deadline }));
   }
 
   async scanUpcomingDeadlineReminders(organizationId: string, input: ScanDeadlineRemindersInput = {}): Promise<ScanDeadlineRemindersResult> {

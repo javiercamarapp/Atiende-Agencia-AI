@@ -3,7 +3,7 @@
 // owner/admin para configurar `licitaciones.tenant_config.timezone` (migración
 // 027). Mismo patrón de test HTTP que `licitaciones-admin.spec.ts` (mismo
 // archivo de rutas, `admin.ts`).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { buildLicitacionesTestContext } from "./licitaciones-fixtures.ts";
 
@@ -26,7 +26,7 @@ describe("GET /v1/licitaciones/:orgSlug/admin/tenant-config", () => {
     const res = await app.request("/v1/licitaciones/empresa-de-prueba/admin/tenant-config", { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { tenant_config: { organization_id: string; timezone: string | null } };
-    expect(body.tenant_config).toEqual({ organization_id: ctx.organizationId, timezone: null });
+    expect(body.tenant_config).toEqual({ organization_id: ctx.organizationId, timezone: null, new_match_min_score: null });
   });
 
   it("cualquier miembro de la organización puede LEER -- leer el valor vigente no es una decisión (mismo criterio que GET .../admin/branches)", async () => {
@@ -111,5 +111,59 @@ describe("PATCH /v1/licitaciones/:orgSlug/admin/tenant-config", () => {
     expect(noopRes.status).toBe(200);
     const body = (await noopRes.json()) as { tenant_config: { timezone: string | null } };
     expect(body.tenant_config.timezone).toBe("America/Tijuana");
+  });
+});
+
+describe("umbral del aviso de nuevo match en tenant-config (L-P3-09)", () => {
+  const RUTA = "/v1/licitaciones/empresa-de-prueba/admin/tenant-config";
+
+  it("owner/admin guarda el umbral (0-100) y GET lo devuelve junto a la zona horaria; un PATCH solo de la zona no lo borra", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(RUTA, patchJson(ctx.staff.admin.token, { new_match_min_score: 70 }));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { tenant_config: Record<string, unknown> }).tenant_config).toEqual({ organization_id: ctx.organizationId, timezone: null, new_match_min_score: 70 });
+
+    const soloZona = await app.request(RUTA, patchJson(ctx.staff.owner.token, { timezone: "America/Tijuana" }));
+    expect(((await soloZona.json()) as { tenant_config: Record<string, unknown> }).tenant_config).toMatchObject({ timezone: "America/Tijuana", new_match_min_score: 70 });
+
+    const get = await app.request(RUTA, { headers: { authorization: `Bearer ${ctx.staff.viewer.token}` } });
+    expect(((await get.json()) as { tenant_config: Record<string, unknown> }).tenant_config).toMatchObject({ new_match_min_score: 70 });
+    expect((await ctx.repo.getNewMatchContext(ctx.organizationId))!.minScore).toBe(70);
+  });
+
+  it("null explicito vuelve a 'solo elegibles'; 0 y 100 son validos", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    for (const valor of [0, 100]) {
+      const r = await app.request(RUTA, patchJson(ctx.staff.owner.token, { new_match_min_score: valor }));
+      expect(((await r.json()) as { tenant_config: { new_match_min_score: number } }).tenant_config.new_match_min_score).toBe(valor);
+    }
+    const borrar = await app.request(RUTA, patchJson(ctx.staff.owner.token, { new_match_min_score: null }));
+    expect(((await borrar.json()) as { tenant_config: { new_match_min_score: number | null } }).tenant_config.new_match_min_score).toBeNull();
+  });
+
+  it.each([[-1], [101], [70.5], ["70"], [true], [[70]]])("rechaza %j con 400 (entero 0-100 o null)", async (valor) => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    expect((await app.request(RUTA, patchJson(ctx.staff.owner.token, { new_match_min_score: valor }))).status).toBe(400);
+  });
+
+  it("solo owner/admin edita: analyst, writer, reviewer y viewer reciben 403 y el umbral no cambia", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    for (const quien of ["analyst", "writer", "reviewer", "viewer"] as const) {
+      expect((await app.request(RUTA, patchJson(ctx.staff[quien].token, { new_match_min_score: 10 }))).status).toBe(403);
+    }
+    expect((await ctx.repo.getNewMatchContext(ctx.organizationId))!.minScore).toBeNull();
+  });
+
+  it("base sin la migracion 039: guardar el umbral responde 503 (nunca un 200 falso) y leer sigue funcionando", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const { TenantConfigNotMigratedError } = await import("@atiende/domain-licitaciones");
+    vi.spyOn(ctx.repo, "upsertTenantConfig").mockRejectedValue(new TenantConfigNotMigratedError());
+    const app = buildApp(ctx.deps);
+    expect((await app.request(RUTA, patchJson(ctx.staff.owner.token, { new_match_min_score: 50 }))).status).toBe(503);
+    expect((await app.request(RUTA, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } })).status).toBe(200);
   });
 });

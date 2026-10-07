@@ -41,10 +41,17 @@ export interface TenderFieldSnapshot {
   readonly currency: string;
   readonly state: string | null;
   readonly procedureTypeRaw: string | null;
+  /**
+   * L-P3-08: documentos de bases que publica la fuente (`tender.documents[]` de OCDS), una línea canónica por documento
+   * (`tipo|titulo|url|fecha`, ver `canonicalDocumentLine`). OPCIONAL y OMITIDO cuando no hay ninguno: así el hash de toda
+   * versión anterior (alta manual, re-extracción) no cambia y no aparece un "cambio de bases" espurio al desplegar.
+   */
+  readonly documents?: readonly string[];
 }
 
 const TENDER_FIELD_NAMES = ["title", "submissionDeadline", "contractingBody", "cpvCodes", "budgetAmount", "currency", "state", "procedureTypeRaw"] as const;
-export type TenderFieldName = (typeof TENDER_FIELD_NAMES)[number];
+/** `documents` solo participa en el diff cuando alguno de los dos lados trae documentos (ver `diffFields`). */
+export type TenderFieldName = (typeof TENDER_FIELD_NAMES)[number] | "documents";
 
 /** Subconjunto de `RequirementItemRecord` que participa en el diff -- excluye metadatos de proceso (`id`, `extractedBy`, `status`, `confidence`, `documentId`) que no describen el CONTENIDO de la bases/acta, solo cómo se extrajo. */
 export interface RequirementSnapshot {
@@ -141,11 +148,18 @@ function classifyFieldChange(previous: unknown, current: unknown): TenderDiffSta
 }
 
 function diffFields(previous: TenderFieldSnapshot | null, current: TenderFieldSnapshot): TenderFieldChange[] {
-  return TENDER_FIELD_NAMES.map((field) => {
+  const names: TenderFieldName[] = [...TENDER_FIELD_NAMES];
+  if (!isEmptyValue(previous?.documents) || !isEmptyValue(current.documents)) names.push("documents");
+  return names.map((field) => {
     const previousValue = previous ? previous[field] : null;
     const currentValue = current[field];
     return { field, status: classifyFieldChange(previousValue, currentValue), previous: previousValue, current: currentValue };
   });
+}
+
+/** Línea canónica de un documento de bases para el snapshot: estable entre corridas y sin depender del orden de la fuente. */
+export function canonicalDocumentLine(doc: { readonly documentType: string | null; readonly title: string | null; readonly url: string; readonly datePublished: string | null }): string {
+  return [doc.documentType ?? "", doc.title ?? "", doc.url, doc.datePublished ?? ""].map((part) => part.replace(/\|/g, "/")).join("|");
 }
 
 function diffRequirements(previous: readonly RequirementSnapshot[], current: readonly RequirementSnapshot[]): TenderRequirementChange[] {

@@ -34,6 +34,8 @@ import type { InconformidadFundamento, InconformidadViability } from "./inconfor
 import type { CriteriaComparisonItem, OwnProposalStatus } from "./fallo-autopsy.ts";
 import type { TenderSourceIngestCandidate } from "./connectors/types.ts";
 import type { TenderResolution } from "./tender-resolution.ts";
+import type { NewMatchContext, NewMatchNoticeRecord } from "./new-match.ts";
+import type { ExpedienteAuditoriaEstado, ExpedienteAuditoriaRecord } from "./expediente-auditoria.ts";
 
 // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
 // Formas de registro deliberadamente con uniones de string LITERALES (no
@@ -178,10 +180,31 @@ export interface TenderChangeNotificationRecord {
 // no invoca ningún conector, no hay recordatorios automáticos de plazo").
 // ---------------------------------------------------------------------------
 
+/** L-P3-08: una convocatoria YA conocida cuya fuente cambio plazo, monto, bases o documentos; la ingesta registro una version nueva. */
+export interface TenderBasesChange {
+  readonly tenderId: string;
+  /** Titulo de la convocatoria (para el CORREO a la organizacion duena; la campana nunca lo lleva). */
+  readonly tenderTitle: string;
+  /** Numero de la version nueva (>= 2: la primera captura es linea base y nunca es un cambio). */
+  readonly version: number;
+  /** Campos de bases que cambiaron (nombres del snapshot, sin valores: el aviso no lleva texto de la convocatoria). */
+  readonly changedFieldNames: readonly string[];
+  /** Aprobaciones vigentes que la cascada invalido (conteo; 0 si no habia propuesta o aprobacion). */
+  readonly invalidatedApprovals: number;
+  /** Personas que habian aprobado lo invalidado (para avisarles). */
+  readonly invalidatedApproverIds: readonly string[];
+}
+
 export interface TenderSourceIngestResult {
   readonly created: number;
   readonly updated: number;
   readonly tenders: readonly TenderRecord[];
+  /** Ids de las convocatorias que esta corrida DIO DE ALTA (nuevas); insumo del "nuevo match". Ausente en implementaciones previas a L-P3-09. */
+  readonly createdTenderIds?: readonly string[];
+  /** Cambios de bases detectados por el vigilante. Ausente/vacio si ninguna convocatoria conocida cambio o si la base aun no tiene la migracion 039. */
+  readonly basesModificadas?: readonly TenderBasesChange[];
+  /** Si el vigilante no pudo registrar versiones (base sin la migracion 039), el motivo; la ingesta de convocatorias NO se pierde. */
+  readonly vigilanteNoDisponible?: string;
 }
 
 /** Recordatorio persistido de un vencimiento próximo (`submissionDeadline`) -- mismo criterio "honesto" que `TenderChangeNotificationRecord`: sin canal de envío real (email/SMS/WhatsApp), un registro consultable/reconocible (ver README del vertical para el gap declarado de integrar un canal real). */
@@ -612,6 +635,8 @@ export interface OverdueContractInvoiceAlert {
 export interface LicitacionesTenantConfigRecord {
   readonly organizationId: string;
   readonly timezone: string | null;
+  /** L-P3-09 (migracion 039): umbral 0-100 del aviso de "nuevo match"; `null` = solo las convocatorias elegibles. */
+  readonly newMatchMinScore: number | null;
 }
 
 /** Patch parcial de `licitaciones.tenant_config` (panel admin, owner/admin
@@ -623,6 +648,8 @@ export interface LicitacionesTenantConfigRecord {
  * domain-citas). */
 export interface LicitacionesTenantConfigPatch {
   readonly timezone?: string | null;
+  /** Entero 0-100 o `null` (= solo elegibles). Ausente = no se toca. Exige la migracion 039 (sin ella el upsert lanza `TenantConfigNotMigratedError`). */
+  readonly newMatchMinScore?: number | null;
 }
 
 export interface LicitacionesRepository {
@@ -893,6 +920,21 @@ export interface LicitacionesRepository {
    * conector automatizado puede traer cientos de filas por corrida).
    */
   ingestTendersFromSource(organizationId: string, source: SourceConnectorId, records: readonly TenderSourceIngestCandidate[]): Promise<TenderSourceIngestResult>;
+  /** Convocatorias de la organizacion con plazo de presentacion en las proximas `windowDays` (solo lectura, sesion de SISTEMA; excluye las ya cerradas). Insumo del resumen semanal: NO crea recordatorios. */
+  listUpcomingDeadlines(organizationId: string, nowIso: string, windowDays: number): Promise<readonly { readonly tenderId: string; readonly title: string; readonly submissionDeadline: string }[]>;
+
+  // ---- L-P3-11: auditor determinista del expediente (migracion 039). `disponible: false` = la base aun no tiene la tabla: el auditor degrada a la clave de dedupe de la campana. ----
+  getExpedienteAuditoria(organizationId: string, proposalId: string): Promise<{ readonly disponible: boolean; readonly registro: ExpedienteAuditoriaRecord | null }>;
+  /** Guarda el ultimo estado auditado (upsert por propuesta). `false` si la base no esta migrada. */
+  saveExpedienteAuditoria(organizationId: string, input: { readonly proposalId: string; readonly tenderId: string; readonly estado: ExpedienteAuditoriaEstado; readonly bloqueos: number; readonly inputsHash: string }): Promise<boolean>;
+
+  // ---- L-P3-09: nuevo match (sesion de SISTEMA; migracion 039). `null` = la base aun no tiene la migracion: se degrada a "no disponible", nunca a un error. ----
+  /** Umbral + perfil de matching de la organizacion (fila siempre que la organizacion sea de licitaciones y este activa). */
+  getNewMatchContext(organizationId: string): Promise<NewMatchContext | null>;
+  /** Registra el aviso de nuevo match de (organizacion, convocatoria). `true` solo la PRIMERA vez (dedupe); `false` si ya existia; `null` si la base no esta migrada. */
+  recordNewMatch(organizationId: string, tenderId: string, input: { readonly score: number; readonly eligible: boolean }): Promise<boolean | null>;
+  /** Mejores avisos de nuevo match desde `sinceIso`, por puntuacion descendente. `null` si la base no esta migrada. */
+  listNewMatches(organizationId: string, sinceIso: string, limit: number): Promise<readonly NewMatchNoticeRecord[] | null>;
   /** Organizaciones activas del vertical `licitaciones` -- mismo rol que `CitasRepository.listActiveOrganizations()`/`HotelesRepository.listActiveHotelProperties()` para el barrido de un scheduler externo (ver `apps/worker/src/jobs/licitaciones/discover-tenders.ts`, `deadline-reminders.ts`). */
   listActiveOrganizations(): Promise<readonly { id: string }[]>;
   /** Escanea `tender.submissionDeadline` de la organización y persiste un recordatorio nuevo por cada (convocatoria, fecha calendario de vencimiento) que no exista todavía -- idempotente: reescanear dentro de la misma ventana nunca duplica (mismo criterio que `scanRenewalAlerts`/`enqueueUpcomingDeadlineReminders` del repo origen). Excluye convocatorias en un estado terminal (`cancelled`/`lost`/`won`/`submitted`) -- ya no tiene sentido recordarles un plazo. */

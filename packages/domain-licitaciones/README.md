@@ -110,3 +110,12 @@ Migración `033_expediente_doble_aprobacion.sql` (espejo `20240101000280_...`): 
 ## L-P3-01/02 — aprobación real de los datos de empresa (REQ-044/064, REQ-162)
 
 Migración `036_licitaciones_aprobacion_datos_empresa.sql` (espejo `20240101000343_...`): `proposed_by`/`approved_by`/`approved_at` en `approved_rate`, `company_document`, `company_capability`, `company_experience` y `company_signer` (esta última gana `approval_status`; los firmantes existentes se respaldan como `aprobado`); triggers que fijan `proposed_by = auth.uid()` y regresan a `pendiente_aprobacion` cualquier dato que cambie (DB-03); GRANT por columna (nadie con rol `authenticated` escribe `approval_status`/autoría); `licitaciones.decide_company_item` (`security definer`: rol de decisión por membresía, autor distinto del aprobador, transición atómica `where approval_status = 'pendiente_aprobacion'`) y bitácora `company_data_audit`. Dominio: `LicitacionesRepository.decideCompanyItem` (resultados `ok | not_found | conflict | autor | rol | no_disponible`) y `computeCompanyProfileHash` (`company-profile-hash.ts`): `companyProfileHash` del expediente ya no es una constante, cubre documentos, capacidades, experiencia, firmantes y su estado de aprobación en orden canónico. Las plantillas (`templates`) siguen en `[]`: no existe tabla de plantillas. Verificación contra Postgres real: `scripts/verify-licitaciones-aprobacion-datos-empresa/`. Orden de despliegue: primero el código, después la migración.
+
+## L-P3-08/09/11 — autopiloto (migración 039)
+
+- `tender-ingest-versioning.ts::planIngestTenderVersion` (pura): decide `none` / `baseline` / `changed` para una convocatoria ingerida; hereda los requisitos de la última versión y trata la primera aparición de `documents` como línea base. `TenderFieldSnapshot.documents` es opcional y se omite si está vacío (los hashes anteriores no cambian).
+- `connectors/ocds/map-ocds-release.ts::mapOcdsDocuments`: `tender.documents[]` → metadatos (https, sin credenciales, deduplicado, tope 50).
+- `new-match.ts::evaluateNewMatch` (pura): plazo vigente + elegible o >= umbral; `expediente-auditoria.ts`: `clasificarExpediente` / `transicionDeExpediente`.
+- Repositorio: `getNewMatchContext`, `recordNewMatch`, `listNewMatches`, `listUpcomingDeadlines`, `getExpedienteAuditoria`, `saveExpedienteAuditoria`; `ingestTendersFromSource` devuelve `createdTenderIds` y `basesModificadas`. Todo con funciones de solo sistema o SAVEPOINT; sin la 039 degrada a `null`/no disponible.
+- Plantillas de correo del autopiloto: `emails/autopiloto-templates.ts`.
+
