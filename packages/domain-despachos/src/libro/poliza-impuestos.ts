@@ -28,7 +28,7 @@ import {
   CUENTA_ISR_RETENIDO_POR_PAGAR,
   CUENTA_PROVEEDORES,
 } from "./catalogo-base.ts";
-import type { MovimientoPolizaInput, PolizaInput } from "./types.ts";
+import type { MovimientoPolizaInput, PagoRepContable, PolizaInput } from "./types.ts";
 
 export type ResultadoPolizaImpuestos =
   | { readonly ok: true; readonly poliza: PolizaInput; readonly advertencias: readonly string[] }
@@ -94,26 +94,6 @@ export function polizaRecibidoConImpuestos(f: InvoiceRecord, m: MontosCfdi, conc
 // ---------------------------------------------------------------------------
 // Póliza de cobro / pago de un complemento de pago (REP).
 // ---------------------------------------------------------------------------
-
-/** Un pago de REP ya persistido (`pago_cfdi`, migración 020) con lo mínimo de la factura PPD que paga. */
-export interface PagoRepContable {
-  readonly pagoId: string;
-  readonly folioFiscalRep: string;
-  readonly pagoIndex: number;
-  /** YYYY-MM-DD de la fecha de pago (flujo de efectivo). */
-  readonly fechaPago: string;
-  readonly flujo: "trasladado" | "acreditable";
-  readonly numParcialidad: number | null;
-  readonly importePagadoCentavos: number;
-  readonly baseCentavos: number;
-  readonly ivaCentavos: number;
-  readonly ivaRetenidoCentavos: number;
-  readonly folioFiscalCfdi: string;
-  readonly direccionCfdi: "emitido" | "recibido" | null;
-  readonly metodoPagoCfdi: string | null;
-  readonly monedaCfdi: string | null;
-  readonly estadoSatCfdi: string | null;
-}
 
 export interface OpcionesPolizaRep {
   /** Cuenta de bancos (o caja) donde entró o de donde salió el dinero. Default 1020000. */

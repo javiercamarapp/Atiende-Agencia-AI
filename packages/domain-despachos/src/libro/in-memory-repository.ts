@@ -14,9 +14,12 @@ import {
 import type {
   AsignacionAgrupador,
   CuentaLibro,
+  FiltroPagosRep,
   FiltroPolizas,
   LecturaLibro,
   LibroRepository,
+  PagoRepContable,
+  PagoRepConPoliza,
   LineaBalanzaLibro,
   PolizaConMovimientos,
   PolizaInput,
@@ -139,6 +142,48 @@ export class InMemoryLibroRepository implements LibroRepository {
       c.set(x.codigo, { codigo: x.codigo, descripcion: x.descripcion, naturaleza: x.naturaleza, nivel: x.nivel ?? 1, cuentaPadre: x.cuentaPadre ?? null, codigoAgrupador: x.codigoAgrupador ?? actual?.codigoAgrupador ?? null });
     }
     return { agregadas: nuevas, actualizadas: ultimas.size - nuevas };
+  }
+
+  /** Pagos de REP sembrados para pruebas (en producción son las filas de `pago_cfdi`). */
+  private readonly pagosRep = new Map<string, PagoRepContable[]>();
+  /** pagoId -> ids de pólizas ligadas (la vigente es la que no está reversada). */
+  private readonly ligasRep = new Map<string, string[]>();
+
+  agregarPagoRep(propertyId: string, pago: PagoRepContable): void {
+    const lista = this.pagosRep.get(propertyId) ?? [];
+    lista.push(pago);
+    this.pagosRep.set(propertyId, lista);
+  }
+
+  private polizaVigenteDePago(propertyId: string, pagoId: string): PagoRepConPoliza["polizaVigente"] {
+    for (const id of this.ligasRep.get(pagoId) ?? []) {
+      const p = this.lista(propertyId).find((x) => x.id === id);
+      if (p && !p.reversada) return { id: p.id, folio: p.folio, tipo: p.tipo };
+    }
+    return null;
+  }
+
+  async listarPagosRep(propertyId: string, f: FiltroPagosRep): Promise<LecturaLibro<readonly PagoRepConPoliza[]>> {
+    return this.lectura<readonly PagoRepConPoliza[]>([], () =>
+      (this.pagosRep.get(propertyId) ?? [])
+        .filter((p) => (f.folioFiscalRep === undefined || p.folioFiscalRep === f.folioFiscalRep.toLowerCase()) && (f.ejercicio === undefined || f.mes === undefined || p.fechaPago.startsWith(`${f.ejercicio}-${String(f.mes).padStart(2, "0")}`)))
+        .map((p) => ({ ...p, polizaVigente: this.polizaVigenteDePago(propertyId, p.pagoId) })),
+    );
+  }
+
+  /** Mismas reglas que `libro_poliza_registrar_rep` (migración 028): pago de la property, una vigente por pago, tipo según el flujo, fecha de pago y total. */
+  async registrarPolizaRep(propertyId: string, pagoId: string, poliza: PolizaInput): Promise<RegistroPolizaResultado> {
+    this.exigirDisponible();
+    const pago = (this.pagosRep.get(propertyId) ?? []).find((p) => p.pagoId === pagoId);
+    if (!pago) throw new LibroNoEncontradoError("pago no encontrado");
+    if (this.polizaVigenteDePago(propertyId, pagoId)) throw new PolizaDuplicadaError("El pago ya tiene una póliza vigente.");
+    if ((pago.flujo === "trasladado" && poliza.tipo !== "ingreso") || (pago.flujo === "acreditable" && poliza.tipo !== "egreso")) throw new LibroDatosInvalidosError("el tipo de póliza no corresponde al flujo del pago");
+    if (poliza.fecha !== pago.fechaPago) throw new LibroDatosInvalidosError("la póliza se fecha en la fecha de pago del complemento");
+    const debe = poliza.movimientos.reduce((s, m) => s + m.debeCentavos, 0);
+    if (debe !== pago.importePagadoCentavos + pago.ivaCentavos) throw new LibroDatosInvalidosError(`el total de la póliza (${debe}) no es el importe pagado más el IVA del pago (${pago.importePagadoCentavos + pago.ivaCentavos})`);
+    const r = this.insertar(propertyId, poliza, "manual", null, null);
+    this.ligasRep.set(pagoId, [...(this.ligasRep.get(pagoId) ?? []), r.polizaId]);
+    return r;
   }
 
   async polizasDelPeriodo(propertyId: string, ejercicio: number, mes: number, maxPolizas: number): Promise<LecturaLibro<readonly PolizaConMovimientos[]>> {

@@ -16,11 +16,13 @@ import {
 import type {
   AsignacionAgrupador,
   CuentaLibro,
+  FiltroPagosRep,
   FiltroPolizas,
   LecturaLibro,
   LibroRepository,
   LineaBalanzaLibro,
   OrigenPoliza,
+  PagoRepConPoliza,
   PolizaConMovimientos,
   PolizaInput,
   PolizaRecord,
@@ -206,6 +208,75 @@ export class PostgresLibroRepository implements LibroRepository {
         JSON.stringify(cuentas.map((c) => cuentaAJson(c))),
       ]);
       return { agregadas: Number(rows[0]?.out_agregadas ?? 0), actualizadas: Number(rows[0]?.out_actualizadas ?? 0) };
+    });
+  }
+
+  listarPagosRep(propertyId: string, f: FiltroPagosRep): Promise<LecturaLibro<readonly PagoRepConPoliza[]>> {
+    return this.lectura<readonly PagoRepConPoliza[]>("pagos_rep", [], async () => {
+      const { rows } = await this.db.query<{
+        id: string;
+        folio_fiscal_rep: string;
+        pago_index: number;
+        fecha_pago: string | Date;
+        flujo: "trasladado" | "acreditable";
+        num_parcialidad: number | null;
+        importe_pagado_centavos: string | number;
+        base_centavos: string | number;
+        iva_centavos: string | number;
+        iva_retenido_centavos: string | number;
+        folio_fiscal: string;
+        direccion: "emitido" | "recibido" | null;
+        metodo_pago: string | null;
+        moneda: string | null;
+        estado_sat: string | null;
+        poliza_id: string | null;
+        poliza_folio: number | null;
+        poliza_tipo: TipoPoliza | null;
+      }>(
+        `select pc.id, pc.folio_fiscal_rep, pc.pago_index, pc.fecha_pago, pc.flujo, pc.num_parcialidad, pc.importe_pagado_centavos, pc.base_centavos,
+                pc.iva_centavos, pc.iva_retenido_centavos, i.folio_fiscal::text as folio_fiscal, i.direccion, i.metodo_pago, i.moneda, i.estado_sat,
+                v.poliza_id, v.folio as poliza_folio, v.tipo as poliza_tipo
+         from despachos.pago_cfdi pc
+         join despachos.invoice i on i.id = pc.invoice_id and i.property_id = pc.property_id
+         left join lateral (
+           select p.id as poliza_id, p.folio, p.tipo from despachos.libro_poliza_rep r join despachos.libro_poliza p on p.id = r.poliza_id
+           where r.pago_cfdi_id = pc.id and not p.reversada limit 1
+         ) v on true
+         where pc.property_id = $1
+           and ($2::text is null or pc.folio_fiscal_rep = lower($2))
+           and ($3::date is null or (pc.fecha_pago >= $3::date and pc.fecha_pago < ($3::date + interval '1 month')))
+         order by pc.fecha_pago, pc.folio_fiscal_rep, pc.pago_index limit 200;`,
+        [propertyId, f.folioFiscalRep ?? null, f.ejercicio !== undefined && f.mes !== undefined ? `${f.ejercicio}-${String(f.mes).padStart(2, "0")}-01` : null],
+      );
+      return rows.map((r) => ({
+        pagoId: r.id,
+        folioFiscalRep: r.folio_fiscal_rep,
+        pagoIndex: r.pago_index,
+        fechaPago: fechaIso(r.fecha_pago),
+        flujo: r.flujo,
+        numParcialidad: r.num_parcialidad,
+        importePagadoCentavos: entero(r.importe_pagado_centavos),
+        baseCentavos: entero(r.base_centavos),
+        ivaCentavos: entero(r.iva_centavos),
+        ivaRetenidoCentavos: entero(r.iva_retenido_centavos),
+        folioFiscalCfdi: r.folio_fiscal,
+        direccionCfdi: r.direccion,
+        metodoPagoCfdi: r.metodo_pago,
+        monedaCfdi: r.moneda,
+        estadoSatCfdi: r.estado_sat,
+        polizaVigente: r.poliza_id && r.poliza_folio !== null && r.poliza_tipo ? { id: r.poliza_id, folio: r.poliza_folio, tipo: r.poliza_tipo } : null,
+      }));
+    });
+  }
+
+  registrarPolizaRep(propertyId: string, pagoId: string, p: PolizaInput): Promise<RegistroPolizaResultado> {
+    return this.escritura("poliza_rep", async () => {
+      const partidas = p.movimientos.map((m) => ({ cuenta: m.cuenta, concepto: m.concepto, debe: m.debeCentavos, haber: m.haberCentavos }));
+      const { rows } = await this.db.query<{ out_poliza_id: string; out_folio: number }>(
+        "select out_poliza_id, out_folio from despachos.libro_poliza_registrar_rep($1, $2::uuid, $3, $4::date, $5, $6::jsonb);",
+        [propertyId, pagoId, p.tipo, p.fecha, p.concepto, JSON.stringify(partidas)],
+      );
+      return { polizaId: rows[0]!.out_poliza_id, folio: rows[0]!.out_folio };
     });
   }
 

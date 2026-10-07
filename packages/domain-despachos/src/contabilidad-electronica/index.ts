@@ -37,3 +37,16 @@ export { ContabilidadElectronicaDatosInvalidosError, RFC_SAT_RE, importeDesdeCen
 
 export { generarXmlPolizasPeriodo, TIPOS_SOLICITUD_POLIZAS, NUM_ORDEN_RE, NUM_TRAMITE_RE } from "./polizas-periodo.ts";
 export type { PolizaParaXml, MovimientoParaXml, OpcionesXmlPolizas, TipoSolicitudPolizas } from "./polizas-periodo.ts";
+
+export {
+  ImportacionXmlContabilidadError,
+  MAX_CUENTAS_IMPORTADAS,
+  MAX_PARTIDAS_APERTURA,
+  MAX_CARACTERES_XML_CONTABILIDAD,
+  leerCatalogoXml,
+  leerBalanzaXml,
+  importeACentavos,
+  fechaAperturaDe,
+  construirAperturaDesdeBalanza,
+} from "./importar-xml.ts";
+export type { CuentaImportada, CuentaRechazada, CatalogoImportado, LineaBalanzaImportada, BalanzaImportada, PartidaApertura, ResultadoApertura } from "./importar-xml.ts";
