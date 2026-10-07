@@ -8,7 +8,7 @@ import { MemoryRouter } from "react-router-dom";
 import { SucursalesPage } from "../src/verticals/restaurantes/pages/Sucursales.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import type { BranchDetail } from "../src/verticals/restaurantes/lib/branches-client.ts";
-import { interpretarCoordenadasPegadas, leerCoordenada, urlVerEnMapa, validarPar } from "../src/verticals/restaurantes/lib/coordenadas.ts";
+import { esEnlaceCortoDeMaps, fueraDeYucatan, interpretarCoordenadasPegadas, leerCoordenada, urlVerEnMapa, validarPar } from "../src/verticals/restaurantes/lib/coordenadas.ts";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
@@ -38,10 +38,11 @@ const SIN_COORDS: BranchDetail = { propertyId: "prop-1", name: "Sucursal Sin Pin
 const CON_COORDS: BranchDetail = { propertyId: "prop-2", name: "Sucursal Con Pin", slug: "con-pin", status: "active", phone: null, address: null, lat: 21.0, lng: -89.6 };
 const INACTIVA_SIN: BranchDetail = { propertyId: "prop-3", name: "Sucursal Cerrada", slug: "cerrada", status: "inactive", phone: null, address: null, lat: null, lng: null };
 
-function stubFetch(branches: readonly BranchDetail[], opts: { patchError?: string } = {}) {
+function stubFetch(branches: readonly BranchDetail[], opts: { patchError?: string; zona?: string | null } = {}) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     if (method === "GET" && url === "https://api.test/v1/restaurantes/prop-1/admin/sucursales") return jsonResponse({ branches });
+    if (method === "GET" && url === "https://api.test/v1/restaurantes/prop-1/admin/config/zona-horaria") return jsonResponse({ zonaHoraria: opts.zona ?? null });
     if (method === "PATCH" && url === "https://api.test/v1/restaurantes/prop-1/admin/sucursales/prop-1") {
       if (opts.patchError) return jsonResponse({ message: opts.patchError }, false, 400);
       const patch = JSON.parse(init!.body as string) as Partial<BranchDetail>;
@@ -106,11 +107,29 @@ describe("validación de rango y formato", () => {
     expect(validarPar("", "")).toEqual({ lat: null, lng: null, errorLat: null, errorLng: null });
   });
 
-  it("rechaza fuera de rango (Ciudad de México, latitud/longitud al revés, signo perdido)", () => {
-    expect(validarPar("19.43", "-99.13").errorLat).toContain("entre 20 y 22");
-    expect(validarPar("19.43", "-99.13").errorLng).toContain("entre -91 y -87");
-    expect(validarPar("-89.61", "21.03").errorLat).not.toBeNull();
+  it("rechaza lo que no es México: (0,0), ejes invertidos, signo perdido, otros países", () => {
+    expect(validarPar("0", "0").errorLat).toContain("entre 14.5 y 32.8");
+    expect(validarPar("0", "0").errorLng).toContain("entre -118.5 y -86.5");
+    expect(validarPar("-89.61", "21.03").errorLat).not.toBeNull(); // invertidos
     expect(validarPar("21.03", "89.61").errorLng).toContain("signo menos");
+    expect(validarPar("40.4", "-3.7").errorLat).not.toBeNull(); // Madrid
+  });
+
+  it("acepta puntos de otros estados de México (Cancún, Tijuana, Hermosillo)", () => {
+    for (const [lat = "", lng = ""] of [["21.1619", "-86.8515"], ["32.5149", "-117.0382"], ["29.0729", "-110.9559"]]) {
+      expect(validarPar(lat, lng)).toMatchObject({ errorLat: null, errorLng: null });
+    }
+  });
+
+  it("fueraDeYucatan distingue Mérida de Cancún y Tijuana", () => {
+    expect(fueraDeYucatan(21.0, -89.6)).toBe(false);
+    expect(fueraDeYucatan(21.1619, -86.8515)).toBe(true);
+    expect(fueraDeYucatan(32.5, -117.0)).toBe(true);
+  });
+
+  it("reconoce enlaces cortos de Google Maps", () => {
+    expect(esEnlaceCortoDeMaps("https://maps.app.goo.gl/AbC123")).toBe(true);
+    expect(esEnlaceCortoDeMaps("https://www.google.com/maps/@21,-89,17z")).toBe(false);
   });
 
   it("rechaza texto no numérico y coma decimal", () => {
@@ -221,23 +240,83 @@ describe("SucursalesPage — coordenadas", () => {
     expect(rendered.container.textContent).toContain("no dejó leer el portapapeles");
   });
 
-  it("un punto fuera de rango se rechaza: mensaje en el campo, Guardar deshabilitado y ningún PATCH", async () => {
+  it("un punto fuera de México se rechaza: error ligado al campo por aria-describedby, Guardar no manda PATCH", async () => {
     stubFetch([SIN_COORDS]);
     rendered = renderPage();
     await esperar();
     await abrirEdicion();
     await act(async () => {
-      changeValue(campo("sucursal-lat-prop-1"), "19.43");
-      changeValue(campo("sucursal-lng-prop-1"), "-99.13");
+      changeValue(campo("sucursal-lat-prop-1"), "0");
+      changeValue(campo("sucursal-lng-prop-1"), "0");
     });
+    await act(async () => click(boton("Guardar")!));
     const texto = rendered.container.textContent ?? "";
-    expect(texto).toContain("La latitud debe estar entre 20 y 22");
-    expect(texto).toContain("La longitud debe estar entre -91 y -87");
-    expect(campo("sucursal-lat-prop-1").getAttribute("aria-invalid")).toBe("true");
-    const guardar = boton("Guardar") as HTMLButtonElement;
-    expect(guardar.disabled).toBe(true);
-    await act(async () => click(guardar));
+    expect(texto).toContain("La latitud debe estar entre 14.5 y 32.8");
+    expect(texto).toContain("La longitud debe estar entre -118.5 y -86.5");
+    const lat = campo("sucursal-lat-prop-1");
+    expect(lat.getAttribute("aria-invalid")).toBe("true");
+    const err = rendered.container.querySelector(`#${lat.getAttribute("aria-describedby")!.split(" ").pop()}`)!;
+    expect(err.getAttribute("role")).toBe("alert");
+    expect(err.textContent).toContain("La latitud");
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+  });
+
+  it("no anuncia el error mientras se escribe: aparece al salir del campo", async () => {
+    stubFetch([SIN_COORDS]);
+    rendered = renderPage();
+    await esperar();
+    await abrirEdicion();
+    await act(async () => changeValue(campo("sucursal-lat-prop-1"), "2"));
+    expect(rendered.container.querySelector("[role='alert']")).toBeNull();
+    await act(async () => {
+      campo("sucursal-lat-prop-1").dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+    expect(rendered.container.textContent).toContain("La latitud debe estar entre");
+  });
+
+  it("Cancún se acepta y se guarda; con zona America/Merida solo hay un aviso no bloqueante", async () => {
+    stubFetch([SIN_COORDS], { zona: "America/Merida" });
+    rendered = renderPage();
+    await esperar();
+    await abrirEdicion();
+    await act(async () => {
+      changeValue(campo("sucursal-lat-prop-1"), "21.1619");
+      changeValue(campo("sucursal-lng-prop-1"), "-86.8515");
+    });
+    expect(rendered.container.textContent).toContain("Este punto queda fuera de Yucatán: confirma que es el pin correcto.");
+    await act(async () => {
+      click(boton("Guardar")!);
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    const call = fetchMock.mock.calls.find(([, init]) => init?.method === "PATCH")!;
+    expect(JSON.parse(call[1].body as string)).toMatchObject({ lat: 21.1619, lng: -86.8515 });
+  });
+
+  it("con otra zona horaria (Tijuana) no hay aviso de Yucatán", async () => {
+    stubFetch([SIN_COORDS], { zona: "America/Tijuana" });
+    rendered = renderPage();
+    await esperar();
+    await abrirEdicion();
+    await act(async () => {
+      changeValue(campo("sucursal-lat-prop-1"), "32.5149");
+      changeValue(campo("sucursal-lng-prop-1"), "-117.0382");
+    });
+    expect(rendered.container.textContent).not.toContain("fuera de Yucatán");
+  });
+
+  it("enlace corto maps.app.goo.gl: mensaje claro sin intentar resolverlo", async () => {
+    stubFetch([SIN_COORDS]);
+    rendered = renderPage();
+    await esperar();
+    await abrirEdicion();
+    await act(async () => changeValue(campo("sucursal-pegar-prop-1"), "https://maps.app.goo.gl/AbC123"));
+    await act(async () => {
+      click(boton("Pegar de Google Maps")!);
+      await flushMicrotasks();
+    });
+    expect(rendered.container.textContent).toContain("enlace corto de Google Maps");
+    expect(campo("sucursal-lat-prop-1").value).toBe("");
   });
 
   it("solo un eje capturado: error y sin PATCH", async () => {
@@ -246,8 +325,9 @@ describe("SucursalesPage — coordenadas", () => {
     await esperar();
     await abrirEdicion();
     await act(async () => changeValue(campo("sucursal-lat-prop-1"), "21.03"));
+    await act(async () => click(boton("Guardar")!));
     expect(rendered.container.textContent).toContain("Falta la longitud");
-    expect((boton("Guardar") as HTMLButtonElement).disabled).toBe(true);
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
   });
 
   it("guardar sin tocar las coordenadas NO manda lat/lng (compatibilidad con la ficha anterior)", async () => {

@@ -1,14 +1,22 @@
 // Coordenadas de sucursal (import-orig-13): lectura de lo que el dueño pega desde Google Maps, validación
 // de rango y enlace para comprobar el punto. Lógica pura, sin red ni fechas.
 //
-// El rango es el de Yucatán a propósito: una coordenada capturada a mano fue la causa de bugs reales en el
-// original (Altabrisa mal ruteada), y un número fuera de la región casi siempre es lat/lng al revés o un
-// signo perdido. NO se siembra ninguna coordenada: el dato lo confirma el dueño con un pin.
+// El rango bloqueante es el de México: atrapa ejes invertidos, signo perdido y (0,0) sin cerrar la puerta a
+// negocios de Cancún, Tijuana o Hermosillo. Fuera de Yucatán solo hay un aviso (no bloquea) para quien opera
+// en zona America/Merida. NO se siembra ninguna coordenada: el dato lo confirma el dueño con un pin.
 
-export const LAT_MIN = 20;
-export const LAT_MAX = 22;
-export const LNG_MIN = -91;
-export const LNG_MAX = -87;
+export const LAT_MIN = 14.5;
+export const LAT_MAX = 32.8;
+export const LNG_MIN = -118.5;
+export const LNG_MAX = -86.5;
+
+// Caja aproximada de Yucatán, solo para el aviso no bloqueante.
+const YUC_LAT_MIN = 19.5;
+const YUC_LAT_MAX = 21.7;
+const YUC_LNG_MIN = -90.5;
+const YUC_LNG_MAX = -87.4;
+
+export const AVISO_FUERA_DE_YUCATAN = "Este punto queda fuera de Yucatán: confirma que es el pin correcto.";
 
 export interface Coordenadas {
   readonly lat: number;
@@ -55,10 +63,10 @@ export function leerCoordenada(texto: string, eje: "lat" | "lng"): ResultadoCamp
   }
   const n = Number(t);
   if (eje === "lat" && (n < LAT_MIN || n > LAT_MAX)) {
-    return { valor: n, error: `La latitud debe estar entre ${LAT_MIN} y ${LAT_MAX} (Yucatán). ¿Invertiste latitud y longitud?` };
+    return { valor: n, error: `La latitud debe estar entre ${LAT_MIN} y ${LAT_MAX} (México). ¿Invertiste latitud y longitud?` };
   }
   if (eje === "lng" && (n < LNG_MIN || n > LNG_MAX)) {
-    return { valor: n, error: `La longitud debe estar entre ${LNG_MIN} y ${LNG_MAX} (Yucatán). ¿Falta el signo menos?` };
+    return { valor: n, error: `La longitud debe estar entre ${LNG_MIN} y ${LNG_MAX} (México). ¿Falta el signo menos?` };
   }
   return { valor: n, error: null };
 }
@@ -81,6 +89,16 @@ export function validarPar(latTexto: string, lngTexto: string): ValidacionPar {
     if (a.valor === null && b.valor !== null) errorLat = "Falta la latitud: la ubicación necesita latitud y longitud.";
   }
   return { lat: a.valor, lng: b.valor, errorLat, errorLng };
+}
+
+/** true si el punto (ya válido) cae fuera de la caja de Yucatán. */
+export function fueraDeYucatan(lat: number, lng: number): boolean {
+  return lat < YUC_LAT_MIN || lat > YUC_LAT_MAX || lng < YUC_LNG_MIN || lng > YUC_LNG_MAX;
+}
+
+/** Enlaces cortos de Google Maps: no traen el punto en el texto y no se resuelven aquí. */
+export function esEnlaceCortoDeMaps(texto: string): boolean {
+  return /(?:maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(texto);
 }
 
 /** Enlace para comprobar el punto en el mapa. Sin coordenadas, null. */

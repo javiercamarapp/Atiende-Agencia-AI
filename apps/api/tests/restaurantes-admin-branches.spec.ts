@@ -87,10 +87,22 @@ describe("GET/PATCH /v1/restaurantes/:propertyId/admin/sucursales/:branchId", ()
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const url = `/v1/restaurantes/${ctx.propertyIdA}/admin/sucursales/${ctx.propertyIdA}`;
-    for (const body of [{ lat: 91 }, { lat: -90.5 }, { lng: -181 }, { lng: 181 }, { lat: "21.03" }]) {
+    for (const body of [{ lat: 91, lng: -89.6 }, { lat: -90.5, lng: -89.6 }, { lat: 21, lng: -181 }, { lat: 21, lng: 181 }, { lat: "21.03", lng: -89.6 }, { lat: 91 }, { lng: -181 }]) {
       const res = await app.request(url, authedJson(ctx.staff.owner.token, body, "PATCH"));
       expect(res.status).toBe(400);
     }
+  });
+
+  it("un solo eje en el cuerpo ({lat} solo, {lng} solo, {lat:null} solo) -> 400 y la sucursal no cambia", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const url = `/v1/restaurantes/${ctx.propertyIdA}/admin/sucursales/${ctx.propertyIdA}`;
+    for (const body of [{ lat: 21.03 }, { lng: -89.6 }, { lat: null }, { lng: null }]) {
+      const res = await app.request(url, authedJson(ctx.staff.owner.token, body, "PATCH"));
+      expect(res.status).toBe(400);
+    }
+    const reread = (await (await app.request(url, authedGet(ctx.staff.owner.token))).json()) as { branch: { lat: number | null; lng: number | null } };
+    expect(reread.branch.lat === null).toBe(reread.branch.lng === null);
   });
 
   it("un solo eje en null y el otro con valor en el mismo cuerpo -> 400", async () => {
@@ -100,13 +112,15 @@ describe("GET/PATCH /v1/restaurantes/:propertyId/admin/sucursales/:branchId", ()
     expect(res.status).toBe(400);
   });
 
-  it("repartidor y staff sin permiso de edición NO pueden poner coordenadas; la sucursal no cambia", async () => {
+  it("repartidor Y staff NO pueden poner coordenadas; la sucursal no cambia", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const url = `/v1/restaurantes/${ctx.propertyIdA}/admin/sucursales/${ctx.propertyIdA}`;
     const antes = (await (await app.request(url, authedGet(ctx.staff.owner.token))).json()) as { branch: { lat: number | null } };
-    const res = await app.request(url, authedJson(ctx.staff.repartidor.token, { lat: 21.03, lng: -89.6 }, "PATCH"));
-    expect(res.status).toBe(403);
+    for (const token of [ctx.staff.repartidor.token, ctx.staff.staffSucursalA.token]) {
+      const res = await app.request(url, authedJson(token, { lat: 21.03, lng: -89.6 }, "PATCH"));
+      expect(res.status).toBe(403);
+    }
     const despues = (await (await app.request(url, authedGet(ctx.staff.owner.token))).json()) as { branch: { lat: number | null } };
     expect(despues.branch.lat).toBe(antes.branch.lat);
   });

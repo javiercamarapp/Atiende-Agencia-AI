@@ -7,14 +7,15 @@
 // `Input`/`Label` para el formulario de edición y `Button` para Editar/Guardar/
 // Cancelar. Toda la lógica de carga/edición/guardado de abajo es la MISMA.
 import { useEffect, useState } from "react";
-import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, Input, Label, PageContainer, StatusBadge } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, FormField, Input, Label, PageContainer, StatusBadge } from "@atiende/ui";
 import { ExternalLink, MapPin, Pencil } from "lucide-react";
+import { fetchBranchTimezone } from "../lib/config-client.ts";
 import { fetchAdminBranches, updateBranchDetail } from "../lib/branches-client.ts";
 import type { BranchDetail } from "../lib/branches-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 import { puedeEn } from "../lib/permisos.ts";
 import { ReglasSucursal } from "./ReglasSucursal.tsx";
-import { interpretarCoordenadasPegadas, textoCoordenada, urlVerEnMapa, validarPar } from "../lib/coordenadas.ts";
+import { AVISO_FUERA_DE_YUCATAN, esEnlaceCortoDeMaps, fueraDeYucatan, interpretarCoordenadasPegadas, textoCoordenada, urlVerEnMapa, validarPar } from "../lib/coordenadas.ts";
 
 // Mismo criterio que STAFF_NAV_ROLES de RestaurantesShell.tsx: cosmético, el servidor (admin-modelo-pm.ts
 // + RLS) es el enforcement real.
@@ -25,6 +26,9 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ phone: string; address: string; lat: string; lng: string }>({ phone: "", address: "", lat: "", lng: "" });
+  const [tocados, setTocados] = useState({ lat: false, lng: false });
+  const [intentoGuardar, setIntentoGuardar] = useState(false);
+  const [zonaHoraria, setZonaHoraria] = useState<string | null>(null);
   const [pegado, setPegado] = useState("");
   const [errorPegado, setErrorPegado] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -45,11 +49,25 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
     void load();
   }, [apiBaseUrl, token, propertyId]);
 
+  // Solo para el aviso no bloqueante de "fuera de Yucatán": si no se puede leer la zona, simplemente no hay aviso.
+  useEffect(() => {
+    let vivo = true;
+    fetchBranchTimezone(fetch, apiBaseUrl, token, propertyId).then(
+      (c) => vivo && setZonaHoraria(c.zonaHoraria),
+      () => undefined,
+    );
+    return () => {
+      vivo = false;
+    };
+  }, [apiBaseUrl, token, propertyId]);
+
   function startEditing(branch: BranchDetail) {
     setEditing(branch.propertyId);
     setDraft({ phone: branch.phone ?? "", address: branch.address ?? "", lat: textoCoordenada(branch.lat), lng: textoCoordenada(branch.lng) });
     setPegado("");
     setErrorPegado(null);
+    setTocados({ lat: false, lng: false });
+    setIntentoGuardar(false);
   }
 
   // Aplica lo pegado (o lo que haya en el portapapeles) a los dos campos. Si no se reconoce, no toca nada.
@@ -65,6 +83,10 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
       }
     }
     const par = interpretarCoordenadasPegadas(texto);
+    if (!par && esEnlaceCortoDeMaps(texto)) {
+      setErrorPegado("Ese es un enlace corto de Google Maps y no trae el punto. Ábrelo en el navegador, mantén pulsado el pin y copia las coordenadas (o copia el enlace largo de la barra de direcciones).");
+      return;
+    }
     if (!par) {
       setErrorPegado("No reconocí coordenadas. Pega algo como 21.0280, -89.6100 o el enlace de Google Maps con @latitud,longitud.");
       return;
@@ -82,7 +104,10 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
 
   async function handleSave(branch: BranchDetail) {
     const coords = validacionDe(branch);
-    if (coords.errorLat || coords.errorLng) return;
+    if (coords.errorLat || coords.errorLng) {
+      setIntentoGuardar(true);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -125,6 +150,9 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
       <div className="flex flex-col gap-3">
         {branches?.map((b) => {
           const validacion = validacionDe(b);
+          // El error se anuncia al salir del campo o al intentar guardar, no en cada tecla.
+          const verErrores = intentoGuardar || tocados.lat || tocados.lng;
+          const avisoYucatan = zonaHoraria === "America/Merida" && !validacion.errorLat && !validacion.errorLng && validacion.lat !== null && validacion.lng !== null && fueraDeYucatan(validacion.lat, validacion.lng);
           const hrefMapaDraft = validacion.errorLat || validacion.errorLng ? null : urlVerEnMapa(validacion.lat, validacion.lng);
           return (
           <Card key={b.propertyId}>
@@ -172,63 +200,39 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
                     <p className="m-0 text-xs text-muted-foreground">
                       En Google Maps, mantén pulsado el punto exacto del local: abajo aparece el pin y arriba los números (por ejemplo 21.0280, -89.6100). Cópialos, o copia el enlace del mapa, y pégalos aquí.
                     </p>
-                    <div className="flex flex-col gap-1.5">
-                      <Label htmlFor={`sucursal-pegar-${b.propertyId}`} className="text-xs text-muted-foreground">
-                        Pegar de Google Maps
-                      </Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id={`sucursal-pegar-${b.propertyId}`}
-                          value={pegado}
-                          placeholder="21.0280, -89.6100 o enlace con @lat,lng"
-                          onChange={(e) => setPegado(e.target.value)}
-                        />
-                        <Button type="button" variant="outline" size="sm" onClick={() => void aplicarPegado()}>
-                          Pegar de Google Maps
-                        </Button>
-                      </div>
-                      {errorPegado && (
-                        <span role="alert" className="text-xs text-destructive">
-                          {errorPegado}
-                        </span>
+                    <FormField label="Pegar de Google Maps" error={errorPegado ?? undefined} id={`sucursal-pegar-${b.propertyId}`}>
+                      {(props) => (
+                        <div className="flex gap-2">
+                          <Input {...props} value={pegado} placeholder="21.0280, -89.6100 o enlace con @lat,lng" onChange={(e) => setPegado(e.target.value)} />
+                          <Button type="button" variant="outline" size="sm" onClick={() => void aplicarPegado()}>
+                            Pegar de Google Maps
+                          </Button>
+                        </div>
                       )}
-                    </div>
+                    </FormField>
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="flex flex-col gap-1.5">
-                        <Label htmlFor={`sucursal-lat-${b.propertyId}`} className="text-xs text-muted-foreground">
-                          Latitud
-                        </Label>
+                      <FormField label="Latitud" id={`sucursal-lat-${b.propertyId}`} error={verErrores ? (validacion.errorLat ?? undefined) : undefined}>
                         <Input
-                          id={`sucursal-lat-${b.propertyId}`}
                           inputMode="decimal"
                           value={draft.lat}
-                          aria-invalid={validacion.errorLat ? true : undefined}
                           onChange={(e) => setDraft((d) => ({ ...d, lat: e.target.value }))}
+                          onBlur={() => setTocados((t) => ({ ...t, lat: true }))}
                         />
-                        {validacion.errorLat && (
-                          <span role="alert" className="text-xs text-destructive">
-                            {validacion.errorLat}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        <Label htmlFor={`sucursal-lng-${b.propertyId}`} className="text-xs text-muted-foreground">
-                          Longitud
-                        </Label>
+                      </FormField>
+                      <FormField label="Longitud" id={`sucursal-lng-${b.propertyId}`} error={verErrores ? (validacion.errorLng ?? undefined) : undefined}>
                         <Input
-                          id={`sucursal-lng-${b.propertyId}`}
                           inputMode="decimal"
                           value={draft.lng}
-                          aria-invalid={validacion.errorLng ? true : undefined}
                           onChange={(e) => setDraft((d) => ({ ...d, lng: e.target.value }))}
+                          onBlur={() => setTocados((t) => ({ ...t, lng: true }))}
                         />
-                        {validacion.errorLng && (
-                          <span role="alert" className="text-xs text-destructive">
-                            {validacion.errorLng}
-                          </span>
-                        )}
-                      </div>
+                      </FormField>
                     </div>
+                    {avisoYucatan && (
+                      <p role="status" className="m-0 text-xs text-warning">
+                        {AVISO_FUERA_DE_YUCATAN}
+                      </p>
+                    )}
                     {hrefMapaDraft && (
                       <a href={hrefMapaDraft} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary underline">
                         Ver en el mapa <ExternalLink className="size-3" aria-hidden="true" />
@@ -236,7 +240,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
                     )}
                   </fieldset>
                   <div className="flex gap-2">
-                    <Button type="button" size="sm" onClick={() => void handleSave(b)} loading={saving} disabled={Boolean(validacion.errorLat || validacion.errorLng)}>
+                    <Button type="button" size="sm" onClick={() => void handleSave(b)} loading={saving}>
                       Guardar
                     </Button>
                     <Button type="button" variant="outline" size="sm" onClick={() => setEditing(null)} disabled={saving}>

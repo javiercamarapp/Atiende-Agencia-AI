@@ -126,7 +126,10 @@ export function restaurantesAdminBranchesRoutes(deps: AppDeps): Hono<CoreAuthHon
       slug: optionalSlug(raw.slug),
       displayOrder: optionalDisplayOrder(raw.displayOrder),
     };
-    // Si el cuerpo trae los dos ejes, van juntos o ninguno: un solo eje no ubica nada y la asignación por distancia lo descartaría.
+    // Un solo eje no ubica nada y la asignación por distancia lo descartaría: lat y lng se mandan juntas (ambas con valor o ambas null).
+    if ((patch.lat === undefined) !== (patch.lng === undefined)) {
+      throw Errors.validation("lat/lng: mándalas juntas.");
+    }
     if (patch.lat !== undefined && patch.lng !== undefined && (patch.lat === null) !== (patch.lng === null)) {
       throw Errors.validation("lat/lng: mándalas las dos con valor o las dos en null.");
     }
