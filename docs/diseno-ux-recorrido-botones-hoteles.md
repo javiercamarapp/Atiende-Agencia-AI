@@ -427,3 +427,24 @@ Se contrasto contra el codigo, a mano, una muestra de filas de cada tipo: Reserv
 - Las pestanas y filtros de cada pagina se revisaron solo estaticamente.
 - El `Sidebar` compartido marca "Dashboard" activo en subrutas (visible en las capturas); es de `packages/ui` y esta fuera de alcance.
 
+
+## Actualizacion UNI-C-hoteles (operacion): controles que cambiaron
+
+Las tablas de arriba son la medicion historica (numeros de linea de PR-6); no se regeneraron. Este apartado lista solo lo que cambio de forma o de interaccion en las paginas de operacion. Las rutas y funciones de cliente son las mismas: no hay cambios de backend ni de SQL.
+
+| Pagina | Antes | Ahora |
+|---|---|---|
+| Huespedes | `h1` suelto + buscador con `label` manual | `PageHeader` + `FormField` |
+| HuespedFicha | `h1` suelto con enlace "Huespedes" | `PageHeader` con `atras`; tipo y texto de la nota con `FormField`; Guardar con `loading` |
+| Mantenimiento | formulario inline en una tarjeta; "Estimado: $0" | `FormDialog` + `FormField` (Crear ticket); "Sin estimar" cuando no hay costo estimado; `notify` al crear y cerrar |
+| Pedidos F&B | `window.prompt` para la nota de cocina; formulario inline | `useConfirm().pedirTexto` (Cancelar/Escape no confirman); alta en `FormDialog`; fechas con `fechaHoraEsMx` |
+| Folio | `window.prompt` para el motivo del reverso; `h1` suelto | `useConfirm().pedirTexto` con tono de peligro (Cancelar/Escape no escriben, motivo obligatorio); `PageHeader` con saldo; campos con `FormField`; aviso como `Callout` |
+| Recepcion | `h1` con icono y `label` manual | `PageHeader`; `FormField`; avisos de base sin migrar como `Callout` |
+| Reservas | formulario "Nueva reserva" inline | `FormDialog` con `FormField` (ids de los campos conservados); `PageHeader`; aviso como `Callout` |
+| Housekeeping | `h1` suelto | `PageHeader`; `FormField` en la fecha; botones "Asignar automaticamente" y "Generar tareas del dia" con `loading` |
+| Tickets | `h1` con icono; `label` manuales | `PageHeader` con el conteo como `meta`; `FormField`; fechas de la bitacora con `fechaHoraEsMx` |
+| Asistencia | `h1` suelto; `Table` crudo del cruce | `PageHeader`; `FormField`; `DataTable` (orden y tarjetas en movil) en el cruce |
+| Conversaciones | `label` manuales; aviso en `<p>` | `FormField` y `Callout` |
+| CambiarFechasDialog | `Table` crudo de la comparacion | `DataTable` (sin paginacion) |
+
+Pendiente declarado: Catalogo.tsx y Mensajeria.tsx no se tocaron (PRs abiertos de otros carriles); Dashboard ya no tiene `h1` propio (lo da el Resumen). No hay barrido axe: `@axe-core/playwright` no esta en el repo.
