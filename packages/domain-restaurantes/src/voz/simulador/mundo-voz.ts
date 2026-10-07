@@ -35,8 +35,13 @@ export function crearMundoVoz(): MundoVoz {
   repo.seedOrganization({ id: organizationId, slug: "los-taquitos-de-pm", name: "Los Taquitos de PM" });
   repo.seedBranch({ propertyId, organizationId, name: "Francisco de Montejo", slug: BRANCH_SLUG_PRINCIPAL, status: "active", phone: "+529991110001", address: "Calle 1 #100, Mérida", lat: 21.0186, lng: -89.6708 });
   repo.seedBranch({ propertyId: propertyAltabrisa, organizationId, name: "Altabrisa", slug: BRANCH_SLUG_ALTABRISA, status: "active", phone: "+529991110002", address: "Calle 2 #200, Mérida", lat: 21.0, lng: -89.57 });
-  repo.seedKnownZone({ organizationId, name: "Centro", lat: 21.02, lng: -89.65 });
-  repo.seedKnownZone({ organizationId, name: "Altabrisa", lat: 21.001, lng: -89.572 });
+  const zonaCentro = randomUUID();
+  const zonaAltabrisa = randomUUID();
+  repo.seedKnownZone({ id: zonaCentro, organizationId, name: "Centro", lat: 21.02, lng: -89.65 });
+  repo.seedKnownZone({ id: zonaAltabrisa, organizationId, name: "Altabrisa", lat: 21.001, lng: -89.572 });
+  // Cobertura de entrega cargada (como la cuenta real de PM): sin ella un domicilio de PM no se puede validar y el agente exige el pin.
+  repo.seedBranchDeliveryZones(propertyId, [zonaCentro]);
+  repo.seedBranchDeliveryZones(propertyAltabrisa, [zonaAltabrisa]);
   for (const p of [propertyId, propertyAltabrisa]) repo.seedBranchPolicy(p, { pedidoMinimoDomicilio: 200 });
   // Perfil del agente de PM (el mismo que siembra el seed real): activa las reglas duras del servidor propias de PM, como el pedido grande.
   // El repositorio en memoria guarda de forma sincrona, por eso no se espera la promesa.

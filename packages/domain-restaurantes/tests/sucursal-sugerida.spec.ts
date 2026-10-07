@@ -58,6 +58,12 @@ describe("por colonia", () => {
     expect(r.mensaje).toBe(`Esa colonia no está en nuestras zonas de reparto; puede recoger en ${(r as { sucursal: { name: string } }).sucursal.name}.`);
   });
 
+  it("una colonia conocida SIN coordenadas (migracion 056) no se usa para la distancia: sin_resultado, nunca una sucursal inventada", async () => {
+    const m = mundo();
+    m.repo.seedKnownZone({ organizationId: m.organizationId, name: "Temozon Norte", lat: null, lng: null, createdAt: "2026-01-03T00:00:00Z" });
+    expect(await sugerirSucursalPorColonia(m.repo, m.organizationId, "Temozon Norte")).toEqual({ tipo: "sin_resultado", mensaje: MENSAJE_COLONIA_NO_RECONOCIDA });
+  });
+
   it("colonia desconocida o vacia: sin_resultado con el mensaje honesto, nunca una sucursal inventada", async () => {
     const m = mundo();
     expect(await sugerirSucursalPorColonia(m.repo, m.organizationId, "Atlantida")).toEqual({ tipo: "sin_resultado", mensaje: MENSAJE_COLONIA_NO_RECONOCIDA });
