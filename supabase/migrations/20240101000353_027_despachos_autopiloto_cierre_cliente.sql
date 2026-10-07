@@ -12,13 +12,14 @@
 --                                           cliente subio al portal para ese renglon.
 --   * `periodo_cierre` (ALTER)           -- cierre forzado: bandera + motivo (el motivo vive aqui y no en la bitacora).
 --   * `cierre_entrega` + `_archivo`      -- PDF de impuestos, DIOT y balanza generados al cerrar y publicados en el portal.
+--   * `cierre_artefacto`                 -- catalogo y balanza XML de la contabilidad electronica pre-generados al cerrar (no se presentan).
 --
 -- Seguridad (cada punto lo ejerce scripts/verify-despachos-autopiloto-cierre-cliente/assertions.sql):
 --   1. Tablas nuevas: RLS habilitado, REVOKE de todo a public/anon/authenticated y despues SOLO `select` a `authenticated` con
 --      policy `core.has_property_access(auth.uid(), property_id)` -- el staff lista lo de SUS clientes y nada mas. Ninguna escritura
 --      directa (ni insert/update/delete a nadie): todo cambio pasa por funciones definer. `cierre_entrega_archivo.contenido` (bytea)
 --      queda fuera del GRANT de columnas. No hay `using (true)` ni GRANT a anon.
---   2. Funciones de STAFF (`invoice_estado_sat_detalle_registrar`, `cliente_automatizacion_guardar`, `solicitud_*`, `cierre_entrega_*`, `periodo_cierre_forzar`): security
+--   2. Funciones de STAFF (`invoice_estado_sat_detalle_registrar`, `cliente_automatizacion_guardar`, `solicitud_*`, `cierre_entrega_*`, `cierre_artefacto_*`, `periodo_cierre_forzar`): security
 --      definer con `set search_path` fijo, `revoke ... from public, anon`, EXECUTE solo a `authenticated`. Exigen `auth.uid()` no nulo
 --      y `despachos.cartera_puede_escribir(property)` (acceso a la property + rol admin/contador de ESA organizacion); la property
 --      debe ser de vertical despachos. Una property o un renglon ajeno responde 42501/P0002 sin confirmar que existe.
@@ -871,7 +872,8 @@ returns table (
   out_movimientos_conciliados integer,
   out_pagos_provisionales integer,
   out_solicitud_estado text,
-  out_solicitud_pendientes integer
+  out_solicitud_pendientes integer,
+  out_periodicidad text
 )
 language plpgsql
 stable
@@ -918,7 +920,8 @@ begin
       (select count(*)::int from despachos.pago_provisional g where g.property_id = p_property_id and g.ejercicio = p_ejercicio and g.mes = p_mes),
       (select s.estado from despachos.solicitud_documentos s where s.property_id = p_property_id and s.ejercicio = p_ejercicio and s.mes = p_mes),
       (select count(*)::int from despachos.solicitud_documentos s join despachos.solicitud_documentos_renglon r on r.solicitud_id = s.id
-        where s.property_id = p_property_id and s.ejercicio = p_ejercicio and s.mes = p_mes and r.estado in ('pendiente', 'en_revision'));
+        where s.property_id = p_property_id and s.ejercicio = p_ejercicio and s.mes = p_mes and r.estado in ('pendiente', 'en_revision')),
+      (select f.periodicidad from despachos.cliente_ficha f where f.property_id = p_property_id);
 end;
 $$;
 revoke all on function despachos.cierre_estado_modulos(uuid, integer, integer) from public, anon;
@@ -1063,6 +1066,80 @@ grant select on despachos.cierre_entrega to authenticated;
 -- Sin `contenido`: el PDF solo sale por el portal (con token vigente) o por la funcion de staff de abajo.
 grant select (id, entrega_id, organization_id, property_id, tipo, nombre_archivo, tamano_bytes, sha256, creado_en) on despachos.cierre_entrega_archivo to authenticated;
 grant select, insert, update, delete on despachos.cierre_entrega, despachos.cierre_entrega_archivo to service_role;
+
+-- Artefactos pre-generados al cerrar (hoy: catalogo y balanza XML de la contabilidad electronica). Nunca se presentan ante el SAT: quedan
+-- guardados para que el contador los descargue (con segundo factor) cuando los vaya a presentar.
+create table despachos.cierre_artefacto (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references core.organization(id) on delete cascade,
+  property_id uuid not null references core.property(id) on delete cascade,
+  periodo_cierre_id uuid not null references despachos.periodo_cierre(id) on delete cascade,
+  tipo text not null check (tipo in ('contabilidad_catalogo_xml', 'contabilidad_balanza_xml')),
+  nombre_archivo text not null check (char_length(nombre_archivo) between 1 and 120 and nombre_archivo !~ '[/\\<>:"|?*[:cntrl:]]'),
+  tamano_bytes integer not null check (tamano_bytes between 1 and 5242880),
+  sha256 text not null check (sha256 ~ '^[0-9a-f]{64}$'),
+  contenido bytea not null,
+  creado_en timestamptz not null default now(),
+  creado_por uuid references core.staff_user(id) on delete set null,
+  unique (periodo_cierre_id, tipo)
+);
+alter table despachos.cierre_artefacto enable row level security;
+revoke all on despachos.cierre_artefacto from public, anon, authenticated;
+create policy "staff ve los artefactos de cierre de sus clientes" on despachos.cierre_artefacto for select
+  using (core.has_property_access(auth.uid(), property_id));
+-- Sin `contenido`: el XML solo sale por la funcion `cierre_artefacto_contenido` (staff con rol de escritura de cartera).
+grant select (id, organization_id, property_id, periodo_cierre_id, tipo, nombre_archivo, tamano_bytes, sha256, creado_en) on despachos.cierre_artefacto to authenticated;
+grant select, insert, update, delete on despachos.cierre_artefacto to service_role;
+
+create or replace function despachos.cierre_artefacto_guardar(p_property_id uuid, p_periodo_id uuid, p_tipo text, p_nombre text, p_contenido bytea)
+returns boolean
+language plpgsql
+security definer
+set search_path = despachos, pg_temp
+as $$
+declare
+  v_org uuid;
+  v_n integer;
+begin
+  if auth.uid() is null or not despachos.cartera_puede_escribir(p_property_id) then
+    raise exception 'cierre_artefacto_guardar: sin permiso sobre el cliente' using errcode = '42501';
+  end if;
+  select c.organization_id into v_org from despachos.periodo_cierre c where c.id = p_periodo_id and c.property_id = p_property_id and c.status = 'closed';
+  if v_org is null then
+    raise exception 'cierre_artefacto_guardar: el periodo no existe o no está cerrado' using errcode = 'P0002';
+  end if;
+  if p_contenido is null or octet_length(p_contenido) < 1 or octet_length(p_contenido) > 5242880 then
+    raise exception 'cierre_artefacto_guardar: el archivo debe medir de 1 B a 5 MiB' using errcode = '22023';
+  end if;
+  insert into despachos.cierre_artefacto (organization_id, property_id, periodo_cierre_id, tipo, nombre_archivo, tamano_bytes, sha256, contenido, creado_por)
+  values (v_org, p_property_id, p_periodo_id, p_tipo, p_nombre, octet_length(p_contenido), encode(sha256(p_contenido), 'hex'), p_contenido, auth.uid())
+  on conflict (periodo_cierre_id, tipo) do nothing;
+  get diagnostics v_n = row_count;
+  return v_n > 0;
+end;
+$$;
+revoke all on function despachos.cierre_artefacto_guardar(uuid, uuid, text, text, bytea) from public, anon;
+grant execute on function despachos.cierre_artefacto_guardar(uuid, uuid, text, text, bytea) to authenticated;
+
+create or replace function despachos.cierre_artefacto_contenido(p_property_id uuid, p_artefacto_id uuid)
+returns table (out_nombre_archivo text, out_contenido bytea)
+language plpgsql
+stable
+security definer
+set search_path = despachos, pg_temp
+as $$
+begin
+  if auth.uid() is null or not despachos.cartera_puede_escribir(p_property_id) then
+    raise exception 'cierre_artefacto_contenido: sin permiso sobre el cliente' using errcode = '42501';
+  end if;
+  return query select a.nombre_archivo, a.contenido from despachos.cierre_artefacto a where a.id = p_artefacto_id and a.property_id = p_property_id;
+  if not found then
+    raise exception 'cierre_artefacto_contenido: archivo no encontrado' using errcode = 'P0002';
+  end if;
+end;
+$$;
+revoke all on function despachos.cierre_artefacto_contenido(uuid, uuid) from public, anon;
+grant execute on function despachos.cierre_artefacto_contenido(uuid, uuid) to authenticated;
 
 -- STAFF: abre (idempotente) la entrega de un periodo CERRADO de un cliente con opt-in y correo de contacto.
 create or replace function despachos.cierre_entrega_crear(p_property_id uuid, p_periodo_id uuid)

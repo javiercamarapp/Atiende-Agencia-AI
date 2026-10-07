@@ -984,3 +984,78 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb01', true);
 insert into despachos.solicitud_documentos (organization_id, property_id, ejercicio, mes) values ('00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000fa01', 2026, 1) returning 1 as should_fail;
 rollback;
+
+\echo '103. el estado de modulos devuelve la periodicidad del cliente (bimestral/mensual) para saber si toca pago provisional'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (out_periodicidad = 'mensual')::int as periodicidad_deberia_ser_1 from despachos.cierre_estado_modulos('00000000-0000-0000-0000-00000000fa01', 2026, 6);
+rollback;
+
+\echo '104. el staff guarda un artefacto de un periodo cerrado; el mismo tipo dos veces no duplica (false)'
+begin;
+update despachos.periodo_cierre set status = 'closed', closed_at = now() where id = '00000000-0000-0000-0000-00000000f601';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb01', true);
+select despachos.cierre_artefacto_guardar('00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000f601', 'contabilidad_balanza_xml', 'balanza.xml', '\x3c783e3c2f783e'::bytea);
+select despachos.cierre_artefacto_guardar('00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000f601', 'contabilidad_balanza_xml', 'balanza.xml', '\x3c783e3c2f783e'::bytea)::int as duplicado_deberia_ser_0;
+rollback;
+
+\echo '105. no se guarda un artefacto de un periodo que no esta cerrado'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb01', true);
+select despachos.cierre_artefacto_guardar('00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000f601', 'contabilidad_balanza_xml', 'balanza.xml', '\x3c783e3c2f783e'::bytea) as should_fail;
+rollback;
+
+\echo '106. cross-tenant: el admin de otro despacho NO guarda ni descarga artefactos ajenos'
+begin;
+update despachos.periodo_cierre set status = 'closed', closed_at = now() where id = '00000000-0000-0000-0000-00000000f601';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb02', true);
+select despachos.cierre_artefacto_guardar('00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000f601', 'contabilidad_catalogo_xml', 'catalogo.xml', '\x3c783e3c2f783e'::bytea) as should_fail;
+rollback;
+
+\echo '107. tipo de artefacto fuera del catalogo -> error'
+begin;
+update despachos.periodo_cierre set status = 'closed', closed_at = now() where id = '00000000-0000-0000-0000-00000000f601';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb01', true);
+select despachos.cierre_artefacto_guardar('00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000f601', 'otra_cosa', 'x.xml', '\x3c783e3c2f783e'::bytea) as should_fail;
+rollback;
+
+\echo '108. el staff NO lee el contenido (bytea) del artefacto por SQL directo'
+begin;
+update despachos.periodo_cierre set status = 'closed', closed_at = now() where id = '00000000-0000-0000-0000-00000000f601';
+insert into despachos.cierre_artefacto (organization_id, property_id, periodo_cierre_id, tipo, nombre_archivo, tamano_bytes, sha256, contenido) values ('00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000f601', 'contabilidad_balanza_xml', 'b.xml', 7, repeat('a', 64), '\x3c783e3c2f783e'::bytea);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb01', true);
+select contenido from despachos.cierre_artefacto as should_fail;
+rollback;
+
+\echo '109. el staff con rol de escritura descarga el contenido por la funcion; el auditor NO'
+begin;
+update despachos.periodo_cierre set status = 'closed', closed_at = now() where id = '00000000-0000-0000-0000-00000000f601';
+insert into despachos.cierre_artefacto (id, organization_id, property_id, periodo_cierre_id, tipo, nombre_archivo, tamano_bytes, sha256, contenido) values ('00000000-0000-0000-0000-00000000f4a1', '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000f601', 'contabilidad_balanza_xml', 'b.xml', 7, repeat('a', 64), '\x3c783e3c2f783e'::bytea);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb03', true);
+select octet_length(out_contenido) as bytes_deberia_ser_7 from despachos.cierre_artefacto_contenido('00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000f4a1');
+rollback;
+
+\echo '110. el auditor (solo lectura) NO descarga el artefacto'
+begin;
+update despachos.periodo_cierre set status = 'closed', closed_at = now() where id = '00000000-0000-0000-0000-00000000f601';
+insert into despachos.cierre_artefacto (id, organization_id, property_id, periodo_cierre_id, tipo, nombre_archivo, tamano_bytes, sha256, contenido) values ('00000000-0000-0000-0000-00000000f4a1', '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000f601', 'contabilidad_balanza_xml', 'b.xml', 7, repeat('a', 64), '\x3c783e3c2f783e'::bytea);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb04', true);
+select * from despachos.cierre_artefacto_contenido('00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000f4a1') as should_fail;
+rollback;
+
+\echo '111. cross-tenant: el staff de otro despacho no ve los artefactos ajenos (RLS)'
+begin;
+update despachos.periodo_cierre set status = 'closed', closed_at = now() where id = '00000000-0000-0000-0000-00000000f601';
+insert into despachos.cierre_artefacto (organization_id, property_id, periodo_cierre_id, tipo, nombre_archivo, tamano_bytes, sha256, contenido) values ('00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000f601', 'contabilidad_balanza_xml', 'b.xml', 7, repeat('a', 64), '\x3c783e3c2f783e'::bytea);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb02', true);
+select count(*) as artefactos_ajenos_deberia_ser_0 from (select id from despachos.cierre_artefacto) x;
+rollback;
