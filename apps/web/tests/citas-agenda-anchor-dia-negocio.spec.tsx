@@ -9,7 +9,7 @@
 // es el de MAÑANA, así que la semana/mes que se pedía al servidor (`fromIso`/`toIso`)
 // era la SIGUIENTE, no la real -- aunque la etiqueta (ya corregida) mostrara el día
 // correcto PARA ESE `anchor` ya corrido. Este test verifica el RANGO pedido al
-// servidor, no solo la etiqueta.
+// servidor, no solo la etiqueta. El rango va de medianoche a medianoche LOCAL del negocio (00:00 CDMX = 06:00Z; QA-citas-R1-botones-06). (El rango va de medianoche a medianoche LOCAL del negocio: 00:00 CDMX = 06:00Z, QA-citas-R1-botones-06.)
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgendaPage } from "../src/verticals/citas/pages/Agenda.tsx";
@@ -87,8 +87,8 @@ describe("AgendaPage (citas) — el RANGO pedido al servidor usa el día de NEGO
     // Control del bug: con `anchor = new Date()` sin anclar al día de negocio, el mes UTC
     // de ese instante ya sería octubre -> from = 2026-10-01, to = 2026-11-01. Con el fix,
     // el mes de NEGOCIO sigue siendo septiembre.
-    expect(url.searchParams.get("from")).toBe("2026-09-01T00:00:00.000Z");
-    expect(url.searchParams.get("to")).toBe("2026-10-01T00:00:00.000Z");
+    expect(url.searchParams.get("from")).toBe("2026-09-01T06:00:00.000Z");
+    expect(url.searchParams.get("to")).toBe("2026-10-01T06:00:00.000Z");
   });
 
   it("vista de semana, a las 22:00 CDMX del domingo 27-sep: pide la semana que empieza el lunes 21-sep, nunca la del lunes 28-sep", async () => {
@@ -109,8 +109,8 @@ describe("AgendaPage (citas) — el RANGO pedido al servidor usa el día de NEGO
     // 27-sep-2026 (día de NEGOCIO) es domingo -> pertenece a la semana que empieza el
     // lunes 21-sep. Con el bug (anchor = 28-sep UTC, ya lunes), `startOfWeek` habría dado
     // ESE mismo lunes 28-sep -- una semana completa adelantada.
-    expect(url.searchParams.get("from")).toBe("2026-09-21T00:00:00.000Z");
-    expect(url.searchParams.get("to")).toBe("2026-09-28T00:00:00.000Z");
+    expect(url.searchParams.get("from")).toBe("2026-09-21T06:00:00.000Z");
+    expect(url.searchParams.get("to")).toBe("2026-09-28T06:00:00.000Z");
   });
 
   it("botón 'Hoy' a las 22:00 CDMX del 30-sep: pide el rango de SEPTIEMBRE, nunca el de octubre (bloqueante 1, corrección de PR #171)", async () => {
@@ -143,7 +143,7 @@ describe("AgendaPage (citas) — el RANGO pedido al servidor usa el día de NEGO
     // Control del bug: con `setAnchor(new Date())`, el mes UTC de este instante ya
     // sería octubre -> from = 2026-10-01, to = 2026-11-01. Con el fix, "Hoy" ancla al
     // día de negocio (30-sep) y vuelve a pedir septiembre.
-    expect(url.searchParams.get("from")).toBe("2026-09-01T00:00:00.000Z");
-    expect(url.searchParams.get("to")).toBe("2026-10-01T00:00:00.000Z");
+    expect(url.searchParams.get("from")).toBe("2026-09-01T06:00:00.000Z");
+    expect(url.searchParams.get("to")).toBe("2026-10-01T06:00:00.000Z");
   });
 });
