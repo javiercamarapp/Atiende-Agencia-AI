@@ -192,6 +192,48 @@ jobs:
       - name: scripts/verify-fallback-savepoint/run.sh
         run: bash scripts/verify-fallback-savepoint/run.sh
 
+  whatsapp-concurrencia-gate:
+    name: Webhook de WhatsApp con mensajes simultaneos (scripts/verify-whatsapp-concurrencia)
+    runs-on: ubuntu-latest
+    # Job APARTE: levanta su PROPIO Postgres efimero via initdb CON TLS (el motor de produccion exige TLS, y el servicio `postgres:`
+    # de arriba no lo trae), aplica las migraciones reales y corre la API real de produccion con OpenRouter y Meta simulados.
+    # Falla si 6+ mensajes simultaneos al webhook de restaurantes dejan de responder 200 o si se pierde/duplica un mensaje (P0
+    # de la cuenta real de PM: interbloqueo del pool de conexiones). Ver scripts/verify-whatsapp-concurrencia/README.md.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Confirmar initdb/pg_ctl/psql disponibles
+        run: |
+          if ! command -v initdb >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql
+          fi
+          # El paquete `postgresql` de Ubuntu/Debian deja initdb/pg_ctl fuera de PATH (ver el job fallback-savepoint-gate).
+          if ! command -v initdb >/dev/null 2>&1; then
+            PG_BIN="$(dirname "$(find /usr/lib/postgresql -maxdepth 3 -name initdb -print -quit)")"
+            if [ -z "$PG_BIN" ] || [ "$PG_BIN" = "." ]; then
+              echo "verify-whatsapp-concurrencia (CI): no se encontro initdb bajo /usr/lib/postgresql" >&2
+              exit 1
+            fi
+            echo "$PG_BIN" >> "$GITHUB_PATH"
+            export PATH="$PG_BIN:$PATH"
+          fi
+          initdb --version
+          pg_ctl --version
+          psql --version
+
+      - name: scripts/verify-whatsapp-concurrencia/run.sh
+        run: bash scripts/verify-whatsapp-concurrencia/run.sh
+
   citas-concurrencia-gate:
     name: Doble cita con 2+ conexiones simultaneas (scripts/verify-citas-concurrencia)
     runs-on: ubuntu-latest
@@ -246,6 +288,116 @@ jobs:
 
       - name: scripts/verify-citas-concurrencia/run.sh
         run: bash scripts/verify-citas-concurrencia/run.sh
+
+  datos-empresa-concurrencia-gate:
+    name: Decision de datos de empresa con 2 conexiones simultaneas (scripts/verify-licitaciones-aprobacion-datos-empresa/concurrencia.sh)
+    runs-on: ubuntu-latest
+    # Job APARTE (mismo servicio postgres que el gate de arriba): el runner generico run-gate.mjs ejecuta cada escenario de assertions.sql en UNA
+    # conexion, y la transicion condicional de `licitaciones.decide_company_item` (migracion 036, WI-04) necesita DOS conexiones SIMULTANEAS: una
+    # retiene la decision sin confirmar y se comprueba que la otra espera un Lock; despues, 10 rondas con "pistola de salida" -- exactamente un
+    # ok y un conflict, una sola fila de bitacora. El concurrencia.sh vive junto a assertions.sql pero NO se llama run.sh, asi que el
+    # auto-descubrimiento de run-gate.mjs sigue corriendo solo el assertions.sql de ese directorio.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      VERIFY_USE_EXISTING_PG: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Confirmar cliente psql disponible
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+          psql --version
+
+      - name: Esperar a que el servicio Postgres acepte conexiones
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" >/dev/null 2>&1; then
+              echo "Postgres listo"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Postgres nunca quedó listo" >&2
+          exit 1
+
+      - name: scripts/verify-licitaciones-aprobacion-datos-empresa/concurrencia.sh
+        run: bash scripts/verify-licitaciones-aprobacion-datos-empresa/concurrencia.sh
+
+  restaurantes-whatsapp-concurrencia-gate:
+    name: WhatsApp y pedidos de restaurantes con 2+ conexiones simultaneas (scripts/verify-restaurantes-whatsapp-concurrencia)
+    runs-on: ubuntu-latest
+    # Job APARTE (mismo servicio postgres que el gate de arriba): el runner generico run-gate.mjs ejecuta cada escenario de
+    # assertions.sql en UNA conexion y esta verificacion necesita varias conexiones SIMULTANEAS. scripts/verify-restaurantes-
+    # whatsapp-concurrencia/run.sh aplica las migraciones reales, dispara N conexiones con una "pistola de salida" (advisory lock)
+    # y comprueba sobre las RPC reales de restaurantes que la idempotencia de pedidos, el ledger de mensajes de Meta, el lease de
+    # conversacion y el append atomico del historial aguantan la carrera. Sin assertions.sql a proposito (ver el README del script).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      VERIFY_USE_EXISTING_PG: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Confirmar cliente psql disponible
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+          psql --version
+
+      - name: Esperar a que el servicio Postgres acepte conexiones
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" >/dev/null 2>&1; then
+              echo "Postgres listo"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Postgres nunca quedó listo" >&2
+          exit 1
+
+      - name: scripts/verify-restaurantes-whatsapp-concurrencia/run.sh
+        run: bash scripts/verify-restaurantes-whatsapp-concurrencia/run.sh
 
   eval-copiloto-congelado:
     name: Arnes de evaluacion del Copiloto - respuestas esperadas congeladas vs Postgres sembrado (scripts/eval-copiloto)

@@ -1,5 +1,20 @@
 # Vertical: restaurantes (api)
 
+## Mapa vigente de archivos (4-oct-2026)
+
+Las secciones de abajo cuentan cómo se fue construyendo por fases; esta tabla es la lista **actual**. Cada archivo documenta sus rutas exactas en el
+comentario de cabecera. Los efectos y casos de punta a punta están en `docs/CICLO-PUNTA-A-PUNTA-RESTAURANTES.md`.
+
+| Grupo | Archivos | Qué hacen |
+|---|---|---|
+| Canales públicos / de sistema (sin `authMiddleware`) | `public.ts`, `storefront.ts`, `demo-widget.ts`, `whatsapp.ts`, `voice-tools.ts`, `voice-auth.ts`, `transcripcion-voz.ts` | checkout y storefront por token de rastreo, widget demo, webhook de WhatsApp (HMAC), herramientas HTTP del agente de voz con token por llamada, notas de voz de WhatsApp |
+| Efectos tras el commit | `efectos-post-commit.ts`, `email-dispatch.ts`, `softrestaurant-dispatch.ts`, `softrestaurant-wiring.ts`, `programados-interno.ts` | correo y comanda al POS del pedido recién creado, drenado de correo y de comandas, promoción de programados (crons de `vercel.json`) |
+| Panel de staff (`MANAGER_ROLES` u owner/admin) | `restaurantes.ts` (agregador), `admin-scope.ts`, `admin-catalog.ts`, `admin-branches.ts`, `admin-orders.ts`, `admin-customers.ts`, `admin-promotions.ts`, `admin-staff.ts`, `admin-config.ts`, `admin-modelo-pm.ts`, `admin-avisos.ts`, `admin-onboarding.ts` (+ `onboarding-aviso.ts`, `onboarding-carga.ts`), `auditoria.ts`, `exportaciones.ts` (+ `exportar-pdf.ts`), `privacidad.ts` | catálogo, sucursales, pedidos y su máquina de estados, clientes, promociones, cuentas, configuración, avisos, checklist de onboarding, bitácora, exportaciones y derechos ARCO |
+| Agente, voz y conversaciones | `conversaciones-admin.ts`, `voz-admin.ts`, `admin-voice-secret.ts`, `voz-interno.ts`, `voz-kpi.ts`, `whatsapp-kpi.ts`, `admin-data-chat.ts`, `admin-softrestaurant.ts` | bandeja de handoff (tomar, responder, devolver, cerrar), callbacks y turnos; configuración y secreto de voz por sucursal; registro de llamadas; KPI; "Chatea con tus datos"; bandeja de comandas del POS |
+| Repartidor | `repartidor-orders.ts`, `repartidor-historial.ts`, `repartidor-perfil.ts`, `repartidor-licencias-interno.ts` | solo sus pedidos asignados (`en_camino`, `entregado`, `problema`), su día, su perfil y el barrido de licencias |
+| Cierres y privacidad (sistema) | `cierres.ts`, `cierres-interno.ts`, `privacidad-interno.ts` | cierre del día/semana (panel y barrido), retención de datos |
+
+
 Fase 1 construida: `public.ts` (`POST /v1/restaurantes/:orgSlug/orders`,
 `POST /v1/restaurantes/:orgSlug/customers/lookup` — sin `authMiddleware`, canales
 públicos/de sistema, ver diseño Fase 1 §3) y `whatsapp.ts`
@@ -33,8 +48,11 @@ Fase 5 agrega el back-office CORE (CRUD real, con `authMiddleware` +
   por cursor) y cambio de estado real (`PATCH
   .../admin/orders/:orderId/status`, validado por la máquina de estados de
   `@atiende/domain-restaurantes::order-lifecycle.ts`).
-- `admin-customers.ts` — listado/búsqueda (`GET .../admin/customers`) y ficha
-  (`GET .../admin/customers/:customerId`, mismo shape que `lookupCustomer`).
+- `admin-customers.ts` — listado/búsqueda (`GET .../admin/customers`, con `nivel`, `frecuencia`, `inactivoDias` y `branchId` resueltos en el
+  servidor por la migración 054), KPIs de cartera (`GET .../admin/customers/kpis`, teléfono del cliente más frecuente enmascarado), importación de
+  cartera (`POST .../admin/customers/import/preview` no escribe; `POST .../admin/customers/import`: tope de 5,000 renglones, idempotente por la huella
+  SHA-256 del archivo, bitácora, 503 honesto sin la migración 054) y ficha (`GET .../admin/customers/:customerId`, mismo shape que `lookupCustomer`
+  más la nota interna).
 
 Cuentas/accesos de staff, notificaciones, promociones/marketing, panel de
 superadmin, "pregunta a tus datos" y configuración del agente de voz/WhatsApp
@@ -227,6 +245,18 @@ crea igual; un fallo real se registra y no tumba un pedido ya creado. SQL verifi
   repositorio; `packages/domain-restaurantes/tests/cierres-savepoint.spec.ts`). SQL y permisos verificados contra Postgres real en
   `scripts/verify-restaurantes-cierre-dia/`. Pruebas HTTP: `apps/api/tests/restaurantes-cierres.spec.ts`.
 
+## Cliente 360 (migración 049)
+
+- Panel (`admin-customers.ts`, MANAGER_ROLES salvo lo marcado; todas las escrituras dejan huella en la bitácora sin PII):
+  `GET .../admin/customers/:id/ficha`, `PATCH .../admin/customers/:id` (nombre, notas, cumpleaños día+mes),
+  `POST|PATCH|DELETE .../admin/customers/:id/addresses[/:addressId]`, `POST .../admin/customers/:id/preferences` (`accion`: agregar, descartar,
+  reactivar, eliminar), `POST .../admin/customers/:id/orders/:orderId/falso`, `GET .../admin/customers/policy` y `PUT` (solo owner/admin),
+  `GET .../admin/customers/:id/arco-export` y `POST .../borrar-memoria` (solo owner/admin). Cada función SQL vuelve a validar rol y organización;
+  un id de otra organización responde 404. Base sin migrar: 503 "no disponible aún".
+- Voz (`voice-tools.ts`, exigen token de llamada: el teléfono sale del token): `POST /v1/restaurantes/:orgSlug/customers/orders`
+  (`historial_pedidos`) y `POST .../orders/repeat` (`repetir_pedido`).
+- Pruebas: `apps/api/tests/restaurantes-admin-ficha-cliente.spec.ts`.
+
 ## Perfil operativo del repartidor (R-15, migración 044)
 
 - Propio (`repartidor-perfil.ts`, solo rol `repartidor`): `GET|PUT /v1/restaurantes/:propertyId/repartidor/perfil` lee y corrige SU perfil
@@ -259,3 +289,9 @@ crea igual; un fallo real se registra y no tumba un pedido ya creado. SQL verifi
 - Bitácora (tipo `exportacion`, migración 044 amplía el CHECK de `audit_log.entity_type`): `historial.exportado` / `clientes.exportado` con formato y número de filas,
   nunca nombres, teléfonos ni el texto de búsqueda. Contra una base sin la 044 la fila de bitácora se omite (con aviso en el log) y la exportación funciona igual.
 - PII: teléfonos completos solo para owner/admin; el staff de piso y el repartidor reciben 403.
+
+- Autopiloto (`autopiloto.ts`, migración 050; staff con alcance a la sucursal): `GET .../admin/autopiloto/solicitudes?estado=pendiente|resuelta` (aprobaciones «Por aprobar»),
+  `POST .../admin/autopiloto/solicitudes/:id/resolver` `{ decision, motivo?, valor?, indices? }` (aprobar/rechazar/cancelar/mantener/compensar con un clic; idempotente; 400 motivo fuera de la lista
+  cerrada; 403 sin alcance; 503 base sin migrar), `GET|PUT .../admin/autopiloto/config` (PUT solo owner/admin), `POST .../admin/autopiloto/agotado` (agotado hasta mañana),
+  `GET .../admin/autopiloto/tiempo?canal=` (tiempo prometido hoy) y `GET .../admin/autopiloto/pedidos/:orderId/historial`. `PATCH .../admin/orders/:id/status` exige `motivo` (lista cerrada) al cancelar
+  y rechaza mover un pedido `por_aprobar` (409). El tick `autopiloto-tick.ts` corre dentro de `/internal/restaurantes/promover-programados`.

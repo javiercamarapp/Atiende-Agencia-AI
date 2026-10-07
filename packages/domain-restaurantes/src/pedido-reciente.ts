@@ -10,7 +10,7 @@ export const VENTANA_PEDIDO_RECIENTE_MIN = 12 * 60;
 /** Sucursal sin zona horaria propia (`branch_detail.zona_horaria` nula): la del negocio (Los Taquitos de PM es de Merida). */
 const ZONA_POR_OMISION = "America/Merida";
 
-export type EstadoPedidoParaCliente = "preparando" | "salio" | "listo_para_recoger" | "entregado" | "programado" | "con_problema" | "no_recogido";
+export type EstadoPedidoParaCliente = "preparando" | "salio" | "listo_para_recoger" | "entregado" | "programado" | "con_problema" | "no_recogido" | "por_confirmar";
 
 export interface PedidoReciente {
   readonly estado: EstadoPedidoParaCliente;
@@ -40,6 +40,8 @@ export function estadoParaCliente(status: OrderStatus): EstadoPedidoParaCliente 
       return "con_problema";
     case "no_recogido":
       return "no_recogido";
+    case "por_aprobar":
+      return "por_confirmar";
     case "cancelado":
       return null;
   }

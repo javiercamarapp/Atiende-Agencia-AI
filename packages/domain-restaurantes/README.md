@@ -6,7 +6,10 @@ desactualizado hace varias fases: hoy también incluye KPIs (`kpis.ts` +
 `006_kpi_aggregates.sql`), promociones (`promotions.ts`), notificaciones
 reales de WhatsApp al cliente por cambio de estado de pedido
 (`order-notifications.ts`), asignación de repartidor, correo transaccional
-(`email-dispatch.ts`) y 15 migraciones — ver
+(`email-dispatch.ts`), conversaciones con handoff, voz, comandas al POS
+(`src/softrestaurant/`), cierres del día, privacidad/ARCO y perfil del repartidor, con
+49 archivos en `migrations/` (la numeración interna llega a la 063, con huecos en la
+secuencia; `npm run verify:migration-versions` vigila que no se repita) — ver
 `apps/api/src/routes/verticals/restaurantes/README.md` para el mapa completo
 de fases (3/5/8/9/11/12) que fue agregando cada pieza.
 
@@ -122,3 +125,48 @@ organización y se muestra aparte. Solo alertas internas (panel + `restaurantes.
 `InMemoryCierreRepository` (pruebas) y `barrerCierresSucursal` (barrido idempotente por sucursal que avisa solo al CREAR un cierre). Las definiciones de cada
 cifra (venta, ticket, cancelación, tiempo de entrega, comparativo, fecha de negocio) viven en el encabezado de `migrations/041_cierre_dia_resumen_semanal.sql`;
 el cálculo es SQL y lo prueba `scripts/verify-restaurantes-cierre-dia/` contra Postgres real.
+
+## Autopiloto del ciclo del pedido (migración 050)
+
+`src/autopiloto/`: el sistema prepara y pide **una aprobación con un clic**; lo que mueve dinero, cancela algo ya en cocina o es un pedido grande **nunca se
+automatiza sin humano** (y nada se autoaprueba: sin respuesta solo se escala el aviso al owner). Piezas:
+
+- Estado `por_aprobar` (pedido grande retenido sin comanda ni cocina) y `solicitud_aprobacion` (pedido grande, cancelación pedida por el cliente, compensación
+  de una queja). Resolver es idempotente y atómico (bloqueo de fila): dos clics = un efecto. Aprobar encola la comanda al POS (post-commit, sesión de sistema) y
+  manda el WhatsApp «confirmado»; rechazar pide un motivo de lista cerrada, avisa con texto honesto y deja un callback.
+- Cancelación pedida por el cliente (`solicitarCancelacion`): automática solo si la sucursal lo activó (por omisión **no**), el pedido sigue en `pending`/`programado` y no
+  tiene comanda; en cualquier otro caso crea una solicitud. El pedido sale del teléfono del contexto, nunca de un id del modelo.
+- Queja con compensación (`registrarQuejaConPedido`): «Sin compensación», «Reponer producto» (pedido de $0 a cocina) o «Descuento en el próximo pedido» (código de un solo uso,
+  con tope por sucursal). El dinero solo se registra, nunca se ejecuta.
+- Tick (dentro de `/internal/restaurantes/promover-programados`, sin cron nuevo): escalado, `entregado -> completado`, `listo_para_recoger -> no_recogido`, aceptación automática,
+  avance desde el POS (solo con adaptador real), regreso de handoffs sin respuesta humana y reposición de «agotado hasta mañana» al cambiar el día de la sucursal.
+- Historial append-only de transiciones (`order_status_events`, trigger en `orders`), taxonomía cerrada de quejas y cancelaciones, tiempo prometido aprendido (mediana de la
+  franja, nunca menos que el piso del dueño) y confirmación «Recibimos su pedido» para voz y web (solo con plantilla aprobada).
+- Base sin migrar: todo degrada a «no disponible» con SAVEPOINT (`tests/autopiloto-savepoint.spec.ts`). SQL y permisos: `scripts/verify-restaurantes-autopiloto/` (Postgres real, incluye
+  la prueba de concurrencia con dos conexiones en `run.sh`).
+- Agente de WhatsApp (`src/whatsapp/autopiloto-turno.ts`, opción `autopiloto` del turno): **detrás de la bandera por organización `autopiloto_org_config.cancelacion_agente` (apagada por
+  omisión)**, una cancelación detectada por el clasificador (que NO cambia) con pedido activo crea la solicitud de aprobación, o cancela sola si la sucursal lo permitió y no hay comanda; con la
+  bandera apagada, sin pedido activo, con la base sin migrar o ante un error, el turno sigue por el camino de siempre. Una queja se liga al último pedido (solicitud de compensación), su
+  subtipo (`MOTIVOS_QUEJA`) viaja en el aviso al equipo y la respuesta al cliente no cambia.
+- **Pendiente de B2 (#421)**: `crear_pedido` que llame a `retenerPedidoGrande` al detectar el pedido grande; y el cableado de la voz (cancelación y queja).
+
+## Cliente 360: memoria del cliente (migración 049)
+
+- Código en `src/cliente-360/`: `types.ts`, `gustos.ts` (observaciones de un pedido confirmado y gustos propuestos), `repetir.ts`
+  ("lo mismo de la vez pasada" con precios de hoy), `memoria.ts` (carga, cierre del ciclo y regla de reincidencia), `postgres.ts` (llama a las
+  funciones `security definer` dentro de SAVEPOINT) e `in-memory.ts`.
+- **Por qué una función de sistema para leer:** la sesión de los canales (WhatsApp, voz, web) entra con `auth.uid()` NULL y las policies de
+  `customers`/`orders` exigen membresía, así que no veía ninguna fila. `restaurantes.cliente_memoria(org, telefono)` (solo sistema) devuelve
+  cliente, domicilios (el último usado primero), hasta 30 pedidos sin cancelados, gustos y conteos de reincidencia.
+- **Cierre del ciclo:** `createOrder` llama a `restaurantes.cliente_registrar_pedido` (solo sistema, idempotente por pedido) con el domicilio y
+  las observaciones del pedido (tortilla, salsas, omisiones, nota corta, pago, propina, canal, sucursal). Un gusto se propone desde la 2.ª
+  vez; si el más reciente ya se vio 2 veces gana al más visto (gusto cambiado); los descartados nunca se proponen.
+- **Herramientas del agente** (WhatsApp y voz, `agent-tools/registry.ts`): `historial_pedidos` y `repetir_pedido` (solo pedidos del mismo
+  número; re-cotiza con precios de hoy, entra a la máquina de estados de `cotizar_pedido` y avisa de productos que ya no están o cambiaron de
+  precio). `buscar_cliente` devuelve además `domicilios`, `gustos` y `pedidosAnteriores`.
+- **Reincidencia:** con `umbral` (por omisión 2, 0 = apagada) "no recogido" + pedidos falsos dentro de la ventana (90 días) el pedido de WhatsApp o voz
+  no se crea solo: queda un aviso (`callback_requests`, motivo `aprobacion_pedido_cliente`, con todo el pedido) y el agente solo dice que la
+  sucursal lo confirma. El checkout web no se retiene.
+- **Base sin migrar:** `getCustomerMemory`/`registerOrderClosure` devuelven `undefined` (42883/42P01/42703 dentro de SAVEPOINT) y el agente usa
+  el camino anterior; las operaciones del staff lanzan `ClienteMemoriaNoDisponibleError` (503 "no disponible aún"). Pruebas:
+  `tests/cliente-360-*.spec.ts`; SQL y permisos contra Postgres real en `scripts/verify-restaurantes-cliente-360/`.

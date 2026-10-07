@@ -1,3 +1,4 @@
+import type { DemoAgentsDeps } from "./demo-agents/types.ts";
 import type {
   AgentRunRepository,
   AuthzAuditRepository,
@@ -11,6 +12,7 @@ import type {
   PylRepository,
   CfoZoneRepository,
   ConsolaRepository,
+  OrgEquipoRepository,
   OrgFichaRepository,
   FichasAgenteRepository,
   ContratosRepository,
@@ -25,7 +27,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { CierreRepository, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository } from "@atiende/domain-restaurantes";
+import type { AutopilotoRepository, CierreRepository, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
@@ -114,6 +116,8 @@ import type { LlmRouteConfig } from "./production/llm-models.ts";
  * xRepoInstance` — ignora el argumento porque el repo en memoria no tiene ningún
  * concepto de sesión/RLS (ver apps/api/tests/fixtures.ts y fixtures por vertical). */
 export interface AppDeps {
+  /** Public marketing sandbox: no tenant records or mutation tools. */
+  readonly publicDemoAgents?: DemoAgentsDeps;
   readonly env: ApiEnv;
   readonly coreRepo: CoreRepository;
   /** Fase 10 — invitar/gestionar staff (crear/listar/revocar invitación), ver
@@ -169,12 +173,20 @@ export interface AppDeps {
   /** R-13 (migración 035): KPI de voz, costo y alertas. OPCIONAL: sin él las rutas de KPI responden 503 honesto. En producción es
    * `(db) => new PostgresVozKpiRepository(db)` (cada consulta degrada con SAVEPOINT contra la base sin migrar). */
   readonly vozKpiRepo?: (db: TenantDbSession) => VozKpiRepository;
+  /** Worker de telefonia de voz (migración 067): gasto del mes para el tope mensual, modo de entrada, costo por escalón y KPI de desborde/latencia.
+   * OPCIONAL: sin él, el contexto de llamada no trae gasto (no bloquea) y las demás rutas responden 503 honesto. En producción es
+   * `(db) => new PostgresVozLlamadaRepository(db)` (cada operación degrada con SAVEPOINT contra la base sin migrar). */
+  readonly vozLlamadaRepo?: (db: TenantDbSession) => VozLlamadaRepository;
   /** R-31 (migración 040): KPI del agente de WhatsApp por día local. OPCIONAL: sin él la ruta responde 503 honesto. En producción es
    * `(db) => new PostgresWhatsappKpiRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
   readonly whatsappKpiRepo?: (db: TenantDbSession) => WhatsappKpiRepository;
   /** R-42 (migración 041): cierre del día y resumen semanal. OPCIONAL: sin él las rutas responden 503 honesto. En producción es
    * `(db) => new PostgresCierreRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
   readonly cierreRepo?: (db: TenantDbSession) => CierreRepository;
+  /** Autopiloto del ciclo del pedido (migración 050): aprobaciones, estados sin clic, regreso del handoff, agotado por hoy. OPCIONAL: sin él las rutas
+   * responden 503 honesto y el tick lo omite. En producción es `(db) => new PostgresAutopilotoRepository(db)` (degrada con SAVEPOINT a "no disponible"
+   * contra la base sin migrar). */
+  readonly autopilotoRepo?: (db: TenantDbSession) => AutopilotoRepository;
   /** R-15 (migración 044): perfil operativo del repartidor. OPCIONAL: sin él las rutas responden 503 honesto. En producción es
    * `(db) => new PostgresRepartidorPerfilRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
   readonly repartidorPerfilRepo?: (db: TenantDbSession) => RepartidorPerfilRepository;
@@ -668,6 +680,11 @@ export interface AppDeps {
    *  sesion; cada fuente corre bajo su propio SAVEPOINT. El aviso 'organizacion lista' es SOLO-SISTEMA (cron de mantenimiento, sesion propia).
    *  OPCIONAL: ausente o migracion sin aplicar -> `disponible: false` (200) o campos null con su razon, nunca un 500. */
   readonly orgFichaRepo?: (db: TenantDbSession) => OrgFichaRepository;
+  /** Alta del equipo inicial de una organizacion por un superadmin: invitar, reenviar, revocar y leer miembros/invitaciones (SA-L-26 minimo;
+   *  ver packages/db/migrations/0053_superadmin_alta_equipo.sql y routes/superadmin-organizaciones-equipo.ts). Fabrica por sesion del caller;
+   *  `aceptacionParaSistema` es SOLO-SISTEMA (sesion propia en POST /auth/accept-invite). OPCIONAL: ausente o migracion sin aplicar -> la
+   *  lectura responde `disponible: false` y las mutaciones 503 honesto, nunca un 500. */
+  readonly orgEquipoRepo?: (db: TenantDbSession) => OrgEquipoRepository;
   /** Fichas de agente y Model Ops de la consola (SA-L-09/SA-L-10; ver packages/db/migrations/0049_superadmin_fichas_agente.sql y
    *  routes/superadmin-agentes-fichas.ts). Fabrica por sesion del caller; cada fuente corre bajo su propio SAVEPOINT. OPCIONAL:
    *  ausente o migracion sin aplicar -> los campos salen `null` con su razon y `disponible: false` (200), nunca un 500. */

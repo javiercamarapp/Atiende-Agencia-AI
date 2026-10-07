@@ -219,6 +219,8 @@ export async function startCicloStack(opts: { readonly now?: string; /** R-32: s
   ]);
 
   const conversaciones = new InMemoryConversacionesRepository({ actorUserId: ctx.staff.owner.id, actorEsAdministrador: true });
+  // La sucursal tiene numero de WhatsApp (seedWhatsAppBranchChannel): el gerente puede responder desde el handoff.
+  conversaciones.numeroPorSucursal.add(propertyId);
   // La toma de handoff necesita la conversacion de WhatsApp (en Postgres la crea el webhook): se refleja aqui.
   const gateBase = new InMemoryHandoffAgentGate(conversaciones);
   const handoffGate = {
