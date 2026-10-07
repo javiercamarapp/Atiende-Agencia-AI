@@ -12,7 +12,7 @@
 // se cambian por Card/Input/Label/Button/Badge de @atiende/ui. La lógica de
 // Google Calendar (requestGoogleCalendarConnectUrl -> redirección real) y el
 // guardado de `tenant_config` son exactamente los mismos de antes.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { CalendarSync, UserRound } from "lucide-react";
@@ -50,6 +50,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
   const [tenantConfigError, setTenantConfigError] = useState<string | null>(null);
   const [rubro, setRubro] = useState("otro");
   const [timezone, setTimezone] = useState("America/Mexico_City");
+  const zonasOpciones = useMemo(() => zonasHorariasDisponibles(timezone), [timezone]);
   const [ownerPhone, setOwnerPhone] = useState("");
   const [savingTenantConfig, setSavingTenantConfig] = useState(false);
   const [tenantConfigSaved, setTenantConfigSaved] = useState(false);
@@ -157,7 +158,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="citas-config-timezone">Zona horaria por defecto</Label>
                 <NativeSelect id="citas-config-timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
-                  {zonasHorariasDisponibles(timezone).map((z) => (
+                  {zonasOpciones.map((z) => (
                     <option key={z} value={z}>
                       {z}
                     </option>
