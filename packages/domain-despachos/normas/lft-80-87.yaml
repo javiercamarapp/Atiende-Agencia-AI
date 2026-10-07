@@ -10,6 +10,5 @@ verificada_por: null
 fecha: null
 nota_verificacion: "Falta cotejar los mínimos vigentes."
 usado_en_codigo:
-  - "src/nomina/prestaciones.ts:3"
-  - "src/nomina/prestaciones.ts:10"
-  - "src/nomina/prestaciones.ts:17"
+  - "src/nomina/prestaciones.ts:6"
+  - "src/nomina/prestaciones.ts:28"
