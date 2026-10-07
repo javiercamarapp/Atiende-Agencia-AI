@@ -1,5 +1,5 @@
 // Colonias del piloto original en el seed de PM: la sucursal que las cubre, el comportamiento del agente con ellas y la integridad de los datos.
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { assignBranch } from "../src/branch-assignment.ts";
 import { OrderValidationError } from "../src/errors.ts";
 import { quoteOrder } from "../src/orders.ts";
@@ -58,6 +58,15 @@ describe("colonias del piloto en el plan del seed", () => {
 });
 
 describe("agente de PM con las colonias cargadas (mundo en memoria del seed)", () => {
+  // Reloj fijo a mediodía de Mérida: la cotización exige sucursal abierta y el resultado no debe depender de la hora de la corrida.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-07T13:00:00-06:00"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("las 8 colonias que confirman los chats son de T7; Los Pinos de T8; Mexico de T1", async () => {
     const world = await buildInMemoryPmWorld(plan);
     for (const colonia of ["Temozón Norte", "Montebello", "Benito Juárez Norte", "Montes de Amé", "San Ramón Norte", "Sodzil Norte", "Cabo Norte", "Real Montejo"]) {
