@@ -321,6 +321,8 @@ export function NominaPage(ctx: DespachosShellContext) {
   const [diasPagados, setDiasPagados] = useState("30");
   const [periodicidad, setPeriodicidad] = useState<Periodicidad>("mensual");
   const [fechaPago, setFechaPago] = useState("");
+  const [fechaInicialPago, setFechaInicialPago] = useState("");
+  const [fechaFinalPago, setFechaFinalPago] = useState("");
   const [salarioDiarioDefault, setSalarioDiarioDefault] = useState("");
   const [empleados, setEmpleados] = useState<readonly EmpleadoFila[]>([nuevaFila()]);
 
@@ -423,7 +425,7 @@ export function NominaPage(ctx: DespachosShellContext) {
     const salarioDiarioDefaultNum = toNumberOrUndefined(salarioDiarioDefault);
 
     const input: GenerarXmlNominaInput = {
-      period: { month: monthNum, year: yearNum, diasPagados: diasPagadosNum, salarioDiarioDefault: salarioDiarioDefaultNum, periodicidad, fechaPago: fechaPago.trim() || undefined, tipoNomina, serie: serie.trim() || undefined },
+      period: { month: monthNum, year: yearNum, diasPagados: diasPagadosNum, salarioDiarioDefault: salarioDiarioDefaultNum, periodicidad, fechaPago: fechaPago.trim() || undefined, tipoNomina, serie: serie.trim() || undefined, fechaInicialPago: fechaInicialPago.trim() || undefined, fechaFinalPago: fechaFinalPago.trim() || undefined },
       employees: empleados.map((f) => ({
         ...empleadoInput(f),
         rfcReceptor: f.rfcReceptor.trim(),
@@ -465,7 +467,7 @@ export function NominaPage(ctx: DespachosShellContext) {
     <PageContainer padding="none" className="gap-7 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Nómina</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Calcula ISR, subsidio, IMSS por rama e Infonavit de un periodo y genera el XML del complemento Nómina 1.2 (sin timbrar).</p>
+        <p className="mt-1 text-sm text-muted-foreground">El sueldo bruto es el importe del periodo que se paga (el mes, o la quincena si eliges Quincenal). Calcula ISR, subsidio, IMSS por rama e Infonavit de un periodo y genera el XML del complemento Nómina 1.2 (sin timbrar).</p>
         <Callout tone="warning" className="mt-3">
           Las tasas IMSS, el subsidio como porcentaje de la UMA y los exentos de 2026 están pendientes de validación del fiscalista. Úsalos como borrador, no como cifra para declarar.
         </Callout>
@@ -508,6 +510,14 @@ export function NominaPage(ctx: DespachosShellContext) {
                 <Label htmlFor="nomina-fecha-pago">Fecha de pago</Label>
                 <Input id="nomina-fecha-pago" type="date" value={fechaPago} onChange={(e) => setFechaPago(e.target.value)} />
               </div>
+              <div className="flex w-44 flex-col gap-1.5">
+                <Label htmlFor="nomina-fecha-inicial">Inicio del periodo (XML)</Label>
+                <Input id="nomina-fecha-inicial" type="date" value={fechaInicialPago} onChange={(e) => setFechaInicialPago(e.target.value)} />
+              </div>
+              <div className="flex w-44 flex-col gap-1.5">
+                <Label htmlFor="nomina-fecha-final">Fin del periodo (XML)</Label>
+                <Input id="nomina-fecha-final" type="date" value={fechaFinalPago} onChange={(e) => setFechaFinalPago(e.target.value)} />
+              </div>
               <div className="flex w-52 flex-col gap-1.5">
                 <Label htmlFor="nomina-salario-default">Salario diario por defecto</Label>
                 <Input id="nomina-salario-default" type="number" step="0.01" value={salarioDiarioDefault} onChange={(e) => setSalarioDiarioDefault(e.target.value)} placeholder="Opcional" />
@@ -522,7 +532,7 @@ export function NominaPage(ctx: DespachosShellContext) {
                 <TableRow>
                   <TableHead className="sticky left-0 z-10 bg-canvas h-9">ID empleado</TableHead>
                   <TableHead className="h-9">Nombre</TableHead>
-                  <TableHead className="h-9">Salario bruto</TableHead>
+                  <TableHead className="h-9">Sueldo del periodo</TableHead>
                   <TableHead className="h-9">Percepciones</TableHead>
                   <TableHead className="h-9">Salario diario</TableHead>
                   <TableHead className="h-9">Inicio de relación laboral</TableHead>
@@ -552,7 +562,7 @@ export function NominaPage(ctx: DespachosShellContext) {
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`nomina-bruto-${f.key}`} className="sr-only">
-                        Salario bruto
+                        Sueldo bruto del periodo (mes o quincena)
                       </Label>
                       <Input id={`nomina-bruto-${f.key}`} type="number" step="0.01" value={f.salarioBruto} onChange={(e) => actualizarFila(f.key, { salarioBruto: e.target.value })} className="h-9 text-sm" />
                     </TableCell>

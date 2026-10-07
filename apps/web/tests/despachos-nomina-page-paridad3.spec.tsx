@@ -101,6 +101,41 @@ describe("NominaPage -- paridad3", () => {
     expect(document.body.textContent).not.toContain("IMSS por rama --");
   });
 
+  it("quincenal de punta a punta: el sueldo capturado es el de la quincena y el XML manda las fechas del periodo", async () => {
+    stubFetch((url, body) => {
+      if (url.endsWith("/calcular")) return new Response(JSON.stringify(real(body)), { status: 200 });
+      return new Response(JSON.stringify({ idempotencyKey: "k", comprobantes: [{ employeeId: "", folio: "F1", xml: "<xml/>" }] }), { status: 200 });
+    });
+    rendered = renderComponent(<NominaPage {...CTX} />);
+    const key = capturarEmpleado();
+    changeValue(el("nomina-periodicidad"), "quincenal");
+    changeValue(el("nomina-fecha-pago"), "2026-02-15");
+    changeValue(el("nomina-fecha-inicial"), "2026-02-01");
+    changeValue(el("nomina-fecha-final"), "2026-02-15");
+    changeValue(el(`nomina-bruto-${key}`), "4500");
+    await submitForm(formDeCalculo());
+    const calc = cuerpos[0]!.body;
+    expect(calc["period"]).toMatchObject({ periodicidad: "quincenal", diasPagados: 15, fechaPago: "2026-02-15" });
+    expect((calc["employees"] as Array<Record<string, unknown>>)[0]).toMatchObject({ salarioBruto: 4500 });
+    // Cifras reales del motor: una quincena de 4,500 no puede arrojar un neto cercano a un mes completo.
+    const e = real(calc).employees[0];
+    expect(e.diasPagados).toBe(15);
+    expect(e.neto).toBeLessThanOrEqual(4500);
+    expect(e.neto).toBeGreaterThan(3900);
+
+    changeValue(el("emisor-rfc"), "DESP010101AB1");
+    changeValue(el("emisor-nombre"), "DESPACHO SA");
+    changeValue(el("emisor-regimen"), "601");
+    changeValue(el("emisor-lugar"), "06600");
+    for (const [id, v] of [["xml-rfc", "PEAA850101ABC"], ["xml-cp", "01000"], ["xml-folio", "F1"], ["xml-curp", "PEAA850101HDFRRN08"], ["xml-num", "E1"], ["xml-contrato", "01"], ["xml-regimen", "02"], ["xml-periodicidad", "04"], ["xml-entfed", "CMX"]] as const) {
+      changeValue(el(`${id}-${key}`), v);
+    }
+    await submitForm(el("emisor-rfc").closest("form") as HTMLFormElement);
+    const xml = cuerpos.find((c) => c.url.endsWith("/generar-xml"))!;
+    expect(xml.body["period"]).toMatchObject({ periodicidad: "quincenal", diasPagados: 15, fechaPago: "2026-02-15", fechaInicialPago: "2026-02-01", fechaFinalPago: "2026-02-15" });
+    expect((xml.body["employees"] as Array<Record<string, unknown>>)[0]).toMatchObject({ salarioBruto: 4500 });
+  });
+
   it("el XML manda registro patronal del emisor y NSS/riesgo de puesto del empleado, con las mismas cifras de prestaciones", async () => {
     stubFetch((url, body) => {
       if (url.endsWith("/calcular")) return new Response(JSON.stringify(real(body)), { status: 200 });
