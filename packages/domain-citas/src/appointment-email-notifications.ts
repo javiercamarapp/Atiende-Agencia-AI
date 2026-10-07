@@ -174,7 +174,17 @@ export async function enqueueAppointmentEmailCore(repo: CitasRepository, organiz
   // de 24 h y los avisos de cita completada / no asistio los inicia el negocio (cron o staff), no los pidio el cliente:
   // son proactivos y se suprimen, igual que el recordatorio de la misma cita por WhatsApp.
   const transaccional = EVENTOS_CORREO_TRANSACCIONALES.has(event);
-  await repo.enqueueMessagingOutbox(organizationId, "email", event, dedupeKey, { to: customer.email, subject: correo.asunto, html: correo.html, text: correo.texto, ...(transaccional ? { transaccional: true } : {}) });
+  // El recordatorio de 24 h lleva el id de su cita y la marca `solo_si_activa`: si la cita se cancela o cierra antes de entregarlo, el despachador
+  // lo descarta (ver cita-activa.ts). Los demas correos (incluido el de cancelacion) se entregan siempre.
+  const soloSiActiva = event === "appointment.reminder_24h";
+  await repo.enqueueMessagingOutbox(organizationId, "email", event, dedupeKey, {
+    to: customer.email,
+    subject: correo.asunto,
+    html: correo.html,
+    text: correo.texto,
+    ...(transaccional ? { transaccional: true } : {}),
+    ...(soloSiActiva ? { appointment_id: appointmentId, solo_si_activa: true } : {}),
+  });
 
   return { enqueued: true };
 }
