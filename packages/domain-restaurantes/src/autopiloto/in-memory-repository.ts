@@ -8,7 +8,7 @@ import type { CanalPedido, OrderStatus } from "../types.ts";
 import { MOTIVOS_CANCELACION } from "./taxonomia.ts";
 import { AutopilotoAccesoError, AutopilotoValidacionError, AUTOPILOTO_CONFIG_POR_OMISION, DECISIONES_POR_TIPO } from "./tipos.ts";
 import type {
-  AgotadoRepuesto, AutopilotoConfig, AutopilotoOrgConfig, AutopilotoRepository, CandidatoEstado, ComandaParaAvance, EventoEstadoPedido, FiltroSolicitudes, HandoffDevuelto, Lectura,
+  AgotadoRepuesto, AutopilotoConfig, AutopilotoOrgConfig, AutopilotoRepository, CandidatoEstado, ComandaParaAvance, EventoEstadoPedido, FiltroSolicitudes, HandoffDevuelto, HandoffPendienteSinTomar, Lectura,
   MuestrasTiempo, OpcionesResolver, ResultadoCancelarCliente, ResultadoCrearSolicitud, ResultadoResolver, ResultadoRetener, SolicitudDecision, SolicitudPorEscalar,
   SolicitudTipo, SolicitudVista,
 } from "./tipos.ts";
@@ -27,6 +27,8 @@ export interface PedidoMemoria {
   programadoPara?: Date | null;
   entregadoAt?: Date | null;
   horaRecogida?: Date | null;
+  /** El staff imprimio el ticket de cocina (habilita la aceptacion automatica sin POS). */
+  ticketImpreso?: boolean;
   /** Cuando el pedido quedo `listo_para_recoger` por ULTIMA vez (la base lo deriva de order_status_events; el plazo de no_recogido cuenta desde aqui). */
   listoDesde?: Date | null;
   /** Comanda en el outbox del POS (null = ninguna). */
@@ -41,6 +43,10 @@ export interface HandoffMemoria {
   telefono: string;
   estado: "pendiente" | "tomada" | "devuelta" | "cerrada";
   tomadaAt: Date;
+  /** Cuando el agente pidio una persona (por omision, `tomadaAt`). */
+  solicitadaAt?: Date;
+  /** Se avisó al owner de una toma PENDIENTE sin tomar. */
+  escaladaAt?: Date | null;
   ultimaHumanaAt: Date | null;
   ultimoClienteAt: Date | null;
 }
@@ -264,7 +270,7 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
       const base = { orderId: p.id, organizationId: p.organizationId, propertyId: p.propertyId, desde: p.status };
       if (p.status === "entregado" && p.entregadoAt && p.entregadoAt.getTime() <= ahora.getTime() - cfg.completadoHoras * 3_600_000) out.push({ ...base, hacia: "completado", motivo: "limpieza_entregado" });
       else if (p.status === "listo_para_recoger" && this.referenciaNoRecogido(p) !== null && this.referenciaNoRecogido(p)! <= ahora.getTime() - cfg.noRecogidoMinutos * 60_000) out.push({ ...base, hacia: "no_recogido", motivo: "limpieza_no_recogido" });
-      else if (p.status === "pending" && cfg.aceptacionAuto && p.comanda && ["confirmada", "capturada_manual"].includes(p.comanda.estado)) out.push({ ...base, hacia: "preparando", motivo: "aceptacion_automatica" });
+      else if (p.status === "pending" && cfg.aceptacionAuto && (p.ticketImpreso === true || (p.comanda && ["confirmada", "capturada_manual"].includes(p.comanda.estado)))) out.push({ ...base, hacia: "preparando", motivo: "aceptacion_automatica" });
     }
     return this.lec(out.slice(0, limite));
   }
@@ -317,6 +323,33 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
       out.push({ handoffId: h.id, organizationId: h.organizationId, propertyId: h.propertyId, conversationId: h.conversationId, minutos: mins, avisado });
     }
     return this.lec(out);
+  }
+
+  async handoffsPendientesPorEscalar(ahora: Date, limite: number): Promise<Lectura<readonly HandoffPendienteSinTomar[]>> {
+    const out: HandoffPendienteSinTomar[] = [];
+    for (const h of this.handoffs) {
+      if (out.length >= limite || h.estado !== "pendiente" || h.escaladaAt) continue;
+      const mins = (this.configs.get(h.propertyId) ?? AUTOPILOTO_CONFIG_POR_OMISION).handoffRegresoMinutos;
+      const solicitada = (h.solicitadaAt ?? h.tomadaAt).getTime();
+      if (solicitada > ahora.getTime() - mins * 60_000) continue;
+      h.escaladaAt = ahora;
+      out.push({ handoffId: h.id, organizationId: h.organizationId, propertyId: h.propertyId, conversationId: h.conversationId, canal: "whatsapp", minutos: Math.floor((ahora.getTime() - solicitada) / 60_000) });
+    }
+    return this.lec(out);
+  }
+
+  async diaNegocio(_org: string, propertyId: string): Promise<string | null> {
+    if (!this.disponible) return null;
+    return this.diaDeNegocio(this.ahora(), propertyId);
+  }
+
+  async registrarTicketImpreso(organizationId: string, orderId: string): Promise<{ readonly disponible: boolean; readonly registrado: boolean }> {
+    if (!this.disponible) return { disponible: false, registrado: false };
+    const p = this.pedidos.get(orderId);
+    if (!p || p.organizationId !== organizationId) throw new AutopilotoAccesoError("pedido inexistente en la organizacion o fuera de su sucursal");
+    if (p.status !== "pending") return { disponible: true, registrado: false };
+    p.ticketImpreso = true;
+    return { disponible: true, registrado: true };
   }
 
   async cancelarPorCliente(organizationId: string, orderId: string, motivo: string): Promise<ResultadoCancelarCliente> {

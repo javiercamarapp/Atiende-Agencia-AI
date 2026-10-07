@@ -157,7 +157,7 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     vigilante.verificar();
   });
 
-  test("Imprimir ticket marca el pedido como impreso (Reimprimir) sin escribir al servidor; Vista previa se cierra con Escape", async ({ page, mock, vigilante }) => {
+  test("Imprimir ticket marca el pedido como impreso (Reimprimir) y avisa al servidor UNA vez (aceptacion automatica sin POS); Vista previa se cierra con Escape y no escribe nada", async ({ page, mock, vigilante }) => {
     await ir(page, "/pedidos");
     await mock.limpiarRegistro();
     const t = tarjeta(page, "Marisol Pech");
@@ -166,9 +166,10 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     await expect(d).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(d).toBeHidden();
+    await afirmarSinEscrituras(mock, "vista previa del ticket");
     await t.getByRole("button", { name: "Imprimir ticket" }).click();
     await expect(t.getByRole("button", { name: "Reimprimir ticket" })).toBeVisible();
-    await afirmarSinEscrituras(mock, "imprimir ticket");
+    await esperarEscrituras(mock, { metodo: "POST", ruta: "/ticket-impreso" }, 1);
     vigilante.verificar();
   });
 
