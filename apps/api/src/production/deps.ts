@@ -1,3 +1,4 @@
+import { buildDemoAgents } from "../demo-agents/production.ts";
 // buildProductionDeps — ensambla el `AppDeps` real que consume el handler de Vercel
 // (`../../api/index.ts` en la raíz del repo). Ver `not-ready.ts` para el detalle
 // completo de qué NO es un adaptador de producción todavía y por qué.
@@ -341,6 +342,7 @@ export function buildProductionDeps(): AppDeps {
   const modelosLlm = loadLlmModelsConfig(env);
 
   cached = {
+    publicDemoAgents: buildDemoAgents(env, engine),
     env,
     engine,
     coreRepo: new ProductionCoreRepository(engine),
