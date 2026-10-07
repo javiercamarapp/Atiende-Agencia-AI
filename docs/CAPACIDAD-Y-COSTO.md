@@ -28,9 +28,7 @@ Memoria del proceso (RSS) al final: ~336 MiB. 500 tokens de rastreo distintos y 
 
 ## Hallazgos reales (comportamiento vigente, caracterizado por tests)
 
-1. **Una IP compartida se queda sin pedidos a partir del 11o en un minuto.** El tope de `POST .../orders` es 10/min por IP + restaurante
-   (`storefront.ts`). Wifi de una plaza o CGNAT movil comparten IP: el 11o cliente recibe 429 (medido: 10 pedidos 200, 2 pedidos 429, 0 5xx).
-   No se cambio: subir el tope es una decision de seguridad/producto (ver Huecos).
+1. *(Eliminado)* El checkout web público ya no existe; los pedidos entran por WhatsApp y voz.
 2. **Un POST de Meta procesa sus mensajes en serie dentro de una sola transaccion.** El tiempo del POST crece con
    mensajes x latencia del turno (el test lo fija: 20 mensajes x 15 ms >= 270 ms). La funcion de Vercel tiene `maxDuration: 30` s
    (`vercel.json`); con turnos de LLM de varios segundos, un lote grande puede agotar el presupuesto y Meta reintenta (el reclamo por
@@ -38,13 +36,11 @@ Memoria del proceso (RSS) al final: ~336 MiB. 500 tokens de rastreo distintos y 
    los turnos de LLM ya ejecutados se repiten y **se cobran dos veces**).
 3. **El limite de tasa del webhook es 120 POST/min por IP + numero** (`whatsapp.ts`). Meta agrupa mensajes por POST, asi que un solo numero
    rara vez lo alcanza, pero no hay medicion contra trafico real de Meta.
-4. **Cada peticion del storefront hace 1 o 2 escrituras de limite de tasa en la base** (`consumeRateLimit`, bucket por IP y por sesion) antes de
-   su trabajo real. Un pedido completo (cotizar + confirmar + crear) son 6 escrituras de limite + las del pedido, y el rastreo suma 1 por consulta.
+4. *(Eliminado)* La tienda en línea (storefront) ya no existe.
 5. Una sola IP insistente (150 GET en una ventana) recibe exactamente 120 respuestas 200 y 30 respuestas 429, ninguna 5xx.
 
 ## Modelo de capacidad (formulas; los valores marcados "supuesto" NO estan medidos)
 
-- Peticiones a base por pedido completo del storefront ~ 6 (limites) + n_pedido (supuesto: lo que haga la transaccion de crear; no medido contra Postgres).
 - Conexiones: `poolMax` por defecto 10 por instancia (`managed-postgres-engine.ts`). Conexiones totales = instancias concurrentes x 10; debe
   quedar bajo el limite del pooler de Supabase de TU plan (**verificar en el panel de Supabase; no consta en el repo**).
 - Pedidos/hora sostenibles = (conexiones utiles) / (tiempo de base por pedido en segundos) x 3600. Falta medir el tiempo de base por pedido

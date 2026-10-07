@@ -25,13 +25,10 @@
       "headers": [
         { "key": "Content-Security-Policy-Report-Only", "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'" }
       ]
-    },
-    {
-      "source": "/pedir/(.*)",
-      "headers": [
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(self), payment=(), usb=()" }
-      ]
     }
+  ],
+  "redirects": [
+    { "source": "/pedir/:path*", "destination": "/", "permanent": true }
   ],
   "rewrites": [
     { "source": "/health", "destination": "/api" },
@@ -69,8 +66,6 @@
     { "source": "/rentas/:path*", "destination": "/api" },
     { "source": "/superadmin/:path*", "destination": "/api" },
     { "source": "/portal-cliente/:path*", "destination": "/api" },
-    { "source": "/pedir/:orgSlug", "destination": "/api" },
-    { "source": "/pedir/:orgSlug/:branchSlug", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [

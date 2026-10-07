@@ -113,11 +113,6 @@ Huecos conocidos de esta lista (por eso es Report-Only):
   `juzgarLatido` y solo falta inyectar el lector (`healthRoutes(deps, { leerLatidos })`).
 - Base sin migrar: la única consulta es `select 1`; no depende de ninguna tabla.
 
-## Excepción: páginas de entrada del storefront (`/pedir/:org[/:sucursal]`)
+## Tienda en línea eliminada (`/pedir/*`)
 
-Estas dos rutas las sirve la función de la API (meta de vista previa en servidor) pero devuelven el `index.html` de la SPA, que necesita su script y sus estilos. Por eso:
-
-- El middleware `cabecerasSeguridadApi` NO añade la CSP restrictiva (`default-src 'none'`) a ninguna respuesta `text/html`.
-- La ruta fija la CSP de la SPA como `Content-Security-Policy-Report-Only` (misma que `vercel.json`, constante `CSP_SPA_REPORT_ONLY`; un test comprueba que coinciden).
-- `Permissions-Policy` de `/pedir/*` permite `geolocation=(self)` (función «Usar mi ubicación»; las coordenadas no se guardan). El resto del sitio sigue con `geolocation=()`.
-- Si cae a meta genéricas (límite de tasa o falla de la base) la respuesta va con `Cache-Control: no-store`.
+La tienda pública de pedidos en línea ya no existe: `vercel.json` redirige `/pedir/*` a `/` (301), no hay reescritura a la función ni excepción de `Permissions-Policy` (la geolocalización queda denegada en todo el sitio). El middleware `cabecerasSeguridadApi` sigue sin añadir la CSP restrictiva a respuestas `text/html`.
