@@ -8,8 +8,8 @@ import { describe, expect, it } from "vitest";
 import { leerArchivoClientes, parsearXlsx } from "../src/verticals/restaurantes/lib/clientes-importacion.ts";
 
 /** Texto en Windows-1252 (lo que guarda Excel en espanol con "CSV (delimitado por comas)"): cada caracter Latin-1 es un byte. */
-function bytesWindows1252(texto: string): Uint8Array {
-  return Uint8Array.from([...texto].map((ch) => ch.charCodeAt(0) & 0xff));
+function bytesWindows1252(texto: string): Uint8Array<ArrayBuffer> {
+  return new Uint8Array([...texto].map((ch) => ch.charCodeAt(0) & 0xff));
 }
 
 describe("R2-caos-06: CSV de Excel en espanol (Windows-1252)", () => {
