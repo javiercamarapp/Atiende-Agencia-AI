@@ -132,6 +132,38 @@ describe("latido de /internal/licitaciones/discover-tenders -- 'not_configured' 
     expect(latido?.consecutiveFailures).toBe(0);
   });
 
+  it("(c) fuentes externas no disponibles (WAF 403, TLS vencido, inalcanzable) -- se reportan con aviso 'no_disponible' pero el latido queda 'ok'", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const readLatido = heartbeatReaderFor(ctx.deps.saludRepo as InMemorySaludRepository);
+    const fetchFailed = (code: string) => Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error(code), { code }) });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes("api-ocds.nl.gob.mx")) return new Response(JSON.stringify({ current_page: 1, data: [], last_page: 1, per_page: 10, total: 0 }), { status: 200, headers: { "content-type": "application/json" } });
+        if (url.includes("datos.cdmx.gob.mx")) throw fetchFailed("UND_ERR_CONNECT_TIMEOUT");
+        if (url.includes("guadalajara")) throw fetchFailed("CERT_HAS_EXPIRED");
+        if (url.includes("contratacionesabiertas")) {
+          if (url.endsWith("/edca/fiscalYears")) return new Response(JSON.stringify({ fiscalYears: [{ id: 1, year: 2025, status: true }] }), { status: 200, headers: { "content-type": "application/json" } });
+          return new Response(JSON.stringify({ arrayReleasePackage: [] }), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        return new Response("<HTML><TITLE>Access Denied</TITLE></HTML>", { status: 403, headers: { "content-type": "text/html" } });
+      }),
+    );
+
+    const res = await app.request("/internal/licitaciones/discover-tenders", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { failures: { source: string | null; error: string; no_disponible?: boolean }[] };
+    const noDisp = body.failures.filter((f) => f.no_disponible).map((f) => f.source).sort();
+    expect(noDisp).toEqual(["cdmx_ocds", "compras_mx_historico", "guadalajara_ocds"]);
+    expect(body.failures.find((f) => f.source === "guadalajara_ocds")!.error).toContain("CERT_HAS_EXPIRED");
+
+    const latido = await readLatido();
+    expect(latido?.lastStatus).toBe("ok");
+    expect(latido?.consecutiveFailures).toBe(0);
+  });
+
   it("(b) una fuente configurada que falla de verdad (con aggregator TAMBIÉN configurado y ok) -- SÍ lanza CronPartialFailureError, latido 'error'", async () => {
     const ctx = await buildLicitacionesTestContext(buildApp);
     const app = buildApp(ctx.deps);

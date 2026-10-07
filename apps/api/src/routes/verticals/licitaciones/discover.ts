@@ -55,7 +55,7 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
           )
           .catch(() => undefined);
       }
-      const failures: { organization_id: string; source: string | null; error: string }[] = [];
+      const failures: { organization_id: string; source: string | null; error: string; no_disponible?: true }[] = [];
       // r4-fix-crons-transaccion-por-unidad (re-revisión, bloqueante único): `failures[]`
       // de arriba sigue reportando CUALQUIER fuente con `state !== "ok"` (incluida
       // `not_configured`, para que el body/`ok` no cambien de comportamiento). Pero
@@ -77,9 +77,11 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
         }
         for (const r of orgResult.results) {
           if (r.state === "ok") continue;
-          const item = { organization_id: orgResult.organizationId, source: r.source, error: r.message };
+          // `unavailable`: fuente externa bloqueada/retirada/con TLS inválido o inalcanzable. Se reporta con su aviso (body, `source_run`
+          // y obsolescencia), pero no es un fallo real de la corrida: no hay nada corregible en este repo y el latido rojo diario taparía fallos reales.
+          const item = { organization_id: orgResult.organizationId, source: r.source, error: r.message, ...(r.unavailable ? { no_disponible: true as const } : {}) };
           failures.push(item);
-          if (r.state !== "not_configured") realFailures.push(item);
+          if (r.state !== "not_configured" && !r.unavailable) realFailures.push(item);
         }
       }
       const response = c.json(
@@ -89,7 +91,7 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
           corridas: sweep.map((orgResult) => ({
             organization_id: orgResult.organizationId,
             error: orgResult.error ?? null,
-            fuentes: orgResult.results.map((r) => ({ source: r.source, estado: r.state, descubiertos: r.discovered, creados: r.created, actualizados: r.updated, filas_descartadas: r.droppedRows, mensaje: r.message })),
+            fuentes: orgResult.results.map((r) => ({ source: r.source, estado: r.state, descubiertos: r.discovered, creados: r.created, actualizados: r.updated, filas_descartadas: r.droppedRows, mensaje: r.message, no_disponible: r.unavailable === true })),
           })),
           failures,
         },
