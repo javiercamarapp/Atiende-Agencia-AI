@@ -1,3 +1,4 @@
+import type { DemoAgentsDeps } from "./demo-agents/types.ts";
 import type {
   AgentRunRepository,
   AuthzAuditRepository,
@@ -26,9 +27,9 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { CierreRepository, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository } from "@atiende/domain-restaurantes";
+import type { AutopilotoRepository, CierreRepository, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
+import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -115,7 +116,12 @@ import type { LlmRouteConfig } from "./production/llm-models.ts";
  * xRepoInstance` — ignora el argumento porque el repo en memoria no tiene ningún
  * concepto de sesión/RLS (ver apps/api/tests/fixtures.ts y fixtures por vertical). */
 export interface AppDeps {
+  /** Public marketing sandbox: no tenant records or mutation tools. */
+  readonly publicDemoAgents?: DemoAgentsDeps;
   readonly env: ApiEnv;
+  /** `index.html` del panel para las meta de vista previa de `/pedir/*` (storefront-meta.ts). OPCIONAL: ausente =
+   * el embebido en el build o el del CDN; los tests lo inyectan. */
+  readonly storefrontIndexHtml?: () => Promise<string | null>;
   readonly coreRepo: CoreRepository;
   /** Fase 10 — invitar/gestionar staff (crear/listar/revocar invitación), ver
    * `@atiende/db::CoreStaffRepository`. A DIFERENCIA de `coreRepo` (objeto fijo,
@@ -167,15 +173,26 @@ export interface AppDeps {
    * `(db) => new PostgresVozRepository(db)` y `voiceProvider` el adaptador de Gemini 3.8 Live
    * (emite sesiones solo con `GEMINI_API_KEY`). */
   readonly vozRepo?: (db: TenantDbSession) => VozRepository;
+  /** Ajustes del agente por organizacion (migración 055: modelo, temperatura, voz, fondo). OPCIONAL: sin él las rutas responden 503 honesto. En producción es
+   * `(db) => new PostgresAjustesAgenteRepository(db)` (degrada con SAVEPOINT a los valores de siempre contra la base sin migrar). */
+  readonly ajustesAgenteRepo?: (db: TenantDbSession) => AjustesAgenteRepository;
   /** R-13 (migración 035): KPI de voz, costo y alertas. OPCIONAL: sin él las rutas de KPI responden 503 honesto. En producción es
    * `(db) => new PostgresVozKpiRepository(db)` (cada consulta degrada con SAVEPOINT contra la base sin migrar). */
   readonly vozKpiRepo?: (db: TenantDbSession) => VozKpiRepository;
+  /** Worker de telefonia de voz (migración 067): gasto del mes para el tope mensual, modo de entrada, costo por escalón y KPI de desborde/latencia.
+   * OPCIONAL: sin él, el contexto de llamada no trae gasto (no bloquea) y las demás rutas responden 503 honesto. En producción es
+   * `(db) => new PostgresVozLlamadaRepository(db)` (cada operación degrada con SAVEPOINT contra la base sin migrar). */
+  readonly vozLlamadaRepo?: (db: TenantDbSession) => VozLlamadaRepository;
   /** R-31 (migración 040): KPI del agente de WhatsApp por día local. OPCIONAL: sin él la ruta responde 503 honesto. En producción es
    * `(db) => new PostgresWhatsappKpiRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
   readonly whatsappKpiRepo?: (db: TenantDbSession) => WhatsappKpiRepository;
   /** R-42 (migración 041): cierre del día y resumen semanal. OPCIONAL: sin él las rutas responden 503 honesto. En producción es
    * `(db) => new PostgresCierreRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
   readonly cierreRepo?: (db: TenantDbSession) => CierreRepository;
+  /** Autopiloto del ciclo del pedido (migración 050): aprobaciones, estados sin clic, regreso del handoff, agotado por hoy. OPCIONAL: sin él las rutas
+   * responden 503 honesto y el tick lo omite. En producción es `(db) => new PostgresAutopilotoRepository(db)` (degrada con SAVEPOINT a "no disponible"
+   * contra la base sin migrar). */
+  readonly autopilotoRepo?: (db: TenantDbSession) => AutopilotoRepository;
   /** R-15 (migración 044): perfil operativo del repartidor. OPCIONAL: sin él las rutas responden 503 honesto. En producción es
    * `(db) => new PostgresRepartidorPerfilRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
   readonly repartidorPerfilRepo?: (db: TenantDbSession) => RepartidorPerfilRepository;
@@ -204,6 +221,9 @@ export interface AppDeps {
   /** H-26 -- housekeeping residual (config, fotos de inspeccion, blancos, opt-out; migracion 039). OPCIONAL: en produccion no se define y las
    *  rutas usan `PostgresHousekeepingResidualRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben. */
   readonly hotelesHousekeepingResidualRepo?: (db: TenantDbSession) => HousekeepingResidualRepository;
+  /** H-P3-04 -- arranque automatico del dia de housekeeping (cron, sesion de SISTEMA; migracion 045). OPCIONAL: en produccion no se define y el
+   *  cron usa `PostgresHousekeepingDiaSistemaRepository` (funciones `hoteles.system_hk_*`, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben. */
+  readonly hotelesHousekeepingDiaRepo?: (db: TenantDbSession) => HousekeepingDiaSistemaRepository;
   /** H-29 -- configuracion del canal WhatsApp y del agente de voz desde el panel (migracion 039). OPCIONAL: en produccion no se define y las
    *  rutas usan `PostgresMensajeriaConfigRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben. */
   readonly hotelesMensajeriaConfigRepo?: (db: TenantDbSession) => MensajeriaConfigRepository;

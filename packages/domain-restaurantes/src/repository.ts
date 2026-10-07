@@ -12,6 +12,15 @@ import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type {
+  CustomerAddressChanges,
+  CustomerFicha,
+  CustomerMemory,
+  CustomerPolicy,
+  CustomerProfilePatch,
+  OrderClosureInput,
+  PreferenceAction,
+} from "./cliente-360/types.ts";
+import type {
   Branch,
   BranchHoursException,
   CanalPedido,
@@ -33,7 +42,10 @@ import type {
   Customer,
   CustomerAddress,
   CustomerListFilter,
+  CarteraKpis,
   CustomerListPage,
+  FilaImportacionCliente,
+  ResultadoImportacionClientes,
   CustomerTier,
   KnownZone,
   NearestBranchMatch,
@@ -111,6 +123,9 @@ export interface NewOrderRecord {
 export interface ConversationMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
+  /** Solo en el mensaje del asistente de un turno que dejo un pedido creado: marca el limite entre un pedido y el siguiente
+   * (el pin o link de Maps de antes de esa marca ya no pertenece al pedido en curso). Es metadato del historial: no se manda al modelo. */
+  readonly pedidoCreado?: true;
 }
 
 // ---- KPIs de admin (Fase 3, ver diseño §2) ----
@@ -220,6 +235,32 @@ export interface RestaurantesRepository {
    * en_camino/entregado/completado — nunca cancelado/problema), orden desc. */
   listEligibleOrderHistory(customerId: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>>;
   calcCustomerTier(organizationId: string, customerId: string): Promise<CustomerTier | null>;
+
+  // ---- Cliente 360 (migracion 049, ver cliente-360/) ----
+  /** Memoria del cliente por telefono de 10 digitos: domicilios, pedidos anteriores, gustos y reincidencia. `null` = cliente
+   * nuevo; `undefined` = la base todavia no la ofrece (migracion 049 sin aplicar): el llamador cae al camino anterior. */
+  getCustomerMemory(organizationId: string, phone: string): Promise<CustomerMemory | null | undefined>;
+  /** Cierre del ciclo tras crear un pedido (domicilio y gustos). Idempotente por pedido. `undefined` = base sin migrar. */
+  registerOrderClosure(input: OrderClosureInput): Promise<{ readonly applied: boolean } | undefined>;
+  /** Ficha del cliente para el staff. `null` si no existe en la organizacion. Lanza `ClienteMemoriaNoDisponibleError` sin la 049. */
+  getCustomerFicha(organizationId: string, customerId: string): Promise<Omit<CustomerFicha, "tier"> | null>;
+  updateCustomerProfile(organizationId: string, customerId: string, patch: CustomerProfilePatch): Promise<void>;
+  /** Alta (`addressId` null) o edicion de un domicilio del cliente. Devuelve el id. */
+  saveCustomerAddress(organizationId: string, customerId: string, addressId: string | null, changes: CustomerAddressChanges): Promise<string>;
+  deleteCustomerAddress(organizationId: string, customerId: string, addressId: string): Promise<boolean>;
+  applyCustomerPreferenceAction(
+    organizationId: string,
+    customerId: string,
+    action: PreferenceAction,
+    args: { readonly prefId?: string | null; readonly kind?: string | null; readonly value?: string | null },
+  ): Promise<string>;
+  /** Marca o desmarca un pedido como falso (cuenta para la reincidencia). */
+  markOrderFake(organizationId: string, orderId: string, falso: boolean): Promise<boolean>;
+  exportCustomerData(organizationId: string, customerId: string): Promise<Record<string, unknown> | null>;
+  deleteCustomerMemory(organizationId: string, customerId: string): Promise<{ readonly domiciliosBorrados: number; readonly gustosBorrados: number }>;
+  /** Politica de reincidencia; sin la 049 devuelve los valores por omision (2 en 90 dias). */
+  getCustomerPolicy(organizationId: string): Promise<CustomerPolicy>;
+  saveCustomerPolicy(organizationId: string, policy: CustomerPolicy): Promise<CustomerPolicy>;
 
   /** Equivalente a create_order_idempotent: dos niveles de idempotencia
    * (idempotencyKey explícito y dedupeFingerprint automático de 5 min sobre pedidos
@@ -332,7 +373,12 @@ export interface RestaurantesRepository {
   // encolaba para envío real (ver @atiende/whatsapp-gateway/README.md). ----
   enqueueMessagingOutbox(organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
   claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]>;
-  markMessagingOutboxSent(id: string): Promise<void>;
+  /** `detalle` (wamid y tipo de envio) llega del despachador: con la migracion 066 se guarda para que los `statuses` de Meta encuentren el
+   *  mensaje; contra una base sin ella se cierra como siempre, sin wamid. */
+  markMessagingOutboxSent(id: string, detalle?: { readonly providerMessageId: string; readonly enviadoComo?: "texto" | "plantilla" | "botones" | "ubicacion" }): Promise<void>;
+  /** Avanza el estado de entrega (migracion 066) de un mensaje saliente por su wamid. Solo sesion de sistema (el webhook). Contra una base sin
+   *  la migracion NO lanza ni aborta la transaccion: devuelve `resultado: "no_disponible"`. */
+  registrarEstadoEntregaWhatsapp(organizationId: string, estado: EstadoEntregaEntrante): Promise<RegistroEstadoEntrega>;
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
   // ---- Dispatcher real de correo (migrations/011_email_outbox_dispatch.sql) —
@@ -409,6 +455,9 @@ export interface RestaurantesRepository {
    * forma de que un producto aparezca (o deje de aparecer) en
    * `listAvailableProductsForBranch`, y por tanto en búsqueda/cotización real. */
   upsertBranchProductState(propertyId: string, productId: string, price: number, isAvailable: boolean): Promise<BranchProductState>;
+  /** Solo `is_available` de una fila YA existente de `branch_products` (agotado/disponible, PL-23): nunca toca el precio ni da de alta.
+   *  `null` cuando el producto no esta dado de alta en esa sucursal. Es lo unico que puede escribir un `staff`. */
+  setBranchProductAvailability(propertyId: string, productId: string, isAvailable: boolean): Promise<BranchProductState | null>;
 
   findOrderById(organizationId: string, orderId: string): Promise<Order | null>;
   /** Pedido MAS RECIENTE (no cancelado) de un telefono (10 digitos, `normalizePhone`) creado desde `sinceIso`, o null. Para "¿ya salio?". */
@@ -438,6 +487,15 @@ export interface RestaurantesRepository {
 
   findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
   listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;
+  /** Migracion 054. Sin ella: `{ disponible: false }` (nunca un error). */
+  getCarteraKpis(organizationId: string): Promise<CarteraKpis>;
+  /**
+   * Migracion 054: importa la cartera (filas ya normalizadas, hasta 5,000), upsert por (organizacion, telefono) que NO pisa el nombre ni la nota
+   * conocidos, SIN crear pedidos y SIN mandar mensajes. Idempotente por `huella` (sha-256 hex del archivo). Sin la migracion: `{ disponible: false }`.
+   */
+  importarClientes(organizationId: string, huella: string, filas: readonly FilaImportacionCliente[]): Promise<ResultadoImportacionClientes>;
+  /** Nota interna del cliente (migracion 054, columna `notes`); `null` si no hay o la base aun no la tiene. */
+  getCustomerNotes(organizationId: string, customerId: string): Promise<string | null>;
 
   // ---- Fase 8 — superficie real del rol "repartidor" (ver diseño, domain-restaurantes/
   // src/roles.ts::REPARTIDOR_ROLES). Todos estos métodos acotan la consulta a
@@ -700,6 +758,34 @@ export class RestaurantesConfigUnavailableError extends Error {
     super("Esta configuración todavía no se puede editar en esta base de datos.");
     this.name = "RestaurantesConfigUnavailableError";
   }
+}
+
+/** Un status de Meta ya filtrado por el extractor: solo lo necesario, sin telefono ni texto. */
+export interface EstadoEntregaEntrante {
+  readonly wamid: string;
+  readonly status: "sent" | "delivered" | "read" | "failed";
+  readonly errorCode: number | null;
+  readonly errorTitle: string | null;
+}
+
+export type MotivoFalloEntregaGuardado = "fuera_de_ventana" | "fuera_de_ventana_plantilla_sin_usar" | "numero_no_entregable" | "plantilla" | "limite_marketing" | "otro";
+
+/** Resultado de `registrarEstadoEntregaWhatsapp`. `desconocido` = ningun mensaje de ESTA organizacion con ese wamid; `no_disponible` = base sin la
+ *  migracion 066 (el webhook sigue respondiendo 200). */
+export interface RegistroEstadoEntrega {
+  readonly resultado: "actualizado" | "sin_cambio" | "desconocido" | "no_disponible";
+  readonly outboxId: string | null;
+  readonly estado: "sent" | "delivered" | "read" | "failed" | null;
+  readonly eventType: string | null;
+  readonly motivoFallo: MotivoFalloEntregaGuardado | null;
+  /** Solo si el mensaje era un aviso de estado de pedido. */
+  readonly orderId: string | null;
+  readonly orderStatus: string | null;
+  /** Mensajes de la organizacion con entrega fallida en la ultima hora (incluye este). */
+  readonly fallidasUltimaHora: number;
+  /** Datos del pedido para el respaldo por correo: SOLO cuando este status hace pasar un aviso de pedido a `failed` y el cliente dejo correo (la
+   *  sesion de sistema no puede leer `orders`, asi que los entrega la funcion SQL ya acotada por organizacion). */
+  readonly respaldoCorreo: { readonly to: string; readonly clienteNombre: string; readonly sucursal: string | null; readonly total: number } | null;
 }
 
 /** Fila de `restaurantes.messaging_outbox` reclamada para despacho real — mismo

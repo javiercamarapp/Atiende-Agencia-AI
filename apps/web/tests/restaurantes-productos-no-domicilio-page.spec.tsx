@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 const json = (body: unknown, status = 200): Response => ({ ok: status < 400, status, json: async () => body }) as unknown as Response;
-const CTX: RestaurantesShellContext = { apiBaseUrl: "https://api.test", token: "tok", propertyId: "prop-1", orgSlug: "demo", role: "staff", staffFullName: "G", staffEmail: "g@example.com" };
+const CTX: RestaurantesShellContext = { apiBaseUrl: "https://api.test", token: "tok", propertyId: "prop-1", orgSlug: "demo", role: "admin", staffFullName: "G", staffEmail: "g@example.com" };
 const BASE = "https://api.test/v1/restaurantes/prop-1/admin";
 const CATEGORIAS = [{ id: "c1", name: "Cervezas", slug: "cervezas", displayOrder: 0 }];
 const PRODUCTOS = [
@@ -83,6 +83,16 @@ describe("ProductosPage — marcas no_domicilio", () => {
       for (let i = 0; i < 6; i += 1) await flushMicrotasks();
     });
     expect(calls.find((c) => c.method === "PUT")).toMatchObject({ url: `${BASE}/config/no-domicilio/categorias/c1`, body: { noDomicilio: false } });
+  });
+
+  it("para staff las marcas se ven pero estan deshabilitadas (solo owner/admin editan el catalogo)", async () => {
+    stub({ productIds: [], categoryIds: ["c1"] }, []);
+    rendered = renderComponent(<ProductosPage {...CTX} role="staff" />);
+    await settle();
+    const cat = rendered.container.querySelector('input[aria-label="Cervezas: no se vende a domicilio"]') as HTMLInputElement;
+    const sol = rendered.container.querySelector('input[aria-label="Sol: no se vende a domicilio"]') as HTMLInputElement;
+    expect(cat.disabled).toBe(true);
+    expect(sol.disabled).toBe(true);
   });
 
   it("si las marcas no estan disponibles (503) el catalogo sigue funcionando y los controles se ocultan", async () => {

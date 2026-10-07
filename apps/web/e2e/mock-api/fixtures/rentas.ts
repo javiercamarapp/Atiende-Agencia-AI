@@ -105,7 +105,130 @@ const TEXTO_INGRESOS = "Este mes ingresaste $53,400 MXN brutos en 16 reservas, l
 const FUENTE_INGRESOS = { tool: "ingresos_por_canal", source: "Reservas con llegada en el periodo", periodLabel: "este mes", scopeLabel: "todas tus propiedades" };
 const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("rentas.copiloto.conversaciones", () => []);
 
+
+// paridad3 -- limpieza: tareas con checklist, personas asignables, reparto y completar. Solo la administradora ("admin" = admin_gestora)
+// opera el panel en la API simulada; el resto recibe 403 como en la API real. El estado vive por escenario: un POST se refleja en el GET
+// siguiente (reparto, checklist, completar), igual que en el servidor. Solo existe en la API simulada de e2e.
+interface TareaMock {
+  id: string;
+  propertyId: string;
+  unidadId: string;
+  unidadNombre: string;
+  tipo: "limpieza";
+  estado: "pendiente" | "asignada" | "bloqueada" | "completada";
+  prioridad: "media";
+  asignadoA: string | null;
+  esProveedorExterno: boolean;
+  programadaPara: string;
+  slaVenceEn: string | null;
+  completadaEn: string | null;
+  creadoEn: string;
+  checklist: { id: string; tareaId: string; descripcion: string; orden: number; completado: boolean; completadoEn: string | null; completadoPor: string | null }[];
+}
+const ASIGNABLES = [
+  { id: "per-ana", nombre: "Ana Limpieza", rol: "limpieza" },
+  { id: "per-beto", nombre: "Beto Operador", rol: "operador:acceso_total" },
+];
+const MOCK_ROLES_LIMPIEZA = ["admin"] as const;
+function tareaSemilla(id: string, unidadId: string, unidadNombre: string, desdeHoy: number, extra: Partial<TareaMock>, items: string[]): TareaMock {
+  return {
+    id,
+    propertyId: PROP.id,
+    unidadId,
+    unidadNombre,
+    tipo: "limpieza",
+    estado: "pendiente",
+    prioridad: "media",
+    asignadoA: null,
+    esProveedorExterno: false,
+    programadaPara: dia(desdeHoy),
+    slaVenceEn: null,
+    completadaEn: null,
+    creadoEn: "2026-09-30T15:00:00.000Z",
+    checklist: items.map((descripcion, i) => ({ id: `${id}-i${i + 1}`, tareaId: id, descripcion, orden: i, completado: false, completadoEn: null, completadoPor: null })),
+    ...extra,
+  };
+}
+const tareasSemilla = (): TareaMock[] => [
+  tareaSemilla("tar-1", "uni-1", "Casa Playa Norte", 1, {}, ["Cambiar sábanas", "Limpiar baño", "Reponer amenidades"]),
+  tareaSemilla("tar-2", "uni-2", "Depto Malecon 4B", 2, { asignadoA: "per-beto", estado: "asignada", esProveedorExterno: true }, ["Limpieza general", "Revisar inventario"]),
+];
+const tareasMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<TareaMock[]>("rentas.tareas", tareasSemilla);
+const sinChecklist = ({ checklist: _c, ...tarea }: TareaMock) => tarea;
+
+export const rutasRentasLimpieza: readonly Ruta[] = [
+  { metodo: "GET", patron: `${R}/tareas/asignables`, roles: MOCK_ROLES_LIMPIEZA, manejador: () => ({ asignables: ASIGNABLES, disponible: true }) },
+  {
+    metodo: "GET",
+    patron: `${R}/tareas`,
+    roles: MOCK_ROLES_LIMPIEZA,
+    manejador: (p) => {
+      const asignadoA = p.query.get("asignadoA");
+      const estados = p.query.get("estado")?.split(",");
+      const desde = p.query.get("desde");
+      const hasta = p.query.get("hasta");
+      return {
+        tareas: tareasMock(p)
+          .filter((t) => (asignadoA === null ? true : asignadoA === "me" ? t.asignadoA === p.persona?.id : asignadoA === "sin_asignar" ? t.asignadoA === null : t.asignadoA === asignadoA))
+          .filter((t) => !estados || estados.includes(t.estado))
+          .filter((t) => (!desde || t.programadaPara >= desde) && (!hasta || t.programadaPara <= hasta))
+          .map(sinChecklist),
+      };
+    },
+  },
+  { metodo: "GET", patron: `${R}/tareas/:tid`, roles: MOCK_ROLES_LIMPIEZA, manejador: (p) => { const t = tareasMock(p).find((x) => x.id === p.params.tid); return t ? { tarea: t } : fallo(404, "Tarea no encontrada en esta property."); } },
+  {
+    metodo: "POST",
+    patron: `${R}/tareas/:tid/asignar`,
+    roles: MOCK_ROLES_LIMPIEZA,
+    manejador: (p) => {
+      const t = tareasMock(p).find((x) => x.id === p.params.tid);
+      if (!t) return fallo(404, "Tarea no encontrada en esta property.");
+      const cuerpo = (p.cuerpo ?? {}) as { asignadoA?: string; esProveedorExterno?: boolean };
+      const asignadoA = cuerpo.asignadoA ?? p.persona?.id ?? null;
+      if (asignadoA !== p.persona?.id && !ASIGNABLES.some((a) => a.id === asignadoA)) return fallo(422, "La persona elegida no es miembro con acceso a esta propiedad, o su rol no opera limpieza.");
+      t.asignadoA = asignadoA;
+      t.esProveedorExterno = cuerpo.esProveedorExterno === true;
+      if (t.estado === "pendiente") t.estado = "asignada";
+      return { tarea: t };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${R}/tareas/:tid/checklist/:iid/completar`,
+    roles: MOCK_ROLES_LIMPIEZA,
+    manejador: (p) => {
+      const t = tareasMock(p).find((x) => x.id === p.params.tid);
+      const item = t?.checklist.find((i) => i.id === p.params.iid);
+      if (!t || !item) return fallo(404, "Ítem de checklist no encontrado en esta tarea.");
+      item.completado = true;
+      item.completadoEn = new Date().toISOString();
+      item.completadoPor = p.persona?.id ?? null;
+      return { tarea: t };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${R}/tareas/:tid/completar`,
+    roles: MOCK_ROLES_LIMPIEZA,
+    manejador: (p) => {
+      const t = tareasMock(p).find((x) => x.id === p.params.tid);
+      if (!t) return fallo(404, "Tarea no encontrada en esta property.");
+      if (t.checklist.some((i) => !i.completado)) {
+        t.estado = "bloqueada";
+        return fallo(409, "No se puede completar la tarea con ítems de checklist pendientes.");
+      }
+      t.estado = "completada";
+      t.completadaEn = new Date().toISOString();
+      return { id: t.id, estado: "completada", alertasStockBajo: [] };
+    },
+  },
+  { metodo: "GET", patron: `${R}/unidades/:uid/inventario`, roles: MOCK_ROLES_LIMPIEZA, manejador: () => ({ items: [] }) },
+  { metodo: "GET", patron: `${R}/unidades/:uid/incidencias`, roles: MOCK_ROLES_LIMPIEZA, manejador: () => ({ incidencias: [] }) },
+];
+
 export const rutasRentas: readonly Ruta[] = [
+  ...rutasRentasLimpieza,
   { metodo: "GET", patron: `${R}/chat-datos/pins`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ disponible: true, pins: [] }) },
   { metodo: "GET", patron: `${R}/chat-datos/estado`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }) },
   {

@@ -7,7 +7,7 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App.tsx";
 import { VERTICALES_CUENTA } from "../src/shell/cuenta/cuenta-client.ts";
-import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { esperarRutaCargada, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
 let rendered: RenderedComponent | undefined;
@@ -28,6 +28,7 @@ afterEach(() => {
 async function renderEn(ruta: string): Promise<RenderedComponent> {
   window.history.pushState({}, "", ruta);
   const r = renderComponent(<App />);
+  await esperarRutaCargada(r.container);
   await act(async () => {
     await flushMicrotasks();
   });

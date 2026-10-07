@@ -25,6 +25,12 @@
       "headers": [
         { "key": "Content-Security-Policy-Report-Only", "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'" }
       ]
+    },
+    {
+      "source": "/pedir/(.*)",
+      "headers": [
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(self), payment=(), usb=()" }
+      ]
     }
   ],
   "rewrites": [
@@ -63,6 +69,8 @@
     { "source": "/rentas/:path*", "destination": "/api" },
     { "source": "/superadmin/:path*", "destination": "/api" },
     { "source": "/portal-cliente/:path*", "destination": "/api" },
+    { "source": "/pedir/:orgSlug", "destination": "/api" },
+    { "source": "/pedir/:orgSlug/:branchSlug", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [
@@ -82,7 +90,7 @@
     { "path": "/internal/rentas/email-dispatch", "schedule": "*/15 * * * *" },
     { "path": "/internal/rentas/checkin-recordatorio", "schedule": "40 14 * * *" },
     { "path": "/internal/rentas/ical-sync", "schedule": "*/15 * * * *" },
-    { "path": "/internal/rentas/checkout-sweep", "schedule": "50 14 * * *" },
+    { "path": "/internal/rentas/checkout-sweep", "schedule": "*/15 * * * *" },
     { "path": "/internal/whatsapp/dispatch", "schedule": "*/5 * * * *" },
     { "path": "/internal/superadmin/resumen-diario", "schedule": "0 15 * * *" },
     { "path": "/internal/superadmin/mantenimiento", "schedule": "5 15 * * *" },
@@ -96,10 +104,15 @@
     { "path": "/internal/rentas/acceso-huesped", "schedule": "10 * * * *" },
     { "path": "/internal/rentas/mensajes-automaticos", "schedule": "40 * * * *" },
     { "path": "/internal/hoteles/grupos-liberacion", "schedule": "30 9 * * *" },
+    { "path": "/internal/hoteles/holds-vencidos", "schedule": "*/15 * * * *" },
+    { "path": "/internal/hoteles/housekeeping-dia", "schedule": "5 * * * *" },
     { "path": "/internal/restaurantes/privacidad-retencion", "schedule": "30 8 * * *" },
     { "path": "/internal/plataforma/privacidad-retencion", "schedule": "50 8 * * *" },
     { "path": "/internal/despachos/vencimientos-barrido", "schedule": "45 12 * * *" },
     { "path": "/internal/despachos/cfdi-estatus-sat", "schedule": "20 6 * * 0" },
-    { "path": "/internal/despachos/efos-69b/descarga", "schedule": "40 7 3 * *" }
+    { "path": "/internal/despachos/efos-69b/descarga", "schedule": "40 7 3 * *" },
+    { "path": "/internal/restaurantes/cierres-dia", "schedule": "20 8 * * *" },
+    { "path": "/internal/restaurantes/repartidor-licencias", "schedule": "35 13 * * *" },
+    { "path": "/internal/plataforma/prueba-avisos", "schedule": "0 14 * * *" }
   ]
 }

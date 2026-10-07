@@ -14,16 +14,21 @@
 //     rechaza.
 import { createHash } from "node:crypto";
 import { registerCallbackRequest } from "../callback-requests.ts";
+import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
+import { elegirPedido, repetirPedido } from "../cliente-360/repetir.ts";
 import { getCustomerDetailById, lookupCustomerConPedidoReciente } from "../customers.ts";
+import { buscarPedidoRecienteConSucursal } from "../pedido-reciente.ts";
+import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError } from "../errors.ts";
-import { DEFAULT_COMPLEMENTS, isTortillaChoice } from "../order-quote.ts";
+import { normalizePhone } from "../phone.ts";
+import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
+import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
 import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { assertCantidadesWeb, assertWebOrderRules } from "../storefront.ts";
 import { evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
-import { normalizePhone } from "../phone.ts";
 import { RestaurantesConfigUnavailableError, type RestaurantesRepository } from "../repository.ts";
 import { parsearProgramadoPara } from "../pedidos-programados.ts";
 import {
@@ -82,6 +87,8 @@ export function esTelefonoPreview(telefono: string | null | undefined): boolean 
 
 export type AgentToolName =
   | "buscar_cliente"
+  | "historial_pedidos"
+  | "repetir_pedido"
   | "consultar_sucursal"
   | "buscar_sucursal_cercana"
   | "buscar_producto"
@@ -111,6 +118,9 @@ export interface AgentToolContext {
   /** Telefono del cliente tomado del CONTEXTO (remitente de WhatsApp / token de llamada).
    * `null` = el canal no lo conoce (voz sin token de llamada, camino legado). */
   readonly phone: string | null;
+  /** `true` cuando el telefono lo DICTO el cliente en una llamada cuyo caller ID no era confiable: nadie verifico que sea suyo, asi que las herramientas de
+   * Cliente 360 (buscar_cliente, historial_pedidos, repetir_pedido) lo tratan como cliente nuevo y NO devuelven nombre, direcciones ni pedidos de ese numero. */
+  readonly phoneDeclared?: boolean;
   /** Sucursal fijada por el contexto (token de llamada / numero de WhatsApp de sucursal). */
   readonly lockedPropertyId?: string | null;
   /** Sucursal del numero de WhatsApp por el que entro el chat. NO fija la sucursal del pedido (el cliente puede pedir en otra): solo
@@ -122,6 +132,8 @@ export interface AgentToolContext {
   /** Ultima ubicacion que el cliente COMPARTIO por WhatsApp (lat/lng reales del mensaje, no inventadas
    * por el modelo). Alimenta `buscar_sucursal_cercana` cuando el modelo no manda coordenadas. */
   readonly sharedLocation?: { readonly lat: number; readonly lng: number } | null;
+  /** Ultimo destino de entrega que dio el cliente (pin de WhatsApp o link de Maps); `crear_pedido` lo guarda en el pedido solo, el modelo no lo repite. */
+  readonly ubicacionEntrega?: UbicacionEntrega | null;
   /** Id del evento que origina las llamadas a herramientas (WhatsApp: id del mensaje de Meta; voz: id de la llamada). Hace idempotente
    * el aviso al equipo (`escalar_a_humano` / `registrar_contacto`, migracion 047): el mismo evento y motivo nunca crean dos avisos. */
   readonly sourceEventId?: string | null;
@@ -210,8 +222,33 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "buscar_cliente",
     description:
-      "Devuelve el historial real del cliente que esta hablando (nombre, direcciones, ultimo pedido, lo que mas pide). No recibe telefono: el sistema usa el numero real de la conversacion o llamada.",
+      "Devuelve el historial real del cliente que esta hablando (nombre, direcciones, ultimo pedido, lo que mas pide). No recibe telefono: el sistema usa el numero de la conversacion o llamada. Si el cliente DICTO su telefono (la linea no lo identifico), devuelve cliente nuevo: nunca datos de ese numero.",
     parameters: { type: "object", properties: {} },
+    channels: ["whatsapp", "voz"],
+  },
+  {
+    name: "historial_pedidos",
+    description:
+      "Lista los ultimos pedidos del cliente que esta hablando (sin cancelados): numero, fecha, canal, sucursal, productos y total de ESA vez. Sirve para ofrecer 'lo mismo de la vez pasada'. No recibe telefono: el sistema usa el numero de la conversacion o llamada; un cliente nunca ve pedidos de otro numero, y si el telefono lo dicto el cliente (la linea no lo identifico) la lista viene vacia.",
+    parameters: { type: "object", properties: {} },
+    channels: ["whatsapp", "voz"],
+  },
+  {
+    name: "repetir_pedido",
+    description:
+      "Repite un pedido anterior del MISMO cliente re-cotizandolo con los precios y la disponibilidad de HOY (nunca el precio de la vez pasada). Devuelve la cotizacion normal (con quote_hash) y 'repeticion.cambios': productos que ya no estan disponibles o que cambiaron de precio, que DEBES avisar al cliente antes de confirmar. Sin pedido_numero repite el mas reciente. Despues sigue el flujo normal: repetir el resumen, confirmar_resumen y crear_pedido.",
+    parameters: {
+      type: "object",
+      properties: {
+        branch_slug: { type: "string", description: "Sucursal ya confirmada con el cliente." },
+        pedido_numero: { type: "integer", description: "Numero del pedido a repetir (el que devolvio historial_pedidos). Opcional: sin el, el mas reciente." },
+        canal: { type: "string", enum: ["domicilio", "recoger"], description: "Opcional: por defecto el mismo canal de la vez pasada." },
+        colonia_entrega: { type: "string", description: "Colonia/zona de entrega (solo a domicilio)." },
+        payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida, solo para saber si corresponde preguntar propina." },
+        adult_confirmed: { type: "boolean", description: "true únicamente si el pedido incluye alcohol y el cliente confirmó mayoría de edad." },
+      },
+      required: ["branch_slug"],
+    },
     channels: ["whatsapp", "voz"],
   },
   {
@@ -294,7 +331,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         customer_address: { type: "string", description: "Dirección completa de entrega; obligatoria salvo canal 'recoger'." },
         items: { type: "array", items: ITEM_SCHEMA },
         notes: { type: "string" },
-        requested_complements: { type: "array", items: { type: "string", enum: ["salsa_habanero", "crema_ajo"] } },
+        requested_complements: { type: "array", items: { type: "string", enum: [...COMPLEMENTOS_PEDIBLES] }, description: "Complementos que el cliente PIDIÓ además de las básicas (sin costo): salsa_guacamolera, salsa_mexicana (pico de gallo, xnipec), salsa_pina, pina (piña picada, gratis si se pide), salsa_habanero, salsa_habanero_soasado (sauceada), crema_ajo. La doble porción de una salsa va en doble_salsas, no aquí." },
         omit_default_complements: { type: "array", items: { type: "string", enum: [...DEFAULT_COMPLEMENTS, "cebolla"] } },
         doble_salsas: DOBLE_SALSAS_SCHEMA,
         payment_method: { type: "string", enum: ["efectivo", "tarjeta"] },
@@ -302,7 +339,15 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         canal: { type: "string", enum: ["domicilio", "recoger"], description: "Por defecto 'domicilio'. Para 'recoger' no hace falta customer_address." },
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega (solo a domicilio)." },
         propina: { type: "number", description: "Propina en pesos, solo si cotizar_pedido indicó preguntar_propina: true y el cliente la dio. No suma al total." },
+        efectivo_con: { type: "number", description: "Solo pago en efectivo: monto con el que paga el cliente ('cambio de 500' = 500). Debe ser mayor o igual al total de cotizar_pedido." },
+        llevar_terminal: { type: "boolean", description: "true si el cliente pide que lleven terminal (pago con tarjeta a domicilio)." },
+        indicaciones_acceso: { type: "string", description: "Solo domicilio, una línea corta (máx. 200 caracteres): cómo llegar o avisar ('timbre del depto 6', 'avísenme al llegar'). No pongas aquí la ubicación: el pin ya se guarda solo." },
+        telefono_alterno: { type: "string", description: "Segundo teléfono de contacto, 10 dígitos, si el cliente lo da." },
         hora_recogida: { type: "string", description: "Solo canal 'recoger': hora a la que el cliente pasará, en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00)." },
+        direccion_etiqueta: { type: "string", description: "Opcional: como llama el cliente a este domicilio (casa, oficina...). Solo si lo dijo." },
+        referencias_acceso: { type: "string", description: "Opcional: referencias para llegar (porton, timbre, entre calles). Solo si las dio el cliente." },
+        maps_url: { type: "string", description: "Opcional: link de Google Maps/Waze que el cliente mando por escrito (https). Nunca lo inventes." },
+        usar_ubicacion_compartida: { type: "boolean", description: "true solo si el cliente compartio su ubicacion por WhatsApp Y es la de este domicilio de entrega; el sistema usa las coordenadas reales del mensaje." },
         programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después: fecha y hora ISO 8601 con zona (por ejemplo 2026-10-03T14:00:00-06:00), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar." },
       },
       required: ["branch_slug", "customer_name", "items", "payment_method"],
@@ -311,7 +356,8 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   },
   {
     name: "registrar_contacto",
-    description: "Registra nombre/motivo de un mensaje que NO es para hacer un pedido, para que alguien del restaurante le regrese la llamada. Nunca usar para pedidos normales.",
+    description:
+      "Registra nombre/motivo de un mensaje que NO es para hacer un pedido, para que alguien del restaurante le regrese la llamada. Nunca usar para pedidos normales. Caso especial: reason 'cliente_llego' cuando quien tiene un pedido para RECOGER avisa que ya llegó ('ya llegué, estoy afuera en un auto gris'): avisa de inmediato a la sucursal y devuelve el mensaje fijo que debes dar al cliente; en message va solo cómo identificarlo (auto, ropa, lugar). Caso especial 2: reason 'pedido_telefonico' cuando el cliente ya hizo su pedido POR TELÉFONO con la sucursal y solo quiere pasarle su ubicación o una nota (no crea pedido): deja el aviso con la nota y la ubicación que mandó.",
     parameters: {
       type: "object",
       properties: { customer_name: { type: "string" }, reason: { type: "string" }, message: { type: "string" } },
@@ -349,6 +395,8 @@ export function toolDefinitionsForChannel(channel: AgentChannel): readonly Agent
 /** Ruta HTTP (relativa a `/v1/restaurantes/:orgSlug`) con la que el proveedor de voz invoca cada tool. */
 export const VOICE_TOOL_HTTP_PATHS: Readonly<Record<AgentToolName, string>> = {
   buscar_cliente: "/customers/lookup",
+  historial_pedidos: "/customers/orders",
+  repetir_pedido: "/orders/repeat",
   consultar_sucursal: "/branches/info",
   buscar_sucursal_cercana: "/branches/nearest",
   buscar_producto: "/products/search",
@@ -527,13 +575,27 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     notes: str(input.notes),
     paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
     adultConfirmed: lenient ? input.adult_confirmed === true : typeof input.adult_confirmed === "boolean" ? input.adult_confirmed : undefined,
-    requestedComplements: Array.isArray(input.requested_complements) ? (input.requested_complements as readonly RequestedComplement[]) : undefined,
+    requestedComplements: Array.isArray(input.requested_complements)
+      ? input.requested_complements.map(canonicalRequestedComplement).filter((c): c is RequestedComplement => c !== null)
+      : undefined,
     omitDefaultComplements: Array.isArray(input.omit_default_complements) ? (input.omit_default_complements as readonly DefaultComplement[]) : undefined,
+    // Los agentes (WhatsApp/voz) piden la comanda con «Básicas» y «Pedidas»; `crear_pedido` lo restringe despues al perfil `taqueria_pm`
+    // (una organizacion con otro perfil conserva las 9 incluidas). El checkout web siempre conserva las 9.
+    basicComplements: ctx.channel === "web" ? undefined : PM_BASIC_COMPLEMENTS,
+    ubicacionEntrega: ctx.ubicacionEntrega ?? undefined,
+    efectivoCon: typeof input.efectivo_con === "number" ? input.efectivo_con : undefined,
+    llevarTerminal: input.llevar_terminal === true ? true : undefined,
+    indicacionesAcceso: str(input.indicaciones_acceso),
+    telefonoAlterno: str(input.telefono_alterno),
     doubleSalsas: toDoubleSalsas(input.doble_salsas),
     canal: toCanal(input.canal),
     colonia: str(input.colonia_entrega),
     propina: typeof input.propina === "number" ? input.propina : undefined,
     horaRecogida: str(input.hora_recogida),
+    // Cliente 360: datos opcionales del domicilio (solo alimentan la ficha; nunca cambian el total).
+    addressLabel: str(input.direccion_etiqueta),
+    accessNotes: str(input.referencias_acceso),
+    mapsUrl: str(input.maps_url) ?? (input.usar_ubicacion_compartida === true && ctx.sharedLocation ? `https://www.google.com/maps?q=${ctx.sharedLocation.lat},${ctx.sharedLocation.lng}` : undefined),
     programadoPara: str(input.programado_para),
   };
   if (lenient) return base;
@@ -558,7 +620,7 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
 export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
-  if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido")) {
+  if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);
   }
   return runWithOrderFlow(repo, ctx, ctx.flow, name, input);
@@ -593,6 +655,13 @@ const CONFLICT_MESSAGE = "La conversación se está procesando en otro lugar; vu
 async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolContext, flow: OrderFlowRef, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   const lenient = ctx.channel === "whatsapp";
   const canalOf = (raw: unknown) => (raw === "recoger" ? "recoger" : "domicilio");
+
+  if (name === "repetir_pedido") {
+    // Repetir = cotizar: la cotizacion con precios de hoy entra a la misma maquina de estados (quote_hash, confirmacion).
+    const { cotizarInput, repeticion } = await prepararRepeticion(repo, ctx, input);
+    const outcome = await runWithOrderFlow(repo, ctx, flow, "cotizar_pedido", cotizarInput);
+    return { ...outcome, result: { ...(outcome.result as object), repeticion } };
+  }
 
   if (name === "cotizar_pedido") {
     // Web: la sesion es la unidad de compra. Si ya registro un pedido, una cotizacion nueva NO lo pisa en
@@ -750,8 +819,36 @@ async function dispatchTool(
         return { result, raw: result, orderId: null, propertyId: null, simulated: true };
       }
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede consultar el historial.");
+      if (ctx.phoneDeclared) {
+        const nuevo = { isNew: true as const };
+        return { result: nuevo, raw: nuevo, orderId: null, propertyId: null };
+      }
       const result = await lookupCustomerConPedidoReciente(repo, organizationId, ctx.phone);
       return { result, raw: result, orderId: null, propertyId: null };
+    }
+    case "historial_pedidos": {
+      if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede consultar el historial.");
+      if (ctx.phoneDeclared) {
+        const vacio = { pedidos: [], total_pedidos_anteriores: 0 };
+        return { result: vacio, raw: vacio, orderId: null, propertyId: null };
+      }
+      const memoria = await cargarMemoria(repo, organizationId, normalizePhone(ctx.phone));
+      if (memoria === undefined) throw new OrderValidationError("El historial de pedidos todavía no está disponible: tome el pedido de forma normal.");
+      const pedidos = (memoria?.orders ?? []).slice(0, 5).map((o) => ({
+        numero: o.orderNumber,
+        fecha: o.createdAt,
+        canal: o.canal,
+        sucursal: o.branch,
+        total: o.total,
+        productos: o.items.map((i) => ({ name: i.name, quantity: i.quantity })),
+      }));
+      const result = { pedidos, total_pedidos_anteriores: pedidos.length };
+      return { result, raw: result, orderId: null, propertyId: null };
+    }
+    case "repetir_pedido": {
+      const { cotizarInput, repeticion } = await prepararRepeticion(repo, ctx, input);
+      const quoted = await dispatchTool(repo, ctx, "cotizar_pedido", cotizarInput);
+      return { ...quoted, result: { ...(quoted.result as object), repeticion } };
     }
     case "consultar_sucursal": {
       const branchSlug = String(input.branch_slug ?? "");
@@ -846,7 +943,14 @@ async function dispatchTool(
       return { result: { confirmado: true, aviso: "confirmación no registrada por el servidor" }, orderId: null, propertyId: null };
     }
     case "crear_pedido": {
-      const mapped = mapCreateOrderToolInput(ctx, input, lenient);
+      const mappedBase = mapCreateOrderToolInput(ctx, input, lenient);
+      // Las basicas (comanda con «Básicas»/«Pedidas») son del perfil `taqueria_pm`, no de todo agente: con otro perfil o sin configuracion
+      // (base sin migrar) se conservan las 9 incluidas de siempre.
+      let mapped = mappedBase;
+      if (mappedBase.basicComplements) {
+        const config = await repo.findWhatsAppAgentConfig(ctx.organizationId, ctx.entryPropertyId ?? ctx.lockedPropertyId ?? null);
+        if (config?.perfil !== "taqueria_pm") mapped = { ...mappedBase, basicComplements: undefined };
+      }
       // Checkout web: reglas duras que la fuente "web" historica no exige (ver storefront.ts).
       const createInput = ctx.channel === "web" ? assertWebOrderRules(mapped) : mapped;
       // La sucursal puede venir por slug o por nombre (contrato historico del checkout de voz).
@@ -856,6 +960,8 @@ async function dispatchTool(
         throw new OrderValidationError("Esta llamada está fijada a una sucursal; indica branch_slug.");
       }
       if (ctx.modo === "preview") return simulatePreviewOrder(repo, ctx, createInput, expectedPrices);
+      const retenido = await retenerPedidoDeReincidente(repo, ctx, createInput);
+      if (retenido) return retenido;
       let order: Order;
       try {
         order = await createOrder(repo, createInput, {
@@ -882,9 +988,16 @@ async function dispatchTool(
     case "registrar_contacto":
     case "escalar_a_humano": {
       // Preview: exito simulado, sin crear aviso (callback) ni notificacion para el equipo.
-      if (ctx.modo === "preview") return { result: { ok: true, simulado: true }, raw: { ok: true, simulado: true }, orderId: null, propertyId: null, simulated: true };
+      if (ctx.modo === "preview") {
+        // Los motivos con mensaje fijo lo devuelven tambien simulados, para que el dueño vea lo que diria el agente real.
+        const fijo = def.name === "registrar_contacto" ? (input.reason === "cliente_llego" ? MENSAJE_LLEGADA_REGISTRADA : input.reason === "pedido_telefonico" ? MENSAJE_PEDIDO_TELEFONICO_REGISTRADO : null) : null;
+        const simulado = { ok: true, simulado: true, ...(fijo ? { mensaje_al_cliente: fijo } : {}) };
+        return { result: simulado, raw: simulado, orderId: null, propertyId: null, simulated: true };
+      }
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede dejar aviso.");
       const esEscalada = def.name === "escalar_a_humano";
+      if (!esEscalada && input.reason === "cliente_llego") return avisarLlegadaDelCliente(repo, ctx, input);
+      if (!esEscalada && input.reason === "pedido_telefonico") return pasarNotaDePedidoTelefonico(repo, ctx, input);
       const reason = esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined;
       await registerCallbackRequest(repo, {
         organizationId,
@@ -899,6 +1012,126 @@ async function dispatchTool(
       return { result: { ok: true }, raw: { ok: true }, orderId: null, propertyId: null };
     }
   }
+}
+
+/** Texto fijo que se le da al cliente tras el aviso de llegada (no se improvisa ni se prometen minutos). */
+export const MENSAJE_LLEGADA_REGISTRADA = "Ya avisé a la sucursal que usted llegó; en un momento le entregan su pedido.";
+const MENSAJE_LLEGADA_SIN_PEDIDO = "No encuentro un pedido para recoger a nombre de este número. No avise a la sucursal; pregúntele por su pedido o escale si insiste (otro).";
+
+export const MENSAJE_PEDIDO_TELEFONICO_REGISTRADO = "Listo, ya le pasé ese dato a la sucursal para su pedido.";
+
+/** `registrar_contacto` con `reason: pedido_telefonico`: el pedido NO se creo aqui (lo tomo la sucursal por telefono); solo se le pasa a la sucursal la nota y el
+ * pin/link de Maps que el cliente mando por WhatsApp. No crea pedido ni toca el catalogo. */
+async function pasarNotaDePedidoTelefonico(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>): Promise<AgentToolOutcome> {
+  const nota = typeof input.message === "string" ? sanitizeInlineText(input.message, 300) : "";
+  const pin = ctx.ubicacionEntrega ? formatUbicacionEntregaNota(ctx.ubicacionEntrega) : "";
+  const mensaje = [nota, pin].filter(Boolean).join(" | ");
+  if (!mensaje) {
+    return { result: { ok: false, instruccion: "No hay nada que pasar: pida al cliente la nota o su ubicación (pin de WhatsApp o link de Maps)." }, raw: { ok: false }, orderId: null, propertyId: null };
+  }
+  await registerCallbackRequest(repo, {
+    organizationId: ctx.organizationId,
+    propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
+    customerName: String(input.customer_name ?? "Cliente"),
+    customerPhone: ctx.phone as string,
+    reason: "pedido_telefonico",
+    sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:pedido_telefonico`.slice(0, 255) : null,
+    message: mensaje,
+    source: ctx.channel === "voz" ? "voice" : "whatsapp",
+  });
+  return { result: { ok: true, mensaje_al_cliente: MENSAJE_PEDIDO_TELEFONICO_REGISTRADO }, raw: { ok: true }, orderId: null, propertyId: null };
+}
+
+/** `registrar_contacto` con `reason: cliente_llego`: solo procede si el cliente tiene un pedido vigente para RECOGER confirmado hace poco (la llegada
+ * se valida contra el pedido real, nunca contra lo que diga el modelo). Deja el aviso con la sucursal del pedido y una nota de como identificarlo. */
+async function avisarLlegadaDelCliente(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>): Promise<AgentToolOutcome> {
+  const encontrado = await buscarPedidoRecienteConSucursal(repo, ctx.organizationId, ctx.phone as string);
+  const reciente = encontrado?.reciente;
+  // Solo con un pedido CONOCIDO para recoger y aun vigente: canal desconocido (base sin migrar o sin dato) o un estado cerrado/con problema no se avisa como llegada.
+  if (!reciente || reciente.canal !== "recoger" || (reciente.estado !== "preparando" && reciente.estado !== "listo_para_recoger" && reciente.estado !== "programado")) {
+    return { result: { ok: false, motivo: "sin_pedido_para_recoger", instruccion: MENSAJE_LLEGADA_SIN_PEDIDO }, raw: { ok: false }, orderId: null, propertyId: null };
+  }
+  const identificacion = typeof input.message === "string" ? sanitizeInlineText(input.message, 200) : "";
+  await registerCallbackRequest(repo, {
+    organizationId: ctx.organizationId,
+    propertyId: encontrado?.propertyId ?? ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
+    customerName: String(input.customer_name ?? "Cliente"),
+    customerPhone: ctx.phone as string,
+    reason: "cliente_llego",
+    sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:cliente_llego`.slice(0, 255) : null,
+    message: identificacion || undefined,
+    source: ctx.channel === "voz" ? "voice" : "whatsapp",
+  });
+  return { result: { ok: true, mensaje_al_cliente: MENSAJE_LLEGADA_REGISTRADA }, raw: { ok: true }, orderId: null, propertyId: null };
+}
+
+/** Arma la entrada de `cotizar_pedido` a partir de un pedido anterior del MISMO cliente (el telefono sale del contexto). */
+async function prepararRepeticion(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>) {
+  if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede repetir un pedido.");
+  if (ctx.phoneDeclared) throw new OrderValidationError("No hay pedidos anteriores que repetir en esta llamada: tome el pedido de forma normal.");
+  const branchSlug = String(input.branch_slug ?? "");
+  await assertBranchAllowed(repo, ctx, branchSlug);
+  const memoria = await cargarMemoria(repo, ctx.organizationId, normalizePhone(ctx.phone));
+  if (memoria === undefined) throw new OrderValidationError("El historial de pedidos todavía no está disponible: tome el pedido de forma normal.");
+  const numero = typeof input.pedido_numero === "number" && Number.isInteger(input.pedido_numero) ? input.pedido_numero : undefined;
+  const pedido = elegirPedido(memoria?.orders ?? [], numero);
+  const repetido = await repetirPedido(repo, { organizationId: ctx.organizationId, branchSlug, order: pedido });
+  const canal = input.canal === "domicilio" || input.canal === "recoger" ? input.canal : (pedido.canal ?? "domicilio");
+  const cotizarInput: Record<string, unknown> = {
+    branch_slug: branchSlug,
+    canal,
+    items: repetido.renglones.map((r) => ({ product_id: r.productId, product_name: r.productName, requested_quantity: r.requestedQuantity, ...(r.tortilla ? { tortilla: r.tortilla } : {}) })),
+    ...(input.adult_confirmed === true ? { adult_confirmed: true } : {}),
+    ...(typeof input.colonia_entrega === "string" ? { colonia_entrega: input.colonia_entrega } : {}),
+    ...(input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? { payment_method: input.payment_method } : {}),
+  };
+  const repeticion = {
+    pedido_numero: repetido.pedido.numero,
+    fecha: repetido.pedido.fecha,
+    sucursal_anterior: repetido.pedido.sucursal,
+    total_anterior: repetido.totalAnterior,
+    cambios: repetido.cambios.map((c) => ({ producto: c.producto, motivo: c.motivo, precio_anterior: c.precioAnterior, precio_actual: c.precioActual })),
+    aviso:
+      repetido.cambios.length > 0
+        ? "Avise al cliente de estos cambios (productos que ya no están o que cambiaron de precio) ANTES de confirmar; el total que vale es el de la cotización de hoy, no el de la vez pasada."
+        : "Sin cambios: mismos productos disponibles. El total que vale es el de la cotización de hoy.",
+  };
+  return { cotizarInput, repeticion };
+}
+
+/**
+ * Reincidentes de "no recogido" / pedido falso: con el umbral de la politica (por omision 2 en 90 dias; 0 = apagada) el
+ * pedido NO se crea solo: queda un aviso con TODO el pedido para que la sucursal lo confirme con el cliente. El agente nunca
+ * acusa: solo dice que la sucursal confirma el pedido en un momento. Solo agentes (WhatsApp y voz) con telefono conocido.
+ */
+async function retenerPedidoDeReincidente(repo: RestaurantesRepository, ctx: AgentToolContext, createInput: CreateOrderInput): Promise<AgentToolOutcome | null> {
+  if ((ctx.channel !== "whatsapp" && ctx.channel !== "voz") || !ctx.phone) return null;
+  const memoria = await cargarMemoria(repo, ctx.organizationId, normalizePhone(ctx.phone));
+  const decision = evaluarReincidencia(memoria?.reliability);
+  if (!decision.requiereConfirmacion) return null;
+  // Misma validacion y cotizacion que un pedido real (horario, zona, minimo, productos): un error de negocio se devuelve igual.
+  const prepared = await prepareCreateOrder(repo, createInput);
+  const lineas = prepared.orderItems.map((i) => `${i.quantity}x ${i.name}`).join(", ");
+  await registerCallbackRequest(repo, {
+    organizationId: ctx.organizationId,
+    propertyId: prepared.branch.propertyId,
+    customerName: prepared.payload.customerName,
+    customerPhone: ctx.phone,
+    reason: "aprobacion_pedido_cliente",
+    message: [
+      "PEDIDO RETENIDO: confirmar con el cliente antes de prepararlo (historial de pedidos no recogidos o marcados como falsos dentro de la ventana de la politica de clientes).",
+      `Sucursal: ${prepared.branch.name}. Canal: ${prepared.payload.canal === "recoger" ? "recoger" : "domicilio"}.`,
+      `Productos: ${lineas}. Total: $${prepared.total.toFixed(2)}.`,
+      prepared.payload.customerAddress ? `Entrega: ${prepared.payload.customerAddress}.` : "Para recoger en sucursal.",
+      `Pago: ${prepared.payload.paymentMethod ?? "sin definir"}.`,
+    ].join("\n"),
+    source: ctx.channel === "voz" ? "voice" : "whatsapp",
+  });
+  const result = {
+    pedido_retenido: true,
+    mensaje: "La sucursal confirma su pedido en un momento. Dígaselo así, con amabilidad: no explique motivos ni mencione historial; el pedido NO está creado todavía y no debe prometer hora de entrega.",
+  };
+  return { result, raw: result, orderId: null, propertyId: prepared.branch.propertyId };
 }
 
 /** Lanza `PedidoGrandeRetenidoError` si el pedido ya cotizado supera el umbral de pedido grande de PM. Solo organizaciones con

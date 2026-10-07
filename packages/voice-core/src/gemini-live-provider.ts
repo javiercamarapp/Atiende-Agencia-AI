@@ -69,6 +69,7 @@ export class GeminiLiveProvider implements VoiceAgentProvider {
             model: `models/${this.model}`,
             generationConfig: {
               responseModalities: ["AUDIO"],
+              ...(typeof entrada.temperatura === "number" ? { temperature: entrada.temperatura } : {}),
               speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: entrada.voiceId } } },
             },
             ...(instruccion ? { systemInstruction: { parts: [{ text: instruccion }] } } : {}),
