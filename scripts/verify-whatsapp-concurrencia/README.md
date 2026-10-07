@@ -23,12 +23,12 @@ Para 1, 4, 6, 10 y 20 mensajes simultáneos (teléfonos distintos), contra el po
 También imprime el pico de conexiones activas del pool.
 
 **Fase 2 (pedido por canal con el rol de producción):** la misma API real, con el rol `authenticated` y `auth.uid()` NULL,
-crea por HTTP un pedido **web** con cliente nuevo y domicilio, un segundo pedido del mismo cliente con otra dirección
-(un solo cliente, 2 direcciones, `order_count` correcto), un pedido por **voz** (secreto de herramienta) y un aviso de
+crea por HTTP, por el canal de **voz** (secreto de herramienta; el checkout web ya no existe), un pedido de cliente nuevo a domicilio, un segundo pedido del mismo cliente con otra dirección
+(un solo cliente, 2 direcciones, `order_count` correcto), un pedido de otro cliente por voz y un aviso de
 contacto (`registerCallbackRequest`, lo que usan `escalar_a_humano` y `registrar_contacto`). Contra una base **sin** la
 migración 048 estos pasos fallan con `permission denied for table customers` / `callback_requests`. No cubre el turno
 de WhatsApp con tool-calls reales del LLM (el LLM simulado responde solo texto): ese camino usa el mismo `createOrder`
-del pedido web/voz.
+del pedido de voz.
 
 ## Causa que atrapa
 
