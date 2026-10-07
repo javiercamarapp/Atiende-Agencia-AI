@@ -5,8 +5,9 @@
 // Contenido (todo sale de datos que el sistema ya tiene; nada inventado): convocatorias nuevas con match de los ultimos 7 dias
 // (`new_match_notice`), plazos de presentacion de los proximos 7 dias, documentos de empresa por vencer (30 dias), facturas de
 // contratos vencidas y garantias por vencer. Se emite SOLO si hay algo que contar. La campana lleva solo conteos (sin PII); el
-// correo (a owner/admin de la organizacion) lleva los titulos de las convocatorias. Base sin la migracion 039/034/035: ese
-// componente cuenta 0 (nunca un 500).
+// correo (a owner/admin de la organizacion) lleva los titulos de las convocatorias. Base sin la migracion 039: los nuevos
+// matches cuentan 0. Los plazos (024) y las facturas de contratos NO degradan a 0: si esas tablas/funciones faltan, el resumen de
+// esa organizacion no sale (cada organizacion corre en su propia transaccion; solo suma a `errores`).
 import { emitirNotificacion } from "@atiende/db";
 import { GARANTIA_POR_VENCER_DIAS, correoResumenSemanal } from "@atiende/domain-licitaciones";
 import type { AppDeps } from "../../../deps.ts";
