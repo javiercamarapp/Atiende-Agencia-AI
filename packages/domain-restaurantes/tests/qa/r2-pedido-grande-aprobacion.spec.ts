@@ -124,6 +124,22 @@ describe("agentes-08: partir el pedido en la misma conversacion no evade el umbr
     expect(aviso?.message).toMatch(/Suma 1 pedido\(s\) previo\(s\)/);
   });
 
+  it("CON autopiloto, 'otro igual' en menos de 5 min se deduplica: el pedido 1 (ya aceptado, con comanda) NO se retiene ni se abre solicitud", async () => {
+    const t = await bancoConAutopiloto();
+    const r1 = await cotizarYConfirmar(t.b, "+5219990000047", dos(t.b), "efectivo");
+    expect(r1.orderId).toBeTruthy();
+    expect(t.comandas).toHaveLength(1);
+    const r2 = await cotizarYConfirmar(t.b, "+5219990000047", dos(t.b), "efectivo");
+    // create_order_idempotent devuelve el MISMO pedido (misma huella): nada nuevo que retener.
+    expect(r2.orderId).toBe(r1.orderId);
+    expect(t.retenerLlamadas).toHaveLength(0);
+    expect((t.auto as unknown as { solicitudes: { tipo: string }[] }).solicitudes).toHaveLength(0);
+    expect(t.db.emisiones).toHaveLength(0);
+    const { orders } = await t.b.w.repo.listOrders(t.b.w.organizationId, { propertyIds: null, limit: 100 });
+    expect(orders).toHaveLength(1);
+    expect(orders[0]?.status).not.toBe("por_aprobar");
+  });
+
   it("con tarjeta el acumulado de $4,500 tambien se retiene (supera $4,000); dos pedidos chicos que no suman el umbral siguen entrando", async () => {
     const b = await banco();
     const chico = [item(b.pid("Pastor — 1 kg"), "Pastor — 1 kg", 1)];
