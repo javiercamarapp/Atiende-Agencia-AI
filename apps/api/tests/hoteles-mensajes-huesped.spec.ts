@@ -214,6 +214,17 @@ describe("cron /internal/hoteles/mensajes-huesped", () => {
     expect(s.mensajes.outbox).toHaveLength(1);
   });
 
+  it("el cron holds-vencidos (unico cron de hoteles a */15 con cupo en vercel.json) encadena el ciclo de mensajes y lo reporta", async () => {
+    const s = await setup();
+    await s.staff("owner", "PUT", "/hold.aprobado/plantilla", { nombre: "hotel_hold_aprobado", variables: ["nombre", "hotel"], estado: "aprobada" });
+    const holdId = await s.crearHold();
+    await s.staff("reservations", "POST", `/holds/${holdId}/decidir`, { decision: "aprobar", motivo: "ok" }, "reservas-agente");
+    s.mensajes.outbox.length = 0;
+    const res = await s.app.request("/internal/hoteles/holds-vencidos", { method: "GET", headers: CRON_HEADERS });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ mensajes_huesped: { disponible: true, errores: 0 } });
+  });
+
   it("base sin migrar: responde 200 disponible:false y no toca nada", async () => {
     const s = await setup({ migrado: false });
     const res = await s.app.request(CRON, { method: "GET", headers: CRON_HEADERS });

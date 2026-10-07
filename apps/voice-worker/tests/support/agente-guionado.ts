@@ -90,10 +90,13 @@ class SesionGuionada implements VozSesionLlamada {
       }
       const args = typeof paso.args === "function" ? paso.args(this.agente.memoria) : paso.args;
       const resultado = await this.h.ejecutarTool({ id: `g-${++this.agente.nTools}`, nombre: paso.tool, args });
+      this.agente.resultados.push({ nombre: paso.tool, resultado });
       // El transporte HTTP devuelve `{ productos: [...] }`; la memoria del simulador espera la lista directa (como el transporte en proceso).
       const lista = paso.tool === "buscar_producto" && resultado && typeof resultado === "object" && Array.isArray((resultado as { productos?: unknown }).productos) ? (resultado as { productos: unknown[] }).productos : resultado;
       this.agente.memoria.observar(paso.tool, lista);
     }
+    // Costo REAL que informaria Gemini (`usageMetadata`) tras cada respuesta: solo si el guion lo pidio.
+    if (this.agente.costoRealPorRespuestaMicroUsd > 0) this.h.costo?.(this.agente.costoRealPorRespuestaMicroUsd, true);
     this.agente.respondidos += 1;
     this.h.agenteTermino();
   }
@@ -105,6 +108,8 @@ export class AgenteGuionado {
   readonly memoria: MemoriaTools = crearMemoriaPm();
   readonly pendientes = new Set<Promise<void>>();
   readonly sesiones: SesionGuionada[] = [];
+  /** Lo que devolvio cada herramienta que pidio el guion (para afirmar errores honestos como `telefono_pendiente`). */
+  readonly resultados: { nombre: string; resultado: unknown }[] = [];
   saludos = 0;
   respondidos = 0;
   indiceTurno = 0;
@@ -112,6 +117,8 @@ export class AgenteGuionado {
   bytesAudioRecibidos = 0;
   /** Cuantas veces se pidio abrir sesion (la primera y cada reconexion). */
   aperturasPedidas = 0;
+  /** Costo real (micro-USD) que el proveedor guionado reporta con cada respuesta, como el `usageMetadata` de Gemini Live. 0 = no reporta. */
+  costoRealPorRespuestaMicroUsd = 0;
   /** Aperturas que fallan antes de lograr una (simula el proveedor caido al abrir). */
   fallasAlAbrir = 0;
 

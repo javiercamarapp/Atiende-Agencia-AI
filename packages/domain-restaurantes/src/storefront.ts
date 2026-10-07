@@ -9,8 +9,9 @@
 // Todas las lecturas pasan por `repo.*`, que degradan con SAVEPOINT contra la base sin migrar.
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError, PromotionError } from "./errors.ts";
+import { insigniaDomicilio } from "./domicilio-sucursal.ts";
+import { estaAbiertoAhora, type HorarioSucursal } from "./horarios.ts";
 import { MAX_PIEZAS_POR_RENGLON_WEB, mensajeCantidadInvalida } from "./order-quote.ts";
-import { estaAbiertoAhora } from "./horarios.ts";
 import { canonicalizeMexicanPhone } from "./phone.ts";
 import { enlaceWhatsapp } from "./storefront-marca.ts";
 import { extraerPackSize, requiresAdultConfirmation, requiresTortillaChoice } from "./product-search.ts";
@@ -34,6 +35,12 @@ export interface StorefrontBranchView {
   readonly propinaPolitica: PropinaPolitica | null;
   /** Nombres de las zonas de reparto de la sucursal (vacio = sin cobertura configurada). */
   readonly zonasReparto: readonly string[];
+  /** Migracion 057. false = solo recoger. */
+  readonly aceptaDomicilio: boolean;
+  /** Dias (0 = domingo .. 6) en que reparte; null = todos. */
+  readonly diasDomicilio: readonly number[] | null;
+  /** "Domicilio vie-dom" cuando reparte solo algunos dias; null si reparte todos los dias o es solo recoger. */
+  readonly domicilioTexto: string | null;
 }
 
 async function vistaDeSucursal(repo: RestaurantesRepository, branch: Branch, now: Date): Promise<StorefrontBranchView> {
@@ -67,6 +74,9 @@ async function vistaDeSucursal(repo: RestaurantesRepository, branch: Branch, now
     pedidoMinimoRecoger: policy.pedidoMinimoRecoger,
     propinaPolitica: policy.propinaPolitica,
     zonasReparto,
+    aceptaDomicilio: policy.aceptaDomicilio !== false,
+    diasDomicilio: policy.diasDomicilio ?? null,
+    domicilioTexto: policy.aceptaDomicilio === false ? null : insigniaDomicilio(policy),
   };
 }
 
@@ -76,6 +86,70 @@ export async function buildStorefrontBranches(repo: RestaurantesRepository, orga
   const views: StorefrontBranchView[] = [];
   for (const branch of branches) views.push(await vistaDeSucursal(repo, branch, now));
   return views;
+}
+
+/** Una sucursal en el directorio publico `/pedir/:org/sucursales`. Solo datos publicos (nada de ids, coordenadas ni minimos). */
+export interface StorefrontDirectorioItem {
+  readonly slug: string;
+  readonly name: string;
+  readonly address: string | null;
+  readonly phone: string | null;
+  /** Turnos semanales tal como los configuro el negocio; null = sin horario publicado. */
+  readonly horario: HorarioSucursal | null;
+  /** null = sin horario configurado (no se afirma abierto ni cerrado). */
+  readonly abiertoAhora: boolean | null;
+  /** Solo las sucursales activas llevan a pedir en linea. */
+  readonly pideEnLinea: boolean;
+  readonly soloRecoger: boolean;
+  /** "Domicilio vie-dom" cuando reparte solo algunos dias; null si reparte todos los dias o es solo recoger. */
+  readonly insigniaDomicilio: string | null;
+  readonly deTemporada: boolean;
+  /** Visible pero inactiva: se informa, no se puede pedir. */
+  readonly soloInformativa: boolean;
+  /** Enlace de Maps construido con nombre y direccion del negocio (sin datos del cliente). */
+  readonly comoLlegarUrl: string | null;
+}
+
+/** Enlace "Como llegar" de Google Maps con el nombre y la direccion publicos de la sucursal. */
+export function enlaceComoLlegar(nombre: string, direccion: string | null): string | null {
+  const dir = direccion?.trim();
+  if (!dir) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${nombre} ${dir}`)}`;
+}
+
+/**
+ * Directorio publico: TODAS las sucursales con `visible_en_directorio` (por omision, las activas), activas o no.
+ * Las inactivas se marcan "solo informativa" y no llevan a pedir. Nunca expone ids ni politica interna.
+ */
+export async function buildStorefrontDirectorio(repo: RestaurantesRepository, organizationId: string, now: Date = new Date()): Promise<StorefrontDirectorioItem[]> {
+  const branches = await repo.listBranchesForOrganizationAdmin(organizationId);
+  const items: StorefrontDirectorioItem[] = [];
+  for (const branch of branches) {
+    const policy = await repo.findBranchPolicy(branch.propertyId);
+    const activa = branch.status === "active";
+    if (!(policy.visibleEnDirectorio ?? activa)) continue;
+    let abiertoAhora: boolean | null = null;
+    if (activa && policy.horario && policy.horario.length > 0) {
+      const zona = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
+      abiertoAhora = estaAbiertoAhora(policy.horario, now, zona).abierto;
+    }
+    const soloRecoger = policy.aceptaDomicilio === false;
+    items.push({
+      slug: branch.slug,
+      name: branch.name,
+      address: branch.address,
+      phone: branch.phone,
+      horario: policy.horario && policy.horario.length > 0 ? policy.horario : null,
+      abiertoAhora,
+      pideEnLinea: activa,
+      soloRecoger,
+      insigniaDomicilio: soloRecoger ? null : insigniaDomicilio(policy),
+      deTemporada: policy.deTemporada === true,
+      soloInformativa: !activa,
+      comoLlegarUrl: enlaceComoLlegar(branch.name, branch.address),
+    });
+  }
+  return items;
 }
 
 export interface StorefrontMenuItem {

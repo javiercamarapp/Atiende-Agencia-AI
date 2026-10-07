@@ -282,7 +282,19 @@ export function hotelesMensajesHuespedRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   return app;
 }
 
-/** Cron: barre todas las propiedades. Sin autenticacion de usuario: secreto interno o de Vercel Cron. */
+/**
+ * Un ciclo completo: emite los mensajes pendientes de todas las propiedades y drena de inmediato el outbox de WhatsApp / correo.
+ * Lo usan la ruta manual de abajo y el cron `holds-vencidos` (cada 15 min): `vercel.json` ya esta en el tope de 40 crons del plan Pro,
+ * asi que este barrido NO tiene cron propio sino que se encadena al de las pre-reservas vencidas (que es quien dispara `hold.vencido`).
+ */
+export async function runCicloMensajesHuesped(deps: AppDeps): Promise<Awaited<ReturnType<typeof runHotelesMensajesHuesped>>> {
+  const resumen = await runHotelesMensajesHuesped(deps);
+  if (resumen.porWhatsapp > 0) await dispatchWhatsAppVertical(deps, "hoteles", WHATSAPP_INLINE_LIMIT).catch(() => undefined);
+  if (resumen.porCorreo > 0) await runHotelesEmailDispatch(deps, INLINE_BATCH_SIZE).catch(() => undefined);
+  return resumen;
+}
+
+/** Ruta manual (ya no esta en vercel.json): barre todas las propiedades. Sin autenticacion de usuario: secreto interno o de Vercel Cron. */
 export function hotelesMensajesHuespedCronRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
@@ -290,9 +302,7 @@ export function hotelesMensajesHuespedCronRoutes(deps: AppDeps): Hono {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     return withHeartbeat(deps, MENSAJES_HUESPED_CRON_PATH, async () => {
-      const resumen = await runHotelesMensajesHuesped(deps);
-      if (resumen.porWhatsapp > 0) await dispatchWhatsAppVertical(deps, "hoteles", WHATSAPP_INLINE_LIMIT).catch(() => undefined);
-      if (resumen.porCorreo > 0) await runHotelesEmailDispatch(deps, INLINE_BATCH_SIZE).catch(() => undefined);
+      const resumen = await runCicloMensajesHuesped(deps);
       const response = c.json(
         {
           ok: resumen.errores === 0,

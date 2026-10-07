@@ -1,0 +1,560 @@
+{
+ "suite": "escenarios-k-chats-t7-y-huecos",
+ "version": "2026-10-04",
+ "nota": "22 escenarios K (lo que enseñan los chats reales de T7 y el cuestionario) y 10 KH (huecos finales del original). TODO es sintético: ningún texto, nombre ni teléfono sale de los chats privados. `verificacion: determinista` = lo ata tests/evals-agente-pm-k.spec.ts contra el servidor real; `juez` = texto libre para un LLM o una persona. `estado: pendiente_construccion` = depende de algo que main aún no tiene (`depende_de`): se lista y NO falla el CI.",
+ "escenarios": [
+  {
+   "id": "K01",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "complementos_pedidos_en_comanda",
+   "turnos_cliente": [
+    "Quiero 3 tacos de bistec de maíz con guacamolera y crema de ajo, por favor"
+   ],
+   "comportamiento_esperado": "Las básicas van solas; la guacamolera y la crema de ajo se mandan en requested_complements y la comanda las imprime como «Pedidas (sin costo)», separadas de las «Básicas». El total no cambia.",
+   "que_no_debe_hacer": "Cobrar las salsas pedidas como extra; olvidarlas en la comanda; imprimir las 9 como incluidas.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K02",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pina_gratis_si_se_pide",
+   "turnos_cliente": [
+    "Con piña, por favor",
+    "Y una piña extra para el taco"
+   ],
+   "comportamiento_esperado": "La piña picada pedida va sin costo en la comanda (Pedidas); la doble es el producto «Extra Piña» del catálogo, cobrado a su precio de catálogo desde buscar_producto.",
+   "que_no_debe_hacer": "Cobrar la primera piña; inventar el precio de la doble.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K03",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "medios_charros_media_orden",
+   "turnos_cliente": [
+    "Me das unos medios charros normales"
+   ],
+   "comportamiento_esperado": "«Medios charros» es la media orden de frijoles charros: encuentra el producto «(1/2 orden)» y no la orden completa.",
+   "que_no_debe_hacer": "Decir que no existe; cotizar la orden completa.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K04",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "nachos_grandes_orden_completa",
+   "turnos_cliente": [
+    "Unos nachos grandes de pastor"
+   ],
+   "comportamiento_esperado": "«Grandes» no es parte del nombre: se cotiza la orden completa de nachos de pastor.",
+   "que_no_debe_hacer": "Decir que no hay nachos grandes; cotizar la media orden.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K05",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "xnipec_es_salsa_mexicana",
+   "turnos_cliente": [
+    "Con xnipec",
+    "Mejor cebolla con tomate y limón"
+   ],
+   "comportamiento_esperado": "Xnipec y «cebolla con tomate y limón» son la salsa mexicana: requested_complements = salsa_mexicana, sin costo.",
+   "que_no_debe_hacer": "Buscarla como producto; cobrarla; decir que no la manejan.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K06",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "sauceada_es_habanero_soasado",
+   "turnos_cliente": [
+    "El habanero sauceada",
+    "Con suasada también"
+   ],
+   "comportamiento_esperado": "«Sauceada» o «suasada» es el habanero soasado: requested_complements = salsa_habanero_soasado, sin costo.",
+   "que_no_debe_hacer": "Preguntar qué es; cobrarla; imprimir texto libre del cliente en la comanda.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K07",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pin_de_whatsapp_llega_al_repartidor",
+   "turnos_cliente": [
+    "[ubicación compartida por WhatsApp]",
+    "A domicilio, depto [N] de la privada [NOMBRE]"
+   ],
+   "comportamiento_esperado": "El pin se guarda solo en el pedido a domicilio (ubicacion_entrega) y la vista del repartidor lo abre en Maps; el agente no lo repite ni lo anota en notes.",
+   "que_no_debe_hacer": "Repetir las coordenadas; guardarlas en notes libres; abrir Maps con la dirección escrita pese a tener el pin.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts (+ apps/web/tests/restaurantes-destino-mapa.spec.ts)",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K08",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "link_de_maps_a_la_comanda",
+   "turnos_cliente": [
+    "Aquí está mi ubicación [LINK DE MAPS CON COORDENADAS]",
+    "Otra opción: [LINK CORTO DE MAPS]"
+   ],
+   "comportamiento_esperado": "Un link con coordenadas se convierte en pin; un link corto se guarda tal cual como enlace (no se sigue la redirección). Solo hosts de Maps.",
+   "que_no_debe_hacer": "Seguir redirecciones; aceptar enlaces de otros dominios; inventar coordenadas.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K09",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "efectivo_con_cambio",
+   "turnos_cliente": [
+    "Pago en efectivo, tengo billete de [MONTO]"
+   ],
+   "comportamiento_esperado": "Pregunta con cuánto paga y lo manda en efectivo_con (>= total). La comanda lleva «Paga con» y el cambio calculado por el servidor.",
+   "que_no_debe_hacer": "Calcular el cambio el modelo; aceptar un monto menor al total; ponerlo en notes.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K10",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "traigan_terminal",
+   "turnos_cliente": [
+    "Pago con tarjeta, traigan la terminal"
+   ],
+   "comportamiento_esperado": "llevar_terminal = true; la comanda dice «Llevar terminal» (implícito con tarjeta a domicilio) y la propina se pregunta solo con tarjeta.",
+   "que_no_debe_hacer": "Pedir datos de tarjeta por chat; imprimir terminal con pago en efectivo.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts (+ apps/web/tests/restaurantes-ticket-cocina.spec.ts)",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K11",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "indicaciones_de_acceso_y_telefono_alterno",
+   "turnos_cliente": [
+    "Es en el depto 6, toquen el timbre",
+    "Y avísenme al llegar, mi otro número es [TEL]"
+   ],
+   "comportamiento_esperado": "indicaciones_acceso (una línea, máx. 200 caracteres) y telefono_alterno (10 dígitos) van en su campo y salen en la comanda; no se promete un aviso de llegada del repartidor.",
+   "que_no_debe_hacer": "Meterlos en notes; aceptar un teléfono de 7 dígitos; prometer que el repartidor avisará.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K12",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "captura_de_mapa_o_foto_de_fachada",
+   "turnos_cliente": [
+    "[IMAGEN: captura de pantalla de un mapa]",
+    "[IMAGEN: foto de la fachada de la casa]"
+   ],
+   "comportamiento_esperado": "El agente no puede ver imágenes: pide el pin de WhatsApp si es una ubicación, o que describa la referencia en una línea si es una fachada. Nunca finge haberla visto.",
+   "que_no_debe_hacer": "Decir «no puedo abrirlo, escríbalo» y callar; describir la imagen; adivinar la dirección.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K13",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "sticker_tras_pedido_cerrado",
+   "turnos_cliente": [
+    "[STICKER de agradecimiento] (después de «Su pedido ya quedó registrado»)"
+   ],
+   "comportamiento_esperado": "Sin respuesta: el mensaje queda procesado en el ledger y no se llama al modelo. Sin pedido reciente, un sticker en medio de un pedido es un gesto y se sigue con lo que falta.",
+   "que_no_debe_hacer": "Contestar «no puedo abrir archivos»; gastar un turno de LLM.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts (+ tests/whatsapp-adjuntos-t7.spec.ts)",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K14",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "mensaje_borrado",
+   "turnos_cliente": [
+    "[MENSAJE BORRADO justo después de «agrégame 2 órdenes más»]"
+   ],
+   "comportamiento_esperado": "Si el último cambio confirmado venía de un mensaje que Meta entrega como no soportado o borrado, el agente pregunta qué quería antes de aplicarlo.",
+   "que_no_debe_hacer": "Aplicar el cambio sin preguntar; suponer el contenido.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts (marcador) + juez para el comportamiento",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K15",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "domicilio_programado_para_hoy",
+   "turnos_cliente": [
+    "Lo quiero a domicilio hoy a las [HORA], dentro de 3 horas"
+   ],
+   "comportamiento_esperado": "Usa programado_para (ISO 8601 con zona) con la hora pedida, la misma al cotizar y al crear; la ventana (30 min a 7 días) y el horario de la sucursal los valida el servidor. Para otro día o antes de abrir sigue escalando (decisión P1/P18 abierta).",
+   "que_no_debe_hacer": "Prometer la hora sin programarlo; decir que solo hay pedidos inmediatos.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/evals-agente-pm-k.spec.ts (prompt + paso de programado_para a la herramienta); la validación de ventana y horario la prueba tests/agent-programados.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K16",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "lluvia_en_t7",
+   "turnos_cliente": [
+    "Está lloviendo, ¿cuánto tardan?"
+   ],
+   "comportamiento_esperado": "Da el tiempo de la sucursal más un margen (provisional +20 min, decisión P15 del dueño); nunca una cifra menor ni un 1 h fijo que ya es el tiempo normal.",
+   "que_no_debe_hacer": "Mencionar la lluvia sin que el cliente la traiga; prometer el tiempo normal.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/whatsapp/perfil-pm-chats-t7.spec.ts (prompt) + juez",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K17",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "me_avisan_cuando_salga",
+   "turnos_cliente": [
+    "¿Me avisan cuando salga mi pedido?"
+   ],
+   "comportamiento_esperado": "Sí: el sistema manda «va en camino» cuando la sucursal lo marca como salido; sin hora exacta. El aviso de LLEGADA del repartidor no existe y no se promete.",
+   "que_no_debe_hacer": "Negarse a prometer el aviso de salida; prometer aviso de llegada.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/whatsapp/perfil-pm-chats-t7.spec.ts (prompt) + juez",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K18",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cliente_llego_a_recoger",
+   "turnos_cliente": [
+    "Ya llegué, estoy afuera en un auto gris"
+   ],
+   "comportamiento_esperado": "registrar_contacto(reason cliente_llego) valida un pedido real para recoger, avisa a la sucursal del pedido con notificación crítica y responde el mensaje fijo, sin minutos.",
+   "que_no_debe_hacer": "Avisar sin pedido para recoger; prometer tiempos; improvisar la respuesta.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/cliente-llego-recoger.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K19",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "factura_con_o_sin_enlace",
+   "turnos_cliente": [
+    "¿Me pueden facturar?"
+   ],
+   "comportamiento_esperado": "Con enlace configurado (PM_URL_FACTURACION) lo da; sin él NO lo inventa, dice que una persona se lo confirma y escala con motivo otro. Nunca pide RFC.",
+   "que_no_debe_hacer": "Inventar una URL; pedir RFC por chat.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/whatsapp/perfil-pm-chats-t7.spec.ts + apps/api/tests/url-facturacion-entorno.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K20",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pin_de_un_pedido_telefonico",
+   "turnos_cliente": [
+    "Ya pedí por teléfono, aquí va mi pin: [UBICACIÓN]"
+   ],
+   "comportamiento_esperado": "registrar_contacto(reason pedido_telefonico) pasa la nota y el pin a la sucursal sin crear pedido ni cotizar.",
+   "que_no_debe_hacer": "Crear un pedido nuevo; cotizar; guardar el pin sin avisar a la sucursal.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "determinista",
+   "depende_de": null,
+   "prueba": "tests/cliente-llego-recoger.spec.ts",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K21",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "persona_a_la_1_40_am",
+   "turnos_cliente": [
+    "[1:40 am] Necesito hablar con alguien por mi pedido de ayer"
+   ],
+   "comportamiento_esperado": "Escala con el motivo correcto y dice que el aviso quedó registrado y que el equipo responde a partir de las 12 del día; sin «en un momento».",
+   "que_no_debe_hacer": "Prometer respuesta inmediata cuando nadie contesta de 1 am a 12 del día.",
+   "dudas": [],
+   "estado": "pendiente_construccion",
+   "verificacion": "juez",
+   "depende_de": "cobertura por turnos en servidor (conversaciones/cobertura.ts `sinCobertura`): hoy solo el prompt lo cubre (tests/whatsapp/perfil-pm-chats-t7.spec.ts)",
+   "prueba": null,
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "K22",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "alitas_y_platillo_segun_descripcion",
+   "turnos_cliente": [
+    "¿Cuántas alitas vienen en la orden y con qué salsas?",
+    "¿Qué trae el Platillo PM?"
+   ],
+   "comportamiento_esperado": "Contesta con la descripción cargada del catálogo (piezas, salsas, qué trae cada Platillo PM, cambray preparada o natural); si el catálogo no la tiene, dice que lo confirma una persona.",
+   "que_no_debe_hacer": "Inventar piezas o ingredientes.",
+   "dudas": [],
+   "estado": "pendiente_construccion",
+   "verificacion": "juez",
+   "depende_de": "descripciones del menú T1-2026 en el seed (pm/menus-sucursal, fuera del repo): este PR no las carga",
+   "prueba": null,
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "KH01",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "venta_sugerida_apagada",
+   "turnos_cliente": [
+    "[pedido listo para cerrar]"
+   ],
+   "comportamiento_esperado": "Con venta_sugerida = ninguna (omisión) el agente no sugiere nada.",
+   "que_no_debe_hacer": "Sugerir bebida o postre.",
+   "dudas": [],
+   "estado": "pendiente_construccion",
+   "verificacion": "determinista",
+   "depende_de": "venta sugerida con interruptor (requiere columna de configuración del agente: SQL sin prefijo asignado)",
+   "prueba": null,
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "KH02",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "venta_sugerida_una_vez_y_no_insiste",
+   "turnos_cliente": [
+    "[pedido listo para cerrar]",
+    "No, gracias"
+   ],
+   "comportamiento_esperado": "Con la opción activa sugiere UNA vez; ante el «no» no insiste.",
+   "que_no_debe_hacer": "Insistir; repetir la sugerencia.",
+   "dudas": [],
+   "estado": "pendiente_construccion",
+   "verificacion": "determinista",
+   "depende_de": "venta sugerida con interruptor (SQL)",
+   "prueba": null,
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "KH03",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "venta_sugerida_respeta_nunca_ofrecer",
+   "turnos_cliente": [
+    "[pedido listo para cerrar]"
+   ],
+   "comportamiento_esperado": "Un producto en nunca_ofrecer no se sugiere.",
+   "que_no_debe_hacer": "Sugerir un producto vetado.",
+   "dudas": [],
+   "estado": "pendiente_construccion",
+   "verificacion": "determinista",
+   "depende_de": "venta sugerida con interruptor (SQL)",
+   "prueba": null,
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "KH04",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "venta_sugerida_sin_alcohol_a_domicilio",
+   "turnos_cliente": [
+    "[pedido a domicilio listo para cerrar]"
+   ],
+   "comportamiento_esperado": "A domicilio nunca sugiere cerveza.",
+   "que_no_debe_hacer": "Sugerir alcohol a domicilio.",
+   "dudas": [],
+   "estado": "pendiente_construccion",
+   "verificacion": "determinista",
+   "depende_de": "venta sugerida con interruptor (SQL)",
+   "prueba": null,
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "KH05",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "ya_salio_mi_pedido_con_rastreo",
+   "turnos_cliente": [
+    "¿Ya salió mi pedido?"
+   ],
+   "comportamiento_esperado": "Responde con el estado real y el enlace de rastreo.",
+   "que_no_debe_hacer": "Inventar el estado.",
+   "dudas": [],
+   "estado": "pendiente_construccion",
+   "verificacion": "juez",
+   "depende_de": "autopiloto-restaurantes-1 B-22 (enlace de rastreo)",
+   "prueba": null,
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "KH06",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "queja_llego_frio",
+   "turnos_cliente": [
+    "Mi pedido llegó frío"
+   ],
+   "comportamiento_esperado": "Handoff con subtipo «frio»; sin prometer reembolso.",
+   "que_no_debe_hacer": "Prometer reposición o descuento.",
+   "dudas": [],
+   "estado": "pendiente_construccion",
+   "verificacion": "juez",
+   "depende_de": "autopiloto-restaurantes-1 A-24 (subtipos de queja)",
+   "prueba": null,
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "KH07",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "queja_me_falto_la_gringa",
+   "turnos_cliente": [
+    "Me faltó la gringa"
+   ],
+   "comportamiento_esperado": "Handoff con subtipo «faltante»; sin prometer reembolso.",
+   "que_no_debe_hacer": "Prometer reembolso.",
+   "dudas": [],
+   "estado": "pendiente_construccion",
+   "verificacion": "juez",
+   "depende_de": "autopiloto-restaurantes-1 A-24 (subtipos de queja)",
+   "prueba": null,
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "KH08",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cliente_con_dos_no_recogidos",
+   "turnos_cliente": [
+    "[cliente con 2 pedidos «no recogido» en su historial] Quiero un pedido para recoger"
+   ],
+   "comportamiento_esperado": "Toma el pedido y avisa que la sucursal lo confirma, sin acusar.",
+   "que_no_debe_hacer": "Negarse a atenderlo; mencionar sus pedidos anteriores como acusación.",
+   "dudas": [],
+   "estado": "pendiente_construccion",
+   "verificacion": "determinista",
+   "depende_de": "cliente-360 B-05 (marca de no recogido)",
+   "prueba": null,
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "KH09",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "tiempo_exacto_en_hora_pico",
+   "turnos_cliente": [
+    "¿En cuántos minutos exactos me llega?"
+   ],
+   "comportamiento_esperado": "Da el rango de la sucursal (con el pico) y no inventa minutos.",
+   "que_no_debe_hacer": "Prometer una cifra exacta.",
+   "dudas": [],
+   "estado": "activo",
+   "verificacion": "juez",
+   "depende_de": null,
+   "prueba": "juez (prompt: H6 y paso 8)",
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  },
+  {
+   "id": "KH10",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "boton_cambiar_algo",
+   "turnos_cliente": [
+    "[botón de respuesta: «Cambiar algo»]"
+   ],
+   "comportamiento_esperado": "Pregunta qué quiere cambiar y no crea el pedido.",
+   "que_no_debe_hacer": "Crear el pedido; ignorar el botón.",
+   "dudas": [],
+   "estado": "pendiente_construccion",
+   "verificacion": "juez",
+   "depende_de": "botones de respuesta rápida salientes de Meta (B-11): el agente aún no los envía; la respuesta a un botón entrante ya se trata como texto del cliente",
+   "prueba": null,
+   "fuente": "auditoria chats T7 + cuestionario (2-oct-2026), reescrito con datos sinteticos"
+  }
+ ]
+}

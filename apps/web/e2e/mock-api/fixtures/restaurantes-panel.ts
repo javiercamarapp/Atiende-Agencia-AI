@@ -134,7 +134,9 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
     patron: `${B}/orders`,
     manejador: (p) => {
       const estado = p.query.get("status");
-      return { orders: ordenes(p).filter((o) => (estado ? o.status === estado : true)), nextCursor: null };
+      // Con varias sucursales sembradas (qa-r2-botones) cada sucursal ve solo sus pedidos, como el servidor real con branchId/propertyId.
+      const multisucursal = p.estado.obtener<unknown[]>("rest.branches", () => [{ propertyId: PROP.id, name: PROP.nombre, slug: "centro" }]).length > 1;
+      return { orders: ordenes(p).filter((o) => (estado ? o.status === estado : true) && (!multisucursal || o.propertyId === p.params["id"])), nextCursor: null };
     },
   },
   {
@@ -412,6 +414,9 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   { metodo: "PUT", patron: `${B}/config/whatsapp`, roles: ["owner", "admin"], manejador: (p) => { const v = String(((p.cuerpo ?? {}) as { phoneNumberId?: string }).phoneNumberId ?? ""); p.estado.guardar("rest.wa", v); return { phoneNumberId: v }; } },
   { metodo: "GET", patron: `${B}/config/zona-horaria`, roles: ["owner", "admin"], manejador: (p) => ({ zonaHoraria: p.estado.obtener<string | null>("rest.tz", () => "America/Merida") }) },
   { metodo: "PATCH", patron: `${B}/config/zona-horaria`, roles: ["owner", "admin"], manejador: (p) => { const v = ((p.cuerpo ?? {}) as { zona_horaria?: string | null }).zona_horaria ?? null; p.estado.guardar("rest.tz", v); return { zonaHoraria: v }; } },
+  // Sitio publico (Configuracion > Sitio publico): sin esta ruta la seccion pintaba un segundo EstadoError en el recorrido de errores.
+  { metodo: "GET", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: (p) => p.estado.obtener("rest.sitio", () => ({ marca: { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null }, guardada: false })) },
+  { metodo: "PUT", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: (p) => { const r = { marca: (p.cuerpo ?? {}) as Record<string, unknown>, guardada: true }; p.estado.guardar("rest.sitio", r); return r; } },
   { metodo: "GET", patron: `${B}/config/zonas`, roles: ["owner", "admin"], manejador: (p) => ({ zonas: lista(p, "rest.zonas", ZONAS_SEMILLA) }) },
   {
     metodo: "POST",
@@ -436,6 +441,27 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
       if (i < 0) return fallo(404, "Esa zona no existe");
       zonas.splice(i, 1);
       return { ok: true };
+    },
+  },
+
+  // ---------- Sitio publico (marca del storefront, R-38) ----------
+  {
+    metodo: "GET",
+    patron: `${B}/config/sitio-publico`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const marca = p.estado.obtener<Record<string, unknown> | null>("rest.marca", () => null);
+      return { marca: marca ?? { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null, updatedAt: null }, guardada: marca !== null };
+    },
+  },
+  {
+    metodo: "PUT",
+    patron: `${B}/config/sitio-publico`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const marca = { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null, ...((p.cuerpo ?? {}) as Record<string, unknown>), updatedAt: new Date().toISOString() };
+      p.estado.guardar("rest.marca", marca);
+      return { marca, guardada: true };
     },
   },
 
@@ -470,7 +496,7 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   { metodo: "POST", patron: `${B}/handoffs/:handoffId/cerrar`, manejador: (p) => { p.estado.guardar("rest.handoff-estado", "cerrada"); return { estado: "cerrada", cambio: true }; } },
   { metodo: "POST", patron: `${B}/handoffs/:handoffId/notas`, manejador: (p) => { const notas = p.estado.obtener("rest.handoff-notas", () => [] as unknown[]); const texto = String(((p.cuerpo ?? {}) as { texto?: string }).texto ?? ""); notas.push({ id: `nota-${notas.length + 1}`, autor: "Owner restaurantes", texto, creadoEn: new Date().toISOString() }); return { id: `nota-${notas.length}` }; } },
   { metodo: "POST", patron: `${B}/handoffs/:handoffId/responder`, manejador: () => ({ encolado: true }) },
-  { metodo: "GET", patron: `${B}/callbacks`, manejador: () => ({ disponible: true, items: [] }) },
+  { metodo: "GET", patron: `${B}/callbacks`, manejador: (p) => ({ disponible: true, items: p.estado.obtener("rest.callbacks", () => [] as unknown[]) }) },
   { metodo: "GET", patron: `${B}/turnos`, manejador: (p) => ({ disponible: true, turnos: p.estado.obtener("rest.turnos", () => [{ id: "turno-1", nombre: "Comida", dias: [1, 2, 3, 4, 5, 6], inicia: "12:00", termina: "01:00", miembros: [{ userId: "usr-1", nombre: "Lucia Xool", orden: 1 }] }]), cobertura: COBERTURA }) },
   { metodo: "PUT", patron: `${B}/turnos`, manejador: (p) => { const t = ((p.cuerpo ?? {}) as { turnos?: unknown[] }).turnos ?? []; p.estado.guardar("rest.turnos", t); return { disponible: true }; } },
 

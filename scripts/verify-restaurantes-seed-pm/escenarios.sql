@@ -154,6 +154,21 @@ select count(*)::int as politicas_correctas_deberia_ser_7
     and bp.horario->0->>'abre' = '12:00' and bp.horario->0->>'cierra' = '01:00' and jsonb_array_length(bp.horario->0->'dias') = 7;
 rollback;
 
+\echo '=== B1b. Directorio y domicilio (migracion 057): Galerias visible e informativa, Playa (Chicxulub) visible + solo recoger + de temporada, Pensiones sin restriccion de dias (PREGUNTA B13), el resto por omision ==='
+begin;
+select public.seed_pm_demo();
+select count(*)::int as directorio_correcto_deberia_ser_7
+  from restaurantes.branch_policy bp
+  join core.organization o on o.id = bp.organization_id
+  join restaurantes.branch_detail bd on bd.property_id = bp.property_id
+  where o.slug = 'los-taquitos-de-pm'
+    and case bd.slug
+      when 'galerias' then bp.visible_en_directorio is true and bp.acepta_domicilio and bp.dias_domicilio is null and not bp.de_temporada
+      when 'playa' then bp.visible_en_directorio is true and not bp.acepta_domicilio and bp.dias_domicilio is null and bp.de_temporada
+      else bp.visible_en_directorio is null and bp.acepta_domicilio and bp.dias_domicilio is null and not bp.de_temporada
+    end;
+rollback;
+
 \echo '=== B2. Promocion: 2x1 del lunes, solo recoger, sobre un unico producto elegible ==='
 begin;
 select public.seed_pm_demo();

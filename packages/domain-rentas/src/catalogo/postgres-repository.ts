@@ -129,14 +129,36 @@ export class PostgresRentasCatalogoRepository implements RentasCatalogoRepositor
   }
 
   async listarUnidades(propertyId: string): Promise<readonly UnidadCatalogoRecord[]> {
-    const { rows } = await this.db.query<{ id: string; property_id: string; name: string; duracion_minima_noches: number; owner_id: string | null; owner_name: string | null }>(
-      `select u.id, u.property_id, u.name, u.duracion_minima_noches, u.owner_id, o.name as owner_name
-       from rentas.unidad u
-       left join rentas.owner o on o.id = u.owner_id
-       where u.property_id = $1
-       order by u.name;`,
-      [propertyId],
-    );
+    type Fila = { id: string; property_id: string; name: string; duracion_minima_noches: number; owner_id: string | null; owner_name: string | null; responsable_limpieza_default?: string | null };
+    // La columna `responsable_limpieza_default` es de la migracion 033: contra la base sin migrar (42703) la lectura cae a la consulta
+    // anterior (sin responsable). Dentro de un SAVEPOINT: la sesion es UNA transaccion por request y un error la dejaria abortada.
+    const rows = await runWithSavepointFallback<Fila[]>({
+      session: this.db,
+      savepointName: "sp_catalogo_listar_unidades",
+      primary: async () =>
+        (
+          await this.db.query<Fila>(
+            `select u.id, u.property_id, u.name, u.duracion_minima_noches, u.owner_id, o.name as owner_name, u.responsable_limpieza_default
+             from rentas.unidad u
+             left join rentas.owner o on o.id = u.owner_id
+             where u.property_id = $1
+             order by u.name;`,
+            [propertyId],
+          )
+        ).rows,
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () =>
+        (
+          await this.db.query<Fila>(
+            `select u.id, u.property_id, u.name, u.duracion_minima_noches, u.owner_id, o.name as owner_name
+             from rentas.unidad u
+             left join rentas.owner o on o.id = u.owner_id
+             where u.property_id = $1
+             order by u.name;`,
+            [propertyId],
+          )
+        ).rows,
+    });
     return rows.map((r) => ({
       id: r.id,
       propertyId: r.property_id,
@@ -144,6 +166,7 @@ export class PostgresRentasCatalogoRepository implements RentasCatalogoRepositor
       duracionMinimaNoches: r.duracion_minima_noches,
       propietarioId: r.owner_id,
       propietarioNombre: r.owner_name,
+      responsableLimpiezaId: r.responsable_limpieza_default ?? null,
     }));
   }
 
@@ -237,6 +260,13 @@ export class PostgresRentasCatalogoRepository implements RentasCatalogoRepositor
         e.propietarioId === null,
         e.duracionMinimaNoches ?? null,
       ]);
+      return { id: rows[0]!.id };
+    });
+  }
+
+  fijarResponsableLimpieza(unidadId: string, responsableId: string | null): Promise<ResultadoCatalogo<{ id: string }>> {
+    return this.escribir("fijar_responsable_limpieza_unidad", async () => {
+      const { rows } = await this.db.query<{ id: string }>(`select rentas.fijar_responsable_limpieza_unidad($1::uuid, $2::uuid) as id;`, [unidadId, responsableId]);
       return { id: rows[0]!.id };
     });
   }

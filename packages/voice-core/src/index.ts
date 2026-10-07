@@ -29,10 +29,12 @@ export type { ContextoEjecucionTool, EjecutorTools, EjecutorToolsOpciones, Regis
 export { ControladorLlamada } from "./llamada/controlador.ts";
 export type { DecisionGuardiaCliente, DepsControlador, EventoKpiLlamada, GuardiaCliente, ResultadoLlamada, TurnoTranscrito } from "./llamada/controlador.ts";
 export type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, ToolCallPedida, VozSesionLlamada } from "./llamada/sesion.ts";
-export { GEMINI_LIVE_WS_URL, crearProveedorGeminiLlamada, declaracionesDeHerramientas, mensajeSetup } from "./llamada/gemini-live-sesion.ts";
-export type { CrearSocketLive, GeminiLiveSesionOpciones, ProveedorGeminiLlamada, SocketLive } from "./llamada/gemini-live-sesion.ts";
-export { ESCALERA_VOZ, VOZ_PLATAFORMA, costoEstimadoMicroUsd, precioPorMinutoMicroUsd } from "./config-plataforma.ts";
-export type { ConfigPlataformaVoz, EscalonVoz } from "./config-plataforma.ts";
+export { GEMINI_LIVE_WS_URL, crearProveedorGeminiLlamada, declaracionesDeHerramientas, mensajeSetup, vertexLiveWsUrl, vertexModelPath } from "./llamada/gemini-live-sesion.ts";
+export type { CrearSocketLive, GeminiLiveSesionOpciones, OpcionesSocketLive, ProveedorGeminiLlamada, SocketLive, VertexLiveOpciones } from "./llamada/gemini-live-sesion.ts";
+export { ESCALERA_VOZ, VOZ_PLATAFORMA, costoDeUsoGeminiMicroUsd, costoEstimadoMicroUsd, precioPorMinutoMicroUsd } from "./config-plataforma.ts";
+export type { ConfigPlataformaVoz, EscalonVoz, UsoGemini } from "./config-plataforma.ts";
+export { COSTO_MAX_LLAMADA_MICRO_USD, ESCENARIOS_COSTO_GEMINI, TOKENS_AUDIO_POR_SEGUNDO, estimarCostoLlamadaGemini } from "./costo-gemini.ts";
+export type { CostoLlamadaGemini, EscenarioLlamadaGemini } from "./costo-gemini.ts";
 export { costoTotalMicroUsd, eventosCostoLlamada } from "./costo.ts";
 export type { EntradaEventosCosto, EventoCostoUso, TramoLlamada } from "./costo.ts";
 export { crearEscaleraLlamada } from "./escalera.ts";
@@ -41,3 +43,7 @@ export { crearProveedorCascadaLlamada, energiaRms, pcm16AWav, pistaVocabulario }
 export type { CascadaOpenRouterOpciones, MensajeLlmVoz, PeticionLlmVoz, ProveedorCascadaLlamada, PuertoLlmVoz, RespuestaLlmVoz, ToolCallLlmVoz } from "./llamada/cascada-openrouter.ts";
 export { crearEscalonesPlataforma, crearEscaleraPlataforma, estadoEscalera } from "./plataforma.ts";
 export type { CredencialesVoz, DepsPlataformaVoz, EstadoEscaleraVoz, EstadoEscalonVoz } from "./plataforma.ts";
+export { AJUSTES_HABLA_POR_DEFECTO, ESTILOS_HABLA, RITMOS_HABLA, TEMPERATURA_VOZ_MAX, TEMPERATURA_VOZ_MIN, conInstruccionDeHabla, esEstiloHabla, esRitmoHabla, esTemperaturaVoz, instruccionDeHabla } from "./ajustes-habla.ts";
+export type { AjustesHabla, EstiloHabla, RitmoHabla } from "./ajustes-habla.ts";
+export { FONDO_VOLUMEN_MAX, FONDO_VOLUMEN_MIN, FONDO_VOLUMEN_POR_DEFECTO, FondoRestaurante, HZ_AUDIO_AGENTE, esVolumenFondo } from "./fondo-ambiente.ts";
+export type { OpcionesFondo } from "./fondo-ambiente.ts";
