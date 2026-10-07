@@ -55,7 +55,7 @@ afterEach(() => {
 });
 
 describe("validarFormulario", () => {
-  const ok = { nombre: "Ana", telefono: "999 123 4567", correo: "", direccion: "Calle 1", colonia: "Vista Alegre", notas: "", codigoPromo: "", propina: "", mayorDeEdad: false, acepta: true };
+  const ok = { nombre: "Ana", telefono: "999 123 4567", correo: "", direccion: "Calle 1", colonia: "Vista Alegre", notas: "", codigoPromo: "", propina: "", mayorDeEdad: false, promociones: false, acepta: true };
   it("acepta un formulario completo", () => {
     expect(validarFormulario(ok, "domicilio", "efectivo", false, true)).toEqual({});
   });
@@ -186,7 +186,7 @@ describe("checkout completo", () => {
     act(() => changeValue(campo("Teléfono"), "999 123 4567"));
     act(() => click(aside.querySelector<HTMLInputElement>("input[type=checkbox]:not([id*=none])")!)); // mayoria de edad
     const checks = aside.querySelectorAll<HTMLInputElement>("input[type=checkbox]");
-    act(() => click(checks[1]!)); // privacidad
+    act(() => click(checks[checks.length - 1]!)); // privacidad (siempre el ultimo; antes va la casilla opcional de promociones)
     await act(async () => submitForm(aside.querySelector("form")!));
     await esperar();
     const cot = llamadas.find((l) => l.url.endsWith("/quote"))!;
@@ -198,6 +198,9 @@ describe("checkout completo", () => {
     await esperar();
     const orden = llamadas.find((l) => l.url.endsWith("/orders"))!;
     expect(orden.body).toMatchObject({ customer_name: "Ana Pérez", customer_phone: "999 123 4567", quote_hash: "a".repeat(32), acepta_aviso_privacidad: true });
+    // La casilla de promociones por WhatsApp nace DESMARCADA: sin que la persona la marque no viaja ningun consentimiento de marketing.
+    expect(orden.body).not.toHaveProperty("acepta_promociones");
+    expect(aside.textContent).toContain("Quiero recibir promociones por WhatsApp");
     expect(llamadas.map((l) => l.url.split("/").pop())).toEqual(expect.arrayContaining(["quote", "confirm", "orders"]));
     expect(window.location.pathname).toBe("/pedir/demo/pedido/t1.abc.def");
     expect(window.location.href).not.toMatch(/Ana|9991234567|999/);
@@ -224,8 +227,8 @@ describe("checkout completo", () => {
     act(() => changeValue(campo("Nombre"), "Ana"));
     act(() => changeValue(campo("Teléfono"), "9991234567"));
     const checks = aside.querySelectorAll<HTMLInputElement>("input[type=checkbox]");
-    act(() => click(checks[0]!));
-    act(() => click(checks[1]!));
+    act(() => click(checks[0]!)); // mayoria de edad
+    act(() => click(checks[checks.length - 1]!)); // privacidad (la casilla opcional de promociones va antes)
     await act(async () => submitForm(aside.querySelector("form")!));
     await esperar();
     expect(aside.querySelector('[role="alert"]')?.textContent).toContain("cerrada en este momento");

@@ -29,6 +29,7 @@ export const DESTINOS: readonly Destino[] = [
   { sub: "/productos", nombre: "Productos", soloGestion: false },
   { sub: "/promociones", nombre: "Promociones", soloGestion: true },
   { sub: "/clientes", nombre: "Clientes", soloGestion: false },
+  { sub: "/campanas", nombre: "Campañas", soloGestion: true },
   { sub: "/sucursales", nombre: "Sucursales", soloGestion: false },
   { sub: "/agente-voz", nombre: "Agente de voz", soloGestion: true },
   { sub: "/agente-whatsapp", nombre: "Agente de WhatsApp", soloGestion: true },

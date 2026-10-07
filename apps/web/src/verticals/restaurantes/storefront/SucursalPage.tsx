@@ -61,10 +61,11 @@ interface FormularioCliente {
   codigoPromo: string;
   propina: string;
   mayorDeEdad: boolean;
+  promociones: boolean;
   acepta: boolean;
 }
 
-const FORM_VACIO: FormularioCliente = { nombre: "", telefono: "", correo: "", direccion: "", colonia: "", notas: "", codigoPromo: "", propina: "", mayorDeEdad: false, acepta: false };
+const FORM_VACIO: FormularioCliente = { nombre: "", telefono: "", correo: "", direccion: "", colonia: "", notas: "", codigoPromo: "", propina: "", mayorDeEdad: false, promociones: false, acepta: false };
 
 export function validarFormulario(f: FormularioCliente, canal: Canal, pago: MetodoPago | null, alcohol: boolean, hayZonas: boolean): Partial<Record<keyof FormularioCliente | "pago", string>> {
   const e: Partial<Record<keyof FormularioCliente | "pago", string>> = {};
@@ -259,7 +260,7 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
     try {
       await cliente.confirmar(branchSlug, sessionId.current, cotizacion?.quote_hash ?? null);
       const propina = form.propina.trim() && puedePropina ? Number(form.propina) : undefined;
-      const creado = await cliente.crearPedido(branchSlug, datosPedido(), { nombre: form.nombre, telefono: form.telefono, correo: form.correo, direccion: form.direccion, notas: form.notas, propina, aceptaAviso: form.acepta }, cotizacion?.quote_hash ?? null);
+      const creado = await cliente.crearPedido(branchSlug, datosPedido(), { nombre: form.nombre, telefono: form.telefono, correo: form.correo, direccion: form.direccion, notas: form.notas, propina, aceptaAviso: form.acepta, aceptaPromociones: form.promociones }, cotizacion?.quote_hash ?? null);
       limpiarSesion();
       notify.success(creado.ya_registrado ? "Tu pedido ya estaba registrado." : "¡Pedido recibido!");
       navigate(`/pedir/${orgSlug}/pedido/${encodeURIComponent(creado.rastreo_token)}`);
@@ -438,6 +439,15 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
         )}
       </FormField>
     )}
+    <FormField label="Promociones (opcional)">
+      {(p) => (
+        <label className="flex items-start gap-2 text-sm">
+          <Checkbox {...p} checked={form.promociones} onChange={(e) => cambiar("promociones", e.target.checked)} />
+          <span>Quiero recibir promociones por WhatsApp. Puedes darte de baja cuando quieras escribiendo BAJA.</span>
+        </label>
+      )}
+    </FormField>
+
     <FormField label="Aviso de privacidad" error={errores.acepta}>
       {(p) => (
         <label className="flex items-start gap-2 text-sm">

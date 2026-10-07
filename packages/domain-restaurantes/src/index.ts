@@ -376,6 +376,10 @@ export {
 export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
 export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operativos.ts";
 export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
+export { diaMerida } from "./alertas-duenio/dia.ts";
+export { emitirAlertasProveedor, evaluarSaludProveedor, GRAPH_CODIGO_TOKEN_INVALIDO, UMBRAL_FALLAS_PROVEEDOR } from "./alertas-duenio/proveedor.ts";
+export type { DiagnosticoProveedorOrg, ItemDespachoOrg, ResultadoAlertasProveedor } from "./alertas-duenio/proveedor.ts";
+
 export * from "./encuesta-reglas.ts";
 export * from "./resenas-provider.ts";
 export * from "./mezcla-de-pago.ts";
@@ -384,3 +388,36 @@ export * from "./sucursal-sugerida.ts";
 export * from "./ajustes-agente/index.ts";
 
 export * from "./conocimiento/index.ts";
+export { cargaDeRepartidor, sugerirRepartidor } from "./repartidor-sugerido.ts";
+export type { CandidatoRepartidor, CargaRepartidor, SugerenciaRepartidor } from "./repartidor-sugerido.ts";
+export {
+  MarketingNoDisponibleError,
+  MarketingParametrosError,
+  MarketingRechazadoError,
+  MarketingSinAccesoError,
+  SEGMENTOS_MARKETING,
+  decidirCampana,
+  generarBorradoresMarketing,
+  guardarConfigMarketing,
+  leerConfigMarketing,
+  listarCampanas,
+  registrarConsentimientoMarketing,
+  revocarMarketingPorTelefono,
+} from "./marketing/campanas.ts";
+export type {
+  BorradorGenerado,
+  CampanaMarketing,
+  CodigoRechazoMarketing,
+  ConfigMarketing,
+  EntradaConfigMarketing,
+  EstadoCampana,
+  LecturaMarketing,
+  ResultadoBorradores,
+  ResultadoConsentimiento,
+  ResultadoDecision,
+  SegmentoMarketing,
+} from "./marketing/campanas.ts";
+export { AlertasDuenioNoDisponibleError, AlertasDuenioParametrosError, AlertasDuenioSinAccesoError, UMBRALES_ALERTAS_POR_OMISION, barrerSilencioWhatsapp, guardarUmbralesAlertasDuenio, leerUmbralesAlertasDuenio } from "./alertas-duenio/silencio.ts";
+export type { CandidatoSilencio, ResultadoSilencio, UmbralesAlertasDuenio } from "./alertas-duenio/silencio.ts";
+export { avisarPresupuestoIaAlDuenio } from "./alertas-duenio/presupuesto.ts";
+export type { ResultadoAvisoPresupuesto, UmbralPresupuestoIa } from "./alertas-duenio/presupuesto.ts";

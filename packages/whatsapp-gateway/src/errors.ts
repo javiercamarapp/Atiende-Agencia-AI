@@ -5,10 +5,20 @@
 // packages/voice-gateway/src/errors.ts -- VoiceProviderError -- paquete retirado del
 // árbol por falta de consumidor real, ver docs/CREDENCIALES.md §"Voz".)
 
+/** Diagnostico estructurado de una falla del PROVEEDOR (red o respuesta de Graph API). Sin texto libre ni datos del mensaje. */
+export interface WhatsAppProviderFailureInfo {
+  /** `true` = la falla vino de Meta o de la red hacia Meta (no de la configuracion ni del payload encolado). */
+  readonly proveedor: boolean;
+  readonly httpStatus?: number;
+  /** `error.code` del cuerpo de Graph API (190 = token invalido o vencido). */
+  readonly graphCode?: number;
+}
+
 export class WhatsAppSendError extends Error {
   constructor(
     message: string,
     readonly retryable: boolean = true,
+    readonly info?: WhatsAppProviderFailureInfo,
   ) {
     super(message);
     this.name = new.target.name;

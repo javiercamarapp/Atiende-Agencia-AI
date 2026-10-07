@@ -127,6 +127,17 @@ function cierresGenerados(p: { estado: { obtener<T>(k: string, s: () => T): T } 
   return p.estado.obtener("rest.cierres", () => [cierreMock("dia", diaRelativo(-3), 0)]);
 }
 
+
+// Estado de las campanas de reactivacion (una configuracion lista y un borrador por aprobar con costo estimado).
+function marketingConfig(p: { estado: { obtener<T>(k: string, s: () => T): T } }) {
+  return p.estado.obtener("rest.marketing.config", () => ({ activo: true, tarifaCentavos: 80 as number | null, topeMensualCentavos: null as number | null, minimoSegmento: 10, plantillaNombre: "reactivacion_promo" as string | null, plantillaIdioma: "es_MX", hayPromocionVigente: true, plantillaAprobada: true, whatsappConectado: true, gastadoMesCentavos: 0, consentimientosVigentes: 40 }));
+}
+function marketingCampanas(p: { estado: { obtener<T>(k: string, s: () => T): T } }) {
+  return p.estado.obtener("rest.marketing.campanas", () => [
+    { id: "camp-e2e-1", segmento: "inactivo_30", estado: "borrador" as "borrador" | "aprobada" | "rechazada" | "expirada", conteo: 23, conteoControl: 2, costoEstimadoCentavos: 1840, promoNombre: "Vuelve con 10 por ciento", promoCodigo: "VUELVE10", creadaAt: "2026-09-30T14:00:00.000Z", decididaAt: null as string | null, encolados: null as number | null, enviados: 0, recompraTratados: 0, recompraControl: 0, ingresoTratados: 0, ventanaCerrada: false },
+  ]);
+}
+
 export const rutasRestaurantesPanel: readonly Ruta[] = [
   // ---------- Pedidos (estado compartido con el repartidor y el Historial) ----------
   {
@@ -273,6 +284,40 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
       return { promotion: promo };
     },
   },
+
+  // ---------- Campanas de reactivacion (autopiloto 2): forma de lib/marketing-client.ts (contrato de admin-marketing.ts) ----------
+  { metodo: "GET", patron: `${B}/marketing`, roles: ["owner", "admin"], manejador: (p) => ({ disponible: true, config: marketingConfig(p), campanas: marketingCampanas(p) }) },
+  { metodo: "PUT", patron: `${B}/marketing/config`, roles: ["owner", "admin"], manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { activo?: boolean; tarifaCentavos?: number | null; topeMensualCentavos?: number | null; minimoSegmento?: number; plantillaNombre?: string | null };
+      if (typeof c.activo !== "boolean") return fallo(400, "activo: se esperaba un booleano.");
+      Object.assign(marketingConfig(p), { activo: c.activo, tarifaCentavos: c.tarifaCentavos ?? null, topeMensualCentavos: c.topeMensualCentavos ?? null, minimoSegmento: c.minimoSegmento ?? 10, plantillaNombre: c.plantillaNombre ?? null });
+      return { disponible: true, config: marketingConfig(p) };
+    } },
+  { metodo: "POST", patron: `${B}/marketing/campanas/:campanaId/decidir`, roles: ["owner", "admin"], manejador: (p) => {
+      const k = marketingCampanas(p).find((x) => x.id === p.params["campanaId"]);
+      if (!k) return fallo(403, "Sin acceso a las campañas de esta organización.");
+      const accion = (p.cuerpo as { accion?: string } | undefined)?.accion;
+      if (accion !== "aprobar" && accion !== "rechazar") return fallo(400, 'accion: se esperaba "aprobar" o "rechazar".');
+      if (k.estado !== "borrador") return fallo(409, "Esta campaña ya fue decidida o expiró; espera el siguiente borrador.");
+      if (accion === "rechazar") {
+        k.estado = "rechazada";
+        return { estado: "rechazada", encolados: 0, control: 0 };
+      }
+      k.estado = "aprobada";
+      k.encolados = k.conteo;
+      k.decididaAt = new Date().toISOString();
+      return { estado: "aprobada", encolados: k.conteo, control: k.conteoControl };
+    } },
+
+  // ---------- Repartidor sugerido (autopiloto 2): solo lectura, NO asigna ----------
+  { metodo: "GET", patron: `${B}/repartidor-sugerido`, roles: ["owner", "admin", "staff"], manejador: (p) => {
+      const ids = (p.query.get("orderIds") ?? "").split(",").filter((x) => x.length > 0);
+      const sugerencias: Record<string, { repartidorId: string; nombre: string; enCamino: number }> = {};
+      for (const o of ordenes(p)) {
+        if (ids.includes(o.id) && o.status === "preparando" && o.canal !== "recoger" && !o.assignedRepartidorId) sugerencias[o.id] = { repartidorId: "usr-2", nombre: "Ramon Uc", enCamino: 0 };
+      }
+      return { sugerencias };
+    } },
 
   // ---------- Clientes (ficha) ----------
   // Politica de reincidencia: va ANTES de `/customers/:customerId` (misma regla que el servidor real, que la registra primero).

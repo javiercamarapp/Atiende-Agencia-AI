@@ -209,6 +209,8 @@ export interface DatosCliente {
   readonly propina?: number;
   /** Casilla del aviso de privacidad: el servidor la exige y guarda la evidencia (version del aviso, fecha, canal `web`). */
   readonly aceptaAviso: boolean;
+  /** Casilla OPCIONAL y desmarcada: promociones por WhatsApp (consentimiento de marketing). Solo `true` se envia. */
+  readonly aceptaPromociones?: boolean;
 }
 
 function enc(v: string): string {
@@ -316,6 +318,7 @@ export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetc
           notes: cliente.notas?.trim() || undefined,
           propina: cliente.propina !== undefined && cliente.propina > 0 ? cliente.propina : undefined,
           acepta_aviso_privacidad: cliente.aceptaAviso === true,
+          acepta_promociones: cliente.aceptaPromociones === true ? true : undefined,
         }),
         "No pudimos registrar tu pedido.",
       );
