@@ -40,12 +40,13 @@ export async function guardedFetch(fetchImpl: typeof fetch, url: string, init: R
   }
 }
 
-/** Clasifica una respuesta HTTP no exitosa: 401/403 (bloqueo) y 404/410 (retirada) son "fuente no disponible"; 429 y el resto los maneja cada conector. */
+/**
+ * Clasifica una respuesta HTTP no exitosa: SOLO 401/403 (bloqueo del origen) son "fuente no disponible". Un 404/410 NO se degrada:
+ * las URL de los conectores son constantes de este repo, así que un recurso movido o retirado se corrige aquí y debe seguir
+ * contando como fallo real del cron. 429 y el resto los maneja cada conector.
+ */
 export function throwIfSourceUnavailable(status: number, label: string, url: string): void {
   if (status === 401 || status === 403) {
     throw new SourceUnavailableError("blocked", `${label} respondió ${status} en ${url} (acceso denegado/bloqueo del origen; no es corregible desde este repo).`);
-  }
-  if (status === 404 || status === 410) {
-    throw new SourceUnavailableError("not_found", `${label} respondió ${status} en ${url} (recurso retirado o movido; verificar la URL vigente de la fuente).`);
   }
 }

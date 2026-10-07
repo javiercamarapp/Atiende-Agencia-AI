@@ -66,17 +66,14 @@ export class RateLimitedError extends Error {
 }
 
 /**
- * La fuente externa NO está disponible por causas ajenas al código y a la
- * configuración de Atiende: la bloquea un WAF (403 "Access Denied"), la
- * retiraron (404/410, host inexistente), su certificado TLS es inválido o
- * está vencido, o no es alcanzable desde el entorno de ejecución. Es un fallo
- * HONESTO de la fuente (queda en `source_run` como `down`, con su aviso y su
- * obsolescencia visibles), pero el cron `discover-tenders` NO lo cuenta como
- * fallo real de toda la corrida: no hay nada que corregir en este repo y
- * marcar el latido en rojo cada día tapa los fallos que sí lo son.
- * Jamás se desactiva la verificación TLS ni se evade un WAF para "arreglarlo".
+ * La fuente externa NO está disponible por causas ajenas a este repo: la bloquea un WAF (401/403), su certificado TLS es inválido o
+ * está vencido, o no es alcanzable desde el entorno de ejecución (DNS, timeout, conexión rechazada). Un 404/410 NO entra aquí: las
+ * URL son constantes del repo y se corrigen en el código. Es un fallo HONESTO de la fuente: queda en `source_run` como `down`, con su
+ * aviso, y el cron `discover-tenders` no lo cuenta como fallo real de la corrida mientras la fuente no supere su umbral de
+ * obsolescencia (ver `DEFAULT_STALE_THRESHOLD_MS`); pasado el umbral el cron emite alerta alta y aviso de campana sin poner el latido
+ * en rojo. Jamás se desactiva la verificación TLS ni se evade un WAF para "arreglarlo".
  */
-export type SourceUnavailableReason = "blocked" | "not_found" | "tls_invalid" | "unreachable";
+export type SourceUnavailableReason = "blocked" | "tls_invalid" | "unreachable";
 
 export class SourceUnavailableError extends Error {
   readonly reason: SourceUnavailableReason;

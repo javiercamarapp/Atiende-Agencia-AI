@@ -47,10 +47,11 @@ describe("fuentes no disponibles se clasifican, no se ocultan", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("guadalajara_ocds: /edca/fiscalYears 404 (API retirada) -> no disponible; 500 -> fallo REAL", async () => {
+  it("guadalajara_ocds: /edca/fiscalYears 404 y 500 son fallos REALES (la URL es constante del repo)", async () => {
     const make = (status: number) => createGuadalajaraOcdsConnector({ fetchImpl: (async () => new Response("{}", { status })) as unknown as typeof fetch });
     const gone = await drain(make(404).discover({}, { now: () => new Date("2026-10-07T00:00:00Z") })).catch((e: unknown) => e);
-    expect(classifySourceFailure(gone).unavailable).toBe(true);
+    expect(gone).not.toBeInstanceOf(SourceUnavailableError);
+    expect(classifySourceFailure(gone).unavailable).toBeUndefined();
     const broken = await drain(make(500).discover({}, { now: () => new Date("2026-10-07T00:00:00Z") })).catch((e: unknown) => e);
     expect(broken).not.toBeInstanceOf(SourceUnavailableError);
     expect(classifySourceFailure(broken)).toEqual({ state: "down", message: expect.stringContaining("500") });
