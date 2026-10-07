@@ -64,6 +64,8 @@ interface Handlers {
   ordersOk?: boolean;
   repartidores?: readonly typeof REPARTIDOR[];
   repartidoresOk?: boolean;
+  sugerencias?: Record<string, { repartidorId: string; nombre: string; enCamino: number }>;
+  sugerenciasOk?: boolean;
 }
 
 function stubFetch(handlers: Handlers) {
@@ -71,6 +73,9 @@ function stubFetch(handlers: Handlers) {
     const method = init?.method ?? "GET";
     if (url.includes("/admin/staff/repartidores")) {
       return jsonResponse({ repartidores: handlers.repartidores ?? [] }, handlers.repartidoresOk ?? true);
+    }
+    if (method === "GET" && url.includes("/admin/repartidor-sugerido")) {
+      return jsonResponse({ sugerencias: handlers.sugerencias ?? {} }, handlers.sugerenciasOk ?? true);
     }
     if (method === "GET" && url.includes("/admin/orders")) {
       const statusParam = new URL(url).searchParams.get("status") ?? "";
@@ -214,5 +219,45 @@ describe("PedidosPage (restaurantes)", () => {
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/restaurantes/prop-1/admin/orders/ord-1/assign-repartidor" && init?.method === "PATCH");
     expect(call).toBeDefined();
     expect(JSON.parse(call![1].body as string)).toEqual({ repartidorId: "rep-1" });
+  });
+  describe("repartidor sugerido (autopiloto semiautomatico)", () => {
+    const PREPARANDO: OrderSummary = { ...PEDIDO_PENDING, id: "ord-9", status: "preparando", canal: "domicilio" };
+
+    it("un pedido a domicilio en preparando muestra «Asignar a X» y un clic llama PATCH .../assign-repartidor con ese repartidor (el sistema solo sugiere)", async () => {
+      stubFetch({ byStatus: { preparando: [PREPARANDO] }, repartidores: [REPARTIDOR], sugerencias: { "ord-9": { repartidorId: "rep-1", nombre: "Repartidor Uno", enCamino: 0 } } });
+      rendered = renderPage();
+      await esperarCarga();
+
+      const boton = rendered.container.querySelector('[data-testid="asignar-sugerido-ord-9"]') as HTMLButtonElement;
+      expect(boton.textContent).toContain("Asignar a Repartidor Uno");
+      // Solo se pidio la sugerencia: ningun PATCH hasta que el gerente hace clic.
+      expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+      const consulta = fetchMock.mock.calls.find(([url]) => String(url).includes("/admin/repartidor-sugerido"));
+      expect(consulta![0]).toBe("https://api.test/v1/restaurantes/prop-1/admin/repartidor-sugerido?orderIds=ord-9");
+
+      await act(async () => {
+        boton.click();
+        await flushMicrotasks();
+      });
+      const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/restaurantes/prop-1/admin/orders/ord-9/assign-repartidor" && init?.method === "PATCH");
+      expect(call).toBeDefined();
+      expect(JSON.parse(call![1].body as string)).toEqual({ repartidorId: "rep-1" });
+    });
+
+    it("sin sugerencia del servidor (o con error) no aparece el boton y la lista de pedidos sigue intacta; a recoger y ya asignados ni la consultan", async () => {
+      stubFetch({ byStatus: { preparando: [PREPARANDO] }, repartidores: [REPARTIDOR], sugerenciasOk: false });
+      rendered = renderPage();
+      await esperarCarga();
+      expect(rendered.container.querySelector('[data-testid="asignar-sugerido-ord-9"]')).toBeNull();
+      expect(rendered.container.textContent).toContain("Juan Pérez");
+      rendered.unmount();
+
+      const recoger: OrderSummary = { ...PREPARANDO, id: "ord-10", canal: "recoger" };
+      const asignado: OrderSummary = { ...PREPARANDO, id: "ord-11", assignedRepartidorId: "rep-1" };
+      stubFetch({ byStatus: { preparando: [recoger, asignado] }, repartidores: [REPARTIDOR] });
+      rendered = renderPage();
+      await esperarCarga();
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/admin/repartidor-sugerido"))).toBe(false);
+    });
   });
 });

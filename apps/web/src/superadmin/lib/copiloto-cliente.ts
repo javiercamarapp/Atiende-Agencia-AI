@@ -5,7 +5,8 @@
 //   POST /superadmin/acciones/intents/:id/confirmar             -> confirma un intent del catalogo (step-up)
 // Nada se inventa: cualquier fallo se traduce a un estado honesto. `fetchImpl` es inyectable (las pruebas nunca tocan la red).
 import { CopilotoAccionError } from "@atiende/ui";
-import type { CopilotoAccionEstado, CopilotoAccionPropuesta, CopilotoAccionVista, CopilotoAccionesCliente } from "@atiende/ui";
+import type { CopilotoAccionEstado, CopilotoAccionPropuesta, CopilotoAccionVista, CopilotoAccionesCliente, FijadosCliente } from "@atiende/ui";
+import { crearClienteFijados } from "../../lib/copiloto/fijados.ts";
 import { crearTransporteCopiloto } from "../../lib/copiloto/transporte.ts";
 import type { CopilotoTransporteVertical } from "../../lib/copiloto/transporte.ts";
 import { fetchConStepUp, solicitarStepUp, stepUpVigente } from "./stepup.ts";
@@ -27,6 +28,10 @@ export type EstadoCopilotoSuperadmin =
       readonly motivo: "no_activado" | "interruptor_apagado" | "tope_mensual" | null;
       readonly usoMensualPct: number | null;
       readonly propone: boolean;
+      /** El servidor ofrece el tablero de fijados (superadmin completo; `finanzas` no). */
+      readonly fijados: boolean;
+      /** El servidor ofrece "Adjuntar archivo" (superadmin completo; `finanzas` no). */
+      readonly adjuntos: boolean;
       readonly stepUpRequerido: boolean;
     }
   | { readonly tipo: "sin_acceso" }
@@ -61,6 +66,8 @@ export async function consultarEstadoSuperadmin(apiBaseUrl: string, token: strin
       motivo,
       usoMensualPct: typeof gasto === "number" && Number.isFinite(gasto) ? Math.min(100, Math.max(0, gasto)) : null,
       propone: acciones === true,
+      fijados: json["fijados"] === true,
+      adjuntos: json["adjuntos"] === true,
       stepUpRequerido: json["stepUpRequerido"] === true,
     };
   } catch {
@@ -68,10 +75,17 @@ export async function consultarEstadoSuperadmin(apiBaseUrl: string, token: strin
   }
 }
 
-/** Transporte del chat de plataforma: el generico, con step-up automatico (una consulta financiera sin MFA reciente abre el dialogo y se reintenta). Sin "Fijar": el servidor de plataforma aun no tiene `/pins` (los fijados viven por organizacion; ver docs/SUPERADMIN_COPILOTO.md, huecos). */
-export function crearTransporteSuperadmin(apiBaseUrl: string, token: string, fetchImpl?: typeof fetch): CopilotoTransporteVertical {
+/** Transporte del chat de plataforma: el generico, con step-up automatico (una consulta financiera sin MFA reciente abre el dialogo y se reintenta). "Fijar" solo se ofrece
+ *  cuando el servidor lo declara (`fijados` del estado: superadmin completo); sin eso el boton no se pinta (nunca un boton que responde 403). */
+export function crearTransporteSuperadmin(apiBaseUrl: string, token: string, fetchImpl?: typeof fetch, opciones: { readonly fijados?: boolean; readonly adjuntos?: boolean } = {}): CopilotoTransporteVertical {
   const conStepUp: typeof fetch = (input, init) => fetchConStepUp(apiBaseUrl, token, String(input), init ?? {});
-  return crearTransporteCopiloto({ baseUrl: `${base(apiBaseUrl)}${RUTA_COPILOTO}`, fetchImpl: fetchImpl ?? conStepUp, token, fijados: false });
+  return crearTransporteCopiloto({ baseUrl: `${base(apiBaseUrl)}${RUTA_COPILOTO}`, fetchImpl: fetchImpl ?? conStepUp, token, fijados: opciones.fijados === true, adjuntos: opciones.adjuntos === true });
+}
+
+/** Cliente del tablero de fijados de plataforma (`/superadmin/copiloto/pins`): re-ejecuta cada fijado con el step-up de ahora (una consulta financiera sin MFA reciente abre el dialogo y se reintenta). */
+export function crearClienteFijadosSuperadmin(apiBaseUrl: string, token: string, fetchImpl?: typeof fetch): FijadosCliente {
+  const conStepUp: typeof fetch = (input, init) => fetchConStepUp(apiBaseUrl, token, String(input), init ?? {});
+  return crearClienteFijados({ baseUrl: `${base(apiBaseUrl)}${RUTA_COPILOTO}`, fetchImpl: fetchImpl ?? conStepUp, token });
 }
 
 const ESTADOS: ReadonlySet<string> = new Set<CopilotoAccionEstado>(["pendiente", "ejecutada", "fallida", "cancelada", "vencida", "archivada"]);

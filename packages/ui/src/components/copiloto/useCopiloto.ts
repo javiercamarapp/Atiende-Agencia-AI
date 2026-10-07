@@ -32,8 +32,8 @@ export interface UseCopiloto {
   readonly conversacionId: string | undefined;
   readonly abriendo: boolean;
   readonly errorAbrir: boolean;
-  /** `directa` = el chip se resuelve sin modelo (el texto es solo la etiqueta del mensaje). */
-  enviar(pregunta: string, directa?: CopilotoDirecta): void;
+  /** `directa` = el chip se resuelve sin modelo (el texto es solo la etiqueta del mensaje). `adjunto` = archivo que el servidor analiza (el texto es la etiqueta). */
+  enviar(pregunta: string, directa?: CopilotoDirecta, adjunto?: File): void;
   detener(): void;
   nuevo(): void;
   abrir(id: string): void;
@@ -87,11 +87,11 @@ export function useCopiloto({ transporte, fases, conversacionInicial, onConversa
     return () => clearInterval(id);
   }, [enviando]);
 
-  // Ultima consulta directa enviada: "Regenerar" de la respuesta de un chip repite la MISMA consulta directa.
-  const directaRef = useRef<{ readonly texto: string; readonly directa: CopilotoDirecta } | undefined>(undefined);
+  // Ultima consulta directa o adjunto enviado: "Regenerar" repite la MISMA consulta directa (o vuelve a analizar el MISMO archivo; nunca lo manda al modelo como texto).
+  const directaRef = useRef<{ readonly texto: string; readonly directa?: CopilotoDirecta; readonly adjunto?: File } | undefined>(undefined);
 
   const turno = useCallback(
-    async (pregunta: string, base: readonly CopilotoMensaje[], directa?: CopilotoDirecta) => {
+    async (pregunta: string, base: readonly CopilotoMensaje[], directa?: CopilotoDirecta, adjunto?: File) => {
       if (ocupado.current) return;
       ocupado.current = true;
       const ctl = new AbortController();
@@ -137,6 +137,7 @@ export function useCopiloto({ transporte, fases, conversacionInicial, onConversa
         const devuelta = await transporteRef.current.enviar({
           pregunta,
           ...(directa ? { directa } : {}),
+          ...(adjunto ? { adjunto } : {}),
           ...(conversacionRef.current ? { conversacionId: conversacionRef.current } : {}),
           senal: ctl.signal,
           onEvento: alEvento,
@@ -187,11 +188,11 @@ export function useCopiloto({ transporte, fases, conversacionInicial, onConversa
   );
 
   const enviar = useCallback(
-    (pregunta: string, directa?: CopilotoDirecta) => {
+    (pregunta: string, directa?: CopilotoDirecta, adjunto?: File) => {
       const q = pregunta.trim();
       if (!q || ocupado.current) return;
-      directaRef.current = directa ? { texto: q, directa } : undefined;
-      void turno(q, mensajesRef.current, directa);
+      directaRef.current = directa || adjunto ? { texto: q, ...(directa ? { directa } : {}), ...(adjunto ? { adjunto } : {}) } : undefined;
+      void turno(q, mensajesRef.current, directa, adjunto);
     },
     [turno],
   );
@@ -251,7 +252,8 @@ export function useCopiloto({ transporte, fases, conversacionInicial, onConversa
     const pregunta = lista[i]?.text;
     if (i < 0 || !pregunta) return;
     const previa = directaRef.current;
-    void turno(pregunta, lista.slice(0, i), previa && previa.texto === pregunta ? previa.directa : undefined);
+    const igual = previa && previa.texto === pregunta ? previa : undefined;
+    void turno(pregunta, lista.slice(0, i), igual?.directa, igual?.adjunto);
   }, [turno]);
 
   // Conversacion inicial (?c=<id>) y limpieza al desmontar.

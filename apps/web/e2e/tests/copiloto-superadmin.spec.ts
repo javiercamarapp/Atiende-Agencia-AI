@@ -126,22 +126,32 @@ test.describe("copiloto de superadmin @copiloto", () => {
     vigilante.verificar();
   });
 
-  test("paridad: portada con CFO y cobranza, sin Fijar; el historial renombra y borra chats reales", async ({ page, iniciarSesion, mock, vigilante }) => {
+  test("paridad: portada con CFO y cobranza, con Fijar y Adjuntar; el historial renombra y borra chats reales", async ({ page, iniciarSesion, mock, vigilante }) => {
     await iniciarSesion("superadmin");
     await page.goto(RUTA);
     await afirmarPantallaSana(page, "copiloto");
     // Portada: «Consulta» abre las tres tarjetas de preguntas por categoria; los chips CFO / cobranza ya estan a la vista.
     await page.getByRole("button", { name: "Consulta", exact: true }).click();
-    for (const titulo of ["CFO y cobranza", "Ventas y costos de IA", "Clientes, agentes y salud"]) await expect(page.getByText(titulo, { exact: true })).toBeVisible();
+    for (const titulo of ["CFO y cobranza", "Ventas y costos de IA", "Clientes, agentes y salud", "Varias organizaciones", "Actividad por negocio"]) await expect(page.getByText(titulo, { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "¿Cuál es mi MRR por vertical?" }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "¿Qué clientes tienen el pago pendiente?" }).first()).toBeVisible();
 
     await page.getByRole("button", { name: CHIP }).first().click();
     await expect(page.getByText(TEXTO)).toBeVisible();
-    // Copiar y CSV existen; Fijar NO (el servidor de plataforma no tiene /pins: nunca un boton que responde 404).
+    // Copiar, CSV y Fijar existen (el servidor declara `fijados`); Fijar es un POST real a /pins con conversacion + posicion + bloque.
     await expect(page.getByRole("button", { name: "Copiar respuesta" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Descargar CSV" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Fijar/ })).toHaveCount(0);
+    await page.getByRole("button", { name: /Fijar/ }).first().click();
+    await expect.poll(async () => (await mock.buscar({ metodo: "POST", ruta: /\/superadmin\/copiloto\/pins$/ })).length).toBe(1);
+    const fijado = await mock.buscar({ metodo: "POST", ruta: /\/superadmin\/copiloto\/pins$/ });
+    expect(fijado[0]?.cuerpo).toMatchObject({ bloque: 0 });
+
+    // Adjuntar archivo: el clip sube el CSV a /adjuntos (base64) y el perfil se pinta en el chat; no pasa por el modelo.
+    await page.locator('[data-testid="copiloto-adjunto-input"]').setInputFiles({ name: "ventas.csv", mimeType: "text/csv", buffer: Buffer.from("producto,unidades\nTaco,10\nTorta,5\n") });
+    await expect(page.getByText(/«ventas\.csv» tiene 2 filas de datos/)).toBeVisible();
+    const subida = await mock.buscar({ metodo: "POST", ruta: /\/superadmin\/copiloto\/adjuntos$/ });
+    expect(subida).toHaveLength(1);
+    expect(subida[0]?.cuerpo).toEqual({ nombre: "ventas.csv", contenidoBase64: Buffer.from("producto,unidades\nTaco,10\nTorta,5\n").toString("base64") });
 
     await page.getByRole("button", { name: "Historial de chats" }).click();
     const historial = page.getByRole("dialog", { name: "Historial de chats" });
