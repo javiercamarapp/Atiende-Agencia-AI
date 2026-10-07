@@ -31,12 +31,24 @@ export function debePreguntarPropina(politica: PropinaPolitica | null, paymentMe
   return false;
 }
 
-/** Mismo emparejamiento que `restaurantes.nearest_branch_by_colonia` (migracion 005): texto
- * normalizado de ambos lados, la zona mas especifica (nombre mas largo) gana. */
 /** Largo minimo (texto normalizado, sin espacios) para que un fragmento cuente como colonia: una o dos letras ("a", "co") son
  * subcadena de casi cualquier zona y harian pasar un domicilio sin colonia real. */
 export const LARGO_MIN_COLONIA = 4;
 
+/** Quita lo que va entre parentesis ("García Lavín (Victory Platz)" -> "García Lavín") con un solo recorrido (sin expresion regular: el nombre de una zona es dato de la cuenta). */
+function sinAclaracionEntreParentesis(nombre: string): string {
+  let profundidad = 0;
+  let salida = "";
+  for (const ch of nombre) {
+    if (ch === "(") profundidad += 1;
+    else if (ch === ")" && profundidad > 0) profundidad -= 1;
+    else if (profundidad === 0) salida += ch;
+  }
+  return salida.split(" ").filter((t) => t !== "").join(" ");
+}
+
+/** Mismo emparejamiento que `restaurantes.nearest_branch_by_colonia` (migracion 005): texto
+ * normalizado de ambos lados, la zona mas especifica (nombre mas largo) gana. */
 export function matchKnownZone(zones: readonly KnownZone[], colonia: string): KnownZone | null {
   const input = normalizeZoneText(colonia);
   if (!input) return null;
@@ -44,7 +56,7 @@ export function matchKnownZone(zones: readonly KnownZone[], colonia: string): Kn
   for (const zone of zones) {
     // Una zona con aclaracion entre parentesis ("García Lavín (Victory Platz)") tambien se llama por su nombre corto: el modelo manda la direccion completa
     // en `colonia` ("Calle 32 #345 x 20 y 22, García Lavín") y el nombre largo nunca estaba contenido (QA-PM-R2-voz-07).
-    const nombres = [zone.name, zone.name.replace(/\s*\([^)]*\)/g, " ")].map(normalizeZoneText).filter((n) => n.length > 0);
+    const nombres = [zone.name, sinAclaracionEntreParentesis(zone.name)].map(normalizeZoneText).filter((n) => n.length > 0);
     // La colonia escrita contiene la zona conocida (zona >= 3 letras), o la zona contiene lo escrito (fragmento >= LARGO_MIN_COLONIA).
     const coincide = nombres.some((name) => (name.length >= 3 && input.includes(name)) || (input.length >= LARGO_MIN_COLONIA && name.includes(input)));
     if (coincide && (!best || zone.name.length > best.name.length)) best = zone;
