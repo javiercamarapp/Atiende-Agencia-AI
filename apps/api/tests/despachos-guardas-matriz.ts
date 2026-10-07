@@ -33,6 +33,7 @@ export const POST_DE_SOLO_CALCULO: readonly string[] = [
   "POST /cierre-mensual/validaciones/bancos",
   "POST /pagos-provisionales/:periodo/calcular",
   "POST /chat-datos",
+  "POST /chat-datos/adjuntos", // Adjuntar archivo: analiza CSV/Excel/PDF en el servidor y no guarda nada (solo su fila de bitacora)
 ];
 
 /** Escrituras que solo tocan el historial PERSONAL del usuario en "Chatea con tus datos" (sus conversaciones, fijados y reportes): no cambian datos del despacho, asi que cualquier rol que pueda ver el dashboard las usa. */
@@ -227,6 +228,7 @@ export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
   "DELETE /chat-datos/pins/:pinId": TODOS,
   "GET /chat-datos/pins/:pinId/resultado": TODOS,
   "POST /chat-datos/conversaciones/:conversationId/reporte": TODOS,
+  "POST /chat-datos/adjuntos": TODOS,
   // rutas de nivel organizacion (`/v1/despachos/:orgSlug/...`)
   "GET /v1/despachos/:orgSlug/admin/branches": TODOS,
   "GET /v1/despachos/:orgSlug/admin/cartera": TODOS,

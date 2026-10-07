@@ -12,8 +12,8 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, MOTIVOS_CANCELACION, assertOrderCanBeDispatched, avisarProgramadosPromovidos, changeOrderStatus, esMotivoCancelacion, emitirAvisoProgramadoEnCocina, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
-import type { Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, MOTIVOS_CANCELACION, assertOrderCanBeDispatched, cargaDeRepartidor, sugerirRepartidor, avisarProgramadosPromovidos, changeOrderStatus, esMotivoCancelacion, emitirAvisoProgramadoEnCocina, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
+import type { CandidatoRepartidor, CargaRepartidor, Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
 import { cortarComandaDePedidoCancelado, encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -134,6 +134,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
 
   app.use("/v1/restaurantes/:propertyId/admin/orders", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/v1/restaurantes/:propertyId/admin/orders/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use("/v1/restaurantes/:propertyId/admin/repartidor-sugerido", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/v1/restaurantes/:propertyId/admin/scheduled-orders", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/v1/restaurantes/:propertyId/admin/order-notifications", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/v1/restaurantes/:propertyId/admin/order-notifications/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -354,6 +355,44 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       if (err instanceof RestaurantesConfigUnavailableError) throw Errors.serviceUnavailable("Los estados de recoger todavía no están disponibles en esta base de datos (falta aplicar la migración 031).");
       throw err;
     }
+  });
+
+  // Autopiloto (semiautomatico): repartidor SUGERIDO para los pedidos a domicilio en `preparando` sin repartidor. Solo lectura:
+  // NO asigna nada (la asignacion sigue siendo el PATCH .../assign-repartidor de abajo, con un clic del gerente). Regla determinista en
+  // domain-restaurantes/src/repartidor-sugerido.ts (menos pedidos en_camino; empate: el que lleva mas sin recibir pedido).
+  // `?orderIds=a,b,c` (hasta 30). Los pedidos fuera del alcance de sucursal del usuario, de otra organizacion, a recoger, ya asignados o fuera de
+  // `preparando` se omiten de la respuesta (nunca revelan su existencia). Sin repartidores dados de alta: `sugerencias` vacio.
+  app.get("/v1/restaurantes/:propertyId/admin/repartidor-sugerido", async (c) => {
+    assertVerticalRole(c, MANAGER_ROLES);
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const ids = [...new Set((c.req.query("orderIds") ?? "").split(",").map((x) => x.trim()).filter((x) => x.length > 0))];
+    if (ids.length > 30) throw Errors.validation("orderIds: maximo 30 pedidos por consulta.");
+    if (ids.some((id) => !/^[0-9a-fA-F-]{36}$/.test(id))) throw Errors.validation("orderIds: se esperaban ids de pedido validos.");
+    if (ids.length === 0) return c.json({ sugerencias: {} });
+    const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+    const elegibles: Order[] = [];
+    for (const id of ids) {
+      const o = await repo.findOrderById(organizationId, id);
+      if (!o || o.status !== "preparando" || o.assignedRepartidorId !== null) continue;
+      if (scope !== null && !scope.includes(o.propertyId)) continue;
+      elegibles.push(o);
+    }
+    if (elegibles.length === 0) return c.json({ sugerencias: {} });
+    // A recoger no lleva repartidor: el canal vive en la migracion 031 y se lee aparte (SAVEPOINT en el repo; base sin migrar = domicilio).
+    const pickup = await pickupInfoByOrder(repo, organizationId, elegibles);
+    const aDomicilio = elegibles.filter((o) => pickup.get(o.id)?.canal !== "recoger");
+    if (aDomicilio.length === 0) return c.json({ sugerencias: {} });
+    const miembros = await deps.coreStaffRepo(c.get("db")).listMembersByVerticalRole(organizationId, "repartidor");
+    const candidatos: CandidatoRepartidor[] = miembros.map((m) => ({ userId: m.userId, nombre: m.fullName, propertyIds: m.propertyIds ?? null }));
+    const cargas = new Map<string, CargaRepartidor>();
+    for (const m of candidatos) cargas.set(m.userId, cargaDeRepartidor(await repo.listOrdersForRepartidor(organizationId, m.userId)));
+    const sugerencias: Record<string, { repartidorId: string; nombre: string; enCamino: number }> = {};
+    for (const o of aDomicilio) {
+      const s = sugerirRepartidor(o.propertyId, candidatos, cargas);
+      if (s) sugerencias[o.id] = { repartidorId: s.repartidorId, nombre: s.nombre, enCamino: s.enCamino };
+    }
+    return c.json({ sugerencias });
   });
 
   // Fase 8 — dispatch real: el ÚNICO lugar que escribe `assigned_repartidor_id`/

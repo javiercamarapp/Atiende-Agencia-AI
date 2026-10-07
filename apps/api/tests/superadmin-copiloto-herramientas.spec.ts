@@ -24,7 +24,7 @@ const fila = (r: DataChatToolResult, i = 0): Record<string, string | number | nu
 const columna = (r: DataChatToolResult, key: string): (string | number | null)[] => r.rows.map((x) => (x as Record<string, string | number | null>)[key] ?? null);
 
 describe("catalogo de plataforma", () => {
-  it("el superadmin ve las 14 operativas y las 5 financieras; finanzas SOLO las 4 financieras", () => {
+  it("el superadmin ve las 17 operativas y las 5 financieras; finanzas SOLO las financieras", () => {
     const f = fuentesFalsas();
     const sa = buildCatalogoPlataforma(f, SCOPE_SUPERADMIN);
     expect(sa.vertical).toBe("plataforma");
@@ -348,7 +348,8 @@ describe("herramientas operativas", () => {
       prospectos: rota,
     });
     for (const nombre of HERRAMIENTAS_OPERATIVAS) {
-      const r = await correr(f, nombre, nombre === "costos_ia" || nombre === "uso_por_vertical" || nombre === "uso_copiloto" || nombre === "ranking_organizaciones" ? { periodo: "hoy" } : {});
+      const conPeriodo = ["costos_ia", "uso_por_vertical", "uso_copiloto", "ranking_organizaciones", "ranking_actividad", "operaciones_organizacion", "agentes_organizacion"].includes(nombre);
+      const r = await correr(f, nombre, { ...(conPeriodo ? { periodo: "hoy" } : {}), ...(nombre === "operaciones_organizacion" || nombre === "agentes_organizacion" ? { organizacion: "Taquería Don Beto" } : {}) });
       expect(r.status, nombre).toBe("unavailable");
       expect(r.message, nombre).toMatch(/^No tengo el dato/);
       expect(r.rows, nombre).toEqual([]);
