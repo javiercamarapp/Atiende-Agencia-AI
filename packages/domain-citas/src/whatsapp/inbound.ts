@@ -48,7 +48,7 @@ const AVISO_TOPE_REMITENTE = "Recibimos varios mensajes seguidos y por ahora no 
 
 /** `true` si este remitente aun puede usar un turno de modelo. Falla ABIERTO ante un error de infraestructura (con SAVEPOINT: la sesion sigue
  * utilizable): un limite que falla nunca debe dejar a un paciente sin atencion. */
-async function consumirTurnoDeRemitente(repo: CitasRepository, organizationId: string, phoneHash: string): Promise<boolean> {
+export async function consumirTurnoDeRemitente(repo: CitasRepository, organizationId: string, phoneHash: string): Promise<boolean> {
   try {
     return await repo.runWithRowSavepoint(() => repo.consumeRateLimit("wa-sender-turns", actorHash(`${organizationId}:${phoneHash}`), TOPE_TURNOS_POR_REMITENTE.max, TOPE_TURNOS_POR_REMITENTE.ventanaSegundos));
   } catch (err) {
