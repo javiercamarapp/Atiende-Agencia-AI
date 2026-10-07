@@ -24,7 +24,7 @@ const fila = (r: DataChatToolResult, i = 0): Record<string, string | number | nu
 const columna = (r: DataChatToolResult, key: string): (string | number | null)[] => r.rows.map((x) => (x as Record<string, string | number | null>)[key] ?? null);
 
 describe("catalogo de plataforma", () => {
-  it("el superadmin ve las 12 operativas y las 4 financieras; finanzas SOLO las 4 financieras", () => {
+  it("el superadmin ve las 14 operativas y las 5 financieras; finanzas SOLO las 4 financieras", () => {
     const f = fuentesFalsas();
     const sa = buildCatalogoPlataforma(f, SCOPE_SUPERADMIN);
     expect(sa.vertical).toBe("plataforma");
@@ -49,6 +49,68 @@ describe("catalogo de plataforma", () => {
     await expect(c.describeScope!({ organizationId: "plataforma", userId: "u", vertical: "plataforma", verticalRole: "superadmin", allowedPropertyIds: null, timezone: "America/Mexico_City" }, new AbortController().signal)).resolves.toMatch(/Plataforma completa/);
     const fin = buildCatalogoPlataforma(fuentesFalsas(), SCOPE_FINANZAS);
     await expect(fin.describeScope!({ organizationId: "plataforma", userId: "u", vertical: "plataforma", verticalRole: "finanzas", allowedPropertyIds: null, timezone: "America/Mexico_City" }, new AbortController().signal)).resolves.toMatch(/solo lectura/);
+  });
+});
+
+describe("alcance multi-organizacion", () => {
+  const fuentesPm = () =>
+    fuentesFalsas({
+      organizaciones: async () =>
+        ok([
+          { id: "org-pm1", vertical: "restaurantes", name: "Los Taquitos de PM", slug: "los-taquitos-de-pm", status: "active" as const, createdAt: "2026-03-01T10:00:00.000Z", staffCount: 3 },
+          { id: "org-h1", vertical: "hoteles", name: "Hotel Mérida Centro", slug: "hotel-merida-centro", status: "active" as const, createdAt: "2026-04-01T10:00:00.000Z", staffCount: 2 },
+          { id: "org-h2", vertical: "hoteles", name: "Hotel Mérida Norte", slug: "hotel-merida-norte", status: "trial" as const, createdAt: "2026-05-01T10:00:00.000Z", staffCount: 1 },
+          { id: "org-r1", vertical: "restaurantes", name: "Cafe Merida", slug: "cafe-merida", status: "active" as const, createdAt: "2026-05-01T10:00:00.000Z", staffCount: 1 },
+        ]),
+    });
+
+  it("buscar_organizacion: «PM» resuelve la organizacion sin importar mayusculas y no expone ids ni contacto", async () => {
+    const r = await correr(fuentesPm(), "buscar_organizacion", { nombre: "PM" });
+    expect(columna(r, "organizacion")).toEqual(["Los Taquitos de PM"]);
+    expect(r.summary).toMatch(/^Una organización coincide/);
+    expect(r.columns.map((c) => c.key)).toEqual(["organizacion", "vertical", "estado", "personal", "alta"]);
+    expect(JSON.stringify(r)).not.toMatch(/org-pm1|slug|@|telefono/i);
+  });
+
+  it("buscar_organizacion: «el hotel de Mérida» acota la vertical por la palabra y es insensible a acentos; varias coincidencias piden elegir", async () => {
+    const r = await correr(fuentesPm(), "buscar_organizacion", { nombre: "el hotel de Merida" });
+    expect(columna(r, "organizacion")).toEqual(["Hotel Mérida Centro", "Hotel Mérida Norte"]);
+    expect(r.summary).toMatch(/pide al usuario que elija/);
+    const una = await correr(fuentesPm(), "buscar_organizacion", { nombre: "hotel Mérida", estado: "trial" });
+    expect(columna(una, "organizacion")).toEqual(["Hotel Mérida Norte"]);
+  });
+
+  it("buscar_organizacion: sin coincidencias dice que ninguna coincide (no inventa) y sin fuente es 'no tengo el dato'", async () => {
+    const r = await correr(fuentesPm(), "buscar_organizacion", { nombre: "Inexistente" });
+    expect(r.status).toBe("empty");
+    expect(r.summary).toMatch(/^Ninguna organización coincide/);
+    const sin = await correr(fuentesFalsas({ organizaciones: async () => ({ ok: false, razon: "no_migrado" as RazonFuente }) }), "buscar_organizacion", { nombre: "PM" });
+    expect(sin.status).toBe("unavailable");
+    expect(sin.message).toMatch(/^No tengo el dato/);
+  });
+
+  it("ranking_organizaciones: ordena por costo de IA, por llamadas o por personal, totaliza por vertical y respeta el limite", async () => {
+    const f = fuentesFalsas();
+    const costo = await correr(f, "ranking_organizaciones", { periodo: "este_mes" });
+    expect(columna(costo, "organizacion")).toEqual(["Taquería Don Beto", "Hotel Bahía"]);
+    expect(columna(costo, "posicion")).toEqual([1, 2]);
+    expect(costo.summary).toBe("Por vertical: restaurantes: 3.5 USD en 1 organizaciones; hoteles: 1.5 USD en 1 organizaciones.");
+    const personal = await correr(f, "ranking_organizaciones", { periodo: "este_mes", ordenar_por: "personal", limite: 1 });
+    expect(columna(personal, "organizacion")).toEqual(["Taquería Don Beto"]);
+    const hoteles = await correr(f, "ranking_organizaciones", { periodo: "este_mes", vertical: "hoteles" });
+    expect(columna(hoteles, "organizacion")).toEqual(["Hotel Bahía"]);
+    expect(JSON.stringify(costo)).not.toMatch(/org-a|org-b/);
+  });
+
+  it("ranking_organizaciones: sin la fuente de gasto dice 'no tengo el dato'", async () => {
+    const r = await correr(fuentesFalsas({ llmPorOrganizacion: async () => ({ ok: false, razon: "error" as RazonFuente }) }), "ranking_organizaciones", { periodo: "este_mes" });
+    expect(r.status).toBe("unavailable");
+  });
+
+  it("el rol finanzas no ve las herramientas multi-organizacion", () => {
+    const nombres = buildCatalogoPlataforma(fuentesFalsas(), SCOPE_FINANZAS).tools.map((t) => t.name);
+    expect(nombres).not.toContain("buscar_organizacion");
+    expect(nombres).not.toContain("ranking_organizaciones");
   });
 });
 
@@ -263,7 +325,7 @@ describe("herramientas operativas", () => {
       prospectos: rota,
     });
     for (const nombre of HERRAMIENTAS_OPERATIVAS) {
-      const r = await correr(f, nombre, nombre === "costos_ia" || nombre === "uso_por_vertical" || nombre === "uso_copiloto" ? { periodo: "hoy" } : {});
+      const r = await correr(f, nombre, nombre === "costos_ia" || nombre === "uso_por_vertical" || nombre === "uso_copiloto" || nombre === "ranking_organizaciones" ? { periodo: "hoy" } : {});
       expect(r.status, nombre).toBe("unavailable");
       expect(r.message, nombre).toMatch(/^No tengo el dato/);
       expect(r.rows, nombre).toEqual([]);

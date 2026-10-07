@@ -51,6 +51,8 @@ export const HERRAMIENTAS_OPERATIVAS: readonly string[] = [
   "eventos_seguridad",
   "prospectos",
   "uso_copiloto",
+  "buscar_organizacion",
+  "ranking_organizaciones",
 ];
 
 export const MENSAJE_FUERA_DE_CATALOGO = "No tengo el dato: esa pregunta no está cubierta por las consultas de plataforma disponibles, así que no puedo darte una cifra confiable.";
@@ -928,6 +930,137 @@ function facturacionCobranza(f: FuentesPlataforma, scope: PlatformScope): DataCh
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// Alcance multi-organizacion (CHAT-17, agregado del 4-oct): resolver "PM" o "el hotel de Merida" y ordenar organizaciones. Solo lee los repositorios
+// de superadmin que ya existen (nombre, vertical, estado, personal y gasto de IA): NO devuelve ids, correos, telefonos ni datos de clientes finales de
+// las organizaciones (esas columnas ni se leen), asi que no hay PII que redactar ni titulares ARCO que consultar. La bitacora del turno
+// (core.record_data_chat_query) guarda el usuario, la herramienta y los parametros tipados (`nombre`, `vertical`, `estado`), es decir QUE organizacion se busco.
+// ---------------------------------------------------------------------------------------------------------------------------
+
+const PALABRAS_VACIAS = new Set(["el", "la", "los", "las", "de", "del", "en", "un", "una", "y", "a", "mi", "mis", "su", "sus", "con", "por", "para", "que", "cual", "cuanto"]);
+const VERTICAL_POR_PALABRA: Readonly<Record<string, (typeof VERTICALES)[number]>> = {
+  restaurante: "restaurantes", restaurantes: "restaurantes", taqueria: "restaurantes", taquerias: "restaurantes",
+  hotel: "hoteles", hoteles: "hoteles", posada: "hoteles", posadas: "hoteles",
+  renta: "rentas", rentas: "rentas",
+  cita: "citas", citas: "citas", clinica: "citas", clinicas: "citas",
+  despacho: "despachos", despachos: "despachos",
+  licitacion: "licitaciones", licitaciones: "licitaciones",
+};
+
+/** Minusculas y sin acentos, para comparar "Mérida" con "merida". */
+export function normalizarBusqueda(v: string): string {
+  return v.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
+}
+
+/** Separa la frase en una vertical implicita ("el hotel de ..." -> hoteles) y los terminos que deben aparecer en el nombre o el slug. */
+export function interpretarNombre(frase: string): { readonly vertical: (typeof VERTICALES)[number] | undefined; readonly terminos: readonly string[] } {
+  let vertical: (typeof VERTICALES)[number] | undefined;
+  const terminos: string[] = [];
+  for (const t of normalizarBusqueda(frase).split(/[^a-z0-9ñ]+/u).filter(Boolean)) {
+    if (PALABRAS_VACIAS.has(t)) continue;
+    const v = VERTICAL_POR_PALABRA[t];
+    if (v && !vertical) {
+      vertical = v;
+      continue;
+    }
+    terminos.push(t);
+  }
+  return { vertical, terminos };
+}
+
+function buscarOrganizacion(f: FuentesPlataforma): DataChatTool {
+  const fuente = "Organizaciones de la plataforma (core.list_all_organizations_for_superadmin y core.count_staff_by_organization_for_superadmin); solo nombre, vertical, estado y personal";
+  return herramienta({
+    name: "buscar_organizacion",
+    label: "Buscar organización",
+    description:
+      "Encuentra organizaciones por parte del nombre (sin importar acentos o mayúsculas), vertical o estado: sirve para resolver «PM», «los taquitos» o «el hotel de Mérida». Con el nombre y la vertical, la palabra «hotel» o «restaurante» dentro del nombre acota la vertical. Si hay varias coincidencias las lista para que el usuario elija.",
+    params: {
+      nombre: { type: "string", maxLength: 80, optional: true, description: "Parte del nombre, tal como lo dijo el usuario (p. ej. «PM», «Taquitos», «hotel Mérida»)." },
+      vertical: { type: "enum", values: VERTICALES, optional: true, description: "Solo esa vertical; sin él, todas." },
+      estado: { type: "enum", values: ["trial", "active", "suspended"], optional: true, description: "Solo ese estado; sin él, todos." },
+    },
+    async run(ctx, args) {
+      const r = await f.organizaciones();
+      if (!r.ok) return sinDato(fuente, r.razon);
+      const frase = typeof args["nombre"] === "string" ? args["nombre"] : "";
+      const { vertical: verticalImplicita, terminos } = interpretarNombre(frase);
+      const vertical = (args["vertical"] as string | undefined) ?? verticalImplicita;
+      const coincide = (o: (typeof r.data)[number]): boolean => {
+        const hay = `${normalizarBusqueda(o.name)} ${normalizarBusqueda(o.slug)}`;
+        return terminos.every((t) => hay.includes(t)) && (!vertical || o.vertical === vertical) && (!args["estado"] || o.status === args["estado"]);
+      };
+      const halladas = r.data.filter(coincide).sort((a, b) => a.name.localeCompare(b.name));
+      const filtro = [frase ? `nombre «${sanitizeCell(frase, 40)}»` : null, vertical ? `vertical ${vertical}` : null, args["estado"] ? `estado ${String(args["estado"])}` : null].filter(Boolean).join(", ");
+      const resumen =
+        halladas.length === 0
+          ? `Ninguna organización coincide${filtro ? ` con ${filtro}` : ""}.`
+          : halladas.length === 1
+            ? `Una organización coincide${filtro ? ` con ${filtro}` : ""}: ${texto(halladas[0]!.name)}.`
+            : `${halladas.length} organizaciones coinciden${filtro ? ` con ${filtro}` : ""}: pide al usuario que elija una antes de dar cifras de una sola.`;
+      return resultado(
+        { source: `${cita("buscar_organizacion", args)}: ${fuente}`, scopeLabel: SCOPE_PLATAFORMA, summary: resumen },
+        [col("organizacion", "Organización"), col("vertical", "Vertical"), col("estado", "Estado"), col("personal", "Personal con acceso", "integer"), col("alta", "Alta")],
+        halladas.map((o) => ({ organizacion: texto(o.name), vertical: o.vertical, estado: o.status, personal: o.staffCount, alta: o.createdAt.slice(0, 10) })),
+        ctx.maxRows,
+      );
+    },
+  });
+}
+
+function rankingOrganizaciones(f: FuentesPlataforma): DataChatTool {
+  const fuente = "Gasto y llamadas de IA por organizacion (core.llm_usage_daily) y personal con membresia: el mismo dato de Consumo de IA y Organizaciones";
+  return herramienta({
+    name: "ranking_organizaciones",
+    label: "Ranking de organizaciones",
+    description:
+      "Ordena las organizaciones de mayor a menor por gasto de IA, llamadas de IA o personal con acceso, con su vertical, y totaliza por vertical (p. ej. restaurantes frente a hoteles). No incluye pedidos, reservas ni citas por organización: esos conteos solo existen por vertical (herramienta uso_por_vertical).",
+    params: {
+      ...PERIOD_PARAMS,
+      ordenar_por: { type: "enum", values: ["costo_ia", "llamadas_ia", "personal"], optional: true, description: "Métrica del ranking; sin él, costo de IA." },
+      vertical: { type: "enum", values: VERTICALES, optional: true, description: "Solo esa vertical; sin él, todas." },
+      limite: { type: "integer", min: 1, max: 50, optional: true, description: "Cuántas organizaciones mostrar; sin él, 10." },
+    },
+    async run(ctx, args) {
+      const p = periodoDe(ctx, args, fuente);
+      if (!p.ok) return p.result;
+      const { fromDate, toDate, label } = p.period;
+      const [uso, orgs] = await Promise.all([f.llmPorOrganizacion(fromDate, toDate), f.organizaciones()]);
+      if (!uso.ok) return sinDato(fuente, uso.razon);
+      const metrica = (args["ordenar_por"] as string | undefined) ?? "costo_ia";
+      const staff = new Map<string, number>(orgs.ok ? orgs.data.map((o) => [o.id, o.staffCount] as const) : []);
+      if (metrica === "personal" && !orgs.ok) return sinDato(fuente, orgs.razon);
+      const filas = uso.data
+        .filter((x) => !args["vertical"] || x.vertical === args["vertical"])
+        .map((x) => ({ nombre: x.organizationName, vertical: x.vertical, costoMicro: x.costMicroUsd, llamadas: x.callCount, personal: orgs.ok ? (staff.get(x.organizationId) ?? 0) : null }));
+      const valor = (x: (typeof filas)[number]): number => (metrica === "llamadas_ia" ? x.llamadas : metrica === "personal" ? (x.personal ?? 0) : x.costoMicro);
+      const orden = [...filas].sort((a, b) => valor(b) - valor(a) || a.nombre.localeCompare(b.nombre));
+      const limite = typeof args["limite"] === "number" ? args["limite"] : 10;
+      const porVertical = new Map<string, { organizaciones: number; costo: number; llamadas: number }>();
+      for (const x of filas) {
+        const a = porVertical.get(x.vertical) ?? { organizaciones: 0, costo: 0, llamadas: 0 };
+        a.organizaciones += 1;
+        a.costo += x.costoMicro;
+        a.llamadas += x.llamadas;
+        porVertical.set(x.vertical, a);
+      }
+      const resumenVerticales = [...porVertical.entries()].sort((a, b) => b[1].costo - a[1].costo).map(([v, a]) => `${v}: ${usd(a.costo)} USD en ${a.organizaciones} organizaciones`).join("; ");
+      return resultado(
+        {
+          source: `${cita("ranking_organizaciones", { ...args, ordenar_por: metrica })}: ${fuente}`,
+          periodLabel: label,
+          scopeLabel: SCOPE_PLATAFORMA,
+          summary: filas.length === 0 ? "No hay organizaciones con gasto de IA en el periodo." : `Por vertical: ${resumenVerticales}.`,
+          chart: { kind: "bar", x: "organizacion", y: metrica === "llamadas_ia" ? "llamadas_ia" : metrica === "personal" ? "personal" : "costo_usd" },
+        },
+        [col("posicion", "Lugar", "integer"), col("organizacion", "Organización"), col("vertical", "Vertical"), col("costo_usd", "Costo de IA (USD)", "decimal"), col("llamadas_ia", "Llamadas de IA", "integer"), col("personal", "Personal con acceso", "integer")],
+        orden.slice(0, limite).map((x, i) => ({ posicion: i + 1, organizacion: texto(x.nombre), vertical: x.vertical, costo_usd: usd(x.costoMicro), llamadas_ia: x.llamadas, personal: x.personal })),
+        ctx.maxRows,
+      );
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // Catalogo
 // ---------------------------------------------------------------------------------------------------------------------------
 
@@ -950,6 +1083,8 @@ export function buildCatalogoPlataforma(fuentes: FuentesPlataforma, scope: Platf
     eventosSeguridad(fuentes),
     prospectos(fuentes),
     usoCopiloto(fuentes),
+    buscarOrganizacion(fuentes),
+    rankingOrganizaciones(fuentes),
   ];
   const acciones = scope.rol === "superadmin" && opciones.acciones ? [crearHerramientaProponerAccion(scope, opciones.acciones)] : [];
   const tools = scope.rol === "finanzas" ? financieras : [...operativas, ...financieras, ...acciones];

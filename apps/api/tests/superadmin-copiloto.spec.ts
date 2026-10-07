@@ -183,14 +183,14 @@ describe("acceso: solo superadmin y finanzas", () => {
     expect(ctx.scripted.requests).toHaveLength(0);
   });
 
-  it("el superadmin completo ve las 17 herramientas en el estado; las financieras vienen marcadas", async () => {
+  it("el superadmin completo ve las 19 herramientas en el estado; las financieras vienen marcadas", async () => {
     const ctx = await setup();
     const sa = await ctx.alta();
     const res = await ctx.estado(sa.token);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { permitido: boolean; motivo: string | null; rol: string; herramientas: { nombre: string; financiera: boolean }[]; interruptor: { apagado: boolean }; gastoMes: { topeMicroUsd: number }; financierasDisponibles: boolean };
     expect(body).toMatchObject({ permitido: true, motivo: null, rol: "superadmin", financierasDisponibles: true, interruptor: { apagado: false } });
-    expect(body.herramientas).toHaveLength(17);
+    expect(body.herramientas).toHaveLength(19);
     expect(body.herramientas.filter((h) => h.financiera).map((h) => h.nombre).sort()).toEqual(["contratos_por_vencer", "facturacion_cobranza", "margen_costos_unitarios", "mrr", "pyl"]);
     expect(body.gastoMes.topeMicroUsd).toBe(25_000_000);
   });
@@ -273,7 +273,7 @@ describe("turno con LLM guionado", () => {
     expect(a.sources[0]?.scopeLabel).toBe("Toda la plataforma");
     // El modelo vio SOLO las herramientas del catalogo de plataforma (16) y el alcance en el prompt.
     const primera = ctx.scripted.requests[0]!;
-    expect(primera.tools?.map((t) => t.name).sort()).toHaveLength(18); // 17 de lectura + proponer_accion (CHAT-17: solo propone)
+    expect(primera.tools?.map((t) => t.name).sort()).toHaveLength(20); // 19 de lectura + proponer_accion (CHAT-17: solo propone)
     expect(primera.system).toMatch(/Plataforma completa \(superadmin\)/);
   });
 
@@ -349,7 +349,7 @@ describe("turno con LLM guionado", () => {
 });
 
 describe("cada herramienta del catalogo, elegida por un LLM guionado", () => {
-  const ARGS: Record<string, Record<string, string>> = { costos_ia: { periodo: "este_mes" }, uso_por_vertical: { periodo: "ultimos_7_dias" }, uso_copiloto: { periodo: "este_mes" } };
+  const ARGS: Record<string, Record<string, string>> = { costos_ia: { periodo: "este_mes" }, uso_por_vertical: { periodo: "ultimos_7_dias" }, uso_copiloto: { periodo: "este_mes" }, ranking_organizaciones: { periodo: "este_mes" } };
 
   it.each([...HERRAMIENTAS_OPERATIVAS, ...HERRAMIENTAS_FINANCIERAS])("%s: el modelo la pide, el motor la ejecuta con alcance de plataforma y la respuesta lleva su tabla y su fuente", async (nombre) => {
     const ctx = await setup({ modo: "falsas", steps: [{ toolCalls: [{ name: nombre, argumentsJson: JSON.stringify(ARGS[nombre] ?? {}) }] }, { text: "Aquí está la consulta que pediste." }] });
@@ -718,6 +718,29 @@ describe("bitacora y conversacion con alcance de plataforma", () => {
     const a = await ctx.turno(sa.token, { question: "hola", conversationId: "new" });
     expect(a.status).toBe("rate_limited");
     expect(ctx.conv.appended).toHaveLength(0);
+  });
+});
+
+describe("alcance multi-organizacion: bitacora, rol y redaccion", () => {
+  it("buscar_organizacion: la bitacora guarda quien consulto, la herramienta y la organizacion buscada, sin filas de resultado ni ids", async () => {
+    const ctx = await setup({ modo: "falsas", sinProveedor: true });
+    const sa = await ctx.alta();
+    const a = await ctx.turno(sa.token, { tool: "buscar_organizacion", args: { nombre: "Taquería" } });
+    expect(a.status).toBe("ok");
+    expect(a.blocks[0]!.rows.map((r) => (r as { organizacion: string }).organizacion)).toEqual(["Taquería Don Beto"]);
+    expect(ctx.bitacora).toHaveLength(1);
+    expect(ctx.bitacora[0]).toMatchObject({ tool: "buscar_organizacion", userId: sa.id, vertical: "plataforma", outcome: "ok", rowCount: 1, params: { nombre: "Taquería" } });
+    expect(JSON.stringify(ctx.bitacora)).not.toMatch(/org-a|Don Beto/);
+  });
+
+  it("el rol finanzas no puede ejecutar buscar_organizacion ni ranking_organizaciones (fuera de su catalogo)", async () => {
+    const ctx = await setup({ modo: "falsas", sinProveedor: true });
+    const fin = await ctx.alta({ finanzas: true });
+    for (const tool of ["buscar_organizacion", "ranking_organizaciones"]) {
+      const res = await ctx.app.request("/superadmin/copiloto", jsonRequestInit({ tool, args: tool === "ranking_organizaciones" ? { periodo: "este_mes" } : {} }, bearer(fin.token)));
+      expect(res.status, tool).toBe(403);
+    }
+    expect(ctx.bitacora).toHaveLength(0);
   });
 });
 
