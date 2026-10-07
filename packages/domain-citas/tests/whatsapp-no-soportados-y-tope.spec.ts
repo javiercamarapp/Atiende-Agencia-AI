@@ -59,6 +59,27 @@ describe("handleUnsupportedWhatsAppMessage", () => {
   });
 });
 
+describe("handleUnsupportedWhatsAppMessage con una toma humana abierta", () => {
+  const gateTomada = { estadoParaAgente: async () => "tomada" as const, solicitarHumano: async () => null };
+
+  it("no responde el aviso, pero deja el tipo de contenido en el historial para quien atiende", async () => {
+    const t = montarConsultorio();
+    const r = await handleUnsupportedWhatsAppMessage(t.repo, { organizationId: t.organizationId, messageId: "wamid.audio-h", phone: t.telefono, phoneNumberId: PNID, tipo: "audio", handoffGate: gateTomada });
+    expect(r).toMatchObject({ ok: true, retryable: false });
+    expect(r.reply).toBeUndefined();
+    expect(t.repo.getOutbox().filter((o) => o.eventType === "whatsapp.inbound_no_soportado")).toHaveLength(0);
+    const historial = await t.repo.appendWhatsAppUserMessageOnce(t.organizationId, t.telefono, { role: "user", content: "hola" });
+    expect(historial.map((m) => m.content)).toContain("[El paciente envió una nota de voz]");
+  });
+
+  it("sin toma abierta el aviso sale como siempre", async () => {
+    const t = montarConsultorio();
+    const gateLibre = { estadoParaAgente: async () => null, solicitarHumano: async () => null };
+    const r = await handleUnsupportedWhatsAppMessage(t.repo, { organizationId: t.organizationId, messageId: "wamid.audio-l", phone: t.telefono, phoneNumberId: PNID, tipo: "audio", handoffGate: gateLibre });
+    expect(r.reply).toMatch(/notas de voz/);
+  });
+});
+
 describe("tope de turnos de modelo por remitente", () => {
   it("el remitente que pasa el tope ya no gasta modelo; recibe UN aviso y despues silencio", async () => {
     const t = montarConsultorio();

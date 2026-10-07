@@ -111,7 +111,7 @@ export function citasWhatsAppRoutes(deps: AppDeps): Hono {
       for (const message of incomingMessages) {
         // Nota de voz, imagen, archivo, ubicacion...: el agente no la puede leer. Se responde un aviso fijo (antes se ignoraba y nadie contestaba).
         if (message.noSoportado) {
-          const sinSoporte = await handleUnsupportedWhatsAppMessage(citasRepo, { organizationId, messageId: message.id, phone: `+${message.from}`, phoneNumberId, tipo: message.noSoportado });
+          const sinSoporte = await handleUnsupportedWhatsAppMessage(citasRepo, { organizationId, messageId: message.id, phone: `+${message.from}`, phoneNumberId, tipo: message.noSoportado, ...(deps.citasHandoffGate ? { handoffGate: deps.citasHandoffGate(db) } : {}) });
           if (sinSoporte.retryable) hadRetryableFailure = true;
           continue;
         }

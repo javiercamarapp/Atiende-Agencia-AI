@@ -76,6 +76,17 @@ const AVISO_NO_SOPORTADO: Readonly<Record<TipoMensajeNoSoportado, string>> = {
   contacto: "Por ahora solo puedo leer mensajes de texto. ¿Me escribe en qué le ayudo, por favor?",
 };
 
+/** Rastro en el historial cuando el paciente manda contenido no soportado a una conversacion con toma humana: solo el tipo, nunca el contenido. */
+const RASTRO_NO_SOPORTADO: Record<TipoMensajeNoSoportado, string> = {
+  audio: "[El paciente envió una nota de voz]",
+  imagen: "[El paciente envió una imagen]",
+  video: "[El paciente envió un video]",
+  documento: "[El paciente envió un archivo]",
+  sticker: "[El paciente envió un sticker]",
+  ubicacion: "[El paciente envió una ubicación]",
+  contacto: "[El paciente envió un contacto]",
+};
+
 /**
  * Un mensaje que el agente no puede leer (nota de voz, imagen, archivo, ubicacion...): antes el webhook lo ignoraba y respondia 200 sin que nadie
  * contestara. Ahora se acusa recibo (dedupe at-least-once igual que el texto) y el paciente recibe un aviso fijo para que escriba; el aviso sale como
@@ -83,14 +94,29 @@ const AVISO_NO_SOPORTADO: Readonly<Record<TipoMensajeNoSoportado, string>> = {
  */
 export async function handleUnsupportedWhatsAppMessage(
   repo: CitasRepository,
-  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string; readonly phoneNumberId: string; readonly tipo: TipoMensajeNoSoportado },
+  args: {
+    readonly organizationId: string;
+    readonly messageId: string;
+    readonly phone: string;
+    readonly phoneNumberId: string;
+    readonly tipo: TipoMensajeNoSoportado;
+    /** C-11: con una toma humana abierta el bot calla tambien ante contenido no soportado. Sin puerto (o base sin migrar) responde el aviso fijo como siempre. */
+    readonly handoffGate?: HandoffAgentGate;
+  },
 ): Promise<InboundMessageOutcome> {
-  const { organizationId, messageId, phone, phoneNumberId, tipo } = args;
+  const { organizationId, messageId, phone, phoneNumberId, tipo, handoffGate } = args;
   const phoneHash = actorHash(phone);
   const claimed = await repo.claimWhatsAppMessage(organizationId, messageId, phoneHash);
   if (!claimed) return { ok: true, retryable: false };
   try {
     const aviso = await repo.runWithRowSavepoint(async () => {
+      // Con una persona atendiendo la conversacion el bot NO contesta (ni gasta el aviso de la ventana), pero deja un rastro de texto fijo en el
+      // historial para que quien atiende sepa que llego un audio o una imagen. No se guarda ni se interpreta el contenido.
+      if (handoffGate && (await handoffGate.estadoParaAgente(organizationId, phone))) {
+        await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: RASTRO_NO_SOPORTADO[tipo] });
+        await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+        return false;
+      }
       const permitido = await consumirAvisoDeRemitente(repo, organizationId, phoneHash);
       if (permitido) {
         await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_no_soportado", `inbound-no-soportado:${messageId}`, {
