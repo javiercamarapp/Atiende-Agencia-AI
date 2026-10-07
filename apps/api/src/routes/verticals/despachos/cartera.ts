@@ -25,14 +25,17 @@ import {
   GESTIONAR_CARTERA_ROLES,
   PostgresCarteraRepository,
   VER_CARTERA_ROLES,
+  semaforoDeSolicitud,
   validarFichaCliente,
   validarNombreCliente,
 } from "@atiende/domain-despachos";
 import type { CarteraRepository, ClienteFichaRecord, ErrorCampo } from "@atiende/domain-despachos";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { pilotoDe } from "./piloto-comun.ts";
 
 const MAX_BODY_BYTES = 8 * 1024;
 
@@ -89,10 +92,25 @@ export function despachosCarteraRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const r = await carteraDe(db).listar(org.id);
     // Alcance de la membresía: un staff acotado solo ve los clientes que tiene asignados.
     const visibles = membership.propertyIds === null ? r.clientes : r.clientes.filter((cl) => membership.propertyIds!.includes(cl.propertyId));
+    // paridad3 D-31: semaforo de documentos del cliente para el periodo que se esta cerrando (el mes anterior al «hoy» de negocio).
+    const hoy = hoyFechaNegocio();
+    const [anio, mes] = Number(hoy.slice(5, 7)) === 1 ? [Number(hoy.slice(0, 4)) - 1, 12] : [Number(hoy.slice(0, 4)), Number(hoy.slice(5, 7)) - 1];
+    const resumenes = await pilotoDe(deps, db).resumenSolicitudesPeriodo(anio, mes);
+    const porProperty = new Map((resumenes.disponible ? resumenes.valor : []).map((x) => [x.propertyId, x] as const));
+    const ahora = Date.now();
     return c.json({
       estado: r.estado,
       puedeDarDeAlta: membership.propertyIds === null && (GESTIONAR_CARTERA_ROLES as readonly string[]).includes(membership.verticalRole),
-      clientes: visibles.map((cl) => ({ propertyId: cl.propertyId, nombre: cl.nombre, ficha: cl.ficha ? serializeFicha(cl.ficha) : null })),
+      documentosPeriodo: { periodo: `${anio}-${String(mes).padStart(2, "0")}`, disponible: resumenes.disponible },
+      clientes: visibles.map((cl) => {
+        const x = porProperty.get(cl.propertyId);
+        return {
+          propertyId: cl.propertyId,
+          nombre: cl.nombre,
+          ficha: cl.ficha ? serializeFicha(cl.ficha) : null,
+          documentos: resumenes.disponible ? { semaforo: semaforoDeSolicitud(x, ahora), total: x?.total ?? 0, pendientes: x?.pendientes ?? 0, enRevision: x?.enRevision ?? 0, recibidos: x?.recibidos ?? 0, noAplica: x?.noAplica ?? 0 } : null,
+        };
+      }),
     });
   });
 

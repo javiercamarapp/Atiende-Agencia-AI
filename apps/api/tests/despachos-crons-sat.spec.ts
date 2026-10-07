@@ -421,6 +421,55 @@ describe(`POST ${CRON_VENC}`, () => {
   });
 });
 
+describe(`POST ${CRON_VENC} -- paso del piloto de cierre y documentos (paridad3)`, () => {
+  it("corre tras el barrido de vencimientos: crea la solicitud del mes anterior, encola el aviso al cliente y reporta el resumen del piloto", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T18:00:00Z"));
+    const { app } = armar();
+    await ctx.pilotoRepo.guardarAutomatizacion(ctx.propertyId, { contactoCorreo: "contacto@cliente.mx", envioReportesCierre: false, solicitudActiva: true, solicitudDia: 1, plantilla: {} });
+    const body = (await (await app.request(CRON_VENC, SECRETO(ctx))).json()) as { ok: boolean; piloto: { solicitudes: { status: string; creadas: number; correos_encolados: number }; recordatorios: { status: string }; cierre: { status: string } } };
+    expect(body.ok).toBe(true);
+    expect(body.piloto.solicitudes).toMatchObject({ status: "ok", creadas: 1, correos_encolados: 1 });
+    expect(ctx.pilotoRepo.solicitudes.map((x) => [x.ejercicio, x.mes])).toEqual([[2026, 9]]);
+    const correos = ctx.despachosRepo.getMessagingOutbox().filter((j) => j.eventType === "despachos.solicitud.documentos");
+    expect(correos).toHaveLength(1);
+    expect(String(correos[0]!.payload.text)).toContain(`${ctx.deps.env.appBaseUrl}/portal/cliente#t=`);
+    // Segunda corrida: idempotente.
+    const dos = (await (await app.request(CRON_VENC, SECRETO(ctx))).json()) as { piloto: { solicitudes: { creadas: number } } };
+    expect(dos.piloto.solicitudes.creadas).toBe(0);
+    expect(ctx.despachosRepo.getMessagingOutbox().filter((j) => j.eventType === "despachos.solicitud.documentos")).toHaveLength(1);
+  });
+
+  it("REGLA DURA: base sin la migracion 027 -> el piloto responde no_disponible y el barrido de vencimientos sigue (200)", async () => {
+    const { app, cron } = armar();
+    cron.sembrarCliente({ organizationId: ctx.organizationId, propertyId: ctx.propertyId, regimenes: ["601"], zonaHoraria: "America/Mexico_City" });
+    ctx.pilotoRepo.disponible = false;
+    const res = await app.request(CRON_VENC, SECRETO(ctx));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; clientes: number; piloto: { solicitudes: { status: string }; recordatorios: { status: string }; cierre: { status: string } } };
+    expect(body).toMatchObject({ ok: true, clientes: 1 });
+    expect(body.piloto).toMatchObject({ solicitudes: { status: "no_disponible" }, recordatorios: { status: "no_disponible" }, cierre: { status: "no_disponible" } });
+  });
+
+  it("una unidad del piloto que falla se reporta (ok:false, latido en error) sin tumbar las demas ni el barrido", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T18:00:00Z"));
+    const { app } = armar();
+    ctx.pilotoRepo.sembrarCliente({ organizationId: ctx.organizationId, propertyId: "00000000-0000-0000-0000-0000000000f9", razonSocial: "Otro cliente" });
+    const original = ctx.pilotoRepo.crearSolicitudSistema.bind(ctx.pilotoRepo);
+    ctx.pilotoRepo.crearSolicitudSistema = async (propertyId, e, m) => {
+      if (propertyId === ctx.propertyId) throw Object.assign(new Error("falla simulada"), { code: "XX000" });
+      return original(propertyId, e, m);
+    };
+    const res = await app.request(CRON_VENC, SECRETO(ctx));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; failures: { id?: string }[]; piloto: { solicitudes: { creadas: number } } };
+    expect(body.ok).toBe(false);
+    expect(body.failures.map((f) => f.id)).toEqual([ctx.propertyId]);
+    expect(body.piloto.solicitudes.creadas).toBe(1);
+  });
+});
+
 describe("POST /despachos/:propertyId/cfdi/:invoiceId/verificar-estatus-sat", () => {
   const CLIENTE_RFC = "CLI010101CL1";
   const OTRO_RFC = "OTR010101OT1";
