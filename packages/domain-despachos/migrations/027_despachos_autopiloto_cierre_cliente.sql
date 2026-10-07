@@ -18,7 +18,7 @@
 --      policy `core.has_property_access(auth.uid(), property_id)` -- el staff lista lo de SUS clientes y nada mas. Ninguna escritura
 --      directa (ni insert/update/delete a nadie): todo cambio pasa por funciones definer. `cierre_entrega_archivo.contenido` (bytea)
 --      queda fuera del GRANT de columnas. No hay `using (true)` ni GRANT a anon.
---   2. Funciones de STAFF (`cliente_automatizacion_guardar`, `solicitud_*`, `cierre_entrega_*`, `periodo_cierre_forzar`): security
+--   2. Funciones de STAFF (`invoice_estado_sat_detalle_registrar`, `cliente_automatizacion_guardar`, `solicitud_*`, `cierre_entrega_*`, `periodo_cierre_forzar`): security
 --      definer con `set search_path` fijo, `revoke ... from public, anon`, EXECUTE solo a `authenticated`. Exigen `auth.uid()` no nulo
 --      y `despachos.cartera_puede_escribir(property)` (acceso a la property + rol admin/contador de ESA organizacion); la property
 --      debe ser de vertical despachos. Una property o un renglon ajeno responde 42501/P0002 sin confirmar que existe.
@@ -168,6 +168,46 @@ end;
 $$;
 revoke all on function despachos.system_cfdi_registrar_estatus_sat(uuid, text, text, text, text, text) from public, anon;
 grant execute on function despachos.system_cfdi_registrar_estatus_sat(uuid, text, text, text, text, text) to authenticated;
+
+-- STAFF: verificacion manual de UN CFDI (boton «Verificar en el SAT») con el mismo detalle de cancelacion. Mismas reglas que
+-- `invoice_estado_sat_registrar` (018): rol admin/contador + acceso a la property, el CFDI debe ser de esa property (P0002), un
+-- CFDI cancelado no cambia de estado (22023). Devuelve si la cancelacion «En proceso» aparece por primera vez (para avisar una sola vez).
+create or replace function despachos.invoice_estado_sat_detalle_registrar(
+  p_property_id uuid, p_invoice_id uuid, p_estado text, p_es_cancelable text, p_estatus_cancelacion text, p_codigo_estatus text, p_validacion_efos text
+)
+returns table (out_cancelacion_en_proceso_nueva boolean)
+language plpgsql
+security definer
+set search_path = despachos, pg_temp
+as $$
+declare
+  v_actual text;
+  v_cancel_prev text;
+  v_estatus text := nullif(left(btrim(coalesce(p_estatus_cancelacion, '')), 80), '');
+begin
+  if auth.uid() is null or not despachos.cartera_puede_escribir(p_property_id) then
+    raise exception 'invoice_estado_sat_detalle_registrar: sin permiso sobre el cliente' using errcode = '42501';
+  end if;
+  if p_estado is null or p_estado not in ('pendiente', 'vigente', 'cancelado', 'no_encontrado') then
+    raise exception 'invoice_estado_sat_detalle_registrar: estado inválido' using errcode = '22023';
+  end if;
+  select i.estado_sat, i.estatus_cancelacion into v_actual, v_cancel_prev from despachos.invoice i where i.id = p_invoice_id and i.property_id = p_property_id for update;
+  if v_actual is null then
+    raise exception 'invoice_estado_sat_detalle_registrar: CFDI no encontrado' using errcode = 'P0002';
+  end if;
+  if v_actual = 'cancelado' and p_estado <> 'cancelado' then
+    raise exception 'invoice_estado_sat_detalle_registrar: un CFDI cancelado no cambia de estado' using errcode = '22023';
+  end if;
+  update despachos.invoice
+     set estado_sat = p_estado, estado_sat_verificado_en = now(), estado_sat_intentado_en = now(),
+         es_cancelable = nullif(left(btrim(coalesce(p_es_cancelable, '')), 80), ''), estatus_cancelacion = v_estatus,
+         codigo_estatus = nullif(left(btrim(coalesce(p_codigo_estatus, '')), 200), ''), validacion_efos = nullif(left(btrim(coalesce(p_validacion_efos, '')), 80), '')
+   where id = p_invoice_id;
+  return query select (v_estatus ilike 'en proceso%' and not coalesce(v_cancel_prev ilike 'en proceso%', false));
+end;
+$$;
+revoke all on function despachos.invoice_estado_sat_detalle_registrar(uuid, uuid, text, text, text, text, text) from public, anon;
+grant execute on function despachos.invoice_estado_sat_detalle_registrar(uuid, uuid, text, text, text, text, text) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Automatizacion por cliente: contacto, opt-in de entrega, dia y plantilla de la solicitud.

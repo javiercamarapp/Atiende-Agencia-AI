@@ -158,6 +158,42 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb01
 select * from despachos.system_cfdi_registrar_estatus_sat('00000000-0000-0000-0000-00000000fc01', 'vigente', null, null, null, null) as should_fail;
 rollback;
 
+\echo '15b. staff (contador) verifica a mano un CFDI y queda el detalle de cancelacion; la primera vez avisa'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb03', true);
+select out_cancelacion_en_proceso_nueva::int as aviso_deberia_ser_1 from despachos.invoice_estado_sat_detalle_registrar('00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000fc01', 'vigente', 'Cancelable con aceptación', 'En proceso', 'S - ok', '200');
+rollback;
+
+\echo '15c. verificacion manual: cross-tenant (admin de otro despacho) -> error'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb02', true);
+select * from despachos.invoice_estado_sat_detalle_registrar('00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000fc01', 'vigente', null, null, null, null) as should_fail;
+rollback;
+
+\echo '15d. verificacion manual: un auditor (solo lectura) NO puede'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb04', true);
+select * from despachos.invoice_estado_sat_detalle_registrar('00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000fc01', 'vigente', null, null, null, null) as should_fail;
+rollback;
+
+\echo '15e. verificacion manual: un CFDI cancelado no cambia de estado'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb03', true);
+select * from despachos.invoice_estado_sat_detalle_registrar('00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000fc03', 'vigente', null, null, null, null) as should_fail;
+rollback;
+
+\echo '15f. verificacion manual: persiste el detalle (el staff lo lee de la factura)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000fb03', true);
+select * from despachos.invoice_estado_sat_detalle_registrar('00000000-0000-0000-0000-00000000fa01', '00000000-0000-0000-0000-00000000fc01', 'vigente', 'Cancelable sin aceptación', 'En proceso', 'S - ok', '200');
+select count(*) as detalle_visible_deberia_ser_1 from despachos.invoice where id = '00000000-0000-0000-0000-00000000fc01' and es_cancelable = 'Cancelable sin aceptación' and validacion_efos = '200';
+rollback;
+
 \echo '=== D-P3-21 / D-31: automatizacion por cliente ==='
 
 \echo '16. admin del despacho guarda correo, dia y plantilla'
