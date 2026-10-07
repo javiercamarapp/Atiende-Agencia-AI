@@ -458,6 +458,8 @@ export interface HotelesRepository {
   /** `null` si la tarifa no pertenece a la property. Idempotente: repetir el mismo valor no reescribe ni genera bitacora. */
   saveRatePrice(input: SaveRatePriceInput): Promise<RatePlanRow | null>;
   listConfigAudit(propertyId: string, limit: number): Promise<readonly ConfigAuditEntry[]>;
+  /** Registra en la bitacora que owner/gm omitio el gate de "Primeros pasos". `false` si la migracion 047 aun no esta aplicada (la omision sigue siendo valida en el navegador). */
+  recordOnboardingSkip(propertyId: string, organizationId: string, actorUserId: string): Promise<boolean>;
 
   // ---- Fase 6 — H5/REQ-REV-013: night audit propio ----
 

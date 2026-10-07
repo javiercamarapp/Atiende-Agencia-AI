@@ -93,7 +93,7 @@ export interface SaveRatePriceInput {
   readonly minStay: number | null;
 }
 
-export type ConfigAuditArea = "impuestos" | "politica_cancelacion" | "sobreventa" | "tarifa";
+export type ConfigAuditArea = "impuestos" | "politica_cancelacion" | "sobreventa" | "tarifa" | "onboarding_omitido";
 
 export interface ConfigAuditEntry {
   readonly id: string;

@@ -1693,6 +1693,12 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     return null;
   }
 
+  async recordOnboardingSkip(propertyId: string, organizationId: string, actorUserId: string): Promise<boolean> {
+    void organizationId;
+    this.pushConfigAudit(propertyId, actorUserId, "onboarding_omitido", propertyId, null, { omitido: true });
+    return true;
+  }
+
   async listConfigAudit(propertyId: string, limit: number): Promise<readonly ConfigAuditEntry[]> {
     return this.configAuditLog
       .filter((e) => e.propertyId === propertyId)

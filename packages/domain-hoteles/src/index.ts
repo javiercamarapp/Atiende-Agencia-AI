@@ -572,3 +572,5 @@ export type {
   ConfigAuditArea,
   ConfigAuditEntry,
 } from "./configuracion/types.ts";
+export { buildHotelOnboardingChecklist, evaluarGateOnboarding, NOCHES_TARIFA_REQUERIDAS } from "./onboarding.ts";
+export type { OnboardingChecklist, OnboardingEstado, OnboardingGate, OnboardingItem, OnboardingPantalla, OnboardingResponsable, OnboardingSnapshot } from "./onboarding.ts";

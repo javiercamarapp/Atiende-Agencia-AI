@@ -2053,6 +2053,20 @@ export class PostgresHotelesRepository implements HotelesRepository {
     });
   }
 
+  async recordOnboardingSkip(propertyId: string, organizationId: string, actorUserId: string): Promise<boolean> {
+    void organizationId; // la funcion la deriva de core.property
+    void actorUserId; // la funcion toma auth.uid()
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        await this.db.query(`select hoteles.record_onboarding_skip($1);`, [propertyId]);
+        return true;
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: () => Promise.resolve(false),
+    });
+  }
+
   // ---- HotelesRepository: Fase 6 — H5/REQ-REV-013 night audit propio ----
 
   async listActiveHotelProperties(): Promise<readonly ActiveHotelProperty[]> {
