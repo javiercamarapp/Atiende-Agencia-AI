@@ -18,6 +18,9 @@ export interface EntradaDnis {
   readonly topeMensualUsd: number | null;
   /** Modo de entrada de la sucursal; un encabezado de desvio en la llamada lo vuelve `desborde` (salvo `prueba`). */
   readonly modoEntrada: ModoEntrada;
+  /** Lineas propias de la sucursal que desvian al numero puente (Telmex/Telcel/conmutador), normalizadas a 10 digitos. Si el desvio re-origina la llamada, el
+   * `From` que llega puede ser UNA DE ESTAS en lugar del cliente: no es un telefono confiable (ver `telefono-llamante.ts`). */
+  readonly numerosSucursal: readonly string[];
 }
 
 export interface ConfigWorker {
@@ -29,7 +32,14 @@ export interface ConfigWorker {
   readonly apiBaseUrl: string;
   readonly internalSecret: string;
   readonly geminiApiKey: string | null;
+  /** `vertex` = el escalon 1 va por Vertex AI (cuenta de servicio) en lugar de la Gemini API; hoy NO se activa (`GEMINI_BACKEND` ausente = `api`). */
+  readonly geminiBackend: "api" | "vertex";
+  readonly vertex: { readonly project: string; readonly location: string; readonly serviceAccountJson: string } | null;
   readonly openrouterApiKey: string | null;
+  /** Ajuste fino del VAD de Gemini (`VOICE_VAD_SILENCIO_MS`, `VOICE_VAD_SENSIBILIDAD_FIN`); vacio = los valores de `VOZ_PLATAFORMA.gemini.vad`. */
+  readonly vad: { readonly silencioFinMs?: number; readonly sensibilidadFin?: "END_SENSITIVITY_HIGH" | "END_SENSITIVITY_LOW" | null };
+  /** Tope de costo por llamada en micro-USD (`VOICE_COSTO_MAX_LLAMADA_USD`); null = el de la plataforma (US$0.50, `COSTO_MAX_LLAMADA_MICRO_USD`). */
+  readonly costoMaxLlamadaMicroUsd: number | null;
   readonly dnis: ReadonlyMap<string, EntradaDnis>;
   /** Tope mensual de plataforma en micro-USD (null = sin tope de plataforma). */
   readonly topeMensualPlataformaMicroUsd: number | null;
@@ -55,7 +65,7 @@ export interface ResultadoTablaDnis {
   readonly problemas: readonly string[];
 }
 
-/** Parsea `VOICE_DNIS_MAP` (JSON `{ "<numero>": { orgSlug, organizationId, propertyId, branchSlug, secretoEnv, topeMensualUsd?, modoEntrada? } }`). */
+/** Parsea `VOICE_DNIS_MAP` (JSON `{ "<numero>": { orgSlug, organizationId, propertyId, branchSlug, secretoEnv, topeMensualUsd?, modoEntrada?, numerosSucursal? } }`). */
 export function parsearTablaDnis(json: string | undefined, env: Readonly<Record<string, string | undefined>>): ResultadoTablaDnis {
   const problemas: string[] = [];
   const tabla = new Map<string, EntradaDnis>();
@@ -103,7 +113,17 @@ export function parsearTablaDnis(json: string | undefined, env: Readonly<Record<
       problemas.push(`${donde}: modoEntrada debe ser desborde, total o prueba.`);
       continue;
     }
-    tabla.set(clave, { orgSlug, organizationId, propertyId, branchSlug, secreto, secretoEnv, topeMensualUsd: topeUsd, modoEntrada: modo as ModoEntrada });
+    let numerosSucursal: string[] = [];
+    if (v.numerosSucursal !== undefined && v.numerosSucursal !== null) {
+      const lista = Array.isArray(v.numerosSucursal) ? (v.numerosSucursal as unknown[]) : null;
+      const normalizados = lista === null ? null : lista.map((n) => (typeof n === "string" ? normalizarNumero(n) : null));
+      if (normalizados === null || normalizados.length > 20 || normalizados.some((n) => n === null)) {
+        problemas.push(`${donde}: numerosSucursal debe ser una lista (hasta 20) de numeros de al menos 10 digitos.`);
+        continue;
+      }
+      numerosSucursal = [...new Set(normalizados as string[])];
+    }
+    tabla.set(clave, { orgSlug, organizationId, propertyId, branchSlug, secreto, secretoEnv, topeMensualUsd: topeUsd, modoEntrada: modo as ModoEntrada, numerosSucursal });
   }
   if (tabla.size === 0 && problemas.length === 0) problemas.push("VOICE_DNIS_MAP: no trae ningun numero.");
   return { tabla, problemas };
@@ -136,7 +156,39 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
   if (!internalSecret) motivos.push("Falta INTERNAL_SECRET (el mismo de la API; registra conversaciones y costos).");
   const gemini = lleno(env.GEMINI_API_KEY) ? env.GEMINI_API_KEY.trim() : null;
   const openrouter = lleno(env.OPENROUTER_API_KEY) ? env.OPENROUTER_API_KEY.trim() : null;
-  if (!gemini && !openrouter) motivos.push("Falta GEMINI_API_KEY u OPENROUTER_API_KEY (ninguna escalera de voz puede abrir).");
+  const backendCrudo = lleno(env.GEMINI_BACKEND) ? env.GEMINI_BACKEND.trim().toLowerCase() : "api";
+  let geminiBackend: "api" | "vertex" = "api";
+  let vertex: ConfigWorker["vertex"] = null;
+  if (backendCrudo === "vertex") {
+    geminiBackend = "vertex";
+    if (!lleno(env.VERTEX_PROJECT)) motivos.push("GEMINI_BACKEND=vertex: falta VERTEX_PROJECT.");
+    if (!lleno(env.VERTEX_SERVICE_ACCOUNT_JSON)) motivos.push("GEMINI_BACKEND=vertex: falta VERTEX_SERVICE_ACCOUNT_JSON (cuenta de servicio con permiso de Vertex AI).");
+    const location = lleno(env.VERTEX_LOCATION) ? env.VERTEX_LOCATION.trim() : "us-central1";
+    if (!/^[a-z]+-[a-z]+[0-9]+$|^us$|^eu$/.test(location)) motivos.push("VERTEX_LOCATION no parece una region de Google Cloud (ej. us-central1).");
+    if (lleno(env.VERTEX_PROJECT) && lleno(env.VERTEX_SERVICE_ACCOUNT_JSON)) vertex = { project: env.VERTEX_PROJECT.trim(), location, serviceAccountJson: env.VERTEX_SERVICE_ACCOUNT_JSON };
+  } else if (backendCrudo !== "api") {
+    motivos.push("GEMINI_BACKEND debe ser api o vertex.");
+  }
+  if (!gemini && !vertex && !openrouter) motivos.push("Falta GEMINI_API_KEY u OPENROUTER_API_KEY (ninguna escalera de voz puede abrir).");
+  const vad: { silencioFinMs?: number; sensibilidadFin?: "END_SENSITIVITY_HIGH" | "END_SENSITIVITY_LOW" | null } = {};
+  if (lleno(env.VOICE_VAD_SILENCIO_MS)) {
+    const ms = Number(env.VOICE_VAD_SILENCIO_MS);
+    if (!Number.isInteger(ms) || ms < 100 || ms > 3000) motivos.push("VOICE_VAD_SILENCIO_MS debe ser un entero entre 100 y 3000.");
+    else vad.silencioFinMs = ms;
+  }
+  if (lleno(env.VOICE_VAD_SENSIBILIDAD_FIN)) {
+    const v = env.VOICE_VAD_SENSIBILIDAD_FIN.trim().toLowerCase();
+    if (v === "alta") vad.sensibilidadFin = "END_SENSITIVITY_HIGH";
+    else if (v === "baja") vad.sensibilidadFin = "END_SENSITIVITY_LOW";
+    else if (v === "omitir") vad.sensibilidadFin = null;
+    else motivos.push("VOICE_VAD_SENSIBILIDAD_FIN debe ser alta, baja u omitir.");
+  }
+  let costoMax: number | null = null;
+  if (lleno(env.VOICE_COSTO_MAX_LLAMADA_USD)) {
+    const usd = Number(env.VOICE_COSTO_MAX_LLAMADA_USD);
+    if (!Number.isFinite(usd) || usd <= 0 || usd > 20) motivos.push("VOICE_COSTO_MAX_LLAMADA_USD debe ser un numero entre 0 y 20.");
+    else costoMax = Math.round(usd * 1_000_000);
+  }
   const { tabla, problemas } = parsearTablaDnis(env.VOICE_DNIS_MAP, env);
   motivos.push(...problemas);
   let tope: number | null = null;
@@ -154,7 +206,11 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
     apiBaseUrl,
     internalSecret,
     geminiApiKey: gemini,
+    geminiBackend,
+    vertex,
     openrouterApiKey: openrouter,
+    vad,
+    costoMaxLlamadaMicroUsd: costoMax,
     dnis: tabla,
     topeMensualPlataformaMicroUsd: tope,
     assetsDir: lleno(env.VOICE_ASSETS_DIR) ? env.VOICE_ASSETS_DIR.trim() : "assets",
