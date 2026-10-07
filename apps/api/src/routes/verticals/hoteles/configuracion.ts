@@ -9,8 +9,10 @@
 // Autopilot: una tarifa editada a mano queda marcada (`manualPriceAt`) y el motor de revenue no la sobreescribe ese dia
 // (`hoteles.system_apply_rate_recommendation` rechaza con `tarifa_manual_vigente`; el cron cuenta y avisa ese rechazo).
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { emitirNotificacion } from "@atiende/db";
 import { ADMIN_ROLES, HotelConfigUnavailableError, type HotelRole } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -54,6 +56,22 @@ function translateConfigError(err: unknown): never {
   if (message.startsWith("configuracion_requiere_owner_gm")) throw Errors.forbidden(message);
   if (/^(impuestos_invalidos|politica_invalida|sobreventa_invalida|tarifa_invalida)/.test(message)) throw Errors.validation(message);
   throw err;
+}
+
+/** Aviso in-app (hoteles.configuracion.cambiada) de un cambio de configuracion sensible. Best-effort: nunca revierte lo guardado. Solo nombra el area. */
+async function avisarCambio(c: Context<CoreAuthHonoEnv>, area: "impuestos" | "cancelacion" | "sobreventa" | "tarifas"): Promise<void> {
+  const propertyId = c.req.param("propertyId") ?? "";
+  try {
+    await emitirNotificacion(c.get("db"), {
+      evento: "hoteles.configuracion.cambiada",
+      organizationId: c.get("organizationId"),
+      propertyId,
+      clave: `${propertyId}:${area}:${new Date().toISOString().slice(0, 10)}`,
+      parametros: { area },
+    });
+  } catch (err) {
+    console.error("hoteles/configuracion: aviso de cambio no emitido:", err);
+  }
 }
 
 interface ImpuestosBody {
@@ -109,6 +127,7 @@ export function hotelesConfiguracionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
         discountThreshold,
         dsaPerNight,
       });
+      await avisarCambio(c, "impuestos");
       return c.json({ ...saved, aviso: AVISO_ISH });
     } catch (err) {
       return translateConfigError(err);
@@ -135,16 +154,16 @@ export function hotelesConfiguracionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       if (guestText && guestText.length > 1000) throw Errors.validation("guestText admite hasta 1000 caracteres.");
     }
     try {
-      return c.json(
-        await deps.hotelesRepo(c.get("db")).saveCancellationPolicySettings({
+      const saved = await deps.hotelesRepo(c.get("db")).saveCancellationPolicySettings({
           propertyId: c.req.param("propertyId"),
           organizationId: c.get("organizationId"),
           actorUserId: c.get("userId"),
           freeUntilHours: raw.freeUntilHours,
           penaltyPct,
           guestText,
-        }),
-      );
+        });
+      await avisarCambio(c, "cancelacion");
+      return c.json(saved);
     } catch (err) {
       return translateConfigError(err);
     }
@@ -181,6 +200,7 @@ export function hotelesConfiguracionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
         thresholdPct,
       });
       if (!saved) throw Errors.notFound("Tipo de habitación no encontrado en esta property.");
+      await avisarCambio(c, "sobreventa");
       return c.json(saved);
     } catch (err) {
       return translateConfigError(err);
@@ -232,6 +252,7 @@ export function hotelesConfiguracionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
         minStay: estanciaMinima,
       });
       if (!saved) throw Errors.notFound("Tarifa no encontrada en esta property.");
+      await avisarCambio(c, "tarifas");
       return c.json(saved);
     } catch (err) {
       return translateConfigError(err);
