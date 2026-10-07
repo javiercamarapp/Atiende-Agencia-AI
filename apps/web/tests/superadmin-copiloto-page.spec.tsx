@@ -12,7 +12,7 @@ import { MemoryRouter, Outlet, Route, Routes, useNavigate } from "react-router-d
 import { SuperAdminShell } from "../src/superadmin/SuperAdminShell.tsx";
 import { SuperAdminCopilotoPage } from "../src/superadmin/pages/Copiloto.tsx";
 import { COPILOTO_SUPERADMIN, DIRECTAS_COPILOTO_SUPERADMIN } from "../src/superadmin/lib/copiloto-config.ts";
-import { consultarEstadoSuperadmin, crearClienteAcciones } from "../src/superadmin/lib/copiloto-cliente.ts";
+import { consultarEstadoSuperadmin, crearClienteAcciones, crearClienteFijadosSuperadmin } from "../src/superadmin/lib/copiloto-cliente.ts";
 import { guardarStepUp, limpiarStepUp } from "../src/superadmin/lib/stepup.ts";
 import { changeValue, click, keydown, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
@@ -499,7 +499,7 @@ describe("paridad con el chat de las verticales", () => {
     expect(fuente?.getAttribute("href")).toBe("/superadmin/ejecutivo");
   });
 
-  it("tras una respuesta con cifras ofrece Copiar, CSV y Descargar PDF (POST real a /reporte?seq=N) y NO ofrece Fijar (el servidor de plataforma no tiene /pins)", async () => {
+  it("tras una respuesta con cifras ofrece Copiar, CSV y Descargar PDF (POST real a /reporte?seq=N) y NO ofrece Fijar cuando el servidor no lo declara (`fijados` del estado)", async () => {
     const descargas: string[] = [];
     URL.createObjectURL = () => "blob:reporte";
     URL.revokeObjectURL = () => undefined;
@@ -528,6 +528,20 @@ describe("paridad con el chat de las verticales", () => {
     expect(pdf?.url).toBe(`${API}/superadmin/copiloto/conversaciones/${ID_CONV}/reporte?seq=2`);
     expect(pdf?.headers["authorization"]).toBe(`Bearer ${TOKEN}`);
     expect(descargas).toEqual(["reporte-plataforma-2026-10-04.pdf"]);
+  });
+
+  it("con `fijados: true` en el estado ofrece Fijar y fija con POST real a /superadmin/copiloto/pins (conversacion + posicion + bloque)", async () => {
+    instalarFetch(() => json(200, estadoOk({ fijados: true })), (url, init) => (url.endsWith("/superadmin/copiloto/pins") && init.method === "POST" ? json(201, { id: "p1" }) : undefined), FIN_TABLA);
+    const root = await montarPagina();
+    await preguntar(root, "mrr");
+    const fijar = root.querySelector('[aria-label^="Fijar"]');
+    expect(fijar).not.toBeNull();
+    click(fijar!);
+    await esperar();
+    const post = llamadas.find((l) => l.url === `${API}/superadmin/copiloto/pins`);
+    expect(post?.method).toBe("POST");
+    expect(post?.headers["authorization"]).toBe(`Bearer ${TOKEN}`);
+    expect(post?.body).toEqual({ conversationId: ID_CONV, seq: 2, bloque: 0 });
   });
 
   it("un fallo del reporte (422 sin cifras, 429, 503) se dice con un mensaje honesto, nunca un 500 crudo", async () => {
@@ -577,5 +591,32 @@ describe("config", () => {
     const preguntas = [...new Set([...COPILOTO_SUPERADMIN.sugerencias, ...COPILOTO_SUPERADMIN.categorias.flatMap((c) => c.preguntas)])];
     expect(preguntas.filter((q) => !DIRECTAS_COPILOTO_SUPERADMIN[q])).toEqual([]);
     expect(Object.keys(DIRECTAS_COPILOTO_SUPERADMIN).filter((q) => !preguntas.includes(q))).toEqual([]);
+  });
+});
+
+
+describe("cliente del tablero de fijados de plataforma", () => {
+  it("lista, re-ejecuta y quita contra /superadmin/copiloto/pins con el token del superadmin; no tiene operacion de compartir real (la UI no la ofrece)", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      const url = String(input);
+      if (url.endsWith("/pins") && (init.method ?? "GET") === "GET") return json(200, { disponible: true, pins: [{ id: "p1", titulo: "Actividad por negocio", herramienta: "ranking_actividad", args: { periodo: "este_mes" }, compartido: false, propio: true }] });
+      if (url.endsWith("/pins/p1/resultado")) return json(200, { id: "p1", titulo: "Actividad por negocio", status: "ok", text: "3 organizaciones", blocks: [], sources: [] });
+      if (url.endsWith("/pins/p1") && init.method === "DELETE") return new Response(null, { status: 204 });
+      return json(404, {});
+    }) as unknown as typeof fetch;
+    const cliente = crearClienteFijadosSuperadmin(API, TOKEN, fetchImpl);
+    const ctl = new AbortController();
+    expect(await cliente.listar(ctl.signal)).toEqual({ disponible: true, fijados: [{ id: "p1", titulo: "Actividad por negocio", herramienta: "ranking_actividad", compartido: false, propio: true }] });
+    expect((await cliente.resultado("p1", ctl.signal)).text).toBe("3 organizaciones");
+    await cliente.quitar("p1");
+    const urls = (fetchImpl as unknown as { mock: { calls: [RequestInfo | URL, RequestInit][] } }).mock.calls.map(([u, i]) => `${i?.method ?? "GET"} ${String(u)}`);
+    expect(urls).toEqual([`GET ${API}/superadmin/copiloto/pins`, `GET ${API}/superadmin/copiloto/pins/p1/resultado`, `DELETE ${API}/superadmin/copiloto/pins/p1`]);
+  });
+
+  it("403 (rol finanzas) y 409 (impersonando) ocultan el tablero; 503 = base sin migrar", async () => {
+    for (const [status, tipo] of [[403, "sin_acceso"], [409, "sin_acceso"], [503, "no_disponible"]] as const) {
+      const cliente = crearClienteFijadosSuperadmin(API, TOKEN, (async () => json(status, {})) as unknown as typeof fetch);
+      await expect(cliente.listar(new AbortController().signal)).rejects.toMatchObject({ tipo });
+    }
   });
 });

@@ -336,7 +336,8 @@ function dashboardCfo() {
 }
 
 export const rutasSuperadmin: readonly Ruta[] = [
-  { metodo: "GET", patron: "/superadmin/copiloto/estado", manejador: () => ({ disponible: true, permitido: true, motivo: null, rol: "superadmin", financierasDisponibles: true, stepUpRequerido: false, interruptor: { apagado: false, clave: null }, gastoMes: { usadoMicroUsd: 1000000, topeMicroUsd: 25000000, usoPct: 4, medidoEnBitacora: true }, acciones: { propone: true }, herramientas: [] }) },
+  { metodo: "GET", patron: "/superadmin/copiloto/estado", manejador: () => ({ disponible: true, permitido: true, motivo: null, rol: "superadmin", financierasDisponibles: true, stepUpRequerido: false, interruptor: { apagado: false, clave: null }, gastoMes: { usadoMicroUsd: 1000000, topeMicroUsd: 25000000, usoPct: 4, medidoEnBitacora: true }, acciones: { propone: true }, fijados: true, herramientas: [] }) },
+  { metodo: "GET", patron: "/superadmin/copiloto/pins", manejador: () => ({ disponible: true, pins: [] }) },
   {
     metodo: "POST",
     patron: "/superadmin/copiloto",

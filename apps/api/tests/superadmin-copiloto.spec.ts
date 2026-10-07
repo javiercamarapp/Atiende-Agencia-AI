@@ -237,6 +237,7 @@ describe("acceso: solo superadmin y finanzas", () => {
     const body = (await res.json()) as { permitido: boolean; motivo: string | null; rol: string; herramientas: { nombre: string; financiera: boolean }[]; interruptor: { apagado: boolean }; gastoMes: { topeMicroUsd: number }; financierasDisponibles: boolean };
     expect(body).toMatchObject({ permitido: true, motivo: null, rol: "superadmin", financierasDisponibles: true, interruptor: { apagado: false } });
     expect(body.herramientas).toHaveLength(22);
+    expect((body as unknown as { fijados: boolean }).fijados).toBe(true);
     expect(body.herramientas.filter((h) => h.financiera).map((h) => h.nombre).sort()).toEqual(["contratos_por_vencer", "facturacion_cobranza", "margen_costos_unitarios", "mrr", "pyl"]);
     expect(body.gastoMes.topeMicroUsd).toBe(25_000_000);
   });
@@ -612,8 +613,9 @@ describe("herramientas financieras: step-up, rol finanzas y huella en core.cfo_a
     const fin = await ctx.alta({ finanzas: true });
     const stepUp = await ctx.activarMfa(fin);
     const cab = { "x-stepup-token": stepUp };
-    const e = (await (await ctx.estado(fin.token, cab)).json()) as { rol: string; herramientas: { nombre: string; financiera: boolean }[]; financierasDisponibles: boolean };
+    const e = (await (await ctx.estado(fin.token, cab)).json()) as { rol: string; fijados: boolean; herramientas: { nombre: string; financiera: boolean }[]; financierasDisponibles: boolean };
     expect(e.rol).toBe("finanzas");
+    expect(e.fijados).toBe(false); // el tablero de fijados es del superadmin completo
     expect(e.financierasDisponibles).toBe(true);
     expect(e.herramientas.map((h) => h.nombre).sort()).toEqual(["contratos_por_vencer", "facturacion_cobranza", "margen_costos_unitarios", "mrr", "pyl"]);
     expect(e.herramientas.every((h) => h.financiera)).toBe(true);

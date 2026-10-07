@@ -137,6 +137,17 @@ describe("SeccionFijadosCopiloto", () => {
     expect(c.querySelector("[aria-label='Quitar Fijado b del tablero']")).toBeNull();
   });
 
+  it("con `sinCompartir` (tablero personal) no se ofrece Compartir pero Quitar sigue disponible", async () => {
+    const f = clienteFalso();
+    montado = montar(<SeccionFijadosCopiloto cliente={f.cliente} sinCompartir />);
+    await microtareas();
+    await microtareas();
+    const c = montado.container;
+    expect(c.querySelector("[aria-label='Quitar Fijado a del tablero']")).not.toBeNull();
+    expect(c.querySelector("[aria-label^='Compartir']")).toBeNull();
+    expect(c.querySelector("[aria-label^='Dejar de compartir']")).toBeNull();
+  });
+
   it("Quitar llama al servidor y retira la tarjeta; si falla avisa y la deja", async () => {
     const f = clienteFalso({ quitar: vi.fn().mockRejectedValueOnce(new Error("x")).mockResolvedValueOnce(undefined) });
     montado = montar(<SeccionFijadosCopiloto cliente={f.cliente} />);

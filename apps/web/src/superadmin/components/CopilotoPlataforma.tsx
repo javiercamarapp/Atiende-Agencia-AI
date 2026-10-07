@@ -48,7 +48,8 @@ export function CopilotoPlataforma({ apiBaseUrl, token, variante, conversacionIn
     return () => ctl.abort();
   }, [apiBaseUrl, token, intento]);
 
-  const transporte = useMemo(() => crearTransporteSuperadmin(apiBaseUrl, token), [apiBaseUrl, token]);
+  const conFijados = carga.fase === "listo" && carga.estado.tipo === "ok" && carga.estado.fijados;
+  const transporte = useMemo(() => crearTransporteSuperadmin(apiBaseUrl, token, undefined, conFijados), [apiBaseUrl, token, conFijados]);
   const acciones = useMemo(() => crearClienteAcciones(apiBaseUrl, token), [apiBaseUrl, token]);
 
   const envoltura = (hijo: React.ReactNode) => <div className={variante === "panel" ? "p-3" : "p-4"}>{hijo}</div>;

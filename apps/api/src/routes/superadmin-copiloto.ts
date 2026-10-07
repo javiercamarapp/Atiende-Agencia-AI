@@ -244,6 +244,8 @@ export function superadminCopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       gastoMes: { usadoMicroUsd: usado, topeMicroUsd: limite, usoPct: usado === null ? null : Math.min(100, Math.round((usado / limite) * 100)), medidoEnBitacora: medido.ok },
       // CHAT-17: el superadmin completo puede pedirle al Copiloto que PROPONGA acciones (nunca las ejecuta); `finanzas`, de solo lectura, no.
       acciones: { propone: rol === "superadmin" },
+      // El tablero de fijados es personal y solo del superadmin completo (la zona CFO no deja pasar al rol `finanzas` por /pins).
+      fijados: rol === "superadmin",
       herramientas: catalogo.tools.map((t) => ({ nombre: t.name, etiqueta: t.label, descripcion: t.description, financiera: HERRAMIENTAS_FINANCIERAS.includes(t.name) })),
     });
   });
