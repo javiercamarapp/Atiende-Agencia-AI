@@ -218,7 +218,8 @@ describe("llamada de punta a punta (telefonia falsa + proveedor guionado + API r
     const t = await armar({ agente: () => new AgenteGuionado([]), log: ({ evento, campos }) => void lineas.push(JSON.stringify({ evento, ...campos })) });
     await t.llamar("llamada-E", false);
     expect(lineas.length).toBeGreaterThan(5);
-    const todo = lineas.join("\n");
+    // Los UUID de organizacion y sucursal son aleatorios y pueden contener "412" por azar: no son el numero de la direccion.
+    const todo = lineas.join("\n").replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, "<uuid>");
     for (const sensible of [TELEFONO, "Ana Pech", "calle sesenta", "Calle 63", "412", "ana@ejemplo.invalid", "autorizo", "bistec", SIP_DESDE]) expect(todo, sensible).not.toContain(sensible);
     // La llamada se correlaciona por una referencia opaca (hash), nunca por el id de la sala ni del proveedor.
     expect(todo).not.toContain("llamada-E");
