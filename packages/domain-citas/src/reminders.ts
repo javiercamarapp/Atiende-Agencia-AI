@@ -197,7 +197,10 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
             } else {
               const body = usaTextoDeSiempre ? legacyReminderBody(apt.customerName, formatearFechaYHora(apt.startsAt, timeZone).hora, diaDelRecordatorio(apt.startsAt, now, timeZone)) : armarMensaje(config, "recordatorio", valores);
 
-              await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "appointment.reminder_24h", `reminder-24h:${apt.appointmentId}`, {
+              // La clave incluye el starts_at: tras reagendar (que limpia `reminder_24h_sent_at`) el recordatorio con la
+              // hora NUEVA es una fila distinta; con una clave solo por cita, el upsert no hacia nada sobre la fila ya
+              // `sent` y el cron lo contaba como enviado (QA R1 automatizacion 01).
+              await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "appointment.reminder_24h", `reminder-24h:${apt.appointmentId}:${apt.startsAt}`, {
                 to: apt.customerPhone,
                 phone_number_id: phoneNumberId,
                 body,

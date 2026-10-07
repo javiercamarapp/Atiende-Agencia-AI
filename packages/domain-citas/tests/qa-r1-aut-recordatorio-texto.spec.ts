@@ -11,7 +11,7 @@ import { buildCitasFixture } from "./fixtures.ts";
 const MERIDA = "America/Merida";
 
 function payloadDe(repo: InMemoryCitasRepository, dedupeKey: string, channel = "whatsapp") {
-  return repo.getOutbox().find((o) => o.dedupeKey === dedupeKey && o.channel === channel);
+  return repo.getOutbox().find((o) => (o.dedupeKey === dedupeKey || o.dedupeKey.startsWith(`${dedupeKey}:`)) && o.channel === channel);
 }
 
 describe("QA-citas-R1-automatizacion-03: texto del recordatorio cuando la cita es HOY", () => {
@@ -87,6 +87,6 @@ describe("QA-citas-R1-automatizacion-03: texto del recordatorio cuando la cita e
     });
     const now = zonedTimeToUtc("2026-10-20", "11:00", MERIDA);
     await Promise.all([runConfirmacionCitaCore(repo, organizationId, now), runConfirmacionCitaCore(repo, organizationId, now)]);
-    expect(repo.getOutbox().filter((o) => o.dedupeKey === `reminder-24h:${cita.id}`)).toHaveLength(1);
+    expect(repo.getOutbox().filter((o) => o.dedupeKey.startsWith(`reminder-24h:${cita.id}:`))).toHaveLength(1);
   });
 });

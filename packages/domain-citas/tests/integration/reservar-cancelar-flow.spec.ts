@@ -104,7 +104,7 @@ describe("Flujo real: reservar -> reagendar (libera el hueco viejo) -> lista de 
     // 16:45Z: las dos citas (16:00Z y 16:30Z del lunes) quedan a menos de 24 h (ventana (ahora, ahora + 24 h], C-14).
     const summary = await runConfirmacionCitaCore(fixture.repo, fixture.organizationId, new Date("2026-09-13T16:45:00.000Z"));
     expect(summary.sent).toBe(2); // la cita de Ana (reagendada) + la del hueco liberado
-    const anaReminder = fixture.repo.getOutbox().find((m) => m.dedupeKey === `reminder-24h:${appointment.id}`);
+    const anaReminder = fixture.repo.getOutbox().find((m) => m.dedupeKey.startsWith(`reminder-24h:${appointment.id}:`));
     expect((anaReminder?.payload as { body: string }).body).toContain("10:30");
 
     // 8) CANCELAR DESDE EL PANEL — el negocio cancela la cita de Ana. Sin
