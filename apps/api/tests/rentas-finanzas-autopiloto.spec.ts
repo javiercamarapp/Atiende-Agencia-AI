@@ -144,6 +144,21 @@ describe("reserva directa -> movimiento automatico (Rn-P3-07)", () => {
     expect(ctx.rentasRepo.auditLog.some((a) => a.action === "reserva.movimiento_financiero_registrado" && a.entityId === body.id)).toBe(true);
   });
 
+  it("un operador (sin permiso de finanzas) con monto o cotizar:true recibe 403 y NO se crea la reserva; sin monto si puede reservar", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const token = ctx.staff.operadorAccesoTotal.token;
+    const antes = ctx.calendarStore.ocupaciones.size;
+    for (const extra of [{ montoBrutoCentavos: 300000, moneda: "MXN", ...gestor }, { cotizar: true, ...gestor }]) {
+      const res = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/reservas`, authedJson(token, { rango: { inicio: "2026-11-10", fin: "2026-11-13" }, ...extra }));
+      expect(res.status).toBe(403);
+    }
+    expect(ctx.calendarStore.ocupaciones.size).toBe(antes);
+    expect(ctx.rentasRepo.auditLog.some((a) => a.action === "reserva.movimiento_financiero_registrado")).toBe(false);
+    const sinMonto = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/reservas`, authedJson(token, { rango: { inicio: "2026-11-10", fin: "2026-11-13" } }));
+    expect(sinMonto.status).toBe(201);
+  });
+
   it("cotizar:true toma el monto del cotizador de la unidad; sin tarifa -> 422 y NO se crea la reserva", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const app = buildApp(ctx.deps);
