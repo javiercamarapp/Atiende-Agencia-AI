@@ -101,7 +101,8 @@ describe("Folio: reverso de cargo con confirmacion", () => {
       for (let i = 0; i < 6; i++) await flushMicrotasks();
     });
     expect(reversos()).toHaveLength(1);
-    expect(String(reversos()[0][0])).toContain("/folios/folio-1/cargos/ch-1/reverso");
-    expect(JSON.parse(String(reversos()[0][1].body))).toEqual({ motivo: "Cobro duplicado" });
+    const [url, init] = reversos()[0]!;
+    expect(String(url)).toContain("/folios/folio-1/cargos/ch-1/reverso");
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ motivo: "Cobro duplicado" });
   });
 });

@@ -103,8 +103,9 @@ describe("AprobacionesAgentesPage (hoteles)", () => {
       for (let i = 0; i < 6; i++) await flushMicrotasks();
     });
     expect(posts()).toHaveLength(1);
-    expect(String(posts()[0][0])).toBe("https://api.test/hoteles/prop-1/aprobaciones/ap-1/aprobar");
-    expect(JSON.parse(String(posts()[0][1].body))).toEqual({ motivo: "Ocupacion baja ese fin de semana" });
+    const [url, init] = posts()[0]!;
+    expect(String(url)).toBe("https://api.test/hoteles/prop-1/aprobaciones/ap-1/aprobar");
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ motivo: "Ocupacion baja ese fin de semana" });
   });
 
   it("sin la tabla en la base muestra un estado honesto de 'aun no esta activo', nunca una lista vacia silenciosa", async () => {
