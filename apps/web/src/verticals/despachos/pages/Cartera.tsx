@@ -5,7 +5,7 @@
 // retroalimentacion inmediata y oculta acciones que el servidor rechazaria (el enforcement real es server-side).
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Settings2 } from "lucide-react";
 import {
   Button,
   Callout,
@@ -41,6 +41,8 @@ import {
   tipoPersonaDeRfc,
 } from "../lib/cartera-client.ts";
 import type { CarteraRespuesta, ClienteCartera, FichaFormulario, PeriodicidadPagos } from "../lib/cartera-client.ts";
+import { ETIQUETA_SEMAFORO, TONO_SEMAFORO } from "../lib/piloto-client.ts";
+import { AutomatizacionClienteDialog } from "../components/AutomatizacionClienteDialog.tsx";
 import { fetchOrgMembers } from "../lib/staff-client.ts";
 import type { OrgMember } from "../lib/staff-client.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
@@ -179,6 +181,8 @@ export function CarteraPage({ apiBaseUrl, token, propertyId, orgSlug, role }: De
   const [guardando, setGuardando] = useState(false);
   const [errorGuardar, setErrorGuardar] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  // Automatizacion de documentos y entrega de reportes de UN cliente (paridad3 D-31 / D-P3-21).
+  const [automatizando, setAutomatizando] = useState<ClienteCartera | null>(null);
 
   const puedeGestionar = GESTIONAR_ROLES.has(role);
 
@@ -307,6 +311,28 @@ export function CarteraPage({ apiBaseUrl, token, propertyId, orgSlug, role }: De
             },
             { id: "cp", encabezado: "CP fiscal", celda: (c) => <span className="font-mono text-xs text-muted-foreground">{c.ficha?.cpFiscal ?? "—"}</span> },
             { id: "periodicidad", encabezado: "Pagos provisionales", celda: (c) => <span className="text-muted-foreground">{c.ficha ? PERIODICIDAD_ETIQUETAS[c.ficha.periodicidad] : "—"}</span> },
+            ...(cartera.documentosPeriodo?.disponible
+              ? [
+                  {
+                    id: "documentos",
+                    encabezado: `Documentos ${cartera.documentosPeriodo.periodo}`,
+                    celda: (c: ClienteCartera) =>
+                      c.documentos ? (
+                        <>
+                          <StatusBadge tone={TONO_SEMAFORO[c.documentos.semaforo]}>{ETIQUETA_SEMAFORO[c.documentos.semaforo]}</StatusBadge>
+                          {c.documentos.total > 0 && (
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              {c.documentos.recibidos + c.documentos.noAplica} de {c.documentos.total}
+                              {c.documentos.enRevision > 0 && ` · ${c.documentos.enRevision} en revisión`}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      ),
+                  },
+                ]
+              : []),
             {
               id: "estatus",
               encabezado: "Ficha",
@@ -316,20 +342,30 @@ export function CarteraPage({ apiBaseUrl, token, propertyId, orgSlug, role }: De
               id: "acciones",
               encabezado: "",
               celda: (c) =>
-                puedeGestionar && cartera.estado === "disponible" ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setErrorGuardar(null);
-                      setAviso(null);
-                      setEditando(c);
-                    }}
-                  >
-                    <Pencil />
-                    {c.ficha ? "Editar ficha" : "Completar ficha"}
-                  </Button>
+                cartera.estado === "disponible" ? (
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {c.ficha && cartera.documentosPeriodo?.disponible && (
+                      <Button type="button" variant="outline" size="sm" onClick={() => setAutomatizando(c)}>
+                        <Settings2 />
+                        Automatización
+                      </Button>
+                    )}
+                    {puedeGestionar && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setErrorGuardar(null);
+                          setAviso(null);
+                          setEditando(c);
+                        }}
+                      >
+                        <Pencil />
+                        {c.ficha ? "Editar ficha" : "Completar ficha"}
+                      </Button>
+                    )}
+                  </div>
                 ) : null,
             },
           ]}
@@ -368,6 +404,19 @@ export function CarteraPage({ apiBaseUrl, token, propertyId, orgSlug, role }: De
           />
         )}
       </FormDialog>
+
+      {automatizando && (
+        <AutomatizacionClienteDialog
+          open
+          onOpenChange={(abierto) => !abierto && setAutomatizando(null)}
+          apiBaseUrl={apiBaseUrl}
+          token={token}
+          propertyId={automatizando.propertyId}
+          nombre={automatizando.nombre}
+          puedeGestionar={puedeGestionar}
+          onCambio={() => void cargar()}
+        />
+      )}
     </PageContainer>
   );
 }

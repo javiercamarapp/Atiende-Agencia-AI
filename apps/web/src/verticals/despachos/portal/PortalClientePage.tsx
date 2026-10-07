@@ -4,23 +4,28 @@
 // en el header `X-Portal-Token`; nunca se imprime ni se escribe en almacenamiento.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
-import { CalendarClock, FileUp, MessageSquare, ShieldCheck } from "lucide-react";
+import { CalendarClock, ClipboardList, Download, FileUp, MessageSquare, ShieldCheck } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoVacio, StatusBadge, Textarea } from "@atiende/ui";
 import { BarraProgreso } from "../../../components/BarraProgreso.tsx";
 import {
   avanceCierre,
+  descargarReportePortal,
   enviarMensajePortal,
+  ETIQUETA_RENGLON_PORTAL,
   estadoCierre,
   estadoDocumento,
   estadoObligacion,
+  fetchPortalReportes,
   fetchPortalResumen,
+  fetchPortalSolicitudes,
   nombreMes,
   PortalClienteError,
+  renglonAdmiteArchivo,
   subirDocumentoPortal,
   tokenDeFragmento,
   validarArchivoLocal,
 } from "../lib/portal-cliente-client.ts";
-import type { PortalResumen } from "../lib/portal-cliente-client.ts";
+import type { PortalArchivoReporte, PortalReporteCierre, PortalResumen, PortalSolicitud } from "../lib/portal-cliente-client.ts";
 import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
 
 function formatFechaHora(iso: string): string {
@@ -34,7 +39,12 @@ export interface PortalClientePageProps {
   readonly hash?: string;
 }
 
-type Fase = { readonly tipo: "cargando" } | { readonly tipo: "sin_enlace" } | { readonly tipo: "no_disponible" } | { readonly tipo: "listo"; readonly resumen: PortalResumen };
+/** `solicitudes` / `reportes` = null: la base aun no tiene la migracion 027 y la pantalla oculta esa seccion (no finge funcionalidad). */
+type Fase =
+  | { readonly tipo: "cargando" }
+  | { readonly tipo: "sin_enlace" }
+  | { readonly tipo: "no_disponible" }
+  | { readonly tipo: "listo"; readonly resumen: PortalResumen; readonly solicitudes: readonly PortalSolicitud[] | null; readonly reportes: readonly PortalReporteCierre[] | null };
 
 export function PortalClientePage({ apiBaseUrl, hash }: PortalClientePageProps) {
   const token = useRef<string | null>(tokenDeFragmento(hash ?? window.location.hash));
@@ -52,7 +62,11 @@ export function PortalClientePage({ apiBaseUrl, hash }: PortalClientePageProps) 
     const t = token.current;
     if (!t) return;
     try {
-      setFase({ tipo: "listo", resumen: await fetchPortalResumen(fetch, apiBaseUrl, t) });
+      const resumen = await fetchPortalResumen(fetch, apiBaseUrl, t);
+      // Solicitudes y reportes son secciones nuevas: si fallan por cualquier motivo el resto del portal sigue funcionando.
+      const solicitudes = await fetchPortalSolicitudes(fetch, apiBaseUrl, t).catch(() => null);
+      const reportes = await fetchPortalReportes(fetch, apiBaseUrl, t).catch(() => null);
+      setFase({ tipo: "listo", resumen, solicitudes, reportes });
     } catch (err) {
       // Mismo mensaje para enlace inexistente, expirado o revocado: la pantalla no revela cual fue.
       if (err instanceof PortalClienteError && err.status === 503) setFase({ tipo: "no_disponible" });
@@ -64,7 +78,7 @@ export function PortalClientePage({ apiBaseUrl, hash }: PortalClientePageProps) 
     void cargar();
   }, [cargar]);
 
-  async function alElegirArchivo(e: ChangeEvent<HTMLInputElement>) {
+  async function alElegirArchivo(e: ChangeEvent<HTMLInputElement>, renglonId?: string) {
     const archivo = e.target.files?.[0];
     e.target.value = "";
     const t = token.current;
@@ -77,13 +91,31 @@ export function PortalClientePage({ apiBaseUrl, hash }: PortalClientePageProps) 
     setSubiendo(true);
     setAviso(null);
     try {
-      const r = await subirDocumentoPortal(fetch, apiBaseUrl, t, archivo);
-      setAviso({ tono: "success", texto: r.duplicado ? `Ya habíamos recibido “${r.nombreArchivo}”.` : `Recibimos “${r.nombreArchivo}”. Tu despacho lo revisará.` });
+      const r = await subirDocumentoPortal(fetch, apiBaseUrl, t, archivo, renglonId);
+      const aviso = r.duplicado ? `Ya habíamos recibido “${r.nombreArchivo}”.` : `Recibimos “${r.nombreArchivo}”. Tu despacho lo revisará.`;
+      setAviso({ tono: r.renglon && !r.renglon.vinculado ? "info" : "success", texto: r.renglon && !r.renglon.vinculado ? `${aviso} Ese documento ya no se necesita para la solicitud.` : aviso });
       await cargar();
     } catch (err) {
       setAviso({ tono: "danger", texto: err instanceof PortalClienteError ? err.message : "No se pudo subir el archivo. Intenta de nuevo." });
     } finally {
       setSubiendo(false);
+    }
+  }
+
+  async function alDescargarReporte(archivo: PortalArchivoReporte) {
+    const t = token.current;
+    if (!t) return;
+    setAviso(null);
+    try {
+      const { blob, nombre } = await descargarReportePortal(fetch, apiBaseUrl, t, archivo);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = nombre;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setAviso({ tono: "danger", texto: err instanceof PortalClienteError ? err.message : "No se pudo descargar el reporte." });
     }
   }
 
@@ -122,6 +154,8 @@ export function PortalClientePage({ apiBaseUrl, hash }: PortalClientePageProps) 
   }
 
   const r = fase.resumen;
+  const solicitudes = fase.solicitudes;
+  const reportes = fase.reportes;
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-4 p-4 pb-12">
       <header className="flex flex-col gap-1">
@@ -180,6 +214,78 @@ export function PortalClientePage({ apiBaseUrl, hash }: PortalClientePageProps) 
           })}
         </CardContent>
       </Card>
+
+      {solicitudes !== null && solicitudes.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base"><ClipboardList className="size-4" aria-hidden="true" /> Documentos que te pidió tu despacho</CardTitle>
+            <CardDescription>Súbelos aquí para que tu despacho pueda cerrar tu mes.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-5">
+            {solicitudes.map((s) => (
+              <div key={s.id} className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium capitalize text-foreground">{nombreMes(s.mes, s.ejercicio)}</p>
+                  <StatusBadge tone={s.estado === "completa" ? "success" : "warning"}>{s.estado === "completa" ? "Completo" : "Faltan documentos"}</StatusBadge>
+                </div>
+                <ul className="flex flex-col gap-2">
+                  {s.renglones.map((g) => {
+                    const e = ETIQUETA_RENGLON_PORTAL[g.estado];
+                    return (
+                      <li key={g.id} className="flex flex-col gap-1.5 rounded-md border border-border p-2.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="min-w-0 text-sm text-foreground">{g.etiqueta}</span>
+                          <StatusBadge tone={e.tono}>{e.etiqueta}</StatusBadge>
+                        </div>
+                        {g.estado === "no_aplica" && g.motivo && <p className="text-xs text-muted-foreground">Tu despacho indicó: {g.motivo}</p>}
+                        {renglonAdmiteArchivo(g.estado) && (
+                          <label className="block">
+                            <span className="sr-only">Subir archivo para {g.etiqueta}</span>
+                            <input
+                              type="file"
+                              accept=".xml,.pdf,.png,.jpg,.jpeg,application/xml,text/xml,application/pdf,image/png,image/jpeg"
+                              disabled={subiendo}
+                              onChange={(ev) => void alElegirArchivo(ev, g.id)}
+                              className="block w-full text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-foreground"
+                            />
+                          </label>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {reportes !== null && reportes.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base"><Download className="size-4" aria-hidden="true" /> Reportes de tu cierre</CardTitle>
+            <CardDescription>Tu despacho los publicó al cerrar cada mes.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {reportes.map((rep) => (
+              <div key={`${rep.anio}-${rep.mes}`} className="flex flex-col gap-2">
+                <p className="text-sm font-medium capitalize text-foreground">{nombreMes(rep.mes, rep.anio)}</p>
+                <ul className="flex flex-col gap-1.5">
+                  {rep.archivos.map((a) => (
+                    <li key={a.id} className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate text-sm text-foreground">{a.nombreArchivo}</span>
+                      <Button type="button" size="sm" variant="outline" onClick={() => void alDescargarReporte(a)}>
+                        <Download />
+                        Descargar
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

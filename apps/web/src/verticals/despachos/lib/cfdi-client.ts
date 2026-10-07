@@ -80,6 +80,11 @@ export interface InvoiceSummary {
   readonly montosCentavos?: MontosCentavos;
   readonly estadoSat?: EstadoSatCfdi;
   readonly estadoSatVerificadoEn?: string | null;
+  /** Lo que el SAT responde sobre la cancelacion (paridad3 D-P3-19; `null` = aun no consultado o base sin la migracion 027). */
+  readonly esCancelable?: string | null;
+  readonly estatusCancelacion?: string | null;
+  readonly codigoEstatus?: string | null;
+  readonly validacionEfos?: string | null;
   /** Solo en el detalle (`GET .../cfdi/:invoiceId`). */
   readonly impuestos?: readonly ImpuestoDesglosado[];
 }
@@ -124,6 +129,8 @@ export interface VerificacionEstatusSat {
   readonly estadoSatVerificadoEn: string | null;
   readonly esCancelable: string | null;
   readonly estatusCancelacion: string | null;
+  readonly codigoEstatus?: string | null;
+  readonly validacionEfos?: string | null;
 }
 
 /** `POST /despachos/:propertyId/cfdi/:invoiceId/verificar-estatus-sat` -- consulta el estatus del CFDI ante el servicio publico del SAT. */
