@@ -19,6 +19,7 @@ import { restaurantesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { restaurantesProgramadosInternoRoutes } from "./programados-interno.ts";
 import { restaurantesVozHuerfanasRoutes } from "./voz-huerfanas.ts";
 import { restaurantesCierresRoutes } from "./cierres.ts";
+import { restaurantesAutopilotoRoutes } from "./autopiloto.ts";
 import { restaurantesCierresInternoRoutes } from "./cierres-interno.ts";
 import { restaurantesRepartidorPerfilRoutes } from "./repartidor-perfil.ts";
 import { restaurantesRepartidorHistorialRoutes } from "./repartidor-historial.ts";
@@ -73,6 +74,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesVozHuerfanasRoutes(deps));
   app.route("/", restaurantesCierresInternoRoutes(deps));
   app.route("/", restaurantesCierresRoutes(deps));
+  app.route("/", restaurantesAutopilotoRoutes(deps));
   // R-15 (migración 044): perfil operativo del repartidor + barrido interno de licencias por vencer.
   app.route("/", restaurantesRepartidorPerfilRoutes(deps));
   app.route("/", restaurantesRepartidorHistorialRoutes(deps));
