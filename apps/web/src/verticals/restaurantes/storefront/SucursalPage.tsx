@@ -139,6 +139,11 @@ export function SucursalPage({ apiBaseUrl, orgSlug, branchSlug }: { apiBaseUrl: 
     return () => clearInterval(t);
   }, [cargarMenu]);
 
+  // R-37: NO se precarga el chunk de rastreo al abrir la confirmación. El helper de precarga de Vite emite
+  // `vite:preloadError` aunque el import tenga su propio .catch, y el manejador global recarga la página: con el
+  // diálogo abierto se perderían nombre, teléfono y dirección (no se persisten) o se cortaría el POST del pedido.
+  // Si el chunk de rastreo falla tras un despliegue, la recarga ocurre ya en la URL de rastreo, sin daño.
+
   useEffect(() => {
     if (!carritoHidratado.current) return;
     try {

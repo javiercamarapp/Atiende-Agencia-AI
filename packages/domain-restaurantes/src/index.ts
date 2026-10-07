@@ -240,6 +240,7 @@ export type { OpcionesTramos, StatsPeriod, TrendBucket, ComparisonPeriods, Sales
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";
+export * from "./autopiloto/index.ts";
 export * from "./repartidor-perfil/index.ts";
 export * from "./exportar/index.ts";
 export { PM_COPY, buildPmSystemPrompt, pmCustomerContextBlock, saludoPorHora } from "./whatsapp/perfil-pm.ts";
@@ -254,7 +255,33 @@ export type {
   WhatsAppAgentConfigInput,
   WhatsAppAgentConfigRow,
 } from "./types.ts";
-export { WhatsAppAgentConfigConflictError } from "./errors.ts";
+export { WhatsAppAgentConfigConflictError, ClienteMemoriaNoDisponibleError } from "./errors.ts";
+
+// Cliente 360 (migracion 049): memoria del cliente, gustos, repetir pedido y ficha del staff.
+export { PREFERENCE_KINDS, isPreferenceKind, POLITICA_POR_OMISION } from "./cliente-360/types.ts";
+export type {
+  ClosureAddress,
+  ClosureObservation,
+  CustomerAddressChanges,
+  CustomerAddressDetail,
+  CustomerFicha,
+  CustomerMemory,
+  CustomerPolicy,
+  CustomerPreference,
+  CustomerProfilePatch,
+  CustomerReliability,
+  OrderClosureInput,
+  PastOrder,
+  PreferenceAction,
+  PreferenceKind,
+  TasteProposal,
+} from "./cliente-360/types.ts";
+export { extraerObservaciones, extraerDomicilio, proponerGustos, describirGusto, MIN_VECES_PARA_PROPONER } from "./cliente-360/gustos.ts";
+export { repetirPedido, elegirPedido } from "./cliente-360/repetir.ts";
+export type { CambioDeRepeticion, PedidoRepetido, RenglonRepetido } from "./cliente-360/repetir.ts";
+export { cargarMemoria, cerrarCicloDelCliente, evaluarReincidencia } from "./cliente-360/memoria.ts";
+export type { DecisionReincidencia } from "./cliente-360/memoria.ts";
+export type { PedidoAnteriorResumen } from "./types.ts";
 export {
   AGENTE_LIMITES,
   ESPERA_RAFAGAS_MAX_SEGUNDOS,

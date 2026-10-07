@@ -27,6 +27,8 @@ import { logEvent } from "../../../logger.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
+import { barrerAutopilotoTick } from "./autopiloto-tick.ts";
+import type { ResumenTickAutopiloto } from "./autopiloto-tick.ts";
 
 /** Ventana (horas) y tope por corrida de la reconciliacion de comandas perdidas. */
 const RECONCILIAR_HORAS = 24;
@@ -111,6 +113,14 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         logEvent(c, "error", "restaurantes_whatsapp_silencio_fallido", { error: err instanceof Error ? err.message : String(err) });
       }
       logEvent(c, "info", "restaurantes_whatsapp_silencio", { ...silencio });
+      // Autopiloto (migracion 050): escalado de aprobaciones sin respuesta, estados sin clic, avance desde el POS, regreso de handoffs y agotados
+      // por hoy. Cada paso en su propia sesion de sistema; sin la migracion cada uno responde `disponible: false` (sin error).
+      let autopiloto: ResumenTickAutopiloto | null = null;
+      try {
+        autopiloto = await barrerAutopilotoTick(deps, c, new Date());
+      } catch (err) {
+        logEvent(c, "error", "restaurantes_autopiloto_tick_fallido", { error: err instanceof Error ? err.message : String(err) });
+      }
       const respuesta = c.json({
         ok: true,
         status: resultado.disponible ? "ok" : "not_available",
@@ -123,6 +133,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         avisos,
         marketing,
         silencio,
+        autopiloto,
       });
       // Una corrida con comandas que no se pudieron encolar NO es 'ok': el latido y la bitacora la marcan (el cron no
       // reintenta por HTTP; la proxima corrida reconcilia).

@@ -181,7 +181,7 @@ describe("PedidosPage (restaurantes)", () => {
     expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Marcar En camino"))).toBe(true);
   });
 
-  it("'Marcar Cancelado' abre el AlertDialog (no cancela de inmediato) y solo al confirmar llama la API con status:'cancelado'", async () => {
+  it("'Marcar Cancelado' pide un motivo de la lista cerrada (no cancela de inmediato) y solo al confirmar llama la API con status:'cancelado' y el motivo", async () => {
     stubFetch({ byStatus: { pending: [PEDIDO_PENDING] } });
     rendered = renderPage();
     await esperarCarga();
@@ -193,6 +193,7 @@ describe("PedidosPage (restaurantes)", () => {
     expect(fetchMock.mock.calls.some(([url, init]) => url.endsWith("/status") && init?.method === "PATCH")).toBe(false);
     expect(document.body.textContent).toContain("¿Cancelar el pedido de Juan Pérez?");
 
+    changeValue(document.body.querySelector('[role="dialog"] select') as HTMLSelectElement, "otro");
     const confirmBtn = [...document.body.querySelectorAll("button")].find((b) => b.textContent === "Cancelar el pedido")!;
     await act(async () => {
       confirmBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -202,7 +203,7 @@ describe("PedidosPage (restaurantes)", () => {
 
     const call = fetchMock.mock.calls.find(([url, init]) => url.endsWith("/status") && init?.method === "PATCH");
     expect(call).toBeDefined();
-    expect(JSON.parse(call![1].body as string)).toEqual({ status: "cancelado" });
+    expect(JSON.parse(call![1].body as string)).toEqual({ status: "cancelado", motivo: "otro" });
   });
 
   it("asignar repartidor: elegir uno en el <select> llama PATCH .../assign-repartidor con {repartidorId} real", async () => {
