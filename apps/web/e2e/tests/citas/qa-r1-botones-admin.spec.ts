@@ -95,7 +95,6 @@ test.describe("citas QA R1 botones: configuracion y staff", () => {
   });
 
   test("QA-citas-R1-botones-18: Configuracion promete 'Próximamente' plantillas de recordatorios y canal de WhatsApp que ya existen", async ({ page, iniciarSesion }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-18: tarjeta 'Próximamente' de Configuracion.tsx desactualizada (Mensajes y Agente de WhatsApp ya existen)");
     await abrir(page, iniciarSesion, "configuracion");
     await expect(page.getByText("Próximamente")).toHaveCount(0);
   });
@@ -121,22 +120,32 @@ test.describe("citas QA R1 botones: configuracion y staff", () => {
     await expect(page.locator("main").getByText("Ya hay una invitacion pendiente para ese correo.")).toBeVisible();
 
     await page.getByLabel("Rol de Asistente Dental").selectOption("admin");
+    await dialogo(page, "¿Cambiar el rol de esta persona?").getByRole("button", { name: "Cambiar rol" }).click();
     await expect.poll(async () => (await mock.buscar({ metodo: "PATCH", ruta: "/staff/miembros/usr-asistente" })).length).toBe(1);
     await expect(page.getByLabel("Rol de Asistente Dental")).toHaveValue("admin");
     vigilante.verificar();
   });
 
   test("QA-citas-R1-botones-20: Revocar una invitacion y cambiar el rol de un staff se ejecutan sin confirmar", async ({ page, iniciarSesion, mock }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-20: handleRevoke y el onChange del rol en Staff.tsx escriben al instante, sin useConfirm");
     await abrir(page, iniciarSesion, "staff");
     await mock.limpiarRegistro();
     await page.getByRole("button", { name: "Revocar" }).first().click();
     await expect(page.getByRole("alertdialog")).toBeVisible({ timeout: 2_000 });
     expect(await mock.escrituras()).toEqual([]);
+    await dialogo(page, "¿Revocar esta invitación?").getByRole("button", { name: "Volver" }).click();
+    expect(await mock.escrituras()).toEqual([]);
+    await page.getByRole("button", { name: "Revocar" }).first().click();
+    await dialogo(page, "¿Revocar esta invitación?").getByRole("button", { name: "Revocar invitación" }).click();
+    await expect.poll(async () => (await mock.buscar({ metodo: "DELETE", ruta: "/staff/invitaciones/" })).length).toBe(1);
+    // Cambiar el rol de otra persona tambien pide confirmar; Volver deja el rol como estaba.
+    await mock.limpiarRegistro();
+    await page.getByLabel("Rol de Asistente Dental").selectOption("admin");
+    await dialogo(page, "¿Cambiar el rol de esta persona?").getByRole("button", { name: "Volver" }).click();
+    expect(await mock.escrituras()).toEqual([]);
+    await expect(page.getByLabel("Rol de Asistente Dental")).not.toHaveValue("admin");
   });
 
   test("QA-citas-R1-botones-21: el panel ofrece cambiar tu propio rol (el servidor siempre lo rechaza)", async ({ page, iniciarSesion }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-21: Staff.tsx no deshabilita el selector de rol en la fila propia ni los roles por encima del propio");
     await abrir(page, iniciarSesion, "staff", "admin");
     await expect(page.getByLabel(/^Rol de /).first()).toBeDisabled({ timeout: 2_000 });
   });

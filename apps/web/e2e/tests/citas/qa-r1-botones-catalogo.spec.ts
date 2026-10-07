@@ -1,6 +1,7 @@
 // QA R1 (lente botones y paginas) de citas: paginas de Negocio (Proveedores y su ficha con calendarios, Servicios y su ficha,
 // Clientes y su ficha, Disponibilidad). Cada control contra la API simulada (fixtures/citas-qa.ts); Cancelar nunca escribe.
 import type { Page } from "@playwright/test";
+import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../../helpers/humo.ts";
 import { citasQa } from "../../mock-api/fixtures/citas-qa.ts";
@@ -30,7 +31,6 @@ test.describe("citas QA R1 botones: proveedores", () => {
   });
 
   test("QA-citas-R1-botones-10: crear proveedor o servicio sin datos validos no hace nada y no dice por que", async ({ page, iniciarSesion, mock }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-10: handleCreate hace `return` silencioso (Proveedores/Servicios); sin mensaje ni campo marcado");
     await abrir(page, iniciarSesion, "proveedores");
     await page.getByRole("button", { name: "Crear proveedor" }).click();
     expect(await mock.escrituras()).toEqual([]);
@@ -57,7 +57,6 @@ test.describe("citas QA R1 botones: proveedores", () => {
   });
 
   test("QA-citas-R1-botones-11: Cancelar la edicion no descarta lo escrito; al volver a Editar reaparece el cambio descartado", async ({ page, iniciarSesion }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-11: el boton Cancelar solo hace setEditing(false) (fichas de proveedor y servicio); no restaura los campos");
     await abrir(page, iniciarSesion, "proveedores/prv-1");
     await page.getByRole("button", { name: "Editar proveedor" }).click();
     await page.getByLabel("Nombre", { exact: true }).fill("Cambio Descartado");
@@ -94,13 +93,18 @@ test.describe("citas QA R1 botones: proveedores", () => {
   });
 
   test("QA-citas-R1-botones-12: Desconectar un calendario (Cal.com/CalDAV) lo desconecta con un clic, sin confirmar", async ({ page, iniciarSesion, mock }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-12: handleDisconnect de CalComCard/CalDavCard no pide confirmacion");
     await abrir(page, iniciarSesion, "proveedores/prv-2");
     await expect(page.getByText("Event type: 4455")).toBeVisible();
     await mock.limpiarRegistro();
     await page.getByRole("button", { name: "Desconectar" }).first().click();
     await expect(page.getByRole("alertdialog")).toBeVisible({ timeout: 2_000 });
     expect(await mock.escrituras()).toEqual([]);
+    // Volver (o Escape) no escribe; confirmar manda el POST de desconexion.
+    await dialogo(page, "¿Desconectar Cal.com?").getByRole("button", { name: "Volver" }).click();
+    expect(await mock.escrituras()).toEqual([]);
+    await page.getByRole("button", { name: "Desconectar" }).first().click();
+    await dialogo(page, "¿Desconectar Cal.com?").getByRole("button", { name: "Desconectar calendario" }).click();
+    await expect.poll(async () => (await mock.buscar({ metodo: "POST", ruta: "/calcom/disconnect" })).length).toBe(1);
   });
 
   test("ficha: el aviso de citas sin sincronizar y Google Calendar conectado se muestran; Conectar Google pide la URL real y navega", async ({ page, iniciarSesion, mock, vigilante }) => {
@@ -168,7 +172,6 @@ test.describe("citas QA R1 botones: clientes", () => {
   });
 
   test("QA-citas-R1-botones-13: si una busqueda falla, el error se queda aunque las siguientes respondan bien", async ({ page, iniciarSesion, mock, vigilante }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-13: el efecto de ClientesListPage nunca llama setError(null) antes de volver a pedir");
     await abrir(page, iniciarSesion, "clientes");
     vigilante.permitirRespuesta5xx(/\/customers/);
     await mock.inyectarFalla({ metodo: "GET", ruta: "search=Ma", status: 503, veces: 1 });
@@ -180,7 +183,6 @@ test.describe("citas QA R1 botones: clientes", () => {
   });
 
   test("QA-citas-R1-botones-14: la busqueda de clientes pide al servidor en cada tecla (sin espera)", async ({ page, iniciarSesion, mock }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-14: ClientesListPage dispara un GET /customers por cada caracter (sin debounce)");
     await abrir(page, iniciarSesion, "clientes");
     await mock.limpiarRegistro();
     await page.getByLabel("Buscar cliente").pressSequentially("Paciente", { delay: 30 });
@@ -240,13 +242,17 @@ test.describe("citas QA R1 botones: disponibilidad", () => {
   });
 
   test("QA-citas-R1-botones-15: Quitar un horario o una excepcion borra con un clic, sin confirmar", async ({ page, iniciarSesion, mock }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-15: handleDeleteRule/handleDeleteOverride de Disponibilidad.tsx no piden confirmacion");
     await abrir(page, iniciarSesion, "disponibilidad");
     await expect(page.getByText("2026-12-25")).toBeVisible();
     await mock.limpiarRegistro();
     await page.getByRole("table").getByRole("row", { name: /Lunes/ }).getByRole("button", { name: "Quitar" }).click();
     await expect(page.getByRole("alertdialog")).toBeVisible({ timeout: 2_000 });
     expect(await mock.escrituras()).toEqual([]);
+    await dialogo(page, "¿Quitar este horario?").getByRole("button", { name: "Volver" }).click();
+    expect(await mock.escrituras()).toEqual([]);
+    await page.getByRole("table").getByRole("row", { name: /Lunes/ }).getByRole("button", { name: "Quitar" }).click();
+    await dialogo(page, "¿Quitar este horario?").getByRole("button", { name: "Quitar horario" }).click();
+    await expect.poll(async () => (await mock.buscar({ metodo: "DELETE", ruta: "/availability-rules/" })).length).toBe(1);
   });
 
   test("excepcion: guardar dia cerrado y dia con horario mandan su PUT; Quitar manda DELETE", async ({ page, iniciarSesion, mock, vigilante }) => {
@@ -266,13 +272,13 @@ test.describe("citas QA R1 botones: disponibilidad", () => {
 
     const fila = page.locator("main div.text-sm").filter({ hasText: "Congreso" });
     await fila.getByRole("button", { name: "Quitar" }).click();
+    await dialogo(page, "¿Quitar esta excepción?").getByRole("button", { name: "Quitar excepción" }).click();
     await expect(page.getByText("(Congreso)")).toHaveCount(0);
     expect(await mock.buscar({ metodo: "DELETE", ruta: "/availability-overrides/2026-11-20" })).toHaveLength(1);
     vigilante.verificar();
   });
 
   test("QA-citas-R1-botones-16: un error al cargar un proveedor se queda pegado al cambiar a otro que si carga", async ({ page, iniciarSesion, mock, vigilante }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-16: el efecto por proveedor de Disponibilidad.tsx no limpia `error`; ademas el cargando se oculta mientras haya error");
     await abrir(page, iniciarSesion, "disponibilidad");
     vigilante.permitirRespuesta5xx(/\/providers\/prv-2/);
     await mock.inyectarFalla({ metodo: "GET", ruta: "/\\/providers\\/prv-2$/", status: 503, veces: 1 });
@@ -284,7 +290,6 @@ test.describe("citas QA R1 botones: disponibilidad", () => {
   });
 
   test("QA-citas-R1-botones-17: las excepciones muestran la fecha cruda en ISO (2026-12-25) en vez del formato es-MX", async ({ page, iniciarSesion }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-17: Disponibilidad.tsx pinta o.overrideDate sin formatFechaSolo");
     await abrir(page, iniciarSesion, "disponibilidad");
     await expect(page.getByText(/25 dic/)).toBeVisible({ timeout: 2_000 });
   });

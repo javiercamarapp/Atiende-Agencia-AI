@@ -19,7 +19,7 @@ async function conDosSucursales(page: Page, mock: { agregarAEstado(c: string, v:
 
 /** El selector de sucursal visible en este viewport (Sidebar en escritorio, cabecera en movil). */
 function selectorVisible(page: Page) {
-  return page.locator("select#citas-sucursal-activa:visible");
+  return page.locator("select[id^="citas-sucursal-activa"]:visible");
 }
 
 test.describe("citas QA R1 botones: shell", () => {
@@ -60,7 +60,6 @@ test.describe("citas QA R1 botones: shell", () => {
   });
 
   test("QA-citas-R1-botones-08: el selector de sucursal se pinta dos veces con el mismo id (Sidebar y cabecera movil)", async ({ page, iniciarSesion, mock }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-08: CitasShell pasa el mismo nodo `branchSelector` como branchSelector y mobileSelector");
     await iniciarSesion("citas", "owner");
     await conDosSucursales(page, mock, "resumen");
     await expect(page.locator("#citas-sucursal-activa")).toHaveCount(1);
@@ -70,7 +69,7 @@ test.describe("citas QA R1 botones: shell", () => {
     await iniciarSesion("citas", "owner");
     await conDosSucursales(page, mock, "agenda");
     await expect(selectorVisible(page)).toBeVisible();
-    // En movil hay dos <select> con el mismo id (defecto 08): el nombre se busca por la etiqueta visible al lado.
+    // La cabecera movil usa su propio id (citas-sucursal-activa-movil): solo el de escritorio se busca por nombre accesible.
     if (!esMovil(page)) await expect(page.getByRole("combobox", { name: "Sucursal activa" })).toBeVisible();
     await afirmarSinScrollHorizontal(page);
     vigilante.verificar();
@@ -88,7 +87,6 @@ test.describe("citas QA R1 botones: shell", () => {
   });
 
   test("QA-citas-R1-botones-09: en el 404 del shell el unico <h1> es el nombre de la consola, no 'Página no encontrada'", async ({ page, iniciarSesion }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-09: VerticalNoEncontrado no pinta <h1> y la barra hace de h1 con el titulo de la consola");
     await iniciarSesion("citas", "owner");
     await page.goto(`${BASE}/esta-pagina-no-existe`);
     await expect(page.getByText("Página no encontrada")).toBeVisible();

@@ -101,7 +101,6 @@ test.describe("citas QA R1 botones: agenda", () => {
   });
 
   test("QA-citas-R1-botones-01: cuando falla una accion o la carga, el error de la agenda no ofrece Reintentar", async ({ page, iniciarSesion, mock }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-01: el EstadoError de Agenda.tsx (error de accion o de carga) no recibe onReintentar");
     await abrirAgenda(page, iniciarSesion);
     await mock.inyectarFalla({ metodo: "POST", ruta: "/appointments/apt-2/confirm", status: 500, veces: 1 });
     await tarjeta(page, "Revision de ortodoncia").getByRole("button", { name: "Confirmar" }).click();
@@ -191,7 +190,6 @@ test.describe("citas QA R1 botones: agenda", () => {
   });
 
   test("QA-citas-R1-botones-02: el 409 de choque trae horarios alternativos y el dialogo no los ofrece", async ({ page, iniciarSesion }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-02: Agenda.tsx solo pinta el mensaje del 409; descarta `alternative_slots` que el servidor ya calcula");
     await abrirAgenda(page, iniciarSesion);
     const fecha = fechaMerida(6);
     for (const cliente of ["Uno Ocupa", "Dos Choca"]) {
@@ -242,7 +240,6 @@ test.describe("citas QA R1 botones: agenda", () => {
   });
 
   test("QA-citas-R1-botones-03: la respuesta lenta del mes anterior pisa la agenda del mes que se esta viendo", async ({ page, iniciarSesion, mock }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-03: Agenda.tsx load() no descarta respuestas viejas (sin generacion/AbortController)");
     await iniciarSesion("citas", "owner");
     const fecha = fechaMerida(0);
     const mes = fecha.slice(0, 7);
@@ -258,7 +255,6 @@ test.describe("citas QA R1 botones: agenda", () => {
   });
 
   test("QA-citas-R1-botones-04: si falla la carga de otro rango, el error queda ENCIMA de las citas del rango anterior", async ({ page, iniciarSesion, mock, vigilante }) => {
-    test.fail(!process.env.QA_SIN_FAIL, "QA-citas-R1-botones-04: load() no limpia `appointments` ni marca la lista como del rango viejo cuando falla");
     await abrirAgenda(page, iniciarSesion);
     vigilante.permitirRespuesta5xx(/\/appointments\?/);
     await mock.inyectarFalla({ metodo: "GET", ruta: "/appointments?", status: 503, veces: 1 });
