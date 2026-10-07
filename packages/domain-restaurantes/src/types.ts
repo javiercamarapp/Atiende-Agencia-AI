@@ -940,7 +940,7 @@ export interface NewBranchHoursExceptionInput {
 }
 
 // ---------------------------------------------------------------------------
-// R-09 -- storefront publico (menu, carrito, checkout, rastreo por token).
+// Fila de catalogo con disponibilidad (la usa el conocimiento automatico del agente; antes alimentaba la tienda en linea, ya eliminada).
 // ---------------------------------------------------------------------------
 /** Renglon del menu publico de UNA sucursal: incluye los productos "de hoy no hay"
  * (`isAvailable: false`) para mostrarlos deshabilitados, a diferencia de

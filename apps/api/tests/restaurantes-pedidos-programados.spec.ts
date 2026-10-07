@@ -155,6 +155,7 @@ describe("POST /v1/restaurantes/:orgSlug/orders con programado_para", () => {
     expect((await crear("2030-01-01T10:00:00")).res.status).toBe(400);
     expect((await crear(enMin(5))).res.status).toBe(400);
     expect((await crear(enMin(60 * 24 * 30))).res.status).toBe(400);
+    expect((await crear(12345)).res.status).toBe(400);
   });
 
   it("fuera del horario de la sucursal (zona America/Mexico_City por omision) -> 400 con el motivo", async () => {

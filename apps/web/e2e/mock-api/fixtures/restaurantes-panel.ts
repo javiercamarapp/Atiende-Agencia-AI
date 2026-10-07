@@ -91,7 +91,7 @@ function sucursal(p: { estado: { obtener<T>(k: string, s: () => T): T } }) {
 
 // ---------- Avisos y cierres: forma de apps/web/src/verticals/restaurantes/lib/{avisos,cierres}-client.ts ----------
 const EVENTOS_AVISO_MOCK = [
-  { tipo: "restaurantes.pedido.nuevo", etiqueta: "Pedido nuevo", descripcion: "Entra un pedido por WhatsApp, voz o la tienda en línea.", sonidoAplica: true },
+  { tipo: "restaurantes.pedido.nuevo", etiqueta: "Pedido nuevo", descripcion: "Entra un pedido por WhatsApp o voz.", sonidoAplica: true },
   { tipo: "restaurantes.handoff.solicitado", etiqueta: "Cliente pide a una persona", descripcion: "El agente deriva una conversación a atención humana.", sonidoAplica: false },
   { tipo: "restaurantes.pedido.entrega_tardia", etiqueta: "Entrega tardía", descripcion: "Un pedido pasó de su hora prometida y sigue sin entregarse.", sonidoAplica: false },
 ];

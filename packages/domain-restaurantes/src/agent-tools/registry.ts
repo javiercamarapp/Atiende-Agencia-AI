@@ -636,9 +636,11 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     programadoPara: textoOpcional(input.programado_para),
   };
   if (lenient) return base;
-  // Campos que solo trae el canal de voz/checkout (correo, transcripcion, promo, idempotencia, nombre de sucursal).
+  // Campos que solo trae el canal de voz (correo, transcripcion, promo, idempotencia, nombre de sucursal).
   return {
     ...base,
+    // Un valor que no es hora (numero, objeto) se rechaza con 400 en vez de ignorarse y mandar el pedido a cocina de inmediato.
+    programadoPara: toProgramadoPara(input.programado_para),
     branchName: str(input.branch_name),
     customerEmail: str(input.customer_email),
     idempotencyKey: str(input.idempotency_key),

@@ -24,7 +24,7 @@ describe("vercel.json headers", () => {
     expect(todas.get("permissions-policy")).toContain("geolocation=()");
   });
 
-  it("/pedir/* (tienda eliminada) redirige 301 a la raiz y ya no se reescribe a la API", () => {
+  it("/pedir/* (tienda eliminada) redirige (permanente) a la raiz y ya no se reescribe a la API", () => {
     const cfg = config as { redirects?: { source: string; destination: string; permanent?: boolean }[]; rewrites?: { source: string; destination: string }[] };
     expect(cfg.redirects).toEqual([{ source: "/pedir/:path*", destination: "/", permanent: true }]);
     expect((cfg.rewrites ?? []).filter((r) => r.source.startsWith("/pedir"))).toEqual([]);

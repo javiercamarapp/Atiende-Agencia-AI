@@ -1,5 +1,5 @@
 // Widget publico de chat WhatsApp para DEMOS, SIN Meta (R-19): GET .../demo/:orgSlug/estado y
-// POST .../demo/:orgSlug/mensaje. SIN login: igual que el storefront, este grupo se monta sin `authMiddleware` y abre su
+// POST .../demo/:orgSlug/mensaje. SIN login: igual que otras superficies públicas, este grupo se monta sin `authMiddleware` y abre su
 // propia sesion de sistema (`userId: null`); su defensa es CORS por origen, topes de tasa (IP, sesion y organizacion =
 // tope de costo), validacion estricta de entradas y que SOLO atiende organizaciones marcadas como demo
 // (`restaurantes.demo_organization`, migracion 037): una organizacion real nunca responde por aqui.
