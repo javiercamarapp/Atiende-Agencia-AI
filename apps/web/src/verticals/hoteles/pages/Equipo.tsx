@@ -8,6 +8,7 @@ import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Esta
 import type { StatusTone } from "@atiende/ui";
 import { createStaffInvite, EQUIPO_ROLES, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, STAFF_ROLE_LABELS, STAFF_ROLE_OPTIONS } from "../lib/staff-client.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
+import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const INVITE_STATUS_TONE: Readonly<Record<string, StatusTone>> = { pending: "warning", accepted: "success", revoked: "danger", expired: "neutral" };
@@ -162,7 +163,7 @@ export function EquipoPage({ apiBaseUrl, token, propertyId, role, staffEmail }: 
                           {STAFF_ROLE_LABELS[inv.verticalRole] ?? inv.verticalRole}
                         </StatusBadge>
                         <StatusBadge tone={statusTone(INVITE_STATUS_TONE, inv.status)}>{statusLabel(inv.status)}</StatusBadge>
-                        <span>· expira {new Date(inv.expiresAt).toLocaleString("es-MX")}</span>
+                        <span>· expira {fechaHoraEsMx(inv.expiresAt)}</span>
                       </div>
                     </div>
                     <Button type="button" variant="destructive" size="sm" className="h-9 text-xs" onClick={() => void handleRevoke(inv)} loading={revokingId === inv.id} disabled={revokingId === inv.id}>
