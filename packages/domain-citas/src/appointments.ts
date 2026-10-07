@@ -261,6 +261,18 @@ export function validateCreateAppointmentPayload(raw: CreateAppointmentPayload):
   };
 }
 
+/**
+ * Un horario que ya paso no se puede pedir al AGENTE (WhatsApp o voz): "el lunes" mal resuelto a la semana pasada quedaba como cita real, porque
+ * la revision de disponibilidad solo mira el horario de atencion. Lo usa `executeToolCall` (crear_cita y reagendar_cita). El panel conserva la
+ * libertad de registrar una cita ya ocurrida (alta manual), por eso la regla NO vive en `createAppointment`.
+ */
+export function assertHorarioFuturo(startsAtIso: string, now: Date = new Date()): void {
+  const t = Date.parse(startsAtIso);
+  if (!Number.isNaN(t) && t <= now.getTime()) {
+    throw new AppointmentValidationError("Ese horario ya pasó. Vuelve a consultar disponibilidad y ofrece uno de los horarios que aún están por venir.");
+  }
+}
+
 export interface PreparedAppointment {
   readonly payload: CreateAppointmentPayload;
   readonly provider: ProviderRecord;

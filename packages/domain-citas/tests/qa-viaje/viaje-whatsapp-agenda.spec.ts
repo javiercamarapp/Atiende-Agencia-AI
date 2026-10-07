@@ -182,7 +182,7 @@ describe("viaje WhatsApp: paciente nuevo agenda, consulta, reagenda y cancela", 
     expect(mundo.repo.getOutbox().filter((o) => o.eventType === "waitlist.slot_offered")).toHaveLength(1);
   });
 
-  it.fails("QA-citas-R1-viaje-05: el agente NO puede agendar ni reagendar en un horario que ya paso (crear_cita/reagendar_cita no validan 'ya paso')", async () => {
+  it("QA-citas-R1-viaje-05: el agente NO puede agendar ni reagendar en un horario que ya paso (crear_cita/reagendar_cita no validan 'ya paso')", async () => {
     const mundo = clinicaDental({ hastaLas: "20:00" });
     // Un dia habil PASADO (la semana anterior) dentro del horario: la agenda real nunca lo ofreceria, pero crear_cita lo acepta.
     const hoy = new Date();

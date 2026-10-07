@@ -147,3 +147,20 @@ describe("segunda cita el mismo dia (QA-citas-R1-agentes-08)", () => {
     expect(await t.citas()).toHaveLength(1);
   });
 });
+
+describe("horarios pasados por el agente (QA-citas-R1-agentes-13)", () => {
+  it("reagendar_cita a un horario que ya paso se rechaza y la cita conserva su horario", async () => {
+    const t = montarConsultorio();
+    const cita = await createAppointment(t.repo, { organizationId: t.organizationId, providerId: t.providerId, serviceId: t.serviceId, customerName: "Ana Pech", customerPhone: t.telefono, startsAt: merida(t.lunes, "10:00"), source: "whatsapp" });
+    const lunesPasado = new Date(Date.parse(`${t.lunes}T12:00:00Z`) - 14 * 86_400_000).toISOString().slice(0, 10);
+    const r = await executeToolCall(t.repo, { organizationId: t.organizationId, phone: t.telefono, name: "reagendar_cita", input: { appointment_id: cita.id, new_starts_at: merida(lunesPasado, "10:00") } });
+    expect((r.result as { error?: string }).error).toMatch(/ya pasó/);
+    expect((await t.citas())[0]!.startsAt).toBe(cita.startsAt);
+  });
+
+  it("un horario futuro sigue funcionando", async () => {
+    const t = montarConsultorio();
+    const r = await executeToolCall(t.repo, { organizationId: t.organizationId, phone: t.telefono, name: "crear_cita", input: { provider_id: t.providerId, service_id: t.serviceId, customer_name: "Ana", starts_at: merida(t.lunes, "10:00") } });
+    expect((r.result as { appointment?: unknown }).appointment).toBeTruthy();
+  });
+});

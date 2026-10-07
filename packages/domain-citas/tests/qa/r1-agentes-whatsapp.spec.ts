@@ -333,7 +333,7 @@ describe("QA R1 citas · WhatsApp · DEFECTOS confirmados", () => {
 
   // QA-citas-R1-agentes-13 (P2): el servidor acepta crear (y reagendar) citas en el PASADO por WhatsApp: createAppointment solo valida que la hora
   // caiga en el horario de atencion (isSlotWithinAvailability con now=0); "el lunes" mal resuelto a la semana pasada queda como cita real.
-  it.fails("13 crear_cita y reagendar_cita con un horario de la semana pasada se rechazan", async () => {
+  it("13 crear_cita y reagendar_cita con un horario de la semana pasada se rechazan", async () => {
     const t = montarConsultorio();
     const lunesPasado = new Date(Date.parse(`${t.lunes}T12:00:00Z`) - 14 * 86_400_000).toISOString().slice(0, 10);
     const r = await executeToolCall(t.repo, { organizationId: t.organizationId, phone: t.telefono, name: "crear_cita", input: { provider_id: t.providerId, service_id: t.serviceId, customer_name: "Ana", starts_at: merida(lunesPasado, "10:00") } });

@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@atiende/agent-core";
 import {
   assertCustomerOwnsAppointment,
+  assertHorarioFuturo,
   cancelAppointment,
   createAppointment,
   findAppointmentsForCustomerPhone,
@@ -492,6 +493,7 @@ export async function executeToolCall(
               }
             }
           }
+          assertHorarioFuturo(String(input.starts_at ?? ""));
           const appointment = await createAppointment(repo, {
             organizationId,
             providerId: String(input.provider_id ?? ""),
@@ -520,6 +522,7 @@ export async function executeToolCall(
         }
         case "reagendar_cita": {
           await assertCustomerOwnsAppointment(repo, organizationId, phone, String(input.appointment_id ?? ""));
+          assertHorarioFuturo(String(input.new_starts_at ?? ""));
           try {
             const outcome = await rescheduleAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? ""), newStartsAt: String(input.new_starts_at ?? ""), actorChannel: canal });
             await runAfterRescheduleEffects(repo, organizationId, outcome);
