@@ -6,6 +6,7 @@
 //   POST /v1/restaurantes/:propertyId/admin/autopiloto/agotado                                "Agotado hasta manana" (se repone al cambiar el dia de la sucursal)
 //   GET  /v1/restaurantes/:propertyId/admin/autopiloto/tiempo?canal=                          tiempo prometido hoy (aprendido o texto fijo del dueno)
 //   GET  /v1/restaurantes/:propertyId/admin/autopiloto/pedidos/:orderId/historial             historial de transiciones del pedido (order_status_events)
+//   POST /v1/restaurantes/:propertyId/admin/autopiloto/pedidos/:orderId/ticket-impreso        el staff imprimio el ticket de cocina: habilita la aceptacion automatica sin POS (migracion 077)
 // Base SIN migrar: las lecturas responden `disponible: false` con listas vacias y las escrituras 503 (estado honesto, nunca un 500).
 // Las comandas al POS de lo recien aprobado se encolan DESPUES del commit, en sesion de sistema (la funcion SQL es solo-sistema).
 import { Hono } from "hono";
@@ -256,7 +257,9 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     if (typeof raw.productId !== "string" || !UUID_RE.test(raw.productId)) throw Errors.validation("productId inválido.");
     const repo = deps.restaurantesRepo(c.get("db"));
     const { zonaHoraria } = await repo.findBranchZonaHoraria(propertyId);
-    const hoy = diaLocalSucursal(new Date(), zonaHoraria).fecha;
+    // QA R2 features-03: "hoy" es el dia de NEGOCIO (a las 00:30 de un turno 12:00-01:00 sigue siendo el dia que empezo ayer). Contra la base sin la
+    // migracion 077 cae al dia calendario de la zona de la sucursal (comportamiento anterior).
+    const hoy = (await repoAuto(c).diaNegocio(organizationId, propertyId)) ?? diaLocalSucursal(new Date(), zonaHoraria).fecha;
     const hasta = sumarDiasFecha(hoy, 1);
     try {
       const r = await repoAuto(c).marcarAgotado(organizationId, propertyId, raw.productId, hasta);
@@ -294,6 +297,25 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     if (scope !== null && !scope.includes(order.propertyId)) throw Errors.forbidden("No tienes acceso a este pedido.");
     const r = await repoAuto(c).historialEstados(organizationId, orderId);
     return c.json({ disponible: r.disponible, eventos: r.valor });
+  });
+
+  // QA R2 features-05: sin POS, "imprimir el ticket" era un evento que nadie registraba y la aceptacion automatica nunca se cumplia. El panel avisa aqui
+  // cuando imprime el ticket de cocina de un pedido pendiente; el tick lo pasa a Preparando solo si la sucursal activo la regla.
+  app.post(`${base}/pedidos/:orderId/ticket-impreso`, async (c) => {
+    assertVerticalRole(c, MANAGER_ROLES);
+    const organizationId = c.get("organizationId");
+    const propertyId = c.req.param("propertyId") ?? "";
+    const orderId = c.req.param("orderId") ?? "";
+    if (!UUID_RE.test(orderId)) throw Errors.validation("orderId inválido.");
+    await resolveEffectivePropertyIds(deps, c, organizationId, propertyId);
+    const order = await deps.restaurantesRepo(c.get("db")).findOrderById(organizationId, orderId);
+    if (!order || order.propertyId !== propertyId) throw Errors.notFound("Pedido no encontrado.");
+    try {
+      const r = await repoAuto(c).registrarTicketImpreso(organizationId, orderId);
+      return c.json({ disponible: r.disponible, registrado: r.registrado });
+    } catch (err) {
+      return traducir(err);
+    }
   });
 
   return app;

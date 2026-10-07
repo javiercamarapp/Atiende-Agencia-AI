@@ -316,6 +316,17 @@ describe("tick /internal/restaurantes/promover-programados: autopiloto", () => {
     expect((await (await llamar(t)).json()).autopiloto.handoffsDevueltos).toBe(0);
   });
 
+  it("QA R2 viaje-06: una toma PENDIENTE que nadie toma avisa al owner en el mismo tick, UNA sola vez (nunca se devuelve sola)", async () => {
+    const t = await construir();
+    const ahora = Date.now();
+    t.auto.handoffs.push({ id: "h-pend", organizationId: t.ctx.organizationId, propertyId: t.ctx.propertyIdA, conversationId: randomUUID(), telefono: "9995550150", estado: "pendiente", tomadaAt: new Date(ahora - 40 * 60_000), solicitadaAt: new Date(ahora - 40 * 60_000), ultimaHumanaAt: null, ultimoClienteAt: new Date(ahora - 5 * 60_000) });
+    t.auto.handoffs.push({ id: "h-reciente", organizationId: t.ctx.organizationId, propertyId: t.ctx.propertyIdA, conversationId: randomUUID(), telefono: "9995550151", estado: "pendiente", tomadaAt: new Date(ahora - 2 * 60_000), solicitadaAt: new Date(ahora - 2 * 60_000), ultimaHumanaAt: null, ultimoClienteAt: null });
+    const r1 = await (await llamar(t)).json();
+    expect(r1.autopiloto).toMatchObject({ handoffsSinTomar: 1, handoffsDevueltos: 0, errores: 0 });
+    expect(t.auto.handoffs.find((h) => h.id === "h-pend")).toMatchObject({ estado: "pendiente" });
+    expect((await (await llamar(t)).json()).autopiloto.handoffsSinTomar).toBe(0);
+  });
+
   it("sin repositorio de autopiloto o con la base sin migrar el tick sigue respondiendo ok (autopiloto no disponible)", async () => {
     const s = await construir({ sinRepo: true });
     const a = await (await llamar(s)).json();
@@ -330,6 +341,56 @@ describe("tick /internal/restaurantes/promover-programados: autopiloto", () => {
   it("sin el secreto interno el tick es 401", async () => {
     const t = await construir();
     expect((await t.app.request("/internal/restaurantes/promover-programados", { method: "POST" })).status).toBe(401);
+  });
+});
+
+describe("POST .../pedidos/:orderId/ticket-impreso (aceptacion automatica sin POS)", () => {
+  async function conReglaActiva() {
+    const t = await construir();
+    t.auto.configs.set(t.ctx.propertyIdA, { ...(await t.auto.leerConfig("", t.ctx.propertyIdA)).valor, aceptacionAuto: true, configurada: true });
+    return t;
+  }
+  const llamar = (t: Awaited<ReturnType<typeof construir>>) => t.app.request("/internal/restaurantes/promover-programados", { method: "POST", headers: { "x-atiende-internal-secret": TEST_ENV.internalSecret } });
+
+  it("sin ticket impreso el pedido se queda en Recibido; con el ticket impreso el tick lo pasa a Preparando, una vez", async () => {
+    const t = await conReglaActiva();
+    const p = t.pedido(t.ctx.propertyIdA, "pending");
+    await llamar(t);
+    expect(p.mem.status).toBe("pending");
+    const res = await t.app.request(`${t.base()}/pedidos/${p.id}/ticket-impreso`, authedJson(t.ctx.staff.staffSucursalA.token, {}));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ disponible: true, registrado: true });
+    expect((await (await llamar(t)).json()).autopiloto.estadosAplicados).toBe(1);
+    expect(p.mem.status).toBe("preparando");
+    expect((await (await llamar(t)).json()).autopiloto.estadosAplicados).toBe(0);
+  });
+
+  it("con la regla apagada el ticket impreso no mueve el pedido", async () => {
+    const t = await construir();
+    const p = t.pedido(t.ctx.propertyIdA, "pending");
+    expect((await t.app.request(`${t.base()}/pedidos/${p.id}/ticket-impreso`, authedJson(t.ctx.staff.owner.token, {}))).status).toBe(200);
+    await llamar(t);
+    expect(p.mem.status).toBe("pending");
+  });
+
+  it("un pedido que ya no esta pendiente responde registrado:false; un id mal formado 400; uno de otra sucursal 404", async () => {
+    const t = await conReglaActiva();
+    const enCocina = t.pedido(t.ctx.propertyIdA, "preparando");
+    expect(await (await t.app.request(`${t.base()}/pedidos/${enCocina.id}/ticket-impreso`, authedJson(t.ctx.staff.owner.token, {}))).json()).toEqual({ disponible: true, registrado: false });
+    expect((await t.app.request(`${t.base()}/pedidos/no-uuid/ticket-impreso`, authedJson(t.ctx.staff.owner.token, {}))).status).toBe(400);
+    const deB = t.pedido(t.ctx.propertyIdB, "pending");
+    expect((await t.app.request(`${t.base()}/pedidos/${deB.id}/ticket-impreso`, authedJson(t.ctx.staff.owner.token, {}))).status).toBe(404);
+  });
+
+  it("el repartidor no (403) y la base sin migrar responde disponible:false (nunca 500)", async () => {
+    const t = await construir();
+    const p = t.pedido(t.ctx.propertyIdA, "pending");
+    expect((await t.app.request(`${t.base()}/pedidos/${p.id}/ticket-impreso`, authedJson(t.ctx.staff.repartidor.token, {}))).status).toBe(403);
+    const v = await construir({ disponible: false });
+    const q = v.pedido(v.ctx.propertyIdA, "pending");
+    const res = await v.app.request(`${v.base()}/pedidos/${q.id}/ticket-impreso`, authedJson(v.ctx.staff.owner.token, {}));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ disponible: false, registrado: false });
   });
 });
 

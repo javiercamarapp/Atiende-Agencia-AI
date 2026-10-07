@@ -7,6 +7,7 @@ import {
   aplicarEstadosSinClic,
   avanzarDesdePos,
   devolverHandoffsVencidos,
+  escalarHandoffsSinTomar,
   escalarSolicitudesVencidas,
   reponerAgotadosDelDia,
 } from "@atiende/domain-restaurantes";
@@ -23,12 +24,14 @@ export interface ResumenTickAutopiloto {
   readonly posAvanzadas: number;
   readonly posSinAdaptadorReal: boolean;
   readonly handoffsDevueltos: number;
+  /** Tomas PENDIENTES sin tomar que avisaron al owner en este tick (QA R2 viaje-06). */
+  readonly handoffsSinTomar: number;
   readonly agotadosRepuestos: number;
   readonly errores: number;
 }
 
 export async function barrerAutopilotoTick(deps: AppDeps, c: Context, ahora: Date): Promise<ResumenTickAutopiloto> {
-  const resumen = { disponible: false, escaladas: 0, estadosAplicados: 0, posAvanzadas: 0, posSinAdaptadorReal: false, handoffsDevueltos: 0, agotadosRepuestos: 0, errores: 0 };
+  const resumen = { disponible: false, escaladas: 0, estadosAplicados: 0, posAvanzadas: 0, posSinAdaptadorReal: false, handoffsDevueltos: 0, handoffsSinTomar: 0, agotadosRepuestos: 0, errores: 0 };
   const autoFactory = deps.autopilotoRepo;
   if (!autoFactory) return resumen;
 
@@ -54,9 +57,10 @@ export async function barrerAutopilotoTick(deps: AppDeps, c: Context, ahora: Dat
   const estados = await paso("estados", (s) => aplicarEstadosSinClic(s, ahora));
   const pos = await paso("pos", (s) => avanzarDesdePos(s, softRestaurantPortFor(deps), (propertyId) => (deps.softRestaurantMapeo?.resolverSucursal ?? crearResolverSucursalPos())({ propertyId, nombre: null })));
   const handoffs = await paso("handoffs", (s) => devolverHandoffsVencidos(s, ahora));
+  const sinTomar = await paso("handoffs_sin_tomar", (s) => escalarHandoffsSinTomar(s, ahora));
   const agotados = await paso("agotados", (s) => reponerAgotadosDelDia(s, ahora));
 
-  const disponible = [escalado, estados, handoffs, agotados].some((r) => r?.disponible === true);
+  const disponible = [escalado, estados, handoffs, sinTomar, agotados].some((r) => r?.disponible === true);
   const salida: ResumenTickAutopiloto = {
     disponible,
     escaladas: escalado?.escaladas ?? 0,
@@ -64,6 +68,7 @@ export async function barrerAutopilotoTick(deps: AppDeps, c: Context, ahora: Dat
     posAvanzadas: pos?.avanzadas ?? 0,
     posSinAdaptadorReal: pos?.sinAdaptadorReal ?? false,
     handoffsDevueltos: handoffs?.devueltos ?? 0,
+    handoffsSinTomar: sinTomar?.escalados ?? 0,
     agotadosRepuestos: agotados?.repuestos ?? 0,
     errores: resumen.errores,
   };
