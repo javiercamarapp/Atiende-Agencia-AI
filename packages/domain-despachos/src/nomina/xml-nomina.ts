@@ -310,12 +310,17 @@ export function generarXmlCfdiNomina(
   const regimenFiscalReceptor = (receptor.regimenFiscalReceptor ?? "605").trim();
   const fechaRe = /^\d{4}-\d{2}-\d{2}$/;
   const fechaPago = periodo.fechaPago ?? empleado.fechaPago;
-  const fechaInicialPago = periodo.fechaInicialPago ?? `${year}-${mm}-01`;
-  const fechaFinalPago = periodo.fechaFinalPago ?? `${year}-${mm}-${dd}`;
+  // Sin fechas explícitas: mensual cubre el mes completo; quincenal cubre la quincena a la que pertenece FechaPago
+  // (día <= 15 -> 01 al 15; si no, 16 al último día del mes), nunca el mes entero.
+  const primeraQuincena = empleado.periodicidad === "quincenal" && Number(fechaPago.slice(8, 10)) <= 15;
+  const segundaQuincena = empleado.periodicidad === "quincenal" && !primeraQuincena;
+  const fechaInicialPago = periodo.fechaInicialPago ?? `${year}-${mm}-${segundaQuincena ? "16" : "01"}`;
+  const fechaFinalPago = periodo.fechaFinalPago ?? `${year}-${mm}-${primeraQuincena ? "15" : dd}`;
   for (const [campo, v] of [["fechaPago", fechaPago], ["fechaInicialPago", fechaInicialPago], ["fechaFinalPago", fechaFinalPago]] as const) {
     if (!fechaRe.test(v)) throw new Error(`CFDI Nómina: ${campo} debe tener formato YYYY-MM-DD.`);
   }
   if (fechaInicialPago > fechaFinalPago) throw new Error("CFDI Nómina: fechaInicialPago no puede ser posterior a fechaFinalPago.");
+  if (fechaPago < fechaInicialPago) throw new Error("CFDI Nómina: fechaPago no puede ser anterior a fechaInicialPago.");
 
   // Datos opcionales de seguridad social (nomina12:Emisor y nomina12:Receptor).
   const registroPatronal = emisor.registroPatronal?.trim();
@@ -393,7 +398,8 @@ export function generarXmlCfdiNomina(
     ["NumDiasPagados", String(periodo.diasPagados)],
     ["TotalPercepciones", fmt2(subtotal)],
     ["TotalDeducciones", fmt2(totalDeducciones)],
-    ["TotalOtrosPagos", fmt2(totalOtrosPagos)],
+    // Nómina 1.2: TotalOtrosPagos solo existe si hay nodo OtrosPagos (aquí, el OtroPago 002 del subsidio causado).
+    ...(subsidioCausado > 0 ? ([["TotalOtrosPagos", fmt2(totalOtrosPagos)]] as const) : []),
   ]);
 
   const nominaEmisor = registroPatronal ? `\n      <nomina12:Emisor ${attrs([["RegistroPatronal", registroPatronal]])}/>` : "";

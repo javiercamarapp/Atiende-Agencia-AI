@@ -177,10 +177,10 @@ describe("generarXmlCfdiNomina — estructura del XML", () => {
   });
 
   it("FechaFinalPago usa el último día real del mes, incluyendo febrero bisiesto", () => {
-    const xmlFeb2026 = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 2, year: 2026 }), datosLaborales()); // no bisiesto
+    const xmlFeb2026 = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 2, year: 2026, fechaPago: "2026-02-28" }), datosLaborales()); // no bisiesto
     expect(xmlFeb2026).toContain('FechaFinalPago="2026-02-28"');
 
-    const xmlFeb2028 = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 2, year: 2028 }), datosLaborales()); // bisiesto
+    const xmlFeb2028 = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 2, year: 2028, fechaPago: "2028-02-29" }), datosLaborales()); // bisiesto
     expect(xmlFeb2028).toContain('FechaFinalPago="2028-02-29"');
   });
 

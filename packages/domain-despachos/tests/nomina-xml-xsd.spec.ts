@@ -30,8 +30,8 @@ const emisor = { rfc: "DESP010101AB1", nombre: "DESPACHO SA DE CV", regimenFisca
 const receptor = { rfc: "PEAA850101ABC", nombre: "Ana Pérez", domicilioFiscalReceptor: "01000" };
 const laborales = { curp: "PEAA850101HDFRRN08", numEmpleado: "EMP001", tipoContrato: "01", tipoRegimen: "02", periodicidadPago: "05", claveEntFed: "CMX", numSeguridadSocial: "12345678901", fechaInicioRelLaboral: "2020-03-01", riesgoPuesto: "1" };
 
-function xmlDe(emp: EmployeePayrollInput, month = 2, periodo: Record<string, unknown> = {}): string {
-  const p = procesarNomina({ month, year: 2026 }, [emp]);
+function xmlDe(emp: EmployeePayrollInput, month = 2, periodo: Record<string, unknown> = {}, quincenal = false): string {
+  const p = procesarNomina({ month, year: 2026, ...(quincenal ? { periodicidad: "quincenal" as const, fechaPago: String(periodo["fechaPago"] ?? "") || undefined } : {}) }, [emp]);
   return generarXmlCfdiNomina(p.employees[0]!, emisor, receptor, { year: 2026, month, diasPagados: 30, folio: "F1", ...periodo }, laborales);
 }
 
@@ -95,10 +95,32 @@ describe("XML Nómina 1.2 contra el XSD oficial", () => {
     expect(r.ok).toBe(true);
   });
 
-  it("quincena con fechas reales", async () => {
-    const xml = xmlDe({ salarioBruto: 9000 }, 2, { fechaPago: "2026-02-15", fechaInicialPago: "2026-02-01", fechaFinalPago: "2026-02-15", diasPagados: 15 });
+  it("quincena con fechas reales: el sueldo 001, TotalPercepciones y NumDiasPagados cuadran con la quincena", async () => {
+    const xml = xmlDe({ salarioBruto: 4500 }, 2, { fechaPago: "2026-02-15", fechaInicialPago: "2026-02-01", fechaFinalPago: "2026-02-15", diasPagados: 15 }, true);
+    expect(xml).toContain('NumDiasPagados="15"');
+    expect(xml).toContain('TotalPercepciones="4500.00"');
+    expect(xml).toMatch(/TipoPercepcion="001"[^>]*ImporteGravado="4500.00"/);
     const r = await validar(xml);
     expect(r.salida).toBe("");
     expect(r.ok).toBe(true);
+  });
+
+  it("quincena sin fechas explícitas: usa la quincena de FechaPago, no el mes entero", async () => {
+    const primera = xmlDe({ salarioBruto: 4500 }, 2, { fechaPago: "2026-02-15", diasPagados: 15 }, true);
+    expect(primera).toContain('FechaInicialPago="2026-02-01" FechaFinalPago="2026-02-15"');
+    const segunda = xmlDe({ salarioBruto: 4500 }, 2, { fechaPago: "2026-02-28", diasPagados: 15 }, true);
+    expect(segunda).toContain('FechaInicialPago="2026-02-16" FechaFinalPago="2026-02-28"');
+    expect((await validar(segunda)).ok).toBe(true);
+  });
+
+  it("sin subsidio no hay OtrosPagos ni TotalOtrosPagos", async () => {
+    const xml = xmlDe({ salarioBruto: 15000 });
+    expect(xml).not.toContain("TotalOtrosPagos");
+    expect(xml).not.toContain("OtrosPagos");
+    expect((await validar(xml)).ok).toBe(true);
+  });
+
+  it("FechaPago anterior a FechaInicialPago se rechaza", () => {
+    expect(() => xmlDe({ salarioBruto: 4500 }, 2, { fechaPago: "2026-02-10", fechaInicialPago: "2026-02-16", fechaFinalPago: "2026-02-28", diasPagados: 15 }, true)).toThrow(/fechaPago no puede ser anterior/);
   });
 });
