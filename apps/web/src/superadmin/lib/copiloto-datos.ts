@@ -29,6 +29,11 @@ const P16 = "¿Qué organizaciones gastan más en IA este mes?";
 const P17 = "¿Qué hoteles tengo y en qué estado están?";
 const P19 = "¿Qué restaurantes tengo activos?";
 const P18 = "Compara restaurantes y hoteles este mes";
+const P20 = "¿Qué organizaciones tuvieron más pedidos, reservas y citas este mes?";
+const P21 = "¿Qué restaurantes vendieron más este mes?";
+const P22 = "¿Qué hoteles tuvieron más reservas este mes?";
+const P23 = "¿Qué organizaciones escalaron más conversaciones a una persona este mes?";
+const P24 = "¿Qué despachos tienen vencimientos fiscales abiertos?";
 
 const FASES: ReadonlyArray<readonly [number, string]> = [
   [0, "Leyendo la plataforma…"],
@@ -59,13 +64,18 @@ export const DIRECTAS_COPILOTO_SUPERADMIN: Readonly<Record<string, Directa>> = {
   [P17]: { tool: "buscar_organizacion", args: { vertical: "hoteles" } },
   [P19]: { tool: "buscar_organizacion", args: { vertical: "restaurantes", estado: "active" } },
   [P18]: { tool: "uso_por_vertical", args: { periodo: "este_mes" } },
+  [P20]: { tool: "ranking_actividad", args: { periodo: "este_mes", metrica: "operaciones" } },
+  [P21]: { tool: "ranking_actividad", args: { periodo: "este_mes", metrica: "ingresos", vertical: "restaurantes" } },
+  [P22]: { tool: "ranking_actividad", args: { periodo: "este_mes", metrica: "operaciones", vertical: "hoteles" } },
+  [P23]: { tool: "ranking_actividad", args: { periodo: "este_mes", metrica: "escalaciones" } },
+  [P24]: { tool: "ranking_actividad", args: { periodo: "este_mes", metrica: "abiertos", vertical: "despachos" } },
 };
 
 export const DATOS_COPILOTO_SUPERADMIN = {
   vertical: "plataforma",
   textos: {
     titulo: "Pregunta a tus datos",
-    subtitulo: "Tu plataforma completa, con la cifra que ya calculó el sistema: clientes, costos de IA, agentes y salud.",
+    subtitulo: "Tu plataforma completa, con la cifra que ya calculó el sistema: clientes, actividad de cada negocio, costos de IA, agentes y salud.",
     nota: "Responde solo con cifras ya calculadas en el servidor y te dice de dónde salen; si no hay dato, te lo dice. No inventa números. Puede proponer acciones, pero nunca las ejecuta: tú confirmas.",
     placeholder: "Pregunta sobre la plataforma…",
     fases: FASES,
@@ -77,6 +87,7 @@ export const DATOS_COPILOTO_SUPERADMIN = {
     { titulo: "Ventas y costos de IA", preguntas: [P2, P3, P5, P4] },
     { titulo: "Clientes, agentes y salud", preguntas: [P1, P8, P6, P7, P15] },
     { titulo: "Varias organizaciones", preguntas: [P16, P17, P19, P18] },
+    { titulo: "Actividad por negocio", preguntas: [P20, P21, P22, P23, P24] },
   ],
   directas: DIRECTAS_COPILOTO_SUPERADMIN,
   etiquetasHerramienta: {
@@ -94,6 +105,9 @@ export const DATOS_COPILOTO_SUPERADMIN = {
     uso_copiloto: "Midiendo el uso del Copiloto",
     buscar_organizacion: "Buscando la organización",
     ranking_organizaciones: "Ordenando las organizaciones",
+    operaciones_organizacion: "Leyendo la operación de la organización",
+    agentes_organizacion: "Revisando los agentes de la organización",
+    ranking_actividad: "Ordenando la actividad de cada negocio",
     mrr: "Calculando el MRR",
     margen_costos_unitarios: "Calculando márgenes y costos unitarios",
     pyl: "Armando el P&L",
@@ -116,6 +130,9 @@ export const DATOS_COPILOTO_SUPERADMIN = {
     uso_copiloto: "/superadmin/consumo-ia",
     buscar_organizacion: "/superadmin/organizaciones",
     ranking_organizaciones: "/superadmin/consumo-ia",
+    operaciones_organizacion: "/superadmin/organizaciones",
+    agentes_organizacion: "/superadmin/agentes",
+    ranking_actividad: "/superadmin/organizaciones",
     mrr: "/superadmin/ejecutivo",
     margen_costos_unitarios: "/superadmin/costos-facturacion?tab=costos",
     pyl: "/superadmin/costos-facturacion?tab=pyl",
