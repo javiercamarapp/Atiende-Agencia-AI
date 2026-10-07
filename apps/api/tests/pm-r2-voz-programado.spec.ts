@@ -52,7 +52,7 @@ describe("voz: /orders/quote reenvia la hora programada y la hora de recogida", 
 });
 
 describe("token de llamada vencido en /orders (QA-PM-R2-reglas-16)", () => {
-  it("responde 401 de token (no el mensaje del checkout web 'Escribe un teléfono de 10 dígitos')", async () => {
+  it("responde 401 de token (no el mensaje de validación de teléfono 'Escribe un teléfono de 10 dígitos')", async () => {
     const { deps, products } = await buildTestDeps();
     const app = buildApp(deps);
     const r = await app.request(

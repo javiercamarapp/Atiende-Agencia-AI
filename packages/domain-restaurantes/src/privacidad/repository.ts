@@ -31,11 +31,6 @@ export type UpdatePrivacyConfigResult = { readonly outcome: "updated" } | { read
 
 export type RecordingConsent = "otorgado" | "negado";
 
-/** Resultado de guardar el consentimiento del checkout (migracion 043). `no_disponible` = la base aun no la tiene. */
-export type RecordOrderPrivacyConsentResult =
-  | { readonly outcome: "registrado"; readonly noticeVersion: string }
-  | { readonly outcome: "ya_registrado" }
-  | { readonly outcome: "no_disponible" };
 export type SetRecordingConsentResult =
   | { readonly outcome: "set"; readonly consent: RecordingConsent }
   | { readonly outcome: "unavailable" }
@@ -64,9 +59,6 @@ export interface PrivacidadRepository {
     readonly detail: string | null;
   }): Promise<RegisterDataRightsOutcome>;
   resolveDataRightsConfirmationAsSystem(organizationId: string, customerPhone: string, confirm: boolean): Promise<ConfirmDataRightsOutcome>;
-  /** Guarda la evidencia de que el cliente acepto el aviso de privacidad al hacer ESTE pedido en el checkout web (version del aviso
-   * vigente, fecha y canal; sin PII). Idempotente por pedido. Base sin la migracion 043 -> `no_disponible` (nunca lanza por eso). */
-  recordOrderPrivacyConsent(organizationId: string, orderId: string, channel: "web"): Promise<RecordOrderPrivacyConsentResult>;
   setVoiceRecordingConsent(organizationId: string, conversationId: string, consent: RecordingConsent): Promise<SetRecordingConsentResult>;
   purgeExpiredPrivacyData(limit: number): Promise<PurgeOutcome>;
 

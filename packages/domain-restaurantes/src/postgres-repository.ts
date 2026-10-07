@@ -81,12 +81,8 @@ import type {
   RestaurantesAuditLogRow,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
-  StorefrontMarca,
-  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
-  StorefrontOrderTracking,
-  StorefrontTrackingResult,
 } from "./types.ts";
 import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import { EMPTY_BRANCH_POLICY, MOTIVOS_ESCALACION_DESACTIVABLES, TONOS_AGENTE_WHATSAPP, type TonoAgenteWhatsApp } from "./types.ts";
@@ -171,16 +167,6 @@ interface StorefrontCatalogDbRow {
   readonly category_display_order: number | string;
   readonly display_order: number | string;
   readonly no_domicilio?: boolean;
-}
-
-interface StorefrontTrackingDbPayload {
-  readonly status: string;
-  readonly branch: string | null;
-  readonly total: string | number;
-  readonly payment_method: string | null;
-  readonly canal: string;
-  readonly created_at: string;
-  readonly items: ReadonlyArray<{ readonly name?: string; readonly quantity?: number | string; readonly tortilla?: string | null }>;
 }
 
 interface CustomerRow {
@@ -550,32 +536,6 @@ function esErrorBaseSinMigrarProgramados(err: unknown): boolean {
   return code === "42883" || code === "42P01" || code === "42703";
 }
 
-interface StorefrontMarcaRow {
-  titular: string | null;
-  eslogan: string | null;
-  about: string | null;
-  portada_url: string | null;
-  logo_url: string | null;
-  instagram_url: string | null;
-  facebook_url: string | null;
-  tiktok_url: string | null;
-  updated_at: Date | string | null;
-}
-
-function mapStorefrontMarca(r: StorefrontMarcaRow): StorefrontMarca {
-  return {
-    titular: r.titular,
-    eslogan: r.eslogan,
-    about: r.about,
-    portadaUrl: r.portada_url,
-    logoUrl: r.logo_url,
-    instagramUrl: r.instagram_url,
-    facebookUrl: r.facebook_url,
-    tiktokUrl: r.tiktok_url,
-    updatedAt: r.updated_at === null ? null : new Date(r.updated_at).toISOString(),
-  };
-}
-
 function esErrorCompatibilidadConfigBaseSinMigrar(err: unknown): boolean {
   const code = (err as { code?: string } | null)?.code;
   return code === "42501" || code === "42883" || code === "42P01" || code === "42703";
@@ -802,41 +762,6 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       displayOrder: Number(row.display_order),
       noDomicilio: row.no_domicilio === true,
     }));
-  }
-
-  async findStorefrontOrderTracking(organizationId: string, orderId: string): Promise<StorefrontTrackingResult> {
-    // Funcion de migracion 032: base sin migrar -> 42883. SAVEPOINT porque la sesion es la transaccion
-    // unica del request (un try/catch simple la dejaria abortada, 25P02).
-    return runWithSavepointFallback<StorefrontTrackingResult>({
-      session: this.db,
-      savepointName: "sp_restaurantes_storefront_rastreo",
-      primary: async () => {
-        const { rows } = await this.db.query<{ tracking: StorefrontTrackingDbPayload | null }>(
-          `select restaurantes.storefront_order_tracking($1::uuid, $2::uuid) as tracking;`,
-          [organizationId, orderId],
-        );
-        const t = rows[0]?.tracking ?? null;
-        if (!t) return { disponible: true, pedido: null };
-        return {
-          disponible: true,
-          pedido: {
-            status: t.status as StorefrontOrderTracking["status"],
-            branch: t.branch ?? null,
-            total: Number(t.total),
-            paymentMethod: t.payment_method === "efectivo" || t.payment_method === "tarjeta" ? t.payment_method : null,
-            canal: t.canal === "recoger" ? "recoger" : "domicilio",
-            createdAt: String(t.created_at),
-            items: (Array.isArray(t.items) ? t.items : []).map((i) => ({
-              name: String(i.name ?? ""),
-              quantity: Number(i.quantity ?? 0),
-              tortilla: i.tortilla === "maiz" || i.tortilla === "harina" || i.tortilla === "mixta" ? i.tortilla : null,
-            })),
-          },
-        };
-      },
-      isRecoverable: esErrorBaseSinMigrar026,
-      fallback: async () => ({ disponible: false, pedido: null }),
-    });
   }
 
   async findCustomerByPhone(organizationId: string, phone: string): Promise<Customer | null> {
@@ -2881,49 +2806,6 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       if ((err as { code?: string } | null)?.code === "23505") throw new WhatsappNumberInUseError();
       throw err;
     }
-  }
-
-  async findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null> {
-    // Base sin la migracion 062 (42P01/42703) o sin permiso (42501): sin marca, nunca un 500. SAVEPOINT: la sesion es una sola
-    // transaccion por request y un error de Postgres la dejaria abortada.
-    return runWithSavepointFallback<StorefrontMarca | null>({
-      session: this.db,
-      savepointName: "sp_restaurantes_storefront_marca_read",
-      primary: async () => {
-        const { rows } = await this.db.query<StorefrontMarcaRow>(
-          `select titular, eslogan, about, portada_url, logo_url, instagram_url, facebook_url, tiktok_url, updated_at
-             from restaurantes.storefront_marca where organization_id = $1;`,
-          [organizationId],
-        );
-        return rows[0] ? mapStorefrontMarca(rows[0]) : null;
-      },
-      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
-      fallback: async () => null,
-    });
-  }
-
-  async upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca> {
-    return runWithSavepointFallback<StorefrontMarca>({
-      session: this.db,
-      savepointName: "sp_restaurantes_storefront_marca_write",
-      primary: async () => {
-        const { rows } = await this.db.query<StorefrontMarcaRow>(
-          `insert into restaurantes.storefront_marca (organization_id, titular, eslogan, about, portada_url, logo_url, instagram_url, facebook_url, tiktok_url)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-           on conflict (organization_id) do update set
-             titular = excluded.titular, eslogan = excluded.eslogan, about = excluded.about, portada_url = excluded.portada_url,
-             logo_url = excluded.logo_url, instagram_url = excluded.instagram_url, facebook_url = excluded.facebook_url, tiktok_url = excluded.tiktok_url
-           returning titular, eslogan, about, portada_url, logo_url, instagram_url, facebook_url, tiktok_url, updated_at;`,
-          [organizationId, input.titular, input.eslogan, input.about, input.portadaUrl, input.logoUrl, input.instagramUrl, input.facebookUrl, input.tiktokUrl],
-        );
-        return mapStorefrontMarca(rows[0]!);
-      },
-      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
-      fallback: (err) => {
-        advertirConfigEscrituraNoDisponible("storefront_marca", err, "062_storefront_marca.sql");
-        throw new RestaurantesConfigUnavailableError();
-      },
-    });
   }
 
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {

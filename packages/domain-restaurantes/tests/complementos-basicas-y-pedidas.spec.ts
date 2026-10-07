@@ -38,11 +38,10 @@ describe("crear_pedido: complementos pedidos", () => {
     expect(items).toEqual(expect.arrayContaining(["salsa_guacamolera", "salsa_mexicana", "salsa_pina", "pina", "salsa_habanero_soasado", "crema_ajo", "salsa_habanero"]));
   });
 
-  it("WhatsApp y voz mandan el perfil de básicas; el checkout web conserva las 9", () => {
+  it("WhatsApp y voz mandan el perfil de básicas", () => {
     const base = { organizationId: "o", phone: "5219990000000" } as const;
     expect(mapCreateOrderToolInput({ ...base, channel: "whatsapp" }, {}, true).basicComplements).toEqual(PM_BASIC_COMPLEMENTS);
     expect(mapCreateOrderToolInput({ ...base, channel: "voz" }, {}, false).basicComplements).toEqual(PM_BASIC_COMPLEMENTS);
-    expect(mapCreateOrderToolInput({ ...base, channel: "web", phone: null }, {}, false).basicComplements).toBeUndefined();
   });
 });
 

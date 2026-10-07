@@ -70,7 +70,7 @@ describe("buildOnboardingChecklist (funcion pura)", () => {
     const sinCredenciales = buildOnboardingChecklist({ ...COMPLETO, vozProveedorListo: false, sucursales: [rama({ voz: "habilitada" })] });
     expect(item(sinCredenciales, "voz")).toMatchObject({ estado: "externo", responsable: "plataforma" });
     expect(item(buildOnboardingChecklist(COMPLETO), "voz").estado).toBe("hecho");
-    // La voz nunca bloquea el gate (un restaurante sin voz opera por WhatsApp y storefront).
+    // La voz nunca bloquea el gate (un restaurante sin voz opera por WhatsApp).
     expect(sinDecision.listoParaOperar).toBe(true);
   });
 

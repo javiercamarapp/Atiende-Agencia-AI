@@ -134,8 +134,8 @@ describe("POST /v1/restaurantes/:orgSlug/orders con programado_para", () => {
     const res = await app.request(
       "/v1/restaurantes/los-taquitos-de-pm/orders",
       jsonRequestInit(
-        { branch_slug: "fco-montejo", customer_name: "Cliente Programado", customer_phone: "9991112222", items: [{ product_id: products.cocaCola, requested_quantity: 1 }], source: "web", canal: "recoger", payment_method: "efectivo", programado_para: programado },
-        { origin: "http://localhost:5173" },
+        { branch_slug: "fco-montejo", customer_name: "Cliente Programado", customer_phone: "9991112222", items: [{ product_id: products.cocaCola, requested_quantity: 1 }], source: "voice", canal: "recoger", payment_method: "efectivo", programado_para: programado },
+        { "x-atiende-tool-secret": "test-voice-tool-secret" },
       ),
     );
     return { res, restaurantesRepo };
@@ -155,7 +155,6 @@ describe("POST /v1/restaurantes/:orgSlug/orders con programado_para", () => {
     expect((await crear("2030-01-01T10:00:00")).res.status).toBe(400);
     expect((await crear(enMin(5))).res.status).toBe(400);
     expect((await crear(enMin(60 * 24 * 30))).res.status).toBe(400);
-    expect((await crear(12345)).res.status).toBe(400);
   });
 
   it("fuera del horario de la sucursal (zona America/Mexico_City por omision) -> 400 con el motivo", async () => {
@@ -169,9 +168,9 @@ describe("POST /v1/restaurantes/:orgSlug/orders con programado_para", () => {
     expect(JSON.stringify(await res.json())).toContain("no atiende a la hora elegida");
   });
 
-  it("base SIN migrar -> 503 honesto y no se crea ningun pedido", async () => {
+  it("base SIN migrar -> 400 (canal de voz) y no se crea ningun pedido", async () => {
     const { res, restaurantesRepo } = await crear(enMin(180), (repo) => repo.setScheduledOrdersSupported(false));
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(400);
     expect(restaurantesRepo.getOutbox()).toHaveLength(0);
   });
 });

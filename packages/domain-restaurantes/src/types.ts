@@ -641,37 +641,6 @@ export interface CallbackRequestInput {
  * `nota_agregada` = habia un aviso abierto del mismo canal, telefono y motivo y se le agrego una nota. */
 export type CallbackRegistro = "nuevo" | "evento_repetido" | "nota_agregada";
 
-// ---- R-38 (migracion 062): marca publica del storefront por organizacion. Todos los campos son opcionales (null = sin valor). ----
-export interface StorefrontMarcaInput {
-  readonly titular: string | null;
-  readonly eslogan: string | null;
-  /** Descripcion corta ("about") de la portada. */
-  readonly about: string | null;
-  /** URL https de la imagen de portada. */
-  readonly portadaUrl: string | null;
-  readonly logoUrl: string | null;
-  readonly instagramUrl: string | null;
-  readonly facebookUrl: string | null;
-  readonly tiktokUrl: string | null;
-}
-
-export interface StorefrontMarca extends StorefrontMarcaInput {
-  /** null = nunca se guardo (o la base aun no tiene la migracion 062). */
-  readonly updatedAt: string | null;
-}
-
-/** R-43: solicitud publica de evento/catering ya validada (ver storefront-marca.ts::validarSolicitudEvento). */
-export interface SolicitudEventoInput {
-  readonly nombre: string;
-  /** 10 digitos nacionales. */
-  readonly telefono: string;
-  /** YYYY-MM-DD. */
-  readonly fechaEvento: string;
-  readonly personas: number;
-  readonly sucursalSlug: string;
-  readonly comentario: string | null;
-}
-
 export interface CallbackRequest extends CallbackRequestInput {
   readonly id: string;
   readonly resolved: boolean;
@@ -989,23 +958,4 @@ export interface StorefrontCatalogRow {
   readonly displayOrder: number;
   /** Producto o categoria marcados "no se vende a domicilio" (alcohol en PM). */
   readonly noDomicilio: boolean;
-}
-
-/** Vista PUBLICA de un pedido para la pagina de rastreo: sin nombre, telefono, direccion,
- * correo ni notas del cliente (ver migracion 032). */
-export interface StorefrontOrderTracking {
-  readonly status: OrderStatus;
-  readonly branch: string | null;
-  readonly total: number;
-  readonly paymentMethod: "efectivo" | "tarjeta" | null;
-  readonly canal: CanalPedido;
-  readonly createdAt: string;
-  readonly items: ReadonlyArray<{ readonly name: string; readonly quantity: number; readonly tortilla: TortillaChoice | null }>;
-}
-
-/** `disponible: false` = la base todavia no tiene la funcion de rastreo (42883, migracion 032 sin
- * aplicar): la pagina debe decir "rastreo no disponible aun", nunca confundirlo con "no existe". */
-export interface StorefrontTrackingResult {
-  readonly disponible: boolean;
-  readonly pedido: StorefrontOrderTracking | null;
 }

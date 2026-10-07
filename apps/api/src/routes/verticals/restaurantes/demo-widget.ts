@@ -15,7 +15,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { emitirNotificacion } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { DEMO_SESSION_ID_RE, DEMO_WIDGET_LIMITS, DAY_SECONDS, DemoWidgetValidationError, buildStorefrontBranches, consumeRateLimit, resolveDemoWidgetEstado, runDemoWidgetTurn, sucursalPredeterminadaDemo } from "@atiende/domain-restaurantes";
+import { DEMO_SESSION_ID_RE, DEMO_WIDGET_LIMITS, DAY_SECONDS, DemoWidgetValidationError, consumeRateLimit, resolveDemoWidgetEstado, runDemoWidgetTurn, sucursalPredeterminadaDemo } from "@atiende/domain-restaurantes";
 import type { DemoWidgetEstado, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
@@ -59,7 +59,7 @@ export function restaurantesDemoWidgetRoutes(deps: AppDeps): Hono {
       if (!byIp.allowed) throw Errors.tooManyRequests();
       const estado = await estadoDe(db, org.id);
       const esDemo = estado.motivo !== "no_es_demo";
-      const sucursales = esDemo ? (await buildStorefrontBranches(repo, org.id)).map((b) => ({ slug: b.slug, nombre: b.name })) : [];
+      const sucursales = esDemo ? (await repo.listBranchesForOrganizationAdmin(org.id)).filter((b) => b.status === "active").map((b) => ({ slug: b.slug, nombre: b.name })) : [];
       return c.json({
         ...estado,
         restaurante: esDemo ? { slug: org.slug, nombre: org.name } : null,
