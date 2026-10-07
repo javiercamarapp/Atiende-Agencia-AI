@@ -124,8 +124,11 @@ async function avisarNuevosMatches(deps: AppDeps, organizationId: string, nuevas
 
     let campana = 0;
     for (const m of mejores) {
-      const e = await emitirNotificacion(db, { evento: "licitaciones.convocatoria.nuevo_match", organizationId, clave: m.tender.id, parametros: { puntuacion: m.score }, entidadTipo: "convocatoria", entidadId: m.tender.id });
-      if (e.estado === "emitida") campana += 1;
+      // SAVEPOINT por aviso: si la campana falla no se revierte el dedupe (recordNewMatch) de la organizacion ni los demas avisos.
+      await mejorEsfuerzo(db, "campana de nuevo match", async () => {
+        const e = await emitirNotificacion(db, { evento: "licitaciones.convocatoria.nuevo_match", organizationId, clave: m.tender.id, parametros: { puntuacion: m.score }, entidadTipo: "convocatoria", entidadId: m.tender.id });
+        if (e.estado === "emitida") campana += 1;
+      });
     }
 
     let correos = 0;
