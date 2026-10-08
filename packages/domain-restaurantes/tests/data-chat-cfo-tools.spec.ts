@@ -5,6 +5,8 @@ import { runDataChatTurn, scriptedCompletion, toJsonSchema, type DataChatTool, t
 import { buildRestaurantesDataChatCatalog, buildRestaurantesDataChatTools } from "../src/data-chat/index.ts";
 import { DataChatUnavailableError } from "../src/data-chat/reader.ts";
 import { CFO_BRANCHES, CfoFakeReader, DATASET_SINTETICO as D, GERENTE_T1_SCOPE, IDS, MIERCOLES_MERIDA, OWNER_CFO_SCOPE, SUC, T1, T8 } from "./data-chat/support-cfo.ts";
+import { PostgresRestaurantesDataChatReader } from "../src/data-chat/index.ts";
+import { AbortAwareFakeSession } from "./support/aborting-fake-session.ts";
 import { FakeReader } from "./data-chat/support.ts";
 
 const CFO_TOOLS = ["cfo_resumen", "cfo_lo_mas_importante", "cfo_estado_resultados", "cfo_comparar_sucursales", "cfo_clientes", "cfo_platillos", "cfo_patrones", "cfo_agente", "cfo_softrestaurant"];
@@ -286,6 +288,25 @@ describe("base sin migrar y errores", () => {
     const r = await tool(reader, "cfo_resumen").run(ctx(), {});
     expect(r.status).toBe("needs_clarification");
     expect(reader.entradas).toHaveLength(0);
+  });
+});
+
+describe("lector Postgres contra la base SIN las migraciones del CFO", () => {
+  const pgError = (code: string, message: string): Error & { code: string } => Object.assign(new Error(message), { code });
+
+  it("cada función SQL del CFO ausente (42883) degrada a 'unavailable' y la transacción compartida sigue utilizable (sin 25P02)", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /^\s*set local statement_timeout = 8000/i, respond: () => [] },
+      { match: /from core\.property p\s+join restaurantes\.branch_detail/i, respond: () => [{ property_id: T1, name: "Prolongación Montejo", slug: "t1" }] },
+      { match: /cfo_|restaurantes\.sr_/i, respond: () => pgError("42883", "function restaurantes.cfo_x() does not exist") },
+      { match: /select 1 as siguiente_query_del_request/i, respond: () => [{ ok: true }] },
+    ]);
+    const t = buildRestaurantesDataChatTools(new PostgresRestaurantesDataChatReader(session)).find((x) => x.name === "cfo_resumen")!;
+    const r = await t.run(ctx(), SEMANA);
+    expect(r.status).toBe("unavailable");
+    expect(r.rows).toEqual([]);
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
+    await expect(session.query("select 1 as siguiente_query_del_request")).resolves.toEqual({ rows: [{ ok: true }] });
   });
 });
 
