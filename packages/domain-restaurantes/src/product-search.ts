@@ -132,7 +132,7 @@ export const ORDEN_COMPLETA = "orden:completa";
 
 export function tokenizeForProductSearch(query: string): string[] {
   const normalizada = normalizarPesosEnConsulta(
-    normalizarUnidadesDeKilo(sinAcentos(query)).replace(/\bcero\s+punto\s+cero\b/g, "0.0"),
+    normalizarUnidadesDeKilo(sinAcentos(query)).replace(/\bcero\s+punto\s+cero\b|\bcero\s+cero\b|\b0[.,]0\b|\bcero(?:\s+alcohol)?\b/g, "0.0"),
   )
     .replace(/\bmedia\s+orden\b/g, "1/2")
     // Jerga de T7 (chats reales): "medios charros" = media orden de frijoles charros; "nachos grandes" = la orden COMPLETA (el catalogo solo distingue
