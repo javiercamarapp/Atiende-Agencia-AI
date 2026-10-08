@@ -277,6 +277,31 @@ describe("MetaGraphWhatsAppReader: el token nunca se expone", () => {
   });
 });
 
+describe("MetaGraphWhatsAppReader: entradas hostiles largas (sin ReDoS)", () => {
+  it("baseUrl con 100000 '/' al final se normaliza rapido y sigue funcionando", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string | URL) => {
+      urls.push(String(url));
+      return jsonResponse({ id: "1" });
+    }) as unknown as typeof fetch;
+    const t0 = performance.now();
+    const reader = new MetaGraphWhatsAppReader({ accessToken: FAKE_TOKEN, baseUrl: `http://localhost:9999${"/".repeat(100_000)}x${"/".repeat(100_000)}`, fetchImpl });
+    expect(performance.now() - t0).toBeLessThan(200);
+    await reader.numero("1");
+    expect(urls[0]!.startsWith("http://localhost:9999")).toBe(true);
+    const solo = new MetaGraphWhatsAppReader({ accessToken: FAKE_TOKEN, baseUrl: `http://h${"/".repeat(100_000)}`, fetchImpl });
+    await solo.numero("2");
+    expect(urls[1]!.startsWith("http://h/v21.0/2?fields=")).toBe(true);
+  });
+
+  it("redactarSecretos con cadenas hostiles largas termina rapido", () => {
+    const hostiles = [`Bearer ${" ".repeat(100_000)}!`, `Bearer ${"/".repeat(100_000)}`, `access_token=${"a".repeat(100_000)}`, `EA${"A".repeat(100_000)}!`, "/".repeat(100_000), " ".repeat(100_000)];
+    const t0 = performance.now();
+    for (const h of hostiles) redactarSecretos(h, FAKE_TOKEN);
+    expect(performance.now() - t0).toBeLessThan(1000);
+  });
+});
+
 describe("MetaGraphWhatsAppReader: SOLO GET", () => {
   it("solicitar() rechaza POST, PUT, PATCH, DELETE y minusculas SIN llamar a fetch", async () => {
     const { reader, fetchImpl } = lector([jsonResponse({})]);

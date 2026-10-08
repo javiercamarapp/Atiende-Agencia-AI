@@ -125,6 +125,13 @@ export function redactarSecretos(texto: string, token?: string): string {
     .replace(/\bEA[A-Za-z0-9]{20,}\b/g, "[REDACTADO]");
 }
 
+/** Quita las `/` del final sin regex (una regex de cola con entrada larga es ReDoS polinomial): un solo recorrido lineal. */
+function quitarBarrasFinales(texto: string): string {
+  let fin = texto.length;
+  while (fin > 0 && texto.charCodeAt(fin - 1) === 47) fin -= 1;
+  return texto.slice(0, fin);
+}
+
 export interface MetaGraphWhatsAppReaderOptions {
   readonly accessToken: string;
   readonly apiVersion?: string;
@@ -161,7 +168,7 @@ export class MetaGraphWhatsAppReader {
     this.accessToken = opts.accessToken;
     this.apiVersion = opts.apiVersion ?? DEFAULT_GRAPH_READER_API_VERSION;
     this.fetchImpl = opts.fetchImpl ?? fetch;
-    this.baseUrl = (opts.baseUrl ?? "https://graph.facebook.com").replace(/\/+$/, "");
+    this.baseUrl = quitarBarrasFinales(opts.baseUrl ?? "https://graph.facebook.com");
     this.maxPaginas = opts.maxPaginas ?? 50;
   }
 
