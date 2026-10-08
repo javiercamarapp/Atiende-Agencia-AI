@@ -41,7 +41,7 @@ import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, P
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { PEDIDO_GRANDE_TOTAL_MXN } from "../pedido-grande.ts";
-import { afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
+import { corregirPromesaDeHorarioNocturno, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -596,7 +596,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let yaRegistradoEnTurno = false;
       let retenidoEnTurno = false;
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
-      const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(lastQuoteRespaldaCortesia === false ? quitarCortesiaNoRespaldada(reply) : reply, working), lastQuoteTotal, lastQuoteAmounts);
+      const horaLocalDelTurno = Number(new Intl.DateTimeFormat("es-MX", { timeZone: config.timezone, hour: "numeric", hourCycle: "h23" }).format(now()));
+      const safeReply = (reply: string) => {
+        const base = enforceQuotedTotal(enforceBistecPackNotice(lastQuoteRespaldaCortesia === false ? quitarCortesiaNoRespaldada(reply) : reply, working), lastQuoteTotal, lastQuoteAmounts);
+        return perfil === "taqueria_pm" ? corregirPromesaDeHorarioNocturno(base, horaLocalDelTurno) : base;
+      };
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
       // §5: pin con el boton nativo de WhatsApp. Se pide una sola vez por pedido (contador `ubicacion_solicitada`, se reinicia al crear el pedido)

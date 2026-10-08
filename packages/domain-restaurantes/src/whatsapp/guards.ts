@@ -195,6 +195,15 @@ export function quitarAfirmacionDePedidoRegistrado(reply: string, sustituto?: st
   return resto || sustituto || "Todavía no queda registrado su pedido. ¿Me confirma con un «sí» el resumen para registrarlo?";
 }
 
+/**
+ * QA-PM-R4-whatsapp-05: la frase "el equipo le responde a partir de las 12 del dia" solo es verdad entre la 1 am y las 12 pm (nadie del equipo contesta en ese rango). El modelo la
+ * aplicaba a las 13:00 y 14:00 con la sucursal abierta. `hora` es la hora local (0-23) del turno: de 12 a 23 la frase se reemplaza por "le contestan en cuanto puedan".
+ */
+export function corregirPromesaDeHorarioNocturno(reply: string, hora: number): string {
+  if (hora < 12 && hora >= 1) return reply;
+  return reply.replace(/(?:,?\s*(?:y\s+)?)?(?:el\s+equipo\s+)?(?:le\s+(?:responde|contesta|responder[aá]n?|contestar[aá]n?|escribe|escribir[aá]n?)\s+|le\s+atienden\s+)?a\s+partir\s+de\s+las\s+12(?:\s*(?::00|h|hrs?\.?))?\s*(?:del\s+d[ií]a|del\s+mediod[ií]a|pm|p\.m\.)?/gi, (m) => (/le\s+/i.test(m) || /equipo/i.test(m) ? ", le contestan en cuanto puedan" : " en cuanto puedan"));
+}
+
 /** Quita la afirmacion de aviso cuando no se pudo dejar el aviso. */
 export function quitarAfirmacionDeAviso(reply: string): string {
   const sinFrase = reply

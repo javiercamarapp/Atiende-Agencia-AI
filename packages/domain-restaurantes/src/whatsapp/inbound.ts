@@ -341,9 +341,9 @@ export const MAX_PASADAS_RAFAGA = 3;
  * del cliente toma el turno y contesta TODO lo pendiente (el historial ya tiene los mensajes absorbidos). Tope del SQL: 300. */
 export const LEASE_RAFAGA_SEGUNDOS = 45;
 /** Una toma de handoff `pendiente` que nadie atiende: el agente calla (R-21), pero el cliente no puede quedarse horas sin NINGUNA respuesta. Pasados
- * `ACUSE_PENDIENTE_ESPERA_MIN` minutos (3; antes 15 y el cliente que insistia quedaba sin respuesta, QA-PM-R4-whatsapp-01) sin que nadie la tome, el siguiente mensaje del cliente recibe UN acuse honesto (sin prometer una hora) y luego otro
+ * `ACUSE_PENDIENTE_ESPERA_MIN` minutos sin que nadie la tome, el siguiente mensaje del cliente recibe UN acuse honesto (sin prometer una hora) y luego otro
  * cada `ACUSE_PENDIENTE_REPETIR_MIN`. El tiempo y la unicidad los decide la base (migracion 045); sin ella el agente sigue callando como antes. */
-export const ACUSE_PENDIENTE_ESPERA_MIN = 3;
+export const ACUSE_PENDIENTE_ESPERA_MIN = 15;
 export const ACUSE_PENDIENTE_REPETIR_MIN = 60;
 export const ACUSE_HANDOFF_PENDIENTE =
   "Seguimos esperando a que una persona del equipo tome su conversación; su aviso ya está registrado y no se perdió. Si lo prefiere, puede dejar aquí los detalles de su pedido para que los vean en cuanto la atiendan.";
