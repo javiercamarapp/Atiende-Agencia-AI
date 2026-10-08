@@ -22,7 +22,7 @@ describe("e2e cocina, avisos al comensal y cierre del dia", () => {
   const admin = (p: string) => stack.url(`/v1/restaurantes/${stack.propertyId}/admin${p}`);
   const patchStatus = (orderId: string, status: string) => fetch(admin(`/orders/${orderId}/status`), authedJson(owner(), status === "cancelado" ? { status, motivo: "cliente_desistio" } : { status }, "PATCH"));
   const pedidos = async () => (await stack.ctx.restaurantesRepo.listOrders(stack.ctx.organizationId, { propertyIds: null, limit: 50 } as never)).orders;
-  const avisos = (wa: string) => stack.sim.sentTo(wa).map((m) => m.text ?? "").filter((t) => /su pedido/i.test(t));
+  const avisos = (wa: string) => stack.sim.sentTo(wa).map((m) => m.text ?? "").filter((t) => /su pedido/i.test(t) && !/Aviso de privacidad/.test(t));
 
   /** Pedido por WhatsApp (guion del LLM; el servidor cotiza y crea). Devuelve el pedido creado. */
   async function pedirPorWhatsApp(wa: string, nombre: string, canal: "domicilio" | "recoger") {
