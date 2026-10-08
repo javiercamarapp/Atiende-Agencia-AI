@@ -66,6 +66,14 @@ describe("alcance y rango (espejo de cfo_resolver_sucursales / cfo_validar_rango
     await expect(r.pedidosDetalle(p, R, { telefono: "x" } as never, 10, null, 50)).rejects.toBeInstanceOf(CfoParametroInvalidoError);
     await expect(r.pedidosDetalle(p, R, {}, 10, "no-es-cursor", 50)).rejects.toBeInstanceOf(CfoParametroInvalidoError);
   });
+
+  it("pedidosDetalle: cursor con formato válido pero fecha imposible o fuera de 2000..2100 -> 22023 (coherente con la API, que da 422)", async () => {
+    const r = repo();
+    const p = { organizationId: ORG, propertyIds: null };
+    for (const c of ["0000-00-00|1", "2026-02-30|1", "1999-12-31|1", "2101-01-01|1"])
+      await expect(r.pedidosDetalle(p, R, {}, 10, c, 50), c).rejects.toBeInstanceOf(CfoParametroInvalidoError);
+    await expect(r.pedidosDetalle(p, R, {}, 10, "2026-09-20|203", 50)).resolves.toBeDefined();
+  });
 });
 
 describe("configuración (cfo_config_guardar)", () => {
