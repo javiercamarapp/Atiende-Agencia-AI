@@ -1022,7 +1022,7 @@ async function dispatchTool(
       const branch = await repo.findBranch(organizationId, { slug: branchSlug });
       if (!branch) throw new OrderValidationError(`Sucursal '${branchSlug}' no encontrada`);
       const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: String(input.query ?? "") });
-      const result = productos.map((p) => ({ id: p.id, name: p.name, price: p.price, pack_size: p.packSize, requires_adult_confirmation: p.requiresAdultConfirmation }));
+      const result = productos.map((p) => ({ id: p.id, name: p.name, price: p.price, pack_size: p.packSize, requires_adult_confirmation: p.requiresAdultConfirmation, ...(p.ambiguo === true ? { ambiguo: true } : {}) }));
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "cotizar_pedido": {
