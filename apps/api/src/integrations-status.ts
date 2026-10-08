@@ -309,6 +309,12 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   // R-27 -- plantillas HSM de WhatsApp declaradas aprobadas por Meta (lista separada por comas); vacia = todo
   // sale como texto libre. Opcional, nunca bloquea el arranque.
   "WHATSAPP_APPROVED_TEMPLATES",
+  // WhatsApp multinumero (paquete 01): version de Graph API, id de la Meta App, WABA de la plataforma y config de Embedded Signup v4.
+  // Todas opcionales; nunca bloquean el arranque.
+  "WHATSAPP_GRAPH_API_VERSION",
+  "META_APP_ID",
+  "WHATSAPP_WABA_IDS",
+  "WHATSAPP_ES_CONFIG_ID",
   // MFA del superadmin (ver docs/CREDENCIALES.md): ambas son opcionales y nunca
   // bloquean el arranque.
   "SUPERADMIN_MFA_REQUIRED",
