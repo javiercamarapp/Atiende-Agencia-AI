@@ -236,8 +236,8 @@ describe("(e) cobertura explicita del dueño = override: Centro, Centro Historic
       expect(g, `${nombre} por geometria`).toMatchObject({ estado: "asignada", origen: "distancia", branchSlug: geometria });
       if (geometria !== dueno) divergen += 1;
     }
-    // Al menos tres de las cuatro chocan de verdad con la regla (por eso Javier debe decidir): si ninguna chocara, la prueba no probaria nada.
-    expect(divergen).toBeGreaterThanOrEqual(3);
+    // Las cuatro chocan de verdad con la regla (por eso Javier debe decidir): si ninguna chocara, la prueba no probaria nada.
+    expect(divergen).toBe(4);
   });
 
   it("sin coordenadas de colonia (la cuenta real hoy) tambien: la cobertura del dueño es la respuesta, sin distancia inventada", async () => {

@@ -5,13 +5,13 @@
 -- Ejecutar:  supabase db query --linked -f colonias-8km-carga.sql      (desde una carpeta ligada al proyecto)
 --
 -- IDEMPOTENTE: la 2.a corrida no cambia nada (0 altas, 0 reemplazos, 0 metadatos). Una sola transaccion: cualquier comprobacion que falle ABORTA todo.
--- NO hace DELETE masivo: solo retira, por pares (colonia, sucursal) calculados contra las listas de abajo, (a) las filas de cobertura de una colonia ASIGNADA que
--- apuntan a OTRA sucursal que la esperada (reemplazos; esperados en la base real del 8-oct-2026: 20) y (b) las filas de las colonias a MAS DE 8 KM de toda
+-- NO hace DELETE masivo: solo retira (a) las filas de cobertura de una colonia ASIGNADA que
+-- apuntan a OTRA sucursal que la esperada (reemplazos; esperados en la base real del 8-oct-2026: 20) y (b) TODA la cobertura, de cualquier sucursal, de las colonias a MAS DE 8 KM de toda
 -- sucursal de despacho (retiros: 3, a saber Mulchechen T1, Salvador Alvarado Sur T3, Santa Maria Chi T8); si hubiera mas de lo esperado en cualquiera de los dos, aborta.
 -- Las colonias SIN coordenada (pendientes del dueño) y las explicitas del dueño no se tocan: el SELECT final lista las sin coordenada que hoy tienen cobertura.
 -- Esperado sobre la base real de 169 filas: +25 altas, -20 reemplazos, -3 retiros, 171 filas al terminar.
--- Actualiza known_zone.asignacion_fuente SOLO en las zonas cuya cobertura cambia (sobrescribe su procedencia anterior: dueno_zona_centro, chats_t7, distancia_piloto,
--- reasignada_desde_galerias, ambigua_cubierta_por_dos, mas_cercana_osm_v2b, sin_asignar...); las retiradas quedan 'sin_asignar'.
+-- Actualiza known_zone.asignacion_fuente SOLO en las zonas cuya cobertura cambia (sobrescribe su procedencia anterior: sin_asignar, ambigua_cubierta_por_dos,
+-- distancia_piloto, mas_cercana_osm_v2b, reasignada_desde_galerias); NO toca ninguna etiqueta dueno_zona_centro ni chats_t7; las retiradas quedan 'sin_asignar'.
 -- NO escribe lat/lng en known_zone ni toca branch_detail, estado de sucursales, whatsapp_branch_channel ni la cuenta demo.
 
 begin;

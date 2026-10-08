@@ -246,13 +246,13 @@ export function renderCargaSql(data: PmSeedData): string {
 -- Ejecutar:  supabase db query --linked -f colonias-8km-carga.sql      (desde una carpeta ligada al proyecto)
 --
 -- IDEMPOTENTE: la 2.a corrida no cambia nada (0 altas, 0 reemplazos, 0 metadatos). Una sola transaccion: cualquier comprobacion que falle ABORTA todo.
--- NO hace DELETE masivo: solo retira, por pares (colonia, sucursal) calculados contra las listas de abajo, (a) las filas de cobertura de una colonia ASIGNADA que
--- apuntan a OTRA sucursal que la esperada (reemplazos; esperados en la base real del 8-oct-2026: ${r.reemplazos}) y (b) las filas de las colonias a MAS DE 8 KM de toda
+-- NO hace DELETE masivo: solo retira (a) las filas de cobertura de una colonia ASIGNADA que
+-- apuntan a OTRA sucursal que la esperada (reemplazos; esperados en la base real del 8-oct-2026: ${r.reemplazos}) y (b) TODA la cobertura, de cualquier sucursal, de las colonias a MAS DE 8 KM de toda
 -- sucursal de despacho (retiros: ${r.retirosFuera.length}, a saber ${r.retirosFuera.map((f) => f.nombre + " " + f.antes.join("/")).join(", ")}); si hubiera mas de lo esperado en cualquiera de los dos, aborta.
 -- Las colonias SIN coordenada (pendientes del dueño) y las explicitas del dueño no se tocan: el SELECT final lista las sin coordenada que hoy tienen cobertura.
 -- Esperado sobre la base real de ${Object.values(r.antesPorSucursal).reduce((a, b) => a + b, 0)} filas: +${r.altas} altas, -${r.reemplazos} reemplazos, -${r.retirosFuera.reduce((n, f) => n + f.antes.length, 0)} retiros, ${Object.values(r.despuesPorSucursal).reduce((a, b) => a + b, 0)} filas al terminar.
--- Actualiza known_zone.asignacion_fuente SOLO en las zonas cuya cobertura cambia (sobrescribe su procedencia anterior: dueno_zona_centro, chats_t7, distancia_piloto,
--- reasignada_desde_galerias, ambigua_cubierta_por_dos, mas_cercana_osm_v2b, sin_asignar...); las retiradas quedan 'sin_asignar'.
+-- Actualiza known_zone.asignacion_fuente SOLO en las zonas cuya cobertura cambia (sobrescribe su procedencia anterior: sin_asignar, ambigua_cubierta_por_dos,
+-- distancia_piloto, mas_cercana_osm_v2b, reasignada_desde_galerias); NO toca ninguna etiqueta dueno_zona_centro ni chats_t7; las retiradas quedan 'sin_asignar'.
 -- NO escribe lat/lng en known_zone ni toca branch_detail, estado de sucursales, whatsapp_branch_channel ni la cuenta demo.
 
 begin;
@@ -617,7 +617,7 @@ Orden de Javier (7-oct-2026 13:30 y 17:50): cada colonia a la sucursal de despac
 
 1. Cada colonia se asigna a la sucursal de **despacho activa más cercana**, en línea recta (Haversine, radio terrestre ${RADIO_TIERRA_KM} km), desde el pin de la sucursal hasta la coordenada de la colonia, si está a **${RADIO_REPARTO_KM} km o menos** (el límite es inclusivo: 8.00 km entra, 8.01 km no).
 2. Despachan T1, T2, T3, T7 y T8 (las cinco activas). Galerías (T4) y Playa/Chicxulub (T5) están inactivas y **no reciben colonias**.
-3. Las colonias a más de 8 km de toda sucursal de despacho quedan **fuera de cobertura**: no se asignan, se listan y, si hoy tienen cobertura, la carga **la retira** (par exacto colonia-sucursal). Las que no tienen coordenada tampoco se asignan: las coordenadas nunca se estiman a mano; si hoy tienen cobertura se listan y no se tocan.
+3. Las colonias a más de 8 km de toda sucursal de despacho quedan **fuera de cobertura**: no se asignan, se listan y, si hoy tienen cobertura, la carga **retira toda su cobertura**, de cualquier sucursal (tope exacto: sobre la base real son exactamente Mulchechen-T1, Salvador Alvarado Sur-T3 y Santa Maria Chi-T8). Las que no tienen coordenada tampoco se asignan: las coordenadas nunca se estiman a mano; si hoy tienen cobertura se listan y no se tocan.
 4. Empate exacto de distancia: gana la primera en el orden T1, T2, T3, T7, T8. Se marca **borde** cuando la colonia queda a ${MARGEN_BORDE_KM * 1000} m o menos del límite de 8 km, o cuando la segunda sucursal (también dentro de 8 km) está a ${MARGEN_BORDE_KM * 1000} m o menos de la primera.
 5. **Cobertura explícita del dueño** (criterio conservador): manda sobre la geometría. Son ${r.explicitas.length}: ${r.explicitas.map((f) => f.nombre).join(", ")}. Cabo Norte y Los Pinos no tienen coordenada (no hay distancia que comparar); las otras cuatro difieren de la regla y están en la sección «Explícitas del dueño que difieren de la regla de 8 km».
 6. Los homónimos con discrepancia entre Google y OSM mayor a 1 km se asignan con la coordenada elegida en colonias-v3 y quedan marcados «REVISAR»; San José (nombre genérico, lecturas a 11.4 km entre sí) queda pendiente del dueño, sin asignar.
@@ -635,7 +635,7 @@ Son los pines propuestos de los datos (\`coordenadas_propuestas\`), **pendientes
 - Colonias en la lista: ${filas.length}. **Asignadas: ${r.asignadas}** (${r.asignadas - r.explicitas.length} por la regla + ${r.explicitas.length} explícitas del dueño). **Sin cobertura: ${r.fuera.length + r.sinCoordenada.length + r.homonimosPendientes.length}** (${r.fuera.length} a más de 8 km + ${r.sinCoordenada.length} sin coordenada + ${r.homonimosPendientes.length} homónimo pendiente).
 - Colonias marcadas borde: ${bordes.length}.
 - Base real el 8-oct-2026: ${sumaAntes} filas de cobertura. Al cargar: +${r.altas} altas, -${r.reemplazos} reemplazos (retiro por pares de la sucursal equivocada), -${nRetiros} retiros de colonias a más de 8 km = ${sumaDespues} filas. ${r.sobrantes.length} colonias sin coordenada o con homónimo pendiente conservan su cobertura actual (pendientes del dueño).
-- La carga actualiza \`known_zone.asignacion_fuente\` solo en las zonas cuya cobertura cambia y **sobrescribe** su procedencia anterior (dueno_zona_centro, chats_t7, distancia_piloto, reasignada_desde_galerias, ambigua_cubierta_por_dos, mas_cercana_osm_v2b, sin_asignar); las colonias a más de 8 km retiradas quedan «sin_asignar». Las 14 colonias con doble cobertura quedan en una sola.
+- La carga actualiza \`known_zone.asignacion_fuente\` solo en las zonas cuya cobertura cambia y **sobrescribe** su procedencia anterior (sobre la base real del 8-oct: sin_asignar 19, ambigua_cubierta_por_dos 14, distancia_piloto 4, mas_cercana_osm_v2b 4, reasignada_desde_galerias 1); no toca ninguna etiqueta dueno_zona_centro ni chats_t7; las colonias a más de 8 km retiradas quedan «sin_asignar». Las 14 colonias con doble cobertura quedan en una sola.
 
 ### Conteos por sucursal
 
