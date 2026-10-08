@@ -64,8 +64,8 @@ async function bancoConAutopiloto(opts: { readonly disponible?: boolean } = {}) 
   return { b, ...ctx };
 }
 
-async function cotizarYConfirmar(b: Banco, tel: string, items: ReturnType<typeof item>[], pago: "efectivo" | "tarjeta") {
-  b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items }), say("Total cotizado. ¿Confirma?")]);
+async function cotizarYConfirmar(b: Banco, tel: string, items: ReturnType<typeof item>[], pago: "efectivo" | "tarjeta", extra: Record<string, unknown> = {}) {
+  b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items, ...extra }), say("Total cotizado. ¿Confirma?")]);
   await b.enviar(tel, "quiero para recoger");
   b.setGuion([call("confirmar_resumen", {}), call("crear_pedido", { branch_slug: "garcia-lavin", canal: "recoger", customer_name: "Fiesta", payment_method: pago, items }), say("Listo, su pedido quedó registrado.")]);
   return b.enviar(tel, `si ${pago}`);
@@ -117,7 +117,7 @@ describe("agentes-08: partir el pedido en la misma conversacion no evade el umbr
     const b = await banco();
     const r1 = await cotizarYConfirmar(b, "+5219990000044", dos(b), "efectivo");
     expect(r1.orderId).toBeTruthy();
-    const r2 = await cotizarYConfirmar(b, "+5219990000044", dos(b), "efectivo");
+    const r2 = await cotizarYConfirmar(b, "+5219990000044", dos(b), "efectivo", { otro_pedido: true });
     expect(r2.orderId).toBeNull();
     expect((await b.w.repo.listOrders(b.w.organizationId, { propertyIds: null, limit: 100 })).orders).toHaveLength(1);
     const aviso = b.callbacks().find((c) => c.reason === "escalada:pedido_grande");
@@ -129,7 +129,7 @@ describe("agentes-08: partir el pedido en la misma conversacion no evade el umbr
     const r1 = await cotizarYConfirmar(t.b, "+5219990000047", dos(t.b), "efectivo");
     expect(r1.orderId).toBeTruthy();
     expect(t.comandas).toHaveLength(1);
-    const r2 = await cotizarYConfirmar(t.b, "+5219990000047", dos(t.b), "efectivo");
+    const r2 = await cotizarYConfirmar(t.b, "+5219990000047", dos(t.b), "efectivo", { otro_pedido: true });
     // create_order_idempotent devuelve el MISMO pedido (misma huella): nada nuevo que retener.
     expect(r2.orderId).toBe(r1.orderId);
     expect(t.retenerLlamadas).toHaveLength(0);
@@ -144,7 +144,7 @@ describe("agentes-08: partir el pedido en la misma conversacion no evade el umbr
     const b = await banco();
     const chico = [item(b.pid("Pastor — 1 kg"), "Pastor — 1 kg", 1)];
     expect((await cotizarYConfirmar(b, "+5219990000045", chico, "tarjeta")).orderId).toBeTruthy();
-    expect((await cotizarYConfirmar(b, "+5219990000045", chico, "tarjeta")).orderId).toBeTruthy();
+    expect((await cotizarYConfirmar(b, "+5219990000045", chico, "tarjeta", { otro_pedido: true })).orderId).toBeTruthy();
     expect(b.callbacks().some((c) => c.reason === "escalada:pedido_grande")).toBe(false);
   });
 });
