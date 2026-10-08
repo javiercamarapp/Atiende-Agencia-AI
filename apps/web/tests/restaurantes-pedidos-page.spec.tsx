@@ -12,7 +12,7 @@ import { changeValue, click, esperarHasta, flushMicrotasks, renderComponent, typ
 
 vi.mock("leaflet", () => {
   const capa = { addTo: () => capa, bindTooltip: () => capa, remove: () => undefined, setLatLng: () => undefined };
-  const mapa = { setView: () => mapa, fitBounds: () => undefined, remove: () => undefined };
+  const mapa = { setView: () => mapa, fitBounds: () => undefined, stop: () => undefined, remove: () => undefined };
   return { default: { map: () => mapa, tileLayer: () => capa, divIcon: () => ({}), marker: () => capa, latLngBounds: () => ({}) } };
 });
 

@@ -20,12 +20,13 @@ interface Marcador {
 const marcadores: Marcador[] = [];
 const fitBounds = vi.fn();
 const mapaRemove = vi.fn();
+const mapaStop = vi.fn();
 const tileLayer = vi.fn();
 
 vi.mock("leaflet", () => {
   const L = {
     map: () => {
-      const m = { setView: () => m, fitBounds: (...a: unknown[]) => fitBounds(...a), remove: () => mapaRemove() };
+      const m = { setView: () => m, fitBounds: (...a: unknown[]) => fitBounds(...a), stop: () => mapaStop(), remove: () => mapaRemove() };
       return m;
     },
     tileLayer: (url: string, opts: unknown) => {
@@ -64,6 +65,7 @@ beforeEach(() => {
   marcadores.length = 0;
   fitBounds.mockClear();
   mapaRemove.mockClear();
+  mapaStop.mockClear();
   tileLayer.mockClear();
   rafCallbacks = [];
   vi.stubGlobal("requestAnimationFrame", (cb: (t: number) => void) => {
@@ -133,6 +135,7 @@ describe("MapaEntrega", () => {
     expect(repartidor.latlng).toEqual([20.9671, -89.6237]);
     expect(textoDe(repartidor)).toBe("Pedro Chan");
     expect(fitBounds).toHaveBeenCalledTimes(1);
+    expect(fitBounds.mock.calls[0]![1]).toMatchObject({ animate: false });
     // Tiles de OpenStreetMap, sin llave.
     expect(tileLayer.mock.calls[0]![0]).toBe("https://tile.openstreetmap.org/{z}/{x}/{y}.png");
   });
@@ -194,6 +197,7 @@ describe("MapaEntrega", () => {
     await montar(PEDIDO);
     rendered!.unmount();
     rendered = undefined;
+    expect(mapaStop).toHaveBeenCalled(); // corta animaciones en vuelo antes de destruir el mapa
     expect(mapaRemove).toHaveBeenCalled();
   });
 });

@@ -62,6 +62,8 @@ export default function MapaLeaflet({ sucursal, direccionCliente, repartidorNomb
     })();
     return () => {
       vivo = false;
+      // stop() corta cualquier animacion de zoom/desplazamiento en vuelo antes de destruir el mapa.
+      mapa.current?.stop();
       mapa.current?.remove();
       mapa.current = null;
       setListo(false);
@@ -80,7 +82,8 @@ export default function MapaLeaflet({ sucursal, direccionCliente, repartidorNomb
     const mSucursal = L.marker(origen, { icon: pin("pedido-pin-sucursal", "🏠", 30) }).addTo(m).bindTooltip(conTexto(sucursal.nombre), { direction: "top" });
     const mCliente = L.marker(destino, { icon: pin("pedido-pin-cliente", "📍", 26) }).addTo(m).bindTooltip(conTexto(direccionCliente || "Dirección del cliente (simulada)"), { direction: "top" });
     const mRepartidor = L.marker(origen, { icon: pin("pedido-pin-repartidor", "🛵", 32) }).addTo(m).bindTooltip(conTexto(repartidorNombre), { direction: "top" });
-    m.fitBounds(L.latLngBounds([origen, destino]), { padding: [40, 40] });
+    // Sin animacion: un fitBounds animado que sigue en vuelo cuando se desmonta el mapa lanza «_leaflet_pos» (pageerror) al cambiar de pestana.
+    m.fitBounds(L.latLngBounds([origen, destino]), { padding: [40, 40], animate: false });
 
     let raf: number | null = null;
     if (enCamino) {
