@@ -13,7 +13,7 @@ describe("fixture SINTÉTICA del CFO para e2e", () => {
     const nueva = await construirFixtureCfo();
     // Ida y vuelta por JSON: lo que se compara es lo que realmente sirve el mock.
     const texto = JSON.stringify(nueva);
-    if (process.env["ACTUALIZAR_FIXTURE_CFO"] === "1") writeFileSync(RUTA, texto);
+    if (process.env["ACTUALIZAR_FIXTURE_CFO"] === "1") writeFileSync(RUTA, `${JSON.stringify(nueva, null, 2)}\n`);
     const guardada = readFileSync(RUTA, "utf8");
     expect(JSON.parse(guardada)).toEqual(JSON.parse(texto));
   });
