@@ -123,13 +123,14 @@ export function afirmaHaberAvisado(reply: string): boolean {
   // T7-060 (ronda 5): «Permítame verificarlo con una persona de la sucursal» (o «lo consulto con el gerente») es la promesa de que una persona lo revisa. Sin escalar_a_humano no hay nadie a
   // quien le llegue: el agente dijo que consultaria y no habia aviso. Cuenta la promesa inmediata («permitame verificarlo con...») y la primera persona («lo verifico / voy a consultarlo con...»).
   // Se mira frase por frase: no cuentan la pregunta, la negacion, el condicional («si quiere, lo consulto con el gerente») ni el subjuntivo («para que lo verifique»).
-  return pasado.test(t) || inmediata.test(t) || registrado.test(t) || notifique.test(t) || reply.split(/(?<=[.!?])\s+/).some(prometeConsultarConUnaPersona);
+  return pasado.test(t) || inmediata.test(t) || registrado.test(t) || notifique.test(t) || reply.split(/(?<=[.!?;])\s+/).some(prometeConsultarConUnaPersona);
 }
 
-const PERSONA_A_CONSULTAR = "(?:una\\s+persona|un\\s+asesor|alguien|el\\s+gerente|la\\s+gerente|el\\s+equipo|la\\s+sucursal|el\\s+encargad[oa]|la\\s+encargada)";
+// «la sucursal» solo cuenta si no la sigue un nombre: «confirmo con la sucursal García Lavín su pedido» es el dato del pedido, no una consulta a una persona.
+const PERSONA_A_CONSULTAR = "(?:una\\s+persona|un\\s+asesor|alguien|el\\s+gerente|la\\s+gerente|el\\s+equipo|el\\s+encargad[oa]|la\\s+encargada|la\\s+sucursal(?=\\s*(?:$|[,.;]|\\s(?:y|para|si|que|ya|porque)\\b)))";
 const VERBO_DE_CONSULTA = "(?:verificar|consultar|confirmar|checar|revisar)";
 const PROMESA_DE_CONSULTA = new RegExp(
-  `\\b(?:permitame|permitanme|dejeme)\\s+${VERBO_DE_CONSULTA}(?:l[oae]s?)?\\s+con\\s+${PERSONA_A_CONSULTAR}|\\b(?:l[oae]s?\\s+)?(?:verifico|consulto|confirmo|checo|reviso)\\s+(?:l[oae]s?\\s+)?con\\s+${PERSONA_A_CONSULTAR}|\\bvoy\\s+a\\s+${VERBO_DE_CONSULTA}(?:l[oae]s?)?\\s+con\\s+${PERSONA_A_CONSULTAR}`,
+  `\\b(?:permitame|permitanme|dejeme)\\s+${VERBO_DE_CONSULTA}(?:l[oae]s?)?\\s+con\\s+${PERSONA_A_CONSULTAR}|\\b(?:l[oae]s?\\s+)?(?:verifico|consulto|reviso|checo|verificare|consultare|revisare|checare)\\s+(?:l[oae]s?\\s+)?con\\s+${PERSONA_A_CONSULTAR}|\\bvoy\\s+a\\s+${VERBO_DE_CONSULTA}(?:l[oae]s?)?\\s+con\\s+${PERSONA_A_CONSULTAR}`,
 );
 function prometeConsultarConUnaPersona(frase: string): boolean {
   if (/[?¿]/.test(frase)) return false;
@@ -138,8 +139,13 @@ function prometeConsultarConUnaPersona(frase: string): boolean {
   const t = normalizarParaClasificar(frase);
   const m = PROMESA_DE_CONSULTA.exec(t);
   if (!m) return false;
-  // Solo importa lo que va ANTES de la promesa ("si quiere, lo consulto...", "no puedo; para que lo verifique..."): lo que sigue ("..., ya que no puedo confirmar el precio") es su motivo.
-  return !/\b(?:no|ni|nunca|jamas|si|cuando|podria|puedo|puede|podemos|para\s+que|en\s+caso|quiza|tal\s+vez)\b/.test(t.slice(0, m.index));
+  const antes = t.slice(0, m.index);
+  // Condicional, ofrecimiento, subjuntivo o plazo lejano ANTES de la promesa: «si gusta, lo consulto...», «para que lo verifique...», «mañana lo consultaré...». La negacion solo cuenta pegada a la promesa
+  // («no lo consulto», «no puedo ...»): «No tengo el precio; permítame verificarlo...» o «No se preocupe, lo consulto...» siguen siendo una promesa.
+  if (/\b(?:cuando|podria|puedo|puede|podemos|para\s+que|en\s+caso|quiza|tal\s+vez|manana|luego|despues|mas\s+tarde|nunca|jamas)\b/.test(antes)) return false;
+  if (/(?:^|[\s,;])si(?![a-z])/.test(frase.slice(0, m.index).toLowerCase())) return false;
+  if (/\b(?:no|ni)\s+(?:\w+\s+){0,1}$/.test(antes)) return false;
+  return true;
 }
 
 /** Frase que ofrece algo "de cortesia" como parte del pedido (afirmacion), no una explicacion de la regla de la promocion ("solo para recoger", "los martes", "si pide...", "no hay aguas de cortesia"). */

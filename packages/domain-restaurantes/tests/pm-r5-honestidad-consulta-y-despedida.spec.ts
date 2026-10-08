@@ -31,6 +31,11 @@ describe("T7-060: afirmaHaberAvisado reconoce la promesa de consultar con una pe
       "Voy a verificarlo con una persona de la sucursal.",
       "Lo consulto con el gerente y le digo.",
       "Lo reviso con alguien de la sucursal.",
+      "Sí, permítame verificarlo con una persona de la sucursal.",
+      "No tengo el precio; permítame verificarlo con una persona de la sucursal.",
+      "No se preocupe, lo consulto con el gerente.",
+      "Lo verificaré con el gerente y le aviso.",
+      "Permítame verificarlo con la sucursal, por favor.",
     ]) expect(afirmaHaberAvisado(t), t).toBe(true);
   });
 
@@ -48,6 +53,12 @@ describe("T7-060: afirmaHaberAvisado reconoce la promesa de consultar con una pe
       "Consulte con el equipo de la sucursal si tiene dudas.",
       "Le recomiendo confirmar con la sucursal el horario de mañana.",
       "Ayer lo consultó con el gerente, según su historial.",
+      "Confirmo con la sucursal García Lavín su pedido de 4 tacos para recoger.",
+      "Confirmo con la sucursal Pensiones que el pedido es para recoger.",
+      "Mañana lo consultaré con el gerente.",
+      "Más tarde lo verifico con el equipo.",
+      "No lo verifico con una persona porque el precio es del menú.",
+      "Si gusta lo verificaré con el gerente.",
     ]) expect(afirmaHaberAvisado(t), t).toBe(false);
   });
 
@@ -65,6 +76,21 @@ describe("T7-060: el aviso prometido existe en la base", () => {
     expect(out.escalacion?.motivo).toBe("otro");
     const avisos = await f.repo.listCallbackRequests(f.organizationId);
     expect(avisos.filter((a) => (a.reason ?? "").startsWith("escalada:otro"))).toHaveLength(1);
+  });
+
+  it("negativo: 'Confirmo con la sucursal García Lavín su pedido...' (dato del pedido) NO deja aviso ni traspaso", async () => {
+    const f = buildRestaurantFixture();
+    const handler = handlerGuionado(f.repo, () => texto("Confirmo con la sucursal García Lavín su pedido de 4 tacos para recoger. ¿Es correcto?"));
+    const out = await handler.handleInboundMessage(entrada(f.organizationId, "quiero 4 tacos para recoger"));
+    expect(out.escalacion).toBeUndefined();
+    expect(await f.repo.listCallbackRequests(f.organizationId)).toHaveLength(0);
+  });
+
+  it("variante «Sí, permítame verificarlo con una persona...» tambien deja el aviso", async () => {
+    const f = buildRestaurantFixture();
+    const handler = handlerGuionado(f.repo, () => texto("Sí, permítame verificarlo con una persona de la sucursal."));
+    const out = await handler.handleInboundMessage(entrada(f.organizationId, "¿me confirman el precio del kilo?"));
+    expect(out.escalacion?.motivo).toBe("otro");
   });
 
   it("negativo: 'Si gusta, lo consulto con el gerente' (ofrecimiento) NO deja ningun aviso", async () => {
