@@ -1,6 +1,7 @@
 // Corpus propio de cantidades y terminos de buscar_producto (Los Taquitos de PM, sucursal T7 = garcia-lavin) + propiedades de dinero.
 // Cubre las 6 brechas de la revision de #500: "cuarto kilo", "un cuarto kilo", "media orden de bistec", "una cerveza", plurales en -es y "sin alcohol".
 import { describe, expect, it } from "vitest";
+import { toolDefinitionsForChannel } from "../src/agent-tools/registry.ts";
 import { searchProducts } from "../src/orders.ts";
 import { pesoDeProductoEnGramos, singularizar, tokenizeForProductSearch } from "../src/product-search.ts";
 import { buildPmSeedPlan } from "../src/seed/pm-demo.ts";
@@ -264,6 +265,38 @@ describe("propiedades (dinero)", () => {
     for (const q of ["flan", "cerveza", "chela", "gringa de pastor", "margarita sin alcohol", "coca cola", "kilo de pastor", "cuarto kilo de bistec"]) {
       const con = /^(?:kilo|cuarto)/.test(q) ? `un ${q}` : `una ${q}`;
       expect(await nombres(con), con).toEqual(await nombres(q));
+    }
+  });
+});
+
+describe("revision de #505: orden, fracciones Unicode y descripcion de la herramienta", () => {
+  it("el singular de la consulta sigue contando como palabra exacta: 'champiñones' y 'especiales' no pierden contra un prefijo", async () => {
+    for (const q of ["champiñones", "de champiñones", "3 de champiñones"]) expect((await nombres(q))[0], q).toBe("Taco de Champiñones (individual)");
+    for (const q of ["especiales", "unos especiales"]) {
+      const r = await nombres(q);
+      expect(r[0], q).toBe("Frijoles Charros Especiales");
+    }
+  });
+
+  it.each([
+    ["dos cuartos de pastor", ["Pastor — 500 g"]],
+    ["dos cuartos de kilo de bistec", BISTEC_500],
+    ["½ kilo de pastor", ["Pastor — 500 g"]],
+    ["¼ kilo de pastor", ["Pastor — 250 g"]],
+    ["¾ de kilo de pastor", ["Pastor — 750 g"]],
+    ["1½ kg de pastor", ["Pastor — 1.5 kg"]],
+    ["1 kg y medio de pastor", ["Pastor — 1.5 kg"]],
+    ["0% alcohol", ["Heineken 0.0", "Conga sin Alcohol", "Daiquiri sin Alcohol", "Margarita sin Alcohol", "Sangría sin Alcohol"]],
+    ["cocteles sin alcohol", ["Conga sin Alcohol", "Daiquiri sin Alcohol", "Margarita sin Alcohol", "Sangría sin Alcohol"]],
+  ])("%s", async (consulta, esperado) => {
+    expect(await nombres(consulta)).toEqual(esperado);
+  });
+
+  it("la descripcion de buscar_producto explica `ambiguo` al modelo, en WhatsApp y en voz", () => {
+    for (const canal of ["whatsapp", "voz"] as const) {
+      const def = toolDefinitionsForChannel(canal).find((t) => t.name === "buscar_producto")!;
+      expect(def.description, canal).toMatch(/ambiguo: true/);
+      expect(def.description, canal).toMatch(/NO elijas por el cliente/);
     }
   });
 });

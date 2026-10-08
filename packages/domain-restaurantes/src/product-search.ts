@@ -83,9 +83,10 @@ export function sinAcentos(texto: string): string {
 const FRASES_DE_PESO: ReadonlyArray<readonly [RegExp, number]> = [
   // "kilo y cuarto" (1250 g) no es una presentacion del menu: se buscan todos los pesos y el agente arma el total (igual que "3 kilos").
   [/\bkilo\s+y\s+cuarto\b/g, 0],
-  [/\btres\s+cuartos?(?:\s+de\s+kilo)?\b|\b3\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.75\s*(?:kg|kilos?)\b|(?<![\d.])0?\.750\b/g, 750],
+  [/\bdos\s+cuartos(?:\s+de\s+(?:kilo|kg))?\b/g, 500],
+  [/\btres\s+cuartos?(?:\s+de\s+(?:kilo|kg))?\b|\b3\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.75\s*(?:kg|kilos?)\b|(?<![\d.])0?\.750\b/g, 750],
   [/\b(?:un\s+)?cuarto\s+(?:de\s+)?(?:kilo|kg)s?\b|\bun\s+cuarto\b|\bcuarto\b(?=\s+de\s)|\b1\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.25\s*(?:kg|kilos?)\b|(?<![\d.])0?\.250\b/g, 250],
-  [/\bkilo\s+y\s+medio\b|(?<![\d.])1[.,]5\s*(?:kg|kilos?)\b|\b1\s+1\s*\/\s*2\s*(?:kg|kilos?)\b/g, 1500],
+  [/(?:\b1\s*|\bun\s+)?\b(?:kilo|kg)\s+y\s+medio\b|(?<![\d.])1[.,]5\s*(?:kg|kilos?)\b|\b1\s+1\s*\/\s*2\s*(?:kg|kilos?)\b/g, 1500],
   [/\bmedio\s+(?:kilo|kg)\b|\bmedio\b(?=\s+de\s)|\b1\s*\/\s*2\s*(?:de\s+)?(?:kg|kilos?)\b|(?<![\d.])0?\.5\s*(?:kg|kilos?)\b|(?<![\d.])0?\.500\b/g, 500],
   [/\bdos\s+kilos?\b|\b2\s*(?:kg|kilos?)\b/g, 2000],
   // "3 kilos", "5 kg": no hay producto de ese peso (se venden 1/4 a 2 kg): el numero no es un peso exacto; se buscan todos los pesos del producto (`peso:cualquiera`) y el agente
@@ -106,7 +107,8 @@ function normalizarUnidadesDeKilo(texto: string): string {
 
 /** Convierte las frases de peso de una consulta en tokens `peso:<gramos>` (uno por frase). Lo que no es peso queda igual. */
 export function normalizarPesosEnConsulta(textoSinAcentos: string): string {
-  let texto = textoSinAcentos;
+  // Fracciones Unicode (el teclado del celular las escribe): "½ kilo" = 1/2 kilo; "1½ kg" = 1.5 kg.
+  let texto = textoSinAcentos.replace(/1\s*½/g, "1.5").replace(/½/g, "1/2").replace(/¼/g, "1/4").replace(/¾/g, "3/4");
   for (const [patron, gramos] of FRASES_DE_PESO) {
     texto = texto.replace(patron, (...args: unknown[]) => ` peso:${gramos === 0 ? "cualquiera" : gramos === -1 ? String(args[1]) : gramos} `);
   }
@@ -134,7 +136,7 @@ export const ORDEN_COMPLETA = "orden:completa";
 
 /** Marcador de la consulta "sin alcohol" / "0%": solo hace match con productos que el MENU escribe "sin alcohol" o "0.0" (nunca alcohol). */
 export const SIN_ALCOHOL = "sinalcohol";
-const FRASE_SIN_ALCOHOL = /\b(?:sin\s+alcohol(?:es)?|sin\s+alcol|cero\s+alcohol|libre\s+de\s+alcohol|no\s+alcoholic[oa]s?|sin\s+alcoholic[oa]s?)\b|(?<![\d.])0\s*%/g;
+const FRASE_SIN_ALCOHOL = /\b(?:sin\s+alcohol(?:es)?|sin\s+alcol|cero\s+alcohol|libre\s+de\s+alcohol|no\s+alcoholic[oa]s?|sin\s+alcoholic[oa]s?)\b|(?<![\d.])0\s*%(?:\s+alcohol)?/g;
 const MENU_SIN_ALCOHOL = /\bsin\s+alcohol\b|\b0[.,]0\b|\b0\s*%/;
 
 /** Plural espanol -> singular de una palabra de la consulta. La "s" final basta casi siempre ("tacos", "chelas", "frijoles"); las terminaciones
@@ -165,7 +167,7 @@ export function tokenizeForProductSearch(query: string): string[] {
   const conSinAlcohol = /\bsinalcohol\b/.test(normalizada);
   const raw = normalizada
     .split(/\s+/)
-    .map((t) => (conSinAlcohol && /^cervezas?$/.test(t) ? "cerveza" : conSinAlcohol && /^cocteles?$/.test(t) ? "cocktail" : t))
+    .map((t) => (conSinAlcohol && /^cervezas?$/.test(t) ? "cerveza" : conSinAlcohol && /^coctel(?:es)?$/.test(t) ? "cocktail" : t))
     .filter((t) => t.length > 1 && (t === "cerveza" ? conSinAlcohol : t === "cocktail" || !STOPWORDS_BUSQUEDA.has(t)));
   // "una cerveza", "dos cervezas": todas las palabras eran articulo/cantidad/categoria y la busqueda quedaba con la frase entera (vacia). La categoria
   // "cerveza" SI identifica lo pedido (casa con la categoria Cervezas), asi que se conserva cuando es lo unico que dice el cliente.
@@ -219,7 +221,7 @@ export function puntajeDeBusqueda(
       puntaje += MENU_SIN_ALCOHOL.test(nombre) ? 4 : 0.5;
       continue;
     }
-    if (palabras.includes(t) || alias.some((a) => a === t || a.split(/[^a-z0-9.]+/).includes(t))) puntaje += 4;
+    if (palabras.includes(t) || palabras.some((w) => singularizar(w) === t) || alias.some((a) => a === t || a.split(/[^a-z0-9.]+/).includes(t))) puntaje += 4;
     else if (palabras.some((w) => w.startsWith(t))) puntaje += 3;
     else if (nombre.includes(t)) puntaje += 1.5;
     else puntaje += 0.5;
