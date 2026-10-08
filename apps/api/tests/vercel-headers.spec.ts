@@ -20,11 +20,18 @@ describe("vercel.json headers", () => {
     expect(reglas.filter((r) => r.source !== "/(.*)").map((r) => r.source)).toEqual([]);
   });
 
+  it("el microfono es self en la regla global (una SPA no relee la cabecera al navegar): nunca *, y lo demas sigue denegado", () => {
+    const valor = todas.get("permissions-policy")!;
+    expect(valor).toBe("camera=(), microphone=(self), geolocation=(), payment=(), usb=()");
+    expect(valor).not.toContain("*");
+    for (const d of ["camera=()", "geolocation=()", "payment=()", "usb=()"]) expect(valor).toContain(d);
+  });
+
   it("geolocation esta deshabilitada en todo el sitio, sin excepcion", () => {
     expect(todas.get("permissions-policy")).toContain("geolocation=()");
   });
 
-  it("/pedir/* (tienda eliminada) redirige (permanente) a la raiz y ya no se reescribe a la API", () => {
+  it("/pedir/* (tienda eliminada) redirige (permanent:true, Vercel responde 308) a la raiz y ya no se reescribe a la API", () => {
     const cfg = config as { redirects?: { source: string; destination: string; permanent?: boolean }[]; rewrites?: { source: string; destination: string }[] };
     expect(cfg.redirects).toEqual([{ source: "/pedir/:path*", destination: "/", permanent: true }]);
     expect((cfg.rewrites ?? []).filter((r) => r.source.startsWith("/pedir"))).toEqual([]);

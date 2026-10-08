@@ -11,7 +11,7 @@ Estado de esta pieza: cabeceras en la API (enforcing), cabeceras en la SPA
 | `X-Content-Type-Options` | `nosniff` | igual |
 | `X-Frame-Options` | `DENY` | `DENY` |
 | `Referrer-Policy` | `no-referrer` | `strict-origin-when-cross-origin` |
-| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=(), usb=()` | igual |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=(), usb=()` | `camera=(), microphone=(self), geolocation=(), payment=(), usb=()` (ver nota) |
 | `Cross-Origin-Opener-Policy` | `same-origin` | `same-origin` |
 | CSP | `Content-Security-Policy` **enforcing**: `default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'` (la API solo responde JSON/redirecciones) | `Content-Security-Policy-Report-Only` (ver 2) |
 
@@ -24,6 +24,7 @@ Notas:
   misma respuesta, el navegador aplica la política más restrictiva.
 - HSTS va **sin `preload`** a propósito: entrar a la lista de preload del
   navegador es prácticamente irreversible y es una decisión de dominio.
+- `Permissions-Policy` de la SPA lleva `microphone=(self)` en la regla GLOBAL (`vercel.json`), porque la «llamada de prueba» de voz del panel usa `getUserMedia` + AudioWorklet y con `microphone=()` el navegador la bloquea sin preguntar. Es global y no por ruta porque la cabecera se fija una sola vez al cargar el documento y la SPA navega con React Router sin recargar: quien entra por la portada `/` y llega al panel conservaría la política del primer documento. Solo `self` (nunca `*`): no concede nada a terceros, `apps/web` no usa `<iframe>`, `X-Frame-Options: DENY` impide que un iframe ajeno herede el permiso y el navegador sigue pidiendo permiso al usuario. Cámara, geolocalización, pagos y USB siguen denegados. la API JSON (`cabeceras-seguridad.ts`) también conserva `microphone=()`.
 - `Permissions-Policy` no bloquea `clipboard-write`: el panel copia enlaces y
   XML con `navigator.clipboard.writeText`.
 - `COOP: same-origin` es seguro hoy porque el login con Google es una
@@ -115,4 +116,4 @@ Huecos conocidos de esta lista (por eso es Report-Only):
 
 ## Tienda en línea eliminada (`/pedir/*`)
 
-La tienda pública de pedidos en línea ya no existe: `vercel.json` redirige `/pedir/*` a `/` (301), no hay reescritura a la función ni excepción de `Permissions-Policy` (la geolocalización queda denegada en todo el sitio). El middleware `cabecerasSeguridadApi` sigue sin añadir la CSP restrictiva a respuestas `text/html`.
+La tienda pública de pedidos en línea ya no existe: `vercel.json` redirige `/pedir/*` a `/` (`permanent: true`, Vercel responde 308), no hay reescritura a la función ni excepción de `Permissions-Policy` (la geolocalización queda denegada en todo el sitio). El middleware `cabecerasSeguridadApi` sigue sin añadir la CSP restrictiva a respuestas `text/html`.
