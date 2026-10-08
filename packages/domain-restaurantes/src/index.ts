@@ -371,6 +371,22 @@ export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from 
 export { diaMerida } from "./alertas-duenio/dia.ts";
 export { emitirAlertasProveedor, evaluarSaludProveedor, GRAPH_CODIGO_TOKEN_INVALIDO, UMBRAL_FALLAS_PROVEEDOR } from "./alertas-duenio/proveedor.ts";
 export type { DiagnosticoProveedorOrg, ItemDespachoOrg, ResultadoAlertasProveedor } from "./alertas-duenio/proveedor.ts";
+export { UMBRALES_TOKEN_META_DIAS, evaluarExpiracionToken, vigilarTokenMeta } from "./alertas-duenio/token-meta.ts";
+export type { DiagnosticoTokenMeta, EstadoTokenMeta, LectorEstadoTokenMeta, ResultadoVigilanciaToken, UmbralTokenMetaDias } from "./alertas-duenio/token-meta.ts";
+export {
+  CUBETA_ALERTA_MIN,
+  MIN_TURNOS_VENTANA,
+  RACHA_FALLOS,
+  UMBRAL_TASA_TIMEOUT_PCT,
+  VENTANA_RACHA_MIN,
+  VENTANA_TIMEOUTS_MIN,
+  claseErrorTurno,
+  crearLectorTurnosAgentePostgres,
+  esClaseTimeout,
+  evaluarTimeoutsAgente,
+  vigilarAgenteWhatsapp,
+} from "./alertas-duenio/timeouts-agente.ts";
+export type { DiagnosticoAgente, LectorTurnosAgente, OpcionesTimeoutsAgente, RachaOrganizacion, ResultadoTurnoAgente, ResultadoVigilanciaAgente, TurnoAgente } from "./alertas-duenio/timeouts-agente.ts";
 
 export * from "./encuesta-reglas.ts";
 export * from "./resenas-provider.ts";
