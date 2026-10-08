@@ -72,7 +72,7 @@ async function cotizarYConfirmar(b: Banco, tel: string, items: ReturnType<typeof
 }
 
 describe("WhatsApp (T7, PM): el pedido grande queda por_aprobar con su solicitud", () => {
-  it("features-01 / viaje-01: 3 x Bistec 2 kg ($6,600) en efectivo -> pedido CREADO, solicitud pedido_grande, aviso a la campana, SIN comanda ni handoff ni callback", async () => {
+  it("features-01 / viaje-01: 3 x Bistec 2 kg ($6,600) en efectivo -> pedido CREADO, solicitud pedido_grande, aviso a la campana, SIN comanda ni handoff (el aviso al equipo SI queda, D31)", async () => {
     const t = await bancoConAutopiloto();
     const items = [item(t.b.pid("Bistec de Res — 2 kg"), "Bistec de Res — 2 kg", 3)];
     const r = await cotizarYConfirmar(t.b, "+5219990000041", items, "efectivo");
@@ -85,7 +85,8 @@ describe("WhatsApp (T7, PM): el pedido grande queda por_aprobar con su solicitud
     expect(t.db.emisiones.map((e) => e.evento)).toEqual(["restaurantes.aprobacion.pedido_grande"]);
     // El pedido NO sale a cocina por este camino: la comanda la encola la aprobacion con un clic.
     expect(t.comandas).toHaveLength(0);
-    expect(t.b.callbacks().some((c) => c.reason === "escalada:pedido_grande")).toBe(false);
+    // D31 (QA-PM-R5-voz-19): tambien queda el aviso `escalada:pedido_grande` para la sucursal; lo que no hay es handoff de la conversacion.
+    expect(t.b.callbacks().filter((c) => c.reason === "escalada:pedido_grande")).toHaveLength(1);
     expect(r.escalated).toBeFalsy();
   });
 
