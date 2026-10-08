@@ -116,7 +116,7 @@ export async function runPilotoCierreClienteSweep(withUnidad: WithUnidadPiloto, 
             rec.sinContacto += 1;
           }
           if (r.nivel === 3) {
-            await u.notificar({ evento: "despachos.solicitud.sin_completar", organizationId: r.organizationId, propertyId: r.propertyId, clave: r.id, parametros: { cantidad: r.pendientes }, entidadTipo: "solicitud_documentos", entidadId: r.propertyId });
+            await u.notificar({ evento: "despachos.solicitud.sin_completar", organizationId: r.organizationId, propertyId: r.propertyId, clave: r.id, parametros: { cantidad: r.pendientes }, entidadTipo: "solicitud_documentos", entidadId: r.id });
             rec.avisosAlDespacho += 1;
           }
           await u.piloto.marcarRecordatorio(r.id, r.nivel);
