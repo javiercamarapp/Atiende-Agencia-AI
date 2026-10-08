@@ -1,6 +1,8 @@
 // Configuración leída de variables de entorno (mismo patrón que
 // hoteles/apps/api/src/env.ts) — los paquetes de dominio/auth nunca leen
 // `process.env` directamente, para quedar testeables sin variables globales.
+import { esVersionGraphValida } from "@atiende/whatsapp-gateway";
+
 export interface ApiEnv {
   readonly jwtSecret: string;
   readonly accessTokenTtlSeconds: number;
@@ -27,6 +29,15 @@ export interface ApiEnv {
    *  (`WHATSAPP_APPROVED_TEMPLATES`, lista separada por comas). Solo esas se envian como `type: "template"`;
    *  vacia/ausente = todo sale como texto libre (comportamiento anterior). OPCIONAL: ningun fixture la exige. */
   readonly whatsappApprovedTemplates?: readonly string[];
+  /** Version de Graph API para ENVIAR por WhatsApp (`WHATSAPP_GRAPH_API_VERSION`, formato `v23.0`). `null`/ausente = el default del cliente
+   *  (`DEFAULT_GRAPH_API_VERSION`). Un valor con otra forma se ignora con una advertencia. OPCIONAL: ningun fixture la exige. */
+  readonly whatsappGraphApiVersion?: string | null;
+  /** Id de la Meta App (`META_APP_ID`): la usan la verificacion de solo lectura y el alta por Embedded Signup. `null` si no existe. OPCIONAL. */
+  readonly metaAppId?: string | null;
+  /** WABA de la plataforma (`WHATSAPP_WABA_IDS`, lista separada por comas). Vacia si no existe. OPCIONAL. */
+  readonly whatsappWabaIds?: readonly string[];
+  /** Id de configuracion de Embedded Signup v4 (`WHATSAPP_ES_CONFIG_ID`). `null` si no existe. OPCIONAL. */
+  readonly whatsappEsConfigId?: string | null;
   /** L-05: `phone_number_id` de Meta del numero remitente de licitaciones (avisos y botones go/no-go). Sin esto el webhook de licitaciones acusa recibo sin procesar y el envio se omite. OPCIONAL: ningun fixture lo exige. */
   readonly licitacionesWhatsappPhoneNumberId?: string | null;
   /** H-01 -- llave AES-256-GCM (32 bytes en base64) de la boveda de identidad de hoteles
@@ -195,6 +206,15 @@ export function breakerEnvName(raw: string | undefined): string {
   return clean.length > 0 ? clean.slice(0, 32) : "development";
 }
 
+/** `WHATSAPP_GRAPH_API_VERSION`: devuelve la version si cumple `^v\d{2}\.0$`; si no, `null` con una advertencia (nunca rompe el arranque ni imprime el valor). */
+export function parseGraphApiVersion(raw: string | undefined): string | null {
+  const valor = raw?.trim();
+  if (!valor) return null;
+  if (esVersionGraphValida(valor)) return valor;
+  console.warn("WHATSAPP_GRAPH_API_VERSION ignorada: se espera el formato v23.0; se usa la version por defecto del cliente.");
+  return null;
+}
+
 export function loadApiEnv(): ApiEnv {
   return {
     jwtSecret: requireEnv("JWT_SECRET"),
@@ -209,6 +229,10 @@ export function loadApiEnv(): ApiEnv {
     whatsappAppSecret: requireEnv("WHATSAPP_APP_SECRET"),
     whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? null,
     whatsappApprovedTemplates: (process.env.WHATSAPP_APPROVED_TEMPLATES ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    whatsappGraphApiVersion: parseGraphApiVersion(process.env.WHATSAPP_GRAPH_API_VERSION),
+    metaAppId: process.env.META_APP_ID?.trim() || null,
+    whatsappWabaIds: (process.env.WHATSAPP_WABA_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    whatsappEsConfigId: process.env.WHATSAPP_ES_CONFIG_ID?.trim() || null,
     licitacionesWhatsappPhoneNumberId: process.env.LICITACIONES_WHATSAPP_PHONE_NUMBER_ID || null,
     hotelesIdentityKey: process.env.HOTELES_IDENTITY_KEY ?? null,
     hotelesIdentityKeyVersion: Number(process.env.HOTELES_IDENTITY_KEY_VERSION ?? 1),

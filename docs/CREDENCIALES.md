@@ -70,6 +70,19 @@ Configuration → Webhook fields → `messages` → Subscribe). Los `statuses` d
 mismo webhook firmado (`/v1/restaurantes/whatsapp/webhook`); sin la suscripcion los avisos fallidos no se detectan. No hay una variable nueva: usa
 `WHATSAPP_APP_SECRET` y requiere aplicar la migracion `066_whatsapp_estados_entrega.sql` (ver `docs/PLANTILLAS-WHATSAPP.md`, "Estados de entrega").
 
+#### WhatsApp multinúmero: variables opcionales (paquete 01)
+
+Todas opcionales y `null`/vacías si no existen; ninguna bloquea el arranque. Las consumen la verificación de solo lectura y los paquetes de alta de números.
+
+| Variable | De dónde sale | Para qué sirve | Si falta |
+|---|---|---|---|
+| `WHATSAPP_GRAPH_API_VERSION` | Versión de Graph API, formato `v23.0` (`^v\d{2}\.0$`) | Versión con la que envía `MetaGraphWhatsAppClient`. La `v21.0` se retira el 21-ene-2027 | Se usa el default del cliente (`v21.0`); un valor con otra forma se ignora con una advertencia |
+| `META_APP_ID` | Meta for Developers → tu App → Settings → Basic | Comprobar que la app está suscrita a la WABA; Embedded Signup | La verificación marca "app no verificada" |
+| `WHATSAPP_WABA_IDS` | WhatsApp Manager → ID de la cuenta de WhatsApp Business (varias, separadas por comas) | WABAs a revisar por defecto | Hay que pasar `--waba` al script |
+| `WHATSAPP_ES_CONFIG_ID` | Meta for Developers → Facebook Login for Business → configuración de Embedded Signup v4 | Alta de números por Embedded Signup | Esa vía no está disponible |
+
+Verificación de solo lectura (sin enviar nada): `scripts/verificar-meta-whatsapp/` (ver su README). Lee el token únicamente de `WHATSAPP_ACCESS_TOKEN` en el entorno de tu terminal.
+
 Nota: `WHATSAPP_VERIFY_TOKEN`/`WHATSAPP_APP_SECRET` son obligatorias para
 **arrancar la API entera**, aunque solo gatean el webhook ENTRANTE de 3 verticales
 — así está escrito hoy en `env.ts::requireEnv`, sin fallback.
