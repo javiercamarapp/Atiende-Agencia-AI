@@ -553,6 +553,16 @@ function toHoraRecogida(raw: unknown): string | undefined {
   return Number.isNaN(ms) ? t.toLowerCase() : new Date(ms).toISOString().slice(0, 16);
 }
 
+/**
+ * QA-PM-R5-reglas-02: en RECOGER, `programado_para` y `hora_recogida` son la misma hora (el modelo cotiza con una y crea con la otra, o con las dos y despues con una).
+ * Para la huella del pedido se usa un solo instante (al minuto, ISO UTC): el programado si vino, si no la hora de recogida. Fuera de recoger no se toca.
+ */
+function horaUnificadaRecoger(input: Record<string, unknown>): string | undefined {
+  if (input.canal !== "recoger") return undefined;
+  const programado = toProgramadoPara(input.programado_para);
+  return programado ? new Date(programado).toISOString().slice(0, 16) : toHoraRecogida(input.hora_recogida);
+}
+
 /** Texto en blanco = ausente (el modelo manda "" en vez de omitir el campo). */
 function textoOpcional(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() !== "" ? v : undefined;
@@ -874,11 +884,12 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         adultConfirmed: input.adult_confirmed === true,
         items: quotedItems ? itemsDeHuella(quotedItems) : itemsCotizados,
         doubleSalsas: toDoubleSalsas(input.doble_salsas),
-        programadoPara: toProgramadoPara(input.programado_para),
-        horaRecogida: hora,
+        programadoPara: input.canal === "recoger" ? undefined : toProgramadoPara(input.programado_para),
+        horaRecogida: input.canal === "recoger" ? (horaUnificadaRecoger(input) ?? hora) : hora,
       });
     const plazoServidor = typeof input.plazo_minutos_servidor === "number" ? input.plazo_minutos_servidor : undefined;
-    let horaCotizacion = toHoraRecogida(input.hora_recogida);
+    let horaCotizacion = input.canal === "recoger" ? horaUnificadaRecoger(input) : toHoraRecogida(input.hora_recogida);
+    const programadoCotizado = input.canal === "recoger" ? toProgramadoPara(input.programado_para) : undefined;
     let quoteHash = huellaCotizacion(horaCotizacion);
     const cartHash = quotedItems ? huellaDeCarrito(String(input.branch_slug ?? ""), canalOf(input.canal), quotedItems) : undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -947,6 +958,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         quotedPrices,
         ...(quotedItems ? { quotedItems, quotedBranchSlug: String(input.branch_slug ?? ""), quotedCanal: canalOf(input.canal), ...(cartHash ? { cartHash } : {}) } : {}),
         ...(horaCotizacion ? { horaRecogida: horaCotizacion } : {}),
+        ...(programadoCotizado ? { programadoPara: programadoCotizado } : {}),
         ...(horaCotizacion && plazoServidor !== undefined ? { minutosPlazo: plazoServidor } : {}),
         quotedTotal: quotedQuote.total,
         quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
@@ -989,7 +1001,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       // Con renglones cotizados guardados, el modelo no tiene que repetir ids ni la tortilla de una bebida: se reconcilia contra la cotizacion (QA-PM-R3-whatsapp-07).
       items: (cotizados ? reconciliarConCotizacion(toRequestedItems(input.items, lenient), cotizados, ajenos) : null) ?? toRequestedItems(input.items, lenient),
       doubleSalsas: toDoubleSalsas(input.doble_salsas),
-      programadoPara: toProgramadoPara(input.programado_para),
+      // Con hora cotizada, en recoger la hora es una sola (horaRecogida); sin ella, un programado agregado al crear SI cambia el pedido y obliga a re-cotizar.
+      programadoPara: input.canal === "recoger" && horaRecogida !== undefined ? undefined : toProgramadoPara(input.programado_para),
       horaRecogida,
     });
   let claimed: { version: number; context: OrderFlowContext } | null = null;
@@ -999,8 +1012,14 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     // La hora de recogida solo cuenta si la cotizacion la llevaba (una hora que el modelo agrega al crear la valida el servidor, pero no cambia lo que el cliente vio);
     // si crear la omite se entiende la cotizada. Una hora DISTINTA a la cotizada obliga a re-cotizar.
     const horaCotizada = snap.context?.horaRecogida;
+    // QA-PM-R5-reglas-02: si la cotizacion fue PROGRAMADA y el modelo crea con la misma hora (como hora_recogida, o sin ninguna), el pedido se crea como programado con la hora cotizada.
+    const programadoCotizado = snap.context?.programadoPara;
+    if (input.canal === "recoger" && programadoCotizado && horaCotizada) {
+      const efectiva = horaUnificadaRecoger(input);
+      if (efectiva === undefined || efectiva === horaCotizada) input = { ...input, programado_para: programadoCotizado };
+    }
     const cotizados = snap.context?.quotedItems && snap.context.quotedItems.length > 0 ? snap.context.quotedItems : undefined;
-    const fingerprint = huellaConHora(horaCotizada ? (toHoraRecogida(input.hora_recogida) ?? horaCotizada) : undefined, cotizados, await ajenosAlCotizar(cotizados));
+    const fingerprint = huellaConHora(horaCotizada ? ((input.canal === "recoger" ? horaUnificadaRecoger(input) : toHoraRecogida(input.hora_recogida)) ?? horaCotizada) : undefined, cotizados, await ajenosAlCotizar(cotizados));
     // Voz: un reintento del MISMO pedido ya creado (el worker corto la espera y el servidor si lo registro) devuelve el pedido
     // existente con su id, para que la llamada cuente el objetivo y el agente no le diga al cliente que fallo.
     if (ctx.channel === "voz" && snap.state === "creado" && snap.context?.orderId && snap.context.quoteHash === fingerprint) {
