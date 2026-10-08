@@ -80,6 +80,8 @@ export interface QuotedItem {
   readonly qty: number;
   /** Solo si el producto exige tortilla; `null` en bebidas y demas (el modelo manda ahi cualquier valor y no debe afectar la huella). */
   readonly tortilla: string | null;
+  /** QA-PM-R5-reglas-03: la tortilla que el cliente eligio para un KILO de carne (ese renglon no exige tortilla y `tortilla` queda null). No entra a la huella: solo viaja a la comanda. */
+  readonly tortillaKilo?: string;
 }
 
 export interface OrderFlowSnapshot {

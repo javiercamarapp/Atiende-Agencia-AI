@@ -22,6 +22,7 @@ import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError } from "../errors.ts";
 import { normalizePhone } from "../phone.ts";
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
+import { pesoDeProductoEnGramos } from "../product-search.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
@@ -887,7 +888,10 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     // La huella se calcula sobre los renglones RESUELTOS contra el catalogo (QA-PM-R3-whatsapp-01): un modelo que manda la tortilla de una bebida como "mixta" en un turno y
     // "maiz" en el siguiente, o el nombre en vez del id, ya no convierte en "nueva" una cotizacion que el cliente acaba de ver y de aceptar.
     const itemsCotizados = toRequestedItems(input.items, lenient);
-    const quotedItems = resolverRenglonesCotizados(itemsCotizados, quotedQuote.lines);
+    // QA-PM-R5-reglas-03: la tortilla elegida para un kilo se guarda en el renglon cotizado (sin tocar la huella) para que llegue a la comanda al crear.
+    const quotedItems = resolverRenglonesCotizados(itemsCotizados, quotedQuote.lines)?.map((q, idx) =>
+      q.tortilla === null && itemsCotizados[idx]?.tortilla && pesoDeProductoEnGramos(q.name) !== null ? { ...q, tortillaKilo: itemsCotizados[idx]!.tortilla as string } : q,
+    );
     const huellaCotizacion = (hora: string | undefined): string =>
       fingerprintOrder({
         branchSlug: String(input.branch_slug ?? ""),
@@ -1048,8 +1052,16 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   try {
     // El pedido se crea con los renglones COTIZADOS (id y nombre del catalogo): si el modelo mando `product_id` vacio o un nombre aproximado, no se rechaza ni se reintenta (QA-PM-R3-whatsapp-07).
     const conciliados = claimed.context.quotedItems?.length ? reconciliarConCotizacion(toRequestedItems(input.items, lenient), claimed.context.quotedItems, await ajenosAlCotizar(claimed.context.quotedItems)) : null;
+    const cotizadosReclamados = claimed.context.quotedItems;
     const inputConciliado: Record<string, unknown> = conciliados
-      ? { ...input, items: conciliados.map((i) => ({ product_id: i.productId, product_name: i.productName, requested_quantity: i.requestedQuantity, ...(i.tortilla ? { tortilla: i.tortilla } : {}) })) }
+      ? {
+          ...input,
+          items: conciliados.map((i, idx) => {
+            // Kilo de carne: la tortilla viene del renglon cotizado o, si no, de lo que mande el modelo al crear (el renglon no la exige pero la comanda debe llevarla).
+            const tortillaKilo = i.tortilla ? undefined : (cotizadosReclamados?.find((q) => q.id === i.productId && q.tortillaKilo)?.tortillaKilo ?? (pesoDeProductoEnGramos(i.productName ?? "") !== null ? toRequestedItems(input.items, lenient)[idx]?.tortilla : undefined));
+            return { product_id: i.productId, product_name: i.productName, requested_quantity: i.requestedQuantity, ...(i.tortilla ? { tortilla: i.tortilla } : tortillaKilo ? { tortilla: tortillaKilo } : {}) };
+          }),
+        }
       : input;
     let outcome = await dispatchTool(repo, ctx, name, inputConciliado, claimed.context.quotedPrices, { total: claimed.context.sessionTotal ?? 0, pesoKg: claimed.context.sessionPesoKg ?? 0, pedidos: claimed.context.sessionPedidos ?? 0, ...(claimed.context.sessionUltimoPedidoId ? { ultimoPedidoId: claimed.context.sessionUltimoPedidoId } : {}) });
     // Un pedido IDENTICO al ultimo de esta sesion (misma ventana de deduplicacion de 5 min) devuelve ese mismo pedido: el agente debe saber que NO se creo otro (QA-PM-R2-reglas-15).
@@ -1293,7 +1305,33 @@ async function dispatchTool(
       const branch = await repo.findBranch(organizationId, { slug: branchSlug });
       if (!branch) throw new OrderValidationError(`Sucursal '${branchSlug}' no encontrada`);
       const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: String(input.query ?? "") });
-      const result = productos.map((p) => ({ id: p.id, name: p.name, price: p.price, pack_size: p.packSize, requires_adult_confirmation: p.requiresAdultConfirmation, ...(p.ambiguo === true ? { ambiguo: true } : {}) }));
+      // QA-PM-R5-voz-01 / reglas-05: el modelo buscaba "arrachera kilo", veia solo "Arrachera — 1 kg" y cotizaba el kilo cuando el cliente pidio tres cuartos ($350 de mas), o decia que
+      // "no existe" 1.25 kg. Cada renglon por peso lleva las presentaciones REALES del mismo platillo y la regla para fracciones que no existen.
+      const hayPeso = productos.some((p) => pesoDeProductoEnGramos(p.name) !== null);
+      const catalogo = hayPeso ? await repo.listAvailableProductsForBranch(branch.propertyId) : [];
+      const baseDePeso = (nombre: string) => nombre.replace(/\s*[—–-]\s*\d+(?:[.,]\d+)?\s*(?:kg|g|gr)\b.*$/i, "").trim().toLowerCase();
+      const presentaciones = (nombre: string): string[] =>
+        catalogo
+          .filter((c) => pesoDeProductoEnGramos(c.name) !== null && baseDePeso(c.name) === baseDePeso(nombre))
+          .sort((a, b) => (pesoDeProductoEnGramos(a.name) ?? 0) - (pesoDeProductoEnGramos(b.name) ?? 0))
+          .map((c) => `${c.name} ($${Number(c.price)})`);
+      const result = productos.map((p) => {
+        const otras = pesoDeProductoEnGramos(p.name) !== null ? presentaciones(p.name) : [];
+        return {
+          id: p.id,
+          name: p.name,
+          price: p.price,
+          pack_size: p.packSize,
+          requires_adult_confirmation: p.requiresAdultConfirmation,
+          ...(p.ambiguo === true ? { ambiguo: true } : {}),
+          ...(otras.length > 1
+            ? {
+                presentaciones_por_peso: otras,
+                aviso_peso: "Cotice la presentación del peso que pidió el cliente (cuarto = 250 g, medio = 500 g, tres cuartos = 750 g); no cotice el kilo si pidió una fracción. Si pidió un peso que no existe (1 1/4 kg, 3 kg), arme la combinación con estas presentaciones (por ejemplo 1 kg + 250 g) y no diga que no se maneja.",
+              }
+            : {}),
+        };
+      });
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "cotizar_pedido": {
