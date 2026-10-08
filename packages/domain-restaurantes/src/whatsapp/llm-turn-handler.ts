@@ -40,7 +40,7 @@ import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
-import { afirmaHaberAvisado, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
+import { afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -801,7 +801,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const retenidoVigente = retenidoEnTurno || (flowFinal?.state === "creado" && !flowFinal.context?.orderId);
           const creadoEnFlujo = flowFinal ? (flowFinal.state === "creado" && Boolean(flowFinal.context?.orderId)) || flowFinal.state === "creando" : messages.some((m) => m.role === "assistant" && m.pedidoCreado === true);
           const pedidoExiste = orderId !== null || pedidoSimulado !== undefined || yaRegistradoEnTurno || (!retenidoEnTurno && tele.tools.some((t) => t.tool === "crear_pedido" && t.resultado === "ok") && !retenidoVigente) || (!retenidoEnTurno && creadoEnFlujo);
-          if (perfil === "taqueria_pm" && !pedidoExiste) respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, retenidoVigente ? RESPUESTA_TOQUE_RETENIDO : undefined);
+          // Un pedido ACTIVO reciente del telefono (voz, hace mas de 2 h, de otro flujo) tambien existe: la respuesta a «¿ya salio mi pedido?» ("va en preparacion", "ya esta en camino") es
+          // verdad y no se borra. Retenido (por_confirmar), no recogido, con problema y cancelado NO cuentan. Si el turno esta armando OTRO pedido (cotizacion de este turno o flujo
+          // cotizado/confirmado) solo se quitan las afirmaciones de REGISTRO, no las de ESTADO, del pedido anterior.
+          const previoActivo = !customer.isNew && customer.pedidoReciente != null && ["preparando", "salio", "listo_para_recoger", "entregado", "programado"].includes(customer.pedidoReciente.estado);
+          const armandoOtro = cotizacionDelTurno !== null ? true : flowFinal?.state === "cotizado" || flowFinal?.state === "confirmado";
+          const guardiaSoloRegistro = !pedidoExiste && previoActivo && !retenidoEnTurno && armandoOtro;
+          const pedidoExisteFinal = pedidoExiste || (previoActivo && !retenidoEnTurno && !armandoOtro);
+          if (perfil === "taqueria_pm" && !pedidoExisteFinal) respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, retenidoVigente ? RESPUESTA_TOQUE_RETENIDO : undefined, guardiaSoloRegistro ? afirmaSoloRegistroDePedido : undefined);
           const replyFinal = safeReply(respuesta);
           // B03: resumen por confirmar (cotizacion de ESTE turno, aun sin pedido): el webhook agrega los botones. Si no se puede comprobar la cotizacion vigente en el
           // servidor (base sin la maquina de estados) o no hay resumen con total, el cliente recibe el texto de siempre y contesta «si».

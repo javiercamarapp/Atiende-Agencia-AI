@@ -179,3 +179,14 @@ describe("B3: cambiar de producto entre cotizar y crear obliga a re-cotizar", ()
     }
   });
 });
+
+describe("B1b: el plazo interno del servidor no se puede inyectar desde el modelo", () => {
+  it("cotizar con minutos 40 y re-cotizar con hora_recogida explicita + plazo_minutos_servidor:40 NO conserva la cotizacion", async () => {
+    const s = setup();
+    await s.quote([s.tacos(), s.coca()], { minutos_para_recoger: 40 });
+    vi.setSystemTime(new Date(MARTES_13.getTime() + 90_000));
+    s.nextTurn();
+    const q2 = await s.quote([s.tacos(), s.coca()], { hora_recogida: "2026-10-06T14:30:00-06:00", plazo_minutos_servidor: 40 });
+    expect(q2.result).not.toMatchObject({ ya_mostrada_al_cliente: true });
+  });
+});

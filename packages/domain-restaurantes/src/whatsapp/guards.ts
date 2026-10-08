@@ -162,17 +162,35 @@ export function afirmaPedidoRegistrado(frase: string): boolean {
     /\bya\s+(?:lo|la)\s+(?:\w+\s+){0,2}?(?:registre|registramos|confirme|confirmamos|mande|mandamos|pase|pasamos|envie|enviamos|tome|tomamos|deje\s+registrad[oa]|dejamos\s+registrad[oa])\b/,
     /\bya\s+(?:lo|la)\s+tenemos\s+(?:ya\s+)?(?:registrad|anotad|confirmad)[oa]\b/,
     /\b(?:lo|la)\s+(?:mande|mandamos|pase|pasamos|envie|enviamos)\s+a\s+(?:la\s+)?cocina\b/,
+    // «ya entró / llegó a cocina», «ya salió a reparto», «ya va para allá», «se está cocinando»
+    new RegExp(`\\b${N}\\b(?:\\s+(?!${OBJETO}\\b)[a-z0-9]+){0,3}?\\s+(?:ya\\s+)?(?:entro|llego|paso|salio|va)\\s+(?:ya\\s+)?(?:a|para)\\s+(?:la\\s+)?(?:cocina|reparto|alla|su\\s+casa)\\b`),
+    new RegExp(`\\b${N}\\b(?:\\s+[a-z0-9]+){0,3}?\\s+(?:ya\\s+)?se\\s+esta\\s+(?:cocinando|armando|haciendo)\\b`),
+    // «ya tenemos su pedido», «su orden ya fue aceptada», «ya dimos de alta su pedido», «su pedido quedó en el sistema», «su pedido está listo»
+    new RegExp(`\\b(?:ya\\s+)?(?:tenemos|recibimos|aceptamos|dimos\\s+de\\s+alta)\\s+(?:ya\\s+)?(?:su|el)\\s+${N}\\b`),
+    new RegExp(`\\b${N}\\b(?:\\s+[a-z0-9]+){0,3}?\\s+(?:ya\\s+)?(?:fue\\s+aceptad[oa]|quedo\\s+en\\s+el\\s+sistema|esta\\s+(?:ya\\s+)?list[oa](?:\\s+para\\s+(?:recoger|entregar|salir))?)\\b`),
+    // Sin sujeto: «Ya quedó registrado, lo esperamos» (solo si la frase no habla de otra cosa: direccion, nombre, pago...)
+    new RegExp(`^(?!.*\\b${OBJETO}\\b).*\\bya\\s+quedo\\s+(?:registrado|confirmado|anotado)\\b`),
     // «va / pasó / se mandó (ya) a cocina»
     /\b(?:esta|va|paso|se\s+mando|se\s+envio)\s+(?:ya\s+)?(?:en|a)\s+(?:la\s+)?(?:cocina|preparacion)\b/,
   ];
   return patrones.some((r) => r.test(t));
 }
 
+/** La frase habla del ESTADO de un pedido (va en camino, en preparacion, en cocina, listo, salio a reparto...), no solo de su registro. */
+export function hablaDelEstadoDelPedido(frase: string): boolean {
+  return /\b(?:en\s+(?:camino|cocina|preparacion|proceso|marcha)|preparandose|se\s+esta\s+(?:preparando|cocinando|armando|haciendo)|(?:entro|llego|salio|paso)\s+(?:ya\s+)?a\s+(?:la\s+)?(?:cocina|reparto)|va\s+para\s+alla|list[oa]\s+para)\b/.test(normalizarParaClasificar(frase));
+}
+
+/** Solo REGISTRO / CONFIRMACION del pedido (no su estado): lo unico que se quita cuando el cliente ya tiene un pedido activo y el turno esta armando otro. */
+export function afirmaSoloRegistroDePedido(frase: string): boolean {
+  return afirmaPedidoRegistrado(frase) && !hablaDelEstadoDelPedido(frase);
+}
+
 /** Quita las frases que afirman un pedido registrado cuando NO existe; si no queda nada, pide el "si" al resumen. */
-export function quitarAfirmacionDePedidoRegistrado(reply: string, sustituto?: string): string {
+export function quitarAfirmacionDePedidoRegistrado(reply: string, sustituto?: string, afirma: (frase: string) => boolean = afirmaPedidoRegistrado): string {
   const frases = reply.split(/(?<=[.!?])\s+/);
-  if (!frases.some(afirmaPedidoRegistrado)) return reply;
-  const resto = frases.filter((f) => !afirmaPedidoRegistrado(f)).join(" ").trim();
+  if (!frases.some(afirma)) return reply;
+  const resto = frases.filter((f) => !afirma(f)).join(" ").trim();
   return resto || sustituto || "Todavía no queda registrado su pedido. ¿Me confirma con un «sí» el resumen para registrarlo?";
 }
 

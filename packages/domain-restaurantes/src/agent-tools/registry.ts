@@ -716,7 +716,9 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
 export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, rawInput: Record<string, unknown>): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
-  const input = await conHoraDeRecogidaRelativa(repo, ctx, name, rawInput);
+  // `plazo_minutos_servidor` es un campo INTERNO que solo pone `conHoraDeRecogidaRelativa`: lo que mande el modelo se descarta.
+  const { plazo_minutos_servidor: _interno, ...entrada } = rawInput;
+  const input = await conHoraDeRecogidaRelativa(repo, ctx, name, entrada);
   if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);
   }
