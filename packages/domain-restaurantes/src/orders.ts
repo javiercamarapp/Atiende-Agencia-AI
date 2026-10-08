@@ -17,7 +17,7 @@ import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion, PROGRAMACION_MAXIMA_DIAS } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
 import { applyPromotionToOrder, normalizePromotionCode, selectAutomaticPromotion } from "./promotions.ts";
-import { extraerPackSize, matchesProductSearch, ordenarPorRelevancia, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
+import { extraerPackSize, matchesProductSearch, nombraElPlatilloDeMediaOrden, ORDEN_COMPLETA, ordenarPorRelevancia, pesoDeProductoEnGramos, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
 
@@ -70,15 +70,54 @@ export async function searchProducts(repo: RestaurantesRepository, args: { reado
   const catalog = await repo.listAvailableProductsForBranch(args.propertyId);
   const buscar = (ts: readonly string[]) => catalog.filter((p) => matchesProductSearch(ts, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }));
   let encontrados = buscar(tokens);
-  // "un cuarto de cochinita": el peso solo existe en los productos que se venden por kilo. Si con el peso no queda nada, se busca el producto sin el
+  let ambiguo = false;
+  let mediaOrdenODeMedioKilo = false;
+  const gramosPedidos = tokens.filter((t) => t.startsWith("peso:")).map((t) => Number(t.slice(5))).filter((n) => Number.isFinite(n) && n > 0);
+  // Con varios pesos en la consulta se usa el MENOR: nunca se ofrece una presentacion mayor a alguno de ellos.
+  const pesoPedido = gramosPedidos.length > 0 ? Math.min(...gramosPedidos) : null;
+  // "3 kilos", "kilo y cuarto": no hay presentacion de ese peso; se listan todas las del platillo y el agente arma el total, asi que NO hay una mejor coincidencia.
+  if (tokens.includes("peso:cualquiera")) ambiguo = true;
+  // "un cuarto de cochinita" / "300 g de bistec": el peso solo existe en los productos que se venden por kilo. Si con el peso no queda nada, se busca el producto sin el
   // peso (la lista vacia la lee el agente como "no tenemos eso", y la cochinita si existe, en ordenes). Con peso que SI coincide se conserva la exactitud.
+  // Nunca se ofrece una presentacion MAYOR a la pedida (cobraria de mas): las de menos peso quedan como candidatas y el resultado va marcado ambiguo.
   if (encontrados.length === 0 && tokens.some((t) => t.startsWith("peso:"))) {
     const sinPeso = tokens.filter((t) => !t.startsWith("peso:"));
-    if (sinPeso.length > 0) encontrados = buscar(sinPeso);
+    if (sinPeso.length > 0) {
+      const candidatos = buscar(sinPeso).filter((p) => {
+        const g = pesoDeProductoEnGramos(p.name);
+        return g === null || pesoPedido === null || g <= pesoPedido;
+      });
+      // Si el platillo si se vende por peso (solo que no en ese), las presentaciones menores van solas; si no se vende por peso (cochinita), el platillo normal.
+      const porPeso = candidatos.filter((p) => pesoDeProductoEnGramos(p.name) !== null);
+      encontrados = porPeso.length > 0 ? porPeso : candidatos;
+      ambiguo = encontrados.length > 0;
+    }
+  }
+  // "media orden de bistec": el unico producto "(1/2 orden)" que lo contiene es un platillo que el cliente no nombro (Nachos de Bistec). No se elige en silencio:
+  // se listan los productos de bistec que NO son media orden (ni presentaciones por peso, salvo la de 500 g = "medio kilo") marcados ambiguos para que el agente pregunte.
+  if (tokens.includes("1/2") && !tokens.some((t) => t.startsWith("peso:"))) {
+    const resto = tokens.filter((t) => t !== "1/2");
+    const media = encontrados.filter((p) => nombraElPlatilloDeMediaOrden(resto, p));
+    // Solo cuando el ingrediente tambien se vende por kilo ("media orden" vs "medio kilo" es la duda real); "media orden de champinones" sigue siendo la de nachos.
+    const sePuedeVenderPorPeso = resto.length > 0 && buscar(resto).some((p) => pesoDeProductoEnGramos(p.name) !== null);
+    if (media.length === 0 && sePuedeVenderPorPeso) {
+      const alternativas = buscar([...resto, ORDEN_COMPLETA]).filter((p) => {
+        const g = pesoDeProductoEnGramos(p.name);
+        return g === null || g === 500;
+      });
+      if (alternativas.length > 0) {
+        encontrados = alternativas;
+        ambiguo = true;
+        mediaOrdenODeMedioKilo = true;
+      }
+    }
   }
   // "heineken cero": el menu escribe "0.0".
   if (encontrados.length === 0 && tokens.includes("cero")) encontrados = buscar(tokens.map((t) => (t === "cero" ? "0.0" : t)));
-  return ordenarPorRelevancia(tokens, encontrados, args.query).slice(0, 8).map(toProductoEncontrado);
+  let ordenados = ordenarPorRelevancia(tokens, encontrados, args.query);
+  // En la duda "media orden o medio kilo" la presentacion de 500 g va primero (es la unica por peso que se ofrece) para que el tope de 8 no la deje fuera.
+  if (mediaOrdenODeMedioKilo) ordenados = [...ordenados.filter((p) => pesoDeProductoEnGramos(p.name) !== null), ...ordenados.filter((p) => pesoDeProductoEnGramos(p.name) === null)];
+  return ordenados.slice(0, 8).map((p) => (ambiguo ? { ...toProductoEncontrado(p), ambiguo: true } : toProductoEncontrado(p)));
 }
 
 /**

@@ -72,6 +72,9 @@ export interface ProductoEncontrado {
   /** El renglon exige elegir tortilla (maiz, harina o mixta): tacos y los platillos que el menu describe "de maiz o harina".
    * Ausente = se decide por el nombre ("taco"), como antes de PM-C4. */
   readonly requiresTortilla?: boolean;
+  /** La busqueda NO pudo fijar un unico producto (cantidad sin presentacion exacta, "media orden de bistec"): son candidatas, no una mejor coincidencia. El agente debe
+   * preguntar al cliente cual quiere en vez de elegir una; nunca incluye una presentacion de mas peso que el pedido. Ausente = sin ambiguedad extra. */
+  readonly ambiguo?: boolean;
   /** Categoria del menu (para reglas por tipo de producto, p. ej. la doble salsa no aplica a un pedido de solo bebidas). Ausente en filas antiguas. */
   readonly categoryName?: string | null;
 }
@@ -312,6 +315,9 @@ export interface WhatsAppAgentConfigRow {
   readonly largeOrderText?: string | null;
   /** Segundos que el agente espera tras el ultimo mensaje del cliente antes de responder (0 a 30; null = apagado). Solo perfil `taqueria_pm`. */
   readonly replyDebounceSeconds?: number | null;
+  /** Radio de reparto de la organizacion en km (mayor que 0 y hasta 500; 0 o fuera de rango se trata como ausente; `buscar_sucursal_cercana` y su tope duro). Ausente o `null` = el del perfil (8 km en `taqueria_pm`, 20 en los demas;
+   * ver `radioRepartoDelPerfil`). Sin columna en la base todavia: persistirlo es una migracion que reserva el orquestador; mientras tanto lo respetan los repositorios que lo traigan. */
+  readonly radioRepartoKm?: number | null;
 }
 
 /** Motivos de escalacion que un owner/admin puede apagar. Los demas (queja, alergia, cliente_lo_pide, falla_sistema,

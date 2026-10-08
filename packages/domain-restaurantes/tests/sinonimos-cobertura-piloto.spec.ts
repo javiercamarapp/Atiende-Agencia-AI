@@ -1,7 +1,7 @@
 // B06: cobertura medida de los sinonimos del piloto. Recorre los 436 pares producto-sinonimo del piloto original (todos APROBADOS: los 73 de
 // sentido comun y web los aprobo Javier el 7-oct-2026) y verifica que `buscar_producto` encuentra el producto en CADA sucursal que lo vende.
-// Tambien fija los casos que la ronda 2 mostro que el agente negaba (flautas, 1/4 kg de bistec, kilo de pastor, chela, cocacola) y documenta con
-// `it.fails` las brechas conocidas del tokenizador (plural en -es, "cuarto kilo") sin tocar product-search.ts.
+// Tambien fija los casos que la ronda 2 mostro que el agente negaba (flautas, 1/4 kg de bistec, kilo de pastor, chela, cocacola) y fija las 6 brechas del
+// tokenizador que dejo la revision de #500 (plural en -es, "cuarto kilo", "media orden de bistec", "una cerveza", "sin alcohol"), ya corregidas.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -133,37 +133,37 @@ describe("casos que la ronda 2 (A10) mostro que el agente negaba", () => {
   });
 });
 
-describe("brechas conocidas del tokenizador (documentadas, no arregladas aqui: product-search.ts es codigo compartido)", () => {
-  it("quedan listadas en sinonimos-y-faq-pendientes.json", () => {
+describe("brechas del tokenizador (las 6 de la revision de #500, ya corregidas)", () => {
+  it("quedan listadas en sinonimos-y-faq-pendientes.json, todas marcadas como resueltas", () => {
     expect(pendientes.brechas_conocidas_del_tokenizador.length).toBe(6);
+    for (const b of pendientes.brechas_conocidas_del_tokenizador as Array<{ estado: string }>) expect(b.estado).toMatch(/^Resuelta/);
   });
 
-  // `it.fails` pasa mientras la brecha exista y FALLA cuando alguien la arregle: ese dia hay que convertirlo en `it` normal y quitarlo de los pendientes.
-  it.fails("plural en -es: 'flanes' encuentra 'Flan' (hoy el tokenizador solo quita la s final: 'flane')", async () => {
+  it("plural en -es: 'flanes' encuentra 'Flan' (antes el tokenizador solo quitaba la s final: 'flane')", async () => {
     expect(await coincidencias("flanes", "prol-montejo")).toContain("Flan");
   });
 
-  it.fails("plural en -es: 'normales' encuentra 'Frijoles Charros Normal' (hoy queda 'normale')", async () => {
+  it("plural en -es: 'normales' encuentra 'Frijoles Charros Normal' (antes quedaba 'normale')", async () => {
     expect(await coincidencias("frijoles charros normales", "prol-montejo")).toContain("Frijoles Charros Normal");
   });
 
-  it.fails("'una cerveza' (todas sus palabras son stopwords) encuentra cervezas, aunque 'cerveza' sola si (hoy el respaldo busca la frase entera)", async () => {
+  it("'una cerveza' (todas sus palabras son stopwords) encuentra cervezas, aunque 'cerveza' sola si (antes el respaldo buscaba la frase entera)", async () => {
     expect((await buscar("una cerveza")).length).toBeGreaterThan(0);
   });
 
-  it.fails("'cuarto kilo de bistec' (sin 'de') pide 250 g (hoy lo lee como 1 kg y suma el token 'cuarto': devuelve 250 g y 750 g, no solo 250 g)", async () => {
+  it("'cuarto kilo de bistec' (sin 'de') pide 250 g (antes lo leia como 1 kg y sumaba el token 'cuarto': devolvia 250 g y 750 g)", async () => {
     expect(await buscar("cuarto kilo de bistec")).toEqual(["Bistec de Res — 250 g", "Bistec de Res Encebollado — 250 g"]);
   });
 
-  it.fails("'un cuarto kilo de bistec' pide 250 g (hoy mezcla peso:250 y peso:1000 y no devuelve bistec por peso, sino tacos y platillos de bistec)", async () => {
+  it("'un cuarto kilo de bistec' pide 250 g (antes mezclaba peso:250 y peso:1000 y devolvia tacos y platillos de bistec)", async () => {
     expect(await buscar("un cuarto kilo de bistec")).toEqual(["Bistec de Res — 250 g", "Bistec de Res Encebollado — 250 g"]);
   });
 
-  it.fails("'media orden de bistec' no debe devolver un producto equivocado (hoy: Nachos de Bistec (1/2 orden)); el pendiente dice preguntar si es media orden o medio kilo", async () => {
+  it("'media orden de bistec' no debe devolver un producto equivocado (antes: Nachos de Bistec (1/2 orden)); devuelve candidatas marcadas ambiguo (media orden o medio kilo)", async () => {
     expect((await buscar("media orden de bistec")).some((n) => /^Nachos/.test(n))).toBe(false);
   });
 
-  it.fails("'cerveza sin alcohol' y 'heineken sin alcohol' encuentran la cerveza sin alcohol (hoy: solo coctel sin alcohol / vacio; el menu la escribe 'Heineken 0.0')", async () => {
+  it("'cerveza sin alcohol' y 'heineken sin alcohol' encuentran la cerveza sin alcohol (antes: solo coctel sin alcohol / vacio; el menu la escribe 'Heineken 0.0')", async () => {
     expect(await buscar("cerveza sin alcohol")).toContain("Heineken 0.0");
     expect(await buscar("heineken sin alcohol")).toContain("Heineken 0.0");
   });
