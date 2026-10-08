@@ -178,6 +178,8 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
           await auditVoice(repo, org, caller, "crear_pedido", "ok", null);
           // SoftRestaurant (POS): los pedidos de voz tambien encolan su comanda (igual que antes de
           // fusionar el registro unico de tools). Bandera apagada o sin migracion 024: respuesta identica.
+          // OJO (conocido, anterior a R5): `voiceInput.propina` es la propina del BODY (en pesos; 0 si el modelo mando propina_porcentaje); el pedido guarda la propina calculada
+          // con el porcentaje. El `Order` del repositorio no expone la propina guardada, asi que la comanda POS puede llevar 0 mientras el pedido guarda el 15 %. Pendiente: exponerla.
           const voiceInput = mapCreateOrderBody(org.id, incoming, "voice");
           // Presupuesto de voz: el POS lento no puede consumir toda la espera de la tool (4 s). Pasado el tope la comanda queda pendiente y
           // el cron del outbox la reintenta (misma ruta que cualquier caida del POS).
