@@ -8764,7 +8764,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Alemán",
@@ -8801,7 +8802,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Algarrobos Residencial",
@@ -8842,7 +8844,8 @@
       "cobertura_base_real": [
         "T7",
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Altabrisa",
@@ -8879,7 +8882,8 @@
       "revisar": true,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Andalucia",
@@ -8917,7 +8921,7 @@
       "cobertura_base_real": [
         "T2"
       ],
-      "advertencia": "Hoy la base real la cubre T2; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T7. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "Hoy la base real la cubre T2; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T7. El SQL scripts/seed-pm-demo/sql/colonias-8km-carga.sql la reasigna a T7 ; el seed por si solo no modifica una cobertura ya existente."
     },
     {
       "nombre": "Andria",
@@ -8957,17 +8961,16 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Arboledas",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T1"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T1",
         "km": 3.5,
@@ -9000,7 +9003,7 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T1; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (google, confianza media) a T1 (3.23 km); sigue marcada para revisión del dueño."
     },
     {
       "nombre": "Aurea Residencial",
@@ -9040,7 +9043,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Azcorra",
@@ -9080,7 +9084,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Benito Juárez Norte",
@@ -9121,7 +9126,7 @@
       "cobertura_base_real": [
         "T7"
       ],
-      "advertencia": "CONFLICTO regla-vs-dueño, decide Javier: la evidencia directa del dueño (chats de T7 (evidencia directa)) la asigna a T7 y la regla de la sucursal de despacho mas cercana da T1 (1.6 km). Prevalece la evidencia del dueño; la base real la conserva en T7.",
+      "advertencia": "EXPLICITA DEL DUEÑO que difiere de la regla de 8 km (pendiente de decisión de Javier; preguntar al dueño (empate de 59 m)): la evidencia directa del dueño (chats de T7 (evidencia directa)) la asigna a T7 y la regla de la sucursal de despacho mas cercana da T1 (1.6 km). Prevalece la evidencia del dueño; la base real la conserva en T7.",
       "pendiente_dueno": [
         "conflicto_regla_vs_dueno"
       ]
@@ -9162,7 +9167,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Bojórquez",
@@ -9202,7 +9208,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Buenavista",
@@ -9243,7 +9250,7 @@
       "cobertura_base_real": [
         "T3"
       ],
-      "advertencia": "Hoy la base real la cubre T3; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T1. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "Hoy la base real la cubre T3; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T1. El SQL scripts/seed-pm-demo/sql/colonias-8km-carga.sql la reasigna a T1 ; el seed por si solo no modifica una cobertura ya existente."
     },
     {
       "nombre": "Cabo Norte",
@@ -9299,7 +9306,8 @@
       "cobertura_base_real": [
         "T1",
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Campestre",
@@ -9339,7 +9347,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Caucel",
@@ -9380,7 +9389,7 @@
       "cobertura_base_real": [
         "T3"
       ],
-      "advertencia": "Hoy la base real la cubre T3; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T2. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "Hoy la base real la cubre T3; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T2. El SQL scripts/seed-pm-demo/sql/colonias-8km-carga.sql la reasigna a T2 ; el seed por si solo no modifica una cobertura ya existente."
     },
     {
       "nombre": "Cecilio Chi",
@@ -9444,7 +9453,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Centro",
@@ -9485,7 +9495,7 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "CONFLICTO regla-vs-dueño, decide Javier: la evidencia directa del dueño (dueño: «Prolongación Montejo.- zona centro, norte» (cuestionario l.153; diferencias.md B22 manda el dueño)) la asigna a T1 y la regla de la sucursal de despacho mas cercana da T3 (3.5 km). Prevalece la evidencia del dueño; la base real la conserva en T1.",
+      "advertencia": "EXPLICITA DEL DUEÑO que difiere de la regla de 8 km (pendiente de decisión de Javier; preguntar al dueño): la evidencia directa del dueño (dueño: «Prolongación Montejo.- zona centro, norte» (cuestionario l.153; diferencias.md B22 manda el dueño)) la asigna a T1 y la regla de la sucursal de despacho mas cercana da T3 (3.5 km). Prevalece la evidencia del dueño; la base real la conserva en T1.",
       "pendiente_dueno": [
         "conflicto_regla_vs_dueno"
       ]
@@ -9525,7 +9535,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Centro Histórico",
@@ -9566,7 +9577,7 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "CONFLICTO regla-vs-dueño, decide Javier: la evidencia directa del dueño (dueño: «Prolongación Montejo.- zona centro, norte» (cuestionario l.153; diferencias.md B22 manda el dueño)) la asigna a T1 y la regla de la sucursal de despacho mas cercana da T3 (4.0 km). Prevalece la evidencia del dueño; la base real la conserva en T1.",
+      "advertencia": "EXPLICITA DEL DUEÑO que difiere de la regla de 8 km (pendiente de decisión de Javier; preguntar al dueño): la evidencia directa del dueño (dueño: «Prolongación Montejo.- zona centro, norte» (cuestionario l.153; diferencias.md B22 manda el dueño)) la asigna a T1 y la regla de la sucursal de despacho mas cercana da T3 (4.0 km). Prevalece la evidencia del dueño; la base real la conserva en T1.",
       "pendiente_dueno": [
         "conflicto_regla_vs_dueno"
       ]
@@ -9609,7 +9620,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Cerrada Piemonte",
@@ -9649,7 +9661,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Cerrada Veneto",
@@ -9689,7 +9702,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Cerradas de Gran Santa Fe",
@@ -9726,7 +9740,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Chablekal",
@@ -9764,7 +9779,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Chichi Suarez",
@@ -9804,7 +9820,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Chicxulub",
@@ -9926,17 +9943,16 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Chuburná",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T2"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T2",
         "km": 2.0,
@@ -9969,7 +9985,7 @@
       "cobertura_base_real": [
         "T2"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T2; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (osm, confianza media) a T2 (1.63 km); sigue marcada para revisión del dueño."
     },
     {
       "nombre": "Chuminópolis",
@@ -10004,7 +10020,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Ciudad Caucel",
@@ -10044,7 +10061,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Cloverleaf",
@@ -10084,7 +10102,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Del Norte",
@@ -10124,7 +10143,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Delio Moreno Canton",
@@ -10164,7 +10184,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Dolores Otero",
@@ -10204,17 +10225,16 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Dzitya",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T2"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T4",
         "km": 3.9,
@@ -10245,7 +10265,7 @@
       },
       "revisar": true,
       "cobertura_base_real": [],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia): el agente no la valida y la pasa a una persona."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (promedio, confianza baja) a T2 (3.52 km); sigue marcada para revisión del dueño."
     },
     {
       "nombre": "Dzitya Poligono Chuburna",
@@ -10285,7 +10305,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "El Fenix",
@@ -10322,7 +10343,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Emiliano Zapata Norte",
@@ -10362,7 +10384,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Ferrocarrilera Hector Victoria Aguilar",
@@ -10399,7 +10422,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Floresta Residencial",
@@ -10439,7 +10463,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Fraccionamiento Francisco de Montejo",
@@ -10479,7 +10504,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "García Ginerés",
@@ -10519,7 +10545,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Gonzalo Guerrero",
@@ -10559,7 +10586,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Gran Herradura Norte",
@@ -10599,7 +10627,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Gran Santa Fe",
@@ -10639,7 +10668,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Gran Santa Fe II",
@@ -10679,7 +10709,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Guadalupe",
@@ -10717,7 +10748,7 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "Hoy la base real la cubre T1; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T8. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "Hoy la base real la cubre T1; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T8. El SQL scripts/seed-pm-demo/sql/colonias-8km-carga.sql la reasigna a T8 ; el seed por si solo no modifica una cobertura ya existente."
     },
     {
       "nombre": "Hacienda Xcumpich",
@@ -10757,7 +10788,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Inalambrica",
@@ -10797,7 +10829,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Itzimná",
@@ -10837,7 +10870,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Jardines de Mérida",
@@ -10872,7 +10906,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Jardines de Miraflores",
@@ -10912,7 +10947,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Jardines de Vista Alegre I",
@@ -10952,7 +10988,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Jardines de Vista Alegre II",
@@ -10992,7 +11029,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Jesús Carranza",
@@ -11032,7 +11070,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Juan Pablo II",
@@ -11070,7 +11109,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Komchen",
@@ -11151,7 +11191,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "La Ceiba",
@@ -11189,7 +11230,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "La Ciudadela",
@@ -11226,7 +11268,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "La Huerta",
@@ -11266,7 +11309,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Las Américas",
@@ -11304,7 +11348,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Las Americas II",
@@ -11344,7 +11389,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Las Americas Merida",
@@ -11381,7 +11427,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Leandro Valle",
@@ -11421,7 +11468,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Lomas del Sur",
@@ -11461,7 +11509,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Los Heroes",
@@ -11501,7 +11550,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Los Pinos",
@@ -11524,12 +11574,10 @@
     {
       "nombre": "Los Reyes",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T3"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T3",
         "km": 4.6,
@@ -11562,7 +11610,7 @@
       "cobertura_base_real": [
         "T3"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T3; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (osm, confianza media) a T3 (4.88 km); sigue marcada para revisión del dueño."
     },
     {
       "nombre": "Lourdes",
@@ -11602,7 +11650,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Lourdes Industrial",
@@ -11642,7 +11691,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Mallorca",
@@ -11679,7 +11729,8 @@
       "revisar": true,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Manzana 115",
@@ -11719,7 +11770,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Maximo Ancona",
@@ -11759,7 +11811,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Meliton Salazar",
@@ -11799,7 +11852,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "México",
@@ -11836,7 +11890,8 @@
       "revisar": true,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "México Norte",
@@ -11874,7 +11929,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Mexico Oriente",
@@ -11914,7 +11970,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "México Poniente",
@@ -11949,7 +12006,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Miguel Hidalgo",
@@ -11987,7 +12045,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Miraflores",
@@ -12027,7 +12086,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Montealban",
@@ -12068,7 +12128,8 @@
       "cobertura_base_real": [
         "T1",
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Montebello",
@@ -12108,7 +12169,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Montebello II",
@@ -12145,7 +12207,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Montecarlo",
@@ -12185,7 +12248,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Montecristo",
@@ -12223,7 +12287,8 @@
       "cobertura_base_real": [
         "T1",
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Montereal",
@@ -12264,7 +12329,8 @@
       "cobertura_base_real": [
         "T1",
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Montes de Ame",
@@ -12304,7 +12370,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Montevideo",
@@ -12345,7 +12412,8 @@
       "cobertura_base_real": [
         "T1",
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Morelos Oriente",
@@ -12385,7 +12453,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Mulchechen",
@@ -12469,7 +12538,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Nucleo Sodzil",
@@ -12506,7 +12576,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Nueva Alemán",
@@ -12543,7 +12614,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Nueva Reforma Agraria",
@@ -12583,7 +12655,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Nueva Salvador Alvarado Sur",
@@ -12648,7 +12721,8 @@
       "cobertura_base_real": [
         "T1",
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Obrera",
@@ -12688,7 +12762,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Olivos",
@@ -12750,7 +12825,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Paraiso Santa Fe",
@@ -12791,7 +12867,7 @@
       "cobertura_base_real": [
         "T3"
       ],
-      "advertencia": "Hoy la base real la cubre T3; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T2. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "Hoy la base real la cubre T3; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T2. El SQL scripts/seed-pm-demo/sql/colonias-8km-carga.sql la reasigna a T2 ; el seed por si solo no modifica una cobertura ya existente."
     },
     {
       "nombre": "Parque Central",
@@ -12828,7 +12904,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Parque Industrial",
@@ -12868,7 +12945,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Parque Natura",
@@ -12908,7 +12986,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Pedregales de Circuito",
@@ -12948,7 +13027,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Pedregales las Americas",
@@ -12988,7 +13068,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Piedrasul",
@@ -13025,7 +13106,8 @@
       "revisar": true,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Plan de Ayala",
@@ -13066,7 +13148,8 @@
       "cobertura_base_real": [
         "T1",
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Privada del Carmen",
@@ -13106,7 +13189,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Privada las Acacias",
@@ -13146,7 +13230,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Progreso",
@@ -13227,7 +13312,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Punta Esmeralda",
@@ -13267,7 +13353,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Quinta Real",
@@ -13304,7 +13391,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Real de Dzitya",
@@ -13344,7 +13432,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Real Montejo",
@@ -13385,7 +13474,7 @@
       "cobertura_base_real": [
         "T7"
       ],
-      "advertencia": "CONFLICTO regla-vs-dueño, decide Javier: la evidencia directa del dueño (chats de T7 (evidencia directa)) la asigna a T7 y la regla de la sucursal de despacho mas cercana da T2 (2.4 km). Prevalece la evidencia del dueño; la base real la conserva en T7.",
+      "advertencia": "EXPLICITA DEL DUEÑO que difiere de la regla de 8 km (pendiente de decisión de Javier; preguntar al dueño (evidencia débil)): la evidencia directa del dueño (chats de T7 (evidencia directa)) la asigna a T7 y la regla de la sucursal de despacho mas cercana da T2 (2.4 km). Prevalece la evidencia del dueño; la base real la conserva en T7.",
       "pendiente_dueno": [
         "conflicto_regla_vs_dueno"
       ]
@@ -13425,7 +13514,8 @@
       "revisar": true,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Reparto Dolores Patron Peniche",
@@ -13462,7 +13552,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Residencial Pensiones",
@@ -13499,7 +13590,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Residencial San Antonio",
@@ -13540,7 +13632,8 @@
       "cobertura_base_real": [
         "T1",
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Revolucion",
@@ -13578,7 +13671,7 @@
       "cobertura_base_real": [
         "T7"
       ],
-      "advertencia": "Hoy la base real la cubre T7; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T2. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "Hoy la base real la cubre T7; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T2. El SQL scripts/seed-pm-demo/sql/colonias-8km-carga.sql la reasigna a T2 ; el seed por si solo no modifica una cobertura ya existente."
     },
     {
       "nombre": "Revolución Cordemex",
@@ -13644,7 +13737,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Roble Agrícola",
@@ -13722,7 +13816,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Salvador Alvarado Sur",
@@ -13805,17 +13900,16 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "San Angel",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T8"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T8",
         "km": 4.6,
@@ -13848,7 +13942,7 @@
       "cobertura_base_real": [
         "T8"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T8; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (osm, confianza media) a T8 (4.55 km); sigue marcada para revisión del dueño."
     },
     {
       "nombre": "San Antonio Cinta",
@@ -13888,7 +13982,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "San Antonio Cucul",
@@ -13929,7 +14024,8 @@
       "cobertura_base_real": [
         "T1",
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "San Antonio Xluch",
@@ -14069,7 +14165,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "San Jose",
@@ -14191,7 +14288,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "San Lorenzo",
@@ -14231,17 +14329,16 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "San Luis",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T1"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T1",
         "km": 3.5,
@@ -14274,7 +14371,7 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T1; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (promedio, confianza baja) a T1 (1.88 km); sigue marcada para revisión del dueño."
     },
     {
       "nombre": "San Pedro Cholul",
@@ -14314,7 +14411,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "San Pedro Noh Pat",
@@ -14390,7 +14488,8 @@
       "cobertura_base_real": [
         "T1",
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "San Ramon Norte",
@@ -14430,7 +14529,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Santa Cecilia",
@@ -14470,7 +14570,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Santa Gertrudis",
@@ -14507,7 +14608,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Santa Gertrudis Copo",
@@ -14545,7 +14647,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Santa Maria Chi",
@@ -14623,7 +14726,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Santa Rosa",
@@ -14663,7 +14767,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Serapio Rendón",
@@ -14742,7 +14847,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Sodzil",
@@ -14782,7 +14888,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Sodzil Norte",
@@ -14822,7 +14929,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Sol Campestre",
@@ -14863,7 +14971,8 @@
       "cobertura_base_real": [
         "T1",
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Susula",
@@ -14901,7 +15010,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Tamarindos",
@@ -14938,7 +15048,8 @@
       "revisar": true,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Tecnologico",
@@ -14978,7 +15089,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Temozón Norte",
@@ -15060,17 +15172,16 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Vergel",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T1"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T1",
         "km": 6.2,
@@ -15103,7 +15214,7 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T1; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (osm, confianza media) a T1 (6.43 km); sigue marcada para revisión del dueño."
     },
     {
       "nombre": "Vergel II",
@@ -15143,7 +15254,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Via Montejo",
@@ -15183,7 +15295,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Vicente Solis",
@@ -15223,7 +15336,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Villa Fontana",
@@ -15263,7 +15377,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Villa Magna",
@@ -15303,7 +15418,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Villareal",
@@ -15340,7 +15456,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Villas Cholul",
@@ -15380,7 +15497,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Villas del Rey",
@@ -15421,7 +15539,8 @@
       "cobertura_base_real": [
         "T1",
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Villas la Hacienda",
@@ -15462,7 +15581,8 @@
       "cobertura_base_real": [
         "T1",
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Vista Alegre",
@@ -15546,7 +15666,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T8"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Waspa",
@@ -15583,7 +15704,8 @@
       "revisar": true,
       "cobertura_base_real": [
         "T1"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Xaman Kab",
@@ -15623,7 +15745,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Xaman Tan",
@@ -15663,7 +15786,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T7"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Xcanatun",
@@ -15701,7 +15825,8 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Xcumpich",
@@ -15741,7 +15866,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Xo Tik",
@@ -15776,17 +15902,16 @@
         "fuera_de_8km": false
       },
       "revisar": false,
-      "cobertura_base_real": []
+      "cobertura_base_real": [],
+      "advertencia": ""
     },
     {
       "nombre": "Yucalpeten",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T3"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T3",
         "km": 1.8,
@@ -15819,7 +15944,7 @@
       "cobertura_base_real": [
         "T3"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T3; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (osm, confianza media) a T3 (2.12 km); sigue marcada para revisión del dueño."
     },
     {
       "nombre": "Yucatán",
@@ -15879,7 +16004,8 @@
       "revisar": false,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Galerias",
@@ -15916,7 +16042,8 @@
       "revisar": true,
       "cobertura_base_real": [
         "T2"
-      ]
+      ],
+      "advertencia": ""
     },
     {
       "nombre": "Pensiones",
@@ -15956,12 +16083,13 @@
       "revisar": false,
       "cobertura_base_real": [
         "T3"
-      ]
+      ],
+      "advertencia": ""
     }
   ],
   "colonias_meta": {
     "fuente": "work/pm-cuenta-real/colonias-v3.json (7-oct-2026): lista del piloto original (colonias.json de la base de conocimiento de ElevenLabs, 3-oct) + coordenadas de Google Maps (139) / OpenStreetMap (36) / promedio (3) y la regla de 8 km. Una sola lista: reemplaza a la del seed anterior (183: 113 asignadas / 70 sin asignar) y a zonas-pm-v1.sql (185). Cada colonia trae su coordenada con origen y confianza, las dos lecturas crudas (google, osm) para poder auditarla, la sucursal de despacho mas cercana con km y la cobertura que hoy tiene la base real (v1 + v2b = 169 filas de cobertura).",
-    "regla_asignacion": "Decision de Javier (7-oct 13:30 y 17:50): cada colonia usa la sucursal de DESPACHO mas cercana (T1, T2, T3, T7, T8; Galerias T4 y Chicxulub T5 no reparten) a 8 km o menos en linea recta (Haversine desde el pin de Google de la sucursal). Sin asignar (PENDIENTE del dueño, el agente no las valida y las pasa a una persona): (1) fuera de 8 km, (2) homonimos con discrepancia mayor a 1 km entre Google y OSM, (3) sin coordenada. Precedencia: la evidencia DIRECTA del dueño o de los chats PREVALECE sobre la regla geometrica; las 4 colonias donde chocan (Centro y Centro Historico: zona centro del dueño, T1; Benito Juarez Norte y Real Montejo: chats de T7, T7) conservan su asignacion original y llevan pendiente_dueno conflicto_regla_vs_dueno para que decida Javier (la regla da T3, T1, T2 y T2). Excepcion documentada: un homonimo con evidencia directa del dueño (chats de T7, direccion de la sucursal) que coincide con la mas cercana se mantiene. Cabo Norte y Los Pinos solo existen en los chats del dueño (sin fila en colonias-v3): sin coordenada, asignadas por esa evidencia.",
+    "regla_asignacion": "Orden de Javier (7-oct 13:30 y 17:50): cada colonia usa la sucursal de DESPACHO (T1, T2, T3, T7, T8; Galerías T4 y Chicxulub T5 no reparten) MÁS CERCANA, a 8 km o menos en línea recta (Haversine desde el pin de Google de la sucursal hasta la coordenada de la colonia); a más de 8 km, fuera de cobertura. Criterio conservador vigente (reversible por Javier): la cobertura EXPLÍCITA del dueño manda sobre la geometría: Centro y Centro Histórico (T1, cuestionario l.153), Benito Juárez Norte y Real Montejo (T7, chats de T7, P-v2-16) conservan su asignación y se documentan aparte con la distancia de cada opción; Cabo Norte (T7) y Los Pinos (T8) no tienen coordenada. Los homónimos con discrepancia Google/OSM se asignan con la coordenada elegida en colonias-v3 y siguen marcados para revisión, salvo San José (nombre genérico, lecturas a 11.4 km entre sí), que queda pendiente. Quedan sin asignar las que están a más de 8 km, las sin coordenada y San José. Borde: ver docs/restaurantes-colonias-radio-8km.md.",
     "radio_reparto_km": 8,
     "sucursales_despacho": [
       "T1",
@@ -15972,13 +16100,13 @@
     ],
     "coordenadas_en_known_zone": "NO. Las coordenadas viven en estos datos (campo coordenada) y NO se escriben en known_zone.lat/lng: assignBranch mediria contra las coordenadas de branch_detail, que siguen desviadas 1.9 a 4.4 km (T3 sin coordenadas) hasta que el dueño confirme los pines de coordenadas_propuestas (ver zonas-pm-v2b.sql, que tampoco las escribe).",
     "asignaciones_son_propuesta": true,
-    "pendiente_p_v2_16": "El dueño debe confirmar: las 13 fuera de 8 km, los homonimos con discrepancia, las 6 sin coordenada, las colonias cuya cobertura actual difiere de la mas cercana y la direccion de T8.",
+    "pendiente_p_v2_16": "El dueño debe decidir: Centro, Centro Histórico, Benito Juárez Norte y Real Montejo (su cobertura contra la regla de 8 km), las 13 fuera de 8 km, las 6 sin coordenada, San José, los homónimos asignados (revisar) y la dirección de T8.",
     "conteos": {
       "total": 186,
       "con_coordenada_v3": 178,
       "sin_coordenada": 8,
-      "asignadas": 158,
-      "pendientes_sin_asignar": 28,
+      "asignadas": 166,
+      "pendientes_sin_asignar": 20,
       "origen_coordenada": {
         "google": 139,
         "osm": 36,

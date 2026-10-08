@@ -6,7 +6,7 @@
 //   (c) una colonia con DOBLE cobertura elige una sucursal (nunca `no_reconocida`);
 //   (d) coordenadas propuestas (pines de Google) detras de una bandera APAGADA por omision;
 //   (e) la cobertura explicita del dueño (Centro, Centro Historico, Benito Juarez Norte, Real Montejo) manda sobre la geometria;
-//   (f) las 28 colonias pendientes dan una respuesta honesta, sin inventar.
+//   (f) las 20 colonias pendientes dan una respuesta honesta, sin inventar.
 // Los datos son los REALES del seed (`pm-seed-data.json`, colonias-v3): coordenadas de Google de las colonias y de las 5 sucursales de despacho.
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -236,8 +236,8 @@ describe("(e) cobertura explicita del dueño = override: Centro, Centro Historic
       expect(g, `${nombre} por geometria`).toMatchObject({ estado: "asignada", origen: "distancia", branchSlug: geometria });
       if (geometria !== dueno) divergen += 1;
     }
-    // Al menos tres de las cuatro chocan de verdad con la regla (por eso Javier debe decidir): si ninguna chocara, la prueba no probaria nada.
-    expect(divergen).toBeGreaterThanOrEqual(3);
+    // Las cuatro chocan de verdad con la regla (por eso Javier debe decidir): si ninguna chocara, la prueba no probaria nada.
+    expect(divergen).toBe(4);
   });
 
   it("sin coordenadas de colonia (la cuenta real hoy) tambien: la cobertura del dueño es la respuesta, sin distancia inventada", async () => {
@@ -458,18 +458,18 @@ function textoHonesto(r: BranchAssignment): boolean {
   return !/no reconozco/i.test(t) && !/(enviamos|se enviará|le llevamos|sí repartimos)/i.test(t) && /(no la tengo ubicada con certeza|fuera de nuestra zona habitual)/.test(t);
 }
 
-describe("(f) las 28 colonias pendientes producen una respuesta honesta, sin inventar", () => {
+describe("(f) las 20 colonias pendientes producen una respuesta honesta, sin inventar", () => {
   const pendientes = COLONIAS.filter((c) => (c.sucursales ?? []).length === 0);
   const motivo = (c: Colonia) => c.motivo_sin_asignar;
 
-  it("son 28: 13 fuera de 8 km (una tambien homonima), 9 homonimas con discrepancia y 6 sin coordenada", () => {
-    expect(pendientes.length).toBe(28);
+  it("son 20: 13 fuera de 8 km (una tambien homonima), San Jose (homonimo pendiente) y 6 sin coordenada", () => {
+    expect(pendientes.length).toBe(20);
     const cuenta = (m: string) => pendientes.filter((c) => c.pendiente_dueno?.includes(m as never)).length;
     expect(cuenta("fuera_de_8km")).toBe(13);
-    expect(cuenta("homonimo_discrepancia")).toBe(10); // 9 + Mulchechen (fuera de 8 km y homonima)
+    expect(cuenta("homonimo_discrepancia")).toBe(2); // San Jose + Mulchechen (fuera de 8 km y homonima)
     expect(cuenta("sin_coordenada")).toBe(6);
     expect(pendientes.filter((c) => motivo(c) === "sin_coordenada").length).toBe(6);
-    expect(pendientes.filter((c) => motivo(c) === "homonimo_discrepancia").length).toBe(9);
+    expect(pendientes.filter((c) => motivo(c) === "homonimo_discrepancia").map((c) => c.nombre)).toEqual(["San Jose"]);
   });
 
   it("cuenta real hoy (sin coordenadas en known_zone): ninguna es `no_reconocida`, ninguna se asigna, todas dicen la verdad y ninguna promete envio", async () => {
@@ -489,7 +489,7 @@ describe("(f) las 28 colonias pendientes producen una respuesta honesta, sin inv
       }
     }
     // Lo que hace la regla con la referencia del piloto que SI esta en la base (sin coordenadas de Google): ver el cuerpo del PR.
-    expect(resumen).toEqual({ fuera_de_zona: 9, sugerida: 19 });
+    expect(resumen).toEqual({ fuera_de_zona: 9, sugerida: 11 });
   });
 
   it("con las coordenadas de Google cargadas en known_zone: las 13 fuera de 8 km dicen «fuera de zona habitual» y nombran la mas cercana (Komchen: Francisco de Montejo, a unos 8 km)", async () => {
@@ -503,7 +503,7 @@ describe("(f) las 28 colonias pendientes producen una respuesta honesta, sin inv
     expect(komchen.result).toMatchObject({ estado: "fuera_de_zona", sucursal_despacho_mas_cercana: { branch_slug: "fco-montejo", distancia_texto: "a unos 8 km" } });
   });
 
-  it("las 6 sin coordenada y las 9 homonimas: «no la tengo ubicada con certeza, ¿me manda su ubicacion?» (sin nombrar una sucursal como promesa)", async () => {
+  it("las 6 sin coordenada: «no la tengo ubicada con certeza, ¿me manda su ubicacion?» (sin nombrar una sucursal como promesa)", async () => {
     const m = await mundo({ coordenadas: false, cobertura: "seed" });
     for (const c of pendientes.filter((x) => motivo(x) === "sin_coordenada")) {
       const r = await invokeAgentTool(m.repo, ctxWa(m.organizationId), "buscar_sucursal_cercana", { colonia: c.nombre });
@@ -527,11 +527,11 @@ describe("(f) detalle de los textos de las pendientes", () => {
     expect(JSON.stringify(r)).not.toMatch(/\d+ ?km/);
   });
 
-  it("dos referencias a menos de 1 km (Vergel 6.2 vs 7.1) => ambigua: se ofrecen las dos para recoger", async () => {
+  it("dos referencias a menos de 1 km (San Diego Cutz 6.8 vs 7.6, sin coordenada) => ambigua: se ofrecen las dos para recoger", async () => {
     const m = await mundo({ coordenadas: false, cobertura: "seed" });
-    const r = await assignBranch(m.repo, { organizationId: m.organizationId, colonia: "Vergel", radioMaximoKm: 8 });
-    expect(r).toMatchObject({ estado: "sugerida", ambigua: true, sugerida: { slug: "prol-montejo" }, segunda: { slug: "pensiones" } });
-    expect(r.message).toMatch(/Prolongación Montejo o Pensiones/);
+    const r = await assignBranch(m.repo, { organizationId: m.organizationId, colonia: "San Diego Cutz", radioMaximoKm: 8 });
+    expect(r).toMatchObject({ estado: "sugerida", ambigua: true, sugerida: { slug: "altabrisa" }, segunda: { slug: "garcia-lavin" } });
+    expect(r.message).toMatch(/Victory Altabrisa o García Lavín/);
   });
 
   it("fuera de zona por la referencia del piloto: lo dice, nombra la mas cercana (Pensiones, a unos 9 km) y avisa que es aproximado y que el pin lo confirma", async () => {
@@ -592,10 +592,10 @@ describe("regresiones: pin, colonia inexistente, base sin migracion 056, cotizac
     const world = await buildInMemoryPmWorld(plan);
     const base = { organizationId: world.organizationId, branchSlug: "garcia-lavin", canal: "domicilio" as const, items: [{ productId: world.productIds.get("Coca-Cola")!, requestedQuantity: 6 }] };
     expect((await quoteOrder(world.repo, { ...base, colonia: "Temozón Norte" })).total).toBeGreaterThan(0);
-    const error = await quoteOrder(world.repo, { ...base, colonia: "Vergel" }).catch((e: unknown) => e);
+    const error = await quoteOrder(world.repo, { ...base, colonia: "Olivos" }).catch((e: unknown) => e);
     const mensaje = (error as Error).message;
     expect(mensaje).toMatch(/todavía no tiene una sucursal de reparto asignada/);
-    expect(mensaje).toMatch(/Para recoger, una sucursal cercana es Prolongación Montejo\./);
+    expect(mensaje).toMatch(/Para recoger, una sucursal cercana es Victory Altabrisa\./);
     expect(mensaje).toMatch(/pase el pedido con una persona/);
     expect(mensaje).not.toMatch(/\d+ ?km/); // la referencia del piloto de una colonia sin cobertura puede estar equivocada
   });

@@ -39,7 +39,7 @@ describe("colonias del piloto en el plan del seed", () => {
 
   it("lo que queda SIN asignar es exactamente lo PENDIENTE del dueño (fuera de 8 km, homonimo con discrepancia, sin coordenada): una ambigua de menos de 1 km ya no se deja sin asignar, va a la mas cercana", () => {
     const sinAsignar = (data.colonias ?? []).filter((c) => (c.sucursales ?? []).length === 0);
-    expect(sinAsignar.length).toBe(28);
+    expect(sinAsignar.length).toBe(20);
     for (const c of sinAsignar) {
       expect(c.asignacion, c.nombre).toBe("sin_asignar");
       expect(c.pendiente_dueno?.length, c.nombre).toBeGreaterThan(0);
