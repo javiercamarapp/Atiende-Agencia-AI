@@ -7,6 +7,7 @@
 // precio/disponibilidad por sucursal), nunca de lo que mande el cliente/LLM.
 import type { ProductoEncontrado } from "./types.ts";
 import { OrderValidationError } from "./errors.ts";
+import { normalizarPesos } from "./peso-cantidad.ts";
 
 // Bug real confirmado el 3-sep-2026 (auditoría de voz, 9 agentes): "cerveza Sol" y
 // "coctel Margarita" devolvían CERO resultados pese a que "Sol" y "Margarita" sí
@@ -77,22 +78,6 @@ export function sinAcentos(texto: string): string {
   return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
-/** Pesos que se venden por fraccion de kilo (chats reales de T7, 2-oct-2026): gramos canonicos de cada frase. El orden importa:
- * lo mas especifico primero ("kilo y medio" antes que "medio"; "1/4 de bistec" sin unidad es un cuarto de kilo, pero "1/2" sin
- * unidad NO es peso porque tambien es la "media orden"). */
-const FRASES_DE_PESO: ReadonlyArray<readonly [RegExp, number]> = [
-  [/\btres\s+cuartos?(?:\s+de\s+kilo)?\b|\b3\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.75\s*(?:kg|kilos?)\b|(?<![\d.])0?\.750\b/g, 750],
-  [/\b(?:un\s+)?cuarto\s+de\s+kilo\b|\bun\s+cuarto\b|\bcuarto\b(?=\s+de\s)|\b1\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.25\s*(?:kg|kilos?)\b|(?<![\d.])0?\.250\b/g, 250],
-  [/\bkilo\s+y\s+medio\b|(?<![\d.])1[.,]5\s*(?:kg|kilos?)\b|\b1\s+1\s*\/\s*2\s*(?:kg|kilos?)\b/g, 1500],
-  [/\bmedio\s+kilo\b|\bmedio\b(?=\s+de\s)|\b1\s*\/\s*2\s*(?:de\s+)?(?:kg|kilos?)\b|(?<![\d.])0?\.5\s*(?:kg|kilos?)\b|(?<![\d.])0?\.500\b/g, 500],
-  [/\bdos\s+kilos?\b|\b2\s*(?:kg|kilos?)\b/g, 2000],
-  // "3 kilos", "5 kg": no hay producto de ese peso (se venden 1/4 a 2 kg): el numero no es un peso exacto; se buscan todos los pesos del producto (`peso:cualquiera`) y el agente
-  // arma el total con renglones de 2 kg y de 1 kg (nunca 3 piezas del de 1 kg). Va ANTES del patron generico de "kilo".
-  [/(?<![\d./])(?:[3-9]|[1-9]\d)\s*(?:kg|kilos?)\b/g, 0],
-  [/(?<![\d./])(\d{2,4})\s*(?:gr|g|gramos)\b/g, -1],
-  [/\b1\s*(?:kg|kilo)\b|\bun\s+kilo\b|\bkilos?\b|\bkg\b/g, 1000],
-];
-
 /** Escrituras comunes de una misma palabra ("bisteck", "bistek", "biftec") que el catalogo escribe "bistec". Se aplica al token ya singular. */
 // "bisctec" (chats reales de T7) y "pok" ("pok chuc", del piloto original) son faltas de escritura de "bistec" y "poc".
 const ALIAS_DE_ESCRITURA: Readonly<Record<string, string>> = { bisteck: "bistec", bistek: "bistec", bisteak: "bistec", biftec: "bistec", biftek: "bistec", bisctec: "bistec", pok: "poc" };
@@ -102,13 +87,10 @@ function normalizarUnidadesDeKilo(texto: string): string {
   return texto.replace(/\b(?:kgrs?|kgs|kilogramos?)\b/g, "kg");
 }
 
-/** Convierte las frases de peso de una consulta en tokens `peso:<gramos>` (uno por frase). Lo que no es peso queda igual. */
+/** Convierte las frases de peso de una consulta en tokens `peso:<gramos>` (uno por frase; ver peso-cantidad.ts). Lo que no es peso queda igual. */
 export function normalizarPesosEnConsulta(textoSinAcentos: string): string {
-  let texto = textoSinAcentos;
-  for (const [patron, gramos] of FRASES_DE_PESO) {
-    texto = texto.replace(patron, (...args: unknown[]) => ` peso:${gramos === 0 ? "cualquiera" : gramos === -1 ? String(args[1]) : gramos} `);
-  }
-  return texto;
+  // Los decimales sin unidad ".250"/".500"/".750" (0.250...) son gramos del menu; se conservan de antes.
+  return normalizarPesos(textoSinAcentos.replace(/(?<![\d.])0?\.(250|500|750)\b(?!\s*(?:kg|kilos?))/g, (_m, g: string) => ` peso:${g} `));
 }
 
 /** Peso en gramos que declara el NOMBRE de un producto ("Pastor — 500 g" -> 500; "Pastor — 1.5 kg" -> 1500); null si no trae. */
@@ -130,10 +112,27 @@ export function pesoDeProductoEnGramos(nombre: string): number | null {
 /** Marcador de la consulta "nachos grandes / completos": el producto NO puede ser una media orden ("(1/2 orden)"). */
 export const ORDEN_COMPLETA = "orden:completa";
 
+/** Marcador de la consulta "sin alcohol" / "0%": solo hace match con productos que el MENU escribe "sin alcohol" o "0.0" (nunca alcohol). */
+export const SIN_ALCOHOL = "sinalcohol";
+const FRASE_SIN_ALCOHOL = /\b(?:sin\s+alcohol(?:es)?|sin\s+alcol|cero\s+alcohol|libre\s+de\s+alcohol|no\s+alcoholic[oa]s?|sin\s+alcoholic[oa]s?)\b|(?<![\d.])0\s*%(?:\s+alcohol)?/g;
+const MENU_SIN_ALCOHOL = /\bsin\s+alcohol\b|\b0[.,]0\b|\b0\s*%/;
+
+/** Plural espanol -> singular de una palabra de la consulta. La "s" final basta casi siempre ("tacos", "chelas", "frijoles"); las terminaciones
+ * -ones/-ores/-ales/-anes/-eles piden quitar "es" ("champinones" -> "champinon", "pastores" -> "pastor", "normales" -> "normal", "flanes" -> "flan").
+ * Se limita a esas terminaciones para no romper "chiles" ni "tomates", que quedan por la regla de la "s". */
+export function singularizar(palabra: string): string {
+  if (palabra.length <= 4 || !palabra.endsWith("s")) return palabra;
+  if (palabra.length > 5 && /(?:on|or|al|an|el)es$/.test(palabra)) return palabra.slice(0, -2);
+  return palabra.slice(0, -1);
+}
+
 export function tokenizeForProductSearch(query: string): string[] {
   const normalizada = normalizarPesosEnConsulta(
     normalizarUnidadesDeKilo(sinAcentos(query)).replace(/\bcero\s+punto\s+cero\b|\bcero\s+cero\b|\b0[.,]0\b|\bcero(?:\s+alcohol)?\b/g, "0.0"),
   )
+    .replace(FRASE_SIN_ALCOHOL, " sinalcohol ")
+    // "cerveza con alcohol": "alcohol" no es parte del nombre de ningun producto pedido y casaria con los "sin Alcohol" (el contrario de lo pedido).
+    .replace(/\bcon\s+alcohol\b/g, " ")
     .replace(/\bmedia\s+orden\b/g, "1/2")
     // Jerga de T7 (chats reales): "medios charros" = media orden de frijoles charros; "nachos grandes" = la orden COMPLETA (el catalogo solo distingue
     // "(1/2 orden)"). "grande(s)", "completa(s)" y "entera(s)" junto a estos platillos no son parte del nombre: piden la orden completa, asi que se vuelven
@@ -142,7 +141,15 @@ export function tokenizeForProductSearch(query: string): string[] {
     .replace(/\b(nachos?|charros?|frijoles?)\s+(?:grandes?|completos?|completas?|enteros?|enteras?)\b/g, "$1 ordencompleta")
     .replace(/\b(?:grandes?|completos?|completas?|enteros?|enteras?)\s+(?:de\s+)?(?=nachos?\b|charros?\b|frijoles?\b)/g, " ordencompleta ");
 
-  const raw = normalizada.split(/\s+/).filter((t) => t.length > 1 && !STOPWORDS_BUSQUEDA.has(t));
+  // "cerveza sin alcohol" / "coctel sin alcohol": con el marcador la categoria SI es parte de la consulta (sin ella el marcador mezclaria cervezas 0.0 y cocteles).
+  const conSinAlcohol = /\bsinalcohol\b/.test(normalizada);
+  const raw = normalizada
+    .split(/\s+/)
+    .map((t) => (conSinAlcohol && /^cervezas?$/.test(t) ? "cerveza" : conSinAlcohol && /^coctel(?:es)?$/.test(t) ? "cocktail" : t))
+    .filter((t) => t.length > 1 && (t === "cerveza" ? conSinAlcohol : t === "cocktail" || !STOPWORDS_BUSQUEDA.has(t)));
+  // "una cerveza", "dos cervezas": todas las palabras eran articulo/cantidad/categoria y la busqueda quedaba con la frase entera (vacia). La categoria
+  // "cerveza" SI identifica lo pedido (casa con la categoria Cervezas), asi que se conserva cuando es lo unico que dice el cliente.
+  if (raw.length === 0 && /\bcervezas?\b/.test(normalizada)) raw.push("cerveza");
 
   const tokens: string[] = [];
   for (const t of raw) {
@@ -150,11 +157,15 @@ export function tokenizeForProductSearch(query: string): string[] {
       tokens.push(t);
       continue;
     }
+    if (t === SIN_ALCOHOL) {
+      tokens.push(t);
+      continue;
+    }
     if (t === "ordencompleta") {
       tokens.push(ORDEN_COMPLETA);
       continue;
     }
-    const singular = t.length > 4 && t.endsWith("s") ? t.slice(0, -1) : t;
+    const singular = singularizar(t);
     tokens.push(ALIAS_DE_ESCRITURA[singular] ?? singular);
   }
   return tokens.length > 0 ? tokens : [sinAcentos(query)];
@@ -184,7 +195,11 @@ export function puntajeDeBusqueda(
   let puntaje = 0;
   for (const t of tokens) {
     if (t.startsWith("peso:")) continue;
-    if (palabras.includes(t) || alias.some((a) => a === t || a.split(/[^a-z0-9.]+/).includes(t))) puntaje += 4;
+    if (t === SIN_ALCOHOL) {
+      puntaje += MENU_SIN_ALCOHOL.test(nombre) ? 4 : 0.5;
+      continue;
+    }
+    if (palabras.includes(t) || palabras.some((w) => singularizar(w) === t) || alias.some((a) => a === t || a.split(/[^a-z0-9.]+/).includes(t))) puntaje += 4;
     else if (palabras.some((w) => w.startsWith(t))) puntaje += 3;
     else if (nombre.includes(t)) puntaje += 1.5;
     else puntaje += 0.5;
@@ -192,7 +207,7 @@ export function puntajeDeBusqueda(
   if (/\b(?:una?|la|las)\s+orden(?:es)?\b|^orden(?:es)?\b/.test(sinAcentos(consultaCruda)) && /\(orden de \d+/.test(nombre)) puntaje += 2;
   // El producto "base" gana al calificado cuando el cliente no pidio el calificativo ("bistec" no es "bistec encebollado").
   if (palabras.some((w) => PALABRAS_DE_VERSION_NORMAL.has(w)) && !tokens.some((t) => PALABRAS_DE_VERSION_NORMAL.has(t))) puntaje += 0.5;
-  if (palabras.some((w) => CALIFICADORES_DE_VARIANTE.has(w) && !tokens.some((t) => w.startsWith(t) || t.startsWith(w)))) puntaje -= 0.5;
+  if (palabras.some((w) => CALIFICADORES_DE_VARIANTE.has(w) && !tokens.some((t) => w.startsWith(t) || t.startsWith(w)) && !(w === "sin" && tokens.includes(SIN_ALCOHOL)))) puntaje -= 0.5;
   return puntaje;
 }
 
@@ -230,9 +245,18 @@ export function matchesProductSearch(
   return tokens.every((t) => {
     if (t === "peso:cualquiera") return pesoProducto !== null;
     if (t.startsWith("peso:")) return pesoProducto !== null && pesoProducto === Number(t.slice(5));
+    if (t === SIN_ALCOHOL) return MENU_SIN_ALCOHOL.test(sinAcentos(fields.name)) || alias.some((a) => MENU_SIN_ALCOHOL.test(a));
     if (t === ORDEN_COMPLETA) return !/\b1\s*\/\s*2\b|\bmedia\s+orden\b/.test(textoPlano);
     return textoPlano.includes(t) || alias.some((a) => a.includes(t)) || (t.length >= 6 && textoCompacto.includes(t));
   });
+}
+
+/** Una "media orden" (producto "(1/2 orden)") solo es lo pedido si el cliente nombro el PLATILLO (lo que va antes del "de": "Nachos", "Frijoles Charros"),
+ * no un ingrediente: "media orden de bistec" no es "Nachos de Bistec (1/2 orden)". `tokens` son los de la consulta ya sin el "1/2". */
+export function nombraElPlatilloDeMediaOrden(tokens: readonly string[], fields: { readonly name: string; readonly searchKeywords: readonly string[] }): boolean {
+  const cabeza = sinAcentos(fields.name).replace(/\(.*$/, " ").split(/\s+de\s+|\s[—-]\s/)[0] ?? "";
+  const alias = fields.searchKeywords.map(sinAcentos);
+  return tokens.some((t) => t !== "1/2" && !t.startsWith("peso:") && t !== ORDEN_COMPLETA && t !== SIN_ALCOHOL && (cabeza.includes(t) || alias.some((a) => a === t)));
 }
 
 /** Tortilla obligatoria al cotizar: los productos "tacos" y los que el MENU dice que van "de maiz o harina" (quesadillas).
