@@ -94,3 +94,71 @@ export async function findNearestBranch(
     recognizedZoneName: match.recognizedZoneName,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Textos de `buscar_sucursal_cercana` (WhatsApp y voz comparten el nucleo). Los lee el MODELO, que contesta al cliente: llevan la frase sugerida.
+// Nunca prometen envio fuera de la zona de reparto; la distancia se dice como aproximada y sin decimales raros («a unos 5 km»).
+// ---------------------------------------------------------------------------
+
+/** «a unos 5 km» / «a menos de 1 km»: la distancia en linea recta es una referencia, no un dato exacto; sin decimales. */
+export function kmAproxTexto(km: number): string {
+  if (!Number.isFinite(km) || km < 0) return "";
+  if (km < 1) return "a menos de 1 km";
+  return `a unos ${Math.round(km)} km`;
+}
+
+export interface SucursalCercana {
+  readonly slug: string;
+  readonly nombre: string;
+  /** Km en linea recta (1 decimal) o de la referencia del piloto; `null` = no hay dato que decir. */
+  readonly kmAprox: number | null;
+}
+
+const conKm = (s: SucursalCercana): string => (s.kmAprox === null ? s.nombre : `${s.nombre} (${kmAproxTexto(s.kmAprox)})`);
+
+/** Colonia con sucursal de despacho: la dice el agente. `cobertura_dueno` = la fijo el dueno (no se afirma que sea la mas cercana). */
+export function mensajeSucursalAsignada(args: {
+  readonly principal: SucursalCercana;
+  readonly alternativa: SucursalCercana | null;
+  readonly origen: "pin" | "distancia" | "cobertura_dueno";
+}): string {
+  const { principal, alternativa, origen } = args;
+  const cabeza =
+    origen === "cobertura_dueno"
+      ? `La sucursal de despacho que le corresponde a esa zona es ${conKm(principal)}.`
+      : `La sucursal de despacho más cercana es ${conKm(principal)}.`;
+  const alt = alternativa ? ` También le queda cerca ${conKm(alternativa)}: puede mencionarla como alternativa.` : "";
+  return `${cabeza}${alt} Dígale al cliente cuál sucursal le atiende y, si hay dato, a cuántos km aproximadamente (sin decimales); no le prometa tiempos distintos a los de la herramienta.`;
+}
+
+/** Fuera del radio de reparto: se dice con claridad, se nombra la sucursal de despacho mas cercana y NO se promete envio. */
+export function mensajeFueraDeZonaHabitual(args: { readonly masCercana: SucursalCercana | null; readonly radioKm: number | null; readonly aproximada?: boolean }): string {
+  const { masCercana, radioKm } = args;
+  // `aproximada`: la distancia sale de la referencia del piloto original (la colonia no tiene coordenadas propias), no de una medicion: se dice y se ofrece confirmar con el pin.
+  const confirmar = args.aproximada
+    ? " La distancia es una referencia aproximada (la colonia no tiene ubicación exacta): si el cliente manda su ubicación de WhatsApp, vuelva a llamar esta herramienta con lat y lng para confirmarlo."
+    : "";
+  const radio = radioKm === null ? "" : ` (el reparto llega hasta unos ${Math.round(radioKm)} km de una sucursal)`;
+  const cerca = masCercana ? ` La sucursal de despacho más cercana es ${conKm(masCercana)}.` : "";
+  const recoger = masCercana ? `recoger en ${masCercana.nombre}` : "recoger en sucursal";
+  return (
+    `Ese domicilio queda fuera de nuestra zona habitual de reparto${radio}: no se envía.${cerca} ` +
+    `Dígalo con claridad y sin prometer el envío (solo el dueño puede autorizar una excepción); ofrezca ${recoger} o, si el cliente insiste en domicilio, pase con una persona UNA sola vez (escalar_a_humano, motivo zona_no_reconocida). ` +
+    `Frase sugerida: «Esa zona queda fuera de nuestra zona habitual de reparto${masCercana ? `; la sucursal más cercana es ${masCercana.nombre}${masCercana.kmAprox === null ? "" : `, ${kmAproxTexto(masCercana.kmAprox)}`}` : ""}. ¿Prefiere pasar a recoger?»${confirmar}`
+  );
+}
+
+/** Colonia reconocida pero sin cobertura confirmada ni coordenadas: honesto, sin inventar ubicacion ni cobertura. */
+export function mensajeColoniaPorConfirmar(args: { readonly zona: string; readonly sugerida: SucursalCercana | null; readonly segunda: SucursalCercana | null }): string {
+  const { zona, sugerida, segunda } = args;
+  // Sin km: la referencia del piloto de una colonia pendiente puede estar equivocada (por eso esta pendiente); solo sirve para ofrecer RECOGER.
+  const ref = sugerida
+    ? ` Referencia no confirmada: ${sugerida.nombre}${segunda ? ` o ${segunda.nombre}` : ""}; úselas solo para ofrecer RECOGER, sin decir distancias ni como promesa de envío.`
+    : "";
+  return (
+    `Reconozco la colonia ${zona}, pero no la tengo ubicada con certeza para confirmar el reparto a domicilio.${ref} ` +
+    `Pídale UNA sola vez su ubicación de WhatsApp (en llamada, un cruce de calles o una plaza conocida) y vuelva a llamar esta herramienta con lat y lng; ` +
+    `frase sugerida: «No la tengo ubicada con certeza: ¿me manda su ubicación?». Si no puede, ofrezca recoger${sugerida ? ` en ${sugerida.nombre}` : " en sucursal"} o pase con una persona (escalar_a_humano, motivo zona_no_reconocida). ` +
+    `Nunca diga que no reconoce la colonia ni prometa el envío a domicilio.`
+  );
+}
