@@ -63,7 +63,7 @@ const tocar = (botones: readonly { id: string; title: string }[], accion: "confi
 
 afterEach(() => vi.useRealTimers());
 
-const quote = (t: ReturnType<typeof armar>, extra: object = {}, its = t.items) => llamada("q", "cotizar_pedido", { branch_slug: "fco-montejo", canal: "recoger", items: its, ...extra });
+const quote = (t: ReturnType<typeof armar>, extra: object = {}, its: object[] = t.items) => llamada("q", "cotizar_pedido", { branch_slug: "fco-montejo", canal: "recoger", items: its, ...extra });
 const confirmarYCrear = (t: ReturnType<typeof armar>, extra: object = {}, its: object[] = t.items) => [llamada("k", "confirmar_resumen", {}), llamada("c", "crear_pedido", { branch_slug: "fco-montejo", canal: "recoger", customer_name: "Luis Canul", payment_method: "efectivo", items: its, ...extra })];
 
 describe("#501 x #508: el toque con la huella sobre renglones resueltos y minutos_para_recoger", () => {
