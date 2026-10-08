@@ -45,6 +45,7 @@ import { restaurantesPrivacidadRoutes } from "./privacidad.ts";
 import { restaurantesPrivacidadInternoRoutes } from "./privacidad-interno.ts";
 import { restaurantesAdminSoftRestauranteRoutes } from "./admin-softrestaurant.ts";
 import { restaurantesCfoRoutes } from "./cfo.ts";
+import { restaurantesCfoExportarRoutes } from "./cfo-exportar.ts";
 import { restaurantesSoftRestauranteDispatchRoutes } from "./softrestaurant-dispatch.ts";
 
 export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -127,5 +128,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesSoftRestauranteDispatchRoutes(deps));
   // CFO (migraciones 081/082/083): lectura, captura de costos e importacion de SoftRestaurant, solo owner/admin.
   app.route("/", restaurantesCfoRoutes(deps));
+  // CFO-06: exportación a Excel/PDF (GET .../admin/cfo/exportar), después de CFO-05.
+  app.route("/", restaurantesCfoExportarRoutes(deps));
   return app;
 }

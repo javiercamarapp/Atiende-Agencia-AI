@@ -64,7 +64,7 @@ const MENSAJE_SIN_ACCESO = "No tienes acceso a esta sucursal.";
 /** Tope de lecturas y escrituras por persona autenticada y organización (la llave es organización:usuario, sin IP; el CFO consulta mucho SQL): 429 con Retry-After al excederlo. */
 export const CFO_LIMITES = { lecturaPorMin: 120, escrituraPorMin: 30, importarPor10Min: 10 } as const;
 
-interface Contexto {
+export interface ContextoCfo {
   readonly servicio: ServicioCfo;
   readonly repo: CfoRepository;
   readonly organizationId: string;
@@ -75,32 +75,80 @@ interface Contexto {
   readonly propertyIdsSql: readonly string[] | null;
 }
 
+/** Constantes y ayudas que comparte `cfo-exportar.ts` (CFO-06): el mismo alcance, el mismo mapeo de errores. */
+export const MENSAJE_SIN_ACCESO_CFO = MENSAJE_SIN_ACCESO;
+
+export function repoCfoDe(deps: AppDeps, c: Context<CoreAuthHonoEnv>): CfoRepository {
+  if (!deps.cfoRestaurantesRepo) throw Errors.serviceUnavailable("El CFO no está disponible en este despliegue.");
+  return deps.cfoRestaurantesRepo(c.get("db"));
+}
+
+
+/** Errores del repositorio -> HTTP. 22023 -> 400, 42501 -> 403 (mismo mensaje para ajena e inexistente), escritura sin migrar -> 503. */
+export async function protegidoCfo<T>(f: () => Promise<T>): Promise<T> {
+  try {
+    return await f();
+  } catch (err) {
+    if (err instanceof CfoParametroInvalidoError) throw Errors.validation(err.message);
+    if (err instanceof CfoSinAccesoError) throw Errors.forbidden(MENSAJE_SIN_ACCESO);
+    if (err instanceof CfoNoDisponibleError) throw Errors.serviceUnavailable("Esta función del CFO todavía no está disponible: falta aplicar la actualización de base de datos correspondiente.");
+    throw err;
+  }
+}
+
+
+/** Resuelve el alcance del actor y arma el servicio. `ids === null` = «todas». */
+export async function construirContextoCfo(deps: AppDeps, c: Context<CoreAuthHonoEnv>, ids: readonly string[] | null): Promise<ContextoCfo> {
+  const repo = repoCfoDe(deps, c);
+  const organizationId = c.get("organizationId");
+  const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+  // TODAS las sucursales de la organización (también las inactivas con historia): es el MISMO conjunto que usa la SQL (`branch_detail`) cuando recibe
+  // p_props = null. Si el alcance se armara solo con las activas, el conjunto de clientes incluiría sucursales que las filas por sucursal descartan y
+  // el consolidado no cuadraría. Las inactivas se marcan `activa: false` para que la UI las rotule.
+  const ramas = await deps.restaurantesRepo(c.get("db")).listBranchesForOrganizationAdmin(organizationId);
+  const organizacionCompleta = scope === null;
+  const permitidas: SucursalApi[] = ramas
+    .filter((b) => organizacionCompleta || (scope as readonly string[]).includes(b.propertyId))
+    .map((b) => ({ propertyId: b.propertyId, nombre: b.name, slug: b.slug, activa: b.status === "active" }));
+  let elegidas: readonly SucursalApi[];
+  let propertyIdsSql: readonly string[] | null;
+  if (ids === null) {
+    elegidas = permitidas;
+    // Org completa: null deja que la SQL incluya «No asignado». Admin acotado: su lista explícita (la SQL la valida de nuevo).
+    propertyIdsSql = organizacionCompleta ? null : permitidas.map((p) => p.propertyId);
+  } else {
+    const validas: SucursalApi[] = [];
+    for (const id of ids) {
+      // Ajena, de otra organización o inexistente: el mismo 403, sin revelar cuál (`permitidas` ya está acotada por la membresía).
+      const s = permitidas.find((p) => p.propertyId === id);
+      if (!s) throw Errors.forbidden(MENSAJE_SIN_ACCESO);
+      validas.push(s);
+    }
+    elegidas = validas;
+    propertyIdsSql = validas.map((v) => v.propertyId);
+  }
+  const alcance: AlcanceSucursales = { propertyIds: elegidas.map((s) => s.propertyId), todas: ids === null, organizacionCompleta };
+  const servicio = new ServicioCfo({
+    repo, organizationId, alcance, propertyIdsSql, sucursales: elegidas, ahora: new Date(),
+    // Un bloque que falla con un error no recuperable se degrada (bloques.<x>: false); aquí queda el rastro para operación.
+    onError: (bloque, err) => logEvent(c, "error", "restaurantes_cfo_bloque_degradado", { organizationId, bloque, message: err instanceof Error ? err.message : String(err) }),
+  });
+  return { servicio, repo, organizationId, alcance, sucursales: elegidas, permitidas, propertyIdsSql };
+}
+
+
 export function restaurantesCfoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   app.use(`${BASE}/*`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   // ---- infraestructura ---------------------------------------------------------------------------------------------------------------------
 
-  function repoDe(c: Context<CoreAuthHonoEnv>): CfoRepository {
-    if (!deps.cfoRestaurantesRepo) throw Errors.serviceUnavailable("El CFO no está disponible en este despliegue.");
-    return deps.cfoRestaurantesRepo(c.get("db"));
-  }
+  const protegido = protegidoCfo;
+  const contexto = (c: Context<CoreAuthHonoEnv>, ids: readonly string[] | null): Promise<ContextoCfo> => construirContextoCfo(deps, c, ids);
 
   async function limitar(c: Context<CoreAuthHonoEnv>, scope: string, max: number, ventanaSeg: number): Promise<void> {
     const r = await consumeRateLimit(deps.restaurantesRepo(c.get("db")), scope, `${c.get("organizationId")}:${c.get("userId")}`, max, ventanaSeg);
     if (!r.allowed) throw Errors.tooManyRequests();
-  }
-
-  /** Errores del repositorio -> HTTP. 22023 -> 400, 42501 -> 403 (mismo mensaje para ajena e inexistente), escritura sin migrar -> 503. */
-  async function protegido<T>(f: () => Promise<T>): Promise<T> {
-    try {
-      return await f();
-    } catch (err) {
-      if (err instanceof CfoParametroInvalidoError) throw Errors.validation(err.message);
-      if (err instanceof CfoSinAccesoError) throw Errors.forbidden(MENSAJE_SIN_ACCESO);
-      if (err instanceof CfoNoDisponibleError) throw Errors.serviceUnavailable("Esta función del CFO todavía no está disponible: falta aplicar la actualización de base de datos correspondiente.");
-      throw err;
-    }
   }
 
   /** JSON con ETag débil: si el cliente ya tiene esta versión, 304 sin cuerpo. */
@@ -113,49 +161,10 @@ export function restaurantesCfoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     return new Response(texto, { status: 200, headers: { ...headers, "content-type": "application/json; charset=UTF-8" } });
   }
 
-  /** Resuelve el alcance del actor y arma el servicio. `ids === null` = «todas». */
-  async function contexto(c: Context<CoreAuthHonoEnv>, ids: readonly string[] | null): Promise<Contexto> {
-    const repo = repoDe(c);
-    const organizationId = c.get("organizationId");
-    const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
-    // TODAS las sucursales de la organización (también las inactivas con historia): es el MISMO conjunto que usa la SQL (`branch_detail`) cuando recibe
-    // p_props = null. Si el alcance se armara solo con las activas, el conjunto de clientes incluiría sucursales que las filas por sucursal descartan y
-    // el consolidado no cuadraría. Las inactivas se marcan `activa: false` para que la UI las rotule.
-    const ramas = await deps.restaurantesRepo(c.get("db")).listBranchesForOrganizationAdmin(organizationId);
-    const organizacionCompleta = scope === null;
-    const permitidas: SucursalApi[] = ramas
-      .filter((b) => organizacionCompleta || (scope as readonly string[]).includes(b.propertyId))
-      .map((b) => ({ propertyId: b.propertyId, nombre: b.name, slug: b.slug, activa: b.status === "active" }));
-    let elegidas: readonly SucursalApi[];
-    let propertyIdsSql: readonly string[] | null;
-    if (ids === null) {
-      elegidas = permitidas;
-      // Org completa: null deja que la SQL incluya «No asignado». Admin acotado: su lista explícita (la SQL la valida de nuevo).
-      propertyIdsSql = organizacionCompleta ? null : permitidas.map((p) => p.propertyId);
-    } else {
-      const validas: SucursalApi[] = [];
-      for (const id of ids) {
-        // Ajena, de otra organización o inexistente: el mismo 403, sin revelar cuál (`permitidas` ya está acotada por la membresía).
-        const s = permitidas.find((p) => p.propertyId === id);
-        if (!s) throw Errors.forbidden(MENSAJE_SIN_ACCESO);
-        validas.push(s);
-      }
-      elegidas = validas;
-      propertyIdsSql = validas.map((v) => v.propertyId);
-    }
-    const alcance: AlcanceSucursales = { propertyIds: elegidas.map((s) => s.propertyId), todas: ids === null, organizacionCompleta };
-    const servicio = new ServicioCfo({
-      repo, organizationId, alcance, propertyIdsSql, sucursales: elegidas, ahora: new Date(),
-      // Un bloque que falla con un error no recuperable se degrada (bloques.<x>: false); aquí queda el rastro para operación.
-      onError: (bloque, err) => logEvent(c, "error", "restaurantes_cfo_bloque_degradado", { organizationId, bloque, message: err instanceof Error ? err.message : String(err) }),
-    });
-    return { servicio, repo, organizationId, alcance, sucursales: elegidas, permitidas, propertyIdsSql };
-  }
-
   const consultaDe = (q: ConsultaParseada): ConsultaCfo => ({ desde: q.desde, hasta: q.hasta, comparar: q.comparar, granularidad: q.granularidad });
 
   /** Ruta de lectura: rol, tope por persona, query, alcance y respuesta con ETag. */
-  function lectura(path: string, armar: (ctx: Contexto, q: ConsultaParseada, c: Context<CoreAuthHonoEnv>) => Promise<unknown>): void {
+  function lectura(path: string, armar: (ctx: ContextoCfo, q: ConsultaParseada, c: Context<CoreAuthHonoEnv>) => Promise<unknown>): void {
     app.get(`${BASE}${path}`, async (c) => {
       assertAccion(c, "cfo.ver");
       await limitar(c, "cfo-lectura", CFO_LIMITES.lecturaPorMin, 60);
