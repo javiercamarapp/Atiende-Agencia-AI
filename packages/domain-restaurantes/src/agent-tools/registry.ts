@@ -1523,7 +1523,7 @@ async function dispatchTool(
         source: ctx.channel === "voz" ? "voice" : "whatsapp",
       });
       // QA-PM-R5-voz-05: por voz el agente escalaba y colgaba SIN decirle nada al cliente. El resultado trae la frase que debe decir (en WhatsApp el agente ya la escribe en el mismo turno).
-      const aviso = esEscalada && ctx.channel === "voz" ? { mensaje_al_cliente: MENSAJE_ESCALACION_VOZ } : {};
+      const aviso = esEscalada && ctx.channel === "voz" ? { mensaje_al_cliente: MENSAJE_ESCALACION_VOZ, instruccion: INSTRUCCION_ESCALACION_VOZ } : {};
       return { result: { ok: true, ...aviso }, raw: { ok: true }, orderId: null, propertyId: null };
     }
   }
@@ -1532,8 +1532,10 @@ async function dispatchTool(
 /** Resultado de buscar_cliente sin `pedidoReciente`: no hay dato del estado en cocina. */
 export const AVISO_SIN_ESTADO_DE_PEDIDO = "Este resultado NO trae el estado del pedido en cocina ni si ya salió. Si el cliente pregunta si ya está en cocina o si se está preparando, diga solo que el pedido figura registrado (con su total y hora, si los tiene) y que la sucursal le confirma el estado; NUNCA «ya se está preparando» ni «ya salió».";
 
-/** Lo que el agente de VOZ le dice al cliente tras escalar a una persona: nunca cuelga en silencio ni promete hora o resultado. */
-export const MENSAJE_ESCALACION_VOZ = "Ya avisé al gerente de la sucursal; le responden en cuanto puedan. Dígaselo así al cliente, de usted, ANTES de despedirse o cortar, sin prometer hora ni resultado.";
+/** Lo que el agente de VOZ le dice al cliente tras escalar a una persona (SOLO la frase literal: `mensaje_al_cliente` se lee tal cual). */
+export const MENSAJE_ESCALACION_VOZ = "Ya avisé al gerente de la sucursal; le responden en cuanto puedan.";
+/** Instruccion para el MODELO (no para el cliente): va en `instruccion`, nunca dentro de `mensaje_al_cliente`. */
+export const INSTRUCCION_ESCALACION_VOZ = "Dígale al cliente el mensaje_al_cliente, de usted, ANTES de despedirse o cortar; no prometa hora ni resultado.";
 
 /** Texto fijo que se le da al cliente tras el aviso de llegada (no se improvisa ni se prometen minutos). */
 export const MENSAJE_LLEGADA_REGISTRADA = "Ya avisé a la sucursal que usted llegó; en un momento le entregan su pedido.";

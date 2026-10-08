@@ -1,11 +1,12 @@
 // Ronda 5 del loop de PM: los escenarios de regresion (parafraseados y anonimizados) tienen estructura valida, ningun dato personal (el repo es publico) y cada
 // uno apunta a una prueba determinista que EXISTE en el repo. Ademas ata las reglas de prompt (WhatsApp y voz) que no se pueden probar sin modelo.
-import { existsSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
+import { describe, expect, it, vi } from "vitest";
 import { cargarEscenariosR5 } from "../src/evals/agente-pm/escenarios-r5.ts";
 import { GUIONES_ES_MX } from "../src/voz/simulador/guiones-es-mx.ts";
 import { REGLAS_VIVAS_VOZ, comportamientoVozPm } from "../src/voz/perfil-voz-pm.ts";
-import { AVISO_SIN_ESTADO_DE_PEDIDO, MENSAJE_ESCALACION_VOZ, invokeAgentTool } from "../src/agent-tools/registry.ts";
+import * as registro from "../src/agent-tools/registry.ts";
+import { AGENT_TOOL_DEFINITIONS, AVISO_SIN_ESTADO_DE_PEDIDO, INSTRUCCION_ESCALACION_VOZ, MENSAJE_ESCALACION_VOZ, invokeAgentTool } from "../src/agent-tools/registry.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
 import { buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
 import type { BranchSummary } from "../src/types.ts";
@@ -121,23 +122,85 @@ describe("reglas vivas de voz de la ronda 5", () => {
   it("escalar_a_humano por voz devuelve la frase para el cliente; por WhatsApp no (negativo)", async () => {
     const f = buildRestaurantFixture();
     const voz = await invokeAgentTool(f.repo, { organizationId: f.organizationId, channel: "voz", phone: "9991234567" }, "escalar_a_humano", { motivo: "cliente_lo_pide", resumen: "pide una persona" });
-    expect(voz.result).toMatchObject({ ok: true, mensaje_al_cliente: MENSAJE_ESCALACION_VOZ });
+    expect(voz.result).toMatchObject({ ok: true, mensaje_al_cliente: MENSAJE_ESCALACION_VOZ, instruccion: INSTRUCCION_ESCALACION_VOZ });
     const wa = await invokeAgentTool(f.repo, { organizationId: f.organizationId, channel: "whatsapp", phone: "9991234568" }, "escalar_a_humano", { motivo: "cliente_lo_pide", resumen: "pide una persona" });
     expect(wa.result).toEqual({ ok: true });
   });
 });
 
 describe("buscar_cliente no deja inventar el estado de cocina (QA-PM-R5-voz-04)", () => {
-  it("cliente nuevo: sin aviso; cliente con pedido y sin pedidoReciente: el resultado trae el aviso", async () => {
+  const ctxDe = (f: ReturnType<typeof buildRestaurantFixture>) => ({ organizationId: f.organizationId, channel: "voz" as const, phone: "9991234567" });
+  const crear = (f: ReturnType<typeof buildRestaurantFixture>) =>
+    invokeAgentTool(f.repo, ctxDe(f), "crear_pedido", { branch_slug: "fco-montejo", canal: "recoger", customer_name: "Nora", payment_method: "efectivo", items: [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 2 }] });
+
+  it("cliente nuevo: sin aviso", async () => {
     const f = buildRestaurantFixture();
-    const ctx = { organizationId: f.organizationId, channel: "voz" as const, phone: "9991234567" };
-    const nuevo = (await invokeAgentTool(f.repo, ctx, "buscar_cliente", {})).result as Record<string, unknown>;
+    const nuevo = (await invokeAgentTool(f.repo, ctxDe(f), "buscar_cliente", {})).result as Record<string, unknown>;
     expect(nuevo.isNew).toBe(true);
     expect(nuevo.aviso_estado_pedido).toBeUndefined();
+  });
+  it("cliente con pedido y estado de cocina legible (pedidoReciente): sin aviso", async () => {
+    const f = buildRestaurantFixture();
+    await crear(f);
+    const r = (await invokeAgentTool(f.repo, ctxDe(f), "buscar_cliente", {})).result as Record<string, unknown>;
+    expect(r.isNew).toBe(false);
+    expect(r.pedidoReciente).toMatchObject({ estado: "preparando" });
+    expect(r.aviso_estado_pedido).toBeUndefined();
+  });
+  it("cliente con pedido y SIN lectura del estado de cocina (pedidoReciente indefinido): el resultado trae el aviso", async () => {
+    const f = buildRestaurantFixture();
+    await crear(f);
+    vi.spyOn(f.repo, "findLatestOrderByPhone").mockResolvedValue(undefined);
+    const r = (await invokeAgentTool(f.repo, ctxDe(f), "buscar_cliente", {})).result as Record<string, unknown>;
+    expect(r.isNew).toBe(false);
+    expect(r.pedidoReciente).toBeUndefined();
+    expect(r.aviso_estado_pedido).toBe(AVISO_SIN_ESTADO_DE_PEDIDO);
+  });
+});
+
+// Todo lo que va en `mensaje_al_cliente` se LEE tal cual al cliente (regla viva de voz: «diga el mensaje_al_cliente que devuelve»): ahi no caben instrucciones para el modelo.
+const INSTRUCCION_AL_MODELO = /d[ií]gaselo|d[ií]gale|antes de despedirse|sin prometer|no prometa|no diga|no avise|responda|\bllame\b|\bpregunte\b|\bescale\b|herramienta|el cliente|al cliente/i;
+function mensajesAlCliente(valor: unknown, acc: string[] = []): string[] {
+  if (Array.isArray(valor)) valor.forEach((v) => mensajesAlCliente(v, acc));
+  else if (valor && typeof valor === "object") {
+    for (const [k, v] of Object.entries(valor)) {
+      if (k === "mensaje_al_cliente" && typeof v === "string") acc.push(v);
+      else mensajesAlCliente(v, acc);
+    }
+  }
+  return acc;
+}
+
+describe("mensaje_al_cliente no lleva instrucciones al modelo (QA-PM-R5-voz-05)", () => {
+  it("barrido: toda constante MENSAJE_* exportada por el registro", () => {
+    const constantes = Object.entries(registro).filter(([k, v]) => k.startsWith("MENSAJE_") && typeof v === "string") as Array<[string, string]>;
+    expect(constantes.length).toBeGreaterThanOrEqual(3);
+    for (const [nombre, texto] of constantes) expect(texto, nombre).not.toMatch(INSTRUCCION_AL_MODELO);
+  });
+  it("barrido: cada `mensaje_al_cliente:` del registro apunta a una constante exportada (ninguno en linea sin revisar)", () => {
+    const fuente = readFileSync(new URL("../src/agent-tools/registry.ts", import.meta.url), "utf8");
+    const usos = [...fuente.matchAll(/mensaje_al_cliente:\s*([^,}\s]+)/g)].map((m) => m[1]!);
+    expect(usos.length).toBeGreaterThanOrEqual(4);
+    // `fijo` es la derivada local de MENSAJE_LLEGADA_REGISTRADA / MENSAJE_PEDIDO_TELEFONICO_REGISTRADO (ya barridas arriba).
+    for (const uso of usos.filter((u) => u !== "fijo")) expect(Object.keys(registro), uso).toContain(uso);
+  });
+  it("barrido: el resultado real de TODAS las herramientas por voz (sin entrada y con las entradas de los avisos)", async () => {
+    const f = buildRestaurantFixture();
+    const ctx = { organizationId: f.organizationId, channel: "voz" as const, phone: "9991234567" };
     await invokeAgentTool(f.repo, ctx, "crear_pedido", { branch_slug: "fco-montejo", canal: "recoger", customer_name: "Nora", payment_method: "efectivo", items: [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 2 }] });
-    const conocido = (await invokeAgentTool(f.repo, ctx, "buscar_cliente", {})).result as Record<string, unknown>;
-    expect(conocido.isNew).toBe(false);
-    if (conocido.pedidoReciente === undefined) expect(conocido.aviso_estado_pedido).toBe(AVISO_SIN_ESTADO_DE_PEDIDO);
-    else expect(conocido.aviso_estado_pedido).toBeUndefined();
+    const entradas: Array<[string, Record<string, unknown>]> = [
+      ["escalar_a_humano", { motivo: "cliente_lo_pide", resumen: "pide una persona" }],
+      ["registrar_contacto", { reason: "cliente_llego" }],
+      ["registrar_contacto", { reason: "pedido_telefonico", message: "pin de maps" }],
+      ["registrar_contacto", { reason: "otro", message: "x", customer_name: "Nora" }],
+    ];
+    for (const d of AGENT_TOOL_DEFINITIONS) entradas.push([d.name, {}]);
+    const vistos: string[] = [];
+    for (const [nombre, input] of entradas) {
+      const r = await invokeAgentTool(f.repo, ctx, nombre as never, input).catch(() => null);
+      if (r) vistos.push(...mensajesAlCliente(r.result));
+    }
+    expect(vistos).toContain(MENSAJE_ESCALACION_VOZ);
+    for (const m of vistos) expect(m).not.toMatch(INSTRUCCION_AL_MODELO);
   });
 });
