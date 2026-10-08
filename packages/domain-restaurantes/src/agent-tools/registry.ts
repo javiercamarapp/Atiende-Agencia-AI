@@ -529,6 +529,10 @@ export function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo> & Parti
 
 /** `undefined` si no vino; un valor fuera del catalogo se deja pasar para que la validacion de dominio lo rechace. */
 function toDoubleSalsas(raw: unknown): readonly DoubleSalsa[] | undefined {
+  // QA-PM-R4-reglas-09: doble_salsas que no es una lista se ignoraba en silencio y el pedido salia sin cobrar ni anotar el extra.
+  if (raw !== undefined && raw !== null && raw !== "" && !Array.isArray(raw)) {
+    throw new OrderValidationError('doble_salsas debe ser una lista de salsas (por ejemplo ["salsa_roja"]), no un texto. Mándela como lista en cotizar_pedido y en crear_pedido.');
+  }
   return Array.isArray(raw) ? (raw as readonly DoubleSalsa[]) : undefined;
 }
 
@@ -646,9 +650,14 @@ function porcentajeDePropina(valor: unknown): number | null {
   return n > 0 && n <= 100 ? n : null;
 }
 
+function esSalsaBasicaIncluida(valor: unknown): boolean {
+  return typeof valor === "string" && (DEFAULT_COMPLEMENTS as readonly string[]).includes(valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim());
+}
+
 function assertEntradasReconocidas(input: Record<string, unknown>): void {
   if (Array.isArray(input.requested_complements)) {
-    const desconocidos = input.requested_complements.filter((c) => typeof c === "string" && c.trim() !== "" && canonicalRequestedComplement(c) === null);
+    // QA-PM-R4-reglas-10: una salsa BASICA ("salsa_verde") ya viene incluida sin costo: no se rechaza como "no la manejamos"; es un no-op (la comanda ya la lleva).
+    const desconocidos = input.requested_complements.filter((c) => typeof c === "string" && c.trim() !== "" && canonicalRequestedComplement(c) === null && !esSalsaBasicaIncluida(c));
     if (desconocidos.length > 0) {
       throw new OrderValidationError(
         `No manejamos ${desconocidos.map((c) => `"${String(c)}"`).join(", ")} como complemento. Los que sí se piden son: ${COMPLEMENTOS_PEDIBLES.join(", ")}. Dígale al cliente que ese no lo manejamos y ofrezca uno de la lista; no lo anote ni lo dé por registrado.`,
@@ -736,6 +745,10 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
   // `plazo_minutos_servidor` es un campo INTERNO que solo pone `conHoraDeRecogidaRelativa`: lo que mande el modelo se descarta.
   const { plazo_minutos_servidor: _interno, ...entrada } = rawInput;
+  // QA-PM-R4-reglas-11: una hora_recogida que no es texto (un epoch numerico) se ignoraba en silencio y el pedido salia sin hora (cocina lo trata como "para ya").
+  if ((name === "cotizar_pedido" || name === "crear_pedido") && entrada.hora_recogida !== undefined && entrada.hora_recogida !== null && typeof entrada.hora_recogida !== "string") {
+    throw new OrderValidationError("hora_recogida debe ser texto en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00), no un número. Si el cliente dio un plazo (\"en 40 minutos\"), mande minutos_para_recoger.");
+  }
   const input = await conHoraDeRecogidaRelativa(repo, ctx, name, entrada);
   if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);
