@@ -20,6 +20,7 @@ import {
   History,
   Clock,
   LayoutDashboard,
+  LineChart,
   ListChecks,
   Lock,
   Megaphone,
@@ -106,7 +107,7 @@ const COPILOTO_ROLES: ReadonlySet<string> = new Set(["owner", "admin", "staff"])
 // UNI-6: categorías en el orden de Likida (Operación, Catálogo, Clientes y, solo owner/admin, Agente y Configuración) con
 // "Resumen" como raíz sin título. Mismos destinos y roles que antes: ningún link se agrega ni se quita, solo se reagrupan
 // (Agente de voz y los de gestión siguen detrás de STAFF_NAV_ROLES).
-function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true): SidebarSection[] {
+function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true, canSeeCfo = false): SidebarSection[] {
   const base = `/restaurantes/${orgSlug}`;
   const sections: SidebarSection[] = [
     {
@@ -116,6 +117,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
       items: [
         { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
         ...(canSeeCopiloto ? [{ to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles }] : []),
+        // CFO-07: tablero financiero (solo owner/admin, `cfo.ver`; staff y repartidor no lo ven y el API les responde 403).
+        ...(canSeeCfo ? [{ to: `${base}/cfo`, label: "CFO", icon: LineChart }] : []),
       ],
     },
     {
@@ -267,7 +270,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       vertical="restaurantes"
       copilotoHref={`/restaurantes/${orgSlug}/copiloto`}
       ocultarChat={!COPILOTO_ROLES.has(role)}
-      sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role), COPILOTO_ROLES.has(role), puedeEn(role, "promociones.ver"))}
+      sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role), COPILOTO_ROLES.has(role), puedeEn(role, "promociones.ver"), puedeEn(role, "cfo.ver"))}
       mobileItems={buildMobileItems(orgSlug)}
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
