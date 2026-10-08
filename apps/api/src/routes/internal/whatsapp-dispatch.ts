@@ -113,6 +113,7 @@ import type { AppDeps } from "../../deps.ts";
 import { crearGuardTelefono } from "../../supresion/index.ts";
 import { crearMedidorMensajes } from "../../plan-topes/medidor.ts";
 import { crearCatalogoPlantillas } from "../../mensajeria/catalogo-plantillas.ts";
+import { vigilarSaludMetaBestEffort } from "../../salud/salud-meta.ts";
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 200;
@@ -407,6 +408,9 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
           totalDead,
         });
       }
+
+      // Salud de Meta/agente (token por vencer, timeouts, fallos seguidos): best-effort en sesiones de sistema propias; jamas altera esta respuesta.
+      await vigilarSaludMetaBestEffort(deps);
 
       return c.json({ ok: !anyFailure, results });
     })();

@@ -30,6 +30,8 @@ import { FakeWhatsAppGraphClient, WhatsAppOutboundDispatcher, WhatsAppSendError 
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { TEST_ENV } from "./fixtures.ts";
+import { conEmisiones } from "./support/emisiones.ts";
+import type { TurnoAgente } from "@atiende/domain-restaurantes";
 
 interface DispatchTestContext {
   readonly deps: AppDeps;
@@ -259,5 +261,66 @@ describe("POST /internal/whatsapp/dispatch", () => {
     expect(body.ok).toBe(true); // un mensaje 'dead' no es un fallo de la RUTA
     expect(body.results.citas).toMatchObject({ claimed: 1, sent: 0, dead: 1 });
     expect(body.results.restaurantes).toMatchObject({ claimed: 1, sent: 1, dead: 0 });
+  });
+});
+
+// Salud de Meta enganchada al cron existente: token por vencer y timeouts/fallos del agente. Reloj fijo: miercoles 7-oct-2026 12:00 America/Merida
+// (18:00 UTC). Los lectores son dobles inyectados: ninguna prueba llama a Meta.
+describe("POST /internal/whatsapp/dispatch: salud de Meta y del agente", () => {
+  const AHORA = new Date("2026-10-07T18:00:00Z");
+  const DIA = 86_400_000;
+  const ORG = "00000000-0000-0000-0000-00000000a001";
+  const turnos = (n: number, timeouts: number): TurnoAgente[] => Array.from({ length: n }, (_, i) => ({ organizationId: ORG, at: new Date(AHORA.getTime() - ((i % 9) + 0.5) * 60_000), resultado: i < timeouts ? "timeout" : "ok" }));
+  const request = (deps: AppDeps) => buildApp(deps).request("/internal/whatsapp/dispatch", { method: "POST", headers: { "x-atiende-internal-secret": deps.env.internalSecret } });
+
+  it("token a 7 dias y 2 % de timeouts: la corrida emite ambos avisos de plataforma y responde igual que sin vigilancia", async () => {
+    const base = buildDispatchTestContext({ withDispatcher: true });
+    const { deps, emisiones } = conEmisiones({
+      ...base.deps,
+      saludMeta: {
+        lectorToken: { leer: async () => ({ valido: true, expiraEn: new Date(AHORA.getTime() + 7 * DIA) }) },
+        lectorTurnos: () => ({ leer: async () => turnos(100, 2) }),
+        reloj: () => AHORA,
+      },
+    });
+    const res = await request(deps);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
+    expect(emisiones.map((e) => e.evento).sort()).toEqual(["superadmin.agente.timeouts_altos", "superadmin.whatsapp.token_por_vencer"]);
+    expect(emisiones.every((e) => e.organizationId === null && e.enlace === "/superadmin/salud")).toBe(true);
+  });
+
+  it("un lector del token que lanza y un lector de turnos que lanza NO alteran la respuesta del cron", async () => {
+    const base = buildDispatchTestContext({ withDispatcher: true });
+    const { deps, emisiones } = conEmisiones({
+      ...base.deps,
+      saludMeta: {
+        lectorToken: { leer: async () => { throw new Error("Graph caido"); } },
+        lectorTurnos: () => ({ leer: async () => { throw new Error("base caida"); } }),
+        reloj: () => AHORA,
+      },
+    });
+    const res = await request(deps);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
+    expect(emisiones).toHaveLength(0);
+  });
+
+  it("el token se consulta solo en el primer tick de cada hora (minutos 0-4 UTC): a las 12:05 no se llama a Meta, a las 12:04 si", async () => {
+    let llamadas = 0;
+    const lectorToken = { leer: async () => { llamadas += 1; return { valido: true, expiraEn: null }; } };
+    const base = buildDispatchTestContext({ withDispatcher: true });
+    const con = (reloj: Date) => ({ ...base.deps, saludMeta: { lectorToken, lectorTurnos: () => ({ leer: async () => [] }), reloj: () => reloj } });
+    await request(con(new Date("2026-10-07T18:05:00Z")));
+    expect(llamadas).toBe(0);
+    await request(con(new Date("2026-10-07T18:04:59Z")));
+    expect(llamadas).toBe(1);
+  });
+
+  it("sin saludMeta configurado (sin token) el cron se comporta como antes: ninguna llamada a Meta y la base sin migrar no rompe", async () => {
+    const ctx = buildDispatchTestContext({ withDispatcher: true });
+    const res = await request(ctx.deps);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
   });
 });
