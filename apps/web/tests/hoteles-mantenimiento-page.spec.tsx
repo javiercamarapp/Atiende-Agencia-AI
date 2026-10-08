@@ -26,11 +26,12 @@ const TICKET = {
   costoEstimado: 1500, costoReal: null, notaResolucion: null, creadoPor: "u1", cerradoEn: null, creadoEn: "2026-03-10T10:00:00.000Z", actualizadoEn: "2026-03-10T10:00:00.000Z",
 };
 
-function stub() {
+function stub(tickets: unknown[] = [TICKET]) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     const json = (b: unknown) => ({ ok: true, status: 200, json: async () => b }) as unknown as Response;
-    if (method === "GET" && url.includes("/hoteles/prop-1/mantenimiento/tickets")) return json([TICKET]);
+    if (method === "GET" && url.includes("/hoteles/prop-1/mantenimiento/tickets")) return json(tickets);
+    if (method === "POST" && url.endsWith("/mantenimiento/tickets")) return json({ ...TICKET, id: "m2" });
     if (method === "POST" && url.endsWith("/mantenimiento/tickets/m1/cerrar")) return json({ ...TICKET, estado: "cerrado" });
     throw new Error(`fetch inesperado en el test: ${method} ${url}`);
   });
@@ -97,5 +98,36 @@ describe("MantenimientoPage (hoteles) — cierre con dialogos", () => {
     await pulsarEnDialogo("Cerrar ticket");
     expect(posts()).toEqual([{ url: "/tickets/m1/cerrar", body: { actualCost: 1800, notaResolucion: "Se cambió el compresor" } }]);
     expect(promptSpy).not.toHaveBeenCalled();
+  });
+
+  it("sin costo estimado muestra 'Sin estimar' y no 'Estimado: $0'", async () => {
+    stub([{ ...TICKET, costoEstimado: 0 }]);
+    rendered = renderComponent(<MantenimientoPage {...CTX} />);
+    await esperar();
+    expect(rendered.container.textContent).toContain("Sin estimar");
+    expect(rendered.container.textContent).not.toContain("Estimado");
+  });
+
+  it("Nuevo ticket abre un FormDialog; sin titulo no envia, con datos manda POST .../tickets", async () => {
+    stub();
+    rendered = renderComponent(<MantenimientoPage {...CTX} />);
+    await esperar();
+    const nuevo = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Nuevo ticket"))!;
+    await act(async () => click(nuevo));
+    const modal = () => document.body.querySelector('[role="dialog"]') as HTMLElement;
+    const crear = () => [...modal().querySelectorAll("button")].find((b) => b.textContent?.includes("Crear ticket"))!;
+    await act(async () => {
+      click(crear());
+      for (let i = 0; i < 4; i++) await flushMicrotasks();
+    });
+    expect(modal().textContent).toContain("Título y descripción son requeridos.");
+    expect(posts()).toEqual([]);
+    await act(async () => changeValue(modal().querySelector("input")!, "Fuga en baño"));
+    await act(async () => changeValue(modal().querySelector("textarea")!, "Gotea la llave"));
+    await act(async () => {
+      click(crear());
+      for (let i = 0; i < 6; i++) await flushMicrotasks();
+    });
+    expect(posts()).toEqual([{ url: "/tickets", body: { titulo: "Fuga en baño", descripcion: "Gotea la llave", severidad: "media", origen: "staff" } }]);
   });
 });

@@ -5,8 +5,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { BedDouble, CalendarClock, ConciergeBell, LogIn, LogOut, RefreshCw, Repeat } from "lucide-react";
-import { Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, NativeSelect, PageContainer, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
+import { BedDouble, CalendarClock, LogIn, LogOut, RefreshCw, Repeat } from "lucide-react";
+import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, NativeSelect, PageContainer, PageHeader, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
 import { statusTone } from "@atiende/ui";
 import {
@@ -234,8 +234,7 @@ export function RecepcionPage({ apiBaseUrl, token, propertyId, orgSlug, role }: 
     return (
       <Card>
         <CardContent className="p-3 flex flex-col gap-2 sm:flex-row sm:items-end">
-          <label className="text-xs text-muted-foreground flex flex-col gap-1">
-            Nueva habitacion
+          <FormField label="Nueva habitacion">
             <NativeSelect size="sm" value={cambio.roomId} onChange={(e) => setCambio({ ...cambio, roomId: e.target.value })}>
               <option value="">Elegir…</option>
               {candidatas.map((h) => (
@@ -244,14 +243,14 @@ export function RecepcionPage({ apiBaseUrl, token, propertyId, orgSlug, role }: 
                 </option>
               ))}
             </NativeSelect>
-          </label>
-          <label className="text-xs text-muted-foreground flex flex-col gap-1 sm:flex-1">
-            Motivo (opcional)
+          </FormField>
+          <FormField label="Motivo (opcional)" className="sm:flex-1">
             <Input value={cambio.motivo} maxLength={200} onChange={(e) => setCambio({ ...cambio, motivo: e.target.value })} />
-          </label>
+          </FormField>
           <Button
             type="button"
             size="sm"
+            loading={busy === m.reservaId}
             disabled={busy === m.reservaId || cambio.roomId === ""}
             onClick={() =>
               void run(m.reservaId, async () => {
@@ -322,46 +321,39 @@ export function RecepcionPage({ apiBaseUrl, token, propertyId, orgSlug, role }: 
 
   return (
     <PageContainer padding="none" className="gap-4">
-      <header className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-display font-semibold text-foreground flex items-center gap-2">
-          <ConciergeBell className="size-5 text-muted-foreground" strokeWidth={1.75} />
-          Recepción
-        </h1>
-        <div className="flex items-end gap-2 flex-wrap">
-          <label className="text-xs text-muted-foreground flex flex-col gap-1">
-            Fecha
-            <Input type="date" value={data?.fecha ?? fecha ?? ""} onChange={(e) => setFecha(e.target.value || undefined)} className="h-11" />
-          </label>
-          {!esHoy && data && (
-            <Button type="button" variant="outline" onClick={() => setFecha(undefined)}>
-              Hoy
+      <PageHeader
+        titulo="Recepción"
+        descripcion="Llegadas, salidas, huéspedes en casa y rack de habitaciones del día."
+        acciones={
+          <div className="flex items-end gap-2 flex-wrap">
+            <FormField label="Fecha">
+              <Input type="date" value={data?.fecha ?? fecha ?? ""} onChange={(e) => setFecha(e.target.value || undefined)} />
+            </FormField>
+            {!esHoy && data && (
+              <Button type="button" variant="outline" onClick={() => setFecha(undefined)}>
+                Hoy
+              </Button>
+            )}
+            <Button type="button" variant="outline" onClick={() => void load()} aria-label="Actualizar">
+              <RefreshCw className="size-4" strokeWidth={1.75} />
             </Button>
-          )}
-          <Button type="button" variant="outline" onClick={() => void load()} aria-label="Actualizar">
-            <RefreshCw className="size-4" strokeWidth={1.75} />
-          </Button>
-        </div>
-      </header>
+          </div>
+        }
+      />
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
       {aviso && (
-        <p role="status" className="text-sm text-foreground">
+        <Callout tone="success" onDismiss={() => setAviso(null)}>
           {aviso}
-        </p>
+        </Callout>
       )}
       {!data && !error && <EstadoCargando etiqueta="Cargando recepción…" />}
 
       {data && !data.tareasDisponibles && (
-        <Card>
-          <CardContent className="p-3 text-sm text-foreground">
-            El estado de limpieza por habitación aún no está activo en esta base de datos: el rack muestra solo el estado de cada habitación.
-          </CardContent>
-        </Card>
+        <Callout tone="info">El estado de limpieza por habitación aún no está activo en esta base de datos: el rack muestra solo el estado de cada habitación.</Callout>
       )}
       {data && !data.identidadDisponible && (
-        <Card>
-          <CardContent className="p-3 text-sm text-foreground">La bóveda de identidad aún no está activa en esta base de datos: no se puede mostrar si cada huésped ya registró su identidad.</CardContent>
-        </Card>
+        <Callout tone="info">La bóveda de identidad aún no está activa en esta base de datos: no se puede mostrar si cada huésped ya registró su identidad.</Callout>
       )}
 
       {data && (

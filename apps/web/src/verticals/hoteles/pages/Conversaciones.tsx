@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { MessageSquare, RefreshCw, UserRound } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, NativeSelect, PageContainer, PageHeader, StatusBadge, Textarea } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, NativeSelect, PageContainer, PageHeader, StatusBadge, Textarea } from "@atiende/ui";
 import {
   CONVERSACIONES_REASIGNAR_ROLES,
   CONVERSACIONES_ROLES,
@@ -27,6 +27,7 @@ import {
   tonoEstado,
 } from "../lib/conversaciones-client.ts";
 import type { BandejaWire, ConversacionFiltroEstado, ConversacionItemWire, DetalleWire } from "../lib/conversaciones-client.ts";
+import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 /** Sondeo de la bandeja (los mensajes llegan por el webhook): sin esto la persona tendria que recargar a mano. */
@@ -35,7 +36,7 @@ const REFRESCO_MS = 30_000;
 function hora(iso: string | null): string {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" });
+    return fechaHoraEsMx(iso);
   } catch {
     return iso;
   }
@@ -122,15 +123,17 @@ export function ConversacionesPage({ apiBaseUrl, token, propertyId, orgSlug, rol
         meta={data?.disponible ? <span className="text-xs text-muted-foreground">{porAtender} por atender · {data.total} en total</span> : undefined}
       />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <NativeSelect aria-label="Estado" value={estado} onChange={(e) => setEstado(e.target.value as ConversacionFiltroEstado | "")} wrapperClassName="w-auto min-w-48">
-          <option value="">Todas las conversaciones</option>
-          {(Object.keys(ESTADO_FILTRO_LABELS) as ConversacionFiltroEstado[]).map((e) => (
-            <option key={e} value={e}>
-              {ESTADO_FILTRO_LABELS[e]}
-            </option>
-          ))}
-        </NativeSelect>
+      <div className="flex flex-wrap items-end gap-3">
+        <FormField label="Estado" className="min-w-48">
+          <NativeSelect value={estado} onChange={(e) => setEstado(e.target.value as ConversacionFiltroEstado | "")}>
+            <option value="">Todas las conversaciones</option>
+            {(Object.keys(ESTADO_FILTRO_LABELS) as ConversacionFiltroEstado[]).map((e) => (
+              <option key={e} value={e}>
+                {ESTADO_FILTRO_LABELS[e]}
+              </option>
+            ))}
+          </NativeSelect>
+        </FormField>
         <Checkbox label="Solo no leídas" checked={soloNoLeidas} onChange={(e) => setSoloNoLeidas(e.target.checked)} />
         {huespedId && (
           <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
@@ -307,11 +310,7 @@ function HiloConversacion({ id, apiBaseUrl, token, propertyId, orgSlug, role, on
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">
-        {aviso && (
-          <p role={aviso.tipo === "error" ? "alert" : "status"} className={`m-0 ${aviso.tipo === "error" ? "text-destructive" : "text-foreground"}`}>
-            {aviso.texto}
-          </p>
-        )}
+        {aviso && <Callout tone={aviso.tipo === "error" ? "danger" : "success"}>{aviso.texto}</Callout>}
 
         <div className="flex flex-wrap gap-2">
           {!cerrada && !esMia && !tomadaPorOtra && (
@@ -361,17 +360,11 @@ function HiloConversacion({ id, apiBaseUrl, token, propertyId, orgSlug, role, on
 
         {esMia ? (
           <form className="flex flex-col gap-2" onSubmit={enviar}>
-            <label className="flex flex-col gap-1">
-              Responder por WhatsApp
+            <FormField label="Responder por WhatsApp" error={sensible ? "No envíes números de tarjeta ni de documento por WhatsApp." : undefined}>
               <Textarea value={respuesta} maxLength={1000} onChange={(e) => setRespuesta(e.target.value)} rows={3} />
-            </label>
-            {sensible && (
-              <p role="alert" className="m-0 text-xs text-destructive">
-                No envíes números de tarjeta ni de documento por WhatsApp.
-              </p>
-            )}
+            </FormField>
             <div>
-              <Button type="submit" disabled={ocupado || !respuesta.trim() || sensible}>
+              <Button type="submit" loading={ocupado} disabled={ocupado || !respuesta.trim() || sensible}>
                 Enviar respuesta
               </Button>
             </div>

@@ -28,21 +28,19 @@ import type { FormEvent } from "react";
 import { LogIn, LogOut } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
+  DataTable,
   EstadoCargando,
   EstadoVacio,
+  FormField,
   Input,
-  Label,
   PageContainer,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  PageHeader,
   toast,
 } from "@atiende/ui";
+import type { DataTableColumna } from "@atiende/ui";
 import {
   checkIn,
   fetchAttendance,
@@ -51,7 +49,7 @@ import {
   upsertStaffSchedule,
 } from "../lib/asistencia-client.ts";
 import type { AttendanceEvent, CrossCheckRow } from "../lib/asistencia-client.ts";
-import { hoyFechaSolo, parseFechaSolo } from "../../../lib/formato-fecha.ts";
+import { fechaHoraEsMx, formatFechaSolo, hoyFechaSolo, parseFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const ATTENDANCE_ADMIN_ROLES_NAV: ReadonlySet<string> = new Set(["owner", "gm"]);
@@ -74,11 +72,26 @@ function sevenDaysAgoIso(): string {
 
 function formatHora(iso: string): string {
   try {
-    return new Date(iso).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" });
+    return fechaHoraEsMx(iso);
   } catch {
     return iso;
   }
 }
+
+const COLUMNAS_CRUCE: readonly DataTableColumna<CrossCheckRow>[] = [
+  { id: "fecha", encabezado: "Fecha", principal: true, celda: (r) => formatFechaSolo(r.fecha), valorOrden: (r) => r.fecha },
+  { id: "estado", encabezado: "Estado", celda: (r) => r.estado, valorOrden: (r) => r.estado },
+  { id: "programadas", encabezado: "Programadas", alinear: "right", celda: (r) => r.horasProgramadas ?? "—", valorOrden: (r) => r.horasProgramadas },
+  { id: "trabajadas", encabezado: "Trabajadas", alinear: "right", celda: (r) => r.horasTrabajadas, valorOrden: (r) => r.horasTrabajadas },
+  { id: "extra", encabezado: "Extra autorizada", alinear: "right", celda: (r) => r.horasExtraAutorizadas, valorOrden: (r) => r.horasExtraAutorizadas },
+  {
+    id: "extraNo",
+    encabezado: "Extra NO autorizada",
+    alinear: "right",
+    celda: (r) => <span className={r.horasExtraNoAutorizadas > 0 ? "font-bold text-destructive" : undefined}>{r.horasExtraNoAutorizadas}</span>,
+    valorOrden: (r) => r.horasExtraNoAutorizadas,
+  },
+];
 
 export function AsistenciaPage({ apiBaseUrl, token, propertyId, role }: HotelesShellContext) {
   // ---- Autoservicio: fichaje propio ----
@@ -118,13 +131,10 @@ export function AsistenciaPage({ apiBaseUrl, token, propertyId, role }: HotelesS
   }
 
   return (
-    <PageContainer padding="none" className="gap-6">
-      <header>
-        <h1 className="text-xl font-display font-semibold text-foreground">Asistencia</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Checador de autoservicio — LFT art. 132 fr. XXXIV.</p>
-      </header>
+    <PageContainer padding="none" className="gap-4">
+      <PageHeader titulo="Asistencia" descripcion="Checador de autoservicio — LFT art. 132 fr. XXXIV." />
 
-      <Card className="max-w-md">
+      <Card>
         <CardContent className="p-4 flex flex-col gap-3">
           <p className="text-sm text-foreground">
             {ultimoEvento ? (
@@ -135,33 +145,34 @@ export function AsistenciaPage({ apiBaseUrl, token, propertyId, role }: HotelesS
               "Todavía no tienes ningún registro de asistencia."
             )}
           </p>
-          <div>
-            <Label htmlFor="asis-nota">Nota (opcional)</Label>
-            <Input id="asis-nota" value={notaFichaje} onChange={(e) => setNotaFichaje(e.target.value)} className="mt-1" />
-          </div>
+          <FormField id="asis-nota" label="Nota (opcional)">
+            <Input value={notaFichaje} onChange={(e) => setNotaFichaje(e.target.value)} />
+          </FormField>
           <div className="flex gap-2">
             <Button
               type="button"
               className="flex-1"
               variant={siguienteEvento === "entrada" ? "default" : "outline"}
               onClick={() => void handleFichar("entrada")}
+              loading={fichando === "entrada"}
               disabled={fichando !== null}
             >
               <LogIn className="w-4 h-4" strokeWidth={1.75} />
-              {fichando === "entrada" ? "Registrando…" : "Marcar entrada"}
+              Marcar entrada
             </Button>
             <Button
               type="button"
               className="flex-1"
               variant={siguienteEvento === "salida" ? "destructive" : "outline"}
               onClick={() => void handleFichar("salida")}
+              loading={fichando === "salida"}
               disabled={fichando !== null}
             >
               <LogOut className="w-4 h-4" strokeWidth={1.75} />
-              {fichando === "salida" ? "Registrando…" : "Marcar salida"}
+              Marcar salida
             </Button>
           </div>
-          {errorPropio && <p role="alert" className="text-sm text-destructive">{errorPropio}</p>}
+          {errorPropio && <Callout tone="danger">{errorPropio}</Callout>}
         </CardContent>
       </Card>
 
@@ -269,47 +280,35 @@ function AdministracionAsistencia({ apiBaseUrl, token, propertyId }: { apiBaseUr
   return (
     <section className="border-t border-border pt-5 flex flex-col gap-5">
       <div>
-        <h2 className="text-base font-semibold text-foreground">Administración de asistencia</h2>
+        <h2 className="text-sm font-semibold text-foreground">Administración de asistencia</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">Programar horarios, cruzarlos contra lo trabajado y exportar a la STPS. Solo owner/gm.</p>
       </div>
 
-      <div className="max-w-md">
-        <Label htmlFor="asis-staff-id">Empleado (staffUserId, UUID)</Label>
-        <Input id="asis-staff-id" value={staffUserId} onChange={(e) => setStaffUserId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" className="mt-1 font-mono text-xs" />
-      </div>
+      <FormField id="asis-staff-id" label="Empleado (staffUserId, UUID)" className="max-w-md">
+        <Input value={staffUserId} onChange={(e) => setStaffUserId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" className="font-mono text-xs" />
+      </FormField>
 
-      <Card className="max-w-md">
+      <Card>
         <CardContent className="p-4">
           <form onSubmit={handleGuardarHorario} className="flex flex-col gap-3">
             <p className="text-sm font-semibold text-foreground">Programar horario</p>
-            <div>
-              <Label htmlFor="asis-fecha">Fecha</Label>
-              <Input id="asis-fecha" type="date" value={workDate} onChange={(e) => setWorkDate(e.target.value)} required className="mt-1" />
+            <FormField id="asis-fecha" label="Fecha" required>
+              <Input type="date" value={workDate} onChange={(e) => setWorkDate(e.target.value)} />
+            </FormField>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormField id="asis-entrada-prog" label="Entrada programada" required>
+                <Input type="datetime-local" value={scheduledStart} onChange={(e) => setScheduledStart(e.target.value)} />
+              </FormField>
+              <FormField id="asis-salida-prog" label="Salida programada" required>
+                <Input type="datetime-local" value={scheduledEnd} onChange={(e) => setScheduledEnd(e.target.value)} />
+              </FormField>
             </div>
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <Label htmlFor="asis-entrada-prog">Entrada programada</Label>
-                <Input id="asis-entrada-prog" type="datetime-local" value={scheduledStart} onChange={(e) => setScheduledStart(e.target.value)} required className="mt-1" />
-              </div>
-              <div className="flex-1">
-                <Label htmlFor="asis-salida-prog">Salida programada</Label>
-                <Input id="asis-salida-prog" type="datetime-local" value={scheduledEnd} onChange={(e) => setScheduledEnd(e.target.value)} required className="mt-1" />
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="asis-extra-min">Horas extra autorizadas (minutos)</Label>
-              <Input
-                id="asis-extra-min"
-                type="number"
-                min={0}
-                value={authorizedOvertimeMinutes}
-                onChange={(e) => setAuthorizedOvertimeMinutes(Number(e.target.value) || 0)}
-                className="mt-1"
-              />
-            </div>
-            {scheduleError && <p role="alert" className="text-sm text-destructive">{scheduleError}</p>}
-            <Button type="submit" disabled={savingSchedule}>
-              {savingSchedule ? "Guardando…" : "Guardar horario"}
+            <FormField id="asis-extra-min" label="Horas extra autorizadas (minutos)">
+              <Input type="number" min={0} value={authorizedOvertimeMinutes} onChange={(e) => setAuthorizedOvertimeMinutes(Number(e.target.value) || 0)} />
+            </FormField>
+            {scheduleError && <Callout tone="danger">{scheduleError}</Callout>}
+            <Button type="submit" loading={savingSchedule} disabled={savingSchedule}>
+              Guardar horario
             </Button>
           </form>
         </CardContent>
@@ -318,50 +317,32 @@ function AdministracionAsistencia({ apiBaseUrl, token, propertyId }: { apiBaseUr
       <div className="flex flex-col gap-3">
         <p className="text-sm font-semibold text-foreground">Cruce contra lo trabajado</p>
         <div className="flex gap-3 flex-wrap items-end">
-          <div>
-            <Label htmlFor="asis-desde">Desde</Label>
-            <Input id="asis-desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="mt-1" />
-          </div>
-          <div>
-            <Label htmlFor="asis-hasta">Hasta</Label>
-            <Input id="asis-hasta" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="mt-1" />
-          </div>
-          <Button type="button" variant="outline" onClick={() => void handleConsultarCruce()} disabled={consultandoCruce}>
-            {consultandoCruce ? "Calculando…" : "Calcular cruce"}
+          <FormField id="asis-desde" label="Desde">
+            <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+          </FormField>
+          <FormField id="asis-hasta" label="Hasta">
+            <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+          </FormField>
+          <Button type="button" variant="outline" onClick={() => void handleConsultarCruce()} loading={consultandoCruce} disabled={consultandoCruce}>
+            Calcular cruce
           </Button>
-          <Button type="button" variant="outline" onClick={() => void handleExportarStps()} disabled={exportando}>
-            {exportando ? "Exportando…" : "Exportar CSV (STPS)"}
+          <Button type="button" variant="outline" onClick={() => void handleExportarStps()} loading={exportando} disabled={exportando}>
+            Exportar CSV (STPS)
           </Button>
         </div>
 
-        {cruceError && <p role="alert" className="text-sm text-destructive">{cruceError}</p>}
+        {cruceError && <Callout tone="danger">{cruceError}</Callout>}
 
-        {cruce && cruce.length === 0 && <p className="text-sm text-muted-foreground">Sin días en este rango.</p>}
-        {cruce && cruce.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Programadas</TableHead>
-                <TableHead>Trabajadas</TableHead>
-                <TableHead>Extra autorizada</TableHead>
-                <TableHead>Extra NO autorizada</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {cruce.map((row) => (
-                <TableRow key={row.fecha} className={row.alerta ? "bg-destructive/5" : undefined}>
-                  <TableCell>{row.fecha}</TableCell>
-                  <TableCell>{row.estado}</TableCell>
-                  <TableCell>{row.horasProgramadas ?? "—"}</TableCell>
-                  <TableCell>{row.horasTrabajadas}</TableCell>
-                  <TableCell>{row.horasExtraAutorizadas}</TableCell>
-                  <TableCell className={row.horasExtraNoAutorizadas > 0 ? "font-bold text-destructive" : undefined}>{row.horasExtraNoAutorizadas}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        {cruce && (
+          <DataTable
+            etiqueta="Cruce de asistencia contra lo trabajado"
+            columnas={COLUMNAS_CRUCE}
+            filas={cruce}
+            obtenerId={(r) => r.fecha}
+            atributosFila={(r) => ({ "data-alerta": r.alerta ? "si" : "no" })}
+            vacio={{ mensaje: "Sin días en este rango." }}
+            paginacion={false}
+          />
         )}
       </div>
     </section>
