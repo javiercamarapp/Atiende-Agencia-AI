@@ -1,0 +1,61 @@
+name: Simulacion de hoteles (modo corto)
+
+# Job OPCIONAL, no requerido por la proteccion de rama: recorre 3 dias de un hotel sintetico contra un Postgres efimero con TODAS las
+# migraciones reales (scripts/simular-mes-hoteles). Sin secretos, sin red externa (el simulador falla si algo intenta salir), sin costo:
+# WhatsApp, PAC, pagos y LLM son dobles en proceso. El mes completo (--dias=30) se corre a mano y su ledger vive en docs/qa/.
+# Dispara solo si el diff toca el simulador, el dominio/API de hoteles o las migraciones; tambien a mano.
+on:
+  pull_request:
+    paths:
+      - "scripts/simular-mes-hoteles/**"
+      - "packages/domain-hoteles/**"
+      - "apps/api/src/routes/verticals/hoteles/**"
+      - "supabase/migrations/**"
+      - ".github/workflows/simulacion-hoteles.yml"
+  workflow_dispatch:
+    inputs:
+      dias:
+        description: "Dias a simular (1 a 60)"
+        default: "3"
+
+permissions:
+  contents: read
+
+jobs:
+  simulacion-corta:
+    name: Simulacion de hoteles (scripts/simular-mes-hoteles, modo corto)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Confirmar initdb/pg_ctl/psql disponibles
+        run: |
+          if ! command -v initdb >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql
+          fi
+          if ! command -v initdb >/dev/null 2>&1; then
+            PG_BIN="$(dirname "$(find /usr/lib/postgresql -maxdepth 3 -name initdb -print -quit)")"
+            if [ -z "$PG_BIN" ] || [ "$PG_BIN" = "." ]; then
+              echo "simulacion-hoteles (CI): no se encontro initdb bajo /usr/lib/postgresql" >&2
+              exit 1
+            fi
+            echo "$PG_BIN" >> "$GITHUB_PATH"
+            export PATH="$PG_BIN:$PATH"
+          fi
+          initdb --version
+          pg_ctl --version
+          psql --version
+
+      - name: scripts/simular-mes-hoteles/run.sh
+        run: bash scripts/simular-mes-hoteles/run.sh --dias="${{ github.event.inputs.dias || '3' }}"

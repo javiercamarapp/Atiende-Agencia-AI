@@ -32,6 +32,11 @@ todos declaran `permissions: contents: read`, y ninguno despliega ni toca Vercel
   SPA. Local: `npm run smoke:post-deploy -- https://tu-dominio`. Hace checkout de la rama
   por defecto, no de la rama del evento.
 
+- `simulacion-hoteles.yml` — modo corto (3 dias, o los que pidas en `workflow_dispatch`) de `scripts/simular-mes-hoteles`: un hotel
+  sintetico contra un Postgres efimero con todas las migraciones reales y la API real; WhatsApp, PAC, pagos y LLM son dobles en proceso y
+  cualquier llamada externa falla el job. Opcional (no requerido): dispara solo si el diff toca el simulador, el dominio/API de hoteles o
+  las migraciones. El mes completo se corre a mano y su ledger vive en `docs/qa/<fecha>-simulacion-mes-hoteles/`.
+
 Fuera de workflows: `/.github/CODEOWNERS` (rutas sensibles; solo obliga revisión si la
 protección de `main` exige "Code Owners") y `/.github/dependabot.yml` (npm y Actions, semanal,
 agrupado, tope de 3 y 2 PRs abiertos; ningún PR se fusiona solo).
