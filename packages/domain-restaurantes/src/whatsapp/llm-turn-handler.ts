@@ -30,6 +30,7 @@ import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { subtipoQueja } from "../autopiloto/taxonomia.ts";
 import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from "./autopiloto-turno.ts";
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
+import { bloqueCotizacionVigente } from "../agent-tools/order-flow.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
@@ -678,6 +679,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         lastQuoteTotal = flowVigente.quotedTotal;
         lastQuoteAmounts = flowVigente.quotedAmounts;
       }
+      // La cotizacion vigente del servidor le llega al modelo (solo PM): en el turno del "si" confirma y crea sin volver a buscar ni cotizar.
+      const cotizacionVigenteBloque = perfil === "taqueria_pm" && !preview ? bloqueCotizacionVigente(flowSnapshot, now().getTime()) : "";
+      const systemFinal = cotizacionVigenteBloque ? `${systemPrompt}\n\n${cotizacionVigenteBloque}` : systemPrompt;
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
       // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
@@ -732,7 +736,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             role,
             // El modelo elegido solo aplica al rol por defecto: el reintento tras un fallo real de `crear_pedido` (rol escalado) sigue siendo el de la plataforma.
             ...(ajustes?.modelo && role === options.defaultRole ? { preferredModel: ajustes.modelo } : {}),
-            request: { system: systemPrompt, messages: working, tools: [...TOOLS], temperature: ajustes && role === options.defaultRole ? ajustes.temperatura : 0 },
+            request: { system: systemFinal, messages: working, tools: [...TOOLS], temperature: ajustes && role === options.defaultRole ? ajustes.temperatura : 0 },
           });
         } catch {
           tele.resultado = "error_proveedor";

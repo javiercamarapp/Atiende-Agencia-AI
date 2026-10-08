@@ -5,7 +5,7 @@
 //   whatsapp-02/03 (P1/P0): un "si" de mas despues de crear reabria la confirmacion; con otra hora de recogida nacia un SEGUNDO pedido.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invokeAgentTool } from "../src/agent-tools/registry.ts";
-import { OrderFlowViolationError, reconciliarConCotizacion, resetOrderFlowWarningForTests, resolverRenglonesCotizados } from "../src/agent-tools/order-flow.ts";
+import { OrderFlowViolationError, bloqueCotizacionVigente, reconciliarConCotizacion, resetOrderFlowWarningForTests, resolverRenglonesCotizados } from "../src/agent-tools/order-flow.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 
 const MARTES_13 = new Date("2026-10-06T13:00:00-06:00");
@@ -151,5 +151,41 @@ describe("emparejar renglones (unidad)", () => {
     expect(resolverRenglonesCotizados([{ productName: "pizza", requestedQuantity: 1 }, { productName: "sushi", requestedQuantity: 1 }], lines)).toBeNull();
     const items = [{ productName: "pizza", requestedQuantity: 1 }, { productName: "sushi", requestedQuantity: 1 }];
     expect(reconciliarConCotizacion(items, [{ id: "a", name: "Taco Al Pastor", qty: 1, tortilla: "maiz" }, { id: "b", name: "Horchata", qty: 1, tortilla: null }])).toBeNull();
+  });
+});
+
+describe("cotizacion vigente para el prompt del turno del si (QA-PM-R3-whatsapp-01 / 10)", () => {
+  it("la cotizacion guarda sucursal, canal y renglones; el bloque los lista y dice que confirme y cree sin buscar ni cotizar de nuevo", async () => {
+    const s = setup("whatsapp");
+    await s.quote([s.tacos(), s.coca()], { minutos_para_recoger: 40 });
+    const snap = await s.f.repo.readOrderFlow(s.f.organizationId, "k:whatsapp");
+    const bloque = bloqueCotizacionVigente(snap, Date.now());
+    expect(bloque).toContain(`product_id ${s.f.products.tacosPastor} | Tacos de Bistec de Res (orden de 3) | requested_quantity 3 | tortilla maiz`);
+    expect(bloque).toContain(`product_id ${s.f.products.cocaCola} | Coca-Cola | requested_quantity 2`);
+    expect(bloque).toContain("branch_slug fco-montejo, canal recoger");
+    expect(bloque).toMatch(/SIN buscar de nuevo ni cotizar otra vez/);
+    expect(bloque).toMatch(/hora de recogida ya fijada por el sistema/);
+  });
+  it("confirmada dice que solo falta crear; vencida, sin renglones o creada no generan bloque", async () => {
+    const s = setup("whatsapp");
+    await s.quote([s.tacos(), s.coca()]);
+    s.nextTurn();
+    await s.confirm();
+    const confirmada = await s.f.repo.readOrderFlow(s.f.organizationId, "k:whatsapp");
+    expect(bloqueCotizacionVigente(confirmada, Date.now())).toMatch(/Ya está CONFIRMADA/);
+    expect(bloqueCotizacionVigente(confirmada, Date.now() + 21 * 60_000)).toBe("");
+    expect(bloqueCotizacionVigente(null, Date.now())).toBe("");
+    await s.create([s.tacos(), s.coca()]);
+    expect(bloqueCotizacionVigente(await s.f.repo.readOrderFlow(s.f.organizationId, "k:whatsapp"), Date.now())).toBe("");
+  });
+  it("crear_pedido sin hora (o con '') lleva la hora de recogida COTIZADA en el pedido", async () => {
+    const s = setup("whatsapp");
+    await s.quote([s.tacos(), s.coca()], { minutos_para_recoger: 40 });
+    s.nextTurn();
+    await s.confirm();
+    const creado = await s.create([s.tacos(), s.coca()], { hora_recogida: "" });
+    const pedido = await s.f.repo.findOrderById(s.f.organizationId, creado.orderId!);
+    expect(pedido!.horaRecogida).toBeTruthy();
+    expect((Date.parse(pedido!.horaRecogida!) - Date.now()) / 60_000).toBeGreaterThan(38);
   });
 });

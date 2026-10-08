@@ -50,6 +50,9 @@ export interface OrderFlowContext {
    * Ausente en filas guardadas antes de este campo: la huella se calcula como siempre, sobre lo que mande el modelo.
    */
   readonly quotedItems?: readonly QuotedItem[];
+  /** Sucursal y canal con los que se cotizo: con `quotedItems` el servidor puede decirle al agente, en el turno del "si", exactamente que cotizo (ver `bloqueCotizacionVigente`). */
+  readonly quotedBranchSlug?: string;
+  readonly quotedCanal?: string;
   /** Huella del CARRITO (sucursal + canal + renglones) sin hora, pago ni salsas: sirve para reconocer "el mismo pedido" aunque el modelo cambie la hora (QA-PM-R3-whatsapp-03). */
   readonly cartHash?: string;
   /** Pedidos YA creados en esta conversacion/llamada: total y kilos acumulados. La guardia de pedido grande los suma al siguiente pedido para que partir un pedido
@@ -354,4 +357,26 @@ export function warnOrderFlowUnavailable(): void {
 /** Solo para pruebas: reinicia el aviso de una sola vez. */
 export function resetOrderFlowWarningForTests(): void {
   flowUnavailableWarned = false;
+}
+
+/**
+ * Bloque de prompt con la cotizacion VIGENTE que dejo el servidor (QA-PM-R3-whatsapp-01 / 10). El historial de WhatsApp no trae los resultados de las herramientas, asi que en el turno del
+ * "si" el modelo volvia a buscar sucursal y productos (2-4 llamadas de 1.5-3 s) solo para recuperar los ids, y re-cotizaba (con lo que el cierre se perdia). Con esto sabe que cotizo el
+ * servidor y puede confirmar y crear de inmediato. Vacio si no hay una cotizacion fresca con renglones resueltos.
+ */
+export function bloqueCotizacionVigente(snap: OrderFlowSnapshot | null, ahoraMs: number): string {
+  const ctx = snap?.context;
+  if (!snap || !ctx || (snap.state !== "cotizado" && snap.state !== "confirmado")) return "";
+  if (!ctx.quotedItems || ctx.quotedItems.length === 0 || !ctx.quotedBranchSlug) return "";
+  if (ahoraMs - ctx.quotedAtMs > QUOTE_TTL_MS) return "";
+  const renglones = ctx.quotedItems.map((i) => `  - product_id ${i.id} | ${i.name} | requested_quantity ${i.qty}${i.tortilla ? ` | tortilla ${i.tortilla}` : ""}`).join("\n");
+  const total = typeof ctx.quotedTotal === "number" ? `, total a pagar $${ctx.quotedTotal}` : "";
+  return [
+    "COTIZACIÓN VIGENTE DE ESTA CONVERSACIÓN (la dejó el sistema; es la que el cliente vio en el resumen):",
+    `- branch_slug ${ctx.quotedBranchSlug}${ctx.quotedCanal ? `, canal ${ctx.quotedCanal}` : ""}${total}${ctx.horaRecogida ? ", hora de recogida ya fijada por el sistema (en crear_pedido no la recalcule: el sistema usa la cotizada)" : ""}.`,
+    renglones,
+    snap.state === "confirmado"
+      ? "- Ya está CONFIRMADA: si falta crear el pedido, llame crear_pedido con estos mismos datos."
+      : "- Si el ÚLTIMO mensaje del cliente es un sí claro a ese resumen y no cambió nada, llame confirmar_resumen y enseguida crear_pedido con estos mismos datos, SIN buscar de nuevo ni cotizar otra vez. Si cambió algo (producto, cantidad, tortilla, canal, dirección, pago), vuelva a cotizar normalmente.",
+  ].join("\n");
 }

@@ -727,20 +727,21 @@ const MINUTOS_PARA_RECOGER_MAX = 12 * 60;
  * tiempo entre cotizar y crear. Una `hora_recogida` explicita manda sobre el plazo.
  */
 async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
-  if (name !== "cotizar_pedido" && name !== "crear_pedido" && name !== "repetir_pedido") return input;
+  if (name !== "cotizar_pedido" && name !== "crear_pedido") return input;
+  if (textoOpcional(input.hora_recogida) || textoOpcional(input.programado_para) || input.canal !== "recoger") return input;
   const crudo = input.minutos_para_recoger;
   const minutos = typeof crudo === "number" ? crudo : typeof crudo === "string" && crudo.trim() !== "" ? Number(crudo) : NaN;
-  if (!Number.isFinite(minutos) || minutos < 1 || minutos > MINUTOS_PARA_RECOGER_MAX) return input;
-  if (textoOpcional(input.hora_recogida) || textoOpcional(input.programado_para) || input.canal !== "recoger") return input;
-  const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
-  let horaIso = new Date(ahora + Math.round(minutos) * 60_000).toISOString();
+  const plazoValido = Number.isFinite(minutos) && minutos >= 1 && minutos <= MINUTOS_PARA_RECOGER_MAX;
+  const { minutos_para_recoger: _omitido, ...resto } = input;
+  // Al crear, la hora de recogida COTIZADA gana: no cambia por el paso del tiempo entre cotizar y crear y, si el modelo la omite (o manda ""), el pedido igual la lleva.
+  // `horaRecogida` del contexto es la hora normalizada al minuto ("2026-10-06T19:40"): solo se reutiliza si es una fecha valida.
   if (name === "crear_pedido" && ctx.flow) {
     const cotizada = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context?.horaRecogida;
-    // `horaRecogida` del contexto es la hora normalizada al minuto ("2026-10-06T19:40"): solo se reutiliza si es una fecha valida.
-    if (cotizada && !Number.isNaN(Date.parse(`${cotizada}:00.000Z`))) horaIso = `${cotizada}:00.000Z`;
+    if (cotizada && !Number.isNaN(Date.parse(`${cotizada}:00.000Z`))) return { ...resto, hora_recogida: `${cotizada}:00.000Z` };
   }
-  const { minutos_para_recoger: _omitido, ...resto } = input;
-  return { ...resto, hora_recogida: horaIso };
+  if (!plazoValido) return input;
+  const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
+  return { ...resto, hora_recogida: new Date(ahora + Math.round(minutos) * 60_000).toISOString() };
 }
 
 function flowNow(flow: OrderFlowRef): number {
@@ -863,7 +864,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         quotedAtMs: flowNow(flow),
         quotedTurn: flow.turn,
         quotedPrices,
-        ...(quotedItems ? { quotedItems, ...(cartHash ? { cartHash } : {}) } : {}),
+        ...(quotedItems ? { quotedItems, quotedBranchSlug: String(input.branch_slug ?? ""), quotedCanal: canalOf(input.canal), ...(cartHash ? { cartHash } : {}) } : {}),
         ...(toHoraRecogida(input.hora_recogida) ? { horaRecogida: toHoraRecogida(input.hora_recogida) } : {}),
         quotedTotal: quotedQuote.total,
         quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
