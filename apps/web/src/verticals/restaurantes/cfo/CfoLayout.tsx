@@ -63,6 +63,10 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
   const abrirPedidos = useCallback((f: FiltroPedidosDetalle) => setSp(aplicarDrill(escribirFiltros(sp, filtrosEf), f)), [sp, filtrosEf, setSp]);
 
   const pagina = PAGINAS_CFO.find((p) => p.slug === slugActual) ?? null;
+  // Con nueve pestañas la barra se desplaza: la activa siempre queda a la vista (también al entrar por un enlace).
+  useEffect(() => {
+    document.querySelector("nav[aria-label='Secciones del CFO'] [aria-current=page]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [slugActual, carga.estado]);
   const disponibles = useMemo(() => new Set(PAGINAS_CFO.map((p) => p.slug)), []);
 
   const [exportando, setExportando] = useState<FormatoExportacionCfo | null>(null);

@@ -163,6 +163,9 @@ test.describe("restaurantes CFO B @humo", () => {
     await iniciarSesion("restaurantes", "owner");
     const destino = process.env["CAPTURAS_CFO_DIR"];
     if (destino) mkdirSync(destino, { recursive: true });
+    // Ventana alta solo para que la captura muestre más de cada pestaña (el contenido hace scroll dentro del shell).
+    const ventana = page.viewportSize();
+    if (destino && ventana) await page.setViewportSize({ width: ventana.width, height: 1700 });
     const vistas: ReadonlyArray<readonly [string, string, string]> = [
       ["1-clientes", `${BASE}/clientes?${RANGO}`, "cohortes-tabla"],
       ["2-platillos", `${BASE}/platillos?${RANGO}`, "matriz-dispersion"],
@@ -177,7 +180,7 @@ test.describe("restaurantes CFO B @humo", () => {
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
       await afirmarSinScrollHorizontal(page);
       await afirmarModo(page, info.project.name.endsWith("oscuro") ? "oscuro" : "claro");
-      if (destino) await page.screenshot({ path: join(destino, `${info.project.name}-${nombre}.png`), fullPage: true });
+      if (destino) await page.screenshot({ path: join(destino, `${info.project.name}-${nombre}.png`) });
     }
     vigilante.verificar();
   });

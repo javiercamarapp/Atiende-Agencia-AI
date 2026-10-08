@@ -260,10 +260,7 @@ export function CfoSoftRestaurant(props: CfoPaginaProps) {
         </h2>
         <CargaCfoVista carga={operacion.carga} onReintentar={operacion.recargar} etiqueta="Cargando las comandas…">
           {(d) => (
-            <>
-              <AvisosCfo vista={d} />
-              <Comandas d={d} base={props.base} abrir={props.abrirPedidos} />
-            </>
+            <Comandas d={d} base={props.base} abrir={props.abrirPedidos} />
           )}
         </CargaCfoVista>
       </section>
@@ -295,7 +292,8 @@ export function CfoSoftRestaurant(props: CfoPaginaProps) {
         <CargaCfoVista carga={cuadre.carga} onReintentar={cuadre.recargar} etiqueta="Cargando el cuadre…">
           {(d) => (
             <>
-              <AvisosCfo vista={d} />
+              {/* El estado vacío ya dice «Sin datos de mostrador»: no se repite el aviso del servicio. */}
+              <AvisosCfo vista={{ ...d, avisos: d.filas.length === 0 ? d.avisos.filter((a) => !a.startsWith("Sin datos de mostrador")) : d.avisos }} />
               <Cuadre d={d} props={props} onSubir={() => setImportando(true)} onUmbrales={() => setAjustes(true)} />
             </>
           )}

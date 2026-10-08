@@ -47,8 +47,9 @@ export function MatrizDispersion({ puntos, formatoIngreso, formatoUnidades, sinD
   const medY = mediana(puntos.map((p) => p.ingresoCentavos));
   const w = ANCHO - MARGEN.izq - MARGEN.der;
   const h = ALTO - MARGEN.arr - MARGEN.abajo;
-  const x = (v: number): number => MARGEN.izq + (v / maxX) * w;
-  const y = (v: number): number => MARGEN.arr + h - (v / maxY) * h;
+  // Escala de raíz cuadrada: un platillo que domina las ventas no aplasta a los demás contra el origen (los ejes lo dicen).
+  const x = (v: number): number => MARGEN.izq + Math.sqrt(v / maxX) * w;
+  const y = (v: number): number => MARGEN.arr + h - Math.sqrt(v / maxY) * h;
   const conEtiqueta = new Set([...puntos].sort((a, b) => b.ingresoCentavos - a.ingresoCentavos).slice(0, MAX_ETIQUETAS).map((p) => p.productoRef));
   const resumen = (["estrella", "popular", "rentable", "revisar"] as const)
     .map((c) => `${ETIQUETA_CUADRANTE[c]}: ${puntos.filter((p) => p.cuadrante === c).map((p) => p.nombre).join(", ") || "ninguno"}`)
@@ -72,10 +73,10 @@ export function MatrizDispersion({ puntos, formatoIngreso, formatoUnidades, sinD
           Perro
         </text>
         <text x={MARGEN.izq + w / 2} y={ALTO - 6} textAnchor="middle" fontSize={10} fill={TENUE}>
-          Unidades vendidas (popularidad) · 0 a {formatoUnidades(maxX)}
+          Unidades vendidas (popularidad) · 0 a {formatoUnidades(maxX)} · escala comprimida
         </text>
         <text x={12} y={MARGEN.arr + h / 2} textAnchor="middle" fontSize={10} fill={TENUE} transform={`rotate(-90 12 ${MARGEN.arr + h / 2})`}>
-          Ingreso · hasta {formatoIngreso(maxY)}
+          Ingreso · hasta {formatoIngreso(maxY)} · escala comprimida
         </text>
         {puntos.map((p) => {
           const fuerte = p.cuadrante === "estrella";
@@ -94,7 +95,7 @@ export function MatrizDispersion({ puntos, formatoIngreso, formatoUnidades, sinD
         })}
       </svg>
       <p className={cn("mt-1 text-2xs text-muted-foreground")} data-testid="matriz-sin-margen">
-        Sin margen hasta capturar costo por platillo. Las líneas punteadas son la mediana de unidades y de ingreso.
+        Sin margen hasta capturar costo por platillo. Las líneas punteadas son la mediana de unidades y de ingreso; la escala está comprimida (raíz cuadrada) para que un platillo dominante no esconda a los demás.
       </p>
     </div>
   );

@@ -315,7 +315,7 @@ function celdaXlsx(v: string, c: number, r: number): string {
 export function xlsxSinteticoDeFilas(filas: readonly (readonly string[])[]): Uint8Array {
   const hoja = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${filas.map((f, i) => `<row r="${i + 1}">${f.map((v, c) => celdaXlsx(v, c, i + 1)).join("")}</row>`).join("")}</sheetData></worksheet>`;
   const mtime = new Date(2026, 0, 1);
-  const archivo = (s: string) => [strToU8(s), { mtime, level: 6 as const }] as const;
+  const archivo = (s: string): [Uint8Array, { mtime: Date; level: 6 }] => [strToU8(s), { mtime, level: 6 }];
   return zipSync({
     "[Content_Types].xml": archivo(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`),
     "_rels/.rels": archivo(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`),
