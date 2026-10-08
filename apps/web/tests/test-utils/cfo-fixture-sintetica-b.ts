@@ -21,7 +21,8 @@ import type {
   FilaSrResumen,
 } from "@atiende/domain-restaurantes/cfo";
 import { parsearCsvSr } from "@atiende/domain-restaurantes/cfo";
-import { CSV_SR_SINTETICO, SUCURSALES_PM_SINTETICAS, costosCapturadosSinteticos, generarDatasetSintetico, type PedidoSintetico } from "../../../../packages/domain-restaurantes/tests/fixtures/cfo-pm-sintetico.ts";
+import { zipSync, strToU8 } from "fflate";
+import { CSV_SR_SINTETICO, ETIQUETA_SINTETICO, SUCURSALES_PM_SINTETICAS, filasXlsxSrSintetico, costosCapturadosSinteticos, generarDatasetSintetico, type PedidoSintetico } from "../../../../packages/domain-restaurantes/tests/fixtures/cfo-pm-sintetico.ts";
 import { AHORA, AVISO_SINTETICO, ID_T1, ID_T2, MES, ORG_SINTETICA, RANGO_ACTUAL } from "./cfo-fixture-sintetica.ts";
 
 const SUC = SUCURSALES_PM_SINTETICAS;
@@ -299,5 +300,42 @@ export async function construirFixtureCfoB(): Promise<FixtureCfoB> {
     cuadre,
     lotesSinSr: await (await servicioPara(null, false)).lotesSr(20),
     operacionApagada: rotular(await (await servicioPara(null, false, "apagado")).operacionVista(consulta())),
+  };
+}
+
+// ---- Archivos de SoftRestaurant SINTÉTICOS para los recorridos e2e de importación ---------------------------------------------------------------
+
+function celdaXlsx(v: string, c: number, r: number): string {
+  const ref = `${String.fromCharCode(65 + c)}${r}`;
+  const texto = v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<c r="${ref}" t="inlineStr"><is><t>${texto}</t></is></c>`;
+}
+
+/** .xlsx mínimo y determinista (texto en línea, mtime fijo): lo lee `parsearXlsx` y también Excel. */
+export function xlsxSinteticoDeFilas(filas: readonly (readonly string[])[]): Uint8Array {
+  const hoja = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${filas.map((f, i) => `<row r="${i + 1}">${f.map((v, c) => celdaXlsx(v, c, i + 1)).join("")}</row>`).join("")}</sheetData></worksheet>`;
+  const mtime = new Date(2026, 0, 1);
+  const archivo = (s: string) => [strToU8(s), { mtime, level: 6 as const }] as const;
+  return zipSync({
+    "[Content_Types].xml": archivo(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`),
+    "_rels/.rels": archivo(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`),
+    "xl/workbook.xml": archivo(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Ventas" sheetId="1" r:id="rId1"/></sheets></workbook>`),
+    "xl/_rels/workbook.xml.rels": archivo(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`),
+    "xl/worksheets/sheet1.xml": archivo(hoja),
+  });
+}
+
+/** Archivos SINTÉTICOS de `apps/web/e2e/fixtures/` (nombre -> contenido), generados desde el generador de CFO-04. */
+export function archivosSrSinteticos(): Readonly<Record<string, string | Uint8Array>> {
+  const conTelefono = [
+    ETIQUETA_SINTETICO,
+    "Folio,Fecha,Tipo de servicio,Teléfono,Total",
+    "T2-90001,21/09/2026,A domicilio,TEL-SINTÉTICO-1,$120.00",
+    "T2-90002,22/09/2026,Comedor,TEL-SINTÉTICO-2,$300.00",
+  ].join("\r\n");
+  return {
+    "sr-cuentas-SINTETICO.csv": CSV_SR_SINTETICO,
+    "sr-resumen-servicio-SINTETICO.xlsx": xlsxSinteticoDeFilas(filasXlsxSrSintetico),
+    "sr-con-columna-personal-SINTETICO.csv": conTelefono,
   };
 }

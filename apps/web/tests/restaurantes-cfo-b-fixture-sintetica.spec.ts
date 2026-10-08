@@ -1,10 +1,10 @@
 // CFO-08 · la API simulada de e2e sirve respuestas SINTÉTICAS de clientes, platillos, patrones, operación y SoftRestaurant generadas con CFO-04 + CFO-05.
 // Este guard regenera esas respuestas y falla si el JSON versionado (`e2e/mock-api/fixtures/restaurantes-cfo-b.datos.json`) dejó de coincidir:
 // `ACTUALIZAR_FIXTURE_CFO=1 npx vitest run apps/web/tests/restaurantes-cfo-b-fixture-sintetica.spec.ts` lo reescribe.
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { construirFixtureCfoB, type FixtureCfoB } from "./test-utils/cfo-fixture-sintetica-b.ts";
+import { archivosSrSinteticos, construirFixtureCfoB, type FixtureCfoB } from "./test-utils/cfo-fixture-sintetica-b.ts";
 import { AVISO_SINTETICO } from "./test-utils/cfo-fixture-sintetica.ts";
 
 const RUTA = fileURLToPath(new URL("../e2e/mock-api/fixtures/restaurantes-cfo-b.datos.json", import.meta.url));
@@ -31,5 +31,20 @@ describe("fixture SINTÉTICA del CFO B para e2e", () => {
     const col = (f.patrones["todas"] as { colonias: Array<{ colonia: string; pedidos: number }> }).colonias;
     for (const c of col) if (c.colonia !== "(otras)") expect(c.pedidos).toBeGreaterThanOrEqual(5);
     expect(col.some((c) => c.colonia === "(otras)")).toBe(true);
+  });
+
+  it("los archivos de SoftRestaurant de e2e (apps/web/e2e/fixtures/sr-*-SINTETICO.*) coinciden con el generador de CFO-04", () => {
+    const carpeta = fileURLToPath(new URL("../e2e/fixtures/", import.meta.url));
+    const archivos = archivosSrSinteticos();
+    if (process.env["ACTUALIZAR_FIXTURE_CFO"] === "1") {
+      mkdirSync(carpeta, { recursive: true });
+      for (const [nombre, contenido] of Object.entries(archivos)) writeFileSync(`${carpeta}${nombre}`, contenido);
+    }
+    for (const [nombre, contenido] of Object.entries(archivos)) {
+      const guardado = readFileSync(`${carpeta}${nombre}`);
+      expect(Buffer.compare(guardado, typeof contenido === "string" ? Buffer.from(contenido, "utf8") : Buffer.from(contenido)), nombre).toBe(0);
+      expect(nombre).toMatch(/SINTETICO\./);
+    }
+    expect(readFileSync(`${carpeta}sr-cuentas-SINTETICO.csv`, "utf8")).toContain("SINTÉTICO");
   });
 });

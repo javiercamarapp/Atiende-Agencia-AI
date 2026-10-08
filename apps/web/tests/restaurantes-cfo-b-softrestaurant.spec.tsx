@@ -3,6 +3,9 @@
 // <CfoSoftRestaurant />: (a) comandas (modo apagado incluido), (b) importar el reporte con mapeo asistido, columnas de cliente excluidas, vista previa con errores
 // por renglón, importación idempotente y lotes cargados, (c) domicilio vs presencial y cuadre con semáforo según los umbrales de la configuración.
 // Archivos y datos SINTÉTICOS (CFO-04); la API simulada normaliza con el normalizador real.
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { act } from "react";
 import { describe, expect, it } from "vitest";
 import type { CuadreSrVista } from "@atiende/domain-restaurantes/cfo";
@@ -134,6 +137,28 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     }
     expect(api.peticiones("POST", "/softrestaurant/importar").length).toBe(2);
     await b.esperar(() => b.qa("[data-testid=sr-lotes] tbody tr").length === 1, "un solo lote");
+  });
+
+  it("el .xlsx SINTÉTICO de ventas por tipo de servicio se lee, se mapea solo como resumen y se importa", async () => {
+    const api = crearApiCfo();
+    await b.pintar(CfoSoftRestaurant, api);
+    await cargado();
+    const d = await abrirDialogo();
+    changeValue(selector(d, "sr-sucursal"), IDS.T2);
+    const bytes = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../e2e/fixtures/sr-resumen-servicio-SINTETICO.xlsx"));
+    await elegirArchivo(d.querySelector<HTMLInputElement>("#sr-archivo")!, new File([bytes], "ventas-por-servicio.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    expect(selector(d, "sr-tipo").value).toBe("resumen_servicio");
+    expect(selector(d, "sr-fila-encabezado").value).toBe("1");
+    expect(selector(d, "sr-mapeo-servicio").value).toBe("1");
+    expect(selector(d, "sr-mapeo-tickets").value).toBe("2");
+    click(botonDe(d, "Revisar vista previa"));
+    await esperarAcciones();
+    expect(d.querySelector("[data-testid=sr-vista-previa]")!.textContent).toMatch(/renglones aceptados y 0 rechazados/);
+    click(botonDe(d, "Importar "));
+    await esperarAcciones();
+    expect(d.querySelector("[data-testid=sr-resultado]")!.textContent).toContain("Reporte importado");
+    click(botonDe(d, "Cerrar"));
+    await b.esperar(() => b.q("[data-testid=sr-lotes]")!.textContent!.includes("Ventas por tipo de servicio"), "lote de resumen");
   });
 
   it("una columna «Teléfono» se excluye, se avisa «No subimos datos de tus clientes» y nunca viaja al API", async () => {
