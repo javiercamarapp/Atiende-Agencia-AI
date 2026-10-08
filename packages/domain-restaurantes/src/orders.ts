@@ -12,6 +12,7 @@ import { ADDRESS_MASK_MARKER, ADDRESS_OMITTED_MARKER, sanitizeInlineText, saniti
 import { formatUbicacionEntregaNota } from "./whatsapp/location.ts";
 import { cerrarCicloDelCliente } from "./cliente-360/memoria.ts";
 import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice, MAX_PIEZAS_POR_RENGLON, mensajeCantidadInvalida } from "./order-quote.ts";
+import { assignBranch } from "./branch-assignment.ts";
 import { exigirPinSiPmSinZonas } from "./pin-reparto.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion, PROGRAMACION_MAXIMA_DIAS } from "./pedidos-programados.ts";
@@ -375,6 +376,7 @@ export async function prepareCreateOrder(
     canal: normalizarCanal(payload.canal),
     subtotal: total,
     colonia: payload.colonia,
+    pinEnEstaSucursal: pinEnSucursal(repo, branch, payload.organizationId, payload.ubicacion),
     paymentMethod: payload.paymentMethod,
     propina: payload.propina,
     source: payload.source,
@@ -646,6 +648,15 @@ export async function createOrder(
  * wrapper solo resuelve la sucursal y los renglones, la lógica de cotización
  * en sí no cambia.
  */
+/** QA-PM-R3-whatsapp-05: ¿la sucursal mas cercana al pin que compartio el cliente es esta? (solo se consulta si hace falta: colonia no reconocida). */
+function pinEnSucursal(repo: RestaurantesRepository, branch: Branch, organizationId: string, ubicacion: { readonly lat: number; readonly lng: number } | undefined): (() => Promise<boolean>) | undefined {
+  if (!ubicacion) return undefined;
+  return async () => {
+    const asignacion = await assignBranch(repo, { organizationId, lat: ubicacion.lat, lng: ubicacion.lng });
+    return asignacion.estado === "asignada" && asignacion.branchSlug === branch.slug;
+  };
+}
+
 export async function quoteOrder(
   repo: RestaurantesRepository,
   args: {
@@ -706,6 +717,7 @@ export async function quoteOrder(
     canal,
     subtotal: quote.total,
     colonia: args.colonia,
+    pinEnEstaSucursal: pinEnSucursal(repo, branch, args.organizationId, args.ubicacion),
     paymentMethod: args.paymentMethod,
     ...(instante ? { now: instante, exigirAbierto: true, mensajeCerrado: mensajeCerradoProgramado(branch.name, programadoPara!) } : {}),
     ...(args.horaRecogida && !instante && canal === "recoger" ? { horaRecogida: args.horaRecogida } : {}),
