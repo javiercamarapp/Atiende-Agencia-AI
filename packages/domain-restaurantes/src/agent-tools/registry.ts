@@ -672,7 +672,12 @@ function porcentajeDePropina(valor: unknown): number | null {
 function esSinPropina(valor: unknown): boolean {
   if (valor === undefined || valor === null || valor === 0) return true;
   if (typeof valor !== "string") return false;
-  return /^\s*(?:0+(?:[.,]0+)?\s*(?:%|por\s*ciento)?)?\s*$/i.test(valor);
+  // Sin regex con \s* anidados (ReDoS): se recorta una sola vez y se comparan formas fijas.
+  let t = valor.trim().toLowerCase();
+  if (t.endsWith("%")) t = t.slice(0, -1);
+  else if (t.endsWith("por ciento")) t = t.slice(0, -"por ciento".length);
+  t = t.trim();
+  return t === "" || /^0+(?:[.,]0+)?$/.test(t);
 }
 
 function esSalsaBasicaIncluida(valor: unknown): boolean {
@@ -1331,7 +1336,7 @@ async function dispatchTool(
       // "no existe" 1.25 kg. Cada renglon por peso lleva las presentaciones REALES del mismo platillo y la regla para fracciones que no existen.
       const hayPeso = productos.some((p) => pesoDeProductoEnGramos(p.name) !== null);
       const catalogo = hayPeso ? await repo.listAvailableProductsForBranch(branch.propertyId) : [];
-      const baseDePeso = (nombre: string) => nombre.replace(/\s*[—–-]\s*\d+(?:[.,]\d+)?\s*(?:kg|g|gr)\b.*$/i, "").trim().toLowerCase();
+      const baseDePeso = (nombre: string) => nombre.replace(/[—–-]\s*\d+(?:[.,]\d+)?\s*(?:kg|g|gr)\b.*$/i, "").trim().toLowerCase();
       const presentaciones = (nombre: string): string[] =>
         catalogo
           .filter((c) => pesoDeProductoEnGramos(c.name) !== null && baseDePeso(c.name) === baseDePeso(nombre))
