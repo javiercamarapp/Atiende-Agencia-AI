@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./softrestaurant": "./src/softrestaurant/index.ts",
     "./softrestaurant/contract": "./src/softrestaurant/contract.ts",
-    "./cfo": "./src/cfo/index.ts"
+    "./cfo": "./src/cfo/index.ts",
+    "./cfo/postgres": "./src/cfo/repositorio-postgres.ts"
   },
   "scripts": {
     "lint": "eslint .",

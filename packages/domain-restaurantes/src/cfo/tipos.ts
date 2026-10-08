@@ -127,6 +127,14 @@ export interface FilaCanastaPar {
   readonly pedidosJuntos: number;
 }
 
+/** Distribución del ticket por número de productos distintos (1..5+, el 5 agrupa «5 o más»). */
+export interface FilaCanastaTicket {
+  readonly propertyId: string;
+  readonly nProductos: number;
+  readonly pedidos: number;
+  readonly netaCentavos: number;
+}
+
 export interface FilaCanastaTotales {
   readonly propertyId: string;
   readonly pedidosTotales: number;
@@ -152,8 +160,8 @@ export interface FilaPedidoDetalle {
   readonly entregadoMin: number | null;
   readonly esCompensacion: boolean;
   readonly esReposicion: boolean;
-  /** Alias de 8 caracteres (hash de `customer_id`). Nunca nombre, teléfono ni dirección. */
-  readonly clienteAlias: string;
+  /** Alias de 8 caracteres (hash de `customer_id`); null si el pedido no tiene cliente identificado. Nunca nombre, teléfono ni dirección. */
+  readonly clienteAlias: string | null;
   readonly comandaEstado: string | null;
 }
 
@@ -213,6 +221,18 @@ export interface FilaClientesCohorte {
   readonly observables30: number;
   readonly observables60: number;
   readonly observables90: number;
+}
+
+/** `cfo_clientes_segmento_hora`. */
+export interface FilaClientesSegmentoHora {
+  readonly propertyId: string | null;
+  readonly segmento: "nuevo" | "recurrente" | "frecuente";
+  readonly dowNegocio: number;
+  readonly horaLocal: number;
+  readonly pedidos: number;
+  readonly netaCentavos: number;
+  readonly clientes: number;
+  readonly pedidosPorCliente: number | null;
 }
 
 export interface FilaClientesAltas {
