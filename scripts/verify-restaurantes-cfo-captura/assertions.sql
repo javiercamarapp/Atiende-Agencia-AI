@@ -823,12 +823,12 @@ create temp table t_l on commit drop as select lote_id from restaurantes.sr_impo
 select count(*) as mismo_lote_deberia_ser_1 from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('a', 64), 'resumen_servicio', 'ventas.csv', public.t_res1()) r join t_l on t_l.lote_id = r.lote_id;
 rollback;
 
-\echo '=== S7. lectura: tickets del comedor del dia 10 (suma de formas de pago) ==='
+\echo '=== S7. lectura: tickets del comedor del dia 10 (suma de formas de pago; desde la 084 el renglon se parte por forma de pago, por eso se suma) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
 select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('a', 64), 'resumen_servicio', 'ventas.csv', public.t_res1());
-select tickets as tickets_deberia_ser_15 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-11') where tipo_servicio = 'comedor' and dia_negocio = '2026-03-10';
+select sum(tickets) as tickets_deberia_ser_15 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-11') where tipo_servicio = 'comedor' and dia_negocio = '2026-03-10';
 rollback;
 
 \echo '=== S8. lectura: bruta del comedor del dia 10 ==='
@@ -836,7 +836,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
 select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('a', 64), 'resumen_servicio', 'ventas.csv', public.t_res1());
-select bruta_centavos as bruta_deberia_ser_150000 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-11') where tipo_servicio = 'comedor' and dia_negocio = '2026-03-10';
+select sum(bruta_centavos) as bruta_deberia_ser_150000 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-11') where tipo_servicio = 'comedor' and dia_negocio = '2026-03-10';
 rollback;
 
 \echo '=== S9. lectura: IVA sumado cuando todos los renglones lo traen ==='
@@ -844,7 +844,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
 select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('a', 64), 'resumen_servicio', 'ventas.csv', public.t_res1());
-select iva_centavos as iva_deberia_ser_19999 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-11') where tipo_servicio = 'comedor' and dia_negocio = '2026-03-10';
+select sum(iva_centavos) as iva_deberia_ser_19999 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-11') where tipo_servicio = 'comedor' and dia_negocio = '2026-03-10';
 rollback;
 
 \echo '=== S10. lectura: IVA nulo cuando el archivo no lo trae (no se inventa) ==='
@@ -940,7 +940,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
 select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('c', 64), 'cuentas', 'cuentas.csv', public.t_cta1());
-select tickets as tickets_deberia_ser_2 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-10') where tipo_servicio = 'comedor';
+select sum(tickets) as tickets_deberia_ser_2 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-10') where tipo_servicio = 'comedor';
 rollback;
 
 \echo '=== S21. cuentas: bruta derivada = total + descuento (36800) ==='
@@ -948,7 +948,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
 select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('c', 64), 'cuentas', 'cuentas.csv', public.t_cta1());
-select bruta_centavos as bruta_deberia_ser_36800 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-10') where tipo_servicio = 'comedor';
+select sum(bruta_centavos) as bruta_deberia_ser_36800 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-10') where tipo_servicio = 'comedor';
 rollback;
 
 \echo '=== S22. cuentas: descuento derivado ==='
@@ -964,7 +964,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
 select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('c', 64), 'cuentas', 'cuentas.csv', public.t_cta1());
-select cancelado_centavos as cancelado_deberia_ser_5000 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-10') where tipo_servicio = 'comedor';
+select sum(cancelado_centavos) as cancelado_deberia_ser_5000 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-10') where tipo_servicio = 'comedor';
 rollback;
 
 \echo '=== S24. cuentas: propina derivada ==='
@@ -972,7 +972,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
 select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('c', 64), 'cuentas', 'cuentas.csv', public.t_cta1());
-select propina_centavos as propina_deberia_ser_3000 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-10') where tipo_servicio = 'comedor';
+select sum(propina_centavos) as propina_deberia_ser_3000 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-10') where tipo_servicio = 'comedor';
 rollback;
 
 \echo '=== S25. cuentas: neta derivada (11600 + 23200) ==='
@@ -980,7 +980,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
 select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('c', 64), 'cuentas', 'cuentas.csv', public.t_cta1());
-select neta_centavos as neta_deberia_ser_34800 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-10') where tipo_servicio = 'comedor';
+select sum(neta_centavos) as neta_deberia_ser_34800 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-10') where tipo_servicio = 'comedor';
 rollback;
 
 \echo '=== S26. cuentas: IVA derivado es nulo (el layout no lo trae) ==='
@@ -1576,7 +1576,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311
 select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('a', 64), 'resumen_servicio', 'ventas.csv', public.t_res1());
 reset role;
 set local role authenticated;
-select count(*) as filas_deberia_ser_3 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-11');
+select count(distinct (dia_negocio, tipo_servicio)) as filas_deberia_ser_3 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-11');
 rollback;
 
 \echo '=== S102. RECHAZADO: sistema con sucursal de otra organizacion -> 42501 ==='

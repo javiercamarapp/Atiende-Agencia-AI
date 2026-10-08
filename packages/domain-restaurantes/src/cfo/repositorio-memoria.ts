@@ -9,7 +9,7 @@
 //    TODAS las sucursales de la organización) y con alcance de organización completa;
 //  - escrituras: validaciones de cfo_config_guardar / cfo_costo_guardar / sr_importar, alcance de organización completa donde la SQL lo exige,
 //    y una bitácora (`auditoria`) con la misma `action` que escribe la SQL;
-//  - base sin migrar por bloque: `migraciones: { m081, m082, m083 }` (lecturas -> `disponible: false`, escrituras -> `CfoNoDisponibleError`).
+//  - base sin migrar por bloque: `migraciones: { m081, m082, m083, m084 }` (lecturas -> `disponible: false`, escrituras -> `CfoNoDisponibleError`).
 import {
   CfoNoDisponibleError,
   CfoParametroInvalidoError,
@@ -28,6 +28,7 @@ import {
   type LecturaPedidosDetalle,
   type LoteSr,
   type ParamsCfo,
+  type ParamsFrecuentesDormidos,
   type RangoCfo,
   type RegistrarExportacionEntrada,
   type ResultadoImportacionSr,
@@ -50,9 +51,11 @@ import {
   type FilaColonia,
   type FilaComandasPos,
   type FilaCortesias,
+  type FilaDescuentoP90,
   type FilaEntregaPercentiles,
   type FilaEntregas,
   type FilaEscalacionHora,
+  type FilaFrecuentesDormidos,
   type FilaPedidoDetalle,
   type FilaProducto,
   type FilaRepartidor,
@@ -86,6 +89,9 @@ export interface DatasetCfoMemoria {
   readonly comandasPos: readonly FilaComandasPos[];
   readonly agotados: readonly FilaAgotado[];
   readonly srResumen: readonly FilaSrResumen[];
+  /** 084 (opcionales: sin sembrar, la lectura devuelve vacío). */
+  readonly frecuentesDormidos?: readonly FilaFrecuentesDormidos[];
+  readonly descuentoP90?: readonly FilaDescuentoP90[];
 }
 
 const DATASET_VACIO: DatasetCfoMemoria = {
@@ -102,8 +108,8 @@ export interface OpcionesCfoMemoria {
   readonly permitidas?: readonly string[];
   /** true (por omisión) = owner/admin sin `property_ids` acotado: ve «No asignado» y puede escribir costos/config de la organización. */
   readonly organizacionCompleta?: boolean;
-  /** Migración aplicada por bloque; por omisión las tres. */
-  readonly migraciones?: { readonly m081?: boolean; readonly m082?: boolean; readonly m083?: boolean };
+  /** Migración aplicada por bloque; por omisión todas. */
+  readonly migraciones?: { readonly m081?: boolean; readonly m082?: boolean; readonly m083?: boolean; readonly m084?: boolean };
   readonly config?: CfoConfig;
   /** Reloj inyectable para `created_at` de costos y lotes. */
   readonly ahora?: () => Date;
@@ -156,7 +162,7 @@ export class InMemoryCfoRepository implements CfoRepository {
   private readonly sucursalesOrg: ReadonlySet<string>;
   private readonly permitidas: ReadonlySet<string>;
   private readonly orgCompleta: boolean;
-  private readonly mig: { m081: boolean; m082: boolean; m083: boolean };
+  private readonly mig: { m081: boolean; m082: boolean; m083: boolean; m084: boolean };
   private config: CfoConfig;
   private configurada = false;
   private readonly costos: CostoVersion[] = [];
@@ -171,7 +177,7 @@ export class InMemoryCfoRepository implements CfoRepository {
     this.sucursalesOrg = new Set(opciones.sucursales);
     this.permitidas = new Set(opciones.permitidas ?? opciones.sucursales);
     this.orgCompleta = opciones.organizacionCompleta ?? true;
-    this.mig = { m081: opciones.migraciones?.m081 ?? true, m082: opciones.migraciones?.m082 ?? true, m083: opciones.migraciones?.m083 ?? true };
+    this.mig = { m081: opciones.migraciones?.m081 ?? true, m082: opciones.migraciones?.m082 ?? true, m083: opciones.migraciones?.m083 ?? true, m084: opciones.migraciones?.m084 ?? true };
     this.config = opciones.config ?? CFO_CONFIG_POR_DEFECTO;
     this.srFilas = [...this.dataset.srResumen];
     this.ahora = opciones.ahora ?? (() => new Date());
@@ -352,6 +358,33 @@ export class InMemoryCfoRepository implements CfoRepository {
     return this.lectura("agotados", this.mig.m082, () => this.filtrar(this.dataset.agotados, p));
   }
 
+  // ---- 084 ----
+
+  async clientesFrecuentesDormidos(p: ParamsCfo, hasta: string, params: ParamsFrecuentesDormidos): Promise<LecturaCfo<FilaFrecuentesDormidos>> {
+    this.alcance(p);
+    const n = params.frecuenteN ?? this.config.frecuenteN;
+    const dias = params.frecuenteDias ?? this.config.frecuenteDias;
+    const muestra = params.muestra ?? 0;
+    if (n < 1 || n > 20 || dias < 30 || dias > 365 || params.dormidoDias < 7 || params.dormidoDias > 365 || muestra < 0 || muestra > 50)
+      throw new CfoParametroInvalidoError("cfo_clientes_frecuentes_dormidos: parametros invalidos");
+    if (!FECHA.test(hasta)) throw new CfoParametroInvalidoError("cfo: rango de fechas invalido");
+    return this.lectura("clientesFrecuentesDormidos", this.mig.m084, () => {
+      // El renglón del conjunto (propertyId null) sale siempre que el alcance es válido, como en la SQL.
+      const { props } = this.alcance(p);
+      return (this.dataset.frecuentesDormidos ?? []).filter((f) => (f.propertyId === null ? true : props.has(f.propertyId)));
+    });
+  }
+
+  async descuentoP90(p: ParamsCfo, hasta: string, dias: number): Promise<LecturaCfo<FilaDescuentoP90>> {
+    this.alcance(p);
+    if (!(dias >= 14 && dias <= 365)) throw new CfoParametroInvalidoError("cfo_descuento_p90: dias invalidos");
+    if (!FECHA.test(hasta)) throw new CfoParametroInvalidoError("cfo: rango de fechas invalido");
+    return this.lectura("descuentoP90", this.mig.m084, () => {
+      const { props } = this.alcance(p);
+      return (this.dataset.descuentoP90 ?? []).filter((f) => (f.propertyId === null ? true : props.has(f.propertyId)));
+    });
+  }
+
   // ---- 083 ----
 
   async configLeer(_organizationId: string): Promise<LecturaConfig> {
@@ -511,8 +544,9 @@ export class InMemoryCfoRepository implements CfoRepository {
     for (const x of buenos) {
       const dia = x["dia_negocio"] as string;
       const serv = x["tipo_servicio"] as TipoServicioSr;
-      const k = `${dia}|${serv}`;
-      const a = acum.get(k) ?? { propertyId: e.propertyId, diaNegocio: dia, tipoServicio: serv, formaPago: null, tickets: 0, brutaCentavos: 0, descuentoCentavos: 0, canceladoCentavos: 0, propinaCentavos: 0, ivaCentavos: null, netaCentavos: 0 };
+      const forma = typeof x["forma_pago"] === "string" && x["forma_pago"].trim() !== "" ? x["forma_pago"].trim().toLowerCase() : null;
+      const k = `${dia}|${serv}|${forma ?? ""}`;
+      const a = acum.get(k) ?? { propertyId: e.propertyId, diaNegocio: dia, tipoServicio: serv, formaPago: forma, tickets: 0, brutaCentavos: 0, descuentoCentavos: 0, canceladoCentavos: 0, propinaCentavos: 0, ivaCentavos: null, netaCentavos: 0 };
       if (e.tipo === "resumen_servicio") {
         acum.set(k, {
           ...a, tickets: a.tickets + (x["tickets"] as number), brutaCentavos: a.brutaCentavos + (x["bruta_centavos"] as number),

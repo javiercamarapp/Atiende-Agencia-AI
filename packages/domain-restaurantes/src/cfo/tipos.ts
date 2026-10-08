@@ -163,6 +163,48 @@ export interface FilaPedidoDetalle {
   /** Alias de 8 caracteres (hash de `customer_id`); null si el pedido no tiene cliente identificado. Nunca nombre, teléfono ni dirección. */
   readonly clienteAlias: string | null;
   readonly comandaEstado: string | null;
+  /** 084: la fila cumple la regla de venta. Ausente (undefined) en una base sin la 084: el filtro `es_venta` sigue funcionando, pero la fila no lo dice. */
+  readonly esVenta?: boolean;
+}
+
+/** Un cliente de la muestra de `cfo_clientes_frecuentes_dormidos`: alias hash de 8 caracteres, nunca nombre, teléfono ni dirección. */
+export interface MuestraFrecuenteDormido {
+  readonly alias: string;
+  readonly pedidos: number;
+  readonly diasSinPedir: number;
+  readonly netaCentavos: number;
+}
+
+/**
+ * `cfo_clientes_frecuentes_dormidos` (084): clientes frecuentes (N pedidos en X días) con >= M días sin pedir, por sucursal y del conjunto (NO aditivo:
+ * un cliente de dos sucursales cuenta en ambas y una vez en el conjunto).
+ */
+export interface FilaFrecuentesDormidos {
+  /** null en el renglón del conjunto. */
+  readonly propertyId: string | null;
+  readonly alcance: "sucursal" | "conjunto";
+  /** Umbrales efectivos con los que se calculó (los de `cfo_config` o los que mandó el llamador). */
+  readonly frecuenteN: number;
+  readonly frecuenteDias: number;
+  readonly dormidoDias: number;
+  readonly frecuentes: number;
+  readonly frecuentesDormidos: number;
+  /** Pedidos de los frecuentes dormidos dentro de la ventana de `frecuenteDias` días. */
+  readonly pedidosVentana: number;
+  readonly netaVentanaCentavos: number;
+  readonly muestra: readonly MuestraFrecuenteDormido[];
+}
+
+/** `cfo_descuento_p90` (084): p90 del descuento % DIARIO de los últimos `dias` días; `p90Pct` null = menos de 14 días con venta (nunca 0). */
+export interface FilaDescuentoP90 {
+  readonly propertyId: string | null;
+  readonly alcance: "sucursal" | "conjunto";
+  readonly dias: number;
+  readonly desde: string;
+  readonly hasta: string;
+  readonly diasConVenta: number;
+  /** Porcentaje (18.1 = 18.1 %). */
+  readonly p90Pct: number | null;
 }
 
 /** `cfo_cobertura`. */
@@ -371,7 +413,10 @@ export interface FilaCostoCaptura {
   readonly pct: number | null;
 }
 
-/** `sr_resumen_dia`: suma de lo vigente por sucursal × día × tipo de servicio × forma de pago. */
+/**
+ * `sr_resumen_leer`: suma de lo vigente por sucursal × día × tipo de servicio × forma de pago. Desde la 084 la forma de pago viene en el renglón
+ * (minúsculas; null = el archivo no la traía o la base aún no tiene la 084): Σ de los renglones de un mismo (sucursal, día, servicio) = lo que daba la 083.
+ */
 export interface FilaSrResumen {
   readonly propertyId: string;
   readonly diaNegocio: string;

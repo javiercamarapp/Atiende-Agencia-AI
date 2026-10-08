@@ -1,4 +1,4 @@
-// CFO-05 · prueba OPT-IN contra Postgres REAL (migraciones 081/082/083 aplicadas, rol `authenticated`, RLS y auth.uid() reales).
+// CFO-05 · prueba OPT-IN contra Postgres REAL (migraciones 081/082/083/084 aplicadas, rol `authenticated`, RLS y auth.uid() reales).
 // Se omite sin CFO_REAL_PG=1; la corre scripts/verify-restaurantes-cfo-repos/run.sh con un Postgres efímero en un puerto propio (nunca el 5432).
 // Cada caso es una transacción que termina en ROLLBACK: la base queda intacta. Los ids de organización, sucursales y personas son los de los fixtures
 // de la API, así que la ruta HTTP (membresía en memoria) y la base (membresía real) hablan de las mismas personas.
@@ -243,6 +243,102 @@ describe.skipIf(!habilitado)("CFO contra Postgres real (rol authenticated)", () 
       await expect(repo.srImportar({ ...e, propertyId: ctx.propertyIdB, huella: "c".repeat(64) })).rejects.toBeInstanceOf(CfoSinAccesoError);
       await como(ctx.staff.staffSucursalA.id);
       await expect(repo.srImportar({ ...e, huella: "d".repeat(64) })).rejects.toBeInstanceOf(CfoSinAccesoError);
+    });
+  });
+
+  it("084: frecuentes dormidos, p90 del descuento, es_venta y forma_pago por el adaptador sobre la base real (tipos numéricos, NULL ≠ 0, alcance)", async () => {
+    await enTransaccion(async (ctx) => {
+      const repo = new PostgresCfoRepository(sesion);
+      await como(ctx.staff.owner.id);
+      // Cliente Uno (e1) tiene 2 pedidos el 10-mar en A: con n = 2 es frecuente y, al 20-abr, lleva 41 días sin pedir (dormido con M = 30).
+      const fd = await repo.clientesFrecuentesDormidos(params(ctx, null), "2026-04-20", { frecuenteN: 2, frecuenteDias: 90, dormidoDias: 30, muestra: 3 });
+      expect(fd.disponible).toBe(true);
+      const fa = fd.filas.find((f) => f.propertyId === ctx.propertyIdA)!;
+      expect(fa).toMatchObject({ alcance: "sucursal", frecuenteN: 2, frecuenteDias: 90, dormidoDias: 30, frecuentes: 1, frecuentesDormidos: 1, pedidosVentana: 2 });
+      for (const f of fd.filas) for (const v of [f.frecuentes, f.frecuentesDormidos, f.pedidosVentana, f.netaVentanaCentavos]) expect(typeof v).toBe("number");
+      expect(fa.muestra).toHaveLength(1);
+      expect(fa.muestra[0]).toMatchObject({ pedidos: 2, diasSinPedir: 41 });
+      expect(fa.muestra[0]!.alias).toMatch(/^[0-9a-f]{8}$/);
+      expect(fd.filas.find((f) => f.alcance === "conjunto")).toMatchObject({ propertyId: null, frecuentesDormidos: 1 });
+      expect(fd.filas.some((f) => f.propertyId === ctx.otherPropertyId)).toBe(false);
+      // Con los umbrales de cfo_config (n = 3) nadie es frecuente: 0, no «sin dato».
+      const porDefecto = await repo.clientesFrecuentesDormidos(params(ctx, null), "2026-04-20", { dormidoDias: 30 });
+      expect(porDefecto.filas.find((f) => f.alcance === "conjunto")).toMatchObject({ frecuenteN: 3, frecuentesDormidos: 0, muestra: [] });
+
+      // p90: solo 2 días con venta en la historia (el pedido de las 01:05 del 11 cuenta ese día; < 14 días): NULL, nunca 0.
+      const p90 = await repo.descuentoP90(params(ctx, null), "2026-03-31", 30);
+      expect(p90.disponible).toBe(true);
+      expect(p90.filas.find((f) => f.propertyId === ctx.propertyIdA)).toMatchObject({ diasConVenta: 2, p90Pct: null, dias: 30, hasta: "2026-03-31" });
+
+      // es_venta: el cancelado (a7) NO es venta y los demás sí.
+      const det = await repo.pedidosDetalle(params(ctx, [ctx.propertyIdA]), R, {}, 50, null, 50);
+      expect(det.filas.length).toBeGreaterThan(3);
+      expect(det.filas.every((f) => typeof f.esVenta === "boolean")).toBe(true);
+      expect(det.filas.filter((f) => f.esVenta === false).map((f) => f.status)).toEqual(["cancelado"]);
+      expect((await repo.pedidosDetalle(params(ctx, [ctx.propertyIdA]), R, { es_venta: false }, 50, null, 50)).filas).toHaveLength(1);
+
+      // Alcance: el admin acotado a A no puede pedir B y su conjunto sale solo de A; staff -> sin acceso.
+      await como(ctx.staff.adminSucursalA.id);
+      await expect(repo.clientesFrecuentesDormidos(params(ctx, [ctx.propertyIdB]), "2026-04-20", { dormidoDias: 30 })).rejects.toBeInstanceOf(CfoSinAccesoError);
+      await expect(repo.descuentoP90(params(ctx, [ctx.propertyIdB]), "2026-03-31", 30)).rejects.toBeInstanceOf(CfoSinAccesoError);
+      const acotado = await repo.clientesFrecuentesDormidos(params(ctx, null), "2026-04-20", { frecuenteN: 2, dormidoDias: 30 });
+      expect(new Set(acotado.filas.map((f) => f.propertyId))).toEqual(new Set([ctx.propertyIdA, null]));
+      await como(ctx.staff.staffSucursalA.id);
+      await expect(repo.clientesFrecuentesDormidos(params(ctx, null), "2026-04-20", { dormidoDias: 30 })).rejects.toBeInstanceOf(CfoSinAccesoError);
+      // Parámetros fuera de los límites de cfo_config -> 22023.
+      await como(ctx.staff.owner.id);
+      await expect(repo.clientesFrecuentesDormidos(params(ctx, null), "2026-04-20", { frecuenteN: 21, dormidoDias: 30 })).rejects.toBeInstanceOf(CfoParametroInvalidoError);
+      await expect(repo.descuentoP90(params(ctx, null), "2026-03-31", 13)).rejects.toBeInstanceOf(CfoParametroInvalidoError);
+    });
+  });
+
+  it("084: forma_pago separa tarjeta en el resumen de SoftRestaurant y la suma por día y servicio no cambia", async () => {
+    await enTransaccion(async (ctx) => {
+      const repo = new PostgresCfoRepository(sesion);
+      await como(ctx.staff.owner.id);
+      await repo.srImportar({
+        organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, huella: "f".repeat(64), tipo: "resumen_servicio", nombreArchivo: "pagos.csv",
+        renglones: [
+          { dia_negocio: DIA, tipo_servicio: "comedor", forma_pago: "Efectivo", tickets: 10, bruta_centavos: 100_000, neta_centavos: 95_000 },
+          { dia_negocio: DIA, tipo_servicio: "comedor", forma_pago: "TARJETA", tickets: 5, bruta_centavos: 50_000, neta_centavos: 50_000, propina_centavos: 4_000 },
+        ],
+      });
+      const sr = await repo.srResumenLeer(params(ctx, [ctx.propertyIdA]), R);
+      expect(sr.filas.map((f) => f.formaPago).sort()).toEqual(["efectivo", "tarjeta"]);
+      expect(sr.filas.find((f) => f.formaPago === "tarjeta")).toMatchObject({ netaCentavos: 50_000, propinaCentavos: 4_000, tickets: 5 });
+      expect(sr.filas.reduce((s, f) => s + f.netaCentavos, 0)).toBe(145_000);
+    });
+  });
+
+  it("COMPATIBILIDAD: contra una base con solo 081/083 (sin es_venta ni forma_pago) el detalle y el resumen de SR siguen respondiendo, sin esas columnas", async () => {
+    await enTransaccion(async (ctx) => {
+      await client.query("reset role");
+      // Se reproduce la forma anterior a la 084: se conservan las funciones nuevas con otro nombre y se recrean envoltorios sin la columna nueva.
+      await client.query("alter function restaurantes.cfo_pedidos_detalle(uuid, uuid[], date, date, jsonb, integer, text, integer) rename to cfo_pedidos_detalle_084");
+      await client.query(`create function restaurantes.cfo_pedidos_detalle(p_org uuid, p_props uuid[], p_desde date, p_hasta date, p_filtro jsonb default null, p_limite integer default 50, p_cursor text default null, p_promesa_min integer default 50)
+        returns table (order_id uuid, order_number bigint, property_id uuid, dia_negocio date, hora_local integer, canal text, source text, status text, payment_method text, bruta bigint, "desc" bigint, neta bigint,
+                       propina bigint, entregado_min numeric, es_compensacion boolean, es_reposicion boolean, cliente_alias text, comanda_estado text, cursor_pagina text)
+        language sql stable security definer set search_path = restaurantes, core, pg_temp as $$
+          select d.order_id, d.order_number, d.property_id, d.dia_negocio, d.hora_local, d.canal, d.source, d.status, d.payment_method, d.bruta, d."desc", d.neta, d.propina, d.entregado_min,
+                 d.es_compensacion, d.es_reposicion, d.cliente_alias, d.comanda_estado, d.cursor_pagina
+            from restaurantes.cfo_pedidos_detalle_084(p_org, p_props, p_desde, p_hasta, p_filtro, p_limite, p_cursor, p_promesa_min) d $$`);
+      await client.query("grant execute on function restaurantes.cfo_pedidos_detalle(uuid, uuid[], date, date, jsonb, integer, text, integer) to authenticated");
+      await client.query("alter function restaurantes.sr_resumen_leer(uuid, uuid[], date, date) rename to sr_resumen_leer_084");
+      await client.query(`create function restaurantes.sr_resumen_leer(p_organization_id uuid, p_props uuid[], p_desde date, p_hasta date)
+        returns table (property_id uuid, dia_negocio date, tipo_servicio text, tickets bigint, bruta_centavos bigint, descuento_centavos bigint, cancelado_centavos bigint, propina_centavos bigint, iva_centavos bigint, neta_centavos bigint)
+        language sql stable security definer set search_path = restaurantes, core, pg_temp as $$
+          select r.property_id, r.dia_negocio, r.tipo_servicio, sum(r.tickets)::bigint, sum(r.bruta_centavos)::bigint, sum(r.descuento_centavos)::bigint, sum(r.cancelado_centavos)::bigint,
+                 sum(r.propina_centavos)::bigint, sum(r.iva_centavos)::bigint, sum(r.neta_centavos)::bigint
+            from restaurantes.sr_resumen_leer_084(p_organization_id, p_props, p_desde, p_hasta) r group by r.property_id, r.dia_negocio, r.tipo_servicio $$`);
+      await client.query("grant execute on function restaurantes.sr_resumen_leer(uuid, uuid[], date, date) to authenticated");
+      await como(ctx.staff.owner.id);
+      const repo = new PostgresCfoRepository(sesion);
+      const det = await repo.pedidosDetalle(params(ctx, [ctx.propertyIdA]), R, {}, 50, null, 50);
+      expect(det.disponible).toBe(true);
+      expect(det.filas.length).toBeGreaterThan(3);
+      expect(det.filas.every((f) => !("esVenta" in f))).toBe(true);
+      const sr = await repo.srResumenLeer(params(ctx, [ctx.propertyIdA]), R);
+      expect(sr.disponible).toBe(true);
     });
   });
 

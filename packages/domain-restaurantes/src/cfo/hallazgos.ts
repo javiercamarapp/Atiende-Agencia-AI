@@ -70,12 +70,20 @@ export interface MetricasSucursalHallazgos {
   readonly agenteBase4Semanas: SumasAgente | null;
   readonly costoAgenteCentavos: number | null;
   readonly costoAgenteBase4SemanasCentavos: number | null;
-  /** p90 histórico propio del descuento %, si se conoce. */
+  /** p90 histórico propio del descuento % (de los porcentajes DIARIOS de los 90 días previos al periodo; `cfo_descuento_p90`), si se conoce. */
   readonly descuentoPctP90Historico: number | null;
   /** p90 de entrega (no aditivo), minutos. */
   readonly entregaP90Min: number | null;
   /** Clientes frecuentes sin pedir ≥ 30 días y cuántos pedidos hicieron en los últimos 90 días. */
-  readonly frecuentesDormidos: { readonly clientes: number; readonly pedidos90d: number } | null;
+  readonly frecuentesDormidos: {
+    readonly clientes: number;
+    /** Pedidos de esos clientes dentro de la ventana de «frecuente» (`ventanaDias`, 90 por omisión). */
+    readonly pedidos90d: number;
+    /** Ventana en días con la que se midió «frecuente» (cfo_config.frecuente_dias). Ausente = 90. */
+    readonly ventanaDias?: number;
+    /** Días sin pedir con los que se midió «dormido». Ausente = 30. */
+    readonly dormidoDias?: number;
+  } | null;
   readonly agotados: readonly FilaAgotado[];
   readonly comandas: SumasComandas | null;
   readonly escalacionesPorFranja: readonly FilaEscalacionHora[];
@@ -354,17 +362,19 @@ export function detectarHallazgos(entrada: EntradaHallazgos, config: CfoConfig):
       }
     }
 
-    // 9) frecuentes_dormidos: frecuentes sin pedir ≥ 30 días
+    // 9) frecuentes_dormidos: frecuentes sin pedir ≥ M días (30 por omisión)
     if (m.frecuentesDormidos && m.frecuentesDormidos.clientes > 0 && tk != null) {
       const f = m.frecuentesDormidos;
+      const dormido = f.dormidoDias ?? 30;
+      const ventana = f.ventanaDias ?? 90;
       push({
         tipo: "frecuentes_dormidos", propertyId: id,
-        titulo: `${formatoEntero(f.clientes)} ${f.clientes === 1 ? "cliente frecuente de" : "clientes frecuentes de"} ${n} ${f.clientes === 1 ? "lleva" : "llevan"} 30 días o más sin pedir`,
-        cifra: cifra(f.clientes, "medido", "cfo_clientes_resumen"), cifraTexto: formatoEntero(f.clientes),
-        comparacion: `Hicieron ${formatoEntero(f.pedidos90d)} pedidos en los últimos 90 días.`,
+        titulo: `${formatoEntero(f.clientes)} ${f.clientes === 1 ? "cliente frecuente de" : "clientes frecuentes de"} ${n} ${f.clientes === 1 ? "lleva" : "llevan"} ${formatoEntero(dormido)} días o más sin pedir`,
+        cifra: cifra(f.clientes, "medido", "cfo_clientes_frecuentes_dormidos"), cifraTexto: formatoEntero(f.clientes),
+        comparacion: `Hicieron ${formatoEntero(f.pedidos90d)} pedidos en los últimos ${formatoEntero(ventana)} días.`,
         porQueImporta: "Son los clientes que más compran; recuperarlos cuesta mucho menos que conseguir uno nuevo.",
         accion: { texto: "Lance una campaña de recuperación a estos clientes.", ruta: ruta("clientes", id) },
-        impactoCentavos: mulDiv(tk, f.pedidos90d, 3), urgencia: "media", fuentes: ["cfo_clientes_resumen"],
+        impactoCentavos: mulDiv(tk, f.pedidos90d, 3), urgencia: "media", fuentes: ["cfo_clientes_frecuentes_dormidos"],
       });
     }
 
