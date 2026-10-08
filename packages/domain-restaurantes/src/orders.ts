@@ -73,7 +73,8 @@ export async function searchProducts(repo: RestaurantesRepository, args: { reado
   let ambiguo = false;
   let mediaOrdenODeMedioKilo = false;
   const gramosPedidos = tokens.filter((t) => t.startsWith("peso:")).map((t) => Number(t.slice(5))).filter((n) => Number.isFinite(n) && n > 0);
-  const pesoPedido = gramosPedidos.length === 1 ? gramosPedidos[0]! : null;
+  // Con varios pesos en la consulta se usa el MENOR: nunca se ofrece una presentacion mayor a alguno de ellos.
+  const pesoPedido = gramosPedidos.length > 0 ? Math.min(...gramosPedidos) : null;
   // "3 kilos", "kilo y cuarto": no hay presentacion de ese peso; se listan todas las del platillo y el agente arma el total, asi que NO hay una mejor coincidencia.
   if (tokens.includes("peso:cualquiera")) ambiguo = true;
   // "un cuarto de cochinita" / "300 g de bistec": el peso solo existe en los productos que se venden por kilo. Si con el peso no queda nada, se busca el producto sin el
