@@ -1769,6 +1769,83 @@ select restaurantes.cfo_registrar_exportacion('00000000-0000-0000-0000-0000000e8
 select public.t_esperar_error($q$delete from restaurantes.audit_log where action = 'cfo.exportacion'$q$, '0A000');
 rollback;
 
+\echo '=== R1. dia cuyos renglones se rechazan todos por conflicto de folio conserva sus cuentas ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('4', 64), 'cuentas', 'a.csv', '[{"folio":"F-1","dia_negocio":"2026-07-02","tipo_servicio":"comedor","total_centavos":100}]'::jsonb);
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('5', 64), 'cuentas', 'b.csv', '[{"folio":"X-1","dia_negocio":"2026-07-20","tipo_servicio":"comedor","total_centavos":100},{"folio":"X-2","dia_negocio":"2026-07-20","tipo_servicio":"comedor","total_centavos":200},{"folio":"X-3","dia_negocio":"2026-07-20","tipo_servicio":"comedor","total_centavos":300}]'::jsonb);
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('6', 64), 'cuentas', 'c.csv', '[{"folio":"F-1","dia_negocio":"2026-07-20","tipo_servicio":"comedor","total_centavos":100},{"folio":"Q-1","dia_negocio":"2026-07-21","tipo_servicio":"comedor","total_centavos":100}]'::jsonb);
+select count(*) as cuentas_dia20_deberia_ser_3 from restaurantes.sr_ticket where estado = 'vigente' and dia_negocio = '2026-07-20';
+rollback;
+
+\echo '=== R2. ese mismo dia conserva su resumen vigente ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('4', 64), 'cuentas', 'a.csv', '[{"folio":"F-1","dia_negocio":"2026-07-02","tipo_servicio":"comedor","total_centavos":100}]'::jsonb);
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('5', 64), 'cuentas', 'b.csv', '[{"folio":"X-1","dia_negocio":"2026-07-20","tipo_servicio":"comedor","total_centavos":100},{"folio":"X-2","dia_negocio":"2026-07-20","tipo_servicio":"comedor","total_centavos":200},{"folio":"X-3","dia_negocio":"2026-07-20","tipo_servicio":"comedor","total_centavos":300}]'::jsonb);
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('6', 64), 'cuentas', 'c.csv', '[{"folio":"F-1","dia_negocio":"2026-07-20","tipo_servicio":"comedor","total_centavos":100},{"folio":"Q-1","dia_negocio":"2026-07-21","tipo_servicio":"comedor","total_centavos":100}]'::jsonb);
+select tickets as tickets_deberia_ser_3 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-07-20', date '2026-07-20');
+rollback;
+
+\echo '=== R3. la funcion toma el candado por sucursal antes del de huella ==='
+begin;
+select count(*) as candado_deberia_ser_1 from pg_proc p where p.proname = 'sr_importar' and pg_get_functiondef(p.oid) like '%sr_importar_sucursal%';
+rollback;
+
+\echo '=== R4. sumar tickets de una misma llave no desborda un entero (300 x 10 millones) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
+select aceptados as aceptados_deberia_ser_300 from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('3', 64), 'resumen_servicio', 'g.csv', (select jsonb_agg(jsonb_build_object('dia_negocio', '2026-03-10', 'tipo_servicio', 'comedor', 'tickets', 10000000, 'bruta_centavos', 1, 'neta_centavos', 1)) from generate_series(1, 300)));
+rollback;
+
+\echo '=== R5. y la lectura devuelve la suma completa ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('3', 64), 'resumen_servicio', 'g.csv', (select jsonb_agg(jsonb_build_object('dia_negocio', '2026-03-10', 'tipo_servicio', 'comedor', 'tickets', 10000000, 'bruta_centavos', 1, 'neta_centavos', 1)) from generate_series(1, 300)));
+select (tickets / 1000000)::int as millones_deberia_ser_3000 from restaurantes.sr_resumen_leer('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-10', date '2026-03-10');
+rollback;
+
+\echo '=== R6. RECHAZADO: iva_pct desbordado da 22023 y no 22003 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
+select public.t_esperar_error($q$select restaurantes.cfo_config_guardar('00000000-0000-0000-0000-0000000e8301', '{"iva_pct": 1000}'::jsonb)$q$, '22023');
+rollback;
+
+\echo '=== R7. RECHAZADO: frecuente_n desbordado da 22023 y no 22003 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
+select public.t_esperar_error($q$select restaurantes.cfo_config_guardar('00000000-0000-0000-0000-0000000e8301', '{"frecuente_n": 10000000000}'::jsonb)$q$, '22023');
+rollback;
+
+\echo '=== R8. borrar una sucursal con lotes y capturas (cascada) ya no choca con el trigger ==='
+begin;
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-0000000e8315';
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8302', '00000000-0000-0000-0000-0000000e83b1', repeat('7', 64), 'cuentas', 'b.csv', public.t_cta1());
+select restaurantes.cfo_costo_guardar('00000000-0000-0000-0000-0000000e8302', '00000000-0000-0000-0000-0000000e83b1', date '2026-03-01', 'insumos', 1000, null, null);
+delete from core.property where id = '00000000-0000-0000-0000-0000000e83b1';
+select count(*) as lotes_restantes_deberia_ser_0 from restaurantes.sr_import_lote where property_id = '00000000-0000-0000-0000-0000000e83b1';
+rollback;
+
+\echo '=== R9. la baja de un usuario solo anula created_by en la captura ==='
+begin;
+insert into restaurantes.cfo_costo_captura (organization_id, property_id, mes, concepto, monto_centavos, created_by) values ('00000000-0000-0000-0000-0000000e8301', null, date '2026-03-01', 'otros', 1, '00000000-0000-0000-0000-0000000e8314');
+delete from core.staff_user where id = '00000000-0000-0000-0000-0000000e8314';
+select count(*) as capturas_deberia_ser_1 from restaurantes.cfo_costo_captura where concepto = 'otros' and created_by is null;
+rollback;
+
+\echo '=== R10. con el padre vivo el DELETE directo sigue bloqueado -> 0A000 ==='
+begin;
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-0000000e8311';
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('c', 64), 'cuentas', 'cuentas.csv', public.t_cta1());
+select public.t_esperar_error($q$delete from restaurantes.sr_ticket$q$, '0A000');
+rollback;
+
 \echo '=== G1. las 18 funciones nuevas existen ==='
 begin;
 select count(*) as funciones_deberia_ser_18 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_cap_gestor','cfo_resolver_alcance','cfo_cap_escritura','cfo_validar_rango','cfo_config_efectiva','cfo_config_leer','cfo_config_guardar','cfo_solo_marcar_reemplazo','cfo_costo_guardar','cfo_costos_leer','cfo_costo_historial','cfo_sr_entero','sr_normalizar_renglon','sr_importar','sr_resumen_leer','sr_lotes_listar','sr_cobertura','cfo_registrar_exportacion');

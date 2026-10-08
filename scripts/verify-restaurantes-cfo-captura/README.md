@@ -4,7 +4,7 @@ Verificacion contra Postgres real (rol REAL `authenticated`, RLS, GRANT por colu
 `packages/domain-restaurantes/migrations/083_cfo_captura_y_softrestaurant_import.sql`
 (espejo: `supabase/migrations/20240101000393_083_cfo_captura_y_softrestaurant_import.sql`), CFO paquete 03.
 
-Cubre (230 escenarios):
+Cubre (240 escenarios):
 - **Configuracion** (`cfo_config`, `cfo_config_leer`, `cfo_config_guardar`): defaults sin fila (y que coinciden con los DEFAULT de la
   tabla), guardado parcial, rangos (22023), admin acotado / staff / repartidor / otra organizacion / sistema / anon, bitacora, sin DML directo.
 - **Costos** (`cfo_costo_captura`, `cfo_costo_guardar`, `cfo_costos_leer`, `cfo_costo_historial`): una version vigente y una reemplazada,
@@ -20,3 +20,5 @@ Los archivos de SoftRestaurant de los fixtures son SINTETICOS y viven solo en `a
 
 - Manual: `scripts/verify-restaurantes-cfo-captura/run.sh` (levanta un Postgres efimero con `initdb`).
 - CI: lo descubre automaticamente `scripts/verify-real-postgres-ci/run-gate.mjs` (contrato de 3 archivos).
+- Carrera (manual, 2 conexiones reales; el gate no la descubre): `scripts/verify-restaurantes-cfo-captura/concurrencia.sh` prueba dos archivos
+  distintos sobre la misma sucursal y los mismos dias, y resumen_servicio + cuentas en paralelo (un solo lote vigente por dia).

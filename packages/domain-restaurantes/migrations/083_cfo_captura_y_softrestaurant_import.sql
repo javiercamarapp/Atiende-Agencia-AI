@@ -52,6 +52,19 @@
 -- PUNTO DE ENLACE F2-P01: el folio estructurado de la comanda (pos_comanda_outbox, 024) NO se toca aqui; sr_ticket.folio es el
 -- folio que trae el archivo de SR y solo sirve para unicidad por sucursal.
 --
+-- NOTAS DE USO / RIESGOS CONOCIDOS (revision del PR #504):
+--   * Huella: el servidor NO la verifica contra el contenido; la misma huella con otro contenido devuelve el lote viejo
+--     (creado = false). CFO-08 debe calcularla (sha-256) sobre archivo + mapeo de columnas.
+--   * Quien manda: sr_resumen_leer lee SOLO sr_resumen_dia. Un resumen_servicio que cubre un dia reemplaza el resumen vigente de
+--     ese dia pero NO marca las cuentas (sr_ticket) de ese dia: el detalle de cuentas es auxiliar y puede no sumar igual que el
+--     resumen mas reciente. Las cifras oficiales son las de sr_resumen_leer.
+--   * Folio: la unicidad vigente es por (sucursal, folio) para siempre. Si SoftRestaurant reinicia folios (p. ej. cada anio), un
+--     folio repetido en un dia no cubierto se rechazara por renglon. PENDIENTE de confirmar con el distribuidor/PM; si reinicia,
+--     cambiar la unicidad a (sucursal, folio, dia) en una migracion posterior.
+--   * hora_local no se valida contra dia_negocio (corte de dia de negocio, p. ej. 01:00): se guarda tal cual.
+--   * cfo_costos_leer devuelve hasta 5000 filas sin cursor (el diseno 4.6 pide 200 por pagina con cursor para detalle; aqui son
+--     agregados mensuales por sucursal/concepto: 5000 cubre ~27 sucursales x 9 conceptos x 20 meses). Paginar si se rebasa.
+--
 -- Interpretacion de los layouts de SR (INFERIDA hasta tener un archivo real; no hay documentacion publica del esquema):
 --   resumen_servicio: una linea por (dia, tipo de servicio, forma de pago opcional). tickets = cuentas cobradas; bruta =
 --     venta de lista; descuento; cancelado = importe de cuentas canceladas; propina (fuera de ingresos); iva (null si el
@@ -318,7 +331,11 @@ begin
   if not v_existia then
     v_old := restaurantes.cfo_config_efectiva(p_organization_id);
   end if;
-  v_new := jsonb_populate_record(v_old, p_cfg - 'organization_id');
+  begin
+    v_new := jsonb_populate_record(v_old, p_cfg - 'organization_id');
+  exception when numeric_value_out_of_range or invalid_text_representation then
+    raise exception 'cfo_config_guardar: un valor excede el rango de su columna' using errcode = '22023';
+  end;
 
   if v_new.frecuente_n not between 1 and 20 then raise exception 'cfo_config_guardar: frecuente_n fuera de rango (1..20)' using errcode = '22023'; end if;
   if v_new.frecuente_dias not between 30 and 365 then raise exception 'cfo_config_guardar: frecuente_dias fuera de rango (30..365)' using errcode = '22023'; end if;
@@ -394,7 +411,19 @@ declare
   v_col text := tg_argv[0];
 begin
   if tg_op = 'DELETE' then
+    -- Unica excepcion: la cascada de la baja de la organizacion o de la sucursal (operacion de plataforma). En ese momento el
+    -- padre ya no existe en esta transaccion; un DELETE directo (padre vivo) se sigue rechazando.
+    if not exists (select 1 from core.organization o where o.id = (to_jsonb(old) ->> 'organization_id')::uuid)
+       or (to_jsonb(old) ->> 'property_id' is not null
+           and not exists (select 1 from core.property p where p.id = (to_jsonb(old) ->> 'property_id')::uuid)) then
+      return old;
+    end if;
     raise exception 'cfo_append_only: DELETE no esta permitido sobre %.%', tg_table_schema, tg_table_name using errcode = '0A000';
+  end if;
+  -- Baja de un usuario: la FK created_by ON DELETE SET NULL solo anula el actor.
+  if to_jsonb(new) ->> 'created_by' is null and to_jsonb(old) ->> 'created_by' is not null
+     and (to_jsonb(new) - 'created_by') = (to_jsonb(old) - 'created_by') then
+    return new;
   end if;
   if (to_jsonb(new) - v_col) is distinct from (to_jsonb(old) - v_col) then
     raise exception 'cfo_append_only: solo se puede marcar el reemplazo en %.%', tg_table_schema, tg_table_name using errcode = '0A000';
@@ -595,7 +624,7 @@ create table if not exists restaurantes.sr_resumen_dia (
   dia_negocio date not null,
   tipo_servicio text not null check (tipo_servicio in ('comedor', 'para_llevar', 'domicilio', 'rapido', 'otro')),
   forma_pago text check (forma_pago is null or (char_length(forma_pago) between 1 and 40 and forma_pago = lower(forma_pago))),
-  tickets integer not null check (tickets >= 0),
+  tickets bigint not null check (tickets >= 0),
   bruta_centavos bigint not null check (bruta_centavos >= 0),
   descuento_centavos bigint not null check (descuento_centavos >= 0),
   cancelado_centavos bigint not null check (cancelado_centavos >= 0),
@@ -883,6 +912,8 @@ begin
   end if;
 
   -- Idempotencia por huella (serializa dos peticiones simultaneas del mismo archivo).
+  -- Una importacion a la vez por sucursal (dos archivos distintos sobre los mismos dias no se pisan); luego, por huella.
+  perform pg_advisory_xact_lock(hashtextextended('sr_importar_sucursal:' || p_property_id::text, 0));
   perform pg_advisory_xact_lock(hashtextextended('sr_importar:' || p_organization_id::text || ':' || p_huella, 0));
   select l.* into v_lote from restaurantes.sr_import_lote l where l.organization_id = p_organization_id and l.huella = p_huella;
   if found then
@@ -929,7 +960,7 @@ begin
       select f3.o, 'folio', case when f3.rn > 1 then 'folio duplicado en el archivo' else 'el folio ya existe en un dia que este archivo no cubre' end
         from f3 where f3.rn > 1 or f3.conflicto
     )
-    select (select d from dias),
+    select (select coalesce(array_agg(distinct (f3.r ->> 'dia')::date), '{}'::date[]) from f3 where f3.rn = 1 and not f3.conflicto),
            (select coalesce(jsonb_agg(f3.r order by f3.o), '[]'::jsonb) from f3 where f3.rn = 1 and not f3.conflicto),
            (select count(*)::integer from malos),
            (select coalesce(jsonb_agg(jsonb_build_object('renglon', m.o, 'campo', m.campo, 'motivo', m.motivo) order by m.o), '[]'::jsonb)
@@ -1001,7 +1032,7 @@ begin
     insert into restaurantes.sr_resumen_dia (lote_id, organization_id, property_id, dia_negocio, tipo_servicio, forma_pago, tickets,
                                              bruta_centavos, descuento_centavos, cancelado_centavos, propina_centavos, iva_centavos, neta_centavos)
     select v_id, p_organization_id, p_property_id, (r ->> 'dia')::date, r ->> 'serv', r ->> 'pago',
-           sum((r ->> 'tickets')::bigint)::integer, sum((r ->> 'bruta')::bigint), sum((r ->> 'desc')::bigint), sum((r ->> 'canc')::bigint),
+           sum((r ->> 'tickets')::bigint), sum((r ->> 'bruta')::bigint), sum((r ->> 'desc')::bigint), sum((r ->> 'canc')::bigint),
            sum((r ->> 'prop')::bigint),
            case when bool_and(r ->> 'iva' is not null) then sum((r ->> 'iva')::bigint) end,
            sum((r ->> 'neta')::bigint)
