@@ -11,7 +11,6 @@ import { buildRestaurantFixture } from "./fixtures.ts";
 
 type Script = (request: LlmCompletionRequest) => LlmCompletionResult;
 const texto = (text: string): LlmCompletionResult => ({ text, model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 });
-const llamada = (id: string, name: string, args: object): LlmCompletionResult => ({ text: "", toolCalls: [{ id, name, argumentsJson: JSON.stringify(args) }], model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 });
 function handlerGuionado(repo: InMemoryRestaurantesRepository, script: Script) {
   const gateway = new LlmGateway({ breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()), budgetStore: new InMemoryBudgetLedgerStore(), budgetLimits: { maxRunUsd: 10, maxTenantDailyUsd: 100 } });
   gateway.registerLadder("default", [new FakeLlmProvider({ id: "guion", script })]);
