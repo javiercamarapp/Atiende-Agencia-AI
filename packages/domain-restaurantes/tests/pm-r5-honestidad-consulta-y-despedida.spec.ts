@@ -138,7 +138,8 @@ describe("T7-010 / T7-013: enforcePendingQuestion no repregunta tras la despedid
     const f = buildRestaurantFixture();
     const handler = handlerGuionado(f.repo, () => texto("¡Con gusto! Que tenga una excelente noche. 😊"));
     const despedida = await handler.handleInboundMessage(entrada(f.organizationId, "Nada más, gracias 😊"));
-    expect(despedida.reply).not.toMatch(/qu[eé] le gustar[ií]a pedir/i);
+    expect(despedida.reply).not.toMatch(/qu[eé] le gustar[ií]a pedir|colonia|\?/i);
+    expect(despedida.reply).toBe("¡Con gusto! Que tenga una excelente noche. 😊");
     const saludo = await handler.handleInboundMessage(entrada(f.organizationId, "Hola, buenas noches"));
     expect(saludo.reply).toMatch(/qu[eé] le gustar[ií]a pedir|colonia/i);
   });
