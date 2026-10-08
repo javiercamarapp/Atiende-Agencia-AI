@@ -12,7 +12,7 @@
 //
 // Estados honestos:
 //  - Base sin la migración 081/082/083: 200 con `disponible: false` y `bloques` (lecturas); 503 en escrituras. Nunca 500.
-//  - SQL 22023 -> 400 (parámetro inválido); 42501 -> 403; query inválida (fecha, > 400 días, > 20 sucursales) -> 422; cuerpo > 5 MB -> 413.
+//  - SQL 22023 -> 400 (parámetro inválido); 42501 -> 403; query inválida (fecha, > 400 días, > 20 sucursales) -> 422; cuerpo > 4 MB -> 413.
 //  - Sin PII en ninguna respuesta. La exportación a Excel/PDF es CFO-06; aquí solo se registra la intención (`POST /exportaciones`).
 //  - Lecturas con `ETag` débil + `Cache-Control: private, no-cache` (revalidación barata con If-None-Match).
 import { createHash } from "node:crypto";
