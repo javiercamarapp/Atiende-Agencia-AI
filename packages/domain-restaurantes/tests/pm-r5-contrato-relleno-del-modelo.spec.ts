@@ -78,6 +78,23 @@ describe.each(["whatsapp", "voz"] as const)("%s: el relleno vacio de los opciona
   });
 });
 
+// Barrido EXHAUSTIVO de los dos campos de propina: TODOS los rellenos que un modelo manda cuando no hay propina, en ambos campos y su producto cartesiano.
+const RELLENOS_PROPINA: ReadonlyArray<unknown> = [0, "0", "0%", "", null, undefined, false, [], {}, "0.0", " 0 ", "0 %"];
+describe.each(["whatsapp", "voz"] as const)("%s: barrido de rellenos de propina (producto cartesiano de propina y propina_porcentaje)", (channel) => {
+  const combos = RELLENOS_PROPINA.flatMap((porcentaje) => RELLENOS_PROPINA.map((monto) => [porcentaje, monto] as const));
+  it("hay 144 combinaciones", () => expect(combos.length).toBe(144));
+  it.each(combos)("propina_porcentaje %j + propina %j crea el pedido sin propina", async (porcentaje, monto) => {
+    const s = setup(channel);
+    const extra: Record<string, unknown> = {};
+    if (porcentaje !== undefined) extra.propina_porcentaje = porcentaje;
+    if (monto !== undefined) extra.propina = monto;
+    for (const pago of ["efectivo", "tarjeta"]) {
+      const r = await invokeAgentTool(s.f.repo, s.ctx, "crear_pedido", { ...s.base, payment_method: pago, ...extra });
+      expect(r.orderId, pago).not.toBeNull();
+    }
+  });
+});
+
 describe("negativo: el mismo contrato sigue rechazando valores invalidos de verdad", () => {
   it.each([
     ["propina_porcentaje", -5],

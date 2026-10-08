@@ -53,11 +53,11 @@ describe("propina en porcentaje con propina:0 de relleno (QA-PM-R5-whatsapp-01)"
 });
 
 describe("negativos: lo invalido sigue rechazandose", () => {
-  it.each([-5, 31, 1000, "diez", Number.NaN, "-3%", "150%", {}, true])("propina_porcentaje %s", async (v) => {
+  it.each([-5, 31, 1000, "diez", Number.NaN, "-3%", "150%", { monto: 1 }, [15], true])("propina_porcentaje %s", async (v) => {
     const s = setup("whatsapp");
     await expect(s.crear({ payment_method: "tarjeta", propina_porcentaje: v })).rejects.toThrow(/propina_porcentaje debe ser/);
   });
-  it.each(["veinte", Number.NaN, {}, true])("propina %s", async (v) => {
+  it.each(["veinte", Number.NaN, { monto: 1 }, [20], true])("propina %s", async (v) => {
     const s = setup("whatsapp");
     await expect(s.crear({ payment_method: "tarjeta", propina: v })).rejects.toThrow(/monto numérico/);
   });

@@ -670,7 +670,10 @@ function porcentajeDePropina(valor: unknown): number | null {
 
 /** 0, "0", "0%" o vacio = "sin propina" (el modelo rellena asi el campo cuando no hay propina: QA-PM-R5-reglas-01). Solo se rechazan negativos, > maximo y no numericos. */
 function esSinPropina(valor: unknown): boolean {
-  if (valor === undefined || valor === null || valor === 0) return true;
+  if (valor === undefined || valor === null || valor === 0 || valor === false) return true;
+  // [] y {} vacios tambien son relleno ("no hay dato"); true y los arreglos u objetos con contenido siguen siendo invalidos.
+  if (Array.isArray(valor)) return valor.length === 0;
+  if (typeof valor === "object") return Object.keys(valor as object).length === 0;
   if (typeof valor !== "string") return false;
   // Sin regex con \s* anidados (ReDoS): se recorta una sola vez y se comparan formas fijas.
   let t = valor.trim().toLowerCase();
