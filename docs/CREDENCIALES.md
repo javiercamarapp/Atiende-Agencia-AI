@@ -35,7 +35,7 @@ explícito, nunca a datos falsos.
 | `SUPERADMIN_MFA_REQUIRED` | `1` o `true` | No | MFA TOTP obligatoria del superadmin: las acciones sensibles (`/superadmin/*` que mueven acceso, dinero, interruptores u organizaciones) exigen step-up verificado aunque el superadmin aun no haya enrolado (403 `mfa_enrollment_required`), y fallan cerrado si la migracion `0025` no esta aplicada. **No activarla hasta que cada superadmin haya enrolado su factor y la migracion este aplicada.** | Step-up solo para quien ya tiene un factor activo | No |
 | `SUPERADMIN_MFA_ENCRYPTION_KEY` | `openssl rand -hex 32`, **distinta de `JWT_SECRET`** | Sí | Cifra (AES-256-GCM) el secreto TOTP de cada superadmin en la base | Se deriva de `JWT_SECRET`; rotar `JWT_SECRET` obliga a re-enrolar la MFA | No |
 | `ALLOWED_ORIGINS` | lista separada por comas, p.ej. `https://app.tudominio.com` | No | Orígenes permitidos por CORS y por la guarda de Origin de `/auth/*` y `/superadmin/*` (el mismo origen del `Host`, y el de `APP_BASE_URL`, siempre pasan) | Default `http://localhost:5173` | No |
-| `APP_BASE_URL` | tu dominio real de `apps/web`, p.ej. `https://app.atiende.ai` | No | Arma el link `/aceptar-invitacion?token=...` dentro del correo de invitación de staff | Default `https://app.atiende.ai` (nunca bloquea la invitación, solo afecta el link) | No |
+| `APP_BASE_URL` | el origen real de `apps/web`, `https://...` (p.ej. `https://app.tudominio.com`) | **Sí en producción** (`VERCEL_ENV=production`) | Arma los enlaces de invitación, restablecimiento de contraseña y magic link, y es origen de confianza del guard de Origin | En producción no hay valor por omisión: si falta o no es `https://`, la API no arranca. Fuera de producción: `https://$VERCEL_URL` y, si no hay, `http://localhost:5173` | No |
 | `TRUSTED_PROXY_IP_HEADER` | nombre de un header, p.ej. `cf-connecting-ip` (minúsculas) | No | Declara qué header de IP confiar como PRIMARIO en `http-security.ts::requestActor` (usado por todo rate-limit por IP de este repo) — solo tiene efecto si un proxy real y confiable (ej. Cloudflare) está delante de Vercel y garantiza que ESE header no lo puede escribir el cliente final. Hoy este despliegue es Vercel directo (sin evidencia de ningún proxy así en `vercel.json`), así que se deja SIN configurar a propósito. | Sin ella, se usa el último salto de `X-Forwarded-For` (el que Vercel mismo agrega, no falsificable) con `X-Real-IP` como respaldo — nunca `cf-connecting-ip` por defecto (ver hallazgo de revisión del PR #167: ese header, sin un proxy real delante, lo escribe el cliente). | No |
 
 ## Demostraciones públicas de agentes
@@ -103,7 +103,7 @@ Estas 4 URLs override **estaban leídas** por `env.ts` pero **no documentadas** 
 | Variable | Dónde se obtiene | Secreta | Habilita | Sin ella | Arranque |
 |---|---|:-:|---|---|:-:|
 | `RESEND_API_KEY` | Resend → API Keys | Sí | Envío real de correo — drena el canal `email` de `messaging_outbox` de citas/hoteles/restaurantes/despachos/licitaciones/rentas (`dispatchPendingEmailJobs` de cada dominio) | Cada job de correo falla explícito (nunca se marca `sent` sin que Resend lo haya aceptado) | No |
-| `RESEND_FROM_EMAIL` | tu remitente verificado en Resend | No | Encabezado `From:` de esos correos | Default `atiende <notificaciones@atiende.ai>` | No |
+| `RESEND_FROM_EMAIL` | tu remitente verificado en Resend | **Sí en producción para enviar correo** | Encabezado `From:` de esos correos | En producción, sin ella el correo queda no configurado aunque exista `RESEND_API_KEY` (nunca se inventa un remitente). Fuera de producción: `atiende <onboarding@resend.dev>` (remitente de pruebas de Resend) | No |
 
 ## Alertas salientes (PL-04) — todas opcionales
 
@@ -349,7 +349,7 @@ garantiza que el bundle YA DESPLEGADO las tenga si se configuraron después del
 
 | Variable | Dónde se da de alta | Notas |
 |---|---|---|
-| `CRON_SECRET` | Vercel → Project → Settings → Environment Variables — **con el MISMO valor que `INTERNAL_SECRET`** | **No la lee ningún código de este repo** (`grep` no encuentra `process.env.CRON_SECRET`) — es pura convención de Vercel: sus Cron Jobs invocan con `Authorization: Bearer $CRON_SECRET` automáticamente cuando esa variable existe en el proyecto. Sin ella (o con un valor distinto a `INTERNAL_SECRET`), los ~18 crons de `vercel.json` disparan pero cada corrida recibe 401. |
+| `CRON_SECRET` | Vercel → Project → Settings → Environment Variables — **con el MISMO valor que `INTERNAL_SECRET`** | **La API no la usa para autenticar** (solo el preflight de go-live, `docs/GO-LIVE.md`, compara como booleano si coincide con `INTERNAL_SECRET`, sin imprimir ninguna) — es convención de Vercel: sus Cron Jobs invocan con `Authorization: Bearer $CRON_SECRET` automáticamente cuando esa variable existe en el proyecto. Sin ella (o con un valor distinto a `INTERNAL_SECRET`), los ~18 crons de `vercel.json` disparan pero cada corrida recibe 401. |
 
 `scripts/verify-real-postgres-ci/run-gate.mjs` (fuera del alcance `apps/`/
 `packages/` de este inventario) lee `PGHOST`/`PGPORT`/`PGUSER`/`PGPASSWORD` para

@@ -443,6 +443,12 @@ por sí solo.
 
 ---
 
+## Go-live de una organización: verificación "Listo para producción"
+
+Antes de conectar el número real de una organización, corre la vista **Listo para producción** (ficha de la organización en `/superadmin`) o
+`npm run verify:go-live` — el orden de la lista y qué verificación cubre cada paso están en [`docs/GO-LIVE.md`](GO-LIVE.md). **Antes de fusionar a
+`main` el cambio que vuelve obligatoria `APP_BASE_URL` en producción, define `APP_BASE_URL` (https) en Vercel → Production**: sin ella la API no arranca.
+
 ## Rentas — sync iCal cada 15 minutos (Rn-01): propuesta de cron, DECISIÓN DE JAVIER
 
 **Estado histórico (ya cambiado; hoy corre `*/15 * * * *`, ver `docs/CRONS.md`):** `/internal/rentas/ical-sync` corría **una vez al día**

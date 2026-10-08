@@ -65,7 +65,7 @@ export async function enviarCorreoResumenDiarioSiCorresponde(deps: AppDeps, fech
   if (yaGuardado?.correoEnviadoEn) return { enviado: false, motivo: "ya_enviado_antes" };
 
   if (!deps.env.resend.apiKey) {
-    console.warn(`resumen-diario correo: RESEND_API_KEY no configurada -- el resumen de ${fecha} no se envía por correo (se guardó igual, ver /superadmin/resumen).`);
+    console.warn(`resumen-diario correo: correo no configurado (falta RESEND_API_KEY o, en produccion, RESEND_FROM_EMAIL) -- el resumen de ${fecha} no se envía por correo (se guardó igual, ver /superadmin/resumen).`);
     return { enviado: false, motivo: "resend_no_configurado" };
   }
 

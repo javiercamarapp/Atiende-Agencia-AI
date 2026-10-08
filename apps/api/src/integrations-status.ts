@@ -22,6 +22,8 @@
 // tiene ningún camino de código que toque un valor real salvo para comparar con
 // `undefined`/cadena vacía).
 
+import { esProduccion } from "./env.ts";
+
 /** Snapshot de variables de entorno ya leído por el caller (p.ej. `process.env` en
  *  la ruta HTTP o en el script CLI) — un simple mapa nombre -> valor|undefined. */
 export type EnvSnapshot = Readonly<Record<string, string | undefined>>;
@@ -147,8 +149,15 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     id: "resend-correo",
     nombre: "Resend (correo transaccional)",
     habilita:
-      "Envío real de correo — drena el canal 'email' de messaging_outbox de citas/hoteles/restaurantes/despachos/licitaciones/rentas. Sin RESEND_API_KEY, ningún job se reclama (queda 'pending' intacto, cero intentos quemados, ver fix a2b); con la key configurada, cada job falla explícito si Resend lo rechaza (nunca se marca 'sent' sin que Resend lo haya aceptado de verdad).",
-    variables: ["RESEND_API_KEY"],
+      "Envío real de correo — drena el canal 'email' de messaging_outbox de citas/hoteles/restaurantes/despachos/licitaciones/rentas. Sin RESEND_API_KEY, ningún job se reclama (queda 'pending' intacto, cero intentos quemados, ver fix a2b); con la key configurada, cada job falla explícito si Resend lo rechaza (nunca se marca 'sent' sin que Resend lo haya aceptado de verdad). En producción también exige RESEND_FROM_EMAIL (remitente de un dominio verificado en Resend): sin él la integración queda no configurada, nunca se inventa un remitente.",
+    variables: ["RESEND_API_KEY", "RESEND_FROM_EMAIL"],
+  },
+  {
+    id: "app-base-url",
+    nombre: "Origen público de la app (enlaces de correo)",
+    habilita:
+      "Origen https:// de apps/web que arma los enlaces de invitación, restablecimiento de contraseña y magic link, y que el guard de Origin trata como de confianza. En producción es obligatoria: sin ella loadApiEnv() lanza y la API no arranca (no existe valor por omisión).",
+    variables: ["APP_BASE_URL"],
   },
 
   // ---- Alertas salientes (PL-04) ----
@@ -157,7 +166,7 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     nombre: "Alertas salientes por correo (Resend)",
     habilita:
       "Aviso por correo a los destinatarios de ALERTAS_EMAIL_DESTINATARIOS (lista separada por comas) cuando un cron falla o el resumen diario detecta una alerta critica de salud. Reusa RESEND_API_KEY. Piso por hora por tipo y destino (ALERTAS_LIMITE_POR_HORA, default 2) y datos sensibles redactados. Sin estas variables no se envia nada.",
-    variables: ["RESEND_API_KEY", "ALERTAS_EMAIL_DESTINATARIOS"],
+    variables: ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "ALERTAS_EMAIL_DESTINATARIOS"],
   },
   {
     id: "alertas-webhook",
@@ -290,7 +299,13 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "ACCESS_TOKEN_TTL_SECONDS",
   "REFRESH_TOKEN_TTL_SECONDS",
   "ALLOWED_ORIGINS",
+  // Preflight de go-live (superadmin-preflight/verificaciones.ts): solo compara, como booleano, si CRON_SECRET (la que Vercel Cron manda como
+  // `Authorization: Bearer`) coincide con INTERNAL_SECRET; ningun valor se imprime ni se devuelve. La API no la usa para autenticar.
+  "CRON_SECRET",
+  // `env.ts::resolveAppBaseUrl` -- obligatoria en produccion (inventariada tambien como la integracion "app-base-url"); fuera de
+  // produccion cae a VERCEL_URL y luego a localhost. VERCEL_URL la inyecta Vercel (host del despliegue, sin esquema).
   "APP_BASE_URL",
+  "VERCEL_URL",
   // `http-security.ts::requestActor` -- opt-in explícito para confiar en un
   // header de IP de un proxy real (ej. Cloudflare) delante de Vercel. Sin
   // configurar en este despliegue a propósito (Vercel directo, sin proxy
@@ -321,7 +336,6 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "SUPERADMIN_MFA_ENCRYPTION_KEY",
   "RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS",
   "RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS",
-  "RESEND_FROM_EMAIL",
   // PL-04 alertas salientes: opcionales, nunca bloquean el arranque (ver integraciones
   // "alertas-correo", "alertas-webhook" y "sentry" arriba).
   "ALERTAS_WEBHOOK_SECRETO",
@@ -373,5 +387,10 @@ export function computeIntegrationsStatus(env: EnvSnapshot): IntegrationStatus[]
  *  pudiendo fallar por otras razones, p.ej. DATABASE_URL apuntando a un host
  *  inalcanzable). */
 export function missingStartupVars(env: EnvSnapshot): string[] {
-  return STARTUP_REQUIRED_ENV_VARS.filter((name) => !isSet(env, name));
+  const requeridas = esProduccion(env) ? [...STARTUP_REQUIRED_ENV_VARS, ...PRODUCTION_STARTUP_ENV_VARS] : STARTUP_REQUIRED_ENV_VARS;
+  return requeridas.filter((name) => !isSet(env, name));
 }
+
+/** Obligatorias para arrancar SOLO en produccion (`VERCEL_ENV=production`, o `NODE_ENV=production` sin `VERCEL_ENV`): sin valor
+ *  por omision seguro, `env.ts::resolveAppBaseUrl` lanza. */
+export const PRODUCTION_STARTUP_ENV_VARS: readonly string[] = ["APP_BASE_URL"];

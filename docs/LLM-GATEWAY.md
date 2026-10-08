@@ -170,7 +170,7 @@ Otras variables: `OPENROUTER_ZDR=1` activa `provider.zdr` en todas las rutas, `O
 - Los mensajes que viajan ya pasan por la redacción de PII del motor del data-chat.
 - La llave solo viaja en la cabecera `Authorization`; los errores recortan el cuerpo de respuesta y nunca
   incluyen cabeceras. No se registra la llave en logs, tests ni docs.
-- Cabeceras de atribución: `HTTP-Referer` = `APP_BASE_URL` (default `https://app.atiende.ai`), `X-Title` = `Atiende`.
+- Cabeceras de atribución: `HTTP-Referer` = `APP_BASE_URL` (obligatoria en producción; fuera de ella cae a `VERCEL_URL` o localhost), `X-Title` = `Atiende`.
 
 ## Errores, reintentos y circuit breaker
 

@@ -119,10 +119,9 @@ export interface ApiEnv {
    * origen público real de la app (`apps/web`) para armar el enlace de
    * activación que va DENTRO del correo de invitación (`/aceptar-invitacion?
    * token=...`, ver apps/web/src/App.tsx). Default razonable de este entorno
-   * de desarrollo (mismo dominio `.ai` que ya usa `resend.from` arriba) —
-   * ninguna ruta lo requiere (`requireEnv`) porque el correo sigue siendo
-   * best-effort: un `appBaseUrl` de desarrollo nunca debe tumbar la creación
-   * real de la invitación (ver admin-staff.ts). */
+   * de desarrollo. En PRODUCCION es obligatoria (`https://`) y sin ella la API no
+   * arranca (`resolveAppBaseUrl`); fuera de produccion cae a `https://${VERCEL_URL}`
+   * y luego a `http://localhost:5173`, nunca a un dominio ajeno. */
   readonly appBaseUrl: string;
   /** Secreto de firma DISTINTO al de staff (`jwtSecret`) para el JWT del portal de
    * propietario de rentas (Fase 3) -- ver diseño Fase 3 rentas §1.2/§3: defensa en
@@ -200,6 +199,55 @@ function requireEnv(name: string, fallback?: string): string {
   return value;
 }
 
+/** Subconjunto de variables que deciden el origen publico y el remitente (puro: se prueba sin tocar `process.env`). */
+export interface OrigenEnv {
+  readonly APP_BASE_URL?: string | undefined;
+  readonly RESEND_API_KEY?: string | undefined;
+  readonly RESEND_FROM_EMAIL?: string | undefined;
+  readonly VERCEL_ENV?: string | undefined;
+  readonly VERCEL_URL?: string | undefined;
+  readonly NODE_ENV?: string | undefined;
+}
+
+/** Produccion = `VERCEL_ENV=production`, o `NODE_ENV=production` cuando no hay `VERCEL_ENV`. */
+export function esProduccion(env: Pick<OrigenEnv, "VERCEL_ENV" | "NODE_ENV">): boolean {
+  const vercel = (env.VERCEL_ENV ?? "").trim().toLowerCase();
+  if (vercel !== "") return vercel === "production";
+  return (env.NODE_ENV ?? "").trim().toLowerCase() === "production";
+}
+
+/** Remitente de desarrollo que Resend acepta sin verificar dominio; nunca un dominio ajeno o sin verificar. */
+export const REMITENTE_DESARROLLO = "atiende <onboarding@resend.dev>";
+
+/**
+ * Origen publico de `apps/web`. En produccion `APP_BASE_URL` es obligatoria y `https://` (sin ella la API no arranca:
+ * los enlaces de invitacion, reset y magic link y el origen de confianza dependen de ella). Fuera de produccion: la
+ * variable si existe, si no `https://${VERCEL_URL}` y, si tampoco, `http://localhost:5173`. Nunca un dominio por omision.
+ */
+export function resolveAppBaseUrl(env: OrigenEnv): string {
+  const raw = (env.APP_BASE_URL ?? "").trim();
+  if (esProduccion(env)) {
+    if (raw === "") throw new Error("Falta la variable de entorno APP_BASE_URL (obligatoria en produccion: origen publico https:// de apps/web)");
+    if (!/^https:\/\/[^\s/]+/i.test(raw)) throw new Error("APP_BASE_URL debe ser un origen https:// en produccion");
+    return raw.replace(/\/+$/, "");
+  }
+  if (raw !== "") return raw.replace(/\/+$/, "");
+  const vercelUrl = (env.VERCEL_URL ?? "").trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  return vercelUrl !== "" ? `https://${vercelUrl}` : "http://localhost:5173";
+}
+
+/**
+ * Correo saliente. En produccion, sin `RESEND_FROM_EMAIL` la integracion queda NO configurada (`apiKey: null`, 503/fail-closed
+ * honesto en cada envio) aunque exista `RESEND_API_KEY`: nunca se inventa un remitente. Fuera de produccion cae al remitente de
+ * pruebas de Resend.
+ */
+export function resolveResend(env: OrigenEnv): { readonly apiKey: string | null; readonly from: string } {
+  const key = (env.RESEND_API_KEY ?? "").trim() === "" ? null : (env.RESEND_API_KEY as string);
+  const from = (env.RESEND_FROM_EMAIL ?? "").trim();
+  if (esProduccion(env)) return from === "" ? { apiKey: null, from: "" } : { apiKey: key, from };
+  return { apiKey: key, from: from === "" ? REMITENTE_DESARROLLO : from };
+}
+
 /** Nombre de entorno apto para una clave de Redis (minusculas, [a-z0-9_-]); `development` si falta. */
 export function breakerEnvName(raw: string | undefined): string {
   const clean = (raw ?? "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
@@ -251,9 +299,19 @@ export function loadApiEnv(): ApiEnv {
       jwksUrl: process.env.GOOGLE_STAFF_JWKS_URL ?? "https://www.googleapis.com/oauth2/v3/certs",
       issuer: process.env.GOOGLE_STAFF_ISSUER ?? "https://accounts.google.com",
     },
-    resend: { apiKey: process.env.RESEND_API_KEY ?? null, from: process.env.RESEND_FROM_EMAIL ?? "atiende <notificaciones@atiende.ai>" },
+    resend: resolveResend({
+      RESEND_API_KEY: process.env.RESEND_API_KEY,
+      RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      NODE_ENV: process.env.NODE_ENV,
+    }),
     stripe: { secretKey: process.env.STRIPE_SECRET_KEY ?? null, webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? null },
-    appBaseUrl: (process.env.APP_BASE_URL ?? "https://app.atiende.ai").replace(/\/+$/, ""),
+    appBaseUrl: resolveAppBaseUrl({
+      APP_BASE_URL: process.env.APP_BASE_URL,
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      VERCEL_URL: process.env.VERCEL_URL,
+      NODE_ENV: process.env.NODE_ENV,
+    }),
     rentasOwnerJwtSecret: requireEnv("RENTAS_OWNER_JWT_SECRET"),
     rentasOwnerAccessTokenTtlSeconds: Number(process.env.RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS ?? 900),
     rentasOwnerRefreshTokenTtlSeconds: Number(process.env.RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30),

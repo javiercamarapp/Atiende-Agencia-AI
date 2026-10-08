@@ -35,6 +35,7 @@
     "demo:limpiar": "node --experimental-strip-types scripts/seed-pm-demo/limpiar-demo.ts",
     "verify:bundle-budget": "node --experimental-strip-types scripts/verify-bundle-budget/check-bundle-budget.ts",
     "verify:env": "node --experimental-strip-types scripts/verify-env/verify-env.ts",
+    "verify:go-live": "node scripts/verify-go-live/run.mjs",
     "test:e2e": "npm run test:e2e -w @atiende/web --",
     "test:e2e:ui": "npm run test:e2e:ui -w @atiende/web --",
     "voz:pregrabados": "vite-node scripts/voz-pregrabados.ts --",
