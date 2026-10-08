@@ -106,23 +106,25 @@ async function esperar(): Promise<void> {
 }
 
 const botones = () => [...document.body.querySelectorAll("button")];
-const boton = (texto: string) => botones().find((b) => b.textContent?.trim() === texto) as HTMLButtonElement | undefined;
+const boton = (texto: string) => botones().find((b) => b.textContent?.trim() === texto || b.getAttribute("aria-label") === texto) as HTMLButtonElement | undefined;
+/** Las herramientas del tablero (sonido, auto-impresion, reglas del autopiloto, tiempo prometido) viven en un menu: se abre antes de buscarlas. */
+async function abrirHerramientas(): Promise<void> {
+  click(botones().find((b) => b.getAttribute("aria-label") === "Herramientas de pedidos")!);
+  await esperar();
+}
 const posts = () => fetchMock.mock.calls.filter(([url, init]) => /\/resolver$/.test(String(url)) && (init as RequestInit | undefined)?.method === "POST");
 const cuerpo = (i = 0) => JSON.parse(String((posts()[i]![1] as RequestInit).body));
 
 async function abrirPorAprobar(role = "owner") {
   rendered = renderComponent(<PedidosPage {...ctx(role)} />);
   await esperar();
-  const pestana = botones().find((b) => b.textContent?.includes("Por aprobar"))!;
-  // Radix Tabs activa con mousedown (no con click), igual que la pestana Programados.
-  await act(async () => {
-    pestana.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
-  });
+  // «Por aprobar» es un filtro (chip) dentro de «Órdenes recibidas».
+  click(botones().find((b) => b.textContent?.includes("Por aprobar"))!);
   await esperar();
 }
 
 describe("Pedidos: pestana Por aprobar", () => {
-  it("la pestana lleva la insignia con las aprobaciones pendientes y la lista muestra pedido, total, espera y botones del tipo", async () => {
+  it("el chip lleva la insignia con las aprobaciones pendientes y la lista muestra pedido, total, espera y botones del tipo", async () => {
     stub({ solicitudes: [GRANDE, CANCELACION, COMPENSACION], disponible: true });
     await abrirPorAprobar();
     expect(document.body.querySelector('[data-testid="insignia-por-aprobar"]')?.textContent).toBe("3");
@@ -271,6 +273,7 @@ describe("Tiempo prometido hoy", () => {
     stub({ solicitudes: [], disponible: true, saturado: true });
     rendered = renderComponent(<PedidosPage {...ctx("owner")} />);
     await esperar();
+    await abrirHerramientas();
     const linea = document.body.querySelector('[data-testid="tiempo-prometido"]')!.textContent!;
     expect(linea).toContain("domicilio de 40 a 50 minutos");
     expect(linea).toContain("recoger Recoger 15-25 minutos");
@@ -311,11 +314,13 @@ describe("Reglas del autopiloto", () => {
     stub({ solicitudes: [], disponible: true });
     rendered = renderComponent(<PedidosPage {...ctx("staff")} />);
     await esperar();
+    await abrirHerramientas();
     expect(boton("Reglas del autopiloto")).toBeUndefined();
     rendered.unmount();
     stub({ solicitudes: [], disponible: true });
     rendered = renderComponent(<PedidosPage {...ctx("admin")} />);
     await esperar();
+    await abrirHerramientas();
     expect(boton("Reglas del autopiloto")).toBeDefined();
   });
 
@@ -323,6 +328,7 @@ describe("Reglas del autopiloto", () => {
     stub({ solicitudes: [], disponible: true });
     rendered = renderComponent(<PedidosPage {...ctx("owner")} />);
     await esperar();
+    await abrirHerramientas();
     click(boton("Reglas del autopiloto")!);
     await esperar();
     const dialogo = document.body.querySelector('[role="dialog"]') as HTMLElement;
@@ -338,6 +344,7 @@ describe("Reglas del autopiloto", () => {
     stub({ solicitudes: [], disponible: true });
     rendered = renderComponent(<PedidosPage {...ctx("owner")} />);
     await esperar();
+    await abrirHerramientas();
     click(boton("Reglas del autopiloto")!);
     await esperar();
     const entradas = () => [...(document.body.querySelector('[role="dialog"]') as HTMLElement).querySelectorAll("input:not([type=checkbox])")] as HTMLInputElement[];

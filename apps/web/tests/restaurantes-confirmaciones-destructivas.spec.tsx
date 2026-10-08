@@ -213,7 +213,7 @@ describe("Pedidos (restaurantes) — cancelar pedido con motivo de la lista cerr
     });
     rendered = renderComponent(<PedidosPage {...ctx()} />);
     await esperar();
-    const boton = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Marcar Cancelado"))!;
+    const boton = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Cancelar pedido"))!;
     click(boton);
     await esperar();
   }
@@ -229,7 +229,10 @@ describe("Pedidos (restaurantes) — cancelar pedido con motivo de la lista cerr
   it("abre el dialogo con el nombre del cliente, sin window.confirm ni escritura", async () => {
     await abrirCancelar();
     expect(dialogoMotivo()).not.toBeNull();
-    expect(dialogoMotivo()!.textContent).toContain("¿Cancelar el pedido de Juan Pérez?");
+    expect(dialogoMotivo()!.textContent).toContain("¿Cancelar este pedido?");
+    expect(dialogoMotivo()!.textContent).toContain("#ord-1");
+    expect(dialogoMotivo()!.textContent).toContain("Juan Pérez");
+    expect(dialogoMotivo()!.textContent).toContain('pasará a "Cancelado" y saldrá de Recibidos. Sigue visible en Historial.');
     expect(confirmMock).not.toHaveBeenCalled();
     expect(patches()).toHaveLength(0);
   });
@@ -254,9 +257,9 @@ describe("Pedidos (restaurantes) — cancelar pedido con motivo de la lista cerr
 
   it("sin elegir motivo el boton de cancelar esta deshabilitado y no escribe", async () => {
     await abrirCancelar();
-    const confirmar = [...dialogoMotivo()!.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Cancelar el pedido") as HTMLButtonElement;
+    const confirmar = [...dialogoMotivo()!.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Sí, cancelar pedido") as HTMLButtonElement;
     expect(confirmar.disabled).toBe(true);
-    await pulsar("Cancelar el pedido");
+    await pulsar("Sí, cancelar pedido");
     expect(patches()).toHaveLength(0);
   });
 
@@ -264,7 +267,7 @@ describe("Pedidos (restaurantes) — cancelar pedido con motivo de la lista cerr
     await abrirCancelar();
     changeValue(dialogoMotivo()!.querySelector("select") as HTMLSelectElement, "sin_producto");
     await esperar();
-    await pulsar("Cancelar el pedido");
+    await pulsar("Sí, cancelar pedido");
     expect(patches()).toHaveLength(1);
     expect(JSON.parse((patches()[0]![1] as RequestInit).body as string)).toEqual({ status: "cancelado", motivo: "sin_producto" });
   });
