@@ -36,6 +36,8 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   // Prueba ciega de voz: reloj fijo (miercoles 12:00 Merida); V27 calcula la hora de recogida con el reloj del servidor.
   "packages/domain-restaurantes/tests/voz-simulador-prueba-ciega.spec.ts",
   "apps/api/tests/pm-r2-voz-programado.spec.ts",
+  // Cotizacion a domicilio valida horario de la sucursal: reloj fijo (miercoles 12:00 Merida), no la hora UTC del CI.
+  "packages/domain-restaurantes/tests/sucursal-mas-cercana-8km.spec.ts",
   "apps/api/tests/rentas-pricing-servidor-hoy.spec.ts",
   "apps/api/tests/rentas-cotizacion-servidor-hoy.spec.ts",
   "apps/api/tests/hoteles-night-audit-servidor-hoy.spec.ts",
