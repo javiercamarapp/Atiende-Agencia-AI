@@ -15,9 +15,16 @@ const reglasGlobales = reglas.filter((r) => r.source === "/(.*)");
 const todas = new Map(reglasGlobales.flatMap((r) => r.headers.map((h) => [h.key.toLowerCase(), h.value] as const)));
 
 describe("vercel.json headers", () => {
-  it("aplica a todas las rutas, salvo la excepcion de geolocalizacion de /pedir/*", () => {
+  it("aplica a todas las rutas, salvo la excepcion de /pedir/*", () => {
     expect(reglasGlobales.length).toBeGreaterThan(0);
     expect(reglas.filter((r) => r.source !== "/(.*)").map((r) => r.source)).toEqual(["/pedir/(.*)"]);
+  });
+
+  it("el microfono es self en la regla global (una SPA no relee la cabecera al navegar): nunca *, y lo demas sigue denegado", () => {
+    const valor = todas.get("permissions-policy")!;
+    expect(valor).toBe("camera=(), microphone=(self), geolocation=(), payment=(), usb=()");
+    expect(valor).not.toContain("*");
+    for (const d of ["camera=()", "geolocation=()", "payment=()", "usb=()"]) expect(valor).toContain(d);
   });
 
   it("geolocation esta deshabilitada en todo el sitio y solo /pedir/* la permite a su propia pagina, sin tocar nada mas", () => {
