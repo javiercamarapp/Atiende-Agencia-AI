@@ -230,6 +230,15 @@ describe("<CfoEstadoResultados /> · confianza, variación y avisos", () => {
 });
 
 describe("<CfoEstadoResultados /> · base sin migrar en la captura (M1)", () => {
+  it("«Capturar costos» no aparece mientras carga ni si la lectura falla (solo con la captura confirmada)", async () => {
+    await pintar(crearApiCfo({ "GET /estado-resultados": () => new Promise<never>(() => undefined) as never }), { filtros: T3 });
+    expect(q("[data-testid=capturar-costos]")).toBeNull();
+    rendered?.unmount();
+    await pintar(crearApiCfo({ "GET /estado-resultados": { status: 500, cuerpo: { message: "Falló el P&L." } } }), { filtros: T3 });
+    await esperarHasta(() => texto().includes("Falló el P&L."), "error");
+    expect(q("[data-testid=capturar-costos]")).toBeNull();
+  });
+
   it.each([503, 404])("PUT /costos con %s: el diálogo muestra un texto del CFO, NUNCA el del servicio de voz, y no da nada por guardado", async (status) => {
     const api = crearApiCfo({ "PUT /costos": { status } });
     await pintar(api, { filtros: T3 });

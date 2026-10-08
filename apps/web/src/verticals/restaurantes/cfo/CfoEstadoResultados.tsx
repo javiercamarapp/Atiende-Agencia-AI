@@ -174,8 +174,8 @@ export function CfoEstadoResultados(props: CfoPaginaProps) {
   const clave = `${filtros.desde}|${filtros.hasta}|${filtros.sucursales?.join(",") ?? ""}|${filtros.comparar}`;
   const { carga, recargando, recargar } = useCargaCfo(() => cargarConComparativo(props, granularidad), [clave, granularidad, api.propertyId, api.token]);
   const carga0 = carga;
-  // Sin la migración de captura (bloques.captura === false) no hay dónde guardar: la acción se retira en vez de fallar al guardar.
-  const capturaDisponible = carga0.estado !== "listo" || carga0.datos.d.bloques.captura;
+  // Sin la migración de captura (bloques.captura === false) no hay dónde guardar, y mientras carga o si falla no está confirmado: la acción solo aparece con la captura confirmada.
+  const capturaDisponible = carga0.estado === "listo" && carga0.datos.d.bloques.captura !== false;
   const puedeCapturar = puedeEn(role, "cfo.capturar") && capturaDisponible;
 
   return (
