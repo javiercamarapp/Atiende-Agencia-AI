@@ -112,6 +112,11 @@ class SesionEmisiones implements TenantDbSession {
   readonly vistas = new Set<string>();
   falla: ((dedupe: string) => boolean) | null = null;
   async query<T>(sql: string, params: unknown[] = []): Promise<{ rows: T[] }> {
+    if (/count\(distinct dedupe_key\)/.test(sql)) {
+      // Lo que la base ya tiene de ese dia: claves `restaurantes.cfo.hallazgo...:<tipo>-<sucursal>-<dia>` (el LIKE del llamador, hecho a mano).
+      const sufijo = String(params[1]).replace("restaurantes.cfo.hallazgo%", "");
+      return { rows: [{ n: [...this.vistas].filter((k) => k.startsWith("restaurantes.cfo.hallazgo") && k.endsWith(sufijo)).length } as T] };
+    }
     if (!/core\.emit_notification/.test(sql)) return { rows: [] };
     const dedupe = String(params[10]);
     if (this.falla?.(dedupe)) throw Object.assign(new Error("fallo simulado de la base"), { code: "XX000" });
@@ -161,7 +166,6 @@ describe("alertarHallazgosCfo", () => {
     const r2 = await alertarHallazgosCfo(db, ORG, TICK, { sucursales: SUCURSALES, repo: repo() });
     expect(r1.emitidas).toBeGreaterThan(0);
     expect(r2.emitidas).toBe(0);
-    expect(r2.sinNuevas).toBe(r1.emitidas);
     expect(db.emisiones).toHaveLength(antes);
     expect(new Set(db.emisiones.map((e) => e.dedupe)).size).toBe(db.emisiones.length);
   });
@@ -240,5 +244,54 @@ describe("alertarHallazgosCfo", () => {
     expect(r.externasEnviadas).toBe(0);
     expect(r.fallos.length).toBe(r.emitidas);
     expect(r.fallos[0]).toMatch(/canal_externo/);
+  });
+
+  it("día de negocio real: antes del corte (más tardío de las sucursales) el 'ayer' aún está abierto y se evalúa el antepasado", async () => {
+    // Corte 01:00 (por omision): a las 00:30 locales todavia no cierra ayer; a las 01:00 en punto si.
+    const antes = await alertarHallazgosCfo(new SesionEmisiones(), ORG, new Date("2026-10-01T06:30:00Z"), { sucursales: SUCURSALES, repo: repo() });
+    expect(antes.dia).toBe("2026-09-29");
+    const justo = await alertarHallazgosCfo(new SesionEmisiones(), ORG, new Date("2026-10-01T07:00:00Z"), { sucursales: SUCURSALES, repo: repo() });
+    expect(justo.dia).toBe("2026-09-30");
+    // Una sucursal que cierra a las 03:00: el tick de las 02:20 todavia no puede evaluar ayer.
+    const tarde = COBERTURA.map((c, i) => (i === 0 ? { ...c, corte: "03:00:00" } : c));
+    const r = await alertarHallazgosCfo(new SesionEmisiones(), ORG, TICK, { sucursales: SUCURSALES, repo: repo({}, { cobertura: tarde }) });
+    expect(r.dia).toBe("2026-09-29");
+    const despues = await alertarHallazgosCfo(new SesionEmisiones(), ORG, new Date("2026-10-01T09:05:00Z"), { sucursales: SUCURSALES, repo: repo({}, { cobertura: tarde }) });
+    expect(despues.dia).toBe("2026-09-30"); // 03:05 locales
+  });
+
+  it("el tope cuenta lo ya emitido ese día: dos ticks con datos distintos no suman 5 + 5", async () => {
+    const db = new SesionEmisiones();
+    const r1 = await alertarHallazgosCfo(db, ORG, TICK, { sucursales: SUCURSALES, repo: repo(), umbralCentavos: 1 });
+    expect(r1.emitidas).toBe(5);
+    // Segundo tick el mismo dia con OTROS datos (sin SoftRestaurant: cambian los candidatos).
+    const r2 = await alertarHallazgosCfo(db, ORG, TICK, { sucursales: SUCURSALES, repo: repo({}, { srResumen: [] }), umbralCentavos: 1 });
+    expect(r2.emitidas).toBe(0);
+    expect(new Set(db.emisiones.map((e) => e.dedupe)).size).toBe(5);
+    // Otro dia de negocio tiene su propio tope.
+    const r3 = await alertarHallazgosCfo(db, ORG, new Date("2026-10-02T08:20:00Z"), { sucursales: SUCURSALES, repo: repo(), umbralCentavos: 1 });
+    expect(r3.dia).toBe("2026-10-01");
+  });
+
+  it("si la lectura de lo ya emitido falla, el tope se aplica por llamada (no se rompe el tick)", async () => {
+    const db = new SesionEmisiones();
+    const original = db.query.bind(db);
+    db.query = (async (sql: string, params?: unknown[]) => {
+      if (/count\(distinct dedupe_key\)/.test(sql)) throw Object.assign(new Error("rls"), { code: "42501" });
+      return original(sql, params);
+    }) as typeof db.query;
+    const r = await alertarHallazgosCfo(db, ORG, TICK, { sucursales: SUCURSALES, repo: repo(), umbralCentavos: 1 });
+    expect(r.emitidas).toBe(5);
+    expect(r.fallos).toEqual([]);
+  });
+
+  it("el texto de la notificación usa un código legible del tipo y el impacto en pesos con '$'", async () => {
+    const db = new SesionEmisiones();
+    await alertarHallazgosCfo(db, ORG, TICK, { sucursales: SUCURSALES, repo: repo() });
+    expect(db.emisiones.length).toBeGreaterThan(0);
+    for (const e of db.emisiones) {
+      expect(e.titulo).toMatch(/^El CFO encontró algo que revisar: [A-Z][A-Za-z-]+$/);
+      if (e.evento === "restaurantes.cfo.hallazgo") expect(e.cuerpo).toMatch(/^Impacto estimado del día: \$\d+ MXN\./);
+    }
   });
 });

@@ -6,16 +6,19 @@
 // Garantías:
 //  - Idempotencia: la clave de dedupe es `<tipo>-<sucursal|org>-<día de negocio>`. Repetir el tick (o el reintento `?dias=N`) no repite la alerta;
 //    el top-5 se elige de forma determinista, así que la segunda llamada vuelve a apuntar a las mismas claves.
-//  - Tope: como máximo `TOPE_ALERTAS_POR_ORG_DIA` (5) alertas por organización y día; el resto se cuenta en `omitidasPorTope`.
+//  - Tope: como máximo `TOPE_ALERTAS_POR_ORG_DIA` (5) alertas por organización y día, contando lo ya emitido ese día (se lee de `core.notification` por
+//    prefijo de la clave de dedupe; si esa lectura no es posible vale 0 y el tope se aplica por llamada); el resto se cuenta en `omitidasPorTope`.
 //  - Día de negocio: la zona de la organización es la de su(s) sucursal(es) (la más común; empate = la primera). El día que cerró es AYER en esa
-//    zona (el tick corre a las 02:20 de Mérida, ya pasado el corte de 01:00). Nunca se usa la fecha UTC.
+//    zona si ya pasó el corte del día de negocio (el MÁS TARDÍO de sus sucursales, `cobertura.corte`; 01:00 por omisión) y ANTEPASADO si todavía no
+//    (una sucursal que cierra a las 03:00, o una re-ejecución manual a las 00:30). Nunca se usa la fecha UTC.
 //  - Sin PII: el texto de la notificación solo lleva el código del tipo de hallazgo y el impacto en pesos enteros (la plantilla del catálogo no
 //    admite texto libre). El detalle, la cifra y la acción viven en la pantalla del CFO (`/restaurantes/{orgSlug}/cfo`).
-//  - Mejor esfuerzo: nada aquí lanza hacia el tick. El llamador lo envuelve en try/catch por organización de todos modos.
+//  - Mejor esfuerzo: los fallos al EMITIR se aíslan y se reportan en `fallos`. Pero el servicio puede lanzar (`CfoSinAccesoError`,
+//    `CfoParametroInvalidoError`) y esa excepción SÍ sube: el llamador (el tick) la atrapa por organización con try/catch.
 //  - Canal externo (WhatsApp/correo): HUECO F2. Hoy solo existe la campana. Si un llamador pasa `canalExterno`, solo se invoca dentro del
 //    horario del negocio (8:00 a 21:00 hora local) y nunca para alertas que no sean nuevas. En producción no se conecta ninguno (jamás se
 //    envían mensajes reales desde aquí).
-import { emitirNotificacion } from "@atiende/db";
+import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { diaLocalSucursal } from "../voz/kpi.ts";
 import type { Hallazgo } from "./hallazgos.ts";
@@ -75,6 +78,14 @@ export interface ResultadoAlertasCfo {
   readonly fallos: readonly string[];
 }
 
+/** Código legible (solo ASCII, sin espacios: `emitirNotificacion` rechaza texto libre) que va en el título de la notificación. */
+const CODIGO_LEGIBLE: Readonly<Record<string, string>> = {
+  caida_ventas: "Caida-de-ventas", ticket_baja: "Baja-del-ticket", cancelacion_alta: "Cancelaciones-altas", descuento_fuera_rango: "Descuentos-fuera-de-rango",
+  compensaciones_inusuales: "Compensaciones-inusuales", costo_agente_alto: "Costo-alto-del-agente", cierre_agente_bajo: "Cierre-bajo-del-agente", entrega_lenta: "Entregas-lentas",
+  frecuentes_dormidos: "Clientes-frecuentes-dormidos", agotado_estrella: "Producto-estrella-agotado", comandas_sin_capturar: "Comandas-sin-capturar",
+  escalaciones_pico: "Pico-de-escalaciones", participacion_cae: "Cae-la-participacion", descuadre_sr: "Descuadre-con-SoftRestaurant",
+};
+
 const URGENCIA_ORDEN: Readonly<Record<string, number>> = { alta: 0, media: 1, baja: 2 };
 
 /** Zona de la organización: la más común entre sus sucursales (empate: la primera en aparecer). Una zona vacía cae a la de México (igual que la base). */
@@ -128,16 +139,53 @@ export function seleccionarAlertas(hallazgos: readonly Hallazgo[], dia: string, 
   return out;
 }
 
+/** Minutos desde la medianoche local. */
+function minutosLocales(ahora: Date, zona: string): number {
+  const partes = new Intl.DateTimeFormat("en-GB", { timeZone: zona, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(ahora).split(":");
+  return (Number(partes[0]) % 24) * 60 + Number(partes[1]);
+}
+
+/** `HH:MM[:SS]` -> minutos. */
+function corteAMinutos(corte: string | null): number | null {
+  const m = corte ? /^(\d{1,2}):(\d{2})/.exec(corte) : null;
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+/** Alertas de hallazgos que la organizacion ya tiene ese dia de negocio (claves distintas). Mejor esfuerzo: cualquier fallo de lectura (RLS, base sin migrar) vale 0. */
+async function yaEmitidasDelDia(db: TenantDbSession, organizationId: string, dia: string): Promise<number> {
+  try {
+    return await runWithSavepointFallback<number>({
+      session: db,
+      primary: async () => {
+        const { rows } = await db.query<{ n: number | string | null }>(
+          `select count(distinct dedupe_key)::int as n from core.notification where organization_id = $1::uuid and tipo like 'restaurantes.cfo.hallazgo%' and dedupe_key like $2;`,
+          [organizationId, `restaurantes.cfo.hallazgo%-${dia}`],
+        );
+        return Number(rows[0]?.n ?? 0) || 0;
+      },
+      isRecoverable: () => true,
+      fallback: async () => 0,
+    });
+  } catch {
+    return 0;
+  }
+}
+
 export async function alertarHallazgosCfo(db: TenantDbSession, organizationId: string, ahora: Date, opciones: OpcionesAlertasCfo): Promise<ResultadoAlertasCfo> {
   const vacio = { organizationId, dia: null, zonaHoraria: null, evaluados: 0, candidatos: 0, emitidas: 0, sinNuevas: 0, omitidasPorTope: 0, externasEnviadas: 0, externasFueraDeHorario: 0, fallos: [] as string[] };
   const zona = zonaDeOrganizacion(opciones.sucursales);
   if (zona === null) return { ...vacio, estado: "sin_sucursales" };
   const hoy = diaLocalSucursal(ahora, zona).fecha;
-  const dia = sumarDiasFecha(hoy, -1);
   const ids = opciones.sucursales.map((s) => s.propertyId);
+  const repo = opciones.repo ?? new PostgresCfoRepository(db);
+  // El dia de negocio cierra en el corte de CADA sucursal (`dia_negocio_corte`): se usa el mas tardio. Antes del corte, el dia que "ayer" nombra aun esta abierto.
+  const cobertura = await repo.cobertura({ organizationId, propertyIds: null });
+  const cortes = cobertura.filas.map((f) => corteAMinutos(f.corte)).filter((c): c is number => c !== null);
+  const corteMin = cortes.length > 0 ? Math.max(...cortes) : 60;
+  const dia = sumarDiasFecha(hoy, minutosLocales(ahora, zona) >= corteMin ? -1 : -2);
 
   const servicio = new ServicioCfo({
-    repo: opciones.repo ?? new PostgresCfoRepository(db),
+    repo,
     organizationId,
     // Organización completa: la sesión de sistema ve todo (incluido «No asignado»); `propertyIdsSql: null` deja que la SQL resuelva el alcance.
     alcance: { propertyIds: ids, todas: true, organizacionCompleta: true },
@@ -152,6 +200,9 @@ export async function alertarHallazgosCfo(db: TenantDbSession, organizationId: s
 
   const todas = seleccionarAlertas(vista.hallazgos, dia, opciones.umbralCentavos);
   const tope = opciones.tope ?? TOPE_ALERTAS_POR_ORG_DIA;
+  // Capacidad restante del dia: lo ya emitido (aunque con otros datos) cuenta contra el tope. Se intentan solo las `tope` primeras (con 0 ya emitidas
+  // son las mismas de siempre: repetir el tick no cambia nada) y se corta al llenar la capacidad.
+  const capacidad = Math.max(0, tope - (await yaEmitidasDelDia(db, organizationId, dia)));
   const elegidas = todas.slice(0, tope);
   const fallos: string[] = [];
   let emitidas = 0;
@@ -161,12 +212,13 @@ export async function alertarHallazgosCfo(db: TenantDbSession, organizationId: s
   let noDisponible = false;
 
   for (const a of elegidas) {
+    if (emitidas >= capacidad) break;
     const h = a.hallazgo;
     try {
       const r =
         a.impactoPesos != null
-          ? await emitirNotificacion(db, { evento: "restaurantes.cfo.hallazgo", organizationId, propertyId: h.propertyId, clave: a.clave, severidad: a.severidad, parametros: { tipo: h.tipo, impacto: a.impactoPesos }, entidadTipo: "cfo_hallazgo" })
-          : await emitirNotificacion(db, { evento: "restaurantes.cfo.hallazgo_sin_monto", organizationId, propertyId: h.propertyId, clave: a.clave, severidad: a.severidad, parametros: { tipo: h.tipo }, entidadTipo: "cfo_hallazgo" });
+          ? await emitirNotificacion(db, { evento: "restaurantes.cfo.hallazgo", organizationId, propertyId: h.propertyId, clave: a.clave, severidad: a.severidad, parametros: { tipo: CODIGO_LEGIBLE[h.tipo] ?? h.tipo, impacto: a.impactoPesos }, entidadTipo: "cfo_hallazgo" })
+          : await emitirNotificacion(db, { evento: "restaurantes.cfo.hallazgo_sin_monto", organizationId, propertyId: h.propertyId, clave: a.clave, severidad: a.severidad, parametros: { tipo: CODIGO_LEGIBLE[h.tipo] ?? h.tipo }, entidadTipo: "cfo_hallazgo" });
       if (r.estado === "emitida") {
         emitidas++;
         if (opciones.canalExterno) {
@@ -196,7 +248,7 @@ export async function alertarHallazgosCfo(db: TenantDbSession, organizationId: s
     candidatos: todas.length,
     emitidas,
     sinNuevas,
-    omitidasPorTope: Math.max(0, todas.length - elegidas.length),
+    omitidasPorTope: Math.max(0, todas.length - emitidas - sinNuevas),
     externasEnviadas,
     externasFueraDeHorario,
     fallos,
