@@ -65,7 +65,7 @@ Pestaña A no se cierra ni se recarga hasta terminar el escenario 10. El orden d
 - **Se dice**: «El 73 % de sus pedidos son de recurrentes y casi todos pegan siempre el mismo mensaje. El agente lo toma completo, sin bienvenida larga.»
 - **Se hace**: abra el chat de la demo en la **pestaña A** (la que se conserva hasta el escenario 10).
 - **Se escribe**:
-  1. `Hola!!! Buenas noches. Un pedido a domicilio porfi. 9990000001 Ana Prueba, Privada Los Almendros casa 13, Santa Gertrudis Copó. Orden: 2 orden de tacos de bistec tortilla de maíz. 1 guacamole. Pago con tarjeta`
+  1. `Hola!!! Buenas noches. Un pedido a domicilio porfi. 9990000001 Ana Prueba, Privada Los Almendros casa 13, Cumbres de Montejo. Orden: 2 orden de tacos de bistec tortilla de maíz. 1 guacamole. Pago con tarjeta`
   2. (cuando pida el pin) `[Ubicación compartida por WhatsApp] lat=21.021100 lng=-89.614100`
   3. `No, es todo` y, después de la lista, `Sí, es correcto`
 - **Se ve [Agente]**: sin saludo ni bienvenida larga; **no vuelve a preguntar** nombre, dirección, platillos ni pago; la colonia no está en el mapa de colonias (sigue pendiente del dueño), así que **pide el pin una sola vez**;

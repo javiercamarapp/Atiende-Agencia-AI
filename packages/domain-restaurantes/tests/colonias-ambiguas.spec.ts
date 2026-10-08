@@ -28,10 +28,10 @@ describe("reporte de colonias ambiguas con los datos del piloto", () => {
   it("una colonia sin sucursal asignada se marca 'sin_asignar'; una clara y asignada no se marca", async () => {
     const world = await buildInMemoryPmWorld(plan);
     const r = await reporteColoniasAmbiguas(world.repo, world.organizationId);
-    const sin = r.filas.find((f) => f.colonia === "Alcala Martin")!;
+    const sin = r.filas.find((f) => f.colonia === "Arboledas")!;
     expect(sin.sucursalAsignada).toBeNull();
-    expect(sin.motivos).toEqual(expect.arrayContaining(["sin_asignar", "ambigua"]));
-    const clara = plan.colonias.find((c) => c.branchId === "T8" && c.asignacionFuente === "distancia_piloto" && (c.refKm ?? 0) > 0 && c.ref2Km! - c.refKm! >= 1 && c.refSlug === "altabrisa" && c.ref2Slug !== "pensiones")!;
+    expect(sin.motivos).toContain("sin_asignar");
+    const clara = plan.colonias.find((c) => c.branchIds.includes("T8") && c.asignacionFuente === "mas_cercana_v3" && (c.refKm ?? 0) > 0 && c.ref2Km! - c.refKm! >= 1 && c.refSlug === "altabrisa" && c.ref2Slug !== "pensiones")!;
     const fila = r.filas.find((f) => f.colonia === clara.name)!;
     expect(fila.motivos).not.toContain("ambigua");
     expect(fila.motivos).not.toContain("sin_asignar");
