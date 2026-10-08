@@ -30,9 +30,10 @@
 // fuzzyThreshold=80. La comparación de texto del nivel 2 usa `partialRatio` de
 // `text-similarity.ts` — ver ese archivo para el análisis honesto de fidelidad frente
 // a `rapidfuzz.fuzz.partial_ratio` (aproximación verificada, no byte-exacta).
-import type { CoincidenciaConciliacion, MovimientoBancario, OpcionesMatchingEngine, RegistroConciliable, ResultadoConciliacion } from "./types.ts";
+import type { AmbiguoMultilinea, CoincidenciaConciliacion, MotivoSinConciliar, MovimientoBancario, OpcionesMatchingEngine, RegistroConciliable, ResultadoConciliacion, SinConciliarMovimiento } from "./types.ts";
 import { partialRatio } from "./text-similarity.ts";
 import { fechaDiff } from "./fechas.ts";
+import { aCentavos, buscarSubconjuntos } from "./subset-sum.ts";
 
 const DEFAULT_DATE_TOLERANCE_DAYS = 3;
 const DEFAULT_MONTO_TOLERANCE_PCT = 5.0;
@@ -89,10 +90,24 @@ function round1(v: number): number {
   return Math.round((v + Number.EPSILON) * 10) / 10;
 }
 
+/** D-P3-11: dirección contable de un cruce. Abono (cobro) <-> CFDI emitido; cargo (pago) <-> CFDI recibido. `indeterminado` se propone, pero
+ * solo con revisión humana. Registro sin `direccion` = llamador heredado sin ese dato: sin filtro. */
+export type CompatibilidadDireccion = "compatible" | "revision" | "incompatible";
+export function compatibilidadDireccion(mov: MovimientoBancario, rec: RegistroConciliable): CompatibilidadDireccion {
+  const d = rec.direccion;
+  if (d === undefined || d === null) return "compatible";
+  if (d === "indeterminado") return "revision";
+  if (mov.monto > 0) return d === "emitido" ? "compatible" : "incompatible";
+  if (mov.monto < 0) return d === "recibido" ? "compatible" : "incompatible";
+  return "compatible";
+}
+
 interface ResultadoNivel {
   readonly matches: CoincidenciaConciliacion[];
   readonly freeMovs: number[];
   readonly freeRecs: number[];
+  readonly ambiguos?: AmbiguoMultilinea[];
+  readonly motivos?: Map<number, MotivoSinConciliar>;
 }
 
 /** Nivel 1: exacto. */
@@ -109,6 +124,8 @@ function emparejarExacto(movements: readonly MovimientoBancario[], records: read
       const rec = records[ri]!;
       const mRec = montoRegistro(rec);
       if (mRec === null) continue;
+      const dir = compatibilidadDireccion(mov, rec);
+      if (dir === "incompatible") continue;
       if (Math.abs(Math.abs(montoMov) - Math.abs(mRec)) > 0.01) continue;
 
       const fRec = fechaRegistro(rec);
@@ -128,6 +145,7 @@ function emparejarExacto(movements: readonly MovimientoBancario[], records: read
           montoRegistro: mRec,
           fechaBanco: mov.fecha,
           fechaRegistro: fRec,
+          ...(dir === "revision" ? { requiereRevision: true } : {}),
         });
         usedMov.add(mi);
         usedRec.add(ri);
@@ -168,6 +186,7 @@ function emparejarFuzzy(
       const rec = records[ri]!;
       const mRec = montoRegistro(rec);
       if (mRec === null) continue;
+      if (compatibilidadDireccion(mov, rec) === "incompatible") continue;
 
       const absMov = Math.abs(montoMov);
       const absRec = Math.abs(mRec);
@@ -221,6 +240,7 @@ function emparejarFuzzy(
         montoRegistro: mRec,
         fechaBanco: mov.fecha,
         fechaRegistro: fRec,
+        ...(compatibilidadDireccion(mov, rec) === "revision" ? { requiereRevision: true } : {}),
       });
       usedMov.add(mi);
       usedRec.add(bestRi);
@@ -234,113 +254,136 @@ function emparejarFuzzy(
   };
 }
 
-/** `_find_subset_sum` — combinaciones de tamaño creciente (2..min(8,n)), en el mismo
- * orden que `itertools.combinations` (índices en orden lexicográfico creciente sobre
- * la lista ya ordenada descendentemente por monto), devuelve la PRIMERA combinación
- * cuya suma cae dentro de la tolerancia — no la mejor de todas, la primera hallada en
- * ese orden de enumeración (igual que el origen). */
-function encontrarSubsetSum(candidatos: ReadonlyArray<readonly [number, number]>, target: number, tolerancePct = 1.0, maxComboSize = 8): Array<readonly [number, number]> | null {
-  const tol = (target * tolerancePct) / 100;
-  const sorted = [...candidatos].sort((a, b) => b[1] - a[1]);
+const MAX_CANDIDATOS_POR_DEFECTO = 60;
+const TOLERANCIA_PCT_POR_DEFECTO = 1.0;
+const MAX_CERCANOS = 5;
 
-  const maxSize = Math.min(maxComboSize + 1, sorted.length + 1);
-  for (let size = 2; size < maxSize; size++) {
-    if (size > 10) break;
-    const combo = new Array<number>(size);
-    const resultado = combinacionesRecursivo(sorted, size, 0, combo, 0, target, tol);
-    if (resultado) return resultado;
-  }
-  return null;
-}
-
-function combinacionesRecursivo(
-  sorted: ReadonlyArray<readonly [number, number]>,
-  size: number,
-  start: number,
-  indices: number[],
-  depth: number,
-  target: number,
-  tol: number,
-): Array<readonly [number, number]> | null {
-  if (depth === size) {
-    let total = 0;
-    for (let k = 0; k < size; k++) total += sorted[indices[k]!]![1];
-    if (Math.abs(total - target) <= tol) {
-      return indices.map((i) => sorted[i]!);
-    }
-    return null;
-  }
-  for (let i = start; i <= sorted.length - (size - depth); i++) {
-    indices[depth] = i;
-    const found = combinacionesRecursivo(sorted, size, i + 1, indices, depth + 1, target, tol);
-    if (found) return found;
-  }
-  return null;
-}
-
-/** Nivel 3: multi-línea (un movimiento bancario cubre varios registros — subset sum
- * con tolerancia). Solo se intenta para movimientos con |monto| >= 100 (evita ruido
- * en montos pequeños, igual que el origen). */
+/** Nivel 3: multi-línea (un movimiento bancario cubre varios registros), D-P3-10. Montos en centavos enteros; solo candidatos de la misma
+ * dirección y dentro de la ventana de fechas; techo de candidatos; tamaño 2..15; meet-in-the-middle sobre 40 candidatos; presupuesto de
+ * nodos. Se buscan TODAS las combinaciones (las exactas, dentro de `toleranciaCentavos`, tienen prioridad sobre las que solo caben en la
+ * tolerancia del 1 %): ninguna -> sin conciliar con motivo; 2 o más -> ambiguo (nunca se propone una al azar); exactamente una -> se propone.
+ * Solo se intenta para movimientos con |monto| >= 100 (evita ruido en montos pequeños, igual que el origen). */
 function emparejarMultilinea(
   movements: readonly MovimientoBancario[],
   records: readonly RegistroConciliable[],
   freeMovsIn: readonly number[],
   freeRecsIn: readonly number[],
   dateToleranceDays: number,
+  opciones: NonNullable<OpcionesMatchingEngine["subsetSum"]>,
 ): ResultadoNivel {
   const matches: CoincidenciaConciliacion[] = [];
+  const ambiguos: AmbiguoMultilinea[] = [];
+  const motivos = new Map<number, MotivoSinConciliar>();
   const usedMov = new Set<number>();
   const usedRecs = new Set<number>();
+  const maxCandidatos = opciones.maxCandidatos ?? MAX_CANDIDATOS_POR_DEFECTO;
+  const toleranciaExacta = Math.max(0, Math.trunc(opciones.toleranciaCentavos ?? 0));
+  const toleranciaPct = Math.max(0, opciones.toleranciaPct ?? TOLERANCIA_PCT_POR_DEFECTO);
 
   for (const mi of freeMovsIn) {
     const mov = movements[mi]!;
     const montoMov = Math.abs(mov.monto);
     if (montoMov < 100 || usedMov.has(mi)) continue;
 
-    const candidatos: Array<readonly [number, number]> = [];
+    const candidatos: Array<{ id: number; centavos: number }> = [];
+    const revision = new Set<number>();
     for (const ri of freeRecsIn) {
       if (usedRecs.has(ri)) continue;
       const rec = records[ri]!;
-      const mRec = Math.abs(montoRegistro(rec) ?? 0);
-      const fRec = fechaRegistro(rec);
-      const dayDiff = fechaDiff(mov.fecha, fRec);
-      if (mRec > 0 && dayDiff !== null && dayDiff <= dateToleranceDays) {
-        candidatos.push([ri, mRec]);
+      const dir = compatibilidadDireccion(mov, rec);
+      if (dir === "incompatible") continue;
+      const centavos = aCentavos(Math.abs(montoRegistro(rec) ?? 0));
+      const dayDiff = fechaDiff(mov.fecha, fechaRegistro(rec));
+      if (centavos > 0 && dayDiff !== null && dayDiff <= dateToleranceDays) {
+        candidatos.push({ id: ri, centavos });
+        if (dir === "revision") revision.add(ri);
       }
     }
 
-    if (candidatos.length < 2) continue;
-
-    const combo = encontrarSubsetSum(candidatos, montoMov, 1.0);
-    if (combo && combo.length >= 2) {
-      const comboIndices = combo.map((c) => c[0]);
-      const comboTotal = combo.reduce((acc, c) => acc + c[1], 0);
-      const diffPct = (Math.abs(montoMov - comboTotal) / Math.max(montoMov, 1)) * 100;
-      const score = Math.min(round1(Math.max(70, 95 - diffPct * 10)), 95);
-
-      matches.push({
-        movementIdx: mi,
-        registroIdx: null,
-        registroIndices: comboIndices,
-        level: "multi_linea",
-        score,
-        detail: `Multi-línea: ${combo.length} registros suman $${comboTotal.toFixed(2)} ≈ $${montoMov.toFixed(2)}`,
-        montoBanco: mov.monto,
-        montoRegistro: comboTotal,
-        fechaBanco: mov.fecha,
-        fechaRegistro: fechaRegistro(records[comboIndices[0]!]!),
-      });
-      usedMov.add(mi);
-      for (const ri of comboIndices) usedRecs.add(ri);
+    if (candidatos.length < 2) {
+      motivos.set(mi, "pocos_candidatos");
+      continue;
     }
+    if (candidatos.length > maxCandidatos) {
+      motivos.set(mi, "demasiados_candidatos");
+      continue;
+    }
+
+    const objetivo = aCentavos(montoMov);
+    const ancha = Math.max(toleranciaExacta, Math.floor((objetivo * toleranciaPct) / 100));
+    const busqueda = buscarSubconjuntos(candidatos, objetivo - ancha, objetivo + ancha, {
+      ...(opciones.minTamano !== undefined ? { minTamano: opciones.minTamano } : {}),
+      ...(opciones.maxTamano !== undefined ? { maxTamano: opciones.maxTamano } : {}),
+      ...(opciones.maxNodos !== undefined ? { maxNodos: opciones.maxNodos } : {}),
+      ...(opciones.maxCombinaciones !== undefined ? { maxCombinaciones: opciones.maxCombinaciones } : {}),
+    });
+    if (busqueda.estado === "presupuesto_agotado") {
+      motivos.set(mi, "presupuesto_agotado");
+      continue;
+    }
+    if (busqueda.combinaciones.length === 0) {
+      motivos.set(mi, "sin_combinacion");
+      continue;
+    }
+
+    const centavosDe = new Map(candidatos.map((c) => [c.id, c.centavos]));
+    const suma = (comb: readonly number[]): number => comb.reduce((acc, ri) => acc + centavosDe.get(ri)!, 0);
+    const exactas = busqueda.combinaciones.filter((c) => Math.abs(suma(c) - objetivo) <= toleranciaExacta);
+    const decision = exactas.length > 0 ? exactas : busqueda.combinaciones;
+
+    if (busqueda.truncado || decision.length >= 2) {
+      ambiguos.push({ movementIdx: mi, combinaciones: decision, truncado: busqueda.truncado, exactas: exactas.length > 0, montoBanco: mov.monto });
+      motivos.set(mi, "ambiguo");
+      continue;
+    }
+
+    const combo = decision[0]!;
+    const comboTotalCents = suma(combo);
+    const comboTotal = comboTotalCents / 100;
+    const diffPct = (Math.abs(objetivo - comboTotalCents) / 100 / Math.max(montoMov, 1)) * 100;
+    const score = Math.min(round1(Math.max(70, 95 - diffPct * 10)), 95);
+    matches.push({
+      movementIdx: mi,
+      registroIdx: null,
+      registroIndices: combo,
+      level: "multi_linea",
+      score,
+      detail: `Multi-línea: ${combo.length} registros suman $${comboTotal.toFixed(2)} ≈ $${montoMov.toFixed(2)}`,
+      montoBanco: mov.monto,
+      montoRegistro: comboTotal,
+      fechaBanco: mov.fecha,
+      fechaRegistro: fechaRegistro(records[combo[0]!]!),
+      ...(combo.some((ri) => revision.has(ri)) ? { requiereRevision: true } : {}),
+    });
+    usedMov.add(mi);
+    for (const ri of combo) usedRecs.add(ri);
   }
 
   return {
     matches,
+    ambiguos,
+    motivos,
     freeMovs: freeMovsIn.filter((m) => !usedMov.has(m)),
     freeRecs: freeRecsIn.filter((r) => !usedRecs.has(r)),
   };
 }
+
+/** Los registros individuales libres y de dirección compatible más cercanos en monto al movimiento (para que la UI explique por qué quedó
+ * sin conciliar). Nunca se usa para decidir un cruce. */
+function registrosMasCercanos(mov: MovimientoBancario, records: readonly RegistroConciliable[], freeRecs: readonly number[]): Array<{ registroIdx: number; diferenciaCentavos: number }> {
+  const objetivo = aCentavos(Math.abs(mov.monto));
+  const out: Array<{ registroIdx: number; diferenciaCentavos: number }> = [];
+  for (const ri of freeRecs) {
+    const rec = records[ri]!;
+    if (compatibilidadDireccion(mov, rec) === "incompatible") continue;
+    const m = montoRegistro(rec);
+    if (m === null) continue;
+    out.push({ registroIdx: ri, diferenciaCentavos: Math.abs(aCentavos(Math.abs(m)) - objetivo) });
+  }
+  out.sort((a, b) => a.diferenciaCentavos - b.diferenciaCentavos || a.registroIdx - b.registroIdx);
+  return out.slice(0, MAX_CERCANOS);
+}
+
 
 /** `MatchingEngine.match` — orquesta niveles 1→2→3 sobre los índices libres. */
 export function conciliarMovimientos(movements: readonly MovimientoBancario[], records: readonly RegistroConciliable[], opciones: OpcionesMatchingEngine = {}): ResultadoConciliacion {
@@ -364,13 +407,18 @@ export function conciliarMovimientos(movements: readonly MovimientoBancario[], r
   freeMovs = l2.freeMovs;
   freeRecs = l2.freeRecs;
 
-  const l3 = emparejarMultilinea(movements, records, freeMovs, freeRecs, dateToleranceDays);
+  const l3 = emparejarMultilinea(movements, records, freeMovs, freeRecs, dateToleranceDays, opciones.subsetSum ?? {});
   matches.push(...l3.matches);
   freeMovs = l3.freeMovs;
   freeRecs = l3.freeRecs;
 
   const elapsedMs = performance.now() - start;
 
+  const sinConciliar: SinConciliarMovimiento[] = freeMovs.map((mi) => ({
+    movementIdx: mi,
+    motivo: l3.motivos?.get(mi) ?? "sin_candidato",
+    cercanos: registrosMasCercanos(movements[mi]!, records, freeRecs),
+  }));
   const unmatchedBank = freeMovs.map((i) => movements[i]!);
   const unmatchedBooks = freeRecs.map((i) => records[i]!);
 
@@ -388,6 +436,8 @@ export function conciliarMovimientos(movements: readonly MovimientoBancario[], r
     matched: matches,
     unmatchedBank,
     unmatchedBooks,
+    ambiguos: l3.ambiguos ?? [],
+    sinConciliar,
     confidence: round2(confidence),
     totalMovements: totalMovs,
     totalRecords: totalRecs,

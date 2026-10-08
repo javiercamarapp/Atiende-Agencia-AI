@@ -245,7 +245,7 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     return id ? (this.invoices.get(id) ?? null) : null;
   }
 
-  async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string }): Promise<readonly InvoiceRecord[]> {
+  async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string; readonly fechaDesde?: string; readonly fechaHasta?: string }): Promise<readonly InvoiceRecord[]> {
     // Filtro por período (migración 006, corregido — ver repository.ts): resuelto
     // directo contra `fecha` (fecha real de emisión del CFDI, "YYYY-MM-DD"), nunca
     // contra el jsonb `diot.proveedoresReportables` (solo existe para un CFDI tipo
@@ -254,6 +254,8 @@ export class InMemoryDespachosRepository implements DespachosRepository {
       .filter((i) => i.propertyId === propertyId)
       .filter((i) => filter?.requiresHumanReview === undefined || i.requiresHumanReview === filter.requiresHumanReview)
       .filter((i) => filter?.periodo === undefined || i.fecha.slice(0, 7) === filter.periodo)
+      .filter((i) => filter?.fechaDesde === undefined || i.fecha.slice(0, 10) >= filter.fechaDesde)
+      .filter((i) => filter?.fechaHasta === undefined || i.fecha.slice(0, 10) <= filter.fechaHasta)
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   }
 

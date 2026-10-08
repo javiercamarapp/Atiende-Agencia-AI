@@ -44,6 +44,10 @@ export interface RegistroConciliable {
   readonly concepto?: string | null;
   readonly referencia?: string | null;
   readonly folioFiscal?: string | null;
+  /** D-P3-11: sentido del CFDI respecto del cliente. Un abono (cobro) solo concilia contra un CFDI `emitido` y un cargo (pago) contra uno
+   * `recibido`; `indeterminado` se propone pero solo con revisión humana. Ausente/`null` = dato desconocido en un llamador heredado
+   * (sin filtro por dirección, igual que antes). */
+  readonly direccion?: "emitido" | "recibido" | "indeterminado" | null;
 }
 
 export interface CoincidenciaConciliacion {
@@ -57,12 +61,39 @@ export interface CoincidenciaConciliacion {
   readonly montoRegistro: number;
   readonly fechaBanco: string;
   readonly fechaRegistro: string;
+  /** D-P3-11: el CFDI tiene dirección `indeterminado`: la propuesta nunca se confirma ni autoconfirma sin revisión humana. */
+  readonly requiereRevision?: boolean;
+}
+
+/** D-P3-10: 2 o más combinaciones de CFDI suman el movimiento. Nunca se confirma con un clic sin elegir una. */
+export interface AmbiguoMultilinea {
+  readonly movementIdx: number;
+  /** Cada combinación = índices de `records`, ordenados. */
+  readonly combinaciones: readonly (readonly number[])[];
+  /** Había más combinaciones que `maxCombinaciones`: se listan las primeras. */
+  readonly truncado: boolean;
+  /** Las combinaciones son sumas exactas (dentro de la tolerancia en centavos) y no solo cercanas. */
+  readonly exactas: boolean;
+  readonly montoBanco: number;
+}
+
+export type MotivoSinConciliar = "sin_candidato" | "pocos_candidatos" | "sin_combinacion" | "demasiados_candidatos" | "presupuesto_agotado" | "ambiguo";
+
+/** D-P3-10: movimiento que el motor no pudo conciliar, con el motivo y los registros individuales más cercanos (para la UI). */
+export interface SinConciliarMovimiento {
+  readonly movementIdx: number;
+  readonly motivo: MotivoSinConciliar;
+  readonly cercanos: readonly { readonly registroIdx: number; readonly diferenciaCentavos: number }[];
 }
 
 export interface ResultadoConciliacion {
   readonly matched: readonly CoincidenciaConciliacion[];
   readonly unmatchedBank: readonly MovimientoBancario[];
   readonly unmatchedBooks: readonly RegistroConciliable[];
+  /** Movimientos con 2+ combinaciones N-a-1: no se concilian (siguen en `unmatchedBank`) hasta que una persona elija una. */
+  readonly ambiguos: readonly AmbiguoMultilinea[];
+  /** Motivo y registros más cercanos de cada movimiento que quedó sin conciliar (mismos movimientos que `unmatchedBank`). */
+  readonly sinConciliar: readonly SinConciliarMovimiento[];
   readonly confidence: number;
   readonly totalMovements: number;
   readonly totalRecords: number;
@@ -87,6 +118,24 @@ export interface OpcionesMatchingEngine {
   readonly dateToleranceDays?: number; // default 3
   readonly montoTolerancePct?: number; // default 5.0
   readonly fuzzyThreshold?: number; // default 80
+  /** Nivel 3 (N-a-1). */
+  readonly subsetSum?: OpcionesSubsetSumMotor;
+}
+
+/** Parámetros del nivel 3 (D-P3-10). Todo es configurable; los defaults son los del origen (`bank_reconciliation.py`). */
+export interface OpcionesSubsetSumMotor {
+  /** Banda EXACTA en centavos (default 0). Las combinaciones dentro de ella tienen prioridad sobre las que solo caben en la tolerancia del 1 %. */
+  readonly toleranciaCentavos?: number; // default 0
+  /** Tolerancia porcentual de respaldo (default 1.0 = la del motor anterior). */
+  readonly toleranciaPct?: number;
+  /** Techo de candidatos por movimiento tras filtrar (default 60). Con más, el movimiento se abstiene con motivo `demasiados_candidatos`. */
+  readonly maxCandidatos?: number;
+  readonly minTamano?: number; // default 2
+  readonly maxTamano?: number; // default 15
+  /** Presupuesto de nodos por búsqueda (default 2 000 000). Agotado: `presupuesto_agotado`, nunca una combinación parcial. */
+  readonly maxNodos?: number;
+  /** Tope de combinaciones que se listan en una ambigüedad (default 200). */
+  readonly maxCombinaciones?: number;
 }
 
 /** `AgingAlert` en el origen. */

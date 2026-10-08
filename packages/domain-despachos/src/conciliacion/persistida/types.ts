@@ -2,9 +2,11 @@
 // y sugerencias del nivel 4 (LLM) que quedan pendientes hasta su aprobación humana. Contrato del repositorio (Postgres + doble en
 // memoria) y errores de dominio tipados que las rutas HTTP traducen a 400/403/404/409/503.
 import type { MovimientoBancario } from "../types.ts";
+import type { PropuestasGuardadas } from "./propuestas-guardadas.ts";
 
 export type EstadoSesionConciliacion = "abierta" | "cerrada";
-export type OrigenMatchConciliacion = "motor" | "llm_aprobado" | "manual";
+/** `autopiloto` (D-P3-12): lo confirmó el sistema (nivel 1 único) con la bandera del cliente encendida; el humano que subió el archivo queda en `confirmadoPor`. */
+export type OrigenMatchConciliacion = "motor" | "llm_aprobado" | "manual" | "autopiloto";
 export type EstadoSugerenciaConciliacion = "pendiente" | "aprobada" | "rechazada";
 
 /** Movimiento del libro `despachos.estado_cuenta_movimiento` (migración 015), con su id y su huella. */
@@ -24,6 +26,8 @@ export interface SesionConciliacion {
   readonly creadaPor: string | null;
   readonly creadaEn: string;
   readonly cerradaEn: string | null;
+  /** Cuándo se calcularon las propuestas guardadas en la sesión (migración 025); `null`/ausente = aún no se guardaron. */
+  readonly propuestasEn?: string | null;
 }
 
 export interface SesionConResumen extends SesionConciliacion {
@@ -68,6 +72,12 @@ export interface ParConfirmar {
   readonly nivel: number | null;
   readonly confianza: number | null;
   readonly origen: OrigenMatchConciliacion;
+}
+
+export interface ParAutopiloto {
+  readonly movimientoId: string;
+  readonly invoiceId: string;
+  readonly confianza: number;
 }
 
 export interface NuevaSugerencia {
@@ -119,6 +129,38 @@ export class ConciliacionConflictoError extends Error {
     this.name = "ConciliacionConflictoError";
   }
 }
+/** D-P3-11 (migración 025): errores tipados de integridad del CFDI. Extienden `ConciliacionConflictoError`: la ruta los traduce a 409 con su mensaje. */
+export class ConciliacionCfdiCanceladoError extends ConciliacionConflictoError {
+  constructor() {
+    super("El CFDI está cancelado ante el SAT: no se concilia dinero contra un comprobante cancelado.");
+    this.name = "ConciliacionCfdiCanceladoError";
+  }
+}
+export class ConciliacionTopeCfdiExcedidoError extends ConciliacionConflictoError {
+  constructor() {
+    super("La suma conciliada de ese CFDI superaría su total: ya está conciliado (deshaz la conciliación anterior si fue un error).");
+    this.name = "ConciliacionTopeCfdiExcedidoError";
+  }
+}
+export class ConciliacionSignoInvertidoError extends ConciliacionConflictoError {
+  constructor(mensaje = "El signo no cuadra: un abono (cobro) concilia con un CFDI emitido y un cargo (pago) con uno recibido.") {
+    super(mensaje);
+    this.name = "ConciliacionSignoInvertidoError";
+  }
+}
+export class ConciliacionPilotoApagadoError extends ConciliacionConflictoError {
+  constructor() {
+    super("El piloto automático de conciliación está apagado para este cliente.");
+    this.name = "ConciliacionPilotoApagadoError";
+  }
+}
+/** El CFDI tiene dirección indeterminada: solo se concilia con revisión humana explícita (`revisado: true`). */
+export class ConciliacionRevisionRequeridaError extends ConciliacionConflictoError {
+  constructor(readonly movimientoId: string, readonly invoiceId: string) {
+    super("La dirección de este CFDI (emitido/recibido) no está definida: confírmalo solo después de revisarlo (revisado: true).");
+    this.name = "ConciliacionRevisionRequeridaError";
+  }
+}
 export class ConciliacionTopeExcedidoError extends Error {
   constructor(mensaje: string) {
     super(mensaje);
@@ -154,6 +196,18 @@ export interface ConciliacionPersistidaRepository {
   cerrarSesion(propertyId: string, sesionId: string, actorId: string): Promise<{ readonly yaCerrada: boolean }>;
   /** Guarda como PENDIENTES (nunca crea un match). Devuelve las realmente insertadas (una pendiente por movimiento). */
   guardarSugerencias(propertyId: string, sesionId: string, sugerencias: readonly NuevaSugerencia[], actorId: string): Promise<readonly SugerenciaConciliacion[]>;
+  /** D-P3-10: propuestas guardadas en la sesión (migración 025). Base sin migrar o sesión sin propuestas: `datos: null`. */
+  leerPropuestas(sesionId: string): Promise<LecturaConciliacion<PropuestasGuardadas | null>>;
+  /** Guarda las propuestas calculadas (el GET ya no recalcula el motor). Base sin migrar: `ConciliacionNoDisponibleError`. */
+  guardarPropuestas(propertyId: string, sesionId: string, propuestas: PropuestasGuardadas): Promise<void>;
+  /** D-P3-12: devuelve la sesión abierta del periodo y la cuenta, o la crea (idempotente). */
+  asegurarSesion(propertyId: string, periodo: string, cuenta: string | null, actorId: string): Promise<{ readonly sesion: SesionConciliacion; readonly creada: boolean; readonly movimientos: number }>;
+  /** Bandera por cliente del piloto automático (apagada por omisión). Base sin migrar: `false`. */
+  autoconfirmarNivel1Activo(propertyId: string): Promise<boolean>;
+  /** Solo el `admin` del despacho la cambia (RLS en Postgres). Devuelve `false` si no se pudo escribir (sin permiso). */
+  configurarAutoconfirmarNivel1(propertyId: string, organizationId: string, activo: boolean, actorId: string): Promise<boolean>;
+  /** D-P3-12: confirma pares de nivel 1 únicos con origen `autopiloto`. Solo con la bandera encendida (la base lo valida). */
+  confirmarAutopiloto(propertyId: string, sesionId: string, pares: readonly ParAutopiloto[], actorId: string): Promise<readonly MatchConciliacion[]>;
   /** Aprobar crea el match `llm_aprobado` (nivel 4) en la misma operación; rechazar solo la marca. */
   resolverSugerencia(propertyId: string, sugerenciaId: string, aprobar: boolean, actorId: string): Promise<{ readonly estado: "aprobada" | "rechazada"; readonly matchId: string | null }>;
 }
