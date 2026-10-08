@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { invokeAgentTool } from "../src/agent-tools/registry.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 
-function setup(channel: "whatsapp" | "voz" | "web" = "whatsapp") {
+function setup(channel: "whatsapp" | "voz" = "whatsapp") {
   const f = buildRestaurantFixture();
   const ctx = { organizationId: f.organizationId, channel, phone: "9991234567" };
   const items = [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 2 }];

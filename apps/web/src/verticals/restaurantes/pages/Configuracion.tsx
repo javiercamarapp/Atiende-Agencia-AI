@@ -23,7 +23,6 @@ import { Clock, MapPin, MessageCircle, Trash2 } from "lucide-react";
 import { createKnownZone, deleteKnownZone, fetchBranchTimezone, fetchKnownZones, fetchWhatsappConfig, updateBranchTimezone, updateWhatsappConfig } from "../lib/config-client.ts";
 import type { BranchTimezoneConfig, KnownZone, WhatsappChannelConfig } from "../lib/config-client.ts";
 import { AgenteWhatsappSeccion } from "./AgenteWhatsappSeccion.tsx";
-import { SitioPublicoSeccion } from "./SitioPublicoSeccion.tsx";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const STAFF_INVITE_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
@@ -306,7 +305,6 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
         </CardContent>
       </Card>
 
-      <SitioPublicoSeccion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
       <AgenteWhatsappSeccion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
       {dialogo}
     </PageContainer>

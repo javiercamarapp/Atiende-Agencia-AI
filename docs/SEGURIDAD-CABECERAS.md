@@ -24,7 +24,7 @@ Notas:
   misma respuesta, el navegador aplica la política más restrictiva.
 - HSTS va **sin `preload`** a propósito: entrar a la lista de preload del
   navegador es prácticamente irreversible y es una decisión de dominio.
-- `Permissions-Policy` de la SPA lleva `microphone=(self)` en la regla GLOBAL (`vercel.json`), porque la «llamada de prueba» de voz del panel usa `getUserMedia` + AudioWorklet y con `microphone=()` el navegador la bloquea sin preguntar. Es global y no por ruta porque la cabecera se fija una sola vez al cargar el documento y la SPA navega con React Router sin recargar: quien entra por la portada `/` y llega al panel conservaría la política del primer documento. Solo `self` (nunca `*`): no concede nada a terceros, `apps/web` no usa `<iframe>`, `X-Frame-Options: DENY` impide que un iframe ajeno herede el permiso y el navegador sigue pidiendo permiso al usuario. Cámara, geolocalización, pagos y USB siguen denegados. `/pedir/*` conserva `microphone=()`; la API JSON (`cabeceras-seguridad.ts`) también conserva `microphone=()`.
+- `Permissions-Policy` de la SPA lleva `microphone=(self)` en la regla GLOBAL (`vercel.json`), porque la «llamada de prueba» de voz del panel usa `getUserMedia` + AudioWorklet y con `microphone=()` el navegador la bloquea sin preguntar. Es global y no por ruta porque la cabecera se fija una sola vez al cargar el documento y la SPA navega con React Router sin recargar: quien entra por la portada `/` y llega al panel conservaría la política del primer documento. Solo `self` (nunca `*`): no concede nada a terceros, `apps/web` no usa `<iframe>`, `X-Frame-Options: DENY` impide que un iframe ajeno herede el permiso y el navegador sigue pidiendo permiso al usuario. Cámara, geolocalización, pagos y USB siguen denegados. la API JSON (`cabeceras-seguridad.ts`) también conserva `microphone=()`.
 - `Permissions-Policy` no bloquea `clipboard-write`: el panel copia enlaces y
   XML con `navigator.clipboard.writeText`.
 - `COOP: same-origin` es seguro hoy porque el login con Google es una
@@ -114,11 +114,6 @@ Huecos conocidos de esta lista (por eso es Report-Only):
   `juzgarLatido` y solo falta inyectar el lector (`healthRoutes(deps, { leerLatidos })`).
 - Base sin migrar: la única consulta es `select 1`; no depende de ninguna tabla.
 
-## Excepción: páginas de entrada del storefront (`/pedir/:org[/:sucursal]`)
+## Tienda en línea eliminada (`/pedir/*`)
 
-Estas dos rutas las sirve la función de la API (meta de vista previa en servidor) pero devuelven el `index.html` de la SPA, que necesita su script y sus estilos. Por eso:
-
-- El middleware `cabecerasSeguridadApi` NO añade la CSP restrictiva (`default-src 'none'`) a ninguna respuesta `text/html`.
-- La ruta fija la CSP de la SPA como `Content-Security-Policy-Report-Only` (misma que `vercel.json`, constante `CSP_SPA_REPORT_ONLY`; un test comprueba que coinciden).
-- `Permissions-Policy` de `/pedir/*` permite `geolocation=(self)` (función «Usar mi ubicación»; las coordenadas no se guardan). El resto del sitio sigue con `geolocation=()`.
-- Si cae a meta genéricas (límite de tasa o falla de la base) la respuesta va con `Cache-Control: no-store`.
+La tienda pública de pedidos en línea ya no existe: `vercel.json` redirige `/pedir/*` a `/` (`permanent: true`, Vercel responde 308), no hay reescritura a la función ni excepción de `Permissions-Policy` (la geolocalización queda denegada en todo el sitio). El middleware `cabecerasSeguridadApi` sigue sin añadir la CSP restrictiva a respuestas `text/html`.

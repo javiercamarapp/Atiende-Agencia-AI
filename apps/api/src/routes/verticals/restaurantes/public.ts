@@ -1,30 +1,24 @@
 // Rutas públicas/de sistema de restaurantes — port de
 // restaurantes/supabase/functions/{create-order,customer-lookup}/index.ts. NINGUNA de
-// las dos usa Supabase Auth de usuario (ver diseño Fase 1 §3): create-order es
-// checkout web público (sin cuenta) + Server Tool de voz; customer-lookup es
-// Server Tool de voz únicamente. Por eso este grupo se monta SIN
-// `authMiddleware`/`requirePropertyMembership` de core-auth, con su propia
-// verificación por ruta (CORS + rate limit para web, header
-// `x-atiende-tool-secret` para voz) — exactamente como en el origen.
+// las dos usa Supabase Auth de usuario (ver diseño Fase 1 §3): ambas son Server
+// Tools de voz. El checkout web público (pedido sin cuenta, canal `web`) YA NO
+// EXISTE: los pedidos entran por WhatsApp o por llamada. Por eso este grupo se
+// monta SIN `authMiddleware`/`requirePropertyMembership` de core-auth, con su
+// propia verificación por ruta (header `x-atiende-tool-secret`/token de llamada).
 import { Hono } from "hono";
 import {
   canonicalizeMexicanPhone,
   consumeRateLimit,
-  createOrder,
   crearHookPedidoGrande,
   invokeAgentTool,
   OrderConflictError,
   OrderValidationError,
-  RestaurantesConfigUnavailableError,
-  assertWebOrderRules,
   redondearACentavos,
 } from "@atiende/domain-restaurantes";
 import type { CreateOrderInput, Order, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
-import { VOICE_CALL_TOKEN_HEADER } from "../../../voice-call-token.ts";
-import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
-import { encolarComandaParaPedido, type ResultadoEncolarPedido } from "@atiende/domain-restaurantes/softrestaurant";
-import { efectosPostCommitDePedido, type ComandaVisible } from "./efectos-post-commit.ts";
+import { readJsonCapped, requestActor } from "../../../http-security.ts";
+import { encolarComandaParaPedido } from "@atiende/domain-restaurantes/softrestaurant";
 import { avisarPedidoRecibido } from "./autopiloto-recibido.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import { auditVoice, authenticateVoiceTool, enforceVoiceLimits, hasVoiceCredentials } from "./voice-auth.ts";
@@ -129,40 +123,20 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
   // de sistema (`userId: null`), igual que documenta postgres-repository.ts de este
   // paquete.
   app.post("/v1/restaurantes/:orgSlug/orders", async (c) => {
-    if (!originAllowed(c.req.header("origin") ?? null, deps.env.allowedOrigins)) throw Errors.forbidden("Origen no permitido");
-
     const incoming = await readJsonCapped<CreateOrderBody>(c.req.raw, 32 * 1024);
-    const credentialsPresent = hasVoiceCredentials(c);
+    // Sin credenciales de voz no hay checkout web: este pedido solo lo crea la llamada.
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
 
-    // Fase 1: source="voice" queda MODELADO pero INACTIVO en la práctica — el agente
-    // de voz por teléfono se conduce con el token por llamada (docs/VOZ-PM.md).
-    // El guard se conserva por paridad de contrato: sin credenciales de voz, un
-    // caller no puede declararse "voice" ni recibir el trato de mayor rate limit.
-    if (incoming.source === "voice" && !credentialsPresent) throw Errors.unauthorized();
-    if (!credentialsPresent && incoming.source && incoming.source !== "web") throw Errors.validation("source inválido");
-
-    // Camino WEB (sin credenciales): la transaccion crea el pedido y ENCOLA sus efectos; el correo y el envio de la comanda al POS
-    // corren DESPUES del COMMIT (efectos-post-commit.ts). `diferido` lleva lo que hay que hacer tras confirmar.
-    const diferido: { efectos: { readonly encolada: ResultadoEncolarPedido; readonly armar: (comanda: ComandaVisible | null) => Response } | null } = { efectos: null };
-    const respuesta = await deps.engine.withAppSession({ userId: null }, async (db): Promise<Response> => {
+    return deps.engine.withAppSession({ userId: null }, async (db): Promise<Response> => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrganizationOrNotFound(repo, c.req.param("orgSlug"));
 
-      // Credenciales de voz presentes: token de llamada / secreto de sucursal / secreto legado
-      // (ver voice-auth.ts). Un checkout web sin credenciales sigue el camino web de siempre.
-      let voiceAuth: Awaited<ReturnType<typeof authenticateVoiceTool>> | null = null;
-      if (credentialsPresent) {
-        voiceAuth = await authenticateVoiceTool(deps, c, repo, org, { tool: "crear_pedido", accept: "legacy_ok" });
-        if (!voiceAuth.ok) {
-          // Un token de llamada vencido o invalido NUNCA se trata como checkout web (respondia "Escribe un teléfono de 10 dígitos..." a una llamada de voz):
-          // 401 claro para que el agente escale (QA-PM-R2-reglas-16).
-          if (incoming.source === "voice" || c.req.header(VOICE_CALL_TOKEN_HEADER)) return voiceAuth.response;
-          if (incoming.source && incoming.source !== "web") throw Errors.validation("source inválido");
-          voiceAuth = null; // credencial inválida en un checkout web: se trata como web, igual que antes.
-        }
-      }
+      // Token de llamada / secreto de sucursal / secreto legado (ver voice-auth.ts). Un token vencido o invalido
+      // responde 401 claro para que el agente escale (QA-PM-R2-reglas-16); nunca se trata como checkout web.
+      const voiceAuth = await authenticateVoiceTool(deps, c, repo, org, { tool: "crear_pedido", accept: "legacy_ok" });
+      if (!voiceAuth.ok) return voiceAuth.response;
 
-      if (voiceAuth?.ok) {
+      {
         const { caller } = voiceAuth;
         // Pedido grande: con el autopiloto disponible el pedido se crea `por_aprobar` (la sucursal lo aprueba con un clic); sin el, el aviso de siempre.
         const toolCtx = { ...voiceToolContext(org.id, caller, voiceTurnFromRequest(c)), ...(deps.autopilotoRepo ? { pedidoGrande: crearHookPedidoGrande({ auto: deps.autopilotoRepo(db), repo, db }) } : {}) };
@@ -228,39 +202,7 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
           throw err;
         }
       }
-
-      const input = mapCreateOrderBody(org.id, incoming, "web");
-      const limited = await consumeRateLimit(repo, "create-order", requestActor(c.req.raw, ""), 10, 60);
-      if (!limited.allowed) throw Errors.tooManyRequests();
-
-      try {
-        // Mismas reglas duras que el storefront (direccion a domicilio, telefono de 10 digitos, forma de pago,
-        // promociones solo al recoger): este checkout legado seguia aceptando por Origin ausente (clientes que no
-        // son navegador) pedidos que cocina no puede atender. El precio sigue saliendo siempre del catalogo.
-        const order = await createOrder(repo, assertWebOrderRules(input));
-        // SoftRestaurant (POS): punto de enganche. Con la bandera APAGADA (default) o sin la
-        // migracion 024 no hace nada y la respuesta es EXACTAMENTE la de antes. Nunca lanza
-        // ni cambia el resultado del pedido (ver softrestaurant/outbox-service.ts).
-        // R-11/R-29: un pedido PROGRAMADO todavia no es de cocina: no se manda la comanda al POS hoy (llegaria horas
-        // antes). Al promoverse a `pending` (admin-orders.ts / programados-interno.ts) se encola su comanda.
-        const encolada: ResultadoEncolarPedido =
-          order.status === "programado"
-            ? { modo: "apagado", fila: null, agente: null, motivo: "bandera_apagada" }
-            : await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), { order, tipo: input.canal, colonia: input.colonia, propina: input.propina, envioEnLinea: false });
-        // El agente solo puede decir un folio si el POS lo devolvio; si no, "pendiente de confirmar".
-        // Autopiloto: confirmacion inmediata al cliente web (solo con plantilla aprobada; idempotente por pedido).
-        await avisarPedidoRecibido(deps, db, repo, order);
-        diferido.efectos = { encolada, armar: (comanda) => (comanda ? c.json({ order, comanda }) : c.json({ order })) };
-        return c.json({ order });
-      } catch (err) {
-        if (err instanceof OrderConflictError) throw Errors.conflict(err.message);
-        if (err instanceof OrderValidationError) throw Errors.validation(err.message);
-        if (err instanceof RestaurantesConfigUnavailableError) throw Errors.serviceUnavailable("Los pedidos programados todavía no están disponibles (falta aplicar la migración 034).");
-        throw err;
-      }
     });
-    if (diferido.efectos) return diferido.efectos.armar(await efectosPostCommitDePedido(deps, diferido.efectos.encolada));
-    return respuesta;
   });
 
   // §4.2 — POST /v1/restaurantes/:orgSlug/customers/lookup (== customer-lookup del

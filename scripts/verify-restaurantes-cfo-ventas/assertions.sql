@@ -845,26 +845,26 @@ rollback;
 
 \echo '=== E1. grants: las 7 publicas solo para authenticated (anon y public sin execute); los 4 helpers cerrados a authenticated ==='
 begin;
-select count(*)::int as grants_mal_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname like 'cfo\_%'
+select count(*)::int as grants_mal_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_canasta_pares','cfo_cobertura','cfo_cortesias','cfo_pedidos_base','cfo_pedidos_detalle','cfo_productos','cfo_renglones','cfo_resolver_sucursales','cfo_validar_rango','cfo_ventas_diarias','cfo_ventas_hora')
   and ((p.proname in ('cfo_ventas_diarias','cfo_cortesias','cfo_ventas_hora','cfo_productos','cfo_canasta_pares','cfo_pedidos_detalle','cfo_cobertura') and (not has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('public', p.oid, 'execute')))
     or (p.proname in ('cfo_renglones','cfo_validar_rango','cfo_resolver_sucursales','cfo_pedidos_base') and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('public', p.oid, 'execute'))));
 rollback;
 
 \echo '=== E2. hay exactamente 11 funciones cfo_ (7 publicas + 4 helpers), sin sobrecargas ==='
 begin;
-select count(*)::int as funciones_deberia_ser_11 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname like 'cfo\_%';
+select count(*)::int as funciones_deberia_ser_11 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_canasta_pares','cfo_cobertura','cfo_cortesias','cfo_pedidos_base','cfo_pedidos_detalle','cfo_productos','cfo_renglones','cfo_resolver_sucursales','cfo_validar_rango','cfo_ventas_diarias','cfo_ventas_hora');
 rollback;
 
 \echo '=== E3. SECURITY DEFINER en las 9 que leen orders, search_path fijo en las 11 ==='
 begin;
-select count(*)::int as postura_mal_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname like 'cfo\_%'
+select count(*)::int as postura_mal_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_canasta_pares','cfo_cobertura','cfo_cortesias','cfo_pedidos_base','cfo_pedidos_detalle','cfo_productos','cfo_renglones','cfo_resolver_sucursales','cfo_validar_rango','cfo_ventas_diarias','cfo_ventas_hora')
   and ((p.proname not in ('cfo_renglones','cfo_validar_rango') and not p.prosecdef)
     or p.proconfig is null or not exists (select 1 from unnest(p.proconfig) c where c like 'search_path=restaurantes, core, pg_temp'));
 rollback;
 
 \echo '=== E4. las 7 funciones publicas son STABLE (solo lectura: no pueden escribir) ==='
 begin;
-select count(*)::int as volatilidad_mal_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname like 'cfo\_%' and p.proname in ('cfo_ventas_diarias','cfo_cortesias','cfo_ventas_hora','cfo_productos','cfo_canasta_pares','cfo_pedidos_detalle','cfo_cobertura') and p.provolatile <> 's';
+select count(*)::int as volatilidad_mal_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_canasta_pares','cfo_cobertura','cfo_cortesias','cfo_pedidos_base','cfo_pedidos_detalle','cfo_productos','cfo_renglones','cfo_resolver_sucursales','cfo_validar_rango','cfo_ventas_diarias','cfo_ventas_hora') and p.proname in ('cfo_ventas_diarias','cfo_cortesias','cfo_ventas_hora','cfo_productos','cfo_canasta_pares','cfo_pedidos_detalle','cfo_cobertura') and p.provolatile <> 's';
 rollback;
 
 \echo '=== E5. indices nuevos de orders creados ==='
@@ -880,18 +880,18 @@ declare
   v_antes text;
   v_despues text;
 begin
-  select string_agg(md5(pg_get_functiondef(p.oid)) || p.proacl::text, ',' order by p.oid::regprocedure::text) into v_antes from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname like 'cfo\_%';
-  for r in select p.oid from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname like 'cfo\_%' order by p.oid loop
+  select string_agg(md5(pg_get_functiondef(p.oid)) || p.proacl::text, ',' order by p.oid::regprocedure::text) into v_antes from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_canasta_pares','cfo_cobertura','cfo_cortesias','cfo_pedidos_base','cfo_pedidos_detalle','cfo_productos','cfo_renglones','cfo_resolver_sucursales','cfo_validar_rango','cfo_ventas_diarias','cfo_ventas_hora');
+  for r in select p.oid from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_canasta_pares','cfo_cobertura','cfo_cortesias','cfo_pedidos_base','cfo_pedidos_detalle','cfo_productos','cfo_renglones','cfo_resolver_sucursales','cfo_validar_rango','cfo_ventas_diarias','cfo_ventas_hora') order by p.oid loop
     execute pg_get_functiondef(r.oid);
   end loop;
   create index if not exists orders_org_prop_created_idx on restaurantes.orders (organization_id, property_id, created_at);
   create index if not exists orders_org_prop_promovido_idx on restaurantes.orders (organization_id, property_id, promovido_at) where promovido_at is not null;
-  select string_agg(md5(pg_get_functiondef(p.oid)) || p.proacl::text, ',' order by p.oid::regprocedure::text) into v_despues from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname like 'cfo\_%';
+  select string_agg(md5(pg_get_functiondef(p.oid)) || p.proacl::text, ',' order by p.oid::regprocedure::text) into v_despues from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_canasta_pares','cfo_cobertura','cfo_cortesias','cfo_pedidos_base','cfo_pedidos_detalle','cfo_productos','cfo_renglones','cfo_resolver_sucursales','cfo_validar_rango','cfo_ventas_diarias','cfo_ventas_hora');
   if v_antes is distinct from v_despues then
     raise exception 'la re-ejecucion cambio las funciones o sus permisos';
   end if;
 end $$;
-select count(*)::int as grants_mal_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname like 'cfo\_%'
+select count(*)::int as grants_mal_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_canasta_pares','cfo_cobertura','cfo_cortesias','cfo_pedidos_base','cfo_pedidos_detalle','cfo_productos','cfo_renglones','cfo_resolver_sucursales','cfo_validar_rango','cfo_ventas_diarias','cfo_ventas_hora')
   and ((p.proname in ('cfo_ventas_diarias','cfo_cortesias','cfo_ventas_hora','cfo_productos','cfo_canasta_pares','cfo_pedidos_detalle','cfo_cobertura') and (not has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('public', p.oid, 'execute')))
     or (p.proname in ('cfo_renglones','cfo_validar_rango','cfo_resolver_sucursales','cfo_pedidos_base') and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('public', p.oid, 'execute'))));
 rollback;

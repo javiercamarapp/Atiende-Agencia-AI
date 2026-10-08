@@ -35,7 +35,7 @@ describe("T-AB07 headers falsos: ningún valor raro en las credenciales de voz p
   it.each(raros)("%s => 401 en todas las herramientas", async (_n, token) => {
     const s = await setup();
     for (const tool of TOOLS_CON_TOKEN) {
-      // `orders` sin source "voice" se trata como checkout web (por diseño); con source "voice" la credencial invalida es 401.
+      // Con source "voice" la credencial invalida es 401.
       const res = await post(s, tool, { branch_slug: "fco-montejo", query: "x", colonia: "Centro", source: "voice" }, tokenHeader(token));
       expect(res.status, tool).toBe(401);
     }

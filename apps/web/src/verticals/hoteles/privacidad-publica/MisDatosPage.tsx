@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { UserRound } from "lucide-react";
 import { Callout, Card, CardContent, EstadoCargando, EstadoError } from "@atiende/ui";
-import { useMetaPublica } from "../../restaurantes/storefront/meta-publica.ts";
+import { useMetaPublica } from "../../../lib/meta-publica.ts";
 import { PrivacidadPublicaError, crearClientePrivacidadPublica, type MisDatos } from "./cliente.ts";
 
 export function tokenDeFragmento(hash: string): string {

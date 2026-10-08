@@ -28,7 +28,6 @@ import { assignBranch, RADIO_MAXIMO_REPARTO_KM } from "../branch-assignment.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
 import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
-import { assertCantidadesWeb, assertWebOrderRules } from "../storefront.ts";
 import { acumuladoReciente, evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
 import { RestaurantesConfigUnavailableError, type RestaurantesRepository } from "../repository.ts";
@@ -65,9 +64,8 @@ import type {
   RequestedOrderItemInput,
 } from "../types.ts";
 
-/** "web" = checkout publico del storefront (R-09): solo cotizar/confirmar/crear, con la misma maquina de estados
- * del servidor. El telefono lo escribe el cliente (no hay canal que lo identifique), asi que `ctx.phone` es null. */
-export type AgentChannel = "whatsapp" | "voz" | "web";
+/** Canales del agente: WhatsApp y llamada. El pedido en linea (checkout web) ya no existe. */
+export type AgentChannel = "whatsapp" | "voz";
 
 /** Modo de ejecucion del registro. `real` (por omision) = comportamiento de siempre. `preview` = prueba del dueno en el
  * panel: las lecturas y la maquina de estados del pedido son reales, pero NINGUNA herramienta escribe pedidos, clientes,
@@ -326,7 +324,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       },
       required: ["branch_slug", "items"],
     },
-    channels: ["whatsapp", "voz", "web"],
+    channels: ["whatsapp", "voz"],
   },
   {
     name: "confirmar_resumen",
@@ -336,7 +334,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       type: "object",
       properties: { quote_hash: { type: "string", description: "El quote_hash que devolvió cotizar_pedido (opcional; si se manda debe ser el de la última cotización)." } },
     },
-    channels: ["whatsapp", "voz", "web"],
+    channels: ["whatsapp", "voz"],
   },
   {
     name: "crear_pedido",
@@ -371,7 +369,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       },
       required: ["branch_slug", "customer_name", "items", "payment_method"],
     },
-    channels: ["whatsapp", "voz", "web"],
+    channels: ["whatsapp", "voz"],
   },
   {
     name: "registrar_contacto",
@@ -554,7 +552,7 @@ function textoOpcional(v: unknown): string | undefined {
  * devuelve `undefined` y el pedido sigue exactamente como antes. Si ademas vino un codigo explicito (voz HTTP) manda ese.
  */
 async function compensacionPendiente(repo: RestaurantesRepository, ctx: AgentToolContext): Promise<string | undefined> {
-  if (ctx.channel === "web" || ctx.modo === "preview" || !ctx.phone) return undefined;
+  if (ctx.modo === "preview" || !ctx.phone) return undefined;
   return (await repo.findCompensationCode(ctx.organizationId, ctx.phone)) ?? undefined;
 }
 
@@ -649,7 +647,7 @@ function assertEntradasReconocidas(input: Record<string, unknown>): void {
  * siempre que el canal lo conoce (WhatsApp: remitente; voz: token de llamada). */
 export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<string, unknown>, lenient: boolean): CreateOrderInput {
   const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-  if (ctx.channel !== "web") assertEntradasReconocidas(input);
+  assertEntradasReconocidas(input);
   const base: CreateOrderInput = {
     organizationId: ctx.organizationId,
     branchSlug: lenient ? String(input.branch_slug ?? "") : str(input.branch_slug),
@@ -657,7 +655,7 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     customerPhone: ctx.phone ?? (lenient ? "" : (str(input.customer_phone) ?? "")),
     customerAddress: str(input.customer_address),
     items: toCreateOrderItems(input.items, lenient),
-    source: ctx.channel === "voz" ? "voice" : ctx.channel === "web" ? "web" : "whatsapp",
+    source: ctx.channel === "voz" ? "voice" : "whatsapp",
     notes: str(input.notes),
     paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
     adultConfirmed: lenient ? input.adult_confirmed === true : typeof input.adult_confirmed === "boolean" ? input.adult_confirmed : undefined,
@@ -666,15 +664,15 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
       : undefined,
     omitDefaultComplements: Array.isArray(input.omit_default_complements) ? (input.omit_default_complements as readonly DefaultComplement[]) : undefined,
     // Los agentes (WhatsApp/voz) piden la comanda con «Básicas» y «Pedidas»; `crear_pedido` lo restringe despues al perfil `taqueria_pm`
-    // (una organizacion con otro perfil conserva las 9 incluidas). El checkout web siempre conserva las 9.
-    basicComplements: ctx.channel === "web" ? undefined : PM_BASIC_COMPLEMENTS,
+    // (una organizacion con otro perfil conserva las 9 incluidas).
+    basicComplements: PM_BASIC_COMPLEMENTS,
     ubicacionEntrega: ctx.ubicacionEntrega ?? undefined,
-    // Los agentes (no el checkout web) rellenan los opcionales que no tienen con 0 o "" (efectivo_con 0, telefono_alterno ""): eso es "sin dato", no un dato invalido
+    // Los agentes rellenan los opcionales que no tienen con 0 o "" (efectivo_con 0, telefono_alterno ""): eso es "sin dato", no un dato invalido
     // (despues de fusionar efectivo_con y telefono_alterno, 15 crear_pedido de la medida fallaban por ese relleno y el cliente se quedaba sin pedido).
-    efectivoCon: typeof input.efectivo_con === "number" && (ctx.channel === "web" || (input.efectivo_con > 0 && input.payment_method !== "tarjeta")) ? input.efectivo_con : undefined,
+    efectivoCon: typeof input.efectivo_con === "number" && (input.efectivo_con > 0 && input.payment_method !== "tarjeta") ? input.efectivo_con : undefined,
     llevarTerminal: input.llevar_terminal === true ? true : undefined,
     indicacionesAcceso: str(input.indicaciones_acceso),
-    telefonoAlterno: ctx.channel === "web" ? str(input.telefono_alterno) : textoOpcional(input.telefono_alterno)?.trim() || undefined,
+    telefonoAlterno: textoOpcional(input.telefono_alterno)?.trim() || undefined,
     doubleSalsas: toDoubleSalsas(input.doble_salsas),
     canal: toCanal(input.canal),
     colonia: str(input.colonia_entrega),
@@ -688,9 +686,11 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     programadoPara: textoOpcional(input.programado_para),
   };
   if (lenient) return base;
-  // Campos que solo trae el canal de voz/checkout (correo, transcripcion, promo, idempotencia, nombre de sucursal).
+  // Campos que solo trae el canal de voz (correo, transcripcion, promo, idempotencia, nombre de sucursal).
   return {
     ...base,
+    // Un valor que no es hora (numero, objeto) se rechaza con 400 en vez de ignorarse y mandar el pedido a cocina de inmediato.
+    programadoPara: toProgramadoPara(input.programado_para),
     branchName: str(input.branch_name),
     customerEmail: str(input.customer_email),
     idempotencyKey: str(input.idempotency_key),
@@ -795,15 +795,6 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   }
 
   if (name === "cotizar_pedido") {
-    // Web: la sesion es la unidad de compra. Si ya registro un pedido, una cotizacion nueva NO lo pisa en
-    // silencio (si el cliente creyo que fallo la red y reenvia, nacerian dos pedidos para cocina): se avisa y se
-    // devuelve el pedido existente. WhatsApp y voz si encadenan pedidos en una misma conversacion.
-    if (ctx.channel === "web") {
-      const previo = await readFlow(repo, ctx, flow);
-      if (previo?.state === "creado") {
-        throw new OrderFlowViolationError("pedido_ya_creado", "Esta sesión ya tiene un pedido registrado. Revisa su estado en el rastreo en vez de hacer otro, o empieza un pedido nuevo.", previo.context?.orderId);
-      }
-    }
     const outcome = await dispatchTool(repo, ctx, name, input);
     const quotedQuote = outcome.raw as OrderQuote & Partial<QuotePromotionInfo>;
     const quotedPrices = priceSignature(quotedQuote.lines);
@@ -975,14 +966,12 @@ async function simulatePreviewOrder(repo: RestaurantesRepository, ctx: AgentTool
     throw new OrderFlowViolationError("precio_cambio", "Los precios del menú cambiaron después de que confirmaste. Vuelve a revisar tu pedido para ver el total actualizado.");
   }
   // Pedido grande (PM): el preview muestra lo mismo que haria el real (el pedido NO se crea), pero sin dejar el aviso para la sucursal.
-  if (ctx.channel !== "web") {
-    try {
-      await assertNoEsPedidoGrande(repo, prepared);
-    } catch (err) {
-      if (!(err instanceof PedidoGrandeRetenidoError)) throw err;
-      const retenido = { pedido_grande: true, escalado: true, estado: "por_confirmar_por_la_sucursal", simulado: true, mensaje: "Este pedido supera el umbral de pedido grande: en el servicio real NO se mandaría a cocina y se avisaría a la sucursal para confirmarlo (en el preview no se crea ningún aviso)." };
-      return { result: retenido, raw: retenido, orderId: null, propertyId: null };
-    }
+  try {
+    await assertNoEsPedidoGrande(repo, prepared);
+  } catch (err) {
+    if (!(err instanceof PedidoGrandeRetenidoError)) throw err;
+    const retenido = { pedido_grande: true, escalado: true, estado: "por_confirmar_por_la_sucursal", simulado: true, mensaje: "Este pedido supera el umbral de pedido grande: en el servicio real NO se mandaría a cocina y se avisaría a la sucursal para confirmarlo (en el preview no se crea ningún aviso)." };
+    return { result: retenido, raw: retenido, orderId: null, propertyId: null };
   }
   const folio = `${FOLIO_PREVIEW_PREFIJO}${createHash("sha256")
     .update(JSON.stringify([prepared.payload.customerPhone, prepared.branch.propertyId, prepared.orderItems.map((i) => [i.id, i.quantity]), prepared.total]))
@@ -1146,7 +1135,6 @@ async function dispatchTool(
       const branchSlug = String(input.branch_slug ?? "");
       await assertBranchAllowed(repo, ctx, branchSlug);
       await assertRecogerEnSucursalDeEntrada(repo, ctx, branchSlug, input.canal);
-      if (ctx.channel === "web") assertCantidadesWeb(toRequestedItems(input.items, lenient).map((i) => i.requestedQuantity));
       const quote = await quoteOrder(repo, {
         organizationId,
         branchSlug,
@@ -1154,7 +1142,7 @@ async function dispatchTool(
         adultConfirmed: input.adult_confirmed === true,
         canal: toCanal(input.canal),
         colonia: typeof input.colonia_entrega === "string" ? input.colonia_entrega : undefined,
-        source: ctx.channel === "voz" ? "voice" : ctx.channel === "web" ? "web" : "whatsapp",
+        source: ctx.channel === "voz" ? "voice" : "whatsapp",
         ...(ctx.sharedLocation && ctx.channel === "whatsapp" ? { ubicacion: { lat: ctx.sharedLocation.lat, lng: ctx.sharedLocation.lng } } : {}),
         paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
         doubleSalsas: toDoubleSalsas(input.doble_salsas),
@@ -1195,8 +1183,7 @@ async function dispatchTool(
         const compensacion = await compensacionPendiente(repo, ctx);
         if (compensacion) mapped = { ...mapped, promoCode: compensacion };
       }
-      // Checkout web: reglas duras que la fuente "web" historica no exige (ver storefront.ts).
-      const createInput = ctx.channel === "web" ? assertWebOrderRules(mapped) : mapped;
+      const createInput = mapped;
       // La sucursal puede venir por slug o por nombre (contrato historico del checkout de voz).
       if (createInput.branchSlug || createInput.branchName) {
         await assertBranchAllowed(repo, ctx, createInput.branchSlug ?? "", createInput.branchName);
@@ -1223,7 +1210,6 @@ async function dispatchTool(
               throw new OrderFlowViolationError("precio_cambio", "Los precios del menú cambiaron después de que confirmaste. Vuelve a revisar tu pedido para ver el total actualizado.");
             }
             // Pedido grande (decision de PM, 2-oct): lo hace cumplir el SERVIDOR aunque el modelo olvide escalar.
-            if (ctx.channel === "web") return;
             const grande = await evaluarPedidoGrandeDelPedido(repo, prepared, idsEnMemoria, sesionPrevia);
             if (!grande) return;
             if (ctx.pedidoGrande && (await ctx.pedidoGrande.disponible(prepared.payload.organizationId, prepared.branch.propertyId))) grandeAprobable.error = grande;

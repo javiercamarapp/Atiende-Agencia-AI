@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { assertPromotionApplicable, selectAutomaticPromotion } from "../src/promotions.ts";
 import { PromotionError } from "../src/errors.ts";
 import { createOrder, quoteOrder } from "../src/orders.ts";
-import { previewPromotion } from "../src/storefront.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 import type { PersistedOrderItem, Promotion } from "../src/types.ts";
 
@@ -202,17 +201,11 @@ describe("2x1 del lunes por sucursal (de punta a punta, en memoria)", () => {
     expect(ahora.total).toBe(112);
   });
 
-  it("un codigo manual con alcance se rechaza fuera de su sucursal y el vista previa del carrito lo explica", async () => {
+  it("un codigo manual con alcance se rechaza fuera de su sucursal", async () => {
     vi.setSystemTime(LUNES_14H);
     const f = await seed();
     await expect(createOrder(f.repo, pedido(f, "garcia-lavin", { promoCode: "LUNES2X1PM" }))).rejects.toThrow(/no aplica en esta sucursal/);
     const orderT2 = await createOrder(f.repo, pedido(f, "fco-montejo", { promoCode: "lunes2x1pm" }));
     expect(orderT2.total).toBe(56);
-    const lineas = [item(f.pastor, 28, 4)];
-    const enT7 = await previewPromotion(f.repo, { organizationId: f.organizationId, propertyId: f.t7, rawCode: "LUNES2X1PM", canal: "recoger", total: 112, items: lineas });
-    expect(enT7).toMatchObject({ valida: false, descuento: 0, totalConDescuento: 112 });
-    expect(enT7.mensaje).toMatch(/no aplica en esta sucursal/);
-    const enT2 = await previewPromotion(f.repo, { organizationId: f.organizationId, propertyId: f.propertyId, rawCode: "LUNES2X1PM", canal: "recoger", total: 112, items: lineas });
-    expect(enT2).toMatchObject({ valida: true, descuento: 56, totalConDescuento: 56 });
   });
 });

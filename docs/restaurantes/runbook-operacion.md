@@ -72,10 +72,8 @@ El cierre del día (`/internal/restaurantes/cierres-dia`) corre a diario desde `
 - Un producto o sucursal sin código del POS **no se inventa**: la comanda va a captura manual y el motivo no incluye datos personales.
 - Modo de la integración por organización: `apagado`, `sombra` o `activo`.
 
-### Checkout web o aviso de privacidad
+### Aviso de privacidad
 
-- El checkout exige aceptar el aviso de privacidad **en el servidor** (400 `aviso_privacidad_requerido`); la evidencia (versión del aviso, fecha, canal `web`) se
-  guarda por pedido y la ven owner y admin. Si la base no tiene la migración 063 el pedido se crea igual y no se guarda la evidencia (declarado como hueco hasta aplicarla).
 - Derechos ARCO: el cliente escribe "mis datos personales"; el panel *Privacidad* lleva la solicitud con sus plazos.
 
 ### Voz

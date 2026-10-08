@@ -26,7 +26,7 @@ describe("POST /v1/restaurantes/:orgSlug/customers/lookup — Server Tool de voz
     const app = buildApp(deps);
     await app.request(
       "/v1/restaurantes/los-taquitos-de-pm/orders",
-      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "Reconocido", customer_phone: "9993334444", canal: "recoger", payment_method: "efectivo", items: [{ product_id: products.cocaCola, requested_quantity: 1 }], source: "web" }),
+      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "Reconocido", customer_phone: "9993334444", canal: "recoger", payment_method: "efectivo", items: [{ product_id: products.cocaCola, requested_quantity: 1 }], source: "voice" }, { "x-atiende-tool-secret": "test-voice-tool-secret" }),
     );
 
     const res = await app.request(

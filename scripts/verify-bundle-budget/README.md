@@ -3,7 +3,7 @@
 Presupuesto de JS por ruta del front (`apps/web`), medido en bytes gzip sobre el build real.
 Para cada ruta de `budget.json` suma el chunk de la ruta y todos sus imports estaticos transitivos
 (lo que el navegador descarga antes de pintarla; los `dynamicImports` son otras rutas y no cuentan).
-Incluye las pantallas publicas del storefront que abre el cliente final desde el celular.
+Solo incluye la entrada (toda ruta): la tienda publica del cliente final (storefront) fue eliminada.
 
     npm run build --workspace apps/web
     npm run verify:bundle-budget
