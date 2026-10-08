@@ -54,13 +54,13 @@ describe("<CfoResumen /> · con datos", () => {
     expect(enlace.getAttribute("href")).toContain("pedidos=1");
   });
 
-  it("una acción hacia una pestaña inexistente (SoftRestaurant / Operación, de CFO-08) se muestra como texto, sin enlace muerto", async () => {
+  it("las acciones hacia las pestañas de CFO-08 (SoftRestaurant, Operación, Platillos, Clientes) son enlaces reales, sin «llega pronto»", async () => {
     await pintar(crearApiCfo());
     await listo();
-    const sinEnlace = qa("[data-testid=hallazgo-accion-sin-enlace]");
-    expect(sinEnlace.length).toBeGreaterThan(0);
-    for (const e of sinEnlace) expect(e.closest("[data-testid=hallazgo]")!.querySelector("a")).toBeNull();
-    expect(sinEnlace[0]!.textContent).toContain("llega pronto");
+    expect(qa("[data-testid=hallazgo-accion-sin-enlace]")).toHaveLength(0);
+    const destinos = qa("a[data-testid=hallazgo-accion]").map((a) => new URL(a.getAttribute("href")!, "https://x.test").pathname.split("/").pop());
+    expect(destinos.some((d) => ["softrestaurant", "operacion", "platillos", "clientes"].includes(d!))).toBe(true);
+    expect(texto()).not.toContain("llega pronto");
   });
 
   it("los 12 KPI traen semáforo con texto, variación y chip de confianza donde la cifra no es medida", async () => {
