@@ -3,7 +3,7 @@
 // prueba nombra el caso "superadmin" (el generico "verticalRole desconocido" de restaurantes-admin-staff.spec.ts no lo nombra)
 // y exige que no se escriba NADA (ni invitacion, ni cuenta). Casos negativos: los roles legitimos si se invitan.
 import { describe, expect, it } from "vitest";
-import type { InMemoryTenancyEngine } from "@atiende/db";
+import type { InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { buildApp } from "../src/app.ts";
 import { authedGet, authedJson, buildRestaurantesKpiTestContext } from "./restaurantes-admin-kpis-fixtures.ts";
 
@@ -79,8 +79,13 @@ describe("H45 / ac9b380: nadie se auto-escala a superadmin invitando staff", () 
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ token: ((await res.json()) as InviteResponse).inviteToken, fullName: "Colado", password: "correcto-caballo-batería" }),
           });
-          const orgs = ((await aceptada.json()) as { organizations: ReadonlyArray<{ rol: string }> }).organizations;
-          expect(orgs.map((o) => o.rol)).not.toContain("superadmin");
+          expect(aceptada.status).toBe(200);
+          // El platformRole REAL de la membresia creada (no el `rol` de /auth, que es el verticalRole): jamas superadmin.
+          const miembros = await (ctx.deps.coreRepo as InMemoryCoreRepository).listOrgMembers(ctx.organizationId);
+          const colado = miembros.find((m) => m.email === cuerpo.email);
+          expect(colado, `membresia de ${cuerpo.email}`).toBeDefined();
+          expect(colado!.platformRole, cuerpo.email).not.toBe("superadmin");
+          expect(colado!.verticalRole, cuerpo.email).toBe("staff");
         } else {
           expect([400, 403]).toContain(res.status);
         }
