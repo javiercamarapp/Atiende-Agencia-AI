@@ -1,5 +1,8 @@
 // Corpus propio de cantidades y terminos de buscar_producto (Los Taquitos de PM, sucursal T7 = garcia-lavin) + propiedades de dinero.
 // Cubre las 6 brechas de la revision de #500: "cuarto kilo", "un cuarto kilo", "media orden de bistec", "una cerveza", plurales en -es y "sin alcohol".
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { toolDefinitionsForChannel } from "../src/agent-tools/registry.ts";
 import { searchProducts } from "../src/orders.ts";
@@ -105,9 +108,15 @@ describe("corpus: ambiguedad marcada (nunca una eleccion en silencio)", () => {
     expect(r.some((p) => /1\/2 orden/.test(p.name))).toBe(false);
   });
 
-  it.each(["3 kilos de pastor", "kilo y cuarto de pastor"])("'%s' (sin presentacion de ese peso) lista todas las presentaciones, ninguna mayor a 2 kg, marcadas ambiguo", async (q) => {
-    const r = await buscarCompleto(q);
+  it("'3 kilos de pastor' (sin presentacion de ese peso) lista todas las presentaciones, ninguna mayor a 2 kg, marcadas ambiguo", async () => {
+    const r = await buscarCompleto("3 kilos de pastor");
     expect(r.map((p) => p.name).sort()).toEqual([...TODOS_LOS_PASTOR].sort());
+    expect(r.every((p) => p.ambiguo === true)).toBe(true);
+  });
+
+  it("'kilo y cuarto de pastor' (1250 g) lista solo las presentaciones de hasta 1 kg, marcadas ambiguo", async () => {
+    const r = await buscarCompleto("kilo y cuarto de pastor");
+    expect(r.map((p) => p.name).sort()).toEqual(["Pastor — 1 kg", "Pastor — 250 g", "Pastor — 500 g", "Pastor — 750 g"]);
     expect(r.every((p) => p.ambiguo === true)).toBe(true);
   });
 
@@ -192,7 +201,7 @@ describe("tokenizador: cantidades y singularizacion", () => {
     ["kilo y medio de bistec", ["peso:1500", "bistec"]],
     ["tres cuartos de bistec", ["peso:750", "bistec"]],
     ["medio kilo de bistec", ["peso:500", "bistec"]],
-    ["kilo y cuarto de bistec", ["peso:cualquiera", "bistec"]],
+    ["kilo y cuarto de bistec", ["peso:1250", "bistec"]],
     ["250 grs de bistec", ["peso:250", "bistec"]],
   ])("%s", (consulta, esperado) => {
     expect(tokenizeForProductSearch(consulta)).toEqual(esperado);
@@ -306,11 +315,18 @@ describe("revision 2 de #505: 'N y medio' con N >= 2 nunca entrega 1.5 kg (ni ot
   it.each([
     "2 kg y medio de pastor", "3 kg y medio de pastor", "4 kg y medio de pastor", "5 kg y medio de pastor", "10 kg y medio de pastor", "dos kg y medio de pastor", "tres kg y medio de pastor",
     "dos kilos y medio de pastor", "2 kilos y medio de pastor", "2½ kilos de pastor", "2 ½ kg de pastor", "2 y medio kilos de pastor", "2 y ½ kilos de pastor", "3 y medio kilos de pastor",
-    "2.5 kg de pastor", "3,5 kilos de pastor", "cuatro cuartos de pastor", "cinco cuartos de pastor",
+    "2.5 kg de pastor", "3,5 kilos de pastor",
   ])("%s -> todas las presentaciones, ambiguo", async (q) => {
     const r = await buscarCompleto(q);
     expect(r.map((p) => p.name).sort(), q).toEqual(TODOS);
     expect(r.every((p) => p.ambiguo === true), q).toBe(true);
+  });
+
+  it("'cuatro cuartos' = 1 kg exacto; 'cinco cuartos' (1250 g) = presentaciones de hasta 1 kg, ambiguo", async () => {
+    expect((await buscarCompleto("cuatro cuartos de pastor")).map((p) => [p.name, p.ambiguo === true])).toEqual([["Pastor — 1 kg", false]]);
+    const r = await buscarCompleto("cinco cuartos de pastor");
+    expect(r.map((p) => p.name).sort()).toEqual(["Pastor — 1 kg", "Pastor — 250 g", "Pastor — 500 g", "Pastor — 750 g"]);
+    expect(r.every((p) => p.ambiguo === true)).toBe(true);
   });
 
   it.each([
@@ -326,5 +342,62 @@ describe("revision 2 de #505: 'N y medio' con N >= 2 nunca entrega 1.5 kg (ni ot
       expect(r.length, platillo).toBeGreaterThan(0);
       expect(r.every((p) => p.ambiguo === true), platillo).toBe(true);
     }
+  });
+});
+
+describe("revision 3 de #505: parser de peso (peso-cantidad.ts)", () => {
+  it.each([
+    ["un medio kilo de pastor", ["Pastor — 500 g"]],
+    ["un 1/2 kg de pastor", ["Pastor — 500 g"]],
+    ["un 1/2 kilo de pastor", ["Pastor — 500 g"]],
+    ["un ½ kilo de pastor", ["Pastor — 500 g"]],
+    ["un medio kilo de bistec", BISTEC_500],
+    ["0,25 kg de pastor", ["Pastor — 250 g"]],
+    ["0,5 kg de pastor", ["Pastor — 500 g"]],
+    ["0,75 kg de pastor", ["Pastor — 750 g"]],
+    ["1.0 kg de pastor", ["Pastor — 1 kg"]],
+    ["2.0 kilos de pastor", ["Pastor — 2 kg"]],
+    ["dos medios kilos de pastor", ["Pastor — 1 kg"]],
+    ["tres medios kilos de pastor", ["Pastor — 1.5 kg"]],
+    ["cuatro cuartos de pastor", ["Pastor — 1 kg"]],
+    ["medio kilo y medio de pastor", ["Pastor — 1 kg"]],
+    ["medio kilo y un cuarto de pastor", ["Pastor — 750 g"]],
+    ["2 kilos y 500 gramos de pastor", []],
+  ])("%s", async (consulta, esperado) => {
+    const r = await nombres(consulta);
+    if (esperado.length === 0) {
+      // 2.5 kg no existe: solo presentaciones de hasta 2 kg, ambiguo.
+      const c = await buscarCompleto(consulta);
+      expect(c.length).toBeGreaterThan(0);
+      expect(c.every((p) => p.ambiguo === true && (pesoDeProductoEnGramos(p.name) ?? 0) <= 2500)).toBe(true);
+    } else expect(r).toEqual(esperado);
+  });
+
+  it.each([
+    ["0.3 kg de pastor", ["Pastor — 250 g"]],
+    ["1.25 kg de pastor", ["Pastor — 1 kg", "Pastor — 250 g", "Pastor — 500 g", "Pastor — 750 g"]],
+    ["1,25 kg de pastor", ["Pastor — 1 kg", "Pastor — 250 g", "Pastor — 500 g", "Pastor — 750 g"]],
+    ["diez kilos de pastor", TODOS_LOS_PASTOR],
+    ["seis kilos de pastor", TODOS_LOS_PASTOR],
+    ["2.5 kg de pastor", TODOS_LOS_PASTOR],
+  ])("%s -> solo presentaciones menores o iguales, todas ambiguo, nunca una mayor", async (consulta, esperado) => {
+    const r = await buscarCompleto(consulta);
+    expect(r.map((p) => p.name).sort()).toEqual([...esperado].sort());
+    expect(r.every((p) => p.ambiguo === true)).toBe(true);
+  });
+
+  it("corpus del revisor (fixtures/consultas-de-peso-revision.json): exacta sin ambiguo, o ambiguo y nunca de mas peso", async () => {
+    const corpus = JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/consultas-de-peso-revision.json"), "utf8")) as Array<{ q: string; g: number | null }>;
+    let comprobadas = 0;
+    for (const { q, g } of corpus) {
+      if (!g) continue;
+      const r = await buscarCompleto(q);
+      const pesos = r.map((p) => pesoDeProductoEnGramos(p.name)).filter((x): x is number => x !== null);
+      if (pesos.length === 0) continue;
+      comprobadas++;
+      const exacta = pesos.every((x) => x === g);
+      expect(exacta || (r.every((p) => p.ambiguo === true) && pesos.every((x) => x <= g)), `${q} (${g}) -> ${r.map((p) => p.name).join(" | ")}`).toBe(true);
+    }
+    expect(comprobadas).toBeGreaterThan(400);
   });
 });
