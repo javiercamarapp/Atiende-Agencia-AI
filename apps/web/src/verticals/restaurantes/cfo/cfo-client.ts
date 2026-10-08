@@ -7,19 +7,28 @@
 //  - Nunca se inventan cifras: lo que no llega se queda como null.
 import type {
   AlcanceVista,
+  ClientesVista,
   ConceptoCosto,
   ConfigVista,
   CostoHistorialVista,
   CostoVista,
   CriterioOrden,
+  CuadreSrVista,
   EstadoResultadosVista,
   FiltroPedidosDetalle,
   Granularidad,
+  ImportacionSrVista,
+  LotesSrVista,
+  OperacionVista,
+  PatronesVista,
   PedidosVista,
+  ProductosVista,
   ResumenVista,
   SucursalesVista,
+  TipoLayoutSr,
   VentasVista,
   VistaExportacionCfo,
+  VistaPreviaSr,
   CfoConfig,
 } from "@atiende/domain-restaurantes/cfo";
 import { apiBaseUrlFromRequestUrl, readErrorMessage, readWriteErrorMessage, withAuthRefresh } from "../../../lib/authed-fetch.ts";
@@ -59,7 +68,7 @@ export class CfoExportarNoDisponibleError extends Error {
 
 export const baseCfo = (apiBaseUrl: string, propertyId: string): string => `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/cfo`;
 
-async function pedirCfo<T>(fetchImpl: typeof fetch, url: string, token: string, init: { method: "GET" | "PUT"; body?: unknown }): Promise<T> {
+async function pedirCfo<T>(fetchImpl: typeof fetch, url: string, token: string, init: { method: "GET" | "PUT" | "POST"; body?: unknown }): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), defaultAuthCtx(), token, (t) =>
     fetchImpl(url, {
       method: init.method,
@@ -188,4 +197,48 @@ export async function descargarExportacionCfo(c: ContextoCfo, f: FiltrosCfo, vis
   if (res.status === 404) throw new CfoExportarNoDisponibleError();
   if (!res.ok) throw new RestaurantesAdminError(await readErrorMessage(res, `No se pudo exportar (${res.status}).`));
   return { blob: await res.blob(), nombre: nombreDeContentDisposition(res.headers.get("content-disposition"), `atiende-cfo-${vista}.${formato}`) };
+}
+
+// ---- CFO-08: clientes, platillos, patrones, operación y SoftRestaurant ---------------------------------------------------------------------
+
+export function fetchClientes(c: ContextoCfo, f: FiltrosCfo): Promise<ClientesVista> {
+  return leer<ClientesVista>(c.fetchImpl, url(c, "/clientes", consultaApi(f)), c.token);
+}
+
+export function fetchProductos(c: ContextoCfo, f: FiltrosCfo): Promise<ProductosVista> {
+  return leer<ProductosVista>(c.fetchImpl, url(c, "/productos", consultaApi(f)), c.token);
+}
+
+export function fetchPatrones(c: ContextoCfo, f: FiltrosCfo): Promise<PatronesVista> {
+  return leer<PatronesVista>(c.fetchImpl, url(c, "/patrones", consultaApi(f)), c.token);
+}
+
+export function fetchOperacion(c: ContextoCfo, f: FiltrosCfo): Promise<OperacionVista> {
+  return leer<OperacionVista>(c.fetchImpl, url(c, "/operacion", consultaApi(f)), c.token);
+}
+
+export function fetchCuadreSr(c: ContextoCfo, f: FiltrosCfo): Promise<CuadreSrVista> {
+  return leer<CuadreSrVista>(c.fetchImpl, url(c, "/softrestaurant/cuadre", consultaApi(f)), c.token);
+}
+
+export function fetchLotesSr(c: ContextoCfo, f: FiltrosCfo, limite = 50): Promise<LotesSrVista> {
+  return leer<LotesSrVista>(c.fetchImpl, url(c, "/softrestaurant/lotes", consultaApi(f, { limite: String(limite) })), c.token);
+}
+
+/** Cuerpo de la importación de SoftRestaurant: un archivo = una sucursal; la primera fila de `tabla` son los encabezados. */
+export interface CuerpoImportarSr {
+  readonly propertyId: string;
+  readonly nombreArchivo: string;
+  readonly tabla: ReadonlyArray<ReadonlyArray<string | number | null>>;
+  readonly tipo?: TipoLayoutSr;
+}
+
+/** Vista previa: normaliza el archivo SIN escribir nada. */
+export function vistaPreviaSr(c: ContextoCfo, cuerpo: CuerpoImportarSr): Promise<VistaPreviaSr> {
+  return pedirCfo<VistaPreviaSr>(c.fetchImpl, `${baseCfo(c.apiBaseUrl, c.propertyId)}/softrestaurant/importar/vista-previa`, c.token, { method: "POST", body: cuerpo });
+}
+
+/** Importa el lote. Idempotente por huella: `creado: false` = «Este archivo ya estaba cargado». */
+export function importarSr(c: ContextoCfo, cuerpo: CuerpoImportarSr): Promise<ImportacionSrVista> {
+  return pedirCfo<ImportacionSrVista>(c.fetchImpl, `${baseCfo(c.apiBaseUrl, c.propertyId)}/softrestaurant/importar`, c.token, { method: "POST", body: cuerpo });
 }
