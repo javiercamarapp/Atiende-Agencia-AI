@@ -2,12 +2,12 @@
 // Arnes determinista: el modelo es un guion con una latencia virtual fija por llamada (3 s, sin dormir de verdad) y se cuenta cuantas
 // llamadas seguidas hace el turno por tipo. No mide latencia real del proveedor: fija el numero de vueltas que el SERVIDOR deja al modelo.
 // El modelo simulado es OBEDIENTE y sin agrupar herramientas (una por vuelta, el peor caso razonable): sigue lo que le dicen las notas del servidor.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FakeLlmProvider, LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { createLlmWhatsAppTurnHandler } from "../../src/whatsapp/llm-turn-handler.ts";
 import { handleInboundWhatsAppMessage } from "../../src/whatsapp/inbound.ts";
-import { NOTA_TOQUE_CONFIRMAR, parsearIdDeBoton } from "../../src/whatsapp/botones-confirmacion.ts";
+import { NOTA_TOQUE_CONFIRMAR, NOTA_TOQUE_CONFIRMAR_YA_REGISTRADA, RESPUESTA_TOQUE_OBSOLETO, parsearIdDeBoton } from "../../src/whatsapp/botones-confirmacion.ts";
 import { normalizePhone } from "../../src/phone.ts";
 import { buildRestaurantFixture } from "../fixtures.ts";
 
@@ -117,23 +117,118 @@ describe("R5 latencia: llamadas secuenciales al modelo por tipo de turno (modelo
     expect(r.outcome.orderId).not.toBeNull();
   });
 
-  it("toque «Confirmar pedido» vigente: el modelo obediente sigue la nota del servidor y el servidor ya registro la confirmacion", async () => {
+  /** Modelo OBEDIENTE para el toque: sigue la nota que le deja el servidor (una herramienta por vuelta). */
+  const obedienteAlToque = (t: ReturnType<typeof armar>, extra: object = {}): Politica => (req) => {
+    const hechas = herramientasHechas(req);
+    const nota = ultimoUsuario(req);
+    if (!hechas.includes("confirmar_resumen") && nota.includes(NOTA_TOQUE_CONFIRMAR)) return llamada("k", "confirmar_resumen", {});
+    if (!hechas.includes("crear_pedido")) return llamada("c", "crear_pedido", { ...crearArgs(t), ...extra });
+    return texto("Listo, su pedido ya quedó registrado. Lo esperamos en 25 a 35 minutos.");
+  };
+
+  it("toque «Confirmar pedido» vigente: el servidor registra la confirmacion y el modelo solo crea el pedido -> 2 llamadas (antes 3)", async () => {
     const t = await conCotizacion();
     const b = t.botones().find((x) => parsearIdDeBoton(x.id)?.accion === "confirmar")!;
-    // Obediente: si la nota dice «llame confirmar_resumen y enseguida crear_pedido» y no habla de una confirmacion ya registrada, hace las dos en vueltas separadas.
-    const obediente: Politica = (req) => {
-      const hechas = herramientasHechas(req);
-      const nota = ultimoUsuario(req);
-      const yaConfirmada = hechas.includes("confirmar_resumen") || /YA registr[óo] la confirmaci[óo]n/i.test(nota);
-      if (!yaConfirmada && nota.includes(NOTA_TOQUE_CONFIRMAR.slice(0, 40))) return llamada("k", "confirmar_resumen", {});
-      if (!hechas.includes("crear_pedido")) return llamada("c", "crear_pedido", crearArgs(t));
-      return texto("Listo, su pedido ya quedó registrado. Lo esperamos en 25 a 35 minutos.");
-    };
-    const r = await t.turno(b.title, obediente, { botonId: b.id });
+    const r = await t.turno(b.title, obedienteAlToque(t), { botonId: b.id });
+    expect(r.llamadas).toBe(2);
+    expect(r.latenciaVirtualMs).toBe(2 * MS_POR_LLAMADA);
     expect(r.outcome.orderId).not.toBeNull();
     expect(await t.pedidos()).toHaveLength(1);
-    // BASE (antes de la optimizacion): confirmar_resumen + crear_pedido + texto = 3 llamadas.
+    // el modelo vio la nota nueva (confirmacion ya registrada) y NO la que le pide llamar confirmar_resumen
+    const nota = ultimoUsuario(r.peticiones[0]!);
+    expect(nota).toContain(NOTA_TOQUE_CONFIRMAR_YA_REGISTRADA);
+    expect(nota).not.toContain(NOTA_TOQUE_CONFIRMAR);
+    // y el id del boton nunca llega al modelo
+    expect(nota).not.toMatch(/rp1:/);
+  });
+
+  it("equivalencia: con la nota nueva (2 llamadas) y con un modelo que igual llama confirmar_resumen (3 llamadas) el pedido, el mensaje y el estado final son los mismos", async () => {
+    const corrida = async (modeloLlamaConfirmar: boolean) => {
+      const t = await conCotizacion();
+      const b = t.botones().find((x) => parsearIdDeBoton(x.id)?.accion === "confirmar")!;
+      const politica: Politica = (req) => {
+        const hechas = herramientasHechas(req);
+        if (modeloLlamaConfirmar && !hechas.includes("confirmar_resumen")) return llamada("k", "confirmar_resumen", { quote_hash: "N/A" });
+        if (!hechas.includes("crear_pedido")) return llamada("c", "crear_pedido", crearArgs(t));
+        return texto("Listo, su pedido ya quedó registrado. Lo esperamos en 25 a 35 minutos.");
+      };
+      const r = await t.turno(b.title, politica, { botonId: b.id });
+      const [pedido] = await t.pedidos();
+      const flujo = await t.f.repo.readOrderFlow(t.f.organizationId, `wa:${PHONE}`);
+      return { llamadas: r.llamadas, reply: r.outcome.ok ? t.salida().at(-1)?.body : null, total: pedido?.items.reduce((n, i) => n + i.price * i.quantity, 0), items: pedido?.items.map((i) => `${i.quantity}x${i.name}`), flujo: flujo?.state, n: (await t.pedidos()).length, orderId: r.outcome.orderId !== null };
+    };
+    const nuevo = await corrida(false);
+    const viejo = await corrida(true);
+    expect(nuevo.llamadas).toBe(2);
+    expect(viejo.llamadas).toBe(3);
+    const { llamadas: _a, ...sinLlamadasNuevo } = nuevo;
+    const { llamadas: _b, ...sinLlamadasViejo } = viejo;
+    expect(sinLlamadasNuevo).toEqual(sinLlamadasViejo);
+    expect(sinLlamadasNuevo).toMatchObject({ n: 1, flujo: "creado", orderId: true });
+  });
+
+  for (const [etiqueta, args] of [["omitido", {}], ["''", { quote_hash: "" }], ["null", { quote_hash: null }], ["0", { quote_hash: 0 }], ["N/A", { quote_hash: "N/A" }]] as const) {
+    it(`contrato: si el modelo igual llama confirmar_resumen (quote_hash ${etiqueta}) tras el registro del servidor, es idempotente y nace UN solo pedido`, async () => {
+      const t = await conCotizacion();
+      const b = t.botones().find((x) => parsearIdDeBoton(x.id)?.accion === "confirmar")!;
+      const r = await t.turno(b.title, lineal(llamada("k", "confirmar_resumen", args), llamada("c", "crear_pedido", crearArgs(t)), texto("Listo, su pedido ya quedó registrado.")), { botonId: b.id });
+      expect(r.llamadas).toBe(3);
+      expect(r.outcome.orderId).not.toBeNull();
+      expect(await t.pedidos()).toHaveLength(1);
+    });
+  }
+
+  it("negativo: un toque OBSOLETO (el pedido cambio) sigue siendo texto fijo sin modelo y NO confirma nada", async () => {
+    const t = await conCotizacion();
+    const b = t.botones().find((x) => parsearIdDeBoton(x.id)?.accion === "confirmar")!;
+    // el cliente cambia el pedido: nueva cotizacion (2 cocas) invalida el boton viejo
+    const items2 = [{ ...t.items[0]!, requested_quantity: 2 }];
+    await t.turno("mejor 2", lineal(llamada("q2", "cotizar_pedido", { branch_slug: SLUG, canal: "recoger", items: items2 }), texto("Su pedido: 2 Coca-Cola, total $90.00. ¿Es correcto?")));
+    const r = await t.turno(b.title, () => texto("NO DEBE LLAMARSE"), { botonId: b.id });
+    expect(r.llamadas).toBe(0);
+    expect(r.outcome.ok).toBe(true);
+    expect(t.salida().at(-1)?.body).toBe(RESPUESTA_TOQUE_OBSOLETO);
+    const flujo = await t.f.repo.readOrderFlow(t.f.organizationId, `wa:${PHONE}`);
+    expect(flujo?.state).toBe("cotizado"); // no se confirmo la cotizacion nueva por el toque viejo
+    expect(await t.pedidos()).toHaveLength(0);
+  });
+
+  it("negativo: «Cambiar algo» no confirma nada ni toca el estado", async () => {
+    const t = await conCotizacion();
+    const b = t.botones().find((x) => parsearIdDeBoton(x.id)?.accion === "cambiar")!;
+    const r = await t.turno(b.title, lineal(texto("Claro, ¿qué desea cambiar?")), { botonId: b.id });
+    expect(r.llamadas).toBe(1);
+    const flujo = await t.f.repo.readOrderFlow(t.f.organizationId, `wa:${PHONE}`);
+    expect(flujo?.state).toBe("cotizado");
+  });
+
+  it("negativo: «si» ESCRITO no se confirma por el servidor (solo el boton es un si inequivoco): el modelo sigue llamando confirmar_resumen -> 3 llamadas", async () => {
+    const t = await conCotizacion();
+    const r = await t.turno("si", lineal(llamada("k", "confirmar_resumen", {}), llamada("c", "crear_pedido", crearArgs(t)), texto("Listo, su pedido ya quedó registrado.")));
     expect(r.llamadas).toBe(3);
+    expect(ultimoUsuario(r.peticiones[0]!)).toBe("si");
+  });
+
+  it("si la confirmacion del servidor no se puede comprobar, cae al camino de siempre: la nota original y el modelo confirma (3 llamadas)", async () => {
+    const t = await conCotizacion();
+    const b = t.botones().find((x) => parsearIdDeBoton(x.id)?.accion === "confirmar")!;
+    const real = t.f.repo.readOrderFlow.bind(t.f.repo);
+    let lecturas = 0;
+    // lecturas del turno: 1 = inicio del handler (la vigencia del toque usa esa misma), 2 = dentro de confirmar_resumen (la pre-confirmacion) -> sin maquina de estados
+    const espia = vi.spyOn(t.f.repo, "readOrderFlow").mockImplementation(async (...a) => {
+      lecturas += 1;
+      return lecturas === 2 ? null : real(...a);
+    });
+    try {
+      const r = await t.turno(b.title, obedienteAlToque(t), { botonId: b.id });
+      expect(ultimoUsuario(r.peticiones[0]!)).toContain(NOTA_TOQUE_CONFIRMAR);
+      expect(ultimoUsuario(r.peticiones[0]!)).not.toContain(NOTA_TOQUE_CONFIRMAR_YA_REGISTRADA);
+      expect(r.llamadas).toBe(3);
+      expect(r.outcome.orderId).not.toBeNull();
+      expect(await t.pedidos()).toHaveLength(1);
+    } finally {
+      espia.mockRestore();
+    }
   });
 
   it("estado de un pedido ya creado: 1 llamada (el estado viaja en el prompt)", async () => {

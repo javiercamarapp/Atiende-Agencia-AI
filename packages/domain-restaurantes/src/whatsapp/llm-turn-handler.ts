@@ -704,8 +704,26 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const vigencia = vigenciaDelToque(flowSnapshot, toqueUltimo, options.now ? options.now().getTime() : Date.now());
         const fija = respuestaDeToqueQueNoSigue(vigencia);
         if (fija) return done({ reply: fija, orderId: null, propertyId });
+        // Latencia: el toque vigente ya es el «si» explicito, asi que el servidor ejecuta `confirmar_resumen` (determinista e idempotente) en vez de gastar una vuelta del modelo
+        // solo para pedirla. Cualquier fallo o duda cae al camino de siempre (la nota original y el modelo la llama, con el mismo rechazo del servidor).
+        let confirmacionYaRegistrada = false;
+        if (perfil === "taqueria_pm" && !preview && vigencia === "vigente" && flowVigente) {
+          const toolInicio = Date.now();
+          const confirmada = await executeAgentToolSafely(
+            repo,
+            { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null },
+            "confirmar_resumen",
+            { quote_hash: flowVigente.quoteHash },
+          );
+          const res = confirmada.result as { confirmado?: unknown; aviso?: unknown } | null;
+          if (!isToolErrorResult(confirmada.result) && res?.confirmado === true && res.aviso === undefined) {
+            confirmacionYaRegistrada = true;
+            anyToolCalled = true;
+            tele.tools.push({ tool: "confirmar_resumen", latenciaMs: Date.now() - toolInicio, resultado: "ok", vuelta: 0 });
+          }
+        }
         const ultimoEnHistorial = working.findLastIndex((m) => m.role === "user");
-        if (ultimoEnHistorial >= 0) working[ultimoEnHistorial] = { role: "user", content: contenidoParaElModelo(ultimoDelCliente.content, { esElUltimo: true, confirmarVigente: true }) };
+        if (ultimoEnHistorial >= 0) working[ultimoEnHistorial] = { role: "user", content: contenidoParaElModelo(ultimoDelCliente.content, { esElUltimo: true, confirmarVigente: true, confirmacionYaRegistrada }) };
       }
 
       // Modo sin IA (interruptor de plataforma, tope de gasto agotado, proveedor caido o turno sin tiempo): si NO hay pedido creado, "problema
