@@ -192,7 +192,9 @@ describe("saludoPorHora (X40: el saludo sigue la hora local de Merida)", () => {
     ["11:59", "buenos días"],
     ["12:00", "buenas tardes"],
     ["18:59", "buenas tardes"],
-    ["19:00", "buenas noches"],
+    ["19:00", "buenas tardes"],
+    ["19:59", "buenas tardes"],
+    ["20:00", "buenas noches"],
     ["00:30", "buenas noches"],
     ["04:59", "buenas noches"],
     ["05:00", "buenos días"],
@@ -209,10 +211,11 @@ describe("saludoPorHora (X40: el saludo sigue la hora local de Merida)", () => {
   });
 
   it("el saludo de WhatsApp (saludoSegunHora) usa la misma regla con la zona del negocio", () => {
-    // 2026-10-02 17:30 UTC = 11:30 en Merida (UTC-6): buenos dias; 18:00 UTC = 12:00: tardes; 01:00 UTC del dia 3 = 19:00: noches.
+    // 2026-10-02 17:30 UTC = 11:30 en Merida (UTC-6): buenos dias; 18:00 UTC = 12:00: tardes; 02:00 UTC del dia 3 = 20:00: noches (VZ17: tardes llega hasta las 19:59).
     expect(saludoSegunHora("America/Merida", new Date("2026-10-02T17:30:00Z"))).toBe("Buenos días");
     expect(saludoSegunHora("America/Merida", new Date("2026-10-02T18:00:00Z"))).toBe("Buenas tardes");
-    expect(saludoSegunHora("America/Merida", new Date("2026-10-03T01:00:00Z"))).toBe("Buenas noches");
+    expect(saludoSegunHora("America/Merida", new Date("2026-10-03T01:00:00Z"))).toBe("Buenas tardes");
+    expect(saludoSegunHora("America/Merida", new Date("2026-10-03T02:00:00Z"))).toBe("Buenas noches");
   });
 
   it("el prompt saluda con la franja que recibe, aunque llegue en minusculas", () => {

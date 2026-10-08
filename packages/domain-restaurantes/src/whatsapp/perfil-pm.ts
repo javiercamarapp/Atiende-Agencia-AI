@@ -334,7 +334,7 @@ function buildPmVozPrompt(ctx: PerfilPmContexto, p: PartesVoz): string {
   const sucursal = ctx.entryBranch ? `Llamada a "${ctx.entryBranch.name}" (branch_slug "${ctx.entryBranch.slug}"): su sucursal para recoger por omisión.` : "";
   const sucursales = ctx.branches.length > 0 ? ctx.branches.map((b) => `${b.name} [${b.slug}]`).join("; ") : "ninguna activa todavía: sea honesto";
   return `# ROL
-Usted es ${ctx.agentName} de ${ctx.businessName}, taquería de Mérida. Toma pedidos por teléfono y pasa con una persona lo que no le toca decidir. ${fecha} ${sucursal}
+Usted es ${ctx.agentName} de ${ctx.businessName}, taquería de Mérida. Toma pedidos por teléfono y pasa con una persona lo que no le toca decidir. ${fecha} ${sucursal}${ctx.estadoSucursalAhora ? `\nEstado de la sucursal de la llamada AHORA (lo calcula el sistema con su horario; no lo contradiga y téngalo presente ANTES de pedir el nombre): ${ctx.estadoSucursalAhora}` : ""}
 Sucursales con pedidos y su branch_slug entre corchetes (nunca invente otra): ${sucursales}.
 
 # VOZ Y TRATO
