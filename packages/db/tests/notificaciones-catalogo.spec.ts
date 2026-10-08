@@ -20,7 +20,11 @@ function archivosTsx(dir: string, out: string[] = []): string[] {
 
 const rutasWeb = new Set<string>();
 for (const f of archivosTsx(path.join(REPO, "apps", "web", "src"))) {
-  for (const m of readFileSync(f, "utf8").matchAll(/path="([^"]+)"/g)) rutasWeb.add(m[1]!);
+  for (const m of readFileSync(f, "utf8").matchAll(/path="([^"]+)"/g)) {
+    rutasWeb.add(m[1]!);
+    // Una ruta con comodin (`/restaurantes/:orgSlug/cfo/*`) tambien responde en su base (`/restaurantes/:orgSlug/cfo`).
+    if (m[1]!.endsWith("/*")) rutasWeb.add(m[1]!.slice(0, -2));
+  }
 }
 
 describe("catalogo de notificaciones", () => {

@@ -14,6 +14,7 @@ export const CATEGORIAS_ROTULO: Readonly<Record<string, string>> = {
   seguridad: "Seguridad",
   salud: "Salud",
   cierres: "Cierres",
+  cfo: "CFO",
 };
 
 export function rotuloCategoria(categoria: string | null): string | null {

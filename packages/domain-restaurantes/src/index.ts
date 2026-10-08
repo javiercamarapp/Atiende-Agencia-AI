@@ -237,6 +237,8 @@ export type { OpcionesTramos, StatsPeriod, TrendBucket, ComparisonPeriods, Sales
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";
+export { alertarHallazgosCfo, seleccionarAlertas, zonaDeOrganizacion, dentroDeHorarioExterno, horaLocal, UMBRAL_ALERTA_CENTAVOS_POR_DEFECTO, TOPE_ALERTAS_POR_ORG_DIA } from "./cfo/alertas.ts";
+export type { AlertaCfo, OpcionesAlertasCfo, ResultadoAlertasCfo, SucursalAlerta, EstadoAlertasCfo } from "./cfo/alertas.ts";
 export * from "./autopiloto/index.ts";
 export * from "./repartidor-perfil/index.ts";
 export * from "./exportar/index.ts";
