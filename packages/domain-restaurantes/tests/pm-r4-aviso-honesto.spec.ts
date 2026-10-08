@@ -22,10 +22,10 @@ const entrada = (organizationId: string, contenido: string) => ({ organizationId
 
 describe("afirmaHaberAvisado: promesas en infinitivo (QA-PM-R4-whatsapp-02)", () => {
   it("detecta 'permitame avisar', 'voy a avisar' y 'el aviso quedo registrado'", () => {
-    for (const t of ["Permítame avisarle al gerente.", "Permítame avisar al equipo para que le orienten.", "Voy a avisar a la sucursal.", "Listo, el aviso quedó registrado.", "El aviso ya quedó registrado y le responden pronto."]) expect(afirmaHaberAvisado(t), t).toBe(true);
+    for (const t of ["Permítame avisarle al gerente.", "Permítame avisar al equipo para que le orienten.", "Listo, el aviso quedó registrado.", "Ya avisé a la sucursal.", "Ya le avisé al gerente.", "Ya quedó avisado el equipo.", "El aviso ya quedó registrado y le responden pronto."]) expect(afirmaHaberAvisado(t), t).toBe(true);
   });
-  it("no confunde avisos de preparacion ni preguntas", () => {
-    for (const t of ["Voy a avisar a la sucursal para que tenga listo su pedido.", "No puedo avisar a nadie desde aquí.", "¿Quiere que le avise cuando salga?"]) expect(afirmaHaberAvisado(t), t).toBe(false);
+  it("no confunde futuro, condicional, negacion ni avisos de preparacion", () => {
+    for (const t of ["Le voy a avisar a la sucursal que usted pasa a las 8.", "Voy a avisar a la sucursal para que preparen su pedido a las 7.", "Debo avisar al gerente si cambia algo.", "No tengo que avisar a la sucursal.", "Para que le avise a la sucursal necesito su nombre.", "No le avisé al gerente.", "Avisaré a la sucursal.", "Voy a avisar a la sucursal para que tenga listo su pedido.", "No puedo avisar a nadie desde aquí.", "¿Quiere que le avise cuando salga?"]) expect(afirmaHaberAvisado(t), t).toBe(false);
   });
 });
 

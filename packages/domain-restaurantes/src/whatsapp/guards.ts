@@ -113,8 +113,14 @@ export function knownAmountsOfQuote(quote: {
  * ("le aviso a la sucursal para que tenga listo su pedido") es parte del flujo normal del pedido, no un aviso al gerente: no cuenta. */
 export function afirmaHaberAvisado(reply: string): boolean {
   const t = normalizarParaClasificar(reply);
-  // QA-PM-R4-whatsapp-02 / reglas-01: tambien la promesa en infinitivo ("permitame avisar al gerente", "voy a avisar al equipo") y "el aviso quedo registrado".
-  return /\bavis(?:e|are|o)\s+(?:ya\s+)?(?:a|al|a\s+la|a\s+los)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal|encargad[oa]|restaurante|personal)\b(?![^.!?]*\blist[oa]s?\b)|\b(?:permitame|permitanme|dejeme|deme\s+chance\s+de|voy\s+a|vamos\s+a|le\s+voy\s+a|procedo\s+a|debo|tengo\s+que)\s+avisar(?:le|les)?\s+(?:a|al|a\s+la|a\s+los)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal|encargad[oa]|restaurante|personal)\b(?![^.!?]*\blist[oa]s?\b)|\bel\s+aviso\s+(?:ya\s+)?(?:quedo|fue|se\s+registro|esta\s+registrado)\b|\bnotific(?:ue|are)\s+(?:al|a\s+la)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal)\b/.test(t);
+  const DEST = "(?:a|al|a\\s+la|a\\s+los)\\s+(?:\\w+\\s+){0,2}(?:gerente|equipo|sucursal|encargad[oa]|restaurante|personal)\\b(?![^.!?]*\\b(?:list[oa]s?|prepar\\w*|tenga\\w*)\\b)";
+  // Solo afirmaciones en PASADO de haber avisado (R4-whatsapp-02/reglas-01). No cuentan el futuro ni el condicional ("le voy a avisar a la sucursal que usted pasa a las 8", "debo avisar al gerente si..."),
+  // la negacion ("no tengo que avisar") ni el subjuntivo ("para que le avise"); "permitame avisar al gerente" es la promesa inmediata del aviso y si cuenta.
+  const pasado = new RegExp(`(?<!\\bno\\s)(?<!\\bno\\s(?:le|les)\\s)(?<!\\bque\\s)(?<!\\bque\\s(?:le|les)\\s)\\b(?:ya\\s+)?(?:le\\s+|les\\s+)?avis(?:e|amos)\\s+(?:ya\\s+)?${DEST}`);
+  const inmediata = new RegExp(`\\b(?:permitame|permitanme|dejeme)\\s+avisar(?:le|les)?\\s+(?:a|al|a\\s+la)\\s+(?:\\w+\\s+){0,2}(?:gerente|equipo|encargad[oa])\\b(?![^.!?]*\\b(?:list[oa]s?|prepar\\w*|tenga\\w*)\\b)`);
+  const registrado = /\bel\s+aviso\s+(?:ya\s+)?(?:quedo|fue|se\s+registro|esta\s+registrado)\b|\b(?:ya\s+)?quedo\s+avisad[oa]\b/;
+  const notifique = /\bnotific(?:ue|amos)\s+(?:al|a\s+la)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal)\b/;
+  return pasado.test(t) || inmediata.test(t) || registrado.test(t) || notifique.test(t);
 }
 
 /** Frase que ofrece algo "de cortesia" como parte del pedido (afirmacion), no una explicacion de la regla de la promocion ("solo para recoger", "los martes", "si pide...", "no hay aguas de cortesia"). */
@@ -201,24 +207,38 @@ export function quitarAfirmacionDePedidoRegistrado(reply: string, sustituto?: st
  */
 export function corregirPromesaDeHorarioNocturno(reply: string, hora: number): string {
   if (hora < 12 && hora >= 1) return reply;
-  return reply.replace(/(?:,?\s*(?:y\s+)?)?(?:el\s+equipo\s+)?(?:le\s+(?:responde|contesta|responder[aá]n?|contestar[aá]n?|escribe|escribir[aá]n?)\s+|le\s+atienden\s+)?a\s+partir\s+de\s+las\s+12(?:\s*(?::00|h|hrs?\.?))?\s*(?:del\s+d[ií]a|del\s+mediod[ií]a|pm|p\.m\.)?/gi, (m) => (/le\s+/i.test(m) || /equipo/i.test(m) ? ", le contestan en cuanto puedan" : " en cuanto puedan"));
+  // Solo la promesa de RESPUESTA del equipo/gerente ("el equipo le responde a partir de las 12 del dia"); "mañana abrimos a partir de las 12" o "el 2x1 aplica a partir de las 12 pm" no se tocan.
+  return reply.replace(
+    /(?:,?\s*(?:y\s+)?)(?:el\s+(?:equipo|gerente)(?:\s+de\s+la\s+sucursal)?|la\s+sucursal)\s+(?:le\s+)?(?:responde|contesta|responder[aá]n?|contestar[aá]n?|atiende|atender[aá]n?|escribe|escribir[aá]n?)\s+a\s+partir\s+de\s+las\s+12(?:\s*(?::00|h|hrs?\.?))?\s*(?:del\s+d[ií]a|del\s+mediod[ií]a|pm|p\.m\.)?/gi,
+    (m) => {
+      const prefijo = /^,?\s*(?:y\s+)?/i.exec(m)?.[0] ?? "";
+      return /[,y]/i.test(prefijo) ? ", el equipo le contesta en cuanto puedan" : `${prefijo}El equipo le contesta en cuanto puedan`;
+    },
+  );
 }
 
 /**
  * QA-PM-R4-whatsapp-03: el cliente dijo "de propina 10%" y el modelo creaba el pedido sin `propina` (la propina del 10 % se perdia y el resumen decia "mas la propina" sin monto).
  * Pura: el porcentaje de propina que el CLIENTE dijo en sus mensajes (el ultimo que lo menciona), o `null`. Solo cuenta si el mensaje habla de propina junto a un porcentaje de 1 a 100.
  */
-export function porcentajePropinaDichoPorElCliente(mensajes: readonly string[]): number | null {
-  for (const m of [...mensajes].reverse()) {
-    const t = normalizarParaClasificar(m);
-    if (!/\bpropina\b/.test(t)) continue;
-    const match = /(\d{1,3}(?:[.,]\d{1,2})?)\s*(?:%|por\s*ciento)/.exec(t);
+export function porcentajePropinaDichoPorElCliente(mensajeDelCliente: string | undefined): number | null {
+  if (!mensajeDelCliente) return null;
+  const texto = normalizarParaClasificar(mensajeDelCliente);
+  // Una pregunta ("¿se acostumbra dejar 10% de propina?") no es una aceptacion.
+  if (/[?¿]/.test(mensajeDelCliente)) return null;
+  for (const clausula of texto.split(/[.,;!\n](?!\d)|\s+y\s+|\s+pero\s+/)) {
+    if (!/\bpropina\b/.test(clausula)) continue;
+    if (/\b(?:no|sin|nunca|jamas|tampoco|ni|nada)\b/.test(clausula)) continue;
+    if (/\b(?:deje|dejaron|dejamos|ayer|anterior|otra\s+vez|pasada|antes|acostumbra|normalmente)\b/.test(clausula)) continue;
+    const match = /(?<![\d.,-])(\d{1,2}(?:[.,]\d{1,2})?)\s*(?:%|por\s*ciento)/.exec(clausula);
     if (!match) continue;
     const n = Number(match[1]!.replace(",", "."));
-    if (n > 0 && n <= 100) return n;
+    if (n > 0 && n <= PROPINA_PORCENTAJE_MAX) return n;
   }
   return null;
 }
+/** Tope razonable de una propina en porcentaje (validacion de entrada y relleno del servidor). */
+export const PROPINA_PORCENTAJE_MAX = 30;
 
 /** Quita la afirmacion de aviso cuando no se pudo dejar el aviso. */
 export function quitarAfirmacionDeAviso(reply: string): string {
@@ -268,7 +288,7 @@ export const PIDE_UNA_PERSONA_RE = (() => {
     "(?:persona|humano|gerente|encargad[oa]|alguien|asesor|agente|supervisor(?:a)?|due(?:ñ|n)[oa]|jefe|jefa|operador(?:a)?|representante|responsable|administrador(?:a)?|recepcionista)";
   const det = "(?:una?\\s+|el\\s+|la\\s+|su\\s+|mi\\s+|alg[uú]n(?:a)?\\s+)?";
   const verbo =
-    "(?:hablar|comunicar(?:me)?|comun[ií]que(?:me|se)?|comun[ií]came|pasar(?:me)?|p[aá]sa(?:me)?|p[aá]se(?:me)?|conectar(?:me)?|con[eé]cta(?:me)?|con[eé]cte(?:me)?|transferir(?:me)?|transf[ií]er[ea]?(?:me)?)";
+    "(?:pasas(?:me)?|pasan(?:me)?|p[aá]sen(?:me)?|comunicas|comunican|comun[ií]quen(?:me)?|conectas|conectan|con[eé]ctenme|transfieres|transfieren|hablar|comunicar(?:me)?|comun[ií]que(?:me|se)?|comun[ií]came|pasar(?:me)?|p[aá]sa(?:me)?|p[aá]se(?:me)?|conectar(?:me)?|con[eé]cta(?:me)?|con[eé]cte(?:me)?|transferir(?:me)?|transf[ií]er[ea]?(?:me)?)";
   const fin = "(?![a-záéíóúñ])";
   return new RegExp(
     [
@@ -281,6 +301,8 @@ export const PIDE_UNA_PERSONA_RE = (() => {
       `(?<!\\bpara\\s)\\b(?:una?)\\s+(?:persona|humano)\\s*,?\\s+por\\s+favor${fin}`,
       // "que me hable / llame / atienda una persona" (main)
       `\\bque\\s+(?:me\\s+)?(?:hable|habl[eé]|llame|llam[eé]|contacte|atienda|marque|responda|conteste|escriba)\\s+${det}${quien}${fin}`,
+      // ingles: "talk to a human"
+      `\\b(?:talk|speak)\\s+(?:to|with)\\s+(?:a|an|the|someone|somebody)?\\s*(?:real\\s+)?(?:human|person|manager|agent|someone|somebody)\\b`,
       // "no quiero hablar con el bot" (main)
       `\\bno\\s+quiero\\s+(?:hablar\\s+con\\s+)?(?:con\\s+)?(?:el\\s+|un\\s+|la\\s+|una\\s+)?(?:bot|robot|m[aá]quina|inteligencia\\s+artificial)${fin}`,
     ].join("|"),
@@ -298,7 +320,7 @@ const NEGACION_AL_FINAL =
 /** Retractacion DESPUES de la peticion ("quiero una persona... bueno no, mejor sigo contigo", "mejor sigo aqui", "ya no, gracias"): el cliente retoma con el agente
  * y no hay nadie a quien pasarlo (QA-PM-R4-whatsapp-01: la toma callaba al agente y el pedido en curso se perdia). */
 const RETRACTACION_POSTERIOR =
-  /^[^.!?\n]{0,40}?\b(?:bueno\s*,?\s*)?(?:no|ya\s+no)\s*,?\s*(?:mejor|gracias|olvid\w+|dejalo|dejelo|sigo|seguimos|contigo|con\s+usted)\b|\bmejor\s+(?:sigo|seguimos|continuo|continuamos|contigo|con\s+usted|aqui|por\s+aqui)\b|\bsigo\s+(?:contigo|con\s+usted|aqui)\b/;
+  /^[^.!?\n]{0,40}?\b(?:bueno\s*,?\s*)?(?:no|ya\s+no)\s*,?\s*(?:mejor\s+(?:sigo|seguimos|continuo|continuamos|contigo|con\s+usted)|gracias|olvid\w+|dejalo|dejelo|sigo|seguimos)\b|\bmejor\s+(?:sigo|seguimos|continuo|continuamos|contigo|con\s+usted)\b|\bsigo\s+(?:contigo|con\s+usted|aqui)\b/;
 
 /** Pura: ¿el cliente pide hablar con una persona? (independiente de otros motivos de riesgo del mismo texto). NO cuenta: la negacion ("no quiero hablar con
  * una persona, con usted esta bien"), "pasar con alguien" como visita ("voy a pasar con alguien a recogerlo") ni una peticion mezclada con un pedido

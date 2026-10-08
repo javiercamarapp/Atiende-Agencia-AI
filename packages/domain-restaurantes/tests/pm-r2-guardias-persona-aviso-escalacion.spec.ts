@@ -66,7 +66,7 @@ describe("pideUnaPersona: sin falsos positivos (QA-PM-R2-voz-02 / whatsapp-06)",
 
 describe("afirmaHaberAvisado y la guardia de honestidad (QA-PM-R2-whatsapp-04)", () => {
   it("detecta 'ya avise al gerente' y variantes, no otras frases", () => {
-    for (const t of ["Ya avisé al gerente.", "Avisaré a la sucursal para que lo confirme.", "ya avise al equipo", "Le avisé al encargado de turno"]) expect(afirmaHaberAvisado(t), t).toBe(true);
+    for (const t of ["Ya avisé al gerente.", "ya avise al equipo", "Le avisé al encargado de turno"]) expect(afirmaHaberAvisado(t), t).toBe(true);
     for (const t of ["Le aviso a la sucursal para que tenga listo su pedido.", "Ya avisé a la sucursal para que su pedido esté listo a las 3.", "Le aviso que el total es de $126.", "No tengo forma de avisar a nadie.", "¿Desea que avise?"]) expect(afirmaHaberAvisado(t), t).toBe(false);
   });
   it("quitarAfirmacionDeAviso no deja la mentira", () => {

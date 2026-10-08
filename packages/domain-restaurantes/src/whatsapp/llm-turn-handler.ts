@@ -595,6 +595,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let pedidoSimulado: unknown;
       let yaRegistradoEnTurno = false;
       let retenidoEnTurno = false;
+      // Un pedido grande ya retenido (incluido `por_aprobar` del autopiloto) YA tiene su aviso: un "ya avise a la sucursal" del modelo no genera otro ni abre toma.
+      let pedidoGrandeVisto = false;
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
       const horaLocalDelTurno = Number(new Intl.DateTimeFormat("es-MX", { timeZone: config.timezone, hour: "numeric", hourCycle: "h23" }).format(now()));
       const safeReply = (reply: string) => {
@@ -783,9 +785,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           let respuesta = conPregunta;
           const promesaPrevia = [...messages].reverse().find((m) => m.role === "assistant");
           const avisoDelTurno = tele.tools.some((t) => (t.tool === "escalar_a_humano" || t.tool === "registrar_contacto") && t.resultado === "ok");
-          if (afirmaHaberAvisado(respuesta) && !escalarMotivo && !avisoDelTurno && !(promesaPrevia && afirmaHaberAvisado(promesaPrevia.content))) {
+          if (afirmaHaberAvisado(respuesta) && !escalarMotivo && !avisoDelTurno && !pedidoGrandeVisto && !(promesaPrevia && afirmaHaberAvisado(promesaPrevia.content))) {
             // QA-PM-R4-reglas-01: un pedido grande cotizado que el modelo "avisa" sin escalar queda como pedido_grande (cede la conversacion a la sucursal), no como "otro".
-            const motivoAvisoHonesto = perfil === "taqueria_pm" && lastQuoteTotal !== null && lastQuoteTotal >= PEDIDO_GRANDE_TOTAL_MXN ? "pedido_grande" : "otro";
+            const motivoAvisoHonesto = perfil === "taqueria_pm" && lastQuoteTotal !== null && lastQuoteTotal > PEDIDO_GRANDE_TOTAL_MXN ? "pedido_grande" : "otro";
             const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
             const ultimo = [...messages].reverse().find((m) => m.role === "user");
             const aviso = await executeAgentToolSafely(
@@ -845,8 +847,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             argumentosInvalidos = true;
           }
           // Propina dicha en porcentaje ("de propina 10%") que el modelo no mando: el servidor la completa (solo tarjeta; el resto de la regla de propina sigue en el servidor).
-          if (result === undefined && call.name === "crear_pedido" && input.payment_method === "tarjeta" && !(typeof input.propina === "number" && input.propina > 0) && !input.propina_porcentaje) {
-            const pct = porcentajePropinaDichoPorElCliente(messages.filter((m) => m.role === "user").map((m) => m.content));
+          // Solo si el modelo NO mando propina (ni 0): el ultimo mensaje del cliente acepta un porcentaje en afirmativo.
+          if (result === undefined && call.name === "crear_pedido" && input.payment_method === "tarjeta" && input.propina === undefined && input.propina_porcentaje === undefined) {
+            const pct = porcentajePropinaDichoPorElCliente([...messages].reverse().find((m) => m.role === "user")?.content);
             if (pct !== null) input = { ...input, propina_porcentaje: pct };
           }
           if (result === undefined) {
@@ -890,6 +893,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (call.name === "crear_pedido" && (result as { pedido_grande?: unknown; por_aprobar?: unknown } | null)?.pedido_grande === true && (result as { por_aprobar?: unknown }).por_aprobar !== true) escalarMotivo = "pedido_grande";
           if ((result as { ya_registrado?: unknown } | null)?.ya_registrado === true) yaRegistradoEnTurno = true;
           // Pedido grande / de reincidente RETENIDO (sin orderId): la sucursal lo confirma; el agente nunca debe decir que "ya quedo registrado".
+          if ((result as { pedido_grande?: unknown } | null)?.pedido_grande === true) pedidoGrandeVisto = true;
           const rr = result as { pedido_grande?: unknown; pedido_retenido?: unknown; por_aprobar?: unknown } | null;
           if ((call.name === "crear_pedido" || call.name === "cotizar_pedido") && (rr?.pedido_grande === true || rr?.pedido_retenido === true) && rr?.por_aprobar !== true) retenidoEnTurno = true;
           tele.tools.push({ tool: call.name, latenciaMs: Date.now() - toolInicio, resultado: isToolErrorResult(result) ? (fallaSistema ? "error_sistema" : "error_regla") : "ok", vuelta: tele.vueltas });

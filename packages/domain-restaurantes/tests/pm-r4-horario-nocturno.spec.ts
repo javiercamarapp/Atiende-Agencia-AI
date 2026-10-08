@@ -19,6 +19,13 @@ describe("corregirPromesaDeHorarioNocturno", () => {
     expect(corregirPromesaDeHorarioNocturno(frases[0]!, 23)).not.toMatch(/a partir de las 12/);
     expect(corregirPromesaDeHorarioNocturno(frases[0]!, 0)).not.toMatch(/a partir de las 12/);
   });
+  it.each([
+    "Mañana abrimos a partir de las 12 del día.",
+    "El 2x1 aplica los lunes a partir de las 12 pm.",
+    "Puede recoger a partir de las 12:00 del día de mañana.",
+  ])("a las 14:00 NO reescribe horarios que no son la promesa de respuesta: %s", (f) => {
+    expect(corregirPromesaDeHorarioNocturno(f, 14)).toBe(f);
+  });
   it("no toca textos sin la frase", () => {
     expect(corregirPromesaDeHorarioNocturno("Su pedido va en preparación.", 14)).toBe("Su pedido va en preparación.");
   });
