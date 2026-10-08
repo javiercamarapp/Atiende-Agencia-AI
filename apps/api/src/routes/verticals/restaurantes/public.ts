@@ -13,6 +13,7 @@ import {
   invokeAgentTool,
   OrderConflictError,
   OrderValidationError,
+  esGuardaSqlDeNegocioDePedido,
   redondearACentavos,
 } from "@atiende/domain-restaurantes";
 import type { CreateOrderInput, Order, RestaurantesRepository } from "@atiende/domain-restaurantes";
@@ -196,7 +197,7 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
           if (err instanceof OrderConflictError) throw Errors.conflict(err.message);
           // QA-PM-R5-reglas-10: una guarda SQL `raise exception ... using errcode = '22023'` (p. ej. "programado_para debe ser una hora futura" por una carrera de segundos
           // con "en 31 minutos") es una regla de negocio con mensaje accionable: 400 de validacion, no 500 "Error interno".
-          const reglaSql = !(err instanceof OrderValidationError) && (err as { code?: unknown } | null)?.code === "22023" && err instanceof Error && err.message.trim() !== "";
+          const reglaSql = esGuardaSqlDeNegocioDePedido(err);
           if (err instanceof OrderValidationError || reglaSql) {
             const code = (err as { code?: unknown }).code;
             await auditVoice(repo, org, caller, "crear_pedido", "denied", typeof code === "string" ? code : "validacion");

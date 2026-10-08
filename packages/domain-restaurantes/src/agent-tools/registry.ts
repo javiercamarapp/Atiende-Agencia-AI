@@ -19,7 +19,7 @@ import { elegirPedido, repetirPedido } from "../cliente-360/repetir.ts";
 import { getCustomerDetailById, lookupCustomerConPedidoReciente } from "../customers.ts";
 import { buscarPedidoRecienteConSucursal } from "../pedido-reciente.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
-import { OrderValidationError } from "../errors.ts";
+import { OrderValidationError, esGuardaSqlDeNegocioDePedido } from "../errors.ts";
 import { normalizePhone } from "../phone.ts";
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { pesoDeProductoEnGramos } from "../product-search.ts";
@@ -1752,7 +1752,7 @@ export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: 
   } catch (err) {
     // QA-PM-R3-reglas-10: la guarda SQL `raise exception ... using errcode = '22023'` (p. ej. "programado_para debe ser una hora futura") es una REGLA de negocio con un mensaje
     // pensado para el agente: antes salia como "Error interno" (y como fallo del sistema, que sube de rol), sin dejar rastro de la causa.
-    const reglaSql = !(err instanceof OrderValidationError) && (err as { code?: unknown } | null)?.code === "22023" && err instanceof Error && err.message.trim() !== "";
+    const reglaSql = esGuardaSqlDeNegocioDePedido(err);
     const esRegla = err instanceof OrderValidationError || reglaSql;
     if (!esRegla) {
       // Solo la clase, el SQLSTATE y el mensaje de la excepcion (sin argumentos de la herramienta: pueden traer datos del cliente).
