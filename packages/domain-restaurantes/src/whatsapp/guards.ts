@@ -260,20 +260,32 @@ export function porcentajePropinaDichoPorElCliente(mensajeDelCliente: string | u
 export const PROPINA_PORCENTAJE_MAX = 30;
 
 /**
- * T7-044 (ronda 5): el cliente pidio «1 guacamole» (el platillo) y la cotizacion llevaba «Extra Guacamole», tomado de «lo de siempre» del cliente: el total salio $93 por debajo
- * del real. Los dos productos existen a proposito (T-AM06/X26: el cliente elige), asi que el servidor no adivina: si la cotizacion trae Extra Guacamole sin el platillo y NINGUN mensaje del
- * cliente dice «extra / doble / adicional / otro / mas guacamole», devuelve el texto que el agente debe aclarar con el cliente; si no, `null`. Pura. Sin mensajes del cliente (voz, camino
- * legado) no opina. «guacamolera» (la salsa incluida) no cuenta como el platillo.
+ * T7-044 (ronda 5): el cliente pidio «1 guacamole» (el platillo) y la cotizacion llevaba «Extra Guacamole», tomado de «lo de siempre»: el total salio $93 por debajo del real. Los dos
+ * productos existen a proposito (T-AM06/X26: el cliente elige), asi que el servidor no adivina: si la cotizacion trae Extra Guacamole sin el platillo y el cliente dijo «guacamole» a secas
+ * (sin extra / doble / adicional / otro / mas) y TODAVIA NO LE PREGUNTARON, devuelve el texto que el agente debe aclarar; si no, `null`. Pura.
+ *
+ * Sin bucle: la aclaracion se da por contestada en cuanto, despues de la ultima mencion a secas, el agente hablo del guacamole y el cliente respondio (cualquier cosa: «el extra, para mis
+ * tacos», «2 extras», «el platillo»); o si el cliente dice «extra» despues de mencionarlo. Sin conversacion (voz, camino legado) no opina. «guacamolera» (la salsa incluida) no cuenta.
  */
-export function aclararGuacamoleExtra(nombresDeRenglones: readonly string[], mensajesDelCliente: readonly string[] | undefined): string | null {
-  if (!mensajesDelCliente || mensajesDelCliente.length === 0) return null;
+export function aclararGuacamoleExtra(nombresDeRenglones: readonly string[], conversacion: readonly { readonly role: string; readonly content: string }[] | undefined): string | null {
+  if (!conversacion || conversacion.length === 0) return null;
   const nombres = nombresDeRenglones.map((n) => normalizarParaClasificar(n).trim());
   if (!nombres.some((n) => n === "extra guacamole") || nombres.some((n) => n === "guacamole")) return null;
-  const textos = mensajesDelCliente.map((m) => normalizarParaClasificar(m));
-  const EXTRA = /\b(?:extra|doble|adicional|otro|otra|mas|segundo)\s+(?:de\s+)?(?:un\s+|una\s+|el\s+|la\s+)?guacamole\b|\bguacamole\s+(?:extra|doble|adicional|de\s+mas)\b/;
-  if (textos.some((t) => EXTRA.test(t))) return null;
-  if (!textos.some((t) => /\bguacamole\b/.test(t))) return null;
-  return "El cliente dijo «guacamole» sin decir «extra»: el platillo Guacamole y el Extra Guacamole (agregado para los tacos) son productos distintos y de distinto precio. No cotice Extra Guacamole por su cuenta ni por «lo de siempre»: pregúntele cuál quiere («¿el guacamole como platillo o un extra para sus tacos?») y vuelva a cotizar con el que elija.";
+  const textos = conversacion.map((m) => ({ role: m.role, t: normalizarParaClasificar(String(m.content ?? "")) }));
+  const MENCION = /\bguacamoles?\b/;
+  const EXTRA_DE_GUACAMOLE = /\b(?:extras?|dobles?|adicional(?:es)?|otro|otra|mas|segundo)\s+(?:de\s+)?(?:un\s+|una\s+|el\s+|la\s+)?guacamoles?\b|\bguacamoles?\s+(?:extras?|dobles?|adicional(?:es)?|de\s+mas)\b/;
+  let ultima = -1;
+  textos.forEach((m, idx) => {
+    if (m.role === "user" && MENCION.test(m.t) && !EXTRA_DE_GUACAMOLE.test(m.t)) ultima = idx;
+  });
+  if (ultima < 0) return null;
+  const despues = textos.slice(ultima + 1);
+  // El cliente dijo «extra» (o «doble», «adicional») despues de mencionarlo: ya eligio.
+  if (despues.some((m) => m.role === "user" && (/\bextras?\b|\bdobles?\b|\badicional(?:es)?\b|\bde\s+mas\b|\bpara\s+(?:mis|los|el)\s+tacos?\b/.test(m.t) || EXTRA_DE_GUACAMOLE.test(m.t)))) return null;
+  // El agente ya le pregunto por el guacamole y el cliente contesto.
+  const pregunto = despues.findIndex((m) => m.role === "assistant" && /guacamole|extra/.test(m.t));
+  if (pregunto >= 0 && despues.slice(pregunto + 1).some((m) => m.role === "user")) return null;
+  return "El cliente dijo «guacamole» sin decir «extra»: el platillo Guacamole y el Extra Guacamole (agregado para los tacos) son productos distintos y de distinto precio. No cotice Extra Guacamole por su cuenta ni por «lo de siempre»: pregúntele cuál quiere («¿el guacamole como platillo o un extra para sus tacos?»), espere su respuesta y vuelva a cotizar con el que elija.";
 }
 
 /** Quita la afirmacion de aviso cuando no se pudo dejar el aviso. */

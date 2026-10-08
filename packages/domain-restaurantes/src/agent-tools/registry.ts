@@ -162,9 +162,9 @@ export interface AgentToolContext {
   /** Mide `buscar_sucursal_cercana` contra los pines propuestos de Google (`COORDENADAS_PROPUESTAS_PM`) en lugar de las coordenadas vigentes. Ausente = la bandera
    * `RESTAURANTES_USAR_COORDENADAS_PROPUESTAS`, APAGADA por omision (decision de Javier). Solo lo fija el servidor. */
   readonly usarCoordenadasPropuestas?: boolean;
-  /** Mensajes del CLIENTE de esta conversacion de WhatsApp (los mas recientes). Solo lo fija el servidor; alimenta guardas que comparan lo que dijo el cliente con lo que cotiza el modelo
-   * (p. ej. «guacamole» contra «Extra Guacamole»). Ausente (voz, camino legado) = esas guardas no opinan. */
-  readonly mensajesDelCliente?: readonly string[];
+  /** Ultimos mensajes (cliente y agente) de esta conversacion de WhatsApp. Solo lo fija el servidor; alimenta guardas que comparan lo que dijo el cliente, y si ya se le aclaro, con lo que cotiza el
+   * modelo (p. ej. «guacamole» contra «Extra Guacamole»). Ausente (voz, camino legado) = esas guardas no opinan. */
+  readonly conversacionReciente?: readonly { readonly role: "user" | "assistant"; readonly content: string }[];
 }
 
 export interface AgentToolOutcome {
@@ -1285,7 +1285,7 @@ async function dispatchTool(
         throw err instanceof RestaurantesConfigUnavailableError ? new OrderValidationError(PROGRAMADOS_NO_DISPONIBLES) : err;
       });
       // T7-044: el platillo Guacamole ($142) no se cambia en silencio por Extra Guacamole ($49).
-      const aclaracionGuacamole = aclararGuacamoleExtra(quote.lines.map((l) => l.name), ctx.mensajesDelCliente);
+      const aclaracionGuacamole = aclararGuacamoleExtra(quote.lines.map((l) => l.name), ctx.conversacionReciente);
       if (aclaracionGuacamole) throw new OrderValidationError(aclaracionGuacamole);
       // QA-PM-R3-voz-03: "guacamole extra" se cobraba como la doble salsa guacamolera ($19) y no como Extra Guacamole ($49). El servidor no puede saber que dijo el
       // cliente, pero si el modelo uso la doble salsa guacamolera se lo hace revisar antes de decir el total.
