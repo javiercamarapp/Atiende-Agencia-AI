@@ -47,6 +47,10 @@ async function serializeOrders(repo: RestaurantesRepository, organizationId: str
 function serializeOrder(o: Order, pickup?: OrderPickupInfo, schedule?: OrderScheduleInfo) {
   return {
     id: o.id,
+    // Folio corto («Venta 1001») = `orders.order_number` (columna de la migracion 001, sin SQL nuevo). `null` si el repositorio no lo trae (p. ej. el de memoria de los tests).
+    orderNumber: o.orderNumber ?? null,
+    // Entrega real (`orders.delivered_at`, migracion 001); `null` mientras no se entrega o si el repositorio no la trae.
+    deliveredAt: o.deliveredAt ?? null,
     propertyId: o.propertyId,
     branch: o.branch,
     customerId: o.customerId,
