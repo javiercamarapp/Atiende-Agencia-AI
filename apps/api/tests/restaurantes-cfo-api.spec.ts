@@ -508,6 +508,22 @@ describe("entradas hostiles y sucursales inactivas (revisión de #509)", () => {
     expect(acotado.kpis.porSucursal.map((c: { propertyId: string }) => c.propertyId)).not.toContain(C);
   });
 
+  it("sucursales=<inactiva> se acepta explícitamente (la SQL no filtra por status): el owner la consulta sola; el admin acotado que no la tiene recibe el mismo 403", async () => {
+    const { ctx, app, url, A, C } = await construir({ inactiva: true });
+    const t = ctx.staff.owner.token;
+    const sola = await app.request(url(`resumen?${Q}&sucursales=${C}`), authedGet(t));
+    expect(sola.status).toBe(200);
+    const r = await sola.json();
+    expect(r.kpis.porSucursal.map((c: { propertyId: string }) => c.propertyId)).toEqual([C]);
+    expect(r.sucursales).toEqual([expect.objectContaining({ propertyId: C, nombre: "Cerrada", activa: false })]);
+    // Mezclada con una activa también se acepta.
+    const mezcla = await app.request(url(`resumen?${Q}&sucursales=${A},${C}`), authedGet(t));
+    expect(mezcla.status).toBe(200);
+    expect((await mezcla.json()).kpis.porSucursal.map((c: { propertyId: string }) => c.propertyId).sort()).toEqual([A, C].sort());
+    // Fuera de la membresía del admin acotado: el MISMO 403 que una sucursal ajena.
+    expect((await app.request(url(`resumen?${Q}&sucursales=${C}`), authedGet(ctx.staff.adminSucursalA.token))).status).toBe(403);
+  });
+
   it("llaves del prototipo en PUT /config -> 422 (no 500)", async () => {
     const { ctx, app, url } = await construir();
     const t = ctx.staff.owner.token;

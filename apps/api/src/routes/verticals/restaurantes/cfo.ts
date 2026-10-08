@@ -7,6 +7,8 @@
 //    «Todas» = las suyas, y nunca la fila «No asignado» (LLM de la organización ni costos organizacionales).
 //  - `sucursales=<ids>`: el alcance del actor sale de `resolveEffectivePropertyIds` (membresía) y cada id se valida contra ese alcance; una sucursal ajena, de otra organización o inexistente da el MISMO 403
 //    «No tienes acceso a esta sucursal.» (no revela si existe). La base vuelve a validar cada sucursal (doble puerta).
+//    Una sucursal INACTIVA de la organización se acepta explícitamente en `sucursales=<id>` (también sola): la SQL no filtra por status y «todas» ya la cuenta;
+//    se marca `activa: false` en `sucursales`. Se rechaza solo lo que está fuera del alcance del actor.
 //  - Todas las funciones SQL son SECURITY DEFINER con su propia puerta; esta capa NO escribe DML: toda escritura pasa por funciones definer
 //    (cfo_config_guardar, cfo_costo_guardar, sr_importar, cfo_registrar_exportacion) que dejan la bitácora.
 //
