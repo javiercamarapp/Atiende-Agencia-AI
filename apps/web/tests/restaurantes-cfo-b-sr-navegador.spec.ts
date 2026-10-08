@@ -105,11 +105,89 @@ describe("parsers por tipo de valor (casos aceptados)", () => {
     ok("servicio", "Mesa 4", "Comedor");
     ok("servicio", "Drive thru", "Otro");
     ok("servicio", "Ana SINTÉTICA", "Otro");
-    ok("forma_pago", "Tarjeta de crédito", "tarjeta");
     ok("forma_pago", "SPEI", "transferencia");
-    ok("forma_pago", "Crédito cliente", "tarjeta");
     ok("forma_pago", "Ana Pérez", "otro");
   });
+  it("forma de pago: catálogo cerrado con sinónimos; crédito a cliente NO es tarjeta y American Express sí", () => {
+    const casos: Array<[string, string]> = [
+      ["EFECTIVO", "efectivo"], ["Cash", "efectivo"], ["TARJETA", "tarjeta"], ["Visa", "tarjeta"], ["TARJETA DE CRÉDITO", "tarjeta_credito"], ["TDC", "tarjeta_credito"],
+      ["DÉBITO", "tarjeta_debito"], ["Tarjeta de débito", "tarjeta_debito"], ["AMEX", "amex"], ["AMERICAN EXPRESS", "amex"],
+      ["CRÉDITO", "credito_cliente"], ["Crédito cliente", "credito_cliente"], ["Cuenta por cobrar", "credito_cliente"],
+      ["CORTESÍA", "cortesia"], ["DÓLARES", "dolares"], ["USD", "dolares"], ["SPEI", "transferencia"], ["Transferencia", "transferencia"],
+      ["Uber Eats", "plataforma"], ["Rappi", "plataforma"], ["DiDi Food", "plataforma"], ["Mercado Pago", "mercado_pago"], ["CoDi", "mercado_pago"],
+      ["Monedero", "monedero"], ["Puntos", "monedero"], ["Mixto", "mixto"], ["Bitcoin", "otro"],
+    ];
+    for (const [entrada, esperado] of casos) {
+      const r = parsearCeldaSr("forma_pago", entrada);
+      expect(r.ok && r.valor, entrada).toBe(esperado);
+    }
+  });
+
+  it("el catálogo no rompe el contrato del servidor: tarjeta y amex cuentan como tarjeta (comisión de terminal) y crédito a cliente no", async () => {
+    const { esFormaPagoTarjeta } = await import("@atiende/domain-restaurantes/cfo");
+    for (const v of ["tarjeta", "tarjeta_credito", "tarjeta_debito", "amex"]) expect(esFormaPagoTarjeta(v), v).toBe(true);
+    for (const v of ["efectivo", "credito_cliente", "cortesia", "plataforma", "mercado_pago", "transferencia", "otro", null]) expect(esFormaPagoTarjeta(v as string | null), String(v)).toBe(false);
+  });
+
+  it("dinero de Excel y es-MX: espacio tras $, signo al final, $-50.00, MXN, miles con espacio o apóstrofo; sale como centavos exactos", () => {
+    const casos: Array<[string, string]> = [
+      ["$ 1,234.50", "1234.50"], ["$-50.00", "-50.00"], ["50.00-", "-50.00"], ["1,234.50 MXN", "1234.50"], ["1 234.50", "1234.50"], ["$1'234.50", "1234.50"],
+      ["$1\u2009234.50", "1234.50"], ["(12.50)", "-12.50"], ["1234,5", "1234.50"], ["$ 99 pesos", "99.00"], ["12", "12.00"],
+    ];
+    for (const [entrada, esperado] of casos) {
+      const r = parsearCeldaSr("total", entrada);
+      expect(r.ok && r.valor, entrada).toBe(esperado);
+    }
+    for (const mal of ["12 abc", "1,234.50 dólares", "999 111 2222", "999 111 22 22", "$$12", "1 23", "9991112222", "1 234 567 890", "ana"]) expect(parsearCeldaSr("total", mal).ok, mal).toBe(false);
+  });
+
+  it("cancelada: «cancel…» -> Sí; otra palabra corta sin dígitos ni @ -> No; con dígitos o @ se rechaza", () => {
+    const sn = (v: string) => { const r = parsearCeldaSr("cancelada", v); return r.ok ? r.valor : "RECHAZADO"; };
+    for (const v of ["Cancelación", "CANCELADA", "Cancelado", "cancel"]) expect(sn(v), v).toBe("Sí");
+    for (const v of ["Facturada", "Impresa", "Normal", "Reabierta", "No", "Sin cancelar", "no cancelada", "activa"]) expect(sn(v), v).toBe("No");
+    for (const v of ["ana@correo.com", "Mesa 4", "una palabra muy muy larga que no cabe"]) expect(sn(v), v).toBe("RECHAZADO");
+    expect(sn("")).toBe(null);
+  });
+
+  it("tickets acepta 1,234 (miles) y manda 1234; rechaza más de 6 dígitos", () => {
+    expect(parsearCeldaSr("tickets", "1,234")).toMatchObject({ ok: true, valor: "1234" });
+    expect(parsearCeldaSr("tickets", "12")).toMatchObject({ ok: true, valor: "12" });
+    expect(parsearCeldaSr("tickets", "1,234,567").ok).toBe(false);
+    expect(parsearCeldaSr("tickets", "9991112222").ok).toBe(false);
+  });
+
+  it("folio: acepta un espacio simple y # (A 001, #0045) y rechaza direcciones, RFC/CURP y teléfonos con guiones", () => {
+    for (const v of ["A 001", "#0045", "T2-0001", "A/12"]) expect(parsearCeldaSr("folio", v).ok, v).toBe(true);
+    for (const v of ["Calle 60 #123 Centro", "Calle 60 #123", "XAXX010101000", "XEXX010101HNEXXXA4", "999-111-2222"]) expect(parsearCeldaSr("folio", v).ok, v).toBe(false);
+  });
+
+  it("folio con columna que NO se llama folio: un número de 10 dígitos sin formato es sospechoso de teléfono (confirmable); con alias de folio se acepta", () => {
+    expect(parsearCeldaSr("folio", "9991112222", { folioEsAlias: false })).toMatchObject({ ok: false, confirmable: true });
+    expect(parsearCeldaSr("folio", "9991112222", { folioEsAlias: false, confirmarFolio: true }).ok).toBe(true);
+    expect(parsearCeldaSr("folio", "2026092101", { folioEsAlias: true }).ok).toBe(true);
+    const nombre: Filas = [["Referencia", "Fecha", "Total"], ["9991112222", "21/09/2026", "$10.00"]];
+    expect(construirTablaSr(nombre, 0, "cuentas", { folio: 0, fecha: 1, total: 2 }).renglonesDescartados).toBe(1);
+    const alias: Filas = [["Folio", "Fecha", "Total"], ["2026092101", "21/09/2026", "$10.00"]];
+    expect(construirTablaSr(alias, 0, "cuentas", { folio: 0, fecha: 1, total: 2 }).renglonesDescartados).toBe(0);
+  });
+
+  it("construirTablaSr: dato opcional malo -> viaja vacío y el renglón se conserva; obligatorio malo -> el renglón no viaja; cuenta ambos", () => {
+    const filas: Filas = [["Folio", "Fecha", "Total", "Propina"], ["T2-1", "21/09/2026", "$10.00", "xx"], ["T2-2", "22/09/2026", "zz", "$1.00"]];
+    const t = construirTablaSr(filas, 0, "cuentas", { folio: 0, fecha: 1, total: 2, propina: 3 });
+    expect(t.tabla[1]).toEqual(["T2-1", "21/09/2026", "10.00", null]);
+    expect(t.tabla[2]).toEqual([]);
+    expect(t.renglonesDescartados).toBe(1);
+    expect(t.datosVaciados).toBe(1);
+    expect(t.errores.map((e) => [e.renglon, e.campo, e.descartaRenglon])).toEqual([[2, "propina", false], [3, "total", true]]);
+  });
+
+  it("un folio mapeado a una columna personal por el encabezado se rechaza de forma dura aunque se haya «recuperado»", () => {
+    const filas: Filas = [["Cliente", "Fecha", "Total"], ["A001", "21/09/2026", "$10.00"]];
+    const t = construirTablaSr(filas, 0, "cuentas", { folio: 0, fecha: 1, total: 2 }, { confirmarFolio: true, columnasPersonales: new Set([0]) });
+    expect(t.renglonesDescartados).toBe(1);
+    expect(JSON.stringify(t.tabla)).not.toContain("A001");
+  });
+
   it("folios normales: alfanuméricos con guiones o diagonales, de 10 dígitos, con ceros", () => {
     for (const v of ["T2-00001", "A/123", "2026092101", "2026092102", "0000012345", "520000000001", "1234-567-890", "123456789"]) ok("folio", v, v);
     for (const v of ["5210000000001", "5500000000000004"]) expect(parsearCeldaSr("folio", v).ok, v).toBe(false); // 13 a 19 dígitos: tarjeta
@@ -273,10 +351,10 @@ describe("ayuda de UX por encabezado (no es la barrera), sin falsos positivos", 
   it("el título `Restaurante SINTÉTICO,Sucursal Centro,Colonia Centro` puede marcar una columna por UX, pero con la casilla se recupera y el parser decide", () => {
     const filas: Filas = [["Restaurante SINTÉTICO", "Sucursal Centro", "Colonia Centro"], ["Folio", "Fecha", "Total"], ["T2-1", "21/09/2026", "$10.00"]];
     // Aunque la ayuda excluya la columna 3, mapear (la casilla «incluirla») es válido y los valores pasan sus parsers.
-    expect(columnasPersonales(filas, 1)).toEqual([2]);
+    expect(columnasPersonales(filas, 1)).toEqual([]);
     const t = construirTablaSr(filas, 1, "cuentas", { folio: 0, fecha: 1, total: 2 });
     expect(t.errores).toEqual([]);
-    expect(JSON.stringify(t.tabla)).toContain("$10.00");
+    expect(JSON.stringify(t.tabla)).toContain("10.00");
   });
   it("encabezados personales en inglés y apellidos", () => {
     for (const h of ["Telephone", "Mobile", "Cell", "Cellphone", "Client", "Guest", "Apellido", "Apellidos", "Contact", "Phone1", "Surname"]) {

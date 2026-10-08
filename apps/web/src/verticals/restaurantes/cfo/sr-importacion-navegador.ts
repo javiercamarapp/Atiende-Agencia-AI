@@ -78,18 +78,9 @@ export function sugerirTipo(encabezados: readonly string[]): TipoLayoutSr {
   return ALIAS_SR_INFERIDOS.cuentas.folio.some((a) => norm.has(a)) ? "cuentas" : "resumen_servicio";
 }
 
-const esEtiqueta = (c: string): boolean => c.trim().endsWith(":");
-const llenas = (fila: readonly string[]): number => fila.filter((c) => c.trim() !== "").length;
-
-/** Renglones que cuentan como encabezado para la ayuda de UX: el elegido, el que detecta `detectarFilaEncabezado` y, arriba del elegido, los de la misma tabla (mismo ancho ±1, sin pares «etiqueta:»). */
+/** Renglones que cuentan para la ayuda de UX: SOLO el elegido y el que detecta `detectarFilaEncabezado`. Ningún título ni renglón de datos marca columnas. */
 function filasDeEncabezado(filas: readonly (readonly string[])[], filaEncabezado: number): number[] {
-  const elegidas = new Set<number>([filaEncabezado, detectarFilaEncabezado(filas)]);
-  const ancho = llenas(filas[filaEncabezado] ?? []);
-  for (let r = 0; r < filaEncabezado; r++) {
-    const f = filas[r] ?? [];
-    if (!f.some(esEtiqueta) && Math.abs(llenas(f) - ancho) <= 1 && llenas(f) >= 2) elegidas.add(r);
-  }
-  return [...elegidas].filter((r) => r >= 0 && r < filas.length).sort((a, b) => a - b);
+  return [...new Set([filaEncabezado, detectarFilaEncabezado(filas)])].filter((r) => r >= 0 && r < filas.length).sort((a, b) => a - b);
 }
 
 /**
@@ -100,7 +91,8 @@ export function nombresPersonales(filas: readonly (readonly string[])[], filaEnc
   const out = new Map<number, string>();
   for (const r of filasDeEncabezado(filas, filaEncabezado)) {
     (filas[r] ?? []).forEach((h, i) => {
-      if (h.trim() !== "" && esColumnaPersonal(h) && !out.has(i)) out.set(i, /\d/.test(h) || h.length > 30 ? `Columna ${i + 1}` : h.trim());
+      // Solo el renglón ELEGIDO es un encabezado que se puede nombrar; el texto de cualquier otro renglón es dato del negocio: ahí solo la posición.
+      if (h.trim() !== "" && esColumnaPersonal(h) && !out.has(i)) out.set(i, r === filaEncabezado && !/\d/.test(h) && h.length <= 30 ? h.trim() : `Columna ${i + 1}`);
     });
   }
   return new Map([...out.entries()].sort((x, y) => x[0] - y[0]));
@@ -118,18 +110,19 @@ const TIPO_DE_CAMPO: Readonly<Record<string, Tipo>> = {
   cancelado: "dinero", forma_pago: "forma_pago", cancelada: "booleano", tickets: "entero",
 };
 const ESPERADO: Readonly<Record<Tipo, string>> = {
-  dinero: "un monto como $1,234.50 (sin letras ni espacios)",
+  dinero: "un monto como $1,234.50 (puede llevar $, signo menos, MXN y separadores de miles)",
   fecha: "una fecha como 21/09/2026 o 2026-09-21 (años 2000 a 2100)",
   hora: "una hora como 14:30",
-  entero: "un número entero de hasta 6 dígitos",
-  booleano: "Sí o No (o cancelada / activa)",
+  entero: "un número entero de hasta 6 dígitos (1,234 también sirve)",
+  booleano: "una palabra corta sin números (Sí/No, cancelada, normal…)",
   servicio: "un tipo de servicio (comedor, para llevar, domicilio, rápido)",
   forma_pago: "una forma de pago (efectivo, tarjeta, transferencia…)",
-  folio: "un folio de hasta 24 caracteres con letras, números y guiones, sin espacios y con al menos un número",
+  folio: "un folio de hasta 24 caracteres (letras, números, guiones o #; un solo espacio como en «A 001») con al menos un número",
 };
 
 const RE_CORREO = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 const RE_DINERO = [/^[-(]?\$?(\d{1,3}(,\d{3})+|\d+)(\.\d{1,6})?\)?$/, /^-?\$?\d+,\d{1,2}$/, /^-?\$?\d{1,3}(\.\d{3})+,\d{1,2}$/];
+const RE_FOLIO = /^(#?[A-Za-z0-9][A-Za-z0-9\-_/]*|[A-Za-z]{1,3} #?\d+)$/;
 const RE_RFC = /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i;
 const RE_CURP = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/i;
 /** Teléfono con formato (separadores, paréntesis o +52) en grupos de teléfono: en el folio pide confirmación; «1234-567-890» no lo es. */
@@ -151,24 +144,59 @@ export function pareceTelefono(valor: string): boolean {
   return largo && RE_TEL_CON_FORMATO.test(v);
 }
 
-function dineroValido(v: string): boolean {
-  if (!RE_DINERO.some((r) => r.test(v)) || parsearMontoCentavos(v) === null) return false;
+const SEPARADOR_MILES = /(?<=\d)[ '’\u00a0\u2009\u202f](?=\d{3}(?!\d))/g;
+
+/** «$ 1,234.50», «$-50.00», «50.00-», «1,234.50 MXN», «1 234.50» y «$1'234.50» -> «1234.50» (centavos exactos); null si no es un monto. Sin letras arbitrarias, sin teléfonos ni enteros de 10 dígitos o más. */
+export function normalizarDinero(entrada: string): string | null {
+  let v = entrada.trim().replace(/\s*(mxn|mn|pesos?)$/i, "").trim();
+  if (v.endsWith("-")) v = `-${v.slice(0, -1).trim()}`;
+  v = v.replace(/^(-?)\$\s+/, "$1$").replace(/^\$-/, "-$").replace(SEPARADOR_MILES, ",");
+  if (!RE_DINERO.some((r) => r.test(v))) return null;
+  const centavos = parsearMontoCentavos(v);
+  if (centavos === null) return null;
   const limpio = v.replace(/[-()$]/g, "");
   const sinDecimales = /^\d+$/.test(limpio) || /^\d{1,3}(,\d{3})+$/.test(limpio);
-  return !(sinDecimales && limpio.replace(/\D/g, "").length >= 10);
+  if (sinDecimales && limpio.replace(/\D/g, "").length >= 10) return null;
+  const abs = Math.abs(centavos);
+  return `${centavos < 0 ? "-" : ""}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
 }
 
+/** Catálogo CERRADO de formas de pago (sin acentos ni mayúsculas) y su valor para el servidor. «tarjeta*» y «amex» cuentan como tarjeta para la comisión de terminal; «credito_cliente» es cuenta por cobrar. */
 const FORMAS_PAGO: ReadonlyArray<readonly [RegExp, string]> = [
-  [/\befectivo\b/, "efectivo"], [/\b(tarjeta|credito|debito|visa|mastercard|amex)\b/, "tarjeta"], [/\b(transferencia|spei)\b/, "transferencia"], [/\bvales?\b/, "vales"], [/\bcheque\b/, "cheque"],
+  [/\b(tarjeta.*credito|credito.*tarjeta|tdc)\b/, "tarjeta_credito"],
+  [/\b(tarjeta.*debito|debito|tdd)\b/, "tarjeta_debito"],
+  [/\b(amex|american express)\b/, "amex"],
+  [/\b(credito cliente|credito a cliente|cuenta por cobrar|cxc|a credito|credito casa|credito)\b/, "credito_cliente"],
+  [/\b(visa|mastercard|master card|tarjeta)\b/, "tarjeta"],
+  [/\b(cortesia|cortesias)\b/, "cortesia"],
+  [/\b(dolar|dolares|usd)\b/, "dolares"],
+  [/\b(transferencia|spei|deposito)\b/, "transferencia"],
+  [/\b(uber|rappi|didi|plataforma)\b/, "plataforma"],
+  [/\b(mercado pago|mercadopago|codi|paypal)\b/, "mercado_pago"],
+  [/\b(monedero|puntos|lealtad)\b/, "monedero"],
+  [/\b(mixto|combinado)\b/, "mixto"],
+  [/\b(efectivo|cash)\b/, "efectivo"],
+  [/\bvales?\b/, "vales"],
+  [/\bcheque\b/, "cheque"],
 ];
 const SERVICIO_ETIQUETA: Readonly<Record<string, string>> = { comedor: "Comedor", para_llevar: "Para llevar", domicilio: "Domicilio", rapido: "Rápido", otro: "Otro" };
-const SI = new Set(["si", "s", "1", "true", "verdadero", "x", "yes", "cancelada", "cancelado"]);
-const NO = new Set(["no", "n", "0", "false", "falso", "activa", "activo", "pagada", "pagado", "abierta", "cerrada", "cerrado", "vigente"]);
+const SI = new Set(["si", "s", "1", "true", "verdadero", "x", "yes"]);
+const NO = new Set(["no", "n", "0", "false", "falso"]);
+
+/** Sí/No de «cancelada»: contiene «cancel» (sin «no»/«sin» delante) -> Sí; cualquier otra palabra corta sin dígitos ni «@» -> No; el resto se rechaza. */
+function parsearCancelada(v: string): "Sí" | "No" | null {
+  const n = normalizarEncabezado(v);
+  if (SI.has(n)) return "Sí";
+  if (NO.has(n)) return "No";
+  if (/[\d@]/.test(v) || n.length > 20 || n === "") return null;
+  if (/^(no|sin)\b/.test(n)) return "No";
+  return n.includes("cancel") ? "Sí" : "No";
+}
 
 export type ResultadoCelda = { readonly ok: true; readonly valor: string | null } | { readonly ok: false; readonly esperado: string; readonly confirmable?: boolean };
 
 /** Valida y normaliza UNA celda según el tipo de su campo. Texto libre nunca pasa: los enumerados salen de una lista cerrada. */
-export function parsearCeldaSr(campo: string, valor: string, opciones: { readonly confirmarFolio?: boolean } = {}): ResultadoCelda {
+export function parsearCeldaSr(campo: string, valor: string, opciones: { readonly confirmarFolio?: boolean; /** false = la columna del folio no se llama como un folio: un número de 10 dígitos se toma por teléfono. */ readonly folioEsAlias?: boolean } = {}): ResultadoCelda {
   const v = valor.trim();
   if (v === "") return { ok: true, valor: null };
   const tipo = TIPO_DE_CAMPO[campo];
@@ -178,16 +206,16 @@ export function parsearCeldaSr(campo: string, valor: string, opciones: { readonl
   const digitos = v.replace(/\D/g, "").length;
   switch (tipo) {
     case "dinero":
-      return dineroValido(v) ? { ok: true, valor: v } : no();
+      { const d = normalizarDinero(v); return d !== null ? { ok: true, valor: d } : no(); }
     case "fecha":
       return v.length <= 30 && parsearFechaSr(v) !== null ? { ok: true, valor: v } : no();
     case "hora":
       return /^\d{1,2}:\d{2}(:\d{2})?(\s?[ap]\.?\s?m\.?)?$/i.test(v) ? { ok: true, valor: v } : no();
     case "entero":
-      return /^\d{1,6}$/.test(v) ? { ok: true, valor: v } : no();
+      return /^\d{1,6}$/.test(v) || /^\d{1,3}(,\d{3})+$/.test(v) ? (/^\d{1,3}(,\d{3})+$/.test(v) && v.replace(/,/g, "").length > 6 ? no() : { ok: true, valor: v.replace(/,/g, "") }) : no();
     case "booleano": {
-      const n = normalizarEncabezado(v);
-      return SI.has(n) ? { ok: true, valor: "Sí" } : NO.has(n) ? { ok: true, valor: "No" } : no();
+      const b = parsearCancelada(v);
+      return b ? { ok: true, valor: b } : no();
     }
     case "servicio":
       return digitos >= 7 ? no() : { ok: true, valor: SERVICIO_ETIQUETA[normalizarTipoServicio(v)] ?? "Otro" };
@@ -197,8 +225,10 @@ export function parsearCeldaSr(campo: string, valor: string, opciones: { readonl
       return { ok: true, valor: FORMAS_PAGO.find(([re]) => re.test(n))?.[1] ?? "otro" };
     }
     case "folio": {
-      if (!/^[A-Za-z0-9][A-Za-z0-9\-_/]{0,23}$/.test(v) || !/\d/.test(v) || RE_RFC.test(v) || RE_CURP.test(v)) return no();
+      if (v.length > 24 || !RE_FOLIO.test(v) || !/\d/.test(v) || RE_RFC.test(v) || RE_CURP.test(v)) return no();
       if (pareceTelefono(v) && !opciones.confirmarFolio) return no(true);
+      // Una columna que no se llama como un folio con un número de teléfono sin formato (10 dígitos, o 12/13 con 52/521) es sospechosa.
+      if (!opciones.confirmarFolio && opciones.folioEsAlias === false && /^\d+$/.test(v) && ((v.length === 10 && !v.startsWith("0")) || (v.length === 12 && v.startsWith("52")))) return no(true);
       return { ok: true, valor: v };
     }
   }
@@ -249,45 +279,79 @@ export interface ErrorLocalSr {
   /** Etiqueta legible del campo («Forma de pago»). */
   readonly etiqueta: string;
   readonly esperado: string;
-  /** Un folio con forma de teléfono con formato: la persona puede confirmar que es un folio. */
+  /** Un folio con forma de teléfono: la persona puede confirmar que es un folio. */
   readonly confirmable: boolean;
+  /** true = el campo es obligatorio y el renglón NO se envía; false = el campo es opcional: se envía vacío y el renglón se conserva. */
+  readonly descartaRenglon: boolean;
 }
 
-/** «Renglón 5, «Total»: se esperaba un monto… (el valor no se muestra). Corrige esa celda o quita ese renglón del archivo; mientras tanto no se envía.» */
-export const MENSAJE_ERROR_LOCAL = (e: ErrorLocalSr): string => `Renglón ${e.renglon}, «${e.etiqueta}»: se esperaba ${e.esperado} (el valor no se muestra). Corrige esa celda o elige otra columna; ese renglón no se envía.`;
+/** «Renglón 5, «Total»: se esperaba un monto… (el valor no se muestra). …» */
+export const MENSAJE_ERROR_LOCAL = (e: ErrorLocalSr): string =>
+  `Renglón ${e.renglon}, «${e.etiqueta}»: se esperaba ${e.esperado} (el valor no se muestra). ${e.descartaRenglon ? "Corrige esa celda o elige otra columna; ese renglón no se envía." : "Ese dato se envía vacío y el renglón se conserva."}`;
 
 export interface TablaSr {
   readonly tabla: Array<Array<string | null>>;
   /** Cuántas columnas del archivo viajan. */
   readonly columnasEnviadas: number;
-  /** Celdas que no pasaron su parser: el renglón completo se deja en blanco y no viaja. */
+  /** Primeros errores (con tope); los totales van aparte. */
   readonly errores: readonly ErrorLocalSr[];
+  /** Renglones que NO viajan (un campo obligatorio no pasó su parser): cuentan como rechazados. */
+  readonly renglonesDescartados: number;
+  /** Datos opcionales que viajan vacíos (el renglón se conserva). */
+  readonly datosVaciados: number;
 }
 
 const MAX_ERRORES_LOCALES = 200;
 
+export interface OpcionesTablaSr {
+  readonly confirmarFolio?: boolean;
+  /** Columnas que el ENCABEZADO marcó como personales: ni con la casilla de recuperar pueden ser el folio (rechazo duro). */
+  readonly columnasPersonales?: ReadonlySet<number>;
+}
+
 /**
  * Tabla para la API: conserva el número de cada renglón del archivo (los de arriba del encabezado van vacíos), renombra las columnas mapeadas al alias canónico
- * del dominio y NO incluye ninguna otra. Cada celda pasa por el parser de su campo; si una falla, el renglón completo va en blanco (no viaja) y queda en `errores`.
+ * del dominio y NO incluye ninguna otra. Cada celda pasa por el parser de su campo: un dato OPCIONAL que no pasa viaja vacío (el renglón se conserva) y uno
+ * OBLIGATORIO deja el renglón completo en blanco (no viaja). Ambos casos quedan en `errores`.
  */
-export function construirTablaSr(filas: readonly (readonly string[])[], filaEncabezado: number, tipo: TipoLayoutSr, mapeo: MapeoSr, opciones: { readonly confirmarFolio?: boolean } = {}): TablaSr {
+export function construirTablaSr(filas: readonly (readonly string[])[], filaEncabezado: number, tipo: TipoLayoutSr, mapeo: MapeoSr, opciones: OpcionesTablaSr = {}): TablaSr {
   const campos = camposDeTipo(tipo).filter((c) => mapeo[c.campo] !== null && mapeo[c.campo] !== undefined);
   const errores: ErrorLocalSr[] = [];
+  let renglonesDescartados = 0;
+  let datosVaciados = 0;
+  const folioCol = mapeo["folio"];
+  const folioPersonal = folioCol !== null && folioCol !== undefined && (opciones.columnasPersonales?.has(folioCol) ?? false);
+  const encabezadoFolio = folioCol === null || folioCol === undefined ? "" : normalizarEncabezado(filas[filaEncabezado]?.[folioCol] ?? "");
+  const folioEsAlias = aliasDe(tipo, "folio").includes(encabezadoFolio);
+  const anotar = (e: ErrorLocalSr): void => {
+    if (errores.length < MAX_ERRORES_LOCALES) errores.push(e);
+  };
   const tabla = filas.map((fila, i): Array<string | null> => {
     if (i < filaEncabezado) return [];
     if (i === filaEncabezado) return campos.map((c) => aliasDe(tipo, c.campo)[0] ?? c.campo);
+    if (fila.every((c) => c.trim() === "")) return [];
     const celdas: Array<string | null> = [];
-    let rechazado = false;
+    let descartar = false;
     for (const c of campos) {
-      const r = parsearCeldaSr(c.campo, fila[mapeo[c.campo] as number] ?? "", opciones);
-      if (!r.ok) {
-        rechazado = true;
-        if (errores.length < MAX_ERRORES_LOCALES) errores.push({ renglon: i + 1, campo: c.campo, etiqueta: c.etiqueta, esperado: r.esperado, confirmable: r.confirmable === true });
+      const crudo = fila[mapeo[c.campo] as number] ?? "";
+      const r = c.campo === "folio" && folioPersonal && crudo.trim() !== "" ? ({ ok: false, esperado: "una columna que no sea de clientes (esa columna parece de clientes y no puede ser el folio)" } as const) : parsearCeldaSr(c.campo, crudo, { confirmarFolio: opciones.confirmarFolio === true, folioEsAlias });
+      if (r.ok) {
+        celdas.push(r.valor);
+        continue;
+      }
+      anotar({ renglon: i + 1, campo: c.campo, etiqueta: c.etiqueta, esperado: r.esperado, confirmable: "confirmable" in r && r.confirmable === true, descartaRenglon: c.requerido });
+      if (c.requerido) {
+        descartar = true;
         break;
       }
-      celdas.push(r.valor);
+      datosVaciados += 1;
+      celdas.push(null);
     }
-    return rechazado ? [] : celdas;
+    if (descartar) {
+      renglonesDescartados += 1;
+      return [];
+    }
+    return celdas;
   });
-  return { tabla, columnasEnviadas: campos.length, errores };
+  return { tabla, columnasEnviadas: campos.length, errores, renglonesDescartados, datosVaciados };
 }

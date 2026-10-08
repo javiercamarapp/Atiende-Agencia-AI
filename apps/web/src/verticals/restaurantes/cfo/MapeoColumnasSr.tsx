@@ -12,6 +12,8 @@ export interface MapeoColumnasSrProps {
   readonly encabezados: readonly string[];
   /** Índices de columnas personales: no se ofrecen en los selectores. */
   readonly personales: ReadonlySet<number>;
+  /** Todas las columnas que el encabezado marcó como personales (incluso las recuperadas): ninguna puede ser el folio. */
+  readonly personalesFolio?: ReadonlySet<number>;
   /** Columnas que la ayuda de UX excluyó (solo nombre o posición, nunca valores); la persona puede recuperarlas. */
   readonly excluidas: ReadonlyArray<{ readonly indice: number; readonly nombre: string; readonly incluida: boolean }>;
   readonly onIncluir: (indice: number, incluir: boolean) => void;
@@ -20,7 +22,7 @@ export interface MapeoColumnasSrProps {
   readonly avisoAlias?: string;
 }
 
-export function MapeoColumnasSr({ tipo, encabezados, personales, excluidas, onIncluir, mapeo, onCambiar, avisoAlias }: MapeoColumnasSrProps) {
+export function MapeoColumnasSr({ tipo, encabezados, personales, personalesFolio, excluidas, onIncluir, mapeo, onCambiar, avisoAlias }: MapeoColumnasSrProps) {
   const faltan = new Set(camposFaltantes(tipo, mapeo));
   const repetidos = new Set(camposRepetidos(mapeo));
   return (
@@ -60,7 +62,7 @@ export function MapeoColumnasSr({ tipo, encabezados, personales, excluidas, onIn
               >
                 <option value="">{requerido ? "Elige la columna…" : "No importar"}</option>
                 {encabezados.map((h, i) =>
-                  personales.has(i) || h.trim() === "" ? null : (
+                  personales.has(i) || (campo === "folio" && personalesFolio?.has(i)) || h.trim() === "" ? null : (
                     <option key={i} value={i}>
                       {`Columna ${i + 1}: ${h.trim()}`}
                     </option>

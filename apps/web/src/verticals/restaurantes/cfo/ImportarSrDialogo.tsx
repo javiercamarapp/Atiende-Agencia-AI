@@ -77,8 +77,12 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
   const excedeTope = filasDatos > maximo;
   const mapeoListo = archivo !== null && camposFaltantes(tipo, mapeo).length === 0 && camposRepetidos(mapeo).length === 0;
   // Cada celda pasa por el parser de su campo: lo que no pasa no viaja (el renglón va en blanco) y se informa sin mostrar el valor.
-  const construida = useMemo(() => (archivo && mapeoListo ? construirTablaSr(archivo.filas, filaEnc, tipo, mapeo, { confirmarFolio }) : null), [archivo, mapeoListo, filaEnc, tipo, mapeo, confirmarFolio]);
+  // El folio nunca puede ser una columna que el encabezado marcó como personal, ni siquiera recuperada con la casilla.
+  const todasPersonales = useMemo(() => new Set(nombresPers.keys()), [archivo, filaEnc]);
+  const construida = useMemo(() => (archivo && mapeoListo ? construirTablaSr(archivo.filas, filaEnc, tipo, mapeo, { confirmarFolio, columnasPersonales: todasPersonales }) : null), [archivo, mapeoListo, filaEnc, tipo, mapeo, confirmarFolio, todasPersonales]);
   const erroresLocales = construida?.errores ?? [];
+  const descartadosLocales = construida?.renglonesDescartados ?? 0;
+  const vaciadosLocales = construida?.datosVaciados ?? 0;
   const puedeRevisar = propertyId !== "" && mapeoListo && !excedeTope && !trabajando;
 
   function sugerir(filas: readonly (readonly string[])[], f: number, t: TipoLayoutSr) {
@@ -115,7 +119,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
   }
 
   function cuerpo(): CuerpoImportarSr {
-    const { tabla } = construirTablaSr(archivo!.filas, filaEnc, tipo, mapeo, { confirmarFolio });
+    const { tabla } = construirTablaSr(archivo!.filas, filaEnc, tipo, mapeo, { confirmarFolio, columnasPersonales: todasPersonales });
     return { propertyId, nombreArchivo: archivo!.nombre.replace(/[/\\]/g, "_").slice(0, 120), tabla, tipo };
   }
 
@@ -267,7 +271,9 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
                 {erroresLocales.length > 0 && (
                   <>
                     <p role="alert" className="m-0 text-sm font-semibold text-destructive">
-                      {entero(erroresLocales.length)} {erroresLocales.length === 1 ? "renglón no se enviará" : "renglones no se enviarán"}: un valor no tiene la forma que espera su campo
+                      {descartadosLocales > 0 ? `${entero(descartadosLocales)} ${descartadosLocales === 1 ? "renglón no se enviará" : "renglones no se enviarán"} (un dato obligatorio no tiene la forma que espera su campo)` : ""}
+                      {descartadosLocales > 0 && vaciadosLocales > 0 ? "; " : ""}
+                      {vaciadosLocales > 0 ? `${entero(vaciadosLocales)} ${vaciadosLocales === 1 ? "dato opcional se enviará vacío" : "datos opcionales se enviarán vacíos"}` : ""}
                     </p>
                     <ul className="m-0 max-h-32 list-disc overflow-auto pl-5 text-xs text-foreground">
                       {erroresLocales.slice(0, 20).map((e) => (
@@ -317,6 +323,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
               tipo={tipo}
               encabezados={encabezados}
               personales={personales}
+              personalesFolio={todasPersonales}
               excluidas={[...nombresPers.entries()].map(([indice, nombre]) => ({ indice, nombre, incluida: incluidas.has(indice) }))}
               onIncluir={(indice, incluir) => {
                 setIncluidas((prev) => {
@@ -342,7 +349,8 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
         {vista && !resultado && (
           <div className="flex flex-col gap-2" data-testid="sr-vista-previa">
             <p className="m-0 text-sm text-foreground">
-              <strong>{entero(vista.aceptados)}</strong> {vista.aceptados === 1 ? "renglón aceptado" : "renglones aceptados"} y <strong>{entero(vista.rechazados)}</strong> {vista.rechazados === 1 ? "rechazado" : "rechazados"}
+              <strong>{entero(vista.aceptados)}</strong> {vista.aceptados === 1 ? "renglón aceptado" : "renglones aceptados"} y <strong>{entero(vista.rechazados + descartadosLocales)}</strong> {vista.rechazados + descartadosLocales === 1 ? "rechazado" : "rechazados"}
+              {descartadosLocales > 0 ? ` (${entero(descartadosLocales)} no se enviaron desde tu navegador)` : ""}
               {vista.omitidos > 0 ? ` (${entero(vista.omitidos)} renglones de totales se omiten)` : ""}
               {vista.fechaMin && vista.fechaMax ? `, del ${vista.fechaMin} al ${vista.fechaMax}` : ""}.
             </p>
@@ -390,12 +398,13 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
           <div className="flex flex-col gap-2" data-testid="sr-resultado">
             {resultado.creado ? (
               <Callout tone="success" titulo="Reporte importado">
-                Se aceptaron {entero(resultado.aceptados)} renglones y se rechazaron {entero(resultado.rechazados)}. Ya puedes ver el cuadre de tus pedidos a domicilio.
+                Se aceptaron {entero(resultado.aceptados)} renglones y se rechazaron {entero(resultado.rechazados + descartadosLocales)}
+                {descartadosLocales > 0 ? ` (${entero(descartadosLocales)} no se enviaron desde tu navegador)` : ""}. Ya puedes ver el cuadre de tus pedidos a domicilio.
               </Callout>
             ) : (
               <Callout tone="info" titulo={MENSAJE_YA_CARGADO} data-testid="sr-ya-cargado">
                 Es el mismo contenido con el mismo mapeo de una importación anterior: no se volvió a escribir nada. Estas son las cifras de la primera vez ({entero(resultado.aceptados)} aceptados,{" "}
-                {entero(resultado.rechazados)} rechazados).
+                {entero(resultado.rechazados + descartadosLocales)} rechazados).
               </Callout>
             )}
             {resultado.errores.length > 0 && (

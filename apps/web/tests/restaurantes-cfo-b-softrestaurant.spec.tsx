@@ -188,7 +188,7 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     const d = await importarCsv(csv, "tel-al-final.csv");
     changeValue(selector(d, "sr-fila-encabezado"), "1");
     await esperarAcciones();
-    expect(d.querySelector("[data-testid=sr-columnas-excluidas]")!.textContent).toContain("Teléfono");
+    expect(d.querySelector("[data-testid=sr-columnas-excluidas]")!.textContent).toContain("Columna 4");
     expect(d.textContent).not.toContain("9991112222");
     for (const o of d.querySelectorAll("select[id^=sr-mapeo-] option")) expect(o.textContent).not.toContain("Columna 4");
     // Forzar el teléfono (columna 4) como folio ya no es posible desde la interfaz; el mapeo sano lo deja fuera.
@@ -257,12 +257,13 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     const d = await importarCsv(csv, "con-errores.csv");
     const locales = d.querySelector("[data-testid=sr-errores-locales]")!.textContent!;
     expect(locales).toContain("2 renglones no se enviarán");
+    expect(locales).toContain("un dato obligatorio");
     expect(locales).toContain("Renglón 4, «Total»: se esperaba un monto");
     expect(locales).toContain("Renglón 5, «Fecha»: se esperaba una fecha");
     expect(locales).not.toContain("abc");
     click(botonDe(d, "Revisar vista previa"));
     await esperarAcciones();
-    expect(d.querySelector("[data-testid=sr-vista-previa]")!.textContent).toMatch(/1 renglón aceptado y 0 rechazados/);
+    expect(d.querySelector("[data-testid=sr-vista-previa]")!.textContent).toMatch(/1 renglón aceptado y 2 rechazados \(2 no se enviaron desde tu navegador\)/);
     expect(JSON.stringify(api.peticiones("POST", "/softrestaurant/importar/vista-previa")[0]!.cuerpo)).not.toMatch(/abc|fecha mala/);
   });
 
