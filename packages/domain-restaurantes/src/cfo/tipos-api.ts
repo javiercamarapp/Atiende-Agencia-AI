@@ -57,6 +57,8 @@ export interface SucursalApi {
   readonly propertyId: string;
   readonly nombre: string;
   readonly slug: string;
+  /** false = sucursal inactiva con historia: sigue contando en los totales de la organización completa. Ausente = se asume activa. */
+  readonly activa?: boolean;
 }
 
 export interface AlcanceApi extends AlcanceSucursales {

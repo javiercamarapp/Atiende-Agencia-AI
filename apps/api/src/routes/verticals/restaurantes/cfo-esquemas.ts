@@ -10,7 +10,8 @@ import { Errors } from "../../../errors.ts";
 
 export const CFO_MAX_DIAS = 400;
 export const CFO_MAX_SUCURSALES_QUERY = 20;
-export const CFO_BODY_MAX_BYTES = 5 * 1024 * 1024;
+// 4 MB: por debajo del límite de cuerpo de las Vercel Functions (~4.5 MB), para que el 413 sea el JSON propio y no el de la plataforma.
+export const CFO_BODY_MAX_BYTES = 4 * 1024 * 1024;
 export const CFO_PEDIDOS_LIMITE_MAX = 100;
 export const CFO_COSTOS_LOTE_MAX = 50;
 
@@ -19,9 +20,15 @@ export const invalido = (message: string): ApiError => new ApiError(422, "valida
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Fecha de calendario real (no acepta 2026-02-30). */
+/** Años admitidos: fuera de este rango Postgres/JS dejan de coincidir (año 0000, 9999) y los cálculos de periodo anterior se salen de rango. */
+export const CFO_ANIO_MIN = 2000;
+export const CFO_ANIO_MAX = 2100;
+const anioOk = (a: number): boolean => a >= CFO_ANIO_MIN && a <= CFO_ANIO_MAX;
+
+/** Fecha de calendario real (no acepta 2026-02-30) dentro de 2000..2100. */
 export function fechaValida(s: string): boolean {
   if (!FECHA_RE.test(s)) return false;
+  if (!anioOk(Number(s.slice(0, 4)))) return false;
   const d = new Date(`${s}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 }
@@ -41,7 +48,7 @@ export interface ConsultaParseada {
 
 export function parsearRango(desde: string | undefined, hasta: string | undefined): { desde: string; hasta: string } {
   if (desde === undefined || hasta === undefined) throw invalido("desde y hasta son obligatorios (YYYY-MM-DD).");
-  if (!fechaValida(desde) || !fechaValida(hasta)) throw invalido("desde y hasta deben ser fechas válidas YYYY-MM-DD.");
+  if (!fechaValida(desde) || !fechaValida(hasta)) throw invalido(`desde y hasta deben ser fechas válidas YYYY-MM-DD (años ${CFO_ANIO_MIN} a ${CFO_ANIO_MAX}).`);
   if (desde > hasta) throw invalido("desde no puede ser posterior a hasta.");
   if (diasInclusive(desde, hasta) > CFO_MAX_DIAS) throw invalido(`El rango máximo es de ${CFO_MAX_DIAS} días.`);
   return { desde, hasta };
@@ -136,7 +143,7 @@ export function parsearConfig(body: unknown): Record<string, number | null> {
   if (entradas.length === 0) throw invalido("No hay cambios que guardar.");
   const out: Record<string, number | null> = {};
   for (const [k, v] of entradas) {
-    if (!(k in RANGOS_CONFIG_CFO)) throw invalido(`La llave «${k}» no es una configuración del CFO.`);
+    if (!Object.hasOwn(RANGOS_CONFIG_CFO, k)) throw invalido(`La llave «${k}» no es una configuración del CFO.`);
     if (k === "comisionTerminalPct" && v === null) {
       out[SNAKE[k]!] = null;
       continue;
@@ -168,7 +175,7 @@ export interface CostoEntrada {
 export function normalizarMes(raw: unknown, campo = "mes"): string {
   if (typeof raw !== "string") throw invalido(`${campo} debe ser YYYY-MM o YYYY-MM-01.`);
   const m = /^(\d{4})-(\d{2})(?:-01)?$/.exec(raw);
-  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) throw invalido(`${campo} debe ser YYYY-MM o YYYY-MM-01.`);
+  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12 || !anioOk(Number(m[1]))) throw invalido(`${campo} debe ser YYYY-MM o YYYY-MM-01.`);
   return `${m[1]}-${m[2]}-01`;
 }
 

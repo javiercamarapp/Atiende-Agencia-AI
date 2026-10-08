@@ -54,6 +54,8 @@ import { detectarHallazgos, ordenarHallazgos, promediarSumasAgente, promediarSum
 import { narrarResumen, type KpisResumen, type ValorKpi } from "./narrativa.ts";
 import {
   CfoNoDisponibleError,
+  CfoParametroInvalidoError,
+  CfoSinAccesoError,
   type CfoRepository,
   type CostoCapturadoDetalle,
   type FiltroPedidosDetalle,
@@ -159,6 +161,8 @@ export interface EntradaServicioCfo {
   /** Nombre y slug de las sucursales del alcance. */
   readonly sucursales: readonly SucursalApi[];
   readonly ahora: Date;
+  /** Se llama cuando una lectura falla con un error NO recuperable y la vista degrada ese bloque (la ruta lo registra en el log). */
+  readonly onError?: (bloque: string, err: unknown) => void;
 }
 
 export interface ConsultaCfo {
@@ -180,6 +184,9 @@ const COLUMNAS_VENTAS_ADITIVAS = [
   "pedidos", "brutaCentavos", "descPromoCentavos", "descCompCentavos", "netaCentavos", "propinaCentavos", "cancelados", "canceladosCentavos", "noRecogidos", "noRecogidosCentavos",
   "reposiciones", "entregados", "entregaMinSuma", "entregaTarde",
 ] as const;
+
+/** Hasta cuántos días de periodo se evalúan los hallazgos comparativos (4 semanas previas, participación). */
+export const DIAS_MAX_HALLAZGOS_COMPARATIVOS = 62;
 
 const DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"] as const;
 
@@ -241,12 +248,27 @@ export class ServicioCfo {
     return this.e.alcance.organizacionCompleta && this.e.alcance.todas;
   }
 
-  /** Registra qué bloque usó la vista y si estaba disponible. */
+  /** Errores que NUNCA se degradan: cortan la vista (autorización) o son un parámetro inválido del llamador. */
+  private static esFatal(err: unknown): boolean {
+    return err instanceof CfoSinAccesoError || err instanceof CfoParametroInvalidoError;
+  }
+
+  /**
+   * Registra qué bloque usó la vista y si estaba disponible. DEGRADACIÓN POR BLOQUE: si la lectura falla con un error no recuperable (timeout,
+   * fallo de una función…), el bloque queda `false` y la vista devuelve el resto; los errores de autorización y de parámetros sí cortan.
+   */
   private async marcar<T>(bloque: Bloque, p: Promise<LecturaCfo<T>>): Promise<LecturaCfo<T>> {
-    const l = await p;
     this.usados.add(bloque);
-    if (!l.disponible) this.caidos.add(bloque);
-    return l;
+    try {
+      const l = await p;
+      if (!l.disponible) this.caidos.add(bloque);
+      return l;
+    } catch (err) {
+      if (ServicioCfo.esFatal(err)) throw err;
+      this.caidos.add(bloque);
+      this.e.onError?.(bloque, err);
+      return { disponible: false, filas: [] };
+    }
   }
 
   private enAlcance<T extends { readonly propertyId: string | null }>(filas: readonly T[]): T[] {
@@ -261,9 +283,15 @@ export class ServicioCfo {
 
   private cfg(): Promise<LecturaConfig> {
     return this.cached("cfg", async () => {
-      const l = await this.e.repo.configLeer(this.e.organizationId);
       this.usados.add("captura");
-      return l;
+      try {
+        return await this.e.repo.configLeer(this.e.organizationId);
+      } catch (err) {
+        if (ServicioCfo.esFatal(err)) throw err;
+        this.caidos.add("captura");
+        this.e.onError?.("captura", err);
+        return { disponible: false, config: CFO_CONFIG_POR_DEFECTO, configurada: false };
+      }
     });
   }
 
@@ -408,16 +436,29 @@ export class ServicioCfo {
 
   // ---- bases de comparación -----------------------------------------------------------------------------------------------------------
 
-  /** Las 4 ventanas del mismo tramo de las 4 semanas previas que SÍ tienen historia (no antes del primer día con pedidos de la sucursal). */
-  private async ventanas4(q: ConsultaCfo): Promise<{ rango: RangoCfo; ventas: FilaVentasDiarias[]; agente: FilaAgenteDiario[]; cortesias: FilaCortesias[] }[]> {
+  /**
+   * Las 4 ventanas del mismo tramo de las 4 semanas previas. Una sola lectura del tramo [desde−28, hasta−7] (si cabe en los 400 días de la SQL) y se
+   * reparte por ventana, en vez de 4 barridos de la longitud completa; `conCortesias: false` omite las cortesías (solo las usan los hallazgos).
+   */
+  private async ventanas4(q: ConsultaCfo, conCortesias = true): Promise<{ rango: RangoCfo; ventas: FilaVentasDiarias[]; agente: FilaAgenteDiario[]; cortesias: FilaCortesias[] }[]> {
     const ventanas = ventanas4Semanas({ desde: q.desde, hasta: q.hasta });
+    const union: RangoCfo = { desde: sumarDiasFecha(q.desde, -28), hasta: sumarDiasFecha(q.hasta, -7) };
+    const cabe = diasEntre(union.desde, union.hasta) <= 400;
     const out: { rango: RangoCfo; ventas: FilaVentasDiarias[]; agente: FilaAgenteDiario[]; cortesias: FilaCortesias[] }[] = [];
-    // Secuencial a propósito (una sesión). Cada ventana es de la misma longitud que el rango, así que respeta el tope de 400 días.
+    // Secuencial a propósito (una sesión).
+    const uv = cabe ? await this.ventas(union) : null;
+    const ua = cabe ? await this.agente(union) : null;
+    const uc = cabe && conCortesias ? await this.cortesiasDe(union) : null;
     for (const rango of ventanas) {
-      const v = await this.ventas(rango);
-      const a = await this.agente(rango);
-      const c = await this.cortesiasDe(rango);
-      out.push({ rango, ventas: v.filas.slice(), agente: a.filas.slice(), cortesias: c.filas.slice() });
+      const v = uv ?? (await this.ventas(rango));
+      const a = ua ?? (await this.agente(rango));
+      const c = conCortesias ? (uc ?? (await this.cortesiasDe(rango))) : null;
+      out.push({
+        rango,
+        ventas: v.filas.filter((f) => enRango(f.diaNegocio, rango)),
+        agente: a.filas.filter((f) => enRango(f.diaNegocio, rango)),
+        cortesias: c ? c.filas.filter((f) => enRango(f.diaNegocio, rango)) : [],
+      });
     }
     return out;
   }
@@ -429,7 +470,7 @@ export class ServicioCfo {
     const cobertura = (await this.cobertura()).filas;
     const primerDia = new Map(cobertura.map((c) => [c.propertyId, c.primerDia]));
     if (q.comparar === "mismo_dia_semana_4") {
-      const ventanas = await this.ventanas4(q);
+      const ventanas = await this.ventanas4(q, false);
       for (const id of ids) {
         const primer = primerDia.get(id) ?? null;
         // Una ventana anterior al primer día con pedidos no es una semana «sin ventas»: no existe, y no debe bajar el promedio.
@@ -572,8 +613,10 @@ export class ServicioCfo {
     const cortAct = await this.cortesiasDe(r);
     const base = await this.baseComparacion(q);
     const anteriorRango = rangoAnterior(r);
-    const ventasAnt = await this.ventas(anteriorRango);
-    const ventanas = await this.ventanas4(q);
+    // Periodos largos: los hallazgos que comparan contra las 4 semanas previas (y la participación) no se evalúan; evita ~6 barridos extra de la longitud del rango.
+    const largo = diasEntre(q.desde, q.hasta) > DIAS_MAX_HALLAZGOS_COMPARATIVOS;
+    const ventasAnt = !largo || q.comparar === "periodo_anterior" ? await this.ventas(anteriorRango) : null;
+    const ventanas = largo ? [] : await this.ventanas4(q);
     const cob = (await this.cobertura()).filas;
     const clientes = await this.clientesRes(r, cfg);
     const percentiles = await this.percentiles(r);
@@ -640,7 +683,7 @@ export class ServicioCfo {
         propertyId: id,
         actual: sumasProp.get(id) ?? SUMAS_VENTAS_VACIAS,
         base4Semanas: promediarSumasVentas(validas.map((w) => sumarVentas(w.ventas.filter((f) => f.propertyId === id)))),
-        anterior: primer !== null && anteriorRango.hasta >= primer ? sumarVentas(ventasAnt.filas.filter((f) => f.propertyId === id)) : null,
+        anterior: ventasAnt && primer !== null && anteriorRango.hasta >= primer ? sumarVentas(ventasAnt.filas.filter((f) => f.propertyId === id)) : null,
         cortesiasCentavos: sumarCortesias(cortAct.filas.filter((f) => f.propertyId === id)).valorListaCentavos,
         cortesiasBase4SemanasCentavos: cortBase,
         agente: agente.disponible ? ag : null,
@@ -697,6 +740,7 @@ export class ServicioCfo {
     const avisos: string[] = [];
     if (ventasOk && sumasTotal.pedidos === 0) avisos.push("No hay pedidos en el periodo seleccionado.");
     if (base.total.ventas === null && ventasOk) avisos.push("No hay un periodo de comparación con datos.");
+    if (largo) avisos.push(`En periodos de más de ${DIAS_MAX_HALLAZGOS_COMPARATIVOS} días no se evalúan los hallazgos que comparan contra las 4 semanas previas; use un periodo menor para verlos.`);
     this.avisosFuentes(avisos, { sr: sr.filas, comandas: comandas.filas, agente: agente.filas, agenteOk: agente.disponible });
     const totalPyl = acumulado.columnas.find((c) => c.clave === "total");
     if (totalPyl && totalPyl.incompleto.length > 0) avisos.push("Faltan costos por capturar para el EBITDA: el margen de contribución es parcial.");
@@ -1020,8 +1064,14 @@ export class ServicioCfo {
     const ids = [...this.idsAlcance];
     const prod = await this.productosDe(r);
     const ventas = await this.ventas(r);
-    const canasta = await this.e.repo.canastaPares(this.params, r, 50);
     this.usados.add("ventas");
+    let canasta: Awaited<ReturnType<CfoRepository["canastaPares"]>> = { disponible: false, pares: [], totales: [], tickets: [] };
+    try {
+      canasta = await this.e.repo.canastaPares(this.params, r, 50);
+    } catch (err) {
+      if (ServicioCfo.esFatal(err)) throw err;
+      this.e.onError?.("ventas", err);
+    }
     if (!canasta.disponible) this.caidos.add("ventas");
     const agot = await this.agotadosConRanking();
 
@@ -1280,8 +1330,14 @@ export class ServicioCfo {
   async pedidosVista(q: ConsultaCfo, filtro: FiltroPedidosDetalle, limite: number, cursor: string | null): Promise<PedidosVista> {
     const r: RangoCfo = { desde: q.desde, hasta: q.hasta };
     const cfg = await this.config();
-    const l = await this.e.repo.pedidosDetalle(this.params, r, filtro, limite, cursor, cfg.promesaMin);
     this.usados.add("ventas");
+    let l: Awaited<ReturnType<CfoRepository["pedidosDetalle"]>> = { disponible: false, filas: [], cursorSiguiente: null };
+    try {
+      l = await this.e.repo.pedidosDetalle(this.params, r, filtro, limite, cursor, cfg.promesaMin);
+    } catch (err) {
+      if (ServicioCfo.esFatal(err)) throw err;
+      this.e.onError?.("ventas", err);
+    }
     if (!l.disponible) this.caidos.add("ventas");
     const avisos: string[] = [];
     if (l.disponible && l.filas.length === 0) avisos.push("No hay pedidos con ese filtro en el periodo seleccionado.");

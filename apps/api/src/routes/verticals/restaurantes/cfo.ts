@@ -5,7 +5,7 @@
 //  - Middleware: authMiddleware -> dbSession -> requirePropertyMembership. Rol por ACCIÓN (roles.ts): `cfo.ver`, `cfo.capturar`, `cfo.importar_sr`,
 //    `cfo.exportar`, todas SOLO owner/admin; staff y repartidor reciben 403. Un admin acotado (`membership.property_ids`) ve solo SUS sucursales,
 //    «Todas» = las suyas, y nunca la fila «No asignado» (LLM de la organización ni costos organizacionales).
-//  - `sucursales=<ids>`: cada id se valida con `resolveEffectivePropertyIds`; una sucursal ajena, de otra organización o inexistente da el MISMO 403
+//  - `sucursales=<ids>`: el alcance del actor sale de `resolveEffectivePropertyIds` (membresía) y cada id se valida contra ese alcance; una sucursal ajena, de otra organización o inexistente da el MISMO 403
 //    «No tienes acceso a esta sucursal.» (no revela si existe). La base vuelve a validar cada sucursal (doble puerta).
 //  - Todas las funciones SQL son SECURITY DEFINER con su propia puerta; esta capa NO escribe DML: toda escritura pasa por funciones definer
 //    (cfo_config_guardar, cfo_costo_guardar, sr_importar, cfo_registrar_exportacion) que dejan la bitácora.
@@ -18,7 +18,7 @@
 import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { ApiError, authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
+import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { consumeRateLimit } from "@atiende/domain-restaurantes";
 import {
@@ -33,7 +33,7 @@ import {
 } from "@atiende/domain-restaurantes/cfo";
 import type { CfoRepository, ConsultaCfo, VistaPreviaSr, ImportacionSrVista, AlcanceSucursales, SucursalApi } from "@atiende/domain-restaurantes/cfo";
 import { Errors } from "../../../errors.ts";
-import { readJsonCapped, requestActor } from "../../../http-security.ts";
+import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { assertAccion } from "./permisos-accion.ts";
@@ -59,7 +59,7 @@ import {
 const BASE = "/v1/restaurantes/:propertyId/admin/cfo";
 const MENSAJE_SIN_ACCESO = "No tienes acceso a esta sucursal.";
 
-/** Tope de lecturas y escrituras por persona (el CFO consulta mucho SQL): 429 con Retry-After al excederlo. */
+/** Tope de lecturas y escrituras por persona autenticada y organización (la llave es organización:usuario, sin IP; el CFO consulta mucho SQL): 429 con Retry-After al excederlo. */
 export const CFO_LIMITES = { lecturaPorMin: 120, escrituraPorMin: 30, importarPor10Min: 10 } as const;
 
 interface Contexto {
@@ -85,7 +85,7 @@ export function restaurantesCfoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   }
 
   async function limitar(c: Context<CoreAuthHonoEnv>, scope: string, max: number, ventanaSeg: number): Promise<void> {
-    const r = await consumeRateLimit(deps.restaurantesRepo(c.get("db")), scope, requestActor(c.req.raw, `${c.get("organizationId")}:${c.get("userId")}`), max, ventanaSeg);
+    const r = await consumeRateLimit(deps.restaurantesRepo(c.get("db")), scope, `${c.get("organizationId")}:${c.get("userId")}`, max, ventanaSeg);
     if (!r.allowed) throw Errors.tooManyRequests();
   }
 
@@ -116,9 +116,14 @@ export function restaurantesCfoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const repo = repoDe(c);
     const organizationId = c.get("organizationId");
     const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
-    const ramas = await deps.restaurantesRepo(c.get("db")).listBranchesForOrganization(organizationId);
+    // TODAS las sucursales de la organización (también las inactivas con historia): es el MISMO conjunto que usa la SQL (`branch_detail`) cuando recibe
+    // p_props = null. Si el alcance se armara solo con las activas, el conjunto de clientes incluiría sucursales que las filas por sucursal descartan y
+    // el consolidado no cuadraría. Las inactivas se marcan `activa: false` para que la UI las rotule.
+    const ramas = await deps.restaurantesRepo(c.get("db")).listBranchesForOrganizationAdmin(organizationId);
     const organizacionCompleta = scope === null;
-    const permitidas: SucursalApi[] = ramas.filter((b) => organizacionCompleta || (scope as readonly string[]).includes(b.propertyId)).map((b) => ({ propertyId: b.propertyId, nombre: b.name, slug: b.slug }));
+    const permitidas: SucursalApi[] = ramas
+      .filter((b) => organizacionCompleta || (scope as readonly string[]).includes(b.propertyId))
+      .map((b) => ({ propertyId: b.propertyId, nombre: b.name, slug: b.slug, activa: b.status === "active" }));
     let elegidas: readonly SucursalApi[];
     let propertyIdsSql: readonly string[] | null;
     if (ids === null) {
@@ -128,13 +133,7 @@ export function restaurantesCfoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     } else {
       const validas: SucursalApi[] = [];
       for (const id of ids) {
-        try {
-          await resolveEffectivePropertyIds(deps, c, organizationId, id);
-        } catch (err) {
-          // Ajena, de otra organización, inexistente o inactiva: el mismo 403, sin revelar cuál.
-          if (err instanceof ApiError && (err.status === 400 || err.status === 403)) throw Errors.forbidden(MENSAJE_SIN_ACCESO);
-          throw err;
-        }
+        // Ajena, de otra organización o inexistente: el mismo 403, sin revelar cuál (`permitidas` ya está acotada por la membresía).
         const s = permitidas.find((p) => p.propertyId === id);
         if (!s) throw Errors.forbidden(MENSAJE_SIN_ACCESO);
         validas.push(s);
@@ -143,7 +142,11 @@ export function restaurantesCfoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       propertyIdsSql = validas.map((v) => v.propertyId);
     }
     const alcance: AlcanceSucursales = { propertyIds: elegidas.map((s) => s.propertyId), todas: ids === null, organizacionCompleta };
-    const servicio = new ServicioCfo({ repo, organizationId, alcance, propertyIdsSql, sucursales: elegidas, ahora: new Date() });
+    const servicio = new ServicioCfo({
+      repo, organizationId, alcance, propertyIdsSql, sucursales: elegidas, ahora: new Date(),
+      // Un bloque que falla con un error no recuperable se degrada (bloques.<x>: false); aquí queda el rastro para operación.
+      onError: (bloque, err) => logEvent(c, "error", "restaurantes_cfo_bloque_degradado", { organizationId, bloque, message: err instanceof Error ? err.message : String(err) }),
+    });
     return { servicio, repo, organizationId, alcance, sucursales: elegidas, permitidas, propertyIdsSql };
   }
 

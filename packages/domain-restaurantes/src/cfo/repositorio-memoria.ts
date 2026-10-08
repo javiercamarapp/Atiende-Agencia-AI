@@ -360,7 +360,7 @@ export class InMemoryCfoRepository implements CfoRepository {
       if (k === "comision_terminal_pct") {
         if (v !== null && typeof v !== "number") throw new CfoParametroInvalidoError(`cfo_config_guardar: ${k} debe ser numero o null`);
         if (v !== null && (v < 0 || v > 20)) throw new CfoParametroInvalidoError("cfo_config_guardar: comision_terminal_pct fuera de rango (0..20)");
-      } else if (k in RANGOS_CONFIG) {
+      } else if (Object.hasOwn(RANGOS_CONFIG, k)) {
         if (typeof v !== "number") throw new CfoParametroInvalidoError(`cfo_config_guardar: ${k} debe ser un numero`);
         if (ENTEROS_CONFIG.has(k) && !Number.isInteger(v)) throw new CfoParametroInvalidoError(`cfo_config_guardar: ${k} debe ser un entero`);
         const [min, max] = RANGOS_CONFIG[k]!;

@@ -80,7 +80,10 @@ export function esBaseSinMigrar(err: unknown): boolean {
   return c === "42883" || c === "42P01" || c === "42703";
 }
 
-/** Traduce los SQLSTATE conocidos a errores tipados; cualquier otro error se repropaga tal cual. */
+/**
+ * Traduce los SQLSTATE conocidos a errores tipados; cualquier otro error se repropaga tal cual.
+ * El mensaje del 22023 se pasa TAL CUAL: son textos propios de las funciones SQL de 081/082/083 (sin datos del negocio ni PII), pensados para mostrarse.
+ */
 export function traducirErrorPg(err: unknown): never {
   const c = codigo(err);
   const mensaje = err instanceof Error ? err.message : "Solicitud inválida.";
