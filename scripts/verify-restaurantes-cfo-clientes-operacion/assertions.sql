@@ -56,7 +56,8 @@ insert into core.organization (id, vertical, name, slug) values
   ('00000000-0000-0000-0000-0000000e4402', 'restaurantes', 'CFO2 Org B', 'cfo2-b'),
   ('00000000-0000-0000-0000-0000000e4403', 'restaurantes', 'CFO2 Org C', 'cfo2-c'),
   ('00000000-0000-0000-0000-0000000e4404', 'restaurantes', 'CFO2 Org D', 'cfo2-d'),
-  ('00000000-0000-0000-0000-0000000e4405', 'restaurantes', 'CFO2 Org E', 'cfo2-e')
+  ('00000000-0000-0000-0000-0000000e4405', 'restaurantes', 'CFO2 Org E', 'cfo2-e'),
+  ('00000000-0000-0000-0000-0000000e4406', 'restaurantes', 'CFO2 Org F', 'cfo2-f')
 on conflict do nothing;
 
 insert into core.property (id, organization_id, name) values
@@ -66,7 +67,8 @@ insert into core.property (id, organization_id, name) values
   ('00000000-0000-0000-0000-0000000e44b1', '00000000-0000-0000-0000-0000000e4402', 'Sucursal B1'),
   ('00000000-0000-0000-0000-0000000e44c1', '00000000-0000-0000-0000-0000000e4403', 'Sucursal C1'),
   ('00000000-0000-0000-0000-0000000e44d1', '00000000-0000-0000-0000-0000000e4404', 'Sucursal D1'),
-  ('00000000-0000-0000-0000-0000000e44e1', '00000000-0000-0000-0000-0000000e4405', 'Sucursal E1')
+  ('00000000-0000-0000-0000-0000000e44e1', '00000000-0000-0000-0000-0000000e4405', 'Sucursal E1'),
+  ('00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e4406', 'Sucursal F1')
 on conflict do nothing;
 
 insert into restaurantes.branch_detail (property_id, organization_id, slug, zona_horaria, lat, lng) values
@@ -76,7 +78,8 @@ insert into restaurantes.branch_detail (property_id, organization_id, slug, zona
   ('00000000-0000-0000-0000-0000000e44b1', '00000000-0000-0000-0000-0000000e4402', 'b1', null, null, null),
   ('00000000-0000-0000-0000-0000000e44c1', '00000000-0000-0000-0000-0000000e4403', 'c1', null, null, null),
   ('00000000-0000-0000-0000-0000000e44d1', '00000000-0000-0000-0000-0000000e4404', 'd1', null, null, null),
-  ('00000000-0000-0000-0000-0000000e44e1', '00000000-0000-0000-0000-0000000e4405', 'e1', null, null, null)
+  ('00000000-0000-0000-0000-0000000e44e1', '00000000-0000-0000-0000-0000000e4405', 'e1', null, null, null),
+  ('00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e4406', 'f1', null, null, null)
 on conflict do nothing;
 -- Turno 12:00 -> 01:00 en A1: corte de 1 h.
 insert into restaurantes.branch_policy (property_id, organization_id, horario) values
@@ -105,7 +108,8 @@ insert into core.membership (user_id, organization_id, property_ids, platform_ro
   ('00000000-0000-0000-0000-0000000e4418', '00000000-0000-0000-0000-0000000e4402', null, 'member', 'repartidor'),
   ('00000000-0000-0000-0000-0000000e4411', '00000000-0000-0000-0000-0000000e4403', null, 'owner', 'owner'),
   ('00000000-0000-0000-0000-0000000e4411', '00000000-0000-0000-0000-0000000e4404', null, 'owner', 'owner'),
-  ('00000000-0000-0000-0000-0000000e4411', '00000000-0000-0000-0000-0000000e4405', null, 'owner', 'owner')
+  ('00000000-0000-0000-0000-0000000e4411', '00000000-0000-0000-0000-0000000e4405', null, 'owner', 'owner'),
+  ('00000000-0000-0000-0000-0000000e4411', '00000000-0000-0000-0000-0000000e4406', null, 'owner', 'owner')
 on conflict do nothing;
 
 insert into restaurantes.categories (id, organization_id, name, slug) values ('00000000-0000-0000-0000-0000000e44d1', '00000000-0000-0000-0000-0000000e4401', 'Tacos', 'tacos');
@@ -159,7 +163,11 @@ insert into restaurantes.customers (id, organization_id, phone, name) values
   ('00000000-0000-0000-0000-0000000e4582', '00000000-0000-0000-0000-0000000e4405', '+52 5500000130', 'q2'),
   ('00000000-0000-0000-0000-0000000e4583', '00000000-0000-0000-0000-0000000e4405', '+52 5500000131', 'q3'),
   ('00000000-0000-0000-0000-0000000e4584', '00000000-0000-0000-0000-0000000e4405', '+52 5500000132', 'q4'),
-  ('00000000-0000-0000-0000-0000000e4585', '00000000-0000-0000-0000-0000000e4405', '+52 5500000133', 'q5');
+  ('00000000-0000-0000-0000-0000000e4585', '00000000-0000-0000-0000-0000000e4405', '+52 5500000133', 'q5'),
+  ('00000000-0000-0000-0000-0000000e45a1', '00000000-0000-0000-0000-0000000e4406', '+52 5500000161', 'f1'),
+  ('00000000-0000-0000-0000-0000000e45a2', '00000000-0000-0000-0000-0000000e4406', '+52 5500000162', 'f2'),
+  ('00000000-0000-0000-0000-0000000e45a3', '00000000-0000-0000-0000-0000000e4406', '+52 5500000163', 'f3'),
+  ('00000000-0000-0000-0000-0000000e45a4', '00000000-0000-0000-0000-0000000e4406', '+52 5500000164', 'f4');
 
 -- Clientes (A): ver comentario de cabecera.
 select public.t_ped('00000000-0000-0000-0000-0000000e4401', '00000000-0000-0000-0000-0000000e44a2', '00000000-0000-0000-0000-0000000e4501', date '2026-03-10', time '15:00', 100);
@@ -314,6 +322,20 @@ insert into restaurantes.branch_products (property_id, product_id, price, is_ava
 select public.t_ped('00000000-0000-0000-0000-0000000e4401','00000000-0000-0000-0000-0000000e44a2', null, ((now() at time zone 'America/Mexico_City')::date) - 3, time '15:00', 100, p_items => '[{"id":"00000000-0000-0000-0000-0000000e44c1","name":"Taco","price":50,"quantity":2}]'::jsonb);
 select public.t_ped('00000000-0000-0000-0000-0000000e4401','00000000-0000-0000-0000-0000000e44a2', null, ((now() at time zone 'America/Mexico_City')::date) - 10, time '15:00', 100, p_items => '[{"id":"00000000-0000-0000-0000-0000000e44c1","name":"Taco","price":50,"quantity":3}]'::jsonb);
 select public.t_ped('00000000-0000-0000-0000-0000000e4401','00000000-0000-0000-0000-0000000e44a2', null, ((now() at time zone 'America/Mexico_City')::date) - 40, time '15:00', 100, p_items => '[{"id":"00000000-0000-0000-0000-0000000e44c1","name":"Taco","price":50,"quantity":5}]'::jsonb);
+-- F: churn. f1 y f4 solo enero/abril, f2 repite en junio, f3 viejo
+select public.t_ped('00000000-0000-0000-0000-0000000e4406', '00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e45a1', date '2026-01-10', time '15:00', 100);
+select public.t_ped('00000000-0000-0000-0000-0000000e4406', '00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e45a2', date '2026-01-20', time '15:00', 100);
+select public.t_ped('00000000-0000-0000-0000-0000000e4406', '00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e45a2', date '2026-06-20', time '15:00', 100);
+select public.t_ped('00000000-0000-0000-0000-0000000e4406', '00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e45a3', date '2025-10-01', time '15:00', 100);
+select public.t_ped('00000000-0000-0000-0000-0000000e4406', '00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e45a4', date '2026-01-15', time '15:00', 100);
+select public.t_ped('00000000-0000-0000-0000-0000000e4406', '00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e45a4', date '2026-04-30', time '15:00', 100);
+-- Otay (13 de abril): 5 pedidos de UN cliente en una colonia: no se muestra (k de clientes)
+select public.t_ped('00000000-0000-0000-0000-0000000e4401','00000000-0000-0000-0000-0000000e44a2','00000000-0000-0000-0000-0000000e452c', date '2026-04-13', time '12:00', 100, p_canal => 'domicilio', p_addr => 'Calle Otay 1');
+select public.t_ped('00000000-0000-0000-0000-0000000e4401','00000000-0000-0000-0000-0000000e44a2','00000000-0000-0000-0000-0000000e452c', date '2026-04-13', time '12:01', 100, p_canal => 'domicilio', p_addr => 'Calle Otay 1');
+select public.t_ped('00000000-0000-0000-0000-0000000e4401','00000000-0000-0000-0000-0000000e44a2','00000000-0000-0000-0000-0000000e452c', date '2026-04-13', time '12:02', 100, p_canal => 'domicilio', p_addr => 'Calle Otay 1');
+select public.t_ped('00000000-0000-0000-0000-0000000e4401','00000000-0000-0000-0000-0000000e44a2','00000000-0000-0000-0000-0000000e452c', date '2026-04-13', time '12:03', 100, p_canal => 'domicilio', p_addr => 'Calle Otay 1');
+select public.t_ped('00000000-0000-0000-0000-0000000e4401','00000000-0000-0000-0000-0000000e44a2','00000000-0000-0000-0000-0000000e452c', date '2026-04-13', time '12:04', 100, p_canal => 'domicilio', p_addr => 'Calle Otay 1');
+insert into restaurantes.customer_addresses (customer_id, address, colonia) values ('00000000-0000-0000-0000-0000000e452c', 'calle otay 1', 'Otay');
 analyze restaurantes.orders;
 
 \echo '=== A1. cfo_venta_lean == cfo_pedidos_base (solo ventas): mismas filas, dia, hora, dow, canal, neta y minutos de entrega (A1+A2+A3, febrero a abril) ==='
@@ -505,18 +527,32 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411
 select ((select sum(altas) from restaurantes.cfo_clientes_altas('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31') where property_id = '00000000-0000-0000-0000-0000000e44a1') = 1 and (select sum(altas) from restaurantes.cfo_clientes_altas('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31') where property_id = '00000000-0000-0000-0000-0000000e44a2') = 3)::int as altas_suc_deberia_ser_1;
 rollback;
 
-\echo '=== B23. segmento por hora: pedidos del rango frecuente 1, nuevo 4 (cN1, cMulti x2, cAct), recurrente 5; venta neta 100000 y todo a la hora 15 ==='
+\echo '=== B23. segmento por hora (segmento por cliente y sucursal): pedidos del rango frecuente 1, nuevo 4 (cN1, cMulti x2, cAct), recurrente 5; venta neta 100000 y todo a la hora 15 ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
 select ((select sum(pedidos) from restaurantes.cfo_clientes_segmento_hora('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31') where segmento = 'frecuente') = 1 and (select sum(pedidos) from restaurantes.cfo_clientes_segmento_hora('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31') where segmento = 'nuevo') = 4 and (select sum(pedidos) from restaurantes.cfo_clientes_segmento_hora('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31') where segmento = 'recurrente') = 5 and (select sum(neta_centavos) from restaurantes.cfo_clientes_segmento_hora('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31')) = 100000 and (select count(*) from restaurantes.cfo_clientes_segmento_hora('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31') where hora_local <> 15) = 0)::int as seg_deberia_ser_1;
 rollback;
 
-\echo '=== B24. segmento por hora con p_frecuente_n = 2: 6 pedidos frecuentes (cF3 1, cF2 1, cR1 1, cMulti 2, rec3 1) ==='
+\echo '=== B24. segmento por hora con p_frecuente_n = 2: 4 pedidos frecuentes (cF3, cF2, cR1, rec3; cMulti tiene 1 pedido en cada sucursal) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
-select (sum(pedidos) = 6)::int as seg2_deberia_ser_1 from restaurantes.cfo_clientes_segmento_hora('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31', 2) where segmento = 'frecuente';
+select (sum(pedidos) = 4)::int as seg2_deberia_ser_1 from restaurantes.cfo_clientes_segmento_hora('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31', 2) where segmento = 'frecuente';
+rollback;
+
+\echo '=== B25b. el segmento de una sucursal es estable: consultar A2 sola da exactamente las mismas celdas que A2 dentro de la consulta de todas ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
+select count(*)::int as seg_estable_deberia_ser_0 from ((select segmento, dow_negocio, hora_local, pedidos, neta_centavos, clientes from restaurantes.cfo_clientes_segmento_hora('00000000-0000-0000-0000-0000000e4401', array['00000000-0000-0000-0000-0000000e44a2']::uuid[], date '2026-03-01', date '2026-03-31') except all select segmento, dow_negocio, hora_local, pedidos, neta_centavos, clientes from restaurantes.cfo_clientes_segmento_hora('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31') where property_id = '00000000-0000-0000-0000-0000000e44a2') union all (select segmento, dow_negocio, hora_local, pedidos, neta_centavos, clientes from restaurantes.cfo_clientes_segmento_hora('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31') where property_id = '00000000-0000-0000-0000-0000000e44a2' except all select segmento, dow_negocio, hora_local, pedidos, neta_centavos, clientes from restaurantes.cfo_clientes_segmento_hora('00000000-0000-0000-0000-0000000e4401', array['00000000-0000-0000-0000-0000000e44a2']::uuid[], date '2026-03-01', date '2026-03-31'))) d;
+rollback;
+
+\echo '=== B26. churn (org F, rango feb-jun): activos al inicio 3 (f1, f2, f4), de los que pasan a perdidos 1 (f1: 171 dias sin pedir); f4 queda dormido (61 dias), f2 activo, f3 perdido de antes ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
+select (r.activos_al_inicio = 3 and r.pasan_a_perdidos = 1 and r.activos = 1 and r.dormidos = 1 and r.perdidos = 2)::int as churn_deberia_ser_1 from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4406', null, date '2026-02-01', date '2026-06-30') r where r.alcance = 'conjunto';
 rollback;
 
 \echo '=== B25. segmento por hora: pedidos_por_cliente = pedidos / clientes en cada celda ==='
@@ -728,6 +764,13 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4412
 select (count(*) = 0)::int as acotado_col_deberia_ser_1 from restaurantes.cfo_colonias('00000000-0000-0000-0000-0000000e4401', null, date '2026-04-12', date '2026-04-12');
 rollback;
 
+\echo '=== D15b. k de CLIENTES: Otay tiene 5 pedidos pero de 1 solo cliente: no se muestra y entra a '(otras)' (5 pedidos, 1 cliente) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
+select ((select count(*) = 0 from restaurantes.cfo_colonias('00000000-0000-0000-0000-0000000e4401', null, date '2026-04-13', date '2026-04-13') where colonia = 'Otay') and (select pedidos = 5 and clientes = 1 from restaurantes.cfo_colonias('00000000-0000-0000-0000-0000000e4401', null, date '2026-04-13', date '2026-04-13') where colonia = '(otras)'))::int as otay_deberia_ser_1;
+rollback;
+
 \echo '=== D16. colonias: la suma de pedidos por colonia (con otras y sin colonia) es la de los pedidos de domicilio del dia (12) ==='
 begin;
 set local role authenticated;
@@ -776,6 +819,14 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
 select (unidades_28d = 5 and dias_con_venta_28d = 2 and precio_centavos = 5000 and not disponible and agotado_hasta is null)::int as taco_deberia_ser_1 from restaurantes.cfo_agotados('00000000-0000-0000-0000-0000000e4401', null) where property_id = '00000000-0000-0000-0000-0000000e44a2' and product_id = '00000000-0000-0000-0000-0000000e44c1';
+rollback;
+
+\echo '=== D23b. agotados: un producto disponible cuyo agotado_hasta ya vencio (hoy) no se lista como agotado, y uno con fecha futura si ==='
+begin;
+insert into restaurantes.branch_products (property_id, product_id, price, is_available, agotado_hasta) values ('00000000-0000-0000-0000-0000000e44a1','00000000-0000-0000-0000-0000000e44c1', 55.00, true, (now() at time zone 'America/Mexico_City')::date), ('00000000-0000-0000-0000-0000000e44a1','00000000-0000-0000-0000-0000000e44c2', 20.00, true, (now() at time zone 'America/Mexico_City')::date + 2);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
+select ((select count(*) = 0 from restaurantes.cfo_agotados('00000000-0000-0000-0000-0000000e4401', null) where property_id = '00000000-0000-0000-0000-0000000e44a1' and product_id = '00000000-0000-0000-0000-0000000e44c1') and (select count(*) = 1 from restaurantes.cfo_agotados('00000000-0000-0000-0000-0000000e4401', null) where property_id = '00000000-0000-0000-0000-0000000e44a1' and product_id = '00000000-0000-0000-0000-0000000e44c2'))::int as vencido_deberia_ser_1;
 rollback;
 
 \echo '=== D23. agotados A2: Refresco agotado hasta manana, sin ventas (0, 0) ==='
@@ -1173,7 +1224,10 @@ begin
     $q$select * from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31', 0)$q$,
     $q$select * from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31', 3, 90, 60, 60)$q$,
     $q$select * from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31', 3, 400, 60, 120)$q$,
-    $q$select * from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31', 3, 90, 60, 365)$q$,
+    $q$select * from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31', 3, 90, 366, 400)$q$,
+    $q$select * from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31', 3, 90, 60, 731)$q$,
+    $q$select * from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31', 3, 366, 60, 120)$q$,
+    $q$select * from restaurantes.cfo_clientes_segmento_hora('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31', 3, 366)$q$,
     $q$select * from restaurantes.cfo_clientes_cohortes('00000000-0000-0000-0000-0000000e4401', null, 0)$q$,
     $q$select * from restaurantes.cfo_clientes_cohortes('00000000-0000-0000-0000-0000000e4401', null, 25)$q$,
     $q$select * from restaurantes.cfo_entregas('00000000-0000-0000-0000-0000000e4401', null, date '2026-04-10', date '2026-04-10', 0)$q$,
@@ -1193,6 +1247,13 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
 select (count(*) >= 0)::int as rango400_deberia_ser_1 from restaurantes.cfo_entregas('00000000-0000-0000-0000-0000000e4401', null, date '2025-01-01', date '2026-02-04');
+rollback;
+
+\echo '=== F15b. umbrales alineados con cfo_config (083): activo 365, perdido 730 y frecuente 365 son validos; las 3 combinaciones de borde no fallan ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
+select (count(*) = 8)::int as bordes_deberia_ser_1 from (select 1 from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31', 3, 365, 365, 730) union all select 1 from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31', 3, 365, 7, 14)) x;
 rollback;
 
 \echo '=== F16. RECHAZADO: authenticated no ejecuta los 4 helpers internos -> 42501 ==='
@@ -1256,16 +1317,17 @@ end $$;
 select 1 as solo_lectura_ok;
 rollback;
 
-\echo '=== G1. rendimiento acotado: 20000 pedidos (2000 clientes) en 90 dias; cada una de las 12 funciones responde en menos de 2 s (transaccion con rollback) ==='
+\echo '=== G1. rendimiento acotado: 20000 pedidos (2000 clientes, 300 colonias y 300 zonas conocidas con coordenadas) en 90 dias; cada una de las 12 funciones responde en menos de 2 s (transaccion con rollback) ==='
 begin;
 insert into core.organization (id, vertical, name, slug) values ('00000000-0000-0000-0000-0000000e44f1', 'restaurantes', 'CFO2 Perf', 'cfo2-perf');
 insert into core.property (id, organization_id, name) values ('00000000-0000-0000-0000-0000000e44f2', '00000000-0000-0000-0000-0000000e44f1', 'Perf');
-insert into restaurantes.branch_detail (property_id, organization_id, slug) values ('00000000-0000-0000-0000-0000000e44f2', '00000000-0000-0000-0000-0000000e44f1', 'perf');
+insert into restaurantes.branch_detail (property_id, organization_id, slug, lat, lng) values ('00000000-0000-0000-0000-0000000e44f2', '00000000-0000-0000-0000-0000000e44f1', 'perf', 21.0, -89.6);
+insert into restaurantes.known_zone (organization_id, name, lat, lng) select '00000000-0000-0000-0000-0000000e44f1', 'Colonia ' || g, 20.9 + g / 1000.0, -89.7 + g / 1000.0 from generate_series(0, 299) g;
 insert into core.membership (user_id, organization_id, property_ids, platform_role, vertical_role) values ('00000000-0000-0000-0000-0000000e4411', '00000000-0000-0000-0000-0000000e44f1', null, 'owner', 'owner');
 insert into restaurantes.customers (id, organization_id, phone, name)
 select ('bbbbbbbb-0000-0000-0000-' || lpad(to_hex(g), 12, '0'))::uuid, '00000000-0000-0000-0000-0000000e44f1', '+52 99' || lpad(g::text, 8, '0'), 'c' from generate_series(1, 2000) g;
 insert into restaurantes.customer_addresses (customer_id, address, colonia)
-select ('bbbbbbbb-0000-0000-0000-' || lpad(to_hex(g), 12, '0'))::uuid, 'calle ' || g, 'Colonia ' || (g % 40) from generate_series(1, 2000) g;
+select ('bbbbbbbb-0000-0000-0000-' || lpad(to_hex(g), 12, '0'))::uuid, 'calle ' || g, 'Colonia ' || (g % 300) from generate_series(1, 2000) g;
 insert into restaurantes.orders (organization_id, property_id, customer_id, customer_name, customer_phone, customer_address, total, status, items, source, canal, created_at, delivered_at, assigned_repartidor_id)
 select '00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e44f2', ('bbbbbbbb-0000-0000-0000-' || lpad(to_hex(1 + (g * 7) % 2000), 12, '0'))::uuid, 'Perf', '+52 5500' || lpad((g % 9000)::text, 6, '0'),
        case when g % 2 = 0 then 'calle ' || (1 + (g * 7) % 2000) end, 100 + (g % 50), 'entregado',

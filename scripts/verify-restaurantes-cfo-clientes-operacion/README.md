@@ -24,3 +24,12 @@ concentracion, mediana y cohortes). Cubre:
 - Manual: `scripts/verify-restaurantes-cfo-clientes-operacion/run.sh` (levanta un Postgres efimero con `initdb`; `VERIFY_PGPORT` fija el puerto).
 - CI: lo descubre automaticamente `scripts/verify-real-postgres-ci/run-gate.mjs` (mismo contrato de 3 archivos). Con un Postgres propio:
   `PGPORT=<puerto> node scripts/verify-real-postgres-ci/run-gate.mjs scripts/verify-restaurantes-cfo-clientes-operacion`.
+
+## Contrato para CFO-05 (TypeScript)
+
+- `bigint` y `numeric` llegan como string desde el driver: convertir.
+- `costo_meta_micro_usd` y `costo_meta_centavos` son NULL con 0 eventos de Meta ("no medido", nunca 0); `costo_llm_*` es NULL en organizaciones demo; los centavos son NULL sin `fx_rate`; `mxn_por_usd` viaja en cada renglon del agente.
+- `cfo_clientes_resumen` trae ademas `clientes_varias_sucursales`, `pedidos_con_cliente`, `pedidos_sin_cliente`, `activos_al_inicio` y `pasan_a_perdidos` (churn). Umbrales alineados con `cfo_config` (activo hasta 365, perdido hasta 730, frecuente_dias hasta 365).
+- `cfo_clientes_cohortes` trae `observables_30/60/90` (tasa honesta = `con_recompra_N / observables_N`). `cfo_entregas_percentiles` trae `alcance` y `entregados`. `cfo_colonias` trae `distancia_km`; k-anonimato por pedidos Y por clientes distintos.
+- `cfo_agotados`: `precio_centavos` = `precioListaCentavos`; `disponible = false` es agotado; `agotado_hasta` nulo = agotado indefinido.
+- Los centavos de costo se redondean por columna: voz + telefonia puede diferir en 1 centavo de `voz_kpis_diarios.costo_total_centavos_mxn`.

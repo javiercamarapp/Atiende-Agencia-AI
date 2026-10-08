@@ -38,7 +38,11 @@
 --     de un ano se verá como nuevo: limite declarado). Por sucursal, «nuevo» es su primer pedido EN esa sucursal; en el renglon del conjunto, el primero
 --     de las sucursales consultadas (toda la organizacion cuando p_props es nulo).
 --   * Activo / dormido / perdido, al CIERRE del rango (p_hasta): dias desde el ultimo pedido <= p_activo_dias (60) / hasta p_perdido_dias (120) /
---     mas de p_perdido_dias y como maximo 365. Frecuente: >= p_frecuente_n (3) pedidos en los ultimos p_frecuente_dias (90) dias que terminan en p_hasta
+--     mas de p_perdido_dias dentro de la historia leida. Limites alineados con cfo_config (083): activo_dias hasta 365, perdido_dias hasta 730,
+--     frecuente_dias hasta 365 (22023 fuera de ellos). La historia leida antes del rango es greatest(365, perdido_dias, frecuente_dias): con perdido = 730
+--     se leen hasta 730 + (rango) dias, mas caro (ver el PR); con perdido >= 365 «perdidos» solo cuenta a quien se vio en esa historia.
+--   * Churn (dominio: churnPct): activos_al_inicio = clientes cuyo ultimo pedido ANTERIOR al rango (p_desde) fue hace <= p_activo_dias dias;
+--     pasan_a_perdidos = de esos, los que al cierre (p_hasta) llevan mas de p_perdido_dias sin pedir. Frecuente: >= p_frecuente_n (3) pedidos en los ultimos p_frecuente_dias (90) dias que terminan en p_hasta
 --     (con 90, el pedido de p_hasta-89 cuenta y el de p_hasta-90 no). El punto de enlace con cfo_config (083, frecuente_n/frecuente_dias/activo_dias/
 --     perdido_dias) es el llamador: la 083 aun no esta fusionada, asi que aqui rigen los defaults de los parametros.
 --   * Recuperado: cliente que al INICIO del rango (p_desde) llevaba mas de p_activo_dias sin pedir (dormido o perdido) y tiene pedido en el rango.
@@ -62,12 +66,22 @@
 --     whatsapp_agent_escalated; NULL en organizaciones demo, donde se mezcla con el widget publico) y eventos de usage_cost_event sin sucursal (dia
 --     calendario de America/Mexico_City). Solo con alcance de organizacion completa (owner/admin con property_ids nulo) o en sesion de sistema, y
 --     solo si la consulta cubre TODAS las sucursales de la organizacion (p_props nulo o completo): un admin acotado nunca la ve.
+--   * Cohortes: p_meses de 1 a 24; lee hasta p_meses + 12 meses (~1 100 dias) de pedidos.
 --   * Comandas: por dia de negocio de creado_en. Minutos a captura = capturado_en − creado_en (capturada a mano) o actualizado_en − creado_en
 --     (confirmada por el POS). vencidas_umbral = capturadas a mano con mas minutos que el umbral de su sucursal (pos_comanda_alerta_config, 5 por
 --     omision) + las que siguen esperando captura manual desde hace mas que el umbral (misma regla que pos_comandas_captura_manual_vencidas).
 --     Sin comandas en el rango se devuelve un renglon en cero (dia = p_desde) con el modo vigente: 'apagado' si no hay softrestaurant_config.
+--   * Contrato para el TypeScript (CFO-05): bigint y numeric llegan como string; contadores sin dato son 0 salvo costo_meta_* (NULL con 0 eventos de Meta),
+--     costo_llm_* (NULL en organizaciones demo y en sucursales no aplica: 0) y centavos (NULL sin fx_rate); mxn_por_usd viaja en cada renglon del agente;
+--     clientes_varias_sucursales, pedidos_con_cliente y pedidos_sin_cliente acompanan al resumen; cohortes trae observables_30/60/90 (la tasa honesta es
+--     con_recompra_N / observables_N); percentiles trae alcance ('sucursal'|'conjunto') y entregados; colonias trae distancia_km junto a sucursal_cercana_id;
+--     cfo_agotados trae precio_centavos (= precioListaCentavos) y 'disponible' (false = agotado; agotado_hasta nulo con disponible = false es agotado
+--     indefinido; solo se listan los agotados vigentes: is_available = false o agotado_hasta posterior al dia de negocio de la sucursal).
+--   * Redondeo de centavos: cada columna de costo se redondea por separado (round(micro × mxn / 10000)); voz_kpis_diarios redondea voz + telefonia juntas,
+--     asi que la suma de dos columnas puede diferir en ±1 centavo de su costo_total_centavos_mxn (los micro-USD coinciden exactos).
 --   * Colonias: la del domicilio guardado del cliente con el mismo texto de direccion normalizado (lower, sin espacios dobles); sin coincidencia
---     = '(sin colonia)'. Por sucursal, las colonias con menos de p_k pedidos (k >= 5, 22023 si se pide menos) se agrupan en '(otras)'.
+--     = '(sin colonia)'. Por sucursal, las colonias con menos de p_k pedidos O menos de p_k CLIENTES distintos (k >= 5, 22023 si se pide menos) se agrupan en '(otras)'
+--     (una colonia con 5 pedidos de un solo cliente es un hogar, no una colonia). Dos rangos de fechas distintos pueden mostrar colonias distintas.
 --   * Sin PII: ninguna funcion devuelve nombre, telefono ni direccion de cliente, ni el id del cliente. El nombre del repartidor es de staff
 --     (core.staff_user.full_name, nunca telefono ni correo) y solo si pertenece a la organizacion.
 --
@@ -235,6 +249,8 @@ create or replace function restaurantes.cfo_clientes_resumen(
   clientes_varias_sucursales bigint,
   recuperados bigint,
   recuperados_por_campana bigint,
+  activos_al_inicio bigint,
+  pasan_a_perdidos bigint,
   dias_entre_pedidos_mediana numeric,
   neta_top10pct_centavos bigint,
   neta_total_centavos bigint,
@@ -252,21 +268,24 @@ as $$
 declare
   v_props uuid[];
   v_envios boolean;
+  v_hist integer;
 begin
   v_props := restaurantes.cfo_resolver_sucursales(p_org, p_props);
   perform restaurantes.cfo_validar_rango(p_desde, p_hasta);
   if p_frecuente_n is null or p_frecuente_n < 1 or p_frecuente_n > 100
      or p_frecuente_dias is null or p_frecuente_dias < 1 or p_frecuente_dias > 365
-     or p_activo_dias is null or p_activo_dias < 1 or p_activo_dias > 364
-     or p_perdido_dias is null or p_perdido_dias <= p_activo_dias or p_perdido_dias > 364 then
+     or p_activo_dias is null or p_activo_dias < 1 or p_activo_dias > 365
+     or p_perdido_dias is null or p_perdido_dias <= p_activo_dias or p_perdido_dias > 730 then
     raise exception 'cfo_clientes_resumen: umbrales invalidos' using errcode = '22023';
   end if;
+  -- Historia leida antes del rango: 365 dias como minimo, o mas si los umbrales lo piden (perdido hasta 730 dias, frecuente hasta 365).
+  v_hist := greatest(365, p_perdido_dias, p_frecuente_dias);
   -- Sin ningun envio de campana en la organizacion no hay atribucion que buscar (evita una sonda por cada recuperado).
   select exists (select 1 from restaurantes.marketing_campana_envio e where e.organization_id = p_org and e.estado = 'encolado') into v_envios;
   return query
     with b as materialized (
       select l.property_id, l.customer_id, l.inicio, l.dia_negocio as dia, l.neta_centavos as neta
-        from restaurantes.cfo_venta_lean(p_org, v_props, p_desde - 365, p_hasta) l
+        from restaurantes.cfo_venta_lean(p_org, v_props, p_desde - v_hist, p_hasta) l
     ),
     bc as (select * from b where b.customer_id is not null),
     -- Una fila por (cliente, sucursal) y una por cliente en el conjunto (g = 1).
@@ -282,7 +301,7 @@ begin
         from bc
        group by grouping sets ((bc.customer_id, bc.property_id), (bc.customer_id))
     ),
-    agg2 as (
+    agg2 as materialized (
       select a.*,
              (a.n_rango > 0 and a.ultimo_previo is not null and p_desde - a.ultimo_previo > p_activo_dias) as recuperado
         from agg a
@@ -312,7 +331,7 @@ begin
                where bc.dia >= p_desde or bc.dia = a.ultimo_previo) s
     ),
     -- Mediana por histograma (los intervalos son enteros chicos): evita ordenar decenas de miles de filas.
-    h as (
+    h as materialized (
       select iv.property_id, iv.g, iv.d, count(*) as c from iv where iv.d > 0 and iv.dia >= p_desde group by iv.property_id, iv.g, iv.d
     ),
     cum as (
@@ -350,7 +369,9 @@ begin
              count(*) filter (where a.n_rango > 0 and a.ultimo_previo is not null) as recurrentes,
              count(*) filter (where p_hasta - a.ultimo_dia <= p_activo_dias) as activos,
              count(*) filter (where p_hasta - a.ultimo_dia > p_activo_dias and p_hasta - a.ultimo_dia <= p_perdido_dias) as dormidos,
-             count(*) filter (where p_hasta - a.ultimo_dia > p_perdido_dias and p_hasta - a.ultimo_dia <= 365) as perdidos,
+             count(*) filter (where p_hasta - a.ultimo_dia > p_perdido_dias) as perdidos,
+             count(*) filter (where a.ultimo_previo is not null and p_desde - a.ultimo_previo <= p_activo_dias) as activos_inicio,
+             count(*) filter (where a.ultimo_previo is not null and p_desde - a.ultimo_previo <= p_activo_dias and p_hasta - a.ultimo_dia > p_perdido_dias) as pasan_perdidos,
              count(*) filter (where a.n_frec >= p_frecuente_n) as frecuentes,
              count(*) filter (where a.recuperado) as recuperados,
              coalesce(sum(a.neta_rango), 0)::bigint as neta_total,
@@ -390,6 +411,8 @@ begin
            case when r.g = 1 then (select mt.varias from m_tot mt)::bigint end,
            coalesce(f.recuperados, 0)::bigint,
            coalesce(pc.n, 0)::bigint,
+           coalesce(f.activos_inicio, 0)::bigint,
+           coalesce(f.pasan_perdidos, 0)::bigint,
            round(md.m::numeric, 1),
            coalesce(t.top10, 0)::bigint,
            coalesce(f.neta_total, 0)::bigint,
@@ -518,9 +541,9 @@ grant execute on function restaurantes.cfo_clientes_altas(uuid, uuid[], date, da
 -- ---------------------------------------------------------------------------
 -- 5) cfo_clientes_segmento_hora
 -- ---------------------------------------------------------------------------
--- El segmento es del CLIENTE en el conjunto de sucursales consultadas, al cierre del rango: frecuente (>= p_frecuente_n pedidos en los ultimos
--- p_frecuente_dias) > nuevo (sin pedido antes del rango) > recurrente. Cada pedido del rango cae en el segmento de su cliente; pedidos y venta neta
--- son aditivos por sucursal; clientes (distintos en la celda) NO lo es. Los pedidos sin cliente identificado no entran.
+-- El segmento es del CLIENTE EN ESA SUCURSAL (como el resumen), al cierre del rango: frecuente (>= p_frecuente_n pedidos en ella en los ultimos
+-- p_frecuente_dias) > nuevo (sin pedido en ella antes del rango) > recurrente. Asi el resultado de una sucursal no depende de que otras se consulten y
+-- pedidos y venta neta son aditivos por sucursal; clientes (distintos en la celda) NO lo es. Los pedidos sin cliente identificado no entran.
 create or replace function restaurantes.cfo_clientes_segmento_hora(
   p_org uuid,
   p_props uuid[],
@@ -560,16 +583,16 @@ begin
        where l.customer_id is not null
     ),
     cs as (
-      select bc.customer_id,
+      select bc.customer_id, bc.property_id,
              count(*) filter (where bc.dia > p_hasta - p_frecuente_dias) as n_frec,
              bool_or(bc.dia < p_desde) as previo
         from bc
-       group by bc.customer_id
+       group by bc.customer_id, bc.property_id
     ),
     seg as (
       select bc.property_id, bc.customer_id, bc.dow_negocio, bc.hora_local, bc.neta_centavos,
              case when cs.n_frec >= p_frecuente_n then 'frecuente' when not cs.previo then 'nuevo' else 'recurrente' end as segmento
-        from bc join cs on cs.customer_id = bc.customer_id
+        from bc join cs on cs.customer_id = bc.customer_id and cs.property_id = bc.property_id
        where bc.dia >= p_desde
     )
     select s.property_id, s.segmento, s.dow_negocio, s.hora_local,
@@ -999,7 +1022,7 @@ begin
     ),
     k as (
       select g.property_id,
-             case when g.colonia <> '(sin colonia)' and g.pedidos < p_k then '(otras)' else g.colonia end as colonia,
+             case when g.colonia <> '(sin colonia)' and (g.pedidos < p_k or g.clientes < p_k) then '(otras)' else g.colonia end as colonia,
              g.pedidos, g.neta, g.ent, g.mins, g.colonia as colonia_origen
         from g
     ),
@@ -1011,12 +1034,12 @@ begin
     ),
     k3 as (
       select p.property_id,
-             case when p.colonia <> '(sin colonia)' and gg.pedidos < p_k then '(otras)' else p.colonia end as colonia,
+             case when p.colonia <> '(sin colonia)' and (gg.pedidos < p_k or gg.clientes < p_k) then '(otras)' else p.colonia end as colonia,
              count(distinct p.customer_id) as clientes
         from pc p join g gg on gg.property_id = p.property_id and gg.colonia = p.colonia
        group by 1, 2
     ),
-    cer as (
+    cer as materialized (
       select c.colonia, h.sucursal_id, h.distancia_km
         from (select distinct k2.colonia from k2 where k2.colonia not in ('(otras)', '(sin colonia)')) c
         cross join lateral restaurantes.cfo_colonia_cercana(p_org, c.colonia) h
@@ -1139,20 +1162,24 @@ declare
   v_props uuid[];
   v_hoy_min date;
   v_hoy_max date;
+  v_pids uuid[];
+  v_hoys date[];
 begin
   v_props := restaurantes.cfo_resolver_sucursales(p_org, p_props);
-  select min(((now() at time zone z.tz) - z.corte)::date), max(((now() at time zone z.tz) - z.corte)::date)
-    into v_hoy_min, v_hoy_max from restaurantes.cfo_zonas(v_props) z;
+  select array_agg(z.property_id order by z.property_id), array_agg(((now() at time zone z.tz) - z.corte)::date order by z.property_id)
+    into v_pids, v_hoys from restaurantes.cfo_zonas(v_props) z;
+  v_hoy_min := (select min(h) from unnest(v_hoys) h);
+  v_hoy_max := (select max(h) from unnest(v_hoys) h);
   return query
     with par as materialized (
-      select z.property_id, ((now() at time zone z.tz) - z.corte)::date as hoy from restaurantes.cfo_zonas(v_props) z
+      select u.pid as property_id, u.hoy from unnest(v_pids, v_hoys) as u(pid, hoy)
     ),
     ag as (
       select bp.property_id, bp.product_id, pr.name, bp.agotado_hasta, bp.is_available, round(bp.price * 100)::bigint as precio, par.hoy
         from restaurantes.branch_products bp
         join par on par.property_id = bp.property_id
         join restaurantes.products pr on pr.id = bp.product_id and pr.organization_id = p_org
-       where bp.is_available = false or bp.agotado_hasta is not null
+       where bp.is_available = false or bp.agotado_hasta > par.hoy
     ),
     vta as (
       select b.property_id, lower(x.producto_ref) as ref, b.dia_negocio as dia, sum(x.cantidad) as unidades
