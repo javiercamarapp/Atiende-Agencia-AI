@@ -46,7 +46,7 @@ export const ALIAS_SR_INFERIDOS = {
 } as const;
 
 /** Palabras que delatan una columna de datos personales (se comparan contra el encabezado normalizado, palabra completa). */
-export const PALABRAS_PERSONALES: readonly string[] = ["nombre", "cliente", "telefono", "tel", "celular", "movil", "whatsapp", "correo", "email", "mail", "direccion", "calle", "colonia", "rfc", "curp"];
+export const PALABRAS_PERSONALES: readonly string[] = ["nombre", "cliente", "telefono", "tel", "celular", "movil", "whatsapp", "correo", "email", "mail", "direccion", "calle", "colonia", "rfc", "curp", "phone", "name", "address", "customer", "contacto", "comensal", "huesped"];
 
 export interface RenglonSrCuenta {
   readonly folio: string;
@@ -117,7 +117,7 @@ export function normalizarEncabezado(s: string): string {
     .replace(/\s+/g, " ");
 }
 
-const FRASES_PERSONALES: readonly string[] = ["razon social", "domicilio de entrega", "domicilio entrega", "domicilio del cliente", "domicilio cliente", "codigo postal", "nombre del cliente"];
+const FRASES_PERSONALES: readonly string[] = ["razon social", "domicilio de entrega", "domicilio entrega", "domicilio del cliente", "domicilio cliente", "codigo postal", "nombre del cliente", "r f c"];
 const RAICES_PERSONALES: readonly string[] = ["telefono", "celular", "correo", "direccion"];
 
 export function esColumnaPersonal(encabezado: string): boolean {
@@ -225,6 +225,9 @@ function parseHora(t: string): string | null {
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }
 
+/** Mismo rango de años que acepta el API del CFO y la base: fuera de 2000..2100 la fecha es un error del renglón (no llega a Postgres para rechazarse ahí). */
+const anioPlausible = (fecha: string): boolean => Number(fecha.slice(0, 4)) >= 2000 && Number(fecha.slice(0, 4)) <= 2100;
+
 /** dd/mm/aaaa · dd-mm-aaaa · dd/mm/aa · aaaa-mm-dd (con o sin hora) · serie de Excel. */
 export function parsearFechaSr(entrada: string | number | null | undefined): FechaSr | null {
   if (entrada == null) return null;
@@ -235,7 +238,7 @@ export function parsearFechaSr(entrada: string | number | null | undefined): Fec
       const fecha = sumarDiasFecha("1899-12-30", dias);
       const seg = Math.round((serie - dias) * 86400);
       const hora = seg > 0 ? `${String(Math.floor(seg / 3600) % 24).padStart(2, "0")}:${String(Math.floor((seg % 3600) / 60)).padStart(2, "0")}` : null;
-      return fechaNegocioValida(fecha) ? { fecha, hora } : null;
+      return fechaNegocioValida(fecha) && anioPlausible(fecha) ? { fecha, hora } : null;
     }
     if (typeof entrada === "number") return null;
   }
@@ -255,7 +258,7 @@ export function parsearFechaSr(entrada: string | number | null | undefined): Fec
       resto = m[4]!;
     }
   }
-  if (!fecha || !fechaNegocioValida(fecha)) return null;
+  if (!fecha || !fechaNegocioValida(fecha) || !anioPlausible(fecha)) return null;
   const rest = resto.replace(/^[T\s,]+/, "");
   const hora = rest === "" ? null : parseHora(rest);
   if (rest !== "" && hora === null) return null;
@@ -411,7 +414,7 @@ export function normalizarExportSr(entrada: EntradaNormalizarSr): ResultadoNorma
 
   const resolverFecha = (fila: readonly (string | number | null)[], renglon: number): { dia: string; hora: string | null } | null => {
     const f = parsearFechaSr(celda(fila, gi("fecha")));
-    if (!f) { error(renglon, "fecha", "fecha inválida (use dd/mm/aaaa o aaaa-mm-dd)"); return null; }
+    if (!f) { error(renglon, "fecha", "fecha inválida (use dd/mm/aaaa o aaaa-mm-dd, años 2000 a 2100)"); return null; }
     let hora = f.hora;
     if (hora == null && gi("hora") !== undefined) {
       const raw = texto(celda(fila, gi("hora")));

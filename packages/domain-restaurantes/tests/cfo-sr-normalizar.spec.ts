@@ -99,6 +99,17 @@ describe("fechas y día de negocio", () => {
   it("inválidas dan null", () => {
     for (const x of ["", "31/02/2026", "2026-13-01", "ayer", "14/09/2026 25:00", "14/09/2026 xx", null, 12]) expect(parsearFechaSr(x as never)).toBeNull();
   });
+  it("años fuera de 2000..2100 son inválidos (misma regla que el API): 0000-01-01, 31/12/9999 y series de Excel absurdas", () => {
+    for (const x of ["0000-01-01", "31/12/9999", "1999-12-31", "2101-01-01", 2958465]) expect(parsearFechaSr(x as never), String(x)).toBeNull();
+    expect(parsearFechaSr("2000-01-01")?.fecha).toBe("2000-01-01");
+    expect(parsearFechaSr("31/12/2100")?.fecha).toBe("2100-12-31");
+  });
+  it("una fecha de año imposible es un error del renglón en la normalización, no un renglón aceptado", () => {
+    const n = normalizarExportSr({ tabla: [["Folio", "Fecha", "Total"], ["A-1", "0000-01-01", "$10.00"], ["A-2", "31/12/9999", "$10.00"], ["A-3", "21/09/2026", "$10.00"]], corte: "01:00", tipo: "cuentas" });
+    expect(n.ok && n.aceptados).toBe(1);
+    expect(n.ok && n.errores.map((e) => [e.renglon, e.campo])).toEqual([[2, "fecha"], [3, "fecha"]]);
+    expect(n.ok && n.errores[0]!.motivo).toContain("2000 a 2100");
+  });
   it("corte 01:00: 00:30 cuenta en el día anterior; 01:00 y 01:05 en el día nuevo; sin hora, el día tal cual", () => {
     expect(diaDeNegocio("2026-09-14", "00:30", "01:00")).toBe("2026-09-13");
     expect(diaDeNegocio("2026-09-14", "00:59", "01:00")).toBe("2026-09-13");
@@ -148,6 +159,9 @@ describe("datos personales: el archivo se rechaza completo", () => {
   });
   it("detector de columnas", () => {
     expect(esColumnaPersonal("Teléfono del cliente")).toBe(true);
+    for (const h of ["Phone", "Name", "Address", "Customer", "Contacto", "R.F.C.", "Comensal", "Huésped"]) expect(esColumnaPersonal(h), h).toBe(true);
+    // «Domicilio» solo puede ser el tipo de servicio (pivote): decisión pendiente, no se marca como personal.
+    expect(esColumnaPersonal("Domicilio")).toBe(false);
     expect(esColumnaPersonal("Tipo de servicio")).toBe(false);
     expect(esColumnaPersonal("Forma de pago")).toBe(false);
     expect(esColumnaPersonal("Domicilio")).toBe(false); // «domicilio» es un tipo de servicio, no la dirección
