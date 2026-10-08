@@ -1,7 +1,7 @@
 {
  "suite": "escenarios-e2e-original",
  "version": "1.0.0",
- "nota": "Escenarios de punta a punta del repo original (atiende-restaurantes @ 13fb3bd), anexo NC-E2E de importacion-original-completitud. Mismo formato que casos.json y corren con el agente de referencia sin LLM (ejecutarCasoReferencia). Totales recalculados con menu-pm.json (el 724 del original es de otro menu). Sin datos personales: telefonos 9995550xxx y nombres [NOMBRE]. estado pendiente_decision = depende de una decision abierta del dueno; se lista pero no corre ni falla el CI.",
+ "nota": "Escenarios de punta a punta del repo original (atiende-restaurantes @ 13fb3bd), anexo NC-E2E de importacion-original-completitud. Mismo formato que casos.json y corren con el agente de referencia sin LLM (ejecutarCasoReferencia). Totales recalculados con menu-pm.json, no copiados del original. Sin datos personales: telefonos 9995550xxx y nombres [NOMBRE]. estado pendiente_decision = depende de una decision abierta del dueno; se lista pero no corre ni falla el CI.",
  "casos": [
   {
    "id": "C22",
@@ -793,7 +793,9 @@
     "G_REGLA_R8"
    ],
    "estado": "activo",
-   "dudas": []
+   "dudas": [
+    "En produccion un mensaje ARCO pasa primero por runArcoFastPath (whatsapp/inbound.ts, antes del agente): este caso mide el camino de respaldo, cuando el agente LLM recibe el mensaje y debe escalar con motivo privacidad_arco; no mide el camino rapido."
+   ]
   },
   {
    "id": "C35",
@@ -901,7 +903,9 @@
     "G_REGLA_R12"
    ],
    "estado": "activo",
-   "dudas": [],
+   "dudas": [
+    "Del original (whatsapp-agent-core.test :113, :121, :374) se portan las tres reglas, pero como comprobaciones del servidor (kilo de bistec sin aviso de ordenes de 3, total inventado corregido por enforceQuotedTotal), no como giros del chat simulado."
+   ],
    "verificacion_servidor": "refrescos_de_cola_y_kilo_sin_tortilla"
   },
   {
