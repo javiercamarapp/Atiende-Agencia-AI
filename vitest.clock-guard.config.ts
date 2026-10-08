@@ -29,6 +29,11 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-restaurantes/tests/pm-c5-pedido-reciente.spec.ts",
   // Ronda 2 del loop de PM: hora de recogida y programado validados contra el reloj del servidor; reloj local de consultar_sucursal.
   "packages/domain-restaurantes/tests/pm-r2-flujo-pedido-y-hora.spec.ts",
+  // Ronda 5 del loop de PM: reloj fijo (miercoles 12:00 / martes 13:00 Merida) para hora de recogida, kilos, relleno del modelo y entradas hostiles.
+  "packages/domain-restaurantes/tests/pm-r5-contrato-relleno-del-modelo.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r5-entradas-hostiles.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r5-hora-recoger-unificada.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r5-kilos.spec.ts",
   "packages/domain-restaurantes/tests/pm-r2-prompt-y-reloj.spec.ts",
   "packages/domain-restaurantes/tests/recoger-estados-y-columnas.spec.ts",
   // Hora de recogida (+30 min aceptado, -5/-11 min, +6/+8 dias): reloj fijo, sin depender de la hora UTC en que corra el CI.

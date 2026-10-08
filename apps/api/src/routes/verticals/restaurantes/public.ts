@@ -13,6 +13,7 @@ import {
   invokeAgentTool,
   OrderConflictError,
   OrderValidationError,
+  esGuardaSqlDeNegocioDePedido,
   redondearACentavos,
 } from "@atiende/domain-restaurantes";
 import type { CreateOrderInput, Order, RestaurantesRepository } from "@atiende/domain-restaurantes";
@@ -177,6 +178,8 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
           await auditVoice(repo, org, caller, "crear_pedido", "ok", null);
           // SoftRestaurant (POS): los pedidos de voz tambien encolan su comanda (igual que antes de
           // fusionar el registro unico de tools). Bandera apagada o sin migracion 024: respuesta identica.
+          // OJO (conocido, anterior a R5): `voiceInput.propina` es la propina del BODY (en pesos; 0 si el modelo mando propina_porcentaje); el pedido guarda la propina calculada
+          // con el porcentaje. El `Order` del repositorio no expone la propina guardada, asi que la comanda POS puede llevar 0 mientras el pedido guarda el 15 %. Pendiente: exponerla.
           const voiceInput = mapCreateOrderBody(org.id, incoming, "voice");
           // Presupuesto de voz: el POS lento no puede consumir toda la espera de la tool (4 s). Pasado el tope la comanda queda pendiente y
           // el cron del outbox la reintenta (misma ruta que cualquier caida del POS).
@@ -194,10 +197,13 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
           return c.json({ order: outcome.raw });
         } catch (err) {
           if (err instanceof OrderConflictError) throw Errors.conflict(err.message);
-          if (err instanceof OrderValidationError) {
+          // QA-PM-R5-reglas-10: una guarda SQL `raise exception ... using errcode = '22023'` (p. ej. "programado_para debe ser una hora futura" por una carrera de segundos
+          // con "en 31 minutos") es una regla de negocio con mensaje accionable: 400 de validacion, no 500 "Error interno".
+          const reglaSql = esGuardaSqlDeNegocioDePedido(err);
+          if (err instanceof OrderValidationError || reglaSql) {
             const code = (err as { code?: unknown }).code;
             await auditVoice(repo, org, caller, "crear_pedido", "denied", typeof code === "string" ? code : "validacion");
-            return c.json({ code: "validation_error", message: err.message }, 400);
+            return c.json({ code: "validation_error", message: (err as Error).message }, 400);
           }
           throw err;
         }

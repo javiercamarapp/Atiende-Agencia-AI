@@ -38,6 +38,8 @@ export interface OrderFlowContext {
   readonly quotedPrices?: string;
   /** Hora de recogida (ISO UTC al minuto) con la que se cotizo, si la llevaba: `crear_pedido` con otra hora distinta ya no coincide con la huella. */
   readonly horaRecogida?: string;
+  /** Hora PROGRAMADA (ISO UTC) con la que se cotizo un pedido para recoger: en recoger `programado_para` y `hora_recogida` son la misma hora (QA-PM-R5-reglas-02) y crear la reutiliza. */
+  readonly programadoPara?: string;
   /** Plazo en minutos (`minutos_para_recoger`) con el que el SERVIDOR calculo `horaRecogida`: una re-cotizacion identica con el mismo plazo conserva esa hora (no es una cotizacion nueva
    * por haber pasado un minuto) y un `crear_pedido` con OTRO plazo obliga a re-cotizar. Ausente si la hora la mando el modelo explicita. */
   readonly minutosPlazo?: number;
@@ -78,6 +80,8 @@ export interface QuotedItem {
   readonly qty: number;
   /** Solo si el producto exige tortilla; `null` en bebidas y demas (el modelo manda ahi cualquier valor y no debe afectar la huella). */
   readonly tortilla: string | null;
+  /** QA-PM-R5-reglas-03: la tortilla que el cliente eligio para un KILO de carne (ese renglon no exige tortilla y `tortilla` queda null). No entra a la huella: solo viaja a la comanda. */
+  readonly tortillaKilo?: string;
 }
 
 export interface OrderFlowSnapshot {
@@ -326,7 +330,7 @@ export function assertCanCreate(snap: OrderFlowSnapshot, args: FlowCheckArgs): O
   }
   assertFresh(ctx, args.now);
   if (args.fingerprint && args.fingerprint !== ctx.quoteHash) {
-    throw new OrderFlowViolationError("pedido_distinto_al_cotizado", "El pedido no coincide con el que se cotizó y confirmó (sucursal, canal o productos). Vuelve a cotizar el pedido final y pide confirmación.");
+    throw new OrderFlowViolationError("pedido_distinto_al_cotizado", "El pedido no coincide con el que se cotizó y confirmó (sucursal, canal, productos u hora de recogida). Vuelve a cotizar el pedido final y pide confirmación.");
   }
   return ctx;
 }

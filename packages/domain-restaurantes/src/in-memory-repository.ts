@@ -10,7 +10,7 @@ import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
 import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
-import { ClienteMemoriaNoDisponibleError, OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
+import { ClienteMemoriaNoDisponibleError, OrderConflictError, OrderValidationError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
@@ -1188,7 +1188,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       }
 
       const programadoPara = this.scheduledOrdersSupported ? (order.programadoPara ?? null) : null;
-      if (programadoPara && Date.parse(programadoPara) <= Date.now()) throw new Error("programado_para debe ser una hora futura");
+      if (programadoPara && Date.parse(programadoPara) <= Date.now()) throw new OrderValidationError("programado_para debe ser una hora futura");
       const created: Order = {
         id: randomUUID(),
         organizationId: order.organizationId,

@@ -208,8 +208,9 @@ export function quitarAfirmacionDePedidoRegistrado(reply: string, sustituto?: st
 export function corregirPromesaDeHorarioNocturno(reply: string, hora: number): string {
   if (hora < 12 && hora >= 1) return reply;
   // Solo la promesa de RESPUESTA del equipo/gerente ("el equipo le responde a partir de las 12 del dia"); "mañana abrimos a partir de las 12" o "el 2x1 aplica a partir de las 12 pm" no se tocan.
+  // Menor de #522: tambien sin sujeto, en plural impersonal ("Le atienden a partir de las 12", "le responden a partir de las 12").
   return reply.replace(
-    /(?:,?\s*(?:y\s+)?)(?:el\s+(?:equipo|gerente)(?:\s+de\s+la\s+sucursal)?|la\s+sucursal)\s+(?:le\s+)?(?:responde|contesta|responder[aá]n?|contestar[aá]n?|atiende|atender[aá]n?|escribe|escribir[aá]n?)\s+a\s+partir\s+de\s+las\s+12(?:\s*(?::00|h|hrs?\.?))?\s*(?:del\s+d[ií]a|del\s+mediod[ií]a|pm|p\.m\.)?/gi,
+    /(?:,?\s*(?:y\s+)?)(?:(?:el\s+(?:equipo|gerente)(?:\s+de\s+la\s+sucursal)?|la\s+sucursal)\s+(?:le\s+)?(?:responde|contesta|responder[aá]n?|contestar[aá]n?|atiende|atender[aá]n?|escribe|escribir[aá]n?)|(?:le\s+)?(?:atienden|responden|contestan))\s+a\s+partir\s+de\s+las\s+12(?:\s*(?::00|h|hrs?\.?))?\s*(?:del\s+d[ií]a|del\s+mediod[ií]a|pm|p\.m\.)?/gi,
     (m) => {
       const prefijo = /^,?\s*(?:y\s+)?/i.exec(m)?.[0] ?? "";
       return /[,y]/i.test(prefijo) ? ", el equipo le contesta en cuanto puedan" : `${prefijo}El equipo le contesta en cuanto puedan`;
@@ -320,7 +321,12 @@ const NEGACION_AL_FINAL =
 /** Retractacion DESPUES de la peticion ("quiero una persona... bueno no, mejor sigo contigo", "mejor sigo aqui", "ya no, gracias"): el cliente retoma con el agente
  * y no hay nadie a quien pasarlo (QA-PM-R4-whatsapp-01: la toma callaba al agente y el pedido en curso se perdia). */
 const RETRACTACION_POSTERIOR =
-  /^[^.!?\n]{0,40}?\b(?:bueno\s*,?\s*)?(?:no|ya\s+no)\s*,?\s*(?:mejor\s+(?:sigo|seguimos|continuo|continuamos|contigo|con\s+usted)|gracias|olvid\w+|dejalo|dejelo|sigo|seguimos)\b|\bmejor\s+(?:sigo|seguimos|continuo|continuamos|contigo|con\s+usted)\b|\bsigo\s+(?:contigo|con\s+usted|aqui)\b/;
+  /^[^.!?\n]{0,40}?\b(?:bueno\s*,?\s*)?(?:no|ya\s+no)\s*,?\s*(?:mejor\s+(?:sigo|seguimos|continuo|continuamos|contigo|con\s+usted)|gracias(?!\s+a\s+(?:ustedes|usted|ud|uds|ti|ellos|nadie))|olvid\w+|dejalo|dejelo|sigo|seguimos)\b|\bmejor\s+(?:sigo|seguimos|continuo|continuamos|contigo|con\s+usted)\b|\bsigo\s+(?:contigo|con\s+usted|aqui)\b/;
+
+/** ¿El mensaje, solo, retoma con el agente ("mejor sigo contigo", "no, gracias")? Sirve para no abrir la toma por una peticion que el cliente ya retiro en un mensaje POSTERIOR. */
+export function retractaPeticionDePersona(text: string): boolean {
+  return RETRACTACION_POSTERIOR.test(normalizarParaClasificar(text));
+}
 
 /** Pura: ¿el cliente pide hablar con una persona? (independiente de otros motivos de riesgo del mismo texto). NO cuenta: la negacion ("no quiero hablar con
  * una persona, con usted esta bien"), "pasar con alguien" como visita ("voy a pasar con alguien a recogerlo") ni una peticion mezclada con un pedido
@@ -334,6 +340,8 @@ export function pideUnaPersona(text: string): boolean {
     // QA-PM-R3-voz-05: "que me atienda alguien en caja" / "alguien de caja" es una pregunta de pago al recoger (se paga en caja), no pedir una persona del equipo.
     if (/^\s+(?:de|en|a)\s+(?:la\s+)?(?:caja|cajero|mostrador)\b/i.test(text.slice(idx + m[0].length, idx + m[0].length + 24))) continue;
     if (/^pasar\b/i.test(m[0]) && !MARCO_DE_PETICION.test(segmento)) continue;
+    // QA-PM-R5 (menor de #522): "se lo pasan a la persona que va a recoger" es entregar el pedido a OTRA persona, no pedir hablar con una: "pasan a la persona" sin "me" ni marco de peticion.
+    if (/^p[aá]s(?:a|as|an|e|en|ar)\s+a\b/i.test(m[0]) && !MARCO_DE_PETICION.test(segmento)) continue;
     // Retractacion posterior en el mismo mensaje: "quiero hablar con una persona... bueno no, mejor sigo contigo".
     if (RETRACTACION_POSTERIOR.test(normalizarParaClasificar(text.slice(idx + m[0].length, idx + m[0].length + 60)))) continue;
     return true;

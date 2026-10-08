@@ -48,6 +48,13 @@ export function isTortillaChoice(value: unknown): value is TortillaChoice {
   return typeof value === "string" && (TORTILLA_CHOICES as readonly string[]).includes(value);
 }
 
+/** QA-PM-R5-reglas-09: la voz transcribe "maíz" / "Maiz" / "maiz ": se normaliza (sin acento, sin espacios, minusculas) antes de validar. Lo que no es una tortilla valida pasa igual (y se rechaza despues). */
+export function normalizarTortilla(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const n = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  return isTortillaChoice(n) ? n : value;
+}
+
 /** Lista cerrada de lo que el cliente puede pedir (sin costo). */
 export const COMPLEMENTOS_PEDIBLES: readonly RequestedComplement[] = ["salsa_guacamolera", "salsa_mexicana", "salsa_pina", "pina", "salsa_habanero", "salsa_habanero_soasado", "crema_ajo"];
 

@@ -5,6 +5,16 @@
 export class OrderValidationError extends Error {}
 export class OrderConflictError extends OrderValidationError {}
 
+/** Guardas SQL de negocio conocidas de la creacion de pedidos que levantan 22023 con un mensaje pensado para el agente/cliente. LISTA CERRADA: cualquier otro 22023 (un
+ * error interno de Postgres, una funcion que no es esta) sigue siendo error interno. Hoy: 034_pedidos_programados ("programado_para debe ser una hora futura"). */
+const GUARDAS_SQL_22023_DE_PEDIDO: readonly RegExp[] = [/^programado_para debe ser una hora futura\b/];
+export function esGuardaSqlDeNegocioDePedido(err: unknown): err is Error {
+  if (err instanceof OrderValidationError || !(err instanceof Error)) return false;
+  if ((err as { code?: unknown }).code !== "22023") return false;
+  const mensaje = err.message.trim();
+  return GUARDAS_SQL_22023_DE_PEDIDO.some((re) => re.test(mensaje));
+}
+
 // Fase 11 — subclase de OrderValidationError (nunca una clase de error separada) a
 // propósito: así el mismo `catch (err instanceof OrderValidationError)` que ya
 // traduce a HTTP 400 en public.ts/admin-orders.ts atrapa también un código de
