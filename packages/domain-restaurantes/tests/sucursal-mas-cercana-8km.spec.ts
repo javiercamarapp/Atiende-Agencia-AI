@@ -42,7 +42,7 @@ const colonia = (nombre: string): Colonia => {
 
 /** Mundo en memoria con las colonias REALES. `coordenadas` = el dueño cargo la coordenada de Google de cada colonia en known_zone (HOY no: ver `colonias_meta`);
  * `cobertura` = filas de branch_delivery_zone (seed = la del dueño/regla en el seed; base_real = la que tiene la cuenta real, con 14 dobles; ninguna). */
-async function mundo(opts: { coordenadas: boolean; cobertura: "seed" | "base_real" | "ninguna" | "solo_dueno"; invertirOrden?: boolean }) {
+async function mundo(opts: { coordenadas: boolean; cobertura: "seed" | "base_real" | "ninguna" | "solo_dueno"; invertirOrden?: boolean; vigentesCompletas?: boolean }) {
   const repo = new InMemoryRestaurantesRepository();
   const organizationId = randomUUID();
   repo.seedOrganization({ id: organizationId, slug: "los-taquitos-de-pm", name: "Los Taquitos de PM" });
@@ -53,8 +53,11 @@ async function mundo(opts: { coordenadas: boolean; cobertura: "seed" | "base_rea
     propertyBySlug.set(s.slug, propertyId);
     const reparte = ["T1", "T2", "T3", "T7", "T8"].includes(s.id);
     // Coordenadas VIGENTES de main (T3 sin coordenadas; T4 y T5 no reparten: inactivas).
-    repo.seedBranch({ propertyId, organizationId, name: s.nombre, slug: s.slug, status: reparte ? "active" : "inactive", phone: null, address: null, lat: s.lat ?? null, lng: s.lng ?? null });
-    repo.seedBranchPolicy(propertyId, { aceptaDomicilio: reparte });
+    // `vigentesCompletas`: la base tiene coordenada vigente en TODAS las sucursales de despacho (T3 incluida): la medicion es confiable sin pines propuestos.
+    const t3 = opts.vigentesCompletas && s.id === "T3" ? COORDENADAS_PROPUESTAS_PM["pensiones"]! : null;
+    repo.seedBranch({ propertyId, organizationId, name: s.nombre, slug: s.slug, status: reparte ? "active" : "inactive", phone: null, address: null, lat: t3 ? t3.lat : (s.lat ?? null), lng: t3 ? t3.lng : (s.lng ?? null) });
+    // Galerias y Playa tienen acepta_domicilio=true en la base real: solo las excluye estar inactivas o la lista del perfil PM.
+    repo.seedBranchPolicy(propertyId, { aceptaDomicilio: s.id === "T4" || s.id === "T5" ? true : reparte });
   }
   const cobertura = new Map<string, string[]>();
   const idPorNombre = new Map<string, string>();
@@ -116,7 +119,8 @@ describe("calculo de distancia: Haversine con puntos conocidos y texto «a unos 
   it("el texto para el cliente no lleva decimales raros", () => {
     expect(kmAproxTexto(4.6)).toBe("a unos 5 km");
     expect(kmAproxTexto(9.57)).toBe("a unos 10 km");
-    expect(kmAproxTexto(1.2)).toBe("a unos 1 km");
+    expect(kmAproxTexto(1.2)).toBe("a cerca de 1 km");
+    expect(kmAproxTexto(1.5)).toBe("a unos 2 km");
     expect(kmAproxTexto(0.3)).toBe("a menos de 1 km");
     expect(kmAproxTexto(Number.NaN)).toBe("");
   });
@@ -135,7 +139,7 @@ describe("radio de reparto: 8 km en el perfil PM, configurable por organizacion"
   });
 
   it("(a) un pin a 9.6 km (Komchen) y a 9.9 km (Serapio Rendon) de las coordenadas VIGENTES ya NO se asigna: fuera de zona habitual (antes, con 20 km, si)", async () => {
-    const m = await mundo({ coordenadas: false, cobertura: "seed" });
+    const m = await mundo({ coordenadas: false, cobertura: "seed", vigentesCompletas: true });
     for (const nombre of ["Komchen", "Serapio Rendón"]) {
       const { lat, lng } = colonia(nombre).coordenada!;
       const antes = await assignBranch(m.repo, { organizationId: m.organizationId, lat, lng, radioMaximoKm: 20 });
@@ -151,11 +155,12 @@ describe("radio de reparto: 8 km en el perfil PM, configurable por organizacion"
     const komchen = await assignBranch(m.repo, { organizationId: m.organizationId, ...colonia("Komchen").coordenada!, radioMaximoKm: 8 });
     expect(komchen).toMatchObject({ branchSlug: "fco-montejo", distanceKm: 9.6 });
     const serapio = await assignBranch(m.repo, { organizationId: m.organizationId, ...colonia("Serapio Rendón").coordenada!, radioMaximoKm: 8 });
-    expect(serapio).toMatchObject({ branchSlug: "altabrisa", distanceKm: 9.9 });
+    // Con Pensiones medible (su pin como vigente) la mas cercana es Pensiones, a 8.1 km: aun asi fuera del radio.
+    expect(serapio).toMatchObject({ estado: "fuera_de_zona", branchSlug: "pensiones", distanceKm: 8.1 });
   });
 
   it("la herramienta de PM aplica 8 km aunque el modelo mande max_km 500; una organizacion que configura 5 km lo recorta; el modelo solo puede bajarlo", async () => {
-    const m = await mundo({ coordenadas: false, cobertura: "seed" });
+    const m = await mundo({ coordenadas: false, cobertura: "seed", vigentesCompletas: true });
     const komchen = colonia("Komchen").coordenada!;
     const r = await invokeAgentTool(m.repo, ctxWa(m.organizationId), "buscar_sucursal_cercana", { ...komchen, max_km: 500 });
     expect(r.result).toMatchObject({ encontrada: false, estado: "fuera_de_zona", max_km: 8, reparto: "fuera_de_zona_habitual" });
@@ -242,15 +247,17 @@ describe("(e) cobertura explicita del dueño = override: Centro, Centro Historic
     }
   });
 
-  it("la cobertura explicita del dueño no se recorta por el radio (es SU decision), pero un pin lejano si", async () => {
+  it("la cobertura explicita del dueño no se recorta por el radio (es SU decision), ni escribiendo la colonia ni con pin", async () => {
     const m = await mundo({ coordenadas: true, cobertura: "ninguna" });
     const zona = (await m.repo.listKnownZones(m.organizationId)).find((z) => z.name === "Komchen")!;
     // Komchen (8.24 km de T2 con los pines propuestos): sin cobertura => fuera; el dueño la cubre con T2 => se atiende.
     expect(await assignBranch(m.repo, { organizationId: m.organizationId, colonia: "Komchen", radioMaximoKm: 8, ...PIN_PROPUESTAS })).toMatchObject({ estado: "fuera_de_zona", branchSlug: "fco-montejo" });
     m.repo.seedBranchDeliveryZones(m.propertyBySlug.get("fco-montejo")!, [zona.id]);
     expect(await assignBranch(m.repo, { organizationId: m.organizationId, colonia: "Komchen", radioMaximoKm: 8, ...PIN_PROPUESTAS })).toMatchObject({ estado: "asignada", branchSlug: "fco-montejo", origen: "cobertura_dueno" });
-    // Pero un pin de WhatsApp a 11 km de esa misma sucursal NO se atiende por el hecho de que la colonia este cubierta.
-    expect(await assignBranch(m.repo, { organizationId: m.organizationId, colonia: "Komchen", lat: 21.1403, lng: -89.6471, radioMaximoKm: 8, ...PIN_PROPUESTAS })).toMatchObject({ estado: "fuera_de_zona", origen: "pin" });
+    // Con pin Y colonia cubierta, MANDA la cobertura (dos respuestas distintas segun como de la ubicacion seria incoherente) ...
+    expect(await assignBranch(m.repo, { organizationId: m.organizationId, colonia: "Komchen", lat: 21.1403, lng: -89.6471, radioMaximoKm: 8, ...PIN_PROPUESTAS })).toMatchObject({ estado: "asignada", branchSlug: "fco-montejo", origen: "cobertura_dueno", via: "coordenadas" });
+    // ... salvo que el pin claramente NO este en esa colonia: otra sucursal DENTRO del radio (pin en Cholul: a 9.6 km de Francisco de Montejo y a 2.4 km de Altabrisa) y medicion confiable.
+    expect(await assignBranch(m.repo, { organizationId: m.organizationId, colonia: "Komchen", ...colonia("Cholul").coordenada!, radioMaximoKm: 8, ...PIN_PROPUESTAS })).toMatchObject({ estado: "asignada", branchSlug: "altabrisa", origen: "pin" });
   });
 });
 
@@ -309,7 +316,7 @@ describe("(c) doble cobertura: las 14 colonias reales con dos sucursales nunca s
 
 describe("(b) la herramienta dice cual es la sucursal de despacho mas cercana, a cuantos km, y jamas presenta como despacho una que no reparte", () => {
   it("con coordenadas de colonia y sin cobertura explicita manda el km: Alcala Martin -> Prolongacion Montejo a unos 2 km (2.1 km con los pines propuestos)", async () => {
-    const m = await mundo({ coordenadas: true, cobertura: "ninguna" });
+    const m = await mundo({ coordenadas: true, cobertura: "ninguna", vigentesCompletas: true });
     const r = await invokeAgentTool(m.repo, ctxWa(m.organizationId), "buscar_sucursal_cercana", { colonia: "Alcala Martin" });
     // Con las coordenadas VIGENTES (sin la bandera) tambien hay respuesta: nombra una sucursal de despacho y su distancia.
     expect(r.result).toMatchObject({ encontrada: true, estado: "asignada", origen_asignacion: "distancia", via: "zona" });
@@ -334,7 +341,7 @@ describe("(b) la herramienta dice cual es la sucursal de despacho mas cercana, a
   });
 
   it("(a)+(b) Komchen por WhatsApp y por voz: fuera de zona habitual, nombra la sucursal mas cercana a unos 10 km, no promete el envio, sin decimales raros", async () => {
-    const m = await mundo({ coordenadas: false, cobertura: "seed" });
+    const m = await mundo({ coordenadas: false, cobertura: "seed", vigentesCompletas: true });
     const pin = colonia("Komchen").coordenada!;
     for (const ctx of [ctxWa(m.organizationId), ctxVoz(m.organizationId)]) {
       const r = (await invokeAgentTool(m.repo, ctx, "buscar_sucursal_cercana", { ...pin })).result as Record<string, unknown>;
@@ -381,14 +388,15 @@ describe("(d) coordenadas propuestas: capacidad detras de una bandera APAGADA po
     const pin = colonia("Montecristo").coordenada!;
     const vigentes = await assignBranch(m.repo, { organizationId: m.organizationId, ...pin, radioMaximoKm: 8 });
     const propuestas = await assignBranch(m.repo, { organizationId: m.organizationId, ...pin, radioMaximoKm: 8, ...PIN_PROPUESTAS });
-    expect(vigentes).toMatchObject({ estado: "asignada", branchSlug: "altabrisa", distanceKm: 0.3 });
+    // Con las vigentes (Pensiones sin coordenada) la medicion NO es confiable: se asigna como antes pero sin decir distancias ni «la mas cercana».
+    expect(vigentes).toMatchObject({ estado: "asignada", branchSlug: "altabrisa", distanceKm: null, aproximada: true });
     expect(propuestas).toMatchObject({ estado: "asignada", branchSlug: "prol-montejo", distanceKm: 1.9 });
   });
 
   it("DIFERENCIA con Pensiones: sin coordenadas vigentes nunca participa por distancia; con los pines de Google si (Mulsay 3.9 km)", async () => {
     const m = await mundo({ coordenadas: false, cobertura: "ninguna" });
     const pin = colonia("Mulsay").coordenada!;
-    expect(await assignBranch(m.repo, { organizationId: m.organizationId, ...pin, radioMaximoKm: 8 })).toMatchObject({ branchSlug: "garcia-lavin", distanceKm: 7.7 });
+    expect(await assignBranch(m.repo, { organizationId: m.organizationId, ...pin, radioMaximoKm: 8 })).toMatchObject({ branchSlug: "garcia-lavin", distanceKm: null, aproximada: true });
     expect(await assignBranch(m.repo, { organizationId: m.organizationId, ...pin, radioMaximoKm: 8, ...PIN_PROPUESTAS })).toMatchObject({ branchSlug: "pensiones", distanceKm: 3.9 });
   });
 
@@ -420,17 +428,19 @@ describe("26 colonias de muestra, con los datos reales de colonias-v3", () => {
     }
   });
 
-  // Con las coordenadas de Google de las colonias cargadas por el dueño y los pines de las sucursales: el km decide, como en colonias-v3.
+  // Con las coordenadas de Google de las colonias cargadas por el dueño y los pines de las sucursales: el km decide, como en colonias-v3. Las de dueño/chats llevan su
+  // cobertura (override); el resto va SIN filas de cobertura (con filas, una colonia no cubierta se marca `sugerida`: el servidor la rechazaria).
   it.each(MUESTRA)("%s -- con coordenadas de colonia y pines de Google: coincide con colonias-v3 (sucursal y km)", async (nombre) => {
-    const m = await mundo({ coordenadas: true, cobertura: "solo_dueno" });
     const c = colonia(nombre);
+    const conOverride = c.asignacion !== "mas_cercana_v3" && c.asignacion !== "sin_asignar";
+    const m = await mundo({ coordenadas: true, cobertura: conOverride ? "solo_dueno" : "ninguna" });
     if (!c.coordenada) return; // las 8 sin coordenada se prueban en la seccion de pendientes
     const r = await assignBranch(m.repo, { organizationId: m.organizationId, colonia: nombre, radioMaximoKm: 8, ...PIN_PROPUESTAS });
     const mas = c.mas_cercana!;
-    if (c.asignacion === "mas_cercana_v3" || c.asignacion === "sin_asignar") {
+    if (!conOverride) {
       if (mas.fuera_de_8km) {
         expect(r, nombre).toMatchObject({ estado: "fuera_de_zona", branchSlug: slugDe(mas.sucursal) });
-        expect(Math.abs((r as { distanceKm: number }).distanceKm - mas.km)).toBeLessThanOrEqual(0.06);
+        expect((r as { distanceKm: number }).distanceKm).toBeCloseTo(mas.km, 1);
       } else {
         expect(r, nombre).toMatchObject({ estado: "asignada", branchSlug: slugDe(mas.sucursal), origen: "distancia" });
         expect(Math.abs((r as { distanceKm: number }).distanceKm - mas.km)).toBeLessThanOrEqual(0.06);
@@ -487,7 +497,7 @@ describe("(f) las 28 colonias pendientes producen una respuesta honesta, sin inv
     for (const c of pendientes.filter((x) => x.pendiente_dueno?.includes("fuera_de_8km"))) {
       const r = await assignBranch(m.repo, { organizationId: m.organizationId, colonia: c.nombre, radioMaximoKm: 8, ...PIN_PROPUESTAS });
       expect(r, c.nombre).toMatchObject({ estado: "fuera_de_zona", branchSlug: slugDe(c.mas_cercana!.sucursal) });
-      expect(r.message, c.nombre).toMatch(new RegExp(`La sucursal de despacho más cercana es ${nombreDe(slugDe(c.mas_cercana!.sucursal)).replace(/[()]/g, "\\$&")} \\(a unos \\d+ km\\)`));
+      expect(r.message, c.nombre).toContain(`La sucursal de despacho más cercana es ${nombreDe(slugDe(c.mas_cercana!.sucursal))} (a `);
     }
     const komchen = await invokeAgentTool(m.repo, { ...ctxWa(m.organizationId), usarCoordenadasPropuestas: true }, "buscar_sucursal_cercana", { colonia: "Komchen" });
     expect(komchen.result).toMatchObject({ estado: "fuera_de_zona", sucursal_despacho_mas_cercana: { branch_slug: "fco-montejo", distancia_texto: "a unos 8 km" } });
@@ -547,7 +557,7 @@ describe("prompt del perfil PM: solo `no_reconocida` pide otra referencia; fuera
 
 describe("regresiones: pin, colonia inexistente, base sin migracion 056, cotizacion a domicilio", () => {
   it("un pin con coordenadas se comporta como hoy: la mas cercana y su distancia", async () => {
-    const m = await mundo({ coordenadas: false, cobertura: "seed" });
+    const m = await mundo({ coordenadas: false, cobertura: "seed", vigentesCompletas: true });
     const r = await assignBranch(m.repo, { organizationId: m.organizationId, lat: 21.0281, lng: -89.6101, radioMaximoKm: 8 });
     expect(r).toMatchObject({ estado: "asignada", branchSlug: "prol-montejo", via: "coordenadas", origen: "pin", distanceKm: 0 });
   });
@@ -576,7 +586,8 @@ describe("regresiones: pin, colonia inexistente, base sin migracion 056, cotizac
     const error = await quoteOrder(world.repo, { ...base, colonia: "Vergel" }).catch((e: unknown) => e);
     const mensaje = (error as Error).message;
     expect(mensaje).toMatch(/todavía no tiene una sucursal de reparto asignada/);
-    expect(mensaje).toMatch(/Para recoger, la sucursal más cercana es Prolongación Montejo \(a unos 6 km\)/);
+    expect(mensaje).toMatch(/Para recoger, una sucursal cercana es Prolongación Montejo\./);
     expect(mensaje).toMatch(/pase el pedido con una persona/);
+    expect(mensaje).not.toMatch(/\d+ ?km/); // la referencia del piloto de una colonia sin cobertura puede estar equivocada
   });
 });
