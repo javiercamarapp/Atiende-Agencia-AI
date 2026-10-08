@@ -163,8 +163,8 @@ function buildComplementNotesConBasicas(
  * agente, el servidor lo retiene para que la sucursal lo confirme (ver pedido-grande.ts). El checkout WEB conserva su tope de 100 (`MAX_PIEZAS_POR_RENGLON_WEB`). */
 export const MAX_PIEZAS_POR_RENGLON = 500;
 export const MAX_PIEZAS_POR_RENGLON_WEB = 100;
-/** Un producto vendido por peso ("— 1 kg") no admite mas de estas piezas por renglon: 25 kg ya es un error de unidad (gramos como cantidad). */
-export const MAX_PIEZAS_PRODUCTO_POR_PESO = 25;
+/** Un producto vendido por peso ("— 1 kg") no admite mas de estas piezas por renglon: 100 o mas piezas de un producto por peso son gramos como cantidad (250, 750, 1000); 30 kg es un pedido grande legitimo que se retiene aparte. */
+export const MAX_PIEZAS_PRODUCTO_POR_PESO = 99;
 
 /** Mensaje accionable para una cantidad fuera de rango: dice el maximo en vez de un error generico. */
 export function mensajeCantidadInvalida(value: unknown, max: number = MAX_PIEZAS_POR_RENGLON): string {

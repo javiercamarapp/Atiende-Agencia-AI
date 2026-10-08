@@ -13,6 +13,9 @@ describe("producto por peso con gramos como cantidad", () => {
   it("750 (sobre el maximo) tambien explica que son gramos", () => {
     expect(() => buildOrderQuoteFromProducts([{ productId: "b1", requestedQuantity: 750 }], [bistecKg])).toThrow(/GRAMOS/);
   });
+  it("30 piezas del producto de 1 kg (30 kg) es un pedido grande legitimo: se cotiza, no se rechaza como gramos", () => {
+    expect(buildOrderQuoteFromProducts([{ productId: "b1", requestedQuantity: 30 }], [bistecKg], { canal: "recoger" }).total).toBe(33000);
+  });
   it("la presentacion exacta de 250 g con cantidad 1 cotiza bien; 2 kilos como 2 piezas del de 1 kg tambien", () => {
     expect(buildOrderQuoteFromProducts([{ productId: "b250", requestedQuantity: 1 }], [bistec250], { canal: "recoger" }).total).toBe(275);
     expect(buildOrderQuoteFromProducts([{ productId: "b1", requestedQuantity: 2 }], [bistecKg], { canal: "recoger" }).total).toBe(2200);
