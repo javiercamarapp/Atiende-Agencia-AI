@@ -238,7 +238,10 @@ describe("E.4 / E.12 datos de tarjeta, privacidad y logs", () => {
   });
 
   it.todo("T-PR01 [P0] DECISION DE DISENO: buscar_cliente entrega la direccion completa al modelo; 'nunca devuelve direccion completa' contradice '¿la misma direccion?' y hoy solo lo limita el prompt");
-  it.todo("T-PR04 / T-PR05 [P1] BRECHA: export/erase ARCO del cliente y purga de transcripciones por politica (hoy solo se registra el aviso al equipo)");
+  // H55 (import-orig-11): reconciliado con restaurantes-privacidad.spec.ts. La PURGA de transcripciones por retencion YA existe (T-PR05: endpoint interno + SQL;
+  // S/verify-restaurantes-privacidad-arco, A/restaurantes-privacidad.spec.ts "purga por retencion"). Lo que sigue siendo brecha real es la EJECUCION automatica del
+  // export/borrado del cliente: hoy la solicitud ARCO se registra, se confirma y la resuelve una persona desde el panel.
+  it.todo("T-PR04 [P1] BRECHA (H55, ver #403): ejecucion automatica de export/borrado ARCO del cliente (hoy la solicitud se registra y la resuelve una persona desde el panel de privacidad)");
 });
 
 describe("E.9 abuso e inyeccion: lo que el servidor garantiza aunque el modelo falle", () => {
