@@ -1465,9 +1465,16 @@ export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: 
   try {
     return await repo.runWithRowSavepoint(() => invokeAgentTool(repo, ctx, name, input));
   } catch (err) {
-    const esRegla = err instanceof OrderValidationError;
+    // QA-PM-R3-reglas-10: la guarda SQL `raise exception ... using errcode = '22023'` (p. ej. "programado_para debe ser una hora futura") es una REGLA de negocio con un mensaje
+    // pensado para el agente: antes salia como "Error interno" (y como fallo del sistema, que sube de rol), sin dejar rastro de la causa.
+    const reglaSql = !(err instanceof OrderValidationError) && (err as { code?: unknown } | null)?.code === "22023" && err instanceof Error && err.message.trim() !== "";
+    const esRegla = err instanceof OrderValidationError || reglaSql;
+    if (!esRegla) {
+      // Solo la clase, el SQLSTATE y el mensaje de la excepcion (sin argumentos de la herramienta: pueden traer datos del cliente).
+      console.error(`[agent-tools] ${name} fallo con error interno: ${err instanceof Error ? err.name : typeof err} ${(err as { code?: unknown } | null)?.code ?? ""} ${err instanceof Error ? err.message.slice(0, 300) : ""}`);
+    }
     return {
-      result: { error: esRegla ? err.message : "Error interno al ejecutar la herramienta" },
+      result: { error: esRegla ? (err as Error).message : "Error interno al ejecutar la herramienta" },
       orderId: null,
       propertyId: null,
       ...(esRegla ? {} : { fallaSistema: true }),
