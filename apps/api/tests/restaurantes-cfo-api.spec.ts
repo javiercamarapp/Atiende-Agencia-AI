@@ -574,3 +574,33 @@ describe("entradas hostiles y sucursales inactivas (revisión de #509)", () => {
     expect((await r.json()).code).toBe("payload_too_large");
   });
 });
+
+describe("rangos válidos que cruzan 15 meses calendario (CFO-05c)", () => {
+  // La SQL (cfo_costos_leer -> cfo_validar_rango) valida los meses expandidos al día 1: 2025-07-01..2026-09-01 mide 428 días. El servicio parte la
+  // lectura de costos en tramos de meses completos; el rango del usuario (≤ 400 días) debe responder 200 en todas las vistas que leen costos.
+  it.each([
+    ["400 días, 15 meses", "desde=2025-07-31&hasta=2026-09-03", ["2025-07-01", "2025-12-01", "2026-03-01", "2026-09-01"]],
+    ["397 días, 15 meses", "desde=2025-01-30&hasta=2026-03-02", ["2025-01-01", "2025-08-01", "2026-03-01"]],
+  ])("%s: /resumen y /estado-resultados responden 200 con los costos de TODOS los meses, sin duplicar", async (_n, qs, meses) => {
+    const { ctx, app, url, A } = await construir();
+    const t = ctx.staff.owner.token;
+    const put = await app.request(url("costos"), authedJson(t, { costos: meses.map((m) => ({ propertyId: A, mes: m.slice(0, 7), concepto: "renta", montoCentavos: 100_000 })) }, "PUT"));
+    expect(put.status, JSON.stringify(await put.clone().json())).toBe(200);
+    const res = await app.request(url(`resumen?${qs}`), authedGet(t));
+    expect(res.status).toBe(200);
+    const fuente = (await res.json()).fuentes.find((f: { id: string }) => f.id === "costos_capturados");
+    expect(fuente.disponible).toBe(true);
+    expect(fuente.cobertura).toEqual({ desde: meses[0], hasta: meses[meses.length - 1] });
+    const pyl = await app.request(url(`estado-resultados?${qs}`), authedGet(t));
+    expect(pyl.status).toBe(200);
+  });
+
+  it("el borde: 401 días sigue siendo 422 y 14 meses calendario exactos (400 días) pasan en una sola lectura", async () => {
+    const { ctx, app, url, repo } = await construir();
+    const t = ctx.staff.owner.token;
+    expect((await app.request(url("resumen?desde=2025-07-31&hasta=2026-09-04"), authedGet(t))).status).toBe(422);
+    const antes = repo.llamadas.get("costosLeer") ?? 0;
+    expect((await app.request(url("resumen?desde=2026-01-01&hasta=2027-02-04"), authedGet(t))).status).toBe(200);
+    expect((repo.llamadas.get("costosLeer") ?? 0) - antes).toBe(1);
+  });
+});

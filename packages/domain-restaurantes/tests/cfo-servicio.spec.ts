@@ -5,7 +5,7 @@ import { InMemoryCfoRepository, type DatasetCfoMemoria, type OpcionesCfoMemoria 
 import { ServicioCfo, type ConsultaCfo } from "../src/cfo/servicio.ts";
 import type { AlcanceSucursales, FilaAgenteDiario, FilaAgotado, FilaEntregaPercentiles, FilaProducto } from "../src/cfo/tipos.ts";
 import { CfoParametroInvalidoError, CfoSinAccesoError } from "../src/cfo/repositorio.ts";
-import { numericoSql, sumarDiasFecha as sumarDias } from "../src/cfo/util.ts";
+import { diasEntre, numericoSql, sumarDiasFecha as sumarDias } from "../src/cfo/util.ts";
 import { SUCURSALES_PM_SINTETICAS, generarDatasetSintetico } from "./fixtures/cfo-pm-sintetico.ts";
 
 const SUC = SUCURSALES_PM_SINTETICAS;
@@ -487,5 +487,70 @@ describe("degradación por bloque y periodos largos (revisión de #509)", () => 
     expect(() => numericoSql("9007199254740993")).toThrow(/2\^53/);
     expect(numericoSql("123.45")).toBe(123.45);
     expect(numericoSql(null)).toBeNull();
+  });
+});
+
+describe("CFO-05c: rangos de 15 meses calendario y base del margen", () => {
+  it.each([
+    ["2025-07-31", "2026-09-03", 400],
+    ["2025-01-30", "2026-03-02", 397],
+  ])("rango válido de %s a %s (%i días) lee los costos en dos tramos y no duplica meses", async (desde, hasta, dias) => {
+    const { repo, servicio } = armar();
+    expect(diasEntre(desde, hasta)).toBe(dias);
+    for (const mes of ["2025-01-01", "2025-07-01", "2025-12-01", "2026-03-01", "2026-09-01"])
+      await repo.costoGuardar({ organizationId: "org", propertyId: T1, mes, concepto: "renta", montoCentavos: 100_000, pct: null, nota: null });
+    const antes = repo.llamadas.get("costosLeer") ?? 0;
+    const r = await servicio.resumen({ desde, hasta, comparar: "periodo_anterior", granularidad: "mes" });
+    expect(r.bloques.captura).toBe(true);
+    expect((repo.llamadas.get("costosLeer") ?? 0) - antes).toBe(2);
+    const v = await servicio.costosVista("2025-01-01", "2026-09-01");
+    const claves = v.costos.map((c) => `${c.mes}|${c.propertyId}|${c.concepto}`);
+    expect(new Set(claves).size).toBe(claves.length);
+    expect(v.costos.map((c) => c.mes)).toEqual(["2025-01-01", "2025-07-01", "2025-12-01", "2026-03-01", "2026-09-01"]);
+  });
+
+  it("el repositorio sigue rechazando como la SQL un tramo de meses de más de 400 días (la regla no se relaja)", async () => {
+    const { repo } = armar();
+    await expect(repo.costosLeer({ organizationId: "org", propertyIds: null }, "2025-07-01", "2026-09-01")).rejects.toBeInstanceOf(CfoParametroInvalidoError);
+    await expect(repo.costosLeer({ organizationId: "org", propertyIds: null }, "2026-01-01", "2027-02-01")).resolves.toMatchObject({ disponible: true });
+  });
+
+  async function conCostos(op: { sr: boolean }) {
+    const { repo, servicio } = armar({ dataset: op.sr ? { srResumen: D.srResumen } : {} });
+    for (const id of IDS)
+      for (const mes of ["2026-08-01", "2026-09-01"]) {
+        await repo.costoGuardar({ organizationId: "org", propertyId: id, mes, concepto: "insumos", montoCentavos: 1_000_000, pct: null, nota: null });
+        await repo.costoGuardar({ organizationId: "org", propertyId: id, mes, concepto: "comision_terminal", montoCentavos: 10_000, pct: null, nota: null });
+      }
+    return servicio.resumen(Q);
+  }
+
+  it.each([[false], [true]])("con SR=%s: en ninguna tarjeta el margen absoluto supera la venta de su misma base, y la base va rotulada", async (sr) => {
+    const r = await conCostos({ sr });
+    const columnas = [r.kpis.total, ...r.kpis.porSucursal];
+    let conMargen = 0;
+    for (const c of columnas) {
+      const por = new Map(c.kpis.map((k) => [k.id, k]));
+      const m = por.get("margen_contribucion")!;
+      if (m.valor.valor == null) continue;
+      conMargen += 1;
+      const venta = sr ? por.get("ventas_negocio_sr")! : por.get("ventas_netas")!;
+      expect(m.baseVentas).toBe(sr ? "softrestaurant" : "agente");
+      expect(venta.baseVentas).toBe(sr ? "softrestaurant" : "agente");
+      expect(Math.abs(m.valor.valor)).toBeLessThanOrEqual(venta.valor.valor as number);
+      expect(m.etiqueta).toBe(sr ? "Margen de contribución (sobre las ventas del negocio, SoftRestaurant)" : "Margen de contribución");
+      if (!sr) expect(por.has("ventas_negocio_sr")).toBe(false);
+    }
+    expect(conMargen).toBeGreaterThan(0);
+  });
+
+  it("con SR la narrativa nunca junta «el agente vendió» con el margen; si lo cita, rotula la base", async () => {
+    for (const sr of [true, false]) {
+      const r = await conCostos({ sr });
+      for (const o of r.narrativa.oraciones) if (o.texto.includes("el agente vendió")) expect(o.refs).not.toContain("margen_contribucion");
+      for (const o of r.narrativa.oraciones.filter((x) => x.refs.includes("margen_contribucion")))
+        expect(o.texto.startsWith("Sobre las ventas del negocio de ")).toBe(sr);
+      expect(r.narrativa.numerosNoRespaldados).toEqual([]);
+    }
   });
 });

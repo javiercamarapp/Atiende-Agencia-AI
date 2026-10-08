@@ -78,6 +78,14 @@ describe("narrativa con datos", () => {
     const r = narrarResumen(kpis({ mayorAporte: null, multiSucursal: null }), H, TODAS);
     expect(r.texto).toContain("El margen de contribución es $91,000.00 [margen_contribucion], parcial porque faltan costos por capturar.");
   });
+  it("con SR el margen se rotula sobre las ventas del negocio (no junto a las del agente) y el guard de números lo respalda", () => {
+    const k = kpis({ mayorAporte: null, multiSucursal: null, margenParcial: false, ventasNegocio: kpi(65_000_000, "centavos"), margenContribucion: kpi(52_000_000, "centavos") });
+    const r = narrarResumen(k, [], TODAS);
+    expect(r.texto).toContain("Sobre las ventas del negocio de $650,000.00 [ventas_negocio] según SoftRestaurant, el margen de contribución es $520,000.00 [margen_contribucion].");
+    expect(r.numerosNoRespaldados).toEqual([]);
+    const oracionMargen = r.oraciones.find((o) => o.refs.includes("margen_contribucion"))!;
+    expect(oracionMargen.texto).not.toContain("el agente vendió");
+  });
 });
 
 describe("variaciones del texto", () => {

@@ -40,6 +40,8 @@ export interface KpisResumen {
   /** true = el costo de Meta (WhatsApp) no se mide (0 eventos): el costo del agente por pedido NO lo incluye y la narrativa lo dice («no medido», nunca $0). */
   readonly metaNoMedido?: boolean;
   readonly margenContribucion?: ValorKpi;
+  /** Ventas del negocio según SoftRestaurant: la base sobre la que se calculó el margen cuando SR es el titular. Ausente = el margen es sobre las ventas del agente. */
+  readonly ventasNegocio?: ValorKpi;
   readonly margenParcial?: boolean;
   /** Clientes que compraron en más de una sucursal (no aditivo). */
   readonly multiSucursal?: number | null;
@@ -85,7 +87,7 @@ function tokensNumericos(texto: string): string[] {
 
 function textosDeEntrada(kpis: KpisResumen, hallazgos: readonly Hallazgo[]): string[] {
   const out: string[] = [kpis.periodo, kpis.comparadoContra, kpis.alcanceEtiqueta ?? ""];
-  for (const v of [kpis.ventasNetas, kpis.pedidos, kpis.ticket, kpis.variacionVentas, kpis.descuentoPct, kpis.cancelacionPct, kpis.costoPorPedidoAgente, kpis.margenContribucion]) {
+  for (const v of [kpis.ventasNetas, kpis.pedidos, kpis.ticket, kpis.variacionVentas, kpis.descuentoPct, kpis.cancelacionPct, kpis.costoPorPedidoAgente, kpis.margenContribucion, kpis.ventasNegocio]) {
     if (!v) continue;
     out.push(mostrar(v) ?? "", mostrar(v, true) ?? "");
   }
@@ -196,10 +198,16 @@ export function narrarResumen(kpis: KpisResumen, hallazgos: readonly Hallazgo[],
 
   // Margen de contribución
   if (kpis.margenContribucion && mostrar(kpis.margenContribucion) != null) {
-    add({
-      texto: `El margen de contribución es ${registrar("margen_contribucion", kpis.margenContribucion)}${kpis.margenParcial ? ", parcial porque faltan costos por capturar" : ""}.`,
-      refs: ["margen_contribucion"],
-    }, 4);
+    const parcial = kpis.margenParcial ? ", parcial porque faltan costos por capturar" : "";
+    if (kpis.ventasNegocio && mostrar(kpis.ventasNegocio) != null) {
+      // Con SR el margen va sobre las ventas del negocio, no sobre las del agente de arriba: se rotula la base.
+      add({
+        texto: `Sobre las ventas del negocio de ${registrar("ventas_negocio", kpis.ventasNegocio)} según SoftRestaurant, el margen de contribución es ${registrar("margen_contribucion", kpis.margenContribucion)}${parcial}.`,
+        refs: ["ventas_negocio", "margen_contribucion"],
+      }, 4);
+    } else {
+      add({ texto: `El margen de contribución es ${registrar("margen_contribucion", kpis.margenContribucion)}${parcial}.`, refs: ["margen_contribucion"] }, 4);
+    }
   }
 
   if (!alcance.organizacionCompleta) add({ texto: "Las cifras corresponden solo a las sucursales que usted administra.", refs: [] }, 1);
