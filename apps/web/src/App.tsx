@@ -123,6 +123,7 @@ const RentasMisTareasPage = cargaPerezosa(() => import("./verticals/rentas/pages
 const RentasIcalSyncPage = cargaPerezosa(() => import("./verticals/rentas/pages/IcalSync.tsx"), "IcalSyncPage");
 const RentasMonitorSyncPage = cargaPerezosa(() => import("./verticals/rentas/pages/MonitorSync.tsx"), "MonitorSyncPage");
 const RentasReportesPage = cargaPerezosa(() => import("./verticals/rentas/pages/Reportes.tsx"), "ReportesPage");
+const PreCheckinPublicoPage = cargaPerezosa(() => import("./verticals/rentas/pages/PreCheckin.tsx"), "PreCheckinPage");
 const RentasAccesoHuespedPage = cargaPerezosa(() => import("./verticals/rentas/pages/AccesoHuesped.tsx"), "AccesoHuespedPage");
 const RentasPlantillasPage = cargaPerezosa(() => import("./verticals/rentas/pages/Plantillas.tsx"), "PlantillasPage");
 const RentasPrivacidadPage = cargaPerezosa(() => import("./verticals/rentas/pages/Privacidad.tsx"), "PrivacidadPage");
@@ -334,6 +335,11 @@ const RestaurantesCfoRoute = shellRoute(RestaurantesShell, "/restaurantes/login"
 function DemoWhatsAppRoute() {
   const { orgSlug = "" } = useParams();
   return <DemoWhatsAppPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
+// Rn-P3-08 -- pre-check-in PUBLICO del huesped de rentas (enlace fijo por propiedad que la gestora pega en los mensajes programados de la OTA): sin shell ni sesion.
+function RentasPreCheckinPublicoRoute() {
+  const { propertyId = "" } = useParams();
+  return <PreCheckinPublicoPage apiBaseUrl={API_BASE_URL} propertyId={propertyId} />;
 }
 // H-30 -- privacidad PUBLICA del huesped de hoteles (aviso + ARCO sin login, y "mis datos" con enlace firmado): sin shell de panel.
 function HotelesAvisoPublicoRoute() {
@@ -1162,6 +1168,7 @@ export function App() {
         <Route path="/rentas/restablecer-contrasena" element={<RestablecerContrasenaPage apiBaseUrl={API_BASE_URL} vertical="rentas" />} />
         <Route path="/rentas/verificar-correo" element={<VerificarCorreoPage apiBaseUrl={API_BASE_URL} vertical="rentas" />} />
         <Route path="/rentas/registro" element={<RentasRegistroRoute />} />
+        <Route path="/rentas/precheckin/:propertyId" element={<RentasPreCheckinPublicoRoute />} />
         <Route path="/rentas/:orgSlug" element={<RentasDashboardRoute />} />
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />
         <Route path="/rentas/:orgSlug/precios" element={<RentasPreciosRoute />} />

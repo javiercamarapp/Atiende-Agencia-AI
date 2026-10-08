@@ -8,12 +8,12 @@
 // operaciones de SISTEMA no degradan aquí: dejan subir el error y el cron (una
 // transacción por reserva, ver ./liberacion.ts) decide.
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import { emitirNotificacion, isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import { accesoAad } from "./cipher.ts";
 import type { AccesoCipher, CampoAcceso } from "./cipher.ts";
 import { AccesoDescifradoError, AccesoNoDisponibleError } from "./errores.ts";
 import type { RentasAccesoRepository } from "./repository.ts";
-import type { ErrorAccesoLiberacion, EventoAccesoRecord, ReservaAccesoRecord, EventoBitacoraAcceso, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ResultadoAcceso, ResultadoConfirmarPago, ResumenBarridoCifrado } from "./tipos.ts";
+import type { ErrorAccesoLiberacion, EventoAccesoRecord, ReservaAccesoRecord, EventoBitacoraAcceso, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PendienteEntregaOta, PoliticaAcceso, ReservaParaMensajeOta, ResultadoAcceso, ResultadoConfirmarPago, ResultadoEntregaManual, ResumenBarridoCifrado } from "./tipos.ts";
 import type { EntradaInstruccion, EntradaPolitica } from "./validacion.ts";
 
 interface PoliticaRow {
@@ -256,6 +256,95 @@ export class PostgresRentasAccesoRepository implements RentasAccesoRepository {
         liberada: r.liberada,
       }));
     });
+  }
+
+  listarPendientesEntrega(propertyId: string, limite: number): Promise<ResultadoAcceso<readonly PendienteEntregaOta[]>> {
+    return this.conDegradacion("pendientes_entrega", async () => {
+      // Reserva confirmada que aun no termina, con la omision registrada, SIN liberar (ni por correo ni a mano) y sin un correo valido
+      // (si ya lo capturo el pre-check-in, la siguiente corrida la entrega sola y deja de ser pendiente).
+      const { rows } = await this.db.query<{
+        id: string;
+        unidad_id: string;
+        unidad_nombre: string;
+        canal: string;
+        check_in: string;
+        check_out: string;
+        huesped_nombre: string | null;
+        omitida_en: string;
+      }>(
+        `select o.id, o.unidad_id, u.name as unidad_nombre, coalesce(c.codigo, 'manual') as canal,
+                to_char(lower(o.rango), 'YYYY-MM-DD') as check_in, to_char(upper(o.rango), 'YYYY-MM-DD') as check_out,
+                g.nombre as huesped_nombre,
+                (select max(b.creado_en) from rentas.acceso_bitacora b where b.ocupacion_id = o.id and b.evento = 'omitida_sin_contacto')::text as omitida_en
+         from rentas.ocupacion o
+         join rentas.unidad u on u.id = o.unidad_id
+         left join rentas.property_config pc on pc.property_id = o.property_id
+         left join rentas.canal c on c.id = o.canal_origen_id
+         left join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+         left join rentas.acceso_reserva ar on ar.ocupacion_id = o.id
+         where o.property_id = $1 and o.capa = 'reserva' and o.estado = 'confirmado'
+           and upper(o.rango) >= (now() at time zone coalesce(pc.zona_horaria, 'America/Mexico_City'))::date
+           and ar.liberado_en is null
+           and (g.contacto is null or g.contacto !~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$')
+           and exists (select 1 from rentas.acceso_bitacora b where b.ocupacion_id = o.id and b.evento = 'omitida_sin_contacto')
+         order by lower(o.rango), o.id
+         limit $2;`,
+        [propertyId, limite],
+      );
+      return rows.map((r) => ({
+        ocupacionId: r.id,
+        unidadId: r.unidad_id,
+        unidadNombre: r.unidad_nombre,
+        canal: r.canal,
+        checkIn: r.check_in,
+        checkOut: r.check_out,
+        huespedNombre: r.huesped_nombre,
+        omitidaEn: r.omitida_en,
+      }));
+    });
+  }
+
+  obtenerReservaParaMensaje(propertyId: string, ocupacionId: string): Promise<ResultadoAcceso<ReservaParaMensajeOta | null>> {
+    return this.conDegradacion("reserva_mensaje", async () => {
+      const { rows } = await this.db.query<{ id: string; unidad_id: string; unidad_nombre: string; check_in: string; check_out: string; huesped_nombre: string | null }>(
+        `select o.id, o.unidad_id, u.name as unidad_nombre, to_char(lower(o.rango), 'YYYY-MM-DD') as check_in, to_char(upper(o.rango), 'YYYY-MM-DD') as check_out, g.nombre as huesped_nombre
+         from rentas.ocupacion o
+         join rentas.unidad u on u.id = o.unidad_id
+         left join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+         where o.property_id = $1 and o.id = $2 and o.capa = 'reserva' and o.estado = 'confirmado';`,
+        [propertyId, ocupacionId],
+      );
+      const r = rows[0];
+      return r ? { ocupacionId: r.id, unidadId: r.unidad_id, unidadNombre: r.unidad_nombre, checkIn: r.check_in, checkOut: r.check_out, huespedNombre: r.huesped_nombre } : null;
+    });
+  }
+
+  async marcarEntregadaManual(ocupacionId: string, propertyId: string): Promise<ResultadoEntregaManual> {
+    return runWithSavepointFallback<ResultadoEntregaManual>({
+      session: this.db,
+      savepointName: "sp_acceso_entregada_manual",
+      primary: async () => {
+        // La funcion SQL deriva la property de la ocupacion; aqui se amarra la reserva a la property de la ruta (un staff con acceso a A y B no marca una de B desde A).
+        const propia = await this.db.query(`select 1 from rentas.ocupacion where id = $1::uuid and property_id = $2::uuid;`, [ocupacionId, propertyId]);
+        if (propia.rows.length === 0) return "no_encontrada";
+        const { rows } = await this.db.query<{ nueva: boolean }>(`select rentas.acceso_marcar_entregada_manual($1::uuid) as nueva;`, [ocupacionId]);
+        return rows[0]?.nueva === true ? "entregada" : "ya_entregada";
+      },
+      // P0002 = la reserva no existe, no esta confirmada o no es de esta property/rol (la funcion no distingue).
+      isRecoverable: (err) => isMigrationPendingError(err) || codigoPg(err) === "P0002",
+      fallback: async (err) => (codigoPg(err) === "P0002" ? "no_encontrada" : "no_disponible"),
+    });
+  }
+
+  async avisarOmitidaSinContacto(ocupacionId: string, organizationId: string, propertyId: string): Promise<boolean> {
+    // Rn-P3-09: aviso in-app, dedupe por reserva (clave = id de la reserva), sin PII en el texto. emitirNotificacion corre bajo SAVEPOINT y devuelve un
+    // estado (nunca lanza por una base sin core.emit_notification); aun asi se protege: el aviso jamas puede romper la liberacion de otras reservas.
+    try {
+      const r = await emitirNotificacion(this.db, { evento: "rentas.acceso.omitido_sin_contacto", organizationId, propertyId, clave: ocupacionId, entidadTipo: "ocupacion", entidadId: ocupacionId });
+      return r.estado === "emitida";
+    } catch {
+      return false;
+    }
   }
 
   async siguienteLiberacion(excluir: readonly string[]): Promise<LiberacionPendiente | null> {

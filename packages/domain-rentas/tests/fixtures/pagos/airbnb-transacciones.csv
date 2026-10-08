@@ -1,0 +1,5 @@
+Date,Arriving by date,Type,Confirmation Code,Booking date,Start date,End date,Nights,Guest,Listing,Details,Reference code,Currency,Amount,Paid out,Service fee,Fast pay fee,Cleaning fee,Gross earnings,Occupancy taxes,Earnings year
+10/16/2026,,Reservation,HMAB12CD34,10/01/2026,10/15/2026,10/20/2026,5,Guest A,Casa Ejemplo 1,,,MXN,,"8,730.00",-270.00,,500.00,"9,000.00",,2026
+10/21/2026,,Reservation,HMZZ99YY88,10/05/2026,11/01/2026,11/05/2026,4,Guest B,Casa Ejemplo 1,,,MXN,,4500.00,-139.00,,300.00,4639.00,,2026
+10/22/2026,,Resolution Adjustment,HMAB12CD34,,10/15/2026,10/20/2026,,Guest A,Casa Ejemplo 1,Ajuste por dano,,MXN,-350.00,,,,,,,2026
+10/23/2026,,Payout,,,,,,,,Transferencia,G-ABCDEFGH,MXN,13230.00,,,,,,,2026

@@ -38,7 +38,7 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/despachos/cobranza-reminders` | `25 14 * * *` | Recordatorios de cobranza |
 | `/internal/despachos/email-dispatch` | `*/15 * * * *` | Drena el outbox de correo |
 | `/internal/rentas/email-dispatch` | `*/15 * * * *` | Drena el outbox de correo |
-| `/internal/rentas/checkin-recordatorio` | `40 14 * * *` | Recordatorio de check-in |
+| `/internal/rentas/checkin-recordatorio` | `0 * * * *` | Recordatorio de check-in cada hora: reservas con correo del huésped cuyo check-in (15:00 en la zona de su property) cae entre ahora+2 h y ahora+48 h; la marca `recordatorio_checkin_enviado_en` evita el segundo recordatorio (Rn-P3-10). También corre el barrido de reservas sin movimiento financiero |
 | `/internal/rentas/ical-sync` | `*/15 * * * *` | Sincroniza feeds iCal (lease por feed, piso de 10 min, backoff) |
 | `/internal/rentas/checkout-sweep` | `*/15 * * * *` | Barrido de limpieza por propiedad (red de seguridad de la tarea que nace al confirmar la reserva: crea las faltantes, buffer del día del checkout, cancela/reprograma desfasadas) y avisos in-app de asignación y de mañana sin responsable |
 | `/internal/whatsapp/dispatch` | `*/5 * * * *` | Drena el outbox de WhatsApp de citas/hoteles/restaurantes/licitaciones (503 sin WHATSAPP_ACCESS_TOKEN) |
