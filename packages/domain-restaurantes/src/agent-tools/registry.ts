@@ -21,6 +21,7 @@ import { buscarPedidoRecienteConSucursal } from "../pedido-reciente.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError } from "../errors.ts";
 import { normalizePhone } from "../phone.ts";
+import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
@@ -642,16 +643,16 @@ function toCreateOrderItems(raw: unknown, lenient: boolean): CreateOrderInput["i
  */
 /** "10%" / "10 %" -> 10; cualquier otra cosa -> null. Un porcentaje valido va de 1 a 100. */
 function porcentajeDePropina(valor: unknown): number | null {
-  if (typeof valor === "number") return Number.isFinite(valor) && valor > 0 && valor <= 100 ? valor : null;
+  if (typeof valor === "number") return Number.isFinite(valor) && valor > 0 && valor <= PROPINA_PORCENTAJE_MAX ? valor : null;
   if (typeof valor !== "string") return null;
   const m = /^\s*(\d{1,3}(?:[.,]\d{1,2})?)\s*(?:%|por\s*ciento)\s*$/i.exec(valor);
   if (!m) return null;
   const n = Number(m[1]!.replace(",", "."));
-  return n > 0 && n <= 100 ? n : null;
+  return n > 0 && n <= PROPINA_PORCENTAJE_MAX ? n : null;
 }
 
 function esSalsaBasicaIncluida(valor: unknown): boolean {
-  return typeof valor === "string" && (DEFAULT_COMPLEMENTS as readonly string[]).includes(valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim());
+  return typeof valor === "string" && (DEFAULT_COMPLEMENTS as readonly string[]).includes(valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/\s+/g, "_"));
 }
 
 function assertEntradasReconocidas(input: Record<string, unknown>): void {
@@ -663,6 +664,10 @@ function assertEntradasReconocidas(input: Record<string, unknown>): void {
         `No manejamos ${desconocidos.map((c) => `"${String(c)}"`).join(", ")} como complemento. Los que sí se piden son: ${COMPLEMENTOS_PEDIBLES.join(", ")}. Dígale al cliente que ese no lo manejamos y ofrezca uno de la lista; no lo anote ni lo dé por registrado.`,
       );
     }
+  }
+  const pctCrudo = input.propina_porcentaje;
+  if (pctCrudo !== undefined && pctCrudo !== null && pctCrudo !== "" && porcentajeDePropina(pctCrudo) === null) {
+    throw new OrderValidationError(`propina_porcentaje debe ser un número entre 1 y ${PROPINA_PORCENTAJE_MAX} (por ejemplo 10 para el 10 %). Si el cliente dio pesos, mande propina en pesos.`);
   }
   const propina = input.propina;
   if (propina !== undefined && propina !== null && propina !== "" && typeof propina === "string" && porcentajeDePropina(propina) !== null) return;
