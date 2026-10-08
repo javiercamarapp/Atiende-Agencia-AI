@@ -309,6 +309,49 @@ describe.skipIf(!habilitado)("CFO contra Postgres real (rol authenticated)", () 
     }
   });
 
+  it("sucursal INACTIVA con historia y un cliente que compró en A, B y la inactiva: /resumen, /clientes y /patrones responden 200 y el total coincide con la SQL", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const C = "cccccccc-0000-4000-8000-0000000000c3";
+    await client.query("begin");
+    try {
+      await sembrar(ctx);
+      await client.query("reset role");
+      await client.query(`insert into core.property (id, organization_id, name) values ($1, $2, 'Cerrada')`, [C, ctx.organizationId]);
+      await client.query(`insert into restaurantes.branch_detail (property_id, organization_id, slug, zona_horaria) values ($1, $2, $3, null)`, [C, ctx.organizationId, `c-${C.slice(0, 6)}`]);
+      await client.query(`update core.property set status = 'inactive' where id = $1`, [C]);
+      const cliente = "00000000-0000-0000-0000-0000000f00e1"; // ya compró en A (a1, a3); ahora también en B y en la inactiva
+      await client.query(
+        `insert into restaurantes.orders (id, organization_id, property_id, customer_id, customer_name, customer_phone, total, status, items, source, created_at) values
+          ('00000000-0000-0000-0000-00000f4f0061', $1, $2, $4, 'Cliente 61', '+52 5500009061', 70, 'pending', '[]'::jsonb, 'whatsapp', '2026-03-10 18:00+00'),
+          ('00000000-0000-0000-0000-00000f4f0062', $1, $3, $4, 'Cliente 62', '+52 5500009062', 30, 'pending', '[]'::jsonb, 'whatsapp', '2026-03-10 19:00+00')`,
+        [ctx.organizationId, ctx.propertyIdB, C, cliente],
+      );
+      ctx.restaurantesRepo.seedBranch({ propertyId: C, organizationId: ctx.organizationId, name: "Cerrada", slug: "cerrada", status: "inactive", phone: null, address: null, lat: null, lng: null });
+      const app = buildApp({ ...ctx.deps, cfoRestaurantesRepo: () => new PostgresCfoRepository(sesion) });
+      const ver = async (ruta: string) => {
+        await como(ctx.staff.owner.id);
+        const r = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/cfo/${ruta}?${q}`, authedGet(ctx.staff.owner.token));
+        return { status: r.status, json: (await r.json()) as Record<string, any> }; // eslint-disable-line @typescript-eslint/no-explicit-any
+      };
+      const resumen = await ver("resumen");
+      expect(resumen.status).toBe(200);
+      // 60100 (A y B de la siembra) + 7000 + 3000 (B y la inactiva): la venta histórica de la inactiva SÍ cuenta, igual que en la SQL directa.
+      await como(ctx.staff.owner.id);
+      const sql = await client.query(`select coalesce(sum(neta_centavos), 0)::int as n from restaurantes.cfo_ventas_diarias($1, null, $2::date, $2::date)`, [ctx.organizationId, DIA]);
+      expect(resumen.json["kpis"].total.sumas.netaCentavos).toBe(sql.rows[0].n);
+      expect(resumen.json["kpis"].porSucursal.map((c: { propertyId: string }) => c.propertyId)).toContain(C);
+      expect(resumen.json["sucursales"].find((x: { propertyId: string }) => x.propertyId === C).activa).toBe(false);
+      const clientes = await ver("clientes");
+      expect(clientes.status).toBe(200);
+      expect(clientes.json["total"].resumen.clientesConPedido).toBe(2); // el conjunto cuenta al cliente UNA vez
+      expect(clientes.json["multiSucursal"].clientes).toBeGreaterThanOrEqual(1);
+      expect((await ver("patrones")).status).toBe(200);
+      expect((await ver("ventas")).json["ventas"].total.sumas.netaCentavos).toBe(sql.rows[0].n);
+    } finally {
+      await client.query("rollback");
+    }
+  });
+
   it("ServicioCfo con la base real: los avisos y fuentes salen del estado real (sin SR, Meta no medido) y el consolidado cuadra", async () => {
     await enTransaccion(async (ctx) => {
       await como(ctx.staff.owner.id);

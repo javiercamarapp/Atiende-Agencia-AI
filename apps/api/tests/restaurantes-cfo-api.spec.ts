@@ -16,8 +16,9 @@ function envolver(app: ReturnType<typeof buildApp>): { request(input: string, in
 }
 
 const D = generarDatasetSintetico({ diasRango: 120 });
-const [T1, T2] = SUCURSALES_PM_SINTETICAS.map((s) => s.propertyId) as [string, string];
+const [T1, T2, T3] = SUCURSALES_PM_SINTETICAS.map((s) => s.propertyId) as [string, string, string];
 // Clientes recalculados SOLO con las dos sucursales de la prueba: el renglón del conjunto de las 7 sería mayor que la suma de dos (imposible, y la API lo rechaza).
+const CLIENTES_ABC = resumirClientes(D.pedidos.filter((p) => p.propertyId === T1 || p.propertyId === T2 || p.propertyId === T3), D.desde, D.hasta);
 const CLIENTES_AB = resumirClientes(D.pedidos.filter((p) => p.propertyId === T1 || p.propertyId === T2), D.desde, D.hasta);
 const Q = "desde=2026-08-31&hasta=2026-09-27";
 const ENDPOINTS_LECTURA = ["alcance", "resumen", "ventas", "sucursales", "estado-resultados", "clientes", "productos", "patrones", "operacion", "pedidos", "config", "costos", "softrestaurant/lotes", "softrestaurant/cuadre"] as const;
@@ -27,21 +28,27 @@ function remap<T extends Fila>(filas: readonly T[], mapa: ReadonlyMap<string, st
   return filas.filter((f) => f.propertyId === null || mapa.has(f.propertyId)).map((f) => (f.propertyId === null ? f : { ...f, propertyId: mapa.get(f.propertyId)! }));
 }
 
-async function construir(op: { repo?: Partial<OpcionesCfoMemoria>; dataset?: Partial<DatasetCfoMemoria> | ((ids: { A: string; B: string }) => Partial<DatasetCfoMemoria>); sinRepo?: boolean } = {}) {
+async function construir(op: { repo?: Partial<OpcionesCfoMemoria>; dataset?: Partial<DatasetCfoMemoria> | ((ids: { A: string; B: string }) => Partial<DatasetCfoMemoria>); sinRepo?: boolean; inactiva?: boolean } = {}) {
   const ctx = await buildRestaurantesKpiTestContext(buildApp);
   const A = ctx.propertyIdA;
   const B = ctx.propertyIdB;
   const mapa = new Map([[T1, A], [T2, B]]);
+  // Sucursal INACTIVA con historia (T3): la SQL la incluye cuando recibe p_props = null, así que la API debe contarla también.
+  const C = "cccccccc-0000-4000-8000-0000000000c3";
+  if (op.inactiva) {
+    mapa.set(T3, C);
+    ctx.restaurantesRepo.seedBranch({ propertyId: C, organizationId: ctx.organizationId, name: "Cerrada", slug: "cerrada", status: "inactive", phone: null, address: null, lat: null, lng: null });
+  }
   const percentiles = [
     { propertyId: A, alcance: "sucursal" as const, entregados: 100, p50Min: 35, p90Min: 52 },
     { propertyId: B, alcance: "sucursal" as const, entregados: 80, p50Min: 38, p90Min: 57 },
     { propertyId: null, alcance: "conjunto" as const, entregados: 180, p50Min: 36, p90Min: 55 },
   ];
   const repo = new InMemoryCfoRepository({
-    sucursales: [A, B],
+    sucursales: op.inactiva ? [A, B, C] : [A, B],
     dataset: {
       ventasDiarias: remap(D.ventasDiarias, mapa), cortesias: remap(D.cortesias, mapa), ventasHora: remap(D.ventasHora, mapa), productos: remap(D.productos, mapa), agenteDiario: remap(D.agenteDiario, mapa),
-      comandasPos: remap(D.comandasPos, mapa), clientesResumen: remap(CLIENTES_AB, mapa), agotados: remap(D.agotados, mapa), entregasPercentiles: percentiles,
+      comandasPos: remap(D.comandasPos, mapa), clientesResumen: remap(op.inactiva ? CLIENTES_ABC : CLIENTES_AB, mapa), agotados: remap(D.agotados, mapa), entregasPercentiles: percentiles,
       cobertura: [A, B].map((id) => ({ propertyId: id, primerDia: "2026-05-01", ultimoDia: "2026-09-27", zona: "America/Merida", corte: "01:00:00" })),
       ...(typeof op.dataset === "function" ? op.dataset({ A, B }) : op.dataset),
     },
@@ -50,7 +57,7 @@ async function construir(op: { repo?: Partial<OpcionesCfoMemoria>; dataset?: Par
   const deps: AppDeps = { ...ctx.deps, ...(op.sinRepo ? {} : { cfoRestaurantesRepo: () => repo }) };
   const app = envolver(buildApp(deps));
   const url = (ruta: string, propertyId = A) => `/v1/restaurantes/${propertyId}/admin/cfo/${ruta}`;
-  return { ctx, repo, app, url, A, B };
+  return { ctx, repo, app, url, A, B, C };
 }
 
 describe("roles por acción y alcance", () => {
@@ -476,5 +483,74 @@ describe("exportaciones (solo bitácora; el archivo es CFO-06)", () => {
     expect((await app.request(url("exportaciones"), authedJson(ctx.staff.adminSucursalA.token, { ...body, sucursales: B }, "POST"))).status).toBe(403);
     for (const mal of [{ ...body, vista: "otra" }, { ...body, formato: "csv" }, { ...body, desde: "mal" }, { ...body, extra: 1 }, {}])
       expect((await app.request(url("exportaciones"), authedJson(ctx.staff.owner.token, mal, "POST"))).status).toBe(422);
+  });
+});
+
+describe("entradas hostiles y sucursales inactivas (revisión de #509)", () => {
+  it("sucursal INACTIVA con historia: /resumen, /clientes, /patrones y /ventas cuentan lo mismo que la SQL (todas las sucursales de la organización) y la marcan activa:false", async () => {
+    const { ctx, app, url, C } = await construir({ inactiva: true });
+    const t = ctx.staff.owner.token;
+    const resumen = await app.request(url(`resumen?${Q}`), authedGet(t));
+    expect(resumen.status).toBe(200);
+    const r = await resumen.json();
+    expect(r.kpis.porSucursal.map((c: { propertyId: string }) => c.propertyId)).toContain(C);
+    expect(r.sucursales.find((x: { propertyId: string }) => x.propertyId === C)).toMatchObject({ nombre: "Cerrada", activa: false });
+    expect(r.kpis.total.sumas.netaCentavos).toBe(r.kpis.porSucursal.reduce((s: number, c: { sumas: { netaCentavos: number } }) => s + c.sumas.netaCentavos, 0));
+    const cl = await app.request(url(`clientes?${Q}`), authedGet(t));
+    expect(cl.status).toBe(200);
+    expect((await app.request(url(`patrones?${Q}`), authedGet(t))).status).toBe(200);
+    // Un admin acotado no la ve (no está en su membresía).
+    const acotado = await (await app.request(url(`resumen?${Q}`), authedGet(ctx.staff.adminSucursalA.token))).json();
+    expect(acotado.kpis.porSucursal.map((c: { propertyId: string }) => c.propertyId)).not.toContain(C);
+  });
+
+  it("llaves del prototipo en PUT /config -> 422 (no 500)", async () => {
+    const { ctx, app, url } = await construir();
+    const t = ctx.staff.owner.token;
+    for (const llave of ["__proto__", "constructor", "toString", "hasOwnProperty", "valueOf", "prototype"]) {
+      const raw = `{"${llave}": 5}`;
+      const init = { method: "PUT", body: raw, headers: { authorization: `Bearer ${t}`, "content-type": "application/json", "content-length": String(raw.length) } };
+      const res = await app.request(url("config"), init);
+      expect(res.status, llave).toBe(422);
+    }
+  });
+
+  it.each([
+    ["año 0000", "desde=0000-01-01&hasta=0000-01-31"],
+    ["año 0001 (el periodo anterior caería al año 0000)", "desde=0001-01-01&hasta=0001-01-31"],
+    ["año 9999 (rango de más de 800 días al expandir)", "desde=9999-12-01&hasta=9999-12-31"],
+    ["año 1999", "desde=1999-12-01&hasta=1999-12-31"],
+    ["año 2101", "desde=2101-01-01&hasta=2101-01-31"],
+  ])("fecha fuera de 2000..2100 (%s) -> 422 en todas las vistas de periodo", async (_n, qs) => {
+    const { ctx, app, url } = await construir();
+    for (const ep of ["resumen", "ventas", "sucursales", "estado-resultados", "clientes", "productos", "patrones", "operacion", "pedidos", "softrestaurant/cuadre"])
+      expect((await app.request(url(`${ep}?${qs}`), authedGet(ctx.staff.owner.token))).status, ep).toBe(422);
+  });
+
+  it("los extremos admitidos (2000-01-01 y 2100-12-31) no revientan ni siquiera con el periodo anterior y las 4 semanas previas", async () => {
+    const { ctx, app, url } = await construir();
+    for (const qs of ["desde=2000-01-01&hasta=2000-01-31", "desde=2100-12-01&hasta=2100-12-31"]) {
+      expect((await app.request(url(`resumen?${qs}&comparar=mismo_dia_semana_4`), authedGet(ctx.staff.owner.token))).status).toBe(200);
+      expect((await app.request(url(`resumen?${qs}&comparar=anio_anterior`), authedGet(ctx.staff.owner.token))).status).toBe(200);
+    }
+  });
+
+  it("mes inválido o fuera de 2000..2100 en PUT /costos y /costos/historial -> 422", async () => {
+    const { ctx, app, url, A } = await construir();
+    const t = ctx.staff.owner.token;
+    for (const mes of ["0000-01", "0001-01-01", "9999-12", "1999-12", "2101-01"]) {
+      const put = await app.request(url("costos"), authedJson(t, { costos: [{ propertyId: A, mes, concepto: "renta", montoCentavos: 1 }] }, "PUT"));
+      expect(put.status, mes).toBe(422);
+      expect((await app.request(url(`costos/historial?propertyId=${A}&mes=${mes}&concepto=renta`), authedGet(t))).status, mes).toBe(422);
+    }
+    expect((await app.request(url("costos?mesDesde=0000-01&mesHasta=0000-12"), authedGet(t))).status).toBe(422);
+  });
+
+  it("un cuerpo de importación por encima de 4 MB devuelve el 413 propio (por debajo del límite de la plataforma)", async () => {
+    const { ctx, app, url, A } = await construir();
+    const relleno = Array.from({ length: 45 }, () => "x".repeat(100_000)); // ≈ 4.5 MB
+    const r = await app.request(url("softrestaurant/importar"), authedJson(ctx.staff.owner.token, { propertyId: A, nombreArchivo: "a.csv", tabla: [["Fecha"], relleno] }, "POST"));
+    expect(r.status).toBe(413);
+    expect((await r.json()).code).toBe("payload_too_large");
   });
 });

@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { InMemoryCfoRepository, type DatasetCfoMemoria, type OpcionesCfoMemoria } from "../src/cfo/repositorio-memoria.ts";
 import { ServicioCfo, type ConsultaCfo } from "../src/cfo/servicio.ts";
 import type { AlcanceSucursales, FilaAgenteDiario, FilaAgotado, FilaEntregaPercentiles, FilaProducto } from "../src/cfo/tipos.ts";
+import { CfoParametroInvalidoError, CfoSinAccesoError } from "../src/cfo/repositorio.ts";
+import { numericoSql } from "../src/cfo/util.ts";
 import { SUCURSALES_PM_SINTETICAS, generarDatasetSintetico } from "./fixtures/cfo-pm-sintetico.ts";
 
 const SUC = SUCURSALES_PM_SINTETICAS;
@@ -391,5 +393,69 @@ describe("guardas del servicio", () => {
       expect(r.narrativa.oraciones.length).toBeGreaterThanOrEqual(3);
       expect(r.narrativa.oraciones.length).toBeLessThanOrEqual(6);
     }
+  });
+});
+
+describe("degradación por bloque y periodos largos (revisión de #509)", () => {
+  function conFallo(metodo: string, err: unknown, op: { dataset?: Partial<DatasetCfoMemoria> } = {}) {
+    const { repo } = armar(op);
+    (repo as unknown as Record<string, unknown>)[metodo] = async () => {
+      throw err;
+    };
+    const errores: string[] = [];
+    const servicio = new ServicioCfo({
+      repo, organizationId: "org", alcance: { propertyIds: IDS, todas: true, organizacionCompleta: true }, propertyIdsSql: null, sucursales: NOMBRES, ahora: AHORA,
+      onError: (bloque) => errores.push(bloque),
+    });
+    return { servicio, errores };
+  }
+
+  it("un error no recuperable en un bloque (timeout) degrada SOLO ese bloque: el resumen devuelve el resto con bloques.clientes=false y avisa", async () => {
+    const { servicio, errores } = conFallo("clientesResumen", Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" }));
+    const r = await servicio.resumen(Q);
+    expect(r.bloques).toEqual({ ventas: true, clientes: false, captura: true });
+    expect(r.disponible).toBe(false);
+    expect(r.kpis.total.kpis.find((k) => k.id === "ventas_netas")!.valor.valor).not.toBeNull();
+    expect(r.kpis.total.kpis.find((k) => k.id === "clientes_activos")!.valor.valor).toBeNull();
+    expect(errores).toEqual(["clientes"]);
+    expect(r.avisos.some((a) => a.includes("actualización 082"))).toBe(true);
+  });
+
+  it("un fallo en ventas degrada ventas (cifras sin dato) y en config usa los defaults con bloques.captura=false", async () => {
+    const v = await conFallo("ventasDiarias", new Error("boom")).servicio.resumen(Q);
+    expect(v.bloques.ventas).toBe(false);
+    expect(v.kpis.total.kpis.find((k) => k.id === "pedidos")!.valor.valor).toBeNull();
+    const c = await conFallo("configLeer", new Error("boom")).servicio.resumen(Q);
+    expect(c.bloques.captura).toBe(false);
+  });
+
+  it("los errores de autorización (42501) y de parámetros (22023) NO se degradan: cortan la vista", async () => {
+    await expect(conFallo("agenteDiario", new CfoSinAccesoError()).servicio.resumen(Q)).rejects.toBeInstanceOf(CfoSinAccesoError);
+    await expect(conFallo("ventasDiarias", new CfoParametroInvalidoError("rango")).servicio.resumen(Q)).rejects.toBeInstanceOf(CfoParametroInvalidoError);
+  });
+
+  it("periodos de más de 62 días no piden las 4 semanas previas ni cortesías de ventanas (menos barridos) y lo avisan; los cortos sí", async () => {
+    const corto = armar();
+    await corto.servicio.resumen(Q);
+    const largo = armar();
+    const r = await largo.servicio.resumen({ ...Q, desde: "2026-06-01", hasta: "2026-09-27", granularidad: "mes" });
+    expect(largo.repo.llamadas.get("ventasDiarias")!).toBeLessThan(corto.repo.llamadas.get("ventasDiarias")! + 1);
+    expect(r.avisos.some((a) => a.includes("más de 62 días"))).toBe(true);
+    expect(r.hallazgos.every((h) => !["caida_ventas", "ticket_baja", "participacion_cae"].includes(h.tipo))).toBe(true);
+    expect((await corto.servicio.resumen(Q)).avisos.some((a) => a.includes("más de 62 días"))).toBe(false);
+  });
+
+  it("con «mismo día de la semana» las 4 ventanas salen de UNA lectura del tramo [desde−28, hasta−7], no de 4 barridos", async () => {
+    const { repo, servicio } = armar();
+    await servicio.resumen({ ...Q, comparar: "mismo_dia_semana_4" });
+    // actual + anterior (hallazgos) + tramo de ventanas = 3 lecturas de ventas diarias.
+    expect(repo.llamadas.get("ventasDiarias")).toBe(3);
+  });
+
+  it("numericoSql rechaza con un error claro un bigint fuera del rango seguro de number (2^53)", () => {
+    expect(numericoSql("9007199254740991")).toBe(9007199254740991);
+    expect(() => numericoSql("9007199254740993")).toThrow(/2\^53/);
+    expect(numericoSql("123.45")).toBe(123.45);
+    expect(numericoSql(null)).toBeNull();
   });
 });
