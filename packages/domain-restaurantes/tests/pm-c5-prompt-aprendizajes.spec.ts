@@ -245,8 +245,8 @@ describe("8. P2 del eval real: escalacion, hora de recogida, nombre y promocione
     expect(p).toMatch(/va por escalar_a_humano; no use registrar_contacto para eso/);
     expect(prompt({ canal: "voz" })).toMatch(/Avise primero al cliente que consulta al gerente y, en ese mismo turno, llame escalar_a_humano/);
   });
-  it("la hora que dice el cliente se acepta y va en hora_recogida: no se escala por 'paso en 20 minutos'", () => {
-    expect(p).toMatch(/La hora a la que el cliente dice que pasará es suya: acéptela tal cual y mándela en hora_recogida; no escale por ella/);
+  it("la hora que dice el cliente se acepta (plazo en minutos_para_recoger, hora exacta en hora_recogida): no se escala por 'paso en 20 minutos'", () => {
+    expect(p).toMatch(/La hora a la que el cliente dice que pasará es suya: acéptela tal cual \(plazo en minutos_para_recoger, hora exacta en hora_recogida\); no escale por ella/);
     expect(p).toMatch(/Solo si el cliente EXIGE una hora garantizada o un tiempo menor al normal de la sucursal, escale \(tiempos_entrega\)/);
   });
   it("el nombre completo va en customer_name; el alambre pedido de pastor no se cambia por el suizo", () => {

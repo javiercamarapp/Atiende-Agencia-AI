@@ -321,6 +321,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         doble_salsas: DOBLE_SALSAS_SCHEMA,
         otro_pedido: { type: "boolean", description: "true SOLO si el cliente pidió expresamente OTRO pedido igual al que ya quedó registrado. Un 'sí' de más o repetir el resumen NO es otro pedido: no lo mande." },
         programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después (otro día o dentro de MÁS de 30 minutos con hora exacta): fecha y hora ISO 8601 con zona (por ejemplo 2026-10-03T14:00:00-06:00), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar. Si el cliente pasa 'en cuanto esté', 'ahorita' o 'en 20 minutos', NO mandes este campo (omítelo; no mandes texto vacío)." },
+        minutos_para_recoger: { type: "integer", description: "Solo canal 'recoger': si el cliente dijo un PLAZO (\"en 40 minutos\", \"en media hora\" = 30, \"dentro de una hora\" = 60), mande ESOS minutos en vez de calcular hora_recogida: el servidor calcula la hora con su reloj. Mande el mismo valor en cotizar_pedido y en crear_pedido. Para una hora exacta (\"a las 8:30\") use hora_recogida; con \"en cuanto esté\" no mande ninguno." },
         hora_recogida: { type: "string", description: "Solo canal 'recoger' y SIN programado_para: la hora a la que pasará el cliente (por ejemplo 'en 40 minutos'), en ISO 8601 con zona, calculada con la HORA LOCAL de la sucursal (no UTC). El servidor la valida (no pasada, de hoy, dentro del horario). Omítela si pasa 'en cuanto esté'." },
       },
       required: ["branch_slug", "items"],
@@ -360,6 +361,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         llevar_terminal: { type: "boolean", description: "true si el cliente pide que lleven terminal (pago con tarjeta a domicilio)." },
         indicaciones_acceso: { type: "string", description: "Solo domicilio, una línea corta (máx. 200 caracteres): cómo llegar o avisar ('timbre del depto 6', 'avísenme al llegar'). No pongas aquí la ubicación: el pin ya se guarda solo." },
         telefono_alterno: { type: "string", description: "Segundo teléfono de contacto, 10 dígitos, si el cliente lo da." },
+        minutos_para_recoger: { type: "integer", description: "Solo canal 'recoger': si el cliente dijo un PLAZO (\"en 40 minutos\", \"en media hora\" = 30, \"dentro de una hora\" = 60), mande ESOS minutos en vez de calcular hora_recogida: el servidor calcula la hora con su reloj. Mande el mismo valor en cotizar_pedido y en crear_pedido. Para una hora exacta (\"a las 8:30\") use hora_recogida; con \"en cuanto esté\" no mande ninguno." },
         hora_recogida: { type: "string", description: "Solo canal 'recoger': hora a la que el cliente pasará, en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00). Si el cliente dijo una hora o un plazo (\"en 40 minutos\", \"a las 2\") MÁNDELA igual que en cotizar_pedido; nunca vacía: omítala solo si pasa 'en cuanto esté'." },
         direccion_etiqueta: { type: "string", description: "Opcional: como llama el cliente a este domicilio (casa, oficina...). Solo si lo dijo." },
         referencias_acceso: { type: "string", description: "Opcional: referencias para llegar (porton, timbre, entre calles). Solo si las dio el cliente." },
@@ -663,15 +665,42 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
  * quien ejecute dentro de una transaccion compartida debe envolver la llamada (ver
  * `executeAgentToolSafely`).
  */
-export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
+export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, rawInput: Record<string, unknown>): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
+  const input = await conHoraDeRecogidaRelativa(repo, ctx, name, rawInput);
   if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);
   }
   return runWithOrderFlow(repo, ctx, ctx.flow, name, input);
 }
 
+
+/** Maximo de `minutos_para_recoger` (misma cota que la recogida de hoy: `HORA_RECOGIDA_MAX_HORAS`). */
+const MINUTOS_PARA_RECOGER_MAX = 12 * 60;
+
+/**
+ * QA-PM-R3-voz-02 / reglas-01: el modelo calculaba mal la hora absoluta de "en 40 minutos" (58 de 132 cotizar/crear de voz rechazados por "mas de 12 horas";
+ * 8 cotizaciones identicas seguidas = 30 s de silencio; en WhatsApp la hora ya habia pasado). Con `minutos_para_recoger` el modelo manda el PLAZO que dijo el
+ * cliente y el SERVIDOR calcula `hora_recogida` con su reloj. En `crear_pedido` se reutiliza la hora ya cotizada (si la hay) para que no cambie por el paso del
+ * tiempo entre cotizar y crear. Una `hora_recogida` explicita manda sobre el plazo.
+ */
+async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (name !== "cotizar_pedido" && name !== "crear_pedido" && name !== "repetir_pedido") return input;
+  const crudo = input.minutos_para_recoger;
+  const minutos = typeof crudo === "number" ? crudo : typeof crudo === "string" && crudo.trim() !== "" ? Number(crudo) : NaN;
+  if (!Number.isFinite(minutos) || minutos < 1 || minutos > MINUTOS_PARA_RECOGER_MAX) return input;
+  if (textoOpcional(input.hora_recogida) || textoOpcional(input.programado_para) || input.canal !== "recoger") return input;
+  const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
+  let horaIso = new Date(ahora + Math.round(minutos) * 60_000).toISOString();
+  if (name === "crear_pedido" && ctx.flow) {
+    const cotizada = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context?.horaRecogida;
+    // `horaRecogida` del contexto es la hora normalizada al minuto ("2026-10-06T19:40"): solo se reutiliza si es una fecha valida.
+    if (cotizada && !Number.isNaN(Date.parse(`${cotizada}:00.000Z`))) horaIso = `${cotizada}:00.000Z`;
+  }
+  const { minutos_para_recoger: _omitido, ...resto } = input;
+  return { ...resto, hora_recogida: horaIso };
+}
 
 function flowNow(flow: OrderFlowRef): number {
   return (flow.now ?? Date.now)();
