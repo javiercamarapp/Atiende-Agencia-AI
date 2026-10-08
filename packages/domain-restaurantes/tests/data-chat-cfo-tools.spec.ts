@@ -96,7 +96,7 @@ describe("cada herramienta contra el servicio del CFO", () => {
     expect(r.rows.find((x) => String(x["linea"]).startsWith("EBITDA"))!["c0"]).toBeNull();
     expect(r.summary).toMatch(/EBITDA operativo incompleto/);
     expect(r.summary).toMatch(/Captura pendiente/);
-    expect(r.summary).toContain("CFO > Costos");
+    expect(r.summary).toContain("CFO > Estado de resultados > Capturar costos");
     expect(r.source).toMatch(/No sustituye a tu contabilidad/);
     // 7 sucursales + total: las columnas tienen el nombre de la sucursal.
     expect(r.columns.map((c) => c.label)).toContain("Altabrisa");

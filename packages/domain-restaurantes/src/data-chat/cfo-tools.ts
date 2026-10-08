@@ -36,7 +36,7 @@ import { DataChatUnavailableError, type RestaurantesDataChatReader } from "./rea
 const UNAVAILABLE_MESSAGE = "Esa información todavía no está disponible para tu cuenta (falta activar una actualización). Tus tableros siguen funcionando.";
 /** Recordatorio corto (el aviso legal completo es `AVISO_CFO`): el copiloto organiza datos operativos, no sustituye al contador. */
 export const AVISO_CONTADOR_COPILOTO = "Organiza tus datos operativos; no sustituye a tu contador ni da asesoría fiscal.";
-const RUTA_CAPTURA = "CFO > Costos (captura de nómina, renta, insumos)";
+const RUTA_CAPTURA = "CFO > Estado de resultados > Capturar costos";
 
 const BRANCH_PARAM: ParamsSpec = {
   sucursal: {

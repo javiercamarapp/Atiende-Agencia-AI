@@ -104,16 +104,16 @@ describe("RestaurantesCopilotoPage", () => {
     expect(root.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("12");
   });
 
-  it("'Consulta' despliega las 3 categorias de la config con sus preguntas (Ventas, Operación, Clientes)", async () => {
+  it("'Consulta' despliega las categorias de la config con sus preguntas (Ventas, Operación, Clientes, CFO)", async () => {
     instalarFetch(estadoOk);
     const root = await montar();
     click(porTexto(root, "Consulta")!);
     for (const c of COPILOTO_RESTAURANTES.categorias) {
       expect(root.textContent).toContain(c.titulo);
       expect(c.preguntas.length).toBeGreaterThanOrEqual(2);
-      expect(c.preguntas.length).toBeLessThanOrEqual(3);
+      expect(c.preguntas.length).toBeLessThanOrEqual(c.titulo === "CFO" ? 5 : 3);
     }
-    expect(COPILOTO_RESTAURANTES.categorias.map((c) => c.titulo)).toEqual(["Ventas", "Operación", "Clientes"]);
+    expect(COPILOTO_RESTAURANTES.categorias.map((c) => c.titulo)).toEqual(["Ventas", "Operación", "Clientes", "CFO"]);
   });
 
   it("elegir un chip hace POST NDJSON de consulta DIRECTA (tool + args + label) + conversationId 'new' y pinta la respuesta con su fuente enlazada a la pantalla interna", async () => {
