@@ -307,7 +307,9 @@ interface NumerosSr {
 export function esFormaPagoTarjeta(forma: string | null): boolean {
   if (!forma) return false;
   const f = forma.toLowerCase();
-  return f.includes("tarjeta") || f.includes("credito") || f.includes("crédito") || f.includes("debito") || f.includes("débito");
+  // Crédito a cliente es cuenta por cobrar, no tarjeta (no paga comisión de terminal); American Express sí es tarjeta.
+  if (/cr[eé]dito[ _]+(a[ _]+)?cliente|cuenta[ _]+por[ _]+cobrar/.test(f)) return false;
+  return f.includes("amex") || f.includes("american express") || f.includes("tarjeta") || f.includes("credito") || f.includes("crédito") || f.includes("debito") || f.includes("débito");
 }
 
 function numerosSr(filas: readonly FilaSrResumen[]): NumerosSr {

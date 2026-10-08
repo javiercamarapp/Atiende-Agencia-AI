@@ -145,8 +145,8 @@ test.describe("restaurantes CFO @humo", () => {
   test("drill-down: la acción de una tarjeta abre la lista de pedidos que la respalda, sin datos personales", async ({ page, iniciarSesion, vigilante }) => {
     await iniciarSesion("restaurantes", "owner");
     await page.goto(`${BASE}/resumen?${RANGO}`);
-    // Una acción que apunta a una pestaña que no existe (SoftRestaurant, de CFO-08) no se enlaza: se muestra el texto sin enlace.
-    await expect(page.getByTestId("hallazgo-accion-sin-enlace").first()).toContainText("llega pronto");
+    // Con las pestañas de CFO-08 registradas ninguna acción queda como texto: todas son enlaces reales.
+    await expect(page.getByTestId("hallazgo-accion-sin-enlace")).toHaveCount(0);
     const primera = page.getByTestId("hallazgo").first();
     await expect(primera).toContainText("compensaciones de Galerías");
     await primera.getByTestId("hallazgo-accion").click();

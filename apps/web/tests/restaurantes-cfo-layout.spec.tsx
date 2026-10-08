@@ -248,11 +248,11 @@ describe("<CfoLayout /> · filtros en la URL", () => {
 });
 
 describe("<CfoLayout /> · pestañas", () => {
-  it("las 4 pestañas salen del registro, conservan los filtros y marcan la actual con aria-current", async () => {
+  it("las 9 pestañas (CFO-07 y CFO-08) salen del registro, conservan los filtros y marcan la actual con aria-current", async () => {
     montar(crearApiCfo(), { url: `/restaurantes/demo/cfo/ventas?${RANGO}&sucursales=${IDS.T3}` });
     await cuando(() => q("[data-testid=cfo-ventas]") !== null, "ventas");
     const nav = q("nav[aria-label='Secciones del CFO']")!;
-    expect([...nav.querySelectorAll("a")].map((a) => a.textContent?.trim())).toEqual(["Resumen", "Ventas", "Sucursales", "Estado de resultados"]);
+    expect([...nav.querySelectorAll("a")].map((a) => a.textContent?.trim())).toEqual(["Resumen", "Ventas", "Sucursales", "Estado de resultados", "Clientes", "Platillos", "Patrones", "Operación y agente", "SoftRestaurant"]);
     expect(nav.querySelector("a[aria-current=page]")!.textContent?.trim()).toBe("Ventas");
     const href = nav.querySelector<HTMLAnchorElement>("[data-testid=pestana-sucursales]")!.getAttribute("href")!;
     expect(href).toContain("/restaurantes/demo/cfo/sucursales?");

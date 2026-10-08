@@ -111,8 +111,8 @@ describe("cliente del CFO", () => {
 describe("registro de pestañas y enlaces de «Lo más importante»", () => {
   const F = { ...filtrosPorDefecto("2026-09-28"), comparar: "anio_anterior" as const };
   const DISPONIBLES = new Set(PAGINAS_CFO.map((p) => p.slug));
-  it("el registro trae las 4 pestañas de CFO-07, con slug único y vista de exportación", () => {
-    expect(PAGINAS_CFO.map((p) => p.slug)).toEqual(["resumen", "ventas", "sucursales", "estado-resultados"]);
+  it("el registro trae las 9 pestañas de CFO-07 y CFO-08, con slug único y vista de exportación", () => {
+    expect(PAGINAS_CFO.map((p) => p.slug)).toEqual(["resumen", "ventas", "sucursales", "estado-resultados", "clientes", "platillos", "patrones", "operacion", "softrestaurant"]);
     expect(new Set(PAGINAS_CFO.map((p) => p.slug)).size).toBe(PAGINAS_CFO.length);
     for (const p of PAGINAS_CFO) expect(p.vistaExportacion, p.slug).not.toBeNull();
   });
@@ -122,10 +122,16 @@ describe("registro de pestañas y enlaces de «Lo más importante»", () => {
     expect(u.pathname).toBe("/restaurantes/demo/cfo/ventas");
     expect(Object.fromEntries(u.searchParams)).toEqual({ desde: "2026-09-21", hasta: "2026-09-27", comparar: "anio_anterior", sucursales: "s4", pedidos: "1", es_compensacion: "1" });
   });
-  it("una acción hacia una pestaña que no existe (CFO-08) NO se enlaza", () => {
-    for (const ruta of ["/cfo/softrestaurant?sucursal=s1", "/cfo/operacion?sucursal=s1", "/cfo/platillos", "/otra/cosa", "https://malo.test/x"]) {
+  it("las acciones hacia las pestañas de CFO-08 ya se enlazan", () => {
+    for (const ruta of ["/cfo/softrestaurant?sucursal=s1", "/cfo/operacion?sucursal=s1", "/cfo/platillos", "/cfo/clientes"]) {
+      expect(enlaceDeAccion(ruta, "/restaurantes/demo", F, DISPONIBLES), ruta).toMatch(/^\/restaurantes\/demo\/cfo\/(softrestaurant|operacion|platillos|clientes)\?/);
+    }
+  });
+  it("una acción hacia una pestaña que no existe o hacia fuera del CFO NO se enlaza", () => {
+    for (const ruta of ["/cfo/inexistente?sucursal=s1", "/otra/cosa", "https://malo.test/x"]) {
       expect(enlaceDeAccion(ruta, "/restaurantes/demo", F, DISPONIBLES), ruta).toBeNull();
     }
+    expect(enlaceDeAccion("/cfo/softrestaurant", "/restaurantes/demo", F, new Set(["resumen"]))).toBeNull();
   });
   it("el drill-down vive en la URL: aplicar, leer y quitar", () => {
     const sp = aplicarDrill(new URLSearchParams("desde=2026-09-01"), { status: "cancelado", hora_local: 14, con_descuento: true });
