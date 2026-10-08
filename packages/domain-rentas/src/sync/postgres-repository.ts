@@ -17,7 +17,21 @@ import type { RentasCalendarSyncRepository } from "./repository.ts";
 import type { EventoBitacora, OpcionesReclamo, ResultadoReclamo, TipoEventoBitacora, SeveridadBitacora } from "./lease.ts";
 import type { AccionConflicto } from "./conflictos.ts";
 import type { AlertaSyncRecord, ConflictoMonitorRecord, EntradaHistorialConflicto, EstadoConflicto, FeedMonitorRecord, FiltroEstadoConflictos, HistorialConflicto, ListadoBitacora, ListadoConflictos, ResultadoDecisionConflicto, ResultadoMarcarResuelto } from "./monitor.ts";
-import type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
+import type {
+  BloqueoExportadoPrevio,
+  EntradaUpsertBloqueoExportado,
+  EntradaUpsertEventoImportado,
+  FeedExternoRecord,
+  FeedTokenEstado,
+  NewFeedExternoInput,
+  OcupacionActivaExportable,
+  ResultadoListarFeedTokens,
+  ResultadoReclamoManual,
+  ResultadoResolverFeedToken,
+  ResultadoRotarFeedToken,
+  RotarFeedTokenInput,
+  VersionPreviaAlmacenada,
+} from "./tipos.ts";
 
 interface FeedRow {
   id: string;
@@ -611,6 +625,100 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
       },
       isRecoverable: (err) => isMigrationPendingError(err),
       fallback: async () => "no_disponible",
+    });
+  }
+
+  // ---- Rn-13: token rotable de la URL de exportación (migración 037) ----
+  // Cada método corre protegido por SAVEPOINT: contra una base sin la migración devuelve `disponible: false`.
+  // `rotarFeedToken` deriva organization/property de la unidad EN LA BASE (los del input no se envían).
+  async rotarFeedToken(input: RotarFeedTokenInput): Promise<ResultadoRotarFeedToken> {
+    return runWithSavepointFallback<ResultadoRotarFeedToken>({
+      session: this.db,
+      savepointName: "sp_rentas_feed_token_rotar",
+      primary: async () => {
+        const fila = await this.db.query<{ token_id: string; creado_en: string }>(
+          `SELECT token_id, to_char(creado_en AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS creado_en
+           FROM rentas.rotar_feed_export_token($1, $2, $3)`,
+          [input.unidadId, input.canalId, input.tokenHash],
+        );
+        const r = fila.rows[0];
+        if (!r) throw new Error("rotar_feed_export_token no devolvió el token creado.");
+        return { disponible: true, tokenId: r.token_id, creadoEn: r.creado_en };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "rentas.rotar_feed_export_token"),
+      fallback: async () => ({ disponible: false }),
+    });
+  }
+
+  async listarFeedTokens(propertyId: string, unidadId?: string): Promise<ResultadoListarFeedTokens> {
+    interface TokenRow {
+      id: string;
+      unidad_id: string;
+      canal_id: string;
+      canal_codigo: string;
+      creado_en: string;
+      ultimo_acceso_en: string | null;
+    }
+    return runWithSavepointFallback<ResultadoListarFeedTokens>({
+      session: this.db,
+      savepointName: "sp_rentas_feed_token_listar",
+      primary: async () => {
+        const filas = await this.db.query<TokenRow>(
+          `SELECT t.id, t.unidad_id, t.canal_id, c.codigo AS canal_codigo,
+                  to_char(t.creado_en AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS creado_en,
+                  to_char(t.ultimo_acceso_en AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ultimo_acceso_en
+           FROM rentas.feed_export_token t
+           JOIN rentas.canal c ON c.id = t.canal_id
+           WHERE t.property_id = $1 AND ($2::uuid IS NULL OR t.unidad_id = $2::uuid) AND t.revocado_en IS NULL
+           ORDER BY t.unidad_id, c.codigo`,
+          [propertyId, unidadId ?? null],
+        );
+        const tokens: FeedTokenEstado[] = filas.rows.map((f) => ({ tokenId: f.id, unidadId: f.unidad_id, canalId: f.canal_id, canalCodigo: f.canal_codigo, creadoEn: f.creado_en, ultimoAccesoEn: f.ultimo_acceso_en }));
+        return { disponible: true, tokens };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ disponible: false }),
+    });
+  }
+
+  async resolverFeedToken(tokenHash: string): Promise<ResultadoResolverFeedToken> {
+    interface ResueltoRow {
+      token_id: string;
+      token_hash: string;
+      organization_id: string;
+      property_id: string;
+      unidad_id: string;
+      canal_id: string;
+      canal_codigo: string;
+    }
+    return runWithSavepointFallback<ResultadoResolverFeedToken>({
+      session: this.db,
+      savepointName: "sp_rentas_feed_token_resolver",
+      primary: async () => {
+        const filas = await this.db.query<ResueltoRow>(`SELECT token_id, token_hash, organization_id, property_id, unidad_id, canal_id, canal_codigo FROM rentas.resolver_feed_export_token($1)`, [tokenHash]);
+        const r = filas.rows[0];
+        if (!r) return { disponible: true, token: null };
+        return {
+          disponible: true,
+          token: { tokenId: r.token_id, tokenHash: r.token_hash, organizationId: r.organization_id, propertyId: r.property_id, unidadId: r.unidad_id, canalId: r.canal_id, canalCodigo: r.canal_codigo },
+        };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "rentas.resolver_feed_export_token"),
+      fallback: async () => ({ disponible: false }),
+    });
+  }
+
+  // ---- Rn-P3-23: "Sincronizar ahora" (migración 037) ----
+  async reclamarFeedManual(feedId: string, leaseSegundos: number): Promise<ResultadoReclamoManual> {
+    return runWithSavepointFallback<ResultadoReclamoManual>({
+      session: this.db,
+      savepointName: "sp_rentas_ical_claim_manual",
+      primary: async () => {
+        const filas = await this.db.query<{ feed_id: string; lease_token: string }>(`SELECT feed_id, lease_token FROM rentas.claim_ical_feed_manual($1, $2)`, [feedId, leaseSegundos]);
+        return { disponible: true, leaseToken: filas.rows[0]?.lease_token ?? null };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "rentas.claim_ical_feed_manual"),
+      fallback: async () => ({ disponible: false }),
     });
   }
 }

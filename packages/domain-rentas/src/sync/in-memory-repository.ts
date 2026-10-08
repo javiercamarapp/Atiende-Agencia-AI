@@ -15,7 +15,20 @@ import type { RentasCalendarSyncRepository } from "./repository.ts";
 import { calcularBackoffFeedSegundos, type EventoBitacora, type OpcionesReclamo, type ResultadoReclamo } from "./lease.ts";
 import { calcularSolape, type AccionConflicto } from "./conflictos.ts";
 import type { AlertaSyncRecord, ConflictoMonitorRecord, EntradaHistorialConflicto, EstadoConflicto, FeedMonitorRecord, FiltroEstadoConflictos, HistorialConflicto, ListadoBitacora, ListadoConflictos, OcupacionConflictoRecord, ResultadoDecisionConflicto, ResultadoMarcarResuelto } from "./monitor.ts";
-import type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
+import type {
+  BloqueoExportadoPrevio,
+  EntradaUpsertBloqueoExportado,
+  EntradaUpsertEventoImportado,
+  FeedExternoRecord,
+  NewFeedExternoInput,
+  OcupacionActivaExportable,
+  ResultadoListarFeedTokens,
+  ResultadoReclamoManual,
+  ResultadoResolverFeedToken,
+  ResultadoRotarFeedToken,
+  RotarFeedTokenInput,
+  VersionPreviaAlmacenada,
+} from "./tipos.ts";
 
 interface StoredFeedExterno {
   id: string;
@@ -35,6 +48,18 @@ interface StoredFeedExterno {
   leaseToken: string | null;
   ultimoIntentoEn: number | null;
   proximoIntentoEn: number | null;
+}
+
+interface StoredFeedToken {
+  id: string;
+  organizationId: string;
+  propertyId: string;
+  unidadId: string;
+  canalId: string;
+  tokenHash: string;
+  creadoEn: number;
+  revocadoEn: number | null;
+  ultimoAccesoEn: number | null;
 }
 
 interface StoredBitacora {
@@ -79,6 +104,7 @@ export class InMemoryRentasCalendarSyncRepository implements RentasCalendarSyncR
   private readonly bloqueosExportados = new Map<string, StoredBloqueoExportado>(); // key: ocupacionId:canalId
   private readonly zonasHorarias = new Map<string, string>(); // key: propertyId
   private readonly bitacora = new Map<string, StoredBitacora>();
+  private readonly feedTokens = new Map<string, StoredFeedToken>(); // key: id
 
   /** Reloj inyectable (ms epoch) para probar lease/backoff de forma determinística. */
   reloj: () => number = () => Date.now();
@@ -339,6 +365,73 @@ export class InMemoryRentasCalendarSyncRepository implements RentasCalendarSyncR
     const id = randomUUID();
     this.bitacora.set(id, { id, organizationId: f.organizationId, propertyId: f.propertyId, unidadId: f.unidadId, feedId, canalId: f.canalId, evento: { ...evento, detalle: evento.detalle.slice(0, 500) }, creadoEn: new Date(this.reloj()).toISOString(), atendidaEn: null, atendidaPor: null });
     return true;
+  }
+
+  // ---- Rn-13 / Rn-P3-23 (espejo de migrations/037) ----
+  /** Simula una base SIN la migración 037: token y reclamo manual devuelven `disponible: false`. */
+  migracion037Disponible = true;
+
+  private iso(ms: number): string {
+    return new Date(ms).toISOString();
+  }
+
+  async rotarFeedToken(input: RotarFeedTokenInput): Promise<ResultadoRotarFeedToken> {
+    if (!this.migracion037Disponible) return { disponible: false };
+    const ahora = this.reloj();
+    for (const t of this.feedTokens.values()) {
+      if (t.unidadId === input.unidadId && t.canalId === input.canalId && t.revocadoEn === null) t.revocadoEn = ahora;
+    }
+    const nuevo: StoredFeedToken = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      unidadId: input.unidadId,
+      canalId: input.canalId,
+      tokenHash: input.tokenHash,
+      creadoEn: ahora,
+      revocadoEn: null,
+      ultimoAccesoEn: null,
+    };
+    this.feedTokens.set(nuevo.id, nuevo);
+    return { disponible: true, tokenId: nuevo.id, creadoEn: this.iso(ahora) };
+  }
+
+  async listarFeedTokens(propertyId: string, unidadId?: string): Promise<ResultadoListarFeedTokens> {
+    if (!this.migracion037Disponible) return { disponible: false };
+    const tokens = [...this.feedTokens.values()]
+      .filter((t) => t.propertyId === propertyId && (unidadId === undefined || t.unidadId === unidadId) && t.revocadoEn === null)
+      .map((t) => ({
+        tokenId: t.id,
+        unidadId: t.unidadId,
+        canalId: t.canalId,
+        canalCodigo: [...this.calendarStore.canales.values()].find((c) => c.id === t.canalId)?.codigo ?? "desconocido",
+        creadoEn: this.iso(t.creadoEn),
+        ultimoAccesoEn: t.ultimoAccesoEn === null ? null : this.iso(t.ultimoAccesoEn),
+      }))
+      .sort((a, b) => (a.unidadId < b.unidadId ? -1 : a.unidadId > b.unidadId ? 1 : a.canalCodigo < b.canalCodigo ? -1 : 1));
+    return { disponible: true, tokens };
+  }
+
+  async resolverFeedToken(tokenHash: string): Promise<ResultadoResolverFeedToken> {
+    if (!this.migracion037Disponible) return { disponible: false };
+    const t = [...this.feedTokens.values()].find((x) => x.tokenHash === tokenHash && x.revocadoEn === null);
+    if (!t) return { disponible: true, token: null };
+    const ahora = this.reloj();
+    // Igual que la función SQL: a lo más una escritura de "último acceso" por minuto.
+    if (t.ultimoAccesoEn === null || t.ultimoAccesoEn < ahora - 60_000) t.ultimoAccesoEn = ahora;
+    const canalCodigo = [...this.calendarStore.canales.values()].find((c) => c.id === t.canalId)?.codigo ?? "desconocido";
+    return { disponible: true, token: { tokenId: t.id, tokenHash: t.tokenHash, organizationId: t.organizationId, propertyId: t.propertyId, unidadId: t.unidadId, canalId: t.canalId, canalCodigo } };
+  }
+
+  async reclamarFeedManual(feedId: string, leaseSegundos: number): Promise<ResultadoReclamoManual> {
+    if (!this.migracion037Disponible || !this.migracion024Disponible) return { disponible: false };
+    const ahora = this.reloj();
+    const f = this.feeds.get(feedId);
+    if (!f || !f.activo || (f.leaseHasta !== null && f.leaseHasta > ahora)) return { disponible: true, leaseToken: null };
+    f.leaseHasta = ahora + Math.min(Math.max(leaseSegundos, 30), 900) * 1000;
+    f.leaseToken = randomUUID();
+    f.ultimoIntentoEn = ahora;
+    return { disponible: true, leaseToken: f.leaseToken };
   }
 
   async reiniciarBackoffFeed(feedId: string): Promise<void> {

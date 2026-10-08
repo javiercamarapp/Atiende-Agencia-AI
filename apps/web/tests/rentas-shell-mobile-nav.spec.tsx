@@ -101,20 +101,20 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect([...bottomNav.querySelectorAll("button")].map((b) => b.textContent?.trim())).toEqual(["Más"]);
   });
 
-  it('el botón "Más" abre los 17 destinos (14 + Copiloto + 2 de Privacidad para admin_gestora), incluidos Copiloto, Precios, Finanzas, Auditoría, Catálogo y Equipo', async () => {
+  it('el botón "Más" abre los 18 destinos (15 + Copiloto + 2 de Privacidad para admin_gestora), incluidos Copiloto, Precios, Finanzas, Auditoría, Catálogo y Equipo', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(18); // + Seguridad de la cuenta (PL-21)
+    expect(hrefs).toHaveLength(19); // + Seguridad de la cuenta (PL-21)
     expect(hrefs).toEqual(
-      expect.arrayContaining(["/rentas/demo/copiloto", "/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/plantillas", "/rentas/demo/reportes", "/rentas/demo/auditoria", "/rentas/demo/catalogo", "/rentas/demo/equipo", "/rentas/demo/privacidad", "/rentas/demo/privacidad-organizacion"]),
+      expect.arrayContaining(["/rentas/demo/copiloto", "/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/conectividad", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/plantillas", "/rentas/demo/reportes", "/rentas/demo/auditoria", "/rentas/demo/catalogo", "/rentas/demo/equipo", "/rentas/demo/privacidad", "/rentas/demo/privacidad-organizacion"]),
     );
   });
 
   // UNI-6: marco de Likida -- Resumen y Calendario raiz sin titulo, categorias en el orden de Likida y acordeon exclusivo.
-  it("el Sidebar agrupa los 17 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
+  it("el Sidebar agrupa los 18 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     expect(categoriasSidebar(root)).toEqual(["Operación", "Canales", "Finanzas", "Configuración", "Control"]);
@@ -122,7 +122,7 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Aprobaciones", "Mis tareas", "Plantillas", "Acceso al huésped"]);
     abrirCategoria(root, "Canales");
     expect(categoriasAbiertas(root)).toEqual(["Canales"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Sincronización iCal", "Monitor de conflictos"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Conectividad", "Sincronización iCal", "Monitor de conflictos"]);
     abrirCategoria(root, "Finanzas");
     expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Precios", "Finanzas", "Reportes"]);
     abrirCategoria(root, "Configuración");
@@ -224,7 +224,7 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(15); // + Seguridad de la cuenta (PL-21)
+    expect(hrefs).toHaveLength(16); // + Seguridad de la cuenta (PL-21)
     expect(hrefs).not.toContain("/rentas/demo/copiloto");
   });
 });

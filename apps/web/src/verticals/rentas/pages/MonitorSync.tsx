@@ -30,6 +30,7 @@ import {
   validarMotivoDecision,
 } from "../lib/ical-monitor-client.ts";
 import type { ConflictoCalendario, FiltroEstadoConflictos, HistorialConflicto, MonitorSync, OcupacionConflicto, SeveridadAlerta } from "../lib/ical-monitor-client.ts";
+import { resumenSincronizacion, sincronizarFeedAhora } from "../lib/conectividad-client.ts";
 import { ESTADO_CONFLICTO_TONES, SALUD_FEED_TONES, SEVERIDAD_ALERTA_TONES, TIPO_CONFLICTO_TONES } from "../lib/status-tones.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
@@ -74,6 +75,8 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
   const [conflictos, setConflictos] = useState<readonly ConflictoCalendario[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
+  // Resultado de la última "Sincronizar ahora" (Rn-P3-23), por feed.
+  const [resultadoSync, setResultadoSync] = useState<{ feedId: string; texto: string } | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [recarga, setRecarga] = useState(0);
   const [filtro, setFiltro] = useState<FiltroEstadoConflictos>("abiertos");
@@ -422,6 +425,7 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
                       <TableHead>Estado</TableHead>
                       <TableHead>Última sincronización exitosa</TableHead>
                       <TableHead>Próximo intento</TableHead>
+                      {puedeEscribir && <TableHead />}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -438,6 +442,31 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(f.ultimaSincronizacionExitosaEn, monitor.zonaHoraria)}</TableCell>
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{f.proximoIntentoEn ? formatearFechaHora(f.proximoIntentoEn, monitor.zonaHoraria) : "—"}</TableCell>
+                        {puedeEscribir && (
+                          <TableCell className="text-right">
+                            {f.activo && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={ocupado === f.id}
+                                onClick={() =>
+                                  void ejecutarAccion(f.id, async () => {
+                                    const r = await sincronizarFeedAhora(fetch, apiBaseUrl, token, propertyId, f.unidadId, f.canal);
+                                    setResultadoSync({ feedId: f.id, texto: resumenSincronizacion(r) });
+                                  })
+                                }
+                              >
+                                <RefreshCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden /> {ocupado === f.id ? "Sincronizando…" : "Sincronizar ahora"}
+                              </Button>
+                            )}
+                            {resultadoSync?.feedId === f.id && (
+                              <p role="status" className="m-0 mt-1 text-xs text-muted-foreground">
+                                {resultadoSync.texto}
+                              </p>
+                            )}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>

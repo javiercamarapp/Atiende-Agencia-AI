@@ -122,6 +122,7 @@ const RentasFinanzasPage = cargaPerezosa(() => import("./verticals/rentas/pages/
 const RentasMisTareasPage = cargaPerezosa(() => import("./verticals/rentas/pages/MisTareas.tsx"), "MisTareasPage");
 const RentasIcalSyncPage = cargaPerezosa(() => import("./verticals/rentas/pages/IcalSync.tsx"), "IcalSyncPage");
 const RentasMonitorSyncPage = cargaPerezosa(() => import("./verticals/rentas/pages/MonitorSync.tsx"), "MonitorSyncPage");
+const RentasConectividadPage = cargaPerezosa(() => import("./verticals/rentas/pages/Conectividad.tsx"), "ConectividadPage");
 const RentasReportesPage = cargaPerezosa(() => import("./verticals/rentas/pages/Reportes.tsx"), "ReportesPage");
 const RentasAccesoHuespedPage = cargaPerezosa(() => import("./verticals/rentas/pages/AccesoHuesped.tsx"), "AccesoHuespedPage");
 const RentasPlantillasPage = cargaPerezosa(() => import("./verticals/rentas/pages/Plantillas.tsx"), "PlantillasPage");
@@ -758,6 +759,8 @@ const RentasIcalSyncRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <R
  * feed iCal, alertas del sync y conflictos entre canales por resolver. Mismo patrón de
  * ruta hija que RentasIcalSyncRoute. */
 const RentasMonitorSyncRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasMonitorSyncPage {...ctx} />);
+/** Paridad3 Rn-P3-16: matriz de conectividad por unidad y canal + asistente + catálogo de canales de México. */
+const RentasConectividadRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasConectividadPage {...ctx} />);
 const RentasReportesRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasReportesPage {...ctx} />);
 const RentasAccesoHuespedRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasAccesoHuespedPage {...ctx} />);
 const RentasPlantillasRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasPlantillasPage {...ctx} />);
@@ -1171,6 +1174,7 @@ export function App() {
         <Route path="/rentas/:orgSlug/mis-tareas" element={<RentasMisTareasRoute />} />
         <Route path="/rentas/:orgSlug/ical-sync" element={<RentasIcalSyncRoute />} />
         <Route path="/rentas/:orgSlug/monitor-sync" element={<RentasMonitorSyncRoute />} />
+        <Route path="/rentas/:orgSlug/conectividad" element={<RentasConectividadRoute />} />
         <Route path="/rentas/:orgSlug/reportes" element={<RentasReportesRoute />} />
         <Route path="/rentas/:orgSlug/acceso-huesped" element={<RentasAccesoHuespedRoute />} />
         <Route path="/rentas/:orgSlug/plantillas" element={<RentasPlantillasRoute />} />
