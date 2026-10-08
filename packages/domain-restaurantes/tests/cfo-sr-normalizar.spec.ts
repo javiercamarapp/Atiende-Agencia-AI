@@ -160,6 +160,7 @@ describe("datos personales: el archivo se rechaza completo", () => {
   it("detector de columnas", () => {
     expect(esColumnaPersonal("Teléfono del cliente")).toBe(true);
     for (const h of ["Phone", "Name", "Address", "Customer", "Contacto", "R.F.C.", "Comensal", "Huésped"]) expect(esColumnaPersonal(h), h).toBe(true);
+    for (const h of ["Telephone", "Mobile", "Cell", "Cellphone", "Client", "Guest", "Apellido", "Apellidos", "Contact", "Phone1", "Surname"]) expect(esColumnaPersonal(h), h).toBe(true);
     // «Domicilio» solo puede ser el tipo de servicio (pivote): decisión pendiente, no se marca como personal.
     expect(esColumnaPersonal("Domicilio")).toBe(false);
     expect(esColumnaPersonal("Tipo de servicio")).toBe(false);

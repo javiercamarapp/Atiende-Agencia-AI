@@ -46,7 +46,7 @@ export const ALIAS_SR_INFERIDOS = {
 } as const;
 
 /** Palabras que delatan una columna de datos personales (se comparan contra el encabezado normalizado, palabra completa). */
-export const PALABRAS_PERSONALES: readonly string[] = ["nombre", "cliente", "telefono", "tel", "celular", "movil", "whatsapp", "correo", "email", "mail", "direccion", "calle", "colonia", "rfc", "curp", "phone", "name", "address", "customer", "contacto", "comensal", "huesped"];
+export const PALABRAS_PERSONALES: readonly string[] = ["nombre", "cliente", "telefono", "tel", "celular", "movil", "whatsapp", "correo", "email", "mail", "direccion", "calle", "colonia", "rfc", "curp", "phone", "name", "address", "customer", "contacto", "comensal", "huesped", "telephone", "mobile", "cell", "cellphone", "client", "guest", "apellido", "apellidos", "contact", "surname"];
 
 export interface RenglonSrCuenta {
   readonly folio: string;
@@ -118,7 +118,7 @@ export function normalizarEncabezado(s: string): string {
 }
 
 const FRASES_PERSONALES: readonly string[] = ["razon social", "domicilio de entrega", "domicilio entrega", "domicilio del cliente", "domicilio cliente", "codigo postal", "nombre del cliente", "r f c"];
-const RAICES_PERSONALES: readonly string[] = ["telefono", "celular", "correo", "direccion"];
+const RAICES_PERSONALES: readonly string[] = ["telefono", "celular", "correo", "direccion", "phone", "telephone", "mobile", "cell", "apellid", "surname", "contact", "client", "guest"];
 
 export function esColumnaPersonal(encabezado: string): boolean {
   const norm = normalizarEncabezado(encabezado);
