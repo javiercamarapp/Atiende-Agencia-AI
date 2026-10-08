@@ -77,3 +77,21 @@ describe.each(["whatsapp", "voz"] as const)("%s: la tortilla elegida para un kil
     expect((r.raw as { notes?: string }).notes ?? "").not.toMatch(/Tortilla \(/);
   });
 });
+
+// QA-PM-R5-whatsapp-08: colonia escrita + pin compartido que caen en sucursales distintas.
+describe("buscar_sucursal_cercana: colonia escrita vs pin compartido (QA-PM-R5-whatsapp-08)", () => {
+  async function conPin(lat: number, lng: number, colonia: string) {
+    const w = await buildInMemoryPmWorld(buildPmSeedPlan(data, agent));
+    const ctx = { organizationId: w.organizationId, channel: "whatsapp" as const, phone: "9991234567", sharedLocation: { lat, lng } };
+    return (await invokeAgentTool(w.repo, ctx, "buscar_sucursal_cercana", { colonia })).result as Record<string, unknown>;
+  }
+  it("el pin cae junto a Garcia Lavin pero la colonia escrita es del Centro: avisa que difieren en vez de afirmar en silencio", async () => {
+    const r = await conPin(21.0211, -89.6141, "Centro");
+    expect(r.branch_slug).toBe("prol-montejo");
+    expect(r.pin_y_colonia_difieren).toMatchObject({ sucursal_por_pin: { branch_slug: "garcia-lavin" } });
+  });
+  it("negativo: si la colonia y el pin coinciden en la sucursal no hay aviso", async () => {
+    const r = await conPin(21.0211, -89.6141, "Garcia Lavin");
+    expect(r.pin_y_colonia_difieren).toBeUndefined();
+  });
+});

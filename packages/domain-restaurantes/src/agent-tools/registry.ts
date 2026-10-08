@@ -1246,11 +1246,33 @@ async function dispatchTool(
         ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
         ...(typeof input.max_km === "number" && Number.isFinite(input.max_km) && input.max_km > 0 ? { maxKm: input.max_km } : {}),
       });
+      // QA-PM-R5-whatsapp-08: una colonia ESCRITA manda sobre el pin compartido (la colonia dicha despues del pin es una correccion), pero el servidor no sabe en que orden llegaron.
+      // Si el pin compartido cae en OTRA sucursal que la de la colonia, se avisa al modelo para que le pregunte al cliente cual vale en vez de asignar en silencio.
+      let conflictoPin: { readonly slug: string; readonly nombre: string } | null = null;
+      if (match.estado === "asignada" && coloniaDicha && !coordenadasValidas && ctx.sharedLocation) {
+        const porPin = await assignBranch(repo, {
+          organizationId,
+          radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
+          ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
+          ...(perfilAgente === "taqueria_pm" ? { sucursalesQueNoReparten: SUCURSALES_QUE_NO_REPARTEN_PM } : {}),
+          lat: ctx.sharedLocation.lat,
+          lng: ctx.sharedLocation.lng,
+        });
+        if (porPin.estado === "asignada" && porPin.branchSlug !== match.branchSlug) conflictoPin = { slug: porPin.branchSlug, nombre: porPin.branchName };
+      }
       const result =
         match.estado === "asignada"
           ? {
               encontrada: true,
               estado: match.estado,
+              ...(conflictoPin
+                ? {
+                    pin_y_colonia_difieren: {
+                      sucursal_por_pin: { branch_slug: conflictoPin.slug, branch_name: conflictoPin.nombre },
+                      aviso: "La colonia que escribió el cliente y el pin que compartió caen en sucursales distintas. NO afirme cuál le toca ni una distancia: pregúntele cuál es la dirección de entrega correcta (la escrita o el pin) y vuelva a llamar buscar_sucursal_cercana con la que confirme (si es el pin, sin colonia).",
+                    },
+                  }
+                : {}),
               branch_slug: match.branchSlug,
               branch_name: match.branchName,
               distancia_km: match.distanceKm,
@@ -1493,10 +1515,15 @@ async function dispatchTool(
         message: esEscalada ? (typeof input.resumen === "string" ? input.resumen : undefined) : typeof input.message === "string" ? input.message : undefined,
         source: ctx.channel === "voz" ? "voice" : "whatsapp",
       });
-      return { result: { ok: true }, raw: { ok: true }, orderId: null, propertyId: null };
+      // QA-PM-R5-voz-05: por voz el agente escalaba y colgaba SIN decirle nada al cliente. El resultado trae la frase que debe decir (en WhatsApp el agente ya la escribe en el mismo turno).
+      const aviso = esEscalada && ctx.channel === "voz" ? { mensaje_al_cliente: MENSAJE_ESCALACION_VOZ } : {};
+      return { result: { ok: true, ...aviso }, raw: { ok: true }, orderId: null, propertyId: null };
     }
   }
 }
+
+/** Lo que el agente de VOZ le dice al cliente tras escalar a una persona: nunca cuelga en silencio ni promete hora o resultado. */
+export const MENSAJE_ESCALACION_VOZ = "Ya avisé al gerente de la sucursal; le responden en cuanto puedan. Dígaselo así al cliente, de usted, ANTES de despedirse o cortar, sin prometer hora ni resultado.";
 
 /** Texto fijo que se le da al cliente tras el aviso de llegada (no se improvisa ni se prometen minutos). */
 export const MENSAJE_LLEGADA_REGISTRADA = "Ya avisé a la sucursal que usted llegó; en un momento le entregan su pedido.";
