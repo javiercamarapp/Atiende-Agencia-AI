@@ -265,6 +265,77 @@ export function computeCortesiaDiscount(promotion: Promotion, items: readonly Pe
   return Math.round(discount * 100) / 100;
 }
 
+/** Unidades regaladas por renglon (mismo orden que `items`) de una promocion que regala UNIDADES ENTERAS (combo de cortesia o 2x1), con la misma seleccion que
+ * `computeCortesiaDiscount` / `computeBogoDiscount`. `null` si el tipo no regala unidades (porcentaje o monto fijo). */
+function unidadesGratisPorRenglon(promotion: Promotion, items: readonly PersistedOrderItem[]): number[] | null {
+  const gratis = items.map(() => 0);
+  if (promotion.type === "cortesia") {
+    const triggers = promotion.productIds && promotion.productIds.length > 0 ? new Set(promotion.productIds) : null;
+    const courtesy = promotion.courtesyProductIds && promotion.courtesyProductIds.length > 0 ? new Set(promotion.courtesyProductIds) : null;
+    const perTrigger = promotion.courtesyQuantity ?? 0;
+    if (!triggers || !courtesy || perTrigger < 1) return gratis;
+    let triggerUnits = 0;
+    const unidades: { idx: number; price: number }[] = [];
+    items.forEach((item, idx) => {
+      if (triggers.has(item.id)) triggerUnits += item.quantity;
+      else if (courtesy.has(item.id)) for (let i = 0; i < item.quantity; i += 1) unidades.push({ idx, price: item.price });
+    });
+    unidades.sort((a, b) => a.price - b.price);
+    for (const u of unidades.slice(0, Math.min(triggerUnits * perTrigger, unidades.length))) gratis[u.idx]! += 1;
+    return gratis;
+  }
+  if (promotion.type === "bogo") {
+    const ids = promotion.productIds && promotion.productIds.length > 0 ? new Set(promotion.productIds) : null;
+    const unidades: { idx: number; price: number }[] = [];
+    items.forEach((item, idx) => {
+      if (ids && !ids.has(item.id)) return;
+      for (let i = 0; i < item.quantity; i += 1) unidades.push({ idx, price: item.price });
+    });
+    unidades.sort((a, b) => b.price - a.price);
+    const free = Math.floor(unidades.length / 2);
+    for (const u of unidades.slice(unidades.length - free)) gratis[u.idx]! += 1;
+    return gratis;
+  }
+  return null;
+}
+
+/**
+ * D12 (QA-PM-R5-voz-06 / reglas-12): el pedido persistia los renglones a precio de lista y el `total` con el descuento ya restado, asi que la suma de renglones NO
+ * cuadraba con el total ($448 contra $328 con las 2 aguas de cortesia; $168 contra $84 con el 2x1). Reportes, correos y cualquier suma de renglones salian mal.
+ * Devuelve los renglones tal como deben guardarse: las unidades REGALADAS por la promocion quedan en un renglon aparte a $0 (mismo producto, mismo nombre, para que la comanda
+ * y el catalogo las sigan reconociendo) y la suma de renglones es exactamente el total. Solo para promociones que regalan unidades enteras; porcentaje y monto fijo no
+ * se reparten por renglon. Si la suma no cuadra con `total` (descuento recortado, redondeo) devuelve los renglones sin tocar: nunca empeora lo anterior.
+ */
+export function renglonesConPromocionAplicada(items: readonly PersistedOrderItem[], promotion: Promotion | null, total: number): readonly PersistedOrderItem[] {
+  if (!promotion) return items;
+  const gratis = unidadesGratisPorRenglon(promotion, items);
+  if (!gratis || gratis.every((n) => n === 0)) return items;
+  const out: PersistedOrderItem[] = [];
+  items.forEach((item, idx) => {
+    const g = Math.min(gratis[idx] ?? 0, item.quantity);
+    if (g <= 0) out.push(item);
+    else {
+      if (item.quantity - g > 0) out.push({ ...item, quantity: item.quantity - g });
+      out.push({ ...item, quantity: g, price: 0 });
+    }
+  });
+  const suma = Math.round(out.reduce((acc, i) => acc + i.price * i.quantity, 0) * 100) / 100;
+  return Math.abs(suma - total) < 0.005 ? out : items;
+}
+
+/** Une los renglones del MISMO producto (id, o nombre si no hay id) sumando cantidades: un renglon de cortesia/2x1 a $0 junto a su renglon pagado es UN producto para quien
+ * lee el historial ("lo de siempre", repetir pedido). Conserva el precio de lista (el mayor) y la tortilla del primero. */
+export function fusionarRenglonesPorProducto<T extends { readonly id?: string; readonly name: string; readonly price?: number; readonly quantity: number }>(items: readonly T[]): T[] {
+  const porClave = new Map<string, T>();
+  for (const item of items) {
+    const clave = item.id ?? item.name;
+    const previo = porClave.get(clave);
+    if (!previo) porClave.set(clave, item);
+    else porClave.set(clave, { ...previo, quantity: previo.quantity + item.quantity, ...(item.price !== undefined && (previo.price === undefined || item.price > previo.price) ? { price: item.price } : {}) });
+  }
+  return [...porClave.values()];
+}
+
 export interface AutomaticPromotionSuggestion {
   readonly promotion: Promotion;
   /** Por que todavia no descuenta con este pedido. */

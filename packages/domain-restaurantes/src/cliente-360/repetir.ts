@@ -2,6 +2,7 @@
 // precios de HOY. Nunca reutiliza el precio viejo y avisa de lo que ya no existe o cambio de precio.
 import { OrderValidationError } from "../errors.ts";
 import { extraerPackSize } from "../product-search.ts";
+import { fusionarRenglonesPorProducto } from "../promotions.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import type { PersistedOrderItem } from "../types.ts";
 import type { PastOrder } from "./types.ts";
@@ -51,7 +52,8 @@ export async function repetirPedido(repo: RestaurantesRepository, args: { readon
 
   const renglones: RenglonRepetido[] = [];
   const cambios: CambioDeRepeticion[] = [];
-  for (const item of args.order.items as readonly PersistedOrderItem[]) {
+  // D12: un renglon regalado por la promocion (a $0) y su renglon pagado son el mismo producto: se repite UNA vez, al precio de lista.
+  for (const item of fusionarRenglonesPorProducto(args.order.items as readonly PersistedOrderItem[])) {
     const product = catalog.find((p) => p.id === item.id) ?? catalog.find((p) => normalizar(p.name) === normalizar(item.name));
     if (!product) {
       cambios.push({ producto: item.name, motivo: "ya_no_disponible", precioAnterior: item.price, precioActual: null });

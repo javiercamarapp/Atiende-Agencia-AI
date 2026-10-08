@@ -18,6 +18,7 @@ import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
 import { elegirPedido, repetirPedido } from "../cliente-360/repetir.ts";
 import { getCustomerDetailById, lookupCustomerConPedidoReciente } from "../customers.ts";
 import { buscarPedidoRecienteConSucursal } from "../pedido-reciente.ts";
+import { fusionarRenglonesPorProducto } from "../promotions.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError } from "../errors.ts";
 import { normalizePhone } from "../phone.ts";
@@ -1121,7 +1122,7 @@ async function dispatchTool(
         canal: o.canal,
         sucursal: o.branch,
         total: o.total,
-        productos: o.items.map((i) => ({ name: i.name, quantity: i.quantity })),
+        productos: fusionarRenglonesPorProducto(o.items).map((i) => ({ name: i.name, quantity: i.quantity })),
       }));
       const result = { pedidos, total_pedidos_anteriores: pedidos.length };
       return { result, raw: result, orderId: null, propertyId: null };
