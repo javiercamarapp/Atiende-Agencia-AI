@@ -217,10 +217,10 @@ select count(*) filter (where char_length(vc.comportamiento) between 1 and 8000 
   from restaurantes.branch_voice_config vc join core.organization o on o.id = vc.organization_id where o.slug = 'los-taquitos-de-pm';
 rollback;
 
-\echo '=== B5. Zonas conocidas: 4 puntos de sucursales con coordenadas reales (T3 y T4 no las tienen; las de T5 son aproximadas y no entran) + 183 colonias del piloto original SIN coordenadas = 187 ==='
+\echo '=== B5. Zonas conocidas: 4 puntos de sucursales con coordenadas reales (T3 y T4 no las tienen; las de T5 son aproximadas y no entran) + 185 colonias SIN coordenadas (186 de la lista unica menos Francisco de Montejo, que ES el punto de T2) = 189 ==='
 begin;
 select public.seed_pm_demo();
-select count(*)::int as zonas_deberia_ser_187 from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm';
+select count(*)::int as zonas_deberia_ser_189 from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm';
 rollback;
 
 \echo '=== B6. Asignacion por colonia con la funcion SQL real: "Altabrisa" empata con la zona de Victory Altabrisa, pero esa sucursal esta inactiva: se asigna UNA activa de las dos mas cercanas (T7 a 1.83 km y T1 a 1.84 km; ambas redondean a 1.8 km y la funcion ordena por el valor redondeado sin desempate, asi que cual sale de las dos NO es determinista) y nunca la inactiva ==='
@@ -233,25 +233,25 @@ select (
 )::int as asigna_activa_mas_cercana_y_no_la_inactiva_deberia_ser_1;
 rollback;
 
-\echo '=== B8. Colonias del piloto (migracion 056): 183 sin coordenadas con su procedencia y la referencia del piloto; los 4 puntos de sucursal conservan sus coordenadas ==='
+\echo '=== B8. Colonias (migracion 056): 185 sin coordenadas (0 coordenadas inventadas: las de colonias-v3 viven en los datos del seed, no en known_zone) con su procedencia y la referencia del piloto; los 4 puntos de sucursal conservan sus coordenadas ==='
 begin;
 select public.seed_pm_demo();
 select (
-  (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.lat is null and z.lng is null) = 183
+  (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.lat is null and z.lng is null) = 185
   and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.lat is not null and z.lng is not null) = 4
-  and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.lat is null and z.fuente in ('piloto_original_merida_colonias', 'chats_t7') and z.asignacion_fuente is not null) = 183
+  and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.lat is null and z.fuente in ('piloto_original_merida_colonias', 'chats_t7') and z.asignacion_fuente is not null) = 185
   and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.fuente = 'chats_t7' and z.ref_sucursal_slug is null) = 2
 )::int as colonias_sin_coordenadas_con_procedencia_deberia_ser_1;
 rollback;
 
-\echo '=== B9. Cobertura de entrega: 117 filas (113 colonias asignadas + 4 puntos de sucursal); T7 cubre su punto y 18 colonias; las 70 sin asignar NO cubren ninguna; Galerias y Playa no reciben cobertura ==='
+\echo '=== B9. Cobertura de entrega: 161 filas (157 colonias asignadas a su sucursal de despacho mas cercana + 4 puntos de sucursal); T7 cubre su punto y 25 colonias; las 28 PENDIENTES del dueño (fuera de 8 km, homonimos, sin coordenada) NO cubren ninguna; Galerias y Playa no reciben cobertura ==='
 begin;
 select public.seed_pm_demo();
 select (
-  (select count(*) from restaurantes.branch_delivery_zone bz join core.organization o on o.id = bz.organization_id where o.slug = 'los-taquitos-de-pm') = 117
-  and (select count(*) from restaurantes.branch_delivery_zone bz join restaurantes.branch_detail bd on bd.property_id = bz.property_id where bd.slug = 'garcia-lavin' and bd.organization_id = bz.organization_id) = 19
+  (select count(*) from restaurantes.branch_delivery_zone bz join core.organization o on o.id = bz.organization_id where o.slug = 'los-taquitos-de-pm') = 161
+  and (select count(*) from restaurantes.branch_delivery_zone bz join restaurantes.branch_detail bd on bd.property_id = bz.property_id where bd.slug = 'garcia-lavin' and bd.organization_id = bz.organization_id) = 26
   and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.lat is null and z.asignacion_fuente = 'sin_asignar'
-        and not exists (select 1 from restaurantes.branch_delivery_zone bz where bz.zone_id = z.id)) = 70
+        and not exists (select 1 from restaurantes.branch_delivery_zone bz where bz.zone_id = z.id)) = 28
   and (select count(*) from restaurantes.branch_delivery_zone bz join restaurantes.branch_detail bd on bd.property_id = bz.property_id where bd.slug in ('galerias', 'playa')) = 0
   and (select count(*) from (select zone_id from restaurantes.branch_delivery_zone group by zone_id having count(*) > 1) d) = 0
 )::int as cobertura_correcta_deberia_ser_1;
@@ -282,8 +282,73 @@ select (
      where z.name = 'Temozón Norte' and bd.slug = 'prol-montejo') = 1
   and (select count(*) from restaurantes.branch_delivery_zone bz join restaurantes.known_zone z on z.id = bz.zone_id where z.name = 'Temozón Norte') = 1
   and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.name = 'Colonia del dueño' and z.lat = 21.01) = 1
-  and (select count(*) from restaurantes.branch_delivery_zone bz join core.organization o on o.id = bz.organization_id where o.slug = 'los-taquitos-de-pm') = 117
+  and (select count(*) from restaurantes.branch_delivery_zone bz join core.organization o on o.id = bz.organization_id where o.slug = 'los-taquitos-de-pm') = 161
 )::int as no_pisa_decisiones_del_dueno_deberia_ser_1;
+rollback;
+
+\echo '=== B11b. Lista unica de colonias (colonias-v3): 151 a la sucursal de despacho mas cercana + 4 que conservan la asignacion del dueño/chats (2 dueno_zona_centro, 2 chats_t7: conflicto marcado) + 2 solo de los chats + 28 pendientes del dueño sin cobertura; solo T1, T2, T3, T7 y T8 reciben colonias; Francisco de Montejo es el punto de T2 (una sola zona); Pensiones y Galerias son colonias (no el nombre de la sucursal) ==='
+begin;
+select public.seed_pm_demo();
+select (
+  (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.asignacion_fuente = 'mas_cercana_v3') = 151
+  and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.asignacion_fuente = 'chats_t7') = 4
+  and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.asignacion_fuente = 'dueno_zona_centro') = 2
+  and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.asignacion_fuente in ('mas_cercana_v3', 'chats_t7', 'dueno_zona_centro')
+        and (select count(*) from restaurantes.branch_delivery_zone bz where bz.zone_id = z.id) <> 1) = 0
+  and (select count(distinct bd.slug) from restaurantes.branch_delivery_zone bz join restaurantes.branch_detail bd on bd.property_id = bz.property_id) = 5
+  and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.name = 'Francisco de Montejo') = 1
+  and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.name in ('Pensiones', 'Galerias') and z.lat is null) = 2
+  and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm' and z.name = 'Pensiones'
+        and exists (select 1 from restaurantes.branch_delivery_zone bz join restaurantes.branch_detail bd on bd.property_id = bz.property_id where bz.zone_id = z.id and bd.slug = 'pensiones')) = 1
+)::int as lista_unica_de_colonias_deberia_ser_1;
+rollback;
+
+\echo '=== B11c. Conocimiento del negocio (migracion 053): 3 entradas publicadas e importadas para toda la organizacion; re-ejecutar el seed no duplica ni pisa lo que el dueño edito ==='
+begin;
+select public.seed_pm_demo();
+update restaurantes.conocimiento_negocio set texto = 'Texto editado por el dueño' where titulo = 'Oficina matriz';
+select public.seed_pm_demo();
+select (
+  (select count(*) from restaurantes.conocimiento_negocio c join core.organization o on o.id = c.organization_id where o.slug = 'los-taquitos-de-pm') = 3
+  and (select count(*) from restaurantes.conocimiento_negocio c join core.organization o on o.id = c.organization_id
+        where o.slug = 'los-taquitos-de-pm' and c.property_id is null and c.tipo = 'faq' and c.estado = 'publicado' and c.origen = 'importado' and c.activo) = 3
+  and (select count(*) from restaurantes.conocimiento_negocio where titulo = 'Oficina matriz' and texto = 'Texto editado por el dueño') = 1
+)::int as conocimiento_publicado_y_sin_pisar_deberia_ser_1;
+rollback;
+
+\echo '=== B11d. Re-ejecutar el seed sobre un estado parecido al de la cuenta real NO cambia nada de lo existente: T2 y T8 siguen ACTIVAS, la procedencia (asignacion_fuente) de zonas con cobertura no se toca, una pendiente que la base real ya cubre sigue cubierta, y solo una zona SIN cobertura recibe la suya (con su procedencia) ==='
+begin;
+select public.seed_pm_demo();
+-- Estado "real" simulado: T2 y T8 activas (en la cuenta real lo estan; los datos las traen inactivas).
+update core.property p set status = 'active' from core.organization o where o.id = p.organization_id and o.slug = 'los-taquitos-de-pm' and p.name in ('Francisco de Montejo', 'Victory Altabrisa');
+-- Procedencia variada de zonas ya cubiertas.
+update restaurantes.known_zone z set asignacion_fuente = 'distancia_piloto' where z.name = 'Alcala Martin';
+update restaurantes.known_zone z set asignacion_fuente = 'reasignada_desde_galerias' where z.name = 'Andalucia';
+-- Cobertura real distinta de la del seed: Andalucia en T2 (el seed la manda a T7).
+update restaurantes.branch_delivery_zone bz set property_id = (select bd.property_id from restaurantes.branch_detail bd join core.organization o on o.id = bd.organization_id where o.slug = 'los-taquitos-de-pm' and bd.slug = 'fco-montejo')
+  where bz.zone_id = (select z.id from restaurantes.known_zone z where z.name = 'Andalucia');
+-- Una pendiente del seed (sin asignar) que la base real YA cubre con T1, con su procedencia propia.
+update restaurantes.known_zone z set asignacion_fuente = 'distancia_piloto' where z.name = 'Arboledas';
+insert into restaurantes.branch_delivery_zone (property_id, zone_id, organization_id)
+  select bd.property_id, z.id, z.organization_id from restaurantes.known_zone z, restaurantes.branch_detail bd
+  where z.name = 'Arboledas' and bd.slug = 'prol-montejo' and bd.organization_id = z.organization_id;
+-- Una zona de la lista SIN cobertura en la base real (el seed si le agrega la suya).
+delete from restaurantes.branch_delivery_zone bz where bz.zone_id = (select z.id from restaurantes.known_zone z where z.name = 'Caucel');
+update restaurantes.known_zone z set asignacion_fuente = 'sin_asignar' where z.name = 'Caucel';
+select public.seed_pm_demo();
+select (
+  (select count(*) from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and p.status = 'active' and p.name in ('Francisco de Montejo', 'Victory Altabrisa')) = 2
+  and (select count(*) from restaurantes.known_zone z where z.name = 'Alcala Martin' and z.asignacion_fuente = 'distancia_piloto') = 1
+  and (select count(*) from restaurantes.known_zone z where z.name = 'Andalucia' and z.asignacion_fuente = 'reasignada_desde_galerias') = 1
+  and (select count(*) from restaurantes.branch_delivery_zone bz join restaurantes.known_zone z on z.id = bz.zone_id join restaurantes.branch_detail bd on bd.property_id = bz.property_id where z.name = 'Andalucia' and bd.slug = 'fco-montejo') = 1
+  and (select count(*) from restaurantes.branch_delivery_zone bz join restaurantes.known_zone z on z.id = bz.zone_id where z.name = 'Andalucia') = 1
+  and (select count(*) from restaurantes.known_zone z where z.name = 'Arboledas' and z.asignacion_fuente = 'distancia_piloto') = 1
+  and (select count(*) from restaurantes.branch_delivery_zone bz join restaurantes.known_zone z on z.id = bz.zone_id join restaurantes.branch_detail bd on bd.property_id = bz.property_id where z.name = 'Arboledas' and bd.slug = 'prol-montejo') = 1
+  and (select count(*) from restaurantes.branch_delivery_zone bz join restaurantes.known_zone z on z.id = bz.zone_id where z.name = 'Arboledas') = 1
+  and (select count(*) from restaurantes.branch_delivery_zone bz join restaurantes.known_zone z on z.id = bz.zone_id join restaurantes.branch_detail bd on bd.property_id = bz.property_id where z.name = 'Caucel' and bd.slug = 'fco-montejo') = 1
+  and (select count(*) from restaurantes.known_zone z where z.name = 'Caucel' and z.asignacion_fuente = 'mas_cercana_v3') = 1
+  and (select count(*) from restaurantes.branch_delivery_zone bz join core.organization o on o.id = bz.organization_id where o.slug = 'los-taquitos-de-pm') = 162
+)::int as reejecutar_sobre_estado_real_no_cambia_lo_existente_deberia_ser_1;
 rollback;
 
 \echo '=== B12. RECHAZADO (debe fallar): lat sin lng viola el check ambas-o-ninguna de la migracion 056 ==='
@@ -315,8 +380,8 @@ select (
   and (select count(*) from restaurantes.categories c join core.organization o on o.id = c.organization_id where o.slug = 'los-taquitos-de-pm') = 25
   and (select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm') = 279
   and (select count(*) from restaurantes.branch_products bp join core.property p on p.id = bp.property_id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm') = 1628
-  and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm') = 187
-  and (select count(*) from restaurantes.branch_delivery_zone bz join core.organization o on o.id = bz.organization_id where o.slug = 'los-taquitos-de-pm') = 117
+  and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm') = 189
+  and (select count(*) from restaurantes.branch_delivery_zone bz join core.organization o on o.id = bz.organization_id where o.slug = 'los-taquitos-de-pm') = 161
   and (select count(*) from restaurantes.branch_policy bp join core.organization o on o.id = bp.organization_id where o.slug = 'los-taquitos-de-pm') = 7
   and (select count(*) from restaurantes.branch_voice_config vc join core.organization o on o.id = vc.organization_id where o.slug = 'los-taquitos-de-pm') = 3
   and (select count(*) from restaurantes.promotions pm join core.organization o on o.id = pm.organization_id where o.slug = 'los-taquitos-de-pm') = 2
