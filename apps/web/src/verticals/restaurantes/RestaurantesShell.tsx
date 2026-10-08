@@ -37,7 +37,7 @@ import {
   Users,
   UtensilsCrossed,
 } from "lucide-react";
-import { NativeSelect, VerticalShellEstado } from "@atiende/ui";
+import { SelectorSucursal, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import type { ChatDatosConexion } from "../../components/PanelChateaConTusDatos.tsx";
@@ -243,23 +243,9 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   // El MISMO selector se pinta en el Sidebar y en el MobileHeader (ambos viven en el DOM; CSS oculta uno): cada copia lleva su
   // propio id y su propio <label for>, para que no haya ids duplicados y el select visible tenga nombre accesible
   // (QA-restaurantes-R1-botones-03).
-  const sucursalSelector = (idSelect: string) =>
-    branches.length > 1 ? (
-      <div>
-        <label htmlFor={idSelect} className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
-          Sucursal activa
-        </label>
-        <NativeSelect id={idSelect} size="sm" value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
-          {branches.map((b) => (
-            <option key={b.propertyId} value={b.propertyId}>
-              {b.name}
-            </option>
-          ))}
-        </NativeSelect>
-      </div>
-    ) : (
-      <p className="text-xs text-muted-foreground truncate">{activeBranch.name}</p>
-    );
+  const sucursalSelector = (idSelect: string) => (
+    <SelectorSucursal id={idSelect} etiqueta="Sucursal activa" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />
+  );
 
   return (
     <VerticalShellConectado
