@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { lookupCustomer } from "../src/customers.ts";
 import { repetirPedido } from "../src/cliente-360/repetir.ts";
 import { createOrder, quoteOrder } from "../src/orders.ts";
+import { construirPayloadComanda } from "../src/softrestaurant/outbox-service.ts";
 import { fusionarRenglonesPorProducto, renglonesConPromocionAplicada } from "../src/promotions.ts";
 import type { Order, PersistedOrderItem, Promotion } from "../src/types.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
@@ -226,5 +227,21 @@ describe("fusionarRenglonesPorProducto: el renglon regalado y el pagado son UN p
     });
     expect(r.renglones.map((x) => [x.productId, x.requestedQuantity])).toEqual([[f.ids.pastor, 4]]);
     expect(r.cambios).toEqual([]);
+  });
+});
+
+describe("D12: la comanda sigue siendo UNA linea por producto y tortilla", () => {
+  it("2x1 de 4 tacos (2 pagados + 2 a $0) viaja a la comanda como 4 tacos, no como 2 + 2; tortillas distintas no se mezclan", async () => {
+    vi.setSystemTime(LUNES_14H);
+    const f = await seed();
+    const order = await crear(f, [{ productId: f.ids.pastor, requestedQuantity: 4, tortilla: "maiz" }]);
+    expect(order.items).toHaveLength(2);
+    const base = { order, tipo: "recoger" as const };
+    const deps = { resolverCodigos: { codigoDeProducto: () => "P1" }, resolverSucursal: () => "T7" as const };
+    const comanda = construirPayloadComanda(base, deps as never);
+    expect(comanda.items.map((i) => [i.nombre, i.cantidad])).toEqual([["Tacos al Pastor", 4]]);
+    // Misma comanda con dos tortillas distintas del mismo producto: dos lineas.
+    const mixtas = construirPayloadComanda({ ...base, order: { ...order, items: [{ id: "p", name: "Tacos", price: 28, quantity: 1, tortilla: "maiz" }, { id: "p", name: "Tacos", price: 28, quantity: 1, tortilla: "harina" }] } }, deps as never);
+    expect(mixtas.items.map((i) => i.cantidad)).toEqual([1, 1]);
   });
 });
