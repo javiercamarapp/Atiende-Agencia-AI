@@ -411,7 +411,9 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
 
       // Salud de Meta/agente (token por vencer, timeouts, fallos seguidos): best-effort en sesiones de sistema propias; jamas altera esta respuesta.
       const salud = await vigilarSaludMetaBestEffort(deps);
-      logEvent(c, salud.token === "error" || salud.agente === "error" ? "error" : "info", "whatsapp_dispatch_salud_meta", { token: salud.token, agente: salud.agente });
+      // OJO con los nombres de clave: el logger tapa toda clave que case con CLAVE_SENSIBLE (p. ej. "token" o "estadoToken"), asi que el estado se llama estadoMeta.
+      const nivelSalud = salud.token === "error" || salud.agente === "error" ? "error" : salud.token === "no_leido" ? "warn" : "info";
+      logEvent(c, nivelSalud, "whatsapp_dispatch_salud_meta", { estadoMeta: salud.token, estadoAgente: salud.agente });
 
       return c.json({ ok: !anyFailure, results });
     })();

@@ -4,7 +4,7 @@
 // llegaba al cliente (ver @atiende/whatsapp-gateway/README.md). Usa
 // FakeWhatsAppGraphClient — NUNCA toca la red ni usa un WHATSAPP_ACCESS_TOKEN real.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InMemoryCoreRepository, InMemoryAuthzAuditRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
@@ -352,6 +352,31 @@ describe("POST /internal/whatsapp/dispatch: salud de Meta y del agente", () => {
     const res = await request(deps);
     expect(Date.now() - t0).toBeLessThan(2000);
     expect(await res.json()).toEqual(normal);
+  });
+
+  it("el log de la vigilancia muestra el estado (no redactado): no_leido sale en nivel warn y nunca lleva secretos", async () => {
+    const base = buildDispatchTestContext({ withDispatcher: true });
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const info = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const deps = { ...base.deps, saludMeta: { lectorToken: { leer: async () => { throw new Error("Graph caido EAAsecreto-12345"); } }, lectorTurnos: () => ({ leer: async () => [] }), reloj: () => AHORA } };
+    try {
+      await request(deps);
+      const lineas = aviso.mock.calls.map((a) => String(a[0])).filter((l) => l.includes("whatsapp_dispatch_salud_meta"));
+      expect(lineas).toHaveLength(1);
+      const log = JSON.parse(lineas[0]!) as Record<string, unknown>;
+      expect(log).toMatchObject({ level: "warn", evento: "whatsapp_dispatch_salud_meta", estadoMeta: "no_leido", estadoAgente: "ok" });
+      expect(lineas[0]).not.toContain("redactado");
+      expect(lineas[0]).not.toContain("EAAsecreto");
+      // con token leido bien, el nivel es info y el estado tambien es visible
+      aviso.mockClear();
+      info.mockClear();
+      await request({ ...deps, saludMeta: { ...deps.saludMeta, lectorToken: { leer: async () => ({ valido: true, expiraEn: null }) } } });
+      const infoLinea = info.mock.calls.map((a) => String(a[0])).find((l) => l.includes("whatsapp_dispatch_salud_meta"));
+      expect(JSON.parse(infoLinea!)).toMatchObject({ level: "info", estadoMeta: "sin_fecha", estadoAgente: "ok" });
+    } finally {
+      aviso.mockRestore();
+      info.mockRestore();
+    }
   });
 
   it("sin saludMeta configurado (sin token) el cron se comporta como antes: ninguna llamada a Meta y la base sin migrar no rompe", async () => {
