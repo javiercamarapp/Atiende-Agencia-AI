@@ -112,7 +112,44 @@ export const rutasHoteles: readonly Ruta[] = [
     ownersReport: { porEncimaDePuntoDeEquilibrio: true, alertas: [] },
     alcance: { pendiente: [] },
   }) },
-  { metodo: "GET", patron: `${H}/recepcion`, roles: ["owner"], manejador: () => ({ fecha: "2026-10-02", tareasDisponibles: true, identidadDisponible: true, resumen: { llegadas: 4, llegadasPendientes: 3, salidas: 2, salidasPendientes: 1, enCasa: 17, habitacionesLibres: 6, habitacionesSucias: 2, habitacionesFueraDeServicio: 1 }, llegadas: [], salidas: [], enCasa: [], rack: [] }) },
+  { metodo: "GET", patron: `${H}/recepcion`, roles: ["owner"], manejador: (p) => {
+      // Operacion (UNI-C-hoteles): una llegada con habitacion asignada; el check-in la saca de "llegadas" y la pone "en casa".
+      const hecho = p.estado.obtener<{ checkIn: boolean }>("hoteles.checkin", () => ({ checkIn: false })).checkIn;
+      const mov = (estado: "confirmada" | "check_in") => ({ reservaId: "res-1", estado, huesped: { id: "g-1", nombre: "Ana Torres" }, tipoHabitacion: { id: "rt-1", nombre: "Doble" }, habitacion: { id: "room-1", codigo: "101" }, entrada: "2026-10-02", salida: "2026-10-04", noches: 2, salidaVencida: false, identidadRegistrada: true });
+      return { fecha: "2026-10-02", tareasDisponibles: true, identidadDisponible: true, resumen: { llegadas: 4, llegadasPendientes: 3, salidas: 2, salidasPendientes: 1, enCasa: 17, habitacionesLibres: 6, habitacionesSucias: 2, habitacionesFueraDeServicio: 1 }, llegadas: hecho ? [mov("check_in")] : [mov("confirmada")], salidas: [], enCasa: hecho ? [mov("check_in")] : [], rack: [] };
+    } },
+  { metodo: "POST", patron: `${H}/recepcion/reservas/:rid/check-in`, roles: ["owner"], manejador: (p) => {
+      p.estado.obtener<{ checkIn: boolean }>("hoteles.checkin", () => ({ checkIn: false })).checkIn = true;
+      return { id: p.params.rid, estado: "check_in", habitacion: { id: "room-1", codigo: "101" }, identidadRegistrada: true };
+    } },
+  { metodo: "GET", patron: `${H}/reservas`, roles: ["owner"], manejador: () => [
+      { id: "res-1", propertyId: PROP.id, roomTypeId: "rt-1", guestId: null, checkInDate: "2026-10-02", checkOutDate: "2026-10-04", estado: "confirmada", montoTotal: 2320, penalizacionCancelacion: null, canceladaEn: null, creadaEn: "2026-09-20T10:00:00.000Z", roomId: null },
+    ] },
+  // Housekeeping: una habitacion sucia; "Generar tareas del dia" crea su tarea y el siguiente GET la refleja.
+  { metodo: "GET", patron: `${H}/housekeeping/tablero`, roles: ["owner"], manejador: (p) => {
+      const generada = p.estado.obtener<{ hecho: boolean }>("hoteles.hk", () => ({ hecho: false })).hecho;
+      return { fecha: "2026-10-02", tareasDisponibles: true, habitaciones: [
+        { roomId: "room-1", codigo: "101", tipoHabitacion: "Doble", estado: "sucia", tarea: generada ? { id: "task-1", tipo: "salida", estado: "pendiente", prioridad: "media", asignadoA: null, rechazos: 0 } : null, fueraDeServicio: null },
+      ] };
+    } },
+  { metodo: "GET", patron: `${H}/housekeeping/reporte`, roles: ["owner"], manejador: () => ({ fecha: "2026-10-02", tareasDisponibles: true, totales: { total: 0, pendientes: 0, enProgreso: 0, porInspeccionar: 0, inspeccionadas: 0, rechazos: 0 }, porResponsable: [], habitacionesPorEstado: { disponible: 5, ocupada: 17, sucia: 1, mantenimiento: 0, fuera_de_servicio: 0 }, fueraDeServicioActivas: 0 }) },
+  { metodo: "GET", patron: `${H}/housekeeping/camaristas`, roles: ["owner"], manejador: () => ({ camaristas: [] }) },
+  { metodo: "POST", patron: `${H}/housekeeping/tareas/generar`, roles: ["owner"], manejador: (p) => {
+      p.estado.obtener<{ hecho: boolean }>("hoteles.hk", () => ({ hecho: false })).hecho = true;
+      return { fecha: "2026-10-02", creadas: 1 };
+    } },
+  { metodo: "POST", patron: `${H}/folios/:fid/cargos/:cid/reverso`, manejador: (p) => {
+      const f = folioMock(p);
+      const original = f.cargos.find((c) => c.id === p.params.cid);
+      if (f.estado !== "abierto") return fallo(409, MENSAJE_FOLIO_CERRADO);
+      if (!original || original.revertidoPor) return fallo(404, "Cargo no encontrado o ya reversado.");
+      const motivo = ((p.cuerpo ?? {}) as { motivo?: string }).motivo;
+      if (!motivo) return fallo(400, "motivo: requerido.");
+      const reverso = { id: `chg-${f.cargos.length + 1}`, concepto: "reverso" as unknown as ConceptoMock, descripcion: `Reverso: ${motivo}`, monto: -original.monto, impuesto: -original.impuesto, revertidoPor: null, reversaDe: original.id, transferidoDe: null, creadoEn: new Date().toISOString() };
+      original.revertidoPor = reverso.id;
+      f.cargos.push(reverso);
+      return conStatus(201, { id: reverso.id });
+    } },
   { metodo: "GET", patron: `${H}/aprobaciones`, roles: ["owner"], manejador: () => ({ disponible: true, ahora: new Date().toISOString(), aprobaciones: [{ id: "apr-1", estado: "pendiente" }, { id: "apr-2", estado: "ejecutada" }] }) },
   { metodo: "GET", patron: `${H}/reservas-agente/holds`, roles: ["owner"], manejador: () => ({ disponible: true, holds: [{ id: "hold-1", estado: "pendiente_pago", canal: "whatsapp" }, { id: "hold-2", estado: "pendiente_aprobacion", canal: "voz" }] }) },
   { metodo: "GET", patron: `${H}/agentes`, roles: ["owner"], manejador: () => ({ disponible: true, mes: "2026-10", agentes: [

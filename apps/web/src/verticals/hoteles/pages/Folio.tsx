@@ -19,14 +19,20 @@ import { Link } from "react-router-dom";
 import { Receipt } from "lucide-react";
 import {
   Button,
+  Callout,
   Checkbox,
   ConfirmDialog,
   EstadoCargando,
   EstadoError,
+  FormField,
   Input,
   NativeSelect,
   PageContainer,
+  PageHeader,
+  notify,
+  useConfirm,
 } from "@atiende/ui";
+import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import { addCharge, addDiscount, addPayment, cargoTransferible, closeFolio, fetchFolio, fetchFoliosByReservation, reverseCharge, splitFolio, transferCharge, CHARGE_CONCEPT_LABELS } from "../lib/folios-client.ts";
 import type { AddChargeInput, FolioSummary } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
@@ -39,6 +45,7 @@ export interface FolioPageProps extends HotelesShellContext {
 
 const CHARGE_CONCEPTS: readonly AddChargeInput["concepto"][] = ["hospedaje", "ab", "extras", "ajuste", "propina", "otro"];
 export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: FolioPageProps) {
+  const { pedirTexto, dialogo } = useConfirm();
   const [folio, setFolio] = useState<FolioSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -161,9 +168,19 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
   }
 
   async function handleReverse(chargeId: string) {
-    const motivo = window.prompt("Motivo del reverso:");
+    // Cancelar o Escape resuelven null: no se escribe nada. El reverso es un movimiento contable, siempre con motivo.
+    const motivo = await pedirTexto({
+      titulo: "Reversar cargo",
+      descripcion: "El reverso queda registrado en el folio y no se puede deshacer desde este panel.",
+      tono: "danger",
+      confirmar: "Reversar cargo",
+      campo: { etiqueta: "Motivo del reverso", multilinea: false, maxLength: 200 },
+    });
     if (!motivo) return;
-    await withBusy(() => reverseCharge(fetch, apiBaseUrl, token, propertyId, folioId, chargeId, motivo, newIdempotencyKey()).then(() => undefined));
+    await withBusy(async () => {
+      await reverseCharge(fetch, apiBaseUrl, token, propertyId, folioId, chargeId, motivo, newIdempotencyKey());
+      notify.success("Cargo reversado.");
+    });
   }
 
   // Hallazgo de auditoría (severidad ALTA, "acciones destructivas sin
@@ -206,28 +223,25 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
 
   return (
     <PageContainer padding="none" size="md" className="gap-4">
-      <header>
-        <div className="flex justify-between items-start gap-3 flex-wrap">
-          <h1 className="text-xl font-display font-semibold text-foreground">Folio: {folio.etiqueta}</h1>
+      <PageHeader
+        titulo={`Folio: ${folio.etiqueta}`}
+        descripcion={`${folio.esPrincipal ? "Folio principal" : "Folio secundario"} · Estado: ${folio.estado}${folio.motivoCierre ? ` (${folio.motivoCierre})` : ""}`}
+        meta={<span className="text-base font-semibold text-foreground">Saldo: {dineroMx(folio.saldo)}</span>}
+        acciones={
           <Button asChild variant="outline" size="sm">
             <Link to={`/hoteles/${orgSlug}/folios/${folioId}/cfdi`}>
               <Receipt className="w-4 h-4" strokeWidth={1.75} />
               CFDI de este folio
             </Link>
           </Button>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {folio.esPrincipal ? "Folio principal" : "Folio secundario"} · Estado: {folio.estado}
-          {folio.motivoCierre ? ` (${folio.motivoCierre})` : ""}
-        </p>
-        <p className="mt-2.5 text-2xl font-semibold text-foreground">Saldo: {dineroMx(folio.saldo)}</p>
-      </header>
+        }
+      />
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} />}
       {aviso && (
-        <p role="status" className="text-sm text-foreground">
+        <Callout tone="success" onDismiss={() => setAviso(null)}>
           {aviso}
-        </p>
+        </Callout>
       )}
 
       <section>
@@ -240,7 +254,7 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
                 <p className="text-sm text-foreground">
                   {CHARGE_CONCEPT_LABELS[ch.concepto]} · {ch.descripcion}
                 </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{new Date(ch.creadoEn).toLocaleString("es-MX")}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{fechaHoraEsMx(ch.creadoEn)}</p>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-foreground">{dineroMx(ch.monto + ch.impuesto)}</span>
@@ -264,20 +278,24 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
         <div className="flex flex-col gap-2 border border-border rounded-lg p-4">
           <p className="text-sm font-semibold text-foreground">Transferir cargo a otro folio</p>
           <div className="flex gap-2 flex-wrap">
-            <NativeSelect aria-label="Folio destino" value={transfer.destino} onChange={(e) => setTransfer({ ...transfer, destino: e.target.value })}>
-              <option value="">Folio destino…</option>
-              {otrosFolios.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.etiqueta}
-                  {f.esPrincipal ? " (principal)" : ""}
-                </option>
-              ))}
-            </NativeSelect>
-            <Input placeholder="Motivo (opcional)" value={transfer.motivo} maxLength={200} onChange={(e) => setTransfer({ ...transfer, motivo: e.target.value })} className="flex-1 min-w-[160px]" />
-            <Button type="button" disabled={busy || transfer.destino === ""} onClick={() => void handleTransfer()}>
+            <FormField label="Folio destino">
+              <NativeSelect aria-label="Folio destino" value={transfer.destino} onChange={(e) => setTransfer({ ...transfer, destino: e.target.value })}>
+                <option value="">Folio destino…</option>
+                {otrosFolios.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.etiqueta}
+                    {f.esPrincipal ? " (principal)" : ""}
+                  </option>
+                ))}
+              </NativeSelect>
+            </FormField>
+            <FormField label="Motivo (opcional)" className="flex-1 min-w-[160px]">
+              <Input placeholder="Motivo (opcional)" value={transfer.motivo} maxLength={200} onChange={(e) => setTransfer({ ...transfer, motivo: e.target.value })} />
+            </FormField>
+            <Button type="button" loading={busy} disabled={busy || transfer.destino === ""} onClick={() => void handleTransfer()} className="self-end">
               Confirmar transferencia
             </Button>
-            <Button type="button" variant="ghost" onClick={() => setTransfer(null)}>
+            <Button type="button" variant="ghost" className="self-end" onClick={() => setTransfer(null)}>
               Cancelar
             </Button>
           </div>
@@ -295,8 +313,8 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
             ))}
           </div>
           <div className="flex gap-2 flex-wrap">
-            <Input placeholder="Nombre del folio nuevo" value={splitEtiqueta} maxLength={80} onChange={(e) => setSplitEtiqueta(e.target.value)} className="flex-1 min-w-[160px]" />
-            <Button type="submit" variant="outline" disabled={busy || splitCargos.size === 0 || splitEtiqueta.trim() === ""}>
+            <FormField label="Nombre del folio nuevo" className="flex-1 min-w-[160px]"><Input placeholder="Nombre del folio nuevo" value={splitEtiqueta} maxLength={80} onChange={(e) => setSplitEtiqueta(e.target.value)} /></FormField>
+            <Button type="submit" variant="outline" loading={busy} disabled={busy || splitCargos.size === 0 || splitEtiqueta.trim() === ""} className="self-end">
               Crear folio con los cargos elegidos
             </Button>
           </div>
@@ -307,16 +325,18 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
         <form onSubmit={handleAddCharge} className="flex flex-col gap-2 border border-border rounded-lg p-4">
           <p className="text-sm font-semibold text-foreground">Agregar cargo</p>
           <div className="flex gap-2 flex-wrap">
-            <Input placeholder="Descripción" value={chargeDesc} onChange={(e) => setChargeDesc(e.target.value)} className="flex-[2] min-w-[160px]" />
-            <Input placeholder="Monto" type="number" min="0.01" step="0.01" value={chargeAmount} onChange={(e) => setChargeAmount(e.target.value)} className="flex-1 min-w-[100px]" />
-            <NativeSelect value={chargeConcept} onChange={(e) => setChargeConcept(e.target.value as AddChargeInput["concepto"])}>
-              {CHARGE_CONCEPTS.map((c) => (
-                <option key={c} value={c}>
-                  {CHARGE_CONCEPT_LABELS[c]}
-                </option>
-              ))}
-            </NativeSelect>
-            <Button type="submit" disabled={busy}>
+            <FormField label="Descripción" className="flex-[2] min-w-[160px]"><Input placeholder="Descripción" value={chargeDesc} onChange={(e) => setChargeDesc(e.target.value)} /></FormField>
+            <FormField label="Monto" className="flex-1 min-w-[100px]"><Input placeholder="Monto" type="number" min="0.01" step="0.01" value={chargeAmount} onChange={(e) => setChargeAmount(e.target.value)} /></FormField>
+            <FormField label="Concepto">
+              <NativeSelect value={chargeConcept} onChange={(e) => setChargeConcept(e.target.value as AddChargeInput["concepto"])}>
+                {CHARGE_CONCEPTS.map((c) => (
+                  <option key={c} value={c}>
+                    {CHARGE_CONCEPT_LABELS[c]}
+                  </option>
+                ))}
+              </NativeSelect>
+            </FormField>
+            <Button type="submit" loading={busy} disabled={busy} className="self-end">
               Agregar
             </Button>
           </div>
@@ -327,9 +347,9 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
         <form onSubmit={handleAddDiscount} className="flex flex-col gap-2 border border-border rounded-lg p-4">
           <p className="text-sm font-semibold text-foreground">Aplicar descuento</p>
           <div className="flex gap-2 flex-wrap">
-            <Input placeholder="Motivo" value={discountDesc} onChange={(e) => setDiscountDesc(e.target.value)} className="flex-[2] min-w-[160px]" />
-            <Input placeholder="Monto" type="number" min="0.01" step="0.01" value={discountAmount} onChange={(e) => setDiscountAmount(e.target.value)} className="flex-1 min-w-[100px]" />
-            <Button type="submit" variant="outline" disabled={busy}>
+            <FormField label="Motivo" className="flex-[2] min-w-[160px]"><Input placeholder="Motivo" value={discountDesc} onChange={(e) => setDiscountDesc(e.target.value)} /></FormField>
+            <FormField label="Monto" className="flex-1 min-w-[100px]"><Input placeholder="Monto" type="number" min="0.01" step="0.01" value={discountAmount} onChange={(e) => setDiscountAmount(e.target.value)} /></FormField>
+            <Button type="submit" variant="outline" loading={busy} disabled={busy} className="self-end">
               Aplicar
             </Button>
           </div>
@@ -356,12 +376,14 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
         <form onSubmit={handleAddPayment} className="flex flex-col gap-2 border border-border rounded-lg p-4">
           <p className="text-sm font-semibold text-foreground">Registrar pago</p>
           <div className="flex gap-2 flex-wrap">
-            <Input placeholder="Monto" type="number" min="0.01" step="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="flex-1 min-w-[100px]" />
-            <NativeSelect value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as "efectivo" | "transferencia")}>
-              <option value="efectivo">Efectivo</option>
-              <option value="transferencia">Transferencia</option>
-            </NativeSelect>
-            <Button type="submit" disabled={busy}>
+            <FormField label="Monto" className="flex-1 min-w-[100px]"><Input placeholder="Monto" type="number" min="0.01" step="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} /></FormField>
+            <FormField label="Método">
+              <NativeSelect value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as "efectivo" | "transferencia")}>
+                <option value="efectivo">Efectivo</option>
+                <option value="transferencia">Transferencia</option>
+              </NativeSelect>
+            </FormField>
+            <Button type="submit" loading={busy} disabled={busy} className="self-end">
               Registrar
             </Button>
           </div>
@@ -396,6 +418,7 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
         cancelar="Volver"
         onConfirm={handleConfirmClose}
       />
+      {dialogo}
     </PageContainer>
   );
 }

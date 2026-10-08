@@ -17,26 +17,29 @@
 // Ningún cambio de lógica: mismos props, mismo estado, mismas llamadas de red,
 // misma condición de cada rama.
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   ConfirmDialog,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
+  FormDialog,
+  FormField,
   Input,
-  Label,
   NativeSelect,
   PageContainer,
+  PageHeader,
   StatusBadge,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
+  notify,
 } from "@atiende/ui";
 import {
   assignRoom,
@@ -177,8 +180,7 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug, role }: H
     };
   }, [showForm, guestQuery, apiBaseUrl, token, propertyId]);
 
-  async function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleCreate() {
     setFormError(null);
     if (!roomTypeId) return setFormError("Selecciona un tipo de habitación.");
     if (!checkInDate || !checkOutDate) return setFormError("Check-in y check-out son requeridos.");
@@ -191,6 +193,7 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug, role }: H
       setGuestQuery("");
       setGuestId("");
       setShowForm(false);
+      notify.success("Reserva creada.");
       await load();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "No se pudo crear la reserva.");
@@ -205,7 +208,7 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug, role }: H
   // apuntar a un huésped ya sembrado por SQL directo). El huésped nuevo queda
   // seleccionado de inmediato (`setGuestId`), listo para "Crear reserva". Función
   // plana (NO un handler de <form onSubmit>) a propósito: este formulario mínimo
-  // vive DENTRO del <form onSubmit={handleCreate}> de "crear reserva" -- HTML no
+  // vive DENTRO del <form> (FormDialog con onGuardar) de "crear reserva" -- HTML no
   // permite anidar un <form> dentro de otro, así que el botón de abajo la invoca
   // directo por `onClick`, sin evento de submit que prevenir.
   async function handleCreateGuest() {
@@ -334,18 +337,20 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug, role }: H
 
   return (
     <PageContainer padding="none" className="gap-4">
-      <header className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-display font-semibold text-foreground">Reservas</h1>
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" onClick={() => setShowCotizador((v) => !v)}>
-            {showCotizador ? "Cerrar cotizador" : "Cotizar"}
-          </Button>
-          <Button type="button" variant={showForm ? "outline" : "default"} onClick={() => setShowForm((v) => !v)}>
-            {!showForm && <Plus className="w-4 h-4" strokeWidth={1.75} />}
-            {showForm ? "Cancelar" : "Nueva reserva"}
-          </Button>
-        </div>
-      </header>
+      <PageHeader
+        titulo="Reservas"
+        descripcion="Reservas de la propiedad, cotizador y lista de espera."
+        acciones={
+          <>
+            <Button type="button" variant="outline" onClick={() => setShowCotizador((v) => !v)}>
+              {showCotizador ? "Cerrar cotizador" : "Cotizar"}
+            </Button>
+            <Button type="button" iconLeft={<Plus className="size-4" strokeWidth={1.75} />} onClick={() => setShowForm(true)}>
+              Nueva reserva
+            </Button>
+          </>
+        }
+      />
 
       <Tabs value={vista} onValueChange={(v) => setVista(v as "reservas" | "lista")}>
         <TabsList>
@@ -355,9 +360,9 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug, role }: H
       </Tabs>
 
       {avisoFechas && (
-        <p role="status" className="text-sm text-foreground">
+        <Callout tone="success" onDismiss={() => setAvisoFechas(null)}>
           {avisoFechas}
-        </p>
+        </Callout>
       )}
 
       {vista === "lista" && <ListaEsperaPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} role={role} onReservaCreada={() => void load()} />}
@@ -365,93 +370,6 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug, role }: H
       {vista === "reservas" && (
         <>
         {showCotizador && <CotizadorPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />}
-
-        {showForm && (
-          <Card className="max-w-md">
-            <CardContent className="p-4">
-              <form onSubmit={handleCreate} className="flex flex-col gap-3">
-                <div>
-                  <Label htmlFor="res-tipo-habitacion">Tipo de habitación</Label>
-                  <NativeSelect id="res-tipo-habitacion" value={roomTypeId} onChange={(e) => setRoomTypeId(e.target.value)} required>
-                    <option value="" disabled>
-                      {roomTypes === null ? "Cargando…" : "Selecciona un tipo de habitación"}
-                    </option>
-                    {roomTypes?.map((rt) => (
-                      <option key={rt.id} value={rt.id}>
-                        {rt.nombre} (máx. {rt.capacidadMaxima} huéspedes)
-                      </option>
-                    ))}
-                  </NativeSelect>
-                  {roomTypes !== null && roomTypes.length === 0 && (
-                    <span className="block mt-1 text-xs text-destructive">Esta property todavía no tiene tipos de habitación configurados.</span>
-                  )}
-                </div>
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <Label htmlFor="res-checkin">Check-in</Label>
-                    <Input id="res-checkin" type="date" value={checkInDate} onChange={(e) => setCheckInDate(e.target.value)} required className="mt-1" />
-                  </div>
-                  <div className="flex-1">
-                    <Label htmlFor="res-checkout">Check-out</Label>
-                    <Input id="res-checkout" type="date" value={checkOutDate} onChange={(e) => setCheckOutDate(e.target.value)} required className="mt-1" />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="res-guest-query">Huésped (opcional — busca por nombre, correo o teléfono)</Label>
-                  <Input
-                    id="res-guest-query"
-                    type="text"
-                    value={guestQuery}
-                    onChange={(e) => {
-                      setGuestQuery(e.target.value);
-                      setGuestId("");
-                    }}
-                    placeholder="Buscar huésped…"
-                    className="mt-1"
-                  />
-                  <NativeSelect value={guestId} onChange={(e) => setGuestId(e.target.value)} aria-label="Huésped de la reserva" className="mt-1.5">
-                    <option value="">Sin huésped asignado</option>
-                    {guestOptions.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.nombreCompleto}
-                        {g.telefono ? ` · ${g.telefono}` : ""}
-                        {g.email ? ` · ${g.email}` : ""}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </div>
-                {/* Fix hallazgo CRÍTICO ("...huéspedes imposible sin SQL directo") --
-                    alta real de huésped sin salir de este formulario. */}
-                <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setShowNewGuestForm((v) => !v)}>
-                  {showNewGuestForm ? "Cancelar alta de huésped" : "+ Huésped nuevo"}
-                </Button>
-                {showNewGuestForm && (
-                  <div className="flex flex-col gap-2 border border-dashed border-border rounded-lg p-3">
-                    <div>
-                      <Label htmlFor="res-guest-nombre" className="text-xs font-normal">Nombre completo</Label>
-                      <Input id="res-guest-nombre" value={newGuestName} onChange={(e) => setNewGuestName(e.target.value)} className="mt-1 h-9" />
-                    </div>
-                    <div>
-                      <Label htmlFor="res-guest-email" className="text-xs font-normal">Email (opcional)</Label>
-                      <Input id="res-guest-email" value={newGuestEmail} onChange={(e) => setNewGuestEmail(e.target.value)} className="mt-1 h-9" />
-                    </div>
-                    <div>
-                      <Label htmlFor="res-guest-telefono" className="text-xs font-normal">Teléfono (opcional)</Label>
-                      <Input id="res-guest-telefono" value={newGuestPhone} onChange={(e) => setNewGuestPhone(e.target.value)} className="mt-1 h-9" />
-                    </div>
-                    <Button type="button" size="sm" onClick={() => void handleCreateGuest()} disabled={creatingGuest}>
-                      {creatingGuest ? "Creando…" : "Crear y seleccionar huésped"}
-                    </Button>
-                  </div>
-                )}
-                {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
-                <Button type="submit" disabled={creating}>
-                  {creating ? "Creando…" : "Crear reserva"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        )}
 
         <Tabs value={filter} onValueChange={(v) => setFilter(v as ReservationStatus | "todas")}>
           <TabsList className="flex-wrap h-auto">
@@ -497,8 +415,8 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug, role }: H
                           Ver folio
                         </Button>
                         {next && (
-                          <Button type="button" size="sm" onClick={() => void handleTransition(r, next)} disabled={busyId === r.id}>
-                            {busyId === r.id ? "…" : `Marcar ${RESERVATION_STATUS_LABELS[next]}`}
+                          <Button type="button" size="sm" onClick={() => void handleTransition(r, next)} loading={busyId === r.id} disabled={busyId === r.id}>
+                            {`Marcar ${RESERVATION_STATUS_LABELS[next]}`}
                           </Button>
                         )}
                         {r.estado !== "cancelada" && (
@@ -538,8 +456,8 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug, role }: H
                           {roomsByReservation[r.id]?.length === 0 && (
                             <span className="text-xs text-destructive">Este tipo de habitación no tiene habitaciones físicas creadas todavía (ver Catálogo).</span>
                           )}
-                          <Button type="button" size="sm" onClick={() => void handleConfirmAssign(r)} disabled={busyId === r.id || !assigningRoomId}>
-                            {busyId === r.id ? "…" : "Confirmar asignación"}
+                          <Button type="button" size="sm" onClick={() => void handleConfirmAssign(r)} loading={busyId === r.id} disabled={busyId === r.id || !assigningRoomId}>
+                            Confirmar asignación
                           </Button>
                         </div>
                       )}
@@ -552,6 +470,92 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug, role }: H
         </Tabs>
         </>
       )}
+
+      <FormDialog
+        open={showForm}
+        onOpenChange={(o) => {
+          setShowForm(o);
+          if (!o) setFormError(null);
+        }}
+        titulo="Nueva reserva"
+        subtitulo="Elige el tipo de habitación, las fechas y, si ya lo conoces, al huésped."
+        onGuardar={() => void handleCreate()}
+        guardando={creating}
+        textoBotonGuardar="Crear reserva"
+        anchoClase="max-w-2xl"
+      >
+        <div className="grid gap-4">
+          <FormField
+            id="res-tipo-habitacion"
+            label="Tipo de habitación"
+            required
+            error={roomTypes !== null && roomTypes.length === 0 ? "Esta property todavía no tiene tipos de habitación configurados." : undefined}
+          >
+            <NativeSelect value={roomTypeId} onChange={(e) => setRoomTypeId(e.target.value)}>
+              <option value="" disabled>
+                {roomTypes === null ? "Cargando…" : "Selecciona un tipo de habitación"}
+              </option>
+              {roomTypes?.map((rt) => (
+                <option key={rt.id} value={rt.id}>
+                  {rt.nombre} (máx. {rt.capacidadMaxima} huéspedes)
+                </option>
+              ))}
+            </NativeSelect>
+          </FormField>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField id="res-checkin" label="Check-in" required>
+              <Input type="date" value={checkInDate} onChange={(e) => setCheckInDate(e.target.value)} />
+            </FormField>
+            <FormField id="res-checkout" label="Check-out" required>
+              <Input type="date" value={checkOutDate} onChange={(e) => setCheckOutDate(e.target.value)} />
+            </FormField>
+          </div>
+          <FormField id="res-guest-query" label="Huésped (opcional — busca por nombre, correo o teléfono)">
+            <Input
+              type="text"
+              value={guestQuery}
+              onChange={(e) => {
+                setGuestQuery(e.target.value);
+                setGuestId("");
+              }}
+              placeholder="Buscar huésped…"
+            />
+          </FormField>
+          <FormField label="Huésped de la reserva">
+            <NativeSelect value={guestId} onChange={(e) => setGuestId(e.target.value)} aria-label="Huésped de la reserva">
+              <option value="">Sin huésped asignado</option>
+              {guestOptions.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.nombreCompleto}
+                  {g.telefono ? ` · ${g.telefono}` : ""}
+                  {g.email ? ` · ${g.email}` : ""}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormField>
+          {/* Alta real de huésped sin salir de este formulario. */}
+          <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setShowNewGuestForm((v) => !v)}>
+            {showNewGuestForm ? "Cancelar alta de huésped" : "+ Huésped nuevo"}
+          </Button>
+          {showNewGuestForm && (
+            <div className="grid gap-3 rounded-card border border-dashed border-border p-3">
+              <FormField id="res-guest-nombre" label="Nombre completo">
+                <Input value={newGuestName} onChange={(e) => setNewGuestName(e.target.value)} />
+              </FormField>
+              <FormField id="res-guest-email" label="Email (opcional)">
+                <Input value={newGuestEmail} onChange={(e) => setNewGuestEmail(e.target.value)} />
+              </FormField>
+              <FormField id="res-guest-telefono" label="Teléfono (opcional)">
+                <Input value={newGuestPhone} onChange={(e) => setNewGuestPhone(e.target.value)} />
+              </FormField>
+              <Button type="button" size="sm" className="self-start" onClick={() => void handleCreateGuest()} loading={creatingGuest} disabled={creatingGuest}>
+                Crear y seleccionar huésped
+              </Button>
+            </div>
+          )}
+          {formError && <Callout tone="danger">{formError}</Callout>}
+        </div>
+      </FormDialog>
 
       <ConfirmDialog
         open={pendingCancel !== null}

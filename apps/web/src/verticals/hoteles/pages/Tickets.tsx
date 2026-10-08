@@ -4,17 +4,20 @@
 // 034 la pantalla avisa y no rompe (sin 500).
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { AlertTriangle, Clock, LifeBuoy } from "lucide-react";
+import { AlertTriangle, Clock } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
+  FormField,
   Input,
   NativeSelect,
   PageContainer,
+  PageHeader,
   StatusBadge,
   statusTone,
   Tabs,
@@ -46,6 +49,7 @@ import {
   TICKET_MANAGE_ROLES,
 } from "../lib/tickets-client.ts";
 import type { ResenaPendiente, SlaEfectiva, TicketAccion, TicketDepartamento, TicketEvento, TicketListado, TicketPrioridad, TicketResumen } from "../lib/tickets-client.ts";
+import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import { SLA_ESTADO_TONES } from "../lib/status-tones.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
@@ -177,7 +181,7 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
           )}
           <div className="flex flex-wrap gap-2 mt-1">
             {acciones.map((a) => (
-              <Button key={a} type="button" size="sm" variant={a === "iniciar" || a === "cerrar" ? "default" : "outline"} disabled={busy === t.id} onClick={() => void handleAccion(t, a)}>
+              <Button key={a} type="button" size="sm" variant={a === "iniciar" || a === "cerrar" ? "default" : "outline"} loading={busy === t.id} disabled={busy === t.id} onClick={() => void handleAccion(t, a)}>
                 {ACCION_LABELS[a]}
               </Button>
             ))}
@@ -208,24 +212,22 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
 
   return (
     <PageContainer padding="none" className="gap-4">
-      <header className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-display font-semibold text-foreground flex items-center gap-2">
-          <LifeBuoy className="w-5 h-5" strokeWidth={1.75} />
-          Tickets de huésped
-        </h1>
-        {listado?.disponible && <p className="text-sm text-muted-foreground">{activos.length} activos · {vencidos} con SLA vencido · {escalados.length} escalados</p>}
-      </header>
+      <PageHeader
+        titulo="Tickets de huésped"
+        descripcion="Peticiones y quejas de huéspedes con plazo de atención (SLA)."
+        meta={listado?.disponible ? <span>{activos.length} activos · {vencidos} con SLA vencido · {escalados.length} escalados</span> : undefined}
+      />
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
-      {aviso && <p role="status" className="text-sm text-foreground">{aviso}</p>}
+      {aviso && (
+        <Callout tone="success" onDismiss={() => setAviso(null)}>
+          {aviso}
+        </Callout>
+      )}
       {!listado && !error && <EstadoCargando etiqueta="Cargando tickets…" />}
 
       {listado && !listado.disponible && (
-        <Card>
-          <CardContent className="p-4 text-sm text-foreground">
-            Los tickets de huésped con SLA aún no están activos en esta base de datos: se activan cuando se aplique la actualización pendiente.
-          </CardContent>
-        </Card>
+        <Callout tone="info">Los tickets de huésped con SLA aún no están activos en esta base de datos: se activan cuando se aplique la actualización pendiente.</Callout>
       )}
 
       {listado?.disponible && (
@@ -233,12 +235,10 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
           <Card>
             <CardContent className="p-4">
               <form className="grid gap-3 sm:grid-cols-[1fr_11rem_8rem_auto] items-end" onSubmit={(e) => void handleCrear(e)}>
-                <label className="text-xs text-muted-foreground flex flex-col gap-1">
-                  Petición o queja del huésped
-                  <Input value={nuevo.mensaje} maxLength={1000} onChange={(e) => setNuevo({ ...nuevo, mensaje: e.target.value })} placeholder="Ej. Habitación 204: el aire no enfría" className="h-11" />
-                </label>
-                <label className="text-xs text-muted-foreground flex flex-col gap-1">
-                  Departamento
+                <FormField label="Petición o queja del huésped">
+                  <Input value={nuevo.mensaje} maxLength={1000} onChange={(e) => setNuevo({ ...nuevo, mensaje: e.target.value })} placeholder="Ej. Habitación 204: el aire no enfría" />
+                </FormField>
+                <FormField label="Departamento">
                   <NativeSelect value={nuevo.departamento} onChange={(e) => setNuevo({ ...nuevo, departamento: e.target.value })}>
                     <option value="">Automático</option>
                     {TICKET_DEPARTAMENTOS.map((d) => (
@@ -247,9 +247,8 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
                       </option>
                     ))}
                   </NativeSelect>
-                </label>
-                <label className="text-xs text-muted-foreground flex flex-col gap-1">
-                  Prioridad
+                </FormField>
+                <FormField label="Prioridad">
                   <NativeSelect value={nuevo.prioridad} onChange={(e) => setNuevo({ ...nuevo, prioridad: e.target.value })}>
                     <option value="">Automática</option>
                     {TICKET_PRIORIDADES.map((p) => (
@@ -258,9 +257,9 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
                       </option>
                     ))}
                   </NativeSelect>
-                </label>
-                <Button type="submit" disabled={busy === "crear"}>
-                  {busy === "crear" ? "Registrando…" : "Registrar ticket"}
+                </FormField>
+                <Button type="submit" loading={busy === "crear"} disabled={busy === "crear"}>
+                  Registrar ticket
                 </Button>
               </form>
             </CardContent>
@@ -335,18 +334,17 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
                           const key = `${s.departamento}:${s.prioridad}`;
                           return (
                             <div key={key} className="flex items-end gap-2">
-                              <label className="text-xs text-muted-foreground flex flex-col gap-1">
-                                {PRIORIDAD_LABELS[s.prioridad]}{s.configurada ? "" : " (predeterminado)"}
+                              <FormField label={`${PRIORIDAD_LABELS[s.prioridad]}${s.configurada ? "" : " (predeterminado)"}`}>
                                 <Input
                                   type="number"
                                   min={1}
                                   max={43200}
-                                  className="h-11 w-28"
+                                  className="w-28"
                                   value={slaEdicion[key] ?? String(s.minutos)}
                                   disabled={!puedeEditarSla}
                                   onChange={(e) => setSlaEdicion({ ...slaEdicion, [key]: e.target.value })}
                                 />
-                              </label>
+                              </FormField>
                               {puedeEditarSla && slaEdicion[key] !== undefined && Number(slaEdicion[key]) !== s.minutos && (
                                 <Button
                                   type="button"
@@ -392,7 +390,7 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
             <ol className="text-sm text-foreground flex flex-col gap-1">
               {detalle.bitacora.map((e) => (
                 <li key={e.id}>
-                  <span className="text-muted-foreground">{new Date(e.creadoEn).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" })}</span> · {e.tipo.replaceAll("_", " ")} · {e.sistema ? "Sistema" : "Personal del hotel"}
+                  <span className="text-muted-foreground">{fechaHoraEsMx(e.creadoEn)}</span> · {e.tipo.replaceAll("_", " ")} · {e.sistema ? "Sistema" : "Personal del hotel"}
                 </li>
               ))}
             </ol>
