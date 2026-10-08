@@ -121,4 +121,28 @@ describe("texto libre de terceros fuera del summary que alimenta la guardia de c
       expect(JSON.stringify(a.blocks.map((b) => b.title)), tool).not.toMatch(/7,654,321/);
     }
   });
+
+  it("con UNA sucursal elegida el summary conserva ventas, pedidos y ticket (alcance neutro, sin el nombre)", async () => {
+    const reader = new CfoFakeReader();
+    const r = await correr(reader, "cfo_resumen", { ...SEMANA, sucursal: "Altabrisa" });
+    const [ventas, pedidos, ticket] = [r.rows[0]!["ventas"] as number, r.rows[0]!["pedidos"] as number, r.rows[0]!["ticket"] as number];
+    const fmt = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    expect(r.summary).toContain(fmt(ventas));
+    expect(r.summary).toContain(`${pedidos} pedidos`);
+    expect(r.summary).toContain(fmt(ticket));
+    expect(r.summary).toContain("la sucursal elegida");
+    expect(r.summary).not.toMatch(/altabrisa/i);
+  });
+
+  it("sucursal hostil elegida: conserva la cifra, sin el nombre, y el motor sigue rechazando lo que el modelo derive de él", async () => {
+    const reader = new CfoFakeReader({ branches: hostilBranches });
+    const r = await correr(reader, "cfo_resumen", { ...SEMANA, sucursal: "Centro" });
+    expect(r.status).toBe("ok");
+    sinHostil(r);
+    expect(r.summary).toContain(`$${(r.rows[0]!["ventas"] as number).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    const llm = scriptedCompletion([{ toolCalls: [{ name: "cfo_resumen", argumentsJson: JSON.stringify({ ...SEMANA, sucursal: "Centro" }) }] }, { text: "El 4321% de tus ventas, $7,654,321 pesos." }]);
+    const a = await runDataChatTurn({ catalog: buildRestaurantesDataChatCatalog(reader, { verticalRole: "owner" }), scope: OWNER_CFO_SCOPE, question: "¿cuánto vendió Centro la semana pasada?", complete: llm.complete, now: new Date() });
+    expect(a.text).not.toMatch(/4321|7,654,321/);
+    expect(a.text).toBe(r.summary);
+  });
 });

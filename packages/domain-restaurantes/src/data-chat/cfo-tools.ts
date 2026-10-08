@@ -157,10 +157,14 @@ const REFERENCIA_RE = /\s?\[[a-z0-9_]+\]/g;
 const quitarReferencias = (t: string): string => t.replace(REFERENCIA_RE, "");
 const mxn = (centavos: number): string => formatMxn(centavos / 100);
 
-/** Narrativa de CFO-04 sin las oraciones que citan nombres libres (sucursales o titulos de hallazgos, que llevan sucursal o platillo). */
+/** Narrativa de CFO-04 sin texto libre de terceros: se descartan las oraciones que citan el TITULO de un hallazgo (lleva sucursal o platillo) y en las demas
+ *  el nombre de cada sucursal se cambia por una etiqueta de alcance neutra, conservando la cifra. */
 function resumenSinNombres(oraciones: readonly string[], titulos: readonly string[], nombres: readonly string[], sinDatos: boolean): string {
-  const prohibidos = [...titulos, ...nombres].map((t) => t.toLowerCase()).filter((t) => t.length > 0);
-  const limpias = oraciones.filter((o) => !prohibidos.some((t) => o.toLowerCase().includes(t)));
+  const prohibidos = titulos.map((t) => t.toLowerCase()).filter((t) => t.length > 0);
+  const etiqueta = nombres.length === 1 ? "la sucursal elegida" : "una sucursal";
+  const porLargo = [...nombres].filter((n) => n.length > 0).sort((a, b) => b.length - a.length);
+  const neutralizar = (o: string): string => porLargo.reduce((t, n) => t.replace(new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), (_m, off: number, whole: string) => (off === 0 || whole.slice(Math.max(0, off - 2), off) === ". " ? etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1) : etiqueta)), o);
+  const limpias = oraciones.filter((o) => !prohibidos.some((t) => o.toLowerCase().includes(t))).map(neutralizar);
   const texto = quitarReferencias(limpias.join(" "));
   if (texto) return texto;
   return sinDatos ? "Sin datos de ventas en este periodo." : "Resumen del periodo en la tabla.";
