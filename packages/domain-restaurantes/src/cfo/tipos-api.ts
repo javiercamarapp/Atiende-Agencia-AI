@@ -162,6 +162,12 @@ export interface KpiTarjeta {
   readonly semaforo: Semaforo;
   /** Qué dirección es «mejor» (para pintar la variación). */
   readonly mejorSi: "mayor" | "menor" | "neutral";
+  /**
+   * Base de ventas de la tarjeta: «agente» (ventas del agente por WhatsApp y voz) o «softrestaurant» (ventas del negocio). El margen de contribución
+   * y la tarjeta «Ventas del negocio (SoftRestaurant)» comparten base; con SR como titular el margen NUNCA se muestra junto a las ventas del agente
+   * sin rotularlo. Opcional: respuestas anteriores no lo traen.
+   */
+  readonly baseVentas?: "agente" | "softrestaurant";
 }
 
 export interface ResumenColumna {

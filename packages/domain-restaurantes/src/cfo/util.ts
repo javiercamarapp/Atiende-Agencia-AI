@@ -225,6 +225,12 @@ export function lunesDe(fecha: string): string {
   return sumarDiasFecha(fecha, 1 - diaSemanaIso(fecha));
 }
 
+/** "2026-02-17" o "2026-02-01" -> "2026-03-01". */
+export function primerDiaMesSiguiente(fecha: string): string {
+  const [a, m] = fecha.split("-").map(Number) as [number, number];
+  return new Date(Date.UTC(a, m, 1)).toISOString().slice(0, 10);
+}
+
 export function primerDiaDelMes(mes: string): string {
   return `${mes}-01`;
 }
