@@ -331,6 +331,8 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "HOTELES_IDENTITY_KEY_VERSION",
   // Rn-29 -- version de la llave del cifrado del acceso de rentas (default 1): metadato por fila para la rotacion futura.
   "RENTAS_ACCESS_KEY_VERSION",
+  // Rn-P3-07 -- kill switch del barrido diario de reservas sin movimiento de rentas (=1 lo apaga); opcional, nunca bloquea nada.
+  "RENTAS_AVISO_SIN_MOVIMIENTO_OFF",
   "OPENROUTER_COUNTRY_OF_RESIDENCE",
   // Gateway LLM: modelos por rol (JSON) y ZDR global; opcionales, ver docs/LLM-GATEWAY.md.
   "LLM_MODELS_JSON",

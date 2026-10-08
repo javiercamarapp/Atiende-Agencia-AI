@@ -11,6 +11,7 @@ import { rentasFinanzasRoutes } from "./finanzas.ts";
 import { rentasPricingConfigRoutes } from "./pricing-config.ts";
 import { rentasFinanzasStatementsRoutes } from "./finanzas-statements.ts";
 import { rentasFinanzasPayoutsRoutes } from "./finanzas-payouts.ts";
+import { rentasFinanzasImportacionRoutes } from "./finanzas-importacion.ts";
 import { rentasOwnerPortalInviteRoutes } from "./owner-portal-invite.ts";
 import { rentasOwnerPortalRoutes } from "./owner-portal.ts";
 import { rentasIcalSyncRoutes } from "./ical-sync.ts";
@@ -85,6 +86,8 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasPricingConfigRoutes(deps));
   app.route("/", rentasFinanzasStatementsRoutes(deps));
   app.route("/", rentasFinanzasPayoutsRoutes(deps));
+  // Rn-P3-06/07 -- importar el reporte de pagos de la OTA, cola de pendientes, reservas sin movimiento y movimientos en revision.
+  app.route("/", rentasFinanzasImportacionRoutes(deps));
   app.route("/", rentasIcalSyncRoutes(deps));
   app.route("/", rentasIcalMonitorRoutes(deps));
   // Rn-03 -- reporte de ocupación e ingresos (solo lectura, roles de finanzas).

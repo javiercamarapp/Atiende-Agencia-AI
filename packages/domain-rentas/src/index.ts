@@ -47,6 +47,11 @@ export type { ReglaMinStayExistente, TemporadaExistente } from "./pricing/valida
 
 export { aplicarPorcentaje, centavosDesdeDecimal, decimalDesdeCentavos, restarCentavos, sumarCentavos } from "./finanzas/redondeo.ts";
 export { calcularMovimientoReserva } from "./finanzas/movimiento.ts";
+export { importarReportePagos, NOTA_AJUSTE, NOTA_SIN_RESERVA, TOLERANCIA_COMISION_BASIS_POINTS } from "./finanzas/importacion.ts";
+export type { EntradaImportarPagos, LineaResultadoImportacion, ResultadoImportacion, ResultadoLineaPresentado, ResumenImportacion } from "./finanzas/importacion.ts";
+export { CANALES_CON_REPORTE_CSV, LIMITES_REPORTE, parsearReportePagos } from "./finanzas/csv/index.ts";
+export type { ErrorFilaReporte, LineaReporteCanal, ResultadoParseoReporte } from "./finanzas/csv/index.ts";
+export { extraerDatosCanal } from "./ical/parser.ts";
 export type {
   BaseComisionGestor,
   CodigoMoneda,
@@ -101,6 +106,18 @@ export type {
   IncidenciaMantenimientoRecord,
   ItemInventarioRecord,
   MessagingOutboxChannel,
+  ActualizarLineaImportadaInput,
+  CandidataImportacion,
+  LineaColaImportacion,
+  LineaImportadaExistente,
+  MotivoRevisionMovimiento,
+  MovimientoEnRevision,
+  NewImportacionPagosInput,
+  NewLineaImportadaInput,
+  OrganizacionConReservasSinMovimiento,
+  OrigenMovimiento,
+  ReservaSinMovimiento,
+  ResultadoLineaImportacion,
   NewDescuentoDuracionInput,
   NewGuestMinimoInput,
   NewOwnerStatementInput,

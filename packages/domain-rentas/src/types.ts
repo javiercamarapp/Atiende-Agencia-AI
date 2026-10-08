@@ -133,6 +133,116 @@ export interface NewReservaFinancieroInput {
   readonly impuestosCentavos: number;
   readonly netoCentavos: number;
   readonly createdBy: string;
+  /** Rn-P3-06/07 -- como nacio el movimiento. Ausente = 'manual' (el INSERT NO incluye las columnas nuevas: compatible con la base sin la
+   *  migracion 035). Cualquier otro valor exige la migracion 035. */
+  readonly origen?: OrigenMovimiento;
+  /** Solo con la migracion 035. `motivoRevision` solo es valido si `requiereRevision` es true. */
+  readonly requiereRevision?: boolean;
+  readonly motivoRevision?: MotivoRevisionMovimiento | null;
+}
+
+export type OrigenMovimiento = "manual" | "directa_automatica" | "importacion_csv";
+export type MotivoRevisionMovimiento = "reserva_modificada" | "reserva_cancelada" | "comision_gestor_pendiente" | "discrepancia_importacion";
+
+// ---------------------------------------------------------------------------
+// Importacion del reporte de pagos de la OTA (Rn-P3-06) y aviso de reservas sin movimiento (Rn-P3-07)
+// ---------------------------------------------------------------------------
+
+/** Reserva de la property con ese codigo de confirmacion en el canal, para emparejar una linea del reporte. */
+export interface CandidataImportacion {
+  readonly ocupacionId: string;
+  readonly codigoConfirmacion: string;
+  readonly estado: string;
+  /** Moneda del movimiento si ya existe; `null` si la reserva aun no tiene movimiento. */
+  readonly moneda: string | null;
+  readonly tieneMovimiento: boolean;
+  readonly montoRecibidoCentavos: number | null;
+}
+
+export type ResultadoLineaImportacion = "creada" | "conciliada" | "discrepancia" | "pendiente";
+
+export interface LineaImportadaExistente {
+  readonly id: string;
+  readonly huella: string;
+  readonly resultado: ResultadoLineaImportacion;
+  readonly nota: string | null;
+}
+
+export interface NewImportacionPagosInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly canalId: string;
+  readonly archivoSha256: string;
+  readonly lineasTotal: number;
+  readonly creadas: number;
+  readonly conciliadas: number;
+  readonly discrepancias: number;
+  readonly pendientes: number;
+  readonly yaImportadas: number;
+  readonly ignoradas: number;
+  readonly createdBy: string;
+}
+
+export interface NewLineaImportadaInput {
+  readonly importacionId: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly canalId: string;
+  readonly huella: string;
+  readonly codigoConfirmacion: string | null;
+  readonly tipoLinea: "reserva" | "ajuste";
+  readonly fecha: string | null;
+  readonly moneda: string;
+  readonly montoNetoCentavos: number;
+  readonly montoBrutoCentavos: number | null;
+  readonly comisionCanalCentavos: number | null;
+  readonly ocupacionId: string | null;
+  readonly resultado: ResultadoLineaImportacion;
+  readonly nota: string | null;
+}
+
+export interface ActualizarLineaImportadaInput {
+  readonly id: string;
+  readonly ocupacionId: string | null;
+  readonly resultado: ResultadoLineaImportacion;
+  readonly nota: string | null;
+}
+
+/** Fila de la cola de revision: lineas importadas que quedaron `pendiente` o en `discrepancia`. */
+export interface LineaColaImportacion {
+  readonly id: string;
+  readonly canalCodigo: string;
+  readonly codigoConfirmacion: string | null;
+  readonly tipoLinea: "reserva" | "ajuste";
+  readonly fecha: string | null;
+  readonly moneda: string;
+  readonly montoNetoCentavos: number;
+  readonly resultado: "pendiente" | "discrepancia";
+  readonly nota: string | null;
+  readonly ocupacionId: string | null;
+  readonly creadaEn: string;
+}
+
+export interface ReservaSinMovimiento {
+  readonly ocupacionId: string;
+  readonly unidadId: string;
+  readonly inicio: string;
+  readonly fin: string;
+  readonly canalCodigo: string | null;
+}
+
+export interface MovimientoEnRevision {
+  readonly ocupacionId: string;
+  readonly motivo: MotivoRevisionMovimiento;
+  readonly moneda: string;
+  readonly netoCentavos: number;
+  readonly origen: OrigenMovimiento;
+}
+
+/** Organizacion con reservas confirmadas del periodo sin movimiento (barrido de sistema, todas las organizaciones). */
+export interface OrganizacionConReservasSinMovimiento {
+  readonly organizationId: string;
+  readonly cantidad: number;
 }
 
 export type { ConfiguracionComisionCanal, MovimientoFinancieroReserva };

@@ -46,6 +46,12 @@ export interface VEventNormalizado {
   dtend: ValorFechaIcs;
   status: EstadoEventoIcs;
   summary: string | null;
+  /** Rn-P3-05 -- codigo de confirmacion del CANAL (p. ej. `HMXXXXXXXX` de Airbnb), extraido del DESCRIPTION. `null` si el feed no
+   *  lo trae o el canal no tiene un patron verificado con fixture (Booking.com y Vrbo: sin patron, nunca se adivina). */
+  codigoConfirmacion: string | null;
+  /** Rn-P3-05 -- ultimos 4 digitos del telefono del huesped ("Phone Number (Last 4 Digits)" de Airbnb), solo digitos. PII: se persiste
+   *  solo en la columna con retencion `rentas_huesped_pii` y nunca se registra en logs ni notificaciones. */
+  telefonoUltimos4: string | null;
   /** Propiedades no reconocidas se toleran ("tolerancia a campos desconocidos") pero
    * no se exponen individualmente — solo su presencia queda implícita al no fallar el
    * parseo. */
