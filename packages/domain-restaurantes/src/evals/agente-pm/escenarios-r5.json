@@ -179,8 +179,8 @@
       "comportamiento_esperado": "Sigue el tema de factura (QR del ticket, 24 horas).",
       "que_no_debe_hacer": "Contestar con el bloque de derechos ARCO por la palabra 'datos'.",
       "cubierto_por": "tests/privacidad-arco-intent.spec.ts",
-      "dudas": [],
-      "estado": "activo"
+      "dudas": ["ARCO en PR aparte: hoy 'ya te pasé mis datos, facturame' dispara el menu ARCO (main); el arreglo va con diseno recall-first en otro PR, no aqui."],
+      "estado": "pendiente_decision"
     },
     {
       "id": "R5-012",
