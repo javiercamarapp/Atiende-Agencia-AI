@@ -40,7 +40,7 @@ import {
   TableRow,
 } from "@atiende/ui";
 import { calcularNomina, generarXmlNomina } from "../lib/nomina-client.ts";
-import type { ComprobanteNomina, EmployeePayroll, GenerarXmlNominaInput, PayrollPeriodResultado, TipoNomina } from "../lib/nomina-client.ts";
+import type { ComprobanteNomina, EmployeePayroll, EmployeePayrollInputBody, GenerarXmlNominaInput, Periodicidad, PayrollPeriodResultado, TipoNomina } from "../lib/nomina-client.ts";
 import { formatMoney, formatPeriodo } from "../lib/format.ts";
 import { hoyFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
@@ -57,6 +57,15 @@ interface EmpleadoFila {
   salarioBruto: string;
   percepciones: string;
   salarioDiario: string;
+  // Prestaciones y datos de seguridad social que cambian el cálculo (todos opcionales).
+  fechaInicioRelLaboral: string;
+  antiguedadAnios: string;
+  sbc: string;
+  /** Prima de riesgo de trabajo en % (0.54355 = clase I). */
+  primaRtPct: string;
+  aguinaldo: string;
+  primaVacacional: string;
+  ptu: string;
   // Solo necesarios para /generar-xml -- opcionales mientras solo se calcula.
   rfcReceptor: string;
   nombreReceptor: string;
@@ -71,6 +80,8 @@ interface EmpleadoFila {
   tipoRegimen: string;
   periodicidadPago: string;
   claveEntFed: string;
+  numSeguridadSocial: string;
+  riesgoPuesto: string;
 }
 
 let filaSeq = 0;
@@ -83,6 +94,13 @@ function nuevaFila(): EmpleadoFila {
     salarioBruto: "",
     percepciones: "",
     salarioDiario: "",
+    fechaInicioRelLaboral: "",
+    antiguedadAnios: "",
+    sbc: "",
+    primaRtPct: "",
+    aguinaldo: "",
+    primaVacacional: "",
+    ptu: "",
     rfcReceptor: "",
     nombreReceptor: "",
     domicilioFiscalReceptor: "",
@@ -94,6 +112,28 @@ function nuevaFila(): EmpleadoFila {
     tipoRegimen: "",
     periodicidadPago: "",
     claveEntFed: "",
+    numSeguridadSocial: "",
+    riesgoPuesto: "",
+  };
+}
+
+/** Cuerpo de un empleado para el cálculo: solo manda lo que el usuario capturó. */
+function empleadoInput(f: EmpleadoFila): EmployeePayrollInputBody {
+  const aguinaldo = toNumberOrUndefined(f.aguinaldo);
+  const primaVacacional = toNumberOrUndefined(f.primaVacacional);
+  const ptu = toNumberOrUndefined(f.ptu);
+  const primaRtPct = toNumberOrUndefined(f.primaRtPct);
+  return {
+    employeeId: f.employeeId.trim() || undefined,
+    nombre: f.nombre.trim() || undefined,
+    salarioBruto: toNumberOrUndefined(f.salarioBruto),
+    percepciones: toNumberOrUndefined(f.percepciones),
+    salarioDiario: toNumberOrUndefined(f.salarioDiario),
+    fechaInicioRelLaboral: f.fechaInicioRelLaboral.trim() || undefined,
+    antiguedadAnios: toNumberOrUndefined(f.antiguedadAnios),
+    sbc: toNumberOrUndefined(f.sbc),
+    primaRt: primaRtPct === undefined ? undefined : primaRtPct / 100,
+    conceptos: aguinaldo === undefined && primaVacacional === undefined && ptu === undefined ? undefined : { aguinaldo, primaVacacional, ptu },
   };
 }
 
@@ -102,6 +142,54 @@ function toNumberOrUndefined(raw: string): number | undefined {
   if (!trimmed) return undefined;
   const n = Number(trimmed);
   return Number.isFinite(n) ? n : undefined;
+}
+
+const RAMAS: ReadonlyArray<{ readonly etiqueta: string; readonly obrero?: keyof EmployeePayroll["taxes"]["imss"]["obrero"]; readonly patronal?: keyof EmployeePayroll["taxes"]["imss"]["patronal"] }> = [
+  { etiqueta: "Cuota fija", patronal: "cuotaFija" },
+  { etiqueta: "Enfermedad y maternidad: excedente 3 UMA", obrero: "eymExcedente", patronal: "eymExcedente" },
+  { etiqueta: "Prestaciones en dinero", obrero: "prestacionesDinero", patronal: "prestacionesDinero" },
+  { etiqueta: "Gastos médicos de pensionados", obrero: "gmp", patronal: "gmp" },
+  { etiqueta: "Invalidez y vida", obrero: "invalidezVida", patronal: "invalidezVida" },
+  { etiqueta: "Riesgos de trabajo", patronal: "riesgoTrabajo" },
+  { etiqueta: "Guarderías y prestaciones sociales", patronal: "guarderias" },
+  { etiqueta: "Retiro", patronal: "retiro" },
+  { etiqueta: "Cesantía y vejez", obrero: "ceav", patronal: "ceav" },
+];
+
+function DesgloseImss({ empleado }: { empleado: EmployeePayroll }) {
+  const im = empleado.taxes.imss;
+  return (
+    <details className="rounded-md border border-border bg-card p-3 text-sm">
+      <summary className="cursor-pointer font-medium text-foreground">
+        IMSS por rama -- {empleado.nombre || empleado.employeeId || "empleado"} (SBC {formatMoney(im.sbcDiario)}
+        {im.sbcTopado ? ", topado a 25 UMA" : ""}, UMA {formatMoney(im.umaDiaria)})
+      </summary>
+      <div role="table" aria-label={`Cuotas IMSS por rama de ${empleado.nombre || empleado.employeeId}`} className="mt-2 grid grid-cols-[1fr_auto_auto] gap-x-6 gap-y-1 text-sm">
+        <div role="row" className="contents text-xs font-medium text-muted-foreground">
+          <span role="columnheader">Rama</span>
+          <span role="columnheader" className="text-right">Obrero</span>
+          <span role="columnheader" className="text-right">Patronal</span>
+        </div>
+        {RAMAS.map((r) => (
+          <div role="row" className="contents" key={r.etiqueta}>
+            <span role="cell">{r.etiqueta}</span>
+            <span role="cell" className="text-right tabular-nums">{r.obrero ? formatMoney(im.obrero[r.obrero]) : "—"}</span>
+            <span role="cell" className="text-right tabular-nums">{r.patronal ? formatMoney(im.patronal[r.patronal]) : "—"}</span>
+          </div>
+        ))}
+        <div role="row" className="contents font-bold">
+          <span role="cell">Total IMSS</span>
+          <span role="cell" className="text-right tabular-nums">{formatMoney(im.obrero.total)}</span>
+          <span role="cell" className="text-right tabular-nums">{formatMoney(im.patronal.total)}</span>
+        </div>
+        <div role="row" className="contents">
+          <span role="cell">INFONAVIT (aportación patronal)</span>
+          <span role="cell" className="text-right tabular-nums">—</span>
+          <span role="cell" className="text-right tabular-nums">{formatMoney(im.infonavit)}</span>
+        </div>
+      </div>
+    </details>
+  );
 }
 
 function DesgloseTabla({ resultado }: { resultado: PayrollPeriodResultado }) {
@@ -128,6 +216,12 @@ function DesgloseTabla({ resultado }: { resultado: PayrollPeriodResultado }) {
         <span>
           <strong>Total IMSS patronal:</strong> {formatMoney(resultado.totalImssPatronal)}
         </span>
+        <span>
+          <strong>Subsidio causado:</strong> {formatMoney(resultado.totalSubsidioCausado)}
+        </span>
+        <span>
+          <strong>Fecha de pago:</strong> {resultado.fechaPago}
+        </span>
       </div>
       <Card>
         <CardContent className="p-0 overflow-x-auto">
@@ -138,6 +232,8 @@ function DesgloseTabla({ resultado }: { resultado: PayrollPeriodResultado }) {
                 <TableHead className="sticky left-0 z-10 bg-canvas">Empleado</TableHead>
                 <TableHead className="text-right">Bruto</TableHead>
                 <TableHead className="text-right">Percepciones</TableHead>
+                <TableHead className="text-right">SBC diario</TableHead>
+                <TableHead className="text-right">Subsidio</TableHead>
                 <TableHead className="text-right">ISR</TableHead>
                 <TableHead className="text-right">IMSS obrero</TableHead>
                 <TableHead className="text-right">IMSS patronal</TableHead>
@@ -152,6 +248,8 @@ function DesgloseTabla({ resultado }: { resultado: PayrollPeriodResultado }) {
                   <TableCell className="sticky left-0 z-10 bg-card">{e.nombre || e.employeeId || "—"}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatMoney(e.salarioBruto)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatMoney(e.percepciones)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatMoney(e.sbcDiario)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatMoney(e.taxes.subsidioCausado)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatMoney(e.taxes.isr)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatMoney(e.taxes.imssObrero)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatMoney(e.taxes.imssPatronal)}</TableCell>
@@ -164,6 +262,9 @@ function DesgloseTabla({ resultado }: { resultado: PayrollPeriodResultado }) {
           </Table>
         </CardContent>
       </Card>
+      {resultado.employees.map((e: EmployeePayroll) => (
+        <DesgloseImss key={`imss-${e.employeeId || e.nombre}`} empleado={e} />
+      ))}
       <p className="text-xs text-muted-foreground">
         {resultado.referenciaLegal} -- Cálculo sin persistencia. Clave de idempotencia: <code className="rounded bg-muted px-1 py-0.5 font-mono">{resultado.idempotencyKey}</code>
       </p>
@@ -218,6 +319,10 @@ export function NominaPage(ctx: DespachosShellContext) {
   const [month, setMonth] = useState(() => String(Number(hoyFechaSolo().slice(5, 7))));
   const [year, setYear] = useState(() => String(Number(hoyFechaSolo().slice(0, 4))));
   const [diasPagados, setDiasPagados] = useState("30");
+  const [periodicidad, setPeriodicidad] = useState<Periodicidad>("mensual");
+  const [fechaPago, setFechaPago] = useState("");
+  const [fechaInicialPago, setFechaInicialPago] = useState("");
+  const [fechaFinalPago, setFechaFinalPago] = useState("");
   const [salarioDiarioDefault, setSalarioDiarioDefault] = useState("");
   const [empleados, setEmpleados] = useState<readonly EmpleadoFila[]>([nuevaFila()]);
 
@@ -232,6 +337,7 @@ export function NominaPage(ctx: DespachosShellContext) {
   const [emisorRegimenFiscal, setEmisorRegimenFiscal] = useState("");
   const [emisorLugarExpedicion, setEmisorLugarExpedicion] = useState("");
   const [emisorNoCertificado, setEmisorNoCertificado] = useState("");
+  const [emisorRegistroPatronal, setEmisorRegistroPatronal] = useState("");
   const [xmlResultado, setXmlResultado] = useState<readonly ComprobanteNomina[] | null>(null);
   const [errorXml, setErrorXml] = useState<string | null>(null);
   const [generandoXml, setGenerandoXml] = useState(false);
@@ -274,15 +380,8 @@ export function NominaPage(ctx: DespachosShellContext) {
     setCalculando(true);
     try {
       const r = await calcularNomina(fetch, ctx.apiBaseUrl, ctx.token, ctx.propertyId, {
-        period: { month: monthNum, year: yearNum, diasPagados: diasPagadosNum, salarioDiarioDefault: salarioDiarioDefaultNum },
-        employees: empleados.map((f) => ({
-          employeeId: f.employeeId.trim() || undefined,
-          nombre: f.nombre.trim() || undefined,
-          salarioBruto: toNumberOrUndefined(f.salarioBruto),
-          percepciones: toNumberOrUndefined(f.percepciones),
-          salarioDiario: toNumberOrUndefined(f.salarioDiario),
-        })),
-        tenantId: null,
+        period: { month: monthNum, year: yearNum, diasPagados: diasPagadosNum, salarioDiarioDefault: salarioDiarioDefaultNum, periodicidad, fechaPago: fechaPago.trim() || undefined },
+        employees: empleados.map(empleadoInput),
       });
       setResultado(r);
     } catch (err) {
@@ -326,13 +425,9 @@ export function NominaPage(ctx: DespachosShellContext) {
     const salarioDiarioDefaultNum = toNumberOrUndefined(salarioDiarioDefault);
 
     const input: GenerarXmlNominaInput = {
-      period: { month: monthNum, year: yearNum, diasPagados: diasPagadosNum, salarioDiarioDefault: salarioDiarioDefaultNum, tipoNomina, serie: serie.trim() || undefined },
+      period: { month: monthNum, year: yearNum, diasPagados: diasPagadosNum, salarioDiarioDefault: salarioDiarioDefaultNum, periodicidad, fechaPago: fechaPago.trim() || undefined, tipoNomina, serie: serie.trim() || undefined, fechaInicialPago: fechaInicialPago.trim() || undefined, fechaFinalPago: fechaFinalPago.trim() || undefined },
       employees: empleados.map((f) => ({
-        employeeId: f.employeeId.trim() || undefined,
-        nombre: f.nombre.trim() || undefined,
-        salarioBruto: toNumberOrUndefined(f.salarioBruto),
-        percepciones: toNumberOrUndefined(f.percepciones),
-        salarioDiario: toNumberOrUndefined(f.salarioDiario),
+        ...empleadoInput(f),
         rfcReceptor: f.rfcReceptor.trim(),
         nombreReceptor: f.nombreReceptor.trim() || undefined,
         domicilioFiscalReceptor: f.domicilioFiscalReceptor.trim(),
@@ -344,6 +439,8 @@ export function NominaPage(ctx: DespachosShellContext) {
         tipoRegimen: f.tipoRegimen.trim(),
         periodicidadPago: f.periodicidadPago.trim(),
         claveEntFed: f.claveEntFed.trim().toUpperCase(),
+        numSeguridadSocial: f.numSeguridadSocial.trim() || undefined,
+        riesgoPuesto: f.riesgoPuesto.trim() || undefined,
       })),
       emisor: {
         rfc: emisorRfc.trim(),
@@ -351,8 +448,8 @@ export function NominaPage(ctx: DespachosShellContext) {
         regimenFiscal: emisorRegimenFiscal.trim(),
         lugarExpedicion: emisorLugarExpedicion.trim(),
         noCertificado: emisorNoCertificado.trim() || undefined,
+        registroPatronal: emisorRegistroPatronal.trim() || undefined,
       },
-      tenantId: null,
     };
 
     setGenerandoXml(true);
@@ -370,7 +467,10 @@ export function NominaPage(ctx: DespachosShellContext) {
     <PageContainer padding="none" className="gap-7 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Nómina</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Calcula ISR, IMSS e Infonavit de un periodo y genera el XML del complemento Nómina 1.2 (sin timbrar).</p>
+        <p className="mt-1 text-sm text-muted-foreground">El sueldo bruto es el importe del periodo que se paga (el mes, o la quincena si eliges Quincenal). Calcula ISR, subsidio, IMSS por rama e Infonavit de un periodo y genera el XML del complemento Nómina 1.2 (sin timbrar).</p>
+        <Callout tone="warning" className="mt-3">
+          Las tasas IMSS, el subsidio como porcentaje de la UMA y los exentos de 2026 están pendientes de validación del fiscalista. Úsalos como borrador, no como cifra para declarar.
+        </Callout>
       </header>
 
       <section className="flex flex-col gap-3.5">
@@ -390,6 +490,34 @@ export function NominaPage(ctx: DespachosShellContext) {
                 <Label htmlFor="nomina-dias">Días pagados</Label>
                 <Input id="nomina-dias" type="number" value={diasPagados} onChange={(e) => setDiasPagados(e.target.value)} />
               </div>
+              <div className="flex w-36 flex-col gap-1.5">
+                <Label htmlFor="nomina-periodicidad">Periodicidad</Label>
+                <NativeSelect
+                  id="nomina-periodicidad"
+                  value={periodicidad}
+                  onChange={(e) => {
+                    const p = e.target.value as Periodicidad;
+                    setPeriodicidad(p);
+                    // Quincena = 15 días y mensual = 30, salvo que el usuario ya haya escrito otro valor.
+                    if (diasPagados === "30" || diasPagados === "15") setDiasPagados(p === "quincenal" ? "15" : "30");
+                  }}
+                >
+                  <option value="mensual">Mensual</option>
+                  <option value="quincenal">Quincenal</option>
+                </NativeSelect>
+              </div>
+              <div className="flex w-44 flex-col gap-1.5">
+                <Label htmlFor="nomina-fecha-pago">Fecha de pago</Label>
+                <Input id="nomina-fecha-pago" type="date" value={fechaPago} onChange={(e) => setFechaPago(e.target.value)} />
+              </div>
+              <div className="flex w-44 flex-col gap-1.5">
+                <Label htmlFor="nomina-fecha-inicial">Inicio del periodo (XML)</Label>
+                <Input id="nomina-fecha-inicial" type="date" value={fechaInicialPago} onChange={(e) => setFechaInicialPago(e.target.value)} />
+              </div>
+              <div className="flex w-44 flex-col gap-1.5">
+                <Label htmlFor="nomina-fecha-final">Fin del periodo (XML)</Label>
+                <Input id="nomina-fecha-final" type="date" value={fechaFinalPago} onChange={(e) => setFechaFinalPago(e.target.value)} />
+              </div>
               <div className="flex w-52 flex-col gap-1.5">
                 <Label htmlFor="nomina-salario-default">Salario diario por defecto</Label>
                 <Input id="nomina-salario-default" type="number" step="0.01" value={salarioDiarioDefault} onChange={(e) => setSalarioDiarioDefault(e.target.value)} placeholder="Opcional" />
@@ -398,15 +526,22 @@ export function NominaPage(ctx: DespachosShellContext) {
           </Card>
 
           <div className="overflow-x-auto">
-            <Table className="min-w-[640px]">
+            <Table className="min-w-[1280px]">
               <TableCaption className="sr-only">Captura de percepciones y deducciones de nómina</TableCaption>
               <TableHeader>
                 <TableRow>
                   <TableHead className="sticky left-0 z-10 bg-canvas h-9">ID empleado</TableHead>
                   <TableHead className="h-9">Nombre</TableHead>
-                  <TableHead className="h-9">Salario bruto</TableHead>
+                  <TableHead className="h-9">Sueldo del periodo</TableHead>
                   <TableHead className="h-9">Percepciones</TableHead>
                   <TableHead className="h-9">Salario diario</TableHead>
+                  <TableHead className="h-9">Inicio de relación laboral</TableHead>
+                  <TableHead className="h-9">Antigüedad (años)</TableHead>
+                  <TableHead className="h-9">SBC diario</TableHead>
+                  <TableHead className="h-9">Prima RT (%)</TableHead>
+                  <TableHead className="h-9">Aguinaldo</TableHead>
+                  <TableHead className="h-9">Prima vacacional</TableHead>
+                  <TableHead className="h-9">PTU</TableHead>
                   <TableHead className="h-9" />
                 </TableRow>
               </TableHeader>
@@ -427,7 +562,7 @@ export function NominaPage(ctx: DespachosShellContext) {
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`nomina-bruto-${f.key}`} className="sr-only">
-                        Salario bruto
+                        Sueldo bruto del periodo (mes o quincena)
                       </Label>
                       <Input id={`nomina-bruto-${f.key}`} type="number" step="0.01" value={f.salarioBruto} onChange={(e) => actualizarFila(f.key, { salarioBruto: e.target.value })} className="h-9 text-sm" />
                     </TableCell>
@@ -444,6 +579,48 @@ export function NominaPage(ctx: DespachosShellContext) {
                       <Input id={`nomina-diario-${f.key}`} type="number" step="0.01" value={f.salarioDiario} onChange={(e) => actualizarFila(f.key, { salarioDiario: e.target.value })} placeholder="Opcional" className="h-9 text-sm" />
                     </TableCell>
                     <TableCell className="p-1.5">
+                      <Label htmlFor={`nomina-inicio-${f.key}`} className="sr-only">
+                        Inicio de relación laboral
+                      </Label>
+                      <Input id={`nomina-inicio-${f.key}`} type="date" value={f.fechaInicioRelLaboral} onChange={(e) => actualizarFila(f.key, { fechaInicioRelLaboral: e.target.value })} placeholder="Opcional" className="h-9 text-sm" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`nomina-antig-${f.key}`} className="sr-only">
+                        Antigüedad (años)
+                      </Label>
+                      <Input id={`nomina-antig-${f.key}`} type="number" step="0.01" value={f.antiguedadAnios} onChange={(e) => actualizarFila(f.key, { antiguedadAnios: e.target.value })} placeholder="Opcional" className="h-9 text-sm" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`nomina-sbc-${f.key}`} className="sr-only">
+                        SBC diario
+                      </Label>
+                      <Input id={`nomina-sbc-${f.key}`} type="number" step="0.01" value={f.sbc} onChange={(e) => actualizarFila(f.key, { sbc: e.target.value })} placeholder="Opcional" className="h-9 text-sm" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`nomina-rt-${f.key}`} className="sr-only">
+                        Prima RT (%)
+                      </Label>
+                      <Input id={`nomina-rt-${f.key}`} type="number" step="0.01" value={f.primaRtPct} onChange={(e) => actualizarFila(f.key, { primaRtPct: e.target.value })} placeholder="Opcional" className="h-9 text-sm" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`nomina-aguinaldo-${f.key}`} className="sr-only">
+                        Aguinaldo
+                      </Label>
+                      <Input id={`nomina-aguinaldo-${f.key}`} type="number" step="0.01" value={f.aguinaldo} onChange={(e) => actualizarFila(f.key, { aguinaldo: e.target.value })} placeholder="Opcional" className="h-9 text-sm" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`nomina-primavac-${f.key}`} className="sr-only">
+                        Prima vacacional
+                      </Label>
+                      <Input id={`nomina-primavac-${f.key}`} type="number" step="0.01" value={f.primaVacacional} onChange={(e) => actualizarFila(f.key, { primaVacacional: e.target.value })} placeholder="Opcional" className="h-9 text-sm" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`nomina-ptu-${f.key}`} className="sr-only">
+                        PTU
+                      </Label>
+                      <Input id={`nomina-ptu-${f.key}`} type="number" step="0.01" value={f.ptu} onChange={(e) => actualizarFila(f.key, { ptu: e.target.value })} placeholder="Opcional" className="h-9 text-sm" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
                       <Button type="button" variant="ghost" size="sm" className="h-9 px-3 text-xs text-destructive hover:text-destructive" onClick={() => quitarFila(f.key)} disabled={empleados.length <= 1}>
                         <Trash2 />
                         Quitar
@@ -454,6 +631,9 @@ export function NominaPage(ctx: DespachosShellContext) {
               </TableBody>
             </Table>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Antigüedad define las vacaciones y el factor de integración del SBC (si no capturas el SBC). La prima RT por omisión es clase I (0.54355 %). Aguinaldo, prima vacacional y PTU se separan en exento y gravado (art. 93 LISR).
+          </p>
           <Button type="button" variant="outline" size="sm" className="self-start" onClick={agregarFila}>
             <Plus />
             Agregar empleado
@@ -504,6 +684,10 @@ export function NominaPage(ctx: DespachosShellContext) {
                   <Label htmlFor="emisor-certificado">No. certificado</Label>
                   <Input id="emisor-certificado" value={emisorNoCertificado} onChange={(e) => setEmisorNoCertificado(e.target.value)} placeholder="Opcional" />
                 </div>
+                <div className="flex w-48 flex-col gap-1.5">
+                  <Label htmlFor="emisor-registro-patronal">Registro patronal IMSS</Label>
+                  <Input id="emisor-registro-patronal" value={emisorRegistroPatronal} onChange={(e) => setEmisorRegistroPatronal(e.target.value)} placeholder="Opcional" maxLength={20} />
+                </div>
                 <div className="flex w-36 flex-col gap-1.5">
                   <Label htmlFor="emisor-tipo-nomina">Tipo de nómina</Label>
                   <NativeSelect
@@ -527,7 +711,7 @@ export function NominaPage(ctx: DespachosShellContext) {
               Sueldos, periodicidad "05" = Mensual, "04" = Quincenal). Entidad federativa usa el catálogo c_Estado (p. ej. "CMX", "JAL", "NLE").
             </p>
             <div className="overflow-x-auto">
-              <Table className="min-w-[1100px]">
+              <Table className="min-w-[1300px]">
                 <TableCaption className="sr-only">Captura de datos del CFDI de nómina por empleado</TableCaption>
                 <TableHeader>
                   <TableRow>
@@ -543,6 +727,8 @@ export function NominaPage(ctx: DespachosShellContext) {
                     <TableHead className="h-9">Tipo régimen *</TableHead>
                     <TableHead className="h-9">Periodicidad *</TableHead>
                     <TableHead className="h-9">Ent. federativa *</TableHead>
+                    <TableHead className="h-9">NSS</TableHead>
+                    <TableHead className="h-9">Riesgo de puesto</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -614,6 +800,18 @@ export function NominaPage(ctx: DespachosShellContext) {
                           Entidad federativa
                         </Label>
                         <Input id={`xml-entfed-${f.key}`} value={f.claveEntFed} onChange={(e) => actualizarFila(f.key, { claveEntFed: e.target.value })} placeholder="CMX" maxLength={3} className="h-9 w-[70px] text-sm" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`xml-nss-${f.key}`} className="sr-only">
+                          Número de seguridad social
+                        </Label>
+                        <Input id={`xml-nss-${f.key}`} value={f.numSeguridadSocial} onChange={(e) => actualizarFila(f.key, { numSeguridadSocial: e.target.value })} placeholder="Opcional" maxLength={15} className="h-9 w-36 text-sm" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`xml-riesgo-${f.key}`} className="sr-only">
+                          Riesgo de puesto
+                        </Label>
+                        <Input id={`xml-riesgo-${f.key}`} value={f.riesgoPuesto} onChange={(e) => actualizarFila(f.key, { riesgoPuesto: e.target.value })} placeholder="1" maxLength={2} className="h-9 w-[70px] text-sm" />
                       </TableCell>
                     </TableRow>
                   ))}

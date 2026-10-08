@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import { calcularNomina, generarXmlNomina } from "../src/verticals/despachos/lib/nomina-client.ts";
 import type { GenerarXmlNominaResultado, PayrollPeriodResultado } from "../src/verticals/despachos/lib/nomina-client.ts";
 
+const SIN = { total: 0, exento: 0, gravado: 0 };
+const IMSS = {
+  umaDiaria: 113.14,
+  sbcDiario: 524.65,
+  sbcTopado: false,
+  diasPagados: 30,
+  obrero: { eymExcedente: 0, prestacionesDinero: 0, gmp: 0, invalidezVida: 0, ceav: 0, total: 200 },
+  patronal: { cuotaFija: 0, eymExcedente: 0, prestacionesDinero: 0, gmp: 0, invalidezVida: 0, riesgoTrabajo: 0, guarderias: 0, retiro: 0, ceav: 0, total: 500 },
+  infonavit: 0,
+};
+
 const RESULTADO: PayrollPeriodResultado = {
   month: 1,
   year: 2026,
@@ -10,14 +21,23 @@ const RESULTADO: PayrollPeriodResultado = {
       employeeId: "e1",
       nombre: "Ana",
       salarioDiario: 0,
+      sbcDiario: 524.65,
+      factorIntegracion: 1.0493,
+      antiguedadAnios: 1,
       salarioBruto: 15000,
       percepciones: 0,
+      conceptos: { aguinaldo: SIN, primaVacacional: SIN, ptu: SIN, tiempoExtra: SIN, descuentoIncapacidad: 0, totalPercibido: 0, totalExento: 0, totalGravado: 0 },
       deducciones: 1200,
-      taxes: { isr: 1000, imssPatronal: 500, imssObrero: 200, infonavit: 0, total: 1200 },
+      taxes: { isr: 1000, isrCausado: 1000, subsidioCausado: 0, imssPatronal: 500, imssObrero: 200, infonavit: 0, imss: IMSS, total: 1200 },
       neto: 13800,
       diasPagados: 30,
+      periodicidad: "mensual",
+      fechaPago: "2026-01-31",
     },
   ],
+  fechaPago: "2026-01-31",
+  periodicidad: "mensual",
+  totalSubsidioCausado: 0,
   totalBruto: 15000,
   totalNeto: 13800,
   totalDeducciones: 1200,
@@ -34,7 +54,7 @@ const RESULTADO: PayrollPeriodResultado = {
 };
 
 describe("calcularNomina", () => {
-  it("manda POST .../nomina/calcular con period/employees/tenantId y devuelve el resultado tal cual", async () => {
+  it("manda POST .../nomina/calcular con period/employees y devuelve el resultado tal cual", async () => {
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("http://api.local/despachos/prop-1/nomina/calcular");
       expect(init?.method).toBe("POST");
@@ -42,7 +62,6 @@ describe("calcularNomina", () => {
         JSON.stringify({
           period: { month: 1, year: 2026, diasPagados: 30, salarioDiarioDefault: undefined },
           employees: [{ employeeId: "e1", nombre: "Ana", salarioBruto: 15000, percepciones: undefined, salarioDiario: undefined }],
-          tenantId: null,
         }),
       );
       return new Response(JSON.stringify(RESULTADO), { status: 200 });
@@ -51,7 +70,6 @@ describe("calcularNomina", () => {
     const result = await calcularNomina(fetchImpl, "http://api.local", "tok", "prop-1", {
       period: { month: 1, year: 2026, diasPagados: 30 },
       employees: [{ employeeId: "e1", nombre: "Ana", salarioBruto: 15000 }],
-      tenantId: null,
     });
     expect(result).toEqual(RESULTADO);
   });
@@ -96,7 +114,6 @@ describe("generarXmlNomina", () => {
         },
       ],
       emisor: { rfc: "DESP010101AB1", nombre: "DESPACHO DE PRUEBA SA DE CV", regimenFiscal: "601", lugarExpedicion: "06600" },
-      tenantId: null,
     });
     expect(result).toEqual(resultado);
   });

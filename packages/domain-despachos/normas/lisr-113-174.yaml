@@ -1,13 +1,14 @@
 id: lisr-113-174
 tipo: norma
-ordenamiento: "LISR"
-articulo_o_regla: "113 y 174"
-resumen: "Subsidio para el empleo en nómina."
+ordenamiento: "LISR / Decreto del subsidio para el empleo"
+articulo_o_regla: "113 y decreto DOF 31-dic-2025"
+resumen: "Subsidio para el empleo como porcentaje de la UMA mensual: 15.59 % sobre la UMA 2025 en enero de 2026 y 15.02 % sobre la UMA 2026 desde febrero, con ingreso mensual máximo de 11,492.66."
 fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LISR.pdf"
-vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+vigencia: "Desde el 1-ene-2026; fecha de vigencia no comprobada contra el DOF."
 estado_verificacion: por_verificar
 verificada_por: null
 fecha: null
-nota_verificacion: "El código cita 'ingreso máximo actualizado según Anexo 8 RMF 2026'; falta cotejarlo."
+nota_verificacion: "VALIDAR CON FISCALISTA: porcentajes, tope y prorrateo por 30.4 días en periodos no mensuales; sin pago en efectivo del excedente sobre el ISR."
 usado_en_codigo:
-  - "src/nomina/subsidio-empleo.ts:5"
+  - "src/nomina/parametros.ts:30"
+  - "src/nomina/subsidio-empleo.ts:24"

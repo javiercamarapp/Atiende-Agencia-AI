@@ -1,16 +1,16 @@
 id: lss-infonavit
 tipo: norma
 ordenamiento: "LSS / Ley del INFONAVIT"
-articulo_o_regla: "LSS 28, 105-109; INFONAVIT 29-II"
-resumen: "Tope de SBC, cuotas obrero-patronales IMSS y aportación patronal al INFONAVIT en 2026."
+articulo_o_regla: "LSS 28, 105-109, 147, 168; INFONAVIT 29-II"
+resumen: "Tope de SBC (25 UMA), cuotas obrero-patronales IMSS por rama, CEAV patronal progresiva y aportación patronal al INFONAVIT en 2026."
 fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LSS.pdf"
-vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+vigencia: "Tasas 2026 (cuarto escalón CEAV, decreto DOF 16-dic-2020); fecha de vigencia no comprobada contra fuente oficial."
 estado_verificacion: por_verificar
 verificada_por: null
 fecha: null
-nota_verificacion: "Tasas y UMA 2026 son constantes del código sin fuente comprobada."
+nota_verificacion: "VALIDAR CON FISCALISTA: tasas por rama tomadas de fuentes secundarias. Discrepancia entre fuentes en CEAV patronal 3.51-4.00 UMA (6.613 % usado vs 6.94 %). Prima RT por omisión clase I 0.54355 % es parámetro de la empresa. Factor de integración mínimo 1.0493."
 usado_en_codigo:
-  - "src/nomina/imss-engine.ts:24"
-  - "src/nomina/imss-engine.ts:40"
-  - "src/nomina/imss-engine.ts:44"
-  - "src/nomina/imss-engine.ts:51"
+  - "src/nomina/parametros.ts:63"
+  - "src/nomina/parametros.ts:97"
+  - "src/nomina/imss-engine.ts:69"
+  - "src/nomina/prestaciones.ts:33"

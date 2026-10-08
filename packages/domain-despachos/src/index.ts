@@ -30,18 +30,37 @@ export {
   UMA_MENSUAL_2026 as NOMINA_UMA_MENSUAL_2026,
   UMA_DIARIA_2026 as NOMINA_UMA_DIARIA_2026,
   SBC_MAX_UMA,
-  IMSS_OBRERO_TASA,
-  IMSS_PATRONAL_TASA,
-  INFONAVIT_TASA,
+  ImssInvalidoError,
   sbcDiarioTopado,
-  calcularImssObrero,
-  calcularImssPatronal,
-  calcularInfonavit,
+  calcularImssPorRama,
 } from "./nomina/imss-engine.ts";
-export { SUBSIDIO_EMPLEO_MENSUAL_2026, SUBSIDIO_EMPLEO_QUINCENAL_2026, calcularSubsidio } from "./nomina/subsidio-empleo.ts";
-export type { FilaSubsidio, TablaSubsidio, Periodicidad } from "./nomina/subsidio-empleo.ts";
-export { calcularAguinaldo, calcularPrimaVacacional } from "./nomina/prestaciones.ts";
-export { calcularImpuestosNomina, procesarNomina } from "./nomina/payroll-engine.ts";
+export type { ImssDesglose, ImssObreroRamas, ImssPatronalRamas, OpcionesImss } from "./nomina/imss-engine.ts";
+export {
+  UMAS as NOMINA_UMAS,
+  SUBSIDIOS as NOMINA_SUBSIDIOS,
+  IMSS_2026,
+  CEAV_PATRONAL_2026,
+  EXENTOS_ART_93,
+  VigenciaNoSoportadaError,
+  umaVigente,
+  subsidioVigente,
+  tasaCeavPatronal,
+} from "./nomina/parametros.ts";
+export { calcularSubsidio } from "./nomina/subsidio-empleo.ts";
+export type { Periodicidad, OpcionesSubsidio } from "./nomina/subsidio-empleo.ts";
+export {
+  calcularAguinaldo,
+  calcularAguinaldoProporcional,
+  calcularPrimaVacacional,
+  diasVacacionesPorAntiguedad,
+  factorIntegracion,
+  exentoAguinaldo,
+  exentoPrimaVacacional,
+  exentoPtu,
+  exentoTiempoExtra,
+  aplicarTopePtu,
+} from "./nomina/prestaciones.ts";
+export { calcularImpuestosNomina, calcularImpuestosNominaDetalle, procesarNomina, aniosCompletos, NominaInvalidaError } from "./nomina/payroll-engine.ts";
 export type {
   PayrollTaxes,
   OpcionesImpuestosNomina,
@@ -49,6 +68,10 @@ export type {
   EmployeePayrollInput,
   PayrollPeriod,
   PayrollPeriodInput,
+  ConceptosPeriodoInput,
+  ConceptosPeriodoDesglose,
+  HoraExtraInput,
+  IncapacidadInput,
 } from "./nomina/types.ts";
 export { generarXmlCfdiNomina, TIPOS_NOMINA, CLAVES_ENT_FED } from "./nomina/xml-nomina.ts";
 export type { DatosEmisorNominaXml, DatosReceptorNominaXml, DatosPeriodoNominaXml, DatosLaboralesNominaXml, TipoNomina } from "./nomina/xml-nomina.ts";
