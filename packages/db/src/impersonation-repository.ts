@@ -53,7 +53,7 @@ export interface ImpersonationSessionWithActiveRow extends ImpersonationSessionR
   readonly active: boolean;
 }
 
-export type ImpersonationAuditEventType = "start" | "end";
+export type ImpersonationAuditEventType = "start" | "end" | "elevate";
 
 export interface ImpersonationAuditEntryRow {
   readonly id: string;
@@ -112,7 +112,33 @@ export class ImpersonationConflictError extends ImpersonationError {
  *  responde 503 honesto con este estado, nunca 500 ni un éxito simulado. */
 export type ImpersonationAvailability = "available" | "not_migrated";
 
+/** Estado verificado en SQL de una sesión (0058): lo consulta la guarda de solo lectura en cada petición con token de soporte. */
+export interface SupportSessionState {
+  readonly organizationId: string;
+  readonly expiresAtMs: number;
+  readonly active: boolean;
+  readonly elevated: boolean;
+  /** `false` = sesión de impersonación clásica (0020), no de soporte: nunca se puede elevar. */
+  readonly soporte: boolean;
+}
+
 export interface ImpersonationRepository {
+  /** Sesión de SOPORTE (0058: 60 min, motivo >= 10). `kind: "soporte"`. Con la base sin la 0058 cae a la impersonación
+   *  clásica (15 min, motivo >= 20) y lo dice con `kind: "clasica"`: la bitácora SIEMPRE se escribe antes de devolver. */
+  startSupportSession(
+    callerId: string,
+    organizationId: string,
+    reason: string,
+  ): Promise<{ availability: ImpersonationAvailability; kind: "soporte" | "clasica" | null; session: ImpersonationSessionRow | null }>;
+  elevateSupportSession(
+    callerId: string,
+    sessionId: string,
+    reason: string,
+  ): Promise<{ availability: ImpersonationAvailability; entry: ImpersonationAuditEntryRow | null }>;
+  getSupportState(callerId: string, sessionId: string): Promise<{ availability: ImpersonationAvailability; state: SupportSessionState | null }>;
+  /** `granted: true` solo si CREÓ una membresía temporal (el superadmin no era miembro). */
+  grantSupportMembership(callerId: string, sessionId: string): Promise<{ availability: ImpersonationAvailability; granted: boolean }>;
+  revokeSupportMemberships(callerId: string, sessionId: string | null): Promise<{ availability: ImpersonationAvailability; revoked: number }>;
   startSession(
     callerId: string,
     organizationId: string,
@@ -269,6 +295,95 @@ async function withSavepointFallback<TSuccess, TFail>(
 export class PostgresImpersonationRepository implements ImpersonationRepository {
   constructor(private readonly db: TenantDbSession) {}
 
+  async startSupportSession(callerId: string, organizationId: string, reason: string) {
+    const nuevo = await withSavepointFallback(
+      this.db,
+      "sp_start_support",
+      async () => {
+        const { rows } = await this.db.query<ImpersonationSessionRawRow>(
+          `select * from core.start_support_session($1, $2, $3, 60);`,
+          [callerId, organizationId, reason],
+        );
+        const row = rows[0];
+        if (!row) throw new Error("start_support_session no devolvió fila");
+        return { availability: "available" as const, kind: "soporte" as const, session: mapSession(row) };
+      },
+      () => null,
+    );
+    if (nuevo) return nuevo;
+    // Base sin la 0058: camino anterior (impersonación clásica con su bitácora). Si tampoco existe 0020, queda "not_migrated".
+    const clasica = await this.startSession(callerId, organizationId, reason);
+    return clasica.availability === "available"
+      ? { availability: "available" as const, kind: "clasica" as const, session: clasica.session }
+      : { availability: "not_migrated" as const, kind: null, session: null };
+  }
+
+  async elevateSupportSession(callerId: string, sessionId: string, reason: string) {
+    return withSavepointFallback(
+      this.db,
+      "sp_elevate_support",
+      async () => {
+        const { rows } = await this.db.query<ImpersonationAuditEntryRawRow>(`select * from core.elevate_support_session($1, $2, $3);`, [callerId, sessionId, reason]);
+        const row = rows[0];
+        if (!row) throw new Error("elevate_support_session no devolvió fila");
+        return { availability: "available" as const, entry: mapAuditEntry(row) };
+      },
+      () => ({ availability: "not_migrated" as const, entry: null }),
+    );
+  }
+
+  async getSupportState(callerId: string, sessionId: string) {
+    const nuevo = await withSavepointFallback(
+      this.db,
+      "sp_support_state",
+      async () => {
+        const { rows } = await this.db.query<{ organization_id: string; expires_at: string; active: boolean; elevated: boolean; soporte: boolean }>(
+          `select * from core.get_support_session_state($1, $2);`,
+          [callerId, sessionId],
+        );
+        const row = rows[0];
+        const state: SupportSessionState | null = row
+          ? { organizationId: row.organization_id, expiresAtMs: new Date(row.expires_at).getTime(), active: row.active, elevated: row.elevated, soporte: row.soporte }
+          : null;
+        return { availability: "available" as const, state };
+      },
+      () => null,
+    );
+    if (nuevo) return nuevo;
+    // Base sin la 0058: la sesión clásica activa del caller (nunca elevada, nunca "de soporte").
+    const activa = await this.getActiveSession(callerId);
+    if (activa.availability === "not_migrated") return { availability: "not_migrated" as const, state: null };
+    const s = activa.session;
+    return {
+      availability: "available" as const,
+      state: s && s.id === sessionId ? { organizationId: s.organizationId, expiresAtMs: s.expiresAtMs, active: true, elevated: false, soporte: false } : null,
+    };
+  }
+
+  async grantSupportMembership(callerId: string, sessionId: string) {
+    return withSavepointFallback(
+      this.db,
+      "sp_grant_support_membership",
+      async () => {
+        const { rows } = await this.db.query<{ granted: boolean }>(`select core.grant_support_membership($1, $2) as granted;`, [callerId, sessionId]);
+        return { availability: "available" as const, granted: rows[0]?.granted === true };
+      },
+      () => ({ availability: "not_migrated" as const, granted: false }),
+    );
+  }
+
+  async revokeSupportMemberships(callerId: string, sessionId: string | null) {
+    return withSavepointFallback(
+      this.db,
+      "sp_revoke_support_memberships",
+      async () => {
+        const { rows } = await this.db.query<{ revoked: number }>(`select core.revoke_support_memberships($1, $2) as revoked;`, [callerId, sessionId]);
+        return { availability: "available" as const, revoked: Number(rows[0]?.revoked ?? 0) };
+      },
+      () => ({ availability: "not_migrated" as const, revoked: 0 }),
+    );
+  }
+
   async startSession(callerId: string, organizationId: string, reason: string) {
     return withSavepointFallback(
       this.db,
@@ -381,7 +496,7 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
   private readonly staffEmails = new Map<string, string>();
   private seq = 0;
 
-  constructor(private readonly opts: { readonly now?: () => number; readonly sessionDurationMs?: number } = {}) {}
+  constructor(private readonly opts: { readonly now?: () => number; readonly sessionDurationMs?: number; readonly supportDurationMs?: number } = {}) {}
 
   /** Sembrado explícito -- ver comentario de cabecera de la clase: este fake es
    *  autosuficiente (no depende de los mapas privados de `InMemoryCoreRepository`),
@@ -419,12 +534,107 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
   }
 
   async startSession(callerId: string, organizationId: string, reason: string) {
+    return { availability: "available" as const, session: this.openSession(callerId, organizationId, reason, 20, this.opts.sessionDurationMs ?? 15 * 60_000, false) };
+  }
+
+  // --- Soporte (0058) --------------------------------------------------------------------------------------
+  private readonly soporteSessions = new Set<string>();
+  private readonly elevadas = new Set<string>();
+  /** sessionId -> organizationId de las concesiones temporales de membresía vigentes (la fake solo lleva la cuenta). */
+  private readonly concesiones = new Map<string, string>();
+  private readonly miembrosReales = new Set<string>(); // `${userId}:${orgId}`
+
+  /** Siembra "este superadmin ya es miembro real de la organización": `grantSupportMembership` devuelve false. */
+  seedRealMembership(userId: string, organizationId: string): void {
+    this.miembrosReales.add(`${userId}:${organizationId}`);
+  }
+  /** Concesiones temporales vigentes (para que los tests comprueben que `salir` las revoca). */
+  concesionesVigentes(): ReadonlyMap<string, string> {
+    return this.concesiones;
+  }
+
+  async startSupportSession(callerId: string, organizationId: string, reason: string) {
+    const session = this.openSession(callerId, organizationId, reason, 10, this.opts.supportDurationMs ?? 60 * 60_000, true);
+    return { availability: "available" as const, kind: "soporte" as const, session };
+  }
+
+  async elevateSupportSession(callerId: string, sessionId: string, reason: string) {
+    if (!this.isPlatformSuperadmin(callerId)) throw new ImpersonationForbiddenError("solo un superadmin de plataforma real");
+    if ((reason?.trim() ?? "").length < 10) throw new ImpersonationReasonInvalidError("motivo obligatorio (mínimo 10 caracteres)");
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new ImpersonationNotFoundError(`la sesión ${sessionId} no existe`);
+    if (session.actorUserId !== callerId) throw new ImpersonationForbiddenError("solo quien abrió la sesión puede elevarla");
+    if (!this.isActive(session)) throw new ImpersonationConflictError("la sesión ya terminó o venció");
+    if (!this.soporteSessions.has(sessionId)) throw new ImpersonationForbiddenError("solo las sesiones de soporte se pueden elevar");
+    if (this.elevadas.has(sessionId)) throw new ImpersonationConflictError("la sesión ya está elevada");
+    this.elevadas.add(sessionId);
+    const entry: ImpersonationAuditEntryRow = {
+      id: `${sessionId}-elevate`,
+      sessionId,
+      eventType: "elevate",
+      actorUserId: callerId,
+      actorEmail: session.actorEmail,
+      organizationId: session.organizationId,
+      reason: reason.trim(),
+      detail: { kind: "soporte", soloLectura: false },
+      occurredAtMs: this.now(),
+      seq: ++this.seq,
+      prevHash: null,
+      hash: `fake-hash-${this.seq}`,
+    };
+    this.auditLog.push(entry);
+    return { availability: "available" as const, entry };
+  }
+
+  async getSupportState(callerId: string, sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.actorUserId !== callerId) return { availability: "available" as const, state: null };
+    return {
+      availability: "available" as const,
+      state: {
+        organizationId: session.organizationId,
+        expiresAtMs: session.expiresAtMs,
+        active: this.isActive(session),
+        elevated: this.elevadas.has(sessionId),
+        soporte: this.soporteSessions.has(sessionId),
+      },
+    };
+  }
+
+  async grantSupportMembership(callerId: string, sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.actorUserId !== callerId) throw new ImpersonationNotFoundError(`la sesión ${sessionId} no existe o no es tuya`);
+    if (!this.isActive(session)) throw new ImpersonationConflictError("la sesión ya terminó o venció");
+    if (!this.soporteSessions.has(sessionId)) throw new ImpersonationForbiddenError("solo las sesiones de soporte pueden concederla");
+    if (this.miembrosReales.has(`${callerId}:${session.organizationId}`)) return { availability: "available" as const, granted: false };
+    this.concesiones.set(sessionId, session.organizationId);
+    return { availability: "available" as const, granted: true };
+  }
+
+  async revokeSupportMemberships(callerId: string, sessionId: string | null) {
+    let revoked = 0;
+    for (const [sid] of [...this.concesiones]) {
+      const session = this.sessions.get(sid);
+      if (!session || session.actorUserId !== callerId) continue;
+      if (sid === sessionId || !this.isActive(session)) {
+        this.concesiones.delete(sid);
+        revoked += 1;
+      }
+    }
+    return { availability: "available" as const, revoked };
+  }
+
+  private isActive(session: ImpersonationSessionRow): boolean {
+    return session.expiresAtMs > this.now() && !this.auditLog.some((e) => e.sessionId === session.id && e.eventType === "end");
+  }
+
+  private openSession(callerId: string, organizationId: string, reason: string, minChars: number, durationMs: number, soporte: boolean): ImpersonationSessionRow {
     if (!this.isPlatformSuperadmin(callerId)) {
       throw new ImpersonationForbiddenError("solo un superadmin de plataforma real puede iniciar una impersonación");
     }
     const trimmed = reason?.trim() ?? "";
-    if (trimmed.length < 20) {
-      throw new ImpersonationReasonInvalidError("motivo obligatorio (mínimo 20 caracteres)");
+    if (trimmed.length < minChars) {
+      throw new ImpersonationReasonInvalidError(`motivo obligatorio (mínimo ${minChars} caracteres)`);
     }
     if (!this.organizations.has(organizationId)) {
       throw new ImpersonationNotFoundError(`la organización ${organizationId} no existe`);
@@ -433,9 +643,7 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
       throw new ImpersonationForbiddenError("no se puede impersonar una organización que tiene a otro superadmin de plataforma como miembro");
     }
     const nowMs = this.now();
-    const hasActive = [...this.sessions.values()].some(
-      (s) => s.actorUserId === callerId && s.expiresAtMs > nowMs && !this.auditLog.some((e) => e.sessionId === s.id && e.eventType === "end"),
-    );
+    const hasActive = [...this.sessions.values()].some((s) => s.actorUserId === callerId && this.isActive(s));
     if (hasActive) {
       throw new ImpersonationConflictError("ya existe una sesión de impersonación activa para este superadmin");
     }
@@ -447,9 +655,10 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
       organizationId,
       reason: trimmed,
       startedAtMs: nowMs,
-      expiresAtMs: nowMs + (this.opts.sessionDurationMs ?? 15 * 60_000),
+      expiresAtMs: nowMs + durationMs,
     };
     this.sessions.set(session.id, session);
+    if (soporte) this.soporteSessions.add(session.id);
     this.auditLog.push({
       id: `${session.id}-start`,
       sessionId: session.id,
@@ -458,13 +667,13 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
       actorEmail: session.actorEmail,
       organizationId,
       reason: trimmed,
-      detail: { expiresAtMs: session.expiresAtMs },
+      detail: soporte ? { kind: "soporte", soloLectura: true, expiresAtMs: session.expiresAtMs } : { expiresAtMs: session.expiresAtMs },
       occurredAtMs: nowMs,
       seq: ++this.seq,
       prevHash: null,
       hash: `fake-hash-${this.seq}`,
     });
-    return { availability: "available" as const, session };
+    return session;
   }
 
   async endSession(callerId: string, sessionId: string) {
