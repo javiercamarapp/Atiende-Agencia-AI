@@ -204,7 +204,7 @@ test.describe("restaurantes CFO @humo", () => {
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
       await afirmarSinScrollHorizontal(page);
       await afirmarModo(page, info.project.name.endsWith("oscuro") ? "oscuro" : "claro");
-      if (destino) await page.screenshot({ path: join(destino, `${info.project.name}-${nombre}.png`), fullPage: true });
+      if (destino) await page.screenshot({ path: join(destino, `${info.project.name}-${nombre}.png`) });
     }
     vigilante.verificar();
   });
