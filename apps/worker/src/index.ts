@@ -48,3 +48,6 @@ export type { VencimientosBarridoResultado, RunVencimientosBarridoOpciones } fro
 export { runEfos69bDescarga } from "./jobs/despachos/efos-69b-descarga.ts";
 export type { Efos69bDescargaResultado } from "./jobs/despachos/efos-69b-descarga.ts";
 export type { NotificacionCron, NotificarCron, UnidadCronSat, WithUnidadCronSat } from "./jobs/despachos/cron-comun.ts";
+// paridad3 D-31 + D-P3-15: solicitudes de documentos al cliente, recordatorios y auto-check diario del cierre.
+export { runPilotoCierreClienteSweep } from "./jobs/despachos/piloto-cierre-cliente.ts";
+export type { PilotoCierreClienteResultado, RunPilotoCierreClienteOpciones, UnidadPiloto, WithUnidadPiloto } from "./jobs/despachos/piloto-cierre-cliente.ts";

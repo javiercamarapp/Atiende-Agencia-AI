@@ -4,6 +4,10 @@
 //   GET  /portal-cliente/resumen     estatus de obligaciones (SAT), cierres, documentos y mensajes de SU cliente.
 //   POST /portal-cliente/documentos  sube un CFDI (XML), PDF o imagen (cuerpo = bytes del archivo, <= 2 MB).
 //   POST /portal-cliente/mensajes    { cuerpo } mensaje simple al despacho.
+//   GET  /portal-cliente/solicitudes  (paridad3 D-31) lo que el despacho le pidio al cliente por periodo, con el estado de cada renglon.
+//   POST /portal-cliente/documentos?renglonId=<uuid>   igual que arriba y ademas liga el archivo a ese renglon de la solicitud.
+//   GET  /portal-cliente/reportes     (paridad3 D-P3-21) reportes del cierre publicados para el cliente.
+//   GET  /portal-cliente/reportes/:archivoId   descarga un PDF publicado.
 // El token viaja en el header `X-Portal-Token` (el enlace lo lleva en el FRAGMENTO `#t=...`, que el
 // navegador nunca envia al servidor): no aparece en URLs de peticion, logs de acceso ni cabecera
 // Referer. El servidor solo maneja su SHA-256; la base (funciones de sistema, migracion 016) valida
@@ -44,7 +48,8 @@ import {
   hashTokenPortal,
   validarArchivoPortal,
 } from "@atiende/domain-despachos";
-import type { PortalClienteRepository, PortalDisponible } from "@atiende/domain-despachos";
+import { PilotoEntradaInvalidaError, PilotoNoEncontradoError, PilotoSinAccesoError } from "@atiende/domain-despachos";
+import type { PilotoDisponible, PilotoRepository, PortalClienteRepository, PortalDisponible } from "@atiende/domain-despachos";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import { exigirStepUpDespachos } from "./step-up.ts";
@@ -52,6 +57,7 @@ import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
 import { readJsonCapped, requestActor } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { ingestarXmlCfdiDespachos } from "./cfdi.ts";
+import { pilotoDe } from "./piloto-comun.ts";
 
 const CATEGORIA = "despachos:portal-cliente";
 const MAX_BYTES_SUBIDA = 2 * 1024 * 1024;
@@ -156,6 +162,19 @@ export function despachosPortalClienteRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     }
   }
 
+  /** Igual que `comoSistema` para el piloto (solicitudes y reportes): token invalido o recurso ajeno = el mismo 404 generico, sin oraculo. */
+  async function comoSistemaPiloto<T>(fn: (repo: PilotoRepository) => Promise<PilotoDisponible<T>>): Promise<T> {
+    try {
+      const r = await deps.engine.withAppSession({ userId: null }, (db) => fn(pilotoDe(deps, db)));
+      if (!r.disponible) throw portalNoDisponible();
+      return r.valor;
+    } catch (err) {
+      if (err instanceof PilotoNoEncontradoError || err instanceof PilotoSinAccesoError) throw enlaceNoValido();
+      if (err instanceof PilotoEntradaInvalidaError) throw Errors.validation(err.message);
+      throw err;
+    }
+  }
+
   app.get("/portal-cliente/resumen", async (c) => {
     const hash = await credencial(c);
     const r = await comoSistema((repo) => repo.resumen(hash));
@@ -184,8 +203,44 @@ export function despachosPortalClienteRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     }
     const v = validarArchivoPortal({ nombre, contentType: c.req.header("content-type"), bytes });
     if (!v.ok) throw new ApiError(422, `archivo_${v.codigo}`, v.mensaje);
+    const renglonId = c.req.query("renglonId");
+    if (renglonId !== undefined && !UUID_RE.test(renglonId)) throw Errors.validation("renglonId: se esperaba un UUID.");
     const r = await comoSistema((repo) => repo.recibirDocumento(hash, { tipo: v.tipo, nombreArchivo: v.nombreArchivo, mimeType: v.mimeType, contenido: bytes, resumen: v.resumen }));
-    return c.json({ id: r.id, estado: r.estado, duplicado: r.duplicado, nombreArchivo: v.nombreArchivo }, r.duplicado ? 200 : 201);
+    // paridad3 D-31: si el cliente subio el archivo PARA un renglon de su solicitud, queda ligado (en revision hasta que el despacho lo acepte). Si el
+    // renglon ya no aplica el archivo SI quedo recibido: se avisa en `renglon` sin fallar la subida.
+    let renglon: { readonly vinculado: boolean; readonly estado?: string } | undefined;
+    if (renglonId !== undefined) {
+      try {
+        const estado = await comoSistemaPiloto((repo) => repo.portalVincular(hash, r.id, renglonId));
+        renglon = { vinculado: true, estado };
+      } catch (err) {
+        // 404 (el renglon ya no aplica) y 503 (base sin la 027): el archivo YA quedo recibido (otra transaccion), asi que la subida no falla.
+        if (err instanceof ApiError && (err.status === 404 || err.status === 503)) renglon = { vinculado: false };
+        else throw err;
+      }
+    }
+    return c.json({ id: r.id, estado: r.estado, duplicado: r.duplicado, nombreArchivo: v.nombreArchivo, ...(renglon ? { renglon } : {}) }, r.duplicado ? 200 : 201);
+  });
+
+  app.get("/portal-cliente/solicitudes", async (c) => {
+    const hash = await credencial(c);
+    const solicitudes = await comoSistemaPiloto((repo) => repo.portalSolicitudes(hash));
+    return c.json({ solicitudes });
+  });
+
+  app.get("/portal-cliente/reportes", async (c) => {
+    const hash = await credencial(c);
+    const reportes = await comoSistemaPiloto((repo) => repo.portalReportes(hash));
+    return c.json({ reportes });
+  });
+
+  app.get("/portal-cliente/reportes/:archivoId", async (c) => {
+    const hash = await credencial(c, { clave: "rep", max: 30, ventanaMs: 600_000 });
+    const archivoId = c.req.param("archivoId");
+    if (!UUID_RE.test(archivoId)) throw enlaceNoValido();
+    const archivo = await comoSistemaPiloto((repo) => repo.portalReporteContenido(hash, archivoId));
+    const nombre = archivo.nombreArchivo.replace(/[^A-Za-z0-9._-]/g, "_");
+    return new Response(archivo.contenido, { headers: { "content-type": "application/pdf", "content-disposition": `attachment; filename="${nombre}"`, "cache-control": "private, no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" } });
   });
 
   app.post("/portal-cliente/mensajes", async (c) => {

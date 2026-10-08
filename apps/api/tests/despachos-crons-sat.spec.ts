@@ -17,9 +17,9 @@ import type { DespachosTestContext } from "./despachos-fixtures.ts";
 import { conEmisiones } from "./support/emisiones.ts";
 import type { EmisionRegistrada } from "./support/emisiones.ts";
 
-const VIGENTE: ConsultaCfdiSatResultado = { consultado: true, estado: "vigente", esCancelable: "Cancelable sin aceptación", estatusCancelacion: null };
-const CANCELADO: ConsultaCfdiSatResultado = { consultado: true, estado: "cancelado", esCancelable: "No cancelable", estatusCancelacion: "Cancelado sin aceptación" };
-const TIMEOUT: ConsultaCfdiSatResultado = { consultado: false, estado: "pendiente", esCancelable: null, estatusCancelacion: null, motivo: "timeout" };
+const VIGENTE: ConsultaCfdiSatResultado = { consultado: true, estado: "vigente", esCancelable: "Cancelable sin aceptación", estatusCancelacion: null, codigoEstatus: "S - Comprobante obtenido satisfactoriamente.", validacionEfos: "200" };
+const CANCELADO: ConsultaCfdiSatResultado = { consultado: true, estado: "cancelado", esCancelable: "No cancelable", estatusCancelacion: "Cancelado sin aceptación", codigoEstatus: null, validacionEfos: null };
+const TIMEOUT: ConsultaCfdiSatResultado = { consultado: false, estado: "pendiente", esCancelable: null, estatusCancelacion: null, codigoEstatus: null, validacionEfos: null, motivo: "timeout" };
 
 class SatFalso implements ConsultaCfdiSatPort {
   readonly llamadas: ConsultaCfdiSatInput[] = [];
@@ -146,7 +146,8 @@ describe(`POST ${CRON_SAT}`, () => {
 
   it("respeta el tope por corrida (60) y atiende primero los mas antiguos; el resto queda para la siguiente", async () => {
     const { app, cron, sat } = armar();
-    for (let i = 1; i <= 65; i++) sembrarCfdi(cron, i);
+    // 5 clientes con 13 CFDI cada uno: ninguno rebasa el tope por cliente (15), asi que manda el tope global.
+    for (let i = 1; i <= 65; i++) sembrarCfdi(cron, i, { propertyId: `cliente-${i % 5}` });
     const body = (await (await app.request(CRON_SAT, SECRETO(ctx))).json()) as Record<string, unknown>;
     expect(body).toMatchObject({ revisados: 60 });
     expect(sat.llamadas).toHaveLength(60);
@@ -155,6 +156,95 @@ describe(`POST ${CRON_SAT}`, () => {
     expect(folios.has("11111111-2222-3333-4444-000000000065")).toBe(false);
     const segunda = (await (await app.request(CRON_SAT, SECRETO(ctx))).json()) as Record<string, unknown>;
     expect(segunda).toMatchObject({ revisados: 5 });
+  });
+
+  it("tope por cliente: un cliente con muchos CFDI no acapara la cuota de la plataforma (15 por cliente)", async () => {
+    const { app, cron, sat } = armar();
+    for (let i = 1; i <= 40; i++) sembrarCfdi(cron, i, { propertyId: "cliente-grande" });
+    for (let i = 41; i <= 43; i++) sembrarCfdi(cron, i, { propertyId: "cliente-chico" });
+    const body = (await (await app.request(CRON_SAT, SECRETO(ctx))).json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ revisados: 18 });
+    expect(sat.llamadas.filter((l) => l.folioFiscal.endsWith("0041") || l.folioFiscal.endsWith("0042") || l.folioFiscal.endsWith("0043"))).toHaveLength(3);
+  });
+
+  it("persiste el detalle de cancelacion del SAT (es_cancelable, estatus, codigo_estatus y validacion_efos)", async () => {
+    const { app, cron, sat } = armar();
+    const id = sembrarCfdi(cron, 1);
+    sat.respuesta = () => VIGENTE;
+    await app.request(CRON_SAT, SECRETO(ctx));
+    expect(cron.estadoCfdi(id).detalle).toEqual({ esCancelable: "Cancelable sin aceptación", estatusCancelacion: null, codigoEstatus: "S - Comprobante obtenido satisfactoriamente.", validacionEfos: "200" });
+  });
+
+  it("cancelacion «En proceso»: avisa UNA vez, se reconsulta pasadas 20 h hasta resolverse y no re-avisa", async () => {
+    const { app, cron, sat, emisiones } = armar();
+    let ahora = Date.now();
+    cron.ahora = () => ahora;
+    const id = sembrarCfdi(cron, 1);
+    sat.respuesta = () => ({ ...VIGENTE, esCancelable: "Cancelable con aceptación", estatusCancelacion: "En proceso" });
+    const primera = (await (await app.request(CRON_SAT, SECRETO(ctx))).json()) as Record<string, unknown>;
+    expect(primera).toMatchObject({ revisados: 1, cancelaciones_en_proceso: 1 });
+    const enProceso = (e: readonly EmisionRegistrada[]) => e.filter((x) => x.evento === "despachos.cfdi.cancelacion_en_proceso");
+    expect(enProceso(emisiones)).toHaveLength(1);
+    expect(enProceso(emisiones)[0]).toMatchObject({ dedupeKey: `despachos.cfdi.cancelacion_en_proceso:${id}`, enlace: `/despachos/{orgSlug}/cfdi/${id}`, severidad: "atencion" });
+    expect((enProceso(emisiones)[0]!.titulo + (enProceso(emisiones)[0]!.cuerpo ?? ""))).not.toMatch(/@|\d{7,}|OTR010101|CLI010101/);
+
+    // Antes de 20 h no se reconsulta; despues si, y como sigue «En proceso» no vuelve a avisar.
+    await app.request(CRON_SAT, SECRETO(ctx));
+    expect(sat.llamadas).toHaveLength(1);
+    ahora += 21 * 3_600_000;
+    const tercera = (await (await app.request(CRON_SAT, SECRETO(ctx))).json()) as Record<string, unknown>;
+    expect(tercera).toMatchObject({ revisados: 1, cancelaciones_en_proceso: 0 });
+    expect(sat.llamadas).toHaveLength(2);
+    expect(enProceso(emisiones)).toHaveLength(1);
+
+    // El receptor acepta: el SAT reporta cancelado -> aviso de cancelado (otra clave de catalogo) y ya no se consulta.
+    sat.respuesta = () => CANCELADO;
+    ahora += 21 * 3_600_000;
+    await app.request(CRON_SAT, SECRETO(ctx));
+    expect(cancelados(emisiones)).toHaveLength(1);
+    ahora += 400 * 86_400_000;
+    await app.request(CRON_SAT, SECRETO(ctx));
+    expect(sat.llamadas).toHaveLength(3);
+  });
+
+  it("fuera de la ventana de ejercicios un CFDI ya consultado no se reconsulta; uno que nunca se consulto si", async () => {
+    const { app, cron, sat } = armar();
+    const ahora = Date.now();
+    cron.ahora = () => ahora;
+    const viejoConsultado = sembrarCfdi(cron, 1, { fecha: "2019-03-10", intentadoEn: ahora - 30 * 86_400_000, estadoSat: "vigente" });
+    const viejoNunca = sembrarCfdi(cron, 2, { fecha: "2019-03-11" });
+    const reciente = sembrarCfdi(cron, 3, { fecha: new Date(ahora - 10 * 86_400_000).toISOString().slice(0, 10), intentadoEn: ahora - 10 * 86_400_000, estadoSat: "vigente" });
+    const body = (await (await app.request(CRON_SAT, SECRETO(ctx))).json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ revisados: 2 });
+    const folios = sat.llamadas.map((l) => l.folioFiscal);
+    expect(folios).toContain(`11111111-2222-3333-4444-${viejoNunca.slice(-12)}`);
+    expect(folios).toContain(`11111111-2222-3333-4444-${reciente.slice(-12)}`);
+    expect(folios).not.toContain(`11111111-2222-3333-4444-${viejoConsultado.slice(-12)}`);
+  });
+
+  it("prioridad: primero los nunca consultados, luego la cancelacion en proceso y al final los vigentes de la ventana", async () => {
+    const { app, cron, sat, deps } = armar();
+    const ahora = Date.now();
+    cron.ahora = () => ahora;
+    const hoyIso = (dias: number) => new Date(ahora - dias * 86_400_000).toISOString().slice(0, 10);
+    const vigenteViejo = sembrarCfdi(cron, 1, { fecha: hoyIso(200), intentadoEn: ahora - 20 * 86_400_000, estadoSat: "vigente", propertyId: "p-a" });
+    const enProceso = sembrarCfdi(cron, 2, { fecha: hoyIso(10), intentadoEn: ahora - 30 * 3_600_000, estadoSat: "vigente", estatusCancelacion: "En proceso", propertyId: "p-b" });
+    const nunca = sembrarCfdi(cron, 3, { fecha: hoyIso(5), propertyId: "p-c" });
+    const lista = await cron.listarCfdiPendientesEstatusSat(10, 6, 2, 15);
+    expect(lista!.map((c) => c.invoiceId)).toEqual([nunca, enProceso, vigenteViejo]);
+    expect(lista!.map((c) => c.prioridad)).toEqual([0, 1, 3]);
+    void app; void sat; void deps;
+  });
+
+  it("base con la migracion 022 pero SIN la 027: el barrido sigue (orden anterior, sin detalle) y no falla", async () => {
+    const { app, cron, sat } = armar();
+    cron.migracion027 = false;
+    const id = sembrarCfdi(cron, 1);
+    sat.respuesta = () => ({ ...VIGENTE, estatusCancelacion: "En proceso" });
+    const body = (await (await app.request(CRON_SAT, SECRETO(ctx))).json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ ok: true, status: "ok", revisados: 1, cancelaciones_en_proceso: 0 });
+    expect(cron.estadoCfdi(id)).toMatchObject({ estadoSat: "vigente" });
+    expect(cron.estadoCfdi(id).detalle.estatusCancelacion).toBeNull();
   });
 
   it("un CFDI que falla al registrarse no frena a los demas: 200 con ok:false y el latido queda en error", async () => {
@@ -331,6 +421,55 @@ describe(`POST ${CRON_VENC}`, () => {
   });
 });
 
+describe(`POST ${CRON_VENC} -- paso del piloto de cierre y documentos (paridad3)`, () => {
+  it("corre tras el barrido de vencimientos: crea la solicitud del mes anterior, encola el aviso al cliente y reporta el resumen del piloto", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T18:00:00Z"));
+    const { app } = armar();
+    await ctx.pilotoRepo.guardarAutomatizacion(ctx.propertyId, { contactoCorreo: "contacto@cliente.mx", envioReportesCierre: false, solicitudActiva: true, solicitudDia: 1, plantilla: {} });
+    const body = (await (await app.request(CRON_VENC, SECRETO(ctx))).json()) as { ok: boolean; piloto: { solicitudes: { status: string; creadas: number; correos_encolados: number }; recordatorios: { status: string }; cierre: { status: string } } };
+    expect(body.ok).toBe(true);
+    expect(body.piloto.solicitudes).toMatchObject({ status: "ok", creadas: 1, correos_encolados: 1 });
+    expect(ctx.pilotoRepo.solicitudes.map((x) => [x.ejercicio, x.mes])).toEqual([[2026, 9]]);
+    const correos = ctx.despachosRepo.getMessagingOutbox().filter((j) => j.eventType === "despachos.solicitud.documentos");
+    expect(correos).toHaveLength(1);
+    expect(String(correos[0]!.payload.text)).toContain(`${ctx.deps.env.appBaseUrl}/portal/cliente#t=`);
+    // Segunda corrida: idempotente.
+    const dos = (await (await app.request(CRON_VENC, SECRETO(ctx))).json()) as { piloto: { solicitudes: { creadas: number } } };
+    expect(dos.piloto.solicitudes.creadas).toBe(0);
+    expect(ctx.despachosRepo.getMessagingOutbox().filter((j) => j.eventType === "despachos.solicitud.documentos")).toHaveLength(1);
+  });
+
+  it("REGLA DURA: base sin la migracion 027 -> el piloto responde no_disponible y el barrido de vencimientos sigue (200)", async () => {
+    const { app, cron } = armar();
+    cron.sembrarCliente({ organizationId: ctx.organizationId, propertyId: ctx.propertyId, regimenes: ["601"], zonaHoraria: "America/Mexico_City" });
+    ctx.pilotoRepo.disponible = false;
+    const res = await app.request(CRON_VENC, SECRETO(ctx));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; clientes: number; piloto: { solicitudes: { status: string }; recordatorios: { status: string }; cierre: { status: string } } };
+    expect(body).toMatchObject({ ok: true, clientes: 1 });
+    expect(body.piloto).toMatchObject({ solicitudes: { status: "no_disponible" }, recordatorios: { status: "no_disponible" }, cierre: { status: "no_disponible" } });
+  });
+
+  it("una unidad del piloto que falla se reporta (ok:false, latido en error) sin tumbar las demas ni el barrido", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T18:00:00Z"));
+    const { app } = armar();
+    ctx.pilotoRepo.sembrarCliente({ organizationId: ctx.organizationId, propertyId: "00000000-0000-0000-0000-0000000000f9", razonSocial: "Otro cliente" });
+    const original = ctx.pilotoRepo.crearSolicitudSistema.bind(ctx.pilotoRepo);
+    ctx.pilotoRepo.crearSolicitudSistema = async (propertyId, e, m) => {
+      if (propertyId === ctx.propertyId) throw Object.assign(new Error("falla simulada"), { code: "XX000" });
+      return original(propertyId, e, m);
+    };
+    const res = await app.request(CRON_VENC, SECRETO(ctx));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; failures: { id?: string }[]; piloto: { solicitudes: { creadas: number } } };
+    expect(body.ok).toBe(false);
+    expect(body.failures.map((f) => f.id)).toEqual([ctx.propertyId]);
+    expect(body.piloto.solicitudes.creadas).toBe(1);
+  });
+});
+
 describe("POST /despachos/:propertyId/cfdi/:invoiceId/verificar-estatus-sat", () => {
   const CLIENTE_RFC = "CLI010101CL1";
   const OTRO_RFC = "OTR010101OT1";
@@ -371,6 +510,20 @@ describe("POST /despachos/:propertyId/cfdi/:invoiceId/verificar-estatus-sat", ()
     expect(body).toMatchObject({ consultado: true, estadoSat: "vigente", esCancelable: "Cancelable sin aceptación" });
     expect(body.estadoSatVerificadoEn).not.toBeNull();
     expect(sat.llamadas).toEqual([{ rfcEmisor: OTRO_RFC, rfcReceptor: CLIENTE_RFC, total: 1160, folioFiscal: UUID }]);
+  });
+
+  it("cancelacion «En proceso»: guarda el detalle (visible en el detalle del CFDI), avisa una sola vez y no re-avisa al repetir", async () => {
+    const { app, deps, sat, emisiones } = armar();
+    const id = await crearCfdi(deps);
+    sat.respuesta = () => ({ ...VIGENTE, esCancelable: "Cancelable con aceptación", estatusCancelacion: "En proceso" });
+    const body = (await (await verificar(app, id, ctx.staff.contador.token)).json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ consultado: true, estadoSat: "vigente", estatusCancelacion: "En proceso", codigoEstatus: "S - Comprobante obtenido satisfactoriamente.", validacionEfos: "200" });
+    const detalle = (await (await app.request(`/despachos/${ctx.propertyId}/cfdi/${id}`, authedJson(ctx.staff.admin.token))).json()) as Record<string, unknown>;
+    expect(detalle).toMatchObject({ estatusCancelacion: "En proceso", esCancelable: "Cancelable con aceptación", validacionEfos: "200" });
+    const avisos = () => emisiones.filter((e) => e.evento === "despachos.cfdi.cancelacion_en_proceso");
+    expect(avisos()).toHaveLength(1);
+    await verificar(app, id, ctx.staff.contador.token);
+    expect(avisos()).toHaveLength(1);
   });
 
   it("timeout del SAT: 200 con consultado:false, el CFDI sigue 'pendiente' y NO se marca vigente", async () => {
