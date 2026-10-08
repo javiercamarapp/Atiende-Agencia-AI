@@ -43,6 +43,15 @@ export interface OrderFlowContext {
    * aunque ese turno no llame ninguna herramienta. Ausente en filas guardadas antes de este campo (guardia entonces solo en el turno que cotiza). */
   readonly quotedTotal?: number;
   readonly quotedAmounts?: readonly number[];
+  /**
+   * Renglones de la cotizacion YA RESUELTOS contra el catalogo (id, nombre, cantidad pedida, tortilla solo si el producto la exige). La huella del
+   * pedido se calcula sobre ESTOS renglones y no sobre lo que escribio el modelo: un modelo que manda la tortilla de la horchata como "mixta" en un
+   * turno y "maiz" en el siguiente, o un `product_id` vacio al crear, ya no vuelve "nueva" una cotizacion que el cliente ya vio (QA-PM-R3-whatsapp-01/07).
+   * Ausente en filas guardadas antes de este campo: la huella se calcula como siempre, sobre lo que mande el modelo.
+   */
+  readonly quotedItems?: readonly QuotedItem[];
+  /** Huella del CARRITO (sucursal + canal + renglones) sin hora, pago ni salsas: sirve para reconocer "el mismo pedido" aunque el modelo cambie la hora (QA-PM-R3-whatsapp-03). */
+  readonly cartHash?: string;
   /** Pedidos YA creados en esta conversacion/llamada: total y kilos acumulados. La guardia de pedido grande los suma al siguiente pedido para que partir un pedido
    * grande en dos no la esquive (QA-PM-R2-reglas-08). Ausente en filas anteriores = 0. */
   readonly sessionTotal?: number;
@@ -54,6 +63,15 @@ export interface OrderFlowContext {
   readonly confirmedAtMs?: number;
   readonly claimedAtMs?: number;
   readonly orderId?: string;
+}
+
+/** Renglon de la cotizacion resuelto contra el catalogo. */
+export interface QuotedItem {
+  readonly id: string;
+  readonly name: string;
+  readonly qty: number;
+  /** Solo si el producto exige tortilla; `null` en bebidas y demas (el modelo manda ahi cualquier valor y no debe afectar la huella). */
+  readonly tortilla: string | null;
 }
 
 export interface OrderFlowSnapshot {
@@ -118,6 +136,119 @@ export function fingerprintOrder(input: {
   const canonical = JSON.stringify({ b: input.branchSlug.trim(), c: input.canal === "recoger" ? "recoger" : "domicilio", a: input.adultConfirmed === true, i: items, ...(input.doubleSalsas && input.doubleSalsas.length > 0 ? { d: [...new Set(input.doubleSalsas)].sort() } : {}), ...(input.programadoPara ? { p: input.programadoPara } : {}), ...(input.horaRecogida ? { h: input.horaRecogida } : {}) });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
+
+const PALABRAS_VACIAS = new Set(["de", "del", "al", "a", "los", "las", "el", "la", "un", "una", "unos", "unas", "y", "con", "sin", "en", "para", "taco", "tacos", "orden", "ordenes", "individual", "individuales", "pieza", "piezas"]);
+
+function tokensDeNombre(name: string | undefined): Set<string> {
+  const base = (name ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]+/g, " ");
+  const out = new Set<string>();
+  for (const raw of base.split(/\s+/)) {
+    if (!raw) continue;
+    const t = raw.length > 3 && raw.endsWith("s") ? raw.slice(0, -1) : raw;
+    if (!PALABRAS_VACIAS.has(raw) && !PALABRAS_VACIAS.has(t)) out.add(t);
+  }
+  return out;
+}
+
+/**
+ * Empareja cada renglon que escribio el modelo con un renglon resuelto (por id; si no, por nombre; si no, el unico que sobra). Devuelve, por posicion de `items`,
+ * el indice del renglon resuelto o `null` si no se pudo emparejar sin ambiguedad. Cada renglon resuelto se usa a lo mas una vez.
+ */
+function emparejar(items: readonly RequestedOrderItemInput[], candidatos: readonly { readonly id: string; readonly name: string }[]): (number | null)[] {
+  const usados = new Set<number>();
+  const res: (number | null)[] = items.map(() => null);
+  items.forEach((it, i) => {
+    if (!it.productId) return;
+    const j = candidatos.findIndex((c, k) => !usados.has(k) && c.id === it.productId);
+    if (j >= 0) {
+      usados.add(j);
+      res[i] = j;
+    }
+  });
+  items.forEach((it, i) => {
+    if (res[i] !== null) return;
+    const mios = tokensDeNombre(it.productName);
+    if (mios.size === 0) return;
+    let mejor = -1;
+    let mejorPuntaje = 0;
+    let empate = false;
+    candidatos.forEach((c, k) => {
+      if (usados.has(k)) return;
+      const suyos = tokensDeNombre(c.name);
+      let comunes = 0;
+      for (const t of mios) if (suyos.has(t)) comunes += 1;
+      if (comunes === 0) return;
+      const puntaje = comunes / (mios.size + suyos.size - comunes);
+      if (puntaje > mejorPuntaje) {
+        mejor = k;
+        mejorPuntaje = puntaje;
+        empate = false;
+      } else if (puntaje === mejorPuntaje) empate = true;
+    });
+    if (mejor >= 0 && !empate) {
+      usados.add(mejor);
+      res[i] = mejor;
+    }
+  });
+  const sinPar = res.map((r, i) => (r === null ? i : -1)).filter((i) => i >= 0);
+  const libres = candidatos.map((_, k) => k).filter((k) => !usados.has(k));
+  if (sinPar.length === 1 && libres.length === 1) res[sinPar[0]!] = libres[0]!;
+  return res;
+}
+
+/**
+ * Renglones del modelo -> renglones resueltos de la cotizacion (`lines` de `quoteOrder`). `null` si algun renglon no se puede emparejar: entonces la huella cae
+ * al comportamiento anterior (sobre lo que mando el modelo).
+ */
+export function resolverRenglonesCotizados(
+  items: readonly RequestedOrderItemInput[],
+  lines: readonly { readonly productId: string; readonly name: string; readonly tortilla?: string | null }[],
+): QuotedItem[] | null {
+  if (items.length === 0) return null;
+  const par = emparejar(items, lines.map((l) => ({ id: l.productId, name: l.name })));
+  const out: QuotedItem[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const j = par[i];
+    if (j === null || j === undefined) return null;
+    const l = lines[j]!;
+    out.push({ id: l.productId, name: l.name, qty: items[i]!.requestedQuantity, tortilla: l.tortilla ?? null });
+  }
+  return out;
+}
+
+/**
+ * Al crear: reemplaza lo que escribio el modelo por los renglones ya cotizados (id y nombre del catalogo, y tortilla solo si el producto la lleva), de modo que la
+ * huella solo cambie si cambio el carrito de verdad (otro producto, otra cantidad o, en un producto con tortilla, otra tortilla) y que el pedido se cree con el
+ * producto cotizado aunque el modelo mande `product_id` vacio o un nombre aproximado. `null` si algun renglon no se puede emparejar sin ambiguedad: el caller
+ * conserva lo que mando el modelo (la huella no coincidira, como antes).
+ */
+export function reconciliarConCotizacion(items: readonly RequestedOrderItemInput[], quoted: readonly QuotedItem[]): RequestedOrderItemInput[] | null {
+  const par = emparejar(items, quoted);
+  if (par.some((j) => j === null)) return null;
+  return items.map((it, i) => {
+    const q = quoted[par[i]!]!;
+    // Producto con tortilla: si el modelo mando una tortilla distinta a la cotizada, se respeta (cambia la huella y obliga a re-cotizar); si la omitio, es la cotizada.
+    const tortilla = q.tortilla === null ? undefined : ((it.tortilla ?? q.tortilla) as RequestedOrderItemInput["tortilla"]);
+    return { productId: q.id, productName: q.name, requestedQuantity: it.requestedQuantity, tortilla };
+  });
+}
+
+/** Renglones cotizados -> entrada de `fingerprintOrder`. */
+export function itemsDeHuella(quoted: readonly QuotedItem[]): RequestedOrderItemInput[] {
+  return quoted.map((q) => ({ productId: q.id, productName: q.name, requestedQuantity: q.qty, tortilla: (q.tortilla ?? undefined) as RequestedOrderItemInput["tortilla"] }));
+}
+
+/** Huella del carrito (sucursal + canal + renglones resueltos): reconoce "el mismo pedido" aunque cambie la hora de recogida, el pago o las salsas. */
+export function huellaDeCarrito(branchSlug: string, canal: string | undefined, quoted: readonly QuotedItem[]): string {
+  return fingerprintOrder({ branchSlug, canal, items: itemsDeHuella(quoted) }).slice(0, 32);
+}
+
+/** Despues de crear, un cotizar del MISMO carrito dentro de esta ventana se toma como un "si" repetido y no como un pedido nuevo. */
+export const MISMO_PEDIDO_VENTANA_MS = 30 * 60 * 1000;
 
 /**
  * Huella de precios de un pedido: producto + precio unitario + cantidad de cada renglon (incluida la doble porcion

@@ -269,7 +269,7 @@ describe("segundo pedido identico en la misma sesion (QA-PM-R2-reglas-15)", () =
     expect((primero.result as { ya_registrado?: boolean }).ya_registrado).toBeUndefined();
     // "otro igualito aparte para mi mama": se detecta por el id del ultimo pedido de la sesion, sin depender de relojes
     s.nextTurn();
-    await s.quote();
+    await s.quote({ otro_pedido: true }); // R3: sin `otro_pedido` un cotizar del mismo carrito ya NO reabre el flujo (ver order-flow-r3.spec.ts)
     s.nextTurn();
     await s.confirm();
     const segundo = await s.create();

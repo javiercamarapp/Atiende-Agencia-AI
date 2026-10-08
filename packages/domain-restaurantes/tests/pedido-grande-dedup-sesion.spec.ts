@@ -94,7 +94,7 @@ describe("'otro igual' dentro de 5 min en la misma sesion (deduplicado)", () => 
   it("pedido pending (esta en la memoria): no se retiene", async () => {
     const m = await mundo();
     const a = await m.pedir(["Bistec de Res — 2 kg"]);
-    const b = await m.pedir(["Bistec de Res — 2 kg"]);
+    const b = await m.pedir(["Bistec de Res — 2 kg"], "tarjeta", { otro_pedido: true });
     expect(b.orderId).toBe(a.orderId);
     expect(m.retenidos).toHaveLength(0);
     expect(m.estado(a.orderId)).toBe("pending");
@@ -103,7 +103,7 @@ describe("'otro igual' dentro de 5 min en la misma sesion (deduplicado)", () => 
     const m = await mundo();
     const a = await m.pedir(["Bistec de Res — 2 kg"], "tarjeta", { programado_para: MANANA_14 });
     expect(m.estado(a.orderId)).toBe("programado");
-    const b = await m.pedir(["Bistec de Res — 2 kg"], "tarjeta", { programado_para: MANANA_14 });
+    const b = await m.pedir(["Bistec de Res — 2 kg"], "tarjeta", { programado_para: MANANA_14, otro_pedido: true });
     expect(b.orderId).toBe(a.orderId);
     expect(m.retenidos).toHaveLength(0);
     expect(m.estado(a.orderId)).toBe("programado");
@@ -111,7 +111,7 @@ describe("'otro igual' dentro de 5 min en la misma sesion (deduplicado)", () => 
   it("pending SIN memoria (049 ausente, 050 presente): no se retiene el ya aceptado", async () => {
     const m = await mundo({ memoria: false });
     const a = await m.pedir(["Bistec de Res — 2 kg"]);
-    const b = await m.pedir(["Bistec de Res — 2 kg"]);
+    const b = await m.pedir(["Bistec de Res — 2 kg"], "tarjeta", { otro_pedido: true });
     expect(b.orderId).toBe(a.orderId);
     expect(m.retenidos).toHaveLength(0);
     expect(m.estado(a.orderId)).toBe("pending");

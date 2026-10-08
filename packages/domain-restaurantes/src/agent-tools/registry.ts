@@ -39,7 +39,12 @@ import {
   FLOW_ROW_TTL_SECONDS,
   QUOTE_TTL_MS,
   fingerprintOrder,
+  huellaDeCarrito,
+  itemsDeHuella,
+  MISMO_PEDIDO_VENTANA_MS,
   priceSignature,
+  reconciliarConCotizacion,
+  resolverRenglonesCotizados,
   OrderFlowViolationError,
   warnOrderFlowUnavailable,
   type OrderFlowContext,
@@ -47,6 +52,7 @@ import {
   type OrderFlowSnapshot,
   type OrderFlowState,
   type OrderFlowViolationCode,
+  type QuotedItem,
 } from "./order-flow.ts";
 import type {
   CanalPedido,
@@ -313,6 +319,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega que dio el cliente (solo a domicilio); la herramienta verifica que esté dentro de la zona de reparto de la sucursal." },
         payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida, solo para saber si corresponde preguntar propina." },
         doble_salsas: DOBLE_SALSAS_SCHEMA,
+        otro_pedido: { type: "boolean", description: "true SOLO si el cliente pidió expresamente OTRO pedido igual al que ya quedó registrado. Un 'sí' de más o repetir el resumen NO es otro pedido: no lo mande." },
         programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después (otro día o dentro de MÁS de 30 minutos con hora exacta): fecha y hora ISO 8601 con zona (por ejemplo 2026-10-03T14:00:00-06:00), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar. Si el cliente pasa 'en cuanto esté', 'ahorita' o 'en 20 minutos', NO mandes este campo (omítelo; no mandes texto vacío)." },
         hora_recogida: { type: "string", description: "Solo canal 'recoger' y SIN programado_para: la hora a la que pasará el cliente (por ejemplo 'en 40 minutos'), en ISO 8601 con zona, calculada con la HORA LOCAL de la sucursal (no UTC). El servidor la valida (no pasada, de hoy, dentro del horario). Omítela si pasa 'en cuanto esté'." },
       },
@@ -665,6 +672,7 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
   return runWithOrderFlow(repo, ctx, ctx.flow, name, input);
 }
 
+
 function flowNow(flow: OrderFlowRef): number {
   return (flow.now ?? Date.now)();
 }
@@ -694,6 +702,9 @@ const CONFLICT_MESSAGE = "La conversación se está procesando en otro lugar; vu
 const SIGUIENTE_PASO_COTIZACION_REPETIDA =
   "Esta cotización es idéntica a la de un mensaje anterior. Si el último mensaje del cliente es un sí claro (o el botón de confirmar) a un resumen que usted ya le mostró completo, llame confirmar_resumen y enseguida crear_pedido con estos mismos datos, SIN repetir el resumen. Si todavía no le ha mostrado el resumen completo o el cliente cambió algo, atiéndalo normalmente.";
 
+const YA_REGISTRADO_AVISO =
+  "Este pedido YA QUEDÓ REGISTRADO hace un momento: no es uno nuevo. No lo cotice de nuevo ni llame confirmar_resumen ni crear_pedido. Dígale al cliente, de usted y sin dudar, que su pedido ya está registrado (con el total y la hora que ya le dio). Solo si el cliente pide EXPRESAMENTE otro pedido igual, vuelva a llamar cotizar_pedido con otro_pedido: true.";
+
 /** Aplica la maquina de estados alrededor de cotizar/confirmar/crear. Base sin migrar => camino anterior. */
 async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolContext, flow: OrderFlowRef, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   const lenient = ctx.channel === "whatsapp";
@@ -719,18 +730,39 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     const outcome = await dispatchTool(repo, ctx, name, input);
     const quotedQuote = outcome.raw as OrderQuote & Partial<QuotePromotionInfo>;
     const quotedPrices = priceSignature(quotedQuote.lines);
+    // La huella se calcula sobre los renglones RESUELTOS contra el catalogo (QA-PM-R3-whatsapp-01): un modelo que manda la tortilla de una bebida como "mixta" en un turno y
+    // "maiz" en el siguiente, o el nombre en vez del id, ya no convierte en "nueva" una cotizacion que el cliente acaba de ver y de aceptar.
+    const itemsCotizados = toRequestedItems(input.items, lenient);
+    const quotedItems = resolverRenglonesCotizados(itemsCotizados, quotedQuote.lines);
     const quoteHash = fingerprintOrder({
       branchSlug: String(input.branch_slug ?? ""),
       canal: canalOf(input.canal),
       adultConfirmed: input.adult_confirmed === true,
-      items: toRequestedItems(input.items, lenient),
+      items: quotedItems ? itemsDeHuella(quotedItems) : itemsCotizados,
       doubleSalsas: toDoubleSalsas(input.doble_salsas),
       programadoPara: toProgramadoPara(input.programado_para),
       horaRecogida: toHoraRecogida(input.hora_recogida),
     });
+    const cartHash = quotedItems ? huellaDeCarrito(String(input.branch_slug ?? ""), canalOf(input.canal), quotedItems) : undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
       if (snap === null) return outcome; // base sin migrar: camino anterior
+      // QA-PM-R3-whatsapp-02/03: un "si" de sobra (o el modelo que "refresca" la cotizacion) DESPUES de crear el pedido no abre otro: cotizar el MISMO carrito dentro de la
+      // ventana devuelve el pedido ya registrado, sin pisar el estado "creado" (antes se reabria la confirmacion, el agente decia "no puedo confirmar que quedo registrado"
+      // o, con otra hora de recogida, nacia un segundo pedido). Para un pedido nuevo igual el modelo manda `otro_pedido: true` solo si el cliente lo pidio.
+      const creadoPrevio = snap.state === "creado" ? snap.context : null;
+      if (
+        creadoPrevio &&
+        cartHash !== undefined &&
+        creadoPrevio.cartHash === cartHash &&
+        input.otro_pedido !== true &&
+        flowNow(flow) - (creadoPrevio.claimedAtMs ?? creadoPrevio.quotedAtMs) <= MISMO_PEDIDO_VENTANA_MS
+      ) {
+        return {
+          ...outcome,
+          result: { ...(outcome.result as object), ya_registrado: true, ...(creadoPrevio.orderId ? { pedido_id: creadoPrevio.orderId } : {}), aviso: YA_REGISTRADO_AVISO },
+        };
+      }
       // QA-PM-R2-whatsapp-01 (P0): el modelo vuelve a cotizar el MISMO carrito en el turno del "si" (para "refrescar" el resumen). Reescribir
       // `quotedTurn` con el turno actual hacia que confirmar_resumen rechazara `confirmacion_mismo_turno` y ningun pedido cerraba (0/36).
       // Una re-cotizacion identica (mismos renglones, mismos precios, mismo total) y todavia vigente CONSERVA la cotizacion y su turno: el
@@ -755,6 +787,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         quotedAtMs: flowNow(flow),
         quotedTurn: flow.turn,
         quotedPrices,
+        ...(quotedItems ? { quotedItems, ...(cartHash ? { cartHash } : {}) } : {}),
         ...(toHoraRecogida(input.hora_recogida) ? { horaRecogida: toHoraRecogida(input.hora_recogida) } : {}),
         quotedTotal: quotedQuote.total,
         quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
@@ -787,12 +820,13 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
 
   // crear_pedido: reclamo atomico (confirmado -> creando) ANTES de crear, para que dos llamadas
   // concurrentes no creen dos pedidos.
-  const huellaConHora = (horaRecogida: string | undefined): string =>
+  const huellaConHora = (horaRecogida: string | undefined, cotizados?: readonly QuotedItem[]): string =>
     fingerprintOrder({
       branchSlug: String(input.branch_slug ?? ""),
       canal: canalOf(input.canal),
       adultConfirmed: input.adult_confirmed === true,
-      items: toRequestedItems(input.items, lenient),
+      // Con renglones cotizados guardados, el modelo no tiene que repetir ids ni la tortilla de una bebida: se reconcilia contra la cotizacion (QA-PM-R3-whatsapp-07).
+      items: (cotizados ? reconciliarConCotizacion(toRequestedItems(input.items, lenient), cotizados) : null) ?? toRequestedItems(input.items, lenient),
       doubleSalsas: toDoubleSalsas(input.doble_salsas),
       programadoPara: toProgramadoPara(input.programado_para),
       horaRecogida,
@@ -804,7 +838,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     // La hora de recogida solo cuenta si la cotizacion la llevaba (una hora que el modelo agrega al crear la valida el servidor, pero no cambia lo que el cliente vio);
     // si crear la omite se entiende la cotizada. Una hora DISTINTA a la cotizada obliga a re-cotizar.
     const horaCotizada = snap.context?.horaRecogida;
-    const fingerprint = huellaConHora(horaCotizada ? (toHoraRecogida(input.hora_recogida) ?? horaCotizada) : undefined);
+    const cotizados = snap.context?.quotedItems && snap.context.quotedItems.length > 0 ? snap.context.quotedItems : undefined;
+    const fingerprint = huellaConHora(horaCotizada ? (toHoraRecogida(input.hora_recogida) ?? horaCotizada) : undefined, cotizados);
     // Voz: un reintento del MISMO pedido ya creado (el worker corto la espera y el servidor si lo registro) devuelve el pedido
     // existente con su id, para que la llamada cuente el objetivo y el agente no le diga al cliente que fallo.
     if (ctx.channel === "voz" && snap.state === "creado" && snap.context?.orderId && snap.context.quoteHash === fingerprint) {
@@ -820,7 +855,12 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   if (!claimed) throw new OrderValidationError(CONFLICT_MESSAGE);
 
   try {
-    let outcome = await dispatchTool(repo, ctx, name, input, claimed.context.quotedPrices, { total: claimed.context.sessionTotal ?? 0, pesoKg: claimed.context.sessionPesoKg ?? 0, pedidos: claimed.context.sessionPedidos ?? 0, ...(claimed.context.sessionUltimoPedidoId ? { ultimoPedidoId: claimed.context.sessionUltimoPedidoId } : {}) });
+    // El pedido se crea con los renglones COTIZADOS (id y nombre del catalogo): si el modelo mando `product_id` vacio o un nombre aproximado, no se rechaza ni se reintenta (QA-PM-R3-whatsapp-07).
+    const conciliados = claimed.context.quotedItems?.length ? reconciliarConCotizacion(toRequestedItems(input.items, lenient), claimed.context.quotedItems) : null;
+    const inputConciliado: Record<string, unknown> = conciliados
+      ? { ...input, items: conciliados.map((i) => ({ product_id: i.productId, product_name: i.productName, requested_quantity: i.requestedQuantity, ...(i.tortilla ? { tortilla: i.tortilla } : {}) })) }
+      : input;
+    let outcome = await dispatchTool(repo, ctx, name, inputConciliado, claimed.context.quotedPrices, { total: claimed.context.sessionTotal ?? 0, pesoKg: claimed.context.sessionPesoKg ?? 0, pedidos: claimed.context.sessionPedidos ?? 0, ...(claimed.context.sessionUltimoPedidoId ? { ultimoPedidoId: claimed.context.sessionUltimoPedidoId } : {}) });
     // Un pedido IDENTICO al ultimo de esta sesion (misma ventana de deduplicacion de 5 min) devuelve ese mismo pedido: el agente debe saber que NO se creo otro (QA-PM-R2-reglas-15).
     const repetido = outcome.orderId !== null && outcome.orderId === claimed.context.sessionUltimoPedidoId;
     if (repetido) {
