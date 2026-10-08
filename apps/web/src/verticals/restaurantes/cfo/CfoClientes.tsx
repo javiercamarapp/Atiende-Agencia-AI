@@ -94,70 +94,48 @@ function Base({ total }: { readonly total: ClientesColumna }) {
   );
 }
 
-function CeldaCohorte({ c, ventana }: { readonly c: CohorteApi; readonly ventana: "recompra30" | "recompra60" | "recompra90" }) {
+type VentanaRecompra = "recompra30" | "recompra60" | "recompra90";
+
+/** Celda del mapa de calor de cohortes: un bloque con relleno de un solo tono según el % de recompra; «—» si la ventana aún no se cumple. */
+function CeldaCohorte({ c, ventana }: { readonly c: CohorteApi; readonly ventana: VentanaRecompra }) {
   const v = c[ventana];
   const valor = v.pct.valor;
   const { clase, fuerte } = rellenoCelda(valor, 100);
   return (
-    <td className={cn("px-2 py-1.5 text-right tabular-nums", clase, fuerte && "text-primary-foreground")} data-testid="cohorte-celda" data-valor={valor ?? ""}>
+    <div className={cn("rounded-md px-2 py-1 text-right tabular-nums", clase, fuerte && "text-primary-foreground")} data-testid="cohorte-celda" data-valor={valor ?? ""}>
       {valor === null ? SIN_DATO : porcentaje(valor)}
       <span className="block text-2xs opacity-80">{valor === null ? "aún no observable" : `${entero(v.con)} de ${entero(v.observables)}`}</span>
-    </td>
+    </div>
   );
 }
 
 function Cohortes({ d }: { readonly d: ClientesVista }) {
   const cs = cohortesDelAlcance(d);
-  const acum = (ventana: "recompra30" | "recompra60" | "recompra90") => {
+  const acum = (ventana: VentanaRecompra) => {
     const con = cs.reduce((s, c) => s + c[ventana].con, 0);
     const obs = cs.reduce((s, c) => s + c[ventana].observables, 0);
     return { con, obs, pct: pct(con, obs) };
   };
+  const ventana = (id: VentanaRecompra, encabezado: string) => ({ id, encabezado, alinear: "right" as const, celda: (c: CohorteApi) => <CeldaCohorte c={c} ventana={id} /> });
   return (
     <ChartCard titulo="Recompra por cohorte" subtitulo="De los clientes que hicieron su primer pedido en el mes, cuántos volvieron a pedir en 30, 60 y 90 días" tamano="M">
-      {cs.length === 0 ? (
-        <p role="status" className="py-6 text-center text-xs text-faint">
-          Sin cohortes para esta selección.
-        </p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[30rem] border-collapse text-sm" data-testid="cohortes-tabla">
-            <caption className="sr-only">Cohortes de recompra a 30, 60 y 90 días</caption>
-            <thead>
-              <tr className="text-xs text-muted-foreground">
-                <th scope="col" className="px-2 py-1 text-left font-medium">
-                  Mes del primer pedido
-                </th>
-                <th scope="col" className="px-2 py-1 text-right font-medium">
-                  Clientes
-                </th>
-                <th scope="col" className="px-2 py-1 text-right font-medium">
-                  A 30 días
-                </th>
-                <th scope="col" className="px-2 py-1 text-right font-medium">
-                  A 60 días
-                </th>
-                <th scope="col" className="px-2 py-1 text-right font-medium">
-                  A 90 días
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {cs.map((c) => (
-                <tr key={c.mesCohorte} className="border-t border-line2">
-                  <th scope="row" className="px-2 py-1.5 text-left font-normal">
-                    {c.mesCohorte}
-                  </th>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{entero(c.clientes)}</td>
-                  <CeldaCohorte c={c} ventana="recompra30" />
-                  <CeldaCohorte c={c} ventana="recompra60" />
-                  <CeldaCohorte c={c} ventana="recompra90" />
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <div data-testid="cohortes-tabla">
+        <DataTable<CohorteApi>
+          etiqueta="Cohortes de recompra a 30, 60 y 90 días"
+          filas={cs}
+          obtenerId={(c) => c.mesCohorte}
+          paginacion={false}
+          vista="tabla"
+          vacio={{ mensaje: "Sin cohortes para esta selección." }}
+          columnas={[
+            { id: "mes", encabezado: "Mes del primer pedido", principal: true, celda: (c) => c.mesCohorte },
+            { id: "clientes", encabezado: "Clientes", alinear: "right", className: "tabular-nums", celda: (c) => entero(c.clientes) },
+            ventana("recompra30", "A 30 días"),
+            ventana("recompra60", "A 60 días"),
+            ventana("recompra90", "A 90 días"),
+          ]}
+        />
+      </div>
       {cs.length > 0 && (
         <p className="mt-2 text-xs text-muted-foreground" data-testid="recompra-acumulada">
           Recompra de todas las cohortes observables: a 30 días {porcentaje(acum("recompra30").pct)}, a 60 días {porcentaje(acum("recompra60").pct)}, a 90 días {porcentaje(acum("recompra90").pct)}. Una celda con «—» aún no cumple su ventana.
