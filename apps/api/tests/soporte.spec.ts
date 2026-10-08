@@ -12,8 +12,6 @@ const T0 = Date.parse("2030-03-04T10:00:00.000Z");
 const MIN = 60_000;
 const MOTIVO = "Revisar por qué el cliente no ve sus pedidos";
 
-type Base = Awaited<ReturnType<typeof buildTestDeps>>;
-
 async function escenario(opts: { esMiembro: boolean; slug?: string } = { esMiembro: true }) {
   const base = await buildTestDeps();
   const reloj = { t: T0 };

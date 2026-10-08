@@ -553,12 +553,12 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
     return this.concesiones;
   }
 
-  async startSupportSession(callerId: string, organizationId: string, reason: string) {
+  async startSupportSession(callerId: string, organizationId: string, reason: string): ReturnType<ImpersonationRepository["startSupportSession"]> {
     const session = this.openSession(callerId, organizationId, reason, 10, this.opts.supportDurationMs ?? 60 * 60_000, true);
     return { availability: "available" as const, kind: "soporte" as const, session };
   }
 
-  async elevateSupportSession(callerId: string, sessionId: string, reason: string) {
+  async elevateSupportSession(callerId: string, sessionId: string, reason: string): ReturnType<ImpersonationRepository["elevateSupportSession"]> {
     if (!this.isPlatformSuperadmin(callerId)) throw new ImpersonationForbiddenError("solo un superadmin de plataforma real");
     if ((reason?.trim() ?? "").length < 10) throw new ImpersonationReasonInvalidError("motivo obligatorio (mínimo 10 caracteres)");
     const session = this.sessions.get(sessionId);
@@ -586,7 +586,7 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
     return { availability: "available" as const, entry };
   }
 
-  async getSupportState(callerId: string, sessionId: string) {
+  async getSupportState(callerId: string, sessionId: string): ReturnType<ImpersonationRepository["getSupportState"]> {
     const session = this.sessions.get(sessionId);
     if (!session || session.actorUserId !== callerId) return { availability: "available" as const, state: null };
     return {
@@ -601,7 +601,7 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
     };
   }
 
-  async grantSupportMembership(callerId: string, sessionId: string) {
+  async grantSupportMembership(callerId: string, sessionId: string): ReturnType<ImpersonationRepository["grantSupportMembership"]> {
     const session = this.sessions.get(sessionId);
     if (!session || session.actorUserId !== callerId) throw new ImpersonationNotFoundError(`la sesión ${sessionId} no existe o no es tuya`);
     if (!this.isActive(session)) throw new ImpersonationConflictError("la sesión ya terminó o venció");
@@ -611,7 +611,7 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
     return { availability: "available" as const, granted: true };
   }
 
-  async revokeSupportMemberships(callerId: string, sessionId: string | null) {
+  async revokeSupportMemberships(callerId: string, sessionId: string | null): ReturnType<ImpersonationRepository["revokeSupportMemberships"]> {
     let revoked = 0;
     for (const [sid] of [...this.concesiones]) {
       const session = this.sessions.get(sid);
