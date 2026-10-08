@@ -790,7 +790,7 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
     const programado = toProgramadoPara(entrada.programado_para);
     const hora = toHoraRecogida(entrada.hora_recogida);
     if (programado !== undefined && hora !== undefined && new Date(programado).toISOString().slice(0, 16) !== hora) {
-      throw new OrderValidationError("programado_para y hora_recogida son DISTINTAS: en recoger son la misma hora. Mande solo la hora que dijo el cliente (programado_para) o la misma en las dos, tanto en cotizar_pedido como en crear_pedido.");
+      throw new OrderValidationError("programado_para y hora_recogida son distintas: en recoger son la misma hora. Mande solo la hora que dijo el cliente (programado_para) o la misma en las dos, tanto en cotizar_pedido como en crear_pedido.");
     }
   }
   const input = await conHoraDeRecogidaRelativa(repo, ctx, name, entrada);
