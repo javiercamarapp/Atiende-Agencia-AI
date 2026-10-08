@@ -45,6 +45,35 @@ describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de 
     expect(detectArcoIntent(text)).toBeNull();
   });
 
+  // Regresion de privacidad: un verbo de cancelacion/oposicion/rectificacion NUNCA lo anula la mencion de pedido/factura/"ya te pase".
+  it.each([
+    ["ya les di mis datos y quiero que los borren", "cancelacion"],
+    ["borren mis datos de mi pedido, ya no quiero que los tengan", "cancelacion"],
+    ["quiero eliminar mis datos, ya no voy a hacer otro pedido", "cancelacion"],
+    ["ya les pase mis datos, quiero darme de baja", "cancelacion"],
+    ["borren mis datos y facturame", "cancelacion"],
+    ["cancelen mis datos", "cancelacion"],
+    ["me opongo a que usen mis datos para mi pedido", "oposicion"],
+    ["ya te mande mis datos para la factura pero corrijan mis datos, el RFC esta mal", "rectificacion"],
+    ["quiero ver mis datos", "acceso"],
+    ["¿pueden borrar mis datos? ya les pase mi pedido", "cancelacion"],
+    ["si me dan la factura, despues borren mis datos del pedido", "cancelacion"],
+    ["ya les pase mis datos antes, ahora quiero que los eliminen", "cancelacion"],
+    ["mas adelante voy a pedir que borren mis datos de mis pedidos", "cancelacion"],
+  ])("«%s» sigue siendo ARCO (%s) aunque hable de pedido/factura", (text, right) => {
+    expect(detectArcoIntent(text)).toEqual({ kind: "request", right });
+  });
+
+  it.each([
+    "ya te pase mis datos, facturame",
+    "necesito factura, mis datos son Juan Perez RFC XAXX010101000",
+    "quiero ver mis datos del pedido para la factura",
+    "mandame mis datos del ticket",
+    "estos son mis datos: Juan Perez, calle 60 numero 4",
+  ])("«%s» NO es ARCO: solo verbo de acceso + factura/pedido", (text) => {
+    expect(detectArcoIntent(text)).toBeNull();
+  });
+
   it("menciona ARCO/privacidad sin un derecho concreto -> menú, sin registrar nada", () => {
     expect(detectArcoIntent("Quiero ejercer mis derechos ARCO")).toEqual({ kind: "menu" });
     expect(detectArcoIntent("tienen aviso de privacidad?")).toEqual({ kind: "menu" });

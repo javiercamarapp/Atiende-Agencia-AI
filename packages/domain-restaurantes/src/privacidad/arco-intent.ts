@@ -61,7 +61,7 @@ const THIRD_PARTY_RE =
   /\b(de|del) (mi|su|otro|otra|un|una|el|la) (esposa|esposo|pareja|mama|papa|madre|padre|hij[oa]|hermano|hermana|amig[oa]|cliente|paciente|vecin[oa]|persona|jefe|jefa|ex|novio|novia|senor|senora|familiar)\b|\bde (otra persona|alguien mas|un tercero|terceros)\b/;
 
 const RIGHT_PATTERNS: ReadonlyArray<{ readonly right: DataRightType; readonly re: RegExp }> = [
-  { right: "cancelacion", re: /\b(cancelar|cancelacion de|eliminar|elimina|eliminen|borrar|borren|borra|suprimir|supresion|olvidar|olviden|dar de baja|darme de baja)\b/ },
+  { right: "cancelacion", re: /\b(cancelar|cancelacion de|eliminar|elimina|eliminen|borrar|borren|borra|cancelen|suprimir|supresion|olvidar|olviden|dar de baja|darme de baja)\b/ },
   { right: "oposicion", re: /\b(oponer|oponerme|oposicion|me opongo|revoco|revocar|revocacion|no quiero que (usen|traten|utilicen|compartan)|dejen de (usar|tratar|utilizar|compartir)|no (los |lo )?(usen|compartan|traten|utilicen))\b/ },
   { right: "rectificacion", re: /\b(rectificar|rectificacion|corregir|correccion|corrijan|actualizar|actualicen|modificar|modifiquen|estan mal|incorrectos|erroneos|equivocados)\b/ },
   { right: "acceso", re: /\b(acceso|acceder|conocer|saber|ver|consultar|copia|obtener|que datos|cuales datos|entreguen|envien)\b/ },
@@ -82,10 +82,13 @@ export function detectArcoIntent(message: string): ArcoIntent | null {
   const normalized = normalizeArcoText(message);
   if (!normalized || !PERSONAL_DATA_RE.test(normalized)) return null;
   // QA-PM-R5-whatsapp-05: "ya te pase mis datos, facturame" NO es una solicitud ARCO. "mis datos" solo, sin mencion explicita de privacidad / datos personales / ARCO, exige
-  // un verbo de derecho (borrar, corregir, saber...) y no cuenta si el mensaje habla de facturar (RFC, ticket) o de que el cliente YA pasó sus datos.
+  // un verbo de derecho. La exclusion por factura/pedido/"ya te pase" aplica SOLO cuando el unico verbo es de ACCESO (ver, saber, enviar...): si hay borrar, eliminar,
+  // cancelar, oponerse, dar de baja, rectificar o corregir, la solicitud de privacidad se registra aunque el mensaje hable de un pedido o factura.
   if (!PERSONAL_DATA_EXPLICIT_RE.test(normalized)) {
-    if (FACTURA_O_PEDIDO_RE.test(normalized)) return null;
-    if (!RIGHT_PATTERNS.some(({ re }) => re.test(normalized))) return null;
+    const derechos = RIGHT_PATTERNS.filter(({ re }) => re.test(normalized));
+    if (derechos.length === 0) return null;
+    const soloAcceso = derechos.every(({ right }) => right === "acceso");
+    if (soloAcceso && FACTURA_O_PEDIDO_RE.test(normalized)) return null;
   }
 
   if (THIRD_PARTY_RE.test(normalized)) return { kind: "third_party" };
