@@ -4,7 +4,7 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import { parsearXlsx } from "../src/data-chat/adjuntos-analisis.ts";
-import { construirLibroCfo } from "../src/routes/verticals/restaurantes/cfo-exportar-xlsx.ts";
+import { construirLibroCfo, textoSeguro } from "../src/routes/verticals/restaurantes/cfo-exportar-xlsx.ts";
 import { GENERADO, armarVistas } from "./restaurantes-cfo-exportar-fixtures.ts";
 
 const HIPERVINCULO = '=HYPERLINK("http://malo.example/x","clic")';
@@ -12,7 +12,7 @@ const HIPERVINCULO = '=HYPERLINK("http://malo.example/x","clic")';
 async function abrir(bytes: Uint8Array) {
   const zip = await JSZip.loadAsync(bytes);
   const workbook = await zip.file("xl/workbook.xml")!.async("string");
-  const nombres = [...workbook.matchAll(/<sheet name="([^"]*)" sheetId="(\d+)"/g)].map((m) => ({ nombre: m[1]!.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&lt;/g, "<"), id: Number(m[2]) }));
+  const nombres = [...workbook.matchAll(/<sheet name="([^"]*)" sheetId="(\d+)"/g)].map((m) => ({ nombre: m[1]!.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&apos;/g, "'").replace(/&amp;/g, "&"), id: Number(m[2]) }));
   const hoja = async (nombre: string): Promise<string> => zip.file(`xl/worksheets/sheet${nombres.find((x) => x.nombre === nombre)!.id}.xml`)!.async("string");
   return { zip, nombres, hoja };
 }
@@ -32,7 +32,7 @@ function celda(xml: string, ref: string): { f: string | null; v: string | null; 
 
 /** Fila de la hoja cuyo primer texto es `etiqueta`. */
 function filaDe(xml: string, etiqueta: string): number {
-  const m = new RegExp(`<c r="A(\\d+)"[^>]*t="inlineStr"[^>]*><is><t[^>]*>${etiqueta.replace(/[()]/g, "\\$&")}</t>`).exec(xml);
+  const m = new RegExp(`<c r="A(\\d+)"[^>]*t="inlineStr"[^>]*><is><t[^>]*>${etiqueta.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}</t>`).exec(xml);
   if (!m) throw new Error(`sin fila ${etiqueta}`);
   return Number(m[1]);
 }
@@ -77,7 +77,7 @@ describe("libro de Excel del CFO", () => {
     const ultimaSuc = String.fromCharCode(65 + iTotal - 1);
     const fila = filaDe(xml, "Ventas brutas \\(lista\\)".replace(/\\/g, ""));
     const c = celda(xml, `${letra}${fila}`);
-    expect(c.f).toBe(`SUM(B${fila}:${ultimaSuc}${fila})`);
+    expect(c.f).toMatch(new RegExp(`^SUM\\(([B-${ultimaSuc}]${fila},)*[B-${ultimaSuc}]${fila}\\)$`));
     const valorVista = total.lineas.find((l) => l.id === "ventas_brutas")!.cifra.valor!;
     expect(Number(c.v)).toBeCloseTo(valorVista / 100, 2);
     // La suma de las celdas de sucursal reproduce el total (la fórmula es verdadera, no decorativa).
@@ -87,7 +87,7 @@ describe("libro de Excel del CFO", () => {
     // Subtotal vivo: ventas netas = brutas - descuentos - compensaciones, con valor cacheado igual a la vista.
     const filaNetas = filaDe(xml, "Ventas netas con IVA");
     const cn = celda(xml, `B${filaNetas}`);
-    expect(cn.f).toMatch(/^B\d+-B\d+-B\d+$/);
+    expect(cn.f).toMatch(/^B\d+(-B\d+){1,2}$/);
     const sucNetas = cols[0]!.lineas.find((l) => l.id === "ventas_netas")!.cifra.valor!;
     expect(Number(cn.v)).toBeCloseTo(sucNetas / 100, 2);
   });
@@ -116,7 +116,7 @@ describe("libro de Excel del CFO", () => {
     expect(platillos.includes("&apos;=HYPERLINK(")).toBe(true);
     expect(platillos).not.toMatch(/<f>[^<]*HYPERLINK/);
     // Ninguna fórmula del libro contiene texto de origen: solo referencias y SUM/restas que generamos nosotros.
-    for (const xml of todo) for (const m of xml.matchAll(/<f>([\s\S]*?)<\/f>/g)) expect(m[1]).toMatch(/^(SUM\([A-Z]+\d+:[A-Z]+\d+\)|[A-Z]+\d+(-[A-Z]+\d+)*)$/);
+    for (const xml of todo) for (const m of xml.matchAll(/<f>([\s\S]*?)<\/f>/g)) expect(m[1]).toMatch(/^(SUM\([A-Z]+\d+(,[A-Z]+\d+)*\)|[A-Z]+\d+(-[A-Z]+\d+)*)$/);
     // Y el texto es inlineStr, nunca una celda de fórmula ni con tipo `str`.
     expect(platillos).not.toMatch(/t="str"/);
     expect(nombres.some((n) => n.nombre.includes("SUM(1+1)"))).toBe(true); // el nombre de hoja no es una celda: solo se sanea
@@ -173,5 +173,59 @@ describe("libro de Excel del CFO", () => {
     const { vistas, alcance } = await armarVistas({ vista: "estado-resultados" });
     const { nombres } = await abrir(construirLibroCfo(vistas, alcance, GENERADO));
     expect(nombres.map((n) => n.nombre)).toEqual(["Portada", "Estado de resultados", ...vistas.estadoResultados!.sucursales.map((s) => `Suc ${s.nombre}`)]);
+  });
+
+  /** Toda celda citada por una fórmula generada (resta o SUM, en TODAS las hojas) debe ser numérica: una celda «—» (texto) daría #VALUE! al recalcular. */
+  async function verificarFormulasNumericas(bytes: Uint8Array): Promise<number> {
+    const { zip, nombres } = await abrir(bytes);
+    let formulas = 0;
+    for (const n of nombres) {
+      const xml = await zip.file(`xl/worksheets/sheet${n.id}.xml`)!.async("string");
+      for (const m of xml.matchAll(/<f>([\s\S]*?)<\/f>/g)) {
+        formulas += 1;
+        for (const ref of m[1]!.match(/[A-Z]+\d+/g)!) {
+          const c = celda(xml, ref);
+          expect(c.t, `${n.nombre}!${ref} en =${m[1]}`).not.toBe("inlineStr");
+          expect(c.v, `${n.nombre}!${ref}`).not.toBeNull();
+          expect(Number.isFinite(Number(c.v)), `${n.nombre}!${ref}`).toBe(true);
+        }
+      }
+    }
+    return formulas;
+  }
+
+  it.each([
+    ["base", {}],
+    ["sin costos capturados", { capturarCostos: false }],
+    ["una sucursal sin ventas", { sinVentasPrimera: true }],
+    ["admin acotado (sin No asignado)", { organizacionCompleta: false, n: 2 }],
+  ] as const)("ninguna fórmula cita una celda de texto (sin #VALUE! al recalcular): %s", async (_n, op) => {
+    const { vistas, alcance } = await armarVistas(op);
+    expect(await verificarFormulasNumericas(construirLibroCfo(vistas, alcance, GENERADO))).toBeGreaterThan(5);
+  });
+
+  it("un renglón sin dato dentro de una resta (compensaciones) no se cita: ventas netas = brutas - descuentos con valor cacheado de la vista", async () => {
+    const { vistas, alcance } = await armarVistas({ n: 2 });
+    const { hoja } = await abrir(construirLibroCfo(vistas, alcance, GENERADO));
+    const xml = await hoja("Estado de resultados");
+    const comp = celda(xml, `B${filaDe(xml, "Compensaciones")}`);
+    expect(comp.texto).toBe("—");
+    const netas = celda(xml, `B${filaDe(xml, "Ventas netas con IVA")}`);
+    expect(netas.f).toMatch(/^B\d+-B\d+$/);
+  });
+
+  it("el nombre de hoja de una sucursal no empieza ni termina con apóstrofo (Excel repara el archivo)", async () => {
+    const { vistas, alcance } = await armarVistas({ n: 2, nombreSucursal: "'Don Pepe'" });
+    const { nombres } = await abrir(construirLibroCfo(vistas, alcance, GENERADO));
+    for (const { nombre } of nombres) expect(nombre).not.toMatch(/^'|'$/);
+    expect(nombres.some((n) => n.nombre === "Suc Don Pepe")).toBe(true);
+  });
+
+  it.each(["=1+1", "+1", "-1", "@SUM(1)", "\t=1", "\r=1", "\n=1", "  =1", "\u00a0=HYPERLINK(1)", "\uFF1DHYPERLINK(1)", " \t @x", "\uFF0Bx"])("textoSeguro neutraliza %j", (t) => {
+    expect(textoSeguro(t)).toBe(`'${t}`);
+  });
+
+  it("textoSeguro no toca texto normal", () => {
+    for (const t of ["Taco al pastor", "Agua 1 L", "Café", "a=b", "—", ""]) expect(textoSeguro(t)).toBe(t);
   });
 });

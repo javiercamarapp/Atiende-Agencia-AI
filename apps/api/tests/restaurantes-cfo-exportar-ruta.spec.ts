@@ -92,7 +92,8 @@ describe("GET /admin/cfo/exportar", () => {
     expect((await dueno.zip.file("xl/worksheets/sheet3.xml")!.async("string")).includes("No asignado")).toBe(true);
     const r = await app.request(url(`formato=xlsx&${Q}`), authedGet(ctx.staff.adminSucursalA.token));
     expect(r.status).toBe(200);
-    expect(r.headers.get("content-disposition")).toMatch(/-todas\.xlsx"$/);
+    // «todas» es solo para la organización completa: el admin acotado lleva otro rótulo.
+    expect(r.headers.get("content-disposition")).toMatch(/-acotado\.xlsx"$/);
     const acotado = await hojas(r);
     expect(acotado.nombres.filter((n) => n.startsWith("Suc "))).toHaveLength(1);
     for (const n of acotado.nombres) {
