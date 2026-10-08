@@ -4,14 +4,16 @@
 -- Ejecutar:  supabase db query --linked -f colonias-8km-verifica.sql
 --
 -- RECALCULA EN LA BASE la sucursal de despacho mas cercana de cada colonia (Haversine, radio terrestre 6371.0088 km, SQL puro) desde los pines de
--- las 5 sucursales de despacho y las coordenadas de las 178 colonias (Google/OSM/promedio de colonias-v3; known_zone NO guarda coordenadas a proposito)
+-- las 5 sucursales de despacho y las coordenadas de las 173 colonias (Google/OSM/promedio de colonias-v3; known_zone NO guarda coordenadas a proposito)
 -- y lo compara con restaurantes.branch_delivery_zone. No escribe nada.
 --
 -- Lectura del resultado (columnas seccion, clave, a, b, c):
---   resumen / <categoria> / n                : ok | ok_fuera_de_cobertura | explicita_dueno_ok | DIFERENCIA | zona_inexistente | sobrante_fuera_de_cobertura | sin_coordenada_sin_cobertura | sobrante_sin_coordenada
---   PASA o FALLA                             : FALLA si hay alguna DIFERENCIA o zona_inexistente (las cobertura explicita del dueño y los sobrantes NO cuentan como diferencia)
---   DIFERENCIA / <colonia> / esperado / cargado / km
---   sobrante_* / <colonia> / cargado / - / km (mas cercana) : cobertura que existe pero la regla no asigna (se lista, no se borra)
+--   resumen / <categoria> / n   : ok | ok_fuera_de_cobertura | explicita_dueno_ok | pendiente_sin_cobertura | pendiente_con_cobertura | DIFERENCIA | zona_inexistente
+--   resumen / PASA o FALLA / n  : FALLA si hay alguna DIFERENCIA o zona_inexistente. DIFERENCIA = una colonia asignada que no tiene exactamente su sucursal, una
+--                                 explicita del dueño que no tiene la suya, o una colonia a MAS DE 8 KM que todavia tiene cobertura. Las explicitas del dueño
+--                                 (Centro, Centro Historico, Benito Juarez Norte, Real Montejo, Cabo Norte, Los Pinos) se comparan con SU sucursal, no con la mas cercana.
+--                                 'pendiente_*' = sin coordenada o homonimo pendiente (San Jose): no se asignan; si hoy tienen cobertura se listan, no cuentan como FALLA.
+--   DIFERENCIA / <colonia> / esperado / cargado / km   (idem para zona_inexistente y pendiente_con_cobertura)
 --   cobertura_por_sucursal / <slug> / filas
 with pines (id, slug, lat, lng) as (
   values
@@ -31,7 +33,6 @@ with pines (id, slug, lat, lng) as (
   ('Arboledas', 20.9811332, -89.6060334, 'google'),
   ('Aurea Residencial', 21.0377248, -89.6349271, 'google'),
   ('Azcorra', 20.951694, -89.6027948, 'google'),
-  ('Benito Juárez Norte', 21.0232521, -89.61457, 'google'),
   ('Benito Juárez Oriente', 20.9583189, -89.5692164, 'google'),
   ('Bojórquez', 20.9771327, -89.6510504, 'google'),
   ('Buenavista', 20.9994186, -89.619279, 'google'),
@@ -39,9 +40,7 @@ with pines (id, slug, lat, lng) as (
   ('Campestre', 21.0113353, -89.6169246, 'google'),
   ('Caucel', 21.0150679, -89.7045111, 'google'),
   ('Ceiba II', 21.0986922, -89.6018023, 'google'),
-  ('Centro', 20.9681469, -89.6298724, 'google'),
   ('Centro Chichi Suarez', 21.00009, -89.547913, 'osm'),
-  ('Centro Histórico', 20.9682121, -89.6220843, 'google'),
   ('Cerrada Lombardia', 21.0236276, -89.5388408, 'google'),
   ('Cerrada Piemonte', 21.0218919, -89.5398278, 'google'),
   ('Cerrada Veneto', 21.0222415, -89.5376026, 'google'),
@@ -136,7 +135,6 @@ with pines (id, slug, lat, lng) as (
   ('Punta Esmeralda', 20.9853665, -89.5490651, 'google'),
   ('Quinta Real', 21.100182, -89.622424, 'osm'),
   ('Real de Dzitya', 21.0549396, -89.6687407, 'google'),
-  ('Real Montejo', 21.0382682, -89.6686901, 'google'),
   ('Real San Jose', 20.949109, -89.589378, 'osm'),
   ('Reparto Dolores Patron Peniche', 20.990155, -89.625312, 'osm'),
   ('Residencial Pensiones', 21.0047222, -89.6610472, 'google'),
@@ -153,7 +151,6 @@ with pines (id, slug, lat, lng) as (
   ('San Antonio Xluch', 20.8985258, -89.6503097, 'google'),
   ('San Aroldo', 20.9241021, -89.5927832, 'google'),
   ('San Esteban', 20.995632, -89.5927832, 'google'),
-  ('San Jose', 20.9464959, -89.6104491, 'google'),
   ('San Jose Tzal', 20.8221658, -89.6557551, 'google'),
   ('San Jose Vergel', 20.9576215, -89.58866, 'google'),
   ('San Lorenzo', 20.9689352, -89.6504623, 'google'),
@@ -200,18 +197,23 @@ with pines (id, slug, lat, lng) as (
   ('Francisco de Montejo', 21.0307721, -89.6463452, 'google'),
   ('Galerias', 21.03467, -89.63442, 'osm'),
   ('Pensiones', 20.9994644, -89.6404628, 'google')
-), sin_coordenada (nombre) as (
+), pendientes (nombre) as (
   values
   ('Cecilio Chi'),
   ('Nueva Salvador Alvarado Sur'),
   ('Olivos'),
   ('Revolución Cordemex'),
   ('San Diego Cutz'),
+  ('San Jose'),
   ('Yucatán')
 ), explicitas (nombre, slug) as (
   values
+  ('Benito Juárez Norte', 'garcia-lavin'),
   ('Cabo Norte', 'garcia-lavin'),
-  ('Los Pinos', 'altabrisa')
+  ('Centro', 'prol-montejo'),
+  ('Centro Histórico', 'prol-montejo'),
+  ('Los Pinos', 'altabrisa'),
+  ('Real Montejo', 'garcia-lavin')
 ), dist as (
   select c.nombre, p.id, p.slug,
          2 * 6371.0088 * asin(least(1, sqrt(
@@ -235,15 +237,15 @@ with pines (id, slug, lat, lng) as (
   group by zn.name
 ), universo as (
   select e.nombre, case when e.dentro then e.slug end as esperado_slug, e.km, 'mas_cercana'::text as tipo from esperado e
-  union all select s.nombre, null, null, 'sin_coordenada' from sin_coordenada s
+  union all select s.nombre, null, null, 'pendiente' from pendientes s
   union all select x.nombre, x.slug, null, 'explicita' from explicitas x
 ), juicio as (
   select u.nombre, u.tipo, u.esperado_slug, u.km, c.slugs as cargado_slugs, (select count(*) from zonas z where z.name = u.nombre) as zonas_n,
          case
            when (select count(*) from zonas z where z.name = u.nombre) <> 1 then 'zona_inexistente'
            when u.tipo = 'explicita' then case when c.slugs is not distinct from u.esperado_slug then 'explicita_dueno_ok' else 'DIFERENCIA' end
-           when u.tipo = 'sin_coordenada' then case when c.slugs is null then 'sin_coordenada_sin_cobertura' else 'sobrante_sin_coordenada' end
-           when u.esperado_slug is null then case when c.slugs is null then 'ok_fuera_de_cobertura' else 'sobrante_fuera_de_cobertura' end
+           when u.tipo = 'pendiente' then case when c.slugs is null then 'pendiente_sin_cobertura' else 'pendiente_con_cobertura' end
+           when u.esperado_slug is null then case when c.slugs is null then 'ok_fuera_de_cobertura' else 'DIFERENCIA' end
            when c.slugs is not distinct from u.esperado_slug then 'ok'
            else 'DIFERENCIA'
          end as categoria
@@ -256,7 +258,7 @@ select seccion, clave, a, b, c from (
          count(*) filter (where categoria in ('DIFERENCIA', 'zona_inexistente'))::text, null, null, 0 from juicio
   union all
   select categoria, nombre, coalesce(esperado_slug, '-'), coalesce(cargado_slugs, '-'), round(km::numeric, 2)::text, 2
-  from juicio where categoria in ('DIFERENCIA', 'zona_inexistente', 'sobrante_fuera_de_cobertura', 'sobrante_sin_coordenada')
+  from juicio where categoria in ('DIFERENCIA', 'zona_inexistente', 'pendiente_con_cobertura')
   union all
   select 'cobertura_por_sucursal', bd.slug, count(*)::text, null, null, 3
   from restaurantes.branch_delivery_zone b join org on b.organization_id = org.id join restaurantes.branch_detail bd on bd.property_id = b.property_id

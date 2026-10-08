@@ -37,9 +37,9 @@ describe("colonias del piloto en el plan del seed", () => {
     expect(plan.colonias.filter((c) => c.branchIds.includes("T4") || c.branchIds.includes("T5"))).toEqual([]);
   });
 
-  it("lo que queda SIN asignar es exactamente lo que la regla no puede asignar (fuera de 8 km o sin coordenada): una ambigua de menos de 1 km ya no se deja sin asignar, va a la mas cercana", () => {
+  it("lo que queda SIN asignar es exactamente lo PENDIENTE del dueño (fuera de 8 km, homonimo con discrepancia, sin coordenada): una ambigua de menos de 1 km ya no se deja sin asignar, va a la mas cercana", () => {
     const sinAsignar = (data.colonias ?? []).filter((c) => (c.sucursales ?? []).length === 0);
-    expect(sinAsignar.length).toBe(19);
+    expect(sinAsignar.length).toBe(20);
     for (const c of sinAsignar) {
       expect(c.asignacion, c.nombre).toBe("sin_asignar");
       expect(c.pendiente_dueno?.length, c.nombre).toBeGreaterThan(0);
@@ -81,13 +81,11 @@ describe("agente de PM con las colonias cargadas (mundo en memoria del seed)", (
     vi.useRealTimers();
   });
 
-  it("las colonias de los chats que la regla de 8 km mantiene en T7 siguen en T7 (Cabo Norte, del dueño y sin coordenada, tambien); Benito Juarez Norte pasa a T1 y Real Montejo a T2 por la regla (decision de Javier, 8-oct); Los Pinos de T8; Mexico de T1", async () => {
+  it("las 8 colonias que confirman los chats son de T7 (incluidas Benito Juarez Norte y Real Montejo, que la regla de la mas cercana mandaria a T1 y T2: conflicto marcado para Javier); Los Pinos de T8; Mexico de T1", async () => {
     const world = await buildInMemoryPmWorld(plan);
-    for (const colonia of ["Temozón Norte", "Montebello", "Montes de Amé", "San Ramón Norte", "Sodzil Norte", "Cabo Norte"]) {
+    for (const colonia of ["Temozón Norte", "Montebello", "Benito Juárez Norte", "Montes de Amé", "San Ramón Norte", "Sodzil Norte", "Cabo Norte", "Real Montejo"]) {
       expect(await sucursalQueCubre(world, colonia), colonia).toBe("garcia-lavin");
     }
-    expect(await sucursalQueCubre(world, "Benito Juárez Norte")).toBe("prol-montejo");
-    expect(await sucursalQueCubre(world, "Real Montejo")).toBe("fco-montejo");
     expect(await sucursalQueCubre(world, "Los Pinos")).toBe("altabrisa");
     expect(await sucursalQueCubre(world, "México")).toBe("prol-montejo");
   });
@@ -97,11 +95,11 @@ describe("agente de PM con las colonias cargadas (mundo en memoria del seed)", (
     for (const colonia of ["Alta Brisa", "Casa Altabrisa", "Plaza Alta Brisa", "Victory Altabrisa"]) expect(await sucursalQueCubre(world, colonia), colonia).toBe("altabrisa");
   });
 
-  it("'Centro' y 'Centro Historico' son de T3 (la sucursal de despacho mas cercana a 8 km, decision de Javier del 8-oct; antes T1 por la zona del dueño) y gana el emparejamiento exacto sobre 'Centro Chichi Suarez' (T8)", async () => {
+  it("'Centro' es de T1 (zona centro y norte del dueño; la mas cercana seria T3: conflicto marcado) y gana el emparejamiento exacto sobre 'Centro Chichi Suarez' (T8)", async () => {
     const world = await buildInMemoryPmWorld(plan);
-    expect(await sucursalQueCubre(world, "Centro")).toBe("pensiones");
-    expect(await sucursalQueCubre(world, "centro")).toBe("pensiones");
-    expect(await sucursalQueCubre(world, "Centro Histórico")).toBe("pensiones");
+    expect(await sucursalQueCubre(world, "Centro")).toBe("prol-montejo");
+    expect(await sucursalQueCubre(world, "centro")).toBe("prol-montejo");
+    expect(await sucursalQueCubre(world, "Centro Histórico")).toBe("prol-montejo");
     expect(await sucursalQueCubre(world, "Centro Chichi Suarez")).toBe("altabrisa");
   });
 

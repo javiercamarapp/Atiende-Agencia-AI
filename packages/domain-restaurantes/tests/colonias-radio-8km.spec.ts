@@ -30,11 +30,16 @@ function violaciones(lista: readonly PmSeedColonia[]): string[] {
   for (const c of lista) {
     const asignadas = c.sucursales ?? [];
     if (asignadas.some((id) => id === "T4" || id === "T5")) malas.push(`${c.nombre}: asignada a una sucursal que no reparte`);
+    const explicita = c.asignacion === "chats_t7" || c.asignacion === "dueno_zona_centro";
     if (!c.coordenada) {
       // Sin coordenada solo se admite la cobertura explicita del dueño (chats) o ninguna.
-      if (asignadas.length > 0 && c.asignacion !== "chats_t7") malas.push(`${c.nombre}: asignada sin coordenada`);
+      if (asignadas.length > 0 && !explicita) malas.push(`${c.nombre}: asignada sin coordenada`);
       continue;
     }
+    // Criterio conservador: la cobertura EXPLICITA del dueño manda sobre la geometria (se documenta aparte); no se juzga contra la regla.
+    if (explicita && asignadas.length > 0) continue;
+    // Homonimo pendiente del dueño (San Jose): sin asignar aunque la coordenada elegida caiga dentro del radio.
+    if (asignadas.length === 0 && c.pendiente_dueno?.includes("homonimo_discrepancia")) continue;
     const ranking = SUCURSALES_DESPACHO.map((id) => ({ id, km: kmEntre(c.coordenada!, pinesDatos[id]!) })).sort((a, b) => a.km - b.km);
     const mejor = ranking[0]!;
     const esperado = mejor.km <= 8 ? [mejor.id] : [];
@@ -104,15 +109,19 @@ describe("dataset de colonias de PM contra la regla (recalculado con Haversine)"
     expect(violaciones(colonias)).toEqual([]);
   });
 
-  it("la comprobacion FALLA si una asignacion no es la mas cercana (Centro en T1), si pasa de 8 km o si va a una sucursal sin reparto", () => {
-    const centro = colonias.find((c) => c.nombre === "Centro")!;
-    const conT1 = colonias.map((c) => (c === centro ? { ...c, sucursales: ["T1"] } : c));
-    expect(violaciones(conT1).join("\n")).toMatch(/Centro: tiene \[T1\] y la mas cercana a 8 km o menos es \[T3\]/);
+  it("la comprobacion FALLA si una asignacion no es la mas cercana (Buenavista en T3), si pasa de 8 km o si va a una sucursal sin reparto", () => {
+    const buenavista = colonias.find((c) => c.nombre === "Buenavista")!;
+    const conT3 = colonias.map((c) => (c === buenavista ? { ...c, sucursales: ["T3"] } : c));
+    expect(violaciones(conT3).join("\n")).toMatch(/Buenavista: tiene \[T3\] y la mas cercana a 8 km o menos es \[T1\]/);
     const progreso = colonias.find((c) => c.nombre === "Progreso")!;
     expect(violaciones(colonias.map((c) => (c === progreso ? { ...c, sucursales: ["T2"] } : c))).join("\n")).toMatch(/Progreso: tiene \[T2\] y la mas cercana a 8 km o menos es \[\]/);
-    expect(violaciones(colonias.map((c) => (c === centro ? { ...c, sucursales: ["T4"] } : c))).join("\n")).toMatch(/Centro: asignada a una sucursal que no reparte/);
+    expect(violaciones(colonias.map((c) => (c === buenavista ? { ...c, sucursales: ["T4"] } : c))).join("\n")).toMatch(/Buenavista: asignada a una sucursal que no reparte/);
     const olivos = colonias.find((c) => c.nombre === "Olivos")!;
     expect(violaciones(colonias.map((c) => (c === olivos ? { ...c, sucursales: ["T1"] } : c))).join("\n")).toMatch(/Olivos: asignada sin coordenada/);
+    // San Jose (homonimo pendiente) solo se salta mientras siga sin asignar ni retirado de pendientes.
+    const sanJose = colonias.find((c) => c.nombre === "San Jose")!;
+    expect(sanJose.sucursales).toEqual([]);
+    expect(violaciones(colonias.map((c) => (c === sanJose ? { ...c, sucursales: ["T1"] } : c))).join("\n")).toMatch(/San Jose: tiene \[T1\]/);
   });
 
   it("la regla calculada por el modulo coincide con el dataset y con el recalculo independiente", () => {
@@ -126,36 +135,59 @@ describe("dataset de colonias de PM contra la regla (recalculado con Haversine)"
     }
   });
 
-  it("resuelve las decisiones abiertas: Centro y Centro Historico a T3, Benito Juarez Norte a T1 (borde), Real Montejo a T2", () => {
+  it("criterio conservador: Centro, Centro Historico, Benito Juarez Norte y Real Montejo son explicitas del dueño que DIFIEREN de la regla (T1, T1, T7, T7 contra T3, T3, T1, T2), con su etiqueta", () => {
     const por = (n: string) => calcularColonias(data).find((f) => f.nombre === n)!;
-    expect(por("Centro").esperado).toEqual(["T3"]);
-    expect(por("Centro Histórico").esperado).toEqual(["T3"]);
-    expect(por("Benito Juárez Norte").esperado).toEqual(["T1"]);
-    expect(por("Benito Juárez Norte").borde).toContain("empate");
-    expect(por("Real Montejo").esperado).toEqual(["T2"]);
-    for (const n of ["Centro", "Centro Histórico", "Benito Juárez Norte", "Real Montejo"]) {
-      const c = colonias.find((x) => x.nombre === n)!;
-      expect(c.asignacion, n).toBe("mas_cercana_v3");
-      expect(c.pendiente_dueno, n).toBeUndefined();
+    const esperado: Array<[string, string, string, string]> = [
+      ["Centro", "T1", "T3", "dueno_zona_centro"],
+      ["Centro Histórico", "T1", "T3", "dueno_zona_centro"],
+      ["Benito Juárez Norte", "T7", "T1", "chats_t7"],
+      ["Real Montejo", "T7", "T2", "chats_t7"],
+    ];
+    for (const [n, dueno, regla, etiqueta] of esperado) {
+      const f = por(n);
+      expect(f.regla, n).toBe("explicita_dueno");
+      expect(f.esperado, n).toEqual([dueno]);
+      expect(f.opcionRegla?.sucursal, n).toBe(regla);
+      expect(f.difiereDeLaRegla, n).toBe(true);
+      expect(f.etiqueta, n).toBe(etiqueta);
+      expect(colonias.find((c) => c.nombre === n)!.asignacion, n).toBe(etiqueta);
     }
+    expect(por("Benito Juárez Norte").borde).toContain("empate"); // 59 m
+    // Cabo Norte y Los Pinos: explicitas sin coordenada (no hay distancia que comparar).
+    expect(por("Cabo Norte")).toMatchObject({ regla: "explicita_dueno", esperado: ["T7"], opcionRegla: null });
+    expect(por("Los Pinos")).toMatchObject({ regla: "explicita_dueno", esperado: ["T8"], opcionRegla: null });
   });
 
-  it("conteos: 167 asignadas (165 por la regla + Cabo Norte y Los Pinos del dueño), 13 a mas de 8 km y 6 sin coordenada; T4 y T5 sin colonias", () => {
+  it("San Jose (homonimo con lecturas a 11.4 km entre si) queda pendiente del dueño y sin asignar; los otros 8 homonimos se asignan y llevan REVISAR", () => {
+    const filas = calcularColonias(data);
+    expect(filas.find((f) => f.nombre === "San Jose")).toMatchObject({ regla: "homonimo_pendiente", esperado: [] });
+    for (const n of ["Arboledas", "Chuburná", "Dzitya", "Los Reyes", "San Angel", "San Luis", "Vergel", "Yucalpeten"]) {
+      const f = filas.find((x) => x.nombre === n)!;
+      expect(f.regla, n).toBe("mas_cercana");
+      expect(f.homonimoKm, n).toBeGreaterThan(1);
+      expect(colonias.find((c) => c.nombre === n)!.revisar, n).toBe(true);
+    }
+    expect(renderDocumento(data)).toMatch(/REVISAR, homonimo: Google y OSM difieren 8\.\d\d km/); // San Angel
+  });
+
+  it("conteos: 166 asignadas (160 por la regla + 6 explicitas del dueño), 13 a mas de 8 km, 6 sin coordenada y 1 homonimo pendiente; T4 y T5 sin colonias", () => {
     const filas = calcularColonias(data);
     const r = resumir(filas);
     expect(filas.length).toBe(186);
-    expect(r.asignadas).toBe(167);
-    expect(filas.filter((f) => f.regla === "mas_cercana").length).toBe(165);
-    expect(filas.filter((f) => f.regla === "explicita_dueno").map((f) => f.nombre).sort()).toEqual(["Cabo Norte", "Los Pinos"]);
+    expect(r.asignadas).toBe(166);
+    expect(filas.filter((f) => f.regla === "mas_cercana").length).toBe(160);
+    expect(r.explicitas.map((f) => f.nombre).sort()).toEqual(["Benito Juárez Norte", "Cabo Norte", "Centro", "Centro Histórico", "Los Pinos", "Real Montejo"]);
     expect(r.fuera.length).toBe(13);
     expect(r.sinCoordenada.map((f) => f.nombre).sort()).toEqual(["Cecilio Chi", "Nueva Salvador Alvarado Sur", "Olivos", "Revolución Cordemex", "San Diego Cutz", "Yucatán"]);
-    expect(r.coloniasPorSucursal).toEqual({ T1: 44, T2: 31, T3: 37, T7: 23, T8: 32 });
-    // Base real del 8-oct-2026: 169 filas (51/24/33/29/32) -> 175 (46/32/39/24/34) con +30 altas, -24 reemplazos y 5 sobrantes sin tocar.
+    expect(r.homonimosPendientes.map((f) => f.nombre)).toEqual(["San Jose"]);
+    expect(r.coloniasPorSucursal).toEqual({ T1: 45, T2: 30, T3: 34, T7: 25, T8: 32 });
+    // Base real del 8-oct-2026: 169 filas (51/24/33/29/32) -> 171 (46/31/35/26/33) con +25 altas, -20 reemplazos y -3 retiros de colonias a mas de 8 km.
     expect(r.antesPorSucursal).toEqual({ T1: 51, T2: 24, T3: 33, T7: 29, T8: 32 });
-    expect(r.despuesPorSucursal).toEqual({ T1: 46, T2: 32, T3: 39, T7: 24, T8: 34 });
-    expect(r.altas).toBe(30);
-    expect(r.reemplazos).toBe(24);
-    expect(r.sobrantes.map((f) => f.nombre).sort()).toEqual(["Mulchechen", "Revolución Cordemex", "Salvador Alvarado Sur", "Santa Maria Chi", "Yucatán"]);
+    expect(r.despuesPorSucursal).toEqual({ T1: 46, T2: 31, T3: 35, T7: 26, T8: 33 });
+    expect(r.altas).toBe(25);
+    expect(r.reemplazos).toBe(20);
+    expect(r.retirosFuera.map((f) => `${f.nombre}:${f.antes}`).sort()).toEqual(["Mulchechen:T1", "Salvador Alvarado Sur:T3", "Santa Maria Chi:T8"]);
+    expect(r.sobrantes.map((f) => f.nombre).sort()).toEqual(["Revolución Cordemex", "Yucatán"]);
     expect(colonias.every((c) => !(c.sucursales ?? []).some((id) => id === "T4" || id === "T5"))).toBe(true);
   });
 
@@ -184,8 +216,12 @@ describe("archivos generados", () => {
     expect(sql.match(/raise exception/g)!.length).toBeGreaterThanOrEqual(6);
     // El unico DELETE es por pares (colonia, sucursal) contra la lista, con tope.
     const deletes = sql.match(/delete from [^\n]*/g) ?? [];
-    expect(deletes).toEqual(["delete from restaurantes.branch_delivery_zone b using sobra s"]);
-    expect(sql).toMatch(/c_max_reemplazos constant integer := 24;/);
+    expect(deletes).toEqual(["delete from restaurantes.branch_delivery_zone b using sobra s", "delete from restaurantes.branch_delivery_zone b using restaurantes.known_zone z"]);
+    expect(sql).toMatch(/c_max_reemplazos constant integer := 20;/);
+    expect(sql).toMatch(/c_max_retiros constant integer := 3;/);
+    // Los retiros son SOLO de las colonias a mas de 8 km (motivo 'fuera_de_8km'), nunca de las sin coordenada ni del homonimo pendiente.
+    expect(sql).toMatch(/s\.motivo = 'fuera_de_8km'/);
+    expect(sql).toMatch(/\('San Jose', 'homonimo_pendiente'\)/);
     expect(sql).toMatch(/on conflict \(property_id, zone_id\) do nothing/);
     const sinComentarios = sql.replace(/--[^\n]*/g, "");
     expect(sinComentarios).not.toMatch(/\bupdate core\.property\b|\bupdate restaurantes\.branch_detail\b|\bwhatsapp_branch_channel\b|\bset lat\b|\bset lng\b|\btruncate\b|\bdrop table\b/i);
@@ -194,7 +230,9 @@ describe("archivos generados", () => {
     // Sin T4 ni T5 como destino (galerias, playa solo aparecen en la comprobacion de que NO tengan cobertura).
     const valores = sql.slice(sql.indexOf("insert into _cob8"), sql.indexOf("create temp table _sin8"));
     expect(valores).not.toMatch(/'galerias'|'playa'/);
-    expect((valores.match(/^ {2}\(/gm) ?? []).length).toBe(167);
+    expect((valores.match(/^ {2}\(/gm) ?? []).length).toBe(166);
+    expect(valores).toMatch(/\('Centro', 'prol-montejo', [\d.]+, 'dueno_zona_centro'\)/);
+    expect(valores).toMatch(/\('Real Montejo', 'garcia-lavin', [\d.]+, 'chats_t7'\)/);
   });
 
   it("el SQL de verificacion es de solo lectura y recalcula en la base", () => {
@@ -203,6 +241,8 @@ describe("archivos generados", () => {
     expect(sinComentarios).not.toMatch(/\b(insert|update|delete|truncate|drop|alter|create|grant)\b/i);
     expect(sinComentarios).toMatch(/asin\(least\(1, sqrt\(/);
     expect(sinComentarios).toMatch(/'PASA'/);
-    expect((sql.match(/^ {2}\('/gm) ?? []).length).toBe(5 + 178 + 6 + 2);
+    expect((sql.match(/^ {2}\('/gm) ?? []).length).toBe(5 + 173 + 7 + 6);
+    // Una colonia a mas de 8 km que conserva cobertura es DIFERENCIA (FALLA), no un sobrante informativo.
+    expect(sinComentarios).toMatch(/when u\.esperado_slug is null then case when c\.slugs is null then 'ok_fuera_de_cobertura' else 'DIFERENCIA' end/);
   });
 });

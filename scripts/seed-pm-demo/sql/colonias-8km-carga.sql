@@ -5,10 +5,13 @@
 -- Ejecutar:  supabase db query --linked -f colonias-8km-carga.sql      (desde una carpeta ligada al proyecto)
 --
 -- IDEMPOTENTE: la 2.a corrida no cambia nada (0 altas, 0 reemplazos, 0 metadatos). Una sola transaccion: cualquier comprobacion que falle ABORTA todo.
--- NO hace DELETE masivo: solo retira, por pares (colonia, sucursal) calculados contra la lista de abajo, las filas de cobertura de una colonia ASIGNADA que
--- apuntan a OTRA sucursal que la mas cercana (esperadas en la base real del 8-oct-2026: 24); si hubiera mas, aborta. Las coberturas que SOBRAN
--- (colonias que quedan fuera de cobertura y hoy tienen una) NO se tocan: las lista el SELECT final.
--- Esperado sobre la base real de 169 filas: +30 altas, -24 reemplazos, 175 filas al terminar.
+-- NO hace DELETE masivo: solo retira, por pares (colonia, sucursal) calculados contra las listas de abajo, (a) las filas de cobertura de una colonia ASIGNADA que
+-- apuntan a OTRA sucursal que la esperada (reemplazos; esperados en la base real del 8-oct-2026: 20) y (b) las filas de las colonias a MAS DE 8 KM de toda
+-- sucursal de despacho (retiros: 3, a saber Mulchechen T1, Salvador Alvarado Sur T3, Santa Maria Chi T8); si hubiera mas de lo esperado en cualquiera de los dos, aborta.
+-- Las colonias SIN coordenada (pendientes del dueño) y las explicitas del dueño no se tocan: el SELECT final lista las sin coordenada que hoy tienen cobertura.
+-- Esperado sobre la base real de 169 filas: +25 altas, -20 reemplazos, -3 retiros, 171 filas al terminar.
+-- Actualiza known_zone.asignacion_fuente SOLO en las zonas cuya cobertura cambia (sobrescribe su procedencia anterior: dueno_zona_centro, chats_t7, distancia_piloto,
+-- reasignada_desde_galerias, ambigua_cubierta_por_dos, mas_cercana_osm_v2b, sin_asignar...); las retiradas quedan 'sin_asignar'.
 -- NO escribe lat/lng en known_zone ni toca branch_detail, estado de sucursales, whatsapp_branch_channel ni la cuenta demo.
 
 begin;
@@ -23,7 +26,7 @@ create temp table _cob8 (
   primary key (zona, sucursal_slug)
 ) on commit drop;
 
--- 167 colonias asignadas (167 pares colonia-sucursal): la mas cercana a 8 km o menos, mas las 2 coberturas explicitas del dueño sin coordenada (Cabo Norte, Los Pinos).
+-- 166 colonias asignadas (166 pares colonia-sucursal): la mas cercana a 8 km o menos, mas las 2 coberturas explicitas del dueño sin coordenada (Cabo Norte, Los Pinos).
 insert into _cob8 (zona, sucursal_slug, km, regla) values
   ('Alcala Martin', 'prol-montejo', 2.11564948, 'mas_cercana_v3'),
   ('Alemán', 'prol-montejo', 2.369899679, 'mas_cercana_v3'),
@@ -34,7 +37,7 @@ insert into _cob8 (zona, sucursal_slug, km, regla) values
   ('Arboledas', 'prol-montejo', 3.231878932, 'mas_cercana_v3'),
   ('Aurea Residencial', 'fco-montejo', 1.514002267, 'mas_cercana_v3'),
   ('Azcorra', 'prol-montejo', 6.505930395, 'mas_cercana_v3'),
-  ('Benito Juárez Norte', 'prol-montejo', 1.551667979, 'mas_cercana_v3'),
+  ('Benito Juárez Norte', 'garcia-lavin', 1.610989627, 'chats_t7'),
   ('Benito Juárez Oriente', 'prol-montejo', 7.307582375, 'mas_cercana_v3'),
   ('Bojórquez', 'pensiones', 2.040775493, 'mas_cercana_v3'),
   ('Buenavista', 'prol-montejo', 1.249713819, 'mas_cercana_v3'),
@@ -43,9 +46,9 @@ insert into _cob8 (zona, sucursal_slug, km, regla) values
   ('Campestre', 'prol-montejo', 0.411266436, 'mas_cercana_v3'),
   ('Caucel', 'fco-montejo', 6.192727688, 'mas_cercana_v3'),
   ('Ceiba II', 'garcia-lavin', 7.355773151, 'mas_cercana_v3'),
-  ('Centro', 'pensiones', 3.531362918, 'mas_cercana_v3'),
+  ('Centro', 'prol-montejo', 4.880831023, 'dueno_zona_centro'),
   ('Centro Chichi Suarez', 'altabrisa', 3.892274712, 'mas_cercana_v3'),
-  ('Centro Histórico', 'pensiones', 4.008552617, 'mas_cercana_v3'),
+  ('Centro Histórico', 'prol-montejo', 4.655925428, 'dueno_zona_centro'),
   ('Cerrada Lombardia', 'altabrisa', 3.509986672, 'mas_cercana_v3'),
   ('Cerrada Piemonte', 'altabrisa', 3.431504962, 'mas_cercana_v3'),
   ('Cerrada Veneto', 'altabrisa', 3.654783073, 'mas_cercana_v3'),
@@ -136,7 +139,7 @@ insert into _cob8 (zona, sucursal_slug, km, regla) values
   ('Punta Esmeralda', 'altabrisa', 5.181857198, 'mas_cercana_v3'),
   ('Quinta Real', 'garcia-lavin', 7.795421204, 'mas_cercana_v3'),
   ('Real de Dzitya', 'fco-montejo', 3.549911984, 'mas_cercana_v3'),
-  ('Real Montejo', 'fco-montejo', 2.413194905, 'mas_cercana_v3'),
+  ('Real Montejo', 'garcia-lavin', 6.882195169, 'chats_t7'),
   ('Real San Jose', 'prol-montejo', 7.152549715, 'mas_cercana_v3'),
   ('Reparto Dolores Patron Peniche', 'pensiones', 2.387988262, 'mas_cercana_v3'),
   ('Residencial Pensiones', 'pensiones', 1.745682624, 'mas_cercana_v3'),
@@ -149,7 +152,6 @@ insert into _cob8 (zona, sucursal_slug, km, regla) values
   ('San Antonio Cinta', 'prol-montejo', 1.319212421, 'mas_cercana_v3'),
   ('San Antonio Cucul', 'garcia-lavin', 1.135966941, 'mas_cercana_v3'),
   ('San Esteban', 'prol-montejo', 2.643399819, 'mas_cercana_v3'),
-  ('San Jose', 'pensiones', 6.654118581, 'mas_cercana_v3'),
   ('San Jose Vergel', 'prol-montejo', 6.30546455, 'mas_cercana_v3'),
   ('San Lorenzo', 'pensiones', 2.936222132, 'mas_cercana_v3'),
   ('San Luis', 'prol-montejo', 1.880067941, 'mas_cercana_v3'),
@@ -195,7 +197,7 @@ insert into _cob8 (zona, sucursal_slug, km, regla) values
 
 create temp table _sin8 (zona text primary key, motivo text not null) on commit drop;
 
--- 19 colonias FUERA de cobertura: 13 a mas de 8 km de toda sucursal de despacho y 6 sin coordenada (no se estiman a mano).
+-- 20 colonias FUERA de cobertura: 13 a mas de 8 km de toda sucursal de despacho, 6 sin coordenada (no se estiman a mano) y 1 homonimo pendiente del dueño (San Jose).
 insert into _sin8 (zona, motivo) values
   ('Cecilio Chi', 'sin_coordenada'),
   ('Chicxulub', 'fuera_de_8km'),
@@ -211,6 +213,7 @@ insert into _sin8 (zona, motivo) values
   ('San Antonio Xluch', 'fuera_de_8km'),
   ('San Aroldo', 'fuera_de_8km'),
   ('San Diego Cutz', 'sin_coordenada'),
+  ('San Jose', 'homonimo_pendiente'),
   ('San Jose Tzal', 'fuera_de_8km'),
   ('San Pedro Noh Pat', 'fuera_de_8km'),
   ('Santa Maria Chi', 'fuera_de_8km'),
@@ -227,7 +230,9 @@ declare
   v_reemplazos integer;
   v_meta integer;
   v_total integer;
-  c_max_reemplazos constant integer := 24;
+  c_max_reemplazos constant integer := 20;
+  c_max_retiros constant integer := 3;
+  v_retiros integer;
 begin
   select o.id into v_org from core.organization o where o.slug = 'los-taquitos-de-pm';
   if v_org is null then
@@ -287,6 +292,25 @@ begin
   select distinct b.zone_id, 'mas_cercana_v3' from borradas b
   on conflict (zone_id) do nothing;
 
+  -- 4b. Retiros: la cobertura de colonias a mas de 8 km de toda sucursal de despacho (orden de Javier: fuera de cobertura). Tope exacto.
+  select count(*) into v_retiros
+  from restaurantes.branch_delivery_zone b
+  join restaurantes.known_zone z on z.id = b.zone_id and z.organization_id = v_org
+  where b.organization_id = v_org and exists (select 1 from _sin8 s where s.zona = z.name and s.motivo = 'fuera_de_8km');
+  if v_retiros > c_max_retiros then
+    raise exception 'colonias 8 km: % retiros superan el tope de % (la base cambio; revise antes de seguir)', v_retiros, c_max_retiros;
+  end if;
+
+  with retiradas as (
+    delete from restaurantes.branch_delivery_zone b using restaurantes.known_zone z
+    where z.id = b.zone_id and z.organization_id = v_org and b.organization_id = v_org
+      and exists (select 1 from _sin8 s where s.zona = z.name and s.motivo = 'fuera_de_8km')
+    returning b.zone_id
+  )
+  insert into _cambiadas (zone_id, regla)
+  select distinct r.zone_id, 'sin_asignar' from retiradas r
+  on conflict (zone_id) do nothing;
+
   -- 5. Altas: una fila por (colonia, sucursal esperada) que falte. Idempotente (on conflict do nothing).
   with nuevas as (
     insert into restaurantes.branch_delivery_zone (property_id, zone_id, organization_id)
@@ -305,10 +329,10 @@ begin
 
   -- 6. Procedencia (solo lectura para el reporte de colonias ambiguas): unicamente las zonas cuya cobertura cambio en esta corrida.
   update restaurantes.known_zone z
-     set asignacion_fuente = coalesce((select max(c.regla) from _cob8 c where c.zona = z.name), 'mas_cercana_v3')
+     set asignacion_fuente = coalesce((select max(c.regla) from _cob8 c where c.zona = z.name), k.regla)
     from _cambiadas k
    where z.id = k.zone_id and z.organization_id = v_org
-     and z.asignacion_fuente is distinct from coalesce((select max(c.regla) from _cob8 c where c.zona = z.name), 'mas_cercana_v3');
+     and z.asignacion_fuente is distinct from coalesce((select max(c.regla) from _cob8 c where c.zona = z.name), k.regla);
   get diagnostics v_meta = row_count;
 
   -- 7. Despues: cada colonia asignada tiene EXACTAMENTE sus sucursales esperadas (ni una mas, ni una menos).
@@ -331,14 +355,22 @@ begin
     raise exception 'colonias 8 km: Galerias o Playa quedaron con cobertura (%)', v_n;
   end if;
 
+  -- 8. Ninguna colonia a mas de 8 km conserva cobertura.
+  select count(*) into v_n
+  from restaurantes.branch_delivery_zone b join restaurantes.known_zone z on z.id = b.zone_id and z.organization_id = v_org
+  where b.organization_id = v_org and exists (select 1 from _sin8 s where s.zona = z.name and s.motivo = 'fuera_de_8km');
+  if v_n <> 0 then
+    raise exception 'colonias 8 km: % coberturas de colonias a mas de 8 km no se retiraron', v_n;
+  end if;
+
   select count(*) into v_total from restaurantes.branch_delivery_zone b where b.organization_id = v_org;
-  raise notice 'colonias 8 km: zonas con cobertura cambiada=% (reemplazos retirados=%), metadatos de procedencia actualizados=%, filas de cobertura totales=%', v_altas, v_reemplazos, v_meta, v_total;
+  raise notice 'colonias 8 km: zonas con cobertura cambiada=% (reemplazos retirados=%, retiros fuera de 8 km=%), metadatos de procedencia actualizados=%, filas de cobertura totales=%', v_altas, v_reemplazos, v_retiros, v_meta, v_total;
 end
 $carga$;
 
 commit;
 
--- Resultado (una sola consulta; solo lectura): cobertura por sucursal y las coberturas que SOBRAN (colonias fuera de cobertura que hoy tienen una; no se tocan).
+-- Resultado (una sola consulta; solo lectura): cobertura por sucursal y las colonias SIN coordenada que hoy tienen cobertura (pendientes del dueño; no se tocan).
 select seccion, clave, valor
 from (
   select 'cobertura_por_sucursal' as seccion, bd.slug as clave, count(*)::text as valor
@@ -350,12 +382,12 @@ from (
   select 'cobertura_total', 'filas', count(*)::text
   from restaurantes.branch_delivery_zone b join core.organization o on o.id = b.organization_id and o.slug = 'los-taquitos-de-pm'
   union all
-  select 'sobrante_fuera_de_cobertura', z.name, string_agg(bd.slug, ',' order by bd.slug)
+  select 'pendiente_sin_coordenada_con_cobertura', z.name, string_agg(bd.slug, ',' order by bd.slug)
   from restaurantes.known_zone z
   join core.organization o on o.id = z.organization_id and o.slug = 'los-taquitos-de-pm'
   join restaurantes.branch_delivery_zone b on b.zone_id = z.id
   join restaurantes.branch_detail bd on bd.property_id = b.property_id
-  where z.name in ('Cecilio Chi', 'Chicxulub', 'Chicxulub Puerto', 'Komchen', 'Mulchechen', 'Nueva Salvador Alvarado Sur', 'Olivos', 'Progreso', 'Revolución Cordemex', 'Roble Agrícola', 'Salvador Alvarado Sur', 'San Antonio Xluch', 'San Aroldo', 'San Diego Cutz', 'San Jose Tzal', 'San Pedro Noh Pat', 'Santa Maria Chi', 'Serapio Rendón', 'Yucatán')
+  where z.name in ('Cecilio Chi', 'Nueva Salvador Alvarado Sur', 'Olivos', 'Revolución Cordemex', 'San Diego Cutz', 'San Jose', 'Yucatán')
   group by z.name
 ) x
 order by seccion, clave;
