@@ -3,7 +3,7 @@
 Verificación **opt-in** (no entra al gate de CI) de la capa TypeScript del CFO de restaurantes (CFO-05) contra un Postgres local real.
 
 `run.sh` levanta un Postgres efímero (solo socket unix, puerto `VERIFY_PGPORT`, 55689 por omisión; **nunca** el 5432 de Homebrew), aplica el mock de
-plataforma de `scripts/verify-restaurantes-cfo-ventas/bootstrap.sql` y **todas** las migraciones de `supabase/migrations/` (incluidas 081, 082 y 083), y
+plataforma de `scripts/verify-restaurantes-cfo-ventas/bootstrap.sql` y **todas** las migraciones de `supabase/migrations/` (incluidas 081, 082, 083 y 084), y
 corre `apps/api/tests/restaurantes-cfo-real-postgres.spec.ts` con `CFO_REAL_PG=1`.
 
 Qué prueba (todo con el rol `authenticated`, `request.jwt.claim.sub` y RLS reales; cada caso es una transacción que termina en `rollback`):
