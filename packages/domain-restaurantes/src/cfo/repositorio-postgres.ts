@@ -1,4 +1,4 @@
-// CFO-05 · adaptador Postgres del CFO: UNA llamada por función SQL de 081/082/083, cada una dentro de `runWithSavepointFallback`.
+// CFO-05 · adaptador Postgres del CFO: UNA llamada por función SQL de 081/082/083/084, cada una dentro de `runWithSavepointFallback`.
 //
 // REGLA DURA de compatibilidad con la base SIN migrar: mergear despliega el código y la migración no se aplica sola. Toda operación corre en la
 // transacción ÚNICA del request, donde un error de Postgres la deja abortada (25P02): por eso cada llamada abre su SAVEPOINT. Una LECTURA con
@@ -30,6 +30,7 @@ import {
   type LecturaPedidosDetalle,
   type LoteSr,
   type ParamsCfo,
+  type ParamsFrecuentesDormidos,
   type RangoCfo,
   type RegistrarExportacionEntrada,
   type ResultadoImportacionSr,
@@ -53,9 +54,11 @@ import {
   type FilaColonia,
   type FilaComandasPos,
   type FilaCortesias,
+  type FilaDescuentoP90,
   type FilaEntregaPercentiles,
   type FilaEntregas,
   type FilaEscalacionHora,
+  type FilaFrecuentesDormidos,
   type FilaPedidoDetalle,
   type FilaProducto,
   type FilaRepartidor,
@@ -98,7 +101,7 @@ function advertirNoDisponible(err: unknown): void {
   advertido = true;
   console.warn(
     "PostgresCfoRepository: las funciones del CFO todavia no existen en esta base (SQLSTATE 42883/42P01/42703) -- aplica las migraciones " +
-      "081_cfo_ventas_productos, 082_cfo_clientes_agente_operacion y 083_cfo_captura_y_softrestaurant_import (supabase/migrations/). El CFO responde 'disponible: false'.",
+      "081_cfo_ventas_productos, 082_cfo_clientes_agente_operacion, 083_cfo_captura_y_softrestaurant_import y 084_cfo_huecos_frecuentes_p90_es_venta_forma_pago (supabase/migrations/). El CFO responde 'disponible: false'.",
     err,
   );
 }
@@ -216,6 +219,8 @@ export function mapPedidoDetalle(r: Fila): FilaPedidoDetalle {
     esReposicion: r["es_reposicion"] === true,
     clienteAlias: textoNulo(r["cliente_alias"]),
     comandaEstado: textoNulo(r["comanda_estado"]),
+    // 084: ausente (null) en una base sin la migración -> no se afirma nada.
+    ...(typeof r["es_venta"] === "boolean" ? { esVenta: r["es_venta"] } : {}),
   };
 }
 
@@ -460,8 +465,9 @@ export function mapSrResumen(r: Fila): FilaSrResumen {
     propertyId: texto(r["property_id"]),
     diaNegocio: fecha(r["dia_negocio"]),
     tipoServicio: texto(r["tipo_servicio"]) as TipoServicioSr,
-    // sr_resumen_leer suma todas las formas de pago de ese día y servicio.
-    formaPago: null,
+    // 084: el renglón viene partido por forma de pago (minúsculas); null = el archivo no la traía o la base aún no tiene la 084 (sr_resumen_leer
+    // sumaba todas las formas de pago de ese día y servicio).
+    formaPago: textoNulo(r["forma_pago"]),
     tickets: entero(r["tickets"]),
     brutaCentavos: entero(r["bruta_centavos"]),
     descuentoCentavos: entero(r["descuento_centavos"]),
@@ -469,6 +475,50 @@ export function mapSrResumen(r: Fila): FilaSrResumen {
     propinaCentavos: entero(r["propina_centavos"]),
     ivaCentavos: anulable(r["iva_centavos"]),
     netaCentavos: entero(r["neta_centavos"]),
+  };
+}
+
+export function mapFrecuentesDormidos(r: Fila): FilaFrecuentesDormidos {
+  const crudo = typeof r["muestra"] === "string" ? safeJson(r["muestra"]) : r["muestra"];
+  const muestra = Array.isArray(crudo)
+    ? crudo.flatMap((m) => {
+        if (!m || typeof m !== "object") return [];
+        const o = m as Record<string, unknown>;
+        return [{ alias: texto(o["alias"]), pedidos: entero(o["pedidos"]), diasSinPedir: entero(o["dias_sin_pedir"]), netaCentavos: entero(o["neta_centavos"]) }];
+      })
+    : [];
+  return {
+    propertyId: textoNulo(r["property_id"]),
+    alcance: texto(r["alcance"]) === "conjunto" ? "conjunto" : "sucursal",
+    frecuenteN: entero(r["frecuente_n"]),
+    frecuenteDias: entero(r["frecuente_dias"]),
+    dormidoDias: entero(r["dormido_dias"]),
+    frecuentes: entero(r["frecuentes"]),
+    frecuentesDormidos: entero(r["frecuentes_dormidos"]),
+    pedidosVentana: entero(r["pedidos_ventana"]),
+    netaVentanaCentavos: entero(r["neta_ventana_centavos"]),
+    muestra,
+  };
+}
+
+function safeJson(s: string): unknown {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
+
+export function mapDescuentoP90(r: Fila): FilaDescuentoP90 {
+  return {
+    propertyId: textoNulo(r["property_id"]),
+    alcance: texto(r["alcance"]) === "conjunto" ? "conjunto" : "sucursal",
+    dias: entero(r["dias"]),
+    desde: fecha(r["desde"]),
+    hasta: fecha(r["hasta"]),
+    diasConVenta: entero(r["dias_con_venta"]),
+    // NULL = sin historia suficiente: nunca 0.
+    p90Pct: anulable(r["p90_pct"]),
   };
 }
 
@@ -652,9 +702,11 @@ export class PostgresCfoRepository implements CfoRepository {
     // Se piden limite + 1 filas para saber si hay otra página sin un segundo viaje (la SQL topa en 200).
     const lectura = await this.leer(
       "pedidos_detalle",
-      `select order_id, order_number, property_id, ${D("dia_negocio")}, hora_local, canal, source, status, payment_method, bruta, "desc" as desc_centavos,
-              neta, propina, entregado_min, es_compensacion, es_reposicion, cliente_alias, comanda_estado, cursor_pagina
-         from restaurantes.cfo_pedidos_detalle($1::uuid, $2::uuid[], $3::date, $4::date, $5::jsonb, $6::integer, $7::text, $8::integer);`,
+      // es_venta (084) se lee de to_jsonb(t): una base con solo la 081 no tiene la columna y un `select es_venta` fallaría con 42703 (perdiendo todo el detalle).
+      `select t.order_id, t.order_number, t.property_id, to_char(t.dia_negocio, 'YYYY-MM-DD') as dia_negocio, t.hora_local, t.canal, t.source, t.status, t.payment_method, t.bruta, t."desc" as desc_centavos,
+              t.neta, t.propina, t.entregado_min, t.es_compensacion, t.es_reposicion, t.cliente_alias, t.comanda_estado, t.cursor_pagina,
+              (to_jsonb(t) ->> 'es_venta')::boolean as es_venta
+         from restaurantes.cfo_pedidos_detalle($1::uuid, $2::uuid[], $3::date, $4::date, $5::jsonb, $6::integer, $7::text, $8::integer) t;`,
       [p.organizationId, PROPS(p), r.desde, r.hasta, JSON.stringify(filtro), limite + 1, cursor, promesaMin],
       (fila) => ({ detalle: mapPedidoDetalle(fila), cursor: texto(fila["cursor_pagina"]) }),
     );
@@ -848,12 +900,35 @@ export class PostgresCfoRepository implements CfoRepository {
     );
   }
 
+  // ---- 084 ----
+
+  clientesFrecuentesDormidos(p: ParamsCfo, hasta: string, params: ParamsFrecuentesDormidos): Promise<LecturaCfo<FilaFrecuentesDormidos>> {
+    return this.leer(
+      "clientes_frecuentes_dormidos",
+      `select property_id, alcance, frecuente_n, frecuente_dias, dormido_dias, frecuentes, frecuentes_dormidos, pedidos_ventana, neta_ventana_centavos, muestra
+         from restaurantes.cfo_clientes_frecuentes_dormidos($1::uuid, $2::uuid[], $3::date, $4::integer, $5::integer, $6::integer, $7::integer);`,
+      [p.organizationId, PROPS(p), hasta, params.frecuenteN ?? null, params.frecuenteDias ?? null, params.dormidoDias, params.muestra ?? 0],
+      mapFrecuentesDormidos,
+    );
+  }
+
+  descuentoP90(p: ParamsCfo, hasta: string, dias: number): Promise<LecturaCfo<FilaDescuentoP90>> {
+    return this.leer(
+      "descuento_p90",
+      `select property_id, alcance, dias, ${D("desde")}, ${D("hasta")}, dias_con_venta, p90_pct
+         from restaurantes.cfo_descuento_p90($1::uuid, $2::uuid[], $3::date, $4::integer);`,
+      [p.organizationId, PROPS(p), hasta, dias],
+      mapDescuentoP90,
+    );
+  }
+
   srResumenLeer(p: ParamsCfo, r: RangoCfo): Promise<LecturaCfo<FilaSrResumen>> {
     return this.leer(
       "sr_resumen_leer",
-      `select property_id, ${D("dia_negocio")}, tipo_servicio, tickets, bruta_centavos, descuento_centavos, cancelado_centavos, propina_centavos,
-              iva_centavos, neta_centavos
-         from restaurantes.sr_resumen_leer($1::uuid, $2::uuid[], $3::date, $4::date);`,
+      // forma_pago (084) se lee de to_jsonb(t): una base con solo la 083 no tiene la columna y un `select forma_pago` fallaría con 42703 (perdiendo todo el resumen).
+      `select t.property_id, to_char(t.dia_negocio, 'YYYY-MM-DD') as dia_negocio, t.tipo_servicio, t.tickets, t.bruta_centavos, t.descuento_centavos, t.cancelado_centavos, t.propina_centavos,
+              t.iva_centavos, t.neta_centavos, to_jsonb(t) ->> 'forma_pago' as forma_pago
+         from restaurantes.sr_resumen_leer($1::uuid, $2::uuid[], $3::date, $4::date) t;`,
       [p.organizationId, PROPS(p), r.desde, r.hasta],
       mapSrResumen,
     );

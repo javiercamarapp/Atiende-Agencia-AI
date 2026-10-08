@@ -120,7 +120,9 @@ import {
   type FilaCobertura,
   type FilaComandasPos,
   type FilaCortesias,
+  type FilaDescuentoP90,
   type FilaEntregaPercentiles,
+  type FilaFrecuentesDormidos,
   type FilaProducto,
   type FilaSrResumen,
   type FilaVentasDiarias,
@@ -187,6 +189,10 @@ const COLUMNAS_VENTAS_ADITIVAS = [
 
 /** Hasta cuántos días de periodo se evalúan los hallazgos comparativos (4 semanas previas, participación). */
 export const DIAS_MAX_HALLAZGOS_COMPARATIVOS = 62;
+/** Días sin pedir para que un cliente frecuente cuente como «dormido» en el hallazgo `frecuentes_dormidos` (084). */
+export const DIAS_DORMIDO_FRECUENTE = 30;
+/** Historia (días previos al periodo) con la que se calcula el p90 del descuento % diario (084). */
+export const DIAS_HISTORIA_P90_DESCUENTO = 90;
 
 const DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"] as const;
 
@@ -341,6 +347,39 @@ export class ServicioCfo {
     const u: UmbralesClientes = { frecuenteN: cfg.frecuenteN, frecuenteDias: cfg.frecuenteDias, activoDias: cfg.activoDias, perdidoDias: cfg.perdidoDias };
     return this.cached(`cl:${r.desde}:${r.hasta}:${u.frecuenteN}:${u.frecuenteDias}:${u.activoDias}:${u.perdidoDias}`, async () => {
       const l = await this.marcar("clientes", this.e.repo.clientesResumen(this.params, r, u));
+      return { disponible: l.disponible, filas: l.filas.filter((f) => f.alcance === "conjunto" || (f.propertyId !== null && this.idsAlcance.has(f.propertyId))) };
+    });
+  }
+
+  /**
+   * Lectura OPCIONAL (084): enriquece hallazgos, no es un bloque. Sin la 084 (`disponible: false`) o ante un fallo no fatal devuelve vacío SIN marcar el bloque
+   * como caído (las cifras de 081-083 siguen siendo completas); el hallazgo correspondiente simplemente no se dispara. Un 42501 sí corta.
+   */
+  private async opcional<T>(p: Promise<LecturaCfo<T>>): Promise<LecturaCfo<T>> {
+    try {
+      return await p;
+    } catch (err) {
+      if (err instanceof CfoSinAccesoError) throw err;
+      this.e.onError?.("clientes", err);
+      return { disponible: false, filas: [] };
+    }
+  }
+
+  /** Frecuentes dormidos al cierre del periodo (084); mismos N y X de cfo_config que usa `clientesRes`. */
+  private frecuentesDormidosDe(hasta: string, cfg: CfoConfig): Promise<LecturaCfo<FilaFrecuentesDormidos>> {
+    return this.cached(`fd:${hasta}:${cfg.frecuenteN}:${cfg.frecuenteDias}`, async () => {
+      const l = await this.opcional(
+        this.e.repo.clientesFrecuentesDormidos(this.params, hasta, { frecuenteN: cfg.frecuenteN, frecuenteDias: cfg.frecuenteDias, dormidoDias: DIAS_DORMIDO_FRECUENTE }),
+      );
+      return { disponible: l.disponible, filas: l.filas.filter((f) => f.alcance === "conjunto" || (f.propertyId !== null && this.idsAlcance.has(f.propertyId))) };
+    });
+  }
+
+  /** p90 histórico del descuento % diario (084) de los `DIAS_HISTORIA_P90_DESCUENTO` días que terminan el día anterior al periodo. */
+  private descuentoP90De(desde: string): Promise<LecturaCfo<FilaDescuentoP90>> {
+    const hasta = sumarDiasFecha(desde, -1);
+    return this.cached(`dp90:${hasta}`, async () => {
+      const l = await this.opcional(this.e.repo.descuentoP90(this.params, hasta, DIAS_HISTORIA_P90_DESCUENTO));
       return { disponible: l.disponible, filas: l.filas.filter((f) => f.alcance === "conjunto" || (f.propertyId !== null && this.idsAlcance.has(f.propertyId))) };
     });
   }
@@ -620,6 +659,9 @@ export class ServicioCfo {
     const cob = (await this.cobertura()).filas;
     const clientes = await this.clientesRes(r, cfg);
     const percentiles = await this.percentiles(r);
+    const dormidos = await this.frecuentesDormidosDe(q.hasta, cfg);
+    // El p90 histórico mira 90 días antes del periodo: en periodos largos (sin hallazgos comparativos) no se pide.
+    const descP90 = largo ? { disponible: false, filas: [] as readonly FilaDescuentoP90[] } : await this.descuentoP90De(q.desde);
     const comandas = await this.comandas(r);
     const escalaciones = await this.marcar("clientes", this.e.repo.escalacionesHora(this.params, r));
     const agotadosFilas = await this.agotadosConRanking();
@@ -638,6 +680,8 @@ export class ServicioCfo {
     const conjunto = consolidarClientes(clientes.filas).conjunto;
     const p90Prop = new Map(percentiles.filas.filter((f) => f.alcance === "sucursal" && f.propertyId !== null).map((f) => [f.propertyId as string, f.p90Min]));
     const p90Conjunto = percentiles.filas.find((f) => f.alcance === "conjunto")?.p90Min ?? null;
+    const dormidosProp = new Map(dormidos.filas.filter((f) => f.alcance === "sucursal" && f.propertyId !== null).map((f) => [f.propertyId as string, f]));
+    const descP90Prop = new Map(descP90.filas.filter((f) => f.alcance === "sucursal" && f.propertyId !== null).map((f) => [f.propertyId as string, f.p90Pct]));
     const ventasOk = ventas.disponible;
     const clientesOk = clientes.disponible && agente.disponible;
     const incluirLlm = this.verNoAsignado;
@@ -690,10 +734,13 @@ export class ServicioCfo {
         agenteBase4Semanas: baseAg,
         costoAgenteCentavos: costoAgente(ag, false).total.valor,
         costoAgenteBase4SemanasCentavos: baseAg ? costoAgente(baseAg, false).total.valor : null,
-        descuentoPctP90Historico: null,
+        // 084: null si la base no tiene la migración o la sucursal no suma 14 días con venta en la historia (el motor usa solo el tope de cfo_config).
+        descuentoPctP90Historico: descP90Prop.get(id) ?? null,
         entregaP90Min: p90Prop.get(id) ?? null,
-        // La SQL no expone «frecuentes sin pedir ≥ 30 días»: sin dato, el motor no dispara ese hallazgo (nunca se inventa).
-        frecuentesDormidos: null,
+        // 084: sin la migración queda en null y el motor no dispara el hallazgo (nunca se inventa).
+        frecuentesDormidos: dormidosProp.has(id)
+          ? { clientes: dormidosProp.get(id)!.frecuentesDormidos, pedidos90d: dormidosProp.get(id)!.pedidosVentana, ventanaDias: dormidosProp.get(id)!.frecuenteDias, dormidoDias: dormidosProp.get(id)!.dormidoDias }
+          : null,
         agotados: agotadosPor.get(id) ?? [],
         comandas: cm.length > 0 ? sumarComandas(cm) : null,
         escalacionesPorFranja: escPor.get(id) ?? [],
