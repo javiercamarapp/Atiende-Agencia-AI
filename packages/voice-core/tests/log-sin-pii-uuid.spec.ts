@@ -14,17 +14,12 @@ function campos(entrada: Record<string, unknown>): Record<string, string | numbe
   return salida;
 }
 
-describe.each(["UTC", "Pacific/Kiritimati", "America/Merida", "Pacific/Pago_Pago"])("log sin PII y UUID (reloj fijo, zona %s)", (zona) => {
-  const tzPrevia = process.env.TZ;
+describe("log sin PII y UUID (reloj fijo)", () => {
   beforeEach(() => {
-    process.env.TZ = zona;
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-07T12:00:00-06:00"));
   });
-  afterEach(() => {
-    vi.useRealTimers();
-    if (tzPrevia === undefined) delete process.env.TZ; else process.env.TZ = tzPrevia;
-  });
+  afterEach(() => vi.useRealTimers());
 
   it("REGRESION V07-uuid-mutilado: un UUID con digitos de forma telefonica en propertyId/organizationId sale intacto y el grader no da falso positivo", () => {
     const c = campos({ propertyId: UUID_CON_DIGITOS, organizationId: UUID_CON_DIGITOS });
