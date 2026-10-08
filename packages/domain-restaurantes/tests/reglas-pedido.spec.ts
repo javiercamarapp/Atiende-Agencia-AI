@@ -248,6 +248,21 @@ describe("propina solo con tarjeta", () => {
     expect(order.notes).toContain("Propina: $20.00 (no incluida en el total).");
   });
 
+  it("propina en porcentaje (QA-PM-R4-whatsapp-03): el servidor calcula los pesos sobre el total y no lo altera", async () => {
+    const f = buildRestaurantFixture();
+    f.repo.seedBranchPolicy(f.propertyId, { propinaPolitica: "solo_tarjeta" });
+    const order = await createOrder(f.repo, baseOrder(f, { paymentMethod: "tarjeta", propinaPorcentaje: 10 }));
+    expect(order.total).toBe(DOS_COCAS);
+    expect(order.notes).toContain(`Propina: $${(Math.round(DOS_COCAS * 10) / 100).toFixed(2)} (no incluida en el total).`);
+  });
+
+  it("propina en porcentaje con efectivo se rechaza igual que en pesos; un porcentaje fuera de rango tambien", async () => {
+    const f = buildRestaurantFixture();
+    f.repo.seedBranchPolicy(f.propertyId, { propinaPolitica: "solo_tarjeta" });
+    await expect(createOrder(f.repo, baseOrder(f, { paymentMethod: "efectivo", propinaPorcentaje: 10 }))).rejects.toThrow(/solo se registra cuando el pago es con tarjeta/);
+    await expect(createOrder(f.repo, baseOrder(f, { paymentMethod: "tarjeta", propinaPorcentaje: 150 }))).rejects.toThrow(/entre 1 y 100/);
+  });
+
   it("propina con efectivo: se rechaza (solo con tarjeta)", async () => {
     const f = buildRestaurantFixture();
     f.repo.seedBranchPolicy(f.propertyId, { propinaPolitica: "solo_tarjeta" });

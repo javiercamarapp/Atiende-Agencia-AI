@@ -362,6 +362,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         canal: { type: "string", enum: ["domicilio", "recoger"], description: "Por defecto 'domicilio'. Para 'recoger' no hace falta customer_address." },
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega (solo a domicilio)." },
         propina: { type: "number", description: "Propina en pesos, solo si cotizar_pedido indicó preguntar_propina: true y el cliente la dio. No suma al total." },
+        propina_porcentaje: { type: "number", description: "Propina como PORCENTAJE del total ('de propina 10%' = 10), solo con tarjeta y si cotizar_pedido indicó preguntar_propina: true. El servidor calcula los pesos; no haga la cuenta ni mande propina junto con este campo." },
         efectivo_con: { type: "number", description: "Solo pago en efectivo: monto con el que paga el cliente ('cambio de 500' = 500). Debe ser mayor o igual al total de cotizar_pedido." },
         llevar_terminal: { type: "boolean", description: "true si el cliente pide que lleven terminal (pago con tarjeta a domicilio)." },
         indicaciones_acceso: { type: "string", description: "Solo domicilio, una línea corta (máx. 200 caracteres): cómo llegar o avisar ('timbre del depto 6', 'avísenme al llegar'). No pongas aquí la ubicación: el pin ya se guarda solo." },
@@ -635,6 +636,16 @@ function toCreateOrderItems(raw: unknown, lenient: boolean): CreateOrderInput["i
  * propina que dijo): un complemento que no es de la lista cerrada ("chimichurri") y una propina que no es un monto ("veinte"). Para los agentes se rechazan con un
  * mensaje accionable en vez de crear un pedido distinto al que el cliente acepto. El relleno de siempre (propina 0 o vacia, lista vacia) sigue siendo "sin dato".
  */
+/** "10%" / "10 %" -> 10; cualquier otra cosa -> null. Un porcentaje valido va de 1 a 100. */
+function porcentajeDePropina(valor: unknown): number | null {
+  if (typeof valor === "number") return Number.isFinite(valor) && valor > 0 && valor <= 100 ? valor : null;
+  if (typeof valor !== "string") return null;
+  const m = /^\s*(\d{1,3}(?:[.,]\d{1,2})?)\s*(?:%|por\s*ciento)\s*$/i.exec(valor);
+  if (!m) return null;
+  const n = Number(m[1]!.replace(",", "."));
+  return n > 0 && n <= 100 ? n : null;
+}
+
 function assertEntradasReconocidas(input: Record<string, unknown>): void {
   if (Array.isArray(input.requested_complements)) {
     const desconocidos = input.requested_complements.filter((c) => typeof c === "string" && c.trim() !== "" && canonicalRequestedComplement(c) === null);
@@ -645,6 +656,7 @@ function assertEntradasReconocidas(input: Record<string, unknown>): void {
     }
   }
   const propina = input.propina;
+  if (propina !== undefined && propina !== null && propina !== "" && typeof propina === "string" && porcentajeDePropina(propina) !== null) return;
   if (propina !== undefined && propina !== null && propina !== "" && (typeof propina !== "number" || !Number.isFinite(propina))) {
     throw new OrderValidationError("La propina debe ser un monto numérico en pesos (por ejemplo 20). Pregúntele al cliente cuánto desea dejar y vuelva a mandarla como número.");
   }
@@ -685,6 +697,12 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     colonia: str(input.colonia_entrega),
     ...(ctx.sharedLocation && ctx.channel === "whatsapp" ? { ubicacion: { lat: ctx.sharedLocation.lat, lng: ctx.sharedLocation.lng } } : {}),
     propina: typeof input.propina === "number" ? input.propina : undefined,
+    ...(typeof input.propina !== "number" || input.propina === 0
+      ? (() => {
+          const pct = porcentajeDePropina(input.propina_porcentaje) ?? (typeof input.propina === "string" ? porcentajeDePropina(input.propina) : null);
+          return pct !== null ? { propinaPorcentaje: pct } : {};
+        })()
+      : {}),
     horaRecogida: textoOpcional(input.hora_recogida),
     // Cliente 360: datos opcionales del domicilio (solo alimentan la ficha; nunca cambian el total).
     addressLabel: str(input.direccion_etiqueta),

@@ -195,6 +195,9 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     throw new OrderValidationError("customerEmail inválido");
   }
   const canal = normalizarCanal(raw.canal);
+  if (raw.propinaPorcentaje !== undefined && (typeof raw.propinaPorcentaje !== "number" || !Number.isFinite(raw.propinaPorcentaje) || raw.propinaPorcentaje <= 0 || raw.propinaPorcentaje > 100)) {
+    throw new OrderValidationError("El porcentaje de propina debe estar entre 1 y 100.");
+  }
   if (raw.propina !== undefined && (typeof raw.propina !== "number" || !Number.isFinite(raw.propina) || raw.propina < 0 || raw.propina > 100000)) {
     throw new OrderValidationError("La propina debe ser un monto en pesos mayor o igual a 0.");
   }
@@ -425,7 +428,8 @@ export async function prepareCreateOrder(
     colonia: payload.colonia,
     pinEnEstaSucursal: pinEnSucursal(repo, branch, payload.organizationId, payload.ubicacion),
     paymentMethod: payload.paymentMethod,
-    propina: payload.propina,
+    // Una propina en porcentaje se convierte a pesos al final con el total definitivo; aqui solo se valida con la politica (solo tarjeta en PM).
+    propina: payload.propina ?? (payload.propinaPorcentaje !== undefined ? 0.01 : undefined),
     source: payload.source,
     ...(programado
       ? { now: programado, exigirAbierto: true, mensajeCerrado: mensajeCerradoProgramado(branch.name, payload.programadoPara!) }
@@ -500,8 +504,11 @@ export async function prepareCreateOrder(
   if (payload.propina !== undefined && redondearACentavos(payload.propina) > total) {
     throw new OrderValidationError("La propina no puede ser mayor que el total del pedido. Confirme el monto con el cliente antes de registrarla.");
   }
+  // Propina en porcentaje (QA-PM-R4-whatsapp-03): el servidor hace la cuenta sobre el total definitivo (10% de $552 = $55.20).
+  const payloadFinal: ValidatedCreateOrderInput =
+    payload.propina === undefined && payload.propinaPorcentaje !== undefined ? { ...payload, propina: redondearACentavos((total * payload.propinaPorcentaje) / 100) } : payload;
 
-  return { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo };
+  return { payload: payloadFinal, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo };
 }
 
 /**

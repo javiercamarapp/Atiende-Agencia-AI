@@ -29,6 +29,18 @@ describe.each(["whatsapp", "voz"] as const)("%s: crear_pedido rechaza lo que ant
   });
 });
 
+describe("propina en porcentaje por el agente (QA-PM-R4-whatsapp-03)", () => {
+  it("'10%' como texto o propina_porcentaje no se rechaza como monto invalido; el porcentaje fuera de rango si", async () => {
+    const s = setup("whatsapp");
+    s.f.repo.seedBranchPolicy(s.f.propertyId, { propinaPolitica: "solo_tarjeta" });
+    const a = await s.crear({ payment_method: "tarjeta", propina: "10%" });
+    expect(a.orderId).not.toBeNull();
+    const b = await s.crear({ payment_method: "tarjeta", propina_porcentaje: 15, idempotency_key: undefined });
+    expect(b.orderId).not.toBeNull();
+    await expect(s.crear({ payment_method: "tarjeta", propina: "200%" })).rejects.toThrow(/monto numérico/);
+  });
+});
+
 describe("guacamole extra", () => {
   it("cotizar con doble salsa guacamolera avisa que 'guacamole extra' es el producto Extra Guacamole; con otra salsa no avisa", async () => {
     const s = setup("voz");
