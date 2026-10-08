@@ -5,7 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { SearchX } from "lucide-react";
 import type { FiltroPedidosDetalle } from "@atiende/domain-restaurantes/cfo";
-import { EstadoCargando, EstadoVacio, PageContainer, PageHeader, cn, notify } from "@atiende/ui";
+import { Callout, EstadoCargando, EstadoVacio, PageContainer, PageHeader, cn, notify } from "@atiende/ui";
 import { puedeEn } from "../lib/permisos.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 import { CfoExportarNoDisponibleError, descargarExportacionCfo, fetchAlcance, guardarArchivo, type ContextoCfo, type FormatoExportacionCfo } from "./cfo-client.ts";
@@ -81,18 +81,29 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
       />
       <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta="Cargando el CFO…">
         {(alcance) => {
-          const paginaProps: CfoPaginaProps = { api, role, orgSlug, base, filtros, alcance, setFiltros, abrirPedidos, pestanasDisponibles: disponibles };
+          // La URL manda, pero solo con sucursales que este actor puede ver: una ajena o borrada se descarta (el API respondería 403 y se leería como «sin acceso»).
+          const permitidas = new Set(alcance.sucursales.map((s) => s.propertyId.toLowerCase()));
+          const elegidasUrl = filtros.sucursales;
+          const validas = elegidasUrl === null ? null : elegidasUrl.filter((id) => permitidas.has(id));
+          const descartadas = elegidasUrl !== null && validas !== null && validas.length !== elegidasUrl.length;
+          const filtrosEf: FiltrosCfo = descartadas ? { ...filtros, sucursales: validas.length > 0 ? validas : null } : filtros;
+          const paginaProps: CfoPaginaProps = { api, role, orgSlug, base, filtros: filtrosEf, alcance, setFiltros, abrirPedidos, pestanasDisponibles: disponibles };
           const Pagina = pagina?.componente;
           const tabParams = quitarDrill(sp);
           return (
             <>
               <FiltrosCfoBarra
-                filtros={filtros}
+                filtros={filtrosEf}
                 alcance={alcance}
                 hoy={hoyStr}
                 onCambiar={setFiltros}
                 exportar={{ visible: puedeEn(role, "cfo.exportar") && Boolean(pagina?.vistaExportacion) && !exportarOculto, exportando, onExportar: (f) => void exportar(f) }}
               />
+              {descartadas && (
+                <Callout tone="warning" data-testid="cfo-sucursal-descartada">
+                  El enlace traía sucursales que no existen o que no puedes ver; se ignoraron y se muestra {validas && validas.length > 0 ? "solo lo que sí puedes ver" : "«Todas»"}.
+                </Callout>
+              )}
               <nav aria-label="Secciones del CFO" className="-mx-1 overflow-x-auto px-1">
                 <ul className="flex min-w-max gap-1 border-b border-border">
                   {PAGINAS_CFO.map((p) => {

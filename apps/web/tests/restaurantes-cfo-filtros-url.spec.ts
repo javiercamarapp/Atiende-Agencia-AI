@@ -73,6 +73,17 @@ describe("URL <-> filtros", () => {
     // Un rango de más de 400 días también cae al defecto.
     expect(leerFiltros(new URLSearchParams("desde=2020-01-01&hasta=2026-09-01"), HOY).desde).toBe("2026-09-22");
   });
+  it("sucursales: solo UUID; basura, XSS y rutas se descartan (`abc,<script>,../x,t1`)", () => {
+    for (const malo of ["abc,<script>,../x,t1", "abc", "<script>alert(1)</script>", "../../x", "t1,t2"]) expect(leerFiltros(new URLSearchParams({ sucursales: malo }), HOY).sucursales, malo).toBeNull();
+    // Mezcla: se conserva lo válido, en minúsculas y sin duplicados.
+    expect(leerFiltros(new URLSearchParams({ sucursales: `abc,${ID1.toUpperCase()},${ID1},../x` }), HOY).sucursales).toEqual([ID1]);
+  });
+  it("años fuera de 2000..2100 caen al rango por defecto, como el API", () => {
+    expect(errorDeRango("1999-12-31", "2000-01-02")).toMatch(/válidas/);
+    expect(errorDeRango("2100-12-30", "2101-01-02")).toMatch(/válidas/);
+    expect(leerFiltros(new URLSearchParams("desde=0001-01-01&hasta=0001-01-05"), HOY).desde).toBe("2026-09-22");
+    expect(errorDeRango("2000-01-01", "2000-01-10")).toBeNull();
+  });
   it("más de 20 sucursales se ignora", () => {
     const ids = Array.from({ length: 21 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`).join(",");
     expect(leerFiltros(new URLSearchParams({ sucursales: ids }), HOY).sucursales).toBeNull();

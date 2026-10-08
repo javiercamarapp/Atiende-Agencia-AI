@@ -117,6 +117,33 @@ describe("<CfoLayout /> · filtros en la URL", () => {
     expect(api.peticiones("GET", "/alcance")[0]!.consulta.has("sucursales")).toBe(false);
   });
 
+  it("una sucursal ajena o borrada en el enlace NO da «sin acceso»: cae a «Todas» con aviso y el API nunca la recibe", async () => {
+    const api = crearApiCfo();
+    const ajena = "00000000-0000-4000-8000-0000000000ff";
+    montar(api, { url: `/restaurantes/demo/cfo/resumen?${RANGO}&sucursales=${ajena}` });
+    await cuando(() => q("[data-testid=hallazgo]") !== null, "resumen");
+    expect(texto()).not.toContain("Tu rol no tiene acceso al CFO");
+    expect(q("[data-testid=cfo-sucursal-descartada]")!.textContent).toContain("«Todas»");
+    expect(q("[data-testid=filtro-sucursales]")!.textContent).toContain("Todas las sucursales");
+    expect(api.peticiones("GET", "/resumen").every((r) => !r.consulta.has("sucursales"))).toBe(true);
+  });
+
+  it("mezcla de una sucursal propia y una ajena: se pide solo la propia y se avisa", async () => {
+    const api = crearApiCfo();
+    const ajena = "00000000-0000-4000-8000-0000000000ff";
+    montar(api, { url: `/restaurantes/demo/cfo/resumen?${RANGO}&sucursales=${IDS.T3},${ajena}` });
+    await cuando(() => q("[data-testid=hallazgo]") !== null, "resumen");
+    expect(api.peticiones("GET", "/resumen")[0]!.consulta.get("sucursales")).toBe(IDS.T3);
+    expect(q("[data-testid=cfo-sucursal-descartada]")!.textContent).toContain("solo lo que sí puedes ver");
+  });
+
+  it("sucursales con basura en la URL (`abc,<script>,../x,t1`) se descartan sin pedir nada raro", async () => {
+    const api = crearApiCfo();
+    montar(api, { url: `/restaurantes/demo/cfo/resumen?${RANGO}&sucursales=${encodeURIComponent("abc,<script>,../x,t1")}` });
+    await cuando(() => q("[data-testid=hallazgo]") !== null, "resumen");
+    expect(api.registro.every((r) => !r.consulta.has("sucursales"))).toBe(true);
+  });
+
   it("elegir un atajo de rango cambia la URL y vuelve a pedir; «Personalizado» valida el máximo de 400 días", async () => {
     const api = crearApiCfo();
     montar(api);

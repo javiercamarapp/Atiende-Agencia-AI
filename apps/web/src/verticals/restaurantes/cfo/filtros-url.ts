@@ -31,6 +31,9 @@ const aFecha = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
 export function fechaValida(f: string): boolean {
   if (!FECHA_RE.test(f)) return false;
+  // Mismo rango de años que el API (2000..2100): fuera de él el API responde 422.
+  const anio = Number(f.slice(0, 4));
+  if (anio < 2000 || anio > 2100) return false;
   const ms = aMs(f);
   return !Number.isNaN(ms) && aFecha(ms) === f;
 }
@@ -118,7 +121,7 @@ export function leerFiltros(sp: URLSearchParams, hoy: string): FiltrosCfo {
   const crudo = sp.get("sucursales");
   let sucursales: string[] | null = null;
   if (crudo && crudo !== "todas") {
-    const ids = [...new Set(crudo.split(",").map((x) => x.trim().toLowerCase()))].filter((x) => UUID_RE.test(x) || /^[a-z0-9-]{1,64}$/.test(x));
+    const ids = [...new Set(crudo.split(",").map((x) => x.trim().toLowerCase()))].filter((x) => UUID_RE.test(x));
     if (ids.length > 0 && ids.length <= 20) sucursales = ids;
   }
   const comparar = sp.get("comparar");
