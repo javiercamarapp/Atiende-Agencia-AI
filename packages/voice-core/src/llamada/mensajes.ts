@@ -28,8 +28,8 @@ export type CatalogoMensajes = Readonly<Record<MensajeId, string>>;
 export type SaludoPorHora = "buenos días" | "buenas tardes" | "buenas noches";
 
 /** Saludo segun la HORA LOCAL del negocio (X40: el seed y el pregrabado decian "buenas tardes" a toda hora). Acepta la hora entera
- * (0-23) o un texto con "HH:MM" ("11:59", "lunes 18:30"). Buenos dias de 5:00 a 11:59, buenas tardes de 12:00 a 18:59 y buenas
- * noches el resto (incluida la madrugada). Un valor que no es hora lanza: callar el error daria un saludo equivocado. */
+ * (0-23) o un texto con "HH:MM" ("11:59", "lunes 18:30"). Buenos dias de 5:00 a 11:59, buenas tardes de 12:00 a 19:59 y buenas
+ * noches el resto: desde las 20:00 (incluida la madrugada, hasta las 4:59). Un valor que no es hora lanza: callar el error daria un saludo equivocado. */
 export function saludoPorHora(horaLocal: number | string): SaludoPorHora {
   let hora: number;
   if (typeof horaLocal === "number") hora = horaLocal;
@@ -39,7 +39,7 @@ export function saludoPorHora(horaLocal: number | string): SaludoPorHora {
   }
   if (!Number.isInteger(hora) || hora < 0 || hora > 23) throw new RangeError(`saludoPorHora: hora local invalida (${String(horaLocal)})`);
   if (hora >= 5 && hora < 12) return "buenos días";
-  if (hora >= 12 && hora < 19) return "buenas tardes";
+  if (hora >= 12 && hora < 20) return "buenas tardes";
   return "buenas noches";
 }
 

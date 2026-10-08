@@ -18,6 +18,8 @@ import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
 import { elegirPedido, repetirPedido } from "../cliente-360/repetir.ts";
 import { getCustomerDetailById, lookupCustomerConPedidoReciente } from "../customers.ts";
 import { buscarPedidoRecienteConSucursal } from "../pedido-reciente.ts";
+import { fusionarRenglonesPorProducto } from "../promotions.ts";
+import { aclararGuacamoleExtra } from "../whatsapp/guards.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError, esGuardaSqlDeNegocioDePedido } from "../errors.ts";
 import { normalizePhone } from "../phone.ts";
@@ -162,6 +164,9 @@ export interface AgentToolContext {
   /** Mide `buscar_sucursal_cercana` contra los pines propuestos de Google (`COORDENADAS_PROPUESTAS_PM`) en lugar de las coordenadas vigentes. Ausente = la bandera
    * `RESTAURANTES_USAR_COORDENADAS_PROPUESTAS`, APAGADA por omision (decision de Javier). Solo lo fija el servidor. */
   readonly usarCoordenadasPropuestas?: boolean;
+  /** Ultimos mensajes (cliente y agente) de esta conversacion de WhatsApp. Solo lo fija el servidor; alimenta guardas que comparan lo que dijo el cliente, y si ya se le aclaro, con lo que cotiza el
+   * modelo (p. ej. «guacamole» contra «Extra Guacamole»). Ausente (voz, camino legado) = esas guardas no opinan. */
+  readonly conversacionReciente?: readonly { readonly role: "user" | "assistant"; readonly content: string }[];
 }
 
 export interface AgentToolOutcome {
@@ -1206,7 +1211,7 @@ async function dispatchTool(
         canal: o.canal,
         sucursal: o.branch,
         total: o.total,
-        productos: o.items.map((i) => ({ name: i.name, quantity: i.quantity })),
+        productos: fusionarRenglonesPorProducto(o.items).map((i) => ({ name: i.name, quantity: i.quantity })),
       }));
       const result = { pedidos, total_pedidos_anteriores: pedidos.length };
       return { result, raw: result, orderId: null, propertyId: null };
@@ -1414,6 +1419,9 @@ async function dispatchTool(
       }).catch((err: unknown) => {
         throw err instanceof RestaurantesConfigUnavailableError ? new OrderValidationError(PROGRAMADOS_NO_DISPONIBLES) : err;
       });
+      // T7-044: el platillo Guacamole ($142) no se cambia en silencio por Extra Guacamole ($49).
+      const aclaracionGuacamole = aclararGuacamoleExtra(quote.lines.map((l) => l.name), ctx.conversacionReciente);
+      if (aclaracionGuacamole) throw new OrderValidationError(aclaracionGuacamole);
       // QA-PM-R3-voz-03: "guacamole extra" se cobraba como la doble salsa guacamolera ($19) y no como Extra Guacamole ($49). El servidor no puede saber que dijo el
       // cliente, pero si el modelo uso la doble salsa guacamolera se lo hace revisar antes de decir el total.
       const dobleGuacamole = (toDoubleSalsas(input.doble_salsas) ?? []).includes("salsa_guacamolera");
@@ -1513,6 +1521,10 @@ async function dispatchTool(
         throw err;
       }
       if (grandeAprobable.error) {
+        // D31 (QA-PM-R5-voz-19): un pedido grande SIEMPRE pasa por la sucursal. Con el autopiloto el pedido queda `por_aprobar` y la solicitud llega al panel, pero ni en voz ni en WhatsApp
+        // quedaba ningun aviso (callback) para la persona de la sucursal (solo sin autopiloto lo dejaba `escalada:pedido_grande`). Se registra en el SERVIDOR, en el mismo SAVEPOINT
+        // que el pedido: si el aviso no se puede dejar, se revierte tambien el pedido (nunca queda un pedido grande retenido sin que nadie en la sucursal lo sepa).
+        await avisarPedidoGrandeASucursal(repo, ctx, createInput, grandeAprobable.error, order.propertyId, order.orderNumber ? `Pedido #${order.orderNumber} creado en estado por_aprobar; ` : "Pedido creado en estado por_aprobar; ");
         const result = {
           pedido_grande: true,
           por_aprobar: true,
@@ -1745,19 +1757,24 @@ async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: Pr
 /** QA-PM-R4-voz-02: lo unico que el agente le dice al cliente de un pedido grande retenido (el modelo decia "ha quedado registrado" con el texto largo de `mensaje`). */
 export const MENSAJE_PEDIDO_GRANDE_PENDIENTE = "Su pedido es grande, así que la sucursal lo tiene que confirmar primero. Todavía no está en cocina; en cuanto lo confirmen le avisan.";
 
-/** En vez de crear el pedido: deja el aviso `escalada:pedido_grande` (con el resumen) para que la sucursal lo confirme y contacte al
- * cliente. El resultado al modelo NO es un error: no marca fallo de herramienta ni sube al modelo caro. */
-async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolContext, input: CreateOrderInput, retenido: PedidoGrandeRetenidoError): Promise<AgentToolOutcome> {
-  const branch = await repo.findBranch(ctx.organizationId, { slug: input.branchSlug, name: input.branchName });
+/** Deja el aviso `escalada:pedido_grande` (con el resumen) para la sucursal: lo usan el pedido NO creado y el creado `por_aprobar`. */
+async function avisarPedidoGrandeASucursal(repo: RestaurantesRepository, ctx: AgentToolContext, input: CreateOrderInput, retenido: PedidoGrandeRetenidoError, propertyId: string | null | undefined, prefijo = ""): Promise<void> {
+  const branch = propertyId ? null : await repo.findBranch(ctx.organizationId, { slug: input.branchSlug, name: input.branchName });
   await registerCallbackRequest(repo, {
     organizationId: ctx.organizationId,
-    propertyId: ctx.lockedPropertyId ?? branch?.propertyId ?? null,
+    propertyId: ctx.lockedPropertyId ?? propertyId ?? branch?.propertyId ?? null,
     customerName: input.customerName,
     customerPhone: input.customerPhone,
     reason: "escalada:pedido_grande",
-    message: retenido.resumen,
+    message: `${prefijo}${retenido.resumen}`.slice(0, 900),
     source: ctx.channel === "voz" ? "voice" : "whatsapp",
   });
+}
+
+/** En vez de crear el pedido: deja el aviso `escalada:pedido_grande` (con el resumen) para que la sucursal lo confirme y contacte al
+ * cliente. El resultado al modelo NO es un error: no marca fallo de herramienta ni sube al modelo caro. */
+async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolContext, input: CreateOrderInput, retenido: PedidoGrandeRetenidoError): Promise<AgentToolOutcome> {
+  await avisarPedidoGrandeASucursal(repo, ctx, input, retenido, null);
   const result = {
     pedido_grande: true,
     escalado: true,

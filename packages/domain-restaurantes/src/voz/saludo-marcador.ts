@@ -1,6 +1,6 @@
 // Marcador `{saludo}` del mensaje inicial de voz. El original (ORIG AdminDashboard.tsx:1470-1490) mandaba `{{saludo}}` calculado con
 // la hora de Merida; en main el mensaje inicial era fijo. Se resuelve en el SERVIDOR con la zona horaria de la sucursal y la misma
-// regla del agente (`saludoPorHora`: buenos dias 5:00-11:59, buenas tardes 12:00-18:59, buenas noches el resto), nunca con la hora
+// regla del agente (`saludoPorHora`: buenos dias 5:00-11:59, buenas tardes 12:00-19:59, buenas noches el resto), nunca con la hora
 // del navegador ni la del proceso (UTC en Vercel).
 import { saludoPorHora } from "@atiende/voice-core";
 

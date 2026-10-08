@@ -17,7 +17,7 @@ import { exigirPinSiPmSinZonas } from "./pin-reparto.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion, PROGRAMACION_MAXIMA_DIAS } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
-import { applyPromotionToOrder, normalizePromotionCode, selectAutomaticPromotion } from "./promotions.ts";
+import { applyPromotionToOrder, normalizePromotionCode, renglonesConPromocionAplicada, selectAutomaticPromotion } from "./promotions.ts";
 import { extraerPackSize, matchesProductSearch, nombraElPlatilloDeMediaOrden, ORDEN_COMPLETA, ordenarPorRelevancia, pesoDeProductoEnGramos, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
@@ -305,6 +305,8 @@ export interface PreparedOrder {
   readonly discount: number;
   /** Lineas de la comanda con la tortilla que eligio el cliente para un kilo de carne (ese renglon no exige tortilla y la descarta). */
   readonly tortillasDeKilo: readonly string[];
+  /** D12: los renglones tal como se guardan, con las unidades regaladas por la promocion a $0 (la suma de renglones es el `total`). Sin promocion de unidades, son `orderItems`. */
+  readonly renglonesPersistidos: readonly PersistedOrderItem[];
 }
 
 /** Tolerancia (minutos) para una hora de recogida "de ahora mismo": el cliente dice "paso en 5 minutos" y el modelo la redondea hacia atras. */
@@ -508,7 +510,7 @@ export async function prepareCreateOrder(
   const payloadFinal: ValidatedCreateOrderInput =
     payload.propina === undefined && payload.propinaPorcentaje !== undefined ? { ...payload, propina: redondearACentavos((total * payload.propinaPorcentaje) / 100) } : payload;
 
-  return { payload: payloadFinal, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo };
+  return { payload: payloadFinal, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo, renglonesPersistidos: renglonesConPromocionAplicada(orderItems, appliedPromotion, total) };
 }
 
 /**
@@ -560,7 +562,7 @@ export async function createOrder(
 ): Promise<Order> {
   const prepared = await prepareCreateOrder(repo, rawInput);
   await options.beforePersist?.(prepared);
-  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo } = prepared;
+  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo, renglonesPersistidos } = prepared;
   // R-11: contra una base sin la migracion 034 el pedido programado se rechaza (503) en vez de crearse inmediato.
   if (payload.programadoPara) await assertProgramacionDisponible(repo);
 
@@ -637,7 +639,7 @@ export async function createOrder(
       customerEmail: payload.customerEmail ?? null,
       branch: branch.name,
       total,
-      items: orderItems,
+      items: renglonesPersistidos,
       source: payload.source,
       notes: finalNotes,
       paymentMethod: payload.paymentMethod ?? null,

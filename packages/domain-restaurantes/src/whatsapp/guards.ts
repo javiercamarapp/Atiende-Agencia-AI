@@ -120,7 +120,32 @@ export function afirmaHaberAvisado(reply: string): boolean {
   const inmediata = new RegExp(`\\b(?:permitame|permitanme|dejeme)\\s+avisar(?:le|les)?\\s+(?:a|al|a\\s+la)\\s+(?:\\w+\\s+){0,2}(?:gerente|equipo|encargad[oa])\\b(?![^.!?]*\\b(?:list[oa]s?|prepar\\w*|tenga\\w*)\\b)`);
   const registrado = /\bel\s+aviso\s+(?:ya\s+)?(?:quedo|fue|se\s+registro|esta\s+registrado)\b|\b(?:ya\s+)?quedo\s+avisad[oa]\b/;
   const notifique = /\bnotific(?:ue|amos)\s+(?:al|a\s+la)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal)\b/;
-  return pasado.test(t) || inmediata.test(t) || registrado.test(t) || notifique.test(t);
+  // T7-060 (ronda 5): «Permítame verificarlo con una persona de la sucursal» (o «lo consulto con el gerente») es la promesa de que una persona lo revisa. Sin escalar_a_humano no hay nadie a
+  // quien le llegue: el agente dijo que consultaria y no habia aviso. Cuenta la promesa inmediata («permitame verificarlo con...») y la primera persona («lo verifico / voy a consultarlo con...»).
+  // Se mira frase por frase: no cuentan la pregunta, la negacion, el condicional («si quiere, lo consulto con el gerente») ni el subjuntivo («para que lo verifique»).
+  return pasado.test(t) || inmediata.test(t) || registrado.test(t) || notifique.test(t) || reply.split(/(?<=[.!?;])\s+/).some(prometeConsultarConUnaPersona);
+}
+
+// «la sucursal» solo cuenta si no la sigue un nombre: «confirmo con la sucursal García Lavín su pedido» es el dato del pedido, no una consulta a una persona.
+const PERSONA_A_CONSULTAR = "(?:una\\s+persona|un\\s+asesor|alguien|el\\s+gerente|la\\s+gerente|el\\s+equipo|el\\s+encargad[oa]|la\\s+encargada|la\\s+sucursal(?=\\s*(?:$|[,.;]|\\s(?:y|para|si|que|ya|porque)\\b)))";
+const VERBO_DE_CONSULTA = "(?:verificar|consultar|confirmar|checar|revisar)";
+const PROMESA_DE_CONSULTA = new RegExp(
+  `\\b(?:permitame|permitanme|dejeme)\\s+${VERBO_DE_CONSULTA}(?:l[oae]s?)?\\s+con\\s+${PERSONA_A_CONSULTAR}|\\b(?:l[oae]s?\\s+)?(?:verifico|consulto|reviso|checo|verificare|consultare|revisare|checare)\\s+(?:l[oae]s?\\s+)?con\\s+${PERSONA_A_CONSULTAR}|\\bvoy\\s+a\\s+${VERBO_DE_CONSULTA}(?:l[oae]s?)?\\s+con\\s+${PERSONA_A_CONSULTAR}`,
+);
+function prometeConsultarConUnaPersona(frase: string): boolean {
+  if (/[?¿]/.test(frase)) return false;
+  // «Ayer lo consultó con el gerente» (3.a persona, pasado): sin el acento se confundiria con «consulto». Es historial, no una promesa.
+  if (/\b(?:consult|verific|confirm|revis|chec)ó(?![a-záéíóúñ])/i.test(frase)) return false;
+  const t = normalizarParaClasificar(frase);
+  const m = PROMESA_DE_CONSULTA.exec(t);
+  if (!m) return false;
+  const antes = t.slice(0, m.index);
+  // Condicional, ofrecimiento, subjuntivo o plazo lejano ANTES de la promesa: «si gusta, lo consulto...», «para que lo verifique...», «mañana lo consultaré...». La negacion solo cuenta pegada a la promesa
+  // («no lo consulto», «no puedo ...»): «No tengo el precio; permítame verificarlo...» o «No se preocupe, lo consulto...» siguen siendo una promesa.
+  if (/\b(?:cuando|podria|puedo|puede|podemos|para\s+que|en\s+caso|quiza|tal\s+vez|manana|luego|despues|mas\s+tarde|nunca|jamas)\b/.test(antes)) return false;
+  if (/(?:^|[\s,;])si(?![a-z])/.test(frase.slice(0, m.index).toLowerCase())) return false;
+  if (/\b(?:no|ni)\s+(?:\w+\s+){0,1}$/.test(antes)) return false;
+  return true;
 }
 
 /** Frase que ofrece algo "de cortesia" como parte del pedido (afirmacion), no una explicacion de la regla de la promocion ("solo para recoger", "los martes", "si pide...", "no hay aguas de cortesia"). */
@@ -241,6 +266,35 @@ export function porcentajePropinaDichoPorElCliente(mensajeDelCliente: string | u
 /** Tope razonable de una propina en porcentaje (validacion de entrada y relleno del servidor). */
 export const PROPINA_PORCENTAJE_MAX = 30;
 
+/**
+ * T7-044 (ronda 5): el cliente pidio «1 guacamole» (el platillo) y la cotizacion llevaba «Extra Guacamole», tomado de «lo de siempre»: el total salio $93 por debajo del real. Los dos
+ * productos existen a proposito (T-AM06/X26: el cliente elige), asi que el servidor no adivina: si la cotizacion trae Extra Guacamole sin el platillo y el cliente dijo «guacamole» a secas
+ * (sin extra / doble / adicional / otro / mas) y TODAVIA NO LE PREGUNTARON, devuelve el texto que el agente debe aclarar; si no, `null`. Pura.
+ *
+ * Sin bucle: la aclaracion se da por contestada en cuanto, despues de la ultima mencion a secas, el agente hablo del guacamole y el cliente respondio (cualquier cosa: «el extra, para mis
+ * tacos», «2 extras», «el platillo»); o si el cliente dice «extra» despues de mencionarlo. Sin conversacion (voz, camino legado) no opina. «guacamolera» (la salsa incluida) no cuenta.
+ */
+export function aclararGuacamoleExtra(nombresDeRenglones: readonly string[], conversacion: readonly { readonly role: string; readonly content: string }[] | undefined): string | null {
+  if (!conversacion || conversacion.length === 0) return null;
+  const nombres = nombresDeRenglones.map((n) => normalizarParaClasificar(n).trim());
+  if (!nombres.some((n) => n === "extra guacamole") || nombres.some((n) => n === "guacamole")) return null;
+  const textos = conversacion.map((m) => ({ role: m.role, t: normalizarParaClasificar(String(m.content ?? "")) }));
+  const MENCION = /\bguacamoles?\b/;
+  const EXTRA_DE_GUACAMOLE = /\b(?:extras?|dobles?|adicional(?:es)?|otro|otra|mas|segundo)\s+(?:de\s+)?(?:un\s+|una\s+|el\s+|la\s+)?guacamoles?\b|\bguacamoles?\s+(?:extras?|dobles?|adicional(?:es)?|de\s+mas)\b/;
+  let ultima = -1;
+  textos.forEach((m, idx) => {
+    if (m.role === "user" && MENCION.test(m.t) && !EXTRA_DE_GUACAMOLE.test(m.t)) ultima = idx;
+  });
+  if (ultima < 0) return null;
+  const despues = textos.slice(ultima + 1);
+  // El cliente dijo «extra» (o «doble», «adicional») despues de mencionarlo: ya eligio.
+  if (despues.some((m) => m.role === "user" && (/\bextras?\b|\bdobles?\b|\badicional(?:es)?\b|\bde\s+mas\b|\bpara\s+(?:mis|los|el)\s+tacos?\b/.test(m.t) || EXTRA_DE_GUACAMOLE.test(m.t)))) return null;
+  // El agente ya le pregunto por el guacamole y el cliente contesto.
+  const pregunto = despues.findIndex((m) => m.role === "assistant" && /guacamole|extra/.test(m.t));
+  if (pregunto >= 0 && despues.slice(pregunto + 1).some((m) => m.role === "user")) return null;
+  return "El cliente dijo «guacamole» sin decir «extra»: el platillo Guacamole y el Extra Guacamole (agregado para los tacos) son productos distintos y de distinto precio. No cotice Extra Guacamole por su cuenta ni por «lo de siempre»: pregúntele cuál quiere («¿el guacamole como platillo o un extra para sus tacos?»), espere su respuesta y vuelva a cotizar con el que elija.";
+}
+
 /** Quita la afirmacion de aviso cuando no se pudo dejar el aviso. */
 export function quitarAfirmacionDeAviso(reply: string): string {
   const sinFrase = reply
@@ -257,9 +311,31 @@ export function pendingQuestionForMissingData(branchKnown: boolean, orderId: str
   return "¿Qué le gustaría pedir, o hay algo más en lo que le pueda ayudar?";
 }
 
-export function enforcePendingQuestion(reply: string, branchKnown: boolean, orderId: string | null): string {
+/**
+ * T7-010 / T7-013 (ronda 5): el cliente ya se despidio («solo queria confirmar el horario, gracias», "nada mas, gracias", "hasta luego") y el servidor le anexaba «¿Qué le gustaría pedir?»
+ * a CADA turno, en bucle (8 veces seguidas), como si no hubiera terminado. Pura: el mensaje es SOLO una despedida/agradecimiento de cierre. Cuenta un mensaje corto, sin pregunta ni cifras,
+ * hecho unicamente de palabras de cierre y con al menos una de ellas inequivoca (gracias, nada mas, hasta luego, adios, es todo...). No cuenta: un saludo ("buenas tardes"), un «si,
+ * gracias» / «claro, gracias» (acepta una oferta), ni un mensaje que ademas pide, pregunta o dice una cantidad ("gracias, quiero 3 tacos", "no gracias, y el total?").
+ */
+export function esDespedidaDelCliente(mensaje: string | undefined): boolean {
+  if (!mensaje) return false;
+  if (/[?¿\d]/.test(mensaje)) return false;
+  const t = normalizarParaClasificar(mensaje).replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (t === "" || t.split(" ").length > 12) return false;
+  // Acepta una oferta o responde una pregunta: no es el cierre de la conversacion.
+  if (/(?:^|[,.;!¡]\s*)(?:ah\s+)?s[ií](?![a-záéíóúñ])/i.test(mensaje.trim())) return false;
+  if (/\b(?:claro|dale|va|ok|okay|por\s+favor|porfa|quiero|quisiera|necesito|ponme|pon|agrega|agregame|manda|mandame|envia|tambien|ademas|pero|cuanto|cuando|donde|como)\b/.test(t)) return false;
+  const CIERRE = new Set(["gracias", "muchas", "muchisimas", "mil", "no", "nada", "mas", "es", "eso", "todo", "ya", "por", "ahora", "igualmente", "igual", "hasta", "luego", "pronto", "adios", "bye", "chao", "fin", "buen", "buena", "buenas", "buenos", "dia", "dias", "tarde", "tardes", "noche", "noches", "que", "tenga", "tengas", "excelente", "usted", "ustedes", "saludos", "nos", "vemos", "solo", "queria", "confirmar", "saber", "si", "verificar", "estaban", "estan", "abiertos", "horario", "el", "la", "de", "lo", "se", "les", "le", "a", "ah", "oh", "bueno", "pues", "muy", "amable", "su", "atencion", "perfecto", "listo", "entendido", "excelentes", "fue", "todo", "eso", "era", "seria", "hoy", "gusto"]);
+  const palabras = t.split(" ");
+  if (!palabras.every((w) => CIERRE.has(w))) return false;
+  return /\b(?:gracias|nada\s+mas|es\s+todo|eso\s+es\s+todo|hasta\s+luego|hasta\s+pronto|adios|bye|chao|nos\s+vemos|igualmente|fin)\b/.test(t);
+}
+
+export function enforcePendingQuestion(reply: string, branchKnown: boolean, orderId: string | null, ultimoMensajeDelCliente?: string): string {
   const trimmed = reply.trim();
   if (/[?¿]/.test(trimmed)) return reply;
+  // El cliente cerro la conversacion: no se le vuelve a preguntar que quiere pedir (T7-010/T7-013).
+  if (esDespedidaDelCliente(ultimoMensajeDelCliente)) return reply;
   const pending = pendingQuestionForMissingData(branchKnown, orderId);
   if (!pending) return reply;
   return trimmed ? `${trimmed} ${pending}` : pending;
