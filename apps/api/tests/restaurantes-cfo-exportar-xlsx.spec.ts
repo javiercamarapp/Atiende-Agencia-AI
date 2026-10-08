@@ -77,7 +77,7 @@ describe("libro de Excel del CFO", () => {
     const ultimaSuc = String.fromCharCode(65 + iTotal - 1);
     const fila = filaDe(xml, "Ventas brutas \\(lista\\)".replace(/\\/g, ""));
     const c = celda(xml, `${letra}${fila}`);
-    expect(c.f).toMatch(new RegExp(`^SUM\\(([B-${ultimaSuc}]${fila},)*[B-${ultimaSuc}]${fila}\\)$`));
+    expect(c.f).toMatch(new RegExp(`^SUM\\(B${fila}(:[B-${ultimaSuc}]${fila})?(,[B-${ultimaSuc}]${fila}(:[B-${ultimaSuc}]${fila})?)*\\)$`));
     const valorVista = total.lineas.find((l) => l.id === "ventas_brutas")!.cifra.valor!;
     expect(Number(c.v)).toBeCloseTo(valorVista / 100, 2);
     // La suma de las celdas de sucursal reproduce el total (la fórmula es verdadera, no decorativa).
@@ -116,7 +116,7 @@ describe("libro de Excel del CFO", () => {
     expect(platillos.includes("&apos;=HYPERLINK(")).toBe(true);
     expect(platillos).not.toMatch(/<f>[^<]*HYPERLINK/);
     // Ninguna fórmula del libro contiene texto de origen: solo referencias y SUM/restas que generamos nosotros.
-    for (const xml of todo) for (const m of xml.matchAll(/<f>([\s\S]*?)<\/f>/g)) expect(m[1]).toMatch(/^(SUM\([A-Z]+\d+(,[A-Z]+\d+)*\)|[A-Z]+\d+(-[A-Z]+\d+)*)$/);
+    for (const xml of todo) for (const m of xml.matchAll(/<f>([\s\S]*?)<\/f>/g)) expect(m[1]).toMatch(/^(SUM\([A-Z]+\d+(:[A-Z]+\d+)?(,[A-Z]+\d+(:[A-Z]+\d+)?)*\)|[A-Z]+\d+(-[A-Z]+\d+)*)$/);
     // Y el texto es inlineStr, nunca una celda de fórmula ni con tipo `str`.
     expect(platillos).not.toMatch(/t="str"/);
     expect(nombres.some((n) => n.nombre.includes("SUM(1+1)"))).toBe(true); // el nombre de hoja no es una celda: solo se sanea
@@ -218,7 +218,7 @@ describe("libro de Excel del CFO", () => {
     const { vistas, alcance } = await armarVistas({ n: 2, nombreSucursal: "'Don Pepe'" });
     const { nombres } = await abrir(construirLibroCfo(vistas, alcance, GENERADO));
     for (const { nombre } of nombres) expect(nombre).not.toMatch(/^'|'$/);
-    expect(nombres.some((n) => n.nombre === "Suc Don Pepe")).toBe(true);
+    expect(nombres.some((n) => n.nombre === "Suc 'Don Pepe")).toBe(true);
   });
 
   it.each(["=1+1", "+1", "-1", "@SUM(1)", "\t=1", "\r=1", "\n=1", "  =1", "\u00a0=HYPERLINK(1)", "\uFF1DHYPERLINK(1)", " \t @x", "\uFF0Bx"])("textoSeguro neutraliza %j", (t) => {
@@ -227,5 +227,42 @@ describe("libro de Excel del CFO", () => {
 
   it("textoSeguro no toca texto normal", () => {
     for (const t of ["Taco al pastor", "Agua 1 L", "Café", "a=b", "—", ""]) expect(textoSeguro(t)).toBe(t);
+  });
+
+  it("nombres de hoja de sucursal: el recorte de apóstrofos y espacios es DESPUÉS de cortar a 31 (casos reportados y barrido hostil)", async () => {
+    const hostiles = ["AAAAAAAAAAAAAAAAAAAAAAAAAA's Place", "  'Pepe'  ", "'", "''''", "A".repeat(25) + "'''''' x", "Don Pepe'", "[:*?/\\]'", " ' ", "Ñandú'", "x".repeat(40) + "'"];
+    const { vistas, alcance } = await armarVistas({ n: 3 });
+    const sucs = vistas.resumen!.sucursales;
+    for (let i = 0; i < hostiles.length; i += 3) {
+      const grupo = sucs.map((s, j) => ({ ...s, nombre: hostiles[(i + j) % hostiles.length]! }));
+      const { nombres } = await abrir(construirLibroCfo({ ...vistas, resumen: { ...vistas.resumen!, sucursales: grupo } }, alcance, GENERADO));
+      for (const { nombre } of nombres) {
+        expect(nombre.length, nombre).toBeLessThanOrEqual(31);
+        expect(nombre, nombre).not.toMatch(/[[\]:*?/\\]/);
+        expect(nombre, nombre).not.toMatch(/^'|'$/);
+      }
+      expect(new Set(nombres.map((n) => n.nombre.toLowerCase())).size).toBe(nombres.length);
+    }
+    const a = await abrir(construirLibroCfo({ ...vistas, resumen: { ...vistas.resumen!, sucursales: sucs.map((s, j) => ({ ...s, nombre: ["AAAAAAAAAAAAAAAAAAAAAAAAAA's Place", "  'Pepe'  ", "Z"][j]! })) } }, alcance, GENERADO));
+    expect(a.nombres.map((n) => n.nombre)).toContain("Suc AAAAAAAAAAAAAAAAAAAAAAAAAA");
+    expect(a.nombres.map((n) => n.nombre)).toContain("Suc 'Pepe");
+  });
+
+  it("300 sucursales: ninguna fórmula supera 255 argumentos (la suma usa rangos contiguos)", async () => {
+    const { vistas, alcance } = await armarVistas({ n: 2 });
+    const er = vistas.estadoResultados!;
+    const acum = er.estadoResultados.acumulado;
+    const base = acum.columnas.find((c) => c.clave === "sucursal")!;
+    const N = 300;
+    const cols = Array.from({ length: N }, (_, i) => ({ ...base, propertyId: `p${i}`, nombre: `S${i}` }));
+    const total = { ...acum.columnas.find((c) => c.clave === "total")!, lineas: base.lineas.map((l) => ({ ...l, cifra: { ...l.cifra, valor: l.cifra.valor === null ? null : l.cifra.valor * N } })) };
+    const grande = { ...vistas, estadoResultados: { ...er, estadoResultados: { ...er.estadoResultados, acumulado: { ...acum, columnas: [...cols, total] } } } };
+    const { hoja } = await abrir(construirLibroCfo(grande, alcance, GENERADO));
+    const xml = await hoja("Estado de resultados");
+    const f = celda(xml, `KP${filaDe(xml, "Ventas brutas (lista)")}`).f; 
+    expect(f).toMatch(/^SUM\(B\d+:KO\d+\)$/);
+    let max = 0;
+    for (const m of xml.matchAll(/<f>([\s\S]*?)<\/f>/g)) max = Math.max(max, m[1]!.split(",").length);
+    expect(max).toBeLessThanOrEqual(255);
   });
 });
