@@ -194,10 +194,13 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
           return c.json({ order: outcome.raw });
         } catch (err) {
           if (err instanceof OrderConflictError) throw Errors.conflict(err.message);
-          if (err instanceof OrderValidationError) {
+          // QA-PM-R5-reglas-10: una guarda SQL `raise exception ... using errcode = '22023'` (p. ej. "programado_para debe ser una hora futura" por una carrera de segundos
+          // con "en 31 minutos") es una regla de negocio con mensaje accionable: 400 de validacion, no 500 "Error interno".
+          const reglaSql = !(err instanceof OrderValidationError) && (err as { code?: unknown } | null)?.code === "22023" && err instanceof Error && err.message.trim() !== "";
+          if (err instanceof OrderValidationError || reglaSql) {
             const code = (err as { code?: unknown }).code;
             await auditVoice(repo, org, caller, "crear_pedido", "denied", typeof code === "string" ? code : "validacion");
-            return c.json({ code: "validation_error", message: err.message }, 400);
+            return c.json({ code: "validation_error", message: (err as Error).message }, 400);
           }
           throw err;
         }
