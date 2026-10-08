@@ -93,6 +93,18 @@ select customer_count::int as juanes_distintos_deberia_ser_2
 from restaurantes.orders_bucketed_stats('00000000-0000-0000-0000-0000000f0001', null, array['2026-09-03 00:00:00+00'::timestamptz], array['2026-09-04 12:30:00+00'::timestamptz]);
 rollback;
 
+\echo '=== A4b. POSITIVO (H61 / 5f7cbb9): 1,200 pedidos de $10 suman EXACTAMENTE 12000 y 1200 ordenes (agregado en SQL, sin tope de 1000 filas de la API) ==='
+begin;
+insert into restaurantes.orders (organization_id, property_id, customer_id, customer_name, customer_phone, total, status, items, source, created_at)
+select '00000000-0000-0000-0000-0000000f0001', '00000000-0000-0000-0000-0000000f00a1', '00000000-0000-0000-0000-0000000f00c1', 'Juan', '+5219991230001', 10, 'completado', '[]'::jsonb, 'web',
+       '2026-10-01 12:00:00+00'::timestamptz + (g || ' seconds')::interval
+from generate_series(1, 1200) g;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0011', true);
+select revenue::int as ventas_deberia_ser_12000, order_count::int as ordenes_deberia_ser_1200
+from restaurantes.orders_bucketed_stats('00000000-0000-0000-0000-0000000f0001', null, array['2026-10-01 00:00:00+00'::timestamptz], array['2026-10-02 00:00:00+00'::timestamptz]);
+rollback;
+
 \echo '=== A5. CROSS-TENANT: el owner de A pidiendo la organizacion B ve ventas 0 (RLS), nunca los 7000 ajenos ==='
 begin;
 set local role authenticated;
