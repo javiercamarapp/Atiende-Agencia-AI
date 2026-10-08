@@ -131,6 +131,17 @@ function enviadoComoDe(body: Record<string, unknown>): EnviadoComo {
   return "texto";
 }
 
+/** Codigos de Graph API que dicen «la FORMA del mensaje no vale» (100 = parametro invalido, 131008 = falta un parametro, 131009 = valor de parametro invalido). */
+const CODIGOS_DE_FORMATO = new Set([100, 131008, 131009]);
+
+/** `true` si el mensaje era de botones, Meta lo rechazo por su forma (4xx) y no es un fallo de proveedor: se reintenta UNA vez como texto. */
+function esRechazoDeFormatoDeBotones(body: Record<string, unknown>, err: unknown): boolean {
+  if (body.type !== "interactive" || (body.interactive as { type?: unknown } | undefined)?.type !== "button") return false;
+  if (!(err instanceof WhatsAppSendError) || err.retryable) return false;
+  const info = err.info;
+  return info?.httpStatus !== undefined && info.httpStatus >= 400 && info.httpStatus < 500 && info.graphCode !== undefined && CODIGOS_DE_FORMATO.has(info.graphCode);
+}
+
 export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
   private readonly accessToken: string;
   private readonly apiVersion: string;
@@ -158,7 +169,22 @@ export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
 
     const body = buildRequestBody(message, this.approvedTemplates);
     const url = `${this.baseUrl}/${this.apiVersion}/${message.phoneNumberId}/messages`;
+    try {
+      return { providerMessageId: await this.post(url, body), enviadoComo: enviadoComoDe(body) };
+    } catch (err) {
+      // Degradacion a texto (B03): si Meta rechaza un mensaje de botones por su FORMA (parametro invalido: cuerpo de mas de 1024 caracteres, canal o version que no admite
+      // interactivos), el cliente recibe el mismo texto sin botones en vez de quedarse sin respuesta. Solo para esos codigos de formato: un numero invalido, el token o
+      // un fallo transitorio siguen su camino (reintento / dead) sin duplicar la llamada.
+      if (esRechazoDeFormatoDeBotones(body, err)) {
+        const texto = { messaging_product: "whatsapp", to: message.to, type: "text", text: { body: message.body, preview_url: false } };
+        return { providerMessageId: await this.post(url, texto), enviadoComo: "texto" };
+      }
+      throw err;
+    }
+  }
 
+  /** POST a Graph API; devuelve el id del mensaje o lanza `WhatsAppSendError` clasificado (reintentable o no). */
+  private async post(url: string, body: Record<string, unknown>): Promise<string> {
     let response: Response;
     try {
       response = await this.fetchImpl(url, {
@@ -206,6 +232,6 @@ export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
       // finge éxito sin evidencia real de que el mensaje se aceptó.
       throw new WhatsAppSendError("Graph API respondió 2xx sin messages[0].id", false);
     }
-    return { providerMessageId, enviadoComo: enviadoComoDe(body) };
+    return providerMessageId;
   }
 }

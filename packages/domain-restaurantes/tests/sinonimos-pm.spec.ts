@@ -76,8 +76,8 @@ describe("alias del piloto en el plan del seed", () => {
     expect(conAlias.find((p) => p.name === "Frijol con Tostada")!.searchKeywords).toContain("totopos");
   });
 
-  it("solo entran los origenes aprobados (chats_c3, derivado_nombre, cuestionario_pm)", () => {
-    for (const p of data.productos) for (const origen of Object.values(p.alias_piloto ?? {})) expect(origen).toMatch(/^(chats_c3|derivado_nombre|cuestionario_pm)/);
+  it("solo entran los origenes aprobados (chats_c3, derivado_nombre, cuestionario_pm y, desde el OK de Javier del 7-oct, cuestionario_web y sentido_comun_aprobado)", () => {
+    for (const p of data.productos) for (const origen of Object.values(p.alias_piloto ?? {})) expect(origen).toMatch(/^(chats_c3|derivado_nombre|cuestionario_pm|cuestionario_web|sentido_comun_aprobado)/);
     const mala = JSON.parse(JSON.stringify(data)) as { productos: Array<{ nombre: string; alias?: string[]; alias_piloto?: Record<string, string> }> };
     const p = mala.productos.find((x) => x.nombre === "Coca-Cola")!;
     p.alias = [...(p.alias ?? []), "burbujas"];

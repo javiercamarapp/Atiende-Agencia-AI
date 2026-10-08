@@ -144,8 +144,8 @@ describe("cargarOnboarding sobre el seed de PM (datos reales del repositorio)", 
   it("la cuenta recien sembrada muestra los pendientes del dueño: coordenadas de T3, cobertura, WhatsApp, cambio de turno y nombre del asistente", async () => {
     const world = await buildInMemoryPmWorld(buildPmSeedPlan(data, agent, { demo: true }));
     const c = await cargarOnboarding(world.repo, world.organizationId);
-    // Activas: T1, T3 y T7. Inactivas (faltantes): T2 y T8 con catalogo provisional; T4 Galerias no recibe pedidos; T5 Playa esta fuera de temporada.
-    expect(item(c, "sucursales")).toMatchObject({ estado: "hecho", faltantes: ["Francisco de Montejo", "Galerías", "Playa (Chicxulub)", "Victory Altabrisa"] });
+    // En la carga DEMO T2 y T8 (catalogo provisional) se crean activas para probar sus colonias; en una carga normal quedan inactivas. T4 Galerias no recibe pedidos; T5 Playa esta fuera de temporada.
+    expect(item(c, "sucursales")).toMatchObject({ estado: "hecho", faltantes: ["Galerías", "Playa (Chicxulub)"] });
     expect(item(c, "menu").estado).toBe("hecho");
     expect(item(c, "horarios").estado).toBe("hecho");
     expect(item(c, "pedido_minimo").estado).toBe("hecho");

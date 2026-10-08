@@ -309,6 +309,9 @@ describe("E.11 fallas del proveedor LLM", () => {
 
   it("T-FP06 / X34 [P2] tras un crear_pedido fallido el siguiente paso del loop sube al modelo de respaldo caro", async () => {
     const f = dosSucursales();
+    // B04: solo un FALLO (error de sistema) sube de modelo; un rechazo de regla no. Aqui la base cae al crear el cliente.
+    await seedConfirmedOrderFlow(f.repo, f.organizationId, `wa:${PHONE}`, { branchSlug: "fco-montejo", canal: "recoger", items: [{ productId: f.products.cocaCola, productName: "Coca-Cola", requestedQuantity: 1 }] });
+    vi.spyOn(f.repo, "upsertCustomer").mockRejectedValue(new Error("base caida"));
     let paso = 0;
     const barato = new FakeLlmProvider({
       id: "barato",
