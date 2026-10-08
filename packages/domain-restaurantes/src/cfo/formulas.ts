@@ -17,7 +17,7 @@ import type {
   FilaVentasDiarias,
   TipoBaseComparacion,
 } from "./tipos.ts";
-import { cifra, combinarConfianza, divEntera, mulDiv, pct1, razon1, redondear, sinDato, suma } from "./util.ts";
+import { cifra, cmp, combinarConfianza, divEntera, mulDiv, pct1, razon1, redondear, sinDato, suma } from "./util.ts";
 
 const F_VENTAS = "cfo_ventas_diarias";
 const F_AGENTE = "cfo_agente_diario";
@@ -451,7 +451,7 @@ export function topParesCanasta(pares: readonly FilaCanastaPar[], totales: reado
     if (sl.soportePct == null || sl.soportePct < minSoportePct) continue;
     out.push({ propertyId: p.propertyId, productoA: p.productoA, productoB: p.productoB, pedidosJuntos: p.pedidosJuntos, soportePct: sl.soportePct, lift: sl.lift });
   }
-  out.sort((a, b) => b.pedidosJuntos - a.pedidosJuntos || a.propertyId.localeCompare(b.propertyId) || a.productoA.localeCompare(b.productoA) || a.productoB.localeCompare(b.productoB));
+  out.sort((a, b) => b.pedidosJuntos - a.pedidosJuntos || cmp(a.propertyId, b.propertyId) || cmp(a.productoA, b.productoA) || cmp(a.productoB, b.productoB));
   return out.slice(0, limite);
 }
 

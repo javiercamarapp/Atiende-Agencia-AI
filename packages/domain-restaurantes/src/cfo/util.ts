@@ -75,6 +75,11 @@ export function razon1(num: number, den: number): number | null {
   return mulDiv(num, 10, den) / 10;
 }
 
+/** Comparador de cadenas por punto de código: determinista en cualquier runtime/locale (a diferencia de `localeCompare`). */
+export function cmp(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 // ---- Cifras ------------------------------------------------------------------------------------------------------------------------------
 
 export function cifra(valor: number | null, confianza: Confianza, fuente: string): Cifra {

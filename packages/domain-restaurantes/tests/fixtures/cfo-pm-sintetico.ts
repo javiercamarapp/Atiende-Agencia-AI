@@ -24,6 +24,7 @@ import type {
   TipoServicioSr,
 } from "../../src/cfo/tipos.ts";
 import { CFO_CONFIG_POR_DEFECTO } from "../../src/cfo/tipos.ts";
+import { cmp } from "../../src/cfo/util.ts";
 
 export const ETIQUETA_SINTETICO = "SINTÉTICO – no es un export real de SoftRestaurant";
 
@@ -250,7 +251,7 @@ export function agregarVentasDiarias(pedidos: readonly PedidoSintetico[], promes
     }
     m.set(k, f);
   }
-  return [...m.values()].sort((a, b) => a.propertyId.localeCompare(b.propertyId) || a.diaNegocio.localeCompare(b.diaNegocio) || a.canal.localeCompare(b.canal) || a.source.localeCompare(b.source) || (a.paymentMethod ?? "").localeCompare(b.paymentMethod ?? ""));
+  return [...m.values()].sort((a, b) => cmp(a.propertyId, b.propertyId) || cmp(a.diaNegocio, b.diaNegocio) || cmp(a.canal, b.canal) || cmp(a.source, b.source) || cmp((a.paymentMethod ?? ""), b.paymentMethod ?? ""));
 }
 
 export function agregarCortesias(pedidos: readonly PedidoSintetico[]): FilaCortesias[] {
@@ -261,7 +262,7 @@ export function agregarCortesias(pedidos: readonly PedidoSintetico[]): FilaCorte
     const prev = m.get(k) ?? { propertyId: p.propertyId, diaNegocio: p.diaNegocio, reposiciones: 0, valorListaCentavos: 0, renglonesSinPrecio: 0 };
     m.set(k, { ...prev, reposiciones: prev.reposiciones + 1, valorListaCentavos: prev.valorListaCentavos + p.brutaCentavos });
   }
-  return [...m.values()].sort((a, b) => a.propertyId.localeCompare(b.propertyId) || a.diaNegocio.localeCompare(b.diaNegocio));
+  return [...m.values()].sort((a, b) => cmp(a.propertyId, b.propertyId) || cmp(a.diaNegocio, b.diaNegocio));
 }
 
 export function agregarVentasHora(pedidos: readonly PedidoSintetico[]): FilaVentasHora[] {
@@ -273,7 +274,7 @@ export function agregarVentasHora(pedidos: readonly PedidoSintetico[]): FilaVent
     const prev = m.get(k) ?? { propertyId: p.propertyId, dowNegocio: dow, horaLocal: p.horaLocal, source: p.source, pedidos: 0, netaCentavos: 0 };
     m.set(k, { ...prev, pedidos: prev.pedidos + 1, netaCentavos: prev.netaCentavos + p.netaCentavos });
   }
-  return [...m.values()].sort((a, b) => a.propertyId.localeCompare(b.propertyId) || a.dowNegocio - b.dowNegocio || a.horaLocal - b.horaLocal || a.source.localeCompare(b.source));
+  return [...m.values()].sort((a, b) => cmp(a.propertyId, b.propertyId) || a.dowNegocio - b.dowNegocio || a.horaLocal - b.horaLocal || cmp(a.source, b.source));
 }
 
 export function agregarProductos(pedidos: readonly PedidoSintetico[]): FilaProducto[] {
@@ -288,7 +289,7 @@ export function agregarProductos(pedidos: readonly PedidoSintetico[]): FilaProdu
       m.set(k, { ...prev, unidades: prev.unidades + it.cantidad, ingresoCentavos: prev.ingresoCentavos + it.cantidad * it.precio, pedidos: prev.pedidos + 1 });
     }
   }
-  return [...m.values()].sort((a, b) => a.propertyId.localeCompare(b.propertyId) || a.productoRef.localeCompare(b.productoRef) || a.diaNegocio.localeCompare(b.diaNegocio));
+  return [...m.values()].sort((a, b) => cmp(a.propertyId, b.propertyId) || cmp(a.productoRef, b.productoRef) || cmp(a.diaNegocio, b.diaNegocio));
 }
 
 // ---- Clientes (conteos distintos: NO aditivos) -------------------------------------------------------------------------------------------
@@ -307,7 +308,7 @@ export function resumirClientes(pedidos: readonly PedidoSintetico[], desde: stri
     const intervalos: number[] = [];
     let pedidos12m = 0, clientes12m = 0;
     for (const ps of porCliente.values()) {
-      const orden = [...ps].sort((a, b) => a.diaNegocio.localeCompare(b.diaNegocio));
+      const orden = [...ps].sort((a, b) => cmp(a.diaNegocio, b.diaNegocio));
       const enRango = orden.filter((p) => p.diaNegocio >= desde);
       const ultimo = orden[orden.length - 1]!.diaNegocio;
       const d = diasEntre(ultimo, hasta);
@@ -358,7 +359,7 @@ export function generarAgenteDiario(pedidos: readonly PedidoSintetico[], semilla
   const centavos = (micro: number): number => Math.round((micro * tc) / 10_000);
   const filas: FilaAgenteDiario[] = [];
   const diasVistos = new Set<string>();
-  for (const [k, v] of [...porClave.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [k, v] of [...porClave.entries()].sort(([a], [b]) => cmp(a, b))) {
     const [propertyId, diaNegocio] = k.split("|") as [string, string];
     diasVistos.add(diaNegocio);
     const waConv = Math.max(v.wa, Math.round((v.wa / 0.3) * (0.9 + rnd() * 0.2)));
@@ -391,7 +392,7 @@ export function generarComandasPos(pedidos: readonly PedidoSintetico[], modo = "
   const rnd = mulberry32(semilla);
   const m = new Map<string, number>();
   for (const p of pedidos) if (esVenta(p)) m.set(`${p.propertyId}|${p.diaNegocio}`, (m.get(`${p.propertyId}|${p.diaNegocio}`) ?? 0) + 1);
-  return [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, n]) => {
+  return [...m.entries()].sort(([a], [b]) => cmp(a, b)).map(([k, n]) => {
     const [propertyId, diaNegocio] = k.split("|") as [string, string];
     const confirmadas = Math.round(n * 0.1);
     const capturadas = Math.round(n * (0.8 + rnd() * 0.15));
@@ -409,7 +410,7 @@ export function generarAgotados(pedidos: readonly PedidoSintetico[], hasta: stri
   for (const suc of SUCURSALES_PM_SINTETICAS) {
     const unidades = new Map<string, number>();
     for (const p of ult28) if (p.propertyId === suc.propertyId) for (const it of p.items) unidades.set(it.ref, (unidades.get(it.ref) ?? 0) + it.cantidad);
-    const orden = [...unidades.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const orden = [...unidades.entries()].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]));
     orden.forEach(([ref, u], i) => {
       const prod = PRODUCTOS_SINTETICOS.find((x) => x.ref === ref)!;
       out.push({ propertyId: suc.propertyId, productId: ref, nombre: prod.nombre, agotadoHasta: null, unidades28d: u, diasConVenta28d: 28, precioListaCentavos: prod.precio, rankingUnidades: i + 1 });
@@ -448,7 +449,7 @@ export function generarSrResumen(pedidos: readonly PedidoSintetico[], semilla = 
     agente.set(k, prev);
   }
   const filas: FilaSrResumen[] = [];
-  for (const [k, a] of [...agente.entries()].sort(([x], [y]) => x.localeCompare(y))) {
+  for (const [k, a] of [...agente.entries()].sort(([x], [y]) => cmp(x, y))) {
     const [propertyId, diaNegocio] = k.split("|") as [string, string];
     const base = (tipo: TipoServicioSr, neta: number, tarjetaPct: number): void => {
       for (const forma of ["efectivo", "tarjeta"] as const) {
@@ -565,7 +566,7 @@ export const RESUMEN_SR_SINTETICO_ESPERADO: readonly FilaSrResumen[] = (() => {
       canceladoCentavos: 0, propinaCentavos: (p?.propinaCentavos ?? 0) + c.ticket.propinaCentavos, ivaCentavos: null, netaCentavos: (p?.netaCentavos ?? 0) + c.ticket.totalCentavos,
     });
   }
-  return [...porLlave.values()].sort((a, b) => a.diaNegocio.localeCompare(b.diaNegocio) || a.tipoServicio.localeCompare(b.tipoServicio));
+  return [...porLlave.values()].sort((a, b) => cmp(a.diaNegocio, b.diaNegocio) || cmp(a.tipoServicio, b.tipoServicio));
 })();
 
 export const filasXlsxSrSintetico: string[][] = [
