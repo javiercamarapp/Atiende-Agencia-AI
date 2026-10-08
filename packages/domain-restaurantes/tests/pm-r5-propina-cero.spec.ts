@@ -36,12 +36,14 @@ describe("propina en porcentaje con propina:0 de relleno (QA-PM-R5-whatsapp-01)"
   it("propina_porcentaje 15 + propina 0 guarda la propina en pesos (15 % del total), no NULL", async () => {
     const s = setup("whatsapp");
     const sin = await s.crear({ payment_method: "tarjeta", propina_porcentaje: 0, propina: 0 });
-    const total = Number((sin as unknown as { total?: number }).total ?? NaN);
+    const total = (sin.result as { order: { total: number } }).order.total; // el total del flujo (2 Coca-Cola = 90), no un NaN
+    expect(total).toBeGreaterThan(0);
     const r = await s.crear({ payment_method: "tarjeta", propina_porcentaje: 15, propina: 0 });
     expect(r.orderId).not.toBeNull();
     const guardada = s.propinaGuardada(r.orderId);
     expect(guardada).not.toBeNull();
-    if (Number.isFinite(total)) expect(guardada).toBeCloseTo(Math.round(total * 15) / 100, 2);
+    expect(guardada).toBeCloseTo(Math.round(total * 15) / 100, 2);
+    expect(guardada).toBeCloseTo(13.5, 2);
   });
   it("propina en pesos con porcentaje 0 conserva los pesos", async () => {
     const s = setup("whatsapp");
