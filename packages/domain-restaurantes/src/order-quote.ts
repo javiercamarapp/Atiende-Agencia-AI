@@ -169,7 +169,7 @@ export const MAX_PIEZAS_PRODUCTO_POR_PESO = 25;
 /** Mensaje accionable para una cantidad fuera de rango: dice el maximo en vez de un error generico. */
 export function mensajeCantidadInvalida(value: unknown, max: number = MAX_PIEZAS_POR_RENGLON): string {
   return typeof value === "number" && Number.isInteger(value) && value > max
-    ? `Productos o cantidades inválidos: el máximo es de ${max} piezas por renglón; un pedido más grande lo confirma directamente la sucursal. Si ${value} son GRAMOS, requested_quantity no es el peso: busque el producto de esa presentación ("Bistec — 250 g") y mande requested_quantity 1.`
+    ? `Productos o cantidades inválidos: el máximo es de ${max} piezas por renglón; un pedido más grande lo confirma directamente la sucursal. Si ${value} son GRAMOS, requested_quantity no es el peso: busque el producto de esa presentación con buscar_producto usando la fracción ("cuarto de bistec", "tres cuartos de chuleta") y mande requested_quantity 1.`
     : "Productos o cantidades inválidos";
 }
 
@@ -214,7 +214,7 @@ export function buildOrderQuoteFromProducts(
     // peso ("Bistec de Res — 1 kg") no se pide por gramos: se rechaza con la instruccion de usar la presentacion exacta y cantidad 1.
     if (item.requestedQuantity > MAX_PIEZAS_PRODUCTO_POR_PESO && /[—-]\s*\d+(?:[.,]\d+)?\s*(?:kg|g|gr)\b/i.test(product.name)) {
       throw new OrderValidationError(
-        `${product.name} se vende por peso: requested_quantity es el número de piezas de ese producto (1 para un kilo), no gramos. Para ${item.requestedQuantity} g busque el producto de esa presentación (por ejemplo "Bistec — 250 g") con buscar_producto y mande requested_quantity 1.`,
+        `${product.name} se vende por peso: requested_quantity es el número de piezas de ese producto (1 para un kilo), no gramos. Para ${item.requestedQuantity} g busque el producto de esa presentación con buscar_producto usando la fracción en la consulta (por ejemplo "cuarto de bistec") y mande requested_quantity 1.`,
       );
     }
 

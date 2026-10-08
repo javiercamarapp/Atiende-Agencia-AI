@@ -8,7 +8,7 @@ const bistec250: ProductoEncontrado = { id: "b250", name: "Bistec de Res — 250
 
 describe("producto por peso con gramos como cantidad", () => {
   it("requested_quantity 250 sobre el producto de 1 kg se rechaza diciendo que use la presentacion de 250 g", () => {
-    expect(() => buildOrderQuoteFromProducts([{ productId: "b1", requestedQuantity: 250 }], [bistecKg])).toThrow(/se vende por peso.*"Bistec — 250 g".*requested_quantity 1/s);
+    expect(() => buildOrderQuoteFromProducts([{ productId: "b1", requestedQuantity: 250 }], [bistecKg])).toThrow(/se vende por peso.*"cuarto de bistec".*requested_quantity 1/s);
   });
   it("750 (sobre el maximo) tambien explica que son gramos", () => {
     expect(() => buildOrderQuoteFromProducts([{ productId: "b1", requestedQuantity: 750 }], [bistecKg])).toThrow(/GRAMOS/);
