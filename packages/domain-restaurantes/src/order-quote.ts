@@ -245,7 +245,8 @@ export function buildOrderQuoteFromProducts(
       const upper = Math.ceil(item.requestedQuantity / packSize) * packSize;
       const opciones = lower >= packSize ? `${lower} o ${upper}` : String(upper);
       throw new OrderValidationError(
-        `${product.name} solo se vende en órdenes de ${packSize} piezas. Pediste ${item.requestedQuantity}; puedes pedir ${opciones}.`,
+        `${product.name} solo se vende en órdenes de ${packSize} piezas. Pediste ${item.requestedQuantity}; puedes pedir ${opciones}. ` +
+          `requested_quantity va en PIEZAS, no en órdenes: ${item.requestedQuantity < packSize ? `si el cliente pidió ${item.requestedQuantity === 1 ? "UNA orden" : `${item.requestedQuantity} órdenes`}, mande requested_quantity ${item.requestedQuantity * packSize}` : `una orden son ${packSize} piezas y dos son ${packSize * 2}`}; no reintente con el mismo número.`,
       );
     }
 
