@@ -140,21 +140,40 @@ export function quitarCortesiaNoRespaldada(reply: string): string {
 export function afirmaPedidoRegistrado(frase: string): boolean {
   const t = normalizarParaClasificar(frase);
   if (/[?¿]/.test(frase)) return false;
-  if (/\b(?:si|cuando|para\s+que|una\s+vez|antes\s+de|hasta\s+que|en\s+cuanto|no\s+(?:esta|queda|quedo|ha)|todavia\s+no|aun\s+no|falta)\b/.test(t)) return false;
-  return (
-    /\b(?:quedo|queda|esta|fue|ha\s+sido)\s+(?:ya\s+)?(?:registrad[oa]|confirmad[oa]|anotad[oa]|tomad[oa])\b/.test(t) ||
-    /\b(?:ya\s+)?(?:lo|la|su\s+pedido|su\s+orden)\s+(?:ya\s+)?(?:registre|confirme|registramos|confirmamos|anote|anotamos)\b/.test(t) ||
-    /\bya\s+(?:registre|registramos|confirme|confirmamos)\s+(?:su|el)\s+(?:pedido|orden)\b/.test(t) ||
-    /\b(?:esta|va|paso|se\s+mando|se\s+envio)\s+(?:ya\s+)?(?:en|a)\s+(?:la\s+)?(?:cocina|preparacion)\b/.test(t)
-  );
+  // Condicional / negacion / futuro: no afirman nada. «si» se mira en el texto ORIGINAL para no confundir el «sí» afirmativo ("Sí, su pedido ya quedó registrado") con el condicional «si».
+  if (/(?:^|[\s¡,;:(])si(?=[\s,])/.test(frase.toLowerCase())) return false;
+  if (/\b(?:cuando|para\s+que|una\s+vez|antes\s+de|hasta\s+que|en\s+cuanto|no\s+(?:esta|queda|quedo|ha|he|hemos|se)|todavia\s+no|aun\s+no|(?:todavia|aun)\s+falta|falta)\b/.test(t)) return false;
+  // Sujeto PEDIDO (pedido / orden / comanda) con un predicado de "ya existe": registrado, confirmado, tomado, enviado, en camino, en cocina... Entre el sujeto y el predicado no puede
+  // haber otro objeto ("su pedido ... su direccion quedo registrada"): la direccion, el nombre, el cambio o el pago anotados NO son el pedido registrado.
+  const N = "(?:pedido|orden|comanda)";
+  const OBJETO = "(?:direccion|domicilio|nombre|cambio|pago|tarjeta|telefono|datos|correo|referencia|ubicacion|propina|nota|notas|factura)";
+  const PART = "(?:registrad[oa]|confirmad[oa]|anotad[oa]|tomad[oa]|levantad[oa]|apartad[oa]|generad[oa]|enviad[oa]|mandad[oa]|capturad[oa]|procesad[oa]|recibid[oa])";
+  const SALIDA = "(?:en\\s+camino|en\\s+cocina|en\\s+preparacion|en\\s+proceso|en\\s+marcha|preparandose|se\\s+esta\\s+preparando)";
+  const VERBO = "(?:(?:quedo|queda|esta|fue|ha\\s+sido|va|se\\s+(?:genero|tomo|registro|confirmo|envio|mando|paso|levanto))\\s+(?:ya\\s+)?)";
+  const UNO = "(?:registre|registramos|confirme|confirmamos|anote|anotamos|tome|tomamos|mande|mandamos|pase|pasamos|envie|enviamos|genere|generamos|capture|levante|aparte|procese)";
+  const patrones: RegExp[] = [
+    // «su pedido (ya) quedó registrado / está confirmado / va en camino / ya está en cocina», «Pedido confirmado ✅»
+    new RegExp(`\\b${N}\\b(?:\\s+(?!${OBJETO}\\b)[a-z0-9]+){0,4}?\\s+(?:ya\\s+)?${VERBO}?(?:${PART}|${SALIDA})\\b`),
+    // «ya quedó apartado su pedido», «ya está su pedido», «ya se generó su orden»
+    new RegExp(`\\b(?:ya\\s+)?(?:quedo|esta|fue|se\\s+(?:genero|tomo|registro|confirmo|envio|mando|paso|levanto))\\s+(?:ya\\s+)?(?:${PART}\\s+)?(?:su|el)\\s+${N}\\b`),
+    // «ya tomé su pedido», «ya mandé su comanda», «registré su orden»
+    new RegExp(`\\b${UNO}\\s+(?:ya\\s+)?(?:su|el|la|lo)\\s+(?:\\w+\\s+)?${N}\\b`),
+    // «ya lo registré / confirmamos / mandé / pasé a cocina», «ya lo dejé registrado»
+    /\bya\s+(?:lo|la)\s+(?:\w+\s+){0,2}?(?:registre|registramos|confirme|confirmamos|mande|mandamos|pase|pasamos|envie|enviamos|tome|tomamos|deje\s+registrad[oa]|dejamos\s+registrad[oa])\b/,
+    /\bya\s+(?:lo|la)\s+tenemos\s+(?:ya\s+)?(?:registrad|anotad|confirmad)[oa]\b/,
+    /\b(?:lo|la)\s+(?:mande|mandamos|pase|pasamos|envie|enviamos)\s+a\s+(?:la\s+)?cocina\b/,
+    // «va / pasó / se mandó (ya) a cocina»
+    /\b(?:esta|va|paso|se\s+mando|se\s+envio)\s+(?:ya\s+)?(?:en|a)\s+(?:la\s+)?(?:cocina|preparacion)\b/,
+  ];
+  return patrones.some((r) => r.test(t));
 }
 
 /** Quita las frases que afirman un pedido registrado cuando NO existe; si no queda nada, pide el "si" al resumen. */
-export function quitarAfirmacionDePedidoRegistrado(reply: string): string {
+export function quitarAfirmacionDePedidoRegistrado(reply: string, sustituto?: string): string {
   const frases = reply.split(/(?<=[.!?])\s+/);
   if (!frases.some(afirmaPedidoRegistrado)) return reply;
   const resto = frases.filter((f) => !afirmaPedidoRegistrado(f)).join(" ").trim();
-  return resto || "Todavía no queda registrado su pedido. ¿Me confirma con un «sí» el resumen para registrarlo?";
+  return resto || sustituto || "Todavía no queda registrado su pedido. ¿Me confirma con un «sí» el resumen para registrarlo?";
 }
 
 /** Quita la afirmacion de aviso cuando no se pudo dejar el aviso. */
