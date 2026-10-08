@@ -207,3 +207,4 @@ export { TranscripcionEnVivo, type TranscripcionEnVivoProps } from "./components
 export { VistaPreviaLlamada, type VistaPreviaLlamadaProps } from "./components/voz/VistaPreviaLlamada.js";
 export * from "./components/resumen-piezas.js";
 export * from "./components/consola-kit.js";
+export * from "./components/graficas-cfo.js";
