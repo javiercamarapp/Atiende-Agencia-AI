@@ -216,6 +216,8 @@ export function pideUnaPersona(text: string): boolean {
     const antes = text.slice(Math.max(0, idx - 60), idx);
     const segmento = antes.slice(Math.max(antes.lastIndexOf("."), antes.lastIndexOf(","), antes.lastIndexOf(";"), antes.lastIndexOf("!"), antes.lastIndexOf("?")) + 1);
     if (NEGACION_AL_FINAL.test(segmento)) continue;
+    // QA-PM-R3-voz-05: "que me atienda alguien en caja" / "alguien de caja" es una pregunta de pago al recoger (se paga en caja), no pedir una persona del equipo.
+    if (/^\s+(?:de|en|a)\s+(?:la\s+)?(?:caja|cajero|mostrador)\b/i.test(text.slice(idx + m[0].length, idx + m[0].length + 24))) continue;
     if (/^pasar\b/i.test(m[0]) && !MARCO_DE_PETICION.test(segmento)) continue;
     return true;
   }
