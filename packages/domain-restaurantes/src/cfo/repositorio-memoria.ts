@@ -465,7 +465,7 @@ export class InMemoryCfoRepository implements CfoRepository {
     if (!this.sucursalesOrg.has(e.propertyId) || !this.permitidas.has(e.propertyId)) throw new CfoSinAccesoError();
     if (!/^[0-9a-f]{64}$/.test(e.huella)) throw new CfoParametroInvalidoError("sr_importar: huella invalida (sha-256 hexadecimal en minusculas)");
     if (e.tipo !== "resumen_servicio" && e.tipo !== "cuentas") throw new CfoParametroInvalidoError("sr_importar: tipo invalido");
-    if (e.nombreArchivo.length < 1 || e.nombreArchivo.length > 120 || /[/\\\u0000-\u001f]/.test(e.nombreArchivo)) throw new CfoParametroInvalidoError("sr_importar: nombre de archivo invalido (1 a 120 caracteres, sin ruta)");
+    if (e.nombreArchivo.length < 1 || e.nombreArchivo.length > 120 || /[/\\]/.test(e.nombreArchivo) || [...e.nombreArchivo].some((ch) => ch.charCodeAt(0) < 32)) throw new CfoParametroInvalidoError("sr_importar: nombre de archivo invalido (1 a 120 caracteres, sin ruta)");
     const max = e.tipo === "cuentas" ? 20_000 : 2_000;
     if (e.renglones.length < 1 || e.renglones.length > max) throw new CfoParametroInvalidoError(`sr_importar: entre 1 y ${max} renglones para ${e.tipo}`);
     const previo = this.huellas.get(e.huella);

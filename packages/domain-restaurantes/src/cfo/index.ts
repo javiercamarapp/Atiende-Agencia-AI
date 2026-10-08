@@ -11,6 +11,9 @@ export * from "./narrativa.ts";
 export * from "./sr-normalizar.ts";
 export * from "./repositorio.ts";
 export * from "./repositorio-memoria.ts";
+export * from "./servicio.ts";
+export * from "./tipos-api.ts";
+export { restarAnio, rangoAnterior, rangoAnioAnterior, ventanas4Semanas, rangoComparativo } from "./servicio-util.ts";
 export {
   cifra,
   sinDato,

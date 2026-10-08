@@ -184,7 +184,8 @@ export function narrarResumen(kpis: KpisResumen, hallazgos: readonly Hallazgo[],
     add({
       texto: `El costo del agente fue de ${registrar("costo_pedido_agente", kpis.costoPorPedidoAgente)} por pedido${kpis.metaNoMedido ? ", sin incluir el costo de Meta, que no está medido" : ""}.`,
       refs: ["costo_pedido_agente"],
-    }, 5);
+      // Aclarar que Meta no está medido es una divulgación importante: sube de prioridad para no quedar fuera del tope de oraciones.
+    }, kpis.metaNoMedido ? 2 : 5);
   }
 
   // Clientes en más de una sucursal (no aditivo)
