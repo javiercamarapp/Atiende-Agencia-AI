@@ -104,6 +104,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect([...hoja.querySelectorAll("a")].map((a) => a.textContent)).toEqual([
       "Resumen",
       "Copiloto",
+      "CFO", // CFO-07 (owner/admin: cfo.ver)
       "Pedidos",
       "Comandas al POS",
       "Conversaciones",
@@ -136,10 +137,10 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect(categoriasSidebar(root)).toEqual(["Operación", "Catálogo", "Clientes", "Agente", "Configuración"]);
     // Abre la primera categoria; "Resumen" (raiz) esta siempre, sin boton ni titulo.
     expect(categoriasAbiertas(root)).toEqual(["Operación"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Pedidos", "Comandas al POS", "Conversaciones", "Turnos", "Historial", "Cierre del día"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "CFO", "Pedidos", "Comandas al POS", "Conversaciones", "Turnos", "Historial", "Cierre del día"]);
     abrirCategoria(root, "Catálogo");
     expect(categoriasAbiertas(root)).toEqual(["Catálogo"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Productos", "Promociones"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "CFO", "Productos", "Promociones"]);
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Manager Demo", rol: "Propietario" });
   });
 
@@ -161,6 +162,8 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect(tarjetaUsuario(rendered.container).rol).toBe("Equipo");
     // CHAT-08: el staff (MANAGER_ROLES del servidor) SÍ tiene Copiloto, justo debajo de Resumen.
     expect(linksSidebar(rendered.container).slice(0, 2)).toEqual(["Resumen", "Copiloto"]);
+    // CFO-07: el CFO es de owner/admin (`cfo.ver`): el staff no ve la entrada (el API le responde 403 igualmente).
+    expect(linksSidebar(rendered.container)).not.toContain("CFO");
     // R-16: sin la categoria Configuración, el staff alcanza "Mis avisos" desde Operación (la misma pagina que owner/admin ven en Configuración).
     expect(linksSidebar(rendered.container)).toContain("Avisos");
   });
