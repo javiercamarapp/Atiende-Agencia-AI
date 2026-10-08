@@ -4,19 +4,20 @@
 import { useMemo } from "react";
 import { SeccionFijadosCopiloto } from "@atiende/ui";
 import { apiBaseUrlFromRequestUrl, withAuthRefresh } from "../../../lib/authed-fetch.ts";
-import { COPILOTO_RESTAURANTES } from "../../../lib/copiloto/config/restaurantes.ts";
+import { COPILOTO_RESTAURANTES, COPILOTO_RESTAURANTES_SIN_CFO } from "../../../lib/copiloto/config/restaurantes.ts";
 import { crearClienteFijados } from "../../../lib/copiloto/fijados.ts";
 import { consultarEstadoCopiloto, crearTransporteCopiloto } from "../../../lib/copiloto/transporte.ts";
 import type { CopilotoTransporteConfig } from "../../../lib/copiloto/transporte.ts";
 import { CopilotoPage } from "../../../pages/CopilotoPage.tsx";
 import { restaurantesAuthContext } from "../dashboard-client.ts";
+import { puedeEn } from "../lib/permisos.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 export function urlChatDatosRestaurantes(apiBaseUrl: string, propertyId: string): string {
   return `${apiBaseUrl}/v1/restaurantes/${encodeURIComponent(propertyId)}/admin/chat-datos`;
 }
 
-export function RestaurantesCopilotoPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
+export function RestaurantesCopilotoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: RestaurantesShellContext) {
   const cfg = useMemo<CopilotoTransporteConfig>(() => {
     const baseUrl = urlChatDatosRestaurantes(apiBaseUrl, propertyId);
     const fetchImpl: typeof fetch = (...args) => fetch(...args);
@@ -31,7 +32,7 @@ export function RestaurantesCopilotoPage({ apiBaseUrl, token, propertyId, orgSlu
 
   return (
     <CopilotoPage
-      config={COPILOTO_RESTAURANTES}
+      config={puedeEn(role, "cfo.ver") ? COPILOTO_RESTAURANTES : COPILOTO_RESTAURANTES_SIN_CFO}
       transporte={transporte}
       consultarEstado={(senal) => consultarEstadoCopiloto(cfg, senal)}
       propertyId={propertyId}

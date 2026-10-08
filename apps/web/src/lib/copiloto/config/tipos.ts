@@ -9,7 +9,7 @@ export interface CopilotoConfigVertical {
   readonly textos: CopilotoTextos;
   /** Maximo 5 chips en reposo. */
   readonly sugerencias: readonly string[];
-  /** Exactamente 3 tarjetas con 2 o 3 preguntas. */
+  /** Tarjetas con 2 o 3 preguntas (restaurantes suma la tarjeta «CFO» con 5, CFO-09). */
   readonly categorias: readonly CopilotoCategoria[];
   /** Texto EXACTO de cada chip y pregunta de tarjeta -> consulta directa (herramienta del catalogo + argumentos tipados, p. ej. el
    *  periodo), que el servidor ejecuta SIN modelo. Un test del API valida cada entrada contra el catalogo real de la vertical. */

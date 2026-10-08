@@ -1,4 +1,4 @@
-// Catalogo CERRADO de "Chatea con tus datos" para RESTAURANTES. Ocho herramientas de solo lectura,
+// Catalogo CERRADO de "Chatea con tus datos" para RESTAURANTES. Ocho herramientas de solo lectura (mas las nueve `cfo_*` de CFO-09, en cfo-tools.ts),
 // todas con parametros tipados (periodo, sucursal por nombre, limite, orden) y alcance fijado por
 // el servidor. Para agregar otra vertical: ver docs/DATA-CHAT.md.
 import {
@@ -15,6 +15,8 @@ import {
   type ParsedArgs,
   type ResolvedPeriod,
 } from "@atiende/agent-core/data-chat";
+import { puedeEjecutar } from "../roles.ts";
+import { buildCfoDataChatTools } from "./cfo-tools.ts";
 import { DataChatUnavailableError, type DataChatWindow, type RestaurantesDataChatReader, type SalesGranularity, type VisibleBranch } from "./reader.ts";
 
 const SOURCE_ORDERS = "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)";
@@ -337,14 +339,20 @@ export function buildRestaurantesDataChatTools(reader: RestaurantesDataChatReade
     },
   };
 
-  return [ventasPorDia, ventasPorSucursal, productos, ticket, canal, horas, recurrentes, promociones];
+  return [ventasPorDia, ventasPorSucursal, productos, ticket, canal, horas, recurrentes, promociones, ...buildCfoDataChatTools(reader)];
 }
 
-export function buildRestaurantesDataChatCatalog(reader: RestaurantesDataChatReader): DataChatCatalog {
+/** Rol de vertical de quien pregunta: las herramientas `cfo_*` solo existen para quien tiene `cfo.ver` (owner/admin). Sin rol o con un rol desconocido: fail-closed. */
+export interface OpcionesCatalogoRestaurantes {
+  readonly verticalRole?: string | null;
+}
+
+export function buildRestaurantesDataChatCatalog(reader: RestaurantesDataChatReader, opciones: OpcionesCatalogoRestaurantes = {}): DataChatCatalog {
+  const conCfo = puedeEjecutar(opciones.verticalRole, "cfo.ver");
   return {
     vertical: "restaurantes",
     domain: "un restaurante con una o varias sucursales (pedidos por web, llamada de voz y WhatsApp)",
-    tools: buildRestaurantesDataChatTools(reader),
+    tools: buildRestaurantesDataChatTools(reader).filter((t) => conCfo || !t.name.startsWith("cfo_")),
     async describeScope(scope) {
       const visible = await reader.listVisibleBranches(scope.organizationId, scope.allowedPropertyIds);
       if (visible.length === 0) return "No tiene sucursales activas asignadas.";
