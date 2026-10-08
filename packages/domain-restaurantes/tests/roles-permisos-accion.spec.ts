@@ -11,6 +11,10 @@ const ESPERADO: Record<string, Record<string, boolean>> = {
   "sucursal.ver": { owner: true, admin: true, staff: true, repartidor: false },
   "sucursal.editar": { owner: true, admin: true, staff: false, repartidor: false },
   "pedidos.gestionar": { owner: true, admin: true, staff: true, repartidor: false },
+  "cfo.ver": { owner: true, admin: true, staff: false, repartidor: false },
+  "cfo.capturar": { owner: true, admin: true, staff: false, repartidor: false },
+  "cfo.importar_sr": { owner: true, admin: true, staff: false, repartidor: false },
+  "cfo.exportar": { owner: true, admin: true, staff: false, repartidor: false },
 };
 
 describe("matriz de permisos por accion (PL-23)", () => {
