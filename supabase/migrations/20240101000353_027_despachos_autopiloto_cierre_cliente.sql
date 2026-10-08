@@ -1020,8 +1020,16 @@ grant execute on function despachos.system_cierre_tareas_autocompletar(uuid, uui
 alter table despachos.periodo_cierre
   add column if not exists cierre_forzado boolean not null default false,
   add column if not exists cierre_forzado_motivo text check (cierre_forzado_motivo is null or char_length(cierre_forzado_motivo) between 10 and 500),
-  add column if not exists cierre_forzado_validaciones text[],
-  add constraint periodo_cierre_forzado_coherente check (cierre_forzado = (cierre_forzado_motivo is not null));
+  add column if not exists cierre_forzado_validaciones text[];
+
+-- Idempotente: re-aplicar la migracion no falla por la restriccion ya existente.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'periodo_cierre_forzado_coherente' and conrelid = 'despachos.periodo_cierre'::regclass) then
+    alter table despachos.periodo_cierre add constraint periodo_cierre_forzado_coherente check (cierre_forzado = (cierre_forzado_motivo is not null));
+  end if;
+end
+$$;
 
 -- STAFF (solo admin): registra el motivo ANTES de cerrar de forma forzada. Solo sobre un periodo no cerrado.
 create or replace function despachos.periodo_cierre_forzar(p_property_id uuid, p_periodo_id uuid, p_motivo text, p_validaciones text[])
