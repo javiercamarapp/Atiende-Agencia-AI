@@ -1,4 +1,4 @@
-// Catalogo CERRADO de "Chatea con tus datos" para RESTAURANTES. Ocho herramientas de solo lectura,
+// Catalogo CERRADO de "Chatea con tus datos" para RESTAURANTES. Ocho herramientas de solo lectura (mas las nueve `cfo_*` de CFO-09, en cfo-tools.ts),
 // todas con parametros tipados (periodo, sucursal por nombre, limite, orden) y alcance fijado por
 // el servidor. Para agregar otra vertical: ver docs/DATA-CHAT.md.
 import {
@@ -15,6 +15,7 @@ import {
   type ParsedArgs,
   type ResolvedPeriod,
 } from "@atiende/agent-core/data-chat";
+import { buildCfoDataChatTools } from "./cfo-tools.ts";
 import { DataChatUnavailableError, type DataChatWindow, type RestaurantesDataChatReader, type SalesGranularity, type VisibleBranch } from "./reader.ts";
 
 const SOURCE_ORDERS = "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)";
@@ -337,7 +338,7 @@ export function buildRestaurantesDataChatTools(reader: RestaurantesDataChatReade
     },
   };
 
-  return [ventasPorDia, ventasPorSucursal, productos, ticket, canal, horas, recurrentes, promociones];
+  return [ventasPorDia, ventasPorSucursal, productos, ticket, canal, horas, recurrentes, promociones, ...buildCfoDataChatTools(reader)];
 }
 
 export function buildRestaurantesDataChatCatalog(reader: RestaurantesDataChatReader): DataChatCatalog {
