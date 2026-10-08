@@ -1,66 +1,74 @@
-// Pedidos en operación (Fase 5) — lista por estado + cambio de estado real vía la
-// máquina de estados de order-lifecycle.ts (el servidor SIEMPRE re-valida la
-// transición; los botones ofrecidos aquí son solo un espejo de NEXT_STATUSES para
-// no mostrar una acción que el servidor rechazaría).
+// Pedidos en operacion (Fase 5 + UNI-R1) — tablero de despacho IDENTICO al del repo suelto: «N en total» a la izquierda y tres pildoras a la
+// derecha (Ordenes recibidas / enviadas / programadas), lista a la izquierda y la tarjeta «Entrega en curso» con el mapa a la derecha;
+// clic en una fila = detalle del pedido a pagina completa. Por debajo van las MISMAS llamadas reales de siempre: el cambio de estado pasa por
+// la maquina de estados de order-lifecycle.ts (el servidor SIEMPRE re-valida la transicion; los botones ofrecidos son solo un espejo de
+// NEXT_STATUSES para no mostrar una accion que el servidor rechazaria).
 //
-// Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a los
-// primitivos de `@atiende/ui` — `Tabs` para el filtro por estado, `Card` por pedido,
-// `Badge` para el estado, `Button` para cada transición y `useConfirm` para la
-// confirmación de "cancelado" (antes un `window.confirm` del navegador y luego un
-// `AlertDialog` local, ver el comentario de `handleChangeStatus`). El
-// gate de confirmación, las transiciones ofrecidas y todas las llamadas al
-// backend son EXACTAMENTE las mismas.
+// Mapeo de estados reales -> pildoras: «Ordenes recibidas» = todo lo que sigue en el restaurante antes de salir (Recibido, Preparando, Listo
+// para recoger, No recogido, Incidencia; mas «Por aprobar» del autopiloto, como filtro); «Ordenes enviadas» = En camino; «Ordenes programadas» =
+// Programado. Las funciones del monorepo que el original no tiene (sondeo, sonido, auto-impresion, vista previa, reglas del autopiloto) se
+// compactan en el boton «Herramientas».
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import {
-  Button,
-  Card,
-  CardContent,
-  Checkbox,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  Label,
-  NativeSelect,
-  PageContainer,
-  StatusBadge,
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TicketCocinaDialog,
-  construirTicketCocina,
-  formatMoney,
-  imprimirTicketsCocina,
-  pedidosPorImprimir,
-  statusTone,
-} from "@atiende/ui";
+import { Loader2, Package, Truck, CalendarClock } from "lucide-react";
+import { EstadoError, PageContainer, StatusBadge, TicketCocinaDialog, cn, construirTicketCocina, imprimirTicketsCocina, notify, pedidosPorImprimir } from "@atiende/ui";
 import type { TicketCocina } from "@atiende/ui";
-import { AlertTriangle, Clock, Printer, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { fetchAvisos, sonidoPedidoNuevoPermitido } from "../lib/avisos-client.ts";
+import { fetchAdminBranches } from "../lib/branches-client.ts";
+import type { BranchDetail } from "../lib/branches-client.ts";
 import { fetchAutopilotoConfig, fetchSolicitudes, fetchTiempoPrometido, registrarTicketImpreso } from "../lib/autopiloto-client.ts";
 import type { AutopilotoConfigRespuesta, MotivoCancelacion, SolicitudesRespuesta, TiempoPrometido } from "../lib/autopiloto-client.ts";
-import { assignRepartidor, fetchOrders, fetchRepartidorSugerido, fetchScheduledOrders, nextStatusesForCanal, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
+import { assignRepartidor, etiquetaFolio, fetchOrders, fetchRepartidorSugerido, fetchScheduledOrders, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary, RepartidorSugerido } from "../lib/orders-client.ts";
 import { guardarSonido, idsNuevos, leerSonido, etiquetaActualizado, reproducirAviso, SONDEO_BASE_MS } from "../lib/sondeo-pedidos.ts";
 import { useSondeoPedidos } from "../lib/use-sondeo-pedidos.ts";
-import { ProgramadosPanel } from "./ProgramadosPanel.tsx";
+import { ProgramadosPanel, sigueProgramado } from "./ProgramadosPanel.tsx";
 import { AprobacionesPanel } from "./AprobacionesPanel.tsx";
 import { AutopilotoReglasDialogo } from "../components/AutopilotoReglasDialogo.tsx";
 import { HistorialPedidoDialogo } from "../components/HistorialPedidoDialogo.tsx";
 import { MotivoDialogo } from "../components/MotivoDialogo.tsx";
-import { ETIQUETA_ESTADO_COMANDA, TONO_ESTADO_COMANDA, etiquetaInsigniaPedido, fetchEstadosComandaPorPedido } from "../lib/pos-comandas-client.ts";
+import { FilaPedido } from "../components/pedidos/FilaPedido.tsx";
+import { HerramientasPedidos } from "../components/pedidos/HerramientasPedidos.tsx";
+import { IncidenciaDialogo } from "../components/pedidos/IncidenciaDialogo.tsx";
+import { MapaEntrega } from "../components/pedidos/MapaEntrega.tsx";
+import { PedidoDetalle } from "../components/pedidos/PedidoDetalle.tsx";
+import { fetchEstadosComandaPorPedido } from "../lib/pos-comandas-client.ts";
 import type { EstadoComandaWire } from "../lib/pos-comandas-client.ts";
 import { fetchRepartidores } from "../lib/staff-client.ts";
 import type { RepartidorMember } from "../lib/staff-client.ts";
-import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
 import { clavePrefsTicketCocina, conCandadoDeImpresion, guardarPrefs, leerPrefs, liberarReclamo, PREFS_VACIAS, marcarImpresos, reclamarImpresion, registrarReimpresion, storageDisponible } from "../lib/ticket-cocina-prefs.ts";
 import type { PrefsTicketCocina } from "../lib/ticket-cocina-prefs.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
-/** Pestana de pedidos programados (R-11): no es un estado de `orders.status` operativo, es su propia lista. */
+/** Las tres pildoras del tablero (repo suelto). */
+type Vista = "recibidas" | "enviadas" | "programadas";
+/** Filtro de estado dentro de «Ordenes recibidas» (chips): conserva los estados reales que el original no tiene. */
+type FiltroRecibidas = "todos" | "por_aprobar" | "pending" | "preparando" | "listo_para_recoger" | "no_recogido" | "problema";
+/** Lo que se pide al servidor: un estado, la union de las recibidas, la lista de programados o la bandeja de aprobaciones. */
 type PestanaPedidos = OrderStatus | "todos" | "programados";
 
-const OPERATIVE_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "listo_para_recoger", "no_recogido", "problema"];
+/** Estados que siguen «en el restaurante» (todas las recibidas). */
+const RECIBIDAS_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "listo_para_recoger", "no_recogido", "problema"];
+
+const VISTAS: readonly { readonly id: Vista; readonly etiqueta: string; readonly icono: typeof Package }[] = [
+  { id: "recibidas", etiqueta: "Órdenes recibidas", icono: Package },
+  { id: "enviadas", etiqueta: "Órdenes enviadas", icono: Truck },
+  { id: "programadas", etiqueta: "Órdenes programadas", icono: CalendarClock },
+];
+
+const CHIPS_RECIBIDAS: readonly { readonly id: FiltroRecibidas; readonly etiqueta: string }[] = [
+  { id: "todos", etiqueta: "Todos" },
+  { id: "por_aprobar", etiqueta: "Por aprobar" },
+  { id: "pending", etiqueta: "Recibido" },
+  { id: "preparando", etiqueta: "Preparando" },
+  { id: "listo_para_recoger", etiqueta: "Listo para recoger" },
+  { id: "no_recogido", etiqueta: "No recogido" },
+  { id: "problema", etiqueta: "Incidencia" },
+];
+
+/** Minutos que se le dan a una entrega al confirmar el envio (igual que el original). */
+const MINUTOS_ENTREGA_ESTIMADA = 35;
+/** Cada cuanto se consulta la lista de programados (la consulta promueve al servidor los que ya les toca). */
+const PROGRAMADOS_REVISION_MS = 60_000;
 
 /** Cada cuánto consulta el panel los pedidos nuevos para la auto-impresión de cocina. */
 const AUTO_IMPRESION_INTERVALO_MS = 20_000;
@@ -74,10 +82,21 @@ function storageLocal(): Storage | null {
 }
 
 export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: RestaurantesShellContext) {
-  const [status, setStatus] = useState<PestanaPedidos>("todos");
+  const [vista, setVista] = useState<Vista>("recibidas");
+  const [filtro, setFiltro] = useState<FiltroRecibidas>("todos");
+  // Lo que se consulta segun la pildora y el chip activos.
+  const status: PestanaPedidos | "por_aprobar" = vista === "enviadas" ? "en_camino" : vista === "programadas" ? "programados" : filtro;
   const [orders, setOrders] = useState<readonly OrderSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [changingId, setChangingId] = useState<string | null>(null);
+  // Sucursales con lat/lng reales para el mapa (un fallo solo deja el mapa en su estado vacio: nunca tumba la lista).
+  const [branches, setBranches] = useState<readonly BranchDetail[]>([]);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  // Detalle a pagina completa (como el original: estado local, «Volver» regresa a la lista).
+  const [detalleId, setDetalleId] = useState<string | null>(null);
+  const [incidencia, setIncidencia] = useState<OrderSummary | null>(null);
+  const [errorIncidencia, setErrorIncidencia] = useState<string | null>(null);
+  const ultimoRevisionProgramados = useRef(0);
   // R-11: pestana Programados + tiempo real (sondeo). `programadosDisponible=false` = base sin la migracion 034.
   const [programados, setProgramados] = useState<readonly OrderSummary[] | null>(null);
   const [programadosDisponible, setProgramadosDisponible] = useState(true);
@@ -341,11 +360,11 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
         setProgramadosDisponible(page.disponible);
         setProgramados(page.orders);
       } else if (status === "todos") {
-        const pages = await Promise.all(OPERATIVE_STATUSES.map((s) => fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: s, limit: 50 })));
+        const pages = await Promise.all(RECIBIDAS_STATUSES.map((s) => fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: s, limit: 50 })));
         if (gen !== cargaGenRef.current) return;
         const merged = pages.flatMap((p) => p.orders).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         setOrders(merged);
-        fijarLineaBase(pages[OPERATIVE_STATUSES.indexOf("pending")]?.orders ?? []);
+        fijarLineaBase(pages[RECIBIDAS_STATUSES.indexOf("pending")]?.orders ?? []);
       } else {
         const page = await fetchOrders(fetch, apiBaseUrl, token, propertyId, { status, limit: 50 });
         if (gen !== cargaGenRef.current) return;
@@ -431,7 +450,21 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
         if (sonido && sonidoPermitido) reproducirAviso();
       }
       void loadAprobaciones();
-      if (cambio || status === "programados") await loadRef.current();
+      // La consulta de programados la promueve el servidor (los que ya les toca entrar a cocina pasan a «Recibido»): se revisa cada minuto
+      // en cualquier pildora, como el original, y si promovio alguno se recarga la lista.
+      let promovio = false;
+      if (status !== "programados" && Date.now() - ultimoRevisionProgramados.current >= PROGRAMADOS_REVISION_MS) {
+        ultimoRevisionProgramados.current = Date.now();
+        try {
+          const sp = await fetchScheduledOrders(fetch, apiBaseUrl, token, propertyId, { limit: 100 });
+          setProgramadosDisponible(sp.disponible);
+          setProgramados(sp.orders);
+          promovio = sp.promovidos.length > 0;
+        } catch {
+          // Mejor esfuerzo: un fallo aqui nunca tumba el sondeo de los pendientes.
+        }
+      }
+      if (cambio || promovio || status === "programados") await loadRef.current();
     },
   });
 
@@ -447,6 +480,17 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
 
   useEffect(() => {
     void loadRepartidores();
+  }, [apiBaseUrl, token, propertyId]);
+
+  // Ubicacion REAL de las sucursales (lat/lng) para el mapa «Entrega en curso». Sin respuesta, el mapa muestra su estado vacio.
+  useEffect(() => {
+    let cancelado = false;
+    fetchAdminBranches(fetch, apiBaseUrl, token, propertyId)
+      .then((b) => !cancelado && setBranches(b))
+      .catch(() => !cancelado && setBranches([]));
+    return () => {
+      cancelado = true;
+    };
   }, [apiBaseUrl, token, propertyId]);
 
   // Pide las sugerencias de los pedidos visibles que las admiten (a domicilio, preparando, sin repartidor) cada vez que cambia la lista.
@@ -469,321 +513,282 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
     };
   }, [orders, apiBaseUrl, token, propertyId]);
 
-  async function aplicarCambioEstado(order: OrderSummary, nextStatus: OrderStatus, motivo?: MotivoCancelacion): Promise<boolean> {
+  async function aplicarCambioEstado(order: OrderSummary, nextStatus: OrderStatus, extra: { readonly motivo?: MotivoCancelacion; readonly incidentNote?: string } = {}): Promise<boolean> {
     setChangingId(order.id);
     setError(null);
     try {
       const sinAviso = nextStatus === "listo_para_recoger" && sinAvisoPorPedido.has(order.id);
-      await updateOrderStatus(fetch, apiBaseUrl, token, propertyId, order.id, nextStatus, { ...(sinAviso ? { notifyCustomer: false } : {}), ...(motivo ? { motivo } : {}) });
+      await updateOrderStatus(fetch, apiBaseUrl, token, propertyId, order.id, nextStatus, {
+        ...(sinAviso ? { notifyCustomer: false } : {}),
+        ...(extra.motivo ? { motivo: extra.motivo } : {}),
+        ...(extra.incidentNote !== undefined ? { incidentNote: extra.incidentNote } : {}),
+      });
       await load();
       return true;
     } catch (err) {
       const mensaje = err instanceof Error ? err.message : "No se pudo cambiar el estado del pedido.";
       setError(mensaje);
-      if (motivo) setErrorCancelar(mensaje);
+      if (extra.motivo) setErrorCancelar(mensaje);
+      if (extra.incidentNote !== undefined) setErrorIncidencia(mensaje);
       return false;
     } finally {
       setChangingId(null);
     }
   }
 
-  // Fase 12 — hallazgo de auditoría (severidad ALTA, "'Marcar cancelado' ejecuta con un
-  // clic sin confirmación"): "cancelado" es el único estado terminal (NEXT_STATUSES lo
-  // deja sin salidas, junto con "completado") que además es un desenlace NEGATIVO — se
-  // pierde el pedido, nunca se puede reabrir desde aquí — mismo patrón de confirmación
-  // real que citas/Agenda.tsx::runLifecycleAction usa para su acción "cancel". Las demás
-  // transiciones (preparando/en_camino/entregado/problema, y "completado" mismo — el
-  // desenlace ESPERADO del flujo feliz) no ganan nada con un confirm de más. El gate es
-  // el MISMO de siempre; lo pinta `useConfirm` (Cancelar o Escape no llaman al API).
+  // "cancelado" es el unico estado terminal negativo (se pierde el pedido): nunca se cancela de un clic. El servidor exige un motivo de la lista
+  // cerrada, asi que el dialogo («¿Cancelar este pedido?») lo pide y solo al confirmar se llama al API.
   async function handleChangeStatus(order: OrderSummary, nextStatus: OrderStatus) {
     if (nextStatus === "cancelado") {
-      // Taxonomia cerrada: el servidor rechaza cancelar sin motivo. El dialogo pide el motivo y confirma la cancelacion.
       setErrorCancelar(null);
       setCancelando(order);
       return;
     }
-    await aplicarCambioEstado(order, nextStatus);
+    const ok = await aplicarCambioEstado(order, nextStatus);
+    if (ok && nextStatus === "entregado") notify.success(`Pedido entregado — ${etiquetaFolio(order)} se marcó como entregado.`);
   }
 
-  // Fase 12 — dispara el dispatch real (PATCH .../assign-repartidor) en cuanto se
-  // elige un repartidor del selector; volver a elegir uno distinto reasigna (el
-  // servidor lo permite, no hay restricción de "una sola vez" — ver admin-orders.ts).
-  // Elegir "Sin asignar" (repartidorId vacío) es un no-op: no existe un endpoint de
-  // "desasignar" en el backend, así que nunca se finge uno aquí.
-  async function handleAssignRepartidor(order: OrderSummary, repartidorId: string) {
-    if (!repartidorId) return;
+  // «Confirmar envío» (repo suelto): asigna al repartidor Y manda el pedido a reparto. Respeta la maquina de estados real: solo un pedido en
+  // `preparando` sale «en camino» (primero pasa por cocina); en `pending` solo se asigna el repartidor y el envio se confirma despues.
+  async function handleDespachar(order: OrderSummary, repartidorId: string): Promise<boolean> {
+    if (!repartidorId) return false;
     setAssigningId(order.id);
     setError(null);
     try {
-      await assignRepartidor(fetch, apiBaseUrl, token, propertyId, order.id, repartidorId);
+      const sale = order.status === "preparando";
+      const estimada = sale ? new Date(Date.now() + MINUTOS_ENTREGA_ESTIMADA * 60_000).toISOString() : undefined;
+      await assignRepartidor(fetch, apiBaseUrl, token, propertyId, order.id, repartidorId, estimada);
+      if (sale) await updateOrderStatus(fetch, apiBaseUrl, token, propertyId, order.id, "en_camino");
+      if (sale) {
+        notify.success(`Pedido enviado — ${etiquetaFolio(order)} pasó a Enviadas.`);
+        setVista("enviadas");
+        setSelectedOrderId(order.id);
+      } else {
+        notify.success(`Repartidor asignado — ${etiquetaFolio(order)}. Márcalo como Preparando para poder enviarlo.`);
+      }
       await load();
+      return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo asignar el repartidor.");
+      setError(err instanceof Error ? err.message : "No se pudo despachar el pedido.");
+      // El repartidor ya pudo quedar asignado aunque el cambio de estado fallara: se recarga para no mostrar un estado viejo.
+      void load();
+      return false;
     } finally {
       setAssigningId(null);
     }
   }
 
+  function abrirDetalle(order: OrderSummary): void {
+    setSelectedOrderId(order.id);
+    setDetalleId(order.id);
+  }
+
+  // ---- Derivados de la vista ----
+  const listaVisible: readonly OrderSummary[] = vista === "programadas" ? (programados ?? []).filter((o) => sigueProgramado(o, ahoraMs)) : (orders ?? []);
+  const conteo = status === "por_aprobar" ? (aprobaciones?.solicitudes.length ?? 0) : listaVisible.length;
+  const seleccionado = listaVisible.find((o) => o.id === selectedOrderId) ?? listaVisible[0] ?? null;
+  const sucursalDe = (o: OrderSummary | null) => {
+    const b = o ? branches.find((x) => x.propertyId === o.propertyId) : undefined;
+    return b ? { nombre: b.name, lat: b.lat, lng: b.lng } : null;
+  };
+  const repartidorDe = (o: OrderSummary | null): string | null => {
+    const r = o?.assignedRepartidorId ? repartidores?.find((x) => x.id === o.assignedRepartidorId) : undefined;
+    return r ? r.fullName || r.email : null;
+  };
+  const cargandoLista = vista === "programadas" ? programados === null : orders === null;
+  const porAprobar = aprobaciones?.solicitudes.length ?? 0;
+  const textoTiempos = tiempos
+    ? `Tiempo prometido hoy: domicilio ${tiempos.domicilio.texto}; recoger ${tiempos.recoger.texto}${
+        tiempos.domicilio.origen === "aprendido" || tiempos.recoger.origen === "aprendido" ? " (aprendido de las entregas recientes; nunca menos que el tiempo que fijó el dueño)" : " (el tiempo que fijó el dueño; aún no hay entregas suficientes para aprender)"
+      }${tiempos.domicilio.saturacion !== "normal" || tiempos.recoger.saturacion !== "normal" ? ". Hay alta carga: se está alargando el tiempo prometido." : "."}`
+    : null;
+  const estadoActualizacion = sondeo.pausado
+    ? "En pausa (pestaña oculta)"
+    : sondeo.fallosSeguidos > 0
+      ? `Sin conexión: reintentando en ${Math.round(sondeo.proximoEnMs / 1000)} s`
+      : `${etiquetaActualizado(sondeo.ultimaActualizacion, ahoraMs)} · cada ${SONDEO_BASE_MS / 1000} s`;
+  const vacioTexto = vista === "enviadas" ? "No hay pedidos en camino" : filtro === "todos" ? "No hay pedidos por despachar" : "No hay pedidos en este filtro";
+  const IconoVacio = vista === "enviadas" ? Truck : Package;
+
   return (
     <PageContainer padding="none">
       {/* El nombre de la pagina lo pinta la barra superior del shell (contrato de pagina UNI-4): el h1 queda solo para lectores de pantalla. */}
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="sr-only">Pedidos en operación</h1>
-        <Tabs value={status} onValueChange={(v) => setStatus(v as PestanaPedidos)}>
-          <TabsList className="flex-wrap">
-            {(["todos", "por_aprobar", ...OPERATIVE_STATUSES, "programados"] as const).map((s) => (
-              <TabsTrigger key={s} value={s}>
-                {s === "todos" ? "Todos" : s === "programados" ? "Programados" : ORDER_STATUS_LABELS[s]}
-                {s === "por_aprobar" && aprobaciones && aprobaciones.solicitudes.length > 0 && (
-                  <StatusBadge tone="warning" dot={false} className="ml-1.5" data-testid="insignia-por-aprobar">
-                    {aprobaciones.solicitudes.length}
-                  </StatusBadge>
-                )}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-        {(role === "owner" || role === "admin") && (
-          <Button type="button" size="sm" variant="outline" onClick={() => setReglasAbiertas(true)}>
-            <SlidersHorizontal className="mr-1 h-3.5 w-3.5" strokeWidth={1.75} />
-            Reglas del autopiloto
-          </Button>
-        )}
-      </header>
+      <h1 className="sr-only">Pedidos en operación</h1>
 
-      {/* R-11: indicador de actualizacion (sondeo con backoff, en pausa con la pestana oculta) y sonido opcional. */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground" role="status" aria-live="polite" data-testid="indicador-actualizacion">
-        <span className="inline-flex items-center gap-1.5">
-          <RefreshCw className={`h-3.5 w-3.5 ${sondeo.consultando ? "animate-spin" : ""}`} strokeWidth={1.75} aria-hidden="true" />
-          {sondeo.pausado
-            ? "En pausa (pestaña oculta)"
-            : sondeo.fallosSeguidos > 0
-              ? `Sin conexión: reintentando en ${Math.round(sondeo.proximoEnMs / 1000)} s`
-              : `${etiquetaActualizado(sondeo.ultimaActualizacion, ahoraMs)} · cada ${SONDEO_BASE_MS / 1000} s`}
-        </span>
-        <Button type="button" size="xs" variant="ghost" onClick={() => sondeo.refrescar()} disabled={sondeo.consultando}>
-          Actualizar ahora
-        </Button>
-        {nuevosAviso > 0 && (
-          <StatusBadge tone="neutral" dot={false} data-testid="aviso-nuevos">
-            {nuevosAviso} pedido{nuevosAviso === 1 ? "" : "s"} nuevo{nuevosAviso === 1 ? "" : "s"}
-          </StatusBadge>
-        )}
-        <Checkbox
-          id="sonido-pedidos"
-          checked={sonido && sonidoPermitido}
-          disabled={!sonidoPermitido}
-          onChange={(e) => {
-            setSonido(e.target.checked);
-            guardarSonido(storageLocal(), orgSlug, propertyId, e.target.checked);
-            if (e.target.checked) reproducirAviso();
-          }}
-          label={sonidoPermitido ? "Sonido al llegar un pedido nuevo" : "Sonido al llegar un pedido nuevo (apagado en tus Avisos)"}
-          wrapperClassName="text-xs text-foreground"
-        />
-      </div>
-
-      {tiempos && (
-        <p className="m-0 text-xs text-muted-foreground" data-testid="tiempo-prometido">
-          Tiempo prometido hoy: domicilio {tiempos.domicilio.texto}; recoger {tiempos.recoger.texto}
-          {tiempos.domicilio.origen === "aprendido" || tiempos.recoger.origen === "aprendido" ? " (aprendido de las entregas recientes; nunca menos que el tiempo que fijó el dueño)" : " (el tiempo que fijó el dueño; aún no hay entregas suficientes para aprender)"}
-          {tiempos.domicilio.saturacion !== "normal" || tiempos.recoger.saturacion !== "normal" ? ". Hay alta carga: se está alargando el tiempo prometido." : "."}
-        </p>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2 text-xs text-foreground">
-        <Checkbox
-          id="auto-imprimir-cocina"
-          checked={prefs.autoImprimir}
-          onChange={(e) => (e.target.checked ? void activarAutoImpresion() : desactivarAutoImpresion())}
-          label="Imprimir ticket de cocina automáticamente al llegar un pedido (esta sucursal, este equipo)"
-        />
-      </div>
-      {prefs.autoImprimir && (
-        <p className="m-0 text-xs text-muted-foreground">
-          Revisando pedidos nuevos cada {AUTO_IMPRESION_INTERVALO_MS / 1000} s mientras esta pantalla esté abierta. Para imprimir sin diálogo, configura el navegador en modo de impresión silenciosa.
-        </p>
-      )}
-      {avisoImpresion && (
-        <p role="alert" className="m-0 text-xs text-destructive">
-          {avisoImpresion}
-        </p>
-      )}
-      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
-      {repartidoresError && (
-        <p role="alert" className="m-0 text-xs text-destructive">
-          No se pudo cargar la lista de repartidores: {repartidoresError}
-        </p>
-      )}
-      {status === "por_aprobar" ? (
-        <AprobacionesPanel
-          datos={aprobaciones}
-          ahoraMs={ahoraMs}
+      {detalleId ? (
+        <PedidoDetalle
           apiBaseUrl={apiBaseUrl}
           token={token}
           propertyId={propertyId}
-          topeDescuentoPct={autoConfig?.config.compensacionTopePct ?? 20}
-          onResuelta={async () => {
-            await loadAprobaciones();
-            await loadRef.current();
-          }}
+          orderId={detalleId}
+          repartidores={repartidores}
+          onVolver={() => setDetalleId(null)}
+          onSelect={setDetalleId}
+          onHistorial={setHistorialDe}
         />
-      ) : status === "programados" ? (
-        programados ? (
-          <ProgramadosPanel
-            orders={programados}
-            disponible={programadosDisponible}
-            ahoraMs={ahoraMs}
-            changingId={changingId}
-            onAdelantar={(o) => void handleChangeStatus(o, "pending")}
-            onCancelar={(o) => void handleChangeStatus(o, "cancelado")}
-          />
-        ) : (
-          !error && <EstadoCargando etiqueta="Cargando pedidos programados…" />
-        )
       ) : (
         <>
-      {!orders && !error && <EstadoCargando etiqueta="Cargando pedidos…" />}
-      {orders && orders.length === 0 && <EstadoVacio mensaje="No hay pedidos en este filtro." />}
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className="font-mono text-eyebrow tabular-nums text-muted-foreground" data-testid="total-pedidos">
+                {conteo} en total
+              </p>
+              <HerramientasPedidos
+                estadoActualizacion={estadoActualizacion}
+                consultando={sondeo.consultando}
+                onActualizar={() => sondeo.refrescar()}
+                nuevos={nuevosAviso}
+                sonido={sonido}
+                sonidoPermitido={sonidoPermitido}
+                onSonido={(activo) => {
+                  setSonido(activo);
+                  guardarSonido(storageLocal(), orgSlug, propertyId, activo);
+                  if (activo) reproducirAviso();
+                }}
+                autoImprimir={prefs.autoImprimir}
+                onAutoImprimir={(activo) => (activo ? void activarAutoImpresion() : desactivarAutoImpresion())}
+                intervaloAutoImpresionS={AUTO_IMPRESION_INTERVALO_MS / 1000}
+                onReglas={role === "owner" || role === "admin" ? () => setReglasAbiertas(true) : null}
+                tiempoPrometido={textoTiempos}
+              />
+            </div>
+            <div role="tablist" aria-label="Vista de pedidos" className="inline-flex w-full items-center gap-1 rounded-full border border-border bg-muted/40 p-1 sm:w-auto">
+              {VISTAS.map(({ id, etiqueta, icono: Icono }) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={vista === id}
+                  onClick={() => setVista(id)}
+                  className={cn(
+                    "inline-flex flex-1 flex-col items-center justify-center gap-0.5 rounded-full px-2 py-1.5 text-center text-2xs font-medium leading-tight transition-colors sm:flex-none sm:flex-row sm:gap-1.5 sm:px-3 sm:text-pill",
+                    vista === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Icono className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+                  {etiqueta}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      <div className="flex flex-col gap-2.5">
-        {orders?.map((o) => (
-          <Card key={o.id}>
-            <CardContent className="p-4">
-              <div className="flex flex-wrap justify-between gap-2">
-                <div>
-                  <p className="m-0 font-semibold text-foreground">
-                    {o.customerName} · ${formatMoney(o.total)}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {o.customerPhone} · {o.branch ?? "sin sucursal"} · {new Date(o.createdAt).toLocaleString("es-MX")}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-start gap-1.5 self-start">
-                  {o.canal && (
-                    <StatusBadge tone="neutral" dot={false} data-testid={`canal-${o.id}`}>
-                      {o.canal === "recoger" ? "Recoger" : "Domicilio"}
+          {vista === "recibidas" && (
+            <div role="group" aria-label="Filtrar por estado" className="flex flex-wrap items-center gap-1.5">
+              {CHIPS_RECIBIDAS.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  aria-pressed={filtro === c.id}
+                  onClick={() => setFiltro(c.id)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-eyebrow font-medium transition-colors",
+                    filtro === c.id ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {c.etiqueta}
+                  {c.id === "por_aprobar" && porAprobar > 0 && (
+                    <StatusBadge tone="warning" dot={false} className="px-1.5 py-0 text-2xs" data-testid="insignia-por-aprobar">
+                      {porAprobar}
                     </StatusBadge>
                   )}
-                  {comandaEstados[o.id] && (
-                    <Link to={`/restaurantes/${orgSlug}/comandas-pos`} className="no-underline" title={`Comanda al POS: ${ETIQUETA_ESTADO_COMANDA[comandaEstados[o.id]!]}. Ver la cola.`} data-testid={`comanda-pos-${o.id}`}>
-                      <StatusBadge tone={TONO_ESTADO_COMANDA[comandaEstados[o.id]!]} dot={false}>
-                        {etiquetaInsigniaPedido(comandaEstados[o.id]!)}
-                      </StatusBadge>
-                    </Link>
-                  )}
-                  <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge>
-                </div>
-              </div>
-              {o.programadoPara && (
-                <p className="mt-1 text-xs font-medium text-foreground" data-testid={`programado-${o.id}`}>
-                  Pedido programado para las {new Date(o.programadoPara).toLocaleString("es-MX", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                </p>
-              )}
-              {(o.horaRecogida || (o.propina !== null && o.propina !== undefined)) && (
-                <p className="mt-1 text-xs text-muted-foreground" data-testid={`recoger-${o.id}`}>
-                  {o.horaRecogida ? `Recoge a las ${new Date(o.horaRecogida).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}` : null}
-                  {o.horaRecogida && o.propina !== null && o.propina !== undefined ? " · " : null}
-                  {o.propina !== null && o.propina !== undefined ? `Propina $${formatMoney(o.propina)} (no incluida en el total)` : null}
-                </p>
-              )}
-              <p className="mt-2 text-sm text-foreground">{o.items.map((it) => `${it.quantity}× ${it.name}`).join(", ")}</p>
+                </button>
+              ))}
+            </div>
+          )}
 
-              {o.canal !== "recoger" && (
-              <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                <Label htmlFor={`repartidor-${o.id}`} className="text-xs font-normal text-foreground">
-                  Repartidor:
-                </Label>
-                <NativeSelect
-                  id={`repartidor-${o.id}`}
-                  size="sm"
-                  value={o.assignedRepartidorId ?? ""}
-                  disabled={assigningId === o.id || !repartidores || repartidores.length === 0}
-                  onChange={(e) => void handleAssignRepartidor(o, e.target.value)}
-                  wrapperClassName="w-auto min-w-36"
-                >
-                  <option value="">Sin asignar</option>
-                  {repartidores?.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.fullName}
-                    </option>
-                  ))}
-                </NativeSelect>
-                {!o.assignedRepartidorId && sugeridos[o.id] && (
-                  <Button type="button" size="sm" variant="outline" disabled={assigningId === o.id} onClick={() => void handleAssignRepartidor(o, sugeridos[o.id]!.repartidorId)} data-testid={`asignar-sugerido-${o.id}`}>
-                    Asignar a {sugeridos[o.id]!.nombre}
-                  </Button>
+          {avisoImpresion && (
+            <p role="alert" className="m-0 text-xs text-destructive">
+              {avisoImpresion}
+            </p>
+          )}
+          {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
+          {repartidoresError && (
+            <p role="alert" className="m-0 text-xs text-destructive">
+              No se pudo cargar la lista de repartidores: {repartidoresError}
+            </p>
+          )}
+
+          {status === "por_aprobar" ? (
+            <AprobacionesPanel
+              datos={aprobaciones}
+              ahoraMs={ahoraMs}
+              apiBaseUrl={apiBaseUrl}
+              token={token}
+              propertyId={propertyId}
+              topeDescuentoPct={autoConfig?.config.compensacionTopePct ?? 20}
+              onResuelta={async () => {
+                await loadAprobaciones();
+                await loadRef.current();
+              }}
+            />
+          ) : cargandoLista ? (
+            !error && (
+              <div role="status" aria-busy="true" className="flex items-center justify-center rounded-2xl border border-border bg-card p-12">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" />
+                <span className="sr-only">{vista === "programadas" ? "Cargando pedidos programados…" : "Cargando pedidos…"}</span>
+              </div>
+            )
+          ) : vista === "programadas" ? (
+            <ProgramadosPanel
+              orders={programados ?? []}
+              disponible={programadosDisponible}
+              ahoraMs={ahoraMs}
+              changingId={changingId}
+              onAbrir={abrirDetalle}
+              onAdelantar={(o) => void handleChangeStatus(o, "pending")}
+              onCancelar={(o) => void handleChangeStatus(o, "cancelado")}
+            />
+          ) : (
+            <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
+              <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
+                {listaVisible.length === 0 ? (
+                  <div role="status" className="py-12 text-center">
+                    <IconoVacio className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" strokeWidth={1.5} aria-hidden="true" />
+                    <p className="text-ui text-muted-foreground">{vacioTexto}</p>
+                  </div>
+                ) : (
+                  <div className="overflow-hidden rounded-xl border border-border">
+                    {listaVisible.map((o) => (
+                      <FilaPedido
+                        key={o.id}
+                        order={o}
+                        vista={vista === "enviadas" ? "enviadas" : "recibidas"}
+                        seleccionado={seleccionado?.id === o.id}
+                        ahoraMs={ahoraMs}
+                        orgSlug={orgSlug}
+                        repartidores={repartidores}
+                        sugerido={sugeridos[o.id]}
+                        comandaEstado={comandaEstados[o.id]}
+                        impreso={prefs.impresos.includes(o.id)}
+                        ocupado={changingId === o.id || assigningId === o.id}
+                        sinAviso={sinAvisoPorPedido.has(o.id)}
+                        onSinAviso={(sin) =>
+                          setSinAvisoPorPedido((prev) => {
+                            const next = new Set(prev);
+                            if (sin) next.add(o.id);
+                            else next.delete(o.id);
+                            return next;
+                          })
+                        }
+                        onAbrir={abrirDetalle}
+                        onMarcar={(order, st) => void handleChangeStatus(order, st)}
+                        onIncidencia={(order) => {
+                          setErrorIncidencia(null);
+                          setIncidencia(order);
+                        }}
+                        onCancelar={(order) => void handleChangeStatus(order, "cancelado")}
+                        onDespachar={handleDespachar}
+                        onImprimir={imprimirPedido}
+                        onVistaPrevia={(order) => setVistaPrevia({ ticket: construirTicketCocina(order, { reimpresion: prefs.impresos.includes(order.id) ? (prefs.reimpresiones[order.id] ?? 0) + 1 : 0 }), orderId: order.id })}
+                        onHistorial={setHistorialDe}
+                      />
+                    ))}
+                  </div>
                 )}
-                {assigningId === o.id && <span className="text-xs text-muted-foreground">Asignando…</span>}
-                {o.estimatedDeliveryAt && (
-                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="h-3 w-3" strokeWidth={1.75} />
-                    ETA {new Date(o.estimatedDeliveryAt).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                )}
-                {repartidores && repartidores.length === 0 && <span className="text-xs text-muted-foreground">Sin repartidores dados de alta en esta organización.</span>}
               </div>
-              )}
-              {o.incidentNote && (
-                <p className="mt-1.5 inline-flex items-center gap-1 text-xs text-destructive">
-                  <AlertTriangle className="h-3 w-3" strokeWidth={1.75} />
-                  {o.incidentNote}
-                </p>
-              )}
-
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
-                <Button type="button" size="sm" variant="outline" onClick={() => imprimirPedido(o)}>
-                  <Printer className="mr-1 h-3.5 w-3.5" strokeWidth={1.75} />
-                  {prefs.impresos.includes(o.id) ? "Reimprimir ticket" : "Imprimir ticket"}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setVistaPrevia({ ticket: construirTicketCocina(o, { reimpresion: prefs.impresos.includes(o.id) ? (prefs.reimpresiones[o.id] ?? 0) + 1 : 0 }), orderId: o.id })}
-                >
-                  Vista previa
-                </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setHistorialDe(o)}>
-                  Historial
-                </Button>
-              </div>
-
-              {nextStatusesForCanal(o.status, o.canal).length > 0 && (
-                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                  {nextStatusesForCanal(o.status, o.canal).includes("listo_para_recoger") && (
-                    <Checkbox
-                      checked={!sinAvisoPorPedido.has(o.id)}
-                      onChange={(e) =>
-                        setSinAvisoPorPedido((prev) => {
-                          const next = new Set(prev);
-                          if (e.target.checked) next.delete(o.id);
-                          else next.add(o.id);
-                          return next;
-                        })
-                      }
-                      label="Avisar al cliente por WhatsApp cuando esté listo"
-                      wrapperClassName="text-xs"
-                    />
-                  )}
-                  {nextStatusesForCanal(o.status, o.canal).map((next) => (
-                    <Button
-                      key={next}
-                      type="button"
-                      size="sm"
-                      variant={next === "cancelado" ? "danger" : "outline"}
-                      onClick={() => void handleChangeStatus(o, next)}
-                      loading={changingId === o.id}
-                    >
-                      Marcar {ORDER_STATUS_LABELS[next]}
-                    </Button>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              <MapaEntrega order={seleccionado} sucursal={sucursalDe(seleccionado)} repartidorNombre={repartidorDe(seleccionado)} />
+            </div>
+          )}
         </>
       )}
 
@@ -798,24 +803,42 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
         }}
       />
 
+      <IncidenciaDialogo
+        order={incidencia}
+        enCurso={changingId !== null && changingId === incidencia?.id}
+        error={errorIncidencia}
+        onCerrar={() => setIncidencia(null)}
+        onConfirmar={(order, nota) => {
+          void aplicarCambioEstado(order, "problema", { incidentNote: nota }).then((ok) => {
+            if (!ok) return;
+            setIncidencia(null);
+            notify.success(`Incidencia reportada — ${etiquetaFolio(order)} pasó a Incidencias.`);
+          });
+        }}
+      />
+
       <MotivoDialogo
         open={cancelando !== null}
         onOpenChange={(o) => !o && setCancelando(null)}
-        titulo="Cancelar pedido"
-        subtitulo={cancelando ? `¿Cancelar el pedido de ${cancelando.customerName}? Se avisa al cliente y no se puede deshacer.` : undefined}
-        textoConfirmar="Cancelar el pedido"
+        titulo="¿Cancelar este pedido?"
+        subtitulo={cancelando ? `${etiquetaFolio(cancelando)} — ${cancelando.customerName} pasará a "Cancelado" y saldrá de Recibidos. Sigue visible en Historial. Se avisa al cliente y no se puede deshacer.` : undefined}
+        textoConfirmar="Sí, cancelar pedido"
         tonoPeligro
         error={errorCancelar}
         enCurso={changingId !== null}
         onConfirmar={(motivo) => {
           if (!cancelando) return;
-          void aplicarCambioEstado(cancelando, "cancelado", motivo).then((ok) => ok && setCancelando(null));
+          void aplicarCambioEstado(cancelando, "cancelado", { motivo }).then((ok) => {
+            if (!ok) return;
+            notify.success(`Pedido cancelado — ${etiquetaFolio(cancelando)} se canceló.`);
+            setCancelando(null);
+          });
         }}
       />
 
       <HistorialPedidoDialogo
         orderId={historialDe?.id ?? null}
-        titulo={historialDe ? `${historialDe.customerName} · $${formatMoney(historialDe.total)}` : ""}
+        titulo={historialDe ? `${historialDe.customerName} · ${etiquetaFolio(historialDe)}` : ""}
         onClose={() => setHistorialDe(null)}
         apiBaseUrl={apiBaseUrl}
         token={token}
@@ -833,7 +856,6 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
         propertyId={propertyId}
         onGuardado={loadAutoConfig}
       />
-
     </PageContainer>
   );
 }

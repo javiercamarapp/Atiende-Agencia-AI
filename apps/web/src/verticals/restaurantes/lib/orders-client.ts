@@ -65,6 +65,10 @@ export interface OrderItem {
 
 export interface OrderSummary {
   readonly id: string;
+  /** Folio corto («Venta 1001») = `orders.order_number`. `null`/ausente en respuestas de versiones viejas del API y en pedidos de prueba. */
+  readonly orderNumber?: number | null;
+  /** Entrega real (`orders.delivered_at`); `null` mientras no se entrega. Ausente en respuestas de versiones viejas del API. */
+  readonly deliveredAt?: string | null;
   readonly propertyId: string;
   readonly branch: string | null;
   readonly customerId: string | null;
@@ -120,6 +124,27 @@ export async function fetchOrders(fetchImpl: typeof fetch, apiBaseUrl: string, t
   if (filter.cursor) params.set("cursor", filter.cursor);
   const qs = params.toString();
   return fetchJson<OrderListPage>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders${qs ? `?${qs}` : ""}`, token);
+}
+
+/** Un pedido por id (`GET .../admin/orders/:orderId`): alimenta el detalle a pagina completa. 404 si no existe o es de otra sucursal fuera del alcance. */
+export async function fetchOrder(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, orderId: string): Promise<OrderSummary> {
+  const body = await fetchJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${encodeURIComponent(orderId)}`, token);
+  return body.order;
+}
+
+/** Id corto del pedido para mostrar («a1b2c3d4»): los primeros 8 caracteres del uuid. */
+export function idCortoPedido(id: string): string {
+  return id.slice(0, 8);
+}
+
+/** «#1001» (folio sin relleno, como en los avisos del original); sin folio, «#a1b2c3d4». */
+export function etiquetaFolio(order: { readonly id: string; readonly orderNumber?: number | null }): string {
+  return `#${order.orderNumber != null ? order.orderNumber : idCortoPedido(order.id)}`;
+}
+
+/** «Venta 1001» (folio de 4 digitos como minimo); sin folio, el id corto en mayusculas («#A1B2C3D4»). */
+export function etiquetaVenta(order: { readonly id: string; readonly orderNumber?: number | null }): string {
+  return order.orderNumber != null ? `Venta ${String(order.orderNumber).padStart(4, "0")}` : `#${idCortoPedido(order.id).toUpperCase()}`;
 }
 
 export async function updateOrderStatus(
