@@ -55,6 +55,8 @@ export function detectArcoConfirmation(message: string): ArcoConfirmationIntent 
 // Mención de datos personales / privacidad: exigida para NO confundir "cancelar mi
 // pedido" o "actualizar mi dirección de entrega" con una solicitud ARCO.
 const PERSONAL_DATA_RE = /\b(datos personales|mis datos|mi informacion personal|informacion personal|mis datos personales|aviso de privacidad|privacidad|arco)\b/;
+const PERSONAL_DATA_EXPLICIT_RE = /\b(datos personales|mis datos personales|mi informacion personal|informacion personal|aviso de privacidad|privacidad|arco)\b/;
+const FACTURA_O_PEDIDO_RE = /\b(factur\w*|rfc|ticket|recibo|comprobante|pedido|orden|ya (te|le|les) (pase|mande|envie|di|dije)|te (pase|mande|envie)|le (pase|mande|envie))\b/;
 const THIRD_PARTY_RE =
   /\b(de|del) (mi|su|otro|otra|un|una|el|la) (esposa|esposo|pareja|mama|papa|madre|padre|hij[oa]|hermano|hermana|amig[oa]|cliente|paciente|vecin[oa]|persona|jefe|jefa|ex|novio|novia|senor|senora|familiar)\b|\bde (otra persona|alguien mas|un tercero|terceros)\b/;
 
@@ -79,6 +81,12 @@ export type ArcoIntent =
 export function detectArcoIntent(message: string): ArcoIntent | null {
   const normalized = normalizeArcoText(message);
   if (!normalized || !PERSONAL_DATA_RE.test(normalized)) return null;
+  // QA-PM-R5-whatsapp-05: "ya te pase mis datos, facturame" NO es una solicitud ARCO. "mis datos" solo, sin mencion explicita de privacidad / datos personales / ARCO, exige
+  // un verbo de derecho (borrar, corregir, saber...) y no cuenta si el mensaje habla de facturar (RFC, ticket) o de que el cliente YA pasó sus datos.
+  if (!PERSONAL_DATA_EXPLICIT_RE.test(normalized)) {
+    if (FACTURA_O_PEDIDO_RE.test(normalized)) return null;
+    if (!RIGHT_PATTERNS.some(({ re }) => re.test(normalized))) return null;
+  }
 
   if (THIRD_PARTY_RE.test(normalized)) return { kind: "third_party" };
 

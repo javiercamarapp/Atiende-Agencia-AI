@@ -33,6 +33,18 @@ describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de 
     expect(detectArcoIntent(text)).toBeNull();
   });
 
+  // QA-PM-R5-whatsapp-05: "mis datos" suelto en una conversacion de factura / pedido no es ARCO.
+  it.each([
+    "ya te pase mis datos, facturame",
+    "ya te mande mis datos para la factura",
+    "te paso mis datos para facturar",
+    "estos son mis datos: Juan Perez, RFC XAXX010101000",
+    "ahi van mis datos del pedido",
+    "ya le pase mis datos a la sucursal",
+  ])("«%s» NO es ARCO (datos para facturar o del pedido)", (text) => {
+    expect(detectArcoIntent(text)).toBeNull();
+  });
+
   it("menciona ARCO/privacidad sin un derecho concreto -> menú, sin registrar nada", () => {
     expect(detectArcoIntent("Quiero ejercer mis derechos ARCO")).toEqual({ kind: "menu" });
     expect(detectArcoIntent("tienen aviso de privacidad?")).toEqual({ kind: "menu" });
