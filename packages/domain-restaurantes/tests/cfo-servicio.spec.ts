@@ -5,7 +5,7 @@ import { InMemoryCfoRepository, type DatasetCfoMemoria, type OpcionesCfoMemoria 
 import { ServicioCfo, type ConsultaCfo } from "../src/cfo/servicio.ts";
 import type { AlcanceSucursales, FilaAgenteDiario, FilaAgotado, FilaEntregaPercentiles, FilaProducto } from "../src/cfo/tipos.ts";
 import { CfoParametroInvalidoError, CfoSinAccesoError } from "../src/cfo/repositorio.ts";
-import { diasEntre, numericoSql } from "../src/cfo/util.ts";
+import { diasEntre, numericoSql, sumarDiasFecha as sumarDias } from "../src/cfo/util.ts";
 import { SUCURSALES_PM_SINTETICAS, generarDatasetSintetico } from "./fixtures/cfo-pm-sintetico.ts";
 
 const SUC = SUCURSALES_PM_SINTETICAS;
@@ -450,6 +450,36 @@ describe("degradación por bloque y periodos largos (revisión de #509)", () => 
     await servicio.resumen({ ...Q, comparar: "mismo_dia_semana_4" });
     // actual + anterior (hallazgos) + tramo de ventanas = 3 lecturas de ventas diarias.
     expect(repo.llamadas.get("ventasDiarias")).toBe(3);
+  });
+
+  it("«mismo día de la semana» con rango de 365, 380 y 400 días: el tramo de las 4 ventanas (N+21) se lee en 1 o 2 lecturas <= 400 días, sin caer a barridos por ventana", async () => {
+    const hasta = "2026-09-27";
+    const medidas: Record<number, { ventas: number; agente: number }> = {};
+    for (const n of [365, 380, 400]) {
+      const { repo, servicio } = armar();
+      const desde = sumarDias(hasta, -(n - 1));
+      await servicio.resumen({ desde, hasta, comparar: "mismo_dia_semana_4", granularidad: "mes" });
+      medidas[n] = { ventas: repo.llamadas.get("ventasDiarias")!, agente: repo.llamadas.get("agenteDiario")! };
+    }
+    // actual + (periodo anterior solo si no es largo) + tramo: con 365 cabe en 1 lectura (386 dias); con 380 y 400 son 2 lecturas contiguas.
+    expect(medidas[380]!.ventas - medidas[365]!.ventas).toBe(1);
+    expect(medidas[400]!.ventas).toBe(medidas[380]!.ventas);
+    expect(medidas[400]!.agente - medidas[365]!.agente).toBe(1);
+    // Cota dura: nunca los ~4 barridos por ventana del camino viejo.
+    for (const n of [365, 380, 400]) expect(medidas[n]!.ventas, `ventas ${n}`).toBeLessThanOrEqual(3);
+  });
+
+  it("partir el tramo en dos lecturas no cambia el resultado: la base de 400 días = promedio de las 4 ventanas calculado a mano sobre el dataset", async () => {
+    const hasta = "2026-09-27";
+    const desde = sumarDias(hasta, -399);
+    const cobertura = IDS.map((id) => ({ propertyId: id, primerDia: "2025-01-01", ultimoDia: hasta, zona: "America/Merida", corte: "01:00:00" }));
+    const { servicio } = armar({ dataset: { cobertura } });
+    const r = await servicio.resumen({ desde, hasta, comparar: "mismo_dia_semana_4", granularidad: "mes" });
+    const neta = (a: string, b: string) => D.ventasDiarias.filter((f) => f.diaNegocio >= a && f.diaNegocio <= b).reduce((s, f) => s + f.netaCentavos, 0);
+    const esperado = [1, 2, 3, 4].reduce((s, k) => s + neta(sumarDias(desde, -7 * k), sumarDias(hasta, -7 * k)), 0) / 4;
+    const k = r.kpis.total.kpis.find((x) => x.id === "ventas_netas")!;
+    expect(esperado).toBeGreaterThan(0);
+    expect(Math.abs((k.base as number) - esperado)).toBeLessThanOrEqual(2); // redondeo a centavo por sucursal
   });
 
   it("numericoSql rechaza con un error claro un bigint fuera del rango seguro de number (2^53)", () => {
