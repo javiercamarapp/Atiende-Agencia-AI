@@ -808,7 +808,7 @@ const AVISO_DOBLE_GUACAMOLERA =
   "Ojo: doble_salsas lleva salsa_guacamolera (la doble porción de la SALSA, un extra de pocos pesos). Si el cliente pidió GUACAMOLE extra (para ponerle a los tacos), eso es el producto Extra Guacamole: búsquelo con buscar_producto, agréguelo como renglón, quite salsa_guacamolera de doble_salsas y vuelva a cotizar antes de decir el total. Si pidió doble de la salsa guacamolera, deje la cotización tal cual.";
 
 const SIN_CORTESIAS_AVISO =
-  "Esta cotización NO incluye ninguna cortesía, promoción ni descuento: no los prometa ni los mencione (ni \"van de cortesía\", ni \"incluyo\", ni \"gratis\"); el cliente paga exactamente el total.";
+  "Esta cotización NO incluye ninguna cortesía, promoción ni descuento: no los prometa ni los mencione (ni \"van de cortesía\", ni \"incluyo\", ni \"gratis\"); el cliente paga exactamente el total. NUNCA agregue renglones ni suba la cantidad de una bebida para \"compensar\" una cortesía (QA-PM-R4-reglas-02: con media orden de nachos se cobraron 4 horchatas en vez de 2): las bebidas son exactamente las que pidió el cliente.";
 
 const YA_REGISTRADO_AVISO =
   "Este pedido YA QUEDÓ REGISTRADO hace un momento: no es uno nuevo. No lo cotice de nuevo ni llame confirmar_resumen ni crear_pedido. Dígale al cliente, de usted y sin dudar, que su pedido ya está registrado (con el total y la hora que ya le dio). Solo si el cliente pide EXPRESAMENTE otro pedido igual, vuelva a llamar cotizar_pedido con otro_pedido: true.";
@@ -1168,6 +1168,7 @@ async function dispatchTool(
         radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
         ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
         ...(perfilAgente === "taqueria_pm" ? { sucursalesQueNoReparten: SUCURSALES_QUE_NO_REPARTEN_PM } : {}),
+        ...(ctx.entryPropertyId ? { sucursalDeEntregaPreferidaPropertyId: ctx.entryPropertyId } : {}),
         colonia: typeof input.colonia === "string" ? input.colonia : undefined,
         ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
         ...(typeof input.max_km === "number" && Number.isFinite(input.max_km) && input.max_km > 0 ? { maxKm: input.max_km } : {}),
@@ -1353,7 +1354,8 @@ async function dispatchTool(
           estado: "por_aprobar",
           order: orderToWire(order),
           mensaje:
-            "Este pedido supera el umbral de pedido grande: quedó REGISTRADO pero NO se mandó a cocina todavía. La sucursal lo confirma con un clic y, cuando lo haga, el cliente recibe un WhatsApp. Dígale al cliente, de usted, que la sucursal confirmará su pedido en breve y le avisará por WhatsApp; no le prometa hora ni le diga que ya está en preparación, y no vuelva a llamar crear_pedido.",
+            "Este pedido supera el umbral de pedido grande: está PENDIENTE de confirmación y NO se mandó a cocina todavía. La sucursal lo confirma con un clic y, cuando lo haga, el cliente recibe un WhatsApp. Diga SOLO el mensaje_al_cliente; no diga que quedó registrado, confirmado ni en preparación, no prometa hora y no vuelva a llamar crear_pedido.",
+          mensaje_al_cliente: MENSAJE_PEDIDO_GRANDE_PENDIENTE,
         };
         return { result, raw: order, orderId: order.id, propertyId: order.propertyId, pedidoRetenido: true };
       }
@@ -1565,6 +1567,9 @@ async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: Pr
   if (grande) throw grande;
 }
 
+/** QA-PM-R4-voz-02: lo unico que el agente le dice al cliente de un pedido grande retenido (el modelo decia "ha quedado registrado" con el texto largo de `mensaje`). */
+export const MENSAJE_PEDIDO_GRANDE_PENDIENTE = "Su pedido es grande, así que la sucursal lo tiene que confirmar primero. Todavía no está en cocina; en cuanto lo confirmen le avisan.";
+
 /** En vez de crear el pedido: deja el aviso `escalada:pedido_grande` (con el resumen) para que la sucursal lo confirme y contacte al
  * cliente. El resultado al modelo NO es un error: no marca fallo de herramienta ni sube al modelo caro. */
 async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolContext, input: CreateOrderInput, retenido: PedidoGrandeRetenidoError): Promise<AgentToolOutcome> {
@@ -1584,6 +1589,7 @@ async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolC
     estado: "por_confirmar_por_la_sucursal",
     mensaje:
       "Este pedido supera el umbral de pedido grande, así que NO se mandó a cocina todavía: ya se avisó a la sucursal con el resumen para que lo confirme y contacte al cliente. Dígale al cliente, de usted, que la sucursal lo contactará para confirmar su pedido; no le prometa hora ni le diga que ya está en preparación, y no vuelva a llamar crear_pedido.",
+    mensaje_al_cliente: MENSAJE_PEDIDO_GRANDE_PENDIENTE,
   };
   return { result, raw: result, orderId: null, propertyId: null };
 }
