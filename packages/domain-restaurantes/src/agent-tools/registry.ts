@@ -45,6 +45,7 @@ import {
   itemsDeHuella,
   MISMO_PEDIDO_VENTANA_MS,
   priceSignature,
+  idsDeOtrosProductosReales,
   reconciliarConCotizacion,
   resolverRenglonesCotizados,
   OrderFlowViolationError,
@@ -742,12 +743,16 @@ async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: Agen
   // Al crear, la hora de recogida COTIZADA gana: no cambia por el paso del tiempo entre cotizar y crear y, si el modelo la omite (o manda ""), el pedido igual la lleva.
   // `horaRecogida` del contexto es la hora normalizada al minuto ("2026-10-06T19:40"): solo se reutiliza si es una fecha valida.
   if (name === "crear_pedido" && ctx.flow) {
-    const cotizada = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context?.horaRecogida;
-    if (cotizada && !Number.isNaN(Date.parse(`${cotizada}:00.000Z`))) return { ...resto, hora_recogida: `${cotizada}:00.000Z` };
+    const contexto = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context;
+    const cotizada = contexto?.horaRecogida;
+    // Si el cliente CAMBIO el plazo despues de cotizar ("mejor en 60") y el modelo crea sin re-cotizar, la hora nueva rompe la huella y se exige re-cotizar (como con una hora distinta).
+    const plazoCambio = plazoValido && contexto?.minutosPlazo !== undefined && contexto.minutosPlazo !== Math.round(minutos);
+    if (!plazoCambio && cotizada && !Number.isNaN(Date.parse(`${cotizada}:00.000Z`))) return { ...resto, hora_recogida: `${cotizada}:00.000Z` };
   }
   if (!plazoValido) return input;
   const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
-  return { ...resto, hora_recogida: new Date(ahora + Math.round(minutos) * 60_000).toISOString() };
+  // En cotizar se marca el plazo (campo interno, no lo manda el modelo) para que `runWithOrderFlow` reconozca una re-cotizacion identica con el mismo plazo.
+  return { ...resto, hora_recogida: new Date(ahora + Math.round(minutos) * 60_000).toISOString(), ...(name === "cotizar_pedido" ? { plazo_minutos_servidor: Math.round(minutos) } : {}) };
 }
 
 function flowNow(flow: OrderFlowRef): number {
@@ -788,6 +793,9 @@ const SIN_CORTESIAS_AVISO =
 const YA_REGISTRADO_AVISO =
   "Este pedido YA QUEDÓ REGISTRADO hace un momento: no es uno nuevo. No lo cotice de nuevo ni llame confirmar_resumen ni crear_pedido. Dígale al cliente, de usted y sin dudar, que su pedido ya está registrado (con el total y la hora que ya le dio). Solo si el cliente pide EXPRESAMENTE otro pedido igual, vuelva a llamar cotizar_pedido con otro_pedido: true.";
 
+const PEDIDO_RETENIDO_AVISO =
+  "Este pedido NO está registrado todavía: quedó pendiente de que la sucursal lo confirme (ya se le avisó y la sucursal contactará al cliente). Dígaselo así, de usted; NO diga que ya quedó registrado ni confirmado, no prometa hora, no lo cotice de nuevo ni llame confirmar_resumen ni crear_pedido.";
+
 /** Aplica la maquina de estados alrededor de cotizar/confirmar/crear. Base sin migrar => camino anterior. */
 async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolContext, flow: OrderFlowRef, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   const lenient = ctx.channel === "whatsapp";
@@ -808,15 +816,19 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     // "maiz" en el siguiente, o el nombre en vez del id, ya no convierte en "nueva" una cotizacion que el cliente acaba de ver y de aceptar.
     const itemsCotizados = toRequestedItems(input.items, lenient);
     const quotedItems = resolverRenglonesCotizados(itemsCotizados, quotedQuote.lines);
-    const quoteHash = fingerprintOrder({
-      branchSlug: String(input.branch_slug ?? ""),
-      canal: canalOf(input.canal),
-      adultConfirmed: input.adult_confirmed === true,
-      items: quotedItems ? itemsDeHuella(quotedItems) : itemsCotizados,
-      doubleSalsas: toDoubleSalsas(input.doble_salsas),
-      programadoPara: toProgramadoPara(input.programado_para),
-      horaRecogida: toHoraRecogida(input.hora_recogida),
-    });
+    const huellaCotizacion = (hora: string | undefined): string =>
+      fingerprintOrder({
+        branchSlug: String(input.branch_slug ?? ""),
+        canal: canalOf(input.canal),
+        adultConfirmed: input.adult_confirmed === true,
+        items: quotedItems ? itemsDeHuella(quotedItems) : itemsCotizados,
+        doubleSalsas: toDoubleSalsas(input.doble_salsas),
+        programadoPara: toProgramadoPara(input.programado_para),
+        horaRecogida: hora,
+      });
+    const plazoServidor = typeof input.plazo_minutos_servidor === "number" ? input.plazo_minutos_servidor : undefined;
+    let horaCotizacion = toHoraRecogida(input.hora_recogida);
+    let quoteHash = huellaCotizacion(horaCotizacion);
     const cartHash = quotedItems ? huellaDeCarrito(String(input.branch_slug ?? ""), canalOf(input.canal), quotedItems) : undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
@@ -832,16 +844,37 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         input.otro_pedido !== true &&
         flowNow(flow) - (creadoPrevio.claimedAtMs ?? creadoPrevio.quotedAtMs) <= MISMO_PEDIDO_VENTANA_MS
       ) {
-        return {
-          ...outcome,
-          result: { ...(outcome.result as object), ya_registrado: true, ...(creadoPrevio.orderId ? { pedido_id: creadoPrevio.orderId } : {}), aviso: YA_REGISTRADO_AVISO },
-        };
+        // "Ya quedo registrado" solo se dice de un pedido que EXISTE y sigue ACTIVO. Un pedido grande retenido (estado creado SIN orderId, o `por_aprobar`) esta pendiente de que la
+        // sucursal lo confirme; uno cancelado / no recogido ya no cuenta y una cotizacion del mismo carrito es normal.
+        const existente = creadoPrevio.orderId ? await repo.findOrderById(ctx.organizationId, creadoPrevio.orderId) : null;
+        if (!creadoPrevio.orderId || existente?.status === "por_aprobar") {
+          return { ...outcome, result: { ...(outcome.result as object), pedido_retenido: true, aviso: PEDIDO_RETENIDO_AVISO } };
+        }
+        if (existente && existente.status !== "cancelado" && existente.status !== "no_recogido") {
+          return {
+            ...outcome,
+            result: { ...(outcome.result as object), ya_registrado: true, pedido_id: creadoPrevio.orderId, aviso: YA_REGISTRADO_AVISO },
+          };
+        }
       }
       // QA-PM-R2-whatsapp-01 (P0): el modelo vuelve a cotizar el MISMO carrito en el turno del "si" (para "refrescar" el resumen). Reescribir
       // `quotedTurn` con el turno actual hacia que confirmar_resumen rechazara `confirmacion_mismo_turno` y ningun pedido cerraba (0/36).
       // Una re-cotizacion identica (mismos renglones, mismos precios, mismo total) y todavia vigente CONSERVA la cotizacion y su turno: el
       // cliente ya vio ese resumen. Si algo cambio (carrito, precio, total, hora), si es una cotizacion nueva y el cliente debe volver a aceptar.
       const previo = snap.context;
+      // `minutos_para_recoger`: la hora la calcula el servidor con SU reloj en cada llamada, asi que re-cotizar el mismo carrito un minuto despues daba otra hora, otra huella y una
+      // "cotizacion nueva" (el bucle de cierre de R2/A45 volvia, tambien con el boton de confirmar). Si el carrito es el mismo y el plazo es el mismo, se conserva la hora cotizada.
+      if (
+        plazoServidor !== undefined &&
+        previo?.horaRecogida &&
+        previo.minutosPlazo === plazoServidor &&
+        (snap.state === "cotizado" || snap.state === "confirmado") &&
+        flowNow(flow) - previo.quotedAtMs <= QUOTE_TTL_MS &&
+        huellaCotizacion(previo.horaRecogida) === previo.quoteHash
+      ) {
+        horaCotizacion = previo.horaRecogida;
+        quoteHash = previo.quoteHash;
+      }
       if (
         previo &&
         (snap.state === "cotizado" || snap.state === "confirmado") &&
@@ -862,7 +895,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         quotedTurn: flow.turn,
         quotedPrices,
         ...(quotedItems ? { quotedItems, quotedBranchSlug: String(input.branch_slug ?? ""), quotedCanal: canalOf(input.canal), ...(cartHash ? { cartHash } : {}) } : {}),
-        ...(toHoraRecogida(input.hora_recogida) ? { horaRecogida: toHoraRecogida(input.hora_recogida) } : {}),
+        ...(horaCotizacion ? { horaRecogida: horaCotizacion } : {}),
+        ...(horaCotizacion && plazoServidor !== undefined ? { minutosPlazo: plazoServidor } : {}),
         quotedTotal: quotedQuote.total,
         quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
         ...(snap.context?.sessionTotal ? { sessionTotal: snap.context.sessionTotal, sessionPesoKg: snap.context.sessionPesoKg ?? 0, sessionPedidos: snap.context.sessionPedidos ?? 0, ...(snap.context.sessionUltimoPedidoId ? { sessionUltimoPedidoId: snap.context.sessionUltimoPedidoId } : {}) } : {}),
@@ -894,13 +928,15 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
 
   // crear_pedido: reclamo atomico (confirmado -> creando) ANTES de crear, para que dos llamadas
   // concurrentes no creen dos pedidos.
-  const huellaConHora = (horaRecogida: string | undefined, cotizados?: readonly QuotedItem[]): string =>
+  const ajenosAlCotizar = async (cotizados: readonly QuotedItem[] | undefined): Promise<Set<string>> =>
+    cotizados ? idsDeOtrosProductosReales(toRequestedItems(input.items, lenient), cotizados, async (id) => (await repo.findProduct(ctx.organizationId, id)) !== null) : new Set<string>();
+  const huellaConHora = (horaRecogida: string | undefined, cotizados?: readonly QuotedItem[], ajenos?: ReadonlySet<string>): string =>
     fingerprintOrder({
       branchSlug: String(input.branch_slug ?? ""),
       canal: canalOf(input.canal),
       adultConfirmed: input.adult_confirmed === true,
       // Con renglones cotizados guardados, el modelo no tiene que repetir ids ni la tortilla de una bebida: se reconcilia contra la cotizacion (QA-PM-R3-whatsapp-07).
-      items: (cotizados ? reconciliarConCotizacion(toRequestedItems(input.items, lenient), cotizados) : null) ?? toRequestedItems(input.items, lenient),
+      items: (cotizados ? reconciliarConCotizacion(toRequestedItems(input.items, lenient), cotizados, ajenos) : null) ?? toRequestedItems(input.items, lenient),
       doubleSalsas: toDoubleSalsas(input.doble_salsas),
       programadoPara: toProgramadoPara(input.programado_para),
       horaRecogida,
@@ -913,7 +949,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     // si crear la omite se entiende la cotizada. Una hora DISTINTA a la cotizada obliga a re-cotizar.
     const horaCotizada = snap.context?.horaRecogida;
     const cotizados = snap.context?.quotedItems && snap.context.quotedItems.length > 0 ? snap.context.quotedItems : undefined;
-    const fingerprint = huellaConHora(horaCotizada ? (toHoraRecogida(input.hora_recogida) ?? horaCotizada) : undefined, cotizados);
+    const fingerprint = huellaConHora(horaCotizada ? (toHoraRecogida(input.hora_recogida) ?? horaCotizada) : undefined, cotizados, await ajenosAlCotizar(cotizados));
     // Voz: un reintento del MISMO pedido ya creado (el worker corto la espera y el servidor si lo registro) devuelve el pedido
     // existente con su id, para que la llamada cuente el objetivo y el agente no le diga al cliente que fallo.
     if (ctx.channel === "voz" && snap.state === "creado" && snap.context?.orderId && snap.context.quoteHash === fingerprint) {
@@ -930,7 +966,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
 
   try {
     // El pedido se crea con los renglones COTIZADOS (id y nombre del catalogo): si el modelo mando `product_id` vacio o un nombre aproximado, no se rechaza ni se reintenta (QA-PM-R3-whatsapp-07).
-    const conciliados = claimed.context.quotedItems?.length ? reconciliarConCotizacion(toRequestedItems(input.items, lenient), claimed.context.quotedItems) : null;
+    const conciliados = claimed.context.quotedItems?.length ? reconciliarConCotizacion(toRequestedItems(input.items, lenient), claimed.context.quotedItems, await ajenosAlCotizar(claimed.context.quotedItems)) : null;
     const inputConciliado: Record<string, unknown> = conciliados
       ? { ...input, items: conciliados.map((i) => ({ product_id: i.productId, product_name: i.productName, requested_quantity: i.requestedQuantity, ...(i.tortilla ? { tortilla: i.tortilla } : {}) })) }
       : input;
