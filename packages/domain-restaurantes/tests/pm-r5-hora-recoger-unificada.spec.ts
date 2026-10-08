@@ -82,6 +82,10 @@ describe.each(["whatsapp", "voz"] as const)("%s: programado_para y hora_recogida
     await s.confirm();
     await expect(s.create({ programado_para: X, hora_recogida: OTRA })).rejects.toThrow(/distintas/);
   });
+  it("hora_recogida sin zona junto a programado_para pide la zona (no dice 'distintas')", async () => {
+    const s = setup(channel);
+    await expect(s.quote({ programado_para: X, hora_recogida: "2026-10-06T15:00:00" })).rejects.toThrow(/debe incluir la zona horaria/);
+  });
   it("negativo: la misma hora en las dos (aunque con otro offset) o un solo campo siguen creando", async () => {
     const s = setup(channel);
     await s.quote({ programado_para: X, hora_recogida: "2026-10-06T21:00:00Z" });

@@ -792,6 +792,11 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
   if ((name === "cotizar_pedido" || name === "crear_pedido") && entrada.canal === "recoger") {
     const programado = toProgramadoPara(entrada.programado_para);
     const hora = toHoraRecogida(entrada.hora_recogida);
+    const textoHora = textoOpcional(entrada.hora_recogida)?.trim() ?? "";
+    // Una hora ISO sin zona NO es "distinta": le falta la zona (se interpretaria en la zona del proceso). Mensaje propio para que el modelo la corrija.
+    if (programado !== undefined && textoHora !== "" && /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(textoHora)) {
+      throw new OrderValidationError("hora_recogida debe incluir la zona horaria (por ejemplo 2026-10-06T15:00:00-06:00). En recoger es la misma hora que programado_para: mande la misma con zona, o solo programado_para.");
+    }
     if (programado !== undefined && hora !== undefined && new Date(programado).toISOString().slice(0, 16) !== hora) {
       throw new OrderValidationError("programado_para y hora_recogida son distintas: en recoger son la misma hora. Mande solo la hora que dijo el cliente (programado_para) o la misma en las dos, tanto en cotizar_pedido como en crear_pedido.");
     }
@@ -1051,6 +1056,17 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       if (efectiva === undefined || efectiva === horaCotizada) input = { ...input, programado_para: programadoCotizado };
     }
     const cotizados = snap.context?.quotedItems && snap.context.quotedItems.length > 0 ? snap.context.quotedItems : undefined;
+    // Revision de #528: la tortilla de un KILO no entra a la huella; si el cliente la cambia al crear (cotizo harina, crea maiz) la comanda llevaria la cotizada sin avisar.
+    // Se rechaza ANTES de reclamar el pedido y se pide re-cotizar con la tortilla que el cliente quiere.
+    if (cotizados?.some((q) => q.tortillaKilo)) {
+      const pedidos = toRequestedItems(input.items, lenient);
+      cotizados.forEach((q, idx) => {
+        const alCrear = pedidos[idx]?.tortilla;
+        if (q.tortillaKilo && alCrear && alCrear !== q.tortillaKilo) {
+          throw new OrderValidationError(`La tortilla de "${q.name}" cambió (se cotizó ${q.tortillaKilo} y ahora piden ${alCrear}). Vuelva a cotizar el pedido con la tortilla que quiere el cliente y pida su confirmación.`);
+        }
+      });
+    }
     const fingerprint = huellaConHora(horaCotizada ? ((input.canal === "recoger" ? horaUnificadaRecoger(input) : toHoraRecogida(input.hora_recogida)) ?? horaCotizada) : undefined, cotizados, await ajenosAlCotizar(cotizados));
     // Voz: un reintento del MISMO pedido ya creado (el worker corto la espera y el servidor si lo registro) devuelve el pedido
     // existente con su id, para que la llamada cuente el objetivo y el agente no le diga al cliente que fallo.

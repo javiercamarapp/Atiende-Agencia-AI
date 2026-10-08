@@ -71,6 +71,15 @@ describe.each(["whatsapp", "voz"] as const)("%s: la tortilla elegida para un kil
     const notas = (r.raw as { notes?: string }).notes ?? "";
     expect(notas).toMatch(new RegExp(`Tortilla \\(Pastor — 1 kg\\): ${alCrear ?? alCotizar}\\.`));
   });
+  it("cotiza harina y crea maiz: se rechaza y pide re-cotizar (la comanda no lleva en silencio la tortilla cotizada)", async () => {
+    const m = await mundo(channel);
+    await expect(pedirKilo(m, "harina", "maiz")).rejects.toThrow(/tortilla.*cambió.*cotizar/s);
+  });
+  it("negativo: cotiza y crea con la misma tortilla escrita distinto (mayuscula) sigue creando", async () => {
+    const m = await mundo(channel);
+    const r = await pedirKilo(m, "harina", "Harina");
+    expect((r.raw as { notes?: string }).notes ?? "").toMatch(/Tortilla \(Pastor — 1 kg\): harina\./);
+  });
   it("negativo: sin tortilla en ningun momento no se inventa una", async () => {
     const m = await mundo(channel);
     const r = await pedirKilo(m, undefined, undefined);
