@@ -265,4 +265,59 @@ describe("libro de Excel del CFO", () => {
     for (const m of xml.matchAll(/<f>([\s\S]*?)<\/f>/g)) max = Math.max(max, m[1]!.split(",").length);
     expect(max).toBeLessThanOrEqual(255);
   });
+
+  describe("nombres de hoja tal como se escriben en workbook.xml", () => {
+    /** Caracteres que XML 1.0 no admite: control (salvo tab, LF, CR), U+FFFE/FFFF y medias parejas sueltas. */
+    const tieneInvalidoXml = (t: string): boolean => {
+      for (const ch of t) {
+        const cp = ch.codePointAt(0)!;
+        if (!(cp === 0x9 || cp === 0xa || cp === 0xd || (cp >= 0x20 && cp <= 0xd7ff) || (cp >= 0xe000 && cp <= 0xfffd) || cp >= 0x10000)) return true;
+      }
+      return false;
+    };
+    async function nombresDe(sucursales: readonly string[]): Promise<string[]> {
+      const { vistas, alcance } = await armarVistas({ n: 3 });
+      const base = vistas.resumen!.sucursales;
+      const grupo = sucursales.map((nombre, i) => ({ ...base[i % base.length]!, propertyId: `p${i}`, nombre }));
+      const zip = await JSZip.loadAsync(construirLibroCfo({ ...vistas, resumen: { ...vistas.resumen!, sucursales: grupo } }, alcance, GENERADO));
+      const wb = await zip.file("xl/workbook.xml")!.async("string");
+      return [...wb.matchAll(/<sheet name="([^"]*)"/g)].map((m) => m[1]!.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&apos;/g, "'").replace(/&amp;/g, "&"));
+    }
+    function verificar(nombres: readonly string[]): void {
+      for (const n of nombres) {
+        expect(n.length, n).toBeLessThanOrEqual(31);
+        expect(n, n).not.toMatch(/[[\]:*?/\\]/);
+        expect(n, n).not.toMatch(/^'|'$/);
+        expect(tieneInvalidoXml(n), JSON.stringify(n)).toBe(false);
+        expect(n.trim(), n).toBe(n);
+      }
+      expect(new Set(nombres.map((n) => n.toLowerCase())).size).toBe(nombres.length);
+    }
+
+    it("los 4 casos reportados: emoji partido, colisión por emoji, apóstrofo final tras emoji y caracteres de control", async () => {
+      const largo = "Plaza Altabrisa Mérida Nte";
+      const n = await nombresDe([largo, `${largo}🌮`, `${"A".repeat(25)}'🌮`, "Ctrl\u0001A", "CtrlA", "Z'\u0001"]);
+      verificar(n);
+      const suc = n.filter((x) => x.startsWith("Suc "));
+      expect(suc).toHaveLength(6);
+      expect(suc.filter((x) => x.startsWith("Suc Plaza Altabrisa M"))).toHaveLength(2);
+      expect(suc.filter((x) => x.toLowerCase().startsWith("suc ctrla"))).toHaveLength(2);
+      expect(suc).toContain("Suc Z");
+    });
+
+    it("barrido de 44 nombres hostiles: ≤31 unidades UTF-16, sin apóstrofo en los bordes, sin prohibidos ni inválidos en XML, únicos TAL COMO se escriben", async () => {
+      const piezas = ["'", "🌮", "\u0001", "￾", "[x]", "a:b", "  ", "Ñ", "\ud83c", "AAAAAAAAAAAAAAAAAAAAAAAA", "?", "*", "/\\"];
+      const nombres: string[] = [];
+      for (let i = 0; i < 44; i += 1) {
+        let t = "";
+        for (let j = 0; j < 1 + (i % 6); j += 1) t += piezas[(i * 7 + j * 3) % piezas.length]!;
+        nombres.push(i % 4 === 0 ? `${t}${"x".repeat(i % 9)}'` : i % 4 === 1 ? `'${t}'` : i % 4 === 2 ? `${"B".repeat(24 + (i % 5))}${t}` : t);
+      }
+      // y colisiones deliberadas
+      nombres.push("Centro", "centro", "CENTRO", "Centro\u0001");
+      const n = await nombresDe(nombres);
+      expect(n.length).toBe(9 + nombres.length); // 9 hojas fijas + una por sucursal: ninguna se pierde ni se fusiona
+      verificar(n);
+    });
+  });
 });
