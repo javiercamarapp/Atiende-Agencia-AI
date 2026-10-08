@@ -104,6 +104,7 @@ export async function findNearestBranch(
 export function kmAproxTexto(km: number): string {
   if (!Number.isFinite(km) || km < 0) return "";
   if (km < 1) return "a menos de 1 km";
+  if (km < 1.5) return "a cerca de 1 km";
   return `a unos ${Math.round(km)} km`;
 }
 
@@ -121,10 +122,13 @@ export function mensajeSucursalAsignada(args: {
   readonly principal: SucursalCercana;
   readonly alternativa: SucursalCercana | null;
   readonly origen: "pin" | "distancia" | "cobertura_dueno";
+  /** Medicion incompleta (alguna sucursal sin coordenada): no se dice «mas cercana» ni distancias. */
+  readonly aproximada?: boolean;
 }): string {
   const { principal, alternativa, origen } = args;
-  const cabeza =
-    origen === "cobertura_dueno"
+  const cabeza = args.aproximada
+    ? `Por su ubicación le corresponde ${principal.nombre} (cálculo aproximado: no diga distancias ni que es la sucursal más cercana).`
+    : origen === "cobertura_dueno"
       ? `La sucursal de despacho que le corresponde a esa zona es ${conKm(principal)}.`
       : `La sucursal de despacho más cercana es ${conKm(principal)}.`;
   const alt = alternativa ? ` También le queda cerca ${conKm(alternativa)}: puede mencionarla como alternativa.` : "";
@@ -132,29 +136,45 @@ export function mensajeSucursalAsignada(args: {
 }
 
 /** Fuera del radio de reparto: se dice con claridad, se nombra la sucursal de despacho mas cercana y NO se promete envio. */
-export function mensajeFueraDeZonaHabitual(args: { readonly masCercana: SucursalCercana | null; readonly radioKm: number | null; readonly aproximada?: boolean }): string {
+export function mensajeFueraDeZonaHabitual(args: {
+  readonly masCercana: SucursalCercana | null;
+  readonly radioKm: number | null;
+  readonly aproximada?: boolean;
+  /** Km reales (sin redondear) a la mas cercana; define el texto cuando redondea al radio («a poco mas de 8 km»). */
+  readonly kmFuera?: number | null;
+}): string {
   const { masCercana, radioKm } = args;
   // `aproximada`: la distancia sale de la referencia del piloto original (la colonia no tiene coordenadas propias), no de una medicion: se dice y se ofrece confirmar con el pin.
   const confirmar = args.aproximada
     ? " La distancia es una referencia aproximada (la colonia no tiene ubicación exacta): si el cliente manda su ubicación de WhatsApp, vuelva a llamar esta herramienta con lat y lng para confirmarlo."
     : "";
-  const radio = radioKm === null ? "" : ` (el reparto llega hasta unos ${Math.round(radioKm)} km de una sucursal)`;
-  const cerca = masCercana ? ` La sucursal de despacho más cercana es ${conKm(masCercana)}.` : "";
+  const radio = radioKm === null ? "" : ` (nuestro reparto llega hasta ${Math.round(radioKm)} km de una sucursal)`;
+  // Entre el radio y el radio + 0.49 km el texto redondeado diria «a unos 8 km» dentro de una frase de «fuera de zona»: se dice «a poco mas de 8 km».
+  const kmTexto = (n: number | null): string => (n === null ? "" : radioKm !== null && Math.round(n) <= radioKm ? `a poco más de ${Math.round(radioKm)} km` : kmAproxTexto(n));
+  const kmDeLaCercana = masCercana && args.kmFuera !== undefined && args.kmFuera !== null ? args.kmFuera : (masCercana?.kmAprox ?? null);
+  const cerca = masCercana ? ` La sucursal de despacho más cercana es ${masCercana.nombre}${kmDeLaCercana === null ? "" : ` (${kmTexto(kmDeLaCercana)})`}.` : "";
   const recoger = masCercana ? `recoger en ${masCercana.nombre}` : "recoger en sucursal";
   return (
     `Ese domicilio queda fuera de nuestra zona habitual de reparto${radio}: no se envía.${cerca} ` +
     `Dígalo con claridad y sin prometer el envío (solo el dueño puede autorizar una excepción); ofrezca ${recoger} o, si el cliente insiste en domicilio, pase con una persona UNA sola vez (escalar_a_humano, motivo zona_no_reconocida). ` +
-    `Frase sugerida: «Esa zona queda fuera de nuestra zona habitual de reparto${masCercana ? `; la sucursal más cercana es ${masCercana.nombre}${masCercana.kmAprox === null ? "" : `, ${kmAproxTexto(masCercana.kmAprox)}`}` : ""}. ¿Prefiere pasar a recoger?»${confirmar}`
+    `Frase sugerida: «Esa zona queda fuera de nuestra zona habitual de reparto${masCercana ? `; la sucursal más cercana es ${masCercana.nombre}${kmDeLaCercana === null ? "" : `, ${kmTexto(kmDeLaCercana)}`}` : ""}. ¿Prefiere pasar a recoger?»${confirmar}`
   );
 }
 
 /** Colonia reconocida pero sin cobertura confirmada ni coordenadas: honesto, sin inventar ubicacion ni cobertura. */
-export function mensajeColoniaPorConfirmar(args: { readonly zona: string; readonly sugerida: SucursalCercana | null; readonly segunda: SucursalCercana | null }): string {
+export function mensajeColoniaPorConfirmar(args: { readonly zona: string; readonly sugerida: SucursalCercana | null; readonly segunda: SucursalCercana | null; readonly conUbicacion?: boolean }): string {
   const { zona, sugerida, segunda } = args;
   // Sin km: la referencia del piloto de una colonia pendiente puede estar equivocada (por eso esta pendiente); solo sirve para ofrecer RECOGER.
   const ref = sugerida
     ? ` Referencia no confirmada: ${sugerida.nombre}${segunda ? ` o ${segunda.nombre}` : ""}; úselas solo para ofrecer RECOGER, sin decir distancias ni como promesa de envío.`
     : "";
+  if (args.conUbicacion) {
+    return (
+      `Reconozco la colonia ${zona}, pero no puedo confirmar con certeza el reparto a domicilio a esa zona.${ref} ` +
+      `Frase sugerida: «No la tengo ubicada con certeza: ¿me confirma su colonia y dirección?». Si no se aclara, ofrezca recoger${sugerida ? ` en ${sugerida.nombre}` : " en sucursal"} o pase con una persona UNA sola vez (escalar_a_humano, motivo zona_no_reconocida). ` +
+      `Nunca diga que esa zona está fuera de nuestra zona de reparto ni que no reconoce la colonia, ni prometa el envío a domicilio.`
+    );
+  }
   return (
     `Reconozco la colonia ${zona}, pero no la tengo ubicada con certeza para confirmar el reparto a domicilio.${ref} ` +
     `Pídale UNA sola vez su ubicación de WhatsApp (en llamada, un cruce de calles o una plaza conocida) y vuelva a llamar esta herramienta con lat y lng; ` +

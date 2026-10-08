@@ -27,6 +27,7 @@ import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
 import { COORDENADAS_PROPUESTAS_PM, coordenadasPropuestasActivas } from "../coordenadas-sucursales.ts";
 import { kmAproxTexto } from "../nearest-branch.ts";
+import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
 import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
@@ -993,6 +994,7 @@ async function dispatchTool(
         organizationId,
         radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
         ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
+        ...(perfilAgente === "taqueria_pm" ? { sucursalesQueNoReparten: SUCURSALES_QUE_NO_REPARTEN_PM } : {}),
         colonia: typeof input.colonia === "string" ? input.colonia : undefined,
         ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
         ...(typeof input.max_km === "number" && Number.isFinite(input.max_km) && input.max_km > 0 ? { maxKm: input.max_km } : {}),
@@ -1012,6 +1014,7 @@ async function dispatchTool(
               origen_asignacion: match.origen,
               ajuste_por_zona: match.ajustePorZona,
               doble_cobertura: match.dobleCobertura,
+              ...(match.aproximada ? { medicion_aproximada: true } : {}),
               ...(match.alternativa ? { alternativa: { branch_slug: match.alternativa.slug, branch_name: match.alternativa.nombre, distancia_texto: match.alternativa.kmAprox === null ? null : kmAproxTexto(match.alternativa.kmAprox) } } : {}),
               mensaje: match.message,
             }
@@ -1022,9 +1025,14 @@ async function dispatchTool(
                 reparto: "fuera_de_zona_habitual",
                 mensaje: match.message,
                 colonia_reconocida: match.recognizedZoneName,
-                branch_slug_mas_cercana: match.branchSlug,
-                sucursal_despacho_mas_cercana: { branch_slug: match.branchSlug, branch_name: match.branchName, distancia_km: match.distanceKm, distancia_texto: kmAproxTexto(match.distanceKm) },
-                distancia_km: match.distanceKm,
+                // Sin medicion confiable (alguna sucursal de despacho sin coordenada) no se nombra una «mas cercana» ni se dice una distancia.
+                ...(match.medicionConfiable
+                  ? {
+                      branch_slug_mas_cercana: match.branchSlug,
+                      sucursal_despacho_mas_cercana: { branch_slug: match.branchSlug, branch_name: match.branchName, distancia_km: match.distanceKm, distancia_texto: kmAproxTexto(match.distanceKm) },
+                      distancia_km: match.distanceKm,
+                    }
+                  : { medicion_aproximada: true }),
                 max_km: match.maxKm,
               }
             : match.estado === "sugerida"
@@ -1037,6 +1045,7 @@ async function dispatchTool(
                   sucursal_sugerida: match.sugerida ? { branch_slug: match.sugerida.slug, branch_name: match.sugerida.nombre } : null,
                   segunda_opcion: match.segunda ? { branch_slug: match.segunda.slug, branch_name: match.segunda.nombre } : null,
                   ambigua: match.ambigua,
+                  ubicacion_recibida: match.conUbicacion,
                   mensaje: match.message,
                 }
               : { encontrada: false, estado: match.estado, mensaje: match.message };
