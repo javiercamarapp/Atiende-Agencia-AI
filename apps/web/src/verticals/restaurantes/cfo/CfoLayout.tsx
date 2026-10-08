@@ -42,13 +42,26 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
     if (!sp.get("desde") || !sp.get("hasta")) setSp(escribirFiltros(sp, filtros), { replace: true });
   }, [sp, filtros, setSp]);
 
-  const setFiltros = useCallback(
-    (cambios: Partial<FiltrosCfo>) => setSp(escribirFiltros(quitarDrill(sp), { ...filtros, ...cambios })),
-    [sp, filtros, setSp],
-  );
-  const abrirPedidos = useCallback((f: FiltroPedidosDetalle) => setSp(aplicarDrill(escribirFiltros(sp, filtros), f)), [sp, filtros, setSp]);
-
   const { carga, recargar } = useCargaCfo(() => fetchAlcance(api), [api]);
+
+  // Filtros EFECTIVOS, calculados UNA vez: la URL manda, pero solo con sucursales que este actor puede ver. Una ajena o borrada se descarta (el API
+  // respondería 403 y se leería como «sin acceso»). Todo lo que sale hacia el API (páginas, drill, exportar) y todo lo que se escribe en la URL parte de aquí.
+  const alcanceListo = carga.estado === "listo" ? carga.datos : null;
+  const { filtrosEf, descartadas, validas } = useMemo(() => {
+    if (!alcanceListo || filtros.sucursales === null) return { filtrosEf: filtros, descartadas: false, validas: filtros.sucursales };
+    const permitidas = new Set(alcanceListo.sucursales.map((s) => s.propertyId.toLowerCase()));
+    const ok = filtros.sucursales.filter((id) => permitidas.has(id));
+    const hay = ok.length !== filtros.sucursales.length;
+    return { filtrosEf: hay ? { ...filtros, sucursales: ok.length > 0 ? ok : null } : filtros, descartadas: hay, validas: ok };
+  }, [alcanceListo, filtros]);
+
+  // Al primer cambio la sucursal ajena sale de la URL (parte de `filtrosEf`), y con ella el aviso.
+  const setFiltros = useCallback(
+    (cambios: Partial<FiltrosCfo>) => setSp(escribirFiltros(quitarDrill(sp), { ...filtrosEf, ...cambios })),
+    [sp, filtrosEf, setSp],
+  );
+  const abrirPedidos = useCallback((f: FiltroPedidosDetalle) => setSp(aplicarDrill(escribirFiltros(sp, filtrosEf), f)), [sp, filtrosEf, setSp]);
+
   const pagina = PAGINAS_CFO.find((p) => p.slug === slugActual) ?? null;
   const disponibles = useMemo(() => new Set(PAGINAS_CFO.map((p) => p.slug)), []);
 
@@ -58,7 +71,7 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
     if (!pagina?.vistaExportacion) return;
     setExportando(formato);
     try {
-      guardarArchivo(await descargarExportacionCfo(api, filtros, pagina.vistaExportacion, formato));
+      guardarArchivo(await descargarExportacionCfo(api, filtrosEf, pagina.vistaExportacion, formato));
       notify.success(`Se exportó ${pagina.etiqueta} en ${formato === "xlsx" ? "Excel" : "PDF"}.`);
     } catch (err) {
       if (err instanceof CfoExportarNoDisponibleError) {
@@ -81,15 +94,9 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
       />
       <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta="Cargando el CFO…">
         {(alcance) => {
-          // La URL manda, pero solo con sucursales que este actor puede ver: una ajena o borrada se descarta (el API respondería 403 y se leería como «sin acceso»).
-          const permitidas = new Set(alcance.sucursales.map((s) => s.propertyId.toLowerCase()));
-          const elegidasUrl = filtros.sucursales;
-          const validas = elegidasUrl === null ? null : elegidasUrl.filter((id) => permitidas.has(id));
-          const descartadas = elegidasUrl !== null && validas !== null && validas.length !== elegidasUrl.length;
-          const filtrosEf: FiltrosCfo = descartadas ? { ...filtros, sucursales: validas.length > 0 ? validas : null } : filtros;
           const paginaProps: CfoPaginaProps = { api, role, orgSlug, base, filtros: filtrosEf, alcance, setFiltros, abrirPedidos, pestanasDisponibles: disponibles };
           const Pagina = pagina?.componente;
-          const tabParams = quitarDrill(sp);
+          const tabParams = escribirFiltros(quitarDrill(sp), filtrosEf);
           return (
             <>
               <FiltrosCfoBarra
@@ -145,7 +152,7 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
                 />
               )}
               <AvisoNoSustitucion texto={alcance.avisoLegal} />
-              <PedidosDrill abierto={pedidosAbiertos(sp)} onCerrar={() => setSp(quitarDrill(sp))} api={api} base={base} filtros={filtros} filtroPedidos={filtroDeParams(sp)} />
+              <PedidosDrill abierto={pedidosAbiertos(sp)} onCerrar={() => setSp(quitarDrill(sp))} api={api} base={base} filtros={filtrosEf} filtroPedidos={filtroDeParams(sp)} />
             </>
           );
         }}

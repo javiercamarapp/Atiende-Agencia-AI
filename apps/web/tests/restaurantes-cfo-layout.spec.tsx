@@ -137,6 +137,46 @@ describe("<CfoLayout /> · filtros en la URL", () => {
     expect(q("[data-testid=cfo-sucursal-descartada]")!.textContent).toContain("solo lo que sí puedes ver");
   });
 
+  describe("sucursal ajena en la URL: todos los caminos usan los filtros efectivos", () => {
+    const ajena = "00000000-0000-4000-8000-0000000000ff";
+    it("drill-down: /pedidos nunca recibe la ajena y no sale «sin acceso»", async () => {
+      const api = crearApiCfo();
+      montar(api, { url: `/restaurantes/demo/cfo/ventas?${RANGO}&sucursales=${IDS.T3},${ajena}&pedidos=1` });
+      await cuando(() => document.body.querySelectorAll("[data-pedido]").length > 0, "pedidos");
+      expect(api.peticiones("GET", "/pedidos").every((r) => r.consulta.get("sucursales") === IDS.T3)).toBe(true);
+      expect(document.body.textContent).not.toContain("Tu rol no tiene acceso al CFO");
+    });
+
+    it("exportar: la petición lleva solo la sucursal propia", async () => {
+      (URL as unknown as { createObjectURL?: unknown }).createObjectURL ??= () => "";
+      (URL as unknown as { revokeObjectURL?: unknown }).revokeObjectURL ??= () => undefined;
+      const api = crearApiCfo({ "GET /exportar": { status: 200, cuerpo: {} } });
+      montar(api, { url: `/restaurantes/demo/cfo/ventas?${RANGO}&sucursales=${IDS.T3},${ajena}` });
+      await cuando(() => boton("Exportar Excel") !== undefined, "botones");
+      click(boton("Exportar Excel")!);
+      await cuando(() => api.peticiones("GET", "/exportar").length === 1, "exportó");
+      expect(api.peticiones("GET", "/exportar")[0]!.consulta.get("sucursales")).toBe(IDS.T3);
+    });
+
+    it("cambiar fechas limpia la ajena de la URL y quita el aviso; abrir pedidos desde una pieza tampoco la arrastra", async () => {
+      const api = crearApiCfo();
+      montar(api, { url: `/restaurantes/demo/cfo/ventas?${RANGO}&sucursales=${IDS.T3},${ajena}` });
+      await cuando(() => q("[data-testid=cfo-sucursal-descartada]") !== null, "aviso");
+      // Las pestañas tampoco arrastran la ajena.
+      expect(q("[data-testid=pestana-resumen]")!.getAttribute("href")).not.toContain("ff");
+      await cuando(() => q("[data-testid=cfo-ventas] [data-testid=chart-card]") !== null, "ventas");
+      click([...rendered!.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Ver los pedidos del periodo")!);
+      await cuando(() => params().get("pedidos") === "1", "drill abierto");
+      expect(params().get("sucursales")).toBe(IDS.T3);
+      click([...document.body.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Cerrar")!);
+      await cuando(() => !params().has("pedidos"), "cerrado");
+      changeValue(q("[data-testid=filtro-rango]") as HTMLSelectElement, "30d");
+      await cuando(() => params().get("desde") === "2026-08-30", "rango nuevo");
+      expect(params().get("sucursales")).toBe(IDS.T3);
+      await cuando(() => q("[data-testid=cfo-sucursal-descartada]") === null, "aviso fuera");
+    });
+  });
+
   it("sucursales con basura en la URL (`abc,<script>,../x,t1`) se descartan sin pedir nada raro", async () => {
     const api = crearApiCfo();
     montar(api, { url: `/restaurantes/demo/cfo/resumen?${RANGO}&sucursales=${encodeURIComponent("abc,<script>,../x,t1")}` });
