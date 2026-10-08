@@ -9,7 +9,7 @@
 //   (f) las 28 colonias pendientes dan una respuesta honesta, sin inventar.
 // Los datos son los REALES del seed (`pm-seed-data.json`, colonias-v3): coordenadas de Google de las colonias y de las 5 sucursales de despacho.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invokeAgentTool } from "../src/agent-tools/registry.ts";
 import {
   assignBranch,
@@ -556,6 +556,15 @@ describe("prompt del perfil PM: solo `no_reconocida` pide otra referencia; fuera
 });
 
 describe("regresiones: pin, colonia inexistente, base sin migracion 056, cotizacion a domicilio", () => {
+  // Reloj fijo (miercoles 12:00 de Merida): la cotizacion a domicilio valida que la sucursal este abierta, asi que sin esto la prueba
+  // fallaba entre ~01:00 y ~11:00 de Merida (el CI de main corrio a las 01:36 de Merida y la sucursal estaba cerrada).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-07T12:00:00-06:00") });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("un pin con coordenadas se comporta como hoy: la mas cercana y su distancia", async () => {
     const m = await mundo({ coordenadas: false, cobertura: "seed", vigentesCompletas: true });
     const r = await assignBranch(m.repo, { organizationId: m.organizationId, lat: 21.0281, lng: -89.6101, radioMaximoKm: 8 });
