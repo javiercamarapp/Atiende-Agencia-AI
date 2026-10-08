@@ -68,6 +68,7 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "apps/api/tests/restaurantes-presupuesto-ia-duenio.spec.ts",
   // CFO-09: copiloto CFO (periodos relativos a "hoy" en la zona del negocio) y alertas de hallazgos (dia de negocio = ayer en la zona de la organizacion).
   "packages/domain-restaurantes/tests/data-chat-cfo-tools.spec.ts",
+  "packages/domain-restaurantes/tests/data-chat-cfo-evals.spec.ts",
   "packages/domain-restaurantes/tests/cfo-alertas.spec.ts",
   "apps/api/tests/restaurantes-cierres-alertas-cfo.spec.ts",
 ] as const;
