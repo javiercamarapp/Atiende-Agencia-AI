@@ -214,7 +214,8 @@ export function despachosPortalClienteRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         const estado = await comoSistemaPiloto((repo) => repo.portalVincular(hash, r.id, renglonId));
         renglon = { vinculado: true, estado };
       } catch (err) {
-        if (err instanceof ApiError && err.status === 404) renglon = { vinculado: false };
+        // 404 (el renglon ya no aplica) y 503 (base sin la 027): el archivo YA quedo recibido (otra transaccion), asi que la subida no falla.
+        if (err instanceof ApiError && (err.status === 404 || err.status === 503)) renglon = { vinculado: false };
         else throw err;
       }
     }

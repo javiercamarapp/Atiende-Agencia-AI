@@ -211,6 +211,14 @@ describe("portal del cliente final: solicitudes y reportes", () => {
     expect((await json<{ renglon: { vinculado: boolean } }>(res)).renglon).toEqual({ vinculado: false });
   });
 
+  it("base sin la 027 (vincular no disponible, 503): el archivo YA quedo recibido, la subida responde 201 con renglon.vinculado=false", async () => {
+    const { app, token } = await conEnlace();
+    ctx.pilotoRepo.portalVincular = async () => ({ disponible: false });
+    const res = await subir(app, token, "?renglonId=00000000-0000-0000-0000-0000000000ee");
+    expect(res.status).toBe(201);
+    expect((await json<{ renglon: { vinculado: boolean } }>(res)).renglon).toEqual({ vinculado: false });
+  });
+
   it("renglonId mal formado -> 400 sin subir nada", async () => {
     const { app, token } = await conEnlace();
     expect((await subir(app, token, "?renglonId=malo")).status).toBe(400);
