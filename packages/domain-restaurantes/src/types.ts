@@ -72,6 +72,9 @@ export interface ProductoEncontrado {
   /** El renglon exige elegir tortilla (maiz, harina o mixta): tacos y los platillos que el menu describe "de maiz o harina".
    * Ausente = se decide por el nombre ("taco"), como antes de PM-C4. */
   readonly requiresTortilla?: boolean;
+  /** La busqueda NO pudo fijar un unico producto (cantidad sin presentacion exacta, "media orden de bistec"): son candidatas, no una mejor coincidencia. El agente debe
+   * preguntar al cliente cual quiere en vez de elegir una; nunca incluye una presentacion de mas peso que el pedido. Ausente = sin ambiguedad extra. */
+  readonly ambiguo?: boolean;
   /** Categoria del menu (para reglas por tipo de producto, p. ej. la doble salsa no aplica a un pedido de solo bebidas). Ausente en filas antiguas. */
   readonly categoryName?: string | null;
 }
