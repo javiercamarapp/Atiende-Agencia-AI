@@ -21,6 +21,7 @@ import { buscarPedidoRecienteConSucursal } from "../pedido-reciente.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError } from "../errors.ts";
 import { normalizePhone } from "../phone.ts";
+import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
@@ -362,6 +363,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         canal: { type: "string", enum: ["domicilio", "recoger"], description: "Por defecto 'domicilio'. Para 'recoger' no hace falta customer_address." },
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega (solo a domicilio)." },
         propina: { type: "number", description: "Propina en pesos, solo si cotizar_pedido indicó preguntar_propina: true y el cliente la dio. No suma al total." },
+        propina_porcentaje: { type: "number", description: "Propina como PORCENTAJE del total ('de propina 10%' = 10), solo con tarjeta y si cotizar_pedido indicó preguntar_propina: true. El servidor calcula los pesos; no haga la cuenta ni mande propina junto con este campo." },
         efectivo_con: { type: "number", description: "Solo pago en efectivo: monto con el que paga el cliente ('cambio de 500' = 500). Debe ser mayor o igual al total de cotizar_pedido." },
         llevar_terminal: { type: "boolean", description: "true si el cliente pide que lleven terminal (pago con tarjeta a domicilio)." },
         indicaciones_acceso: { type: "string", description: "Solo domicilio, una línea corta (máx. 200 caracteres): cómo llegar o avisar ('timbre del depto 6', 'avísenme al llegar'). No pongas aquí la ubicación: el pin ya se guarda solo." },
@@ -528,6 +530,10 @@ export function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo> & Parti
 
 /** `undefined` si no vino; un valor fuera del catalogo se deja pasar para que la validacion de dominio lo rechace. */
 function toDoubleSalsas(raw: unknown): readonly DoubleSalsa[] | undefined {
+  // QA-PM-R4-reglas-09: doble_salsas que no es una lista se ignoraba en silencio y el pedido salia sin cobrar ni anotar el extra.
+  if (raw !== undefined && raw !== null && raw !== "" && !Array.isArray(raw)) {
+    throw new OrderValidationError('doble_salsas debe ser una lista de salsas (por ejemplo ["salsa_roja"]), no un texto. Mándela como lista en cotizar_pedido y en crear_pedido.');
+  }
   return Array.isArray(raw) ? (raw as readonly DoubleSalsa[]) : undefined;
 }
 
@@ -635,16 +641,36 @@ function toCreateOrderItems(raw: unknown, lenient: boolean): CreateOrderInput["i
  * propina que dijo): un complemento que no es de la lista cerrada ("chimichurri") y una propina que no es un monto ("veinte"). Para los agentes se rechazan con un
  * mensaje accionable en vez de crear un pedido distinto al que el cliente acepto. El relleno de siempre (propina 0 o vacia, lista vacia) sigue siendo "sin dato".
  */
+/** "10%" / "10 %" -> 10; cualquier otra cosa -> null. Un porcentaje valido va de 1 a 100. */
+function porcentajeDePropina(valor: unknown): number | null {
+  if (typeof valor === "number") return Number.isFinite(valor) && valor > 0 && valor <= PROPINA_PORCENTAJE_MAX ? valor : null;
+  if (typeof valor !== "string") return null;
+  const m = /^\s*(\d{1,3}(?:[.,]\d{1,2})?)\s*(?:%|por\s*ciento)\s*$/i.exec(valor);
+  if (!m) return null;
+  const n = Number(m[1]!.replace(",", "."));
+  return n > 0 && n <= PROPINA_PORCENTAJE_MAX ? n : null;
+}
+
+function esSalsaBasicaIncluida(valor: unknown): boolean {
+  return typeof valor === "string" && (DEFAULT_COMPLEMENTS as readonly string[]).includes(valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/\s+/g, "_"));
+}
+
 function assertEntradasReconocidas(input: Record<string, unknown>): void {
   if (Array.isArray(input.requested_complements)) {
-    const desconocidos = input.requested_complements.filter((c) => typeof c === "string" && c.trim() !== "" && canonicalRequestedComplement(c) === null);
+    // QA-PM-R4-reglas-10: una salsa BASICA ("salsa_verde") ya viene incluida sin costo: no se rechaza como "no la manejamos"; es un no-op (la comanda ya la lleva).
+    const desconocidos = input.requested_complements.filter((c) => typeof c === "string" && c.trim() !== "" && canonicalRequestedComplement(c) === null && !esSalsaBasicaIncluida(c));
     if (desconocidos.length > 0) {
       throw new OrderValidationError(
         `No manejamos ${desconocidos.map((c) => `"${String(c)}"`).join(", ")} como complemento. Los que sí se piden son: ${COMPLEMENTOS_PEDIBLES.join(", ")}. Dígale al cliente que ese no lo manejamos y ofrezca uno de la lista; no lo anote ni lo dé por registrado.`,
       );
     }
   }
+  const pctCrudo = input.propina_porcentaje;
+  if (pctCrudo !== undefined && pctCrudo !== null && pctCrudo !== "" && porcentajeDePropina(pctCrudo) === null) {
+    throw new OrderValidationError(`propina_porcentaje debe ser un número entre 1 y ${PROPINA_PORCENTAJE_MAX} (por ejemplo 10 para el 10 %). Si el cliente dio pesos, mande propina en pesos.`);
+  }
   const propina = input.propina;
+  if (propina !== undefined && propina !== null && propina !== "" && typeof propina === "string" && porcentajeDePropina(propina) !== null) return;
   if (propina !== undefined && propina !== null && propina !== "" && (typeof propina !== "number" || !Number.isFinite(propina))) {
     throw new OrderValidationError("La propina debe ser un monto numérico en pesos (por ejemplo 20). Pregúntele al cliente cuánto desea dejar y vuelva a mandarla como número.");
   }
@@ -685,6 +711,12 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     colonia: str(input.colonia_entrega),
     ...(ctx.sharedLocation && ctx.channel === "whatsapp" ? { ubicacion: { lat: ctx.sharedLocation.lat, lng: ctx.sharedLocation.lng } } : {}),
     propina: typeof input.propina === "number" ? input.propina : undefined,
+    ...(typeof input.propina !== "number" || input.propina === 0
+      ? (() => {
+          const pct = porcentajeDePropina(input.propina_porcentaje) ?? (typeof input.propina === "string" ? porcentajeDePropina(input.propina) : null);
+          return pct !== null ? { propinaPorcentaje: pct } : {};
+        })()
+      : {}),
     horaRecogida: textoOpcional(input.hora_recogida),
     // Cliente 360: datos opcionales del domicilio (solo alimentan la ficha; nunca cambian el total).
     addressLabel: str(input.direccion_etiqueta),
@@ -718,6 +750,10 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
   // `plazo_minutos_servidor` es un campo INTERNO que solo pone `conHoraDeRecogidaRelativa`: lo que mande el modelo se descarta.
   const { plazo_minutos_servidor: _interno, ...entrada } = rawInput;
+  // QA-PM-R4-reglas-11: una hora_recogida que no es texto (un epoch numerico) se ignoraba en silencio y el pedido salia sin hora (cocina lo trata como "para ya").
+  if ((name === "cotizar_pedido" || name === "crear_pedido") && entrada.hora_recogida !== undefined && entrada.hora_recogida !== null && typeof entrada.hora_recogida !== "string") {
+    throw new OrderValidationError("hora_recogida debe ser texto en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00), no un número. Si el cliente dio un plazo (\"en 40 minutos\"), mande minutos_para_recoger.");
+  }
   const input = await conHoraDeRecogidaRelativa(repo, ctx, name, entrada);
   if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);
@@ -790,7 +826,12 @@ const AVISO_DOBLE_GUACAMOLERA =
   "Ojo: doble_salsas lleva salsa_guacamolera (la doble porción de la SALSA, un extra de pocos pesos). Si el cliente pidió GUACAMOLE extra (para ponerle a los tacos), eso es el producto Extra Guacamole: búsquelo con buscar_producto, agréguelo como renglón, quite salsa_guacamolera de doble_salsas y vuelva a cotizar antes de decir el total. Si pidió doble de la salsa guacamolera, deje la cotización tal cual.";
 
 const SIN_CORTESIAS_AVISO =
-  "Esta cotización NO incluye ninguna cortesía, promoción ni descuento: no los prometa ni los mencione (ni \"van de cortesía\", ni \"incluyo\", ni \"gratis\"); el cliente paga exactamente el total.";
+  "Esta cotización NO incluye ninguna cortesía, promoción ni descuento: no los prometa ni los mencione (ni \"van de cortesía\", ni \"incluyo\", ni \"gratis\"); el cliente paga exactamente el total. NUNCA agregue renglones ni suba la cantidad de una bebida para \"compensar\" una cortesía (QA-PM-R4-reglas-02: con media orden de nachos se cobraron 4 horchatas en vez de 2): las bebidas son exactamente las que pidió el cliente.";
+
+/** Bebidas por nombre: solo decide si se agrega una frase aclaratoria, nunca un monto. */
+const ES_BEBIDA_POR_NOMBRE = /horchata|jamaica|agua|refresco|coca|limonada|naranjada|sprite|fanta|mineral|jugo/i;
+const MENSAJE_MEDIA_ORDEN_NACHOS =
+  "Con MEDIA orden de nachos NO hay aguas de cortesía: las bebidas del carrito se cobran completas y el total ya las incluye. Si el cliente pregunta por las aguas gratis del martes, dígale solo: «las aguas de cortesía son únicamente con la orden completa de nachos; con la media orden las bebidas se cobran». No agregue bebidas ni cambie cantidades.";
 
 const YA_REGISTRADO_AVISO =
   "Este pedido YA QUEDÓ REGISTRADO hace un momento: no es uno nuevo. No lo cotice de nuevo ni llame confirmar_resumen ni crear_pedido. Dígale al cliente, de usted y sin dudar, que su pedido ya está registrado (con el total y la hora que ya le dio). Solo si el cliente pide EXPRESAMENTE otro pedido igual, vuelva a llamar cotizar_pedido con otro_pedido: true.";
@@ -1150,6 +1191,7 @@ async function dispatchTool(
         radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
         ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
         ...(perfilAgente === "taqueria_pm" ? { sucursalesQueNoReparten: SUCURSALES_QUE_NO_REPARTEN_PM } : {}),
+        ...(ctx.entryPropertyId ? { sucursalDeEntregaPreferidaPropertyId: ctx.entryPropertyId } : {}),
         colonia: typeof input.colonia === "string" ? input.colonia : undefined,
         ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
         ...(typeof input.max_km === "number" && Number.isFinite(input.max_km) && input.max_km > 0 ? { maxKm: input.max_km } : {}),
@@ -1243,8 +1285,15 @@ async function dispatchTool(
       // QA-PM-R3-reglas-03: por voz el agente prometia las 2 aguas de cortesia del combo del martes con MEDIA orden de nachos aunque el servidor cobraba las bebidas. Si la
       // cotizacion no aplica ni sugiere ninguna promocion, se lo dice la propia herramienta (el cliente solo debe oir lo que el total incluye).
       const sinPromocion = !quote.promocionAplicada && (quote.promocionesSugeridas?.length ?? 0) === 0;
+      // QA-PM-R4-reglas-02 (P0): con MEDIA orden de nachos el modelo de voz prometia "las 2 aguas de cortesia" y cotizaba 4 horchatas (+$120). La explicacion va como frase LITERAL de la herramienta.
+      const mediaOrdenConBebida = sinPromocion && quote.lines.some((l) => /nachos/i.test(l.name) && /\(1\/2 orden\)/.test(l.name)) && quote.lines.some((l) => ES_BEBIDA_POR_NOMBRE.test(l.name));
       return {
-        result: { quote: quoteToWire(quote), ...(sinPromocion ? { sin_cortesias: SIN_CORTESIAS_AVISO } : {}), ...(dobleGuacamole ? { aviso_guacamole: AVISO_DOBLE_GUACAMOLERA } : {}) },
+        result: {
+          quote: quoteToWire(quote),
+          ...(sinPromocion ? { sin_cortesias: SIN_CORTESIAS_AVISO } : {}),
+          ...(mediaOrdenConBebida ? { mensaje_media_orden_nachos: MENSAJE_MEDIA_ORDEN_NACHOS } : {}),
+          ...(dobleGuacamole ? { aviso_guacamole: AVISO_DOBLE_GUACAMOLERA } : {}),
+        },
         raw: quote,
         orderId: null,
         propertyId: null,
@@ -1335,7 +1384,8 @@ async function dispatchTool(
           estado: "por_aprobar",
           order: orderToWire(order),
           mensaje:
-            "Este pedido supera el umbral de pedido grande: quedó REGISTRADO pero NO se mandó a cocina todavía. La sucursal lo confirma con un clic y, cuando lo haga, el cliente recibe un WhatsApp. Dígale al cliente, de usted, que la sucursal confirmará su pedido en breve y le avisará por WhatsApp; no le prometa hora ni le diga que ya está en preparación, y no vuelva a llamar crear_pedido.",
+            "Este pedido supera el umbral de pedido grande: está PENDIENTE de confirmación y NO se mandó a cocina todavía. La sucursal lo confirma con un clic y, cuando lo haga, el cliente recibe un WhatsApp. Diga SOLO el mensaje_al_cliente; no diga que quedó registrado, confirmado ni en preparación, no prometa hora y no vuelva a llamar crear_pedido.",
+          mensaje_al_cliente: MENSAJE_PEDIDO_GRANDE_PENDIENTE,
         };
         return { result, raw: order, orderId: order.id, propertyId: order.propertyId, pedidoRetenido: true };
       }
@@ -1547,6 +1597,9 @@ async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: Pr
   if (grande) throw grande;
 }
 
+/** QA-PM-R4-voz-02: lo unico que el agente le dice al cliente de un pedido grande retenido (el modelo decia "ha quedado registrado" con el texto largo de `mensaje`). */
+export const MENSAJE_PEDIDO_GRANDE_PENDIENTE = "Su pedido es grande, así que la sucursal lo tiene que confirmar primero. Todavía no está en cocina; en cuanto lo confirmen le avisan.";
+
 /** En vez de crear el pedido: deja el aviso `escalada:pedido_grande` (con el resumen) para que la sucursal lo confirme y contacte al
  * cliente. El resultado al modelo NO es un error: no marca fallo de herramienta ni sube al modelo caro. */
 async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolContext, input: CreateOrderInput, retenido: PedidoGrandeRetenidoError): Promise<AgentToolOutcome> {
@@ -1566,6 +1619,7 @@ async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolC
     estado: "por_confirmar_por_la_sucursal",
     mensaje:
       "Este pedido supera el umbral de pedido grande, así que NO se mandó a cocina todavía: ya se avisó a la sucursal con el resumen para que lo confirme y contacte al cliente. Dígale al cliente, de usted, que la sucursal lo contactará para confirmar su pedido; no le prometa hora ni le diga que ya está en preparación, y no vuelva a llamar crear_pedido.",
+    mensaje_al_cliente: MENSAJE_PEDIDO_GRANDE_PENDIENTE,
   };
   return { result, raw: result, orderId: null, propertyId: null };
 }

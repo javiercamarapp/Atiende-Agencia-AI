@@ -246,6 +246,9 @@ export interface CreateOrderInput {
   /** Propina en pesos capturada en terminal. Solo se acepta si la politica de la sucursal
    * lo permite (PM: solo con tarjeta); no modifica `total`, se registra en las notas. */
   readonly propina?: number;
+  /** QA-PM-R4-whatsapp-03: propina dada como porcentaje del total del pedido ("10%"). El servidor la convierte a pesos (redondeada a centavos) con el total final;
+   * el modelo no hace la cuenta. Excluyente con `propina`. */
+  readonly propinaPorcentaje?: number;
   /** Hora prometida de recogida (ISO 8601 con zona). Solo con canal "recoger". */
   readonly horaRecogida?: string;
   /** R-11 (migracion 034): PEDIDO PROGRAMADO. Fecha y hora (ISO 8601 con zona) para la que el cliente

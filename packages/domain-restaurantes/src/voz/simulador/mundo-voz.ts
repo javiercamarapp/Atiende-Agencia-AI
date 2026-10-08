@@ -70,6 +70,9 @@ export function crearMundoVoz(): MundoVoz {
     cola: sembrar("Coca-Cola", catBebidas, 45, ["coca", "refresco", "cola"]),
     cerveza: sembrar("Cerveza Sol", catCervezas, 66, ["cerveza", "chela", "sol", "cheve"]),
     nachos: sembrar("Nachos de Pastor", catAntojos, 89, ["nachos"]),
+    // Carnes por peso (QA-PM-R4-reglas-03): el kilo y el cuarto son productos distintos; la cantidad es de piezas, nunca gramos.
+    arracheraKilo: sembrar("Arrachera — 1 kg", catTacos, 900, ["arrachera", "arrachera kilo"]),
+    arrachera250: sembrar("Arrachera — 250 g", catTacos, 225, ["arrachera", "arrachera cuarto"]),
   } as const;
   repo.seedNoDomicilio({ productIds: [productos.cerveza.id] });
 

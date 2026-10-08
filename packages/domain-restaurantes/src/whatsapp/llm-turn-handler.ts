@@ -40,7 +40,8 @@ import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
-import { afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
+import { PEDIDO_GRANDE_TOTAL_MXN } from "../pedido-grande.ts";
+import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -594,8 +595,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let pedidoSimulado: unknown;
       let yaRegistradoEnTurno = false;
       let retenidoEnTurno = false;
+      // Un pedido grande ya retenido (incluido `por_aprobar` del autopiloto) YA tiene su aviso: un "ya avise a la sucursal" del modelo no genera otro ni abre toma.
+      let pedidoGrandeVisto = false;
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
-      const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(lastQuoteRespaldaCortesia === false ? quitarCortesiaNoRespaldada(reply) : reply, working), lastQuoteTotal, lastQuoteAmounts);
+      const horaLocalDelTurno = Number(new Intl.DateTimeFormat("es-MX", { timeZone: config.timezone, hour: "numeric", hourCycle: "h23" }).format(now()));
+      const safeReply = (reply: string) => {
+        const base = enforceQuotedTotal(enforceBistecPackNotice(lastQuoteRespaldaCortesia === false ? quitarCortesiaNoRespaldada(reply) : reply, working), lastQuoteTotal, lastQuoteAmounts);
+        return perfil === "taqueria_pm" ? corregirPromesaDeHorarioNocturno(base, horaLocalDelTurno) : base;
+      };
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
       // §5: pin con el boton nativo de WhatsApp. Se pide una sola vez por pedido (contador `ubicacion_solicitada`, se reinicia al crear el pedido)
@@ -778,19 +785,25 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           let respuesta = conPregunta;
           const promesaPrevia = [...messages].reverse().find((m) => m.role === "assistant");
           const avisoDelTurno = tele.tools.some((t) => (t.tool === "escalar_a_humano" || t.tool === "registrar_contacto") && t.resultado === "ok");
-          if (afirmaHaberAvisado(respuesta) && !escalarMotivo && !avisoDelTurno && !(promesaPrevia && afirmaHaberAvisado(promesaPrevia.content))) {
+          if (afirmaHaberAvisado(respuesta) && !escalarMotivo && !avisoDelTurno && !pedidoGrandeVisto && !(promesaPrevia && afirmaHaberAvisado(promesaPrevia.content))) {
+            // QA-PM-R4-reglas-01: un pedido grande cotizado que el modelo "avisa" sin escalar queda como pedido_grande (cede la conversacion a la sucursal), no como "otro".
+            const motivoAvisoHonesto = perfil === "taqueria_pm" && lastQuoteTotal !== null && lastQuoteTotal > PEDIDO_GRANDE_TOTAL_MXN ? "pedido_grande" : "otro";
             const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
             const ultimo = [...messages].reverse().find((m) => m.role === "user");
             const aviso = await executeAgentToolSafely(
               repo,
               { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
               "escalar_a_humano",
-              { customer_name: nombre, motivo: "otro", resumen: `El asistente le dijo al cliente que avisaria al equipo; se deja el aviso para que alguien lo revise. Ultimo mensaje del cliente: ${(ultimo?.content ?? "").slice(0, 400)}` },
+              {
+                customer_name: nombre,
+                motivo: motivoAvisoHonesto,
+                resumen: `${motivoAvisoHonesto === "pedido_grande" ? `Pedido grande cotizado por $${lastQuoteTotal}: requiere confirmacion de la sucursal. ` : ""}El asistente le dijo al cliente que avisaria al equipo; se deja el aviso para que alguien lo revise. Ultimo mensaje del cliente: ${(ultimo?.content ?? "").slice(0, 400)}`,
+              },
             );
             if (isToolErrorResult(aviso.result)) respuesta = quitarAfirmacionDeAviso(respuesta);
             else {
-              escalarMotivo = "otro";
-              tele.motivoEscalacion = "otro";
+              escalarMotivo = motivoAvisoHonesto;
+              tele.motivoEscalacion = motivoAvisoHonesto;
             }
           }
           // Honestidad del cierre (QA-PM-R3 T7-040, P0): "su pedido ya quedo confirmado/registrado" solo si el pedido EXISTE: se creo en este turno, ya habia uno en esta
@@ -833,6 +846,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
             argumentosInvalidos = true;
           }
+          // Propina dicha en porcentaje ("de propina 10%") que el modelo no mando: el servidor la completa (solo tarjeta; el resto de la regla de propina sigue en el servidor).
+          // Solo si el modelo NO mando propina (ni 0): el ultimo mensaje del cliente acepta un porcentaje en afirmativo.
+          if (result === undefined && call.name === "crear_pedido" && input.payment_method === "tarjeta" && input.propina === undefined && input.propina_porcentaje === undefined) {
+            const pct = porcentajePropinaDichoPorElCliente([...messages].reverse().find((m) => m.role === "user")?.content);
+            if (pct !== null) input = { ...input, propina_porcentaje: pct };
+          }
           if (result === undefined) {
             const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...modoCtx }, call.name, input);
             result = executed.result;
@@ -874,6 +893,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (call.name === "crear_pedido" && (result as { pedido_grande?: unknown; por_aprobar?: unknown } | null)?.pedido_grande === true && (result as { por_aprobar?: unknown }).por_aprobar !== true) escalarMotivo = "pedido_grande";
           if ((result as { ya_registrado?: unknown } | null)?.ya_registrado === true) yaRegistradoEnTurno = true;
           // Pedido grande / de reincidente RETENIDO (sin orderId): la sucursal lo confirma; el agente nunca debe decir que "ya quedo registrado".
+          if ((result as { pedido_grande?: unknown } | null)?.pedido_grande === true) pedidoGrandeVisto = true;
           const rr = result as { pedido_grande?: unknown; pedido_retenido?: unknown; por_aprobar?: unknown } | null;
           if ((call.name === "crear_pedido" || call.name === "cotizar_pedido") && (rr?.pedido_grande === true || rr?.pedido_retenido === true) && rr?.por_aprobar !== true) retenidoEnTurno = true;
           tele.tools.push({ tool: call.name, latenciaMs: Date.now() - toolInicio, resultado: isToolErrorResult(result) ? (fallaSistema ? "error_sistema" : "error_regla") : "ok", vuelta: tele.vueltas });

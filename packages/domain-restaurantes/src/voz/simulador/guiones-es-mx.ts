@@ -479,4 +479,28 @@ export const GUIONES_ES_MX: readonly GuionLlamada[] = [
     ],
     esperado: { resultado: "pedido_creado", pedido: { sucursal: "Francisco de Montejo", canal: "recoger", pago: "efectivo", total: 328, items: [{ nombre: "Tacos de Bistec de Res (orden de 3)", cantidad: 2 }] } },
   },
+  // ---- Ronda 4 del loop de PM (QA-PM-R4): regresion permanente de lo que rompio la medida contra la cuenta real ----
+  {
+    id: "V31-un-cuarto-de-arrachera-no-son-250-piezas",
+    titulo: "'Un cuarto de arrachera': el agente manda 250 como cantidad del producto de 1 kg, el servidor lo rechaza explicando que son gramos y el agente corrige con la presentacion de 250 g y cantidad 1 (QA-PM-R4-reglas-03)",
+    rasgos: ["carne por peso", "gramos como cantidad", "rechazo accionable", "reintento corregido"],
+    turnos: [
+      {
+        kind: "voz",
+        cliente: "Buenas tardes, un cuarto de arrachera para recoger por Francisco de Montejo",
+        agente: [
+          buscar("arrachera"),
+          cotizar((m) => [linea(m, "1 kg", 250)], { canal: "recoger" }),
+          cotizar((m) => [linea(m, "250 g", 1)], { canal: "recoger" }),
+          dice("Es un cuarto de arrachera, doscientos veinticinco pesos. ¿Es correcto?"),
+        ],
+      },
+      { kind: "voz", cliente: "Sí, a nombre de Ana Pech, en efectivo", agente: [confirmar, crear((m) => [linea(m, "250 g", 1)], { canal: "recoger" }), dice("Listo, su pedido quedó registrado. Gracias por llamar.")] },
+    ],
+    esperado: {
+      resultado: "pedido_creado",
+      herramientasRechazadas: [{ nombre: "cotizar_pedido", error: /se vende por peso/ }],
+      pedido: { sucursal: "Francisco de Montejo", canal: "recoger", pago: "efectivo", total: 225, items: [{ nombre: "Arrachera — 250 g", cantidad: 1 }] },
+    },
+  },
 ];

@@ -231,7 +231,7 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
   it("el combo del martes lo aplica cotizar_pedido (CR09): el agente dice lo que devuelve y no lo promete si la cotizacion no lo muestra", () => {
     expect(p).not.toContain("la confirma la sucursal al recoger");
     expect(p).not.toMatch(/no lo prometa ni lo aplique|cotice los nachos a precio de lista/);
-    expect(p).toMatch(/H13\. Combo del martes \(nachos de pastor con 2 aguas de cortesía, solo para recoger\): lo aplica cotizar_pedido; diga lo que devuelve\./);
+    expect(p).toMatch(/H13\. Combo del martes \(nachos de pastor con 2 aguas de cortesía POR CADA orden completa de nachos, solo para recoger: 2 órdenes = 4 aguas\): lo aplica cotizar_pedido; diga lo que devuelve y cuente las aguas por orden\./);
     expect(p).toMatch(/Si el cliente pide el combo y la cotización no lo muestra .* no lo prometa/);
   });
 
@@ -315,5 +315,24 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
   it("el flujo es coherente: ninguna referencia a un paso que ya no existe", () => {
     expect(p).toContain("(paso 4)");
     expect(p).not.toContain("(paso 7)");
+  });
+});
+
+describe("QA-PM-R4: reglas de prompt de WhatsApp que no entran a la voz (limite de 8000 caracteres)", () => {
+  it("WhatsApp lleva propina en porcentaje, tiempo unico, no dar 'a partir de las 12' con la sucursal abierta, pedido ya salido, menu con precios y minimo propio", () => {
+    const p = promptPm();
+    expect(p).toContain("propina_porcentaje");
+    expect(p).toMatch(/NO conteste "sí" ni garantice ese plazo/);
+    expect(p).toMatch(/NUNCA diga "a partir de las 12 del día"/);
+    expect(p).toMatch(/YA SALIÓ a reparto \(o está entregado\), no dé minutos/);
+    expect(p).toMatch(/3 o 4 platillos con su precio REAL/);
+    expect(p).toMatch(/dígalo usted antes de que el cliente lo deduzca/);
+    expect(p).toMatch(/Antes de escalar, cotice con cotizar_pedido/);
+    expect(p).toMatch(/no repita el rechazo ni el teléfono de la otra/);
+  });
+  it("la voz NO recibe esas reglas (tope de 8000 caracteres)", () => {
+    const p = promptPm({ canal: "voz" });
+    expect(p).not.toContain("propina_porcentaje");
+    expect(p).not.toMatch(/3 o 4 platillos con su precio REAL/);
   });
 });

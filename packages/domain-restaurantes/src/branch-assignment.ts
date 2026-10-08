@@ -72,6 +72,9 @@ export interface AssignBranchInput {
   readonly coordenadasPropuestas?: Readonly<Record<string, PuntoGeografico>>;
   /** Slugs de sucursales que NO reparten aunque la base diga `acepta_domicilio` (PM: Galerias y Playa; ver `SUCURSALES_QUE_NO_REPARTEN_PM`). */
   readonly sucursalesQueNoReparten?: readonly string[];
+  /** QA-PM-R4-reglas-05: `property_id` de la sucursal por la que entro el cliente (su numero de WhatsApp o su llamada). Si ESA sucursal cubre la colonia (doble cobertura), se
+   * asigna esa en vez de mandar al cliente a otra que tambien la cubre. Solo desempata entre sucursales que ya cubren la zona. */
+  readonly sucursalDeEntregaPreferidaPropertyId?: string | null;
 }
 
 export type BranchAssignmentVia = "coordenadas" | "zona";
@@ -213,7 +216,8 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
       const i = referencia.findIndex((r) => r.slug === slug);
       return i === -1 ? Number.MAX_SAFE_INTEGER : i;
     };
-    const ordenadas = despacho.filter((b) => cubren.has(b.propertyId)).sort((a, b) => ordenRef(a.slug) - ordenRef(b.slug) || a.slug.localeCompare(b.slug));
+    const esDeEntrada = (b: Branch): number => (input.sucursalDeEntregaPreferidaPropertyId && b.propertyId === input.sucursalDeEntregaPreferidaPropertyId ? 0 : 1);
+    const ordenadas = despacho.filter((b) => cubren.has(b.propertyId)).sort((a, b) => esDeEntrada(a) - esDeEntrada(b) || ordenRef(a.slug) - ordenRef(b.slug) || a.slug.localeCompare(b.slug));
     const elegida = ordenadas[0] as Branch;
     const otra = ordenadas[1];
     const kmElegida = kmDe(elegida.slug);
@@ -282,9 +286,12 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
   let ignorarZona = false;
   if (override) {
     chosen = cubrenRanked[0] as RankedBranch;
+    // La sucursal por la que entro el cliente gana si tambien cubre la colonia (QA-PM-R4-reglas-05).
+    const deEntrada = input.sucursalDeEntregaPreferidaPropertyId ? cubrenRanked.find((r) => r.branch.propertyId === input.sucursalDeEntregaPreferidaPropertyId) : undefined;
+    if (deEntrada) chosen = deEntrada;
     // Doble cobertura casi empatada (< 0.5 km): gana la que el piloto original pone primero; si ninguna esta en la referencia, la mas cercana.
     const segundo = cubrenRanked[1];
-    if (zone && segundo && segundo.km - chosen.km < EMPATE_DOBLE_COBERTURA_KM) {
+    if (zone && segundo && !deEntrada && segundo.km - chosen.km < EMPATE_DOBLE_COBERTURA_KM) {
       const ref = opcionesDeReferencia(await referenciaDeColonia(repo, input.organizationId, zone.id), despacho);
       const empatadas = cubrenRanked.filter((r) => r.km - chosen.km < EMPATE_DOBLE_COBERTURA_KM);
       const orden = (r: RankedBranch): number => {

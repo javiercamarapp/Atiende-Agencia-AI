@@ -163,11 +163,13 @@ function buildComplementNotesConBasicas(
  * agente, el servidor lo retiene para que la sucursal lo confirme (ver pedido-grande.ts). El checkout WEB conserva su tope de 100 (`MAX_PIEZAS_POR_RENGLON_WEB`). */
 export const MAX_PIEZAS_POR_RENGLON = 500;
 export const MAX_PIEZAS_POR_RENGLON_WEB = 100;
+/** Un producto vendido por peso ("— 1 kg") no admite mas de estas piezas por renglon: 100 o mas piezas de un producto por peso son gramos como cantidad (250, 750, 1000); 30 kg es un pedido grande legitimo que se retiene aparte. */
+export const MAX_PIEZAS_PRODUCTO_POR_PESO = 99;
 
 /** Mensaje accionable para una cantidad fuera de rango: dice el maximo en vez de un error generico. */
 export function mensajeCantidadInvalida(value: unknown, max: number = MAX_PIEZAS_POR_RENGLON): string {
   return typeof value === "number" && Number.isInteger(value) && value > max
-    ? `Productos o cantidades inválidos: el máximo es de ${max} piezas por renglón; un pedido más grande lo confirma directamente la sucursal.`
+    ? `Productos o cantidades inválidos: el máximo es de ${max} piezas por renglón; un pedido más grande lo confirma directamente la sucursal. Si ${value} son GRAMOS, requested_quantity no es el peso: busque el producto de esa presentación con buscar_producto usando la fracción ("cuarto de bistec", "tres cuartos de chuleta") y mande requested_quantity 1.`
     : "Productos o cantidades inválidos";
 }
 
@@ -207,6 +209,13 @@ export function buildOrderQuoteFromProducts(
     const product = products.find((candidate) => candidate.id === item.productId);
     if (!product) {
       throw new OrderValidationError(`Producto no disponible: ${item.productId}`);
+    }
+    // QA-PM-R4-reglas-03: "un cuarto de bistec" llegaba como requested_quantity 250 sobre el producto de 1 kg (250 kg, o el error de 500 piezas con 750). Un producto que se vende por
+    // peso ("Bistec de Res — 1 kg") no se pide por gramos: se rechaza con la instruccion de usar la presentacion exacta y cantidad 1.
+    if (item.requestedQuantity > MAX_PIEZAS_PRODUCTO_POR_PESO && /[—-]\s*\d+(?:[.,]\d+)?\s*(?:kg|g|gr)\b/i.test(product.name)) {
+      throw new OrderValidationError(
+        `${product.name} se vende por peso: requested_quantity es el número de piezas de ese producto (1 para un kilo), no gramos. Para ${item.requestedQuantity} g busque el producto de esa presentación con buscar_producto usando la fracción en la consulta (por ejemplo "cuarto de bistec") y mande requested_quantity 1.`,
+      );
     }
 
     // Regla dura: producto/categoria marcados "no se vende a domicilio" (PM: alcohol). Se
