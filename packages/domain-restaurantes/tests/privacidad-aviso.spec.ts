@@ -34,7 +34,7 @@ describe("aviso simplificado de WhatsApp", () => {
   it("sin URL configurada NO inventa un enlace: pide el integral al restaurante", () => {
     const text = privacyNoticeWhatsApp({ ...CONFIG, noticeUrl: null });
     expect(text).not.toContain("http");
-    expect(text).toContain("Pide el aviso de privacidad integral al restaurante");
+    expect(text).toContain("Puede pedir el aviso de privacidad integral al restaurante");
   });
 
   it("con la configuracion por defecto usa la retencion por defecto (180 dias) y 'este restaurante'", () => {
@@ -58,20 +58,20 @@ describe("guion de apertura de la llamada", () => {
     const text = voiceOpeningScript(CONFIG);
     expect(text).toContain("asistente virtual");
     expect(text).toContain("inteligencia artificial");
-    expect(text).toContain("¿Autorizas que esta llamada se grabe");
-    expect(text).toContain("te atiendo igual, sin grabar");
+    expect(text).toContain("¿Autoriza que esta llamada se grabe");
+    expect(text).toContain("lo atiendo igual, sin grabar");
     expect(text).toContain("15 días");
   });
 
   it("con retencion de voz 0: avisa que NO se graba y no pide consentimiento", () => {
     const text = voiceOpeningScript({ ...CONFIG, voiceRetentionDays: 0 });
     expect(text).toContain("no se graba");
-    expect(text).not.toContain("¿Autorizas");
+    expect(text).not.toContain("¿Autoriza");
   });
 
   it("sin consentimiento requerido: informa la retencion (no pregunta)", () => {
     const text = voiceOpeningScript({ ...CONFIG, recordingConsentRequired: false });
-    expect(text).not.toContain("¿Autorizas");
+    expect(text).not.toContain("¿Autoriza");
     expect(text).toContain("15 días");
   });
 });
@@ -104,5 +104,14 @@ describe("validatePrivacyConfig -- espeja los CHECK de la tabla", () => {
   it("rechaza version con caracteres raros y responsable demasiado largo", () => {
     expect(validatePrivacyConfig({ ...ok, noticeVersion: "v 1" })).toMatch(/noticeVersion/);
     expect(validatePrivacyConfig({ ...ok, responsibleName: "x".repeat(201) })).toMatch(/responsibleName/);
+  });
+});
+
+describe("el aviso y los guiones de privacidad hablan de usted (QA-PM-R3-whatsapp-11)", () => {
+  it("ni el aviso de WhatsApp ni el guion de voz ni sus respuestas tutean", async () => {
+    const mod = await import("../src/privacidad/aviso.ts");
+    const config = { responsibleName: "Los Taquitos de PM", conversationRetentionDays: 90, voiceRetentionDays: 30, recordingConsentRequired: true, noticeUrl: null } as never;
+    const textos = [mod.privacyNoticeWhatsApp(config), mod.voiceOpeningScript(config), mod.voiceOpeningScript({ ...(config as object), noticeUrl: "https://x.mx/aviso" } as never), mod.VOICE_CONSENT_GRANTED_REPLY, mod.VOICE_CONSENT_DENIED_REPLY, mod.VOICE_CONSENT_REPEAT_REPLY];
+    for (const t of textos) expect(t).not.toMatch(/\b(?:tu|tus|te|ti|puedes|dile|escribe|autorizas|dices|respondes|pide)\b/i);
   });
 });

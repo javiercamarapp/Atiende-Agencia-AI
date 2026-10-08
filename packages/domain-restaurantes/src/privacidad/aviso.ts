@@ -63,7 +63,7 @@ export function validatePrivacyConfig(entrada: PrivacyConfigEntrada): string | n
 }
 
 function integralNotice(config: PrivacyConfig): string {
-  return config.noticeUrl ? `Aviso de privacidad integral: ${config.noticeUrl}` : "Pide el aviso de privacidad integral al restaurante.";
+  return config.noticeUrl ? `Aviso de privacidad integral: ${config.noticeUrl}` : "Puede pedir el aviso de privacidad integral al restaurante.";
 }
 
 export function businessNameOf(config: PrivacyConfig): string {
@@ -75,9 +75,9 @@ export function privacyNoticeWhatsApp(config: PrivacyConfig): string {
   const businessName = businessNameOf(config);
   return (
     `Soy el asistente virtual (una inteligencia artificial) de ${businessName}. ` +
-    "Aviso de privacidad: uso tu nombre, teléfono, dirección y pedidos solo para tomar y entregar tu pedido y darte atención; " +
+    "Aviso de privacidad: uso su nombre, teléfono, dirección y pedidos solo para tomar y entregar su pedido y atenderle; " +
     `guardo esta conversación ${config.conversationRetentionDays} días. ` +
-    "Puedes acceder, rectificar, cancelar u oponerte al uso de tus datos (ARCO) escribiendo \"mis datos personales\". " +
+    "Puede acceder, rectificar, cancelar u oponerse al uso de sus datos (ARCO) escribiendo \"mis datos personales\". " +
     integralNotice(config)
   );
 }
@@ -94,22 +94,22 @@ export function voiceOpeningScript(config: PrivacyConfig): string {
   const businessName = businessNameOf(config);
   const intro =
     `Hola, soy el asistente virtual de ${businessName}; soy una inteligencia artificial, no una persona. ` +
-    "Aviso de privacidad: uso tus datos solo para tomar y entregar tu pedido. " +
-    (config.noticeUrl ? "El aviso integral está en nuestra página; también puedes pedirlo en la sucursal. " : "Puedes pedir el aviso integral en la sucursal. ") +
-    "Para ejercer tus derechos sobre tus datos, escribe por WhatsApp o dile a la sucursal. ";
+    "Aviso de privacidad: uso sus datos solo para tomar y entregar su pedido. " +
+    (config.noticeUrl ? "El aviso integral está en nuestra página; también puede pedirlo en la sucursal. " : "Puede pedir el aviso integral en la sucursal. ") +
+    "Para ejercer sus derechos sobre sus datos, escriba por WhatsApp o dígaselo a la sucursal. ";
   if (config.voiceRetentionDays === 0) return `${intro}Esta llamada no se graba.`;
   if (!config.recordingConsentRequired) {
     return `${intro}Esta llamada se transcribe y se guarda ${config.voiceRetentionDays} días para mejorar el servicio.`;
   }
   return (
-    `${intro}¿Autorizas que esta llamada se grabe y se transcriba para mejorar el servicio? ` +
-    `Se guarda ${config.voiceRetentionDays} días. Si dices que no, te atiendo igual, sin grabar.`
+    `${intro}¿Autoriza que esta llamada se grabe y se transcriba para mejorar el servicio? ` +
+    `Se guarda ${config.voiceRetentionDays} días. Si dice que no, lo atiendo igual, sin grabar.`
   );
 }
 
-export const VOICE_CONSENT_GRANTED_REPLY = "Gracias, queda registrado. ¿Qué te gustaría pedir?";
-export const VOICE_CONSENT_DENIED_REPLY = "Sin problema: esta llamada no se graba. ¿Qué te gustaría pedir?";
-export const VOICE_CONSENT_REPEAT_REPLY = "No te escuché bien: ¿autorizas que se grabe la llamada? Puedes decir sí o no; si no respondes, no se graba.";
+export const VOICE_CONSENT_GRANTED_REPLY = "Gracias, queda registrado. ¿Qué le gustaría pedir?";
+export const VOICE_CONSENT_DENIED_REPLY = "Sin problema: esta llamada no se graba. ¿Qué le gustaría pedir?";
+export const VOICE_CONSENT_REPEAT_REPLY = "No lo escuché bien: ¿autoriza que se grabe la llamada? Puede decir sí o no; si no responde, no se graba.";
 
 function normalize(text: string): string {
   return text
