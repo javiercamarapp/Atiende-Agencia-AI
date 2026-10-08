@@ -92,6 +92,20 @@ describe("libro de Excel del CFO", () => {
     expect(Number(cn.v)).toBeCloseTo(sucNetas / 100, 2);
   });
 
+  it("con costos capturados el EBITDA y la utilidad bruta son fórmulas vivas con el valor cacheado de la vista (y estimado/capturado llevan estilo propio)", async () => {
+    const { vistas, alcance } = await armarVistas({ n: 2 });
+    const { hoja } = await abrir(construirLibroCfo(vistas, alcance, GENERADO));
+    const xml = await hoja("Estado de resultados");
+    const col = vistas.estadoResultados!.estadoResultados.acumulado.columnas[0]!;
+    for (const [etiqueta, id] of [["Utilidad bruta", "utilidad_bruta"], ["EBITDA operativo", "ebitda"]] as const) {
+      const valor = col.lineas.find((l) => l.id === id)!.cifra.valor;
+      expect(valor, id).not.toBeNull();
+      const c = celda(xml, `B${filaDe(xml, etiqueta)}`);
+      expect(c.f, id).toMatch(/^B\d+(-B\d+)+$/);
+      expect(Number(c.v), id).toBeCloseTo(valor! / 100, 2);
+    }
+  });
+
   it("un platillo, sucursal o texto de origen que empieza con = + - @ sale como texto (inlineStr), jamás como fórmula", async () => {
     const { vistas, alcance } = await armarVistas({ platillo: HIPERVINCULO, nombreSucursal: "+SUM(1+1)" });
     const bytes = construirLibroCfo(vistas, alcance, GENERADO);

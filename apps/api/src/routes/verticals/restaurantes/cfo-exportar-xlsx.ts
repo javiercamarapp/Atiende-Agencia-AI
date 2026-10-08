@@ -516,7 +516,7 @@ function hojaEstadoResultados(est: Estilos, usados: Set<string>, e: EstadoResult
   const cols = e.estadoResultados.acumulado.columnas;
   h.ancho([38, ...cols.map(() => 20)]);
   h.titulo("Estado de resultados operativo");
-  h.parrafo(`Periodo ${e.estadoResultados.rango.desde} a ${e.estadoResultados.rango.hasta} · montos en pesos MXN. El Total es la suma de las sucursales y «No asignado».`);
+  h.parrafo(`Periodo ${e.estadoResultados.rango.desde} a ${e.estadoResultados.rango.hasta} · montos en pesos MXN. El Total es la suma de las sucursales${cols.some((c) => c.clave === "no_asignado") ? " y «No asignado»" : ""}.`);
   h.r += 1;
   const fila = h.r;
   escribirEstadoResultados(h, cols, fila, 1, (c) => (c.clave === "total" ? "Total" : c.clave === "no_asignado" ? "No asignado" : c.nombre));
@@ -566,6 +566,8 @@ function hojaVentas(est: Estilos, usados: Set<string>, v: VentasVista): Hoja {
   return h;
 }
 
+const ETIQUETA_METRICA = { netaCentavos: "Ventas netas", ticket: "Ticket promedio", cancelacionPct: "% de cancelación", descuentoPct: "% de descuento" } as const;
+
 function hojaSucursales(est: Estilos, usados: Set<string>, s: SucursalesVista): Hoja {
   const h = new Hoja(nombreHojaSeguro("Sucursales", usados), est).ancho([28, 12, 18, 14, 16, 14, 14, 16, 16, 18]);
   h.titulo("Comparativo de sucursales");
@@ -605,11 +607,11 @@ function hojaSucursales(est: Estilos, usados: Set<string>, s: SucursalesVista): 
     h.r += 1;
     for (const o of s.outliers) {
       h.texto(h.r, 0, o.nombre);
-      h.texto(h.r, 1, o.metrica);
+      h.texto(h.r, 1, ETIQUETA_METRICA[o.metrica]);
       h.numero(h.r, 2, o.valor, "dec1");
       h.numero(h.r, 3, o.mediana, "dec1");
       h.valor(h.r, 4, o.z, "dec1");
-      h.texto(h.r, 5, o.motivo);
+      h.texto(h.r, 5, o.motivo === "z>=2" ? "2 o más desviaciones estándar del resto" : "2 veces la mediana o más");
       h.r += 1;
     }
   }

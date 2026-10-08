@@ -496,6 +496,9 @@ function seccionEstadoResultados(p: Pdf, vistas: VistasCfo): void {
   }
 }
 
+const METRICA_OUTLIER = { netaCentavos: "ventas netas", ticket: "ticket promedio", cancelacionPct: "% de cancelación", descuentoPct: "% de descuento" } as const;
+const MOTIVO_OUTLIER = { "z>=2": "a 2 o más desviaciones estándar del resto", ">=2xMediana": "2 veces la mediana o más" } as const;
+
 function seccionSucursales(p: Pdf, vistas: VistasCfo): void {
   const s = vistas.sucursales;
   if (!s) return;
@@ -532,7 +535,7 @@ function seccionSucursales(p: Pdf, vistas: VistasCfo): void {
     ],
     7.5,
   );
-  for (const o of s.outliers.slice(0, 6)) p.texto(`Fuera de patrón: ${o.nombre}, ${o.metrica} (${o.motivo}).`, { size: 8, color: MUTED });
+  for (const o of s.outliers.slice(0, 6)) p.texto(`Fuera de patrón: ${o.nombre}, ${METRICA_OUTLIER[o.metrica]} (${MOTIVO_OUTLIER[o.motivo]}).`, { size: 8, color: MUTED });
 }
 
 function seccionDetalleSucursales(p: Pdf, vistas: VistasCfo): void {
@@ -632,7 +635,7 @@ export async function construirReporteCfoPdf(vistas: VistasCfo, alcance: Alcance
   // ---- gráficas ----
   if (vistas.ventas) {
     const v = vistas.ventas;
-    p.titulo("Ventas", true);
+    p.titulo("Ventas");
     graficaTendencia(p, v.ventas.total.serie);
     graficaBarras(p, "Ventas netas por sucursal", "Pesos, periodo completo", v.ventas.porSucursal.map((s) => ({ etiqueta: s.nombre, centavos: s.sumas.netaCentavos })));
     graficaDona(p, "Mix de canal", "Participación en ventas netas por canal y origen", v.porCanal.map((c) => ({ etiqueta: `${c.canal} · ${c.source}`, centavos: c.netaCentavos })));

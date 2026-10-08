@@ -58,9 +58,12 @@ export async function armarVistas(op: OpcionesVistas = {}): Promise<{ vistas: Vi
     },
   });
   if (op.capturarCostos ?? true) {
-    for (const c of costosCapturadosSinteticos("2026-09-01")) {
-      if (!ids.has(c.propertyId as string)) continue;
-      await repo.costoGuardar({ organizationId: "org", propertyId: c.propertyId, mes: c.mes, concepto: c.concepto, montoCentavos: c.montoCentavos, pct: c.pct, nota: null });
+    // Agosto y septiembre: el rango de prueba (31-ago a 27-sep) toca los dos meses, así que con ambos capturados el EBITDA sale completo.
+    for (const mes of ["2026-08-01", "2026-09-01"]) {
+      for (const c of costosCapturadosSinteticos(mes)) {
+        if (!ids.has(c.propertyId as string)) continue;
+        await repo.costoGuardar({ organizationId: "org", propertyId: c.propertyId, mes: c.mes, concepto: c.concepto, montoCentavos: c.montoCentavos, pct: c.pct, nota: null });
+      }
     }
   }
   const org = op.organizacionCompleta ?? true;

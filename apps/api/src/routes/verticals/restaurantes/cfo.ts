@@ -141,7 +141,6 @@ export function restaurantesCfoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   // ---- infraestructura ---------------------------------------------------------------------------------------------------------------------
 
-  const repoDe = (c: Context<CoreAuthHonoEnv>): CfoRepository => repoCfoDe(deps, c);
   const protegido = protegidoCfo;
   const contexto = (c: Context<CoreAuthHonoEnv>, ids: readonly string[] | null): Promise<ContextoCfo> => construirContextoCfo(deps, c, ids);
 
