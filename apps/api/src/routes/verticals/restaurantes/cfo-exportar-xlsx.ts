@@ -804,14 +804,38 @@ function hojaSoftRestaurant(est: Estilos, usados: Set<string>, c: CuadreSrVista)
   return h;
 }
 
-/** «Suc <nombre>» ya saneado, cortado a 31 y SIN apóstrofos ni espacios en los bordes (se recorta DESPUÉS de cortar; Excel repara un nombre que termina en «'»). */
-function nombreBaseSucursal(nombre: string): string {
-  const limpio = `Suc ${nombre}`.replace(/[[\]:*?/\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31);
-  return limpio.replace(/^['\s]+|['\s]+$/g, "") || "Suc";
+/** Corta por caracteres completos (code points) sin pasar de `max` unidades UTF-16. */
+function cortarUtf16(t: string, max: number): string {
+  let out = "";
+  for (const ch of t) {
+    if (out.length + ch.length > max) break;
+    out += ch;
+  }
+  return out;
+}
+
+const bordes = (t: string): string => t.replace(/^['\s]+|['\s]+$/g, "");
+
+/**
+ * Nombre de hoja «Suc <nombre>» TAL COMO se escribirá en workbook.xml: sin caracteres inválidos en XML (control, U+FFFE/FFFF, medias parejas), sin `[]:*?/\`,
+ * cortado por caracteres completos a 31 unidades UTF-16, sin apóstrofos ni espacios en los bordes (se recortan DESPUÉS del corte) y único sin distinguir
+ * mayúsculas sobre el nombre FINAL, con sufijo « (n)» propio. No depende de `nombreHojaSeguro`, que cuenta unidades UTF-16 y no conoce lo que escXml descarta.
+ */
+function nombreSucursalUnico(nombre: string, usados: Set<string>): string {
+  let limpio = "";
+  for (const ch of `Suc ${nombre}`) if (xmlValido(ch.codePointAt(0)!)) limpio += ch;
+  const base = bordes(cortarUtf16(limpio.replace(/[[\]:*?/\\]/g, " ").replace(/\s+/g, " ").trim(), 31)) || "Suc";
+  let nombreFinal = base;
+  for (let i = 2; usados.has(nombreFinal.toLowerCase()); i += 1) {
+    const sufijo = ` (${i})`;
+    nombreFinal = bordes(cortarUtf16(base, 31 - sufijo.length)) + sufijo;
+  }
+  usados.add(nombreFinal.toLowerCase());
+  return nombreFinal;
 }
 
 function hojaSucursal(est: Estilos, usados: Set<string>, nombre: string, propertyId: string, v: VistasCfo): Hoja {
-  const h = new Hoja(nombreHojaSeguro(nombreBaseSucursal(nombre), usados), est).ancho([38, 22, 22]);
+  const h = new Hoja(nombreSucursalUnico(nombre, usados), est).ancho([38, 22, 22]);
   h.titulo(`Sucursal: ${nombre}`);
   const kpis = v.resumen?.kpis.porSucursal.find((s) => s.propertyId === propertyId);
   if (kpis) {
