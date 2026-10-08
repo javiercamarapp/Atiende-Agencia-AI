@@ -34,3 +34,23 @@ describe("H56 / 3de32ee y L03 / 0edd978: ningun archivo .env esta versionado (sa
     }
   });
 });
+
+// Higiene: restos de editor/herramientas (`sed -i` de macOS deja `archivo-E`; los parches dejan `.orig`/`.rej`) no se versionan.
+// Dos copias `-E` quedaron rastreadas en main y nadie las referenciaba.
+function esResiduoVersionado(ruta: string): boolean {
+  const base = ruta.split("/").at(-1) ?? ruta;
+  return /-E$/.test(base) || /\.(orig|rej)$/.test(base);
+}
+
+describe("higiene: ningun archivo residual (-E, .orig, .rej) esta versionado", () => {
+  it("git ls-files no contiene archivos terminados en -E, .orig ni .rej", () => {
+    const versionados = execFileSync("git", ["ls-files", "-z"], { cwd: RAIZ, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\0").filter(Boolean);
+    expect(versionados.length).toBeGreaterThan(100);
+    expect(versionados.filter(esResiduoVersionado)).toEqual([]);
+  });
+
+  it("(negativo y positivo del detector) marca los residuos y no marca archivos legitimos", () => {
+    for (const malo of ["a/b/x.ts-E", "x.sql-E", "src/y.ts.orig", "z.patch.rej"]) expect(esResiduoVersionado(malo), malo).toBe(true);
+    for (const bueno of ["README-ES.md", "src/Ejemplo.ts", "docs/SUBE.md", "a/original.ts", "rejilla.ts", "NODE-E2E.md"]) expect(esResiduoVersionado(bueno), bueno).toBe(false);
+  });
+});
