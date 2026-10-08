@@ -38,7 +38,7 @@ describe("evals de «Pregunta a tu CFO»", () => {
 
   it.each(casosCfo.map((c) => [c.id, c.q, c] as const))("%s · %s", async (_id, _q, c) => {
     const reader = lectorDe(c);
-    const catalog = buildRestaurantesDataChatCatalog(reader);
+    const catalog = buildRestaurantesDataChatCatalog(reader, { verticalRole: alcanceDe(c).verticalRole });
     const llamadas = c.llama ?? [];
     // Referencia: lo que devuelve la herramienta con esos argumentos (el valor esperado NUNCA se escribe a mano).
     const refReader = lectorDe(c);
@@ -83,7 +83,7 @@ describe("evals de «Pregunta a tu CFO»", () => {
     const c = casosCfo[0]!;
     const reader = lectorDe(c);
     const llm = scriptedCompletion([{ toolCalls: [{ name: "cfo_resumen", argumentsJson: JSON.stringify({ periodo: "ayer", sucursal: "Altabrisa" }) }] }, { text: "Altabrisa vendió $999,999.00 MXN ayer." }]);
-    const a = await runDataChatTurn({ catalog: buildRestaurantesDataChatCatalog(reader), scope: OWNER_CFO_SCOPE, question: c.q, complete: llm.complete, now: new Date() });
+    const a = await runDataChatTurn({ catalog: buildRestaurantesDataChatCatalog(reader, { verticalRole: "owner" }), scope: OWNER_CFO_SCOPE, question: c.q, complete: llm.complete, now: new Date() });
     expect(JSON.stringify(a)).not.toContain("999,999");
     expect(a.text).toMatch(/Altabrisa|\$/);
   });

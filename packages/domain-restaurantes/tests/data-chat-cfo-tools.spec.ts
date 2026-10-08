@@ -313,7 +313,7 @@ describe("lector Postgres contra la base SIN las migraciones del CFO", () => {
 describe("de punta a punta con el motor: la guardia de números", () => {
   it("una cifra inventada por el modelo se descarta; las del servicio sobreviven", async () => {
     const reader = new CfoFakeReader();
-    const catalog = buildRestaurantesDataChatCatalog(reader);
+    const catalog = buildRestaurantesDataChatCatalog(reader, { verticalRole: "owner" });
     const real = await tool(reader, "cfo_resumen").run(ctx(), SEMANA);
     const inventada = scriptedCompletion([CALL("cfo_resumen", SEMANA), { text: "Vendiste $987,654.32 MXN la semana pasada." }]);
     const a = await runDataChatTurn({ catalog, scope: OWNER_CFO_SCOPE, question: "¿cómo me fue la semana pasada?", complete: inventada.complete, now: new Date() });
@@ -332,7 +332,7 @@ describe("de punta a punta con el motor: la guardia de números", () => {
   it("admin acotado que pide otra sucursal por el motor: 'no encontré esa sucursal' y ninguna cifra ajena", async () => {
     const reader = new CfoFakeReader();
     const llm = scriptedCompletion([CALL("cfo_resumen", { ...SEMANA, sucursal: "Altabrisa" }), { text: "Altabrisa vendió $1 MXN" }]);
-    const a = await runDataChatTurn({ catalog: buildRestaurantesDataChatCatalog(reader), scope: GERENTE_T1_SCOPE, question: "¿cuánto vendió Altabrisa?", complete: llm.complete, now: new Date() });
+    const a = await runDataChatTurn({ catalog: buildRestaurantesDataChatCatalog(reader, { verticalRole: "admin" }), scope: GERENTE_T1_SCOPE, question: "¿cuánto vendió Altabrisa?", complete: llm.complete, now: new Date() });
     expect(a.status).toBe("clarify");
     expect(a.text).toMatch(/No encontré esa sucursal/);
     expect(a.blocks).toEqual([]);

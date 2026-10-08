@@ -15,6 +15,7 @@ import {
   type ParsedArgs,
   type ResolvedPeriod,
 } from "@atiende/agent-core/data-chat";
+import { puedeEjecutar } from "../roles.ts";
 import { buildCfoDataChatTools } from "./cfo-tools.ts";
 import { DataChatUnavailableError, type DataChatWindow, type RestaurantesDataChatReader, type SalesGranularity, type VisibleBranch } from "./reader.ts";
 
@@ -341,11 +342,17 @@ export function buildRestaurantesDataChatTools(reader: RestaurantesDataChatReade
   return [ventasPorDia, ventasPorSucursal, productos, ticket, canal, horas, recurrentes, promociones, ...buildCfoDataChatTools(reader)];
 }
 
-export function buildRestaurantesDataChatCatalog(reader: RestaurantesDataChatReader): DataChatCatalog {
+/** Rol de vertical de quien pregunta: las herramientas `cfo_*` solo existen para quien tiene `cfo.ver` (owner/admin). Sin rol o con un rol desconocido: fail-closed. */
+export interface OpcionesCatalogoRestaurantes {
+  readonly verticalRole?: string | null;
+}
+
+export function buildRestaurantesDataChatCatalog(reader: RestaurantesDataChatReader, opciones: OpcionesCatalogoRestaurantes = {}): DataChatCatalog {
+  const conCfo = puedeEjecutar(opciones.verticalRole, "cfo.ver");
   return {
     vertical: "restaurantes",
     domain: "un restaurante con una o varias sucursales (pedidos por web, llamada de voz y WhatsApp)",
-    tools: buildRestaurantesDataChatTools(reader),
+    tools: buildRestaurantesDataChatTools(reader).filter((t) => conCfo || !t.name.startsWith("cfo_")),
     async describeScope(scope) {
       const visible = await reader.listVisibleBranches(scope.organizationId, scope.allowedPropertyIds);
       if (visible.length === 0) return "No tiene sucursales activas asignadas.";

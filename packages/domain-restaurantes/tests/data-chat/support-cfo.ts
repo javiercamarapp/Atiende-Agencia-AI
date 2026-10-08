@@ -31,6 +31,8 @@ export interface OpcionesLectorCfo {
   readonly dataset?: Partial<DatasetCfoMemoria>;
   readonly repo?: Partial<OpcionesCfoMemoria>;
   readonly falla?: Error;
+  /** Sucursales visibles (por omision, las 7 sinteticas): sirve para nombres hostiles. */
+  readonly branches?: readonly VisibleBranch[];
 }
 
 /** Lector falso con CFO: respeta el alcance igual que la base (sucursales visibles) y arma un servicio real en memoria. */
@@ -39,7 +41,7 @@ export class CfoFakeReader extends FakeReader {
   readonly entradas: Array<Omit<EntradaServicioCfo, "repo">> = [];
 
   constructor(private readonly op: OpcionesLectorCfo = {}) {
-    super(CFO_BRANCHES);
+    super(op.branches ?? CFO_BRANCHES);
   }
 
   cfo = async (entrada: Omit<EntradaServicioCfo, "repo">): Promise<ServicioCfo> => {

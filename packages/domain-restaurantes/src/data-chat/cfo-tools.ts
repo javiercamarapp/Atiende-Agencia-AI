@@ -30,6 +30,7 @@ import { formatoEntero } from "../cfo/util.ts";
 import { AVISO_CFO } from "../cfo/estado-resultados.ts";
 import type { AlcanceSucursales, Cifra } from "../cfo/tipos.ts";
 import type { ClientesColumna, SucursalApi, VistaCfoBase } from "../cfo/tipos-api.ts";
+import { puedeEjecutar } from "../roles.ts";
 import { resolveBranchSelection } from "./catalog.ts";
 import { DataChatUnavailableError, type RestaurantesDataChatReader } from "./reader.ts";
 
@@ -52,9 +53,23 @@ const pesos = (centavos: number | null | undefined): number | null => (centavos 
 const valor = (c: Cifra | null | undefined): number | null => c?.valor ?? null;
 const pesosDe = (c: Cifra | null | undefined): number | null => pesos(valor(c));
 
+/** Fuente de las respuestas sin consulta (aclaraciones, no disponible, sin acceso): tambien lleva el aviso de que no sustituye al contador. */
+const FUENTE_CFO = `CFO. ${AVISO_CONTADOR_COPILOTO}`;
+export const MENSAJE_SIN_ACCESO_CFO_COPILOTO = "Tu rol no tiene acceso al CFO.";
+
 function failure(status: DataChatToolResult["status"], message: string, source: string): DataChatToolResult {
-  return { status, message, source, scopeLabel: "", columns: [], rows: [] };
+  return { status, message, source: source === "CFO" ? FUENTE_CFO : source, scopeLabel: "", columns: [], rows: [] };
 }
+
+/** Nombres libres (colonia, platillo, sucursal) NUNCA entran al `summary`: la guardia de cifras del motor toma como confiables los numeros del
+ *  summary (digitos, signos y cifras con letras), y un nombre capturado por un tercero ("Centro 88% $77,777") se las colaria al modelo. Los nombres
+ *  viajan solo en `rows` (celdas de texto: sus numeros no cuentan). */
+const ETIQUETA_TIPO: Readonly<Record<string, string>> = {
+  caida_ventas: "caída de ventas", ticket_baja: "baja del ticket", cancelacion_alta: "cancelaciones altas", descuento_fuera_rango: "descuentos fuera de rango",
+  compensaciones_inusuales: "compensaciones inusuales", costo_agente_alto: "costo alto del agente", cierre_agente_bajo: "cierre bajo del agente", entrega_lenta: "entregas lentas",
+  frecuentes_dormidos: "clientes frecuentes dormidos", agotado_estrella: "producto estrella agotado", comandas_sin_capturar: "comandas sin capturar",
+  escalaciones_pico: "pico de escalaciones", participacion_cae: "caída de participación", descuadre_sr: "descuadre con SoftRestaurant",
+};
 
 function fuenteDe(v: Pick<VistaCfoBase, "fuentes" | "avisos">, extra?: string): string {
   const usadas = v.fuentes.filter((f) => f.disponible).map((f) => `${f.nombre} (${f.confianza})`);
@@ -74,9 +89,13 @@ interface Preparado {
   readonly period: ResolvedPeriod;
   readonly scopeLabel: string;
   readonly alcance: AlcanceSucursales;
+  /** Nombres de las sucursales del alcance: para descartar de la narrativa las oraciones que los citan. */
+  readonly nombres: readonly string[];
 }
 
 async function preparar(reader: RestaurantesDataChatReader, ctx: DataChatToolContext, args: ParsedArgs): Promise<Preparado | DataChatToolResult> {
+  // Puerta de rol (la base tambien lo impide, pero no es la unica): solo quien tiene `cfo.ver` (owner/admin). Fail-closed con roles desconocidos.
+  if (!puedeEjecutar(ctx.scope.verticalRole, "cfo.ver")) return failure("unavailable", MENSAJE_SIN_ACCESO_CFO_COPILOTO, "CFO");
   if (!reader.cfo) return failure("unavailable", UNAVAILABLE_MESSAGE, "CFO");
   const p = resolvePeriod(args, ctx.now, ctx.scope.timezone);
   if (!p.ok) return failure(p.kind === "needs_clarification" ? "needs_clarification" : "error", p.message, "CFO");
@@ -85,14 +104,14 @@ async function preparar(reader: RestaurantesDataChatReader, ctx: DataChatToolCon
   if (!b.ok) return failure("needs_clarification", b.message, "CFO");
   const elegida = args["sucursal"] !== undefined && args["sucursal"] !== "";
   const elegidas = elegida ? visible.filter((v) => b.propertyIds?.includes(v.propertyId)) : visible;
-  if (elegidas.length === 0) return { status: "empty", message: "No tienes sucursales activas asignadas para consultar el CFO.", source: "CFO", scopeLabel: b.label, columns: [], rows: [] };
+  if (elegidas.length === 0) return { status: "empty", message: "No tienes sucursales activas asignadas para consultar el CFO.", source: FUENTE_CFO, scopeLabel: b.label, columns: [], rows: [] };
   const organizacionCompleta = ctx.scope.allowedPropertyIds === null;
   const sucursales: SucursalApi[] = elegidas.map((v) => ({ propertyId: v.propertyId, nombre: v.name, slug: v.slug }));
   const alcance: AlcanceSucursales = { propertyIds: sucursales.map((s) => s.propertyId), todas: !elegida, organizacionCompleta };
   // Org completa sin elegir sucursal: null deja que la SQL incluya «No asignado». Acotado o una sola sucursal: su lista explicita (la base la valida de nuevo).
   const propertyIdsSql = elegida || !organizacionCompleta ? alcance.propertyIds : null;
   const servicio = await reader.cfo({ organizationId: ctx.scope.organizationId, alcance, propertyIdsSql, sucursales, ahora: ctx.now });
-  return { servicio, q: { desde: p.period.fromDate, hasta: p.period.toDate, comparar: "periodo_anterior", granularidad: granularidad(p.period) }, period: p.period, scopeLabel: b.label, alcance };
+  return { servicio, q: { desde: p.period.fromDate, hasta: p.period.toDate, comparar: "periodo_anterior", granularidad: granularidad(p.period) }, period: p.period, scopeLabel: b.label, alcance, nombres: sucursales.map((x) => x.nombre) };
 }
 
 function esResultado(v: Preparado | DataChatToolResult): v is DataChatToolResult {
@@ -138,6 +157,15 @@ const REFERENCIA_RE = /\s?\[[a-z0-9_]+\]/g;
 const quitarReferencias = (t: string): string => t.replace(REFERENCIA_RE, "");
 const mxn = (centavos: number): string => formatMxn(centavos / 100);
 
+/** Narrativa de CFO-04 sin las oraciones que citan nombres libres (sucursales o titulos de hallazgos, que llevan sucursal o platillo). */
+function resumenSinNombres(oraciones: readonly string[], titulos: readonly string[], nombres: readonly string[], sinDatos: boolean): string {
+  const prohibidos = [...titulos, ...nombres].map((t) => t.toLowerCase()).filter((t) => t.length > 0);
+  const limpias = oraciones.filter((o) => !prohibidos.some((t) => o.toLowerCase().includes(t)));
+  const texto = quitarReferencias(limpias.join(" "));
+  if (texto) return texto;
+  return sinDatos ? "Sin datos de ventas en este periodo." : "Resumen del periodo en la tabla.";
+}
+
 const URGENCIAS: Readonly<Record<string, string>> = { alta: "Alta", media: "Media", baja: "Baja" };
 
 export function buildCfoDataChatTools(reader: RestaurantesDataChatReader): readonly DataChatTool[] {
@@ -168,7 +196,7 @@ export function buildCfoDataChatTools(reader: RestaurantesDataChatReader): reado
         columns,
         rows: [{ ventas: pesosDe(ventas?.valor), pedidos: valor(k("pedidos")?.valor), ticket: pesosDe(k("ticket")?.valor), variacion_ventas: variacion }],
         chart: { kind: "kpi", x: "ventas", y: "ventas" },
-        summary: quitarReferencias(v.narrativa.texto),
+        summary: resumenSinNombres(v.narrativa.oraciones.map((o) => o.texto), v.hallazgos.map((h) => h.titulo), p.nombres, v.narrativa.sinDatos),
       };
     },
   );
@@ -211,7 +239,7 @@ export function buildCfoDataChatTools(reader: RestaurantesDataChatReader): reado
         summary:
           rows.length === 0
             ? `Sin hallazgos que atender en ${p.period.label}.`
-            : `${rows.length} hallazgo(s) en ${p.period.label}${mayor ? `; el de mayor impacto: ${mayor.titulo} (${mxn(mayor.impactoCentavos as number)})` : ""}.`,
+            : `${rows.length} hallazgo(s) en ${p.period.label}${mayor ? `; el de mayor impacto es de ${ETIQUETA_TIPO[mayor.tipo] ?? "otro tipo"} (${mxn(mayor.impactoCentavos as number)})` : ""}.`,
       };
     },
   );
@@ -289,9 +317,9 @@ export function buildCfoDataChatTools(reader: RestaurantesDataChatReader): reado
       const ultimo = v.ranking[v.ranking.length - 1];
       const nombresFuera = [...new Set(v.outliers.map((o) => o.nombre))];
       const partes = [
-        primero ? `Mayor venta en ${p.period.label}: ${primero.nombre} con ${mxn(primero.netaCentavos)}.` : "",
-        ultimo && v.ranking.length > 1 ? `Menor venta: ${ultimo.nombre} con ${mxn(ultimo.netaCentavos)}.` : "",
-        nombresFuera.length > 0 ? `Fuera de lo común: ${nombresFuera.join(", ")}.` : "",
+        primero ? `Mayor venta de una sucursal en ${p.period.label}: ${mxn(primero.netaCentavos)}.` : "",
+        ultimo && v.ranking.length > 1 ? `Menor venta de una sucursal: ${mxn(ultimo.netaCentavos)}.` : "",
+        nombresFuera.length > 0 ? `Sucursales fuera de lo común: ${nombresFuera.length} (marcadas en la tabla).` : "",
       ].filter(Boolean);
       return {
         status: rows.length === 0 ? "empty" : "ok",
@@ -397,7 +425,7 @@ export function buildCfoDataChatTools(reader: RestaurantesDataChatReader): reado
           columns: [{ key: "categoria", label: "Categoría", kind: "text" }, { key: "unidades", label: "Unidades", kind: "integer" }, { key: "ingreso", label: "Ingreso", kind: "mxn" }, { key: "participacion", label: "Participación del ingreso", kind: "percent" }],
           rows,
           chart: { kind: "bar", x: "categoria", y: "ingreso" },
-          summary: rows[0] ? `Categoría con más ingreso en ${p.period.label}: ${rows[0].categoria} con ${mxn(v.mixCategoria[0]!.ingresoCentavos)}.` : undefined,
+          summary: rows[0] ? `Ingreso de la categoría líder en ${p.period.label}: ${mxn(v.mixCategoria[0]!.ingresoCentavos)} (primera fila de la tabla).` : undefined,
         };
       }
       if (vista === "canasta") {
@@ -408,7 +436,7 @@ export function buildCfoDataChatTools(reader: RestaurantesDataChatReader): reado
           columns: [{ key: "producto_a", label: "Producto A", kind: "text" }, { key: "producto_b", label: "Producto B", kind: "text" }, { key: "pedidos_juntos", label: "Pedidos juntos", kind: "integer" }, { key: "soporte_pct", label: "% de pedidos", kind: "percent" }, { key: "lift", label: "Lift", kind: "decimal" }],
           rows,
           chart: { kind: "bar", x: "producto_a", y: "pedidos_juntos" },
-          summary: rows[0] ? `Par más pedido junto en ${p.period.label}: ${rows[0].producto_a} y ${rows[0].producto_b} (${rows[0].pedidos_juntos} pedidos).` : undefined,
+          summary: rows[0] ? `El par más pedido junto en ${p.period.label} suma ${rows[0].pedidos_juntos} pedidos (primera fila de la tabla).` : undefined,
         };
       }
       // Ranking sobre TODA la matriz (no solo el top 10 del servicio), para poder ordenar por ingreso.
@@ -421,7 +449,7 @@ export function buildCfoDataChatTools(reader: RestaurantesDataChatReader): reado
         columns: [{ key: "platillo", label: "Platillo", kind: "text" }, { key: "unidades", label: "Unidades", kind: "integer" }, { key: "ingreso", label: "Ingreso", kind: "mxn" }, { key: "cuadrante", label: "Cuadrante", kind: "text" }],
         rows,
         chart: { kind: "bar", x: "platillo", y: por === "ingreso" ? "ingreso" : "unidades" },
-        summary: rows[0] ? `${vista === "menos_vendidos" ? "Menos vendido" : "Más vendido"} por ${por} en ${p.period.label}: ${rows[0].platillo}.` : undefined,
+        summary: rows[0] ? `${vista === "menos_vendidos" ? "Menos vendido" : "Más vendido"} por ${por} en ${p.period.label}: ${por === "ingreso" ? mxn(lista[0]!.ingresoCentavos) : `${lista[0]!.unidades} unidades`} (primera fila de la tabla).` : undefined,
       };
     },
   );
@@ -453,7 +481,7 @@ export function buildCfoDataChatTools(reader: RestaurantesDataChatReader): reado
           columns: [{ key: "colonia", label: "Colonia", kind: "text" }, { key: "pedidos", label: "Pedidos", kind: "integer" }, { key: "ventas", label: "Ventas netas", kind: "mxn" }, { key: "ticket", label: "Ticket medio", kind: "mxn" }, { key: "entrega_min", label: "Entrega promedio (min)", kind: "decimal" }],
           rows,
           chart: { kind: "bar", x: "colonia", y: "pedidos" },
-          summary: rows[0] ? `Colonia con más pedidos en ${p.period.label}: ${rows[0].colonia} (${rows[0].pedidos} pedidos).` : undefined,
+          summary: rows[0] ? `La colonia con más pedidos en ${p.period.label} tuvo ${rows[0].pedidos} pedidos (primera fila de la tabla).` : undefined,
         };
       }
       if (vista === "canal_hora") {
@@ -561,14 +589,14 @@ export function buildCfoDataChatTools(reader: RestaurantesDataChatReader): reado
         { concepto: "Otro", ventas: pesos(d.otro) },
       ];
       const cuadre = await p.servicio.cuadreSr(p.q);
-      const rojos = cuadre.porSucursal.filter((s) => s.semaforo === "rojo").map((s) => s.nombre);
+      const rojos = cuadre.porSucursal.filter((s) => s.semaforo === "rojo").length;
       return {
         status: "ok",
         ...base(p, src),
         columns: [{ key: "concepto", label: "Concepto", kind: "text" }, { key: "ventas", label: "Ventas", kind: "mxn" }],
         rows,
         chart: { kind: "bar", x: "concepto", y: "ventas" },
-        summary: `Ventas presenciales en ${p.period.label}: ${mxn(d.presencial)}; domicilio según SoftRestaurant: ${mxn(d.domicilioSR)}.${rojos.length > 0 ? ` Cuadre con diferencia relevante en: ${rojos.join(", ")}.` : ""}`,
+        summary: `Ventas presenciales en ${p.period.label}: ${mxn(d.presencial)}; domicilio según SoftRestaurant: ${mxn(d.domicilioSR)}.${rojos > 0 ? ` Sucursales con diferencia relevante en el cuadre: ${rojos}.` : ""}`,
       };
     },
   );

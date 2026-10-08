@@ -4,9 +4,9 @@
 import { describe, expect, it } from "vitest";
 import { parseArgs } from "@atiende/agent-core/data-chat";
 import { buildRestaurantesDataChatCatalog } from "@atiende/domain-restaurantes";
-import { COPILOTO_RESTAURANTES } from "../src/lib/copiloto/config/restaurantes.ts";
+import { COPILOTO_RESTAURANTES, COPILOTO_RESTAURANTES_SIN_CFO } from "../src/lib/copiloto/config/restaurantes.ts";
 
-const catalog = buildRestaurantesDataChatCatalog({} as never);
+const catalog = buildRestaurantesDataChatCatalog({} as never, { verticalRole: "owner" });
 const CFO = COPILOTO_RESTAURANTES.categorias.find((c) => c.titulo === "CFO")!;
 
 describe("config del Copiloto de restaurantes: categoría CFO", () => {
@@ -50,5 +50,21 @@ describe("config del Copiloto de restaurantes: categoría CFO", () => {
 
   it("la nota del Copiloto avisa que el CFO no sustituye al contador", () => {
     expect(COPILOTO_RESTAURANTES.textos.nota).toMatch(/no sustituyen a tu contador/);
+  });
+
+  it("sin cfo.ver (staff) no se ofrece nada del CFO: ni chips, ni tarjeta, ni consultas directas, ni etiquetas; conserva los chips de siempre", () => {
+    const c = COPILOTO_RESTAURANTES_SIN_CFO;
+    expect(c.sugerencias).toHaveLength(5);
+    expect(c.sugerencias).toContain("¿Qué canal me trae más pedidos este mes?");
+    expect(c.sugerencias).toContain("¿Cuántos clientes recurrentes tuve este mes?");
+    expect(c.categorias.map((x) => x.titulo)).toEqual(["Ventas", "Operación", "Clientes"]);
+    expect(Object.values(c.directas).some((d) => d.tool.startsWith("cfo_"))).toBe(false);
+    expect(Object.keys(c.etiquetasHerramienta).some((k) => k.startsWith("cfo_"))).toBe(false);
+    expect(Object.keys(c.rutasFuente).some((k) => k.startsWith("cfo_"))).toBe(false);
+    expect(c.textos.nota).not.toMatch(/CFO/);
+    // cada chip y pregunta tiene su consulta directa y ninguna es huérfana
+    const preguntas = new Set([...c.sugerencias, ...c.categorias.flatMap((x) => x.preguntas)]);
+    expect([...preguntas].filter((q) => !c.directas[q])).toEqual([]);
+    expect(Object.keys(c.directas).filter((q) => !preguntas.has(q))).toEqual([]);
   });
 });

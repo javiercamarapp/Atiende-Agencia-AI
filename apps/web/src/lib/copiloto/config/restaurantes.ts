@@ -110,3 +110,28 @@ export const COPILOTO_RESTAURANTES: CopilotoConfigVertical = {
   maxCaracteres: 600,
   textoSinAcceso: "Tu rol no tiene acceso al Copiloto. Pídele acceso al dueño.",
 };
+
+/** Chips de quien NO tiene `cfo.ver` (staff): los de siempre, sin ninguna pregunta del CFO. */
+export const SUGERENCIAS_COPILOTO_RESTAURANTES_SIN_CFO: readonly string[] = [
+  "¿Cuánto vendí esta semana?",
+  "¿Cuáles son mis productos más vendidos este mes?",
+  "¿A qué horas tengo más pedidos en los últimos 30 días?",
+  "¿Qué canal me trae más pedidos este mes?",
+  "¿Cuántos clientes recurrentes tuve este mes?",
+];
+
+const sinCfo = <T>(m: Readonly<Record<string, T>>): Record<string, T> => Object.fromEntries(Object.entries(m).filter(([k]) => !k.startsWith("cfo_")));
+
+/** Config para roles sin `cfo.ver`: el servidor tampoco les expone las herramientas `cfo_*` (catalogo por rol), asi que no se les ofrece nada del CFO. */
+export const COPILOTO_RESTAURANTES_SIN_CFO: CopilotoConfigVertical = {
+  ...COPILOTO_RESTAURANTES,
+  textos: { ...COPILOTO_RESTAURANTES.textos, nota: "Responde solo con cifras ya calculadas en el servidor y te dice de dónde salen; si no hay dato, te lo dice. No inventa números." },
+  sugerencias: SUGERENCIAS_COPILOTO_RESTAURANTES_SIN_CFO,
+  categorias: COPILOTO_RESTAURANTES.categorias.filter((c) => c.titulo !== "CFO"),
+  directas: {
+    ...Object.fromEntries(Object.entries(COPILOTO_RESTAURANTES.directas).filter(([, d]) => !d.tool.startsWith("cfo_"))),
+    "¿Qué canal me trae más pedidos este mes?": { tool: "pedidos_por_canal", args: { periodo: "este_mes" } },
+  },
+  etiquetasHerramienta: sinCfo(COPILOTO_RESTAURANTES.etiquetasHerramienta),
+  rutasFuente: sinCfo(COPILOTO_RESTAURANTES.rutasFuente),
+};
