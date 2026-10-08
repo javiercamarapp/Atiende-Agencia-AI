@@ -86,8 +86,9 @@ function orgCorta(organizationId: string): string {
   return m ? m[0].toLowerCase() : "org";
 }
 
-export function nombreArchivoCfo(organizationId: string, desde: string, hasta: string, todas: boolean, nSucursales: number, formato: "xlsx" | "pdf"): string {
-  const alcance = todas ? "todas" : `${nSucursales}suc`;
+export function nombreArchivoCfo(organizationId: string, desde: string, hasta: string, todas: boolean, organizacionCompleta: boolean, nSucursales: number, formato: "xlsx" | "pdf"): string {
+  // «todas» solo si es la organización completa; un admin acotado que pide «todas» las suyas lleva otro rótulo.
+  const alcance = todas ? (organizacionCompleta ? "todas" : "acotado") : `${nSucursales}suc`;
   return `cfo-${orgCorta(organizationId)}-${desde}-${hasta}-${alcance}.${formato}`;
 }
 
@@ -139,7 +140,7 @@ export function restaurantesCfoExportarRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     }
     logEvent(c, "info", "restaurantes_cfo_exportado", { actorUserId: c.get("userId"), organizationId: ctx.organizationId, vista, formato, bytes: cuerpo.length });
 
-    const archivo = nombreArchivoCfo(ctx.organizationId, desde, hasta, ctx.alcance.todas, ctx.sucursales.length, formato);
+    const archivo = nombreArchivoCfo(ctx.organizationId, desde, hasta, ctx.alcance.todas, ctx.alcance.organizacionCompleta, ctx.sucursales.length, formato);
     return new Response(Buffer.from(cuerpo), {
       status: 200,
       headers: {

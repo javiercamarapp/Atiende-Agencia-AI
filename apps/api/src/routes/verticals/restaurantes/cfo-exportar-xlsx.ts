@@ -78,7 +78,7 @@ function escXml(s: string): string {
 
 /** Neutraliza un texto de origen: si empieza con = + - @ (o tab/retorno) se antepone un apóstrofo, así ninguna hoja de cálculo lo toma por fórmula. */
 export function textoSeguro(t: string): string {
-  return /^[=+\-@\t\r]/.test(t) ? `'${t}` : t;
+  return /^[\t\r\n]|^[\s\u00a0]*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/.test(t) ? `'${t}` : t;
 }
 
 function nombreColumna(idx: number): string {
@@ -331,18 +331,21 @@ function escribirEstadoResultados(h: Hoja, columnas: readonly ColumnaPyl[], fila
       // (1) Columna Total: SUM de las columnas de sucursal y «No asignado» cuando reproduce la cifra de la vista.
       if (col.clave === "total" && desde >= 0) {
         const suma = columnas.reduce((a, cc, j) => (j >= desde && j <= hasta && cc.clave !== "total" ? a + (lineaDe(cc, id).valor ?? 0) : a), 0);
-        if (suma === val) return h.formula(fila, celda, `SUM(${h.ref(fila, col0 + desde)}:${h.ref(fila, col0 + hasta)})`, val / 100, "moneda", est);
+        // Solo se citan celdas NUMÉRICAS (una celda «—» es texto): SUM(B9,C9,D9), nunca un rango que cruce texto.
+        const citadas = columnas.map((cc, j) => (j >= desde && j <= hasta && cc.clave !== "total" && lineaDe(cc, id).valor !== null ? h.ref(fila, col0 + j) : null)).filter((x): x is string => x !== null);
+        if (suma === val && citadas.length > 0) return h.formula(fila, celda, `SUM(${citadas.join(",")})`, val / 100, "moneda", est);
       }
       // (2) Subtotal: resta de las líneas de la misma columna cuando la resta reproduce la cifra (todas las piezas con dato).
       const resta = RESTAS.find((r) => r[0] === id);
       if (resta) {
         const [, mas, ...menos] = resta;
-        const piezas = [mas, ...menos].map((p) => lineaDe(col, p).valor);
-        const usadas = piezas.filter((p): p is number => p !== null);
-        const calc = usadas.length === 0 ? null : (piezas[0] ?? 0) - menos.reduce((a, p) => a + (lineaDe(col, p).valor ?? 0), 0);
-        // Compensaciones sin dato (SoftRestaurant las incluye en los descuentos) cuentan como vacías: la celda es texto «—» y Excel la ignora en la resta.
-        if (piezas[0] !== null && calc === val) {
-          const f = `${h.ref(filaDe.get(mas)!, celda)}${menos.map((p) => `-${h.ref(filaDe.get(p)!, celda)}`).join("")}`;
+        // Solo se citan piezas CON dato: una celda «—» es texto y daría #VALUE! al recalcular. Una pieza sin dato (p. ej. compensaciones de SoftRestaurant,
+        // incluidas en los descuentos) simplemente no se cita: aporta 0, igual que en el cálculo de la vista.
+        const mV = lineaDe(col, mas).valor;
+        const menosConDato = menos.filter((p) => lineaDe(col, p).valor !== null);
+        const calc = mV === null ? null : mV - menosConDato.reduce((a, p) => a + (lineaDe(col, p).valor as number), 0);
+        if (mV !== null && calc === val) {
+          const f = `${h.ref(filaDe.get(mas)!, celda)}${menosConDato.map((p) => `-${h.ref(filaDe.get(p)!, celda)}`).join("")}`;
           return h.formula(fila, celda, f, val / 100, "moneda", est);
         }
       }
@@ -794,7 +797,7 @@ function hojaSoftRestaurant(est: Estilos, usados: Set<string>, c: CuadreSrVista)
 }
 
 function hojaSucursal(est: Estilos, usados: Set<string>, nombre: string, propertyId: string, v: VistasCfo): Hoja {
-  const h = new Hoja(nombreHojaSeguro(`Suc ${nombre}`, usados), est).ancho([38, 22, 22]);
+  const h = new Hoja(nombreHojaSeguro(`Suc ${nombre.replace(/^'+|'+$/g, "")}`, usados), est).ancho([38, 22, 22]);
   h.titulo(`Sucursal: ${nombre}`);
   const kpis = v.resumen?.kpis.porSucursal.find((s) => s.propertyId === propertyId);
   if (kpis) {
