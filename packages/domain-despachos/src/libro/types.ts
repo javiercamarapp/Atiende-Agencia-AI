@@ -10,6 +10,55 @@ export interface CuentaLibro {
   readonly codigo: string;
   readonly descripcion: string;
   readonly naturaleza: NaturalezaCuenta;
+  /** 1 = cuenta de mayor; n > 1 = subcuenta de una de nivel n-1 (migración 028). Ausente = 1. */
+  readonly nivel?: number;
+  /** Código de la cuenta de la que esta es subcuenta (`SubCtaDe` del XSD); null/ausente en nivel 1. */
+  readonly cuentaPadre?: string | null;
+  /** Código agrupador del SAT (Anexo 24, `CodAgrup`); null/ausente = sin asignar. NUNCA se inventa. */
+  readonly codigoAgrupador?: string | null;
+}
+
+/** Un pago de REP ya persistido (`pago_cfdi`, migración 020) con lo mínimo de la factura PPD que paga. */
+export interface PagoRepContable {
+  readonly pagoId: string;
+  readonly folioFiscalRep: string;
+  readonly pagoIndex: number;
+  /** YYYY-MM-DD de la fecha de pago (flujo de efectivo). */
+  readonly fechaPago: string;
+  readonly flujo: "trasladado" | "acreditable";
+  readonly numParcialidad: number | null;
+  readonly importePagadoCentavos: number;
+  readonly baseCentavos: number;
+  readonly ivaCentavos: number;
+  readonly ivaRetenidoCentavos: number;
+  readonly folioFiscalCfdi: string;
+  readonly direccionCfdi: "emitido" | "recibido" | null;
+  readonly metodoPagoCfdi: string | null;
+  readonly monedaCfdi: string | null;
+  readonly estadoSatCfdi: string | null;
+}
+
+/** Un pago de REP con la póliza vigente que ya tiene (null = pendiente de contabilizar). */
+export interface PagoRepConPoliza extends PagoRepContable {
+  readonly polizaVigente: { readonly id: string; readonly folio: number; readonly tipo: TipoPoliza } | null;
+}
+
+export interface FiltroPagosRep {
+  /** UUID del complemento de pago. */
+  readonly folioFiscalRep?: string;
+  /** Pagos con fecha de pago en el mes. */
+  readonly ejercicio?: number;
+  readonly mes?: number;
+}
+
+export interface AsignacionAgrupador {
+  readonly codigo: string;
+  readonly codigoAgrupador: string;
+}
+
+export interface ResultadoImportacionCatalogo {
+  readonly agregadas: number;
+  readonly actualizadas: number;
 }
 
 export interface MovimientoPolizaInput {
@@ -138,4 +187,14 @@ export interface LibroRepository {
   /** Pólizas vigentes (no reversadas) ligadas a los CFDI dados: invoiceId -> póliza. */
   polizasDeCfdi(propertyId: string, invoiceIds: readonly string[]): Promise<ReadonlyMap<string, PolizaRecord>>;
   balanza(propertyId: string, ejercicio: number, mes: number): Promise<LecturaLibro<readonly LineaBalanzaLibro[]>>;
+  /** Asigna el código agrupador del SAT a varias cuentas (todo o nada). Devuelve cuántas cuentas actualizó. Base sin migrar 028: LibroNoDisponibleError. */
+  asignarCodigosAgrupadores(propertyId: string, asignaciones: readonly AsignacionAgrupador[]): Promise<number>;
+  /** Importa un catálogo de otro proveedor con la semántica de `mergeCuentas`: mismo código = actualiza; nuevo = agrega; NUNCA borra. Base sin migrar 028: LibroNoDisponibleError. */
+  importarCatalogo(propertyId: string, cuentas: readonly CuentaLibro[]): Promise<ResultadoImportacionCatalogo>;
+  /** Pagos de complemento de pago (D-25) con su póliza vigente: por REP o por mes de pago. Base sin migrar 028: vacío + no_disponible. */
+  listarPagosRep(propertyId: string, filtro: FiltroPagosRep): Promise<LecturaLibro<readonly PagoRepConPoliza[]>>;
+  /** Registra la póliza de cobro/pago de UN pago de REP y la liga a él (una vigente por pago). Base sin migrar 028: LibroNoDisponibleError. */
+  registrarPolizaRep(propertyId: string, pagoId: string, poliza: PolizaInput): Promise<RegistroPolizaResultado>;
+  /** Pólizas del mes con sus partidas (para el XML de pólizas del periodo). `maxPolizas` es un tope duro: si hay más, LibroTopeExcedidoError. */
+  polizasDelPeriodo(propertyId: string, ejercicio: number, mes: number, maxPolizas: number): Promise<LecturaLibro<readonly PolizaConMovimientos[]>>;
 }

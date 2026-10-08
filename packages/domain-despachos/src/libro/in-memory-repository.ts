@@ -7,20 +7,28 @@ import {
   LibroDatosInvalidosError,
   LibroNoDisponibleError,
   LibroNoEncontradoError,
+  LibroTopeExcedidoError,
   PeriodoLibroCerradoError,
   PolizaDuplicadaError,
 } from "./types.ts";
 import type {
+  AsignacionAgrupador,
   CuentaLibro,
+  FiltroPagosRep,
   FiltroPolizas,
   LecturaLibro,
   LibroRepository,
+  PagoRepContable,
+  PagoRepConPoliza,
   LineaBalanzaLibro,
   PolizaConMovimientos,
   PolizaInput,
   PolizaRecord,
   RegistroPolizaResultado,
+  ResultadoImportacionCatalogo,
 } from "./types.ts";
+
+const CODIGO_FORMATO = /^[0-9]{3}(\.[0-9]{1,2})?$/;
 
 export class InMemoryLibroRepository implements LibroRepository {
   private readonly cuentas = new Map<string, Map<string, CuentaLibro>>();
@@ -51,14 +59,24 @@ export class InMemoryLibroRepository implements LibroRepository {
     return this.lectura<readonly CuentaLibro[]>([], () => [...this.catalogo(propertyId).values()].sort((a, b) => a.codigo.localeCompare(b.codigo)));
   }
 
+  /** Misma regla que la migración 028: cuentas nuevas se agregan; en las que ya existen SOLO se completa lo vacío (código agrupador y jerarquía). */
   async sembrarCatalogo(propertyId: string, cuentas: readonly CuentaLibro[]): Promise<number> {
     this.exigirDisponible();
     const c = this.catalogo(propertyId);
     let nuevas = 0;
-    for (const x of cuentas) {
-      if (!c.has(x.codigo)) {
-        c.set(x.codigo, x);
+    for (const x of [...cuentas].sort((a, b) => (a.nivel ?? 1) - (b.nivel ?? 1))) {
+      const actual = c.get(x.codigo);
+      if (!actual) {
+        c.set(x.codigo, { ...x, nivel: x.nivel ?? 1, cuentaPadre: x.cuentaPadre ?? null, codigoAgrupador: x.codigoAgrupador ?? null });
         nuevas += 1;
+      } else {
+        const sinJerarquia = !actual.cuentaPadre && (actual.nivel ?? 1) === 1;
+        c.set(x.codigo, {
+          ...actual,
+          codigoAgrupador: actual.codigoAgrupador ?? x.codigoAgrupador ?? null,
+          nivel: sinJerarquia && x.cuentaPadre ? (x.nivel ?? 1) : (actual.nivel ?? 1),
+          cuentaPadre: sinJerarquia ? (x.cuentaPadre ?? null) : (actual.cuentaPadre ?? null),
+        });
       }
     }
     return nuevas;
@@ -71,7 +89,112 @@ export class InMemoryLibroRepository implements LibroRepository {
     if (actual && actual.naturaleza !== cuenta.naturaleza && this.lista(propertyId).some((p) => p.movimientos.some((m) => m.cuenta === cuenta.codigo))) {
       throw new LibroDatosInvalidosError("una cuenta con partidas no cambia de naturaleza");
     }
-    c.set(cuenta.codigo, cuenta);
+    if (cuenta.codigoAgrupador && !CODIGO_FORMATO.test(cuenta.codigoAgrupador)) throw new LibroDatosInvalidosError("el código agrupador del SAT es ddd o ddd.dd");
+    if (cuenta.nivel !== undefined) {
+      const nivel = cuenta.nivel;
+      const padre = cuenta.cuentaPadre ?? null;
+      if (nivel < 1 || nivel > 10 || (nivel === 1) !== (padre === null)) throw new LibroDatosInvalidosError("el nivel 1 no lleva cuenta padre y los demás niveles sí");
+      if (padre !== null) {
+        if (padre === cuenta.codigo) throw new LibroDatosInvalidosError("una cuenta no es subcuenta de sí misma");
+        if (padre.charAt(0) !== cuenta.codigo.charAt(0)) throw new LibroDatosInvalidosError("la cuenta padre debe ser del mismo rubro (primer dígito)");
+        if ((c.get(padre)?.nivel ?? 1) !== nivel - 1 || !c.has(padre)) throw new LibroDatosInvalidosError(`la cuenta padre debe existir en el catálogo del cliente con nivel ${nivel - 1}`);
+      }
+      if (actual && nivel !== (actual.nivel ?? 1) && [...c.values()].some((h) => h.cuentaPadre === cuenta.codigo)) throw new LibroDatosInvalidosError("una cuenta con subcuentas no cambia de nivel");
+    } else if (cuenta.cuentaPadre) {
+      throw new LibroDatosInvalidosError("indica el nivel junto con la cuenta padre");
+    }
+    c.set(cuenta.codigo, {
+      ...(actual ?? {}),
+      codigo: cuenta.codigo,
+      descripcion: cuenta.descripcion,
+      naturaleza: cuenta.naturaleza,
+      nivel: cuenta.nivel ?? actual?.nivel ?? 1,
+      cuentaPadre: cuenta.nivel !== undefined ? (cuenta.cuentaPadre ?? null) : (actual?.cuentaPadre ?? null),
+      codigoAgrupador: cuenta.codigoAgrupador ?? actual?.codigoAgrupador ?? null,
+    });
+  }
+
+  async asignarCodigosAgrupadores(propertyId: string, asignaciones: readonly AsignacionAgrupador[]): Promise<number> {
+    this.exigirDisponible();
+    if (asignaciones.length < 1 || asignaciones.length > 500) throw new LibroDatosInvalidosError("se esperan de 1 a 500 asignaciones");
+    const c = this.catalogo(propertyId);
+    if (asignaciones.some((a) => !c.has(a.codigo))) throw new LibroDatosInvalidosError("hay cuentas que no existen en el catálogo del cliente");
+    if (asignaciones.some((a) => !CODIGO_FORMATO.test(a.codigoAgrupador))) throw new LibroDatosInvalidosError("código agrupador inválido (ddd o ddd.dd)");
+    for (const a of asignaciones) c.set(a.codigo, { ...c.get(a.codigo)!, codigoAgrupador: a.codigoAgrupador });
+    return new Set(asignaciones.map((a) => a.codigo)).size;
+  }
+
+  async importarCatalogo(propertyId: string, cuentas: readonly CuentaLibro[]): Promise<ResultadoImportacionCatalogo> {
+    this.exigirDisponible();
+    if (cuentas.length < 1 || cuentas.length > 500) throw new LibroDatosInvalidosError("se esperan de 1 a 500 cuentas");
+    const c = this.catalogo(propertyId);
+    const ultimas = new Map(cuentas.map((x) => [x.codigo, x] as const));
+    const nuevas = [...ultimas.keys()].filter((k) => !c.has(k)).length;
+    if (c.size + nuevas > 2000) throw new LibroTopeExcedidoError("máximo 2000 cuentas por cliente");
+    for (const x of ultimas.values()) {
+      const actual = c.get(x.codigo);
+      if (actual && actual.naturaleza !== x.naturaleza && this.lista(propertyId).some((p) => p.movimientos.some((m) => m.cuenta === x.codigo))) throw new LibroDatosInvalidosError("una cuenta con partidas no cambia de naturaleza");
+      if (!/^\d{4,10}$/.test(x.codigo) || x.descripcion.trim().length < 1) throw new LibroDatosInvalidosError("cuenta inválida");
+      if (x.codigoAgrupador && !CODIGO_FORMATO.test(x.codigoAgrupador)) throw new LibroDatosInvalidosError("código agrupador inválido (ddd o ddd.dd)");
+    }
+    for (const x of [...ultimas.values()].sort((a, b) => (a.nivel ?? 1) - (b.nivel ?? 1))) {
+      const actual = c.get(x.codigo);
+      c.set(x.codigo, { codigo: x.codigo, descripcion: x.descripcion, naturaleza: x.naturaleza, nivel: x.nivel ?? 1, cuentaPadre: x.cuentaPadre ?? null, codigoAgrupador: x.codigoAgrupador ?? actual?.codigoAgrupador ?? null });
+    }
+    return { agregadas: nuevas, actualizadas: ultimas.size - nuevas };
+  }
+
+  /** Pagos de REP sembrados para pruebas (en producción son las filas de `pago_cfdi`). */
+  private readonly pagosRep = new Map<string, PagoRepContable[]>();
+  /** pagoId -> ids de pólizas ligadas (la vigente es la que no está reversada). */
+  private readonly ligasRep = new Map<string, string[]>();
+
+  agregarPagoRep(propertyId: string, pago: PagoRepContable): void {
+    const lista = this.pagosRep.get(propertyId) ?? [];
+    lista.push(pago);
+    this.pagosRep.set(propertyId, lista);
+  }
+
+  private polizaVigenteDePago(propertyId: string, pagoId: string): PagoRepConPoliza["polizaVigente"] {
+    for (const id of this.ligasRep.get(pagoId) ?? []) {
+      const p = this.lista(propertyId).find((x) => x.id === id);
+      if (p && !p.reversada) return { id: p.id, folio: p.folio, tipo: p.tipo };
+    }
+    return null;
+  }
+
+  async listarPagosRep(propertyId: string, f: FiltroPagosRep): Promise<LecturaLibro<readonly PagoRepConPoliza[]>> {
+    return this.lectura<readonly PagoRepConPoliza[]>([], () =>
+      (this.pagosRep.get(propertyId) ?? [])
+        .filter((p) => (f.folioFiscalRep === undefined || p.folioFiscalRep === f.folioFiscalRep.toLowerCase()) && (f.ejercicio === undefined || f.mes === undefined || p.fechaPago.startsWith(`${f.ejercicio}-${String(f.mes).padStart(2, "0")}`)))
+        .sort((a, b) => a.fechaPago.localeCompare(b.fechaPago) || a.folioFiscalRep.localeCompare(b.folioFiscalRep) || a.pagoIndex - b.pagoIndex)
+        .map((p) => ({ ...p, polizaVigente: this.polizaVigenteDePago(propertyId, p.pagoId) })),
+    );
+  }
+
+  /** Mismas reglas que `libro_poliza_registrar_rep` (migración 028): pago de la property, una vigente por pago, tipo según el flujo, fecha de pago y total. */
+  async registrarPolizaRep(propertyId: string, pagoId: string, poliza: PolizaInput): Promise<RegistroPolizaResultado> {
+    this.exigirDisponible();
+    const pago = (this.pagosRep.get(propertyId) ?? []).find((p) => p.pagoId === pagoId);
+    if (!pago) throw new LibroNoEncontradoError("pago no encontrado");
+    if (this.polizaVigenteDePago(propertyId, pagoId)) throw new PolizaDuplicadaError("El pago ya tiene una póliza vigente.");
+    if ((pago.flujo === "trasladado" && poliza.tipo !== "ingreso") || (pago.flujo === "acreditable" && poliza.tipo !== "egreso")) throw new LibroDatosInvalidosError("el tipo de póliza no corresponde al flujo del pago");
+    if (poliza.fecha !== pago.fechaPago) throw new LibroDatosInvalidosError("la póliza se fecha en la fecha de pago del complemento");
+    const debe = poliza.movimientos.reduce((s, m) => s + m.debeCentavos, 0);
+    if (debe !== pago.importePagadoCentavos + pago.ivaCentavos) throw new LibroDatosInvalidosError(`el total de la póliza (${debe}) no es el importe pagado más el IVA del pago (${pago.importePagadoCentavos + pago.ivaCentavos})`);
+    const r = this.insertar(propertyId, poliza, "manual", null, null);
+    this.ligasRep.set(pagoId, [...(this.ligasRep.get(pagoId) ?? []), r.polizaId]);
+    return r;
+  }
+
+  async polizasDelPeriodo(propertyId: string, ejercicio: number, mes: number, maxPolizas: number): Promise<LecturaLibro<readonly PolizaConMovimientos[]>> {
+    return this.lectura<readonly PolizaConMovimientos[]>([], () => {
+      const lista = this.lista(propertyId)
+        .filter((p) => p.ejercicio === ejercicio && p.mes === mes)
+        .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.tipo.localeCompare(b.tipo) || a.folio - b.folio);
+      if (lista.length > maxPolizas) throw new LibroTopeExcedidoError(`El periodo tiene más de ${maxPolizas} pólizas: no caben en un solo archivo.`);
+      return lista;
+    });
   }
 
   private insertar(propertyId: string, p: PolizaInput, origen: "manual" | "cfdi" | "reversa", invoiceId: string | null, reversaDe: string | null): RegistroPolizaResultado {

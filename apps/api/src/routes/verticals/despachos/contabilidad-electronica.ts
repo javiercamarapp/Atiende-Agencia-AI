@@ -18,7 +18,11 @@
 // esta fase (mismo criterio documentado en la cabecera de paquete.ts: "a
 // cargo de un repositorio de más arriba").
 //
-// `ejercicio`/`mes`/`generadoEn`/`fechaModificacion*` son OBLIGATORIOS en el
+// D-P3-16: el XML de catálogo y balanza es conforme a los XSD oficiales 1.3 (ya no hay `fechaModificacion`; la balanza usa TipoEnvio N/C y
+// `fechaModBal` solo en C; el catálogo exige código agrupador en cada cuenta). El flujo real del producto es el del LIBRO (ver libro.ts); estas
+// rutas siguen siendo calculadoras puras sobre datos que manda el cliente.
+//
+// `ejercicio`/`mes`/`generadoEn` son OBLIGATORIOS en el
 // motor de dominio a propósito (ver DESVIACIÓN 1 en paquete.ts: el original
 // lee el reloj de sistema dentro del motor, este puerto no). Esta ruta ES esa
 // "capa con I/O" que decide el default cuando el cliente no lo manda
@@ -40,6 +44,7 @@ import {
   generarPaqueteContabilidadElectronica,
   marcarListoParaTimbrar,
   TransicionPaqueteContabilidadInvalidaError,
+  CatalogoSinCodigoAgrupadorError,
 } from "@atiende/domain-despachos";
 import type { AsientoContable, CuentaAnexo24, EstadoPaqueteContabilidad, NaturalezaCuentaAnexo24, TipoEnvioBalanza } from "@atiende/domain-despachos";
 import { ESTADOS_PAQUETE_CONTABILIDAD } from "@atiende/domain-despachos";
@@ -50,7 +55,7 @@ import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const NATURALEZAS_VALIDAS = new Set<NaturalezaCuentaAnexo24>(["D", "A"]);
-const TIPOS_ENVIO_BALANZA_VALIDOS = new Set<TipoEnvioBalanza>(["B", "C"]);
+const TIPOS_ENVIO_BALANZA_VALIDOS = new Set<TipoEnvioBalanza>(["N", "C"]);
 const ESTADOS_VALIDOS = new Set<EstadoPaqueteContabilidad>(ESTADOS_PAQUETE_CONTABILIDAD);
 
 function requireString(value: unknown, field: string): string {
@@ -68,11 +73,14 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-/** Timestamp por defecto para `fechaModificacion`/`generadoEn` cuando el
- * cliente no lo manda — "YYYY-MM-DDTHH:MM:SS" (sin milisegundos ni "Z"),
- * mismo formato de ejemplo que documentan las opciones del motor. */
-function nowIsoSeconds(): string {
-  return new Date().toISOString().slice(0, 19);
+/** Errores del generador XML (datos que el XSD no admite, cuentas sin código agrupador) -> 400 con el detalle útil para el staff. */
+function traducirErrorXml(err: unknown): never {
+  if (err instanceof CatalogoSinCodigoAgrupadorError) {
+    const lista = err.cuentas.slice(0, 20).map((x) => x.codigo).join(", ");
+    throw Errors.validation(`${err.message} Cuentas: ${lista}${err.cuentas.length > 20 ? ", ..." : ""}.`);
+  }
+  if (err instanceof Error) throw Errors.validation(err.message);
+  throw err;
 }
 
 interface CuentaBody {
@@ -81,6 +89,8 @@ interface CuentaBody {
   readonly nivel?: unknown;
   readonly naturaleza?: unknown;
   readonly grupo?: unknown;
+  readonly subCtaDe?: unknown;
+  readonly codAgrup?: unknown;
 }
 
 function parseCuenta(raw: unknown, idx: number): CuentaAnexo24 {
@@ -94,6 +104,8 @@ function parseCuenta(raw: unknown, idx: number): CuentaAnexo24 {
     nivel: optionalNumber(c.nivel, `catalogo[${idx}].nivel`, 3),
     naturaleza,
     grupo: typeof c.grupo === "string" ? c.grupo : "",
+    subCtaDe: optionalString(c.subCtaDe) ?? null,
+    codAgrup: optionalString(c.codAgrup) ?? null,
   };
 }
 
@@ -192,18 +204,16 @@ export function despachosContabilidadElectronicaRoutes(deps: AppDeps): Hono<Core
    * `calcularHashSha1`). */
   app.post("/despachos/:propertyId/contabilidad-electronica/catalogo", async (c) => {
     assertVerticalRole(c, CONTABILIDAD_ELECTRONICA_ROLES);
-    const raw = await readJsonCapped<{ readonly catalogo?: unknown; readonly rfc?: unknown; readonly ejercicio?: unknown; readonly mes?: unknown; readonly fechaModificacion?: unknown }>(c.req.raw, 512 * 1024);
+    const raw = await readJsonCapped<{ readonly catalogo?: unknown; readonly rfc?: unknown; readonly ejercicio?: unknown; readonly mes?: unknown }>(c.req.raw, 512 * 1024);
     const catalogo = parseCatalogo(raw.catalogo);
     const ejercicio = parseEjercicio(raw.ejercicio);
     const mes = parseMes(raw.mes);
-    const fechaModificacion = optionalString(raw.fechaModificacion) ?? nowIsoSeconds();
     try {
-      const xml = generarXmlCatalogo(catalogo, { rfc: optionalString(raw.rfc), ejercicio, mes, fechaModificacion });
+      const xml = generarXmlCatalogo(catalogo, { rfc: optionalString(raw.rfc) ?? "", ejercicio, mes });
       await auditarAccesoDespachos(deps, c, { recurso: "contabilidad_electronica.catalogo", tipo: "export", metadata: { ejercicio, mes } });
       return c.json({ catalogo, xml, sha1: calcularHashSha1(xml) });
     } catch (err) {
-      if (err instanceof Error) throw Errors.validation(err.message);
-      throw err;
+      return traducirErrorXml(err);
     }
   });
 
@@ -220,7 +230,7 @@ export function despachosContabilidadElectronicaRoutes(deps: AppDeps): Hono<Core
       readonly ejercicio?: unknown;
       readonly mes?: unknown;
       readonly tipoEnvio?: unknown;
-      readonly fechaModificacion?: unknown;
+      readonly fechaModBal?: unknown;
     }>(c.req.raw, 1024 * 1024);
     const catalogo = parseCatalogo(raw.catalogo);
     const asientos = parseAsientos(raw.asientos);
@@ -228,11 +238,16 @@ export function despachosContabilidadElectronicaRoutes(deps: AppDeps): Hono<Core
     const mes = parseMes(raw.mes);
     const periodo = optionalString(raw.periodo) ?? `${ejercicio}-${String(mes).padStart(2, "0")}`;
     const tipoEnvio = typeof raw.tipoEnvio === "string" && TIPOS_ENVIO_BALANZA_VALIDOS.has(raw.tipoEnvio as TipoEnvioBalanza) ? (raw.tipoEnvio as TipoEnvioBalanza) : undefined;
-    const fechaModificacion = optionalString(raw.fechaModificacion) ?? nowIsoSeconds();
     const resumen = generarBalanza(catalogo, asientos, periodo, parseSaldosIniciales(raw.saldosIniciales));
-    const xml = generarXmlBalanza(resumen.lineas, { rfc: optionalString(raw.rfc), ejercicio, mes, tipoEnvio, fechaModificacion });
-    await auditarAccesoDespachos(deps, c, { recurso: "contabilidad_electronica.balanza", tipo: "export", metadata: { ejercicio, mes } });
-    return c.json({ resumen, xml, sha1: calcularHashSha1(xml) });
+    // Sin cuentas con movimiento no hay balanza que declarar (el XSD exige al menos una): se devuelve el resumen vacío y SIN XML, nunca un XML inválido.
+    if (resumen.lineas.length === 0) return c.json({ resumen, xml: null, sha1: null, nota: "Sin cuentas con movimiento ni saldo: no hay balanza que declarar." });
+    try {
+      const xml = generarXmlBalanza(resumen.lineas, { rfc: optionalString(raw.rfc) ?? "", ejercicio, mes, tipoEnvio, fechaModBal: optionalString(raw.fechaModBal) });
+      await auditarAccesoDespachos(deps, c, { recurso: "contabilidad_electronica.balanza", tipo: "export", metadata: { ejercicio, mes } });
+      return c.json({ resumen, xml, sha1: calcularHashSha1(xml) });
+    } catch (err) {
+      return traducirErrorXml(err);
+    }
   });
 
   /** Genera el paquete completo (catálogo + balanza + hashes + estado
@@ -251,31 +266,32 @@ export function despachosContabilidadElectronicaRoutes(deps: AppDeps): Hono<Core
       readonly asientos?: unknown;
       readonly saldosIniciales?: unknown;
       readonly generadoEn?: unknown;
-      readonly fechaModificacionXml?: unknown;
+      readonly tipoEnvio?: unknown;
+      readonly fechaModBal?: unknown;
     }>(c.req.raw, 1024 * 1024);
     const catalogo = parseCatalogo(raw.catalogo);
     const ejercicio = parseEjercicio(raw.ejercicio);
     const mes = parseMes(raw.mes);
     const asientos = parseAsientos(raw.asientos);
     const generadoEn = optionalString(raw.generadoEn) ?? new Date().toISOString();
-    const fechaModificacionXml = optionalString(raw.fechaModificacionXml) ?? nowIsoSeconds();
+    const tipoEnvio = typeof raw.tipoEnvio === "string" && TIPOS_ENVIO_BALANZA_VALIDOS.has(raw.tipoEnvio as TipoEnvioBalanza) ? (raw.tipoEnvio as TipoEnvioBalanza) : undefined;
     try {
       const paquete = generarPaqueteContabilidadElectronica({
         catalogo,
-        rfc: optionalString(raw.rfc),
+        rfc: optionalString(raw.rfc) ?? "",
         razonSocial: optionalString(raw.razonSocial),
         ejercicio,
         mes,
         asientos,
         saldosIniciales: parseSaldosIniciales(raw.saldosIniciales),
         generadoEn,
-        fechaModificacionXml,
+        tipoEnvio,
+        fechaModBal: optionalString(raw.fechaModBal),
       });
       await auditarAccesoDespachos(deps, c, { recurso: "contabilidad_electronica.paquete", tipo: "export", metadata: { ejercicio, mes } });
       return c.json(paquete);
     } catch (err) {
-      if (err instanceof Error) throw Errors.validation(err.message);
-      throw err;
+      return traducirErrorXml(err);
     }
   });
 

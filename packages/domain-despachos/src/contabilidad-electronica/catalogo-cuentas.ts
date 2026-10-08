@@ -15,45 +15,49 @@
 // recibe las cuentas YA PARSEADAS (de un CSV, un XLSX, o cualquier otro
 // origen) y aplica exactamente la misma semántica de fusión — parsear el
 // archivo es responsabilidad de la capa con I/O.
+import { esCodigoAgrupadorSat } from "./codigos-agrupadores.ts";
 import type { CuentaAnexo24, NaturalezaCuenta } from "./types.ts";
+import { escaparAtributoXml, exigirEjercicioYMes, exigirRfcSat, mesDosDigitos, recortarTexto } from "./xml-comun.ts";
 
 export const NATURALEZAS_VALIDAS: readonly NaturalezaCuenta[] = ["D", "A"];
 
 // Catálogo por defecto (Código Agrupador SAT / NT 2026, simplificado) —
 // puerto EXACTO de `_CATALOGO_BASE` (mismos códigos, descripciones, niveles,
 // naturalezas y grupos).
+// SubCtaDe y CodAgrup de este catálogo heredado del origen son PROPUESTAS (todas válidas en la lista cerrada del XSD, comprobado en
+// tests/contabilidad-electronica-xsd.spec.ts) que el fiscalista debe validar: el origen no trae código agrupador.
 export const CATALOGO_ANEXO24_BASE: readonly CuentaAnexo24[] = [
-  { codigo: "1000", descripcion: "ACTIVO", nivel: 1, naturaleza: "D", grupo: "ACTIVO" },
-  { codigo: "1100", descripcion: "ACTIVO CIRCULANTE", nivel: 2, naturaleza: "D", grupo: "ACTIVO" },
-  { codigo: "1101", descripcion: "BANCOS", nivel: 3, naturaleza: "D", grupo: "ACTIVO" },
-  { codigo: "1102", descripcion: "CLIENTES", nivel: 3, naturaleza: "D", grupo: "ACTIVO" },
-  { codigo: "1103", descripcion: "IVA ACREDITABLE", nivel: 3, naturaleza: "D", grupo: "ACTIVO" },
-  { codigo: "1104", descripcion: "INVENTARIOS", nivel: 3, naturaleza: "D", grupo: "ACTIVO" },
-  { codigo: "1200", descripcion: "ACTIVO FIJO", nivel: 2, naturaleza: "D", grupo: "ACTIVO" },
-  { codigo: "1201", descripcion: "MOBILIARIO Y EQUIPO", nivel: 3, naturaleza: "D", grupo: "ACTIVO" },
-  { codigo: "1202", descripcion: "EQUIPO DE COMPUTO", nivel: 3, naturaleza: "D", grupo: "ACTIVO" },
-  { codigo: "1300", descripcion: "ACTIVOS DIFERIDOS", nivel: 2, naturaleza: "D", grupo: "ACTIVO" },
-  { codigo: "2000", descripcion: "PASIVO", nivel: 1, naturaleza: "A", grupo: "PASIVO" },
-  { codigo: "2100", descripcion: "PASIVO CIRCULANTE", nivel: 2, naturaleza: "A", grupo: "PASIVO" },
-  { codigo: "2101", descripcion: "PROVEEDORES", nivel: 3, naturaleza: "A", grupo: "PASIVO" },
-  { codigo: "2102", descripcion: "ACREEDORES DIVERSOS", nivel: 3, naturaleza: "A", grupo: "PASIVO" },
-  { codigo: "2103", descripcion: "IVA POR ACREDITAR", nivel: 3, naturaleza: "A", grupo: "PASIVO" },
-  { codigo: "2104", descripcion: "IMPUESTOS POR PAGAR", nivel: 3, naturaleza: "A", grupo: "PASIVO" },
-  { codigo: "2200", descripcion: "PASIVO A LARGO PLAZO", nivel: 2, naturaleza: "A", grupo: "PASIVO" },
-  { codigo: "3000", descripcion: "CAPITAL CONTABLE", nivel: 1, naturaleza: "A", grupo: "CAPITAL" },
-  { codigo: "3100", descripcion: "CAPITAL SOCIAL", nivel: 2, naturaleza: "A", grupo: "CAPITAL" },
-  { codigo: "3200", descripcion: "RESULTADOS ACUMULADOS", nivel: 2, naturaleza: "A", grupo: "CAPITAL" },
-  { codigo: "4000", descripcion: "INGRESOS", nivel: 1, naturaleza: "A", grupo: "INGRESOS" },
-  { codigo: "4100", descripcion: "INGRESOS POR SERVICIOS", nivel: 2, naturaleza: "A", grupo: "INGRESOS" },
-  { codigo: "4200", descripcion: "OTROS INGRESOS", nivel: 2, naturaleza: "A", grupo: "INGRESOS" },
-  { codigo: "5000", descripcion: "COSTOS", nivel: 1, naturaleza: "D", grupo: "COSTOS" },
-  { codigo: "5100", descripcion: "COSTO DE VENTAS", nivel: 2, naturaleza: "D", grupo: "COSTOS" },
-  { codigo: "6000", descripcion: "GASTOS", nivel: 1, naturaleza: "D", grupo: "GASTOS" },
-  { codigo: "6100", descripcion: "GASTOS DE OPERACION", nivel: 2, naturaleza: "D", grupo: "GASTOS" },
-  { codigo: "6101", descripcion: "SUELDOS Y SALARIOS", nivel: 3, naturaleza: "D", grupo: "GASTOS" },
-  { codigo: "6102", descripcion: "GASTOS ADMINISTRATIVOS", nivel: 3, naturaleza: "D", grupo: "GASTOS" },
-  { codigo: "6103", descripcion: "GASTOS FINANCIEROS", nivel: 3, naturaleza: "D", grupo: "GASTOS" },
-  { codigo: "6200", descripcion: "GASTOS NO DEDUCIBLES", nivel: 2, naturaleza: "D", grupo: "GASTOS" },
+  { codigo: "1000", descripcion: "ACTIVO", nivel: 1, naturaleza: "D", grupo: "ACTIVO", codAgrup: "100" },
+  { codigo: "1100", descripcion: "ACTIVO CIRCULANTE", nivel: 2, naturaleza: "D", grupo: "ACTIVO", subCtaDe: "1000", codAgrup: "100.01" },
+  { codigo: "1101", descripcion: "BANCOS", nivel: 3, naturaleza: "D", grupo: "ACTIVO", subCtaDe: "1100", codAgrup: "102.01" },
+  { codigo: "1102", descripcion: "CLIENTES", nivel: 3, naturaleza: "D", grupo: "ACTIVO", subCtaDe: "1100", codAgrup: "105.01" },
+  { codigo: "1103", descripcion: "IVA ACREDITABLE", nivel: 3, naturaleza: "D", grupo: "ACTIVO", subCtaDe: "1100", codAgrup: "118.01" },
+  { codigo: "1104", descripcion: "INVENTARIOS", nivel: 3, naturaleza: "D", grupo: "ACTIVO", subCtaDe: "1100", codAgrup: "115.01" },
+  { codigo: "1200", descripcion: "ACTIVO FIJO", nivel: 2, naturaleza: "D", grupo: "ACTIVO", subCtaDe: "1000", codAgrup: "151" },
+  { codigo: "1201", descripcion: "MOBILIARIO Y EQUIPO", nivel: 3, naturaleza: "D", grupo: "ACTIVO", subCtaDe: "1200", codAgrup: "155.01" },
+  { codigo: "1202", descripcion: "EQUIPO DE COMPUTO", nivel: 3, naturaleza: "D", grupo: "ACTIVO", subCtaDe: "1200", codAgrup: "156.01" },
+  { codigo: "1300", descripcion: "ACTIVOS DIFERIDOS", nivel: 2, naturaleza: "D", grupo: "ACTIVO", subCtaDe: "1000", codAgrup: "190" },
+  { codigo: "2000", descripcion: "PASIVO", nivel: 1, naturaleza: "A", grupo: "PASIVO", codAgrup: "200" },
+  { codigo: "2100", descripcion: "PASIVO CIRCULANTE", nivel: 2, naturaleza: "A", grupo: "PASIVO", subCtaDe: "2000", codAgrup: "200.01" },
+  { codigo: "2101", descripcion: "PROVEEDORES", nivel: 3, naturaleza: "A", grupo: "PASIVO", subCtaDe: "2100", codAgrup: "201.01" },
+  { codigo: "2102", descripcion: "ACREEDORES DIVERSOS", nivel: 3, naturaleza: "A", grupo: "PASIVO", subCtaDe: "2100", codAgrup: "205.01" },
+  { codigo: "2103", descripcion: "IVA POR ACREDITAR", nivel: 3, naturaleza: "A", grupo: "PASIVO", subCtaDe: "2100", codAgrup: "119.01" },
+  { codigo: "2104", descripcion: "IMPUESTOS POR PAGAR", nivel: 3, naturaleza: "A", grupo: "PASIVO", subCtaDe: "2100", codAgrup: "213.01" },
+  { codigo: "2200", descripcion: "PASIVO A LARGO PLAZO", nivel: 2, naturaleza: "A", grupo: "PASIVO", subCtaDe: "2000", codAgrup: "251" },
+  { codigo: "3000", descripcion: "CAPITAL CONTABLE", nivel: 1, naturaleza: "A", grupo: "CAPITAL", codAgrup: "300" },
+  { codigo: "3100", descripcion: "CAPITAL SOCIAL", nivel: 2, naturaleza: "A", grupo: "CAPITAL", subCtaDe: "3000", codAgrup: "301.01" },
+  { codigo: "3200", descripcion: "RESULTADOS ACUMULADOS", nivel: 2, naturaleza: "A", grupo: "CAPITAL", subCtaDe: "3000", codAgrup: "305.01" },
+  { codigo: "4000", descripcion: "INGRESOS", nivel: 1, naturaleza: "A", grupo: "INGRESOS", codAgrup: "400" },
+  { codigo: "4100", descripcion: "INGRESOS POR SERVICIOS", nivel: 2, naturaleza: "A", grupo: "INGRESOS", subCtaDe: "4000", codAgrup: "401.01" },
+  { codigo: "4200", descripcion: "OTROS INGRESOS", nivel: 2, naturaleza: "A", grupo: "INGRESOS", subCtaDe: "4000", codAgrup: "403.01" },
+  { codigo: "5000", descripcion: "COSTOS", nivel: 1, naturaleza: "D", grupo: "COSTOS", codAgrup: "500" },
+  { codigo: "5100", descripcion: "COSTO DE VENTAS", nivel: 2, naturaleza: "D", grupo: "COSTOS", subCtaDe: "5000", codAgrup: "501.01" },
+  { codigo: "6000", descripcion: "GASTOS", nivel: 1, naturaleza: "D", grupo: "GASTOS", codAgrup: "600" },
+  { codigo: "6100", descripcion: "GASTOS DE OPERACION", nivel: 2, naturaleza: "D", grupo: "GASTOS", subCtaDe: "6000", codAgrup: "601" },
+  { codigo: "6101", descripcion: "SUELDOS Y SALARIOS", nivel: 3, naturaleza: "D", grupo: "GASTOS", subCtaDe: "6100", codAgrup: "601.01" },
+  { codigo: "6102", descripcion: "GASTOS ADMINISTRATIVOS", nivel: 3, naturaleza: "D", grupo: "GASTOS", subCtaDe: "6100", codAgrup: "603" },
+  { codigo: "6103", descripcion: "GASTOS FINANCIEROS", nivel: 3, naturaleza: "D", grupo: "GASTOS", subCtaDe: "6100", codAgrup: "701" },
+  { codigo: "6200", descripcion: "GASTOS NO DEDUCIBLES", nivel: 2, naturaleza: "D", grupo: "GASTOS", subCtaDe: "6000", codAgrup: "601.84" },
 ] as const;
 
 // Mapeo categoría de factura del agente -> cuenta contable por defecto —
@@ -161,46 +165,99 @@ export function asignarAutomatico(catalogo: readonly CuentaAnexo24[], clasificac
   return asignacion;
 }
 
-function escapeXmlAttr(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+/** Una cuenta que el generador no puede declarar porque le falta el código agrupador del SAT. */
+export interface CuentaSinCodigoAgrupador {
+  readonly codigo: string;
+  readonly descripcion: string;
+  /** `faltante` = sin código; `invalido` = trae uno que no está en la lista cerrada del Anexo 24. */
+  readonly motivo: "faltante" | "invalido";
+}
+
+/** El catálogo trae cuentas sin código agrupador (CodAgrup es obligatorio en CADA cuenta del XSD): no se genera el XML y se devuelve la lista. */
+export class CatalogoSinCodigoAgrupadorError extends Error {
+  readonly cuentas: readonly CuentaSinCodigoAgrupador[];
+  constructor(cuentas: readonly CuentaSinCodigoAgrupador[]) {
+    super(`El catálogo tiene ${cuentas.length} cuenta(s) sin código agrupador del SAT válido: asígnalo en la pestaña Catálogo antes de generar el XML.`);
+    this.name = "CatalogoSinCodigoAgrupadorError";
+    this.cuentas = cuentas;
+  }
+}
+
+/** Cuentas a las que les falta un código agrupador válido (vacío o fuera de la lista cerrada). */
+export function cuentasSinCodigoAgrupador(catalogo: readonly CuentaAnexo24[]): readonly CuentaSinCodigoAgrupador[] {
+  const out: CuentaSinCodigoAgrupador[] = [];
+  for (const c of catalogo) {
+    const cod = c.codAgrup;
+    if (cod === undefined || cod === null || String(cod).trim() === "") out.push({ codigo: c.codigo, descripcion: c.descripcion, motivo: "faltante" });
+    else if (!esCodigoAgrupadorSat(String(cod).trim())) out.push({ codigo: c.codigo, descripcion: c.descripcion, motivo: "invalido" });
+  }
+  return out;
+}
+
+/** Errores de jerarquía que el XSD no puede expresar pero el SAT exige: `SubCtaDe` obligatorio para nivel > 1, que exista y sea de nivel n-1. */
+export function erroresJerarquiaCatalogo(catalogo: readonly CuentaAnexo24[]): readonly string[] {
+  const errs: string[] = [];
+  const porCodigo = new Map(catalogo.map((c) => [c.codigo, c] as const));
+  for (const c of catalogo) {
+    const padre = c.subCtaDe ? String(c.subCtaDe) : null;
+    if (c.nivel > 1 && !padre) {
+      errs.push(`Cuenta ${c.codigo} de nivel ${c.nivel} sin cuenta padre (SubCtaDe).`);
+      continue;
+    }
+    if (c.nivel === 1 && padre) errs.push(`Cuenta ${c.codigo} de nivel 1 no lleva cuenta padre (SubCtaDe).`);
+    if (padre) {
+      const p = porCodigo.get(padre);
+      if (!p) errs.push(`Cuenta ${c.codigo}: su cuenta padre ${padre} no está en el catálogo.`);
+      else if (p.nivel !== c.nivel - 1) errs.push(`Cuenta ${c.codigo}: su cuenta padre ${padre} debe ser de nivel ${c.nivel - 1}.`);
+    }
+  }
+  return errs;
 }
 
 export interface OpcionesXmlCatalogo {
-  readonly rfc?: string;
+  /** RFC del contribuyente que envía (se valida contra el patrón del XSD). */
+  readonly rfc: string;
   readonly ejercicio: number;
   readonly mes: number;
-  /** "YYYY-MM-DDTHH:MM:SS" — DESVIACIÓN DE FIDELIDAD (documentada): el
-   * original defaultea este campo a `datetime.now()` (lectura del reloj de
-   * sistema dentro del generador de XML fiscal). Este puerto lo exige
-   * explícito, mismo criterio que `nomina/xml-nomina.ts` (motor puro y
-   * determinista; la capa con I/O decide qué timestamp usar). */
-  readonly fechaModificacion: string;
 }
 
-/** `CatalogoCuentas.generar_xml` — XML del catálogo conforme al XSD del SAT
- * (`CatalogoCuentas_1_3.xsd`). Valida el catálogo antes de generar (igual
- * que el origen, que llama `self.validar()` al inicio). */
+/**
+ * Catálogo de cuentas conforme a `CatalogoCuentas_1_3.xsd` (validado en las pruebas contra el XSD oficial). Estructura del XSD: la raíz
+ * `Catalogo` contiene una secuencia de nodos `Ctas` (uno por cuenta) con CodAgrup, NumCta, Desc, SubCtaDe (si nivel > 1), Nivel y Natur.
+ *
+ * Decisiones documentadas:
+ *  - NO hay `FechaModificacion` (no existe en el XSD 1.3) -- el generador heredado la emitía y el XML no era conforme.
+ *  - Sello, noCertificado y Certificado son OPCIONALES en el XSD y se OMITEN: emitirlos vacíos violaba el XSD (noCertificado exige 20
+ *    posiciones). Los llena el firmado con e.firma, que esta aplicación no hace (el envío al SAT es humano, D-18).
+ *  - Se niega a generar si alguna cuenta no tiene un código agrupador válido (CatalogoSinCodigoAgrupadorError) o si la jerarquía es incoherente.
+ */
 export function generarXmlCatalogo(catalogo: readonly CuentaAnexo24[], opciones: OpcionesXmlCatalogo): string {
   validarCatalogo(catalogo);
-  const rfc = opciones.rfc ?? "";
-  const mesS = String(opciones.mes).padStart(2, "0");
-  const esc = (v: string) => escapeXmlAttr(v);
+  const rfc = exigirRfcSat(opciones.rfc);
+  exigirEjercicioYMes(opciones.ejercicio, opciones.mes);
+  const sinCodigo = cuentasSinCodigoAgrupador(catalogo);
+  if (sinCodigo.length > 0) throw new CatalogoSinCodigoAgrupadorError(sinCodigo);
+  const jerarquia = erroresJerarquiaCatalogo(catalogo);
+  if (jerarquia.length > 0) throw new Error(`Catálogo inválido: ${jerarquia.join("; ")}`);
+  const esc = escaparAtributoXml;
 
   const ctas = catalogo
     .slice()
     .sort((a, b) => (a.codigo < b.codigo ? -1 : a.codigo > b.codigo ? 1 : 0))
-    .map((c) => `      <Cat:Cta NumCta="${esc(c.codigo)}" Desc="${esc(c.descripcion)}" Nivel="${c.nivel}" Natur="${esc(c.naturaleza.toUpperCase())}"/>`)
+    .map((c) => {
+      const subCtaDe = c.nivel > 1 && c.subCtaDe ? ` SubCtaDe="${esc(String(c.subCtaDe))}"` : "";
+      return `  <catalogocuentas:Ctas CodAgrup="${esc(String(c.codAgrup).trim())}" NumCta="${esc(c.codigo)}" Desc="${esc(recortarTexto(c.descripcion, 400))}"${subCtaDe} Nivel="${c.nivel}" Natur="${esc(c.naturaleza.toUpperCase())}"/>`;
+    })
     .join("\n");
 
   return (
     '<?xml version="1.0" encoding="UTF-8"?>\n' +
-    '<Cat:Catalogo xmlns:Cat="http://www.sat.gob.mx/esquemas/ContabilidadE/1_3/CatalogoCuentas" ' +
+    '<catalogocuentas:Catalogo xmlns:catalogocuentas="http://www.sat.gob.mx/esquemas/ContabilidadE/1_3/CatalogoCuentas" ' +
     'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ' +
     'xsi:schemaLocation="http://www.sat.gob.mx/esquemas/ContabilidadE/1_3/CatalogoCuentas ' +
     'http://www.sat.gob.mx/esquemas/ContabilidadE/1_3/CatalogoCuentas/CatalogoCuentas_1_3.xsd" ' +
-    `Version="1.3" RFC="${esc(rfc)}" Anio="${opciones.ejercicio}" Mes="${mesS}" ` +
-    `FechaModificacion="${esc(opciones.fechaModificacion)}" Sello="" noCertificado="" Certificado="">\n` +
-    `  <Cat:Ctas>\n${ctas}\n  </Cat:Ctas>\n` +
-    "</Cat:Catalogo>\n"
+    `Version="1.3" RFC="${esc(rfc)}" Mes="${mesDosDigitos(opciones.mes)}" Anio="${opciones.ejercicio}">\n` +
+    `${ctas}\n` +
+    "</catalogocuentas:Catalogo>\n"
   );
 }

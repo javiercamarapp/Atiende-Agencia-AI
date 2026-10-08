@@ -16,9 +16,10 @@
 //
 // DESVIACIONES DE FIDELIDAD (documentadas, no aplicadas en silencio):
 //
-// 1) `ejercicio`/`generadoEn`/`fechaModificacion` del XML son OBLIGATORIOS
+// 1) `ejercicio`/`generadoEn` son OBLIGATORIOS
 //    aquí. El original defaultea `ejercicio` a `datetime.now().year` y
-//    `generado_en`/`FechaModificacion` a `datetime.now()` — lecturas del
+//    `generado_en`/`FechaModificacion` a `datetime.now()` (la FechaModificacion
+//    ya no se emite: no existe en el XSD 1.3, D-P3-16) — lecturas del
 //    reloj de sistema dentro del motor de dominio, inconsistentes con el
 //    resto de este paquete (ver p. ej. `nomina/xml-nomina.ts`, que exige
 //    `folio` explícito por la misma razón). La capa con I/O que llama a este
@@ -41,7 +42,9 @@
 //    `closed`).
 import { createHash } from "node:crypto";
 import { generarXmlBalanza, generarBalanza } from "./balanza.ts";
+import type { TipoEnvioBalanza } from "./balanza.ts";
 import { generarXmlCatalogo } from "./catalogo-cuentas.ts";
+import { ContabilidadElectronicaDatosInvalidosError, exigirRfcSat } from "./xml-comun.ts";
 import { ESTADOS_PAQUETE_CONTABILIDAD, ESTADO_INICIAL_PAQUETE_CONTABILIDAD } from "./types.ts";
 import type { AsientoContable, CuentaAnexo24, EstadoPaqueteContabilidad, PaqueteContabilidadElectronica, ResumenMensualContabilidad } from "./types.ts";
 import { TransicionPaqueteContabilidadInvalidaError } from "../errors.ts";
@@ -60,7 +63,7 @@ export function calcularHashSha1(contenidoUtf8: string): string {
 
 export interface DatosGenerarPaquete {
   readonly catalogo: readonly CuentaAnexo24[];
-  readonly rfc?: string;
+  readonly rfc: string;
   readonly razonSocial?: string;
   readonly ejercicio: number;
   /** Default `1`, igual que el origen. */
@@ -70,11 +73,10 @@ export interface DatosGenerarPaquete {
   /** Timestamp ISO del momento de generación — puerto de `generado_en`
    * (ver DESVIACIÓN 1 de cabecera). */
   readonly generadoEn: string;
-  /** "YYYY-MM-DDTHH:MM:SS" usado como `FechaModificacion` en AMBOS XML
-   * (catálogo y balanza) — puerto del `datetime.now()` compartido que el
-   * original captura una sola vez por llamada a `generar_paquete` (ver
-   * DESVIACIÓN 1 de cabecera). */
-  readonly fechaModificacionXml: string;
+  /** Tipo de envío de la balanza: `N` normal (default) o `C` complementaria. */
+  readonly tipoEnvio?: TipoEnvioBalanza;
+  /** `FechaModBal` (AAAA-MM-DD), obligatoria solo con `tipoEnvio: "C"`. */
+  readonly fechaModBal?: string;
 }
 
 /** `ContabilidadElectronica.generar_paquete` — genera el paquete de
@@ -86,12 +88,15 @@ export interface DatosGenerarPaquete {
 export function generarPaqueteContabilidadElectronica(datos: DatosGenerarPaquete): PaqueteContabilidadElectronica {
   const mes = datos.mes ?? 1;
   const periodo = periodoStr(datos.ejercicio, mes);
-  const rfc = datos.rfc ?? "";
+  const rfc = exigirRfcSat(datos.rfc);
 
   const resumenBalanza = generarBalanza(datos.catalogo, datos.asientos, periodo, datos.saldosIniciales ?? null);
 
-  const xmlCatalogo = generarXmlCatalogo(datos.catalogo, { rfc, ejercicio: datos.ejercicio, mes, fechaModificacion: datos.fechaModificacionXml });
-  const xmlBalanza = generarXmlBalanza(resumenBalanza.lineas, { rfc, ejercicio: datos.ejercicio, mes, fechaModificacion: datos.fechaModificacionXml });
+  // Toda cuenta de la balanza debe estar declarada en el catálogo (el SAT las cruza por NumCta): sin eso el paquete no se arma.
+  const faltantes = resumenBalanza.lineas.filter((l) => !datos.catalogo.some((c) => c.codigo === l.cuenta)).map((l) => l.cuenta);
+  if (faltantes.length > 0) throw new ContabilidadElectronicaDatosInvalidosError(`La balanza usa cuentas que no están en el catálogo: ${faltantes.slice(0, 10).join(", ")}.`);
+  const xmlCatalogo = generarXmlCatalogo(datos.catalogo, { rfc, ejercicio: datos.ejercicio, mes });
+  const xmlBalanza = generarXmlBalanza(resumenBalanza.lineas, { rfc, ejercicio: datos.ejercicio, mes, tipoEnvio: datos.tipoEnvio, fechaModBal: datos.fechaModBal });
 
   const hashCatalogo = calcularHashSha1(xmlCatalogo);
   const hashBalanza = calcularHashSha1(xmlBalanza);
