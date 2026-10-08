@@ -866,7 +866,13 @@ rollback;
 
 \echo '=== D23b. agotados: un producto disponible cuyo agotado_hasta ya vencio (hoy) no se lista como agotado, y uno con fecha futura si ==='
 begin;
-insert into restaurantes.branch_products (property_id, product_id, price, is_available, agotado_hasta) values ('00000000-0000-0000-0000-0000000e44a1','00000000-0000-0000-0000-0000000e44c1', 55.00, true, (now() at time zone 'America/Mexico_City')::date), ('00000000-0000-0000-0000-0000000e44a1','00000000-0000-0000-0000-0000000e44c2', 20.00, true, (now() at time zone 'America/Mexico_City')::date + 2);
+-- A1 tiene corte 01:00: su «hoy» es el DIA DE NEGOCIO ((now() en su zona - corte)::date), que entre 00:00 y 01:00 hora de Mexico (06:00-07:00 UTC)
+-- va un dia detras del dia calendario. cfo_agotados compara agotado_hasta contra ese dia de negocio, asi que la fixture usa la MISMA expresion
+-- (cfo_zonas, la que usa la funcion) y no el dia calendario: vencido = hoy de negocio (limite: no es > hoy), futuro = hoy de negocio + 2.
+insert into restaurantes.branch_products (property_id, product_id, price, is_available, agotado_hasta)
+select z.property_id, v.product_id, v.price, true, ((now() at time zone z.tz) - z.corte)::date + v.dias
+  from restaurantes.cfo_zonas(array['00000000-0000-0000-0000-0000000e44a1']::uuid[]) z
+ cross join (values ('00000000-0000-0000-0000-0000000e44c1'::uuid, 55.00, 0), ('00000000-0000-0000-0000-0000000e44c2'::uuid, 20.00, 2)) as v(product_id, price, dias);
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
 select ((select count(*) = 0 from restaurantes.cfo_agotados('00000000-0000-0000-0000-0000000e4401', null) where property_id = '00000000-0000-0000-0000-0000000e44a1' and product_id = '00000000-0000-0000-0000-0000000e44c1') and (select count(*) = 1 from restaurantes.cfo_agotados('00000000-0000-0000-0000-0000000e4401', null) where property_id = '00000000-0000-0000-0000-0000000e44a1' and product_id = '00000000-0000-0000-0000-0000000e44c2'))::int as vencido_deberia_ser_1;
