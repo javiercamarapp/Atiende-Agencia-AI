@@ -40,6 +40,7 @@ import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
+import { PEDIDO_GRANDE_TOTAL_MXN } from "../pedido-grande.ts";
 import { afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
@@ -779,18 +780,24 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const promesaPrevia = [...messages].reverse().find((m) => m.role === "assistant");
           const avisoDelTurno = tele.tools.some((t) => (t.tool === "escalar_a_humano" || t.tool === "registrar_contacto") && t.resultado === "ok");
           if (afirmaHaberAvisado(respuesta) && !escalarMotivo && !avisoDelTurno && !(promesaPrevia && afirmaHaberAvisado(promesaPrevia.content))) {
+            // QA-PM-R4-reglas-01: un pedido grande cotizado que el modelo "avisa" sin escalar queda como pedido_grande (cede la conversacion a la sucursal), no como "otro".
+            const motivoAvisoHonesto = perfil === "taqueria_pm" && lastQuoteTotal !== null && lastQuoteTotal >= PEDIDO_GRANDE_TOTAL_MXN ? "pedido_grande" : "otro";
             const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
             const ultimo = [...messages].reverse().find((m) => m.role === "user");
             const aviso = await executeAgentToolSafely(
               repo,
               { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
               "escalar_a_humano",
-              { customer_name: nombre, motivo: "otro", resumen: `El asistente le dijo al cliente que avisaria al equipo; se deja el aviso para que alguien lo revise. Ultimo mensaje del cliente: ${(ultimo?.content ?? "").slice(0, 400)}` },
+              {
+                customer_name: nombre,
+                motivo: motivoAvisoHonesto,
+                resumen: `${motivoAvisoHonesto === "pedido_grande" ? `Pedido grande cotizado por $${lastQuoteTotal}: requiere confirmacion de la sucursal. ` : ""}El asistente le dijo al cliente que avisaria al equipo; se deja el aviso para que alguien lo revise. Ultimo mensaje del cliente: ${(ultimo?.content ?? "").slice(0, 400)}`,
+              },
             );
             if (isToolErrorResult(aviso.result)) respuesta = quitarAfirmacionDeAviso(respuesta);
             else {
-              escalarMotivo = "otro";
-              tele.motivoEscalacion = "otro";
+              escalarMotivo = motivoAvisoHonesto;
+              tele.motivoEscalacion = motivoAvisoHonesto;
             }
           }
           // Honestidad del cierre (QA-PM-R3 T7-040, P0): "su pedido ya quedo confirmado/registrado" solo si el pedido EXISTE: se creo en este turno, ya habia uno en esta

@@ -113,7 +113,8 @@ export function knownAmountsOfQuote(quote: {
  * ("le aviso a la sucursal para que tenga listo su pedido") es parte del flujo normal del pedido, no un aviso al gerente: no cuenta. */
 export function afirmaHaberAvisado(reply: string): boolean {
   const t = normalizarParaClasificar(reply);
-  return /\bavis(?:e|are|o)\s+(?:ya\s+)?(?:a|al|a\s+la|a\s+los)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal|encargad[oa]|restaurante|personal)\b(?![^.!?]*\blist[oa]s?\b)|\bnotific(?:ue|are)\s+(?:al|a\s+la)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal)\b/.test(t);
+  // QA-PM-R4-whatsapp-02 / reglas-01: tambien la promesa en infinitivo ("permitame avisar al gerente", "voy a avisar al equipo") y "el aviso quedo registrado".
+  return /\bavis(?:e|are|o)\s+(?:ya\s+)?(?:a|al|a\s+la|a\s+los)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal|encargad[oa]|restaurante|personal)\b(?![^.!?]*\blist[oa]s?\b)|\b(?:permitame|permitanme|dejeme|deme\s+chance\s+de|voy\s+a|vamos\s+a|le\s+voy\s+a|procedo\s+a|debo|tengo\s+que)\s+avisar(?:le|les)?\s+(?:a|al|a\s+la|a\s+los)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal|encargad[oa]|restaurante|personal)\b(?![^.!?]*\blist[oa]s?\b)|\bel\s+aviso\s+(?:ya\s+)?(?:quedo|fue|se\s+registro|esta\s+registrado)\b|\bnotific(?:ue|are)\s+(?:al|a\s+la)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal)\b/.test(t);
 }
 
 /** Frase que ofrece algo "de cortesia" como parte del pedido (afirmacion), no una explicacion de la regla de la promocion ("solo para recoger", "los martes", "si pide...", "no hay aguas de cortesia"). */
