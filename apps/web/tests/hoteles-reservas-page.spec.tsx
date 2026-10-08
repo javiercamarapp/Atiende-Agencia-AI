@@ -272,7 +272,7 @@ describe("ReservasPage (hoteles)", () => {
     click(nuevaBtn);
     await esperarCarga(); // fetchRoomTypes
 
-    const root = rendered.container;
+    const root = document.body; // el formulario vive en un FormDialog (portal)
     changeValue(root.querySelector("#res-tipo-habitacion") as HTMLSelectElement, "rt-1");
     changeValue(root.querySelector("#res-checkin") as HTMLInputElement, "2026-11-01");
     changeValue(root.querySelector("#res-checkout") as HTMLInputElement, "2026-11-05");
@@ -297,11 +297,11 @@ describe("ReservasPage (hoteles)", () => {
     click(nuevaBtn);
     await esperarCarga();
 
-    const form = rendered.container.querySelector("form")!;
+    const form = document.body.querySelector("form")!;
     const callsAntes = fetchMock.mock.calls.length;
     await submitForm(form);
 
-    expect(rendered.container.textContent).toContain("Selecciona un tipo de habitación");
+    expect(document.body.textContent).toContain("Selecciona un tipo de habitación");
     expect(fetchMock.mock.calls.length).toBe(callsAntes);
   });
 

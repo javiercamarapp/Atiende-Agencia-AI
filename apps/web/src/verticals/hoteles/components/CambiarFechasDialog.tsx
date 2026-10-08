@@ -2,7 +2,8 @@
 // previsualiza (recotiza con el motor de tarifas, cupo, penalidad y bloqueos) y confirma con guardia de precio (`totalEsperado`) e
 // Idempotency-Key. Nada se calcula en el cliente: todo numero sale de la previsualizacion. "Cancelar" solo cierra, nunca ejecuta.
 import { useEffect, useRef, useState } from "react";
-import { Button, FormDialog, Input, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@atiende/ui";
+import { Button, Callout, DataTable, FormDialog, FormField, Input, Textarea } from "@atiende/ui";
+import type { DataTableColumna } from "@atiende/ui";
 import { cambiarFechas, ESTADOS_EN_CASA, previsualizarFechas } from "../lib/fechas-client.ts";
 import type { PrevisualizacionFechas } from "../lib/fechas-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
@@ -28,15 +29,18 @@ interface Props {
   readonly onDone: (aviso: string) => void;
 }
 
-function Fila({ etiqueta, actual, nueva, fuerte = false }: { etiqueta: string; actual: string; nueva: string; fuerte?: boolean }) {
-  return (
-    <TableRow className={fuerte ? "font-semibold text-foreground" : "text-foreground"}>
-      <TableCell className="text-xs font-normal text-muted-foreground">{etiqueta}</TableCell>
-      <TableCell className="text-right tabular-nums">{actual}</TableCell>
-      <TableCell className="text-right tabular-nums">{nueva}</TableCell>
-    </TableRow>
-  );
+interface FilaComparacion {
+  readonly etiqueta: string;
+  readonly actual: string;
+  readonly nueva: string;
+  readonly fuerte?: boolean;
 }
+
+const COLUMNAS_COMPARACION: readonly DataTableColumna<FilaComparacion>[] = [
+  { id: "concepto", encabezado: "Concepto", principal: true, celda: (f) => <span className={f.fuerte ? "font-semibold text-foreground" : "text-muted-foreground"}>{f.etiqueta}</span> },
+  { id: "actual", encabezado: "Actual", alinear: "right", celda: (f) => <span className={f.fuerte ? "font-semibold tabular-nums" : "tabular-nums"}>{f.actual}</span> },
+  { id: "nueva", encabezado: "Nueva", alinear: "right", celda: (f) => <span className={f.fuerte ? "font-semibold tabular-nums" : "tabular-nums"}>{f.nueva}</span> },
+];
 
 export function CambiarFechasDialog({ apiBaseUrl, token, propertyId, reserva, onClose, onDone }: Props) {
   const [entrada, setEntrada] = useState("");
@@ -139,19 +143,16 @@ export function CambiarFechasDialog({ apiBaseUrl, token, propertyId, reserva, on
       <div className="flex flex-col gap-3">
         {enCasa && <p className="text-xs text-muted-foreground">El huésped ya está en casa: solo se puede extender o acortar la salida. Las noches ya cargadas al folio no se tocan.</p>}
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cf-entrada">Llegada</Label>
-            <Input id="cf-entrada" type="date" value={entrada} disabled={enCasa || guardando} onChange={(e) => { setError(null); setEntrada(e.target.value); }} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cf-salida">Salida</Label>
-            <Input id="cf-salida" type="date" value={salida} disabled={guardando} onChange={(e) => { setError(null); setSalida(e.target.value); }} />
-          </div>
+          <FormField id="cf-entrada" label="Llegada">
+            <Input type="date" value={entrada} disabled={enCasa || guardando} onChange={(e) => { setError(null); setEntrada(e.target.value); }} />
+          </FormField>
+          <FormField id="cf-salida" label="Salida">
+            <Input type="date" value={salida} disabled={guardando} onChange={(e) => { setError(null); setSalida(e.target.value); }} />
+          </FormField>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="cf-motivo">Motivo (opcional)</Label>
-          <Textarea id="cf-motivo" rows={2} maxLength={200} value={motivo} disabled={guardando} onChange={(e) => setMotivo(e.target.value)} />
-        </div>
+        <FormField id="cf-motivo" label="Motivo (opcional)">
+          <Textarea rows={2} maxLength={200} value={motivo} disabled={guardando} onChange={(e) => setMotivo(e.target.value)} />
+        </FormField>
 
         {cargando && <p role="status" className="text-sm text-muted-foreground">Recotizando…</p>}
         {preview && !cargando && (
@@ -164,22 +165,20 @@ export function CambiarFechasDialog({ apiBaseUrl, token, propertyId, reserva, on
               </ul>
             )}
             {nueva && (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead aria-label="Concepto" />
-                    <TableHead className="text-right">Actual</TableHead>
-                    <TableHead className="text-right">Nueva</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <Fila etiqueta="Noches" actual={String(preview.actual.noches)} nueva={String(nueva.noches)} />
-                  <Fila etiqueta="Subtotal" actual={dineroMx(preview.actual.neto)} nueva={dineroMx(nueva.neto)} />
-                  <Fila etiqueta="IVA" actual={dineroMx(preview.actual.iva)} nueva={dineroMx(nueva.iva)} />
-                  <Fila etiqueta="ISH" actual={dineroMx(preview.actual.ish)} nueva={dineroMx(nueva.ish)} />
-                  <Fila etiqueta="Total" actual={dineroMx(preview.actual.total)} nueva={dineroMx(nueva.total)} fuerte />
-                </TableBody>
-              </Table>
+              <DataTable
+                etiqueta="Comparación del cambio de fechas"
+                columnas={COLUMNAS_COMPARACION}
+                obtenerId={(f) => f.etiqueta}
+                paginacion={false}
+                vista="tabla"
+                filas={[
+                  { etiqueta: "Noches", actual: String(preview.actual.noches), nueva: String(nueva.noches) },
+                  { etiqueta: "Subtotal", actual: dineroMx(preview.actual.neto), nueva: dineroMx(nueva.neto) },
+                  { etiqueta: "IVA", actual: dineroMx(preview.actual.iva), nueva: dineroMx(nueva.iva) },
+                  { etiqueta: "ISH", actual: dineroMx(preview.actual.ish), nueva: dineroMx(nueva.ish) },
+                  { etiqueta: "Total", actual: dineroMx(preview.actual.total), nueva: dineroMx(nueva.total), fuerte: true },
+                ]}
+              />
             )}
             {dif !== null && (
               <p className="text-sm text-foreground">
@@ -195,7 +194,7 @@ export function CambiarFechasDialog({ apiBaseUrl, token, propertyId, reserva, on
             )}
           </div>
         )}
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        {error && <Callout tone="danger">{error}</Callout>}
       </div>
     </FormDialog>
   );
