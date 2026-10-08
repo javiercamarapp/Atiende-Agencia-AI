@@ -37,7 +37,7 @@
 --     round(total x 100) (total ya viene neto del descuento, ver orders.ts). Descuento = max(bruta - neta, 0) de las ventas; si la nota del pedido
 --     contiene `Promocion aplicada: GRACIAS-` es «compensacion» (desc_comp), si no «promocion» (desc_promo). La propina NO esta en el total
 --     (nota «no incluida en el total»): propina_centavos se suma aparte y solo existe la que el agente capturo.
---   * Tiempo de entrega = delivered_at - inicio, solo status 'entregado' con delivered_at >= inicio, en minutos con 2 decimales POR PEDIDO (asi la
+--   * Tiempo de entrega = delivered_at - inicio, status 'entregado' o 'completado' (desde 077 el autopiloto pasa los entregados a completado a las 6 h) con delivered_at >= inicio, en minutos con 2 decimales POR PEDIDO (asi la
 --     suma es exacta y aditiva). entrega_tarde = entregas con mas minutos que p_promesa_min (default 50). Las razones y el p90 se calculan fuera.
 --   * Reposiciones: pedidos referenciados por solicitud_aprobacion.reposicion_order_id (no cancelados ni por aprobar). Su valor se estima a
 --     precio de lista VIGENTE: branch_products.price de la sucursal si existe (es la fuente de verdad del precio, ver 001) y, si no,
@@ -75,7 +75,8 @@ create index if not exists orders_org_prop_promovido_idx on restaurantes.orders 
 -- ---------------------------------------------------------------------------
 -- 1) Helpers internos
 -- ---------------------------------------------------------------------------
--- Renglones validos de orders.items: un objeto con price numerico no negativo y quantity entera. Lo demas se ignora (nunca inventa).
+-- Renglones validos de orders.items: un objeto con price numerico no negativo y quantity entera. Lo demas (p. ej. quantity no entera) se ignora SIN aviso
+-- (nunca inventa; la bruta de ese pedido queda sin ese renglon).
 create or replace function restaurantes.cfo_renglones(p_items jsonb)
 returns table (producto_ref text, nombre text, precio numeric, cantidad numeric)
 language sql
@@ -126,14 +127,15 @@ begin
     raise exception 'cfo: organizacion requerida' using errcode = '22023';
   end if;
   if p_props is not null then
-    if cardinality(p_props) = 0 or array_position(p_props, null) is not null then
+    if cardinality(p_props) = 0 or cardinality(p_props) > 500 or array_position(p_props, null) is not null then
       raise exception 'cfo: lista de sucursales invalida' using errcode = '22023';
     end if;
     select array_agg(distinct u.x) into v_props from unnest(p_props) as u(x);
     foreach v_prop in array v_props loop
       if auth.uid() is null then
         -- Sistema: la sucursal debe pertenecer a la organizacion declarada.
-        if not exists (select 1 from core.property p where p.id = v_prop and p.organization_id = p_org) then
+        if not exists (select 1 from core.property p join restaurantes.branch_detail bd on bd.property_id = p.id
+                        where p.id = v_prop and p.organization_id = p_org) then
           raise exception 'cfo: sin acceso a la sucursal' using errcode = '42501';
         end if;
       elsif not restaurantes.handoff_actor_en_sucursal(p_org, v_prop, true) then
@@ -195,8 +197,8 @@ stable
 security definer
 set search_path = restaurantes, core, pg_temp
 as $$
-  with par as (
-    select x.pid as property_id, restaurantes.voz_zona_horaria(x.pid) as tz
+  with par as materialized (
+    select x.pid as property_id, restaurantes.voz_zona_horaria(x.pid) as tz, restaurantes.dia_negocio_corte(x.pid) as corte
       from unnest(p_props) as x(pid)
   ),
   repos as materialized (
@@ -207,7 +209,7 @@ as $$
   src as (
     select o.id, o.order_number, o.property_id, o.customer_id, o.items, o.source, o.status, o.payment_method,
            o.total, o.propina, o.canal, o.customer_address, o.notes, o.delivered_at, o.pedido_falso_at,
-           par.tz, coalesce(o.promovido_at, o.created_at) as inicio
+           par.tz, par.corte, coalesce(o.promovido_at, o.created_at) as inicio
       from restaurantes.orders o
       join par on par.property_id = o.property_id
      where o.organization_id = p_org
@@ -218,7 +220,7 @@ as $$
          or (o.promovido_at >= ((p_desde - 3)::timestamp at time zone 'UTC') and o.promovido_at < ((p_hasta + 4)::timestamp at time zone 'UTC')))
   ),
   dn as (
-    select s.*, restaurantes.dia_negocio(s.property_id, s.inicio) as dia
+    select s.*, ((s.inicio at time zone s.tz) - s.corte)::date as dia
       from src s
   )
   select d.id, d.order_number, d.property_id, d.customer_id, d.items,
@@ -237,7 +239,7 @@ as $$
          case when v.es_venta then greatest(b.bruta - n.neta, 0) else 0 end::bigint,
          (coalesce(d.notes, '') like '%Promoción aplicada: GRACIAS-%'),
          coalesce(round(d.propina * 100), 0)::bigint,
-         case when d.status = 'entregado' and d.delivered_at is not null and d.delivered_at >= d.inicio
+         case when d.status in ('entregado', 'completado') and d.delivered_at is not null and d.delivered_at >= d.inicio
               then round(extract(epoch from (d.delivered_at - d.inicio))::numeric / 60.0, 2) end
     from dn d
     left join repos r on r.order_id = d.id
@@ -723,3 +725,12 @@ end;
 $$;
 revoke all on function restaurantes.cfo_cobertura(uuid, uuid[]) from public, anon;
 grant execute on function restaurantes.cfo_cobertura(uuid, uuid[]) to authenticated;
+
+-- Comentarios de las funciones publicas.
+comment on function restaurantes.cfo_ventas_diarias(uuid, uuid[], date, date, integer) is 'CFO: ventas por sucursal/dia/canal/source/pago (centavos, aditivo). Doble puerta owner/admin o sistema.';
+comment on function restaurantes.cfo_cortesias(uuid, uuid[], date, date) is 'CFO: reposiciones valuadas a precio de lista vigente por sucursal y dia.';
+comment on function restaurantes.cfo_ventas_hora(uuid, uuid[], date, date) is 'CFO: pedidos y venta neta por dia de la semana del dia de negocio y hora local.';
+comment on function restaurantes.cfo_productos(uuid, uuid[], date, date) is 'CFO: unidades, ingreso y pedidos por producto y dia de negocio (solo ventas).';
+comment on function restaurantes.cfo_canasta_pares(uuid, uuid[], date, date, integer) is 'CFO: pares de productos, totales y distribucion del ticket (jsonb); top por sucursal.';
+comment on function restaurantes.cfo_pedidos_detalle(uuid, uuid[], date, date, jsonb, integer, text, integer) is 'CFO: drill-down de pedidos sin PII, filtros de lista cerrada, tope 200 y cursor.';
+comment on function restaurantes.cfo_cobertura(uuid, uuid[]) is 'CFO: primer y ultimo dia con pedidos, zona y corte por sucursal.';

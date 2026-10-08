@@ -41,19 +41,24 @@ insert into core.property (id, organization_id, name) values
   ('00000000-0000-0000-0000-0000000e43a1', '00000000-0000-0000-0000-0000000e4301', 'Sucursal A1 (Mexico, corte 01:00)'),
   ('00000000-0000-0000-0000-0000000e43a2', '00000000-0000-0000-0000-0000000e4301', 'Sucursal A2 (Mexico)'),
   ('00000000-0000-0000-0000-0000000e43a3', '00000000-0000-0000-0000-0000000e4301', 'Sucursal A3 (Auckland)'),
-  ('00000000-0000-0000-0000-0000000e43b1', '00000000-0000-0000-0000-0000000e4302', 'Sucursal B1')
+  ('00000000-0000-0000-0000-0000000e43b1', '00000000-0000-0000-0000-0000000e4302', 'Sucursal B1'),
+  ('00000000-0000-0000-0000-0000000e43b2', '00000000-0000-0000-0000-0000000e4302', 'Sucursal B2 (Madrid, corte 02:00)'),
+  ('00000000-0000-0000-0000-0000000e43b3', '00000000-0000-0000-0000-0000000e4302', 'Sucursal B3 (Tijuana)')
 on conflict do nothing;
 
 insert into restaurantes.branch_detail (property_id, organization_id, slug, zona_horaria) values
   ('00000000-0000-0000-0000-0000000e43a1', '00000000-0000-0000-0000-0000000e4301', 'a1', null),
   ('00000000-0000-0000-0000-0000000e43a2', '00000000-0000-0000-0000-0000000e4301', 'a2', null),
   ('00000000-0000-0000-0000-0000000e43a3', '00000000-0000-0000-0000-0000000e4301', 'a3', 'Pacific/Auckland'),
-  ('00000000-0000-0000-0000-0000000e43b1', '00000000-0000-0000-0000-0000000e4302', 'b1', null)
+  ('00000000-0000-0000-0000-0000000e43b1', '00000000-0000-0000-0000-0000000e4302', 'b1', null),
+  ('00000000-0000-0000-0000-0000000e43b2', '00000000-0000-0000-0000-0000000e4302', 'b2', 'Europe/Madrid'),
+  ('00000000-0000-0000-0000-0000000e43b3', '00000000-0000-0000-0000-0000000e4302', 'b3', 'America/Tijuana')
 on conflict do nothing;
 
 -- Turno 12:00 -> 01:00 en A1: el corte del dia de negocio es 1 h.
 insert into restaurantes.branch_policy (property_id, organization_id, horario) values
-  ('00000000-0000-0000-0000-0000000e43a1', '00000000-0000-0000-0000-0000000e4301', '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00"}]');
+  ('00000000-0000-0000-0000-0000000e43a1', '00000000-0000-0000-0000-0000000e4301', '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00"}]'),
+  ('00000000-0000-0000-0000-0000000e43b2', '00000000-0000-0000-0000-0000000e4302', '[{"dias":[0,1,2,3,4,5,6],"abre":"20:00","cierra":"02:00"}]');
 
 insert into core.staff_user (id, email, full_name, created_via) values
   ('00000000-0000-0000-0000-0000000e4311', 'owner-a@cfo.example.com', 'Owner A', 'seed'),
@@ -108,6 +113,12 @@ insert into restaurantes.orders (id, organization_id, property_id, customer_id, 
   ('00000000-0000-0000-0000-00000e4f0024', '00000000-0000-0000-0000-0000000e4301', '00000000-0000-0000-0000-0000000e43a2', null, 'Cliente 24', '+52 5500000024', null, 30.00, 'cancelado', '[{"id": "00000000-0000-0000-0000-0000000e43c2", "name": "Refresco", "price": 20, "quantity": 1}]', 'whatsapp', null, null, null, null, '2026-03-10 19:00+00', null, null, null, null),
   ('00000000-0000-0000-0000-00000e4f0031', '00000000-0000-0000-0000-0000000e4301', '00000000-0000-0000-0000-0000000e43a3', null, 'Cliente 31', '+52 5500000031', null, 150.00, 'pending', '[{"id": "00000000-0000-0000-0000-0000000e43c1", "name": "Taco", "price": 50, "quantity": 3}]', 'whatsapp', null, null, null, null, '2026-03-10 18:00+00', null, null, null, null),
   ('00000000-0000-0000-0000-00000e4f0032', '00000000-0000-0000-0000-0000000e4301', '00000000-0000-0000-0000-0000000e43a3', null, 'Cliente 32', '+52 5500000032', null, 40.00, 'pending', '[{"id": "00000000-0000-0000-0000-0000000e43c2", "name": "Refresco", "price": 20, "quantity": 2}]', 'whatsapp', null, null, null, null, '2026-03-10 10:00+00', null, null, null, null),
+  ('00000000-0000-0000-0000-00000e4f0051', '00000000-0000-0000-0000-0000000e4301', '00000000-0000-0000-0000-0000000e43a2', null, 'Cliente 51', '+52 5500000051', null, 30.00, 'completado', '[{"id": "00000000-0000-0000-0000-0000000e43c2", "name": "Refresco", "price": 20, "quantity": 1}]', 'whatsapp', null, null, null, null, '2026-03-03 18:00+00', '2026-03-03 18:40+00', null, null, null),
+  ('00000000-0000-0000-0000-00000e4f0052', '00000000-0000-0000-0000-0000000e4302', '00000000-0000-0000-0000-0000000e43b2', null, 'Cliente 52', '+52 5500000052', null, 10.00, 'pending', '[]', 'whatsapp', null, null, null, null, '2026-03-29 00:30+00', null, null, null, null),
+  ('00000000-0000-0000-0000-00000e4f0053', '00000000-0000-0000-0000-0000000e4302', '00000000-0000-0000-0000-0000000e43b2', null, 'Cliente 53', '+52 5500000053', null, 10.00, 'pending', '[]', 'whatsapp', null, null, null, null, '2026-03-29 01:30+00', null, null, null, null),
+  ('00000000-0000-0000-0000-00000e4f0054', '00000000-0000-0000-0000-0000000e4302', '00000000-0000-0000-0000-0000000e43b2', null, 'Cliente 54', '+52 5500000054', null, 10.00, 'pending', '[]', 'whatsapp', null, null, null, null, '2026-03-29 02:30+00', null, null, null, null),
+  ('00000000-0000-0000-0000-00000e4f0055', '00000000-0000-0000-0000-0000000e4302', '00000000-0000-0000-0000-0000000e43b3', null, 'Cliente 55', '+52 5500000055', null, 10.00, 'pending', '[]', 'whatsapp', null, null, null, null, '2026-03-10 07:30+00', null, null, null, null),
+  ('00000000-0000-0000-0000-00000e4f0056', '00000000-0000-0000-0000-0000000e4302', '00000000-0000-0000-0000-0000000e43b3', null, 'Cliente 56', '+52 5500000056', null, 10.00, 'pending', '[]', 'whatsapp', null, null, null, null, '2026-03-08 09:30+00', null, null, null, null),
   ('00000000-0000-0000-0000-00000e4f0041', '00000000-0000-0000-0000-0000000e4302', '00000000-0000-0000-0000-0000000e43b1', null, 'Cliente 41', '+52 5500000041', null, 555.00, 'pending', '[]', 'whatsapp', null, null, null, null, '2026-03-10 18:00+00', null, null, null, null);
 
 -- Reposicion: el pedido 14 repone el pedido 7 (cancelado).
@@ -774,6 +785,62 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4311', true);
 select public.t_esperar_error($q$select restaurantes.cfo_validar_rango(date '2026-03-10', date '2026-03-10')$q$, '42501');
 select public.t_esperar_error($q$select * from restaurantes.cfo_renglones('[]'::jsonb)$q$, '42501');
+rollback;
+
+\echo '=== A19. entregas: un pedido completado (autopiloto) con 40 min cuenta como entrega (A2, 3 de marzo) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4311', true);
+select (sum(entregados) * 10000 + sum(entrega_min_suma) * 100)::int as completado_deberia_ser_14000 from restaurantes.cfo_ventas_diarias('00000000-0000-0000-0000-0000000e4301', array['00000000-0000-0000-0000-0000000e43a2'::uuid], date '2026-03-03', date '2026-03-03');
+rollback;
+
+\echo '=== A20. detalle: el completado trae entregado_min 40 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4311', true);
+select entregado_min::int as min_deberia_ser_40 from restaurantes.cfo_pedidos_detalle('00000000-0000-0000-0000-0000000e4301', array['00000000-0000-0000-0000-0000000e43a2'::uuid], date '2026-03-03', date '2026-03-03');
+rollback;
+
+\echo '=== A21. dia de negocio en linea == restaurantes.dia_negocio() en todos los pedidos (corte 01:00, Madrid corte 02:00 con cambio de hora, Tijuana, Auckland, sin corte) ==='
+begin;
+select count(*)::int as difs_deberia_ser_0 from (
+  select b.order_id, b.dia_negocio from restaurantes.cfo_pedidos_base('00000000-0000-0000-0000-0000000e4301', array['00000000-0000-0000-0000-0000000e43a1'::uuid,'00000000-0000-0000-0000-0000000e43a2'::uuid,'00000000-0000-0000-0000-0000000e43a3'::uuid], date '2026-01-01', date '2026-12-31') b
+  union all
+  select b.order_id, b.dia_negocio from restaurantes.cfo_pedidos_base('00000000-0000-0000-0000-0000000e4302', array['00000000-0000-0000-0000-0000000e43b1'::uuid,'00000000-0000-0000-0000-0000000e43b2'::uuid,'00000000-0000-0000-0000-0000000e43b3'::uuid], date '2026-01-01', date '2026-12-31') b) x
+  join restaurantes.orders o on o.id = x.order_id
+ where x.dia_negocio <> restaurantes.dia_negocio(o.property_id, coalesce(o.promovido_at, o.created_at));
+rollback;
+
+\echo '=== A22. dia de negocio de Madrid (corte 02:00): 00:30Z del 29 cae el 28; 01:30Z (ya en horario de verano, 03:30 local) y 02:30Z caen el 29; Tijuana sin corte ==='
+begin;
+select count(*)::int as casos_deberia_ser_5 from restaurantes.cfo_pedidos_base('00000000-0000-0000-0000-0000000e4302', array['00000000-0000-0000-0000-0000000e43b2'::uuid,'00000000-0000-0000-0000-0000000e43b3'::uuid], date '2026-03-01', date '2026-03-31') b
+ join restaurantes.orders o on o.id = b.order_id
+ where (o.created_at = '2026-03-29 00:30+00' and b.dia_negocio = date '2026-03-28')
+    or (o.created_at = '2026-03-29 01:30+00' and b.dia_negocio = date '2026-03-29')
+    or (o.created_at = '2026-03-29 02:30+00' and b.dia_negocio = date '2026-03-29')
+    or (o.created_at = '2026-03-10 07:30+00' and b.dia_negocio = date '2026-03-10' and b.hora_local = 0)
+    or (o.created_at = '2026-03-08 09:30+00' and b.dia_negocio = date '2026-03-08');
+rollback;
+
+\echo '=== A23. rendimiento acotado: 20000 pedidos sinteticos en 30 dias, ventas_diarias + ventas_hora en menos de 2 s (transaccion con rollback) ==='
+begin;
+insert into restaurantes.orders (organization_id, property_id, customer_name, customer_phone, total, status, items, source, created_at)
+select '00000000-0000-0000-0000-0000000e4301', '00000000-0000-0000-0000-0000000e43a2', 'Perf', '+52 5500' || lpad((g % 9000)::text, 6, '0'), 100 + (g % 50), 'pending',
+       '[{"id":"00000000-0000-0000-0000-0000000e43c1","name":"Taco","price":50,"quantity":2}]'::jsonb, 'whatsapp', timestamptz '2026-04-01 00:00+00' + (g * interval '129 seconds')
+  from generate_series(1, 20000) g;
+analyze restaurantes.orders;
+set local role authenticated;
+do $$
+declare
+  t0 timestamptz := clock_timestamp();
+  n bigint;
+begin
+  select sum(pedidos) into n from restaurantes.cfo_ventas_diarias('00000000-0000-0000-0000-0000000e4301', array['00000000-0000-0000-0000-0000000e43a2'::uuid], date '2026-04-01', date '2026-04-30');
+  perform * from restaurantes.cfo_ventas_hora('00000000-0000-0000-0000-0000000e4301', array['00000000-0000-0000-0000-0000000e43a2'::uuid], date '2026-04-01', date '2026-04-30');
+  if n < 19000 then raise exception 'pedidos inesperados %', n; end if;
+  if clock_timestamp() - t0 > interval '2 seconds' then raise exception 'demasiado lento: %', clock_timestamp() - t0; end if;
+end $$;
+select 1 as rendimiento_ok;
 rollback;
 
 \echo '=== E1. grants: las 7 publicas solo para authenticated (anon y public sin execute); los 4 helpers cerrados a authenticated ==='
