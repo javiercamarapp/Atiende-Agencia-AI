@@ -64,7 +64,7 @@ export const REGLAS_VIVAS_VOZ = `# REGLAS ADICIONALES DE LA LLAMADA
 - ${PM_REGLA_NO_REPETIR_DATOS}
 - ${PM_REGLA_REINTENTO_PEDIDO}
 - ${PM_REGLA_RESERVACIONES}
-- HORA Y FECHA (QA-PM-R2-voz-03/reglas-04): la hora y la fecha locales de la sucursal las da consultar_sucursal (hora_local, fecha_local, dia_semana); úselas para "hoy a las ocho", nunca la UTC ni la de memoria. Un PLAZO ("en 40 minutos") no se calcula: minutos_para_recoger 40 en cotizar_pedido y crear_pedido; solo una hora exacta va en hora_recogida (ISO -06:00), igual en ambas; con "en cuanto esté" o "ahorita" no se manda. programado_para solo para otro día o una hora exacta con más de 30 minutos, nunca vacío; si la herramienta rechaza la hora, diga a qué hora cierra.
+- HORA Y FECHA (QA-PM-R2-voz-03/reglas-04): la hora y la fecha locales de la sucursal las da consultar_sucursal (hora_local, fecha_local, dia_semana); úselas para "hoy a las ocho", nunca la hora UTC ni la de memoria. Un PLAZO ("en 40 minutos") no se calcula: minutos_para_recoger 40 en cotizar_pedido y crear_pedido; solo una hora exacta va en hora_recogida (ISO -06:00), igual en ambas; con "en cuanto esté" o "ahorita" no se manda. programado_para solo para otro día o una hora exacta con más de 30 minutos, nunca vacío; si la herramienta rechaza la hora, diga a qué hora cierra.
 - TELÉFONO: confirme UNA sola vez el número de la llamada, sin pedirle que lo dicte ni volver a preguntarlo.
 - RESUMEN: antes de pedir el sí, diga el pedido completo con el total de cotizar_pedido; si se corta o lo interrumpen, repítalo entero.
 - KILOS: "2 kilos" es UN renglón del producto de 2 kg con requested_quantity 1; "3 kilos" son dos renglones (2 kg y 1 kg). Busque cada producto que mencione el cliente; si no existe, dígalo y ofrezca opciones.
