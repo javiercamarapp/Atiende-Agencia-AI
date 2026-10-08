@@ -594,6 +594,9 @@ async function assertRecogerEnSucursalDeEntrada(repo: RestaurantesRepository, ct
   if (ctx.channel !== "whatsapp" || ctx.modo === "preview" || !ctx.entryPropertyId || canal !== "recoger") return;
   const branch = await repo.findBranch(ctx.organizationId, { slug: branchSlug });
   if (!branch || branch.propertyId === ctx.entryPropertyId) return;
+  // H17 es una regla del perfil `taqueria_pm`: otro perfil conserva el comportamiento de siempre (T-ZS06/P29: entrar por el numero de la sucursal A y pedir en la B).
+  const perfil = (await repo.findWhatsAppAgentConfig(ctx.organizationId, ctx.entryPropertyId))?.perfil ?? "generico";
+  if (perfil !== "taqueria_pm") return;
   const propia = (await repo.listBranchesForOrganization(ctx.organizationId)).find((b) => b.propertyId === ctx.entryPropertyId);
   throw new OrderValidationError(
     `Este chat es de ${propia?.name ?? "otra sucursal"}: el pedido para recoger en ${branch.name} no se toma aquí (H17). Dele al cliente el teléfono de ${branch.name}${branch.phone ? ` (${branch.phone})` : ""} y dígale con calidez que ahí lo atienden; si prefiere, ofrezca recoger en ${propia?.name ?? "la sucursal de este chat"}.`,
