@@ -95,6 +95,18 @@ describe("H37 / abc543a: la frase de pack usa el N real de cada producto, no sol
     const pollo = enforceBistecPackNotice("Claro.", [{ role: "user", content: "quiero 4 tacos de pollo" }]);
     expect(pollo).toBe("Claro.");
     expect(enforceBistecPackNotice("Claro.", [{ role: "user", content: "quiero tacos de bistec" }])).toMatch(/órdenes de 3/);
+    // Pregunta: informar el pack tambien aplica. Historial: solo cuenta el ULTIMO mensaje del cliente. Ya avisado: no se duplica.
+    expect(enforceBistecPackNotice("Si.", [{ role: "user", content: "¿tienen tacos de bistec?" }])).toMatch(/órdenes de 3/);
+    const historial = [
+      { role: "user", content: "quiero tacos de bistec" },
+      { role: "assistant", content: "Claro." },
+      { role: "user", content: "gracias" },
+    ] as const;
+    expect(enforceBistecPackNotice("De nada.", historial)).toBe("De nada.");
+    expect(enforceBistecPackNotice("Son ordenes de 3.", [{ role: "user", content: "tacos de bistec" }])).toBe("Son ordenes de 3.");
+    // (La guarda de «ya avisado» solo reconoce «ordenes» sin acento: con «órdenes» el \b inicial no empareja; ver nota del PR.)
+    // Negacion SIN la palabra «tacos»: no hay pedido de bistec que avisar.
+    expect(enforceBistecPackNotice("Entendido.", [{ role: "user", content: "no quiero bistec" }])).toBe("Entendido.");
     expect(promptGenerico()).toMatch(/cualquier producto con pack_size mayor a 1, solo acepta múltiplos exactos/);
     // El perfil PM lo dice con sus palabras: «órdenes de N» en múltiplos de N para cualquier producto, y el aviso fijo solo para el bistec.
     expect(promptPM()).toMatch(/las "órdenes de N" solo se venden en múltiplos de N/);
@@ -190,8 +202,8 @@ describe("H61 / 5f7cbb9: las estadisticas suman TODOS los pedidos (sin tope de 1
       callRecordingUrl: null,
       dedupeFingerprint: null,
       idempotencyKey: null,
-      // Repartidos entre las 09:00 y las 20:59 del miercoles (hora de Merida = UTC-6).
-      createdAt: new Date(Date.UTC(2026, 9, 7, 15 + (i % 12), i % 60, 0)).toISOString(),
+      // Repartidos entre las 06:00 y las 11:59 del miercoles (hora de Merida = UTC-6): todos ANTES del "ahora" fijo (12:00).
+      createdAt: new Date(Date.UTC(2026, 9, 7, 12 + (i % 6), i % 60, 0)).toISOString(),
       assignedRepartidorId: null,
       estimatedDeliveryAt: null,
       incidentNote: null,
