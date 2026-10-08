@@ -303,11 +303,13 @@
       "turnos_cliente": [
         "¿Ya quedó mi pedido? ¿Ya está en cocina?"
       ],
-      "comportamiento_esperado": "Dice que figura registrado y que la sucursal confirma el estado.",
+      "comportamiento_esperado": "Sin pedido_reciente dice que el pedido figura registrado y que la sucursal confirma el estado; con pedido_reciente dice ese estado tal cual. El servidor agrega aviso_estado_pedido a buscar_cliente cuando no hay dato.",
       "que_no_debe_hacer": "Afirmar 'ya se está preparando'.",
       "cubierto_por": "tests/pm-r5-escenarios.spec.ts",
-      "dudas": [],
-      "estado": "activo"
+      "dudas": [
+        "El estado interno pending (pedido recibido, aun sin marca de la sucursal) se muestra al cliente como «preparando» por diseño de pedido-reciente.ts, asi que el modelo lo dice sin inventarlo (VR5-07 sigue fallando su chequeo duro): ¿debe mostrarse como «recibido, la sucursal lo confirma»?"
+      ],
+      "estado": "pendiente_decision"
     },
     {
       "id": "R5-020",

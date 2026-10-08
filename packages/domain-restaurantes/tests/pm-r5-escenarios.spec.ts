@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { cargarEscenariosR5 } from "../src/evals/agente-pm/escenarios-r5.ts";
 import { GUIONES_ES_MX } from "../src/voz/simulador/guiones-es-mx.ts";
 import { REGLAS_VIVAS_VOZ, comportamientoVozPm } from "../src/voz/perfil-voz-pm.ts";
-import { MENSAJE_ESCALACION_VOZ, invokeAgentTool } from "../src/agent-tools/registry.ts";
+import { AVISO_SIN_ESTADO_DE_PEDIDO, MENSAJE_ESCALACION_VOZ, invokeAgentTool } from "../src/agent-tools/registry.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
 import { buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
 import type { BranchSummary } from "../src/types.ts";
@@ -107,8 +107,8 @@ describe("reglas de prompt de WhatsApp de la ronda 5", () => {
 
 describe("reglas vivas de voz de la ronda 5", () => {
   it("rellamada sin estado de cocina, hora al cerrar, orden del cierre, pide persona, nunca callar", () => {
-    expect(REGLAS_VIVAS_VOZ).toMatch(/NO traen el estado de cocina/);
-    expect(REGLAS_VIVAS_VOZ).toMatch(/NUNCA «ya se está preparando»/);
+    expect(REGLAS_VIVAS_VOZ).toMatch(/historial_pedidos NO trae el estado de cocina/);
+    expect(REGLAS_VIVAS_VOZ).toMatch(/NUNCA «ya se está preparando» ni «ya salió» sin ese dato/);
     expect(REGLAS_VIVAS_VOZ).toMatch(/diga ESA hora/);
     expect(REGLAS_VIVAS_VOZ).toMatch(/espere un «sí» NUEVO antes de crear_pedido/);
     expect(REGLAS_VIVAS_VOZ).toMatch(/SIN pedirle antes el nombre/);
@@ -124,5 +124,20 @@ describe("reglas vivas de voz de la ronda 5", () => {
     expect(voz.result).toMatchObject({ ok: true, mensaje_al_cliente: MENSAJE_ESCALACION_VOZ });
     const wa = await invokeAgentTool(f.repo, { organizationId: f.organizationId, channel: "whatsapp", phone: "9991234568" }, "escalar_a_humano", { motivo: "cliente_lo_pide", resumen: "pide una persona" });
     expect(wa.result).toEqual({ ok: true });
+  });
+});
+
+describe("buscar_cliente no deja inventar el estado de cocina (QA-PM-R5-voz-04)", () => {
+  it("cliente nuevo: sin aviso; cliente con pedido y sin pedidoReciente: el resultado trae el aviso", async () => {
+    const f = buildRestaurantFixture();
+    const ctx = { organizationId: f.organizationId, channel: "voz" as const, phone: "9991234567" };
+    const nuevo = (await invokeAgentTool(f.repo, ctx, "buscar_cliente", {})).result as Record<string, unknown>;
+    expect(nuevo.isNew).toBe(true);
+    expect(nuevo.aviso_estado_pedido).toBeUndefined();
+    await invokeAgentTool(f.repo, ctx, "crear_pedido", { branch_slug: "fco-montejo", canal: "recoger", customer_name: "Nora", payment_method: "efectivo", items: [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 2 }] });
+    const conocido = (await invokeAgentTool(f.repo, ctx, "buscar_cliente", {})).result as Record<string, unknown>;
+    expect(conocido.isNew).toBe(false);
+    if (conocido.pedidoReciente === undefined) expect(conocido.aviso_estado_pedido).toBe(AVISO_SIN_ESTADO_DE_PEDIDO);
+    else expect(conocido.aviso_estado_pedido).toBeUndefined();
   });
 });

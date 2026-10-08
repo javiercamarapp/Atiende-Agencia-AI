@@ -1159,7 +1159,9 @@ async function dispatchTool(
         const nuevo = { isNew: true as const };
         return { result: nuevo, raw: nuevo, orderId: null, propertyId: null };
       }
-      const result = await lookupCustomerConPedidoReciente(repo, organizationId, ctx.phone);
+      const consulta = await lookupCustomerConPedidoReciente(repo, organizationId, ctx.phone);
+      // QA-PM-R5-voz-04: sin `pedidoReciente` el resultado NO trae el estado de cocina y el modelo lo inventaba por voz («ya se esta preparando»). El servidor se lo dice en el propio resultado.
+      const result = !consulta.isNew && consulta.pedidoReciente === undefined ? { ...consulta, aviso_estado_pedido: AVISO_SIN_ESTADO_DE_PEDIDO } : consulta;
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "historial_pedidos": {
@@ -1526,6 +1528,9 @@ async function dispatchTool(
     }
   }
 }
+
+/** Resultado de buscar_cliente sin `pedidoReciente`: no hay dato del estado en cocina. */
+export const AVISO_SIN_ESTADO_DE_PEDIDO = "Este resultado NO trae el estado del pedido en cocina ni si ya salió. Si el cliente pregunta si ya está en cocina o si se está preparando, diga solo que el pedido figura registrado (con su total y hora, si los tiene) y que la sucursal le confirma el estado; NUNCA «ya se está preparando» ni «ya salió».";
 
 /** Lo que el agente de VOZ le dice al cliente tras escalar a una persona: nunca cuelga en silencio ni promete hora o resultado. */
 export const MENSAJE_ESCALACION_VOZ = "Ya avisé al gerente de la sucursal; le responden en cuanto puedan. Dígaselo así al cliente, de usted, ANTES de despedirse o cortar, sin prometer hora ni resultado.";
