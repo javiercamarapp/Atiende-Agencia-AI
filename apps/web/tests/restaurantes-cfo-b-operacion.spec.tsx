@@ -52,14 +52,17 @@ describe("<CfoOperacion />", () => {
     expect(b.q("[data-testid=meta-no-medido]")).toBeNull();
   });
 
-  it("sin organización completa la IA de texto no se muestra: «—» y la razón", async () => {
+  it("sin organización completa (admin acotado) la tarjeta «IA de texto · No asignado» no se muestra; con ella, sí", async () => {
     const base = await respuestaBase<OperacionVista>("/operacion");
-    const cuerpo = { ...base, costoAgente: { ...base.costoAgente, noAsignado: null } };
-    await b.pintar(CfoOperacion, crearApiCfo({ "GET /operacion": { status: 200, cuerpo } }));
+    const acotado = { ...base, alcance: { ...base.alcance, organizacionCompleta: false }, costoAgente: { ...base.costoAgente, noAsignado: null } };
+    await b.pintar(CfoOperacion, crearApiCfo({ "GET /operacion": { status: 200, cuerpo: acotado } }));
     await listo();
-    const llm = [...b.q("[data-testid=costo-agente]")!.children].find((c) => c.textContent?.includes("IA de texto"))!;
-    expect(llm.textContent).toContain("—");
-    expect(llm.textContent).toContain("Solo se ve con la organización completa");
+    expect(b.q("[data-testid=costo-agente]")!.textContent).not.toContain("IA de texto");
+    expect(b.q("[data-testid=costo-agente]")!.textContent).toContain("Voz");
+    b.desmontar();
+    await b.pintar(CfoOperacion, crearApiCfo());
+    await listo();
+    expect(b.q("[data-testid=costo-agente]")!.textContent).toContain("IA de texto · No asignado");
   });
 
   it("repartidores: por nombre del personal, con entregas, tiempo, tarde e incidencias", async () => {

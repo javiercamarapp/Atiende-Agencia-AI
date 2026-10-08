@@ -140,6 +140,7 @@ function Escalaciones({ d }: { readonly d: OperacionVista }) {
 
 function Costo({ d }: { readonly d: OperacionVista }) {
   const c: CostoAgenteApi = d.costoAgente.total;
+  // Solo con la organización completa: es un costo que no se asigna a una sucursal y un admin acotado no lo ve.
   const llm = d.costoAgente.noAsignado?.llmTexto ?? null;
   const metaNoMedida = c.meta.valor === null;
   return (
@@ -147,13 +148,15 @@ function Costo({ d }: { readonly d: OperacionVista }) {
       <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3" data-testid="costo-agente">
         <StatCard icon={Clock3} label="Costo total del agente" value={pesosExactos(c.total.valor)} nota={c.completo ? "Incluye todas las partidas medidas" : "Parcial: faltan partidas por medir"} />
         <StatCard icon={Clock3} label="Costo por pedido" value={pesosExactos(c.porPedido.valor)} nota="Costo del agente entre los pedidos del agente" {...(c.porPedido.valor === null ? { sinDato: "Sin pedidos del agente en el periodo." } : {})} />
-        <StatCard
-          icon={Bot}
-          label="IA de texto · No asignado"
-          value={llm === null ? SIN_DATO : pesosExactos(llm.valor)}
-          nota="Es de la organización, no de una sucursal"
-          {...(llm === null ? { sinDato: "Solo se ve con la organización completa: es un costo que no se asigna a una sucursal." } : {})}
-        />
+        {d.alcance.organizacionCompleta && (
+          <StatCard
+            icon={Bot}
+            label="IA de texto · No asignado"
+            value={llm === null ? SIN_DATO : pesosExactos(llm.valor)}
+            nota="Es de la organización, no de una sucursal"
+            {...(llm === null ? { sinDato: "Sin costo de IA de texto en el periodo." } : {})}
+          />
+        )}
         <StatCard icon={Phone} label="Voz" value={pesosExactos(c.voz.valor)} nota="Reconocimiento y síntesis de voz" {...(c.voz.valor === null ? { sinDato: "Sin llamadas en el periodo." } : {})} />
         <StatCard icon={Phone} label="Telefonía" value={pesosExactos(c.telefonia.valor)} nota="Minutos de llamada" {...(c.telefonia.valor === null ? { sinDato: "Sin llamadas en el periodo." } : {})} />
         <StatCard icon={Bot} label="Meta (WhatsApp)" value={metaNoMedida ? "No medido" : pesosExactos(c.meta.valor)} nota={metaNoMedida ? META_NO_MEDIDO : "Conversaciones de pago de Meta"} />
