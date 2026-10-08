@@ -96,6 +96,7 @@ export {
 export { Input } from "./components/ui/input.js";
 export { Textarea, type TextareaProps } from "./components/ui/textarea.js";
 export { NativeSelect, nativeSelectVariants, type NativeSelectProps } from "./components/ui/native-select.js";
+export { SelectorSucursal, type SelectorSucursalProps, type SelectorSucursalOpcion } from "./components/SelectorSucursal.js";
 export { Checkbox, type CheckboxProps } from "./components/ui/checkbox.js";
 export { Switch, type SwitchProps } from "./components/ui/switch.js";
 export { FormField, type FormFieldControlProps, type FormFieldProps } from "./components/ui/form-field.js";

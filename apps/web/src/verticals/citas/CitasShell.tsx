@@ -10,7 +10,7 @@
 // lo propio de citas: el adaptador de sesión, el mapa de navegación y el contexto
 // que reciben las páginas.
 import type { ReactNode } from "react";
-import { VerticalShellEstado, NativeSelect } from "@atiende/ui";
+import { VerticalShellEstado, SelectorSucursal } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import {
   BellRing,
@@ -167,32 +167,13 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
   if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje="Cargando sucursales…" />;
   if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje="Este negocio todavía no tiene ninguna sucursal configurada." />;
 
-  const { session, branches, activeBranch, propertyId, orgId, role } = s;
+  const { session, branches, propertyId, orgId, role } = s;
   const user = { email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) };
 
   // Selector real, visible solo cuando hay más de una sucursal (si no, solo el nombre). Se ofrece en el bloque
   // de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
   const branchSelector =
-    branches.length > 1 ? (
-      <div>
-        <label htmlFor="citas-sucursal-activa" className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
-          Sucursal activa
-        </label>
-        <NativeSelect
-          id="citas-sucursal-activa"
-          value={propertyId}
-          onChange={(e) => s.selectBranch(e.target.value)}
-        >
-          {branches.map((b) => (
-            <option key={b.propertyId} value={b.propertyId}>
-              {b.name}
-            </option>
-          ))}
-        </NativeSelect>
-      </div>
-    ) : (
-      <p className="text-xs text-muted-foreground truncate">{activeBranch.name}</p>
-    );
+    <SelectorSucursal id="citas-sucursal-activa" etiqueta="Sucursal activa" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />;
 
   return (
     <VerticalShellConectado
