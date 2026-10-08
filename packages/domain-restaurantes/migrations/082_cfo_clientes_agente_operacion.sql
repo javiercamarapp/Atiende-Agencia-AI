@@ -38,13 +38,14 @@
 --     de un ano se verá como nuevo: limite declarado). Por sucursal, «nuevo» es su primer pedido EN esa sucursal; en el renglon del conjunto, el primero
 --     de las sucursales consultadas (toda la organizacion cuando p_props es nulo).
 --   * Activo / dormido / perdido, al CIERRE del rango (p_hasta): dias desde el ultimo pedido <= p_activo_dias (60) / hasta p_perdido_dias (120) /
---     mas de p_perdido_dias dentro de la historia leida. Limites alineados con cfo_config (083): activo_dias hasta 365, perdido_dias hasta 730,
---     frecuente_dias hasta 365 (22023 fuera de ellos). La historia leida antes del rango es greatest(365, perdido_dias, frecuente_dias): con perdido = 730
---     se leen hasta 730 + (rango) dias, mas caro (ver el PR); con perdido >= 365 «perdidos» solo cuenta a quien se vio en esa historia.
+--     mas de p_perdido_dias y como maximo H = greatest(365, perdido_dias + 365) («perdidos de los ultimos H dias contados desde el cierre»: depende
+--     solo de p_hasta y de los umbrales, no del largo del rango). Limites alineados con cfo_config (083): activo_dias hasta 365, perdido_dias hasta 730,
+--     frecuente_dias hasta 365 (22023 fuera de ellos). Se leen pedidos desde least(p_desde − greatest(365, perdido_dias, frecuente_dias), p_hasta − H):
+--     con perdido = 730 son hasta 1 095 dias, mas caro (ver el PR).
 --   * Churn (dominio: churnPct): activos_al_inicio = clientes cuyo ultimo pedido ANTERIOR al rango (p_desde) fue hace <= p_activo_dias dias;
 --     pasan_a_perdidos = de esos, los que al cierre (p_hasta) llevan mas de p_perdido_dias sin pedir. Frecuente: >= p_frecuente_n (3) pedidos en los ultimos p_frecuente_dias (90) dias que terminan en p_hasta
 --     (con 90, el pedido de p_hasta-89 cuenta y el de p_hasta-90 no). El punto de enlace con cfo_config (083, frecuente_n/frecuente_dias/activo_dias/
---     perdido_dias) es el llamador: la 083 aun no esta fusionada, asi que aqui rigen los defaults de los parametros.
+--     perdido_dias) es el llamador: la 083 (cfo_config) ya esta fusionada, pero esta funcion no la lee: rigen los parametros que reciba del llamador (defaults 3/90/60/120).
 --   * Recuperado: cliente que al INICIO del rango (p_desde) llevaba mas de p_activo_dias sin pedir (dormido o perdido) y tiene pedido en el rango.
 --     Por campana: ademas tiene un envio de marketing_campana_envio (estado 'encolado') creado en los 14 dias previos a su primer pedido del rango
 --     (atribucion, no causalidad).
@@ -81,7 +82,7 @@
 --     asi que la suma de dos columnas puede diferir en ±1 centavo de su costo_total_centavos_mxn (los micro-USD coinciden exactos).
 --   * Colonias: la del domicilio guardado del cliente con el mismo texto de direccion normalizado (lower, sin espacios dobles); sin coincidencia
 --     = '(sin colonia)'. Por sucursal, las colonias con menos de p_k pedidos O menos de p_k CLIENTES distintos (k >= 5, 22023 si se pide menos) se agrupan en '(otras)'
---     (una colonia con 5 pedidos de un solo cliente es un hogar, no una colonia). Dos rangos de fechas distintos pueden mostrar colonias distintas.
+--     (una colonia con 5 pedidos de un solo cliente es un hogar, no una colonia). Dos rangos de fechas distintos pueden mostrar colonias distintas. '(otras)' puede quedar con pocos hogares (limite inherente; la audiencia es owner/admin).
 --   * Sin PII: ninguna funcion devuelve nombre, telefono ni direccion de cliente, ni el id del cliente. El nombre del repartidor es de staff
 --     (core.staff_user.full_name, nunca telefono ni correo) y solo si pertenece a la organizacion.
 --
@@ -269,6 +270,8 @@ declare
   v_props uuid[];
   v_envios boolean;
   v_hist integer;
+  v_h integer;
+  v_ini date;
 begin
   v_props := restaurantes.cfo_resolver_sucursales(p_org, p_props);
   perform restaurantes.cfo_validar_rango(p_desde, p_hasta);
@@ -280,19 +283,22 @@ begin
   end if;
   -- Historia leida antes del rango: 365 dias como minimo, o mas si los umbrales lo piden (perdido hasta 730 dias, frecuente hasta 365).
   v_hist := greatest(365, p_perdido_dias, p_frecuente_dias);
+  -- Horizonte de «perdidos», anclado al CIERRE: los que llevan entre perdido_dias + 1 y H dias sin pedir; asi no depende del largo del rango.
+  v_h := greatest(365, p_perdido_dias + 365);
+  v_ini := least(p_desde - v_hist, p_hasta - v_h);
   -- Sin ningun envio de campana en la organizacion no hay atribucion que buscar (evita una sonda por cada recuperado).
   select exists (select 1 from restaurantes.marketing_campana_envio e where e.organization_id = p_org and e.estado = 'encolado') into v_envios;
   return query
     with b as materialized (
       select l.property_id, l.customer_id, l.inicio, l.dia_negocio as dia, l.neta_centavos as neta
-        from restaurantes.cfo_venta_lean(p_org, v_props, p_desde - v_hist, p_hasta) l
+        from restaurantes.cfo_venta_lean(p_org, v_props, v_ini, p_hasta) l
     ),
     bc as (select * from b where b.customer_id is not null),
     -- Una fila por (cliente, sucursal) y una por cliente en el conjunto (g = 1).
     agg as materialized (
       select bc.customer_id, bc.property_id, grouping(bc.property_id) as g,
              max(bc.dia) as ultimo_dia,
-             max(bc.dia) filter (where bc.dia < p_desde) as ultimo_previo,
+             max(bc.dia) filter (where bc.dia < p_desde and bc.dia >= p_desde - v_hist) as ultimo_previo,
              count(*) filter (where bc.dia >= p_desde) as n_rango,
              coalesce(sum(bc.neta) filter (where bc.dia >= p_desde), 0)::bigint as neta_rango,
              count(*) filter (where bc.dia > p_hasta - p_frecuente_dias) as n_frec,
@@ -369,9 +375,9 @@ begin
              count(*) filter (where a.n_rango > 0 and a.ultimo_previo is not null) as recurrentes,
              count(*) filter (where p_hasta - a.ultimo_dia <= p_activo_dias) as activos,
              count(*) filter (where p_hasta - a.ultimo_dia > p_activo_dias and p_hasta - a.ultimo_dia <= p_perdido_dias) as dormidos,
-             count(*) filter (where p_hasta - a.ultimo_dia > p_perdido_dias) as perdidos,
+             count(*) filter (where p_hasta - a.ultimo_dia > p_perdido_dias and p_hasta - a.ultimo_dia <= v_h) as perdidos,
              count(*) filter (where a.ultimo_previo is not null and p_desde - a.ultimo_previo <= p_activo_dias) as activos_inicio,
-             count(*) filter (where a.ultimo_previo is not null and p_desde - a.ultimo_previo <= p_activo_dias and p_hasta - a.ultimo_dia > p_perdido_dias) as pasan_perdidos,
+             count(*) filter (where a.ultimo_previo is not null and p_desde - a.ultimo_previo <= p_activo_dias and p_hasta - a.ultimo_dia > p_perdido_dias and p_hasta - a.ultimo_dia <= v_h) as pasan_perdidos,
              count(*) filter (where a.n_frec >= p_frecuente_n) as frecuentes,
              count(*) filter (where a.recuperado) as recuperados,
              coalesce(sum(a.neta_rango), 0)::bigint as neta_total,

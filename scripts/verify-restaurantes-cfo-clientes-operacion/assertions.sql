@@ -57,7 +57,8 @@ insert into core.organization (id, vertical, name, slug) values
   ('00000000-0000-0000-0000-0000000e4403', 'restaurantes', 'CFO2 Org C', 'cfo2-c'),
   ('00000000-0000-0000-0000-0000000e4404', 'restaurantes', 'CFO2 Org D', 'cfo2-d'),
   ('00000000-0000-0000-0000-0000000e4405', 'restaurantes', 'CFO2 Org E', 'cfo2-e'),
-  ('00000000-0000-0000-0000-0000000e4406', 'restaurantes', 'CFO2 Org F', 'cfo2-f')
+  ('00000000-0000-0000-0000-0000000e4406', 'restaurantes', 'CFO2 Org F', 'cfo2-f'),
+  ('00000000-0000-0000-0000-0000000e4407', 'restaurantes', 'CFO2 Org G', 'cfo2-g')
 on conflict do nothing;
 
 insert into core.property (id, organization_id, name) values
@@ -68,7 +69,8 @@ insert into core.property (id, organization_id, name) values
   ('00000000-0000-0000-0000-0000000e44c1', '00000000-0000-0000-0000-0000000e4403', 'Sucursal C1'),
   ('00000000-0000-0000-0000-0000000e44d1', '00000000-0000-0000-0000-0000000e4404', 'Sucursal D1'),
   ('00000000-0000-0000-0000-0000000e44e1', '00000000-0000-0000-0000-0000000e4405', 'Sucursal E1'),
-  ('00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e4406', 'Sucursal F1')
+  ('00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e4406', 'Sucursal F1'),
+  ('00000000-0000-0000-0000-0000000e44d2', '00000000-0000-0000-0000-0000000e4407', 'Sucursal G1')
 on conflict do nothing;
 
 insert into restaurantes.branch_detail (property_id, organization_id, slug, zona_horaria, lat, lng) values
@@ -79,7 +81,8 @@ insert into restaurantes.branch_detail (property_id, organization_id, slug, zona
   ('00000000-0000-0000-0000-0000000e44c1', '00000000-0000-0000-0000-0000000e4403', 'c1', null, null, null),
   ('00000000-0000-0000-0000-0000000e44d1', '00000000-0000-0000-0000-0000000e4404', 'd1', null, null, null),
   ('00000000-0000-0000-0000-0000000e44e1', '00000000-0000-0000-0000-0000000e4405', 'e1', null, null, null),
-  ('00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e4406', 'f1', null, null, null)
+  ('00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e4406', 'f1', null, null, null),
+  ('00000000-0000-0000-0000-0000000e44d2', '00000000-0000-0000-0000-0000000e4407', 'g1', null, null, null)
 on conflict do nothing;
 -- Turno 12:00 -> 01:00 en A1: corte de 1 h.
 insert into restaurantes.branch_policy (property_id, organization_id, horario) values
@@ -109,7 +112,8 @@ insert into core.membership (user_id, organization_id, property_ids, platform_ro
   ('00000000-0000-0000-0000-0000000e4411', '00000000-0000-0000-0000-0000000e4403', null, 'owner', 'owner'),
   ('00000000-0000-0000-0000-0000000e4411', '00000000-0000-0000-0000-0000000e4404', null, 'owner', 'owner'),
   ('00000000-0000-0000-0000-0000000e4411', '00000000-0000-0000-0000-0000000e4405', null, 'owner', 'owner'),
-  ('00000000-0000-0000-0000-0000000e4411', '00000000-0000-0000-0000-0000000e4406', null, 'owner', 'owner')
+  ('00000000-0000-0000-0000-0000000e4411', '00000000-0000-0000-0000-0000000e4406', null, 'owner', 'owner'),
+  ('00000000-0000-0000-0000-0000000e4411', '00000000-0000-0000-0000-0000000e4407', null, 'owner', 'owner')
 on conflict do nothing;
 
 insert into restaurantes.categories (id, organization_id, name, slug) values ('00000000-0000-0000-0000-0000000e44d1', '00000000-0000-0000-0000-0000000e4401', 'Tacos', 'tacos');
@@ -167,7 +171,12 @@ insert into restaurantes.customers (id, organization_id, phone, name) values
   ('00000000-0000-0000-0000-0000000e45a1', '00000000-0000-0000-0000-0000000e4406', '+52 5500000161', 'f1'),
   ('00000000-0000-0000-0000-0000000e45a2', '00000000-0000-0000-0000-0000000e4406', '+52 5500000162', 'f2'),
   ('00000000-0000-0000-0000-0000000e45a3', '00000000-0000-0000-0000-0000000e4406', '+52 5500000163', 'f3'),
-  ('00000000-0000-0000-0000-0000000e45a4', '00000000-0000-0000-0000-0000000e4406', '+52 5500000164', 'f4');
+  ('00000000-0000-0000-0000-0000000e45a4', '00000000-0000-0000-0000-0000000e4406', '+52 5500000164', 'f4'),
+  ('00000000-0000-0000-0000-0000000e45c1', '00000000-0000-0000-0000-0000000e4407', '+52 5500000193', 'g1'),
+  ('00000000-0000-0000-0000-0000000e45c2', '00000000-0000-0000-0000-0000000e4407', '+52 5500000194', 'g2'),
+  ('00000000-0000-0000-0000-0000000e45c3', '00000000-0000-0000-0000-0000000e4407', '+52 5500000195', 'g3'),
+  ('00000000-0000-0000-0000-0000000e45c4', '00000000-0000-0000-0000-0000000e4407', '+52 5500000196', 'g4'),
+  ('00000000-0000-0000-0000-0000000e45c5', '00000000-0000-0000-0000-0000000e4407', '+52 5500000197', 'g5');
 
 -- Clientes (A): ver comentario de cabecera.
 select public.t_ped('00000000-0000-0000-0000-0000000e4401', '00000000-0000-0000-0000-0000000e44a2', '00000000-0000-0000-0000-0000000e4501', date '2026-03-10', time '15:00', 100);
@@ -329,6 +338,12 @@ select public.t_ped('00000000-0000-0000-0000-0000000e4406', '00000000-0000-0000-
 select public.t_ped('00000000-0000-0000-0000-0000000e4406', '00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e45a3', date '2025-10-01', time '15:00', 100);
 select public.t_ped('00000000-0000-0000-0000-0000000e4406', '00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e45a4', date '2026-01-15', time '15:00', 100);
 select public.t_ped('00000000-0000-0000-0000-0000000e4406', '00000000-0000-0000-0000-0000000e44f1', '00000000-0000-0000-0000-0000000e45a4', date '2026-04-30', time '15:00', 100);
+-- G: ventana de perdidos anclada al cierre (2026-06-30): clientes con 100, 400, 800, 150 y 5 dias sin pedir
+select public.t_ped('00000000-0000-0000-0000-0000000e4407', '00000000-0000-0000-0000-0000000e44d2', '00000000-0000-0000-0000-0000000e45c1', date '2026-03-22', time '15:00', 100);
+select public.t_ped('00000000-0000-0000-0000-0000000e4407', '00000000-0000-0000-0000-0000000e44d2', '00000000-0000-0000-0000-0000000e45c2', date '2025-05-26', time '15:00', 100);
+select public.t_ped('00000000-0000-0000-0000-0000000e4407', '00000000-0000-0000-0000-0000000e44d2', '00000000-0000-0000-0000-0000000e45c3', date '2024-04-21', time '15:00', 100);
+select public.t_ped('00000000-0000-0000-0000-0000000e4407', '00000000-0000-0000-0000-0000000e44d2', '00000000-0000-0000-0000-0000000e45c4', date '2026-01-31', time '15:00', 100);
+select public.t_ped('00000000-0000-0000-0000-0000000e4407', '00000000-0000-0000-0000-0000000e44d2', '00000000-0000-0000-0000-0000000e45c5', date '2026-06-25', time '15:00', 100);
 -- Otay (13 de abril): 5 pedidos de UN cliente en una colonia: no se muestra (k de clientes)
 select public.t_ped('00000000-0000-0000-0000-0000000e4401','00000000-0000-0000-0000-0000000e44a2','00000000-0000-0000-0000-0000000e452c', date '2026-04-13', time '12:00', 100, p_canal => 'domicilio', p_addr => 'Calle Otay 1');
 select public.t_ped('00000000-0000-0000-0000-0000000e4401','00000000-0000-0000-0000-0000000e44a2','00000000-0000-0000-0000-0000000e452c', date '2026-04-13', time '12:01', 100, p_canal => 'domicilio', p_addr => 'Calle Otay 1');
@@ -539,6 +554,34 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
 select (sum(pedidos) = 4)::int as seg2_deberia_ser_1 from restaurantes.cfo_clientes_segmento_hora('00000000-0000-0000-0000-0000000e4401', null, date '2026-03-01', date '2026-03-31', 2) where segmento = 'frecuente';
+rollback;
+
+\echo '=== B27. perdidos anclados al cierre: mismo p_hasta con rangos de 1, 30 y 400 dias da los MISMOS activos, dormidos y perdidos (sucursal y conjunto) con los umbrales por omision ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
+select count(*)::int as ventana_deberia_ser_0 from ((select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30') r except all select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-01', date '2026-06-30') r) union all (select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-01', date '2026-06-30') r except all select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30') r) union all (select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30') r except all select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2025-05-27', date '2026-06-30') r) union all (select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2025-05-27', date '2026-06-30') r except all select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30') r)) d;
+rollback;
+
+\echo '=== B28. perdidos (umbrales por omision, H = 485): los de 150 y 400 dias; activos 1 (5 dias), dormidos 1 (100 dias); el de 800 queda fuera del horizonte ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
+select (r.activos = 1 and r.dormidos = 1 and r.perdidos = 2)::int as perdidos120_deberia_ser_1 from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30') r where r.alcance = 'conjunto';
+rollback;
+
+\echo '=== B29. perdidos con perdido_dias = 365 (H = 730): consistente entre rangos y > 0 (el de 400 dias; el de 800 fuera) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
+select (count(*) = 0 and (select r.perdidos = 1 and r.dormidos = 2 from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30', 3, 90, 60, 365) r where r.alcance = 'conjunto'))::int as perdidos365_deberia_ser_1 from ((select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30', 3, 90, 60, 365) r except all select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-01', date '2026-06-30', 3, 90, 60, 365) r) union all (select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-01', date '2026-06-30', 3, 90, 60, 365) r except all select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30', 3, 90, 60, 365) r) union all (select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30', 3, 90, 60, 365) r except all select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2025-05-27', date '2026-06-30', 3, 90, 60, 365) r) union all (select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2025-05-27', date '2026-06-30', 3, 90, 60, 365) r except all select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30', 3, 90, 60, 365) r)) d;
+rollback;
+
+\echo '=== B30. perdidos con perdido_dias = 730 (H = 1095): consistente entre rangos y > 0 (el de 800 dias) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4411', true);
+select (count(*) = 0 and (select r.perdidos = 1 and r.dormidos = 3 from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30', 3, 90, 60, 730) r where r.alcance = 'conjunto'))::int as perdidos730_deberia_ser_1 from ((select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30', 3, 90, 60, 730) r except all select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-01', date '2026-06-30', 3, 90, 60, 730) r) union all (select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-01', date '2026-06-30', 3, 90, 60, 730) r except all select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30', 3, 90, 60, 730) r) union all (select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30', 3, 90, 60, 730) r except all select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2025-05-27', date '2026-06-30', 3, 90, 60, 730) r) union all (select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2025-05-27', date '2026-06-30', 3, 90, 60, 730) r except all select r.alcance, r.property_id, r.activos, r.dormidos, r.perdidos from restaurantes.cfo_clientes_resumen('00000000-0000-0000-0000-0000000e4407', null, date '2026-06-30', date '2026-06-30', 3, 90, 60, 730) r)) d;
 rollback;
 
 \echo '=== B25b. el segmento de una sucursal es estable: consultar A2 sola da exactamente las mismas celdas que A2 dentro de la consulta de todas ==='
