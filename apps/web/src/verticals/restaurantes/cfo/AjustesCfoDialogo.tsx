@@ -8,13 +8,15 @@ import { fetchConfig, guardarConfig, type CambiosConfigCfo, type ContextoCfo } f
 import { AvisoNoSustitucion } from "./piezas.tsx";
 import { useCargaCfo } from "./use-carga-cfo.ts";
 
-type Llave = Exclude<keyof CfoConfig, "srCuadreVerdePct" | "srCuadreAmbarPct" | "srCuadreVerdeCentavos">;
+type Llave = keyof CfoConfig;
 interface Campo {
   readonly llave: Llave;
   readonly etiqueta: string;
   readonly ayuda: string;
   readonly entero: boolean;
   readonly unidad: string;
+  /** El valor se guarda en centavos pero se escribe en pesos. */
+  readonly centavos?: boolean;
 }
 
 const GRUPOS: ReadonlyArray<{ readonly titulo: string; readonly campos: readonly Campo[] }> = [
@@ -42,6 +44,14 @@ const GRUPOS: ReadonlyArray<{ readonly titulo: string; readonly campos: readonly
     ],
   },
   {
+    titulo: "Cuadre con SoftRestaurant (domicilio)",
+    campos: [
+      { llave: "srCuadreVerdePct", etiqueta: "Cuadra hasta", ayuda: "Diferencia diaria entre tus pedidos a domicilio y el «domicilio» de SoftRestaurant que se considera cuadrada.", entero: false, unidad: "%" },
+      { llave: "srCuadreVerdeCentavos", etiqueta: "…y hasta este monto", ayuda: "Además de lo anterior, la diferencia en pesos no debe pasar de esto para estar en verde.", entero: false, unidad: "$", centavos: true },
+      { llave: "srCuadreAmbarPct", etiqueta: "Se revisa hasta", ayuda: "Entre lo que cuadra y este porcentaje sale «Revisar»; más allá, «No cuadra».", entero: false, unidad: "%" },
+    ],
+  },
+  {
     titulo: "Umbrales de «Lo más importante»",
     campos: [
       { llave: "caidaPct", etiqueta: "Caída de ventas", ayuda: "Avisa si la venta cae más que esto contra su promedio.", entero: false, unidad: "%" },
@@ -54,14 +64,18 @@ const GRUPOS: ReadonlyArray<{ readonly titulo: string; readonly campos: readonly
   },
 ];
 
-const textoDe = (v: number | null): string => (v === null ? "" : String(v));
+const textoDe = (v: number | null, c?: Campo): string => (v === null ? "" : String(c?.centavos ? v / 100 : v));
 
 function interpretar(texto: string, campo: Campo, rango: readonly [number, number] | undefined): { readonly valor: number | null; readonly error: string | null } {
   const t = texto.trim();
   if (t === "") return campo.llave === "comisionTerminalPct" ? { valor: null, error: null } : { valor: null, error: "Escribe un número." };
   if (!/^\d{1,9}(\.\d{1,2})?$/.test(t) || (campo.entero && t.includes("."))) return { valor: null, error: campo.entero ? "Escribe un número entero." : "Escribe un número (máximo 2 decimales)." };
-  const n = Number(t);
-  if (rango && (n < rango[0] || n > rango[1])) return { valor: null, error: `Debe estar entre ${rango[0]} y ${rango[1]}.` };
+  const escrito = Number(t);
+  const n = campo.centavos ? Math.round(escrito * 100) : escrito;
+  if (rango && (n < rango[0] || n > rango[1])) {
+    const [min, max] = campo.centavos ? [rango[0] / 100, rango[1] / 100] : rango;
+    return { valor: null, error: `Debe estar entre ${min} y ${max}.` };
+  }
   return { valor: n, error: null };
 }
 
@@ -96,11 +110,11 @@ export function AjustesCfoDialogo({ abierto, onCerrar, api, onGuardado }: Ajuste
 
 function Formulario({ config, api, onCerrar, onGuardado }: { readonly config: ConfigVista; readonly api: ContextoCfo; readonly onCerrar: () => void; readonly onGuardado: () => void }) {
   const campos = GRUPOS.flatMap((g) => g.campos);
-  const [valores, setValores] = useState<Readonly<Record<string, string>>>(() => Object.fromEntries(campos.map((c) => [c.llave, textoDe(config.config[c.llave])])));
+  const [valores, setValores] = useState<Readonly<Record<string, string>>>(() => Object.fromEntries(campos.map((c) => [c.llave, textoDe(config.config[c.llave], c)])));
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    setValores(Object.fromEntries(campos.map((c) => [c.llave, textoDe(config.config[c.llave])])));
+    setValores(Object.fromEntries(campos.map((c) => [c.llave, textoDe(config.config[c.llave], c)])));
   }, [config]);
 
   const lectura = !config.puedeGuardar;
@@ -109,7 +123,17 @@ function Formulario({ config, api, onCerrar, onGuardado }: { readonly config: Co
   const activo = base.find((i) => i.campo.llave === "activoDias")?.valor ?? null;
   const perdido = base.find((i) => i.campo.llave === "perdidoDias")?.valor ?? null;
   const cruzado = activo !== null && perdido !== null && activo >= perdido;
-  const interpretados = base.map((i) => (cruzado && i.campo.llave === "perdidoDias" && i.error === null ? { ...i, error: "Debe ser mayor que los días de cliente activo." } : i));
+  // Regla cruzada (la base la exige): lo que cuadra no puede superar a lo que se revisa.
+  const verde = base.find((i) => i.campo.llave === "srCuadreVerdePct")?.valor ?? null;
+  const ambar = base.find((i) => i.campo.llave === "srCuadreAmbarPct")?.valor ?? null;
+  const cruzadoSr = verde !== null && ambar !== null && verde > ambar;
+  const interpretados = base.map((i) =>
+    cruzado && i.campo.llave === "perdidoDias" && i.error === null
+      ? { ...i, error: "Debe ser mayor que los días de cliente activo." }
+      : cruzadoSr && i.campo.llave === "srCuadreAmbarPct" && i.error === null
+        ? { ...i, error: "Debe ser igual o mayor que el porcentaje que cuadra." }
+        : i,
+  );
   const cambios: Record<string, number | null> = {};
   for (const i of interpretados) {
     if (i.error === null && i.valor !== config.config[i.campo.llave]) cambios[i.campo.llave] = i.valor;
