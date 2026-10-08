@@ -18,6 +18,7 @@ import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 import { PM_COPY } from "./perfil-pm.ts";
 import { TEXTO_BOTONES_APARTE, cabeEnMensajeInteractivo, construirBotonesDeConfirmacion, contenidoDeMensajeConToque, dentroDeVentanaDeServicio } from "./botones-confirmacion.ts";
 import { resolverCuerpoConNotaDeVoz, type TranscripcionDeEntrada } from "./nota-de-voz.ts";
+import { claseErrorTurno } from "../alertas-duenio/timeouts-agente.ts";
 
 // Hallazgo real de la auditoría adversarial del origen (3-sep-2026): el agente le
 // dijo a un cliente de prueba "no procesamos ni guardamos los datos que
@@ -271,7 +272,7 @@ export async function handleInboundWhatsAppMessage(
       return { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate && abreTomaDeHandoff(turn.escalacion.motivo, messagesAfterUser)) };
     });
   } catch (err) {
-    const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
+    const errorClass = claseErrorTurno(err);
     await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "failed", errorClass);
     return { ok: false, retryable: true };
   }
@@ -584,7 +585,7 @@ export async function responderTrasEspera(
     await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", null);
     return ultimo;
   } catch (err) {
-    const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
+    const errorClass = claseErrorTurno(err);
     await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "failed", errorClass);
     return { ok: false, retryable: true };
   }

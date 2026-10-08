@@ -76,6 +76,7 @@ import type { PlatformSwitchGuard } from "./platform-switches.ts";
 import type { DespachadorAlertas } from "./alertas/tipos.ts";
 import type { SuperadminCopilotoDeps } from "./superadmin-copiloto/deps.ts";
 import type { LlmRouteConfig } from "./production/llm-models.ts";
+import type { SaludMetaDeps } from "./salud/salud-meta.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
  * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo`/`rentasRepo` son los
@@ -615,6 +616,9 @@ export interface AppDeps {
    *  (apps/api/tests/whatsapp-dispatch.spec.ts) y en producción real
    *  (production/deps.ts, cuando `WHATSAPP_ACCESS_TOKEN` está presente). */
   readonly whatsAppDispatcher?: WhatsAppOutboundDispatcher;
+  /** Vigilancia de la salud de WhatsApp/Meta (expiracion del token a 14/7/1 dias; timeouts y fallos seguidos del agente) que engancha el cron
+   *  /internal/whatsapp/dispatch. OPCIONAL (`?:`): ningun fixture existente lo necesita; las pruebas inyectan dobles y produccion el lector de Graph. */
+  readonly saludMeta?: SaludMetaDeps;
   /** R-32: transcripcion de notas de voz de WhatsApp de restaurantes (descarga de media de Meta + rol `restaurantes:transcripcion` del gateway LLM).
    *  `undefined` sin `WHATSAPP_ACCESS_TOKEN` o sin gateway LLM: el webhook conserva el comportamiento anterior (pedir al cliente que escriba, con el
    *  motivo en un log sin PII). Opcional (`?:`) para no tocar los fixtures existentes. */

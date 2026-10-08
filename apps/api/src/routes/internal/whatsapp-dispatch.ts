@@ -113,6 +113,7 @@ import type { AppDeps } from "../../deps.ts";
 import { crearGuardTelefono } from "../../supresion/index.ts";
 import { crearMedidorMensajes } from "../../plan-topes/medidor.ts";
 import { crearCatalogoPlantillas } from "../../mensajeria/catalogo-plantillas.ts";
+import { vigilarSaludMetaBestEffort } from "../../salud/salud-meta.ts";
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 200;
@@ -407,6 +408,12 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
           totalDead,
         });
       }
+
+      // Salud de Meta/agente (token por vencer, timeouts, fallos seguidos): best-effort en sesiones de sistema propias; jamas altera esta respuesta.
+      const salud = await vigilarSaludMetaBestEffort(deps);
+      // OJO con los nombres de clave: el logger tapa toda clave que case con CLAVE_SENSIBLE (p. ej. "token" o "estadoToken"), asi que el estado se llama estadoMeta.
+      const nivelSalud = salud.token === "error" || salud.agente === "error" ? "error" : salud.token === "no_leido" ? "warn" : "info";
+      logEvent(c, nivelSalud, "whatsapp_dispatch_salud_meta", { estadoMeta: salud.token, estadoAgente: salud.agente });
 
       return c.json({ ok: !anyFailure, results });
     })();

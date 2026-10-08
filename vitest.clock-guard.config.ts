@@ -65,6 +65,8 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   // Autopiloto 2: alertas al dueno (dedupe por dia de Merida con reloj fijo en Merida/Cancun/CDMX) y borradores de campana del tick.
   "packages/domain-restaurantes/tests/alertas-duenio-proveedor.spec.ts",
   "packages/domain-restaurantes/tests/alertas-duenio-silencio.spec.ts",
+  "packages/domain-restaurantes/tests/alertas-duenio-token-meta.spec.ts",
+  "packages/domain-restaurantes/tests/alertas-duenio-timeouts-agente.spec.ts",
   "apps/api/tests/restaurantes-marketing-tick.spec.ts",
   "apps/api/tests/restaurantes-silencio-tick.spec.ts",
   "apps/api/tests/restaurantes-presupuesto-ia-duenio.spec.ts",

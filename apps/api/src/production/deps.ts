@@ -110,7 +110,9 @@ import {
   PostgresStaffSecurityRepository,
 } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
-import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
+import { MetaGraphWhatsAppClient, MetaGraphWhatsAppReader, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
+import { crearLectorTokenMetaGraph } from "../salud/salud-meta.ts";
+import type { SaludMetaDeps } from "../salud/salud-meta.ts";
 import { cifradorAccesoDeEntorno } from "../routes/verticals/rentas/acceso-cipher.ts";
 import { loadApiEnv } from "../env.ts";
 import type { AppDeps } from "../deps.ts";
@@ -350,6 +352,13 @@ export function buildProductionDeps(): AppDeps {
   // 503 explícito en vez de fingir un envío. Ningún token real de Meta se usa en
   // tests/CI — este constructor solo corre en producción real.
   const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) }) }) : undefined;
+
+  // Vigilancia de salud de Meta (token por vencer, timeouts del agente): el lector del token existe solo con WHATSAPP_ACCESS_TOKEN; sin el no se llama a Meta.
+  const saludMeta: SaludMetaDeps = {
+    ...(env.whatsappAccessToken
+      ? { lectorToken: crearLectorTokenMetaGraph(new MetaGraphWhatsAppReader({ accessToken: env.whatsappAccessToken, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) }), env.whatsappAccessToken) }
+      : {}),
+  };
 
   // R-32: notas de voz de WhatsApp de restaurantes. Necesita el token de Meta (descarga de media) Y el gateway LLM (transcripcion); sin alguno de
   // los dos queda `undefined` y el webhook conserva el comportamiento anterior (pedir al cliente que escriba).
@@ -632,6 +641,7 @@ export function buildProductionDeps(): AppDeps {
     resumenDiarioLlmGateway,
     superadminCopiloto: buildProductionSuperadminCopiloto(superadminCopilotoLlmGateway),
     whatsAppDispatcher,
+    saludMeta,
     notasDeVoz,
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1
     // #6) -- mismo criterio EXACTO que `hotelesPaymentsPort` arriba: real en
