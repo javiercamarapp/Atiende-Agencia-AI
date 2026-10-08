@@ -5,8 +5,9 @@
 //   (b) `buscar_sucursal_cercana` nombra la sucursal de despacho mas cercana y su distancia aproximada, y dice «fuera de zona habitual» sin prometer envio;
 //   (c) una colonia con DOBLE cobertura elige una sucursal (nunca `no_reconocida`);
 //   (d) coordenadas propuestas (pines de Google) detras de una bandera APAGADA por omision;
-//   (e) la cobertura explicita del dueño (Centro, Centro Historico, Benito Juarez Norte, Real Montejo) manda sobre la geometria;
-//   (f) las 28 colonias pendientes dan una respuesta honesta, sin inventar.
+//   (e) la cobertura explicita del dueño (Cabo Norte, Los Pinos; y cualquier override futuro) manda sobre la geometria; Centro, Centro Historico, Benito Juarez Norte y
+//       Real Montejo ya NO son override: Javier (8-oct) resolvio que manda la regla de 8 km;
+//   (f) las 19 colonias que quedan fuera de cobertura (13 a mas de 8 km, 6 sin coordenada) dan una respuesta honesta, sin inventar.
 // Los datos son los REALES del seed (`pm-seed-data.json`, colonias-v3): coordenadas de Google de las colonias y de las 5 sucursales de despacho.
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -212,32 +213,29 @@ const MUESTRA = [
   "San Angel",
 ] as const;
 
-describe("(e) cobertura explicita del dueño = override: Centro, Centro Historico, Benito Juarez Norte y Real Montejo conservan su asignacion", () => {
-  // [colonia, sucursal del dueño / chats]. La sucursal que daria la regla de la mas cercana sale de colonias-v3 (`mas_cercana`).
+describe("(e) cobertura explicita del dueño = override: Cabo Norte y Los Pinos (sin coordenada); la capacidad sigue mandando sobre la geometria", () => {
+  // [colonia, sucursal del dueño / chats]: las unicas dos colonias con cobertura explicita que quedan (solo existen en sus chats; no hay distancia que comparar).
   const DUENO: Array<[string, string]> = [
-    ["Centro", "prol-montejo"], // zona centro del dueño
-    ["Centro Histórico", "prol-montejo"],
-    ["Benito Juárez Norte", "garcia-lavin"], // chats de T7
-    ["Real Montejo", "garcia-lavin"],
+    ["Cabo Norte", "garcia-lavin"],
+    ["Los Pinos", "altabrisa"],
   ];
 
-  it("con cobertura explicita manda el dueño aunque la geometria (coordenadas de Google + pines propuestos) diga otra sucursal", async () => {
-    const m = await mundo({ coordenadas: true, cobertura: "solo_dueno" });
-    const sinOverride = await mundo({ coordenadas: true, cobertura: "ninguna" });
+  it("un override explicito del dueño manda aunque la geometria (coordenadas de Google + pines propuestos) diga otra sucursal (capacidad del motor; ya no se usa con Centro y compañia)", async () => {
+    // Antes del 8-oct estas cuatro eran override del dueño/chats; ahora la regla de 8 km las asigna (T3, T3, T1, T2). El motor conserva la capacidad: se prueba sembrando el override.
+    const casos: Array<[string, string]> = [["Centro", "prol-montejo"], ["Centro Histórico", "prol-montejo"], ["Benito Juárez Norte", "garcia-lavin"], ["Real Montejo", "garcia-lavin"]];
     let divergen = 0;
-    for (const [nombre, dueno] of DUENO) {
+    for (const [nombre, dueno] of casos) {
+      const m = await mundo({ coordenadas: true, cobertura: "ninguna" }); // un mundo por caso: con filas de cobertura una colonia no cubierta pasa a `sugerida`
       const c = colonia(nombre);
-      expect(c.pendiente_dueno, nombre).toEqual(["conflicto_regla_vs_dueno"]);
       const geometria = slugDe(c.mas_cercana!.sucursal);
+      const sinOverride = await assignBranch(m.repo, { organizationId: m.organizationId, colonia: nombre, radioMaximoKm: 8, ...PIN_PROPUESTAS });
+      expect(sinOverride, `${nombre} por geometria`).toMatchObject({ estado: "asignada", origen: "distancia", branchSlug: geometria });
+      m.repo.seedBranchDeliveryZones(m.propertyBySlug.get(dueno)!, [m.idPorNombre.get(nombre)!]);
       const r = await assignBranch(m.repo, { organizationId: m.organizationId, colonia: nombre, radioMaximoKm: 8, ...PIN_PROPUESTAS });
       expect(r, nombre).toMatchObject({ estado: "asignada", branchSlug: dueno, origen: "cobertura_dueno", via: "zona", ajustePorZona: geometria !== dueno });
-      // Sin la cobertura del dueño, la misma colonia iria a la sucursal que dice la regla: el override es lo que la sostiene.
-      const g = await assignBranch(sinOverride.repo, { organizationId: sinOverride.organizationId, colonia: nombre, radioMaximoKm: 8, ...PIN_PROPUESTAS });
-      expect(g, `${nombre} por geometria`).toMatchObject({ estado: "asignada", origen: "distancia", branchSlug: geometria });
       if (geometria !== dueno) divergen += 1;
     }
-    // Al menos tres de las cuatro chocan de verdad con la regla (por eso Javier debe decidir): si ninguna chocara, la prueba no probaria nada.
-    expect(divergen).toBeGreaterThanOrEqual(3);
+    expect(divergen).toBe(4);
   });
 
   it("sin coordenadas de colonia (la cuenta real hoy) tambien: la cobertura del dueño es la respuesta, sin distancia inventada", async () => {
@@ -458,18 +456,18 @@ function textoHonesto(r: BranchAssignment): boolean {
   return !/no reconozco/i.test(t) && !/(enviamos|se enviará|le llevamos|sí repartimos)/i.test(t) && /(no la tengo ubicada con certeza|fuera de nuestra zona habitual)/.test(t);
 }
 
-describe("(f) las 28 colonias pendientes producen una respuesta honesta, sin inventar", () => {
+describe("(f) las 19 colonias fuera de cobertura producen una respuesta honesta, sin inventar", () => {
   const pendientes = COLONIAS.filter((c) => (c.sucursales ?? []).length === 0);
   const motivo = (c: Colonia) => c.motivo_sin_asignar;
 
-  it("son 28: 13 fuera de 8 km (una tambien homonima), 9 homonimas con discrepancia y 6 sin coordenada", () => {
-    expect(pendientes.length).toBe(28);
+  it("son 19: 13 fuera de 8 km (una tambien homonima) y 6 sin coordenada; los 9 homonimos ya se asignan por la regla", () => {
+    expect(pendientes.length).toBe(19);
     const cuenta = (m: string) => pendientes.filter((c) => c.pendiente_dueno?.includes(m as never)).length;
     expect(cuenta("fuera_de_8km")).toBe(13);
-    expect(cuenta("homonimo_discrepancia")).toBe(10); // 9 + Mulchechen (fuera de 8 km y homonima)
+    expect(cuenta("homonimo_discrepancia")).toBe(1); // Mulchechen (fuera de 8 km y homonima)
     expect(cuenta("sin_coordenada")).toBe(6);
     expect(pendientes.filter((c) => motivo(c) === "sin_coordenada").length).toBe(6);
-    expect(pendientes.filter((c) => motivo(c) === "homonimo_discrepancia").length).toBe(9);
+    expect(pendientes.filter((c) => motivo(c) === "homonimo_discrepancia").length).toBe(0);
   });
 
   it("cuenta real hoy (sin coordenadas en known_zone): ninguna es `no_reconocida`, ninguna se asigna, todas dicen la verdad y ninguna promete envio", async () => {
@@ -489,7 +487,7 @@ describe("(f) las 28 colonias pendientes producen una respuesta honesta, sin inv
       }
     }
     // Lo que hace la regla con la referencia del piloto que SI esta en la base (sin coordenadas de Google): ver el cuerpo del PR.
-    expect(resumen).toEqual({ fuera_de_zona: 9, sugerida: 19 });
+    expect(resumen).toEqual({ fuera_de_zona: 9, sugerida: 10 });
   });
 
   it("con las coordenadas de Google cargadas en known_zone: las 13 fuera de 8 km dicen «fuera de zona habitual» y nombran la mas cercana (Komchen: Francisco de Montejo, a unos 8 km)", async () => {
@@ -503,7 +501,7 @@ describe("(f) las 28 colonias pendientes producen una respuesta honesta, sin inv
     expect(komchen.result).toMatchObject({ estado: "fuera_de_zona", sucursal_despacho_mas_cercana: { branch_slug: "fco-montejo", distancia_texto: "a unos 8 km" } });
   });
 
-  it("las 6 sin coordenada y las 9 homonimas: «no la tengo ubicada con certeza, ¿me manda su ubicacion?» (sin nombrar una sucursal como promesa)", async () => {
+  it("las 6 sin coordenada: «no la tengo ubicada con certeza, ¿me manda su ubicacion?» (sin nombrar una sucursal como promesa)", async () => {
     const m = await mundo({ coordenadas: false, cobertura: "seed" });
     for (const c of pendientes.filter((x) => motivo(x) === "sin_coordenada")) {
       const r = await invokeAgentTool(m.repo, ctxWa(m.organizationId), "buscar_sucursal_cercana", { colonia: c.nombre });
@@ -527,11 +525,11 @@ describe("(f) detalle de los textos de las pendientes", () => {
     expect(JSON.stringify(r)).not.toMatch(/\d+ ?km/);
   });
 
-  it("dos referencias a menos de 1 km (Vergel 6.2 vs 7.1) => ambigua: se ofrecen las dos para recoger", async () => {
+  it("dos referencias a menos de 1 km (San Diego Cutz 6.8 vs 7.6, sin coordenada) => ambigua: se ofrecen las dos para recoger", async () => {
     const m = await mundo({ coordenadas: false, cobertura: "seed" });
-    const r = await assignBranch(m.repo, { organizationId: m.organizationId, colonia: "Vergel", radioMaximoKm: 8 });
-    expect(r).toMatchObject({ estado: "sugerida", ambigua: true, sugerida: { slug: "prol-montejo" }, segunda: { slug: "pensiones" } });
-    expect(r.message).toMatch(/Prolongación Montejo o Pensiones/);
+    const r = await assignBranch(m.repo, { organizationId: m.organizationId, colonia: "San Diego Cutz", radioMaximoKm: 8 });
+    expect(r).toMatchObject({ estado: "sugerida", ambigua: true, sugerida: { slug: "altabrisa" }, segunda: { slug: "garcia-lavin" } });
+    expect(r.message).toMatch(/Victory Altabrisa o García Lavín/);
   });
 
   it("fuera de zona por la referencia del piloto: lo dice, nombra la mas cercana (Pensiones, a unos 9 km) y avisa que es aproximado y que el pin lo confirma", async () => {
@@ -592,10 +590,10 @@ describe("regresiones: pin, colonia inexistente, base sin migracion 056, cotizac
     const world = await buildInMemoryPmWorld(plan);
     const base = { organizationId: world.organizationId, branchSlug: "garcia-lavin", canal: "domicilio" as const, items: [{ productId: world.productIds.get("Coca-Cola")!, requestedQuantity: 6 }] };
     expect((await quoteOrder(world.repo, { ...base, colonia: "Temozón Norte" })).total).toBeGreaterThan(0);
-    const error = await quoteOrder(world.repo, { ...base, colonia: "Vergel" }).catch((e: unknown) => e);
+    const error = await quoteOrder(world.repo, { ...base, colonia: "Olivos" }).catch((e: unknown) => e);
     const mensaje = (error as Error).message;
     expect(mensaje).toMatch(/todavía no tiene una sucursal de reparto asignada/);
-    expect(mensaje).toMatch(/Para recoger, una sucursal cercana es Prolongación Montejo\./);
+    expect(mensaje).toMatch(/Para recoger, una sucursal cercana es Victory Altabrisa\./);
     expect(mensaje).toMatch(/pase el pedido con una persona/);
     expect(mensaje).not.toMatch(/\d+ ?km/); // la referencia del piloto de una colonia sin cobertura puede estar equivocada
   });

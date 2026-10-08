@@ -28,7 +28,7 @@ describe("reporte de colonias ambiguas con los datos del piloto", () => {
   it("una colonia sin sucursal asignada se marca 'sin_asignar'; una clara y asignada no se marca", async () => {
     const world = await buildInMemoryPmWorld(plan);
     const r = await reporteColoniasAmbiguas(world.repo, world.organizationId);
-    const sin = r.filas.find((f) => f.colonia === "Arboledas")!;
+    const sin = r.filas.find((f) => f.colonia === "Progreso")!; // fuera de 8 km: sin sucursal asignada
     expect(sin.sucursalAsignada).toBeNull();
     expect(sin.motivos).toContain("sin_asignar");
     const clara = plan.colonias.find((c) => c.branchIds.includes("T8") && c.asignacionFuente === "mas_cercana_v3" && (c.refKm ?? 0) > 0 && c.ref2Km! - c.refKm! >= 1 && c.refSlug === "altabrisa" && c.ref2Slug !== "pensiones")!;

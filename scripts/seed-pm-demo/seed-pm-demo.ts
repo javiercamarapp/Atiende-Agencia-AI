@@ -36,7 +36,7 @@ async function main(): Promise<number> {
   for (const b of plan.branches) console.log(`    - ${b.name} (${b.status}): ${b.catalogSize} productos`);
   console.log(`  productos: ${s.products} (${s.alcoholProducts} de alcohol => no_domicilio); precios por sucursal: ${s.branchProducts}`);
   console.log(`  zonas conocidas: ${s.zones} (puntos de las sucursales con coordenadas)`);
-  console.log(`  colonias (lista unica, sin coordenadas en known_zone): ${s.colonias} (+${s.coloniasEnZonaDeSucursal} que es el punto de una sucursal): ${s.coloniasAsignadas} a su sucursal de despacho mas cercana (${s.coberturasColonias} filas de cobertura, ${s.coloniasCubiertasPorDos} con dos sucursales) y ${s.coloniasSinAsignar} PENDIENTES del dueño sin asignar (fuera de 8 km, homonimos o sin coordenada; van al reporte de revision)`);
+  console.log(`  colonias (lista unica, sin coordenadas en known_zone): ${s.colonias} (+${s.coloniasEnZonaDeSucursal} que es el punto de una sucursal): ${s.coloniasAsignadas} a su sucursal de despacho mas cercana (${s.coberturasColonias} filas de cobertura, ${s.coloniasCubiertasPorDos} con dos sucursales) y ${s.coloniasSinAsignar} FUERA de cobertura sin asignar (a mas de 8 km de toda sucursal de despacho o sin coordenada; van al reporte de revision)`);
   console.log(`  promociones: ${s.promotions} cargada(s)`);
   for (const skipped of s.skippedPromotions) console.log(`  promocion NO cargada -> ${skipped}`);
   console.log(`  voz: se carga DESHABILITADA en las ${plan.voice.greetings.length} sucursales activas (sin gasto de proveedores)`);

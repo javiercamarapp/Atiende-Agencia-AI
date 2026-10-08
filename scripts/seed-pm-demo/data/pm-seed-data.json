@@ -8917,7 +8917,7 @@
       "cobertura_base_real": [
         "T2"
       ],
-      "advertencia": "Hoy la base real la cubre T2; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T7. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "Hoy la base real la cubre T2; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T7. El SQL scripts/seed-pm-demo/sql/colonias-8km-carga.sql la reasigna a T7 (8-oct-2026); el seed por si solo no modifica una cobertura ya existente."
     },
     {
       "nombre": "Andria",
@@ -8962,12 +8962,10 @@
     {
       "nombre": "Arboledas",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T1"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T1",
         "km": 3.5,
@@ -9000,7 +8998,7 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T1; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (google, confianza media) a T1 (3.23 km), decisión de Javier del 8-oct-2026; sigue marcada para revisión del dueño."
     },
     {
       "nombre": "Aurea Residencial",
@@ -9086,9 +9084,9 @@
       "nombre": "Benito Juárez Norte",
       "fuente": "piloto_original_merida_colonias",
       "sucursales": [
-        "T7"
+        "T1"
       ],
-      "asignacion": "chats_t7",
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T7",
         "km": 1.3,
@@ -9121,10 +9119,7 @@
       "cobertura_base_real": [
         "T7"
       ],
-      "advertencia": "CONFLICTO regla-vs-dueño, decide Javier: la evidencia directa del dueño (chats de T7 (evidencia directa)) la asigna a T7 y la regla de la sucursal de despacho mas cercana da T1 (1.6 km). Prevalece la evidencia del dueño; la base real la conserva en T7.",
-      "pendiente_dueno": [
-        "conflicto_regla_vs_dueno"
-      ]
+      "advertencia": "Resuelta por la regla de 8 km (decisión de Javier, 8-oct-2026): los chats de T7 la ponían en T7 (T7); ahora la sucursal de despacho más cercana es T1 a 1.55 km. Antes: conflicto_regla_vs_dueno."
     },
     {
       "nombre": "Benito Juárez Oriente",
@@ -9243,7 +9238,7 @@
       "cobertura_base_real": [
         "T3"
       ],
-      "advertencia": "Hoy la base real la cubre T3; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T1. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "Hoy la base real la cubre T3; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T1. El SQL scripts/seed-pm-demo/sql/colonias-8km-carga.sql la reasigna a T1 (8-oct-2026); el seed por si solo no modifica una cobertura ya existente."
     },
     {
       "nombre": "Cabo Norte",
@@ -9380,7 +9375,7 @@
       "cobertura_base_real": [
         "T3"
       ],
-      "advertencia": "Hoy la base real la cubre T3; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T2. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "Hoy la base real la cubre T3; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T2. El SQL scripts/seed-pm-demo/sql/colonias-8km-carga.sql la reasigna a T2 (8-oct-2026); el seed por si solo no modifica una cobertura ya existente."
     },
     {
       "nombre": "Cecilio Chi",
@@ -9450,9 +9445,9 @@
       "nombre": "Centro",
       "fuente": "piloto_original_merida_colonias",
       "sucursales": [
-        "T1"
+        "T3"
       ],
-      "asignacion": "dueno_zona_centro",
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T3",
         "km": 3.8,
@@ -9485,10 +9480,7 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "CONFLICTO regla-vs-dueño, decide Javier: la evidencia directa del dueño (dueño: «Prolongación Montejo.- zona centro, norte» (cuestionario l.153; diferencias.md B22 manda el dueño)) la asigna a T1 y la regla de la sucursal de despacho mas cercana da T3 (3.5 km). Prevalece la evidencia del dueño; la base real la conserva en T1.",
-      "pendiente_dueno": [
-        "conflicto_regla_vs_dueno"
-      ]
+      "advertencia": "Resuelta por la regla de 8 km (decisión de Javier, 8-oct-2026): el dueño escribió «Prolongación Montejo.- zona centro, norte» (cuestionario l.153) y la base real la tenía en T1 (T1); ahora la sucursal de despacho más cercana es T3 a 3.53 km. Antes: conflicto_regla_vs_dueno."
     },
     {
       "nombre": "Centro Chichi Suarez",
@@ -9531,9 +9523,9 @@
       "nombre": "Centro Histórico",
       "fuente": "piloto_original_merida_colonias",
       "sucursales": [
-        "T1"
+        "T3"
       ],
-      "asignacion": "dueno_zona_centro",
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T3",
         "km": 3.8,
@@ -9566,10 +9558,7 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "CONFLICTO regla-vs-dueño, decide Javier: la evidencia directa del dueño (dueño: «Prolongación Montejo.- zona centro, norte» (cuestionario l.153; diferencias.md B22 manda el dueño)) la asigna a T1 y la regla de la sucursal de despacho mas cercana da T3 (4.0 km). Prevalece la evidencia del dueño; la base real la conserva en T1.",
-      "pendiente_dueno": [
-        "conflicto_regla_vs_dueno"
-      ]
+      "advertencia": "Resuelta por la regla de 8 km (decisión de Javier, 8-oct-2026): el dueño escribió «Prolongación Montejo.- zona centro, norte» (cuestionario l.153) y la base real la tenía en T1 (T1); ahora la sucursal de despacho más cercana es T3 a 4.01 km. Antes: conflicto_regla_vs_dueno."
     },
     {
       "nombre": "Cerrada Lombardia",
@@ -9931,12 +9920,10 @@
     {
       "nombre": "Chuburná",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T2"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T2",
         "km": 2.0,
@@ -9969,7 +9956,7 @@
       "cobertura_base_real": [
         "T2"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T2; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (osm, confianza media) a T2 (1.63 km), decisión de Javier del 8-oct-2026; sigue marcada para revisión del dueño."
     },
     {
       "nombre": "Chuminópolis",
@@ -10209,12 +10196,10 @@
     {
       "nombre": "Dzitya",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T2"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T4",
         "km": 3.9,
@@ -10245,7 +10230,7 @@
       },
       "revisar": true,
       "cobertura_base_real": [],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia): el agente no la valida y la pasa a una persona."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (promedio, confianza baja) a T2 (3.52 km), decisión de Javier del 8-oct-2026; sigue marcada para revisión del dueño."
     },
     {
       "nombre": "Dzitya Poligono Chuburna",
@@ -10717,7 +10702,7 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "Hoy la base real la cubre T1; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T8. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "Hoy la base real la cubre T1; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T8. El SQL scripts/seed-pm-demo/sql/colonias-8km-carga.sql la reasigna a T8 (8-oct-2026); el seed por si solo no modifica una cobertura ya existente."
     },
     {
       "nombre": "Hacienda Xcumpich",
@@ -11524,12 +11509,10 @@
     {
       "nombre": "Los Reyes",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T3"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T3",
         "km": 4.6,
@@ -11562,7 +11545,7 @@
       "cobertura_base_real": [
         "T3"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T3; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (osm, confianza media) a T3 (4.88 km), decisión de Javier del 8-oct-2026; sigue marcada para revisión del dueño."
     },
     {
       "nombre": "Lourdes",
@@ -12791,7 +12774,7 @@
       "cobertura_base_real": [
         "T3"
       ],
-      "advertencia": "Hoy la base real la cubre T3; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T2. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "Hoy la base real la cubre T3; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T2. El SQL scripts/seed-pm-demo/sql/colonias-8km-carga.sql la reasigna a T2 (8-oct-2026); el seed por si solo no modifica una cobertura ya existente."
     },
     {
       "nombre": "Parque Central",
@@ -13350,9 +13333,9 @@
       "nombre": "Real Montejo",
       "fuente": "piloto_original_merida_colonias",
       "sucursales": [
-        "T7"
+        "T2"
       ],
-      "asignacion": "chats_t7",
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T2",
         "km": 2.6,
@@ -13385,10 +13368,7 @@
       "cobertura_base_real": [
         "T7"
       ],
-      "advertencia": "CONFLICTO regla-vs-dueño, decide Javier: la evidencia directa del dueño (chats de T7 (evidencia directa)) la asigna a T7 y la regla de la sucursal de despacho mas cercana da T2 (2.4 km). Prevalece la evidencia del dueño; la base real la conserva en T7.",
-      "pendiente_dueno": [
-        "conflicto_regla_vs_dueno"
-      ]
+      "advertencia": "Resuelta por la regla de 8 km (decisión de Javier, 8-oct-2026): los chats de T7 la ponían en T7 (T7); ahora la sucursal de despacho más cercana es T2 a 2.41 km. Antes: conflicto_regla_vs_dueno."
     },
     {
       "nombre": "Real San Jose",
@@ -13578,7 +13558,7 @@
       "cobertura_base_real": [
         "T7"
       ],
-      "advertencia": "Hoy la base real la cubre T7; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T2. El seed no modifica una cobertura ya existente (solo agrega a zonas sin cobertura): confirmar con el dueño."
+      "advertencia": "Hoy la base real la cubre T7; la regla de la sucursal de despacho mas cercana (decision de Javier, 7-oct 13:30) da T2. El SQL scripts/seed-pm-demo/sql/colonias-8km-carga.sql la reasigna a T2 (8-oct-2026); el seed por si solo no modifica una cobertura ya existente."
     },
     {
       "nombre": "Revolución Cordemex",
@@ -13810,12 +13790,10 @@
     {
       "nombre": "San Angel",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T8"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T8",
         "km": 4.6,
@@ -13848,7 +13826,7 @@
       "cobertura_base_real": [
         "T8"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T8; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (osm, confianza media) a T8 (4.55 km), decisión de Javier del 8-oct-2026; sigue marcada para revisión del dueño."
     },
     {
       "nombre": "San Antonio Cinta",
@@ -14074,12 +14052,10 @@
     {
       "nombre": "San Jose",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T3"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T3",
         "km": 6.4,
@@ -14110,7 +14086,7 @@
       },
       "revisar": true,
       "cobertura_base_real": [],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia): el agente no la valida y la pasa a una persona."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (google, confianza media) a T3 (6.65 km), decisión de Javier del 8-oct-2026; sigue marcada para revisión del dueño."
     },
     {
       "nombre": "San Jose Tzal",
@@ -14236,12 +14212,10 @@
     {
       "nombre": "San Luis",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T1"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T1",
         "km": 3.5,
@@ -14274,7 +14248,7 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T1; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (promedio, confianza baja) a T1 (1.88 km), decisión de Javier del 8-oct-2026; sigue marcada para revisión del dueño."
     },
     {
       "nombre": "San Pedro Cholul",
@@ -15065,12 +15039,10 @@
     {
       "nombre": "Vergel",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T1"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T1",
         "km": 6.2,
@@ -15103,7 +15075,7 @@
       "cobertura_base_real": [
         "T1"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T1; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (osm, confianza media) a T1 (6.43 km), decisión de Javier del 8-oct-2026; sigue marcada para revisión del dueño."
     },
     {
       "nombre": "Vergel II",
@@ -15781,12 +15753,10 @@
     {
       "nombre": "Yucalpeten",
       "fuente": "piloto_original_merida_colonias",
-      "sucursales": [],
-      "asignacion": "sin_asignar",
-      "motivo_sin_asignar": "homonimo_discrepancia",
-      "pendiente_dueno": [
-        "homonimo_discrepancia"
+      "sucursales": [
+        "T3"
       ],
+      "asignacion": "mas_cercana_v3",
       "referencia": {
         "sucursal": "T3",
         "km": 1.8,
@@ -15819,7 +15789,7 @@
       "cobertura_base_real": [
         "T3"
       ],
-      "advertencia": "PENDIENTE del dueño (homonimo_discrepancia). Hoy la base real la cubre T3; el seed no la asigna ni la modifica."
+      "advertencia": "Homónimo con discrepancia Google/OSM mayor a 1 km: se asigna por la regla de 8 km con la coordenada elegida en colonias-v3 (osm, confianza media) a T3 (2.12 km), decisión de Javier del 8-oct-2026; sigue marcada para revisión del dueño."
     },
     {
       "nombre": "Yucatán",
@@ -15961,7 +15931,7 @@
   ],
   "colonias_meta": {
     "fuente": "work/pm-cuenta-real/colonias-v3.json (7-oct-2026): lista del piloto original (colonias.json de la base de conocimiento de ElevenLabs, 3-oct) + coordenadas de Google Maps (139) / OpenStreetMap (36) / promedio (3) y la regla de 8 km. Una sola lista: reemplaza a la del seed anterior (183: 113 asignadas / 70 sin asignar) y a zonas-pm-v1.sql (185). Cada colonia trae su coordenada con origen y confianza, las dos lecturas crudas (google, osm) para poder auditarla, la sucursal de despacho mas cercana con km y la cobertura que hoy tiene la base real (v1 + v2b = 169 filas de cobertura).",
-    "regla_asignacion": "Decision de Javier (7-oct 13:30 y 17:50): cada colonia usa la sucursal de DESPACHO mas cercana (T1, T2, T3, T7, T8; Galerias T4 y Chicxulub T5 no reparten) a 8 km o menos en linea recta (Haversine desde el pin de Google de la sucursal). Sin asignar (PENDIENTE del dueño, el agente no las valida y las pasa a una persona): (1) fuera de 8 km, (2) homonimos con discrepancia mayor a 1 km entre Google y OSM, (3) sin coordenada. Precedencia: la evidencia DIRECTA del dueño o de los chats PREVALECE sobre la regla geometrica; las 4 colonias donde chocan (Centro y Centro Historico: zona centro del dueño, T1; Benito Juarez Norte y Real Montejo: chats de T7, T7) conservan su asignacion original y llevan pendiente_dueno conflicto_regla_vs_dueno para que decida Javier (la regla da T3, T1, T2 y T2). Excepcion documentada: un homonimo con evidencia directa del dueño (chats de T7, direccion de la sucursal) que coincide con la mas cercana se mantiene. Cabo Norte y Los Pinos solo existen en los chats del dueño (sin fila en colonias-v3): sin coordenada, asignadas por esa evidencia.",
+    "regla_asignacion": "Decisión de Javier (7-oct 13:30 y 17:50; 8-oct-2026 resolvió los pendientes): cada colonia usa la sucursal de DESPACHO (T1, T2, T3, T7, T8; Galerías T4 y Chicxulub T5 no reparten) MÁS CERCANA, a 8 km o menos en línea recta (Haversine desde el pin de Google de la sucursal hasta la coordenada de la colonia). Quedan sin asignar (fuera de cobertura, listadas): (1) las que están a más de 8 km de toda sucursal de despacho, (2) las sin coordenada. Los homónimos con discrepancia Google/OSM se asignan con la coordenada elegida en colonias-v3 y siguen marcados para revisión. Las 4 colonias que chocaban con el dueño o los chats (Centro, Centro Histórico, Benito Juárez Norte, Real Montejo) se resuelven por la regla (T3, T3, T1, T2). Única excepción de cobertura explícita del dueño: Cabo Norte (T7) y Los Pinos (T8), que solo existen en los chats del dueño y no tienen coordenada. Empate o borde: se marcan 'borde' en docs/restaurantes-colonias-radio-8km.md las que quedan a 300 m o menos del límite de 8 km o cuya segunda sucursal está a 300 m o menos de la primera.",
     "radio_reparto_km": 8,
     "sucursales_despacho": [
       "T1",
@@ -15972,13 +15942,13 @@
     ],
     "coordenadas_en_known_zone": "NO. Las coordenadas viven en estos datos (campo coordenada) y NO se escriben en known_zone.lat/lng: assignBranch mediria contra las coordenadas de branch_detail, que siguen desviadas 1.9 a 4.4 km (T3 sin coordenadas) hasta que el dueño confirme los pines de coordenadas_propuestas (ver zonas-pm-v2b.sql, que tampoco las escribe).",
     "asignaciones_son_propuesta": true,
-    "pendiente_p_v2_16": "El dueño debe confirmar: las 13 fuera de 8 km, los homonimos con discrepancia, las 6 sin coordenada, las colonias cuya cobertura actual difiere de la mas cercana y la direccion de T8.",
+    "pendiente_p_v2_16": "El dueño puede confirmar: las 13 colonias fuera de 8 km, las 6 sin coordenada, los homónimos asignados con coordenada elegida (revisar), los bordes y la dirección de T8. La regla ya está aplicada (ver docs/restaurantes-colonias-radio-8km.md).",
     "conteos": {
       "total": 186,
       "con_coordenada_v3": 178,
       "sin_coordenada": 8,
-      "asignadas": 158,
-      "pendientes_sin_asignar": 28,
+      "asignadas": 167,
+      "pendientes_sin_asignar": 19,
       "origen_coordenada": {
         "google": 139,
         "osm": 36,
