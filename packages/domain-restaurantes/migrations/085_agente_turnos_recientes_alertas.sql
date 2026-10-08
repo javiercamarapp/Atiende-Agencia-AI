@@ -9,6 +9,10 @@
 --     (la sesion de sistema de la API corre con ese rol y auth.uid() null).
 --   * Sin PII: devuelve organizacion, instante, estado y la CLASE del error (nombre de la excepcion, <= 120 caracteres); nunca message_id ni phone_hash.
 --   * Solo LEE. Excluye la organizacion demo. Ventana acotada a 2 horas y a 5000 filas (las mas recientes) para que no sea un volcado.
+-- Indice por instante: la funcion filtra por claimed_at cada 5 min y la tabla solo tenia la clave primaria (message_id). Sin el, cada tick seria un barrido
+-- completo de la tabla. `create index` toma un bloqueo corto de escritura sobre una tabla de dedupe pequena (se limpia por antiguedad); idempotente.
+create index if not exists whatsapp_inbound_events_claimed_at_idx on restaurantes.whatsapp_inbound_events (claimed_at desc);
+
 create or replace function restaurantes.agente_turnos_recientes(p_desde timestamptz, p_hasta timestamptz)
 returns table (organization_id uuid, claimed_at timestamptz, status text, last_error_class text)
 language plpgsql stable security definer set search_path = restaurantes, core, pg_temp as $$

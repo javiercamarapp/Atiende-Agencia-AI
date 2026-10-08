@@ -3,8 +3,8 @@
 # scripts/verify-restaurantes-audit-log/run.sh. Acompaña a
 # packages/domain-restaurantes/migrations/085_agente_turnos_recientes_alertas.sql:
 # prueba, contra RLS/GRANT/auth.uid() reales y con el rol/sesión exactos de producción
-# (authenticated, auth.uid() NULL), que la sesión de sistema crea clientes, direcciones, avisos
-# y pedidos por cada canal (el repositorio en memoria nunca aplica RLS ni GRANT).
+# (authenticated, auth.uid() NULL), que la sesión de sistema lee los turnos recientes del agente
+# (solo sistema, ventana acotada, sin PII) y que staff y anon son rechazados.
 #
 # Requiere `initdb`/`pg_ctl`/`psql` en PATH (Postgres instalado localmente — en este
 # entorno vienen con `brew install postgresql`). Si no están disponibles, este
@@ -55,7 +55,7 @@ done
 echo "==> otorgando USAGE de schema a authenticated/anon (lo haría la plataforma Supabase, ver post-migrations.sql)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/post-migrations.sql" >/dev/null
 
-echo "==> corriendo fixtures + eescenarios de autorización (ver assertions.sql)"
+echo "==> corriendo fixtures + escenarios de autorización (ver assertions.sql)"
 echo ""
 "${PSQL_DB[@]}" -f "$HERE/assertions.sql"
 
