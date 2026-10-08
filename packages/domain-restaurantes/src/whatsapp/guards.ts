@@ -132,6 +132,31 @@ export function quitarCortesiaNoRespaldada(reply: string): string {
   return resto || "Por ahora su pedido no lleva ninguna promoción aplicada; el total es el de la cotización.";
 }
 
+/**
+ * La frase AFIRMA que el pedido ya esta registrado / confirmado / en cocina ("su pedido ya quedo confirmado", "ya lo registre", "ya va a cocina"). Una pregunta, un condicional
+ * ("para que quede registrado", "si confirma...") o una explicacion no cuentan. Sirve a la guardia de honestidad del cierre (QA-PM-R3 T7-040, P0: "el pedido ya quedo confirmado"
+ * sin pedido en la base tras un "si" y un "agregame pina").
+ */
+export function afirmaPedidoRegistrado(frase: string): boolean {
+  const t = normalizarParaClasificar(frase);
+  if (/[?¿]/.test(frase)) return false;
+  if (/\b(?:si|cuando|para\s+que|una\s+vez|antes\s+de|hasta\s+que|en\s+cuanto|no\s+(?:esta|queda|quedo|ha)|todavia\s+no|aun\s+no|falta)\b/.test(t)) return false;
+  return (
+    /\b(?:quedo|queda|esta|fue|ha\s+sido)\s+(?:ya\s+)?(?:registrad[oa]|confirmad[oa]|anotad[oa]|tomad[oa])\b/.test(t) ||
+    /\b(?:ya\s+)?(?:lo|la|su\s+pedido|su\s+orden)\s+(?:ya\s+)?(?:registre|confirme|registramos|confirmamos|anote|anotamos)\b/.test(t) ||
+    /\bya\s+(?:registre|registramos|confirme|confirmamos)\s+(?:su|el)\s+(?:pedido|orden)\b/.test(t) ||
+    /\b(?:esta|va|paso|se\s+mando|se\s+envio)\s+(?:ya\s+)?(?:en|a)\s+(?:la\s+)?(?:cocina|preparacion)\b/.test(t)
+  );
+}
+
+/** Quita las frases que afirman un pedido registrado cuando NO existe; si no queda nada, pide el "si" al resumen. */
+export function quitarAfirmacionDePedidoRegistrado(reply: string): string {
+  const frases = reply.split(/(?<=[.!?])\s+/);
+  if (!frases.some(afirmaPedidoRegistrado)) return reply;
+  const resto = frases.filter((f) => !afirmaPedidoRegistrado(f)).join(" ").trim();
+  return resto || "Todavía no queda registrado su pedido. ¿Me confirma con un «sí» el resumen para registrarlo?";
+}
+
 /** Quita la afirmacion de aviso cuando no se pudo dejar el aviso. */
 export function quitarAfirmacionDeAviso(reply: string): string {
   const sinFrase = reply
