@@ -29,7 +29,12 @@ export const VENTANA_RACHA_MIN = 60;
 /** Una alerta de tasa por cubeta de este tamano (minutos): una tormenta de timeouts no llena la campana. */
 export const CUBETA_ALERTA_MIN = 30;
 
-export type ResultadoTurnoAgente = "ok" | "timeout" | "fallo";
+/** `neutral` = contrapresion, no un turno del agente: otro mensaje del mismo cliente llego con su turno ya tomado (ConversationBusy, Meta reintenta).
+ *  Ni cuenta como turno de la ventana, ni como fallo, ni rompe ni extiende una racha. */
+export type ResultadoTurnoAgente = "ok" | "timeout" | "fallo" | "neutral";
+
+/** Clase que `inbound.ts` guarda cuando un mensaje llega con la conversacion ocupada. */
+export const CLASE_CONVERSACION_OCUPADA = "ConversationBusy";
 
 export interface TurnoAgente {
   readonly organizationId: string;
@@ -87,6 +92,7 @@ export function evaluarTimeoutsAgente(turnos: readonly TurnoAgente[], ahora: Dat
   const ventanaRachaMin = opciones.ventanaRachaMin ?? VENTANA_RACHA_MIN;
   const t = ahora.getTime();
 
+  turnos = turnos.filter((x) => x.resultado !== "neutral");
   const enVentana = turnos.filter((x) => x.at.getTime() >= t - ventanaMin * 60_000 && x.at.getTime() <= t);
   const timeouts = enVentana.filter((x) => x.resultado === "timeout").length;
   // timeouts * 100 > umbral * turnos: comparacion entera exacta, sin flotantes (justo en el umbral NO alerta).
@@ -187,7 +193,7 @@ export function crearLectorTurnosAgentePostgres(session: TenantDbSession): Lecto
           return rows.map((r) => ({
             organizationId: r.organization_id,
             at: r.claimed_at instanceof Date ? r.claimed_at : new Date(r.claimed_at),
-            resultado: r.status === "processed" ? "ok" : esClaseTimeout(r.last_error_class) ? "timeout" : "fallo",
+            resultado: r.status === "processed" ? "ok" : r.last_error_class === CLASE_CONVERSACION_OCUPADA ? "neutral" : esClaseTimeout(r.last_error_class) ? "timeout" : "fallo",
           }));
         },
         isRecoverable: (err) => isMigrationPendingError(err),

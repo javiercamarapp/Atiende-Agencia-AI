@@ -102,6 +102,36 @@ describe("evaluarTimeoutsAgente: fallos seguidos por organizacion", () => {
   });
 });
 
+describe("ConversationBusy (contrapresion) es neutral", () => {
+  it("5 o mas ConversationBusy seguidos NO alertan: ni racha, ni cuentan como turnos de la ventana", () => {
+    const busy = Array.from({ length: 8 }, (_, i) => turno(i + 0.5, "neutral"));
+    expect(evaluarTimeoutsAgente(busy, AHORA)).toEqual({ turnosVentana: 0, timeoutsVentana: 0, tasaPct: 0, alertaTasa: false, rachas: [] });
+  });
+
+  it("intercalados entre fallos reales no reinician ni suman: 4 fallos + busy = sin racha; 5 fallos con busy en medio = racha de 5", () => {
+    const cuatro = [turno(1, "fallo"), turno(1.5, "neutral"), turno(2, "fallo"), turno(2.5, "neutral"), turno(3, "fallo"), turno(4, "fallo"), turno(4.5, "neutral")];
+    expect(evaluarTimeoutsAgente(cuatro, AHORA).rachas).toEqual([]);
+    const cinco = [turno(1, "fallo"), turno(1.5, "neutral"), turno(2, "timeout"), turno(2.5, "neutral"), turno(3, "fallo"), turno(3.5, "neutral"), turno(4, "fallo"), turno(5, "fallo")];
+    expect(evaluarTimeoutsAgente(cinco, AHORA).rachas).toEqual([{ organizationId: A, fallos: 5 }]);
+  });
+
+  it("un ConversationBusy mas reciente que los fallos tampoco rompe la racha, y un ok sigue rompiendola", () => {
+    const f5 = [1, 2, 3, 4, 5].map((m) => turno(m, "fallo"));
+    expect(evaluarTimeoutsAgente([turno(0.2, "neutral"), ...f5], AHORA).rachas).toHaveLength(1);
+    expect(evaluarTimeoutsAgente([turno(0.2, "ok"), ...f5], AHORA).rachas).toHaveLength(0);
+  });
+
+  it("el adaptador Postgres traduce failed/ConversationBusy a neutral; y 8 de ellos no emiten ninguna alerta", async () => {
+    const filas = Array.from({ length: 8 }, (_, i) => ({ organization_id: A, claimed_at: new Date(AHORA.getTime() - (i + 1) * MIN), status: "failed", last_error_class: "ConversationBusy" }));
+    const session = new AbortAwareFakeSession([{ match: /restaurantes\.agente_turnos_recientes/, respond: () => filas }, { match: /select core\.emit_notification/, respond: () => [{ emit_notification: 1 }] }]);
+    const turnos = await crearLectorTurnosAgentePostgres(session).leer(new Date(AHORA.getTime() - 60 * MIN), AHORA);
+    expect(turnos!.every((t) => t.resultado === "neutral")).toBe(true);
+    const r = await vigilarAgenteWhatsapp(session, crearLectorTurnosAgentePostgres(session), AHORA);
+    expect(r).toMatchObject({ disponible: true, emitidas: 0, errores: 0 });
+    expect(session.calls.filter((c) => /emit_notification/.test(String(c))).length).toBe(0);
+  });
+});
+
 describe("clasificacion de errores de turno", () => {
   it("esClaseTimeout reconoce TimeoutError/AbortError/variantes y rechaza lo demas", () => {
     for (const c of ["TimeoutError", "AbortError", "GatewayTimeoutError", "RequestTimedOut"]) expect(esClaseTimeout(c), c).toBe(true);
@@ -131,6 +161,12 @@ describe("vigilarAgenteWhatsapp", () => {
     expect(e[5]).toBe("El agente de WhatsApp tiene 2 por ciento de turnos con timeout");
     expect(e[6]).toContain("100 turnos");
     expect(String(e[10])).toMatch(/^superadmin\.agente\.timeouts_altos:c\d+$/);
+  });
+
+  it("redondeo del porcentaje a un decimal: 3 timeouts en 140 turnos (2,142857 %) se avisan como 2.1, y la alerta es una sola", async () => {
+    const { session, emisiones } = sesionConDedupe();
+    await vigilarAgenteWhatsapp(session, lector(lote(140, 3)), AHORA);
+    expect(emisiones[0]![5]).toBe("El agente de WhatsApp tiene 2.1 por ciento de turnos con timeout");
   });
 
   it("dedupe: dos ticks de 5 min en la misma cubeta emiten una; en la cubeta siguiente, otra", async () => {

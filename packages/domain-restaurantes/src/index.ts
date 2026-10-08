@@ -374,6 +374,7 @@ export type { DiagnosticoProveedorOrg, ItemDespachoOrg, ResultadoAlertasProveedo
 export { UMBRALES_TOKEN_META_DIAS, evaluarExpiracionToken, vigilarTokenMeta } from "./alertas-duenio/token-meta.ts";
 export type { DiagnosticoTokenMeta, EstadoTokenMeta, LectorEstadoTokenMeta, ResultadoVigilanciaToken, UmbralTokenMetaDias } from "./alertas-duenio/token-meta.ts";
 export {
+  CLASE_CONVERSACION_OCUPADA,
   CUBETA_ALERTA_MIN,
   MIN_TURNOS_VENTANA,
   RACHA_FALLOS,
