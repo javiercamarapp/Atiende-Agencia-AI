@@ -65,6 +65,7 @@ describe("reglas vivas de voz de la ronda 4", () => {
     expect(REGLAS_VIVAS_VOZ).toMatch(/NUNCA repita las cifras que dictó/);
     expect(REGLAS_VIVAS_VOZ).toMatch(/POR CADA orden completa de nachos de pastor \(2 órdenes = 4 aguas\)/);
     expect(REGLAS_VIVAS_VOZ).toMatch(/NUNCA las agregue usted como renglones/);
+    expect(REGLAS_VIVAS_VOZ).toMatch(/Jamás cotice 4 horchatas/);
     expect(REGLAS_VIVAS_VOZ).toMatch(/NUNCA mande 250 o 750 como cantidad de un producto de 1 kg/);
     expect(REGLAS_VIVAS_VOZ).toMatch(/diga SOLO su mensaje_al_cliente/);
   });

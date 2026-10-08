@@ -56,3 +56,25 @@ describe("hora_recogida numerica (QA-PM-R4-reglas-11)", () => {
     expect(r.orderId).not.toBeNull();
   });
 });
+
+describe("media orden de nachos con bebida (QA-PM-R4-reglas-02)", () => {
+  it("la cotizacion sin promocion trae la frase literal de que las bebidas se cobran; sin media orden no la trae", async () => {
+    const f = buildRestaurantFixture();
+    const nachos = randomUUID();
+    f.repo.seedProduct({ id: nachos, organizationId: f.organizationId, categoryId: f.categories.bebidas, name: "Nachos de Pastor (1/2 orden)", description: null, searchKeywords: [] });
+    f.repo.seedBranchProduct({ propertyId: f.propertyId, productId: nachos, price: 232, isAvailable: true });
+    const horchata = randomUUID();
+    f.repo.seedProduct({ id: horchata, organizationId: f.organizationId, categoryId: f.categories.bebidas, name: "Horchata", description: null, searchKeywords: [] });
+    f.repo.seedBranchProduct({ propertyId: f.propertyId, productId: horchata, price: 60, isAvailable: true });
+    const ctx = { organizationId: f.organizationId, channel: "voz" as const, phone: "9991234567" };
+    const cot = (items: unknown[]) => invokeAgentTool(f.repo, ctx, "cotizar_pedido", { branch_slug: "fco-montejo", items, canal: "recoger" });
+    const con = await cot([
+      { product_id: nachos, product_name: "Nachos de Pastor (1/2 orden)", requested_quantity: 1 },
+      { product_id: horchata, product_name: "Horchata", requested_quantity: 2 },
+    ]);
+    expect((con.result as { quote: { total: number } }).quote.total).toBe(352);
+    expect((con.result as { mensaje_media_orden_nachos?: string }).mensaje_media_orden_nachos).toMatch(/únicamente con la orden completa de nachos/);
+    const sin = await cot([{ product_id: horchata, product_name: "Horchata", requested_quantity: 2 }]);
+    expect(sin.result).not.toHaveProperty("mensaje_media_orden_nachos");
+  });
+});

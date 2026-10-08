@@ -823,6 +823,11 @@ const AVISO_DOBLE_GUACAMOLERA =
 const SIN_CORTESIAS_AVISO =
   "Esta cotización NO incluye ninguna cortesía, promoción ni descuento: no los prometa ni los mencione (ni \"van de cortesía\", ni \"incluyo\", ni \"gratis\"); el cliente paga exactamente el total. NUNCA agregue renglones ni suba la cantidad de una bebida para \"compensar\" una cortesía (QA-PM-R4-reglas-02: con media orden de nachos se cobraron 4 horchatas en vez de 2): las bebidas son exactamente las que pidió el cliente.";
 
+/** Bebidas por nombre: solo decide si se agrega una frase aclaratoria, nunca un monto. */
+const ES_BEBIDA_POR_NOMBRE = /horchata|jamaica|agua|refresco|coca|limonada|naranjada|sprite|fanta|mineral|jugo/i;
+const MENSAJE_MEDIA_ORDEN_NACHOS =
+  "Con MEDIA orden de nachos NO hay aguas de cortesía: las bebidas del carrito se cobran completas y el total ya las incluye. Si el cliente pregunta por las aguas gratis del martes, dígale solo: «las aguas de cortesía son únicamente con la orden completa de nachos; con la media orden las bebidas se cobran». No agregue bebidas ni cambie cantidades.";
+
 const YA_REGISTRADO_AVISO =
   "Este pedido YA QUEDÓ REGISTRADO hace un momento: no es uno nuevo. No lo cotice de nuevo ni llame confirmar_resumen ni crear_pedido. Dígale al cliente, de usted y sin dudar, que su pedido ya está registrado (con el total y la hora que ya le dio). Solo si el cliente pide EXPRESAMENTE otro pedido igual, vuelva a llamar cotizar_pedido con otro_pedido: true.";
 
@@ -1275,8 +1280,15 @@ async function dispatchTool(
       // QA-PM-R3-reglas-03: por voz el agente prometia las 2 aguas de cortesia del combo del martes con MEDIA orden de nachos aunque el servidor cobraba las bebidas. Si la
       // cotizacion no aplica ni sugiere ninguna promocion, se lo dice la propia herramienta (el cliente solo debe oir lo que el total incluye).
       const sinPromocion = !quote.promocionAplicada && (quote.promocionesSugeridas?.length ?? 0) === 0;
+      // QA-PM-R4-reglas-02 (P0): con MEDIA orden de nachos el modelo de voz prometia "las 2 aguas de cortesia" y cotizaba 4 horchatas (+$120). La explicacion va como frase LITERAL de la herramienta.
+      const mediaOrdenConBebida = sinPromocion && quote.lines.some((l) => /nachos/i.test(l.name) && /\(1\/2 orden\)/.test(l.name)) && quote.lines.some((l) => ES_BEBIDA_POR_NOMBRE.test(l.name));
       return {
-        result: { quote: quoteToWire(quote), ...(sinPromocion ? { sin_cortesias: SIN_CORTESIAS_AVISO } : {}), ...(dobleGuacamole ? { aviso_guacamole: AVISO_DOBLE_GUACAMOLERA } : {}) },
+        result: {
+          quote: quoteToWire(quote),
+          ...(sinPromocion ? { sin_cortesias: SIN_CORTESIAS_AVISO } : {}),
+          ...(mediaOrdenConBebida ? { mensaje_media_orden_nachos: MENSAJE_MEDIA_ORDEN_NACHOS } : {}),
+          ...(dobleGuacamole ? { aviso_guacamole: AVISO_DOBLE_GUACAMOLERA } : {}),
+        },
         raw: quote,
         orderId: null,
         propertyId: null,
