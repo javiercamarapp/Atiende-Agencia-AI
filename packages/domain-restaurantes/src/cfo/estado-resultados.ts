@@ -100,6 +100,8 @@ export interface TitularVentas {
   /** Con SR: lo que el agente tomó, SOLO informativo (ya está dentro de SR). Nunca se suma. */
   readonly ventasAgenteMemo: Cifra | null;
   readonly nota: string | null;
+  /** Con SR y `coberturaSrMinima` < 1: cuántos días del periodo trae SR. null = cobertura completa o sin SR. El titular NO es comparable con el memo del agente. */
+  readonly coberturaParcialSr: { readonly diasConDato: number; readonly diasPeriodo: number } | null;
 }
 
 export interface MemoPyl {
@@ -293,6 +295,8 @@ interface NumerosSr {
   readonly descuentoCentavos: number;
   readonly canceladoCentavos: number;
   readonly propinaCentavos: number;
+  /** Solo la propina de renglones con forma de pago de tarjeta; null si el archivo no trae forma de pago. */
+  readonly propinaTarjetaCentavos: number | null;
   readonly netaCentavos: number;
   /** Σ del IVA que trae el archivo; null si algún renglón no lo trae. */
   readonly ivaCentavos: number | null;
@@ -311,13 +315,14 @@ function numerosSr(filas: readonly FilaSrResumen[]): NumerosSr {
   let ivaTodos = filas.length > 0;
   let iva = 0;
   let tarjeta = 0;
+  let propTarjeta = 0;
   let hayForma = false;
   for (const f of filas) {
     porServicio[f.tipoServicio] += f.netaCentavos;
     if (f.ivaCentavos == null) ivaTodos = false;
     else iva += f.ivaCentavos;
     if (f.formaPago != null) hayForma = true;
-    if (esFormaPagoTarjeta(f.formaPago)) tarjeta += f.netaCentavos;
+    if (esFormaPagoTarjeta(f.formaPago)) { tarjeta += f.netaCentavos; propTarjeta += f.propinaCentavos; }
   }
   return {
     filas: filas.length,
@@ -327,6 +332,7 @@ function numerosSr(filas: readonly FilaSrResumen[]): NumerosSr {
     descuentoCentavos: suma(filas.map((f) => f.descuentoCentavos)),
     canceladoCentavos: suma(filas.map((f) => f.canceladoCentavos)),
     propinaCentavos: suma(filas.map((f) => f.propinaCentavos)),
+    propinaTarjetaCentavos: hayForma ? propTarjeta : null,
     netaCentavos: suma(filas.map((f) => f.netaCentavos)),
     ivaCentavos: ivaTodos ? iva : null,
     netaTarjetaCentavos: hayForma ? tarjeta : null,
@@ -542,7 +548,7 @@ function memoDe(n: NumerosColumna, usaSr: boolean): MemoPyl {
     cortesias: hay ? cifra(n.cortesiasCentavos, "estimado", "cfo_cortesias (precio de lista)") : sinDato("cfo_cortesias"),
     cancelaciones: usaSr && n.sr ? cifra(n.sr.canceladoCentavos, "importado", "sr_resumen_dia") : m(v.canceladosCentavos, "cfo_ventas_diarias"),
     noRecogidos: m(v.noRecogidosCentavos, "cfo_ventas_diarias"),
-    propinasTarjeta: usaSr && n.sr ? cifra(n.sr.propinaCentavos, "importado", "sr_resumen_dia") : m(v.propinaTarjetaCentavos, "cfo_ventas_diarias (solo tarjeta)"),
+    propinasTarjeta: usaSr && n.sr ? cifra(n.sr.propinaTarjetaCentavos, "importado", "sr_resumen_dia (solo tarjeta)") : m(v.propinaTarjetaCentavos, "cfo_ventas_diarias (solo tarjeta)"),
     ventasOtrosOrigenes: m(v.netaOtrosOrigenesCentavos, "cfo_ventas_diarias"),
     descuadreCascadaCentavos: v.pedidos > 0 ? desc : null,
   };
@@ -552,13 +558,15 @@ function titularDe(n: NumerosColumna, usaSr: boolean): TitularVentas {
   const agenteMemo = n.ventas.pedidos > 0 ? cifra(n.ventas.netaAgenteCentavos, "medido", "cfo_ventas_diarias (voz y WhatsApp)") : sinDato("cfo_ventas_diarias");
   if (usaSr && n.sr) {
     const s = n.sr.porServicio;
+    const parcial = n.sr.diasConDato < n.diasPeriodo;
     return {
       etiqueta: "Ventas del negocio (SoftRestaurant)",
       origen: "softrestaurant",
       cifra: cifra(n.sr.netaCentavos, "importado", "sr_resumen_dia"),
       desglose: { domicilioSR: s.domicilio, presencial: s.comedor + s.para_llevar + s.rapido, otro: s.otro, comedor: s.comedor, paraLlevar: s.para_llevar, rapido: s.rapido },
       ventasAgenteMemo: agenteMemo,
-      nota: "El agente es un subconjunto de estas ventas (ya están dentro de «domicilio» y «para llevar»). No se suman.",
+      nota: "El agente es un subconjunto de estas ventas (ya están dentro de «domicilio» y «para llevar»). No se suman." + (parcial ? ` Cobertura parcial: SoftRestaurant trae ${n.sr.diasConDato} de ${n.diasPeriodo} días del periodo; el memo del agente cubre todos los días y no es comparable.` : ""),
+      coberturaParcialSr: parcial ? { diasConDato: n.sr.diasConDato, diasPeriodo: n.diasPeriodo } : null,
     };
   }
   return {
@@ -568,6 +576,7 @@ function titularDe(n: NumerosColumna, usaSr: boolean): TitularVentas {
     desglose: null,
     ventasAgenteMemo: null,
     nota: "Sin datos de mostrador de SoftRestaurant: solo se cuentan los pedidos tomados por Atiende (WhatsApp y voz).",
+    coberturaParcialSr: null,
   };
 }
 
@@ -700,7 +709,7 @@ function columnaNoAsignado(ctx: Contexto, desde: string, hasta: string): Columna
     clave: "no_asignado",
     propertyId: null,
     nombre: "No asignado",
-    titular: { etiqueta: "No asignado a sucursal", origen: "agente", cifra: vacio, desglose: null, ventasAgenteMemo: null, nota: null },
+    titular: { etiqueta: "No asignado a sucursal", origen: "agente", cifra: vacio, desglose: null, ventasAgenteMemo: null, nota: null, coberturaParcialSr: null },
     lineas: orden.map((id) => lineas.get(id)!),
     margenContribucion: { cifra: sinDato("formula:margen_contribucion"), faltan: [], parcial: false },
     ebitda: vacio,
@@ -786,7 +795,8 @@ function columnaTotal(ctx: Contexto, cols: readonly ColumnaPyl[], sucursales: re
       cifra: titularCifra,
       desglose,
       ventasAgenteMemo: agenteMemo,
-      nota: usaSr ? "El agente es un subconjunto de estas ventas. No se suman." : "Sin datos de mostrador de SoftRestaurant en todas las sucursales: solo se cuentan los pedidos tomados por Atiende.",
+      coberturaParcialSr: usaSr ? tit.map((t) => t.coberturaParcialSr).reduce<{ diasConDato: number; diasPeriodo: number } | null>((a, c) => (c && (!a || c.diasConDato < a.diasConDato) ? c : a), null) : null,
+      nota: usaSr ? "El agente es un subconjunto de estas ventas. No se suman." + (tit.some((t) => t.coberturaParcialSr) ? " Cobertura parcial: SoftRestaurant no trae todos los días del periodo en alguna sucursal; el memo del agente no es comparable." : "") : "Sin datos de mostrador de SoftRestaurant en todas las sucursales: solo se cuentan los pedidos tomados por Atiende.",
     },
     lineas: d.lineas,
     margenContribucion: d.margen,

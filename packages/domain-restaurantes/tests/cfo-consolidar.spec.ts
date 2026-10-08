@@ -213,7 +213,7 @@ describe("propiedad: consolidado == Σ sucursales + No asignado (datos sintétic
       const suma = c.sucursales.reduce((s, r) => s + (r.valores[col] ?? 0), 0) + (c.noAsignado.valores[col] ?? 0);
       expect(c.total.valores[col]).toBe(suma);
       // y coincide con sumar directamente las filas (camino independiente)
-      expect(c.total.valores[col]).toBe(d.ventasDiarias.reduce((s, f) => s + f[col], 0));
+      expect(Math.round((c.total.valores[col] ?? 0) * 100)).toBe(d.ventasDiarias.reduce((s, f) => s + Math.round(f[col] * 100), 0));
     }
     expect(c.sucursales).toHaveLength(7);
   });

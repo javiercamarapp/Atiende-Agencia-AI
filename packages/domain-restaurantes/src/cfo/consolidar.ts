@@ -5,7 +5,7 @@
 // Los percentiles y los conteos distintos (clientes únicos) NO son aditivos: `consolidar` se niega a sumarlos y el
 // total de clientes se calcula con `consolidarClientes`, que muestra «X compraron en más de una sucursal».
 import type { FilaClientesResumen } from "./tipos.ts";
-import { formatoEntero, pct1 } from "./util.ts";
+import { centesimas, formatoEntero, pct1 } from "./util.ts";
 
 /** Columnas que NUNCA se suman entre sucursales. */
 export const COLUMNAS_NO_ADITIVAS: ReadonlySet<string> = new Set([
@@ -97,7 +97,8 @@ function acumular<K extends string>(a: Acumulador<K>, fila: Record<string, unkno
       continue;
     }
     if (typeof v !== "number" || !Number.isFinite(v)) throw new TypeError(`Columna ${c}: valor no numérico`);
-    a.suma[c] = (a.suma[c] ?? 0) + v;
+    // Se suma en CENTÉSIMAS enteras: los `numeric` de la SQL (p. ej. minutos de entrega con round(..., 2)) no acumulan error de flotante.
+    a.suma[c] = (a.suma[c] ?? 0) + centesimas(v);
     a.conDato[c] = (a.conDato[c] ?? 0) + 1;
   }
 }
@@ -106,7 +107,7 @@ function aRenglon<K extends string>(propertyId: string | null, a: Acumulador<K>)
   const valores = {} as Record<K, number | null>;
   const parciales: K[] = [];
   for (const c of a.columnas) {
-    valores[c] = (a.conDato[c] ?? 0) > 0 ? (a.suma[c] ?? 0) : null;
+    valores[c] = (a.conDato[c] ?? 0) > 0 ? (a.suma[c] ?? 0) / 100 : null;
     if ((a.conDato[c] ?? 0) > 0 && (a.nulos[c] ?? 0) > 0) parciales.push(c);
   }
   return { propertyId, valores, filas: a.filas, parciales };
@@ -169,17 +170,18 @@ export function verificarAditividad<K extends string>(c: Consolidado<K>, columna
   if (vetadas.length > 0) throw new ColumnaNoAditivaError(vetadas);
   const malas: Array<{ columna: string; total: number | null; sumaSucursales: number; noAsignado: number }> = [];
   for (const col of columnas) {
+    // Comparación EXACTA en centésimas enteras (nunca `===` entre flotantes).
     let suma = 0;
     let alguno = false;
     for (const s of c.sucursales) {
       const v = s.valores[col];
-      if (v != null) { suma += v; alguno = true; }
+      if (v != null) { suma += centesimas(v); alguno = true; }
     }
     const na = c.noAsignado.valores[col];
-    if (na != null) { suma += na; alguno = true; }
+    if (na != null) { suma += centesimas(na); alguno = true; }
     const t = c.total.valores[col];
-    const ok = alguno ? t === suma : t === null;
-    if (!ok) malas.push({ columna: col, total: t, sumaSucursales: suma - (na ?? 0), noAsignado: na ?? 0 });
+    const ok = alguno ? t !== null && centesimas(t) === suma : t === null;
+    if (!ok) malas.push({ columna: col, total: t, sumaSucursales: (suma - centesimas(na ?? 0)) / 100, noAsignado: na ?? 0 });
   }
   if (malas.length > 0) throw new ErrorAditividad(malas);
 }

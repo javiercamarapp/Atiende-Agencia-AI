@@ -98,7 +98,11 @@ export type ResultadoNormalizacionSr =
   | (Base & { readonly ok: true; readonly tipo: "cuentas"; readonly renglones: readonly RenglonSrCuenta[]; readonly aceptados: number })
   | (Base & { readonly ok: true; readonly tipo: "resumen_servicio"; readonly renglones: readonly RenglonSrResumen[]; readonly aceptados: number })
   | { readonly ok: false; readonly motivo: "columnas_personales"; readonly columnas: readonly string[]; readonly inferido: true }
-  | { readonly ok: false; readonly motivo: "sin_encabezado" | "faltan_columnas"; readonly faltan: readonly string[]; readonly inferido: true };
+  | { readonly ok: false; readonly motivo: "sin_encabezado" | "faltan_columnas"; readonly faltan: readonly string[]; readonly inferido: true }
+  | { readonly ok: false; readonly motivo: "demasiados_renglones"; readonly maximo: number; readonly recibidos: number; readonly mensaje: string; readonly inferido: true };
+
+/** Topes de `sr_importar` (brief CFO-03): 1..20,000 cuentas o 1..2,000 renglones de resumen por archivo. */
+export const MAX_RENGLONES_SR = { cuentas: 20000, resumen_servicio: 2000 } as const;
 
 // ---- Texto -------------------------------------------------------------------------------------------------------------------------------
 
@@ -113,9 +117,15 @@ export function normalizarEncabezado(s: string): string {
     .replace(/\s+/g, " ");
 }
 
+const FRASES_PERSONALES: readonly string[] = ["razon social", "domicilio de entrega", "domicilio entrega", "domicilio del cliente", "domicilio cliente", "codigo postal", "nombre del cliente"];
+const RAICES_PERSONALES: readonly string[] = ["telefono", "celular", "correo", "direccion"];
+
 export function esColumnaPersonal(encabezado: string): boolean {
-  const palabras = normalizarEncabezado(encabezado).split(" ");
-  return palabras.some((p) => PALABRAS_PERSONALES.includes(p));
+  const norm = normalizarEncabezado(encabezado);
+  if (FRASES_PERSONALES.some((f) => norm.includes(f))) return true;
+  return norm.split(" ").some(
+    (p) => PALABRAS_PERSONALES.includes(p) || /^(tel|cel)\d*$/.test(p) || RAICES_PERSONALES.some((r) => p.startsWith(r)) || /^(email|mail|correo)\d*$/.test(p),
+  );
 }
 
 /** comedor/mesa · para llevar/mostrador · domicilio/delivery · rápido · lo demás -> otro. */
@@ -384,6 +394,11 @@ export function normalizarExportSr(entrada: EntradaNormalizarSr): ResultadoNorma
   const base = { inferido: true as const, avisoAlias: ALIAS_SR_INFERIDOS.aviso, mapeo: mapeoOriginal, ignoradas };
 
   const filas = entrada.tabla.slice(hIdx + 1);
+  const maximo = MAX_RENGLONES_SR[tipo];
+  const noVacias = filas.filter((f) => !f.every((c) => texto(c) === "")).length;
+  if (noVacias > maximo) {
+    return { ok: false, motivo: "demasiados_renglones", maximo, recibidos: noVacias, inferido: true, mensaje: `El archivo trae ${noVacias} renglones y el máximo por importación es ${maximo}. Divídalo por periodos e impórtelo en partes.` };
+  }
   const errores: ErrorRenglonSr[] = [];
   let erroresTotal = 0;
   let omitidos = 0;

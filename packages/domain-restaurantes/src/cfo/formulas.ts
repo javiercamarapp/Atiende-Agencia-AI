@@ -17,7 +17,7 @@ import type {
   FilaVentasDiarias,
   TipoBaseComparacion,
 } from "./tipos.ts";
-import { cifra, cmp, combinarConfianza, divEntera, mulDiv, pct1, razon1, redondear, sinDato, suma } from "./util.ts";
+import { centesimas, cifra, cmp, combinarConfianza, divEntera, mulDiv, pct1, promedioMin1, redondear, sinDato, suma, sumaDecimal2 } from "./util.ts";
 
 const F_VENTAS = "cfo_ventas_diarias";
 const F_AGENTE = "cfo_agente_diario";
@@ -66,6 +66,7 @@ export const SUMAS_VENTAS_VACIAS: SumasVentas = Object.freeze({
 
 export function sumarVentas(filas: readonly FilaVentasDiarias[]): SumasVentas {
   const s = { ...SUMAS_VENTAS_VACIAS } as { -readonly [K in keyof SumasVentas]: number };
+  let minCent = 0; // minutos de entrega en centésimas ENTERAS (la SQL los devuelve numeric con 2 decimales)
   for (const f of filas) {
     s.pedidos += f.pedidos;
     s.brutaCentavos += f.brutaCentavos;
@@ -85,7 +86,7 @@ export function sumarVentas(filas: readonly FilaVentasDiarias[]): SumasVentas {
     s.reposiciones += f.reposiciones;
     s.reposicionUnidades += f.reposicionUnidades;
     s.entregados += f.entregados;
-    s.entregaMinSuma += f.entregaMinSuma;
+    minCent += centesimas(f.entregaMinSuma);
     s.entregaTarde += f.entregaTarde;
     if (f.canal === "domicilio") {
       s.pedidosDomicilio += f.pedidos;
@@ -102,6 +103,7 @@ export function sumarVentas(filas: readonly FilaVentasDiarias[]): SumasVentas {
       s.netaOtrosOrigenesCentavos += f.netaCentavos;
     }
   }
+  s.entregaMinSuma = minCent / 100;
   return s;
 }
 
@@ -274,7 +276,7 @@ export function propinaPct(s: Pick<SumasVentas, "propinaTarjetaCentavos" | "neta
 
 /** Promedio de minutos de entrega (1 decimal). */
 export function entregaPromedioMin(s: Pick<SumasVentas, "entregaMinSuma" | "entregados">): Cifra {
-  return cifra(razon1(s.entregaMinSuma, s.entregados), "medido", F_VENTAS);
+  return cifra(promedioMin1(s.entregaMinSuma, s.entregados), "medido", F_VENTAS);
 }
 
 /** % de entregas por encima de la promesa. */
@@ -488,24 +490,35 @@ export interface SumasComandas {
   readonly vencidasUmbral: number;
   readonly conFolioPos: number;
   readonly conFolioDeclarado: number;
-  /** Modo de la bandera: `apagado` por omisión. */
+  /** Modo consolidado de la bandera: `apagado` solo si TODAS las filas lo están. */
   readonly modo: string;
+  /** Cuántas sucursales aportan a las tasas (las encendidas) y cuántas hay: la UI rotula «sobre N de M sucursales». */
+  readonly sucursalesEncendidas: number;
+  readonly sucursalesTotal: number;
 }
 
 export function sumarComandas(filas: readonly FilaComandasPos[]): SumasComandas {
+  // El envío es una bandera por organización, pero cada fila trae su modo. Una fila «apagado» no encoló nada: no entra a las tasas.
+  // El resultado NO depende del orden de las filas: modo = «activo» si alguna lo está, si no «sombra» si alguna lo está, si no «apagado».
+  const encendidas = filas.filter((f) => f.modo !== "apagado");
+  const modo = encendidas.some((f) => f.modo === "activo") ? "activo" : (encendidas[0]?.modo ?? "apagado");
+  const ids = new Set(filas.map((f) => f.propertyId));
+  const idsOn = new Set(encendidas.map((f) => f.propertyId));
   return {
-    encoladas: suma(filas.map((f) => f.encoladas)),
-    confirmadas: suma(filas.map((f) => f.confirmadas)),
-    capturadasManual: suma(filas.map((f) => f.capturadasManual)),
-    capturaManualPendientes: suma(filas.map((f) => f.capturaManualPendientes)),
-    fallidas: suma(filas.map((f) => f.fallidas)),
-    pendientesEnviadas: suma(filas.map((f) => f.pendientesEnviadas)),
-    minACapturaSuma: suma(filas.map((f) => f.minACapturaSuma)),
-    capturadasConTiempo: suma(filas.map((f) => f.capturadasConTiempo)),
-    vencidasUmbral: suma(filas.map((f) => f.vencidasUmbral)),
-    conFolioPos: suma(filas.map((f) => f.conFolioPos)),
-    conFolioDeclarado: suma(filas.map((f) => f.conFolioDeclarado)),
-    modo: filas[0]?.modo ?? "apagado",
+    encoladas: suma(encendidas.map((f) => f.encoladas)),
+    confirmadas: suma(encendidas.map((f) => f.confirmadas)),
+    capturadasManual: suma(encendidas.map((f) => f.capturadasManual)),
+    capturaManualPendientes: suma(encendidas.map((f) => f.capturaManualPendientes)),
+    fallidas: suma(encendidas.map((f) => f.fallidas)),
+    pendientesEnviadas: suma(encendidas.map((f) => f.pendientesEnviadas)),
+    minACapturaSuma: sumaDecimal2(encendidas.map((f) => f.minACapturaSuma)),
+    capturadasConTiempo: suma(encendidas.map((f) => f.capturadasConTiempo)),
+    vencidasUmbral: suma(encendidas.map((f) => f.vencidasUmbral)),
+    conFolioPos: suma(encendidas.map((f) => f.conFolioPos)),
+    conFolioDeclarado: suma(encendidas.map((f) => f.conFolioDeclarado)),
+    modo,
+    sucursalesEncendidas: idsOn.size,
+    sucursalesTotal: ids.size,
   };
 }
 
@@ -517,7 +530,7 @@ export function tasaCapturaSr(s: Pick<SumasComandas, "confirmadas" | "capturadas
 
 /** SR: minutos promedio hasta la captura. */
 export function minutosACapturaSr(s: Pick<SumasComandas, "minACapturaSuma" | "capturadasConTiempo">): Cifra {
-  return cifra(razon1(s.minACapturaSuma, s.capturadasConTiempo), "medido", "cfo_comandas_pos");
+  return cifra(promedioMin1(s.minACapturaSuma, s.capturadasConTiempo), "medido", "cfo_comandas_pos");
 }
 
 export type SemaforoCuadre = "verde" | "ambar" | "rojo" | "sin_datos";
@@ -547,11 +560,14 @@ export function cuadreSr(
   if (e.srCentavos === 0 && e.nuestroCentavos === 0 && (difPedidos == null || difPedidos === 0)) {
     return { diferenciaCentavos: 0, diferenciaPct: null, diferenciaPedidos: difPedidos, semaforo: "sin_datos" };
   }
+  // Umbrales por MULTIPLICACIÓN CRUZADA de enteros (|dif|/SR ≤ pct/100), nunca contra el % ya redondeado a 1 decimal:
+  // una diferencia de 1.04 % es ámbar aunque `diferenciaPct` se muestre como 1.
+  const dentro = (pctUmbral: number): boolean => abs * 10000 <= redondear(pctUmbral * 100) * (e.srCentavos as number);
   let semaforo: SemaforoCuadre;
   if (difPedidos != null && Math.abs(difPedidos) >= 2) semaforo = "rojo";
   else if (pct == null) semaforo = "rojo"; // SR en 0 y nosotros con venta: no cuadra
-  else if (pct <= config.srCuadreVerdePct && abs <= config.srCuadreVerdeCentavos) semaforo = "verde";
-  else if (pct <= config.srCuadreAmbarPct) semaforo = "ambar";
+  else if (dentro(config.srCuadreVerdePct) && abs <= config.srCuadreVerdeCentavos) semaforo = "verde";
+  else if (dentro(config.srCuadreAmbarPct)) semaforo = "ambar";
   else semaforo = "rojo";
   return { diferenciaCentavos: dif, diferenciaPct: pct, diferenciaPedidos: difPedidos, semaforo };
 }

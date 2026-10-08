@@ -5,6 +5,9 @@
 //  - `numerosNoRespaldados` es el guard: una regex sobre la SALIDA que detecta cualquier número que no esté en la entrada. `narrarResumen` lo
 //    ejecuta y, si algo se cuela, descarta esa oración (nunca publica una cifra sin respaldo).
 //  - Con datos vacíos dice que no hay datos; no inventa cifras ni comparaciones.
+//  - LÍMITES del guard: es una regex sobre dígitos. No detecta cifras escritas con palabras («dos mil»), ni valida el SIGNO ni la unidad
+//    (un «18 %» presente en la entrada con otro significado pasaría), ni números dentro de nombres de sucursal. Protege contra números
+//    inventados o mal formateados, no contra una redacción semánticamente incorrecta: por eso las plantillas son fijas y revisadas.
 //  - Sin `toLocale*`, sin reloj.
 import { textoMultiSucursal } from "./consolidar.ts";
 import type { Hallazgo } from "./hallazgos.ts";
@@ -143,7 +146,8 @@ export function narrarResumen(kpis: KpisResumen, hallazgos: readonly Hallazgo[],
 
   // Quién explica la variación
   const ap = kpis.mayorAporte;
-  if (ap && ap.aportePct.valor != null && variacion != null && variacion !== 0 && alcance.propertyIds.length > 1) {
+  // Solo si la sucursal fue en el MISMO sentido que el total (aporte > 0); si no, «explica X % de la caída» sería falso.
+  if (ap && ap.aportePct.valor != null && ap.aportePct.valor > 0 && variacion != null && variacion !== 0 && alcance.propertyIds.length > 1) {
     referencias["mayor_aporte"] = formatoPct(Math.abs(ap.aportePct.valor));
     add({ texto: `${ap.sucursal} explica ${formatoPct(Math.abs(ap.aportePct.valor))} [mayor_aporte] de ${variacion < 0 ? "la caída" : "el aumento"}.`, refs: ["mayor_aporte"] }, 2);
   }

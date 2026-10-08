@@ -10,6 +10,10 @@
 //    organización, eventos de costo sin sucursal). Solo existe con alcance de organización completa.
 //  - Fechas de negocio: `YYYY-MM-DD` (día de negocio de la sucursal, con su corte; ver diseño §3.1).
 //  - Un campo `null` significa «sin dato» (nunca 0).
+//  - CONTRATO CON LA SQL (para CFO-05): node-postgres entrega los `numeric` como STRING; conviértalos con `numericoSql` (util.ts) antes de
+//    construir estas filas. Los minutos (`entrega_min_suma`, `min_a_captura_suma`) son numeric con hasta 2 decimales y el dominio los opera en
+//    centésimas enteras. `cfo_pedidos_detalle` devuelve `bruta`, `desc`, `neta`, `propina` (centavos) y `cursor_pagina`: se mapean a
+//    `brutaCentavos`, `descCentavos`, `netaCentavos`, `propinaCentavos` y al cursor de paginación (no vive en estas filas).
 
 /** Qué tan confiable es una cifra (diseño §3.6). */
 export type Confianza = "medido" | "estimado" | "capturado" | "importado" | "sin_dato";

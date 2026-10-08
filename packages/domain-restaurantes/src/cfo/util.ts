@@ -114,8 +114,42 @@ function agruparMiles(entero: string): string {
   return out;
 }
 
-/** 123450 -> "$1,234.50"; negativo: "-$1,234.50". */
+/** Minutos (numeric con hasta 2 decimales, p. ej. 100.99) -> centésimas ENTERAS. Es la forma en que se opera todo lo que lleva minutos. */
+export function centesimas(x: number): number {
+  return redondear(x * 100);
+}
+
+/** Σ exacta de valores con hasta 2 decimales (suma en centésimas enteras; evita 7801.700000000001 ≠ 7801.699999999999). */
+export function sumaDecimal2(xs: ReadonlyArray<number | null | undefined>): number {
+  let c = 0;
+  for (const x of xs) if (x != null) c += centesimas(x);
+  return c / 100;
+}
+
+/** Promedio de minutos con 1 decimal desde una suma con ≤ 2 decimales: Σ/n con redondeo half away from zero, en enteros. */
+export function promedioMin1(sumaMin: number, n: number): number | null {
+  if (!(n > 0)) return null;
+  return divEntera(centesimas(sumaMin), n * 10) / 10;
+}
+
+/** Los `numeric` de Postgres llegan como string con node-postgres: conviértalos aquí. null/"" -> null; no numérico -> lanza. */
+export function numericoSql(v: string | number | null | undefined): number | null {
+  if (v == null || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) throw new TypeError(`numeric inválido: ${String(v)}`);
+  return n;
+}
+
+/** n1/d1 − n2/d2 ≥ pNum/pDen con BigInt exacto (d1, d2, pDen > 0). Para umbrales en puntos porcentuales sin redondear antes. */
+export function difFraccionesGE(n1: number, d1: number, n2: number, d2: number, pNum: number, pDen: number): boolean {
+  const l = (BigInt(n1) * BigInt(d2) - BigInt(n2) * BigInt(d1)) * BigInt(pDen);
+  const r = BigInt(pNum) * BigInt(d1) * BigInt(d2);
+  return l >= r;
+}
+
+/** 123450 -> "$1,234.50"; negativo: "-$1,234.50". Un valor no entero (o NaN) no es centavos: devuelve «—» en vez de inventar texto. */
 export function formatoCentavos(centavos: number): string {
+  if (!Number.isSafeInteger(centavos)) return "—";
   const neg = centavos < 0;
   const abs = Math.abs(centavos);
   const pesos = Math.floor(abs / 100);
@@ -125,6 +159,7 @@ export function formatoCentavos(centavos: number): string {
 
 /** 123450 -> "$1,235" (pesos enteros, redondeo de la casa). */
 export function formatoPesos(centavos: number): string {
+  if (!Number.isSafeInteger(centavos)) return "—";
   const pesos = divEntera(centavos, 100);
   return `${pesos < 0 ? "-" : ""}$${agruparMiles(String(Math.abs(pesos)))}`;
 }

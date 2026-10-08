@@ -6,7 +6,7 @@
 // Reglas de disparo: ESTRICTAS donde el diseño dice «<» o «>» y con «≥» donde dice «≥»; justo bajo el umbral NO dispara.
 import { ventaEnRiesgoAgotado, type CuadreSr, type SumasAgente, type SumasComandas, type SumasVentas } from "./formulas.ts";
 import type { CfoConfig, Cifra, FilaAgotado, FilaEscalacionHora, SucursalCfo } from "./tipos.ts";
-import { cifra, cmp, diaSemanaIso, divEntera, formatoCentavos, formatoEntero, formatoMinutos, formatoPct, formatoPuntos, mulDiv, nombreDiaPlural, pct1, redondear } from "./util.ts";
+import { cifra, cmp, diaSemanaIso, difFraccionesGE, divEntera, formatoCentavos, formatoEntero, formatoMinutos, formatoPct, formatoPuntos, mulDiv, nombreDiaPlural, pct1, redondear } from "./util.ts";
 
 export type TipoHallazgo =
   | "caida_ventas"
@@ -127,11 +127,19 @@ export function rutaCfo(pestana: string, params: Readonly<Record<string, string 
 
 const ORDEN_URGENCIA: Readonly<Record<Urgencia, number>> = { alta: 3, media: 2, baja: 1 };
 
-function mediana(xs: readonly number[]): number | null {
-  if (xs.length === 0) return null;
-  const o = [...xs].sort((a, b) => a - b);
+/** Mediana de fracciones n/d con BigInt exacto (en tamaño par, el promedio de las dos centrales). Devuelve una fracción de enteros seguros. */
+function medianaFraccion(fs: ReadonlyArray<{ n: number; d: number }>): { n: number; d: number } | null {
+  if (fs.length === 0) return null;
+  const o = [...fs].sort((a, b) => {
+    const l = BigInt(a.n) * BigInt(b.d);
+    const r = BigInt(b.n) * BigInt(a.d);
+    return l < r ? -1 : l > r ? 1 : 0;
+  });
   const m = Math.floor(o.length / 2);
-  return o.length % 2 === 1 ? o[m]! : (o[m - 1]! + o[m]!) / 2;
+  if (o.length % 2 === 1) return o[m]!;
+  const x = o[m - 1]!;
+  const y = o[m]!;
+  return { n: x.n * y.d + y.n * x.d, d: 2 * x.d * y.d };
 }
 
 function ticketDe(s: Pick<SumasVentas, "netaCentavos" | "pedidos">): number | null {
@@ -142,10 +150,11 @@ function descPct(s: SumasVentas): number | null {
   return pct1(s.descPromoCentavos + s.descCompCentavos, s.brutaCentavos);
 }
 
-function cierreDe(a: SumasAgente): { tasa: number | null; conversaciones: number } {
+function cierreDe(a: SumasAgente): { tasa: number | null; conversaciones: number; cerrados: number } {
   const cerradasVoz = a.vozPedidoCreado + a.vozEscalado + a.vozAbandonado;
   const conv = a.waConversacionesNuevas + cerradasVoz;
-  return { tasa: pct1(a.waConPedido + a.vozPedidoCreado, conv), conversaciones: conv };
+  const cerrados = a.waConPedido + a.vozPedidoCreado;
+  return { tasa: pct1(cerrados, conv), conversaciones: conv, cerrados };
 }
 
 function etiquetaBase(periodo: { desde: string; hasta: string }): string {
@@ -171,8 +180,10 @@ export function detectarHallazgos(entrada: EntradaHallazgos, config: CfoConfig):
   };
 
   // Mediana de cancelación % entre sucursales (para cancelacion_alta).
-  const cancelPcts = entrada.metricas.map((m) => pct1(m.actual.cancelados, m.actual.pedidos + m.actual.cancelados)).filter((x): x is number => x != null);
-  const medianaCancel = mediana(cancelPcts);
+  // Todo se compara como FRACCIÓN EXACTA (BigInt), nunca contra porcentajes ya redondeados a 1 decimal.
+  const fracs = entrada.metricas.map((m) => ({ n: m.actual.cancelados, d: m.actual.pedidos + m.actual.cancelados })).filter((f) => f.d > 0);
+  const medianaRac = medianaFraccion(fracs);
+  const medianaCancel = medianaRac ? (medianaRac.n / medianaRac.d) * 100 : null;
 
   // Participación (necesita todas las sucursales).
   const totalActual = entrada.metricas.reduce((s, m) => s + m.actual.netaCentavos, 0);
@@ -219,7 +230,9 @@ export function detectarHallazgos(entrada: EntradaHallazgos, config: CfoConfig):
 
     // 3) cancelacion_alta: cancelación % ≥ k × mediana de sucursales y ≥ 5 cancelados
     const cp = pct1(a.cancelados, a.pedidos + a.cancelados);
-    if (cp != null && medianaCancel != null && a.cancelados >= 5 && cp >= config.cancelacionXMediana * medianaCancel) {
+    const dCancel = a.pedidos + a.cancelados;
+    if (cp != null && medianaRac && medianaCancel != null && a.cancelados >= 5
+      && BigInt(a.cancelados) * BigInt(medianaRac.d) * 100n >= BigInt(redondear(config.cancelacionXMediana * 100)) * BigInt(medianaRac.n) * BigInt(dCancel)) {
       const esperados = redondear((medianaCancel / 100) * (a.pedidos + a.cancelados));
       const tkc = tk ?? 0;
       const veces = medianaCancel > 0 ? `${(Math.round((cp / medianaCancel) * 10) / 10).toFixed(1)} veces la mediana` : "mientras la mediana de sus sucursales es 0 %";
@@ -238,10 +251,12 @@ export function detectarHallazgos(entrada: EntradaHallazgos, config: CfoConfig):
     const dp = descPct(a);
     if (dp != null) {
       const topes: number[] = [config.descuentoMaxPct];
-      if (m.descuentoPctP90Historico != null) topes.push(m.descuentoPctP90Historico);
+      if (m.descuentoPctP90Historico != null && m.descuentoPctP90Historico > 0) topes.push(m.descuentoPctP90Historico); // un p90 de 0 no es un tope real
       const tope = Math.min(...topes);
-      if (dp > tope) {
-        const exceso = redondear((dp - tope) * 10);
+      const descTotal = a.descPromoCentavos + a.descCompCentavos;
+      // descuento/bruta > tope %  <=>  descuento × 10000 > tope×100 × bruta (enteros)
+      if (BigInt(descTotal) * 10000n > BigInt(redondear(tope * 100)) * BigInt(a.brutaCentavos)) {
+        const permitido = mulDiv(a.brutaCentavos, redondear(tope * 100), 10000);
         push({
           tipo: "descuento_fuera_rango", propertyId: id,
           titulo: `${n} regaló ${formatoPct(dp)} en descuentos`,
@@ -249,7 +264,7 @@ export function detectarHallazgos(entrada: EntradaHallazgos, config: CfoConfig):
           comparacion: `Su límite es ${formatoPct(tope)}; ${formatoCentavos(a.descPromoCentavos + a.descCompCentavos)} descontados sobre ${formatoCentavos(a.brutaCentavos)} de venta bruta.`,
           porQueImporta: "El descuento sale directo de su margen; fuera de rango suele indicar promociones mal configuradas o abuso de códigos.",
           accion: { texto: "Revise las promociones y los códigos aplicados.", ruta: rutaCfo("ventas", { sucursal: id, desde, hasta, con_descuento: "1" }) },
-          impactoCentavos: mulDiv(a.brutaCentavos, exceso, 1000), urgencia: "media", fuentes: ["cfo_ventas_diarias"],
+          impactoCentavos: descTotal - permitido, urgencia: "media", fuentes: ["cfo_ventas_diarias"],
         });
       }
     }
@@ -295,7 +310,8 @@ export function detectarHallazgos(entrada: EntradaHallazgos, config: CfoConfig):
     if (m.agente && m.agenteBase4Semanas) {
       const c = cierreDe(m.agente);
       const cb = cierreDe(m.agenteBase4Semanas);
-      if (c.tasa != null && cb.tasa != null && cb.tasa - c.tasa >= config.cierreBajaPp) {
+      if (c.tasa != null && cb.tasa != null && c.conversaciones > 0 && cb.conversaciones > 0
+        && difFraccionesGE(cb.cerrados, cb.conversaciones, c.cerrados, c.conversaciones, redondear(config.cierreBajaPp * 100), 10000)) {
         const deltaTenths = redondear((cb.tasa - c.tasa) * 10);
         push({
           tipo: "cierre_agente_bajo", propertyId: id,
@@ -360,7 +376,8 @@ export function detectarHallazgos(entrada: EntradaHallazgos, config: CfoConfig):
     if (m.comandas && m.comandas.modo !== "apagado" && m.comandas.encoladas > 0) {
       const c = m.comandas;
       const tasa = pct1(c.confirmadas + c.capturadasManual, c.encoladas);
-      if (c.vencidasUmbral > 0 || (tasa != null && tasa < 95)) {
+      // tasa < 95 %  <=>  (confirmadas + capturadas) × 100 < 95 × encoladas (entero, sin redondear a 1 decimal)
+      if (c.vencidasUmbral > 0 || (c.confirmadas + c.capturadasManual) * 100 < 95 * c.encoladas) {
         push({
           tipo: "comandas_sin_capturar", propertyId: id,
           titulo: c.vencidasUmbral > 0 ? `${n} tiene ${formatoEntero(c.vencidasUmbral)} ${c.vencidasUmbral === 1 ? "comanda vencida" : "comandas vencidas"} sin capturar en SoftRestaurant` : `${n} captura solo ${formatoPct(tasa ?? 0)} de sus comandas en SoftRestaurant`,
@@ -403,7 +420,8 @@ export function detectarHallazgos(entrada: EntradaHallazgos, config: CfoConfig):
     if (entrada.metricas.length >= 2 && totalActual > 0 && totalAnterior > 0 && m.anterior) {
       const shareA = pct1(a.netaCentavos, totalActual) ?? 0;
       const shareP = pct1(m.anterior.netaCentavos, totalAnterior) ?? 0;
-      if (shareP - shareA >= 5) {
+      // participación previa − actual ≥ 5 pp, con fracciones exactas
+      if (difFraccionesGE(m.anterior.netaCentavos, totalAnterior, a.netaCentavos, totalActual, 5, 100)) {
         const deltaTenths = redondear((shareP - shareA) * 10);
         push({
           tipo: "participacion_cae", propertyId: id,

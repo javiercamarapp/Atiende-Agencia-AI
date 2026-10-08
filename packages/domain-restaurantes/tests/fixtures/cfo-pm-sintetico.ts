@@ -185,7 +185,8 @@ export function generarPedidosSinteticos(op: OpcionesSinteticas = {}): PedidoSin
           if (rnd() < 0.08) estado = "cancelado";
           else if (canal === "recoger" && rnd() < 0.02) estado = "no_recogido";
           const neta = reposicion ? 0 : bruta - desc;
-          const entregaMin = estado === "entregado" ? Math.max(20, Math.min(95, Math.round(45 + (rnd() + rnd() + rnd() - 1.5) * 20))) : null;
+          // minutos con 2 decimales, como el `round(..., 2)` por pedido de la SQL
+          const entregaMin = estado === "entregado" ? Math.round(Math.max(20, Math.min(95, 45 + (rnd() + rnd() + rnd() - 1.5) * 20)) * 100) / 100 : null;
           const propina = estado === "entregado" || estado === "completado" ? (pago === "tarjeta" && rnd() < 0.7 ? divR(neta * 10, 100) : 0) : 0;
           out.push({
             id: `ped-${n}`,
@@ -245,7 +246,7 @@ export function agregarVentasDiarias(pedidos: readonly PedidoSintetico[], promes
       f.propinaCentavos += p.propinaCentavos;
       if (p.entregaMin != null) {
         f.entregados += 1;
-        f.entregaMinSuma += p.entregaMin;
+        f.entregaMinSuma = Math.round((f.entregaMinSuma + p.entregaMin) * 100) / 100;
         if (p.entregaMin > promesaMin) f.entregaTarde += 1;
       }
     }
@@ -399,7 +400,7 @@ export function generarComandasPos(pedidos: readonly PedidoSintetico[], modo = "
     const pendientes = Math.max(0, n - confirmadas - capturadas);
     return {
       propertyId, diaNegocio, modo, encoladas: n, confirmadas, capturadasManual: capturadas, capturaManualPendientes: pendientes, fallidas: 0, pendientesEnviadas: 0,
-      minACapturaSuma: capturadas * 4, capturadasConTiempo: capturadas, vencidasUmbral: pendientes > 2 ? 1 : 0, conFolioPos: confirmadas, conFolioDeclarado: Math.round(capturadas * 0.5),
+      minACapturaSuma: Math.round(capturadas * 4.37 * 100) / 100, capturadasConTiempo: capturadas, vencidasUmbral: pendientes > 2 ? 1 : 0, conFolioPos: confirmadas, conFolioDeclarado: Math.round(capturadas * 0.5),
     };
   });
 }
