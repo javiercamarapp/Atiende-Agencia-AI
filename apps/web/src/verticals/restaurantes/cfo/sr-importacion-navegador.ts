@@ -57,12 +57,16 @@ const aliasDe = (tipo: TipoLayoutSr, campo: string): readonly string[] => {
 /** Mapeo: campo -> índice de columna del archivo (null = no importar ese dato). */
 export type MapeoSr = Readonly<Record<CampoSr, number | null>>;
 
+const FILAS_BUSCADAS = 40;
+/** Primeros renglones donde el servidor busca el encabezado: si está más abajo, la tabla se recorta para que quede dentro. */
+const FILAS_SERVIDOR = 15;
+
 /** Fila de encabezados: la (entre las primeras 15) con más coincidencias con los alias de ambos layouts, mínimo 2. Sin coincidencias = la primera. */
 export function detectarFilaEncabezado(filas: readonly (readonly string[])[]): number {
   const todos = new Set<string>([...Object.values(ALIAS_SR_INFERIDOS.cuentas).flat(), ...Object.values(ALIAS_SR_INFERIDOS.resumen_servicio).flat()]);
   let mejor = 0;
   let max = 1;
-  filas.slice(0, 15).forEach((f, i) => {
+  filas.slice(0, FILAS_BUSCADAS).forEach((f, i) => {
     const n = [...new Set(f.map(normalizarEncabezado))].filter((h) => todos.has(h)).length;
     if (n > max) {
       max = n;
@@ -162,8 +166,10 @@ export function normalizarDinero(entrada: string): string | null {
 }
 
 /** Catálogo CERRADO de formas de pago (sin acentos ni mayúsculas) y su valor para el servidor. «tarjeta*» y «amex» cuentan como tarjeta para la comisión de terminal; «credito_cliente» es cuenta por cobrar. */
+const TARJETA = "tarjeta|visa|mastercard|master card|tdc";
 const FORMAS_PAGO: ReadonlyArray<readonly [RegExp, string]> = [
-  [/\b(tarjeta.*credito|credito.*tarjeta|tdc)\b/, "tarjeta_credito"],
+  [/\b(credito.*debito|debito.*credito)\b/, "tarjeta"],
+  [new RegExp(`\\b(${TARJETA}).*credito|credito.*\\b(${TARJETA})\\b|\\btdc\\b`), "tarjeta_credito"],
   [/\b(tarjeta.*debito|debito|tdd)\b/, "tarjeta_debito"],
   [/\b(amex|american express)\b/, "amex"],
   [/\b(credito cliente|credito a cliente|cuenta por cobrar|cxc|a credito|credito casa|credito)\b/, "credito_cliente"],
@@ -190,7 +196,7 @@ function parsearCancelada(v: string): "Sí" | "No" | null {
   if (NO.has(n)) return "No";
   if (/[\d@]/.test(v) || n.length > 20 || n === "") return null;
   if (/^(no|sin)\b/.test(n)) return "No";
-  return n.includes("cancel") ? "Sí" : "No";
+  return n.includes("cancel") || n.includes("anul") ? "Sí" : "No";
 }
 
 export type ResultadoCelda = { readonly ok: true; readonly valor: string | null } | { readonly ok: false; readonly esperado: string; readonly confirmable?: boolean };
@@ -227,6 +233,8 @@ export function parsearCeldaSr(campo: string, valor: string, opciones: { readonl
     case "folio": {
       if (v.length > 24 || !RE_FOLIO.test(v) || !/\d/.test(v) || RE_RFC.test(v) || RE_CURP.test(v)) return no();
       if (pareceTelefono(v) && !opciones.confirmarFolio) return no(true);
+      // Un teléfono disfrazado de folio (Tel9991112222, #9991112222, ABC 9991112222): 10 dígitos seguidos dentro de un texto que no es solo número.
+      if (!opciones.confirmarFolio && /\d{10}/.test(v) && !/^\d+$/.test(v)) return no(true);
       // Una columna que no se llama como un folio con un número de teléfono sin formato (10 dígitos, o 12/13 con 52/521) es sospechosa.
       if (!opciones.confirmarFolio && opciones.folioEsAlias === false && /^\d+$/.test(v) && ((v.length === 10 && !v.startsWith("0")) || (v.length === 12 && v.startsWith("52")))) return no(true);
       return { ok: true, valor: v };
@@ -297,6 +305,8 @@ export interface TablaSr {
   readonly errores: readonly ErrorLocalSr[];
   /** Renglones que NO viajan (un campo obligatorio no pasó su parser): cuentan como rechazados. */
   readonly renglonesDescartados: number;
+  /** Renglones de arriba que se recortaron para que el encabezado quede dentro de los que el servidor revisa: súmalos a los números de renglón que informe el servidor. */
+  readonly desplazamiento: number;
   /** Datos opcionales que viajan vacíos (el renglón se conserva). */
   readonly datosVaciados: number;
 }
@@ -353,5 +363,6 @@ export function construirTablaSr(filas: readonly (readonly string[])[], filaEnca
     }
     return celdas;
   });
-  return { tabla, columnasEnviadas: campos.length, errores, renglonesDescartados, datosVaciados };
+  const desplazamiento = Math.max(0, filaEncabezado - (FILAS_SERVIDOR - 1));
+  return { tabla: tabla.slice(desplazamiento), columnasEnviadas: campos.length, errores, renglonesDescartados, desplazamiento, datosVaciados };
 }

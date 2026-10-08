@@ -83,6 +83,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
   const erroresLocales = construida?.errores ?? [];
   const descartadosLocales = construida?.renglonesDescartados ?? 0;
   const vaciadosLocales = construida?.datosVaciados ?? 0;
+  const desplazamiento = construida?.desplazamiento ?? 0;
   const puedeRevisar = propertyId !== "" && mapeoListo && !excedeTope && !trabajando;
 
   function sugerir(filas: readonly (readonly string[])[], f: number, t: TipoLayoutSr) {
@@ -308,8 +309,11 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
                 value={String(filaEnc)}
                 onChange={(e) => {
                   const f = Number(e.target.value);
+                  // El tipo de reporte se ajusta al renglón elegido (un encabezado más abajo puede ser de otro layout).
+                  const t = sugerirTipo(archivo.filas[f] ?? []);
                   setFilaEnc(f);
-                  sugerir(archivo.filas, f, tipo);
+                  setTipo(t);
+                  sugerir(archivo.filas, f, t);
                 }}
               >
                 {archivo.filas.slice(0, 40).map((f, i) => (
@@ -372,7 +376,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
                 <ul className="m-0 max-h-40 list-disc overflow-auto pl-5 text-xs text-foreground">
                   {vista.errores.map((e, i) => (
                     <li key={`${e.renglon}-${e.campo}-${i}`}>
-                      Renglón {e.renglon}, {e.campo}: {e.motivo}
+                      Renglón {e.renglon + desplazamiento}, {e.campo}: {e.motivo}
                     </li>
                   ))}
                 </ul>
@@ -411,7 +415,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
               <ul className="m-0 max-h-32 list-disc overflow-auto pl-5 text-xs">
                 {resultado.errores.map((e, i) => (
                   <li key={`${e.renglon}-${i}`}>
-                    Renglón {e.renglon}, {e.campo}: {e.motivo}
+                    Renglón {e.renglon + desplazamiento}, {e.campo}: {e.motivo}
                   </li>
                 ))}
               </ul>

@@ -188,6 +188,39 @@ describe("parsers por tipo de valor (casos aceptados)", () => {
     expect(JSON.stringify(t.tabla)).not.toContain("A001");
   });
 
+  it("seguimientos de Opus: «Visa crédito» no es crédito a cliente, «Crédito y débito» es tarjeta y «Anulada» es cancelada", () => {
+    const fp = (v: string) => { const r = parsearCeldaSr("forma_pago", v); return r.ok ? r.valor : "RECHAZADO"; };
+    expect(fp("Visa crédito")).toBe("tarjeta_credito");
+    expect(fp("Mastercard débito")).toBe("tarjeta_debito");
+    expect(fp("Visa")).toBe("tarjeta");
+    expect(fp("Crédito y débito")).toBe("tarjeta");
+    expect(fp("Tarjeta crédito/débito")).toBe("tarjeta");
+    expect(fp("Crédito")).toBe("credito_cliente");
+    const c = parsearCeldaSr("cancelada", "Anulada");
+    expect(c.ok && c.valor).toBe("Sí");
+  });
+
+  it("folios con teléfono disfrazado (Tel9991112222, #9991112222, ABC 9991112222) piden confirmación; el folio de solo 10 dígitos sigue siendo válido", () => {
+    for (const v of ["Tel9991112222", "#9991112222", "ABC 9991112222"]) {
+      expect(parsearCeldaSr("folio", v), v).toMatchObject({ ok: false, confirmable: true });
+      expect(parsearCeldaSr("folio", v, { confirmarFolio: true }).ok, v).toBe(true);
+    }
+    expect(parsearCeldaSr("folio", "2026092101").ok).toBe(true);
+    expect(parsearCeldaSr("folio", "T2-0000123").ok).toBe(true);
+  });
+
+  it("encabezado más allá del renglón 15: se detecta, la tabla se recorta para que el servidor lo encuentre y los números de renglón se desplazan", () => {
+    const relleno: Filas = Array.from({ length: 19 }, (_, i) => [`Título ${i}`]);
+    const filas: Filas = [...relleno, ["Folio", "Fecha", "Total"], ["T2-1", "21/09/2026", "$10.00"], ["T2-2", "22/09/2026", "abc"]];
+    expect(detectarFilaEncabezado(filas)).toBe(19);
+    const t = construirTablaSr(filas, 19, "cuentas", { folio: 0, fecha: 1, total: 2 });
+    expect(t.desplazamiento).toBe(5);
+    const n = normalizarExportSr({ tabla: t.tabla, corte: "01:00", tipo: "cuentas" });
+    expect(n.ok && n.aceptados).toBe(1);
+    // El servidor cuenta desde la tabla recortada; sumando el desplazamiento se obtiene el renglón del archivo (22).
+    expect(t.errores[0]!.renglon).toBe(22);
+  });
+
   it("folios normales: alfanuméricos con guiones o diagonales, de 10 dígitos, con ceros", () => {
     for (const v of ["T2-00001", "A/123", "2026092101", "2026092102", "0000012345", "520000000001", "1234-567-890", "123456789"]) ok("folio", v, v);
     for (const v of ["5210000000001", "5500000000000004"]) expect(parsearCeldaSr("folio", v).ok, v).toBe(false); // 13 a 19 dígitos: tarjeta

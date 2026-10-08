@@ -192,6 +192,8 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     expect(d.textContent).not.toContain("9991112222");
     for (const o of d.querySelectorAll("select[id^=sr-mapeo-] option")) expect(o.textContent).not.toContain("Columna 4");
     // Forzar el teléfono (columna 4) como folio ya no es posible desde la interfaz; el mapeo sano lo deja fuera.
+    changeValue(selector(d, "sr-tipo"), "cuentas");
+    await esperarAcciones();
     changeValue(selector(d, "sr-mapeo-folio"), "0");
     changeValue(selector(d, "sr-mapeo-fecha"), "1");
     changeValue(selector(d, "sr-mapeo-total"), "2");
