@@ -34,6 +34,7 @@ import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tool
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
+import { estaAbiertoAhora } from "../horarios.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
@@ -274,11 +275,33 @@ export async function bloqueConocimientoDelTurno(repo: RestaurantesRepository, o
   }
 }
 
-export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null, conocimientoBloque = ""): string {
-  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch, conocimientoBloque)}\n\n${NOTA_DE_VOZ_RULES}`;
+export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null, conocimientoBloque = "", estadoSucursalAhora = ""): string {
+  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch, conocimientoBloque, estadoSucursalAhora)}\n\n${NOTA_DE_VOZ_RULES}`;
 }
 
-function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null, conocimientoBloque: string): string {
+/**
+ * QA-PM-R3-whatsapp-06: fuera de horario "por minutos" (01:10 con cierre a la 01:00; 11:57 con apertura a las 12:00) el agente aceptaba una recogida o daba tiempos sin decir que la
+ * sucursal esta cerrada ni cuando abre. El servidor calcula el estado con el horario de la sucursal del chat y lo pone en el prompt; el horario sigue viniendo SOLO de datos.
+ * Complemento no esencial: una lectura que falla (o una sucursal sin horario) devuelve "" y el prompt queda como antes.
+ */
+export async function estadoSucursalParaPrompt(repo: RestaurantesRepository, branch: Branch | null, ahora: Date): Promise<string> {
+  if (!branch) return "";
+  try {
+    return await repo.runWithRowSavepoint(async () => {
+      const policy = await repo.findBranchPolicy(branch.propertyId);
+      if (!policy.horario || policy.horario.length === 0) return "";
+      const zona = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
+      const estado = estaAbiertoAhora(policy.horario, ahora, zona);
+      if (estado.abierto) return `${branch.name} está ABIERTA${estado.cierraA ? ` y cierra a las ${estado.cierraA}` : ""}. Un pedido para recoger cuya hora caiga después del cierre no se puede tomar.`;
+      const abre = estado.proximaApertura ? `; abre ${estado.proximaApertura.hoy ? "hoy" : `el ${estado.proximaApertura.dia}`} a las ${estado.proximaApertura.hora}` : "";
+      return `${branch.name} está CERRADA ahora${abre}. Diga en su primer mensaje que está cerrada y cuándo abre; NO tome el pedido ni acepte una hora de recogida o de entrega mientras esté cerrada (H16); si insiste, escale (otro).`;
+    });
+  } catch {
+    return "";
+  }
+}
+
+function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null, conocimientoBloque: string, estadoSucursalAhora: string): string {
   if (config.perfil === "taqueria_pm") {
     const { fechaHora, dia } = fechaHoraLocal(config.timezone, now);
     return buildPmSystemPrompt({
@@ -291,6 +314,7 @@ function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonl
       customer,
       fechaHoraLocal: fechaHora,
       diaSemana: dia,
+      ...(estadoSucursalAhora ? { estadoSucursalAhora } : {}),
       saludoPersonalizado: config.greetingText ?? null,
       salsasTexto: config.salsasText ?? null,
       promosTexto: config.promosText ?? null,
@@ -546,7 +570,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Conocimiento del negocio (053): politicas, FAQ y avisos vigentes HOY segun la fecha local de la sucursal, antes de las reglas duras.
       // Base sin migrar o sin entradas = bloque vacio (el prompt es identico al de antes); la lectura corre en SAVEPOINT dentro del repositorio.
       const conocimientoBloque = await bloqueConocimientoDelTurno(repo, organizationId, activeEntryBranch?.propertyId ?? entryPropertyId ?? null, config.timezone, now());
-      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch, conocimientoBloque);
+      const estadoSucursal = config.perfil === "taqueria_pm" ? await estadoSucursalParaPrompt(repo, activeEntryBranch, now()) : "";
+      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch, conocimientoBloque, estadoSucursal);
 
       const working: LlmMessage[] = toLlmHistory(messages);
       // Marcador del turno del cliente: el historial solo crece, asi que el numero de mensajes de
