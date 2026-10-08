@@ -784,6 +784,15 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
   if ((name === "cotizar_pedido" || name === "crear_pedido") && entrada.hora_recogida !== undefined && entrada.hora_recogida !== null && typeof entrada.hora_recogida !== "string") {
     throw new OrderValidationError("hora_recogida debe ser texto en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00), no un número. Si el cliente dio un plazo (\"en 40 minutos\"), mande minutos_para_recoger.");
   }
+  // QA-PM-R5-reglas-02 (revision): en RECOGER son la misma hora; si el modelo manda las dos y NO coinciden, el pedido guardaria dos horas contradictorias. Se rechaza con
+  // un mensaje accionable (las iguales y las que vienen de una sola fuente pasan como antes).
+  if ((name === "cotizar_pedido" || name === "crear_pedido") && entrada.canal === "recoger") {
+    const programado = toProgramadoPara(entrada.programado_para);
+    const hora = toHoraRecogida(entrada.hora_recogida);
+    if (programado !== undefined && hora !== undefined && new Date(programado).toISOString().slice(0, 16) !== hora) {
+      throw new OrderValidationError("programado_para y hora_recogida son DISTINTAS: en recoger son la misma hora. Mande solo la hora que dijo el cliente (programado_para) o la misma en las dos, tanto en cotizar_pedido como en crear_pedido.");
+    }
+  }
   const input = await conHoraDeRecogidaRelativa(repo, ctx, name, entrada);
   if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);

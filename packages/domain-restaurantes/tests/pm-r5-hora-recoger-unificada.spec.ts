@@ -66,3 +66,26 @@ describe.each(["whatsapp", "voz"] as const)("%s: programado_para y hora_recogida
     await expect(s.create(crear)).rejects.toMatchObject({ code: "pedido_distinto_al_cotizado", message: expect.stringMatching(/hora de recogida/) });
   });
 });
+
+describe.each(["whatsapp", "voz"] as const)("%s: programado_para y hora_recogida contradictorias en recoger se rechazan (no guardan dos horas)", (channel) => {
+  it.each([
+    ["cotizar con dos horas distintas", "cotizar_pedido"],
+    ["crear con dos horas distintas", "crear_pedido"],
+  ])("%s", async (_n, herramienta) => {
+    const s = setup(channel);
+    const llamar = herramienta === "cotizar_pedido" ? s.quote : s.create;
+    await expect(llamar({ programado_para: X, hora_recogida: OTRA })).rejects.toThrow(/DISTINTAS/);
+  });
+  it("crear con dos horas distintas tras una cotizacion valida tampoco crea el pedido", async () => {
+    const s = setup(channel);
+    await s.quote({ programado_para: X });
+    await s.confirm();
+    await expect(s.create({ programado_para: X, hora_recogida: OTRA })).rejects.toThrow(/DISTINTAS/);
+  });
+  it("negativo: la misma hora en las dos (aunque con otro offset) o un solo campo siguen creando", async () => {
+    const s = setup(channel);
+    await s.quote({ programado_para: X, hora_recogida: "2026-10-06T21:00:00Z" });
+    await s.confirm();
+    expect((await s.create({ programado_para: X, hora_recogida: X })).orderId).not.toBeNull();
+  });
+});
