@@ -1,7 +1,7 @@
 // R-02 -- asignacion de sucursal por cercania en km (Haversine) con zonas conocidas como ajuste.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { assignBranch, RADIO_MAXIMO_REPARTO_KM, rankBranchesByKm } from "../src/branch-assignment.ts";
+import { assignBranch, RADIO_REPARTO_POR_OMISION_KM, rankBranchesByKm } from "../src/branch-assignment.ts";
 import { InMemoryRestaurantesRepository } from "../src/in-memory-repository.ts";
 import { OrderValidationError } from "../src/errors.ts";
 import type { Branch } from "../src/types.ts";
@@ -95,7 +95,7 @@ describe("assignBranch -- coordenadas", () => {
     for (const maxKm of [undefined, 500, 100]) {
       const r = await assignBranch(repo, { organizationId, ...progreso, ...(maxKm === undefined ? {} : { maxKm }) });
       expect(r.estado).toBe("fuera_de_zona");
-      if (r.estado === "fuera_de_zona") expect(r.maxKm).toBe(RADIO_MAXIMO_REPARTO_KM);
+      if (r.estado === "fuera_de_zona") expect(r.maxKm).toBe(RADIO_REPARTO_POR_OMISION_KM);
     }
   });
 
@@ -163,7 +163,7 @@ describe("assignBranch -- zonas conocidas", () => {
     expect(r).toMatchObject({ branchSlug: "prol-montejo", ajustePorZona: true });
   });
 
-  it("si la sucursal que cubre la zona no tiene coordenadas, cae a km puros (no se queda sin sucursal)", async () => {
+  it("si la sucursal que cubre la zona no tiene coordenadas, la cobertura del dueño MANDA (import-orig-01: override sobre la geometria; Mulsay -> Pensiones)", async () => {
     const { repo, organizationId } = seed();
     const sinCoords = randomUUID();
     repo.seedBranch({ propertyId: sinCoords, organizationId, name: "Pensiones", slug: "pensiones", status: "active", phone: null, address: null, lat: null, lng: null });
@@ -171,8 +171,8 @@ describe("assignBranch -- zonas conocidas", () => {
     const zone = (await repo.listKnownZones(organizationId))[0]!;
     repo.seedBranchDeliveryZones(sinCoords, [zone.id]);
     const r = await assignBranch(repo, { organizationId, colonia: "San Damián" });
-    expect(r.estado).toBe("asignada");
-    if (r.estado === "asignada") expect(r.branchSlug).not.toBe("pensiones");
+    // Antes (R-02) caia a km puros y asignaba otra sucursal; ahora la cobertura explicita del dueño gana aunque no se pueda medir (sin distancia inventada).
+    expect(r).toMatchObject({ estado: "asignada", branchSlug: "pensiones", distanceKm: null, origen: "cobertura_dueno" });
   });
 
   it("coordenadas + colonia: las coordenadas fijan el punto, la zona solo ajusta", async () => {
@@ -220,15 +220,16 @@ describe("colonia reconocida SIN coordenadas (migracion 056, colonias del piloto
     expect(await assignBranch(repo, { organizationId, colonia: "temozon norte" })).toMatchObject({ estado: "asignada", branchSlug: "garcia-lavin", distanceKm: null, via: "zona", recognizedZoneName: "Temozón Norte" });
   });
 
-  it("colonia sin ninguna sucursal que la cubra (ambigua): no se adivina, no_reconocida", async () => {
+  // import-orig-01 (hallazgos c y f): ya NO es `no_reconocida` -- la colonia SI esta cargada; el detalle de cada caso vive en tests/sucursal-mas-cercana-8km.spec.ts.
+  it("colonia sin ninguna sucursal que la cubra ni referencia: no se adivina; es `sugerida` por confirmar (antes no_reconocida)", async () => {
     const { repo, organizationId } = await mundoColonias();
-    expect(await assignBranch(repo, { organizationId, colonia: "Alcalá Martín" })).toMatchObject({ estado: "no_reconocida" });
+    expect(await assignBranch(repo, { organizationId, colonia: "Alcalá Martín" })).toMatchObject({ estado: "sugerida", reparto: "por_confirmar", sugerida: null });
   });
 
-  it("cubierta por dos sucursales: no se elige por orden de listado", async () => {
+  it("cubierta por dos sucursales sin referencia: orden ESTABLE por slug, no por orden de listado ni no_reconocida (antes devolvia no_reconocida)", async () => {
     const { repo, organizationId, t1, temozon } = await mundoColonias();
     repo.seedBranchDeliveryZones(t1, [temozon]);
-    expect(await assignBranch(repo, { organizationId, colonia: "Temozón Norte" })).toMatchObject({ estado: "no_reconocida" });
+    expect(await assignBranch(repo, { organizationId, colonia: "Temozón Norte" })).toMatchObject({ estado: "asignada", branchSlug: "garcia-lavin", dobleCobertura: true });
   });
 
   it("con pin: el punto es el pin (via coordenadas) y la cobertura de la colonia sigue ganando sobre la geometria pura", async () => {

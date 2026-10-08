@@ -10,6 +10,7 @@ import { aperturaConExcepciones, componentesLocales, etiquetaHoraLocal, fechaAnt
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { normalizeZoneText } from "./nearest-branch.ts";
+import { opcionesDeReferencia, referenciaDeColonia, SUCURSALES_QUE_NO_REPARTEN_PM, sucursalesDeDespacho } from "./sugerencia-despacho.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import { evaluarDomicilioSucursal, mensajeDomicilioNoDisponible } from "./domicilio-sucursal.ts";
 import type { Branch, BranchPolicy, CanalPedido, KnownZone, PropinaPolitica } from "./types.ts";
@@ -188,8 +189,13 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
         // Colonia conocida que NINGUNA sucursal cubre todavia (ambigua entre dos sucursales o sin asignar): no es "fuera de zona", es una zona
         // por confirmar. No se rechaza como si el cliente estuviera lejos: se ofrece recoger o se pasa a una persona.
         if (!(await algunaSucursalCubre(repo, branch.organizationId, match.id))) {
+          // Nombra la sucursal de despacho mas cercana segun la referencia del piloto (aproximada) para que el cliente pueda recoger ahi; nunca promete el envio.
+          // Sin km: la referencia del piloto de una colonia sin cobertura puede estar equivocada.
+          const esPm = (await repo.findWhatsAppAgentConfig(branch.organizationId, null))?.perfil === "taqueria_pm";
+          const cercana = opcionesDeReferencia(await referenciaDeColonia(repo, branch.organizationId, match.id), await sucursalesDeDespacho(repo, branch.organizationId, esPm ? SUCURSALES_QUE_NO_REPARTEN_PM : []))[0];
+          const recogerEn = cercana ? ` Para recoger, una sucursal cercana es ${cercana.nombre}.` : "";
           throw new OrderValidationError(
-            `${match.name} está fuera de la zona de reparto de ${branch.name}: todavía no tiene una sucursal de reparto asignada, así que no puedo confirmar el domicilio a esa colonia. ` +
+            `${match.name} está fuera de la zona de reparto de ${branch.name}: todavía no tiene una sucursal de reparto asignada, así que no puedo confirmar el domicilio a esa colonia.${recogerEn} ` +
               `Ofrezca recoger en sucursal o pase el pedido con una persona del negocio para que confirme la zona.`,
           );
         }

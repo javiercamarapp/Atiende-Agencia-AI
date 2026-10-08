@@ -38,6 +38,9 @@ export interface OrderFlowContext {
   readonly quotedPrices?: string;
   /** Hora de recogida (ISO UTC al minuto) con la que se cotizo, si la llevaba: `crear_pedido` con otra hora distinta ya no coincide con la huella. */
   readonly horaRecogida?: string;
+  /** Plazo en minutos (`minutos_para_recoger`) con el que el SERVIDOR calculo `horaRecogida`: una re-cotizacion identica con el mismo plazo conserva esa hora (no es una cotizacion nueva
+   * por haber pasado un minuto) y un `crear_pedido` con OTRO plazo obliga a re-cotizar. Ausente si la hora la mando el modelo explicita. */
+  readonly minutosPlazo?: number;
   /** Total a pagar de la cotizacion vigente y cifras legitimas que el cliente vio (precios, importes, subtotal, descuento).
    * Lo lee el agente de WhatsApp en el turno SIGUIENTE para que su guardia de cifras siga corrigiendo un total alucinado
    * aunque ese turno no llame ninguna herramienta. Ausente en filas guardadas antes de este campo (guardia entonces solo en el turno que cotiza). */
@@ -161,7 +164,7 @@ function tokensDeNombre(name: string | undefined): Set<string> {
  * Empareja cada renglon que escribio el modelo con un renglon resuelto (por id; si no, por nombre; si no, el unico que sobra). Devuelve, por posicion de `items`,
  * el indice del renglon resuelto o `null` si no se pudo emparejar sin ambiguedad. Cada renglon resuelto se usa a lo mas una vez.
  */
-function emparejar(items: readonly RequestedOrderItemInput[], candidatos: readonly { readonly id: string; readonly name: string }[]): (number | null)[] {
+function emparejar(items: readonly RequestedOrderItemInput[], candidatos: readonly { readonly id: string; readonly name: string }[], idsDeOtroProducto: ReadonlySet<string> = new Set()): (number | null)[] {
   const usados = new Set<number>();
   const res: (number | null)[] = items.map(() => null);
   items.forEach((it, i) => {
@@ -172,8 +175,11 @@ function emparejar(items: readonly RequestedOrderItemInput[], candidatos: readon
       res[i] = j;
     }
   });
+  // Un `product_id` que es de OTRO producto real del catalogo (el cliente cambio de producto y el modelo no re-cotizo) NUNCA se empareja por nombre aproximado ni por "el unico que sobra":
+  // se deja sin par para que la huella no coincida y se exija re-cotizar. Solo un id vacio o inexistente cae al nombre.
+  const esDeOtro = (it: RequestedOrderItemInput) => Boolean(it.productId) && idsDeOtroProducto.has(it.productId as string);
   items.forEach((it, i) => {
-    if (res[i] !== null) return;
+    if (res[i] !== null || esDeOtro(it)) return;
     const mios = tokensDeNombre(it.productName);
     if (mios.size === 0) return;
     let mejor = -1;
@@ -198,6 +204,7 @@ function emparejar(items: readonly RequestedOrderItemInput[], candidatos: readon
     }
   });
   const sinPar = res.map((r, i) => (r === null ? i : -1)).filter((i) => i >= 0);
+  if (sinPar.some((i) => esDeOtro(items[i]!))) return res;
   const libres = candidatos.map((_, k) => k).filter((k) => !usados.has(k));
   if (sinPar.length === 1 && libres.length === 1) res[sinPar[0]!] = libres[0]!;
   return res;
@@ -229,8 +236,8 @@ export function resolverRenglonesCotizados(
  * producto cotizado aunque el modelo mande `product_id` vacio o un nombre aproximado. `null` si algun renglon no se puede emparejar sin ambiguedad: el caller
  * conserva lo que mando el modelo (la huella no coincidira, como antes).
  */
-export function reconciliarConCotizacion(items: readonly RequestedOrderItemInput[], quoted: readonly QuotedItem[]): RequestedOrderItemInput[] | null {
-  const par = emparejar(items, quoted);
+export function reconciliarConCotizacion(items: readonly RequestedOrderItemInput[], quoted: readonly QuotedItem[], idsDeOtroProducto: ReadonlySet<string> = new Set()): RequestedOrderItemInput[] | null {
+  const par = emparejar(items, quoted, idsDeOtroProducto);
   if (par.some((j) => j === null)) return null;
   return items.map((it, i) => {
     const q = quoted[par[i]!]!;
@@ -379,4 +386,22 @@ export function bloqueCotizacionVigente(snap: OrderFlowSnapshot | null, ahoraMs:
       ? "- Ya está CONFIRMADA: si falta crear el pedido, llame crear_pedido con estos mismos datos."
       : "- Si el ÚLTIMO mensaje del cliente es un sí claro a ese resumen y no cambió nada, llame confirmar_resumen y enseguida crear_pedido con estos mismos datos, SIN buscar de nuevo ni cotizar otra vez. Si cambió algo (producto, cantidad, tortilla, canal, dirección, pago), vuelva a cotizar normalmente.",
   ].join("\n");
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Los `product_id` que mando el modelo, distintos de los cotizados, que SI existen en el catalogo de la organizacion (son OTRO producto, no un error de tecleo). */
+export async function idsDeOtrosProductosReales(
+  items: readonly RequestedOrderItemInput[],
+  quoted: readonly QuotedItem[],
+  existe: (productId: string) => Promise<boolean>,
+): Promise<Set<string>> {
+  const cotizados = new Set(quoted.map((q) => q.id));
+  const out = new Set<string>();
+  for (const it of items) {
+    const id = it.productId;
+    if (!id || cotizados.has(id) || out.has(id) || !UUID_RE.test(id)) continue;
+    if (await existe(id)) out.add(id);
+  }
+  return out;
 }

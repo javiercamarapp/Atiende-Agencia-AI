@@ -24,7 +24,10 @@ import { normalizePhone } from "../phone.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
-import { assignBranch, RADIO_MAXIMO_REPARTO_KM } from "../branch-assignment.ts";
+import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
+import { COORDENADAS_PROPUESTAS_PM, coordenadasPropuestasActivas } from "../coordenadas-sucursales.ts";
+import { kmAproxTexto } from "../nearest-branch.ts";
+import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
 import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
@@ -42,6 +45,7 @@ import {
   itemsDeHuella,
   MISMO_PEDIDO_VENTANA_MS,
   priceSignature,
+  idsDeOtrosProductosReales,
   reconciliarConCotizacion,
   resolverRenglonesCotizados,
   OrderFlowViolationError,
@@ -152,6 +156,9 @@ export interface AgentToolContext {
   /** Autopiloto: con el, un pedido grande de WhatsApp/voz se CREA y queda `por_aprobar` (la sucursal lo aprueba con un clic). Sin el (o con la base sin la
    * migracion 050) `crear_pedido` sigue por el aviso `escalada:pedido_grande` de siempre. Solo lo fija el servidor. */
   readonly pedidoGrande?: PedidoGrandeHook;
+  /** Mide `buscar_sucursal_cercana` contra los pines propuestos de Google (`COORDENADAS_PROPUESTAS_PM`) en lugar de las coordenadas vigentes. Ausente = la bandera
+   * `RESTAURANTES_USAR_COORDENADAS_PROPUESTAS`, APAGADA por omision (decision de Javier). Solo lo fija el servidor. */
+  readonly usarCoordenadasPropuestas?: boolean;
 }
 
 export interface AgentToolOutcome {
@@ -277,7 +284,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "buscar_sucursal_cercana",
     description:
-      "Asigna la sucursal real MÁS CERCANA EN KM al domicilio del cliente (distancia real; no adivines tú cuál está más cerca). Pásale la colonia/zona/referencia que dio el cliente y, si compartió su ubicación, lat y lng. Si responde fuera_de_zona no se envía a domicilio: ofrece recoger en sucursal. Llámala en cuanto tengas la colonia o una referencia clara.",
+      "Asigna la sucursal de DESPACHO real MÁS CERCANA EN KM al domicilio del cliente (distancia real; no adivines tú cuál está más cerca) y solo si está dentro del radio de reparto. Pásale la colonia/zona/referencia que dio el cliente y, si compartió su ubicación, lat y lng. Si responde asignada, dile al cliente cuál sucursal le atiende y a cuántos km aproximadamente (sin decimales). Si responde fuera_de_zona, di con claridad que queda fuera de la zona habitual de reparto y nombra la sucursal más cercana; nunca prometas el envío (solo el dueño autoriza excepciones): ofrece recoger. Si responde sugerida, la colonia SÍ existe pero no está ubicada con certeza: pide UNA vez la ubicación y, si no la manda, ofrece recoger o pasa con una persona; nunca digas que no reconoces la colonia. Llámala en cuanto tengas la colonia o una referencia clara.",
     parameters: {
       type: "object",
       properties: {
@@ -293,7 +300,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "buscar_producto",
     description:
-      "Busca productos del menú real de la sucursal por nombre, sinónimo o palabra clave. Devuelve id, nombre, precio real de esa sucursal, pack_size y requires_adult_confirmation. Lista vacía significa que ese producto no existe en el menú. Si ningún resultado coincide exactamente con lo que pidió el cliente (o hay varios parecidos), no elijas ni sustituyas por él: pregúntale cuál prefiere entre 2 o 3 opciones de la lista.",
+      "Busca productos del menú real de la sucursal por nombre, sinónimo o palabra clave. Devuelve id, nombre, precio real de esa sucursal, pack_size y requires_adult_confirmation. Lista vacía significa que ese producto no existe en el menú. Si ningún resultado coincide exactamente con lo que pidió el cliente (o hay varios parecidos), no elijas ni sustituyas por él: pregúntale cuál prefiere entre 2 o 3 opciones de la lista. Si algún resultado trae ambiguo: true, la búsqueda NO pudo fijar un único producto (por ejemplo «media orden» de algo que también se vende por kilo, o un peso que no existe): NO elijas por el cliente, pregúntale cuál presentación quiere antes de cotizar.",
     parameters: {
       type: "object",
       properties: {
@@ -736,12 +743,16 @@ async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: Agen
   // Al crear, la hora de recogida COTIZADA gana: no cambia por el paso del tiempo entre cotizar y crear y, si el modelo la omite (o manda ""), el pedido igual la lleva.
   // `horaRecogida` del contexto es la hora normalizada al minuto ("2026-10-06T19:40"): solo se reutiliza si es una fecha valida.
   if (name === "crear_pedido" && ctx.flow) {
-    const cotizada = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context?.horaRecogida;
-    if (cotizada && !Number.isNaN(Date.parse(`${cotizada}:00.000Z`))) return { ...resto, hora_recogida: `${cotizada}:00.000Z` };
+    const contexto = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context;
+    const cotizada = contexto?.horaRecogida;
+    // Si el cliente CAMBIO el plazo despues de cotizar ("mejor en 60") y el modelo crea sin re-cotizar, la hora nueva rompe la huella y se exige re-cotizar (como con una hora distinta).
+    const plazoCambio = plazoValido && contexto?.minutosPlazo !== undefined && contexto.minutosPlazo !== Math.round(minutos);
+    if (!plazoCambio && cotizada && !Number.isNaN(Date.parse(`${cotizada}:00.000Z`))) return { ...resto, hora_recogida: `${cotizada}:00.000Z` };
   }
   if (!plazoValido) return input;
   const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
-  return { ...resto, hora_recogida: new Date(ahora + Math.round(minutos) * 60_000).toISOString() };
+  // En cotizar se marca el plazo (campo interno, no lo manda el modelo) para que `runWithOrderFlow` reconozca una re-cotizacion identica con el mismo plazo.
+  return { ...resto, hora_recogida: new Date(ahora + Math.round(minutos) * 60_000).toISOString(), ...(name === "cotizar_pedido" ? { plazo_minutos_servidor: Math.round(minutos) } : {}) };
 }
 
 function flowNow(flow: OrderFlowRef): number {
@@ -782,6 +793,9 @@ const SIN_CORTESIAS_AVISO =
 const YA_REGISTRADO_AVISO =
   "Este pedido YA QUEDÓ REGISTRADO hace un momento: no es uno nuevo. No lo cotice de nuevo ni llame confirmar_resumen ni crear_pedido. Dígale al cliente, de usted y sin dudar, que su pedido ya está registrado (con el total y la hora que ya le dio). Solo si el cliente pide EXPRESAMENTE otro pedido igual, vuelva a llamar cotizar_pedido con otro_pedido: true.";
 
+const PEDIDO_RETENIDO_AVISO =
+  "Este pedido NO está registrado todavía: quedó pendiente de que la sucursal lo confirme (ya se le avisó y la sucursal contactará al cliente). Dígaselo así, de usted; NO diga que ya quedó registrado ni confirmado, no prometa hora, no lo cotice de nuevo ni llame confirmar_resumen ni crear_pedido.";
+
 /** Aplica la maquina de estados alrededor de cotizar/confirmar/crear. Base sin migrar => camino anterior. */
 async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolContext, flow: OrderFlowRef, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   const lenient = ctx.channel === "whatsapp";
@@ -802,15 +816,19 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     // "maiz" en el siguiente, o el nombre en vez del id, ya no convierte en "nueva" una cotizacion que el cliente acaba de ver y de aceptar.
     const itemsCotizados = toRequestedItems(input.items, lenient);
     const quotedItems = resolverRenglonesCotizados(itemsCotizados, quotedQuote.lines);
-    const quoteHash = fingerprintOrder({
-      branchSlug: String(input.branch_slug ?? ""),
-      canal: canalOf(input.canal),
-      adultConfirmed: input.adult_confirmed === true,
-      items: quotedItems ? itemsDeHuella(quotedItems) : itemsCotizados,
-      doubleSalsas: toDoubleSalsas(input.doble_salsas),
-      programadoPara: toProgramadoPara(input.programado_para),
-      horaRecogida: toHoraRecogida(input.hora_recogida),
-    });
+    const huellaCotizacion = (hora: string | undefined): string =>
+      fingerprintOrder({
+        branchSlug: String(input.branch_slug ?? ""),
+        canal: canalOf(input.canal),
+        adultConfirmed: input.adult_confirmed === true,
+        items: quotedItems ? itemsDeHuella(quotedItems) : itemsCotizados,
+        doubleSalsas: toDoubleSalsas(input.doble_salsas),
+        programadoPara: toProgramadoPara(input.programado_para),
+        horaRecogida: hora,
+      });
+    const plazoServidor = typeof input.plazo_minutos_servidor === "number" ? input.plazo_minutos_servidor : undefined;
+    let horaCotizacion = toHoraRecogida(input.hora_recogida);
+    let quoteHash = huellaCotizacion(horaCotizacion);
     const cartHash = quotedItems ? huellaDeCarrito(String(input.branch_slug ?? ""), canalOf(input.canal), quotedItems) : undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
@@ -826,16 +844,37 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         input.otro_pedido !== true &&
         flowNow(flow) - (creadoPrevio.claimedAtMs ?? creadoPrevio.quotedAtMs) <= MISMO_PEDIDO_VENTANA_MS
       ) {
-        return {
-          ...outcome,
-          result: { ...(outcome.result as object), ya_registrado: true, ...(creadoPrevio.orderId ? { pedido_id: creadoPrevio.orderId } : {}), aviso: YA_REGISTRADO_AVISO },
-        };
+        // "Ya quedo registrado" solo se dice de un pedido que EXISTE y sigue ACTIVO. Un pedido grande retenido (estado creado SIN orderId, o `por_aprobar`) esta pendiente de que la
+        // sucursal lo confirme; uno cancelado / no recogido ya no cuenta y una cotizacion del mismo carrito es normal.
+        const existente = creadoPrevio.orderId ? await repo.findOrderById(ctx.organizationId, creadoPrevio.orderId) : null;
+        if (!creadoPrevio.orderId || existente?.status === "por_aprobar") {
+          return { ...outcome, result: { ...(outcome.result as object), pedido_retenido: true, aviso: PEDIDO_RETENIDO_AVISO } };
+        }
+        if (existente && existente.status !== "cancelado" && existente.status !== "no_recogido") {
+          return {
+            ...outcome,
+            result: { ...(outcome.result as object), ya_registrado: true, pedido_id: creadoPrevio.orderId, aviso: YA_REGISTRADO_AVISO },
+          };
+        }
       }
       // QA-PM-R2-whatsapp-01 (P0): el modelo vuelve a cotizar el MISMO carrito en el turno del "si" (para "refrescar" el resumen). Reescribir
       // `quotedTurn` con el turno actual hacia que confirmar_resumen rechazara `confirmacion_mismo_turno` y ningun pedido cerraba (0/36).
       // Una re-cotizacion identica (mismos renglones, mismos precios, mismo total) y todavia vigente CONSERVA la cotizacion y su turno: el
       // cliente ya vio ese resumen. Si algo cambio (carrito, precio, total, hora), si es una cotizacion nueva y el cliente debe volver a aceptar.
       const previo = snap.context;
+      // `minutos_para_recoger`: la hora la calcula el servidor con SU reloj en cada llamada, asi que re-cotizar el mismo carrito un minuto despues daba otra hora, otra huella y una
+      // "cotizacion nueva" (el bucle de cierre de R2/A45 volvia, tambien con el boton de confirmar). Si el carrito es el mismo y el plazo es el mismo, se conserva la hora cotizada.
+      if (
+        plazoServidor !== undefined &&
+        previo?.horaRecogida &&
+        previo.minutosPlazo === plazoServidor &&
+        (snap.state === "cotizado" || snap.state === "confirmado") &&
+        flowNow(flow) - previo.quotedAtMs <= QUOTE_TTL_MS &&
+        huellaCotizacion(previo.horaRecogida) === previo.quoteHash
+      ) {
+        horaCotizacion = previo.horaRecogida;
+        quoteHash = previo.quoteHash;
+      }
       if (
         previo &&
         (snap.state === "cotizado" || snap.state === "confirmado") &&
@@ -856,7 +895,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         quotedTurn: flow.turn,
         quotedPrices,
         ...(quotedItems ? { quotedItems, quotedBranchSlug: String(input.branch_slug ?? ""), quotedCanal: canalOf(input.canal), ...(cartHash ? { cartHash } : {}) } : {}),
-        ...(toHoraRecogida(input.hora_recogida) ? { horaRecogida: toHoraRecogida(input.hora_recogida) } : {}),
+        ...(horaCotizacion ? { horaRecogida: horaCotizacion } : {}),
+        ...(horaCotizacion && plazoServidor !== undefined ? { minutosPlazo: plazoServidor } : {}),
         quotedTotal: quotedQuote.total,
         quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
         ...(snap.context?.sessionTotal ? { sessionTotal: snap.context.sessionTotal, sessionPesoKg: snap.context.sessionPesoKg ?? 0, sessionPedidos: snap.context.sessionPedidos ?? 0, ...(snap.context.sessionUltimoPedidoId ? { sessionUltimoPedidoId: snap.context.sessionUltimoPedidoId } : {}) } : {}),
@@ -888,13 +928,15 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
 
   // crear_pedido: reclamo atomico (confirmado -> creando) ANTES de crear, para que dos llamadas
   // concurrentes no creen dos pedidos.
-  const huellaConHora = (horaRecogida: string | undefined, cotizados?: readonly QuotedItem[]): string =>
+  const ajenosAlCotizar = async (cotizados: readonly QuotedItem[] | undefined): Promise<Set<string>> =>
+    cotizados ? idsDeOtrosProductosReales(toRequestedItems(input.items, lenient), cotizados, async (id) => (await repo.findProduct(ctx.organizationId, id)) !== null) : new Set<string>();
+  const huellaConHora = (horaRecogida: string | undefined, cotizados?: readonly QuotedItem[], ajenos?: ReadonlySet<string>): string =>
     fingerprintOrder({
       branchSlug: String(input.branch_slug ?? ""),
       canal: canalOf(input.canal),
       adultConfirmed: input.adult_confirmed === true,
       // Con renglones cotizados guardados, el modelo no tiene que repetir ids ni la tortilla de una bebida: se reconcilia contra la cotizacion (QA-PM-R3-whatsapp-07).
-      items: (cotizados ? reconciliarConCotizacion(toRequestedItems(input.items, lenient), cotizados) : null) ?? toRequestedItems(input.items, lenient),
+      items: (cotizados ? reconciliarConCotizacion(toRequestedItems(input.items, lenient), cotizados, ajenos) : null) ?? toRequestedItems(input.items, lenient),
       doubleSalsas: toDoubleSalsas(input.doble_salsas),
       programadoPara: toProgramadoPara(input.programado_para),
       horaRecogida,
@@ -907,7 +949,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     // si crear la omite se entiende la cotizada. Una hora DISTINTA a la cotizada obliga a re-cotizar.
     const horaCotizada = snap.context?.horaRecogida;
     const cotizados = snap.context?.quotedItems && snap.context.quotedItems.length > 0 ? snap.context.quotedItems : undefined;
-    const fingerprint = huellaConHora(horaCotizada ? (toHoraRecogida(input.hora_recogida) ?? horaCotizada) : undefined, cotizados);
+    const fingerprint = huellaConHora(horaCotizada ? (toHoraRecogida(input.hora_recogida) ?? horaCotizada) : undefined, cotizados, await ajenosAlCotizar(cotizados));
     // Voz: un reintento del MISMO pedido ya creado (el worker corto la espera y el servidor si lo registro) devuelve el pedido
     // existente con su id, para que la llamada cuente el objetivo y el agente no le diga al cliente que fallo.
     if (ctx.channel === "voz" && snap.state === "creado" && snap.context?.orderId && snap.context.quoteHash === fingerprint) {
@@ -924,7 +966,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
 
   try {
     // El pedido se crea con los renglones COTIZADOS (id y nombre del catalogo): si el modelo mando `product_id` vacio o un nombre aproximado, no se rechaza ni se reintenta (QA-PM-R3-whatsapp-07).
-    const conciliados = claimed.context.quotedItems?.length ? reconciliarConCotizacion(toRequestedItems(input.items, lenient), claimed.context.quotedItems) : null;
+    const conciliados = claimed.context.quotedItems?.length ? reconciliarConCotizacion(toRequestedItems(input.items, lenient), claimed.context.quotedItems, await ajenosAlCotizar(claimed.context.quotedItems)) : null;
     const inputConciliado: Record<string, unknown> = conciliados
       ? { ...input, items: conciliados.map((i) => ({ product_id: i.productId, product_name: i.productName, requested_quantity: i.requestedQuantity, ...(i.tortilla ? { tortilla: i.tortilla } : {}) })) }
       : input;
@@ -1096,11 +1138,16 @@ async function dispatchTool(
         lat = ctx.sharedLocation.lat;
         lng = ctx.sharedLocation.lng;
       }
-      // El tope duro de 20 km es del perfil `taqueria_pm` (QA-PM-R2-whatsapp-08); otro perfil, o una base sin la config del agente, no lo hereda.
-      const perfilAgente = (await repo.findWhatsAppAgentConfig(organizationId, null))?.perfil ?? "generico";
+      // El radio de reparto lo fija el SERVIDOR (QA-PM-R2-whatsapp-08): 8 km en el perfil `taqueria_pm`, sin tope duro en los demas, o el que la organizacion configure; el modelo solo puede bajarlo.
+      const configAgente = await repo.findWhatsAppAgentConfig(organizationId, null);
+      const perfilAgente = configAgente?.perfil ?? "generico";
+      // Pines de Google de las sucursales (opt-in, APAGADO por omision: activarlo es decision de Javier; ver coordenadas-sucursales.ts).
+      const usarPropuestas = ctx.usarCoordenadasPropuestas ?? coordenadasPropuestasActivas();
       const match = await assignBranch(repo, {
         organizationId,
-        radioMaximoKm: perfilAgente === "taqueria_pm" ? RADIO_MAXIMO_REPARTO_KM : null,
+        radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
+        ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
+        ...(perfilAgente === "taqueria_pm" ? { sucursalesQueNoReparten: SUCURSALES_QUE_NO_REPARTEN_PM } : {}),
         colonia: typeof input.colonia === "string" ? input.colonia : undefined,
         ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
         ...(typeof input.max_km === "number" && Number.isFinite(input.max_km) && input.max_km > 0 ? { maxKm: input.max_km } : {}),
@@ -1113,13 +1160,49 @@ async function dispatchTool(
               branch_slug: match.branchSlug,
               branch_name: match.branchName,
               distancia_km: match.distanceKm,
+              ...(match.distanceKm === null && match.kmReferencia !== null ? { distancia_aprox_km: match.kmReferencia } : {}),
+              distancia_texto: match.distanceKm !== null ? kmAproxTexto(match.distanceKm) : match.kmReferencia !== null ? kmAproxTexto(match.kmReferencia) : null,
               colonia_reconocida: match.recognizedZoneName,
               via: match.via,
+              origen_asignacion: match.origen,
               ajuste_por_zona: match.ajustePorZona,
+              doble_cobertura: match.dobleCobertura,
+              ...(match.aproximada ? { medicion_aproximada: true } : {}),
+              ...(match.alternativa ? { alternativa: { branch_slug: match.alternativa.slug, branch_name: match.alternativa.nombre, distancia_texto: match.alternativa.kmAprox === null ? null : kmAproxTexto(match.alternativa.kmAprox) } } : {}),
+              mensaje: match.message,
             }
           : match.estado === "fuera_de_zona"
-            ? { encontrada: false, estado: match.estado, mensaje: match.message, branch_slug_mas_cercana: match.branchSlug, distancia_km: match.distanceKm, max_km: match.maxKm }
-            : { encontrada: false, estado: match.estado, mensaje: match.message };
+            ? {
+                encontrada: false,
+                estado: match.estado,
+                reparto: "fuera_de_zona_habitual",
+                mensaje: match.message,
+                colonia_reconocida: match.recognizedZoneName,
+                // Sin medicion confiable (alguna sucursal de despacho sin coordenada) no se nombra una «mas cercana» ni se dice una distancia.
+                ...(match.medicionConfiable
+                  ? {
+                      branch_slug_mas_cercana: match.branchSlug,
+                      sucursal_despacho_mas_cercana: { branch_slug: match.branchSlug, branch_name: match.branchName, distancia_km: match.distanceKm, distancia_texto: kmAproxTexto(match.distanceKm) },
+                    }
+                  : { medicion_aproximada: true }),
+                // Km a la sucursal medible mas cercana (contrato historico de la herramienta); sin medicion confiable NO se nombra ni se le llama «mas cercana».
+                distancia_km: match.distanceKm,
+                max_km: match.maxKm,
+              }
+            : match.estado === "sugerida"
+              ? {
+                  encontrada: false,
+                  estado: match.estado,
+                  reparto: match.reparto,
+                  colonia_reconocida: match.recognizedZoneName,
+                  // Solo para ofrecer recoger: sin distancia (la referencia del piloto de una colonia pendiente puede estar equivocada).
+                  sucursal_sugerida: match.sugerida ? { branch_slug: match.sugerida.slug, branch_name: match.sugerida.nombre } : null,
+                  segunda_opcion: match.segunda ? { branch_slug: match.segunda.slug, branch_name: match.segunda.nombre } : null,
+                  ambigua: match.ambigua,
+                  ubicacion_recibida: match.conUbicacion,
+                  mensaje: match.message,
+                }
+              : { encontrada: false, estado: match.estado, mensaje: match.message };
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "buscar_producto": {
@@ -1128,7 +1211,7 @@ async function dispatchTool(
       const branch = await repo.findBranch(organizationId, { slug: branchSlug });
       if (!branch) throw new OrderValidationError(`Sucursal '${branchSlug}' no encontrada`);
       const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: String(input.query ?? "") });
-      const result = productos.map((p) => ({ id: p.id, name: p.name, price: p.price, pack_size: p.packSize, requires_adult_confirmation: p.requiresAdultConfirmation }));
+      const result = productos.map((p) => ({ id: p.id, name: p.name, price: p.price, pack_size: p.packSize, requires_adult_confirmation: p.requiresAdultConfirmation, ...(p.ambiguo === true ? { ambiguo: true } : {}) }));
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "cotizar_pedido": {

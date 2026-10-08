@@ -15,4 +15,12 @@ describe("Heineken 0.0 en todas sus formas", () => {
     expect(matchesProductSearch(tokenizeForProductSearch("heineken"), heineken00)).toBe(true);
     expect(matchesProductSearch(tokenizeForProductSearch("sol"), heineken00)).toBe(false);
   });
+  it("«cero» suelto de OTRO producto no se reescribe a 0.0: «coca cero» encuentra «Coca-Cola Cero» y no a la Heineken 0.0", () => {
+    const cocaCero = { name: "Coca-Cola Cero", description: null, categoryName: "Refrescos", searchKeywords: [] as string[] };
+    const tokens = tokenizeForProductSearch("coca cero");
+    expect(tokens).toContain("cero");
+    expect(tokens).not.toContain("0.0");
+    expect(matchesProductSearch(tokens, cocaCero)).toBe(true);
+    expect(matchesProductSearch(tokens, heineken00)).toBe(false);
+  });
 });

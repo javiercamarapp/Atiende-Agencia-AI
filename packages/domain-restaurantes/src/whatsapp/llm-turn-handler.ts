@@ -44,7 +44,7 @@ import { afirmaHaberAvisado, branchAlreadyKnown, classifyHighRiskIntentInMessage
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
-import { quitarMarcadoresDeToque, contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
+import { RESPUESTA_TOQUE_RETENIDO, quitarMarcadoresDeToque, contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
 import { emitirSeguro, telefonoHashSeguro } from "./observabilidad-turno.ts";
 import type { ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
 
@@ -593,6 +593,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Preview: el pedido SIMULADO de `crear_pedido` (para la tarjeta del panel).
       let pedidoSimulado: unknown;
       let yaRegistradoEnTurno = false;
+      let retenidoEnTurno = false;
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
       const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(lastQuoteRespaldaCortesia === false ? quitarCortesiaNoRespaldada(reply) : reply, working), lastQuoteTotal, lastQuoteAmounts);
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
@@ -794,8 +795,13 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           }
           // Honestidad del cierre (QA-PM-R3 T7-040, P0): "su pedido ya quedo confirmado/registrado" solo si el pedido EXISTE: se creo en este turno, ya habia uno en esta
           // conversacion (historial o estado del servidor) o esta cotizacion vuelve a devolver ya_registrado. Si no, se quita la afirmacion y se pide el "si".
-          const pedidoExiste = orderId !== null || pedidoSimulado !== undefined || flowVigente?.orderId !== undefined || flowSnapshot?.state === "creado" || messages.some((m) => m.role === "assistant" && m.pedidoCreado === true) || tele.tools.some((t) => t.tool === "crear_pedido" && t.resultado === "ok") || yaRegistradoEnTurno;
-          if (perfil === "taqueria_pm" && !pedidoExiste) respuesta = quitarAfirmacionDePedidoRegistrado(respuesta);
+          // Se mira el estado del flujo AL FINAL del turno (no el del inicio ni el historial completo): con un pedido anterior ya creado, un segundo pedido que NO se creo en este turno no
+          // puede responder "ya quedo registrado" (QA-PM-R3 revisor: hueco en el segundo pedido). Un pedido retenido (estado creado SIN orderId) no esta registrado: lo confirma la sucursal.
+          const flowFinal = await repo.readOrderFlow(organizationId, `wa:${phone}`);
+          const retenidoVigente = retenidoEnTurno || (flowFinal?.state === "creado" && !flowFinal.context?.orderId);
+          const creadoEnFlujo = flowFinal ? (flowFinal.state === "creado" && Boolean(flowFinal.context?.orderId)) || flowFinal.state === "creando" : messages.some((m) => m.role === "assistant" && m.pedidoCreado === true);
+          const pedidoExiste = orderId !== null || pedidoSimulado !== undefined || yaRegistradoEnTurno || (!retenidoEnTurno && tele.tools.some((t) => t.tool === "crear_pedido" && t.resultado === "ok") && !retenidoVigente) || (!retenidoEnTurno && creadoEnFlujo);
+          if (perfil === "taqueria_pm" && !pedidoExiste) respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, retenidoVigente ? RESPUESTA_TOQUE_RETENIDO : undefined);
           const replyFinal = safeReply(respuesta);
           // B03: resumen por confirmar (cotizacion de ESTE turno, aun sin pedido): el webhook agrega los botones. Si no se puede comprobar la cotizacion vigente en el
           // servidor (base sin la maquina de estados) o no hay resumen con total, el cliente recibe el texto de siempre y contesta «si».
@@ -860,6 +866,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // (autopiloto) NO se abre toma: ya esta en el sistema y la sucursal lo aprueba con un clic; el agente sigue atendiendo al cliente.
           if (call.name === "crear_pedido" && (result as { pedido_grande?: unknown; por_aprobar?: unknown } | null)?.pedido_grande === true && (result as { por_aprobar?: unknown }).por_aprobar !== true) escalarMotivo = "pedido_grande";
           if ((result as { ya_registrado?: unknown } | null)?.ya_registrado === true) yaRegistradoEnTurno = true;
+          // Pedido grande / de reincidente RETENIDO (sin orderId): la sucursal lo confirma; el agente nunca debe decir que "ya quedo registrado".
+          const rr = result as { pedido_grande?: unknown; pedido_retenido?: unknown; por_aprobar?: unknown } | null;
+          if ((call.name === "crear_pedido" || call.name === "cotizar_pedido") && (rr?.pedido_grande === true || rr?.pedido_retenido === true) && rr?.por_aprobar !== true) retenidoEnTurno = true;
           tele.tools.push({ tool: call.name, latenciaMs: Date.now() - toolInicio, resultado: isToolErrorResult(result) ? (fallaSistema ? "error_sistema" : "error_regla") : "ok", vuelta: tele.vueltas });
           const esDomicilio = call.name === "buscar_sucursal_cercana" || (call.name === "cotizar_pedido" && input.canal === "domicilio");
           if (perfil === "taqueria_pm" && esDomicilio && !isToolErrorResult(result) && !sharedLocation && !pedirUbicacionEnTurno) {
