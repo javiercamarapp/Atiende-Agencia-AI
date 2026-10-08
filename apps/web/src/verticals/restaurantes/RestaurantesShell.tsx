@@ -216,7 +216,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje="Cargando sucursales…" />;
   if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje="Este negocio todavía no tiene ninguna sucursal configurada." />;
 
-  const { session, branches, activeBranch, propertyId, role } = s;
+  const { session, branches, propertyId, role } = s;
 
   // Ronda 13 — hallazgo de auditoría (severidad ALTA): un repartidor que entra por URL directa a
   // `/restaurantes/:orgSlug` (no por el link de su invitación, que ya lo manda a `/repartidor`, ver

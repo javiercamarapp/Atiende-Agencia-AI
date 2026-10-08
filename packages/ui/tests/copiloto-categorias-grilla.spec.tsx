@@ -37,7 +37,7 @@ describe("CopilotoCategorias: grilla de tarjetas parejas", () => {
     const clases = grilla.className;
     expect(clases).toContain("grid");
     expect(clases).toContain("items-stretch");
-    expect(clases).toContain("auto-rows-fr");
+    expect(clases).toContain("sm:auto-rows-fr");
     expect(clases).toContain("grid-cols-1");
     expect(clases).toContain("sm:grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]");
     for (const t of tarjetas) {
@@ -62,12 +62,14 @@ describe("CopilotoCategorias: grilla de tarjetas parejas", () => {
     const botones = tarjetas.flatMap((t) => [...t.querySelectorAll<HTMLButtonElement>("button")]);
     expect(botones).toHaveLength(3 + 3 + 2 + 5);
     for (const b of botones) {
-      expect(b.className).toContain("min-h-11");
+      expect(b.className).toContain("min-h-10");
       expect(b.className).toContain("w-full");
       expect(b.className).toContain("text-left");
       expect(b.className).toContain("leading-snug");
     }
-    for (const t of tarjetas) expect(t.querySelector("div")?.className).toContain("divide-y");
+    const filas = tarjetas.flatMap((t) => [...t.querySelectorAll<HTMLElement>('[data-testid="copiloto-pregunta"]')]);
+    expect(filas).toHaveLength(botones.length);
+    for (const f of filas) expect(f.className).toContain("border-t");
   });
 
   it("elegir una pregunta la manda al callback", () => {
