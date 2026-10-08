@@ -433,4 +433,50 @@ export const GUIONES_ES_MX: readonly GuionLlamada[] = [
     ],
     esperado: { resultado: "escalado", sinPedido: true, callbacks: ["escalada:cliente_lo_pide"] },
   },
+  // ---- Ronda 3 del loop de PM (QA-PM-R3): regresion permanente de lo que rompio la medida contra la cuenta real ----
+  {
+    id: "V27-recoger-en-cuarenta-minutos-lo-calcula-el-servidor",
+    titulo: "'Paso en cuarenta minutos': el agente manda el plazo (minutos_para_recoger) y el servidor calcula la hora; cotizar y crear no se rechazan por una hora mal calculada (QA-PM-R3-voz-02)",
+    rasgos: ["recoger", "plazo relativo", "minutos_para_recoger"],
+    turnos: [
+      { kind: "voz", cliente: "Buenas tardes, seis tacos de bistec de maíz para recoger por Francisco de Montejo, paso en cuarenta minutos", agente: [buscar("bistec"), cotizar(bistec6, { canal: "recoger", minutos_para_recoger: 40 }), dice("Son dos órdenes de bistec, trescientos veintiocho pesos. ¿Es correcto?")] },
+      { kind: "voz", cliente: "Sí, a nombre de Ana Pech, en efectivo", agente: [confirmar, crear(bistec6, { canal: "recoger", minutos_para_recoger: 40 }), dice("Listo, su pedido quedó registrado para recoger en unos cuarenta minutos. Gracias por llamar.")] },
+    ],
+    esperado: { resultado: "pedido_creado", pedido: { sucursal: "Francisco de Montejo", canal: "recoger", pago: "efectivo", total: 328, items: [{ nombre: "Tacos de Bistec de Res (orden de 3)", cantidad: 2 }] } },
+  },
+  {
+    id: "V28-una-orden-de-bistec-son-tres-piezas",
+    titulo: "'Una orden de bistec': el agente manda 1 pieza, el servidor explica que la cantidad va en piezas y el agente corrige a 3 sin repetir la misma cotizacion (QA-PM-R3-reglas-02)",
+    rasgos: ["orden de N piezas", "rechazo accionable", "reintento corregido"],
+    turnos: [
+      { kind: "voz", cliente: "Buenas tardes, una orden de tacos de bistec de maíz para recoger por Francisco de Montejo", agente: [buscar("bistec"), cotizar((m) => [linea(m, "bistec", 1, "maiz")], { canal: "recoger" }), cotizar((m) => [linea(m, "bistec", 3, "maiz")], { canal: "recoger" }), dice("Es una orden de tres tacos de bistec, ciento sesenta y cuatro pesos. ¿Es correcto?")] },
+      { kind: "voz", cliente: "Sí, a nombre de Ana Pech, en efectivo", agente: [confirmar, crear((m) => [linea(m, "bistec", 3, "maiz")], { canal: "recoger" }), dice("Listo, su pedido quedó registrado. Gracias por llamar.")] },
+    ],
+    esperado: {
+      resultado: "pedido_creado",
+      herramientasRechazadas: [{ nombre: "cotizar_pedido", error: /PIEZAS, no en órdenes/ }],
+      pedido: { sucursal: "Francisco de Montejo", canal: "recoger", pago: "efectivo", total: 164, items: [{ nombre: "Tacos de Bistec de Res (orden de 3)", cantidad: 1 }] },
+    },
+  },
+  {
+    id: "V29-alguien-de-caja-no-es-pedir-una-persona",
+    titulo: "'Que me atienda alguien en caja' no pasa a una persona: el pedido se toma (QA-PM-R3-voz-05)",
+    rasgos: ["guardia de persona", "caja"],
+    turnos: [
+      { kind: "voz", cliente: "Buenas tardes, seis tacos de bistec de maíz para recoger por Francisco de Montejo", agente: [buscar("bistec"), cotizar(bistec6, { canal: "recoger" }), dice("Son dos órdenes de bistec, trescientos veintiocho pesos. ¿Es correcto?")] },
+      { kind: "voz", cliente: "Sí, a nombre de Ana Pech, pago en efectivo y que me atienda alguien en caja", agente: [confirmar, crear(bistec6, { canal: "recoger" }), dice("Listo, su pedido quedó registrado; el pago es en caja al recoger. Gracias por llamar.")] },
+    ],
+    esperado: { resultado: "pedido_creado", pedido: { sucursal: "Francisco de Montejo", canal: "recoger", pago: "efectivo", total: 328, items: [{ nombre: "Tacos de Bistec de Res (orden de 3)", cantidad: 2 }] } },
+  },
+  {
+    id: "V30-un-si-de-mas-no-abre-otro-pedido",
+    titulo: "Despues de registrado, el cliente dice 'si' otra vez y el agente vuelve a cotizar: el servidor devuelve ya_registrado y NO nace un segundo pedido (QA-PM-R3-whatsapp-03)",
+    rasgos: ["un pedido por intencion", "ya_registrado"],
+    turnos: [
+      { kind: "voz", cliente: "Buenas tardes, seis tacos de bistec de maíz para recoger por Francisco de Montejo", agente: [buscar("bistec"), cotizar(bistec6, { canal: "recoger" }), dice("Son dos órdenes de bistec, trescientos veintiocho pesos. ¿Es correcto?")] },
+      { kind: "voz", cliente: "Sí, a nombre de Ana Pech, en efectivo", agente: [confirmar, crear(bistec6, { canal: "recoger" }), dice("Listo, su pedido quedó registrado. ¿Algo más?")] },
+      { kind: "voz", cliente: "Sí, sí, de acuerdo", agente: [cotizar(bistec6, { canal: "recoger", minutos_para_recoger: 30 }), dice("Su pedido ya está registrado, no hace falta nada más. Gracias por llamar.")] },
+    ],
+    esperado: { resultado: "pedido_creado", pedido: { sucursal: "Francisco de Montejo", canal: "recoger", pago: "efectivo", total: 328, items: [{ nombre: "Tacos de Bistec de Res (orden de 3)", cantidad: 2 }] } },
+  },
 ];
