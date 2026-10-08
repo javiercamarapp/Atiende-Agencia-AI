@@ -22,7 +22,7 @@ import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError } from "../errors.ts";
 import { normalizePhone } from "../phone.ts";
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
-import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
+import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
@@ -67,6 +67,7 @@ import type {
   OrderQuote,
   RequestedComplement,
   RequestedOrderItemInput,
+  TortillaChoice,
 } from "../types.ts";
 
 /** Canales del agente: WhatsApp y llamada. El pedido en linea (checkout web) ya no existe. */
@@ -473,6 +474,11 @@ export const CANTIDAD_NO_NUMERICA_MENSAJE =
 /** `lenient` (WhatsApp): una cantidad escrita como numero ("2") se acepta, pero una que no es un entero positivo ('medio', 'dos', 0, 1.5, ausente)
  * se RECHAZA con un error accionable. Antes se convertia en silencio a 1 (`Number(x) || 1`): 'medio' kilo se cotizaba como 1 kg. Voz y web dejan
  * pasar el valor para que la validacion de dominio lo rechace. */
+function tortillaDeEntrada(raw: unknown): TortillaChoice | undefined {
+  const t = normalizarTortilla(raw);
+  return isTortillaChoice(t) ? t : undefined;
+}
+
 export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrderItemInput[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((entry) => {
@@ -483,7 +489,7 @@ export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrder
       productId: typeof item.product_id === "string" ? item.product_id : undefined,
       productName: typeof item.product_name === "string" ? item.product_name : undefined,
       requestedQuantity: qty,
-      tortilla: isTortillaChoice(item.tortilla) ? item.tortilla : undefined,
+      tortilla: tortillaDeEntrada(item.tortilla),
     };
   });
 }
@@ -640,7 +646,7 @@ function toCreateOrderItems(raw: unknown, lenient: boolean): CreateOrderInput["i
       productName: typeof item.product_name === "string" ? item.product_name : undefined,
       quantity: typeof item.quantity === "number" ? item.quantity : undefined,
       requestedQuantity: typeof item.requested_quantity === "number" ? item.requested_quantity : undefined,
-      tortilla: isTortillaChoice(item.tortilla) ? item.tortilla : undefined,
+      tortilla: tortillaDeEntrada(item.tortilla),
     };
   });
 }
@@ -794,7 +800,12 @@ async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: Agen
   if (textoOpcional(input.hora_recogida) || textoOpcional(input.programado_para) || input.canal !== "recoger") return input;
   const crudo = input.minutos_para_recoger;
   const minutos = typeof crudo === "number" ? crudo : typeof crudo === "string" && crudo.trim() !== "" ? Number(crudo) : NaN;
-  const plazoValido = Number.isFinite(minutos) && minutos >= 1 && minutos <= MINUTOS_PARA_RECOGER_MAX;
+  const plazoValido = Number.isFinite(minutos) && Number.isInteger(minutos) && minutos >= 1 && minutos <= MINUTOS_PARA_RECOGER_MAX;
+  // QA-PM-R5-reglas-08: un plazo invalido (negativo, fraccion, texto, gigante) se ignoraba en silencio y el pedido salia "para ya". 0, vacio o null siguen siendo "sin dato".
+  const sinDato = crudo === undefined || crudo === null || crudo === 0 || (typeof crudo === "string" && (crudo.trim() === "" || Number(crudo) === 0));
+  if (!plazoValido && !sinDato) {
+    throw new OrderValidationError(`minutos_para_recoger debe ser un número entero de minutos entre 1 y ${MINUTOS_PARA_RECOGER_MAX} (por ejemplo 40). Si el cliente no dio un plazo ("en cuanto esté"), no mande el campo; si dio una hora exacta, mande hora_recogida.`);
+  }
   const { minutos_para_recoger: _omitido, ...resto } = input;
   // Al crear, la hora de recogida COTIZADA gana: no cambia por el paso del tiempo entre cotizar y crear y, si el modelo la omite (o manda ""), el pedido igual la lleva.
   // `horaRecogida` del contexto es la hora normalizada al minuto ("2026-10-06T19:40"): solo se reutiliza si es una fecha valida.
@@ -885,7 +896,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         items: quotedItems ? itemsDeHuella(quotedItems) : itemsCotizados,
         doubleSalsas: toDoubleSalsas(input.doble_salsas),
         programadoPara: input.canal === "recoger" ? undefined : toProgramadoPara(input.programado_para),
-        horaRecogida: input.canal === "recoger" ? (horaUnificadaRecoger(input) ?? hora) : hora,
+        horaRecogida: input.canal === "recoger" && toProgramadoPara(input.programado_para) ? horaUnificadaRecoger(input) : hora,
       });
     const plazoServidor = typeof input.plazo_minutos_servidor === "number" ? input.plazo_minutos_servidor : undefined;
     let horaCotizacion = input.canal === "recoger" ? horaUnificadaRecoger(input) : toHoraRecogida(input.hora_recogida);
@@ -1286,6 +1297,8 @@ async function dispatchTool(
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "cotizar_pedido": {
+      // QA-PM-R5-reglas-11: un complemento inexistente ("chimichurri") se rechaza al COTIZAR, antes de que el cliente vea y confirme un total (antes solo fallaba al crear).
+      assertEntradasReconocidas(input);
       const branchSlug = String(input.branch_slug ?? "");
       await assertBranchAllowed(repo, ctx, branchSlug);
       await assertRecogerEnSucursalDeEntrada(repo, ctx, branchSlug, input.canal);
