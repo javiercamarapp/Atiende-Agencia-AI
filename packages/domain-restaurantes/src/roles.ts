@@ -80,6 +80,14 @@ export const ACCIONES_RESTAURANTES = {
   "sucursal.editar": DUENO_Y_ADMIN,
   /** Pedidos: aceptar, avanzar, cancelar, asignar repartidor. Sin cambio respecto a MANAGER_ROLES. */
   "pedidos.gestionar": MANAGER_ROLES,
+  /** CFO (diseno §4.5): ver las pantallas y API del CFO (ventas, clientes, platillos, patrones, operacion, estado de resultados). Solo dueño y admin; un admin acotado ve solo sus sucursales. */
+  "cfo.ver": DUENO_Y_ADMIN,
+  /** CFO: capturar costos mensuales y guardar la configuracion de umbrales (cfo_config). */
+  "cfo.capturar": DUENO_Y_ADMIN,
+  /** CFO: importar el reporte exportado de SoftRestaurant. */
+  "cfo.importar_sr": DUENO_Y_ADMIN,
+  /** CFO: registrar y descargar exportaciones (Excel/PDF, CFO-06). */
+  "cfo.exportar": DUENO_Y_ADMIN,
 } as const satisfies Record<string, readonly RestaurantesRole[]>;
 
 export type AccionRestaurantes = keyof typeof ACCIONES_RESTAURANTES;

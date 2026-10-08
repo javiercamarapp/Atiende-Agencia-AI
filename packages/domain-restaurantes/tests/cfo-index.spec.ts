@@ -8,7 +8,7 @@ describe("subpath ./cfo", () => {
     for (const nombre of [
       "CFO_CONFIG_POR_DEFECTO", "consolidar", "verificarAditividad", "consolidarClientes", "ticketPromedio", "ivaEstimado", "costoAgente", "margenContribucion", "cuadreSr",
       "construirEstadoResultados", "clasificarActividad", "esFrecuente", "detectarHallazgos", "ordenarHallazgos", "narrarResumen", "numerosNoRespaldados", "normalizarExportSr",
-      "parsearMontoCentavos", "ALIAS_SR_INFERIDOS", "formatoCentavos", "cifra", "sinDato",
+      "parsearMontoCentavos", "ALIAS_SR_INFERIDOS", "formatoCentavos", "cifra", "sinDato", "numericoSql", "centesimas", "sumaDecimal2", "promedioMin1", "difFraccionesGE", "agotadoAhora",
     ]) expect(cfo, nombre).toHaveProperty(nombre);
     expect(typeof cfo.consolidar).toBe("function");
   });

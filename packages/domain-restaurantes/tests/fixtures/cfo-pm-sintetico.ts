@@ -331,11 +331,12 @@ export function resumirClientes(pedidos: readonly PedidoSintetico[], desde: stri
     intervalos.sort((a, b) => a - b);
     return {
       propertyId, alcance, clientesConPedido, nuevos, recurrentes: clientesConPedido - nuevos, activos, dormidos, perdidos, frecuentes,
-      multiSucursal: null, recuperados, recuperadosPorCampana: 0,
+      multiSucursal: null, clientesVariasSucursales: null, recuperados, recuperadosPorCampana: 0, activosAlInicio: 0, pasanAPerdidos: 0,
       diasEntrePedidosMediana: intervalos.length === 0 ? null : intervalos[Math.floor(intervalos.length / 2)]!,
       netaTop10pctCentavos: netaPorCliente.slice(0, top).reduce((s, x) => s + x, 0),
       netaTotalCentavos: netaPorCliente.reduce((s, x) => s + x, 0),
       pedidosPorCliente12mPromedio: clientes12m === 0 ? null : Math.round((pedidos12m / clientes12m) * 100) / 100,
+      pedidosConCliente: 0, pedidosSinCliente: 0,
     };
   };
   const filas = SUCURSALES_PM_SINTETICAS.map((s) => calcular("sucursal", s.propertyId, ventas.filter((p) => p.propertyId === s.propertyId)));
@@ -372,8 +373,8 @@ export function generarAgenteDiario(pedidos: readonly PedidoSintetico[], semilla
       propertyId, diaNegocio,
       waConversacionesNuevas: waConv, waConPedido: v.wa, waConHandoff: Math.round(waConv * 0.05), waHandoffs: Math.round(waConv * 0.06),
       vozLlamadas: llamadas, vozPedidoCreado: v.voz, vozEscalado: escalado, vozAbandonado: llamadas - v.voz - escalado,
-      costoVozMicroUsd: costoVoz, costoTelefoniaMicroUsd: costoTel, costoMetaMicroUsd: 0, costoLlmMicroUsd: 0,
-      costoVozCentavos: centavos(costoVoz), costoTelefoniaCentavos: centavos(costoTel), costoMetaCentavos: null, costoLlmCentavos: null, metaEventos: 0,
+      costoVozMicroUsd: costoVoz, costoTelefoniaMicroUsd: costoTel, costoMetaMicroUsd: null, costoLlmMicroUsd: null,
+      costoVozCentavos: centavos(costoVoz), costoTelefoniaCentavos: centavos(costoTel), costoMetaCentavos: null, costoLlmCentavos: null, metaEventos: 0, mxnPorUsd: TIPO_CAMBIO_SINTETICO_MXN_POR_USD,
     });
   }
   // Renglón «No asignado» por día: LLM de texto de la organización.
@@ -382,8 +383,8 @@ export function generarAgenteDiario(pedidos: readonly PedidoSintetico[], semilla
     filas.push({
       propertyId: null, diaNegocio,
       waConversacionesNuevas: 0, waConPedido: 0, waConHandoff: 0, waHandoffs: 0, vozLlamadas: 0, vozPedidoCreado: 0, vozEscalado: 0, vozAbandonado: 0,
-      costoVozMicroUsd: 0, costoTelefoniaMicroUsd: 0, costoMetaMicroUsd: 0, costoLlmMicroUsd: llm,
-      costoVozCentavos: null, costoTelefoniaCentavos: null, costoMetaCentavos: null, costoLlmCentavos: centavos(llm), metaEventos: 0,
+      costoVozMicroUsd: 0, costoTelefoniaMicroUsd: 0, costoMetaMicroUsd: null, costoLlmMicroUsd: llm,
+      costoVozCentavos: null, costoTelefoniaCentavos: null, costoMetaCentavos: null, costoLlmCentavos: centavos(llm), metaEventos: 0, mxnPorUsd: TIPO_CAMBIO_SINTETICO_MXN_POR_USD,
     });
   }
   return filas;
@@ -414,7 +415,7 @@ export function generarAgotados(pedidos: readonly PedidoSintetico[], hasta: stri
     const orden = [...unidades.entries()].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]));
     orden.forEach(([ref, u], i) => {
       const prod = PRODUCTOS_SINTETICOS.find((x) => x.ref === ref)!;
-      out.push({ propertyId: suc.propertyId, productId: ref, nombre: prod.nombre, agotadoHasta: null, unidades28d: u, diasConVenta28d: 28, precioListaCentavos: prod.precio, rankingUnidades: i + 1 });
+      out.push({ propertyId: suc.propertyId, productId: ref, nombre: prod.nombre, disponible: true, agotadoHasta: null, unidades28d: u, diasConVenta28d: 28, precioListaCentavos: prod.precio, rankingUnidades: i + 1 });
     });
   }
   return out;

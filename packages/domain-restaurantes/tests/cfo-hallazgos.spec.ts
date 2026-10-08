@@ -23,7 +23,7 @@ function vf(p: Partial<FilaVentasDiarias> = {}): FilaVentasDiarias {
 function ag(p: Partial<FilaAgenteDiario> = {}): FilaAgenteDiario {
   return {
     propertyId: A, diaNegocio: "2026-09-15", waConversacionesNuevas: 100, waConPedido: 50, waConHandoff: 0, waHandoffs: 0, vozLlamadas: 0, vozPedidoCreado: 0, vozEscalado: 0, vozAbandonado: 0,
-    costoVozMicroUsd: 0, costoTelefoniaMicroUsd: 0, costoMetaMicroUsd: 0, costoLlmMicroUsd: 0, costoVozCentavos: 10000, costoTelefoniaCentavos: 0, costoMetaCentavos: null, costoLlmCentavos: null, metaEventos: 0, ...p,
+    costoVozMicroUsd: 0, costoTelefoniaMicroUsd: 0, costoMetaMicroUsd: null, costoLlmMicroUsd: null, costoVozCentavos: 10000, costoTelefoniaCentavos: 0, costoMetaCentavos: null, costoLlmCentavos: null, metaEventos: 0, mxnPorUsd: null, ...p,
   };
 }
 
@@ -247,12 +247,21 @@ describe("9. frecuentes_dormidos", () => {
 });
 
 describe("10. agotado_estrella", () => {
-  const prod = (id: string, p: Partial<FilaAgotado> = {}): FilaAgotado => ({ propertyId: A, productId: id, nombre: `Producto ${id}`, agotadoHasta: "2026-09-16T00:00:00Z", unidades28d: 56, diasConVenta28d: 28, precioListaCentavos: 4200, rankingUnidades: 1, ...p });
+  const prod = (id: string, p: Partial<FilaAgotado> = {}): FilaAgotado => ({ propertyId: A, productId: id, nombre: `Producto ${id}`, disponible: true, agotadoHasta: "2026-09-16T00:00:00Z", unidades28d: 56, diasConVenta28d: 28, precioListaCentavos: 4200, rankingUnidades: 1, ...p });
   it("dispara con un producto top 20 agotado hoy; impacto = venta en riesgo por día", () => {
     const h = de(detectarHallazgos(entrada([sana(A, { agotados: [prod("pastor")] })]), C), "agotado_estrella")!;
     expect(h.titulo).toBe("Producto pastor está agotado hoy en Altabrisa");
     expect(h.impactoCentavos).toBe(8400); // 2 unidades al día × $42
     expect(h.cifra.valor).toBe(1);
+  });
+  it("agotado INDEFINIDO (disponible=false y agotadoHasta=null) SÍ dispara: antes exigía agotadoHasta y nunca alertaba", () => {
+    const h = de(detectarHallazgos(entrada([sana(A, { agotados: [prod("pastor", { disponible: false, agotadoHasta: null })] })]), C), "agotado_estrella")!;
+    expect(h.titulo).toBe("Producto pastor está agotado hoy en Altabrisa");
+    expect(h.impactoCentavos).toBe(8400);
+  });
+  it("disponible=false con una fecha de regreso ya pasada (sin reactivar) sigue agotado; una fecha YYYY-MM-DD de la SQL es agotado programado vigente", () => {
+    expect(de(detectarHallazgos(entrada([sana(A, { agotados: [prod("x", { disponible: false, agotadoHasta: "2026-01-01" })] })]), C), "agotado_estrella")).toBeDefined();
+    expect(de(detectarHallazgos(entrada([sana(A, { agotados: [prod("x", { disponible: true, agotadoHasta: "2026-09-16" })] })]), C), "agotado_estrella")).toBeDefined();
   });
   it("el puesto 21, un producto disponible o ya vencido el agotado NO disparan", () => {
     expect(detectarHallazgos(entrada([sana(A, { agotados: [prod("x", { rankingUnidades: 21 })] })]), C)).toEqual([]);

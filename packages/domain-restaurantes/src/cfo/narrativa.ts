@@ -37,6 +37,8 @@ export interface KpisResumen {
   readonly descuentoPct?: ValorKpi;
   readonly cancelacionPct?: ValorKpi;
   readonly costoPorPedidoAgente?: ValorKpi;
+  /** true = el costo de Meta (WhatsApp) no se mide (0 eventos): el costo del agente por pedido NO lo incluye y la narrativa lo dice («no medido», nunca $0). */
+  readonly metaNoMedido?: boolean;
   readonly margenContribucion?: ValorKpi;
   readonly margenParcial?: boolean;
   /** Clientes que compraron en más de una sucursal (no aditivo). */
@@ -176,6 +178,15 @@ export function narrarResumen(kpis: KpisResumen, hallazgos: readonly Hallazgo[],
   if (d && c) add({ texto: `Los descuentos fueron ${registrar("descuento_pct", d)} de la venta bruta y las cancelaciones ${registrar("cancelacion_pct", c)} de los pedidos.`, refs: ["descuento_pct", "cancelacion_pct"] }, 5);
   else if (d) add({ texto: `Los descuentos fueron ${registrar("descuento_pct", d)} de la venta bruta.`, refs: ["descuento_pct"] }, 5);
   else if (c) add({ texto: `Las cancelaciones fueron ${registrar("cancelacion_pct", c)} de los pedidos.`, refs: ["cancelacion_pct"] }, 5);
+
+  // Costo del agente por pedido (el costo de Meta se rotula «no medido» cuando no hay eventos: nunca se presenta como $0)
+  if (kpis.costoPorPedidoAgente && mostrar(kpis.costoPorPedidoAgente) != null) {
+    add({
+      texto: `El costo del agente fue de ${registrar("costo_pedido_agente", kpis.costoPorPedidoAgente)} por pedido${kpis.metaNoMedido ? ", sin incluir el costo de Meta, que no está medido" : ""}.`,
+      refs: ["costo_pedido_agente"],
+      // Aclarar que Meta no está medido es una divulgación importante: sube de prioridad para no quedar fuera del tope de oraciones.
+    }, kpis.metaNoMedido ? 2 : 5);
+  }
 
   // Clientes en más de una sucursal (no aditivo)
   if (kpis.multiSucursal != null && kpis.multiSucursal > 0 && alcance.propertyIds.length > 1) {

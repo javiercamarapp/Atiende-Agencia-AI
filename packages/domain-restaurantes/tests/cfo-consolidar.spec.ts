@@ -154,8 +154,8 @@ describe("la razón consolidada es Σnum/Σden, NO el promedio de las razones", 
 
 describe("clientes únicos no se suman entre sucursales", () => {
   const base = (p: Partial<FilaClientesResumen>): FilaClientesResumen => ({
-    propertyId: null, alcance: "sucursal", clientesConPedido: 0, nuevos: 0, recurrentes: 0, activos: 0, dormidos: 0, perdidos: 0, frecuentes: 0, multiSucursal: null,
-    recuperados: 0, recuperadosPorCampana: 0, diasEntrePedidosMediana: null, netaTop10pctCentavos: 0, netaTotalCentavos: 0, pedidosPorCliente12mPromedio: null, ...p,
+    propertyId: null, alcance: "sucursal", clientesConPedido: 0, nuevos: 0, recurrentes: 0, activos: 0, dormidos: 0, perdidos: 0, frecuentes: 0, multiSucursal: null, clientesVariasSucursales: null,
+    recuperados: 0, recuperadosPorCampana: 0, activosAlInicio: 0, pasanAPerdidos: 0, pedidosConCliente: 0, pedidosSinCliente: 0, diasEntrePedidosMediana: null, netaTop10pctCentavos: 0, netaTotalCentavos: 0, pedidosPorCliente12mPromedio: null, ...p,
   });
   it("Σ sucursales − conjunto = multi-sucursal, con el texto «X compraron en más de una sucursal»", () => {
     const r = consolidarClientes([
@@ -167,6 +167,18 @@ describe("clientes únicos no se suman entre sucursales", () => {
     expect(r.conjunto?.clientesConPedido).toBe(165); // NO 180
     expect(r.multiSucursal).toBe(15);
     expect(r.texto).toBe("15 clientes compraron en más de una sucursal");
+  });
+  it("el texto usa clientes_varias_sucursales (conteo exacto) cuando la SQL lo trae: Σ − conjunto cuenta k−1 por cliente de 3 o más sucursales", () => {
+    const r = consolidarClientes([
+      base({ propertyId: "A", clientesConPedido: 100 }),
+      base({ propertyId: "B", clientesConPedido: 80 }),
+      base({ propertyId: "C", clientesConPedido: 60 }),
+      // Un cliente compró en las 3 sucursales y otro en 2: Σ − conjunto = 240 − 237 = 3, pero solo 2 clientes distintos.
+      base({ alcance: "conjunto", clientesConPedido: 237, multiSucursal: 3, clientesVariasSucursales: 2 }),
+    ]);
+    expect(r.multiSucursal).toBe(3);
+    expect(r.clientesVariasSucursales).toBe(2);
+    expect(r.texto).toBe("2 clientes compraron en más de una sucursal");
   });
   it("si SQL declara un multi_sucursal que no cuadra, falla", () => {
     expect(() => consolidarClientes([base({ propertyId: "A", clientesConPedido: 100 }), base({ propertyId: "B", clientesConPedido: 80 }), base({ alcance: "conjunto", clientesConPedido: 165, multiSucursal: 99 })])).toThrow(ErrorAditividad);

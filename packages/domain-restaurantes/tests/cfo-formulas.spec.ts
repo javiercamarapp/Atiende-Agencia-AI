@@ -207,8 +207,8 @@ describe("crecimiento con los 3 tipos de base", () => {
 describe("agente: tasa de cierre y costo", () => {
   const filaAg = (p: Partial<Parameters<typeof sumarAgente>[0][number]> = {}) => ({
     propertyId: PROP as string | null, diaNegocio: "2026-09-14", waConversacionesNuevas: 0, waConPedido: 0, waConHandoff: 0, waHandoffs: 0, vozLlamadas: 0, vozPedidoCreado: 0, vozEscalado: 0,
-    vozAbandonado: 0, costoVozMicroUsd: 0, costoTelefoniaMicroUsd: 0, costoMetaMicroUsd: 0, costoLlmMicroUsd: 0, costoVozCentavos: null, costoTelefoniaCentavos: null,
-    costoMetaCentavos: null, costoLlmCentavos: null, metaEventos: 0, ...p,
+    vozAbandonado: 0, costoVozMicroUsd: 0, costoTelefoniaMicroUsd: 0, costoMetaMicroUsd: null, costoLlmMicroUsd: null, costoVozCentavos: null, costoTelefoniaCentavos: null,
+    costoMetaCentavos: null, costoLlmCentavos: null, metaEventos: 0, mxnPorUsd: null, ...p,
   });
 
   it("tasa de cierre de WhatsApp y de voz salen de sumas", () => {

@@ -28,6 +28,20 @@ function hallazgo(n: number, impacto: number | null, titulo: string): Hallazgo {
 }
 const H = [hallazgo(1, 1_800_000, "Altabrisa cayó 18 % vs su promedio de los martes"), hallazgo(2, null, "Pensiones tiene 3 comandas vencidas sin capturar en SoftRestaurant")];
 
+describe("costo del agente por pedido: Meta «no medido»", () => {
+  it("con Meta sin medir lo dice y no lo presenta como $0; con Meta medido no agrega la aclaración", () => {
+    const sin = narrarResumen(kpis({ costoPorPedidoAgente: kpi(1_250, "centavos"), metaNoMedido: true, margenContribucion: undefined, multiSucursal: null }), [], TODAS);
+    expect(sin.texto).toContain("El costo del agente fue de $12.50 [costo_pedido_agente] por pedido, sin incluir el costo de Meta, que no está medido.");
+    expect(sin.numerosNoRespaldados).toEqual([]);
+    const con = narrarResumen(kpis({ costoPorPedidoAgente: kpi(1_250, "centavos"), metaNoMedido: false, margenContribucion: undefined, multiSucursal: null }), [], TODAS);
+    expect(con.texto).toContain("El costo del agente fue de $12.50 [costo_pedido_agente] por pedido.");
+    expect(con.texto).not.toContain("Meta");
+  });
+  it("sin costo por pedido (null) no hay oración de costo", () => {
+    expect(narrarResumen(kpis({ costoPorPedidoAgente: kpi(null, "centavos"), metaNoMedido: true }), H, TODAS).texto).not.toContain("costo del agente");
+  });
+});
+
 describe("narrativa con datos", () => {
   const r = narrarResumen(kpis(), H, TODAS);
   it("3 a 6 oraciones deterministas, en español de México y de usted", () => {

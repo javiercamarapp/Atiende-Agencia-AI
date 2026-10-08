@@ -137,6 +137,8 @@ export function numericoSql(v: string | number | null | undefined): number | nul
   if (v == null || v === "") return null;
   const n = typeof v === "number" ? v : Number(v);
   if (!Number.isFinite(n)) throw new TypeError(`numeric inválido: ${String(v)}`);
+  // Un entero fuera de ±2^53 ya perdió precisión al convertirse a number: mejor fallar claro que mostrar una cifra distinta.
+  if (Number.isInteger(n) && !Number.isSafeInteger(n)) throw new RangeError(`bigint fuera del rango seguro de number (2^53): ${String(v)}`);
   return n;
 }
 

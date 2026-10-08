@@ -58,6 +58,7 @@ import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { ObservabilidadTurno, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import { GeminiLiveProvider, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp } from "@atiende/domain-restaurantes";
+import { PostgresCfoRepository as PostgresCfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo/postgres";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
@@ -385,6 +386,8 @@ export function buildProductionDeps(): AppDeps {
     vozAlertasSistema: (db) => evaluarAlertasVozDelSistema(db),
     whatsappKpiRepo: (db) => new PostgresWhatsappKpiRepository(db),
     cierreRepo: (db) => new PostgresCierreRepository(db),
+    // CFO de restaurantes (081/082/083): SAVEPOINT por llamada; contra la base sin migrar responde `disponible: false`.
+    cfoRestaurantesRepo: (db) => new PostgresCfoRestaurantesRepository(db),
     // Autopiloto (migración 050): cada operación degrada con SAVEPOINT a "no disponible" contra la base sin migrar.
     autopilotoRepo: (db) => new PostgresAutopilotoRepository(db),
     repartidorPerfilRepo: (db) => new PostgresRepartidorPerfilRepository(db),

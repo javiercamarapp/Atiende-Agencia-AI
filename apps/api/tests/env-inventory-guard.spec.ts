@@ -40,6 +40,9 @@ const EXCLUSIONS: ReadonlySet<string> = new Set([
   // plataforma que no es una credencial de integración" — se excluye a propósito
   // por si algún día se lee.
   "NODE_ENV",
+  // Bandera opt-in para correr la prueba de integración del CFO contra un Postgres efímero local
+  // (scripts/verify-restaurantes-cfo-repos/run.sh); no es una credencial.
+  "CFO_REAL_PG",
 ]);
 
 const SOURCE_ROOTS = ["apps/api/src", "apps/api/tests", "apps/worker/src", "apps/web/src", "packages"];
