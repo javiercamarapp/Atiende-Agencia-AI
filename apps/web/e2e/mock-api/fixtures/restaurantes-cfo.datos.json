@@ -352,7 +352,8 @@
                   "valor": 5.2
                 },
                 "semaforo": "verde",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "pedidos",
@@ -471,7 +472,8 @@
                   "valor": null
                 },
                 "semaforo": "sin_dato",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "clientes_activos",
@@ -590,7 +592,8 @@
                   "valor": -6.6
                 },
                 "semaforo": "verde",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "pedidos",
@@ -709,7 +712,8 @@
                   "valor": null
                 },
                 "semaforo": "sin_dato",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "clientes_activos",
@@ -828,7 +832,8 @@
                   "valor": 14.7
                 },
                 "semaforo": "verde",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "pedidos",
@@ -947,7 +952,8 @@
                   "valor": null
                 },
                 "semaforo": "sin_dato",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "clientes_activos",
@@ -1066,7 +1072,8 @@
                   "valor": 5.2
                 },
                 "semaforo": "verde",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "pedidos",
@@ -1185,7 +1192,8 @@
                   "valor": null
                 },
                 "semaforo": "sin_dato",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "clientes_activos",
@@ -1304,7 +1312,8 @@
                   "valor": 4.8
                 },
                 "semaforo": "verde",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "pedidos",
@@ -1423,7 +1432,8 @@
                   "valor": null
                 },
                 "semaforo": "sin_dato",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "clientes_activos",
@@ -1542,7 +1552,8 @@
                   "valor": 19.7
                 },
                 "semaforo": "verde",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "pedidos",
@@ -1661,7 +1672,8 @@
                   "valor": null
                 },
                 "semaforo": "sin_dato",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "clientes_activos",
@@ -1780,7 +1792,8 @@
                   "valor": 9.5
                 },
                 "semaforo": "verde",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "pedidos",
@@ -1899,7 +1912,8 @@
                   "valor": null
                 },
                 "semaforo": "sin_dato",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "clientes_activos",
@@ -2029,7 +2043,8 @@
                 "valor": 4.9
               },
               "semaforo": "verde",
-              "mejorSi": "mayor"
+              "mejorSi": "mayor",
+              "baseVentas": "agente"
             },
             {
               "id": "pedidos",
@@ -2148,7 +2163,8 @@
                 "valor": null
               },
               "semaforo": "sin_dato",
-              "mejorSi": "mayor"
+              "mejorSi": "mayor",
+              "baseVentas": "agente"
             },
             {
               "id": "clientes_activos",
@@ -2623,7 +2639,8 @@
                   "valor": 5.2
                 },
                 "semaforo": "verde",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "pedidos",
@@ -2742,7 +2759,8 @@
                   "valor": null
                 },
                 "semaforo": "sin_dato",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "clientes_activos",
@@ -2861,7 +2879,8 @@
                 "valor": 5.2
               },
               "semaforo": "verde",
-              "mejorSi": "mayor"
+              "mejorSi": "mayor",
+              "baseVentas": "agente"
             },
             {
               "id": "pedidos",
@@ -2980,7 +2999,8 @@
                 "valor": null
               },
               "semaforo": "sin_dato",
-              "mejorSi": "mayor"
+              "mejorSi": "mayor",
+              "baseVentas": "agente"
             },
             {
               "id": "clientes_activos",
@@ -3280,7 +3300,8 @@
                   "valor": 14.7
                 },
                 "semaforo": "verde",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "pedidos",
@@ -3399,7 +3420,8 @@
                   "valor": null
                 },
                 "semaforo": "sin_dato",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "clientes_activos",
@@ -3518,7 +3540,8 @@
                 "valor": 14.7
               },
               "semaforo": "verde",
-              "mejorSi": "mayor"
+              "mejorSi": "mayor",
+              "baseVentas": "agente"
             },
             {
               "id": "pedidos",
@@ -3637,7 +3660,8 @@
                 "valor": null
               },
               "semaforo": "sin_dato",
-              "mejorSi": "mayor"
+              "mejorSi": "mayor",
+              "baseVentas": "agente"
             },
             {
               "id": "clientes_activos",
@@ -3936,7 +3960,8 @@
                   "valor": 19.7
                 },
                 "semaforo": "verde",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "pedidos",
@@ -4055,7 +4080,8 @@
                   "valor": null
                 },
                 "semaforo": "sin_dato",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "clientes_activos",
@@ -4174,7 +4200,8 @@
                 "valor": 19.7
               },
               "semaforo": "verde",
-              "mejorSi": "mayor"
+              "mejorSi": "mayor",
+              "baseVentas": "agente"
             },
             {
               "id": "pedidos",
@@ -4293,7 +4320,8 @@
                 "valor": null
               },
               "semaforo": "sin_dato",
-              "mejorSi": "mayor"
+              "mejorSi": "mayor",
+              "baseVentas": "agente"
             },
             {
               "id": "clientes_activos",
@@ -4627,7 +4655,8 @@
                   "valor": 5.2
                 },
                 "semaforo": "verde",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "pedidos",
@@ -4746,7 +4775,8 @@
                   "valor": null
                 },
                 "semaforo": "sin_dato",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "clientes_activos",
@@ -4865,7 +4895,8 @@
                   "valor": -6.6
                 },
                 "semaforo": "verde",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "pedidos",
@@ -4984,7 +5015,8 @@
                   "valor": null
                 },
                 "semaforo": "sin_dato",
-                "mejorSi": "mayor"
+                "mejorSi": "mayor",
+                "baseVentas": "agente"
               },
               {
                 "id": "clientes_activos",
@@ -5103,7 +5135,8 @@
                 "valor": 0.5
               },
               "semaforo": "verde",
-              "mejorSi": "mayor"
+              "mejorSi": "mayor",
+              "baseVentas": "agente"
             },
             {
               "id": "pedidos",
@@ -5222,7 +5255,8 @@
                 "valor": null
               },
               "semaforo": "sin_dato",
-              "mejorSi": "mayor"
+              "mejorSi": "mayor",
+              "baseVentas": "agente"
             },
             {
               "id": "clientes_activos",
