@@ -108,7 +108,7 @@ function MapaCalor({ d, abrir }: { readonly d: VentasVista; readonly abrir: (f: 
 function CascadaCard({ d, abrir }: { readonly d: VentasVista; readonly abrir: (f: FiltroPedidosDetalle) => void }) {
   const c = d.ventas.total.cascada;
   const pasos = pasosCascada(c);
-  const noMedidas = [c.descuentoPromocionCentavos, c.compensacionesCentavos, c.ivaEstimadoCentavos, c.netaSinIvaCentavos].filter((x) => x.confianza !== "medido");
+  const noMedidas = ([["Descuentos", c.descuentoPromocionCentavos], ["Compensaciones", c.compensacionesCentavos], ["IVA estimado", c.ivaEstimadoCentavos], ["Ventas sin IVA", c.netaSinIvaCentavos]] as const).filter(([, x]) => x.confianza !== "medido");
   return (
     <ChartCard
       titulo="De ventas brutas a netas sin IVA"
@@ -130,8 +130,9 @@ function CascadaCard({ d, abrir }: { readonly d: VentasVista; readonly abrir: (f
       {noMedidas.length > 0 && (
         <p className="mt-2 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
           Confianza de las cifras derivadas:
-          {noMedidas.map((x) => (
-            <span key={x.fuente} className="inline-flex items-center gap-1">
+          {noMedidas.map(([nombre, x]) => (
+            <span key={nombre} className="inline-flex items-center gap-1" data-testid="cascada-confianza">
+              {nombre}:
               <ChipDeCifra cifra={x} />
             </span>
           ))}

@@ -90,6 +90,19 @@ describe("<CfoVentas />", () => {
     expect(q("[data-testid=cascada-descuadre]")).toBeNull();
   });
 
+  it("los chips de confianza de la cascada dicen a qué cifra pertenecen y no repiten llaves de React", async () => {
+    const errores: unknown[][] = [];
+    const espia = vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => void errores.push(a));
+    await pintar(CfoVentas, crearApiCfo());
+    await listo();
+    const etiquetas = qa("[data-testid=cascada-confianza]").map((e) => e.textContent);
+    expect(etiquetas.length).toBeGreaterThan(0);
+    for (const t of etiquetas) expect(t).toMatch(/^(Descuentos|Compensaciones|IVA estimado|Ventas sin IVA):\s?\S+/);
+    expect(new Set(etiquetas).size).toBe(etiquetas.length);
+    espia.mockRestore();
+    expect(errores.filter((e) => String(e[0]).includes("same key"))).toEqual([]);
+  });
+
   it("si la cascada NO cuadra lo dice con una alerta (danger) en vez de esconderlo", async () => {
     const base = await respuestaBase<VentasVista>("/ventas");
     const roto = { ...base, ventas: { ...base.ventas, total: { ...base.ventas.total, cascada: { ...base.ventas.total.cascada, descuadreCentavos: 1250 } } } };
