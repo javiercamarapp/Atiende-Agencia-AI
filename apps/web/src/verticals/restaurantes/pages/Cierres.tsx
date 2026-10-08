@@ -13,7 +13,7 @@ import { formatoDia, formatoMxn, formatoPct } from "../voz/formato-kpi.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const ROLES_CIERRES: ReadonlySet<string> = new Set(["owner", "admin"]);
-const ETIQUETA_CANAL: Readonly<Record<CierreFila["porCanal"][number]["canal"], string>> = { web: "Pedido en línea", whatsapp: "WhatsApp", voice: "Llamada", admin: "Capturado por el equipo" };
+const ETIQUETA_CANAL: Readonly<Record<CierreFila["porCanal"][number]["canal"], string>> = { web: "Pedido en línea (histórico)", whatsapp: "WhatsApp", voice: "Llamada", admin: "Capturado por el equipo" };
 
 function formatoMin(min: number | null): string {
   return min === null ? "—" : `${min} min`;
@@ -236,7 +236,7 @@ function Detalle({ cierre, esDia }: { readonly cierre: CierreFila; readonly esDi
         <CardContent className="p-0">
           <DataTable<CierreFila["porCanal"][number]>
             etiqueta="Ventas por canal"
-            filas={[...cierre.porCanal]}
+            filas={cierre.porCanal.filter((c) => c.canal !== "web" || c.pedidos > 0 || c.cancelados > 0 || c.ventasCentavos > 0)}
             obtenerId={(c) => c.canal}
             vacio={{ titulo: "Sin canales", mensaje: "Sin pedidos en el periodo." }}
             paginacion={false}

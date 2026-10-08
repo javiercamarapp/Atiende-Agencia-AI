@@ -75,13 +75,7 @@ const SuperAdminZonaCfoPage = cargaPerezosa(() => import("./superadmin/pages/Zon
 const SuperAdminPlanesPage = cargaPerezosa(() => import("./superadmin/pages/Planes.tsx"), "SuperAdminPlanesPage");
 const NotificacionesPagina = cargaPerezosa(() => import("./components/NotificacionesPagina.tsx"), "NotificacionesPagina");
 const PlanYUsoPagina = cargaPerezosa(() => import("./components/PlanYUsoPagina.tsx"), "PlanYUsoPagina");
-const StorefrontRestaurantePage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/RestaurantePage.tsx"), "RestaurantePage");
-const StorefrontSucursalesPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/SucursalesPage.tsx"), "SucursalesPage");
-const StorefrontSucursalPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/SucursalPage.tsx"), "SucursalPage");
-const StorefrontRastreoPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/RastreoPage.tsx"), "RastreoPage");
 const ReservarPage = cargaPerezosa(() => import("./verticals/citas/reserva/ReservarPage.tsx"), "ReservarPage");
-const StorefrontEventosPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/EventosPage.tsx"), "EventosPage");
-const PrivacidadStorefrontPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/PrivacidadStorefront.tsx"), "PrivacidadStorefrontPage");
 const RestaurantesPrimerosPasosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/PrimerosPasos.tsx"), "RestaurantesPrimerosPasosPage");
 const RestaurantesCopilotoPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Copiloto.tsx"), "RestaurantesCopilotoPage");
 const RentasCopilotoPage = cargaPerezosa(() => import("./verticals/rentas/pages/Copiloto.tsx"), "RentasCopilotoPage");
@@ -333,23 +327,6 @@ const RestaurantesAvisosRoute = shellRoute(RestaurantesShell, "/restaurantes/log
 // CHAT-08 -- Copiloto ("Pregunta a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de restaurantes.
 const RestaurantesCopilotoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCopilotoPage {...ctx} />);
 
-// Storefront PUBLICO de restaurantes (R-09): sin login ni shell de panel; solo necesita el slug del restaurante.
-function StorefrontRestauranteRoute() {
-  const { orgSlug = "" } = useParams();
-  return <StorefrontRestaurantePage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
-}
-function StorefrontSucursalesRoute() {
-  const { orgSlug = "" } = useParams();
-  return <StorefrontSucursalesPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
-}
-function StorefrontSucursalRoute() {
-  const { orgSlug = "", branchSlug = "" } = useParams();
-  return <StorefrontSucursalPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} branchSlug={branchSlug} />;
-}
-function StorefrontRastreoRoute() {
-  const { orgSlug = "", token = "" } = useParams();
-  return <StorefrontRastreoPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} token={token} />;
-}
 // Demo de WhatsApp (R-19): chat publico contra el agente real, solo para organizaciones marcadas como demo.
 function DemoWhatsAppRoute() {
   const { orgSlug = "" } = useParams();
@@ -368,14 +345,6 @@ function HotelesMisDatosRoute() {
 function ReservarCitasRoute() {
   const { orgSlug = "" } = useParams();
   return <ReservarPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
-}
-function StorefrontEventosRoute() {
-  const { orgSlug = "" } = useParams();
-  return <StorefrontEventosPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
-}
-function StorefrontPrivacidadRoute() {
-  const { orgSlug = "" } = useParams();
-  return <PrivacidadStorefrontPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
 
 /** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
@@ -1110,13 +1079,8 @@ export function App() {
         <Route path="/privacidad" element={<PrivacidadPage />} />
         <Route path="/demo/:orgSlug" element={<DemoWhatsAppRoute />} />
         <Route path="/reservar/:orgSlug" element={<ReservarCitasRoute />} />
-        <Route path="/pedir/:orgSlug" element={<StorefrontRestauranteRoute />} />
-        <Route path="/pedir/:orgSlug/privacidad" element={<StorefrontPrivacidadRoute />} />
-        {/* Directorio publico: va ANTES de :branchSlug (una sucursal con slug "sucursales" no se puede abrir; el slug esta reservado). */}
-        <Route path="/pedir/:orgSlug/sucursales" element={<StorefrontSucursalesRoute />} />
-        <Route path="/pedir/:orgSlug/eventos" element={<StorefrontEventosRoute />} />
-        <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
-        <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
+        {/* La tienda en línea (/pedir/*) ya no existe: los pedidos entran por WhatsApp o por llamada. */}
+        <Route path="/pedir/*" element={<Navigate to="/" replace />} />
         <Route element={<SuperAdminLayoutRoute />}>
           <Route path="/superadmin" element={<SuperAdminRoute />} />
           <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />

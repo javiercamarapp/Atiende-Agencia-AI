@@ -15,7 +15,6 @@ import { rutasRestaurantes } from "./restaurantes.ts";
 import { rutasRestaurantesAutopiloto } from "./restaurantes-autopiloto.ts";
 import { rutasRestaurantesPanel } from "./restaurantes-panel.ts";
 import { rutasRestaurantesQaR2 } from "./restaurantes-qa-r2.ts";
-import { rutasRestaurantesStorefront } from "./restaurantes-storefront.ts";
 import { rutasSuperadmin } from "./superadmin.ts";
 
-export const todasLasRutas: readonly Ruta[] = [...rutasComunes, ...rutasCuenta, ...rutasRestaurantes, ...rutasRestaurantesAutopiloto, ...rutasRestaurantesPanel, ...rutasRestaurantesQaR2, ...rutasRestaurantesStorefront, ...rutasHoteles, ...rutasRentas, ...rutasDespachos, ...rutasDespachosListados, ...rutasLicitacionesDatosEmpresa, ...rutasLicitacionesBitacora, ...rutasLicitaciones, ...rutasCitas, ...rutasSuperadmin];
+export const todasLasRutas: readonly Ruta[] = [...rutasComunes, ...rutasCuenta, ...rutasRestaurantes, ...rutasRestaurantesAutopiloto, ...rutasRestaurantesPanel, ...rutasRestaurantesQaR2, ...rutasHoteles, ...rutasRentas, ...rutasDespachos, ...rutasDespachosListados, ...rutasLicitacionesDatosEmpresa, ...rutasLicitacionesBitacora, ...rutasLicitaciones, ...rutasCitas, ...rutasSuperadmin];

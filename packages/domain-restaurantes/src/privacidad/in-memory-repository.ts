@@ -25,7 +25,7 @@ import type {
   RegisterDataRightsOutcome,
   UpdateDataRightsStatusResult,
 } from "./data-rights.ts";
-import type { PrivacidadRepository, PurgeOutcome, RecordOrderPrivacyConsentResult, RecordingConsent, SetRecordingConsentResult, UpdatePrivacyConfigResult } from "./repository.ts";
+import type { PrivacidadRepository, PurgeOutcome, RecordingConsent, SetRecordingConsentResult, UpdatePrivacyConfigResult } from "./repository.ts";
 
 interface RequestMem extends DataRightsRequestRow {
   readonly organizationId: string;
@@ -46,22 +46,10 @@ export class InMemoryPrivacidadRepository implements PrivacidadRepository {
   readonly notices = new Set<string>();
   readonly configs = new Map<string, PrivacyConfig>();
   readonly consents = new Map<string, RecordingConsent>();
-  /** `false` simula una base sin la migracion 043 (consentimiento del checkout). */
-  consentimientoPedidosMigrado = true;
-  /** Evidencia de consentimiento del checkout, por pedido. */
-  readonly pedidoConsents = new Map<string, { organizationId: string; noticeVersion: string; channel: "web"; acceptedAtMs: number }>();
 
   async getPrivacyConfig(organizationId: string): Promise<PrivacyConfig> {
     if (!this.migrada) return PRIVACY_CONFIG_POR_DEFECTO;
     return this.configs.get(organizationId) ?? PRIVACY_CONFIG_POR_DEFECTO;
-  }
-
-  async recordOrderPrivacyConsent(organizationId: string, orderId: string, channel: "web"): Promise<RecordOrderPrivacyConsentResult> {
-    if (!this.consentimientoPedidosMigrado) return { outcome: "no_disponible" };
-    if (this.pedidoConsents.has(orderId)) return { outcome: "ya_registrado" };
-    const noticeVersion = (await this.getPrivacyConfig(organizationId)).noticeVersion;
-    this.pedidoConsents.set(orderId, { organizationId, noticeVersion, channel, acceptedAtMs: this.reloj() });
-    return { outcome: "registrado", noticeVersion };
   }
 
   async claimPrivacyNotice(organizationId: string, phoneHash: string, channel: DataRightsChannel, version: string): Promise<boolean | null> {

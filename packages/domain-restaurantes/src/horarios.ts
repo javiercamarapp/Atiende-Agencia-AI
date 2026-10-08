@@ -223,7 +223,7 @@ export function validarExcepcionHorario(raw: { readonly fechaDesde: unknown; rea
   }
   const horario = validarHorario(raw.horario);
   // QA-restaurantes-R1-caos-16: un horario vacio es un cierre COMPLETO del rango (feriado, corte de luz): la sucursal no abre
-  // esas fechas para storefront, WhatsApp ni voz (aplicarReglasDeSucursal ya trata una excepcion que cubre hoy como horario vigente).
+  // esas fechas para WhatsApp ni voz (aplicarReglasDeSucursal ya trata una excepcion que cubre hoy como horario vigente).
   let motivo: string | null = null;
   if (raw.motivo !== undefined && raw.motivo !== null) {
     if (typeof raw.motivo !== "string" || raw.motivo.trim().length === 0 || raw.motivo.length > 200) {

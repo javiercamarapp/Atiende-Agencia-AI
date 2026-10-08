@@ -2,7 +2,7 @@
 
 Proceso de **larga vida** (Node) que atiende las llamadas reales de Los Taquitos de PM: recibe el SIP de LiveKit, puentea el audio y conduce el
 `ControladorLlamada` que ya vive en `@atiende/domain-restaurantes` / `@atiende/voice-core`. Una llamada termina creando el pedido y el cliente con el
-**mismo motor** que WhatsApp y el storefront (`invokeAgentTool` → `createOrder` → `upsertCustomer`). **No usa ElevenLabs.** Vercel no sirve para esto
+**mismo motor** que WhatsApp (`invokeAgentTool` → `createOrder` → `upsertCustomer`). **No usa ElevenLabs.** Vercel no sirve para esto
 (audio continuo por WebSocket): vive en un host de procesos largos (ver «Dónde vive el proceso»).
 
 ## Estado honesto

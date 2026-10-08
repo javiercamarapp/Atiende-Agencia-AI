@@ -9,7 +9,7 @@
 // Vite, p. ej. en tests). Pasada la ventana, un chunk que falla de forma persistente (sin conexión) puede provocar una
 // recarga por navegación: no hay bucle. Si ni así carga, el ErrorBoundary de la raíz pinta un error con "Recargar".
 // Limitación conocida: ErrorBoundaryRaiz no reinicia su estado al navegar; el botón recarga la página.
-// Nada del storefront debe precargar chunks con import() especulativo: el mismo evento recargaría con un formulario abierto.
+// Nada de las paginas publicas debe precargar chunks con import() especulativo: el mismo evento recargaría con un formulario abierto.
 import { Component, lazy } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { EstadoError } from "@atiende/ui";
@@ -78,7 +78,7 @@ export function instalarManejadorPreloadError(destino: Window = window): () => v
   return () => destino.removeEventListener("vite:preloadError", manejador);
 }
 
-/** Último límite de error de la app: cubre storefront público, logins, 404 y shells, que no tienen RutaBoundary. */
+/** Último límite de error de la app: cubre páginas públicas, logins, 404 y shells, que no tienen RutaBoundary. */
 export class ErrorBoundaryRaiz extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
 
