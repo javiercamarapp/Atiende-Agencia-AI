@@ -204,6 +204,22 @@ export function corregirPromesaDeHorarioNocturno(reply: string, hora: number): s
   return reply.replace(/(?:,?\s*(?:y\s+)?)?(?:el\s+equipo\s+)?(?:le\s+(?:responde|contesta|responder[aá]n?|contestar[aá]n?|escribe|escribir[aá]n?)\s+|le\s+atienden\s+)?a\s+partir\s+de\s+las\s+12(?:\s*(?::00|h|hrs?\.?))?\s*(?:del\s+d[ií]a|del\s+mediod[ií]a|pm|p\.m\.)?/gi, (m) => (/le\s+/i.test(m) || /equipo/i.test(m) ? ", le contestan en cuanto puedan" : " en cuanto puedan"));
 }
 
+/**
+ * QA-PM-R4-whatsapp-03: el cliente dijo "de propina 10%" y el modelo creaba el pedido sin `propina` (la propina del 10 % se perdia y el resumen decia "mas la propina" sin monto).
+ * Pura: el porcentaje de propina que el CLIENTE dijo en sus mensajes (el ultimo que lo menciona), o `null`. Solo cuenta si el mensaje habla de propina junto a un porcentaje de 1 a 100.
+ */
+export function porcentajePropinaDichoPorElCliente(mensajes: readonly string[]): number | null {
+  for (const m of [...mensajes].reverse()) {
+    const t = normalizarParaClasificar(m);
+    if (!/\bpropina\b/.test(t)) continue;
+    const match = /(\d{1,3}(?:[.,]\d{1,2})?)\s*(?:%|por\s*ciento)/.exec(t);
+    if (!match) continue;
+    const n = Number(match[1]!.replace(",", "."));
+    if (n > 0 && n <= 100) return n;
+  }
+  return null;
+}
+
 /** Quita la afirmacion de aviso cuando no se pudo dejar el aviso. */
 export function quitarAfirmacionDeAviso(reply: string): string {
   const sinFrase = reply

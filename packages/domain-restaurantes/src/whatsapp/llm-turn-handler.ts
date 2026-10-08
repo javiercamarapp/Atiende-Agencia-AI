@@ -41,7 +41,7 @@ import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, P
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { PEDIDO_GRANDE_TOTAL_MXN } from "../pedido-grande.ts";
-import { corregirPromesaDeHorarioNocturno, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
+import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -843,6 +843,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           } catch {
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
             argumentosInvalidos = true;
+          }
+          // Propina dicha en porcentaje ("de propina 10%") que el modelo no mando: el servidor la completa (solo tarjeta; el resto de la regla de propina sigue en el servidor).
+          if (result === undefined && call.name === "crear_pedido" && input.payment_method === "tarjeta" && !(typeof input.propina === "number" && input.propina > 0) && !input.propina_porcentaje) {
+            const pct = porcentajePropinaDichoPorElCliente(messages.filter((m) => m.role === "user").map((m) => m.content));
+            if (pct !== null) input = { ...input, propina_porcentaje: pct };
           }
           if (result === undefined) {
             const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...modoCtx }, call.name, input);
