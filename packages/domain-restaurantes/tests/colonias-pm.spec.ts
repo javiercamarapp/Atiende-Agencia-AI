@@ -126,8 +126,9 @@ describe("agente de PM con las colonias cargadas (mundo en memoria del seed)", (
   it("buscar_sucursal_cercana: una colonia asignada a una sucursal ACTIVA devuelve esa sucursal sin inventar distancia", async () => {
     const world = await buildInMemoryPmWorld(plan);
     expect(await assignBranch(world.repo, { organizationId: world.organizationId, colonia: "Temozón Norte" })).toMatchObject({ estado: "asignada", branchSlug: "garcia-lavin", distanceKm: null });
-    // Una colonia PENDIENTE del dueño (Chicxulub: a 29 km de la sucursal de despacho mas cercana) no se adivina.
-    expect(await assignBranch(world.repo, { organizationId: world.organizationId, colonia: "Chicxulub" })).toMatchObject({ estado: "no_reconocida" });
+    // Una colonia PENDIENTE del dueño (Chicxulub: a 29 km de la sucursal de despacho mas cercana) no se adivina ni se declara «no reconocida» (import-orig-01):
+    // es una colonia cargada, sin ubicacion cierta -> `sugerida` por confirmar (pide el pin o pasa a una persona).
+    expect(await assignBranch(world.repo, { organizationId: world.organizationId, colonia: "Chicxulub" })).toMatchObject({ estado: "sugerida", reparto: "por_confirmar" });
     // Con la regla de la mas cercana, Alcala Martin (antes ambigua) va a T1.
     expect(await sucursalQueCubre(world, "Alcala Martin")).toBe("prol-montejo");
   });

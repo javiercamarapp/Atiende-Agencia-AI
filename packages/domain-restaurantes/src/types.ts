@@ -315,6 +315,9 @@ export interface WhatsAppAgentConfigRow {
   readonly largeOrderText?: string | null;
   /** Segundos que el agente espera tras el ultimo mensaje del cliente antes de responder (0 a 30; null = apagado). Solo perfil `taqueria_pm`. */
   readonly replyDebounceSeconds?: number | null;
+  /** Radio de reparto de la organizacion en km (mayor que 0 y hasta 500; 0 o fuera de rango se trata como ausente; `buscar_sucursal_cercana` y su tope duro). Ausente o `null` = el del perfil (8 km en `taqueria_pm`, 20 en los demas;
+   * ver `radioRepartoDelPerfil`). Sin columna en la base todavia: persistirlo es una migracion que reserva el orquestador; mientras tanto lo respetan los repositorios que lo traigan. */
+  readonly radioRepartoKm?: number | null;
 }
 
 /** Motivos de escalacion que un owner/admin puede apagar. Los demas (queja, alergia, cliente_lo_pide, falla_sistema,

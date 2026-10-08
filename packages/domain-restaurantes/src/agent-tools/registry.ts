@@ -24,7 +24,10 @@ import { normalizePhone } from "../phone.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
-import { assignBranch, RADIO_MAXIMO_REPARTO_KM } from "../branch-assignment.ts";
+import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
+import { COORDENADAS_PROPUESTAS_PM, coordenadasPropuestasActivas } from "../coordenadas-sucursales.ts";
+import { kmAproxTexto } from "../nearest-branch.ts";
+import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
 import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
@@ -146,6 +149,9 @@ export interface AgentToolContext {
   /** Autopiloto: con el, un pedido grande de WhatsApp/voz se CREA y queda `por_aprobar` (la sucursal lo aprueba con un clic). Sin el (o con la base sin la
    * migracion 050) `crear_pedido` sigue por el aviso `escalada:pedido_grande` de siempre. Solo lo fija el servidor. */
   readonly pedidoGrande?: PedidoGrandeHook;
+  /** Mide `buscar_sucursal_cercana` contra los pines propuestos de Google (`COORDENADAS_PROPUESTAS_PM`) en lugar de las coordenadas vigentes. Ausente = la bandera
+   * `RESTAURANTES_USAR_COORDENADAS_PROPUESTAS`, APAGADA por omision (decision de Javier). Solo lo fija el servidor. */
+  readonly usarCoordenadasPropuestas?: boolean;
 }
 
 export interface AgentToolOutcome {
@@ -271,7 +277,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "buscar_sucursal_cercana",
     description:
-      "Asigna la sucursal real MÁS CERCANA EN KM al domicilio del cliente (distancia real; no adivines tú cuál está más cerca). Pásale la colonia/zona/referencia que dio el cliente y, si compartió su ubicación, lat y lng. Si responde fuera_de_zona no se envía a domicilio: ofrece recoger en sucursal. Llámala en cuanto tengas la colonia o una referencia clara.",
+      "Asigna la sucursal de DESPACHO real MÁS CERCANA EN KM al domicilio del cliente (distancia real; no adivines tú cuál está más cerca) y solo si está dentro del radio de reparto. Pásale la colonia/zona/referencia que dio el cliente y, si compartió su ubicación, lat y lng. Si responde asignada, dile al cliente cuál sucursal le atiende y a cuántos km aproximadamente (sin decimales). Si responde fuera_de_zona, di con claridad que queda fuera de la zona habitual de reparto y nombra la sucursal más cercana; nunca prometas el envío (solo el dueño autoriza excepciones): ofrece recoger. Si responde sugerida, la colonia SÍ existe pero no está ubicada con certeza: pide UNA vez la ubicación y, si no la manda, ofrece recoger o pasa con una persona; nunca digas que no reconoces la colonia. Llámala en cuanto tengas la colonia o una referencia clara.",
     parameters: {
       type: "object",
       properties: {
@@ -979,11 +985,16 @@ async function dispatchTool(
         lat = ctx.sharedLocation.lat;
         lng = ctx.sharedLocation.lng;
       }
-      // El tope duro de 20 km es del perfil `taqueria_pm` (QA-PM-R2-whatsapp-08); otro perfil, o una base sin la config del agente, no lo hereda.
-      const perfilAgente = (await repo.findWhatsAppAgentConfig(organizationId, null))?.perfil ?? "generico";
+      // El radio de reparto lo fija el SERVIDOR (QA-PM-R2-whatsapp-08): 8 km en el perfil `taqueria_pm`, sin tope duro en los demas, o el que la organizacion configure; el modelo solo puede bajarlo.
+      const configAgente = await repo.findWhatsAppAgentConfig(organizationId, null);
+      const perfilAgente = configAgente?.perfil ?? "generico";
+      // Pines de Google de las sucursales (opt-in, APAGADO por omision: activarlo es decision de Javier; ver coordenadas-sucursales.ts).
+      const usarPropuestas = ctx.usarCoordenadasPropuestas ?? coordenadasPropuestasActivas();
       const match = await assignBranch(repo, {
         organizationId,
-        radioMaximoKm: perfilAgente === "taqueria_pm" ? RADIO_MAXIMO_REPARTO_KM : null,
+        radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
+        ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
+        ...(perfilAgente === "taqueria_pm" ? { sucursalesQueNoReparten: SUCURSALES_QUE_NO_REPARTEN_PM } : {}),
         colonia: typeof input.colonia === "string" ? input.colonia : undefined,
         ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
         ...(typeof input.max_km === "number" && Number.isFinite(input.max_km) && input.max_km > 0 ? { maxKm: input.max_km } : {}),
@@ -996,13 +1007,49 @@ async function dispatchTool(
               branch_slug: match.branchSlug,
               branch_name: match.branchName,
               distancia_km: match.distanceKm,
+              ...(match.distanceKm === null && match.kmReferencia !== null ? { distancia_aprox_km: match.kmReferencia } : {}),
+              distancia_texto: match.distanceKm !== null ? kmAproxTexto(match.distanceKm) : match.kmReferencia !== null ? kmAproxTexto(match.kmReferencia) : null,
               colonia_reconocida: match.recognizedZoneName,
               via: match.via,
+              origen_asignacion: match.origen,
               ajuste_por_zona: match.ajustePorZona,
+              doble_cobertura: match.dobleCobertura,
+              ...(match.aproximada ? { medicion_aproximada: true } : {}),
+              ...(match.alternativa ? { alternativa: { branch_slug: match.alternativa.slug, branch_name: match.alternativa.nombre, distancia_texto: match.alternativa.kmAprox === null ? null : kmAproxTexto(match.alternativa.kmAprox) } } : {}),
+              mensaje: match.message,
             }
           : match.estado === "fuera_de_zona"
-            ? { encontrada: false, estado: match.estado, mensaje: match.message, branch_slug_mas_cercana: match.branchSlug, distancia_km: match.distanceKm, max_km: match.maxKm }
-            : { encontrada: false, estado: match.estado, mensaje: match.message };
+            ? {
+                encontrada: false,
+                estado: match.estado,
+                reparto: "fuera_de_zona_habitual",
+                mensaje: match.message,
+                colonia_reconocida: match.recognizedZoneName,
+                // Sin medicion confiable (alguna sucursal de despacho sin coordenada) no se nombra una «mas cercana» ni se dice una distancia.
+                ...(match.medicionConfiable
+                  ? {
+                      branch_slug_mas_cercana: match.branchSlug,
+                      sucursal_despacho_mas_cercana: { branch_slug: match.branchSlug, branch_name: match.branchName, distancia_km: match.distanceKm, distancia_texto: kmAproxTexto(match.distanceKm) },
+                    }
+                  : { medicion_aproximada: true }),
+                // Km a la sucursal medible mas cercana (contrato historico de la herramienta); sin medicion confiable NO se nombra ni se le llama «mas cercana».
+                distancia_km: match.distanceKm,
+                max_km: match.maxKm,
+              }
+            : match.estado === "sugerida"
+              ? {
+                  encontrada: false,
+                  estado: match.estado,
+                  reparto: match.reparto,
+                  colonia_reconocida: match.recognizedZoneName,
+                  // Solo para ofrecer recoger: sin distancia (la referencia del piloto de una colonia pendiente puede estar equivocada).
+                  sucursal_sugerida: match.sugerida ? { branch_slug: match.sugerida.slug, branch_name: match.sugerida.nombre } : null,
+                  segunda_opcion: match.segunda ? { branch_slug: match.segunda.slug, branch_name: match.segunda.nombre } : null,
+                  ambigua: match.ambigua,
+                  ubicacion_recibida: match.conUbicacion,
+                  mensaje: match.message,
+                }
+              : { encontrada: false, estado: match.estado, mensaje: match.message };
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "buscar_producto": {
