@@ -102,7 +102,9 @@ describe("portada y clases literales de atiende-restaurantes", () => {
     clic(porTexto(c, "button", "Consulta"));
     expect(c.querySelectorAll(".copiloto-categorias-entra .rounded-xl").length).toBe(3);
     const grid = c.querySelector(".copiloto-categorias-entra") as HTMLElement;
-    expect(grid.className).toContain("grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mb-5");
+    // Cuadricula auto-fit de tarjetas de la misma altura (ver copiloto-categorias-grilla.spec.tsx).
+    expect(grid.className).toContain("grid w-full items-stretch auto-rows-fr gap-3 mb-5");
+    expect(grid.className).toContain("grid-cols-1 sm:grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] max-w-5xl");
     expect(porTexto(c, "button", "Consulta").getAttribute("aria-expanded")).toBe("true");
     clic(porTexto(c, "button", "Ticket medio"));
     await microtareas();
