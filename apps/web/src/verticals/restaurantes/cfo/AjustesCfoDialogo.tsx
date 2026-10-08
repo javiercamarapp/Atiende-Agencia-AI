@@ -104,7 +104,12 @@ function Formulario({ config, api, onCerrar, onGuardado }: { readonly config: Co
   }, [config]);
 
   const lectura = !config.puedeGuardar;
-  const interpretados = campos.map((c) => ({ campo: c, ...interpretar(valores[c.llave] ?? "", c, config.rangos[c.llave]) }));
+  const base = campos.map((c) => ({ campo: c, ...interpretar(valores[c.llave] ?? "", c, config.rangos[c.llave]) }));
+  // Regla cruzada (la base la exige): un cliente es «perdido» después de dejar de ser «activo».
+  const activo = base.find((i) => i.campo.llave === "activoDias")?.valor ?? null;
+  const perdido = base.find((i) => i.campo.llave === "perdidoDias")?.valor ?? null;
+  const cruzado = activo !== null && perdido !== null && activo >= perdido;
+  const interpretados = base.map((i) => (cruzado && i.campo.llave === "perdidoDias" && i.error === null ? { ...i, error: "Debe ser mayor que los días de cliente activo." } : i));
   const cambios: Record<string, number | null> = {};
   for (const i of interpretados) {
     if (i.error === null && i.valor !== config.config[i.campo.llave]) cambios[i.campo.llave] = i.valor;

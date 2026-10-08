@@ -315,6 +315,17 @@ describe("<AjustesCfoDialogo /> · Ajustes del CFO", () => {
     expect(doc("form button[type=submit]")!.hasAttribute("disabled")).toBe(true);
   });
 
+  it("activo debe ser menor que perdido: si no, error en el navegador y no se guarda", async () => {
+    const api = crearApiCfo();
+    await abrirAjustes(api);
+    changeValue(doc("[data-testid=ajuste-activoDias]") as HTMLInputElement, "200");
+    await esperarHasta(() => document.body.textContent!.includes("Debe ser mayor que los días de cliente activo."), "regla cruzada");
+    expect(doc("form button[type=submit]")!.hasAttribute("disabled")).toBe(true);
+    changeValue(doc("[data-testid=ajuste-perdidoDias]") as HTMLInputElement, "300");
+    await esperarHasta(() => !document.body.textContent!.includes("Debe ser mayor que los días de cliente activo."), "resuelto");
+    expect(api.peticiones("PUT", "/config")).toHaveLength(0);
+  });
+
   it("un admin acotado solo lee: campos deshabilitados y explicación (el API también lo rechazaría con 403)", async () => {
     const base = await respuestaBase<ConfigVista>("/config");
     await abrirAjustes(crearApiCfo({ "GET /config": { status: 200, cuerpo: { ...base, puedeGuardar: false } } }));
