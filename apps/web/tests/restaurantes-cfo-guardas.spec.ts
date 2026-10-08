@@ -50,7 +50,7 @@ describe("apartado CFO · guardas", () => {
 
   it("las animaciones de las gráficas nuevas están bajo motion-safe", () => {
     const codigo = sinComentarios(readFileSync(UI, "utf8"));
-    for (const m of codigo.matchAll(/[\w:\[\]-]*(?:transition|animate|duration)[\w:\[\]-]*/g)) expect(m[0].startsWith("motion-safe:"), m[0]).toBe(true);
+    for (const m of codigo.matchAll(/[\w:[\]-]*(?:transition|animate|duration)[\w:[\]-]*/g)) expect(m[0].startsWith("motion-safe:"), m[0]).toBe(true);
   });
 
   it("el registro de pestañas: cada una con slug, etiqueta, icono, componente perezoso y vista de exportación", async () => {

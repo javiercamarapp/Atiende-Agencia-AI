@@ -3,17 +3,18 @@ import type { ReactNode } from "react";
 import { LockKeyhole, PlugZap } from "lucide-react";
 import { AVISO_CFO } from "@atiende/domain-restaurantes/cfo";
 import type { Cifra, Confianza, VistaCfoBase } from "@atiende/domain-restaurantes/cfo";
-import { Badge, Callout, EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { Callout, EstadoCargando, EstadoError, EstadoVacio, StatusBadge } from "@atiende/ui";
+import type { StatusTone } from "@atiende/ui";
 import { ETIQUETA_CONFIANZA } from "./formato.ts";
 import { MENSAJE_SIN_ACCESO_CFO } from "./cfo-client.ts";
 import type { CargaCfo } from "./use-carga-cfo.ts";
 
-const VARIANTE: Readonly<Record<Confianza, "outline" | "warning" | "info" | "secondary">> = {
-  medido: "outline",
+const TONO: Readonly<Record<Confianza, StatusTone>> = {
+  medido: "neutral",
   estimado: "warning",
   capturado: "info",
-  importado: "secondary",
-  sin_dato: "outline",
+  importado: "success",
+  sin_dato: "neutral",
 };
 
 /**
@@ -23,9 +24,9 @@ const VARIANTE: Readonly<Record<Confianza, "outline" | "warning" | "info" | "sec
 export function ChipConfianza({ confianza, fuente, mostrarMedido = false }: { readonly confianza: Confianza; readonly fuente?: string; readonly mostrarMedido?: boolean }) {
   if (confianza === "medido" && !mostrarMedido) return null;
   return (
-    <Badge variant={VARIANTE[confianza]} data-testid="chip-confianza" data-confianza={confianza} title={fuente ? `Fuente: ${fuente}` : undefined} className="px-1.5 py-0 text-2xs">
+    <StatusBadge tone={TONO[confianza]} data-testid="chip-confianza" data-confianza={confianza} title={fuente ? `Fuente: ${fuente}` : undefined} className="px-1.5 py-0 text-2xs">
       {ETIQUETA_CONFIANZA[confianza]}
-    </Badge>
+    </StatusBadge>
   );
 }
 
