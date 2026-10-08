@@ -1846,24 +1846,52 @@ select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '
 select public.t_esperar_error($q$delete from restaurantes.sr_ticket$q$, '0A000');
 rollback;
 
-\echo '=== G1. las 18 funciones nuevas existen ==='
+\echo '=== R11. reimportar un archivo corregido de 20000 cuentas (mismos folios y dias) tarda menos de 3 s ==='
 begin;
-select count(*) as funciones_deberia_ser_18 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_cap_gestor','cfo_resolver_alcance','cfo_cap_escritura','cfo_validar_rango','cfo_config_efectiva','cfo_config_leer','cfo_config_guardar','cfo_solo_marcar_reemplazo','cfo_costo_guardar','cfo_costos_leer','cfo_costo_historial','cfo_sr_entero','sr_normalizar_renglon','sr_importar','sr_resumen_leer','sr_lotes_listar','sr_cobertura','cfo_registrar_exportacion');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('1', 64), 'cuentas', 'p1.csv', (select jsonb_agg(jsonb_build_object('folio', 'P-' || g::text, 'dia_negocio', (date '2026-06-01' + (g % 10))::text, 'tipo_servicio', 'comedor', 'total_centavos', 100, 'forma_pago', 'efectivo')) from generate_series(1, 20000) g));
+select set_config('t.ini', clock_timestamp()::text, true);
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('2', 64), 'cuentas', 'p2.csv', (select jsonb_agg(jsonb_build_object('folio', 'P-' || g::text, 'dia_negocio', (date '2026-06-01' + (g % 10))::text, 'tipo_servicio', 'comedor', 'total_centavos', 200, 'forma_pago', 'efectivo')) from generate_series(1, 20000) g));
+select (extract(epoch from clock_timestamp() - current_setting('t.ini')::timestamptz) < 3)::int as rapido_deberia_ser_1;
+rollback;
+
+\echo '=== R12. la reimportacion corregida reemplaza las 20000 cuentas ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('1', 64), 'cuentas', 'p1.csv', (select jsonb_agg(jsonb_build_object('folio', 'P-' || g::text, 'dia_negocio', (date '2026-06-01' + (g % 10))::text, 'tipo_servicio', 'comedor', 'total_centavos', 100, 'forma_pago', 'efectivo')) from generate_series(1, 20000) g));
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('2', 64), 'cuentas', 'p2.csv', (select jsonb_agg(jsonb_build_object('folio', 'P-' || g::text, 'dia_negocio', (date '2026-06-01' + (g % 10))::text, 'tipo_servicio', 'comedor', 'total_centavos', 200, 'forma_pago', 'efectivo')) from generate_series(1, 20000) g));
+select count(*) as vigentes_deberia_ser_20000 from restaurantes.sr_ticket where estado = 'vigente' and lote_id = (select id from restaurantes.sr_import_lote where huella = repeat('2', 64));
+rollback;
+
+\echo '=== R13. con statement_timeout de 8 s la reimportacion de 20000 cuentas termina ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e8311', true);
+set local statement_timeout = '8s';
+select * from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('1', 64), 'cuentas', 'p1.csv', (select jsonb_agg(jsonb_build_object('folio', 'P-' || g::text, 'dia_negocio', (date '2026-06-01' + (g % 10))::text, 'tipo_servicio', 'comedor', 'total_centavos', 100, 'forma_pago', 'efectivo')) from generate_series(1, 20000) g));
+select aceptados as aceptados_deberia_ser_20000 from restaurantes.sr_importar('00000000-0000-0000-0000-0000000e8301', '00000000-0000-0000-0000-0000000e83a1', repeat('2', 64), 'cuentas', 'p2.csv', (select jsonb_agg(jsonb_build_object('folio', 'P-' || g::text, 'dia_negocio', (date '2026-06-01' + (g % 10))::text, 'tipo_servicio', 'comedor', 'total_centavos', 200, 'forma_pago', 'efectivo')) from generate_series(1, 20000) g));
+rollback;
+
+\echo '=== G1. las 17 funciones nuevas existen ==='
+begin;
+select count(*) as funciones_deberia_ser_17 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_cap_gestor','cfo_resolver_alcance','cfo_cap_escritura','cfo_config_efectiva','cfo_config_leer','cfo_config_guardar','cfo_solo_marcar_reemplazo','cfo_costo_guardar','cfo_costos_leer','cfo_costo_historial','cfo_sr_entero','sr_normalizar_renglon','sr_importar','sr_resumen_leer','sr_lotes_listar','sr_cobertura','cfo_registrar_exportacion');
 rollback;
 
 \echo '=== G2. toda funcion nueva tiene search_path fijo ==='
 begin;
-select count(*) as sin_search_path_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_cap_gestor','cfo_resolver_alcance','cfo_cap_escritura','cfo_validar_rango','cfo_config_efectiva','cfo_config_leer','cfo_config_guardar','cfo_solo_marcar_reemplazo','cfo_costo_guardar','cfo_costos_leer','cfo_costo_historial','cfo_sr_entero','sr_normalizar_renglon','sr_importar','sr_resumen_leer','sr_lotes_listar','sr_cobertura','cfo_registrar_exportacion') and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%');
+select count(*) as sin_search_path_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_cap_gestor','cfo_resolver_alcance','cfo_cap_escritura','cfo_config_efectiva','cfo_config_leer','cfo_config_guardar','cfo_solo_marcar_reemplazo','cfo_costo_guardar','cfo_costos_leer','cfo_costo_historial','cfo_sr_entero','sr_normalizar_renglon','sr_importar','sr_resumen_leer','sr_lotes_listar','sr_cobertura','cfo_registrar_exportacion') and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%');
 rollback;
 
 \echo '=== G3. anon no puede ejecutar ninguna funcion nueva ==='
 begin;
-select count(*) as anon_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_cap_gestor','cfo_resolver_alcance','cfo_cap_escritura','cfo_validar_rango','cfo_config_efectiva','cfo_config_leer','cfo_config_guardar','cfo_solo_marcar_reemplazo','cfo_costo_guardar','cfo_costos_leer','cfo_costo_historial','cfo_sr_entero','sr_normalizar_renglon','sr_importar','sr_resumen_leer','sr_lotes_listar','sr_cobertura','cfo_registrar_exportacion') and has_function_privilege('anon', p.oid, 'execute');
+select count(*) as anon_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_cap_gestor','cfo_resolver_alcance','cfo_cap_escritura','cfo_config_efectiva','cfo_config_leer','cfo_config_guardar','cfo_solo_marcar_reemplazo','cfo_costo_guardar','cfo_costos_leer','cfo_costo_historial','cfo_sr_entero','sr_normalizar_renglon','sr_importar','sr_resumen_leer','sr_lotes_listar','sr_cobertura','cfo_registrar_exportacion') and has_function_privilege('anon', p.oid, 'execute');
 rollback;
 
 \echo '=== G4. authenticated ejecuta exactamente las 10 funciones publicas ==='
 begin;
-select count(*) as publicas_deberia_ser_10 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_cap_gestor','cfo_resolver_alcance','cfo_cap_escritura','cfo_validar_rango','cfo_config_efectiva','cfo_config_leer','cfo_config_guardar','cfo_solo_marcar_reemplazo','cfo_costo_guardar','cfo_costos_leer','cfo_costo_historial','cfo_sr_entero','sr_normalizar_renglon','sr_importar','sr_resumen_leer','sr_lotes_listar','sr_cobertura','cfo_registrar_exportacion') and has_function_privilege('authenticated', p.oid, 'execute');
+select count(*) as publicas_deberia_ser_10 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'restaurantes' and p.proname in ('cfo_cap_gestor','cfo_resolver_alcance','cfo_cap_escritura','cfo_config_efectiva','cfo_config_leer','cfo_config_guardar','cfo_solo_marcar_reemplazo','cfo_costo_guardar','cfo_costos_leer','cfo_costo_historial','cfo_sr_entero','sr_normalizar_renglon','sr_importar','sr_resumen_leer','sr_lotes_listar','sr_cobertura','cfo_registrar_exportacion') and has_function_privilege('authenticated', p.oid, 'execute');
 rollback;
 
 \echo '=== G5. las funciones definer publicas (10) son SECURITY DEFINER ==='

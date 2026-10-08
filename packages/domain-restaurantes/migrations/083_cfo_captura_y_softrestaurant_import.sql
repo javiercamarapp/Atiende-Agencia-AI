@@ -76,7 +76,7 @@
 --   Campos opcionales ausentes: descuento/cancelado/propina = 0, cancelado(bool) = false, iva = null, hora = null, forma_pago =
 --     null. La UI (CFO-08) debe mandar solo lo que el mapeo asistido encontro.
 --
--- Requiere: 019 (audit_log), 028 (handoff_actor_en_sucursal), core.membership/property/organization/staff_user.
+-- Requiere: 081 (cfo_validar_rango), 019 (audit_log), 028 (handoff_actor_en_sucursal), core.membership/property/organization/staff_user.
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 0) Helpers internos de alcance (sin GRANT a authenticated)
@@ -179,23 +179,7 @@ end;
 $$;
 revoke all on function restaurantes.cfo_cap_escritura(uuid, uuid) from public, anon, authenticated;
 
--- Rango de lectura (maximo 400 dias).
-create or replace function restaurantes.cfo_validar_rango(p_desde date, p_hasta date)
-returns void
-language plpgsql
-immutable
-set search_path = restaurantes, pg_temp
-as $$
-begin
-  if p_desde is null or p_hasta is null or p_hasta < p_desde then
-    raise exception 'cfo: rango de fechas invalido' using errcode = '22023';
-  end if;
-  if p_hasta - p_desde > 400 then
-    raise exception 'cfo: el rango maximo es de 400 dias' using errcode = '22023';
-  end if;
-end;
-$$;
-revoke all on function restaurantes.cfo_validar_rango(date, date) from public, anon, authenticated;
+-- Rango de lectura: se REUTILIZA restaurantes.cfo_validar_rango(date, date) de la 081 (1 a 400 dias, ambos extremos); no se redefine aqui.
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- A) Configuracion del CFO (una fila por organizacion)
@@ -944,7 +928,7 @@ begin
       select (e ->> 'o')::integer as o, e -> 'r' as r from jsonb_array_elements(v_norm) e
     ), fmt as (
       select o, r from n where not (r ? 'error')
-    ), dias as (
+    ), dias as materialized (
       select coalesce(array_agg(distinct (r ->> 'dia')::date), '{}'::date[]) as d from fmt
     ), f2 as (
       select o, r, row_number() over (partition by r ->> 'folio' order by o) as rn from fmt

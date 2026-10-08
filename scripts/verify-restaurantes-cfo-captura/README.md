@@ -4,7 +4,7 @@ Verificacion contra Postgres real (rol REAL `authenticated`, RLS, GRANT por colu
 `packages/domain-restaurantes/migrations/083_cfo_captura_y_softrestaurant_import.sql`
 (espejo: `supabase/migrations/20240101000393_083_cfo_captura_y_softrestaurant_import.sql`), CFO paquete 03.
 
-Cubre (240 escenarios):
+Cubre (243 escenarios):
 - **Configuracion** (`cfo_config`, `cfo_config_leer`, `cfo_config_guardar`): defaults sin fila (y que coinciden con los DEFAULT de la
   tabla), guardado parcial, rangos (22023), admin acotado / staff / repartidor / otra organizacion / sistema / anon, bitacora, sin DML directo.
 - **Costos** (`cfo_costo_captura`, `cfo_costo_guardar`, `cfo_costos_leer`, `cfo_costo_historial`): una version vigente y una reemplazada,
