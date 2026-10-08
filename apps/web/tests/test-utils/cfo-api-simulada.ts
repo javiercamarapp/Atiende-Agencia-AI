@@ -3,6 +3,7 @@
 // (vacío, error, 403, base sin migrar). Registra cada petición para afirmar qué se pidió.
 import { vi } from "vitest";
 import { rutasRestaurantesCfo } from "../../e2e/mock-api/fixtures/restaurantes-cfo.ts";
+import { rutasRestaurantesCfoB } from "../../e2e/mock-api/fixtures/restaurantes-cfo-b.ts";
 import { esRespuestaMarcada } from "../../e2e/mock-api/respuestas.ts";
 import type { EstadoEscenario, Peticion } from "../../e2e/mock-api/tipos.ts";
 import type { AlcanceVista } from "@atiende/domain-restaurantes/cfo";
@@ -69,7 +70,7 @@ export function crearApiCfo(forzar: Readonly<Record<string, Forzado>> = {}) {
         return respuesta(200, r);
       }
     }
-    for (const r of rutasRestaurantesCfo) {
+    for (const r of [...rutasRestaurantesCfo, ...rutasRestaurantesCfoB]) {
       if (r.metodo !== metodo) continue;
       const params = coincide(r.patron.replace(":id", "[^/]+"), url.pathname);
       if (!params) continue;
